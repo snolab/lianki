@@ -70,7 +70,7 @@ import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
-import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry, STRIP_INSET_PX, stripTopRadius } from "./bar-geometry";
+import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry } from "./bar-geometry";
 import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, voiceDevice } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
@@ -4559,9 +4559,7 @@ export function DebugChat({
           ref={setEtaBox}
           data-testid="debug-chat-eta-slot"
           data-strip={strip || undefined}
-          // The inset is STRIP_INSET_PX on the top and the sides (stripTopRadius).
-          className="flow-root"
-          style={strip ? { padding: `${STRIP_INSET_PX}px ${STRIP_INSET_PX}px 0` } : undefined}
+          className={`flow-root ${strip ? "px-1 pt-1" : ""}`}
         >
           <EtaBar
             tasks={etaList}
@@ -4605,18 +4603,8 @@ export function DebugChat({
           <div
             aria-hidden
             data-testid="debug-chat-strip"
-            data-top-radius={stripTopRadius(etaH)}
             className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 border border-current/25"
-            style={{
-              ...barGeometry(),
-              ...STRIP_GLASS,
-              top: -etaH,
-              // The top corners concentric with the progress pill's end caps
-              // (bar-geometry.ts stripTopRadius); the bottom ones the bar's own.
-              borderTopLeftRadius: stripTopRadius(etaH),
-              borderTopRightRadius: stripTopRadius(etaH),
-              transition: reducedMotion() ? undefined : "border-radius 180ms ease-out, top 180ms ease-out",
-            }}
+            style={{ ...barGeometry(), ...STRIP_GLASS, top: -etaH }}
           />
         )}
         <div style={LTR}>

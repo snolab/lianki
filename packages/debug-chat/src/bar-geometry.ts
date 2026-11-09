@@ -98,16 +98,3 @@ export const MIC_RING: CSSProperties = {
   insetInlineEnd: "var(--lk-mic-ring)",
   insetInlineStart: `calc(var(--lk-mic-w) - var(--lk-bar-line, ${BAR_LINE}) + var(--lk-mic-ring))`,
 };
-
-/**
- * The glass strip's corners (owner, 2026-11-10): with the progress bar in
- * it, the bar is a full pill (its end caps half its height) and the strip's
- * top corners are concentric with those caps — the cap's radius plus the
- * inset between them, the same centre. `slotH` is the bar's slot (the inset
- * above it included), as measured; the bottom corners stay the bar's own.
- */
-export const STRIP_INSET_PX = 4;
-export function stripTopRadius(slotH: number, inset = STRIP_INSET_PX): number {
-  const barH = Math.max(0, slotH - inset);
-  return Math.round((barH / 2 + inset) * 10) / 10;
-}
