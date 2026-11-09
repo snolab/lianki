@@ -6,7 +6,8 @@
  * 1440×900, 1512×770 and 390×844 (iPhone), light and dark:
  *
  *   - a tap on the ETA bar opens it; the panel fills the viewport
- *   - the red Now line is in view on open, about a quarter from the left
+ *   - the red Now line is at the horizontal centre on open (owner, 2026-11-10),
+ *     and the open task closest to ending is at the vertical centre
  *   - no horizontal page scroll (the timeline scrolls inside its own box)
  *   - after a vertical scroll the axis header is still at the top
  *   - after scrolling sideways both ways, every row's name is inside the view
@@ -16,7 +17,7 @@
  *
  * The logarithmic axis (the default; owner, 2026-11-09 15:27 JST) first:
  *
- *   - it opens on the log axis; Now in view, a third from the left
+ *   - it opens on the log axis; Now at the horizontal centre
  *   - minute and day tasks on one screen: the 9H estimate in view, a 10-minute
  *     task still a readable width
  *   - the tick labels never overlap (their boxes), on open, panned and zoomed
@@ -277,10 +278,38 @@ try {
       {
         let g = await geo();
         check(g.scale === "log", `${tag}: opens on the log axis (${g.scale})`);
-        const third = g.sc.left + (g.sc.right - g.sc.left) / 3;
+        const third = g.sc.left + (g.sc.right - g.sc.left) / 2;
         check(
           g.nowX >= g.sc.left && g.nowX <= g.sc.right && Math.abs(g.nowX - third) < 4,
-          `${tag} log: Now in view, a third from the left (${Math.round(g.nowX)} vs ${Math.round(third)})`,
+          `${tag} log: Now at the centre (${Math.round(g.nowX)} vs ${Math.round(third)})`,
+        );
+        // The open task closest to ending (/dev/users, due in 15 min) at the vertical centre.
+        const focus = await page.evaluate(() => {
+          const sc = document
+            .querySelector('[data-testid="debug-chat-gantt-scroll"]')
+            .getBoundingClientRect();
+          const axis = document
+            .querySelector('[data-testid="debug-chat-gantt-axis"]')
+            .getBoundingClientRect();
+          const row = document
+            .querySelector('[data-testid="debug-chat-gantt-row"][data-id="/dev/users"]')
+            .getBoundingClientRect();
+          return { mid: (row.top + row.bottom) / 2, view: (axis.bottom + sc.bottom) / 2 };
+        });
+        check(
+          Math.abs(focus.mid - focus.view) < 20,
+          `${tag} log: the task closest to ending is centred (${Math.round(focus.mid)} vs ${Math.round(focus.view)})`,
+        );
+        // Rows by end time, expected or actual.
+        const ends = await page.evaluate(() =>
+          [...document.querySelectorAll('[data-testid="debug-chat-gantt-row"]')].map(
+            (e) => e.dataset.id,
+          ),
+        );
+        check(
+          ends.indexOf("/done/recent") < ends.indexOf("/dev/users") &&
+            ends.indexOf("/dev/users") < ends.indexOf("/box/eta"),
+          `${tag}: rows sorted by end time`,
         );
         check(g.pageW <= v.width, `${tag} log: no horizontal page scroll (${g.pageW})`);
         check(namesIn(g), `${tag} log: every name in view on open`);
@@ -288,11 +317,10 @@ try {
           apart(g) && g.labels.length >= 5,
           `${tag} log: ${g.labels.length} tick labels, none overlapping (${g.labels.map((l) => l.text).join(" ")})`,
         );
-        const long = await barOf("/box/eta");
         const short = await barOf("/dev/users");
         check(
-          long.r <= g.sc.right + 1 && long.l >= g.sc.left - 1,
-          `${tag} log: the 12-hour task fits the screen (${Math.round(long.l)}–${Math.round(long.r)})`,
+          short.r <= g.sc.right + 1 && short.l >= g.sc.left - 1,
+          `${tag} log: the centred task's bar is on screen (${Math.round(short.l)}–${Math.round(short.r)})`,
         );
         check(
           short.w >= 30,
@@ -361,10 +389,10 @@ try {
       }
 
       let g = await geo();
-      const quarter = g.sc.left + 0.25 * (g.sc.right - g.sc.left);
+      const quarter = g.sc.left + 0.5 * (g.sc.right - g.sc.left);
       check(
         g.nowX >= g.sc.left && g.nowX <= g.sc.right && Math.abs(g.nowX - quarter) < 4,
-        `${tag}: Now in view, a quarter from the left (${Math.round(g.nowX)} vs ${Math.round(quarter)})`,
+        `${tag}: Now at the centre (${Math.round(g.nowX)} vs ${Math.round(quarter)})`,
       );
       check(g.pageW <= v.width, `${tag}: no horizontal page scroll (${g.pageW})`);
       check(g.scrollWidth > g.sc.right - g.sc.left, `${tag}: the timeline scrolls sideways`);
