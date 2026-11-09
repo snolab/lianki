@@ -4,7 +4,7 @@ import { asReviewOrder, DEFAULT_REVIEW_ORDER, type ReviewOrder } from "@lianki/c
 
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
-import TokenManager from "../list/components/TokenManager";
+import TokenManager from "./TokenManager";
 import { PaperSkinPicker } from "@/app/components/PaperSkinPicker";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { ByokSettings } from "@/app/components/ByokSettings";
@@ -133,6 +133,7 @@ export default function PreferencesClient({
     examples,
     reviewOrder: reviewOrderUi,
     resetSection,
+    paperHeading,
   } = useIntlayer("preferences-page");
   const textSize = useIntlayer("text-size");
   const textSizes = useTextSizes();
@@ -266,7 +267,9 @@ export default function PreferencesClient({
 
       {/* Paper skin — this device only, kept in localStorage */}
       <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">紙紋 Paper</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
+          {paperHeading}
+        </h2>
         <PaperSkinPicker />
       </section>
 

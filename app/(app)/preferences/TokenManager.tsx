@@ -10,12 +10,13 @@ import {
   textOf,
   type Expiry,
 } from "@/app/components/TokenPickers";
+import { RevokeConfirm } from "./RevokeConfirm";
 
 /**
  * Settings → API tokens (lib/api-tokens.ts, /api/token): like GitHub's
  * fine-grained personal access tokens. Each has a name (an agent lane's name,
  * on every chat line it posts), the permissions picked here, a required
- * expiry, and when it was last used; Revoke deletes it at once. The account
+ * expiry, and when it was last used; Revoke asks first (RevokeConfirm), then deletes it at once. The account
  * every token acts as is named at the top. The secret is shown once, right
  * after it is made, and never again.
  */
@@ -44,6 +45,10 @@ export default function TokenManager() {
   const [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState<{ token: string; name: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  /** The row asking "Revoke …?", the one being revoked, and the one Cancel returned focus to. */
+  const [asking, setAsking] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [refocus, setRefocus] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const r = await fetch("/api/token", { cache: "no-store" });
@@ -90,14 +95,23 @@ export default function TokenManager() {
 
   async function revoke(id: string) {
     setError(null);
+    setRevoking(id);
     const r = await fetch("/api/token", {
       method: "DELETE",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id }),
     }).catch(() => null);
+    setRevoking(null);
     if (!r?.ok) return setError(s("errFailed"));
+    setAsking(null);
     setList((l) => (l ? { ...l, tokens: l.tokens.filter((x) => x.id !== id) } : l));
   }
+
+  const revokeLabels = {
+    revoke: s("revoke"),
+    question: s("revokeConfirm"),
+    cancel: s("revokeCancel"),
+  };
 
   function copy() {
     if (!secret) return;
@@ -198,13 +212,23 @@ export default function TokenManager() {
                   : s("neverUsed")}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => revoke(t.id)}
-              className="shrink-0 px-3 py-1.5 rounded border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs"
-            >
-              {s("revoke")}
-            </button>
+            <RevokeConfirm
+              id={t.id}
+              name={t.name}
+              confirming={asking === t.id}
+              busy={revoking === t.id}
+              focusRevoke={refocus === t.id}
+              labels={revokeLabels}
+              onAsk={() => {
+                setRefocus(null);
+                setAsking(t.id);
+              }}
+              onConfirm={() => revoke(t.id)}
+              onCancel={() => {
+                setAsking(null);
+                setRefocus(t.id);
+              }}
+            />
           </li>
         ))}
         {list && list.tokens.length === 0 && (

@@ -6,6 +6,7 @@ import { appLocale } from "@/lib/app-locale.server";
 import PasskeysCard from "./PasskeysCard";
 import { ProfileFields } from "./ProfileFields";
 import { SessionDetailsCard } from "./SessionDetailsCard";
+import { SessionBasicsCard, type SessionBasicsLabels } from "./SessionBasicsCard";
 import { dbBackend } from "@/lib/d1";
 import { isEmailConfigured } from "@/lib/email";
 import { readFlags } from "@/lib/flags-store";
@@ -14,7 +15,7 @@ import { connectionsOn } from "@/lib/connections/gate";
 import { getD1 } from "@/lib/d1";
 import { LEVEL_IDS, type LevelId } from "@/lib/levels";
 import { levelsOn, type LevelView } from "@/lib/level-progress";
-import { userLevelOf } from "@/lib/study-days";
+import { requestTimeZone, userLevelOf } from "@/lib/study-days";
 import { LevelCard, type LevelCardLabels } from "@/app/components/LevelCard";
 
 /** The level card's data and strings, or null when levels are not shown to this viewer. */
@@ -84,6 +85,19 @@ export default async function ProfilePage() {
           />
         </div>
         <PasskeysCard />
+        <SessionBasicsCard
+          session={session?.session}
+          locale={locale}
+          timeZone={requestTimeZone()}
+          labels={
+            Object.fromEntries(
+              Object.entries(getIntlayer("profile-session", locale)).map(([k, v]) => [
+                k,
+                String(v),
+              ]),
+            ) as unknown as SessionBasicsLabels
+          }
+        />
         {/* A raw dump for diagnosing sign-in: dev access only, never user UI. */}
         <SessionDetailsCard
           viewerEmail={user.email}
