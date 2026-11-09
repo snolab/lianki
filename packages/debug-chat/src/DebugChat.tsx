@@ -4132,8 +4132,16 @@ export function DebugChat({
               style={{
                 ...(node ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 } : {}),
                 // A short run sits at the bottom of its room: nothing blank under it.
+                // The ROW goes down (align-content on a one-line wrapping flex), not
+                // each item: align-items would drop the avatar to a long run's last
+                // line, away from its first (owner, 2026-11-09 13:42 JST).
                 ...(room
-                  ? { paddingInlineEnd: room.end, minHeight: room.minHeight, alignItems: "flex-end" }
+                  ? {
+                      paddingInlineEnd: room.end,
+                      minHeight: room.minHeight,
+                      flexWrap: "wrap",
+                      alignContent: "flex-end",
+                    }
                   : {}),
               }}
             >
