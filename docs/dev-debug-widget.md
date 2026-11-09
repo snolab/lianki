@@ -1644,6 +1644,27 @@ and the red Now line show through; the text is AA over every bar composited on
 the panel (unit/gantt-view.test.ts composites in sRGB as the browser does).
 Overdue stays red with a minus; queued bars are fainter and dashed.
 
+**The home view** (owner, 2026-11-10; `gantt-view.ts homeView`, on open,
+on reopening, and on the Now button), on either axis: the rows are sorted
+by end time, expected or actual (`ganttRowsByEnd`); the red Now line is at
+the horizontal centre, past left, future right; the open task closest to
+ending (soonest expected end still ahead; with none, the row ending nearest
+now: `focusRow`) is at the vertical centre (`centreRowTop`). The time axis
+(horizontally only; row height never changes) is zoomed so the
+`GANTT_FIT_PERCENTILE` (95%) duration of that row and its
+`GANTT_FIT_NEIGHBOURS` neighbours either side (`fitSpan`) fills the visible
+width and no more — linear: that span across the width; log: that span
+centred on Now from edge to edge — within the axis's zoom limits. Blank
+space at the head and the tail of the rows (`GANTT_END_SPACE`, half the
+view) gives the scroller's own bounce room before the edge and lets the
+first and last rows be centred; these three are named defaults ready for
+the config store. **Pinch on iPhone**: the touch pinch alone zooms, about
+the fingers' midpoint, which also pans the view as it moves; steps are
+batched to one per frame; two fingers down stop the native pan
+(`touchstart` prevented), and Safari's gesture events, which fire with the
+touches there, only stop the page zoom (before, both zoomed: a double, jumpy
+step). On a Mac trackpad the gesture events still zoom.
+
 The axis math (scales, ticks, bars) is our component library's gantt module,
 `@snomiao/rgui/gantt` ([rgui.md](rgui.md)); `gantt-view.ts` re-exports it.
 The axis (`gantt-view.ts`): x = (t − lo) · pxPerMs. On open now sits a quarter
