@@ -60,6 +60,9 @@ export {
   extendAxis,
   ganttBar,
   ganttRows,
+  ganttSpan,
+  ganttTickX,
+  ghostShows,
   initialAxis,
   initialLogAxis,
   initialScale,
@@ -194,6 +197,8 @@ export const GANTT_COLORS = {
     track: "oklch(0.985 0.004 260)",
     grid: "oklch(0.9 0.01 260)",
     bar: "oklch(0.62 0.143 22.3 / 0.22)",
+    ghost: "oklch(0.55 0.01 260 / 0.1)",
+    tick: "oklch(0.42 0.02 260)",
     queued: "oklch(0.62 0.143 22.3 / 0.1)",
     fill: "oklch(0.6 0.165 22.3 / 0.2)",
     past: "oklch(0.63 0.2 25 / 0.24)",
@@ -206,6 +211,8 @@ export const GANTT_COLORS = {
     track: "oklch(0.19 0.01 260)",
     grid: "oklch(0.3 0.01 260)",
     bar: "oklch(0.68 0.132 22.3 / 0.24)",
+    ghost: "oklch(0.8 0.01 260 / 0.1)",
+    tick: "oklch(0.82 0.01 260)",
     queued: "oklch(0.68 0.132 22.3 / 0.12)",
     fill: "oklch(0.7 0.154 22.3 / 0.18)",
     past: "oklch(0.66 0.18 25 / 0.3)",
@@ -406,3 +413,106 @@ export function centreRowTop(d: {
   const viewMid = d.axisH + (d.viewH - d.axisH) / 2;
   return Math.max(0, Math.round(mid - viewMid));
 }
+
+/*
+ * The estimate's history on the bars (owner, 2026-11-10): a short vertical
+ * tick at each ETA event (a change, a confirm, a status change). Ticks of
+ * one action share a changeId and a time, so they line up across rows; a tap
+ * shows the group, each row's old → new estimate sorted into what moved up,
+ * what was postponed, what was confirmed, set for the first time, or only
+ * changed status.
+ */
+
+/** A tick, as the Gantt reads it (state-tree.ts EtaTick). */
+export type TickEvent = {
+  at: number;
+  kind: "change" | "confirm" | "status";
+  changeId: string;
+  by: string;
+  old?: number;
+  new?: number;
+  status?: string;
+};
+
+/** What one action did, by row name (in the rows' order). */
+export type TickGroup = {
+  changeId: string;
+  at: number;
+  by: string[];
+  earlier: string[];
+  later: string[];
+  confirmed: string[];
+  set: string[];
+  status: string[];
+};
+
+/** A move under this is no move (a confirm): estimates are whole seconds apart at best. */
+const SAME_MS = 1_000;
+
+/**
+ * Every row's events of `changeId`, sorted into the group. A row is listed
+ * once, by its strongest event: a change (earlier / later / set) before a
+ * confirm before a status change. Null when no row has the id.
+ */
+export function tickGroup(
+  rows: readonly { title: string; ticks?: readonly TickEvent[] }[],
+  changeId: string,
+): TickGroup | null {
+  const g: TickGroup = {
+    changeId,
+    at: Infinity,
+    by: [],
+    earlier: [],
+    later: [],
+    confirmed: [],
+    set: [],
+    status: [],
+  };
+  let any = false;
+  for (const r of rows) {
+    const evs = (r.ticks ?? []).filter((e) => e.changeId === changeId);
+    if (!evs.length) continue;
+    any = true;
+    for (const e of evs) {
+      g.at = Math.min(g.at, e.at);
+      if (!g.by.includes(e.by)) g.by.push(e.by);
+    }
+    const ch = evs.find((e) => e.kind === "change" && e.new !== undefined);
+    const bucket = ch
+      ? ch.old === undefined
+        ? g.set
+        : ch.new! < ch.old - SAME_MS
+          ? g.earlier
+          : ch.new! > ch.old + SAME_MS
+            ? g.later
+            : g.confirmed
+      : evs.some((e) => e.kind === "confirm")
+        ? g.confirmed
+        : evs.some((e) => e.kind === "status")
+          ? g.status
+          : null;
+    if (bucket && !bucket.includes(r.title)) bucket.push(r.title);
+  }
+  return any ? g : null;
+}
+
+/** The group as one line, e.g. "moved up: A; postponed: B, C" (labels with {names}). */
+export function tickGroupText(
+  g: TickGroup,
+  s: { earlier: string; later: string; confirmed: string; set: string; status: string },
+): string {
+  return (["earlier", "later", "set", "confirmed", "status"] as const)
+    .filter((k) => g[k].length)
+    .map((k) => s[k].replace("{names}", g[k].join(", ")))
+    .join("; ");
+}
+
+/** Set on a range's tail (P5 → P95): a gradient fading out; hatched under reduced motion. */
+export const TAIL_ATTR = "data-gantt-tail";
+/** The tail's colour comes in as this custom property (the row's bar colour). */
+export const TAIL_VAR = "--lk-gantt-tail";
+export const TAIL_CSS =
+  `[${TAIL_ATTR}]{background:linear-gradient(90deg,var(${TAIL_VAR}),transparent)}` +
+  "@media (prefers-reduced-motion: reduce){" +
+  `[${TAIL_ATTR}]{background:repeating-linear-gradient(135deg,var(${TAIL_VAR}) 0 3px,transparent 3px 7px)}}` +
+  `html[data-motion="off"] [${TAIL_ATTR}]{background:repeating-linear-gradient(135deg,var(${TAIL_VAR}) 0 3px,transparent 3px 7px)}`;

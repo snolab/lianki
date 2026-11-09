@@ -22,7 +22,10 @@ import { clamp, scaleWidth, scaleX, type GanttAxis } from "./scale";
 /** What a Gantt row needs: when it starts, its estimate, and how it ended. */
 export type GanttTask = {
   start: number;
+  /** The estimate; for a range, its P95 (the bar's end). */
   at: number;
+  /** A range's P5: the bar is solid to it, then a fading tail to `at`. */
+  min?: number;
   pct?: number;
   done?: boolean;
   doneAt?: number;
@@ -32,6 +35,8 @@ export type GanttTask = {
 export type GanttBar = {
   x: number;
   w: number;
+  /** The solid part, px from the bar's start: to the P5 (`min`), else all of it. The rest is the tail. */
+  solid: number;
   /** The progress fill, px from the bar's start. */
   fill: number;
   /** The overrun past the estimate: from x + w, this wide. */
@@ -51,8 +56,39 @@ export function ganttBar(t: GanttTask, a: GanttAxis, now: number): GanttBar {
   const end = t.done ? x(t.doneAt ?? t.at) : x(now);
   const pct = t.done ? 100 : clamp(t.pct ?? 0, 0, 100);
   const w = x1 - x0;
-  return { x: x0, w, fill: (w * pct) / 100, over: Math.max(0, end - x1) };
+  const solid =
+    t.min === undefined || t.min >= t.at ? w : clamp(x(Math.max(t.min, t.start)) - x0, 0, w);
+  return { x: x0, w, solid, fill: (w * pct) / 100, over: Math.max(0, end - x1) };
 }
+
+/** A span of time on the axis (px), clamped to the content: the ghost bar of the original plan. */
+export function ganttSpan(
+  from: number,
+  to: number,
+  a: GanttAxis,
+  now: number,
+): { x: number; w: number } {
+  const width = scaleWidth(a);
+  const x0 = clamp(scaleX(a, Math.min(from, to), now), 0, width);
+  const x1 = clamp(scaleX(a, Math.max(from, to), now), 0, width);
+  return { x: x0, w: x1 - x0 };
+}
+
+/** A moment's x on the content (px), or null when it lies outside it (a tick is not clamped). */
+export function ganttTickX(at: number, a: GanttAxis, now: number): number | null {
+  const x = scaleX(a, at, now);
+  return x >= 0 && x <= scaleWidth(a) ? x : null;
+}
+
+/**
+ * Does the ghost (the original plan) differ from the bar enough to draw?
+ * Either end moved at least `px` (default 2).
+ */
+export const ghostShows = (
+  ghost: { x: number; w: number },
+  bar: { x: number; w: number },
+  px = 2,
+) => Math.abs(ghost.x - bar.x) >= px || Math.abs(ghost.x + ghost.w - (bar.x + bar.w)) >= px;
 
 /**
  * The rows in display order: open ones first, by start (then estimate); then
