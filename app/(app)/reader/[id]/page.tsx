@@ -1,3 +1,6 @@
+import type { Metadata } from "next";
+import { getIntlayer } from "intlayer";
+import { appLocale } from "@/lib/app-locale.server";
 import { ReaderV2 } from "./ReaderV2";
 import { BoxReader } from "./BoxReader";
 import { authUserOrNull } from "@/app/signInEmail";
@@ -11,6 +14,12 @@ import { findReadMaterialIdByHash } from "@/lib/getReadMaterialsCollection";
 import { notFound, redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
+
+/** The tab's title in the learner's language; the book's own title is private, so it stays out. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = getIntlayer("read-reader", await appLocale());
+  return { title: t.metaTitle, robots: { index: false } };
+}
 
 export default async function ReadMaterialPage({
   params,
