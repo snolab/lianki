@@ -182,7 +182,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   loading:
     "/words 'Add a list' preview sheet: faint status line at the end of the entries while the (next part of the) list is still being downloaded. A short progressive phrase with an ellipsis.",
   failed:
-    "/words 'Add a list' preview sheet: message at the end of the entries when downloading the list failed (e.g. offline); {error} is the technical reason. A short statement, keep the placeholder, no final period.",
+    "/words 'Add a list' preview sheet: message at the end of the entries when downloading the list failed; {error} is a short plain reason such as 'you're offline' or 'something went wrong, please try again' (words-status reason*). A short statement, keep the placeholder, no final period.",
   retry:
     "/words 'Add a list' preview sheet: small button next to the 'Could not load the list' message that downloads the list again. A short imperative on a button.",
   add: "/words 'Add a list' preview sheet: the main button at the bottom of the sheet that adds the previewed list (or every list of a coverage band) to the learner's own lists, closes the preview and stays on the picker; studying does not start. Imperative verb phrase on a button, 'list' meaning a word list.",

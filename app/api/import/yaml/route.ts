@@ -25,7 +25,7 @@ const zExport = z.object({
 export async function POST(req: NextRequest) {
   const user = await authUserOrNull();
   if (!user?.email) {
-    return Response.json({ error: "Login required" }, { status: 401 });
+    return Response.json({ error: "login-required" }, { status: 401 });
   }
   const { email, id: userId } = user;
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
-      return Response.json({ error: "Missing file field" }, { status: 400 });
+      return Response.json({ error: "missing-file" }, { status: 400 });
     }
     const allowed = checkUpload(file, YAML_UPLOAD);
     if (!allowed.ok) return Response.json({ error: allowed.error }, { status: 400 });
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   } else {
     text = await req.text();
     if (text.length > YAML_UPLOAD.maxBytes) {
-      return Response.json({ error: "Body too large (max 10 MB)" }, { status: 413 });
+      return Response.json({ error: "file-too-large" }, { status: 413 });
     }
   }
 
@@ -51,20 +51,20 @@ export async function POST(req: NextRequest) {
   try {
     parsed = parse(text);
   } catch {
-    return Response.json({ error: "Invalid YAML" }, { status: 400 });
+    return Response.json({ error: "invalid-yaml" }, { status: 400 });
   }
 
   const result = zExport.safeParse(parsed);
   if (!result.success) {
     return Response.json(
-      { error: "Invalid export format", details: result.error.flatten() },
+      { error: "invalid-export", details: result.error.flatten() },
       { status: 400 },
     );
   }
 
   const data = result.data;
   if (data.version !== EXPORT_VERSION) {
-    return Response.json({ error: `Unsupported version: ${data.version}` }, { status: 400 });
+    return Response.json({ error: "unsupported-version", version: data.version }, { status: 400 });
   }
 
   let notesUpserted = 0;
