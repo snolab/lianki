@@ -65,7 +65,7 @@ describe("registry", () => {
     expect(CONFIG_KEYS.length).toBeGreaterThanOrEqual(5);
     for (const k of CONFIG_KEYS) {
       const d = CONFIG[k] as ConfigDef;
-      expect(parseConfigValue(k, d.default)).toEqual({ ok: true, value: d.default });
+      expect(parseConfigValue(k, d.default) as unknown).toEqual({ ok: true, value: d.default });
       expect(d.description.length).toBeGreaterThan(10);
       expect(d.group.length).toBeGreaterThan(0);
       if (typeof d.default === "number") {
