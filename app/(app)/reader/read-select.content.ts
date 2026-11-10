@@ -566,7 +566,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   pickSense:
     "Hint after the language label on the reader's selection card when more than one language's dictionary has the selected word: the learner taps the entry whose meaning fits this sentence, which is remembered and decides the language the word is read aloud in. A short lowercase imperative phrase, shown after a ' · '.",
   sayFailed:
-    "Short error on the reader's selection card when tapping a word, sentence or paragraph should have read the selected text aloud but no voice could (no voice for the language, network or server failure, playback refused); the technical reason is shown after it in parentheses. A short phrase.",
+    "Short error on the reader's selection card when tapping a word, sentence or paragraph should have read the selected text aloud but no voice could (no voice for the language, network or server failure, playback refused); shown alone (the reason goes to the developer log). A short phrase.",
   retry:
     "Tappable word at the end of the error line on the reader's selection card when the automatic machine translation of the selected text failed (shown as 'Could not translate · Retry'); tapping the line asks for the translation again. Only shown in that error state. A short imperative verb.",
   translating:

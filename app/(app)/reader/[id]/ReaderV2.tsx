@@ -1351,6 +1351,7 @@ function Reader({
         },
         onerror: (why, noVoice) => {
           if (said.current === stop) said.current = null;
+          devLog({ ev: "read-say-fail", why, noVoice: !!noVoice });
           setSayFail({ u, why, ...(noVoice ? { noVoice: l } : {}) });
         },
       });
@@ -1692,6 +1693,7 @@ function Reader({
         // Never silent without saying so: the card says why.
         onerror: (why, noVoice) => {
           if (said.current === stop) said.current = null;
+          devLog({ ev: "read-say-fail", why, noVoice: !!noVoice });
           setSayFail({ u: target, why, ...(noVoice ? { noVoice: voice } : {}) });
         },
       });
@@ -2304,7 +2306,7 @@ function Reader({
                   ? fill(ts.noVoiceFor.value, {
                       lang: langLabel(sayFail.noVoice, String(locale)),
                     })
-                  : `${ts.sayFailed.value} (${sayFail.why})`
+                  : ts.sayFailed.value
                 : null)
             }
             translation={plan ? autoTrans.translation : null}
