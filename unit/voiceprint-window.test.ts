@@ -16,6 +16,7 @@ import {
 } from "@lianki/debug-chat/voiceprint";
 import {
   endVoiceprintWindow,
+  subscribeVoiceprintWindow,
   voiceprintTicket,
   voiceprintWindow,
 } from "@lianki/debug-chat/webauthn";
@@ -289,6 +290,30 @@ describe("the passkey window: the page", () => {
     endVoiceprintWindow();
     expect(voiceprintWindow(NOW)).toBeNull();
     await s.ask("export");
+    expect(s.prompts()).toBe(3);
+  });
+
+  it("the panel hears the window open, end by time, and End now; a server error is not a prompt", async () => {
+    const s = await server();
+    let n = 0;
+    const off = subscribeVoiceprintWindow(() => void n++);
+    await s.ask("delete");
+    expect(n).toBe(1); // opened
+    expect(voiceprintWindow(NOW + WINDOW + 1)).toBeNull(); // ended by time
+    expect(n).toBe(2);
+    endVoiceprintWindow(); // nothing held: no event
+    expect(n).toBe(2);
+    await s.ask("delete");
+    endVoiceprintWindow();
+    expect(n).toBe(4);
+    off();
+    await s.ask("delete");
+    expect(n).toBe(4);
+    // A grant step that fails for another reason (lianki.com down) is an error, not a new prompt.
+    const down = (async () => new Response("{}", { status: 503 })) as unknown as typeof fetch;
+    await expect(
+      voiceprintTicket("export", "*", { fetch: down, client: "iphone", now: () => NOW }),
+    ).rejects.toThrow("HTTP 503");
     expect(s.prompts()).toBe(3);
   });
 
