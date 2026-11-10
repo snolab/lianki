@@ -96,6 +96,31 @@ read-only apart from Sync, while the connection is off but books exist.
 QA mocks the Picker (`window.gapi` / `google.picker` stubbed, the picker
 and import routes answered): `scripts/qa/qa-drive-pick.mjs`.
 
+### Picker guards
+
+Owner, iPhone PWA, 2026-11-10 22:35 JST: the first open of the Picker on
+/reader showed Google's "The API developer key is invalid."; closing it and
+opening again worked. The key itself is fine (the second open uses the same
+one). Not reproduced locally — the page is Google's — so the opens are
+guarded instead:
+
+- **Setup checked first** (`lib/connections/picker-setup.ts`,
+  `parsePickerSetup`): the token, key and app id must have their shapes (the
+  same regexes as the server's `pickerConfig`) before the Picker is built.
+  An error body, a non-JSON answer or an empty field never reaches Google.
+- **Built only when ready** (`picker-client.ts`, `loadPicker`): only from
+  `gapi.load("picker")`'s callback with a usable namespace (a
+  `PickerBuilder`), one api.js tag even when two opens race, a 20 s load
+  timeout, and only while the page is visible (on the way back from consent
+  it may still be hidden).
+- **One retry** (`pickWithRetry`): a malformed setup, a Picker that did not
+  load, or one that reports `Action.ERROR` is tried once more with a fresh
+  `POST …/picker`. Never a third time; any other failure is not retried.
+
+Unit tests: `unit/picker-guard.test.ts`. If the message comes back and the
+Picker sends no `Action.ERROR` for it, the retry cannot see it: the next
+lead is the key's referrer restriction and the iframe's referrer in WebKit.
+
 ## Live stream (a Google Docs tab → /reader)
 
 Owner, 2026-11-06: a doc edited during a meeting shows up in the reader as it

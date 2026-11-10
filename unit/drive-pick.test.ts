@@ -110,7 +110,12 @@ function mockFetch(answer: (c: Call) => [number, unknown]) {
   return { f, calls };
 }
 
-const SETUP = { accessToken: "tok", apiKey: "key", appId: "123" };
+// Fake values in the shapes the Picker accepts (parsePickerSetup).
+const SETUP = {
+  accessToken: "ya29.fake-test-token",
+  apiKey: "AIzaFakeTestKey_000000000000",
+  appId: "123456789012",
+};
 
 function deps(
   f: Fetch,

@@ -18,6 +18,7 @@ import type { D1Like } from "@/lib/d1/types";
 import { randomId, s256, sameString } from "@/lib/cli-login";
 import { seal, sealKey, unseal } from "./crypto";
 import { CONNECT_SCOPES, DRIVE_FILE_SCOPE } from "./scopes";
+import { PICKER_APP_ID_RE, PICKER_KEY_RE } from "./picker-setup";
 
 export const PROVIDER = "google";
 
@@ -112,10 +113,10 @@ export interface PickerConfig {
  */
 export function pickerConfig(env: Env): PickerConfig | null {
   const apiKey = env.GOOGLE_PICKER_API_KEY?.trim();
-  if (!apiKey || !/^[A-Za-z0-9_-]{20,100}$/.test(apiKey)) return null;
+  if (!apiKey || !PICKER_KEY_RE.test(apiKey)) return null;
   const explicit = env.GOOGLE_PICKER_APP_ID?.trim();
   const fromClient = /^(\d{6,20})-/.exec(env.AUTH_GOOGLE_ID?.trim() ?? "")?.[1];
-  const appId = explicit && /^\d{6,20}$/.test(explicit) ? explicit : fromClient;
+  const appId = explicit && PICKER_APP_ID_RE.test(explicit) ? explicit : fromClient;
   if (!appId) return null;
   return { apiKey, appId };
 }
