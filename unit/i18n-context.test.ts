@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
 import importWordlist from "@/app/(app)/import/wordlist-import.content";
+import importPage from "@/app/(app)/import/page.content";
+import importSections from "@/app/(app)/import/import-sections.content";
 import wordsImportPanel from "@/app/(app)/words/import-panel.content";
 import myFiles from "@/app/(app)/my/files/my-files.content";
 import bottomNav from "@/app/components/bottom-nav.content";
@@ -114,6 +116,8 @@ describe.each([
   ["words-page", words],
   ["words-import-ankiweb", wordsImportAnkiweb],
   ["import-wordlist", importWordlist],
+  ["import-page", importPage],
+  ["import-sections", importSections],
   ["words-import-panel", wordsImportPanel],
   ["bottom-nav", bottomNav],
   ["learning-partner", learningPartner],
