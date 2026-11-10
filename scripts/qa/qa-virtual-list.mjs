@@ -28,6 +28,27 @@ const check = (ok, name) => {
   if (!ok) failed++;
 };
 
+/** When a reachability check fails: where the page and the list stood, for the log. */
+const listState = (page) =>
+  page.evaluate(() => {
+    const idx = [...document.querySelectorAll("[data-index]")].map((r) => +r.dataset.index);
+    const list = document.querySelector('[role="list"], tbody');
+    const r = list?.getBoundingClientRect();
+    return JSON.stringify({
+      scrollY: Math.round(scrollY),
+      docH: document.documentElement.scrollHeight,
+      vh: innerHeight,
+      listTop: r ? Math.round(r.top + scrollY) : null,
+      listH: r ? Math.round(r.height) : null,
+      minIdx: idx.length ? Math.min(...idx) : null,
+      maxIdx: idx.length ? Math.max(...idx) : null,
+      end: !!document.querySelector('[data-testid="vlist-end"]'),
+      retry: !!document.querySelector('[data-testid="vlist-retry"]'),
+      htmlClass: document.documentElement.className,
+      under: document.elementFromPoint(innerWidth / 2, innerHeight / 2)?.outerHTML.slice(0, 120),
+    });
+  });
+
 const browser = await launchSilent(chromium);
 
 for (const [name, device] of [
@@ -182,10 +203,27 @@ for (const [name, device] of [
     await page.waitForTimeout(80);
   }
   check(cardsSeen.size === N, `${name}: /list all ${N} cards reachable (${cardsSeen.size})`);
+  if (cardsSeen.size !== N) console.log(`  /list state: ${await listState(page)}`);
   check(cardsMax < N, `${name}: /list only a window in the DOM (max ${cardsMax})`);
   // Delete takes the row out in place: no reload, the position stays.
   const y0 = await page.evaluate(() => window.scrollY);
-  const victim = page.locator('[data-testid="list-card"]').last();
+  // The card on screen at the centre, not the last one in the DOM (that one is
+  // in the overscan below the fold; scrolling to click it re-windows the list).
+  const victimKey = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('[data-testid="cards-list"] [data-key]')];
+    const mid = innerHeight / 2;
+    const on = rows.filter((r) => {
+      const b = r.getBoundingClientRect();
+      return b.top >= 0 && b.bottom <= innerHeight;
+    });
+    on.sort((a, b) => {
+      const da = Math.abs(a.getBoundingClientRect().top - mid);
+      const db = Math.abs(b.getBoundingClientRect().top - mid);
+      return da - db;
+    });
+    return on[0]?.getAttribute("data-key") ?? null;
+  });
+  const victim = page.locator(`[data-key="${victimKey}"] [data-testid="list-card"]`);
   const victimTitle = (await victim.locator("a").innerText()).trim();
   page.once("dialog", (d) => d.accept());
   await victim.locator("button").last().click();
@@ -246,6 +284,7 @@ for (const [name, device] of [
     await page.waitForTimeout(100);
   }
   check(dataSeen.size === dataTotal, `${name}: /data all rows reachable (${dataSeen.size})`);
+  if (dataSeen.size !== dataTotal) console.log(`  /data state: ${await listState(page)}`);
   check(dataMax < dataTotal, `${name}: /data only a window of rows (max ${dataMax})`);
   await page.screenshot({ path: join(OUT, `data-${name}.png`) });
 
