@@ -124,3 +124,29 @@ describe("handoff", () => {
     expect(jst("2026-11-08T23:59:00Z")).toBe("08:59");
   });
 });
+
+describe("state-tree lines addressed to a lane (docs/state-tree.md, Blocked and paused)", () => {
+  it("an eta line with eta.lane is this lane's; its hand-off says it is automatic", () => {
+    const raw = JSON.stringify({
+      type: "chat",
+      message: {
+        id: "n1",
+        thread: "owner",
+        from: "agent",
+        source: "eta",
+        text: "@codex: Rebase: x (/w/r) is blocked on you: 合并 #812.",
+        at: Date.UTC(2026, 10, 10, 20, 0),
+        eta: { id: "/w/r", etaAt: 1, kind: "blocked", lane: "codex" },
+      },
+    });
+    const l = lineOf(raw)!;
+    expect(l.etaLane).toBe("codex");
+    const text = handoff("codex", l, "/repo");
+    expect(text).toStartWith("【state tree → codex】(05:00 JST, automatic) @codex:");
+    expect(text).toContain("say --repo /repo --as codex");
+    // An owner line carrying eta fields is not one.
+    const typed = JSON.parse(raw);
+    typed.message.from = "owner";
+    expect(lineOf(JSON.stringify(typed))!.etaLane).toBeUndefined();
+  });
+});
