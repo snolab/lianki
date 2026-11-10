@@ -2,7 +2,7 @@
 import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import { useState, useEffect, useRef } from "react";
-import { useIntlayer } from "next-intlayer";
+import { useIntlayer, useLocale } from "next-intlayer";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { isoDay, longDate } from "@/lib/dates";
@@ -109,6 +109,13 @@ export function ReadListClient({
   const gdocText = useIntlayer("read-gdoc");
   const ytText = useIntlayer("yt-songs");
   const rowText = useIntlayer("read-row-menu");
+  const listText = useIntlayer("read-list");
+  const { locale } = useLocale();
+  const linesText = (n: number) =>
+    (new Intl.PluralRules(locale).select(n) === "one"
+      ? listText.linesOne.value
+      : listText.linesOther.value
+    ).replace("{n}", String(n));
   // The row whose title is a text field right now (row menu → Rename).
   const [renaming, setRenaming] = useState<string | null>(null);
   const [gdocOpen, setGdocOpen] = useState(false);
@@ -233,7 +240,7 @@ export function ReadListClient({
     if (!importText.trim()) return;
 
     const lines = parseLinesFromContent(importText);
-    const title = importTitle.trim() || `Import ${isoDay()}`;
+    const title = importTitle.trim() || listText.defaultTitle.value.replace("{date}", isoDay());
 
     if (isLoggedIn) {
       try {
@@ -333,7 +340,7 @@ export function ReadListClient({
         <Link
           href="/library"
           data-testid="read-browse-books"
-          className="inline-flex items-center gap-1 text-sm font-medium text-[oklch(0.5_0.176_22.3)] dark:text-[oklch(0.78_0.132_22.3)] hover:underline"
+          className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-300 hover:underline"
         >
           {booksText.browse} &rarr;
         </Link>
@@ -344,14 +351,14 @@ export function ReadListClient({
           <div className="flex flex-col sm:flex-row gap-2">
             <button
               onClick={() => setIsImporting(true)}
-              className="flex-1 py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
+              className="lk-btn lk-btn-primary flex-1 py-4"
             >
-              + Import Text Material
+              + {listText.importText}
             </button>
             {isLoggedIn && (
               <label
                 data-testid="read-import-epub"
-                className={`flex-1 py-4 text-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors ${epubBusy ? "pointer-events-none opacity-60" : ""}`}
+                className={`lk-btn lk-btn-secondary flex-1 py-4 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary ${epubBusy ? "pointer-events-none opacity-60" : ""}`}
               >
                 {epubBusy ? epubText.reading : <>+ {epubText.importEpub}</>}
                 <input
@@ -372,7 +379,7 @@ export function ReadListClient({
                 type="button"
                 data-testid="read-import-gdoc"
                 onClick={() => setGdocOpen(true)}
-                className="flex-1 py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
+                className="lk-btn lk-btn-secondary flex-1 py-4"
               >
                 + {gdocText.importGdoc}
               </button>
@@ -382,7 +389,7 @@ export function ReadListClient({
               <Link
                 href="/reader/youtube"
                 data-testid="read-import-youtube"
-                className="flex-1 py-4 text-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
+                className="lk-btn lk-btn-secondary flex-1 py-4"
               >
                 + {ytText.entry}
               </Link>
@@ -410,7 +417,7 @@ export function ReadListClient({
                 aria-label={gdocText.urlLabel.value}
                 placeholder="https://docs.google.com/document/d/…"
                 disabled={gdocBusy}
-                className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary focus:border-transparent"
               />
               <div className="flex gap-2 justify-end">
                 <button
@@ -421,14 +428,14 @@ export function ReadListClient({
                     setGdocError("");
                     setGdocPrivate(false);
                   }}
-                  className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                  className="lk-btn lk-btn-quiet"
                 >
                   {gdocText.cancel}
                 </button>
                 <button
                   type="submit"
                   disabled={gdocBusy || !gdocUrl.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="lk-btn lk-btn-primary"
                 >
                   {gdocBusy ? gdocText.importing : gdocText.submit}
                 </button>
@@ -472,15 +479,15 @@ export function ReadListClient({
             type="text"
             value={importTitle}
             onChange={(e) => setImportTitle(e.target.value)}
-            placeholder="Title (optional)"
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder={listText.titlePlaceholder.value}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary focus:border-transparent"
           />
           <textarea
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
-            placeholder="Paste your text here... Each line will become a learning segment."
+            placeholder={listText.textPlaceholder.value}
             rows={10}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y font-mono text-sm"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary focus:border-transparent resize-y font-mono text-sm"
           />
           <div className="flex gap-2 justify-end">
             <button
@@ -489,16 +496,16 @@ export function ReadListClient({
                 setImportText("");
                 setImportTitle("");
               }}
-              className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              className="lk-btn lk-btn-quiet"
             >
-              Cancel
+              {listText.cancel}
             </button>
             <button
               onClick={handleImport}
               disabled={!importText.trim()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="lk-btn lk-btn-primary"
             >
-              Import ({parseLinesFromContent(importText).length} lines)
+              {listText.submit} ({linesText(parseLinesFromContent(importText).length)})
             </button>
           </div>
         </div>
@@ -517,9 +524,7 @@ export function ReadListClient({
         gap={12}
         testId="read-list"
         empty={
-          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-            No materials imported yet. Click the button above to get started.
-          </div>
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">{listText.empty}</div>
         }
         renderItem={(material) => (
           <div
@@ -540,7 +545,7 @@ export function ReadListClient({
                     {material.title}
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {material.lineCount ?? material.lines.length} lines &middot;{" "}
+                    {linesText(material.lineCount ?? material.lines.length)} &middot;{" "}
                     {material.words && (
                       <span className="tabular-nums" data-testid="read-row-words">
                         <WordCountText words={material.words} /> &middot;{" "}
