@@ -4,7 +4,7 @@ import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
 import { connectionsOn } from "@/lib/connections/gate";
-import { booksOn } from "@/lib/books/gate";
+import { libraryOn } from "@/lib/books/gate";
 import { vibeAllowed } from "@/lib/vibe/gate";
 import { ytSongsOn } from "@/lib/yt-songs/gate";
 import { VibeEntry } from "../vibe/VibeDocNote";
@@ -17,8 +17,8 @@ export default async function ReadPage() {
   const gdoc = !!flags;
   // Private docs through the Google connection (docs/connections.md).
   const drive = gdoc && connectionsOn(flags, owner);
-  // The link to /books, the public-domain library (books.catalogue, or the owner).
-  const books = !!flags && booksOn(flags, owner);
+  // The link to /library, the catalogue (library.catalogue, or `dev`).
+  const books = !!flags && libraryOn(flags, owner);
   // A YouTube song with timed lyrics (read.youtube-songs, or the owner).
   const youtube = !!flags && ytSongsOn(flags, owner);
 

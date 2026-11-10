@@ -44,9 +44,10 @@ import {
 } from "@/lib/books/source";
 import { importCatalogueBook, type ImportDeps } from "@/lib/books/import";
 import { parseBookMeta } from "@/lib/read/book";
-import { booksOn } from "@/lib/books/gate";
+import { booksMineOn, libraryOn } from "@/lib/books/gate";
 import { visibleNav } from "@/lib/app-nav";
 import { isAppRoute } from "@/lib/app-locale";
+import { FLAGS } from "@/lib/flags";
 
 const perrault = CATALOGUE[0];
 
@@ -162,13 +163,25 @@ describe("catalogue", () => {
     expect(presetSourceKey(perrault)).toBe("preset:fr/histoires-ou-contes-du-temps-passé");
   });
 
-  test("gate: the flag, or the owner while it is off", () => {
-    expect(booksOn({}, false)).toBe(false);
-    expect(booksOn({}, true)).toBe(true);
-    expect(booksOn({ "books.catalogue": true }, false)).toBe(true);
-    expect(visibleNav([]).some((i) => i.key === "books")).toBe(false);
+  test("gates: library.catalogue and books.mine, on by default for everyone; `dev` keeps them while off", () => {
+    expect(libraryOn({}, false)).toBe(false);
+    expect(libraryOn({}, true)).toBe(true);
+    expect(libraryOn({ "library.catalogue": true }, false)).toBe(true);
+    expect(booksMineOn({}, false)).toBe(false);
+    expect(booksMineOn({}, true)).toBe(true);
+    expect(booksMineOn({ "books.mine": true }, false)).toBe(true);
+    // Positive flags with no audience: ON is the shipped state, for everyone.
+    for (const k of ["library.catalogue", "books.mine"] as const) {
+      expect(FLAGS[k].default).toBe(true);
+      expect("audience" in FLAGS[k]).toBe(false);
+    }
+    // The old key is gone: a stored books.catalogue row is ignored.
+    expect(Object.hasOwn(FLAGS, "books.catalogue")).toBe(false);
+    expect(visibleNav([]).some((i) => i.key === "books" || i.key === "library")).toBe(false);
     expect(visibleNav(["books"]).some((i) => i.key === "books")).toBe(true);
+    expect(visibleNav(["library"]).find((i) => i.key === "library")?.href).toBe("/library");
     expect(isAppRoute("/books")).toBe(true);
+    expect(isAppRoute("/library")).toBe(true);
   });
 });
 
@@ -331,6 +344,7 @@ describe("slugs: the title in its own language and script", () => {
       "candide-ou-l'optimisme",
     ]) {
       const href = bookHref({ lang: "fr", slug });
+      expect(href.startsWith("/library/fr/")).toBe(true);
       expect(href).not.toMatch(/[^\x21-\x7e]/);
       const seg = href.split("/").at(-1)!;
       expect(normaliseSlug(seg)).toBe(slug);

@@ -187,6 +187,9 @@ Owner, 01:36–01:44 JST: "这几个公版的你直接帮我列到预置里。�
 then: a /books page for every user, grouped by language, stable slugs in the
 title's own language, the source link visible inside the imported book.
 
+> Since 2026-11-10 this catalogue is **/library**, and /books is the user's
+> own shelf: see "/library and /books" below.
+
 - **Roles.** **/books** (nav "公版书库 / Public-domain library") is the shared
   catalogue and never lists anyone's own books. **/reader** (nav "我的阅读 / My
   reading") is the user's own material — pasted text, EPUBs, Google Docs, and
@@ -290,7 +293,54 @@ title's own language, the source link visible inside the imported book.
   its one action is the primary.
 - **Gate:** flag `books.catalogue` (off: the owner only), D1 only; the nav
   item carries `flag` in `lib/app-nav.ts` and the layout passes the visible
-  ones. An added book opens in the reader.
+  ones. An added book opens in the reader. Replaced on 2026-11-10 by
+  `library.catalogue` (below).
+
+### /library and /books (owner, 01:47 JST 2026-11-10)
+
+The catalogue moved: **/library** (nav 书库 / Library) is the catalogue
+described above, **/books** (nav 我的书 / My books) is the user's own shelf.
+"公版" is gone from the catalogue's title, nav item and links (the intro still
+explains the public-domain rule; the statuses of the find-more search keep it,
+they are about that rule).
+
+- **/library**, **/library/<lang>/<slug>**: everything this section's
+  catalogue had (lists, filter, find more, the book page). Each card's one
+  action is "加入我的阅读"; the book then sits on /books and in /reader.
+  `bookHref` gives `/library/<lang>/<slug>`. The `/api/books/*` routes keep
+  their names (docs/url-principles.md, rule 7).
+- **/books**: My books, signed in (a visitor sees a sign-in button and a link
+  to /library). The shelf is the user's read_materials whose `source_key`
+  says it is a book: `preset:<lang>/<slug>` (added from /library) or
+  `file:<id>` (a book file they imported themselves) — `lib/books/shelf.ts`,
+  one query, no book text read. Pasted text, Google Docs, vibes and songs
+  stay in /reader only. EPUBs imported in /reader before this have no source
+  key and stay in /reader. Grouped by language, the preferred languages first
+  (`orderByPreferred`, lib/lang-order.ts), newest first inside a group; a
+  book opens at /reader/<id>.
+- **Old links /books/<lang>/<slug>** (saved links, shares): never broken,
+  decided per viewer by `legacyBookTarget` (lib/books/legacy-link.ts):
+  - the book is on the viewer's shelf (signed in, `books.mine` on, added): the
+    page stays, their own book's page, with "← 我的书";
+  - anyone else (signed out, not added, `books.mine` off): **308** to
+    `/library/<lang>/<slug>`, the query kept, the slug normalised as the
+    route does (a bad one still lands on /library, which 404s).
+
+  It is not a `MOVED_ROUTES` row: that table holds unconditional moves, and
+  this answer depends on the viewer. The page is dynamic, so the redirect is
+  sent with `Cache-Control: private, no-store` and no browser keeps the 308.
+  `/books` itself never redirects while `books.mine` is on; off, it is a
+  temporary redirect to /library.
+- **Gates** (lib/books/gate.ts): two positive flags, on by default, no
+  audience (owner: never owner-only): `library.catalogue` (/library, its nav
+  item, the reader's link, `/api/books/import|resolve|search`) and
+  `books.mine` (/books, its nav item, the shelf's page for old links). A
+  `dev` holder keeps both while a flag is off. `books.catalogue` was migrated,
+  not aliased: it was on for everyone, the new key defaults on, and its
+  stored row is ignored now (an unknown key).
+- **Tests:** `unit/books-shelf.test.ts` (shelf rows, grouping, the query,
+  every legacy-link case), `unit/books-catalogue.test.ts` (gates, nav,
+  `/library` hrefs).
 
 ### Admission rule: public domain per country (owner, 02:18 JST 2026-11-05)
 

@@ -2,31 +2,31 @@ import { t, type DeclarationContent } from "intlayer";
 import { describeKeys } from "@/lib/i18n-context";
 
 /**
- * /books: the shared public-domain library (lib/books/catalogue.ts,
- * docs/books-plan.md "The catalogue: /books"). Classic books anyone may read;
- * one tap adds a copy to the user's own reading list (/read), where they read
+ * /library: the shared catalogue (lib/books/catalogue.ts,
+ * docs/books-plan.md "/library and /books"). Classic books anyone may read;
+ * one tap adds a copy to the user's own books (/books, /reader), where they read
  * it. Also the source and licence line shown inside such a book in the reader.
  */
 const dictionary = {
   key: "books-page",
   content: {
     title: t({
-      en: "Public-domain library",
-      zh: "公版书库",
-      hi: "सार्वजनिक डोमेन पुस्तकालय",
-      es: "Biblioteca de dominio público",
-      fr: "Bibliothèque du domaine public",
-      ar: "مكتبة الملك العام",
-      bn: "পাবলিক ডোমেইন গ্রন্থাগার",
-      pt: "Biblioteca de domínio público",
-      ru: "Библиотека общественного достояния",
-      ur: "پبلک ڈومین لائبریری",
-      id: "Perpustakaan domain publik",
-      de: "Gemeinfreie Bibliothek",
-      ja: "パブリックドメイン書庫",
-      sw: "Maktaba ya vitabu huru",
-      mr: "सार्वजनिक डोमेन ग्रंथालय",
-      ko: "퍼블릭 도메인 서재",
+      en: "Library",
+      zh: "书库",
+      hi: "पुस्तकालय",
+      es: "Biblioteca",
+      fr: "Bibliothèque",
+      ar: "المكتبة",
+      bn: "গ্রন্থাগার",
+      pt: "Biblioteca",
+      ru: "Библиотека",
+      ur: "لائبریری",
+      id: "Perpustakaan",
+      de: "Bibliothek",
+      ja: "書庫",
+      sw: "Maktaba",
+      mr: "ग्रंथालय",
+      ko: "서재",
     }),
     intro: t({
       en: "Classic books in their original language, free for everyone. A book is listed only where it is in the public domain: in the country it was first published, in your country, and in the US. Each one names its source and licence. Tap a book to add it to My reading as your own copy.",
@@ -227,22 +227,22 @@ const dictionary = {
       ko: "모든 책",
     }),
     browse: t({
-      en: "Browse public-domain books",
-      zh: "浏览公版书库",
-      hi: "सार्वजनिक डोमेन की किताबें देखें",
-      es: "Explorar libros de dominio público",
-      fr: "Parcourir les livres du domaine public",
-      ar: "تصفّح كتب الملك العام",
-      bn: "পাবলিক ডোমেইনের বই দেখুন",
-      pt: "Explorar livros de domínio público",
-      ru: "Книги в общественном достоянии",
-      ur: "پبلک ڈومین کتابیں دیکھیں",
-      id: "Jelajahi buku domain publik",
-      de: "Gemeinfreie Bücher ansehen",
-      ja: "パブリックドメインの本を見る",
-      sw: "Vinjari vitabu huru",
-      mr: "सार्वजनिक डोमेनची पुस्तके पाहा",
-      ko: "퍼블릭 도메인 책 둘러보기",
+      en: "Browse the Library",
+      zh: "浏览书库",
+      hi: "पुस्तकालय देखें",
+      es: "Explorar la Biblioteca",
+      fr: "Parcourir la Bibliothèque",
+      ar: "تصفّح المكتبة",
+      bn: "গ্রন্থাগার দেখুন",
+      pt: "Explorar a Biblioteca",
+      ru: "Открыть библиотеку",
+      ur: "لائبریری دیکھیں",
+      id: "Jelajahi Perpustakaan",
+      de: "Bibliothek durchstöbern",
+      ja: "書庫を見る",
+      sw: "Vinjari Maktaba",
+      mr: "ग्रंथालय पाहा",
+      ko: "서재 둘러보기",
     }),
     errRateLimited: t({
       en: "You added many books in a short time. Wait a few minutes and try again.",
@@ -969,10 +969,10 @@ const dictionary = {
 
 const context: Record<keyof typeof dictionary.content, string> = {
   title:
-    "Page title and heading of /books, the shared catalogue of public-domain books anyone can add to their reading (distinct from the user's own reading list, 'My reading'). A short noun phrase; 'public domain' in its usual legal term in the language.",
+    "Page title and heading of /library, the shared catalogue of classic books anyone can add to their own books with one tap; also the sidebar's name for it. One noun, the usual word for a library or a collection of books (not a software library); the owner's Chinese is 书库. Do not add 'public domain' to it (the intro explains that); distinct from 'My books' and 'My reading'.",
   intro:
-    "Paragraph under the /books heading: what the catalogue holds (original-language classics), that a book is listed only where it is public domain in three places (its country of first publication, the reader's own country, and the US), that each book shows its source and licence, and that tapping one adds the user's own copy to their reading list named 'My reading' (use the same name as the 'add' button). Four sentences; 'public domain' in its usual legal term in the language.",
-  add: "Button on a book card on /books: adds the book as the user's own copy to their reading list 'My reading' (the /read page) and opens it there. Imperative phrase; 'My reading' is the list's name, keep it consistent across these strings.",
+    "Paragraph under the /library heading: what the catalogue holds (original-language classics), that a book is listed only where it is public domain in three places (its country of first publication, the reader's own country, and the US), that each book shows its source and licence, and that tapping one adds the user's own copy to their reading list named 'My reading' (use the same name as the 'add' button). Four sentences; 'public domain' in its usual legal term in the language.",
+  add: "Button on a book card on /library: adds the book as the user's own copy to their reading list 'My reading' (the /reader page) and opens it there. Imperative phrase; 'My reading' is the list's name, keep it consistent across these strings.",
   adding:
     "Status text on that button while the server fetches the book and adds it to the user's reading list. Progressive, ends with an ellipsis.",
   owned:
@@ -986,62 +986,62 @@ const context: Record<keyof typeof dictionary.content, string> = {
   prose:
     "Tag on a book card: the book is written in prose (ordinary sentences, not verse). One lower-case word, an attribute of the text.",
   source:
-    "Label before the link to the website the book's text comes from (for example Project Gutenberg), on a /books card and in the book's header in the reader. One noun.",
+    "Label before the link to the website the book's text comes from (for example Project Gutenberg), on a /library card and in the book's header in the reader. One noun.",
   licence:
-    "Label before the book's licence line (for example 'Public domain in the USA'), on a /books card and in the book's header in the reader. One noun.",
+    "Label before the book's licence line (for example 'Public domain in the USA'), on a /library card and in the book's header in the reader. One noun.",
   allBooks:
-    "Back link at the top of one book's page on /books, returning to the list of all public-domain books. Short noun phrase.",
+    "Back link at the top of one book's page on /library, returning to the list of all public-domain books. Short noun phrase.",
   browse:
-    "Link on the /read page (the user's own reading list) that opens /books, the shared library of public-domain books to add from. Imperative phrase.",
+    "Link on the /reader page (the user's own reading list) that opens /library, the shared catalogue of books to add from. Imperative phrase; 'Library' is the page's name, use the same word as its title.",
   errRateLimited:
-    "Error on /books when the user added too many books within a few minutes and must wait. Two short sentences.",
+    "Error on /library when the user added too many books within a few minutes and must wait. Two short sentences.",
   errFailed:
-    "Generic error on /books when adding a book failed (the source site was unreachable, a network problem); the user can try again. Two short sentences.",
+    "Generic error on /library when adding a book failed (the source site was unreachable, a network problem); the user can try again. Two short sentences.",
   errNotHere:
-    "Error on a /books book card when the server refused to add the book because it is still under copyright in the country the reader is in now (detected from their connection); it may be public domain elsewhere. One sentence; 'public domain' in its usual legal term in the language.",
+    "Error on a /library book card when the server refused to add the book because it is still under copyright in the country the reader is in now (detected from their connection); it may be public domain elsewhere. One sentence; 'public domain' in its usual legal term in the language.",
   filter:
-    "Placeholder and screen-reader label of the search field above the book list on /books: typing filters the books already listed on the page at once, matching title, author, language name or CEFR level. An imperative phrase naming what it matches.",
-  noMatch: "Text on /books when the filter field matches no listed book. One short sentence.",
+    "Placeholder and screen-reader label of the search field above the book list on /library: typing filters the books already listed on the page at once, matching title, author, language name or CEFR level. An imperative phrase naming what it matches.",
+  noMatch: "Text on /library when the filter field matches no listed book. One short sentence.",
   findTitle:
-    "Section heading below the book list on /books: tools to find books beyond the list (a search of outside public-domain libraries, and a box for a book's link). Short imperative noun phrase.",
+    "Section heading below the book list on /library: tools to find books beyond the list (a search of outside public-domain libraries, and a box for a book's link). Short imperative noun phrase.",
   findIntro:
-    "Paragraph under 'Find more books' on /books: the user can search outside public-domain libraries (Project Gutenberg, Aozora Bunko, Wikisource) or paste a book's link from them; a book is addable only when the source itself states the facts the public-domain check needs (each creator and their death year, the year and country of first publication). Two sentences; 'public domain' in its usual legal term.",
+    "Paragraph under 'Find more books' on /library: the user can search outside public-domain libraries (Project Gutenberg, Aozora Bunko, Wikisource) or paste a book's link from them; a book is addable only when the source itself states the facts the public-domain check needs (each creator and their death year, the year and country of first publication). Two sentences; 'public domain' in its usual legal term.",
   tocLabel:
-    "Heading of the table of contents of /books (a sticky index beside the list on a desktop; on a phone, the label of a bar at the top that opens it as a sheet) and the screen-reader name of that navigation. One noun, as a book's table of contents is called.",
+    "Heading of the table of contents of /library (a sticky index beside the list on a desktop; on a phone, the label of a bar at the top that opens it as a sheet) and the screen-reader name of that navigation. One noun, as a book's table of contents is called.",
   tocClose:
-    "Screen-reader label of the close button (an X) and of the dimmed backdrop of the table-of-contents sheet on a phone at /books. Imperative phrase; 'contents' as in the table of contents.",
+    "Screen-reader label of the close button (an X) and of the dimmed backdrop of the table-of-contents sheet on a phone at /library. Imperative phrase; 'contents' as in the table of contents.",
   librariesTitle:
-    "Heading of the guide in the 'Find more books' section of /books: a list, grouped by language, of outside websites that hold public-domain books (Project Gutenberg, Wikisource, Gallica…), also its entry in the page's table of contents. Short noun phrase; 'public domain' in its usual legal term.",
+    "Heading of the guide in the 'Find more books' section of /library: a list, grouped by language, of outside websites that hold public-domain books (Project Gutenberg, Wikisource, Gallica…), also its entry in the page's table of contents. Short noun phrase; 'public domain' in its usual legal term.",
   librariesIntro:
-    "Paragraph under the 'Public-domain libraries' heading on /books: each listed library's link opens in a new tab; the paste-a-link box above only takes book links from libraries tagged with the 'Paste a link' tag (quote that tag with the same words as supportPaste); the other libraries are for reading on their own site. Two sentences.",
+    "Paragraph under the 'Public-domain libraries' heading on /library: each listed library's link opens in a new tab; the paste-a-link box above only takes book links from libraries tagged with the 'Paste a link' tag (quote that tag with the same words as supportPaste); the other libraries are for reading on their own site. Two sentences.",
   supportPaste:
-    "Small tag beside a library in the /books library guide: a book's link from this library can be pasted into the paste-a-link box above, which checks it and can add it. Two or three words; keep it identical to the tag quoted in librariesIntro.",
+    "Small tag beside a library in the /library library guide: a book's link from this library can be pasted into the paste-a-link box above, which checks it and can add it. Two or three words; keep it identical to the tag quoted in librariesIntro.",
   supportGuide:
-    "Small tag beside a library in the /books library guide whose links cannot be pasted into Lianki yet: the user reads its books on that library's own website. Short phrase.",
+    "Small tag beside a library in the /library library guide whose links cannot be pasted into Lianki yet: the user reads its books on that library's own website. Short phrase.",
   whyNoReader:
-    "Reason shown under a library tagged 'Read on the site' in the /books guide: its terms are fine, but Lianki has no reader for this site's book links yet (it may come later). One short sentence; Lianki is the app's name, not translated.",
+    "Reason shown under a library tagged 'Read on the site' in the /library guide: its terms are fine, but Lianki has no reader for this site's book links yet (it may come later). One short sentence; Lianki is the app's name, not translated.",
   whyTerms:
-    "Reason shown under a library tagged 'Read on the site' in the /books guide: the site's own terms allow only non-commercial or private use (or forbid automated download), so Lianki does not import from it and only links to it. One sentence; Lianki is the app's name, not translated.",
+    "Reason shown under a library tagged 'Read on the site' in the /library guide: the site's own terms allow only non-commercial or private use (or forbid automated download), so Lianki does not import from it and only links to it. One sentence; Lianki is the app's name, not translated.",
   whyNoFacts:
-    "Reason shown under a library tagged 'Read on the site' in the /books guide: its catalogue records do not reliably state what the public-domain check needs (each creator's death year, the year and country of first publication), so a pasted link could not be confirmed. One sentence; 'public domain' in its usual legal term.",
+    "Reason shown under a library tagged 'Read on the site' in the /library guide: its catalogue records do not reliably state what the public-domain check needs (each creator's death year, the year and country of first publication), so a pasted link could not be confirmed. One sentence; 'public domain' in its usual legal term.",
   manyLanguages:
-    "Group heading in the /books library guide for libraries holding books in many languages (Project Gutenberg, Internet Archive), shown where other groups show one language's name. Short noun phrase.",
+    "Group heading in the /library library guide for libraries holding books in many languages (Project Gutenberg, Internet Archive), shown where other groups show one language's name. Short noun phrase.",
   offerLiterature:
-    "One of the tags listing what a library in the /books guide holds, joined by ' · ': literature — novels, short stories, poems, plays. Lower-case phrase.",
+    "One of the tags listing what a library in the /library guide holds, joined by ' · ': literature — novels, short stories, poems, plays. Lower-case phrase.",
   offerClassics:
-    "One of the tags listing what a library in the /books guide holds, joined by ' · ': pre-modern texts such as Greek and Latin authors or the Chinese classics. Lower-case phrase.",
+    "One of the tags listing what a library in the /library guide holds, joined by ' · ': pre-modern texts such as Greek and Latin authors or the Chinese classics. Lower-case phrase.",
   offerDocuments:
-    "One of the tags listing what a library in the /books guide holds, joined by ' · ': historical documents, speeches, letters, laws. Lower-case phrase.",
+    "One of the tags listing what a library in the /library guide holds, joined by ' · ': historical documents, speeches, letters, laws. Lower-case phrase.",
   offerPolished:
-    "One of the tags listing what a library in the /books guide holds, joined by ' · ': ebooks that were carefully proofread and typeset (Standard Ebooks, Wolne Lektury). Lower-case phrase.",
+    "One of the tags listing what a library in the /library guide holds, joined by ' · ': ebooks that were carefully proofread and typeset (Standard Ebooks, Wolne Lektury). Lower-case phrase.",
   offerScans:
-    "One of the tags listing what a library in the /books guide holds, joined by ' · ': images of the pages of printed books (often with machine-read text). Lower-case phrase.",
+    "One of the tags listing what a library in the /library guide holds, joined by ' · ': images of the pages of printed books (often with machine-read text). Lower-case phrase.",
   offerScholarly:
-    "One of the tags listing what a library in the /books guide holds, joined by ' · ': critical or annotated editions made by scholars. Lower-case phrase.",
+    "One of the tags listing what a library in the /library guide holds, joined by ' · ': critical or annotated editions made by scholars. Lower-case phrase.",
   searchPlaceholder:
     "Placeholder and screen-reader label of the field where the user types what to search for in the outside public-domain libraries: a book's title or its author. Short noun phrase.",
   searchButton:
-    "Button next to that field on /books: runs a search, done by our server, in the outside public-domain libraries (Project Gutenberg, Aozora Bunko, Wikisource). Imperative phrase; in Chinese, the owner's wording is 到公版图书馆搜索.",
+    "Button next to that field on /library: runs a search, done by our server, in the outside public-domain libraries (Project Gutenberg, Aozora Bunko, Wikisource). Imperative phrase; in Chinese, the owner's wording is 到公版图书馆搜索.",
   searching:
     "Text on that search button while the libraries are being searched. Progressive, ends with an ellipsis.",
   noHits:
@@ -1055,7 +1055,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   canAdd:
     "Status beside a found book whose public-domain status is confirmed for the user's country, shown next to the add button. Short phrase; 'public domain' in its usual legal term.",
   inLibrary:
-    "Status beside a found book that is already one of the books listed in this /books library (it can still be added from here). Short phrase.",
+    "Status beside a found book that is already one of the books listed in this /library library (it can still be added from here). Short phrase.",
   cannotConfirm:
     "Bold status beside a found book that cannot be added because its source does not state some fact the public-domain check needs (so its status is unknown, not refused). Short phrase; in Chinese, the owner's wording is 无法确认公版.",
   notPd:
@@ -1076,9 +1076,9 @@ const context: Record<keyof typeof dictionary.content, string> = {
 
 export default {
   ...dictionary,
-  title: "/books — public-domain library",
+  title: "/library — the Library (book catalogue)",
   description: describeKeys(
-    "The shared public-domain library at /books: the page, the book cards with level, source and licence, the add button and its errors, the link to it from /read, and the source and licence labels shown in an imported book.",
+    "The shared public-domain library at /library: the page, the book cards with level, source and licence, the add button and its errors, the link to it from /reader, and the source and licence labels shown in an imported book.",
     context,
   ),
 } satisfies DeclarationContent;

@@ -53,6 +53,16 @@ goes under `/my/<noun>`, not at the top level; `/dev/<x>` stays separate.
 kept (`lib/moved-routes.ts`); the `/api/profile` and `/api/preferences` names
 are unchanged (rule 7). The account menu's "My data" (我的数据) opens `/my`.
 
+## /library and /books (owner's decision, 2026-11-10 01:47 JST)
+
+`/library` is the catalogue (every user's shared books), `/books` is My books
+(the user's own shelf). `/books` was repurposed, not moved, so it has no
+`MOVED_ROUTES` row. An old catalogue link `/books/<lang>/<slug>` stays a page
+when that book is on the viewer's shelf, and is a 308 to
+`/library/<lang>/<slug>` (query kept) for anyone else; the page is dynamic, so
+the viewer-dependent 308 is never cached. Details:
+[books-plan.md](books-plan.md), "/library and /books".
+
 ## A rename, step by step
 
 1. Move the route folder; fix its own links, `generateAppHreflangMetadata`
@@ -75,4 +85,5 @@ are unchanged (rule 7). The account menu's "My data" (我的数据) opens `/my`.
 | `/review`                                                                         | `/reviews` or keep               | "review" is already a noun; decide |
 | `/profile`, `/preferences`                                                        | `/my/profile`, `/my/preferences` | done 2026-11-10                    |
 | `/ai-vocab`, `/polyglot`                                                          | `/lab/ai-vocab`, `/lab/polyglot` | done 2026-11-09                    |
-| `/words`, `/books`, `/sites`, `/alphabet`, `/data`, `/membership`                | keep                             | already nouns                      |
+| `/books` (the catalogue), `/books/<lang>/<slug>`                                  | `/library`, `/library/<lang>/<slug>` | done 2026-11-10: `/books` is now My books; an old book link 308s per viewer (below) |
+| `/words`, `/sites`, `/alphabet`, `/data`, `/membership`                           | keep                             | already nouns                      |

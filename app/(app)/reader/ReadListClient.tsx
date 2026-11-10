@@ -338,10 +338,10 @@ export function ReadListClient({
 
   return (
     <div className="space-y-6">
-      {/* The shared public-domain library: a link only, its books never listed here. */}
+      {/* The shared catalogue /library: a link only, its books never listed here. */}
       {books && (
         <Link
-          href="/books"
+          href="/library"
           data-testid="read-browse-books"
           className="inline-flex items-center gap-1 text-sm font-medium text-[oklch(0.5_0.176_22.3)] dark:text-[oklch(0.78_0.132_22.3)] hover:underline"
         >

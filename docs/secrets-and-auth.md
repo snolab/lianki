@@ -252,7 +252,7 @@ these rows newest first, 50 a page, with the time in JST, the actor's address
   view, the whole-page dev server and its tunnel gate, the owner chat thread (chat
   log, inbox agent, lane chat tokens, `box:chat`), `eval` (eval tokens, `box:eval`,
   debug-session renewal), the pill chat and partner ticket, the my-box allowlist,
-  and features shipped dark (`booksOn(flags, isDev(…))`, YouTube songs). The
+  and features shipped dark (`libraryOn(flags, isDev(…))`, YouTube songs). The
   Learning Partner AI refuses a `dev` holder (his thread is the dev lanes').
 - Neither implies the other; each is its own grant. Which permission a `/dev`
   page checks is listed in `lib/dev-page-permissions.ts` (a unit test keeps it

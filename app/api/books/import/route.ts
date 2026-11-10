@@ -9,7 +9,7 @@
 // admission rule, and a confirmed work not yet listed becomes a shared
 // catalogue entry for everyone. Either way the server fetches the entry's own
 // file from an allowed host (lib/books/source.ts), through the shared R2 cache. Rate-limited per user (each new import parses a
-// whole book). Gate: a session, D1, and `books.catalogue` or the owner; and
+// whole book). Gate: a session, D1, and `library.catalogue` (or `dev`); and
 // the book must be public domain where the viewer is (lib/books/terms.ts).
 
 import { NextRequest, NextResponse } from "next/server";
@@ -24,7 +24,7 @@ import { bookVisibleIn, catalogueBook, type CatalogueBook } from "@/lib/books/ca
 import { entryToImport, resolveLink } from "@/lib/books/lookup";
 import { d1SharedStore } from "@/lib/books/shared";
 import { ruleYear, viewerCountry } from "@/lib/books/viewer";
-import { booksOn } from "@/lib/books/gate";
+import { libraryOn } from "@/lib/books/gate";
 import { importCatalogueBook } from "@/lib/books/import";
 import { r2SourceCache } from "@/lib/books/cache-r2";
 import { BookSourceFail } from "@/lib/books/source";
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   if (!userId) return fail("Unauthorized", 401);
   if (dbBackend() !== "d1") return fail("Not found", 404);
   const flags = await readFlags();
-  if (!booksOn(flags, isDev(session.user.email ?? null))) return fail("Not found", 404);
+  if (!libraryOn(flags, isDev(session.user.email ?? null))) return fail("Not found", 404);
 
   let body: unknown;
   try {

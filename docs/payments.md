@@ -415,7 +415,7 @@ Not charged, on purpose (no provider bill per call):
 | cached TTS (`tts/` in R2), `word_gloss`, `read_translation`, `vibe_translation` | the answer is stored; no provider call |
 | `/api/import/youtube` | YouTube Data API: free quota, no money |
 | Google Drive / Docs (`/connections`, `read.gdoc-stream`) | Google APIs on the user's own OAuth token; no per-call bill |
-| `/books` catalogue (`books.catalogue`) | public-domain texts cached in R2; no provider call |
+| `/library` catalogue (`library.catalogue`) | public-domain texts cached in R2; no provider call |
 | BYOK (`byok.sync`) | the user's own key, from their browser |
 | the inbox (R2 storage and operations, `lib/inbox/charge.ts`) | metered and logged, not yet debited: cents per GB-month; a follow-up |
 | owner-only tools (`/dev/*`, the owner's STT bench `?model=`, local STT) | the owner pays |

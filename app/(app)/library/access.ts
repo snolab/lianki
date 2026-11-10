@@ -1,4 +1,4 @@
-// The /books gate and the viewer's own copies, shared by both /books pages.
+// The /library gate and the viewer's own copies, shared by the /library pages (and /books).
 
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
@@ -6,7 +6,7 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
-import { booksOn } from "@/lib/books/gate";
+import { libraryOn } from "@/lib/books/gate";
 import { ownedPresets } from "@/lib/books/owned";
 import { ruleYear, viewerCountry } from "@/lib/books/viewer";
 import { LANG_TAGS } from "@/lib/constants";
@@ -16,7 +16,7 @@ import { d1SharedStore, mergeCatalogue } from "@/lib/books/shared";
 /**
  * The viewer, the books they already added, and where and when they are (the
  * admission rule's country and year: lib/books/terms.ts); 404 while /books is
- * off for them.
+ * off for them (`library.catalogue`).
  */
 export async function booksAccess(): Promise<{
   signedIn: boolean;
@@ -26,7 +26,7 @@ export async function booksAccess(): Promise<{
 }> {
   const user = await authUserOrNull();
   if (dbBackend() !== "d1") notFound();
-  if (!booksOn(await readFlags(), isDev(user?.email ?? null))) notFound();
+  if (!libraryOn(await readFlags(), isDev(user?.email ?? null))) notFound();
   let owned: Record<string, string> = {};
   if (user) {
     try {

@@ -5,7 +5,7 @@
 // "l'optimisme"). Made once when an entry is added and stored with it; never
 // recomputed, so editing a title never moves a book's URL.
 //
-// /books/<lang>/<slug> links percent-encode the slug (bookHref); the route
+// /library/<lang>/<slug> links percent-encode the slug (bookHref); the route
 // decodes and NFC-normalises what it gets (normaliseSlug), so a slug typed,
 // pasted or encoded by any browser resolves to the same entry.
 
@@ -64,7 +64,7 @@ export function normaliseSlug(segment: string): string | null {
   return SLUG_RE.test(s) ? s : null;
 }
 
-/** The catalogue page of a book: /books/<lang>/<slug>, encoded. */
+/** The catalogue page of a book: /library/<lang>/<slug>, encoded (old /books/… links: app/(app)/books/[lang]/[slug]). */
 export function bookHref(b: { lang: string; slug: string }): string {
-  return `/books/${encodeURIComponent(b.lang)}/${encodeURIComponent(b.slug)}`;
+  return `/library/${encodeURIComponent(b.lang)}/${encodeURIComponent(b.slug)}`;
 }
