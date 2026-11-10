@@ -34,16 +34,27 @@ export const CHALLENGE_TTL_S = VOICEPRINT_TICKET_TTL_S;
  * lib/voiceprint-cloud.ts). `restore`: the Mac takes a print the page read
  * from the account. Both need the passkey, as enrol and delete do.
  */
-export type VoiceprintOp = "status" | "enrol" | "delete" | "export" | "restore";
+export type VoiceprintOp = "status" | "enrol" | "delete" | "delete-audio" | "export" | "restore";
 export const VOICEPRINT_OPS: readonly VoiceprintOp[] = [
   "status",
   "enrol",
   "delete",
+  "delete-audio",
   "export",
   "restore",
 ];
-/** The ops that need the owner's passkey with user verification (Face ID / Touch ID). */
-export const PASSKEY_OPS: readonly VoiceprintOp[] = ["enrol", "delete", "export", "restore"];
+/**
+ * The ops that need the owner's passkey with user verification (Face ID / Touch ID).
+ * `delete-audio`: the enrolment recordings kept on the Mac, a separate question
+ * from deleting the print (owner, 2026-11-11), with its own ticket.
+ */
+export const PASSKEY_OPS: readonly VoiceprintOp[] = [
+  "enrol",
+  "delete",
+  "delete-audio",
+  "export",
+  "restore",
+];
 
 /** A device slug as the Mac's store takes it, or "*" (every device: never for enrol). */
 export function validDevice(d: unknown, op: VoiceprintOp): d is string {
@@ -174,4 +185,81 @@ export async function openChallenge(
   if (typeof p.exp !== "number" || p.exp < Math.floor((want.now ?? Date.now()) / 1000)) return null;
   if (typeof p.challenge !== "string" || p.challenge.length < 32) return null;
   return p as unknown as Challenge;
+}
+
+// ---------------------------------------------------------------- the passkey window
+/**
+ * One passkey approval for every voiceprint op, for a while (owner, tap card
+ * 2026-11-11 01:28 JST; docs/local-stt.md, "One approval for ten minutes").
+ * After a verified assertion with UV, lianki.com also hands the page a
+ * **grant**: a token for this account, this sign-in session and this device,
+ * live until `exp` (config `voiceprint.passkeyWindowMs`). With it the page asks
+ * for per-op tickets with no new prompt; each ticket is still single use (its
+ * own jti), live 60 s at most and never past the grant, and the Mac's checks
+ * (aud, op, device, uv, once) are exactly as before. Its own audience, so no
+ * ticket, challenge or other step-up ever accepts it, and it opens nothing but
+ * this route.
+ */
+export const GRANT_AUD = "lianki-voiceprint-grant";
+
+export type Grant = {
+  aud: typeof GRANT_AUD;
+  /** The account (session user id). */
+  uid: string;
+  /** The sign-in session, hashed (sessionTag): a sign-out ends the grant here too. */
+  sid: string;
+  /** The page's device slug (deviceSlug in voiceprint.ts): the grant is for that device only. */
+  client: string;
+  /** The approval behind it (its challenge). */
+  gid: string;
+  iat: number;
+  exp: number;
+};
+
+/** A session id as the grant carries it: SHA-256, 16 bytes, base64url (never the id itself). */
+export async function sessionTag(sessionId: string): Promise<string> {
+  const h = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", enc.encode(`vp-grant:${sessionId}`)),
+  );
+  return b64url(h.slice(0, 16));
+}
+
+export async function signGrant(
+  key: CryptoKey,
+  o: { uid: string; sid: string; client: string; gid: string; windowMs: number; now?: number },
+): Promise<{ grant: string; exp: number }> {
+  const iat = Math.floor((o.now ?? Date.now()) / 1000);
+  const exp = iat + Math.floor(o.windowMs / 1000);
+  const p: Grant = {
+    aud: GRANT_AUD,
+    uid: o.uid,
+    sid: o.sid,
+    client: o.client,
+    gid: o.gid,
+    iat,
+    exp,
+  };
+  return { grant: await signPayload(key, p), exp };
+}
+
+/**
+ * The grant, if it is ours, for this account, session and device, and live:
+ * under its own exp and under the window as configured now (a shorter window
+ * set at /dev/config shortens grants already out; 0 ends them all).
+ */
+export async function openGrant(
+  token: string,
+  pub: CryptoKey,
+  want: { uid: string; sid: string; client: string; windowMs: number; now?: number },
+): Promise<Grant | null> {
+  if (!(want.windowMs > 0) || !want.sid) return null;
+  const p = await openPayload(token, pub);
+  if (!p || p.aud !== GRANT_AUD) return null;
+  if (p.uid !== want.uid || p.sid !== want.sid || p.client !== want.client) return null;
+  if (typeof p.iat !== "number" || typeof p.exp !== "number" || typeof p.gid !== "string")
+    return null;
+  const now = Math.floor((want.now ?? Date.now()) / 1000);
+  if (p.iat > now + 5 || p.exp <= now) return null;
+  if (p.iat + Math.floor(want.windowMs / 1000) <= now) return null;
+  return p as unknown as Grant;
 }

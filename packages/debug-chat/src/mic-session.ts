@@ -436,8 +436,13 @@ export function createMicSession(
       on: boolean,
       onFinal: (f: Promise<LocalFinal> | null) => void,
       id = "",
+      /**
+       * The voiceprint test: no enrolment id, so each utterance goes to the Mac
+       * as a plain final (scored, never kept) and only to `onFinal`.
+       */
+      test = false,
     ) {
-      if (!on || !id) {
+      if (!on || (!id && !test)) {
         enrolHook = null;
         enrolId = "";
         if (enrolOpened && mic.state() !== "off") await session.off();

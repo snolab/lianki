@@ -3378,6 +3378,8 @@ export function DebugChat({
       url: sttRoute.urls ?? "",
       device: voiceDevice(),
       capture: (on, onFinal, id) => pageMic().enrolCapture(on, onFinal, id),
+      // The voiceprint test: scored finals to the panel only (no draft, cloud or clip sink).
+      testCapture: (on, onFinal) => pageMic().enrolCapture(on, onFinal, "", true),
       log: (ev) => voice().log(ev),
     });
   /** The menu (a double tap on the mark), open or minimized. */
