@@ -13,6 +13,8 @@ import { DrivePick, DrivePickHowTo } from "../connections/DrivePick";
 import { RowMenu, TitleEditor } from "./RowMenu";
 import { cleanTitle } from "@/lib/read/title";
 import { gdocUrlOf } from "@/lib/gdoc/url";
+import { VirtualList } from "@/app/components/VirtualList";
+import { useInfiniteList } from "@/app/components/useInfiniteList";
 
 export interface ReadMaterial {
   id: string;
@@ -28,7 +30,6 @@ export interface ReadMaterial {
 }
 
 const STORAGE_KEY = "lianki-read-materials";
-const PAGE_SIZE = 10;
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -77,15 +78,29 @@ export function ReadListClient({
   // On a box, from lianki.com (BoxApiBridge); else the server's answer.
   const isLoggedIn = useSignedIn(serverSignedIn);
   const router = useRouter();
-  const [materials, setMaterials] = useState<ReadMaterial[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [importText, setImportText] = useState("");
   const [importTitle, setImportTitle] = useState("");
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
-  // Bumped after several docs came from Google Drive: the list loads again.
-  const [reload, setReload] = useState(0);
+  // No pages (owner, 2026-11-10): batches as the list nears its end. Signed
+  // out, the whole list is this browser's, so it comes in one batch.
+  const list = useInfiniteList<ReadMaterial, number>({
+    getKey: (m) => m.id,
+    deps: [isLoggedIn],
+    fetchBatch: async (page, size) => {
+      if (!isLoggedIn) return { items: getLocalMaterials(), next: null };
+      const p = page ?? 1;
+      const res = await fetch(`/api/read?page=${p}&pageSize=${size}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as {
+        materials: ReadMaterial[];
+        total: number;
+        totalPages: number;
+      };
+      return { items: data.materials, next: p < data.totalPages ? p + 1 : null, total: data.total };
+    },
+  });
+  const materials = list.items;
+  const setMaterials = list.setItems;
   const epubText = useIntlayer("read-epub");
   const booksText = useIntlayer("books-page");
   const epubInput = useRef<HTMLInputElement>(null);
@@ -213,31 +228,6 @@ export function ReadListClient({
       if (epubInput.current) epubInput.current.value = "";
     }
   };
-
-  // Load materials
-  useEffect(() => {
-    async function loadMaterials() {
-      setLoading(true);
-      if (isLoggedIn) {
-        try {
-          const res = await fetch(`/api/read?page=${page}&pageSize=${PAGE_SIZE}`);
-          if (res.ok) {
-            const data = await res.json();
-            setMaterials(data.materials);
-            setTotalPages(data.totalPages);
-          }
-        } catch (err) {
-          console.error("Failed to load materials:", err);
-        }
-      } else {
-        const local = getLocalMaterials();
-        setMaterials(local.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
-        setTotalPages(Math.ceil(local.length / PAGE_SIZE) || 1);
-      }
-      setLoading(false);
-    }
-    loadMaterials();
-  }, [isLoggedIn, page, reload]);
 
   const handleImport = async () => {
     if (!importText.trim()) return;
@@ -387,9 +377,7 @@ export function ReadListClient({
                 + {gdocText.importGdoc}
               </button>
             )}
-            {isLoggedIn && drive && (
-              <DrivePick page="/reader" compact onImported={() => setReload((n) => n + 1)} />
-            )}
+            {isLoggedIn && drive && <DrivePick page="/reader" compact onImported={list.reload} />}
             {isLoggedIn && youtube && (
               <Link
                 href="/reader/youtube"
@@ -516,83 +504,66 @@ export function ReadListClient({
         </div>
       )}
 
-      {/* Loading state */}
-      {loading ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">Loading...</div>
-      ) : materials.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-          No materials imported yet. Click the button above to get started.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {materials.map((material) => (
-            <div
-              key={material.id}
-              data-row-id={material.id}
-              data-testid="read-row"
-              className="flex items-center justify-between gap-2 p-4 pe-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-            >
-              {renaming === material.id ? (
-                <TitleEditor
-                  initial={material.title}
-                  onSave={(title) => handleRename(material.id, title)}
-                  onDone={() => endRename(material.id)}
-                />
-              ) : (
-                <>
-                  <Link href={`/reader/${material.id}`} className="flex-1 min-w-0">
-                    <h3 className="font-medium truncate" data-testid="read-row-title">
-                      {material.title}
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {material.lineCount ?? material.lines.length} lines &middot;{" "}
-                      {material.words && (
-                        <span className="tabular-nums" data-testid="read-row-words">
-                          <WordCountText words={material.words} /> &middot;{" "}
-                        </span>
-                      )}
-                      {longDate(material.updatedAt)}
-                    </p>
+      <VirtualList
+        items={materials}
+        getKey={(m) => m.id}
+        name="reader"
+        hasMore={list.hasMore}
+        loading={list.loading}
+        error={list.error}
+        total={list.total}
+        onReachEnd={list.loadMore}
+        estimateSize={76}
+        gap={12}
+        testId="read-list"
+        empty={
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+            No materials imported yet. Click the button above to get started.
+          </div>
+        }
+        renderItem={(material) => (
+          <div
+            data-row-id={material.id}
+            data-testid="read-row"
+            className="flex items-center justify-between gap-2 p-4 pe-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+          >
+            {renaming === material.id ? (
+              <TitleEditor
+                initial={material.title}
+                onSave={(title) => handleRename(material.id, title)}
+                onDone={() => endRename(material.id)}
+              />
+            ) : (
+              <>
+                <Link href={`/reader/${material.id}`} className="flex-1 min-w-0">
+                  <h3 className="font-medium truncate" data-testid="read-row-title">
+                    {material.title}
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {material.lineCount ?? material.lines.length} lines &middot;{" "}
+                    {material.words && (
+                      <span className="tabular-nums" data-testid="read-row-words">
+                        <WordCountText words={material.words} /> &middot;{" "}
+                      </span>
+                    )}
+                    {longDate(material.updatedAt)}
+                  </p>
+                </Link>
+                {material.words && (
+                  <Link href={`/reader/${material.id}`} className="ms-2" tabIndex={-1}>
+                    <BookRing words={material.words} />
                   </Link>
-                  {material.words && (
-                    <Link href={`/reader/${material.id}`} className="ms-2" tabIndex={-1}>
-                      <BookRing words={material.words} />
-                    </Link>
-                  )}
-                  <RowMenu
-                    title={material.title}
-                    onRename={() => setRenaming(material.id)}
-                    onDelete={() => void handleDelete(material.id, material.title)}
-                  />
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50"
-          >
-            Prev
-          </button>
-          <span className="text-sm text-gray-600 dark:text-gray-400">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
-      )}
+                )}
+                <RowMenu
+                  title={material.title}
+                  onRename={() => setRenaming(material.id)}
+                  onDelete={() => void handleDelete(material.id, material.title)}
+                />
+              </>
+            )}
+          </div>
+        )}
+      />
     </div>
   );
 }

@@ -882,6 +882,7 @@ describe("what is wired to the lock", () => {
       "WORDS",
       "WORDS PINCH",
       "READ EPUB",
+      "VIRTUAL LIST",
       "READ SEL ONE",
       "SYNC",
       "PARTNER FRAME",
