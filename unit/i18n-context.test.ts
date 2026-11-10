@@ -83,6 +83,9 @@ import signInErrors from "@/app/(app)/sign-in/errors.content";
 import activityTally from "@/app/(app)/list/components/activity-tally.content";
 import devFlagToast from "@/app/(app)/dev/flags/flag-toast.content";
 import devConfig from "@/app/(app)/dev/config/config-admin.content";
+import hotkeyHelp from "@/app/components/hotkey-help.content";
+import languageSwitcher from "@/app/components/language-switcher.content";
+import versionNotice from "@/app/components/version-notice.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -194,6 +197,9 @@ describe.each([
   ["activity-tally", activityTally],
   ["dev-flag-toast", devFlagToast],
   ["dev-config", devConfig],
+  ["hotkey-help", hotkeyHelp],
+  ["language-switcher", languageSwitcher],
+  ["version-notice", versionNotice],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };
@@ -231,7 +237,15 @@ describe.each([
 // so far"), so it is not in the full list above; its newer keys are held here.
 describe("preferences-page: keys that already carry context", () => {
   const context = keyContext(preferencesPage.description);
-  it.each(["paperHeading", "resetSection"])("%s has a line of 5+ words", (k) => {
+  it.each([
+    "paperHeading",
+    "resetSection",
+    "watchTime.heading",
+    "watchTime.description",
+    "watchTime.toggle",
+    "watchTime.toggleHint",
+    "mobileFilters.regexBadge",
+  ])("%s has a line of 5+ words", (k) => {
     expect((context[k] ?? "").split(/\s+/).length).toBeGreaterThanOrEqual(5);
   });
   it("the Paper heading is a translated key, not the old hardcoded '紙紋 Paper'", () => {
