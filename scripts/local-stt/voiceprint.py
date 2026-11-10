@@ -23,7 +23,8 @@ The CLI (never touches ~/lianki-voice-clips; it only reads files you name):
 
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py list
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --device iphone
-    ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --all
+    ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --all            # the prints; recordings stay
+    ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete-audio --all      # only the kept recordings
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py score a.wav b.wav [--device iphone]
 """
 from __future__ import annotations
@@ -184,6 +185,20 @@ def decide(model: Model, score: float, speech_s: float, snr_db: float) -> tuple[
     if score < b.reject:
         return "other", None
     return "unknown", "between"
+
+
+def bands_info(order: list[str]) -> dict:
+    """The decision's thresholds per loaded model, for the panel's test mode (no secrets: the table in docs/local-stt.md)."""
+    return {
+        m: {
+            "minSpeechS": MIN_SPEECH_S,
+            "minSnrDb": MIN_SNR_DB,
+            "bands": [{"minS": b.min_s, "me": b.accept, "other": b.reject} for b in MODELS[m].bands],
+            **({"provisional": True} if MODELS[m].provisional else {}),
+        }
+        for m in order
+        if m in MODELS
+    }
 
 
 def filter_reason(spk: dict | None, device: str | None) -> str | None:
@@ -469,21 +484,47 @@ class Store:
         g[k] = int(g.get(k, 0)) + 1 if isinstance(g.get(k, 0), int) else 1
         write_private(os.path.join(self.root, GENERATIONS), json.dumps(g).encode())
 
-    def delete(self, device: str | None) -> int:
+    def delete(self, device: str | None, audio: bool = False) -> int:
         """
-        Remove one device's prints (every model) and its kept audio, or all
-        (device None), and bump the generation so a pending enrolment cannot
-        save over the delete. Count of files.
+        Remove one device's prints (every model), or all (device None), and
+        bump the generation so a pending enrolment cannot save over the delete.
+        The kept enrolment recordings stay unless `audio` is True: deleting the
+        print never deletes them implicitly (owner, 2026-11-11; the panel asks
+        separately, `delete_audio`). Count of files.
         """
         if device is not None and not valid_device(device):
             raise StoreError("bad device")
         self._ready(create=True)
         with self.lock():
-            n = self._delete(device)
+            n = self._delete(device, prints=True, audio=audio)
             self.bump(device)
         return n
 
-    def _delete(self, device: str | None) -> int:
+    def delete_audio(self, device: str | None) -> int:
+        """Only the kept enrolment recordings (`<device>.audio/`) of one device, or all. Count of files."""
+        if device is not None and not valid_device(device):
+            raise StoreError("bad device")
+        if not self._ready(create=False):
+            return 0
+        with self.lock():
+            return self._delete(device, prints=False, audio=True)
+
+    def audio_count(self, device: str | None = None) -> int:
+        """How many kept enrolment recordings there are (one device, or all): a count, nothing read."""
+        if not self._ready(create=False):
+            return 0
+        n = 0
+        for name in os.listdir(self.root):
+            m = re.match(r"^([a-z0-9][a-z0-9-]{0,31})\.audio$", name)
+            if not m or (device is not None and m.group(1) != device):
+                continue
+            d = os.path.join(self.root, name)
+            if path_problem(d, want_dir=True):
+                continue
+            n += sum(1 for w in os.listdir(d) if re.fullmatch(r"\d{2}\.wav", w))
+        return n
+
+    def _delete(self, device: str | None, prints: bool = True, audio: bool = False) -> int:
         n = 0
         for name in sorted(os.listdir(self.root)):
             full = os.path.join(self.root, name)
@@ -491,6 +532,8 @@ class Store:
             if not m or (device is not None and m.group(1) != device):
                 continue
             if name.endswith(".audio"):
+                if not audio:
+                    continue
                 if os.path.islink(full) or not os.path.isdir(full):
                     os.unlink(full)
                     n += 1
@@ -499,7 +542,7 @@ class Store:
                     os.unlink(os.path.join(full, w))
                     n += 1
                 os.rmdir(full)
-            else:
+            elif prints:
                 os.unlink(full)
                 n += 1
         return n
@@ -910,10 +953,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--store", default=STORE_DIR)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="the prints kept (no embeddings shown)")
-    d = sub.add_parser("delete", help="delete a device's voiceprint (every model, and any kept enrolment audio)")
+    d = sub.add_parser("delete", help="delete a device's voiceprint (every model); the kept recordings only with --audio")
     g = d.add_mutually_exclusive_group(required=True)
     g.add_argument("--device")
     g.add_argument("--all", action="store_true")
+    d.add_argument("--audio", action="store_true", help="also delete the kept enrolment recordings")
+    da = sub.add_parser("delete-audio", help="delete only the kept enrolment recordings (the print stays)")
+    ga = da.add_mutually_exclusive_group(required=True)
+    ga.add_argument("--device")
+    ga.add_argument("--all", action="store_true")
     s = sub.add_parser("score", help="score WAV files against the stored print (read-only)")
     s.add_argument("wavs", nargs="+")
     s.add_argument("--device", default=None)
@@ -934,8 +982,18 @@ def main(argv: list[str] | None = None) -> int:
             if a.device is not None and not valid_device(a.device):
                 print("bad device name", file=sys.stderr)
                 return 2
-            n = store.delete(None if a.all else a.device)
+            n = store.delete(None if a.all else a.device, audio=a.audio)
             print(f"deleted {n} file(s) from {a.store}")
+            left = store.audio_count(None if a.all else a.device)
+            if left:
+                print(f"{left} kept recording(s) left (delete-audio, or delete --audio, removes them)")
+            return 0
+        if a.cmd == "delete-audio":
+            if a.device is not None and not valid_device(a.device):
+                print("bad device name", file=sys.stderr)
+                return 2
+            n = store.delete_audio(None if a.all else a.device)
+            print(f"deleted {n} recording(s) from {a.store}")
             return 0
         if a.cmd == "attest-key":
             print(Attestor().public())

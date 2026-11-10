@@ -169,6 +169,18 @@ export const CONFIG = {
     description:
       "谁从录音算出声纹特征：mac = 你 Mac 上的本地语音服务（开发阶段唯一的实现）。以后有云端实现时在这里切换。",
   },
+  // One passkey approval covers every voiceprint op for this long (owner tap card
+  // 2026-11-11 01:28 JST; docs/local-stt.md, "One approval for ten minutes").
+  "voiceprint.passkeyWindowMs": int({
+    default: 600_000,
+    min: 0,
+    max: 1_800_000,
+    unit: "ms",
+    group: "voiceprint",
+    audience: "server",
+    description:
+      "声纹操作（录入、存到账号、恢复、删除、重算、导出）的一次 Face ID 管多久（毫秒）：默认 600000 = 10 分钟，在这段时间里同一台设备、同一次登录不再弹出通行密钥。0 = 每次操作都要 Face ID。只管声纹，不管别的验证。改短会让已经发出的授权也跟着变短。",
+  }),
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

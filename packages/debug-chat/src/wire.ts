@@ -683,6 +683,60 @@ export type ChatStrings = {
   vpCloudNone: string;
   /** Error line in the voiceprint panel about the copy in the owner's account (saving, restoring or deleting it); {error} is a short technical reason in English. Keep {error} inside the parentheses; it is not a danger warning, just a failure note. */
   vpCloudFailed: string;
+  /** Button in the voiceprint panel: starts a test mode where the owner (or someone else) speaks and the panel shows at once whether his Mac recognised the voice as his. First person 'my'; imperative verb phrase, short. */
+  vpTest: string;
+  /** First line of the voiceprint test: tells the user to say any sentence; the Mac compares it with this device's voiceprint and nothing is recorded or sent anywhere. Keep 'Mac'; one or two short sentences. */
+  vpTestIntro: string;
+  /** Status in the voiceprint test while the microphone is being turned on. Progressive form, ends with an ellipsis. */
+  vpTestStarting: string;
+  /** Result word in the voiceprint test: the Mac decided the voice is the owner's own. One word or two, like 'Me' / 'It's me'. */
+  vpTestMe: string;
+  /** Result word in the voiceprint test: the Mac decided the voice is someone else's, not the owner's. Short, two or three words. */
+  vpTestOther: string;
+  /** Result word in the voiceprint test: the Mac could not decide whose voice it is (too short, too noisy, or the score fell between the two thresholds). Short, two or three words. */
+  vpTestUnknown: string;
+  /** Line in the voiceprint test when the owner's Mac did not answer for a spoken line, so nothing was scored. Keep 'Mac'; one short sentence. */
+  vpTestNoMac: string;
+  /** Detail line under one result of the voiceprint test. {score} is the match score (a decimal like 0.412), {device} the device whose voiceprint it was compared with (like 'iphone'), {model} the voice model name (like 'campp'), {speech} seconds of speech, {snr} the signal-to-noise ratio in decibels. Keep every placeholder and the units 's' and 'dB'; compact, with middle dots. */
+  vpTestScore: string;
+  /** Line in the voiceprint test showing the thresholds the Mac used for that result: 'me' at a score of {me} or more, 'someone else' below {other}, for {s} seconds of speech and more. Keep the placeholders; the words for 'me' and 'someone else' match the result words. Compact; ends with a full stop. */
+  vpTestLines: string;
+  /** Line in the voiceprint test after the thresholds: with less than {s} seconds of speech or a signal-to-noise ratio under {snr} dB the result is always 'not sure'. Keep the placeholders and units; the words for 'not sure' match the result word. One short sentence. */
+  vpTestGate: string;
+  /** Reason after 'Not sure' in the voiceprint test: the line had too little speech to judge. A short phrase, lower case, no full stop. */
+  vpTestWhyShort: string;
+  /** Reason after 'Not sure' in the voiceprint test: too much background noise to judge. A short phrase, lower case, no full stop. */
+  vpTestWhyNoise: string;
+  /** Reason after 'Not sure' in the voiceprint test: the score fell between the 'me' threshold and the 'someone else' threshold. A short phrase, lower case, no full stop. */
+  vpTestWhyBetween: string;
+  /** Reason after 'Not sure' in the voiceprint test: no voiceprint is enrolled to compare with. A short phrase, lower case, no full stop. */
+  vpTestWhyNoPrint: string;
+  /** Line under a voiceprint test result: the 'Only my voice' filter (it is switched on) stopped this line, so in normal use it would not have been transcribed. Keep the quoted feature name as in the other filter lines; one short sentence. */
+  vpTestStopped: string;
+  /** Line under a voiceprint test result: the 'Only my voice' filter is off, but it would have stopped this line if it were on. Keep the quoted feature name as in the other filter lines; one short sentence. */
+  vpTestWould: string;
+  /** Running count in the voiceprint test of how many lines got each result so far: {me} times 'me', {other} times 'someone else', {unknown} times 'not sure'. Keep the placeholders; the result words match the result words; compact, with middle dots. */
+  vpTestTally: string;
+  /** Prompt in the voiceprint test after the first result: ask the owner to let another person say one sentence too, so he can compare the results. One short sentence, friendly. */
+  vpTestOthers: string;
+  /** Link in the voiceprint test to the developer switches page where the 'Only my voice' filter is turned on or off. Keep '/dev/flags' as is; short. */
+  vpTestFlag: string;
+  /** Button that ends the voiceprint test and gives the microphone back to the chat. Imperative or 'done', one word. */
+  vpTestDone: string;
+  /** Note in the voiceprint panel: the owner approved with his passkey (Face ID / Touch ID) and, until {time} (a clock time like 14:05), further voiceprint changes on this device need no new prompt. Keep {time} and 'Face ID'; one sentence. */
+  vpGrant: string;
+  /** Button beside that note: ends the approval window now, so the next voiceprint change asks for Face ID again. Short verb phrase. */
+  vpGrantEnd: string;
+  /** Question in the voiceprint panel right after the voiceprint was deleted: {n} recordings of the enrolment sentences are still kept on the owner's Mac; does he want to delete them too? Nothing is deleted unless he taps the delete button; keeping them is the default. Keep the placeholder and 'Mac'; a statement and a question. */
+  vpMacRecOffer: string;
+  /** Button under that question: deletes the enrolment recordings from the owner's Mac for good (a passkey prompt may come next). Imperative verb phrase, short; keep 'Mac'. */
+  vpMacRecYes: string;
+  /** Button under that question, the default choice: keeps the enrolment recordings on the Mac and closes the question. Short verb phrase. */
+  vpMacRecKeep: string;
+  /** Confirmation in the voiceprint panel: the enrolment recordings were deleted from the owner's Mac. One short sentence; keep 'Mac'. */
+  vpMacRecDeleted: string;
+  /** Note in the voiceprint panel after the owner chose to keep the enrolment recordings: they stay on his Mac. One short sentence; keep 'Mac'. */
+  vpMacRecKept: string;
   /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: the owner's Mac confirmed the line was spoken in his own voice. Short phrase, no full stop. */
   vpVerified: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
@@ -866,11 +920,38 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpSaving: "Saving…",
   vpSaved: "Voiceprint saved on your Mac.",
   vpDelete: "Delete my voiceprint",
-  vpDeleteConfirm: "Delete your voiceprint for every device, from your Mac and from your account? Your saved voice clips are not touched.",
+  vpDeleteConfirm: "Delete your voiceprint for every device, from your Mac and from your account? Your saved voice clips are not touched. Recordings are kept: you are asked about them next.",
   vpDeleteYes: "Delete",
   vpDeleted: "Voiceprint deleted.",
   vpFailed: "Voiceprint: something went wrong ({error})",
   vpClose: "Close",
+  vpTest: "Test my voiceprint",
+  vpTestIntro: "Say any sentence. Your Mac compares it with this device's voiceprint; nothing is recorded or sent.",
+  vpTestStarting: "Turning the mic on…",
+  vpTestMe: "Me",
+  vpTestOther: "Someone else",
+  vpTestUnknown: "Not sure",
+  vpTestNoMac: "Your Mac did not score this line.",
+  vpTestScore: "score {score} vs {device} ({model}) · {speech} s of speech · SNR {snr} dB",
+  vpTestLines: "Lines used: me at {me} or more, someone else under {other} (from {s} s of speech).",
+  vpTestGate: "Under {s} s of speech or {snr} dB SNR: always not sure.",
+  vpTestWhyShort: "too little speech",
+  vpTestWhyNoise: "too noisy",
+  vpTestWhyBetween: "between the two lines",
+  vpTestWhyNoPrint: "no voiceprint to compare with",
+  vpTestStopped: "“Only my voice” stopped this line.",
+  vpTestWould: "“Only my voice” would stop this line when on.",
+  vpTestTally: "So far: me {me} · someone else {other} · not sure {unknown}",
+  vpTestOthers: "Now let someone else say one sentence, to compare.",
+  vpTestFlag: "Switch it in /dev/flags",
+  vpTestDone: "Done",
+  vpGrant: "Face ID approved: voiceprint changes need no new prompt until {time}.",
+  vpGrantEnd: "End now",
+  vpMacRecOffer: "{n} recordings of your enrolment are still kept on your Mac. Delete them too?",
+  vpMacRecYes: "Delete them from the Mac",
+  vpMacRecKeep: "Keep them",
+  vpMacRecDeleted: "Recordings deleted from your Mac.",
+  vpMacRecKept: "The recordings stay on your Mac.",
   vpVerified: "Your voice, verified",
   vpFilterOn: "Only my voice: on. Speech that does not match is dropped on your Mac.",
   vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",

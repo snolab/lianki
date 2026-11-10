@@ -11,8 +11,14 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { createLocalStt } from "./local-stt";
-import { voiceprintTicket } from "./webauthn";
 import {
+  endVoiceprintWindow,
+  subscribeVoiceprintWindow,
+  voiceprintTicket,
+  voiceprintWindow,
+} from "./webauthn";
+import {
+  DEFAULT_BANDS,
   ENROL_MAX,
   ENROL_MIN,
   ENROL_SENTENCES,
@@ -23,6 +29,7 @@ import {
   type EnrolDeps,
   type EnrolView,
   type FilterInfo,
+  bandFor,
   createEnrolment,
   enrolBusy,
   filterFlag,
@@ -46,6 +53,11 @@ const pill = {
 } as const;
 /** The delete button and its confirmation: a warm red, never the main action's weight. */
 const DANGER = "oklch(0.58 0.2 27)";
+/** The test's decisions: a mark and a hue each, never colour alone (the label says it too). */
+const DECISION_HUE = { me: "oklch(0.56 0.15 150)", other: "oklch(0.58 0.14 60)", unknown: "inherit" } as const;
+const DECISION_MARK = { me: "✓", other: "✕", unknown: "?" } as const;
+/** The "only my voice" switch (docs/local-stt.md, "Only my voice: the filter"). */
+export const FILTER_FLAG_URL = "https://lianki.com/dev/flags#stt.voiceprint-filter";
 
 /**
  * The panel's page side, made when it opens: its own socket to the Mac for
@@ -56,6 +68,7 @@ export function panelDeps(o: {
   url: string;
   device: string;
   capture: EnrolDeps["capture"];
+  testCapture?: EnrolDeps["testCapture"];
   log?: (ev: Record<string, unknown>) => void;
 }): EnrolDeps & { close(): void } {
   const c = createLocalStt(o.url, { device: o.device, log: o.log });
@@ -68,8 +81,10 @@ export function panelDeps(o: {
       if (!u) return Promise.reject(new Error("local stt not connected"));
       return u.end(audio);
     },
-    ticket: (op, device, t) => voiceprintTicket(op, device, { keepAudio: t?.keepAudio }),
+    // client: the passkey window is bound to this device (webauthn.ts).
+    ticket: (op, device, t) => voiceprintTicket(op, device, { keepAudio: t?.keepAudio, client: o.device }),
     capture: o.capture,
+    ...(o.testCapture ? { testCapture: o.testCapture } : {}),
     filterInfo: async (state) => ({ flag: await filterFlag(), paused: filterPaused(), state, tally: readTally() }),
     cloud: cloudDeps(),
     log: o.log,
@@ -195,6 +210,15 @@ export function VoiceprintPanel({
     ctl.current = { c: createEnrolment(d, setView), d };
   }
   const { c, d } = ctl.current;
+  // The passkey window (webauthn.ts): shown while open, gone when it ends (one timer to its end, no polling).
+  const [, setTick] = useState(0);
+  const windowUntil = voiceprintWindow();
+  useEffect(() => subscribeVoiceprintWindow(() => setTick((n) => n + 1)), []);
+  useEffect(() => {
+    if (!windowUntil) return;
+    const h = setTimeout(() => setTick((n) => n + 1), Math.max(0, windowUntil - Date.now()) + 50);
+    return () => clearTimeout(h);
+  }, [windowUntil]);
   useEffect(() => {
     void c.open();
     // Closing the panel drops an enrolment under way (unsaved) and gives the mic back.
@@ -350,9 +374,21 @@ export function VoiceprintPanel({
           {view.cloud && cloudBlock(view.cloud, view.cloudOp, view.local && view.prints.length > 0, true)}
           {view.cloud && !view.prints.length && view.local && view.cloud.prints.length > 0 &&
             row(btn("debug-voiceprint-cloud-restore", t.vpCloudRestore, () => c.restoreFromAccount(), { primary: true, trusted: true }))}
+          {windowUntil && (
+            <div data-testid="debug-voiceprint-window" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+              {note(
+                t.vpGrant.replaceAll(
+                  "{time}",
+                  new Date(windowUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                ),
+              )}
+              {btn("debug-voiceprint-window-end", t.vpGrantEnd, () => endVoiceprintWindow())}
+            </div>
+          )}
           {row(
             <>
               {view.local && btn("debug-voiceprint-enrol", t.vpEnrol, () => c.enrol(), { primary: true, trusted: true })}
+              {view.local && d.testCapture && btn("debug-voiceprint-test", t.vpTest, () => void c.test(), { trusted: true })}
               {((view.local && view.prints.length > 0) || (view.cloud?.prints.length ?? 0) > 0) &&
                 btn("debug-voiceprint-delete", t.vpDelete, () => c.askDelete(), { danger: true, trusted: true })}
               {btn("debug-voiceprint-close", t.vpClose, close)}
@@ -464,10 +500,119 @@ export function VoiceprintPanel({
             </>
           )}
           {view.recordings?.state === "done" && note(t.vpRecDeleted, "debug-voiceprint-recordings-deleted")}
+          {/* The recordings kept on the Mac: their own question, kept unless he taps delete. */}
+          {view.mac && (view.mac.state === "offer" || view.mac.state === "busy") && (
+            <>
+              {note(t.vpMacRecOffer.replaceAll("{n}", String(view.mac.n)), "debug-voiceprint-mac-recordings-offer")}
+              {view.mac.error &&
+                note(t.vpFailed.replaceAll("{error}", view.mac.error), "debug-voiceprint-mac-recordings-error")}
+              {row(
+                <>
+                  {btn("debug-voiceprint-mac-recordings-keep", t.vpMacRecKeep, () => c.keepMacRecordings(), {
+                    primary: true,
+                    disabled: view.mac.state === "busy",
+                  })}
+                  {btn("debug-voiceprint-mac-recordings-delete", t.vpMacRecYes, () => void c.deleteMacRecordings(), {
+                    danger: true,
+                    trusted: true,
+                    disabled: view.mac.state === "busy",
+                  })}
+                </>,
+              )}
+            </>
+          )}
+          {view.mac?.state === "done" && note(t.vpMacRecDeleted, "debug-voiceprint-mac-recordings-deleted")}
+          {view.mac?.state === "kept" && note(t.vpMacRecKept, "debug-voiceprint-mac-recordings-kept")}
           {row(btn("debug-voiceprint-close", t.vpClose, close))}
         </>
       );
       break;
+    case "test": {
+      const word = { me: t.vpTestMe, other: t.vpTestOther, unknown: t.vpTestUnknown } as const;
+      const why: Record<string, string> = {
+        short: t.vpTestWhyShort,
+        noise: t.vpTestWhyNoise,
+        between: t.vpTestWhyBetween,
+        "no-print": t.vpTestWhyNoPrint,
+      };
+      const num = (x: number | undefined, d: number) => (typeof x === "number" ? x.toFixed(d) : "–");
+      const f = view.filter;
+      const filterOn = !!f && f.flag && !f.paused && f.state === "on";
+      body = (
+        <>
+          {note(t.vpTestIntro, "debug-voiceprint-test-intro")}
+          {!view.listening && !view.error && note(t.vpTestStarting)}
+          {view.error && note(t.vpFailed.replaceAll("{error}", view.error), "debug-voiceprint-error")}
+          {view.results.length > 0 && (
+            <ul data-testid="debug-voiceprint-test-results" style={{ margin: "8px 0 0", padding: 0, listStyle: "none", fontSize: "calc(12px * var(--lk-fs-k, 1))", fontVariantNumeric: "tabular-nums" }}>
+              {view.results.map((r, i) => {
+                const mb = r.model ? (view.bands ?? DEFAULT_BANDS)[r.model] : undefined;
+                const band = bandFor(mb, r.speechS);
+                return (
+                  <li
+                    key={view.tally.me + view.tally.other + view.tally.unknown - i}
+                    data-testid="debug-voiceprint-test-result"
+                    data-decision={r.decision}
+                    style={{ padding: "6px 0", borderTop: i ? `1px solid ${line(15)}` : undefined, opacity: i ? 0.7 : 1 }}
+                  >
+                    {r.decision === "unreachable" ? (
+                      t.vpTestNoMac
+                    ) : (
+                      <>
+                        <strong style={{ color: DECISION_HUE[r.decision], fontSize: "calc(14px * var(--lk-fs-k, 1))" }}>
+                          {DECISION_MARK[r.decision]} {word[r.decision]}
+                        </strong>
+                        {r.decision === "unknown" && r.reason && why[r.reason] && <span> · {why[r.reason]}</span>}
+                        <div>
+                          {t.vpTestScore
+                            .replaceAll("{score}", num(r.score, 3))
+                            .replaceAll("{device}", r.device ?? "–")
+                            .replaceAll("{model}", r.model ?? "–")
+                            .replaceAll("{speech}", num(r.speechS, 1))
+                            .replaceAll("{snr}", num(r.snrDb, 1))}
+                        </div>
+                        {mb && (
+                          <div style={{ opacity: 0.75 }} data-testid="debug-voiceprint-test-lines">
+                            {(band
+                              ? t.vpTestLines.replaceAll("{me}", band.me.toFixed(2)).replaceAll("{other}", band.other.toFixed(2)).replaceAll("{s}", String(band.minS))
+                              : ""
+                            ) +
+                              (band ? " " : "") +
+                              t.vpTestGate.replaceAll("{s}", String(mb.minSpeechS)).replaceAll("{snr}", String(mb.minSnrDb))}
+                          </div>
+                        )}
+                        {r.filtered && <div data-testid="debug-voiceprint-test-filter">{r.filtered === "stopped" ? t.vpTestStopped : t.vpTestWould}</div>}
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p data-testid="debug-voiceprint-test-tally" style={{ margin: "8px 0 0", fontSize: "calc(12px * var(--lk-fs-k, 1))", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+            {t.vpTestTally
+              .replaceAll("{me}", String(view.tally.me))
+              .replaceAll("{other}", String(view.tally.other))
+              .replaceAll("{unknown}", String(view.tally.unknown))}
+          </p>
+          {view.results.length > 0 && note(t.vpTestOthers, "debug-voiceprint-test-others")}
+          <div data-testid="debug-voiceprint-test-flag" data-state={filterOn ? "on" : (f?.state ?? "off")} style={{ marginTop: 10 }}>
+            {note(!f || !f.flag || f.paused ? t.vpFilterOff : filterOn ? t.vpFilterOn : t.vpFilterWaiting)}
+            <a
+              href={FILTER_FLAG_URL}
+              target="_blank"
+              rel="noopener"
+              className="pointer-events-auto"
+              style={{ fontSize: "calc(12px * var(--lk-fs-k, 1))", color: "inherit", textDecoration: "underline" }}
+            >
+              {t.vpTestFlag}
+            </a>
+          </div>
+          {row(btn("debug-voiceprint-test-done", t.vpTestDone, () => c.endTest(), { primary: true }))}
+        </>
+      );
+      break;
+    }
     case "error":
       body = (
         <>

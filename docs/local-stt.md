@@ -382,7 +382,10 @@ The voiceprint adds these (next section):
 | client | `{"t":"end","id":N,"textFrom":S}`                                               | text from sample S on (after "Linky"); the speaker hears it all |
 | client | `{"t":"enrol","op":"start","rid","device","ticket","keepAudio":false}`          | open an enrolment: needs an `enrol` ticket for that device (passkey) |
 | client | `{"t":"enrol","op":"commit"\|"cancel","rid","enrolment"}`                       | save it (10 sentences at least), or drop it                     |
-| client | `{"t":"voiceprint","op":"status"\|"delete","rid","ticket"[,"device":D\|"*"]}`   | what is enrolled (status ticket); delete (passkey ticket)       |
+| client | `{"t":"voiceprint","op":"status"\|"delete","rid","ticket"[,"device":D\|"*"]}`   | what is enrolled (status ticket); delete the print only (passkey ticket) |
+| client | `{"t":"voiceprint","op":"delete-audio","rid","device":D\|"*","ticket"}`         | delete only the kept enrolment recordings (its own passkey ticket) |
+| server | status answer + `"bands":{model:{minSpeechS,minSnrDb,bands:[{minS,me,other}]}}`, `"recordings":n` | the decision's thresholds (the test shows them); kept recordings |
+| server | delete answer + `"recordings":n`                                                | the kept recordings left on the Mac (the panel then asks)       |
 | client | `{"t":"voiceprint","op":"export","rid","device":D\|"*","ticket"}`               | the features, for his account (passkey ticket): `prints` back   |
 | client | `{"t":"voiceprint","op":"restore","rid","device":D\|"*","prints":[…],"ticket"}` | write prints read from his account (passkey ticket)             |
 | client | `{"t":"filter","on":bool}`                                                      | the voiceprint filter on this socket (off until said)           |
@@ -411,7 +414,7 @@ phone: mic (Silero VAD) ─ utterance ─▶ server.py ─┬─ SenseVoice deco
 
 **Enrolment.** The chat menu's **Voiceprint** (owner pages with
 `lk:agent-local-stt`) opens a panel over the bar (`VoiceprintPanel.tsx`,
-`voiceprint.ts`): what is enrolled per device, **Enrol this device**, and
+`voiceprint.ts`): what is enrolled per device, **Enrol this device**, **Test my voiceprint** (below), and
 **Delete my voiceprint**. Enrol shows the **consent card first**: he will read
 10–20 sentences; the Mac turns them into numbers that describe his voice,
 not a recording, kept on the Mac at `~/.config/lianki-stt/voiceprints`;
@@ -511,15 +514,24 @@ the audio) also go to his account when he saves them there ("Voiceprint in
 your account", below).
 
 **Delete.** In the panel: **Delete my voiceprint**, then a confirming tap;
-it deletes every device's print and any kept enrolment audio. On the Mac:
+it deletes every device's print. **It never deletes the kept enrolment
+recordings with it** (owner, 2026-11-11): the Mac answers how many it still
+keeps (`recordings`), and the panel then asks separately ("N recordings of
+your enrolment are still kept on your Mac. Delete them too?"). **Keep them**
+is the default and the first button; only **Delete them from the Mac** (one
+more tap, its own `delete-audio` passkey ticket, or the window below) removes
+them (`op:"delete-audio"`, `Store.delete_audio`). On the Mac:
 
 ```bash
 ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py list
-~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --device iphone   # or --all
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --device iphone   # or --all; the print only
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete-audio --all      # only the kept recordings
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --all --audio    # both
 ```
 
-The running server sees a CLI delete on the next final (it watches the
-folder's mtime). Neither touches `~/lianki-voice-clips`.
+`delete` says how many kept recordings are left. The running server sees a
+CLI delete on the next final (it watches the folder's mtime). None of these
+touches `~/lianki-voice-clips`.
 
 ### Voiceprint in your account
 
@@ -573,8 +585,9 @@ page → PUT /api/my/voiceprint {ticket, prints}              the same ticket, s
   at once (one more passkey prompt). If the browser refuses the prompt (no
   fresh tap) or the save fails, the "Save to my account" button stays there.
 - **Delete** ("Delete my voiceprint" and its confirming tap): one passkey
-  `delete` ticket for `*`; the Mac deletes its prints (and kept audio, as
-  before) and lianki.com deletes the account's rows. With the Mac away, the
+  `delete` ticket for `*`; the Mac deletes its prints (never its kept
+  recordings: those are asked about separately, "Delete" above) and
+  lianki.com deletes the account's rows. With the Mac away, the
   account's rows can still be deleted from the panel. His recordings in My
   Files are **not** deleted with it: the panel then asks separately ("Your N
   recordings are still in My Files → Voiceprint. Delete them too?"), and
@@ -713,6 +726,71 @@ model in that list with a print. ERes2NetV2's bands (0.34 / 0.25, ≥ 3 s:
 0.37 / 0.27) are #394's 1 % FA points and marked `provisional`; it needs a
 per-device enrolment (#394: it rejected 85–98 % of his Android clips
 against an iPhone enrolment).
+
+### One approval for ten minutes
+
+The owner's tap card (2026-11-11 01:28 JST): **one** passkey approval (Face
+ID / Touch ID) covers **all** voiceprint ops (enrol, save to account,
+restore, delete, delete the kept recordings, re-compute, export) for ten
+minutes. Config [`voiceprint.passkeyWindowMs`](https://lianki.com/dev/config)
+(default 600000; 0 = a prompt per op, as before; at most 30 min).
+
+```
+tap → options → Face ID → POST {…, step:"verify", client:"iphone"}
+     ← {ticket, grant, grantExp}     grant: {aud:"lianki-voiceprint-grant", uid, sid, client, gid, iat, exp = now + window}
+next op (no prompt) → POST {op, device, step:"grant", grant, client}
+     ← {ticket}                      the same ticket as before: aud, op, device, uv:true, uid, a fresh jti,
+                                     iat = now, exp = min(now + 60 s, grant exp)
+page → the Mac {…, ticket}           ticket.py: unchanged (aud, op, device, uv, keepAudio, once)
+```
+
+- **Bound** to the account (`uid` = the session's user), the sign-in session
+  (`sid`, a SHA-256 tag of the session id, never the id) and the page's device
+  slug (`client`). Another account, session or device: 401, and the page
+  asks for the passkey again. A sign-out ends the session, so the grant is
+  refused even if a copy survived.
+- **In page memory only** (`webauthn.ts`, a module variable, not
+  localStorage, sessionStorage or `globalThis`): a reload drops it. The panel
+  shows "Face ID approved: … until 14:05" with **End now**, which drops it.
+- **Each op still gets its own single-use ticket**, its own jti, at most 60 s
+  and never past the grant; within 5 s of the end the page asks for the
+  passkey instead. A shorter window set at /dev/config shortens grants
+  already out (the check is `iat + window`, read at each mint); 0 ends them.
+- **Never anything else.** The grant's audience is accepted only by the
+  `grant` step of `/api/dev/voiceprint-ticket`; it is not a challenge, not a
+  ticket, and no other step-up (payments, permissions, API tokens, sign-in)
+  reads it. `status` needs no passkey at all, as before.
+- **The trade-off** (also docs/security-measures.md, section 14): inside the
+  window, page code on that device and session (an eval, an injected script,
+  an extension) can get voiceprint tickets without his face, so it could
+  delete the print or the recordings, export or restore, or start an
+  enrolment that keeps audio (keepAudio comes from the consent card's switch,
+  no longer re-approved by Face ID inside the window). Ten minutes, one
+  device, one session, one account, and **End now**; the Mac still spends
+  each ticket once.
+- Tests: `unit/voiceprint-window.test.ts`.
+
+### Test my voiceprint
+
+Owner, 2026-11-11 01:03 JST. **Test my voiceprint** in the panel (dev
+permission, like the panel) routes the mic to the test: each utterance goes
+to the Mac as a plain final on the mic's socket (the `hello` names this
+device, so it is scored against this device's print), and only to the panel:
+never the draft, the cloud STT or the clip sink (the enrolment tap with no
+enrolment id, `enrolCapture(…, "", true)`). Nothing is stored: the Mac keeps
+no audio of a final, and the panel keeps only each line's verdict, in memory.
+
+Per line, at once: the decision (**Me** / **Someone else** / **Not sure** and
+why: too little speech, too noisy, between the two lines, no print), the
+CAM++ score, whose print it was scored against and the model, the speech
+seconds and SNR, and the thresholds used for that length (from the Mac's
+status answer `bands`, `voiceprint.bands_info`; the table in "Verification" above as the
+fallback). A running tally (me / someone else / not sure), and after the
+first line: "Now let someone else say one sentence, to compare." The state
+of the "only my voice" filter, with a link to
+[`stt.voiceprint-filter`](https://lianki.com/dev/flags#stt.voiceprint-filter),
+and per line whether the filter stopped it or would have. **Done** gives the
+mic back to the chat; closing the panel does too.
 
 ## Only my voice: the filter
 
@@ -1017,6 +1095,12 @@ this is owner-only.
   a short, noisy or unprinted one; holds partials; off is exactly as before.
   `unit/voiceprint.test.ts`, "the voiceprint filter on the page": a stopped
   final goes nowhere, the tally, the switch, every failure reading as off.
+- `unit/voiceprint-window.test.ts`: the passkey window (expiry, config
+  shortening, per-op single use, another account / session / device refused,
+  no grant → the prompt), the test mode, and the print delete keeping the
+  Mac's recordings until their own tap; `test_voiceprint.py`
+  `test_deleting_the_print_keeps_the_recordings` and
+  `test_delete_keeps_recordings_until_asked` on the Mac's side.
 - `unit/voiceprint.test.ts`: the page's side of the voiceprint: consent
   gating (nothing captured or started on the Mac before the tap), reading
   and its "again" reasons, save at 10 and by itself at 20, cancel, delete

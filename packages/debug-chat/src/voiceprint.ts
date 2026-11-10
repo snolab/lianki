@@ -295,8 +295,84 @@ export type EnrolView =
        * separate tap (never deleted with the voiceprint itself).
        */
       recordings?: { n: number; state: "offer" | "busy" | "done" | "failed"; error?: string };
+      /**
+       * The enrolment recordings kept on the Mac (`<device>.audio/`): never
+       * deleted with the print (owner, 2026-11-11). Offered by a separate
+       * question, kept unless he taps "delete them" (and the passkey, or the window).
+       */
+      mac?: { n: number; state: "offer" | "busy" | "done" | "kept" | "failed"; error?: string };
+    }
+  /** "Test my voiceprint": he speaks, the Mac scores it; nothing is kept. */
+  | {
+      step: "test";
+      /** The mic is routed to the test (false: starting, or the mic was refused). */
+      listening: boolean;
+      results: TestResult[];
+      tally: TestTally;
+      bands?: Record<string, ModelBands>;
+      filter?: FilterInfo;
+      error?: string;
     }
   | { step: "error"; error: string };
+
+/** The decision's thresholds for one model, as the Mac reports them (voiceprint.py bands_info). */
+export type ModelBands = {
+  minSpeechS: number;
+  minSnrDb: number;
+  bands: { minS: number; me: number; other: number }[];
+  provisional?: boolean;
+};
+/**
+ * The bands in docs/local-stt.md ("Verification"), for a Mac that does not
+ * report its own yet: the page never decides, it only shows what was used.
+ */
+export const DEFAULT_BANDS: Record<string, ModelBands> = {
+  campp: {
+    minSpeechS: 1.5,
+    minSnrDb: 10,
+    bands: [
+      { minS: 1.5, me: 0.28, other: 0.18 },
+      { minS: 3, me: 0.3, other: 0.2 },
+    ],
+  },
+};
+/** The band a final of `speechS` seconds was judged by (null: too short for any). */
+export function bandFor(b: ModelBands | undefined, speechS: number | undefined) {
+  if (!b || typeof speechS !== "number") return null;
+  let out: ModelBands["bands"][number] | null = null;
+  for (const x of b.bands) if (speechS >= x.minS) out = x;
+  return out;
+}
+export type TestTally = { me: number; other: number; unknown: number };
+/** One test line: the Mac's verdict on it (never its text or audio). */
+export type TestResult = {
+  decision: "me" | "other" | "unknown" | "unreachable";
+  score?: number;
+  model?: string;
+  device?: string;
+  reason?: string;
+  speechS?: number;
+  snrDb?: number;
+  /** The "only my voice" filter stopped it (on), or would have (off). */
+  filtered?: "stopped" | "would";
+};
+/** A final of the test as shown: the speaker tag, the filter's word; text and audio dropped. */
+export function testResult(f: LocalFinal | null): TestResult {
+  const s = f?.speaker;
+  if (!f || !s) return { decision: "unreachable" };
+  return {
+    decision: s.decision,
+    ...(typeof s.score === "number" ? { score: s.score } : {}),
+    ...(s.model ? { model: s.model } : {}),
+    ...(s.device ? { device: s.device } : {}),
+    ...(s.reason ? { reason: s.reason } : {}),
+    ...(typeof s.speechS === "number" ? { speechS: s.speechS } : {}),
+    ...(typeof s.snrDb === "number" ? { snrDb: s.snrDb } : {}),
+    ...(f.filtered ? { filtered: "stopped" as const } : f.wouldFilter ? { filtered: "would" as const } : {}),
+  };
+}
+/** How many test lines the panel keeps on screen (the tally counts them all). */
+export const TEST_SHOWN = 5;
 
 /** An enrolment under way: sentences being recorded or saved, lost if the page goes (lib/page-dirty.ts). */
 export const enrolBusy = (v: EnrolView) => v.step === "recording" || v.step === "saving";
@@ -443,10 +519,16 @@ export type EnrolDeps = {
    * passkey with Face ID / Touch ID (webauthn.ts). The Mac takes no op without one.
    */
   ticket(
-    op: "status" | "enrol" | "delete" | "export" | "restore",
+    op: "status" | "enrol" | "delete" | "delete-audio" | "export" | "restore",
     device: string,
     o?: { keepAudio?: boolean },
   ): Promise<string>;
+  /**
+   * "Test my voiceprint": on, each utterance goes to the Mac as a plain final
+   * (scored against this device's print) and only to `onFinal`: never the
+   * draft, the cloud or the clip sink, so nothing is kept; off, back to the chat.
+   */
+  testCapture?(on: boolean, onFinal: (f: Promise<LocalFinal> | null) => void): Promise<void> | void;
   /** This device's slug. */
   device: string;
   /**
@@ -477,6 +559,17 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
   let run = 0;
   /** The open enrolment's id on the Mac (from its start answer). */
   let eid = "";
+  /** The Mac's decision thresholds, from its last status answer (the test shows them). */
+  let bands: Record<string, ModelBands> = DEFAULT_BANDS;
+  /** The test mode holds the mic (testCapture on). */
+  let testing = false;
+  const stopTest = () => {
+    if (!testing) return;
+    testing = false;
+    try {
+      void d.testCapture?.(false, () => {});
+    } catch {}
+  };
   const cancelOnMac = () => {
     if (!eid) return;
     const id = eid;
@@ -709,6 +802,7 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
     /** The menu's "Voiceprint": what is enrolled. */
     async open() {
       const my = ++run;
+      stopTest();
       set({ step: "loading" });
       try {
         // A read-only owner ticket: the Mac answers nothing without one.
@@ -716,6 +810,10 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         const r = await d.request({ t: "voiceprint", op: "status", ticket });
         if (my !== run) return;
         const prints = Array.isArray(r.prints) ? (r.prints as PrintInfo[]) : [];
+        bands =
+          r.bands && typeof r.bands === "object" && !Array.isArray(r.bands)
+            ? (r.bands as Record<string, ModelBands>)
+            : DEFAULT_BANDS;
         // Never in the way of the rest of the panel.
         const filter = await d.filterInfo?.(String(r.filter ?? "off")).catch(() => undefined);
         if (my !== run) return;
@@ -827,15 +925,63 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
     save() {
       if (view.step === "recording" && view.kept >= ENROL_MIN) void save(run, view.kept);
     },
+    /**
+     * "Test my voiceprint" (a tap: the mic's gesture): each line he (or
+     * someone else) says is scored by the Mac against this device's print and
+     * shown here at once: the score, the decision and the thresholds behind it,
+     * the speech seconds and SNR, a running tally. Only the verdict is kept,
+     * in this panel's memory; the text and the audio go nowhere.
+     */
+    async test() {
+      if (view.step !== "status" || !view.local || !d.testCapture) return;
+      const filter = view.filter;
+      const my = ++run;
+      const tally: TestTally = { me: 0, other: 0, unknown: 0 };
+      set({ step: "test", listening: false, results: [], tally, bands, ...(filter ? { filter } : {}) });
+      const onFinal = async (p: Promise<LocalFinal> | null) => {
+        if (my !== run || view.step !== "test") return;
+        let f: LocalFinal | null = null;
+        try {
+          f = p ? await p : null;
+        } catch {
+          f = null;
+        }
+        if (my !== run || view.step !== "test") return;
+        const r = testResult(f);
+        const cur = view;
+        const t = { ...cur.tally };
+        if (r.decision !== "unreachable") t[r.decision]++;
+        d.log?.({ ev: "voiceprint-test", decision: r.decision, score: r.score, reason: r.reason });
+        set({ ...cur, results: [r, ...cur.results].slice(0, TEST_SHOWN), tally: t });
+      };
+      try {
+        testing = true;
+        await d.testCapture(true, onFinal);
+        const v = api.view(); // the view since (TS keeps the narrowing from above)
+        if (my === run && v.step === "test") set({ ...v, listening: true });
+      } catch (e) {
+        testing = false;
+        const v = api.view();
+        if (my === run && v.step === "test") set({ ...v, error: errText(e) });
+      }
+    },
+    /** "Done" in the test: the mic back to the chat, the status again. */
+    endTest() {
+      if (view.step !== "test") return;
+      stopTest();
+      void api.open();
+    },
     /** "Delete my voiceprint": asks once more. */
     askDelete() {
       if (view.step === "status")
         set({ step: "confirm-delete", local: view.local, ...(view.cloud ? { cloud: view.cloud } : {}) });
     },
     /**
-     * The confirming tap: every device's print and any kept audio on the Mac,
-     * and the copy in his account; never the voice clips. One passkey
-     * approval covers both (the Mac and lianki.com each spend the ticket once).
+     * The confirming tap: every device's print on the Mac and the copy in his
+     * account; never the voice clips, and never the recordings: those kept on
+     * the Mac and those in My Files are each asked about separately afterwards
+     * (owner, 2026-11-11). One passkey approval covers both halves (the Mac and
+     * lianki.com each spend the ticket once).
      */
     async confirmDelete() {
       if (view.step !== "confirm-delete") return;
@@ -846,11 +992,14 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         const ticket = await d.ticket("delete", "*");
         if (my !== run) return;
         let files = 0;
+        let macKept = 0;
         let macError: unknown = null;
         if (local !== false) {
           try {
             const r = ok(await d.request({ t: "voiceprint", op: "delete", device: "*", ticket }));
             files = typeof r.deleted === "number" ? r.deleted : 0;
+            // The recordings kept on the Mac stay; how many, for the separate question.
+            macKept = typeof r.recordings === "number" ? r.recordings : 0;
           } catch (e) {
             macError = e;
           }
@@ -874,16 +1023,44 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
           files,
           ...(cloudError ? { cloudError } : {}),
           ...(recs.length ? { recordings: { n: recs.length, state: "offer" as const } } : {}),
+          ...(macKept > 0 ? { mac: { n: macKept, state: "offer" as const } } : {}),
         });
       } catch (e) {
         if (my === run) fail(e);
       }
+    },
+    /**
+     * After the print is deleted: the separate question about the recordings
+     * kept on the Mac. Only this tap deletes them (its own delete-audio
+     * ticket: the passkey, or the window); the default is to keep them.
+     */
+    async deleteMacRecordings() {
+      if (view.step !== "deleted" || view.mac?.state !== "offer") return;
+      const my = run;
+      const base = view;
+      set({ ...base, mac: { ...base.mac!, state: "busy" } });
+      try {
+        const ticket = await d.ticket("delete-audio", "*");
+        const r = ok(await d.request({ t: "voiceprint", op: "delete-audio", device: "*", ticket }));
+        const n = typeof r.deleted === "number" ? r.deleted : 0;
+        d.log?.({ ev: "voiceprint-mac-recordings-deleted", n });
+        if (my === run && view.step === "deleted") set({ ...view, mac: { n, state: "done" } });
+      } catch (e) {
+        if (my === run && view.step === "deleted")
+          set({ ...view, mac: { ...base.mac!, state: "offer", error: errText(e) } });
+      }
+    },
+    /** "Keep them": the recordings stay on the Mac (the default); the question goes away. */
+    keepMacRecordings() {
+      if (view.step === "deleted" && view.mac?.state === "offer")
+        set({ ...view, mac: { n: view.mac.n, state: "kept" } });
     },
     /** Cancel, ✕, or a panel closing: an enrolment under way is dropped on the Mac, unsaved. */
     close() {
       const was = view.step;
       run++;
       if (was === "recording" || was === "saving") stopCapture();
+      stopTest();
       cancelOnMac();
       set({ step: "closed" });
     },
