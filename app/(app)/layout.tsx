@@ -23,6 +23,7 @@ import { readFlags } from "@/lib/flags-store";
 import { publicConfig } from "@/lib/config-store";
 import { PublicConfig } from "@/app/components/PublicConfig";
 import { isDev } from "@/lib/permissions";
+import { DEV_NAV_KEYS } from "@/lib/app-nav";
 import { booksMineOn, libraryOn } from "@/lib/books/gate";
 import { levelsOn } from "@/lib/level-progress";
 
@@ -57,6 +58,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (libraryOn(flags, owner)) navShown.push("library");
   // Today's goal (/today): `today.goal`, on by default, for everyone.
   if (flags?.["today.goal"]) navShown.push("today");
+  // The Lab group (/lab/**): developers only (lib/app-nav.ts `dev`).
+  if (owner) navShown.push(...DEV_NAV_KEYS);
   // The level chip by the avatar (docs/levels.md): signed in, D1, `levels` on or the owner.
   const levels = Boolean(user) && flags !== null && levelsOn(flags, owner);
   // The app-icon badge (docs/app-badge.md): signed in, D1, `pwa.app-badge` on, the owner only.

@@ -1,8 +1,47 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
 const membershipContent = {
   key: "membership-page",
   content: {
+    metadata: {
+      title: t({
+        en: "Membership - Lianki",
+        zh: "会员 - Lianki",
+        ja: "メンバーシップ - Lianki",
+        ko: "멤버십 - Lianki",
+        hi: "सदस्यता - Lianki",
+        es: "Membresía - Lianki",
+        fr: "Abonnement - Lianki",
+        ar: "العضوية - Lianki",
+        bn: "সদস্যপদ - Lianki",
+        pt: "Assinatura - Lianki",
+        ru: "Подписка - Lianki",
+        ur: "رکنیت - Lianki",
+        id: "Keanggotaan - Lianki",
+        de: "Mitgliedschaft - Lianki",
+        sw: "Uanachama - Lianki",
+        mr: "सदस्यत्व - Lianki",
+      }),
+      description: t({
+        en: "Your Lianki plan, what Pro adds, and how to get it.",
+        zh: "你的 Lianki 套餐、Pro 多了什么，以及如何获得。",
+        ja: "あなたの Lianki のプラン、Pro でできること、その入手方法。",
+        ko: "내 Lianki 요금제, Pro에서 더 쓸 수 있는 기능, 그리고 받는 방법.",
+        hi: "आपका Lianki प्लान, Pro में क्या ज़्यादा मिलता है, और उसे कैसे पाएँ।",
+        es: "Tu plan de Lianki, lo que añade Pro y cómo conseguirlo.",
+        fr: "Votre formule Lianki, ce qu'apporte Pro et comment l'obtenir.",
+        ar: "خطتك في Lianki، وما يضيفه Pro، وكيف تحصل عليه.",
+        bn: "আপনার Lianki প্ল্যান, Pro-তে কী বাড়তি পাওয়া যায়, আর কীভাবে পাবেন।",
+        pt: "Seu plano do Lianki, o que o Pro acrescenta e como obtê-lo.",
+        ru: "Ваш тариф Lianki, что даёт Pro и как его получить.",
+        ur: "آپ کا Lianki پلان، Pro میں کیا اضافی ملتا ہے، اور اسے کیسے حاصل کریں۔",
+        id: "Paket Lianki-mu, apa saja tambahan Pro, dan cara mendapatkannya.",
+        de: "Dein Lianki-Tarif, was Pro dazu bringt und wie du es bekommst.",
+        sw: "Mpango wako wa Lianki, Pro inaongeza nini, na jinsi ya kuipata.",
+        mr: "तुमचा Lianki प्लॅन, Pro मध्ये काय जास्त मिळते, आणि ते कसे मिळवायचे.",
+      }),
+    },
     backToHome: t({
       en: "← Back to Home",
       zh: "← 返回首页",
@@ -580,4 +619,67 @@ const membershipContent = {
   },
 } satisfies DeclarationContent;
 
-export default membershipContent;
+const M = "/membership page:";
+
+const context: KeyContext<typeof membershipContent.content> = {
+  metadata: {
+    title: `${M} browser tab title. The page name, then ' - Lianki' (product name, kept as is).`,
+    description: `${M} meta description for search results and link previews. One plain sentence; Lianki and Pro are names, kept as is.`,
+  },
+  backToHome: `${M} link at the top left that goes back to the card list. Keep the leading arrow '←'.`,
+  title: `${M} the page heading (h1): the user's paid plan and its options. One noun.`,
+  loading: `${M} shown in the middle of the page while the plan is being loaded. Progressive form with an ellipsis.`,
+  error: {
+    failedToLoad: `${M} shown instead of the page, or as a notice, when the user's plan could not be loaded. A short sentence; no error codes.`,
+  },
+  newUserBenefit: {
+    title: `${M} heading of the notice box telling that new accounts get a free 90-day Pro trial. Short heading.`,
+    description: `${M} body of the same notice: every new account gets Pro free for 90 days automatically. One or two sentences.`,
+  },
+  currentStatus: {
+    title: `${M} heading (h2) of the card showing which plan the user is on now. Short heading.`,
+    free: `${M} name of the free plan, shown as the user's current plan. One word.`,
+    trial: `${M} name of the plan during the free Pro trial, shown as the current plan. Short noun phrase; Pro kept as is.`,
+    pro: `${M} name of the paid Pro plan, shown as the current plan. 'Pro' is a plan name, normally kept as is.`,
+    trialExpires: `${M} label before the date the free trial ends ('Trial expires: 2026-12-01'). Keep the colon style of the language.`,
+    activeUntil: `${M} label before the date paid Pro time ends ('Active until: 2027-01-01'). Keep the colon style of the language.`,
+    trialExpired: `${M} note shown once the free trial is over: the user is now on the free plan. One sentence.`,
+  },
+  features: {
+    free: {
+      basicSpacedRepetition: `${M} item in the Free plan's feature list: reviewing cards on a spaced repetition schedule. Short noun phrase.`,
+      unlimitedCards: `${M} item in the Free plan's feature list: no limit on the number of cards. Short noun phrase.`,
+      videoSpeedControl: `${M} item in the Free plan's feature list: changing the playback speed of videos. Short noun phrase.`,
+      noPolyglot: `${M} item in the Free plan's feature list, marked as missing: Polyglot and the AI features are not included. Polyglot is a feature name, kept as is.`,
+    },
+    pro: {
+      allFreeFeatures: `${M} first item in the Pro plan's feature list: everything in Free is included. Short noun phrase.`,
+      polyglotLearning: `${M} item in the Pro plan's feature list: the Polyglot many-language learning feature. Polyglot kept as is.`,
+      aiTranslations: `${M} item in the Pro plan's feature list: translations written by AI. Short noun phrase.`,
+      textToSpeech: `${M} item in the Pro plan's feature list: text read aloud by a synthetic voice. Short noun phrase.`,
+      contactUs: `${M} line under the Pro plan when passes are not on sale: asks the user to get in touch to upgrade. Short imperative phrase.`,
+    },
+    buy: {
+      oneMonth: `${M} duration on the button buying a 1-month Pro pass, followed by its price. Duration only.`,
+      twelveMonths: `${M} duration on the button buying a 12-month Pro pass, followed by its price. Duration only.`,
+      methods: `${M} small line under the buy buttons: a one-time payment, the accepted payment methods, no automatic renewal. Keep the brand names (Alipay, WeChat Pay) as the language writes them.`,
+      paid: `${M} green notice after returning from a successful payment: the Pro time appears shortly. One sentence.`,
+      failed: `${M} error notice when the checkout page could not be opened. Short sentence asking to try again.`,
+      tooMany: `${M} error notice when checkout was tried too often: wait 10 minutes. Short sentence.`,
+      captcha: `${M} error notice when the human check (Turnstile) before checkout was not passed. Asks to complete it and retry.`,
+    },
+    sponsor: {
+      link: `${M} link to the project's GitHub Sponsors page. Imperative phrase; GitHub kept as is.`,
+      note: `${M} small note under the sponsor link: a monthly sponsorship of $5 or more gives Pro while it lasts, when signing in with the same GitHub account. Keep $5, Pro, GitHub and Lianki as is.`,
+    },
+  },
+};
+
+export default {
+  ...membershipContent,
+  title: "/membership — plan, Pro passes, sponsorship",
+  description: describeKeys(
+    "The /membership page: the user's current plan (Free, Pro trial, Pro), what each plan includes, buying a Pro pass, and GitHub sponsorship. Lianki, Pro, Polyglot and GitHub are names, kept as is.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

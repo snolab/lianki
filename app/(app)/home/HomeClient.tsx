@@ -20,10 +20,13 @@ import { FeatureCard } from "./FeatureCard";
 export default function HomeClient({
   isLoggedIn: serverSignedIn,
   todayGoal = false,
+  dev = false,
 }: {
   isLoggedIn: boolean;
   /** `today.goal`: a link to /today beside Continue. */
   todayGoal?: boolean;
+  /** Holds `dev`: the Lab experiments (lib/app-nav.ts `dev`) are shown too. */
+  dev?: boolean;
 }) {
   // On a box, from lianki.com (BoxApiBridge); else the server's answer.
   const isLoggedIn = useSignedIn(serverSignedIn);
@@ -107,7 +110,7 @@ export default function HomeClient({
       <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.explore}</h2>
         <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {HOME_EXPLORE.map((k) => (
+          {HOME_EXPLORE.filter((k) => dev || !item(k).dev).map((k) => (
             <li key={k}>
               <FeatureCard
                 featureKey={k}

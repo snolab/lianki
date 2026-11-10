@@ -19,7 +19,8 @@ interface HeaderProps {
   blogLabel: string;
   learnLabel: string;
   importLabel: string;
-  aiVocabLabel: string;
+  /** Unused: AI vocab is a Lab page, developers only (app/(app)/lab/layout.tsx). */
+  aiVocabLabel?: string;
   signInLabel: string;
   dashboardLabel: string;
   profileLabel: string;
@@ -40,7 +41,6 @@ export function Header({
   blogLabel,
   learnLabel,
   importLabel,
-  aiVocabLabel,
   signInLabel,
   dashboardLabel,
   profileLabel,
@@ -77,11 +77,6 @@ export function Header({
           {/* Import Button */}
           <Link href="/import" className="text-base md:text-lg font-medium hover:underline">
             {importLabel}
-          </Link>
-
-          {/* AI Vocab Button */}
-          <Link href="/lab/ai-vocab" className="text-base md:text-lg font-medium hover:underline">
-            {aiVocabLabel}
           </Link>
 
           {/* Roadmap Button */}
