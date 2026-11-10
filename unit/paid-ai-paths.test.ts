@@ -22,7 +22,7 @@ import { textUsd } from "@/lib/payments/prices";
 
 /**
  * Each paid model path of the reader and self-intro, against a real wallet:
- * charged; not enough → refused before the model; an admin free; the user's
+ * charged; not enough → refused before the model; an admin pays like anyone; the user's
  * own AI (BYOK) never reaches our model; a failed call refunded.
  */
 let d1: TestD1Database;
@@ -96,17 +96,30 @@ describe("the reader's word meanings (read.gloss)", () => {
     expect(reasons()).toEqual([]);
   });
 
-  it("an admin is free: no hold even with no credits", async () => {
-    setPermissionSnapshot([{ email: "boss@x.com", permission: "admin" }], Date.now());
-    const ai: GlossAi = {
+  it("an admin or dev holder pays like anyone: refused with no credits, charged with them", async () => {
+    setPermissionSnapshot(
+      [
+        { email: "boss@x.com", permission: "admin" },
+        { email: "boss@x.com", permission: "dev" },
+      ],
+      Date.now(),
+    );
+    const boss = (): GlossAi => ({
       userId: "u9",
       email: "boss@x.com",
       db: db(),
       complete: answer('{"boa": "b"}'),
-    };
-    const [x] = await fillGlosses(d1, book, [{ w: "boa" }], ai);
+    });
+    const refused = boss();
+    const [none] = await fillGlosses(d1, book, [{ w: "boa" }], refused);
+    expect(none.back ?? null).toBeNull();
+    expect(calls).toBe(0);
+    expect(refused.refused).toEqual({ balance: 0, need: 1 });
+    d1.raw().exec("INSERT INTO credit_balance (userId, balance, updatedAt) VALUES ('u9', 5, 'x')");
+    const [x] = await fillGlosses(d1, book, [{ w: "boa" }], boss());
     expect(x.back).toBe("b");
-    expect(reasons()).toEqual([]);
+    expect(reasons()[0]).toBe("ai:read.gloss");
+    expect(await getBalance(db(), "u9")).toBeLessThanOrEqual(5);
   });
 
   it("the model fails: the hold comes back in full", async () => {

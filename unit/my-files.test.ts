@@ -412,7 +412,7 @@ describe("/self-intro reads the user's stored files", () => {
 
   test("GET: may this user start (credits for the smallest hold)?", async () => {
     const need = reserveCredits(minImportHoldUsd());
-    expect(await (await handleImportQuota(base({ admin: () => true }))).json()).toEqual({
+    expect(await (await handleImportQuota(base())).json()).toEqual({
       on: true,
       available: true,
       need,
