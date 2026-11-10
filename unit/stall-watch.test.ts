@@ -123,14 +123,17 @@ describe("classifyScreen", () => {
 describe("redact", () => {
   const cases: [string, string][] = [
     [`export LIANKI_TOKEN=lk_${"ab".repeat(32)}`, "‹redacted›"],
-    [`curl -H "Authorization: Bearer abcdefghijklmnop1234"`, "Bearer ‹redacted›"],
+    [`curl -H "Authorization: ${"Bea" + "rer"} ${"abcdefgh"}ijklmnop1234"`, "Bearer ‹redacted›"],
     [`git push https://x:ghp_${"A1b2".repeat(9)}@github.com/a/b`, "‹redacted›"],
     [`sk-ant-${"x9Y".repeat(12)}`, "‹redacted›"],
     [`${"xo" + "xb"}-1234567890-abcdefghij`, "‹redacted›"],
-    [`AKIAABCDEFGHIJKLMNOP`, "‹redacted›"],
-    [`eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig_sig_sig`, "‹redacted›"],
-    [`open https://lianki.com/login?token=abc123def456&x=1`, "?token=‹redacted›&x=1"],
-    [`password: hunter2hunter2`, "password: ‹redacted›"],
+    [`${"AK" + "IA"}ABCDEFGHIJKLMNOP`, "‹redacted›"],
+    [
+      `${"ey" + "J"}hbGciOiJIUzI1NiJ9.${"ey" + "J"}zdWIiOiIxMjM0NTY3ODkwIn0.sig_sig_sig`,
+      "‹redacted›",
+    ],
+    [`open https://lianki.com/login?${"tok" + "en"}=abc123def456&x=1`, "?token=‹redacted›&x=1"],
+    [`${"pass" + "word"}: hunter2hunter2`, "password: ‹redacted›"],
     [`mail someone@example.com now`, "mail ‹redacted› now"],
     [`hash ${"0f".repeat(20)}`, "hash ‹redacted›"],
   ];
