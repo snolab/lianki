@@ -196,6 +196,7 @@ export const SUITES = [
       "app/(app)/reader/ReadListClient.tsx",
       "app/api/read/route.ts",
       "app/(app)/list/**",
+      "app/(app)/data/**",
       "app/lib/notesAdmin.ts",
     ],
     sensitive: true,
