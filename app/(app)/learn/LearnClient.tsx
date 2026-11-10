@@ -10,6 +10,39 @@ interface LearnClientProps {
 
 type ImportSource = "recommended" | "url" | "youtube";
 
+/** A key of learn-page `errors`. */
+type ErrorKey =
+  | "pleaseEnterUrl"
+  | "failedToFetchUrlList"
+  | "noValidUrlsFound"
+  | "failedToImportFromUrl"
+  | "pleaseEnterYoutubeUrl"
+  | "invalidYoutubeUrl"
+  | "failedToImportYoutubePlaylist"
+  | "failedToImportFromYoutube"
+  | "failedToImportUrls"
+  | "signInRequired"
+  | "playlistEmpty"
+  | "youtubeUnavailable"
+  | "youtubeNotAnswering";
+
+/** A failure whose meaning is known, shown as its translated line. Anything else gets the generic one. */
+class LearnError extends Error {
+  constructor(readonly key: ErrorKey) {
+    super(key);
+  }
+}
+
+/** /api/import/youtube's error codes → learn-page `errors` keys; an unknown code → the generic line. */
+const YOUTUBE_ERRORS: Record<string, ErrorKey> = {
+  "login-required": "signInRequired",
+  "playlist-id-required": "invalidYoutubeUrl",
+  "invalid-playlist-id": "invalidYoutubeUrl",
+  "no-videos": "playlistEmpty",
+  "not-configured": "youtubeUnavailable",
+  "youtube-failed": "youtubeNotAnswering",
+};
+
 interface RecommendedList {
   id: string;
   title: string;
@@ -48,6 +81,11 @@ export default function LearnClient({ locale }: LearnClientProps) {
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  /** The translated line for a failure; the raw error goes to the console only. */
+  const errorText = (err: unknown, fallback: ErrorKey) => {
+    if (!(err instanceof LearnError)) console.warn("[learn] import failed", err);
+    return t.errors[err instanceof LearnError ? err.key : fallback].value;
+  };
   const [youtubeAvailable, setYoutubeAvailable] = useState(false);
 
   // Check if YouTube API is available
@@ -81,8 +119,14 @@ export default function LearnClient({ locale }: LearnClientProps) {
 
     try {
       // Fetch the .txt file
-      const response = await fetch(customUrl);
-      if (!response.ok) throw new Error(t.errors.failedToFetchUrlList.value);
+      const response = await fetch(customUrl).catch((e: unknown) => {
+        console.warn("[learn] could not fetch the URL list", e);
+        throw new LearnError("failedToFetchUrlList");
+      });
+      if (!response.ok) {
+        console.warn("[learn] URL list answered", response.status);
+        throw new LearnError("failedToFetchUrlList");
+      }
 
       const text = await response.text();
       const urls = text
@@ -91,15 +135,15 @@ export default function LearnClient({ locale }: LearnClientProps) {
         .filter((line) => line && (line.startsWith("http://") || line.startsWith("https://")));
 
       if (urls.length === 0) {
-        throw new Error(t.errors.noValidUrlsFound.value);
+        throw new LearnError("noValidUrlsFound");
       }
 
       // Import URLs into the system
       await importUrls(urls);
       setMessage({ type: "success", text: fill(t.success.importedUrls.value, urls.length) });
       setCustomUrl("");
-    } catch (error: any) {
-      setMessage({ type: "error", text: error.message || t.errors.failedToImportFromUrl.value });
+    } catch (error) {
+      setMessage({ type: "error", text: errorText(error, "failedToImportFromUrl") });
     } finally {
       setLoading(false);
     }
@@ -120,7 +164,7 @@ export default function LearnClient({ locale }: LearnClientProps) {
         youtubeUrl.match(/[&?]list=([^&]+)/) || youtubeUrl.match(/playlist\?list=([^&]+)/);
 
       if (!playlistIdMatch) {
-        throw new Error(t.errors.invalidYoutubeUrl.value);
+        throw new LearnError("invalidYoutubeUrl");
       }
 
       const playlistId = playlistIdMatch[1];
@@ -133,8 +177,11 @@ export default function LearnClient({ locale }: LearnClientProps) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || t.errors.failedToImportYoutubePlaylist.value);
+        const body = await response.json().catch(() => null);
+        console.warn("[learn] youtube import failed", response.status, body);
+        throw new LearnError(
+          YOUTUBE_ERRORS[String(body?.error)] ?? "failedToImportYoutubePlaylist",
+        );
       }
 
       const data = await response.json();
@@ -143,11 +190,8 @@ export default function LearnClient({ locale }: LearnClientProps) {
         text: fill(t.success.importedVideos.value, data.count),
       });
       setYoutubeUrl("");
-    } catch (error: any) {
-      setMessage({
-        type: "error",
-        text: error.message || t.errors.failedToImportFromYoutube.value,
-      });
+    } catch (error) {
+      setMessage({ type: "error", text: errorText(error, "failedToImportFromYoutube") });
     } finally {
       setLoading(false);
     }
@@ -169,8 +213,12 @@ export default function LearnClient({ locale }: LearnClientProps) {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || t.errors.failedToImportUrls.value);
+      console.warn(
+        "[learn] batch-add failed",
+        response.status,
+        await response.text().catch(() => ""),
+      );
+      throw new LearnError(response.status === 401 ? "signInRequired" : "failedToImportUrls");
     }
 
     return response.json();

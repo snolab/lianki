@@ -63,6 +63,42 @@ const dictionary = {
       mr: "मुख्यपृष्ठावर परत",
       ko: "홈으로 돌아가기",
     }),
+    callbackFailed: t({
+      en: "Signing in didn't finish. Please try again.",
+      zh: "登录没有完成，请再试一次。",
+      hi: "साइन इन पूरा नहीं हुआ। कृपया फिर से कोशिश करें।",
+      es: "No se completó el inicio de sesión. Inténtalo de nuevo.",
+      fr: "La connexion n’a pas abouti. Veuillez réessayer.",
+      ar: "لم يكتمل تسجيل الدخول. يُرجى المحاولة مرة أخرى.",
+      bn: "সাইন ইন শেষ হয়নি। অনুগ্রহ করে আবার চেষ্টা করুন।",
+      pt: "O login não foi concluído. Tente novamente.",
+      ru: "Вход не завершился. Попробуйте ещё раз.",
+      ur: "سائن اِن مکمل نہیں ہوا۔ براہِ کرم دوبارہ کوشش کریں۔",
+      id: "Proses masuk tidak selesai. Silakan coba lagi.",
+      de: "Die Anmeldung wurde nicht abgeschlossen. Bitte versuch es noch einmal.",
+      ja: "ログインが完了しませんでした。もう一度お試しください。",
+      sw: "Kuingia hakukukamilika. Tafadhali jaribu tena.",
+      mr: "साइन इन पूर्ण झाले नाही. कृपया पुन्हा प्रयत्न करा.",
+      ko: "로그인이 완료되지 않았습니다. 다시 시도해 주세요.",
+    }),
+    signInAgain: t({
+      en: "Sign in again",
+      zh: "重新登录",
+      hi: "फिर से साइन इन करें",
+      es: "Volver a iniciar sesión",
+      fr: "Se reconnecter",
+      ar: "تسجيل الدخول مرة أخرى",
+      bn: "আবার সাইন ইন করুন",
+      pt: "Entrar novamente",
+      ru: "Войти снова",
+      ur: "دوبارہ سائن اِن کریں",
+      id: "Masuk lagi",
+      de: "Erneut anmelden",
+      ja: "もう一度ログイン",
+      sw: "Ingia tena",
+      mr: "पुन्हा साइन इन करा",
+      ko: "다시 로그인",
+    }),
   },
 };
 
@@ -72,14 +108,18 @@ const context: Record<keyof typeof dictionary.content, string> = {
   openOnLianki:
     "Link button under that message: opens the same app on the main site lianki.com, where the page works signed in. Keep lianki.com as is.",
   backHome:
-    "Second link button under that message: goes to the app's home page on this box, which does work signed in.",
+    "Second link button under that message: goes to the app's home page on this box, which does work signed in. Also shown under callbackFailed.",
+  callbackFailed:
+    "Message on a box's sign-in return page (after lianki.com sent the browser back) when finishing the sign-in failed, e.g. an expired code or no network. No technical detail. Calm, two short sentences.",
+  signInAgain:
+    "Link button under callbackFailed on a box's sign-in return page: starts signing in again. Imperative phrase.",
 };
 
 export default {
   ...dictionary,
   title: "A box's sign-in page when already signed in",
   description: describeKeys(
-    "Shown only on a developer's box (its own copy of Lianki that signs in through lianki.com) when a server-drawn page asks for sign-in the box already has.",
+    "Shown only on a developer's box (its own copy of Lianki that signs in through lianki.com): when a server-drawn page asks for sign-in the box already has, and when finishing a sign-in on the return page failed.",
     context,
   ),
 } satisfies DeclarationContent;

@@ -32,6 +32,7 @@ import devUsers from "@/app/(app)/dev/users/users.content";
 import devPregrant from "@/app/(app)/dev/users/pregrant.content";
 import textSize from "@/app/components/text-size.content";
 import boxSignIn from "@/app/(app)/sign-in/box-sign-in.content";
+import blogPage from "@/app/[locale]/blog/page.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
 import emailInvite from "@/app/(app)/membership/email-invite.content";
@@ -133,6 +134,7 @@ describe.each([
   ["my-page", myPage],
   ["landing-page", landing],
   ["learn-page", learn],
+  ["blog-page", blogPage],
   ["polyglot-page", polyglot],
   ["self-intro-page", selfIntro],
   ["words-import", wordsImport],

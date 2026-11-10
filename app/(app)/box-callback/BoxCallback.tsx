@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useIntlayer } from "next-intlayer";
 import {
   boxSignInBack,
   finishBoxSignIn,
@@ -11,15 +12,18 @@ import { adoptAccountLocale } from "@/lib/box-oauth/locale";
 
 /** Trades the one-time code once, removes it from the URL, and goes to the app. */
 export default function BoxCallback({ config }: { config: BoxConfig }) {
-  const [error, setError] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const t = useIntlayer("box-sign-in");
   const once = useRef(false);
   useEffect(() => {
     if (once.current) return;
     once.current = true;
     // A failed sign-in leaves no stale cookie behind to start it again (BoxApiBridge).
+    // The reason code is for the console only; the user reads one translated line.
     const fail = (e: string) => {
+      console.warn("[box-callback] sign-in failed:", e);
       forgetBoxTokens();
-      setError(e);
+      setFailed(true);
     };
     const search = new URLSearchParams(location.search);
     history.replaceState(null, "", location.pathname);
@@ -38,6 +42,19 @@ export default function BoxCallback({ config }: { config: BoxConfig }) {
       })
       .catch(() => fail("network"));
   }, [config]);
-  if (error) return <code className="m-8 block">{error}</code>;
+  if (failed)
+    return (
+      <div className="m-8 max-w-md flex flex-col gap-4" role="alert" data-box-callback-failed>
+        <p>{t.callbackFailed}</p>
+        <div className="flex gap-3 flex-wrap">
+          <a className="btn btn-primary" href="/sign-in">
+            {t.signInAgain}
+          </a>
+          <a className="btn" href="/home">
+            {t.backHome}
+          </a>
+        </div>
+      </div>
+    );
   return <span className="loading loading-spinner m-8" aria-busy="true" />;
 }
