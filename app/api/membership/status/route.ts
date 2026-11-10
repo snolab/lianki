@@ -1,3 +1,4 @@
+import { logSanitizedError } from "@/lib/safeError";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
@@ -9,7 +10,7 @@ import { settleUserSponsorships } from "@/lib/payments/sponsors-store";
 export async function GET() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
 
   // An invitee reading their status is when their inviter's reward is checked.
@@ -34,8 +35,9 @@ export async function GET() {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message === "User not found") {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json({ error: "user-not-found" }, { status: 404 });
     }
-    return NextResponse.json({ error: message }, { status: 500 });
+    logSanitizedError("membership.status", error);
+    return NextResponse.json({ error: "failed" }, { status: 500 });
   }
 }

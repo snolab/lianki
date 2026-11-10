@@ -670,7 +670,7 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
       const prints = (Array.isArray(r.prints) ? (r.prints as Record<string, unknown>[]) : []).map(
         featuresOnly,
       );
-      if (!prints.length) throw new Error("nothing on the Mac to save");
+      if (!prints.length) throw new Error("nothing on the speech server to save");
       const n = await cl.put(ticket, prints);
       d.log?.({ ev: "voiceprint-cloud-saved", n });
       const files = await uploadRecordings(
@@ -712,7 +712,7 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
   const macExtractor: FeatureExtractor = {
     id: "mac",
     async extract(device, clips) {
-      if (!d.utter) throw new Error("the Mac cannot take recordings here");
+      if (!d.utter) throw new Error("the speech server cannot take recordings here");
       const ticket = await d.ticket("enrol", device, { keepAudio: false });
       const st = ok(
         await d.request({ t: "enrol", op: "start", device, consent: true, keepAudio: false, ticket }),

@@ -62,6 +62,7 @@ async function LoggedInView({
   latestVersion: string;
 }) {
   const { nextCard, totalCards, dueCards, learningActivity } = getIntlayer("list-page", locale);
+  const ui = getIntlayer("list-ui", locale);
 
   return (
     <div className="flex flex-col">
@@ -79,14 +80,14 @@ async function LoggedInView({
             >
               {nextCard}
             </a>
-            <UserscriptInstallButton locale={locale} latestVersion={latestVersion} />
+            <UserscriptInstallButton latestVersion={latestVersion} />
             {/* Export moved to /data, alongside import, bulk delete and the
                 three-store overview, so backup lives in one place. */}
             <a
               href="/data"
               className="border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium py-3 px-6 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
             >
-              Manage data
+              {ui.manageData}
             </a>
           </div>
           <div className="mb-6">
@@ -181,7 +182,7 @@ function GuestView({ locale, latestVersion }: { locale: string; latestVersion: s
             >
               {nextCard}
             </a>
-            <UserscriptInstallButton locale={locale} latestVersion={latestVersion} />
+            <UserscriptInstallButton latestVersion={latestVersion} />
           </div>
 
           <GuestListClient />

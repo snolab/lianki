@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { getKey } from "@lianki/debug-chat/storage-keys";
 import { pageBuildId } from "@/lib/build-id";
 import { pageIsDirty, reloadDecision, whenClean } from "@/lib/page-dirty";
+import { versionNoticeStrings } from "./version-notice-strings";
 import { onLivePage } from "@/lib/live-view/live-page";
 import { type VersionNews, parseNews, refreshDecision } from "@/lib/smart-refresh";
 
@@ -164,14 +165,17 @@ export function VersionNotice({ pathname }: { pathname: string }) {
   }, []);
 
   if (!stale) return null;
-  const zh = typeof document !== "undefined" && document.documentElement.lang.startsWith("zh");
+  // Mounted outside the Intlayer client provider: the page's lang picks the words.
+  const words = versionNoticeStrings(
+    typeof document !== "undefined" ? document.documentElement.lang : undefined,
+  );
   return (
     <button
       data-testid="new-version"
       onClick={() => window.location.reload()}
       className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[calc(1rem+env(safe-area-inset-right))] z-[var(--lk-z-notice)] rounded-full bg-primary px-4 py-2 text-sm text-on-primary shadow-lg hover:bg-blue-700"
     >
-      {zh ? "有新版本 · 刷新" : "New version · Refresh"}
+      {words.refresh}
     </button>
   );
 }

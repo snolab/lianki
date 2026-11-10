@@ -11,8 +11,7 @@ import { WordsD1Repo } from "@/lib/repos/wordsD1";
  */
 export async function wordsRepo(): Promise<WordsD1Repo | NextResponse> {
   const user = await authUserOrNull();
-  if (!user?.email) return NextResponse.json({ error: "Login required" }, { status: 401 });
-  if (dbBackend() !== "d1")
-    return NextResponse.json({ error: "Word lists need the D1 backend" }, { status: 503 });
+  if (!user?.email) return NextResponse.json({ error: "login-required" }, { status: 401 });
+  if (dbBackend() !== "d1") return NextResponse.json({ error: "unavailable" }, { status: 503 });
   return new WordsD1Repo(getD1(), user.email);
 }

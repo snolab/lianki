@@ -56,7 +56,8 @@ stay on the folded row, because they say why the switch does nothing.
   switch for something already live is a flag that is **on by default**.
 - **Defaults are OFF**, but for such a flag (`default: true` in
   `lib/flags.ts`; today `stt.polish`, and `today.goal`, `words.onboarding` and
-  `words.pinch-card-height`, which the owner shipped on for everyone on 2026-11-10).
+  `words.pinch-card-height`, which the owner shipped on for everyone on 2026-11-10,
+  and `words.shatter`, on for `dev` holders).
   A key with no stored row reads as
   its default; a stored row always wins, either way. `closedFlags()` is what an
   unreadable store gives.
@@ -117,6 +118,7 @@ stay on the folded row, because they say why the switch does nothing.
 | `import.any`           | every signed-in user gets /import → "Import a word list" and the Import button on /words: presets, or a .txt/.csv/.tsv/Excel file or paste → preview (new / already have / skipped) → a new /words list; free, no credits (off: the owner only, `importAnyOn`) — [import-material.md](import-material.md) |
 | `words.import-ai`      | on: every signed-in user whose credits cover the smallest hold gets **Words with AI** on each stored file in the /words Import panel ("Any file"): the server reads the file, DeepSeek writes the word-list CSV template, then the CSV import's own preview and add, paid from their credits (hold, settle, refund). Off: holders of the `dev` permission only (`isDev`, a per-account grant), likewise with credits — [import-material.md](import-material.md) |
 | `voice.li-hub`         | on the owner's pages (debug mode), Li's sound hub logs who holds the mic and who plays (`audio-owner`, `audio-conflict`); observes only, changes no sound (off: nothing runs) — [li-sound-hub.md](li-sound-hub.md) |
+| `words.shatter`        | **on by default** (`audience: "owner"`, `isDev`): on /words a slip whose countdown ended and reads "↓ back" (locked, lib/words/requeue.ts) shows cracked glass under its text, cracking once if it ends on screen; the same cracks per card (off: nobody, the owner included) — [words-session-spec.md](words-session-spec.md), "Locked slips crack" |
 | `pwa.app-badge`        | the owner (`audience: "owner"`, `isDev`) gets the number on the installed app's icon (open Li asks + due cards, per the synced `notify.badge`) and its row in Settings → Notifications; nobody else (off: nobody, the owner included; a page clears any leftover badge) — [app-badge.md](app-badge.md) |
 | `ext.pill-chat`        | the userscript's pill gets a **Li** button on every site: a per-site trust prompt first (default deny), then Li in the lianki.com frame; sites list in the manager's menu. First slice reuses the owner's partner ticket, so on means the owner only (`audience: "owner"`); off: no Li button anywhere, and an open attempt is refused — [userscript-li-chat.md](userscript-li-chat.md) |
 | `membership.email-invite` | every Pro user gets "Invite by email" in the invite card on /membership: one friend's address → a mail with their own /i/CODE link in their account language; daily and per-address limits, unsubscribe / report, no address stored (off: admins only) — [payments.md](payments.md), "Invite by email" |

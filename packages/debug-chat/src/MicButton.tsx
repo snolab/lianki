@@ -1,5 +1,6 @@
 "use client";
 
+import { chatExtra } from "./chat-ui-locales";
 import { type Adaptive, LIMIT, voiceAdapt } from "./adaptive";
 import { VOICE_CAPTURE_EVENT, voiceTune } from "./voice-tune";
 import { useEffect, useRef, useState } from "react";
@@ -831,6 +832,7 @@ export function DebugMic({
   /** On, but only waiting for "Linky" (the agent never hears what is said meanwhile). */
   const passive = state !== "off" && view.wake === "passive" && !speaking;
   const wakeLabel = view.kws === "loading" ? ws.loading : ws.passive;
+  const mt = chatExtra();
   return (
     // In the chat bar's cluster, after the + (open) or the pill's Li (folded).
     // Never text: a long press (push to talk) selects nothing, no iOS callout.
@@ -838,7 +840,13 @@ export function DebugMic({
       <style>{MIC_PULSE}</style>
       {/* What the ring shows, for screen readers: said on each change of state. */}
       <span role="status" aria-live="polite" className="sr-only" data-testid="debug-chat-mic-live">
-        {state === "off" || state === "loading" ? "" : speaking ? "Agent speaking" : passive ? wakeLabel : "Listening"}
+        {state === "off" || state === "loading"
+          ? ""
+          : speaking
+            ? mt.micReplyPlaying
+            : passive
+              ? wakeLabel
+              : mt.micListening}
       </span>
       {note && (
         <span
@@ -865,15 +873,15 @@ export function DebugMic({
         aria-label={
           state === "off"
             ? view.resume
-              ? "Tap to resume listening"
-              : "Dictate: listen and type what you say"
+              ? mt.micResume
+              : mt.micDictate
             : speaking
-              ? "Agent speaking; tap to interrupt and talk"
+              ? mt.micReplyTap
               : passive
                 ? wakeLabel
                 : rec
-              ? "Recording; tap to stop listening"
-              : "Listening; tap to stop"
+              ? mt.micRecordingTap
+              : mt.micListeningTap
         }
         aria-description={gesture?.description}
         title={

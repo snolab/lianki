@@ -5,6 +5,7 @@ import { createEmptyCard } from "ts-fsrs";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { cappedJsonError, readJsonCapped, tooMany } from "@/lib/security/route-guard";
 import { accountKey } from "@/lib/security/throttle";
+import { logSanitizedError } from "@/lib/safeError";
 
 /** Imports per account (D1): each one spends the shared YouTube API quota. */
 const IMPORT_LIMIT = { max: 10, windowMs: 60 * 60_000 };
@@ -14,6 +15,16 @@ const MAX_PLAYLIST_PAGES = 20;
 const PLAYLIST_ID = /^[A-Za-z0-9_-]{2,64}$/;
 
 export const dynamic = "force-dynamic";
+
+/** A failure with a code for the answer and a detail for the log only. */
+class YoutubeImportError extends Error {
+  constructor(
+    readonly code: "not-configured" | "youtube-failed",
+    detail: string,
+  ) {
+    super(detail);
+  }
+}
 
 interface YouTubePlaylistItem {
   snippet: {
@@ -31,9 +42,7 @@ interface YouTubePlaylistResponse {
 
 async function fetchPlaylistVideos(playlistId: string, apiKey?: string): Promise<string[]> {
   if (!apiKey) {
-    throw new Error(
-      "YouTube API key not configured. Please set YOUTUBE_API_KEY environment variable.",
-    );
+    throw new YoutubeImportError("not-configured", "YOUTUBE_API_KEY is not set");
   }
 
   const videos: string[] = [];
@@ -53,8 +62,14 @@ async function fetchPlaylistVideos(playlistId: string, apiKey?: string): Promise
     const response = await fetch(url.toString());
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || "Failed to fetch playlist from YouTube");
+      // Google's own message goes to the log, never into the answer.
+      const error = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new YoutubeImportError(
+        "youtube-failed",
+        `YouTube ${response.status}: ${error?.error?.message ?? response.statusText}`,
+      );
     }
 
     const data: YouTubePlaylistResponse = await response.json();
@@ -75,7 +90,7 @@ export async function POST(req: NextRequest) {
   try {
     const email = await authEmailOrToken(req);
     if (!email) {
-      return NextResponse.json({ error: "Login required" }, { status: 401 });
+      return NextResponse.json({ error: "login-required" }, { status: 401 });
     }
 
     const limited = await tooMany(await accountKey("import-youtube", email), IMPORT_LIMIT);
@@ -86,10 +101,10 @@ export async function POST(req: NextRequest) {
     const { playlistId } = (body.value ?? {}) as { playlistId?: unknown };
 
     if (!playlistId) {
-      return NextResponse.json({ error: "Playlist ID is required" }, { status: 400 });
+      return NextResponse.json({ error: "playlist-id-required" }, { status: 400 });
     }
     if (typeof playlistId !== "string" || !PLAYLIST_ID.test(playlistId)) {
-      return NextResponse.json({ error: "Invalid playlist ID" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-playlist-id" }, { status: 400 });
     }
 
     // Get YouTube API key from environment
@@ -99,7 +114,7 @@ export async function POST(req: NextRequest) {
     const videoUrls = await fetchPlaylistVideos(playlistId, apiKey);
 
     if (videoUrls.length === 0) {
-      return NextResponse.json({ error: "No videos found in playlist" }, { status: 404 });
+      return NextResponse.json({ error: "no-videos" }, { status: 404 });
     }
 
     // Import all videos into FSRS
@@ -129,8 +144,8 @@ export async function POST(req: NextRequest) {
       message: `Successfully imported ${successful} videos from YouTube playlist`,
     });
   } catch (error) {
-    console.error("YouTube import error:", error);
-    const message = error instanceof Error ? error.message : "Failed to import YouTube playlist";
-    return NextResponse.json({ error: message }, { status: 500 });
+    logSanitizedError("import.youtube", error);
+    const code = error instanceof YoutubeImportError ? error.code : "failed";
+    return NextResponse.json({ error: code }, { status: code === "youtube-failed" ? 502 : 500 });
   }
 }

@@ -1,3 +1,4 @@
+import { logSanitizedError } from "@/lib/safeError";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/app/db";
 import { authUserOrNull } from "@/app/signInEmail";
@@ -32,7 +33,7 @@ export interface UserPreferences {
 export async function GET() {
   try {
     const user = await authUserOrNull();
-    if (!user) return NextResponse.json({ error: "Login required" }, { status: 401 });
+    if (!user) return NextResponse.json({ error: "login-required" }, { status: 401 });
 
     if (dbBackend() === "d1") {
       const prefs = await new PreferencesD1Repo(getD1(), user.id).get();
@@ -82,15 +83,15 @@ export async function GET() {
       watchTracking: asWatchTracking(prefs.watchTracking),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    logSanitizedError("preferences", error);
+    return NextResponse.json({ error: "failed" }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const user = await authUserOrNull();
-    if (!user) return NextResponse.json({ error: "Login required" }, { status: 401 });
+    if (!user) return NextResponse.json({ error: "login-required" }, { status: 401 });
     const body = await req.json();
     // Filters live on the device now (lib/review-filters.ts): the page sends
     // none, and that must not wipe the copy older userscripts and phones read.
@@ -127,7 +128,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    logSanitizedError("preferences", error);
+    return NextResponse.json({ error: "failed" }, { status: 500 });
   }
 }

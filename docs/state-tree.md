@@ -317,7 +317,7 @@ Critical path: swipe fix → verify on ?swipe=native → switch the flag; bar �
 - [x] Glass toolbar + help, tablet glass nav, sleeping tray, 80% over-scroll (#293) (done 2026-10-30)
 - [x] Faded "back" slip stays opaque (#294)
 - [x] iOS glass: first card under the toolbar; labels behind the card; page-scroll lock (#299) (done 2026-10-30T01:12)
-- [ ] Bamboo-slip prototype (/proto/slip.html) vs shipped swipe — decide @main-lane
+- [x] Bamboo-slip prototype (/proto/slip.html): deleted (owner, 2026-11-10)
 - [ ] Owner's session spec of 2026-11-03: tall slips, fixed window, review-first, familiar bank, voice commands — [words-session-spec.md](words-session-spec.md) @main-lane
 
 ## Learning Partner (chat)

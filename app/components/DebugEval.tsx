@@ -23,6 +23,7 @@ import { useBoxAccount } from "./BoxApiBridge";
 import { ETA_FLAG } from "@/lib/eta-ping";
 import { boxViewer, ownerFlagOn } from "@/lib/box-oauth/session";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
+import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
 import { isKey } from "@lianki/debug-chat/storage-keys";
 import {
   type ChatContext,
@@ -140,6 +141,7 @@ export type PartnerStrings = ChatStrings & {
 export function DebugEval({
   strings,
   partnerOpen = false,
+  dev = false,
   etaBar = false,
   fullScreen = false,
   liHub = false,
@@ -152,6 +154,11 @@ export function DebugEval({
   box?: BoxConfig | null;
   strings?: Partial<PartnerStrings>;
   partnerOpen?: boolean;
+  /**
+   * The viewer holds `dev` (lib/permissions.ts, from the server): only then does
+   * this page run remote eval, and the chat show pairings and full page paths.
+   */
+  dev?: boolean;
   /** Flag chat.eta-bar (lib/eta-ping.ts): the ETA bar on the owner's chat, and its pings. */
   etaBar?: boolean;
   /** `partner.fullscreen` on: the chat's full screen for every chat user (off: the owner only). */
@@ -161,6 +168,8 @@ export function DebugEval({
 } = {}) {
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
+  const devRef = useRef(dev);
+  devRef.current = dev;
   const boxRef = useRef(box);
   boxRef.current = box;
   const stringsRef = useRef(strings);
@@ -437,7 +446,7 @@ export function DebugEval({
           return;
         }
         if (msg.type === "page-ended") {
-          setWarning("Ended from another page. It reconnects when you come back to this page.");
+          setWarning(chatExtra().endedElsewhere);
           return;
         }
         if (msg.type === "ai-credits") {
@@ -469,7 +478,7 @@ export function DebugEval({
         }
         if (msg.type === "rate-limited") {
           const min = Math.max(1, Math.ceil(Number(msg.retryIn) / 60_000) || 1);
-          setWarning(`Too many messages: that one was not sent. Try again in ${min} min.`);
+          setWarning(chatExtra().rateLimited.replace("{n}", String(min)));
           return;
         }
         if (msg.type === "state") {
@@ -575,7 +584,8 @@ export function DebugEval({
         }
         if (msg.type !== "eval") return;
         if (typeof msg.id !== "string" || typeof msg.to !== "string") return;
-        if (typeof msg.code !== "string" || !debugOn()) return;
+        // Remote eval: debug mode on, and a `dev` holder's page only.
+        if (typeof msg.code !== "string" || !debugOn() || !devRef.current) return;
         void run(sock, msg.id, msg.to, msg.code);
       };
       // Dropped by the network: reopen on that event if still wanted. One
@@ -912,7 +922,7 @@ export function DebugEval({
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
-          owner={owner && !isFriend}
+          owner={owner && !isFriend && dev}
           strings={friendStrings}
           treeSource={treeOn ? ownerTree : undefined}
           etaBar={etaOn && treeOn && !!ownerTree}

@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "@/lib/i18n-context";
 
 /** The header's language switcher and its picker. */
 const languageSwitcherContent = {
@@ -94,7 +95,101 @@ const languageSwitcherContent = {
       mr: "पसंतीची",
       ko: "선호",
     }),
+    comingSoon: t({
+      en: "Coming soon",
+      zh: "即将推出",
+      hi: "जल्द आ रहा है",
+      es: "Próximamente",
+      fr: "Bientôt",
+      ar: "قريبًا",
+      bn: "শীঘ্রই আসছে",
+      pt: "Em breve",
+      ru: "Скоро",
+      ur: "جلد آ رہا ہے",
+      id: "Segera hadir",
+      de: "Demnächst",
+      ja: "近日対応",
+      sw: "Inakuja hivi karibuni",
+      mr: "लवकरच",
+      ko: "곧 지원",
+    }),
+    legendPreferred: t({
+      en: "Your browser's preferred languages",
+      zh: "浏览器首选的语言",
+      hi: "आपके ब्राउज़र की पसंदीदा भाषाएँ",
+      es: "Idiomas preferidos de tu navegador",
+      fr: "Langues préférées de votre navigateur",
+      ar: "اللغات المفضلة في متصفحك",
+      bn: "আপনার ব্রাউজারের পছন্দের ভাষা",
+      pt: "Idiomas preferidos do seu navegador",
+      ru: "Языки, выбранные в вашем браузере",
+      ur: "آپ کے براؤزر کی ترجیحی زبانیں",
+      id: "Bahasa pilihan di browser kamu",
+      de: "Die bevorzugten Sprachen deines Browsers",
+      ja: "ブラウザで優先している言語",
+      sw: "Lugha zinazopendelewa na kivinjari chako",
+      mr: "तुमच्या ब्राउझरच्या पसंतीच्या भाषा",
+      ko: "브라우저에서 선호하는 언어",
+    }),
+    legendCurrent: t({
+      en: "The language in use now",
+      zh: "当前使用的语言",
+      hi: "अभी इस्तेमाल हो रही भाषा",
+      es: "El idioma que usas ahora",
+      fr: "La langue utilisée en ce moment",
+      ar: "اللغة المستخدمة الآن",
+      bn: "এখন ব্যবহৃত ভাষা",
+      pt: "O idioma em uso agora",
+      ru: "Язык, который используется сейчас",
+      ur: "اس وقت استعمال ہونے والی زبان",
+      id: "Bahasa yang sedang dipakai",
+      de: "Die gerade verwendete Sprache",
+      ja: "現在使用中の言語",
+      sw: "Lugha inayotumika sasa",
+      mr: "सध्या वापरात असलेली भाषा",
+      ko: "지금 사용 중인 언어",
+    }),
+    fallbackName: t({
+      en: "Language",
+      zh: "语言",
+      hi: "भाषा",
+      es: "Idioma",
+      fr: "Langue",
+      ar: "اللغة",
+      bn: "ভাষা",
+      pt: "Idioma",
+      ru: "Язык",
+      ur: "زبان",
+      id: "Bahasa",
+      de: "Sprache",
+      ja: "言語",
+      sw: "Lugha",
+      mr: "भाषा",
+      ko: "언어",
+    }),
   },
 } satisfies DeclarationContent;
 
-export default languageSwitcherContent;
+const L =
+  "Language picker (globe in the top bar and the account menu; a sheet listing the interface languages):";
+
+const context: Record<keyof typeof languageSwitcherContent.content, string> = {
+  title: `${L} heading (h2) of the sheet. Imperative or noun phrase asking the user to choose the interface language.`,
+  switchLanguage: `${L} tooltip and screen-reader label of the globe button that opens the sheet. Imperative verb phrase.`,
+  close: `${L} screen-reader label of the × button that closes the sheet. Imperative verb.`,
+  current: `${L} small badge on the language the interface uses now. One word, an adjective agreeing with 'language'.`,
+  preferred: `${L} small badge on languages the browser lists as preferred. One word, an adjective agreeing with 'language'.`,
+  comingSoon: `${L} small badge on a language that cannot be chosen yet (greyed out). Short phrase: support is planned.`,
+  legendPreferred: `${L} legend line at the bottom, after a green dot that matches the green ring around the browser's preferred languages. A noun phrase, no colour named.`,
+  legendCurrent: `${L} legend line at the bottom, after a tinted dot that matches the highlight of the current language. A noun phrase, no colour named.`,
+  fallbackName: `${L} text beside the globe in the top bar when the current language's own name is unknown. One noun.`,
+};
+
+export default {
+  ...languageSwitcherContent,
+  title: "Language picker — the interface language",
+  description: describeKeys(
+    "The interface language picker: a sheet of the languages Lianki's interface is available in. It sets the language of the interface, never the language studied. Language names themselves are not in this dictionary.",
+    context,
+  ),
+} satisfies DeclarationContent;

@@ -1,5 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
+import { useIntlayer } from "next-intlayer";
+
+/**
+ * /list's error boundary: a plain, translated card. The error's message and
+ * digest go to the console only (owner, 2026-11-10: no internals in the UI).
+ */
 export default function ListError({
   error,
   reset,
@@ -7,19 +14,23 @@ export default function ListError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useIntlayer("list-ui").error;
+  useEffect(() => {
+    console.error("[list] page error:", error.message, error.digest ?? "");
+  }, [error]);
   return (
     <div className="min-h-screen flex items-center justify-center p-8">
-      <div className="max-w-xl w-full bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
-        <h2 className="text-xl font-bold text-red-800 dark:text-red-200 mb-2">List page error</h2>
-        <pre className="text-sm text-red-700 dark:text-red-300 whitespace-pre-wrap break-words mb-4">
-          {error.message}
-        </pre>
-        {error.digest && <p className="text-xs text-red-500 mb-4">Digest: {error.digest}</p>}
+      <div
+        role="alert"
+        className="max-w-xl w-full bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6"
+      >
+        <h2 className="text-xl font-bold text-red-800 dark:text-red-200 mb-2">{t.title}</h2>
+        <p className="text-sm text-red-700 dark:text-red-300 mb-4">{t.text}</p>
         <button
           onClick={reset}
           className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
         >
-          Try again
+          {t.retry}
         </button>
       </div>
     </div>
