@@ -79,6 +79,24 @@ export const TAP_44_CSS =
   '[data-lk-tap]{position:relative}[data-lk-tap]::before,[data-lk-tap].tap-40::before{content:"";position:absolute;inset-inline:0;top:50%;height:max(100%,44px);transform:translateY(-50%)}';
 
 /**
+ * A press target, not text (owner, 2026-11-11): a long press on the mic
+ * (push to talk) or the bar must not start an iOS selection or its callout.
+ * Only on controls and the bar; the input and the log stay selectable.
+ */
+export const NO_SELECT = {
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  WebkitTouchCallout: "none",
+} as CSSProperties;
+
+/** The input inside a NO_SELECT bar: text again. */
+export const TEXT_SELECT = {
+  userSelect: "text",
+  WebkitUserSelect: "text",
+  WebkitTouchCallout: "default",
+} as CSSProperties;
+
+/**
  * The mic: CONTROL_W wide to the touch, its circle the line-sized square at
  * its end (the start padding takes the rest). Folded, that end is the bar's corner.
  */
