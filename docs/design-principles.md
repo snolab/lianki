@@ -34,6 +34,12 @@ Every colour is oklch. Tokens live in `app/globals.css`:
 - **Red is not danger.** Use it boldly: buttons, checked states, progress,
   accents. An error or a destructive action carries its own icon and label
   (and may take a distinct hue), never red alone.
+- **Switches are box seals** (owner, 2026-11-11). Every on/off control is
+  `SealSwitch` (`app/components/SealSwitch.tsx`; a row that is itself the
+  switch draws `SealStamp`): on = a filled seal-red rectangular stamp with the
+  state word in paper colour (开 / Open), off = the same box, grey and dashed,
+  with the grey word (关闭 / Closed). No pill track, no knob. The words are the
+  `seal-switch` dictionary; the colours `--lk-seal-*` in `app/globals.css`.
 - **Green only means done.** It may stay as a semantic success/done status
   (a saved notice, a check mark); never as a button, link or accent.
 - **No blue, sky, cyan, indigo or teal** on screen. `blue-*` classes are
