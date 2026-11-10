@@ -198,7 +198,11 @@ for (const [name, device] of [
     `${name}: /list delete removes "${victimTitle}" in place`,
   );
   const y1 = await page.evaluate(() => window.scrollY);
-  check(Math.abs(y1 - y0) < 200, `${name}: /list no jump to the top after delete (${y0} → ${y1})`);
+  // A reload would land at the top; rows re-measuring after the delete may move it a little.
+  check(
+    y1 > 0 && Math.abs(y1 - y0) < vp.height,
+    `${name}: /list no jump to the top after delete (${y0} → ${y1})`,
+  );
   for (const scheme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.waitForTimeout(100);
