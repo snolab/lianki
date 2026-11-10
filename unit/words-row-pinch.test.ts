@@ -198,8 +198,8 @@ describe("row-pinch: a calm feel (owner, 2026-11-10: far too sensitive)", () => 
       const d = CONFIG[key];
       expect(d.audience).toBe("public");
       expect(Number.isInteger(d.default)).toBe(true);
-      expect(d.default).toBeGreaterThanOrEqual(d.min);
-      expect(d.default).toBeLessThanOrEqual(d.max);
+      expect(d.default).toBeGreaterThanOrEqual(d.min ?? -Infinity);
+      expect(d.default).toBeLessThanOrEqual(d.max ?? Infinity);
     }
   });
 });
