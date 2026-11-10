@@ -80,6 +80,8 @@ export type NotesQueryOptions = {
   order?: "asc" | "desc";
   page?: number;
   size?: number;
+  /** Include each card's review log (the /list rows draw it). */
+  logs?: boolean;
 };
 
 export function clampSize(size: number | undefined): number {

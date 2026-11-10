@@ -135,6 +135,77 @@ for (const [name, device] of [
   check(after === before, `${name}: the centre row is back at the centre (${after})`);
   await page.screenshot({ path: join(OUT, `restored-${name}.png`) });
 
+  // /list (LiCards): the same list over the page cards, from /api/fsrs/list.
+  const now = Date.now();
+  const push = await ctx.request.post("/api/fsrs/bulk-upsert", {
+    headers: { origin: BASE },
+    data: {
+      notes: Array.from({ length: N }, (_, i) => ({
+        url: `https://example.com/qa-vlist-${i}`,
+        title: `Card ${String(i).padStart(3, "0")}`,
+        card: {
+          due: new Date(now + (i + 1) * 3600000).toISOString(),
+          stability: 0,
+          difficulty: 0,
+          elapsed_days: 0,
+          scheduled_days: 0,
+          reps: 0,
+          lapses: 0,
+          state: 0,
+        },
+        log: [],
+        hlc: { timestamp: now, counter: i, deviceId: "qa" },
+      })),
+    },
+  });
+  check(push.ok(), `${name}: /list: ${N} cards pushed (${push.status()})`);
+  await page.goto("/list", { waitUntil: "networkidle" });
+  await page.locator('[data-testid="list-card"]').first().waitFor();
+  const card0 = page.locator('[data-testid="cards-list"] [role="listitem"]').first();
+  check(
+    (await card0.getAttribute("aria-setsize")) === String(N),
+    `${name}: /list aria-setsize ${N}`,
+  );
+  check(
+    /Card 000/.test(await card0.innerText()),
+    `${name}: /list soonest due first (${(await card0.innerText()).slice(0, 40)})`,
+  );
+  await page.mouse.move(vp.width / 2, vp.height / 2);
+  const cardsSeen = new Set();
+  let cardsMax = 0;
+  for (let step = 0; step < 300; step++) {
+    const ts = await page.locator('[data-testid="list-card"] a').allTextContents();
+    ts.forEach((t) => cardsSeen.add(t.trim()));
+    cardsMax = Math.max(cardsMax, ts.length);
+    if ((await page.locator('[data-testid="vlist-end"]').count()) && cardsSeen.size >= N) break;
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(80);
+  }
+  check(cardsSeen.size === N, `${name}: /list all ${N} cards reachable (${cardsSeen.size})`);
+  check(cardsMax < N, `${name}: /list only a window in the DOM (max ${cardsMax})`);
+  // Delete takes the row out in place: no reload, the position stays.
+  const y0 = await page.evaluate(() => window.scrollY);
+  const victim = page.locator('[data-testid="list-card"]').last();
+  const victimTitle = (await victim.locator("a").innerText()).trim();
+  page.once("dialog", (d) => d.accept());
+  await victim.locator("button").last().click();
+  await page
+    .locator('[data-testid="list-card"] a', { hasText: victimTitle })
+    .waitFor({ state: "detached", timeout: 5000 })
+    .catch(() => {});
+  check(
+    (await page.locator('[data-testid="list-card"] a', { hasText: victimTitle }).count()) === 0,
+    `${name}: /list delete removes "${victimTitle}" in place`,
+  );
+  const y1 = await page.evaluate(() => window.scrollY);
+  check(Math.abs(y1 - y0) < 200, `${name}: /list no jump to the top after delete (${y0} → ${y1})`);
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.waitForTimeout(100);
+    await page.screenshot({ path: join(OUT, `list-${name}-${scheme}.png`) });
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+
   check(errs.length === 0, `${name}: no page errors (${errs.join("; ")})`);
   await ctx.close();
 }

@@ -125,7 +125,7 @@ export function GdocDriveImport(p: {
         type="button"
         onClick={choose}
         disabled={busy || !id}
-        className="px-4 py-2 rounded-lg text-sm font-medium bg-[oklch(0.55_0.198_22.3)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.198_22.3)] disabled:opacity-50 disabled:cursor-not-allowed"
+        className="lk-btn lk-btn-secondary"
       >
         {t.chooseInDrive}
       </button>

@@ -195,6 +195,8 @@ export const SUITES = [
       "lib/virtual-list.ts",
       "app/(app)/reader/ReadListClient.tsx",
       "app/api/read/route.ts",
+      "app/(app)/list/**",
+      "app/lib/notesAdmin.ts",
     ],
     sensitive: true,
   },
