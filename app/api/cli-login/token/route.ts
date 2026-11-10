@@ -67,7 +67,7 @@ export async function POST(req: Request) {
 /** GET: the bearer token's own name, permissions and expiry; nothing about any other. */
 export async function GET(req: Request) {
   if (dbBackend() !== "d1")
-    return NextResponse.json({ error: "Not available" }, { status: 503, headers: NO_STORE });
+    return NextResponse.json({ error: "not-available" }, { status: 503, headers: NO_STORE });
   const m = /^Bearer (lk_[0-9a-f]{64})$/.exec(req.headers.get("Authorization") ?? "");
   const self = m ? await describeToken(getD1() as unknown as D1Like, m[1]) : null;
   if (!self) return NextResponse.json({ error: "unknown" }, { status: 401, headers: NO_STORE });
