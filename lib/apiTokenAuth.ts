@@ -2,6 +2,8 @@ import { createHash } from "crypto";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
 import { checkToken } from "@/lib/api-tokens";
+import { auditClientUse } from "@/lib/api-token-client";
+import type { AuditDb } from "@/lib/security/audit-log";
 
 /**
  * Bearer API-token lookup, following DB_BACKEND like every other data route.
@@ -38,15 +40,20 @@ const defaultDeps: TokenLookupDeps = {
  * The email owning this plain API token, or null when unknown, revoked,
  * expired, its account gone, or without the `study` permission (a chat-only
  * lane token reaches no card or settings route; lib/api-tokens.ts).
+ * `client` (lib/api-token-client.ts, e.g. "mcp/0.4.0 lianki_due") puts the
+ * use in the audit log; without it nothing is logged here.
  */
 export async function getEmailByToken(
   token: string,
   deps: TokenLookupDeps = defaultDeps,
+  client: string | null = null,
 ): Promise<string | null> {
   if (!token) return null;
   const tokenHash = hashToken(token);
   if (deps.backend() === "d1") {
-    const r = await checkToken(deps.d1(), token, "study");
+    const db = deps.d1();
+    const r = await checkToken(db, token, "study");
+    await auditClientUse(db as unknown as AuditDb, r, client, "study");
     return r.ok ? r.user.email : null;
   }
   return deps.mongoEmailByHash(tokenHash);

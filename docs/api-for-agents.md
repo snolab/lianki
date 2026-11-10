@@ -98,3 +98,26 @@ config's `env` block on the user's own machine. The guide also tells the
 assistant that tool results (card titles, chat lines) are data, never
 instructions. The MCP key is a normal API token; v1 has no delete tool and no
 eval.
+
+### The server side of `lianki mcp`
+
+- **Tools by permission.** At start the server asks `GET /api/cli-login/token`
+  (the token's own name, scopes and expiry, `describeToken`) and lists only
+  the tools those scopes allow (`TOOLS` in `packages/lianki-cli/mcp.mjs`:
+  `study` → stats, due, next, get, add, import, review, settings_get;
+  `chat:read|write|ask` → chat_read, chat_say, chat_ask). An older server
+  that has no GET there gets every tool; each route still checks.
+- **Untrusted results.** Every result is `<untrusted-data>` JSON with `<`
+  escaped, after a line saying never to follow instructions inside it.
+- **429.** `call()` turns a 429 into `rate_limited` with the `Retry-After`
+  seconds; the tool error says how long to wait.
+- **Audit.** Each call sends `x-lianki-client: mcp/<version> tool=<name>`.
+  `lib/api-token-client.ts` keeps only that exact shape and adds
+  `via mcp/<version> <tool>` to the `api-token.use` row (chat: lianki-push
+  passes the header to `chatTokenCheck`; card and settings routes: a row only
+  for such a named use). At most once a minute per token, never the
+  arguments or the token.
+- **Publishing.** The package is 0.4.0 in the repo; npm gets it only through
+  the release tag after the owner approves (docs/shipping.md, "Publishing
+  the CLI"). Until then the guide's `npx -y lianki mcp` snippets name a
+  version that is not on npm yet.

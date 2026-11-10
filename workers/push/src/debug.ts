@@ -494,7 +494,12 @@ type SessionsRpc = {
     target?: string;
   }): Promise<unknown>;
   /** `lianki chat`: an API token's check for one chat operation (lib/chat-token.ts). */
-  chatToken?(req: { op: string; token?: string; tokenHash?: string }): Promise<unknown>;
+  chatToken?(req: {
+    op: string;
+    token?: string;
+    tokenHash?: string;
+    client?: string;
+  }): Promise<unknown>;
   /** May this box keep chatting (docs/box-oauth.md)? An older main Worker has none: no. */
   boxChat?(clientId: string): Promise<unknown>;
   /** May this box hold the owner's page powers (docs/box-oauth.md)? An older main Worker has none: no. */

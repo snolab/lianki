@@ -91,7 +91,12 @@ export type ChatTokenAnswer =
     }
   | { ok: false; error: string; retryAfterMs?: number };
 export type ChatTokenRpc = {
-  chatToken?(req: { op: ChatTokenOp; token?: string; tokenHash?: string }): Promise<unknown>;
+  chatToken?(req: {
+    op: ChatTokenOp;
+    token?: string;
+    tokenHash?: string;
+    client?: string;
+  }): Promise<unknown>;
 };
 
 export interface TokenHost {
@@ -156,11 +161,16 @@ export class TokenChat {
   private async check(
     op: ChatTokenOp,
     cred: { token: string } | { tokenHash: string },
+    client?: string,
   ): Promise<ChatTokenAnswer> {
     const rpc = this.host.rpc();
     if (!rpc?.chatToken) return { ok: false, error: "unavailable" };
     try {
-      const a = (await rpc.chatToken({ op, ...cred })) as ChatTokenAnswer | null;
+      const a = (await rpc.chatToken({
+        op,
+        ...cred,
+        ...(client ? { client } : {}),
+      })) as ChatTokenAnswer | null;
       if (!a || typeof a !== "object") return { ok: false, error: "unavailable" };
       if (a.ok !== true)
         return { ok: false, error: String(a.error ?? "refused"), retryAfterMs: a.retryAfterMs };
@@ -245,7 +255,10 @@ export class TokenChat {
     const op = body.op;
     if (op !== "say" && op !== "ask" && op !== "read")
       return json({ ok: false, error: 'op must be "say", "ask" or "read"' }, 400);
-    const v = await this.check(op, { token: m[1] });
+    // `lianki mcp` names itself (x-lianki-client) for the audit log; the main
+    // Worker keeps it only in its one known shape (lib/api-token-client.ts).
+    const client = req.headers.get("x-lianki-client")?.slice(0, 100) || undefined;
+    const v = await this.check(op, { token: m[1] }, client);
     if (!v.ok) return refusal(v);
     const thread = await this.threadOf(v);
     if (!thread) return json({ ok: false, error: "blocked" }, 403);

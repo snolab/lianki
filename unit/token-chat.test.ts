@@ -289,6 +289,31 @@ describe("chatTokenCheck (the main Worker's side)", () => {
   });
 });
 
+describe("the hub: a named MCP client reaches the audit log", () => {
+  it("x-lianki-client is passed on and kept only in its known shape", async () => {
+    const s = hubSetup();
+    const a = await mint(ALICE, "my AI");
+    const post = (client: string) =>
+      s.hub.fetch(
+        new Request("https://lianki.com/api/version/chat", {
+          method: "POST",
+          headers: { authorization: `Bearer ${a.token}`, "x-lianki-client": client },
+          body: JSON.stringify({ op: "say", text: "hi" }),
+        }),
+      );
+    expect((await post("mcp/0.4.0 tool=lianki_chat_say")).status).toBe(200);
+    const uses = () =>
+      d1.raw().prepare("SELECT detail FROM security_audit WHERE kind = 'api-token.use'").all() as {
+        detail: string;
+      }[];
+    expect(uses()).toEqual([{ detail: "chat say my AI via mcp/0.4.0 lianki_chat_say" }]);
+    // A header in any other shape adds nothing to the row.
+    d1.raw().prepare("UPDATE api_tokens SET last_used_at = NULL").run();
+    expect((await post("mcp/0.4.0 tool=lianki_x; DROP TABLE")).status).toBe(200);
+    expect(uses()[1]).toEqual({ detail: "chat say my AI" });
+  });
+});
+
 describe("the hub: own thread only", () => {
   it("a user's token posts into that user's thread, labelled with its lane, as an agent line", async () => {
     const s = hubSetup();

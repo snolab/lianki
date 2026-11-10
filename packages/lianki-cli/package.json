@@ -1,6 +1,6 @@
 {
   "name": "lianki",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Command-line client for Lianki (FSRS spaced repetition), made for agents: progressive help, --json, stable exit codes.",
   "type": "module",
   "bin": {
@@ -10,11 +10,14 @@
     "lianki.mjs",
     "cli.mjs",
     "auth.mjs",
+    "mcp.mjs",
     "README.md",
     "LICENSE"
   ],
   "dependencies": {
-    "yargs": "^17.7.2"
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "yargs": "^17.7.2",
+    "zod": "^4.3.6"
   },
   "engines": {
     "node": ">=18"
