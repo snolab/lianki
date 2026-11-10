@@ -630,6 +630,15 @@ function when(at: number) {
 }
 
 /**
+ * A connected page as a user without `dev` sees it in the menu: the path's
+ * first segment ("/words/abc?x=1" → "/words"), never ids, queries or devices.
+ */
+export function shortPage(path: string): string {
+  const first = path.split(/[?#]/)[0].split("/").filter(Boolean)[0];
+  return first ? `/${first}` : "/";
+}
+
+/**
  * The owner ⇄ agent chat (docs/monitoring.md, "Chat with the agent"): a small
  * box at the bottom right of a debug-mode page that holds the debug socket.
  * Whatever is typed goes out DEBOUNCE_MS after the last keystroke (or at once
@@ -685,6 +694,8 @@ export type DebugChatProps = {
    * The hub verified this as the owner's session (DebugEval `owner`): with no
    * stored `lk:agent-local-stt`, the mic defaults to his local STT
    * (localSttRoute, docs/local-stt.md). Never set for friends or other users.
+   * Also requires a `dev` grant (DebugEval): only then does the menu list
+   * pairings (eval sessions) and full page paths with their devices.
    */
   owner?: boolean;
   /** Shown instead of the input when this account cannot chat (blocked). */
@@ -3689,7 +3700,12 @@ export function DebugChat({
       {pages.map((pg) => {
         const self = pg.id === selfPage;
         const key = `page:${pg.id}`;
-        const { path, device } = pageParts(pg.label);
+        const parts = pageParts(pg.label);
+        const path = parts.path;
+        // A developer sees the full path and the device; anyone else the page's
+        // first segment only (owner, 2026-11-11 01:31 JST).
+        const device = owner ? parts.device : "";
+        const shown = owner ? path : shortPage(path);
         return (
           <div
             key={pg.id || pg.label}
@@ -3701,14 +3717,14 @@ export function DebugChat({
             <button
               type="button"
               data-testid="debug-menu-page-open"
-              title={pg.label}
+              title={owner ? pg.label : undefined}
               onClick={() => {
                 setMenu(false);
                 if (!self) onOpenPage?.(path);
               }}
               className="flex min-w-0 flex-1 items-baseline gap-1.5 text-start"
             >
-              <span className="truncate text-gray-700 dark:text-gray-200">{path}</span>
+              <span className="truncate text-gray-700 dark:text-gray-200">{shown}</span>
               <span className="shrink-0 fs-10">
                 {[device, self ? "this page" : ""].filter(Boolean).join(" · ")}
               </span>
@@ -3731,8 +3747,9 @@ export function DebugChat({
           </div>
         );
       })}
+      {/* Pairings (eval sessions): a developer's menu only. */}
       {sessions
-        .filter((x) => x.scope !== "chat")
+        .filter((x) => owner && x.scope !== "chat")
         .map((x) => (
           <div
             key={x.pair}
@@ -3766,7 +3783,7 @@ export function DebugChat({
         ))}
       {/* Ending the chat grant ends the chat itself: apart, in red, two taps. */}
       {sessions
-        .filter((x) => x.scope === "chat" && addable(x))
+        .filter((x) => owner && x.scope === "chat" && addable(x))
         .map((x) => (
           <button
             key={`add-${x.pair}`}

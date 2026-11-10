@@ -15,6 +15,7 @@ export function OwnerBoots({
   leave,
   credits,
   open = false,
+  dev = false,
   etaBar = false,
   chatFull = false,
   liHub = false,
@@ -28,6 +29,8 @@ export function OwnerBoots({
   credits?: NoCreditsStrings;
   /** The Learning Partner for every signed-in user (partner.ai-reply on; docs/partner-ai.md). */
   open?: boolean;
+  /** The viewer holds `dev` (lib/permissions.ts): the chat's developer parts are allowed. */
+  dev?: boolean;
   /** Flag chat.eta-bar: the owner's ETA bar in the chat (lib/eta-ping.ts). */
   etaBar?: boolean;
   /** The chat's full screen for every chat user (partner.fullscreen on); off, the owner only. */
@@ -44,6 +47,7 @@ export function OwnerBoots({
       <DebugEval
         strings={strings}
         partnerOpen={open}
+        dev={dev}
         fullScreen={chatFull}
         etaBar={etaBar}
         liHub={liHub}
