@@ -13,28 +13,28 @@
 
 ## Key files
 
-| File                               | Purpose                                                                                                                                                                                                |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `app/page.tsx`                     | Landing page                                                                                                                                                                                           |
-| `app/(app)/list/page.tsx`          | Note listing — the page cards, named **LiCards** (zh 链卡) in the UI                                                                                                                                   |
-| `app/(app)/reader/`                | The reader: `/reader` (the books list) and `/reader/<id>` (a book, `ReaderV2.tsx`); the old `/read` 308s here (`lib/moved-routes.ts`). Its API stays `/api/read/**`                                    |
-| `lib/moved-routes.ts`              | Pages that moved (docs/url-principles.md): `middleware.ts` 308s the old path; pins and recent pages are moved on read (`movedHref`)                                                                    |
-| `lib/app-locale.ts`                | `?lang=` locale helpers + APP_ROUTES                                                                                                                                                                   |
-| `app/fsrs.ts`                      | Core FSRS handler logic                                                                                                                                                                                |
-| `app/db.ts`                        | MongoDB client                                                                                                                                                                                         |
-| `auth.ts` / `auth-impl.ts`         | better-auth: `auth.ts` is the light facade every route imports; the instance lives in `auth-impl.ts`, loaded by dynamic `import()` so it is one shared chunk, not a copy per route (Worker cold start) |
-| `src/lianki.user.ts`               | Userscript source (the LiCards widget; `@name` stays `Lianki`, see its header)                                                                                                                         |
-| `public/lianki.user.js`            | Built userscript (`lianki.meta.js` is auto-synced from its header)                                                                                                                                     |
-| `public/loader.user.js`            | Published dev loader — re-fetches from vite `:3002` per page load                                                                                                                                      |
-| `scripts/dev-userscript-server.ts` | Dev loader server — pushes builds over a CF tunnel                                                                                                                                                     |
-| `scripts/dev-loader.user.js`       | Loader template that server renders                                                                                                                                                                    |
-| `scripts/pre-commit.ts`            | Pre-commit hook (run via Husky)                                                                                                                                                                        |
-| `scripts/ship.ts`                  | Land a commit on `main`                                                                                                                                                                                |
-| `packages/lianki-cli/`             | The npm package `lianki` (`bunx lianki`): plain ESM CLI, published by `release.yml` on a `lianki-cli-v*` tag (docs/shipping.md)                                                                        |
-| `packages/desktop/`                | Windows desktop shell — Tauri 2 window around lianki.com (`README.md` there)                                                                                                                           |
-| `.github/workflows/ci.yml`         | lint + typecheck + unit (every PR); qa:all (merge queue); the required `Typecheck + unit` gate                                                                                                         |
-| `scripts/gate/affected.ts`         | pre-push selection: only the unit tests and qa suites a change reaches (docs/shipping.md, "Only what changed")                                                                                         |
-| `.github/workflows/deploy.yml`     | CI/CD to Vercel                                                                                                                                                                                        |
+| File | Purpose |
+| ---- | ------- |
+| `app/page.tsx` | Landing page |
+| `app/(app)/list/page.tsx` | Note listing — the page cards, named **LiCards** (zh 链卡) in the UI |
+| `app/(app)/reader/` | The reader: `/reader` (the books list) and `/reader/<id>` (a book, `ReaderV2.tsx`); the old `/read` 308s here (`lib/moved-routes.ts`). Its API stays `/api/read/**` |
+| `lib/moved-routes.ts` | Pages that moved (docs/url-principles.md): `middleware.ts` 308s the old path; pins and recent pages are moved on read (`movedHref`) |
+| `lib/app-locale.ts` | `?lang=` locale helpers + APP_ROUTES |
+| `app/fsrs.ts` | Core FSRS handler logic |
+| `app/db.ts` | MongoDB client |
+| `auth.ts` / `auth-impl.ts` | better-auth: `auth.ts` is the light facade every route imports; the instance lives in `auth-impl.ts`, loaded by dynamic `import()` so it is one shared chunk, not a copy per route (Worker cold start) |
+| `src/lianki.user.ts` | Userscript source (the LiCards widget; `@name` stays `Lianki`, see its header) |
+| `public/lianki.user.js` | Built userscript (`lianki.meta.js` is auto-synced from its header) |
+| `public/loader.user.js` | Published dev loader — re-fetches from vite `:3002` per page load |
+| `scripts/dev-userscript-server.ts` | Dev loader server — pushes builds over a CF tunnel |
+| `scripts/dev-loader.user.js` | Loader template that server renders |
+| `scripts/pre-commit.ts` | Pre-commit hook (run via Husky) |
+| `scripts/ship.ts` | Land a commit on `main` |
+| `packages/lianki-cli/` | The npm package `lianki` (`bunx lianki`): plain ESM CLI, published by `publish-cli.yml` on a `lianki-cli-v*` tag (docs/shipping.md) |
+| `packages/desktop/` | Windows desktop shell — Tauri 2 window around lianki.com (`README.md` there) |
+| `.github/workflows/ci.yml` | lint + typecheck + unit (every PR); qa:all (merge queue); the required `Typecheck + unit` gate |
+| `scripts/gate/affected.ts` | pre-push selection: only the unit tests and qa suites a change reaches (docs/shipping.md, "Only what changed") |
+| `.github/workflows/deploy.yml` | CI/CD to Vercel |
 
 ## Userscript
 

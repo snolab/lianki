@@ -2,10 +2,13 @@ name: Publish CLI
 
 # Publishes packages/lianki-cli (npm package `lianki`) on `lianki-cli-v*` tags.
 #
-# Auth: npm Trusted Publishing via GitHub Actions OIDC; no npm token.
-# npm's trusted publisher must match snolab/lianki, workflow release.yml,
-# with no environment name, and allow direct npm publish.
-# Node 24 and npm >=11.5.1 support the OIDC credential exchange.
+# Auth: an npm automation/granular token in the NPM_TOKEN secret (bypasses 2FA).
+# We would prefer tokenless OIDC Trusted Publishing, but npm binds a package's
+# trusted-publisher owner to the npm account's own GitHub identity (`snomiao`),
+# while this repo lives under the `snolab` org — so the OIDC exchange fails
+# ("package not found"). Until that org-linkage is resolved, publish via token.
+# `--provenance` still uses the GitHub OIDC id-token to sign a sigstore
+# provenance attestation, independent of the publish credential.
 #
 # The only way `lianki` reaches npm: push a tag `lianki-cli-v<version>` that
 # matches packages/lianki-cli/package.json, on a commit already on main. No
@@ -17,7 +20,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # npm trusted publishing and provenance signing
+  id-token: write # for --provenance signing (sigstore)
 
 jobs:
   publish:
@@ -63,3 +66,5 @@ jobs:
           [ "$code" = 2 ] || { echo "::error::expected exit 2 (not signed in), got $code"; exit 1; }
           rm "$tgz"
       - run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

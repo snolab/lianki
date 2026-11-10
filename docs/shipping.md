@@ -551,17 +551,11 @@ why protection must stay in place.
 ## Publishing the CLI (npm `lianki`)
 
 `packages/lianki-cli` goes to npm only through
-`.github/workflows/release.yml`, never `npm publish` from a laptop. It
+`.github/workflows/publish-cli.yml`, never `npm publish` from a laptop. It
 runs on a pushed tag `lianki-cli-v<version>`; the tag must sit on a commit
 already on `main` and match `version` in its `package.json`. It packs the
 tarball, smoke-tests it under Node in an empty folder, and publishes with
-`--provenance`, authenticated through GitHub Actions OIDC (npm Trusted
-Publishing), with no npm token. The npm trusted publisher must name
-`snolab/lianki`, workflow `release.yml`, no environment, and allow direct
-`npm publish`. The workflow uses Node 24 and upgrades npm (OIDC requires npm
-11.5.1 or newer). A new trust must complete its first publish within 48 hours
-or be recreated; subsequent successful publishes do not require recreating it.
-Publishing is
+`--provenance`, authenticated by the `NPM_TOKEN` repo secret. Publishing is
 outward-facing: the owner approves each release (tap card) before the tag is
 pushed.
 
