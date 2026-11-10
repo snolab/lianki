@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lianki",
-  "description": "Spaced-repetition (FSRS) for the pages you read and watch.",
+  "description": "Spaced repetition for the pages you read and the videos you watch.",
   "version": "2.24.14",
   "permissions": [
     "storage"
