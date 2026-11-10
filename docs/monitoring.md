@@ -319,6 +319,10 @@ bun scripts/dev/eval.ts say --quiet "PR #390 opened, CI running."
 # A line with "source":"stt" was spoken: polish its misheard words first
 # (docs/dev-debug-widget.md, "Agent edits of voice messages"):
 bun scripts/dev/eval.ts edit --last --no-pair "Fix the sync button on /words."
+# Several of his voice lines in a row, one topic, nothing between them: merge the
+# run into ONE fluent passage (a reply, an ask card or a topic change ends a run;
+# unsure about the topic: don't). docs/dev-debug-widget.md, "Merged passages":
+bun scripts/dev/eval.ts edit --merge m1,m2,m3 --text "one fluent passage" --no-pair
 # With flag stt.merge on, {"type":"edited",…,"merged":…} means a line you were shown
 # grew: read `text` again. {"type":"polish-due",…}: polish it now, from `raw`
 # (docs/dev-debug-widget.md, "Continuous speech amends the last line").

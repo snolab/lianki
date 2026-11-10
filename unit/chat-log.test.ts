@@ -153,6 +153,20 @@ describe("chatLogOp: the hub's writes", () => {
     expect(rows()).toEqual([]);
   });
 
+  it("drop: only a passage's derived .merged line; a line he said never", async () => {
+    await put("owner", line("m0"));
+    await put("owner", line("m0.merged", { text: "passage" }));
+    for (const ids of [["m0"], ["m0.merged", "m0"], [], "m0.merged"])
+      expect(await chatLogOp(db, { op: "drop", thread: "owner", ids })).toMatchObject({
+        ok: false,
+      });
+    expect(rows().map((r) => r.id)).toEqual(["m0", "m0.merged"]);
+    expect(await chatLogOp(db, { op: "drop", thread: "owner", ids: ["m0.merged"] })).toMatchObject({
+      ok: true,
+    });
+    expect(rows().map((r) => r.id)).toEqual(["m0"]);
+  });
+
   it("backfill: the owner's thread only, once per account (a deleted line stays deleted)", async () => {
     const lines = [chatLogLine(line("h1")), chatLogLine(line("h2", { at: T0 + 1 }))];
     expect(await chatLogOp(db, { op: "backfill", thread: "fr1", lines })).toMatchObject({
@@ -168,7 +182,7 @@ describe("chatLogOp: the hub's writes", () => {
   it("refuses a bad request, writes nothing", async () => {
     for (const r of [
       null,
-      { op: "drop", thread: "owner", lines: [] },
+      { op: "nuke", thread: "owner", lines: [] },
       { op: "put", thread: "owner" },
     ])
       expect(await chatLogOp(db, r)).toMatchObject({ ok: false });

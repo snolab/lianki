@@ -466,6 +466,45 @@ export function summaryCheck(raws: readonly string[], summary: string): PolishVe
 }
 
 /**
+ * How long a merged passage may be, as a multiple of the lines it stands for
+ * (graphemes), plus MERGE_SLACK for the connectives a short run needs. A
+ * conservative default (docs/dev-debug-widget.md, "Merged passages"): a
+ * passage joins and smooths his words, it does not add to them.
+ */
+export const MERGE_RATIO = 1.3;
+/** Graphemes a passage may add beyond MERGE_RATIO: a few connectives and marks. */
+export const MERGE_SLACK = 8;
+
+/**
+ * Is `passage` a fair shape for ONE fluent passage made of a run of his
+ * consecutive voice lines? The per-line word rules (`polishCheck`) do not
+ * apply: connectives and fragment fixes are allowed, and keeping the meaning
+ * is the lane's duty. Held here: at least two lines, a text, and no longer
+ * than MERGE_RATIO times the lines plus MERGE_SLACK. The raw lines are kept
+ * whatever this says, and the merge can be undone.
+ */
+export function mergeCheck(
+  raws: readonly string[],
+  passage: string,
+  limits: { ratio?: number; slack?: number } = {},
+): PolishVerdict {
+  const ratio = limits.ratio ?? MERGE_RATIO;
+  const slack = limits.slack ?? MERGE_SLACK;
+  const text = passage.trim();
+  if (raws.length < 2) return { ok: false, reason: "a merge joins two or more lines" };
+  if (!text) return { ok: false, reason: "a merged passage needs text" };
+  const total = raws.reduce((n, r) => n + graphemes(r.trim()), 0);
+  const len = graphemes(text);
+  const cap = Math.ceil(total * ratio) + slack;
+  if (len > cap)
+    return {
+      ok: false,
+      reason: `a passage of ${len} characters is longer than the ${total} it joins allow (${ratio}x + ${slack} = ${cap})`,
+    };
+  return { ok: true };
+}
+
+/**
  * What a voice line's polish may draw on: the line's own scene (the page and
  * its screen), its attached selection, and the thread's other lines.
  */

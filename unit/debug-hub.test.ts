@@ -23,6 +23,7 @@ import {
   EDITABLE_LINES,
   applyEditTo,
 } from "@/lib/dev-eval";
+import { MERGE_RATIO, MERGE_SLACK } from "@/packages/debug-chat/src/polish";
 
 /** A socket as the hibernation API hands it to the hub, recording what it was sent. */
 class FakeSocket implements Socket {
@@ -3106,6 +3107,201 @@ describe("DebugHub agent edits of voice messages", () => {
         ["r2", ROOM[1], "r1"],
         ["a", "嗯", undefined],
       ]);
+    });
+  });
+
+  describe("merged passages (a run of his voice lines as one)", () => {
+    const RUN = ["我想把那个按钮", "放到右边", "然后颜色改成红色"];
+    const PASSAGE = "我想把那个按钮放到右边，然后把颜色改成红色。";
+    const withLog = () => {
+      const reqs: Record<string, unknown>[] = [];
+      const SESSIONS = {
+        live: async () => "live",
+        chatLog: async (r: Record<string, unknown>) => {
+          reqs.push(structuredClone(r));
+          return { ok: true, written: 1 };
+        },
+      };
+      return { reqs, s: setup({ SESSIONS }) };
+    };
+    const three = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+      for (const [i, t] of RUN.entries()) await s.msg(owner, voice(`m${i}`, t));
+    };
+
+    it("merges consecutive voice lines into one passage: originals kept, history gains it", async () => {
+      const { reqs, s } = withLog();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await three(s, owner);
+      reqs.length = 0;
+      await s.msg(c, { type: "merge", ids: ["m2", "m0", "m1"], text: PASSAGE });
+      const ev = owner.last("edited") as Record<string, unknown>;
+      expect(ev).toMatchObject({
+        id: "m0",
+        text: PASSAGE,
+        raw: RUN.join("\n"),
+        passage: { by: "main lane", ids: ["m0", "m1", "m2"] },
+      });
+      expect(c.last("edited")).toMatchObject({ id: "m0", passage: { ids: ["m0", "m1", "m2"] } });
+      expect(stored(s)).toEqual([
+        expect.objectContaining({ id: "m0", text: PASSAGE, premerge: { text: RUN[0] } }),
+        expect.objectContaining({ id: "m1", text: RUN[1], collapsedInto: "m0" }),
+        expect.objectContaining({ id: "m2", text: RUN[2], collapsedInto: "m0" }),
+      ]);
+      expect(reqs).toEqual([
+        {
+          op: "put",
+          thread: "owner",
+          lines: [expect.objectContaining({ id: "m0.merged", from: "owner", text: PASSAGE })],
+        },
+      ]);
+      // A page applying the event shows one bubble.
+      const list = RUN.map((text, i) => ({
+        id: `m${i}`,
+        from: "owner" as const,
+        label: "",
+        text,
+        at: i,
+        source: "stt" as const,
+      }));
+      const shown = applyEditTo(list, ev as never).filter(
+        (m) => !(m as { collapsedInto?: string }).collapsedInto,
+      );
+      expect(shown.map((m) => m.text)).toEqual([PASSAGE]);
+    });
+
+    it("refuses a run with any other message between: an agent reply, an ask card, a typed line", async () => {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("m0", RUN[0]!));
+      await s.msg(c, { type: "say", text: "嗯？" });
+      await s.msg(owner, voice("m1", RUN[1]!));
+      await s.msg(c, { type: "merge", ids: ["m0", "m1"], text: "我想把那个按钮放到右边。" });
+      expect(c.last("error")?.error).toContain("not consecutive");
+      await s.msg(c, { type: "ask", askId: "q1", question: "哪个？", options: ["A", "B"] });
+      await s.msg(owner, voice("m2", RUN[2]!));
+      await s.msg(c, { type: "merge", ids: ["m1", "m2"], text: "放到右边，然后颜色改成红色。" });
+      expect(c.last("error")?.error).toContain("not consecutive");
+      await s.msg(owner, { type: "chat", id: "t1", text: "typed" });
+      await s.msg(owner, voice("m3", RUN[0]!));
+      await s.msg(c, { type: "merge", ids: ["t1", "m3"], text: "typed，我想把那个按钮" });
+      expect(c.last("error")?.error).toContain("typed, not spoken");
+      expect(owner.last("edited")).toBeUndefined();
+    });
+
+    it("caps the length by ratio, refuses one line, empty text, and an unknown id", async () => {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await three(s, owner);
+      const total = RUN.join("").length;
+      await s.msg(c, {
+        type: "merge",
+        ids: ["m0", "m1", "m2"],
+        text: "啊".repeat(Math.ceil(total * MERGE_RATIO) + MERGE_SLACK + 1),
+      });
+      expect(c.last("error")?.error).toContain("not merged, the lines stand");
+      await s.msg(c, {
+        type: "merge",
+        ids: ["m0", "m1", "m2"],
+        text: "啊".repeat(Math.ceil(total * MERGE_RATIO) + MERGE_SLACK),
+      });
+      expect(owner.last("edited")).toMatchObject({ passage: { ids: ["m0", "m1", "m2"] } });
+      const s2 = setup();
+      const o2 = s2.page();
+      const a2 = await agent(s2, o2);
+      await three(s2, o2);
+      await s2.msg(a2.c, { type: "merge", ids: ["m0"], text: "x" });
+      expect(a2.c.last("error")?.error).toContain("2–");
+      await s2.msg(a2.c, { type: "merge", ids: ["m0", "m1"], text: "   " });
+      expect(a2.c.last("error")?.error).toContain("merge needs text");
+      await s2.msg(a2.c, { type: "merge", ids: ["m0", "nope"], text: "x" });
+      expect(a2.c.last("error")?.error).toContain("no message nope");
+      expect(o2.last("edited")).toBeUndefined();
+    });
+
+    it("undo from his page restores every line as it was; history drops the passage", async () => {
+      const { reqs, s } = withLog();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await three(s, owner);
+      // The first line was polished before: the undo brings the polish back, not the raw.
+      await s.msg(c, { type: "edit", id: "m0", text: "我想把那个按钮，" });
+      await s.msg(c, { type: "merge", ids: ["m0", "m1", "m2"], text: PASSAGE });
+      reqs.length = 0;
+      await s.msg(owner, { type: "unmerge", id: "m0" });
+      const ev = owner.last("edited") as { restored: Record<string, unknown>[] };
+      expect(ev.restored.map((m) => [m.id, m.text])).toEqual([
+        ["m0", "我想把那个按钮，"],
+        ["m1", RUN[1]],
+        ["m2", RUN[2]],
+      ]);
+      expect(c.last("edited")).toMatchObject({ restored: expect.any(Array) });
+      const after = stored(s);
+      expect(after.map((m) => [m.id, m.text, m.collapsedInto, m.passage, m.premerge])).toEqual([
+        ["m0", "我想把那个按钮，", undefined, undefined, undefined],
+        ["m1", RUN[1], undefined, undefined, undefined],
+        ["m2", RUN[2], undefined, undefined, undefined],
+      ]);
+      expect(after[0]).toMatchObject({ raw: RUN[0], edited: { count: 1 } });
+      expect(reqs).toEqual([{ op: "drop", thread: "owner", ids: ["m0.merged"] }]);
+      // A page applying the undo shows the three lines again.
+      const merged = [
+        { id: "m0", from: "owner" as const, label: "", text: PASSAGE, at: 0 },
+        { id: "m1", from: "owner" as const, label: "", text: RUN[1]!, at: 1, collapsedInto: "m0" },
+      ];
+      const back = applyEditTo(merged, ev as never);
+      expect(back.filter((m) => !m.collapsedInto).map((m) => m.text)).toEqual([
+        "我想把那个按钮，",
+        RUN[1],
+      ]);
+      // Restored lines may be merged again.
+      await s.msg(c, { type: "merge", ids: ["m1", "m2"], text: "放到右边，然后颜色改成红色。" });
+      expect(owner.last("edited")).toMatchObject({ passage: { ids: ["m1", "m2"] } });
+    });
+
+    it("the lane can undo too; a passage is not polished, summarised or merged again", async () => {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await three(s, owner);
+      await s.msg(c, { type: "merge", ids: ["m0", "m1"], text: "我想把那个按钮放到右边。" });
+      await s.msg(c, { type: "edit", id: "m0", text: "我想把按钮放到右边。" });
+      expect(c.last("error")?.error).toContain("merged passage");
+      await s.msg(c, {
+        type: "merge",
+        ids: ["m0", "m2"],
+        text: "我想把那个按钮放到右边，然后颜色改成红色。",
+      });
+      expect(c.last("error")?.error).toContain("already a merged passage");
+      await s.msg(c, { type: "summary", ids: ["m0"], text: "（他在说按钮）" });
+      expect(c.last("error")?.error).toContain("merged passage");
+      await s.msg(c, { type: "unmerge", id: "m2" });
+      expect(c.last("error")?.error).toContain("not a merged passage");
+      await s.msg(c, { type: "unmerge", id: "m0" });
+      expect(c.last("edited")).toMatchObject({ id: "m0", restored: expect.any(Array) });
+      expect(stored(s).map((m) => m.text)).toEqual(RUN);
+    });
+
+    it("a friend's page cannot undo, a friend's pairing cannot merge, and the polish flag off refuses", async () => {
+      const s = setup({
+        SESSIONS: { live: async () => "live", flag: async (k: string) => k !== "stt.polish" },
+      });
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await three(s, owner);
+      await s.msg(c, { type: "merge", ids: ["m0", "m1"], text: "我想把那个按钮放到右边。" });
+      expect(c.last("error")?.error).toContain("polish is off");
+      const s2 = setup();
+      const o2 = s2.page();
+      const a2 = await agent(s2, o2);
+      await three(s2, o2);
+      await s2.msg(a2.c, { type: "merge", ids: ["m0", "m1"], text: "我想把那个按钮放到右边。" });
+      const f = await s2.friend();
+      await s2.msg(f, { type: "unmerge", id: "m0" });
+      expect(f.last("error")?.error).toContain("owner");
+      expect(stored(s2)[0]).toMatchObject({ passage: { ids: ["m0", "m1"] } });
     });
   });
 

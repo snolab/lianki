@@ -91,8 +91,11 @@
  * listeners hear {type:"edited", id, thread, text, raw, edited}. Friends'
  * lines never. {type:"summary", ids|last, text} collapses a consecutive run
  * of those voice lines (room talk) into one line saying what was said; the
- * others stay stored with `collapsedInto`. Both need flag stt.polish (on by
- * default).
+ * others stay stored with `collapsedInto`. {type:"merge", ids, text} rewrites
+ * a run of his consecutive voice lines as ONE fluent passage (mergeCheck: a
+ * length cap, not the word rules); the first line keeps what it read in
+ * `premerge` and {type:"unmerge", id} (his page, or the lane) restores the
+ * run. All need flag stt.polish (on by default).
  *
  * Continuous speech (flag stt.merge, voice-merge.ts; docs/dev-debug-widget.md,
  * "Continuous speech amends the last line"). With the flag on, an owner's voice
@@ -196,7 +199,9 @@ import {
   type FriendRecord,
   MAX_EDITS,
   EDITABLE_LINES,
+  MERGE_LINES,
   type SummaryMark,
+  type PassageMark,
   type HubState,
   type Identity,
   MAX_LABEL,
@@ -242,7 +247,12 @@ import type {
   WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
-import { polishCheck, polishContext, summaryCheck } from "../../../packages/debug-chat/src/polish";
+import {
+  mergeCheck,
+  polishCheck,
+  polishContext,
+  summaryCheck,
+} from "../../../packages/debug-chat/src/polish";
 import { MAX_UTTERANCE_MS } from "../../../packages/debug-chat/src/mic";
 import {
   type MergeCandidate,
@@ -270,7 +280,7 @@ import {
 } from "../../../lib/partner-ai-config";
 import { CHAT_PATH, REVOKED_PATH, TokenChat, tokenAtt } from "./token-chat";
 import { BOX_HEADER, EMBED_HEADER } from "./auth";
-import { type ChatLogRequest, chatLogLine } from "../../../lib/chat-log-line";
+import { type ChatLogRequest, chatLogLine, passageLogId } from "../../../lib/chat-log-line";
 import {
   ETA_AGENT,
   ETA_FLAG,
@@ -924,7 +934,7 @@ export class DebugHub {
    * The owner thread's kept lines, newest first, and the owner's own last
    * EDITABLE_LINES among them: the lines an agent may polish or summarise.
    */
-  private async editable() {
+  private async editable(depth: number = EDITABLE_LINES) {
     const kept = [
       ...(await this.ctx.storage.list<ChatMessage>({
         prefix: threadKeys(OWNER_THREAD).prefix,
@@ -934,7 +944,7 @@ export class DebugHub {
     ];
     // A line already inside a summary is not one of his lines any more: the summary is.
     const own = kept.filter(([, x]) => x.from === "owner" && !x.collapsedInto);
-    return { kept, recent: own.slice(0, EDITABLE_LINES) };
+    return { kept, recent: own.slice(0, depth) };
   }
 
   /** May this controller edit the owner's lines? A refusal's reason, else null. */
@@ -968,6 +978,10 @@ export class DebugHub {
       return fail(`message ${m.id} was typed, not spoken: only voice (stt) lines may be polished`);
     if (line.summary)
       return fail(`message ${m.id} is a summary: its lines are kept as heard, nothing to polish`);
+    if (line.passage)
+      return fail(
+        `message ${m.id} is a merged passage: undo it (unmerge) or merge the run again, not a polish`,
+      );
     const count = line.edited?.count ?? 0;
     if (count >= MAX_EDITS) return fail(`message ${m.id} was already polished ${MAX_EDITS} times`);
     if (m.text === line.text) return fail(`message ${m.id} already reads that way`);
@@ -1067,6 +1081,7 @@ export class DebugHub {
           `message ${x.id} was typed, not spoken: only voice (stt) lines may be summarised`,
         );
       if (x.summary) return fail(`message ${x.id} is already a summary`);
+      if (x.passage) return fail(`message ${x.id} is a merged passage: undo it first`);
       if (x.parts && !x.settled && this.now() - lastPartAt(x) < MAX_UTTERANCE_MS)
         return fail(`message ${x.id} is still being spoken`);
     }
@@ -1118,6 +1133,188 @@ export class DebugHub {
       }),
     );
     this.tellEdit(out, first.to, ws);
+  }
+
+  /**
+   * The agent rewrites a run of the owner's consecutive voice lines as ONE
+   * fluent passage (docs/dev-debug-widget.md, "Merged passages"): his own
+   * words, joined, with connectives and fragment fixes, the meaning unchanged.
+   * Accepted only if the sender may edit, every line is his `stt` line among
+   * his last MERGE_LINES, not a summary or passage, not still being spoken,
+   * the lines are consecutive in the thread (nothing at all in between: an
+   * agent reply, an ask card or anyone's line ends a run), and `mergeCheck`
+   * passes (a length cap instead of the per-line word rules). Nothing is
+   * deleted: the first line keeps what it read in `premerge` and takes the
+   * passage; the others stay stored with `collapsedInto`; undo restores them.
+   */
+  private async mergeRun(ws: Socket, c: ControllerAtt, m: { ids: string[]; text: string }) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    const no = await this.mayEdit(c);
+    if (no) return fail(no);
+    const { kept, recent: mine } = await this.editable(MERGE_LINES);
+    const picked: [string, ChatMessage][] = [];
+    for (const id of new Set(m.ids)) {
+      const hit = mine.find(([, x]) => x.id === id);
+      if (!hit) {
+        const known = kept.some(([, x]) => x.id === id);
+        return fail(
+          known
+            ? `message ${id} is not among the owner's last ${MERGE_LINES} lines (or is inside a summary or passage): only those may be merged`
+            : `no message ${id} in the owner's thread (friends' lines can never be edited)`,
+        );
+      }
+      picked.push(hit);
+    }
+    if (picked.length < 2) return fail("a merge joins two or more of the owner's lines");
+    for (const [, x] of picked) {
+      if (x.source !== "stt")
+        return fail(`message ${x.id} was typed, not spoken: only voice (stt) lines may be merged`);
+      if (x.summary) return fail(`message ${x.id} is a summary`);
+      if (x.passage) return fail(`message ${x.id} is already a merged passage: undo it first`);
+      if (x.parts && !x.settled && this.now() - lastPartAt(x) < MAX_UTTERANCE_MS)
+        return fail(`message ${x.id} is still being spoken: merge it once the passage ends`);
+    }
+    // Oldest first, in thread order (kept is newest first).
+    const at = (k: string) => kept.findIndex(([key]) => key === k);
+    picked.sort((a, b) => at(b[0]) - at(a[0]));
+    const idx = picked.map(([k]) => at(k));
+    // Nothing at all between them (kept holds every line, hidden ones too): else two runs.
+    for (let i = 1; i < idx.length; i++)
+      if (idx[i - 1]! - idx[i]! !== 1) {
+        const between = kept[idx[i - 1]! - 1]?.[1];
+        return fail(
+          `the lines are not consecutive: ${between ? `message ${between.id} (${between.from}) is` : "another message is"} between them, so they are separate runs`,
+        );
+      }
+    const heard = picked.map(([, x]) => x.raw ?? x.text);
+    const v = mergeCheck(heard, m.text);
+    if (!v.ok) {
+      console.log(JSON.stringify({ msg: "debug.passage-refused", reason: v.reason }));
+      return fail(`not merged, the lines stand: ${v.reason}`);
+    }
+    if (!(await this.polishOn()))
+      return fail(`polish is off (${POLISH_FLAG} at /dev/flags): the lines stand`);
+    const t = this.now();
+    const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
+    const [[firstKey, first], ...rest] = picked as [
+      [string, ChatMessage],
+      ...[string, ChatMessage][],
+    ];
+    const passage: PassageMark = { at: t, by, ids: picked.map(([, x]) => x.id) };
+    const edited = { at: t, by, count: first.edited?.count ?? 0 };
+    const premerge: NonNullable<ChatMessage["premerge"]> = {
+      text: first.text,
+      ...(first.raw !== undefined ? { raw: first.raw } : {}),
+      ...(first.edited ? { edited: first.edited } : {}),
+    };
+    const next: ChatMessage = {
+      ...first,
+      text: m.text,
+      raw: heard.join("\n"),
+      edited,
+      passage,
+      premerge,
+    };
+    await this.ctx.storage.put(firstKey, next);
+    for (const [k, x] of rest)
+      await this.ctx.storage.put(k, { ...x, collapsedInto: first.id } satisfies ChatMessage);
+    // History keeps every line as it was; the passage joins it as its own line (undo drops it).
+    const logged = chatLogLine({
+      id: passageLogId(first.id),
+      from: "owner",
+      text: m.text,
+      at: first.at,
+    });
+    if (logged) await this.chatLog({ op: "put", thread: OWNER_THREAD, lines: [logged] });
+    const out: EditedEvent = {
+      type: "edited",
+      id: first.id,
+      thread: OWNER_THREAD,
+      text: next.text,
+      raw: next.raw as string,
+      edited,
+      passage,
+    };
+    console.log(
+      JSON.stringify({
+        msg: "debug.passage",
+        pair: c.pair,
+        id: first.id,
+        lines: passage.ids.length,
+        by,
+        len: m.text.length,
+        heard: heard.reduce((n, h) => n + h.length, 0),
+      }),
+    );
+    this.tellEdit(out, first.to, ws);
+  }
+
+  /** The lane takes back its own merged passage (eval.ts edit --unmerge). */
+  private async unmergeByAgent(ws: Socket, c: ControllerAtt, id: string) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    const no = await this.mayEdit(c);
+    if (no) return fail(no);
+    const kept = [
+      ...(await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(OWNER_THREAD).prefix,
+        reverse: true,
+        limit: CHAT_HISTORY,
+      })),
+    ];
+    const at = kept.findIndex(([, x]) => x.id === id);
+    if (at < 0 || !kept[at][1].passage) return fail(`message ${id} is not a merged passage`);
+    return this.restorePassage(kept, at, cleanLabel(c.assignee ?? c.label, 80) || "agent", ws);
+  }
+
+  /**
+   * Undo a merged passage: its first line reads again what it read before
+   * (`premerge`), the others lose `collapsedInto`, and the history drops the
+   * passage line. Never gated by the flag: turning it off must not strand a
+   * passage. Pages and listeners hear {type:"edited", …, restored}.
+   */
+  private async restorePassage(
+    kept: [string, ChatMessage][],
+    at: number,
+    by: string,
+    sender?: Socket,
+  ) {
+    const [key, line] = kept[at];
+    const mark = line.passage as PassageMark;
+    const { passage: _p, premerge, raw: _r, edited: _e, ...base } = line;
+    const pre = premerge ?? { text: line.text };
+    const first: ChatMessage = {
+      ...base,
+      text: pre.text,
+      ...(pre.raw !== undefined ? { raw: pre.raw } : {}),
+      ...(pre.edited ? { edited: pre.edited } : {}),
+    };
+    await this.ctx.storage.put(key, first);
+    const restored: ChatMessage[] = [first];
+    for (const [k, x] of kept)
+      if (x.collapsedInto === line.id && mark.ids.includes(x.id)) {
+        const { collapsedInto: _c, ...back } = x;
+        await this.ctx.storage.put(k, back);
+        restored.push(back);
+      }
+    // Oldest first, as the passage listed them.
+    restored.sort((a, b) => mark.ids.indexOf(a.id) - mark.ids.indexOf(b.id));
+    await this.chatLog({ op: "drop", thread: OWNER_THREAD, ids: [passageLogId(line.id)] });
+    console.log(
+      JSON.stringify({ msg: "debug.passage-undo", id: line.id, lines: restored.length, by }),
+    );
+    this.tellEdit(
+      {
+        type: "edited",
+        id: line.id,
+        thread: OWNER_THREAD,
+        text: first.text,
+        raw: first.raw ?? first.text,
+        edited: first.edited ?? { at: this.now(), by: UNMERGE_BY, count: 0 },
+        restored,
+      },
+      line.to,
+      sender,
+    );
   }
 
   /** An edit of an owner's line: its pages, and the listeners by the line's node. */
@@ -1176,7 +1373,7 @@ export class DebugHub {
     // The same page on the same path: another device, or a page he moved to, is a new turn.
     if (prev.label !== page.label) return refuse("other-page");
     // A summarised run is closed: nothing more joins it, nor a line hidden inside it.
-    if (prev.summary || prev.collapsedInto) return refuse("summarised");
+    if (prev.summary || prev.passage || prev.collapsedInto) return refuse("summarised");
     // A card waiting for him just before it, or one tapped since: an answer stays its own act.
     const before = kept[1]?.[1];
     if (before?.ask && askState(before, cur.at) === "open") return refuse("open-ask");
@@ -1228,6 +1425,8 @@ export class DebugHub {
     ];
     const at = kept.findIndex(([, x]) => x.id === id);
     const line = at < 0 ? undefined : kept[at][1];
+    // A passage the lane wrote goes back to its lines first (its first line may hold parts too).
+    if (line?.passage) return this.restorePassage(kept, at, page.label);
     if (!line?.parts) return fail(`message ${id} is not a merged line`);
     const lines = splitLine(line).map((x) => ({ ...x, thread: OWNER_THREAD }));
     const grow = lines.length - 1;
@@ -1279,6 +1478,7 @@ export class DebugHub {
     if (!latest) return;
     const [key, line] = latest;
     if (!line.parts || line.settled || line.label !== page.label) return;
+    if (line.collapsedInto || line.passage) return;
     await this.ctx.storage.put(key, { ...line, settled: true } satisfies ChatMessage);
     if ((line.edited?.count ?? 0) >= MAX_EDITS || !(await this.polishOn())) return;
     const out: PolishDueEvent = {
@@ -3282,6 +3482,8 @@ export class DebugHub {
     if (m.value.type === "edit") return this.edit(ws, c, m.value);
     if (m.value.type === "withdraw") return this.withdraw(ws, c, m.value);
     if (m.value.type === "summary") return this.summarise(ws, c, m.value);
+    if (m.value.type === "merge") return this.mergeRun(ws, c, m.value);
+    if (m.value.type === "unmerge") return this.unmergeByAgent(ws, c, m.value.id);
     if (m.value.type === "ask") return this.ask(ws, c, m.value.ask, m.value.to);
     if (m.value.type === "say") {
       if (c.forUser)

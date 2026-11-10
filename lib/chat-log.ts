@@ -17,6 +17,7 @@ import {
   type ChatLogAnswer,
   type ChatLogLine,
   type ChatLogRequest,
+  isDerivedLogId,
   parseChatLogLine,
 } from "./chat-log-line";
 
@@ -106,11 +107,26 @@ export async function chatLogOp(
   const req = raw as Partial<ChatLogRequest> | null;
   if (!req || typeof req !== "object" || typeof req.thread !== "string")
     return { ok: false, error: "bad request" };
-  if (!["put", "update", "split", "backfill"].includes(req.op as string))
+  if (!["put", "update", "split", "backfill", "drop"].includes(req.op as string))
     return { ok: false, error: "bad op" };
-  if (!Array.isArray(req.lines) || req.lines.length > CHAT_LOG_MAX_LINES)
+  if (req.op === "drop") {
+    const given: unknown[] = Array.isArray(req.ids) ? req.ids : [];
+    const ids = given.filter((x): x is string => typeof x === "string" && isDerivedLogId(x));
+    if (!ids.length || ids.length !== given.length || ids.length > CHAT_LOG_MAX_LINES)
+      return { ok: false, error: "drop takes only derived lines (a passage's .merged id)" };
+    const users = await accountsOf(db, req.thread);
+    const stmts = users.flatMap((user) =>
+      ids.map((id) =>
+        db.prepare(`DELETE FROM chat_line WHERE user_id = ? AND id = ?`).bind(user, id),
+      ),
+    );
+    if (stmts.length) await db.batch(stmts);
+    return { ok: true, written: stmts.length };
+  }
+  const given = (req as { lines?: unknown }).lines;
+  if (!Array.isArray(given) || given.length > CHAT_LOG_MAX_LINES)
     return { ok: false, error: "bad lines" };
-  const lines = req.lines.map(parseChatLogLine).filter((l): l is ChatLogLine => !!l);
+  const lines = given.map(parseChatLogLine).filter((l): l is ChatLogLine => !!l);
   if (req.op === "backfill" && req.thread !== OWNER_THREAD)
     return { ok: false, error: "backfill is for the owner's thread" };
   const users = await accountsOf(db, req.thread);

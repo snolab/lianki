@@ -383,7 +383,8 @@ async function main(): Promise<number> {
       };
     }
   }
-  const stdin = sub === "say" && rest.includes("-") ? await Bun.stdin.text() : undefined;
+  const stdin =
+    (sub === "say" || sub === "edit") && rest.includes("-") ? await Bun.stdin.text() : undefined;
   // A lane token (LIANKI_TOKEN): say/ask/listen go through the public CLI's
   // `lianki chat`, in that token account's own thread, labelled with its name.
   // No grant, no pairing; without a token the grant path below is unchanged.

@@ -124,6 +124,16 @@ export type ChatLogRequest =
   /** A merged line split back: the first updates `id`, the rest are added only while `id` is kept. */
   | { op: "split"; thread: string; id: string; lines: ChatLogLine[] }
   /** The hub's stored history, once per account (lib/chat-log.ts backfill). */
-  | { op: "backfill"; thread: string; lines: ChatLogLine[] };
+  | { op: "backfill"; thread: string; lines: ChatLogLine[] }
+  /**
+   * Lines the hub derived and takes back (a merged passage undone): only ids
+   * that are such derived lines (isDerivedLogId); a line he said never.
+   */
+  | { op: "drop"; thread: string; ids: string[] };
+
+/** A merged passage's own line in the history: its first line's id + ".merged". */
+export const passageLogId = (id: string) => `${id}.merged`;
+/** Is this a history line the hub derived (a passage), which it may drop on an undo? */
+export const isDerivedLogId = (id: string) => /^[A-Za-z0-9_-]{1,64}\.merged$/.test(id);
 
 export type ChatLogAnswer = { ok: true; written: number } | { ok: false; error: string };
