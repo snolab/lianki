@@ -10,6 +10,12 @@ import { type ProgressEntry, mergeProgress, parseEta, parseProgressReport } from
 import { liveTreeSource, overlayProgress } from "@/lib/progress-tree";
 import { ETA_EXPLAIN_MS, ETA_PATH, etaLineText, parseEtaPing } from "@/lib/eta-ping";
 import { FLAGS } from "@/lib/flags";
+import {
+  OWNER_WAIT_REMIND_DEFAULT,
+  OWNER_WAIT_REMIND_KEY,
+  parseRemindDays,
+  remindDelayMs,
+} from "@/lib/owner-wait";
 import { parseProgressArgs } from "@/scripts/dev/progress-args";
 import { chatLine } from "@/scripts/dev/node-args";
 import {
@@ -85,7 +91,10 @@ function fakeStorage(): Storage & { store: Map<string, unknown>; alarm: number |
 }
 
 /** A progress hub with a fake chat hub behind its DEBUG binding. */
-function setup(answer: () => Response | Promise<Response> = () => Response.json({ ok: true })) {
+function setup(
+  answer: () => Response | Promise<Response> = () => Response.json({ ok: true }),
+  sessions?: { config?(key: string): Promise<unknown> },
+) {
   let t = 1_000_000;
   const sockets: FakeSocket[] = [];
   const storage = fakeStorage();
@@ -106,7 +115,7 @@ function setup(answer: () => Response | Promise<Response> = () => Response.json(
       getWebSockets: () => sockets,
       storage,
     },
-    { PROGRESS_TOKEN: ROOT, DEBUG },
+    { PROGRESS_TOKEN: ROOT, DEBUG, ...(sessions ? { SESSIONS: sessions } : {}) },
     () => t,
   );
   const write = async (body: Record<string, unknown>) => {
@@ -395,6 +404,163 @@ describe("ETA overrun: the reason and a new ETA, or the owner is told", () => {
     });
     expect(parseProgressArgs([...base, "--late", "slow CI"])).toBeInstanceOf(Error);
     expect(parseProgressArgs([...base, "--eta", "after CI", "--late", "x"])).toBeInstanceOf(Error);
+  });
+});
+
+describe("waiting on the owner: one reminder with the reason, then spaced ones", () => {
+  const DAY = 24 * 60 * MIN;
+  const kinds = (h: ReturnType<typeof setup>, id: string) =>
+    h.pings.filter((p) => p.id === id).map((p) => p.kind ?? "due");
+
+  it("the reminder carries the reason, never the lane prompt or 未说明原因; then 1, 3, 7, 7 days", async () => {
+    const h = setup();
+    await h.write({
+      id: "/x/approve",
+      status: "waiting-owner",
+      needs: "批准 DNS 改动",
+      task: "DNS 切换: move the apex",
+      eta: "5m",
+    });
+    h.tick(5 * MIN);
+    await h.hub.alarm();
+    expect(h.pings).toEqual([
+      expect.objectContaining({ id: "/x/approve", kind: "waiting", reason: "批准 DNS 改动" }),
+    ]);
+    expect(etaLineText(h.pings[0] as never)).toBe("DNS 切换：在等你——批准 DNS 改动");
+    const etaAt = h.entry("/x/approve")!.etaAt!;
+    expect(h.entry("/x/approve")).toMatchObject({ etaSent: etaAt, etaSilent: etaAt, remindN: 1 });
+    expect(h.storage.alarm).toBe(h.now() + DAY);
+    // No "silent" five minutes later, nothing within the day.
+    h.tick(ETA_EXPLAIN_MS + MIN);
+    await h.hub.alarm();
+    h.tick(DAY - ETA_EXPLAIN_MS - 2 * MIN);
+    await h.hub.alarm();
+    expect(kinds(h, "/x/approve")).toEqual(["waiting"]);
+    let at = h.entry("/x/approve")!.remindAt!;
+    for (const [n, gap] of [
+      [2, 3],
+      [3, 7],
+      [4, 7],
+      [5, 7],
+    ] as const) {
+      h.tick(at - h.now());
+      await h.hub.alarm();
+      expect(kinds(h, "/x/approve").length).toBe(n);
+      at = h.entry("/x/approve")!.remindAt!;
+      expect(at).toBe(h.now() + gap * DAY);
+      expect(h.storage.alarm).toBe(at);
+    }
+    expect(new Set(kinds(h, "/x/approve"))).toEqual(new Set(["waiting"]));
+  });
+
+  it("a new estimate needs no --late; done, or no longer waiting, stops the reminders", async () => {
+    const h = setup();
+    await h.write({ id: "/x/a", status: "waiting-owner", needs: "看一下", eta: "5m" });
+    h.tick(6 * MIN);
+    await h.hub.alarm();
+    // Past its ETA, still waiting: a new time goes through without a reason.
+    const moved = await h.write({ id: "/x/a", status: "waiting-owner", eta: "2h" });
+    expect(moved.status).toBe(200);
+    expect(moved.body.told).toBeUndefined();
+    expect((await h.write({ id: "/x/a", status: "waiting-owner", confirm: true })).status).toBe(
+      200,
+    );
+    // Back to the lane's own work (needs cleared): no reminder, and nothing "silent" for it.
+    await h.write({ id: "/x/a", status: "doing", needs: "" });
+    h.tick(10 * DAY);
+    await h.hub.alarm();
+    expect(kinds(h, "/x/a")).toEqual(["waiting"]);
+    // A done one, and one the owner resolves, hear nothing more.
+    await h.write({ id: "/x/b", status: "waiting-owner", needs: "选一个", eta: "1m" });
+    await h.write({ id: "/x/c", needs: "点批准", eta: "1m" });
+    h.tick(MIN);
+    await h.hub.alarm();
+    await h.write({ id: "/x/b", status: "done" });
+    await h.hub.resolve("/x/c");
+    h.tick(30 * DAY);
+    await h.hub.alarm();
+    expect(kinds(h, "/x/b")).toEqual(["waiting"]);
+    expect(kinds(h, "/x/c")).toEqual(["waiting"]);
+  });
+
+  it("the lane's own late work keeps its rules", async () => {
+    const h = setup();
+    await h.write({ id: "/x/work", eta: "5m" });
+    h.tick(5 * MIN);
+    await h.hub.alarm();
+    expect((await h.write({ id: "/x/work", eta: "20m" })).status).toBe(400);
+    h.tick(ETA_EXPLAIN_MS);
+    await h.hub.alarm();
+    expect(kinds(h, "/x/work")).toEqual(["due", "silent"]);
+  });
+
+  it("a lane that hands its overrun to the owner: his reminder at once, no 未说明原因", async () => {
+    const h = setup();
+    await h.write({ id: "/x/d", eta: "5m" });
+    h.tick(5 * MIN);
+    await h.hub.alarm();
+    await h.write({ id: "/x/d", status: "waiting-owner", needs: "要你的 token 授权" });
+    await h.hub.alarm();
+    h.tick(ETA_EXPLAIN_MS);
+    await h.hub.alarm();
+    expect(kinds(h, "/x/d")).toEqual(["due", "waiting"]);
+    expect(h.pings.at(-1)).toMatchObject({ reason: "要你的 token 授权" });
+  });
+
+  it("the spacing is a config value, read live, with the default when unreadable", async () => {
+    expect(parseRemindDays(OWNER_WAIT_REMIND_DEFAULT)).toEqual([1, 3, 7]);
+    expect(parseRemindDays("2, 5")).toEqual([2, 5]);
+    expect(parseRemindDays("0,3")).toEqual([1, 3, 7]);
+    expect(parseRemindDays("weekly")).toEqual([1, 3, 7]);
+    expect(remindDelayMs([2, 5], 1)).toBe(2 * DAY);
+    expect(remindDelayMs([2, 5], 9)).toBe(5 * DAY);
+    const h = setup(undefined, { config: async (k) => (k === OWNER_WAIT_REMIND_KEY ? "2" : 0) });
+    await h.write({ id: "/x/e", status: "waiting-owner", eta: "1m" });
+    h.tick(MIN);
+    await h.hub.alarm();
+    expect(etaLineText(h.pings[0] as never)).toBe("Native swipe：在等你");
+    expect(h.entry("/x/e")!.remindAt).toBe(h.now() + 2 * DAY);
+    const broken = setup(undefined, {
+      config: async () => {
+        throw new Error("d1 down");
+      },
+    });
+    await broken.write({ id: "/x/f", status: "waiting-owner", eta: "1m" });
+    broken.tick(MIN);
+    await broken.hub.alarm();
+    expect(broken.entry("/x/f")!.remindAt).toBe(broken.now() + DAY);
+  });
+
+  it("a node pinged before reminders existed: its reminders start a day out, no line now", async () => {
+    const h = setup();
+    await h.write({ id: "/x/old", status: "waiting-owner", needs: "看", eta: "1m" });
+    const e = h.entry("/x/old")!;
+    // As the old hub left it: pinged, nothing more.
+    h.storage.store.set("e:/x/old", { ...e, etaSent: e.etaAt });
+    h.tick(2 * MIN);
+    await h.hub.alarm();
+    expect(h.pings).toEqual([]);
+    expect(h.entry("/x/old")).toMatchObject({ remindN: 1, remindAt: h.now() + DAY });
+    h.tick(DAY);
+    await h.hub.alarm();
+    expect(kinds(h, "/x/old")).toEqual(["waiting"]);
+  });
+
+  it("the chat hub could not take it: put back and tried again", async () => {
+    let ok = false;
+    const h = setup(() =>
+      ok ? Response.json({ ok: true }) : new Response("busy", { status: 503 }),
+    );
+    await h.write({ id: "/x/g", status: "waiting-owner", needs: "看", eta: "1m" });
+    h.tick(MIN);
+    await h.hub.alarm();
+    expect(h.entry("/x/g")!.remindN).toBeUndefined();
+    expect(h.storage.alarm).toBe(h.now() + ETA_RETRY_MS);
+    ok = true;
+    h.tick(ETA_RETRY_MS);
+    await h.hub.alarm();
+    expect(h.entry("/x/g")!.remindN).toBe(1);
+    expect(kinds(h, "/x/g")).toEqual(["waiting", "waiting"]);
   });
 });
 

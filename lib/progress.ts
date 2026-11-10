@@ -183,6 +183,14 @@ export type ProgressEntry = Omit<
    * estimate). Once per etaAt, as etaSent.
    */
   etaSilent?: number;
+  /**
+   * Waiting on the owner (lib/owner-wait.ts; docs/state-tree.md, "Waiting on
+   * the owner"): reminders sent for the estimate `remindFor` (its etaAt), and
+   * when the next one is due. A new etaAt makes them stale: it starts over.
+   */
+  remindFor?: number;
+  remindN?: number;
+  remindAt?: number;
   /** The last overrun's reason (`--late`), and the etaAt it explained. */
   lateReason?: string;
   lateFor?: number;
@@ -461,6 +469,11 @@ export function mergeProgress(
   etaHistory(prev, r, entry, at, change);
   if (prev?.etaSent !== undefined) entry.etaSent = prev.etaSent;
   if (prev?.etaSilent !== undefined) entry.etaSilent = prev.etaSilent;
+  if (prev?.remindFor !== undefined && prev.remindFor === entry.etaAt) {
+    entry.remindFor = prev.remindFor;
+    if (prev.remindN !== undefined) entry.remindN = prev.remindN;
+    if (prev.remindAt !== undefined) entry.remindAt = prev.remindAt;
+  }
   if (r.late) {
     entry.lateReason = r.late;
     if (prev?.etaAt !== undefined) entry.lateFor = prev.etaAt;

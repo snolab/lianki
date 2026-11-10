@@ -18,6 +18,8 @@
  * etaAt, which drives the owner's ETA bar and the one "ETA reached" line the
  * agents get when it passes (docs/state-tree.md, "ETA pings"). Past it, a new
  * --eta needs --late "<reason>": the hub tells the owner both ("ETA overrun").
+ * A node waiting on the owner (waiting-owner, --needs) is not late: he gets
+ * spaced reminders with the reason instead ("Waiting on the owner").
  *
  * The site is LIANKI_URL (default: the production site, as for eval.ts). The
  * token is --token, else LIANKI_PROGRESS_TOKEN, else PROGRESS_TOKEN, else

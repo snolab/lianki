@@ -105,6 +105,19 @@ export const CONFIG = {
     audience: "server",
     description: "联系表单每一栏（姓名、邮箱、电话、留言）最多多少个字符，超过就拒收。",
   }),
+  // Read by the progress hub (lianki-push) over DebugSessions.config; docs/state-tree.md, "Waiting on the owner".
+  "chat.ownerWaitRemindDays": {
+    default: "1,3,7" as string,
+    schema: z
+      .string()
+      .regex(/^\s*\d{1,2}(\s*,\s*\d{1,2})*\s*$/, "days, comma-separated: 1,3,7")
+      .refine((s) => s.split(",").every((d) => Number(d) >= 1 && Number(d) <= 30), "1–30 days"),
+    unit: "days",
+    group: "chat",
+    audience: "server",
+    description:
+      "等你处理的事（状态 waiting-owner 或写了 needs）到时间后先提醒你一次，之后隔多少天再提醒：逗号分隔的天数，用完后一直按最后一个间隔（默认 1,3,7 = 一天、三天、七天，之后每周）。",
+  },
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

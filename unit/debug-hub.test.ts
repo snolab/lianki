@@ -3974,6 +3974,19 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     expect((await post(s, { ...ping, kind: "late" })).status).toBe(400);
   });
 
+  it("waiting on the owner: his reminder carries the reason, read aloud, no lane prompt", async () => {
+    const s = setup(on());
+    const owner = s.page();
+    await post(s, { ...ping, title: "DNS 切换: apex", kind: "waiting", reason: "批准 DNS 改动" });
+    const line = chats(owner).at(-1) as Record<string, unknown>;
+    expect(line.text).toBe("DNS 切换：在等你——批准 DNS 改动");
+    expect(line.quiet).toBeUndefined();
+    expect(line).toMatchObject({ source: "eta", from: "agent" });
+    // No reason (status waiting-owner without needs) is still one.
+    await post(s, { ...ping, title: "DNS 切换: apex", kind: "waiting" });
+    expect((chats(owner).at(-1) as Record<string, unknown>).text).toBe("DNS 切换：在等你");
+  });
+
   it("flag off (or unreadable): nothing posted; unreadable is a 503 so the progress hub retries", async () => {
     const off = setup(on({}));
     const p = off.page();
