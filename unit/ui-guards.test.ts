@@ -137,6 +137,10 @@ describe("UI guards (ratchet: may only shrink)", () => {
     alert("Something broke");`;
     // title, "Hello there", the alert and the `HTTP ${…}` child; "Lianki" is a name.
     expect(scanUiFile("x.tsx", tsx)).toEqual({ literals: 4, rawErrors: 2 });
+    // An example address is not text to translate; a sentence around one still is.
+    const urls = `<p><input placeholder="https://example.com/list.txt" />https://example.com/a
+      <i>Paste https://example.com/a here</i></p>`;
+    expect(scanUiFile("y.tsx", urls)).toEqual({ literals: 1, rawErrors: 0 });
     const api = `json({ error: "login-required" }); json({ error: "Login required" }); json({ error: e.message }); json({ error: \`bad \${x}\` })`;
     expect(scanApiFile("route.ts", api)).toBe(3);
     expect(JARGON.test("Word lists need the D1 backend")).toBe(true);
