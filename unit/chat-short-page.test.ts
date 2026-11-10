@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { shortPage } from "@lianki/debug-chat/DebugChat";
+import { shortPage } from "@lianki/debug-chat/short-page";
 
 // Owner, 2026-11-11 01:31 JST: a user without `dev` never sees a connected
 // page's full path, ids or device in the chat menu; a short name at most.

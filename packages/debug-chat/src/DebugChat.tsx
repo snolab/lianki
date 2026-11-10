@@ -1,5 +1,6 @@
 "use client";
 
+import { shortPage } from "./short-page";
 import { type AdaptState, voiceAdapt } from "./adaptive";
 import {
   type ReactNode,
@@ -627,15 +628,6 @@ function when(at: number) {
   const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   return day === today ? `${hm}:${pad(d.getSeconds())}` : `${day} ${hm}`;
-}
-
-/**
- * A connected page as a user without `dev` sees it in the menu: the path's
- * first segment ("/words/abc?x=1" → "/words"), never ids, queries or devices.
- */
-export function shortPage(path: string): string {
-  const first = path.split(/[?#]/)[0].split("/").filter(Boolean)[0];
-  return first ? `/${first}` : "/";
 }
 
 /**
