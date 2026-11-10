@@ -109,14 +109,18 @@ export type ReadSpeakerDeps = {
    */
   preroll?(): number;
 };
+/** Which voice failed: the device's speech engine or the server's clip. */
+export type SpeakEngine = "speech" | "cloud";
 export type SpeakCallbacks = {
   onend(): void;
   /**
    * Nothing was said. `noVoice`: neither engine has a voice for the
    * language here (no browser voice, and the server has none or answered
    * 404) — the card says "no voice for this language", not a failure.
+   * `engine`: the voice that failed last (the device's or the server's), so
+   * a screen names it in the learner's language; `why` is detail for devLog.
    */
-  onerror(why: string, noVoice?: boolean): void;
+  onerror(why: string, noVoice?: boolean, engine?: SpeakEngine): void;
   /** A part (of `speak`'s array form) starts: its index. */
   onpart?(part: number): void;
   /** Its rank for the page's audio (AUDIO_PRIO; default: a paragraph). */
@@ -339,7 +343,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
       /** Paused for a higher sound; it resumes at `at`. */
       let parked = false;
       let owner: AudioOwner | null = null;
-      const finish = (ok: boolean, why = "", noVoice = false) => {
+      const finish = (ok: boolean, why = "", noVoice = false, engine: SpeakEngine = "speech") => {
         if (!live()) return;
         turn++;
         cleanup();
@@ -348,7 +352,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         hold();
         stopCurrent = null;
         if (ok) cb.onend();
-        else cb.onerror(why, noVoice);
+        else cb.onerror(why, noVoice, engine);
       };
       const cancel = () => {
         if (!live()) return;
@@ -523,7 +527,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         one(from);
       };
 
-      const fail = (at: number, engine: "speech" | "cloud", why: string): void => {
+      const fail = (at: number, engine: SpeakEngine, why: string): void => {
         if (!live()) return;
         log({ ev: "read-tts-fail", engine, why, lang });
         if (engine === "cloud" && /HTTP 404/.test(why)) cloud404 = true;
@@ -537,7 +541,7 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
         } catch {}
         if (engine === "speech" && !tried.has("cloud") && cloudOk) return viaCloud(at);
         if (engine === "cloud" && !tried.has("speech") && voice) return viaSpeech(at);
-        finish(false, why, !voice && (!cloudOk || cloud404));
+        finish(false, why, !voice && (!cloudOk || cloud404), engine);
       };
 
       const begin = (from: number) => {

@@ -99,7 +99,7 @@ export default function MembershipClient() {
       setMembership(data);
     } catch (error) {
       console.error("Error fetching membership:", error);
-      setError("Failed to load membership information");
+      setError(errorText.failedToLoad.value);
     } finally {
       setLoading(false);
     }

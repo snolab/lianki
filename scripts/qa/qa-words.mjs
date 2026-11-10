@@ -1,6 +1,7 @@
 // Word lists (/words) end to end on the D1 Worker: sign up, add a catalog list,
 // grade one screen by exception, and check what the server stored.
 import { chromium } from "playwright";
+import { spawnSync } from "node:child_process";
 import { buildApkg } from "./apkg-fixture.mjs";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 import { availableParallelism } from "node:os";
@@ -1289,7 +1290,7 @@ try {
     });
     if (!made.ok()) throw new Error(`phone ${name}: add list ${made.status()}`);
     const { list } = await made.json();
-    return { phone, listUrl: `${BASE}/words?list=${list.id}`, ttsAsked, ttsTexts };
+    return { phone, email, listUrl: `${BASE}/words?list=${list.id}`, ttsAsked, ttsTexts };
   };
   /**
    * Waits until the list and every slip are at rest: list scroll, slip
@@ -2180,6 +2181,112 @@ try {
     }
   };
 
+  /**
+   * A slip that can no longer be swiped cracks (flag `words.shatter`, on by
+   * default, owner audience = the `dev` grant; Shatter.tsx). This account is
+   * granted `dev` in the LOCAL D1 (as qa-app-badge does), removed at the end.
+   * A miss (1 = Again) counts down; a fake clock runs it out on screen: that
+   * slip shows the cracks, running once, under its text; a row with time left
+   * and an ungraded row show none; with reduced motion the cracks are at rest.
+   */
+  const shatterPass = async () => {
+    const tag = "phone/shatter:";
+    const { phone, email, listUrl } = await newPhone("shatter");
+    const d1 = (sql) =>
+      spawnSync("bunx", ["wrangler", "d1", "execute", "lianki", "--local", "--command", sql], {
+        encoding: "utf8",
+      });
+    const grant = d1(
+      `INSERT OR REPLACE INTO account_permission (email, permission, granted_by, granted_at) VALUES ('${email}', 'dev', 'qa', ${Date.now()})`,
+    );
+    try {
+      if (grant.status !== 0) return check(false, `${tag} local D1 grant: ${grant.stderr}`);
+      // Grants reach the server's snapshot within 20 s: wait until the page says so.
+      let on = false;
+      for (let end = Date.now() + 40000; !on && Date.now() < end; ) {
+        on = /\\?"shatter\\?":true/.test(await (await phone.request.get(listUrl)).text());
+        if (!on) await new Promise((r) => setTimeout(r, 2000));
+      }
+      check(on, `${tag} a dev holder gets the flag's verdict, on`);
+      if (!on) return;
+      const m = await phone.newPage();
+      m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      await m.goto(listUrl, { waitUntil: "networkidle" });
+      const rows = m.locator('[role="listitem"]');
+      await rows.nth(3).waitFor({ timeout: budget(15000) });
+      // A fake clock that still runs, from here on: fastForward ends the countdown.
+      await m.clock.install();
+      const graded = m.waitForResponse((r) => /\/api\/words\/lists\/[^/]+\/review/.test(r.url()));
+      await m.keyboard.press("Digit1");
+      await graded.catch(() => null);
+      await m.waitForTimeout(300);
+      const cracks = () =>
+        m.evaluate(() =>
+          [...document.querySelectorAll('[role="listitem"]')].slice(0, 6).map((r) => {
+            const s = r.querySelector(".lk-shatter");
+            const svg = s?.querySelector("svg");
+            const cs = s && getComputedStyle(s);
+            return {
+              i: Number(r.dataset.i),
+              back: !!r.querySelector(".lk-back"),
+              shatter: s?.dataset.shatter ?? null,
+              paths: s ? s.querySelectorAll("path").length : 0,
+              z: cs?.zIndex,
+              pe: cs?.pointerEvents,
+              run: svg ? getComputedStyle(svg).animationName : null,
+              fit: s
+                ? Math.abs(s.getBoundingClientRect().height - r.getBoundingClientRect().height) <= 1
+                : null,
+            };
+          }),
+        );
+      const before = await cracks();
+      check(
+        before.every((r) => r.shatter === null),
+        `${tag} while it counts down, no slip cracks (${JSON.stringify(before.map((r) => r.shatter))})`,
+      );
+      // Again comes back within minutes: past it, the slip reads "↓ back", locked.
+      await m.clock.fastForward("25:00");
+      await m.waitForTimeout(800);
+      const after = await cracks();
+      const hit = after.find((r) => r.i === 0);
+      check(
+        hit?.back && hit.shatter === "live" && hit.paths >= 10,
+        `${tag} the ended slip cracks, live (${JSON.stringify(hit)})`,
+      );
+      check(
+        hit?.z === "-1" && hit.pe === "none" && hit.fit,
+        `${tag} under the text, untouchable, the slip's own height (${JSON.stringify(hit)})`,
+      );
+      check(hit?.run === "lk-crack-run", `${tag} the cracks run out once (${hit?.run})`);
+      check(
+        after.filter((r) => r.i !== 0).every((r) => r.shatter === null),
+        `${tag} the other slips, ungraded or counting, stay whole`,
+      );
+      await shot(m, "words-shatter-light");
+      // Reduced motion: the cracks at rest, no run, no flash.
+      await m.emulateMedia({ reducedMotion: "reduce" });
+      const calm = await m.evaluate(() => {
+        const s = document.querySelector('[role="listitem"][data-i="0"] .lk-shatter');
+        const hit = s?.querySelector(".lk-shatter-hit");
+        return {
+          run: s ? getComputedStyle(s.querySelector("svg")).animationName : null,
+          flash: hit ? getComputedStyle(hit).display : "none",
+        };
+      });
+      check(
+        calm.run === "none" && calm.flash === "none",
+        `${tag} reduced motion: the cracks at rest (${JSON.stringify(calm)})`,
+      );
+      await m.emulateMedia({ colorScheme: "dark", reducedMotion: null });
+      await shot(m, "words-shatter-dark");
+      await m.close();
+    } finally {
+      d1(`DELETE FROM account_permission WHERE email = '${email}' AND granted_by = 'qa'`);
+      await phone.close();
+    }
+  };
+
   // iPhone on WebKit, both swipe variants: the page itself never scrolls, and
   // the list opens with its first word in the middle of the screen — on
   // load, on reload, and when the list is shown again (pageshow). In its own
@@ -2658,6 +2765,7 @@ try {
       ["phone/native", () => firstPass("native")],
       ["phone/js+heavy", () => heavyPass("js")],
       ["phone/native+heavy", () => heavyPass("native")],
+      ["phone/shatter", shatterPass],
     ];
     for (const variant of ["js", "native"])
       for (const feel of ["light", "heavy"])

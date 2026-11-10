@@ -6,6 +6,7 @@ import { pageLeaving } from "@/lib/page-leaving";
 import { useTextScale } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { SettingsSheet } from "./SettingsSheet";
+import { Shatter } from "./Shatter";
 import { ListPreview, PreviewButton } from "./ListPreview";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { advanceTop, keyGradeMove, shouldAdvance } from "@/lib/words/advance";
@@ -159,6 +160,13 @@ import {
   type CtxLike as PoolCtx,
 } from "@/lib/words/clip-pool";
 import { debugOn, devLog } from "@/lib/debug-client";
+import {
+  ApiError,
+  type ErrorReason,
+  OfflineError,
+  reasonOf,
+  reasonText,
+} from "@/lib/words/error-reason";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
 import type { Patch, RowFill } from "@/lib/read/review-row-fill";
@@ -1732,8 +1740,10 @@ function lineHeightOf(o: HTMLElement): number {
  * slip fades (.lk-back in globals.css): the copy further down is the one
  * to answer now.
  */
-function Countdown({ due, back }: { due: number; back: boolean }) {
+function Countdown({ due, back, crack }: { due: number; back: boolean; crack?: string }) {
   const [now, setNow] = useState(() => Date.now());
+  // Still counting as the row mounted: an end seen here cracks live, once.
+  const [liveAtMount] = useState(() => due > now);
   useEffect(() => {
     const left = due - now;
     if (left <= 0 || left > 3_600_000) return;
@@ -1745,7 +1755,14 @@ function Countdown({ due, back }: { due: number; back: boolean }) {
   const text = useIntlayer("words-page");
   const left = due - now;
   if (left > 0) return <>{formatInterval(left)}</>;
-  return back ? <span className="lk-back">{text.back}</span> : <>{text.now}</>;
+  if (!back) return <>{text.now}</>;
+  return (
+    <>
+      <span className="lk-back">{text.back}</span>
+      {/* Locked now: cracked glass (`words.shatter`), keyed by the card. */}
+      {crack !== undefined && <Shatter seed={crack} live={liveAtMount} />}
+    </>
+  );
 }
 
 /** Due time (ms) of a stored card JSON. */
@@ -1759,9 +1776,6 @@ const dueOf = (card: string) => {
 
 const localDay = () => new Date().toLocaleDateString("en-CA");
 
-/** The request never reached the server: no network. */
-class OfflineError extends Error {}
-
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -1770,9 +1784,13 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
       headers: { "content-type": "application/json", ...init?.headers },
     });
   } catch {
-    throw new OfflineError("offline");
+    throw new OfflineError();
   }
-  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? res.statusText);
+  if (!res.ok) {
+    // The server's code and status, mapped to plain words where shown (lib/words/error-reason.ts).
+    const code = (await res.json().catch(() => null))?.error;
+    throw new ApiError(res.status, typeof code === "string" ? code : "");
+  }
   return res.json() as Promise<T>;
 }
 
@@ -1994,6 +2012,8 @@ export default function WordsClient({
   importAiOn = false,
   pinch = false,
   onboarding = false,
+  shatter = false,
+  dev = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
@@ -2008,10 +2028,15 @@ export default function WordsClient({
   pinch?: boolean;
   /** `words.onboarding`: the walkthrough and its "?" by the heading (/words only, not /alphabet). */
   onboarding?: boolean;
+  /** `words.shatter` (lib/words/shatter-gate.ts): a locked "↓ back" slip shows cracked glass. */
+  shatter?: boolean;
+  /** Holds `dev`: debug mode also offers whisper mode and the swipe's feel and tuner. */
+  dev?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
   const text = useIntlayer("words-page");
+  const whyText = useIntlayer("words-status");
   const [wordsTitle, wordsIntro, wordsAll] = [
     text.title.value,
     text.intro.value,
@@ -2024,7 +2049,7 @@ export default function WordsClient({
   const [allLists, setLists] = useState<WordList[] | null>(null);
   const [catalog, setCatalog] = useState<CatalogMeta[] | null>(null);
   const [listId, setListId] = useListParam(config.base);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorReason | null>(null);
   /** The lists shown came from the offline copy. */
   const [offline, setOffline] = useState(false);
   useOfflineShell();
@@ -2046,7 +2071,7 @@ export default function WordsClient({
       if (cached) {
         setLists(withPendingRenames(cached, await queued()));
         setOffline(true);
-      } else setError((e as Error).message);
+      } else setError(reasonOf(e, "lists"));
     }
   }, []);
 
@@ -2132,7 +2157,9 @@ export default function WordsClient({
   if (error)
     return (
       <div className="p-8 text-red-400">
-        {error === "Login required" ? text.signInToUse : error}
+        {error === "signIn"
+          ? text.signInToUse
+          : fill(text.couldntLoad.value, { error: reasonText(whyText, error) })}
       </div>
     );
   if (!lists || !catalog || !fullCatalog)
@@ -2174,6 +2201,8 @@ export default function WordsClient({
             catalog={fullCatalog}
             voice={voice}
             pinch={pinch}
+            shatter={shatter}
+            dev={dev}
             title={
               listId === ALL
                 ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
@@ -2697,6 +2726,7 @@ function ListPicker({
   const groupSource = groupSourceOf(config);
   const isGroup = (l: WordList) => l.source === groupSource;
   const text = useIntlayer("words-page");
+  const whyText = useIntlayer("words-status");
   const phraseText = useIntlayer("words-phrases");
   const catalogById = useMemo(() => new Map(catalog.map((c) => [c.id, c])), [catalog]);
   const isPhrase = (l: WordList) => isPhraseMeta(catalogById.get(l.source ?? ""));
@@ -2708,7 +2738,7 @@ function ListPicker({
   const [download, setDownload] = useState<{
     done: number;
     total: number;
-    error?: string;
+    error?: ErrorReason;
   } | null>(null);
 
   // Folded groups, per tab (docs/ui-state.md: session `lk:ui:words`).
@@ -2954,7 +2984,7 @@ function ListPicker({
         }
       }
     } catch (e) {
-      done.error = (e as Error).message;
+      done.error = reasonOf(e, "add");
     }
     setTicked((t) => new Set([...t].filter((id) => !picks.some((c) => c.id === id))));
     await onRefresh().catch(() => {});
@@ -3079,7 +3109,7 @@ function ListPicker({
                     setDownload({ done, total }),
                   );
                 } catch (e) {
-                  setDownload({ done: 0, total: 0, error: (e as Error).message });
+                  setDownload({ done: 0, total: 0, error: reasonOf(e, "download") });
                 }
               }}
               className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-50"
@@ -3092,7 +3122,7 @@ function ListPicker({
           {download && !offline && (
             <span className="opacity-70 tabular-nums">
               {download.error
-                ? fill(text.downloadFailed.value, { error: download.error })
+                ? fill(text.downloadFailed.value, { error: reasonText(whyText, download.error) })
                 : download.done < download.total
                   ? fill(text.downloading.value, { done: download.done, total: download.total })
                   : text.savedOnDevice}
@@ -3269,7 +3299,13 @@ function ListPicker({
 }
 
 /** What one "Add selected" did: the new lists, any group made for them, a failure. */
-type AddedNow = { ids: string[]; names: string[]; made: string[]; error?: string; at: number };
+type AddedNow = {
+  ids: string[];
+  names: string[];
+  made: string[];
+  error?: ErrorReason;
+  at: number;
+};
 
 /**
  * One node of the "Add a list" tree: the whole row ticks it (a language or a
@@ -3616,13 +3652,14 @@ function AddedToast({
   onUndo?: () => void;
 }) {
   const text = useIntlayer("words-page");
+  const whyText = useIntlayer("words-status");
   const { locale } = useLocale();
   let names = added.names.join(", ");
   try {
     names = new Intl.ListFormat([locale], { type: "conjunction" }).format(added.names);
   } catch {}
   const said = added.error
-    ? fill(text.addFailed.value, { error: added.error })
+    ? fill(text.addFailed.value, { error: reasonText(whyText, added.error) })
     : fill(text.addedToast.value, { names });
   const action =
     "min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.165_22.3)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.132_22.3)]";
@@ -3757,8 +3794,14 @@ export function Study({
   voice,
   scope,
   pinch = false,
+  shatter = false,
+  dev = false,
 }: {
+  /** Holds `dev`: debug mode also offers whisper mode and the swipe's feel and tuner. */
+  dev?: boolean;
   scope?: StudyScope;
+  /** A locked "↓ back" slip shows cracked glass (`words.shatter`, Shatter.tsx). */
+  shatter?: boolean;
   /** The card-height pinch (`words.pinch-card-height`, lib/words/use-row-pinch.ts). */
   pinch?: boolean;
   config: DrillConfig;
@@ -3784,8 +3827,8 @@ export function Study({
   const [row, setRow] = useState(0);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<ErrorReason | null>(null);
+  const [syncError, setSyncError] = useState<ErrorReason | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /** The row whose other actions are open (double tap / right click). */
   const [sheet, setSheet] = useState<number | null>(null);
@@ -4154,7 +4197,7 @@ export function Study({
       const due = orderedDue(session.lists);
       setQueue([...due, ...spreadPairs(fresh, PAGE, due.length, due)]);
       setLoading(false);
-    })().catch((e) => alive && setLoadError((e as Error).message));
+    })().catch((e) => alive && setLoadError(reasonOf(e, "study")));
     return () => {
       alive = false;
     };
@@ -4316,6 +4359,7 @@ export function Study({
     })();
   };
   const text = useIntlayer("words-page");
+  const whyText = useIntlayer("words-status");
   const ratingLabel = useRatingLabel();
   const grades4 = {
     again: ratingLabel[1],
@@ -4988,7 +5032,7 @@ export function Study({
     })()
       // With nothing on screen, a failure is the page's error (with Retry),
       // not a quiet note under an empty list.
-      .catch((e) => (queue.length ? setSyncError : setLoadError)((e as Error).message))
+      .catch((e) => (queue.length ? setSyncError : setLoadError)(reasonOf(e, "more")))
       .finally(() => {
         fetching.current = false;
       });
@@ -5326,11 +5370,22 @@ export function Study({
   const finished = studyFinished(exhausted, ahead.length);
   const exitLabel = scope?.exitLabel ?? text.backToLists.value;
 
-  const status = (it: Item, i: number) => {
+  /** `inRow`: the list's slip, which cracks once locked; not the sheet's copy of the label. */
+  const status = (it: Item, i: number, inRow = false) => {
     const g = grades.get(i);
     if (g) {
       // Saved: when it actually comes back. Not yet saved: the preview.
-      if (g.card) return <Countdown due={dueOf(g.card)} back={requeue.current.requeued.has(i)} />;
+      if (g.card)
+        return (
+          <Countdown
+            // Rows are keyed by index: a copy joining above moves words between
+            // them, and the countdown's "ended on screen" belongs to its word.
+            key={`${keyOf(it)}@${dueOf(g.card)}`}
+            due={dueOf(g.card)}
+            back={requeue.current.requeued.has(i)}
+            crack={inRow && shatter ? keyOf(it) : undefined}
+          />
+        );
       return previewInterval(it.card, g.rating, paramsOf.get(it.listId)!);
     }
     if (it.kind === "new" || !it.card) return text.statusNew.value;
@@ -5436,7 +5491,7 @@ export function Study({
         </div>
         {syncError && (
           <div className="text-red-500 text-sm mt-1">
-            {fill(text.couldntLoadMore.value, { error: syncError })}
+            {fill(text.couldntLoadMore.value, { error: reasonText(whyText, syncError) })}
           </div>
         )}
         {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mt-1">{notice}</div>}
@@ -5503,7 +5558,7 @@ export function Study({
                 <span className="fs-10 opacity-60">{vtext.keepAwakeHint}</span>
               </span>
             )}
-            {debug && <WhisperModeSetting text={text} />}
+            {debug && dev && <WhisperModeSetting text={text} />}
             {speech.on && serverVoice && (
               <span className="w-full text-xs opacity-60" data-voice-credit>
                 {/* Credits: the voice names stay as their makers write them. */}
@@ -5576,8 +5631,8 @@ export function Study({
                       hint={text.newSwipeHint.value}
                     />
                   )}
-                  {/* The swipe's feel (docs/swipe-core.md): debug mode only, this device only. */}
-                  {touch && debug && (
+                  {/* The swipe's feel (docs/swipe-core.md): debug mode and `dev` only, this device only. */}
+                  {touch && debug && dev && (
                     <>
                       <TogglePill
                         on={feelPrefs.preset === "heavy"}
@@ -5638,7 +5693,9 @@ export function Study({
 
       {loadError ? (
         <div className="space-y-3 py-8 text-center">
-          <div className="text-red-500">{fill(text.couldntLoad.value, { error: loadError })}</div>
+          <div className="text-red-500">
+            {fill(text.couldntLoad.value, { error: reasonText(whyText, loadError) })}
+          </div>
           <button
             className="px-4 py-2 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
             onClick={() => location.reload()}
@@ -5666,7 +5723,7 @@ export function Study({
         <SwipeProviders mirror={mirror}>
           {/* The feel's sources and its tuner: islands (docs/swipe-core.md). */}
           {touch && <SwipeFeelIsland />}
-          {touch && <SwipeTunerIsland />}
+          {touch && dev && <SwipeTunerIsland />}
           <div
             ref={setListRef}
             // The whole window, edge to edge, under the glass overlays
@@ -5993,7 +6050,7 @@ export function Study({
                     style={rating ? { color: "var(--grade)" } : undefined}
                     title={rating ? ratingLabel[rating] : text.dueTitle.value}
                   >
-                    {status(it, i)}
+                    {status(it, i, true)}
                   </span>
                 </Row>
               );

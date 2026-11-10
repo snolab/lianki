@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
+import { reasonOf, reasonText } from "@/lib/words/error-reason";
 import { SettingsSheet } from "./SettingsSheet";
 import {
   previewLoader,
@@ -80,6 +81,7 @@ export function ListPreview({
   returnTo: React.RefObject<HTMLElement | null>;
 }) {
   const text = useIntlayer("words-list-preview");
+  const whyText = useIntlayer("words-status");
   const { locale } = useLocale();
   const loader = useMemo(() => previewLoader(sources, fetchEntries), [sources, fetchEntries]);
   const [state, setState] = useState<PreviewState<PreviewEntry>>(loader.state);
@@ -207,7 +209,12 @@ export function ListPreview({
         </ol>
         {state.error ? (
           <p className="flex flex-wrap items-center gap-2 py-3 opacity-80" data-list-preview-error>
-            <span>{fill(text.failed.value, { error: state.error })}</span>
+            <span>
+              {fill(text.failed.value, {
+                // Plain words, never the download's own error text.
+                error: reasonText(whyText, reasonOf(new Error(state.error), "preview")),
+              })}
+            </span>
             <button
               type="button"
               onClick={() => {

@@ -671,6 +671,60 @@ const dictionary = {
       sw: "maneno {n}",
       mr: "{n} शब्द",
     }),
+    readFailed: t({
+      en: "Couldn't read this file. Please try again.",
+      zh: "无法读取这个文件，请重试。",
+      ja: "このファイルを読み込めませんでした。もう一度お試しください。",
+      ko: "이 파일을 읽을 수 없습니다. 다시 시도해 주세요.",
+      hi: "यह फ़ाइल पढ़ी नहीं जा सकी। कृपया फिर से कोशिश करें।",
+      es: "No se pudo leer este archivo. Inténtalo de nuevo.",
+      fr: "Impossible de lire ce fichier. Réessayez.",
+      ar: "تعذّرت قراءة هذا الملف. يُرجى المحاولة مجددًا.",
+      bn: "এই ফাইলটি পড়া যায়নি। আবার চেষ্টা করুন।",
+      pt: "Não foi possível ler este arquivo. Tente novamente.",
+      ru: "Не удалось прочитать этот файл. Попробуйте ещё раз.",
+      ur: "یہ فائل پڑھی نہیں جا سکی۔ براہِ کرم دوبارہ کوشش کریں۔",
+      id: "File ini tidak dapat dibaca. Silakan coba lagi.",
+      de: "Diese Datei konnte nicht gelesen werden. Bitte versuche es erneut.",
+      sw: "Imeshindikana kusoma faili hili. Tafadhali jaribu tena.",
+      mr: "ही फाइल वाचता आली नाही. कृपया पुन्हा प्रयत्न करा.",
+    }),
+    inboxFailed: t({
+      en: "Couldn't open the file from the chat. Please try again.",
+      zh: "无法打开聊天中的文件，请重试。",
+      ja: "チャットのファイルを開けませんでした。もう一度お試しください。",
+      ko: "채팅의 파일을 열 수 없습니다. 다시 시도해 주세요.",
+      hi: "चैट की फ़ाइल नहीं खुल सकी। कृपया फिर से कोशिश करें।",
+      es: "No se pudo abrir el archivo del chat. Inténtalo de nuevo.",
+      fr: "Impossible d'ouvrir le fichier du chat. Réessayez.",
+      ar: "تعذّر فتح الملف من الدردشة. يُرجى المحاولة مجددًا.",
+      bn: "চ্যাটের ফাইলটি খোলা যায়নি। আবার চেষ্টা করুন।",
+      pt: "Não foi possível abrir o arquivo do chat. Tente novamente.",
+      ru: "Не удалось открыть файл из чата. Попробуйте ещё раз.",
+      ur: "چیٹ کی فائل کھولی نہیں جا سکی۔ براہِ کرم دوبارہ کوشش کریں۔",
+      id: "File dari obrolan tidak dapat dibuka. Silakan coba lagi.",
+      de: "Die Datei aus dem Chat konnte nicht geöffnet werden. Bitte versuche es erneut.",
+      sw: "Imeshindikana kufungua faili kutoka kwenye gumzo. Tafadhali jaribu tena.",
+      mr: "चॅटमधील फाइल उघडता आली नाही. कृपया पुन्हा प्रयत्न करा.",
+    }),
+    importFailed: t({
+      en: "Couldn't import the deck. Please try again.",
+      zh: "牌组导入失败，请重试。",
+      ja: "デッキを取り込めませんでした。もう一度お試しください。",
+      ko: "덱을 가져오지 못했습니다. 다시 시도해 주세요.",
+      hi: "डेक इम्पोर्ट नहीं हो सका। कृपया फिर से कोशिश करें।",
+      es: "No se pudo importar el mazo. Inténtalo de nuevo.",
+      fr: "Impossible d'importer le paquet. Réessayez.",
+      ar: "تعذّر استيراد المجموعة. يُرجى المحاولة مجددًا.",
+      bn: "ডেকটি ইমপোর্ট করা যায়নি। আবার চেষ্টা করুন।",
+      pt: "Não foi possível importar o baralho. Tente novamente.",
+      ru: "Не удалось импортировать колоду. Попробуйте ещё раз.",
+      ur: "ڈیک درآمد نہیں ہو سکا۔ براہِ کرم دوبارہ کوشش کریں۔",
+      id: "Dek tidak dapat diimpor. Silakan coba lagi.",
+      de: "Der Stapel konnte nicht importiert werden. Bitte versuche es erneut.",
+      sw: "Imeshindikana kuingiza deki. Tafadhali jaribu tena.",
+      mr: "डेक आयात करता आला नाही. कृपया पुन्हा प्रयत्न करा.",
+    }),
   },
 };
 
@@ -742,6 +796,12 @@ const context: KeyContext<typeof dictionary.content> = {
   noNotes: "Error on /words/import when the deck file holds no notes at all. Short sentence.",
   words:
     "Count in the deck summary on /words/import, after the notes count; {n} is how many words will be imported. Keep {n}.",
+  readFailed:
+    "Error on /words/import when an Anki file could not be read for another reason than not being an Anki package (e.g. the reader failed to load while offline). Two short sentences: it failed, try again.",
+  inboxFailed:
+    "Error on /words/import when a deck file sent in the Learning Partner chat ('Import as a deck') could not be opened. Two short sentences: it failed, try again.",
+  importFailed:
+    "Error on /words/import when saving the deck as a word list failed on the server (the Import button). 'Deck' means the Anki deck; two short sentences: it failed, try again.",
 };
 
 export default {

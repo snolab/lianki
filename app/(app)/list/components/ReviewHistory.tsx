@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { longDate } from "@/lib/dates";
+import { useIntlayer } from "next-intlayer";
+import { fill } from "@/lib/roadmap/labels";
 
 // Serializable version of ReviewLog — dates may be Date objects or ISO strings
 type SerializedReviewLog = {
@@ -28,15 +30,16 @@ const RATING_COLORS = {
   4: "bg-blue-500", // Easy
 } as const;
 
-const RATING_NAMES = {
-  1: "Again",
-  2: "Hard",
-  3: "Good",
-  4: "Easy",
-} as const;
-
 export function ReviewHistory({ logs = [] }: ReviewHistoryProps) {
   const [showTooltip, setShowTooltip] = useState(false);
+  const h = useIntlayer("list-ui").history;
+  // The grade names as the review buttons say them.
+  const RATING_NAMES: Record<number, string> = {
+    1: h.again.value,
+    2: h.hard.value,
+    3: h.good.value,
+    4: h.easy.value,
+  };
 
   // Get last 6 reviews (most recent first)
   const recentLogs = logs.slice(-6).reverse();
@@ -61,7 +64,7 @@ export function ReviewHistory({ logs = [] }: ReviewHistoryProps) {
             <span
               key={i}
               className={`inline-block w-1.5 h-3 ${RATING_COLORS[log.rating as keyof typeof RATING_COLORS]}`}
-              title={`${RATING_NAMES[log.rating as keyof typeof RATING_NAMES]} - ${longDate(log.review)}`}
+              title={`${RATING_NAMES[log.rating]} - ${longDate(log.review)}`}
             />
           ) : (
             <span key={i} className="inline-block w-1.5 h-3 opacity-0">
@@ -75,7 +78,7 @@ export function ReviewHistory({ logs = [] }: ReviewHistoryProps) {
       {/* Tooltip */}
       {showTooltip && logs.length > 0 && (
         <div className="absolute z-10 bottom-full left-0 mb-2 w-64 p-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg text-sm">
-          <div className="font-semibold mb-2">Review History ({logs.length} total)</div>
+          <div className="font-semibold mb-2">{fill(h.title.value, { n: logs.length })}</div>
           <div className="space-y-1 max-h-48 overflow-y-auto">
             {logs
               .slice()
@@ -88,9 +91,7 @@ export function ReviewHistory({ logs = [] }: ReviewHistoryProps) {
                     <span
                       className={`inline-block w-2 h-2 rounded-sm ${RATING_COLORS[log.rating as keyof typeof RATING_COLORS]}`}
                     />
-                    <span className="flex-1">
-                      {RATING_NAMES[log.rating as keyof typeof RATING_NAMES]}
-                    </span>
+                    <span className="flex-1">{RATING_NAMES[log.rating]}</span>
                     <span className="text-gray-500 dark:text-gray-400">
                       {longDate(date)}{" "}
                       {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

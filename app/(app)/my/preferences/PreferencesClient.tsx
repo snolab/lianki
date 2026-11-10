@@ -140,6 +140,7 @@ export default function PreferencesClient({
     reviewOrder: reviewOrderUi,
     resetSection,
     paperHeading,
+    watchTime,
   } = useIntlayer("preferences-page");
   const textSize = useIntlayer("text-size");
   const textSizes = useTextSizes();
@@ -357,13 +358,9 @@ export default function PreferencesClient({
           canReset={!watchTracking}
           onReset={() => setWatchTracking(true)}
         >
-          Watch time
+          {watchTime.heading}
         </SectionHeading>
-        <p className="text-gray-400 mb-4">
-          Lianki can measure how long you actually watch or listen to media on a page, to fill your
-          streaks and the activity heatmap. Time is counted only while something is playing, audible
-          and on screen — never from visiting a page.
-        </p>
+        <p className="text-gray-400 mb-4">{watchTime.description}</p>
         <label className="flex items-start gap-3 p-3 rounded-lg bg-white/5 cursor-pointer hover:bg-white/10">
           <input
             type="checkbox"
@@ -373,11 +370,8 @@ export default function PreferencesClient({
             onChange={(e) => setWatchTracking(e.target.checked)}
           />
           <span>
-            <span className="block font-medium">Record watch time</span>
-            <span className="block text-sm text-gray-400">
-              Turn this off and nothing about your playback leaves the page. Existing statistics are
-              kept; they simply stop growing.
-            </span>
+            <span className="block font-medium">{watchTime.toggle}</span>
+            <span className="block text-sm text-gray-400">{watchTime.toggleHint}</span>
           </span>
         </label>
       </section>
@@ -426,11 +420,11 @@ export default function PreferencesClient({
                                 : "bg-gray-500/20 text-gray-700 dark:text-gray-300"
                           }`}
                         >
-                          {pattern.type}
+                          {mobileFilters[pattern.type]}
                         </span>
                         {pattern.isRegex && (
                           <span className="ml-2 inline-block px-2 py-0.5 rounded bg-orange-900/30 text-orange-400">
-                            regex
+                            {mobileFilters.regexBadge}
                           </span>
                         )}
                       </div>

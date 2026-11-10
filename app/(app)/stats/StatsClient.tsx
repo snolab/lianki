@@ -28,7 +28,17 @@ function cellColor(secs: number): string {
   return "oklch(0.78 0.18 150)";
 }
 
-function Heatmap({ days }: { days: Record<string, number> }) {
+function Heatmap({
+  days,
+  label,
+  nothing,
+  minutes,
+}: {
+  days: Record<string, number>;
+  label: string;
+  nothing: string;
+  minutes: string;
+}) {
   const today = new Date();
   const cells: { key: string; secs: number }[] = [];
   // Walk back whole weeks so columns line up as weeks, oldest on the left.
@@ -45,12 +55,12 @@ function Heatmap({ days }: { days: Record<string, number> }) {
         className="grid grid-flow-col gap-[3px]"
         style={{ gridTemplateRows: "repeat(7, 12px)" }}
         role="img"
-        aria-label="Daily input-time heatmap"
+        aria-label={label}
       >
         {cells.map(({ key, secs }) => (
           <div
             key={key}
-            title={`${key} — ${secs ? `${Math.round(secs / 60)} min` : "nothing"}`}
+            title={`${key} — ${secs ? `${Math.round(secs / 60)} ${minutes}` : nothing}`}
             className="w-3 h-3 rounded-[2px]"
             style={{ background: cellColor(secs) }}
           />
@@ -78,18 +88,32 @@ function languageName(tag: string | null): string | null {
   }
 }
 
-export default function StatsClient() {
+/**
+ * `youtubeKey`: the server can look languages up (it holds a YouTube Data API
+ * key); without it the "Identify languages" action is not offered at all.
+ * `dev`: the viewer holds the `dev` permission (lib/permissions.ts), so the
+ * missing-key note — server configuration, meaningless to a learner — is shown.
+ */
+export default function StatsClient({ youtubeKey, dev }: { youtubeKey: boolean; dev: boolean }) {
   const c = useIntlayer("stats-page");
   const [data, setData] = useState<WatchOverview | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
   const [identifying, setIdentifying] = useState(false);
   const [identifyMsg, setIdentifyMsg] = useState<string | null>(null);
 
+  // The status and the browser's own message go to the console only; the page
+  // shows one translated line with a retry.
   const load = () =>
     fetch("/api/fsrs/watch/overview?top=20")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setData)
-      .catch((e) => setError(String(e.message ?? e)));
+      .then((d: WatchOverview) => {
+        setError(false);
+        setData(d);
+      })
+      .catch((e) => {
+        console.warn("[stats] overview failed:", e);
+        setError(true);
+      });
 
   useEffect(() => {
     load();
@@ -104,22 +128,40 @@ export default function StatsClient() {
     try {
       const r = await fetch("/api/fsrs/watch/enrich", { method: "POST" });
       const body = await r.json().catch(() => ({}));
-      // 501 means the server has no YOUTUBE_API_KEY. Say that plainly rather
-      // than "failed" — it is a deployment gap the user can actually fix.
-      if (r.status === 501) setIdentifyMsg(c.needsApiKey.value);
-      else if (!r.ok) setIdentifyMsg(`HTTP ${r.status}${body?.error ? ` — ${body.error}` : ""}`);
-      else {
+      // 501 means the server has no YOUTUBE_API_KEY: a deployment gap only a
+      // developer can fix, so only a `dev` holder reads it; everyone else gets
+      // the generic line. The raw status goes to the console.
+      if (!r.ok) {
+        console.warn("[stats] enrich failed:", r.status, body?.error);
+        setIdentifyMsg(r.status === 501 && dev ? c.needsApiKey.value : c.identifyFailed.value);
+      } else {
         setIdentifyMsg(`${c.identified.value}: ${body.labelled ?? 0}/${body.checked ?? 0}`);
         await load();
       }
     } catch (e) {
-      setIdentifyMsg(String((e as Error).message ?? e));
+      console.warn("[stats] enrich failed:", e);
+      setIdentifyMsg(c.identifyFailed.value);
     } finally {
       setIdentifying(false);
     }
   }
 
-  if (error) return <p className="p-8 text-red-400">{error}</p>;
+  if (error)
+    return (
+      <div className="p-8 space-y-3" role="alert">
+        <p className="opacity-80">{c.loadFailed}</p>
+        <button
+          onClick={() => {
+            setError(false);
+            setData(null);
+            load();
+          }}
+          className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-sm"
+        >
+          {c.retry}
+        </button>
+      </div>
+    );
   if (!data) return <p className="p-8 opacity-60">…</p>;
 
   const empty = data.videos === 0;
@@ -150,7 +192,12 @@ export default function StatsClient() {
           </section>
 
           <section className="space-y-2">
-            <Heatmap days={data.days} />
+            <Heatmap
+              days={data.days}
+              label={c.heatmapLabel.value}
+              nothing={c.heatmapNothing.value}
+              minutes={c.minutesShort.value}
+            />
           </section>
 
           <section className="space-y-2">
@@ -187,7 +234,7 @@ export default function StatsClient() {
               server-side YouTube Data API is the only reliable source — so offer
               that action here instead of leaving an unexplained grey bar.
             */}
-            {unlabelled > 0 && (
+            {unlabelled > 0 && youtubeKey && (
               <div className="mt-3 rounded-lg bg-white/5 p-3 text-xs space-y-2">
                 <p className="opacity-70 leading-relaxed">{c.unlabelledExplainer}</p>
                 <button
@@ -197,8 +244,12 @@ export default function StatsClient() {
                 >
                   {identifying ? c.identifying : c.identifyLanguages}
                 </button>
-                {identifyMsg && <p className="opacity-60">{identifyMsg}</p>}
+                {identifyMsg && <p className="opacity-80">{identifyMsg}</p>}
               </div>
+            )}
+            {/* No key on the server: nothing for a learner to do; a developer sees why. */}
+            {unlabelled > 0 && !youtubeKey && dev && (
+              <p className="mt-3 text-xs opacity-70">{c.needsApiKey}</p>
             )}
           </section>
 

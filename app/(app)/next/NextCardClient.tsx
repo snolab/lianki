@@ -4,6 +4,7 @@ import { useSignedIn } from "@/app/components/BoxApiBridge";
 import { useEffect, useState } from "react";
 import { readLocalStore } from "@/app/lib/localStore";
 import { pickNextDue } from "@/lib/next-card";
+import { useIntlayer } from "next-intlayer";
 
 /**
  * "Next card", for whichever store actually holds your deck.
@@ -38,6 +39,8 @@ export default function NextCardClient({
   // On a box, from lianki.com (BoxApiBridge); else the server's answer.
   const isLoggedIn = useSignedIn(serverSignedIn);
   const [phase, setPhase] = useState<Phase>({ state: "looking" });
+  const t = useIntlayer("list-ui").next;
+  const [before, after] = t.opening.value.split("{url}");
 
   useEffect(() => {
     let cancelled = false;
@@ -85,31 +88,30 @@ export default function NextCardClient({
   return (
     <div className="mx-auto max-w-xl px-6 py-16 text-center">
       {phase.state === "looking" && (
-        <p className="text-lg text-gray-600 dark:text-gray-300">Finding your next card…</p>
+        <p className="text-lg text-gray-600 dark:text-gray-300">{t.looking}</p>
       )}
 
       {phase.state === "going" && (
         <p className="text-lg text-gray-600 dark:text-gray-300">
-          Opening{" "}
+          {before}
           <a href={phase.url} className="break-all text-blue-600 underline dark:text-blue-400">
             {phase.url}
           </a>
+          {after}
         </p>
       )}
 
       {phase.state === "empty" && (
         <>
-          <p className="mb-2 text-2xl font-semibold">Nothing due right now</p>
+          <p className="mb-2 text-2xl font-semibold">{t.empty}</p>
           <p className="mb-6 text-gray-600 dark:text-gray-300">
-            {isLoggedIn
-              ? "Every card in your cloud and local decks is scheduled for later."
-              : "Nothing is due in this browser's deck. Sign in to review cards saved on other devices."}
+            {isLoggedIn ? t.emptySignedIn : t.emptyGuest}
           </p>
           <a
             href={listHref}
             className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700"
           >
-            Back to your cards
+            {t.back}
           </a>
         </>
       )}

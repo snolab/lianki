@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
 import importWordlist from "@/app/(app)/import/wordlist-import.content";
+import importPage from "@/app/(app)/import/page.content";
+import importSections from "@/app/(app)/import/import-sections.content";
 import wordsImportPanel from "@/app/(app)/words/import-panel.content";
 import myFiles from "@/app/(app)/my/files/my-files.content";
 import bottomNav from "@/app/components/bottom-nav.content";
@@ -21,6 +23,8 @@ import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import wordsListPreview from "@/app/(app)/words/list-preview.content";
 import dataPage from "@/app/(app)/data/page.content";
+import listUi from "@/app/(app)/list/list-ui.content";
+import wordsStatus from "@/app/(app)/words/words-status.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import creditsUsage from "@/app/(app)/membership/credits/credits-usage.content";
 import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
@@ -30,6 +34,7 @@ import devUsers from "@/app/(app)/dev/users/users.content";
 import devPregrant from "@/app/(app)/dev/users/pregrant.content";
 import textSize from "@/app/components/text-size.content";
 import boxSignIn from "@/app/(app)/sign-in/box-sign-in.content";
+import blogPage from "@/app/[locale]/blog/page.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
 import emailInvite from "@/app/(app)/membership/email-invite.content";
@@ -80,10 +85,17 @@ import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
 import devPages from "@/app/(app)/dev/dev-pages.content";
 import ytSongs from "@/app/components/yt-clip/yt-songs.content";
 import pillChat from "@/app/components/pill-chat.content";
+import chatUi from "@/app/components/chat-ui.content";
 import signInErrors from "@/app/(app)/sign-in/errors.content";
 import activityTally from "@/app/(app)/list/components/activity-tally.content";
 import devFlagToast from "@/app/(app)/dev/flags/flag-toast.content";
 import devConfig from "@/app/(app)/dev/config/config-admin.content";
+import hotkeyHelp from "@/app/components/hotkey-help.content";
+import languageSwitcher from "@/app/components/language-switcher.content";
+import versionNotice from "@/app/components/version-notice.content";
+import statsPage from "@/app/(app)/stats/page.content";
+import membershipPage from "@/app/(app)/membership/membership-page.content";
+import sitesPage from "@/app/(app)/sites/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -115,6 +127,8 @@ describe.each([
   ["words-page", words],
   ["words-import-ankiweb", wordsImportAnkiweb],
   ["import-wordlist", importWordlist],
+  ["import-page", importPage],
+  ["import-sections", importSections],
   ["words-import-panel", wordsImportPanel],
   ["bottom-nav", bottomNav],
   ["learning-partner", learningPartner],
@@ -126,6 +140,7 @@ describe.each([
   ["my-page", myPage],
   ["landing-page", landing],
   ["learn-page", learn],
+  ["blog-page", blogPage],
   ["polyglot-page", polyglot],
   ["self-intro-page", selfIntro],
   ["words-import", wordsImport],
@@ -133,6 +148,8 @@ describe.each([
   ["words-voice-mode", wordsVoiceMode],
   ["words-list-preview", wordsListPreview],
   ["data-page", dataPage],
+  ["list-ui", listUi],
+  ["words-status", wordsStatus],
   ["leave-guard", leaveGuard],
   ["dev-permissions", devPermissions],
   ["dev-templates", devTemplates],
@@ -192,10 +209,17 @@ describe.each([
   ["dev-pages", devPages],
   ["yt-songs", ytSongs],
   ["pill-chat", pillChat],
+  ["chat-ui", chatUi],
   ["my-files", myFiles],
   ["activity-tally", activityTally],
   ["dev-flag-toast", devFlagToast],
   ["dev-config", devConfig],
+  ["hotkey-help", hotkeyHelp],
+  ["language-switcher", languageSwitcher],
+  ["version-notice", versionNotice],
+  ["stats-page", statsPage],
+  ["membership-page", membershipPage],
+  ["home-page", sitesPage],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };
@@ -233,7 +257,15 @@ describe.each([
 // so far"), so it is not in the full list above; its newer keys are held here.
 describe("preferences-page: keys that already carry context", () => {
   const context = keyContext(preferencesPage.description);
-  it.each(["paperHeading", "resetSection"])("%s has a line of 5+ words", (k) => {
+  it.each([
+    "paperHeading",
+    "resetSection",
+    "watchTime.heading",
+    "watchTime.description",
+    "watchTime.toggle",
+    "watchTime.toggleHint",
+    "mobileFilters.regexBadge",
+  ])("%s has a line of 5+ words", (k) => {
     expect((context[k] ?? "").split(/\s+/).length).toBeGreaterThanOrEqual(5);
   });
   it("the Paper heading is a translated key, not the old hardcoded '紙紋 Paper'", () => {

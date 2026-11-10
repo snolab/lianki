@@ -171,7 +171,16 @@ export default function WordsImportClient() {
       setPlans(parsed.decks.map((d) => planFor(parsed, d, known, picked)));
       setStage("ready");
     } catch (e) {
-      setError(e instanceof ApkgError ? `${text(t.badFile)} (${e.message})` : (e as Error).message);
+      // Plain words only; the reader's own message goes to the console.
+      console.warn("[words/import] read failed:", e);
+      const msg = (e as Error)?.message;
+      setError(
+        e instanceof ApkgError
+          ? msg === text(t.noNotes)
+            ? msg
+            : text(t.badFile)
+          : text(t.readFailed),
+      );
       setStage("idle");
     }
   };
@@ -185,7 +194,10 @@ export default function WordsImportClient() {
     const id = new URLSearchParams(location.search).get("inbox");
     if (!id) return;
     fromInbox.current = true;
-    inboxFile(id).then(open, (e: Error) => setError(e.message));
+    inboxFile(id).then(open, (e: Error) => {
+      console.warn("[words/import] inbox file:", e);
+      setError(text(t.inboxFailed));
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
   }, []);
 
@@ -229,7 +241,12 @@ export default function WordsImportClient() {
         }),
       });
       const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? r.statusText);
+      if (!r.ok) {
+        // The server's code and status stay in the console; the learner reads plain words.
+        console.warn("[words/import] import failed:", r.status, body?.error);
+        setError(text(r.status === 401 ? t.signIn : t.importFailed));
+        return;
+      }
       setOutcomes((o) => ({ ...o, [plan.deck.id]: body as Outcome }));
       // Refresh this device's copy of the list's words, so /words opens with them.
       await downloadCatalog(`/api/words/lists/${body.listId}/entries`).catch(() => {});
@@ -239,7 +256,8 @@ export default function WordsImportClient() {
         ps.map((p) => (p.deck.id === plan.deck.id ? { ...p, target: body.listId } : p)),
       );
     } catch (e) {
-      setError((e as Error).message);
+      console.warn("[words/import] import failed:", e);
+      setError(text(t.importFailed));
     } finally {
       setBusy(null);
     }
