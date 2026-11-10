@@ -2519,11 +2519,28 @@ try {
           // touch sequence iOS gives: touchstart, pointercancel as the scroller
           // takes over, a scroll to the Good level, touchend resting there)
           // grades and glides back to centre.
-          const s = await w.evaluate(async () => {
+          // Headless WebKit can stall its rendering updates, and scroll events
+          // are only dispatched in one: the slip's own scroll listener (which
+          // marks the gesture a slide, lib/words/native-slip-gesture.ts) then
+          // had not run before the touchend 50 ms later, so the lift graded
+          // nothing (Full QA 2026-11-10: slid 44, graded false). On a device
+          // the scroll event comes frames before any lift. So each step waits
+          // for what the next one needs — the scroll event delivered, then the
+          // grade stamp and the slip home — forcing frames with screenshots
+          // while it waits, on a load budget; never a fixed sleep.
+          const frames = async (done) => {
+            for (const until = Date.now() + budget(5000); ; ) {
+              if ((await done()) || Date.now() > until) return;
+              await w.screenshot();
+              await w.waitForTimeout(30);
+            }
+          };
+          const s = await w.evaluate(() => {
             const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
             const row = [...document.querySelectorAll(".slip-native")].find(
               (x) => x.getBoundingClientRect().top > bar + 60,
             );
+            row.setAttribute("data-qa-swipe", "");
             const b = row.getBoundingClientRect();
             const y = b.top + b.height / 2;
             const face = (x) => !!document.elementFromPoint(x, y)?.closest(".slip-face");
@@ -2541,19 +2558,38 @@ try {
               Object.defineProperty(e, "changedTouches", { value: t });
               sc.dispatchEvent(e);
             };
+            window.__qaSwipe = { fire, y, b, sc, scrolled: false };
             fire("touchstart", 100);
             sc.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
             sc.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
+            // Registered after the slip's own listener (added on touchstart):
+            // once this one has run, the slip's has too.
+            sc.addEventListener("scroll", () => (window.__qaSwipe.scrolled = true), {
+              once: true,
+            });
             sc.scrollTo({ left: a, behavior: "instant" });
-            await new Promise((r) => setTimeout(r, 50));
             out.slid = sc.scrollLeft;
-            fire("touchend", 100 + a);
-            await new Promise((r) => setTimeout(r, 1500));
-            out.after = sc.scrollLeft;
-            out.faceAfter = face(b.left + 20);
-            out.graded = !!row.querySelector(".slip-face .lk-stamp");
             return out;
           });
+          await frames(() => w.evaluate(() => window.__qaSwipe.scrolled));
+          await w.evaluate(() =>
+            window.__qaSwipe.fire("touchend", 100 + window.__qaSwipe.sc.scrollLeft),
+          );
+          const end = () =>
+            w.evaluate(() => {
+              const { sc, b, y } = window.__qaSwipe;
+              const row = document.querySelector("[data-qa-swipe]");
+              return {
+                after: sc.scrollLeft,
+                faceAfter: !!document.elementFromPoint(b.left + 20, y)?.closest(".slip-face"),
+                graded: !!row?.querySelector(".slip-face .lk-stamp"),
+              };
+            });
+          await frames(async () => {
+            const e = await end();
+            return e.graded && Math.abs(e.after - s.rest) < 1 && e.faceAfter;
+          });
+          Object.assign(s, await end());
           check(
             s.faceAtRest && s.rest === 2 * s.a,
             `${tag} at rest the slip's face covers its label strip (${JSON.stringify(s)})`,
