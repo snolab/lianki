@@ -150,6 +150,34 @@ describe("lianki-dev: --as labelling", () => {
     ).toEqual(["ask", "--q", "【judge】Ship?", "--opt", "Yes", "--opt", "No", "--no-pair"]);
     expect(evalArgv("ask", ["--q", "Ship?"], g())).toBeInstanceOf(Error);
   });
+  it("edit: --merge ids with --text, --unmerge, or a polish; maps to eval.ts edit", () => {
+    expect(evalArgv("edit", ["--merge", "a,b", "--text", "one passage"], g())).toEqual([
+      "edit",
+      "--merge",
+      "a,b",
+      "--text",
+      "one passage",
+      "--no-pair",
+    ]);
+    expect(evalArgv("edit", ["--merge", "a,b", "--text", "-"], g(), "from stdin\n")).toEqual([
+      "edit",
+      "--merge",
+      "a,b",
+      "--text",
+      "from stdin",
+      "--no-pair",
+    ]);
+    expect(evalArgv("edit", ["--unmerge", "a"], g())).toEqual([
+      "edit",
+      "--unmerge",
+      "a",
+      "--no-pair",
+    ]);
+    expect(evalArgv("edit", ["--merge", "a", "--text", "x"], g())).toBeInstanceOf(Error);
+    expect(evalArgv("edit", ["--unmerge"], g())).toBeInstanceOf(Error);
+    expect(evalArgv("edit", [], g())).toBeInstanceOf(Error);
+  });
+
   it("withdraw: one askId or --last, optional --to; maps to eval.ts withdraw", () => {
     expect(evalArgv("withdraw", ["67d29c37-d50"], g())).toEqual([
       "withdraw",

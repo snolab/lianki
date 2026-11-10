@@ -555,15 +555,15 @@ context is what the voice line carries and what `eval.ts chat` prints with it:
 **What `polishCheck` takes** (`packages/debug-chat/src/polish.ts`, on the words
 as `Intl.Segmenter` splits them; each rule unit-tested in `unit/stt-polish.test.ts`):
 
-| change | allowed when | example |
-| --- | --- | --- |
-| punctuation, spacing, case, width (marks inside a word too) | always | cant → can't |
-| a replaced run (a homophone) | the new run is in the context as whole words, and within 2x the length of what it replaces | 流失 → 流式, sink → sync |
-| a truncated word completed | a script that spaces its words; the whole word is in the context and the fragment (≥ 2 letters) is not; same 2x bound | fl → flag, pinner → spinner |
-| a function word added, or swapped for another | from `FUNCTION_WORDS`, a small list per script class (Han, Kana, Hangul, Latin, Cyrillic), at most `MAX_FUNCTION_FIXES` (2) a line; no context needed | 在房间看书 → 在房间里看书, open settings → open the settings |
-| a removed run | it repeats what is next to it (a stutter) | 我我我想 → 我想 |
-| an unclear word as a bracket | each candidate, alone in its place, passes the rules above or is a sound-alike of the run it replaces; ≤ `MAX_UNCLEAR_CANDIDATES` (3) a bracket, ≤ `MAX_UNCLEAR_BRACKETS` (2) a line | 票 → （没听清，票？，条？） |
-| anything else added or dropped | never | 要 → 不要, adding 吗 |
+| change                                                      | allowed when                                                                                                                                                                         | example                                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| punctuation, spacing, case, width (marks inside a word too) | always                                                                                                                                                                               | cant → can't                                                 |
+| a replaced run (a homophone)                                | the new run is in the context as whole words, and within 2x the length of what it replaces                                                                                           | 流失 → 流式, sink → sync                                     |
+| a truncated word completed                                  | a script that spaces its words; the whole word is in the context and the fragment (≥ 2 letters) is not; same 2x bound                                                                | fl → flag, pinner → spinner                                  |
+| a function word added, or swapped for another               | from `FUNCTION_WORDS`, a small list per script class (Han, Kana, Hangul, Latin, Cyrillic), at most `MAX_FUNCTION_FIXES` (2) a line; no context needed                                | 在房间看书 → 在房间里看书, open settings → open the settings |
+| a removed run                                               | it repeats what is next to it (a stutter)                                                                                                                                            | 我我我想 → 我想                                              |
+| an unclear word as a bracket                                | each candidate, alone in its place, passes the rules above or is a sound-alike of the run it replaces; ≤ `MAX_UNCLEAR_CANDIDATES` (3) a bracket, ≤ `MAX_UNCLEAR_BRACKETS` (2) a line | 票 → （没听清，票？，条？）                                  |
+| anything else added or dropped                              | never                                                                                                                                                                                | 要 → 不要, adding 吗                                         |
 
 - **The function-word lists** hold particles, measure words, articles and
   prepositions only. Negations and question words (不, 没, 吗, not) are absent on
@@ -660,6 +660,68 @@ message list). The first shows the summary with a small visible tag (摘要 /
 Summary / 要約, tooltip "summary of what was heard, tap to see the lines"); a tap
 shows every line as heard, another tap goes back. A summarised run takes no
 more merges or polishes.
+
+### Merged passages
+
+The owner, 2026-11-11 01:12–01:13 JST: polish his voice lines more boldly. A
+**run** of his consecutive voice lines becomes **one fluent passage**: his own
+words joined, with connectives and fragment fixes, the meaning unchanged.
+
+**When the lane merges (its brief).**
+
+- A run is his voice lines with **nothing in between**. It **ends at any other
+  message**: the lane's reply, an ask card, anyone else's line, a typed line.
+- A run also ends at a **change of topic**. Each run becomes one passage. Unsure
+  whether the topic changed: **do not merge** (polish lines one by one, or leave them).
+- Keep his meaning and his voice: join the fragments, fix where STT cut a
+  sentence, add the connectives (然后, 所以, and, so) that make it read. Never add
+  a request, a negation, a question or a fact he did not say.
+- Room talk is not a passage: that is a summary (above).
+- Merge, then reply to the passage.
+
+```bash
+bun scripts/dev/eval.ts edit --merge m1,m2,m3 --text "我想把那个按钮放到右边，然后把颜色改成红色。" --no-pair
+echo "passage" | bun scripts/dev/eval.ts edit --merge m1,m2 --text - --no-pair
+bun scripts/dev/eval.ts edit --unmerge m1 --no-pair      # take it back
+lianki-dev edit --merge m1,m2 --text "…"                  # the same, from a lane
+```
+
+`{type:"merge", ids, text}` (`DebugHub.mergeRun`) is accepted only if:
+
+- the sender may edit (a live owner grant, as above; never a friend's pairing),
+  and `stt.polish` is not off;
+- 2 to `MERGE_LINES` (12, `wire.ts`) ids, every one his `source: "stt"` line
+  among his last `MERGE_LINES` lines, not a summary or a passage already, not
+  hidden inside one, not still being spoken;
+- the lines are **consecutive in the thread**: the hub refuses ids with any
+  message between them, and names it (`message a1 (agent) is between them`);
+- `mergeCheck` (`polish.ts`) passes. The per-line word rules of `polishCheck`
+  do **not** apply to a merge; instead the passage must have text and be at most
+  `MERGE_RATIO` (1.3) times the lines it joins, in characters, plus
+  `MERGE_SLACK` (8) for connectives. Defaults in one place; the function takes
+  others.
+
+**Nothing is deleted.** The run's first line keeps what it read in `premerge`
+(text, raw, polish mark), takes the passage as its `text`, every line's heard
+text joined as `raw`, and `passage: {at, by, ids}`. The other lines stay stored
+as they were, with `collapsedInto: <first id>`. The account's history
+(docs/chat-history.md) keeps every line and gains the passage as a line of its
+own, `<first id>.merged`. Listeners hear `{type:"edited", …, passage}`; logged
+as `debug.passage` (lines, length, heard length) or `debug.passage-refused`.
+
+**On the page.** One bubble: the passage, with a small visible tag "Merged 3"
+(合并 3 句; `ui.merged`, tooltip `ui.mergedTip`, 16 locales). A tap shows every
+line as heard, another goes back. The ↩ beside it (the same undo as a
+continuous-speech merge, `debug-chat-unmerge`) sends `{type:"unmerge", id}`.
+
+**Undo** (`restorePassage`): his page's ↩, or the lane's `edit --unmerge <id>`
+(`{type:"unmerge", id}` from a controller with an edit grant). The first line
+reads again exactly what it read before (a polish it had comes back), the other
+lines lose `collapsedInto`, the history drops `<first id>.merged` (op `drop`,
+derived ids only). Listeners hear `{type:"edited", …, restored:[…]}`. Not gated
+by the flag. Restored lines may be merged again.
+
+A passage takes no polish, summary or continuous-speech merge: undo it first.
 
 ## Continuous speech amends the last line
 
@@ -1346,12 +1408,12 @@ There is no time of day in it, and no setting
 
 **Which `say` to use** (agents, read this):
 
-| Line                                                                     | Command                   | Read aloud                          |
-| ------------------------------------------------------------------------ | ------------------------- | ----------------------------------- |
-| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                               |
-| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules      |
-| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line              |
-| a withdrawn ask card (`eval.ts withdraw`)                                | `eval.ts withdraw …`      | never (nor read on later)           |
+| Line                                                                     | Command                   | Read aloud                     |
+| ------------------------------------------------------------------------ | ------------------------- | ------------------------------ |
+| FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                          |
+| the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules |
+| an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line         |
+| a withdrawn ask card (`eval.ts withdraw`)                                | `eval.ts withdraw …`      | never (nor read on later)      |
 
 Default to `--quiet` whenever the line is not a reply to him. `--loud` is
 deprecated: `eval.ts` still accepts it and prints a note, and the line goes
@@ -1368,38 +1430,38 @@ in `debug.say`.
 toggle on and either a phone, the mic used on this device, or the input focused):
 
 - **A phone: the toggle alone** (owner, 2026-11-10): on a touch device
-   (voice-bg.ts `isDesktop` false) every reply is read with the speaker
-   toggle on, focused or not: the focus rule needed the keyboard up, so a
-   reader on /reader heard nothing. The menu row says "Replies read aloud"
-   (`ChatStrings.readAloud`).
+  (voice-bg.ts `isDesktop` false) every reply is read with the speaker
+  toggle on, focused or not: the focus rule needed the keyboard up, so a
+  reader on /reader heard nothing. The menu row says "Replies read aloud"
+  (`ChatStrings.readAloud`).
 - **Mic used here, sticky** (owner, 2026-11-04: "最近用过 mic 输入的话，回我的打字消息也要用语音"):
-   once the mic has been on, replies are read with the toggle on whether
-   the input has focus or not, typed lines included (localStorage
-   `lk:agent:voiced`; it was sessionStorage, which an iOS PWA relaunch
-   clears). There is no time window: it lasts until he turns "Replies read
-   aloud" off, which clears it; his mute always wins. On a computer the menu
-   row says "Replies read aloud (mic used)" while it holds, "Replies read
-   aloud while typing" (`ChatStrings.readAloudTyping`) when only the focus
-   rule applies.
+  once the mic has been on, replies are read with the toggle on whether
+  the input has focus or not, typed lines included (localStorage
+  `lk:agent:voiced`; it was sessionStorage, which an iOS PWA relaunch
+  clears). There is no time window: it lasts until he turns "Replies read
+  aloud" off, which clears it; his mute always wins. On a computer the menu
+  row says "Replies read aloud (mic used)" while it holds, "Replies read
+  aloud while typing" (`ChatStrings.readAloudTyping`) when only the focus
+  rule applies.
 - **iOS unlock, any tap on the page** (owner, 2026-11-10 23:48 JST: on
-   /reader his replies were silent again): iOS WebKit drops every
-   `speechSynthesis.speak()` with no event until the page has spoken once
-   inside a user gesture, and each page load starts locked, including a
-   debug device's reload after a deploy. The chat unlocked only on a press on
-   the chat itself, and the dropped sentence held the queue forever, so that
-   reply and every later one stayed silent. Now any tap or key on the page
-   unlocks it (`speech-unlock.ts`; a touch's pointerdown is no activation, so
-   its pointerup or click is the one used), and a sentence that has neither
-   started nor is speaking or pending after `SPEECH_REFUSED_MS` (1 s) counts
-   as refused: logged `{ev:"voice-refused"}`, the reading waits as "blocked"
-   and the next tap anywhere reads on from it. Tests:
-   `unit/speech-unlock.test.ts`, `unit/voice-session.test.ts` ("iOS dropping
-   speak()"). Playwright's WebKit on macOS has no such restriction, so no
-   browser check can show it.
+  /reader his replies were silent again): iOS WebKit drops every
+  `speechSynthesis.speak()` with no event until the page has spoken once
+  inside a user gesture, and each page load starts locked, including a
+  debug device's reload after a deploy. The chat unlocked only on a press on
+  the chat itself, and the dropped sentence held the queue forever, so that
+  reply and every later one stayed silent. Now any tap or key on the page
+  unlocks it (`speech-unlock.ts`; a touch's pointerdown is no activation, so
+  its pointerup or click is the one used), and a sentence that has neither
+  started nor is speaking or pending after `SPEECH_REFUSED_MS` (1 s) counts
+  as refused: logged `{ev:"voice-refused"}`, the reading waits as "blocked"
+  and the next tap anywhere reads on from it. Tests:
+  `unit/speech-unlock.test.ts`, `unit/voice-session.test.ts` ("iOS dropping
+  speak()"). Playwright's WebKit on macOS has no such restriction, so no
+  browser check can show it.
 - **Reconnect**: replies sent while the socket was down come back only in
-   the `history` frame; the newest agent line past the last one this page
-   saw is read (speak-rules.ts `missedReply`). The first connect of a page
-   reads nothing: old history is never read aloud.
+  the `history` frame; the newest agent line past the last one this page
+  saw is read (speak-rules.ts `missedReply`). The first connect of a page
+  reads nothing: old history is never read aloud.
 
 1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
 2. **Hidden page or locked screen** (`document.visibilityState` "hidden"),

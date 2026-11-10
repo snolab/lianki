@@ -12,14 +12,14 @@ Before this, the chat lived only in lianki-push's DebugHub storage: the last
 One D1 row per line of the user's **own** thread (`chat_line`,
 `db/migrations/0057_chat_line.sql`):
 
-| column | what |
-| --- | --- |
-| `user_id` | the account; the owner's thread goes to each account holding `dev`, a Learning Partner thread to that user |
-| `id`, `thread` | the hub's line id; `owner` or the user's id |
-| `sender` | the line's `from`: owner, friend, agent |
-| `lane` | main, codex or agy on agent lines (`voices.ts` `laneOf`: the field, else the `【lane】` prefix, taken off the text; else main) |
-| `text`, `at_ms` | the text as it reads now (after polish or a merge) and its time |
-| `ask`, `answer` | 1 for an ask card; the chosen options' labels once tapped |
+| column          | what                                                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `user_id`       | the account; the owner's thread goes to each account holding `dev`, a Learning Partner thread to that user                     |
+| `id`, `thread`  | the hub's line id; `owner` or the user's id                                                                                    |
+| `sender`        | the line's `from`: owner, friend, agent                                                                                        |
+| `lane`          | main, codex or agy on agent lines (`voices.ts` `laneOf`: the field, else the `【lane】` prefix, taken off the text; else main) |
+| `text`, `at_ms` | the text as it reads now (after polish or a merge) and its time                                                                |
+| `ask`, `answer` | 1 for an ask card; the chosen options' labels once tapped                                                                      |
 
 **Never kept** (`lib/chat-log-line.ts` `chatLogLine` drops all of it): the
 page context attached with the + menu (`context`) and a voice line's screen
@@ -47,6 +47,9 @@ page / lane ──▶ DebugHub.post ── sends to pages and listeners first
 - `update` (a polish, a merged voice line, an ask's answer): only a row still
   kept. `split` (undo of a merge): the first part updates the line, the rest
   are added, only while the line is kept. So a deleted line stays deleted.
+- `drop` (undo of a merged passage): deletes only the passage's own derived
+  line, `<first id>.merged`, which the merge added with `put`; an id that is not
+  such a derived line is refused, so a line he said is never dropped this way.
 - The history never holds up or fails the chat: no binding, "busy" or an
   error is logged (`debug.chat-log`) and the line stays in the hub as ever.
 

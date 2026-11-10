@@ -46,6 +46,7 @@ export const SUBCOMMANDS = [
   "voices",
   "ask",
   "withdraw",
+  "edit",
   "inbox",
   "listen",
   "lane-listen",
@@ -69,6 +70,7 @@ export const USAGE: Record<Sub | "main", string> = {
   voices    the voice ids say --voice takes: the phone's own, and the cloud's
   ask      an ask card with tappable options
   withdraw  withdraw an open ask card he no longer needs to answer
+  edit      polish his voice line, merge a run of them into one passage, or undo a merge
   inbox     the chat inbox: list | get <id> [--out <dir>] | done <id>
   listen    listen to the chat (eval.ts chat), one JSON line per event
   lane-listen  a lane's own listener: the owner lines addressed to it, handed to its agent
@@ -121,6 +123,17 @@ ${EXITS}`,
   --node: the state tree node the question is about (else LIANKI_TASK_PATH);
   required with --as <lane>. The question is noted on it ("ask: …"), and with
   --wait the answer too ("answer: … → …"); the node must be in the tree.
+${GLOBAL}
+${EXITS}`,
+  edit: `usage: lianki-dev edit (<msgId> | --last) "polished text" | -
+       lianki-dev edit --merge <id1,id2,…> --text "passage" | -
+       lianki-dev edit --unmerge <id>
+       lianki-dev edit --summary (<msgId>… | --last N) "summary" | -
+  Edits of the owner's voice lines (eval.ts edit; docs/dev-debug-widget.md,
+  "Agent edits of voice messages"). --merge rewrites a RUN of his consecutive
+  voice lines (nothing between them, one topic) as ONE fluent passage; the
+  lines stay kept, a tap shows them, his ↩ (or --unmerge) restores them.
+  stdout: the hub's {"type":"edited",…} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
   inbox: `usage: lianki-dev inbox [list | get <id> [--out <dir>] | done <id>]
@@ -292,6 +305,21 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
         return new Error(`withdraw: unknown flag ${a}`);
     if (rest.at(-1) === "--to") return new Error("--to needs a value");
     return ["withdraw", ...rest, ...pair];
+  }
+  if (sub === "edit") {
+    const out = rest.map((a) => (a === "-" && stdin !== undefined ? stdin.trim() : a));
+    const has = (f: string) => out.includes(f);
+    if (has("--merge") && !has("--text") && out.length !== 3)
+      return new Error('edit --merge needs <id1,id2,…> and --text "passage"');
+    if (
+      has("--merge") &&
+      (out[out.indexOf("--merge") + 1] ?? "").split(",").filter(Boolean).length < 2
+    )
+      return new Error("edit --merge joins two or more ids, comma-separated");
+    if (has("--unmerge") && !out[out.indexOf("--unmerge") + 1])
+      return new Error("edit --unmerge needs the passage's id");
+    if (!out.length) return new Error("edit needs a message id (or --last) and a text");
+    return ["edit", ...out, ...pair];
   }
   if (sub === "inbox") {
     const op = rest[0] ?? "list";

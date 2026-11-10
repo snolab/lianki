@@ -165,6 +165,21 @@
  *       may have said something he wants heard; answer it warmly if so.
  *       (docs/dev-debug-widget.md, "Summaries".)
  *
+ *   bun scripts/dev/eval.ts edit --merge <id1,id2,…> --text "passage" [--no-pair]   (--text - for stdin)
+ *       Rewrite a RUN of the owner's consecutive voice lines as ONE fluent
+ *       passage: his words joined, connectives and fragment fixes allowed,
+ *       the meaning unchanged. A run ends at ANY other message (your reply,
+ *       an ask card, anyone else's line) or at a change of topic; unsure about
+ *       the topic: do not merge. The hub refuses lines with anything between
+ *       them, typed lines, and a passage longer than 1.3x the lines + 8
+ *       characters. The lines stay kept (a tap shows them as heard) and the
+ *       owner's ↩ restores them. Prints {"type":"edited",…,"passage":{ids}}.
+ *       (docs/dev-debug-widget.md, "Merged passages".)
+ *
+ *   bun scripts/dev/eval.ts edit --unmerge <id> [--no-pair]
+ *       Take back a merged passage (its first line's id): the lines read as
+ *       they did before. Prints {"type":"edited",…,"restored":[{id,text}…]}.
+ *
  *   bun scripts/dev/eval.ts withdraw [<askId|msgId>|--last] [--to <thread|email>] [--no-pair]
  *       Take back an ask card that is obsolete, so nobody has to tap it: the
  *       hub marks it withdrawn and every open page greys it out ("Withdrawn",
@@ -335,6 +350,12 @@ const waitFlag = boolFlag("--wait");
 const lastFlag = boolFlag("--last");
 /** edit: collapse room-talk lines into one summary instead of polishing one. */
 const summaryFlag = boolFlag("--summary");
+/** edit: merge a run of his consecutive voice lines (comma-separated ids) into one passage. */
+const mergeFlag = flag("--merge");
+/** edit --merge: the passage's text (or - for stdin). */
+const textFlag = flag("--text");
+/** edit: undo a merged passage, by its first line's id. */
+const unmergeFlag = flag("--unmerge");
 /** chat: exit on {type:"pages-idle"} instead of staying for pages-back. */
 const exitOnIdle = boolFlag("--exit-on-idle");
 /** chat: answer each live owner/friend line at once with one busy beat ("heard you"). */
@@ -621,6 +642,12 @@ function chat(out?: string, errorsOnly = false) {
           edited: m.edited,
           // A summary of room talk: these lines are now one (raw: all of them as heard).
           ...(m.summary ? { summary: m.summary } : {}),
+          // A merged passage: these lines are now one fluent passage (raw: all of them as heard).
+          ...(m.passage ? { passage: m.passage } : {}),
+          // A passage undone: the lines read as before.
+          ...(Array.isArray(m.restored)
+            ? { restored: m.restored.map((x: Msg) => ({ id: x.id, text: x.text, at: x.at })) }
+            : {}),
           // Continuous speech (stt.merge): `text` is the whole line so far; read it again.
           ...(Array.isArray(m.parts) ? { parts: m.parts.length } : {}),
           ...(m.merged ? { merged: m.merged } : {}),
@@ -902,6 +929,7 @@ function edit(
   id: string | undefined,
   last: boolean,
   summary?: { ids?: string[]; last?: number },
+  run?: { merge: string[] } | { unmerge: string },
 ): Promise<Msg> {
   const grant = chatGrant();
   if (!grant)
@@ -921,11 +949,25 @@ function edit(
     const go = () =>
       ws.send(
         JSON.stringify(
-          summary ? { type: "summary", ...summary, text } : { type: "edit", id: target, text },
+          run
+            ? "merge" in run
+              ? { type: "merge", ids: run.merge, text }
+              : { type: "unmerge", id: run.unmerge }
+            : summary
+              ? { type: "summary", ...summary, text }
+              : { type: "edit", id: target, text },
         ),
       );
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as Msg;
+      // A merge or its undo: the hub answers with the passage, or the restored lines.
+      if (run) {
+        if (m.type === "approved") go();
+        else if (m.type === "edited" && ("merge" in run ? m.passage : m.restored))
+          done(() => resolve(m));
+        else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+        return;
+      }
       // A summary is the hub's to resolve (ids or his last N): its answer carries `summary`.
       if (summary) {
         if (m.type === "approved") go();
@@ -1151,6 +1193,33 @@ async function main() {
   if (args[0] === "serve") return serve();
   if (args[0] === "chat") return chat(out);
   if (args[0] === "errors") return chat(out, true);
+  if (args[0] === "edit" && unmergeFlag !== undefined) {
+    if (!unmergeFlag || args.length > 1) {
+      console.error("usage: bun scripts/dev/eval.ts edit --unmerge <id> [--no-pair]");
+      process.exit(2);
+    }
+    console.log(
+      JSON.stringify(await edit("", undefined, false, undefined, { unmerge: unmergeFlag })),
+    );
+    return;
+  }
+  if (args[0] === "edit" && mergeFlag !== undefined) {
+    const ids = (mergeFlag ?? "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    // The text: --text, else one trailing argument; - reads stdin.
+    const given = textFlag ?? (args.length === 2 ? args[1] : undefined);
+    const text = (given === "-" ? await Bun.stdin.text() : (given ?? "")).trim();
+    if (ids.length < 2 || !text || args.length > (textFlag === undefined ? 2 : 1)) {
+      console.error(
+        'usage: bun scripts/dev/eval.ts edit --merge <id1,id2,…> --text "passage" | - [--no-pair]',
+      );
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await edit(text, undefined, false, undefined, { merge: ids })));
+    return;
+  }
   if (args[0] === "edit" && summaryFlag) {
     const rest = args.slice(1);
     const raw = rest.at(-1);

@@ -12,6 +12,9 @@ import {
   polishWords,
   SUMMARY_SHARE,
   summaryCheck,
+  MERGE_RATIO,
+  MERGE_SLACK,
+  mergeCheck,
   MAX_UNCLEAR_BRACKETS,
   MAX_UNCLEAR_CANDIDATES,
   UNCLEAR_PHRASES,
@@ -275,6 +278,36 @@ describe("polishCheck: an unclear word as a bracket of candidates", () => {
 
   it("a bracket replaces one raw run; it never adds a word he did not say", () => {
     expect(polishCheck("给我票", "给我一张（没听清，票？，条？）", []).ok).toBe(false);
+  });
+});
+
+describe("mergeCheck (a run of his lines as one passage)", () => {
+  const run = ["我想把那个按钮", "放到右边", "然后颜色改成红色"];
+
+  it("takes connectives and fragment fixes the per-line rules would refuse", () => {
+    const passage = "我想把那个按钮放到右边，然后把颜色改成红色。";
+    expect(polishCheck(run.join(""), passage, []).ok).toBe(false);
+    expect(mergeCheck(run, passage).ok).toBe(true);
+    expect(
+      mergeCheck(
+        ["so I was thinking", "we move the button", "to the right"],
+        "So I was thinking we could move the button to the right.",
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("refuses one far longer than the lines, one line, and empty text", () => {
+    expect(MERGE_RATIO).toBe(1.3);
+    const total = run.join("").length;
+    const cap = Math.ceil(total * MERGE_RATIO) + MERGE_SLACK;
+    expect(mergeCheck(run, "啊".repeat(cap)).ok).toBe(true);
+    const v = mergeCheck(run, "啊".repeat(cap + 1));
+    expect(v.ok).toBe(false);
+    expect(!v.ok && v.reason).toContain("longer than");
+    expect(mergeCheck([run[0]!], run[0]!).ok).toBe(false);
+    expect(mergeCheck(run, "  ").ok).toBe(false);
+    // The limits are config: a caller may pass its own.
+    expect(mergeCheck(run, "啊".repeat(total + 1), { ratio: 1, slack: 0 }).ok).toBe(false);
   });
 });
 

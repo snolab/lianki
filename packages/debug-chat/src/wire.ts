@@ -89,6 +89,14 @@ export type ChatMessage = {
   /** This voice line is inside a summary that starts at that line: hidden, still kept. */
   collapsedInto?: string;
   /**
+   * The agent merged a run of his voice lines starting here into one fluent
+   * passage (PassageMark); `text` is the passage, `raw` every line as heard.
+   * The other lines carry `collapsedInto`. Undo restores them all.
+   */
+  passage?: PassageMark;
+  /** On a passage's first line, hub-side: what it read before the merge, for the undo. */
+  premerge?: { text: string; raw?: string; edited?: EditMark };
+  /**
    * Stamped by the hub only, with flag `stt.merge` on (voice-merge.ts): an owner's
    * voice line the next utterance may amend. Absent = always a new line.
    */
@@ -249,6 +257,19 @@ export const EDITABLE_LINES = 5;
  */
 export type SummaryMark = { at: number; by: string; ids: string[] };
 /**
+ * How many of the owner's latest lines a merge may reach back over: a run of
+ * his consecutive voice lines (docs/dev-debug-widget.md, "Merged passages").
+ * A default; the hub's limit.
+ */
+export const MERGE_LINES = 12;
+/**
+ * A run of the owner's consecutive voice lines the agent rewrote as ONE fluent
+ * passage (his own words, connectives and fragment fixes, same meaning): on the
+ * run's first line; the others carry `collapsedInto`. `ids` are oldest first.
+ * Nothing is deleted, and the owner's undo restores every line as it was.
+ */
+export type PassageMark = { at: number; by: string; ids: string[] };
+/**
  * The hub's broadcast after an agent polished a voice line: the pages and
  * listeners update that line in place (never read aloud again).
  */
@@ -267,6 +288,10 @@ export type EditedEvent = {
   split?: ChatMessage[];
   /** A summary of a run of lines starting at `id` (its other lines are hidden). */
   summary?: SummaryMark;
+  /** A merged passage of a run of lines starting at `id` (its other lines are hidden). */
+  passage?: PassageMark;
+  /** A passage undone: these lines, as they were before it, replace their copies (none hidden). */
+  restored?: ChatMessage[];
 };
 
 /** The hub to the listeners: a merged passage ended, polish it now, from `raw`. */
@@ -289,13 +314,22 @@ export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "typ
     edited: e.edited,
     ...(e.parts ? { parts: e.parts } : {}),
     ...(e.summary ? { summary: e.summary } : {}),
+    ...(e.passage ? { passage: e.passage } : {}),
   };
 }
 
 /** The list after an EditedEvent: the line changed in place, or split back into its lines. */
 export function applyEditTo<M extends ChatMessage>(list: M[], e: Omit<EditedEvent, "type">): M[] {
-  if (e.summary) {
-    const rest = new Set(e.summary.ids.filter((id) => id !== e.id));
+  if (e.restored) {
+    const back = new Map(e.restored.map((m) => [m.id, m]));
+    return list.map((m) => {
+      const r = (m.thread ?? "owner") === e.thread ? back.get(m.id) : undefined;
+      return r ? ({ ...r, thread: m.thread } as M) : m;
+    });
+  }
+  const run = e.summary ?? e.passage;
+  if (run) {
+    const rest = new Set(run.ids.filter((id) => id !== e.id));
     return list.map((m) =>
       (m.thread ?? "owner") === e.thread && rest.has(m.id)
         ? { ...m, collapsedInto: e.id }

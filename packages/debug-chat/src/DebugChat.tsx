@@ -2797,9 +2797,12 @@ export function DebugChat({
   /**
    * A polished line's text as shown, and its mark (nothing for any other line).
    * A summary's mark is a visible tag (ui.summary), and its raw is every line as heard.
+   * A merged passage's is a "merged N" tag (ui.merged); its raw is every line as heard too,
+   * and its ↩ restores the lines.
    */
   const polish = (m: ChatMessage) => {
-    if ((!m.edited && !m.summary) || m.raw === undefined) return { text: m.text, mark: null };
+    if ((!m.edited && !m.summary && !m.passage) || m.raw === undefined)
+      return { text: m.text, mark: null };
     const raw = rawIds.has(m.id);
     return {
       text: raw ? (
@@ -2817,15 +2820,27 @@ export function DebugChat({
                 <span data-testid="debug-chat-summary" className="rounded border border-current px-1 text-[0.8em]">
                   {ui.summary}
                 </span>
+              ) : m.passage ? (
+                <span data-testid="debug-chat-passage" className="rounded border border-current px-1 text-[0.8em]">
+                  {ui.merged.replace("{n}", String(m.passage.ids.length))}
+                </span>
               ) : (
                 polishedIcon
               )
             }
-            label={m.summary ? ui.summaryTip : strings?.polished ? t.polished : ui.polished}
+            label={
+              m.summary
+                ? ui.summaryTip
+                : m.passage
+                  ? ui.mergedTip.replace("{n}", String(m.passage.ids.length))
+                  : strings?.polished
+                    ? t.polished
+                    : ui.polished
+            }
             showRaw={raw}
             onToggle={() => toggleRaw(m.id)}
           />
-          {m.parts && onUnmerge ? (
+          {(m.parts || m.passage) && onUnmerge ? (
             <button
               type="button"
               data-testid="debug-chat-unmerge"

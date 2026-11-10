@@ -25,6 +25,14 @@ export type UiStrings = {
   summary: string;
   /** The tag's tooltip: what the summary is and that a tap shows what was heard. */
   summaryTip: string;
+  /**
+   * The visible tag on a line the agent merged: a run of the owner's
+   * consecutive voice lines rewritten as one fluent passage. `{n}` = how many
+   * lines. A tap shows the lines as heard. Short.
+   */
+  merged: string;
+  /** The tag's tooltip: what the passage is and that a tap shows the lines as heard. */
+  mergedTip: string;
   /** The menu's Latency row (latency.ts): its title, and before any voice reply. */
   latency: string;
   latencyNone: string;
@@ -160,6 +168,8 @@ export const UI_EN: UiStrings = {
   polished: "Polished",
   summary: "Summary",
   summaryTip: "Summary of what was heard. Tap to see the lines as heard.",
+  merged: "Merged {n}",
+  mergedTip: "{n} spoken messages joined into one passage. Tap to see them as heard.",
   latency: "Latency, last voice line",
   micAdapt: "Mic, adapting",
   micAdaptFloor: "room",
@@ -220,6 +230,8 @@ export const UI_ZH: UiStrings = {
   polished: "已润色",
   summary: "摘要",
   summaryTip: "听到的内容的摘要，点一下看原话",
+  merged: "合并 {n} 句",
+  mergedTip: "把连续说的 {n} 句合成了一段。点一下看原话",
   latency: "延迟（上一句语音）",
   micAdapt: "麦克风（自适应）",
   micAdaptFloor: "环境",
@@ -280,6 +292,8 @@ export const UI_JA: UiStrings = {
   polished: "整えました",
   summary: "要約",
   summaryTip: "聞こえた内容の要約。タップで元の発言を表示",
+  merged: "{n}件を統合",
+  mergedTip: "続けて話した{n}件を一つの文にまとめました。タップで元の発言を表示",
   latency: "遅延（直前の音声）",
   micAdapt: "マイク（自動調整）",
   micAdaptFloor: "周囲",
