@@ -291,6 +291,7 @@ export async function handleLocalSttCost(req: Request, d: LocalSttDeps): Promise
   const db = d.db;
   if (db) {
     const ms = Math.min(LOCAL_STT_MAX_AUDIO_MS, audioMs);
+    // bookCost never throws; an unreadable rate books the units at 0 USD.
     const p = d
       .perMinUsd()
       .catch(() => 0)
@@ -298,11 +299,10 @@ export async function handleLocalSttCost(req: Request, d: LocalSttDeps): Promise
         bookCost(
           db,
           { userId, feature: LOCAL_STT_FEATURE, usd: localSttUsd(ms, rate), units: ms / 1000 },
-          (d.now ?? (() => new Date()))(),
+          d.now?.() ?? new Date(),
           d.log ?? defaultLog,
         ),
-      )
-      .catch(() => false);
+      );
     let deferred = false;
     try {
       deferred = d.defer?.(p) ?? false;

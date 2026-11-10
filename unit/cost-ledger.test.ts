@@ -205,6 +205,22 @@ describe("Lianki's speech server, booked as a cloud service", () => {
     expect(rows()).toHaveLength(1);
   });
 
+  it("an unreadable rate books the units at 0; a deferred booking does not hold the answer", async () => {
+    let held: Promise<unknown> | null = null;
+    const res = await handleLocalSttCost(post({ audioMs: 2000 }), {
+      user: { id: "u1" },
+      db: d1,
+      perMinUsd: () => Promise.reject(new Error("config down")),
+      limit: () => ({ allowed: true }),
+      defer: (p) => ((held = p), true),
+    });
+    expect(res.status).toBe(204);
+    await held;
+    expect(rows()).toEqual([expect.objectContaining({ usd_micro: 0, units: 2 })]);
+    const get = new Request("https://lianki.com/api/debug/stt/local");
+    expect((await handleLocalSttCost(get, deps())).status).toBe(405);
+  });
+
   it("a failed booking still answers 204", async () => {
     const res = await handleLocalSttCost(
       post({ audioMs: 1000 }),
