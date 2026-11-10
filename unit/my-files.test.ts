@@ -21,7 +21,7 @@ import {
 } from "../lib/import/files";
 import { FOLDERS, folderOf } from "../lib/import/my-files";
 import {
-  UNDO_MS,
+  undoMs,
   pendingDeletes,
   uploadErrorOf,
   uploadFile,
@@ -305,7 +305,7 @@ describe("the browser helpers", () => {
     let n = 0;
     const d = pendingDeletes(async (id) => sent.push(id), {
       set: (fn, ms) => {
-        expect(ms).toBe(UNDO_MS);
+        expect(ms).toBe(undoMs());
         timers.set(++n, fn);
         return n;
       },

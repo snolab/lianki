@@ -20,6 +20,8 @@ import { LIVE_VIEW_COOKIE, liveViewFor } from "@/lib/live-view/shell.server";
 import type { LiveViewLabels } from "@/app/components/LiveView";
 import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
+import { publicConfig } from "@/lib/config-store";
+import { PublicConfig } from "@/app/components/PublicConfig";
 import { isDev } from "@/lib/permissions";
 import { booksMineOn, libraryOn } from "@/lib/books/gate";
 import { levelsOn } from "@/lib/level-progress";
@@ -60,6 +62,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // The app-icon badge (docs/app-badge.md): signed in, D1, `pwa.app-badge` on, the owner only.
   const appBadge = Boolean(user) && flags !== null && appBadgeOn(flags, owner);
 
+  // Public config values (docs/config-store.md): cached 30 s, the defaults off D1.
+  const config = await publicConfig();
+
   const { appName, nav } = getIntlayer("landing-page", locale);
   const shell = getIntlayer("app-shell", locale);
   const firstRun = getIntlayer("first-run", locale) as unknown as FirstRunLabels;
@@ -77,27 +82,29 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <IntlayerServerProvider locale={locale}>
       <IntlayerClientProvider locale={locale}>
         <div lang={lang} dir={dir} className="min-h-screen">
-          <AppShell
-            locale={locale}
-            appName={appName}
-            labels={labels}
-            user={user}
-            firstRun={firstRun}
-            devSwitch={devSwitchFor(
-              user?.email,
-              // Strings for the owner only: anyone else's page carries none of them.
-              () => getIntlayer("dev-switch", locale) as unknown as DevSwitchLabels,
-            )}
-            liveView={liveView}
-            navShown={navShown}
-            levels={levels}
-          >
-            {pendingInvite && <InviteClaim />}
-            <PrefSync signedIn={Boolean(user)} />
-            {localeState.adopt && <AccountLocaleAdopt locale={localeState.adopt.locale} />}
-            <AppBadge on={appBadge} />
-            {children}
-          </AppShell>
+          <PublicConfig values={config}>
+            <AppShell
+              locale={locale}
+              appName={appName}
+              labels={labels}
+              user={user}
+              firstRun={firstRun}
+              devSwitch={devSwitchFor(
+                user?.email,
+                // Strings for the owner only: anyone else's page carries none of them.
+                () => getIntlayer("dev-switch", locale) as unknown as DevSwitchLabels,
+              )}
+              liveView={liveView}
+              navShown={navShown}
+              levels={levels}
+            >
+              {pendingInvite && <InviteClaim />}
+              <PrefSync signedIn={Boolean(user)} />
+              {localeState.adopt && <AccountLocaleAdopt locale={localeState.adopt.locale} />}
+              <AppBadge on={appBadge} />
+              {children}
+            </AppShell>
+          </PublicConfig>
         </div>
       </IntlayerClientProvider>
     </IntlayerServerProvider>

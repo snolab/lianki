@@ -32,6 +32,11 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
+- **Defaults in code, live values in the DB.** A user-meaningful number, text
+  or icon is a key in `lib/config.ts` read with `cfg()` / `publicCfg()`, never a
+  bare constant; the code holds only its default.
+  [docs/config-store.md](docs/config-store.md).
+
 ## Commands
 
 ```bash
@@ -194,6 +199,7 @@ that are expensive to rediscover.
 | Study ledger: daily Merkle anchors, proofs, OpenTimestamps               | [docs/lian.md](docs/lian.md)                                        |
 | Learner levels: ladder, names per locale, SVG badges                     | [docs/levels.md](docs/levels.md)                                    |
 | Feature flags: owner on/off at /dev/flags, ship dark, remove             | [docs/feature-flags.md](docs/feature-flags.md)                      |
+| Live config values (numbers, texts): registry, `cfg()`, /dev/config      | [docs/config-store.md](docs/config-store.md)                        |
 | Security measures: admin gate, lockout, scans, card testing              | [docs/security-measures.md](docs/security-measures.md)              |
 | UI layout: content fills the screen, glass overlays                      | [docs/design-principles.md](docs/design-principles.md)              |
 | rgui component library (subtree), its gantt module, upstream sync        | [docs/rgui.md](docs/rgui.md)                                        |

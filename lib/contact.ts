@@ -3,9 +3,11 @@
 // sender types reaches Slack escaped and unformatted.
 import { escapeSlack } from "@/lib/security/escape";
 
-/** Four fields of 2000 characters each, at up to 3 UTF-8 bytes a character, with room for JSON. */
+/**
+ * Four fields of up to config `contact.fieldMax` characters each (lib/config.ts,
+ * at most 2600), at up to 3 UTF-8 bytes a character, with room for JSON.
+ */
 export const CONTACT_BODY_MAX = 32 * 1024;
-export const CONTACT_FIELD_MAX = 2000;
 const HOUR = 60 * 60_000;
 /** Messages per IP, and from everyone together. */
 export const CONTACT_PER_IP = { max: 5, windowMs: HOUR };

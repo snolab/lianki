@@ -65,6 +65,24 @@ const dictionary = {
       mr: "क्रेडिट",
       ko: "크레딧 잔액",
     }),
+    config: t({
+      en: "Settings values",
+      zh: "配置值",
+      hi: "सेटिंग मान",
+      es: "Valores de configuración",
+      fr: "Valeurs de configuration",
+      ar: "قيم الإعدادات",
+      bn: "সেটিংয়ের মান",
+      pt: "Valores de configuração",
+      ru: "Значения настроек",
+      ur: "سیٹنگ کی قدریں",
+      id: "Nilai pengaturan",
+      de: "Konfigurationswerte",
+      ja: "設定値",
+      sw: "Thamani za mipangilio",
+      mr: "सेटिंग मूल्ये",
+      ko: "설정 값",
+    }),
     flags: t({
       en: "Feature flags",
       zh: "开关",
@@ -381,6 +399,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Name of the internal page (tab title and main heading) that lists which account may sign in on which developer box (a personal dev container): a noun phrase naming the page.",
   credits:
     "Name of the internal page (tab title and main heading) where an administrator looks up and adjusts any account's credit balance and its history. A noun, not a verb.",
+  config:
+    "Name of the internal page (tab title and main heading) where an administrator changes the app's live values (time limits, sizes, speeds) without a deploy, each with its default and change history. A plural noun phrase, not a verb.",
   flags:
     "Name of the internal page (tab title and main heading) with the on/off switches that turn app features on or off without a deploy. A plural noun.",
   friends:

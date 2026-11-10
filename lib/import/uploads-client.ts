@@ -4,8 +4,13 @@
  * /self-intro add-file area and /my/files. No React here.
  */
 
-/** Seconds the "Deleted · Undo" toast waits before the delete is sent. */
-export const UNDO_MS = 5000;
+import { publicCfg } from "@/lib/config-client";
+
+/**
+ * Milliseconds the "Deleted · Undo" toast waits before the delete is sent:
+ * config `files.undoMs` (lib/config.ts, docs/config-store.md).
+ */
+export const undoMs = (): number => publicCfg("files.undoMs");
 
 export type UploadResult =
   | { ok: true; id: string }
@@ -74,7 +79,7 @@ export function uploadFile(
 }
 
 /**
- * Deletes that wait `UNDO_MS` before they are sent, so a toast can offer
+ * Deletes that wait `undoMs()` before they are sent, so a toast can offer
  * Undo. `flush()` sends every pending one now (the page is being left).
  */
 export function pendingDeletes(
@@ -98,7 +103,7 @@ export function pendingDeletes(
         timers.set(() => {
           waiting.delete(id);
           void send(id);
-        }, UNDO_MS),
+        }, undoMs()),
       );
     },
     /** Keep `id` after all. True when there was a delete to cancel. */

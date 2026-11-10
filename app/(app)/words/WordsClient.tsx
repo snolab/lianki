@@ -98,7 +98,7 @@ import {
   type Register,
   type Scenario,
 } from "@/lib/words/phrases";
-import { createDeferredDelete, UNDO_MS, type FlushReason } from "@/lib/words/deferred-delete";
+import { createDeferredDelete, undoMs, type FlushReason } from "@/lib/words/deferred-delete";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
 import type { VoiceAccess } from "@/lib/words/voice-access";
@@ -2240,7 +2240,7 @@ function UndoDeleteToast({ doomed, onUndo }: { doomed: DoomedList; onUndo: () =>
       <span
         aria-hidden
         className="lk-undo-timer pointer-events-none absolute inset-x-3 bottom-0 h-0.5 origin-left rounded-full bg-[oklch(0.5_0_0/0.35)] rtl:origin-right"
-        style={{ animationDuration: `${UNDO_MS}ms` }}
+        style={{ animationDuration: `${undoMs()}ms` }}
       />
     </div>
   );
@@ -2905,7 +2905,7 @@ function ListPicker({
   };
   useEffect(() => {
     if (!arrangedNow) return;
-    const t = setTimeout(() => setArrangedNow(null), UNDO_MS);
+    const t = setTimeout(() => setArrangedNow(null), undoMs());
     return () => clearTimeout(t);
   }, [arrangedNow]);
 
@@ -2959,7 +2959,7 @@ function ListPicker({
   // The toast runs out on its own; the new rows lose their outline with it.
   useEffect(() => {
     if (!addedNow) return;
-    const t = setTimeout(() => setAddedNow(null), UNDO_MS);
+    const t = setTimeout(() => setAddedNow(null), undoMs());
     return () => clearTimeout(t);
   }, [addedNow]);
   // Bring the first new row into view (it may sit inside a folded group).
@@ -3585,7 +3585,7 @@ function langName(code: string, locale: string) {
 /**
  * "Added: JLPT N5 and JLPT N4", as glass over the bottom of the page: one
  * layer, with Start studying (one list added) and Undo. It runs out with the
- * new rows' outline (UNDO_MS).
+ * new rows' outline (undoMs(), config words.undoMs).
  */
 function AddedToast({
   added,
@@ -3629,7 +3629,7 @@ function AddedToast({
       <span
         aria-hidden
         className="lk-undo-timer pointer-events-none absolute inset-x-3 bottom-0 h-0.5 origin-left rounded-full bg-[oklch(0.5_0_0/0.35)] rtl:origin-right"
-        style={{ animationDuration: `${UNDO_MS}ms` }}
+        style={{ animationDuration: `${undoMs()}ms` }}
       />
     </div>
   );
