@@ -29,10 +29,9 @@ export type UploadVerdict = { ok: true } | { ok: false; error: string };
 export function checkUpload(file: { name: string; size: number }, rule: UploadRule): UploadVerdict {
   const name = file.name.toLowerCase();
   if (!rule.extensions.some((ext) => name.endsWith(ext)))
-    return { ok: false, error: `File must be ${rule.extensions.join(" or ")}` };
-  if (file.size > rule.maxBytes)
-    return { ok: false, error: `File too large (max ${Math.round(rule.maxBytes / MB)} MB)` };
-  if (file.size === 0) return { ok: false, error: "File is empty" };
+    return { ok: false, error: "wrong-file-type" };
+  if (file.size > rule.maxBytes) return { ok: false, error: "file-too-large" };
+  if (file.size === 0) return { ok: false, error: "file-empty" };
   return { ok: true };
 }
 
@@ -45,5 +44,5 @@ export function checkMagic(bytes: ArrayBuffer | Uint8Array, rule: UploadRule): U
     rule.magic.length,
   );
   const match = rule.magic.every((b, i) => head[i] === b);
-  return match ? { ok: true } : { ok: false, error: "File is not a valid archive" };
+  return match ? { ok: true } : { ok: false, error: "not-an-archive" };
 }

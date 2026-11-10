@@ -41,17 +41,15 @@ export async function POST(req: NextRequest) {
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    return NextResponse.json(
-      { error: `Invalid import: ${issue?.path.join(".")} ${issue?.message}` },
-      { status: 400 },
-    );
+    console.warn("[words.import] invalid body at", issue?.path.join("."), issue?.message);
+    return NextResponse.json({ error: "invalid-import" }, { status: 400 });
   }
   const { listId, deckId, name, lang, src, srcTitle, entries } = parsed.data;
   let id = listId;
   if (id) {
     const list = await repo.getList(id);
     if (!list?.source?.startsWith("anki:"))
-      return NextResponse.json({ error: "Not an imported list" }, { status: 404 });
+      return NextResponse.json({ error: "not-imported-list" }, { status: 404 });
   } else id = await repo.createList({ name, lang, source: `anki:${deckId}` });
   const entriesRepo = new WordEntriesD1Repo(repo.db, repo.email);
   const result = await entriesRepo.sync(id, entries);

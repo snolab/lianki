@@ -54,7 +54,8 @@ export type SttDeps = {
   log?: (o: Record<string, unknown>) => void;
 };
 
-/** Both models failed: 502 with this message, and the hold refunded. */
+/** Both models failed: 502 `transcription-failed`, and the hold refunded. The
+ * model's own message goes to the log only. */
 class SttFailed extends Error {}
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -63,18 +64,21 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 export async function handleStt(req: Request, d: SttDeps): Promise<Response> {
   const clock = d.clock ?? Date.now;
   const log = d.log ?? ((o) => console.log(JSON.stringify(o)));
-  if (!d.user?.id) return json({ error: "Sign in" }, 401);
-  if (req.method !== "POST") return json({ error: "POST the audio" }, 405);
+  if (!d.user?.id) return json({ error: "login-required" }, 401);
+  if (req.method !== "POST") return json({ error: "method-not-allowed" }, 405);
   const mime = (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-  if (!isSttMime(mime)) return json({ error: `unsupported audio type: ${mime || "none"}` }, 415);
+  if (!isSttMime(mime)) {
+    log({ msg: "debug.stt.unsupported", mime: mime.slice(0, 60) || "none" });
+    return json({ error: "unsupported-audio" }, 415);
+  }
   const declared = Number(req.headers.get("content-length") ?? 0);
-  if (declared > STT_MAX_BYTES) return json({ error: "audio too large" }, 413);
+  if (declared > STT_MAX_BYTES) return json({ error: "audio-too-large" }, 413);
   const audio = new Uint8Array(await req.arrayBuffer());
-  if (audio.byteLength > STT_MAX_BYTES) return json({ error: "audio too large" }, 413);
-  if (audio.byteLength === 0) return json({ error: "no audio" }, 400);
+  if (audio.byteLength > STT_MAX_BYTES) return json({ error: "audio-too-large" }, 413);
+  if (audio.byteLength === 0) return json({ error: "no-audio" }, 400);
   const rl = d.limit(`stt:${d.user.id}`, d.owner ? STT_MAX_OWNER : STT_MAX);
   if (!rl.allowed)
-    return json({ error: "too many transcriptions; try again soon" }, 429, {
+    return json({ error: "too-many" }, 429, {
       "retry-after": String(Math.ceil(rl.retryAfterMs / 1000)),
     });
 
@@ -92,15 +96,17 @@ export async function handleStt(req: Request, d: SttDeps): Promise<Response> {
       out = await d.transcribe({ audio, mime, model, lang, hint });
     } catch (e) {
       if (model !== DEFAULT_STT_MODEL || (d.owner && isSttModel(asked))) {
-        log({ msg: "debug.stt.error", model, bytes: audio.byteLength });
-        throw new SttFailed(`transcription failed: ${(e as Error).message.slice(0, 200)}`);
+        const detail = String((e as Error)?.message ?? e).slice(0, 200);
+        log({ msg: "debug.stt.error", model, bytes: audio.byteLength, detail });
+        throw new SttFailed(detail);
       }
       used = FALLBACK_STT_MODEL;
       try {
         out = await d.transcribe({ audio, mime, model: used, lang, hint });
       } catch (e2) {
-        log({ msg: "debug.stt.error", model: used, bytes: audio.byteLength });
-        throw new SttFailed(`transcription failed: ${(e2 as Error).message.slice(0, 200)}`);
+        const detail = String((e2 as Error)?.message ?? e2).slice(0, 200);
+        log({ msg: "debug.stt.error", model: used, bytes: audio.byteLength, detail });
+        throw new SttFailed(detail);
       }
     }
     return out;
@@ -113,7 +119,7 @@ export async function handleStt(req: Request, d: SttDeps): Promise<Response> {
       out = paid.value;
     } else out = await attempt();
   } catch (e) {
-    if (e instanceof SttFailed) return json({ error: e.message }, 502);
+    if (e instanceof SttFailed) return json({ error: "transcription-failed" }, 502);
     throw e;
   }
   const ms = clock() - t0;
