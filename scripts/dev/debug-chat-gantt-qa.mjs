@@ -15,6 +15,16 @@
  *   - ctrl+wheel (a trackpad pinch) zooms about the pointer; the ticks re-label
  *   - the Now button brings Now back; Escape closes
  *
+ * Categories first (owner, 2026-11-10 23:13; gantt-groups.ts), on open:
+ *
+ *   - one row per category, all folded; every task a slice on its row;
+ *     overlapping slices in lanes stacked by the data (chat: two); a ▸
+ *     <button> with aria-expanded and a label on each; slices keep their states,
+ *     underlines and overruns; the focus task's category centred
+ *   - a tap on a slice opens its category and centres that task's row; ▾ folds
+ *     it back; then every category is opened and the checks below run on the
+ *     task rows; the open set is kept when the Gantt opens again
+ *
  * The logarithmic axis (the default; owner, 2026-11-09 15:27 JST) first:
  *
  *   - it opens on the log axis; Now at the horizontal centre
@@ -145,6 +155,12 @@ const TASKS = [
   })),
 ];
 
+/**
+ * The categories those tasks fall into (packages/debug-chat/src/gantt-groups.json):
+ * /chat/* chat, /words words, /read import, /dev ui, the rest the fallback (arch).
+ */
+const GROUPS = ["chat", "words", "import", "ui", "arch"];
+
 const VIEWS = [
   { name: "1440x900", width: 1440, height: 900, touch: false },
   { name: "1512x770", width: 1512, height: 770, touch: false },
@@ -202,14 +218,157 @@ try {
         `${tag}: the panel fills the viewport (${JSON.stringify(box)})`,
       );
       const rows = page.locator('[data-testid="debug-chat-gantt-row"]');
-      check((await rows.count()) === TASKS.length, `${tag}: ${await rows.count()} rows`);
+      // Categories (owner, 2026-11-10 23:13): folded by default, one row each,
+      // every child's bar on it in lanes; tap a slice → its row; ▸/▾ toggles.
+      const groupsAt = page.locator('[data-testid="debug-chat-gantt-group"]');
+      const toggles = page.locator('[data-testid="debug-chat-gantt-toggle"]');
+      const slices = page.locator('[data-testid="debug-chat-gantt-slice"]');
+      const gInfo = () =>
+        groupsAt.evaluateAll((els) =>
+          els.map((e) => ({
+            id: e.dataset.id,
+            open: e.dataset.open === "true",
+            lanes: Number(e.dataset.lanes),
+            count: Number(e.dataset.count),
+          })),
+        );
+      let gs = await gInfo();
+      check(
+        gs.length === GROUPS.length && GROUPS.every((id) => gs.some((x) => x.id === id)),
+        `${tag}: one row per category (${gs.map((x) => x.id).join(",")})`,
+      );
+      check(
+        gs.every((x) => !x.open) && (await rows.count()) === 0,
+        `${tag}: every category folded by default, no task rows`,
+      );
+      check(
+        gs.reduce((n, x) => n + x.count, 0) === TASKS.length &&
+          (await slices.count()) === TASKS.length,
+        `${tag}: every task is a slice on its category's row (${await slices.count()})`,
+      );
+      const chatG = gs.find((x) => x.id === "chat");
+      check(
+        chatG?.lanes === 2,
+        `${tag}: two overlapping chat tasks take two lanes (${chatG?.lanes})`,
+      );
+      check(
+        gs.find((x) => x.id === "words")?.lanes === 1,
+        `${tag}: a category with one task has one lane`,
+      );
+      const tg = await toggles.evaluateAll((els) =>
+        els.map((e) => ({
+          tag: e.tagName,
+          exp: e.getAttribute("aria-expanded"),
+          label: e.getAttribute("aria-label") ?? "",
+          left: e.getBoundingClientRect().left,
+          h: e.getBoundingClientRect().height,
+        })),
+      );
+      check(
+        tg.length === GROUPS.length &&
+          tg.every((x) => x.tag === "BUTTON" && x.exp === "false" && x.label.length > 3),
+        `${tag}: each category has a ▸ button with aria-expanded and a label`,
+      );
+      // Slices keep their own looks: states, underlines, the overdue red overrun.
+      const sStates = await slices.evaluateAll((els) => els.map((e) => e.dataset.state));
+      check(
+        sStates.includes("queued") && sStates.includes("reached") && sStates.includes("done"),
+        `${tag}: slices keep running, overdue, queued and done (${[...new Set(sStates)].join(",")})`,
+      );
+      check(
+        (await page.locator('[data-testid="debug-chat-gantt-slice-progress"]').count()) > 0 &&
+          (await page.locator('[data-testid="debug-chat-gantt-slice-over"]').count()) > 0,
+        `${tag}: slices keep their progress underline and overrun`,
+      );
+      // Lanes from the data: slices on different lanes of one row sit at different heights.
+      const laneTops = await page.evaluate(() => {
+        const g = document.querySelector('[data-testid="debug-chat-gantt-group"][data-id="chat"]');
+        return [...g.querySelectorAll('[data-testid="debug-chat-gantt-slice"]')].map((s) => ({
+          lane: s.dataset.lane,
+          top: Math.round(s.getBoundingClientRect().top),
+        }));
+      });
+      check(
+        new Set(laneTops.map((x) => x.lane)).size === 2 &&
+          new Set(laneTops.map((x) => x.top)).size === 2,
+        `${tag}: the chat row's two lanes are stacked (${JSON.stringify(laneTops)})`,
+      );
+      // The category of the task closest to ending (/dev/users, in "ui") at the vertical centre.
+      const centred = (sel) =>
+        page.evaluate((s) => {
+          const sc = document
+            .querySelector('[data-testid="debug-chat-gantt-scroll"]')
+            .getBoundingClientRect();
+          const axis = document
+            .querySelector('[data-testid="debug-chat-gantt-axis"]')
+            .getBoundingClientRect();
+          const row = document.querySelector(s).getBoundingClientRect();
+          return { mid: (row.top + row.bottom) / 2, view: (axis.bottom + sc.bottom) / 2 };
+        }, sel);
+      let fc = await centred('[data-testid="debug-chat-gantt-group"][data-id="ui"]');
+      check(
+        Math.abs(fc.mid - fc.view) < 20,
+        `${tag}: folded, the category of the task closest to ending is centred (${Math.round(fc.mid)} vs ${Math.round(fc.view)})`,
+      );
+      await shot("groups-folded");
+      // Tap a slice: its category opens and that task's row is centred, marked.
+      const devSlice = slices.and(page.locator('[data-id="/dev/users"]'));
+      const sb = await devSlice.boundingBox();
+      await devSlice.click({ position: { x: Math.max(1, sb.width - 3), y: sb.height / 2 } });
+      await page.waitForTimeout(150);
+      gs = await gInfo();
+      check(gs.find((x) => x.id === "ui")?.open, `${tag}: a tapped slice opens its category`);
+      const picked = page.locator('[data-testid="debug-chat-gantt-row"][data-id="/dev/users"]');
+      check(
+        (await picked.count()) === 1 && (await picked.getAttribute("data-picked")) === "true",
+        `${tag}: the tapped task has its own row, marked`,
+      );
+      fc = await centred('[data-testid="debug-chat-gantt-row"][data-id="/dev/users"]');
+      check(
+        Math.abs(fc.mid - fc.view) < 20,
+        `${tag}: the tapped task's row is centred (${Math.round(fc.mid)} vs ${Math.round(fc.view)})`,
+      );
+      check(
+        (await page
+          .locator(
+            '[data-testid="debug-chat-gantt-group"][data-id="ui"] [data-testid="debug-chat-gantt-toggle"]',
+          )
+          .getAttribute("aria-expanded")) === "true",
+        `${tag}: its ▾ says expanded`,
+      );
+      // ▾ folds it back.
+      await page
+        .locator(
+          '[data-testid="debug-chat-gantt-group"][data-id="ui"] [data-testid="debug-chat-gantt-toggle"]',
+        )
+        .click();
+      await page.waitForTimeout(100);
+      check((await rows.count()) === 0, `${tag}: ▾ folds the category back onto its row`);
+      // Open them all: each task its own row again, the checks below run on them.
+      for (const id of GROUPS)
+        await page
+          .locator(
+            `[data-testid="debug-chat-gantt-group"][data-id="${id}"] [data-testid="debug-chat-gantt-toggle"]`,
+          )
+          .click();
+      await page.waitForTimeout(150);
+      check((await rows.count()) === TASKS.length, `${tag}: all open, ${await rows.count()} rows`);
+      check(
+        (await toggles.evaluateAll((els) => els.map((e) => e.getAttribute("aria-expanded")))).every(
+          (x) => x === "true",
+        ),
+        `${tag}: every ▾ says expanded`,
+      );
+      await shot("groups-open");
       const states = await rows.evaluateAll((els) => els.map((e) => e.dataset.state));
       check(
         states.includes("queued") && states.includes("reached") && states.includes("done"),
         `${tag}: running, overdue, queued and done rows (${states.join(",")})`,
       );
       const late = await page
-        .locator('[data-testid="debug-chat-gantt-time"][data-late]')
+        .locator(
+          '[data-testid="debug-chat-gantt-row"] [data-testid="debug-chat-gantt-time"][data-late]',
+        )
         .allInnerTexts();
       check(
         late.length >= 2 && late.every((t) => t.startsWith("-")),
@@ -283,7 +442,11 @@ try {
           g.nowX >= g.sc.left && g.nowX <= g.sc.right && Math.abs(g.nowX - third) < 4,
           `${tag} log: Now at the centre (${Math.round(g.nowX)} vs ${Math.round(third)})`,
         );
-        // The open task closest to ending (/dev/users, due in 15 min) at the vertical centre.
+        // All open, the Now button goes home: the open task closest to ending
+        // (/dev/users, due in 15 min), now its own row, at the vertical centre.
+        await page.locator('[data-testid="debug-chat-gantt-now-btn"]').click();
+        await page.waitForTimeout(150);
+        g = await geo();
         const focus = await page.evaluate(() => {
           const sc = document
             .querySelector('[data-testid="debug-chat-gantt-scroll"]')
@@ -300,16 +463,23 @@ try {
           Math.abs(focus.mid - focus.view) < 20,
           `${tag} log: the task closest to ending is centred (${Math.round(focus.mid)} vs ${Math.round(focus.view)})`,
         );
-        // Rows by end time, expected or actual.
+        // Rows by end time, expected or actual: within a category, and the categories by their last end.
         const ends = await page.evaluate(() =>
           [...document.querySelectorAll('[data-testid="debug-chat-gantt-row"]')].map(
             (e) => e.dataset.id,
           ),
         );
         check(
-          ends.indexOf("/done/recent") < ends.indexOf("/dev/users") &&
-            ends.indexOf("/dev/users") < ends.indexOf("/box/eta"),
-          `${tag}: rows sorted by end time`,
+          ends.indexOf("/done/old") < ends.indexOf("/queue/q0") &&
+            ends.indexOf("/queue/q0") < ends.indexOf("/box/eta") &&
+            ends.indexOf("/chat/avatar") < ends.indexOf("/chat/fill"),
+          `${tag}: rows sorted by end time within a category`,
+        );
+        const order = (await gInfo()).map((x) => x.id);
+        check(
+          order.indexOf("chat") < order.indexOf("ui") &&
+            order.indexOf("ui") < order.indexOf("arch"),
+          `${tag}: categories sorted by their last end (${order.join(",")})`,
         );
         check(g.pageW <= v.width, `${tag} log: no horizontal page scroll (${g.pageW})`);
         check(namesIn(g), `${tag} log: every name in view on open`);
@@ -557,6 +727,11 @@ try {
       check(
         (await geo()).scale === "linear",
         `${tag}: the axis choice is remembered when it opens again`,
+      );
+      // And the open categories (session UI state, this tab).
+      check(
+        (await gInfo()).every((x) => x.open),
+        `${tag}: the open categories are kept when it opens again`,
       );
       await page.keyboard.press("Escape");
       await ctx.close();

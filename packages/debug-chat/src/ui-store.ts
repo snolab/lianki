@@ -189,6 +189,28 @@ export const ganttPrefs = () =>
     },
   });
 
+/**
+ * The Gantt's open categories (gantt-groups.ts; the ▸/▾ on a parent row, in
+ * the full-screen Gantt and the chat's task list alike): sessionStorage
+ * `lk:ui:gantt-groups`, this tab only. Folded is the default, so an empty
+ * list is every category folded. UI state only: category ids, never tasks.
+ */
+export type GanttGroupsUi = { open: string[] };
+export const GANTT_GROUPS_UI_INITIAL: GanttGroupsUi = { open: [] };
+export function cleanGanttGroupsUi(v: unknown): Partial<GanttGroupsUi> {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  if (!Array.isArray(o.open)) return {};
+  const ids = o.open.filter(
+    (x): x is string => typeof x === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(x),
+  );
+  return { open: [...new Set(ids)].slice(0, 50) };
+}
+export const ganttGroupsUi = () =>
+  createUiStore<GanttGroupsUi>("gantt-groups", 1, GANTT_GROUPS_UI_INITIAL, {
+    storage: "session",
+    clean: cleanGanttGroupsUi,
+  });
+
 /** The chat's UI store (one per page, shared by hot-swapped widget copies). */
 export const chatUi = () =>
   createUiStore<ChatUi>(CHAT_UI_NAME, CHAT_UI_VERSION, CHAT_UI_INITIAL, {

@@ -1840,6 +1840,54 @@ them yet. Compact times pick their unit by size, one formatter for the axis
 and every ETA label (rgui `compactSpan`): Y from a year, then Mo, W, D, H,
 M ("1.1Y", never "400D").
 
+**Categories** (owner, 2026-11-10 23:13–23:14 JST: too many small rows).
+The tasks fold into eight parent rows (`gantt-groups.ts`), the same in the
+full-screen Gantt and the chat's task list: 聊天与语音 Chat & voice, 甘特图与进度
+Timeline & progress, 单词页 Words page, 列表与界面 Lists & interface, 导入与文件
+Import & files, 账号与设置 Account & settings, 发布与 CI Release & CI, 架构与长期
+Architecture & long-term (strings `etaGroup*`, 16 locales, each with its
+context line). Which task goes where is data: `gantt-groups.json` maps
+state-tree path patterns to a category — a path ("/words": it and what is
+under it) or a prefix with "\*" ("/chat/gantt\*"); the longest match wins, so
+"/chat/gantt\*" and "/chat/eta\*" take the Gantt's own tasks out of "/chat";
+an id nothing matches lands in the `fallback` category (架构与长期). Today:
+/chat, /voice, /li, /partner, /vibe, /stt → chat; /chat/gantt\*, /chat/eta\*,
+/chat/waiting\*, /research/gantt\*, /gantt, /plan, /progress, /state-tree,
+/roadmap → timeline; /words; /web, /design, /i18n, /reader, /ui, /dev, /mail,
+/home → lists & interface; /import, /self-intro, /books, /connections, /files,
+/read → import; /my, /profile, /prefs, /links, /membership, /payments, /auth →
+account; /ci, /deploy, /release, /research/affected\*, /gate, /ship, /qa →
+release; /arch, /research, /backlog, /box, /infra, /brand, /legal and the
+rest → architecture. The table is ready for the config store
+(`GANTT_GROUPS_KEY` "gantt.groups", the same JSON, checked by `parseGroups`;
+GanttFull and EtaList take it as `groups`); a category added there without a
+string key shows its `label`. An empty table lists every task as before.
+
+A parent row spans its earliest start to its latest end (a range's P95) and
+reads "Name ×N", the time to its last open end (red, negative past it), and
+its progress: the children's reported pct weighted by each estimate
+(`rollup`). It carries a red "!" when any child waits for the owner ("?" for
+a decision only). **Folded** (the default) it draws every child's bar on its
+one row, each with its own start and end, P5–P95 tail, progress underline,
+done/queued/parked looks and red mark; overlapping bars split into lanes
+(rgui gantt `packLanes`: greedy by start, as many lanes as bars overlap at
+once, no fixed number). The lanes share the usual row height until each would
+be under `GANTT_LANE_MIN_PX` (6 px), then the row grows. A tap on a slice
+opens its category and centres that task's row, outlined for 2 s. **Open**,
+the parent shows its roll-up bar and the children follow as their own rows,
+indented. The ▸/▾ at the left is a real button (`aria-expanded`, label
+`etaGroupToggle` "Tasks in {group}", `.tap-40`). What is open is session UI
+state (`lk:ui:gantt-groups`, ui-store.ts `ganttGroupsUi`), shared by the
+Gantt and the list. Rows sort by end time as before: the categories by their
+last end, the children within. The home view's zoom still fits the tasks
+themselves (`fitSpan` over the flat rows); the vertical centre is the line
+holding the focus task: its folded parent, or its own row. ETA ticks are drawn
+on task rows only (a folded slice is too thin for them); a tick's note still
+reads every task. `scripts/dev/debug-chat-gantt-qa.mjs` checks the folded
+rows (one per category, slices, lanes, buttons, the focus category centred),
+a slice tap, ▾ folding back, and then runs its checks with every category
+open; the open set is kept when the Gantt opens again.
+
 **Parked tasks** (owner, 2026-11-10: "9.1H remaining" on a parked item read
 as running): a node blocked, or waiting for the owner (status
 waiting-owner, or an open decision or approval nobody works on;

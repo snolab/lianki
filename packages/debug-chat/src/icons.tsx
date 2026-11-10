@@ -134,3 +134,31 @@ export function HistoryIcon() {
     </svg>
   );
 }
+
+/**
+ * A disclosure triangle (the Gantt's category rows): pointing to the end when
+ * folded, down when open. Drawn, not a glyph: "▸" renders tiny in most fonts
+ * and "▶" as an emoji on iOS. Decorative; its button carries the label and
+ * aria-expanded.
+ */
+export function Disclosure({ open, size = 12 }: { open: boolean; size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      data-open={open}
+      width={size}
+      height={size}
+      viewBox="0 0 12 12"
+      fill="currentColor"
+      style={{
+        display: "inline-block",
+        verticalAlign: "middle",
+        transform: open ? "rotate(90deg)" : undefined,
+        transition: "transform 120ms",
+      }}
+      className="motion-reduce:transition-none rtl:-scale-x-100"
+    >
+      <path d="M4 2.2 9 6 4 9.8Z" />
+    </svg>
+  );
+}

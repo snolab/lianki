@@ -134,6 +134,11 @@ try {
     // A tap opens the status area: the tree, with every timed task.
     await bar.click();
     await page.clock.runFor(400);
+    // The list folds tasks into categories (gantt-groups.ts): open each to list its tasks.
+    const toggles = page.locator('[data-testid="debug-chat-eta-toggle"]');
+    check((await toggles.count()) === 2, `${scheme}: one category row each (words, import)`);
+    for (let i = 0; i < (await toggles.count()); i++) await toggles.nth(i).click();
+    await page.clock.runFor(100);
     const rows = page.locator('[data-testid="debug-chat-eta-row"]');
     check((await rows.count()) === 2, `${scheme}: the tree lists both tasks`);
     const states = await rows.evaluateAll((els) => els.map((e) => e.getAttribute("data-state")));

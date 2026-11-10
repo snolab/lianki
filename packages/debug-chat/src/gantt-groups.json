@@ -1,0 +1,49 @@
+[
+  {
+    "id": "chat",
+    "name": "etaGroupChat",
+    "match": ["/chat", "/voice", "/li", "/partner", "/vibe", "/stt"]
+  },
+  {
+    "id": "gantt",
+    "name": "etaGroupGantt",
+    "match": [
+      "/chat/gantt*",
+      "/chat/eta*",
+      "/chat/waiting*",
+      "/research/gantt*",
+      "/gantt",
+      "/plan",
+      "/progress",
+      "/state-tree",
+      "/roadmap"
+    ]
+  },
+  { "id": "words", "name": "etaGroupWords", "match": ["/words"] },
+  {
+    "id": "ui",
+    "name": "etaGroupUi",
+    "match": ["/web", "/design", "/i18n", "/reader", "/ui", "/dev", "/mail", "/home"]
+  },
+  {
+    "id": "import",
+    "name": "etaGroupImport",
+    "match": ["/import", "/self-intro", "/books", "/connections", "/files", "/read"]
+  },
+  {
+    "id": "account",
+    "name": "etaGroupAccount",
+    "match": ["/my", "/profile", "/prefs", "/links", "/membership", "/payments", "/auth"]
+  },
+  {
+    "id": "ship",
+    "name": "etaGroupShip",
+    "match": ["/ci", "/deploy", "/release", "/research/affected*", "/gate", "/ship", "/qa"]
+  },
+  {
+    "id": "arch",
+    "name": "etaGroupArch",
+    "match": ["/arch", "/research", "/backlog", "/box", "/infra", "/brand", "/legal"],
+    "fallback": true
+  }
+]

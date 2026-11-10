@@ -755,6 +755,24 @@ export type ChatStrings = {
   etaMinutes: string;
   /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
   etaList: string;
+  /** Category name of a parent row in the task timeline (Gantt): the chat and voice work. */
+  etaGroupChat: string;
+  /** Category: the timeline (Gantt) and progress reporting itself. */
+  etaGroupGantt: string;
+  /** Category: the words (flashcard) page. */
+  etaGroupWords: string;
+  /** Category: lists and the interface (pages, design, translations). */
+  etaGroupUi: string;
+  /** Category: importing material and files. */
+  etaGroupImport: string;
+  /** Category: the account and its settings (profile, preferences, payments). */
+  etaGroupAccount: string;
+  /** Category: releases and CI (tests, deploys). */
+  etaGroupShip: string;
+  /** Category: architecture and long-term work (everything else lands here). */
+  etaGroupArch: string;
+  /** Screen-reader label of the ▸/▾ button on a category row: `{group}` is the category's name. */
+  etaGroupToggle: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -873,6 +891,15 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaTickStatus: "status changed: {names}",
   etaTickClose: "Close",
   etaList: "Timed tasks",
+  etaGroupChat: "Chat & voice",
+  etaGroupGantt: "Timeline & progress",
+  etaGroupWords: "Words page",
+  etaGroupUi: "Lists & interface",
+  etaGroupImport: "Import & files",
+  etaGroupAccount: "Account & settings",
+  etaGroupShip: "Release & CI",
+  etaGroupArch: "Architecture & long-term",
+  etaGroupToggle: "Tasks in {group}",
   etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",
   attachGroupView: "View",

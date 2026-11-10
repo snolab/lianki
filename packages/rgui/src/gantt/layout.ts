@@ -227,3 +227,32 @@ export function windowRows(
     end: clamp(last + overscan, 0, count),
   };
 }
+
+/**
+ * Overlapping spans split into lanes inside one row (a summary row that
+ * draws its children's bars on one line): greedy interval partitioning,
+ * earliest start first, each span to the first lane free by its start (a
+ * lane is free once its last span has ended; touching spans share it). The
+ * lane count comes from the data: the most spans overlapping at one time,
+ * which is the fewest lanes possible. `lane` is in the input's order; no
+ * spans is 0 lanes. Spans with `to` before `from` are taken as instants.
+ */
+export function packLanes(spans: readonly { from: number; to: number }[]): {
+  lane: number[];
+  lanes: number;
+} {
+  const lane = new Array<number>(spans.length).fill(0);
+  const ends: number[] = [];
+  const order = spans
+    .map((s, i) => ({ i, from: s.from, to: Math.max(s.from, s.to) }))
+    .sort((a, b) => a.from - b.from || a.to - b.to || a.i - b.i);
+  for (const s of order) {
+    let k = ends.findIndex((e) => e <= s.from);
+    if (k < 0) {
+      k = ends.length;
+      ends.push(s.to);
+    } else ends[k] = s.to;
+    lane[s.i] = k;
+  }
+  return { lane, lanes: ends.length };
+}

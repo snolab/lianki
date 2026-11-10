@@ -187,7 +187,9 @@ export function srgbLuminance([r, g, b]: [number, number, number]): number {
  * through it; the planned part `bar` (a queued one `queued`, fainter), the
  * progress `fill` over it, the overrun `past`, a done one `done`. `text`,
  * `muted` and `late` are WCAG AA (4.5:1) over each of them composited on the
- * panel's `track` (unit/gantt-view.test.ts composites and checks).
+ * panel's `track` (unit/gantt-view.test.ts composites and checks). `chip` is
+ * the see-through panel colour behind a folded category's label, so its
+ * children's bars and dashes never cross the text (unit/gantt-groups.test.ts).
  */
 export const GANTT_COLORS = {
   light: {
@@ -203,6 +205,7 @@ export const GANTT_COLORS = {
     fill: "oklch(0.6 0.165 22.3 / 0.2)",
     past: "oklch(0.63 0.2 25 / 0.24)",
     done: "oklch(0.66 0.15 150 / 0.28)",
+    chip: "oklch(0.985 0.004 260 / 0.8)",
   },
   dark: {
     text: "oklch(0.95 0.01 260)",
@@ -217,6 +220,7 @@ export const GANTT_COLORS = {
     fill: "oklch(0.7 0.154 22.3 / 0.18)",
     past: "oklch(0.66 0.18 25 / 0.3)",
     done: "oklch(0.7 0.14 150 / 0.26)",
+    chip: "oklch(0.19 0.01 260 / 0.8)",
   },
 } as const;
 
@@ -399,7 +403,11 @@ export function homeView(
   return extendAxis(axis, xOf(axis, now) - width / 2, width);
 }
 
-/** The scrollTop that puts row `i`'s middle at the middle of the rows' view (under the sticky axis). */
+/**
+ * The scrollTop that puts row `i`'s middle at the middle of the rows' view
+ * (under the sticky axis). Rows of one height by default; `before` (px from
+ * the first row's top to row i's) when they differ, `rowH` then row i's own.
+ */
 export function centreRowTop(d: {
   i: number;
   viewH: number;
@@ -407,9 +415,10 @@ export function centreRowTop(d: {
   headSpace: number;
   rowH: number;
   rowGap: number;
+  before?: number;
 }): number {
   if (d.i < 0) return 0;
-  const mid = d.axisH + d.headSpace + d.i * (d.rowH + d.rowGap) + d.rowH / 2;
+  const mid = d.axisH + d.headSpace + (d.before ?? d.i * (d.rowH + d.rowGap)) + d.rowH / 2;
   const viewMid = d.axisH + (d.viewH - d.axisH) / 2;
   return Math.max(0, Math.round(mid - viewMid));
 }
