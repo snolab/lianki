@@ -1,7 +1,6 @@
 // Open an EPUB file as an `EpubArchive` with zip-bomb limits.
 //
-// Runs in the browser (the /read import dialog) and in the Worker (an own
-// book imported on /books, lib/books/own-import.ts). jszip is already a
+// Runs in the browser (the /read import dialog). jszip is already a
 // dependency; it is loaded only when a file is picked. Entries are never
 // written anywhere — they are looked up by name — so "../" in an entry name
 // (zip slip) has nothing to escape into; `resolvePath` also refuses to leave
@@ -56,8 +55,8 @@ export async function openEpub(data: ArrayBuffer | Uint8Array): Promise<EpubArch
   const budget = Math.min(EPUB_LIMITS.maxTotalBytes, Math.max(size, 1) * EPUB_LIMITS.maxRatio);
   let total = 0;
 
-  const readBytes = (path: string) =>
-    new Promise<Uint8Array | null>((resolve, reject) => {
+  const read = (path: string) =>
+    new Promise<string | null>((resolve, reject) => {
       const f = byName.get(path);
       if (!f || f.dir) return resolve(null);
       const chunks: Uint8Array[] = [];
@@ -91,17 +90,12 @@ export async function openEpub(data: ArrayBuffer | Uint8Array): Promise<EpubArch
             all.set(c, o);
             o += c.length;
           }
-          resolve(all);
+          resolve(decode(all));
         })
         .resume();
     });
 
-  const read = async (path: string) => {
-    const bytes = await readBytes(path);
-    return bytes === null ? null : decode(bytes);
-  };
-
-  return { list: () => names, read, readBytes };
+  return { list: () => names, read };
 }
 
 /** File bytes → parsed book. Throws `EpubError` with a code the UI can show. */

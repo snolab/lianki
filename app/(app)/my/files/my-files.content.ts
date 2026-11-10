@@ -186,24 +186,6 @@ const dictionary = {
         sw: "Orodha za maneno",
         mr: "शब्दसूची",
       }),
-      books: t({
-        en: "Books",
-        zh: "书",
-        ja: "本",
-        ko: "책",
-        hi: "किताबें",
-        es: "Libros",
-        fr: "Livres",
-        ar: "الكتب",
-        bn: "বই",
-        pt: "Livros",
-        ru: "Книги",
-        ur: "کتابیں",
-        id: "Buku",
-        de: "Bücher",
-        sw: "Vitabu",
-        mr: "पुस्तके",
-      }),
       chat: t({
         en: "Chat",
         zh: "聊天",
@@ -264,8 +246,6 @@ const context: KeyContext<typeof dictionary.content> = {
       "Folder heading on /my/files for files uploaded on /self-intro (material about the user for their self-introduction). A short noun phrase, as the /self-intro page is called.",
     import:
       "Folder heading on /my/files for files uploaded in the Import panel on /words (material for vocabulary lists). A short noun phrase.",
-    books:
-      "Folder heading on /my/files for book files (EPUB e-books, text) the user imported on /books (My books) to read. One plural noun.",
     chat: "Folder heading on /my/files for files attached in the Learning Partner chat. One word.",
     other: "Folder heading on /my/files for stored files from any other place. One word.",
   },
@@ -275,7 +255,7 @@ export default {
   ...dictionary,
   title: "/my/files — the user's stored files",
   description: describeKeys(
-    "The /my/files page: every file the user uploaded to Lianki (from /self-intro, the /words Import panel, /books, the chat), in folders by where it came from, each with Open and Delete. Files live in the account's own private storage. Calm, plain wording.",
+    "The /my/files page: every file the user uploaded to Lianki (from /self-intro, the /words Import panel, the chat), in folders by where it came from, each with Open and Delete. Files live in the account's own private storage. Calm, plain wording.",
     flattenContext(context),
   ),
 } satisfies DeclarationContent;
