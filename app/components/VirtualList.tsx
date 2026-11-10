@@ -207,6 +207,10 @@ export function VirtualList<T>({
   // (docs/ui-state.md, "Event-driven"), and at once on Back, hide or leave.
   const writeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const offset = v.scrollOffset;
+  // Where the list starts can move without a render or a body resize (a font
+  // swapping in above it, a sibling's own state): re-measure as the page scrolls,
+  // so the rows near the end are never left out by a stale offset.
+  useEffect(measureMargin, [offset, measureMargin]);
   useEffect(() => {
     if (!restored.current) return;
     anchor.current = readCentre();
