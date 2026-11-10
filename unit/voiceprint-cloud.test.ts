@@ -6,12 +6,15 @@
  */
 import { describe, expect, it } from "bun:test";
 import { importTicketKey } from "@/lib/stt-ticket";
+import { createTestD1 } from "@/lib/d1/testDb";
+import { testSchema } from "@/lib/d1/testSchema";
 import { sealKey, unseal } from "@/lib/connections/crypto";
 import { type ApprovalDeps, voiceprintApproval } from "@/lib/voiceprint-approval";
 import {
   type CloudDeps,
   type VoiceprintDb,
   checkCloudTicket,
+  d1VoiceprintDb,
   deletePrints,
   listPrints,
   openPrint,
@@ -350,9 +353,25 @@ describe("recordings in My Files", () => {
   });
 });
 
+// The panel helper, shared with the failure cases below.
+let panelFor: (o?: {
+  cloudRows?: number;
+  local?: boolean;
+  macRecs?: number;
+  files?: string[];
+  fail?: string;
+}) => { c: ReturnType<typeof createEnrolment> } = () => {
+  throw new Error("not yet");
+};
 describe("the panel", () => {
   function panel(
-    o: { cloudRows?: number; local?: boolean; macRecs?: number; files?: string[] } = {},
+    o: {
+      cloudRows?: number;
+      local?: boolean;
+      macRecs?: number;
+      files?: string[];
+      fail?: string;
+    } = {},
   ) {
     const sent: Record<string, unknown>[] = [];
     const tickets: string[] = [];
@@ -364,11 +383,14 @@ describe("the panel", () => {
     const utters: { n: number; enrol: string }[] = [];
     let rows = o.cloudRows ?? 0;
     const cloud: PageCloud = {
-      list: async () => ({
-        prints: Array.from({ length: rows }, () => ({ device: "iphone", model: "campp", n: 10 })),
-        recordings: files.size,
-        extractor: "mac",
-      }),
+      list: async () => {
+        if (o.fail === "list") throw new Error("HTTP 500");
+        return {
+          prints: Array.from({ length: rows }, () => ({ device: "iphone", model: "campp", n: 10 })),
+          recordings: files.size,
+          extractor: "mac",
+        };
+      },
       recordings: {
         list: async () => [...files].map(([id, name]) => ({ id, name })),
         upload: async (name) => {
@@ -377,17 +399,20 @@ describe("the panel", () => {
         },
         download: async () => wav(3),
         delete: async (id) => {
+          if (o.fail === "remove") throw new Error("r2 down");
           removed.push(id);
           files.delete(id);
         },
       },
       features: async () => [{ ...print(), updatedAt: "x" }],
       put: async (ticket, prints) => {
+        if (o.fail === "put") throw new Error("approval already used");
         puts.push({ ticket, prints });
         rows = prints.length;
         return prints.length;
       },
       delete: async (ticket) => {
+        if (o.fail === "cloud-delete") throw new Error("HTTP 503");
         deletes.push(ticket);
         rows = 0;
         return 1;
@@ -418,8 +443,14 @@ describe("the panel", () => {
           };
         if (m.op === "start") return { ok: true, enrolment: "E9" };
         if (m.op === "commit") return { ok: true, n: 10, prints: m.export ? [print()] : undefined };
-        if (m.op === "restore") return { ok: true, restored: [{ device: "iphone" }] };
-        if (m.op === "delete") return { ok: true, deleted: 2 };
+        if (m.op === "restore")
+          return o.fail === "restore"
+            ? { ok: false, error: "bad embeddings" }
+            : { ok: true, restored: [{ device: "iphone" }] };
+        if (m.op === "delete")
+          return o.fail === "mac-delete"
+            ? { ok: false, error: "ticket replayed" }
+            : { ok: true, deleted: 2 };
         return { ok: true };
       },
       async ticket(op, device) {
@@ -443,6 +474,7 @@ describe("the panel", () => {
     const c = createEnrolment(deps, (v) => views.push(v));
     return { c, sent, tickets, puts, deletes, views, uploads, removed, utters, files };
   }
+  panelFor = panel;
 
   it("save to my account: one passkey ticket, the Mac's features only, the same ticket to lianki.com", async () => {
     const h = panel();
@@ -556,5 +588,110 @@ describe("the panel", () => {
     await h.c.deleteRecordings();
     expect(h.removed.sort()).toEqual(["f0", "f1"]);
     expect(h.c.view()).toMatchObject({ step: "deleted", recordings: { n: 2, state: "done" } });
+  });
+});
+
+describe("the panel when something fails", () => {
+  // The same helper, reached through a fresh describe: failures show, nothing else moves.
+  const files2 = ["voiceprint iphone 2026-11-10 00.wav", "voiceprint iphone 2026-11-10 01.wav"];
+  it("a refused save says why and keeps the button", async () => {
+    const h = panelFor({ fail: "put" });
+    await h.c.open();
+    h.c.saveToAccount();
+    await tick();
+    expect(h.c.view()).toMatchObject({
+      cloudOp: { kind: "save", state: "failed", error: "approval already used" },
+    });
+  });
+  it("restore and re-compute with nothing there fail softly", async () => {
+    const h = panelFor({ cloudRows: 1, files: ["holiday.wav"] });
+    await h.c.open();
+    h.c.recompute();
+    await tick();
+    expect(h.c.view()).toMatchObject({ cloudOp: { kind: "recompute", state: "failed" } });
+  });
+  it("the account delete failing still deletes on the Mac and says so", async () => {
+    const h = panelFor({ cloudRows: 1, fail: "cloud-delete" });
+    await h.c.open();
+    h.c.askDelete();
+    await h.c.confirmDelete();
+    expect(h.c.view()).toMatchObject({ step: "deleted", files: 2, cloudError: "HTTP 503" });
+  });
+  it("the Mac refusing the delete is an error", async () => {
+    const h = panelFor({ cloudRows: 1, fail: "mac-delete" });
+    await h.c.open();
+    h.c.askDelete();
+    await h.c.confirmDelete();
+    expect(h.c.view()).toMatchObject({ step: "error" });
+  });
+  it("the account unreachable: the panel shows the Mac's side only", async () => {
+    const h = panelFor({ fail: "list" });
+    await h.c.open();
+    expect(h.c.view()).toMatchObject({ step: "status", local: true });
+    expect((h.c.view() as { cloud?: unknown }).cloud).toBeUndefined();
+    const away = panelFor({ fail: "list", local: false });
+    await away.c.open();
+    expect((away.c.view() as { cloud?: unknown }).cloud).toBeUndefined();
+  });
+  it("a restore the Mac refuses says why", async () => {
+    const h = panelFor({ cloudRows: 1, fail: "restore" });
+    await h.c.open();
+    h.c.restoreFromAccount();
+    await tick();
+    expect(h.c.view()).toMatchObject({
+      cloudOp: { kind: "restore", state: "failed", error: "bad embeddings" },
+    });
+  });
+  it("too few usable recordings: the enrolment on the Mac is dropped, nothing stored", async () => {
+    const h = panelFor({ cloudRows: 1, files: files2 });
+    await h.c.open();
+    h.c.recompute();
+    await tick(20);
+    expect(h.c.view()).toMatchObject({ cloudOp: { kind: "recompute", state: "failed" } });
+  });
+  it("skipping a sentence while reading moves on, nothing is sent to the account", async () => {
+    const h = panelFor({ cloudRows: 1 });
+    await h.c.open();
+    h.c.enrol();
+    await h.c.consent();
+    expect(h.c.view()).toMatchObject({ step: "recording", index: 0 });
+    h.c.skip();
+    expect(h.c.view()).toMatchObject({ step: "recording", index: 1, kept: 0 });
+  });
+  it("deleting the recordings can fail and be tried again", async () => {
+    const h = panelFor({ cloudRows: 1, files: files2, fail: "remove" });
+    await h.c.open();
+    h.c.askDelete();
+    await h.c.confirmDelete();
+    await h.c.deleteRecordings();
+    expect(h.c.view()).toMatchObject({ recordings: { state: "failed", error: "r2 down" } });
+  });
+});
+
+describe("the D1 store (migration 0071)", () => {
+  it("puts, lists, replaces, deletes by account, and spends a jti once", async () => {
+    const d1 = createTestD1(testSchema());
+    const db = d1VoiceprintDb(d1 as never);
+    const row = (device: string, n = 10) => ({
+      device,
+      model: "campp",
+      dim: 192,
+      n,
+      updatedAt: "2026-11-11T00:00:00.000Z",
+      payload: "v1.x.y",
+    });
+    await db.put("u1", [row("iphone"), row("android")]);
+    await db.put("u2", [row("iphone")]);
+    await db.put("u1", [row("iphone", 12)]); // replaces, no duplicate
+    expect((await db.list("u1")).map((r) => `${r.device}:${r.n}`)).toEqual([
+      "android:10",
+      "iphone:12",
+    ]);
+    expect(await db.delete("u1", "android")).toBe(1);
+    expect(await db.delete("u1", null)).toBe(1);
+    expect(await db.list("u1")).toEqual([]);
+    expect((await db.list("u2")).length).toBe(1);
+    expect(await db.spend("jti-1", 1_800_000_060)).toBe(true);
+    expect(await db.spend("jti-1", 1_800_000_060)).toBe(false);
   });
 });

@@ -301,6 +301,11 @@ export type EnrolView =
 /** An enrolment under way: sentences being recorded or saved, lost if the page goes (lib/page-dirty.ts). */
 export const enrolBusy = (v: EnrolView) => v.step === "recording" || v.step === "saving";
 
+/** A failed read of the account copy reads as "none" (it never blocks the panel). */
+const orNull = () => null;
+const orNone = (): StoredRecording[] => [];
+const ignore = () => {};
+
 /** How long the Mac may take to hand over the features and the kept recordings (a few MB). */
 export const EXPORT_TIMEOUT_MS = 60_000;
 
@@ -533,7 +538,7 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
       eid = "";
       if (my !== run) return;
       d.log?.({ ev: "voiceprint-saved", n: r.n });
-      const cloud = (await d.cloud?.list().catch(() => null)) ?? undefined;
+      const cloud = (await d.cloud?.list().catch(orNull)) ?? undefined;
       if (my !== run) return;
       set({ step: "saved", kept: typeof r.n === "number" ? r.n : kept, ...(cloud ? { cloud } : {}) });
       // The account copy is on for him: save it there too, at once (his passkey again).
@@ -579,7 +584,7 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         cl,
         Array.isArray(r.recordings) ? (r.recordings as MacRecording[]) : [],
       );
-      const cloud = (await cl.list().catch(() => null)) ?? undefined;
+      const cloud = (await cl.list().catch(orNull)) ?? undefined;
       setCloud(my, { op: { kind: "save", state: "done", n, files }, cloud });
     } catch (e) {
       setCloud(my, { op: { kind: "save", state: "failed", error: errText(e) } });
@@ -635,7 +640,7 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         );
         return { prints, ticket, kept };
       } catch (e) {
-        void d.request({ t: "enrol", op: "cancel", enrolment: id }).catch(() => {});
+        void d.request({ t: "enrol", op: "cancel", enrolment: id }).catch(ignore);
         throw e;
       }
     },
@@ -672,7 +677,7 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         n += await cl.put(out.ticket, out.prints);
       }
       d.log?.({ ev: "voiceprint-recomputed", n });
-      const cloud = (await cl.list().catch(() => null)) ?? undefined;
+      const cloud = (await cl.list().catch(orNull)) ?? undefined;
       setCloud(my, { op: { kind: "recompute", state: "done", n }, cloud });
     } catch (e) {
       setCloud(my, { op: { kind: "recompute", state: "failed", error: errText(e) } });
@@ -714,7 +719,7 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         // Never in the way of the rest of the panel.
         const filter = await d.filterInfo?.(String(r.filter ?? "off")).catch(() => undefined);
         if (my !== run) return;
-        const cloud = (await d.cloud?.list().catch(() => null)) ?? undefined;
+        const cloud = (await d.cloud?.list().catch(orNull)) ?? undefined;
         if (my !== run) return;
         set({
           step: "status",
@@ -726,7 +731,7 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
       } catch {
         if (my !== run) return;
         // The Mac unreachable: the account copy still shows (and can be deleted).
-        const cloud = (await d.cloud?.list().catch(() => null)) ?? undefined;
+        const cloud = (await d.cloud?.list().catch(orNull)) ?? undefined;
         if (my === run) set({ step: "status", prints: [], local: false, ...(cloud ? { cloud } : {}) });
       }
     },
@@ -862,7 +867,7 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         if (macError) throw macError;
         d.log?.({ ev: "voiceprint-deleted", files, ...(cloud ? { cloud: !cloudError } : {}) });
         // His recordings in My Files stay unless he says so: offered, never deleted here.
-        const recs = d.cloud ? await d.cloud.recordings.list().catch(() => []) : [];
+        const recs = d.cloud ? await d.cloud.recordings.list().catch(orNone) : [];
         if (my !== run) return;
         set({
           step: "deleted",
