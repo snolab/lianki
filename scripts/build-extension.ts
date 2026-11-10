@@ -22,6 +22,7 @@ import { deflateSync } from "node:zlib";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import JSZip from "jszip";
+import { EXT_DESCRIPTION, EXT_DESCRIPTION_CONTEXT } from "../packages/ext/locales";
 
 const ROOT = resolve(dirname(Bun.fileURLToPath(import.meta.url)), "..");
 const EXT = join(ROOT, "packages/ext");
@@ -248,8 +249,22 @@ async function main() {
   manifest.version = productVersion();
   manifest.icons = Object.fromEntries(SIZES.map((s) => [s, `icon${s}.png`]));
   manifest.action = { ...manifest.action, default_icon: manifest.icons };
+  // The description in the browser's language (packages/ext/locales.ts). The
+  // checked-in manifest keeps the English text, so `bun run build` in
+  // packages/ext (no _locales) still loads unpacked.
+  manifest.default_locale = "en";
+  manifest.description = "__MSG_extDescription__";
+  const localeFiles: string[] = [];
+  for (const [loc, message] of Object.entries(EXT_DESCRIPTION)) {
+    if (message.length > 132) throw new Error(`${loc}: description over 132 characters`);
+    const file = `_locales/${loc}/messages.json`;
+    mkdirSync(join(DIST, `_locales/${loc}`), { recursive: true });
+    const body = { extDescription: { message, description: EXT_DESCRIPTION_CONTEXT } };
+    writeFileSync(join(DIST, file), JSON.stringify(body, null, 2) + "\n");
+    localeFiles.push(file);
+  }
   writeFileSync(join(DIST, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
-  console.log(`  manifest: v${manifest.version}`);
+  console.log(`  manifest: v${manifest.version}, ${localeFiles.length} locales`);
 
   // 4. zip
   const zip = new JSZip();
@@ -261,6 +276,7 @@ async function main() {
     zip.file(file, readFileSync(join(DIST, file)));
   }
   for (const s of SIZES) zip.file(`icon${s}.png`, readFileSync(join(DIST, `icon${s}.png`)));
+  for (const file of localeFiles) zip.file(file, readFileSync(join(DIST, file)));
   const buf = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
   mkdirSync(dirname(ZIP_OUT), { recursive: true });
   writeFileSync(ZIP_OUT, buf);
