@@ -41,7 +41,6 @@ import {
 } from "@/lib/payments/metered";
 import { chunkHash, type ChunkCache } from "./chunk-cache";
 import { textHoldUsd } from "@/lib/payments/prices";
-import { isAdmin } from "@/lib/permissions";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { promptChars, usageUsd, type Complete } from "@/lib/read/gloss-server";
 import { sameOriginJsonPost } from "@/lib/security/same-origin";
@@ -256,8 +255,6 @@ export type AiPayer = {
   email?: string | null;
   db: D1WithBatch | null;
   complete: Complete;
-  /** Is this payer an admin (free)? Defaults to the permission snapshot. */
-  admin?: (email: string | null | undefined) => boolean;
   log?: (o: Record<string, unknown>) => void;
   /** Paid chunks kept per user and file, so a stopped run resumes (lib/import/chunk-cache.ts). */
   cache?: ChunkCache | null;
@@ -306,7 +303,7 @@ const callBody = (call: Call) => ({
 export async function convertToCsv(req: AiImportRequest, ai: AiPayer): Promise<ConvertResult> {
   if (!req.text.trim() && !req.images.length) return { ok: false, error: "empty" };
   const { calls, truncated: cut } = aiCalls(req);
-  const deps: MeterDeps = { d1: ai.db, admin: ai.admin, log: ai.log };
+  const deps: MeterDeps = { d1: ai.db, log: ai.log };
   const payer = { userId: ai.userId, email: ai.email };
   const cache = ai.cache && ai.fileId ? ai.cache : null;
   const fileId = ai.fileId ?? "";
@@ -400,7 +397,6 @@ export type AiImportDeps = {
   complete: Complete;
   /** The credit wallet (lib/payments/metered.ts); null: unmetered (local dev). */
   db: D1WithBatch | null;
-  admin?: (email: string | null | undefined) => boolean;
   /** Paid chunks kept per user and file (lib/import/chunk-cache.ts); null: none (no resume). */
   cache?: ChunkCache | null;
   /** One of the user's own stored import files (lib/import/files.ts), its bytes from R2; null if not theirs. */
@@ -414,11 +410,12 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
   Response.json(body, { status, headers: { "cache-control": "no-store", ...headers } });
 
 /**
- * Whether this user is offered the source: the gate, then credits — an admin
- * or an unmetered backend always; else a balance that covers the smallest hold.
+ * Whether this user is offered the source: the gate, then credits — an
+ * unmetered backend always; else (every account, admins included) a balance
+ * that covers the smallest hold.
  */
 export async function aiQuota(
-  deps: Pick<AiImportDeps, "user" | "owner" | "flags" | "db" | "admin" | "configured">,
+  deps: Pick<AiImportDeps, "user" | "owner" | "flags" | "db" | "configured">,
 ): Promise<{ on: boolean; available: boolean }> {
   if (!deps.user || !importAiOn(deps.flags, deps.owner) || !deps.configured)
     return { on: false, available: false };
@@ -427,17 +424,17 @@ export async function aiQuota(
 }
 
 /**
- * Do this user's credits cover a hold of `holdUsd`? An admin or no wallet
- * (local dev): always. `need` is that hold in whole credits, `have` the
+ * Do this user's credits cover a hold of `holdUsd`? No wallet (local dev):
+ * always; every account otherwise, admins included. `need` is that hold in whole credits, `have` the
  * spendable balance — what a page shows when they do not.
  */
 export async function creditsCover(
   user: { id: string; email: string },
-  deps: { db: D1WithBatch | null; admin?: (email: string | null | undefined) => boolean },
+  deps: { db: D1WithBatch | null },
   holdUsd: number,
 ): Promise<{ available: boolean; need: number; have: number }> {
   const need = reserveCredits(holdUsd);
-  if ((deps.admin ?? isAdmin)(user.email) || !deps.db) return { available: true, need, have: need };
+  if (!deps.db) return { available: true, need, have: need };
   const have = await getBalance(deps.db, user.id).catch(() => 0);
   return { available: have >= need, need, have };
 }
@@ -524,7 +521,6 @@ export async function handleAiConvert(req: Request, deps: AiImportDeps): Promise
       email: deps.user.email,
       db: deps.db,
       complete: deps.complete,
-      admin: deps.admin,
       cache: deps.cache ?? null,
       fileId: parsed.data.fileId,
     },

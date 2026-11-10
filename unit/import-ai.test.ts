@@ -82,13 +82,11 @@ const ROWS = JSON.stringify({
     { word: "brave, bold", meaning: 'not "afraid"', example: "" },
   ],
 });
-const notAdmin = () => false;
 const payer = (complete: Complete, over: Partial<AiPayer> = {}): AiPayer => ({
   userId: "u1",
   email: "u1@x.com",
   db: db(),
   complete,
-  admin: notAdmin,
   log: () => {},
   ...over,
 });
@@ -351,9 +349,7 @@ describe("credits: hold the fixed max, settle, refund the rest", () => {
     expect(done.csv).toContain("beta");
   });
 
-  it("an admin pays nothing; no wallet (local dev) runs unmetered", async () => {
-    const a = await convertToCsv(req(), payer(model(ROWS), { admin: () => true }));
-    expect(a).toMatchObject({ ok: true, charged: 0 });
+  it("no wallet (local dev) runs unmetered", async () => {
     const u = await convertToCsv(req(), payer(model(ROWS), { db: null }));
     expect(u).toMatchObject({ ok: true, charged: 0 });
     expect(ledger()).toEqual([]);
@@ -373,7 +369,6 @@ describe("the gate: flag (owner audience) and credits", () => {
     configured: true,
     complete: model(ROWS),
     db: db(),
-    admin: notAdmin,
     readFile: async () => null,
     ...over,
   });
@@ -386,18 +381,14 @@ describe("the gate: flag (owner audience) and credits", () => {
     expect(importAiOn({ "words.import-ai": true }, false)).toBe(true);
   });
 
-  it("hidden without credits; shown with enough for the smallest hold, for an admin, unmetered", async () => {
+  it("hidden without credits (admins too); shown with enough for the smallest hold, unmetered", async () => {
     expect(await aiQuota(base())).toEqual({ on: true, available: false });
     fund(reserveCredits(minHoldUsd()));
     expect(await aiQuota(base())).toEqual({ on: true, available: true });
     expect(await aiQuota(base({ db: null }))).toEqual({ on: true, available: true });
     d1.raw().exec("DELETE FROM credit_balance");
-    expect(await aiQuota(base({ admin: () => true }))).toEqual({ on: true, available: true });
-    // Not a dev holder with the flag on: on, credits decide.
-    expect(await aiQuota(base({ owner: false, admin: () => true }))).toEqual({
-      on: true,
-      available: true,
-    });
+    // A dev holder (the owner) with no credits: offered, but not available — like anyone.
+    expect(await aiQuota(base())).toEqual({ on: true, available: false });
     for (const off of [{ flags: {}, owner: false }, { configured: false }, { user: null }])
       expect(await aiQuota(base(off))).toEqual({ on: false, available: false });
   });
@@ -489,7 +480,7 @@ describe("the gate: flag (owner audience) and credits", () => {
 
   it("POST is rate-limited per user", async () => {
     fund(10_000);
-    const d = base({ ...words, user: { id: "u1", email: "rate@x.com" }, admin: () => true });
+    const d = base({ ...words, user: { id: "u1", email: "rate@x.com" } });
     let last = 0;
     for (let i = 0; i <= AI_IMPORT.rate.max; i++)
       last = (await handleAiConvert(post({ fileId: ID }), d)).status;

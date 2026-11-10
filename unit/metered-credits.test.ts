@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
+import { clearPermissionCache, setPermissionSnapshot } from "@/lib/permissions";
 import { testSchema } from "@/lib/d1/testSchema";
 import { reserveCredits, usdToMicroCredits } from "@/lib/payments/ai-credits";
 import { CREDITS_PER_USD } from "@/lib/payments/credits";
@@ -42,7 +43,6 @@ describe("metered: pre-authorisation + refund", () => {
     d1: db(),
     now: () => NOW,
     log: (o: Record<string, unknown>) => void logs.push(o),
-    admin: (e: string | null | undefined) => e === "admin@x.com",
   });
   const alice = { userId: "u_alice", email: "alice@x.com" };
   const setBalance = (n: number) =>
@@ -162,16 +162,34 @@ describe("metered: pre-authorisation + refund", () => {
     expect(await bal()).toBe(4);
   });
 
-  it("an admin pays nothing: no hold, no ledger row", async () => {
-    const r = await metered(
-      deps(),
-      { userId: "u_admin", email: "admin@x.com" },
-      { what: "blog.translate", holdUsd: 1 },
-      async () => ({ value: "x", usd: 0.5 }),
-    );
-    expect(r).toEqual({ ok: true, value: "x", charged: 0, free: "admin" });
-    expect(rows()).toEqual([]);
-    expect(logs[0]).toMatchObject({ event: "credits.free", why: "admin", what: "blog.translate" });
+  it("an admin or dev holder pays like anyone (owner, 2026-11-10): held, charged, refused at 0", async () => {
+    setPermissionSnapshot([
+      { email: "admin@x.com", permission: "admin" },
+      { email: "admin@x.com", permission: "dev" },
+    ]);
+    try {
+      const admin = { userId: "u_admin", email: "admin@x.com" };
+      const call = { what: "blog.translate" as const, holdUsd: 3 / CREDITS_PER_USD };
+      let ran = 0;
+      const run = async () => (ran++, { value: "x", usd: 2 / CREDITS_PER_USD });
+      // No balance: the same refusal as anyone's, with the numbers; the provider never called.
+      const refused = await metered(deps(), admin, call, run);
+      expect(refused).toMatchObject({ ok: false, reason: "no-credits", balance: 0, need: 3 });
+      expect(ran).toBe(0);
+      // With credits: the hold and the real cost, on his ledger like anyone's.
+      d1.raw().exec(
+        "INSERT INTO credit_balance (userId, balance, updatedAt) VALUES ('u_admin', 10, 'x')",
+      );
+      expect(await metered(deps(), admin, call, run)).toEqual({ ok: true, value: "x", charged: 2 });
+      expect(await getBalance(db(), "u_admin")).toBe(8);
+      expect(rows().map((r) => [r.reason, r.amount, r.note])).toEqual([
+        ["ai", -3, "blog.translate"],
+        ["refund", 1, null],
+      ]);
+      expect(logs.some((l) => l.event === "credits.free")).toBe(false);
+    } finally {
+      clearPermissionCache();
+    }
   });
 
   it("with no wallet in reach (Mongo backend, local dev) the call runs unmetered and says so", async () => {

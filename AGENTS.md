@@ -168,6 +168,7 @@ that are expensive to rediscover.
 | Li chat from the userscript pill: security gate (stub)                   | [docs/userscript-li-chat.md](docs/userscript-li-chat.md)            |
 | Hot-swapping headless core modules (kernel, swap, leak tests)            | [docs/hot-core.md](docs/hot-core.md)                                |
 | The debug chat widget (packages/debug-chat), hot-loading                 | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
+| Users' own AI assistants: the token prompt, /api/agent-guide            | [docs/api-for-agents.md](docs/api-for-agents.md)                    |
 | `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor           | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                    |
 | Which lane answers him ("codex, …"), codex/agy listeners                 | [docs/lane-listen.md](docs/lane-listen.md)                          |
 | Hot islands: swappable components, shared state                          | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |

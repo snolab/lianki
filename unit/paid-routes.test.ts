@@ -146,8 +146,9 @@ describe("an overage pauses the feature for everyone, until the price table chan
     expect(await isPaused(db(), "polyglot.tts")).toBe(false);
   });
 
-  it("an admin's overage pauses it too; no table yet reads as not paused", async () => {
-    const deps = { d1: db(), admin: () => true, log: () => {} };
+  it("an overage on a small hold pauses it; no table yet reads as not paused", async () => {
+    fund(10);
+    const deps = { d1: db(), log: () => {} };
     await metered(deps, payer(), { what: "tts", holdUsd: 0.001 }, async () => ({
       value: 0,
       usd: 1,
