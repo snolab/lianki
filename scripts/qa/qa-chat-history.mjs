@@ -99,7 +99,9 @@ try {
       `${name}: codex line has its lane mark`,
     );
     check(
-      (await page.locator("li[data-lane=agy]").textContent())?.includes("agy"),
+      (
+        await page.locator("[data-testid=chat-history-line][data-lane=agy]").textContent()
+      )?.includes("agy"),
       `${name}: agy line has its lane name`,
     );
     check(
