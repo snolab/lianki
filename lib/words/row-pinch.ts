@@ -115,15 +115,75 @@ export function verticalSpan(ys: readonly [number, number], floor: number): numb
   return Math.max(floor, Math.abs(ys[0] - ys[1]));
 }
 
-/** The row height during a pinch: the start height times the fingers' spread, within bounds. */
+/**
+ * How the fingers' spread moves the height (owner, 2026-11-10: the first
+ * pinch was far too sensitive). A card's height spans a small range (the word
+ * alone to the whole card, `pinchBounds`), unlike a time axis, so the height
+ * follows the spread at a low gain: at `gain` 0.4, fingers twice as far apart
+ * make rows 2^0.4 ≈ 1.32× as tall. Below `deadZone` (a fraction of the start
+ * spread) nothing moves, so resting fingers never wobble the list. Live
+ * values: the config keys `words.pinchGainPct` / `words.pinchDeadZonePct`.
+ */
+export interface PinchFeel {
+  gain: number;
+  deadZone: number;
+}
+/** The plain spread: the height times the fingers' ratio (the first version's feel). */
+export const DIRECT_FEEL: PinchFeel = { gain: 1, deadZone: 0 };
+
+/** The height ratio for a spread from `startSpan` to `span` px under `feel`. */
+export function pinchRatio(startSpan: number, span: number, feel: PinchFeel = DIRECT_FEEL): number {
+  if (!(startSpan > 0 && span > 0)) return 1;
+  const l = Math.log(span / startSpan);
+  const past = Math.max(0, Math.abs(l) - Math.log1p(Math.max(0, feel.deadZone)));
+  return Math.exp(Math.sign(l) * past * Math.max(0, feel.gain));
+}
+
+/** The row height during a pinch: the start height times the spread's ratio, within bounds. */
 export function pinchHeight(
   startH: number,
   startSpan: number,
   span: number,
   bounds: { min: number; max: number },
+  feel: PinchFeel = DIRECT_FEEL,
 ): number {
-  const r = startSpan > 0 && span > 0 ? span / startSpan : 1;
+  const r = pinchRatio(startSpan, span, feel);
   return Math.min(bounds.max, Math.max(bounds.min, startH * r));
+}
+
+/**
+ * One frame of easing toward the fingers' height: exponential, time constant
+ * `tauMs` (0 = none). Frame-rate free: a 120 Hz screen gets there as fast as
+ * a 60 Hz one. Within 0.05 px it is there.
+ */
+export function easeToward(h: number, target: number, dtMs: number, tauMs: number): number {
+  if (!(tauMs > 0) || !(dtMs > 0)) return target;
+  const next = h + (target - h) * (1 - Math.exp(-dtMs / tauMs));
+  return Math.abs(target - next) < 0.05 ? target : next;
+}
+
+/**
+ * Where the pinch holds its row: `frac` of the way down the row under the
+ * fingers' midpoint, 0–1. The anchor is that row, by its index, for the whole
+ * pinch (owner rule: anchor = the centre element by stable row id).
+ */
+export function anchorFrac(midY: number, rowTop: number, rowH: number): number {
+  return rowH > 0 ? Math.min(1, Math.max(0, (midY - rowTop) / rowH)) : 0;
+}
+
+/**
+ * The scroll that puts the anchor row back under the fingers: its point at
+ * `frac` sits at `midY` again. `rowTop` is where the row is on screen now
+ * (the new height laid out), `scrollTop` the list's scroll now.
+ */
+export function anchoredScroll(
+  scrollTop: number,
+  rowTop: number,
+  rowH: number,
+  frac: number,
+  midY: number,
+): number {
+  return Math.max(0, scrollTop + rowTop + frac * rowH - midY);
 }
 
 /**

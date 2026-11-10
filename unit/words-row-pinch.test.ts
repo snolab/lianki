@@ -1,14 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { CONFIG } from "@/lib/config";
 import { rowMetrics } from "@/lib/words/row-layout";
 import {
+  anchoredScroll,
+  anchorFrac,
   asFactor,
   backAvail,
   backLines,
+  easeToward,
   levelHeight,
   linesToShow,
   minJerk,
   pinchBounds,
   pinchHeight,
+  pinchRatio,
   rowHeightFor,
   settleHeight,
   toFactor,
@@ -155,5 +160,98 @@ describe("row-pinch: the stored factor", () => {
     expect(asFactor(-1)).toBe(1);
     expect(asFactor(99)).toBe(1);
     expect(asFactor("1.5")).toBe(1.5);
+  });
+});
+
+describe("row-pinch: a calm feel (owner, 2026-11-10: far too sensitive)", () => {
+  const bounds = { min: 26, max: 400 };
+  const calm = {
+    gain: CONFIG["words.pinchGainPct"].default / 100,
+    deadZone: CONFIG["words.pinchDeadZonePct"].default / 100,
+  };
+  test("the default gain is well below the plain spread", () => {
+    expect(calm.gain).toBeLessThan(0.6);
+    // Fingers twice as far apart: much less than twice the height.
+    const h = pinchHeight(66, 100, 200, bounds, calm);
+    expect(h).toBeGreaterThan(66);
+    expect(h).toBeLessThan(66 * 1.4);
+    expect(pinchHeight(66, 100, 200, bounds)).toBe(132);
+  });
+  test("a small finger wobble moves nothing (dead zone)", () => {
+    expect(pinchRatio(100, 100 * (1 + calm.deadZone * 0.9), calm)).toBe(1);
+    expect(pinchRatio(100, 100 / (1 + calm.deadZone * 0.9), calm)).toBe(1);
+    expect(pinchRatio(100, 100 * (1 + calm.deadZone * 2), calm)).toBeGreaterThan(1);
+  });
+  test("no jump at the edge of the dead zone: continuous", () => {
+    const edge = 100 * (1 + calm.deadZone);
+    expect(pinchRatio(100, edge + 0.01, calm)).toBeCloseTo(1, 3);
+  });
+  test("in and out are symmetric", () => {
+    expect(pinchRatio(100, 250, calm) * pinchRatio(250, 100, calm)).toBeCloseTo(1, 9);
+  });
+  test("the config keys are public, in range, and whole numbers", () => {
+    for (const key of [
+      "words.pinchGainPct",
+      "words.pinchDeadZonePct",
+      "words.pinchSmoothMs",
+    ] as const) {
+      const d = CONFIG[key];
+      expect(d.audience).toBe("public");
+      expect(Number.isInteger(d.default)).toBe(true);
+      expect(d.default).toBeGreaterThanOrEqual(d.min);
+      expect(d.default).toBeLessThanOrEqual(d.max);
+    }
+  });
+});
+
+describe("row-pinch: easing", () => {
+  test("moves part of the way per frame, frame-rate free", () => {
+    const a = easeToward(66, 100, 16, 70);
+    expect(a).toBeGreaterThan(66);
+    expect(a).toBeLessThan(100);
+    // Two 8 ms frames land where one 16 ms frame does.
+    expect(easeToward(easeToward(66, 100, 8, 70), 100, 8, 70)).toBeCloseTo(a, 9);
+  });
+  test("never overshoots, and arrives", () => {
+    let h = 66;
+    for (let i = 0; i < 200; i++) {
+      h = easeToward(h, 100, 16, 70);
+      expect(h).toBeLessThanOrEqual(100);
+    }
+    expect(h).toBe(100);
+  });
+  test("0 ms: straight to the fingers", () => {
+    expect(easeToward(66, 100, 16, 0)).toBe(100);
+  });
+});
+
+describe("row-pinch: the anchor row stays under the fingers", () => {
+  test("where on the row the fingers are", () => {
+    expect(anchorFrac(150, 100, 100)).toBe(0.5);
+    expect(anchorFrac(50, 100, 100)).toBe(0);
+    expect(anchorFrac(250, 100, 100)).toBe(1);
+  });
+  /** A list of fixed rows: row i's top on screen for a scroll and a height. */
+  const screenTop = (i: number, scroll: number, h: number, pad = 300) => pad + i * h - scroll;
+  test("every height keeps the anchor point at the fingers", () => {
+    const i = 40;
+    let scroll = 2400;
+    let h = 66;
+    const midY = screenTop(i, scroll, h) + 20;
+    const frac = anchorFrac(midY, screenTop(i, scroll, h), h);
+    const want = screenTop(i, scroll, h) + frac * h;
+    for (const next of [70, 81.3, 99.9, 140, 120, 55, 30, 66]) {
+      h = next;
+      scroll = anchoredScroll(scroll, screenTop(i, scroll, h), h, frac, midY);
+      expect(Math.abs(screenTop(i, scroll, h) + frac * h - want)).toBeLessThan(1e-9);
+    }
+  });
+  test("the fingers drift: the row follows them", () => {
+    const h = 66;
+    const scroll = anchoredScroll(1000, screenTop(10, 1000, h), h, 0.5, 300);
+    expect(screenTop(10, scroll, h) + 0.5 * h).toBeCloseTo(300, 9);
+  });
+  test("never a negative scroll", () => {
+    expect(anchoredScroll(0, 10, 66, 0, 500)).toBe(0);
   });
 });

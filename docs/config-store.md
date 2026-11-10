@@ -84,6 +84,13 @@ rollback store).
 | `study.humanReactionMs` | `HUMAN_REACTION_MS` in `lib/study-days.ts`  | server   |
 | `contact.fieldMax`      | `CONTACT_FIELD_MAX` in `lib/contact.ts`     | server   |
 
+The /words card-height pinch's feel (2026-11-10, `lib/words/row-pinch.ts`
+`PinchFeel`, read when a pinch starts in `lib/words/use-row-pinch.ts`), all
+public: `words.pinchGainPct` (40: fingers twice as far apart → rows 2^0.4 ≈
+1.32× as tall; 100 was the first, far too sensitive feel),
+`words.pinchDeadZonePct` (6: a smaller change of the spread moves nothing),
+`words.pinchSmoothMs` (70: the height eases toward the fingers; 0 = none).
+
 Read outside the main Worker: `chat.ownerWaitRemindDays` (text, "1,3,7" days)
 is the progress hub's reminder spacing for nodes waiting on the owner
 (docs/state-tree.md, "Waiting on the owner"). lianki-push has no D1, so it asks

@@ -107,7 +107,7 @@ import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { backParts, ROW_LINE_LH, rowMetrics } from "@/lib/words/row-layout";
 import { backAvail, backLines } from "@/lib/words/row-pinch";
-import { useRowPinch } from "@/lib/words/use-row-pinch";
+import { ROW_H_VAR, useRowPinch } from "@/lib/words/use-row-pinch";
 import { withPickedExample, type Example } from "@/lib/words/example-pick";
 import {
   SongClipButton,
@@ -4402,7 +4402,9 @@ export function Study({
   // A two-finger vertical pinch sets every row's height (owner, 2026-11-10);
   // the back cells get the lines the height has room for (lib/words/row-pinch.ts).
   const pinchK = Math.max(1, cardScale);
-  const { rowH: ROW_H, anchor: pinchAnchor } = useRowPinch({
+  // Rows, spacers and cords take their height from the list's `--row-h`
+  // (rowHeight below): a pinch moves it per frame with no render.
+  const { rowH: ROW_H, owns: pinchOwns } = useRowPinch({
     list: listEl,
     on: pinch,
     touch,
@@ -4410,6 +4412,8 @@ export function Study({
     defaultH: DEFAULT_ROW_H,
   });
   const backRoom = backLines(backAvail(ROW_H, pinchK, touch), touch);
+  /** `n` rows' height (plus `px`) as CSS: the live `--row-h`, React's height as the fallback. */
+  const rowsHeight = (n: number, px = 0) => `calc(${px}px + ${n} * var(${ROW_H_VAR}, ${ROW_H}px))`;
   const setListRef = useCallback((el: HTMLDivElement | null) => {
     listRef.current = el;
     setListEl(el);
@@ -4615,11 +4619,10 @@ export function Study({
     const was = rowHWas.current;
     rowHWas.current = ROW_H;
     const el = listRef.current;
-    if (was === ROW_H || !el) return;
-    // A pinch keeps the row between the fingers where it is; else the top row.
-    const at = pinchAnchor() ?? 0;
-    el.scrollTop = pad + ((el.scrollTop + at - pad) / was) * ROW_H - at;
-  }, [ROW_H, pad, pinchAnchor]);
+    // A pinch keeps the row between its fingers in place itself (use-row-pinch.ts).
+    if (was === ROW_H || !el || pinchOwns(ROW_H)) return;
+    el.scrollTop = pad + ((el.scrollTop - pad) / was) * ROW_H;
+  }, [ROW_H, pad, pinchOwns]);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
   // hints change, the window turns), never polled. Measured against the list's
@@ -5698,10 +5701,10 @@ export function Study({
               aria-hidden
               data-paper-layer
               className="lk-paper-layer"
-              style={{ height: pad * 2 + queue.length * ROW_H }}
+              style={{ height: rowsHeight(queue.length, pad * 2) }}
             />
             {touch && !native && <SwipeUnderlay ref={underlay} />}
-            <div className="relative" style={{ height: pad + from * ROW_H }}>
+            <div className="relative" style={{ height: rowsHeight(from, pad) }}>
               {pad - bar.top > 140 && <EmptyTray style={{ top: bar.top, height: pad - bar.top }} />}
             </div>
             {queue.slice(from, to).map((it, k) => {
@@ -5792,7 +5795,7 @@ export function Study({
                         ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--ex-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] fs-15"
                   } ${rating ? `${RATING_STYLE[rating]} slip-done` : ""}`}
-                  style={{ height: ROW_H }}
+                  style={{ height: `var(${ROW_H_VAR}, ${ROW_H}px)` }}
                   a={SWIPE_A}
                 >
                   {/* The grade, stamped like a small seal (盖章) at the slip's left end. */}
@@ -5977,7 +5980,7 @@ export function Study({
                 </Row>
               );
             })}
-            <div className="relative" style={{ height: (queue.length - to) * ROW_H + pad }}>
+            <div className="relative" style={{ height: rowsHeight(queue.length - to, pad) }}>
               {/* After the last word, in every state (not started, half way,
               all done): the tray is the way back, as the toolbar's exit. */}
               <div
@@ -6210,7 +6213,15 @@ function SlipCords({
   const cells = [];
   for (let i = from; i < to; i++)
     cells.push(
-      <span key={i} data-cords={i === loose ? "loose" : "tied"} style={{ top: i * h, height: h }}>
+      <span
+        key={i}
+        data-cords={i === loose ? "loose" : "tied"}
+        // The live row height (a pinch moves it with no render), as the rows.
+        style={{
+          top: `calc(${i} * var(${ROW_H_VAR}, ${h}px))`,
+          height: `var(${ROW_H_VAR}, ${h}px)`,
+        }}
+      >
         <svg className="slip-cord" style={{ left: 0 }}>
           <path d={left} />
         </svg>
@@ -6224,7 +6235,11 @@ function SlipCords({
       aria-hidden
       data-slip-cords
       className="slip-cords"
-      style={{ top, height: count * h, ["--cord-ease" as string]: MIN_JERK_EASING }}
+      style={{
+        top,
+        height: `calc(${count} * var(${ROW_H_VAR}, ${h}px))`,
+        ["--cord-ease" as string]: MIN_JERK_EASING,
+      }}
     >
       {cells}
     </div>

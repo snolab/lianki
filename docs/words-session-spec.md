@@ -49,7 +49,14 @@ they land. Design details that are still open are marked **open**.
   hold at the top. The lines go to the back cells as the default rows give
   them (`backLines`, `lib/words/row-pinch.ts`); the swipe unit stays. Synced
   as `words.cardHeight`, a factor of the default row. The page never zooms;
-  a second finger cancels the rows' own gestures.
+  a second finger cancels the rows' own gestures. Calm, and the list holds
+  still (owner, 2026-11-10: too sensitive, and the whole list shook): the
+  height follows the spread at a low gain past a small dead zone, eased
+  (config `words.pinchGainPct` 40, `words.pinchDeadZonePct` 6,
+  `words.pinchSmoothMs` 70); the row under the fingers stays under them,
+  frame by frame, with no native scroll during the pinch; the height is one
+  CSS variable (`--row-h`), so React renders only when a row gains or loses
+  a whole line, and the pref is written once, when the pinch ends.
 - **Reviewed words fade** (2026-11-10): a slip graded this session stays (for
   undo) but fades like a slip that came back: a veil and one muted ink at AA
   contrast (`.slip-done`, app/globals.css). Undo restores it.
