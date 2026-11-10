@@ -32,4 +32,12 @@ regexes = [
   # The fake API key of unit/byok.test.ts (#593), the value the test proves
   # never reaches our origin; pushed history, so it stays allowed.
   '''sk-test-SECRET-never-leaves-0000''',
+  # The fake secrets of unit/stall-watch.test.ts (#872), the strings its
+  # redaction tests prove are hidden; pushed history (c114fe19), so they stay
+  # allowed. The test now builds them at runtime.
+  '''abcdefghijklmnop1234''',
+  '''AKIAABCDEFGHIJKLMNOP''',
+  '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0''',
+  '''abc123def456''',
+  '''hunter2hunter2''',
 ]
