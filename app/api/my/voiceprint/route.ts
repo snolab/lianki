@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authUserOrNull } from "@/app/signInEmail";
 import { dbBackend, getD1 } from "@/lib/d1";
+import { cfg } from "@/lib/config-store";
 import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
@@ -58,7 +59,10 @@ const body = async (req: Request) => {
 export const GET = async (req: Request) => {
   const d = await deps();
   if (d instanceof NextResponse) return d;
-  return answer(await listPrints(d, new URL(req.url).searchParams.get("features") === "1"));
+  const out = await listPrints(d, new URL(req.url).searchParams.get("features") === "1");
+  // Who computes features from recordings (config voiceprint.extractor; "mac" for now).
+  const extractor = await cfg("voiceprint.extractor").catch(() => "mac" as const);
+  return answer({ ...out, json: { ...out.json, extractor } });
 };
 
 export const PUT = async (req: Request) => {

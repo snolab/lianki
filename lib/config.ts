@@ -159,6 +159,16 @@ export const CONFIG = {
     description:
       "等你处理的事（状态 waiting-owner 或写了 needs）到时间后先提醒你一次，之后隔多少天再提醒：逗号分隔的天数，用完后一直按最后一个间隔（默认 1,3,7 = 一天、三天、七天，之后每周）。",
   },
+  // The voiceprint in his account (docs/local-stt.md, "Voiceprint in your account"):
+  // handed to the panel by GET /api/my/voiceprint.
+  "voiceprint.extractor": {
+    default: "mac" as const,
+    schema: z.enum(["mac"]),
+    group: "voiceprint",
+    audience: "server",
+    description:
+      "谁从录音算出声纹特征：mac = 你 Mac 上的本地语音服务（开发阶段唯一的实现）。以后有云端实现时在这里切换。",
+  },
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

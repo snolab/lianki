@@ -23,6 +23,9 @@ import {
 } from "@/lib/voiceprint-cloud";
 import { importTicketVerifyKey, openPayload, signVoiceprintTicket } from "@/lib/voiceprint-ticket";
 import {
+  recordingDevice,
+  recordingName,
+  wavSamples,
   type CloudDeps as PageCloud,
   type EnrolDeps,
   type EnrolView,
@@ -278,6 +281,24 @@ describe("the account's own rows", () => {
     });
     expect(db.rows.size).toBe(0);
   });
+  it("an enrol ticket (re-compute) stores only its own device's print", async () => {
+    const { db, deps, ticket } = await setup();
+    const other = await ticket({ op: "enrol", device: "iphone" });
+    const r1 = await putPrints(deps("owner-1"), {
+      ticket: other,
+      prints: [print({ device: "android" })],
+    });
+    expect(r1.json.error).toBe("wrong device");
+    const t = await ticket({ op: "enrol", device: "iphone" });
+    expect((await putPrints(deps("owner-1"), { ticket: t, prints: [print()] })).status).toBe(200);
+    expect(db.rows.size).toBe(1);
+    // A status or restore ticket never writes.
+    for (const op of ["restore", "delete"] as const)
+      expect(
+        (await putPrints(deps("owner-1"), { ticket: await ticket({ op }), prints: [print()] })).json
+          .error,
+      ).toBe("wrong op");
+  });
   it("refuses a PUT with audio before spending the ticket", async () => {
     const { db, deps, ticket } = await setup();
     const r = await putPrints(deps("owner-1"), {
@@ -290,17 +311,76 @@ describe("the account's own rows", () => {
   });
 });
 
+/** A 16 kHz mono 16-bit WAV of `s` seconds, as voiceprint.py writes them. */
+function wav(s: number): ArrayBuffer {
+  const n = 16_000 * s;
+  const b = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(b);
+  const str = (o: number, t: string) =>
+    [...t].forEach((ch, i) => v.setUint8(o + i, ch.charCodeAt(0)));
+  str(0, "RIFF");
+  v.setUint32(4, 36 + n * 2, true);
+  str(8, "WAVE");
+  str(12, "fmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, 16_000, true);
+  v.setUint32(28, 32_000, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  str(36, "data");
+  v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(8000 * Math.sin(i / 10)), true);
+  return b;
+}
+const tick = async (k = 6) => {
+  for (let i = 0; i < k; i++) await new Promise((r) => setTimeout(r, 0));
+};
+
+describe("recordings in My Files", () => {
+  it("names are stable per device, day and sentence; wavs decode, anything else does not", () => {
+    expect(
+      recordingName({ device: "iphone", name: "07.wav", created: "2026-11-10T23:00:00+0900" }),
+    ).toBe("voiceprint iphone 2026-11-10 07.wav");
+    expect(recordingDevice("voiceprint iphone 2026-11-10 07.wav")).toBe("iphone");
+    expect(recordingDevice("holiday.wav")).toBeNull();
+    expect(wavSamples(wav(1))?.length).toBe(16_000);
+    expect(wavSamples(new TextEncoder().encode("not a wav at all, really not").buffer)).toBeNull();
+  });
+});
+
 describe("the panel", () => {
-  function panel(o: { cloudRows?: number; local?: boolean } = {}) {
+  function panel(
+    o: { cloudRows?: number; local?: boolean; macRecs?: number; files?: string[] } = {},
+  ) {
     const sent: Record<string, unknown>[] = [];
     const tickets: string[] = [];
     const puts: { ticket: string; prints: Record<string, unknown>[] }[] = [];
     const deletes: string[] = [];
+    const files = new Map<string, string>((o.files ?? []).map((n, i) => [`f${i}`, n]));
+    const uploads: string[] = [];
+    const removed: string[] = [];
+    const utters: { n: number; enrol: string }[] = [];
     let rows = o.cloudRows ?? 0;
     const cloud: PageCloud = {
       list: async () => ({
         prints: Array.from({ length: rows }, () => ({ device: "iphone", model: "campp", n: 10 })),
+        recordings: files.size,
+        extractor: "mac",
       }),
+      recordings: {
+        list: async () => [...files].map(([id, name]) => ({ id, name })),
+        upload: async (name) => {
+          uploads.push(name);
+          files.set(`u${uploads.length}`, name);
+        },
+        download: async () => wav(3),
+        delete: async (id) => {
+          removed.push(id);
+          files.delete(id);
+        },
+      },
       features: async () => [{ ...print(), updatedAt: "x" }],
       put: async (ticket, prints) => {
         puts.push({ ticket, prints });
@@ -321,7 +401,23 @@ describe("the panel", () => {
         if (m.op === "status")
           return { ok: true, prints: [{ device: "iphone", model: "campp", n: 10 }] };
         // A Mac that (wrongly) adds more than features: the page drops it before the PUT.
-        if (m.op === "export") return { ok: true, prints: [{ ...print(), audio: true, extra: 1 }] };
+        if (m.op === "export")
+          return {
+            ok: true,
+            prints: [{ ...print(), audio: true, extra: 1 }],
+            ...(m.recordings
+              ? {
+                  recordings: Array.from({ length: o.macRecs ?? 0 }, (_, i) => ({
+                    device: "iphone",
+                    name: `${String(i).padStart(2, "0")}.wav`,
+                    created: "2026-11-10T23:00:00+0900",
+                    wav: Buffer.from(new Uint8Array(wav(1))).toString("base64"),
+                  })),
+                }
+              : {}),
+          };
+        if (m.op === "start") return { ok: true, enrolment: "E9" };
+        if (m.op === "commit") return { ok: true, n: 10, prints: m.export ? [print()] : undefined };
         if (m.op === "restore") return { ok: true, restored: [{ device: "iphone" }] };
         if (m.op === "delete") return { ok: true, deleted: 2 };
         return { ok: true };
@@ -331,11 +427,21 @@ describe("the panel", () => {
         return `T-${op}-${tickets.length}`;
       },
       capture() {},
+      async utter(_audio, enrol) {
+        utters.push({ n: utters.length + 1, enrol });
+        return {
+          text: "",
+          model: "m",
+          ms: 1,
+          endToFinalMs: 1,
+          enrol: { ok: true, n: utters.length },
+        };
+      },
       cloud,
     };
     const views: EnrolView[] = [];
     const c = createEnrolment(deps, (v) => views.push(v));
-    return { c, sent, tickets, puts, deletes, views };
+    return { c, sent, tickets, puts, deletes, views, uploads, removed, utters, files };
   }
 
   it("save to my account: one passkey ticket, the Mac's features only, the same ticket to lianki.com", async () => {
@@ -398,5 +504,57 @@ describe("the panel", () => {
     expect(Object.keys(featuresOnly({ ...print(), audio: 1, wav: "x" })).sort()).toEqual(
       Object.keys(print()).sort(),
     );
+  });
+
+  it("save also puts the Mac's kept recordings into My Files, each once; the Mac keeps them", async () => {
+    const h = panel({ macRecs: 3, files: ["voiceprint iphone 2026-11-10 01.wav"] });
+    await h.c.open();
+    h.c.saveToAccount();
+    await tick();
+    expect(h.sent.find((m) => m.op === "export")?.recordings).toBe(true);
+    expect(h.uploads).toEqual([
+      "voiceprint iphone 2026-11-10 00.wav",
+      "voiceprint iphone 2026-11-10 02.wav",
+    ]);
+    expect(h.c.view()).toMatchObject({ cloudOp: { kind: "save", state: "done", files: 2 } });
+    // Nothing asked the Mac to delete anything.
+    expect(h.sent.some((m) => m.op === "delete")).toBe(false);
+  });
+
+  it("re-compute: the recordings through the Mac extractor, one enrol ticket for the PUT", async () => {
+    const files = Array.from(
+      { length: 12 },
+      (_, i) => `voiceprint iphone 2026-11-10 ${String(i).padStart(2, "0")}.wav`,
+    );
+    const h = panel({ cloudRows: 1, files });
+    await h.c.open();
+    h.c.recompute();
+    await tick(40);
+    expect(h.tickets).toEqual(["status:*", "enrol:iphone"]);
+    expect(h.sent.find((m) => m.op === "start")).toMatchObject({
+      device: "iphone",
+      keepAudio: false,
+      ticket: "T-enrol-2",
+    });
+    expect(h.utters).toHaveLength(12);
+    expect(h.utters.every((u) => u.enrol === "E9")).toBe(true);
+    expect(h.sent.find((m) => m.op === "commit")).toMatchObject({ enrolment: "E9", export: true });
+    expect(h.puts.map((x) => x.ticket)).toEqual(["T-enrol-2"]);
+    expect(h.c.view()).toMatchObject({ cloudOp: { kind: "recompute", state: "done", n: 1 } });
+  });
+
+  it("deleting the voiceprint offers to delete the recordings, and deletes them only on that tap", async () => {
+    const h = panel({
+      cloudRows: 1,
+      files: ["voiceprint iphone 2026-11-10 00.wav", "voiceprint iphone 2026-11-10 01.wav"],
+    });
+    await h.c.open();
+    h.c.askDelete();
+    await h.c.confirmDelete();
+    expect(h.removed).toEqual([]);
+    expect(h.c.view()).toMatchObject({ step: "deleted", recordings: { n: 2, state: "offer" } });
+    await h.c.deleteRecordings();
+    expect(h.removed.sort()).toEqual(["f0", "f1"]);
+    expect(h.c.view()).toMatchObject({ step: "deleted", recordings: { n: 2, state: "done" } });
   });
 });

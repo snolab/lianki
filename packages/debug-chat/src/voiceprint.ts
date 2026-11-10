@@ -286,18 +286,100 @@ export type EnrolView =
   | { step: "saved"; kept: number; cloud?: CloudInfo; cloudOp?: CloudOp }
   /** What the delete will reach: the Mac (when it answered), the account copy (when there is one). */
   | { step: "confirm-delete"; local?: boolean; cloud?: CloudInfo }
-  | { step: "deleted"; files: number; cloudError?: string }
+  | {
+      step: "deleted";
+      files: number;
+      cloudError?: string;
+      /**
+       * His recordings in My Files → Voiceprint: offered for deletion by a
+       * separate tap (never deleted with the voiceprint itself).
+       */
+      recordings?: { n: number; state: "offer" | "busy" | "done" | "failed"; error?: string };
+    }
   | { step: "error"; error: string };
 
 /** An enrolment under way: sentences being recorded or saved, lost if the page goes (lib/page-dirty.ts). */
 export const enrolBusy = (v: EnrolView) => v.step === "recording" || v.step === "saving";
 
+/** How long the Mac may take to hand over the features and the kept recordings (a few MB). */
+export const EXPORT_TIMEOUT_MS = 60_000;
+
 /** The account copy: device prints saved there (features only, never audio). */
-export type CloudInfo = { prints: { device: string; model: string; n: number; updatedAt?: string }[] };
+export type CloudInfo = {
+  prints: { device: string; model: string; n: number; updatedAt?: string }[];
+  /** His enrolment recordings kept in My Files → Voiceprint (how many). */
+  recordings?: number;
+  /** Who computes features from recordings (config voiceprint.extractor). */
+  extractor?: string;
+};
 export type CloudOp =
-  | { kind: "save" | "restore"; state: "busy" }
-  | { kind: "save" | "restore"; state: "done"; n: number }
-  | { kind: "save" | "restore" | "delete"; state: "failed"; error: string };
+  | { kind: "save" | "restore" | "recompute"; state: "busy" }
+  | { kind: "save" | "restore" | "recompute"; state: "done"; n: number; files?: number }
+  | { kind: "save" | "restore" | "recompute" | "delete"; state: "failed"; error: string };
+
+/** One of his recordings in My Files (GET /api/import/files?source=voiceprint). */
+export type StoredRecording = { id: string; name: string };
+/** A recording the Mac kept (`<device>.audio/NN.wav`), handed over by the ticketed export. */
+export type MacRecording = { device: string; name: string; created?: string | null; wav: string };
+
+/**
+ * The name a recording gets in My Files: device, enrolment date, sentence
+ * number ("voiceprint iphone 2026-11-10 01.wav"). The same recording always
+ * gets the same name, so saving again never stores it twice.
+ */
+export function recordingName(r: Pick<MacRecording, "device" | "name" | "created">): string {
+  const day = typeof r.created === "string" && /^\d{4}-\d{2}-\d{2}/.test(r.created) ? r.created.slice(0, 10) : "undated";
+  const nn = /^(\d{2})\.wav$/.exec(r.name)?.[1] ?? "00";
+  return `voiceprint ${r.device} ${day} ${nn}.wav`;
+}
+/** The device a My Files recording belongs to, from its name (recordingName). */
+export const recordingDevice = (name: string) =>
+  /^voiceprint ([a-z0-9][a-z0-9-]{0,31}) /.exec(name)?.[1] ?? null;
+
+/** A 16-bit mono WAV (as voiceprint.py writes them) as samples in -1..1; null if not one. */
+export function wavSamples(buf: ArrayBuffer): Float32Array | null {
+  const v = new DataView(buf);
+  if (buf.byteLength < 44 || v.getUint32(0, false) !== 0x52494646 || v.getUint32(8, false) !== 0x57415645)
+    return null;
+  let off = 12;
+  let fmtOk = false;
+  while (off + 8 <= buf.byteLength) {
+    const id = v.getUint32(off, false);
+    const size = v.getUint32(off + 4, true);
+    const body = off + 8;
+    if (id === 0x666d7420) {
+      // "fmt ": PCM, mono, 16 kHz, 16 bit
+      fmtOk =
+        v.getUint16(body, true) === 1 &&
+        v.getUint16(body + 2, true) === 1 &&
+        v.getUint32(body + 4, true) === 16_000 &&
+        v.getUint16(body + 14, true) === 16;
+    } else if (id === 0x64617461) {
+      if (!fmtOk) return null;
+      const n = Math.floor(Math.min(size, buf.byteLength - body) / 2);
+      const out = new Float32Array(n);
+      for (let i = 0; i < n; i++) out[i] = v.getInt16(body + i * 2, true) / 32768;
+      return out;
+    }
+    off = body + size + (size % 2);
+  }
+  return null;
+}
+
+/**
+ * Computing features from recordings (owner, 2026-11-10): one interface, so
+ * the Mac (the first and, in development, only implementation) can later be
+ * replaced by a cloud worker, chosen by config (`voiceprint.extractor`). It
+ * returns the features (export form) and the approval lianki.com takes to
+ * store them.
+ */
+export type FeatureExtractor = {
+  id: string;
+  extract(
+    device: string,
+    clips: Float32Array[],
+  ): Promise<{ prints: Record<string, unknown>[]; ticket: string; kept: number }>;
+};
 
 /** What leaves the Mac for the account: features only (lib/voiceprint-cloud.ts PRINT_KEYS). */
 export const CLOUD_PRINT_KEYS = [
@@ -327,6 +409,13 @@ export type CloudDeps = {
   features(): Promise<Record<string, unknown>[]>;
   put(ticket: string, prints: Record<string, unknown>[]): Promise<number>;
   delete(ticket: string, device: string): Promise<number>;
+  /** My Files → Voiceprint: his recordings (own files only, same-origin writes). */
+  recordings: {
+    list(): Promise<StoredRecording[]>;
+    upload(name: string, bytes: Uint8Array): Promise<void>;
+    download(id: string): Promise<ArrayBuffer>;
+    delete(id: string): Promise<void>;
+  };
 };
 
 export type AgainReason = "short" | "noise" | "mismatch" | "text" | "unreachable";
@@ -334,7 +423,15 @@ export type AgainReason = "short" | "noise" | "mismatch" | "text" | "unreachable
 /** What the card needs of the page (the local STT socket, the mic session). */
 export type EnrolDeps = {
   /** A voiceprint request to the Mac (local-stt.ts request on the panel's own socket). */
-  request(msg: Record<string, unknown>): Promise<Record<string, unknown>>;
+  request(
+    msg: Record<string, unknown>,
+    o?: { timeoutMs?: number },
+  ): Promise<Record<string, unknown>>;
+  /**
+   * One enrolment sentence from a recording (re-compute): streamed to the Mac
+   * on the panel's socket as if just read; its final carries the verdict.
+   */
+  utter?(audio: Float32Array, enrolment: string): Promise<LocalFinal>;
   /**
    * A voiceprint ticket from lianki.com for this op (app/api/dev/voiceprint-ticket):
    * status with the owner session; enrol and delete only after the owner's
@@ -454,7 +551,10 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
   const errText = (e: unknown) => String((e as Error)?.message ?? e).slice(0, 120);
   /**
    * "Save to my account": one passkey approval; the Mac hands over the
-   * features (export: numbers only), lianki.com keeps them encrypted.
+   * features (numbers only) and the recordings it kept (the opt-in audio);
+   * lianki.com keeps the features encrypted, and the recordings go to My
+   * Files → Voiceprint (his private file store), each once (by name). Nothing
+   * on the Mac is moved or deleted.
    */
   const saveToAccount = async (my: number) => {
     const cl = d.cloud;
@@ -463,17 +563,119 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
     try {
       const ticket = await d.ticket("export", "*");
       if (my !== run) return;
-      const r = ok(await d.request({ t: "voiceprint", op: "export", device: "*", ticket }));
+      const r = ok(
+        await d.request(
+          { t: "voiceprint", op: "export", device: "*", ticket, recordings: true },
+          { timeoutMs: EXPORT_TIMEOUT_MS },
+        ),
+      );
       const prints = (Array.isArray(r.prints) ? (r.prints as Record<string, unknown>[]) : []).map(
         featuresOnly,
       );
       if (!prints.length) throw new Error("nothing on the Mac to save");
       const n = await cl.put(ticket, prints);
       d.log?.({ ev: "voiceprint-cloud-saved", n });
+      const files = await uploadRecordings(
+        cl,
+        Array.isArray(r.recordings) ? (r.recordings as MacRecording[]) : [],
+      );
       const cloud = (await cl.list().catch(() => null)) ?? undefined;
-      setCloud(my, { op: { kind: "save", state: "done", n }, cloud });
+      setCloud(my, { op: { kind: "save", state: "done", n, files }, cloud });
     } catch (e) {
       setCloud(my, { op: { kind: "save", state: "failed", error: errText(e) } });
+    }
+  };
+  /** The Mac's kept recordings into My Files → Voiceprint, skipping those already there. */
+  const uploadRecordings = async (cl: CloudDeps, recs: MacRecording[]) => {
+    if (!recs.length) return 0;
+    const have = new Set((await cl.recordings.list()).map((f) => f.name));
+    let n = 0;
+    for (const rec of recs) {
+      if (typeof rec?.wav !== "string" || typeof rec.device !== "string") continue;
+      const name = recordingName(rec);
+      if (have.has(name)) continue;
+      const bin = atob(rec.wav);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      if (!wavSamples(bytes.buffer)) continue; // only the Mac's own 16 kHz mono wavs
+      await cl.recordings.upload(name, bytes);
+      have.add(name);
+      n++;
+    }
+    d.log?.({ ev: "voiceprint-recordings-saved", n });
+    return n;
+  };
+  /**
+   * The Mac as the feature extractor (config voiceprint.extractor = "mac"):
+   * a passkey enrol ticket for the device, an enrolment fed with the
+   * recordings instead of live reading (the same checks per sentence), saved
+   * on the Mac, and its new features handed back under that approval.
+   */
+  const macExtractor: FeatureExtractor = {
+    id: "mac",
+    async extract(device, clips) {
+      if (!d.utter) throw new Error("the Mac cannot take recordings here");
+      const ticket = await d.ticket("enrol", device, { keepAudio: false });
+      const st = ok(
+        await d.request({ t: "enrol", op: "start", device, consent: true, keepAudio: false, ticket }),
+      );
+      const id = String(st.enrolment ?? "");
+      if (!id) throw new Error("no enrolment");
+      let kept = 0;
+      try {
+        for (const c of clips) {
+          const f = await d.utter(c, id);
+          if (f.enrol?.ok) kept = f.enrol.n;
+          if (kept >= ENROL_MAX) break;
+        }
+        if (kept < ENROL_MIN) throw new Error(`only ${kept} of the recordings were usable`);
+        const r = ok(await d.request({ t: "enrol", op: "commit", enrolment: id, export: true }));
+        const prints = (Array.isArray(r.prints) ? (r.prints as Record<string, unknown>[]) : []).map(
+          featuresOnly,
+        );
+        return { prints, ticket, kept };
+      } catch (e) {
+        void d.request({ t: "enrol", op: "cancel", enrolment: id }).catch(() => {});
+        throw e;
+      }
+    },
+  };
+  const extractors: Record<string, FeatureExtractor> = { mac: macExtractor };
+  /**
+   * "Re-compute from my recordings" (a future model, a new Mac): the
+   * recordings in My Files → Voiceprint, through the configured extractor,
+   * stored as the device's new features on the Mac and in the account.
+   */
+  const recompute = async (my: number, extractorId: string) => {
+    const cl = d.cloud;
+    if (!cl) return;
+    setCloud(my, { op: { kind: "recompute", state: "busy" } });
+    try {
+      const ex = extractors[extractorId];
+      if (!ex) throw new Error(`no extractor "${extractorId}"`);
+      const byDevice = new Map<string, StoredRecording[]>();
+      for (const f of await cl.recordings.list()) {
+        const dev = recordingDevice(f.name);
+        if (dev) byDevice.set(dev, [...(byDevice.get(dev) ?? []), f]);
+      }
+      if (!byDevice.size) throw new Error("no recordings in My Files");
+      let n = 0;
+      for (const [device, files] of byDevice) {
+        const clips: Float32Array[] = [];
+        for (const f of files.sort((a, b) => a.name.localeCompare(b.name))) {
+          const s = wavSamples(await cl.recordings.download(f.id));
+          if (s) clips.push(s);
+        }
+        if (my !== run) return;
+        const out = await ex.extract(device, clips);
+        if (!out.prints.length) throw new Error("no features came back");
+        n += await cl.put(out.ticket, out.prints);
+      }
+      d.log?.({ ev: "voiceprint-recomputed", n });
+      const cloud = (await cl.list().catch(() => null)) ?? undefined;
+      setCloud(my, { op: { kind: "recompute", state: "done", n }, cloud });
+    } catch (e) {
+      setCloud(my, { op: { kind: "recompute", state: "failed", error: errText(e) } });
     }
   };
   /** "Restore from my account": the account's features back onto the Mac (a new Mac). */
@@ -532,6 +734,30 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
     saveToAccount() {
       if ((view.step === "status" && view.local && view.cloud) || (view.step === "saved" && view.cloud))
         void saveToAccount(run);
+    },
+    /** "Re-compute from my recordings" (a tap: the passkey prompt follows, per device). */
+    recompute() {
+      if (view.step === "status" && view.local && view.cloud?.recordings)
+        void recompute(run, view.cloud.extractor ?? "mac");
+    },
+    /**
+     * After deleting the voiceprint: the separate offer to delete his
+     * recordings in My Files too (a tap; never part of the voiceprint delete).
+     */
+    async deleteRecordings() {
+      if (view.step !== "deleted" || view.recordings?.state !== "offer" || !d.cloud) return;
+      const my = run;
+      const base = view;
+      set({ ...base, recordings: { ...base.recordings!, state: "busy" } });
+      try {
+        const files = await d.cloud.recordings.list();
+        for (const f of files) await d.cloud.recordings.delete(f.id);
+        d.log?.({ ev: "voiceprint-recordings-deleted", n: files.length });
+        if (my === run) set({ ...base, recordings: { n: files.length, state: "done" } });
+      } catch (e) {
+        if (my === run)
+          set({ ...base, recordings: { ...base.recordings!, state: "failed", error: errText(e) } });
+      }
     },
     /** "Restore from my account" (a tap: the passkey prompt follows). */
     restoreFromAccount() {
@@ -635,7 +861,15 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         if (my !== run) return;
         if (macError) throw macError;
         d.log?.({ ev: "voiceprint-deleted", files, ...(cloud ? { cloud: !cloudError } : {}) });
-        set({ step: "deleted", files, ...(cloudError ? { cloudError } : {}) });
+        // His recordings in My Files stay unless he says so: offered, never deleted here.
+        const recs = d.cloud ? await d.cloud.recordings.list().catch(() => []) : [];
+        if (my !== run) return;
+        set({
+          step: "deleted",
+          files,
+          ...(cloudError ? { cloudError } : {}),
+          ...(recs.length ? { recordings: { n: recs.length, state: "offer" as const } } : {}),
+        });
       } catch (e) {
         if (my === run) fail(e);
       }

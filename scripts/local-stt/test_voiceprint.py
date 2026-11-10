@@ -344,6 +344,22 @@ class AccountCopy(unittest.TestCase):
         self.assertTrue(V.Store(self.root).load("iphone", "campp")["audio"])
         self.assertEqual(len(os.listdir(V.Store(self.root).audio_dir("iphone"))), V.ENROL_MIN)
 
+    def test_recordings_are_read_never_moved(self):
+        import base64
+
+        st = V.Store(self.root)
+        recs = st.recordings(None)
+        self.assertEqual(len(recs), V.ENROL_MIN)
+        self.assertEqual(set(recs[0]), {"device", "name", "created", "wav"})
+        self.assertEqual((recs[0]["device"], recs[0]["name"]), ("iphone", "00.wav"))
+        self.assertTrue(base64.b64decode(recs[0]["wav"]).startswith(b"RIFF"))
+        self.assertEqual(st.recordings("android"), [])
+        # Still all there, untouched.
+        self.assertEqual(len(os.listdir(st.audio_dir("iphone"))), V.ENROL_MIN)
+        # A linked file is skipped, not followed.
+        os.symlink("/etc/hosts", os.path.join(st.audio_dir("iphone"), "99.wav"))
+        self.assertEqual(len(st.recordings("iphone")), V.ENROL_MIN)
+
     def test_restore_refuses_anything_but_features(self):
         p = V.Store(self.root).export("iphone")[0]
         bad = [
@@ -840,6 +856,9 @@ class ServerProtocol(unittest.TestCase):
             r2 = await self.ask(ws, {"t": "voiceprint", "op": "export", "device": "*", "ticket": t})
             self.assertEqual(r2["error"], "ticket replayed")
             printed = r["prints"]
+            r = await self.ask(ws, {"t": "voiceprint", "op": "export", "device": "*", "recordings": True,
+                                    "ticket": sg.vp("export", "*")})
+            self.assertEqual((r["ok"], r["recordings"]), (True, []))  # nothing kept: none handed over
             # Restore: an extra key anywhere refuses the whole request, nothing written.
             r = await self.ask(ws, {"t": "voiceprint", "op": "restore", "device": "*",
                                     "prints": [{**printed[0], "audio": True}], "ticket": sg.vp("restore", "*")})

@@ -222,6 +222,24 @@ const dictionary = {
         sw: "Gumzo",
         mr: "चॅट",
       }),
+      voiceprint: t({
+        en: "Voiceprint",
+        zh: "声纹",
+        ja: "声紋",
+        ko: "음성 지문",
+        hi: "वॉइसप्रिंट",
+        es: "Huella de voz",
+        fr: "Empreinte vocale",
+        ar: "البصمة الصوتية",
+        bn: "ভয়েসপ্রিন্ট",
+        pt: "Impressão vocal",
+        ru: "Голосовой отпечаток",
+        ur: "وائس پرنٹ",
+        id: "Sidik suara",
+        de: "Stimmprofil",
+        sw: "Alama ya sauti",
+        mr: "व्हॉइसप्रिंट",
+      }),
       other: t({
         en: "Other",
         zh: "其他",
@@ -267,6 +285,8 @@ const context: KeyContext<typeof dictionary.content> = {
     books:
       "Folder heading on /my/files for book files (EPUB e-books, text) the user imported on /books (My books) to read. One plural noun.",
     chat: "Folder heading on /my/files for files attached in the Learning Partner chat. One word.",
+    voiceprint:
+      "Folder heading on /my/files for the recordings of the sentences the user read aloud to enrol their voiceprint (kept so the voice features can be computed again later). The same word as the chat menu's 'Voiceprint'. One noun.",
     other: "Folder heading on /my/files for stored files from any other place. One word.",
   },
 };

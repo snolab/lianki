@@ -595,9 +595,9 @@ export type ChatStrings = {
   vpOff: string;
   /** Button in the voiceprint panel that starts enrolling the user's voice on the phone or computer in hand (it first shows a consent card; nothing is recorded yet). Imperative verb phrase. */
   vpEnrol: string;
-  /** The consent card shown before any enrolment audio is captured: what happens, what is kept (numbers that describe the voice, not audio), where (on the owner's Mac at the given folder path, keep the path exactly; and, after a passkey confirmation, an encrypted copy of the same numbers in his Lianki account, readable only by his account), that no recording is kept in the account, what it is for, and that it can be deleted from both at any time. {n} is a range like 10–20; {name} is the assistant's name. Keep 'Mac', 'Lianki' and both placeholders. Plain, honest, several sentences. */
+  /** The consent card shown before any enrolment audio is captured: what happens, what is kept (numbers that describe the voice, not audio) and where (on the owner's Mac at the given folder path, keep the path exactly; after a passkey confirmation, an encrypted copy of the numbers in his Lianki account, readable only by his account); that the recordings are kept only if he turns on the switch below, then on the Mac and, when he saves to his account, in My Files → Voiceprint, private, so the voiceprint can be computed again later; what it is for; and that all of it can be deleted at any time. {n} is a range like 10–20; {name} is the assistant's name. Keep 'Mac', 'Lianki', 'My Files' (the page's name) and both placeholders. Plain, honest, several sentences. */
   vpConsent: string;
-  /** On/off checkbox on the consent card, off by default: when on, the audio of the enrolment sentences is also kept on the owner's Mac (normally only the numbers are). First person, a statement of what is kept. */
+  /** On/off checkbox on the consent card, off by default: when on, the recordings of the enrolment sentences are also kept: on the owner's Mac, and in My Files (his private file store in his Lianki account) once he saves to his account. First person, a statement of what is kept; keep 'Mac' and 'My Files'. */
   vpKeepAudio: string;
   /** Button on the consent card: the user agrees and enrolment recording starts (the microphone turns on). First person agreement plus imperative verb, short. */
   vpAgree: string;
@@ -649,6 +649,22 @@ export type ChatStrings = {
   vpFilterWould: string;
   /** Checkbox in the voiceprint panel that pauses the 'Only my voice' filter on the phone or computer in hand only. A short statement. */
   vpFilterPause: string;
+  /** Line in the voiceprint panel: how many recordings of the owner's enrolment sentences are kept in My Files → Voiceprint (his private file store). {n} is a number; keep the placeholder and 'My Files'. Short. */
+  vpRecHas: string;
+  /** Note in the voiceprint panel after saving to the account: {n} recordings of the enrolment sentences were newly put into My Files → Voiceprint (private). Keep the placeholder and 'My Files'; one short sentence. */
+  vpRecSaved: string;
+  /** Button in the voiceprint panel: computes the voiceprint's numbers again from the recordings kept in My Files (for example after a better voice model arrives), and stores them on the Mac and in the account; the passkey prompt comes next. First person 'my'; imperative verb phrase. */
+  vpRecompute: string;
+  /** Status in the voiceprint panel while the voiceprint is being computed again from the recordings in My Files. Progressive form, ends with an ellipsis. */
+  vpRecomputing: string;
+  /** Confirmation in the voiceprint panel: the voiceprint was computed again from the recordings and saved on the Mac and in the account; {n} is how many device prints. Keep the placeholder; one short sentence. */
+  vpRecomputed: string;
+  /** Question in the voiceprint panel right after the voiceprint was deleted: the {n} recordings of the enrolment sentences are still in My Files → Voiceprint; does the user want to delete them too? Nothing is deleted unless they tap the button below. Keep the placeholder and 'My Files'; a statement and a question. */
+  vpRecDeleteOffer: string;
+  /** Button under that question: deletes the enrolment recordings from My Files → Voiceprint for good. Imperative verb phrase, short. */
+  vpRecDeleteYes: string;
+  /** Confirmation in the voiceprint panel: the enrolment recordings were deleted from My Files. One short sentence; keep 'My Files'. */
+  vpRecDeleted: string;
   /** Button in the voiceprint panel: copies the voiceprint (numbers describing the owner's voice, never a recording) from his Mac into his own Lianki account, encrypted; the passkey prompt (Face ID / Touch ID) comes next. First person 'my'; imperative verb phrase, short. */
   vpCloudSave: string;
   /** Button in the voiceprint panel: puts the voiceprint saved in the owner's Lianki account back onto his Mac (for example a new Mac); the passkey prompt comes next. First person 'my'; imperative verb phrase, short. */
@@ -816,8 +832,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpPrint: "{device}: {n} sentences",
   vpOff: "Needs the local speech model on your Mac (the green dot on the mic).",
   vpEnrol: "Enrol this device",
-  vpConsent: "Before anything is recorded: you will read {n} short sentences aloud. Your Mac turns them into a voiceprint (numbers that describe your voice, not a recording) and keeps it there, in ~/.config/lianki-stt/voiceprints. After you confirm with your passkey, a copy of these numbers is also kept in your Lianki account, encrypted and readable only by your account, so another Mac can get it back. No recording is kept in your account. It is used to check that a line spoken to your {name} is your voice. You can delete it, on the Mac and in your account, here at any time.",
-  vpKeepAudio: "Also keep the recordings of these sentences on my Mac",
+  vpConsent: "Before anything is recorded: you will read {n} short sentences aloud. Your Mac turns them into a voiceprint (numbers that describe your voice, not a recording) and keeps it there, in ~/.config/lianki-stt/voiceprints. After you confirm with your passkey, a copy of these numbers is also kept in your Lianki account, encrypted and readable only by your account, so another Mac can get it back. The recordings are kept only if you turn that on below: then on your Mac and, when you save to your account, in My Files → Voiceprint, private to you, so the voiceprint can be computed again later. It is used to check that a line spoken to your {name} is your voice. You can delete all of it here at any time.",
+  vpKeepAudio: "Also keep the recordings of these sentences (on my Mac, and in My Files when I save to my account)",
   vpAgree: "I agree, start",
   vpCancel: "Cancel",
   vpRead: "Read this aloud, then pause:",
@@ -844,6 +860,14 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpFilterCount: "Dropped today: {n}. Voice did not match (last score {score}).",
   vpFilterWould: "Would have been dropped today: {n} (still sent).",
   vpFilterPause: "Pause on this device",
+  vpRecHas: "Recordings in My Files: {n}.",
+  vpRecSaved: "{n} recordings saved to My Files → Voiceprint.",
+  vpRecompute: "Re-compute from my recordings",
+  vpRecomputing: "Re-computing from your recordings…",
+  vpRecomputed: "Re-computed from your recordings ({n}).",
+  vpRecDeleteOffer: "Your {n} recordings are still in My Files → Voiceprint. Delete them too?",
+  vpRecDeleteYes: "Delete the recordings",
+  vpRecDeleted: "Recordings deleted from My Files.",
   vpCloudSave: "Save to my account",
   vpCloudRestore: "Restore from my account",
   vpCloudSaving: "Saving to your account…",

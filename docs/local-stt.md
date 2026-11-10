@@ -416,10 +416,10 @@ phone: mic (Silero VAD) ─ utterance ─▶ server.py ─┬─ SenseVoice deco
 10–20 sentences; the Mac turns them into numbers that describe his voice,
 not a recording, kept on the Mac at `~/.config/lianki-stt/voiceprints`;
 after his passkey, a copy of those numbers in his Lianki account,
-encrypted and readable only by his account (next-but-one section); no
-recording in the account; what it is for; that he can delete it, on the Mac
-and in the account, at any time; and a switch, off by default, to also keep
-the sentences' audio on the Mac. **Nothing is captured until
+encrypted and readable only by his account (next-but-one section); what it
+is for; that he can delete it all at any time; and a switch, off by default,
+to also keep the sentences' recordings: on the Mac and, once saved to the
+account, in his My Files → Voiceprint. **Nothing is captured until
 his tap on "I agree, start" and his passkey** (next section). Voice can
 neither start enrolment nor delete (docs/dev-debug-widget.md: recording is
 turned on by a tap, never by voice).
@@ -525,7 +525,8 @@ folder's mtime). Neither touches `~/lianki-voice-clips`.
 
 The owner decided on 2026-11-10 (tap card, 23:31 JST): keep his voiceprint's
 **features** in Cloudflare under his own account as well, so a new Mac can
-get it back; the recordings stay on the Mac. Flag
+get it back; then (23:33, 23:35 JST) the enrolment recordings too, in his My
+Files, so the features can be computed again later (below). Flag
 [`stt.voiceprint-cloud`](https://lianki.com/dev/flags#stt.voiceprint-cloud),
 on by default, `audience: "owner"`, and only for an account holding `dev`
 (the grant the voiceprint tickets already need); off: the print is on the Mac
@@ -574,7 +575,39 @@ page → PUT /api/my/voiceprint {ticket, prints}              the same ticket, s
 - **Delete** ("Delete my voiceprint" and its confirming tap): one passkey
   `delete` ticket for `*`; the Mac deletes its prints (and kept audio, as
   before) and lianki.com deletes the account's rows. With the Mac away, the
-  account's rows can still be deleted from the panel.
+  account's rows can still be deleted from the panel. His recordings in My
+  Files are **not** deleted with it: the panel then asks separately ("Your N
+  recordings are still in My Files → Voiceprint. Delete them too?"), and
+  only that tap deletes them.
+
+**The recordings** (owner, tap cards 2026-11-10 23:33 and 23:35 JST: keep
+them in his account so the features can be computed again later; no
+automatic deletion anywhere):
+
+- "Save to my account" also asks the Mac for the recordings it kept (the
+  enrolment's opt-in audio, `<device>.audio/NN.wav`; `export` with
+  `recordings: true`, the same passkey ticket, `Store.recordings`: our own
+  regular private files only, read, never moved or deleted) and uploads each
+  to **My Files → Voiceprint** (`inbox_item` source `voiceprint`, his private
+  R2 file store, `POST /api/import/files?source=voiceprint`), named
+  `voiceprint <device> <enrolment day> NN.wav`. A name already there is
+  skipped, so saving again stores nothing twice. That is also the one-time
+  path for recordings already on the Mac: he taps "Save to my account".
+  Nothing on the Mac is deleted by this, and `~/lianki-voice-clips` is never
+  read.
+- **Re-compute from my recordings** (a later model, a new Mac): the panel
+  downloads them from My Files and hands them to the **feature extractor**,
+  one interface (`FeatureExtractor.extract(device, clips) → {prints, ticket}`,
+  `voiceprint.ts`) chosen by config `voiceprint.extractor` (/dev/config;
+  `mac`, the only implementation for now; `GET /api/my/voiceprint` hands the
+  value to the page). The Mac implementation takes a passkey `enrol` ticket
+  for the device, opens an enrolment and feeds each recording as a sentence
+  (the same checks), commits it on the Mac with `export: true`, and gets the
+  new features back; lianki.com stores them under that same enrol ticket
+  (an `enrol` ticket covers only its own device). A cloud worker can replace
+  it by adding an implementation and changing the config.
+- Retention: kept until he deletes them (in My Files, or the offer after a
+  voiceprint delete). There is no automatic deletion path.
 - Tests: `unit/voiceprint-cloud.test.ts` (sealing and AAD, features only,
   tickets for another account / op / device / without the passkey, each
   once, own rows only, the panel's three flows);

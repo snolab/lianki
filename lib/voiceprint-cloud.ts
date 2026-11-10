@@ -9,6 +9,7 @@
  *   GET                       → {prints:[{device, model, dim, n, updatedAt}]}  the session's own rows
  *   GET ?features=1           → the same with each row's features, decrypted   the session only
  *   PUT {ticket, prints:[…]}  → store them   an `export` ticket (passkey, UV) for this account
+ *                             (or `enrol` for its own device: a print re-computed from his recordings)
  *   DELETE {ticket, device}   → delete one device's rows, or "*" all of them   a `delete` ticket
  *
  * - **Own rows only.** Every statement is by the session's user id; nothing in
@@ -175,12 +176,18 @@ export function parsePut(body: unknown): { ticket: string; prints: CloudPrint[] 
 export async function checkCloudTicket(
   ticket: string,
   pub: CryptoKey,
-  want: { op: VoiceprintOp; uid: string; devices: string[]; now?: number },
+  want: {
+    op: VoiceprintOp | readonly VoiceprintOp[];
+    uid: string;
+    devices: string[];
+    now?: number;
+  },
 ): Promise<{ jti: string; exp: number } | { error: string }> {
   const p = await openPayload(ticket, pub);
   if (!p) return { error: "bad ticket" };
   if (p.aud !== VOICEPRINT_AUD) return { error: "wrong aud" };
-  if (p.op !== want.op) return { error: "wrong op" };
+  const ops: readonly unknown[] = typeof want.op === "string" ? [want.op] : want.op;
+  if (!ops.includes(p.op)) return { error: "wrong op" };
   if (p.uv !== true) return { error: "no passkey" };
   if (typeof p.uid !== "string" || p.uid !== want.uid) return { error: "not your ticket" };
   const d = p.device;
@@ -294,7 +301,12 @@ export async function listPrints(d: CloudDeps, withFeatures: boolean): Promise<O
   return { status: 200, json: { prints } };
 }
 
-const spendTicket = async (d: CloudDeps, ticket: string, op: VoiceprintOp, devices: string[]) => {
+const spendTicket = async (
+  d: CloudDeps,
+  ticket: string,
+  op: VoiceprintOp | readonly VoiceprintOp[],
+  devices: string[],
+) => {
   const t = await checkCloudTicket(ticket, await d.pub(), { op, uid: d.uid, devices, now: d.now });
   if ("error" in t) return t;
   if (!(await d.db.spend(t.jti, t.exp))) return { error: "approval already used" };
@@ -304,10 +316,13 @@ const spendTicket = async (d: CloudDeps, ticket: string, op: VoiceprintOp, devic
 export async function putPrints(d: CloudDeps, body: unknown): Promise<Out> {
   const b = parsePut(body);
   if (typeof b === "string") return bad(400, b);
+  // `export` (Save to my account), or `enrol` for the device it enrolled: a print
+  // re-computed from his recordings comes back under that one approval
+  // (an enrol ticket is never "*", so it covers only its own device).
   const t = await spendTicket(
     d,
     b.ticket,
-    "export",
+    ["export", "enrol"],
     b.prints.map((p) => p.device),
   );
   if ("error" in t) return bad(401, t.error);

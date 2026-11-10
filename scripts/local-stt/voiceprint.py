@@ -359,6 +359,43 @@ class Store:
                 out.append({k: p[k] for k in EXPORT_KEYS if k in p})
         return out
 
+    def recordings(self, device: str | None) -> list[dict]:
+        """
+        The kept enrolment recordings (`<device>.audio/NN.wav`, the opt-in
+        audio), for his account's My Files: read only, never moved or deleted
+        here. Regular private files of ours only (a link or a loose file is
+        skipped); at most RECORDINGS_MAX per device and RECORDING_MAX_BYTES each.
+        """
+        import base64
+
+        if device is not None and not valid_device(device):
+            raise StoreError("bad device")
+        out: list[dict] = []
+        if not self._ready(create=False):
+            return out
+        created = {s["device"]: s.get("created") for s in self.prints()}
+        for name in sorted(os.listdir(self.root)):
+            m = re.match(r"^([a-z0-9][a-z0-9-]{0,31})\.audio$", name)
+            if not m or (device is not None and m.group(1) != device):
+                continue
+            d = os.path.join(self.root, name)
+            if path_problem(d, want_dir=True):
+                print(f"recordings skipped: {name} not private", file=sys.stderr, flush=True)
+                continue
+            n = 0
+            for w in sorted(os.listdir(d)):
+                f = os.path.join(d, w)
+                if not re.fullmatch(r"\d{2}\.wav", w) or path_problem(f, want_dir=False):
+                    continue
+                if n >= RECORDINGS_MAX or os.lstat(f).st_size > RECORDING_MAX_BYTES:
+                    continue
+                with open(f, "rb") as fh:
+                    data = fh.read()
+                out.append({"device": m.group(1), "name": w, "created": created.get(m.group(1)),
+                            "wav": base64.b64encode(data).decode("ascii")})
+                n += 1
+        return out
+
     def restore(self, p: object) -> dict:
         """
         Write one print read back from the account (export's form, checked
@@ -479,6 +516,10 @@ class Store:
             raise StoreError(f"{d} {why}")
         write_private(os.path.join(d, f"{i:02d}.wav"), wav_bytes(audio))
 
+
+#: Kept recordings handed over per device at most, and the largest one (a 30 s sentence is ~1 MB).
+RECORDINGS_MAX = 40
+RECORDING_MAX_BYTES = 2 * 1024 * 1024
 
 #: What leaves the Mac for the owner's account (lib/voiceprint-cloud.ts PRINT_KEYS): features only.
 EXPORT_KEYS = ("device", "model", "dim", "n", "created", "updated", "self", "speechS", "centroid", "embeddings")

@@ -19,6 +19,7 @@ import {
   type CloudDeps,
   type CloudInfo,
   type CloudOp,
+  type StoredRecording,
   type EnrolDeps,
   type EnrolView,
   type FilterInfo,
@@ -60,7 +61,13 @@ export function panelDeps(o: {
   const c = createLocalStt(o.url, { device: o.device, log: o.log });
   return {
     device: o.device,
-    request: (m) => c.request(m),
+    request: (m, ro) => c.request(m, ro),
+    // A recording fed to an enrolment (re-compute): the whole clip as one utterance.
+    utter: (audio, enrolment) => {
+      const u = c.begin(() => {}, { enrol: enrolment });
+      if (!u) return Promise.reject(new Error("local stt not connected"));
+      return u.end(audio);
+    },
     ticket: (op, device, t) => voiceprintTicket(op, device, { keepAudio: t?.keepAudio }),
     capture: o.capture,
     filterInfo: async (state) => ({ flag: await filterFlag(), paused: filterPaused(), state, tally: readTally() }),
@@ -71,6 +78,9 @@ export function panelDeps(o: {
 }
 
 export const VOICEPRINT_CLOUD_PATH = "/api/my/voiceprint";
+/** His file store (lib/import/files.ts): recordings go to source `voiceprint`. */
+const RECORDINGS_PATH = "/api/import/files";
+const MY_FILES_PATH = "/api/my/files";
 /**
  * The account copy over app/api/my/voiceprint (the session cookie; own rows
  * only). A 404 means the feature is off for this account: no account rows,
@@ -96,7 +106,50 @@ export function cloudDeps(f: (u: string, i: RequestInit) => Promise<Response> = 
       const o = await call("GET");
       if (o.status === 404) return null;
       const prints = Array.isArray(must(o).prints) ? (o.j.prints as CloudInfo["prints"]) : [];
-      return { prints };
+      const recordings = await this.recordings.list().then(
+        (l) => l.length,
+        () => 0,
+      );
+      return {
+        prints,
+        recordings,
+        ...(typeof o.j.extractor === "string" ? { extractor: o.j.extractor } : {}),
+      };
+    },
+    recordings: {
+      async list() {
+        const r = await f(`${RECORDINGS_PATH}?source=voiceprint`, {
+          credentials: "same-origin",
+          headers: { accept: "application/json" },
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = (await r.json()) as { items?: StoredRecording[] };
+        return (j.items ?? []).map((i) => ({ id: i.id, name: i.name }));
+      },
+      async upload(name, bytes) {
+        const r = await f(`${RECORDINGS_PATH}?source=voiceprint`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "content-type": "audio/wav", "x-file-name": encodeURIComponent(name) },
+          body: new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "audio/wav" }),
+        });
+        if (!r.ok) {
+          const j = (await r.json().catch(() => ({}))) as { error?: string };
+          throw new Error(`upload ${j.error ?? r.status}`);
+        }
+      },
+      async download(id) {
+        const r = await f(`${MY_FILES_PATH}/${encodeURIComponent(id)}`, { credentials: "same-origin" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      },
+      async delete(id) {
+        const r = await f(`${MY_FILES_PATH}/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          credentials: "same-origin",
+        });
+        if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
+      },
     },
     async features() {
       const j = must(await call("GET", "?features=1"));
@@ -233,12 +286,21 @@ export function VoiceprintPanel({
     return (
       <div data-testid="debug-voiceprint-cloud" data-state={op ? `${op.kind}-${op.state}` : "idle"} style={{ marginTop: 10 }}>
         {note(cl.prints.length ? t.vpCloudHas.replaceAll("{devices}", devices) : t.vpCloudNone, "debug-voiceprint-cloud-list")}
-        {op?.state === "busy" && note(op.kind === "save" ? t.vpCloudSaving : t.vpCloudRestoring)}
+        {(cl.recordings ?? 0) > 0 &&
+          note(t.vpRecHas.replaceAll("{n}", String(cl.recordings)), "debug-voiceprint-recordings")}
+        {op?.state === "busy" &&
+          note(op.kind === "save" ? t.vpCloudSaving : op.kind === "restore" ? t.vpCloudRestoring : t.vpRecomputing)}
         {op?.state === "done" &&
           note(
-            (op.kind === "save" ? t.vpCloudSaved : t.vpCloudRestored).replaceAll("{n}", String(op.n)),
+            (op.kind === "save" ? t.vpCloudSaved : op.kind === "restore" ? t.vpCloudRestored : t.vpRecomputed).replaceAll(
+              "{n}",
+              String(op.n),
+            ),
             "debug-voiceprint-cloud-done",
           )}
+        {op?.state === "done" &&
+          (op.files ?? 0) > 0 &&
+          note(t.vpRecSaved.replaceAll("{n}", String(op.files)), "debug-voiceprint-recordings-saved")}
         {op?.state === "failed" && note(t.vpCloudFailed.replaceAll("{error}", op.error), "debug-voiceprint-cloud-error")}
         {local &&
           row(
@@ -247,6 +309,12 @@ export function VoiceprintPanel({
               {restore &&
                 cl.prints.length > 0 &&
                 btn("debug-voiceprint-cloud-restore", t.vpCloudRestore, () => c.restoreFromAccount(), {
+                  trusted: true,
+                  disabled: busy,
+                })}
+              {restore &&
+                (cl.recordings ?? 0) > 0 &&
+                btn("debug-voiceprint-recompute", t.vpRecompute, () => c.recompute(), {
                   trusted: true,
                   disabled: busy,
                 })}
@@ -380,6 +448,22 @@ export function VoiceprintPanel({
           {note(t.vpDeleted, "debug-voiceprint-deleted")}
           {view.cloudError &&
             note(t.vpCloudFailed.replaceAll("{error}", view.cloudError), "debug-voiceprint-cloud-error")}
+          {/* His recordings in My Files: a separate question, never deleted with the voiceprint. */}
+          {view.recordings && view.recordings.state !== "done" && (
+            <>
+              {note(t.vpRecDeleteOffer.replaceAll("{n}", String(view.recordings.n)), "debug-voiceprint-recordings-offer")}
+              {view.recordings.state === "failed" &&
+                note(t.vpCloudFailed.replaceAll("{error}", view.recordings.error ?? ""), "debug-voiceprint-recordings-error")}
+              {row(
+                btn("debug-voiceprint-recordings-delete", t.vpRecDeleteYes, () => void c.deleteRecordings(), {
+                  danger: true,
+                  trusted: true,
+                  disabled: view.recordings.state === "busy",
+                }),
+              )}
+            </>
+          )}
+          {view.recordings?.state === "done" && note(t.vpRecDeleted, "debug-voiceprint-recordings-deleted")}
           {row(btn("debug-voiceprint-close", t.vpClose, close))}
         </>
       );
