@@ -59,6 +59,7 @@ import readGdocDrive from "@/app/(app)/reader/read-gdoc-drive.content";
 import drivePick from "@/app/(app)/connections/drive-pick.content";
 import readRowMenu from "@/app/(app)/reader/read-row-menu.content";
 import readList from "@/app/(app)/reader/read-list.content";
+import readHome from "@/app/(app)/reader/read-home.content";
 import selfIntroImport from "@/app/(app)/self-intro/import.content";
 import booksPage from "@/app/(app)/library/page.content";
 import myBooks from "@/app/(app)/books/my-books.content";
@@ -185,6 +186,7 @@ describe.each([
   ["drive-pick", drivePick],
   ["read-row-menu", readRowMenu],
   ["read-list", readList],
+  ["read-home", readHome],
   ["self-intro-import", selfIntroImport],
   ["books-page", booksPage],
   ["my-books", myBooks],

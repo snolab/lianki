@@ -29,6 +29,7 @@ import {
   notesInLines,
   putProgress,
   readSamples,
+  recentProgress,
   recordExposures,
   reviewsInLines,
   saveContentHash,
@@ -455,6 +456,20 @@ describe("progress: synced position", () => {
     );
     expect(p.advanced).toEqual([3, 5]);
     expect(await getProgress(db, B.userId, A.materialId)).toEqual({ anchor: null, highLine: null });
+  });
+
+  it("recent positions, newest anchor first, only the user's own (Continue reading)", async () => {
+    expect(await recentProgress(db, A.userId, 5)).toEqual([]);
+    const put = (userId: string, materialId: string, line: number, at: string) =>
+      putProgress(db, userId, materialId, { line, offset: 0, at }, NOW);
+    await put(A.userId, "mat-old", 1, "2026-11-03T08:00:00Z");
+    await put(A.userId, "mat-new", 3, "2026-11-03T10:00:00Z");
+    await put(B.userId, "mat-b", 2, "2026-11-03T11:00:00Z");
+    expect(await recentProgress(db, A.userId, 5)).toEqual([
+      { materialId: "mat-new", line: 3, at: "2026-11-03T10:00:00Z" },
+      { materialId: "mat-old", line: 1, at: "2026-11-03T08:00:00Z" },
+    ]);
+    expect((await recentProgress(db, A.userId, 1)).map((r) => r.materialId)).toEqual(["mat-new"]);
   });
 });
 

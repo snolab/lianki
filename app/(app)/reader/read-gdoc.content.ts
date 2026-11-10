@@ -244,7 +244,7 @@ const dictionary = {
 
 const context: Record<keyof typeof dictionary.content, string> = {
   importGdoc:
-    "Button on the /read page, beside Import Text Material and Import EPUB: opens a small form to import a Google Docs document by its link as private reading material. Imperative verb; keep Google as written; use the product's local name for Google Docs / a Google document.",
+    "Option in the Import pop-up on /reader, beside Import text and Import EPUB: opens a small form (in the same pop-up) to import a Google Docs document by its link as private reading material. Imperative verb; keep Google as written; use the product's local name for Google Docs / a Google document.",
   urlLabel:
     "Screen-reader label of the text field in that form where the user pastes the link (URL) of a Google Docs document. A short noun phrase; keep Google Docs as the product's local name.",
   note: "Small grey note under the Google Doc link field: only docs whose sharing is set to the Google sharing option “Anyone with the link” can be imported; the imported text is private to the user's account; importing the same document again updates the existing copy instead of adding another. Use Google's own localized name for the “Anyone with the link” option.",
