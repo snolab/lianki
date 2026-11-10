@@ -181,7 +181,12 @@ export function resetPace() {
 
 // ── The store ──────────────────────────────────────────────────────────────
 
-export type Spoken = { text: string; lang: string; span: Span } | null;
+/**
+ * `owner`: the card whose reading this is (the one tapped, held or focused).
+ * The same sentence can show on several cards at once; only the owner's
+ * example lights up and follows the voice (owner, 2026-11-11 01:20 JST).
+ */
+export type Spoken = { text: string; lang: string; span: Span; owner?: string } | null;
 let current: Spoken = null;
 const listeners = new Set<() => void>();
 export const spokenWord = {
@@ -197,6 +202,7 @@ export const spokenWord = {
         current &&
         next.text === current.text &&
         next.lang === current.lang &&
+        next.owner === current.owner &&
         next.span[0] === current.span[0] &&
         next.span[1] === current.span[1]);
     if (same) return;
@@ -205,9 +211,14 @@ export const spokenWord = {
   },
 };
 
-/** The spoken stretch inside `text`, as shown (its own offsets), or null. */
-export function spokenIn(s: Spoken, text: string): Span | null {
+/**
+ * The spoken stretch inside `text`, as shown (its own offsets), or null.
+ * A reading with an owner lights only that owner's example (`owner`): another
+ * card showing the same sentence stays still.
+ */
+export function spokenIn(s: Spoken, text: string, owner?: string): Span | null {
   if (!s) return null;
+  if (s.owner !== undefined && s.owner !== owner) return null;
   const at = text.indexOf(s.text);
   if (at < 0 || text.trim() !== s.text.trim()) return null;
   return [s.span[0] + at, s.span[1] + at];
@@ -229,6 +240,12 @@ export type AudioClock = {
 };
 
 type Out = (s: Spoken) => void;
+
+/** The store's setter, stamping each mark with the reading's owner card. */
+export function ownedBy(owner: string | undefined): Out {
+  if (owner === undefined) return spokenWord.set;
+  return (s) => spokenWord.set(s && { ...s, owner });
+}
 
 /**
  * Follow a playing clip: each frame while it plays, the word at

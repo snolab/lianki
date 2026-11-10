@@ -7,7 +7,11 @@ import { spokenText, type SpokenCard } from "@/lib/words/spoken";
  * its own language.
  */
 export type PartKind = "word" | "meaning" | "example";
-export type SayPart = { kind: PartKind; text: string; lang: string };
+/**
+ * `owner`: the card it belongs to (its key), so the spoken-word highlight
+ * lights that card's example and no other card showing the same sentence.
+ */
+export type SayPart = { kind: PartKind; text: string; lang: string; owner?: string };
 
 /**
  * Who voices the meaning, until the owner decides:

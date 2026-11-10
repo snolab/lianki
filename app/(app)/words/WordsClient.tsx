@@ -134,6 +134,7 @@ import {
 import {
   followAudio,
   followSpeech,
+  ownedBy,
   spokenIn,
   spokenWord,
   type Span as SpokenSpan,
@@ -556,16 +557,19 @@ export function MarkedExample({
   fam,
   heads,
   forms = [],
+  owner,
 }: {
   text: string;
   lang: string;
   fam?: FamMap;
   heads?: HeadMap;
   forms?: readonly (string | null | undefined)[];
+  /** The card this example is on (keyOf): only that card's reading lights it. */
+  owner?: string;
 }) {
   const known = fam?.get(famLang(lang));
   const spans = targetSpans(text, forms, lang, heads?.get(famLang(lang)));
-  const spoken = useSpokenSpan(text);
+  const spoken = useSpokenSpan(text, owner);
   const spokenEl = useSpokenFollow(spoken);
   if (!known && !spans.length && !spoken) return <>{text}</>;
   const piece = (p: Piece & { spoken: boolean }, k: number) => {
@@ -608,11 +612,11 @@ export function MarkedExample({
  * (spokenWord, lib/words/spoken-word.ts). Only the example being read
  * re-renders as the voice moves on.
  */
-function useSpokenSpan(text: string): SpokenSpan | null {
+function useSpokenSpan(text: string, owner?: string): SpokenSpan | null {
   const key = useSyncExternalStore(
     spokenWord.subscribe,
     () => {
-      const s = spokenIn(spokenWord.get(), text);
+      const s = spokenIn(spokenWord.get(), text, owner);
       return s ? `${s[0]}:${s[1]}` : "";
     },
     () => "",
@@ -1204,7 +1208,7 @@ function useSpeech(serverVoice = false) {
    * limit, offline). `track`: mark the word being said (an example).
    */
   const serverSpeak = useCallback(
-    async (text: string, lang: string, done: Done, track = false) => {
+    async (text: string, lang: string, done: Done, track = false, owner?: string) => {
       const gen = generation.current;
       const t0 = performance.now();
       // Prefetched, most of the time: then it plays at once, still inside the
@@ -1220,7 +1224,7 @@ function useSpeech(serverVoice = false) {
       audio.current = c;
       if (track) {
         unfollow();
-        follow.current = followAudio(c.el, text, lang, FRAMES);
+        follow.current = followAudio(c.el, text, lang, FRAMES, ownedBy(owner));
       }
       // Debug mode only: how long from "say it" to sound, and where it went —
       // waiting for the clip, or the element starting to play.
@@ -1254,7 +1258,14 @@ function useSpeech(serverVoice = false) {
 
   /** `serverTried`: the server already failed this text — don't ask again. */
   const browserSpeak = useCallback(
-    (text: string, lang: string, done: Done, serverTried = false, track = false) => {
+    (
+      text: string,
+      lang: string,
+      done: Done,
+      serverTried = false,
+      track = false,
+      owner?: string,
+    ) => {
       const gen = generation.current;
       const viaServer = () => {
         if (serverTried) {
@@ -1262,7 +1273,7 @@ function useSpeech(serverVoice = false) {
           devLog({ ev: "silent", lang, text, reason: "no server clip, no browser voice" });
           return done(false);
         }
-        void serverSpeak(text, lang, done, track).then(
+        void serverSpeak(text, lang, done, track, owner).then(
           (ok) => !ok && gen === generation.current && done(false),
         );
       };
@@ -1278,12 +1289,18 @@ function useSpeech(serverVoice = false) {
       u.rate = 0.9;
       // The word being said: exact from boundary events, else estimated.
       const words = track
-        ? followSpeech(text, lang, u.rate, {
-            now: () => performance.now(),
-            frames: FRAMES,
-            setTimer: (fn, ms) => setTimeout(fn, ms),
-            clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
-          })
+        ? followSpeech(
+            text,
+            lang,
+            u.rate,
+            {
+              now: () => performance.now(),
+              frames: FRAMES,
+              setTimer: (fn, ms) => setTimeout(fn, ms),
+              clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+            },
+            ownedBy(owner),
+          )
         : null;
       if (words) {
         unfollow();
@@ -1347,11 +1364,13 @@ function useSpeech(serverVoice = false) {
       // The server voice by default: browser voices can mislead (Japanese read
       // in a Chinese accent). The browser speaks only where the server can't —
       // a language or text it has no voice for, the rate limit, offline.
-      if (!viaServer(p)) return browserSpeak(p.text, p.lang, done, false, track);
+      if (!viaServer(p)) return browserSpeak(p.text, p.lang, done, false, track, p.owner);
       const gen = generation.current;
-      void serverSpeak(p.text, p.lang, done, track).then(
+      void serverSpeak(p.text, p.lang, done, track, p.owner).then(
         (ok) =>
-          !ok && gen === generation.current && browserSpeak(p.text, p.lang, done, true, track),
+          !ok &&
+          gen === generation.current &&
+          browserSpeak(p.text, p.lang, done, true, track, p.owner),
       );
     },
     [serverVoice, viaServer, serverSpeak, browserSpeak, unfollow],
@@ -3881,7 +3900,10 @@ export function Study({
   const { locale } = useLocale();
   /** What a tap, a hold or the focus reads: word → example → meaning (the row's order). */
   const partsOf = useCallback(
-    (it: Item) => sayParts(it, it.lang, !!config.readingOnBack, String(locale)),
+    (it: Item) =>
+      sayParts(it, it.lang, !!config.readingOnBack, String(locale)).map((p) =>
+        p.kind === "example" ? { ...p, owner: keyOf(it) } : p,
+      ),
     [config.readingOnBack, locale],
   );
   /** A word's tags, for the double-tap sheet: its list and the list's level (JLPT, CEFR…). */
@@ -5903,6 +5925,7 @@ export function Study({
                                   fam={fam.current}
                                   heads={heads.current}
                                   forms={[it.term, it.reading]}
+                                  owner={keyOf(it)}
                                 />
                               </bdi>
                             </Glance>
@@ -5939,6 +5962,7 @@ export function Study({
                                   fam={fam.current}
                                   heads={heads.current}
                                   forms={[it.term, it.reading]}
+                                  owner={keyOf(it)}
                                 />
                               </bdi>
                               {it.exTr && (
@@ -6138,6 +6162,7 @@ function SlipSheet({
                 lang={item.lang}
                 heads={heads}
                 forms={[item.term, item.reading]}
+                owner={keyOf(item)}
               />
             </div>
             {item.exTr && <div className="mt-1 text-sm opacity-60">{item.exTr}</div>}
