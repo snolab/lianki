@@ -793,8 +793,11 @@ split lines merge no further. It works with the flag off too.
 The chat menu's **Voiceprint** (owner pages with a local STT) opens a panel
 over the bar (`VoiceprintPanel.tsx`, `voiceprint.ts`): enrol this device
 (a consent card first, nothing captured until "I agree, start"), the
-sentences to read, and "Delete my voiceprint" (a confirming tap). The print
-lives only on the Mac; voice lines it verified as him get a small green
+sentences to read, "Save to my account" / "Restore from my account" (the
+features, never audio, encrypted in his account; flag `stt.voiceprint-cloud`),
+and "Delete my voiceprint" (a confirming tap; the Mac and the account). The
+print lives on the Mac, and a copy of its features in his account once he
+saves it there; voice lines it verified as him get a small green
 check (`VoiceMark`). The same rule as recording: starting enrolment and
 deleting are taps, never voice. Details: [local-stt.md](local-stt.md),
 "Voiceprint".

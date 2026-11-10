@@ -99,7 +99,7 @@ to every signed-in user while it is on).
 ### My Files: /my/files (owner, 2026-11-10)
 
 Every file the user stored, in **folders by origin** (`source`):
-Self-introduction, Word lists, Books (own books from /books, source `books`: docs/books-plan.md, "Your own books on /books"), Chat, Other (`lib/import/my-files.ts`; a new
+Self-introduction, Word lists, Books (own books from /books, source `books`: docs/books-plan.md, "Your own books on /books"), Chat, Voiceprint (the recordings of his voiceprint enrolment, source `voiceprint`, put there by the Voiceprint panel; gate `stt.voiceprint-cloud` + `dev`: docs/local-stt.md, "Voiceprint in your account"), Other (`lib/import/my-files.ts`; a new
 source lands in Other until it gets a folder). Each row: name, size, time,
 **Open** (`GET /api/my/files/<id>`, served to its owner only, as an
 attachment) and × (`DELETE /api/my/files/<id>`: the R2 object and the row,

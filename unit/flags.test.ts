@@ -47,11 +47,13 @@ describe("registry", () => {
     expect(FLAG_KEYS).toContain("payments.komoju.live");
     // Default-on is for a flag that keeps something already live switchable, or a
     // feature the owner asked to ship on (today.goal, words.onboarding and the
-    // card-height pinch, 2026-11-10; /library and My books /books, 2026-11-10).
+    // card-height pinch, 2026-11-10; /library and My books /books, 2026-11-10; the
+    // voiceprint in his account, tap card 2026-11-10 23:31 JST, audience owner + dev).
     const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
     expect(on).toEqual([
       "today.goal",
       "words.onboarding",
+      "stt.voiceprint-cloud",
       "stt.polish",
       "library.catalogue",
       "books.mine",

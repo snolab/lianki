@@ -46,6 +46,8 @@ export const UPLOAD_SOURCES = [
   "import",
   "self-intro",
   "books",
+  // The voiceprint's enrolment recordings (the Voiceprint panel; gate stt.voiceprint-cloud + dev).
+  "voiceprint",
 ] as const satisfies readonly InboxSource[];
 export type UploadSource = (typeof UPLOAD_SOURCES)[number];
 

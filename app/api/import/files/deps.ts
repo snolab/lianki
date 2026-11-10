@@ -1,5 +1,6 @@
 import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
+import { flagIn } from "@/lib/flags";
 import { isDev } from "@/lib/permissions";
 import { importAnyOn } from "@/lib/import/words-handler";
 import type { ImportFilesDeps } from "@/lib/import/files";
@@ -20,8 +21,11 @@ export const importFilesDeps = (): ImportFilesDeps => ({
   on: async (who, source = "import") => {
     const flags = await readFlags();
     const dev = isDev(who.email);
+    // His voiceprint's recordings: the same gate as the features in his account.
+    const voiceprint = dev && flagIn(flags, "stt.voiceprint-cloud");
     if (source === "books") return booksMineOn(flags, dev);
-    if (source === "any") return importAnyOn(flags, dev) || booksMineOn(flags, dev);
+    if (source === "voiceprint") return voiceprint;
+    if (source === "any") return importAnyOn(flags, dev) || booksMineOn(flags, dev) || voiceprint;
     return importAnyOn(flags, dev);
   },
   available: dbBackend() === "d1",

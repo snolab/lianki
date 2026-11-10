@@ -551,7 +551,7 @@ describe("the delete control", () => {
     await h.c.confirmDelete(); // not asked yet: nothing
     expect(h.sent.some((m) => m.op === "delete")).toBe(false);
     h.c.askDelete();
-    expect(h.c.view()).toEqual({ step: "confirm-delete" });
+    expect(h.c.view()).toEqual({ step: "confirm-delete", local: true });
     expect(h.sent.some((m) => m.op === "delete")).toBe(false);
     await h.c.confirmDelete();
     expect(h.tickets.at(-1)).toBe("delete:*");
