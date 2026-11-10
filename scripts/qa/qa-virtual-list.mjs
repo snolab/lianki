@@ -220,18 +220,30 @@ for (const [name, device] of [
     `${name}: /data no page buttons`,
   );
   await page.mouse.move(vp.width / 2, vp.height / 2);
+  // Every row the table ever renders is recorded in the page (a sample per
+  // step could miss a row that is in the DOM only between two samples).
+  await page.evaluate(() => {
+    const seen = (window.__vlSeen = new Set());
+    const grab = () =>
+      document.querySelectorAll("tbody tr[data-key]").forEach((r) => seen.add(r.dataset.key));
+    grab();
+    new MutationObserver(grab).observe(document.body, { childList: true, subtree: true });
+  });
   const dataSeen = new Set();
   let dataMax = 0;
-  for (let step = 0; step < 300; step++) {
-    const ts = await page
-      .locator("tbody tr[data-key]")
-      .evaluateAll((rs) => rs.map((r) => r.dataset.key));
-    ts.forEach((t) => dataSeen.add(t));
-    dataMax = Math.max(dataMax, ts.length);
-    if ((await page.locator('[data-testid="vlist-end"]').count()) && dataSeen.size >= dataTotal)
-      break;
-    await page.mouse.wheel(0, 400);
-    await page.waitForTimeout(80);
+  for (let step = 0; step < 400; step++) {
+    const [ts, all] = await page.evaluate(() => [
+      document.querySelectorAll("tbody tr[data-key]").length,
+      [...window.__vlSeen],
+    ]);
+    all.forEach((t) => dataSeen.add(t));
+    dataMax = Math.max(dataMax, ts);
+    if (dataSeen.size >= dataTotal) break;
+    // A batch that failed under load: the list's own Try again.
+    const retry = page.locator('[data-testid="vlist-retry"]');
+    if (await retry.count()) await retry.click();
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(100);
   }
   check(dataSeen.size === dataTotal, `${name}: /data all rows reachable (${dataSeen.size})`);
   check(dataMax < dataTotal, `${name}: /data only a window of rows (max ${dataMax})`);
