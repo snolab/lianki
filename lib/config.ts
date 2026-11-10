@@ -115,6 +115,37 @@ export const CONFIG = {
     audience: "server",
     description: "联系表单每一栏（姓名、邮箱、电话、留言）最多多少个字符，超过就拒收。",
   }),
+  // The card-height pinch on /words (lib/words/row-pinch.ts, PinchFeel; lib/words/use-row-pinch.ts).
+  "words.pinchGainPct": int({
+    default: 40,
+    min: 5,
+    max: 150,
+    unit: "%",
+    group: "words",
+    audience: "public",
+    description:
+      "/words 双指捏合调卡片高度的灵敏度（百分比）：两指距离变成两倍时，卡片高度变成 2^(值/100) 倍。40 = 约 1.32 倍；100 = 跟手指一样快（最初的版本，太灵敏）。越小越不灵敏。",
+  }),
+  "words.pinchDeadZonePct": int({
+    default: 6,
+    min: 0,
+    max: 50,
+    unit: "%",
+    group: "words",
+    audience: "public",
+    description:
+      "/words 捏合的死区（百分比）：两指距离变化不到这么多时卡片高度不动，手指轻微抖动不会让列表跟着晃。",
+  }),
+  "words.pinchSmoothMs": int({
+    default: 70,
+    min: 0,
+    max: 400,
+    unit: "ms",
+    group: "words",
+    audience: "public",
+    description:
+      "/words 捏合时卡片高度跟随手指的缓动时间常数（毫秒）：越大越平滑、跟得越慢；0 = 不缓动，直接跟手指。",
+  }),
   // Read by the progress hub (lianki-push) over DebugSessions.config; docs/state-tree.md, "Waiting on the owner".
   "chat.ownerWaitRemindDays": {
     default: "1,3,7" as string,

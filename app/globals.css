@@ -747,6 +747,15 @@ html[data-motion="off"] .lk-ex-spoken {
   color: inherit;
 }
 
+/* Two fingers pinching the card height (lib/words/use-row-pinch.ts): the list
+ * does not scroll natively, so the scroll that keeps the fingers' row in place
+ * is the only one (iOS kept panning under it and the list shook). Still
+ * scrollable by script; overflow-anchor stays none (the list's own style). */
+.lk-words-list.lk-pinching {
+  overflow-y: hidden !important;
+  touch-action: none !important;
+}
+
 /* A back cell the row has no room for (a pinched-in row, lib/words/row-pinch.ts):
  * laid out at its width, at no height, so the pinch can still measure it. */
 .slip-cell-hidden {

@@ -10,9 +10,20 @@
 // - the height is kept (lk:words-card-height) and survives a reload;
 // - one finger still swipes: a sideways drag grades the row, which fades
 //   (.slip-done) at AA contrast; undo (Z) restores the normal look;
-// - motion off: on lifting, the row is at its settled height at once.
+// - motion off: on lifting, the row is at its settled height at once;
+// - the list holds still (owner, iPhone, 2026-11-10: it shook): through a
+//   pinch and its settle, frame by frame, the row under the fingers stays
+//   under them (within a few px) and every other row stays joined to it; no
+//   native scroll runs under the pinch. Chromium (CDP touches) and WebKit
+//   (iPhone 13; touches dispatched in the page, as WebKit's driver has no
+//   multi-touch).
+//
+// The height follows the spread at the configured gain past a dead zone
+// (config words.pinchGainPct / pinchDeadZonePct, lib/words/row-pinch.ts);
+// this suite uses the defaults.
 import { mkdirSync } from "node:fs";
-import { chromium, devices } from "playwright";
+import { chromium, devices, webkit } from "playwright";
+import { CONFIG } from "../../lib/config.ts";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 import { budget } from "./load-budget.mjs";
 
@@ -28,10 +39,14 @@ const check = (ok, name) => {
 };
 
 const browser = await launchSilent(chromium);
+const GAIN = CONFIG["words.pinchGainPct"].default / 100;
+const DEAD = CONFIG["words.pinchDeadZonePct"].default / 100;
+/** The finger spread ratio that asks for a height ratio `k` (the inverse of pinchRatio). */
+const spreadFor = (k) => (1 + DEAD) ** Math.sign(Math.log(k)) * k ** (1 / GAIN);
 
 /** A fresh iPhone, signed up, holding one catalog list; the list's URL. */
-async function phone(name, extra = {}) {
-  const ctx = await newSilentContext(browser, { ...devices["iPhone 13"], ...extra });
+async function phone(name, extra = {}, b = browser) {
+  const ctx = await newSilentContext(b, { ...devices["iPhone 13"], ...extra });
   await ctx.addInitScript(() => {
     localStorage.setItem("lk:first-run", "account");
     localStorage.setItem(
@@ -65,7 +80,7 @@ async function phone(name, extra = {}) {
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.locator("[data-ready]").waitFor({ timeout: budget(60000) });
   await page.waitForTimeout(400);
-  const cdp = await ctx.newCDPSession(page);
+  const cdp = b === browser ? await ctx.newCDPSession(page) : null;
   return { ctx, page, cdp, url };
 }
 
@@ -131,15 +146,18 @@ const stored = (page) => page.evaluate(() => localStorage.getItem("lk:words-card
   const h2 = await rowH(page);
   check(Math.abs(h2 - h1) <= 1, `kept across a reload (${h1} → ${h2})`);
 
-  // Pinch in to the end: the word alone.
+  // Pinch in to the end: the word alone. The gain is low (the range is
+  // small), so it takes a few pinches, as it would a finger.
   const cdp2 = await ctx.newCDPSession(page);
-  await pinch(cdp2, page, {
-    x: box.x + box.width * 0.6,
-    from: [cy - 150, cy + 150],
-    to: [cy - 8, cy + 8],
-    steps: 12,
-  });
-  await page.waitForTimeout(400);
+  for (let n = 0; n < 3; n++) {
+    await pinch(cdp2, page, {
+      x: box.x + box.width * 0.6,
+      from: [cy - 200, cy + 200],
+      to: [cy - 8, cy + 8],
+      steps: 12,
+    });
+    await page.waitForTimeout(400);
+  }
   const h3 = await rowH(page);
   check(h3 < h0 * 0.6, `pinched in: denser rows (${h0} → ${h3})`);
   const hidden = await page.evaluate(() => {
@@ -152,11 +170,12 @@ const stored = (page) => page.evaluate(() => localStorage.getItem("lk:words-card
   await page.screenshot({ path: `${OUT}/word-only.png` });
 
   // Back to the default by a pinch out, then one finger swipes as before.
+  const back = spreadFor(h0 / h3);
   await pinch(cdp2, page, {
     x: box.x + box.width * 0.6,
     from: [cy - 30, cy + 30],
-    to: [cy - 30 * (h0 / h3), cy + 30 * (h0 / h3)],
-    steps: 10,
+    to: [cy - 30 * back, cy + 30 * back],
+    steps: 14,
   });
   await page.waitForTimeout(400);
   const h4 = await rowH(page);
@@ -226,6 +245,172 @@ const stored = (page) => page.evaluate(() => localStorage.getItem("lk:words-card
   const after = hs.slice(2);
   check(new Set(after).size === 1, `motion off: the new height at once (${hs.join(",")})`);
   await ctx.close();
+}
+
+// --- the list holds still ----------------------------------------------------
+/**
+ * Records every frame from now until `stopWatch`: where the anchor row's
+ * point (under `midY` at the start) is against `midY`, and the widest gap or
+ * overlap between two neighbouring rows.
+ */
+const watch = (page, midY) =>
+  page.evaluate((midY) => {
+    const list = document.querySelector(".lk-words-list");
+    const rows = () => [...list.querySelectorAll('[role="listitem"][data-i]')];
+    const row = rows().find((r) => {
+      const b = r.getBoundingClientRect();
+      return b.top <= midY && b.bottom > midY;
+    });
+    const b = row.getBoundingClientRect();
+    const L = {
+      i: row.dataset.i,
+      frac: (midY - b.top) / b.height,
+      drift: [],
+      gaps: [],
+      hs: [],
+      stop: false,
+    };
+    window.__hold = L;
+    const tick = () => {
+      if (L.stop) return;
+      const r = list.querySelector(`[data-i="${L.i}"]`);
+      if (r) {
+        const rb = r.getBoundingClientRect();
+        L.drift.push(rb.top + L.frac * rb.height - midY);
+        L.hs.push(rb.height);
+      }
+      const seen = rows()
+        .map((e) => [Number(e.dataset.i), e.getBoundingClientRect()])
+        .sort((x, y) => x[0] - y[0]);
+      let worst = 0;
+      for (let k = 1; k < seen.length; k++)
+        if (seen[k][0] === seen[k - 1][0] + 1)
+          worst = Math.max(worst, Math.abs(seen[k][1].top - seen[k - 1][1].bottom));
+      L.gaps.push(worst);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, midY);
+const stopWatch = (page) =>
+  page.evaluate(() => {
+    const L = window.__hold;
+    L.stop = true;
+    return L;
+  });
+
+/** Two touches dispatched in the page (WebKit's driver has no multi-touch). */
+async function pagePinch(page, { x, from, to, steps }) {
+  await page.evaluate(
+    async ({ x, from, to, steps }) => {
+      const list = document.querySelector(".lk-words-list");
+      const fire = (type, ys) => {
+        const target = document.elementFromPoint(x, (ys[0] + ys[1]) / 2) ?? list;
+        const pts = ys.map((y, i) => ({
+          identifier: i + 1,
+          target,
+          clientX: x + i * 6,
+          clientY: y,
+          pageX: x + i * 6,
+          pageY: y,
+        }));
+        let touches = pts;
+        try {
+          touches = pts.map((p) => new Touch(p));
+        } catch {}
+        const live = type === "touchend" ? [] : touches;
+        let e;
+        try {
+          e = new TouchEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            touches: live,
+            targetTouches: live,
+            changedTouches: touches,
+          });
+        } catch {
+          e = new Event(type, { bubbles: true, cancelable: true });
+          Object.defineProperty(e, "touches", { value: live });
+        }
+        target.dispatchEvent(e);
+      };
+      const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+      fire("touchstart", from);
+      for (let s = 1; s <= steps; s++) {
+        fire(
+          "touchmove",
+          from.map((f, i) => f + ((to[i] - f) * s) / steps),
+        );
+        await frame();
+        await frame();
+      }
+      fire("touchend", to);
+    },
+    { x, from, to, steps },
+  );
+}
+
+for (const [engine, type] of [
+  ["chromium", null],
+  ["webkit", webkit],
+]) {
+  const b = type ? await launchSilent(type) : browser;
+  try {
+    const { ctx, page, cdp } = await phone(`hold-${engine}`, {}, b);
+    // Into the list, so there are rows above and below the fingers.
+    await page.evaluate(() => {
+      const list = document.querySelector(".lk-words-list");
+      const r = list.querySelector('[role="listitem"][data-i]').getBoundingClientRect();
+      list.scrollTop += r.height * 8;
+    });
+    await page.waitForTimeout(400);
+    const box = await page.locator(".lk-words-list").boundingBox();
+    const cy = Math.round(box.y + box.height * 0.45);
+    const x = box.x + box.width * 0.6;
+    for (const [what, from, to] of [
+      ["out", [cy - 50, cy + 50], [cy - 160, cy + 160]],
+      ["in", [cy - 160, cy + 160], [cy - 30, cy + 30]],
+    ]) {
+      const scrollNow = () =>
+        page.evaluate(() => document.querySelector(".lk-words-list").scrollTop);
+      const h0 = await rowH(page);
+      const top0 = await scrollNow();
+      await watch(page, cy);
+      if (cdp) await pinch(cdp, page, { x, from, to, steps: 16 });
+      else await pagePinch(page, { x, from, to, steps: 16 });
+      await page.waitForTimeout(600);
+      const L = await stopWatch(page);
+      const h1 = await rowH(page);
+      const top1 = await scrollNow();
+      const drift = Math.max(...L.drift.map(Math.abs));
+      const gap = Math.max(...L.gaps);
+      const sizes = new Set(L.hs.map((h) => Math.round(h))).size;
+      check(
+        what === "out" ? h1 > h0 + 5 : h1 < h0 - 5,
+        `${engine} pinch ${what}: the rows changed (${h0} → ${h1}, ${sizes} heights over ${L.hs.length} frames)`,
+      );
+      check(
+        top1 !== top0,
+        `${engine} pinch ${what}: the list scrolled to hold the row (${top0} → ${top1})`,
+      );
+      check(
+        drift <= 3,
+        `${engine} pinch ${what}: row ${L.i} stays under the fingers, every frame (worst ${drift.toFixed(1)}px)`,
+      );
+      check(
+        gap <= 1.5,
+        `${engine} pinch ${what}: no row jumps off its neighbours (worst ${gap.toFixed(1)}px)`,
+      );
+      const frozen = await page.evaluate(() =>
+        document.querySelector(".lk-words-list").classList.contains("lk-pinching"),
+      );
+      check(!frozen, `${engine} pinch ${what}: the list scrolls again after the pinch`);
+    }
+    check((await graded(page)) === 0, `${engine}: the pinches graded nothing`);
+    await page.screenshot({ path: `${OUT}/hold-${engine}.png` });
+    await ctx.close();
+  } finally {
+    if (type) await b.close();
+  }
 }
 
 await browser.close();
