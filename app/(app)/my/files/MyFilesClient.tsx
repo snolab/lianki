@@ -10,7 +10,8 @@ import { useIntlayer, useLocale } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import { formatSize } from "@lianki/debug-chat/files";
 import { pendingDeletes } from "@/lib/import/uploads-client";
-import { FOLDERS, folderOf, type MyFile } from "@/lib/import/my-files";
+import { fileRows, folderOf, type MyFile } from "@/lib/import/my-files";
+import { VirtualList } from "@/app/components/VirtualList";
 
 export default function MyFilesClient({
   back,
@@ -91,54 +92,68 @@ export default function MyFilesClient({
         </p>
       )}
 
-      {FOLDERS.map((folder) => {
-        const inFolder = (files ?? []).filter((f) => folderOf(f.source) === folder);
-        if (!inFolder.length) return null;
-        return (
-          <section key={folder} className="mt-6" data-qa={`my-files-folder-${folder}`}>
-            <h2 className="flex items-center gap-2 text-base font-semibold">
-              <Icon name="folderSimple" />
-              {t.folders[folder]}
-              <span className={`text-sm font-normal ${muted}`}>
-                {t.count.value.replace("{n}", inFolder.length.toLocaleString(locale))}
-              </span>
-            </h2>
-            <ul className="mt-1 divide-y divide-[oklch(0.5_0_0/0.15)]">
-              {inFolder.map((f) => (
-                <li key={f.id} className="flex items-center gap-2 py-2" data-qa="my-file">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium" title={f.name}>
-                      {f.name}
-                    </span>
-                    <span className={`block text-xs ${muted}`}>
-                      {formatSize(f.size)} · {when(f.at)}
-                    </span>
+      {/* One virtual list, folder headings as rows (no pages, owner 2026-11-10). */}
+      <VirtualList
+        items={files ? fileRows(files) : []}
+        getKey={(r) => r.key}
+        name="my-files"
+        hasMore={false}
+        loading={files === null}
+        onReachEnd={() => {}}
+        estimateSize={56}
+        label={t.title.value}
+        testId="my-files-list"
+        renderItem={(r) => {
+          if (r.kind === "folder")
+            return (
+              <div className="mt-6" data-qa={`my-files-folder-${r.folder}`}>
+                <h2 className="flex items-center gap-2 text-base font-semibold">
+                  <Icon name="folderSimple" />
+                  {t.folders[r.folder]}
+                  <span className={`text-sm font-normal ${muted}`}>
+                    {t.count.value.replace("{n}", r.n.toLocaleString(locale))}
                   </span>
-                  <a
-                    href={`/api/my/files/${f.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-qa="my-file-open"
-                    className="flex min-h-11 shrink-0 items-center rounded-lg px-3 text-sm font-medium underline"
-                  >
-                    {t.open}
-                  </a>
-                  <button
-                    type="button"
-                    data-qa="my-file-delete"
-                    aria-label={t.deleteFile.value.replace("{file}", f.name)}
-                    title={t.deleteFile.value.replace("{file}", f.name)}
-                    onClick={() => remove(f)}
-                    className="flex size-11 shrink-0 items-center justify-center rounded-lg text-[oklch(0.5_0.18_25)] hover:bg-[oklch(0.6_0.2_25/0.1)] dark:text-[oklch(0.78_0.12_25)]"
-                  >
-                    <Icon name="trash" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+                </h2>
+              </div>
+            );
+          const f = r.file;
+          return (
+            <div
+              className="flex items-center gap-2 py-2 border-b border-[oklch(0.5_0_0/0.15)]"
+              data-qa="my-file"
+              data-folder={folderOf(f.source)}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium" title={f.name}>
+                  {f.name}
+                </span>
+                <span className={`block text-xs ${muted}`}>
+                  {formatSize(f.size)} · {when(f.at)}
+                </span>
+              </span>
+              <a
+                href={`/api/my/files/${f.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-qa="my-file-open"
+                className="flex min-h-11 shrink-0 items-center rounded-lg px-3 text-sm font-medium underline"
+              >
+                {t.open}
+              </a>
+              <button
+                type="button"
+                data-qa="my-file-delete"
+                aria-label={t.deleteFile.value.replace("{file}", f.name)}
+                title={t.deleteFile.value.replace("{file}", f.name)}
+                onClick={() => remove(f)}
+                className="flex size-11 shrink-0 items-center justify-center rounded-lg text-[oklch(0.5_0.18_25)] hover:bg-[oklch(0.6_0.2_25/0.1)] dark:text-[oklch(0.78_0.12_25)]"
+              >
+                <Icon name="trash" />
+              </button>
+            </div>
+          );
+        }}
+      />
 
       {toast && (
         <div

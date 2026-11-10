@@ -1,9 +1,11 @@
 "use client";
 
 import { previewDoc } from "@/lib/mail-templates/layout";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { LOCALE_LABELS } from "@/lib/constants";
+import { VirtualList } from "@/app/components/VirtualList";
+import { useInfiniteList } from "@/app/components/useInfiniteList";
 
 /**
  * /dev/mails: the send log (docs/mail-templates.md, "Send log") through
@@ -145,12 +147,8 @@ export default function MailsLog() {
   const [tab, setTab] = useState<"log" | "suppression">("log");
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [q, setQ] = useState("");
-  const [page, setPage] = useState(0);
-  const [list, setList] = useState<ListAnswer | null>(null);
-  const [supp, setSupp] = useState<{ rows: Suppression[]; total: number; page: number } | null>(
-    null,
-  );
-  const [suppPage, setSuppPage] = useState(0);
+  const [meta, setMeta] = useState<Omit<ListAnswer, "rows"> | null>(null);
+  const [suppTotal, setSuppTotal] = useState<number | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -171,27 +169,51 @@ export default function MailsLog() {
     [c.errOther.value],
   );
 
-  const want = useRef("");
-  const loadList = useCallback(async () => {
-    const p = new URLSearchParams();
-    for (const [k, v] of Object.entries(filters)) if (v) p.set(k, v);
-    p.set("page", String(page));
-    const key = p.toString();
-    want.current = key;
-    const r = await fetch(`/api/dev/mails?${key}`, { cache: "no-store" });
-    if (r.status === 404) return location.reload();
-    if (!r.ok) return setMsg({ ok: false, text: failText(r.status) });
-    const d = (await r.json()) as ListAnswer;
-    if (want.current === key) setList(d);
-  }, [filters, page, failText]);
+  // No pages (owner, 2026-11-10): both tables load more as they near their
+  // end; a filter or search starts over from the newest.
+  const logList = useInfiniteList<Item, number>({
+    getKey: (r) => r.id,
+    deps: [filters],
+    enabled: tab === "log",
+    fetchBatch: async (page) => {
+      const at = page ?? 0;
+      const p = new URLSearchParams();
+      for (const [k, v] of Object.entries(filters)) if (v) p.set(k, v);
+      p.set("page", String(at));
+      const r = await fetch(`/api/dev/mails?${p}`, { cache: "no-store" });
+      if (r.status === 404) location.reload();
+      if (!r.ok) {
+        setMsg({ ok: false, text: failText(r.status) });
+        throw new Error(String(r.status));
+      }
+      const { rows, ...m } = (await r.json()) as ListAnswer;
+      if (at === 0) setMeta(m);
+      const more = (at + 1) * m.pageSize < m.total;
+      return { items: rows, next: more ? at + 1 : null, total: m.total };
+    },
+  });
+  const list = meta ? { ...meta, rows: logList.items } : null;
+  const loadList = async () => logList.reload();
 
-  const loadSupp = useCallback(async () => {
-    const r = await fetch(`/api/dev/mails?view=suppression&page=${suppPage}`, {
-      cache: "no-store",
-    });
-    if (!r.ok) return setMsg({ ok: false, text: failText(r.status) });
-    setSupp(await r.json());
-  }, [suppPage, failText]);
+  const suppList = useInfiniteList<Suppression, number>({
+    getKey: (x) => x.recipientHash,
+    deps: [],
+    enabled: tab === "suppression",
+    fetchBatch: async (page) => {
+      const at = page ?? 0;
+      const r = await fetch(`/api/dev/mails?view=suppression&page=${at}`, { cache: "no-store" });
+      if (!r.ok) {
+        setMsg({ ok: false, text: failText(r.status) });
+        throw new Error(String(r.status));
+      }
+      const d = (await r.json()) as { rows: Suppression[]; total: number; pageSize?: number };
+      setSuppTotal(d.total);
+      const more = (at + 1) * (d.pageSize ?? 50) < d.total;
+      return { items: d.rows, next: more ? at + 1 : null, total: d.total };
+    },
+  });
+  const supp = suppTotal === null ? null : { rows: suppList.items, total: suppTotal };
+  const loadSupp = async () => suppList.reload();
 
   const loadDetail = useCallback(
     async (id: string) => {
@@ -204,16 +226,10 @@ export default function MailsLog() {
   );
 
   useEffect(() => {
-    if (tab === "log") void loadList();
-    else void loadSupp();
-  }, [tab, loadList, loadSupp]);
-
-  useEffect(() => {
     if (openId) void loadDetail(openId);
   }, [openId, loadDetail]);
 
   const setFilter = (k: keyof Filters, v: string) => {
-    setPage(0);
     setFilters((f) => ({ ...f, [k]: v }));
   };
 
@@ -296,7 +312,6 @@ export default function MailsLog() {
     }
     return [...m.entries()];
   })();
-  const pages = list ? Math.max(1, Math.ceil(list.total / list.pageSize)) : 1;
   const tagOf = (r: Item) =>
     r.version < 0 ? c.testSend.value : r.version === 0 ? c.builtin.value : `v${r.version}`;
 
@@ -425,7 +440,6 @@ export default function MailsLog() {
               className={BTN2}
               onClick={() => {
                 setQ("");
-                setPage(0);
                 setFilters(NO_FILTERS);
               }}
             >
@@ -462,66 +476,52 @@ export default function MailsLog() {
               {list.rows.length === 0 ? (
                 <p className="text-sm opacity-70">{c.empty}</p>
               ) : (
-                <ul
-                  data-testid="mails-list"
-                  className="divide-y divide-[oklch(0.88_0_0)] dark:divide-[oklch(0.35_0_0)] border-y border-[oklch(0.88_0_0)] dark:border-[oklch(0.35_0_0)]"
-                >
-                  {list.rows.map((r) => (
-                    <li key={r.id}>
-                      <button
-                        type="button"
-                        data-testid="mails-row"
-                        data-id={r.id}
-                        onClick={() => {
-                          setMsg(null);
-                          setOpenId(r.id);
-                        }}
-                        className="w-full text-left py-2 px-1 text-sm grid gap-x-3 gap-y-0.5 md:grid-cols-[9rem_minmax(0,1fr)_minmax(0,14rem)_8rem] items-baseline hover:bg-[oklch(0.96_0_0)] dark:hover:bg-[oklch(0.27_0_0)]"
-                      >
-                        <span className="font-mono text-xs opacity-80">{fmt(r.createdAt)}</span>
-                        <span className={`break-all ${r.masked ? "italic opacity-80" : ""}`}>
-                          {r.recipient}
+                <VirtualList
+                  items={list.rows}
+                  getKey={(r) => r.id}
+                  name="dev-mails"
+                  hasMore={logList.hasMore}
+                  loading={logList.loading}
+                  error={logList.error}
+                  total={list.total}
+                  onReachEnd={logList.loadMore}
+                  estimateSize={44}
+                  testId="mails-list"
+                  className="border-y border-[oklch(0.88_0_0)] dark:border-[oklch(0.35_0_0)]"
+                  rowClassName="border-b border-[oklch(0.88_0_0)] dark:border-[oklch(0.35_0_0)]"
+                  renderItem={(r) => (
+                    <button
+                      type="button"
+                      data-testid="mails-row"
+                      data-id={r.id}
+                      onClick={() => {
+                        setMsg(null);
+                        setOpenId(r.id);
+                      }}
+                      className="w-full text-left py-2 px-1 text-sm grid gap-x-3 gap-y-0.5 md:grid-cols-[9rem_minmax(0,1fr)_minmax(0,14rem)_8rem] items-baseline hover:bg-[oklch(0.96_0_0)] dark:hover:bg-[oklch(0.27_0_0)]"
+                    >
+                      <span className="font-mono text-xs opacity-80">{fmt(r.createdAt)}</span>
+                      <span className={`break-all ${r.masked ? "italic opacity-80" : ""}`}>
+                        {r.recipient}
+                      </span>
+                      <span className="min-w-0">
+                        {tplName(r.template)}{" "}
+                        <span className="text-xs opacity-70">
+                          {tagOf(r)} · {r.locale}
                         </span>
-                        <span className="min-w-0">
-                          {tplName(r.template)}{" "}
-                          <span className="text-xs opacity-70">
-                            {tagOf(r)} · {r.locale}
-                          </span>
+                      </span>
+                      <span>
+                        <span
+                          data-testid="mails-status"
+                          className={`inline-block px-1.5 rounded text-xs ${BADGE[r.status] ?? BADGE.queued}`}
+                        >
+                          {t.statuses[r.status]?.value ?? r.status}
                         </span>
-                        <span>
-                          <span
-                            data-testid="mails-status"
-                            className={`inline-block px-1.5 rounded text-xs ${BADGE[r.status] ?? BADGE.queued}`}
-                          >
-                            {t.statuses[r.status]?.value ?? r.status}
-                          </span>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                      </span>
+                    </button>
+                  )}
+                />
               )}
-              <div className="flex items-center gap-2 text-sm">
-                <button
-                  type="button"
-                  className={BTN2}
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                >
-                  {c.newer}
-                </button>
-                <span className="opacity-80">
-                  {fill(c.pageOf.value, { page: page + 1, pages })}
-                </span>
-                <button
-                  type="button"
-                  className={BTN2}
-                  disabled={page + 1 >= pages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  {c.older}
-                </button>
-              </div>
             </section>
           )}
         </>
@@ -534,10 +534,20 @@ export default function MailsLog() {
           ) : supp.rows.length === 0 ? (
             <p className="text-sm opacity-70">{c.noSuppression}</p>
           ) : (
-            <ul className="divide-y divide-[oklch(0.88_0_0)] dark:divide-[oklch(0.35_0_0)] text-sm">
-              {supp.rows.map((s) => (
-                <li
-                  key={s.recipientHash}
+            <VirtualList
+              items={supp.rows}
+              getKey={(x) => x.recipientHash}
+              name="dev-mails-suppression"
+              hasMore={suppList.hasMore}
+              loading={suppList.loading}
+              error={suppList.error}
+              total={supp.total}
+              onReachEnd={suppList.loadMore}
+              estimateSize={48}
+              className="text-sm"
+              rowClassName="border-b border-[oklch(0.88_0_0)] dark:border-[oklch(0.35_0_0)]"
+              renderItem={(s) => (
+                <div
                   data-testid="supp-row"
                   className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1"
                 >
@@ -558,29 +568,9 @@ export default function MailsLog() {
                   >
                     {c.remove}
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {supp && supp.total > 50 && (
-            <div className="flex items-center gap-2 text-sm">
-              <button
-                type="button"
-                className={BTN2}
-                disabled={suppPage === 0}
-                onClick={() => setSuppPage((p) => Math.max(0, p - 1))}
-              >
-                {c.newer}
-              </button>
-              <button
-                type="button"
-                className={BTN2}
-                disabled={(suppPage + 1) * 50 >= supp.total}
-                onClick={() => setSuppPage((p) => p + 1)}
-              >
-                {c.older}
-              </button>
-            </div>
+                </div>
+              )}
+            />
           )}
         </section>
       )}
