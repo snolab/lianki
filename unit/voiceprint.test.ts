@@ -576,7 +576,10 @@ describe("the delete control", () => {
   it("every string the panel shows has an English default", () => {
     for (const k of Object.keys(CHAT_STRINGS_EN).filter((k) => k.startsWith("vp")))
       expect((CHAT_STRINGS_EN as Record<string, string>)[k]!.length).toBeGreaterThan(1);
-    expect(CHAT_STRINGS_EN.vpConsent).toContain("~/.config/lianki-stt/voiceprints");
+    // Users read "Lianki's speech servers", never a person's computer (owner, 2026-11-11).
+    expect(CHAT_STRINGS_EN.vpConsent).toContain("Lianki's speech servers");
+    for (const k of Object.keys(CHAT_STRINGS_EN).filter((k) => k.startsWith("vp")))
+      expect((CHAT_STRINGS_EN as Record<string, string>)[k]).not.toMatch(/\bMac\b/);
   });
 });
 

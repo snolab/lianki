@@ -405,21 +405,21 @@ export type LocalSttStrings = {
 };
 const LOCAL_STT: Record<"en" | "zh" | "ja", LocalSttStrings> = {
   en: {
-    ready: "Local speech model connected",
-    connecting: "Connecting to the local speech model…",
-    down: "Local speech model unreachable: using the cloud",
+    ready: "Connected to Lianki's speech server",
+    connecting: "Connecting to Lianki's speech server…",
+    down: "Lianki's speech server unreachable: using the cloud",
     filtered: "Not your voice: not sent",
   },
   zh: {
-    ready: "已连接本地语音模型",
-    connecting: "正在连接本地语音模型…",
-    down: "本地语音模型连不上，改用云端识别",
+    ready: "已连接 Lianki 语音服务器",
+    connecting: "正在连接 Lianki 语音服务器…",
+    down: "Lianki 语音服务器连不上，改用云端识别",
     filtered: "不是你的声音，没有发送",
   },
   ja: {
-    ready: "ローカル音声モデルに接続済み",
-    connecting: "ローカル音声モデルに接続中…",
-    down: "ローカル音声モデルに接続できません。クラウドで認識します",
+    ready: "Lianki の音声サーバーに接続済み",
+    connecting: "Lianki の音声サーバーに接続中…",
+    down: "Lianki の音声サーバーに接続できません。クラウドで認識します",
     filtered: "あなたの声ではないため送信しませんでした",
   },
 };
