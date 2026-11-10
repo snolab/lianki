@@ -849,10 +849,10 @@ try {
       `debug on, /words names the Learning Partner and shows no "debug" (badge "${badge}", ${JSON.stringify(hits)})`,
     );
   }
+  // The slip prototype is gone (owner, 2026-11-10): debug mode links no prototype.
   check(
-    (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1 &&
-      (await page.locator("[data-debug-proto]").count()) === 1,
-    "debug mode links the slip prototype (and nothing else)",
+    (await page.locator("[data-debug-proto]").count()) === 0,
+    "debug mode links no design prototype",
   );
   for (let k = 0; k < 7; k++) await gear.click({ force: true });
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");

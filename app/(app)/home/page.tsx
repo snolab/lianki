@@ -5,6 +5,7 @@ import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import { appLocale } from "@/lib/app-locale.server";
 import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
+import { isDev } from "@/lib/permissions";
 import HomeClient from "./HomeClient";
 
 export const dynamic = "force-dynamic";
@@ -21,5 +22,11 @@ export default async function HomePage() {
     authUserOrNull(),
     dbBackend() === "d1" ? readFlags() : null,
   ]);
-  return <HomeClient isLoggedIn={!!user} todayGoal={!!flags?.["today.goal"]} />;
+  return (
+    <HomeClient
+      isLoggedIn={!!user}
+      todayGoal={!!flags?.["today.goal"]}
+      dev={isDev(user?.email ?? null)}
+    />
+  );
 }

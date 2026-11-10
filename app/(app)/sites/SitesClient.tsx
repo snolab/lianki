@@ -360,9 +360,6 @@ export default function SitesClient({
 
       <footer className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
         <span>{t.hint}</span>
-        <Link href="/lab/immersion" className="text-blue-600 dark:text-blue-400 hover:underline">
-          {t.fullMatrix} →
-        </Link>
       </footer>
     </main>
   );
