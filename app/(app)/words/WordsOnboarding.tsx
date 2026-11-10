@@ -20,6 +20,7 @@ import {
   ONBOARDING_CONFIG,
   prevScene,
   readSeen,
+  sceneDuration,
   SCENES,
   type Scene,
 } from "@/lib/words/onboarding";
@@ -60,7 +61,7 @@ export default function WordsOnboarding() {
     if (!open || still || fold) return;
     const n = nextScene(scene);
     if (n === null) return;
-    const t = setTimeout(() => setScene(n), ONBOARDING_CONFIG.sceneMs);
+    const t = setTimeout(() => setScene(n), sceneDuration(scene));
     return () => clearTimeout(t);
   }, [open, still, fold, scene]);
 
@@ -174,6 +175,7 @@ export default function WordsOnboarding() {
                     grades.good.value,
                     grades.easy.value,
                   ]}
+                  back={grades.back.value}
                 />
               </div>
               <p
@@ -225,7 +227,7 @@ export default function WordsOnboarding() {
           </div>,
           document.body,
         )}
-      <style>{CSS}</style>
+      <style>{ONBOARDING_CSS}</style>
     </>
   );
 }
@@ -277,7 +279,50 @@ const Finger = ({ cx, cy, cls }: { cx: number; cy: number; cls: string }) => (
   </g>
 );
 
-function SceneArt({ scene, grades }: { scene: Scene; grades: string[] }) {
+/** What a slid card uncovers: the near detent's grade, then the far one's. */
+function Reveal({
+  x,
+  y,
+  near,
+  far,
+  nearCls,
+  farCls,
+  left = false,
+}: {
+  x: number;
+  y: number;
+  near: string;
+  far: string;
+  nearCls: string;
+  farCls: string;
+  left?: boolean;
+}) {
+  // Slid right, the slip uncovers its left end: near detent first, far next.
+  // Slid left, its right end, mirrored. A slip is 160 wide, a detent 50.
+  const zone = (i: number) => (left ? x + 160 - 50 * (i + 1) : x + 50 * i);
+  return (
+    <g>
+      {[near, far].map((g, i) => (
+        <g key={i} className={i ? farCls : nearCls}>
+          <rect x={zone(i) + 2} y={y + 2} width={46} height={40} rx={6} className="ob-rv" />
+          <text x={zone(i) + 25} y={y + 26} textAnchor="middle" className="ob-t">
+            {g}
+          </text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
+export function SceneArt({
+  scene,
+  grades,
+  back,
+}: {
+  scene: Scene;
+  grades: string[];
+  back: string;
+}) {
   let art: ReactNode = null;
   if (scene === "tap") {
     art = (
@@ -288,38 +333,29 @@ function SceneArt({ scene, grades }: { scene: Scene; grades: string[] }) {
       </>
     );
   } else if (scene === "rate") {
+    // The real swipe (lib/words/swipe.ts, SwipeGrades): slid right, a slip
+    // uncovers Good at the first detent and Easy past it; slid left, Hard and
+    // then Again. Default sides (Settings can mirror them). Each grade sits
+    // where its detent is, so the still frame reads as a ruler.
+    const [again, hard, good, easy] = grades;
     art = (
       <>
-        <Card x={40} y={18} h={60} answer />
-        {grades.map((g, i) => (
-          <g key={g} className="ob-grade" style={{ animationDelay: `${0.3 + i * 0.35}s` }}>
-            <rect
-              x={18 + i * 68}
-              y={100}
-              width={60}
-              height={52}
-              rx={9}
-              className={i === 2 ? "ob-btn ob-btn-pick" : "ob-btn"}
-            />
-            <text
-              x={48 + i * 68}
-              y={122}
-              textAnchor="middle"
-              className={i === 2 ? "ob-t ob-t-on" : "ob-t"}
-            >
-              {g}
-            </text>
-            <text
-              x={48 + i * 68}
-              y={140}
-              textAnchor="middle"
-              className={i === 2 ? "ob-s ob-t-on" : "ob-s"}
-            >
-              …
-            </text>
-          </g>
-        ))}
-        <Finger cx={184} cy={128} cls="ob-press" />
+        <Reveal x={30} y={30} near={good} far={easy} nearCls="ob-rv-good" farCls="ob-rv-easy" />
+        <Card x={30} y={30} w={160} h={44} cls="ob-slide-r" />
+        <Finger cx={80} cy={52} cls="ob-drag-r" />
+        <path d="M 120 18 h 60 m -6 -4 l 6 4 l -6 4" className="ob-arrow ob-hint-r" />
+        <Reveal
+          x={110}
+          y={112}
+          near={hard}
+          far={again}
+          nearCls="ob-rv-hard"
+          farCls="ob-rv-again"
+          left
+        />
+        <Card x={110} y={112} w={160} h={44} cls="ob-slide-l" />
+        <Finger cx={220} cy={134} cls="ob-drag-l" />
+        <path d="M 180 172 h -60 m 6 -4 l -6 4 l 6 4" className="ob-arrow ob-hint-l" />
       </>
     );
   } else if (scene === "handled") {
@@ -336,16 +372,37 @@ function SceneArt({ scene, grades }: { scene: Scene; grades: string[] }) {
       </g>
     );
   } else if (scene === "returns") {
+    // A missed card (lib/words/requeue.ts): its countdown runs to its right
+    // (3-2-1 here is only an illustration, not the real wait), then it
+    // settles in place, frozen, reading "↓ back"; as the list scrolls on,
+    // its copy turns up further down.
     art = (
       <>
-        <Card x={40} y={6} cls="ob-faded-still" />
-        <Card x={40} y={54} cls="ob-faded-still" />
-        <Card x={40} y={102} />
-        <g className="ob-return">
-          <Card x={40} y={146} cls="ob-again" />
-          <text x={250} y={170} textAnchor="end" className="ob-s ob-gold-t">
-            …
+        <g className="ob-list">
+          <Card x={20} y={-2} w={190} h={30} cls="ob-faded-still" />
+          <g className="ob-settle">
+            <Card x={20} y={36} w={190} h={30} cls="ob-faded-still">
+              <circle cx={196} cy={51} r={7} className="ob-stamp" />
+            </Card>
+            <rect x={20} y={36} width={190} height={30} rx={8} className="ob-frozen" />
+          </g>
+          <circle cx={248} cy={51} r={13} className="ob-ring-track" />
+          <circle cx={248} cy={51} r={13} className="ob-ring" transform="rotate(-90 248 51)" />
+          {[3, 2, 1].map((n) => (
+            <text key={n} x={248} y={55.5} textAnchor="middle" className={`ob-n ob-n${n}`}>
+              {n}
+            </text>
+          ))}
+          <text x={218} y={55} className="ob-s ob-back">
+            {back}
           </text>
+          <Card x={20} y={74} w={190} h={30} />
+          <Card x={20} y={112} w={190} h={30} />
+          <Card x={20} y={150} w={190} h={30} />
+          <g className="ob-return">
+            <Card x={20} y={188} w={190} h={30} cls="ob-again" />
+          </g>
+          <path d="M 250 64 C 268 110, 262 170, 216 203" className="ob-arrow ob-path" />
         </g>
       </>
     );
@@ -371,7 +428,7 @@ function SceneArt({ scene, grades }: { scene: Scene; grades: string[] }) {
   );
 }
 
-const CSS = `
+export const ONBOARDING_CSS = `
 .lk-ob, .lk-ob-help {
   --ob-paper: oklch(0.975 0.008 85);
   --ob-surface: oklch(0.995 0.003 85);
@@ -423,12 +480,8 @@ const CSS = `
 .lk-ob-art .ob-finger { fill: var(--ob-gold); opacity: 0.55; }
 .lk-ob-art .ob-finger-dot { fill: var(--ob-gold); }
 .lk-ob-art .ob-ripple { fill: none; stroke: var(--ob-gold); stroke-width: 2; opacity: 0; }
-.lk-ob-art .ob-btn { fill: var(--ob-gold-soft); stroke: var(--ob-gold); stroke-width: 1.5; }
-.lk-ob-art .ob-btn-pick { fill: var(--ob-seal); stroke: var(--ob-seal); }
 .lk-ob-art .ob-t { font: 600 11px system-ui, sans-serif; fill: var(--ob-ink); }
 .lk-ob-art .ob-s { font: 600 13px system-ui, sans-serif; fill: var(--ob-mute); }
-.lk-ob-art .ob-t-on { fill: var(--ob-on-seal); }
-.lk-ob-art .ob-gold-t { fill: var(--ob-gold); }
 .lk-ob-art .ob-faded, .lk-ob-art .ob-faded-still { opacity: 0.5; }
 .lk-ob-art .ob-faded .ob-card, .lk-ob-art .ob-faded-still .ob-card { fill: var(--ob-faded); }
 .lk-ob-art .ob-stamp { fill: none; stroke: var(--ob-seal); stroke-width: 2.5; }
@@ -436,20 +489,53 @@ const CSS = `
 .lk-ob-art .ob-again .ob-card { stroke: var(--ob-gold); stroke-width: 2.5; }
 .lk-ob-art .ob-arrow { stroke: var(--ob-gold); stroke-width: 2; stroke-dasharray: 3 4; }
 .lk-ob-art .ob-scroll { transform: translateY(-30px); }
+
+/* "rate": the swipe. Resting frame: both slips slid to their far detent. */
+.lk-ob-art .ob-rv-good .ob-rv { fill: var(--slip-good); }
+.lk-ob-art .ob-rv-easy .ob-rv { fill: var(--slip-easy); }
+.lk-ob-art .ob-rv-hard .ob-rv { fill: var(--slip-hard); }
+.lk-ob-art .ob-rv-again .ob-rv { fill: var(--slip-again); }
+.lk-ob-art .ob-slide-r { transform: translateX(100px); }
+.lk-ob-art .ob-slide-l { transform: translateX(-100px); }
+.lk-ob-art .ob-drag-r, .lk-ob-art .ob-drag-l { opacity: 0; }
+.lk-ob-art .ob-hint-r, .lk-ob-art .ob-hint-l { fill: none; stroke-dasharray: none; stroke-linecap: round; stroke-linejoin: round; }
+
+/* "returns": countdown, settle, scroll, the copy below. Resting frame: the end. */
+.lk-ob-art .ob-list { transform: translateY(-30px); }
+.lk-ob-art .ob-frozen { fill: none; stroke: var(--ob-mute); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.lk-ob-art .ob-settle { transform-box: fill-box; transform-origin: 50% 50%; }
+.lk-ob-art .ob-ring-track, .lk-ob-art .ob-ring { fill: none; stroke-width: 3; opacity: 0; }
+.lk-ob-art .ob-ring-track { stroke: var(--ob-gold-soft); }
+.lk-ob-art .ob-ring { stroke: var(--ob-seal); stroke-dasharray: 81.7; stroke-linecap: round; }
+.lk-ob-art .ob-n { font: 700 14px system-ui, sans-serif; fill: var(--ob-seal); opacity: 0; }
+.lk-ob-art .ob-back { font: 600 11px system-ui, sans-serif; fill: var(--ob-mute); }
+.lk-ob-art .ob-path { fill: none; }
 .lk-ob-art .ob-grow { transform-box: fill-box; transform-origin: 50% 0; transform: scaleY(1); }
 
 /* Motion: each runs once from the scene's start into its resting frame. */
 .lk-ob-box:not([data-static]) .ob-tap { animation: ob-tap 1.6s ease-in-out both; }
 .lk-ob-box:not([data-static]) .ob-ripple { animation: ob-ripple 0.8s ease-out 0.9s both; }
 .lk-ob-box[data-scene="tap"]:not([data-static]) .ob-answer { animation: ob-in 0.5s ease-out 1.1s both; }
-.lk-ob-box:not([data-static]) .ob-grade { animation: ob-light 0.45s ease-out both; }
-.lk-ob-box:not([data-static]) .ob-btn-pick { animation: ob-pick 0.3s ease-out 2.6s both; }
-.lk-ob-box:not([data-static]) .ob-t-on { animation: ob-pick-t 0.3s ease-out 2.6s both; }
-.lk-ob-box:not([data-static]) .ob-press { animation: ob-press 1.4s ease-in-out 1.7s both; }
 .lk-ob-box:not([data-static]) .ob-faded { animation: ob-fade 0.6s ease-out 0.4s both; }
 .lk-ob-box:not([data-static]) .ob-scroll { animation: ob-scroll 0.9s cubic-bezier(.3,0,.2,1) 1.4s both; }
 .lk-ob-box:not([data-static]) .ob-undo { animation: ob-in 0.4s ease-out 2.4s both; }
-.lk-ob-box:not([data-static]) .ob-return { animation: ob-return 0.9s cubic-bezier(.2,.8,.3,1) 0.8s both; }
+.lk-ob-box:not([data-static]) .ob-slide-r { animation: ob-slide-r 1.9s ease-in-out 0.4s both; }
+.lk-ob-box:not([data-static]) .ob-drag-r { animation: ob-drag-r 1.9s ease-in-out 0.4s both; }
+.lk-ob-box:not([data-static]) .ob-hint-r { animation: ob-in 0.4s ease-out 0.4s both; }
+.lk-ob-box:not([data-static]) .ob-slide-l { animation: ob-slide-l 1.9s ease-in-out 2.5s both; }
+.lk-ob-box:not([data-static]) .ob-drag-l { animation: ob-drag-l 1.9s ease-in-out 2.5s both; }
+.lk-ob-box:not([data-static]) .ob-hint-l { animation: ob-in 0.4s ease-out 2.5s both; }
+.lk-ob-box:not([data-static]) .ob-ring-track { animation: ob-ring-track 2.9s linear 0.3s both; }
+.lk-ob-box:not([data-static]) .ob-ring { animation: ob-ring 2.9s linear 0.3s both; }
+.lk-ob-box:not([data-static]) .ob-n3 { animation: ob-n 0.8s ease-out 0.4s both; }
+.lk-ob-box:not([data-static]) .ob-n2 { animation: ob-n 0.8s ease-out 1.2s both; }
+.lk-ob-box:not([data-static]) .ob-n1 { animation: ob-n 0.8s ease-out 2s both; }
+.lk-ob-box:not([data-static]) .ob-settle { animation: ob-settle 0.6s ease-out 2.8s both; }
+.lk-ob-box:not([data-static]) .ob-frozen { animation: ob-in 0.4s ease-out 2.9s both; }
+.lk-ob-box:not([data-static]) .ob-back { animation: ob-in 0.4s ease-out 3.1s both; }
+.lk-ob-box:not([data-static]) .ob-list { animation: ob-list 1s cubic-bezier(.3,0,.2,1) 3.8s both; }
+.lk-ob-box[data-scene="returns"]:not([data-static]) .ob-return { animation: ob-return 0.8s cubic-bezier(.2,.8,.3,1) 4.9s both; }
+.lk-ob-box:not([data-static]) .ob-path { animation: ob-draw 0.7s ease-out 5.6s both; }
 .lk-ob-box:not([data-static]) .ob-grow { animation: ob-grow 2.4s ease-in-out 0.5s both; }
 .lk-ob-box:not([data-static]) .ob-pinch-a { animation: ob-pinch-a 2.4s ease-in-out 0.5s both; }
 .lk-ob-box:not([data-static]) .ob-pinch-b { animation: ob-pinch-b 2.4s ease-in-out 0.5s both; }
@@ -464,18 +550,31 @@ const CSS = `
   100% { transform: translate(60px, 70px); opacity: 0; }
 }
 @keyframes ob-ripple { 0% { opacity: 0.9; transform: scale(0.3); transform-origin: 150px 80px; } 100% { opacity: 0; transform: scale(1.2); transform-origin: 150px 80px; } }
-@keyframes ob-light { from { opacity: 0.25; transform: translateY(6px); } }
-@keyframes ob-pick { from { fill: var(--ob-gold-soft); stroke: var(--ob-gold); } }
-@keyframes ob-pick-t { from { fill: var(--ob-ink); } }
-@keyframes ob-press {
-  0% { transform: translate(40px, 60px); opacity: 0; }
-  60% { transform: translate(0, 0); opacity: 1; }
-  80% { transform: translate(0, 0); opacity: 1; }
-  100% { transform: translate(30px, 50px); opacity: 0; }
-}
 @keyframes ob-fade { from { opacity: 1; } }
 @keyframes ob-scroll { from { transform: translateY(0); } }
-@keyframes ob-return { from { transform: translateY(50px); opacity: 0; } }
+@keyframes ob-slide-r { 0% { transform: translateX(0); } 35%, 55% { transform: translateX(50px); } 85%, 100% { transform: translateX(100px); } }
+@keyframes ob-slide-l { 0% { transform: translateX(0); } 35%, 55% { transform: translateX(-50px); } 85%, 100% { transform: translateX(-100px); } }
+@keyframes ob-drag-r {
+  0% { transform: translateX(0); opacity: 0; }
+  10% { transform: translateX(0); opacity: 1; }
+  35%, 55% { transform: translateX(50px); opacity: 1; }
+  85% { transform: translateX(100px); opacity: 1; }
+  100% { transform: translateX(100px); opacity: 0; }
+}
+@keyframes ob-drag-l {
+  0% { transform: translateX(0); opacity: 0; }
+  10% { transform: translateX(0); opacity: 1; }
+  35%, 55% { transform: translateX(-50px); opacity: 1; }
+  85% { transform: translateX(-100px); opacity: 1; }
+  100% { transform: translateX(-100px); opacity: 0; }
+}
+@keyframes ob-ring-track { 0% { opacity: 0; } 4%, 88% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes ob-ring { 0% { opacity: 0; stroke-dashoffset: 0; } 4% { opacity: 1; stroke-dashoffset: 0; } 88% { opacity: 1; stroke-dashoffset: 81.7; } 100% { opacity: 0; stroke-dashoffset: 81.7; } }
+@keyframes ob-n { 0% { opacity: 0; transform: scale(1.3); transform-origin: 248px 51px; } 15%, 80% { opacity: 1; transform: scale(1); transform-origin: 248px 51px; } 100% { opacity: 0; } }
+@keyframes ob-settle { 0% { transform: scale(1); } 35% { transform: scale(1.04); } 70% { transform: scale(0.985); } 100% { transform: scale(1); } }
+@keyframes ob-list { from { transform: translateY(0); } }
+@keyframes ob-return { from { transform: translateY(40px); opacity: 0; } }
+@keyframes ob-draw { from { stroke-dashoffset: 40; opacity: 0; } }
 @keyframes ob-grow { 0%, 15% { transform: scaleY(0.72); } 70%, 100% { transform: scaleY(1); } }
 @keyframes ob-pinch-a { 0%, 15% { transform: translateY(22px); } 70%, 100% { transform: translateY(0); } }
 @keyframes ob-pinch-b { 0%, 15% { transform: translateY(-22px); } 70%, 100% { transform: translateY(0); } }
