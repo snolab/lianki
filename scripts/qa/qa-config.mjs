@@ -77,14 +77,36 @@ async function renderedUndoMs(page) {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * The permission snapshot refreshes within ~20 s of the grant (lib/permissions.ts):
+ * until then the page is a 404, so reload until the list shows.
+ */
+async function openPage(page) {
+  for (let i = 0; i < 12; i++) {
+    await page.goto(`${BASE}/dev/config`);
+    const ready = await page
+      .locator("[data-config-group]")
+      .first()
+      .waitFor({ timeout: budget(10_000) })
+      .then(() => true)
+      .catch(() => false);
+    if (ready) return true;
+    await page.waitForTimeout(3000);
+  }
+  return false;
+}
+
 const row = (page) => page.locator(`[data-config-key="${KEY}"]`);
 
 async function run(name, device, colorScheme) {
   const tag = `${name}-${colorScheme}`;
   const { ctx, page, ok } = await signedIn(ADMIN, device, colorScheme);
   check(ok, `${tag}: signed in as the local admin`);
-  await page.goto(`${BASE}/dev/config`);
-  await page.waitForSelector("[data-config-group]", { timeout: budget(30_000) });
+  if (!(await openPage(page))) {
+    check(false, `${tag}: /dev/config shows its list`);
+    await ctx.close();
+    return;
+  }
   check(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     `${tag}: no sideways scroll`,
