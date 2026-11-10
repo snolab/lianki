@@ -81,6 +81,42 @@ const dictionary = {
       sw: "Mstari huu haukuweza kusomwa kwa sauti, kwa hiyo uchezaji umesimama.",
       mr: "ही ओळ मोठ्याने वाचता आली नाही, म्हणून प्ले थांबले.",
     }),
+    failedSpeech: t({
+      en: "This device's voice did not start.",
+      zh: "本设备的朗读语音没有启动。",
+      ja: "この端末の読み上げ音声が始まりませんでした。",
+      ko: "이 기기의 읽기 음성이 시작되지 않았습니다.",
+      hi: "इस डिवाइस की आवाज़ शुरू नहीं हुई।",
+      es: "La voz de este dispositivo no empezó.",
+      fr: "La voix de cet appareil n’a pas démarré.",
+      ar: "لم يبدأ صوت هذا الجهاز.",
+      bn: "এই ডিভাইসের কণ্ঠস্বর চালু হয়নি।",
+      pt: "A voz deste dispositivo não começou.",
+      ru: "Голос этого устройства не запустился.",
+      ur: "اس ڈیوائس کی آواز شروع نہیں ہوئی۔",
+      id: "Suara perangkat ini tidak mulai.",
+      de: "Die Stimme dieses Geräts ist nicht gestartet.",
+      sw: "Sauti ya kifaa hiki haikuanza.",
+      mr: "या डिव्हाइसचा आवाज सुरू झाला नाही.",
+    }),
+    failedCloud: t({
+      en: "Lianki's recording did not play. Check your connection.",
+      zh: "Lianki 的朗读录音没有播放出来，请检查网络连接。",
+      ja: "Lianki の読み上げ音声を再生できませんでした。接続を確認してください。",
+      ko: "Lianki의 읽기 음성이 재생되지 않았습니다. 연결을 확인하세요.",
+      hi: "Lianki की रिकॉर्डिंग नहीं चली। अपना कनेक्शन जाँचें।",
+      es: "La grabación de Lianki no se reprodujo. Revisa tu conexión.",
+      fr: "L’enregistrement de Lianki n’a pas pu être lu. Vérifiez votre connexion.",
+      ar: "لم يُشغَّل تسجيل Lianki. تحقّق من اتصالك.",
+      bn: "Lianki-র রেকর্ডিং চালু হয়নি। আপনার সংযোগ দেখুন।",
+      pt: "A gravação do Lianki não tocou. Verifique sua conexão.",
+      ru: "Запись Lianki не воспроизвелась. Проверьте подключение.",
+      ur: "Lianki کی ریکارڈنگ نہیں چلی۔ اپنا کنکشن چیک کریں۔",
+      id: "Rekaman Lianki tidak terputar. Periksa koneksi Anda.",
+      de: "Die Aufnahme von Lianki wurde nicht abgespielt. Prüfe deine Verbindung.",
+      sw: "Rekodi ya Lianki haikucheza. Angalia muunganisho wako.",
+      mr: "Lianki चे रेकॉर्डिंग वाजले नाही. तुमचे कनेक्शन तपासा.",
+    }),
     backToLine: t({
       en: "Back to the current line",
       zh: "回到当前这一句",
@@ -109,7 +145,11 @@ const context: Record<keyof typeof dictionary.content, string> = {
   autoAdvance:
     "On/off switch in the /read reader's controls. Off (default): after reading a paragraph aloud the player waits until the learner grades it with a swipe. On: it reads every line one after another without waiting.",
   failed:
-    "Error under the current line when the voice could not read it aloud (no voice for the language, network or server failure); the player stops instead of skipping ahead. A full sentence; the technical reason is shown after it.",
+    "Error under the current line when the voice could not read it aloud (no voice for the language, network or server failure); the player stops instead of skipping ahead. A full sentence; one of failedSpeech / failedCloud follows it, saying which voice failed.",
+  failedSpeech:
+    "Second sentence of that error (read by screen readers after it) when the device's own text-to-speech voice (the browser's speech engine) could not start reading the line. Plain words, no technical terms. One sentence.",
+  failedCloud:
+    "Second sentence of that error when the voice recording Lianki's servers make for the line did not play (usually a network problem), with a hint to check the connection. Keep Lianki as written. Two short sentences.",
   backToLine:
     "Small button over the list of lines in the /read reader, shown after the learner scrolled away while it reads aloud: scrolls back to the line being read and follows it again.",
 };

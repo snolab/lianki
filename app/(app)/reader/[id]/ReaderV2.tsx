@@ -28,6 +28,7 @@ import Link from "next/link";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { type Virtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
+import { devLog } from "@/lib/debug-client";
 import { AUDIO_PRIO, audioOwner, audioOwnerId } from "@lianki/debug-chat/audio-claim";
 import { createUiStore, useUi } from "@lianki/ui-state";
 import type { ReadMaterial } from "../ReadListClient";
@@ -662,7 +663,11 @@ function Reader({
             );
         },
         onend: () => dispatch({ type: "ended", token }),
-        onerror: (error) => dispatch({ type: "failed", token, error }),
+        onerror: (why, noVoice, engine = "speech") => {
+          // The detail is for the dev log; the alert names only which voice failed.
+          devLog({ ev: "read-play-fail", why, engine, noVoice: !!noVoice });
+          dispatch({ type: "failed", token, error: engine });
+        },
       },
     );
     // The token alone says which utterance this is.
@@ -2384,7 +2389,7 @@ function Reader({
         )}
         {player.status === "error" && (
           <p role="alert" data-testid="read-status" data-status="error" className="sr-only">
-            {tp.failed} ({player.error})
+            {tp.failed} {player.error === "cloud" ? tp.failedCloud : tp.failedSpeech}
           </p>
         )}
         <p aria-live="polite" className="sr-only">

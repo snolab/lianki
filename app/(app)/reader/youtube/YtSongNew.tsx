@@ -71,7 +71,7 @@ export function YtSongNew() {
     <div className="space-y-5" data-testid="yt-song-new">
       <div>
         <Link href="/reader" className="text-sm opacity-70 hover:underline">
-          ← /reader
+          ← {t.back}
         </Link>
         <h1 className="mt-2 text-2xl font-bold">{t.entry}</h1>
         <p className="mt-2 text-sm opacity-80">{t.intro}</p>
