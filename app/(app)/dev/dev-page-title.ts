@@ -11,6 +11,7 @@ import { LANG_TAGS } from "@/lib/constants";
  */
 export type DevPageName =
   | "boxClients"
+  | "config"
   | "credits"
   | "flags"
   | "friends"

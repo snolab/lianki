@@ -18,6 +18,7 @@
  */
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
+import { snapshotCache } from "@/lib/snapshot-cache";
 import {
   closedFlags,
   defaultFlags,
@@ -35,38 +36,22 @@ export const FLAG_CACHE_MS = 30_000;
 
 export type FlagSnapshot = Record<FlagKey, boolean>;
 
-interface FlagCacheState {
-  cache: { at: number; values: FlagSnapshot } | null;
-  /** The shared read, and when it started (its snapshot is at least that old). */
-  inflight: { at: number; p: Promise<FlagSnapshot> } | null;
-  /** Bumped by every clear, so a read that started before it never fills the cache. */
-  generation: number;
-}
-
 /**
- * One cache per isolate, on globalThis. The build gives route handlers and
- * page rendering each their own copy of this module, so module-level state was
- * two caches up to 30 s apart: an API route saw a flag on while its page still
- * 404'd (qa-yt-songs timed out on exactly that, 2026-11-09), and a write on
- * /dev/flags cleared only the route side.
+ * One cache per isolate, on globalThis (lib/snapshot-cache.ts): route handlers
+ * and page rendering get their own copy of this module, and module-level state
+ * was two caches up to 30 s apart (qa-yt-songs, 2026-11-09). Fails closed.
  */
-const state: FlagCacheState = ((globalThis as { __lkFlagCache?: FlagCacheState }).__lkFlagCache ??=
-  { cache: null, inflight: null, generation: 0 });
+const flagCache = snapshotCache<FlagSnapshot>({
+  slot: "__lkFlagCache",
+  ttlMs: FLAG_CACHE_MS,
+  fallback: closedFlags,
+  copy: (v) => ({ ...v }),
+  event: "flags",
+});
 
 /** Forget the cached snapshot (after a write here; and between unit tests). */
 export function clearFlagCache(): void {
-  state.cache = null;
-  state.inflight = null;
-  state.generation++;
-}
-
-async function fetchFlags(db: () => D1Like | null, at: number, gen: number): Promise<FlagSnapshot> {
-  const d1 = db();
-  if (!d1) return closedFlags();
-  const values = await loadFlags(d1);
-  // Only a real read is cached, and only if no write cleared the cache meanwhile.
-  if (gen === state.generation) state.cache = { at, values };
-  return values;
+  flagCache.clear();
 }
 
 /** Read every flag straight from D1 (no cache). Throws on a D1 error. */
@@ -97,36 +82,10 @@ export async function readFlags(
   db: () => D1Like | null = defaultDb,
   now: () => number = Date.now,
 ): Promise<FlagSnapshot> {
-  const t = now();
-  const { cache } = state;
-  if (cache && t - cache.at >= 0 && t - cache.at < FLAG_CACHE_MS) return { ...cache.values };
-  // Concurrent misses share one query; it is forgotten once settled, so a
-  // failure is retried by the next call rather than remembered. A read that
-  // started a window ago or more is not joined: its answer may predate a flip
-  // by more than FLAG_CACHE_MS, so a fresh read starts instead.
-  const fresh = (at: number, end: number) => end - at >= 0 && end - at < FLAG_CACHE_MS;
-  let mine = state.inflight;
-  if (!mine || !fresh(mine.at, t)) {
-    const started = { at: t, p: fetchFlags(db, t, state.generation) };
-    mine = state.inflight = started;
-    started.p.then(
-      () => void (state.inflight === started && (state.inflight = null)),
-      () => void (state.inflight === started && (state.inflight = null)),
-    );
-  }
-  try {
-    const values = await mine.p;
-    // The same bound on the way out: a read held past the window is too old to
-    // act on, whoever started it. Fail closed.
-    if (!fresh(mine.at, now())) {
-      console.error(JSON.stringify({ event: "flags.read-stale", ms: now() - mine.at }));
-      return closedFlags();
-    }
-    return { ...values };
-  } catch (e) {
-    console.error(JSON.stringify({ event: "flags.read-failed", error: String(e) }));
-    return closedFlags();
-  }
+  return flagCache.read(async () => {
+    const d1 = db();
+    return d1 ? loadFlags(d1) : null;
+  }, now);
 }
 
 /** Whether one flag is on now (fail closed, cached like `readFlags`). */

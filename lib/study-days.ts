@@ -12,18 +12,26 @@
  * - one count per day however many reviews; never more days than have passed
  *   since the first paid day; tied to the account (not transferable).
  */
+import { CONFIG } from "@/lib/config";
 import { cfRequestProps } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
 import { LEVELS, type Level, type LevelId, type LevelTier } from "@/lib/levels";
 
-/** The lower end of human reaction time (1–3 s): faster than this is not a read. */
-export const HUMAN_REACTION_MS = 1000;
+/**
+ * The lower end of human reaction time (1–3 s): faster than this is not a
+ * read. The default of config `study.humanReactionMs`; callers pass the live
+ * value (`cfg`, lib/config-store.ts; docs/config-store.md).
+ */
+export const HUMAN_REACTION_MS: number = CONFIG["study.humanReactionMs"].default;
 
 const DAY_MS = 86_400_000;
 
-/** On screen long enough to have been read: measured and at least reaction time. */
-export function qualifies(onScreenMs: number | null | undefined): boolean {
-  return typeof onScreenMs === "number" && onScreenMs >= HUMAN_REACTION_MS;
+/** On screen long enough to have been read: measured and at least reaction time (`minMs`). */
+export function qualifies(
+  onScreenMs: number | null | undefined,
+  minMs: number = HUMAN_REACTION_MS,
+): boolean {
+  return typeof onScreenMs === "number" && onScreenMs >= minMs;
 }
 
 /** The local calendar day of `at` in `tz` (YYYY-MM-DD); UTC when the zone is unknown. */

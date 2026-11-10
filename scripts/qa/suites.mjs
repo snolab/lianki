@@ -295,6 +295,23 @@ export const SUITES = [
     paths: ["app/(app)/dev/templates/**", "app/api/dev/templates/**", "lib/mail-templates/**"],
     sensitive: false,
   },
+  // The config editor /dev/config (docs/config-store.md): save → Changed + history → the next page renders it; invalid refused; reset; non-admin 404; 360 px light + dark.
+  {
+    name: "CONFIG (qa-config)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-config.mjs"],
+    base: true,
+    id: "config",
+    paths: [
+      "app/(app)/dev/config/**",
+      "app/api/dev/config/**",
+      "app/components/PublicConfig.tsx",
+      "lib/config*.ts",
+      "lib/snapshot-cache.ts",
+      "db/migrations/0070_config_values.sql",
+    ],
+    sensitive: false,
+  },
   // The send log at /dev/mails (docs/mail-templates.md, "Send log"): search, filter, re-render, Resend (stub), Suppress, suppression list; 360 px light + dark.
   {
     name: "MAIL LOG (qa-mails)",

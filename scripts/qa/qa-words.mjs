@@ -2935,7 +2935,7 @@ try {
     (await serverLists()).some((l) => l.id === group),
     "the delete waits for the Undo window",
   );
-  await page.waitForTimeout(8000); // the Undo window (UNDO_MS)
+  await page.waitForTimeout(8000); // the Undo window (config words.undoMs, default 8000)
   const settled = await waitFor((ls) => !ls.some((l) => l.id === group));
   check(
     !settled.some((l) => l.id === group) &&

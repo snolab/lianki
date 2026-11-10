@@ -8,9 +8,13 @@
  * The page sends a waiting delete when it goes away (`flush("leave")`, with
  * fetch keepalive), so closing the tab does not quietly keep the list.
  */
+import { publicCfg } from "@/lib/config-client";
 
-/** How long Undo is offered, ms. */
-export const UNDO_MS = 8000;
+/**
+ * How long Undo is offered, ms: config `words.undoMs` (lib/config.ts; the
+ * live value from /dev/config, docs/config-store.md).
+ */
+export const undoMs = (): number => publicCfg("words.undoMs");
 
 /** "timeout": the toast ran out; "next": another delete; "leave": the page is going away. */
 export type FlushReason = "timeout" | "next" | "leave";
@@ -34,7 +38,7 @@ export function createDeferredDelete<T>(opts: {
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
 }): DeferredDelete<T> {
-  const delay = opts.delayMs ?? UNDO_MS;
+  const delay = opts.delayMs ?? undoMs();
   const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = opts.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   let waiting: { item: T; timer: unknown } | null = null;

@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  CONTACT_BODY_MAX,
-  CONTACT_FIELD_MAX,
-  CONTACT_GLOBAL,
-  CONTACT_PER_IP,
-  contactSlackText,
-} from "@/lib/contact";
+import { CONTACT_BODY_MAX, CONTACT_GLOBAL, CONTACT_PER_IP, contactSlackText } from "@/lib/contact";
+import { cfg } from "@/lib/config-store";
 import { cappedJsonError, clientIp, readJsonCapped, tooMany } from "@/lib/security/route-guard";
 
 export async function POST(req: NextRequest) {
@@ -21,12 +16,14 @@ export async function POST(req: NextRequest) {
   if (!name || !email || typeof name !== "string" || typeof email !== "string") {
     return NextResponse.json({ error: "Name and email are required" }, { status: 400 });
   }
+  // Config `contact.fieldMax` (lib/config.ts, docs/config-store.md).
+  const max = await cfg("contact.fieldMax");
   const str = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
   if (
-    name.length > CONTACT_FIELD_MAX ||
-    email.length > CONTACT_FIELD_MAX ||
-    str(phone).length > CONTACT_FIELD_MAX ||
-    str(message).length > CONTACT_FIELD_MAX
+    name.length > max ||
+    email.length > max ||
+    str(phone).length > max ||
+    str(message).length > max
   ) {
     return NextResponse.json({ error: "Input too long" }, { status: 400 });
   }
