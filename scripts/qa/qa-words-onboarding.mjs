@@ -11,10 +11,6 @@
 //   and the seen state is kept (lk:words-onboarded = "1", a synced pref);
 // - a reload: it does not open again;
 // - the "?" replays it from the first scene; ✕ closes it.
-// - "rate" is a swipe, not buttons: two slips slide right and left over the
-//   four grades (Good / Easy uncovered on the left, Hard / Again on the right);
-// - "returns" plays a 3-2-1 countdown right of the card, the card settles in
-//   place (dashed, "↓ back"), and its copy turns up lower as the list scrolls.
 // Then reduced motion: still frames, Next / Back step the captions, the last
 // scene's button closes it.
 import { mkdirSync } from "node:fs";
@@ -76,43 +72,12 @@ async function pass(scheme, reducedMotion = "no-preference") {
   await page.waitForTimeout(1500);
   await page.screenshot({ path: join(OUT, `${tag}-first.png`) });
 
-  const opacity = (sel) =>
-    page.evaluate((s) => {
-      const el = document.querySelector(`[data-words-onboarding] ${s}`);
-      return el ? Number(getComputedStyle(el).opacity) : -1;
-    }, sel);
-  const toScene = async (id) => {
-    for (let i = 0; i < 5 && (await dialog.getAttribute("data-scene")) !== id; i++)
-      await page.locator("[data-words-onboarding-next]").click();
-    return (await dialog.getAttribute("data-scene")) === id;
-  };
-
   if (reducedMotion === "reduce") {
     check((await dialog.getAttribute("data-static")) === "", `${tag}: still frames`);
     const seen = [await caption.textContent()];
     for (let i = 0; i < 4; i++) {
       await page.locator("[data-words-onboarding-next]").click();
       seen.push(await caption.textContent());
-      const id = await dialog.getAttribute("data-scene");
-      if (id === "rate") {
-        const labels = await page
-          .locator("[data-words-onboarding] .ob-rv + text")
-          .allTextContents();
-        check(
-          labels.join("|") === "Good|Easy|Hard|Again",
-          `${tag}: rate is a swipe over the four grades (${labels.join("|")})`,
-        );
-        check(
-          (await page.locator("[data-words-onboarding] .ob-btn").count()) === 0,
-          `${tag}: rate draws no grade buttons`,
-        );
-      }
-      if (id === "returns") {
-        check((await opacity(".ob-frozen")) === 1, `${tag}: returns: the card settles in place`);
-        check((await opacity(".ob-return")) === 1, `${tag}: returns: its copy is lower down`);
-        check((await opacity(".ob-ring")) === 0, `${tag}: returns: still frame, no countdown`);
-        await page.screenshot({ path: join(OUT, `${tag}-returns.png`) });
-      }
     }
     check(new Set(seen).size === 5, `${tag}: Next steps through five captions`);
     await page.screenshot({ path: join(OUT, `${tag}-last.png`) });
@@ -134,30 +99,6 @@ async function pass(scheme, reducedMotion = "no-preference") {
       .then(() => true)
       .catch(() => false);
     check(moved, `${tag}: plays on by itself`);
-    // "rate": mid-swipe, the right-hand slip has slid off its grades.
-    check(await toScene("rate"), `${tag}: reaches rate`);
-    await page.waitForTimeout(1300);
-    const slid = await page.evaluate(() => {
-      const el = document.querySelector("[data-words-onboarding] .ob-slide-r");
-      return el ? new DOMMatrix(getComputedStyle(el).transform).e : 0;
-    });
-    check(slid > 10, `${tag}: rate: the slip slides right (${slid.toFixed(0)})`);
-    await page.screenshot({ path: join(OUT, `${tag}-rate.png`) });
-    // "returns": the countdown runs, then the card settles and comes back lower.
-    check(await toScene("returns"), `${tag}: reaches returns`);
-    await page.waitForTimeout(900);
-    check((await opacity(".ob-ring")) > 0.5, `${tag}: returns: a countdown right of the card`);
-    check(
-      (await opacity(".ob-n3")) + (await opacity(".ob-n2")) > 0.5,
-      `${tag}: returns: counting 3, 2…`,
-    );
-    check((await opacity(".ob-return")) < 0.5, `${tag}: returns: the copy is not there yet`);
-    await page.screenshot({ path: join(OUT, `${tag}-countdown.png`) });
-    await page.waitForTimeout(5600);
-    check((await opacity(".ob-ring")) === 0, `${tag}: returns: the countdown is over`);
-    check((await opacity(".ob-frozen")) > 0.9, `${tag}: returns: the card settled in place`);
-    check((await opacity(".ob-return")) > 0.9, `${tag}: returns: its copy turned up lower`);
-    await page.screenshot({ path: join(OUT, `${tag}-returned.png`) });
     await page.locator("[data-words-onboarding-skip]").click();
     await dialog.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
     check(!(await dialog.isVisible()), `${tag}: Skip closes it`);

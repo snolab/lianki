@@ -18,11 +18,6 @@ export const ONBOARDING_CONFIG = {
   /** How long each scene plays before the next, with motion on. */
   sceneMs: 4200,
   /**
-   * Scenes that need longer: "rate" plays two swipes, "returns" a 3-2-1
-   * countdown, the settle, a scroll and the card coming back.
-   */
-  sceneMsBy: { rate: 5200, returns: 7600 } as Partial<Record<string, number>>,
-  /**
    * On a device that has never synced preferences, wait this long for the
    * account's answer before showing: it may already say "seen".
    */
@@ -45,11 +40,6 @@ export interface ShowState {
 /** Open it by itself on this visit? Only with the flag on and never seen. */
 export function autoShow({ flagOn, seen }: ShowState): boolean {
   return flagOn && seen !== true;
-}
-
-/** How long scene `i` plays with motion on. */
-export function sceneDuration(i: number): number {
-  return ONBOARDING_CONFIG.sceneMsBy[SCENES[i]] ?? ONBOARDING_CONFIG.sceneMs;
 }
 
 /** The scene after `i` (null past the last), and before it (clamped at 0). */

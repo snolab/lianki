@@ -9,9 +9,7 @@ import {
   parseSeen,
   prevScene,
   readSeen,
-  sceneDuration,
   SCENES,
-  ONBOARDING_CONFIG,
 } from "@/lib/words/onboarding";
 import { prefBindings } from "@/lib/prefs/bindings";
 import { FLAGS } from "@/lib/flags";
@@ -93,13 +91,6 @@ describe("scenes", () => {
     expect(nextScene(SCENES.length - 1)).toBeNull();
     expect(prevScene(0)).toBe(0);
     expect(prevScene(3)).toBe(2);
-  });
-  it("the swipe and the countdown scenes play longer than the rest", () => {
-    const at = (s: string) => sceneDuration(SCENES.indexOf(s as (typeof SCENES)[number]));
-    expect(at("tap")).toBe(ONBOARDING_CONFIG.sceneMs);
-    expect(at("rate")).toBeGreaterThan(ONBOARDING_CONFIG.sceneMs);
-    // 3-2-1, the settle, the scroll and the copy all fit before the next scene.
-    expect(at("returns")).toBeGreaterThanOrEqual(7000);
   });
   it("the flag is positive, on by default, for everyone", () => {
     const f = FLAGS["words.onboarding"] as { default: boolean; audience?: string };
