@@ -7,7 +7,18 @@ import { dbBackend, getD1 } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
 import { booksMineOn, libraryOn } from "@/lib/books/gate";
-import { shelfBook, shelfByLang, shelfRows, type ShelfBook } from "@/lib/books/shelf";
+import {
+  shelfBook,
+  shelfByLang,
+  shelfRows,
+  type FileInfo,
+  type ShelfBook,
+  type ShelfRow,
+} from "@/lib/books/shelf";
+import { OWN_BOOK } from "@/lib/books/own-import";
+import { getReadMaterialContent, type ReadMaterial } from "@/lib/getReadMaterialsCollection";
+import { parseBookMeta } from "@/lib/read/book";
+import { OwnBookImport } from "./OwnBookImport";
 import { allBooks, languageName } from "../library/access";
 import { BooksShelf } from "./BooksShelf";
 
@@ -25,6 +36,30 @@ export async function generateMetadata(): Promise<Metadata> {
  * opening in the reader. The catalogue itself is /library. Off
  * (`books.mine`): a temporary redirect to /library.
  */
+/** An own book's language, author and cover, from its meta (inline, or R2 for a big one). */
+async function fileInfos(rows: ShelfRow[]): Promise<Map<string, FileInfo>> {
+  const out = new Map<string, FileInfo>();
+  await Promise.all(
+    rows
+      .filter((r) => r.source_key.startsWith("file:"))
+      .map(async (r) => {
+        try {
+          const meta = parseBookMeta(
+            await getReadMaterialContent({
+              content: r.content ?? undefined,
+              r2Key: r.r2_key ?? undefined,
+            } as ReadMaterial),
+          );
+          if (meta)
+            out.set(r.id, { lang: meta.lang, author: meta.author, cover: meta.cover === 1 });
+        } catch (err) {
+          console.error("books: own book meta failed", err);
+        }
+      }),
+  );
+  return out;
+}
+
 export default async function MyBooksPage() {
   const user = await authUserOrNull();
   const locale = await appLocale();
@@ -39,8 +74,15 @@ export default async function MyBooksPage() {
     try {
       const [rows, catalogue] = await Promise.all([shelfRows(getD1(), user.id), allBooks()]);
       const byKey = new Map(catalogue.map((b) => [`${b.lang}/${b.slug}`, b]));
+      const info = await fileInfos(rows);
       books = rows
-        .map((r) => shelfBook(r, (k) => byKey.get(k) ?? null))
+        .map((r) =>
+          shelfBook(
+            r,
+            (k) => byKey.get(k) ?? null,
+            (id) => info.get(id),
+          ),
+        )
         .filter((b): b is ShelfBook => !!b);
     } catch (err) {
       console.error("books: shelf failed", err);
@@ -56,7 +98,9 @@ export default async function MyBooksPage() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold mb-3">{String(t.title)}</h1>
         <p className="text-gray-600 dark:text-gray-400 mb-6">{String(t.intro)}</p>
-        <BooksShelf groups={groups} signedIn={!!user} library={library} />
+        <BooksShelf groups={groups} signedIn={!!user} library={library}>
+          <OwnBookImport accept={OWN_BOOK.accept} maxBytes={OWN_BOOK.maxFileBytes} />
+        </BooksShelf>
       </div>
     </div>
   );

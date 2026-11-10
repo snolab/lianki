@@ -6,13 +6,14 @@
 import type { InboxSource } from "@/lib/inbox/store";
 
 /** In the order shown (ids are the `my-files` dictionary's `folders` keys). */
-export const FOLDERS = ["selfIntro", "import", "chat", "other"] as const;
+export const FOLDERS = ["selfIntro", "import", "books", "chat", "other"] as const;
 export type Folder = (typeof FOLDERS)[number];
 
 /** Each source's folder. */
 const FOLDER_OF: Record<InboxSource, Folder> = {
   "self-intro": "selfIntro",
   import: "import",
+  books: "books",
   chat: "chat",
 };
 

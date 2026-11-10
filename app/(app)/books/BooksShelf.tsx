@@ -79,6 +79,16 @@ export function BooksShelf({
               data-origin={b.origin}
               className="flex items-start gap-3 py-4 border-b border-gray-200 dark:border-gray-700 last:border-b-0"
             >
+              {b.cover && (
+                // The user's own cover, served to them only; decorative beside the title.
+                <img
+                  src={`/api/books/mine/${encodeURIComponent(b.id)}/cover`}
+                  alt=""
+                  loading="lazy"
+                  data-testid="my-books-cover"
+                  className="h-20 w-14 shrink-0 rounded object-cover border border-gray-200 dark:border-gray-700"
+                />
+              )}
               <div className="flex-1 min-w-0" lang={b.lang || undefined}>
                 <h3 className="font-semibold text-lg leading-snug">
                   <Link href={`/reader/${encodeURIComponent(b.id)}`} className="hover:underline">

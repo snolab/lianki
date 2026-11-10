@@ -6,7 +6,7 @@
  * only, and deleted when they say so.
  *
  * - **Sources.** `import` (the /words Import panel), `self-intro` (the
- *   /self-intro add-file area). `chat` (the chat's attachments) is listed and
+ *   /self-intro add-file area), `books` (an own book on /books, gate `books.mine`). `chat` (the chat's attachments) is listed and
  *   deletable on /my/files, never uploaded here.
  * - **Gate.** `import.any` through `importAnyOn` (lib/import/words-handler.ts):
  *   a flag (on: every signed-in user; off: `dev` holders), never an email.
@@ -23,8 +23,12 @@ import { type InboxSource, listAllItems } from "@/lib/inbox/store";
 import { sameOriginWrite } from "@/lib/security/same-origin";
 
 export type ImportFilesDeps = InboxDeps & {
-  /** The gate for this signed-in user: `importAnyOn(flags, isDev(email))`. */
-  on: (who: { id: string; email: string }) => Promise<boolean>;
+  /**
+   * The gate for this signed-in user and source: `importAnyOn(flags, isDev(email))`;
+   * `books` (an own book on /books) is `books.mine`'s; `any` (a listing of every
+   * source) either.
+   */
+  on: (who: { id: string; email: string }, source?: UploadSource | "any") => Promise<boolean>;
   /** False without R2/D1 (the Mongo backend): nothing can be stored. */
   available?: boolean;
   /** Drop what was derived from a deleted file (its cached AI chunks). */
@@ -38,7 +42,11 @@ async function dropAfter(r: Response, d: ImportFilesDeps, userId: string, id: st
 }
 
 /** The sources a user uploads to through these routes (`?source=`; default `import`). */
-export const UPLOAD_SOURCES = ["import", "self-intro"] as const satisfies readonly InboxSource[];
+export const UPLOAD_SOURCES = [
+  "import",
+  "self-intro",
+  "books",
+] as const satisfies readonly InboxSource[];
 export type UploadSource = (typeof UPLOAD_SOURCES)[number];
 
 /** The `source` query parameter, checked: an upload source, else null (400). */
@@ -54,29 +62,29 @@ const unauthorized = () =>
   Response.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
 
 /** The signed-in user the gate lets in, or null (→ 401 / 404 by the caller). */
-async function allowed(d: ImportFilesDeps) {
+async function allowed(d: ImportFilesDeps, source: UploadSource | "any" = "import") {
   const who = await d.who();
   if (!who?.id) return { who: null, ok: false } as const;
-  return { who, ok: d.available !== false && (await d.on(who)) } as const;
+  return { who, ok: d.available !== false && (await d.on(who, source)) } as const;
 }
 
 /** POST /api/import/files?source=import|self-intro — the raw bytes; `x-file-name` (URI-encoded). */
 export async function uploadImportFile(req: Request, d: ImportFilesDeps): Promise<Response> {
   if (!sameOriginWrite(req)) return forbidden();
-  const a = await allowed(d);
+  const source = uploadSourceOf(req);
+  const a = await allowed(d, source ?? "import");
   if (!a.who) return unauthorized();
   if (!a.ok) return notFound();
-  const source = uploadSourceOf(req);
   if (!source) return Response.json({ error: "bad-source" }, { status: 400, headers: NO_STORE });
   return storeUpload(req, a.who, d, source);
 }
 
 /** GET /api/import/files?source= — the user's stored files from one source, newest first, and usage. */
 export async function listImportFiles(d: ImportFilesDeps, req?: Request): Promise<Response> {
-  const a = await allowed(d);
+  const source = req ? uploadSourceOf(req) : "import";
+  const a = await allowed(d, source ?? "import");
   if (!a.who) return unauthorized();
   if (!a.ok) return notFound();
-  const source = req ? uploadSourceOf(req) : "import";
   if (!source) return Response.json({ error: "bad-source" }, { status: 400, headers: NO_STORE });
   return listFor(a.who, d, source);
 }
@@ -96,7 +104,7 @@ export async function deleteImportFile(
 
 /** GET /api/my/files — every file the user stored, every source, newest first (/my/files). */
 export async function listMyFiles(d: ImportFilesDeps): Promise<Response> {
-  const a = await allowed(d);
+  const a = await allowed(d, "any");
   if (!a.who) return unauthorized();
   if (!a.ok) return notFound();
   const items = await listAllItems(d.db(), a.who.id);
@@ -117,7 +125,7 @@ export async function listMyFiles(d: ImportFilesDeps): Promise<Response> {
 
 /** GET /api/my/files/<id> — one of the user's own files, to them only (else 404). */
 export async function readMyFile(id: string, d: ImportFilesDeps): Promise<Response> {
-  const a = await allowed(d);
+  const a = await allowed(d, "any");
   if (!a.who) return unauthorized();
   if (!a.ok) return notFound();
   return serveOwn(id, a.who, d);
@@ -130,7 +138,7 @@ export async function deleteMyFile(
   d: ImportFilesDeps,
 ): Promise<Response> {
   if (!sameOriginWrite(req)) return forbidden();
-  const a = await allowed(d);
+  const a = await allowed(d, "any");
   if (!a.who) return unauthorized();
   if (!a.ok) return notFound();
   return dropAfter(await removeFor(id, a.who, d, null), d, a.who.id, id);

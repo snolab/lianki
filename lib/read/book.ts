@@ -17,7 +17,7 @@ import { checkShape, type TextShape } from "./prep";
 
 export const BOOK_KIND = "lianki-book";
 
-export type BookSource = "epub" | "gdoc" | "preset" | "vibe" | "youtube";
+export type BookSource = "epub" | "gdoc" | "preset" | "text" | "vibe" | "youtube";
 
 /**
  * A YouTube song (docs/youtube-song-examples.md): the video and each line's
@@ -82,6 +82,8 @@ export interface BookMeta {
   polished?: PolishInfo;
   /** A YouTube song's video and line clips (source "youtube"). */
   yt?: YtSongMeta;
+  /** A book imported from the user's own file has a cover (lib/books/own-import.ts). */
+  cover?: 1;
 }
 
 /** A polish that was applied: when, and how many of its chunks passed the check. */
@@ -348,6 +350,7 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
       source:
         m.source === "gdoc" ||
         m.source === "preset" ||
+        m.source === "text" ||
         m.source === "vibe" ||
         m.source === "youtube"
           ? m.source
@@ -368,6 +371,7 @@ export function parseBookMeta(content: string | undefined | null): BookMeta | nu
       ...(langs ? { langs } : {}),
       ...(shape ? { shape } : {}),
       ...(polished ? { polished } : {}),
+      ...(m.cover === 1 ? { cover: 1 as const } : {}),
     };
   } catch {
     return null;
