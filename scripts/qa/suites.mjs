@@ -350,6 +350,23 @@ export const SUITES = [
     ],
     sensitive: false,
   },
+  // The cost ledger at /dev/costs (docs/payments.md, "Cost ledger"): non-admin 404, a speech-server utterance booked, the account by name (no email); 360 px light + dark.
+  {
+    name: "COSTS (qa-costs)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-costs.mjs"],
+    base: true,
+    id: "costs",
+    paths: [
+      "app/(app)/dev/costs/**",
+      "app/api/dev/costs/**",
+      "app/api/debug/stt/local/**",
+      "lib/payments/cost-ledger.ts",
+      "lib/payments/costs-route.ts",
+      "db/migrations/0072_cost_ledger.sql",
+    ],
+    sensitive: false,
+  },
   // The send log at /dev/mails (docs/mail-templates.md, "Send log"): search, filter, re-render, Resend (stub), Suppress, suppression list; 360 px light + dark.
   {
     name: "MAIL LOG (qa-mails)",

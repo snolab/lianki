@@ -17,6 +17,7 @@ import {
   sideClip,
   encodeWav,
   postStt,
+  reportLocalStt,
   resample,
 } from "./mic";
 import {
@@ -530,6 +531,8 @@ function session(): MicSession {
           // Streamed to the owner's Mac (local-stt.ts); on any failure, the route as before.
           try {
             const f = await local;
+            // Served by the speech server: booked as a cloud call (cost ledger), filtered or not.
+            if (!partial) reportLocalStt(durationMs, fetch);
             // The filter stopped it on the Mac: not text, not the cloud, not the clip sink.
             if (filterVerdict(f, durationMs, (ev) => v.log(ev))) return "";
             out = f;

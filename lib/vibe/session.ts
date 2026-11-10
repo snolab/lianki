@@ -105,6 +105,8 @@ export type VibeDeps = {
   onView(v: VibeView): void;
   /** Events only: a count or a reason, never text. */
   log?(ev: Record<string, unknown>): void;
+  /** The speech server served an utterance of `audioMs`: booked in the cost ledger (docs/payments.md, "Cost ledger"). */
+  served?(audioMs: number): void;
 };
 
 /** Longer than the socket race's own deadline (local-stt.ts CONNECT_TIMEOUT_MS). */
@@ -238,6 +240,9 @@ export function createVibeSession(d: VibeDeps) {
       if (info.partial || !info.local || me !== run) return "";
       try {
         const f = await info.local;
+        try {
+          d.served?.(info.durationMs);
+        } catch {}
         if (me !== run) return "";
         info.onSignals?.(f.signals);
         return f.text;

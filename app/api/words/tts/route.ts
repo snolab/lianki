@@ -32,9 +32,14 @@ export const GET = async (req: NextRequest) => {
       speechModel,
       speech: workersAiSpeech,
       log: (where, err) => logSanitizedError(where, err, {}),
-      // Free by the owner's decision (2026-11-09): what a miss costs us is logged.
+      // Free by the owner's decision (2026-11-09): what a miss costs us is
+      // logged and booked to this account (docs/payments.md, "Cost ledger").
       pay: <T>(text: string, aura: boolean, run: () => Promise<T>) =>
-        freeCall("words.tts", speechUsd(text.length, aura), run),
+        freeCall("words.tts", speechUsd(text.length, aura), run, {
+          userId: user?.id,
+          db: dbBackend() === "d1" ? getD1() : null,
+          units: text.length,
+        }),
       isPrivate: async (email, text, lang) =>
         dbBackend() === "d1" && isPrivateSpeech(getD1(), email, text, lang),
     },

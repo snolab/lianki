@@ -234,6 +234,19 @@ export const CONFIG = {
     description:
       "声纹操作（录入、存到账号、恢复、删除、重算、导出）的一次 Face ID 管多久（毫秒）：默认 600000 = 10 分钟，在这段时间里同一台设备、同一次登录不再弹出通行密钥。0 = 每次操作都要 Face ID。只管声纹，不管别的验证。改短会让已经发出的授权也跟着变短。",
   }),
+  // Lianki's own speech server (docs/local-stt.md) booked as if it were a cloud
+  // service (docs/payments.md, "Cost ledger"): Workers AI whisper turbo's list price.
+  "stt.local.costPerMinUsd": {
+    default: 0.000513 as number,
+    schema: z.number().min(0).max(1),
+    min: 0,
+    max: 1,
+    unit: "USD/min",
+    group: "costs",
+    audience: "server",
+    description:
+      "Lianki 自己的语音服务器（你 Mac 上的本地识别）每听写一分钟音频，在成本账（/dev/costs）里记多少美元：按云服务的价格记账，用户不扣积分。默认 0.000513 = Workers AI whisper turbo 的标价。",
+  },
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

@@ -47,6 +47,24 @@ const dictionary = {
       mr: "बॉक्स साइन-इन",
       ko: "개발 박스 로그인",
     }),
+    costs: t({
+      en: "Service costs",
+      zh: "服务成本",
+      hi: "सेवा लागत",
+      es: "Costes del servicio",
+      fr: "Coûts du service",
+      ar: "تكاليف الخدمة",
+      bn: "সেবার খরচ",
+      pt: "Custos do serviço",
+      ru: "Затраты на сервис",
+      ur: "سروس کے اخراجات",
+      id: "Biaya layanan",
+      de: "Dienstkosten",
+      ja: "サービス原価",
+      sw: "Gharama za huduma",
+      mr: "सेवेचा खर्च",
+      ko: "서비스 비용",
+    }),
     credits: t({
       en: "Credits",
       zh: "余额",
@@ -399,6 +417,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Name of the internal page (tab title and main heading) that lists which account may sign in on which developer box (a personal dev container): a noun phrase naming the page.",
   credits:
     "Name of the internal page (tab title and main heading) where an administrator looks up and adjusts any account's credit balance and its history. A noun, not a verb.",
+  costs:
+    "Name of the internal page (tab title and main heading) where an administrator sees what the app's AI and speech services cost per day, per feature and per account (provider costs, not prices). A plural noun phrase: our running costs.",
   config:
     "Name of the internal page (tab title and main heading) where an administrator changes the app's live values (time limits, sizes, speeds) without a deploy, each with its default and change history. A plural noun phrase, not a verb.",
   flags:

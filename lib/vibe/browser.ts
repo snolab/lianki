@@ -64,13 +64,19 @@ function watchPage(f: (why: "hidden" | "offline") => void): () => void {
 }
 
 export async function vibeBrowserDeps(): Promise<Omit<VibeDeps, "onView">> {
-  const [{ voiceCapture }, { createLocalStt, LOCAL_STT_KEY }, { getKey }, { micTaps }] =
-    await Promise.all([
-      import("@lianki/debug-chat/MicButton"),
-      import("@lianki/debug-chat/local-stt"),
-      import("@lianki/debug-chat/storage-keys"),
-      import("@lianki/debug-chat/mic-taps"),
-    ]);
+  const [
+    { voiceCapture },
+    { createLocalStt, LOCAL_STT_KEY },
+    { getKey },
+    { micTaps },
+    { reportLocalStt },
+  ] = await Promise.all([
+    import("@lianki/debug-chat/MicButton"),
+    import("@lianki/debug-chat/local-stt"),
+    import("@lianki/debug-chat/storage-keys"),
+    import("@lianki/debug-chat/mic-taps"),
+    import("@lianki/debug-chat/mic"),
+  ]);
   const capture = voiceCapture();
   const taps: MicTaps = micTaps();
   return {
@@ -91,5 +97,6 @@ export async function vibeBrowserDeps(): Promise<Omit<VibeDeps, "onView">> {
     log: (ev) => console.info("vibe", JSON.stringify(ev)),
     watchPage,
     isHidden: () => document.visibilityState === "hidden",
+    served: (ms) => reportLocalStt(ms),
   };
 }

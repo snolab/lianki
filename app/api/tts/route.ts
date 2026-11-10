@@ -10,6 +10,7 @@ import {
   WORKERS_AI_NOT_CONFIGURED,
 } from "@/lib/workers-ai";
 import crypto from "crypto";
+import { dbBackend, getD1 } from "@/lib/d1";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { routeLimit } from "@/lib/security/route-guard";
@@ -136,7 +137,11 @@ export const POST = async (req: NextRequest) => {
     // has neither — one voice per language, no tts-1/tts-1-hd tiers. Kept in
     // the request contract so existing clients do not break; see
     // docs/workers-ai.md for what that costs.
-    paid = await freeCall("tts", speechUsd(text.length), () => workersAiSpeech({ text }));
+    paid = await freeCall("tts", speechUsd(text.length), () => workersAiSpeech({ text }), {
+      userId: session.user.id,
+      db: dbBackend() === "d1" ? getD1() : null,
+      units: text.length,
+    });
   } catch (err) {
     logSanitizedError("tts.workersai.generate", err, { requester });
     return NextResponse.json({ error: "Failed to generate speech" }, { status: 500 });
