@@ -104,7 +104,7 @@ test.describe("/data as a guest", () => {
   test("shows all three storage panels", async ({ page }) => {
     await page.goto(`${BASE}/data`);
     const stores = page.getByRole("region", { name: "Storage" });
-    for (const name of ["Script", "Local", "Cloud"]) {
+    for (const name of ["Userscript", "This browser", "Your account"]) {
       await expect(stores.getByRole("heading", { name, level: 3 })).toBeVisible();
     }
   });
@@ -154,16 +154,20 @@ test.describe("/data as a guest", () => {
     await gotoSeeded(page, THREE);
 
     // Push needs an account to push into.
-    await expect(page.getByRole("button", { name: /Push local cards to cloud/ })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: /Copy this browser.s cards to my account/ }),
+    ).toBeDisabled();
     // The Cloud store cannot be selected at all.
     await expect(page.locator('#store-select option[value="cloud"]')).toBeDisabled();
     // And the cloud-only export is absent.
-    await expect(page.getByRole("link", { name: /Export YAML — cloud/ })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Export a backup from my account/ })).toHaveCount(
+      0,
+    );
   });
 
   test("a local YAML backup can be exported", async ({ page }) => {
     await gotoSeeded(page, THREE);
-    const button = page.getByRole("button", { name: /Export YAML — local \(3\)/ });
+    const button = page.getByRole("button", { name: /Export a backup from this browser \(3\)/ });
     await expect(button).toBeEnabled();
 
     const download = await Promise.all([page.waitForEvent("download"), button.click()]).then(
@@ -174,7 +178,7 @@ test.describe("/data as a guest", () => {
 
   test("destructive actions stay locked until DELETE is typed", async ({ page }) => {
     await gotoSeeded(page, THREE);
-    const wipe = page.getByRole("button", { name: /Wipe this browser/ });
+    const wipe = page.getByRole("button", { name: /Clear this browser/ });
 
     await expect(wipe).toBeDisabled();
     await page.getByLabel(/Type DELETE/).fill("delete"); // wrong case must not arm it
@@ -184,7 +188,7 @@ test.describe("/data as a guest", () => {
     await expect(wipe).toBeEnabled();
     await wipe.click();
 
-    await expect(page.getByText(/Removed 3 cards from this browser/)).toBeVisible();
+    await expect(page.getByText(/Removed from this browser: 3/)).toBeVisible();
     await expect(titleCell(page, "Kanji drill")).toHaveCount(0);
   });
 });

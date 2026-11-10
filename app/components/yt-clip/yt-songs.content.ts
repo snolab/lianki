@@ -333,6 +333,24 @@ const dictionary = {
       sw: "Gusa ▶ kwenye video ili kuanza.",
       mr: "सुरू करण्यासाठी व्हिडिओतील ▶ वर टॅप करा.",
     }),
+    back: t({
+      en: "Back to books",
+      zh: "返回书架",
+      ja: "本の一覧へ戻る",
+      ko: "책 목록으로",
+      hi: "किताबों पर वापस",
+      es: "Volver a los libros",
+      fr: "Retour aux livres",
+      ar: "العودة إلى الكتب",
+      bn: "বইয়ের তালিকায় ফিরুন",
+      pt: "Voltar aos livros",
+      ru: "Назад к книгам",
+      ur: "کتابوں پر واپس",
+      id: "Kembali ke buku",
+      de: "Zurück zu den Büchern",
+      sw: "Rudi kwenye vitabu",
+      mr: "पुस्तकांकडे परत",
+    }),
   },
 };
 
@@ -372,6 +390,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Screen-reader label of the × button that closes the small video player popup in the reader. One word, the usual Close of a dialog.",
   tapToStart:
     "Hint under the small YouTube player popup, shown when the phone's browser did not let the video start by itself: the user should tap the play button ▶ inside the video. One sentence; keep the ▶ symbol.",
+  back: "Small link at the top of the new YouTube song page, after a ← arrow: leaves the form for the /read list of the learner's books and texts (the same words as the reader's own back button). An imperative phrase.",
 };
 
 export default {

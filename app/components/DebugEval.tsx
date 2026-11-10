@@ -23,6 +23,7 @@ import { useBoxAccount } from "./BoxApiBridge";
 import { ETA_FLAG } from "@/lib/eta-ping";
 import { boxViewer, ownerFlagOn } from "@/lib/box-oauth/session";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
+import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
 import { isKey } from "@lianki/debug-chat/storage-keys";
 import {
   type ChatContext,
@@ -445,7 +446,7 @@ export function DebugEval({
           return;
         }
         if (msg.type === "page-ended") {
-          setWarning("Ended from another page. It reconnects when you come back to this page.");
+          setWarning(chatExtra().endedElsewhere);
           return;
         }
         if (msg.type === "ai-credits") {
@@ -477,7 +478,7 @@ export function DebugEval({
         }
         if (msg.type === "rate-limited") {
           const min = Math.max(1, Math.ceil(Number(msg.retryIn) / 60_000) || 1);
-          setWarning(`Too many messages: that one was not sent. Try again in ${min} min.`);
+          setWarning(chatExtra().rateLimited.replace("{n}", String(min)));
           return;
         }
         if (msg.type === "state") {

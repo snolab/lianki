@@ -14,6 +14,7 @@
  * the rolling chunks, and its final is handed to `upload` as `info.local`,
  * which falls back to /api/debug/stt when it fails.
  */
+import { chatExtra } from "./chat-ui-locales";
 import type { UttMarks } from "./latency";
 import type { BeginOpts, LocalFinal, LocalUtt } from "./local-stt";
 import { STT_PROMPTS } from "./stt-hint";
@@ -117,17 +118,22 @@ export function isMicDenied(e: unknown): boolean {
   return n === "NotAllowedError" || n === "SecurityError" || n === "NotFoundError";
 }
 
-/** The short note by the button for an error. */
-export function micErrorNote(e: unknown): string {
+/**
+ * The short note by the button for an error, in the page's language
+ * (chat-ui-locales.ts). Plain words only: the status or the browser's message
+ * goes to the console.
+ */
+export function micErrorNote(e: unknown, lang?: string | null): string {
+  const t = chatExtra(lang);
   const n = nameOf(e);
-  if (n === "NotAllowedError" || n === "SecurityError") return "Microphone permission denied";
-  if (n === "NotFoundError") return "No microphone found";
+  if (n === "NotAllowedError" || n === "SecurityError") return t.micDenied;
+  if (n === "NotFoundError") return t.micNotFound;
   if (e instanceof SttError) {
-    if (e.status === 401) return "Sign in to use the mic";
-    if (e.status === 429) return "Too much speech for now; try again in a minute";
-    return `Transcription failed (${e.status})`;
+    if (e.status === 401) return t.micSignIn;
+    if (e.status === 429) return t.micTooMuch;
   }
-  return `Mic: ${String((e as Error | null)?.message ?? e).slice(0, 100)}`;
+  console.warn("[mic] failed:", e instanceof SttError ? e.status : "", (e as Error | null)?.message ?? e);
+  return t.micFailed;
 }
 
 /**

@@ -5,6 +5,8 @@ import { stringify } from "yaml";
 import { EXPORT_VERSION, serializeNoteForExport } from "@/lib/yaml-export";
 import YamlImportSection from "../import/YamlImportSection";
 import { Icon } from "@/app/components/icons";
+import { useIntlayer } from "next-intlayer";
+import { fill } from "@/lib/roadmap/labels";
 import type { LocalCard } from "@/app/lib/localStore";
 
 type Props = {
@@ -24,6 +26,7 @@ function download(filename: string, body: string, type: string) {
 }
 
 export default function BackupSection({ heading, exportLabel, isLoggedIn, localCards }: Props) {
+  const b = useIntlayer("data-page").backup;
   const [busy, setBusy] = useState(false);
 
   /**
@@ -71,7 +74,7 @@ export default function BackupSection({ heading, exportLabel, isLoggedIn, localC
             className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             <Icon name="downloadSimple" className="me-1.5" />
-            {exportLabel} — cloud
+            {fill(b.fromAccount.value, { label: exportLabel })}
           </a>
         ) : null}
         <button
@@ -81,19 +84,16 @@ export default function BackupSection({ heading, exportLabel, isLoggedIn, localC
           className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon name="downloadSimple" className="me-1.5" />
-          {exportLabel} — local ({localCards.length})
+          {fill(b.fromBrowser.value, { label: exportLabel, n: localCards.length })}
         </button>
       </div>
-      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-        A cloud export carries your notes, roadmap goals and preferences. A local export carries
-        only the cards mirrored into this browser.
-      </p>
+      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{b.note}</p>
 
       {isLoggedIn ? (
         <YamlImportSection />
       ) : (
         <p className="mt-8 border-t pt-8 text-sm text-gray-500 dark:text-gray-400">
-          Sign in to restore a backup — importing writes to your cloud account.
+          {b.signInRestore}
         </p>
       )}
     </section>
