@@ -5409,12 +5409,6 @@ export function Study({
                 <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
                   {partnerName}
                 </span>
-                {/* Design prototypes, to try on the device itself. */}
-                {["slip"].map((p) => (
-                  <a key={p} href={`/proto/${p}`} data-debug-proto={p} className="mr-1 underline">
-                    proto/{p}
-                  </a>
-                ))}
               </>
             )}
             {fill(text.stats.value, {
@@ -6459,7 +6453,7 @@ function TouchWordRow({
 
 /**
  * Variant B of the swipe A/B test (lib/words/swipe-ab.ts): WordRow's slip,
- * but each row is its own horizontal scroller (public/proto/slip.html). The
+ * but each row is its own horizontal scroller (the slip prototype, since deleted). The
  * browser locks the axis, follows the finger, coasts, snaps to the levels at
  * 0, ±a, ±2a and stops hard at ±2a — all on the compositor; script runs only
  * as a gesture starts and ends. What the slip uncovers is the same grade

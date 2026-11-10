@@ -128,6 +128,16 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   }
 }
 
+// 5b'. /lab/** is for developers only (owner, 2026-11-10): a 404 here too.
+for (const path of ["/lab", "/lab/ai-vocab", "/lab/polyglot"]) {
+  const r = await ctx.request.get(`${BASE}${path}`, { maxRedirects: 0 });
+  if (r.status() === 404) log(`✓ ${path} is 404 for a signed-in user without dev`);
+  else {
+    log(`✗ ${path} for a user without dev: HTTP ${r.status()} (want 404)`);
+    ok = false;
+  }
+}
+
 // 5c0. Regressions from the iOS device QA (2026-10-29).
 {
   // /list delete buttons once read "[object Object]" (IntlayerNode in an
@@ -330,14 +340,16 @@ for (const [w, h] of [
     return r;
   };
   const top = await reach();
-  const want = ["/home", "/words", "/review", "/lab/polyglot", "/membership"];
+  const want = ["/home", "/words", "/review", "/roadmap", "/membership"];
   check(
     top.lost.length === 0 &&
       want.every((x) => top.hrefs.includes(x)) &&
-      !["/my", "/import", "/data", "/my/preferences"].some((x) => top.hrefs.includes(x)) &&
+      !["/my", "/import", "/data", "/my/preferences", "/lab", "/lab/polyglot"].some((x) =>
+        top.hrefs.includes(x),
+      ) &&
       top.footIn &&
       !top.footShown,
-    `rail ${w}x${h}: every link on screen or in "⋯", none of import/data/settings, foot kept for the account menu (${JSON.stringify(top)})`,
+    `rail ${w}x${h}: every link on screen or in "⋯", none of import/data/settings/lab, foot kept for the account menu (${JSON.stringify(top)})`,
   );
   await rail.mouse.wheel(0, 600);
   await rail

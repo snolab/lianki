@@ -59,7 +59,6 @@ export function createItems(t: NavText): PaletteItem[] {
       href: "/import",
       keys: "apkg yaml",
     },
-    { id: "create:ai", kind: "create", title: t.aiWords, href: "/lab/ai-vocab", keys: "ai" },
   ];
 }
 
@@ -200,8 +199,9 @@ export function SearchPalette({
 
   const pages = useMemo<PaletteItem[]>(
     () =>
-      // Flag-gated pages (lib/app-nav.ts `flag`) stay out: the palette does not know the viewer.
-      APP_NAV.filter((i) => !i.flag).map((i) => ({
+      // Flag-gated and developer-only pages (lib/app-nav.ts `flag`, `dev`) stay
+      // out: the palette does not know the viewer.
+      APP_NAV.filter((i) => !i.flag && !i.dev).map((i) => ({
         id: `go:${i.key}`,
         kind: "go",
         title: t.pages[i.key] ?? i.key,

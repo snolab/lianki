@@ -35,16 +35,12 @@ const SIZE_FLOOR = 0.6;
 const PAGES = [
   "/list",
   "/sign-in",
-  "/lab/ai-vocab",
-  "/lab/ai-vocab/zh?lang=ja",
   "/en/blog",
   "/data",
   "/reader",
   "/self-intro",
   "/home",
   "/sites",
-  "/lab",
-  "/lab/immersion",
 ];
 
 /** Served from the build output; any drift here means the asset pipeline broke. */
