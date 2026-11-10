@@ -172,10 +172,13 @@ export type ProgressDoneKind = "verified" | "unverified";
 export const WHO_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/;
 /** A receipt code on an "ETA reached" line (`progress.ts ack <code>`). */
 export const RECEIPT_RE = /^[a-z0-9]{6}$/;
-/** A fresh receipt code: six of a–z 0–9. */
+/**
+ * A fresh receipt code: six of 32 easy-to-read letters and digits (no 0, 1,
+ * l, o). 32 divides 256, so the top 5 bits of a random byte pick one unbiased.
+ */
 export function newReceiptCode(): string {
-  const abc = "abcdefghijklmnopqrstuvwxyz0123456789";
-  return [...crypto.getRandomValues(new Uint8Array(6))].map((b) => abc[b % 36]).join("");
+  const abc = "abcdefghijkmnpqrstuvwxyz23456789";
+  return [...crypto.getRandomValues(new Uint8Array(6))].map((b) => abc[b >> 3]).join("");
 }
 
 /**
