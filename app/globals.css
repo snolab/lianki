@@ -808,6 +808,94 @@ html[data-motion="off"] .lk-ex-spoken {
   color: inherit;
 }
 
+/* A slip that can no longer be swiped (owner, 2026-11-10 22:59 JST): its
+ * countdown ended, it reads "↓ back" and is locked. Cracked glass, seal-red
+ * cracks with a gold glint (the brand, not danger), drawn under the slip's
+ * text (z-index -1 inside the slip's own stacking context, over its paper and
+ * veil), so the text keeps its AA contrast. Flag words.shatter;
+ * app/(app)/words/Shatter.tsx, lib/words/shatter.ts. Strokes do not scale, so
+ * any row height (the pinch's --row-h) gets the same hairlines. */
+.lk-shatter {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  --crack-shade: oklch(0.49 0.2 22.3 / 0.45);
+  --crack-glint: oklch(0.89 0.12 86 / 0.9);
+}
+@media (prefers-color-scheme: dark) {
+  .lk-shatter {
+    --crack-shade: oklch(0.7 0.16 22.3 / 0.5);
+    --crack-glint: oklch(0.89 0.12 86 / 0.55);
+  }
+}
+.lk-shatter svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.lk-shatter path {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lk-crack-shade path {
+  stroke: var(--crack-shade);
+  stroke-width: 1.6px;
+}
+.lk-crack-glint path {
+  stroke: var(--crack-glint);
+  stroke-width: 0.6px;
+}
+/* The countdown ended on screen: the cracks run out from the impact, once. */
+.lk-shatter-live svg {
+  animation: lk-crack-run 600ms var(--min-jerk) both;
+}
+.lk-shatter-hit {
+  position: absolute;
+  left: var(--crack-x);
+  top: var(--crack-y);
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: -1.25rem 0 0 -1.25rem;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, oklch(0.89 0.12 86 / 0.9), oklch(0.89 0.12 86 / 0));
+  opacity: 0;
+  animation: lk-crack-hit 520ms ease-out;
+}
+@keyframes lk-crack-run {
+  from {
+    clip-path: circle(0% at var(--crack-x) var(--crack-y));
+  }
+  to {
+    clip-path: circle(150% at var(--crack-x) var(--crack-y));
+  }
+}
+@keyframes lk-crack-hit {
+  from {
+    opacity: 1;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+/* Reduced motion: the cracks at rest, no run, no flash. */
+@media (prefers-reduced-motion: reduce) {
+  .lk-shatter-live svg {
+    animation: none;
+  }
+  .lk-shatter-hit {
+    display: none;
+  }
+}
+html[data-motion="off"] .lk-shatter-hit {
+  display: none;
+}
+
 /* Two fingers pinching the card height (lib/words/use-row-pinch.ts): the list
  * does not scroll natively, so the scroll that keeps the fingers' row in place
  * is the only one (iOS kept panning under it and the list shook). Still
