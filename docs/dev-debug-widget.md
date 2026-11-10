@@ -1381,6 +1381,21 @@ toggle on and either a phone, the mic used on this device, or the input focused)
    row says "Replies read aloud (mic used)" while it holds, "Replies read
    aloud while typing" (`ChatStrings.readAloudTyping`) when only the focus
    rule applies.
+- **iOS unlock, any tap on the page** (owner, 2026-11-10 23:48 JST: on
+   /reader his replies were silent again): iOS WebKit drops every
+   `speechSynthesis.speak()` with no event until the page has spoken once
+   inside a user gesture, and each page load starts locked, including a
+   debug device's reload after a deploy. The chat unlocked only on a press on
+   the chat itself, and the dropped sentence held the queue forever, so that
+   reply and every later one stayed silent. Now any tap or key on the page
+   unlocks it (`speech-unlock.ts`; a touch's pointerdown is no activation, so
+   its pointerup or click is the one used), and a sentence that has neither
+   started nor is speaking or pending after `SPEECH_REFUSED_MS` (1 s) counts
+   as refused: logged `{ev:"voice-refused"}`, the reading waits as "blocked"
+   and the next tap anywhere reads on from it. Tests:
+   `unit/speech-unlock.test.ts`, `unit/voice-session.test.ts` ("iOS dropping
+   speak()"). Playwright's WebKit on macOS has no such restriction, so no
+   browser check can show it.
 - **Reconnect**: replies sent while the socket was down come back only in
    the `history` frame; the newest agent line past the last one this page
    saw is read (speak-rules.ts `missedReply`). The first connect of a page
