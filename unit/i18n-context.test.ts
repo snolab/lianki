@@ -9,6 +9,7 @@ import myFiles from "@/app/(app)/my/files/my-files.content";
 import bottomNav from "@/app/components/bottom-nav.content";
 import learningPartner from "@/app/components/learning-partner.content";
 import devSwitch from "@/app/components/dev-switch.content";
+import sealSwitch from "@/app/components/seal-switch.content";
 import liveView from "@/app/components/live-view.content";
 import reviewPage from "@/app/(app)/review/page.content";
 import navHome from "@/app/(app)/home/page.content";
@@ -133,6 +134,7 @@ describe.each([
   ["bottom-nav", bottomNav],
   ["learning-partner", learningPartner],
   ["dev-switch", devSwitch],
+  ["seal-switch", sealSwitch],
   ["live-view", liveView],
   ["review-page", reviewPage],
   ["nav-home", navHome],

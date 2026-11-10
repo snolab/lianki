@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import PermissionsHistory from "./PermissionsHistory";
-import { SealCheck } from "@/app/components/SealCheck";
+import { SealSwitch } from "@/app/components/SealSwitch";
 import { DevToast, type DevToastMsg } from "../DevToast";
 
 type Permission = "admin" | "dev";
@@ -180,12 +180,13 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
         />
         {PERMS.map((p) => (
           <div key={p} className="flex items-start gap-1 text-sm">
-            <SealCheck
+            <SealSwitch
+              role="checkbox"
               checked={want[p]}
-              size={20}
+              size="sm"
               aria-labelledby={`perm-${p}`}
               onClick={() => setWant((w) => ({ ...w, [p]: !w[p] }))}
-              className="-mt-1.5"
+              className="-my-2.5"
             />
             <span id={`perm-${p}`}>
               <span className="font-medium">{name(p)}</span> —{" "}

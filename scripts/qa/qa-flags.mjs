@@ -67,6 +67,56 @@ const inView = (page, key) =>
 const noSideScroll = (page) =>
   page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
+/** The box seal's look (SealSwitch.tsx): colours as sRGB via a canvas, its box, the tap target. */
+const sealLook = (page, sel) =>
+  page.evaluate((sel) => {
+    const btn = document.querySelector(sel);
+    const seal = btn?.querySelector(".lk-seal");
+    if (!seal) return null;
+    const ctx = Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext(
+      "2d",
+      { willReadFrequently: true },
+    );
+    const rgb = (css) => {
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = css;
+      ctx.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+      return { r, g, b, a };
+    };
+    const lum = ({ r, g, b }) =>
+      [r, g, b]
+        .map((v) => v / 255)
+        .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+        .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const ratio = (x, y) => {
+      const [a, b] = [lum(x), lum(y)].sort((p, q) => q - p);
+      return (a + 0.05) / (b + 0.05);
+    };
+    let ground = null;
+    for (let el = btn.parentElement; el && !ground; el = el.parentElement) {
+      const c = rgb(getComputedStyle(el).backgroundColor);
+      if (c.a === 255) ground = c;
+    }
+    ground ??= rgb(getComputedStyle(document.documentElement).getPropertyValue("--background"));
+    const st = getComputedStyle(seal);
+    const fill = rgb(st.backgroundColor);
+    const behind = fill.a === 255 ? fill : ground;
+    const word = [...seal.children].find((c) => getComputedStyle(c).visibility === "visible");
+    const box = seal.getBoundingClientRect();
+    return {
+      filled: fill.a === 255,
+      borderStyle: st.borderTopStyle,
+      border: ratio(rgb(st.borderTopColor), ground),
+      text: ratio(rgb(st.color), behind),
+      word: word?.textContent ?? "",
+      w: Math.round(box.width),
+      h: Math.round(box.height),
+      tap: Math.round(btn.getBoundingClientRect().height),
+      red: fill.a === 255 && fill.r > fill.g * 2,
+    };
+  }, sel);
+
 async function loadRows(page, path = "/dev/flags") {
   await page.goto(`${BASE}${path}`);
   await page.waitForSelector("[data-flag-group]", { timeout: 30_000 });
@@ -198,6 +248,14 @@ async function run(name, device, colorScheme) {
   const levels = before.flags.find((f) => f.key === "levels");
   check(levels.enabled === false, `${tag}: levels starts off`);
   const sw = page.locator('[id="levels"] [role="switch"]');
+  const offLook = await sealLook(page, '[id="levels"] [role="switch"]');
+  check(
+    offLook && !offLook.filled && offLook.borderStyle === "dashed" && offLook.word !== "",
+    `${tag}: off is a grey dashed box with its word (${JSON.stringify(offLook)})`,
+  );
+  check(offLook?.text >= 4.5, `${tag}: the off word is AA (${offLook?.text.toFixed(2)}:1)`);
+  check(offLook?.border >= 3, `${tag}: the dashed edge shows (${offLook?.border.toFixed(2)}:1)`);
+  check(offLook?.tap >= 40, `${tag}: the switch is a 40px tap target (${offLook?.tap}px)`);
   await sw.click();
   // The toast says what was saved, when it takes effect and for whom.
   const toast = page.locator('[data-dev-toast="ok"]');
@@ -214,6 +272,21 @@ async function run(name, device, colorScheme) {
   check(
     (await page.locator('[id="levels"] [data-seal-check="on"]').count()) === 1,
     `${tag}: an on switch is stamped with the seal`,
+  );
+  await page.waitForTimeout(400); // past the one-time stamp
+  const onLook = await sealLook(page, '[id="levels"] [role="switch"]');
+  check(
+    onLook?.filled &&
+      onLook.red &&
+      onLook.borderStyle === "solid" &&
+      onLook.word !== "" &&
+      onLook.word !== offLook?.word,
+    `${tag}: on is a filled seal-red box with its own word (${JSON.stringify(onLook)})`,
+  );
+  check(onLook?.text >= 4.5, `${tag}: the on word is AA (${onLook?.text.toFixed(2)}:1)`);
+  check(
+    onLook?.w === offLook?.w && onLook?.h === offLook?.h,
+    `${tag}: on and off are the same box (${onLook?.w}×${onLook?.h} / ${offLook?.w}×${offLook?.h})`,
   );
   await page.screenshot({ path: join(OUT, `${tag}-toast.png`) });
   check(

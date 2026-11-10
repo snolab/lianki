@@ -18,6 +18,7 @@ import { DONT_ASK_EVENT } from "@/lib/dont-ask";
 import { AppBadgeSettings } from "@/app/components/AppBadgeSettings";
 import { MailSettings } from "@/app/components/MailSettings";
 import { LanguageSettings } from "@/app/components/LanguageSettings";
+import { SealSwitch } from "@/app/components/SealSwitch";
 import { PreferredLangsSettings } from "@/app/components/PreferredLangsSettings";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { readOfferOn, writeOfferOn } from "@/lib/read/polish-offer";
@@ -56,34 +57,36 @@ function ReaderSettings() {
   return (
     <section className="mb-10 max-w-md" data-section="reader">
       <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">{t.prefHeading}</h2>
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
+      <div className="flex items-center gap-3">
+        <span id="pref-polish-offer-label" className="flex-1">
+          {t.prefOffer}
+        </span>
+        <SealSwitch
           checked={on}
           data-testid="pref-polish-offer"
-          onChange={(e) => {
-            setOn(e.target.checked);
-            writeOfferOn(e.target.checked);
+          aria-labelledby="pref-polish-offer-label"
+          onClick={() => {
+            setOn(!on);
+            writeOfferOn(!on);
           }}
-          className="w-4 h-4 rounded"
         />
-        <span>{t.prefOffer}</span>
-      </label>
-      <p className="text-xs text-gray-500 mt-2 ml-6">{t.prefHelp}</p>
-      <label className="flex items-center gap-2 cursor-pointer mt-4">
-        <input
-          type="checkbox"
+      </div>
+      <p className="text-xs text-gray-500 mt-1">{t.prefHelp}</p>
+      <div className="flex items-center gap-3 mt-4">
+        <span id="pref-translator-notes-label" className="flex-1">
+          {t.prefNotes}
+        </span>
+        <SealSwitch
           checked={notes}
           data-testid="pref-translator-notes"
-          onChange={(e) => {
-            setNotes(e.target.checked);
-            writeNotesOn(e.target.checked);
+          aria-labelledby="pref-translator-notes-label"
+          onClick={() => {
+            setNotes(!notes);
+            writeNotesOn(!notes);
           }}
-          className="w-4 h-4 rounded"
         />
-        <span>{t.prefNotes}</span>
-      </label>
-      <p className="text-xs text-gray-500 mt-2 ml-6">{t.prefNotesHelp}</p>
+      </div>
+      <p className="text-xs text-gray-500 mt-1">{t.prefNotesHelp}</p>
     </section>
   );
 }

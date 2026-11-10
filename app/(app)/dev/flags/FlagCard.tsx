@@ -1,7 +1,7 @@
 import { FLAGS, type FlagDef } from "@/lib/flags";
 import type { FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
-import { SealCheck } from "@/app/components/SealCheck";
+import { SealSwitch } from "@/app/components/SealSwitch";
 
 /** Shown under every flag that moves real money (policy: typed Slack confirmation). */
 export const MONEY_NOTE = "打开正式收款前请在 Slack 打字确认";
@@ -42,7 +42,8 @@ export function Chevron({ open }: { open: boolean }) {
 
 /**
  * One row on /dev/flags; its `id` is the key, so /dev/flags#<key> links to it.
- * The name, the state and the switch (a seal: stamped = on) are always there; tapping the name unfolds
+ * The name and the switch are always there: a box seal that names the state
+ * (filled red 开 = on, dashed grey 关闭 = off; app/components/SealSwitch.tsx); tapping the name unfolds
  * the description and the last change. A flag whose prerequisites fail cannot be
  * turned on: its switch is greyed and disabled, with every reason listed, folded
  * or not, because they say why the switch does nothing. If it is on anyway
@@ -90,16 +91,9 @@ export function FlagCard({
           <Chevron open={expanded} />
           <code className="font-mono text-sm break-all">{f.key}</code>
         </button>
-        <span
-          data-flag-state
-          className={`shrink-0 text-xs ${f.enabled ? "font-bold text-blue-600 dark:text-blue-300" : "opacity-60"}`}
-        >
-          {f.enabled ? "开" : "关"}
-        </span>
-        <SealCheck
-          role="switch"
+        <SealSwitch
+          data-flag-state={f.enabled ? "on" : "off"}
           checked={f.enabled}
-          size={24}
           aria-label={f.key}
           aria-describedby={blocked ? `prereq-${f.key}` : undefined}
           disabled={busy || locked}
