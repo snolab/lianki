@@ -35,7 +35,7 @@ import type { SttSignals } from "./stt-guard";
 import { VOICE_DEVICE_KEY, deviceSlug, filterSwitch, filterVerdict, noteFiltered, noteSpeaker, subscribeFiltered } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
-import { MIC_BOX, MIC_RING } from "./bar-geometry";
+import { MIC_BOX, MIC_RING, NO_SELECT } from "./bar-geometry";
 import { type MicSession, type MicView, micSession } from "./mic-session";
 import { sttHint } from "./stt-hint";
 import {
@@ -833,7 +833,8 @@ export function DebugMic({
   const wakeLabel = view.kws === "loading" ? ws.loading : ws.passive;
   return (
     // In the chat bar's cluster, after the + (open) or the pill's Li (folded).
-    <div className="relative flex shrink-0">
+    // Never text: a long press (push to talk) selects nothing, no iOS callout.
+    <div className="relative flex shrink-0" style={NO_SELECT}>
       <style>{MIC_PULSE}</style>
       {/* What the ring shows, for screen readers: said on each change of state. */}
       <span role="status" aria-live="polite" className="sr-only" data-testid="debug-chat-mic-live">
@@ -891,6 +892,8 @@ export function DebugMic({
         onPointerUp={gesture?.onPointerUp}
         onPointerCancel={gesture?.onPointerCancel}
         onKeyDown={gesture?.onKeyDown}
+        // A long press is push to talk, never the context menu.
+        onContextMenu={(e) => e.preventDefault()}
         onClick={() => {
           // The click that ends a scrub or a move is not a tap.
           if (gesture?.wasDrag()) return;
@@ -910,6 +913,7 @@ export function DebugMic({
         // (bar-geometry.ts).
         style={{
           ...MIC_BOX,
+          ...NO_SELECT,
           color: state === "off" ? undefined : speaking ? TALK : passive ? WAIT : REC,
         }}
         className={`tap-40 pointer-events-auto relative flex touch-none flex-col items-center justify-center text-base leading-none text-gray-500 ${state === "loading" ? "opacity-50" : ""}`}

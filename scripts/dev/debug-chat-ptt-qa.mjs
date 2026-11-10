@@ -10,6 +10,9 @@
  *     with no draft left behind; the page does not scroll
  *   - a press slid away and released there sends nothing (cancel)
  *   - a short tap sends nothing (it toggles listening, as ever)
+ *   - in WebKit too: the mic and the bar are never text (user-select none,
+ *     no touch callout; owner, 2026-11-11 "长按麦克风选中文字"), while the
+ *     input stays selectable
  *
  * Silent: muted browser, fake mic, nothing played.
  *
@@ -17,7 +20,7 @@
  */
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 import { launchSilent, newSilentContext } from "../qa/silent.mjs";
 
 const port = await new Promise((resolve, reject) => {
@@ -148,6 +151,67 @@ try {
   await ctx.close();
 } finally {
   await browser.close();
+}
+
+// WebKit (iOS's engine): a long press on the mic or the bar selects no text
+// and opens no callout; the input is text as ever.
+const wk = await launchSilent(webkit);
+try {
+  const ctx = await newSilentContext(wk, {
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  await ctx.addInitScript((src) => {
+    localStorage.setItem("lk:debug-widget-src", src);
+    // Never captures: the mic only has to render.
+    if (navigator.mediaDevices)
+      navigator.mediaDevices.getUserMedia = async () => {
+        throw new DOMException("no mic in QA", "NotAllowedError");
+      };
+  }, `${ORIGIN}/debug-chat.js`);
+  const page = await ctx.newPage();
+  await page.goto(`${ORIGIN}/harness?open&nofrontier&notree`);
+  await page.waitForSelector('[data-debug-widget] [data-testid="debug-chat-mic"]', {
+    timeout: 60_000,
+  });
+  const styles = await page.evaluate(() => {
+    const read = (el) => {
+      if (!el) return null;
+      const c = getComputedStyle(el);
+      return {
+        select: c.webkitUserSelect || c.userSelect,
+        callout: c.getPropertyValue("-webkit-touch-callout"),
+      };
+    };
+    const mic = document.querySelector('[data-testid="debug-chat-mic"]');
+    return {
+      // Only iOS WebKit knows -webkit-touch-callout; desktop builds drop it
+      // (unit/debug-chat-no-select.test.ts covers the style itself).
+      callout: CSS.supports("-webkit-touch-callout", "none"),
+      mic: read(mic),
+      icon: read(mic?.querySelector("svg")),
+      pill: read(document.querySelector('[data-testid="debug-chat-pill"]')),
+      input: read(document.querySelector('[data-testid="debug-chat-input"]')),
+    };
+  });
+  for (const k of ["mic", "icon", "pill"]) {
+    check(styles[k]?.select === "none", `webkit: ${k} user-select none (${styles[k]?.select})`);
+    if (styles.callout)
+      check(
+        styles[k]?.callout === "none",
+        `webkit: ${k} touch-callout none (${styles[k]?.callout})`,
+      );
+  }
+  if (!styles.callout)
+    console.log("skip webkit: this build has no -webkit-touch-callout (iOS only)");
+  check(
+    styles.input?.select !== "none",
+    `webkit: the input stays selectable (${styles.input?.select})`,
+  );
+  await ctx.close();
+} finally {
+  await wk.close();
   server.kill();
 }
 if (failures.length) {

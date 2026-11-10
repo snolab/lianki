@@ -70,7 +70,16 @@ import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
-import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry, STRIP_INSET_PX, stripTopRadius } from "./bar-geometry";
+import {
+  BAR_CONTROL,
+  INPUT_START,
+  NO_SELECT,
+  TAP_44_CSS,
+  TEXT_SELECT,
+  barGeometry,
+  STRIP_INSET_PX,
+  stripTopRadius,
+} from "./bar-geometry";
 import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, voiceDevice } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
@@ -4854,6 +4863,8 @@ export function DebugChat({
             // Radius, padding and the line box as variables: the mic is concentric
             // with the corner by construction (bar-geometry.ts).
             ...barGeometry(),
+            // A press target, not text: a long press here never selects (the input does).
+            ...NO_SELECT,
             background: INPUT_BG,
             // Aside while the log spans the screen; it keeps the pointer (captured).
             opacity: barAside ? 0 : undefined,
@@ -4901,7 +4912,7 @@ export function DebugChat({
           be read), fading out as its slot closes. */}
           <div
             data-testid="debug-chat-input-slot"
-            style={LTR_TEXT}
+            style={{ ...LTR_TEXT, ...TEXT_SELECT }}
             inert={!open}
             aria-hidden={!open || undefined}
             className={`relative flex w-0 min-w-0 flex-1 transition-opacity duration-[180ms] ease-out motion-reduce:transition-none ${open ? "opacity-100" : "max-h-8 overflow-hidden opacity-0"}`}
