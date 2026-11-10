@@ -136,6 +136,15 @@ const TASKS = [
     done: true,
     doneAt: T0 - 15 * MIN,
   },
+  // Finished early (owner, 2026-11-11 01:08 JST): a 9-hour estimate done in 15 minutes.
+  {
+    id: "/done/early",
+    title: "Early finish: a 9H estimate done in 15 minutes",
+    start: T0 - 2 * HOUR,
+    at: T0 + 7 * HOUR,
+    done: true,
+    doneAt: T0 - 105 * MIN,
+  },
   {
     id: "/done/old",
     title: "Permissions step c",
@@ -360,6 +369,28 @@ try {
         `${tag}: every ▾ says expanded`,
       );
       await shot("groups-open");
+      // A task finished early ends at its finish (left of Now); its estimate is only the faint ghost.
+      const early = await page.evaluate(() => {
+        const row = document.querySelector(
+          '[data-testid="debug-chat-gantt-row"][data-id="/done/early"]',
+        );
+        const r = (s) => row.querySelector(`[data-testid="${s}"]`)?.getBoundingClientRect();
+        const now = document
+          .querySelector('[data-testid="debug-chat-gantt-now"]')
+          .getBoundingClientRect();
+        return {
+          bar: r("debug-chat-gantt-bar"),
+          ghost: r("debug-chat-gantt-ghost"),
+          now: now.left,
+        };
+      });
+      check(
+        !!early.bar &&
+          early.bar.right < early.now &&
+          !!early.ghost &&
+          early.ghost.right > early.now,
+        `${tag}: a task done early ends at its finish, the estimate a ghost (bar ${Math.round(early.bar?.right)}, ghost ${Math.round(early.ghost?.right)}, now ${Math.round(early.now)})`,
+      );
       const states = await rows.evaluateAll((els) => els.map((e) => e.dataset.state));
       check(
         states.includes("queued") && states.includes("reached") && states.includes("done"),

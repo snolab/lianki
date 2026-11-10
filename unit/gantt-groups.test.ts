@@ -9,7 +9,7 @@ import { describe, expect, it } from "bun:test";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { EtaList } from "@lianki/debug-chat/EtaBar";
-import type { EtaTask } from "@lianki/debug-chat/eta";
+import { type EtaTask, ganttRow } from "@lianki/debug-chat/eta";
 import {
   GANTT_GROUPS,
   GANTT_GROUPS_KEY,
@@ -365,6 +365,31 @@ describe("the chat's task list, grouped", () => {
       strings: CHAT_STRINGS_EN,
     });
     expect(parked).toContain("reminder in 1H");
+  });
+});
+
+describe("done tasks by their actual end (owner, 2026-11-11 01:08 JST)", () => {
+  const early = task({
+    id: "/words/a",
+    start: NOW - 60 * MIN,
+    at: NOW + 8 * 60 * MIN,
+    done: true,
+    doneAt: NOW - 45 * MIN,
+  });
+  it("a slice and the parent row end at the finish, not the long estimate", () => {
+    expect(sliceSpan(early, NOW)).toEqual({ from: NOW - 60 * MIN, to: NOW - 45 * MIN });
+    const p = rollup("words", "W", [early]);
+    expect(p).toMatchObject({ start: NOW - 60 * MIN, at: NOW - 45 * MIN, done: true });
+    // With an open child, the parent runs to the open child's P95, not the done one's estimate.
+    const q = rollup("words", "W", [early, task({ id: "/words/b", at: NOW + 20 * MIN })]);
+    expect(q.at).toBe(NOW + 20 * MIN);
+  });
+  it("the compact list's row too: start to finish, full, no overrun", () => {
+    const g = ganttRow(early, { lo: NOW - 60 * MIN, hi: NOW + 60 * MIN }, NOW);
+    expect(g.left).toBe(0);
+    expect(g.plan).toBeCloseTo(12.5);
+    expect(g.fill).toBe(100);
+    expect(g.over).toBe(0);
   });
 });
 

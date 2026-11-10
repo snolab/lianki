@@ -1888,6 +1888,15 @@ rows (one per category, slices, lanes, buttons, the focus category centred),
 a slice tap, ▾ folding back, and then runs its checks with every category
 open; the open set is kept when the Gantt opens again.
 
+**Done tasks are drawn as they really ran** (owner, 2026-11-11 01:08 JST:
+tasks with long estimates that finished fast still ran to the estimate). A
+done task's bar runs from its start to when it finished (`doneAt`, the
+node's endedAt), all solid and full, with no separate overrun, early or late
+(rgui `ganttBar`; the list's `ganttRow` likewise). Its estimate shows only
+as the faint ghost of the plan (the recorded plan, else start → estimate).
+Parent rows, lanes, the axis range, the sort and the home view's zoom use
+the actual end for done tasks; open tasks keep their P5–P95 tails.
+
 **Parked tasks** (owner, 2026-11-10: "9.1H remaining" on a parked item read
 as running): a node blocked, or waiting for the owner (status
 waiting-owner, or an open decision or approval nobody works on;
