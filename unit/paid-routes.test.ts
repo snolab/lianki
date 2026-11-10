@@ -350,6 +350,7 @@ describe("kept free by the owner (2026-11-09): word read-aloud and the mic", () 
       "speech.stt",
       0.001,
       async () => "ok",
+      null,
       (o) => void logs.push(o),
     );
     expect(r).toEqual({ ok: true, value: "ok", charged: 0, free: "feature" });

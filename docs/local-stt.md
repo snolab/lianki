@@ -982,6 +982,16 @@ setting has the same problem: all three are primary for him. Calling
 scores to choose between the readings, and it changes the recognizer for every
 decode running at the same time.
 
+## Booked as a cloud service
+
+The speech server costs us nothing per call, but each utterance it serves is
+booked to the account's cost ledger at a cloud-equivalent rate, so /dev/costs
+shows what the voice features would cost on a cloud provider
+([payments.md](payments.md), "Cost ledger"). The utterance never reaches
+lianki.com, so the page reports its length (`reportLocalStt` in `mic.ts`,
+from `MicButton.tsx` and /vibe's `served`) to `/api/debug/stt/local`; the rate
+is the config key `stt.local.costPerMinUsd`. Nothing is charged.
+
 ## Fallback
 
 `createLocalStt` (`packages/debug-chat/src/local-stt.ts`) opens the socket

@@ -428,7 +428,65 @@ Not charged, on purpose (no provider bill per call):
 | `/library` catalogue (`library.catalogue`) | public-domain texts cached in R2; no provider call |
 | BYOK (`byok.sync`) | the user's own key, from their browser |
 | the inbox (R2 storage and operations, `lib/inbox/charge.ts`) | metered and logged, not yet debited: cents per GB-month; a follow-up |
-| owner-only tools (`/dev/*`, the owner's STT bench `?model=`, local STT) | the owner pays |
+| owner-only tools (`/dev/*`, the owner's STT bench `?model=`, local STT) | the owner pays (local STT is still booked in the cost ledger below) |
+
+### Cost ledger (`/dev/costs`)
+
+Owner, 2026-11-11: a free feature charges nothing, but **its real cost is
+booked per account**, and an administrator sees who consumed what. Users keep
+seeing only what they are charged (`/membership/credits`); this view is
+admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
+`lib/payments/costs-route.ts` (`GET /api/dev/costs`), the page in
+`app/(app)/dev/costs/`, the table in `db/migrations/0072_cost_ledger.sql`.
+
+- **`cost_ledger`**: one row per served free call — `user_id` (the account
+  id, `''` for a guest), `feature`, `usd_micro` (the provider's cost in
+  millionths of a USD, REAL so a MeloTTS clip's few millionths are kept),
+  `units` (audio seconds for speech to text, characters for speech), `day`
+  (JST, YYYY-MM-DD) and `at`. Indexed by (day, user) and (feature, day). No
+  text, no audio, no email.
+- **Who books.** `freeCall` (`lib/payments/paid-calls.ts`) takes the payer
+  (`{userId, db, units}`) from every caller: `/api/words/tts` (cache misses;
+  recorded clips and cached audio cost nothing and are not booked),
+  `/api/tts`, `/api/debug/stt`. The cost booked is our price ÷ `MARGIN` — the
+  provider's list price — so free and paid add up in the same unit. The
+  lianki-voice Worker serves recorded clips (no provider bill) and passes
+  misses on to `/api/words/tts`, which books them, so it books nothing itself.
+- **Never in the user's way.** The booking runs after the call, under the
+  request's `waitUntil` (awaited only where there is none: dev, tests). A
+  failed write logs `cost.book.failed` (the feature and the error only) and
+  the user's call answers as if nothing happened (unit test "a ledger failure
+  never breaks or fails the user's call"). Without D1 nothing is booked.
+- **Lianki's speech server, as a cloud service.** The owner's Mac STT
+  ([local-stt.md](local-stt.md)) streams from the page straight to the Mac;
+  no utterance touches lianki.com on its own. So the page reports each one it
+  was served: the chat mic (`MicButton.tsx`, `reportLocalStt`, every final the
+  Mac answered, filtered or not) and /vibe (`served` in `lib/vibe/session.ts`)
+  POST `{audioMs}` to `/api/debug/stt/local` (same-origin JSON, signed in,
+  `LOCAL_STT_MAX_REPORTS` per 10 min, fire and forget). The server books
+  feature `speech.stt.local`: `audioMs` clamped to one utterance
+  (`LOCAL_STT_MAX_AUDIO_MS`, 30 s) × the config key
+  **`stt.local.costPerMinUsd`** (default 0.000513, Workers AI whisper turbo's
+  list price per audio minute, [workers-ai.md](workers-ai.md); editable at
+  `/dev/config`). Not booked: a box token's chat (box tokens never reach
+  `/api/debug`), and an utterance whose page closed before the report left
+  (`keepalive` covers most).
+- **The page** (`isAdmin`, 404 otherwise, page and API): a JST day range
+  (default the last 30 days, at most `COSTS_MAX_DAYS`); totals; **by
+  feature** and **by day** (a VirtualList with a seal-red bar per day); **by
+  account**, dearest first — the top three marked — as a VirtualList loading
+  `lists.batchSize` rows as it scrolls, each with its display name and
+  account id (never an email). Every table shows free cost and paid cost side
+  by side, plus what paid features charged (credits) and the calls. The paid
+  side is read from `credit_ai_charge` (settled rows by `settledAt`, JST):
+  `costMicro` ÷ `CREDITS_PER_USD` ÷ `MARGIN` is its provider cost; the feature
+  is the charge key's prefix (`<feature>:<userId>:…`; none = a Learning
+  Partner reply). Strings: `costs.content.ts` (`dev-costs`, 16 locales with
+  context lines); the page name is `costs` in `dev-pages`.
+- Tests: `unit/cost-ledger.test.ts` (booking, failure, the speech-server
+  route, aggregation, the API's 404); QA `scripts/qa/qa-costs.mjs` (suite
+  `costs`: non-admin 404, a speech-server report booked, the account by name
+  with no email, 360 px light + dark).
 
 ### Providers
 

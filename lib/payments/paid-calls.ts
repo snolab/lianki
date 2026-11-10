@@ -10,6 +10,9 @@
 import type OpenAI from "openai";
 import { metered, type Metered, type Payer } from "./metered";
 import type { D1WithBatch } from "./credits-store";
+import type { D1Like } from "@/lib/d1/types";
+import { workerWaitUntil } from "@/lib/d1";
+import { bookCost, providerUsd } from "./cost-ledger";
 import { speechHoldUsd, speechUsd, sttUsd, textHoldUsd, textUsd, type Feature } from "./prices";
 
 /** The most output tokens each chat feature may produce (its answer's ceiling). */
@@ -91,20 +94,52 @@ export function paidStt<T>(
   }));
 }
 
+/** Who used a free call, for the cost ledger (lib/payments/cost-ledger.ts). */
+export type FreeBook = {
+  /** The account that used it; null for a guest. */
+  userId: string | null | undefined;
+  /** D1, or null without it (the frozen Mongo backend, local dev): nothing is booked. */
+  db: D1Like | null;
+  /** Audio seconds (speech to text) or characters (speech). */
+  units?: number;
+  /**
+   * Keeps the booking running after the response (the request's waitUntil);
+   * answers false when there is none, and then the booking is awaited.
+   */
+  defer?: (p: Promise<unknown>) => boolean;
+  now?: () => Date;
+};
+
 /**
  * Free for everyone by the owner's decision (2026-11-09, card o3): word
  * read-aloud (`words.tts`, legacy `tts`) and the microphone (`speech.stt`).
- * No hold, no charge — only what it cost us is logged (`credits.free`, the
- * feature and USD), so the decision can be revisited with numbers.
+ * No hold, no charge. What it cost us is logged (`credits.free`, the feature
+ * and USD) and booked per account in the cost ledger (owner, 2026-11-11;
+ * docs/payments.md, "Cost ledger") — after the call, off its path: a failed
+ * booking is logged and never fails or delays the user's call.
  */
 export async function freeCall<T>(
   what: Feature,
   usd: number,
   run: () => Promise<T>,
+  book: FreeBook | null = null,
   log: (o: Record<string, unknown>) => void = (o) => console.log(JSON.stringify(o)),
 ): Promise<Metered<T>> {
   const value = await run();
   log({ event: "credits.free", what, why: "free-feature", usd });
+  if (book?.db) {
+    const p = bookCost(
+      book.db,
+      { userId: book.userId, feature: what, usd: providerUsd(usd), units: book.units },
+      (book.now ?? (() => new Date()))(),
+      log,
+    ).catch(() => false);
+    let deferred = false;
+    try {
+      deferred = (book.defer ?? workerWaitUntil)(p);
+    } catch {}
+    if (!deferred) await p;
+  }
   return { ok: true, value, charged: 0, free: "feature" };
 }
 
