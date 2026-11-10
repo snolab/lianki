@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       message: `${cards.length} self-introduction cards saved successfully!`,
     });
   } catch (error) {
-    console.error("Save cards error:", error);
-    return NextResponse.json({ error: "Failed to save cards" }, { status: 500 });
+    console.error("[save-cards] failed", error);
+    return NextResponse.json({ error: "save-failed" }, { status: 500 });
   }
 }

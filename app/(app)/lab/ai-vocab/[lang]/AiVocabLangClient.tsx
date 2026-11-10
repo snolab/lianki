@@ -78,7 +78,8 @@ export default function AiVocabLangClient({
       }
       if (!res.ok) {
         const d = await res.json();
-        setError(d.error || "Failed to generate word.");
+        console.warn("[ai-vocab] new word failed", res.status, d.error);
+        setError("Failed to generate word.");
         return;
       }
       const { word, definition } = await res.json();
@@ -137,7 +138,8 @@ export default function AiVocabLangClient({
       });
       const data = await res.json();
       if (!res.ok) {
-        setSaveMessage(data.error || "Failed to save.");
+        console.warn("[ai-vocab] save failed", res.status, data.error);
+        setSaveMessage("Failed to save.");
       } else {
         setSaveMessage(data.message || "Saved!");
         setWords((prev) => prev.map((w) => (w.selected ? { ...w, selected: false } : w)));

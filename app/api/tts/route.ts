@@ -32,7 +32,7 @@ export const POST = async (req: NextRequest) => {
   // Require authentication
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
   const requester = session.user.email ?? session.user.id;
 
@@ -42,7 +42,7 @@ export const POST = async (req: NextRequest) => {
   });
   if (!rateLimit.allowed) {
     return NextResponse.json(
-      { error: "Too many requests. Please retry later." },
+      { error: "rate-limited" },
       {
         status: 429,
         headers: {
@@ -56,37 +56,28 @@ export const POST = async (req: NextRequest) => {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json({ error: "invalid-json" }, { status: 400 });
   }
 
   const { text, voice = "shimmer", model = "tts-1" } = body || {};
 
   if (typeof text !== "string" || text.length === 0) {
-    return NextResponse.json({ error: "text is required" }, { status: 400 });
+    return NextResponse.json({ error: "text-required" }, { status: 400 });
   }
 
   // Validate text length
   if (text.length > MAX_TEXT_LENGTH) {
-    return NextResponse.json(
-      { error: `Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters` },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "text-too-long" }, { status: 400 });
   }
 
   // Validate voice against allowlist
   if (!ALLOWED_VOICES.includes(voice)) {
-    return NextResponse.json(
-      { error: `Invalid voice. Allowed: ${ALLOWED_VOICES.join(", ")}` },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "invalid-voice" }, { status: 400 });
   }
 
   // Validate model against allowlist
   if (!ALLOWED_MODELS.includes(model)) {
-    return NextResponse.json(
-      { error: `Invalid model. Allowed: ${ALLOWED_MODELS.join(", ")}` },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "invalid-model" }, { status: 400 });
   }
 
   console.log("TTS request:", { textLength: text.length, voice, model });
@@ -144,7 +135,7 @@ export const POST = async (req: NextRequest) => {
     });
   } catch (err) {
     logSanitizedError("tts.workersai.generate", err, { requester });
-    return NextResponse.json({ error: "Failed to generate speech" }, { status: 500 });
+    return NextResponse.json({ error: "tts-failed" }, { status: 500 });
   }
   if (!paid.ok) return refusal(paid);
   const { audio: audioBuffer, contentType: audioType } = paid.value;

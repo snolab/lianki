@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     const session = await auth.api.getSession({ headers: await headers() });
     const email = session?.user?.email;
     if (!email) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "login-required" }, { status: 401 });
     }
 
     const rateLimit = await routeLimit(await accountKey("ai-new-word", email), {
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     });
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { error: "Too many requests. Please retry later." },
+        { error: "rate-limited" },
         {
           status: 429,
           headers: { "Retry-After": String(Math.ceil(rateLimit.retryAfterMs / 1000)) },
@@ -42,10 +42,10 @@ export async function POST(req: NextRequest) {
     const { topic, language, knownWords } = await req.json();
 
     if (typeof topic !== "string" || topic.length === 0 || topic.length > 500) {
-      return NextResponse.json({ error: "Invalid topic" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-topic" }, { status: 400 });
     }
     if (typeof language !== "string" || language.length === 0) {
-      return NextResponse.json({ error: "Invalid language" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-language" }, { status: 400 });
     }
 
     if (!isWorkersAiConfigured()) {
@@ -96,6 +96,6 @@ Prefer common, high-frequency words that are useful for conversation.${knownWord
     });
   } catch (error) {
     logSanitizedError("ai-sentences.new-word", error);
-    return NextResponse.json({ error: "Failed to generate word" }, { status: 500 });
+    return NextResponse.json({ error: "generate-failed" }, { status: 500 });
   }
 }

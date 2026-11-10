@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const session = await auth.api.getSession({ headers: await headers() });
     const email = session?.user?.email;
     if (!email) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "login-required" }, { status: 401 });
     }
 
     const rateLimit = await routeLimit(await accountKey("polyglot-translate", email), {
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     });
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { error: "Too many requests. Please retry later." },
+        { error: "rate-limited" },
         {
           status: 429,
           headers: {
@@ -52,10 +52,10 @@ export async function POST(req: NextRequest) {
       question.length > MAX_TEXT_LENGTH ||
       answer.length > MAX_TEXT_LENGTH
     ) {
-      return NextResponse.json({ error: "Invalid question or answer" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-text" }, { status: 400 });
     }
     if (typeof sourceLanguage !== "string" || typeof targetLanguage !== "string") {
-      return NextResponse.json({ error: "Invalid source/target language" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-language" }, { status: 400 });
     }
 
     if (!isWorkersAiConfigured()) {
@@ -100,6 +100,6 @@ Make the translations natural and conversational.`,
     });
   } catch (error) {
     logSanitizedError("polyglot.translate", error);
-    return NextResponse.json({ error: "Failed to translate" }, { status: 500 });
+    return NextResponse.json({ error: "translate-failed" }, { status: 500 });
   }
 }
