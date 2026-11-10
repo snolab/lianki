@@ -22,6 +22,7 @@ import wordsImport from "@/app/(app)/words/import/page.content";
 import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import wordsListPreview from "@/app/(app)/words/list-preview.content";
+import listUi from "@/app/(app)/list/list-ui.content";
 import wordsStatus from "@/app/(app)/words/words-status.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import creditsUsage from "@/app/(app)/membership/credits/credits-usage.content";
@@ -144,6 +145,7 @@ describe.each([
   ["words-phrases", wordsPhrases],
   ["words-voice-mode", wordsVoiceMode],
   ["words-list-preview", wordsListPreview],
+  ["list-ui", listUi],
   ["words-status", wordsStatus],
   ["leave-guard", leaveGuard],
   ["dev-permissions", devPermissions],
