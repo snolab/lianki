@@ -19,7 +19,7 @@ import {
   uploadImportFile,
   uploadSourceOf,
 } from "../lib/import/files";
-import { FOLDERS, folderOf } from "../lib/import/my-files";
+import { FOLDERS, fileRows, folderOf } from "../lib/import/my-files";
 import {
   undoMs,
   pendingDeletes,
@@ -192,6 +192,22 @@ describe("My Files: one store, folders by origin, the owner only", () => {
     expect(folderOf("constructor")).toBe("other");
     expect(folderOf("books")).toBe("books");
     expect(FOLDERS).toEqual(["selfIntro", "import", "books", "chat", "other"]);
+  });
+
+  test("list rows: folder headings in folder order, each followed by its files", () => {
+    const f = (id: string, source: string) => ({ id, name: id, type: "", size: 1, at: 1, source });
+    const rows = fileRows([f("a", "chat"), f("b", "self-intro"), f("c", "chat"), f("d", "?")]);
+    expect(rows.map((r) => r.key)).toEqual([
+      "folder:selfIntro",
+      "file:b",
+      "folder:chat",
+      "file:a",
+      "file:c",
+      "folder:other",
+      "file:d",
+    ]);
+    expect(rows[2]).toMatchObject({ kind: "folder", folder: "chat", n: 2 });
+    expect(fileRows([])).toEqual([]);
   });
 });
 

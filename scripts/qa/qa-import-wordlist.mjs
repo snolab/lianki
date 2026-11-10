@@ -438,8 +438,11 @@ try {
     await filesPage.goto("/my/files?lang=en");
     const folder = filesPage.locator('[data-qa="my-files-folder-import"]');
     await folder.waitFor({ timeout: 15000 });
+    // One virtual list: the folder heading is a row, its files the rows under it.
     check(
-      /lesson-notes\.bin/.test(await folder.innerText()),
+      (await filesPage
+        .locator('[data-qa="my-file"][data-folder="import"]', { hasText: "lesson-notes.bin" })
+        .count()) === 1,
       "/my/files: the file in the Word lists folder",
     );
     await filesPage.screenshot({ path: join(OUT, `my-files-${scheme}.png`), fullPage: true });
