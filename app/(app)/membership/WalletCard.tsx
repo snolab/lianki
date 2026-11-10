@@ -93,6 +93,13 @@ export function WalletCard({
     setTurnstileToken(null);
   }
 
+  /** A failed top-up: one translated line, a fresh Turnstile token. */
+  function topupFailed(text: string) {
+    setNotice({ ok: false, text });
+    resetTurnstile();
+    setBusy(false);
+  }
+
   async function topup(value: number) {
     setBusy(true);
     setNotice(null);
@@ -108,19 +115,20 @@ export function WalletCard({
         qr?: string;
         error?: string;
       };
-      if (res.status === 429) throw new Error(s.tooMany.value);
-      if (res.status === 403 && data.error === "captcha") throw new Error(s.captcha.value);
+      if (res.status === 429) return topupFailed(s.tooMany.value);
+      if (res.status === 403 && data.error === "captcha") return topupFailed(s.captcha.value);
       if (res.ok && data.kind === "redirect" && data.url) return window.location.assign(data.url);
       if (res.ok && data.kind === "qr" && data.qr) {
         setQr({ qr: data.qr, url: data.url });
         setBusy(false);
         return;
       }
-      throw new Error(s.failed.value);
+      throw new Error(`topup ${res.status} ${data.error ?? ""}`);
     } catch (e) {
-      setNotice({ ok: false, text: e instanceof Error ? e.message : s.failed.value });
-      resetTurnstile();
-      setBusy(false);
+      // The detail (status, the browser's network TypeError) is for the
+      // console; the user reads the translated failure line.
+      console.warn("[wallet] top-up failed:", e);
+      topupFailed(s.failed.value);
     }
   }
 

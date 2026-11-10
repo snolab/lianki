@@ -84,6 +84,9 @@ import signInErrors from "@/app/(app)/sign-in/errors.content";
 import activityTally from "@/app/(app)/list/components/activity-tally.content";
 import devFlagToast from "@/app/(app)/dev/flags/flag-toast.content";
 import devConfig from "@/app/(app)/dev/config/config-admin.content";
+import statsPage from "@/app/(app)/stats/page.content";
+import membershipPage from "@/app/(app)/membership/membership-page.content";
+import sitesPage from "@/app/(app)/sites/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -196,6 +199,9 @@ describe.each([
   ["activity-tally", activityTally],
   ["dev-flag-toast", devFlagToast],
   ["dev-config", devConfig],
+  ["stats-page", statsPage],
+  ["membership-page", membershipPage],
+  ["home-page", sitesPage],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };
