@@ -1,11 +1,14 @@
 /**
  * The owner's voiceprint, the page's side (docs/local-stt.md, "Voiceprint"):
  * enrolment on this device, the "delete my voiceprint" control, and the
- * speaker tags that ride on voice lines. The print itself lives only on his
- * Mac, beside the local STT server (scripts/local-stt/voiceprint.py,
- * ~/.config/lianki-stt/voiceprints); the page only sends the audio of the
- * sentences he reads to that server, over the same socket as speech, and
- * never to lianki.com, the cloud STT or the clip sink.
+ * speaker tags that ride on voice lines. The print lives on his Mac, beside
+ * the local STT server (scripts/local-stt/voiceprint.py,
+ * ~/.config/lianki-stt/voiceprints); the page sends the audio of the
+ * sentences he reads only to that server, over the same socket as speech, and
+ * never to lianki.com, the cloud STT or the clip sink. With the flag
+ * `stt.voiceprint-cloud`, "Save to my account" copies the print's FEATURES
+ * (numbers, never audio) into his own account, encrypted, after his passkey
+ * (app/api/my/voiceprint, lib/voiceprint-cloud.ts); "Restore" brings them back.
  *
  * Consent: nothing is captured for enrolment until he taps "I agree, start"
  * on the consent card, which says what is kept and where. `consent()` is the
@@ -265,19 +268,66 @@ export type EnrolView =
   /** Asking the Mac what is enrolled. */
   | { step: "loading" }
   /** What is enrolled, with Enrol and Delete. `local`: false when the Mac's check is off or unreachable. */
-  | { step: "status"; prints: PrintInfo[]; local: boolean; filter?: FilterInfo }
+  | {
+      step: "status";
+      prints: PrintInfo[];
+      local: boolean;
+      filter?: FilterInfo;
+      /** The copy in his account (undefined: the feature is off for this account). */
+      cloud?: CloudInfo;
+      /** The last save, restore or delete of the account copy. */
+      cloudOp?: CloudOp;
+    }
   /** Before anything is recorded: what is kept, where; a tap to agree. */
   | { step: "consent"; keepAudio: boolean }
   /** Reading: sentence `index`, `kept` so far, and why the last one was not kept. */
   | { step: "recording"; index: number; kept: number; again?: AgainReason; heard?: string }
   | { step: "saving"; kept: number }
-  | { step: "saved"; kept: number }
-  | { step: "confirm-delete" }
-  | { step: "deleted"; files: number }
+  | { step: "saved"; kept: number; cloud?: CloudInfo; cloudOp?: CloudOp }
+  /** What the delete will reach: the Mac (when it answered), the account copy (when there is one). */
+  | { step: "confirm-delete"; local?: boolean; cloud?: CloudInfo }
+  | { step: "deleted"; files: number; cloudError?: string }
   | { step: "error"; error: string };
 
 /** An enrolment under way: sentences being recorded or saved, lost if the page goes (lib/page-dirty.ts). */
 export const enrolBusy = (v: EnrolView) => v.step === "recording" || v.step === "saving";
+
+/** The account copy: device prints saved there (features only, never audio). */
+export type CloudInfo = { prints: { device: string; model: string; n: number; updatedAt?: string }[] };
+export type CloudOp =
+  | { kind: "save" | "restore"; state: "busy" }
+  | { kind: "save" | "restore"; state: "done"; n: number }
+  | { kind: "save" | "restore" | "delete"; state: "failed"; error: string };
+
+/** What leaves the Mac for the account: features only (lib/voiceprint-cloud.ts PRINT_KEYS). */
+export const CLOUD_PRINT_KEYS = [
+  "device",
+  "model",
+  "dim",
+  "n",
+  "created",
+  "updated",
+  "self",
+  "speechS",
+  "centroid",
+  "embeddings",
+] as const;
+/** Exactly the feature keys of a print, whatever else the Mac or the account sent. */
+export function featuresOnly(p: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of CLOUD_PRINT_KEYS) if (k in p && p[k] !== undefined) out[k] = p[k];
+  return out;
+}
+
+/** The account side (app/api/my/voiceprint): own rows only; writes carry a passkey ticket. */
+export type CloudDeps = {
+  /** The account's rows, or null when the feature is off for this account (404). */
+  list(): Promise<CloudInfo | null>;
+  /** Every row with its features (the session only). */
+  features(): Promise<Record<string, unknown>[]>;
+  put(ticket: string, prints: Record<string, unknown>[]): Promise<number>;
+  delete(ticket: string, device: string): Promise<number>;
+};
 
 export type AgainReason = "short" | "noise" | "mismatch" | "text" | "unreachable";
 
@@ -291,7 +341,7 @@ export type EnrolDeps = {
    * passkey with Face ID / Touch ID (webauthn.ts). The Mac takes no op without one.
    */
   ticket(
-    op: "status" | "enrol" | "delete",
+    op: "status" | "enrol" | "delete" | "export" | "restore",
     device: string,
     o?: { keepAudio?: boolean },
   ): Promise<string>;
@@ -309,6 +359,8 @@ export type EnrolDeps = {
   ): Promise<void> | void;
   /** The "Only my voice" line of the panel: `state` is the Mac's word, in its status answer. */
   filterInfo?(state: string): Promise<FilterInfo>;
+  /** The copy in his account; absent: no such feature on this page. */
+  cloud?: CloudDeps;
   log?: (ev: Record<string, unknown>) => void;
 };
 
@@ -384,13 +436,68 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
       eid = "";
       if (my !== run) return;
       d.log?.({ ev: "voiceprint-saved", n: r.n });
-      set({ step: "saved", kept: typeof r.n === "number" ? r.n : kept });
+      const cloud = (await d.cloud?.list().catch(() => null)) ?? undefined;
+      if (my !== run) return;
+      set({ step: "saved", kept: typeof r.n === "number" ? r.n : kept, ...(cloud ? { cloud } : {}) });
+      // The account copy is on for him: save it there too, at once (his passkey again).
+      if (cloud) await saveToAccount(my);
     } catch (e) {
       if (my === run) fail(e);
     }
   };
 
-  return {
+  /** The account copy's state on the current view (status or saved). */
+  const setCloud = (my: number, o: { op?: CloudOp; cloud?: CloudInfo }) => {
+    if (my !== run || (view.step !== "status" && view.step !== "saved")) return;
+    set({ ...view, ...(o.op ? { cloudOp: o.op } : {}), ...(o.cloud ? { cloud: o.cloud } : {}) });
+  };
+  const errText = (e: unknown) => String((e as Error)?.message ?? e).slice(0, 120);
+  /**
+   * "Save to my account": one passkey approval; the Mac hands over the
+   * features (export: numbers only), lianki.com keeps them encrypted.
+   */
+  const saveToAccount = async (my: number) => {
+    const cl = d.cloud;
+    if (!cl) return;
+    setCloud(my, { op: { kind: "save", state: "busy" } });
+    try {
+      const ticket = await d.ticket("export", "*");
+      if (my !== run) return;
+      const r = ok(await d.request({ t: "voiceprint", op: "export", device: "*", ticket }));
+      const prints = (Array.isArray(r.prints) ? (r.prints as Record<string, unknown>[]) : []).map(
+        featuresOnly,
+      );
+      if (!prints.length) throw new Error("nothing on the Mac to save");
+      const n = await cl.put(ticket, prints);
+      d.log?.({ ev: "voiceprint-cloud-saved", n });
+      const cloud = (await cl.list().catch(() => null)) ?? undefined;
+      setCloud(my, { op: { kind: "save", state: "done", n }, cloud });
+    } catch (e) {
+      setCloud(my, { op: { kind: "save", state: "failed", error: errText(e) } });
+    }
+  };
+  /** "Restore from my account": the account's features back onto the Mac (a new Mac). */
+  const restoreFromAccount = async (my: number) => {
+    const cl = d.cloud;
+    if (!cl) return;
+    setCloud(my, { op: { kind: "restore", state: "busy" } });
+    try {
+      const ticket = await d.ticket("restore", "*");
+      if (my !== run) return;
+      const prints = (await cl.features()).filter((p) => !p.unreadable).map(featuresOnly);
+      if (!prints.length) throw new Error("nothing in the account to restore");
+      const r = ok(await d.request({ t: "voiceprint", op: "restore", device: "*", ticket, prints }));
+      const n = Array.isArray(r.restored) ? r.restored.length : prints.length;
+      d.log?.({ ev: "voiceprint-cloud-restored", n });
+      if (my !== run) return;
+      await api.open();
+      if (view.step === "status") set({ ...view, cloudOp: { kind: "restore", state: "done", n } });
+    } catch (e) {
+      setCloud(my, { op: { kind: "restore", state: "failed", error: errText(e) } });
+    }
+  };
+
+  const api = {
     view: () => view,
     /** The menu's "Voiceprint": what is enrolled. */
     async open() {
@@ -405,10 +512,31 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         // Never in the way of the rest of the panel.
         const filter = await d.filterInfo?.(String(r.filter ?? "off")).catch(() => undefined);
         if (my !== run) return;
-        set({ step: "status", prints, local: r.ok === true, ...(filter ? { filter } : {}) });
+        const cloud = (await d.cloud?.list().catch(() => null)) ?? undefined;
+        if (my !== run) return;
+        set({
+          step: "status",
+          prints,
+          local: r.ok === true,
+          ...(filter ? { filter } : {}),
+          ...(cloud ? { cloud } : {}),
+        });
       } catch {
-        if (my === run) set({ step: "status", prints: [], local: false });
+        if (my !== run) return;
+        // The Mac unreachable: the account copy still shows (and can be deleted).
+        const cloud = (await d.cloud?.list().catch(() => null)) ?? undefined;
+        if (my === run) set({ step: "status", prints: [], local: false, ...(cloud ? { cloud } : {}) });
       }
+    },
+    /** "Save to my account" (a tap: the passkey prompt follows). */
+    saveToAccount() {
+      if ((view.step === "status" && view.local && view.cloud) || (view.step === "saved" && view.cloud))
+        void saveToAccount(run);
+    },
+    /** "Restore from my account" (a tap: the passkey prompt follows). */
+    restoreFromAccount() {
+      if (view.step === "status" && view.local && view.cloud?.prints.length)
+        void restoreFromAccount(run);
     },
     /** The panel's switch: pause the filter on this device. Counts from the next utterance. */
     pauseFilter(on: boolean) {
@@ -470,20 +598,44 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
     },
     /** "Delete my voiceprint": asks once more. */
     askDelete() {
-      if (view.step === "status") set({ step: "confirm-delete" });
+      if (view.step === "status")
+        set({ step: "confirm-delete", local: view.local, ...(view.cloud ? { cloud: view.cloud } : {}) });
     },
-    /** The confirming tap: every device's print and any kept audio; never the voice clips. */
+    /**
+     * The confirming tap: every device's print and any kept audio on the Mac,
+     * and the copy in his account; never the voice clips. One passkey
+     * approval covers both (the Mac and lianki.com each spend the ticket once).
+     */
     async confirmDelete() {
       if (view.step !== "confirm-delete") return;
+      const { local, cloud } = view;
       const my = ++run;
       try {
         // The owner's passkey again: deleting needs its own one-time ticket.
         const ticket = await d.ticket("delete", "*");
         if (my !== run) return;
-        const r = ok(await d.request({ t: "voiceprint", op: "delete", device: "*", ticket }));
+        let files = 0;
+        let macError: unknown = null;
+        if (local !== false) {
+          try {
+            const r = ok(await d.request({ t: "voiceprint", op: "delete", device: "*", ticket }));
+            files = typeof r.deleted === "number" ? r.deleted : 0;
+          } catch (e) {
+            macError = e;
+          }
+        }
+        let cloudError: string | undefined;
+        if (cloud && d.cloud) {
+          try {
+            await d.cloud.delete(ticket, "*");
+          } catch (e) {
+            cloudError = errText(e);
+          }
+        }
         if (my !== run) return;
-        d.log?.({ ev: "voiceprint-deleted", files: r.deleted });
-        set({ step: "deleted", files: typeof r.deleted === "number" ? r.deleted : 0 });
+        if (macError) throw macError;
+        d.log?.({ ev: "voiceprint-deleted", files, ...(cloud ? { cloud: !cloudError } : {}) });
+        set({ step: "deleted", files, ...(cloudError ? { cloudError } : {}) });
       } catch (e) {
         if (my === run) fail(e);
       }
@@ -497,5 +649,6 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
       set({ step: "closed" });
     },
   };
+  return api;
 }
 export type Enrolment = ReturnType<typeof createEnrolment>;

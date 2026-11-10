@@ -14,6 +14,7 @@
  * for that op and device whose jti is the challenge (single use there).
  */
 import {
+  PASSKEY_OPS,
   type VoiceprintOp,
   openChallenge,
   signChallenge,
@@ -70,7 +71,7 @@ export async function voiceprintApproval(body: unknown, d: ApprovalDeps): Promis
     });
     return { status: 200, json: { ticket, exp } };
   }
-  if (op !== "enrol" && op !== "delete") return bad(400, "bad op");
+  if (!PASSKEY_OPS.includes(op)) return bad(400, "bad op");
   const device = b.device;
   if (!validDevice(device, op)) return bad(400, "bad device");
   // Enrol: keeping the audio is part of what he approves with the passkey.
@@ -142,6 +143,7 @@ export async function voiceprintApproval(body: unknown, d: ApprovalDeps): Promis
     device,
     uv: true,
     keepAudio,
+    uid: d.userId,
     jti: ch.challenge,
     // The challenge's own lifetime, fixed when it was issued: never extended.
     iat: ch.iat,

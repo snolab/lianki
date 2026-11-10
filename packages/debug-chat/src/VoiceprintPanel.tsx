@@ -16,6 +16,9 @@ import {
   ENROL_MAX,
   ENROL_MIN,
   ENROL_SENTENCES,
+  type CloudDeps,
+  type CloudInfo,
+  type CloudOp,
   type EnrolDeps,
   type EnrolView,
   type FilterInfo,
@@ -61,8 +64,52 @@ export function panelDeps(o: {
     ticket: (op, device, t) => voiceprintTicket(op, device, { keepAudio: t?.keepAudio }),
     capture: o.capture,
     filterInfo: async (state) => ({ flag: await filterFlag(), paused: filterPaused(), state, tally: readTally() }),
+    cloud: cloudDeps(),
     log: o.log,
     close: () => c.close(),
+  };
+}
+
+export const VOICEPRINT_CLOUD_PATH = "/api/my/voiceprint";
+/**
+ * The account copy over app/api/my/voiceprint (the session cookie; own rows
+ * only). A 404 means the feature is off for this account: no account rows,
+ * no buttons.
+ */
+export function cloudDeps(f: (u: string, i: RequestInit) => Promise<Response> = (u, i) => fetch(u, i)): CloudDeps {
+  const call = async (method: string, query = "", body?: object) => {
+    const r = await f(VOICEPRINT_CLOUD_PATH + query, {
+      method,
+      credentials: "same-origin",
+      headers: { accept: "application/json", ...(body ? { "content-type": "application/json" } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    return { status: r.status, ok: r.ok, j };
+  };
+  const must = (o: { ok: boolean; status: number; j: Record<string, unknown> }) => {
+    if (!o.ok) throw new Error(typeof o.j.error === "string" ? o.j.error : `HTTP ${o.status}`);
+    return o.j;
+  };
+  return {
+    async list() {
+      const o = await call("GET");
+      if (o.status === 404) return null;
+      const prints = Array.isArray(must(o).prints) ? (o.j.prints as CloudInfo["prints"]) : [];
+      return { prints };
+    },
+    async features() {
+      const j = must(await call("GET", "?features=1"));
+      return Array.isArray(j.prints) ? (j.prints as Record<string, unknown>[]) : [];
+    },
+    async put(ticket, prints) {
+      const j = must(await call("PUT", "", { ticket, prints }));
+      return typeof j.saved === "number" ? j.saved : prints.length;
+    },
+    async delete(ticket, device) {
+      const j = must(await call("DELETE", "", { ticket, device }));
+      return typeof j.deleted === "number" ? j.deleted : 0;
+    },
   };
 }
 
@@ -179,6 +226,36 @@ export function VoiceprintPanel({
     );
   };
 
+  /** The copy in his account: what is there, the last save/restore, and the two taps. */
+  const cloudBlock = (cl: CloudInfo, op: CloudOp | undefined, local: boolean, restore: boolean) => {
+    const devices = [...new Set(cl.prints.map((p) => p.device))].join(", ");
+    const busy = op?.state === "busy";
+    return (
+      <div data-testid="debug-voiceprint-cloud" data-state={op ? `${op.kind}-${op.state}` : "idle"} style={{ marginTop: 10 }}>
+        {note(cl.prints.length ? t.vpCloudHas.replaceAll("{devices}", devices) : t.vpCloudNone, "debug-voiceprint-cloud-list")}
+        {op?.state === "busy" && note(op.kind === "save" ? t.vpCloudSaving : t.vpCloudRestoring)}
+        {op?.state === "done" &&
+          note(
+            (op.kind === "save" ? t.vpCloudSaved : t.vpCloudRestored).replaceAll("{n}", String(op.n)),
+            "debug-voiceprint-cloud-done",
+          )}
+        {op?.state === "failed" && note(t.vpCloudFailed.replaceAll("{error}", op.error), "debug-voiceprint-cloud-error")}
+        {local &&
+          row(
+            <>
+              {btn("debug-voiceprint-cloud-save", t.vpCloudSave, () => c.saveToAccount(), { trusted: true, disabled: busy })}
+              {restore &&
+                cl.prints.length > 0 &&
+                btn("debug-voiceprint-cloud-restore", t.vpCloudRestore, () => c.restoreFromAccount(), {
+                  trusted: true,
+                  disabled: busy,
+                })}
+            </>,
+          )}
+      </div>
+    );
+  };
+
   let body: React.ReactNode = null;
   switch (view.step) {
     case "closed":
@@ -202,10 +279,14 @@ export function VoiceprintPanel({
           )}
           {!view.local && note(t.vpOff, "debug-voiceprint-off")}
           {view.filter && filterBlock(view.filter)}
+          {view.cloud && cloudBlock(view.cloud, view.cloudOp, view.local && view.prints.length > 0, true)}
+          {view.cloud && !view.prints.length && view.local && view.cloud.prints.length > 0 &&
+            row(btn("debug-voiceprint-cloud-restore", t.vpCloudRestore, () => c.restoreFromAccount(), { primary: true, trusted: true }))}
           {row(
             <>
               {view.local && btn("debug-voiceprint-enrol", t.vpEnrol, () => c.enrol(), { primary: true, trusted: true })}
-              {view.local && view.prints.length > 0 && btn("debug-voiceprint-delete", t.vpDelete, () => c.askDelete(), { danger: true, trusted: true })}
+              {((view.local && view.prints.length > 0) || (view.cloud?.prints.length ?? 0) > 0) &&
+                btn("debug-voiceprint-delete", t.vpDelete, () => c.askDelete(), { danger: true, trusted: true })}
               {btn("debug-voiceprint-close", t.vpClose, close)}
             </>,
           )}
@@ -270,6 +351,7 @@ export function VoiceprintPanel({
       body = (
         <>
           {note(t.vpSaved, "debug-voiceprint-saved")}
+          {view.cloud && cloudBlock(view.cloud, view.cloudOp, true, false)}
           {row(btn("debug-voiceprint-close", t.vpClose, close))}
         </>
       );
@@ -296,6 +378,8 @@ export function VoiceprintPanel({
       body = (
         <>
           {note(t.vpDeleted, "debug-voiceprint-deleted")}
+          {view.cloudError &&
+            note(t.vpCloudFailed.replaceAll("{error}", view.cloudError), "debug-voiceprint-cloud-error")}
           {row(btn("debug-voiceprint-close", t.vpClose, close))}
         </>
       );

@@ -383,6 +383,8 @@ The voiceprint adds these (next section):
 | client | `{"t":"enrol","op":"start","rid","device","ticket","keepAudio":false}`          | open an enrolment: needs an `enrol` ticket for that device (passkey) |
 | client | `{"t":"enrol","op":"commit"\|"cancel","rid","enrolment"}`                       | save it (10 sentences at least), or drop it                     |
 | client | `{"t":"voiceprint","op":"status"\|"delete","rid","ticket"[,"device":D\|"*"]}`   | what is enrolled (status ticket); delete (passkey ticket)       |
+| client | `{"t":"voiceprint","op":"export","rid","device":D\|"*","ticket"}`               | the features, for his account (passkey ticket): `prints` back   |
+| client | `{"t":"voiceprint","op":"restore","rid","device":D\|"*","prints":[…],"ticket"}` | write prints read from his account (passkey ticket)             |
 | client | `{"t":"filter","on":bool}`                                                      | the voiceprint filter on this socket (off until said)           |
 | server | `ready` + `"speaker":{"models":["campp"]}`                                      | the check is on                                                 |
 | server | `final` + `"speaker":{score,decision,model,device,speechS,snrDb[,reason]}`      | the check on that final                                         |
@@ -412,10 +414,12 @@ phone: mic (Silero VAD) ─ utterance ─▶ server.py ─┬─ SenseVoice deco
 `voiceprint.ts`): what is enrolled per device, **Enrol this device**, and
 **Delete my voiceprint**. Enrol shows the **consent card first**: he will read
 10–20 sentences; the Mac turns them into numbers that describe his voice,
-not a recording; they are kept only on the Mac at
-`~/.config/lianki-stt/voiceprints`, never on Lianki's servers; what it is
-for; that he can delete it there at any time; and a switch, off by default,
-to also keep the sentences' audio on the Mac. **Nothing is captured until
+not a recording, kept on the Mac at `~/.config/lianki-stt/voiceprints`;
+after his passkey, a copy of those numbers in his Lianki account,
+encrypted and readable only by his account (next-but-one section); no
+recording in the account; what it is for; that he can delete it, on the Mac
+and in the account, at any time; and a switch, off by default, to also keep
+the sentences' audio on the Mac. **Nothing is captured until
 his tap on "I agree, start" and his passkey** (next section). Voice can
 neither start enrolment nor delete (docs/dev-debug-widget.md: recording is
 turned on by a tap, never by voice).
@@ -502,7 +506,9 @@ then a rename). It holds the embeddings, their mean, how long each sentence
 was, and the leave-one-out self scores; no text, no audio. The opted-in
 audio goes to `<device>.audio/NN.wav` (0700 / 0600). A file or folder that
 is a symlink, not ours, or readable by others is refused (logged, the check
-then says "unknown"). Never on the Worker, D1 or the hub; never committed.
+then says "unknown"). Never on the hub; never committed. The features (never
+the audio) also go to his account when he saves them there ("Voiceprint in
+your account", below).
 
 **Delete.** In the panel: **Delete my voiceprint**, then a confirming tap;
 it deletes every device's print and any kept enrolment audio. On the Mac:
@@ -514,6 +520,66 @@ it deletes every device's print and any kept enrolment audio. On the Mac:
 
 The running server sees a CLI delete on the next final (it watches the
 folder's mtime). Neither touches `~/lianki-voice-clips`.
+
+### Voiceprint in your account
+
+The owner decided on 2026-11-10 (tap card, 23:31 JST): keep his voiceprint's
+**features** in Cloudflare under his own account as well, so a new Mac can
+get it back; the recordings stay on the Mac. Flag
+[`stt.voiceprint-cloud`](https://lianki.com/dev/flags#stt.voiceprint-cloud),
+on by default, `audience: "owner"`, and only for an account holding `dev`
+(the grant the voiceprint tickets already need); off: the print is on the Mac
+only and `/api/my/voiceprint` answers 404.
+
+```
+tap "Save to my account" → passkey (Face ID / Touch ID) → ticket {op:"export", device:"*", uv:true, uid}
+page → the Mac {t:"voiceprint", op:"export", ticket}        ticket.py: once; Store.export: features only
+     ← {prints:[{device, model, dim, n, created, updated, self, speechS, centroid, embeddings}]}
+page → PUT /api/my/voiceprint {ticket, prints}              the same ticket, spent once more on lianki.com
+       lib/voiceprint-cloud.ts: exactly those keys (anything else, `audio` included: 400),
+       the ticket's uid = the session's user, sealed (AES-256-GCM) → D1 voiceprint
+```
+
+- **What is kept.** D1 `voiceprint` (`db/migrations/0071_voiceprint.sql`),
+  one row per account, device and model: `dim`, `n`, `updated_at` in clear,
+  and `payload`, the sealed JSON of `{centroid, embeddings, speechS, self,
+  created, updated}`. No audio, no text, no file path, no `audio` flag: a
+  print or a body with any other key is refused whole, on lianki.com
+  (`parsePrint`, `PRINT_KEYS`) and on the Mac (`check_export`,
+  `EXPORT_KEYS`); the page keeps only those keys too (`featuresOnly`).
+- **Encrypted at rest.** The key is HKDF-SHA256 from the existing Worker
+  secret `AUTH_SECRET`, salt `lianki/voiceprint`, info
+  `lianki/voiceprint/features-at-rest/v1` (`voiceprintKey`): no new secret,
+  and not the key that seals the Google tokens. The AAD is the row's user,
+  device and model, so a payload moved to another row does not open.
+  Rotating `AUTH_SECRET` leaves the rows unreadable: they list as
+  `unreadable`; save again from the Mac.
+- **Who.** Every read and write is by the session's user id; nothing in a
+  request names an account. The session cookie only: an API token reads
+  nothing here. Reading the features (`GET ?features=1`) needs the session;
+  writing (`PUT`, an `export` ticket) and deleting (`DELETE`, a `delete`
+  ticket) need a passkey ticket with `uv: true` **for this account** (the
+  ticket's `uid`, added at verify), live (60 s), for that device or `*`.
+  lianki.com spends each ticket once (`verification`,
+  `voiceprint-cloud:<jti>`), apart from the Mac's own store, so one approval
+  covers both halves of a tap and no more.
+- **Restore** ("Restore from my account", the panel; also on a Mac with no
+  print yet): passkey → `restore` ticket; the page reads the features
+  (`GET ?features=1`) and sends them to the Mac (`op:"restore"`), which checks
+  every print before writing any, recomputes the mean and self scores from
+  the embeddings, and leaves a kept-audio folder and its flag as they were.
+- **After an enrolment**, with the flag on, the panel saves to the account
+  at once (one more passkey prompt). If the browser refuses the prompt (no
+  fresh tap) or the save fails, the "Save to my account" button stays there.
+- **Delete** ("Delete my voiceprint" and its confirming tap): one passkey
+  `delete` ticket for `*`; the Mac deletes its prints (and kept audio, as
+  before) and lianki.com deletes the account's rows. With the Mac away, the
+  account's rows can still be deleted from the panel.
+- Tests: `unit/voiceprint-cloud.test.ts` (sealing and AAD, features only,
+  tickets for another account / op / device / without the passkey, each
+  once, own rows only, the panel's three flows);
+  `scripts/local-stt/test_voiceprint.py` `AccountCopy` and the server flow
+  (export and restore only with their tickets, an `audio` key refused).
 
 **Verification.** Every final is scored against this device's print (the
 socket's `hello`), or, when this device has none, the best of the other

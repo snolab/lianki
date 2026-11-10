@@ -46,6 +46,8 @@ The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
                    {"t":"enrol","op":"commit"|"cancel","rid":R}
                    {"t":"voiceprint","op":"status","rid":R}
                    {"t":"voiceprint","op":"delete","rid":R,"device":D|"*"}
+                   {"t":"voiceprint","op":"export","rid":R,"device":D|"*"}   features only, for the account
+                   {"t":"voiceprint","op":"restore","rid":R,"device":D|"*","prints":[…]}   from the account
                    {"t":"filter","on":bool}                  the voiceprint filter on this socket
   server → client  ready gains "speaker":{"models":[…]} when the check is on
                    final gains "speaker":{score,decision:"me"|"other"|"unknown",model,device,
@@ -208,6 +210,9 @@ class Server:
         ("enrol", "start"): lambda m: {"op": "enrol", "device": m.get("device"), "uv": True,
                                        "keepAudio": m.get("keepAudio") is True},
         ("voiceprint", "delete"): lambda m: {"op": "delete", "device": m.get("device"), "uv": True},
+        # The account copy (docs/local-stt.md, "Voiceprint in your account"): features out, a print in.
+        ("voiceprint", "export"): lambda m: {"op": "export", "device": m.get("device"), "uv": True},
+        ("voiceprint", "restore"): lambda m: {"op": "restore", "device": m.get("device"), "uv": True},
     }
 
     async def control(self, m: dict, device: str | None = None) -> dict:
@@ -269,6 +274,30 @@ class Server:
                 v.refresh()
                 log(f"voiceprint deleted ({device}, {n} files, {dropped} open enrolment(s) dropped)")
                 return {**out, "ok": True, "deleted": n}
+            if t == "voiceprint" and op == "export":
+                # Features only (voiceprint.EXPORT_KEYS): never audio, never a path.
+                device = m.get("device")
+                if device != "*" and not VP.valid_device(device):
+                    return {**out, "ok": False, "error": "bad device"}
+                prints = await loop.run_in_executor(
+                    self.spk_pool, v.store.export, None if device == "*" else device)
+                log(f"voiceprint exported ({device}, {len(prints)} print(s), features only)")
+                return {**out, "ok": True, "prints": prints}
+            if t == "voiceprint" and op == "restore":
+                device = m.get("device")
+                prints = m.get("prints")
+                if device != "*" and not VP.valid_device(device):
+                    return {**out, "ok": False, "error": "bad device"}
+                if not isinstance(prints, list) or not 0 < len(prints) <= 16:
+                    return {**out, "ok": False, "error": "no prints"}
+                for p in prints:
+                    q = VP.check_export(p)  # all checked before anything is written
+                    if device != "*" and q["device"] != device:
+                        return {**out, "ok": False, "error": "wrong device"}
+                done = [await loop.run_in_executor(self.spk_pool, v.store.restore, p) for p in prints]
+                v.refresh()
+                log(f"voiceprint restored ({device}, {len(done)} print(s))")
+                return {**out, "ok": True, "restored": done}
         except VP.StoreError as e:
             if t == "enrol" and op == "commit" and isinstance(eid, str):
                 self.enrolments.pop(eid, None)

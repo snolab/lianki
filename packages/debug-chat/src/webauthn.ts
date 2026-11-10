@@ -66,7 +66,7 @@ export async function getAssertion(
 
 /** A one-time voiceprint ticket for this op and device (status: no passkey). */
 export async function voiceprintTicket(
-  op: "status" | "enrol" | "delete",
+  op: "status" | "enrol" | "delete" | "export" | "restore",
   device: string,
   d: {
     fetch?: typeof fetch;

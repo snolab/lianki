@@ -401,7 +401,12 @@ The same key signs the **voiceprint tickets** (`aud` `lianki-voiceprint`,
 `POST /api/dev/voiceprint-ticket`; enrol and delete only after the owner's
 passkey with user verification; [local-stt.md](local-stt.md), "Voiceprint:
 who may enrol and delete"). Without `ticket.pub` on the Mac, every
-voiceprint op is refused.
+voiceprint op is refused. lianki.com checks the same tickets itself before
+it writes or deletes the voiceprint features kept in an account
+(`/api/my/voiceprint`; passkey tickets carry the account's `uid`). Those
+features are sealed with a key derived (HKDF) from **`AUTH_SECRET`**, info
+`lianki/voiceprint/features-at-rest/v1`: no secret of their own
+([local-stt.md](local-stt.md), "Voiceprint in your account").
 
 ## Speaker attestation key (`STT_SPEAKER_PUB`)
 

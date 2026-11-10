@@ -9,8 +9,11 @@ from docs/stt-ab.md, "Noise and speaker grid", #394).
   enrolment. One file per device and model, so ERes2NetV2 can be added per
   device later without touching the CAM++ print.
 - **Where:** on this Mac only, `~/.config/lianki-stt/voiceprints/` (dir 0700,
-  files 0600, written atomically), next to the STT server. Never the Worker,
-  D1, the hub or the repo. `LIANKI_STT_VOICEPRINTS` moves it (the tests).
+  files 0600, written atomically), next to the STT server; never the hub or
+  the repo. A copy of the features (never audio) goes to the owner's own
+  Lianki account only when he taps "Save to my account" with his passkey
+  (`Store.export`, the `export` op), and comes back with `restore`.
+  `LIANKI_STT_VOICEPRINTS` moves it (the tests).
 - **Verification:** each final utterance's embedding against the device's
   print (any device's when this one has none): cosine score, then a decision
   `me | other | unknown` from per-duration bands, with a noise gate (an SNR
@@ -306,7 +309,7 @@ class Store:
 
     # -- writing
     def save(self, device: str, model: str, embeddings: list[np.ndarray], speech_s: list[float],
-             audio: bool) -> dict:
+             audio: bool, created: str | None = None) -> dict:
         self._ready(create=True)
         f = self._file(device, model)
         E = np.array([unit(e) for e in embeddings], dtype=np.float32)
@@ -326,7 +329,7 @@ class Store:
             "model": model,
             "dim": int(E.shape[1]),
             "n": int(len(E)),
-            "created": (old or {}).get("created", now),
+            "created": created or (old or {}).get("created", now),
             "updated": now,
             "audio": bool(audio),
             "self": {"min": round(min(loo), 3), "median": round(float(np.median(loo)), 3)} if loo else None,
@@ -337,6 +340,43 @@ class Store:
         write_private(f, json.dumps(p).encode())
         p["_centroid"] = c
         return p
+
+    # -- the account copy (docs/local-stt.md, "Voiceprint in your account")
+    def export(self, device: str | None) -> list[dict]:
+        """
+        The features of one device's prints (None: every device), for the
+        owner's Lianki account: exactly EXPORT_KEYS, numbers only. Never the
+        `audio` flag, never a kept wav, never a path.
+        """
+        if device is not None and not valid_device(device):
+            raise StoreError("bad device")
+        out = []
+        for s in self.prints():
+            if device is not None and s["device"] != device:
+                continue
+            p = self.load(s["device"], s["model"])
+            if p:
+                out.append({k: p[k] for k in EXPORT_KEYS if k in p})
+        return out
+
+    def restore(self, p: object) -> dict:
+        """
+        Write one print read back from the account (export's form, checked
+        strictly: any other key is refused). The centroid and self scores are
+        recomputed from the embeddings; the audio flag of a print already here
+        stays as it was (restore never touches a kept-audio folder).
+        """
+        q = check_export(p)
+        with self.lock():
+            old = None
+            try:
+                old = self.load(q["device"], q["model"])
+            except StoreError:
+                pass
+            E = [np.array(e, dtype=np.float32) for e in q["embeddings"]]
+            saved = self.save(q["device"], q["model"], E, q["speechS"], bool((old or {}).get("audio")),
+                              created=q.get("created"))
+        return {k: saved[k] for k in ("device", "model", "n")}
 
     # -- the lock
     def lock(self):
@@ -438,6 +478,51 @@ class Store:
         if why:
             raise StoreError(f"{d} {why}")
         write_private(os.path.join(d, f"{i:02d}.wav"), wav_bytes(audio))
+
+
+#: What leaves the Mac for the owner's account (lib/voiceprint-cloud.ts PRINT_KEYS): features only.
+EXPORT_KEYS = ("device", "model", "dim", "n", "created", "updated", "self", "speechS", "centroid", "embeddings")
+_REQUIRED = ("device", "model", "dim", "n", "speechS", "centroid", "embeddings")
+
+
+def check_export(p: object) -> dict:
+    """A print in export form, exactly: the keys, the device and model, n x dim finite floats."""
+    import math
+
+    if not isinstance(p, dict):
+        raise StoreError("not a print")
+    extra = [k for k in p if k not in EXPORT_KEYS]
+    if extra:
+        raise StoreError(f"not features: {', '.join(sorted(map(str, extra))[:3])}")
+    for k in _REQUIRED:
+        if k not in p:
+            raise StoreError(f"missing {k}")
+    if not valid_device(p["device"]) or p["model"] not in MODELS:
+        raise StoreError("bad device or model")
+    dim, n = p["dim"], p["n"]
+    if not isinstance(dim, int) or isinstance(dim, bool) or not 1 <= dim <= 1024:
+        raise StoreError("bad dim")
+    if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= ENROL_MAX:
+        raise StoreError("bad n")
+
+    def num(x, lim) -> bool:
+        return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) and abs(x) <= lim
+
+    def vec(v) -> bool:
+        return isinstance(v, list) and len(v) == dim and all(num(x, 4) for x in v)
+
+    if not vec(p["centroid"]):
+        raise StoreError("bad centroid")
+    E = p["embeddings"]
+    if not isinstance(E, list) or len(E) != n or not all(vec(e) for e in E):
+        raise StoreError("bad embeddings")
+    S = p["speechS"]
+    if not isinstance(S, list) or len(S) != n or not all(num(x, 600) and x >= 0 for x in S):
+        raise StoreError("bad speechS")
+    for k in ("created", "updated"):
+        if p.get(k) is not None and not (isinstance(p[k], str) and len(p[k]) <= 40):
+            raise StoreError(f"bad {k}")
+    return p
 
 
 def write_private(path: str, data: bytes) -> None:

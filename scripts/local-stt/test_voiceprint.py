@@ -305,6 +305,65 @@ class Enrolling(unittest.TestCase):
         self.assertEqual(e.add(tone(300))["reason"], "full")
 
 
+class AccountCopy(unittest.TestCase):
+    """Store.export / restore (docs/local-stt.md, "Voiceprint in your account"): features only."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = os.path.join(self.tmp.name, "vp")
+        self.v = fake_verifier(self.root)
+        e = V.Enrolment(self.v, "iphone", keep_audio=True)
+        for i in range(V.ENROL_MIN):
+            e.add(tone(300, seed=i))
+        e.commit()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_export_is_features_only(self):
+        out = V.Store(self.root).export(None)
+        self.assertEqual(len(out), 1)
+        p = out[0]
+        self.assertEqual(set(p), set(V.EXPORT_KEYS))
+        self.assertNotIn("audio", p)  # not even the flag; never a wav, never a path
+        self.assertEqual((p["device"], p["model"], p["n"], len(p["embeddings"])), ("iphone", "campp", V.ENROL_MIN, V.ENROL_MIN))
+        self.assertEqual(json.loads(json.dumps(p)), p)  # plain JSON numbers
+        self.assertEqual(V.Store(self.root).export("android"), [])
+
+    def test_restore_round_trip_into_a_new_mac(self):
+        p = V.Store(self.root).export("iphone")[0]
+        other = os.path.join(self.tmp.name, "new-mac")
+        r = V.Store(other).restore(p)
+        self.assertEqual(r, {"device": "iphone", "model": "campp", "n": V.ENROL_MIN})
+        q = V.Store(other).load("iphone", "campp")
+        self.assertEqual((q["audio"], q["created"]), (False, p["created"]))
+        self.assertTrue(np.allclose(q["centroid"], p["centroid"], atol=1e-5))
+        self.assertEqual(mode(os.path.join(other, "iphone.campp.json")), 0o600)
+        # Restoring over a print that kept audio leaves that audio and its flag alone.
+        V.Store(self.root).restore(p)
+        self.assertTrue(V.Store(self.root).load("iphone", "campp")["audio"])
+        self.assertEqual(len(os.listdir(V.Store(self.root).audio_dir("iphone"))), V.ENROL_MIN)
+
+    def test_restore_refuses_anything_but_features(self):
+        p = V.Store(self.root).export("iphone")[0]
+        bad = [
+            {**p, "audio": True},
+            {**p, "wav": "UklGRg=="},
+            {**p, "device": "../x"},
+            {**p, "model": "other"},
+            {**p, "n": p["n"] + 1},
+            {**p, "dim": 3},
+            {**p, "centroid": [float("nan")] * p["dim"]},
+            {**p, "embeddings": p["embeddings"][:-1]},
+            {k: v for k, v in p.items() if k != "embeddings"},
+            "not a print",
+        ]
+        for b in bad:
+            with self.assertRaises(V.StoreError, msg=str(b)[:60]):
+                V.Store(os.path.join(self.tmp.name, "x")).restore(b)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "x", "iphone.campp.json")))
+
+
 class Generations(unittest.TestCase):
     """A delete (server or CLI) makes an enrolment begun before it unable to save."""
 
@@ -602,6 +661,11 @@ class ServerProtocol(unittest.TestCase):
                  "ticket": sg.vp("enrol", "iphone", keep_audio=False)},
                 # Another key's ticket.
                 {"t": "voiceprint", "op": "status", "ticket": Signer().vp("status")},
+                # The account copy: export and restore need their own passkey ticket.
+                {"t": "voiceprint", "op": "export", "device": "*"},
+                {"t": "voiceprint", "op": "export", "device": "*", "ticket": sg.vp("delete", "*")},
+                {"t": "voiceprint", "op": "export", "device": "*", "ticket": sg.vp("export", "*", uv=False)},
+                {"t": "voiceprint", "op": "restore", "device": "*", "prints": [], "ticket": sg.vp("export", "*")},
             ):
                 r = await self.ask(ws, msg)
                 out.append((r["ok"], r.get("error", "")))
@@ -768,6 +832,26 @@ class ServerProtocol(unittest.TestCase):
             self.assertEqual((p["uid"], p["thread"]), ("U" * 22, "owner"))
             f = await self.utter(ws, 31, tone(900))
             self.assertEqual(f["speaker"]["decision"], "other")
+            # The account copy: export hands over features only, once per ticket.
+            t = sg.vp("export", "*")
+            r = await self.ask(ws, {"t": "voiceprint", "op": "export", "device": "*", "ticket": t})
+            self.assertTrue(r["ok"], r)
+            self.assertEqual([set(p) for p in r["prints"]], [set(V.EXPORT_KEYS)])
+            r2 = await self.ask(ws, {"t": "voiceprint", "op": "export", "device": "*", "ticket": t})
+            self.assertEqual(r2["error"], "ticket replayed")
+            printed = r["prints"]
+            # Restore: an extra key anywhere refuses the whole request, nothing written.
+            r = await self.ask(ws, {"t": "voiceprint", "op": "restore", "device": "*",
+                                    "prints": [{**printed[0], "audio": True}], "ticket": sg.vp("restore", "*")})
+            self.assertFalse(r["ok"])
+            r = await self.ask(ws, {"t": "voiceprint", "op": "restore", "device": "android",
+                                    "prints": printed, "ticket": sg.vp("restore", "android")})
+            self.assertEqual(r["error"], "wrong device")
+            r = await self.ask(ws, {"t": "voiceprint", "op": "restore", "device": "*",
+                                    "prints": printed, "ticket": sg.vp("restore", "*")})
+            self.assertEqual((r["ok"], r["restored"]), (True, [{"device": "iphone", "model": "campp", "n": 10}]))
+            f = await self.utter(ws, 32, tone(300))
+            self.assertEqual(f["speaker"]["decision"], "me")
             # Delete with its ticket.
             r = await self.ask(ws, {"t": "voiceprint", "op": "delete", "device": "iphone",
                                     "ticket": sg.vp("delete", "iphone")})
