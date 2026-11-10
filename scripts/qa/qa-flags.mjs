@@ -71,7 +71,7 @@ const noSideScroll = (page) =>
 const sealLook = (page, sel) =>
   page.evaluate((sel) => {
     const btn = document.querySelector(sel);
-    const seal = btn?.querySelector(".lk-seal");
+    const seal = btn?.querySelector(".lk-sealbox");
     if (!seal) return null;
     const ctx = Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext(
       "2d",

@@ -50,7 +50,7 @@ describe("markup", () => {
     const out = html(false);
     expect(out).toContain('<span data-word="on">开</span>');
     expect(out).toContain('<span data-word="off">关闭</span>');
-    expect(out).toMatch(/<span aria-hidden="true" class="lk-seal"/);
+    expect(out).toMatch(/<span aria-hidden="true" class="lk-sealbox"/);
   });
 
   test("a form choice can be a checkbox; disabled passes through", () => {
@@ -79,7 +79,7 @@ describe("the stamp, in a DOM", () => {
       const host = win.document.createElement("div");
       win.document.body.appendChild(host);
       const root = createRoot(host as never);
-      const seal = () => host.querySelector(".lk-seal")!;
+      const seal = () => host.querySelector(".lk-sealbox")!;
       const show = (checked: boolean) =>
         act(() => root.render(createElement(SealSwitch, { checked, "aria-label": "x" })));
       await show(true);
@@ -146,20 +146,25 @@ describe("app/globals.css", () => {
     });
   }
 
+  test("its class names are its own (.lk-seal is the selected icon's)", () => {
+    expect(css.split(".lk-sealbox {").length).toBe(2);
+    expect(css.split(".lk-seal-switch {").length).toBe(2);
+  });
+
   test("every colour is oklch", () => {
     for (const v of [token(root, "--lk-seal-off"), token(dark, "--lk-seal-off")])
       expect(v).toMatch(/^oklch\(/);
   });
 
   test("on: a filled seal-red box with the paper word", () => {
-    const on = rule(".lk-seal");
+    const on = rule(".lk-sealbox");
     expect(on).toContain("background-color: var(--lk-seal-on)");
     expect(on).toContain("border: 2px solid var(--lk-seal-on)");
     expect(on).toContain("color: var(--lk-seal-on-ink)");
   });
 
   test("off: the same box, grey and dashed, no fill", () => {
-    const off = rule('.lk-seal[data-seal="off"]');
+    const off = rule('.lk-sealbox[data-seal="off"]');
     expect(off).toContain("border-style: dashed");
     expect(off).toContain("border-color: var(--lk-seal-off)");
     expect(off).toContain("background-color: transparent");
@@ -170,7 +175,7 @@ describe("app/globals.css", () => {
   test("the tap target is at least 40px tall; no motion when reduced", () => {
     expect(rule(".lk-seal-switch")).toContain("min-height: 2.5rem");
     expect(css).toMatch(
-      /@media \(prefers-reduced-motion: reduce\) \{\s*\.lk-seal,\s*\.lk-seal\[data-stamping\] \{\s*animation: none;/,
+      /@media \(prefers-reduced-motion: reduce\) \{\s*\.lk-sealbox,\s*\.lk-sealbox\[data-stamping\] \{\s*animation: none;/,
     );
   });
 });

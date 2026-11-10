@@ -36,7 +36,7 @@ export function SealStamp({ on, size = "md" }: { on: boolean; size?: SealSize })
   return (
     <span
       aria-hidden="true"
-      className="lk-seal"
+      className="lk-sealbox"
       data-seal={on ? "on" : "off"}
       data-size={size}
       data-stamping={stamp || undefined}
