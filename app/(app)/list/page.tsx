@@ -1,15 +1,12 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import sflow from "sflow";
-import { dueMs } from "@/app/ems";
 import { getNotesCollection } from "@/app/lib/getNotesCollection";
 import { authEmail } from "@/app/signInEmail";
 import { getCachedHeatmapData } from "@/app/lib/heatmap-cache";
 import ActivityHeatmap from "./components/ActivityHeatmap";
 import { AutoRefresh } from "./components/AutoRefresh";
-import DeleteButton from "./components/DeleteButton";
+import CardsList from "./components/CardsList";
 import RefreshHeatmapButton from "./components/RefreshHeatmapButton";
-import { ReviewHistory } from "./components/ReviewHistory";
 import UserscriptInstallButton from "./components/UserscriptInstallButton";
 import { getIntlayer } from "intlayer";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
@@ -18,7 +15,6 @@ import { SyncStatusBanner } from "./components/SyncStatusBanner";
 import { HotkeyHelp } from "@/app/components/HotkeyHelp";
 import { appLocale } from "@/lib/app-locale.server";
 import { LIANKI_USERSCRIPT_VERSION } from "@/lib/userscript-version";
-import { cleanTitle } from "@lianki/core/titleClean";
 import { titleRulesForUser } from "@/lib/titles/server";
 
 export const dynamic = "force-dynamic";
@@ -125,11 +121,11 @@ async function LoggedInView({
               <HeatmapSection />
             </Suspense>
           </section>
-          <ul className="space-y-2 overflow-x-hidden">
+          <div className="overflow-x-hidden">
             <Suspense>
               <Cards />
             </Suspense>
-          </ul>
+          </div>
         </div>
       </div>
       <HotkeyHelp />
@@ -145,54 +141,9 @@ async function LoggedInView({
 
     return <ActivityHeatmap data={heatmapData} startDate={oneYearAgo} endDate={new Date()} />;
   }
-  async function Cards({ page = 0, size = 100 }) {
-    const email = await authEmail();
-    const FSRSNotes = getNotesCollection(email);
-    const titleRules = await titleRulesForUser();
-    const list = await sflow(
-      FSRSNotes.find({ "card.due": { $exists: true } }, { sort: { "card.due": 1 } })
-        .skip(page * size)
-        .limit(size),
-    )
-      .map((note) => {
-        const due = note.card?.due ? dueMs(note.card.due) : "?";
-        const title = note.title;
-        const url = note.url;
-        // Explicitly pick only serializable fields — avoid spreading BSON types (ObjectId, Binary)
-        // that may appear on subdocuments and are not transferable across the RSC→client boundary
-        const logs = (note.log || []).map((l) => ({
-          rating: l.rating,
-          state: l.state,
-          due: l.due instanceof Date ? l.due.toISOString() : String(l.due ?? ""),
-          review: l.review instanceof Date ? l.review.toISOString() : String(l.review ?? ""),
-          stability: l.stability,
-          difficulty: l.difficulty,
-          elapsed_days: l.elapsed_days,
-          last_elapsed_days: l.last_elapsed_days,
-          scheduled_days: l.scheduled_days,
-          learning_steps: l.learning_steps,
-        }));
-        return (
-          <li key={note._id.toString()} className="break-words overflow-hidden">
-            {due} <ReviewHistory logs={logs} />{" "}
-            <a href={url} className="break-all">
-              {(title && cleanTitle(title, { url, rules: titleRules })) || url}
-            </a>
-            <DeleteButton url={url} title={title} />
-          </li>
-        );
-      })
-      .toArray();
-
-    if (!list.length) return null;
-    return (
-      <>
-        {list}
-        <Suspense>
-          <Cards page={page + 1} />
-        </Suspense>
-      </>
-    );
+  // Every card as one virtual list, more as you scroll (no pages, owner 2026-11-10).
+  async function Cards() {
+    return <CardsList titleRules={await titleRulesForUser()} />;
   }
 }
 async function TotalCount({ email }: { email: string }) {

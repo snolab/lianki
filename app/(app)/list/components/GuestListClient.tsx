@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Icon } from "@/app/components/icons";
+import { VirtualList } from "@/app/components/VirtualList";
 import { useIntlayer } from "next-intlayer";
 import { dueMs } from "@/app/ems";
 import { SyncStatusBanner } from "./SyncStatusBanner";
@@ -186,103 +187,112 @@ export default function GuestListClient() {
       </section>
 
       {/* Card List */}
-      <ul className="space-y-2 overflow-x-hidden">
-        {cards.length === 0 ? (
-          <li className="text-gray-500 text-center py-8">
+      <VirtualList
+        items={cards}
+        getKey={(note) => note.url}
+        name="list-guest"
+        hasMore={false}
+        loading={false}
+        onReachEnd={() => {}}
+        estimateSize={32}
+        gap={8}
+        className="overflow-x-hidden"
+        testId="guest-cards-list"
+        empty={
+          <p className="text-gray-500 text-center py-8">
             No cards yet. Press Alt+F on any webpage to add your first card!
-          </li>
-        ) : (
-          cards.map((note, idx) => {
-            const due = dueMs(note.card.due);
-            const title = note.title;
-            const url = note.url;
-            const logs = note.log || [];
-            const isSynced = note.synced;
+          </p>
+        }
+        renderItem={(note) => {
+          const due = dueMs(note.card.due);
+          const title = note.title;
+          const url = note.url;
+          const logs = note.log || [];
+          const isSynced = note.synced;
 
-            return (
-              <li key={idx} className="break-words overflow-hidden flex items-start gap-2">
-                <span className="flex-shrink-0">{due}</span>
-                <span className="flex-shrink-0 text-xs">
-                  {logs.map((l, i) => (
-                    <span
-                      key={i}
-                      className={
-                        l.rating === 1
-                          ? "text-red-500"
-                          : l.rating === 2
-                            ? "text-yellow-500"
-                            : l.rating === 3
-                              ? "text-green-500"
-                              : "text-blue-500"
-                      }
-                    >
-                      •
-                    </span>
-                  ))}
+          return (
+            <div className="break-words overflow-hidden flex items-start gap-2">
+              <span className="flex-shrink-0">{due}</span>
+              <span className="flex-shrink-0 text-xs">
+                {logs.map((l, i) => (
+                  <span
+                    key={i}
+                    className={
+                      l.rating === 1
+                        ? "text-red-500"
+                        : l.rating === 2
+                          ? "text-yellow-500"
+                          : l.rating === 3
+                            ? "text-green-500"
+                            : "text-blue-500"
+                    }
+                  >
+                    •
+                  </span>
+                ))}
+              </span>
+              <a href={url} className="break-all flex-1">
+                {displayTitle(title, url) || url}
+              </a>
+              {isSynced ? (
+                <span className="flex-shrink-0 text-green-500 text-xs" title="Synced to cloud">
+                  <Icon name="cloud" label="Synced to cloud" />
                 </span>
-                <a href={url} className="break-all flex-1">
-                  {displayTitle(title, url) || url}
-                </a>
-                {isSynced ? (
-                  <span className="flex-shrink-0 text-green-500 text-xs" title="Synced to cloud">
-                    <Icon name="cloud" label="Synced to cloud" />
-                  </span>
-                ) : (
-                  <span className="flex-shrink-0 text-gray-400 text-xs" title="Local only">
-                    <Icon name="floppyDisk" label="Local only" />
-                  </span>
-                )}
-                <button
-                  className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
-                  title="Delete this card"
-                  onClick={() => {
-                    const q = JSON.parse(localStorage.getItem("__lianki_delete_queue") || "[]");
-                    q.push({ url });
-                    localStorage.setItem("__lianki_delete_queue", JSON.stringify(q));
-                    setCards((prev) => prev.filter((c) => c.url !== url));
-                  }}
-                >
-                  <Icon name="trash" label="Delete this card" />
-                </button>
-                <button
-                  className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
-                  aria-label="Delete all cards from this site"
-                  title={`Delete all cards from ${(() => {
-                    try {
-                      return new URL(url).hostname;
-                    } catch {
-                      return url;
-                    }
-                  })()}`}
-                  onClick={() => {
-                    let domain: string;
-                    try {
-                      domain = new URL(url).hostname;
-                    } catch {
-                      return;
-                    }
-                    const q = JSON.parse(localStorage.getItem("__lianki_delete_queue") || "[]");
-                    q.push({ domain });
-                    localStorage.setItem("__lianki_delete_queue", JSON.stringify(q));
-                    setCards((prev) =>
-                      prev.filter((c) => {
-                        try {
-                          return new URL(c.url).hostname !== domain;
-                        } catch {
-                          return true;
-                        }
-                      }),
-                    );
-                  }}
-                >
-                  <Icon name="trash" />
-                  <Icon name="globe" />
-                </button>
-              </li>
-            );
-          })
-        )}
-      </ul>
+              ) : (
+                <span className="flex-shrink-0 text-gray-400 text-xs" title="Local only">
+                  <Icon name="floppyDisk" label="Local only" />
+                </span>
+              )}
+              <button
+                className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
+                title="Delete this card"
+                onClick={() => {
+                  const q = JSON.parse(localStorage.getItem("__lianki_delete_queue") || "[]");
+                  q.push({ url });
+                  localStorage.setItem("__lianki_delete_queue", JSON.stringify(q));
+                  setCards((prev) => prev.filter((c) => c.url !== url));
+                }}
+              >
+                <Icon name="trash" label="Delete this card" />
+              </button>
+              <button
+                className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
+                aria-label="Delete all cards from this site"
+                title={`Delete all cards from ${(() => {
+                  try {
+                    return new URL(url).hostname;
+                  } catch {
+                    return url;
+                  }
+                })()}`}
+                onClick={() => {
+                  let domain: string;
+                  try {
+                    domain = new URL(url).hostname;
+                  } catch {
+                    return;
+                  }
+                  const q = JSON.parse(localStorage.getItem("__lianki_delete_queue") || "[]");
+                  q.push({ domain });
+                  localStorage.setItem("__lianki_delete_queue", JSON.stringify(q));
+                  setCards((prev) =>
+                    prev.filter((c) => {
+                      try {
+                        return new URL(c.url).hostname !== domain;
+                      } catch {
+                        return true;
+                      }
+                    }),
+                  );
+                }}
+              >
+                <Icon name="trash" />
+                <Icon name="globe" />
+              </button>
+            </div>
+          );
+        }}
+      />
     </div>
   );
 }
