@@ -24,6 +24,9 @@ import {
   type FlagViewInput,
 } from "@/app/(app)/dev/flags/flag-view";
 import { cleanFlagViewPrefs } from "@/app/(app)/dev/flags/flag-view-store";
+import { mockIntlayer } from "./intlayer-mock";
+
+mockIntlayer();
 
 const NOW = Date.parse("2026-11-06T09:00:00Z");
 const FAILED = [{ check: "stripe.live-key", reason: "stripe.no-live-key", text: "x" }] as never[];

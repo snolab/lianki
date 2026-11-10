@@ -473,6 +473,41 @@ arrive by Resend's Svix-signed webhook (`RESEND_WEBHOOK_SECRET`; 503 without it,
 401 on a bad or stale signature) and suppress the address; a complaint about an
 invite counts toward its inviter's report block. Details: [payments.md](payments.md), "Invite by email".
 
+## 14. Voiceprint ops: one passkey approval for ten minutes (2026-11-11)
+
+The owner's tap card (2026-11-11 01:28 JST): one Face ID / Touch ID covers
+every voiceprint op (enrol, save to account, restore, delete, delete the kept
+recordings, re-compute, export) for `voiceprint.passkeyWindowMs` (config,
+default 600000 = 10 min; 0 = a prompt per op as before). Details and the flow:
+[local-stt.md](local-stt.md), "One approval for ten minutes".
+
+- **What it is.** After a verified assertion with UV, lianki.com returns a
+  grant (Ed25519, `aud` `lianki-voiceprint-grant`) bound to the account (uid),
+  the sign-in session (a SHA-256 tag of the session id) and the page's device
+  slug. The page keeps it in module memory only (no storage, not on
+  `globalThis`): a reload or a sign-out drops it, and a sign-out also ends the
+  session it is bound to, so lianki.com refuses it. From it, `POST
+  /api/dev/voiceprint-ticket {step:"grant"}` mints a normal voiceprint ticket:
+  single use (a fresh jti, spent once on the Mac and once on lianki.com), 60 s
+  and never past the grant. The Mac's checks (aud, op, device, uv, once) are
+  unchanged, and so is everything that is not a voiceprint ticket: the grant's
+  audience is accepted nowhere else, so it is never a step-up for anything
+  else (payments, permissions, tokens, sign-in).
+- **The trade-off.** Inside the window, page code on that device and session
+  (an eval, an injected script, a malicious extension) can obtain voiceprint
+  tickets without the owner's face: it could delete the print or the kept
+  recordings, export the features to his own account, restore or re-enrol,
+  and start an enrolment that keeps audio. Before, each of those needed a
+  fresh Face ID. What still holds: it cannot leave this account (uid), this
+  sign-in session or this device; the panel's buttons still ignore synthetic
+  clicks; the Mac only accepts a ticket once, for its op and device; nothing
+  outlives the window, and a shorter `voiceprint.passkeyWindowMs` (or 0) at
+  /dev/config shortens or ends grants already out at once. The panel shows
+  the window's end ("… until 14:05") with **End now**.
+- **Tests**: `unit/voiceprint-window.test.ts` (window expiry and config
+  shortening, per-op single use, another account / session / device refused,
+  a grant opens no challenge or ticket, no grant → the prompt).
+
 ## Owner checklist
 
 Things this repo cannot do by itself:

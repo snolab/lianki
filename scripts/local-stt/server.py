@@ -45,7 +45,8 @@ The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
                    {"t":"enrol","op":"start","rid":R,"device":D,"consent":true,"keepAudio":false}
                    {"t":"enrol","op":"commit"|"cancel","rid":R}
                    {"t":"voiceprint","op":"status","rid":R}
-                   {"t":"voiceprint","op":"delete","rid":R,"device":D|"*"}
+                   {"t":"voiceprint","op":"delete","rid":R,"device":D|"*"}   the print only
+                   {"t":"voiceprint","op":"delete-audio","rid":R,"device":D|"*"}   the kept recordings only
                    {"t":"voiceprint","op":"export","rid":R,"device":D|"*"[,"recordings":true]}   features
                        (and the kept recordings, base64 wav, for My Files), for the account
                    {"t":"voiceprint","op":"restore","rid":R,"device":D|"*","prints":[…]}   from the account
@@ -211,6 +212,8 @@ class Server:
         ("enrol", "start"): lambda m: {"op": "enrol", "device": m.get("device"), "uv": True,
                                        "keepAudio": m.get("keepAudio") is True},
         ("voiceprint", "delete"): lambda m: {"op": "delete", "device": m.get("device"), "uv": True},
+        # The kept enrolment recordings: their own op and ticket, never part of a print delete.
+        ("voiceprint", "delete-audio"): lambda m: {"op": "delete-audio", "device": m.get("device"), "uv": True},
         # The account copy (docs/local-stt.md, "Voiceprint in your account"): features out, a print in.
         ("voiceprint", "export"): lambda m: {"op": "export", "device": m.get("device"), "uv": True},
         ("voiceprint", "restore"): lambda m: {"op": "restore", "device": m.get("device"), "uv": True},
@@ -268,16 +271,28 @@ class Server:
                 return {**out, "ok": True, **res}
             if t == "voiceprint" and op == "status":
                 prints = await loop.run_in_executor(self.spk_pool, v.status)
-                return {**out, "ok": True, "prints": prints, "models": v.order, "filter": self.filter_state(device)}
+                kept = await loop.run_in_executor(self.spk_pool, v.store.audio_count, None)
+                return {**out, "ok": True, "prints": prints, "models": v.order, "filter": self.filter_state(device),
+                        "bands": VP.bands_info(v.order), "recordings": kept}
             if t == "voiceprint" and op == "delete":
                 device = m.get("device")
                 if device != "*" and not VP.valid_device(device):
                     return {**out, "ok": False, "error": "bad device"}
                 who = None if device == "*" else device
                 dropped = self._drop_enrolments(who)  # before the delete: queued sentences see it
+                # The print only: kept recordings are a separate question (delete-audio).
                 n = await loop.run_in_executor(self.spk_pool, v.store.delete, who)
                 v.refresh()
-                log(f"voiceprint deleted ({device}, {n} files, {dropped} open enrolment(s) dropped)")
+                kept = await loop.run_in_executor(self.spk_pool, v.store.audio_count, who)
+                log(f"voiceprint deleted ({device}, {n} files, {dropped} open enrolment(s) dropped, {kept} recording(s) kept)")
+                return {**out, "ok": True, "deleted": n, "recordings": kept}
+            if t == "voiceprint" and op == "delete-audio":
+                device = m.get("device")
+                if device != "*" and not VP.valid_device(device):
+                    return {**out, "ok": False, "error": "bad device"}
+                who = None if device == "*" else device
+                n = await loop.run_in_executor(self.spk_pool, v.store.delete_audio, who)
+                log(f"voiceprint recordings deleted ({device}, {n} file(s))")
                 return {**out, "ok": True, "deleted": n}
             if t == "voiceprint" and op == "export":
                 # Features only (voiceprint.EXPORT_KEYS): never audio, never a path.

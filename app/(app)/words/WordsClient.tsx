@@ -265,6 +265,7 @@ import {
 } from "./gradeSound";
 import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
 import { noteBadgeSeen } from "@/lib/app-badge";
+import { SealStamp } from "@/app/components/SealSwitch";
 
 /**
  * Sub-second word-list review.
@@ -771,30 +772,18 @@ function TogglePill({
   label: string;
   hint?: string;
 }) {
+  // The label, then the box seal every switch uses (SealSwitch.tsx); the
+  // whole row is the switch, named by its label.
   return (
     <button
       role="switch"
       aria-checked={on}
       title={hint}
       onClick={() => onChange(!on)}
-      className={`inline-flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs transition-colors ${
-        on
-          ? "bg-blue-600/15 text-blue-800 dark:bg-blue-400/20 dark:text-blue-100"
-          : "bg-black/5 dark:bg-white/10 opacity-80"
-      }`}
+      className="inline-flex min-h-8 items-center gap-2 rounded-md ps-2 pe-1 text-xs hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-blue-600 dark:focus-visible:outline-blue-300"
     >
-      <span
-        className={`relative h-4 w-7 rounded-full transition-colors ${
-          on ? "bg-blue-600 dark:bg-blue-400" : "bg-black/25 dark:bg-white/30"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${
-            on ? "left-3.5" : "left-0.5"
-          }`}
-        />
-      </span>
       {label}
+      <SealStamp on={on} size="sm" />
     </button>
   );
 }
