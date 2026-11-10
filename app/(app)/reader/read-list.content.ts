@@ -209,22 +209,22 @@ const dictionary = {
       ko: "{n}줄",
     }),
     empty: t({
-      en: "No materials imported yet. Use the buttons above to get started.",
-      zh: "还没有导入任何材料。用上面的按钮开始吧。",
-      hi: "अभी तक कोई सामग्री आयात नहीं हुई। शुरू करने के लिए ऊपर के बटन इस्तेमाल करें।",
-      es: "Aún no has importado materiales. Usa los botones de arriba para empezar.",
-      fr: "Aucun texte importé pour l'instant. Utilisez les boutons ci-dessus pour commencer.",
-      ar: "لم تستورد أي مواد بعد. استخدم الأزرار أعلاه للبدء.",
-      bn: "এখনও কোনো উপকরণ আমদানি হয়নি। শুরু করতে ওপরের বোতামগুলো ব্যবহার করুন।",
-      pt: "Nenhum material importado ainda. Use os botões acima para começar.",
-      ru: "Материалов пока нет. Начните с кнопок выше.",
-      ur: "ابھی تک کوئی مواد درآمد نہیں ہوا۔ شروع کرنے کے لیے اوپر کے بٹن استعمال کریں۔",
-      id: "Belum ada bahan yang diimpor. Gunakan tombol di atas untuk mulai.",
-      de: "Noch keine Texte importiert. Starte mit den Schaltflächen oben.",
-      ja: "まだ教材がありません。上のボタンから始めましょう。",
-      sw: "Bado hujaleta maandishi yoyote. Tumia vitufe vilivyo juu kuanza.",
-      mr: "अजून कोणतेही साहित्य आयात केलेले नाही. सुरू करण्यासाठी वरची बटणे वापरा.",
-      ko: "아직 가져온 자료가 없습니다. 위의 버튼으로 시작하세요.",
+      en: "No materials imported yet. Tap Import above to get started.",
+      zh: "还没有导入任何材料。点上面的“导入”开始吧。",
+      hi: "अभी तक कोई सामग्री आयात नहीं हुई। शुरू करने के लिए ऊपर “आयात करें” दबाएँ।",
+      es: "Aún no has importado materiales. Toca Importar arriba para empezar.",
+      fr: "Aucun texte importé pour l'instant. Touchez Importer ci-dessus pour commencer.",
+      ar: "لم تستورد أي مواد بعد. اضغط «استيراد» في الأعلى للبدء.",
+      bn: "এখনও কোনো উপকরণ আমদানি হয়নি। শুরু করতে ওপরের “আমদানি করুন” চাপুন।",
+      pt: "Nenhum material importado ainda. Toque em Importar acima para começar.",
+      ru: "Материалов пока нет. Нажмите «Импорт» вверху, чтобы начать.",
+      ur: "ابھی تک کوئی مواد درآمد نہیں ہوا۔ شروع کرنے کے لیے اوپر “درآمد کریں” دبائیں۔",
+      id: "Belum ada bahan yang diimpor. Ketuk Impor di atas untuk mulai.",
+      de: "Noch keine Texte importiert. Tippe oben auf Importieren, um loszulegen.",
+      ja: "まだ教材がありません。上の「取り込む」から始めましょう。",
+      sw: "Bado hujaleta maandishi yoyote. Gusa Leta hapo juu kuanza.",
+      mr: "अजून कोणतेही साहित्य आयात केलेले नाही. सुरू करण्यासाठी वर “आयात करा” दाबा.",
+      ko: "아직 가져온 자료가 없습니다. 위의 가져오기를 눌러 시작하세요.",
     }),
     defaultTitle: t({
       en: "Import {date}",
@@ -259,7 +259,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   signInToSave:
     "Sentence after the intro on /reader, shown when signed out: materials stay only in this browser until the user signs in.",
   importText:
-    "Main button in the row of import buttons on /reader (a '+' is drawn before it): opens a form to paste plain text. Imperative verb phrase, short.",
+    "First option in the Import pop-up on /reader (a '+' is drawn before it): opens a form to paste plain text. Imperative verb phrase, short.",
   titlePlaceholder:
     "Placeholder of the first field in the paste-text form on /reader: the material's title; left empty, a dated title is used.",
   textPlaceholder:
@@ -271,7 +271,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   linesOne: `How many lines a material has, singular (Intl.PluralRules 'one'): in brackets after the Import button and on each row of the /reader list. Where the language does not inflect for number, the same text as linesOther. ${PH}`,
   linesOther: `How many lines a material has, any other count: in brackets after the Import button and on each row of the /reader list. ${PH}`,
   empty:
-    "Shown in place of the list on /reader when the user has no materials yet: points to the import buttons above it.",
+    "Shown in place of the list on /reader when the user has no materials yet: points to the Import button in the header above it (read-home importButton: use the same word for Import).",
   defaultTitle: `Title given to pasted text on /reader when the user left the title field empty; stored as the material's name. ${PH}`,
 };
 

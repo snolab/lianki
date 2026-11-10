@@ -182,6 +182,25 @@ export const SUITES = [
     paths: READ,
     sensitive: true,
   },
+  // /reader's first screen: one Import button and its pop-up (a labelled modal), Continue reading, 360 px.
+  {
+    name: "READ HOME (qa-read-home)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-read-home.mjs"],
+    base: true,
+    id: "read-home",
+    paths: [
+      "app/(app)/reader/page.tsx",
+      "app/(app)/reader/ReadListClient.tsx",
+      "app/(app)/reader/read-home.content.ts",
+      "app/(app)/reader/GdocDriveImport.tsx",
+      "app/(app)/connections/DrivePick.tsx",
+      "app/components/ModalSheet.tsx",
+      "app/api/read/route.ts",
+      "lib/read/reader-store.ts",
+    ],
+    sensitive: false,
+  },
   // The shared virtual list on /reader: no pages, a window of rows, more as you scroll, centre row back after Back.
   {
     name: "VIRTUAL LIST (qa-virtual-list)",

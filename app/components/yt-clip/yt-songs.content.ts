@@ -356,7 +356,7 @@ const dictionary = {
 
 const context: Record<keyof typeof dictionary.content, string> = {
   entry:
-    "Name of the feature that turns a song on YouTube into reading material: shown on a button on the /read page (after a plus sign, beside Import Text Material and Import EPUB) and as the heading of its page. A short noun phrase; keep YouTube as written.",
+    "Name of the feature that turns a song on YouTube into reading material: shown as an option in the Import pop-up on /reader (after a plus sign, beside Import text and Import EPUB) and as the heading of its page. A short noun phrase; keep YouTube as written.",
   intro:
     "Introduction under the heading of the new YouTube song page: the user pastes a YouTube video link and the song's lyrics with time stamps; each lyric line becomes a passage (paragraph) in their /read reading, and a small play button ▶ beside it plays just that line of the song. Keep the ▶ symbol.",
   urlLabel:
