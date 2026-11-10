@@ -4,6 +4,7 @@
  * ones. English otherwise. The tree's strings (StateTree.tsx TreeStrings) included.
  */
 import type { TreeStrings } from "./StateTree";
+import { OTHER_LEGACY, chatLocale } from "./chat-ui-locales";
 
 export type UiStrings = {
   stateTree: string;
@@ -364,9 +365,17 @@ export function isJa(lang: string | null | undefined = globalThis.document?.docu
   return /^ja\b/i.test(lang ?? "");
 }
 
-/** The widget's strings for the page's language (zh, ja, else English). */
-export const uiStrings = (lang?: string | null): UiStrings =>
-  isZh(lang) ? UI_ZH : isJa(lang) ? UI_JA : UI_EN;
+/**
+ * The widget's strings for the page's language: zh, ja or English, and for the
+ * app's other 13 locales the strings every chat user sees (chat-ui-locales.ts)
+ * over English; developer-only strings stay English there.
+ */
+export const uiStrings = (lang?: string | null): UiStrings => {
+  if (isZh(lang)) return UI_ZH;
+  if (isJa(lang)) return UI_JA;
+  const loc = chatLocale(lang);
+  return loc === "en" || loc === "zh" || loc === "ja" ? UI_EN : { ...UI_EN, ...OTHER_LEGACY[loc] };
+};
 
 /** The tree's defaults for the page's language, under the host's own. */
 export const treeDefaults = (lang?: string | null): Partial<TreeStrings> =>

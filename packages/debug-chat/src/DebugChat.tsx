@@ -159,6 +159,7 @@ import {
   sheetScrim,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
+import { chatExtra } from "./chat-ui-locales";
 import {
   NEW_ATTR,
   SCRUB_ATTR,
@@ -1269,6 +1270,10 @@ export function DebugChat({
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
   const ui = uiStrings();
+  // The strings that were inline here, in the page's language (chat-ui-locales.ts).
+  const ux = chatExtra();
+  const withNew = (label: string, n: number) =>
+    n ? `${label}, ${ux.newCount.replace("{n}", String(n))}` : label;
   /** Agent lines not read aloud because the page was in the background (voice.ts gateVoice). */
   const [unheardIds, setUnheardIds] = useState<ReadonlySet<string>>(() => new Set());
   useEffect(() => {
@@ -3091,7 +3096,7 @@ export function DebugChat({
         data-testid="debug-chat-pill-min"
         // The grip (owner, 2026-11-07 20:34 JST: it did not look draggable):
         // six dots, grab / grabbing. A tap folds or opens, a double tap the menu.
-        aria-label={`${t.dragGrip}${!open && unread ? `, ${unread} new` : ""}`}
+        aria-label={withNew(t.dragGrip, !open ? unread : 0)}
         title={t.dragGrip}
         aria-expanded={open}
         {...handle}
@@ -3397,30 +3402,30 @@ export function DebugChat({
         aria-disabled={vs.mic}
         title={
           vs.mic
-            ? "The mic is on: replies are always read aloud (your setting is back when it stops)"
+            ? ux.speakMicTitle
             : speak && vs.touch
-              ? "Replies are read aloud, typing or not, until you turn this off"
+              ? ux.speakTouchTitle
               : speak && vs.voiced
-                ? "You used the mic on this device: replies are read aloud, typed or spoken, until you turn this off"
-                : "Replies are read aloud while you're typing here (the input has focus)"
+                ? ux.speakVoicedTitle
+                : ux.speakTypingTitle
         }
         onClick={() => !vs.mic && toggleSpeak()}
         className={`flex items-center gap-2 px-3 py-1.5 text-start ${vs.mic ? "opacity-70" : ""}`}
       >
         <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
         {vs.mic
-          ? "Replies read aloud (mic on)"
+          ? ux.speakMicOn
           : speak && vs.touch
             ? strings?.readAloud
               ? t.readAloud
               : ui.readAloud
             : speak && vs.voiced
-              ? "Replies read aloud (mic used)"
+              ? ux.speakMicUsed
               : speak
                 ? strings?.readAloudTyping
                   ? t.readAloudTyping
                   : ui.readAloudTyping
-                : "Replies silent"}
+                : ux.speakSilent}
       </button>
       {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
       <button
@@ -3494,11 +3499,11 @@ export function DebugChat({
       {/* Reading speed, per device: from the next sentence on. */}
       <div
         role="radiogroup"
-        aria-label="Reading speed"
+        aria-label={ux.readingSpeed}
         data-testid="debug-menu-rate"
         className="flex items-center gap-1 px-3 py-1"
       >
-        <span className="me-1 text-gray-500">Speed</span>
+        <span className="me-1 text-gray-500">{ux.speed}</span>
         {SPEECH_RATES.map((r) => (
           <button
             key={r}
@@ -3600,7 +3605,8 @@ export function DebugChat({
           className="flex items-center gap-2 px-3 py-1.5 text-start"
         >
           <span aria-hidden className="inline-block size-2.5 rounded-sm bg-current" />
-          Stop reading{vs.queued > 1 ? ` (${vs.queued} sentences left)` : ""}
+          {ux.stopReading}
+          {vs.queued > 1 ? ` (${ux.sentencesLeft.replace("{n}", String(vs.queued))})` : ""}
         </button>
       )}
       {treeSource && (
@@ -3683,7 +3689,7 @@ export function DebugChat({
         className="flex items-center gap-2 px-3 py-1.5 text-start"
       >
         <span className="w-[1em] text-center">{open ? "–" : "+"}</span>
-        {open ? "Minimize" : ui.restoreChat}
+        {open ? ux.minimize : ui.restoreChat}
       </button>
       {/* Every open page of this chat; ending this one asks twice. */}
       {pages.map((pg) => {
@@ -4092,7 +4098,7 @@ export function DebugChat({
           data-chat-restore
           data-shape={HANDLE_SHAPE}
           data-edge={edge}
-          aria-label={`${ui.untuckChat}${unread ? `, ${unread} new` : ""}`}
+          aria-label={withNew(ui.untuckChat, unread)}
           title={ui.untuckChat}
           onPointerDown={pressHandle}
           onClick={() => {
@@ -4819,7 +4825,7 @@ export function DebugChat({
               // Keeps the input's focus, so the log stays open.
               onPointerDown={(e) => e.preventDefault()}
               aria-label={
-                below ? `Scroll to the newest message, ${below} new` : "Scroll to the newest message"
+                withNew(ux.scrollNewest, below)
               }
               onClick={() =>
                 log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" })
@@ -5069,8 +5075,8 @@ export function DebugChat({
                   <span
                     role="status"
                     data-testid="debug-chat-busy"
-                    aria-label={`${busy.label || t.name} is working`}
-                    title={`${busy.label || t.name} is working`}
+                    aria-label={ux.working.replace("{name}", busy.label || t.name)}
+                    title={ux.working.replace("{name}", busy.label || t.name)}
                     className="pointer-events-none absolute end-1.5 top-1/2 -translate-y-1/2"
                   >
                     <svg viewBox="0 0 16 16" className="size-3.5 animate-spin" aria-hidden>
