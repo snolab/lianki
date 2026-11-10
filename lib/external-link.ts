@@ -7,8 +7,13 @@
  *
  * Links are caught by one delegated click handler (ExternalLinkGuard). Code
  * that opens a site itself (window.open) calls openExternal() instead.
+ *
+ * Neither bypass holds for good (lib/dont-ask.ts): each asks again after a
+ * spaced interval, and is dropped when that question is answered without
+ * the box.
  */
 import { notePrefWrite } from "@lianki/ui-state/account";
+import { chooseDontAsk, dontAskId, dontAskQuiet, forgetDontAsk } from "@/lib/dont-ask";
 import {
   addAllowedHost,
   hostToConfirm,
@@ -35,13 +40,28 @@ const set = (k: string, v: string) => {
   } catch {}
 };
 
-/** This device's copy of the two settings; unreadable storage reads as "ask". */
-export function readLinkPolicy(): LinkPolicy {
+const ANY = dontAskId("link-any");
+const siteId = (host: string) => dontAskId("link-site", host);
+
+/** The two settings as stored, before their re-ask dates. */
+export function readStoredLinkPolicy(): LinkPolicy {
   let hosts: string[] = [];
   try {
     hosts = parseAllowedHosts(JSON.parse(get(LINK_ALLOWED_KEY) ?? "[]"));
   } catch {}
   return { confirm: get(LINK_CONFIRM_KEY) !== "0", hosts };
+}
+
+/**
+ * What holds today: a bypass counts only until its re-ask date
+ * (lib/dont-ask.ts); unreadable storage reads as "ask".
+ */
+export function readLinkPolicy(): LinkPolicy {
+  const stored = readStoredLinkPolicy();
+  return {
+    confirm: stored.confirm || !dontAskQuiet(ANY),
+    hosts: stored.hosts.filter((h) => dontAskQuiet(siteId(h))),
+  };
 }
 
 function changed() {
@@ -54,20 +74,40 @@ function changed() {
 /** "Ask before opening other sites": false is the "any site" box. */
 export function setLinkConfirm(on: boolean) {
   set(LINK_CONFIRM_KEY, on ? "1" : "0");
+  if (on) forgetDontAsk(ANY);
+  else chooseDontAsk(ANY);
   changed();
 }
 
-/** "Don't ask again for this site". */
+/** "Don't ask again for this site" (picked again after a re-ask: a longer wait). */
 export function allowHost(host: string) {
-  set(LINK_ALLOWED_KEY, JSON.stringify(addAllowedHost(readLinkPolicy().hosts, host)));
+  set(LINK_ALLOWED_KEY, JSON.stringify(addAllowedHost(readStoredLinkPolicy().hosts, host)));
+  chooseDontAsk(siteId(host));
   changed();
 }
 
 /** Remove sites from the list (all of them when `hosts` is omitted). */
 export function forgetAllowedHosts(hosts?: readonly string[]) {
-  const keep = hosts ? readLinkPolicy().hosts.filter((h) => !hosts.includes(h)) : [];
-  set(LINK_ALLOWED_KEY, JSON.stringify(keep));
+  const stored = readStoredLinkPolicy().hosts;
+  const gone = hosts ? stored.filter((h) => hosts.includes(h)) : stored;
+  set(LINK_ALLOWED_KEY, JSON.stringify(stored.filter((h) => !gone.includes(h))));
+  for (const h of gone) forgetDontAsk(siteId(h));
   changed();
+}
+
+/**
+ * The dialog's answer, "Open site" with its two boxes. A bypass that came
+ * back (its re-ask date passed) and was not ticked this time is dropped.
+ */
+export function answerLeave(
+  host: string,
+  { skipSite, skipAll }: { skipSite: boolean; skipAll: boolean },
+) {
+  const stored = readStoredLinkPolicy();
+  if (skipAll) return setLinkConfirm(false);
+  if (!stored.confirm) setLinkConfirm(true);
+  if (skipSite) allowHost(host);
+  else if (stored.hosts.includes(host)) forgetAllowedHosts([host]);
 }
 
 /** What the guard is asked to show: the site, the full link, and how to go there. */

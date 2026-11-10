@@ -9,8 +9,7 @@ import {
   type LinkClick,
   readLinkPolicy,
   setLeavePresenter,
-  setLinkConfirm,
-  allowHost,
+  answerLeave,
 } from "@/lib/external-link";
 import { allowedHostOf } from "@lianki/core/externalLink";
 
@@ -91,8 +90,7 @@ export function ExternalLinkGuard({ strings }: { strings: ExternalLinkStrings })
 
   function go() {
     if (!req) return;
-    if (skipAll) setLinkConfirm(false);
-    else if (skipSite) allowHost(req.host);
+    answerLeave(req.host, { skipSite, skipAll });
     setReq(null);
     followLink(req.href, req.newTab);
   }

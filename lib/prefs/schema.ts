@@ -21,7 +21,8 @@
  * A third, by the owner (2026-11-09): `links.allowedHosts`, the sites the
  * person said not to be asked about again before leaving for them
  * (@lianki/core/externalLink). Bare public hosts only; device and tailnet
- * hosts, IP addresses, schemes and paths do not pass.
+ * hosts, IP addresses, schemes and paths do not pass. The same hosts appear
+ * in `asks.dontAsk` ids (`link-site:<host>`, lib/dont-ask.ts), under the same rule.
  *
  * A field whose shape changes gets a new key (`swipe-feel.tweaks2`); the old
  * row is then simply no longer read.
@@ -42,6 +43,7 @@ import {
   TITLE_RULES_OFF_MAX,
 } from "@lianki/core/titleClean";
 import { isAllowedHost, ALLOWED_HOSTS_MAX } from "@lianki/core/externalLink";
+import { checkDontAsk } from "@/lib/dont-ask";
 import { BADGE_MODES } from "@/lib/app-badge";
 import { LANG_TAG_MAX, LANG_TAG_RE, PREFERRED_LANGS_MAX } from "@/lib/lang-order";
 
@@ -182,6 +184,14 @@ export const PREF_SCHEMAS = {
   // links that leave Lianki: the disclaimer before another site, and its bypasses
   "links.confirm": z.boolean(),
   "links.allowedHosts": z.array(z.string().refine(isAllowedHost)).max(ALLOWED_HOSTS_MAX),
+  // every "don't ask again" and when it asks again (lib/dont-ask.ts): known ids
+  // (a link-site id carries a public host, as above) → [times chosen, day chosen, day due]
+  "asks.dontAsk": z
+    .record(z.string(), z.tuple([z.number().int(), z.number().int(), z.number().int()]))
+    .refine((m) => {
+      const ok = checkDontAsk(m);
+      return Object.keys(m).every((k) => ok[k] !== undefined);
+    }),
   // the app-icon badge (lib/app-badge.ts, docs/app-badge.md): what its number counts
   "notify.badge": z.enum(BADGE_MODES),
   // mails the account turned off (lib/mail-templates/kinds.ts); false = do not send

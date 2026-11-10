@@ -13,6 +13,8 @@ import { TEXT_AREAS, textSizeStore } from "@/lib/text-size";
 import { useTextSizes } from "@/lib/use-text-size";
 import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
 import { ExternalLinkSettings } from "@/app/components/ExternalLinkSettings";
+import { DontAskReview } from "@/app/components/DontAskReview";
+import { DONT_ASK_EVENT } from "@/lib/dont-ask";
 import { AppBadgeSettings } from "@/app/components/AppBadgeSettings";
 import { MailSettings } from "@/app/components/MailSettings";
 import { LanguageSettings } from "@/app/components/LanguageSettings";
@@ -43,9 +45,11 @@ function ReaderSettings() {
     };
     read();
     window.addEventListener(PREF_APPLIED_EVENT, read);
+    window.addEventListener(DONT_ASK_EVENT, read);
     window.addEventListener("storage", read);
     return () => {
       window.removeEventListener(PREF_APPLIED_EVENT, read);
+      window.removeEventListener(DONT_ASK_EVENT, read);
       window.removeEventListener("storage", read);
     };
   }, []);
@@ -307,6 +311,9 @@ export default function PreferencesClient({
 
       {/* Reader — follows the account (lib/read/polish-offer.ts) */}
       <ReaderSettings />
+
+      {/* "Don't ask again" choices, for review — follows the account (lib/dont-ask.ts) */}
+      <DontAskReview />
 
       {/* Next-card order */}
       <section className="mb-10">
