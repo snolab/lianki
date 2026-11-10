@@ -28,13 +28,27 @@ export const VOICEPRINT_TICKET_TTL_S = 60;
  * issued: the ticket's iat/exp are the challenge's, never reminted at verify.
  */
 export const CHALLENGE_TTL_S = VOICEPRINT_TICKET_TTL_S;
-export type VoiceprintOp = "status" | "enrol" | "delete";
-export const VOICEPRINT_OPS: readonly VoiceprintOp[] = ["status", "enrol", "delete"];
+/**
+ * `export`: the Mac hands the page the voice features (never audio), and the
+ * same ticket lets lianki.com keep them in the account (app/api/my/voiceprint,
+ * lib/voiceprint-cloud.ts). `restore`: the Mac takes a print the page read
+ * from the account. Both need the passkey, as enrol and delete do.
+ */
+export type VoiceprintOp = "status" | "enrol" | "delete" | "export" | "restore";
+export const VOICEPRINT_OPS: readonly VoiceprintOp[] = [
+  "status",
+  "enrol",
+  "delete",
+  "export",
+  "restore",
+];
+/** The ops that need the owner's passkey with user verification (Face ID / Touch ID). */
+export const PASSKEY_OPS: readonly VoiceprintOp[] = ["enrol", "delete", "export", "restore"];
 
-/** A device slug as the Mac's store takes it, or "*" (delete only: every device). */
+/** A device slug as the Mac's store takes it, or "*" (every device: never for enrol). */
 export function validDevice(d: unknown, op: VoiceprintOp): d is string {
   if (typeof d !== "string") return false;
-  if (d === "*") return op === "delete" || op === "status";
+  if (d === "*") return op !== "enrol";
   return /^[a-z0-9][a-z0-9-]{0,31}$/.test(d);
 }
 
@@ -91,6 +105,8 @@ export async function signVoiceprintTicket(
     device: string;
     uv: boolean;
     keepAudio?: boolean;
+    /** The account it was approved for: lianki.com checks it (lib/voiceprint-cloud.ts); the Mac ignores it. */
+    uid?: string;
     jti?: string;
     now?: number;
     /** Fixed lifetime (the challenge's), when there is one. */
@@ -106,6 +122,7 @@ export async function signVoiceprintTicket(
     device: o.device,
     uv: o.uv,
     ...(o.op === "enrol" ? { keepAudio: o.keepAudio === true } : {}),
+    ...(o.uid ? { uid: o.uid } : {}),
     jti: o.jti ?? randomId(),
     iat,
     exp,

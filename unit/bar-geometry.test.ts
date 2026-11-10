@@ -6,8 +6,10 @@ import {
   CONTROL_W,
   INPUT_START,
   MIC_BOX,
+  NO_SELECT,
   STRIP_INSET_PX,
   TAP_44_CSS,
+  TEXT_SELECT,
   barGeometry,
   stripTopRadius,
 } from "../packages/debug-chat/src/bar-geometry";
@@ -75,5 +77,30 @@ describe("the mic in the cluster (it keeps its place as the chat folds)", () => 
     // The Li and the + take the same slot: no width class of their own.
     const li = src.slice(src.indexOf('data-testid="debug-chat-restore"'));
     expect(li.slice(0, li.indexOf("</span>"))).not.toMatch(/\bw-(8|10)\b/);
+  });
+});
+
+describe("a long press on the mic selects no text (owner, 2026-11-11)", () => {
+  test("NO_SELECT: no selection, no iOS callout; TEXT_SELECT gives the input text back", () => {
+    expect(NO_SELECT).toMatchObject({
+      userSelect: "none",
+      WebkitUserSelect: "none",
+      WebkitTouchCallout: "none",
+    });
+    expect(TEXT_SELECT).toMatchObject({ userSelect: "text", WebkitUserSelect: "text" });
+  });
+
+  test("the mic, its wrapper and the bar carry it; the input slot is text; no context menu", () => {
+    const mic = readFileSync("packages/debug-chat/src/MicButton.tsx", "utf8");
+    const button = mic.slice(mic.indexOf('data-testid="debug-chat-mic"'));
+    const tag = button.slice(0, button.indexOf("className="));
+    expect(tag).toContain("...NO_SELECT");
+    expect(tag).toContain("onContextMenu={(e) => e.preventDefault()}");
+    expect(mic).toContain('<div className="relative flex shrink-0" style={NO_SELECT}>');
+    const chat = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
+    const pill = chat.slice(chat.indexOf('data-testid="debug-chat-pill"'));
+    expect(pill.slice(0, pill.indexOf("className="))).toContain("...NO_SELECT");
+    const slot = chat.slice(chat.indexOf('data-testid="debug-chat-input-slot"'));
+    expect(slot.slice(0, slot.indexOf("className="))).toContain("...TEXT_SELECT");
   });
 });

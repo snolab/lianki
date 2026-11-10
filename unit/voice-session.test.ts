@@ -10,6 +10,7 @@ import {
   IDLE_RESUME_MS,
   RESUME_TAIL_MS,
   SPEAK_KEY,
+  SPEECH_REFUSED_MS,
   SPEECH_START_MS,
   type UtterLike,
   chunk,
@@ -1184,6 +1185,94 @@ describe("voice session: never silent without saying so (Android, no speechSynth
     // One that starts is not given up on.
     spoken[1].onstart?.();
     expect(timers.filter((x) => x.live && x.ms === SPEECH_START_MS)).toHaveLength(0);
+  });
+
+  it("iOS dropping speak() before the page's first tap (no event at all) waits for a tap, never stuck", () => {
+    // WebKit on iOS: speak() outside a gesture returns with no event, and
+    // speechSynthesis stays idle. The reply on /reader after a reload waited
+    // behind it forever, and every later one too (2026-11-10).
+    let unlocked = false;
+    const spoken: UtterLike[] = [];
+    const synth = {
+      speaking: false,
+      pending: false,
+      speak: (u: UtterLike) => {
+        if (!unlocked) return; // dropped
+        spoken.push(u);
+        synth.speaking = true;
+      },
+      cancel: () => {},
+    };
+    const timers: { f: () => void; ms: number; live: boolean }[] = [];
+    const logs: Record<string, unknown>[] = [];
+    const v = createVoice({
+      synth: () => synth,
+      utter: (text) => ({ text, onend: null, onerror: null, onboundary: null }) as UtterLike,
+      enabled: () => true,
+      here: () => false,
+      touch: () => true,
+      setTimer: (f, ms) => {
+        const t = { f, ms, live: true };
+        timers.push(t);
+        return t;
+      },
+      clearTimer: (t) => {
+        if (t) (t as { live: boolean }).live = false;
+      },
+    });
+    v.setLog((ev) => void logs.push(ev));
+    const fire = (ms: number) => {
+      for (const t of timers.filter((x) => x.live && x.ms === ms)) {
+        t.live = false;
+        t.f();
+      }
+    };
+    expect(v.reply("你好。在吗？")).toBe(true);
+    expect(spoken).toHaveLength(0);
+    fire(SPEECH_REFUSED_MS);
+    expect(v.state()).toMatchObject({ blocked: true, queued: 2, speaking: false });
+    expect(logs.some((l) => l.ev === "voice-refused")).toBe(true);
+    // A later reply queues behind, it does not vanish.
+    v.reply("第二句。");
+    expect(v.state().queued).toBe(3);
+    // The tap (DebugChat's unblockVoice speaks an empty utterance in it): read on from the first.
+    unlocked = true;
+    v.unblock();
+    expect(spoken.map((u) => u.text)).toEqual(["你好。"]);
+    fire(SPEECH_REFUSED_MS);
+    expect(v.state().blocked).toBe(false);
+    synth.speaking = false;
+    spoken[0].onend?.();
+    synth.speaking = true;
+    expect(spoken.map((u) => u.text)).toEqual(["你好。", "在吗？"]);
+  });
+
+  it("an utterance that is speaking or pending is never taken for a dropped one", () => {
+    const spoken: UtterLike[] = [];
+    const synth = {
+      speaking: false,
+      pending: true,
+      speak: (u: UtterLike) => void spoken.push(u),
+      cancel: () => {},
+    };
+    const timers: { f: () => void; ms: number; live: boolean }[] = [];
+    const v = createVoice({
+      synth: () => synth,
+      utter: (text) => ({ text, onend: null, onerror: null, onboundary: null }) as UtterLike,
+      enabled: () => true,
+      here: () => true,
+      setTimer: (f, ms) => {
+        const t = { f, ms, live: true };
+        timers.push(t);
+        return t;
+      },
+      clearTimer: (t) => {
+        if (t) (t as { live: boolean }).live = false;
+      },
+    });
+    v.reply("One.");
+    for (const t of timers.filter((x) => x.live && x.ms === SPEECH_REFUSED_MS)) t.f();
+    expect(v.state()).toMatchObject({ blocked: false, queued: 1, speaking: true });
   });
 
   it("speechSynthesis refusing (not-allowed, no tap yet) waits for the tap instead of skipping", () => {

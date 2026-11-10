@@ -5,6 +5,7 @@ import {
   followAudio,
   followSpeech,
   learnPace,
+  ownedBy,
   pauseAfter,
   resetPace,
   spokenIn,
@@ -136,6 +137,29 @@ describe("spokenIn", () => {
     expect(spokenIn(sp, "Le chien")).toBeNull();
     expect(spokenIn(sp, "Le chat dort")).toBeNull();
     expect(spokenIn(null, "x")).toBeNull();
+  });
+
+  it("two cards sharing one sentence: only the reading's own card gets the span", () => {
+    const sp: Spoken = { text: "Le chat dort", lang: "fr", span: [3, 7], owner: "list\u0000chat" };
+    expect(spokenIn(sp, "Le chat dort", "list\u0000chat")).toEqual([3, 7]);
+    expect(spokenIn(sp, "Le chat dort", "list\u0000dort")).toBeNull();
+    expect(spokenIn(sp, "Le chat dort")).toBeNull();
+  });
+
+  it("ownedBy stamps each mark with the owner card; a clear stays a clear", () => {
+    const out = ownedBy("a");
+    out({ text: "aa bb", lang: "en", span: [0, 2] });
+    expect(spokenWord.get()).toEqual({ text: "aa bb", lang: "en", span: [0, 2], owner: "a" });
+    expect(spokenIn(spokenWord.get(), "aa bb", "a")).toEqual([0, 2]);
+    expect(spokenIn(spokenWord.get(), "aa bb", "b")).toBeNull();
+    // The same word on another card is a change: listeners hear it.
+    let calls = 0;
+    const off = spokenWord.subscribe(() => calls++);
+    ownedBy("b")({ text: "aa bb", lang: "en", span: [0, 2] });
+    expect(calls).toBe(1);
+    out(null);
+    expect(spokenWord.get()).toBeNull();
+    off();
   });
 });
 

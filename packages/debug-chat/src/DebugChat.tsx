@@ -70,7 +70,16 @@ import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
-import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry, STRIP_INSET_PX, stripTopRadius } from "./bar-geometry";
+import {
+  BAR_CONTROL,
+  INPUT_START,
+  NO_SELECT,
+  TAP_44_CSS,
+  TEXT_SELECT,
+  barGeometry,
+  STRIP_INSET_PX,
+  stripTopRadius,
+} from "./bar-geometry";
 import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, voiceDevice } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
@@ -90,6 +99,7 @@ import {
   sentenceState,
 } from "./read-progress";
 import { cloudOut, existingCtx, noSpeechVoices, outMode } from "./voice-out";
+import { UNLOCK_EVENTS, activationNow, unlockOnGesture } from "./speech-unlock";
 import { AEC_EVENT, aecOn, applyAec } from "./aec";
 import { type SpeakMeta, isWithdrawn } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
@@ -591,15 +601,21 @@ export function speakReply(text: string, meta?: SpeakMeta): boolean {
 }
 
 let unlocked = false;
-/** iOS speaks only after a user gesture: an empty utterance on the first one unlocks it. */
-function unlockSpeech() {
+/**
+ * iOS speaks only after a user gesture: an empty utterance on the first one
+ * unlocks it. A press that is not yet an activation (a touch's pointerdown,
+ * speech-unlock.ts) waits for the one that is. True: nothing left to unlock.
+ */
+function unlockSpeech(): boolean {
   const s = synth();
-  if (unlocked || !s) return;
+  if (unlocked || !s) return true;
+  if (activationNow() === false) return false;
   unlocked = true;
   s.speak(new SpeechSynthesisUtterance(""));
   // The cloud voice's <audio> element too: lk:voice-out = "cloud", or a
   // device with no speechSynthesis voices, whose replies the cloud reads.
   if (outMode() === "cloud" || noSpeechVoices()) cloudOut()?.unlock();
+  return true;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -803,6 +819,8 @@ const QUIET: VoiceState = {
 function unblockVoice() {
   // Once: the chip's own tap is also the page's tap (both listen).
   if (!voice().state().blocked) return;
+  // Not an activation yet (a touch's pointerdown): its pointerup or click is.
+  if (activationNow() === false) return;
   void existingCtx()?.resume().catch(() => {});
   // Whatever the mode: a sentence in a language with no voice here goes to the cloud too.
   cloudOut()?.unlock();
@@ -2154,15 +2172,17 @@ export function DebugChat({
     setVs(v.state());
     return v.subscribe(setVs);
   }, []);
-  // Playback refused (autoplay): the next tap anywhere on the page lets it go on too.
+  // Any tap or key on the page unlocks Li's voice (speech-unlock.ts): a reply
+  // on /reader is read with no tap on the chat, after a reload too.
+  useEffect(() => unlockOnGesture(window, unlockSpeech), []);
+  // Playback refused (autoplay, or iOS dropping speech before a tap): the next
+  // tap anywhere on the page lets it go on too. Kept until one is an activation.
   useEffect(() => {
     if (!vs.blocked) return;
     const on = () => unblockVoice();
-    window.addEventListener("pointerup", on, { once: true, capture: true });
-    window.addEventListener("keydown", on, { once: true, capture: true });
+    for (const t of UNLOCK_EVENTS) window.addEventListener(t, on, { capture: true, passive: true });
     return () => {
-      window.removeEventListener("pointerup", on, { capture: true });
-      window.removeEventListener("keydown", on, { capture: true });
+      for (const t of UNLOCK_EVENTS) window.removeEventListener(t, on, { capture: true });
     };
   }, [vs.blocked]);
   // The tab hiding stops the reading — unless the mic is on (hands-free), or on
@@ -4843,6 +4863,8 @@ export function DebugChat({
             // Radius, padding and the line box as variables: the mic is concentric
             // with the corner by construction (bar-geometry.ts).
             ...barGeometry(),
+            // A press target, not text: a long press here never selects (the input does).
+            ...NO_SELECT,
             background: INPUT_BG,
             // Aside while the log spans the screen; it keeps the pointer (captured).
             opacity: barAside ? 0 : undefined,
@@ -4890,7 +4912,7 @@ export function DebugChat({
           be read), fading out as its slot closes. */}
           <div
             data-testid="debug-chat-input-slot"
-            style={LTR_TEXT}
+            style={{ ...LTR_TEXT, ...TEXT_SELECT }}
             inert={!open}
             aria-hidden={!open || undefined}
             className={`relative flex w-0 min-w-0 flex-1 transition-opacity duration-[180ms] ease-out motion-reduce:transition-none ${open ? "opacity-100" : "max-h-8 overflow-hidden opacity-0"}`}

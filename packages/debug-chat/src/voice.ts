@@ -94,6 +94,17 @@ export const BARGE_IN_PROB = 0.7;
  * the whole queue would wait behind it in silence (2026-11-03).
  */
 export const SPEECH_START_MS = 8_000;
+/**
+ * A sentence handed to speechSynthesis that, this long after, has not started
+ * and is neither speaking nor pending was dropped: iOS WebKit returns from
+ * speak() with no event at all until the page has spoken once inside a tap
+ * (SpeechSynthesis::speak, RequireUserGestureForSpeechStart). Every page load
+ * starts locked, a debug device's reload after a deploy included, so a reply
+ * on /reader with no tap on the chat waited behind it forever and nothing
+ * after it was read either (2026-11-10). It is treated as refused: the
+ * reading waits for the next tap anywhere (`unblock`), which unlocks speech.
+ */
+export const SPEECH_REFUSED_MS = 1_000;
 /** Sentences are cut to at most this many characters (the TTS route's limit). */
 export const CHUNK_MAX = 200;
 /** localStorage: the speaker toggle ("0" = replies silent). */
@@ -215,7 +226,13 @@ export type UtterLike = {
   onstart?: ((e?: unknown) => void) | null;
   onboundary: ((e: { charIndex: number; name?: string }) => void) | null;
 };
-export type SynthLike = { speak(u: UtterLike): void; cancel(): void };
+export type SynthLike = {
+  speak(u: UtterLike): void;
+  cancel(): void;
+  /** speechSynthesis.speaking / .pending: both false right after speak() = it was dropped. */
+  speaking?: boolean;
+  pending?: boolean;
+};
 
 /** One sentence playing, on either route. */
 export type Playback = {
@@ -481,9 +498,24 @@ export function createVoice(d: {
           ev.onerror();
         }, SPEECH_START_MS)
       : undefined;
+    // Dropped without an event (iOS before the page's first tap): refused, wait for a tap.
+    // (Only where the engine says whether it is speaking: a fake in a test may not.)
+    let refused: unknown =
+      typeof s.speaking === "boolean"
+        ? setTimer(() => {
+            refused = undefined;
+            if (e !== epoch || s.speaking !== false || s.pending !== false) return;
+            log({ ev: "voice-refused", route: "speech", lang: head.lang, ms: SPEECH_REFUSED_MS });
+            settle();
+            u.onend = u.onerror = u.onstart = u.onboundary = null;
+            ev.onfail?.("speech NotAllowedError (dropped: no tap on this page yet)");
+          }, SPEECH_REFUSED_MS)
+        : undefined;
     const settle = () => {
       clearTimer(watch);
       watch = undefined;
+      clearTimer(refused);
+      refused = undefined;
     };
     u.onend = () => (settle(), ev.onend());
     u.onerror = (x) => {

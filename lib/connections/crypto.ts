@@ -72,8 +72,14 @@ export async function seal(key: CryptoKey, plain: string, aad: string): Promise<
 }
 
 /** The plain text, or null for anything that does not open with this key and AAD. */
-export async function unseal(key: CryptoKey, sealed: string, aad: string): Promise<string | null> {
-  if (typeof sealed !== "string" || sealed.length > 16_384) return null;
+export async function unseal(
+  key: CryptoKey,
+  sealed: string,
+  aad: string,
+  /** The longest sealed value accepted (a voiceprint is larger than a token). */
+  maxLen = 16_384,
+): Promise<string | null> {
+  if (typeof sealed !== "string" || sealed.length > maxLen) return null;
   const [v, ivS, ctS, ...rest] = sealed.split(".");
   if (v !== VERSION || rest.length || !ivS || !ctS) return null;
   const iv = fromBase64url(ivS);
