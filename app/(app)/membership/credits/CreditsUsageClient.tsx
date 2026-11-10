@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import { longDateTime } from "@/lib/dates";
 import type { GroupTotal, UsageEntry, UsageGroup } from "@/lib/payments/credit-usage";
 import { useCredits } from "../use-credits";
+import { VirtualList, type VirtualListHandle } from "@/app/components/VirtualList";
+import { useInfiniteList } from "@/app/components/useInfiniteList";
 
 interface Page {
   balance: number;
@@ -15,6 +17,9 @@ interface Page {
   month: GroupTotal[];
   groups: UsageGroup[];
 }
+
+/** What a usage answer carries besides its lines: the balance, the month, the features. */
+type Meta = Omit<Page, "entries">;
 
 // Colours (oklch only, docs/design-principles.md); the same family as the wallet card.
 const card =
@@ -25,8 +30,6 @@ const link =
 const field =
   "min-h-11 w-full rounded-lg border px-3 py-2 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600";
 const plus = "text-[oklch(0.45_0.14_150)] dark:text-[oklch(0.8_0.12_150)]";
-
-const PAGE = 100;
 
 /** The viewer's own time zone (dates, filters and the month are in it). */
 const viewerZone = () => {
@@ -49,9 +52,7 @@ export default function CreditsUsageClient() {
   const [group, setGroup] = useState<UsageGroup | "">("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [page, setPage] = useState<Page | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState<Meta | null>(null);
   const tz = useMemo(viewerZone, []);
 
   const query = useMemo(() => {
@@ -62,32 +63,41 @@ export default function CreditsUsageClient() {
     return q;
   }, [tz, group, from, to]);
 
-  const load = useCallback(
-    async (offset: number) => {
-      setBusy(true);
-      try {
-        const q = new URLSearchParams(query);
-        q.set("offset", String(offset));
-        q.set("limit", String(PAGE));
-        const res = await fetch(`/api/payments/credits/usage?${q}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(String(res.status));
-        const next = (await res.json()) as Page;
-        setPage((prev) =>
-          offset && prev ? { ...next, entries: [...prev.entries, ...next.entries] } : next,
-        );
-        setFailed(false);
-      } catch {
-        setFailed(true);
-      } finally {
-        setBusy(false);
-      }
+  // No pages and no "Load more" (owner, 2026-11-10): older lines load as the
+  // list nears its end; a filter starts over.
+  const list = useInfiniteList<UsageEntry, number>({
+    getKey: (e) => String(e.id),
+    deps: [query],
+    fetchBatch: async (offset, size) => {
+      const at = offset ?? 0;
+      const q = new URLSearchParams(query);
+      q.set("offset", String(at));
+      q.set("limit", String(size));
+      const res = await fetch(`/api/payments/credits/usage?${q}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
+      const { entries, ...meta } = (await res.json()) as Page;
+      setPage(meta);
+      const end = at + entries.length;
+      return {
+        items: entries,
+        next: entries.length && end < meta.total ? end : null,
+        total: meta.total,
+      };
     },
-    [query],
-  );
-
-  useEffect(() => {
-    void load(0);
-  }, [load]);
+  });
+  const entries = list.items;
+  const failed = list.error;
+  const rows = useRef<VirtualListHandle | null>(null);
+  /** An in-page link to an older line: bring it into view, then let the hash mark it. */
+  const goTo = (id: string) => (ev: React.MouseEvent) => {
+    if (!rows.current?.scrollToKey(id)) return;
+    ev.preventDefault();
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        window.location.hash = `usage-${id}`;
+      }),
+    );
+  };
 
   const groupLabel = (g: UsageGroup) =>
     (s.groups as Record<string, { value: string }>)[g]?.value ??
@@ -210,7 +220,7 @@ export default function CreditsUsageClient() {
           </button>
         )}
 
-        {failed && (
+        {failed && entries.length === 0 && (
           <p
             role="alert"
             className="text-sm text-[oklch(0.5_0.18_25)] dark:text-[oklch(0.78_0.14_25)]"
@@ -219,15 +229,26 @@ export default function CreditsUsageClient() {
             {s.failed.value}
           </p>
         )}
-        {page && page.entries.length === 0 && !failed && (
+        {page && entries.length === 0 && !failed && (
           <p className={`text-sm ${muted}`}>{filtered ? s.noMatch.value : s.empty.value}</p>
         )}
-        <ul className="divide-y divide-gray-200 dark:divide-gray-700 text-sm" data-usage-list="">
-          {page?.entries.map((e) => (
-            <li
-              key={e.id}
+        <VirtualList
+          items={entries}
+          getKey={(e) => String(e.id)}
+          name="credits-usage"
+          hasMore={list.hasMore}
+          loading={list.loading}
+          error={list.error}
+          total={list.total}
+          onReachEnd={list.loadMore}
+          estimateSize={84}
+          className="text-sm"
+          testId="usage-list"
+          handle={rows}
+          renderItem={(e) => (
+            <div
               id={`usage-${e.id}`}
-              className="flex items-start justify-between gap-3 py-2 target:bg-gold-100 dark:target:bg-gold-950"
+              className="flex items-start justify-between gap-3 py-2 border-b border-gray-200 dark:border-gray-700 target:bg-gold-100 dark:target:bg-gold-950"
               data-usage-entry={e.group}
             >
               <div className="min-w-0 space-y-0.5">
@@ -244,7 +265,11 @@ export default function CreditsUsageClient() {
                 )}
                 {e.refundOf && (
                   <div className={`text-xs ${muted}`} data-usage-refund-of="">
-                    <a href={`#usage-${e.refundOf.id}`} className={link}>
+                    <a
+                      href={`#usage-${e.refundOf.id}`}
+                      onClick={goTo(String(e.refundOf.id))}
+                      className={link}
+                    >
                       {s.refundOf.value
                         .replace("{what}", groupLabel(e.refundOf.group))
                         .replace("{date}", longDateTime(e.refundOf.at))}
@@ -266,19 +291,9 @@ export default function CreditsUsageClient() {
               <span className={`shrink-0 font-semibold tabular-nums ${e.amount > 0 ? plus : ""}`}>
                 {signed(e.amount)}
               </span>
-            </li>
-          ))}
-        </ul>
-        {page && page.entries.length < page.total && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void load(page.entries.length)}
-            className={`min-h-11 w-full rounded-lg border text-sm font-medium border-gray-300 dark:border-gray-600 disabled:opacity-50`}
-          >
-            {s.loadMore.value}
-          </button>
-        )}
+            </div>
+          )}
+        />
       </section>
     </main>
   );

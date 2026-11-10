@@ -87,6 +87,13 @@ export type VirtualListProps<T> = {
   /** Classes of each row's wrapper (role listitem). */
   rowClassName?: string;
   testId?: string;
+  /** Imperative calls: bring a row (by key) into view, e.g. for an in-page link. */
+  handle?: RefObject<VirtualListHandle | null>;
+};
+
+export type VirtualListHandle = {
+  /** Scroll the row with this key to the centre; false when it is not loaded. */
+  scrollToKey: (key: string) => boolean;
 };
 
 type AnyVirtualizer = Virtualizer<Element | Window, HTMLElement>;
@@ -110,6 +117,7 @@ export function VirtualList<T>({
   className,
   rowClassName,
   testId,
+  handle,
 }: VirtualListProps<T>) {
   const t = useIntlayer("virtual-list");
   const listRef = useRef<HTMLDivElement>(null);
@@ -280,6 +288,16 @@ export function VirtualList<T>({
   }, [lastIndex, items.length, hasMore, loading, error, onReachEnd]);
 
   // ── Keyboard: between rows. ──
+  if (handle)
+    handle.current = {
+      scrollToKey: (key) => {
+        const i = keys.indexOf(key);
+        if (i < 0) return false;
+        v.scrollToIndex(i, { align: "center" });
+        return true;
+      },
+    };
+
   const focusRow = (i: number) => {
     v.scrollToIndex(i, { align: "auto" });
     const tryFocus = (n: number) => {

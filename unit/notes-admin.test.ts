@@ -135,6 +135,37 @@ describe.each([...BACKENDS])("notesAdmin (%s)", (which) => {
       ]);
     });
 
+    test("logs: each row carries its review log, dates as ISO text; off by default", async () => {
+      const review = new Date("2030-01-02T03:04:05.000Z");
+      const n = note("https://log.test/", { due: new Date("2030-01-05") });
+      n.log = [
+        {
+          rating: 3,
+          state: 2,
+          due: new Date("2030-01-01"),
+          review,
+          stability: 4,
+          difficulty: 5,
+          elapsed_days: 1,
+          last_elapsed_days: 0,
+          scheduled_days: 3,
+          learning_steps: 0,
+        },
+      ] as never;
+      await seed([n]);
+      const plain = await queryNotes(EMAIL, {});
+      expect(plain.rows[0].log).toBeUndefined();
+      const { rows } = await queryNotes(EMAIL, { logs: true });
+      expect(rows[0].log).toHaveLength(1);
+      expect(rows[0].log![0].rating).toBe(3);
+      expect(rows[0].log![0].review).toBe(review.toISOString());
+      const none = note("https://nolog.test/", { due: new Date("2030-01-06") });
+      delete (none as { log?: unknown }).log;
+      await seed([none]);
+      const both = await queryNotes(EMAIL, { logs: true });
+      expect(both.rows.find((r) => r.url === "https://nolog.test/")?.log).toEqual([]);
+    });
+
     test("q matches title or url, case-insensitively", async () => {
       await seed([
         note("https://example.test/genki", { title: "Genki Lesson 3" }),
@@ -386,6 +417,10 @@ describe("escapeLike", () => {
 });
 
 describe("parseQueryOptions", () => {
+  test("logs=1 asks for each card's review log", () => {
+    expect(parseQueryOptions(new URLSearchParams("logs=1")).logs).toBe(true);
+    expect(parseQueryOptions(new URLSearchParams("logs=0")).logs).toBeUndefined();
+  });
   test("reads the query string the data table sends", () => {
     const opts = parseQueryOptions(
       new URLSearchParams("q=genki&state=2&due=due&sort=reps&order=desc&page=3&size=25"),

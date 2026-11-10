@@ -141,7 +141,7 @@ log(`✓ roadmap loaded: ${await page.title()}`);
     return r.status;
   });
   await page.goto(`${BASE}/list`, { waitUntil: "networkidle" });
-  const del = page.locator("li > button:last-child").first();
+  const del = page.locator('[data-testid="list-card"] > button:last-child').first();
   const title = added === 200 ? await del.getAttribute("title").catch(() => null) : null;
   const label = added === 200 ? await del.getAttribute("aria-label").catch(() => null) : null;
   check(

@@ -16,6 +16,25 @@ export function byDay<L extends { at: number }>(lines: L[]): { day: string; line
   return out;
 }
 
+/** One row of the virtual list: a day's heading (with its line count), or a line. */
+export type DayRow<L> =
+  | { kind: "day"; key: string; day: string; first: L; n: number }
+  | { kind: "line"; key: string; line: L };
+
+/**
+ * The lines as list rows, each day led by its heading row: the history is one
+ * virtual list (app/components/VirtualList.tsx). `keyOf` gives a line's id.
+ */
+export function dayRows<L extends { at: number }>(
+  lines: L[],
+  keyOf: (l: L) => string,
+): DayRow<L>[] {
+  return byDay(lines).flatMap(({ day, lines: ls }) => [
+    { kind: "day" as const, key: `day:${day}`, day, first: ls[0]!, n: ls.length },
+    ...ls.map((line) => ({ kind: "line" as const, key: `line:${keyOf(line)}`, line })),
+  ]);
+}
+
 /** A local day ("2026-11-07") as [its first ms, the next day's first ms), on this clock. */
 export function dayRange(day: string): { from: number; to: number } {
   const [y, m, d] = day.split("-").map(Number) as [number, number, number];

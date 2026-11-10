@@ -38,7 +38,25 @@ export type NoteRow = {
   lapses: number;
   notes?: string;
   hlc?: HLC;
+  /** The review log, only when asked for (`logs`): /list draws it. Dates as ISO text. */
+  log?: NoteLogRow[];
 };
+
+/** One review of a card, plain JSON. */
+export type NoteLogRow = {
+  rating: number;
+  state: number;
+  due: string;
+  review: string;
+  stability: number;
+  difficulty: number;
+  elapsed_days: number;
+  last_elapsed_days: number;
+  scheduled_days: number;
+  learning_steps?: number;
+};
+
+const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : String(d ?? ""));
 
 const MONGO_SORT_FIELDS: Record<NotesSort, string> = {
   due: "card.due",
@@ -49,9 +67,9 @@ const MONGO_SORT_FIELDS: Record<NotesSort, string> = {
   state: "card.state",
 };
 
-function toRow(note: FSRSNote): NoteRow {
+function toRow(note: FSRSNote, logs = false): NoteRow {
   const card = note.card ?? ({} as FSRSNote["card"]);
-  return {
+  const row: NoteRow = {
     url: note.url,
     title: note.title || note.url,
     state: card.state ?? 0,
@@ -61,6 +79,20 @@ function toRow(note: FSRSNote): NoteRow {
     notes: note.notes,
     hlc: note.hlc,
   };
+  if (logs)
+    row.log = (note.log ?? []).map((l) => ({
+      rating: l.rating,
+      state: l.state,
+      due: iso(l.due),
+      review: iso(l.review),
+      stability: l.stability,
+      difficulty: l.difficulty,
+      elapsed_days: l.elapsed_days,
+      last_elapsed_days: l.last_elapsed_days,
+      scheduled_days: l.scheduled_days,
+      learning_steps: l.learning_steps,
+    }));
+  return row;
 }
 
 /** Escape a user string for use inside a MongoDB `$regex`. */
@@ -74,7 +106,7 @@ export async function queryNotes(
 ): Promise<{ rows: NoteRow[]; total: number }> {
   if (dbBackend() === "d1") {
     const { rows, total } = await new FsrsNotesD1Repo(getD1(), email).query(opts);
-    return { rows: rows.map(toRow), total };
+    return { rows: rows.map((r) => toRow(r, opts.logs)), total };
   }
 
   const collection = getFSRSNotesCollection(email);
@@ -99,7 +131,7 @@ export async function queryNotes(
       .toArray(),
     collection.countDocuments(filter),
   ]);
-  return { rows: docs.map((d) => toRow(d as unknown as FSRSNote)), total };
+  return { rows: docs.map((d) => toRow(d as unknown as FSRSNote, opts.logs)), total };
 }
 
 export type HostGroup = {
@@ -285,5 +317,6 @@ export function parseQueryOptions(params: URLSearchParams): NotesQueryOptions {
     order: params.get("order") === "desc" ? "desc" : "asc",
     page: Number(params.get("page") ?? 0) || 0,
     size: Number(params.get("size") ?? 50) || 50,
+    logs: params.get("logs") === "1" || undefined,
   };
 }

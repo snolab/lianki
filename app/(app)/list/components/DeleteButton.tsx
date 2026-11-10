@@ -7,9 +7,11 @@ import { useIntlayer } from "next-intlayer";
 interface DeleteButtonProps {
   url: string;
   title?: string;
+  /** Called once the card is gone; without it the page reloads. */
+  onDeleted?: () => void;
 }
 
-export default function DeleteButton({ url, title }: DeleteButtonProps) {
+export default function DeleteButton({ url, title, onDeleted }: DeleteButtonProps) {
   const { deleteCard, deleteCardTitle, deleteFailedAlert, deleteErrorAlert } =
     useIntlayer("list-page");
   // useIntlayer returns IntlayerNode objects: fine as JSX children, but
@@ -35,7 +37,8 @@ export default function DeleteButton({ url, title }: DeleteButtonProps) {
       });
 
       if (response.ok) {
-        window.location.reload();
+        if (onDeleted) onDeleted();
+        else window.location.reload();
       } else {
         alert(deleteFailedAlert.value);
         setIsDeleting(false);
