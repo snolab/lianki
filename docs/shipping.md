@@ -40,16 +40,18 @@ create` reports `--pr` itself, as before. The node keeps every PR it named
 
 ## CI
 
-CI runs **everything**; the pre-push hook runs only what a change reaches
-(below, "Only what changed"). `.github/workflows/ci.yml` has three jobs:
+CI selects tests from the change graph (below, "Only what changed"),
+with full unit coverage in the merge queue and on main.
+`.github/workflows/ci.yml` has these jobs:
 
-- `Lint + typecheck + unit` — oxlint + `oxfmt --check`, typecheck, the whole
-  unit suite with its coverage gate (~20 s). Every PR, every merge group, every
-  push to `main`; when it fails on a push to `main` it posts to Slack #lianki.
-- `qa` — the whole qa:all, on the `merge_group` event only (and on a manual
+- `Lint + typecheck + unit` — oxlint + `oxfmt --check`, typecheck, affected unit
+  tests on PRs, and the whole unit suite with coverage in every merge group
+  and on every push to `main`; when it fails on a push to `main` it posts to Slack #lianki.
+- `qa` — affected suites plus the smoke set, on `merge_group` (and every
+  suite on a manual
   dispatch), as one build job and three parallel shards
-  (`.github/workflows/qa-sharded.yml`, below). So every PR gets the full
-  integration gate before it lands, while opening a PR and main's deploy wait
+  (`.github/workflows/qa-sharded.yml`, below). The selector falls back to the full
+  integration gate for core changes, while opening a PR and main's deploy wait
   for neither. It blocks; `QA_BLOCKING: "false"` in ci.yml turns a failure
   into a warning instead (used while WORDS' Settings-sheet check failed in CI,
   2026-11-08).
@@ -90,6 +92,35 @@ shard runs long (a new suite, a slower one).
 Locally, `--shard=i/n` and `--prepare` work the same, and a plain
 `bun run qa:all` is unchanged. Full QA (below) uses the same workflow plus the
 extension smoke test in shard 1.
+
+### Unit tests on a PR
+
+A PR runs `bun scripts/gate/affected.ts unit --parallel` with
+`LIANKI_GATE_BASE=pull_request.base.sha`. The same graph as pre-push selects
+its tests; each test file runs in an isolated worker. A `UNIT_FULL` path or
+an unavailable graph runs the whole suite with coverage. Merge groups and
+pushes to main always run the whole unit suite with coverage.
+
+### Affected-only in the merge queue
+
+Since 2026-11-10 the merge queue runs only the qa suites a merge group can
+reach, plus a smoke set; the full set runs after merges on main (below). The
+`qa plan` job in ci.yml runs `bun scripts/gate/affected.ts ci-qa` with
+`LIANKI_GATE_BASE=merge_group.base_sha`: the files the group changes on top of
+main (this PR and the ones queued ahead of it) go through the same graph and
+`paths` as the pre-push gate (next section, "Only what changed"). It writes
+`suites=<ids>` for the shards:
+
+- the affected suites plus **`QA_SMOKE`** (`api`, `ui`, `sign-out`, in
+  `affected-lib.ts`), always;
+- `suites=` (empty), meaning **every suite**, when a `QA_FULL` path changed
+  (the Worker's build and serving, migrations, qa:all's own machinery, the
+  core) or the graph could not be built — the same fallback as pre-push;
+- every suite on a manual dispatch.
+
+`LIANKI_GATE_CHANGED="lib/x.ts" bun scripts/gate/affected.ts ci-qa` shows
+what a group touching `lib/x.ts` would run. A shard left with no suite exits
+at once.
 
 ### Full QA and the deploy hold
 
