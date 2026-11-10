@@ -182,6 +182,22 @@ export const SUITES = [
     paths: READ,
     sensitive: true,
   },
+  // The shared virtual list on /reader: no pages, a window of rows, more as you scroll, centre row back after Back.
+  {
+    name: "VIRTUAL LIST (qa-virtual-list)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-virtual-list.mjs"],
+    base: true,
+    id: "virtual-list",
+    paths: [
+      "app/components/VirtualList.tsx",
+      "app/components/useInfiniteList.ts",
+      "lib/virtual-list.ts",
+      "app/(app)/reader/ReadListClient.tsx",
+      "app/api/read/route.ts",
+    ],
+    sensitive: true,
+  },
   // /library (the catalogue) and /books (My books): titles, the shelf, old links 308 (docs/books-plan.md).
   {
     name: "BOOKS (qa-books)",

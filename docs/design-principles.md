@@ -151,3 +151,21 @@ behaviour per surface is summarised in the Slack thread of 2026-11-03.
 - Overlays never trap focus unless they are modal. Modals (pairing, sheets) say so with `role="dialog"`, `aria-modal`, Escape to close.
 - Motion respects `prefers-reduced-motion`.
 - Tap targets on overlays are at least 40px.
+
+## No pages: every list is a virtual list
+
+The owner, 2026-11-10 22:42 JST: no pagination on any list. Every list is
+windowed (only the rows near the viewport are in the DOM, any length) and
+loads more as it is scrolled, with no page controls and no "next page".
+
+- Use `<VirtualList>` (`app/components/VirtualList.tsx`) with
+  `useInfiniteList` (`app/components/useInfiniteList.ts`) for the batches. The
+  logic is in `lib/virtual-list.ts` (unit-tested), the browser check in
+  `scripts/qa/qa-virtual-list.mjs`.
+- The batch size is the config key `lists.batchSize`, never a number the user
+  sees. Search, filter and sort start over from the first batch.
+- Position is the **centre row's id** (per tab, `lk:ui:list:<name>`), brought
+  back to the centre on return — never a pixel offset or an index, so it
+  survives inserts and newly loaded rows.
+- The inventory of lists and which are converted:
+  `no-pages` task in the state tree (/web/no-pagination).

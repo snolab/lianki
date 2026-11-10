@@ -63,6 +63,7 @@ import preferencesPage from "@/app/(app)/my/preferences/page.content";
 import byokSettings from "@/app/components/byok-settings.content";
 import titleRules from "@/app/components/title-rules.content";
 import externalLink from "@/app/components/external-link.content";
+import virtualList from "@/app/components/virtual-list.content";
 import dontAsk from "@/app/components/dont-ask.content";
 import appBadge from "@/app/components/app-badge.content";
 import languageSettings from "@/app/components/language-settings.content";
@@ -170,6 +171,7 @@ describe.each([
   ["byok-settings", byokSettings],
   ["title-rules", titleRules],
   ["external-link", externalLink],
+  ["virtual-list", virtualList],
   ["dont-ask", dontAsk],
   ["app-badge", appBadge],
   ["language-settings", languageSettings],

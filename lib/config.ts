@@ -85,6 +85,16 @@ export const CONFIG = {
     description:
       "阅读器在还没测出用户自己的阅读速度前，假设的起始速度（每分钟词数），决定本地书一张卡片放多少字。",
   }),
+  "lists.batchSize": int({
+    default: 30,
+    min: 5,
+    max: 100,
+    unit: "rows",
+    group: "lists",
+    audience: "public",
+    description:
+      "所有列表（阅读材料、链卡、聊天记录……）滚动到底时一次向服务器多要几行。不是分页：用户看不到这个数，只影响每次加载的量。",
+  }),
   "study.humanReactionMs": int({
     default: 1000,
     min: 200,
