@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const list = await repo.getList(id);
   if (!isEntrySource(list?.source))
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ error: "not-found" }, { status: 404 });
   const entries = await new WordEntriesD1Repo(repo.db, repo.email).entries(id);
   return NextResponse.json({ entries }, { headers: { "Cache-Control": "private, no-cache" } });
 }

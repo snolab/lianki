@@ -28,6 +28,6 @@ export async function POST(req: NextRequest) {
   const body = await readJsonCapped(req, BODY_MAX);
   if (!body.ok) return cappedJsonError(body.status);
   const parsed = z.object({ swipes: z.array(Swipe).min(1).max(200) }).safeParse(body.value);
-  if (!parsed.success) return NextResponse.json({ error: "Invalid swipes" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "invalid-swipes" }, { status: 400 });
   return NextResponse.json({ stored: await repo.logSwipes(parsed.data.swipes) });
 }
