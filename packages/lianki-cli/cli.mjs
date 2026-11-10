@@ -70,7 +70,7 @@ const SCOPE_HINT =
 
 // ── Context: where, who, how to print ─────────────────────────────────────
 
-function context(argv, deps) {
+export function context(argv, deps) {
   const base = String(
     argv.api || deps.env.LIANKI_URL || deps.env.LIANKI_API || DEFAULT_URL,
   ).replace(/\/+$/, "");
@@ -87,7 +87,7 @@ function context(argv, deps) {
 }
 
 /** The token to use, and where it came from. Never printed. */
-async function currentToken(c) {
+export async function currentToken(c) {
   const { argv, deps } = c;
   const given = typeof argv.token === "string" ? argv.token.trim() : "";
   if (given) {
@@ -128,11 +128,11 @@ async function stdinToken(deps) {
 
 // ── HTTP ──────────────────────────────────────────────────────────────────
 
-async function call(c, token, { method = "GET", path, query, body }) {
+export async function call(c, token, { method = "GET", path, query, body, headers: extra }) {
   const url = new URL(path, c.base + "/");
   for (const [k, v] of Object.entries(query ?? {}))
     if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
-  const headers = { accept: "application/json" };
+  const headers = { accept: "application/json", ...extra };
   if (token) headers.authorization = `Bearer ${token}`;
   if (body !== undefined) headers["content-type"] = "application/json";
   let r;
@@ -164,6 +164,17 @@ async function call(c, token, { method = "GET", path, query, body }) {
   // The FSRS router answers a missing card with a 500 "Error: note not found".
   if (r.status === 404 || /note not found/i.test(detail))
     throw new CliError("not_found", EXIT.notFound, detail && !/^404$/.test(detail) ? detail : "not found");
+  if (r.status === 429) {
+    // Passed on as is: how long the server asked us to wait (seconds), if it said.
+    const wait = Number(r.headers?.get?.("retry-after"));
+    const e = new CliError(
+      "rate_limited",
+      EXIT.refused,
+      `${c.site} refused it (429: too many requests)${wait > 0 ? `; retry after ${wait} s` : ""}`,
+    );
+    e.retryAfter = wait > 0 ? wait : null;
+    throw e;
+  }
   if (r.status >= 300 && r.status < 400)
     throw new CliError("server", EXIT.server, `${c.site} redirected (${r.status}); check --api`);
   if (r.status >= 500 || data === null)
@@ -660,6 +671,14 @@ async function cmdChatListen(c) {
   });
 }
 
+// ── mcp ───────────────────────────────────────────────────────────────────
+
+/** `lianki mcp`: the local MCP server (mcp.mjs), loaded only for this command. */
+async function cmdMcp(c) {
+  const { serveMcp } = await import("./mcp.mjs");
+  await serveMcp(c);
+}
+
 // ── Parser ────────────────────────────────────────────────────────────────
 
 const EPILOG =
@@ -868,6 +887,21 @@ function build(args, deps, box) {
           ),
         [['lianki chat say "hello"', ""]],
       ),
+    )
+    .command(
+      "mcp",
+      "Run a local MCP server for your AI app (stdio)",
+      (y) =>
+        examples(
+          y.epilogue(
+            "Tools for your cards and chat, only those the token allows; no deletes. Uses the token from `lianki auth login` (or LIANKI_TOKEN). stdout is the protocol; messages go to stderr.",
+          ),
+          [
+            ["claude mcp add lianki -- npx -y lianki mcp", "Claude Code"],
+            ['{"mcpServers": {"lianki": {"command": "npx", "args": ["-y", "lianki", "mcp"]}}}', "Claude Desktop, Cursor"],
+          ],
+        ),
+      act(cmdMcp),
     )
     .example("lianki auth login", "sign in through the browser")
     .example("lianki next --json", "the next due card, for a script")

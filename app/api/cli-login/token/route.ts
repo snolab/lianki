@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { EXCHANGES_PER_IP, exchangeCode, revokeSelf } from "@/lib/cli-login";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
-import { tagOf } from "@/lib/api-tokens";
+import { describeToken, tagOf } from "@/lib/api-tokens";
 import { type AuditDb, audit } from "@/lib/security/audit-log";
 import { clientIp, hit, ipKey, sha256Hex, type ThrottleDb } from "@/lib/security/throttle";
 import { notifyTokensRevoked } from "@/lib/push-chat-tokens";
@@ -13,6 +13,7 @@ const NO_STORE = { "Cache-Control": "no-store", Pragma: "no-cache" };
 
 /**
  * POST   /api/cli-login/token {code, code_verifier, redirect_uri} → {token, id, name, email}
+ * GET    /api/cli-login/token  (Authorization: Bearer lk_…)       → {name, scopes, expiresAt}
  * DELETE /api/cli-login/token  (Authorization: Bearer lk_…)       → {ok}
  *
  * The CLI's side of the browser login (lib/cli-login.ts): the one-time code
@@ -61,6 +62,16 @@ export async function POST(req: Request) {
     },
     { headers: NO_STORE },
   );
+}
+
+/** GET: the bearer token's own name, permissions and expiry; nothing about any other. */
+export async function GET(req: Request) {
+  if (dbBackend() !== "d1")
+    return NextResponse.json({ error: "Not available" }, { status: 503, headers: NO_STORE });
+  const m = /^Bearer (lk_[0-9a-f]{64})$/.exec(req.headers.get("Authorization") ?? "");
+  const self = m ? await describeToken(getD1() as unknown as D1Like, m[1]) : null;
+  if (!self) return NextResponse.json({ error: "unknown" }, { status: 401, headers: NO_STORE });
+  return NextResponse.json(self, { headers: NO_STORE });
 }
 
 export async function DELETE(req: Request) {

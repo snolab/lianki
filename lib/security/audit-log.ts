@@ -44,6 +44,9 @@ export type AuditKind =
   // everywhere), used (at most once a minute per token, when last_used_at is
   // written), and refused for a known token (expired, missing the permission,
   // over its rate limit). Subject: the token's tag; detail: name and scopes.
+  // A use through `lianki mcp` ends "via mcp/<version> <tool>" (chat, and the
+  // card and settings routes, which log only such named uses;
+  // lib/api-token-client.ts).
   | "api-token.create"
   | "api-token.revoke"
   | "api-token.revoke-all"

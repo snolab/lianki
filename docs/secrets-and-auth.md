@@ -587,7 +587,8 @@ otherwise holds only the account, the token's name and the CLI's device id.
 The CLI never prints the token. `lianki auth status` says who and whether the
 server still accepts it; `lianki auth logout` revokes it on the server
 (`DELETE /api/cli-login/token` with the token itself, which can delete only
-itself) and forgets it.
+itself) and forgets it. `GET /api/cli-login/token` with the token answers
+its own name, permissions and expiry (read-only; `lianki mcp` uses it).
 
 Only `/api/prefs` accepts the token as `Authorization: Bearer` this way
 (`lib/api-token-user.ts`, D1 only; a bad token is 401, never a fall back to

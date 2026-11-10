@@ -443,6 +443,31 @@ describe("apiTokenUser", () => {
     });
   });
 
+  test("a named MCP client is audited with its tool; no header, no row", async () => {
+    await seedToken();
+    const audits = () =>
+      d1
+        .raw()
+        .prepare("SELECT kind, detail FROM security_audit WHERE kind LIKE 'api-token.%'")
+        .all() as {
+        kind: string;
+        detail: string;
+      }[];
+    expect(await apiTokenUser(req(`Bearer ${TOKEN}`))).toMatchObject({ id: "u1" });
+    expect(audits()).toEqual([]);
+    d1.raw().prepare("UPDATE api_tokens SET last_used_at = NULL").run();
+    const named = new Request("https://lianki.com/api/prefs", {
+      headers: {
+        Authorization: `Bearer ${TOKEN}`,
+        "x-lianki-client": "mcp/0.4.0 tool=lianki_settings_get",
+      },
+    });
+    expect(await apiTokenUser(named)).toMatchObject({ id: "u1" });
+    expect(audits()).toEqual([
+      { kind: "api-token.use", detail: "settings GET cli via mcp/0.4.0 lianki_settings_get" },
+    ]);
+  });
+
   test("anything else: null, never the cookie", async () => {
     await seedToken();
     for (const h of [
@@ -511,7 +536,7 @@ describe("/api/prefs with a Bearer token", async () => {
 });
 
 describe("/api/cli-login/token", async () => {
-  const { POST, DELETE } = await import("@/app/api/cli-login/token/route");
+  const { GET, POST, DELETE } = await import("@/app/api/cli-login/token/route");
   const post = (body: unknown, ip = "203.0.113.5") =>
     POST(
       new Request("https://lianki.com/api/cli-login/token", {
@@ -551,9 +576,28 @@ describe("/api/cli-login/token", async () => {
           headers: auth ? { Authorization: auth } : {},
         }),
       );
+    // GET: the token describes itself (`lianki mcp` lists its tools by it).
+    const self = (auth?: string) =>
+      GET(
+        new Request("https://lianki.com/api/cli-login/token", {
+          headers: auth ? { Authorization: auth } : {},
+        }),
+      );
+    expect((await self()).status).toBe(401);
+    expect((await self(`Bearer lk_${"b".repeat(64)}`)).status).toBe(401);
+    const me = await self(`Bearer ${j.token}`);
+    expect(me.status).toBe(200);
+    expect(me.headers.get("cache-control")).toBe("no-store");
+    expect(await me.json()).toEqual({
+      name: "lianki CLI mac",
+      scopes: j.scopes,
+      expiresAt: j.expiresAt,
+    });
+
     expect((await del()).status).toBe(401);
     expect((await del(`Bearer ${j.token}`)).status).toBe(200);
     expect((await del(`Bearer ${j.token}`)).status).toBe(404);
+    expect((await self(`Bearer ${j.token}`)).status).toBe(401);
   });
 
   test("is rate-limited per IP", async () => {

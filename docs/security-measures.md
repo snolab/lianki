@@ -374,7 +374,9 @@ else can catch it ([secrets-and-auth.md](secrets-and-auth.md), "CLI login"):
 - **Narrow reach.** Only `/api/prefs` takes the token as `Authorization:
 Bearer` for a user's data (`lib/api-token-user.ts`; a test fails if any
   other route imports it); a bad token is 401 with no fall back to the cookie.
-  `DELETE /api/cli-login/token` lets a token revoke itself and nothing else.
+  `DELETE /api/cli-login/token` lets a token revoke itself and nothing else;
+  `GET` on the same path tells a token its own name, permissions and expiry
+  (`lianki mcp` lists its tools by them), nothing about any other token.
 - **Limits.** The exchange: 10 per IP per 15 minutes (`auth_throttle`).
 - **On the Mac**: the macOS Keychain, written through `security -i` on stdin
   (never in a process list), else a 0600 file; the CLI never prints it.
