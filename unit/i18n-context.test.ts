@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
 import importWordlist from "@/app/(app)/import/wordlist-import.content";
+import importPage from "@/app/(app)/import/page.content";
+import importSections from "@/app/(app)/import/import-sections.content";
 import wordsImportPanel from "@/app/(app)/words/import-panel.content";
 import myFiles from "@/app/(app)/my/files/my-files.content";
 import bottomNav from "@/app/components/bottom-nav.content";
@@ -30,6 +32,7 @@ import devUsers from "@/app/(app)/dev/users/users.content";
 import devPregrant from "@/app/(app)/dev/users/pregrant.content";
 import textSize from "@/app/components/text-size.content";
 import boxSignIn from "@/app/(app)/sign-in/box-sign-in.content";
+import blogPage from "@/app/[locale]/blog/page.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
 import emailInvite from "@/app/(app)/membership/email-invite.content";
@@ -121,6 +124,8 @@ describe.each([
   ["words-page", words],
   ["words-import-ankiweb", wordsImportAnkiweb],
   ["import-wordlist", importWordlist],
+  ["import-page", importPage],
+  ["import-sections", importSections],
   ["words-import-panel", wordsImportPanel],
   ["bottom-nav", bottomNav],
   ["learning-partner", learningPartner],
@@ -132,6 +137,7 @@ describe.each([
   ["my-page", myPage],
   ["landing-page", landing],
   ["learn-page", learn],
+  ["blog-page", blogPage],
   ["polyglot-page", polyglot],
   ["self-intro-page", selfIntro],
   ["words-import", wordsImport],

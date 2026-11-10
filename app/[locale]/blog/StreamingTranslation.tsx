@@ -3,17 +3,31 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
 
+/** The translated lines for a failed translation, from the server page (blog-page `post.*`). */
+export interface TranslationMessages {
+  errSignIn: string;
+  errRate: string;
+  errFailed: string;
+}
+
 interface StreamingTranslationProps {
   locale: string;
   slug: string;
+  messages: TranslationMessages;
   /** Shown with the error when the translation can't be generated. */
   fallback?: ReactNode;
 }
 
-export function StreamingTranslation({ locale, slug, fallback }: StreamingTranslationProps) {
+export function StreamingTranslation({
+  locale,
+  slug,
+  messages,
+  fallback,
+}: StreamingTranslationProps) {
   const [content, setContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Which translated line explains a failure; the response body and exception stay in the console.
+  const [error, setError] = useState<keyof TranslationMessages | null>(null);
 
   useEffect(() => {
     const fetchStream = async () => {
@@ -21,20 +35,25 @@ export function StreamingTranslation({ locale, slug, fallback }: StreamingTransl
         const response = await fetch(`/api/translate?slug=${slug}&locale=${locale}`);
 
         if (!response.ok) {
-          const errorText = await response.text();
-          if (response.status === 401) {
-            setError("Sign in required to generate translation");
-          } else if (response.status === 429) {
-            setError("Rate limit reached. Please retry in a few minutes.");
-          } else {
-            setError(`Translation failed: ${errorText}`);
-          }
+          console.warn(
+            "[blog] translation failed",
+            response.status,
+            (await response.text().catch(() => "")).slice(0, 300),
+          );
+          setError(
+            response.status === 401
+              ? "errSignIn"
+              : response.status === 429
+                ? "errRate"
+                : "errFailed",
+          );
           setIsStreaming(false);
           return;
         }
 
         if (!response.body) {
-          setError("No response body");
+          console.warn("[blog] translation: no response body");
+          setError("errFailed");
           setIsStreaming(false);
           return;
         }
@@ -58,7 +77,7 @@ export function StreamingTranslation({ locale, slug, fallback }: StreamingTransl
         }
       } catch (err) {
         console.error("Streaming error:", err);
-        setError(err instanceof Error ? err.message : "Unknown error");
+        setError("errFailed");
         setIsStreaming(false);
       }
     };
@@ -68,8 +87,9 @@ export function StreamingTranslation({ locale, slug, fallback }: StreamingTransl
 
   if (error) {
     const errorBox = (
-      <div className="text-red-600 bg-red-50 px-4 py-3 rounded">
-        <strong>Translation Error:</strong> {error}
+      <div role="alert" className="text-red-600 bg-red-50 px-4 py-3 rounded">
+        <span aria-hidden="true">⚠ </span>
+        {messages[error]}
       </div>
     );
     if (!fallback) return errorBox;
