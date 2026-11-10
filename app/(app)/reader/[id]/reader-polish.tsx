@@ -11,6 +11,7 @@ import { useIntlayer } from "next-intlayer";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import type { BookMeta } from "@/lib/read/book";
 import {
+  answerOffer,
   carryDeviceSkip,
   draftChoiceShown,
   offerShown,
@@ -79,7 +80,10 @@ export function PolishOffer({
           type="button"
           data-testid="read-polish-run"
           disabled={state === "working"}
-          onClick={run}
+          onClick={() => {
+            answerOffer();
+            run();
+          }}
           className="rounded-lg bg-[oklch(0.55_0.165_22.3)] px-3 py-1.5 font-medium text-[oklch(0.99_0_0)] disabled:opacity-60"
         >
           {state === "working" ? t.working : t.polish}
@@ -89,6 +93,7 @@ export function PolishOffer({
           data-testid="read-polish-skip"
           disabled={state === "working"}
           onClick={() => {
+            answerOffer();
             writeSkip(id);
             setSkipped(true);
           }}

@@ -155,6 +155,35 @@ listed once.
 | `lk:link-confirm` | ask before another site ("any site" box off) | **synced** | `links.confirm`      | owner, 2026-11-09: "for my account, all domains"                                                                                  |
 | `lk:link-allowed` | sites not asked about ("this site" box)      | **synced** | `links.allowedHosts` | owner, 2026-11-09: kept with the account. A third exception to "nothing typed": bare public hosts only, newest 80, no device host |
 
+### "Don't ask again" (lib/dont-ask.ts)
+
+| Key           | Setting                                                    | Class      | Server key     | Reason                                                                                                                                                       |
+| ------------- | ---------------------------------------------------------- | ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lk:dont-ask` | every "don't ask again" choice: times chosen, day chosen, day it asks again | **synced** | `asks.dontAsk` | owner, 2026-11-10: such a choice expires and comes back spaced; reviewed per account at /my/preferences. Known ids only; a site id carries a public host, as `links.allowedHosts` |
+
+Owner, 2026-11-10: no "don't ask again" sticks for good. Every dialog that
+offers one goes through `lib/dont-ask.ts`:
+
+- **Picked**: the question stays away for `DONT_ASK_CONFIG.reaskDays[0]`
+  days (7). Picked again when it comes back: the next interval (30, 90, 365,
+  then 365 each time). The intervals live in that one constant, keyed
+  `dontAsk`, for the config store.
+- **Came back and answered without the box**: the choice is dropped (the
+  dialog's own setting is reset too), and the count starts over next time.
+- **No entry** reads as "ask": a choice stored before this map existed, or
+  one dropped to keep the value under the 2 KB cap (newest 40 kept), is asked
+  about once more.
+- The dialog's own key (`links.confirm`, `links.allowedHosts`,
+  `read.polishOffer`) still says what was chosen; the map says until when.
+  Turning the setting back on forgets the entry.
+- **Review**: /my/preferences → "Questions you turned off" lists every entry
+  (when chosen, when it asks again; due ones say so), with Keep (= picked
+  again: a longer wait) and Ask again now per row and for all.
+
+Today's kinds: `link-any` and `link-site:<host>` (docs/external-links.md),
+`read-polish` (the reader's offer to tidy a transcript). A new dialog adds its
+kind to `DONT_ASK_KINDS` and a row name in `dont-ask.content.ts`.
+
 ### Notifications (docs/app-badge.md)
 
 | Key               | Setting                                                                   | Class      | Server key     | Reason                                                                                                                    |

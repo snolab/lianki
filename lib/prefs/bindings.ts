@@ -24,6 +24,7 @@ import { LOCALE_PICK_KEY } from "@/lib/app-locale";
 import { ACCT_COOKIE_LINE } from "@/lib/account-locale";
 import { BYOK_BACKEND_KEY } from "@/lib/byok/config";
 import { LINK_CONFIRM_KEY, LINK_ALLOWED_KEY } from "@/lib/external-link";
+import { DONT_ASK_KEY } from "@/lib/dont-ask";
 import { BADGE_DEFAULT, BADGE_PREF_KEY } from "@/lib/app-badge";
 import { MAIL_LOGIN_NOTICE_KEY } from "@/lib/mail-prefs";
 import { CARD_HEIGHT_KEY } from "@/lib/words/row-pinch";
@@ -236,6 +237,8 @@ export function prefBindings(): PrefBinding[] {
     // lib/external-link.ts: the disclaimer before another site, and the sites not asked about.
     plain("links.confirm", LINK_CONFIRM_KEY, bool10, true),
     plain("links.allowedHosts", LINK_ALLOWED_KEY, jsonCodec, []),
+    // lib/dont-ask.ts: every "don't ask again" and the day it asks again.
+    plain("asks.dontAsk", DONT_ASK_KEY, jsonCodec, {}),
     // lib/app-badge.ts: what the app-icon badge counts.
     plain("notify.badge", BADGE_PREF_KEY, text, BADGE_DEFAULT),
     // lib/mail-prefs.ts: the security notice mail (new-browser sign-in), on by default.
