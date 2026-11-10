@@ -428,7 +428,7 @@ If a time-sensitive suite times out, look at the load first (`uptime`); if it is
 high, wait for it to come down, then retry once. A second failure is a real failure:
 read it.
 
-Two WebKit traps the suites already avoid (2026-11-07, `qa-words`):
+WebKit traps the suites already avoid (2026-11-07, `qa-words`; 2026-11-10, `qa-sign-out`):
 
 - **Waiting for the network.** `waitUntil: "load"` or `"networkidle"` hung 30 s
   in WebKit at load 6–10, on requests no check needs. Navigate with
@@ -440,6 +440,14 @@ Two WebKit traps the suites already avoid (2026-11-07, `qa-words`):
   start nothing from `beforeunload` on — `pagehide` is too late) rather than filtering
   the message; a filter, if any, is for one URL and only while the suite's own
   navigation is under way.
+- **A `goto` that never commits, with no request in the wrangler log.** That was
+  the app's service worker, not the harness (2026-11-10, `qa-sign-out`): it wrote
+  a response's clone to the cache in the background, and when the page left
+  before that response finished, WebKit never started the next navigation.
+  `public/sw.js` `keep()` now finishes the write before the page gets the
+  response. To check a WebKit-only hang like it, run the suite in the CI image
+  (`mcr.microsoft.com/playwright:<version>-noble`, `--network host`) against a
+  local `wrangler dev`, and compare with `serviceWorkers: "block"` on the context.
 
 The manual `mkdir /tmp/lianki-push.lock` from older agent briefs is no longer needed:
 drop it. It stays safe while some agents still use it, because the order only runs
