@@ -349,3 +349,20 @@ export function planQa(
   }
   return { mode: "some", suites: out, total: suites.length };
 }
+
+/**
+ * The merge queue's always-on smoke set (owner, 2026-11-10): the API, the main
+ * UI with sign-in, and Sign out run on every queued PR, whatever it touches.
+ */
+export const QA_SMOKE = ["api", "ui", "sign-out"];
+
+/**
+ * What the merge queue runs: null for the full set (a core path changed, or
+ * the graph could not be built), else the affected suites plus QA_SMOKE, in
+ * suites.mjs order.
+ */
+export function ciQaSuites(plan: QaPlan, suites: { id: string }[]): string[] | null {
+  if (plan.mode === "full") return null;
+  const want = new Set([...QA_SMOKE, ...plan.suites.map(([id]) => id)]);
+  return suites.filter((s) => want.has(s.id)).map((s) => s.id);
+}

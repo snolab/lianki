@@ -4,13 +4,16 @@ name: CI
 # (scripts/gate/affected.ts; owner, 2026-11-08: "unchanged areas are not
 # re-tested on pre-push; the full set stays in CI"):
 #
-# - `checks` — OXC lint + format check, typecheck, the WHOLE unit suite with its
-#   coverage gate. Every PR, every merge group, every push to main (~20 s).
-# - `qa` — the whole qa:all (OpenNext build → wrangler dev on local D1 → every
-#   suite), built once and run in three parallel shards (qa-sharded.yml), in
-#   the merge queue only (and on a manual dispatch); also nightly on main
-#   (nightly-qa.yml). A PR does not wait for it and main's deploy does not
-#   either (owner, 2026-10-31). Blocking (QA_BLOCKING below).
+# - `checks` — OXC lint + format check, typecheck, and unit tests: on a PR only
+#   the ones the change reaches, in parallel; in every merge group and on every
+#   push to main the WHOLE unit suite with its coverage gate (~55 s).
+# - `qa` — qa:all (OpenNext build → wrangler dev on local D1 → suites), built
+#   once and run in three parallel shards (qa-sharded.yml), in the merge queue
+#   only (and on a manual dispatch): the suites the group's changes reach plus
+#   a smoke set (`qa-plan`), or every suite when a core path changed. The full
+#   set runs after merges on main (nightly-qa.yml). A PR does not wait for it and
+#   main's deploy does not either (owner, 2026-10-31). Blocking (QA_BLOCKING
+#   below).
 # - `gate` — named `Typecheck + unit`, the one required check: green when
 #   `checks` passed and `qa` (its build and every shard) passed or was skipped
 #   (it is skipped outside the merge queue). It is the aggregator the shards
@@ -89,7 +92,18 @@ jobs:
         run: bun run lint
       - name: Typecheck
         run: bun run typecheck
+      # A PR runs only the unit tests its change reaches, in parallel workers
+      # (scripts/gate/affected.ts; the full suite with coverage when a
+      # UNIT_FULL path changed). The merge queue and main run the whole suite
+      # with its coverage gate, so nothing lands without it (docs/shipping.md,
+      # "Unit tests on a PR").
+      - name: Unit tests (affected, parallel)
+        if: github.event_name == 'pull_request'
+        env:
+          LIANKI_GATE_BASE: ${{ github.event.pull_request.base.sha }}
+        run: bun scripts/gate/affected.ts unit --parallel
       - name: Unit tests + coverage
+        if: github.event_name != 'pull_request'
         run: bun run test:unit -- --coverage
       # main is red after a merge (e.g. two PRs green on their own, broken
       # together): say so in #lianki. Needs SLACK_WEBHOOK_URL (an incoming
@@ -102,19 +116,45 @@ jobs:
         run: |
           bash scripts/ci/slack-alert.sh ":red_circle: main is red at ${GITHUB_SHA::7} — Lint + typecheck + unit failed, so the deploy is held: ${RUN_URL}"
 
-  # The whole qa:all, merge queue only (and by hand), split over a build job
-  # and three parallel shards (qa-sharded.yml; docs/shipping.md, "qa:all in
-  # shards"). Was one ~12.5 min job until 2026-11-10.
+  # Which qa suites the merge group needs (docs/shipping.md, "Affected-only in
+  # the merge queue"): the ones its changes reach since merge_group.base_sha,
+  # plus the smoke set (API, UI, SIGN OUT); the full set when a core path
+  # changed or the graph cannot be built, and on a manual dispatch. The full
+  # set also runs after merges on main (nightly-qa.yml).
+  qa-plan:
+    name: qa plan
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      suites: ${{ steps.plan.outputs.suites }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the diff needs merge_group.base_sha
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
+      # No install: the selector needs only bun and git.
+      - id: plan
+        env:
+          LIANKI_GATE_BASE: ${{ github.event.merge_group.base_sha }}
+          LIANKI_GATE_FULL: ${{ github.event_name == 'merge_group' && '0' || '1' }}
+        run: bun scripts/gate/affected.ts ci-qa >> "$GITHUB_OUTPUT"
+
+  # qa:all on the planned suites, split over a build job and three parallel
+  # shards (qa-sharded.yml; docs/shipping.md, "qa:all in shards"). Was one
+  # ~12.5 min job of every suite until 2026-11-10.
   qa:
     name: qa
-    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
+    needs: qa-plan
     uses: ./.github/workflows/qa-sharded.yml
+    with:
+      suites: ${{ needs.qa-plan.outputs.suites }}
 
   # The required check. Its name is what branch protection names, so it stays
   # `Typecheck + unit` though it now stands for both jobs above.
   gate:
     name: Typecheck + unit
-    needs: [checks, qa]
+    needs: [checks, qa-plan, qa]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -122,7 +162,7 @@ jobs:
       - name: checks passed; qa passed or skipped (blocking only when QA_BLOCKING)
         env:
           CHECKS: ${{ needs.checks.result }}
-          QA: ${{ needs.qa.result }}
+          QA: ${{ needs.qa-plan.result != 'success' && needs.qa-plan.result != 'skipped' && 'failure' || needs.qa.result }}
           QA_BLOCKING: "true"
         run: |
           echo "checks: $CHECKS, qa: $QA, qa blocking: $QA_BLOCKING"

@@ -1,18 +1,22 @@
 #!/usr/bin/env bun
 /**
  * The pre-push gate's test selection (docs/shipping.md, "Only what changed"):
- * run only the unit tests and qa suites the pushed change can reach. CI runs
- * everything (the unit suite with coverage on each PR, qa:all in the merge
- * queue and nightly).
+ * run only the unit tests and qa suites the pushed change can reach. CI uses the same graph for PR unit tests and merge-queue qa selection;
+ * full unit coverage runs in merge groups and on main, and Full QA runs
+ * after merges.
  *
  *   bun scripts/gate/affected.ts unit   # run the selected unit tests
+ *   bun scripts/gate/affected.ts unit --parallel  # …in parallel workers (CI's PR stage)
  *   bun scripts/gate/affected.ts qa     # run qa:all with the selected suites
  *   bun scripts/gate/affected.ts plan   # print both selections, run nothing
+ *   bun scripts/gate/affected.ts ci-qa  # the merge queue's suites, for $GITHUB_OUTPUT
  *
  * Changed files: the pushed commits (LIANKI_PUSH_SHAS, space-separated; HEAD
  * when unset) against their merge base with origin/main, plus uncommitted edits
  * to tracked files (the tests run on the working tree). LIANKI_GATE_FULL=1
  * forces the full unit suite with coverage and the full qa:all.
+ * LIANKI_GATE_BASE=<sha> diffs <sha>..HEAD instead (the merge queue passes
+ * merge_group.base_sha; `ci-qa` below).
  * LIANKI_GATE_CHANGED="lib/a.ts app/b.tsx" stands in for the diff — to ask
  * "what would run if I changed this?" with `plan`.
  *
@@ -34,6 +38,7 @@ import {
   planUnit,
   type QaPlan,
   type UnitPlan,
+  ciQaSuites,
 } from "./affected-lib";
 import { SUITES } from "../qa/suites.mjs";
 
@@ -49,6 +54,12 @@ const lines = (s: string | null) => (s ?? "").split("\n").filter(Boolean);
 /** Changed paths, or null when there is no merge base to diff against. */
 export function changedFiles(env = process.env): string[] | null {
   if (env.LIANKI_GATE_CHANGED) return env.LIANKI_GATE_CHANGED.split(/\s+/).filter(Boolean).sort();
+  // The merge queue: everything the group adds on top of main (this PR and
+  // the ones queued ahead of it), and nothing uncommitted.
+  if (env.LIANKI_GATE_BASE) {
+    const diff = git(["diff", "--name-only", "--no-renames", env.LIANKI_GATE_BASE, "HEAD"]);
+    return diff === null ? null : lines(diff).sort();
+  }
   const shas = (env.LIANKI_PUSH_SHAS || "HEAD").split(/\s+/).filter(Boolean);
   const out = new Set<string>();
   for (const sha of shas) {
@@ -187,6 +198,9 @@ if (import.meta.main) {
       run("bun", [
         "--config=scripts/gate/bunfig.affected.toml",
         "test",
+        // CI's PR stage (ci.yml): test files in parallel worker processes,
+        // each file in a fresh global (--parallel implies --isolate).
+        ...(process.argv.includes("--parallel") ? ["--parallel"] : []),
         ...p.unit.tests.map(([f]) => `./${f}`),
       ]),
     );
@@ -199,6 +213,16 @@ if (import.meta.main) {
       run("bun", ["scripts/qa/qa-all.mjs", `--suites=${p.qa.suites.map(([id]) => id).join(",")}`]),
     );
   }
-  console.error("usage: bun scripts/gate/affected.ts unit|qa|plan [--json]");
+  if (what === "ci-qa") {
+    // One line for $GITHUB_OUTPUT: `suites=` (empty = the full set) or
+    // `suites=<ids>` (the affected ones plus the smoke set). The rest is stderr.
+    const ids = ciQaSuites(p.qa, SUITES);
+    if (p.qa.mode === "full") console.error(`qa: FULL qa:all — ${p.qa.reason}`);
+    else for (const [id, why] of p.qa.suites) console.error(`  ${id}  ← ${why}`);
+    console.error(ids ? `merge queue runs: ${ids.join(", ")}` : "merge queue runs: the full set");
+    console.log(`suites=${ids ? ids.join(",") : ""}`);
+    process.exit(0);
+  }
+  console.error("usage: bun scripts/gate/affected.ts unit|qa|plan|ci-qa [--json]");
   process.exit(2);
 }
