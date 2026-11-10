@@ -8,7 +8,8 @@
  * The line is automatic, never the owner's: `from: "agent"`, `agentId:
  * ETA_AGENT`, `source: "eta"`, and it can never answer an ask card (only a
  * tap on a page does: ask.ts). The "due" line, for the agents, is quiet
- * (shown, never read aloud); the owner's "late" and "silent" lines are not.
+ * (shown, never read aloud); the owner's "late", "silent" and "waiting"
+ * lines are not.
  */
 import type { FlagKey } from "./flags";
 import { PROGRESS_LIMITS, isProgressId } from "./progress";
@@ -28,8 +29,12 @@ export const ETA_EXPLAIN_MS = 5 * 60_000;
  * lane what it must do. "late": the lane explained (`progress.ts --eta 20m
  * --late "…"`); tells the owner the reason and the new time. "silent": the
  * "due" line went out and ETA_EXPLAIN_MS later neither came; tells the owner.
+ * "waiting": the node waits on the owner (waiting-owner, `needs`, a decision
+ * or an approval), so it is not late work: the owner is reminded, with the
+ * reason (`needs`), at etaAt and then at spaced intervals (lib/owner-wait.ts);
+ * no "due" line, no "silent" one (docs/state-tree.md, "Waiting on the owner").
  */
-export type EtaPingKind = "due" | "late" | "silent";
+export type EtaPingKind = "due" | "late" | "silent" | "waiting";
 
 /** What the progress hub sends the chat hub. */
 export type EtaPing = {
@@ -38,7 +43,7 @@ export type EtaPing = {
   etaAt: number;
   assignee?: string;
   kind?: EtaPingKind;
-  /** "late" only: the lane's reason. */
+  /** "late": the lane's reason (required). "waiting": what the owner must do (`needs`), if any. */
   reason?: string;
 };
 
@@ -56,6 +61,7 @@ const nameOf = (title: string) => {
 export function etaLineText(p: EtaPing, now: number = Date.now()): string {
   const name = nameOf(p.title);
   if (p.kind === "silent") return `${name} 超时，未说明原因`;
+  if (p.kind === "waiting") return p.reason ? `${name}：在等你——${p.reason}` : `${name}：在等你`;
   if (p.kind === "late") {
     const min = Math.max(1, Math.ceil((p.etaAt - now) / 60_000));
     return `${name} 超时：${p.reason ?? ""}。再要 ${min} 分钟`;
@@ -79,7 +85,8 @@ export function parseEtaPing(raw: unknown): EtaPing | null {
   if (typeof b.etaAt !== "number" || !Number.isFinite(b.etaAt)) return null;
   const assignee =
     typeof b.assignee === "string" ? b.assignee.slice(0, PROGRESS_LIMITS.name) : undefined;
-  const kind = b.kind === "late" || b.kind === "silent" ? b.kind : undefined;
+  const kind =
+    b.kind === "late" || b.kind === "silent" || b.kind === "waiting" ? b.kind : undefined;
   const reason =
     typeof b.reason === "string" && b.reason.trim()
       ? b.reason.trim().slice(0, PROGRESS_LIMITS.late)
@@ -91,6 +98,6 @@ export function parseEtaPing(raw: unknown): EtaPing | null {
     etaAt: b.etaAt,
     ...(assignee ? { assignee } : {}),
     ...(kind ? { kind } : {}),
-    ...(kind === "late" ? { reason } : {}),
+    ...((kind === "late" || kind === "waiting") && reason ? { reason } : {}),
   };
 }

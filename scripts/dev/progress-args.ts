@@ -47,6 +47,10 @@ WHY and a new "N minutes from now", in one call:
   --eta 20m --late "CI queue was slow"      (the hub posts the reason and the new time in Li)
 Once the ETA has passed, a new --eta without --late is refused. No reason or new ETA within
 5 minutes: the owner is told "<name> 超时，未说明原因".
+Waiting on the owner (--status waiting-owner, or --needs "…") is not late work: at its ETA the
+owner hears one reminder with the reason, "<name>：在等你——<needs>", then again 1, 3, 7 days later
+and weekly after (config chat.ownerWaitRemindDays). No "ETA reached" line, no 未说明原因, and a
+new --eta needs no --late. Done, resolved, or back to doing (--needs "") stops the reminders.
 Report again with a new --eta to move it; free text ("after CI") shows as written, with no timer.
 The hub also keeps, for agents only (never shown to the owner), each task's first estimate, start,
 end and actual time; "stats" lists your done tasks (30 days) with estimate vs actual and the

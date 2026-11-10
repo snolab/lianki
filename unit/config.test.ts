@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import type { D1Like } from "@/lib/d1/types";
+import { configLive } from "@/lib/debug-session";
 import {
   CONFIG,
   CONFIG_KEYS,
@@ -442,5 +443,19 @@ describe("/dev/config view", () => {
     ];
     expect(historyOf(log, "a")).toHaveLength(1);
     expect(fill("{a} {b} {c}", { a: 1, b: "x" })).toBe("1 x {c}");
+  });
+});
+
+describe("configLive: a config value for a hub without D1 (DebugSessions.config)", () => {
+  const db = (rows: { value_json: string }[]) => ({
+    prepare: () => ({ bind: () => ({ all: async <T>() => ({ results: rows as T[] }) }) }),
+  });
+  test("a valid row, else the default; an unknown key is undefined", async () => {
+    const key = "chat.ownerWaitRemindDays";
+    expect(await configLive(db([{ value_json: '"2,4"' }]), key)).toBe("2,4");
+    expect(await configLive(db([{ value_json: '"0"' }]), key)).toBe("1,3,7");
+    expect(await configLive(db([]), key)).toBe("1,3,7");
+    expect(await configLive(null, key)).toBe("1,3,7");
+    expect(await configLive(db([]), "nope")).toBeUndefined();
   });
 });

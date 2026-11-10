@@ -1605,8 +1605,10 @@ export class DebugHub {
       to: ROOT_NODE,
       agentId: ETA_AGENT,
       source: "eta",
-      // The agents' line is quiet; the owner's (late, silent) is read aloud like any agent line.
-      ...(ping.kind === "late" || ping.kind === "silent" ? {} : { quiet: true }),
+      // The agents' line is quiet; the owner's (late, silent, waiting) is read aloud like any agent line.
+      ...(ping.kind === "late" || ping.kind === "silent" || ping.kind === "waiting"
+        ? {}
+        : { quiet: true }),
       eta: { id: ping.id, etaAt: ping.etaAt },
     };
     await this.post(line);

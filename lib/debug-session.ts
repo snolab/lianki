@@ -2,6 +2,7 @@ import { isSessionTag, isUserId, sessionTag } from "@/lib/dev-eval";
 import { readHolders } from "@/lib/account-permission";
 import { normalizeEmail } from "@/lib/permissions";
 import { FLAGS, isFlagKey } from "@/lib/flags";
+import { CONFIG, isConfigKey, parseStoredConfig } from "@/lib/config";
 
 /**
  * Is the owner's sign-in session with this tag still live? Asked by
@@ -83,4 +84,19 @@ export async function flagLive(db: SessionDb | null | undefined, key: unknown): 
   // A stored row decides; with none, the registry default (stt.polish is on by default).
   const row = results[0];
   return row ? row.enabled === 1 : (FLAGS[key].default as boolean);
+}
+
+/**
+ * A config value for a hub without D1 (lib/config.ts registry keys only;
+ * anything else is undefined): the stored row if it validates, else the
+ * default (docs/config-store.md, "fail to defaults"). A D1 error throws.
+ */
+export async function configLive(db: SessionDb | null | undefined, key: unknown): Promise<unknown> {
+  if (!isConfigKey(key)) return undefined;
+  if (!db) return CONFIG[key].default;
+  const { results } = await db
+    .prepare("SELECT value_json FROM config_values WHERE key = ?")
+    .bind(key)
+    .all<{ value_json: string }>();
+  return parseStoredConfig(key, results[0]?.value_json) ?? CONFIG[key].default;
 }

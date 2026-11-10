@@ -152,6 +152,29 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   (read aloud), once per etaAt (marked etaSilent). Never let him find out
   from that line.
 
+  Waiting on the owner (owner, 2026-11-10 21:47 JST). A node that waits on
+  HIM — status waiting-owner, something in `needs`, or kind decision /
+  approval (lib/owner-wait.ts) — is not late work when its etaAt passes. It
+  gets no "ETA reached" lane line and never "未说明原因". Instead the owner
+  hears ONE reminder that carries the reason, read aloud like the overrun
+  lines (same send path, ping kind "waiting"):
+    "<name>：在等你——<needs>"      ("<name>：在等你" when needs is empty)
+  and the hub schedules the next one itself, further out each time: the
+  config key chat.ownerWaitRemindDays (lib/config.ts, editable at
+  /dev/config; default "1,3,7" = a day after the first, then 3 days, then
+  7, then weekly, the last spacing repeating). The hub reads it over the main
+  Worker's DebugSessions.config RPC and uses the default when it cannot. The
+  node keeps remindFor (the etaAt they belong to), remindN (sent) and
+  remindAt (the next). Moving its time needs no --late; a new etaAt starts
+  over (first reminder at that time). The reminders stop when it stops
+  waiting on him: done, resolved by him, or a write that leaves
+  waiting-owner and clears needs. Coming off waiting with the old, passed
+  etaAt marks it pinged and silent, so the lane is not told it is late for
+  time spent waiting on him; a lane past its ETA that hands the node to him
+  (waiting-owner + needs) has his reminder sent at once instead of
+  "未说明原因". Nodes pinged before this existed start their reminders one
+  spacing out, with no line at deploy.
+
   Timing, for agents only (never shown to the owner: his bar and list keep
   the time left and the names). Each node keeps startedAt (its first write
   with status doing), endedAt (when it went done; cleared if it reopens),

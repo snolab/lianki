@@ -84,6 +84,13 @@ rollback store).
 | `study.humanReactionMs` | `HUMAN_REACTION_MS` in `lib/study-days.ts`  | server   |
 | `contact.fieldMax`      | `CONTACT_FIELD_MAX` in `lib/contact.ts`     | server   |
 
+Read outside the main Worker: `chat.ownerWaitRemindDays` (text, "1,3,7" days)
+is the progress hub's reminder spacing for nodes waiting on the owner
+(docs/state-tree.md, "Waiting on the owner"). lianki-push has no D1, so it asks
+the main Worker over `DebugSessions.config(key)` (`configLive` in
+`lib/debug-session.ts`: the row if valid, else the default; no cache, read only
+when a reminder goes out) and falls back to the default when the call fails.
+
 Next (separate PRs): the rest of the magic-number audit list, language packs,
 icon packs. Prices, credits and Stripe amounts move only with `money: true`
 and their own review.

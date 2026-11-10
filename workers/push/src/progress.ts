@@ -90,6 +90,14 @@ import {
 import type { Socket, Storage } from "./debug";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import { ETA_EXPLAIN_MS, ETA_PATH, type EtaPing } from "../../../lib/eta-ping";
+import {
+  OWNER_WAIT_REMIND_KEY,
+  ownerWaitTransition,
+  ownerWaits,
+  parseRemindDays,
+  remindDelayMs,
+  remindDue,
+} from "../../../lib/owner-wait";
 
 export type ProgressState = {
   acceptWebSocket(ws: Socket): void;
@@ -109,7 +117,11 @@ export const PROGRESS_BOX_CLOSED = 4401;
 /** A box reader's binding is read again before a send once this long has passed. */
 export const BOX_RECHECK_MS = 30_000;
 /** The main Worker's box check (worker.ts DebugSessions): "live" | "gone" | "busy". */
-type BoxRpc = { boxChat?(clientId: string): Promise<unknown> };
+type BoxRpc = {
+  boxChat?(clientId: string): Promise<unknown>;
+  /** A config value (lib/config.ts key); the reminder spacing for nodes waiting on the owner. */
+  config?(key: string): Promise<unknown>;
+};
 /** A box reader's attachment: which box, and when its binding was last found live. */
 type BoxReader = { box: string; checked: number };
 const boxOf = (ws: Socket): BoxReader | null => {
@@ -195,7 +207,11 @@ const etaDue = (e: ProgressEntry) => e.etaAt !== undefined && e.etaSent !== e.et
  * went unexplained (docs/state-tree.md, "ETA overrun"): due at etaAt + ETA_EXPLAIN_MS.
  */
 const silentDue = (e: ProgressEntry) =>
-  e.status !== "done" && e.etaAt !== undefined && e.etaSent === e.etaAt && e.etaSilent !== e.etaAt;
+  e.status !== "done" &&
+  !ownerWaits(e) &&
+  e.etaAt !== undefined &&
+  e.etaSent === e.etaAt &&
+  e.etaSilent !== e.etaAt;
 
 /**
  * A node as the API and the readers get it: with `etaConfirmedAgo` ("5 min
@@ -573,10 +589,12 @@ export class ProgressHub {
     )
       return fail(400, "etaAt must be within the next 30 days");
     // A confirm keeps a time that is still ahead: a passed one is an overrun (below).
+    // Waiting on the owner (lib/owner-wait.ts): its time passing is not late work.
+    const waiting = !!prev && (ownerWaits(prev) || ownerWaits(mergeProgress(prev, r, t)));
     if (r.confirm) {
       if (prev?.etaAt === undefined || prev.status === "done")
         return fail(400, `${r.id} has no open estimate to confirm: give one with --eta`);
-      if (prev.etaAt <= t)
+      if (prev.etaAt <= t && !waiting)
         return fail(
           400,
           `${r.id} ran past its ETA: a confirm cannot keep it — --eta 20m --late "why" (the owner is told both)`,
@@ -591,7 +609,8 @@ export class ProgressHub {
       prev.etaAt !== undefined &&
       prev.etaAt <= t &&
       newEstimate &&
-      !r.late
+      !r.late &&
+      !waiting
     )
       return fail(
         400,
@@ -606,6 +625,7 @@ export class ProgressHub {
     const changeId = r.changeId ?? newChangeId(t);
     const changeAt = r.changeId && !opts.shared ? await this.changeTime(r.changeId, t) : t;
     const entry = mergeProgress(prev, r, t, { id: changeId, at: changeAt });
+    ownerWaitTransition(prev, entry, t);
     const events = [...missing.map((e) => progressEvent(e)), progressEvent(entry, r.note)];
     const evicted = await this.store([...missing, entry], all);
     for (const ev of events) await this.append(lean(ev));
@@ -655,6 +675,7 @@ export class ProgressHub {
       if (e.status === "done") await this.schedule(e.at + PROGRESS_DONE_TTL_MS);
       else if (etaDue(e)) await this.schedule(Math.max(e.etaAt!, this.now()));
       else if (silentDue(e)) await this.schedule(Math.max(e.etaAt! + ETA_EXPLAIN_MS, this.now()));
+      else if (remindDue(e)) await this.schedule(Math.max(e.remindAt!, this.now()));
     }
     return dropped;
   }
@@ -802,7 +823,38 @@ export class ProgressHub {
         else {
           const after = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
           if (after && silentDue(after)) next = Math.min(next, after.etaAt! + ETA_EXPLAIN_MS);
+          if (after && remindDue(after)) next = Math.min(next, after.remindAt!);
         }
+        continue;
+      }
+      if (remindDue(e)) {
+        // Waiting on the owner: the next spaced reminder (fireRemind), or wait for it.
+        if (e.remindAt! > t) next = Math.min(next, e.remindAt!);
+        else if (!(await this.fireRemind(e.id, t))) next = Math.min(next, t + ETA_RETRY_MS);
+        else {
+          const after = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+          if (after && remindDue(after)) next = Math.min(next, after.remindAt!);
+        }
+        continue;
+      }
+      if (
+        e.status !== "done" &&
+        ownerWaits(e) &&
+        e.etaAt !== undefined &&
+        e.etaSent === e.etaAt &&
+        e.remindFor !== e.etaAt
+      ) {
+        // Pinged before reminders existed: its spaced reminders start from now (no line now).
+        const days = await this.remindDays();
+        const at = t + remindDelayMs(days, 1);
+        await this.ctx.storage.put(progressKey(e), {
+          ...e,
+          etaSilent: e.etaAt,
+          remindFor: e.etaAt,
+          remindN: 1,
+          remindAt: at,
+        });
+        next = Math.min(next, at);
         continue;
       }
       if (silentDue(e)) {
@@ -859,6 +911,7 @@ export class ProgressHub {
     const e = await this.ctx.storage.get<ProgressEntry>(progressKey({ id }));
     if (!e || e.status === "done" || !etaDue(e) || e.etaAt! > t + ETA_SKEW_MS) return true;
     const etaAt = e.etaAt!;
+    if (ownerWaits(e)) return this.remindOwner(e, t, { etaSent: etaAt, etaSilent: etaAt });
     const late = t - etaAt > ETA_GIVE_UP_MS;
     const sent = { ...e, etaSent: etaAt };
     await this.ctx.storage.put(progressKey(e), sent);
@@ -878,6 +931,72 @@ export class ProgressHub {
       await this.ctx.storage.put(progressKey(e), back);
     }
     return false;
+  }
+
+  /**
+   * Waiting on the owner (lib/owner-wait.ts; docs/state-tree.md, "Waiting on
+   * the owner"): the next spaced reminder is due. Once per remindAt, as
+   * fireEta (claimed, marked first, put back if the chat hub could not take
+   * it). Not due, done, or no longer waiting: true, nothing sent.
+   */
+  async fireRemind(id: string, t: number = this.now()): Promise<boolean> {
+    if (this.firing.has(id)) return true;
+    this.firing.add(id);
+    try {
+      const e = await this.ctx.storage.get<ProgressEntry>(progressKey({ id }));
+      if (!e || !remindDue(e) || e.remindAt! > t + ETA_SKEW_MS) return true;
+      return await this.remindOwner(e, t, {});
+    } finally {
+      this.firing.delete(id);
+    }
+  }
+
+  /**
+   * One reminder to the owner that a node waits on him, with its reason
+   * ("<name>：在等你——<needs>", read aloud; never the lane's "ETA reached"
+   * line, never "未说明原因"), and the next one scheduled further out. `mark`:
+   * what else the first one marks (its etaAt pinged and never "silent").
+   */
+  private async remindOwner(
+    e: ProgressEntry,
+    t: number,
+    mark: Partial<ProgressEntry>,
+  ): Promise<boolean> {
+    const etaAt = e.etaAt!;
+    const fresh = e.remindFor !== etaAt;
+    const sent = fresh ? 1 : (e.remindN ?? 0) + 1;
+    const at = t + remindDelayMs(await this.remindDays(), sent);
+    const marked: ProgressEntry = { ...e, ...mark, remindFor: etaAt, remindN: sent, remindAt: at };
+    await this.ctx.storage.put(progressKey(e), marked);
+    if (!this.debug) return true;
+    const ok = await this.tell({
+      id: e.id,
+      title: e.task,
+      etaAt,
+      assignee: e.assignee.name,
+      kind: "waiting",
+      ...(e.needs?.trim() ? { reason: e.needs.trim() } : {}),
+    });
+    if (ok) {
+      if (fresh) await this.send(this.ctx.getWebSockets(), progressEvent(marked));
+      await this.schedule(at);
+      return true;
+    }
+    // Not taken: put it back unless the node moved meanwhile.
+    const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+    if (now && now.rev === marked.rev && now.remindAt === at)
+      await this.ctx.storage.put(progressKey(e), e);
+    return false;
+  }
+
+  /** The reminder spacing in days: the live config value, or its default when it cannot be read. */
+  private async remindDays(): Promise<number[]> {
+    const rpc = this.sessions;
+    try {
+      return parseRemindDays(rpc?.config ? await rpc.config(OWNER_WAIT_REMIND_KEY) : undefined);
+    } catch {
+      return parseRemindDays(undefined);
+    }
   }
 
   /** One line through the chat hub (debug.ts ETA_PATH); true if it took it. */
