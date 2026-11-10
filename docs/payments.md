@@ -348,10 +348,20 @@ charged" in the user's language. It resumes when the price table is fixed and
 `PRICES_VERSION` bumped (a deploy): the old row no longer matches. No timer, no
 manual switch to forget.
 
-**Who pays nothing.** An `admin` (lib/permissions.ts, a data grant — no
-hardcoded email): the people who pay the provider; logged `credits.free`. A
-BYOK call never reaches the server. Without D1 (the frozen Mongo backend,
-local dev) nothing can be charged: the call runs and logs `credits.unmetered`.
+**Every account pays the same** (owner, 2026-11-10: "admin/dev permission does
+not mean unlimited AI credits"). An `admin` or `dev` holder — the owner
+included — takes the same hold, is charged the same, gets the same 402 with
+`need` / `recommended` at a low balance, and his calls show on the credits page
+like anyone's. No permission, flag or email is consulted in `takeHold` or in
+`creditsCover` (the "is it offered" checks of /self-intro and "Words with AI").
+Feature _visibility_ gates (`owner || flag`, e.g. `importAiOn`,
+`selfIntroImportOn`) only decide whether a dev holder sees a feature before its
+flag is on; they never skip the wallet. The STT rate limit `STT_MAX_OWNER`
+(`lib/stt-handler.ts`) is a call cap per 10 minutes on a free feature, not credits.
+
+**Who pays nothing.** The free features above (for everyone). A BYOK call
+never reaches the server. Without D1 (the frozen Mongo backend, local dev)
+nothing can be charged: the call runs and logs `credits.unmetered`.
 
 **Not enough credits: the numbers** (owner, 2026-11-10). Every 402 from
 `takeHold` carries, in the body and in headers (`x-lianki-credits-need`,

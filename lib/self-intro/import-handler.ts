@@ -45,7 +45,6 @@ export type ImportDeps = {
     userId: string,
     id: string,
   ) => Promise<{ name: string; type: string; bytes: Uint8Array } | null>;
-  admin?: (email: string | null | undefined) => boolean;
 };
 
 /** The import's body: what the user typed, and the ids of their stored files to read. */
@@ -74,7 +73,7 @@ export async function handleImportQuota(deps: ImportDeps): Promise<Response> {
   if (!selfIntroImportOn(deps.flags, deps.owner) || !deps.configured)
     return json({ on: false, available: false, need: 0, have: 0, recommended: 0 });
   const hold = minImportHoldUsd();
-  const q = await creditsCover(deps.user, { db: deps.db ?? null, admin: deps.admin }, hold);
+  const q = await creditsCover(deps.user, { db: deps.db ?? null }, hold);
   const { recommended } = await recommendFor(deps.db ?? null, {
     feature: "self-intro.import",
     units: 1,
@@ -135,7 +134,7 @@ async function readStored(
   return { text, images: images.slice(0, IMPORT.maxImages), truncated, failed };
 }
 
-/** The user pays: their wallet, their email (an admin is free). */
+/** The user pays: their wallet, their email — every account alike, admins included. */
 const payer = (userId: string, deps: ImportDeps) => ({
   userId,
   email: deps.user?.email ?? null,

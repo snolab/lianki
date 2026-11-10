@@ -121,7 +121,7 @@ describe("recommended to finish", () => {
   it("a refusal from takeHold carries need, recommended (for the whole action) and the balance", async () => {
     d1.raw().exec("INSERT INTO credit_balance (userId, balance, updatedAt) VALUES ('u1', 1, 'x')");
     const r = await takeHold(
-      { d1: db(), admin: () => false },
+      { d1: db() },
       { userId: "u1", email: "u1@x.com" },
       { what: "words.import-ai", holdUsd: 0.03, action: { units: 5, unitHoldUsd: 0.03 } },
     );

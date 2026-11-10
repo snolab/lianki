@@ -19,12 +19,11 @@
  *    (pricing drift) is logged `credits.overage` and settled at the hold —
  *    never charged past it.
  *
- * Free, with no ledger row: an `admin` (lib/permissions.ts — the people who pay
- * the provider), and calls made with the user's own key (BYOK) never come here.
- * Without D1 (the frozen Mongo backend, local dev) nothing can be charged:
+ * Every account pays the same, whatever permissions it holds (owner, 2026-11-10:
+ * admin/dev is never unlimited credits). Calls made with the user's own key
+ * (BYOK) never come here. Without D1 (the frozen Mongo backend, local dev) nothing can be charged:
  * the call runs unmetered and says so in the log.
  */
-import { isAdmin } from "@/lib/permissions";
 import { reserveAi, reserveCredits, settleAi, sweepStaleAi, usdToMicroCredits } from "./ai-credits";
 import type { D1WithBatch } from "./credits-store";
 import {
@@ -44,7 +43,7 @@ export const HOLD_STALE_MS = 10 * 60_000;
 export type Payer = { userId: string; email?: string | null };
 
 export type Metered<T> =
-  | { ok: true; value: T; charged: number; free?: "admin" | "unmetered" | "feature" }
+  | { ok: true; value: T; charged: number; free?: "unmetered" | "feature" }
   | {
       ok: false;
       reason: "no-credits";
@@ -61,24 +60,23 @@ export type MeterDeps = {
   d1: D1WithBatch | null;
   now?: () => Date;
   log?: (o: Record<string, unknown>) => void;
-  /** Is this payer an admin? Defaults to the permission snapshot. */
-  admin?: (email: string | null | undefined) => boolean;
 };
 
-/** A taken hold (or a free pass), to settle once the call is done. */
+/** A taken hold (or, with no wallet in reach, an unmetered pass), to settle once the call is done. */
 export type Hold = {
   what: Feature;
   holdUsd: number;
   key: string;
   d1: D1WithBatch | null;
-  free?: "admin" | "unmetered";
+  free?: "unmetered";
 };
 
 type Refusal = Exclude<Metered<unknown>, { ok: true }>;
 
 /**
  * Steps 1–2: refuse a paused feature, release stale holds, take this call's
- * hold — or a free pass for an admin, or with no wallet in reach.
+ * hold — the same for every account, admins included; unmetered only with no
+ * wallet in reach.
  */
 export async function takeHold(
   deps: MeterDeps,
@@ -95,12 +93,10 @@ export async function takeHold(
   },
 ): Promise<{ ok: true; hold: Hold } | Refusal> {
   const now = deps.now ?? (() => new Date());
-  const admin = deps.admin ?? isAdmin;
   const key = `${call.what}:${payer.userId}:${call.key ?? crypto.randomUUID()}`;
   const base = { what: call.what, holdUsd: call.holdUsd, key, d1: deps.d1 };
   // Paused after an overage, until the price table is updated: no call, no charge.
   if (deps.d1 && (await isPaused(deps.d1, call.what))) return { ok: false, reason: "paused" };
-  if (admin(payer.email)) return { ok: true, hold: { ...base, free: "admin" } };
   if (!deps.d1) return { ok: true, hold: { ...base, free: "unmetered" } };
   const d1 = deps.d1;
   try {
@@ -144,12 +140,7 @@ export async function settleHold(
   const log = deps.log ?? ((o) => console.log(JSON.stringify(o)));
   if (usd !== null) await overage(hold.d1, hold, usd, now(), log);
   if (hold.free) {
-    log({
-      event: hold.free === "admin" ? "credits.free" : "credits.unmetered",
-      what: hold.what,
-      ...(hold.free === "admin" ? { why: "admin" } : {}),
-      usd: usd ?? 0,
-    });
+    log({ event: "credits.unmetered", what: hold.what, usd: usd ?? 0 });
     return 0;
   }
   const cap = usdToMicroCredits(hold.holdUsd);
