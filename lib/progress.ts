@@ -49,6 +49,8 @@ export const PROGRESS_LIMITS = {
   eta: 40,
   late: 200,
   needs: 120,
+  who: 40,
+  verified: 200,
   id: 120,
   parent: 120,
   ref: 120,
@@ -137,6 +139,20 @@ export type ProgressReport = {
   /** More PRs at once (`--pr 703,707`); every PR a node ever named is kept in its `prs`. */
   prs?: number[];
   needs?: string;
+  /**
+   * Who can unblock it now (`--who`), with status blocked: "owner" or a lane
+   * name. The hub nudges that one with backoff until it is no longer blocked
+   * (docs/state-tree.md, "Blocked and paused"). "" clears it.
+   */
+  who?: string;
+  /**
+   * How a done node was done (docs/state-tree.md, "Done kinds"): `verified`
+   * is the evidence (a merged and deployed PR, a test or screenshot link);
+   * `unverified` says it is done but not confirmed (the hub then adds a
+   * "verify: <name>" child for the same lane). Status done only; one or neither.
+   */
+  verified?: string;
+  unverified?: boolean;
   ref?: string;
   action?: string;
   /** A page about it (a PR, a preview): https only. */
@@ -150,6 +166,31 @@ export type ProgressReport = {
   endedAt?: number;
 };
 export type ProgressNote = { at: number; by: string; text: string };
+/** How a done node was done (docs/state-tree.md, "Done kinds"). */
+export type ProgressDoneKind = "verified" | "unverified";
+/** `--who`: "owner" or a lane name (an "@" in front is dropped). */
+export const WHO_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/;
+/** A receipt code on an "ETA reached" line (`progress.ts ack <code>`). */
+export const RECEIPT_RE = /^[a-z0-9]{6}$/;
+/**
+ * A fresh receipt code: six of 32 easy-to-read letters and digits (no 0, 1,
+ * l, o). 32 divides 256, so the top 5 bits of a random byte pick one unbiased.
+ */
+export function newReceiptCode(): string {
+  const abc = "abcdefghijkmnpqrstuvwxyz23456789";
+  return [...crypto.getRandomValues(new Uint8Array(6))].map((b) => abc[b >> 3]).join("");
+}
+
+/**
+ * The "verify: <name>" child a node done --unverified gets (docs/state-tree.md,
+ * "Done kinds"): a path's `<id>/verify`, a slug's `<id>.verify`; undefined
+ * when that would be too long or the node is itself a verify node.
+ */
+export function verifyIdOf(id: string): string | undefined {
+  if (/[/.]verify$/.test(id)) return undefined;
+  const v = isPathId(id) ? `${id}/verify` : `${id}.verify`;
+  return isProgressId(v) ? v : undefined;
+}
 /**
  * A node as the hub keeps it. `creator` wrote it first (and so may change
  * its status, pct and eta), `by` wrote it last, `rev` is its revision,
@@ -157,9 +198,21 @@ export type ProgressNote = { at: number; by: string; text: string };
  */
 export type ProgressEntry = Omit<
   ProgressReport,
-  "note" | "rev" | "kind" | "etaIn" | "etaMinIn" | "late" | "confirm" | "changeId"
+  | "note"
+  | "rev"
+  | "kind"
+  | "etaIn"
+  | "etaMinIn"
+  | "late"
+  | "confirm"
+  | "changeId"
+  | "verified"
+  | "unverified"
 > & {
   kind: ProgressKind;
+  /** A done node: verified (with `evidence`) or done but not confirmed. None: done before kinds existed. */
+  doneKind?: ProgressDoneKind;
+  evidence?: string;
   /** The last write that set or re-confirmed the estimate (a change or a confirm). */
   etaConfirmedAt?: number;
   /** etaConfirmedAt as "5 min ago", added by the hub when it answers or sends (never stored). */
@@ -183,6 +236,27 @@ export type ProgressEntry = Omit<
    * estimate). Once per etaAt, as etaSent.
    */
   etaSilent?: number;
+  /**
+   * Receipts (docs/state-tree.md, "Receipts"), all for the estimate `etaSent`:
+   * the code the "ETA reached" line carried, when a listener got it
+   * (`etaHeardAt`; no listener: `etaQueued` = that etaAt, the clock not
+   * started), the etaAt acked (`progress.ts ack <code>` or any report on the
+   * node) and the etaAt the coordinating lane was told about.
+   */
+  etaCode?: string;
+  etaQueued?: number;
+  etaHeardAt?: number;
+  etaAcked?: number;
+  etaMain?: number;
+  /** After "未说明原因": repeats sent (`silentN`) and when the next is due, with backoff. */
+  silentN?: number;
+  silentAt?: number;
+  /** Blocked on someone (`who`): the who+needs being nudged, nudges sent, the next one. */
+  nudgeFor?: string;
+  nudgeN?: number;
+  nudgeAt?: number;
+  /** A nudge for a lane that found no listener: sent when one connects (not by the alarm). */
+  nudgeQueued?: number;
   /**
    * Waiting on the owner (lib/owner-wait.ts; docs/state-tree.md, "Waiting on
    * the owner"): reminders sent for the estimate `remindFor` (its etaAt), and
@@ -370,6 +444,23 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
     out.link = f.link;
   }
   if (f.needs !== undefined) out.needs = f.needs;
+  if (f.who !== undefined) {
+    const who = f.who.replace(/^@/, "");
+    if (who && !WHO_RE.test(who)) return new Error('who must be "owner" or a lane name');
+    out.who = who;
+  }
+  if (b.unverified !== undefined && b.unverified !== null && b.unverified !== false) {
+    if (b.unverified !== true) return new Error("unverified must be true");
+    out.unverified = true;
+  }
+  if (f.verified !== undefined || out.unverified) {
+    if (out.status !== "done") return new Error("--verified / --unverified go with --done");
+    if (f.verified !== undefined && out.unverified)
+      return new Error("--verified and --unverified: one or the other");
+    if (f.verified !== undefined && !f.verified)
+      return new Error('--verified needs the evidence: --verified "PR #812 merged and deployed"');
+    if (f.verified) out.verified = f.verified;
+  }
   for (const k of ["eta", "ref", "action", "note", "late"] as const) if (f[k]) out[k] = f[k];
   if (b.etaAt !== undefined && b.etaAt !== null) {
     if (typeof b.etaAt !== "number" || !Number.isInteger(b.etaAt) || b.etaAt <= 0)
@@ -464,11 +555,39 @@ export function mergeProgress(
   ]);
   if (prs.length) entry.prs = prs;
   if (needs) entry.needs = needs;
+  const who = r.who === undefined ? prev?.who : r.who || undefined;
+  if (who) entry.who = who;
+  if (r.status === "done") {
+    if (r.verified) {
+      entry.doneKind = "verified";
+      entry.evidence = r.verified;
+    } else if (r.unverified) entry.doneKind = "unverified";
+    else if (prev?.status === "done" && prev.doneKind) {
+      entry.doneKind = prev.doneKind;
+      if (prev.evidence) entry.evidence = prev.evidence;
+    }
+  }
   if (etaAt !== undefined) entry.etaAt = etaAt;
   if (etaAt !== undefined && etaMinAt !== undefined && etaMinAt < etaAt) entry.etaMinAt = etaMinAt;
   etaHistory(prev, r, entry, at, change);
   if (prev?.etaSent !== undefined) entry.etaSent = prev.etaSent;
   if (prev?.etaSilent !== undefined) entry.etaSilent = prev.etaSilent;
+  for (const k of [
+    "etaCode",
+    "etaQueued",
+    "etaHeardAt",
+    "etaAcked",
+    "etaMain",
+    "silentN",
+    "silentAt",
+  ] as const)
+    if (prev?.[k] !== undefined) (entry as Record<string, unknown>)[k] = prev[k];
+  if (prev?.nudgeFor !== undefined && prev.nudgeFor === nudgeKey(entry)) {
+    entry.nudgeFor = prev.nudgeFor;
+    if (prev.nudgeN !== undefined) entry.nudgeN = prev.nudgeN;
+    if (prev.nudgeAt !== undefined) entry.nudgeAt = prev.nudgeAt;
+    if (prev.nudgeQueued !== undefined) entry.nudgeQueued = prev.nudgeQueued;
+  }
   if (prev?.remindFor !== undefined && prev.remindFor === entry.etaAt) {
     entry.remindFor = prev.remindFor;
     if (prev.remindN !== undefined) entry.remindN = prev.remindN;
@@ -590,6 +709,9 @@ export type ProgressHistory = {
   endedAt: number;
   /** The first estimate that set a time (ms), as in the stats log. */
   estimateMs?: number;
+  /** Verified (with `evidence`) or not confirmed; none: done before kinds existed. */
+  doneKind?: ProgressDoneKind;
+  evidence?: string;
 };
 /** A reader gets at most this many history records per ask (the newest). */
 export const PROGRESS_HISTORY_SEND_MAX = 2000;
@@ -613,6 +735,8 @@ export function progressHistory(e: ProgressEntry): ProgressHistory {
   if (e.link) out.link = e.link;
   if (e.startedAt !== undefined) out.startedAt = e.startedAt;
   if (e.estimateMs !== undefined) out.estimateMs = e.estimateMs;
+  if (e.doneKind) out.doneKind = e.doneKind;
+  if (e.evidence) out.evidence = e.evidence;
   return out;
 }
 
@@ -714,33 +838,156 @@ export function progressStats(
     .sort((a, b) => b.done - a.done || a.agent.localeCompare(b.agent));
 }
 
-/** The longest name a task title may start with ("name: description"); the ETA bar shows only it. */
+/**
+ * The widest name a task title may start with ("name: description"), in
+ * display columns (CJK and other full-width characters count 2, so about 10
+ * Chinese characters); the ETA bar shows only the name.
+ */
 export const PROGRESS_TITLE_NAME_MAX = 20;
 
-const graphemes = (s: string) =>
+const segments = (s: string): string[] =>
   typeof Intl.Segmenter === "function"
-    ? [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s)].length
-    : [...s].length;
+    ? [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s)].map(
+        (x) => x.segment,
+      )
+    : [...s];
+/** Characters as a reader counts them (graphemes, not bytes or code units). */
+export const graphemeCount = (s: string) => segments(s).length;
+
+/**
+ * East Asian Width W or F (Unicode UAX #11), and emoji presentation: two
+ * columns. The ranges cover Hangul Jamo, CJK (radicals to Yi, compatibility
+ * ideographs and forms), Hangul syllables, full-width forms, and the wide
+ * emoji and supplementary ideograph planes.
+ */
+const WIDE: readonly (readonly [number, number])[] = [
+  [0x1100, 0x115f],
+  [0x231a, 0x231b],
+  [0x2329, 0x232a],
+  [0x23e9, 0x23ec],
+  [0x23f0, 0x23f0],
+  [0x23f3, 0x23f3],
+  [0x25fd, 0x25fe],
+  [0x2614, 0x2615],
+  [0x2648, 0x2653],
+  [0x267f, 0x267f],
+  [0x2693, 0x2693],
+  [0x26a1, 0x26a1],
+  [0x26aa, 0x26ab],
+  [0x26bd, 0x26be],
+  [0x26c4, 0x26c5],
+  [0x26ce, 0x26ce],
+  [0x26d4, 0x26d4],
+  [0x26ea, 0x26ea],
+  [0x26f2, 0x26f3],
+  [0x26f5, 0x26f5],
+  [0x26fa, 0x26fa],
+  [0x26fd, 0x26fd],
+  [0x2705, 0x2705],
+  [0x270a, 0x270b],
+  [0x2728, 0x2728],
+  [0x274c, 0x274c],
+  [0x274e, 0x274e],
+  [0x2753, 0x2755],
+  [0x2757, 0x2757],
+  [0x2795, 0x2797],
+  [0x27b0, 0x27b0],
+  [0x27bf, 0x27bf],
+  [0x2b1b, 0x2b1c],
+  [0x2b50, 0x2b50],
+  [0x2b55, 0x2b55],
+  [0x2e80, 0x303e],
+  [0x3041, 0x33ff],
+  [0x3400, 0x4dbf],
+  [0x4e00, 0x9fff],
+  [0xa000, 0xa4cf],
+  [0xa960, 0xa97f],
+  [0xac00, 0xd7a3],
+  [0xf900, 0xfaff],
+  [0xfe10, 0xfe19],
+  [0xfe30, 0xfe6f],
+  [0xff00, 0xff60],
+  [0xffe0, 0xffe6],
+  [0x16fe0, 0x16fe4],
+  [0x17000, 0x18cff],
+  [0x1b000, 0x1b2ff],
+  [0x1f004, 0x1f004],
+  [0x1f0cf, 0x1f0cf],
+  [0x1f18e, 0x1f18e],
+  [0x1f191, 0x1f19a],
+  [0x1f200, 0x1f251],
+  [0x1f300, 0x1f64f],
+  [0x1f680, 0x1f6ff],
+  [0x1f7e0, 0x1f7eb],
+  [0x1f90c, 0x1f9ff],
+  [0x1fa70, 0x1faff],
+  [0x20000, 0x3fffd],
+];
+
+const isWide = (cp: number) => {
+  let lo = 0;
+  let hi = WIDE.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const [a, b] = WIDE[mid]!;
+    if (cp < a) hi = mid - 1;
+    else if (cp > b) lo = mid + 1;
+    else return true;
+  }
+  return false;
+};
+
+/**
+ * How many terminal columns `s` takes: per grapheme, 2 when it is wide (East
+ * Asian Width W/F, or an emoji shown as one: VS16 or a ZWJ sequence), else 1;
+ * a grapheme of only combining or control characters takes none.
+ */
+export function displayWidth(s: string): number {
+  let w = 0;
+  for (const g of segments(s)) {
+    const cps = [...g].map((c) => c.codePointAt(0)!);
+    // Control, combining marks (U+0300–036F) and zero-width characters (U+200B–200F): none.
+    if (
+      cps.every(
+        (c) => c < 0x20 || c === 0x7f || (c >= 0x300 && c <= 0x36f) || (c >= 0x200b && c <= 0x200f),
+      )
+    )
+      continue;
+    // VS16 (U+FE0F) or a ZWJ (U+200D) makes an emoji picture: two columns.
+    w += isWide(cps[0]!) || cps.includes(0xfe0f) || cps.includes(0x200d) ? 2 : 1;
+  }
+  return w;
+}
+
+/** The name of a title ("name: description"; ':' or '：'); undefined when there is no colon. */
+export const titleName = (task: string): string | undefined => {
+  const i = task.search(/[:：]/);
+  return i < 0 ? undefined : task.slice(0, i).trim();
+};
 
 /**
  * A task title is "name: description" (ASCII ':' or full-width '：'): the
  * owner's ETA bar shows only the name, the full list both. With a colon, the
- * name must be 1–PROGRESS_TITLE_NAME_MAX characters (graphemes): an Error.
- * Without one, a title longer than that is still taken, with a warning.
+ * name must be 1–PROGRESS_TITLE_NAME_MAX display columns (displayWidth: a
+ * Chinese character is 2): an Error. Without one, a title wider than that is
+ * still taken, with a warning. `prevTask`: the node's current title — a name
+ * it already has is never refused (nodes from before the column rule keep
+ * theirs); only a new or renamed one is checked.
  */
-export function checkTaskTitle(task: string): { warning?: string } | Error {
-  const i = task.search(/[:：]/);
-  const example = `e.g. --task "Swipe fix: the card snaps back on a short drag"`;
-  if (i < 0)
-    return graphemes(task.trim()) > PROGRESS_TITLE_NAME_MAX
+export function checkTaskTitle(task: string, prevTask?: string): { warning?: string } | Error {
+  const name = titleName(task);
+  const example = `e.g. --task "Swipe fix: the card snaps back" or --task "滑动修复：短拖回弹" (a Chinese character is 2 columns: at most about 10)`;
+  if (name === undefined)
+    return displayWidth(task.trim()) > PROGRESS_TITLE_NAME_MAX
       ? {
-          warning: `task titles are "name: description" — the ETA bar shows only the name (at most ${PROGRESS_TITLE_NAME_MAX} characters); ${example}`,
+          warning: `task titles are "name: description" — the ETA bar shows only the name (at most ${PROGRESS_TITLE_NAME_MAX} columns); ${example}`,
         }
       : {};
-  const n = graphemes(task.slice(0, i).trim());
+  if (prevTask !== undefined && titleName(prevTask) === name) return {};
+  const n = displayWidth(name);
   if (n < 1 || n > PROGRESS_TITLE_NAME_MAX)
     return new Error(
-      `the name before the colon in --task must be 1–${PROGRESS_TITLE_NAME_MAX} characters (it has ${n}): the ETA bar shows only the name; ${example}`,
+      `the name before the colon in --task must be 1–${PROGRESS_TITLE_NAME_MAX} columns wide (it is ${n}): the ETA bar shows only the name; ${example}`,
     );
   return {};
 }
@@ -885,8 +1132,28 @@ export const waitsOnOwner = (e: ProgressEntry, todoRefs: ReadonlySet<string> = n
   (e.kind === "decision" ||
     e.kind === "approval" ||
     e.status === "waiting-owner" ||
-    !!e.needs?.trim() ||
+    (!!e.needs?.trim() && (!e.who || e.who === OWNER_NAME)) ||
+    blockedOn(e) === OWNER_NAME ||
     todoRefs.has(e.id));
+
+/**
+ * Blocked on someone who can act now (docs/state-tree.md, "Blocked and
+ * paused"): status blocked with `who` — "owner" or a lane. Its name, else
+ * undefined (blocked with no who is the old, plain blocked: no nudges).
+ */
+export const blockedOn = (e: Pick<ProgressEntry, "status" | "who">): string | undefined =>
+  e.status === "blocked" && e.who?.trim() ? e.who.trim() : undefined;
+
+/** Paused: status waiting, on an outside event. No nudges, no overrun. */
+export const isPaused = (e: Pick<ProgressEntry, "status">) => e.status === "waiting";
+
+/** What a blocked node's nudges are about: who and what. A change starts them over. */
+export const nudgeKey = (
+  e: Pick<ProgressEntry, "status" | "who" | "needs">,
+): string | undefined => {
+  const who = blockedOn(e);
+  return who === undefined ? undefined : `${who}|${e.needs?.trim() ?? ""}`;
+};
 
 /** The ids open owner to-dos point at. */
 export function openTodoRefs(entries: Iterable<ProgressEntry>): Set<string> {

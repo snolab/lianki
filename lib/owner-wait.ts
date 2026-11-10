@@ -9,7 +9,7 @@
  * read by the hub over DebugSessions.config, the default when it cannot).
  */
 import { CONFIG } from "./config";
-import { waitsOnOwner, type ProgressEntry } from "./progress";
+import { blockedOn, waitsOnOwner, type ProgressEntry } from "./progress";
 
 export const OWNER_WAIT_REMIND_KEY = "chat.ownerWaitRemindDays" as const;
 /** "1,3,7": a day after the first reminder, then three days, then seven, then weekly. */
@@ -32,8 +32,12 @@ export function remindDelayMs(days: readonly number[], sent: number): number {
   return list[Math.min(Math.max(sent, 1), list.length) - 1] * DAY_MS;
 }
 
-/** An open node that waits on the owner (lib/progress.ts waitsOnOwner, without to-do refs). */
-export const ownerWaits = (e: ProgressEntry) => waitsOnOwner(e);
+/**
+ * An open node that waits on the owner (lib/progress.ts waitsOnOwner, without
+ * to-do refs) at #823's slow spacing. Not one blocked on someone (`--who`):
+ * those are nudged with backoff instead (lib/eta-nudge.ts).
+ */
+export const ownerWaits = (e: ProgressEntry) => waitsOnOwner(e) && !blockedOn(e);
 
 /**
  * A write that moves a node onto or off the owner while its estimate has

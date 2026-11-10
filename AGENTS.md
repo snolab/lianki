@@ -121,9 +121,10 @@ While working on Lianki, report to the live state tree
 milestones, when blocked, and when done (with the PR):
 `bun scripts/dev/progress.ts --agent <you> --path /<route>/<task> --task "<name>: <description>" --status doing --pct 40 --eta 12m-63m`
 (`--eta` is one time or a P5–P95 range; `--confirm` re-confirms it unchanged;
-`batch` writes several nodes as one change; `--done --pr N` at the end; `--status waiting-owner --needs "…"` when the
-owner must act). The title is "name: description" with a name of at most 20
-characters, because the owner's ETA bar shows only the name (a longer one is
+`batch` writes several nodes as one change; `--done --pr N` at the end, or `--done --verified "<evidence>"` / `--unverified`;
+`--status waiting-owner --needs "…"` when the owner must act; `--status blocked --who <owner|lane> --needs "…"` when
+someone can act now; `--status waiting` when paused on an outside event). The title is "name: description" with a name
+at most 20 columns wide (a Chinese character is 2), because the owner's ETA bar shows only the name (a new wider one is
 refused). `progress.ts stats` shows your estimate vs actual, to calibrate `--eta`. Use the token you were given (`--token` or
 `LIANKI_PROGRESS_TOKEN`); stay inside its scope.
 
@@ -131,8 +132,11 @@ refused). `progress.ts stats` shows your estimate vs actual, to calibrate `--eta
 tells the owner, within 5 minutes, the reason and a new "N minutes from now":
 `progress.ts … --status doing --eta 20m --late "<reason, in his language>"` —
 the hub posts both to him in Li. Past the ETA a new `--eta` without `--late`
-is refused; with nothing for 5 minutes he hears "<name> 超时，未说明原因".
-[docs/state-tree.md](docs/state-tree.md), "ETA overrun".
+is refused. The "ETA reached" line carries a receipt code: ack it at once
+(`progress.ts ack <code>`, or any report on the node). No ack in 5 minutes:
+main is told; no reason 5 minutes later: he hears "<name> 超时，未说明原因",
+then again with backoff.
+[docs/state-tree.md](docs/state-tree.md), "ETA overrun", "Receipts".
 
 ## Where to look
 

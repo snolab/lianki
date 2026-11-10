@@ -159,6 +159,59 @@ export const CONFIG = {
     description:
       "等你处理的事（状态 waiting-owner 或写了 needs）到时间后先提醒你一次，之后隔多少天再提醒：逗号分隔的天数，用完后一直按最后一个间隔（默认 1,3,7 = 一天、三天、七天，之后每周）。",
   },
+  // Read by the progress hub too; docs/state-tree.md, "Receipts".
+  "chat.etaAckMin": int({
+    default: 5,
+    min: 1,
+    max: 60,
+    unit: "min",
+    group: "chat",
+    audience: "server",
+    description:
+      "任务到点后自动提醒负责的线（带回执码）；这条提醒送到后几分钟内没有回执（progress.ts ack 或对这个节点的任何汇报），就先通知协调线（main）。",
+  }),
+  "chat.etaOwnerMin": int({
+    default: 5,
+    min: 1,
+    max: 60,
+    unit: "min",
+    group: "chat",
+    audience: "server",
+    description:
+      "通知协调线之后再过几分钟，还没有原因和新时间，就告诉你「<名字> 超时，未说明原因」。",
+  }),
+  "chat.etaCoordinator": {
+    default: "main" as string,
+    schema: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/, "a lane name: main, codex…"),
+    group: "chat",
+    audience: "server",
+    description: "到点提醒没有回执时，先通知哪条线（协调线的名字，默认 main）。",
+  },
+  "chat.nudgeBackoffMin": {
+    default: "10,20,40,80,160,240" as string,
+    schema: z
+      .string()
+      .regex(/^\s*\d{1,4}(\s*,\s*\d{1,4})*\s*$/, "minutes, comma-separated: 10,20,40")
+      .refine(
+        (s) => s.split(",").every((m) => Number(m) >= 1 && Number(m) <= 1440),
+        "1–1440 minutes",
+      ),
+    unit: "min",
+    group: "chat",
+    audience: "server",
+    description:
+      "「超时，未说明原因」之后、以及「卡住了，等你／等某条线」的提醒，每隔多少分钟再说一次：逗号分隔，用完后一直按最后一个间隔（默认 10,20,40,80,160,240 = 翻倍，最长每 4 小时一次），直到给出原因和新时间、完成或不再卡住。",
+  },
+  "chat.verifyEtaMin": int({
+    default: 30,
+    min: 5,
+    max: 1440,
+    unit: "min",
+    group: "chat",
+    audience: "server",
+    description:
+      "任务标成「完成但未验证」时，自动建一个「verify: <名字>」子任务交给同一条线，给它多少分钟的预计时间。",
+  }),
   // The voiceprint in his account (docs/local-stt.md, "Voiceprint in your account"):
   // handed to the panel by GET /api/my/voiceprint.
   "voiceprint.extractor": {

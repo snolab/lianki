@@ -274,9 +274,11 @@ import { type ChatLogRequest, chatLogLine } from "../../../lib/chat-log-line";
 import {
   ETA_AGENT,
   ETA_FLAG,
+  ETA_HEARD_PATH,
   ETA_LABEL,
   ETA_PATH,
   etaLineText,
+  forLanes,
   parseEtaPing,
 } from "../../../lib/eta-ping";
 import {
@@ -649,6 +651,12 @@ const whereOf = (url: URL) => {
 const forNode = (list: ChatMessage[], node?: string) =>
   node ? list.filter((m) => routeTo(node, m.to)) : list;
 
+/** The progress hub's namespace (the PROGRESS binding of this Worker). */
+type ProgressNs = {
+  idFromName(name: string): unknown;
+  get(id: unknown): { fetch(req: Request): Promise<Response> };
+};
+
 export class DebugHub {
   /**
    * Every stored grant by hash: read once per instance (an evicted hub reads
@@ -675,6 +683,8 @@ export class DebugHub {
   private aiTurn = new Map<string, number>();
   /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
   private tokens: TokenChat;
+  /** The progress hub (same Worker): told when a listener connects, so queued ETA lines go out. */
+  private progress?: ProgressNs;
 
   constructor(
     private ctx: DebugState,
@@ -684,6 +694,7 @@ export class DebugHub {
     // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
     this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
     this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
+    this.progress = (env as { PROGRESS?: ProgressNs } | undefined)?.PROGRESS;
     this.tokens = new TokenChat({
       now: () => this.now(),
       rpc: () => this.sessions,
@@ -1595,6 +1606,12 @@ export class DebugHub {
     }
     if (on === "busy") return Response.json({ error: "flag unreadable" }, { status: 503 });
     if (on !== true) return Response.json({ ok: true, delivered: false, reason: "flag off" });
+    // A lanes' line with no one listening at the root is not posted: the
+    // progress hub keeps it queued and sends it when a listener connects
+    // (listenerUp), so its receipt clock starts only once someone has it.
+    const listeners = this.agents().filter((c) => routeTo(c.a.node, ROOT_NODE)).length;
+    if (forLanes(ping) && listeners === 0)
+      return Response.json({ ok: true, delivered: false, queued: true, listeners: 0 });
     const line: ChatMessage & { thread: string } = {
       id: crypto.randomUUID().slice(0, 8),
       from: "agent",
@@ -1605,11 +1622,15 @@ export class DebugHub {
       to: ROOT_NODE,
       agentId: ETA_AGENT,
       source: "eta",
-      // The agents' line is quiet; the owner's (late, silent, waiting) is read aloud like any agent line.
-      ...(ping.kind === "late" || ping.kind === "silent" || ping.kind === "waiting"
-        ? {}
-        : { quiet: true }),
-      eta: { id: ping.id, etaAt: ping.etaAt },
+      // The lanes' lines are quiet; the owner's (late, silent, waiting, blocked on him) are read aloud like any agent line.
+      ...(forLanes(ping) ? { quiet: true } : {}),
+      eta: {
+        id: ping.id,
+        etaAt: ping.etaAt,
+        ...(ping.kind && ping.kind !== "due" ? { kind: ping.kind } : {}),
+        ...(ping.code ? { code: ping.code } : {}),
+        ...(ping.lane ? { lane: ping.lane } : {}),
+      },
     };
     await this.post(line);
     console.log(
@@ -1620,7 +1641,26 @@ export class DebugHub {
         etaAt: ping.etaAt,
       }),
     );
-    return Response.json({ ok: true, delivered: true, listeners: this.agents().length });
+    return Response.json({ ok: true, delivered: true, listeners });
+  }
+
+  /**
+   * A listener (not a heartbeat-only socket) connected: tell the progress hub
+   * (ETA_HEARD_PATH), which sends the lanes' ETA lines it held queued for want
+   * of one (docs/state-tree.md, "Receipts"). Best effort: a failure leaves them
+   * queued for the next listener.
+   */
+  private async listenerUp(a: ControllerAtt) {
+    if (a.beat || !this.progress || !routeTo(a.node, ROOT_NODE)) return;
+    try {
+      await this.progress
+        .get(this.progress.idFromName("progress"))
+        .fetch(new Request(`https://lianki-push${ETA_HEARD_PATH}`, { method: "POST" }));
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.eta-heard-failed", error: String(e).slice(0, 200) }),
+      );
+    }
   }
 
   /**
@@ -2110,6 +2150,7 @@ export class DebugHub {
     console.log(
       JSON.stringify({ msg: "debug.eval-token", pair: a.pair, label: a.label, tag: ok.tag }),
     );
+    await this.listenerUp(a);
     this.broadcast();
   }
 
@@ -2211,6 +2252,7 @@ export class DebugHub {
     console.log(JSON.stringify({ msg: "debug.resume", pair: a.pair, label: a.label, scope }));
     await this.loadGrants();
     this.broadcast();
+    await this.listenerUp(a);
   }
 
   /**
@@ -3042,6 +3084,7 @@ export class DebugHub {
     await this.scheduleRenewal(g);
     this.broadcast();
     send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
+    await this.listenerUp(a);
   }
 
   /** End (revoke) a sleeping eval grant, or add the answering page to it. */
@@ -3095,6 +3138,7 @@ export class DebugHub {
     );
     this.broadcast();
     send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
+    await this.listenerUp(a);
   }
 
   /**

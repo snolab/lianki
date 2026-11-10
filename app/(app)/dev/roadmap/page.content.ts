@@ -175,6 +175,44 @@ const dictionary = {
         ko: "완료",
       }),
     },
+    doneKind: {
+      verified: t({
+        en: "Verified",
+        zh: "已验证",
+        hi: "सत्यापित",
+        es: "Verificado",
+        fr: "Vérifié",
+        ar: "تم التحقق",
+        bn: "যাচাই করা",
+        pt: "Verificado",
+        ru: "Проверено",
+        ur: "تصدیق شدہ",
+        id: "Terverifikasi",
+        de: "Geprüft",
+        ja: "確認済み",
+        sw: "Imethibitishwa",
+        mr: "पडताळलेले",
+        ko: "확인됨",
+      }),
+      unverified: t({
+        en: "Not verified yet",
+        zh: "尚未验证",
+        hi: "अभी सत्यापित नहीं",
+        es: "Aún sin verificar",
+        fr: "Pas encore vérifié",
+        ar: "لم يُتحقق منه بعد",
+        bn: "এখনো যাচাই হয়নি",
+        pt: "Ainda não verificado",
+        ru: "Ещё не проверено",
+        ur: "ابھی تصدیق نہیں ہوئی",
+        id: "Belum diverifikasi",
+        de: "Noch nicht geprüft",
+        ja: "未確認",
+        sw: "Bado haijathibitishwa",
+        mr: "अजून पडताळले नाही",
+        ko: "아직 확인 안 됨",
+      }),
+    },
     connecting: t({
       en: "Connecting to the live task tree…",
       zh: "正在连接实时任务树…",
@@ -229,6 +267,12 @@ const context: KeyContext<typeof dictionary.content> = {
     queued:
       "Section heading and contents link: open tasks nobody is building right now — lined up, parked or blocked — that do not wait on the owner.",
     done: "Section heading and contents link: items already shipped; the section is collapsed by default and shows a count beside it.",
+  },
+  doneKind: {
+    verified:
+      "Small tag on a finished item in the Done section: the agent proved it works (merged and deployed, a test or a screenshot); hovering shows that evidence. An adjective or past participle, one or two words.",
+    unverified:
+      "Small tag on a finished item in the Done section: the agent says it is done but has not yet confirmed it works; a follow-up check task exists. A short phrase, not a warning.",
   },
   connecting:
     "Shown in an empty section while the page is still connecting to the live tree of the coding agents' tasks; ends with an ellipsis.",

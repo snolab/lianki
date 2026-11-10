@@ -65,7 +65,13 @@ import {
   type ProgressMessage,
   type ProgressReport,
   autoNode,
+  blockedOn,
+  checkTaskTitle,
   historyFromDone,
+  newReceiptCode,
+  RECEIPT_RE,
+  titleName,
+  verifyIdOf,
   historyKey,
   isOwnerTodo,
   isPathId,
@@ -89,7 +95,17 @@ import {
 } from "../../../lib/progress-token";
 import type { Socket, Storage } from "./debug";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
-import { ETA_EXPLAIN_MS, ETA_PATH, type EtaPing } from "../../../lib/eta-ping";
+import { ETA_HEARD_PATH, ETA_PATH, type EtaPing } from "../../../lib/eta-ping";
+import {
+  ETA_NUDGE_KEYS,
+  NUDGE_DEFAULTS,
+  type NudgeRules,
+  backoffDelayMs,
+  holdTransition,
+  holdsEta,
+  nudgeDue,
+  nudgeRules,
+} from "../../../lib/eta-nudge";
 import {
   OWNER_WAIT_REMIND_KEY,
   ownerWaitTransition,
@@ -157,6 +173,8 @@ export const ETA_SKEW_MS = 5_000;
 export const ETA_RETRY_MS = 60_000;
 /** …until it is this late; then it is dropped (marked sent). */
 export const ETA_GIVE_UP_MS = 60 * 60 * 1000;
+/** The receipt, backoff and verify rules (config keys) are read again after this long. */
+export const RULES_CACHE_MS = 30_000;
 
 type Namespace = {
   idFromName(name: string): unknown;
@@ -200,18 +218,41 @@ const json = (body: unknown, status = 200) => Response.json(body, { status });
 const fail = (status: number, error: string, extra: Record<string, unknown> = {}) =>
   json({ error, ...extra }, status);
 
-/** An open node whose estimate has not been pinged yet. */
-const etaDue = (e: ProgressEntry) => e.etaAt !== undefined && e.etaSent !== e.etaAt;
+/**
+ * An open node whose estimate has not been pinged yet. A ping queued for want
+ * of a listener waits for one (ETA_HEARD_PATH), not for the alarm, unless
+ * `queued` says this is that call.
+ */
+const etaDue = (e: ProgressEntry, queued = false) =>
+  e.etaAt !== undefined && e.etaSent !== e.etaAt && (queued || e.etaQueued !== e.etaAt);
+/** Pinged and heard at this estimate, open, not held (lib/eta-nudge.ts holdsEta). */
+const pinged = (e: ProgressEntry) =>
+  e.status !== "done" && !holdsEta(e) && e.etaAt !== undefined && e.etaSent === e.etaAt;
+/** When the receipt clock started: the line was heard (older pings: their etaAt). */
+const heardAt = (e: ProgressEntry) => e.etaHeardAt ?? e.etaAt!;
+/**
+ * Receipts (docs/state-tree.md, "Receipts"): pinged, not acked, the
+ * coordinating lane not told, the owner not told: due rules.ackMs after it was heard.
+ */
+const mainAt = (e: ProgressEntry, r: NudgeRules) =>
+  pinged(e) &&
+  e.etaCode !== undefined &&
+  e.etaAcked !== e.etaAt &&
+  e.etaMain !== e.etaAt &&
+  e.etaSilent !== e.etaAt
+    ? heardAt(e) + r.ackMs
+    : undefined;
 /**
  * Pinged, still at that estimate (no new one), and the owner not yet told it
- * went unexplained (docs/state-tree.md, "ETA overrun"): due at etaAt + ETA_EXPLAIN_MS.
+ * went unexplained (docs/state-tree.md, "ETA overrun"): due ackMs + ownerMs
+ * after the line was heard.
  */
-const silentDue = (e: ProgressEntry) =>
-  e.status !== "done" &&
-  !ownerWaits(e) &&
-  e.etaAt !== undefined &&
-  e.etaSent === e.etaAt &&
-  e.etaSilent !== e.etaAt;
+const silentAt = (e: ProgressEntry, r: NudgeRules) =>
+  pinged(e) && e.etaSilent !== e.etaAt ? heardAt(e) + r.ackMs + r.ownerMs : undefined;
+/** Told it went unexplained, still not explained: the next repeat (backoff), if one is set. */
+const repeatAt = (e: ProgressEntry) =>
+  pinged(e) && e.etaSilent === e.etaAt ? e.silentAt : undefined;
+const MIN_MS = 60_000;
 
 /**
  * A node as the API and the readers get it: with `etaConfirmedAgo` ("5 min
@@ -358,6 +399,7 @@ export class ProgressHub {
     }
     // Reached only over the binding (index.ts checks the internal hostname).
     if (path === BOX_CLOSED_PATH && req.method === "POST") return this.boxClosed(req);
+    if (path === ETA_HEARD_PATH && req.method === "POST") return this.heard();
     const token = /^Bearer (\S+)$/.exec(req.headers.get("authorization") ?? "")?.[1] ?? "";
     const auth = this.secret ? await verifyProgressToken(this.secret, token, this.now()) : null;
     if (!auth) return fail(401, "unauthorized (wrong, forged or expired token)");
@@ -372,6 +414,7 @@ export class ProgressHub {
     if (body instanceof Response) return body;
     if (path.endsWith("/grant")) return this.grant(auth, body);
     if (path.endsWith("/batch")) return this.batch(auth, body);
+    if (path.endsWith("/ack")) return this.ack(auth, body);
     if (path.endsWith("/resolve")) {
       if (!auth.root) return fail(403, "only the owner (the root token) resolves");
       const b = body as { id?: unknown; note?: unknown };
@@ -582,6 +625,9 @@ export class ProgressHub {
       return fail(400, `unknown parent ${parent}`);
     if (r.rev !== undefined && prev && r.rev <= prev.rev)
       return fail(409, `stale rev ${r.rev}; ${r.id} is at ${prev.rev}`, { rev: prev.rev });
+    // A new or renamed name is at most 20 columns; a node keeps the name it has.
+    const title = checkTaskTitle(r.task, prev?.task);
+    if (title instanceof Error) return fail(400, title.message);
     const t = opts.t ?? this.now();
     if (
       r.etaAt !== undefined &&
@@ -589,8 +635,9 @@ export class ProgressHub {
     )
       return fail(400, "etaAt must be within the next 30 days");
     // A confirm keeps a time that is still ahead: a passed one is an overrun (below).
-    // Waiting on the owner (lib/owner-wait.ts): its time passing is not late work.
-    const waiting = !!prev && (ownerWaits(prev) || ownerWaits(mergeProgress(prev, r, t)));
+    // Waiting on the owner, blocked on someone or paused (lib/eta-nudge.ts): its
+    // time passing is not late work.
+    const waiting = !!prev && (holdsEta(prev) || holdsEta(mergeProgress(prev, r, t)));
     if (r.confirm) {
       if (prev?.etaAt === undefined || prev.status === "done")
         return fail(400, `${r.id} has no open estimate to confirm: give one with --eta`);
@@ -626,23 +673,34 @@ export class ProgressHub {
     const changeAt = r.changeId && !opts.shared ? await this.changeTime(r.changeId, t) : t;
     const entry = mergeProgress(prev, r, t, { id: changeId, at: changeAt });
     ownerWaitTransition(prev, entry, t);
-    const events = [...missing.map((e) => progressEvent(e)), progressEvent(entry, r.note)];
-    const evicted = await this.store([...missing, entry], all);
+    holdTransition(prev, entry, t);
+    // Receipts: any report on a node whose "ETA reached" line went out acks it.
+    if (prev?.etaAt !== undefined && prev.etaSent === prev.etaAt && entry.etaAt === prev.etaAt)
+      entry.etaAcked = prev.etaAt;
+    const rules = await this.rules();
+    const extra = this.verifyChild(all, prev, entry, rules, t, changeId);
+    const events = [
+      ...missing.map((e) => progressEvent(e)),
+      progressEvent(entry, r.note),
+      ...extra.map((e) => progressEvent(e)),
+    ];
+    const evicted = await this.store([...missing, entry, ...extra], all, rules);
     for (const ev of events) await this.append(lean(ev));
     await this.recordDone(prev, entry, r.endedAt !== undefined);
+    for (const e of extra) await this.recordDone(all.get(e.id), e);
     if (evicted) await this.sendSnapshot();
     else for (const ev of events) await this.send(this.ctx.getWebSockets(), withAgo(ev, t));
     // The lane explained an overrun: the owner hears the reason and the new time.
     const told =
       r.late && entry.etaAt !== undefined
-        ? await this.tell({
+        ? (await this.tell({
             id: entry.id,
             title: entry.task,
             etaAt: entry.etaAt,
             assignee: entry.assignee.name,
             kind: "late",
             reason: r.late,
-          })
+          })) === "ok"
         : undefined;
     return json({
       ok: true,
@@ -653,8 +711,153 @@ export class ProgressHub {
     });
   }
 
+  /** The receipt, backoff and verify rules: live config values (30 s cache), else the defaults. */
+  private rulesAt = 0;
+  private rulesNow: NudgeRules = NUDGE_DEFAULTS;
+  private async rules(): Promise<NudgeRules> {
+    const t = this.now();
+    if (this.rulesAt && t - this.rulesAt < RULES_CACHE_MS) return this.rulesNow;
+    const rpc = this.sessions;
+    const values: Record<string, unknown> = {};
+    if (rpc?.config)
+      for (const k of ETA_NUDGE_KEYS)
+        try {
+          values[k] = await rpc.config(k);
+        } catch {}
+    this.rulesNow = nudgeRules(values);
+    this.rulesAt = t;
+    return this.rulesNow;
+  }
+
+  /**
+   * When this node next needs the alarm, and for what: its ETA ping, the
+   * owner's reminder, a blocked nudge, the coordinating lane, the owner's
+   * "未说明原因" or its repeat, or (done) its pruning.
+   */
+  private nextAction(
+    e: ProgressEntry,
+    r: NudgeRules,
+  ): {
+    at: number;
+    kind: "eta" | "remind" | "nudge" | "main" | "silent" | "repeat" | "prune";
+  } | null {
+    if (e.status === "done") return { at: e.at + PROGRESS_DONE_TTL_MS, kind: "prune" };
+    const all: {
+      at: number | undefined;
+      kind: "eta" | "remind" | "nudge" | "main" | "silent" | "repeat";
+    }[] = [
+      { at: etaDue(e) ? e.etaAt : undefined, kind: "eta" },
+      { at: remindDue(e) ? e.remindAt : undefined, kind: "remind" },
+      { at: nudgeDue(e) ? e.nudgeAt : undefined, kind: "nudge" },
+      { at: mainAt(e, r), kind: "main" },
+      { at: silentAt(e, r), kind: "silent" },
+      { at: repeatAt(e), kind: "repeat" },
+    ];
+    let best: { at: number; kind: (typeof all)[number]["kind"] } | null = null;
+    for (const x of all)
+      if (x.at !== undefined && (!best || x.at < best.at)) best = { at: x.at, kind: x.kind };
+    return best;
+  }
+
+  /**
+   * Done --unverified (docs/state-tree.md, "Done kinds"): a "verify: <name>"
+   * child for the same lane, with a short estimate (chat.verifyEtaMin). Its
+   * going done --verified marks the parent verified. The nodes to store.
+   */
+  private verifyChild(
+    all: Map<string, ProgressEntry>,
+    prev: ProgressEntry | undefined,
+    entry: ProgressEntry,
+    rules: NudgeRules,
+    t: number,
+    changeId: string,
+  ): ProgressEntry[] {
+    if (entry.status !== "done") return [];
+    if (entry.doneKind === "verified" && entry.parent && verifyIdOf(entry.parent) === entry.id) {
+      const parent = all.get(entry.parent);
+      if (parent?.status !== "done" || parent.doneKind !== "unverified") return [];
+      return [
+        {
+          ...parent,
+          doneKind: "verified",
+          evidence: `verify: ${entry.evidence ?? entry.id}`.slice(0, PROGRESS_LIMITS.verified),
+          by: entry.by,
+          rev: parent.rev + 1,
+          at: t,
+        },
+      ];
+    }
+    if (entry.doneKind !== "unverified") return [];
+    if (prev?.status === "done" && prev.doneKind === "unverified") return [];
+    const id = verifyIdOf(entry.id);
+    if (!id) return [];
+    const was = all.get(id);
+    if (was && was.status !== "done") return [];
+    const name = titleName(entry.task) || entry.task;
+    const report: ProgressReport = {
+      id,
+      parent: entry.id,
+      assignee: entry.assignee,
+      task: `verify: ${name}`.slice(0, PROGRESS_LIMITS.task),
+      status: "doing",
+      etaIn: rules.verifyMs,
+      eta: `${Math.round(rules.verifyMs / MIN_MS)}m`,
+      note: `done but not verified: confirm ${entry.id} works (deployed, tested), then --done --verified "<evidence>"`,
+    };
+    return [mergeProgress(was, report, t, { id: changeId, at: t })];
+  }
+
+  /**
+   * POST /ack {code}: the lane got the "ETA reached" line with this receipt
+   * code. Its node (in the token's scope) is acked for that estimate: the
+   * coordinating lane is not told. The owner still hears "未说明原因" unless a
+   * reason and a new ETA come (docs/state-tree.md, "Receipts").
+   */
+  private async ack(auth: ProgressAuth, body: unknown): Promise<Response> {
+    const code = (body as { code?: unknown } | null)?.code;
+    if (typeof code !== "string" || !RECEIPT_RE.test(code)) return fail(400, "expected {code}");
+    const all = await this.all();
+    const e = [...all.values()].find(
+      (x) => x.etaCode === code && x.etaAt !== undefined && x.etaSent === x.etaAt,
+    );
+    if (!e) return fail(404, `no ETA line with receipt ${code} is open`);
+    if (!auth.root && !this.covers(all, auth.node, e.id))
+      return fail(403, `${e.id} is outside your scope (${auth.node})`);
+    if (!this.allow(auth.root ? OWNER_NAME : auth.agent)) return this.tooMany();
+    if (e.status !== "done" && e.etaAcked !== e.etaAt)
+      await this.ctx.storage.put(progressKey(e), { ...e, etaAcked: e.etaAt });
+    return json({ ok: true, id: e.id, task: e.task, etaAt: e.etaAt });
+  }
+
+  /**
+   * POST /internal/eta-heard (the chat hub, when a listener connects): the
+   * lanes' lines held for want of one go out now: queued "ETA reached" lines
+   * (their receipt clock starts when heard) and queued blocked nudges.
+   */
+  private async heard(): Promise<Response> {
+    const t = this.now();
+    let sent = 0;
+    for (const e of (await this.all()).values()) {
+      if (e.status === "done") continue;
+      if (e.etaAt !== undefined && e.etaQueued === e.etaAt && e.etaSent !== e.etaAt) {
+        await this.fireEta(e.id, t, true);
+        sent++;
+      } else if (e.nudgeQueued !== undefined && nudgeDue({ ...e, nudgeAt: t })) {
+        const { nudgeQueued: _q, ...rest } = e;
+        await this.ctx.storage.put(progressKey(e), { ...rest, nudgeAt: t });
+        await this.fireNudge(e.id, t);
+        sent++;
+      }
+    }
+    return json({ ok: true, sent });
+  }
+
   /** Put nodes, making room past PROGRESS_MAX_ENTRIES; true if any were dropped. */
-  private async store(entries: ProgressEntry[], all: Map<string, ProgressEntry>) {
+  private async store(
+    entries: ProgressEntry[],
+    all: Map<string, ProgressEntry>,
+    rules: NudgeRules = this.rulesNow,
+  ) {
     const fresh = entries.filter((e) => !all.has(e.id)).length;
     const over = all.size + fresh - PROGRESS_MAX_ENTRIES;
     let dropped = false;
@@ -672,10 +875,8 @@ export class ProgressHub {
     }
     for (const e of entries) {
       await this.ctx.storage.put(progressKey(e), e);
-      if (e.status === "done") await this.schedule(e.at + PROGRESS_DONE_TTL_MS);
-      else if (etaDue(e)) await this.schedule(Math.max(e.etaAt!, this.now()));
-      else if (silentDue(e)) await this.schedule(Math.max(e.etaAt! + ETA_EXPLAIN_MS, this.now()));
-      else if (remindDue(e)) await this.schedule(Math.max(e.remindAt!, this.now()));
+      const next = this.nextAction(e, rules);
+      if (next) await this.schedule(Math.max(next.at, this.now()));
     }
     return dropped;
   }
@@ -813,33 +1014,14 @@ export class ProgressHub {
   async alarm() {
     const t = this.now();
     const all = await this.all();
+    const rules = await this.rules();
     let pruned = 0;
     let next = Infinity;
     for (const e of all.values()) {
-      if (e.status !== "done" && etaDue(e)) {
-        // An estimate ran out: ping the agent (fireEta), or wait for it.
-        if (e.etaAt! > t) next = Math.min(next, e.etaAt!);
-        else if (!(await this.fireEta(e.id, t))) next = Math.min(next, t + ETA_RETRY_MS);
-        else {
-          const after = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
-          if (after && silentDue(after)) next = Math.min(next, after.etaAt! + ETA_EXPLAIN_MS);
-          if (after && remindDue(after)) next = Math.min(next, after.remindAt!);
-        }
-        continue;
-      }
-      if (remindDue(e)) {
-        // Waiting on the owner: the next spaced reminder (fireRemind), or wait for it.
-        if (e.remindAt! > t) next = Math.min(next, e.remindAt!);
-        else if (!(await this.fireRemind(e.id, t))) next = Math.min(next, t + ETA_RETRY_MS);
-        else {
-          const after = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
-          if (after && remindDue(after)) next = Math.min(next, after.remindAt!);
-        }
-        continue;
-      }
       if (
         e.status !== "done" &&
         ownerWaits(e) &&
+        !etaDue(e) &&
         e.etaAt !== undefined &&
         e.etaSent === e.etaAt &&
         e.remindFor !== e.etaAt
@@ -857,20 +1039,45 @@ export class ProgressHub {
         next = Math.min(next, at);
         continue;
       }
-      if (silentDue(e)) {
-        // Pinged and still unexplained: tell the owner (fireSilent), or wait for it.
-        const due = e.etaAt! + ETA_EXPLAIN_MS;
-        if (due > t) next = Math.min(next, due);
-        else if (!(await this.fireSilent(e.id, t))) next = Math.min(next, t + ETA_RETRY_MS);
+      const act = this.nextAction(e, rules);
+      if (!act) continue;
+      if (act.kind === "prune") {
+        if (act.at <= t) {
+          all.delete(e.id);
+          await this.ctx.storage.delete(progressKey(e));
+          pruned++;
+        } else next = Math.min(next, act.at);
         continue;
       }
-      if (e.status !== "done") continue;
-      const due = e.at + PROGRESS_DONE_TTL_MS;
-      if (due <= t) {
-        all.delete(e.id);
-        await this.ctx.storage.delete(progressKey(e));
-        pruned++;
-      } else next = Math.min(next, due);
+      if (act.at > t) {
+        next = Math.min(next, act.at);
+        continue;
+      }
+      // Due now: do it, then whatever it leads to that is due too (a few at most).
+      for (let a = act, i = 0; i < 4; i++) {
+        const ok =
+          a.kind === "eta"
+            ? await this.fireEta(e.id, t)
+            : a.kind === "remind"
+              ? await this.fireRemind(e.id, t)
+              : a.kind === "nudge"
+                ? await this.fireNudge(e.id, t)
+                : a.kind === "main"
+                  ? await this.fireMain(e.id, t)
+                  : await this.fireSilent(e.id, t);
+        if (!ok) {
+          next = Math.min(next, t + ETA_RETRY_MS);
+          break;
+        }
+        const after = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+        const then = after && this.nextAction(after, rules);
+        if (!then || then.kind === "prune") break;
+        if (then.at > t || (then.kind === a.kind && then.at === a.at) || i === 3) {
+          next = Math.min(next, Math.max(then.at, t + 1));
+          break;
+        }
+        a = then;
+      }
     }
     for (let again = pruned > 0; again; ) {
       again = false;
@@ -893,44 +1100,154 @@ export class ProgressHub {
    * The node is marked sent before the chat hub is asked — storage calls hold
    * the Durable Object's input gate, the fetch does not — and unmarked if it
    * could not take the line (tried again ETA_RETRY_MS later, up to
-   * ETA_GIVE_UP_MS late). Not due, done, or already sent: false, nothing sent.
-   * Returns false only when it should be tried again.
+   * ETA_GIVE_UP_MS late). No listener: queued (`etaQueued`), sent when one
+   * connects (`queued`: that call). Not due, done, or already sent: nothing
+   * sent. Returns false only when it should be tried again.
    */
-  async fireEta(id: string, t: number = this.now()): Promise<boolean> {
+  async fireEta(id: string, t: number = this.now(), queued = false): Promise<boolean> {
     // Synchronous claim first: whatever the storage does between awaits, one caller per node.
     if (this.firing.has(id)) return true;
     this.firing.add(id);
     try {
-      return await this.fireEtaOnce(id, t);
+      return await this.fireEtaOnce(id, t, queued);
     } finally {
       this.firing.delete(id);
     }
   }
 
-  private async fireEtaOnce(id: string, t: number): Promise<boolean> {
+  private async fireEtaOnce(id: string, t: number, queued: boolean): Promise<boolean> {
     const e = await this.ctx.storage.get<ProgressEntry>(progressKey({ id }));
-    if (!e || e.status === "done" || !etaDue(e) || e.etaAt! > t + ETA_SKEW_MS) return true;
+    if (!e || e.status === "done" || !etaDue(e, queued) || e.etaAt! > t + ETA_SKEW_MS) return true;
     const etaAt = e.etaAt!;
     if (ownerWaits(e)) return this.remindOwner(e, t, { etaSent: etaAt, etaSilent: etaAt });
-    const late = t - etaAt > ETA_GIVE_UP_MS;
-    const sent = { ...e, etaSent: etaAt };
-    await this.ctx.storage.put(progressKey(e), sent);
-    if (late || !this.debug) return true;
-    const ping: EtaPing = { id: e.id, title: e.task, etaAt, assignee: e.assignee.name };
-    const ok = await this.tell(ping);
-    if (ok) {
-      // The owner's pages: this one is sent (their timers stop for it).
-      await this.send(this.ctx.getWebSockets(), progressEvent(sent));
-      // The lane has ETA_EXPLAIN_MS to explain; then the owner is told it did not.
-      await this.schedule(etaAt + ETA_EXPLAIN_MS);
+    // Blocked on someone (nudged instead) or paused: its time passing is not late work.
+    if (holdsEta(e)) {
+      await this.ctx.storage.put(progressKey(e), { ...e, etaSent: etaAt, etaSilent: etaAt });
       return true;
     }
+    const { etaQueued: _q, ...rest } = e;
+    // Very late (the hub was away): marked sent and silent, never said, no receipt chain.
+    if (e.etaQueued !== etaAt && t - etaAt > ETA_GIVE_UP_MS) {
+      await this.ctx.storage.put(progressKey(e), { ...rest, etaSent: etaAt, etaSilent: etaAt });
+      return true;
+    }
+    const code = newReceiptCode();
+    const sent: ProgressEntry = { ...rest, etaSent: etaAt, etaCode: code };
+    await this.ctx.storage.put(progressKey(e), sent);
+    if (!this.debug) return true;
+    const rules = await this.rules();
+    const ping: EtaPing = {
+      id: e.id,
+      title: e.task,
+      etaAt,
+      assignee: e.assignee.name,
+      code,
+      ackMin: Math.round(rules.ackMs / MIN_MS),
+      ownerMin: Math.round(rules.ownerMs / MIN_MS),
+    };
+    const said = await this.tell(ping);
     const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
-    if (now && now.etaSent === etaAt) {
-      const { etaSent: _sent, ...back } = now;
+    const still = now && now.etaSent === etaAt && now.etaCode === code ? now : undefined;
+    if (said === "ok") {
+      // Heard: the receipt clock starts now.
+      const heard: ProgressEntry = { ...(still ?? sent), etaHeardAt: t };
+      if (still) await this.ctx.storage.put(progressKey(e), heard);
+      // The owner's pages: this one is sent (their timers stop for it).
+      await this.send(this.ctx.getWebSockets(), progressEvent(heard));
+      const nextAt = this.nextAction(heard, rules)?.at;
+      if (nextAt !== undefined) await this.schedule(nextAt);
+      return true;
+    }
+    if (still) {
+      const { etaSent: _sent, etaCode: _code, ...back } = still;
+      // No listener: held until one connects (ETA_HEARD_PATH); the clock has not started.
+      await this.ctx.storage.put(
+        progressKey(e),
+        said === "queued" ? { ...back, etaQueued: etaAt } : back,
+      );
+    }
+    return said === "queued";
+  }
+
+  /**
+   * Receipts: the "ETA reached" line was heard ackMs ago and not acked. The
+   * coordinating lane (chat.etaCoordinator, "main") is told, once per etaAt;
+   * the owner hears "未说明原因" ownerMs later unless a reason and a new ETA
+   * come. With no listener for it, it counts as told (nobody to tell).
+   */
+  async fireMain(id: string, t: number = this.now()): Promise<boolean> {
+    const rules = await this.rules();
+    const e = await this.ctx.storage.get<ProgressEntry>(progressKey({ id }));
+    const due = e && mainAt(e, rules);
+    if (!e || due === undefined || due > t + ETA_SKEW_MS) return true;
+    const etaAt = e.etaAt!;
+    await this.ctx.storage.put(progressKey(e), { ...e, etaMain: etaAt });
+    if (!this.debug) return true;
+    const said = await this.tell({
+      id: e.id,
+      title: e.task,
+      etaAt,
+      assignee: e.assignee.name,
+      kind: "main",
+      lane: rules.coordinator,
+      code: e.etaCode,
+      ownerMin: Math.round(rules.ownerMs / MIN_MS),
+    });
+    if (said !== "fail") return true;
+    const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+    if (now && now.etaMain === etaAt) {
+      const { etaMain: _m, ...back } = now;
       await this.ctx.storage.put(progressKey(e), back);
     }
     return false;
+  }
+
+  /**
+   * Blocked on someone (`who`; docs/state-tree.md, "Blocked and paused"): the
+   * next nudge to that one — the owner in Li (read aloud), a lane by a quiet
+   * line addressed to it — then the next at the backoff spacing
+   * (chat.nudgeBackoffMin). A lane with no listener: held until one connects.
+   */
+  async fireNudge(id: string, t: number = this.now()): Promise<boolean> {
+    if (this.firing.has(`n:${id}`)) return true;
+    this.firing.add(`n:${id}`);
+    try {
+      const e = await this.ctx.storage.get<ProgressEntry>(progressKey({ id }));
+      if (!e || !nudgeDue(e) || e.nudgeAt! > t + ETA_SKEW_MS) return true;
+      const rules = await this.rules();
+      const n = (e.nudgeN ?? 0) + 1;
+      const marked: ProgressEntry = {
+        ...e,
+        nudgeN: n,
+        nudgeAt: t + backoffDelayMs(rules.backoffMs, n),
+      };
+      await this.ctx.storage.put(progressKey(e), marked);
+      if (!this.debug) return true;
+      const said = await this.tell({
+        id: e.id,
+        title: e.task,
+        etaAt: e.etaAt ?? t,
+        assignee: e.assignee.name,
+        kind: "blocked",
+        lane: blockedOn(e)!,
+        n,
+        ...(e.needs?.trim() ? { reason: e.needs.trim() } : {}),
+      });
+      if (said === "ok") {
+        await this.schedule(marked.nudgeAt!);
+        return true;
+      }
+      const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+      if (now && now.rev === marked.rev && now.nudgeAt === marked.nudgeAt) {
+        if (said === "queued") {
+          const { nudgeAt: _at, ...rest } = e;
+          await this.ctx.storage.put(progressKey(e), { ...rest, nudgeQueued: n });
+        } else await this.ctx.storage.put(progressKey(e), e);
+      }
+      return said === "queued";
+    } finally {
+      this.firing.delete(`n:${id}`);
+    }
   }
 
   /**
@@ -969,14 +1286,15 @@ export class ProgressHub {
     const marked: ProgressEntry = { ...e, ...mark, remindFor: etaAt, remindN: sent, remindAt: at };
     await this.ctx.storage.put(progressKey(e), marked);
     if (!this.debug) return true;
-    const ok = await this.tell({
-      id: e.id,
-      title: e.task,
-      etaAt,
-      assignee: e.assignee.name,
-      kind: "waiting",
-      ...(e.needs?.trim() ? { reason: e.needs.trim() } : {}),
-    });
+    const ok =
+      (await this.tell({
+        id: e.id,
+        title: e.task,
+        etaAt,
+        assignee: e.assignee.name,
+        kind: "waiting",
+        ...(e.needs?.trim() ? { reason: e.needs.trim() } : {}),
+      })) !== "fail";
     if (ok) {
       if (fresh) await this.send(this.ctx.getWebSockets(), progressEvent(marked));
       await this.schedule(at);
@@ -999,10 +1317,13 @@ export class ProgressHub {
     }
   }
 
-  /** One line through the chat hub (debug.ts ETA_PATH); true if it took it. */
-  private async tell(ping: EtaPing): Promise<boolean> {
-    if (!this.debug) return false;
-    let ok = false;
+  /**
+   * One line through the chat hub (debug.ts ETA_PATH): "ok" if it took it,
+   * "queued" if a lanes' line found no listener (not posted), "fail" otherwise.
+   */
+  private async tell(ping: EtaPing): Promise<"ok" | "queued" | "fail"> {
+    if (!this.debug) return "fail";
+    let said: "ok" | "queued" | "fail" = "fail";
     try {
       const res = await this.debug.get(this.debug.idFromName("debug")).fetch(
         new Request(`https://lianki-push${ETA_PATH}`, {
@@ -1011,7 +1332,13 @@ export class ProgressHub {
           body: JSON.stringify(ping),
         }),
       );
-      ok = res.ok;
+      if (res.ok) {
+        let body: { queued?: unknown } = {};
+        try {
+          body = (await res.json()) as typeof body;
+        } catch {}
+        said = body?.queued === true ? "queued" : "ok";
+      }
     } catch {}
     console.log(
       JSON.stringify({
@@ -1019,37 +1346,56 @@ export class ProgressHub {
         kind: ping.kind ?? "due",
         id: ping.id,
         etaAt: ping.etaAt,
-        ok,
+        said,
       }),
     );
-    return ok;
+    return said;
   }
 
   /**
-   * ETA overrun, unexplained: the "due" line went out ETA_EXPLAIN_MS ago and
-   * neither a reason nor a new estimate came. The owner is told "<name> 超时，
-   * 未说明原因", once per etaAt (marked first, unmarked if the chat hub could
-   * not take it; given up, marked, when very late). False: try again later.
+   * ETA overrun, unexplained: the "due" line was heard ackMs + ownerMs ago
+   * and neither a reason nor a new estimate came. The owner is told "<name>
+   * 超时，未说明原因", once per etaAt (marked first, unmarked if the chat hub
+   * could not take it; given up, marked, when very late), then again with
+   * backoff (chat.nudgeBackoffMin: 10, 20, 40… minutes, at most every 4 h)
+   * until a reason and a new ETA come or it is done. False: try again later.
    */
   async fireSilent(id: string, t: number = this.now()): Promise<boolean> {
+    const rules = await this.rules();
     const e = await this.ctx.storage.get<ProgressEntry>(progressKey({ id }));
-    if (!e || !silentDue(e) || e.etaAt! + ETA_EXPLAIN_MS > t) return true;
+    if (!e) return true;
     const etaAt = e.etaAt!;
-    await this.ctx.storage.put(progressKey(e), { ...e, etaSilent: etaAt });
-    if (t - etaAt > ETA_GIVE_UP_MS || !this.debug) return true;
-    const ok = await this.tell({
+    const first = silentAt(e, rules);
+    const repeat = repeatAt(e);
+    const due = first ?? repeat;
+    if (due === undefined || due > t + ETA_SKEW_MS) return true;
+    const n = first !== undefined ? 0 : (e.silentN ?? 0) + 1;
+    // A first one far past due (the hub was away, or an old ping): marked, not said, no repeats.
+    const stale = first !== undefined && t - first > ETA_GIVE_UP_MS;
+    const marked: ProgressEntry = {
+      ...e,
+      etaSilent: etaAt,
+      silentN: n,
+      ...(stale ? {} : { silentAt: t + backoffDelayMs(rules.backoffMs, n + 1) }),
+    };
+    if (stale) delete marked.silentAt;
+    await this.ctx.storage.put(progressKey(e), marked);
+    if (stale || !this.debug) return true;
+    const said = await this.tell({
       id: e.id,
       title: e.task,
       etaAt,
       assignee: e.assignee.name,
       kind: "silent",
+      ...(n ? { n } : {}),
     });
-    if (ok) return true;
-    const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
-    if (now && now.etaSilent === etaAt) {
-      const { etaSilent: _silent, ...back } = now;
-      await this.ctx.storage.put(progressKey(e), back);
+    if (said !== "fail") {
+      if (marked.silentAt !== undefined) await this.schedule(marked.silentAt);
+      return true;
     }
+    const now = await this.ctx.storage.get<ProgressEntry>(progressKey(e));
+    if (now && now.etaSilent === etaAt && now.silentN === n && now.silentAt === marked.silentAt)
+      await this.ctx.storage.put(progressKey(e), e);
     return false;
   }
 

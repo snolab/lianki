@@ -33,8 +33,8 @@ import {
   parseArgs,
   progressArgv,
 } from "./lianki-dev-cli";
-import { PROGRESS_USAGE, formatStats, parseProgressArgs } from "./progress-args";
-import { postProgress, progressToken } from "./progress-client";
+import { PROGRESS_USAGE, formatStats, parseProgressArgs, settleDoneKind } from "./progress-args";
+import { postProgress, prMerged, progressToken } from "./progress-client";
 import { laneToken } from "./lane-listen-lib";
 import { askAnswer, askNode, askQuestions, nodeNote } from "./ask-node";
 import { type ProgressDone, type ProgressEntry, progressStats } from "../../lib/progress";
@@ -243,14 +243,16 @@ async function progress(g: Global, rest: string[], repo: string | undefined): Pr
     );
   const [path, body] =
     cmd.cmd === "report"
-      ? ["", cmd.report]
-      : cmd.cmd === "grant"
-        ? ["/grant", { node: cmd.node, agent: cmd.agent, ttl: cmd.ttl }]
-        : cmd.cmd === "resolve"
-          ? ["/resolve", { id: cmd.id, note: cmd.note }]
-          : cmd.cmd === "stats"
-            ? ["/stats", undefined]
-            : ["", undefined];
+      ? ["", settleDoneKind(cmd.report, prMerged)]
+      : cmd.cmd === "ack"
+        ? ["/ack", { code: cmd.code }]
+        : cmd.cmd === "grant"
+          ? ["/grant", { node: cmd.node, agent: cmd.agent, ttl: cmd.ttl }]
+          : cmd.cmd === "resolve"
+            ? ["/resolve", { id: cmd.id, note: cmd.note }]
+            : cmd.cmd === "stats"
+              ? ["/stats", undefined]
+              : ["", undefined];
   const res = await postProgress(HUB, token, path, body);
   if (res instanceof Error) {
     // postProgress words an HTTP refusal "<status> <body>"; anything else did not reach it.
