@@ -146,7 +146,7 @@ export function ProfileMenu({
           </MenuLink>
           {/* Owner, 2026-11-09: the credits usage list one tap from the account menu. */}
           <MenuLink href="/membership/credits" icon="list">
-            {labels.creditsUsage ?? "Credits usage"}
+            {labels.creditsUsage}
           </MenuLink>
           <LanguageSwitcher variant="menu" />
           {/* One preview control: the whole-page switch, with Live view (dev
