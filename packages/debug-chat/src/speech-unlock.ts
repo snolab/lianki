@@ -22,13 +22,9 @@ type Target = Pick<EventTarget, "addEventListener" | "removeEventListener">;
 
 /** True while this event is a user activation; undefined where the browser cannot say. */
 export function activationNow(): boolean | undefined {
-  try {
-    const ua = (globalThis.navigator as { userActivation?: { isActive?: boolean } } | undefined)
-      ?.userActivation;
-    return typeof ua?.isActive === "boolean" ? ua.isActive : undefined;
-  } catch {
-    return undefined;
-  }
+  const ua = (globalThis.navigator as { userActivation?: { isActive?: boolean } } | undefined)
+    ?.userActivation;
+  return typeof ua?.isActive === "boolean" ? ua.isActive : undefined;
 }
 
 /**
