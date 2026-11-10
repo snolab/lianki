@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { displayTitle } from "@/lib/titles/client";
-import { VirtualList } from "@/app/components/VirtualList";
 import { CARD_STATES, dueLabel, stateName, type DataRow, type StoreId } from "./types";
 
 type Props = {
@@ -27,11 +26,9 @@ type Props = {
   order: "asc" | "desc";
   onSortChange: (sort: string) => void;
 
-  /** More rows on the server (cloud); the table asks as its end nears. */
-  hasMore: boolean;
-  /** The last batch failed: the table offers Try again. */
-  listError: boolean;
-  onReachEnd: () => void;
+  page: number;
+  size: number;
+  onPageChange: (page: number) => void;
 
   selected: Set<string>;
   onSelectedChange: (selected: Set<string>) => void;
@@ -71,9 +68,9 @@ export default function CardTable(props: Props) {
     sort,
     order,
     onSortChange,
-    hasMore,
-    listError,
-    onReachEnd,
+    page,
+    size,
+    onPageChange,
     selected,
     onSelectedChange,
     onDeleteSelected,
@@ -86,6 +83,7 @@ export default function CardTable(props: Props) {
   const [editing, setEditing] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
 
+  const pageCount = Math.max(1, Math.ceil(total / size));
   const allOnPageSelected = rows.length > 0 && rows.every((r) => selected.has(r.url));
 
   function toggle(url: string) {
@@ -157,20 +155,9 @@ export default function CardTable(props: Props) {
           />
           Due only
         </label>
-        <span
-          className="ms-auto text-gray-500 dark:text-gray-400 font-mono"
-          data-testid="cards-total"
-        >
-          {total}
+        <span className="ms-auto text-gray-500 dark:text-gray-400 font-mono">
+          {total === 0 ? "0" : `${page * size + 1}–${Math.min(total, (page + 1) * size)}`} / {total}
         </span>
-        <button
-          type="button"
-          onClick={onDeleteSelected}
-          disabled={selected.size === 0 || deleting}
-          className="rounded-lg border border-red-300 dark:border-red-800 px-3 py-1.5 font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {deleting ? "Deleting…" : `${deleteSelectedLabel} (${selected.size})`}
-        </button>
       </div>
 
       {error && (
@@ -179,132 +166,167 @@ export default function CardTable(props: Props) {
         </p>
       )}
 
-      <VirtualList
-        items={rows}
-        getKey={(row) => row.url}
-        name={`data-${store}`}
-        hasMore={hasMore}
-        loading={loading}
-        error={listError}
-        onReachEnd={onReachEnd}
-        estimateSize={52}
-        className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700"
-        rowClassName="border-t border-gray-100 dark:border-gray-800 align-top"
-        empty={
-          <p className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-8 text-center text-sm text-gray-500">
-            No cards match these filters.
-          </p>
-        }
-        table={{
-          className: "w-full text-sm",
-          label: heading,
-          head: (
-            <thead className="bg-gray-50 dark:bg-gray-800/50">
-              <tr>
-                <th scope="col" className="w-8 px-3 py-2">
-                  <input
-                    type="checkbox"
-                    checked={allOnPageSelected}
-                    onChange={toggleAll}
-                    aria-label="Select all loaded rows"
-                  />
+      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 dark:bg-gray-800/50">
+            <tr>
+              <th scope="col" className="w-8 px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={allOnPageSelected}
+                  onChange={toggleAll}
+                  aria-label="Select all rows on this page"
+                />
+              </th>
+              {COLUMNS.map((col) => (
+                <th key={col.key} scope="col" className="px-3 py-2 text-start font-semibold">
+                  {col.sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => onSortChange(col.key)}
+                      className="inline-flex items-center gap-1 hover:underline"
+                      aria-label={`Sort by ${col.label}`}
+                    >
+                      {col.label}
+                      {sort === col.key && <span aria-hidden>{order === "asc" ? "▲" : "▼"}</span>}
+                    </button>
+                  ) : (
+                    col.label
+                  )}
                 </th>
-                {COLUMNS.map((col) => (
-                  <th key={col.key} scope="col" className="px-3 py-2 text-start font-semibold">
-                    {col.sortable ? (
+              ))}
+              {editable && <th scope="col" className="px-3 py-2" />}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
+                  Loading…
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
+                  No cards match these filters.
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr
+                  key={row.url}
+                  className="border-t border-gray-100 dark:border-gray-800 align-top"
+                >
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.url)}
+                      onChange={() => toggle(row.url)}
+                      aria-label={`Select ${row.title}`}
+                    />
+                  </td>
+                  <td className="px-3 py-2 max-w-md">
+                    {editing === row.url ? (
+                      <form
+                        className="flex gap-2"
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          await onRename(row.url, draftTitle);
+                          setEditing(null);
+                        }}
+                      >
+                        <input
+                          value={draftTitle}
+                          onChange={(e) => setDraftTitle(e.target.value)}
+                          aria-label="Card title"
+                          className="flex-1 rounded-md border border-gray-300 dark:border-gray-600 bg-transparent px-2 py-1"
+                        />
+                        <button type="submit" className="text-blue-600 hover:underline">
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditing(null)}
+                          className="text-gray-500 hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </form>
+                    ) : (
+                      <>
+                        <div className="truncate font-medium">
+                          {displayTitle(row.title, row.url)}
+                        </div>
+                        <a
+                          href={row.url}
+                          className="block truncate text-xs text-gray-500 dark:text-gray-400 hover:underline"
+                        >
+                          {row.url}
+                        </a>
+                      </>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">{stateName(row.state)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap font-mono">{dueLabel(row.due)}</td>
+                  <td className="px-3 py-2 font-mono">{row.reps}</td>
+                  <td className="px-3 py-2 font-mono">{row.lapses}</td>
+                  <td className="px-3 py-2 font-mono whitespace-nowrap">
+                    <span title="Local (IndexedDB)">{row.inLocal ? "L" : "·"}</span>
+                    <span title="Cloud">{row.inCloud ? "C" : "·"}</span>
+                  </td>
+                  {editable && (
+                    <td className="px-3 py-2 whitespace-nowrap">
                       <button
                         type="button"
-                        onClick={() => onSortChange(col.key)}
-                        className="inline-flex items-center gap-1 hover:underline"
-                        aria-label={`Sort by ${col.label}`}
+                        onClick={() => {
+                          setEditing(row.url);
+                          setDraftTitle(row.title);
+                        }}
+                        className="text-xs text-blue-600 hover:underline"
                       >
-                        {col.label}
-                        {sort === col.key && <span aria-hidden>{order === "asc" ? "▲" : "▼"}</span>}
+                        Rename
                       </button>
-                    ) : (
-                      col.label
-                    )}
-                  </th>
-                ))}
-                {editable && <th scope="col" className="px-3 py-2" />}
-              </tr>
-            </thead>
-          ),
-        }}
-        renderItem={(row) => (
-          <>
-            <td className="px-3 py-2">
-              <input
-                type="checkbox"
-                checked={selected.has(row.url)}
-                onChange={() => toggle(row.url)}
-                aria-label={`Select ${row.title}`}
-              />
-            </td>
-            <td className="px-3 py-2 max-w-md">
-              {editing === row.url ? (
-                <form
-                  className="flex gap-2"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    await onRename(row.url, draftTitle);
-                    setEditing(null);
-                  }}
-                >
-                  <input
-                    value={draftTitle}
-                    onChange={(e) => setDraftTitle(e.target.value)}
-                    aria-label="Card title"
-                    className="flex-1 rounded-md border border-gray-300 dark:border-gray-600 bg-transparent px-2 py-1"
-                  />
-                  <button type="submit" className="text-blue-600 hover:underline">
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditing(null)}
-                    className="text-gray-500 hover:underline"
-                  >
-                    Cancel
-                  </button>
-                </form>
-              ) : (
-                <>
-                  <div className="truncate font-medium">{displayTitle(row.title, row.url)}</div>
-                  <a
-                    href={row.url}
-                    className="block truncate text-xs text-gray-500 dark:text-gray-400 hover:underline"
-                  >
-                    {row.url}
-                  </a>
-                </>
-              )}
-            </td>
-            <td className="px-3 py-2 whitespace-nowrap">{stateName(row.state)}</td>
-            <td className="px-3 py-2 whitespace-nowrap font-mono">{dueLabel(row.due)}</td>
-            <td className="px-3 py-2 font-mono">{row.reps}</td>
-            <td className="px-3 py-2 font-mono">{row.lapses}</td>
-            <td className="px-3 py-2 font-mono whitespace-nowrap">
-              <span title="Local (IndexedDB)">{row.inLocal ? "L" : "·"}</span>
-              <span title="Cloud">{row.inCloud ? "C" : "·"}</span>
-            </td>
-            {editable && (
-              <td className="px-3 py-2 whitespace-nowrap">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditing(row.url);
-                    setDraftTitle(row.title);
-                  }}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Rename
-                </button>
-              </td>
+                    </td>
+                  )}
+                </tr>
+              ))
             )}
-          </>
-        )}
-      />
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between flex-wrap gap-3 text-sm">
+        <button
+          type="button"
+          onClick={onDeleteSelected}
+          disabled={selected.size === 0 || deleting}
+          className="rounded-lg border border-red-300 dark:border-red-800 px-3 py-1.5 font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {deleting ? "Deleting…" : `${deleteSelectedLabel} (${selected.size})`}
+        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onPageChange(page - 1)}
+            disabled={page === 0}
+            className="rounded-md border border-gray-300 dark:border-gray-600 px-2 py-1 disabled:opacity-40"
+          >
+            ‹
+          </button>
+          <span className="font-mono">
+            {page + 1} / {pageCount}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPageChange(page + 1)}
+            disabled={page + 1 >= pageCount}
+            className="rounded-md border border-gray-300 dark:border-gray-600 px-2 py-1 disabled:opacity-40"
+          >
+            ›
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

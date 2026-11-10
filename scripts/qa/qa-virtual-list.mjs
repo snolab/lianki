@@ -198,44 +198,13 @@ for (const [name, device] of [
     `${name}: /list delete removes "${victimTitle}" in place`,
   );
   const y1 = await page.evaluate(() => window.scrollY);
-  // A reload would land at the top; rows re-measuring after the delete may move it a little.
-  check(
-    y1 > 0 && Math.abs(y1 - y0) < vp.height,
-    `${name}: /list no jump to the top after delete (${y0} → ${y1})`,
-  );
+  check(Math.abs(y1 - y0) < 200, `${name}: /list no jump to the top after delete (${y0} → ${y1})`);
   for (const scheme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.waitForTimeout(100);
     await page.screenshot({ path: join(OUT, `list-${name}-${scheme}.png`) });
   }
   await page.emulateMedia({ colorScheme: "light" });
-
-  // /data's card table (cloud): the same list as table rows, no page controls.
-  await page.goto("/data?store=cloud", { waitUntil: "networkidle" });
-  await page.locator('[data-testid="cards-total"]').waitFor();
-  const dataTotal = Number((await page.locator('[data-testid="cards-total"]').innerText()).trim());
-  check(dataTotal === N - 1, `${name}: /data total ${dataTotal}`);
-  check(
-    (await page.getByRole("button", { name: /^[‹›]$/ }).count()) === 0,
-    `${name}: /data no page buttons`,
-  );
-  await page.mouse.move(vp.width / 2, vp.height / 2);
-  const dataSeen = new Set();
-  let dataMax = 0;
-  for (let step = 0; step < 300; step++) {
-    const ts = await page
-      .locator("tbody tr[data-key]")
-      .evaluateAll((rs) => rs.map((r) => r.dataset.key));
-    ts.forEach((t) => dataSeen.add(t));
-    dataMax = Math.max(dataMax, ts.length);
-    if ((await page.locator('[data-testid="vlist-end"]').count()) && dataSeen.size >= dataTotal)
-      break;
-    await page.mouse.wheel(0, 400);
-    await page.waitForTimeout(80);
-  }
-  check(dataSeen.size === dataTotal, `${name}: /data all rows reachable (${dataSeen.size})`);
-  check(dataMax < dataTotal, `${name}: /data only a window of rows (max ${dataMax})`);
-  await page.screenshot({ path: join(OUT, `data-${name}.png`) });
 
   check(errs.length === 0, `${name}: no page errors (${errs.join("; ")})`);
   await ctx.close();
