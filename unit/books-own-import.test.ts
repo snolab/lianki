@@ -170,6 +170,48 @@ describe("parsing an own book (no AI)", () => {
     expect(coverMatches("image/png", PNG)).toBe(true);
   });
 
+  test("each cover type is known by its first bytes", () => {
+    const pad = (head: number[]) => Uint8Array.from([...head, ...new Array(12).fill(0)]);
+    expect(coverMatches("image/jpeg", pad([0xff, 0xd8, 0xff, 0xe0]))).toBe(true);
+    expect(coverMatches("image/gif", pad([0x47, 0x49, 0x46, 0x38]))).toBe(true);
+    expect(
+      coverMatches("image/webp", pad([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])),
+    ).toBe(true);
+    expect(coverMatches("image/jpeg", PNG)).toBe(false);
+    expect(coverMatches("image/gif", PNG)).toBe(false);
+    expect(coverMatches("image/webp", PNG)).toBe(false);
+  });
+
+  test("no container, no package, or no cover named: no cover", async () => {
+    const mem = (files: Record<string, string>) => ({
+      list: () => Object.keys(files),
+      read: async (p: string) => files[p] ?? null,
+    });
+    expect(await epubCoverRef(mem({}))).toBeNull();
+    expect(await epubCoverRef(mem({ "META-INF/container.xml": CONTAINER }))).toBeNull();
+    const opf = (manifest: string) =>
+      mem({
+        "META-INF/container.xml": CONTAINER,
+        "OEBPS/content.opf": `<package><metadata/><manifest>${manifest}</manifest></package>`,
+        "OEBPS/images/cover.jpg": "x",
+      });
+    expect(
+      await epubCoverRef(opf(`<item id="a" href="a.xhtml" media-type="application/xhtml+xml"/>`)),
+    ).toBeNull();
+    // Found by its name when nothing marks it.
+    expect(
+      await epubCoverRef(opf(`<item id="img1" href="images/cover.jpg" media-type="image/jpeg"/>`)),
+    ).toEqual({ path: "OEBPS/images/cover.jpg", type: "image/jpeg" });
+    // An SVG cover is never taken.
+    expect(
+      await epubCoverRef(
+        opf(
+          `<item id="c" href="images/cover.svg" media-type="image/svg+xml" properties="cover-image"/>`,
+        ),
+      ),
+    ).toBeNull();
+  });
+
   test("text: one paragraph per line, the file name as title", async () => {
     const r = await parseOwnBook(
       enc("Erste Zeile des Textes.\n\n  Zweite Zeile, ganz kurz.\r\n"),
