@@ -64,10 +64,6 @@ coveragePathIgnorePatterns = [
   # A React hook over lib/page-dirty.ts's registry (held to 90% here); it is
   # only loaded because swipe-core.tsx calls it.
   "lib/use-leave-guard.ts",
-  # The box-seal switch: its markup and CSS are checked in
-  # unit/seal-switch.test.ts, but the stamp effect and its animationend
-  # handler only run in a browser (scripts/qa/qa-flags.mjs clicks it).
-  "app/components/SealSwitch.tsx",
   # The chat's + menu components (React glue: hooks, effects, DOM listeners).
   # Their logic is in attach.ts (held to 90% here); unit/chat-attach-tree.test.ts
   # renders the markup only, and debug-chat-bar-qa.mjs drives them in a browser.

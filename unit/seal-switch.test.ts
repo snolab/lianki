@@ -66,6 +66,44 @@ describe("markup", () => {
   });
 });
 
+describe("the stamp, in a DOM", () => {
+  test("plays once on turning on (not on mount, not on turning off), then clears", async () => {
+    const { Window } = await import("happy-dom");
+    const win = new Window();
+    const g = globalThis as Record<string, unknown>;
+    const saved = { window: g.window, document: g.document, act: g.IS_REACT_ACT_ENVIRONMENT };
+    Object.assign(g, { window: win, document: win.document, IS_REACT_ACT_ENVIRONMENT: true });
+    try {
+      const { act } = await import("react");
+      const { createRoot } = await import("react-dom/client");
+      const host = win.document.createElement("div");
+      win.document.body.appendChild(host);
+      const root = createRoot(host as never);
+      const seal = () => host.querySelector(".lk-seal")!;
+      const show = (checked: boolean) =>
+        act(() => root.render(createElement(SealSwitch, { checked, "aria-label": "x" })));
+      await show(true);
+      expect(seal().hasAttribute("data-stamping")).toBe(false);
+      await show(false);
+      expect(seal().hasAttribute("data-stamping")).toBe(false);
+      await show(true);
+      expect(seal().hasAttribute("data-stamping")).toBe(true);
+      await act(() => {
+        seal().dispatchEvent(new win.Event("animationend", { bubbles: true }) as never);
+      });
+      expect(seal().hasAttribute("data-stamping")).toBe(false);
+      await act(() => root.unmount());
+    } finally {
+      Object.assign(g, {
+        window: saved.window,
+        document: saved.document,
+        IS_REACT_ACT_ENVIRONMENT: saved.act,
+      });
+      await win.happyDOM.close();
+    }
+  });
+});
+
 describe("app/globals.css", () => {
   const css = readFileSync("app/globals.css", "utf8");
   const rootStart = css.indexOf(":root {\n  /* Seal red");
