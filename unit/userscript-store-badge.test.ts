@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "bun:test";
+import { USERSCRIPT_STRINGS } from "@/src/userscript-strings";
 
 /**
  * The review dialog's store indicator and due count.
@@ -27,7 +28,10 @@ function bodyEnd(start: number) {
 function lift<T>(decl: string, name: string): T {
   const start = BUILT.indexOf(decl);
   if (start === -1) throw new Error(`${decl} not found in the built userscript`);
-  return new Function(`${BUILT.slice(start, bodyEnd(start))}; return ${name};`)() as T;
+  // The panel's strings (US, userscript-strings.ts) are a global in the bundle: pass the English ones.
+  return new Function("US", `${BUILT.slice(start, bodyEnd(start))}; return ${name};`)(
+    USERSCRIPT_STRINGS.en,
+  ) as T;
 }
 
 type Badge = { icon: string; title: string };
@@ -107,7 +111,7 @@ describe("the header actually uses them", () => {
   it("renders the icon and the count together", () => {
     expect(BUILT).toMatch(/storeBadge\(cardStore\)/);
     expect(BUILT).toMatch(/dueCountFromIndex\(/);
-    expect(BUILT).toMatch(/due\} due/);
+    expect(BUILT).toMatch(/fillUs\(US\.due, \{ n: due \}\)/);
   });
 
   it("omits the count rather than guessing when the local store is unavailable", () => {
