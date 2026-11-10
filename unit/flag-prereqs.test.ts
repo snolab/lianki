@@ -14,7 +14,7 @@ import {
   type PrereqContext,
 } from "@/lib/flag-prereqs";
 import { FlagCard, MONEY_NOTE } from "@/app/(app)/dev/flags/FlagCard";
-import { mockIntlayer } from "./support/intlayer-mock";
+import { mockIntlayer } from "./intlayer-mock";
 
 mockIntlayer();
 

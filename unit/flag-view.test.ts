@@ -24,7 +24,7 @@ import {
   type FlagViewInput,
 } from "@/app/(app)/dev/flags/flag-view";
 import { cleanFlagViewPrefs } from "@/app/(app)/dev/flags/flag-view-store";
-import { mockIntlayer } from "./support/intlayer-mock";
+import { mockIntlayer } from "./intlayer-mock";
 
 mockIntlayer();
 

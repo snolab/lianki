@@ -8,7 +8,7 @@ import { renderToString } from "react-dom/server";
 import { contrast, oklchToHex } from "@/lib/mail-templates/color";
 import sealSwitch from "@/app/components/seal-switch.content";
 import { SealStamp, SealSwitch } from "@/app/components/SealSwitch";
-import { mockIntlayer } from "./support/intlayer-mock";
+import { mockIntlayer } from "./intlayer-mock";
 
 mockIntlayer();
 
