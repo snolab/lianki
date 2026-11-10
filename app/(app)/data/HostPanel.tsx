@@ -2,6 +2,8 @@
 
 import { useCallback, useState } from "react";
 import type { HostGroup } from "@/app/lib/notesAdmin";
+import { useIntlayer } from "next-intlayer";
+import { fill } from "@/lib/roadmap/labels";
 
 /**
  * Cards grouped by host, with a reachability check and a per-host delete.
@@ -23,69 +25,83 @@ type Props = {
   loading: boolean;
   /** Deletes every card on the host, from the cloud and the userscript alike. */
   onDeleteHost: (host: string) => Promise<void>;
+  /** Holds `dev`: the check's HTTP status and reason as a tooltip. */
+  dev?: boolean;
 };
 
-function VerdictBadge({ verdict }: { verdict: Verdict | "checking" | undefined }) {
+function VerdictBadge({
+  verdict,
+  dev,
+}: {
+  verdict: Verdict | "checking" | undefined;
+  dev: boolean;
+}) {
+  const h = useIntlayer("data-page").host;
   if (verdict === undefined) return null;
-  if (verdict === "checking") return <span className="text-xs text-gray-400">checking…</span>;
+  if (verdict === "checking") return <span className="text-xs text-gray-400">{h.checking}</span>;
+  // The raw status and reason: a developer's tooltip only.
+  const detail = dev
+    ? verdict.reachable
+      ? `HTTP ${verdict.status ?? "?"}`
+      : `No response (${verdict.reason})`
+    : undefined;
 
   if (!verdict.reachable) {
     return (
       <span
         className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300"
-        title={`No response (${verdict.reason})`}
+        title={detail}
       >
-        unreachable
+        {h.unreachable}
       </span>
     );
   }
-  // A status is worth showing even when reachable: a wall of 403s or 404s is
-  // usually a site that changed rather than one that died, and that is the
-  // user's call to make, not ours.
+  // An error answer is worth telling apart even when reachable: a wall of 403s
+  // or 404s is usually a site that changed rather than one that died, and that
+  // is the user's call to make, not ours.
   return (
-    <span className="text-xs text-gray-500 dark:text-gray-400">
-      {verdict.status ? `HTTP ${verdict.status}` : "reachable"}
+    <span className="text-xs text-gray-500 dark:text-gray-400" title={detail}>
+      {verdict.status && verdict.status >= 400 ? h.answersError : h.reachable}
     </span>
   );
 }
 
-export default function HostPanel({ hosts, loading, onDeleteHost }: Props) {
+export default function HostPanel({ hosts, loading, onDeleteHost, dev = false }: Props) {
+  const h = useIntlayer("data-page").host;
   const [verdicts, setVerdicts] = useState<Record<string, Verdict | "checking">>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const check = useCallback(async (group: HostGroup) => {
-    setVerdicts((v) => ({ ...v, [group.host]: "checking" }));
-    try {
-      const res = await fetch(`/api/fsrs/probe?url=${encodeURIComponent(group.sampleUrl)}`);
-      if (!res.ok) throw new Error(String(res.status));
-      const verdict = (await res.json()) as Verdict;
-      setVerdicts((v) => ({ ...v, [group.host]: verdict }));
-    } catch {
-      // A failed check says nothing about the host, so it must not read as one.
-      setVerdicts((v) => {
-        const { [group.host]: _dropped, ...rest } = v;
-        return rest;
-      });
-      setError("Could not check that host — try again.");
-    }
-  }, []);
+  const check = useCallback(
+    async (group: HostGroup) => {
+      setVerdicts((v) => ({ ...v, [group.host]: "checking" }));
+      try {
+        const res = await fetch(`/api/fsrs/probe?url=${encodeURIComponent(group.sampleUrl)}`);
+        if (!res.ok) throw new Error(String(res.status));
+        const verdict = (await res.json()) as Verdict;
+        setVerdicts((v) => ({ ...v, [group.host]: verdict }));
+      } catch {
+        // A failed check says nothing about the host, so it must not read as one.
+        setVerdicts((v) => {
+          const { [group.host]: _dropped, ...rest } = v;
+          return rest;
+        });
+        setError(h.checkFailed.value);
+      }
+    },
+    [h.checkFailed.value],
+  );
 
   async function remove(group: HostGroup) {
-    if (
-      !confirm(
-        `Delete all ${group.count} card${group.count === 1 ? "" : "s"} on ${group.host}?\n\n` +
-          `This removes them from the cloud, this browser, and the userscript's own store.`,
-      )
-    )
-      return;
+    if (!confirm(fill(h.confirmDelete.value, { host: group.host, n: group.count }))) return;
     setBusy(group.host);
     setError(null);
     try {
       await onDeleteHost(group.host);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      console.warn("[data] delete host failed:", err);
+      setError(h.deleteFailed.value);
     } finally {
       setBusy(null);
     }
@@ -98,19 +114,16 @@ export default function HostPanel({ hosts, loading, onDeleteHost }: Props) {
   return (
     <section aria-labelledby="hosts-heading">
       <h2 id="hosts-heading" className="text-xl font-semibold mb-1">
-        By site
+        {h.heading}
       </h2>
-      <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-        A site that has gone away leaves cards that cannot be reviewed or skipped. Check one here
-        and clear the whole deck of it at once.
-      </p>
+      <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">{h.intro}</p>
 
       {error && <p className="mb-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {loading && hosts.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{h.loading}</p>
       ) : hosts.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">No cards yet.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{h.empty}</p>
       ) : (
         <>
           <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
@@ -118,10 +131,10 @@ export default function HostPanel({ hosts, loading, onDeleteHost }: Props) {
               <li key={g.host} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
                 <span className="font-mono text-sm break-all">{g.host}</span>
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {g.count} card{g.count === 1 ? "" : "s"}
-                  {g.due > 0 && ` · ${g.due} due`}
+                  {fill(h.cards.value, { n: g.count })}
+                  {g.due > 0 && ` · ${fill(h.due.value, { n: g.due })}`}
                 </span>
-                <VerdictBadge verdict={verdicts[g.host]} />
+                <VerdictBadge verdict={verdicts[g.host]} dev={dev} />
                 <span className="ml-auto flex gap-2">
                   <button
                     type="button"
@@ -129,7 +142,7 @@ export default function HostPanel({ hosts, loading, onDeleteHost }: Props) {
                     disabled={verdicts[g.host] === "checking"}
                     className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
                   >
-                    Check
+                    {h.check}
                   </button>
                   <button
                     type="button"
@@ -137,7 +150,7 @@ export default function HostPanel({ hosts, loading, onDeleteHost }: Props) {
                     disabled={busy === g.host}
                     className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/30"
                   >
-                    {busy === g.host ? "Deleting…" : "Delete all"}
+                    {busy === g.host ? h.deleting : h.deleteAll}
                   </button>
                 </span>
               </li>
@@ -149,7 +162,7 @@ export default function HostPanel({ hosts, loading, onDeleteHost }: Props) {
               onClick={() => setExpanded(true)}
               className="mt-2 text-sm text-blue-600 hover:underline dark:text-blue-400"
             >
-              Show all {hosts.length} sites
+              {fill(h.showAll.value, { n: hosts.length })}
             </button>
           )}
         </>

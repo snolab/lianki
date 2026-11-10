@@ -4,6 +4,7 @@ import { useSignedIn } from "@/app/components/BoxApiBridge";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
+import { fill } from "@/lib/roadmap/labels";
 import {
   deleteLocalCards,
   readLocalStore,
@@ -39,7 +40,14 @@ function localToRow(card: LocalCard): NoteRow {
   };
 }
 
-export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn: boolean }) {
+export default function DataClient({
+  isLoggedIn: serverSignedIn,
+  dev = false,
+}: {
+  isLoggedIn: boolean;
+  /** Holds `dev` (lib/permissions.ts): the stores' and sites' diagnostics are shown. */
+  dev?: boolean;
+}) {
   // On a box, from lianki.com (BoxApiBridge); else the server's answer.
   const isLoggedIn = useSignedIn(serverSignedIn);
   const t = useIntlayer("data-page");
@@ -280,18 +288,18 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
           }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? `Push failed (${res.status})`);
+        if (!res.ok) throw new Error(`bulk-upsert ${res.status} ${data.error ?? ""}`);
         upserted += data.upserted ?? 0;
         conflicts += data.conflicts ?? 0;
       }
+      const pushed = fill(t.store.pushed.value, { n: upserted });
       setPushResult(
-        conflicts
-          ? `Pushed ${upserted}; ${conflicts} skipped (the cloud copy was newer).`
-          : `Pushed ${upserted}.`,
+        conflicts ? `${pushed} · ${fill(t.store.skipped.value, { n: conflicts })}` : pushed,
       );
       await refreshCloud();
     } catch (err) {
-      setPushResult(err instanceof Error ? err.message : "Push failed");
+      console.warn("[data] copy to account failed:", err);
+      setPushResult(t.errors.pushFailed.value);
     } finally {
       setPushing(false);
     }
@@ -300,8 +308,8 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
   async function deleteSelected() {
     const urls = [...selected];
     if (!urls.length) return;
-    if (!confirm(`Delete ${urls.length} card${urls.length === 1 ? "" : "s"} from ${store}?`))
-      return;
+    const where = store === "local" ? t.errors.storeLocal.value : t.errors.storeCloud.value;
+    if (!confirm(fill(t.errors.confirmDelete.value, { n: urls.length, store: where }))) return;
 
     setDeleting(true);
     try {
@@ -316,7 +324,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(data.error ?? `Delete failed (${res.status})`);
+          throw new Error(`bulk-delete ${res.status} ${data.error ?? ""}`);
         }
         setCloudRows((rows) => rows.filter((r) => !selected.has(r.url)));
         setCloudGone((g) => g + urls.length);
@@ -329,7 +337,8 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
       queuePurge(urls);
       setSelected(new Set());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      console.warn("[data] delete failed:", err);
+      setError(t.host.deleteFailed.value);
     } finally {
       setDeleting(false);
     }
@@ -370,7 +379,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
       });
       if (!del.ok) {
         const data = await del.json().catch(() => ({}));
-        throw new Error(data.error ?? `Delete failed (${del.status})`);
+        throw new Error(`bulk-delete ${del.status} ${data.error ?? ""}`);
       }
     }
     // The browser mirror and the userscript's GM storage are the other two
@@ -391,7 +400,8 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
       body: JSON.stringify({ title }),
     });
     if (!res.ok) {
-      setError(`Rename failed (${res.status})`);
+      console.warn("[data] rename failed:", res.status);
+      setError(t.errors.renameFailed.value);
       return;
     }
     setCloudRows((rows) => rows.map((r) => (r.url === url ? { ...r, title } : r)));
@@ -416,6 +426,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
         pushLabel={t.pushLabel.value}
         onPush={pushLocalToCloud}
         scriptHint={t.scriptHint.value}
+        dev={dev}
       />
 
       <CardTable
@@ -426,7 +437,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
         rows={activeRows}
         total={total}
         loading={store === "cloud" ? cloudList.loading : local === null}
-        error={error ?? (store === "cloud" && cloudList.error ? "Failed to load cards" : null)}
+        error={error ?? (store === "cloud" && cloudList.error ? t.errors.loadFailed.value : null)}
         hasMore={store === "cloud" && cloudList.hasMore}
         listError={store === "cloud" && cloudList.error}
         onReachEnd={cloudList.loadMore}
@@ -448,7 +459,9 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
         deleteSelectedLabel={t.deleteSelected.value}
       />
 
-      {isLoggedIn && <HostPanel hosts={hosts} loading={hostsLoading} onDeleteHost={deleteHost} />}
+      {isLoggedIn && (
+        <HostPanel hosts={hosts} loading={hostsLoading} onDeleteHost={deleteHost} dev={dev} />
+      )}
 
       <BackupSection
         heading={t.backupHeading.value}
@@ -472,7 +485,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
           queuePurge([], { all: true });
           await refreshLocal();
           setSelected(new Set());
-          return `Removed ${n} cards from this browser.`;
+          return fill(t.danger.wiped.value, { n });
         }}
         onDeleteAllCloud={async () => {
           const res = await fetch("/api/fsrs/bulk-delete", {
@@ -481,13 +494,13 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
             body: JSON.stringify({ all: true, confirm: "DELETE" }),
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error ?? `Delete failed (${res.status})`);
+          if (!res.ok) throw new Error(`bulk-delete ${res.status} ${data.error ?? ""}`);
           setCloudRows([]);
           setCloudGone(cloudList.total ?? 0);
           setSelected(new Set());
           queuePurge([], { all: true });
           await refreshCloud();
-          return `Deleted ${data.deleted} cards from the cloud.`;
+          return fill(t.danger.deleted.value, { n: data.deleted });
         }}
       />
     </div>
