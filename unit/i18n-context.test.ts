@@ -20,6 +20,7 @@ import wordsImport from "@/app/(app)/words/import/page.content";
 import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import wordsListPreview from "@/app/(app)/words/list-preview.content";
+import wordsStatus from "@/app/(app)/words/words-status.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import creditsUsage from "@/app/(app)/membership/credits/credits-usage.content";
 import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
@@ -86,6 +87,9 @@ import devConfig from "@/app/(app)/dev/config/config-admin.content";
 import hotkeyHelp from "@/app/components/hotkey-help.content";
 import languageSwitcher from "@/app/components/language-switcher.content";
 import versionNotice from "@/app/components/version-notice.content";
+import statsPage from "@/app/(app)/stats/page.content";
+import membershipPage from "@/app/(app)/membership/membership-page.content";
+import sitesPage from "@/app/(app)/sites/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -134,6 +138,7 @@ describe.each([
   ["words-phrases", wordsPhrases],
   ["words-voice-mode", wordsVoiceMode],
   ["words-list-preview", wordsListPreview],
+  ["words-status", wordsStatus],
   ["leave-guard", leaveGuard],
   ["dev-permissions", devPermissions],
   ["dev-templates", devTemplates],
@@ -200,6 +205,9 @@ describe.each([
   ["hotkey-help", hotkeyHelp],
   ["language-switcher", languageSwitcher],
   ["version-notice", versionNotice],
+  ["stats-page", statsPage],
+  ["membership-page", membershipPage],
+  ["home-page", sitesPage],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };
