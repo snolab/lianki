@@ -40,6 +40,8 @@ export default async function WordsPage() {
       pinch={flags["words.pinch-card-height"]}
       // The first-visit walkthrough and its "?" by the heading (lib/words/onboarding.ts).
       onboarding={flags["words.onboarding"]}
+      // Debug mode's developer extras (whisper mode, the swipe's feel and tuner): `dev` only.
+      dev={isDev(user?.email)}
     />
   );
 }
