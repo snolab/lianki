@@ -119,6 +119,7 @@ target that is not built yet.
 | voice cues: send, speech start/end  | local `lk:voice-cue-send`, `lk:voice-cue-speech` → account     | done: chat ⋯ menu, on by default (voice-mode.md, "Cues")                                                 |
 | compact mode (last message only)    | local `lk:pref:chat-view` (`chatPrefs`, off by default)        | done: per device, never synced                                                                           |
 | Gantt time axis: log or linear      | local `lk:pref:gantt` (`ganttPrefs`, log by default)           | done: per device, never synced (owner, 2026-11-09 15:27 JST)                                             |
+| Gantt categories open (▸/▾)         | session `lk:ui:gantt-groups` (`ganttGroupsUi`, all folded)     | done: this tab; the Gantt and the task list share it (dev-debug-widget.md, "Categories")                 |
 | full screen                         | local `lk:pref:chat-view` `full` (`chatPrefs`, off by default) | done: per device, never synced; the button, Escape or Back leave it (dev-debug-widget.md, "Full screen") |
 | tucked into the edge, which edge    | local `lk:pref:chat-fold` (`chatFold`, fold.ts)                | done: per device, never synced                                                                           |
 

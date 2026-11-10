@@ -58,6 +58,7 @@ describe("parked tasks: waiting for the owner, blocked (owner, 2026-11-10)", () 
         ],
         now: NOW,
         strings: CHAT_STRINGS_EN,
+        groups: [],
       }),
     ).replace(/<!-- -->/g, "");
     expect(html).toContain('data-state="parked"');

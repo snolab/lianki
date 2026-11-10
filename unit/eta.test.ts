@@ -863,12 +863,13 @@ describe("the bar and the list, rendered", () => {
     expect(running + glass).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i); // oklch only
   });
 
-  it("the list: one row per task with its state; nothing without tasks", () => {
+  it("the list: with no categories, one row per task with its state; nothing without tasks", () => {
     const out = html(
       createElement(EtaList, {
         tasks: [...two, task({ id: "/c", title: "C", done: true, doneAt: 12 * MIN - 1000 })],
         now: 12 * MIN,
         strings: CHAT_STRINGS_EN,
+        groups: [],
       }),
     );
     expect(out.match(/data-testid="debug-chat-eta-row"/g)?.length).toBe(3);
@@ -891,6 +892,7 @@ describe("the bar and the list, rendered", () => {
         tasks: [task({ id: "/d", title: "Box ETA: on the box", at: 30 * MIN })],
         now: MIN,
         strings: CHAT_STRINGS_EN,
+        groups: [],
       }),
     );
     expect(row).toMatch(/<span class="font-semibold">Box ETA<\/span>/);

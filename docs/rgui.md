@@ -19,7 +19,7 @@ our module, added in this repo). It is pure functions, no DOM:
 | ----------- | ------------------------------------------------------------------------------------- | -------------------------------------------- |
 | `scale.ts`  | linear axis (grows on demand, trimmed) and symmetric-log axis around Now; zoom, to-Now | unit lengths: `lane/temporal.ts FOLD_PERIOD_MS` |
 | `ticks.ts`  | tick choice: finest readable step; log ticks whose labels never overlap                | `core/grid.ts readableStep` (radix ladder past the last rung) |
-| `layout.ts` | task → bar (`ganttBar`), row order, range; LOD `layoutGantt`; `windowRows`            | `core/rule.ts` (clusterGapPx), `lane/treefold.ts chunkRows` (cluster label) |
+| `layout.ts` | task → bar (`ganttBar`), row order, range; LOD `layoutGantt`; `windowRows`; `packLanes` (overlapping bars → lanes in one summary row) | `core/rule.ts` (clusterGapPx), `lane/treefold.ts chunkRows` (cluster label) |
 
 `layoutGantt` is rgui's LOD on a Gantt: a run of consecutive rows whose bars
 are too thin to read (under `READABLE_BAR_PX`, e.g. done tasks weeks away on
@@ -38,10 +38,11 @@ Lianki's full-screen Gantt (`packages/debug-chat/src/GanttFull.tsx`,
 gantt module: `gantt-view.ts` re-exports its scales, ticks and bars unchanged
 and keeps only Lianki's own colours and pinch/wheel helpers. `layoutGantt`'s
 clusters and `windowRows` are **not wired in yet**: GanttFull draws one DOM
-row per task. Wiring them needs a cluster row in GanttFull (sticky label,
-union bar, a tap that unfolds it) and new QA checks for it in
-`scripts/dev/debug-chat-gantt-qa.mjs` (today's check "every name in view"
-assumes one row per task).
+row per category (folded) or task. The categories (`gantt-groups.ts`,
+dev-debug-widget.md, "Categories") use `packLanes` to stack a folded
+category's overlapping bars in lanes. Wiring the LOD clusters needs a cluster
+row in GanttFull (sticky label, union bar, a tap that unfolds it) and new QA
+checks for it in `scripts/dev/debug-chat-gantt-qa.mjs`.
 
 Upstream writes relative imports TypeScript-ESM style (`"./rule.js"` for
 `rule.ts`). bun and tsc map that; Turbopack does not ("Can't resolve

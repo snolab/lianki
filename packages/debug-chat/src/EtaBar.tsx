@@ -1,8 +1,21 @@
 "use client";
 
+import { useUi } from "@lianki/ui-state";
+import { Disclosure } from "./icons";
 import type { ReactNode } from "react";
 import {
+  GANTT_GROUPS,
+  type GanttGroupDef,
+  type GanttLine,
+  ganttLines,
+  groupName,
+  laneBox,
+  toggleOpen,
+} from "./gantt-groups";
+import { ganttGroupsUi } from "./ui-store";
+import {
   type EtaTask,
+  type GanttWindow,
   compactTime,
   etaLabel,
   etaSummary,
@@ -193,7 +206,21 @@ type EtaText = Pick<
   | "etaList"
   | "etaWaitingYou"
   | "etaReminder"
+  | "etaGroupToggle"
+  | "etaGroupChat"
+  | "etaGroupGantt"
+  | "etaGroupWords"
+  | "etaGroupUi"
+  | "etaGroupImport"
+  | "etaGroupAccount"
+  | "etaGroupShip"
+  | "etaGroupArch"
 >;
+
+/** A category's child row is indented past the ▸/▾. */
+const ETA_CHILD_INDENT = "2.25rem";
+/** The thinnest lane on a folded category row in the list (px); the row grows past it. */
+const ETA_LANE_MIN_PX = 3;
 
 /** One task's state: done, or its time left (compactTime, negative past due). */
 export function taskState(t: EtaTask, now: number, s: EtaText) {
@@ -302,17 +329,30 @@ export function EtaList({
   now,
   strings,
   onExpand,
+  groups = GANTT_GROUPS,
+  open: openProp,
 }: {
   tasks: readonly EtaTask[];
   now: number;
   strings: EtaText;
   /** Open the full-screen Gantt (GanttFull.tsx). */
   onExpand?: () => void;
+  /**
+   * The categories (gantt-groups.ts), the same as the full-screen Gantt's:
+   * each is one parent row, its tasks' bars on it, ▸/▾ to show them as rows.
+   * An empty table lists every task as its own row.
+   */
+  groups?: readonly GanttGroupDef[];
+  /** The open categories; by default this tab's (ui-store.ts ganttGroupsUi). */
+  open?: readonly string[];
 }) {
+  const stored = useUi(ganttGroupsUi(), (s) => s.open);
+  const open = openProp ?? stored;
   const shown = ganttPlan(shownTasks(tasks, now), now);
   const win = ganttWindow(shown, now);
   if (!shown.length || !win) return null;
   const nowAt = ganttRow(shown[0]!, win, now).now;
+  const lines = ganttLines(shown, groups, open, (g) => groupName(g, strings), now);
   return (
     <section data-testid="debug-chat-eta-list" className="mb-1.5 min-w-0 fs-10">
       <h3 className="m-0 mb-0.5 flex items-center gap-1 fs-10 font-semibold opacity-70">
@@ -334,91 +374,13 @@ export function EtaList({
         )}
       </h3>
       <ul className="m-0 flex list-none flex-col gap-px p-0">
-        {shown.map((t) => {
-          const g = ganttRow(t, win, now);
-          const reached = !t.done && t.at <= now;
-          const parked = isParked(t);
-          const mark = parkMark(t);
-          const state = t.done ? "done" : parked ? "parked" : reached ? "reached" : "running";
-          return (
-            <li
-              key={t.id}
-              data-testid="debug-chat-eta-row"
-              data-id={t.id}
-              data-state={state}
-              className="relative isolate flex min-w-0 items-center gap-1.5 overflow-hidden rounded px-1.5 py-px"
-              style={{ background: both("track"), color: both("text") }}
-            >
-              <span
-                aria-hidden
-                data-testid="debug-chat-eta-span"
-                data-tone={toneOf(!!t.done, false)}
-                className="absolute inset-y-0 -z-10 overflow-hidden transition-[width,inset-inline-start] duration-700 motion-reduce:transition-none"
-                style={{
-                  insetInlineStart: `${g.left}%`,
-                  width: `${g.plan}%`,
-                  minWidth: 3,
-                  background: both(t.done ? "done" : "bar"),
-                  // Parked on a person: hollow and hatched, no fill (gantt-view.ts parkedBar).
-                  ...(parked ? parkedBar(both("bar"), both("muted")) : {}),
-                }}
-              >
-                {!t.done && !parked && g.fill > 0 && (
-                  <span
-                    data-testid="debug-chat-eta-fill"
-                    className="absolute inset-y-0 start-0"
-                    style={{ width: `${g.fill}%`, background: both("fill") }}
-                  />
-                )}
-              </span>
-              {g.over > 0 && !parked && (
-                <span
-                  aria-hidden
-                  data-testid="debug-chat-eta-over"
-                  className="absolute inset-y-0 -z-10"
-                  style={{
-                    insetInlineStart: `${g.left + g.plan}%`,
-                    width: `${g.over}%`,
-                    background: both(t.done ? "done" : "past"),
-                  }}
-                />
-              )}
-              <span
-                aria-hidden
-                data-testid="debug-chat-eta-now"
-                className="absolute inset-y-0 -z-10 w-0.5 -translate-x-1/2 rtl:translate-x-1/2"
-                style={{ insetInlineStart: `${g.now}%`, background: both("late") }}
-              />
-              {mark && (
-                <span
-                  role="img"
-                  aria-label={strings.etaWaitingYou}
-                  title={strings.etaWaitingYou}
-                  data-testid="debug-chat-eta-mark"
-                  className="shrink-0 font-bold"
-                  style={{ color: both("late") }}
-                >
-                  {mark}
-                </span>
-              )}
-              <TitleParts title={t.title} />
-              {t.done ? (
-                <span className="shrink-0">{strings.etaDone}</span>
-              ) : parked ? (
-                <span
-                  data-testid="debug-chat-eta-time"
-                  data-parked={t.parked}
-                  className="shrink-0 tabular-nums"
-                  style={{ color: both("muted") }}
-                >
-                  {strings.etaReminder.replace("{t}", compactTime(t.at - now))}
-                </span>
-              ) : (
-                <TimeLabel ms={t.at - now} />
-              )}
-            </li>
-          );
-        })}
+        {lines.map((l) =>
+          l.kind === "task" ? (
+            <EtaRow key={l.key} t={l.task} win={win} now={now} strings={strings} child={!!l.group} />
+          ) : (
+            <EtaGroupRow key={l.key} line={l} win={win} now={now} strings={strings} />
+          ),
+        )}
       </ul>
       {/* The axis: a red "Now" under the red line (on the track, so its contrast is known). */}
       <div
@@ -443,5 +405,230 @@ export function EtaList({
         </span>
       </div>
     </section>
+  );
+}
+
+/** A task's bar on the list's shared axis, in a box of its row (top and height in %: a lane, or all of it). */
+function EtaSpan({
+  t,
+  win,
+  now,
+  lane,
+}: {
+  t: EtaTask;
+  win: GanttWindow;
+  now: number;
+  lane?: { top: number; h: number };
+}) {
+  const g = ganttRow(t, win, now);
+  const parked = isParked(t);
+  const box = lane
+    ? { top: `${lane.top}%`, height: `${lane.h}%` }
+    : { top: 0, bottom: 0 };
+  return (
+    <>
+      <span
+        aria-hidden
+        data-testid={lane ? "debug-chat-eta-slice" : "debug-chat-eta-span"}
+        data-id={lane ? t.id : undefined}
+        data-tone={toneOf(!!t.done, false)}
+        className="absolute -z-10 overflow-hidden transition-[width,inset-inline-start] duration-700 motion-reduce:transition-none"
+        style={{
+          ...box,
+          insetInlineStart: `${g.left}%`,
+          width: `${g.plan}%`,
+          minWidth: 3,
+          background: both(t.done ? "done" : "bar"),
+          ...(t.queued ? { outline: `1px dashed ${both("muted")}`, outlineOffset: -1 } : {}),
+          // Parked on a person: hollow and hatched, no fill (gantt-view.ts parkedBar).
+          ...(parked ? parkedBar(both("bar"), both("muted")) : {}),
+        }}
+      >
+        {!t.done && !parked && g.fill > 0 && (
+          <span
+            data-testid="debug-chat-eta-fill"
+            className="absolute inset-y-0 start-0"
+            style={{ width: `${g.fill}%`, background: both("fill") }}
+          />
+        )}
+      </span>
+      {g.over > 0 && !parked && (
+        <span
+          aria-hidden
+          data-testid="debug-chat-eta-over"
+          className="absolute -z-10"
+          style={{
+            ...box,
+            insetInlineStart: `${g.left + g.plan}%`,
+            width: `${g.over}%`,
+            background: both(t.done ? "done" : "past"),
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** The red Now line on a row (the list's shared axis). */
+function NowLine({ at }: { at: number }) {
+  return (
+    <span
+      aria-hidden
+      data-testid="debug-chat-eta-now"
+      className="absolute inset-y-0 -z-10 w-0.5 -translate-x-1/2 rtl:translate-x-1/2"
+      style={{ insetInlineStart: `${at}%`, background: both("late") }}
+    />
+  );
+}
+
+/** One task's row: its bar, the Now line, the red mark, its title and time. A category's child is indented. */
+function EtaRow({
+  t,
+  win,
+  now,
+  strings,
+  child,
+}: {
+  t: EtaTask;
+  win: GanttWindow;
+  now: number;
+  strings: EtaText;
+  child?: boolean;
+}) {
+  const g = ganttRow(t, win, now);
+  const reached = !t.done && t.at <= now;
+  const parked = isParked(t);
+  const mark = parkMark(t);
+  const state = t.done ? "done" : parked ? "parked" : reached ? "reached" : "running";
+  return (
+    <li
+      data-testid="debug-chat-eta-row"
+      data-id={t.id}
+      data-state={state}
+      className="relative isolate flex min-w-0 items-center gap-1.5 overflow-hidden rounded px-1.5 py-px"
+      style={{
+        background: both("track"),
+        color: both("text"),
+        ...(child ? { paddingInlineStart: ETA_CHILD_INDENT } : {}),
+      }}
+    >
+      <EtaSpan t={t} win={win} now={now} />
+      <NowLine at={g.now} />
+      {mark && (
+        <span
+          role="img"
+          aria-label={strings.etaWaitingYou}
+          title={strings.etaWaitingYou}
+          data-testid="debug-chat-eta-mark"
+          className="shrink-0 font-bold"
+          style={{ color: both("late") }}
+        >
+          {mark}
+        </span>
+      )}
+      <TitleParts title={t.title} />
+      {t.done ? (
+        <span className="shrink-0">{strings.etaDone}</span>
+      ) : parked ? (
+        <span
+          data-testid="debug-chat-eta-time"
+          data-parked={t.parked}
+          className="shrink-0 tabular-nums"
+          style={{ color: both("muted") }}
+        >
+          {strings.etaReminder.replace("{t}", compactTime(t.at - now))}
+        </span>
+      ) : (
+        <TimeLabel ms={t.at - now} />
+      )}
+    </li>
+  );
+}
+
+/**
+ * A category's row (gantt-groups.ts): folded, every task's bar on its one row,
+ * overlapping ones in thin lanes; open, its roll-up bar, the tasks below as
+ * their own rows. ▸/▾ at the start toggles (session UI state, shared with the
+ * full-screen Gantt).
+ */
+function EtaGroupRow({
+  line,
+  win,
+  now,
+  strings,
+}: {
+  line: Extract<GanttLine, { kind: "group" }>;
+  win: GanttWindow;
+  now: number;
+  strings: EtaText;
+}) {
+  const p = line.task;
+  const g = ganttRow(p, win, now);
+  const label = strings.etaGroupToggle.replace("{group}", p.title);
+  const openAt = line.children.reduce((m, x) => (x.done ? m : Math.max(m, x.at)), -Infinity);
+  return (
+    <li
+      data-testid="debug-chat-eta-group"
+      data-id={line.def.id}
+      data-open={line.open}
+      data-lanes={line.lanes}
+      className="relative isolate flex min-w-0 items-center gap-1 overflow-hidden rounded py-px pe-1.5"
+      style={{
+        background: both("track"),
+        color: both("text"),
+        minHeight: line.open ? undefined : line.lanes * ETA_LANE_MIN_PX,
+      }}
+    >
+      {line.open ? (
+        <EtaSpan t={p} win={win} now={now} />
+      ) : (
+        line.children.map((x, i) => {
+          const b = laneBox(line.lane[i]!, line.lanes, 100);
+          return <EtaSpan key={x.id} t={x} win={win} now={now} lane={b} />;
+        })
+      )}
+      <NowLine at={g.now} />
+      <button
+        type="button"
+        data-testid="debug-chat-eta-toggle"
+        aria-expanded={line.open}
+        aria-label={label}
+        title={label}
+        onMouseDown={keepFocus}
+        onClick={() => ganttGroupsUi().setState((s) => ({ open: toggleOpen(s.open, line.def.id) }))}
+        className="tap-40 shrink-0 border-0 bg-transparent px-1 py-0 leading-none"
+        style={{ color: both("text"), minWidth: 24 }}
+      >
+        <Disclosure open={line.open} size={10} />
+      </button>
+      {line.mark && (
+        <span
+          role="img"
+          aria-label={strings.etaWaitingYou}
+          title={strings.etaWaitingYou}
+          data-testid="debug-chat-eta-mark"
+          className="shrink-0 font-bold"
+          style={{ color: both("late") }}
+        >
+          {line.mark}
+        </span>
+      )}
+      <span title={p.title} className="min-w-0 flex-1 truncate">
+        <span className="font-semibold">{p.title}</span>
+        <span style={{ color: both("muted") }}> ×{line.children.length}</span>
+      </span>
+      {p.done ? (
+        <span className="shrink-0">{strings.etaDone}</span>
+      ) : p.parked ? (
+        <span className="shrink-0 tabular-nums" style={{ color: both("muted") }}>
+          {strings.etaReminder.replace("{t}", compactTime(openAt - now))}
+        </span>
+      ) : (
+        <TimeLabel ms={openAt - now} />
+      )}
+      <span className="shrink-0 tabular-nums" style={{ color: both("muted") }}>
+        {p.pct ?? 0}%
+      </span>
+    </li>
   );
 }

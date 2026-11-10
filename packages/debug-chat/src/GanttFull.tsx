@@ -1,8 +1,10 @@
 "use client";
 
 import { useUi } from "@lianki/ui-state";
+import { Disclosure } from "./icons";
 import {
   type CSSProperties,
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -57,7 +59,18 @@ import {
   scaleZoom,
   wheelFactor,
 } from "./gantt-view";
-import { ganttPrefs } from "./ui-store";
+import {
+  GANTT_GROUPS,
+  type GanttGroupDef,
+  type GanttLine,
+  ganttLines,
+  groupName,
+  groupRowH,
+  laneBox,
+  lineOf,
+  toggleOpen,
+} from "./gantt-groups";
+import { ganttGroupsUi, ganttPrefs } from "./ui-store";
 import type { ChatStrings } from "./wire";
 
 /**
@@ -109,6 +122,15 @@ type Strings = Pick<
   | "etaTickSet"
   | "etaTickStatus"
   | "etaTickClose"
+  | "etaGroupToggle"
+  | "etaGroupChat"
+  | "etaGroupGantt"
+  | "etaGroupWords"
+  | "etaGroupUi"
+  | "etaGroupImport"
+  | "etaGroupAccount"
+  | "etaGroupShip"
+  | "etaGroupArch"
 >;
 
 /** A tick's visible line (px): a change or a status change, a confirm (shorter), and its tap area. */
@@ -122,18 +144,270 @@ const charPxOf = (el: HTMLElement) => {
   return Number.isFinite(fs) && fs > 0 ? (fs * 2) / 3 : CHAR_PX;
 };
 
+/** A child row's name is indented past its parent's ▸/▾. */
+const CHILD_INDENT = "2.75rem";
+/** The ▸/▾ button's width (its height takes the row; .tap-40 makes it 40 px tall to the touch). */
+const TOGGLE_W = 28;
+/** A slice's tap area is at least this wide (px), however short its bar. */
+const SLICE_MIN_HIT = 12;
+/** A tapped slice's row stays marked this long (ms). */
+const PICKED_MS = 2_000;
+
+/** A line's height: a folded parent grows with its lanes (gantt-groups.ts groupRowH). */
+const lineH = (l: GanttLine) =>
+  l.kind === "group" && !l.open ? groupRowH(l.lanes, ROW_H) : ROW_H;
+
+/** A row's state, for its styles and the QA. */
+const stateOf = (t: EtaTask, now: number) =>
+  t.done
+    ? "done"
+    : isParked(t)
+      ? "parked"
+      : t.queued
+        ? "queued"
+        : t.at <= now
+          ? "reached"
+          : "running";
+
+/** A task's name in its row: the red mark when it waits for the owner, the name bold, the description muted. */
+function TaskName({ t, strings }: { t: EtaTask; strings: Pick<Strings, "etaWaitingYou"> }) {
+  const mark = parkMark(t);
+  const { name, desc } = splitTitle(t.title);
+  return (
+    <span dir="auto" className="min-w-0 truncate">
+      {mark && (
+        // Waits for the owner: a red "!" ("?" for a decision) before the name.
+        <span
+          role="img"
+          aria-label={strings.etaWaitingYou}
+          title={strings.etaWaitingYou}
+          data-testid="debug-chat-gantt-mark"
+          className="me-1 font-bold"
+          style={{ color: c("late") }}
+        >
+          {mark}
+        </span>
+      )}
+      <span className="font-semibold">{name}</span>
+      {desc && <span style={{ color: c("muted") }}> {desc}</span>}
+    </span>
+  );
+}
+
+/** A task's time: its reminder when parked, else the time left (red, negative, past due), or done. */
+function TaskTime({
+  t,
+  now,
+  strings,
+}: {
+  t: EtaTask;
+  now: number;
+  strings: Pick<Strings, "etaWaitingYou" | "etaReminder" | "etaDone">;
+}) {
+  const left = t.at - now;
+  if (isParked(t)) {
+    // Parked: its time is when the reminder goes off, never work remaining.
+    const reminder = strings.etaReminder.replace("{t}", compactTime(left));
+    return (
+      <span
+        data-testid="debug-chat-gantt-time"
+        data-parked={t.parked}
+        className="shrink-0 tabular-nums"
+        style={{ color: c("muted") }}
+      >
+        {parkMark(t) ? `${strings.etaWaitingYou} · ${reminder}` : reminder}
+      </span>
+    );
+  }
+  const late = !t.done && isLate(left);
+  return (
+    <span
+      data-testid="debug-chat-gantt-time"
+      data-late={late || undefined}
+      className="shrink-0 tabular-nums"
+      style={late ? { color: c("late"), fontWeight: 600 } : undefined}
+    >
+      {t.done ? strings.etaDone : etaLabel(t, now)}
+    </span>
+  );
+}
+
+/**
+ * One task's bar in a box of its row (`top`, `h` px): the whole row (a task's
+ * own row, an open parent's roll-up), or one lane of a folded parent
+ * ("slice": thinner underline, no percent or arrow, no ghost). The ghost of
+ * the original plan, the P5 → P95 tail, the bar (queued dashed, parked
+ * hollow), the progress underline tinted by its pace, the overrun.
+ */
+function barMarks(
+  t: EtaTask,
+  axis: GanttAxis,
+  now: number,
+  nowX: number,
+  top: number,
+  h: number,
+  mode: "row" | "slice",
+) {
+  const b = ganttBar(t, axis, now);
+  const parked = isParked(t);
+  // A range's tail (P5 → P95) on a running bar; queued, parked and done draw whole.
+  const tail = !t.done && !t.queued && !parked ? b.w - b.solid : 0;
+  const plan = mode === "row" && t.plan ? ganttSpan(t.plan.start, t.plan.at, axis, now) : null;
+  const ghost = plan && ghostShows(plan, b) ? plan : null;
+  const big = h >= ROW_H;
+  const gap = big ? UNDERLINE_GAP : Math.max(1, Math.round(h / 4));
+  const ulH = big ? UNDERLINE_H : Math.max(1, gap - 1);
+  const pad = big ? 0 : 0.5;
+  const barBox = { top: top + pad, height: Math.max(1, h - gap - pad) };
+  const testid = (s: string) => `debug-chat-gantt-${mode === "slice" ? `slice-${s}` : s}`;
+  return (
+    <>
+      {ghost && (
+        // The original plan (its first start and estimate): very faint, behind.
+        <span
+          aria-hidden
+          data-testid="debug-chat-gantt-ghost"
+          className="absolute rounded-sm"
+          style={{ ...barBox, left: ghost.x, width: Math.max(3, ghost.w), background: c("ghost") }}
+        />
+      )}
+      {tail > 0 && (
+        // A range: from the P5 the bar fades out to the P95 (hatched under reduced motion).
+        <span
+          aria-hidden
+          data-testid={testid("tail")}
+          {...{ [TAIL_ATTR]: true }}
+          className="absolute rounded-e-sm"
+          style={
+            {
+              ...barBox,
+              left: b.x + b.solid,
+              width: tail,
+              [TAIL_VAR]: c("bar"),
+            } as CSSProperties
+          }
+        />
+      )}
+      <span
+        aria-hidden
+        data-testid={testid("bar")}
+        className={`absolute overflow-hidden ${tail > 0 ? "rounded-s-sm" : "rounded-sm"}`}
+        style={{
+          ...barBox,
+          left: b.x,
+          width: Math.max(3, tail > 0 ? b.solid : b.w),
+          background: c(t.done ? "done" : t.queued ? "queued" : "bar"),
+          ...(t.queued ? { outline: `1px dashed ${c("muted")}`, outlineOffset: -1 } : {}),
+          ...(parked ? parkedBar(c("bar"), c("muted")) : {}),
+        }}
+      />
+      {!parked &&
+        !t.queued &&
+        b.fill > 0 &&
+        (() => {
+          // The reported progress: an underline beneath the planned span,
+          // tinted by its end against Now; live (pulsing, an arrow) while it runs.
+          const live = !t.done;
+          const end = b.x + b.fill;
+          const pace = live ? paceOf(end, nowX) : "on";
+          const ink = paceColor(pace);
+          const liveAttr = live ? { [LIVE_ATTR]: true } : {};
+          return (
+            <>
+              <span
+                aria-hidden
+                data-testid={testid("progress")}
+                data-pace={pace}
+                data-gantt-line
+                {...liveAttr}
+                className="absolute rounded-full"
+                style={{
+                  left: b.x,
+                  width: Math.max(2, b.fill),
+                  top: top + h - ulH,
+                  height: ulH,
+                  background: ink,
+                }}
+              />
+              {live && mode === "row" && (
+                <span
+                  aria-hidden
+                  data-testid="debug-chat-gantt-frontier"
+                  {...liveAttr}
+                  className="absolute leading-none"
+                  style={{ left: end - 1, top: top + h - 6, fontSize: 8, color: ink }}
+                >
+                  →
+                </span>
+              )}
+              {mode === "row" && (
+                <span
+                  data-testid="debug-chat-gantt-pct"
+                  className="absolute tabular-nums leading-none"
+                  style={{
+                    left: end + (live ? 9 : 2),
+                    top: top + h - 9,
+                    fontSize: 9,
+                    color: c("muted"),
+                  }}
+                >
+                  {Math.round(t.done ? 100 : (t.pct ?? 0))}%
+                </span>
+              )}
+            </>
+          );
+        })()}
+      {b.over > 0 && !parked && (
+        <span
+          aria-hidden
+          data-testid={testid("over")}
+          className="absolute rounded-e-sm"
+          style={{
+            ...barBox,
+            left: b.x + b.w,
+            width: b.over,
+            background: c(t.done ? "done" : "past"),
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 export function GanttFull({
   tasks,
   now,
   strings,
   onClose,
+  groups = GANTT_GROUPS,
 }: {
   tasks: readonly EtaTask[];
   now: number;
   strings: Strings;
   onClose: () => void;
+  /** The categories (gantt-groups.ts): the default table, or a config-store value. */
+  groups?: readonly GanttGroupDef[];
 }) {
   const rows = useMemo(() => ganttRowsByEnd(ganttPlan(tasks, now)), [tasks, now]);
+  /** The categories this tab has open (session UI state); folded is the default. */
+  const groupsOpen = useUi(ganttGroupsUi(), (s) => s.open);
+  const lines = useMemo(
+    () => ganttLines(rows, groups, groupsOpen, (g) => groupName(g, strings), now),
+    [rows, groups, groupsOpen, strings, now],
+  );
+  /** Each line's height and top (px from the first line): a folded parent with many lanes is taller. */
+  const geo = useMemo(() => {
+    const hs = lines.map(lineH);
+    const tops: number[] = [];
+    let y = 0;
+    for (const h of hs) {
+      tops.push(y);
+      y += h + ROW_GAP;
+    }
+    return { hs, tops, total: y };
+  }, [lines]);
+  const linesRef = useRef({ lines, geo });
+  linesRef.current = { lines, geo };
   const scale = useUi(ganttPrefs(), (s) => s.scale);
   /** This device's zoom overrides (ui-store.ts ganttPrefs), else the defaults. */
   const fitP = useUi(ganttPrefs(), (s) => s.fitPercentile);
@@ -191,6 +465,9 @@ export function GanttFull({
     const rs = rowsRef.current;
     const t = nowRef.current;
     const focus = focusRow(rs, t);
+    // The line that holds it: its own (an open category), else its folded parent.
+    const { lines: ls, geo: g } = linesRef.current;
+    const fl = focus >= 0 ? lineOf(ls, rs[focus]!.id) : -1;
     const { p, w: share } = fitRef.current;
     const first = homeView(
       scaleRef.current,
@@ -201,12 +478,13 @@ export function GanttFull({
       share,
     );
     pendingTop.current = centreRowTop({
-      i: focus,
+      i: fl,
       viewH: el.clientHeight,
       axisH: AXIS_H,
       headSpace: Math.round(GANTT_END_SPACE * el.clientHeight),
-      rowH: ROW_H,
+      rowH: g.hs[fl] ?? ROW_H,
       rowGap: ROW_GAP,
+      before: g.tops[fl],
     });
     return first;
   }, []);
@@ -423,12 +701,47 @@ export function GanttFull({
   };
   const setScale = (s: GanttScale) => ganttPrefs().setState({ scale: s });
 
+  /** ▸/▾: a category's children as their own rows, or folded onto its one row. */
+  const toggle = (id: string) =>
+    ganttGroupsUi().setState((s) => ({ open: toggleOpen(s.open, id) }));
+  /** The child a tapped slice opened: its row is centred and marked a moment. */
+  const [picked, setPicked] = useState<string | null>(null);
+  const revealRef = useRef<string | null>(null);
+  const openChild = (group: string, id: string) => {
+    const ui = ganttGroupsUi();
+    if (!ui.getState().open.includes(group)) ui.setState((s) => ({ open: [...s.open, group] }));
+    revealRef.current = id;
+    setPicked(id);
+  };
+  useLayoutEffect(() => {
+    const id = revealRef.current;
+    const el = scroller.current;
+    if (!id || !el) return;
+    const i = lineOf(lines, id);
+    if (i < 0 || lines[i]!.kind !== "task") return;
+    revealRef.current = null;
+    el.scrollTop = centreRowTop({
+      i,
+      viewH: el.clientHeight,
+      axisH: AXIS_H,
+      headSpace: Math.round(GANTT_END_SPACE * el.clientHeight),
+      rowH: geo.hs[i]!,
+      rowGap: ROW_GAP,
+      before: geo.tops[i],
+    });
+  }, [lines, geo]);
+  useEffect(() => {
+    if (!picked) return;
+    const t = setTimeout(() => setPicked(null), PICKED_MS);
+    return () => clearTimeout(t);
+  }, [picked]);
+
   const width = axis ? scaleWidth(axis) : 0;
   const ticks = axis ? scaleTicks(axis, scrollX, w, now, charPx) : [];
   const nowX = axis ? scaleX(axis, now, now) : 0;
   /** Blank space at the head and the tail of the rows (GANTT_END_SPACE of the view). */
   const endSpace = Math.round(GANTT_END_SPACE * viewH);
-  const bodyH = rows.length * (ROW_H + ROW_GAP) + 2 * endSpace;
+  const bodyH = geo.total + 2 * endSpace;
 
   return (
     <div
@@ -600,209 +913,212 @@ export function GanttFull({
             style={{ paddingTop: ROW_GAP + endSpace, paddingBottom: endSpace }}
           >
             {axis &&
-              rows.map((t) => {
-                const b = ganttBar(t, axis, now);
-                // A range's tail (P5 → P95) on a running bar; queued, parked and done draw whole.
-                const tail = !t.done && !t.queued && !isParked(t) ? b.w - b.solid : 0;
-                const plan = t.plan ? ganttSpan(t.plan.start, t.plan.at, axis, now) : null;
-                const ghost = plan && ghostShows(plan, b) ? plan : null;
-                const late = !t.done && t.at <= now;
-                const parked = isParked(t);
-                const mark = parkMark(t);
-                const state = t.done
-                  ? "done"
-                  : parked
-                    ? "parked"
-                    : t.queued
-                      ? "queued"
-                      : late
-                        ? "reached"
-                        : "running";
-                const { name, desc } = splitTitle(t.title);
-                const left = t.at - now;
-                // Parked: its time is when the reminder goes off, never work remaining.
-                const reminder = strings.etaReminder.replace("{t}", compactTime(left));
-                return (
-                  <li
-                    key={t.id}
-                    data-testid="debug-chat-gantt-row"
-                    data-id={t.id}
-                    data-state={state}
-                    className="relative flex items-center"
-                    style={{ height: ROW_H, marginBottom: ROW_GAP }}
-                  >
-                    {ghost && (
-                      // The original plan (its first start and estimate): very faint, behind.
-                      <span
-                        aria-hidden
-                        data-testid="debug-chat-gantt-ghost"
-                        className="absolute rounded-sm"
-                        style={{
-                          top: 0,
-                          bottom: UNDERLINE_GAP,
-                          left: ghost.x,
-                          width: Math.max(3, ghost.w),
-                          background: c("ghost"),
-                        }}
-                      />
-                    )}
-                    {tail > 0 && (
-                      // A range: from the P5 the bar fades out to the P95 (hatched under reduced motion).
-                      <span
-                        aria-hidden
-                        data-testid="debug-chat-gantt-tail"
-                        {...{ [TAIL_ATTR]: true }}
-                        className="absolute rounded-e-sm"
-                        style={
-                          {
-                            top: 0,
-                            bottom: UNDERLINE_GAP,
-                            left: b.x + b.solid,
-                            width: tail,
-                            [TAIL_VAR]: c("bar"),
-                          } as CSSProperties
-                        }
-                      />
-                    )}
-                    <span
-                      aria-hidden
-                      data-testid="debug-chat-gantt-bar"
-                      className={`absolute overflow-hidden ${tail > 0 ? "rounded-s-sm" : "rounded-sm"}`}
+              lines.map((l, li) => {
+                const h = geo.hs[li]!;
+                if (l.kind === "task") {
+                  const t = l.task;
+                  const on = picked === t.id;
+                  return (
+                    <li
+                      key={l.key}
+                      data-testid="debug-chat-gantt-row"
+                      data-id={t.id}
+                      data-state={stateOf(t, now)}
+                      data-group={l.group ?? undefined}
+                      data-picked={on || undefined}
+                      className="relative flex items-center"
                       style={{
-                        top: 0,
-                        bottom: UNDERLINE_GAP,
-                        left: b.x,
-                        width: Math.max(3, tail > 0 ? b.solid : b.w),
-                        background: c(t.done ? "done" : t.queued ? "queued" : "bar"),
-                        ...(t.queued ? { outline: `1px dashed ${c("muted")}`, outlineOffset: -1 } : {}),
-                        ...(parked ? parkedBar(c("bar"), c("muted")) : {}),
+                        height: h,
+                        marginBottom: ROW_GAP,
+                        ...(on ? { outline: `2px solid ${c("muted")}`, outlineOffset: -2 } : {}),
                       }}
-                    />
-                    {!parked && !t.queued && b.fill > 0 && (() => {
-                      // The reported progress: an underline beneath the planned span,
-                      // tinted by its end against Now; live (pulsing, an arrow) while it runs.
-                      const live = !t.done;
-                      const end = b.x + b.fill;
-                      const pace = live ? paceOf(end, nowX) : "on";
-                      const ink = paceColor(pace);
-                      const liveAttr = live ? { [LIVE_ATTR]: true } : {};
-                      return (
-                        <>
-                          <span
-                            aria-hidden
-                            data-testid="debug-chat-gantt-progress"
-                            data-pace={pace}
-                            data-gantt-line
-                            {...liveAttr}
-                            className="absolute rounded-full"
+                    >
+                      {barMarks(t, axis, now, nowX, 0, h, "row")}
+                      {(t.ticks ?? []).map((ev, i) => {
+                        // The estimate's history: a short tick per event; one action's line up.
+                        const x = ganttTickX(ev.at, axis, now);
+                        if (x === null) return null;
+                        const sel1 = ev.changeId === sel;
+                        return (
+                          <button
+                            key={`${ev.changeId}:${i}`}
+                            type="button"
+                            data-testid="debug-chat-gantt-eta-tick"
+                            data-kind={ev.kind}
+                            data-change={ev.changeId}
+                            data-selected={sel1 || undefined}
+                            aria-label={`${axisLabel(ev.at - now)} · ${ev.by}`}
+                            aria-pressed={sel1}
+                            onClick={() => setSel(sel1 ? null : ev.changeId)}
+                            className="absolute p-0"
                             style={{
-                              left: b.x,
-                              width: Math.max(2, b.fill),
-                              bottom: 0,
-                              height: UNDERLINE_H,
-                              background: ink,
-                            }}
-                          />
-                          {live && (
-                            <span
-                              aria-hidden
-                              data-testid="debug-chat-gantt-frontier"
-                              {...liveAttr}
-                              className="absolute leading-none"
-                              style={{ left: end - 1, bottom: -2, fontSize: 8, color: ink }}
-                            >
-                              →
-                            </span>
-                          )}
-                          <span
-                            data-testid="debug-chat-gantt-pct"
-                            className="absolute tabular-nums leading-none"
-                            style={{
-                              left: end + (live ? 9 : 2),
-                              bottom: 0,
-                              fontSize: 9,
-                              color: c("muted"),
+                              left: x - TICK_HIT / 2,
+                              top: 0,
+                              width: TICK_HIT,
+                              height: ROW_H - UNDERLINE_GAP,
+                              zIndex: 2,
+                              border: 0,
+                              background: "transparent",
+                              cursor: "pointer",
                             }}
                           >
-                            {Math.round(t.done ? 100 : (t.pct ?? 0))}%
-                          </span>
-                        </>
-                      );
-                    })()}
-                    {b.over > 0 && !parked && (
+                            <span
+                              aria-hidden
+                              className="absolute"
+                              style={{
+                                left: (TICK_HIT - TICK_W) / 2,
+                                top: 0,
+                                width: sel1 ? TICK_W + 1 : TICK_W,
+                                height: sel1 ? ROW_H - UNDERLINE_GAP : TICK_H[ev.kind],
+                                background:
+                                  ev.kind === "status"
+                                    ? `repeating-linear-gradient(180deg, ${c(sel1 ? "text" : "tick")} 0 3px, transparent 3px 5px)`
+                                    : c(sel1 ? "text" : "tick"),
+                              }}
+                            />
+                          </button>
+                        );
+                      })}
+                      {/* The name: pinned at the left of what is visible, over the bar; a child indented. */}
                       <span
-                        aria-hidden
-                        data-testid="debug-chat-gantt-over"
-                        className="absolute rounded-e-sm"
+                        data-testid="debug-chat-gantt-name"
+                        title={t.title}
+                        className="flex min-w-0 items-baseline gap-1.5 px-2"
                         style={{
-                          top: 0,
-                          bottom: UNDERLINE_GAP,
-                          left: b.x + b.w,
-                          width: b.over,
-                          background: c(t.done ? "done" : "past"),
+                          position: "sticky",
+                          left: 0,
+                          zIndex: 1,
+                          maxWidth: "min(36rem, calc(100vw - 1rem))",
+                          ...(l.group ? { paddingInlineStart: CHILD_INDENT } : {}),
                         }}
-                      />
-                    )}
-                    {(t.ticks ?? []).map((ev, i) => {
-                      // The estimate's history: a short tick per event; one action's line up.
-                      const x = ganttTickX(ev.at, axis, now);
-                      if (x === null) return null;
-                      const on = ev.changeId === sel;
-                      return (
-                        <button
-                          key={`${ev.changeId}:${i}`}
-                          type="button"
-                          data-testid="debug-chat-gantt-eta-tick"
-                          data-kind={ev.kind}
-                          data-change={ev.changeId}
-                          data-selected={on || undefined}
-                          aria-label={`${axisLabel(ev.at - now)} · ${ev.by}`}
-                          aria-pressed={on}
-                          onClick={() => setSel(on ? null : ev.changeId)}
-                          className="absolute p-0"
-                          style={{
-                            left: x - TICK_HIT / 2,
-                            top: 0,
-                            width: TICK_HIT,
-                            height: ROW_H - UNDERLINE_GAP,
-                            zIndex: 2,
-                            border: 0,
-                            background: "transparent",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <span
-                            aria-hidden
-                            className="absolute"
-                            style={{
-                              left: (TICK_HIT - TICK_W) / 2,
-                              top: 0,
-                              width: on ? TICK_W + 1 : TICK_W,
-                              height: on ? ROW_H - UNDERLINE_GAP : TICK_H[ev.kind],
-                              background:
-                                ev.kind === "status"
-                                  ? `repeating-linear-gradient(180deg, ${c(on ? "text" : "tick")} 0 3px, transparent 3px 5px)`
-                                  : c(on ? "text" : "tick"),
-                            }}
-                          />
-                        </button>
-                      );
-                    })}
-                    {/* The name: pinned at the left of what is visible, over the bar. */}
+                      >
+                        <TaskName t={t} strings={strings} />
+                        <TaskTime t={t} now={now} strings={strings} />
+                      </span>
+                    </li>
+                  );
+                }
+                // A parent: its children's bars on its one row (folded), or its own roll-up (open).
+                const p = l.task;
+                const span = ganttBar(p, axis, now);
+                const name = p.title;
+                const openAt = l.children.reduce(
+                  (m, x) => (x.done ? m : Math.max(m, x.at)),
+                  -Infinity,
+                );
+                return (
+                  <li
+                    key={l.key}
+                    data-testid="debug-chat-gantt-group"
+                    data-id={l.def.id}
+                    data-state={stateOf(p, now)}
+                    data-open={l.open}
+                    data-lanes={l.lanes}
+                    data-count={l.children.length}
+                    className="relative flex items-center"
+                    style={{ height: h, marginBottom: ROW_GAP }}
+                  >
+                    {/* The parent's span: from its earliest start to its latest end. */}
+                    <span
+                      aria-hidden
+                      data-testid="debug-chat-gantt-span"
+                      className="absolute rounded-sm"
+                      style={{
+                        top: 0,
+                        bottom: 0,
+                        left: span.x,
+                        width: Math.max(3, span.w + span.over),
+                        outline: `1px solid ${c("grid")}`,
+                        outlineOffset: -1,
+                      }}
+                    />
+                    {l.open
+                      ? barMarks(p, axis, now, nowX, 0, h, "row")
+                      : l.children.map((x, i) => {
+                          const lb = laneBox(l.lane[i]!, l.lanes, h);
+                          const b = ganttBar(x, axis, now);
+                          const mark = parkMark(x);
+                          const { name: xn } = splitTitle(x.title);
+                          return (
+                            <Fragment key={x.id}>
+                              {barMarks(x, axis, now, nowX, lb.top, lb.h, "slice")}
+                              {/* A tap on a slice opens its category and centres that task's row. */}
+                              <button
+                                type="button"
+                                data-testid="debug-chat-gantt-slice"
+                                data-id={x.id}
+                                data-lane={l.lane[i]}
+                                data-state={stateOf(x, now)}
+                                aria-label={`${xn} · ${x.done ? strings.etaDone : etaLabel(x, now)}`}
+                                title={x.title}
+                                onClick={() => openChild(l.def.id, x.id)}
+                                className="absolute p-0"
+                                style={{
+                                  left: b.x,
+                                  top: lb.top,
+                                  width: Math.max(SLICE_MIN_HIT, b.w + (isParked(x) ? 0 : b.over)),
+                                  height: lb.h,
+                                  zIndex: 2,
+                                  border: 0,
+                                  background: "transparent",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {mark && (
+                                  // Waits for the owner: the red "!" ("?" for a decision) at the slice's start.
+                                  <span
+                                    aria-hidden
+                                    data-testid="debug-chat-gantt-slice-mark"
+                                    className="absolute font-bold leading-none"
+                                    style={{
+                                      left: 1,
+                                      top: "50%",
+                                      transform: "translateY(-50%)",
+                                      fontSize: Math.max(8, Math.min(11, lb.h)),
+                                      color: c("late"),
+                                    }}
+                                  >
+                                    {mark}
+                                  </span>
+                                )}
+                              </button>
+                            </Fragment>
+                          );
+                        })}
                     <span
                       data-testid="debug-chat-gantt-name"
-                      title={t.title}
-                      className="flex min-w-0 items-baseline gap-1.5 px-2"
+                      title={name}
+                      className="flex min-w-0 items-center gap-1 pe-2"
                       style={{
                         position: "sticky",
                         left: 0,
-                        zIndex: 1,
+                        zIndex: 3,
                         maxWidth: "min(36rem, calc(100vw - 1rem))",
+                        borderRadius: 4,
+                        ...(l.open ? {} : { background: c("chip") }),
                       }}
                     >
+                      <button
+                        type="button"
+                        data-testid="debug-chat-gantt-toggle"
+                        aria-expanded={l.open}
+                        aria-label={strings.etaGroupToggle.replace("{group}", name)}
+                        title={strings.etaGroupToggle.replace("{group}", name)}
+                        onClick={() => toggle(l.def.id)}
+                        className="tap-40 shrink-0 rounded p-0 leading-none"
+                        style={{
+                          width: TOGGLE_W,
+                          height: ROW_H - 4,
+                          border: 0,
+                          background: "transparent",
+                          color: c("text"),
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Disclosure open={l.open} size={12} />
+                      </button>
                       <span dir="auto" className="min-w-0 truncate">
-                        {mark && (
-                          // Waits for the owner: a red "!" ("?" for a decision) before the name.
+                        {l.mark && (
                           <span
                             role="img"
                             aria-label={strings.etaWaitingYou}
@@ -811,33 +1127,35 @@ export function GanttFull({
                             className="me-1 font-bold"
                             style={{ color: c("late") }}
                           >
-                            {mark}
+                            {l.mark}
                           </span>
                         )}
                         <span className="font-semibold">{name}</span>
-                        {desc && <span style={{ color: c("muted") }}> {desc}</span>}
+                        <span style={{ color: c("muted") }}> ×{l.children.length}</span>
                       </span>
-                      {parked ? (
-                        <span
-                          data-testid="debug-chat-gantt-time"
-                          data-parked={t.parked}
-                          className="shrink-0 tabular-nums"
-                          style={{ color: c("muted") }}
-                        >
-                          {mark ? `${strings.etaWaitingYou} · ${reminder}` : reminder}
-                        </span>
-                      ) : (
-                        <span
-                          data-testid="debug-chat-gantt-time"
-                          data-late={(!t.done && isLate(left)) || undefined}
-                          className="shrink-0 tabular-nums"
-                          style={
-                            !t.done && isLate(left) ? { color: c("late"), fontWeight: 600 } : undefined
-                          }
-                        >
-                          {t.done ? strings.etaDone : etaLabel(t, now)}
-                        </span>
-                      )}
+                      <span
+                        data-testid="debug-chat-gantt-time"
+                        data-late={(!p.done && openAt <= now) || undefined}
+                        className="shrink-0 tabular-nums"
+                        style={
+                          !p.done && isLate(openAt - now)
+                            ? { color: c("late"), fontWeight: 600 }
+                            : undefined
+                        }
+                      >
+                        {p.done
+                          ? strings.etaDone
+                          : p.parked
+                            ? strings.etaReminder.replace("{t}", compactTime(openAt - now))
+                            : compactTime(openAt - now)}
+                      </span>
+                      <span
+                        data-testid="debug-chat-gantt-group-pct"
+                        className="shrink-0 tabular-nums"
+                        style={{ color: c("muted") }}
+                      >
+                        {p.pct ?? 0}%
+                      </span>
                     </span>
                   </li>
                 );
