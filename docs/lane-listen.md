@@ -89,6 +89,60 @@ and the chat lane's listener gets `--route chat` at the same moment, never
 before: until codex and agy listen, a line addressed to them would reach no
 one.
 
+## Stall watch: a lane stuck on a prompt
+
+Peer feedback adopted 2026-11-11: the most common silent stall is a lane
+sitting on a permission or confirmation prompt (Claude Code's "Do you want
+to proceed?", a Codex approval, `[sudo] password for`, a passphrase or
+Keychain prompt, `[y/N]`). Its own reports cannot say so, so a watcher on the
+Mac does: `scripts/dev/stall-watch.ts` (pure parts in
+`scripts/dev/stall-watch-lib.ts`).
+
+- **What it reads.** One `ay ls --watch --local --cwd ~/ws/snolab/lianki`
+  stream: ay's own diff of its agent registry, state edges
+  (`active | idle | needs_input | stuck | stopped`) as NDJSON, no network.
+  This is the only signal there is for a terminal agent, and one stream for
+  every lane is the lightest form of it; the watcher itself has no timer
+  that runs on a schedule. Only on an edge (the agent stopped printing, or
+  ay saw a prompt) does it read that agent's tail (`ay tail -n 40 <pid>`,
+  what ay already exposes), and once more when that edge's own timer fires.
+- **What counts.** A known prompt in the bottom lines (the patterns in
+  `PROMPT_PATTERNS`) still on screen after `stallWatch.promptGraceSec` (90 s;
+  ay's own `needs_input` question counts too), or a screen whose last lines
+  end in "?" / "？" unchanged for `stallWatch.quietMin` (10 min). Idle TUI
+  chrome (the input box, footers, spinners) is ignored; a spinner with "esc
+  to interrupt" means working.
+- **What it writes.** One blocked node per agent in the progress hub,
+  `/infra/agent-stall-watch/<lane>-<pid>`,
+  `--status blocked --who main --needs "<lane> waits on a prompt: <line>"`
+  (`--who owner` when the coordinator itself is stuck). The hub nudges main
+  with its usual backoff (docs/state-tree.md, "Blocked and paused"). The
+  watcher writes again only for a different prompt, at most once per agent
+  per `stallWatch.reportGapSec` (5 min).
+- **Cleared** when the screen moves on: ay says active, and a re-read after
+  `stallWatch.clearConfirmSec` (20 s) no longer shows that prompt (a redraw
+  of the same prompt does not clear it); or the agent exits. The node is
+  closed `--done --verified "screen moved on …"`. At start it closes nodes an
+  earlier run left open; a lane still stuck is reported again.
+- **Never** answers a prompt, sends keys or messages to an agent, or touches
+  a session beyond the tails ay shows. Every quoted line goes through
+  `redact()` first (API keys, `lk_`/`sk-`/`ghp_`/`xox*` tokens, JWTs, Bearer
+  values, `token=`/`password:` values, e-mail addresses, long hex/base64) and
+  is cut to the hub's 120 characters.
+- **Thresholds** are the `stallWatch.*` keys in `STALL_WATCH_CONFIG`; the
+  watcher runs on the Mac, not the Worker, so each one's live value is its
+  env var (`LIANKI_STALL_QUIET_MIN=15`, …) or a flag (`--quiet-min`,
+  `--grace-sec`, `--interval`).
+
+```bash
+bun scripts/dev/stall-watch.ts --dry-run    # log what it would report, write nothing
+oxmgr start "bun ~/ws/snolab/lianki/tree/main/scripts/dev/stall-watch.ts" --name lianki-stall-watch --max-restarts 3
+```
+
+Its log is one JSON line per state edge, read, report and clear (redacted).
+Tests: `unit/stall-watch.test.ts` (the matcher on real Claude/Codex screens,
+redaction, the node, the state machine).
+
 ## End-to-end test
 
 Agent lines are never routed, so the test posts a marked line that only a
