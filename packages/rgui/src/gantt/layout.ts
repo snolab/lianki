@@ -45,12 +45,21 @@ export type GanttBar = {
 
 /**
  * One task's bar on the axis (px), clamped to the content [0, width]: from
- * its start to its estimate, the progress (pct; a done one all of it) inside,
- * past the estimate the overrun on to now (or to when it finished late).
+ * its start to its estimate, the progress (pct) inside, past the estimate the
+ * overrun on to now. A DONE task with a finish time is drawn as it really
+ * ran (owner, 2026-11-11 01:08 JST: an early finish kept its long bar): from
+ * its start to `doneAt`, all solid and full, no overrun, however early or
+ * late that was against the estimate; the host shows the estimate as the
+ * faint ghost of the plan.
  */
 export function ganttBar(t: GanttTask, a: GanttAxis, now: number): GanttBar {
   const width = scaleWidth(a);
   const x = (ms: number) => clamp(scaleX(a, ms, now), 0, width);
+  if (t.done && t.doneAt !== undefined) {
+    const x0 = x(Math.min(t.start, t.doneAt));
+    const w = x(t.doneAt) - x0;
+    return { x: x0, w, solid: w, fill: w, over: 0 };
+  }
   const x0 = x(Math.min(t.start, t.at));
   const x1 = x(t.at);
   const end = t.done ? x(t.doneAt ?? t.at) : x(now);

@@ -198,6 +198,11 @@ export function ganttWindow(tasks: readonly EtaTask[], now: number): GanttWindow
 export type GanttRow = { left: number; plan: number; fill: number; over: number; now: number };
 export function ganttRow(t: EtaTask, w: GanttWindow, now: number): GanttRow {
   const x = (ms: number) => Math.min(100, Math.max(0, ((ms - w.lo) / (w.hi - w.lo)) * 100));
+  // A done task as it really ran: start → its finish, no overrun (owner, 2026-11-11 01:08 JST).
+  if (t.done && t.doneAt !== undefined) {
+    const left = x(Math.min(t.start, t.doneAt));
+    return { left, plan: Math.max(0, x(t.doneAt) - left), fill: 100, over: 0, now: x(now) };
+  }
   const left = x(t.start);
   const due = x(t.at);
   const end = t.done ? x(t.doneAt ?? t.at) : x(now);

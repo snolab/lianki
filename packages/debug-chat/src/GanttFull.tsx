@@ -252,7 +252,10 @@ function barMarks(
   const parked = isParked(t);
   // A range's tail (P5 → P95) on a running bar; queued, parked and done draw whole.
   const tail = !t.done && !t.queued && !parked ? b.w - b.solid : 0;
-  const plan = mode === "row" && t.plan ? ganttSpan(t.plan.start, t.plan.at, axis, now) : null;
+  // The original plan as a ghost; a done task's bar is how it really ran, so with no
+  // recorded plan its estimate (start → at) is the ghost.
+  const planned = t.plan ?? (t.done ? { start: t.start, at: t.at } : undefined);
+  const plan = mode === "row" && planned ? ganttSpan(planned.start, planned.at, axis, now) : null;
   const ghost = plan && ghostShows(plan, b) ? plan : null;
   const big = h >= ROW_H;
   const gap = big ? UNDERLINE_GAP : Math.max(1, Math.round(h / 4));

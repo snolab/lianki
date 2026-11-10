@@ -106,12 +106,22 @@ export function groupName(g: GanttGroupDef, strings: object): string {
 
 /** A task's span on the time axis (ms), as its bar is drawn: start → estimate, or on to now / when it finished. */
 export function sliceSpan(t: EtaTask, now: number): { from: number; to: number } {
+  // Done: as it really ran, start → its finish (early or late), like its bar (rgui ganttBar).
+  if (t.done) {
+    const end = t.doneAt ?? t.at;
+    return { from: Math.min(t.start, end), to: end };
+  }
   const from = Math.min(t.start, t.at);
-  if (t.done) return { from, to: Math.max(t.at, t.doneAt ?? t.at) };
   // Queued and parked bars stop at their estimate (no overrun is drawn on them).
   if (t.queued || t.parked) return { from, to: t.at };
   return { from, to: Math.max(t.at, now) };
 }
+
+/** A task's span for its parent row: a done one start → finish, an open one start → its estimate (P95). */
+const actualSpan = (t: EtaTask) => {
+  const end = t.done && t.doneAt !== undefined ? t.doneAt : t.at;
+  return { from: Math.min(t.start, end), to: end };
+};
 
 /** A task's weight in its parent's progress: its estimate, at least a minute. */
 const weight = (t: EtaTask) => Math.max(60_000, t.at - t.start);
@@ -136,8 +146,9 @@ export function rollup(id: string, title: string, children: readonly EtaTask[]):
   return {
     id: `group:${id}`,
     title,
-    start: Math.min(...children.map((t) => Math.min(t.start, t.at))),
-    at: Math.max(...children.map((t) => t.at)),
+    // Done children count from their actual start to their actual finish, open ones to their P95.
+    start: Math.min(...children.map((t) => actualSpan(t).from)),
+    at: Math.max(...children.map((t) => actualSpan(t).to)),
     pct: w ? Math.round((100 * got) / w) : 0,
     ...(done ? { done: true, doneAt: Math.max(...doneAts) } : {}),
     ...(open.length && open.every((t) => t.queued) ? { queued: true } : {}),
