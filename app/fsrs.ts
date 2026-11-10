@@ -30,8 +30,10 @@ import {
   asReviewOrder,
   DEFAULT_REVIEW_ORDER,
   reviewOrderMongo,
+  lookupYoutubeLanguages,
   sanitizeWatchStats,
   summarizeWatch,
+  youtubeVideoId,
   type ReviewOrder,
 } from "@lianki/core";
 import { authUserOrNull } from "./signInEmail";
@@ -577,7 +579,9 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     },
     // Per-video watch time. Stored apart from the note (see getWatchStatsStore)
     // so merely playing a video never enqueues a review card.
-    "POST /api/fsrs/watch(?:/|$|\\?)": async (req) => {
+    // `watch/?` then the end or a query: the sub-routes below (overview, enrich)
+    // must not be swallowed by these, since the table is matched last-first.
+    "POST /api/fsrs/watch/?(?:$|\\?)": async (req) => {
       const body = await req.json().catch(() => null);
       const { url, title, stats } = z
         .object({
@@ -598,7 +602,47 @@ export const fsrsHandler = async (req: Request, email?: string) => {
       const limit = Math.min(100, parseInt(top ?? "20", 10) || 20);
       return JSONR(await getWatchStatsStore(email).overview(limit));
     },
-    "GET /api/fsrs/watch(?:/|$|\\?)": async (req, opts) => {
+    // Fill in missing audio languages from the YouTube Data API (/stats, "Identify
+    // languages"). The client cannot read a video's audio language
+    // (ytInitialPlayerResponse is out of reach of a userscript sandbox and of an
+    // MV3 isolated world), so rows arrive unlabelled. Explicit, never on sync: it
+    // spends API quota. Without a key: 501 `youtube-not-configured`.
+    "POST /api/fsrs/watch/enrich(?:/|$|\\?)": async () => {
+      const apiKey = process.env.YOUTUBE_API_KEY;
+      if (!apiKey) return JSONR({ error: "youtube-not-configured" }, 501);
+      if (!checkRateLimit(`watch-enrich:${email}`, { windowMs: 60_000, max: 3 }).allowed)
+        return JSONR({ error: "rate-limited" }, 429);
+      const store = getWatchStatsStore(email);
+      const pending = (await store.listTop(500))
+        .filter((r) => !r.lang)
+        .map((row) => ({ row, id: youtubeVideoId(row.url) }))
+        .filter((x): x is { row: (typeof x)["row"]; id: string } => !!x.id)
+        .slice(0, 200); // bound the quota spend per request
+      if (!pending.length) return JSONR({ ok: true, checked: 0, labelled: 0 });
+      const found = await lookupYoutubeLanguages(
+        pending.map((p) => p.id),
+        apiKey,
+      );
+      let labelled = 0;
+      for (const { row, id } of pending) {
+        const hit = found.get(id);
+        if (!hit?.lang) continue;
+        // Through the CRDT under its own device id, so the label merges like any
+        // other observation instead of overwriting a device's own.
+        const last = new Date().toISOString();
+        await store.merge(
+          row.url,
+          {
+            v: 1,
+            by: { server: { wall: 0, media: 0, sessions: 0, days: {}, lang: hit.lang, last } },
+          },
+          row.title ?? hit.title,
+        );
+        labelled++;
+      }
+      return JSONR({ ok: true, checked: pending.length, labelled });
+    },
+    "GET /api/fsrs/watch/?(?:$|\\?)": async (req, opts) => {
       const { url } = getParams(req, opts);
       const row = await getWatchStatsStore(email).getByUrl(normalizeUrl(url));
       return JSONR({
