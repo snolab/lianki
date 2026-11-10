@@ -31,6 +31,7 @@ import {
 } from "./cues";
 import { silenceHere } from "./speak-rules";
 import { voiceLatency, noteSttVia } from "./latency";
+import { type SttTag, sttTagOf } from "./wire";
 import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
 import type { SttSignals } from "./stt-guard";
@@ -242,7 +243,7 @@ export function pttRecorder() {
     abort() {
       void starting?.finally(end).catch(end);
     },
-    async finish(): Promise<{ text: string; audioMs: number }> {
+    async finish(): Promise<{ text: string; audioMs: number; stt?: SttTag }> {
       await starting;
       await new Promise((r) => setTimeout(r, PTT_TAIL_MS));
       const r = rec;
@@ -256,9 +257,15 @@ export function pttRecorder() {
       }
       const clip = resample(joinClip(r.pre, held), r.ctx.sampleRate, RATE);
       const texts: string[] = [];
-      for (const piece of chunkSamples(clip))
-        texts.push((await postStt(encodeWav(piece), fetch, "audio/wav", sttHint())).text);
-      return { text: joinTexts(texts), audioMs: Math.round((clip.length / RATE) * 1000) };
+      let model: string | undefined;
+      for (const piece of chunkSamples(clip)) {
+        const out = await postStt(encodeWav(piece), fetch, "audio/wav", sttHint());
+        texts.push(out.text);
+        model ??= out.model;
+      }
+      // Always the cloud route: its model is the line's engine (SttTag).
+      const stt = sttTagOf("cloud", model);
+      return { text: joinTexts(texts), audioMs: Math.round((clip.length / RATE) * 1000), stt };
     },
   };
 }
@@ -527,6 +534,8 @@ function session(): MicSession {
         // `ms`: the server's own time, the route's or the Mac's decode (sttServerMs in the timing).
         let out: { text: string; model?: string; ms?: number; signals?: SttSignals };
         let via: "local" | "cloud" = "cloud";
+        // The local server was asked and failed: the cloud's answer is a fallback (SttTag).
+        let fellBack = false;
         if (local) {
           // Streamed to the owner's Mac (local-stt.ts); on any failure, the route as before.
           try {
@@ -547,6 +556,7 @@ function session(): MicSession {
             });
           } catch (e) {
             v.log({ ev: "local-stt-fallback", error: String((e as Error)?.message ?? e) });
+            fellBack = true;
             out = await postStt(wav, fetch, "audio/wav", sttHint());
           }
         } else out = await postStt(wav, fetch, "audio/wav", sttHint());
@@ -592,6 +602,8 @@ function session(): MicSession {
         if (!partial && out.ms !== undefined) voiceLatency().mark(seq, { sttServerMs: out.ms });
         // Which recognizer it was, for the menu's latency (latency.ts viaAt).
         if (!partial) noteSttVia(via);
+        // And which engine, carried on the line (wire.ts SttTag; dev-only in the chat). Never the text.
+        if (!partial) voiceLatency().mark(seq, { stt: sttTagOf(via, out.model, fellBack) });
         // Off the critical path: the clip goes after the transcript is returned (sideClip).
         if (sink) {
           const meta = {

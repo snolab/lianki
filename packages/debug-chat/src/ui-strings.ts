@@ -79,6 +79,16 @@ export type UiStrings = {
   latRecog: string;
   latLocal: string;
   latCloud: string;
+  /**
+   * Developer-only: the tiny tag after one of his voice lines saying which
+   * speech recognizer turned it into text, e.g. "local · sensevoice-small" or
+   * "cloud · whisper-large-v3-turbo" (latLocal / latCloud, then the engine id).
+   * - sttFallback: one or two words at its end when the local recognizer was
+   *   tried, failed, and the cloud one stood in ("fallback");
+   * - sttTagTip: the tag's tooltip, naming what it is.
+   */
+  sttFallback: string;
+  sttTagTip: string;
   latToAgent: string;
   latAgent: string;
   latVoiceStart: string;
@@ -190,6 +200,8 @@ export const UI_EN: UiStrings = {
   latRecog: "recognition",
   latLocal: "local",
   latCloud: "cloud",
+  sttFallback: "fallback",
+  sttTagTip: "Speech recognizer that made this line",
   latToAgent: "to agent",
   latAgent: "agent",
   latVoiceStart: "voice start",
@@ -252,6 +264,8 @@ export const UI_ZH: UiStrings = {
   latRecog: "识别",
   latLocal: "本地",
   latCloud: "云端",
+  sttFallback: "备用",
+  sttTagTip: "这句话由哪个语音识别引擎转写",
   latToAgent: "送达助手",
   latAgent: "助手",
   latVoiceStart: "开始朗读",
@@ -314,6 +328,8 @@ export const UI_JA: UiStrings = {
   latRecog: "認識",
   latLocal: "ローカル",
   latCloud: "クラウド",
+  sttFallback: "代替",
+  sttTagTip: "この行を文字にした音声認識エンジン",
   latToAgent: "エージェントへ",
   latAgent: "エージェント",
   latVoiceStart: "読み上げ開始",

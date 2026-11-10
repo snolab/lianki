@@ -63,6 +63,8 @@ export function chatLine(
       : {}),
     // A voice line's timestamps on the page's clock (VoiceTiming; latency.ts).
     ...(m.timing && typeof m.timing === "object" ? { timing: m.timing } : {}),
+    // Which recognizer made a voice line's text: {route: "local"|"cloud", engine?, fallback?}.
+    ...(m.stt && typeof m.stt === "object" ? { stt: m.stt } : {}),
     // The mic's wake-word mode when it was sent (docs/wake-word.md), and why it was in it.
     ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
     ...(typeof m.wakeReason === "string" ? { wakeReason: m.wakeReason } : {}),
