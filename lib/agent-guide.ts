@@ -20,7 +20,12 @@
  *
  * **Never the token.** The text names it only as TOKEN_PLACEHOLDER, and any
  * `lk_…` secret that reaches an input (a token named after its own secret) is
- * replaced by the placeholder before it is written.
+ * replaced by the placeholder before it is written. Owner, 2026-11-11: the
+ * instructions hold no secret at all. They tell the user how to get a token
+ * (`npx lianki auth login`, or Settings with only the permissions needed),
+ * to keep it where the assistant runs (keychain, an environment variable, the
+ * MCP config's `env` block) and never in a chat, and how to connect the local
+ * `lianki mcp` server (packages/lianki-cli/mcp.mjs).
  */
 import { CHAT_LIMITS } from "@/lib/chat-limits";
 import { SCOPE_IDS, type ScopeId } from "@/lib/api-tokens";
@@ -29,6 +34,33 @@ export const GUIDE_BASE = "https://lianki.com";
 export const GUIDE_PATH = "/api/agent-guide";
 export const TOKEN_PLACEHOLDER = "<YOUR_TOKEN>";
 const SETTINGS_URL = `${GUIDE_BASE}/my/preferences`;
+
+/** The local MCP server in packages/lianki-cli (`lianki mcp`). */
+export const MCP_ARGS = ["-y", "lianki", "mcp"];
+const ARGS_JSON = JSON.stringify(MCP_ARGS).replaceAll(",", ", ");
+/** The `mcpServers` config block, the args array kept on one line. */
+const mcpServer = (env?: Record<string, string>) =>
+  JSON.stringify(
+    { mcpServers: { lianki: { command: "npx", args: 0, ...(env ? { env } : {}) } } },
+    null,
+    2,
+  ).replace('"args": 0', `"args": ${ARGS_JSON}`);
+
+/** How each MCP client adds the server: a label and a code block, never translated. */
+export const MCP_CLIENTS: { label: string; lang: string; code: string }[] = [
+  { label: "Claude Code", lang: "sh", code: `claude mcp add lianki -- npx ${MCP_ARGS.join(" ")}` },
+  {
+    label: "Claude Desktop (claude_desktop_config.json)",
+    lang: "json",
+    code: mcpServer({ LIANKI_TOKEN: TOKEN_PLACEHOLDER }),
+  },
+  { label: "Cursor (.cursor/mcp.json)", lang: "json", code: mcpServer() },
+  {
+    label: "Codex (~/.codex/config.toml)",
+    lang: "toml",
+    code: `[mcp_servers.lianki]\ncommand = "npx"\nargs = ${ARGS_JSON}`,
+  },
+];
 
 /** Every key of the `agent-guide` dictionary (its content is typed by this). */
 export const GUIDE_KEYS = [
@@ -40,6 +72,11 @@ export const GUIDE_KEYS = [
   "tokenJson",
   "tokenNamed",
   "tokenExpires",
+  "tokenGet",
+  "tokenStore",
+  "mcpHeading",
+  "mcpIntro",
+  "mcpEnv",
   "scopesHeading",
   "scopeStudy",
   "scopeChatRead",
@@ -140,6 +177,15 @@ export function agentGuide({ scopes, t, name, expires }: GuideInput): string {
     expires ? fill(t.tokenExpires, { date: plain(expires) }) : "",
   ].filter(Boolean);
   if (who.length) p(who.join(" "));
+  p(fill(t.tokenGet, { base: GUIDE_BASE, url: SETTINGS_URL }), "", t.tokenStore);
+
+  p(
+    `## ${t.mcpHeading}`,
+    t.mcpIntro,
+    "",
+    ...MCP_CLIENTS.flatMap((c) => [`${c.label}:`, "```" + c.lang, c.code, "```", ""]),
+    t.mcpEnv,
+  );
 
   p(
     `## ${t.scopesHeading}`,

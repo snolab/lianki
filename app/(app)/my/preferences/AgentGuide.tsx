@@ -10,7 +10,9 @@ import { textOf } from "@/app/components/TokenPickers";
  * The instructions for the user's own AI assistant, for one token
  * (lib/agent-guide.ts): built here from the token's scopes, name and expiry,
  * in the page's language. Never the token's secret: the text names it only as
- * <YOUR_TOKEN>, and the user hands the token over separately.
+ * <YOUR_TOKEN>, and tells the assistant to keep the token where it runs
+ * (keychain via `npx lianki auth login`, an environment variable, the MCP
+ * config's env block), never in a chat (docs/api-for-agents.md).
  */
 export function useAgentGuide() {
   const g = useIntlayer("agent-guide");
