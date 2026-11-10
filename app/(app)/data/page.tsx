@@ -4,6 +4,7 @@ import { getIntlayer } from "intlayer";
 import { authUserOrNull } from "@/app/signInEmail";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import { appLocale } from "@/lib/app-locale.server";
+import { isDev } from "@/lib/permissions";
 import DataClient from "./DataClient";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export default async function DataPage() {
         {/* useSearchParams() inside DataClient reads the filter state from the
             URL; Next requires it to sit under a Suspense boundary. */}
         <Suspense fallback={null}>
-          <DataClient isLoggedIn={!!user} />
+          <DataClient isLoggedIn={!!user} dev={isDev(user?.email ?? null)} />
         </Suspense>
       </div>
     </div>

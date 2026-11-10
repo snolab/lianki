@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/app/components/icons";
+import { useIntlayer } from "next-intlayer";
 
 type Props = {
   heading: string;
@@ -28,6 +29,7 @@ export default function DangerZone({
   onWipeLocal,
   onDeleteAllCloud,
 }: Props) {
+  const d = useIntlayer("data-page").danger;
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState<null | "local" | "cloud">(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -40,7 +42,8 @@ export default function DangerZone({
       setMessage(await action());
       setConfirm("");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed");
+      console.warn("[data] danger zone action failed:", err);
+      setMessage(d.failed.value);
     } finally {
       setBusy(null);
     }
@@ -54,9 +57,7 @@ export default function DangerZone({
       <h2 id="danger-heading" className="text-xl font-semibold text-red-700 dark:text-red-300 mb-1">
         {heading}
       </h2>
-      <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-        These cannot be undone. Export a backup first.
-      </p>
+      <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">{d.intro}</p>
 
       <label className="block mb-4 text-sm">
         <span className="block mb-1 text-gray-600 dark:text-gray-400">{confirmHint}</span>
@@ -92,10 +93,7 @@ export default function DangerZone({
 
       {message && <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">{message}</p>}
 
-      <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-        Wiping Local clears only this browser&apos;s mirror — the userscript&apos;s own store is
-        untouched and will repopulate it on the next visit. Clear that from the userscript menu.
-      </p>
+      <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">{d.footnote}</p>
     </section>
   );
 }
