@@ -13,7 +13,6 @@
 // visitor and for an account that has not added the book.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import JSZip from "jszip";
 import { chromium, devices } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 import { budget } from "./load-budget.mjs";
@@ -115,91 +114,7 @@ for (const scheme of ["light", "dark"]) {
     (r.headers()["location"] ?? "").includes("/library/fr/histoires-ou-contes-du-temps-pass"),
     `${scheme}: …to /library (${r.headers()["location"]})`,
   );
-
-  // Import my own book: a generated EPUB (text written for this test) with a cover.
-  await page.goto("/books?lang=zh", { waitUntil: "networkidle" });
-  await page.getByTestId("my-books-file").setInputFiles({
-    name: "testgarten.epub",
-    mimeType: "application/epub+zip",
-    buffer: Buffer.from(await ownEpub()),
-  });
-  await page.waitForURL(/\/reader\/[^/]+$/, { timeout: budget(30000) });
-  const id = page.url().split("/").pop();
-  await page.getByTestId("reader-author").waitFor({ timeout: budget(15000) });
-  check(
-    (await page.getByTestId("reader-author").innerText()) === "Erika Probe",
-    `${scheme}: the imported book opens in the reader with its author`,
-  );
-  await page.goto("/books?lang=zh", { waitUntil: "networkidle" });
-  const own = page.locator('[data-testid="my-books-book"][data-origin="file"]');
-  check((await own.count()) === 1, `${scheme}: the book is on My books`);
-  check(
-    (await page.locator('[data-testid="my-books-lang"][data-lang="de"]').count()) === 1,
-    `${scheme}: under its language (de)`,
-  );
-  const cover = await ctx.request.get(`/api/books/mine/${id}/cover`);
-  check(
-    cover.ok() && cover.headers()["content-type"] === "image/png",
-    `${scheme}: its cover is served to me (${cover.status()})`,
-  );
-  await page.screenshot({ path: join(OUT, `books-own-${scheme}.png`) });
-
-  const other = await account(`books-other-${scheme}`);
-  const theirs = await other.request.get(`/api/books/mine/${id}/cover`);
-  check(
-    theirs.status() === 404,
-    `${scheme}: another account cannot see the cover (${theirs.status()})`,
-  );
-  const files = await (await other.request.get("/api/my/files")).json();
-  check((files.items ?? []).length === 0, `${scheme}: nor the file`);
-  await other.close();
-
-  const mine = await (await ctx.request.get("/api/my/files")).json();
-  check(
-    (mine.items ?? []).some((f) => f.source === "books" && f.name === "testgarten.epub"),
-    `${scheme}: the file is in My files under Books`,
-  );
   await ctx.close();
-}
-
-/** A small EPUB 3, its text written for this QA, with a 1×1 PNG cover. */
-async function ownEpub() {
-  const png = Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-    "base64",
-  );
-  const x = (b) =>
-    `<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>x</title></head><body>${b}</body></html>`;
-  const zip = new JSZip();
-  zip.file("mimetype", "application/epub+zip");
-  zip.file(
-    "META-INF/container.xml",
-    `<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`,
-  );
-  zip.file(
-    "OEBPS/content.opf",
-    `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Der kleine Testgarten</dc:title><dc:creator>Erika Probe</dc:creator><dc:language>de</dc:language></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/><item id="c2" href="c2.xhtml" media-type="application/xhtml+xml"/><item id="cov" href="cover.png" media-type="image/png" properties="cover-image"/></manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>`,
-  );
-  zip.file(
-    "OEBPS/nav.xhtml",
-    x(
-      `<nav><ol><li><a href="c1.xhtml">Erstes Kapitel</a></li><li><a href="c2.xhtml">Zweites Kapitel</a></li></ol></nav>`,
-    ),
-  );
-  zip.file(
-    "OEBPS/c1.xhtml",
-    x(
-      "<h1>Erstes Kapitel</h1><p>Im Garten wächst ein kleiner Baum, und die Kinder spielen dort jeden Tag.</p>",
-    ),
-  );
-  zip.file(
-    "OEBPS/c2.xhtml",
-    x(
-      "<h1>Zweites Kapitel</h1><p>Am Abend gehen alle nach Hause und erzählen, was sie gesehen haben.</p>",
-    ),
-  );
-  zip.file("OEBPS/cover.png", png);
-  return zip.generateAsync({ type: "uint8array" });
 }
 
 check(errs.length === 0, `no page errors${errs.length ? ": " + errs.join(" | ") : ""}`);

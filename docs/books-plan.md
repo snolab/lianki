@@ -342,50 +342,6 @@ they are about that rule).
   every legacy-link case), `unit/books-catalogue.test.ts` (gates, nav,
   `/library` hrefs).
 
-### Your own books on /books (owner, 01:47 JST 2026-11-10)
-
-"Import your own book" on /books: the user picks an EPUB (or a plain-text
-.txt/.md file); it becomes one of their books and opens in the reader.
-
-- **Stored in My Files.** The browser sends the file to
-  `POST /api/import/files?source=books`: the file store's own row and R2
-  object (`inbox_item` source `books`, folder "Books" / 书 on /my/files), its
-  limits (one file 20 MB, the rolling day, the stored total:
-  `lib/inbox/config.ts`) and its privacy: only the uploader lists, opens or
-  deletes it, no shared link. Upload and storage are recorded like any
-  stored file (`lib/inbox/charge.ts`, which records cost and debits nothing
-  yet). The gate for this source is `books.mine` (every other source keeps
-  `import.any`); /my/files lists a user's files when either is on.
-- **Parsed on the server, no AI, no credits:** `POST /api/books/mine
-  { file }` (lib/books/own-import.ts) reads the stored file back and parses it
-  with the reader's own EPUB parser (lib/epub/, now also run in the Worker,
-  same zip-bomb limits): chapters (EPUB 3 nav, else NCX, else one per
-  document), title, author, language (`dc:language`, canonical BCP 47, else
-  detected from the first lines, lib/read/lang-detect.ts) and the cover
-  (lib/epub/cover.ts: EPUB 3 `cover-image`, EPUB 2 `<meta name="cover">`,
-  else an image named "cover"; JPEG/PNG/GIF/WebP whose bytes match their
-  type, at most 2 MB; never SVG). A text file: one paragraph per line, the
-  file name as its title, `source: "text"`. DRM-protected books are refused,
-  never decrypted. A file that is not a readable book is deleted again and
-  the reason shown (unsupported, not an EPUB, DRM, no text, too much text).
-- **One book per file:** the read_material is keyed `file:<file id>`, so it
-  sits on the shelf (lib/books/shelf.ts) and importing the same stored file
-  again opens it. The book's meta carries `cover: 1` when it has one.
-- **The cover** is kept at R2 `books-cover/<user>/<file id>` and served only
-  to its owner, `GET /api/books/mine/<book id>/cover` (private cache, nosniff,
-  `default-src 'none'`); anyone else 404. Deleting the file in My Files
-  deletes the cover; the book stays in their reading until they delete it in
-  /reader.
-- **Limits are named** in `OWN_BOOK` (lib/books/own-import.ts): the file cap
-  (the store's), the cover cap, the accepted types, the lines read to detect
-  a language.
-- **Tests:** `unit/books-own-import.test.ts` builds its own fixtures (EPUB 3
-  and EPUB 2 with text written for the test, a 1×1 PNG cover, text files):
-  formats, titles, languages, chapters, covers (a fake or oversized one left
-  out), DRM / not a book / no text / too large, once per file, another
-  account's or another folder's file 404, a failed parse removes the file.
-  QA `qa-books` imports a generated EPUB at iPhone size, light and dark.
-
 ### Admission rule: public domain per country (owner, 02:18 JST 2026-11-05)
 
 > **Not legal advice; re-verify with counsel before turning
