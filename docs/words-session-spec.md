@@ -77,6 +77,16 @@ they land. Design details that are still open are marked **open**.
 - **Binding cords at a fixed position**: dragging a slip never carries the
   cords along (old and new swipe).
 - A slip showing "↓ back"/「回来了」 is locked: no swipe, grade or undo (#427).
+- **Locked slips crack** (2026-11-10 22:59 JST: tell the cards that can no
+  longer be swiped from the ones with time left; flag `words.shatter`, on for
+  `dev` holders). A "↓ back" slip gets cracked glass: seal-red cracks with a
+  gold glint, under the text (so it stays AA), the same pattern every time
+  for the same card (`crackPattern`, `lib/words/shatter.ts`, seeded by the
+  card's key; stretched over any row height, hairlines that do not scale). A
+  countdown that ends on screen cracks once (~0.6 s, from the impact out);
+  a row that mounts already ended, reduced motion and motion off show the
+  cracks at rest. Idle it is a static SVG: no timer, no frames.
+  `app/(app)/words/Shatter.tsx`; the gate `lib/words/shatter-gate.ts`.
 - **The first card opens in the middle** (2026-11-07 17:50 JST: "进入复习列表应该
   把第一张卡滚动到屏幕中间而不是在顶上"): /words and the reader's review list open
   with the first card's centre at the screen's centre, set at once on opening

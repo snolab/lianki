@@ -48,7 +48,8 @@ describe("registry", () => {
     // Default-on is for a flag that keeps something already live switchable, or a
     // feature the owner asked to ship on (today.goal, words.onboarding and the
     // card-height pinch, 2026-11-10; /library and My books /books, 2026-11-10; the
-    // voiceprint in his account, tap card 2026-11-10 23:31 JST, audience owner + dev).
+    // voiceprint in his account, tap card 2026-11-10 23:31 JST, audience owner + dev;
+    // the cracked "↓ back" slips, asked 2026-11-10 22:59 JST, audience owner + dev).
     const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
     expect(on).toEqual([
       "today.goal",
@@ -58,6 +59,7 @@ describe("registry", () => {
       "library.catalogue",
       "books.mine",
       "words.pinch-card-height",
+      "words.shatter",
     ]);
     for (const k of FLAG_KEYS) expect(FLAGS[k].description.length).toBeGreaterThan(0);
     expect(FLAGS["payments.stripe.live"].default).toBe(false);

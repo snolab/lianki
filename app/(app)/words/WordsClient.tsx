@@ -6,6 +6,7 @@ import { pageLeaving } from "@/lib/page-leaving";
 import { useTextScale } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { SettingsSheet } from "./SettingsSheet";
+import { Shatter } from "./Shatter";
 import { ListPreview, PreviewButton } from "./ListPreview";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { advanceTop, keyGradeMove, shouldAdvance } from "@/lib/words/advance";
@@ -1739,8 +1740,10 @@ function lineHeightOf(o: HTMLElement): number {
  * slip fades (.lk-back in globals.css): the copy further down is the one
  * to answer now.
  */
-function Countdown({ due, back }: { due: number; back: boolean }) {
+function Countdown({ due, back, crack }: { due: number; back: boolean; crack?: string }) {
   const [now, setNow] = useState(() => Date.now());
+  // Still counting as the row mounted: an end seen here cracks live, once.
+  const [liveAtMount] = useState(() => due > now);
   useEffect(() => {
     const left = due - now;
     if (left <= 0 || left > 3_600_000) return;
@@ -1752,7 +1755,14 @@ function Countdown({ due, back }: { due: number; back: boolean }) {
   const text = useIntlayer("words-page");
   const left = due - now;
   if (left > 0) return <>{formatInterval(left)}</>;
-  return back ? <span className="lk-back">{text.back}</span> : <>{text.now}</>;
+  if (!back) return <>{text.now}</>;
+  return (
+    <>
+      <span className="lk-back">{text.back}</span>
+      {/* Locked now: cracked glass (`words.shatter`), keyed by the card. */}
+      {crack !== undefined && <Shatter seed={crack} live={liveAtMount} />}
+    </>
+  );
 }
 
 /** Due time (ms) of a stored card JSON. */
@@ -2002,6 +2012,7 @@ export default function WordsClient({
   importAiOn = false,
   pinch = false,
   onboarding = false,
+  shatter = false,
   dev = false,
 }: {
   config?: DrillConfig;
@@ -2017,6 +2028,8 @@ export default function WordsClient({
   pinch?: boolean;
   /** `words.onboarding`: the walkthrough and its "?" by the heading (/words only, not /alphabet). */
   onboarding?: boolean;
+  /** `words.shatter` (lib/words/shatter-gate.ts): a locked "↓ back" slip shows cracked glass. */
+  shatter?: boolean;
   /** Holds `dev`: debug mode also offers whisper mode and the swipe's feel and tuner. */
   dev?: boolean;
 }) {
@@ -2188,6 +2201,7 @@ export default function WordsClient({
             catalog={fullCatalog}
             voice={voice}
             pinch={pinch}
+            shatter={shatter}
             dev={dev}
             title={
               listId === ALL
@@ -3780,11 +3794,14 @@ export function Study({
   voice,
   scope,
   pinch = false,
+  shatter = false,
   dev = false,
 }: {
   /** Holds `dev`: debug mode also offers whisper mode and the swipe's feel and tuner. */
   dev?: boolean;
   scope?: StudyScope;
+  /** A locked "↓ back" slip shows cracked glass (`words.shatter`, Shatter.tsx). */
+  shatter?: boolean;
   /** The card-height pinch (`words.pinch-card-height`, lib/words/use-row-pinch.ts). */
   pinch?: boolean;
   config: DrillConfig;
@@ -5353,11 +5370,22 @@ export function Study({
   const finished = studyFinished(exhausted, ahead.length);
   const exitLabel = scope?.exitLabel ?? text.backToLists.value;
 
-  const status = (it: Item, i: number) => {
+  /** `inRow`: the list's slip, which cracks once locked; not the sheet's copy of the label. */
+  const status = (it: Item, i: number, inRow = false) => {
     const g = grades.get(i);
     if (g) {
       // Saved: when it actually comes back. Not yet saved: the preview.
-      if (g.card) return <Countdown due={dueOf(g.card)} back={requeue.current.requeued.has(i)} />;
+      if (g.card)
+        return (
+          <Countdown
+            // Rows are keyed by index: a copy joining above moves words between
+            // them, and the countdown's "ended on screen" belongs to its word.
+            key={`${keyOf(it)}@${dueOf(g.card)}`}
+            due={dueOf(g.card)}
+            back={requeue.current.requeued.has(i)}
+            crack={inRow && shatter ? keyOf(it) : undefined}
+          />
+        );
       return previewInterval(it.card, g.rating, paramsOf.get(it.listId)!);
     }
     if (it.kind === "new" || !it.card) return text.statusNew.value;
@@ -6022,7 +6050,7 @@ export function Study({
                     style={rating ? { color: "var(--grade)" } : undefined}
                     title={rating ? ratingLabel[rating] : text.dueTitle.value}
                   >
-                    {status(it, i)}
+                    {status(it, i, true)}
                   </span>
                 </Row>
               );

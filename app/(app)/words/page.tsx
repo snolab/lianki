@@ -8,6 +8,7 @@ import { voiceAccess } from "@/lib/words/voice-access";
 import { ytSongsOn } from "@/lib/yt-songs/gate";
 import { importAnyOn } from "@/lib/import/words-handler";
 import { importAiOn } from "@/lib/import/ai-convert";
+import { shatterOn } from "@/lib/words/shatter-gate";
 import { getIntlayer } from "intlayer";
 import WordsClient from "./WordsClient";
 
@@ -40,6 +41,8 @@ export default async function WordsPage() {
       pinch={flags["words.pinch-card-height"]}
       // The first-visit walkthrough and its "?" by the heading (lib/words/onboarding.ts).
       onboarding={flags["words.onboarding"]}
+      // A locked "↓ back" slip shows cracked glass (lib/words/shatter-gate.ts).
+      shatter={!!user && shatterOn(flags, isDev(user.email))}
       // Debug mode's developer extras (whisper mode, the swipe's feel and tuner): `dev` only.
       dev={isDev(user?.email)}
     />
