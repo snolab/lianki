@@ -133,10 +133,14 @@ function setup(
     owner: o.claims ? (h) => audioOwner({ ...h, id: "read", target: o.claims }) : undefined,
   });
   const result: string[] = [];
+  /** The voice each failure names (the reader's alert maps it to translated text). */
+  const engines: (string | undefined)[] = [];
   const cb = {
     onend: () => void result.push("end"),
-    onerror: (w: string, noVoice?: boolean) =>
-      void result.push(`error:${w}${noVoice ? " [no-voice]" : ""}`),
+    onerror: (w: string, noVoice?: boolean, engine?: string) => {
+      engines.push(engine);
+      result.push(`error:${w}${noVoice ? " [no-voice]" : ""}`);
+    },
   };
   return {
     sp,
@@ -154,6 +158,7 @@ function setup(
     page,
     advance,
     result,
+    engines,
     cb,
     cancels: () => cancels,
     logs,
@@ -201,6 +206,7 @@ describe("read speaker", () => {
     x.spoken[0].onend?.();
     // de has no server voice either: the line fails with a reason.
     expect(x.result).toEqual(["error:the browser voice did not start"]);
+    expect(x.engines).toEqual(["speech"]);
   });
 
   it("a browser voice that never starts falls back to the server voice", async () => {
@@ -281,6 +287,7 @@ describe("read speaker", () => {
     await flush();
     await flush();
     expect(x.result).toEqual(["error:server voice: HTTP 503"]);
+    expect(x.engines).toEqual(["cloud"]);
     expect(x.page.always()).toBe(true);
     x.advance(400);
     expect(x.page.playing()).toBe(false);
