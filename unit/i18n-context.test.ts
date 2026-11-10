@@ -70,6 +70,7 @@ import languageSettings from "@/app/components/language-settings.content";
 import preferredLangs from "@/app/components/preferred-langs.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
 import apiTokens from "@/app/components/api-tokens.content";
+import agentGuide from "@/lib/agent-guide.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
 import chatHistoryPage from "@/app/(app)/chat/history/page.content";
 import devDesign from "@/app/(app)/dev/design/page.content";
@@ -179,6 +180,7 @@ describe.each([
   ["sign-in-errors", signInErrors],
   ["privacy-page", privacyPage],
   ["api-tokens", apiTokens],
+  ["agent-guide", agentGuide],
   ["roadmap-page", roadmapPage],
   ["chat-history-page", chatHistoryPage],
   ["dev-design", devDesign],

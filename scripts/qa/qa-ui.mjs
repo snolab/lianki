@@ -559,6 +559,19 @@ for (const [w, h] of [
   await page.goto(`${BASE}/my/preferences`, { waitUntil: "networkidle" });
   const row = page.getByTestId("token-row").filter({ hasText: "qa-revoke" });
   await row.waitFor({ timeout: budget(10000) });
+
+  // Its instructions for the user's AI assistant (lib/agent-guide.ts): the
+  // header with a placeholder, the card section for `study`, never a secret.
+  await row.getByTestId("token-guide").locator("summary").click();
+  const guide = await row.getByTestId("token-guide-text").innerText();
+  check(
+    guide.includes("Authorization: Bearer <YOUR_TOKEN>") && guide.includes("/api/fsrs/due"),
+    "tokens: the AI-assistant instructions name the header and this token's endpoints",
+  );
+  check(
+    !/lk_[0-9a-f]{64}/i.test(guide) && !guide.includes("/api/version/chat"),
+    "tokens: the instructions hold no token and no chat section for a cards-only token",
+  );
   await row.getByTestId("token-revoke").click();
   const ask = row.getByTestId("token-revoke-confirm");
   await ask.waitFor({ timeout: budget(5000) });

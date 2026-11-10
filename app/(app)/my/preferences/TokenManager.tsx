@@ -11,14 +11,17 @@ import {
   type Expiry,
 } from "@/app/components/TokenPickers";
 import { RevokeConfirm } from "./RevokeConfirm";
+import { AgentGuide, CopyGuideButton, useAgentGuide } from "./AgentGuide";
 
 /**
  * Settings → API tokens (lib/api-tokens.ts, /api/token): like GitHub's
- * fine-grained personal access tokens. Each has a name (an agent lane's name,
- * on every chat line it posts), the permissions picked here, a required
- * expiry, and when it was last used; Revoke asks first (RevokeConfirm), then deletes it at once. The account
- * every token acts as is named at the top. The secret is shown once, right
- * after it is made, and never again.
+ * fine-grained personal access tokens. Each has a name (shown on every chat
+ * line it posts), the permissions picked here, a required expiry, and when it
+ * was last used; Revoke asks first (RevokeConfirm), then deletes it at once.
+ * The account every token acts as is named at the top. The secret is shown
+ * once, right after it is made, and never again. Every token also offers the
+ * instructions for the user's own AI assistant (AgentGuide, lib/agent-guide.ts),
+ * which never contain the secret. Shown to every signed-in user.
  */
 type Token = {
   id: string;
@@ -43,7 +46,13 @@ export default function TokenManager() {
   const [expiry, setExpiry] = useState<Expiry>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [secret, setSecret] = useState<{ token: string; name: string } | null>(null);
+  const [secret, setSecret] = useState<{
+    token: string;
+    name: string;
+    scopes: ScopeId[];
+    expiresAt: string | null;
+  } | null>(null);
+  const guide = useAgentGuide();
   const [copied, setCopied] = useState(false);
   /** The row asking "Revoke …?", the one being revoked, and the one Cancel returned focus to. */
   const [asking, setAsking] = useState<string | null>(null);
@@ -74,13 +83,20 @@ export default function TokenManager() {
       const j = (await r.json().catch(() => ({}))) as {
         token?: string;
         name?: string;
+        scopes?: ScopeId[];
+        expiresAt?: string;
         error?: string;
       };
       if (!r.ok || !j.token) {
         setError(j.error?.startsWith("expiry") ? s("errExpiry") : s("errFailed"));
         return;
       }
-      setSecret({ token: j.token, name: j.name ?? name.trim() });
+      setSecret({
+        token: j.token,
+        name: j.name ?? name.trim(),
+        scopes: j.scopes ?? scopes,
+        expiresAt: j.expiresAt ?? null,
+      });
       setCopied(false);
       setName("");
       setScopes([]);
@@ -107,6 +123,13 @@ export default function TokenManager() {
     setList((l) => (l ? { ...l, tokens: l.tokens.filter((x) => x.id !== id) } : l));
   }
 
+  const guideLabels = {
+    summary: s("guideSummary"),
+    copy: s("guideCopy"),
+    copied: s("guideCopied"),
+    noToken: s("guideNoToken"),
+  };
+
   const revokeLabels = {
     revoke: s("revoke"),
     question: s("revokeConfirm"),
@@ -131,6 +154,7 @@ export default function TokenManager() {
       <div>
         <h2 className="text-xl font-semibold mb-2">{s("heading")}</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">{s("intro")}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">{s("aiIntro")}</p>
         {list && (
           <p className="text-sm mt-2">
             {s("account")
@@ -163,11 +187,11 @@ export default function TokenManager() {
           >
             {secret.token}
           </code>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <button
               type="button"
               onClick={copy}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+              className="text-sm font-medium text-primary hover:underline"
             >
               {copied ? s("copied") : s("copy")}
             </button>
@@ -179,6 +203,14 @@ export default function TokenManager() {
               {s("done")}
             </button>
           </div>
+          <div className="space-y-1 pt-1">
+            <CopyGuideButton
+              text={guide(secret)}
+              copy={guideLabels.copy}
+              copied={guideLabels.copied}
+            />
+            <p className="text-xs opacity-80">{guideLabels.noToken}</p>
+          </div>
         </div>
       )}
 
@@ -186,10 +218,10 @@ export default function TokenManager() {
         {list?.tokens.map((t) => (
           <li
             key={t.id}
-            className="py-3 flex items-start justify-between gap-3 text-sm"
+            className="py-3 flex flex-wrap items-start justify-between gap-x-3 text-sm"
             data-testid="token-row"
           >
-            <div className="min-w-0 space-y-0.5">
+            <div className="min-w-0 flex-1 space-y-0.5">
               <div className="font-medium break-words">{t.name}</div>
               <div className="text-xs opacity-80">
                 {t.scopes.map((x) => scopeName[x]).join(" · ")}
@@ -229,6 +261,11 @@ export default function TokenManager() {
                 setRefocus(t.id);
               }}
             />
+            {!t.expired && (
+              <div className="basis-full min-w-0">
+                <AgentGuide text={guide(t)} labels={guideLabels} />
+              </div>
+            )}
           </li>
         ))}
         {list && list.tokens.length === 0 && (
@@ -267,7 +304,7 @@ export default function TokenManager() {
           onClick={create}
           disabled={busy}
           data-testid="token-create"
-          className="bg-blue-600 text-white text-sm py-2 px-4 rounded hover:bg-blue-700 disabled:opacity-50"
+          className="bg-primary text-on-primary text-sm font-medium py-2 px-4 rounded hover:opacity-90 disabled:opacity-50"
         >
           {busy ? s("creating") : s("create")}
         </button>
