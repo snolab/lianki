@@ -8,15 +8,17 @@ import { voiceAccess } from "@/lib/words/voice-access";
 import { ytSongsOn } from "@/lib/yt-songs/gate";
 import { importAnyOn } from "@/lib/import/words-handler";
 import { importAiOn } from "@/lib/import/ai-convert";
+import { getIntlayer } from "intlayer";
 import WordsClient from "./WordsClient";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await appLocale();
+  const t = getIntlayer("words-status", locale);
   return {
-    title: "Word lists - Lianki",
-    description: "Fast vocabulary review: a screen of words at once, graded by exception, on FSRS.",
+    title: String(t.wordsMetaTitle),
+    description: String(t.wordsMetaDescription),
     ...generateAppHreflangMetadata(locale, "/words"),
   };
 }
