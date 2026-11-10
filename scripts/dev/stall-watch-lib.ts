@@ -100,7 +100,7 @@ const CHROME: RegExp[] = [
   /^[❯›]\s+Try "/, // Claude's input placeholder
   /^[─━═\-_~]{3,}/, // separators
   /⏵⏵|auto mode|bypass permissions|accept edits on|plan mode on|shift\+tab/i,
-  /^\? for shortcuts|for shortcuts\b/i,
+  /\bfor shortcuts\b/i, // "? for shortcuts"
   /new task\? \/clear|\/clear to save/i,
   /Ask Codex to do anything|context left/i,
   /^[✻✳✶✢✽·*⏺•]\s*\S+ (?:for|in) \d+[smh]/, // "✻ Brewed for 45s", "• Worked for 6s"
