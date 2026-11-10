@@ -652,10 +652,10 @@ describe("the /books table of contents", () => {
   });
 
   test("every anchor the TOC names is set by the page code", async () => {
-    const src = await Bun.file("app/(app)/books/BooksBrowser.tsx").text();
+    const src = await Bun.file("app/(app)/library/BooksBrowser.tsx").text();
     expect(src).toContain("id={langSectionId(lang)}");
     expect(src).toContain("id={anchors.get(i)}");
-    const finder = await Bun.file("app/(app)/books/BookFinder.tsx").text();
+    const finder = await Bun.file("app/(app)/library/BookFinder.tsx").text();
     expect(finder).toContain("id={FIND_SECTION_ID}");
     expect(finder).toContain("id={LIBRARIES_SECTION_ID}");
   });
