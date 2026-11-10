@@ -1,0 +1,142 @@
+import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "@/lib/i18n-context";
+
+/**
+ * The keyboard shortcut card on /list (HotkeyHelp.tsx), opened with "?". The
+ * grade names (Again, Hard, Good, Easy) come from `review-page`, so they read
+ * the same as on the review buttons.
+ */
+const dictionary = {
+  key: "hotkey-help",
+  content: {
+    title: t({
+      en: "Keyboard shortcuts",
+      zh: "键盘快捷键",
+      hi: "कीबोर्ड शॉर्टकट",
+      es: "Atajos de teclado",
+      fr: "Raccourcis clavier",
+      ar: "اختصارات لوحة المفاتيح",
+      bn: "কিবোর্ড শর্টকাট",
+      pt: "Atalhos de teclado",
+      ru: "Сочетания клавиш",
+      ur: "کی بورڈ شارٹ کٹس",
+      id: "Pintasan keyboard",
+      de: "Tastenkürzel",
+      ja: "キーボードショートカット",
+      sw: "Njia za mkato za kibodi",
+      mr: "कीबोर्ड शॉर्टकट",
+      ko: "단축키",
+    }),
+    toggle: t({
+      en: "Press {key} to show or hide",
+      zh: "按 {key} 显示或隐藏",
+      hi: "दिखाने या छिपाने के लिए {key} दबाएँ",
+      es: "Pulsa {key} para mostrar u ocultar",
+      fr: "Appuyez sur {key} pour afficher ou masquer",
+      ar: "اضغط {key} للإظهار أو الإخفاء",
+      bn: "দেখাতে বা লুকাতে {key} চাপুন",
+      pt: "Pressione {key} para mostrar ou ocultar",
+      ru: "Нажмите {key}, чтобы показать или скрыть",
+      ur: "دکھانے یا چھپانے کے لیے {key} دبائیں",
+      id: "Tekan {key} untuk menampilkan atau menyembunyikan",
+      de: "{key} drücken zum Ein- und Ausblenden",
+      ja: "{key} で表示／非表示",
+      sw: "Bonyeza {key} kuonyesha au kuficha",
+      mr: "दाखवण्यासाठी किंवा लपवण्यासाठी {key} दाबा",
+      ko: "{key} 키로 보이기/숨기기",
+    }),
+    close: t({
+      en: "Close",
+      zh: "关闭",
+      hi: "बंद करें",
+      es: "Cerrar",
+      fr: "Fermer",
+      ar: "إغلاق",
+      bn: "বন্ধ করুন",
+      pt: "Fechar",
+      ru: "Закрыть",
+      ur: "بند کریں",
+      id: "Tutup",
+      de: "Schließen",
+      ja: "閉じる",
+      sw: "Funga",
+      mr: "बंद करा",
+      ko: "닫기",
+    }),
+    delete: t({
+      en: "Delete",
+      zh: "删除",
+      hi: "हटाएँ",
+      es: "Eliminar",
+      fr: "Supprimer",
+      ar: "حذف",
+      bn: "মুছুন",
+      pt: "Excluir",
+      ru: "Удалить",
+      ur: "حذف کریں",
+      id: "Hapus",
+      de: "Löschen",
+      ja: "削除",
+      sw: "Futa",
+      mr: "हटवा",
+      ko: "삭제",
+    }),
+    previous: t({
+      en: "Previous",
+      zh: "上一张",
+      hi: "पिछला",
+      es: "Anterior",
+      fr: "Précédente",
+      ar: "السابقة",
+      bn: "আগেরটি",
+      pt: "Anterior",
+      ru: "Предыдущая",
+      ur: "پچھلا",
+      id: "Sebelumnya",
+      de: "Vorherige",
+      ja: "前へ",
+      sw: "Iliyotangulia",
+      mr: "मागील",
+      ko: "이전",
+    }),
+    next: t({
+      en: "Next",
+      zh: "下一张",
+      hi: "अगला",
+      es: "Siguiente",
+      fr: "Suivante",
+      ar: "التالية",
+      bn: "পরেরটি",
+      pt: "Próximo",
+      ru: "Следующая",
+      ur: "اگلا",
+      id: "Berikutnya",
+      de: "Nächste",
+      ja: "次へ",
+      sw: "Inayofuata",
+      mr: "पुढील",
+      ko: "다음",
+    }),
+  },
+} satisfies DeclarationContent;
+
+const H =
+  "Keyboard shortcut card on /list (opened with the ? key; a key column, then what the key does):";
+
+const context: Record<keyof typeof dictionary.content, string> = {
+  title: `${H} heading of the small card. Plural noun phrase, the platform's usual word for keyboard shortcuts.`,
+  toggle: `${H} footer line. {key} is replaced by the ? key in a keyboard style; keep {key}. Says the same key shows or hides this card.`,
+  close: `${H} screen-reader label of the ESC button in the card's corner that closes it. Imperative verb.`,
+  delete: `${H} what the 5 / m / t keys do: delete the selected card. Imperative verb, as on a button.`,
+  previous: `${H} what the ↑ / i keys do: move the selection to the previous card in the list. Short label agreeing with 'card'.`,
+  next: `${H} what the ↓ / k keys do: move the selection to the next card in the list. Short label agreeing with 'card'.`,
+};
+
+export default {
+  ...dictionary,
+  title: "Keyboard shortcut card on /list",
+  description: describeKeys(
+    "The keyboard shortcut card on the card list: which keys grade, delete or move between cards. Key names (?, ESC, arrows, letters) stay as they are.",
+    context,
+  ),
+} satisfies DeclarationContent;

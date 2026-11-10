@@ -174,7 +174,7 @@ export function LanguageSwitcher({ variant = "header" }: { variant?: "header" | 
                       )}
                       {!supported && (
                         <span className="text-xs px-2 py-0.5 rounded-full border border-[var(--glass-line)]">
-                          Coming Soon
+                          {text.comingSoon}
                         </span>
                       )}
                     </div>
@@ -187,11 +187,11 @@ export function LanguageSwitcher({ variant = "header" }: { variant?: "header" | 
           <div className="mt-3 text-xs opacity-70">
             <p>
               <span className="lk-lang-dot-preferred inline-block w-3 h-3 rounded-full me-1" />
-              Green ring: Your browser's preferred languages
+              {text.legendPreferred}
             </p>
             <p className="mt-1">
               <span className="lk-lang-dot-current inline-block w-3 h-3 rounded-full me-1" />
-              Blue background: Currently selected
+              {text.legendCurrent}
             </p>
           </div>
         </div>
@@ -238,7 +238,7 @@ export function LanguageSwitcher({ variant = "header" }: { variant?: "header" | 
           />
         </svg>
         <span className={variant === "menu" ? "" : "hidden sm:inline"}>
-          {LANGUAGES.find((l) => l.code === currentLocale)?.nativeName || "Language"}
+          {LANGUAGES.find((l) => l.code === currentLocale)?.nativeName || text.fallbackName}
         </span>
       </button>
 

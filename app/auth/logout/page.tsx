@@ -1,4 +1,6 @@
+import { getIntlayer } from "intlayer";
 import { authEmail } from "@/app/signInEmail";
+import { appLocale } from "@/lib/app-locale.server";
 import { SignOutButton } from "./SignOutButton";
 
 /**
@@ -9,10 +11,12 @@ import { SignOutButton } from "./SignOutButton";
  */
 export default async function Logout() {
   const email = await authEmail();
+  // The same "Sign out" as the account menu (app-shell.content.ts).
+  const { nav } = getIntlayer("app-shell", await appLocale());
   return (
     <main className="p-4 flex flex-col items-start gap-3">
       <p>{email}</p>
-      <SignOutButton />
+      <SignOutButton label={nav.signOut} />
     </main>
   );
 }

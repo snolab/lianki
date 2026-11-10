@@ -2,8 +2,12 @@
 
 import { signOut } from "@/lib/sign-out";
 
-/** The /auth/logout page's button: the same sign-out as the menu (lib/sign-out.ts). */
-export function SignOutButton() {
+/**
+ * The /auth/logout page's button: the same sign-out as the menu (lib/sign-out.ts).
+ * `label`: the translated "Sign out" from the server page (this page has no
+ * Intlayer client provider).
+ */
+export function SignOutButton({ label }: { label: string }) {
   return (
     <button
       type="button"
@@ -14,7 +18,7 @@ export function SignOutButton() {
       }}
       className="px-4 py-2 rounded border text-red-600 dark:text-red-400 disabled:opacity-60"
     >
-      logout
+      {label}
     </button>
   );
 }
