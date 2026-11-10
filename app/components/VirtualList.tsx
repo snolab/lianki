@@ -87,6 +87,12 @@ export type VirtualListProps<T> = {
   /** Classes of each row's wrapper (role listitem). */
   rowClassName?: string;
   testId?: string;
+  /**
+   * Render as a table: `head` is the <thead>, each `renderItem` returns the
+   * row's <td> cells, and the rows are <tr> in one <tbody> (spacer rows above
+   * and below stand in for the rows out of view). For data tables (/data).
+   */
+  table?: { head: ReactNode; className?: string; label?: string };
   /** Imperative calls: bring a row (by key) into view, e.g. for an in-page link. */
   handle?: RefObject<VirtualListHandle | null>;
 };
@@ -118,9 +124,13 @@ export function VirtualList<T>({
   rowClassName,
   testId,
   handle,
+  table,
 }: VirtualListProps<T>) {
   const t = useIntlayer("virtual-list");
-  const listRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLElement | null>(null);
+  const setListRef = (el: HTMLElement | null) => {
+    listRef.current = el;
+  };
   const [margin, setMargin] = useState(0);
   const keys = items.map(getKey);
   const isWindow = !scrollRef;
@@ -307,7 +317,7 @@ export function VirtualList<T>({
     };
     requestAnimationFrame(() => tryFocus(5));
   };
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
     const target = e.target as HTMLElement;
     const row = target.closest<HTMLElement>("[data-index]");
@@ -327,10 +337,92 @@ export function VirtualList<T>({
 
   if (!items.length && !hasMore && !loading && !error) return <>{empty ?? null}</>;
 
+  const status = (
+    <div
+      role="status"
+      aria-live="polite"
+      className="py-4 text-center text-sm"
+      data-testid="vlist-status"
+    >
+      {error ? (
+        <span className="inline-flex flex-wrap items-center justify-center gap-3">
+          <span className="text-gray-700 dark:text-gray-300">
+            <span aria-hidden className="me-1">
+              ⚠︎
+            </span>
+            {t.loadFailed}
+          </span>
+          <button
+            type="button"
+            onClick={onReachEnd}
+            data-testid="vlist-retry"
+            className="min-h-10 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
+          >
+            {t.retry}
+          </button>
+        </span>
+      ) : loading ? (
+        <span className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400">
+          <span
+            aria-hidden
+            className="inline-block size-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent motion-reduce:animate-none dark:border-blue-300 dark:border-t-transparent"
+          />
+          {items.length ? t.loadingMore : t.loading}
+        </span>
+      ) : !hasMore && items.length ? (
+        <span className="text-gray-500 dark:text-gray-400" data-testid="vlist-end">
+          {t.end}
+        </span>
+      ) : null}
+    </div>
+  );
+
+  if (table) {
+    const last = rows[rows.length - 1];
+    const padTop = rows.length ? first - v.options.scrollMargin : 0;
+    const padBottom = last
+      ? Math.max(0, v.getTotalSize() - (last.end - v.options.scrollMargin))
+      : 0;
+    return (
+      <div className={className} data-testid={testId}>
+        <table
+          className={table.className}
+          aria-label={table.label ?? label}
+          aria-rowcount={size === -1 ? -1 : size + 1}
+          aria-busy={loading || undefined}
+        >
+          {table.head}
+          <tbody ref={setListRef} onKeyDown={onKeyDown}>
+            {padTop > 0 && <tr aria-hidden style={{ height: padTop }} />}
+            {rows.map((r) => {
+              const item = items[r.index];
+              if (item === undefined) return null;
+              return (
+                <tr
+                  key={r.key}
+                  ref={v.measureElement}
+                  data-index={r.index}
+                  data-key={String(r.key)}
+                  aria-rowindex={r.index + 2}
+                  tabIndex={-1}
+                  className={rowClassName}
+                >
+                  {renderItem(item, r.index)}
+                </tr>
+              );
+            })}
+            {padBottom > 0 && <tr aria-hidden style={{ height: padBottom }} />}
+          </tbody>
+        </table>
+        {status}
+      </div>
+    );
+  }
+
   return (
     <div className={className} data-testid={testId}>
       <div
-        ref={listRef}
+        ref={setListRef}
         role="list"
         aria-label={label}
         aria-busy={loading || undefined}
@@ -368,43 +460,7 @@ export function VirtualList<T>({
           })}
         </div>
       </div>
-      <div
-        role="status"
-        aria-live="polite"
-        className="py-4 text-center text-sm"
-        data-testid="vlist-status"
-      >
-        {error ? (
-          <span className="inline-flex flex-wrap items-center justify-center gap-3">
-            <span className="text-gray-700 dark:text-gray-300">
-              <span aria-hidden className="me-1">
-                ⚠︎
-              </span>
-              {t.loadFailed}
-            </span>
-            <button
-              type="button"
-              onClick={onReachEnd}
-              data-testid="vlist-retry"
-              className="min-h-10 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
-            >
-              {t.retry}
-            </button>
-          </span>
-        ) : loading ? (
-          <span className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-400">
-            <span
-              aria-hidden
-              className="inline-block size-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent motion-reduce:animate-none dark:border-blue-300 dark:border-t-transparent"
-            />
-            {items.length ? t.loadingMore : t.loading}
-          </span>
-        ) : !hasMore && items.length ? (
-          <span className="text-gray-500 dark:text-gray-400" data-testid="vlist-end">
-            {t.end}
-          </span>
-        ) : null}
-      </div>
+      {status}
     </div>
   );
 }

@@ -206,6 +206,33 @@ for (const [name, device] of [
   }
   await page.emulateMedia({ colorScheme: "light" });
 
+  // /data's card table (cloud): the same list as table rows, no page controls.
+  await page.goto("/data?store=cloud", { waitUntil: "networkidle" });
+  await page.locator('[data-testid="cards-total"]').waitFor();
+  const dataTotal = Number((await page.locator('[data-testid="cards-total"]').innerText()).trim());
+  check(dataTotal === N - 1, `${name}: /data total ${dataTotal}`);
+  check(
+    (await page.getByRole("button", { name: /^[‹›]$/ }).count()) === 0,
+    `${name}: /data no page buttons`,
+  );
+  await page.mouse.move(vp.width / 2, vp.height / 2);
+  const dataSeen = new Set();
+  let dataMax = 0;
+  for (let step = 0; step < 300; step++) {
+    const ts = await page
+      .locator("tbody tr[data-key]")
+      .evaluateAll((rs) => rs.map((r) => r.dataset.key));
+    ts.forEach((t) => dataSeen.add(t));
+    dataMax = Math.max(dataMax, ts.length);
+    if ((await page.locator('[data-testid="vlist-end"]').count()) && dataSeen.size >= dataTotal)
+      break;
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(80);
+  }
+  check(dataSeen.size === dataTotal, `${name}: /data all rows reachable (${dataSeen.size})`);
+  check(dataMax < dataTotal, `${name}: /data only a window of rows (max ${dataMax})`);
+  await page.screenshot({ path: join(OUT, `data-${name}.png`) });
+
   check(errs.length === 0, `${name}: no page errors (${errs.join("; ")})`);
   await ctx.close();
 }
