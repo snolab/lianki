@@ -731,7 +731,7 @@ function ContinueCard({ last, label }: { last: LastRead; label: string }) {
     <section aria-label={label} data-testid="read-continue" className="mb-6">
       <h2 className="mb-2 text-sm font-semibold text-gold-ink">{label}</h2>
       <Link
-        href={`/reader/${last.id}`}
+        href={`/reader/${encodeURIComponent(last.id)}`}
         data-testid="read-continue-link"
         className="flex items-center gap-3 rounded-xl bg-gold-100 p-4 text-[var(--foreground)] transition-colors hover:bg-gold-200 dark:bg-gold-950 dark:hover:bg-gold-900"
       >
