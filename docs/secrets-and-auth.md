@@ -486,6 +486,10 @@ login`'s and the agent lanes' tokens.
   name, permissions, created, expiry, last used, and Revoke behind an inline confirm (RevokeConfirm.tsx; Esc or Cancel backs out); the
   form takes name, permissions and expiry. `/api/token` (`lib/api-token-api.ts`)
   takes a browser session only; a token can never make or list tokens.
+- **Instructions for the user's AI assistant**: every token row (and the new
+  token's box) offers a copyable prompt built from the token's permissions, in
+  the page's language, never containing the secret; also public at
+  `GET /api/agent-guide` ([api-for-agents.md](api-for-agents.md)).
 - **Audit** (`security_audit`): `api-token.create`, `.revoke`, `.revoke-all`,
   `.use` (when last used is written), `.refused` (a known token expired, out
   of scope or over its rate limit; at most 5 per 10 min per token).

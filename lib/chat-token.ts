@@ -24,6 +24,7 @@ import { type AuditDb, audit } from "@/lib/security/audit-log";
 import { hit, type Limit, type ThrottleDb } from "@/lib/security/throttle";
 import { readHolders, type PermissionReadDb } from "@/lib/account-permission";
 import { normalizeEmail } from "@/lib/permissions";
+import { CHAT_LIMITS } from "@/lib/chat-limits";
 
 const MIN = 60_000;
 
@@ -37,12 +38,8 @@ export const CHAT_OPS = {
 } as const satisfies Record<string, ScopeId>;
 export type ChatOp = keyof typeof CHAT_OPS;
 
-/** Per token, per kind of operation. */
-export const CHAT_LIMITS: Record<"post" | "read" | "listen", Limit> = {
-  post: { max: 60, windowMs: 10 * MIN }, // say + ask
-  read: { max: 240, windowMs: 10 * MIN },
-  listen: { max: 30, windowMs: 10 * MIN },
-};
+/** Per token, per kind of operation (lib/chat-limits.ts). */
+export { CHAT_LIMITS };
 const limitOf = (op: ChatOp) =>
   op === "say" || op === "ask"
     ? "post"
