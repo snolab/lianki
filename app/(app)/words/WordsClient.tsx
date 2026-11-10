@@ -2013,6 +2013,7 @@ export default function WordsClient({
   pinch = false,
   onboarding = false,
   shatter = false,
+  dev = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
@@ -2029,6 +2030,8 @@ export default function WordsClient({
   onboarding?: boolean;
   /** `words.shatter` (lib/words/shatter-gate.ts): a locked "↓ back" slip shows cracked glass. */
   shatter?: boolean;
+  /** Holds `dev`: debug mode also offers whisper mode and the swipe's feel and tuner. */
+  dev?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
@@ -2199,6 +2202,7 @@ export default function WordsClient({
             voice={voice}
             pinch={pinch}
             shatter={shatter}
+            dev={dev}
             title={
               listId === ALL
                 ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
@@ -3791,7 +3795,10 @@ export function Study({
   scope,
   pinch = false,
   shatter = false,
+  dev = false,
 }: {
+  /** Holds `dev`: debug mode also offers whisper mode and the swipe's feel and tuner. */
+  dev?: boolean;
   scope?: StudyScope;
   /** A locked "↓ back" slip shows cracked glass (`words.shatter`, Shatter.tsx). */
   shatter?: boolean;
@@ -5551,7 +5558,7 @@ export function Study({
                 <span className="fs-10 opacity-60">{vtext.keepAwakeHint}</span>
               </span>
             )}
-            {debug && <WhisperModeSetting text={text} />}
+            {debug && dev && <WhisperModeSetting text={text} />}
             {speech.on && serverVoice && (
               <span className="w-full text-xs opacity-60" data-voice-credit>
                 {/* Credits: the voice names stay as their makers write them. */}
@@ -5624,8 +5631,8 @@ export function Study({
                       hint={text.newSwipeHint.value}
                     />
                   )}
-                  {/* The swipe's feel (docs/swipe-core.md): debug mode only, this device only. */}
-                  {touch && debug && (
+                  {/* The swipe's feel (docs/swipe-core.md): debug mode and `dev` only, this device only. */}
+                  {touch && debug && dev && (
                     <>
                       <TogglePill
                         on={feelPrefs.preset === "heavy"}
@@ -5716,7 +5723,7 @@ export function Study({
         <SwipeProviders mirror={mirror}>
           {/* The feel's sources and its tuner: islands (docs/swipe-core.md). */}
           {touch && <SwipeFeelIsland />}
-          {touch && <SwipeTunerIsland />}
+          {touch && dev && <SwipeTunerIsland />}
           <div
             ref={setListRef}
             // The whole window, edge to edge, under the glass overlays

@@ -12,7 +12,7 @@ import {
 
 describe("the mic's local-STT dot", () => {
   it("says where speech goes in zh, ja and en", () => {
-    expect(localSttStrings("zh-CN").ready).toBe("已连接本地语音模型");
+    expect(localSttStrings("zh-CN").ready).toBe("已连接 Lianki 语音服务器");
     expect(localSttStrings("ja").down).toContain("クラウド");
     expect(localSttStrings("en").connecting).toMatch(/Connecting/);
     expect(localSttStrings(null)).toEqual(localSttStrings("en"));

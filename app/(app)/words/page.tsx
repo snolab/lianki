@@ -43,6 +43,8 @@ export default async function WordsPage() {
       onboarding={flags["words.onboarding"]}
       // A locked "↓ back" slip shows cracked glass (lib/words/shatter-gate.ts).
       shatter={!!user && shatterOn(flags, isDev(user.email))}
+      // Debug mode's developer extras (whisper mode, the swipe's feel and tuner): `dev` only.
+      dev={isDev(user?.email)}
     />
   );
 }

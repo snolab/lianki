@@ -24,14 +24,20 @@ import { ExternalLinkGuard, type ExternalLinkStrings } from "./components/Extern
  * default), or a guest, or the owner: false, and nothing changes. The session
  * is only looked up while the flag is on.
  */
-async function partnerOpenFor(flags: FlagValues): Promise<boolean> {
-  if (!flagIn(flags, "partner.ai-reply")) return false;
+/**
+ * The chat's viewer, from one session read: `open`, the Learning Partner for a
+ * signed-in user without `dev` (partner.ai-reply on); `dev`, the viewer holds
+ * the `dev` grant (lib/permissions.ts), so the chat may show its developer
+ * parts (remote eval, pairings, full page paths).
+ */
+async function chatViewerFor(flags: FlagValues): Promise<{ open: boolean; dev: boolean }> {
   try {
     const { authSessionOrNull } = await import("./signInEmail");
     const user = (await authSessionOrNull())?.user;
-    return !!user?.id && !isDev(user.email);
+    const dev = !!user?.id && isDev(user.email);
+    return { open: flagIn(flags, "partner.ai-reply") && !!user?.id && !dev, dev };
   } catch {
-    return false;
+    return { open: false, dev: false };
   }
 }
 
@@ -125,14 +131,14 @@ export default async function RootLayout({
   };
   // One read per request, passed to everything that decides (docs/feature-flags.md).
   const flags: FlagValues = partnerFrame ? {} : await readFlags();
-  const open = partnerFrame ? false : await partnerOpenFor(flags);
+  const { open, dev } = partnerFrame ? { open: false, dev: false } : await chatViewerFor(flags);
   // The chat's full screen for every chat user (off: the owner's pages only; full-screen.ts).
   const chatFull = flagIn(flags, "partner.fullscreen");
   // Li's sound hub, observing only (docs/li-sound-hub.md); the owner's pages only.
   const liHub = flagIn(flags, "voice.li-hub");
   // The owner's ETA bar (lib/eta-ping.ts): the chat shows it only on his pages.
   const etaBar = flagIn(flags, ETA_FLAG);
-  const boots = { strings: partner, leave, credits, open, chatFull, etaBar, liHub };
+  const boots = { strings: partner, leave, credits, open, dev, chatFull, etaBar, liHub };
   const box = boxConfig();
   return (
     <html

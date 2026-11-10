@@ -15,6 +15,17 @@ phone (lianki.com, debug chat mic)
   on any failure: POST /api/debug/stt (unchanged)
 ```
 
+**User-facing wording** (owner, 2026-11-11): every string a user can see calls
+this server **"Lianki's speech server(s)"** — never "your Mac", "the owner's
+computer" or "the local model" (it is one of Lianki's speech servers, and may
+move to the cloud). This doc keeps the technical truth. /privacy, "Your voice
+and speech-to-text" (`#voice`), states what users are promised: STT runs only
+when the user asks; the audio is not stored or logged (here: `server.py`
+writes no audio outside opt-in enrolment, the clip sink is the owner's own
+session only, `/api/debug/stt` logs sizes and timings only); only what a user
+keeps is stored (opt-in enrolment recordings in My Files; voiceprint features
+on the speech server and, encrypted, in the account). Keep both true together.
+
 ## Turn it on
 
 On the Mac (once):

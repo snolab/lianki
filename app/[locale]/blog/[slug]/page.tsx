@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { getRawPost, getAllSlugs } from "@/lib/blog";
 import { StreamingTranslation } from "../StreamingTranslation";
 import { MarkdownPost } from "../MarkdownPost";
-import { BLOG_LOCALES, LOCALE_LABELS, isSupportedLocale } from "@/lib/constants";
+import { BLOG_LOCALES, isSupportedLocale } from "@/lib/constants";
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import matter from "gray-matter";
 import { getIntlayer } from "intlayer";
@@ -30,25 +30,28 @@ export async function generateMetadata({
   params: Promise<{ locale: string; slug: string }>;
 }): Promise<Metadata> {
   const { locale, slug } = await params;
+  const { post } = getIntlayer("blog-page", isSupportedLocale(locale) ? locale : "en");
 
   // Try to get the post to extract title and description
   const raw = await getRawPost("en", slug); // Always use English source for metadata
   if (!raw) {
     return {
-      title: "Blog Post - Lianki",
+      title: String(post.metaFallbackTitle),
       ...generateHreflangMetadata(locale, `/blog/${slug}`),
     };
   }
 
   const { data } = matter(raw);
   return {
-    title: `${data.title || slug} - Lianki Blog`,
-    description: data.summary || data.description || "Read this article on the Lianki blog",
+    title: String(post.metaTitle).replace("{title}", String(data.title || slug)),
+    description: data.summary || data.description || String(post.metaDescription),
     ...generateHreflangMetadata(locale, `/blog/${slug}`),
   };
 }
 
-function PostSkeleton() {
+type PostText = ReturnType<typeof getIntlayer<"blog-page">>["post"];
+
+function PostSkeleton({ text }: { text: PostText }) {
   return (
     <div className="animate-pulse space-y-4 mt-8">
       <div className="h-4 bg-gray-200 rounded w-24" />
@@ -68,7 +71,7 @@ function PostSkeleton() {
         ))}
       </div>
       <p className="text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded mt-6">
-        Translating… this may take a moment
+        {text.translating}
       </p>
     </div>
   );
@@ -80,12 +83,11 @@ async function EnglishPost({ slug, locale }: { slug: string; locale: string }) {
   return <MarkdownPost content={raw} locale={locale} />;
 }
 
-function UntranslatedNotice({ locale, signedIn }: { locale: string; signedIn: boolean }) {
-  const language = LOCALE_LABELS[locale] ?? locale;
+function UntranslatedNotice({ text, signedIn }: { text: PostText; signedIn: boolean }) {
   return (
     <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded mb-6">
-      This post hasn&apos;t been translated into {language} yet, so it is shown in English.
-      {!signedIn && " Sign in to generate a translation."}
+      {text.untranslated}
+      {!signedIn && <> {text.signInToTranslate}</>}
     </p>
   );
 }
@@ -94,10 +96,12 @@ async function PostContent({
   locale,
   slug,
   signedIn,
+  text,
 }: {
   locale: string;
   slug: string;
   signedIn: boolean;
+  text: PostText;
 }) {
   // For English, render directly (no translation needed)
   if (locale === "en") return <EnglishPost slug={slug} locale={locale} />;
@@ -117,7 +121,7 @@ async function PostContent({
   if (!signedIn) {
     return (
       <>
-        <UntranslatedNotice locale={locale} signedIn={false} />
+        <UntranslatedNotice text={text} signedIn={false} />
         <EnglishPost slug={slug} locale={locale} />
       </>
     );
@@ -128,9 +132,14 @@ async function PostContent({
     <StreamingTranslation
       locale={locale}
       slug={slug}
+      messages={{
+        errSignIn: String(text.errSignIn),
+        errRate: String(text.errRate),
+        errFailed: String(text.errFailed),
+      }}
       fallback={
         <>
-          <UntranslatedNotice locale={locale} signedIn />
+          <UntranslatedNotice text={text} signedIn />
           <EnglishPost slug={slug} locale={locale} />
         </>
       }
@@ -148,6 +157,7 @@ export default async function BlogPostPage({
 
   const { appName, nav } = getIntlayer("landing-page", locale);
   const shellNav = getIntlayer("app-shell", locale).nav;
+  const { post } = getIntlayer("blog-page", locale);
 
   // Try to get user if logged in (optional)
   let user = null;
@@ -179,13 +189,13 @@ export default async function BlogPostPage({
       <main className="flex-grow max-w-2xl mx-auto px-4 py-12 w-full">
         <nav className="mb-8 text-sm text-gray-500">
           <Link href={`/${locale}/blog`} className="hover:text-gray-700">
-            ← Blog
+            {post.back}
           </Link>
         </nav>
 
         {/* Shell renders immediately; PostContent streams in when translation is ready */}
-        <Suspense fallback={<PostSkeleton />}>
-          <PostContent locale={locale} slug={slug} signedIn={Boolean(user)} />
+        <Suspense fallback={<PostSkeleton text={post} />}>
+          <PostContent locale={locale} slug={slug} signedIn={Boolean(user)} text={post} />
         </Suspense>
       </main>
     </div>
