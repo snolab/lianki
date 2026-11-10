@@ -75,7 +75,10 @@ describe("grouping", () => {
   });
 
   test("其他, then shipped, come last", () => {
-    const view = buildFlagView(all({ levels: {}, "books.catalogue": { enabled: true } }), input());
+    const view = buildFlagView(
+      all({ levels: {}, "read.youtube-songs": { enabled: true } }),
+      input(),
+    );
     const ids = view.map((g) => g.id);
     expect(ids.at(-1)).toBe(SHIPPED_GROUP);
     expect(ids.at(-2)).toBe(OTHER_GROUP);
@@ -97,8 +100,8 @@ describe("grouping", () => {
 
 describe("the shipped view", () => {
   test("on for everyone: on, every user, nothing missing", () => {
-    expect(isShipped(row("books.catalogue", { enabled: true }))).toBe(true);
-    expect(isShipped(row("books.catalogue"))).toBe(false);
+    expect(isShipped(row("read.youtube-songs", { enabled: true }))).toBe(true);
+    expect(isShipped(row("read.youtube-songs"))).toBe(false);
   });
   test("never a flag that reaches only the owner: read.vibe on is not shipped", () => {
     expect(isShipped(row("read.vibe", { enabled: true }))).toBe(false);
@@ -120,10 +123,10 @@ describe("the shipped view", () => {
     expect(isGroupOpen({ [SHIPPED_GROUP]: true, read: false }, "read")).toBe(false);
   });
   test("a flag toggled just now stays where it was until the view is asked again", () => {
-    const on = row("books.catalogue", { enabled: true });
+    const on = row("read.youtube-songs", { enabled: true });
     expect(groupOfRow(on, {})).toBe(SHIPPED_GROUP);
     expect(groupOfRow(on, { held: new Map([[on.key, false]]) })).toBe("read");
-    const off = row("books.catalogue");
+    const off = row("read.youtube-songs");
     expect(groupOfRow(off, { held: new Map([[off.key, true]]) })).toBe(SHIPPED_GROUP);
   });
 });
@@ -192,8 +195,8 @@ describe("filters", () => {
 
 describe("a link's target", () => {
   test("the key itself, dots kept, encoded or not", () => {
-    expect(resolveFlagAnchor("#books.catalogue")).toBe("books.catalogue");
-    expect(resolveFlagAnchor("#books%2Ecatalogue")).toBe("books.catalogue");
+    expect(resolveFlagAnchor("#read.youtube-songs")).toBe("read.youtube-songs");
+    expect(resolveFlagAnchor("#read%2Eyoutube-songs")).toBe("read.youtube-songs");
     expect(resolveFlagAnchor("#levels")).toBe("levels");
   });
   test("an old key lands on the new one", () => {
@@ -217,10 +220,10 @@ describe("a link's target", () => {
     expect(keysIn(rows, { recent: true, pinned })).toEqual([pinned]);
   });
   test("it stays in its own section, the shipped one too", () => {
-    const rows = all({ "books.catalogue": { enabled: true } });
-    const view = buildFlagView(rows, input({ state: "off", pinned: "books.catalogue" }));
+    const rows = all({ "read.youtube-songs": { enabled: true } });
+    const view = buildFlagView(rows, input({ state: "off", pinned: "read.youtube-songs" }));
     expect(view.find((g) => g.id === SHIPPED_GROUP)?.rows.map((r) => r.key)).toEqual([
-      "books.catalogue",
+      "read.youtube-songs",
     ]);
   });
   test("a flag just toggled is not filtered away from under the finger", () => {

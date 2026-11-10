@@ -47,7 +47,9 @@ export const APP_NAV: NavItem[] = [
   { key: "learn", href: "/learn", icon: "graduationCap", group: "main" },
   { key: "selfIntro", href: "/self-intro", icon: "userSound", group: "main" },
   { key: "read", href: "/reader", icon: "bookOpen", group: "main" },
-  { key: "books", href: "/books", icon: "books", group: "main", flag: "books.catalogue" },
+  // My books (the user's shelf) and the catalogue it is filled from (owner, 2026-11-10).
+  { key: "books", href: "/books", icon: "bookBookmark", group: "main", flag: "books.mine" },
+  { key: "library", href: "/library", icon: "books", group: "main", flag: "library.catalogue" },
   { key: "roadmap", href: "/roadmap", icon: "mapTrifold", group: "main" },
   { key: "sites", href: "/sites", icon: "globe", group: "advanced" },
   { key: "review", href: "/review", icon: "play", group: "advanced" },

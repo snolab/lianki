@@ -52,7 +52,8 @@ import readGdocDrive from "@/app/(app)/reader/read-gdoc-drive.content";
 import drivePick from "@/app/(app)/connections/drive-pick.content";
 import readRowMenu from "@/app/(app)/reader/read-row-menu.content";
 import selfIntroImport from "@/app/(app)/self-intro/import.content";
-import booksPage from "@/app/(app)/books/page.content";
+import booksPage from "@/app/(app)/library/page.content";
+import myBooks from "@/app/(app)/books/my-books.content";
 import readFormTags from "@/app/(app)/reader/read-form-tags.content";
 import learnerLevels from "@/app/components/level-badge.content";
 import learnerLevelUi from "@/app/components/level-ui.content";
@@ -158,6 +159,7 @@ describe.each([
   ["read-row-menu", readRowMenu],
   ["self-intro-import", selfIntroImport],
   ["books-page", booksPage],
+  ["my-books", myBooks],
   ["read-form-tags", readFormTags],
   ["learner-levels", learnerLevels],
   ["learner-level-ui", learnerLevelUi],

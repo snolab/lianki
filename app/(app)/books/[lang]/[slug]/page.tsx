@@ -1,52 +1,75 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { getIntlayer } from "intlayer";
+import { authUserOrNull } from "@/app/signInEmail";
 import { appLocale } from "@/lib/app-locale.server";
-import { bookKey, bookVisibleIn } from "@/lib/books/catalogue";
-import { normaliseSlug } from "@/lib/books/slug";
-import { BookCard } from "../../BookCard";
-import { booksAccess, findBook, languageName } from "../../access";
+import { dbBackend } from "@/lib/d1";
+import { readFlags } from "@/lib/flags-store";
+import { isDev } from "@/lib/permissions";
+import { booksMineOn } from "@/lib/books/gate";
+import { ownedPresets } from "@/lib/books/owned";
+import { legacyBookTarget } from "@/lib/books/legacy-link";
+import { BookDetail, entryOf } from "../../../library/BookDetail";
 
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ lang: string; slug: string }>;
-
-/** The entry for a /books/<lang>/<slug> URL: the slug decoded and NFC-normalised. */
-async function entryOf(lang: string, slug: string) {
-  const s = normaliseSlug(slug);
-  if (!s || !/^[A-Za-z0-9-]{2,35}$/.test(lang)) return null;
-  return findBook(lang, s);
-}
+type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { lang, slug } = await params;
   const b = await entryOf(lang, slug);
-  return b ? { title: `${b.title} — ${b.author}` } : {};
+  return b ? { title: `${b.title} — ${b.author}`, robots: { index: false, follow: true } } : {};
 }
 
-/** One public-domain book's page: its stable URL (lib/books/slug.ts). */
-export default async function BookPage({ params }: { params: Params }) {
+/** The query string of the request, rebuilt from the page's search params. */
+function queryOf(sp: Record<string, string | string[] | undefined>): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp))
+    for (const one of Array.isArray(v) ? v : v === undefined ? [] : [v]) q.append(k, one);
+  return q.toString();
+}
+
+/**
+ * The old catalogue link /books/<lang>/<slug> (lib/books/legacy-link.ts): a
+ * book on the viewer's shelf stays here as their own book (back to My books);
+ * any other viewer gets a 308 to /library/<lang>/<slug>, query kept. Dynamic,
+ * so the viewer-dependent redirect is never cached.
+ */
+export default async function OldBookLink({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: Search;
+}) {
   const { lang, slug } = await params;
+  const user = await authUserOrNull();
+  let owned: Record<string, string> = {};
+  let shelf = false;
+  if (user && dbBackend() === "d1") {
+    shelf = booksMineOn(await readFlags(), isDev(user.email ?? null));
+    if (shelf) {
+      try {
+        owned = await ownedPresets(user.id);
+      } catch (err) {
+        console.error("books: owned list failed", err);
+      }
+    }
+  }
+  const target = legacyBookTarget({
+    lang,
+    slug,
+    search: queryOf(await searchParams),
+    owned,
+    shelf,
+  });
+  if (!target.stay) permanentRedirect(target.href);
+
   const b = await entryOf(lang, slug);
   if (!b) notFound();
-  const locale = await appLocale();
-  const t = getIntlayer("books-page", locale);
-  const { signedIn, owned, country, year } = await booksAccess();
-  // Not public domain where the viewer is: as if it were not in the catalogue.
-  if (!bookVisibleIn(b, country, year)) notFound();
-
+  const t = getIntlayer("my-books", await appLocale());
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-8">
-      <div className="max-w-3xl mx-auto">
-        <Link href="/books" className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
-          &larr; {String(t.allBooks)}
-        </Link>
-        <p className="mt-4 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          {languageName(b.lang, locale)}
-        </p>
-        <BookCard book={b} ownedId={owned[bookKey(b)]} signedIn={signedIn} detail />
-      </div>
-    </div>
+    <BookDetail book={b} owned={owned} signedIn back={{ href: "/books", label: String(t.title) }} />
   );
 }

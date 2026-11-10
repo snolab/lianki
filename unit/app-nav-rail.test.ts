@@ -12,7 +12,7 @@ describe("rail and account menu", () => {
   });
 
   it("the rail keeps every other visible item, flags still apply", () => {
-    expect(railNav(["books", "today"]).length + MENU_NAV.length).toBe(APP_NAV.length);
+    expect(railNav(["books", "library", "today"]).length + MENU_NAV.length).toBe(APP_NAV.length);
     expect(railNav([]).some((i) => i.key === "today")).toBe(false);
     expect(railNav([]).some((i) => i.key === "books")).toBe(false);
     expect(railNav([])[0].key).toBe("home");

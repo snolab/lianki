@@ -182,6 +182,16 @@ export const SUITES = [
     paths: READ,
     sensitive: true,
   },
+  // /library (the catalogue) and /books (My books): titles, the shelf, old links 308 (docs/books-plan.md).
+  {
+    name: "BOOKS (qa-books)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-books.mjs"],
+    base: true,
+    id: "books",
+    paths: ["app/(app)/books/**", "app/(app)/library/**", "app/api/books/**", "lib/books/**"],
+    sensitive: false,
+  },
   // /today, today's goal: the one number from /words's counts, red and gold by theme, links (lib/today/goal.ts).
   {
     name: "TODAY (qa-today)",

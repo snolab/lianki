@@ -216,10 +216,20 @@ export const FLAGS = {
       "YouTube 歌词例句（docs/youtube-song-examples.md）：所有登录用户都能在 /reader 点「YouTube 歌曲」，贴一个 YouTube 链接和带时间的歌词（LRC、SRT 或 VTT），每句歌词变成 /reader 里的一段，旁边的 ▶ 在弹窗里用 YouTube 官方播放器（youtube-nocookie）只播这一句（t0→t1）。从歌词做的单词卡会带上那一句：在 /words 和阅读器的单词复习里，例句前也有 ▶，点了就唱那一句。不下载、不保存任何音视频，只存视频 id；歌词只存在用户自己的账号里，不共享。关闭（默认）= 只有你本人能用，其他人 /reader/youtube 是 404，也看不到 ▶。",
     default: false,
   },
-  "books.catalogue": {
+  // No `audience`: /library, the catalogue, for everyone; ON is the shipped state.
+  // Replaced `books.catalogue` (2026-11-10), on for everyone since 2026-11-05;
+  // its stored row is ignored now (a key not listed here).
+  "library.catalogue": {
     description:
-      "公版书库 /books：所有登录用户都能看到公版书目录（只收美国公版且所有作者/译者/编者去世 80 年以上的原文，每本标明来源和授权），点一下导入成自己的书，之后在 /reader 里阅读。原文不进仓库，服务器按需从来源（Project Gutenberg）下载一次，缓存在 R2 里给所有人共用。关闭（默认）= 只有你本人能看到和导入。",
-    default: false,
+      "书库 /library：所有人都能看到书目（每本只在首次出版国、你所在的国家和美国都属于公有领域时列出，标明来源和授权），登录后点一下「加入我的阅读」，书就进了 /books「我的书」和 /reader。原文不进仓库，服务器按需从来源下载一次，缓存在 R2 里给所有人共用。关闭 = /library 是 404，没有入口；有 dev 权限的人仍能看到。",
+    default: true,
+    group: "read",
+  },
+  // No `audience`: /books, the user's own shelf, for everyone; ON is the shipped state.
+  "books.mine": {
+    description:
+      "我的书 /books：每个登录用户的书架，放从书库 /library 加入的书和自己导入的书。旧的 /books/<语言>/<书名> 链接：书在书架上就留在 /books，不在就 308 转到 /library。关闭 = /books 不再是书架，旧链接一律转到 /library，侧栏没有「我的书」；有 dev 权限的人仍能看到。",
+    default: true,
     group: "read",
   },
   "my-box": {

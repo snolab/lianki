@@ -2,7 +2,7 @@
 export const FLAG_HIGHLIGHT_MS = 2400;
 
 /**
- * The flag key a location hash names, for links like /dev/flags#books.catalogue.
+ * The flag key a location hash names, for links like /dev/flags#library.catalogue.
  * Browsers may percent-encode the fragment; a malformed one is used as written.
  */
 export function flagKeyFromHash(hash: string): string | null {

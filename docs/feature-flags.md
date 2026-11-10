@@ -107,7 +107,8 @@ stay on the folded row, because they say why the switch does nothing.
 | `read.gdoc-stream`     | every user gets the userscript's "Stream to Lianki" switch on Google Docs, and live readers at `/reader/<id>?streamingFrom=google-docs` (off: the owner only) — [connections.md](connections.md), "Live stream" |
 | `read.live-polish`     | every user gets the AI polish of a live doc's text into a speech draft (off: the owner only) — [connections.md](connections.md), "Polish" |
 | `read.youtube-songs`   | every signed-in user gets /reader → YouTube song: a YouTube link plus timed lyrics (LRC/SRT/VTT) become a /reader text, each line with a ▶ that plays that line in YouTube's own player in a popup, and word cards made from a line keep its clip: their example gets the same ▶ in /words and the reader's word review; lyrics private to the account, nothing downloaded (off: the owner only; /reader/youtube and its route 404) — [youtube-song-examples.md](youtube-song-examples.md) |
-| `books.catalogue`      | every visitor gets /books, the public-domain library, and can add its books to their own reading (off: the owner only) — [books-plan.md](books-plan.md), "The catalogue: /books" |
+| `library.catalogue`    | **on by default, everyone.** /library, the book catalogue: browse, add to my reading, find more; its nav item, the reader's link and `/api/books/import|resolve|search` (off: 404, no links; `dev` holders keep it). Replaced `books.catalogue` on 2026-11-10 — [books-plan.md](books-plan.md), "/library and /books" |
+| `books.mine`           | **on by default, everyone.** /books, My books: the user's shelf of books added from /library and imported themselves; an old /books/<lang>/<slug> link stays for a book on the shelf (off: /books and every old link go to /library, no nav item; `dev` holders keep it) — [books-plan.md](books-plan.md), "/library and /books" |
 | `levels`               | every user sees their learner level: a chip by the avatar in the nav (signed in) and a level card on /my/profile (guests too), from `GET /api/levels/me`; study days are recorded either way (off: the owner only) — [levels.md](levels.md) |
 | `read.vibe`            | the owner, and only the owner, can start /vibe: a conversation transcribed on his Mac into a private doc. **Off: nobody, the owner included** (no bypass) — [vibe.md](vibe.md) |
 | `partner.fullscreen`   | everyone who has the Learning Partner chat gets its full-screen button: the chat fills the app; the button, Escape or Back return to the panel (off: the owner only) — [dev-debug-widget.md](dev-debug-widget.md), "Full screen" |
@@ -147,7 +148,7 @@ page is owner-only and Chinese only) and a context line, as docs/i18n.md asks.
 | `partner.ai-reply`     | `workers-ai.credentials` (`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_TOKEN` or `CLOUDFLARE_API_TOKEN`); `ai-credits.migration` (0041: `credit_ai_charge` exists, `credit_ledger` accepts `'ai'`) |
 | `connections.google`   | `google.oauth-client` (`AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`); `google.picker-key` (`pickerConfig`); `auth-secret` (`AUTH_SECRET` ≥ 32 chars, seals tokens) |
 
-The others need nothing a check could see: `books.catalogue` works without R2
+The others need nothing a check could see: `library.catalogue` works without R2
 (no cache) and its tables came with the reader migrations; the rest are UI
 rollouts. Add a check only for a real, observable requirement.
 
