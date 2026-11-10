@@ -190,7 +190,8 @@ describe("My Files: one store, folders by origin, the owner only", () => {
     expect(folderOf("chat")).toBe("chat");
     expect(folderOf("future")).toBe("other");
     expect(folderOf("constructor")).toBe("other");
-    expect(FOLDERS).toEqual(["selfIntro", "import", "chat", "other"]);
+    expect(folderOf("books")).toBe("books");
+    expect(FOLDERS).toEqual(["selfIntro", "import", "books", "chat", "other"]);
   });
 });
 

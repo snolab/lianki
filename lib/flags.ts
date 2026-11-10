@@ -228,7 +228,7 @@ export const FLAGS = {
   // No `audience`: /books, the user's own shelf, for everyone; ON is the shipped state.
   "books.mine": {
     description:
-      "我的书 /books：每个登录用户的书架，放从书库 /library 加入的书和自己导入的书。旧的 /books/<语言>/<书名> 链接：书在书架上就留在 /books，不在就 308 转到 /library。关闭 = /books 不再是书架，旧链接一律转到 /library，侧栏没有「我的书」；有 dev 权限的人仍能看到。",
+      "我的书 /books：每个登录用户的书架，放从书库 /library 加入的书和自己导入的书（EPUB 或纯文本，存在「我的文件」的「书」文件夹里，只有本人能看到；服务器解析章节、书名、作者、封面和语言，不用 AI、不扣额度）。旧的 /books/<语言>/<书名> 链接：书在书架上就留在 /books，不在就 308 转到 /library。关闭 = /books 不再是书架，旧链接一律转到 /library，侧栏没有「我的书」；有 dev 权限的人仍能看到。",
     default: true,
     group: "read",
   },

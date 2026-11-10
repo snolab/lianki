@@ -16,6 +16,8 @@ export interface EpubArchive {
   list(): string[];
   /** The entry as text, or null when it does not exist. */
   read(path: string): Promise<string | null>;
+  /** The entry's bytes (a cover image), or null; same limits as `read`. */
+  readBytes?(path: string): Promise<Uint8Array | null>;
 }
 
 export type EpubErrorCode = "not-epub" | "drm" | "no-text" | "too-much-text" | "too-large";

@@ -5,6 +5,7 @@ import { appLocale } from "@/lib/app-locale.server";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
 import { importAnyOn } from "@/lib/import/words-handler";
+import { booksMineOn } from "@/lib/books/gate";
 import MyFilesClient from "./MyFilesClient";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,9 @@ export default async function MyFilesPage() {
   if (!user) return signInRedirect();
   const { files } = getIntlayer("my-page", await appLocale());
   // Without the store's gate there is nothing to list: no request, the empty state.
-  const on = !!user.email && importAnyOn(await readFlags(), isDev(user.email));
+  const flags = user.email ? await readFlags() : null;
+  const on =
+    !!user.email &&
+    (importAnyOn(flags, isDev(user.email)) || booksMineOn(flags, isDev(user.email)));
   return <MyFilesClient back={String(files.back)} on={on} />;
 }

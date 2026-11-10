@@ -24,13 +24,21 @@ export interface ShelfBook {
   key?: string;
   /** ISO time of the last change (reading, import). */
   updatedAt: string;
+  /** An own book with a cover: GET /api/books/mine/<id>/cover. */
+  cover?: boolean;
 }
+
+/** What an own book's meta says about it (lib/read/book.ts BookMeta). */
+export type FileInfo = { lang?: string; author?: string; cover?: boolean };
 
 export interface ShelfRow {
   id: string;
   title: string;
   source_key: string;
   updated_at: string;
+  /** Inline meta (small books), else in R2 at r2_key: read for own books only. */
+  content?: string | null;
+  r2_key?: string | null;
 }
 
 /** The SQL prefixes that put a material on the shelf (LIKE patterns). */
@@ -43,7 +51,7 @@ export const SHELF_SOURCE_PATTERNS = ["preset:%", "file:%"] as const;
 export function shelfBook(
   row: ShelfRow,
   lookup: (key: string) => CatalogueBook | null = catalogueBook,
-  fileInfo: (id: string) => { lang?: string; author?: string } | undefined = () => undefined,
+  fileInfo: (id: string) => FileInfo | undefined = () => undefined,
 ): ShelfBook | null {
   const k = row.source_key ?? "";
   if (k.startsWith("preset:")) {
@@ -69,6 +77,7 @@ export function shelfBook(
       lang: info?.lang ?? "",
       origin: "file",
       updatedAt: row.updated_at,
+      ...(info?.cover ? { cover: true } : {}),
     };
   }
   return null;
@@ -92,7 +101,7 @@ type Db = {
 export async function shelfRows(db: Db, userId: string): Promise<ShelfRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT id, title, source_key, updated_at FROM read_materials
+      `SELECT id, title, source_key, updated_at, content, r2_key FROM read_materials
        WHERE user_id = ? AND (source_key LIKE ? OR source_key LIKE ?)
        ORDER BY updated_at DESC LIMIT 1000`,
     )

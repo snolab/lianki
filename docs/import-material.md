@@ -99,12 +99,12 @@ to every signed-in user while it is on).
 ### My Files: /my/files (owner, 2026-11-10)
 
 Every file the user stored, in **folders by origin** (`source`):
-Self-introduction, Word lists, Chat, Other (`lib/import/my-files.ts`; a new
+Self-introduction, Word lists, Books (own books from /books, source `books`: docs/books-plan.md, "Your own books on /books"), Chat, Other (`lib/import/my-files.ts`; a new
 source lands in Other until it gets a folder). Each row: name, size, time,
 **Open** (`GET /api/my/files/<id>`, served to its owner only, as an
 attachment) and × (`DELETE /api/my/files/<id>`: the R2 object and the row,
 after a 5 s Undo toast; a pending delete is sent at once when the page is
-left). Same gate as the store (`import.any`). Linked from the Import panel
+left). Same gate as the store (`import.any`), or `books.mine` (the books folder; a listing needs either). Deleting a book file also deletes its cover (the book stays in /reader). Linked from the Import panel
 ("All my files") and from /self-intro. The /my index (and /profile,
 /preferences under /my) is another change; this page is `/my/files` only.
 Tests: `unit/my-files.test.ts`.

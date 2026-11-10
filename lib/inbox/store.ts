@@ -5,8 +5,8 @@
  * the Import panel's stored files ('import'); usage and caps are shared.
  */
 
-/** Where a stored file came from: the chat's attachments, the Import panel, /self-intro. */
-export const INBOX_SOURCES = ["chat", "import", "self-intro"] as const;
+/** Where a stored file came from: the chat's attachments, the Import panel, /self-intro, an own book on /books. */
+export const INBOX_SOURCES = ["chat", "import", "self-intro", "books"] as const;
 export type InboxSource = (typeof INBOX_SOURCES)[number];
 export const isInboxSource = (v: unknown): v is InboxSource =>
   typeof v === "string" && (INBOX_SOURCES as readonly string[]).includes(v);
