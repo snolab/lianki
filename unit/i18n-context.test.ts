@@ -85,6 +85,7 @@ import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
 import devPages from "@/app/(app)/dev/dev-pages.content";
 import ytSongs from "@/app/components/yt-clip/yt-songs.content";
 import pillChat from "@/app/components/pill-chat.content";
+import userscriptUi from "@/app/components/userscript.content";
 import chatUi from "@/app/components/chat-ui.content";
 import signInErrors from "@/app/(app)/sign-in/errors.content";
 import activityTally from "@/app/(app)/list/components/activity-tally.content";
@@ -209,6 +210,7 @@ describe.each([
   ["dev-pages", devPages],
   ["yt-songs", ytSongs],
   ["pill-chat", pillChat],
+  ["userscript-ui", userscriptUi],
   ["chat-ui", chatUi],
   ["my-files", myFiles],
   ["activity-tally", activityTally],

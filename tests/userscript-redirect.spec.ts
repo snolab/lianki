@@ -112,7 +112,7 @@ test.describe("checkRedirect — genuine redirect still works", () => {
     const newUrl = "https://www.zhihu.com/question/99999999";
     const r = await runRedirect(page, ZHIHU, newUrl);
     expect(r.confirms).toHaveLength(1);
-    expect(r.confirms[0]).toContain("Update the card to point to the new URL?");
+    expect(r.confirms[0]).toContain("Update the card to the new address?");
     expect(r.patches).toHaveLength(1);
     expect(r.patches[0].oldUrl).toBe(ZHIHU);
     expect(r.patches[0].newUrl).toBe(newUrl);
