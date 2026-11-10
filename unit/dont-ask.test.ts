@@ -169,6 +169,44 @@ describe("the dialogs through the helper (localStorage)", () => {
     expect(map()).toEqual({});
   });
 
+  it("the review: ask again now, keep, and both for all", async () => {
+    const { askAgainNow, chooseDontAsk, dontAskQuiet, reviewAll, readDontAsk, dayStart, dayOf } =
+      await import("@/lib/dont-ask");
+    expect(dayOf(dayStart(D))).toBe(D);
+    chooseDontAsk("link-any");
+    chooseDontAsk("read-polish");
+    askAgainNow("link-any");
+    expect(dontAskQuiet("link-any")).toBe(false);
+    expect(dontAskQuiet("read-polish")).toBe(true);
+    reviewAll(["link-any", "read-polish"], true);
+    expect(readDontAsk()["link-any"]![0]).toBe(2);
+    expect(readDontAsk()["read-polish"]![0]).toBe(2);
+    reviewAll(["link-any", "read-polish"], false);
+    expect(dontAskQuiet("link-any") || dontAskQuiet("read-polish")).toBe(false);
+  });
+
+  it("junk or a throwing storage: nothing chosen, and writing does not throw", async () => {
+    const { chooseDontAsk, dontAskQuiet, readDontAsk } = await import("@/lib/dont-ask");
+    store.set(DONT_ASK_KEY, "{not json");
+    expect(readDontAsk()).toEqual({});
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("private window");
+      },
+    });
+    expect(() => chooseDontAsk("link-any")).not.toThrow();
+    expect(dontAskQuiet("link-any")).toBe(false);
+  });
+
+  it("long hosts are trimmed by bytes before the count", () => {
+    let m = {};
+    const long = "a".repeat(60);
+    for (let i = 0; i < 39; i++) m = chooseIn(m, `link-site:${long}${i}.example.org`, D + i);
+    expect(Object.keys(m).length).toBeLessThan(39);
+    expect(JSON.stringify(m).length).toBeLessThanOrEqual(DONT_ASK_CONFIG.maxBytes);
+  });
+
   it("reader: 'Don't ask again' comes back, and another answer drops it", async () => {
     const { answerOffer, readOfferOn, writeOfferOn } = await import("@/lib/read/polish-offer");
     writeOfferOn(false);
