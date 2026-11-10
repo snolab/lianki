@@ -42,6 +42,10 @@ export default async function DevRoadmapPage() {
             queued: String(c.status.queued),
             done: String(c.status.done),
           },
+          doneKind: {
+            verified: String(c.doneKind.verified),
+            unverified: String(c.doneKind.unverified),
+          },
           connecting: String(c.connecting),
           empty: String(c.empty),
         }}

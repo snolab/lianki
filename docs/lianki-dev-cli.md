@@ -39,10 +39,22 @@ lianki-dev <command> --help
 - `--as <lane>` or `LIANKI_LANE=<lane>` labels each `say` line and each
   `ask` question `【<lane>】` (until multi-lane chat ships), and is the
   default `--agent` of a `progress` report (and of `progress stats`).
-- A `progress --task` is "name: description" (':' or '：'): a name of 1–20
-  characters, then what it is — the owner's ETA bar shows only the name, the
-  list both. A longer name is a usage error; no colon and over 20 is a
-  warning. [docs/state-tree.md](state-tree.md), "Live progress".
+- A `progress --task` is "name: description" (':' or '：'): a name 1–20
+  columns wide (a Chinese character or an emoji is 2, so about 10 of them),
+  then what it is — the owner's ETA bar shows only the name, the list both.
+  The hub refuses a new or renamed name that is wider (a node keeps the name
+  it has); no colon and over 20 is a warning.
+  [docs/state-tree.md](state-tree.md), "Live progress".
+- **Receipts.** An "ETA reached" line carries a code: ack it at once with
+  `lianki-dev progress ack <code>` (any report on the node counts). No ack in
+  5 min → main is told; no reason and new ETA 5 min later → the owner, then
+  again with backoff (10, 20, 40… min, at most every 4 h).
+  `--status blocked --who owner|<lane> --needs "…"` = someone can act now (the
+  hub nudges them with the same backoff); `--status waiting` = paused, no
+  nudges, no overrun. `--done --verified "<evidence>"` or `--unverified` (a
+  "verify: <name>" child is created for you); a plain `--done --pr N` is
+  verified only if the PR is merged. [docs/state-tree.md](state-tree.md),
+  "Receipts", "Blocked and paused", "Done kinds".
 - **ETA overrun (standing rule).** A task past its `--eta` and not done
   must, within 5 minutes, tell the owner why and a new time:
   `lianki-dev progress --as <lane> --path <node> --task "<same>" --status doing --eta 20m --late "<reason>"`.

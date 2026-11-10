@@ -652,13 +652,21 @@ describe("lianki-push progress routes", () => {
 });
 
 describe("task titles: name: description", () => {
-  it("checks the name before the colon, counting characters, not bytes", () => {
+  it("checks the name before the colon by display width: CJK and emoji count 2 columns", () => {
     expect(checkTaskTitle("Swipe fix: the card snaps back")).toEqual({});
     expect(checkTaskTitle("标题格式：progress.ts 校验")).toEqual({});
-    // 20 CJK characters (60 bytes) and an emoji with a modifier are within the limit.
-    expect(checkTaskTitle(`${"字".repeat(20)}: x`)).toEqual({});
-    expect(checkTaskTitle(`${"👍🏽".repeat(20)}: x`)).toEqual({});
-    expect(checkTaskTitle(`${"字".repeat(21)}: x`)).toBeInstanceOf(Error);
+    // 10 CJK characters (20 columns, 30 bytes) and 10 emoji with a modifier fit; one more does not.
+    expect(checkTaskTitle(`${"字".repeat(10)}: x`)).toEqual({});
+    expect(checkTaskTitle(`${"👍🏽".repeat(10)}: x`)).toEqual({});
+    expect(checkTaskTitle(`${"字".repeat(11)}: x`)).toBeInstanceOf(Error);
+    expect(checkTaskTitle(`${"字".repeat(9)}abc: x`)).toBeInstanceOf(Error);
+    expect(checkTaskTitle(`${"字".repeat(9)}ab: x`)).toEqual({});
+    expect(checkTaskTitle(`${"ｗ".repeat(11)}: x`)).toBeInstanceOf(Error);
+    expect((checkTaskTitle(`${"字".repeat(11)}: x`) as Error).message).toContain("滑动修复");
+    // Grandfathered: a node keeps the name it already has; a rename is checked.
+    const old = `${"字".repeat(15)}: old`;
+    expect(checkTaskTitle(`${"字".repeat(15)}: new text`, old)).toEqual({});
+    expect(checkTaskTitle(`${"字".repeat(16)}: new text`, old)).toBeInstanceOf(Error);
     expect(checkTaskTitle(": no name")).toBeInstanceOf(Error);
     expect(checkTaskTitle("   ：no name")).toBeInstanceOf(Error);
     const long = checkTaskTitle("this is a very long name part: then the rest");

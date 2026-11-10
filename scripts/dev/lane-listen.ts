@@ -131,7 +131,7 @@ async function main(): Promise<number> {
         const l = lineOf(raw);
         if (!l || l.history || seen.has(l.id)) continue;
         seen.add(l.id);
-        if (!laneTakes(o.lane, l, { tests: o.tests })) continue;
+        if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests })) continue;
         backoff = 1_000;
         const code = await deliver(o, handoff(o.lane, l, o.repo));
         log({ type: "delivered", lane: o.lane, id: l.id, test: testText(l) !== null, ay: code });

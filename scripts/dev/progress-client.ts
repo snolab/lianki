@@ -52,3 +52,21 @@ export async function postProgress(
     return e instanceof Error ? e : new Error(String(e));
   }
 }
+
+/**
+ * Is this snolab/lianki PR merged? Asks `gh` (a few seconds at most);
+ * undefined when it cannot tell (no gh, no network, no such PR). For a plain
+ * `--done --pr N` (progress-args.ts settleDoneKind).
+ */
+export function prMerged(pr: number): boolean | undefined {
+  try {
+    const r = Bun.spawnSync(
+      ["gh", "pr", "view", String(pr), "-R", "snolab/lianki", "--json", "state", "-q", ".state"],
+      { timeout: 15_000 },
+    );
+    if (!r.success) return undefined;
+    return r.stdout.toString().trim() === "MERGED";
+  } catch {
+    return undefined;
+  }
+}

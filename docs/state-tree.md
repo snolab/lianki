@@ -48,13 +48,17 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
 
   Report (one POST, then exit):
     bun scripts/dev/progress.ts --agent <you> --path /words/swipe       --task "Native swipe: drag the card with the finger" --status doing --pct 40 --eta 15m
-    … --done --pr 310        when it lands
-    … --status blocked --note "why"
+    … --done --pr 310        when it lands (verified if #310 is merged; see "Done kinds")
+    … --status blocked --who main --needs "rebase #812"   someone can act now
+    … --status waiting --note "Apple review"               paused on an outside event
     … --status waiting-owner --needs "OK the preview" --kind approval
-  --task is "name: description" (':' or '：'): a short name of 1–20
-  characters (graphemes, not bytes), then what it is. The owner's ETA bar
-  shows only the name; the full list shows both. A longer name is refused
-  (with an example); a title with no colon still goes through, with a
+  --task is "name: description" (':' or '：'): a short name 1–20 COLUMNS
+  wide (lib/progress.ts displayWidth: a CJK or other full-width character,
+  or an emoji, is 2 columns — about 10 Chinese characters), then what it is.
+  The owner's ETA bar shows only the name; the full list shows both. The hub
+  refuses a new or renamed name over 20 columns (with an example, "滑动修复：
+  短拖回弹"); a node keeps a name it already has (nodes from before the
+  column rule, 2026-11-11). A title with no colon still goes through, with a
   warning when it is over 20.
   status: doing | blocked | waiting | waiting-owner | review | done
   kind:   task | decision | approval | feedback | person
@@ -130,7 +134,9 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   post one line in the owner's thread, to "/":
     "ETA reached for <task> (<id>): <lane>, within 5 min tell the owner WHY
      and a new "N minutes from now" — bun scripts/dev/progress.ts … --eta <N>m
-     --late "<reason>" … Otherwise he is told "<name> 超时，未说明原因"."
+     --late "<reason>" … Otherwise he is told "<name> 超时，未说明原因".
+     Receipt k3x9qa: ack it now — bun scripts/dev/progress.ts ack k3x9qa …"
+  (see "Receipts" below: no listener, no line yet).
   from "agent", agentId "eta", source "eta", quiet. Every listener at "/" (the
   chat lane's `eval.ts chat`) hears it as it hears his lines; eval.ts prints it
   with "source":"eta","auto":true. It is never the owner speaking, never an
@@ -147,10 +153,65 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   in the owner's language. Once a node's etaAt has passed, a new --eta without
   --late is refused (400); --late without an --eta that sets a time is a usage
   error. Progress without a new estimate (--pct, a note) and --done need none.
-  If neither a reason nor a new estimate comes within 5 minutes of the
-  "ETA reached" line, the hub's alarm posts the owner "<name> 超时，未说明原因"
-  (read aloud), once per etaAt (marked etaSilent). Never let him find out
-  from that line.
+  If neither a reason nor a new estimate comes, the owner hears "<name> 超时，
+  未说明原因" (read aloud) — ten minutes after the line was heard by default,
+  through the receipt chain below (marked etaSilent, once per etaAt). Never
+  let him find out from that line.
+
+  Receipts (peer feedback adopted 2026-11-11; lib/eta-nudge.ts). Every
+  "ETA reached" line carries a receipt code (etaCode, six of a–z 0–9). The
+  lane acks it at once:
+    bun scripts/dev/progress.ts ack k3x9qa
+  (POST /ack {code}, any token whose scope covers the node), or any report
+  on the node counts (etaAcked = that etaAt). The clock starts when a
+  listener got the line (etaHeardAt): the chat hub posts a lanes' line only
+  while someone listens at the root and otherwise answers "queued"; the
+  node keeps etaQueued, no timer runs, and when a listener connects (an
+  eval/chat controller approved or resumed, not a heartbeat socket) the
+  chat hub calls the progress hub's /internal/eta-heard and the queued
+  lines go out then. From etaHeardAt:
+    + chat.etaAckMin (5) without an ack → the coordinating lane
+      (chat.etaCoordinator, "main") gets a quiet line "@main: <lane> has not
+      acked the ETA line for … (receipt …)"; once per etaAt (etaMain).
+    + chat.etaOwnerMin (5) more without a reason and a new ETA → the owner's
+      "<name> 超时，未说明原因". An ack alone does not excuse it; it only
+      spares the coordinating lane.
+  Backoff: after that line, the owner hears "<name> 仍超时，未说明原因（已超
+  40M）" again at chat.nudgeBackoffMin spacing — default 10,20,40,80,160,240
+  minutes, the last repeating (at most every 4 h) — until a reason and a new
+  ETA come or it is done (silentN, silentAt). A first line far past due (the
+  hub was away; an old ping) is marked, never said, and starts no repeats.
+  Waiting-owner reminders keep #823's day spacing (below).
+
+  Blocked and paused (2026-11-11). `blocked` means someone can act now:
+  --who names them ("owner" or a lane; an "@" in front is dropped) and
+  --needs what (the CLI refuses --status blocked without --who). The hub
+  nudges that one at once and then at chat.nudgeBackoffMin spacing until
+  the node leaves blocked or who/needs change (a change starts over;
+  nudgeFor, nudgeN, nudgeAt): the owner by a Li line read aloud, "<name>
+  卡住了，等你——<needs>"; a lane by a quiet line "@<lane>: <task> (<id>) is
+  blocked on you: <needs>…" with eta.lane set, which the root listener sees
+  and lane-listen hands to that lane's agent. A lane's nudge with no
+  listener is held (nudgeQueued) for the next one to connect. `waiting`
+  means paused on an outside event: no nudges, no overrun. Neither gets an
+  "ETA reached" line or "未说明原因", and a new --eta needs no --late; coming
+  back to work with the same, passed etaAt marks it pinged and silent, as
+  for waiting-owner. A node blocked on the owner counts as waiting on him
+  on the board ("Needs me"); --needs with --who <lane> does not. Plain
+  blocked with no --who (older writers) keeps the old behaviour.
+
+  Done kinds (2026-11-11). --done takes --verified "<evidence>" (a PR
+  merged and deployed, a test or screenshot link) or --unverified (done, not
+  confirmed). A plain --done asks gh whether its PRs are merged: all merged →
+  verified "pr #N merged", otherwise (or no PR, or gh cannot tell)
+  unverified. The node keeps doneKind and evidence; the done history, `show`,
+  `history` and /dev/roadmap's Done section show them (dev-facing). An
+  unverified node gets a child "verify: <name>" (a path's <id>/verify, a
+  slug's <id>.verify) assigned to the same lane with a short estimate
+  (chat.verifyEtaMin, 30 minutes) and the usual ETA rules; that child done
+  --verified marks the parent verified ("verify: <evidence>"). Not done:
+  the overrun rule above (a reason and a new time). The owner's check-off
+  (resolve) records no kind: he saw it himself.
 
   Waiting on the owner (owner, 2026-11-10 21:47 JST). A node that waits on
   HIM — status waiting-owner, something in `needs`, or kind decision /

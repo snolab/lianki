@@ -167,7 +167,16 @@ export type ChatMessage = {
    * `source: "eta"` lines only: the state-tree node whose estimate ran out,
    * and that estimate (lib/eta-ping.ts). Automatic, never the owner speaking.
    */
-  eta?: { id: string; etaAt: number };
+  eta?: {
+    id: string;
+    etaAt: number;
+    /** Which line (lib/eta-ping.ts EtaPingKind); absent: "due". */
+    kind?: string;
+    /** "due" / "main": the receipt code a lane acks with (`progress.ts ack <code>`). */
+    code?: string;
+    /** "main" / "blocked": the lane (or "owner") it is for. */
+    lane?: string;
+  };
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */

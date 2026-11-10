@@ -380,7 +380,7 @@ export function chatArgv(
 export function progressArgv(rest: string[], g: Global): string[] {
   if (!g.lane || rest.includes("--agent") || rest.some((a) => a.startsWith("--agent=")))
     return rest;
-  if (["show", "resolve", "grant"].includes(rest[0] ?? "")) return rest;
+  if (["show", "resolve", "grant", "ack"].includes(rest[0] ?? "")) return rest;
   return [...rest, "--agent", g.lane];
 }
 

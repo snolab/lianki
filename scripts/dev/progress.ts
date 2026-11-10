@@ -26,9 +26,15 @@
  * PROGRESS_TOKEN from .dev.vars in this checkout or the main one.
  */
 import { BASE } from "./eval-socket";
-import { PROGRESS_USAGE, formatHistory, formatStats, parseProgressArgs } from "./progress-args";
+import {
+  PROGRESS_USAGE,
+  formatHistory,
+  formatStats,
+  parseProgressArgs,
+  settleDoneKind,
+} from "./progress-args";
 import { type ProgressDone, type ProgressHistory, progressStats } from "../../lib/progress";
-import { postProgress, progressToken } from "./progress-client";
+import { postProgress, prMerged, progressToken } from "./progress-client";
 
 /** "2026-11-07 20:30 JST": when the estimate runs out, as the owner reads times. */
 const etaJst = (at: number) =>
@@ -55,18 +61,26 @@ if (!token) {
 }
 const [path, body] =
   cmd.cmd === "report"
-    ? ["", cmd.report]
-    : cmd.cmd === "batch"
-      ? ["/batch", { reports: cmd.reports, ...(cmd.changeId ? { changeId: cmd.changeId } : {}) }]
-      : cmd.cmd === "grant"
-        ? ["/grant", { node: cmd.node, agent: cmd.agent, ttl: cmd.ttl }]
-        : cmd.cmd === "resolve"
-          ? ["/resolve", { id: cmd.id, note: cmd.note }]
-          : cmd.cmd === "stats"
-            ? ["/stats", undefined]
-            : cmd.cmd === "history"
-              ? [`/history?limit=${cmd.limit ?? 2000}`, undefined]
-              : ["", undefined];
+    ? ["", settleDoneKind(cmd.report, prMerged)]
+    : cmd.cmd === "ack"
+      ? ["/ack", { code: cmd.code }]
+      : cmd.cmd === "batch"
+        ? [
+            "/batch",
+            {
+              reports: cmd.reports.map((r) => settleDoneKind(r, prMerged)),
+              ...(cmd.changeId ? { changeId: cmd.changeId } : {}),
+            },
+          ]
+        : cmd.cmd === "grant"
+          ? ["/grant", { node: cmd.node, agent: cmd.agent, ttl: cmd.ttl }]
+          : cmd.cmd === "resolve"
+            ? ["/resolve", { id: cmd.id, note: cmd.note }]
+            : cmd.cmd === "stats"
+              ? ["/stats", undefined]
+              : cmd.cmd === "history"
+                ? [`/history?limit=${cmd.limit ?? 2000}`, undefined]
+                : ["", undefined];
 const res = await postProgress(BASE, token, path, body);
 if (res instanceof Error) {
   console.error(`progress: ${res.message}`);
@@ -96,7 +110,9 @@ else if (cmd.cmd === "show") {
   }
   console.log(`progress: change ${String(res.changeId)} (${results.length} nodes)`);
   if (res.ok === false) process.exit(1);
-} else if (cmd.cmd === "resolve")
+} else if (cmd.cmd === "ack")
+  console.log(`progress: acked ${String(res.id)} (receipt ${cmd.code})`);
+else if (cmd.cmd === "resolve")
   console.log(
     `progress: resolved ${(res.resolved as string[]).join(", ") || "nothing (already done)"}`,
   );
@@ -107,11 +123,20 @@ else {
     rev: number;
     etaAt?: number;
     etaMinAt?: number;
+    doneKind?: string;
+    evidence?: string;
   };
   const eta = e.etaAt
     ? `, ETA ${e.etaMinAt ? `${etaJst(e.etaMinAt).slice(11, 16)}–` : ""}${etaJst(e.etaAt)}`
     : "";
-  console.log(`progress: ${e.id} ${e.status} (rev ${e.rev}${eta}, ${res.readers ?? 0} watching)`);
+  const kind = e.doneKind ? ` ${e.doneKind}${e.evidence ? `: ${e.evidence}` : ""}` : "";
+  console.log(
+    `progress: ${e.id} ${e.status}${kind} (rev ${e.rev}${eta}, ${res.readers ?? 0} watching)`,
+  );
+  if (e.doneKind === "unverified")
+    console.log(
+      `progress: not verified yet — a "verify: …" child is yours now; when it is confirmed: --done --verified "<evidence>"`,
+    );
   if (res.told === true) console.log("progress: the owner was told the reason and the new time");
   else if (res.told === false)
     console.error("progress: warning: the reason could not be posted to the owner; say it in Li");

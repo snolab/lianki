@@ -4025,6 +4025,65 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     expect(line.from).toBe("owner");
     expect(line.source).toBeUndefined();
   });
+
+  it("receipts: a lanes' line with no listener is queued, not posted; a listener connecting tells the progress hub", async () => {
+    const calls: string[] = [];
+    const PROGRESS = {
+      idFromName: (n: string) => n,
+      get: () => ({
+        fetch: async (req: Request) => {
+          calls.push(new URL(req.url).pathname);
+          return Response.json({ ok: true });
+        },
+      }),
+    };
+    const s = setup({ ...on(), PROGRESS });
+    const owner = s.page();
+    const res = await post(s, { ...ping, code: "k3x9qa" });
+    expect(await res.json()).toMatchObject({ delivered: false, queued: true, listeners: 0 });
+    expect(chats(owner)).toEqual([]);
+    // The owner's own lines never wait for a listener.
+    await post(s, { ...ping, kind: "silent" });
+    expect(chats(owner).length).toBe(1);
+    await lane(s, owner);
+    expect(calls).toEqual(["/internal/eta-heard"]);
+    // Now heard: posted, with its receipt code in the text and on the line.
+    expect(await (await post(s, { ...ping, code: "k3x9qa" })).json()).toMatchObject({
+      delivered: true,
+      listeners: 1,
+    });
+    const line = chats(owner).at(-1) as Record<string, any>;
+    expect(line.eta).toMatchObject({ id: "/words/swipe", code: "k3x9qa" });
+    expect(line.text).toContain("progress.ts ack k3x9qa");
+  });
+
+  it("the coordinating lane's line and blocked nudges: quiet for a lane, read aloud for the owner", async () => {
+    const s = setup(on());
+    const owner = s.page();
+    await lane(s, owner);
+    await post(s, { ...ping, kind: "main", lane: "main", code: "k3x9qa", ownerMin: 5 });
+    const main = chats(owner).at(-1) as Record<string, any>;
+    expect(main.quiet).toBe(true);
+    expect(main.eta).toMatchObject({ kind: "main", lane: "main" });
+    expect(main.text).toStartWith("@main: swipe-agent has not acked");
+    await post(s, {
+      ...ping,
+      title: "Rebase: x",
+      kind: "blocked",
+      lane: "codex",
+      reason: "合并 #812",
+    });
+    const nudge = chats(owner).at(-1) as Record<string, any>;
+    expect(nudge.quiet).toBe(true);
+    expect(nudge.eta).toMatchObject({ kind: "blocked", lane: "codex" });
+    expect(nudge.text).toContain("@codex: Rebase: x (/words/swipe) is blocked on you: 合并 #812");
+    await post(s, { ...ping, title: "DNS: apex", kind: "blocked", lane: "owner", reason: "批准" });
+    const his = chats(owner).at(-1) as Record<string, any>;
+    expect(his.quiet).toBeUndefined();
+    expect(his.text).toBe("DNS 卡住了，等你——批准");
+    // A nudge must name who.
+    expect((await post(s, { ...ping, kind: "blocked" })).status).toBe(400);
+  });
 });
 
 describe("DebugHub chat history (lib/chat-log.ts over SESSIONS.chatLog)", () => {

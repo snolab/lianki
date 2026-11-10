@@ -39,6 +39,9 @@ export type RoadmapItem = {
   needs?: string;
   /** Done: when; open: the last write. Sorts newest first. */
   at: number;
+  /** Done: verified (with its evidence) or not yet (docs/state-tree.md, "Done kinds"). */
+  doneKind?: "verified" | "unverified";
+  evidence?: string;
 };
 export type RoadmapGroup = { top: string; items: RoadmapItem[] };
 export type Roadmap = Record<RoadmapSection, RoadmapGroup[]>;
@@ -106,6 +109,8 @@ export function roadmapSections(
   for (const h of done.values()) {
     const item: RoadmapItem = { id: h.id, title: h.title, prs: h.prs ?? [], at: h.endedAt };
     if (h.link) item.link = h.link;
+    if (h.doneKind) item.doneKind = h.doneKind;
+    if (h.evidence) item.evidence = h.evidence;
     add("done", h.id, item);
   }
   // Within a group: soonest ETA first when open (then newest), newest first when done.

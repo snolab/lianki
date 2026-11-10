@@ -17,6 +17,8 @@ export type RoadmapLabels = {
   toc: string;
   stateTree: string;
   sections: Record<RoadmapSection, string>;
+  /** A done item's tag: verified (evidence on hover) or not yet. */
+  doneKind: Record<"verified" | "unverified", string>;
   connecting: string;
   empty: string;
 };
@@ -92,6 +94,16 @@ export function RoadmapBoard({
       <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums">
         <span className="opacity-60 break-all">{it.id}</span>
         {s === "done" && <span className="opacity-60">{dayJst(it.at)}</span>}
+        {s === "done" && it.doneKind && (
+          <span
+            className="rounded border border-current px-1 text-xs opacity-70"
+            data-done-kind={it.doneKind}
+            title={it.evidence}
+          >
+            {it.doneKind === "verified" ? "✓ " : ""}
+            {labels.doneKind[it.doneKind]}
+          </span>
+        )}
         {s !== "done" && it.etaAt !== undefined && (
           <span className={isLate(it.etaAt - now) ? "text-red-700 dark:text-red-300" : ""}>
             {compactTime(it.etaAt - now)}

@@ -211,8 +211,17 @@ describe("the progress hub's ETA alarm and its single delivery", () => {
     h.tick(10 * MIN);
     await h.hub.alarm();
     expect(h.pings).toEqual([
-      { id: "/words/swipe", title: "Native swipe", etaAt: at, assignee: "a1" },
+      {
+        id: "/words/swipe",
+        title: "Native swipe",
+        etaAt: at,
+        assignee: "a1",
+        code: expect.stringMatching(/^[a-z0-9]{6}$/),
+        ackMin: 5,
+        ownerMin: 5,
+      },
     ]);
+    expect(h.entry("/words/swipe")?.etaCode).toBe(h.pings[0]!.code as string);
     expect(h.entry("/words/swipe")?.etaSent).toBe(at);
     // Again: nothing more.
     await h.hub.alarm();
@@ -297,7 +306,7 @@ describe("the progress hub's ETA alarm and its single delivery", () => {
     await h.write({ id: "/late", eta: "1m" });
     h.tick(ETA_GIVE_UP_MS + 2 * MIN);
     await h.hub.alarm();
-    expect(h.pings.length).toBe(2);
+    expect(h.pings.filter((p) => p.id === "/late")).toEqual([]);
     expect(h.entry("/late")?.etaSent).toBe(h.entry("/late")?.etaAt);
   });
 
@@ -362,7 +371,7 @@ describe("ETA overrun: the reason and a new ETA, or the owner is told", () => {
     expect(h.pings.filter((p) => p.kind === "silent")).toEqual([]);
   });
 
-  it("no reason and no new ETA within ETA_EXPLAIN_MS: the owner is told once", async () => {
+  it("no ack: the coordinating lane at 5 min; no reason and no new ETA: the owner at 10", async () => {
     const h = setup();
     await h.write({ id: "/words/swipe", eta: "5m" });
     h.tick(5 * MIN);
@@ -374,10 +383,15 @@ describe("ETA overrun: the reason and a new ETA, or the owner is told", () => {
     expect(h.pings.length).toBe(1);
     h.tick(1000);
     await h.hub.alarm();
+    expect(h.pings.at(-1)).toMatchObject({ kind: "main", lane: "main", id: "/words/swipe" });
+    expect(h.pings.at(-1)!.code).toBe(h.pings[0]!.code as string);
+    h.tick(5 * MIN);
+    await h.hub.alarm();
     expect(h.pings.at(-1)).toMatchObject({ kind: "silent", id: "/words/swipe" });
+    expect(h.pings.at(-1)).not.toHaveProperty("n");
     expect(h.entry("/words/swipe")?.etaSilent).toBe(h.entry("/words/swipe")?.etaAt);
     await h.hub.alarm();
-    expect(h.pings.length).toBe(2);
+    expect(h.pings.length).toBe(3);
     // A task done in the window is never reported.
     await h.write({ id: "/b", eta: "1m" });
     h.tick(MIN);
@@ -489,9 +503,11 @@ describe("waiting on the owner: one reminder with the reason, then spaced ones",
     h.tick(5 * MIN);
     await h.hub.alarm();
     expect((await h.write({ id: "/x/work", eta: "20m" })).status).toBe(400);
-    h.tick(ETA_EXPLAIN_MS);
+    h.tick(10 * MIN);
     await h.hub.alarm();
-    expect(kinds(h, "/x/work")).toEqual(["due", "silent"]);
+    await h.hub.alarm();
+    // A refused write is no report: no ack, so the coordinating lane first, then the owner.
+    expect(kinds(h, "/x/work")).toEqual(["due", "main", "silent"]);
   });
 
   it("a lane that hands its overrun to the owner: his reminder at once, no 未说明原因", async () => {

@@ -52,7 +52,15 @@ export const tokenNeeded = (lane: string, env?: Record<string, string | undefine
   `a lane token for ${lane}: lianki.com/my/preferences → API tokens → name "${lane}", permissions chat:read chat:write chat:ask (nothing else), an expiry; saved at ${laneTokenPath(lane, env)} (chmod 600) or passed as LIANKI_TOKEN`;
 
 /** A chat line from either listener's JSON (eval.ts chat, or `lianki chat listen --json`). */
-export type Line = { id: string; thread: string; from: string; text: string; at?: string };
+export type Line = {
+  id: string;
+  thread: string;
+  from: string;
+  text: string;
+  at?: string;
+  /** An automatic state-tree line (source "eta") addressed to this lane: a blocked nudge, or "main". */
+  etaLane?: string;
+};
 export function lineOf(raw: string): (Line & { history: boolean }) | null {
   let v: Record<string, unknown>;
   try {
@@ -68,6 +76,12 @@ export function lineOf(raw: string): (Line & { history: boolean }) | null {
     thread: typeof m.thread === "string" ? m.thread : "owner",
     from: typeof m.from === "string" ? m.from : "",
     text: m.text,
+    ...(m.source === "eta" &&
+    m.from === "agent" &&
+    m.eta &&
+    typeof (m.eta as { lane?: unknown }).lane === "string"
+      ? { etaLane: (m.eta as { lane: string }).lane }
+      : {}),
     ...(m.at !== undefined
       ? { at: String(typeof m.at === "number" ? new Date(m.at).toISOString() : m.at) }
       : {}),
@@ -84,6 +98,13 @@ export const jst = (at?: string) => {
 
 /** What the lane's agent is handed: his words, and how to answer as itself. */
 export function handoff(lane: RouteLane, l: Line, repo: string): string {
+  if (l.etaLane === lane)
+    return [
+      `【state tree → ${lane}】(${jst(l.at)} JST, automatic) ${l.text}`,
+      "",
+      'The state tree\'s hub sent this to your lane (docs/state-tree.md, "Blocked and paused", "Receipts"). Act on it; report on the node with bun scripts/dev/progress.ts, or answer in Li with:',
+      `  bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} say --repo ${repo} --as ${lane} "<your reply>"`,
+    ].join("\n");
   const test = testText(l);
   const words = test ?? l.text;
   const said = routeLine(words);
