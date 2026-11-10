@@ -208,11 +208,13 @@ describe("POST /api/debug/stt", () => {
     });
     const r2 = await handleStt(post(), down.d);
     expect(r2.status).toBe(502);
-    expect((await r2.json()).error).toBe("transcription failed: all down");
+    // A code for the client; the model's own words only in the log.
+    expect((await r2.json()).error).toBe("transcription-failed");
     expect(down.logs.at(-1)).toEqual({
       msg: "debug.stt.error",
       model: FALLBACK_STT_MODEL,
       bytes: 4,
+      detail: "all down",
     });
     const asked = deps({
       owner: true,
