@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.31
+// @version     2.24.32
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -3526,6 +3526,821 @@
     };
   }
 
+  // src/userscript-strings.ts
+  var USERSCRIPT_STRINGS = {
+    en: {
+      again: "Again",
+      hard: "Hard",
+      good: "Good",
+      easy: "Easy",
+      open: "Open",
+      syncedCloud: "Synced to your Lianki account",
+      savedOffline: "Offline: saved in this browser, syncs later",
+      savedLocal: "Saved in this browser only: sign in to sync (it's free)",
+      due: "due: {n}",
+      slower: "Slower (,/v)",
+      faster: "Faster (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "Review this card (Alt+F)",
+      addCard: "Add to LiCards (Alt+F)",
+      adding: "Adding the card…",
+      errOffline: "You're offline. Please try again when you're back online.",
+      errSignIn: "Please sign in to Lianki.",
+      errServer: "Lianki's server is busy. Please try again in a moment.",
+      errOther: "Something went wrong. Please try again.",
+      signIn: "Sign in to Lianki",
+      copyError: "Copy error details",
+      copied: "Copied!",
+      delete: "Delete",
+      hints: "A/H=Again · S/J=Hard · W/K=Good · D/L=Easy · T/M=Delete · Esc=Close",
+      notes: "Notes…",
+      restore: "Restore it (R)",
+      restoreHint: "Restoring keeps its review history.",
+      reviewed: "Reviewed! Next: {due}",
+      deleted: "Deleted!",
+      loadingNext: "Loading the next card…",
+      opening: `Opening:
+{title}`,
+      skipped: `Skipped a page that didn't open:
+{url}`,
+      skippedNone: "Skipped a page that didn't open; nothing else is due.",
+      youDeleted: "You deleted this card.",
+      redirectConfirm: `This page moved from:
+{from}
+
+To:
+{to}
+
+Update the card to the new address?`,
+      offline: "Offline",
+      syncing: "Syncing…",
+      speedUnrated: "not rated yet · , slower · . faster",
+      heatOn: "Difficulty overlay on",
+      heatOff: "Difficulty overlay off",
+    },
+    zh: {
+      again: "重来",
+      hard: "困难",
+      good: "良好",
+      easy: "简单",
+      open: "打开",
+      syncedCloud: "已同步到你的 Lianki 账户",
+      savedOffline: "离线：已保存在此浏览器中，稍后同步",
+      savedLocal: "仅保存在此浏览器中：登录即可同步（免费）",
+      due: "待复习：{n}",
+      slower: "减速（,/v）",
+      faster: "加速（./b）",
+      liCards: "链卡（Alt+F）",
+      reviewCard: "复习这张卡片（Alt+F）",
+      addCard: "加入链卡（Alt+F）",
+      adding: "正在添加卡片…",
+      errOffline: "当前没有网络。恢复联网后请重试。",
+      errSignIn: "请登录 Lianki。",
+      errServer: "Lianki 服务器繁忙，请稍后重试。",
+      errOther: "出了点问题，请重试。",
+      signIn: "登录 Lianki",
+      copyError: "复制错误详情",
+      copied: "已复制！",
+      delete: "删除",
+      hints: "A/H=重来 · S/J=困难 · W/K=良好 · D/L=简单 · T/M=删除 · Esc=关闭",
+      notes: "笔记…",
+      restore: "恢复（R）",
+      restoreHint: "恢复后会保留它的复习记录。",
+      reviewed: "已复习！下次：{due}",
+      deleted: "已删除！",
+      loadingNext: "正在加载下一张卡片…",
+      opening: `正在打开：
+{title}`,
+      skipped: `已跳过一个打不开的页面：
+{url}`,
+      skippedNone: "已跳过一个打不开的页面；没有其他要复习的了。",
+      youDeleted: "你已删除这张卡片。",
+      redirectConfirm: `这个页面已从：
+{from}
+
+移到：
+{to}
+
+把卡片更新为新地址吗？`,
+      offline: "离线",
+      syncing: "同步中…",
+      speedUnrated: "尚未标记 · , 减速 · . 加速",
+      heatOn: "难度标记已开启",
+      heatOff: "难度标记已关闭",
+    },
+    hi: {
+      again: "फिर से",
+      hard: "कठिन",
+      good: "अच्छा",
+      easy: "आसान",
+      open: "खोलें",
+      syncedCloud: "आपके Lianki खाते में सिंक",
+      savedOffline: "ऑफ़लाइन: इस ब्राउज़र में सहेजा गया, बाद में सिंक होगा",
+      savedLocal: "केवल इस ब्राउज़र में सहेजा गया: सिंक करने के लिए साइन इन करें (मुफ़्त)",
+      due: "बाकी: {n}",
+      slower: "धीमा (,/v)",
+      faster: "तेज़ (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "यह कार्ड दोहराएँ (Alt+F)",
+      addCard: "LiCards में जोड़ें (Alt+F)",
+      adding: "कार्ड जोड़ा जा रहा है…",
+      errOffline: "आप ऑफ़लाइन हैं। ऑनलाइन होने पर फिर से कोशिश करें।",
+      errSignIn: "कृपया Lianki में साइन इन करें।",
+      errServer: "Lianki का सर्वर व्यस्त है। कृपया थोड़ी देर में फिर कोशिश करें।",
+      errOther: "कुछ गड़बड़ हुई। कृपया फिर से कोशिश करें।",
+      signIn: "Lianki में साइन इन करें",
+      copyError: "त्रुटि विवरण कॉपी करें",
+      copied: "कॉपी हो गया!",
+      delete: "हटाएँ",
+      hints: "A/H=फिर से · S/J=कठिन · W/K=अच्छा · D/L=आसान · T/M=हटाएँ · Esc=बंद करें",
+      notes: "नोट्स…",
+      restore: "वापस लाएँ (R)",
+      restoreHint: "वापस लाने पर इसका दोहराव इतिहास बना रहता है।",
+      reviewed: "दोहराया गया! अगली बार: {due}",
+      deleted: "हटा दिया!",
+      loadingNext: "अगला कार्ड लोड हो रहा है…",
+      opening: `खोला जा रहा है:
+{title}`,
+      skipped: `एक न खुलने वाला पेज छोड़ा गया:
+{url}`,
+      skippedNone: "एक न खुलने वाला पेज छोड़ा गया; और कुछ बाकी नहीं।",
+      youDeleted: "आपने यह कार्ड हटा दिया।",
+      redirectConfirm: `यह पेज यहाँ से:
+{from}
+
+यहाँ गया:
+{to}
+
+कार्ड को नए पते पर अपडेट करें?`,
+      offline: "ऑफ़लाइन",
+      syncing: "सिंक हो रहा है…",
+      speedUnrated: "अभी रेट नहीं · , धीमा · . तेज़",
+      heatOn: "कठिनाई ओवरले चालू",
+      heatOff: "कठिनाई ओवरले बंद",
+    },
+    es: {
+      again: "Otra vez",
+      hard: "Difícil",
+      good: "Bien",
+      easy: "Fácil",
+      open: "Abrir",
+      syncedCloud: "Sincronizado con tu cuenta de Lianki",
+      savedOffline: "Sin conexión: guardado en este navegador, se sincroniza después",
+      savedLocal: "Guardado solo en este navegador: inicia sesión para sincronizar (es gratis)",
+      due: "pendientes: {n}",
+      slower: "Más lento (,/v)",
+      faster: "Más rápido (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "Repasar esta tarjeta (Alt+F)",
+      addCard: "Añadir a LiCards (Alt+F)",
+      adding: "Añadiendo la tarjeta…",
+      errOffline: "No tienes conexión. Inténtalo de nuevo cuando vuelvas a estar en línea.",
+      errSignIn: "Inicia sesión en Lianki.",
+      errServer: "El servidor de Lianki está ocupado. Inténtalo de nuevo en un momento.",
+      errOther: "Algo salió mal. Inténtalo de nuevo.",
+      signIn: "Iniciar sesión en Lianki",
+      copyError: "Copiar detalles del error",
+      copied: "¡Copiado!",
+      delete: "Borrar",
+      hints: "A/H=Otra vez · S/J=Difícil · W/K=Bien · D/L=Fácil · T/M=Borrar · Esc=Cerrar",
+      notes: "Notas…",
+      restore: "Restaurarla (R)",
+      restoreHint: "Al restaurarla se conserva su historial de repasos.",
+      reviewed: "¡Repasada! Próxima: {due}",
+      deleted: "¡Borrada!",
+      loadingNext: "Cargando la siguiente tarjeta…",
+      opening: `Abriendo:
+{title}`,
+      skipped: `Se omitió una página que no abrió:
+{url}`,
+      skippedNone: "Se omitió una página que no abrió; no hay nada más pendiente.",
+      youDeleted: "Borraste esta tarjeta.",
+      redirectConfirm: `Esta página se movió de:
+{from}
+
+A:
+{to}
+
+¿Actualizar la tarjeta a la nueva dirección?`,
+      offline: "Sin conexión",
+      syncing: "Sincronizando…",
+      speedUnrated: "sin valorar · , más lento · . más rápido",
+      heatOn: "Capa de dificultad activada",
+      heatOff: "Capa de dificultad desactivada",
+    },
+    fr: {
+      again: "À revoir",
+      hard: "Difficile",
+      good: "Correct",
+      easy: "Facile",
+      open: "Ouvrir",
+      syncedCloud: "Synchronisé avec votre compte Lianki",
+      savedOffline: "Hors ligne : enregistré dans ce navigateur, synchronisé plus tard",
+      savedLocal:
+        "Enregistré uniquement dans ce navigateur : connectez-vous pour synchroniser (c'est gratuit)",
+      due: "à réviser : {n}",
+      slower: "Plus lent (,/v)",
+      faster: "Plus rapide (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "Réviser cette carte (Alt+F)",
+      addCard: "Ajouter à LiCards (Alt+F)",
+      adding: "Ajout de la carte…",
+      errOffline: "Vous êtes hors ligne. Réessayez une fois reconnecté.",
+      errSignIn: "Connectez-vous à Lianki.",
+      errServer: "Le serveur de Lianki est occupé. Réessayez dans un instant.",
+      errOther: "Un problème est survenu. Réessayez.",
+      signIn: "Se connecter à Lianki",
+      copyError: "Copier les détails de l'erreur",
+      copied: "Copié !",
+      delete: "Supprimer",
+      hints: "A/H=À revoir · S/J=Difficile · W/K=Correct · D/L=Facile · T/M=Supprimer · Esc=Fermer",
+      notes: "Notes…",
+      restore: "La restaurer (R)",
+      restoreHint: "La restauration conserve son historique de révisions.",
+      reviewed: "Révisée ! Prochaine : {due}",
+      deleted: "Supprimée !",
+      loadingNext: "Chargement de la carte suivante…",
+      opening: `Ouverture :
+{title}`,
+      skipped: `Page ignorée car elle ne s'ouvrait pas :
+{url}`,
+      skippedNone: "Page ignorée car elle ne s'ouvrait pas ; rien d'autre à réviser.",
+      youDeleted: "Vous avez supprimé cette carte.",
+      redirectConfirm: `Cette page a été déplacée de :
+{from}
+
+Vers :
+{to}
+
+Mettre à jour la carte avec la nouvelle adresse ?`,
+      offline: "Hors ligne",
+      syncing: "Synchronisation…",
+      speedUnrated: "pas encore noté · , plus lent · . plus rapide",
+      heatOn: "Repères de difficulté activés",
+      heatOff: "Repères de difficulté désactivés",
+    },
+    ar: {
+      again: "مجددًا",
+      hard: "صعب",
+      good: "جيد",
+      easy: "سهل",
+      open: "فتح",
+      syncedCloud: "متزامن مع حسابك على Lianki",
+      savedOffline: "غير متصل: محفوظ في هذا المتصفح، وتتم المزامنة لاحقًا",
+      savedLocal: "محفوظ في هذا المتصفح فقط: سجّل الدخول للمزامنة (مجانًا)",
+      due: "المستحقة: {n}",
+      slower: "أبطأ (,/v)",
+      faster: "أسرع (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "راجع هذه البطاقة (Alt+F)",
+      addCard: "أضف إلى LiCards (Alt+F)",
+      adding: "جارٍ إضافة البطاقة…",
+      errOffline: "أنت غير متصل. حاول مجددًا عند عودة الاتصال.",
+      errSignIn: "يُرجى تسجيل الدخول إلى Lianki.",
+      errServer: "خادم Lianki مشغول. حاول مجددًا بعد قليل.",
+      errOther: "حدث خطأ ما. يُرجى المحاولة مجددًا.",
+      signIn: "تسجيل الدخول إلى Lianki",
+      copyError: "نسخ تفاصيل الخطأ",
+      copied: "تم النسخ!",
+      delete: "حذف",
+      hints: "A/H=مجددًا · S/J=صعب · W/K=جيد · D/L=سهل · T/M=حذف · Esc=إغلاق",
+      notes: "ملاحظات…",
+      restore: "استعادتها (R)",
+      restoreHint: "الاستعادة تحتفظ بسجل مراجعاتها.",
+      reviewed: "تمت المراجعة! التالية: {due}",
+      deleted: "تم الحذف!",
+      loadingNext: "جارٍ تحميل البطاقة التالية…",
+      opening: `جارٍ الفتح:
+{title}`,
+      skipped: `تم تخطي صفحة لم تُفتح:
+{url}`,
+      skippedNone: "تم تخطي صفحة لم تُفتح؛ لا شيء آخر مستحق.",
+      youDeleted: "لقد حذفت هذه البطاقة.",
+      redirectConfirm: `انتقلت هذه الصفحة من:
+{from}
+
+إلى:
+{to}
+
+هل تريد تحديث البطاقة إلى العنوان الجديد؟`,
+      offline: "غير متصل",
+      syncing: "جارٍ المزامنة…",
+      speedUnrated: "لم يُقيَّم بعد · , أبطأ · . أسرع",
+      heatOn: "طبقة الصعوبة مفعّلة",
+      heatOff: "طبقة الصعوبة متوقفة",
+    },
+    bn: {
+      again: "আবার",
+      hard: "কঠিন",
+      good: "ভালো",
+      easy: "সহজ",
+      open: "খুলুন",
+      syncedCloud: "আপনার Lianki অ্যাকাউন্টে সিঙ্ক হয়েছে",
+      savedOffline: "অফলাইন: এই ব্রাউজারে রাখা, পরে সিঙ্ক হবে",
+      savedLocal: "শুধু এই ব্রাউজারে রাখা: সিঙ্ক করতে সাইন ইন করুন (বিনামূল্যে)",
+      due: "বাকি: {n}",
+      slower: "ধীরে (,/v)",
+      faster: "দ্রুত (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "এই কার্ড পুনরালোচনা করুন (Alt+F)",
+      addCard: "LiCards-এ যোগ করুন (Alt+F)",
+      adding: "কার্ড যোগ হচ্ছে…",
+      errOffline: "আপনি অফলাইনে আছেন। অনলাইনে ফিরলে আবার চেষ্টা করুন।",
+      errSignIn: "অনুগ্রহ করে Lianki-তে সাইন ইন করুন।",
+      errServer: "Lianki-র সার্ভার ব্যস্ত। একটু পরে আবার চেষ্টা করুন।",
+      errOther: "কিছু সমস্যা হয়েছে। আবার চেষ্টা করুন।",
+      signIn: "Lianki-তে সাইন ইন করুন",
+      copyError: "ত্রুটির বিবরণ কপি করুন",
+      copied: "কপি হয়েছে!",
+      delete: "মুছুন",
+      hints: "A/H=আবার · S/J=কঠিন · W/K=ভালো · D/L=সহজ · T/M=মুছুন · Esc=বন্ধ",
+      notes: "নোট…",
+      restore: "ফিরিয়ে আনুন (R)",
+      restoreHint: "ফিরিয়ে আনলে এর পুনরালোচনার ইতিহাস থাকে।",
+      reviewed: "পুনরালোচনা হয়েছে! পরের বার: {due}",
+      deleted: "মুছে ফেলা হয়েছে!",
+      loadingNext: "পরের কার্ড লোড হচ্ছে…",
+      opening: `খোলা হচ্ছে:
+{title}`,
+      skipped: `না খোলা একটি পেজ বাদ দেওয়া হয়েছে:
+{url}`,
+      skippedNone: "না খোলা একটি পেজ বাদ দেওয়া হয়েছে; আর কিছু বাকি নেই।",
+      youDeleted: "আপনি এই কার্ড মুছে ফেলেছেন।",
+      redirectConfirm: `এই পেজ সরেছে এখান থেকে:
+{from}
+
+এখানে:
+{to}
+
+কার্ডটি নতুন ঠিকানায় আপডেট করবেন?`,
+      offline: "অফলাইন",
+      syncing: "সিঙ্ক হচ্ছে…",
+      speedUnrated: "এখনো রেট করা হয়নি · , ধীরে · . দ্রুত",
+      heatOn: "কঠিনতা ওভারলে চালু",
+      heatOff: "কঠিনতা ওভারলে বন্ধ",
+    },
+    pt: {
+      again: "De novo",
+      hard: "Difícil",
+      good: "Bom",
+      easy: "Fácil",
+      open: "Abrir",
+      syncedCloud: "Sincronizado com sua conta Lianki",
+      savedOffline: "Offline: salvo neste navegador, sincroniza depois",
+      savedLocal: "Salvo só neste navegador: entre para sincronizar (é grátis)",
+      due: "pendentes: {n}",
+      slower: "Mais devagar (,/v)",
+      faster: "Mais rápido (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "Revisar este cartão (Alt+F)",
+      addCard: "Adicionar ao LiCards (Alt+F)",
+      adding: "Adicionando o cartão…",
+      errOffline: "Você está sem conexão. Tente de novo quando voltar a ficar online.",
+      errSignIn: "Entre no Lianki.",
+      errServer: "O servidor do Lianki está ocupado. Tente de novo em instantes.",
+      errOther: "Algo deu errado. Tente novamente.",
+      signIn: "Entrar no Lianki",
+      copyError: "Copiar detalhes do erro",
+      copied: "Copiado!",
+      delete: "Excluir",
+      hints: "A/H=De novo · S/J=Difícil · W/K=Bom · D/L=Fácil · T/M=Excluir · Esc=Fechar",
+      notes: "Notas…",
+      restore: "Restaurar (R)",
+      restoreHint: "Restaurar mantém o histórico de revisões.",
+      reviewed: "Revisado! Próxima: {due}",
+      deleted: "Excluído!",
+      loadingNext: "Carregando o próximo cartão…",
+      opening: `Abrindo:
+{title}`,
+      skipped: `Pulamos uma página que não abriu:
+{url}`,
+      skippedNone: "Pulamos uma página que não abriu; nada mais pendente.",
+      youDeleted: "Você excluiu este cartão.",
+      redirectConfirm: `Esta página mudou de:
+{from}
+
+Para:
+{to}
+
+Atualizar o cartão para o novo endereço?`,
+      offline: "Offline",
+      syncing: "Sincronizando…",
+      speedUnrated: "ainda sem nota · , mais devagar · . mais rápido",
+      heatOn: "Camada de dificuldade ativada",
+      heatOff: "Camada de dificuldade desativada",
+    },
+    ru: {
+      again: "Снова",
+      hard: "Трудно",
+      good: "Хорошо",
+      easy: "Легко",
+      open: "Открыть",
+      syncedCloud: "Синхронизировано с аккаунтом Lianki",
+      savedOffline: "Офлайн: сохранено в этом браузере, синхронизируется позже",
+      savedLocal: "Сохранено только в этом браузере: войдите, чтобы синхронизировать (бесплатно)",
+      due: "к повторению: {n}",
+      slower: "Медленнее (,/v)",
+      faster: "Быстрее (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "Повторить эту карточку (Alt+F)",
+      addCard: "Добавить в LiCards (Alt+F)",
+      adding: "Добавляем карточку…",
+      errOffline: "Нет подключения к сети. Попробуйте снова, когда оно появится.",
+      errSignIn: "Войдите в Lianki.",
+      errServer: "Сервер Lianki занят. Попробуйте чуть позже.",
+      errOther: "Что-то пошло не так. Попробуйте ещё раз.",
+      signIn: "Войти в Lianki",
+      copyError: "Скопировать подробности ошибки",
+      copied: "Скопировано!",
+      delete: "Удалить",
+      hints: "A/H=Снова · S/J=Трудно · W/K=Хорошо · D/L=Легко · T/M=Удалить · Esc=Закрыть",
+      notes: "Заметки…",
+      restore: "Восстановить (R)",
+      restoreHint: "При восстановлении история повторений сохраняется.",
+      reviewed: "Повторено! Дальше: {due}",
+      deleted: "Удалено!",
+      loadingNext: "Загружаем следующую карточку…",
+      opening: `Открываем:
+{title}`,
+      skipped: `Пропущена страница, которая не открылась:
+{url}`,
+      skippedNone: "Пропущена страница, которая не открылась; больше повторять нечего.",
+      youDeleted: "Вы удалили эту карточку.",
+      redirectConfirm: `Страница переехала с:
+{from}
+
+На:
+{to}
+
+Обновить карточку на новый адрес?`,
+      offline: "Офлайн",
+      syncing: "Синхронизация…",
+      speedUnrated: "ещё не оценено · , медленнее · . быстрее",
+      heatOn: "Метки сложности включены",
+      heatOff: "Метки сложности выключены",
+    },
+    ur: {
+      again: "دوبارہ",
+      hard: "مشکل",
+      good: "اچھا",
+      easy: "آسان",
+      open: "کھولیں",
+      syncedCloud: "آپ کے Lianki اکاؤنٹ سے ہم آہنگ",
+      savedOffline: "آف لائن: اس براؤزر میں محفوظ، بعد میں ہم آہنگ ہوگا",
+      savedLocal: "صرف اس براؤزر میں محفوظ: ہم آہنگ کرنے کے لیے سائن ان کریں (مفت)",
+      due: "باقی: {n}",
+      slower: "آہستہ (,/v)",
+      faster: "تیز (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "یہ کارڈ دہرائیں (Alt+F)",
+      addCard: "LiCards میں شامل کریں (Alt+F)",
+      adding: "کارڈ شامل ہو رہا ہے…",
+      errOffline: "آپ آف لائن ہیں۔ آن لائن ہونے پر دوبارہ کوشش کریں۔",
+      errSignIn: "براہِ کرم Lianki میں سائن ان کریں۔",
+      errServer: "Lianki کا سرور مصروف ہے۔ تھوڑی دیر میں دوبارہ کوشش کریں۔",
+      errOther: "کچھ غلط ہو گیا۔ براہِ کرم دوبارہ کوشش کریں۔",
+      signIn: "Lianki میں سائن ان کریں",
+      copyError: "خرابی کی تفصیل کاپی کریں",
+      copied: "کاپی ہو گیا!",
+      delete: "حذف کریں",
+      hints: "A/H=دوبارہ · S/J=مشکل · W/K=اچھا · D/L=آسان · T/M=حذف · Esc=بند",
+      notes: "نوٹس…",
+      restore: "بحال کریں (R)",
+      restoreHint: "بحال کرنے سے اس کی دہرائی کی تاریخ برقرار رہتی ہے۔",
+      reviewed: "دہرا لیا! اگلی بار: {due}",
+      deleted: "حذف ہو گیا!",
+      loadingNext: "اگلا کارڈ لوڈ ہو رہا ہے…",
+      opening: `کھولا جا رہا ہے:
+{title}`,
+      skipped: `ایک نہ کھلنے والا صفحہ چھوڑ دیا گیا:
+{url}`,
+      skippedNone: "ایک نہ کھلنے والا صفحہ چھوڑا گیا؛ اور کچھ باقی نہیں۔",
+      youDeleted: "آپ نے یہ کارڈ حذف کر دیا۔",
+      redirectConfirm: `یہ صفحہ یہاں سے:
+{from}
+
+یہاں منتقل ہوا:
+{to}
+
+کیا کارڈ کو نئے پتے پر اپ ڈیٹ کریں؟`,
+      offline: "آف لائن",
+      syncing: "ہم آہنگی ہو رہی ہے…",
+      speedUnrated: "ابھی درجہ نہیں · , آہستہ · . تیز",
+      heatOn: "مشکل اوورلے آن",
+      heatOff: "مشکل اوورلے آف",
+    },
+    id: {
+      again: "Lagi",
+      hard: "Sulit",
+      good: "Baik",
+      easy: "Mudah",
+      open: "Buka",
+      syncedCloud: "Tersinkron ke akun Lianki Anda",
+      savedOffline: "Offline: tersimpan di browser ini, disinkronkan nanti",
+      savedLocal: "Hanya tersimpan di browser ini: masuk untuk menyinkronkan (gratis)",
+      due: "jatuh tempo: {n}",
+      slower: "Lebih lambat (,/v)",
+      faster: "Lebih cepat (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "Ulas kartu ini (Alt+F)",
+      addCard: "Tambahkan ke LiCards (Alt+F)",
+      adding: "Menambahkan kartu…",
+      errOffline: "Anda sedang offline. Coba lagi saat kembali online.",
+      errSignIn: "Silakan masuk ke Lianki.",
+      errServer: "Server Lianki sedang sibuk. Coba lagi sebentar lagi.",
+      errOther: "Terjadi kesalahan. Silakan coba lagi.",
+      signIn: "Masuk ke Lianki",
+      copyError: "Salin detail kesalahan",
+      copied: "Disalin!",
+      delete: "Hapus",
+      hints: "A/H=Lagi · S/J=Sulit · W/K=Baik · D/L=Mudah · T/M=Hapus · Esc=Tutup",
+      notes: "Catatan…",
+      restore: "Pulihkan (R)",
+      restoreHint: "Memulihkan tetap menyimpan riwayat ulasannya.",
+      reviewed: "Diulas! Berikutnya: {due}",
+      deleted: "Dihapus!",
+      loadingNext: "Memuat kartu berikutnya…",
+      opening: `Membuka:
+{title}`,
+      skipped: `Melewati halaman yang tidak terbuka:
+{url}`,
+      skippedNone: "Melewati halaman yang tidak terbuka; tidak ada lagi yang jatuh tempo.",
+      youDeleted: "Anda menghapus kartu ini.",
+      redirectConfirm: `Halaman ini pindah dari:
+{from}
+
+Ke:
+{to}
+
+Perbarui kartu ke alamat baru?`,
+      offline: "Offline",
+      syncing: "Menyinkronkan…",
+      speedUnrated: "belum dinilai · , lebih lambat · . lebih cepat",
+      heatOn: "Lapisan kesulitan aktif",
+      heatOff: "Lapisan kesulitan nonaktif",
+    },
+    de: {
+      again: "Nochmal",
+      hard: "Schwer",
+      good: "Gut",
+      easy: "Einfach",
+      open: "Öffnen",
+      syncedCloud: "Mit deinem Lianki-Konto synchronisiert",
+      savedOffline: "Offline: in diesem Browser gespeichert, wird später synchronisiert",
+      savedLocal: "Nur in diesem Browser gespeichert: zum Synchronisieren anmelden (kostenlos)",
+      due: "fällig: {n}",
+      slower: "Langsamer (,/v)",
+      faster: "Schneller (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "Diese Karte wiederholen (Alt+F)",
+      addCard: "Zu LiCards hinzufügen (Alt+F)",
+      adding: "Karte wird hinzugefügt…",
+      errOffline: "Du bist offline. Versuche es erneut, wenn du wieder online bist.",
+      errSignIn: "Bitte melde dich bei Lianki an.",
+      errServer: "Lianki ist gerade ausgelastet. Bitte versuche es gleich noch einmal.",
+      errOther: "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+      signIn: "Bei Lianki anmelden",
+      copyError: "Fehlerdetails kopieren",
+      copied: "Kopiert!",
+      delete: "Löschen",
+      hints: "A/H=Nochmal · S/J=Schwer · W/K=Gut · D/L=Einfach · T/M=Löschen · Esc=Schließen",
+      notes: "Notizen…",
+      restore: "Wiederherstellen (R)",
+      restoreHint: "Beim Wiederherstellen bleibt der Wiederholungsverlauf erhalten.",
+      reviewed: "Wiederholt! Nächstes Mal: {due}",
+      deleted: "Gelöscht!",
+      loadingNext: "Nächste Karte wird geladen…",
+      opening: `Wird geöffnet:
+{title}`,
+      skipped: `Eine Seite, die sich nicht öffnete, wurde übersprungen:
+{url}`,
+      skippedNone:
+        "Eine Seite, die sich nicht öffnete, wurde übersprungen; sonst ist nichts fällig.",
+      youDeleted: "Du hast diese Karte gelöscht.",
+      redirectConfirm: `Diese Seite ist umgezogen von:
+{from}
+
+Nach:
+{to}
+
+Karte auf die neue Adresse ändern?`,
+      offline: "Offline",
+      syncing: "Wird synchronisiert…",
+      speedUnrated: "noch nicht bewertet · , langsamer · . schneller",
+      heatOn: "Schwierigkeitsanzeige an",
+      heatOff: "Schwierigkeitsanzeige aus",
+    },
+    ja: {
+      again: "もう一度",
+      hard: "難しい",
+      good: "正解",
+      easy: "簡単",
+      open: "開く",
+      syncedCloud: "Lianki アカウントと同期済み",
+      savedOffline: "オフライン：このブラウザに保存、あとで同期",
+      savedLocal: "このブラウザにだけ保存：ログインで同期できます（無料）",
+      due: "復習待ち：{n}",
+      slower: "遅く（,/v）",
+      faster: "速く（./b）",
+      liCards: "LiCards（Alt+F）",
+      reviewCard: "このカードを復習（Alt+F）",
+      addCard: "LiCards に追加（Alt+F）",
+      adding: "カードを追加中…",
+      errOffline: "オフラインです。オンラインに戻ったらもう一度お試しください。",
+      errSignIn: "Lianki にログインしてください。",
+      errServer: "Lianki のサーバーが混み合っています。少ししてからお試しください。",
+      errOther: "問題が発生しました。もう一度お試しください。",
+      signIn: "Lianki にログイン",
+      copyError: "エラーの詳細をコピー",
+      copied: "コピーしました！",
+      delete: "削除",
+      hints: "A/H=もう一度 · S/J=難しい · W/K=正解 · D/L=簡単 · T/M=削除 · Esc=閉じる",
+      notes: "メモ…",
+      restore: "元に戻す（R）",
+      restoreHint: "元に戻すと復習の記録も残ります。",
+      reviewed: "復習しました！次回：{due}",
+      deleted: "削除しました！",
+      loadingNext: "次のカードを読み込み中…",
+      opening: `開いています：
+{title}`,
+      skipped: `開けないページをスキップしました：
+{url}`,
+      skippedNone: "開けないページをスキップしました。ほかに復習するカードはありません。",
+      youDeleted: "このカードは削除済みです。",
+      redirectConfirm: `このページは移動しました。移動元：
+{from}
+
+移動先：
+{to}
+
+カードを新しいアドレスに更新しますか？`,
+      offline: "オフライン",
+      syncing: "同期中…",
+      speedUnrated: "未評価 · , 遅く · . 速く",
+      heatOn: "難易度表示オン",
+      heatOff: "難易度表示オフ",
+    },
+    sw: {
+      again: "Tena",
+      hard: "Ngumu",
+      good: "Vizuri",
+      easy: "Rahisi",
+      open: "Fungua",
+      syncedCloud: "Imesawazishwa na akaunti yako ya Lianki",
+      savedOffline: "Nje ya mtandao: imehifadhiwa kwenye kivinjari hiki, itasawazishwa baadaye",
+      savedLocal: "Imehifadhiwa kwenye kivinjari hiki pekee: ingia ili kusawazisha (bure)",
+      due: "zinazosubiri: {n}",
+      slower: "Polepole (,/v)",
+      faster: "Haraka (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "Rudia kadi hii (Alt+F)",
+      addCard: "Ongeza kwenye LiCards (Alt+F)",
+      adding: "Inaongeza kadi…",
+      errOffline: "Huna mtandao. Jaribu tena ukirudi mtandaoni.",
+      errSignIn: "Tafadhali ingia kwenye Lianki.",
+      errServer: "Seva ya Lianki ina shughuli nyingi. Jaribu tena baada ya muda.",
+      errOther: "Kuna hitilafu. Tafadhali jaribu tena.",
+      signIn: "Ingia kwenye Lianki",
+      copyError: "Nakili maelezo ya hitilafu",
+      copied: "Imenakiliwa!",
+      delete: "Futa",
+      hints: "A/H=Tena · S/J=Ngumu · W/K=Vizuri · D/L=Rahisi · T/M=Futa · Esc=Funga",
+      notes: "Maelezo…",
+      restore: "Irejeshe (R)",
+      restoreHint: "Kuirejesha huhifadhi historia yake ya marudio.",
+      reviewed: "Imerudiwa! Inayofuata: {due}",
+      deleted: "Imefutwa!",
+      loadingNext: "Inapakia kadi inayofuata…",
+      opening: `Inafungua:
+{title}`,
+      skipped: `Imeruka ukurasa usiofunguka:
+{url}`,
+      skippedNone: "Imeruka ukurasa usiofunguka; hakuna kingine kinachosubiri.",
+      youDeleted: "Ulifuta kadi hii.",
+      redirectConfirm: `Ukurasa huu umehamishwa kutoka:
+{from}
+
+Kwenda:
+{to}
+
+Sasisha kadi kwa anwani mpya?`,
+      offline: "Nje ya mtandao",
+      syncing: "Inasawazisha…",
+      speedUnrated: "bado haijapimwa · , polepole · . haraka",
+      heatOn: "Alama za ugumu zimewashwa",
+      heatOff: "Alama za ugumu zimezimwa",
+    },
+    mr: {
+      again: "पुन्हा",
+      hard: "कठीण",
+      good: "चांगले",
+      easy: "सोपे",
+      open: "उघडा",
+      syncedCloud: "तुमच्या Lianki खात्याशी सिंक",
+      savedOffline: "ऑफलाइन: या ब्राउझरमध्ये जतन, नंतर सिंक होईल",
+      savedLocal: "फक्त या ब्राउझरमध्ये जतन: सिंकसाठी साइन इन करा (मोफत)",
+      due: "बाकी: {n}",
+      slower: "हळू (,/v)",
+      faster: "जलद (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "हे कार्ड उजळा (Alt+F)",
+      addCard: "LiCards मध्ये जोडा (Alt+F)",
+      adding: "कार्ड जोडत आहे…",
+      errOffline: "तुम्ही ऑफलाइन आहात. ऑनलाइन आल्यावर पुन्हा प्रयत्न करा.",
+      errSignIn: "कृपया Lianki मध्ये साइन इन करा.",
+      errServer: "Lianki चा सर्व्हर व्यस्त आहे. थोड्या वेळाने पुन्हा प्रयत्न करा.",
+      errOther: "काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.",
+      signIn: "Lianki मध्ये साइन इन करा",
+      copyError: "त्रुटीचा तपशील कॉपी करा",
+      copied: "कॉपी झाले!",
+      delete: "हटवा",
+      hints: "A/H=पुन्हा · S/J=कठीण · W/K=चांगले · D/L=सोपे · T/M=हटवा · Esc=बंद",
+      notes: "नोंदी…",
+      restore: "परत आणा (R)",
+      restoreHint: "परत आणल्यास उजळणी इतिहास कायम राहतो.",
+      reviewed: "उजळणी झाली! पुढची: {due}",
+      deleted: "हटवले!",
+      loadingNext: "पुढचे कार्ड लोड होत आहे…",
+      opening: `उघडत आहे:
+{title}`,
+      skipped: `न उघडणारे पान वगळले:
+{url}`,
+      skippedNone: "न उघडणारे पान वगळले; आणखी काही बाकी नाही.",
+      youDeleted: "तुम्ही हे कार्ड हटवले.",
+      redirectConfirm: `हे पान इथून हलले:
+{from}
+
+इथे:
+{to}
+
+कार्ड नव्या पत्त्यावर अपडेट करायचे?`,
+      offline: "ऑफलाइन",
+      syncing: "सिंक होत आहे…",
+      speedUnrated: "अजून रेट नाही · , हळू · . जलद",
+      heatOn: "कठीणता ओव्हरले चालू",
+      heatOff: "कठीणता ओव्हरले बंद",
+    },
+    ko: {
+      again: "다시",
+      hard: "어려움",
+      good: "알맞음",
+      easy: "쉬움",
+      open: "열기",
+      syncedCloud: "Lianki 계정과 동기화됨",
+      savedOffline: "오프라인: 이 브라우저에 저장됨, 나중에 동기화",
+      savedLocal: "이 브라우저에만 저장됨: 로그인하면 동기화(무료)",
+      due: "복습할 카드: {n}",
+      slower: "느리게 (,/v)",
+      faster: "빠르게 (./b)",
+      liCards: "LiCards (Alt+F)",
+      reviewCard: "이 카드 복습 (Alt+F)",
+      addCard: "LiCards에 추가 (Alt+F)",
+      adding: "카드 추가 중…",
+      errOffline: "오프라인 상태입니다. 다시 연결되면 시도해 주세요.",
+      errSignIn: "Lianki에 로그인해 주세요.",
+      errServer: "Lianki 서버가 혼잡합니다. 잠시 후 다시 시도해 주세요.",
+      errOther: "문제가 발생했습니다. 다시 시도해 주세요.",
+      signIn: "Lianki에 로그인",
+      copyError: "오류 세부 정보 복사",
+      copied: "복사됨!",
+      delete: "삭제",
+      hints: "A/H=다시 · S/J=어려움 · W/K=알맞음 · D/L=쉬움 · T/M=삭제 · Esc=닫기",
+      notes: "메모…",
+      restore: "복원 (R)",
+      restoreHint: "복원하면 복습 기록이 유지됩니다.",
+      reviewed: "복습 완료! 다음: {due}",
+      deleted: "삭제됨!",
+      loadingNext: "다음 카드 불러오는 중…",
+      opening: `여는 중:
+{title}`,
+      skipped: `열리지 않는 페이지를 건너뛰었습니다:
+{url}`,
+      skippedNone: "열리지 않는 페이지를 건너뛰었습니다. 더 복습할 카드가 없습니다.",
+      youDeleted: "이 카드를 삭제했습니다.",
+      redirectConfirm: `이 페이지가 이동했습니다. 이전:
+{from}
+
+새 주소:
+{to}
+
+카드를 새 주소로 바꿀까요?`,
+      offline: "오프라인",
+      syncing: "동기화 중…",
+      speedUnrated: "아직 평가 안 됨 · , 느리게 · . 빠르게",
+      heatOn: "난이도 표시 켬",
+      heatOff: "난이도 표시 끔",
+    },
+  };
+  var userscriptStrings = (lang) => USERSCRIPT_STRINGS[pillChatLang(lang)];
+  var fillUs = (s, vars) => s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+  function friendlyError(raw, t) {
+    const s = String(raw ?? "");
+    if (/Network error|timed out|aborted|Failed to fetch|offline/i.test(s)) return t.errOffline;
+    if (/Login required|\b401\b/.test(s)) return t.errSignIn;
+    if (/HTTP 5\d\d/.test(s)) return t.errServer;
+    return t.errOther;
+  }
+
   // lib/review-filters.ts
   var REVIEW_FILTERS_KEY = "lk:review-filters";
   var REVIEW_FILTERS_EVENT = "lk:review-filters-changed";
@@ -3549,6 +4364,7 @@
   }
 
   // src/lianki.user.ts
+  var US = userscriptStrings();
   if (window.self === window.top) {
     globalThis.unload_Lianki?.();
     globalThis.unload_Lianki = main();
@@ -4238,13 +5054,13 @@
       });
     }
     function storeBadge(store) {
-      if (store === "cloud") return { icon: "☁️", title: "Synced to your Lianki account" };
+      if (store === "cloud") return { icon: "☁️", title: US.syncedCloud };
       if (store === "offline") {
-        return { icon: "\uD83D\uDCF4", title: "Offline — saved in this browser, will sync later" };
+        return { icon: "\uD83D\uDCF4", title: US.savedOffline };
       }
       return {
         icon: "\uD83D\uDCBE",
-        title: "Saved in this browser only — sign in to sync (it is free)",
+        title: US.savedLocal,
       };
     }
     function dueCountFromIndex(index, now) {
@@ -4423,11 +5239,11 @@
         });
         return b;
       };
-      const slowerBtn = makeBtn("⏪", "Slower (,/v)", () => pardon(-3, 0.7));
-      const liankiBtn = makeBtn("\uD83D\uDD16", "LiCards (Alt+F)", () =>
+      const slowerBtn = makeBtn("⏪", US.slower, () => pardon(-3, 0.7));
+      const liankiBtn = makeBtn("\uD83D\uDD16", US.liCards, () =>
         dialog ? closeDialog() : openDialog(),
       );
-      const fasterBtn = makeBtn("⏩", "Faster (./b)", () => pardon(0, 1.2));
+      const fasterBtn = makeBtn("⏩", US.faster, () => pardon(0, 1.2));
       const makeSeparator = () => {
         const sep = document.createElement("div");
         sep.style.cssText =
@@ -4479,7 +5295,7 @@
         const icon = hasCard ? "\uD83D\uDCD7" : "\uD83D\uDD16";
         if (liankiBtn.textContent !== icon) {
           liankiBtn.textContent = icon;
-          liankiBtn.title = hasCard ? "Review this card (Alt+F)" : "Add to LiCards (Alt+F)";
+          liankiBtn.title = hasCard ? US.reviewCard : US.addCard;
         }
       };
       addInterval(updateLiankiIcon, 1000);
@@ -4544,7 +5360,7 @@
       const SWIPE_MIN = 40;
       const SWIPE_UP = -1;
       const SWIPE_RATINGS = { left: 1, down: 2, right: 4, up: SWIPE_UP };
-      const RATING_LABELS = { 1: "Again", 2: "Hard", 4: "Easy", [SWIPE_UP]: "Open" };
+      const RATING_LABELS = { 1: US.again, 2: US.hard, 4: US.easy, [SWIPE_UP]: US.open };
       let swiping = false;
       let swipeRating = 0;
       const swipeDirection = (dx, dy) => {
@@ -4790,8 +5606,8 @@
       const badge = document.createElement("span");
       const { icon, title } = storeBadge(cardStore);
       const due = offlineReady ? dueCountFromIndex(cardStorage._index(), new Date()) : null;
-      badge.textContent = due === null ? icon : `${icon} ${due} due`;
-      badge.title = due === null ? title : `${title} · ${due} card(s) due`;
+      badge.textContent = due === null ? icon : `${icon} ${fillUs(US.due, { n: due })}`;
+      badge.title = due === null ? title : `${title} · ${fillUs(US.due, { n: due })}`;
       Object.assign(badge.style, {
         marginLeft: "8px",
         fontSize: "12px",
@@ -4825,7 +5641,7 @@
         const spinner = document.createElement("span");
         spinner.className = "lk-spinner";
         spinRow.appendChild(spinner);
-        spinRow.appendChild(document.createTextNode("Adding note…"));
+        spinRow.appendChild(document.createTextNode(US.adding));
         const urlDiv = document.createElement("div");
         Object.assign(urlDiv.style, {
           color: "var(--lk-muted)",
@@ -4839,19 +5655,8 @@
       } else if (phase === "error") {
         const errDiv = document.createElement("div");
         errDiv.style.color = "var(--lk-error)";
-        errDiv.textContent = `Error: ${error}`;
+        errDiv.textContent = friendlyError(error, US);
         dialog.appendChild(errDiv);
-        if (state.errorDetails) {
-          const detailDiv = document.createElement("div");
-          Object.assign(detailDiv.style, {
-            fontSize: "11px",
-            color: "var(--lk-muted)",
-            marginTop: "4px",
-            wordBreak: "break-all",
-          });
-          detailDiv.textContent = state.errorDetails;
-          dialog.appendChild(detailDiv);
-        }
         const btnRow = document.createElement("div");
         Object.assign(btnRow.style, {
           display: "flex",
@@ -4861,12 +5666,12 @@
         });
         const loginBtn = document.createElement("button");
         loginBtn.setAttribute("style", btn("#2a5f8f"));
-        loginBtn.textContent = "Login to Lianki";
+        loginBtn.textContent = US.signIn;
         loginBtn.addEventListener("click", () => window.open(ORIGIN, "_blank"));
         btnRow.appendChild(loginBtn);
         const copyBtn = document.createElement("button");
         copyBtn.setAttribute("style", btn("#444"));
-        copyBtn.textContent = "Copy error";
+        copyBtn.textContent = US.copyError;
         copyBtn.addEventListener("click", () => {
           const parts = [
             `Error: ${error}`,
@@ -4889,9 +5694,9 @@ ${state.errorDetails}`);
             document.execCommand("copy");
             ta.remove();
           });
-          copyBtn.textContent = "Copied!";
+          copyBtn.textContent = US.copied;
           setTimeout(() => {
-            copyBtn.textContent = "Copy error";
+            copyBtn.textContent = US.copyError;
           }, 2000);
         });
         btnRow.appendChild(copyBtn);
@@ -4918,7 +5723,11 @@ ${state.errorDetails}`);
         for (const o of options) {
           const b = document.createElement("button");
           b.setAttribute("style", btn("#2a5f8f"));
-          b.appendChild(document.createTextNode(o.label));
+          b.appendChild(
+            document.createTextNode(
+              [US.again, US.hard, US.good, US.easy][Number(o.rating) - 1] ?? o.label,
+            ),
+          );
           b.appendChild(document.createElement("br"));
           const small = document.createElement("small");
           Object.assign(small.style, { color: "rgba(255,255,255,0.9)", fontSize: "11px" });
@@ -4930,19 +5739,19 @@ ${state.errorDetails}`);
         dialog.appendChild(btnRow);
         const deleteBtn = document.createElement("button");
         deleteBtn.setAttribute("style", btn("#7a2a2a"));
-        deleteBtn.textContent = "Delete";
+        deleteBtn.textContent = US.delete;
         deleteBtn.addEventListener("click", doDelete);
         dialog.appendChild(deleteBtn);
         const hints = document.createElement("div");
         Object.assign(hints.style, { marginTop: "14px", opacity: ".6", fontSize: "11px" });
-        hints.textContent = "A/H=Again · S/J=Hard · W/K=Good · D/L=Easy · T/M=Delete · Esc=Close";
+        hints.textContent = US.hints;
         dialog.appendChild(hints);
         const notesRow = document.createElement("div");
         Object.assign(notesRow.style, { marginTop: "10px", position: "relative" });
         const notesInput = document.createElement("input");
         notesInput.type = "text";
         notesInput.maxLength = 128;
-        notesInput.placeholder = "Notes…";
+        notesInput.placeholder = US.notes;
         notesInput.value = state.notes;
         notesInput.tabIndex = -1;
         Object.assign(notesInput.style, {
@@ -4993,7 +5802,7 @@ ${state.errorDetails}`);
         msgDiv.textContent = message;
         dialog.appendChild(msgDiv);
         const restoreBtn = document.createElement("button");
-        restoreBtn.textContent = "Restore it (R)";
+        restoreBtn.textContent = US.restore;
         restoreBtn.setAttribute("style", btn("#2d6a4f"));
         restoreBtn.addEventListener("click", doRestore);
         dialog.appendChild(restoreBtn);
@@ -5003,7 +5812,7 @@ ${state.errorDetails}`);
           color: "var(--lk-muted)",
           marginTop: "8px",
         });
-        hint.textContent = "Restoring keeps its review history.";
+        hint.textContent = US.restoreHint;
         dialog.appendChild(hint);
       } else if (phase === "reviewed") {
         const msgDiv = document.createElement("div");
@@ -5024,8 +5833,8 @@ ${state.errorDetails}`);
           gap: "4px",
         });
         const queue = queueStorage.getQueue();
-        if (!navigator.onLine) indicator.textContent = "\uD83D\uDCF4 Offline";
-        else if (syncInProgress) indicator.textContent = "\uD83D\uDD04 Syncing...";
+        if (!navigator.onLine) indicator.textContent = `\uD83D\uDCF4 ${US.offline}`;
+        else if (syncInProgress) indicator.textContent = `\uD83D\uDD04 ${US.syncing}`;
         else if (queue.length > 0) indicator.textContent = `⏳ ${queue.length}`;
         else indicator.textContent = "✓";
         dialog.appendChild(indicator);
@@ -5100,7 +5909,7 @@ ${state.errorDetails}`);
         prefetchedNextUrl = result.nextUrl ?? null;
         if (result.nextUrl) prefetchNextPage(result.nextUrl);
         const opt = state.options.find((o) => Number(o.rating) === rating);
-        await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
+        await afterReview(fillUs(US.reviewed, { due: opt?.due ?? "?" }));
       } catch (err) {
         state.phase = "error";
         state.error = err.message;
@@ -5157,7 +5966,7 @@ ${state.errorDetails}`);
         } else if (offlineReady) {
           queueStorage.addToQueue("delete", { url, noteId: state.noteId }, newHLC(deviceId));
         }
-        await afterReview("Deleted!");
+        await afterReview(US.deleted);
       } catch (err) {
         state.phase = "error";
         state.error = err.message;
@@ -5194,15 +6003,16 @@ ${state.errorDetails}`);
       let nextTitle = null;
       prefetchedNextUrl = null;
       if (!nextUrl) {
-        state.message = "Loading next card…";
+        state.message = US.loadingNext;
         renderDialog();
         const data = await getNextUrl().catch(() => ({ url: null, title: null }));
         nextUrl = data.url;
         nextTitle = data.title;
         if (nextUrl) {
           prefetchNextPage(nextUrl);
-          state.message = `Redirecting to:
-${(nextTitle && cleanedTitle(nextTitle, nextUrl)) || nextUrl}`;
+          state.message = fillUs(US.opening, {
+            title: (nextTitle && cleanedTitle(nextTitle, nextUrl)) || nextUrl,
+          });
           renderDialog();
         }
       }
@@ -5214,8 +6024,7 @@ ${(nextTitle && cleanedTitle(nextTitle, nextUrl)) || nextUrl}`;
         if (!probe.ok) {
           console.warn("[Lianki] Next card is unreachable, skipping:", nextUrl);
           markUnreachable(nextUrl);
-          state.message = `Skipped an unreachable page:
-${nextUrl}`;
+          state.message = fillUs(US.skipped, { url: nextUrl });
           renderDialog();
           prefetchedNextUrl = null;
           const again = await getNextUrl().catch(() => ({ url: null }));
@@ -5224,7 +6033,7 @@ ${nextUrl}`;
             location.href = again.url;
             return;
           }
-          state.message = "Skipped an unreachable page — nothing else is due.";
+          state.message = US.skippedNone;
           renderDialog();
           setTimeout(closeDialog, 3000);
           return;
@@ -5347,17 +6156,7 @@ ${nextUrl}`;
           return;
         }
         console.log("[Lianki] Redirect detected:", intendedUrl, "→", actualUrl);
-        const confirmed = confirm(
-          `This page redirected from:
-${intendedUrl}
-
-` +
-            `To:
-${actualUrl}
-
-` +
-            `Update the card to point to the new URL?`,
-        );
+        const confirmed = confirm(fillUs(US.redirectConfirm, { from: intendedUrl, to: actualUrl }));
         if (!confirmed) {
           console.log("[Lianki] User declined URL update");
           GM_setValue("lk:nav_intended", "");
@@ -5918,7 +6717,7 @@ ${actualUrl}
         pill.style.color = rateColor(score);
         pill.style.opacity = "1";
       } else {
-        pill.textContent = "unrated · , slower · . faster";
+        pill.textContent = US.speedUnrated;
         pill.style.color = "#cbd5e1";
         pill.style.opacity = "0.75";
       }
@@ -5971,7 +6770,7 @@ ${actualUrl}
         GM_setValue("lk:heatmap", heatEnabled() ? "0" : "1");
         if (heatEnabled()) paintHeatmap(heatVideo ?? $$("video,audio")[0]);
         else hideHeatmap();
-        centerTooltip(`Difficulty overlay ${heatEnabled() ? "on" : "off"}`);
+        centerTooltip(heatEnabled() ? US.heatOn : US.heatOff);
       },
       { capture: true, signal },
     );
@@ -6042,7 +6841,7 @@ ${actualUrl}
       const url = normalizeUrl(location.href);
       if (offlineReady && cardStorage.isDeleted(url)) {
         state.phase = "deleted";
-        state.message = "You deleted this card.";
+        state.message = US.youDeleted;
         renderDialog();
         return;
       }
@@ -6164,7 +6963,7 @@ ${actualUrl}
               prefetchedNextUrl = null;
             }
             const opt = state.options.find((o) => Number(o.rating) === rating);
-            await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
+            await afterReview(fillUs(US.reviewed, { due: opt?.due ?? "?" }));
             tryBackgroundSync();
             return;
           }
@@ -6189,7 +6988,7 @@ ${actualUrl}
         prefetchedNextUrl = result.nextUrl ?? null;
         if (result.nextUrl) prefetchNextPage(result.nextUrl);
         const opt = state.options.find((o) => Number(o.rating) === rating);
-        await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
+        await afterReview(fillUs(US.reviewed, { due: opt?.due ?? "?" }));
       } catch (err) {
         state.phase = "error";
         state.error = err.message;
