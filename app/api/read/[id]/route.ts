@@ -21,14 +21,14 @@ import type { ReaderV2Fields } from "@/lib/read/reader-api";
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
 
   const { id } = await params;
   const material = await getReadMaterialById(session.user.id, id);
 
   if (!material) {
-    return NextResponse.json({ error: "Material not found" }, { status: 404 });
+    return NextResponse.json({ error: "not-found" }, { status: 404 });
   }
 
   // The two backfills below are saved for next time, so another site's link
@@ -98,17 +98,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
   if (!sameOriginJson(request)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const body = (await request.json().catch(() => null)) as { title?: unknown } | null;
   const title = cleanTitle(body?.title);
   if (!title) return NextResponse.json({ error: "bad-title" }, { status: 400 });
   const { id } = await params;
   if (!(await renameReadMaterial(session.user.id, id, title))) {
-    return NextResponse.json({ error: "Material not found" }, { status: 404 });
+    return NextResponse.json({ error: "not-found" }, { status: 404 });
   }
   return NextResponse.json({ id, title });
 }
@@ -120,7 +120,7 @@ export async function DELETE(
 ) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
 
   const { id } = await params;
@@ -128,7 +128,7 @@ export async function DELETE(
   const deleted = await deleteReadMaterial(session.user.id, id);
 
   if (!deleted) {
-    return NextResponse.json({ error: "Material not found" }, { status: 404 });
+    return NextResponse.json({ error: "not-found" }, { status: 404 });
   }
   // Its reader-v2 rows go with it (unless the user keeps another copy of the text).
   if (material) {

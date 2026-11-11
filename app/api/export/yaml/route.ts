@@ -12,7 +12,7 @@ import { UserPrefsD1Repo } from "@/lib/repos/userPrefsD1";
 export async function GET() {
   const user = await authUserOrNull();
   if (!user?.email) {
-    return Response.json({ error: "Login required" }, { status: 401 });
+    return Response.json({ error: "login-required" }, { status: 401 });
   }
   const { email, id: userId } = user;
 

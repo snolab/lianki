@@ -75,6 +75,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
   } catch (err) {
     console.error("read: easy words failed", err);
-    return json({ error: "words not graded" }, 500);
+    return json({ error: "words-not-graded" }, 500);
   }
 }

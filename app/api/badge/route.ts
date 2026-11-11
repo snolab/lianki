@@ -28,7 +28,7 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
 export async function GET(req: NextRequest) {
   const user = await authUserOrNull();
   if (!user?.id || !user.email)
-    return NextResponse.json({ error: "Login required" }, { status: 401, headers: NO_STORE });
+    return NextResponse.json({ error: "login-required" }, { status: 401, headers: NO_STORE });
   if (dbBackend() !== "d1" || !appBadgeOn(await readFlags(), isDev(user.email)))
     return NextResponse.json({ on: false }, { headers: NO_STORE });
   const db = getD1();
