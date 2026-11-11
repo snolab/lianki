@@ -21,6 +21,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ColumnMapper, CardPreview } from "./ColumnMapper";
+import { SealSwitch } from "@/app/components/SealSwitch";
 import type { ColumnMapping } from "@/lib/import/column-map";
 import { useIntlayer, useLocale } from "next-intlayer";
 import {
@@ -497,16 +498,17 @@ export default function WordListImport({
 
           {shape && mapping && (
             <>
-              <label className="mt-4 flex min-h-11 items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+              <div className="mt-4 flex min-h-11 items-center gap-2 text-sm">
+                <span id="wordlist-header-label">{t.firstRowHeader}</span>
+                <SealSwitch
+                  size="sm"
+                  role="checkbox"
                   data-qa="wordlist-header"
                   checked={headerOn}
-                  onChange={(e) => setHeaderOn(e.target.checked)}
-                  className="size-4 accent-[var(--brand)]"
+                  aria-labelledby="wordlist-header-label"
+                  onClick={() => setHeaderOn(!headerOn)}
                 />
-                {t.firstRowHeader}
-              </label>
+              </div>
               <ColumnMapper
                 names={headerOn ? shape.first : null}
                 samples={(headerOn ? shape.rows[0] : shape.first) ?? []}

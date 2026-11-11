@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SealSwitch } from "@/app/components/SealSwitch";
 
 type Box = {
   clientId: string;
@@ -133,10 +134,16 @@ export default function BoxClientsAdmin() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={write} onChange={(e) => setWrite(e.target.checked)} />
-          允许写入（box:write）
-        </label>
+        <span className="flex items-center gap-2 text-sm">
+          <span id="box-client-write-label">允许写入（box:write）</span>
+          <SealSwitch
+            size="sm"
+            role="checkbox"
+            checked={write}
+            aria-labelledby="box-client-write-label"
+            onClick={() => setWrite(!write)}
+          />
+        </span>
         <button className="btn btn-primary btn-sm" type="submit">
           绑定
         </button>

@@ -42,8 +42,8 @@ export function Chevron({ open }: { open: boolean }) {
 
 /**
  * One row on /dev/flags; its `id` is the key, so /dev/flags#<key> links to it.
- * The name and the switch are always there: a box seal that names the state
- * (filled red 开 = on, dashed grey 关闭 = off; app/components/SealSwitch.tsx); tapping the name unfolds
+ * The name and the switch are always there: a two-part box seal showing both
+ * states, the current one filled red ([开｜关]; app/components/SealSwitch.tsx); tapping the name unfolds
  * the description and the last change. A flag whose prerequisites fail cannot be
  * turned on: its switch is greyed and disabled, with every reason listed, folded
  * or not, because they say why the switch does nothing. If it is on anyway

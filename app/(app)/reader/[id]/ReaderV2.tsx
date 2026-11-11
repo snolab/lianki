@@ -95,6 +95,7 @@ import {
 } from "@/lib/words/swipe";
 import { swipeVariant } from "@/lib/words/swipe-ab";
 import { ProgressRingSvg } from "@/app/components/progress-ring";
+import { SealSwitch } from "@/app/components/SealSwitch";
 import { fill } from "@/lib/nav/nav-core";
 import { setTextSize, stepScale, TEXT_MAX, TEXT_MIN } from "@/lib/text-size";
 import { useTextSizes } from "@/lib/use-text-size";
@@ -2552,8 +2553,10 @@ function AaControls({ auto, setAuto }: { auto: boolean; setAuto: (on: boolean) =
               aria-checked={level === k}
               data-marks-option={k}
               onClick={() => readMarks.setState({ level: k })}
-              className={`min-h-10 flex-1 rounded-full px-2 ${
-                level === k ? "bg-[oklch(0.5_0_0/0.14)] font-semibold" : "opacity-75"
+              className={`min-h-10 flex-1 rounded-full border px-2 ${
+                level === k
+                  ? "border-transparent bg-primary font-semibold text-on-primary"
+                  : "border-[oklch(0.5_0.02_65/0.4)] opacity-75"
               }`}
             >
               {label}
@@ -2561,16 +2564,18 @@ function AaControls({ auto, setAuto }: { auto: boolean; setAuto: (on: boolean) =
           ))}
         </div>
       </div>
-      <label className="flex min-h-10 items-center gap-2">
-        <input
-          type="checkbox"
+      <div className="flex min-h-10 items-center gap-2">
+        <span id="read-auto-label" className="min-w-0 flex-1">
+          {tp.autoAdvance}
+        </span>
+        <SealSwitch
+          size="sm"
           checked={auto}
-          onChange={(e) => setAuto(e.target.checked)}
+          aria-labelledby="read-auto-label"
+          onClick={() => setAuto(!auto)}
           data-testid="read-auto"
-          className="h-4 w-4"
         />
-        <span>{tp.autoAdvance}</span>
-      </label>
+      </div>
     </div>
   );
 }

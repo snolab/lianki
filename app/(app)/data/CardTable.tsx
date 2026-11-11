@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { displayTitle } from "@/lib/titles/client";
 import { VirtualList } from "@/app/components/VirtualList";
+import { SealSwitch } from "@/app/components/SealSwitch";
 import { useIntlayer } from "next-intlayer";
 import { fill } from "@/lib/roadmap/labels";
 import { CARD_STATES, dueLabel, type DataRow, type StoreId } from "./types";
@@ -158,14 +159,15 @@ export default function CardTable(props: Props) {
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
+        <span className="flex items-center gap-2">
+          <span id="cards-due-only-label">{tt.dueOnly}</span>
+          <SealSwitch
+            size="sm"
             checked={onlyDue}
-            onChange={(e) => onOnlyDueChange(e.target.checked)}
+            aria-labelledby="cards-due-only-label"
+            onClick={() => onOnlyDueChange(!onlyDue)}
           />
-          {tt.dueOnly}
-        </label>
+        </span>
         <span
           className="ms-auto text-gray-500 dark:text-gray-400 font-mono"
           data-testid="cards-total"

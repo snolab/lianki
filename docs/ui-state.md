@@ -97,8 +97,8 @@ target that is not built yet.
 | /reader word review open (what it covers)         | URL `?review=p<line>` · `?review=r<l0>.<t0>-<l1>.<t1>` (lib/read/review-ref.ts)          | done (owner, 2026-11-05): refresh, Back / Forward and a link open it again; the reader's deep-link addresses, stable across reloads                      |
 | /reader word review: card in focus, list scroll   | session `lk:ui:words` `focus` / `anchors`, key `review:<book>:<ref>`                     | done: a refresh lands on the same card while it is still in the review                                                                                   |
 | /reader word review: rows' meanings, translations | memory, per tab (`glossed`, `translated`); the server's caches behind them               | done: asked when near the screen, never stored as UI state (lib/read/review-row-fill.ts)                                                                 |
-| any list's scroll position (VirtualList)         | session `lk:ui:list:<name>`: the id of the row at the viewport centre                    | done (owner, 2026-11-10): restored by scrolling that id back to the centre, loading batches until it shows; never a pixel offset or an index              |
-| sidebar collapsed                                 | local `lk:sidebar`                                                                       | → `lk:pref:sidebar`                                                                                                                                      |
+| any list's scroll position (VirtualList)          | session `lk:ui:list:<name>`: the id of the row at the viewport centre                    | done (owner, 2026-11-10): restored by scrolling that id back to the centre, loading batches until it shows; never a pixel offset or an index             |
+| sidebar collapsed (rail folded away)              | local `lk:pref:sidebar` (`railUi`, lib/nav/rail-store.ts)                                | done (owner, 2026-11-11): per device; folded, the rail is gone and `--nav-w` is 0; the first shell's `lk:sidebar` is carried over once                   |
 | phone drawer open                                 | memory, `navUi` (lib/nav/ui-store.ts)                                                    | done: the bottom island opens it too                                                                                                                     |
 | recent pages (nav)                                | session `lk:ui:nav`                                                                      | done                                                                                                                                                     |
 | pinned pages (nav)                                | local `lk:pref:nav-pins`                                                                 | done                                                                                                                                                     |
@@ -154,13 +154,13 @@ target that is not built yet.
 
 ### Appearance and language
 
-| State                | Where                                                                 | Status                                                                                        |
-| -------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| theme (light / dark) | the system (`prefers-color-scheme`)                                   | → `lk:pref:theme` if a switch is added                                                        |
-| language             | intlayer, as today                                                    | stays                                                                                         |
-| font size            | account `lk:pref:text-size` (`ui`, `chat`, `cards`; lib/text-size.ts) | done: /my/preferences and /words Settings → Text size; `--lk-fs-*` on `<html>` set before paint  |
-| animations off       | local `lk:pref:motion` (`system` until chosen; lib/motion-pref.ts)    | done: /words Settings → Turn off animations; `<html data-motion="off">` set before paint      |
-| paper texture        | local `lk:paper`                                                      | stays a plain key: app/layout.tsx reads it in an inline script before paint, to avoid a flash |
+| State                | Where                                                                 | Status                                                                                          |
+| -------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| theme (light / dark) | the system (`prefers-color-scheme`)                                   | → `lk:pref:theme` if a switch is added                                                          |
+| language             | intlayer, as today                                                    | stays                                                                                           |
+| font size            | account `lk:pref:text-size` (`ui`, `chat`, `cards`; lib/text-size.ts) | done: /my/preferences and /words Settings → Text size; `--lk-fs-*` on `<html>` set before paint |
+| animations off       | local `lk:pref:motion` (`system` until chosen; lib/motion-pref.ts)    | done: /words Settings → Turn off animations; `<html data-motion="off">` set before paint        |
+| paper texture        | local `lk:paper`                                                      | stays a plain key: app/layout.tsx reads it in an inline script before paint, to avoid a flash   |
 
 ### Your own AI (docs/byok.md)
 

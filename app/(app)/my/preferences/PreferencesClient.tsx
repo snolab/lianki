@@ -376,19 +376,23 @@ export default function PreferencesClient({
           {watchTime.heading}
         </SectionHeading>
         <p className="text-gray-400 mb-4">{watchTime.description}</p>
-        <label className="flex items-start gap-3 p-3 rounded-lg bg-white/5 cursor-pointer hover:bg-white/10">
-          <input
-            type="checkbox"
-            id="watchTracking"
-            className="mt-1"
-            checked={watchTracking}
-            onChange={(e) => setWatchTracking(e.target.checked)}
-          />
-          <span>
-            <span className="block font-medium">{watchTime.toggle}</span>
-            <span className="block text-sm text-gray-400">{watchTime.toggleHint}</span>
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5">
+          <span className="flex-1">
+            <span id="watchTracking-label" className="block font-medium">
+              {watchTime.toggle}
+            </span>
+            <span id="watchTracking-hint" className="block text-sm text-gray-400">
+              {watchTime.toggleHint}
+            </span>
           </span>
-        </label>
+          <SealSwitch
+            id="watchTracking"
+            checked={watchTracking}
+            aria-labelledby="watchTracking-label"
+            aria-describedby="watchTracking-hint"
+            onClick={() => setWatchTracking(!watchTracking)}
+          />
+        </div>
       </section>
 
       {/* Mobile Exclude Patterns */}
@@ -417,14 +421,16 @@ export default function PreferencesClient({
                   }`}
                 >
                   <div className="flex items-center gap-3 flex-1">
-                    <input
-                      type="checkbox"
+                    <SealSwitch
+                      size="sm"
                       checked={pattern.enabled}
-                      onChange={() => togglePattern(pattern.id)}
-                      className="w-4 h-4 rounded"
+                      aria-labelledby={`pattern-${pattern.id}`}
+                      onClick={() => togglePattern(pattern.id)}
                     />
                     <div className="flex-1">
-                      <div className="font-mono text-sm text-gray-200">{pattern.pattern}</div>
+                      <div id={`pattern-${pattern.id}`} className="font-mono text-sm text-gray-200">
+                        {pattern.pattern}
+                      </div>
                       <div className="text-xs text-gray-500 mt-1">
                         <span
                           className={`inline-block px-2 py-0.5 rounded ${
@@ -506,16 +512,17 @@ export default function PreferencesClient({
 
           {/* Regex Checkbox */}
           <div className="mb-4">
-            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
-              <input
-                type="checkbox"
+            <div className="flex items-center gap-2 text-sm text-gray-300">
+              <span id="pattern-regex-label">{mobileFilters.useRegex}</span>
+              <SealSwitch
+                size="sm"
+                role="checkbox"
                 checked={isRegex}
-                onChange={(e) => setIsRegex(e.target.checked)}
-                className="w-4 h-4 rounded"
+                aria-labelledby="pattern-regex-label"
+                onClick={() => setIsRegex(!isRegex)}
               />
-              <span>{mobileFilters.useRegex}</span>
-            </label>
-            <p className="text-xs text-gray-500 mt-1 ml-6">{mobileFilters.regexHelp}</p>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">{mobileFilters.regexHelp}</p>
           </div>
 
           {/* Add Button */}

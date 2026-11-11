@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { Icon } from "@/app/components/icons";
+import { SealSwitch } from "@/app/components/SealSwitch";
 import {
   MAIL_LOGIN_NOTICE_KEY,
   MAIL_PREFS_EVENT,
@@ -59,19 +60,23 @@ export function MailSettings() {
     >
       <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>
       <p className="mb-4 text-sm opacity-80">{c.alwaysSent}</p>
-      <label className="flex min-h-11 cursor-pointer items-start gap-3">
-        <input
-          type="checkbox"
-          className="mt-1 size-5 shrink-0 accent-[oklch(0.53_0.207_22.3)]"
+      <div className="flex min-h-11 items-center gap-3">
+        <span className="flex-1">
+          <span id="mail-login-notice-label" className="block font-medium">
+            {c.loginNotice}
+          </span>
+          <span id="mail-login-notice-hint" className="block text-sm opacity-80">
+            {c.loginNoticeHint}
+          </span>
+        </span>
+        <SealSwitch
           checked={on}
-          onChange={(e) => (e.target.checked ? set(true) : setAsking(true))}
+          aria-labelledby="mail-login-notice-label"
+          aria-describedby="mail-login-notice-hint"
+          onClick={() => (on ? setAsking(true) : set(true))}
           data-testid="mail-login-notice"
         />
-        <span>
-          <span className="block font-medium">{c.loginNotice}</span>
-          <span className="block text-sm opacity-80">{c.loginNoticeHint}</span>
-        </span>
-      </label>
+      </div>
       {asking && (
         <div
           role="alertdialog"

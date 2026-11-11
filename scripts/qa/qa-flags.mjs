@@ -67,7 +67,11 @@ const inView = (page, key) =>
 const noSideScroll = (page) =>
   page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
-/** The box seal's look (SealSwitch.tsx): colours as sRGB via a canvas, its box, the tap target. */
+/**
+ * The two-part box seal's look (SealSwitch.tsx): the pressed side (the current
+ * state) and the other side, which must still show; colours as sRGB via a
+ * canvas, the whole box, the tap target.
+ */
 const sealLook = (page, sel) =>
   page.evaluate((sel) => {
     const btn = document.querySelector(sel);
@@ -99,21 +103,29 @@ const sealLook = (page, sel) =>
       if (c.a === 255) ground = c;
     }
     ground ??= rgb(getComputedStyle(document.documentElement).getPropertyValue("--background"));
-    const st = getComputedStyle(seal);
-    const fill = rgb(st.backgroundColor);
-    const behind = fill.a === 255 ? fill : ground;
-    const word = [...seal.children].find((c) => getComputedStyle(c).visibility === "visible");
+    const side = (el) => {
+      if (!el) return null;
+      const st = getComputedStyle(el);
+      const fill = rgb(st.backgroundColor);
+      const behind = fill.a === 255 ? fill : ground;
+      const r = el.getBoundingClientRect();
+      return {
+        filled: fill.a === 255,
+        borderStyle: st.borderTopStyle,
+        border: ratio(rgb(st.borderTopColor), ground),
+        text: ratio(rgb(st.color), behind),
+        word: el.textContent ?? "",
+        shown: st.visibility === "visible" && r.width > 0,
+        red: fill.a === 255 && fill.r > fill.g * 2,
+      };
+    };
     const box = seal.getBoundingClientRect();
     return {
-      filled: fill.a === 255,
-      borderStyle: st.borderTopStyle,
-      border: ratio(rgb(st.borderTopColor), ground),
-      text: ratio(rgb(st.color), behind),
-      word: word?.textContent ?? "",
+      ...side(seal.querySelector("[data-active]")),
+      other: side(seal.querySelector("[data-word]:not([data-active])")),
       w: Math.round(box.width),
       h: Math.round(box.height),
       tap: Math.round(btn.getBoundingClientRect().height),
-      red: fill.a === 255 && fill.r > fill.g * 2,
     };
   }, sel);
 
@@ -250,11 +262,26 @@ async function run(name, device, colorScheme) {
   const sw = page.locator('[id="levels"] [role="switch"]');
   const offLook = await sealLook(page, '[id="levels"] [role="switch"]');
   check(
-    offLook && !offLook.filled && offLook.borderStyle === "dashed" && offLook.word !== "",
-    `${tag}: off is a grey dashed box with its word (${JSON.stringify(offLook)})`,
+    offLook?.filled && offLook.red && offLook.word !== "",
+    `${tag}: off presses its own side, filled seal red (${JSON.stringify(offLook)})`,
+  );
+  check(
+    offLook?.other?.shown &&
+      !offLook.other.filled &&
+      offLook.other.borderStyle === "dashed" &&
+      offLook.other.word !== "" &&
+      offLook.other.word !== offLook.word,
+    `${tag}: and the on side still shows, grey and dashed with its word`,
   );
   check(offLook?.text >= 4.5, `${tag}: the off word is AA (${offLook?.text.toFixed(2)}:1)`);
-  check(offLook?.border >= 3, `${tag}: the dashed edge shows (${offLook?.border.toFixed(2)}:1)`);
+  check(
+    offLook?.other?.text >= 4.5,
+    `${tag}: the grey on word is AA (${offLook?.other?.text.toFixed(2)}:1)`,
+  );
+  check(
+    offLook?.other?.border >= 3,
+    `${tag}: the dashed edge shows (${offLook?.other?.border.toFixed(2)}:1)`,
+  );
   check(offLook?.tap >= 40, `${tag}: the switch is a 40px tap target (${offLook?.tap}px)`);
   await sw.click();
   // The toast says what was saved, when it takes effect and for whom.
@@ -280,8 +307,16 @@ async function run(name, device, colorScheme) {
       onLook.red &&
       onLook.borderStyle === "solid" &&
       onLook.word !== "" &&
-      onLook.word !== offLook?.word,
-    `${tag}: on is a filled seal-red box with its own word (${JSON.stringify(onLook)})`,
+      onLook.word !== offLook?.word &&
+      onLook.word === offLook?.other?.word,
+    `${tag}: on presses the on side, filled seal red (${JSON.stringify(onLook)})`,
+  );
+  check(
+    onLook?.other?.shown &&
+      !onLook.other.filled &&
+      onLook.other.borderStyle === "dashed" &&
+      onLook.other.word === offLook?.word,
+    `${tag}: and the off side still shows, grey and dashed`,
   );
   check(onLook?.text >= 4.5, `${tag}: the on word is AA (${onLook?.text.toFixed(2)}:1)`);
   check(

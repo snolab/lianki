@@ -22,6 +22,7 @@ import {
 } from "./flag-view";
 import { flagViewPrefs } from "./flag-view-store";
 import { DevToast, type DevToastMsg } from "../DevToast";
+import { SealStamp } from "@/app/components/SealSwitch";
 
 type State = {
   flags: FlagRow[];
@@ -44,7 +45,7 @@ const fill = (s: string, v: Record<string, string | number>) =>
 const pill = (on: boolean) =>
   `rounded-full border px-3 py-1 text-xs ${
     on
-      ? "border-transparent bg-[oklch(0.3_0_0)] text-[oklch(0.98_0_0)] dark:bg-[oklch(0.9_0_0)] dark:text-[oklch(0.2_0_0)]"
+      ? "border-transparent bg-primary text-on-primary"
       : "border-[oklch(0_0_0/0.15)] dark:border-[oklch(1_0_0/0.2)]"
   }`;
 
@@ -255,14 +256,17 @@ export default function FlagsAdmin() {
           </div>
           <button
             type="button"
-            aria-pressed={recent}
-            className={pill(recent)}
+            role="switch"
+            aria-checked={recent}
+            data-flags-recent={recent ? "on" : "off"}
+            className={`${pill(false)} inline-flex items-center gap-1.5 pe-1`}
             onClick={() => {
               flagViewPrefs.setState({ recent: !recent });
               letGo();
             }}
           >
             {RECENT_DAYS} 天内改过
+            <SealStamp on={recent} size="sm" />
           </button>
           <span data-testid="flags-count" className="ms-auto text-xs opacity-60">
             {shown} / {state.flags.length}
