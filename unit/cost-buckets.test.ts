@@ -17,7 +17,7 @@ import {
 import { costsGet } from "@/lib/payments/costs-route";
 import { CREDITS_PER_USD } from "@/lib/payments/credits";
 import { MARGIN } from "@/lib/payments/prices";
-import { HEAT_LEVELS, heatLevel } from "@/app/(app)/dev/costs/heat";
+import { HEAT_LEVELS, heatLevel, heatVars } from "@/app/(app)/dev/costs/heat";
 import { contrast, oklchToHex } from "@/lib/mail-templates/color";
 
 const NOW = new Date("2026-11-11T01:30:00Z"); // 10:30 JST, 2026-11-11
@@ -193,5 +193,21 @@ describe("heat scale", () => {
         expect(contrast(oklchToHex(bg)!, oklchToHex(fg)!)).toBeGreaterThanOrEqual(4.5);
       }
     }
+  });
+});
+
+describe("heat cell variables", () => {
+  it("maps a level to its light and dark colours", () => {
+    const top = HEAT_LEVELS[HEAT_LEVELS.length - 1];
+    expect(heatVars(HEAT_LEVELS.length - 1)).toEqual({
+      "--heat-l": top.light,
+      "--heat-lt": top.lightText,
+      "--heat-d": top.dark,
+      "--heat-dt": top.darkText,
+    });
+  });
+  it("falls back to level 0 for an unknown level", () => {
+    expect(heatVars(99)).toEqual(heatVars(0));
+    expect(heatVars(0)["--heat-l"]).toBe("transparent");
   });
 });
