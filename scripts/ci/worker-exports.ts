@@ -7,17 +7,24 @@ export const ADDED = ["DebugSessions"];
  * The names an ES module's source exports (`export {a, b as c}`, `export
  * default`, declarations) — top-level statements only, at the start of a
  * line: a bundle carries indented `export function middleware` text inside
- * embedded sources, which is not an export of the bundle.
+ * embedded sources, which is not an export of the bundle. A minified bundle's
+ * own clause is the last statement of the file instead.
  */
 export function exportNames(src: string): Set<string> {
   const names = new Set<string>();
-  for (const m of src.matchAll(/^export\s*\{([^}]*)\}/gm))
-    for (const part of m[1].split(",")) {
+  const clause = (list: string) => {
+    for (const part of list.split(",")) {
       const p = part.trim();
       if (!p) continue;
       const as = p.split(/\s+as\s+/);
       names.add((as[1] ?? as[0]).trim());
     }
+  };
+  for (const m of src.matchAll(/^export\s*\{([^}]*)\}/gm)) clause(m[1]);
+  // A minified bundle (wrangler.jsonc `minify`) has no line breaks to go by:
+  // its exports are the one clause that ends the file.
+  const tail = /(?:^|[;})\s])export\s*\{([^}]*)\}\s*;?\s*(?:\/\/[^\n]*\s*)*$/.exec(src);
+  if (tail) clause(tail[1]);
   if (/^export\s+default\b/m.test(src)) names.add("default");
   for (const m of src.matchAll(
     /^export\s+(?:async\s+)?(?:class|function\*?|const|let|var)\s+([A-Za-z_$][\w$]*)/gm,
