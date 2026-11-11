@@ -8,6 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import { createLocalStt } from "../packages/debug-chat/src/local-stt";
 import {
+  SPARE_MIN_LEFT_MS,
   CONSENT_KEY,
   DISCONNECTED_GRACE_MS,
   RESTART_TIMEOUT_MS,
@@ -134,7 +135,8 @@ describe("rtc:lianki", () => {
     ws.onopen = () => (opened = true);
     ws.onmessage = (e) => got.push(e.data);
     await tick();
-    expect(r.asked).toEqual(["POST /api/stt/session"]);
+    // The session, then a spare for the next race (a failover should not wait for lianki.com).
+    expect(r.asked).toEqual(["POST /api/stt/session", "POST /api/stt/session"]);
     const sig = r.socks[0];
     expect(sig.url).toBe("wss://lianki.com/api/version/stt/signal?lobby=1");
     expect(sig.protocols).toEqual(["lianki-stt2", "tk.sig"]);
@@ -822,5 +824,56 @@ describe("rtc:lianki: the page's own events and the lobby's edges", () => {
     fire!("online");
     await tick();
     expect(code).toBe(4005);
+  });
+});
+
+describe("rtc:lianki: a spare session for the next race", () => {
+  function spareRig(exps: number[], now: () => number) {
+    const asked: number[] = [];
+    let n = 0;
+    const socks: FakeSock[] = [];
+    const open = publicOpen({
+      fetch: async () => {
+        const exp = exps[n++] ?? 0;
+        asked.push(exp);
+        return new Response(JSON.stringify({ ...SESSION, ticket: `t${n}`, exp }));
+      },
+      socket: (u, p) => {
+        const x = new FakeSock(u, p);
+        socks.push(x);
+        return x;
+      },
+      peer: (o) => new FakePeer(o) as never,
+      origin: () => "wss://lianki.com",
+      events: () => () => {},
+      now,
+    });
+    return { open, asked, socks };
+  }
+
+  test("the next race uses the spare at once, and a new spare is fetched behind it", async () => {
+    const h = spareRig([100, 100, 100], () => 0);
+    h.open(PUBLIC_RTC_URL).onclose = () => {};
+    await tick();
+    await tick();
+    expect(h.socks[0].protocols[1]).toBe("t1");
+    h.open(PUBLIC_RTC_URL).onclose = () => {};
+    await tick();
+    expect(h.socks[1].protocols[1]).toBe("t2"); // the spare, no wait for a new one
+    await tick();
+    expect(h.asked).toHaveLength(3);
+  });
+
+  test("a spare with too little of its ticket left is not used: a fresh session instead", async () => {
+    let t = 0;
+    const h = spareRig([100, 100, 200, 200], () => t);
+    h.open(PUBLIC_RTC_URL).onclose = () => {};
+    await tick();
+    await tick();
+    t = 100_000 - SPARE_MIN_LEFT_MS + 1; // the spare (exp 100 s) is nearly spent
+    h.open(PUBLIC_RTC_URL).onclose = () => {};
+    await tick();
+    await tick();
+    expect(h.socks[1].protocols[1]).toBe("t3");
   });
 });

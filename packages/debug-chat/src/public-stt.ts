@@ -49,7 +49,11 @@ export type PublicSession = {
   signal: string;
   iceServers: RTCIceServer[];
   wss?: string;
+  /** The ticket's expiry (seconds), when the answer gives it. */
+  exp?: number;
 };
+/** A spare session is used only with at least this much of its ticket left (it lives 60 s). */
+export const SPARE_MIN_LEFT_MS = 15_000;
 
 export const isPublicRoute = (u: string) => (PUBLIC_ROUTES as readonly string[]).includes(u);
 /** A mic route list (space separated) that is Lianki's speech servers' public one. */
@@ -97,7 +101,13 @@ export async function fetchSession(f: FetchLike = fetch): Promise<PublicSession>
   const b = (await r.json()) as Partial<PublicSession>;
   if (typeof b.ticket !== "string" || typeof b.signal !== "string" || !b.signal.startsWith("/"))
     throw new Error("stt session: bad answer");
-  return { ticket: b.ticket, signal: b.signal, iceServers: b.iceServers ?? [], wss: b.wss };
+  return {
+    ticket: b.ticket,
+    signal: b.signal,
+    iceServers: b.iceServers ?? [],
+    wss: b.wss,
+    ...(typeof b.exp === "number" ? { exp: b.exp } : {}),
+  };
 }
 
 type SockLike = {
@@ -158,8 +168,10 @@ export function publicOpen(d: PublicDeps = {}): (url: string) => WsLike {
   const peer = d.peer ?? ((o) => new RTCPeerConnection(o) as unknown as PeerLike);
   const socket = d.socket ?? ((u, p) => new WebSocket(u, p) as unknown as SockLike);
   const origin = d.origin ?? (() => location.origin.replace(/^http/, "ws"));
+  const now = d.now ?? (() => Date.now());
   const r = {
     f,
+    session: spareSessions(f, now),
     peer,
     socket,
     origin,
@@ -167,7 +179,7 @@ export function publicOpen(d: PublicDeps = {}): (url: string) => WsLike {
     events: d.events ?? pageEvents,
     setTimer: d.setTimer ?? ((g: () => void, ms: number) => setTimeout(g, ms)),
     clearTimer: d.clearTimer ?? ((t: unknown) => clearTimeout(t as ReturnType<typeof setTimeout>)),
-    now: d.now ?? (() => Date.now()),
+    now,
     available:
       d.available ??
       (() => {
@@ -180,6 +192,32 @@ export function publicOpen(d: PublicDeps = {}): (url: string) => WsLike {
     else if (url === PUBLIC_WSS_URL) void wss(shim, { f, socket, log: d.log });
     else queueMicrotask(() => shim.fail(4000, "not a public route"));
     return shim;
+  };
+}
+
+/**
+ * The WebRTC route's sessions, one kept spare: lianki.com's session answer takes a
+ * second or more, and a failover race (a dropped route, a worker back) should not wait
+ * for it. The spare is fetched only after a session is taken (never on a timer, so an
+ * idle page mints no tickets) and used only with SPARE_MIN_LEFT_MS of its ticket left.
+ */
+function spareSessions(f: FetchLike, now: () => number): () => Promise<PublicSession> {
+  let spare: PublicSession | null = null;
+  let filling: Promise<void> | null = null;
+  const refill = () => {
+    if (filling || spare) return;
+    filling = fetchSession(f)
+      .then((x) => void (spare = x))
+      .catch(() => {})
+      .finally(() => (filling = null));
+  };
+  return async () => {
+    if (!spare && filling) await filling;
+    const x = spare;
+    spare = null;
+    const s = x && x.exp !== undefined && x.exp * 1000 - now() >= SPARE_MIN_LEFT_MS ? x : await fetchSession(f);
+    refill();
+    return s;
   };
 }
 
@@ -254,6 +292,7 @@ async function rtc(
   shim: Shim,
   d: {
     f: FetchLike;
+    session: () => Promise<PublicSession>;
     peer: NonNullable<PublicDeps["peer"]>;
     socket: NonNullable<PublicDeps["socket"]>;
     origin: () => string;
@@ -267,7 +306,7 @@ async function rtc(
 ) {
   let s: PublicSession;
   try {
-    s = await fetchSession(d.f);
+    s = await d.session();
   } catch (e) {
     return shim.fail(4001, String((e as Error).message).slice(0, 60));
   }
