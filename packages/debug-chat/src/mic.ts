@@ -18,7 +18,6 @@ import { chatExtra } from "./chat-ui-locales";
 import type { UttMarks } from "./latency";
 import type { BeginOpts, LocalFinal, LocalUtt } from "./local-stt";
 import { STT_PROMPTS } from "./stt-hint";
-import { levelOf, publishLevel } from "./voice-level";
 import {
   GAP,
   escapeRe,
@@ -1006,9 +1005,6 @@ export function createMic(d: {
       if (g !== gen) return;
       // A cue's own sound teaches nothing and counts as nothing; it is still kept as audio.
       const guarded = !!d.cue?.guard();
-      // The chat bar's caret follows the voice every frame (voice-level.ts): feedback
-      // within 0.2 s even while the transcript has not changed yet.
-      publishLevel(held || guarded ? 0 : levelOf(frame, prob));
       if (!held && !guarded && !shadow) d.adapt?.frame(frame, prob, state === "capturing");
       // The noise floor: Silero's probability on what is heard between utterances.
       if (prob !== undefined && state === "listening" && !guarded)
