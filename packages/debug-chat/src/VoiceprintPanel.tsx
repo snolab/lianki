@@ -664,20 +664,53 @@ export function VoiceprintPanel({
   );
 }
 
-/** The tiny mark after a voice line the Mac verified as his voice (SpeakerTag decision "me"). */
+/**
+ * The tiny mark after a voice line the Mac verified as his voice (SpeakerTag
+ * decision "me"). Its own glyph, a sound wave, not a ✓: a tick reads as
+ * "read" or "done" (owner, 2026-11-11: "是已读还是已经处理？"), and the chat
+ * keeps ✓ for done and answered. Its words (`label`) are the tooltip on
+ * hover and a bubble on a tap or long press, so a phone can read them too.
+ */
 export function VoiceMark({ label }: { label: string }) {
+  const [tip, setTip] = useState(false);
+  const hide = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(hide.current), []);
+  const show = () => {
+    setTip(true);
+    clearTimeout(hide.current);
+    hide.current = setTimeout(() => setTip(false), VOICE_TIP_MS);
+  };
   return (
-    <span
+    <button
+      type="button"
       data-testid="debug-chat-voice-verified"
-      role="img"
       title={label}
       aria-label={label}
-      className="ms-1 inline-flex select-none items-center align-baseline leading-none"
-      style={{ fontSize: "0.8em", color: "oklch(0.62 0.15 150)", opacity: 0.85 }}
+      className="pointer-events-auto relative ms-1 inline-flex select-none items-center align-baseline leading-none [-webkit-touch-callout:none]"
+      style={{ fontSize: "0.8em", color: "oklch(0.62 0.15 150)", opacity: 0.85, background: "transparent", border: 0, padding: 0 }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        show();
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        show();
+      }}
     >
-      <svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-        <path d="M3.5 8.5l3 3 6-7" strokeLinecap="round" strokeLinejoin="round" />
+      <svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+        <path d="M3 6.5v3M6 4.5v7M9 3v10M12 5.5v5" />
       </svg>
-    </span>
+      {tip && (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute start-1/2 bottom-full mb-1 -translate-x-1/2 whitespace-nowrap rounded px-1 fs-10 lk-halo"
+        >
+          {label}
+        </span>
+      )}
+    </button>
   );
 }
+
+/** How long the voice mark's bubble stays up after a tap or long press. */
+export const VOICE_TIP_MS = 1_500;
