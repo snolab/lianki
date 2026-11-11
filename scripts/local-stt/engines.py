@@ -71,19 +71,6 @@ class SenseVoice:
 
             self.side = ThreadPoolExecutor(max_workers=2)
 
-        #: Partials may guess early (LangPicker.guess): the same model in full precision with
-        #: the CTC blank lowered by LIANKI_STT_BLANK_PENALTY (e.g. 6). 0, the default, is
-        #: sherpa-onnx's own pass (docs/local-stt.md, "Rolling partials": the A/B).
-        self.blank_penalty = float(os.environ.get("LIANKI_STT_BLANK_PENALTY", "0"))
-        self.guesser = None
-        if self.blank_penalty > 0 and os.path.exists(os.path.join(d, "model.onnx")):
-            try:
-                g = LangPicker(d, threads=int(os.environ.get("LIANKI_STT_GUESS_THREADS", "2")), model_file="model.onnx")
-                g.guess(np.zeros(RATE, dtype=np.float32), self.blank_penalty)  # warm up
-                self.guesser = g
-            except Exception as e:  # sherpa-onnx's pass, as before
-                print(f"early guesses off: {e}", flush=True)
-
     def transcribe(self, audio: np.ndarray) -> tuple[str, str]:
         s = self.r.create_stream()
         s.accept_waveform(RATE, audio)
@@ -93,8 +80,6 @@ class SenseVoice:
 
     def tail(self, audio: np.ndarray) -> tuple[list[str], list[float], str]:
         """A partial's pass over the unsettled tail (rolling.py): its tokens, their times (s), the language."""
-        if self.guesser:
-            return self.guesser.guess(audio, self.blank_penalty)
         s = self.r.create_stream()
         s.accept_waveform(RATE, audio)
         self.r.decode_stream(s)
@@ -227,15 +212,13 @@ class LangPicker:
     SHORT_S = 4.0
     LANGS = ("auto", "ja", "zh")
 
-    def __init__(self, model_dir: str, threads: int = 4, model_file: str = "model.int8.onnx"):
+    def __init__(self, model_dir: str, threads: int = 4):
         import onnxruntime as ort
 
         so = ort.SessionOptions()
         so.intra_op_num_threads = threads
         so.inter_op_num_threads = 1
-        # Idle threads sleep instead of spinning: a spin would slow the final's decode beside it.
-        so.add_session_config_entry("session.intra_op.allow_spinning", "0")
-        self.sess = ort.InferenceSession(os.path.join(model_dir, model_file), so,
+        self.sess = ort.InferenceSession(os.path.join(model_dir, "model.int8.onnx"), so,
                                          providers=["CPUExecutionProvider"])
         meta = self.sess.get_modelmeta().custom_metadata_map
         self.neg_mean = np.array(meta["neg_mean"].split(","), dtype=np.float32)
@@ -267,46 +250,6 @@ class LangPicker:
             "text_norm": np.full(k, self.itn, np.int32),
         })[0]
         return {lang: self.reading(logits[i, 4:]) for i, lang in enumerate(self.LANGS)}
-
-    def guess(self, audio: np.ndarray, blank_penalty: float) -> tuple[list[str], list[float], str]:
-        """
-        A partial's pass that guesses early (docs/local-stt.md, "Rolling partials"): the
-        CTC blank's logit lowered by `blank_penalty`, so a syllable the model is not yet sure
-        of shows as its best guess instead of nothing. Punctuation gets no such push (it
-        would scatter commas): where a punctuation mark only beat the lowered blank, the
-        frame stays blank. Tokens, their times (s; one output frame per LFR shift, 60 ms),
-        and the language the model heard.
-        """
-        x = self.features(audio)
-        if len(x) == 0:
-            return [], [], ""
-        z = self.sess.run(None, {
-            "x": x[None],
-            "x_length": np.array([len(x)], np.int32),
-            "language": self.lid[:1],
-            "text_norm": np.array([self.itn], np.int32),
-        })[0][0]
-        lang = self.tokens[int(z[0].argmax())].strip("<|>")
-        z = z[4:]
-        plain = z.argmax(-1)
-        pushed = z.copy()
-        pushed[:, 0] -= blank_penalty
-        ids = pushed.argmax(-1)
-        ids = np.where((plain == 0) & self._punct[ids], 0, ids)
-        step = self.lfr_n * 0.01
-        tokens, times = [], []
-        for j, i in enumerate(ids):
-            if i != 0 and (j == 0 or i != ids[j - 1]):
-                tokens.append(self.tokens[int(i)])
-                times.append(j * step)
-        return tokens, times, lang
-
-    @property
-    def _punct(self) -> np.ndarray:
-        if getattr(self, "_punct_mask", None) is None:
-            marks = set("，。？！、,.?!；;：:…")
-            self._punct_mask = np.array([t in marks for t in self.tokens])
-        return self._punct_mask
 
     def reading(self, z: np.ndarray) -> Reading:
         z = z - z.max(-1, keepdims=True)
