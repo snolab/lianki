@@ -23,8 +23,9 @@ describe("chat menu: connected pages for a user without dev", () => {
     // this socket opened (lib/debug-rejoin.ts) — and so does remote eval.
     const host = readFileSync("app/components/DebugEval.tsx", "utf8");
     expect(host).toContain(
-      "owner={owner && !isFriend && devParts({ dev, hubOwner: owner && !box })}",
+      "const devUi = owner && !isFriend && devParts({ dev, hubOwner: owner && !box });",
     );
+    expect(host).toContain("owner={devUi}");
     expect(host).toContain(
       "mayRunEval({ debug: debugOn(), dev: devRef.current, hubOwner: hubOwnerRef.current })",
     );
