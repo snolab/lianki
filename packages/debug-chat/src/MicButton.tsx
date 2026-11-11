@@ -46,7 +46,8 @@ import { VOICE_DEVICE_KEY, deviceSlug, filterSwitch, filterVerdict, noteFiltered
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
 import { MIC_BOX, MIC_RING, NO_SELECT } from "./bar-geometry";
-import { type MicSession, type MicView, micSession } from "./mic-session";
+import { type LifeEvent, MIC_BLOCKED_NOTE, type MicSession, type MicView, micSession } from "./mic-session";
+import { autoOffNote, micLook } from "./mic-off";
 import { sttHint } from "./stt-hint";
 import {
   PTT_PREROLL_MS,
@@ -662,6 +663,22 @@ function session(): MicSession {
       const p = await navigator.permissions?.query({ name: "microphone" as PermissionName });
       return (p?.state as "granted" | "denied" | "prompt" | undefined) ?? "unknown";
     },
+    visible: () => document.visibilityState !== "hidden",
+    // Android backgrounds a PWA (hidden, then frozen): the session logs it, and a track lost meanwhile is reopened.
+    lifecycle: (f) => {
+      const vis = () => f(document.visibilityState === "hidden" ? "hidden" : "visible");
+      const on: [EventTarget, string, () => void][] = [
+        [document, "visibilitychange", vis],
+        [document, "freeze", () => f("freeze")],
+        [document, "resume", () => f("resume")],
+        [window, "pagehide", () => f("pagehide")],
+        [window, "pageshow", () => f("pageshow")],
+      ];
+      for (const [t, e, h] of on) t.addEventListener(e, h);
+      return () => {
+        for (const [t, e, h] of on) t.removeEventListener(e, h);
+      };
+    },
     resumeAudio: async () => {
       const c = audioCtx();
       if (!c) return false;
@@ -848,8 +865,11 @@ export function DebugMic({
       clearTimeout(t);
     };
   }, []);
+  const look = micLook(view);
   const note = view.error
     ? micErrorNote(view.error)
+    : view.auto && view.state === "off"
+      ? autoOffNote(view.auto.reason, chatExtra(), MIC_BLOCKED_NOTE)
     : view.state !== "off" && view.kws === "failed"
       ? ws.failed
       : view.state !== "off" && view.kws === "needs-wifi"
@@ -861,7 +881,7 @@ export function DebugMic({
   useEffect(() => {
     if (state === "off") return;
     // Escape is an explicit off.
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && void mic.current?.off();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && void mic.current?.off("escape");
     document.addEventListener("keydown", esc);
     return () => document.removeEventListener("keydown", esc);
   }, [state]);
@@ -906,7 +926,8 @@ export function DebugMic({
         data-testid="debug-chat-mic"
         data-lk-tap
         data-state={state}
-        data-resume={(view.resume && state === "off") || undefined}
+        data-resume={look === "off-self" || undefined}
+        data-off-reason={look === "off-self" ? (view.auto?.reason ?? "reload") : undefined}
         data-status={status}
         data-wake={state !== "off" ? view.wake : undefined}
         data-whisper={whisper || undefined}
@@ -914,7 +935,7 @@ export function DebugMic({
         aria-pressed={state !== "off"}
         aria-label={
           state === "off"
-            ? view.resume
+            ? look === "off-self"
               ? mt.micResume
               : mt.micDictate
             : speaking
@@ -1007,8 +1028,8 @@ export function DebugMic({
             className={`pointer-events-none absolute rounded-full border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
             style={{ ...MIC_RING, borderColor: WAIT }}
           />
-        ) : view.resume && state === "off" ? (
-          // Reloaded with the mic on, and it could not resume by itself: one tap does.
+        ) : look === "off-self" ? (
+          // Off by itself (a reload, a lost track, another tab; mic-off.ts): one tap resumes.
           <span
             aria-hidden
             data-testid="debug-chat-mic-resume"
