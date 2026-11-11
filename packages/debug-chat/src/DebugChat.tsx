@@ -19,7 +19,6 @@ import { lineTier, richOf, spokenOf } from "./rich-text";
 import { RichBody, RichLine } from "./RichText";
 import {
   COMPACT_BLUR_MS,
-  COMPACT_PEEK_MS,
   COMPACT_SCROLL_MS,
   compactLines,
   foldIn,
@@ -120,6 +119,7 @@ import {
   minimizeFloat,
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
+import { useMessageDetails } from "./MessageDetails";
 import { PolishedMark } from "./PolishedMark";
 import { LINE_SELECTABLE } from "./copy-line";
 import { type Held, logEngaged, typingLook } from "./log-engage";
@@ -874,7 +874,6 @@ export function DebugChat({
   onSend,
   onAnswer,
   onPassageEnd,
-  onUnmerge,
   sessions = [],
   onEnd,
   evalRan = false,
@@ -1298,6 +1297,7 @@ export function DebugChat({
   const ui = uiStrings();
   // The strings that were inline here, in the page's language (chat-ui-locales.ts).
   const ux = chatExtra();
+  const details = useMessageDetails(ux.messageDetails);
   const withNew = (label: string, n: number) =>
     n ? `${label}, ${ux.newCount.replace("{n}", String(n))}` : label;
   /** Agent lines not read aloud because the page was in the background (voice.ts gateVoice). */
@@ -1735,12 +1735,6 @@ export function DebugChat({
     // Full screen is for reading the whole chat: compact waits until it ends.
     fullLog: fullLog !== "off" || full,
   });
-  /** The whole chat, from the compact line: for reading, so a longer hold. */
-  const peek = () => {
-    hold(COMPACT_PEEK_MS);
-    atEnd.current = true;
-    setExpanded(true);
-  };
   useEffect(() => {
     const d = foldIn({
       pref: compactPref,
@@ -2567,6 +2561,8 @@ export function DebugChat({
     if (!full) return;
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
+      // Native message popovers dismiss before the surrounding full-screen chat.
+      if (document.querySelector(":popover-open")) return;
       if (!escapeLeaves({ full: fullOn.current, panelOpen: panelNow.current !== "none", plusMenu: attachMenuNow.current }))
         return;
       e.stopPropagation();
@@ -2847,13 +2843,13 @@ export function DebugChat({
   /**
    * A polished line's text as shown, and its mark (nothing for any other line).
    * A summary's mark is a visible tag (ui.summary), and its raw is every line as heard.
-   * A merged passage's is a "merged N" tag (ui.merged); its raw is every line as heard too,
-   * and its ↩ restores the lines.
+   * Other polished or merged voice lines keep their text in place: the same
+   * sparkle opens their raw transcript in a popover.
    */
   const polish = (m: ChatMessage) => {
     if ((!m.edited && !m.summary && !m.passage) || m.raw === undefined)
       return { text: m.text, mark: null };
-    const raw = rawIds.has(m.id);
+    const raw = Boolean(m.summary) && rawIds.has(m.id);
     return {
       text: raw ? (
         <span data-testid="debug-chat-raw" className="text-gray-500">
@@ -2870,10 +2866,6 @@ export function DebugChat({
                 <span data-testid="debug-chat-summary" className="rounded border border-current px-1 text-[0.8em]">
                   {ui.summary}
                 </span>
-              ) : m.passage ? (
-                <span data-testid="debug-chat-passage" className="rounded border border-current px-1 text-[0.8em]">
-                  {ui.merged.replace("{n}", String(m.passage.ids.length))}
-                </span>
               ) : (
                 polishedIcon
               )
@@ -2881,28 +2873,14 @@ export function DebugChat({
             label={
               m.summary
                 ? ui.summaryTip
-                : m.passage
-                  ? ui.mergedTip.replace("{n}", String(m.passage.ids.length))
-                  : strings?.polished
-                    ? t.polished
-                    : ui.polished
+                : strings?.polished
+                  ? t.polished
+                  : ui.polished
             }
             showRaw={raw}
             onToggle={() => toggleRaw(m.id)}
+            rawText={m.summary ? undefined : m.raw}
           />
-          {(m.parts || m.passage) && onUnmerge ? (
-            <button
-              type="button"
-              data-testid="debug-chat-unmerge"
-              title={t.unmerge}
-              aria-label={t.unmerge}
-              className="pointer-events-auto ms-1 inline-flex select-none items-center align-baseline text-[0.85em] leading-none text-gray-500"
-              style={{ opacity: 0.75 }}
-              onClick={() => onUnmerge(m.id)}
-            >
-              ↩
-            </button>
-          ) : null}
         </>
       ),
     };
@@ -3374,6 +3352,7 @@ export function DebugChat({
     const p = polish(m);
     return (
             <FloatLine
+              details={details.forMessage}
               oneLine={oneLine}
               key={m.id}
               m={m}
@@ -4077,7 +4056,6 @@ export function DebugChat({
       ...laneOpts,
     });
     const p = polish(m);
-    const showAll = strings?.compactShowAll ? t.compactShowAll : ui.compactShowAll;
     const asLine = line && !m.ask;
     return (
       <div
@@ -4085,25 +4063,7 @@ export function DebugChat({
         data-testid={asLine ? "debug-chat-compact-line" : "debug-chat-compact-ask"}
         data-msg={m.id}
         data-from={m.from}
-        {...(asLine
-          ? {
-              role: "button",
-              tabIndex: 0,
-              title: showAll,
-              "aria-controls": "debug-chat-column",
-              "aria-expanded": false,
-              onClick: (e: React.MouseEvent) => {
-                // Its polish mark is its own button (shows the raw STT text); a link is a link.
-                if ((e.target as HTMLElement).closest("button, a")) return;
-                peek();
-              },
-              onKeyDown: (e: React.KeyboardEvent) => {
-                if (e.key !== "Enter" && e.key !== " ") return;
-                e.preventDefault();
-                peek();
-              },
-            }
-          : {})}
+        {...details.forMessage(m, who.name)}
         // A 40px tap target over the page; the text keeps the box's halo.
         className={`pointer-events-auto flex min-h-10 items-start gap-1.5 py-1 leading-snug ${asLine ? "cursor-pointer" : ""}`}
       >
@@ -4137,7 +4097,6 @@ export function DebugChat({
             />
           )}
           {p.mark}
-          {asLine && <span className="sr-only"> · {showAll}</span>}
         </div>
       </div>
     );
@@ -4289,6 +4248,7 @@ export function DebugChat({
   })();
   return (
     <>
+    {details.popup}
     <section
       ref={root}
       data-debug-chat
@@ -4531,6 +4491,7 @@ export function DebugChat({
                       )}
                       {/* The time only on hover (long press on a phone). */}
                       <span
+                        {...details.forMessage(m, who.name)}
                         data-testid="debug-chat-line"
                         data-msg={m.id}
                         data-from={m.from}
@@ -4731,8 +4692,9 @@ export function DebugChat({
           style={strip ? { padding: `${STRIP_INSET_PX}px ${STRIP_INSET_PX}px 0` } : undefined}
         >
           {linkShown && link ? (
-            <div className="flex items-end gap-1">
+            <div className="flex items-stretch gap-1">
               <LinkChip
+                glass={strip}
                 t={ui}
                 link={link.state}
                 selection={selState}
@@ -5299,6 +5261,7 @@ function GripDots() {
  * `epoch` restarts it; `paused` holds it, back at full opacity if fading.
  */
 function FloatLine({
+  details,
   oneLine,
   m,
   who,
@@ -5312,6 +5275,7 @@ function FloatLine({
   onGone,
   arrivedAt,
 }: {
+  details: ReturnType<typeof useMessageDetails>["forMessage"];
   /** Its first line only (the tucked handle's peek), else up to three. */
   oneLine?: boolean;
   m: ChatMessage;
@@ -5366,6 +5330,8 @@ function FloatLine({
   const fading = phase === "fade";
   return (
     <li
+      {...details(m, who.name)}
+      data-msg={m.id}
       data-testid="debug-chat-float"
       data-from={m.from}
       data-fading={fading || undefined}
