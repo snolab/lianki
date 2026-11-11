@@ -245,6 +245,24 @@ const dictionary = {
       mr: "स्वतःचे फ्रंटएंड",
       ko: "사용자 프런트엔드",
     }),
+    sttAccess: t({
+      en: "Speech server access",
+      zh: "语音服务器名单",
+      hi: "स्पीच सर्वर पहुँच",
+      es: "Acceso a los servidores de voz",
+      fr: "Accès aux serveurs vocaux",
+      ar: "الوصول إلى خوادم الكلام",
+      bn: "স্পিচ সার্ভারে প্রবেশাধিকার",
+      pt: "Acesso aos servidores de voz",
+      ru: "Доступ к речевым серверам",
+      ur: "اسپیچ سرور تک رسائی",
+      id: "Akses server suara",
+      de: "Zugang zu den Sprachservern",
+      ja: "音声サーバーの利用許可",
+      sw: "Ruhusa ya seva za usemi",
+      mr: "स्पीच सर्व्हर प्रवेश",
+      ko: "음성 서버 이용 허가",
+    }),
     membership: t({
       en: "Membership",
       zh: "会员",
@@ -436,6 +454,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Paragraph under the study ledger page heading explaining what each row is. Keep Merkle and cron as is; anchor = one daily checkpoint record; salted = mixed with a secret random value.",
   liveFrontends:
     "Name of the internal page (tab title and main heading) with the allowlist of users who may run their own frontend (their own dev server) on lianki.com. A plural noun phrase.",
+  sttAccess:
+    "Name of the internal page (tab title and main heading) where an administrator chooses which user accounts may use Lianki's own speech-to-text servers, and sees which speech servers are registered. A short noun phrase: access to the speech servers.",
   membership:
     "Name of the internal page (tab title and main heading) where an administrator adds Pro membership days to any account. A noun naming the page.",
   newOrder:

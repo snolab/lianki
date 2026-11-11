@@ -16,6 +16,7 @@ export const DEV_PAGE_PERMISSION: Record<string, Permission> = {
   "gift-codes": "admin",
   membership: "admin",
   permissions: "admin",
+  "stt-access": "admin",
   users: "admin",
   design: "dev",
   levels: "dev",

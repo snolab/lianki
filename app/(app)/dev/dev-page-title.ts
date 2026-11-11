@@ -25,6 +25,7 @@ export type DevPageName =
   | "newOrder"
   | "permissions"
   | "preview"
+  | "sttAccess"
   | "swipeAb"
   | "templates"
   | "tokens"

@@ -79,7 +79,14 @@ export type AuditKind =
   | "mail-log.suppress"
   | "mail-log.unsuppress"
   | "site-role.grant"
-  | "site-role.revoke";
+  | "site-role.revoke"
+  // Lianki's speech servers for other accounts (lib/stt-worker/store.ts): the
+  // /dev/stt-access allowlist (subject: the account id) and the workers allowed
+  // to register (subject: the worker id). Never an email or a key.
+  | "stt-access.allow"
+  | "stt-access.disallow"
+  | "stt-worker.add"
+  | "stt-worker.revoke";
 
 export type AuditEntry = {
   kind: AuditKind;
