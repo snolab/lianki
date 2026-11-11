@@ -1,6 +1,16 @@
 import { fileURLToPath } from "node:url";
 import { withIntlayer } from "next-intlayer/server";
 
+/**
+ * Browser code calling useIntlayer("key") imports that one dictionary instead
+ * of the entry that holds all of them (lib/build/intlayer-direct-loader.cjs).
+ */
+const intlayerDirect = (as) => ({
+  condition: { all: ["browser", { not: "foreign" }, { content: /\buseIntlayer\(/ }] },
+  loaders: [fileURLToPath(new URL("./lib/build/intlayer-direct-loader.cjs", import.meta.url))],
+  as,
+});
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // The whole-page dev server (docs/dev-whole-page.md) is opened on its LAN
@@ -37,11 +47,15 @@ const nextConfig = {
     // rgui (vendored, docs/rgui.md) imports "./x.js" for x.ts; Turbopack takes
     // that literally. The loader drops the .js in its sources only.
     rules: {
-      "*.ts": {
-        condition: { path: /^packages\/rgui\/src\// },
-        loaders: [fileURLToPath(new URL("./lib/build/strip-js-ext-loader.cjs", import.meta.url))],
-        as: "*.ts",
-      },
+      "*.ts": [
+        {
+          condition: { path: /^packages\/rgui\/src\// },
+          loaders: [fileURLToPath(new URL("./lib/build/strip-js-ext-loader.cjs", import.meta.url))],
+          as: "*.ts",
+        },
+        intlayerDirect("*.ts"),
+      ],
+      "*.tsx": [intlayerDirect("*.tsx")],
     },
     resolveAlias: {
       "node:sqlite": "./lib/stubs/node-sqlite.js",
@@ -117,4 +131,15 @@ if (process.env.NODE_ENV === "development") {
   );
 }
 
-export default withIntlayer(nextConfig);
+const config = await withIntlayer(nextConfig);
+
+// The browser gets no dictionary lookup table, only the dictionaries its code
+// imports (lib/stubs/intlayer-no-dictionaries.mjs). withIntlayer sets this
+// alias itself and its value wins over ours, so it is changed afterwards.
+const ENTRY = "@intlayer/dictionaries-entry";
+const aliases = config.turbopack?.resolveAlias;
+if (aliases && typeof aliases[ENTRY] === "string") {
+  aliases[ENTRY] = { browser: "./lib/stubs/intlayer-no-dictionaries.mjs", default: aliases[ENTRY] };
+}
+
+export default config;
