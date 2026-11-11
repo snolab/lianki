@@ -120,6 +120,12 @@ export const FLAGS = {
     requires: ["komoju.live-key"],
     money: true,
   },
+  // No `audience`: for everyone; ON is the shipped state.
+  "app.auto-update": {
+    description:
+      "有新版本时自动更新（lib/auto-update.ts）：页面「干净」时（没有未发送的聊天草稿、没在录音或按住说话、没在朗读或播放、没有打开的对话框或改过的表单、没有正在保存的请求、没在 /words 或 /review 的进行中、没在录声纹）自己刷新：切到后台时、换到别的页面时、或者一段时间没有操作后；回来时停在原来的位置。右下角显示「有新版本，空闲时自动更新」；页面不干净时显示「有新版本，有未保存内容」，干净了再更新。用户可在「设置」里自己关掉。关闭 = 和以前一样，只显示「有新版本 · 刷新」按钮。",
+    default: true,
+  },
   // No `audience`: the page and its rail / home links for everyone; ON is the shipped state.
   "today.goal": {
     description:

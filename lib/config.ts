@@ -55,6 +55,16 @@ function int<A extends ConfigAudience>(
 }
 
 export const CONFIG = {
+  "app.autoUpdateIdleMs": int({
+    default: 15000,
+    min: 3000,
+    max: 600000,
+    unit: "ms",
+    group: "app",
+    audience: "public",
+    description:
+      "有新版本时（开关 app.auto-update），页面干净且多久没有点、滑、打字就自己刷新（毫秒）。切到后台或换页面时不等这段时间。/words 和 /review 上只在切到后台或换页面时刷新。",
+  }),
   "words.undoMs": int({
     default: 8000,
     min: 2000,
