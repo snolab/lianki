@@ -52,33 +52,9 @@ self.addEventListener("activate", (event) => {
             .map((k) => caches.delete(k)),
         ),
       )
-      .then(() => setNavigationPreload(!IS_BOX))
       .then(() => self.clients.claim()),
   );
 });
-
-/**
- * Navigation preload: the browser asks the server for a page while it is still
- * starting this worker, instead of after. A cold app launch on a phone spent
- * the worker's whole boot before the page's request even left (docs/cold-start.md).
- * The page then comes from that answer (fetch handler, pages); off on a box,
- * which answers nothing. A browser without it changes nothing.
- */
-async function setNavigationPreload(on) {
-  try {
-    const np = self.registration && self.registration.navigationPreload;
-    if (np) await (on ? np.enable() : np.disable());
-  } catch {}
-}
-
-/** The page's answer the browser already asked for (navigation preload), or a fresh one. */
-async function pageFetch(event) {
-  let early;
-  try {
-    early = await event.preloadResponse;
-  } catch {}
-  return early || fetch(event.request);
-}
 
 // A page loaded before this worker took control sends the URLs it already
 // fetched (its HTML and /_next/static chunks) so they are cached too.
@@ -139,7 +115,7 @@ self.addEventListener("fetch", (event) => {
   // HTML pages: network first, fall back to cache
   if (request.headers.get("accept")?.includes("text/html")) {
     event.respondWith(
-      pageFetch(event)
+      fetch(request)
         .then(async (res) => {
           // Cache successful HTML responses (before the page gets it: keep()).
           if (cacheable(res)) await keep(request, res);
