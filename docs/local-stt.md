@@ -369,31 +369,58 @@ The owner's floor (2026-11-11): **the next feedback within 0.2 s** of speech, a
 wrong word being better than none. 0.2 s is the worst acceptable, not the goal.
 
 - **Step**: a partial every `--partial-step` 0.1 s of new audio, from
-  `--partial-min` 0.1 s (were 0.4 s and 0.3 s).
-- **Only the tail is decoded** (`rolling.py`, tests `test_rolling.py`):
-  SenseVoice is not a streaming model, so a partial used to decode the whole
-  utterance again (245 ms per pass at 21 s). Now a token is settled when two
-  passes in a row agree on it and the next token began 0.6 s before the end of
-  the heard audio; its audio leaves the tail, its text joins the settled
-  segments with the language its pass heard. The pass stays short whatever the
-  length. The final still decodes the whole utterance (and the short-utterance
-  language pick), so the settled partials never decide the final text.
-- **Measured** (`stream-clip.ts`, 12 clips, real-time pace, a test server on
-  127.0.0.1): first partial 113–133 ms (was ~430 ms); end → final 55–206 ms;
-  the longest gap between partials while the speaker talks ("in speech",
-  frames louder than a quarter of the clip's 90th-percentile RMS)
-  133–654 ms. Over the floor: CTC emits blank for a syllable it is not yet
-  sure of, so the text does not change for a few passes.
-- **Early guesses** (`LIANKI_STT_BLANK_PENALTY=6`, off by default):
-  partials run the same model in full precision through onnxruntime
-  (`LangPicker.guess`) with the CTC blank's logit lowered, so an unsure
-  syllable shows its best guess; punctuation gets no push (it scattered
-  commas). Back to back on the same 12 clips (load 7–38, not a quiet
-  machine): in-speech gap 197–349 ms vs 134–653 ms without, but end → final
-  219–606 ms vs 56–327 ms (the two runtimes contend for the CPU). Off until
-  that is solved; neither run is under the 0.2 s floor.
+  `--partial-min` 0.1 s (were 0.4 s and 0.3 s). First partial 112–123 ms
+  after the first frame (was ~430 ms).
+- **What still misses the floor**: the longest gap between partials while the
+  speaker talks ("in speech": frames louder than a quarter of the clip's
+  90th-percentile RMS) is 134–1476 ms on the 12 clips. The decode is not the
+  limit (a pass is 30–240 ms): SenseVoice's CTC holds back a syllable it is
+  not sure of, so the text does not change for a few passes. The chat bar's
+  caret (`MicCaret.tsx`, `voice-level.ts`) moves with the voice every 32 ms
+  frame, so speaking always shows within the floor.
 - `stream-clip.ts` prints `first`, `max gap (in speech …)` and end → final per
   clip; the in-speech gap is the acceptance number, not the mean.
+
+**Tried, off by default** (each measured back to back on the same 12 clips;
+the machine's load was not quiet, 4–45):
+
+- **Rolling decode** (`LIANKI_STT_ROLLING=1`, `rolling.py`, tests
+  `test_rolling.py`): each pass decodes only the unsettled tail, so its cost
+  stays flat. A stretch settles at a punctuation mark or a pause (≥ 0.3 s
+  between tokens) two passes agree on, 0.6 s before the end of the heard
+  audio, and each pass also decodes 2 s of settled audio before the tail as
+  context. What went wrong on the way: settling between any two tokens
+  repeated syllables (「持っ持っ」, live for a few hours as #896) and split
+  English words; a tail decoded with no context invented words (「Yeah」
+  「Okay」); punctuation alone let the tail grow. With context the text is
+  clean but for a dropped character at a seam, and the in-speech gap is the
+  same as the whole decode's (134–1323 ms): at these lengths the cost was
+  never the limit. Worth it for long utterances only.
+- **Early guesses** (`LIANKI_STT_BLANK_PENALTY=6`): partials run the same
+  model in full precision through onnxruntime (`LangPicker.guess`) with the
+  CTC blank's logit lowered, so an unsure syllable shows its best guess;
+  punctuation gets no push (it scattered commas). In-speech gap 197–349 ms vs
+  134–653 ms without, but end → final 219–606 ms vs 56–327 ms (the two
+  runtimes contend for the CPU).
+
+## Language switch
+
+The owner's design (2026-11-11): keep the last 30 s, notice when the speaker
+changes language mid-utterance, re-read the missed part with the right
+language, and backfill it. The whole-utterance decode reads one language: on
+a Chinese then Japanese clip (the model's own `test_wavs`, joined) it keeps
+the Japanese and leaves the Chinese as 「开饭9」.
+
+`LIANKI_STT_LANG_SPANS=1` (with rolling on): the settled stretches carry the
+language their pass heard (`rolling.py` `language_spans`; under 1 s joins its
+neighbour, silence has none); when there are two or more, the final reads
+each settled stretch with its language forced (`LangPicker.read`, the int8
+model the language pick already loads) and the unsettled tail auto-detected,
+and the final message carries `langs`. On the joined clips it restores the
+first language (「开饭时间早上9点至下午5点。うちの中学は…」), but silence
+between stretches still reads as 「Yeah」「嗯」 and a true one-language clip
+was split by a misheard stretch, so it is off. Next: cut stretches where the
+VAD hears silence, not at CTC gaps.
 
 ## Protocol
 
