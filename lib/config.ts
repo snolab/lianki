@@ -22,6 +22,8 @@
  * Client-safe: no D1 here.
  */
 import { z } from "zod";
+import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
+import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
 
 export type ConfigAudience = "server" | "public";
 
@@ -212,6 +214,62 @@ export const CONFIG = {
     description:
       "任务标成「完成但未验证」时，自动建一个「verify: <名字>」子任务交给同一条线，给它多少分钟的预计时间。",
   }),
+  // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts;
+  // docs/li-sound-hub.md, "Pronunciation table"): handed to the chat by the root layout.
+  "voice.lexicon": {
+    default: DEFAULT_LEXICON as LexEntry[],
+    schema: z
+      .array(
+        z
+          .object({
+            term: z.string().min(1).max(LEX_LIMITS.term),
+            say: z.string().min(1).max(LEX_LIMITS.say),
+            lang: z.string().regex(LEX_LANG, "a language: zh, ja, zh-TW…").optional(),
+            ignoreCase: z.boolean().optional(),
+            ph: z.string().min(1).max(LEX_LIMITS.ph).optional(),
+            alphabet: z.enum(["ipa", "x-sampa"]).optional(),
+          })
+          .strict(),
+      )
+      .max(LEX_LIMITS.entries) as z.ZodType<LexEntry[]>,
+    group: "voice",
+    audience: "public",
+    description:
+      'Li 朗读时的读音表（JSON 数组）：每条 {term 写法, say 读法, lang 可选语言如 zh / ja / zh-TW, ignoreCase 可选不分大小写, ph 可选音标}。只改读出来的声音，屏幕上的文字不变。整词匹配、默认区分大小写；同一个词有几条时，语言最具体的那条生效（zh-TW 胜过 zh，zh 胜过不写语言）。例：{"term":"WebRTC","say":"Web R T C"}。',
+  },
+  // Provider voices (lib/cloud-voices.ts; docs/li-sound-hub.md, "Provider voices"):
+  // which language is read in which Google / Azure voice, as data. Flag voice.cloud-voices.
+  "voice.langVoices": {
+    default: {
+      "zh-TW": "google:cmn-TW-Wavenet-A",
+      nan: "azure:zh-CN-XiaoxiaoDialectsNeural/nan-CN",
+    } as Record<string, string>,
+    schema: z
+      .record(
+        z.string().regex(LEX_LANG, "a language: zh, zh-TW, nan…"),
+        z
+          .string()
+          .refine(
+            (id) => isProviderVoice(lineVoiceOf(id)),
+            "google:<voice> or azure:<voice>[/<locale>]",
+          ),
+      )
+      .refine((m) => Object.keys(m).length <= 50, "at most 50 languages") as z.ZodType<
+      Record<string, string>
+    >,
+    group: "voice",
+    audience: "public",
+    description:
+      'Li 朗读时哪种语言用哪个谷歌 / Azure 声音（JSON 对象：语言 → 声音），只在开关 voice.cloud-voices 打开时生效。语言先找完整的（zh-TW），再找主语言（zh）。台语和台湾国语从文字认不出来，所以只有标了语言的句子会用到 zh-TW / nan；想让所有中文都用台湾腔，就加 "zh"。声音写法：google:cmn-TW-Wavenet-A、azure:zh-TW-HsiaoChenNeural、azure:zh-CN-XiaoxiaoDialectsNeural/nan-CN（斜线后是它改用的口音）。按字数扣积分；没有密钥时照常用原来的声音。',
+  },
+  "voice.azureRegion": {
+    default: "eastasia" as string,
+    schema: z.string().regex(/^[a-z0-9]{2,30}$/, "an Azure region: eastasia, japaneast…"),
+    group: "voice",
+    audience: "server",
+    description:
+      "Azure 语音服务所在的区域（创建 Azure 语音资源时选的那个，例如 eastasia、japaneast）。要和 AZURE_SPEECH_KEY 那把密钥的区域一致，否则 Azure 声音读不出来（会退回原来的声音）。",
+  },
   // The voiceprint in his account (docs/local-stt.md, "Voiceprint in your account"):
   // handed to the panel by GET /api/my/voiceprint.
   "voiceprint.extractor": {
@@ -234,6 +292,27 @@ export const CONFIG = {
     description:
       "声纹操作（录入、存到账号、恢复、删除、重算、导出）的一次 Face ID 管多久（毫秒）：默认 600000 = 10 分钟，在这段时间里同一台设备、同一次登录不再弹出通行密钥。0 = 每次操作都要 Face ID。只管声纹，不管别的验证。改短会让已经发出的授权也跟着变短。",
   }),
+  // The owner's remote-eval grant (docs/monitoring.md, "Remote eval (owner debug)"):
+  // read by the debug hub (lianki-push) over DebugSessions.config at each pairing,
+  // through lib/eval-grant-config.ts (whose defaults must equal these).
+  "debug.evalGrantHours": int({
+    default: 8,
+    min: 1,
+    max: 720,
+    unit: "h",
+    group: "debug",
+    audience: "server",
+    description:
+      "远程调试（eval.ts）配对时你点「允许」后，这次授权管多久（小时）：默认 8；720 = 30 天。只对改了之后的新配对生效，已经给出的授权不变。「结束」随时立刻删除授权，每次执行仍然都记日志。",
+  }),
+  "debug.evalGrantPages": {
+    default: "chosen" as "chosen" | "all",
+    schema: z.enum(["chosen", "all"]),
+    group: "debug",
+    audience: "server",
+    description:
+      "远程调试的授权覆盖哪些页面：chosen（默认）= 配对弹窗里勾选的页面；all = 你所有设备上的所有页面，包括之后才打开的（只有你自己的页面，朋友的永远不算）。只对新配对生效。",
+  },
   // Lianki's own speech server (docs/local-stt.md) booked as if it were a cloud
   // service (docs/payments.md, "Cost ledger"): Workers AI whisper turbo's list price.
   "stt.local.costPerMinUsd": {
@@ -339,6 +418,16 @@ export const CONFIG = {
     audience: "server",
     description:
       "语音服务器：每台服务器的容量里留几路给你自己（其他用户最多用 容量 − 留给你的）。默认 1。",
+  }),
+  "app.autoUpdateIdleMs": int({
+    default: 15000,
+    min: 3000,
+    max: 600000,
+    unit: "ms",
+    group: "app",
+    audience: "public",
+    description:
+      "有新版本时（开关 app.auto-update），页面干净且多久没有点、滑、打字就自己刷新（毫秒）。切到后台或换页面时不等这段时间。/words 和 /review 上只在切到后台或换页面时刷新。",
   }),
 } as const satisfies Record<string, ConfigDef>;
 

@@ -104,7 +104,7 @@ import {
   progressGate,
 } from "./progress";
 
-import { STT_SIGNAL_PATH, STT_WORKER_PATH } from "./stt-registry";
+import { COLO_HEADER, STT_SIGNAL_PATH, STT_WORKER_PATH } from "./stt-registry";
 
 export { DebugHub } from "./debug";
 export { ProgressHub } from "./progress";
@@ -280,6 +280,10 @@ export default {
       headers.delete(BOX_HEADER);
       headers.delete("cookie");
       headers.delete("authorization");
+      // Where Cloudflare met this caller, for picking a worker near the page (never the client's say).
+      headers.delete(COLO_HEADER);
+      const colo = (req as { cf?: { colo?: unknown } }).cf?.colo;
+      if (typeof colo === "string" && /^[A-Z]{3}$/.test(colo)) headers.set(COLO_HEADER, colo);
       return env.STT.get(env.STT.idFromName("stt")).fetch(new Request(req, { headers }));
     }
     if (url.pathname === "/api/version/read-stream") {

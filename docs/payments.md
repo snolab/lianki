@@ -415,6 +415,7 @@ is 225 credits.
 | `self-intro.translate`, `self-intro.tts` | `/api/self-intro/translate`, `/tts` | — | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
 | `roadmap.generate` | `/api/roadmap/generate` | — | Workers AI · Llama | wallet | ~1 |
 | `blog.translate` | `/api/translate` (blog post, any signed-in user; the result is shared) | — | Workers AI · gpt-oss-120b | wallet: held before the stream, settled when it ends; a translation already in the PR is free | ~5 per post |
+| `voice.cloud` | `/api/voice/tts` (Li's read-aloud in a `google:` / `azure:` voice) | `voice.cloud-voices` | Google Cloud TTS / Azure Speech | wallet: held and charged at the voice tier's list price per million billed characters (the SSML body) × `MARGIN` (`PROVIDER_TTS_USD_PER_M`: Google Standard $4, WaveNet / Neural2 $16, Chirp $30, Studio and unknown names $160; Azure neural $16, HD $30); no key = 503, nothing held | Standard ~0.09, WaveNet ~0.36 per 100 characters / the same |
 | `tts` | `/api/tts` (legacy; no page calls it) | — | Workers AI · MeloTTS | **free** with word read-aloud (2026-11-09); cost logged | ~0.01 |
 
 Not charged, on purpose (no provider bill per call):

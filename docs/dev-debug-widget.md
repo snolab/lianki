@@ -2525,3 +2525,31 @@ other models (1 − normalised edit distance), USD per audio minute, and what
 the run cost. The second is clip × model, with each transcript, its latency
 and its CER. Scoring ignores case, width, spaces and punctuation
 (`scripts/dev/stt-bench-lib.ts`, tested in `unit/stt-bench.test.ts`).
+
+### Connection chip
+
+On a developer's chat (a `dev` holder, as the server rendered the page or as
+the hub found it when the socket opened; never a friend's), a small chip sits
+left of the progress bar (`LinkChip.tsx`, states in `link-state.ts`), styled
+like the attached-selection chip. It has two readings, each showing all its
+states, the current one in seal red (`--lk-primary`), the others muted
+(`--lk-seal-off`):
+
+- **Remote code** — off · connecting · connected · disconnected. `off`: debug
+  mode is off, or no eval grant is held. `connecting`: the hub socket is
+  opening. `connected`: a grant in time reaches this page. `disconnected`: the
+  socket is closed, or a grant is live but does not cover this page (an app
+  restarted under a new page id: docs/monitoring.md, "After a reload").
+- **Selection** — none · pending · seen · failed: whether the agent has the
+  page selection attached to the chat. `pending`: attached, or sent and not
+  yet seen; `seen`: an agent replied or beat after the line that carried it;
+  `failed`: no agent listens and none saw it.
+
+A tap opens the details: every state by name with the current one marked and
+a sentence on it, and each eval grant (who, time left, which pages: all, this
+page, not this page) with **End**, which deletes the grant at once, as End in
+the menu does. Strings: UiStrings `link…`, `eval…`, `sel…` (16 locales, the
+doc comments are their context).
+
+Delivery nouns, one vocabulary for the chip and, later, the chat's message
+marks (`DELIVERY`): sent → delivered → seen → handled; failed.

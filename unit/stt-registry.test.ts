@@ -6,9 +6,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import push, { type Env } from "@/workers/push/src/index";
 import {
+  COLO_HEADER,
+  RESUME_GRACE_MS,
   STT_SIGNAL_PATH,
   STT_WORKER_PATH,
   SttRegistry,
+  WORKER_SILENT_MS,
   WORKER_AUTH_PREFIX,
   workerSigned,
 } from "@/workers/push/src/stt-registry";
@@ -569,15 +572,15 @@ describe("SttRegistry: the rest of a session's life", () => {
     expect(page.closed).toBe(1000);
   });
 
-  it("a page closing tells its worker; a worker going away ends its pages", async () => {
+  it("a page closing tells its worker; a worker going away leaves its sessions (peer to peer)", async () => {
     const a = await live();
-    a.reg.webSocketClose(a.page as never, 1005);
+    await a.reg.webSocketClose(a.page as never, 1005);
     expect(a.worker.last()).toEqual({ t: "close", sid: a.sid });
     expect(a.page.closed).toBe(1000);
     const b = await live();
-    b.reg.webSocketError(b.worker as never);
-    expect(b.page.last()).toEqual({ t: "end", reason: "worker-gone" });
-    expect(b.page.closed).toBe(1012);
+    await b.reg.webSocketError(b.worker as never);
+    expect(b.page.last()).toEqual({ t: "worker-away" });
+    expect(b.page.closed).toBeUndefined();
   });
 
   it("a session past its signed length is closed when next counted", async () => {
@@ -645,5 +648,177 @@ describe("SttRegistry: the rest of a session's life", () => {
     await reg.fetch(new Request(`https://lianki.com${STT_WORKER_PATH}`));
     await reg.webSocketMessage(s.sockets[0].ws as never, JSON.stringify({ t: "answer" }));
     expect(s.sockets[0].ws.closed).toBe(4401);
+  });
+});
+
+describe("SttRegistry: routes that come and go (docs/local-stt.md)", () => {
+  async function hub(
+    ws: { id: string; owner?: string | null; colo?: string }[],
+    o: { now?: () => number } = {},
+  ) {
+    const tk = await edKeys();
+    const keys = await Promise.all(ws.map(() => edKeys()));
+    const rows = Object.fromEntries(
+      ws.map((w, i) => [keys[i].pub, { id: w.id, ownerUserId: w.owner ?? null, capacity: null }]),
+    );
+    const s = setup({ workers: rows });
+    const pings = new Map<unknown, Date>();
+    const state = {
+      ...s.state,
+      getWebSocketAutoResponseTimestamp: (x: unknown) => pings.get(x) ?? null,
+    };
+    const reg = new SttRegistry(
+      state as never,
+      { SESSIONS: s.sessions, PARTNER_TICKET_PUB: tk.pub },
+      o.now,
+    );
+    const workers: Record<string, FakeSocket> = {};
+    const register = async (i: number) => {
+      await reg.fetch(
+        new Request(`https://lianki.com${STT_WORKER_PATH}`, {
+          headers: ws[i].colo ? { [COLO_HEADER]: ws[i].colo! } : {},
+        }),
+      );
+      const sock = s.sockets.at(-1)!.ws;
+      await reg.webSocketMessage(
+        sock as never,
+        JSON.stringify({
+          t: "auth",
+          key: keys[i].pub,
+          sig: await sign(keys[i].priv, JSON.parse(sock.sent[0]).nonce),
+        }),
+      );
+      workers[ws[i].id] = sock;
+      return sock;
+    };
+    const page = async (
+      q: { sub?: string; colo?: string; lobby?: boolean; proto?: string } = {},
+    ) => {
+      const proto =
+        q.proto ??
+        `lianki-stt2, ${
+          (
+            await signSttTicketV2(tk.ticketKey, {
+              sub: q.sub ?? "u1",
+              lim: { utt: 40, sess: 900 },
+              ...(o.now ? { now: o.now() } : {}),
+            })
+          ).ticket
+        }`;
+      const r = await reg.fetch(
+        new Request(`https://lianki.com${STT_SIGNAL_PATH}${q.lobby ? "?lobby=1" : ""}`, {
+          headers: {
+            origin: "https://lianki.com",
+            "sec-websocket-protocol": proto,
+            ...(q.colo ? { [COLO_HEADER]: q.colo } : {}),
+          },
+        }),
+      );
+      return { r, ws: r.status === 101 ? s.sockets.at(-1)!.ws : null };
+    };
+    /** Which worker a page's offer reaches. */
+    const whose = async (p: FakeSocket) => {
+      await reg.webSocketMessage(p as never, JSON.stringify({ t: "offer", sdp: "o" }));
+      return Object.entries(workers).find(
+        ([, w]) => w.last()?.t === "offer" && w.last().sdp === "o",
+      )?.[0];
+    };
+    const clearOffers = () => {
+      for (const w of Object.values(workers)) w.sent.push(JSON.stringify({ t: "-" }));
+    };
+    return { reg, s, register, page, workers, pings, whose, clearOffers };
+  }
+
+  it("picks the account's own worker, then one at the page's colo, then the least loaded", async () => {
+    const h = await hub([
+      { id: "nrt", colo: "NRT" },
+      { id: "lax", colo: "LAX" },
+      { id: "own", owner: "u9" },
+    ]);
+    for (const i of [0, 1, 2]) await h.register(i);
+    const a = await h.page({ sub: "u1", colo: "LAX" });
+    expect(await h.whose(a.ws!)).toBe("lax");
+    h.clearOffers();
+    const b = await h.page({ sub: "u2", colo: "NRT" });
+    expect(await h.whose(b.ws!)).toBe("nrt");
+    h.clearOffers();
+    const c = await h.page({ sub: "u9", colo: "LAX" });
+    expect(await h.whose(c.ws!)).toBe("own"); // its own first, wherever it is
+  });
+
+  it("no colo match: the least loaded shared worker", async () => {
+    const h = await hub([{ id: "a" }, { id: "b" }]);
+    await h.register(0);
+    await h.register(1);
+    const first = await h.whose((await h.page({ sub: "u1" })).ws!);
+    h.clearOffers();
+    const second = await h.whose((await h.page({ sub: "u2" })).ws!);
+    expect(new Set([first, second])).toEqual(new Set(["a", "b"])); // spread, not stacked
+  });
+
+  it("no worker free: with ?lobby=1 the page waits, and hears `available` when one registers", async () => {
+    const h = await hub([{ id: "mac" }]);
+    const plain = await h.page({ sub: "u1" });
+    expect(plain.r.status).toBe(503); // an old page: as before
+    const l = await h.page({ sub: "u2", lobby: true });
+    expect(l.r.status).toBe(101);
+    expect(l.ws!.last()).toEqual({ t: "wait" });
+    await h.register(0);
+    expect(l.ws!.last()).toEqual({ t: "available" });
+    expect(l.ws!.closed).toBe(1000);
+  });
+
+  it("a worker silent past WORKER_SILENT_MS is closed and not picked; one that pinged is", async () => {
+    let t = Date.now();
+    const h = await hub([{ id: "a" }, { id: "b" }], { now: () => t });
+    await h.register(0);
+    await h.register(1);
+    h.pings.set(h.workers.a, new Date(t));
+    h.pings.set(h.workers.b, new Date(t));
+    t += WORKER_SILENT_MS + 1;
+    h.pings.set(h.workers.b, new Date(t)); // b pinged; a did not
+    const p = await h.page({ sub: "u1" });
+    expect(h.workers.a.closed).toBe(4408);
+    expect(await h.whose(p.ws!)).toBe("b");
+  });
+
+  it("a worker's socket dropping leaves its sessions; its pages hear away, then back", async () => {
+    const h = await hub([{ id: "mac" }]);
+    await h.register(0);
+    const p = await h.page({ sub: "u1" });
+    await h.reg.webSocketClose(h.workers.mac as never, 1006);
+    expect(p.ws!.last()).toEqual({ t: "worker-away" });
+    expect(p.ws!.closed).toBeUndefined();
+    await h.register(0); // the worker redials
+    expect(p.ws!.last()).toEqual({ t: "worker-back" });
+    expect(await h.whose(p.ws!)).toBe("mac"); // signalling goes on (an ICE restart's offer)
+  });
+
+  it("a page's dropped signal socket resumes its session within RESUME_GRACE_MS; not after", async () => {
+    let t = Date.now();
+    const h = await hub([{ id: "mac" }], { now: () => t });
+    await h.register(0);
+    const p = await h.page({ sub: "u1" });
+    const { sid, resume } = p.ws!.last();
+    expect(typeof resume).toBe("string");
+    await h.reg.webSocketClose(p.ws as never, 1006); // the network changed
+    expect(h.workers.mac.last()?.t).not.toBe("close"); // the worker keeps the session
+    const bad = await h.page({ proto: `lianki-stt2-resume, ${sid}.wrong` });
+    expect(bad.r.status).toBe(401);
+    t += 5_000;
+    const back = await h.page({ proto: `lianki-stt2-resume, ${sid}.${resume}` });
+    expect(back.r.status).toBe(101);
+    const ready = back.ws!.last();
+    expect(ready).toMatchObject({ t: "ready", sid, resumed: true });
+    expect(ready.resume).not.toBe(resume);
+    expect(await h.whose(back.ws!)).toBe("mac");
+    // The same token again: spent.
+    expect((await h.page({ proto: `lianki-stt2-resume, ${sid}.${resume}` })).r.status).toBe(401);
+    // Dropped again, and not back in time: the next signal swept it, the worker closes it.
+    await h.reg.webSocketClose(back.ws as never, 1006);
+    t += RESUME_GRACE_MS + 1;
+    const late = await h.page({ proto: `lianki-stt2-resume, ${sid}.${ready.resume}` });
+    expect(late.r.status).toBe(401);
+    expect(h.workers.mac.last()).toEqual({ t: "close", sid });
   });
 });
