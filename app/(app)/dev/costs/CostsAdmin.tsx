@@ -6,12 +6,16 @@ import { VirtualList } from "@/app/components/VirtualList";
 import { useInfiniteList } from "@/app/components/useInfiniteList";
 import { CREDITS_PER_USD } from "@/lib/payments/credits";
 import { MARGIN } from "@/lib/payments/prices";
+import { CostMatrix, HEAT_CSS, HeatLegend, type Matrix } from "./CostMatrix";
+import { freePaidSeries, featureSeries, StackedBars, TopAccounts } from "./CostCharts";
 
 /**
  * /dev/costs: the cost ledger (docs/payments.md, "Cost ledger") through
  * /api/dev/costs. A date range (JST days), totals, then by day, by feature
  * and by account — free and paid side by side. The day and account tables are
  * VirtualLists; accounts load in batches as the list scrolls (no pages).
+ * Charts (cost per day and per hour, stacked by service or free/paid; the top
+ * accounts) and the day × service and hour × service tables (CostMatrix).
  */
 
 type Totals = {
@@ -28,6 +32,10 @@ type Summary = {
   byFeature: ({ feature: string } & Totals)[];
 };
 type UserRow = { userId: string; name: string | null } & Totals;
+
+/** The hourly view's choices; the server caps it at COSTS_MAX_HOURS. */
+const HOUR_CHOICES = [24, 48, 72, 168] as const;
+const MAX_HOURS = 168;
 
 const JST = 9 * 3600_000;
 const day = (ms: number) => new Date(ms + JST).toISOString().slice(0, 10);
@@ -75,6 +83,46 @@ export default function CostsAdmin() {
       live = false;
     };
   }, [range]);
+
+  const [hours, setHours] = useState<number>(48);
+  const [days, setDays] = useState<Matrix | null>(null);
+  const [hourly, setHourly] = useState<Matrix | null>(null);
+  const [split, setSplit] = useState<"service" | "paid">("service");
+  useEffect(() => {
+    if (!range) return;
+    let live = true;
+    const get = (q: string, set: (m: Matrix | null) => void) =>
+      fetch(`/api/dev/costs?${range}&${q}`, { cache: "no-store" })
+        .then((r) => (r.ok ? (r.json() as Promise<Matrix>) : Promise.reject(r.status)))
+        .then((m) => live && set(m))
+        .catch(() => live && setFailed(true));
+    void get("view=days", setDays);
+    void get(`view=hours&hours=${hours}`, setHourly);
+    return () => {
+      live = false;
+    };
+  }, [range, hours]);
+  const usdShort = useMemo(() => {
+    const f = new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: "USD",
+      maximumSignificantDigits: 3,
+    });
+    return (micro: number) => f.format(micro / 1e6);
+  }, [locale]);
+  const series = (m: Matrix) =>
+    split === "service"
+      ? featureSeries(m, String(c.other))
+      : freePaidSeries(m, String(c.freeCost), String(c.paidCost));
+  const describe = (lab: (b: string) => string) => (b: string, f: string, x: Totals | undefined) =>
+    fill(String(c.cellRead), {
+      bucket: lab(b),
+      feature: f,
+      free: usd(x?.freeMicro ?? 0),
+      paid: usd(x?.paidMicro ?? 0),
+    });
+  const hourLabel = (h: string) => `${h.slice(0, 10)} ${h.slice(11)}:00`;
+  const hourShort = (h: string) => `${h.slice(5, 10)} ${h.slice(11)}h`;
 
   const fetchUsers = useCallback(
     async (cursor: number | null, size: number) => {
@@ -201,6 +249,130 @@ export default function CostsAdmin() {
               </div>
             ))}
           </div>
+        </section>
+      ) : null}
+
+      <style>{HEAT_CSS}</style>
+      {days || hourly ? (
+        <section className="space-y-4" data-testid="costs-charts">
+          <div className="flex flex-wrap items-center gap-3 justify-between">
+            <h2 className="text-lg font-semibold">{c.charts}</h2>
+            <div role="group" className="flex gap-1 text-sm">
+              {(
+                [
+                  ["service", c.byService],
+                  ["paid", c.freeVsPaid],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={split === k}
+                  onClick={() => setSplit(k)}
+                  data-testid={`costs-split-${k}`}
+                  className={`min-h-9 px-3 rounded border ${split === k ? "border-primary bg-primary text-on-primary" : LINE}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {days ? (
+            <StackedBars
+              title={String(c.chartDays)}
+              buckets={days.rows.map((r) => r.bucket)}
+              series={series(days)}
+              bucketLabel={(b) => b}
+              tick={(b, i, n) => (i % Math.max(1, Math.ceil(n / 6)) === 0 ? b.slice(5) : null)}
+              usd={usdShort}
+              totalLabel={String(c.totalCost)}
+              hint={String(c.chartHint)}
+              describedBy="costs-day-matrix"
+              testId="costs-chart-days"
+            />
+          ) : null}
+          {hourly ? (
+            <StackedBars
+              title={String(c.chartHours)}
+              buckets={hourly.rows.map((r) => r.bucket)}
+              series={series(hourly)}
+              bucketLabel={(b) => `${hourLabel(b)} JST`}
+              tick={(b, i, n) => (i % Math.max(1, Math.ceil(n / 6)) === 0 ? hourShort(b) : null)}
+              usd={usdShort}
+              totalLabel={String(c.totalCost)}
+              hint={String(c.chartHint)}
+              describedBy="costs-hour-matrix"
+              testId="costs-chart-hours"
+            />
+          ) : null}
+          <TopAccounts
+            title={String(c.topAccounts)}
+            rows={users.items.slice(0, 10).map((u) => ({
+              key: u.userId || "-guest",
+              name: u.userId === "" ? String(c.guest) : (u.name ?? String(c.noName)),
+              freeMicro: u.freeMicro,
+              paidMicro: u.paidMicro,
+            }))}
+            usd={usdShort}
+            free={String(c.freeCost)}
+            paid={String(c.paidCost)}
+          />
+        </section>
+      ) : null}
+
+      {days && days.rows.length > 0 ? (
+        <section className="space-y-1" id="costs-day-matrix">
+          <h2 className="text-lg font-semibold">{c.byDayFeature}</h2>
+          <div className="flex flex-wrap gap-3 items-center justify-between">
+            <p className="text-xs opacity-80">{c.cellNote}</p>
+            <HeatLegend less={c.less} more={c.more} />
+          </div>
+          <CostMatrix
+            matrix={days}
+            label={(b) => b}
+            totalLabel={c.totalCost}
+            usd={usdShort}
+            testId="costs-matrix-days"
+            name="dev-costs-days-matrix"
+            describe={describe((b) => b)}
+          />
+        </section>
+      ) : null}
+
+      {hourly ? (
+        <section className="space-y-1" id="costs-hour-matrix">
+          <div className="flex flex-wrap gap-3 items-end justify-between">
+            <h2 className="text-lg font-semibold">{c.byHourFeature}</h2>
+            <label className="flex flex-col text-sm gap-1">
+              {c.hours}
+              <select
+                value={hours}
+                onChange={(e) => setHours(Number(e.target.value))}
+                data-testid="costs-hours"
+                className={`min-h-9 px-2 rounded border bg-[var(--background)] ${LINE}`}
+              >
+                {HOUR_CHOICES.map((n) => (
+                  <option key={n} value={n}>
+                    {fill(String(c.hoursOption), { n })}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-3 items-center justify-between">
+            <p className="text-xs opacity-80">{c.cellNote}</p>
+            <HeatLegend less={c.less} more={c.more} />
+          </div>
+          <CostMatrix
+            matrix={hourly}
+            label={hourShort}
+            totalLabel={c.totalCost}
+            usd={usdShort}
+            testId="costs-matrix-hours"
+            name="dev-costs-hours-matrix"
+            describe={describe(hourLabel)}
+          />
+          <p className="text-xs opacity-70">{fill(String(c.hourNote), { max: MAX_HOURS })}</p>
         </section>
       ) : null}
 

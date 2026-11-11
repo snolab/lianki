@@ -6,9 +6,13 @@
  *   → totals, by day and by feature, free and paid side by side;
  * - `&view=users&offset=N&limit=M` → accounts, the dearest first (the top
  *   spenders), for the page's continuous scroll. Account id and display name
- *   only — never an email.
+ *   only — never an email;
+ * - `&view=days` → day × feature (every JST day of the range);
+ * - `&view=hours&hours=N` → hour × feature: the last N JST hours of the range
+ *   (default `COSTS_DEFAULT_HOURS`, at most `COSTS_MAX_HOURS`), not after now.
  */
 import type { D1Like } from "@/lib/d1/types";
+import { costDayMatrix, costHourMatrix, COSTS_DEFAULT_HOURS, hourWindow } from "./cost-buckets";
 import { costSummary, costUsers, defaultRange, isDay, type CostRange } from "./cost-ledger";
 
 /** The widest range one request may ask for. */
@@ -45,7 +49,15 @@ export async function costsGet(
   const q = new URL(req.url).searchParams;
   const range = rangeOf(q, now);
   if (!range) return bad("bad-range");
-  if (q.get("view") === "users") {
+  const view = q.get("view");
+  if (view === "days") return Response.json(await costDayMatrix(db, range), { headers: NO_STORE });
+  if (view === "hours") {
+    const hours = Math.max(1, int(q.get("hours"), COSTS_DEFAULT_HOURS, Number.MAX_SAFE_INTEGER));
+    return Response.json(await costHourMatrix(db, hourWindow(hours, range, now)), {
+      headers: NO_STORE,
+    });
+  }
+  if (view === "users") {
     const offset = int(q.get("offset"), 0, Number.MAX_SAFE_INTEGER);
     const limit = Math.max(1, int(q.get("limit"), 30, COSTS_MAX_LIMIT));
     const r = await costUsers(db, range, offset, limit);
