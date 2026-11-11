@@ -55,14 +55,15 @@ Where it went:
 ## What was changed
 
 - **Each page ships only its dictionaries.**
-  `lib/build/intlayer-direct-loader.cjs` (a Turbopack loader, browser code
-  only) rewrites `useIntlayer("key", …)` from next-intlayer into
-  `useDictionary(<that JSON>, …)` — the same call underneath — and the
-  browser's `@intlayer/dictionaries-entry` is an empty stub
+  `lib/build/intlayer-direct-loader.cjs` (a Turbopack loader) rewrites
+  `useIntlayer("key", …)` (next-intlayer, next-intlayer/server) into
+  `useDictionary(<that JSON>, …)` and `getIntlayer("key", …)` (intlayer)
+  into `getDictionary(<that JSON>, …)` — the same calls underneath — and
+  `@intlayer/dictionaries-entry` is an empty stub
   (`lib/stubs/intlayer-no-dictionaries.mjs`, aliased in `next.config.mjs`).
-  The server keeps the real entry. **Keys must be string literals**:
-  `unit/intlayer-direct-loader.test.ts` fails on a client file it cannot
-  rewrite. intlayer's own optimizer (`@intlayer/swc`) does not run on Next
+  Browser since #905, server too since the cold-isolate change below.
+  **Keys must be string literals**: `unit/intlayer-direct-loader.test.ts`
+  fails on any file it cannot rewrite. intlayer's own optimizer (`@intlayer/swc`) does not run on Next
   16.4's SWC (plugin ABI mismatch), hence the loader.
 - **The chat and the pairing modal load when shown** (`React.lazy` in
   `DebugEval.tsx`); replies are read aloud through `voice()` directly.
@@ -70,16 +71,88 @@ Where it went:
 - **Navigation preload** in `public/sw.js`: the page request leaves while the
   worker starts; the answer is still cached for offline as before.
 
+## Server render on a cold isolate (2026-11-11)
+
+Every request to the `lianki` Worker took **1.4–2 s to first byte**, warm or
+not, while `wrangler tail` showed the Worker itself spending 26–66 ms on
+it — the same for a request `worker.ts` refuses before OpenNext runs
+(`POST /api/x`, same-site guard: 403 in 2.0 s P50). The time was spent before
+the handler ran: a fresh isolate for every request.
+
+Why: the isolate did not fit. Workers give an isolate 128 MB; under
+`wrangler dev` (workerd) this Worker's heap was **131 MB right after
+startup and 162 MB after one page render**. The unminified script (62 MB
+uploaded) is held in the heap whole, and a third of it was dictionaries: three
+server copies of every dictionary in all 16 locales, plus the visual editor's
+unmerged copy (unused: the editor is not configured). A Worker over its limit
+is not kept, so every request paid the start again — and then the cold
+module loading of its first render (`lianki_metrics`: `/home` CPU P5 9 ms,
+P50 260–912 ms).
+
+What changed (heap measured the same way, `wrangler dev`, inspector
+`Runtime.getHeapUsage` after GC):
+
+| build                                  | after startup | after first renders |
+| -------------------------------------- | ------------- | ------------------- |
+| before                                 | 131 MB        | 160–162 MB          |
+| dictionaries direct on the server too  | 104 MB        | 121–126 MB          |
+| + minified (`wrangler.jsonc` `minify`) | **77 MB**     | **94–97 MB**        |
+
+- The direct-dictionary loader now runs on the server as well (above); the
+  server bundle (`handler.mjs`) went from 50.7 MB to 36.4 MB.
+- `@intlayer/unmerged-dictionaries-entry` is an empty stub too
+  (`lib/stubs/intlayer-no-unmerged.mjs`): 5.7 MB of the Worker.
+- The Worker is minified (names kept).
+- DebugEval mounts in the browser only (`DebugEvalLazy.tsx`): its first
+  render was always empty, yet the server evaluated the chat's whole module
+  graph for every page (≈ 50–80 ms of a cold render's CPU locally).
+
+Measuring production TTFB: `curl` from Tokyo, one fresh connection per
+request, 10 rounds of `/robots.txt` (a middleware redirect), `/en`,
+`/home`, `/sign-in` and the refused `POST /api/x`.
+
 ## What is left
 
-- **Server render CPU (~0.9 s p50 per page).** The biggest segment. Profile
-  one render under `wrangler dev` (repeat requests: warm vs cold isolate),
-  then cut what it spends; the server bundle still carries every dictionary.
-- **App shell from the cache.** With the worker installed, answer `/home`
-  from the cache at once and refresh it in the background: the launch would
-  skip the server entirely. It needs a per-account guard (a cached page must
-  never show to another account on the same device) and a data refresh after
-  hydration, so it is a design change, not a tweak.
+- **App shell from the cache** (design note below).
+- **Cold render CPU** once isolates are kept: module loading for a page's
+  first render (Turbopack module instantiation, Next's app-page runtime) is
+  still ~300 ms locally. The server-side chunk graph per route is the place
+  to look (`scripts`: the inspector profile, attributed by chunk).
 - **Fonts.** Two cross-origin stylesheets block first paint (155 KB
   `lxgw-wenkai-tc` CSS from jsDelivr, 227 KB Google Fonts CSS). Cached on a
   repeat launch, so it matters mainly on a first visit.
+
+## Design note: the app shell from the service worker (not built)
+
+**Idea.** With the worker installed, answer a navigation to an app page (the
+PWA's `start_url`, `/home`, first) from the cache at once, then fetch the
+page in the background and swap in the fresh data. A relaunch would paint
+from the device, not after a server round trip (~1.5–2 s today).
+
+**The risk: another account's page.** A cached page is rendered for one
+account (name, avatar, lists, counts). On a shared device, after a sign-out or
+a switch of account, the cache must never answer with the previous account's
+page — not even for the moment before the refresh.
+
+**Proposed shape.**
+
+- Cache only a **shell**: the page rendered with no account data (the layout,
+  nav, empty states), from a dedicated route (e.g. `/home?shell=1`, or a
+  render flag that leaves every per-user part to the client). Per-user data
+  arrives by the same client fetches the pages already make, after hydration.
+- Key the shell by **build** and **locale** only (never by account); the
+  service worker drops shells of other builds on activate.
+- On sign-out, sign-in and account switch, the page tells the worker to drop
+  every cached HTML (`{type: "forget-pages"}`), and the worker keeps no HTML
+  of signed-in pages besides the shell (today's network-first copies, kept
+  for offline, are account-specific: they would go behind the same rule).
+- Serve the shell only for `mode: "navigate"` requests of the app routes
+  that support it, only when the device is signed in (a cookie the worker
+  cannot read: the page sets a non-secret marker in Cache Storage at sign-in),
+  and fall back to the network on any doubt.
+- A page served from the shell revalidates at once; its "fresh" state is
+  what the user acts on (no write from stale data).
+
+**Cost.** Each app route that wants this needs its per-user parts to render
+on the client, not the server — a change to how those pages are built, so
+it goes route by route, `/home` first, behind a flag.

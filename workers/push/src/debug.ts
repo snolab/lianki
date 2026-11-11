@@ -232,6 +232,7 @@ import {
   senderOf,
   shortCode,
 } from "../../../lib/dev-eval";
+import { type EvalGrantConf, readEvalGrantConf } from "../../../lib/eval-grant-config";
 import {
   type Ask,
   type AskAnswer,
@@ -458,6 +459,15 @@ type Grant = {
   pages?: string[];
   at?: number;
   renew?: Renewal;
+  /** An eval grant's length at the tap (`debug.evalGrantHours`); absent = EVAL_GRANT_MS. Renewals extend by it. */
+  ms?: number;
+  /**
+   * The device each of `pages` was open on when it was granted (the page's
+   * `dev=` id), so a page that comes back on that device under a new page id
+   * (the app restarted: a new tab, a new sessionStorage) takes its place —
+   * "Rejoin" in docs/monitoring.md. Absent for a page with no device id.
+   */
+  devices?: Record<string, string>;
 };
 /**
  * The approving page's device id and session tag, when the chain began (the
@@ -507,6 +517,8 @@ type SessionsRpc = {
   boxEval?(clientId: string): Promise<unknown>;
   /** The account's chat history (lib/chat-log.ts); an older main Worker has none: not kept. */
   chatLog?(req: ChatLogRequest): Promise<unknown>;
+  /** A live config value (lib/config.ts registry keys; the default when unset or invalid). */
+  config?(key: string): Promise<unknown>;
 };
 /** POST, from the main Worker over its binding: the owner thread's history into D1, once. */
 export const CHAT_BACKFILL_PATH = "/internal/chat-backfill";
@@ -609,10 +621,29 @@ const close = (ws: Socket, code: number, reason: string) => {
   } catch {}
 };
 /** A pairing as pages see it: `scope` is what was granted, or (pending) what is asked for. */
-const info = ({ pair, code, label, at, until, scope, pages }: ControllerAtt): PairInfo =>
+const info = ({
+  pair,
+  code,
+  label,
+  at,
+  until,
+  scope,
+  pages,
+  grantMs,
+  allPages,
+}: ControllerAtt): PairInfo =>
   until
     ? { pair, code, label, at, until, scope: scope ?? "eval", ...(pages ? { pages } : {}) }
-    : { pair, code, label, at, scope: scope ?? "eval" };
+    : {
+        pair,
+        code,
+        label,
+        at,
+        scope: scope ?? "eval",
+        // What Allow will grant (the live config read at the knock): the modal says it.
+        ...(grantMs ? { grantMs } : {}),
+        ...(allPages ? { allPages } : {}),
+      };
 const hex = (b: ArrayBuffer | Uint8Array) =>
   Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
 export const hashToken = async (token: string) =>
@@ -765,10 +796,62 @@ export class DebugHub {
     return this.loadingGrants;
   }
 
-  private async putGrant(hash: string, g: Grant) {
+  private async putGrant(hash: string, g0: Grant) {
     await this.loadGrants();
+    const g = this.withDevices(g0);
     await this.ctx.storage.put(`grant:${hash}`, g);
     this.grants?.set(hash, g);
+  }
+
+  /** A page-scoped grant with the device of each of its pages that is open now noted (kept for the others). */
+  private withDevices(g: Grant): Grant {
+    if (!g.pages) {
+      const { devices: _drop, ...rest } = g;
+      return rest;
+    }
+    const devices: Record<string, string> = {};
+    const open = new Map(
+      this.pages(OWNER_THREAD).flatMap((p) => (p.a.id && p.a.device ? [[p.a.id, p.a.device]] : [])),
+    );
+    for (const id of g.pages) {
+      const d = open.get(id) ?? g.devices?.[id];
+      if (d) devices[id] = d;
+    }
+    return { ...g, devices };
+  }
+
+  /**
+   * An owner page joined under a page id its device's grants do not list: if a
+   * page-scoped eval grant covered a page on this same device that is gone now,
+   * this page takes its place (the app was restarted, so sessionStorage and the
+   * page id with it are new). Never another device's grant, never a friend's
+   * page, never a chat-only page. The senders holding the grant reach it at once.
+   */
+  private async rejoin(ws: Socket) {
+    const page = att(ws);
+    if (page?.role !== "page" || page.thread !== OWNER_THREAD || page.embed) return;
+    const { id, device } = page;
+    if (!id || !device) return;
+    await this.loadGrants();
+    const t = this.now();
+    const open = new Set(this.pages(OWNER_THREAD, ws).map((p) => p.a.id));
+    let changed = 0;
+    for (const [hash, g] of [...(this.grants ?? [])]) {
+      if (g.scope !== "eval" || g.until <= t || !g.pages || g.pages.includes(id)) continue;
+      const gone = g.pages.filter((p) => g.devices?.[p] === device && !open.has(p));
+      if (!gone.length) continue;
+      const pages = [...g.pages.filter((p) => !gone.includes(p)), id];
+      const devices = { ...g.devices };
+      for (const p of gone) delete devices[p];
+      devices[id] = device;
+      await this.putGrant(hash, { ...g, pages, devices });
+      for (const c of this.sockets("controller"))
+        if (c.a.grant === hash)
+          c.ws.serializeAttachment({ ...c.a, pages, goneSince: undefined } satisfies ControllerAtt);
+      console.log(JSON.stringify({ msg: "debug.rejoin", label: g.label, replaced: gone.length }));
+      changed++;
+    }
+    if (changed) this.broadcast();
   }
 
   private async dropGrant(hash: string) {
@@ -1982,7 +2065,7 @@ export class DebugHub {
     const r = g?.renew;
     if (!g || !r || g.scope !== "eval" || g.until <= t || !renewDueAt(g.until, t)) return;
     // The chain is at its cap: the next grant needs a tap.
-    if (Math.min(t + EVAL_GRANT_MS, r.start + EVAL_CHAIN_MS) <= g.until) return;
+    if (Math.min(t + (g.ms ?? EVAL_GRANT_MS), r.start + EVAL_CHAIN_MS) <= g.until) return;
     if (!this.approverHere(r, t)) return;
     // The auth db has the last word: a session it does not know renews nothing.
     const live = await this.sessionLive(hash, r);
@@ -2008,7 +2091,7 @@ export class DebugHub {
         return null;
       const n: Grant = {
         ...now,
-        until: Math.min(t2 + EVAL_GRANT_MS, r2.start + EVAL_CHAIN_MS),
+        until: Math.min(t2 + (now.ms ?? EVAL_GRANT_MS), r2.start + EVAL_CHAIN_MS),
         renew: { ...r2, count: r2.count + 1 },
       };
       if (n.until <= now.until) return null;
@@ -2175,7 +2258,11 @@ export class DebugHub {
     }
     await this.pageBack(thread, label);
     // The owner's window session: recording follows it across URLs and origins.
-    if (thread === OWNER_THREAD && !embed) await this.clipsJoin(ws, url);
+    if (thread === OWNER_THREAD && !embed) {
+      await this.clipsJoin(ws, url);
+      // Now that its device is known: back in the grants its earlier page id had.
+      await this.rejoin(ws);
+    }
     // The device that approved an eval grant is back: renew what is due on it
     // (never from a chat-only page: it carries no session).
     const joined = att(ws);
@@ -2211,7 +2298,22 @@ export class DebugHub {
       return close(ws, 4404, "no debug page");
     }
     const scope = url.searchParams.get("scope") === "chat" ? "chat" : "eval";
-    this.knock(ws, { label, scope, ...whereOf(url) });
+    // The owner's eval grant: its length and page scope are live config, read now
+    // so the modal says what Allow grants and Allow grants exactly that.
+    // (No config to ask, an older main Worker: no wait, the defaults.)
+    const conf = scope === "eval" && this.sessions?.config ? await this.evalGrantConf() : undefined;
+    this.knock(ws, {
+      label,
+      scope,
+      ...(conf ? { grantMs: conf.ms, ...(conf.allPages ? { allPages: true } : {}) } : {}),
+      ...whereOf(url),
+    });
+  }
+
+  /** `debug.evalGrantHours` / `debug.evalGrantPages` from the main Worker; defaults when unreadable. */
+  private evalGrantConf(): Promise<EvalGrantConf> {
+    const rpc = this.sessions;
+    return readEvalGrantConf(rpc?.config ? (key) => rpc.config!(key) : undefined);
   }
 
   /** Make room for one audience's pairing: false (and `ws` closed) if one is still waiting. */
@@ -2239,6 +2341,8 @@ export class DebugHub {
       forEmail?: string;
       node?: string;
       assignee?: string;
+      grantMs?: number;
+      allPages?: boolean;
     },
   ) {
     const a: ControllerAtt = {
@@ -3257,7 +3361,11 @@ export class DebugHub {
       // A pairing for a friend is eval only: it is handed no chat.
       return this.broadcast();
     }
-    const until = t + EVAL_GRANT_MS;
+    // The length and page scope read at the knock (live config); a pairing from
+    // before that rule has neither: 8 hours, the pages ticked.
+    const ms = a.grantMs ?? EVAL_GRANT_MS;
+    if (a.allPages) pages = undefined;
+    const until = t + ms;
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));
     const grant = await hashToken(token);
     // Only an owner page signed in with a session, on a known device, starts a chain.
@@ -3270,6 +3378,7 @@ export class DebugHub {
       until,
       scope: "eval",
       at: t,
+      ms,
       ...(pages ? { pages } : {}),
       ...(renew ? { renew } : {}),
     };

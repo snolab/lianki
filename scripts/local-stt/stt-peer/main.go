@@ -14,6 +14,13 @@
 // Each final's audio length goes back to the registry ({t:"usage"}), which
 // books it to the ticket's account. Never logs text, audio or tickets.
 //
+// Routes that come and go (docs/local-stt.md): it pings the registry ("ping",
+// answered "pong" by the runtime) every PingEvery and redials when nothing came
+// back for PingTimeout; a registry connection that drops does not end the
+// sessions (they are peer to peer); and a second offer for a session it already
+// has is the page's ICE restart (a new network): answered on the same peer
+// connection, so the DataChannel and the speech server's socket go on.
+//
 //	stt-peer keygen [--key ~/.config/lianki-stt/worker.key]   prints the public key
 //	stt-peer [--registry wss://lianki.com/api/version/stt/worker] [--key …]
 //	         [--server ws://127.0.0.1:5189] [--stun stun:stun.cloudflare.com:3478] [--capacity 3]
@@ -49,11 +56,15 @@ const (
 	// Origin is what the bridge presents to server.py: the page it speaks for is a lianki.com page.
 	Origin = "https://lianki.com"
 	// Channel is the DataChannel label the page opens.
-	Channel = "stt"
+	Channel    = "stt"
 	backoffMin = time.Second
 	backoffMax = 30 * time.Second
 	// maxQueued frames held while the speech server's socket opens (~2 min of 32 ms frames).
 	maxQueued = 4096
+	// PingEvery is how often the worker pings the registry (stt-registry.ts WORKER_SILENT_MS is 45 s).
+	PingEvery = 15 * time.Second
+	// PingTimeout: nothing from the registry for this long, and the connection is redialled.
+	PingTimeout = 35 * time.Second
 )
 
 var b64 = base64.RawURLEncoding
@@ -156,6 +167,8 @@ type Worker struct {
 	sess map[string]*session
 	// newPC makes a peer connection (tests swap the ICE settings).
 	newPC func(webrtc.Configuration) (*webrtc.PeerConnection, error)
+	// pingEvery and pingTimeout (PingEvery, PingTimeout; tests shorten them).
+	pingEvery, pingTimeout time.Duration
 }
 
 type session struct {
@@ -167,7 +180,10 @@ type session struct {
 
 // NewWorker is a worker with no connection yet.
 func NewWorker(cfg Config, key ed25519.PrivateKey) *Worker {
-	return &Worker{cfg: cfg, key: key, sess: map[string]*session{}, newPC: webrtc.NewPeerConnection}
+	return &Worker{
+		cfg: cfg, key: key, sess: map[string]*session{}, newPC: webrtc.NewPeerConnection,
+		pingEvery: PingEvery, pingTimeout: PingTimeout,
+	}
 }
 
 func (w *Worker) send(ctx context.Context, m msg) {
@@ -218,14 +234,40 @@ func (w *Worker) once(ctx context.Context) (bool, error) {
 	w.mu.Lock()
 	w.conn = c
 	w.mu.Unlock()
+	// The sessions stay: they are peer to peer, and the next connection carries their
+	// signalling (an ICE restart) again. A session ends on its own peer connection.
 	defer func() {
 		w.mu.Lock()
-		w.conn = nil
-		all := w.sess
-		w.sess = map[string]*session{}
+		if w.conn == c {
+			w.conn = nil
+		}
 		w.mu.Unlock()
-		for _, s := range all {
-			s.close()
+	}()
+	// Ping; a registry that says nothing for pingTimeout is gone without a close: redial.
+	var mu sync.Mutex
+	seen := time.Now()
+	pctx, stopPing := context.WithCancel(ctx)
+	defer stopPing()
+	go func() {
+		t := time.NewTicker(w.pingEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-pctx.Done():
+				return
+			case <-t.C:
+				mu.Lock()
+				quiet := time.Since(seen)
+				mu.Unlock()
+				if quiet > w.pingTimeout {
+					log.Printf("registry: silent for %s, redialling", quiet.Round(time.Second))
+					c.CloseNow()
+					return
+				}
+				wctx, cancel := context.WithTimeout(pctx, 5*time.Second)
+				_ = c.Write(wctx, websocket.MessageText, []byte("ping"))
+				cancel()
+			}
 		}
 	}()
 	registered := false
@@ -234,6 +276,9 @@ func (w *Worker) once(ctx context.Context) (bool, error) {
 		if err != nil {
 			return registered, err
 		}
+		mu.Lock()
+		seen = time.Now()
+		mu.Unlock()
 		var m msg
 		if json.Unmarshal(b, &m) != nil {
 			continue
@@ -295,8 +340,13 @@ func (w *Worker) offer(ctx context.Context, sid, sdp, ticket string) {
 		return
 	}
 	w.mu.Lock()
+	old := w.sess[sid]
 	busy := len(w.sess) >= w.cfg.Capacity
 	w.mu.Unlock()
+	if old != nil && old.pc != nil {
+		w.restart(ctx, old, sdp)
+		return
+	}
 	if busy {
 		w.send(ctx, msg{"t": "end", "sid": sid, "reason": "busy"})
 		return
@@ -351,6 +401,27 @@ func (w *Worker) offer(ctx context.Context, sid, sdp, ticket string) {
 		return
 	}
 	w.send(ctx, msg{"t": "answer", "sid": sid, "sdp": answer.SDP})
+}
+
+// restart answers a page's new offer on a session it already has: an ICE restart
+// (the page changed networks). The peer connection, its DataChannel and the
+// speech server's socket go on; only the ICE path is new.
+func (w *Worker) restart(ctx context.Context, s *session, sdp string) {
+	err := s.pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: sdp})
+	var answer webrtc.SessionDescription
+	if err == nil {
+		answer, err = s.pc.CreateAnswer(nil)
+	}
+	if err == nil {
+		err = s.pc.SetLocalDescription(answer)
+	}
+	if err != nil {
+		w.send(ctx, msg{"t": "end", "sid": s.sid, "reason": "restart"})
+		go w.end(s.sid)
+		return
+	}
+	log.Printf("session %s…: ICE restart", s.sid[:4])
+	w.send(ctx, msg{"t": "answer", "sid": s.sid, "sdp": answer.SDP})
 }
 
 type frame struct {

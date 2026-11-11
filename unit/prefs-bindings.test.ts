@@ -38,6 +38,7 @@ const b = (key: string) => prefBindings().find((x) => x.key === key)!;
 const SAMPLE: Record<string, unknown> = {
   "words.showAll": true,
   "read.polishOffer": false,
+  "app.autoUpdate": false,
   "read.translatorNotes": false,
   "vibe.translateMinPct": 35,
   "read.polishSkips": ["00000000-0000-4000-8000-000000000000"],

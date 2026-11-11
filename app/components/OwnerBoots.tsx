@@ -1,6 +1,7 @@
 import { ServiceWorkerRegistration } from "./ServiceWorkerRegistration";
 import { NewVersionNotice } from "./NewVersionNotice";
-import { DebugEval, type PartnerStrings } from "./DebugEval";
+import type { PartnerStrings } from "./DebugEval";
+import { DebugEvalLazy } from "./DebugEvalLazy";
 import { LeaveGuard } from "./LeaveGuard";
 import { NoCreditsNotice, type NoCreditsStrings } from "./NoCreditsNotice";
 import type { BoxConfig } from "@/lib/box-oauth/client";
@@ -19,8 +20,17 @@ export function OwnerBoots({
   etaBar = false,
   chatFull = false,
   liHub = false,
+  lexicon,
+  cloudVoices,
   box = null,
+  autoUpdate = false,
 }: {
+  /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
+  autoUpdate?: boolean;
+  /** Provider voices on (flag voice.cloud-voices + dev) and the language → voice map. */
+  cloudVoices?: { on: boolean; map: Record<string, string> };
+  /** The read-aloud pronunciation table (config `voice.lexicon`); none: its default. */
+  lexicon?: unknown;
   /** On a box (docs/box-oauth.md): its sign-in config, so the chat uses lianki.com's hub. */
   box?: BoxConfig | null;
   strings: PartnerStrings;
@@ -43,14 +53,16 @@ export function OwnerBoots({
       <ServiceWorkerRegistration />
       <LeaveGuard message={leave} />
       {credits ? <NoCreditsNotice strings={credits} /> : null}
-      <NewVersionNotice />
-      <DebugEval
+      <NewVersionNotice autoUpdate={autoUpdate} />
+      <DebugEvalLazy
         strings={strings}
         partnerOpen={open}
         dev={dev}
         fullScreen={chatFull}
         etaBar={etaBar}
         liHub={liHub}
+        lexicon={lexicon}
+        cloudVoices={cloudVoices}
         box={box}
       />
     </>

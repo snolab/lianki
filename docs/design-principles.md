@@ -13,6 +13,7 @@ Navigation, help and hint strips, the debug chat, toolbars and menus are translu
   - In landscape the body pads the notch sides. Full-width bars step back out over them (`.lk-header-bleed`, `.lk-nav-overlay`) and pad their own controls.
 - **Room.** Optional overlays (help, hints) show only when there is room: a tall enough viewport, the on-screen keyboard closed. Otherwise they hide rather than squeeze the content.
 - **The rail never runs off the screen** (owner, 2026-11-09). It is as tall as the screen; links that do not fit move, last first, into a "⋯" popover (measured each time, `app/components/useRailFit.ts`), and only if even the first group cannot fit does the list scroll, fading at the edge with more. Import, data and settings live in the account menu, which the rail's foot (and the phone drawer's) carries once the top bar has scrolled away. `qa-ui` checks it at 1512×770, 1280×600 and 1024×600.
+- **The rail folds away** (owner, 2026-11-11). A "«" switch with its label sits at the rail's top at every width (the phone drawer has the same one, closing it). Folded, the rail is not drawn at all and `--nav-w` is 0, so the content takes the whole width; a "»" handle brings it back, in the top bar and, once that has scrolled away, floating as glass at the top start, inset from the edge strip. The choice is a device preference (`lk:pref:sidebar`, docs/ui-state.md). `qa-ui` folds it at 902×700 and checks that `<main>` spans the window.
 - **Input-aware hints.** Touch hints show only for touch, keyboard hints only for a hardware keyboard; on hybrid devices, the input used last decides.
 
 ## Two colours: seal red and gold
@@ -22,14 +23,14 @@ The owner, 2026-11-10: the whole site uses **two brand colours**, seal-ink red
 neutrals: paper and ink (`--background`, `--foreground`, the warm gray ramp).
 Every colour is oklch. Tokens live in `app/globals.css`:
 
-| role                 | token / Tailwind class                    | light                    | dark                   |
-| -------------------- | ----------------------------------------- | ------------------------ | ---------------------- |
-| primary fill         | `bg-primary` + `text-on-primary`          | seal 0.53 0.207 22.3     | same                   |
-| secondary fill       | `bg-secondary` + `text-on-secondary`      | gold 0.89 0.12 86 + ink  | same                   |
-| gold as text / link  | `text-gold-ink`                           | gold-700 0.5 0.1 70      | gold-300 0.89 0.12 86  |
-| seal as text / link  | `text-blue-600 dark:text-blue-300`        | seal                     | seal-300               |
-| bold page or block   | `.lk-bold`, or `bg-bold-bg text-bold-fg`  | gold ground, seal text   | seal ground, gold text |
-| scales               | `blue-*` (= seal), `gold-*`, `seal`, `seal-deep` | | |
+| role                | token / Tailwind class                           | light                   | dark                   |
+| ------------------- | ------------------------------------------------ | ----------------------- | ---------------------- |
+| primary fill        | `bg-primary` + `text-on-primary`                 | seal 0.53 0.207 22.3    | same                   |
+| secondary fill      | `bg-secondary` + `text-on-secondary`             | gold 0.89 0.12 86 + ink | same                   |
+| gold as text / link | `text-gold-ink`                                  | gold-700 0.5 0.1 70     | gold-300 0.89 0.12 86  |
+| seal as text / link | `text-blue-600 dark:text-blue-300`               | seal                    | seal-300               |
+| bold page or block  | `.lk-bold`, or `bg-bold-bg text-bold-fg`         | gold ground, seal text  | seal ground, gold text |
+| scales              | `blue-*` (= seal), `gold-*`, `seal`, `seal-deep` |                         |                        |
 
 - **Red is not danger.** Use it boldly: buttons, checked states, progress,
   accents. An error or a destructive action carries its own icon and label

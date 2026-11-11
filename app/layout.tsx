@@ -12,6 +12,7 @@ import { appLocale } from "@/lib/app-locale.server";
 import { LANG_TAGS } from "@/lib/constants";
 import { type FlagValues, flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
+import { cfg } from "@/lib/config-store";
 import { ETA_FLAG } from "@/lib/eta-ping";
 import { isDev } from "@/lib/permissions";
 import { boxConfig } from "@/lib/box-oauth/mode";
@@ -140,7 +141,28 @@ export default async function RootLayout({
   const liHub = flagIn(flags, "voice.li-hub");
   // The owner's ETA bar (lib/eta-ping.ts): the chat shows it only on his pages.
   const etaBar = flagIn(flags, ETA_FLAG);
-  const boots = { strings: partner, leave, credits, open, dev, chatFull, etaBar, liHub };
+  // A new version applies itself on a clean page (lib/auto-update.ts); off: the Refresh button.
+  const autoUpdate = flagIn(flags, "app.auto-update");
+  // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts): live, no deploy.
+  const lexicon = partnerFrame ? undefined : await cfg("voice.lexicon");
+  // Provider voices (lib/cloud-voices.ts): audience owner, so the flag and the dev grant.
+  const cloudVoices =
+    dev && flagIn(flags, "voice.cloud-voices")
+      ? { on: true, map: await cfg("voice.langVoices") }
+      : undefined;
+  const boots = {
+    strings: partner,
+    leave,
+    credits,
+    open,
+    dev,
+    chatFull,
+    etaBar,
+    liHub,
+    autoUpdate,
+    lexicon,
+    cloudVoices,
+  };
   const box = boxConfig();
   return (
     <html

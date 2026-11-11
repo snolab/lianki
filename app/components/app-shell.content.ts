@@ -654,11 +654,11 @@ const context: {
   ui: {
     menu: "Screen-reader label of the sidebar navigation and of the button that opens it on phones. One noun.",
     collapse:
-      "Tooltip and screen-reader label of the button that narrows the desktop sidebar to icons only. Imperative phrase.",
+      "Visible label, tooltip and screen-reader label of the '«' button at the top of the left navigation sidebar on tablets and desktops: it folds the sidebar away completely so the page content gets the whole width. Imperative phrase, short enough for one line in a narrow sidebar.",
     expand:
-      "Tooltip and screen-reader label of the button that widens the icon-only desktop sidebar again. Imperative phrase.",
+      "Tooltip and screen-reader label of the small '»' button at the top left (in the top bar, or floating once it has scrolled away) shown while the left navigation sidebar is folded away: it brings the sidebar back. Imperative phrase.",
     closeMenu:
-      "Screen-reader label of the button and backdrop that close the sidebar drawer on phones. Imperative phrase.",
+      "Visible label, tooltip and screen-reader label of the '«' button at the top of the navigation drawer on phones: it closes the drawer. Imperative phrase.",
     more: "Tooltip and label of the '⋯' button near the bottom of the desktop sidebar when the window is too short to show every link: it opens a small list of the links that did not fit. One short word, as in a 'More' menu.",
   },
 };

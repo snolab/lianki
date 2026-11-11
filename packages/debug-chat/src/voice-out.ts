@@ -156,6 +156,20 @@ export const ttsUrl = (text: string, lang: string, speaker?: string) =>
     speaker ? `&speaker=${encodeURIComponent(speaker)}` : ""
   }`;
 
+/**
+ * A provider voice's URL for one sentence (lib/cloud-voices-handler.ts):
+ * synthesized on the server, never kept (`no-store`), paid from credits.
+ */
+export const providerTtsUrl = (voice: string, text: string) =>
+  `/api/voice/tts?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(text)}`;
+
+/** Why a provider voice cannot be asked for a sentence (null: ask it). Any language. */
+export function providerSkip(text: string): string | null {
+  if (!text.trim()) return "empty";
+  if (text.length > TTS_MAX_TEXT) return "long";
+  return null;
+}
+
 /** Why a sentence cannot be fetched at all (null: try the route). */
 export function cloudSkip(text: string, lang: string): string | null {
   if (!CLOUD_LANGS.has(lang.toLowerCase().split(/[-_]/)[0])) return "lang";
@@ -231,11 +245,20 @@ export function createCloudOut(d: {
   };
 
   /** `speaker`: a lane's own cloud voice (voices.ts cloudVoice); absent = the language's one voice. */
-  const fetchClip = (text: string, lang: string, speaker?: string): Promise<string> => {
-    const key = `${lang}\n${speaker ?? ""}\n${text}`;
+  /** `provider`: a provider voice id (google:, azure:), fetched from its own route. */
+  const fetchClip = (
+    text: string,
+    lang: string,
+    speaker?: string,
+    provider?: string,
+  ): Promise<string> => {
+    const key = `${provider ?? lang}\n${speaker ?? ""}\n${text}`;
     const have = clips.get(key);
     if (have) return have;
-    const p = d.fetch(ttsUrl(text, lang.split(/[-_]/)[0], speaker)).then(async (r) => {
+    const url = provider
+      ? providerTtsUrl(provider, text)
+      : ttsUrl(text, lang.split(/[-_]/)[0], speaker);
+    const p = d.fetch(url).then(async (r) => {
       if (!r.ok) throw new Error(`http ${r.status}${r.headers.get("X-Voice") ? ` ${r.headers.get("X-Voice")}` : ""}`);
       const url = toUrl(await r.blob());
       // The speaker was asked for but the route answered with its one voice (it fell back).
@@ -271,7 +294,9 @@ export function createCloudOut(d: {
     lang: string,
     voice?: VoiceId,
     pick?: LinePick,
-  ): { lang: string; speaker?: string; shift: number } => {
+  ): { lang: string; speaker?: string; provider?: string; shift: number } => {
+    if (pick?.kind === "google" || pick?.kind === "azure")
+      return { lang, provider: pick.id, shift: 1 };
     if (pick?.kind === "melo") return { lang: pick.lang, shift: 1 };
     if (pick?.kind === "aura") return { lang: pick.lang, speaker: pick.speaker, shift: 1 };
     return { lang, ...cloudVoice(voice ?? "main", lang) };
@@ -342,10 +367,13 @@ export function createCloudOut(d: {
       }
     },
     gain: () => gain,
-    prepare(text, lang, voice, pick) {
+    prepare(text, lang, voice, pick, written) {
       if (pick?.kind === "eleven") return;
       const w = wanted(lang, voice, pick);
-      if (!cloudSkip(text, w.lang)) fetchClip(text, w.lang, w.speaker).catch(ignore);
+      if (w.provider) {
+        const said = written ?? text;
+        if (!providerSkip(said)) fetchClip(said, w.lang, undefined, w.provider).catch(ignore);
+      } else if (!cloudSkip(text, w.lang)) fetchClip(text, w.lang, w.speaker).catch(ignore);
     },
     play(s, ev: PlayEvents): Playback {
       const me = ++turn;
@@ -367,12 +395,30 @@ export function createCloudOut(d: {
       // The line's own cloud voice (melo:, aura:), else its lane's: its own speaker where
       // the engine has several, else the one voice at its own speed.
       const lane = wanted(s.lang, s.voice, s.pick);
-      const skip = cloudSkip(s.text, lane.lang);
-      if (skip) {
-        fail(skip);
-        return pb;
+      // A provider voice (google:, azure:) the server cannot voice (no key, an error, out
+      // of credits): the lane's own cloud voice reads the spoken text instead.
+      const base = lane.provider ? wanted(s.lang, s.voice) : lane;
+      let used = lane;
+      const ownVoice = () => {
+        used = base;
+        const skip = cloudSkip(s.text, base.lang);
+        return skip ? Promise.reject(new Error(skip)) : fetchClip(s.text, base.lang, base.speaker);
+      };
+      let clip: Promise<string>;
+      if (lane.provider) {
+        const said = s.written ?? s.text;
+        clip = providerSkip(said)
+          ? ownVoice()
+          : fetchClip(said, lane.lang, undefined, lane.provider).catch(ownVoice);
+      } else {
+        const skip = cloudSkip(s.text, lane.lang);
+        if (skip) {
+          fail(skip);
+          return pb;
+        }
+        clip = fetchClip(s.text, lane.lang, lane.speaker);
       }
-      fetchClip(s.text, lane.lang, lane.speaker).then(
+      clip.then(
         (url) => {
           if (!live()) return;
           const a = element();
@@ -393,7 +439,10 @@ export function createCloudOut(d: {
             // The speed, pitch kept (a resume after a duck keeps it: it is per play).
             // A lane with no voice of its own here: its own speed, pitch still kept —
             // a pitch-free clip stalls mid-word on iOS (voices.ts, "Cloud voices").
-            const shift = fellBack.has(url) && !s.pick ? VOICES[s.voice ?? "main"].shift : lane.shift;
+            const shift =
+              fellBack.has(url) && (!s.pick || used !== lane)
+                ? VOICES[s.voice ?? "main"].shift
+                : used.shift;
             const rate = (s.rate ?? 1) * shift;
             a.defaultPlaybackRate = rate;
             a.playbackRate = rate;

@@ -120,6 +120,12 @@ export const FLAGS = {
     requires: ["komoju.live-key"],
     money: true,
   },
+  // No `audience`: for everyone; ON is the shipped state.
+  "app.auto-update": {
+    description:
+      "有新版本时自动更新（lib/auto-update.ts）：页面「干净」时（没有未发送的聊天草稿、没在录音或按住说话、没在朗读或播放、没有打开的对话框或改过的表单、没有正在保存的请求、没在 /words 或 /review 的进行中、没在录声纹）自己刷新：切到后台时、换到别的页面时、或者一段时间没有操作后；回来时停在原来的位置。右下角显示「有新版本，空闲时自动更新」；页面不干净时显示「有新版本，有未保存内容」，干净了再更新。用户可在「设置」里自己关掉。关闭 = 和以前一样，只显示「有新版本 · 刷新」按钮。",
+    default: true,
+  },
   // No `audience`: the page and its rail / home links for everyone; ON is the shipped state.
   "today.goal": {
     description:
@@ -273,6 +279,13 @@ export const FLAGS = {
   "voice.li-hub": {
     description:
       "声音都经过 Li（第 0 步，只观察，docs/li-sound-hub.md）：打开后，在你本人的页面上（调试模式），Li 记录谁在用麦克风（聊天麦克风、对话日记的录音）、谁在出声（Li 的朗读、/words 读词、阅读器朗读、页面上的 <audio> 和浏览器语音），写进 Worker 日志：每次变化一条 audio-owner，两个录音同时开着或两个声音同时在放时一条 audio-conflict。不改变任何声音或麦克风的行为。关闭（默认）= 完全不运行，和以前一模一样。",
+    default: false,
+    group: "stt",
+    audience: "owner",
+  },
+  "voice.cloud-voices": {
+    description:
+      "Li 用谷歌 / Azure 的声音朗读（docs/li-sound-hub.md，「Provider voices」）：打开后，在你本人的页面上（需要 dev 权限），一句话可以用 google:<声音> 或 azure:<声音> 来读（say --voice google:cmn-TW-Wavenet-A），按语言自动选声音的表在 /dev/config 的 voice.langVoices（默认 zh-TW → 谷歌台湾国语，nan → Azure 闽南语）。声音在服务器上生成，手机用云端 <audio> 播放，没有系统语音的手机也能听。按字数从你的积分扣（和别人一样，没有管理员免费）。没有谷歌 / Azure 密钥时什么都不变，照常用原来的声音。关闭（默认）= 完全不用这些声音。",
     default: false,
     group: "stt",
     audience: "owner",

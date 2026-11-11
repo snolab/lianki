@@ -11,6 +11,7 @@ import { Icon, SealIcon } from "./icons";
 import { useUi } from "@lianki/ui-state";
 import { island } from "@/lib/islands/Island";
 import { navUi, setDrawerOpen } from "@/lib/nav/ui-store";
+import { adoptLegacyCollapsed, railUi, toggleRail } from "@/lib/nav/rail-store";
 import { BottomIsland } from "@/lib/nav/islands/BottomIsland";
 import { NavRows } from "@/lib/nav/islands/NavRows";
 import type { DevSwitch } from "./DevSwitchItem";
@@ -19,8 +20,6 @@ import { LevelChip } from "./LevelChip";
 import { useShellUser } from "./BoxApiBridge";
 import { ProfileMenu } from "./ProfileMenu";
 import { edgeFade, useRailFit } from "./useRailFit";
-
-const SIDEBAR_KEY = "lk:sidebar";
 
 /** The bottom island and the nav's extra rows (docs/bottom-nav.md): hot-swappable slots. */
 const BottomNavIsland = island("nav.bottom", BottomIsland);
@@ -72,23 +71,26 @@ export function AppShell({
   const pathname = usePathname();
   // On a box, the account lianki.com named for its token (BoxApiBridge).
   const user = useShellUser(serverUser);
-  const [collapsed, setCollapsed] = useState(false);
+  // The rail's fold (lib/nav/rail-store.ts, local `lk:pref:sidebar`): folded,
+  // the rail is gone and the content takes the whole width.
+  const collapsed = useUi(railUi, (s) => s.collapsed);
   // The nav store (lib/nav/ui-store.ts): the bottom island opens the drawer too.
   const drawerOpen = useUi(navUi, (s) => s.drawerOpen);
   /** The top bar is in view; while it is scrolled away the rail's foot carries the account menu. */
   const [headerShown, setHeaderShown] = useState(true);
 
-  // Read the persisted collapse state after mount — reading localStorage during
-  // render would desync SSR and hydration.
+  // The first shell's `lk:sidebar`, carried over once (after mount: the
+  // server never reads storage).
   useEffect(() => {
     try {
-      setCollapsed(localStorage.getItem(SIDEBAR_KEY) === "1");
+      adoptLegacyCollapsed(localStorage);
     } catch {
-      // private mode / blocked storage — keep the expanded default
+      // private mode / blocked storage: keep the store's value
     }
   }, []);
 
   const headerRef = useRef<HTMLElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
@@ -103,17 +105,18 @@ export function AppShell({
   }, [pathname]);
 
   // The top bar scrolls away with the page. Its visible height drives the
-  // sticky rail's (--lk-head-vis, .lk-rail), and once it is gone the rail's
-  // foot shows the account menu, so that is never out of reach.
+  // sticky rail's (--lk-head-vis, .lk-rail) and the fold handle's place, and
+  // once it is gone the rail's foot shows the account menu, so that is never
+  // out of reach.
   useEffect(() => {
     const header = headerRef.current;
-    const rail = railRef.current;
-    if (!header || !rail) return;
+    const shell = shellRef.current;
+    if (!header || !shell) return;
     let frame = 0;
     const update = () => {
       frame = 0;
       const shown = Math.max(0, header.getBoundingClientRect().bottom);
-      rail.style.setProperty("--lk-head-vis", `${shown}px`);
+      shell.style.setProperty("--lk-head-vis", `${shown}px`);
     };
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(update);
@@ -141,16 +144,6 @@ export function AppShell({
     return () => document.removeEventListener("keydown", onKey);
   }, [drawerOpen]);
 
-  function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
-      } catch {}
-      return next;
-    });
-  }
-
   const active = activeNavKey(pathname);
 
   // The rail's links: the first group always stays; when the window is too
@@ -163,33 +156,30 @@ export function AppShell({
     rows: rowsRef,
     header: headerRef,
     movable: movable.length,
-    enabled: true,
-    resetKey: `${collapsed}|${items.map((i) => i.key).join()}`,
+    enabled: !collapsed,
+    resetKey: items.map((i) => i.key).join(),
   });
   const overflow = hidden ? movable.slice(-hidden) : [];
 
   const links = (place: "drawer" | "sidebar") => {
-    const narrow = place === "sidebar" && collapsed;
     const out = place === "sidebar" ? new Set(overflow.map((i) => i.key)) : new Set<string>();
     return (
       <>
         <div ref={place === "sidebar" ? rowsRef : undefined} className="empty:hidden">
-          <NavDrawerIsland place={place} collapsed={narrow} />
+          <NavDrawerIsland place={place} collapsed={false} />
         </div>
         {NAV_GROUPS.map((group) => {
           const shown = items.filter((item) => item.group === group && !out.has(item.key));
           if (!shown.length) return null;
           return (
             <div key={group}>
-              {!narrow && (
-                // The page-card group is headed by the brand LiCards, which an
-                // uppercase transform would turn into LICARDS.
-                <h2
-                  className={`px-3 mb-1 text-xs font-semibold tracking-wide text-gray-400 dark:text-gray-500 ${group === "advanced" ? "" : "uppercase"}`}
-                >
-                  {labels.groups[group]}
-                </h2>
-              )}
+              {/* The page-card group is headed by the brand LiCards, which an
+                  uppercase transform would turn into LICARDS. */}
+              <h2
+                className={`px-3 mb-1 text-xs font-semibold tracking-wide text-gray-400 dark:text-gray-500 ${group === "advanced" ? "" : "uppercase"}`}
+              >
+                {labels.groups[group]}
+              </h2>
               <ul className="space-y-0.5">
                 {shown.map((item) => (
                   <li key={item.key}>
@@ -197,7 +187,6 @@ export function AppShell({
                       item={item}
                       label={labels[item.key] ?? item.key}
                       active={active === item.key}
-                      narrow={narrow}
                     />
                   </li>
                 ))}
@@ -218,29 +207,28 @@ export function AppShell({
         devSwitch={devSwitch}
         liveView={liveView}
         place={place}
-        compact={place === "rail" && collapsed}
       />
     ) : (
       <Link
         href="/sign-in"
         title={labels.signIn}
-        className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800 ${place === "rail" && collapsed ? "justify-center" : ""}`}
+        className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800"
       >
         <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
           <Icon name="signIn" />
         </span>
-        <span className={place === "rail" && collapsed ? "sr-only" : ""}>{labels.signIn}</span>
+        <span>{labels.signIn}</span>
       </Link>
     );
 
   return (
     // --nav-w: the nav's width from the tablet up (0 on a phone, where it is a
-    // drawer). Overlays and content that run under the tablet's glass nav pad
-    // or offset themselves by it.
+    // drawer, and 0 when the rail is folded). Overlays and content that run
+    // under the tablet's glass nav pad or offset themselves by it.
     <div
-      className={`min-h-screen flex flex-col [--nav-w:0px] ${
-        collapsed ? "md:[--nav-w:4rem]" : "md:[--nav-w:14rem]"
-      }`}
+      ref={shellRef}
+      data-rail-collapsed={collapsed ? "" : undefined}
+      className={`min-h-screen flex flex-col [--nav-w:0px] ${collapsed ? "" : "md:[--nav-w:14rem]"}`}
     >
       {liveView && <LiveViewBoot lv={liveView} />}
       {/* Slim topbar: glass, above full-screen content such as the /words list. */}
@@ -256,15 +244,16 @@ export function AppShell({
         >
           <MenuIcon />
         </button>
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? labels.ui.expand : labels.ui.collapse}
-          aria-expanded={!collapsed}
-          className="hidden md:inline-flex p-2 -ms-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          <MenuIcon />
-        </button>
+        {/* The folded rail's way back, while the top bar is in view (once it
+            has scrolled away, the floating handle below takes over). */}
+        {collapsed && (
+          <RailToggle
+            collapsed
+            labels={labels}
+            data-rail-expand="header"
+            className="hidden md:inline-flex -ms-2"
+          />
+        )}
 
         <Link
           href={`/${locale}`}
@@ -301,24 +290,33 @@ export function AppShell({
       <div className="flex flex-1 min-h-0">
         {/* Sidebar: in flow on a desktop; on a tablet a glass overlay (.lk-nav-overlay)
             that takes no width — <main> is padded by --nav-w instead. */}
+        {/* Folded (lib/nav/rail-store.ts), the rail is not drawn at all and
+            --nav-w is 0: the content has the whole width. */}
         <aside
+          id="lk-rail"
           data-app-nav
-          className={`lk-nav-overlay hidden md:block shrink-0 border-e border-gray-200 dark:border-gray-800 ${
-            collapsed ? "w-16" : "w-56"
+          className={`lk-nav-overlay hidden shrink-0 w-56 border-e border-gray-200 dark:border-gray-800 ${
+            collapsed ? "" : "md:block"
           }`}
         >
           <div ref={railRef} data-rail className="lk-rail flex flex-col">
+            <div className="shrink-0 px-3 pt-3">
+              <RailToggle
+                collapsed={false}
+                labels={labels}
+                data-rail-collapse=""
+                className="w-full gap-3 px-3 text-sm font-medium text-gray-600 dark:text-gray-400"
+              />
+            </div>
             <nav
               ref={listFade}
               aria-label={labels.ui.menu}
-              className={`lk-rail-scroll flex min-h-0 flex-1 flex-col gap-6 py-4 ${collapsed ? "px-2" : "px-3"}`}
+              className="lk-rail-scroll flex min-h-0 flex-1 flex-col gap-6 px-3 py-3"
             >
               {links("sidebar")}
             </nav>
-            <div className={`flex shrink-0 flex-col gap-1 pb-3 ${collapsed ? "px-2" : "px-3"}`}>
-              {overflow.length > 0 && (
-                <MoreMenu items={overflow} labels={labels} active={active} narrow={collapsed} />
-              )}
+            <div className="flex shrink-0 flex-col gap-1 px-3 pb-3">
+              {overflow.length > 0 && <MoreMenu items={overflow} labels={labels} active={active} />}
               {/* Space kept while the top bar (which has the avatar) is in
                   view, so the links do not move in and out of "⋯" as it
                   scrolls away. */}
@@ -338,17 +336,38 @@ export function AppShell({
             aria-label={labels.ui.menu}
             data-drawer
           >
-            <button
-              type="button"
-              aria-label={labels.ui.closeMenu}
+            {/* The backdrop: a tap outside closes the drawer. For keyboards
+                and screen readers the drawer's own "«" is the one Close. */}
+            <div
+              aria-hidden
+              data-drawer-backdrop
               className="absolute inset-0 bg-black/40"
               onClick={() => setDrawerOpen(false)}
             />
             <div className="relative flex w-64 max-w-[80%] h-full flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] bg-white dark:bg-gray-900 border-e border-gray-200 dark:border-gray-800">
+              {/* The drawer's own fold switch, as on the rail: "«" and its label. */}
+              <div className="shrink-0 px-3 pt-3">
+                <button
+                  type="button"
+                  data-drawer-close
+                  aria-expanded
+                  aria-label={labels.ui.closeMenu}
+                  title={labels.ui.closeMenu}
+                  onClick={() => setDrawerOpen(false)}
+                  className="flex w-full min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                >
+                  <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+                    <Icon name="caretDoubleRight" className="-scale-x-100 rtl:scale-x-100" />
+                  </span>
+                  <span aria-hidden className="min-w-0 flex-1 truncate text-start">
+                    {labels.ui.closeMenu}
+                  </span>
+                </button>
+              </div>
               <nav
                 aria-label={labels.ui.menu}
                 ref={edgeFade}
-                className="lk-rail-scroll flex min-h-0 flex-1 flex-col gap-6 px-3 py-4"
+                className="lk-rail-scroll flex min-h-0 flex-1 flex-col gap-6 px-3 py-3"
               >
                 {links("drawer")}
               </nav>
@@ -364,6 +383,18 @@ export function AppShell({
         </main>
       </div>
 
+      {/* The folded rail's handle once the top bar has scrolled away: glass,
+          inset from the screen edge (Android's back strip), riding up with
+          the bar's last visible pixels. */}
+      {collapsed && !headerShown && (
+        <RailToggle
+          collapsed
+          labels={labels}
+          data-rail-expand="float"
+          className="lk-rail-handle lk-glass fixed z-30 hidden md:inline-flex border border-[var(--glass-line)] shadow-sm"
+        />
+      )}
+
       <BottomNavIsland signedIn={user !== null} />
 
       {/* Signed-out only: a signed-in visitor answered this by signing in. */}
@@ -372,17 +403,7 @@ export function AppShell({
   );
 }
 
-function NavLink({
-  item,
-  label,
-  active,
-  narrow,
-}: {
-  item: NavItem;
-  label: string;
-  active: boolean;
-  narrow: boolean;
-}) {
+function NavLink({ item, label, active }: { item: NavItem; label: string; active: boolean }) {
   return (
     <Link
       href={item.href}
@@ -392,19 +413,15 @@ function NavLink({
         active
           ? "font-semibold text-gray-900 dark:text-gray-100"
           : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-      } ${narrow ? "justify-center" : ""}`}
+      }`}
     >
       {/* Style C: an ink line icon; the current page's is stamped in seal red. */}
       <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
         {active ? <SealIcon name={item.icon} /> : <Icon name={item.icon} />}
       </span>
-      {narrow ? (
-        <span className="sr-only">{label}</span>
-      ) : (
-        // One line, always: a long label (fr "Listes de mots") wrapped and
-        // ran into the next row on iOS.
-        <span className="min-w-0 truncate">{label}</span>
-      )}
+      {/* One line, always: a long label (fr "Listes de mots") wrapped and
+          ran into the next row on iOS. */}
+      <span className="min-w-0 truncate">{label}</span>
     </Link>
   );
 }
@@ -417,12 +434,10 @@ function MoreMenu({
   items,
   labels,
   active,
-  narrow,
 }: {
   items: NavItem[];
   labels: ShellLabels;
   active: string | null;
-  narrow: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -461,12 +476,12 @@ function MoreMenu({
           holdsActive
             ? "font-semibold text-gray-900 dark:text-gray-100"
             : "font-medium text-gray-700 dark:text-gray-300"
-        } ${narrow ? "justify-center" : ""}`}
+        }`}
       >
         <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
           <Icon name="dotsThree" />
         </span>
-        <span className={narrow ? "sr-only" : "min-w-0 truncate"}>{labels.ui.more}</span>
+        <span className="min-w-0 truncate">{labels.ui.more}</span>
       </button>
       {open && (
         <ul
@@ -479,13 +494,57 @@ function MoreMenu({
                 item={item}
                 label={labels[item.key] ?? item.key}
                 active={active === item.key}
-                narrow={false}
               />
             </li>
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * The rail's fold switch (owner, 2026-11-11). Open: "«" and its label at the
+ * rail's top. Folded: "»" alone, its label as tooltip and for screen readers,
+ * in the top bar and, once that has scrolled away, floating at the top start.
+ * The chevron points where the rail goes; it mirrors in a right-to-left page.
+ */
+function RailToggle({
+  collapsed,
+  labels,
+  className,
+  ...data
+}: {
+  collapsed: boolean;
+  labels: ShellLabels;
+  className?: string;
+  "data-rail-collapse"?: string;
+  "data-rail-expand"?: string;
+}) {
+  const label = collapsed ? labels.ui.expand : labels.ui.collapse;
+  return (
+    <button
+      type="button"
+      onClick={toggleRail}
+      aria-expanded={!collapsed}
+      aria-controls="lk-rail"
+      aria-label={label}
+      title={label}
+      {...data}
+      className={`lk-rail-toggle items-center justify-center rounded-lg min-h-10 min-w-10 hover:bg-gray-100 dark:hover:bg-gray-800 ${collapsed ? "" : "flex"} ${className ?? ""}`}
+    >
+      <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+        <Icon
+          name="caretDoubleRight"
+          className={collapsed ? "rtl:-scale-x-100" : "-scale-x-100 rtl:scale-x-100"}
+        />
+      </span>
+      {!collapsed && (
+        <span aria-hidden className="min-w-0 flex-1 truncate text-start">
+          {label}
+        </span>
+      )}
+    </button>
   );
 }
 

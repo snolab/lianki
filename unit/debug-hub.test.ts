@@ -556,6 +556,7 @@ describe("DebugHub chat-only grants", () => {
       until: 1_000_000 + EVAL_GRANT_MS,
       scope: "eval",
       at: 1_000_000,
+      ms: EVAL_GRANT_MS,
     });
     expect(JSON.stringify([...s.storage.store.entries()])).not.toContain(token);
     expect(c.last("history")).toBeTruthy();

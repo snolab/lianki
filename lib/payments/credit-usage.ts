@@ -57,6 +57,8 @@ export const FEATURES: Readonly<Record<string, { group: UsageGroup; href: string
   "blog.translate": { group: "translate", href: "/blog" },
   "words.import-ai": { group: "ai", href: "/words" },
   tts: { group: "voice", href: null },
+  // Li's read-aloud in a Google / Azure voice (lib/cloud-voices.ts): in the chat, no page of its own.
+  "voice.cloud": { group: "voice", href: null },
 };
 
 /** Every group, in the order the filter lists them. */
