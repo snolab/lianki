@@ -78,13 +78,6 @@ class SenseVoice:
         lang = (s.result.lang or "").strip("<|>")
         return tidy(s.result.text, lang), lang
 
-    def tail(self, audio: np.ndarray) -> tuple[list[str], list[float], str]:
-        """A partial's pass over the unsettled tail (rolling.py): its tokens, their times (s), the language."""
-        s = self.r.create_stream()
-        s.accept_waveform(RATE, audio)
-        self.r.decode_stream(s)
-        return list(s.result.tokens), list(s.result.timestamps), (s.result.lang or "").strip("<|>")
-
     def final(self, audio: np.ndarray) -> tuple[str, str, str | None]:
         """
         The whole utterance: (text, lang, the auto language it replaced or None).

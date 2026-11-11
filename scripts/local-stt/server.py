@@ -84,14 +84,11 @@ from ticket import (  # noqa: E402
     SUBPROTOCOL, V2_AUD, VOICEPRINT_AUD, Tickets, file_problem, load_public_key, offered,
 )
 import voiceprint as VP  # noqa: E402
-from engines import simplified, tidy  # noqa: E402
-from rolling import Rolling  # noqa: E402
 
-#: A partial every this much new audio (--partial-step)… The owner's bar: the next feedback
-#: within 0.2 s of speech, a wrong word being better than none, so the step is well under it.
-PARTIAL_STEP_S = 0.1
-#: …once the utterance is this long (--partial-min).
-PARTIAL_MIN_S = 0.1
+#: A partial every this much new audio…
+PARTIAL_STEP_S = 0.4
+#: …once the utterance is this long.
+PARTIAL_MIN_S = 0.3
 #: Longest utterance kept (the mic cuts at 30 s).
 MAX_S = 40
 #: An enrolment not saved or cancelled within this long is dropped.
@@ -148,8 +145,6 @@ class Utterance:
         self.text_from = 0
         #: With the filter on, partials wait for this: the check heard enough and did not stop it.
         self.cleared = False
-        #: Partials decode only the unsettled tail (rolling.py); the final still reads it all.
-        self.roll = Rolling()
 
     def audio(self) -> np.ndarray:
         parts = ([self.pre] if self.pre is not None else []) + self.chunks
@@ -165,8 +160,6 @@ class Server:
                  vp_tickets: "Tickets | None" = None, attestor: "VP.Attestor | None" = None):
         self.engine = engine
         self.pool = ThreadPoolExecutor(max_workers=workers)
-        self.partial_step_s = PARTIAL_STEP_S
-        self.partial_min_s = PARTIAL_MIN_S
         #: The speaker check (voiceprint.py), or None when it is off.
         self.verifier = verifier
         #: Voiceprint tickets (aud lianki-voiceprint, lib/voiceprint-ticket.ts): every op but
@@ -353,24 +346,6 @@ class Server:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.pool, self.engine.transcribe, audio)
 
-    async def decode_partial(self, u: Utterance) -> str:
-        """
-        A partial's text: the settled segments and a pass over the tail only (rolling.py),
-        so its cost stays flat however long the utterance. Engines without token times,
-        and the words after "Linky" (text_from), decode the whole utterance as before.
-        """
-        tail_of = getattr(self.engine, "tail", None)
-        if tail_of is None or u.text_from:
-            text, _lang = await self.decode(u.audio())
-            return text
-        audio = u.audio()[u.roll.at:]
-        loop = asyncio.get_running_loop()
-        tokens, times, lang = await loop.run_in_executor(self.pool, tail_of, audio)
-        tail = u.roll.update(tokens, times, lang, len(audio))
-        # Each piece in its own language's script (zh → simplified); spaces between words kept.
-        pieces = [(s.text, s.lang) for s in u.roll.segments] + [(tail, lang)]
-        return tidy("".join(simplified(t) if lg in ("zh", "yue") else t for t, lg in pieces), "")
-
     async def decode_final(self, audio: np.ndarray):
         """(text, lang, the auto language it replaced or None): engines with a final pass use it."""
         fin = getattr(self.engine, "final", None)
@@ -422,7 +397,7 @@ class Server:
                     if VP.filter_reason(spk, conn["device"]) or VP.filter_pending(spk, conn["device"]):
                         return
                     u.cleared = True
-                text = await self.decode_partial(u)
+                text, _lang = await self.decode(u.audio())
             except Exception as e:  # a partial is best effort
                 log(f"partial failed: {e}")
                 text = ""
@@ -549,14 +524,13 @@ class Server:
                         cur.n += len(x)
                         if (
                             not cur.partial_busy
-                            and cur.n >= self.partial_min_s * RATE
-                            and cur.n - cur.last_partial >= self.partial_step_s * RATE
+                            and cur.n >= PARTIAL_MIN_S * RATE
+                            and cur.n - cur.last_partial >= PARTIAL_STEP_S * RATE
                         ):
                             cur.last_partial = cur.n
                             asyncio.create_task(partial(cur))
                     elif tag == 2:
                         cur.pre = pcm(body)
-                        cur.roll = Rolling()  # the samples moved: settle again from the start
                     continue
                 try:
                     m = json.loads(msg)
@@ -823,10 +797,6 @@ async def main() -> None:
     ap.add_argument("--voiceprints", default=VP.STORE_DIR, help="where the voiceprints are kept (0700)")
     ap.add_argument("--voiceprint-pubkey", default=None,
                     help=f"the Ed25519 key voiceprint tickets are checked with (default: the ticket key, {DEFAULT_PUBKEY})")
-    ap.add_argument("--partial-step", type=float, default=PARTIAL_STEP_S,
-                    help="seconds of new audio between partials")
-    ap.add_argument("--partial-min", type=float, default=PARTIAL_MIN_S,
-                    help="seconds of audio before the first partial")
     ap.add_argument("--attest-key", default=VP.ATTEST_KEY, help='signs speaker tags for the hub; "" = no proofs')
     a = ap.parse_args()
 
@@ -882,8 +852,6 @@ async def main() -> None:
             except Exception as e:
                 log(f"speaker tags unsigned: {type(e).__name__}: {e}")
     srv = Server(engine, verifier=verifier, vp_tickets=vp_tickets, attestor=attestor)
-    srv.partial_step_s, srv.partial_min_s = max(0.032, a.partial_step), max(0.0, a.partial_min)
-    log(f"partials every {srv.partial_step_s:.2f} s of audio, from {srv.partial_min_s:.2f} s")
 
     def health(conn, req):
         if req.path.split("?")[0].rstrip("/").endswith("/health"):
