@@ -157,8 +157,6 @@ export default async function RootLayout({
             ~10MB whole. Body: 霞鶩文楷 TC. Display: Yuji Syuku (brush), Zen Antique. */}
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        {/* The Google Fonts stylesheet itself blocks first paint: its host too. */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-tc-web@1.522.0/lxgwwenkaitc-regular/result.css"

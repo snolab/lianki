@@ -172,7 +172,7 @@ that are expensive to rediscover.
 | Li chat from the userscript pill: security gate (stub)                   | [docs/userscript-li-chat.md](docs/userscript-li-chat.md)            |
 | Hot-swapping headless core modules (kernel, swap, leak tests)            | [docs/hot-core.md](docs/hot-core.md)                                |
 | The debug chat widget (packages/debug-chat), hot-loading                 | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
-| Users' own AI assistants: the token prompt, /api/agent-guide             | [docs/api-for-agents.md](docs/api-for-agents.md)                    |
+| Users' own AI assistants: the token prompt, /api/agent-guide            | [docs/api-for-agents.md](docs/api-for-agents.md)                    |
 | `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor           | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                    |
 | Which lane answers him ("codex, …"), codex/agy listeners                 | [docs/lane-listen.md](docs/lane-listen.md)                          |
 | Hot islands: swappable components, shared state                          | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
@@ -193,7 +193,6 @@ that are expensive to rediscover.
 | Voice mode: spoken commands per screen, grammar, mic taps                | [docs/voice-mode.md](docs/voice-mode.md)                            |
 | All sound through Li: `__lkLi` hub, who holds mic / plays                | [docs/li-sound-hub.md](docs/li-sound-hub.md)                        |
 | /words owner spec: tall slips, window, review-first, voice               | [docs/words-session-spec.md](docs/words-session-spec.md)            |
-| PWA cold start: measuring it, per-page dictionaries, lazy chat, SW       | [docs/cold-start.md](docs/cold-start.md)                            |
 | Sync/offline architecture                                                | [docs/sync-architecture.md](docs/sync-architecture.md)              |
 | Sync conflicts, deletions, tombstones                                    | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
 | Settings that follow the account (`lk:*` key classes)                    | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
