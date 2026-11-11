@@ -1146,6 +1146,41 @@ TURN credentials are minted per session from Cloudflare Realtime TURN with
 the Worker secrets `STT_TURN_KEY_ID` / `STT_TURN_KEY_TOKEN` (**not set**: the
 owner's approval first); without them STUN only.
 
+**The registry** (`workers/push/src/stt-registry.ts`, Durable Object
+`SttRegistry` in lianki-push, binding `STT`; no route of its own: the existing
+`lianki.com/api/version/*` route reaches it). Both paths are 404 while the flag
+is off (lianki-push asks `DebugSessions.flag`) and for anything but a socket;
+no cookie or identity header passes to it.
+
+- `/api/version/stt/worker`: a speech server's `stt-peer` dials **out** (no
+  inbound port on the server; an Origin is refused: not a browser). The hub
+  sends `{t:"challenge", nonce}`; the worker answers `{t:"auth", key, sig}`,
+  Ed25519 over `lianki-stt-worker\n<nonce>`; the key must be a live
+  `stt_worker` row (`DebugSessions.sttWorker`, only while the flag is on),
+  else 4401/4403. One socket per worker: a reconnect replaces the old one.
+- `/api/version/stt/signal`: a lianki.com page offering `lianki-stt2, <v2
+  ticket>`. Before the upgrade: the ticket (signature with
+  `PARTNER_TICKET_PUB`, the same key pair's public half; claims; once, jtis in
+  the DO's storage) else 401; the account's live sessions under
+  `sessionsPerAccount` else 429; a worker with room — the account's own worker
+  first (`owner_user_id`), then the least busy shared one under its capacity
+  (`stt_worker.capacity` or `macCapacity`) minus `macReserved` — else 503.
+  Then `{t:"ready", sid}`, and offer / answer / ICE pass between that page and
+  that worker only; the ticket goes on to the worker with the offer, and its
+  speech server checks it again. A worker speaks only for its own sessions.
+- **Booking**: the worker reports each final's audio length (`{t:"usage",
+  sid, audioMs}`) and the hub books it to the ticket's account
+  (`DebugSessions.bookStt`: `speech.stt.local`, at most 120 s per report, the
+  `stt.local.costPerMinUsd` rate). The page does not book these itself.
+- A session counts until its signed length plus 60 s (checked when the hub
+  next counts; no timer), or until the page's signal socket closes; a worker
+  that goes away ends its pages (`{t:"end", reason:"worker-gone"}`), which go
+  on with the next route.
+- **Adding a worker** (after the owner's tap card): `stt-peer keygen` on the
+  server prints its public key; `bun scripts/local-stt/stt-worker-add.ts --id
+  mac --name "…" --key <public key>` writes the row (wrangler d1, audited as
+  `cli`). Revoke on `/dev/stt-access`.
+
 ## WebRTC
 
 The owner's own route still does not use it. The phone already reaches the

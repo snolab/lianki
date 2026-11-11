@@ -17,6 +17,9 @@
       { "name": "DEBUG", "class_name": "DebugHub" },
       { "name": "PROGRESS", "class_name": "ProgressHub" },
       { "name": "READ_STREAM", "class_name": "ReadStreamHub" },
+      // Lianki's speech servers' registry (src/stt-registry.ts): no route of its
+      // own, under /api/version/stt/*; 404 while the flag stt.worker is off.
+      { "name": "STT", "class_name": "SttRegistry" },
     ],
   },
   "migrations": [
@@ -24,6 +27,7 @@
     { "tag": "v2", "new_sqlite_classes": ["DebugHub"] },
     { "tag": "v3", "new_sqlite_classes": ["ProgressHub"] },
     { "tag": "v4", "new_sqlite_classes": ["ReadStreamHub"] },
+    { "tag": "v5", "new_sqlite_classes": ["SttRegistry"] },
   ],
   // Asks the main Worker whether a debug socket's cookie is the owner's
   // (/api/dev/whoami). Circular with its PUSH binding to us; that is allowed.
