@@ -21,7 +21,11 @@ import {
   main as addWorker,
   parseWorkerArgs,
   workerAddSql,
+  writeOwner,
 } from "@/scripts/local-stt/stt-worker-add";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 class FakeSocket {
   sent: string[] = [];
@@ -486,6 +490,20 @@ describe("the break-glass CLI that adds a speech server (scripts/local-stt/stt-w
       "! wrangler exited 1",
       "! --id: a short lower-case slug (a-z, 0-9, -)",
     ]);
+  });
+
+  it("--owner writes the peer-owner file for server.py, readable by this user only", () => {
+    const dir = mkdtempSync(join(tmpdir(), "stt-owner-"));
+    try {
+      const path = join(dir, "lianki-stt", "peer-owner");
+      writeOwner("acct_9", path);
+      expect(readFileSync(path, "utf8")).toBe("acct_9\n");
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+      writeOwner("acct_10", path); // a second run replaces it
+      expect(readFileSync(path, "utf8")).toBe("acct_10\n");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
