@@ -12,7 +12,9 @@ import {
   PUBLIC_ROUTE_LIST,
   PUBLIC_RTC_URL,
   PUBLIC_WSS_URL,
+  isMixedRoutes,
   isPublicRoutes,
+  mixedOpen,
   publicOpen,
   publicSttAvailable,
   readConsent,
@@ -246,6 +248,31 @@ describe("helpers", () => {
     expect(isPublicRoutes("wss://taku.onca-tint.ts.net/lianki-stt wss://stt.lianki.com")).toBe(
       false,
     );
+  });
+
+  test("a mixed list: his own Mac over WebRTC beside the tailnet", () => {
+    const own = "wss://taku.onca-tint.ts.net/lianki-stt";
+    expect(isMixedRoutes(`${PUBLIC_RTC_URL} ${own}`)).toBe(true);
+    expect(isMixedRoutes(PUBLIC_ROUTE_LIST)).toBe(false);
+    expect(isMixedRoutes(own)).toBe(false);
+  });
+
+  test("mixedOpen: a public route through publicOpen, any other a plain socket with its protocols", () => {
+    const plain: { url: string; protocols?: string[] }[] = [];
+    const open = mixedOpen(
+      { fetch: async () => new Response(null, { status: 404 }) },
+      (url, protocols) => {
+        plain.push({ url, protocols });
+        return { readyState: 0 } as never;
+      },
+    );
+    open("wss://taku.onca-tint.ts.net/lianki-stt", ["lianki-stt", "tk"]);
+    expect(plain).toEqual([
+      { url: "wss://taku.onca-tint.ts.net/lianki-stt", protocols: ["lianki-stt", "tk"] },
+    ]);
+    const rtc = open(PUBLIC_RTC_URL);
+    expect(plain).toHaveLength(1); // not a plain socket
+    expect(rtc.readyState).toBe(0);
   });
 
   test("availability: only on lianki.com, 204 only", async () => {

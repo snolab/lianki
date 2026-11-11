@@ -1304,6 +1304,33 @@ ICE come before `ready`):
   `ready` loses the race; all lost = the cloud, per utterance, as always.
   The order is the pluggable part (later: a user's own Mac first).
 
+## His own Mac over WebRTC
+
+The owner's decision (2026-11-11): the user trusts Lianki and the devices they
+trust themselves, and the transport is WebRTC. First case: his phone reaching
+his own Mac over WebRTC, beside (or instead of) the tailnet socket.
+
+- **The Mac is his own speech server**: `stt-worker-add.ts --owner <his
+account id>` writes the `stt_worker` row with `owner_user_id` (the registry
+  sends an account's sessions to its own worker first) and
+  `~/.config/lianki-stt/peer-owner` (0600). Only after his tap card.
+- **server.py's peer listener** (`--peer-owner-file`, that file by default):
+  a v2 ticket whose `sub` is that account is an **owner session**: his
+  device, thread, voiceprint check, proof and filter, and no ticket limits.
+  Any other account stays a guest, exactly as before. A file that is a
+  symlink, someone else's or writable by others is ignored.
+- **The page**: his stored route list may mix `rtc:lianki` with his own
+  URLs (`isMixedRoutes`); each route opens with its own transport
+  (`mixedOpen`: `rtc:lianki` through `publicOpen`, the rest a plain socket
+  with its ticket) and his device, thread and filter go along on all of
+  them. The race's deadline is the public one (6 s: session, signalling,
+  ICE). `/api/stt/session` still needs flag `stt.worker` and his account on
+  `/dev/stt-access`. A mixed list does not report usage from the page
+  (`reportLocalStt`): the registry books the WebRTC route's minutes.
+- **Comparing**: `rtc:lianki` alone vs the tailnet URL alone on the same
+  phone, read from the devLog (`local-stt-final {firstPartialMs,
+endToFinalMs}`, `stt-route`).
+
 ## WebRTC
 
 The owner's own route still does not use it. The phone already reaches the
