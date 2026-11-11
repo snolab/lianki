@@ -283,6 +283,13 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  "voice.cloud-voices": {
+    description:
+      "Li 用谷歌 / Azure 的声音朗读（docs/li-sound-hub.md，「Provider voices」）：打开后，在你本人的页面上（需要 dev 权限），一句话可以用 google:<声音> 或 azure:<声音> 来读（say --voice google:cmn-TW-Wavenet-A），按语言自动选声音的表在 /dev/config 的 voice.langVoices（默认 zh-TW → 谷歌台湾国语，nan → Azure 闽南语）。声音在服务器上生成，手机用云端 <audio> 播放，没有系统语音的手机也能听。按字数从你的积分扣（和别人一样，没有管理员免费）。没有谷歌 / Azure 密钥时什么都不变，照常用原来的声音。关闭（默认）= 完全不用这些声音。",
+    default: false,
+    group: "stt",
+    audience: "owner",
+  },
   "ext.pill-chat": {
     description:
       "从用户脚本药丸打开 Li 聊天（docs/userscript-li-chat.md，第一步）：在任意网站上，用户脚本的浮动药丸多一个「Li」按钮。每个网站第一次点时先问「允许在这个网站使用 Li 聊天吗？」（仅这一次 / 在此网站总是允许 / 永不），关掉弹窗 = 不允许；允许之前不向 lianki.com 发任何聊天请求。允许后在 lianki.com 的独立窗口（跨域 iframe）里打开 Li，网站读不到你输入的内容，也拿不到登录凭证。已允许/已拒绝的网站可以在脚本管理器菜单「Li 聊天：网站…」里移除。现在复用你的伙伴票据，所以打开后也只有你本人能用。关闭（默认）= 谁都看不到 Li 按钮，已打开的网站下次点也不会再打开。",

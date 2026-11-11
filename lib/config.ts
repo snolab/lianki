@@ -23,6 +23,7 @@
  */
 import { z } from "zod";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
+import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
 
 export type ConfigAudience = "server" | "public";
 
@@ -235,6 +236,39 @@ export const CONFIG = {
     audience: "public",
     description:
       'Li 朗读时的读音表（JSON 数组）：每条 {term 写法, say 读法, lang 可选语言如 zh / ja / zh-TW, ignoreCase 可选不分大小写, ph 可选音标}。只改读出来的声音，屏幕上的文字不变。整词匹配、默认区分大小写；同一个词有几条时，语言最具体的那条生效（zh-TW 胜过 zh，zh 胜过不写语言）。例：{"term":"WebRTC","say":"Web R T C"}。',
+  },
+  // Provider voices (lib/cloud-voices.ts; docs/li-sound-hub.md, "Provider voices"):
+  // which language is read in which Google / Azure voice, as data. Flag voice.cloud-voices.
+  "voice.langVoices": {
+    default: {
+      "zh-TW": "google:cmn-TW-Wavenet-A",
+      nan: "azure:zh-CN-XiaoxiaoDialectsNeural/nan-CN",
+    } as Record<string, string>,
+    schema: z
+      .record(
+        z.string().regex(LEX_LANG, "a language: zh, zh-TW, nan…"),
+        z
+          .string()
+          .refine(
+            (id) => isProviderVoice(lineVoiceOf(id)),
+            "google:<voice> or azure:<voice>[/<locale>]",
+          ),
+      )
+      .refine((m) => Object.keys(m).length <= 50, "at most 50 languages") as z.ZodType<
+      Record<string, string>
+    >,
+    group: "voice",
+    audience: "public",
+    description:
+      'Li 朗读时哪种语言用哪个谷歌 / Azure 声音（JSON 对象：语言 → 声音），只在开关 voice.cloud-voices 打开时生效。语言先找完整的（zh-TW），再找主语言（zh）。台语和台湾国语从文字认不出来，所以只有标了语言的句子会用到 zh-TW / nan；想让所有中文都用台湾腔，就加 "zh"。声音写法：google:cmn-TW-Wavenet-A、azure:zh-TW-HsiaoChenNeural、azure:zh-CN-XiaoxiaoDialectsNeural/nan-CN（斜线后是它改用的口音）。按字数扣积分；没有密钥时照常用原来的声音。',
+  },
+  "voice.azureRegion": {
+    default: "eastasia" as string,
+    schema: z.string().regex(/^[a-z0-9]{2,30}$/, "an Azure region: eastasia, japaneast…"),
+    group: "voice",
+    audience: "server",
+    description:
+      "Azure 语音服务所在的区域（创建 Azure 语音资源时选的那个，例如 eastasia、japaneast）。要和 AZURE_SPEECH_KEY 那把密钥的区域一致，否则 Azure 声音读不出来（会退回原来的声音）。",
   },
   // The voiceprint in his account (docs/local-stt.md, "Voiceprint in your account"):
   // handed to the panel by GET /api/my/voiceprint.

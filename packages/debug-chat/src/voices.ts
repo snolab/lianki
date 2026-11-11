@@ -432,7 +432,14 @@ export function auraSpeakers(): Record<string, string[]> {
 //   aura:<speaker>  a Workers AI Aura-2 speaker of the table (English, Spanish)
 //   eleven:<id>     an ElevenLabs voice's public preview clip (its own words, not
 //                   the line's): no key, no generation, played from ElevenLabs
+//   google:<voice>  a Google Cloud TTS voice (cmn-TW-Wavenet-A), synthesized on
+//                   the server (/api/voice/tts), paid from credits
+//   azure:<voice>[/<locale>]  an Azure Speech voice, optionally reading in a
+//                   secondary locale (zh-CN-XiaoxiaoDialectsNeural/nan-CN)
 //   local:<name>    reserved for Mac-local engines (Kokoro, VOICEVOX); none yet
+// google:/azure: are read only where the page has provider voices on
+// (setCloudVoices: flag voice.cloud-voices); elsewhere, and whenever the
+// server cannot voice them (no key, an error), the line's lane voice reads it.
 // A voice this device cannot play falls back to the line's lane voice, as if
 // none was named: never silence.
 
@@ -475,7 +482,34 @@ export type LineVoice =
   | { kind: "device"; name: string }
   | { kind: "melo"; lang: string }
   | { kind: "aura"; speaker: string; lang: string }
-  | { kind: "eleven"; id: string; preview: string };
+  | { kind: "eleven"; id: string; preview: string }
+  /** A Google Cloud TTS voice by name ("cmn-TW-Wavenet-A"); `lang` its locale (cmn-TW). */
+  | { kind: "google"; id: string; name: string; lang: string }
+  /**
+   * An Azure Speech voice by name ("zh-CN-XiaoxiaoDialectsNeural"), its own
+   * locale `voiceLang`, and an optional secondary `locale` it reads the text
+   * in ("nan-CN"); `lang` is the one it reads in.
+   */
+  | {
+      kind: "azure";
+      id: string;
+      name: string;
+      voiceLang: string;
+      locale?: string;
+      lang: string;
+    };
+
+/** Google voice names: <lang>-<REGION>-<model>[-<variant>…] (cmn-TW-Wavenet-A, en-US-Chirp3-HD-Achernar). */
+const GOOGLE_NAME = /^([a-z]{2,3}-[A-Z]{2})-[A-Za-z0-9]{1,24}(?:-[A-Za-z0-9]{1,24}){0,3}$/;
+/** Azure voice names: <lang>-<REGION>-<Name>[:<model>] (zh-TW-HsiaoChenNeural, en-US-Ava:DragonHDLatestNeural). */
+const AZURE_NAME = /^([a-z]{2,3}-[A-Z]{2})-[A-Za-z0-9]{2,40}(?::[A-Za-z0-9]{2,40})?$/;
+/** A secondary locale: <lang>-<REGION> (nan-CN). */
+const LOCALE = /^[a-z]{2,3}-[A-Z]{2}$/;
+/** The provider kinds: their voices are synthesized on the server (/api/voice/tts). */
+export const isProviderVoice = (
+  v: LineVoice | undefined,
+): v is Extract<LineVoice, { kind: "google" | "azure" }> =>
+  v?.kind === "google" || v?.kind === "azure";
 
 /** The longest voice id a line may carry. */
 export const LINE_VOICE_MAX = 80;
@@ -492,7 +526,7 @@ export function parseLineVoice(raw: unknown): LineVoice | { error: string } {
   if (typeof raw !== "string" || !raw || raw.length > LINE_VOICE_MAX)
     return { error: `a voice id is 1–${LINE_VOICE_MAX} chars` };
   if (isVoiceId(raw)) return { kind: "table", id: raw };
-  const kinds = `${VOICE_IDS.join(", ")}, device:<name>, melo:<lang>, aura:<speaker>, eleven:<id> (local:<name> reserved)`;
+  const kinds = `${VOICE_IDS.join(", ")}, device:<name>, melo:<lang>, aura:<speaker>, eleven:<id>, google:<voice>, azure:<voice>[/<locale>] (local:<name> reserved)`;
   const m = /^([a-z]+):(.*)$/s.exec(raw);
   if (!m) return { error: `unknown voice ${raw}: one of ${kinds}` };
   const kind = m[1]!;
@@ -522,6 +556,27 @@ export function parseLineVoice(raw: unknown): LineVoice | { error: string } {
       };
     return { kind: "eleven", id: v.id, preview: v.preview };
   }
+  if (kind === "google") {
+    const m = GOOGLE_NAME.exec(rest);
+    if (!m) return { error: `not a Google voice name: ${JSON.stringify(rest)} (e.g. cmn-TW-Wavenet-A)` };
+    return { kind: "google", id: raw, name: rest, lang: m[1]! };
+  }
+  if (kind === "azure") {
+    const [name = "", locale, extra] = rest.split("/");
+    const m = AZURE_NAME.exec(name);
+    if (!m || extra !== undefined || (locale !== undefined && !LOCALE.test(locale)))
+      return {
+        error: `not an Azure voice: ${JSON.stringify(rest)} (e.g. zh-TW-HsiaoChenNeural, zh-CN-XiaoxiaoDialectsNeural/nan-CN)`,
+      };
+    return {
+      kind: "azure",
+      id: raw,
+      name,
+      voiceLang: m[1]!,
+      ...(locale ? { locale } : {}),
+      lang: locale ?? m[1]!,
+    };
+  }
   if (kind === "local")
     return {
       error: LOCAL_ENGINES.length
@@ -530,6 +585,20 @@ export function parseLineVoice(raw: unknown): LineVoice | { error: string } {
     };
   return { error: `unknown voice ${raw}: one of ${kinds}` };
 }
+
+/** Provider voice ids listed by `eval.ts voices` (any name the provider has is taken). */
+const PROVIDER_EXAMPLES: readonly (readonly [string, string, string])[] = [
+  [
+    "google:cmn-TW-Wavenet-A",
+    "cmn-TW",
+    "Google Cloud TTS, Taiwan Mandarin (any google:<voice name> works); server-side, paid from credits, needs voice.cloud-voices and the Google key",
+  ],
+  [
+    "azure:zh-CN-XiaoxiaoDialectsNeural/nan-CN",
+    "nan-CN",
+    "Azure Speech, Southern Min (mainland accent; any azure:<voice>[/<locale>] works); server-side, paid from credits, needs voice.cloud-voices and the Azure key",
+  ],
+];
 
 /** A voice id a line may carry: the table's or a typed one the parser takes. */
 export const isLineVoiceId = (raw: unknown): raw is string => !("error" in parseLineVoice(raw));
@@ -570,6 +639,8 @@ export function cloudVoiceIds(): { id: string; lang: string; note: string }[] {
       lang: e.lang,
       note: `ElevenLabs ${e.name} (${e.note}): its public preview clip only, in its own words; a paid voice, not wired into Li`,
     });
+  // Provider voices: any of the provider's voice names; these two are the Taiwan pair.
+  for (const [id, lang, note] of PROVIDER_EXAMPLES) out.push({ id, lang, note });
   return out;
 }
 
@@ -595,4 +666,39 @@ export function deviceVoiceIds(
       lang: v.lang,
       tier: (["novelty", "eloquence", "natural"] as const)[voiceTier(v)],
     }));
+}
+
+// ---- Provider voices on this page ------------------------------------------
+
+type CloudVoices = { on: boolean; map: Readonly<Record<string, string>> };
+type CloudStore = { __lkCloudVoices?: CloudVoices };
+
+/**
+ * Provider voices for this page, from the app (flag `voice.cloud-voices` and
+ * the config `voice.langVoices`, a language → voice id map). Kept on
+ * globalThis so a hot-loaded chat reads the same. Map entries that are not a
+ * provider voice id are dropped.
+ */
+export function setCloudVoices(s: { on?: unknown; map?: unknown } | null | undefined): void {
+  const map: Record<string, string> = {};
+  if (s?.map && typeof s.map === "object" && !Array.isArray(s.map))
+    for (const [lang, id] of Object.entries(s.map as Record<string, unknown>))
+      if (typeof id === "string" && isProviderVoice(lineVoiceOf(id))) map[norm(lang)] = id;
+  (globalThis as CloudStore).__lkCloudVoices = { on: s?.on === true, map };
+}
+
+/** Provider voices may be read on this page. */
+export const cloudVoicesOn = () => (globalThis as CloudStore).__lkCloudVoices?.on === true;
+
+/**
+ * The provider voice the map names for `lang` (its locale, else its
+ * language), or undefined; always undefined while provider voices are off.
+ */
+export function langVoice(lang: string): Extract<LineVoice, { kind: "google" | "azure" }> | undefined {
+  const s = (globalThis as CloudStore).__lkCloudVoices;
+  if (!s?.on) return undefined;
+  const l = norm(lang);
+  const id = s.map[l] ?? s.map[l.split("-")[0]!];
+  const v = id ? lineVoiceOf(id) : undefined;
+  return isProviderVoice(v) ? v : undefined;
 }

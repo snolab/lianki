@@ -20,11 +20,14 @@ export function OwnerBoots({
   chatFull = false,
   liHub = false,
   lexicon,
+  cloudVoices,
   box = null,
   autoUpdate = false,
 }: {
   /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
   autoUpdate?: boolean;
+  /** Provider voices on (flag voice.cloud-voices + dev) and the language → voice map. */
+  cloudVoices?: { on: boolean; map: Record<string, string> };
   /** The read-aloud pronunciation table (config `voice.lexicon`); none: its default. */
   lexicon?: unknown;
   /** On a box (docs/box-oauth.md): its sign-in config, so the chat uses lianki.com's hub. */
@@ -58,6 +61,7 @@ export function OwnerBoots({
         etaBar={etaBar}
         liHub={liHub}
         lexicon={lexicon}
+        cloudVoices={cloudVoices}
         box={box}
       />
     </>

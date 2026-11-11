@@ -108,3 +108,50 @@ line on screen keeps the written term.
   character offset, so it still reads the written text; /words reads single
   words and examples from recorded clips.
 - Tests: `unit/lexicon.test.ts`.
+
+## Provider voices
+
+Owner, 2026-11-11: Taiwan Mandarin and Taiwanese (Hokkien) voices. No
+Workers AI voice has either, and his Android has no speechSynthesis voice at
+all, so these are made **on the server** and played by the chat's cloud
+`<audio>` (`voice-out.ts`), like MeloTTS.
+
+- **Ids, as data.** A line may name `google:<voice>` (any Google Cloud TTS
+  voice name, e.g. `google:cmn-TW-Wavenet-A`) or `azure:<voice>[/<locale>]`
+  (an Azure Speech voice, optionally reading in a secondary locale, e.g.
+  `azure:zh-CN-XiaoxiaoDialectsNeural/nan-CN` — Southern Min with a mainland
+  accent; neither provider has a Taiwanese `nan-TW` voice). One strict parser
+  (`voices.ts parseLineVoice`) for `say --voice`, the hub and the page.
+- **Language → voice** is the config key `voice.langVoices` (/dev/config;
+  default `zh-TW → google:cmn-TW-Wavenet-A`, `nan → azure:…/nan-CN`). A line
+  with no voice of its own uses the map's voice for its language (locale
+  first, then the language). Han text is detected as `zh-CN`, and Taiwan
+  Mandarin or Taiwanese cannot be told from the characters, so `zh-TW` / `nan`
+  apply only to a line that names them; add `zh` to read all Chinese in one.
+- **Code per provider, never per language** (`lib/cloud-voices.ts`): Google
+  `text:synthesize` (JSON, MP3) and Azure's REST endpoint (SSML, MP3, region
+  from the config key `voice.azureRegion`, default `eastasia`). The text goes
+  as SSML with the pronunciation table written as `<sub>` / `<phoneme>`
+  (`toSsml`), so `ph` entries are honoured here.
+- **Route:** `GET /api/voice/tts?voice=&text=` (`lib/cloud-voices-handler.ts`):
+  signed in, flag **`voice.cloud-voices`** on and the `dev` grant (audience
+  owner; otherwise 404), text 1–200 characters, 300 sentences per 10 minutes,
+  `no-store`, nothing kept in R2.
+- **Paid** from the user's credits, feature `voice.cloud` (docs/payments.md):
+  the tier's list price per million billed characters × `MARGIN` × 150
+  credits/USD, the same for every account, admin included. Settled charges
+  appear on /dev/costs (paid side) and /membership/credits ("voice").
+- **Inert without keys.** No key: 503 `X-Voice: not-configured`, nothing held.
+  Any failure (no key, a provider error, out of credits, the flag off) and the
+  page reads the sentence in the line's lane voice (MeloTTS / Aura), else
+  speechSynthesis: never silence. With the flag off the page never asks.
+- **Secrets** (Worker `lianki`, names only; read only in
+  `lib/cloud-voices.ts`, sent in a header, never logged):
+  `GOOGLE_TTS_API_KEY` — a Google Cloud API key restricted to the Cloud
+  Text-to-Speech API only, in a project with a budget alert and a daily
+  request quota; `AZURE_SPEECH_KEY` — key 1 of an Azure AI Speech resource in
+  the region `voice.azureRegion` names, used for nothing else.
+- **Preview:** `lianki-dev say --voice google:cmn-TW-Wavenet-A "…"` posts to
+  his thread; his phone plays it. The Mac and the tests never play it.
+- Tests: `unit/cloud-voices.test.ts` (parser, requests, prices, the route with
+  fakes), `unit/cloud-voices-page.test.ts` (the page: map, fallback).

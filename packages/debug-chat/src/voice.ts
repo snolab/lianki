@@ -59,7 +59,10 @@ import { outputBed } from "./output-bed";
 import {
   type LineVoice,
   type VoiceId,
+  cloudVoicesOn,
   findDeviceVoice,
+  isProviderVoice,
+  langVoice,
   laneOf,
   lineVoiceOf,
   resolveVoices,
@@ -253,10 +256,13 @@ export type PlayEvents = {
 };
 /** The cloud output (voice-out.ts createCloudOut). */
 export type CloudOut = {
-  prepare?(text: string, lang: string, voice?: VoiceId, pick?: LinePick): void;
+  /** `written`: a provider voice's text before the lexicon (the server writes it as SSML). */
+  prepare?(text: string, lang: string, voice?: VoiceId, pick?: LinePick, written?: string): void;
   play(
     s: {
       text: string;
+      /** A provider voice (google:, azure:) gets the written text; every fallback reads `text`. */
+      written?: string;
       lang: string;
       at: number;
       volume: number;
@@ -302,7 +308,10 @@ export type OutMode = "speech" | "cloud";
  * can be dropped (`drop`).
  */
 type Sentence = {
+  /** As spoken (lexicon.ts). */
   text: string;
+  /** As written, for a provider voice only (its server applies the lexicon as SSML). */
+  written?: string;
   lang: string;
   from: number;
   at: number;
@@ -450,6 +459,7 @@ export function createVoice(d: {
       s.lang,
       s.voice,
       s.pick && s.pick.kind !== "device" ? s.pick : undefined,
+      s.written,
     );
   };
   /**
@@ -457,13 +467,19 @@ export function createVoice(d: {
    * they are spoken: terms in their spoken form (lexicon.ts; the chat line on
    * screen keeps the written one). Sentences are cut from the written text,
    * so a spoken form never moves a sentence break; chunks from the spoken
-   * one, so a longer spoken form still fits CHUNK_MAX.
+   * one, so a longer spoken form still fits CHUNK_MAX. A provider voice
+   * (google:, azure:) also keeps each chunk as written: its server writes the
+   * lexicon as SSML, phonemes included.
    */
   const toSentences = (text: string, lang: string, voice?: VoiceId, pick?: LinePick): Sentence[] =>
     sentences(text)
-      .flatMap((s) => chunk(speakForm(s, lang)))
+      .flatMap((s): { text: string; written?: string }[] =>
+        isProviderVoice(pick)
+          ? chunk(s).map((w) => ({ text: speakForm(w, lang), written: w }))
+          : chunk(speakForm(s, lang)).map((t) => ({ text: t })),
+      )
       .map((t) => ({
-        text: t,
+        ...t,
         lang,
         from: 0,
         at: 0,
@@ -641,6 +657,7 @@ export function createVoice(d: {
       ? c.play(
           {
             text: head.text,
+            ...(head.written !== undefined ? { written: head.written } : {}),
             lang: head.lang,
             at: head.at,
             volume: level,
@@ -789,8 +806,10 @@ export function createVoice(d: {
       const text = laneOf({ lane: meta?.lane, text: said }).text;
       const v = voiceIdOf({ voice: meta?.voice, lane: meta?.lane, text: said });
       const voice = v === "main" ? undefined : v;
-      // Its own voice beyond the table (device:, melo:, aura:, eleven:); anything else: none.
-      const pick = lineVoiceOf(meta?.voice);
+      // Its own voice beyond the table (device:, melo:, aura:, eleven:, google:, azure:);
+      // anything else: none. A provider voice only where they are on (voices.ts setCloudVoices).
+      const own = lineVoiceOf(meta?.voice);
+      const named = isProviderVoice(own) && !cloudVoicesOn() ? undefined : own;
       const t = now();
       // The same words in another voice are another line (a voice demo), not a re-delivery.
       const key = `${typeof meta?.voice === "string" ? meta.voice : v}\n${text}`;
@@ -801,6 +820,8 @@ export function createVoice(d: {
       recent.push({ text: key, at: t });
       while (recent.length > 20) recent.shift();
       const lang = pickLang(text);
+      // No voice of its own: the language → voice map's provider voice, if any (config voice.langVoices).
+      const pick = named ?? (meta?.voice === undefined ? langVoice(lang) : undefined);
       // An ElevenLabs preview stands for the whole line: one item, its text kept for a fallback.
       const idOf = typeof meta?.id === "string" ? { id: meta.id } : {};
       const add = (
