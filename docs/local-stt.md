@@ -1346,7 +1346,11 @@ account id>` writes the `stt_worker` row with `owner_user_id` (the registry
   them. The race's deadline is the public one (6 s: session, signalling,
   ICE). `/api/stt/session` still needs flag `stt.worker` and his account on
   `/dev/stt-access`. A mixed list does not report usage from the page
-  (`reportLocalStt`): the registry books the WebRTC route's minutes.
+  (`reportLocalStt`): the registry books the WebRTC route's minutes. The
+  stored value (`lk:agent-local-stt`) keeps the names `rtc:lianki` /
+  `wss:session` only for the chat mic (`localSttRoute(…, named)`); until
+  2026-11-11 they were dropped as non-URLs, so a mixed list never reached
+  WebRTC. vibe and the /words mic open plain sockets and still drop them.
 - **Comparing**: `rtc:lianki` alone vs the tailnet URL alone on the same
   phone, read from the devLog (`local-stt-final {firstPartialMs,
 endToFinalMs}`, `stt-route`).
