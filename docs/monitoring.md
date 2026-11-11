@@ -901,3 +901,26 @@ messages said while it was away are in `/dev/friends?thread=…`.
 
 Fallback, if lianki-push is down: run code in a desktop lianki.com tab of
 the owner's Chrome with `rech eval` — it reaches only that tab, not the phone.
+
+
+### Remembering an eval controller
+
+The developer pairing modal offers **This approval only** (the existing finite
+approval and renewal chain) and an explicit **Remember until revoked** option.
+Remembered trust belongs to the approving account and device, and the hash of
+that controller's random credential. It covers that account's pages on that
+device in the currently verified sign-in session, including pages opened later;
+it never expands to another developer sharing the owner chat thread or another
+device. The device id is the existing browser device identifier, not a hardware
+attestation. Protect the controller credential as before.
+
+A remembered credential has a separate revocable `eval-trust:<hash>` record.
+Execution leases remain numeric, at most the existing eight-hour lease and no
+later than the current login session expiry. Every controller message validates
+the login and current developer permission through the internal Sessions RPC;
+unavailable or uncertain answers pause access. Logout immediately closes the
+associated controller sockets and removes the lease, retaining the remembered
+trust. Signing in to the same account on that device lets the credential resume
+without a new approval. **End** removes both trust and grant, including dormant
+ones; a late auth reply cannot recreate either. Existing grants and renewal
+chain caps are unchanged. No previously issued grant is upgraded automatically.

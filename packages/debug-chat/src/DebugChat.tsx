@@ -1,5 +1,6 @@
 "use client";
 
+import { evalTrustStrings } from "./eval-trust-strings";
 import { shortPage } from "./short-page";
 import { type AdaptState, voiceAdapt } from "./adaptive";
 import {
@@ -3827,7 +3828,7 @@ export function DebugChat({
             className="flex items-center gap-2 px-3 py-1 text-gray-500"
           >
             <span className="min-w-0 flex-1 truncate">
-              {friend ? "preview" : "eval"}: {x.label} · {x.code}
+              {friend ? "preview" : "eval"}: {x.label} · {x.persistent ? evalTrustStrings().remember : x.code}
               {reachNote(x)}
             </span>
             {addable(x) && (

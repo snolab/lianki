@@ -416,7 +416,14 @@ const SINK_CONFIG = "clipsink";
  * `grant` is the hash of the resumable chat token this socket holds, if any.
  * `forUser`/`forEmail`: the friend this pairing is for; absent = the owner.
  */
+type RememberedTrust = { user: string; device: string; at: number };
+const trustKey = (hash: string) => `eval-trust:${hash}`;
+/** Security work bound: at most eight distinct auth-session RPCs per remembered use. */
+const REMEMBERED_SESSION_CANDIDATES = 8;
+
 type ControllerAtt = {
+  rememberedSession?: string;
+  remembered?: RememberedTrust;
   role: "controller";
   grant?: string;
   /** Approved for these page ids only ("Authorize this page"); absent = all. Eval only. */
@@ -453,6 +460,8 @@ type ControllerAtt = {
  * the owner's eval grant only, what its renewal is bound to ("Renewal" above).
  */
 type Grant = {
+  /** Descriptor only: eval-trust:<controller hash> is the revocable authority. */
+  remembered?: RememberedTrust;
   label: string;
   until: number;
   scope?: Scope;
@@ -631,9 +640,19 @@ const info = ({
   pages,
   grantMs,
   allPages,
+  remembered,
 }: ControllerAtt): PairInfo =>
   until
-    ? { pair, code, label, at, until, scope: scope ?? "eval", ...(pages ? { pages } : {}) }
+    ? {
+        pair,
+        code,
+        label,
+        at,
+        until,
+        scope: scope ?? "eval",
+        ...(remembered ? { persistent: true } : {}),
+        ...(pages ? { pages } : {}),
+      }
     : {
         pair,
         code,
@@ -781,7 +800,16 @@ export class DebugHub {
    */
   private reach(c: ControllerAtt, thread: string) {
     // An embedded page (another site) is never reached by eval.
-    const all = this.pages(thread).filter((p) => !p.a.embed);
+    const all = this.pages(thread).filter(
+      (p) =>
+        !p.a.embed &&
+        (!c.remembered ||
+          (p.a.user === c.remembered.user &&
+            p.a.device === c.remembered.device &&
+            !!p.a.session &&
+            p.a.session === c.rememberedSession &&
+            (p.a.sessionUntil ?? 0) > this.now())),
+    );
     // A chat grant reaches every page (one made before that rule may still carry pages).
     if (!c.pages || c.scope === "chat" || thread !== audience(c)) return all;
     return all.filter((p) => p.a.id && c.pages?.includes(p.a.id));
@@ -837,7 +865,8 @@ export class DebugHub {
     const open = new Set(this.pages(OWNER_THREAD, ws).map((p) => p.a.id));
     let changed = 0;
     for (const [hash, g] of [...(this.grants ?? [])]) {
-      if (g.scope !== "eval" || g.until <= t || !g.pages || g.pages.includes(id)) continue;
+      if (g.remembered || g.scope !== "eval" || g.until <= t || !g.pages || g.pages.includes(id))
+        continue;
       const gone = g.pages.filter((p) => g.devices?.[p] === device && !open.has(p));
       if (!gone.length) continue;
       const pages = [...g.pages.filter((p) => !gone.includes(p)), id];
@@ -856,6 +885,7 @@ export class DebugHub {
 
   private async dropGrant(hash: string) {
     await this.loadGrants();
+    await this.ctx.storage.delete(trustKey(hash));
     await this.ctx.storage.delete(`grant:${hash}`);
     this.grants?.delete(hash);
   }
@@ -869,21 +899,24 @@ export class DebugHub {
     for (const { a } of this.sockets("controller", except)) {
       // A heartbeat socket is not a session: its grant, if eval, lists as asleep.
       if (audience(a) !== who || a.beat) continue;
-      if (a.grant) held.add(a.grant);
       if (a.until) {
-        if (a.until > t) sessions.push(info(a));
-      } else if (t - a.at < PENDING_MS) pending = info(a);
+        if (a.until > t) {
+          sessions.push(info(a));
+          if (a.grant) held.add(a.grant);
+        }
+      } else if (!a.grant && t - a.at < PENDING_MS) pending = info(a);
     }
     // The owner's eval grants that no socket holds now: asleep, but End reaches them.
     if (who === OWNER_THREAD)
       for (const [hash, g] of this.grants ?? [])
-        if (g.scope === "eval" && g.until > t && !held.has(hash))
+        if (g.scope === "eval" && (g.until > t || g.remembered) && !held.has(hash))
           sessions.push({
             pair: dormantPair(hash),
             code: "idle",
             label: g.label,
             at: g.at ?? 0,
             until: g.until,
+            ...(g.remembered ? { persistent: true } : {}),
             scope: "eval",
             ...(g.pages ? { pages: g.pages } : {}),
           });
@@ -1976,10 +2009,27 @@ export class DebugHub {
    * never vouch for a renewal). How many grants were bound.
    */
   async stopRenewal(session: string, why = "signed-out"): Promise<number> {
+    // Invalidate page authority synchronously, before ANY storage/RPC yield.
+    for (const { ws, a } of this.pages(OWNER_THREAD))
+      if (a.session === session) {
+        const { session: _s, sessionUntil: _u, user: _user, ...rest } = a;
+        ws.serializeAttachment(rest satisfies PageAtt);
+      }
+
     await this.loadGrants();
     let n = 0;
     for (const [hash, g] of this.grants ?? []) {
       if (g.renew?.session !== session) continue;
+      if (g.remembered) {
+        await this.putGrant(hash, { ...g, until: 0, renew: undefined });
+        for (const c of this.sockets("controller"))
+          if (c.a.grant === hash) {
+            send(c.ws, { type: "expired" });
+            close(c.ws, 4408, "signed out; remembered trust paused");
+          }
+        n++;
+        continue;
+      }
       const { renew: r, ...rest } = g;
       await this.putGrant(hash, rest satisfies Grant);
       console.log(
@@ -1987,11 +2037,6 @@ export class DebugHub {
       );
       n++;
     }
-    for (const { ws, a } of this.pages(OWNER_THREAD))
-      if (a.session === session) {
-        const { session: _s, sessionUntil: _u, user: _user, ...rest } = a;
-        ws.serializeAttachment(rest satisfies PageAtt);
-      }
     return n;
   }
 
@@ -2063,6 +2108,7 @@ export class DebugHub {
     const t = this.now();
     const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
     const r = g?.renew;
+    if (g?.remembered) return;
     if (!g || !r || g.scope !== "eval" || g.until <= t || !renewDueAt(g.until, t)) return;
     // The chain is at its cap: the next grant needs a tap.
     if (Math.min(t + (g.ms ?? EVAL_GRANT_MS), r.start + EVAL_CHAIN_MS) <= g.until) return;
@@ -2133,7 +2179,8 @@ export class DebugHub {
 
   /** The one alarm for a renewable grant: when its renewal window opens. */
   private async scheduleRenewal(g: Grant) {
-    if (g.renew && g.scope === "eval") await this.schedule(g.until - EVAL_RENEW_BEFORE_MS);
+    if (!g.remembered && g.renew && g.scope === "eval")
+      await this.schedule(g.until - EVAL_RENEW_BEFORE_MS);
   }
 
   /**
@@ -2146,7 +2193,7 @@ export class DebugHub {
     const t = this.now();
     for (const [hash, g] of this.grants ?? []) {
       const r = g.renew;
-      if (!r || g.scope !== "eval" || g.until <= t) continue;
+      if (g.remembered || !r || g.scope !== "eval" || g.until <= t) continue;
       if (only && (r.device !== only.device || r.session !== only.session)) continue;
       // Not due yet means the window opens strictly later: the alarm always moves forward.
       if (renewDueAt(g.until, t)) await this.renew(hash, via);
@@ -2367,10 +2414,85 @@ export class DebugHub {
     this.broadcast();
   }
 
+  /** Remembered authority is separate from its finite execution lease. No TTL extension. */
+  private async rememberedLease(hash: string): Promise<Grant | null> {
+    const trust = await this.ctx.storage.get<RememberedTrust>(trustKey(hash));
+    if (!trust || !this.sessions) return null;
+    // Newer pages first: stale tabs must not crowd a fresh login out of the
+    // bounded check. Group tabs by session so one old login costs one RPC.
+    const candidates = new Map<string, { ws: Socket; a: PageAtt }[]>();
+    for (const page of this.pages(OWNER_THREAD).reverse()) {
+      const { a } = page;
+      if (
+        a.embed ||
+        a.user !== trust.user ||
+        a.device !== trust.device ||
+        !a.session ||
+        (a.sessionUntil ?? 0) <= this.now()
+      )
+        continue;
+      const group = candidates.get(a.session);
+      if (group) group.push(page);
+      else if (candidates.size < REMEMBERED_SESSION_CANDIDATES) candidates.set(a.session, [page]);
+    }
+    for (const [session, pages] of candidates) {
+      try {
+        if ((await this.sessions.live(trust.user, session)) !== "live") continue;
+      } catch {
+        continue;
+      }
+      const next = await this.exclusive(async () => {
+        const current = await this.ctx.storage.get<RememberedTrust>(trustKey(hash));
+        const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
+        if (
+          !current ||
+          current.user !== trust.user ||
+          current.device !== trust.device ||
+          current.at !== trust.at ||
+          !g?.remembered ||
+          g.remembered.user !== trust.user ||
+          g.remembered.device !== trust.device ||
+          g.remembered.at !== trust.at
+        )
+          return null;
+        // Re-read attachments after auth: logout, navigation or socket closure
+        // while awaiting the RPC wins. Another live tab of this same session is OK.
+        const page = pages.find(({ ws }) => {
+          const a = att(ws);
+          return (
+            a?.role === "page" &&
+            a.thread === OWNER_THREAD &&
+            !a.embed &&
+            a.user === trust.user &&
+            a.device === trust.device &&
+            a.session === session &&
+            (a.sessionUntil ?? 0) > this.now() &&
+            (ws.readyState === undefined || ws.readyState <= 1)
+          );
+        });
+        if (!page) return null;
+        const a = att(page.ws) as PageAtt;
+        const lease: Grant = {
+          ...g,
+          until: Math.min(this.now() + EVAL_GRANT_MS, a.sessionUntil!),
+          renew: { user: trust.user, device: trust.device, session, start: this.now(), count: 0 },
+        };
+        await this.putGrant(hash, lease);
+        return lease;
+      });
+      if (next) return next;
+    }
+    return null;
+  }
+
   /** The owner's live grant behind a token, or null (and a lapsed one deleted). */
   private async liveGrant(token: string) {
     const hash = await hashToken(token.slice(0, 256));
     const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
+    if (g?.remembered) {
+      const renewed = await this.rememberedLease(hash);
+      return renewed ? { hash, g: renewed } : null;
+    }
     if (g && g.until > this.now()) return { hash, g };
     if (g) await this.dropGrant(hash);
     return null;
@@ -2535,6 +2657,18 @@ export class DebugHub {
   private async resume(ws: Socket, url: URL, token: string) {
     const live = await this.liveGrant(token);
     if (!live) {
+      // Paused authority is not an invalid credential: 4498 would make the
+      // CLI discard it and prompt again. Keep it for the next same-account login.
+      const remembered = await this.ctx.storage.get<RememberedTrust>(
+        trustKey(await hashToken(token.slice(0, 256))),
+      );
+      if (remembered) {
+        send(ws, {
+          type: "error",
+          error: "remembered trust paused: sign in on the approved device",
+        });
+        return close(ws, 4409, "remembered trust paused");
+      }
       send(ws, { type: "error", error: "grant is not valid (expired or ended)" });
       return close(ws, 4498, "grant invalid");
     }
@@ -2552,6 +2686,7 @@ export class DebugHub {
       until: g.until,
       scope,
       grant: hash,
+      ...(g.remembered ? { remembered: g.remembered, rememberedSession: g.renew?.session } : {}),
       ...(scope === "eval" && g.pages ? { pages: g.pages } : {}),
       ...(url.searchParams.get("beat") === "1" ? { beat: true } : {}),
       ...whereOf(url),
@@ -2998,10 +3133,16 @@ export class DebugHub {
         : send(ws, this.state(page.thread));
     // Only a pairing made for this page's own audience can be answered or sent results.
     const c = this.controller(m.type === "result" || m.type === "chunk" ? m.to : m.pair);
-    if (!c || audience(c.a) !== page.thread) return send(ws, this.state(page.thread));
+    if (
+      !c ||
+      audience(c.a) !== page.thread ||
+      (c.a.remembered && c.a.remembered.user !== page.user)
+    )
+      return send(ws, this.state(page.thread));
     if (m.type === "allow") {
       const pages = this.grantPages(page, m.pages);
       // Approved already: another page joins its grant ("Authorize this page" later).
+      if (c.a.remembered) return send(ws, this.state(page.thread));
       if (c.a.until && c.a.until > t) return this.widen(c.a, pages);
       if (c.a.until || t - c.a.at >= PENDING_MS) return send(ws, this.state(page.thread));
       // Allow grants what the requester asked for (`scope` from an older page
@@ -3009,12 +3150,13 @@ export class DebugHub {
       // A chat grant is for every page: a phone's page comes and goes with the app.
       return (c.a.scope === "chat" || m.scope === "chat") && !c.a.forUser
         ? this.allowChat(c.ws, c.a)
-        : this.allowEval(c.ws, c.a, pages, page);
+        : this.allowEval(c.ws, c.a, pages, page, m.remember, ws);
     }
     if (m.type === "deny" || m.type === "revoke") return this.end(m.type, c.ws, c.a);
     // A result (or a streamed piece of one) goes back only to an approved
     // controller that is still in time.
     if ((m.type !== "result" && m.type !== "chunk") || !c.a.until || c.a.until <= t) return;
+    if (c.a.remembered && !this.reach(c.a, page.thread).some((p) => p.ws === ws)) return;
     const { to: _to, ...rest } = m;
     send(c.ws, { ...rest, page: page.label });
   }
@@ -3349,7 +3491,38 @@ export class DebugHub {
    * The owner's is bound for renewal to the answering page's device and
    * session, when that page has both ("Renewal" above).
    */
-  private async allowEval(ws: Socket, a: ControllerAtt, pages?: string[], by?: PageAtt) {
+  private async allowEval(
+    ws: Socket,
+    a: ControllerAtt,
+    pages?: string[],
+    by?: PageAtt,
+    remember = false,
+    approver?: Socket,
+  ) {
+    if (
+      remember &&
+      (a.forUser ||
+        !by?.user ||
+        !by.device ||
+        !by.session ||
+        (by.sessionUntil ?? 0) <= this.now() ||
+        !this.sessions ||
+        !approver)
+    )
+      return send(ws, {
+        type: "error",
+        error: "remember requires a signed-in developer page on this device",
+      });
+    if (remember) {
+      let live = false;
+      try {
+        live = (await this.sessions!.live(by!.user!, by!.session!)) === "live";
+      } catch {
+        /* fail closed */
+      }
+      if (!live)
+        return send(ws, { type: "error", error: "remember requires a live developer session" });
+    }
     const t = this.now();
     if (a.forUser) {
       const until = t + APPROVAL_MS;
@@ -3365,7 +3538,11 @@ export class DebugHub {
     // before that rule has neither: 8 hours, the pages ticked.
     const ms = a.grantMs ?? EVAL_GRANT_MS;
     if (a.allPages) pages = undefined;
-    const until = t + ms;
+    const until = remember ? Math.min(t + EVAL_GRANT_MS, by!.sessionUntil!) : t + ms;
+    const remembered: RememberedTrust | undefined = remember
+      ? { user: by!.user!, device: by!.device!, at: t }
+      : undefined;
+    if (remembered) pages = undefined;
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));
     const grant = await hashToken(token);
     // Only an owner page signed in with a session, on a known device, starts a chain.
@@ -3377,19 +3554,53 @@ export class DebugHub {
       label: a.label,
       until,
       scope: "eval",
+      ...(remembered ? { remembered } : {}),
       at: t,
       ms,
       ...(pages ? { pages } : {}),
       ...(renew ? { renew } : {}),
     };
-    await this.putGrant(grant, g);
-    ws.serializeAttachment({ ...a, until, scope: "eval", pages, grant } satisfies ControllerAtt);
+    const save = async () => {
+      if (remembered) {
+        const current = att(ws);
+        const page = approver && att(approver);
+        if (
+          ws.readyState === 3 ||
+          current?.role !== "controller" ||
+          current.pair !== a.pair ||
+          current.until ||
+          current.scope !== a.scope ||
+          !page ||
+          page.role !== "page" ||
+          page.thread !== OWNER_THREAD ||
+          page.embed ||
+          page.user !== by!.user ||
+          page.device !== by!.device ||
+          page.session !== by!.session ||
+          (page.sessionUntil ?? 0) <= this.now() ||
+          approver?.readyState === 3
+        )
+          return false;
+        await this.ctx.storage.put(trustKey(grant), remembered);
+      }
+      await this.putGrant(grant, g);
+      ws.serializeAttachment({
+        ...a,
+        until,
+        scope: "eval",
+        pages,
+        grant,
+        ...(remembered ? { remembered, rememberedSession: by!.session } : {}),
+      } satisfies ControllerAtt);
+      return true;
+    };
+    if (!(remembered ? await this.exclusive(save) : await save())) return;
     send(ws, {
       type: "approved",
       until,
       scope: "eval",
       token,
-      ...(renew ? { renewsUntil: t + EVAL_CHAIN_MS } : {}),
+      ...(renew && !remembered ? { renewsUntil: t + EVAL_CHAIN_MS } : {}),
     });
     console.log(
       JSON.stringify({
@@ -3419,6 +3630,7 @@ export class DebugHub {
       prefix.length === 40 ? [...(this.grants ?? [])].find(([h]) => h.startsWith(prefix)) : null;
     if (!found || found[1].scope !== "eval") return send(ws, this.state(page.thread));
     const [hash, g] = found;
+    if (g.remembered && g.remembered.user !== page.user) return send(ws, this.state(page.thread));
     if (m.type === "revoke") {
       await this.dropGrant(hash);
       // Nothing should hold it (it was listed as asleep), but close any that does.
@@ -3430,6 +3642,7 @@ export class DebugHub {
       console.log(JSON.stringify({ msg: "debug.revoke", grant: "idle", label: g.label }));
       return this.broadcast();
     }
+    if (g.remembered) return this.broadcast();
     if (g.pages) {
       const more = this.grantPages(page, m.pages);
       const next = more ? [...new Set([...g.pages, ...more])] : undefined;
@@ -3542,6 +3755,22 @@ export class DebugHub {
   }
 
   private fromController(ws: Socket, c: ControllerAtt, raw: unknown): void | Promise<void> {
+    if (c.remembered && c.grant)
+      return this.rememberedLease(c.grant).then((g) => {
+        if (!g)
+          return send(ws, {
+            type: "error",
+            error: "remembered trust paused: sign in on the approved device, or pair again",
+          });
+        const next = { ...c, until: g.until, rememberedSession: g.renew?.session };
+        ws.serializeAttachment(next);
+        if (g.until !== c.until) send(ws, { type: "renewed", until: g.until, count: 0 });
+        return this.fromApprovedController(ws, next, raw);
+      });
+    return this.fromApprovedController(ws, c, raw);
+  }
+
+  private fromApprovedController(ws: Socket, c: ControllerAtt, raw: unknown): void | Promise<void> {
     const t = this.now();
     if (!c.until) return send(ws, { type: "error", error: "not approved yet" });
     if (c.until <= t) {

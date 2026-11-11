@@ -273,7 +273,7 @@ export type PageMessage =
    * connects later). Absent (a page from before) = "all". `scope` is the old
    * page's choice; the requester's own scope is what counts now.
    */
-  | { type: "allow"; pair: string; scope?: "chat"; pages?: string[] | "all" }
+  | { type: "allow"; pair: string; scope?: "chat"; pages?: string[] | "all"; remember?: boolean }
   | { type: "deny" | "revoke"; pair: string }
   /** `to`: the state-tree node it is addressed to (absent = the main thread). */
   /** `source: "stt"`: sent from the widget's mic, unchanged (absent = typed). */
@@ -583,6 +583,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       type: "allow",
       pair,
       ...(m.scope === "chat" ? { scope: "chat" as const } : {}),
+      ...(m.remember === true ? { remember: true } : {}),
       ...(pages ? { pages } : {}),
     };
   }

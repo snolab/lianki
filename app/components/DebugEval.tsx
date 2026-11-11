@@ -1,4 +1,5 @@
 "use client";
+import { evalTrustStrings } from "../../packages/debug-chat/src/eval-trust-strings";
 
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -824,7 +825,12 @@ export function DebugEval({
    * `scope: "chat"` for a chat request too, so a hub from before requested
    * scopes still grants the right thing.
    */
-  const answer = (type: "allow" | "deny" | "revoke", p: PairInfo, pages?: string[] | "all") => {
+  const answer = (
+    type: "allow" | "deny" | "revoke",
+    p: PairInfo,
+    pages?: string[] | "all",
+    remember = false,
+  ) => {
     const scope = type === "allow" && p.scope === "chat" && !friendRef.current ? "chat" : undefined;
     try {
       sockRef.current?.send(
@@ -833,6 +839,7 @@ export function DebugEval({
           pair: p.pair,
           ...(scope ? { scope } : {}),
           ...(type === "allow" && pages ? { pages } : {}),
+          ...(type === "allow" && remember ? { remember: true } : {}),
         }),
       );
     } catch {}
@@ -1067,7 +1074,7 @@ export function DebugEval({
             friend={isFriend}
             pages={state?.pages ?? []}
             selfPage={state?.self}
-            onAllow={(pages) => answer("allow", pending, pages)}
+            onAllow={(pages, remember) => answer("allow", pending, pages, remember)}
             onDeny={() => answer("deny", pending)}
           />
         </Suspense>
@@ -1088,8 +1095,15 @@ export function DebugEval({
               className="flex items-center gap-2 rounded-full py-0.5 pl-2 pr-0.5"
               style={{ background: "oklch(0.55 0.15 30 / 0.9)" }}
             >
-              <span title={`until ${new Date(s.until ?? 0).toISOString()}`}>
-                {isFriend ? "preview" : s.scope === "chat" ? "chat" : "eval"}: {s.label} · {s.code}
+              <span
+                title={
+                  s.persistent
+                    ? evalTrustStrings().scope
+                    : `until ${new Date(s.until ?? 0).toISOString()}`
+                }
+              >
+                {isFriend ? "preview" : s.scope === "chat" ? "chat" : "eval"}: {s.label} ·{" "}
+                {s.persistent ? evalTrustStrings().remember : s.code}
               </span>
               <button
                 type="button"
