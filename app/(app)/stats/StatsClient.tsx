@@ -105,7 +105,7 @@ export default function StatsClient({ youtubeKey, dev }: { youtubeKey: boolean; 
   // shows one translated line with a retry.
   const load = () =>
     fetch("/api/fsrs/watch/overview?top=20")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`overview answered ${r.status}`))))
       .then((d: WatchOverview) => {
         setError(false);
         setData(d);
