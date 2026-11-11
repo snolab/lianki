@@ -372,6 +372,101 @@ for (const [w, h] of [
   await rail.close();
 }
 
+// 5b1b. The rail folds away (owner, 2026-11-11, an Android tablet at 902 px:
+// no way to fold it, and the content stayed squeezed). The "«" switch at the
+// rail's top folds it; folded, <main> spans the window with no padding, and
+// "»" (top bar, then floating once that has scrolled away) brings it back.
+// No rail icon is clipped, open or in the phone drawer.
+{
+  const fold = await ctx.newPage();
+  await fold.setViewportSize({ width: 902, height: 700 });
+  await fold.goto(`${BASE}/home`, { waitUntil: "networkidle" });
+  const measure = () =>
+    fold.evaluate(() => {
+      const main = document.querySelector("main");
+      const aside = document.querySelector("[data-app-nav]");
+      const nav = aside.querySelector("nav");
+      const nb = nav.getBoundingClientRect();
+      // An icon is clipped when it reaches past the rail's scroller (which
+      // clips sideways, overflow-y: auto).
+      const clipped = [...nav.querySelectorAll("a svg")]
+        .map((s) => s.getBoundingClientRect())
+        .filter((r) => r.width && (r.left < nb.left - 0.5 || r.right > nb.right + 0.5)).length;
+      return {
+        mainW: Math.round(main.getBoundingClientRect().width),
+        pad: parseFloat(getComputedStyle(main).paddingInlineStart),
+        railShown: getComputedStyle(aside).display !== "none",
+        clipped,
+        vw: document.documentElement.clientWidth,
+      };
+    });
+  const open = await measure();
+  const collapse = fold.locator("[data-rail-collapse]");
+  const openExpanded = await collapse.getAttribute("aria-expanded");
+  await collapse.click();
+  await fold.locator('[data-rail-expand="header"]').waitFor({ timeout: budget(5000) });
+  const shut = await measure();
+  const headExpanded = await fold
+    .locator('[data-rail-expand="header"]')
+    .getAttribute("aria-expanded");
+  check(
+    open.railShown &&
+      open.pad > 200 &&
+      open.clipped === 0 &&
+      openExpanded === "true" &&
+      !shut.railShown &&
+      shut.pad === 0 &&
+      Math.abs(shut.mainW - shut.vw) <= 1 &&
+      headExpanded === "false",
+    `rail fold 902px: "«" folds it, <main> then spans the window with no padding, no clipped icon (${JSON.stringify({ open, shut, openExpanded, headExpanded })})`,
+  );
+  await fold.mouse.wheel(0, 600);
+  const float = fold.locator('[data-rail-expand="float"]');
+  const floated = await float
+    .waitFor({ state: "visible", timeout: budget(5000) })
+    .then(() => true)
+    .catch(() => false);
+  const fb = floated ? await float.boundingBox() : null;
+  if (floated) await float.click();
+  else await fold.locator('[data-rail-expand="header"]').click();
+  await collapse.waitFor({ state: "visible", timeout: budget(5000) });
+  const back = await measure();
+  check(
+    floated && fb && fb.x >= 24 && fb.y >= 0 && back.railShown && back.pad > 200,
+    `rail fold 902px scrolled: the floating "»" (inset from the edge) brings the rail back (${JSON.stringify({ fb, back })})`,
+  );
+  // The fold is a device preference: it must not leak into later checks.
+  check(
+    (await fold.evaluate(() => localStorage.getItem("lk:pref:sidebar") ?? "")).includes(
+      '"collapsed":false',
+    ),
+    "rail fold: stored open again in lk:pref:sidebar",
+  );
+  // The phone drawer: its "«" closes it, and no icon is clipped there either.
+  await fold.setViewportSize({ width: 360, height: 700 });
+  await fold.evaluate(() => scrollTo(0, 0));
+  await fold.getByRole("button", { name: "Menu", exact: true }).click();
+  const drawer = fold.locator("[data-drawer]");
+  await drawer.waitFor({ timeout: budget(5000) });
+  const phoneClipped = await fold.evaluate(() => {
+    const nav = document.querySelector("[data-drawer] nav");
+    const nb = nav.getBoundingClientRect();
+    return [...nav.querySelectorAll("a svg")]
+      .map((s) => s.getBoundingClientRect())
+      .filter((r) => r.width && (r.left < nb.left - 0.5 || r.right > nb.right + 0.5)).length;
+  });
+  await fold.locator("[data-drawer-close]").click();
+  const drawerShut = await drawer
+    .waitFor({ state: "detached", timeout: budget(5000) })
+    .then(() => true)
+    .catch(() => false);
+  check(
+    phoneClipped === 0 && drawerShut,
+    `phone drawer 360px: no clipped icon, its "«" closes it (${JSON.stringify({ phoneClipped, drawerShut })})`,
+  );
+  await fold.close();
+}
+
 // 5b2. Name and picture: pen, edit, save; the nav changes without a reload.
 {
   await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });

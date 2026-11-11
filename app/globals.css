@@ -1221,6 +1221,17 @@ html[data-embed] .lk-statusbar {
   -webkit-backdrop-filter: blur(12px) saturate(1.4);
   backdrop-filter: blur(12px) saturate(1.4);
 }
+/* The folded rail's floating handle (AppShell RailToggle), shown once the top
+ * bar has scrolled away: at the top start, under what is left of the bar,
+ * and inset from the screen edge so a tap never lands in Android's back
+ * strip (design-principles.md, "Edge gestures"). */
+.lk-rail-handle {
+  top: calc(max(var(--lk-head-vis, 0px), env(safe-area-inset-top)) + 0.5rem);
+  inset-inline-start: var(--lk-edge-l, 1.5rem);
+}
+[dir="rtl"] .lk-rail-handle {
+  inset-inline-start: var(--lk-edge-r, 1.5rem);
+}
 @media (min-width: 48rem) and (max-width: 79.99rem) {
   .lk-rail {
     position: static;
