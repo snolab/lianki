@@ -4,8 +4,8 @@
  * string; this file adds the other 13 locales for the strings every chat user
  * sees (LEGACY_KEYS), and the strings that were written inline in
  * DebugChat / MicButton / mic.ts / DebugEval (ChatExtra), in all 16.
- * Developer-only strings (the state tree, latency, mic readouts) stay in
- * en / zh / ja. app/components/chat-ui.content.ts mirrors these tables as the
+ * Developer-only strings (the state tree, latency, mic readouts) have their
+ * other 13 locales in dev-ui-locales.ts. app/components/chat-ui.content.ts mirrors these tables as the
  * intlayer dictionary `chat-ui`, with the context lines below as its
  * description; edit here.
  */
@@ -163,7 +163,9 @@ export const EXTRA_CONTEXT: ChatExtra = {
   rateLimited: `In ${CHAT}: a line above the chat box when the user sent too many messages; the last one was not sent; {n} is how many minutes to wait. Keep {n}.`,
 };
 
-type Other = Exclude<ChatLocale, "en" | "zh" | "ja">;
+/** The 13 app locales ui-strings.ts does not carry. */
+export type OtherLocale = Exclude<ChatLocale, "en" | "zh" | "ja">;
+type Other = OtherLocale;
 
 /** The legacy keys in the 13 locales ui-strings.ts does not carry. */
 export const OTHER_LEGACY: Record<Other, LegacyStrings> = {

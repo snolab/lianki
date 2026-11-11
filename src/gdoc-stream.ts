@@ -11,6 +11,7 @@
  * Only a doc the user switched on is ever sent; the switch is remembered per doc.
  */
 import { parseBindOps, type TailOp } from "../lib/read/gdoc-tail";
+import { userscriptStrings } from "./userscript-strings";
 
 declare const unsafeWindow: Window & typeof globalThis;
 
@@ -45,12 +46,13 @@ export function startGdocStream(deps: GdocStreamDeps): void {
   if (!id) return;
   const { quietMs, maxWaitMs, exportLagMs, retryShortMs } = { ...TIMING, ...deps.timing };
   const key = `lk:gdoc-stream:${id}`;
-  const zh = /^zh\b/i.test(navigator.language);
+  // In the browser's language, one of the 16 (userscript-strings.ts).
+  const us = userscriptStrings(navigator.language);
   const label = {
-    start: zh ? "同步到 Lianki" : "Stream to Lianki",
-    stop: zh ? "停止同步" : "Stop streaming",
-    failed: zh ? "同步失败，重试中" : "Sync failed, retrying",
-    open: zh ? "在 Lianki 中打开" : "Open in Lianki",
+    start: us.gdocStart,
+    stop: us.gdocStop,
+    failed: us.gdocFailed,
+    open: us.gdocOpen,
   };
 
   let on = false;
