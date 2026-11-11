@@ -47,7 +47,7 @@ const tokenFile = (name: string, env: string) =>
   process.env[env] ? resolve(process.env[env]) : join(mainRoot(), name);
 /** The chat grant (30 days, chat only). */
 export const TOKEN_FILE = tokenFile(".debug-chat-token.json", "LIANKI_CHAT_TOKEN_FILE");
-/** The eval grant (8 hours, eval and chat). */
+/** The eval grant (eval and chat; its length is live config, debug.evalGrantHours). */
 export const EVAL_TOKEN_FILE = tokenFile(".debug-eval-token.json", "LIANKI_EVAL_TOKEN_FILE");
 const loadFrom = (file: string) => {
   let text: string | undefined;
@@ -183,7 +183,7 @@ export function controller({ label, labelFlag, forEmail, noPair, node, agent }: 
           );
         else if (m.type === "pending")
           console.error(
-            `Pairing as "${label}" (code and chat, 8 hours). On the page, tap Allow if it shows code  ${m.code}`,
+            `Pairing as "${label}" (code and chat; the page says for how long). On the page, tap Allow if it shows code  ${m.code}`,
           );
         else if (m.type === "approved") {
           clearTimeout(give);
