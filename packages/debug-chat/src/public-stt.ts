@@ -44,6 +44,15 @@ export type PublicSession = {
 export const isPublicRoute = (u: string) => (PUBLIC_ROUTES as readonly string[]).includes(u);
 /** A mic route list (space separated) that is Lianki's speech servers' public one. */
 export const isPublicRoutes = (urls: string) => urls.split(/[\s,]+/).some(isPublicRoute);
+/**
+ * A route list that mixes them with the owner's own sockets (the tailnet, the tunnel):
+ * his phone reaching his own Mac over WebRTC beside the tailnet (docs/local-stt.md,
+ * "His own Mac over WebRTC"). His device, thread and filter go along on every route.
+ */
+export const isMixedRoutes = (urls: string) => {
+  const list = urls.split(/[\s,]+/).filter(Boolean);
+  return list.some(isPublicRoute) && list.some((u) => !isPublicRoute(u));
+};
 /** The route list the mic gets once the account may use them and agreed (DebugChat). */
 export const PUBLIC_ROUTE_LIST = PUBLIC_ROUTES.join(" ");
 
@@ -139,6 +148,16 @@ export function publicOpen(d: PublicDeps = {}): (url: string) => WsLike {
     else queueMicrotask(() => shim.fail(4000, "not a public route"));
     return shim;
   };
+}
+
+/** The `open` for a mixed list: a public route through publicOpen, any other a plain WebSocket. */
+export function mixedOpen(
+  d: PublicDeps = {},
+  ws: (url: string, protocols?: string[]) => WsLike = (u, p) =>
+    new WebSocket(u, p) as unknown as WsLike,
+): (url: string, protocols?: string[]) => WsLike {
+  const pub = publicOpen(d);
+  return (url, protocols) => (isPublicRoute(url) ? pub(url) : ws(url, protocols));
 }
 
 /** A WebSocket's face on whatever carries the protocol. */

@@ -114,6 +114,9 @@ describe.skipIf(!hasVenv)("speech server peer listener: other accounts, v2 ticke
     const dir = mkdtempSync(join(tmpdir(), "stt-peer-"));
     const pubFile = join(dir, "ticket.pub");
     writeFileSync(pubFile, `${k.pub}\n`, { mode: 0o644 });
+    // This Mac's own account (its WebRTC sessions are the owner's).
+    const ownerFile = join(dir, "peer-owner");
+    writeFileSync(ownerFile, "acct_owner\n", { mode: 0o600 });
     proc = Bun.spawn(
       [
         PY,
@@ -133,6 +136,8 @@ describe.skipIf(!hasVenv)("speech server peer listener: other accounts, v2 ticke
         "2",
         "--ticket-pubkey",
         pubFile,
+        "--peer-owner-file",
+        ownerFile,
       ],
       { stdout: "pipe", stderr: "inherit" },
     );
@@ -213,6 +218,25 @@ describe.skipIf(!hasVenv)("speech server peer listener: other accounts, v2 ticke
     expect(m.audioMs).toBe(2000);
     expect(m.speaker).toBeUndefined();
     expect(m.speakerProof).toBeUndefined();
+    a.ws.close();
+  });
+
+  it("the Mac's own account is the owner here: voiceprint ops answer, no ticket limits", async () => {
+    const t = (await signSttTicketV2(k.sign, { sub: "acct_owner", lim: { utt: 2, sess: 900 } }))
+      .ticket;
+    const a = await open(t);
+    sockets.push(a.ws);
+    expect(await a.next()).toMatchObject({ t: "ready", engine: "fake" });
+    a.ws.send(JSON.stringify({ t: "voiceprint", op: "status", rid: "r2" }));
+    const status = await a.next();
+    expect(status).toMatchObject({ t: "voiceprint", rid: "r2" });
+    expect(status.error).not.toBe("not on this route");
+    a.ws.send(JSON.stringify({ t: "begin", id: 1 }));
+    for (let i = 0; i < 6; i++) a.ws.send(halfSecond());
+    a.ws.send(JSON.stringify({ t: "end", id: 1 }));
+    let m = await a.next();
+    while (m.t !== "final") m = await a.next();
+    expect(m.audioMs).toBe(3000); // the owner's own limit, not the ticket's 2 s
     a.ws.close();
   });
 

@@ -34,7 +34,13 @@ import { voiceLatency, noteSttVia } from "./latency";
 import { type SttTag, sttTagOf } from "./wire";
 import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
-import { PUBLIC_CONNECT_TIMEOUT_MS, isPublicRoutes, publicOpen } from "./public-stt";
+import {
+  PUBLIC_CONNECT_TIMEOUT_MS,
+  isMixedRoutes,
+  isPublicRoutes,
+  mixedOpen,
+  publicOpen,
+} from "./public-stt";
 import type { SttSignals } from "./stt-guard";
 import { VOICE_DEVICE_KEY, deviceSlug, filterSwitch, filterVerdict, noteFiltered, noteSpeaker, subscribeFiltered } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
@@ -520,8 +526,19 @@ function session(): MicSession {
     // The device goes along, so the Mac scores finals against this device's voiceprint.
     // Lianki's speech servers for another account (public-stt.ts): no device, no thread,
     // no filter (none of the owner's voiceprint applies), WebRTC then the WSS tunnel.
+    // His own list may mix rtc:lianki (his phone to his own Mac over WebRTC) with the
+    // tailnet: each route its own transport, and everything of his goes along.
     localStt: (url) =>
-      isPublicRoutes(url)
+      isMixedRoutes(url)
+        ? createLocalStt(url, {
+            log: (ev) => v.log(ev),
+            open: mixedOpen({ log: (ev) => v.log(ev) }),
+            connectTimeoutMs: PUBLIC_CONNECT_TIMEOUT_MS,
+            device: voiceDevice(),
+            thread: "owner",
+            filter: filterSwitch(),
+          })
+        : isPublicRoutes(url)
         ? createLocalStt(url, {
             log: (ev) => v.log(ev),
             open: publicOpen({ log: (ev) => v.log(ev) }),

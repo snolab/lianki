@@ -68,6 +68,7 @@ import asyncio
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -123,6 +124,8 @@ PEER_SUBPROTOCOL = "lianki-stt2"
 PEER_ORIGINS = ["https://lianki.com"]
 #: Sockets at once on the peer listener: config stt.worker.macCapacity - macReserved (3 - 1).
 MAX_PEER = 2
+#: This Mac's own account id (--peer-owner-file): its sessions over WebRTC are the owner's.
+PEER_OWNER_FILE = os.path.expanduser("~/.config/lianki-stt/peer-owner")
 #: Their own subfolder of the voiceprint store, per account (none enrolled yet; see account_store).
 ACCOUNTS_DIR = "accounts"
 #: Where tunnel.sh turns the tunnel listener on and off, so the oxmgr entry never changes.
@@ -695,10 +698,13 @@ class PeerGate:
     ticket's limits go to the handler; its account id is never logged.
     """
 
-    def __init__(self, tickets: Tickets, max_open: int = MAX_PEER):
+    def __init__(self, tickets: Tickets, max_open: int = MAX_PEER, owner: str = ""):
         self.tickets = tickets
         self.max_open = max_open
         self.open = 0
+        #: The account this Mac belongs to (--peer-owner-file): its own sessions, reaching it
+        #: over WebRTC, are the owner's (his device, thread, voiceprint), not a guest's.
+        self.owner = owner
 
     def check(self, conn, req):
         if req.headers.get("Origin") not in PEER_ORIGINS:
@@ -721,6 +727,7 @@ class PeerGate:
             log(f"peer: refused, ticket {why}")  # the reason only, never the ticket
             return conn.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
         conn.lianki_limits = dict(p["lim"])
+        conn.lianki_owner = bool(self.owner) and p.get("sub") == self.owner
         return None
 
     def wrap(self, handler):
@@ -730,11 +737,32 @@ class PeerGate:
                 if self.open > self.max_open:
                     await ws.close(1013, "busy")
                     return
-                await handler(ws, "peer", getattr(ws, "lianki_limits", None) or {"utt": MAX_S, "sess": 60})
+                if getattr(ws, "lianki_owner", False):
+                    await handler(ws, "peer-owner")  # this Mac's own account: everything of his applies
+                else:
+                    await handler(ws, "peer", getattr(ws, "lianki_limits", None) or {"utt": MAX_S, "sess": 60})
             finally:
                 self.open -= 1
 
         return run
+
+
+def peer_owner(path: str) -> str:
+    """
+    The account id in --peer-owner-file (one line, written when this Mac was registered
+    as that account's own speech server), or "" when there is none or it is not safe:
+    a symlink, another user's, or writable by others.
+    """
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return ""
+    if stat.S_ISLNK(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o022:
+        log(f"peer owner file ignored: not ours or not private ({path})")
+        return ""
+    with open(path, encoding="utf-8") as f:
+        sub = f.read().strip()
+    return sub if re.fullmatch(r"[A-Za-z0-9_-]{1,128}", sub) else ""
 
 
 def account_store(root: str, sub: str) -> str:
@@ -851,6 +879,8 @@ async def main() -> None:
                     help='{"port":…,"pubkey":…} written by tunnel.sh; "" for none')
     ap.add_argument("--peer-port", type=int, default=0,
                     help="also listen here for stt-peer (other accounts, v2 tickets required); 0 = off")
+    ap.add_argument("--peer-owner-file", default=PEER_OWNER_FILE,
+                    help="this Mac's own account id: its WebRTC sessions are the owner's")
     ap.add_argument("--peer-max", type=int, default=MAX_PEER, help="sockets at once on the peer listener")
     ap.add_argument("--speaker", default=os.environ.get("LIANKI_STT_SPEAKER", "campp"),
                     help='speaker check models in order ("campp", "campp,eres2netv2"); "" or 0 = off')
@@ -878,7 +908,8 @@ async def main() -> None:
     if a.peer_port:
         pk = pubkey or DEFAULT_PUBKEY
         try:
-            peer_gate = PeerGate(Tickets(load_public_key(pk), aud=V2_AUD), max_open=max(0, a.peer_max))
+            peer_gate = PeerGate(Tickets(load_public_key(pk), aud=V2_AUD), max_open=max(0, a.peer_max),
+                                 owner=peer_owner(a.peer_owner_file))
         except (OSError, ValueError) as e:
             reason = str(e) if isinstance(e, ValueError) else type(e).__name__
             log(f"peer listener off: no usable ticket key at {pk} ({reason})")
