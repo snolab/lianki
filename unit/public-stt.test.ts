@@ -8,7 +8,11 @@
 import { describe, expect, test } from "bun:test";
 import { createLocalStt } from "../packages/debug-chat/src/local-stt";
 import {
+  SPARE_MIN_LEFT_MS,
   CONSENT_KEY,
+  DISCONNECTED_GRACE_MS,
+  RESTART_TIMEOUT_MS,
+  RESUME_GRACE_MS,
   PUBLIC_ROUTE_LIST,
   PUBLIC_RTC_URL,
   PUBLIC_WSS_URL,
@@ -131,9 +135,10 @@ describe("rtc:lianki", () => {
     ws.onopen = () => (opened = true);
     ws.onmessage = (e) => got.push(e.data);
     await tick();
-    expect(r.asked).toEqual(["POST /api/stt/session"]);
+    // The session, then a spare for the next race (a failover should not wait for lianki.com).
+    expect(r.asked).toEqual(["POST /api/stt/session", "POST /api/stt/session"]);
     const sig = r.socks[0];
-    expect(sig.url).toBe("wss://lianki.com/api/version/stt/signal");
+    expect(sig.url).toBe("wss://lianki.com/api/version/stt/signal?lobby=1");
     expect(sig.protocols).toEqual(["lianki-stt2", "tk.sig"]);
     sig.push({ t: "ready", sid: "s1" });
     await tick();
@@ -433,7 +438,7 @@ describe("the browser's own pieces by default", () => {
     try {
       const ws = publicOpen()(PUBLIC_RTC_URL);
       await tick();
-      expect(socks[0].url).toBe("wss://lianki.com/api/version/stt/signal");
+      expect(socks[0].url).toBe("wss://lianki.com/api/version/stt/signal?lobby=1");
       socks[0].push({ t: "ready", sid: "s1" });
       await tick();
       expect(peers).toHaveLength(1);
@@ -483,5 +488,392 @@ describe("errors on the carriers", () => {
     await tick();
     expect(code).toBe(4007);
     ws.close();
+  });
+});
+
+describe("rtc:lianki: routes that come and go (docs/local-stt.md)", () => {
+  /** A rig with the page's events, timers and clock in the test's hands, at an open channel. */
+  async function moving() {
+    const socks: FakeSock[] = [];
+    const peers: (FakePeer & { offers: unknown[] })[] = [];
+    const logs: Record<string, unknown>[] = [];
+    let fire: ((why: "online" | "visible") => void) | null = null;
+    let t = 0;
+    const timers: { f: () => void; ms: number; live: boolean }[] = [];
+    let available = 0;
+    const open = publicOpen({
+      fetch: async () => new Response(JSON.stringify(SESSION)),
+      socket: (u, p) => {
+        const x = new FakeSock(u, p);
+        socks.push(x);
+        return x;
+      },
+      peer: (o) => {
+        const p = Object.assign(new FakePeer(o), { offers: [] as unknown[] });
+        const plain = p.createOffer.bind(p);
+        p.createOffer = async (opts?: { iceRestart?: boolean }) => {
+          p.offers.push(opts ?? {});
+          return opts?.iceRestart ? { type: "offer", sdp: "v=0 restart" } : plain();
+        };
+        peers.push(p);
+        return p as never;
+      },
+      origin: () => "wss://lianki.com",
+      log: (ev) => logs.push(ev),
+      events: (f) => {
+        fire = f;
+        return () => (fire = null);
+      },
+      setTimer: (f, ms) => {
+        const x = { f, ms, live: true };
+        timers.push(x);
+        return x;
+      },
+      clearTimer: (x) => {
+        if (x) (x as { live: boolean }).live = false;
+      },
+      now: () => t,
+      available: () => void available++,
+    });
+    const ws = open(PUBLIC_RTC_URL);
+    const closes: { code?: number; reason?: string }[] = [];
+    ws.onclose = (e) => closes.push(e as { code?: number; reason?: string });
+    await tick();
+    const sig = socks[0];
+    sig.readyState = 1;
+    sig.push({ t: "ready", sid: "s1", resume: "r1" });
+    await tick();
+    const pc = peers[0];
+    sig.push({ t: "answer", sdp: "v=0 answer" });
+    await tick();
+    pc.dc.onopen?.();
+    pc.connectionState = "connected";
+    pc.onconnectionstatechange?.();
+    const state = (st: string) => {
+      pc.connectionState = st;
+      pc.onconnectionstatechange?.();
+    };
+    const run = (ms: number) => {
+      for (const x of timers.filter((y) => y.live && y.ms === ms)) {
+        x.live = false;
+        x.f();
+      }
+    };
+    const offers = (x: FakeSock) => x.sent.map((m) => JSON.parse(m)).filter((m) => m.t === "offer");
+    return {
+      ws,
+      socks,
+      sig,
+      pc,
+      logs,
+      closes,
+      state,
+      run,
+      offers,
+      fire: (why: "online" | "visible") => fire?.(why),
+      advance: (ms: number) => void (t += ms),
+      available: () => available,
+    };
+  }
+
+  test("online (a new network): an ICE restart on the same peer connection; the route stays open", async () => {
+    const h = await moving();
+    h.fire("online");
+    await tick();
+    expect(h.pc.offers.at(-1)).toEqual({ iceRestart: true });
+    expect(h.offers(h.sig).at(-1)).toEqual({ t: "offer", sdp: "v=0 restart" });
+    h.sig.push({ t: "answer", sdp: "v=0 answer 2" });
+    await tick();
+    expect(h.pc.remote).toBe("v=0 answer 2");
+    h.state("connected");
+    expect(h.logs).toContainEqual(expect.objectContaining({ state: "restarted" }));
+    h.run(RESTART_TIMEOUT_MS); // cleared: nothing fails
+    expect(h.closes).toHaveLength(0);
+    expect(h.ws.readyState).toBe(1);
+  });
+
+  test("ICE disconnected past DISCONNECTED_GRACE_MS: a restart; not connected in time, the route is lost", async () => {
+    const h = await moving();
+    h.state("disconnected");
+    expect(h.pc.offers).toHaveLength(1); // the first offer only, for now
+    h.run(DISCONNECTED_GRACE_MS);
+    await tick();
+    expect(h.pc.offers.at(-1)).toEqual({ iceRestart: true });
+    h.run(RESTART_TIMEOUT_MS);
+    expect(h.closes.at(-1)).toMatchObject({ code: 4012 });
+  });
+
+  test("disconnected that comes back by itself: no restart", async () => {
+    const h = await moving();
+    h.state("disconnected");
+    h.state("connected");
+    h.run(DISCONNECTED_GRACE_MS);
+    await tick();
+    expect(h.pc.offers).toHaveLength(1);
+  });
+
+  test("ICE failed: one restart; failing again during it loses the route", async () => {
+    const h = await moving();
+    h.state("failed");
+    await tick();
+    expect(h.pc.offers.at(-1)).toEqual({ iceRestart: true });
+    h.state("failed");
+    expect(h.closes.at(-1)).toMatchObject({ code: 4004 });
+  });
+
+  test("the signal socket drops: resumed on a new one (same session), then an ICE restart there", async () => {
+    const h = await moving();
+    h.sig.readyState = 3;
+    h.sig.onclose?.({ code: 1006 });
+    const next = h.socks[1];
+    expect(next.protocols).toEqual(["lianki-stt2-resume", "s1.r1"]);
+    expect(h.closes).toHaveLength(0);
+    next.readyState = 1;
+    next.push({ t: "ready", sid: "s1", resume: "r2", resumed: true });
+    await tick();
+    expect(h.offers(next).at(-1)).toEqual({ t: "offer", sdp: "v=0 restart" });
+    // A later drop resumes with the new token.
+    next.readyState = 3;
+    next.onclose?.({ code: 1006 });
+    expect(h.socks[2].protocols).toEqual(["lianki-stt2-resume", "s1.r2"]);
+  });
+
+  test("a resume the registry refuses: the route is lost once the grace is over", async () => {
+    const h = await moving();
+    h.sig.readyState = 3;
+    h.sig.onclose?.({ code: 1006 });
+    const next = h.socks[1];
+    next.readyState = 3;
+    next.onclose?.({ code: 1006 }); // 401 before ready
+    expect(h.closes).toHaveLength(0); // the peer connection may still carry it a while
+    h.run(RESUME_GRACE_MS);
+    expect(h.closes.at(-1)).toMatchObject({ code: 4011 });
+  });
+
+  test("the network changes while the signal socket is gone: resume first, then restart", async () => {
+    const h = await moving();
+    h.sig.readyState = 3; // dropped, its close not here yet (a suspended page)
+    h.fire("online");
+    await tick();
+    expect(h.socks[1]?.protocols).toEqual(["lianki-stt2-resume", "s1.r1"]);
+  });
+
+  test("the worker's registry socket blips: away is only noted; back while disconnected restarts", async () => {
+    const h = await moving();
+    h.sig.push({ t: "worker-away" });
+    await tick();
+    expect(h.closes).toHaveLength(0);
+    h.pc.connectionState = "disconnected";
+    h.sig.push({ t: "worker-back" });
+    await tick();
+    expect(h.pc.offers.at(-1)).toEqual({ iceRestart: true });
+  });
+
+  test("no worker free (wait): the route fails at once; the lobby hears available and tells the page", async () => {
+    const r = rig();
+    let available = 0;
+    const open = publicOpen({
+      fetch: async () => new Response(JSON.stringify(SESSION)),
+      socket: (u, p) => {
+        const x = new FakeSock(u, p);
+        r.socks.push(x);
+        return x;
+      },
+      origin: () => "wss://lianki.com",
+      events: () => () => {},
+      available: () => void available++,
+    });
+    const ws = open(PUBLIC_RTC_URL);
+    let code = 0;
+    ws.onclose = (e) => (code = (e as { code: number }).code);
+    await tick();
+    const lobby = r.socks[0];
+    lobby.push({ t: "wait" });
+    await tick();
+    expect(code).toBe(4010);
+    expect(lobby.closed).toBe(false); // it waits on
+    lobby.push({ t: "available" });
+    expect(available).toBe(1);
+    expect(lobby.closed).toBe(true);
+  });
+});
+
+describe("rtc:lianki: the page's own events and the lobby's edges", () => {
+  test("by default: online and visible from the page; available as a window event", async () => {
+    const g = globalThis as Record<string, unknown>;
+    const had = { window: g.window, document: g.document };
+    const on = new Map<string, () => void>();
+    const fired: string[] = [];
+    const target = () => ({
+      addEventListener: (k: string, f: () => void) => on.set(k, f),
+      removeEventListener: (k: string) => on.delete(k),
+      dispatchEvent: (e: Event) => void fired.push(e.type),
+    });
+    const doc = { ...target(), visibilityState: "hidden" };
+    g.window = target();
+    g.document = doc;
+    try {
+      const socks: FakeSock[] = [];
+      const peers: FakePeer[] = [];
+      const open = publicOpen({
+        fetch: async () => new Response(JSON.stringify(SESSION)),
+        socket: (u, p) => {
+          const x = new FakeSock(u, p);
+          socks.push(x);
+          return x;
+        },
+        peer: (o) => {
+          const p = new FakePeer(o);
+          peers.push(p);
+          return p as never;
+        },
+        origin: () => "wss://lianki.com",
+      });
+      const ws = open(PUBLIC_RTC_URL);
+      await tick();
+      expect([...on.keys()].sort()).toEqual(["online", "visibilitychange"]);
+      const sig = socks[0];
+      sig.readyState = 1;
+      sig.push({ t: "ready", sid: "s1", resume: "r1" });
+      await tick();
+      peers[0].dc.onopen?.();
+      peers[0].connectionState = "disconnected";
+      on.get("visibilitychange")!(); // hidden: nothing
+      doc.visibilityState = "visible";
+      on.get("visibilitychange")!(); // visible and not connected: a restart
+      await tick();
+      expect(sig.sent.map((m) => JSON.parse(m).t).filter((t) => t === "offer")).toHaveLength(2);
+      ws.close();
+      expect(on.size).toBe(0); // unwatched with the route
+      // The lobby's default: a window event the mic's watcher hears.
+      const ws2 = open(PUBLIC_RTC_URL);
+      ws2.onclose = () => {};
+      await tick();
+      socks.at(-1)!.push({ t: "wait" });
+      await tick();
+      socks.at(-1)!.push({ t: "available" });
+      expect(fired).toEqual(["lk-stt-available"]);
+    } finally {
+      g.window = had.window;
+      g.document = had.document;
+    }
+  });
+
+  test("a newer lobby replaces the older; a lobby that closes is forgotten; noise is ignored", async () => {
+    const socks: FakeSock[] = [];
+    let available = 0;
+    const open = publicOpen({
+      fetch: async () => new Response(JSON.stringify(SESSION)),
+      socket: (u, p) => {
+        const x = new FakeSock(u, p);
+        socks.push(x);
+        return x;
+      },
+      origin: () => "wss://lianki.com",
+      events: () => () => {},
+      available: () => void available++,
+    });
+    for (let i = 0; i < 2; i++) {
+      open(PUBLIC_RTC_URL).onclose = () => {};
+      await tick();
+      socks.at(-1)!.push({ t: "wait" });
+      await tick();
+    }
+    expect(socks[0].closed).toBe(true); // replaced
+    socks[1].onmessage?.({ data: "not json" });
+    socks[1].push({ t: "other" });
+    expect(available).toBe(0);
+    socks[1].onclose?.({});
+    socks[0].push({ t: "available" }); // the replaced one may still hear it: harmless
+    expect(available).toBe(1);
+  });
+
+  test("a resumed ready on a stale socket, and a restart offer that throws, are handled", async () => {
+    const socks: FakeSock[] = [];
+    const peers: FakePeer[] = [];
+    let fire: ((w: "online" | "visible") => void) | null = null;
+    const open = publicOpen({
+      fetch: async () => new Response(JSON.stringify(SESSION)),
+      socket: (u, p) => {
+        const x = new FakeSock(u, p);
+        socks.push(x);
+        return x;
+      },
+      peer: (o) => {
+        const p = new FakePeer(o);
+        peers.push(p);
+        return p as never;
+      },
+      origin: () => "wss://lianki.com",
+      events: (f) => ((fire = f), () => {}),
+      setTimer: () => 0,
+      clearTimer: () => {},
+      now: () => 0,
+    });
+    const ws = open(PUBLIC_RTC_URL);
+    let code = 0;
+    ws.onclose = (e) => (code = (e as { code: number }).code);
+    await tick();
+    socks[0].readyState = 1;
+    socks[0].push({ t: "ready", sid: "s1", resume: "r1" });
+    await tick();
+    peers[0].dc.onopen?.();
+    peers[0].createOffer = async () => {
+      throw new Error("no");
+    };
+    fire!("online");
+    await tick();
+    expect(code).toBe(4005);
+  });
+});
+
+describe("rtc:lianki: a spare session for the next race", () => {
+  function spareRig(exps: number[], now: () => number) {
+    const asked: number[] = [];
+    let n = 0;
+    const socks: FakeSock[] = [];
+    const open = publicOpen({
+      fetch: async () => {
+        const exp = exps[n++] ?? 0;
+        asked.push(exp);
+        return new Response(JSON.stringify({ ...SESSION, ticket: `t${n}`, exp }));
+      },
+      socket: (u, p) => {
+        const x = new FakeSock(u, p);
+        socks.push(x);
+        return x;
+      },
+      peer: (o) => new FakePeer(o) as never,
+      origin: () => "wss://lianki.com",
+      events: () => () => {},
+      now,
+    });
+    return { open, asked, socks };
+  }
+
+  test("the next race uses the spare at once, and a new spare is fetched behind it", async () => {
+    const h = spareRig([100, 100, 100], () => 0);
+    h.open(PUBLIC_RTC_URL).onclose = () => {};
+    await tick();
+    await tick();
+    expect(h.socks[0].protocols[1]).toBe("t1");
+    h.open(PUBLIC_RTC_URL).onclose = () => {};
+    await tick();
+    expect(h.socks[1].protocols[1]).toBe("t2"); // the spare, no wait for a new one
+    await tick();
+    expect(h.asked).toHaveLength(3);
+  });
+
+  test("a spare with too little of its ticket left is not used: a fresh session instead", async () => {
+    let t = 0;
+    const h = spareRig([100, 100, 200, 200], () => t);
+    h.open(PUBLIC_RTC_URL).onclose = () => {};
+    await tick();
+    await tick();
+    t = 100_000 - SPARE_MIN_LEFT_MS + 1; // the spare (exp 100 s) is nearly spent
+    h.open(PUBLIC_RTC_URL).onclose = () => {};
+    await tick();
+    await tick();
+    expect(h.socks[1].protocols[1]).toBe("t3");
   });
 });

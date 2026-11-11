@@ -361,6 +361,16 @@ export const CONFIG = {
     description:
       "语音服务器：每台服务器的容量里留几路给你自己（其他用户最多用 容量 − 留给你的）。默认 1。",
   }),
+  "app.autoUpdateIdleMs": int({
+    default: 15000,
+    min: 3000,
+    max: 600000,
+    unit: "ms",
+    group: "app",
+    audience: "public",
+    description:
+      "有新版本时（开关 app.auto-update），页面干净且多久没有点、滑、打字就自己刷新（毫秒）。切到后台或换页面时不等这段时间。/words 和 /review 上只在切到后台或换页面时刷新。",
+  }),
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;
