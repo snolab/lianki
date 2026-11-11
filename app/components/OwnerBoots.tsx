@@ -20,7 +20,10 @@ export function OwnerBoots({
   chatFull = false,
   liHub = false,
   box = null,
+  autoUpdate = false,
 }: {
+  /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
+  autoUpdate?: boolean;
   /** On a box (docs/box-oauth.md): its sign-in config, so the chat uses lianki.com's hub. */
   box?: BoxConfig | null;
   strings: PartnerStrings;
@@ -43,7 +46,7 @@ export function OwnerBoots({
       <ServiceWorkerRegistration />
       <LeaveGuard message={leave} />
       {credits ? <NoCreditsNotice strings={credits} /> : null}
-      <NewVersionNotice />
+      <NewVersionNotice autoUpdate={autoUpdate} />
       <DebugEval
         strings={strings}
         partnerOpen={open}

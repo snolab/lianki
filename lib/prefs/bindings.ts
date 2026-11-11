@@ -25,6 +25,7 @@ import { ACCT_COOKIE_LINE } from "@/lib/account-locale";
 import { BYOK_BACKEND_KEY } from "@/lib/byok/config";
 import { LINK_CONFIRM_KEY, LINK_ALLOWED_KEY } from "@/lib/external-link";
 import { DONT_ASK_KEY } from "@/lib/dont-ask";
+import { AUTO_UPDATE_KEY } from "@/lib/auto-update";
 import { BADGE_DEFAULT, BADGE_PREF_KEY } from "@/lib/app-badge";
 import { MAIL_LOGIN_NOTICE_KEY } from "@/lib/mail-prefs";
 import { CARD_HEIGHT_KEY } from "@/lib/words/row-pinch";
@@ -234,6 +235,8 @@ export function prefBindings(): PrefBinding[] {
     plain("vibe.translateMinPct", "lk:vibe-translate-min-pct", num, 20),
     // lib/titles/client.ts: the difference from the default title rules.
     plain("titles.rules", "lk:title-rules", jsonCodec, { off: [], add: [] }),
+    // lib/auto-update.ts: a new version applies itself on a clean page.
+    plain("app.autoUpdate", AUTO_UPDATE_KEY, bool10, true),
     // lib/external-link.ts: the disclaimer before another site, and the sites not asked about.
     plain("links.confirm", LINK_CONFIRM_KEY, bool10, true),
     plain("links.allowedHosts", LINK_ALLOWED_KEY, jsonCodec, []),

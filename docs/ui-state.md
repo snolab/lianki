@@ -275,6 +275,24 @@ registry's notify, the chat store and the mic. There are no timers. It still
 reloads at most once per build (`lk:reloaded-for`). Everyone else gets the
 button only, as before.
 
+**Auto-update when clean** (`lib/auto-update.ts`, flag `app.auto-update`, on
+for everyone; the user's own switch is Settings → Updates, `lk:auto-update`,
+following the account). The owner, 2026-11-11: a page with nothing unsaved
+should pick up a new version by itself. Once per build, a clean page reloads
+when it goes to the background, on the next move to another page, or after
+`app.autoUpdateIdleMs` (default 15 s) with no tap, scroll or key. /words and
+/review are a session: there only the first two. It comes back to the same
+route and scroll position (the element at the top, by id or data-testid;
+`lk:auto-update-resume`). The pill says "New version · updates when idle", or
+"New version · unsaved changes" while the page is dirty; a tap reloads at once.
+
+While a version waits, reload mode also counts: a chat draft with words in it
+(although it is kept across a reload), anything read aloud or playing
+(`speechSynthesis`, the chat's voice, an `<audio>`/`<video>`), an open dialog
+(`dialog[open]`, `role="dialog"`, `aria-modal`), and a write request (not
+GET/HEAD/OPTIONS) to lianki.com still in flight (`fetch` is wrapped only while
+a version waits). With the flag or the switch off: the plain Refresh button.
+
 **Leave guard** (`app/components/LeaveGuard.tsx` → `lib/leave-guard.ts`,
 mounted for every page in `OwnerBoots`). While the page is dirty in `"leave"`
 mode:
