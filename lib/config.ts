@@ -306,6 +306,31 @@ export const CONFIG = {
     audience: "server",
     description: "语音服务器：每台服务器（现在是你的 Mac）同时最多接几路其他用户的会话。0 = 不接。",
   }),
+  "stt.worker.stunUrls": {
+    default: "stun:stun.cloudflare.com:3478" as string,
+    schema: z
+      .string()
+      .max(500)
+      .regex(/^(\s*stuns?:[A-Za-z0-9.-]+(:\d{1,5})?\s*[, ]?)*$/, "stun:host:port, comma separated"),
+    group: "stt-worker",
+    audience: "server",
+    description:
+      "语音服务器：WebRTC 直连用的 STUN 服务器（stun:主机:端口，逗号分隔）。空 = 不用 STUN（只有同一网络里能直连）。TURN 中转要另外的密钥，不在这里。",
+  },
+  "stt.worker.wssUrl": {
+    default: "" as string,
+    schema: z.union([
+      z.literal(""),
+      z
+        .string()
+        .max(200)
+        .regex(/^wss:\/\/[A-Za-z0-9.-]+(\/[A-Za-z0-9._~/-]*)?$/),
+    ]),
+    group: "stt-worker",
+    audience: "server",
+    description:
+      "语音服务器：WebRTC 连不上时的第二条路，一个 wss:// 隧道地址（直通某台语音服务器的对外监听口）。空（默认）= 没有这条路，直接走云端。要先有隧道和域名（需要你批准）。",
+  },
   "stt.worker.macReserved": int({
     default: 1,
     min: 0,

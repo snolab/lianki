@@ -1125,6 +1125,27 @@ owner's numbers): `stt.worker.sessionsPerAccount` 1,
 `stt.worker.macCapacity` 3 with `stt.worker.macReserved` 1 kept for the
 owner. Over any of them the utterance goes to the cloud, as on any failure.
 
+**Who** (`/dev/stt-access`, admin; `lib/stt-worker/store.ts`, migration
+0073): `stt_access` is the allowlist (default deny), `stt_worker` the speech
+servers allowed to register (Ed25519 public keys; `owner_user_id` set = a
+user's own server, later). Every change is in `security_audit`, ids only.
+
+**`/api/stt/session`** (`lib/stt-worker/session.ts`): 404 while the flag is
+off, whoever asks. `GET` answers 204 for an allowlisted account (the page asks
+once when the mic turns on, never in an utterance's path), else 404. `POST`
+(same-origin JSON) checks, in order: signed in (401), on the list (403,
+`not-allowed`), `sessionsPerAccount` > 0 (403, `off`), tickets in the last
+minute under `ticketsPerMin` (429, `too-many-tickets`; D1 `stt_ticket`), audio
+today (JST) under `minutesPerDay` (429, `daily-limit`; the account's
+`speech.stt.local` rows in the cost ledger), the signing key set (503,
+`tickets-off`). Then: `{ticket, exp, signal, iceServers, limits[, wss]}` — the
+v2 ticket, `/api/version/stt/signal`, STUN from config `stt.worker.stunUrls`
+plus TURN when its key is set, and the WSS fallback when config
+`stt.worker.wssUrl` names one (empty by default: no tunnel exists yet).
+TURN credentials are minted per session from Cloudflare Realtime TURN with
+the Worker secrets `STT_TURN_KEY_ID` / `STT_TURN_KEY_TOKEN` (**not set**: the
+owner's approval first); without them STUN only.
+
 ## WebRTC
 
 The owner's own route still does not use it. The phone already reaches the
