@@ -2,8 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getKey } from "@lianki/debug-chat/storage-keys";
+import { onDirtyNotify } from "@lianki/ui-state/dirty";
 import { pageBuildId } from "@/lib/build-id";
 import { pageIsDirty, reloadDecision, whenClean } from "@/lib/page-dirty";
+import {
+  type ApplyMoment,
+  RESUME_KEY,
+  anchorSelector,
+  autoUpdateOn,
+  autoUpdatePref,
+  mayApplyAt,
+  registerUpdateChecks,
+  resumeFor,
+  trackWrites,
+  updateState,
+} from "@/lib/auto-update";
+import { publicCfg } from "@/lib/config-client";
 import { versionNoticeStrings } from "./version-notice-strings";
 import { onLivePage } from "@/lib/live-view/live-page";
 import { type VersionNews, parseNews, refreshDecision } from "@/lib/smart-refresh";
@@ -24,34 +38,98 @@ function reloadOnceFor(build: string): boolean {
 }
 /** Hidden or unfocused this long before the socket is dropped. */
 const IDLE_MS = 30_000;
+/** Input that means the user is doing something: the quiet spell starts over. */
+const BUSY_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart", "scroll", "input"] as const;
+
+/** Keep where the user is (route, scroll, the element at the top), then reload. */
+function reloadHere() {
+  try {
+    const top = document.elementFromPoint(window.innerWidth / 2, 8);
+    const holder = (top?.closest("[id], [data-testid]") as HTMLElement | null) ?? null;
+    const anchor = anchorSelector(holder);
+    sessionStorage.setItem(
+      RESUME_KEY,
+      JSON.stringify({
+        path: location.pathname + location.search,
+        y: window.scrollY,
+        ...(anchor && holder ? { anchor, offset: holder.getBoundingClientRect().top } : {}),
+      }),
+    );
+  } catch {}
+  location.reload();
+}
+
+/** After an auto reload: back to the same place, once the page is tall enough. */
+function resumeScroll() {
+  let r: ReturnType<typeof resumeFor> = null;
+  try {
+    r = resumeFor(sessionStorage.getItem(RESUME_KEY), location.pathname + location.search);
+    sessionStorage.removeItem(RESUME_KEY);
+  } catch {}
+  if (!r) return;
+  const place = r;
+  const go = () => {
+    const el = place.anchor ? document.querySelector(place.anchor) : null;
+    if (el)
+      window.scrollTo(0, window.scrollY + el.getBoundingClientRect().top - (place.offset ?? 0));
+    else window.scrollTo(0, place.y);
+  };
+  go();
+  // Content that loads after hydration makes the page taller: once more when it has.
+  if (document.readyState !== "complete") window.addEventListener("load", go, { once: true });
+}
 
 /**
- * "New version — Refresh" once a deploy lands that changed this page, pushed —
- * never polled — by lianki-push (workers/push): a WebSocket that names the
- * serving build on connect and again when a new one is published, with what
- * changed since the page's own build (smart refresh, lib/smart-refresh.ts).
+ * "New version" once a deploy lands that changed this page, pushed — never
+ * polled — by lianki-push (workers/push): a WebSocket that names the serving
+ * build on connect and again when a new one is published, with what changed
+ * since the page's own build (smart refresh, lib/smart-refresh.ts).
  *
  * Only when the page's route, or the shared shell, loads different client code
- * (or the deploy is forced) does the button show. Otherwise the news is kept:
- * a later move to a route that did change shows it then. Server-only deploys
- * change no client chunk, so they never show it.
+ * (or the deploy is forced) does it show. Otherwise the news is kept: a later
+ * move to a route that did change shows it then. Server-only deploys change no
+ * client chunk, so they never show it.
+ *
+ * Then, with auto-update on (`autoUpdate`: the flag `app.auto-update`, and the
+ * user's switch, lib/auto-update.ts), a clean page reloads by itself — in the
+ * background, on the next move to another page, or after a quiet spell — and
+ * comes back to the same place; the pill says "updates when idle", or "unsaved
+ * changes" while the page is dirty. Off: the plain "Refresh" button. A tap on
+ * the pill always reloads at once.
  *
  * Connected only while the page is visible and focused. Leaving it drops the
  * socket after IDLE_MS (debounced: a quick switch away and back keeps the
  * same one); coming back reconnects at once, and the build id it hears on
  * connect covers any deploy made meanwhile. A socket the network drops is
- * reopened on that event, if the page is still in use — no timers.
+ * reopened on that event, if the page is still in use — no polling.
  *
  * `pathname` is the page's route path (NewVersionNotice passes Next's).
  */
-export function VersionNotice({ pathname }: { pathname: string }) {
+export function VersionNotice({
+  pathname,
+  autoUpdate = false,
+}: {
+  pathname: string;
+  autoUpdate?: boolean;
+}) {
   const [stale, setStale] = useState(false);
+  /** Auto-update waits for this page (it is on and the page is out of date). */
+  const [auto, setAuto] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const path = useRef(pathname);
   /** Re-judge the kept news for a new path (set by the effect below). */
   const rejudge = useRef<() => void>(() => {});
+  /** A clean page may reload at this moment (set while auto-update waits). */
+  const applyAt = useRef<(m: ApplyMoment) => void>(() => {});
 
   useEffect(() => {
+    resumeScroll();
+  }, []);
+
+  useEffect(() => {
+    const moved = path.current !== pathname;
     path.current = pathname;
+    if (moved) applyAt.current("navigate");
     rejudge.current();
   }, [pathname]);
 
@@ -74,13 +152,57 @@ export function VersionNotice({ pathname }: { pathname: string }) {
     /** The latest news of a build this page is not, kept while it changed nothing here. */
     let kept: VersionNews | null = null;
     let unwait = () => {};
+    const stops: (() => void)[] = [];
     const waitClean = () => {
       unwait();
       unwait = whenClean(document, () => location.reload());
       setStale(true);
     };
 
-    /** This page is out of date: the button (or, on a debug device, a reload). */
+    /**
+     * Auto-update for everyone (lib/auto-update.ts): reload a clean page at the
+     * first moment it may; meanwhile the pill shows whether it is clean.
+     */
+    const waitIdle = () => {
+      const writes = trackWrites(window);
+      stops.push(() => writes.stop(), registerUpdateChecks(document, writes));
+      const clean = () => !pageIsDirty(document);
+      applyAt.current = (m) => {
+        if (mayApplyAt(m, path.current) && clean()) reloadHere();
+      };
+      let quiet: ReturnType<typeof setTimeout> | undefined;
+      const rest = () => {
+        clearTimeout(quiet);
+        quiet = setTimeout(() => applyAt.current("idle"), publicCfg("app.autoUpdateIdleMs"));
+      };
+      const look = () => setDirty(!clean());
+      const hidden = () => {
+        if (document.visibilityState === "hidden") applyAt.current("hidden");
+        else rest();
+      };
+      for (const t of BUSY_EVENTS)
+        window.addEventListener(t, rest, { capture: true, passive: true });
+      document.addEventListener("visibilitychange", hidden);
+      for (const t of ["input", "change", "focusout", "submit", "ended", "pause", "play"])
+        document.addEventListener(t, look, true);
+      stops.push(
+        onDirtyNotify(look),
+        () => clearTimeout(quiet),
+        () => {
+          for (const t of BUSY_EVENTS) window.removeEventListener(t, rest, { capture: true });
+          document.removeEventListener("visibilitychange", hidden);
+          for (const t of ["input", "change", "focusout", "submit", "ended", "pause", "play"])
+            document.removeEventListener(t, look, true);
+          applyAt.current = () => {};
+        },
+      );
+      look();
+      rest();
+      setAuto(true);
+      setStale(true);
+    };
+
+    /** This page is out of date: auto-update, the button, or (a debug device) a reload. */
     const prompt = (build: string) => {
       done = true;
       kept = null;
@@ -93,9 +215,10 @@ export function VersionNotice({ pathname }: { pathname: string }) {
       // push beat the rollout), fall back to the button instead of reloading
       // every 1.5 s forever.
       const debug = debugDevice();
+      const first = reloadOnceFor(build);
       const decision = reloadDecision({
         debug,
-        first: debug && reloadOnceFor(build),
+        first: debug && first,
         dirty: pageIsDirty(document),
       });
       if (decision === "reload")
@@ -103,7 +226,9 @@ export function VersionNotice({ pathname }: { pathname: string }) {
           if (!pageIsDirty(document)) location.reload();
           else waitClean();
         }, 1500);
-      if (decision === "wait") waitClean();
+      if (decision === "wait") return waitClean();
+      // Everyone else: once per build too, for the same reason.
+      if (first && autoUpdateOn({ flag: autoUpdate, pref: autoUpdatePref() })) return waitIdle();
       setStale(true);
     };
     const judge = (news: VersionNews) => {
@@ -161,21 +286,30 @@ export function VersionNotice({ pathname }: { pathname: string }) {
       window.removeEventListener("blur", update);
       disconnect();
       unwait();
+      for (const f of stops.splice(0)) f();
     };
-  }, []);
+  }, [autoUpdate]);
 
   if (!stale) return null;
   // Mounted outside the Intlayer client provider: the page's lang picks the words.
   const words = versionNoticeStrings(
     typeof document !== "undefined" ? document.documentElement.lang : undefined,
   );
+  const state = updateState({ auto, dirty });
+  const label =
+    state === "auto-clean"
+      ? words.autoClean
+      : state === "auto-dirty"
+        ? words.autoDirty
+        : words.refresh;
   return (
     <button
       data-testid="new-version"
+      data-state={state}
       onClick={() => window.location.reload()}
       className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[calc(1rem+env(safe-area-inset-right))] z-[var(--lk-z-notice)] rounded-full bg-primary px-4 py-2 text-sm text-on-primary shadow-lg hover:bg-blue-700"
     >
-      {words.refresh}
+      {label}
     </button>
   );
 }

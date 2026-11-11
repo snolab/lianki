@@ -141,9 +141,22 @@ export default async function RootLayout({
   const liHub = flagIn(flags, "voice.li-hub");
   // The owner's ETA bar (lib/eta-ping.ts): the chat shows it only on his pages.
   const etaBar = flagIn(flags, ETA_FLAG);
+  // A new version applies itself on a clean page (lib/auto-update.ts); off: the Refresh button.
+  const autoUpdate = flagIn(flags, "app.auto-update");
   // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts): live, no deploy.
   const lexicon = partnerFrame ? undefined : await cfg("voice.lexicon");
-  const boots = { strings: partner, leave, credits, open, dev, chatFull, etaBar, liHub, lexicon };
+  const boots = {
+    strings: partner,
+    leave,
+    credits,
+    open,
+    dev,
+    chatFull,
+    etaBar,
+    liHub,
+    autoUpdate,
+    lexicon,
+  };
   const box = boxConfig();
   return (
     <html

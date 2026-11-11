@@ -880,7 +880,7 @@ describe("edge paths: requests, hello, page events", () => {
     stt.close();
   });
 
-  it("by default it watches the page's visibilitychange and online events", () => {
+  it("by default it watches the page's visibilitychange and online events, and a worker free again", () => {
     const g = globalThis as Record<string, unknown>;
     const had = { window: g.window, document: g.document };
     const on = new Map<string, () => void>();
@@ -899,11 +899,12 @@ describe("edge paths: requests, hello, page events", () => {
         clearTimer: () => {},
       });
       stt.keep(true);
-      expect([...on.keys()].sort()).toEqual(["online", "visibilitychange"]);
+      expect([...on.keys()].sort()).toEqual(["lk-stt-available", "online", "visibilitychange"]);
       on.get("visibilitychange")!(); // still hidden: nothing
       doc.visibilityState = "visible";
       on.get("visibilitychange")!();
       on.get("online")!();
+      on.get("lk-stt-available")!(); // the lobby heard a worker: race again
       stt.keep(false);
       expect(on.size).toBe(0);
       stt.close();

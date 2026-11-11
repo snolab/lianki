@@ -1122,9 +1122,17 @@ try {
   await page.evaluate(() => localStorage.setItem("lk:version-notice", "1"));
   await page.reload({ waitUntil: "load" });
   await page.bringToFront();
+  // Auto-update (lib/auto-update.ts, flag app.auto-update, on by default): the
+  // pill says the page will update by itself. /words is a session, so it never
+  // reloads on a quiet spell here, only in the background or on another page.
+  const pill = page.getByTestId("new-version");
+  await pill.waitFor({ timeout: budget(15000) }).catch(() => {});
+  const pillState = await pill.getAttribute("data-state").catch(() => null);
+  check(
+    String(pillState).startsWith("auto-"),
+    `a newer build pushed over the socket shows the auto-update pill (state ${pillState})`,
+  );
   const notice = page.getByRole("button", { name: "New version · Refresh" });
-  await notice.waitFor({ timeout: budget(15000) }).catch(() => {});
-  check(await notice.isVisible(), "a newer build pushed over the socket shows a Refresh button");
   // With the Learning Partner on, the page reloads itself once for that
   // build; when the reload still hears the old build is stale, it shows the
   // button rather than reloading again and again.

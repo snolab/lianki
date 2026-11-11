@@ -13,6 +13,7 @@ import { TEXT_AREAS, textSizeStore } from "@/lib/text-size";
 import { useTextSizes } from "@/lib/use-text-size";
 import { TitleRulesSettings } from "@/app/components/TitleRulesSettings";
 import { ExternalLinkSettings } from "@/app/components/ExternalLinkSettings";
+import { AutoUpdateSettings } from "@/app/components/AutoUpdateSettings";
 import { DontAskReview } from "@/app/components/DontAskReview";
 import { DONT_ASK_EVENT } from "@/lib/dont-ask";
 import { AppBadgeSettings } from "@/app/components/AppBadgeSettings";
@@ -310,6 +311,9 @@ export default function PreferencesClient({
 
       {/* Email: which mails the account gets — follows the account (lib/mail-templates/kinds.ts) */}
       <MailSettings />
+
+      {/* Updates: a new version applies itself on a clean page — follows the account (lib/auto-update.ts) */}
+      <AutoUpdateSettings />
 
       {/* Links to other sites — follows the account (lib/external-link.ts) */}
       <ExternalLinkSettings />
