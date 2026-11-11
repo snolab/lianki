@@ -12,6 +12,7 @@ import { appLocale } from "@/lib/app-locale.server";
 import { LANG_TAGS } from "@/lib/constants";
 import { type FlagValues, flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
+import { cfg } from "@/lib/config-store";
 import { ETA_FLAG } from "@/lib/eta-ping";
 import { isDev } from "@/lib/permissions";
 import { boxConfig } from "@/lib/box-oauth/mode";
@@ -142,6 +143,8 @@ export default async function RootLayout({
   const etaBar = flagIn(flags, ETA_FLAG);
   // A new version applies itself on a clean page (lib/auto-update.ts); off: the Refresh button.
   const autoUpdate = flagIn(flags, "app.auto-update");
+  // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts): live, no deploy.
+  const lexicon = partnerFrame ? undefined : await cfg("voice.lexicon");
   const boots = {
     strings: partner,
     leave,
@@ -152,6 +155,7 @@ export default async function RootLayout({
     etaBar,
     liHub,
     autoUpdate,
+    lexicon,
   };
   const box = boxConfig();
   return (
