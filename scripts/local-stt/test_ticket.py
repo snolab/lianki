@@ -16,7 +16,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 
-from ticket import Tickets, file_problem, load_public_key, offered  # noqa: E402
+from ticket import V2_AUD, Tickets, file_problem, load_public_key, offered  # noqa: E402
 
 NOW = 1_800_000_000
 
@@ -95,6 +95,55 @@ class TicketTest(unittest.TestCase):
 
     def test_offered(self):
         self.assertEqual(offered("lianki-stt, abc.def"), (True, "abc.def"))
+
+
+def make_v2(key, **over) -> str:
+    p = {"aud": V2_AUD, "v": 2, "jti": "v2", "iat": NOW, "exp": NOW + 60,
+         "sub": "acct_1", "scope": "stt", "lim": {"utt": 40, "sess": 900}}
+    p.update(over)
+    return make(key, **p)
+
+
+class TicketV2Test(unittest.TestCase):
+    """Ticket v2 (lib/stt-ticket.ts verifySttTicketV2): its own audience, signed claims."""
+
+    def setUp(self):
+        self.key = Ed25519PrivateKey.generate()
+        self.t = NOW
+        self.v2 = Tickets(self.key.public_key(), clock=lambda: self.t, aud=V2_AUD)
+        self.v1 = Tickets(self.key.public_key(), clock=lambda: self.t)
+
+    def test_good_once_with_its_claims(self):
+        tk = make_v2(self.key)
+        why, p = self.v2.check_payload(tk)
+        self.assertIsNone(why)
+        self.assertEqual((p["sub"], p["lim"]), ("acct_1", {"utt": 40, "sess": 900}))
+        self.assertEqual(self.v2.check_payload(tk), ("replayed", None))
+
+    def test_never_opens_the_owner_listener(self):
+        self.assertEqual(self.v1.check(make_v2(self.key)), "wrong aud")
+
+    def test_a_v1_ticket_never_opens_a_public_session(self):
+        self.assertEqual(self.v2.check(make(self.key)), "wrong aud")
+
+    def test_bad_claims_refused_and_spend_nothing(self):
+        cases = [
+            ({"v": 1}, "wrong version"),
+            ({"sub": ""}, "bad sub"),
+            ({"sub": "a@b.c"}, "bad sub"),
+            ({"scope": "voiceprint"}, "wrong scope"),
+            ({"lim": {"utt": 0, "sess": 900}}, "bad limits"),
+            ({"lim": {"utt": 40, "sess": 99999}}, "bad limits"),
+            ({"lim": {"utt": True, "sess": 900}}, "bad limits"),
+            ({"lim": "x"}, "bad limits"),
+        ]
+        for over, why in cases:
+            self.assertEqual(self.v2.check(make_v2(self.key, jti="same", **over)), why)
+        self.assertEqual(self.v2.seen, {})
+
+    def test_expired(self):
+        self.t = NOW + 66
+        self.assertEqual(self.v2.check(make_v2(self.key)), "expired")
 
 
 class FileProblemTest(unittest.TestCase):

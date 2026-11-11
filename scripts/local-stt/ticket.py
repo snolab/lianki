@@ -25,6 +25,12 @@ AUD = "lianki-stt"
 #: Voiceprint tickets (lib/voiceprint-ticket.ts): the same key, another audience, so
 #: an STT ticket never opens a voiceprint op and a voiceprint ticket never a socket.
 VOICEPRINT_AUD = "lianki-voiceprint"
+#: Ticket v2 (lib/stt-ticket.ts `signSttTicketV2`): Lianki's speech servers for other
+#: accounts. Its own audience, so the owner's tunnel listener (AUD) never takes one and
+#: the peer listener never takes a v1 ticket. Claims: v 2, sub, scope "stt", lim {utt, sess}.
+V2_AUD = "lianki-stt2"
+SCOPE = "stt"
+_SUB = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 SUBPROTOCOL = "lianki-stt"
 TTL_S = 60
 SKEW_S = 5
@@ -147,52 +153,82 @@ class Tickets:
         the ticket. `expect`: payload fields that must equal these values
         (a voiceprint ticket's op and device).
         """
+        return self.check_payload(ticket, expect)[0]
+
+    def check_payload(self, ticket: str, expect: dict | None = None) -> tuple[str | None, dict | None]:
+        """(None, payload) when the ticket is good (and now spent); else (why not, None)."""
+        why, p = self._check(ticket, expect)
+        return (why, None) if why else (None, p)
+
+    def _check(self, ticket: str, expect: dict | None) -> tuple[str | None, dict | None]:
         from cryptography.exceptions import InvalidSignature
 
         now = int(self.clock())
         if self.broken:
-            return f"store {self.broken}"
+            return f"store {self.broken}", None
         if self.full():
-            return "store full"
+            return "store full", None
         if not ticket or len(ticket) > MAX_LEN:
-            return "malformed"
+            return "malformed", None
         parts = ticket.split(".")
         if len(parts) != 2:
-            return "malformed"
+            return "malformed", None
         try:
             sig = b64url_decode(parts[1])
             self.key.verify(sig, parts[0].encode("ascii"))
         except InvalidSignature:
-            return "bad signature"
+            return "bad signature", None
         except (ValueError, UnicodeEncodeError):
-            return "malformed"
+            return "malformed", None
         try:
             p = json.loads(b64url_decode(parts[0]))
         except ValueError:
-            return "malformed"
+            return "malformed", None
         if not isinstance(p, dict):
-            return "malformed"
+            return "malformed", None
         if p.get("aud") != self.aud:
-            return "wrong aud"
+            return "wrong aud", None
         for k, v in (expect or {}).items():
             if p.get(k) != v:
-                return f"wrong {k}"
+                return f"wrong {k}", None
         exp, iat, jti = p.get("exp"), p.get("iat"), p.get("jti")
         if not isinstance(exp, int) or not isinstance(iat, int) or not isinstance(jti, str) or not jti:
-            return "malformed"
+            return "malformed", None
         if exp - iat > TTL_S or iat > now + SKEW_S:
-            return "bad lifetime"
+            return "bad lifetime", None
         if exp + SKEW_S < now:
-            return "expired"
+            return "expired", None
         if jti in self.seen:
-            return "replayed"
+            return "replayed", None
+        if self.aud == V2_AUD:
+            why = v2_problem(p)
+            if why:
+                return why, None  # claims checked before the jti is spent
         self.seen[jti] = exp
         if self.persist:
             try:
                 self._save()  # spent on disk before the op runs
             except OSError:
-                return "store not writable"
-        return None
+                return "store not writable", None
+        return None, p
+
+
+def v2_problem(p: dict) -> str | None:
+    """Why a v2 payload's own claims are not good, or None (lib/stt-ticket.ts verifySttTicketV2)."""
+    if p.get("v") != 2:
+        return "wrong version"
+    sub = p.get("sub")
+    if not isinstance(sub, str) or not _SUB.match(sub):
+        return "bad sub"
+    if p.get("scope") != SCOPE:
+        return "wrong scope"
+    lim = p.get("lim")
+    if not isinstance(lim, dict):
+        return "bad limits"
+    utt, sess = lim.get("utt"), lim.get("sess")
+    ok = (isinstance(utt, int) and not isinstance(utt, bool) and 0 < utt <= 120
+          and isinstance(sess, int) and not isinstance(sess, bool) and 0 < sess <= 3600)
+    return None if ok else "bad limits"
 
 
 def offered(header: str | None) -> tuple[bool, str | None]:

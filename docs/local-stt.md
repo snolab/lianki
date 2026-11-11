@@ -1081,15 +1081,60 @@ denoiser, and each costs 0.04–0.10 CER on clean speech. A speaker check
 (CAM++ / ERes2NetV2) is what keeps the PA and background voices out:
 [stt-ab.md](stt-ab.md), "Noise and speaker grid".
 
+## Lianki's speech servers for everyone
+
+The owner's decision (Slack, 2026-11-11 00:3x–00:4x JST): the same
+SenseVoice-Small server becomes a public-grade service for other accounts.
+Everything ships **dark** behind flag
+[`stt.worker`](https://lianki.com/dev/flags#stt.worker) (default off,
+audience: the `/dev/stt-access` allowlist). With it off every endpoint below
+answers 404, and **the owner's own mic route is unchanged** (tailnet, then
+`stt.lianki.com` with a v1 ticket, then the cloud, exactly as above).
+
+```
+page ─ POST /api/stt/session (flag, allowlist, quotas) ─▶ lianki.com Worker
+     ◀─ {ticket v2, ice servers, signal URL} ─
+page ─ WebRTC: offer/answer + ICE over wss://lianki.com/api/version/stt/signal ─▶ SttRegistry (lianki-push DO)
+                                                                            ◀── stt-peer on a worker (dials OUT, Ed25519 worker key)
+page ═ DataChannel (STUN direct; TURN fallback) ═▶ stt-peer ─ ws ─▶ server.py peer listener (verifies the v2 ticket)
+     else WSS tunnel, else Workers AI (/api/debug/stt), per utterance
+```
+
+- **User-facing text** says only "Lianki's speech servers" (see the top of
+  this doc). Free for now; each utterance is booked at cost as
+  `speech.stt.local` ("Booked as a cloud service").
+- **Weak spots** (homophones, dropped words) are left to the replying AI's
+  polish, as for the owner's lines.
+- **Later**: a user's own Mac as their personal worker. The worker registry
+  is per account capable (`stt_worker.owner_user_id`) and the page's route
+  race is pluggable (one transport per route kind).
+
+**Ticket v2** (`lib/stt-ticket.ts` `signSttTicketV2`, `ticket.py` with
+`aud=V2_AUD`): `{aud:"lianki-stt2", v:2, jti, iat, exp, sub, scope:"stt",
+lim:{utt, sess}}`, 60 s, single use, the same `STT_TICKET_KEY`. Its own
+audience: the owner's tunnel listener never takes one, and a v1 ticket never
+opens a public session. `sub` is the account id (never an email) the session
+is booked to; `lim` the longest utterance and session the server enforces,
+signed, so the page cannot raise them. Bad claims are refused before the jti
+is spent.
+
+**Quotas** (config, `/dev/config` group `stt-worker`; defaults are the
+owner's numbers): `stt.worker.sessionsPerAccount` 1,
+`stt.worker.ticketsPerMin` 6, `stt.worker.minutesPerDay` 30,
+`stt.worker.maxUtteranceS` 40, `stt.worker.sessionMaxS` 900,
+`stt.worker.macCapacity` 3 with `stt.worker.macReserved` 1 kept for the
+owner. Over any of them the utterance goes to the cloud, as on any failure.
+
 ## WebRTC
 
-Not needed for this. The phone already reaches the Mac over the tailnet, and a
-WebSocket of 16 kHz int16 is 32 KB/s, small next to any uplink. WebRTC would
-add Opus compression (less uplink on a weak radio) and a jitter buffer, at
-the cost of signalling through the push hub, ICE, and a Python peer
-(aiortc). It would help only on a poor connection, where the fallback already
-covers the failure case. Off the tailnet (a friend's device) neither applies:
-this is owner-only.
+The owner's own route still does not use it. The phone already reaches the
+Mac over the tailnet, and a WebSocket of 16 kHz int16 is 32 KB/s, small next
+to any uplink. WebRTC would add Opus compression and a jitter buffer, at the
+cost of signalling through the push hub and ICE; it would help only on a poor
+connection, where the fallback already covers the failure case. For other
+accounts (no tailnet) it is the first route: a DataChannel carrying the same
+protocol, through the `stt-peer` sidecar ("Lianki's speech servers for
+everyone" above), not aiortc.
 
 ## Testing
 

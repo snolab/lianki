@@ -160,3 +160,107 @@ export async function verifySttTicket(
   seen.set(p.jti, p.exp);
   return { ok: true, payload: p };
 }
+
+/*
+ * Ticket v2: Lianki's speech servers for other accounts (docs/local-stt.md,
+ * "Lianki's speech servers for everyone"). Another audience, so a v2 ticket
+ * never opens the owner's tunnel listener (which takes `lianki-stt` only) and a
+ * v1 ticket never opens a public session. It names the account (`sub`), what it
+ * may do (`scope`) and the limits the speech server enforces (`lim`), all signed:
+ * the server never takes a limit from the page.
+ *
+ * Payload: `{aud:"lianki-stt2", v:2, jti, iat, exp, sub, scope:"stt", lim:{utt, sess}}`
+ * — `utt` the longest utterance kept (s), `sess` the longest session (s).
+ * The same key (STT_TICKET_KEY) and wire form as v1; 60 s, single use.
+ * Verified by scripts/local-stt/ticket.py (`Tickets(..., aud=V2_AUD)` with
+ * `check_payload`) and by the SttRegistry in lianki-push before signalling.
+ */
+export const STT_TICKET_V2_AUD = "lianki-stt2";
+/** The only scope a v2 ticket carries for now: stream audio, get text back. */
+export const STT_SCOPE = "stt";
+
+export type SttLimits = {
+  /** The longest utterance the server keeps (seconds). */
+  utt: number;
+  /** The longest session, from the socket's open (seconds). */
+  sess: number;
+};
+
+export type SttTicketV2Payload = {
+  aud: typeof STT_TICKET_V2_AUD;
+  v: 2;
+  jti: string;
+  iat: number;
+  exp: number;
+  /** The account id the session is booked to (never an email). */
+  sub: string;
+  scope: typeof STT_SCOPE;
+  lim: SttLimits;
+};
+
+/** An account id as it may travel in a ticket: what D1 `user.id` holds, nothing longer. */
+const SUB_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+const validLimits = (l: unknown): l is SttLimits => {
+  const o = l as Partial<SttLimits> | null;
+  return (
+    !!o &&
+    typeof o === "object" &&
+    Number.isInteger(o.utt) &&
+    Number.isInteger(o.sess) &&
+    (o.utt as number) > 0 &&
+    (o.utt as number) <= 120 &&
+    (o.sess as number) > 0 &&
+    (o.sess as number) <= 3600
+  );
+};
+
+export async function signSttTicketV2(
+  key: CryptoKey,
+  o: { sub: string; lim: SttLimits; now?: number; jti?: string },
+): Promise<{ ticket: string; exp: number; payload: SttTicketV2Payload }> {
+  if (!SUB_RE.test(o.sub)) throw new Error("stt ticket: bad sub");
+  if (!validLimits(o.lim)) throw new Error("stt ticket: bad limits");
+  const iat = Math.floor((o.now ?? Date.now()) / 1000);
+  const payload: SttTicketV2Payload = {
+    aud: STT_TICKET_V2_AUD,
+    v: 2,
+    jti: o.jti ?? randomJti(),
+    iat,
+    exp: iat + STT_TICKET_TTL_S,
+    sub: o.sub,
+    scope: STT_SCOPE,
+    lim: { utt: o.lim.utt, sess: o.lim.sess },
+  };
+  const body = b64url(new TextEncoder().encode(JSON.stringify(payload)));
+  const sig = new Uint8Array(await crypto.subtle.sign(ED, key, new TextEncoder().encode(body)));
+  return { ticket: `${body}.${b64url(sig)}`, exp: payload.exp, payload };
+}
+
+export type VerifyV2Result =
+  | { ok: true; payload: SttTicketV2Payload }
+  | { ok: false; error: string };
+
+/**
+ * A v2 ticket: everything v1 checks (signature, lifetime, once), then the v2
+ * claims. Mirrors ticket.py `check_payload` with `V2_AUD`, rule for rule.
+ */
+export async function verifySttTicketV2(
+  ticket: string,
+  pub: CryptoKey,
+  seen: JtiStore,
+  now: number = Date.now(),
+): Promise<VerifyV2Result> {
+  // Claims first on a copy of the store, so a ticket with bad claims spends nothing.
+  const probe: JtiStore = new Map(seen);
+  const r = await verifySttTicket(ticket, pub, probe, now, STT_TICKET_V2_AUD);
+  if (!r.ok) return r;
+  const p = r.payload as unknown as Partial<SttTicketV2Payload>;
+  if (p.v !== 2) return { ok: false, error: "wrong version" };
+  if (typeof p.sub !== "string" || !SUB_RE.test(p.sub)) return { ok: false, error: "bad sub" };
+  if (p.scope !== STT_SCOPE) return { ok: false, error: "wrong scope" };
+  if (!validLimits(p.lim)) return { ok: false, error: "bad limits" };
+  seen.clear();
+  for (const [k, v] of probe) seen.set(k, v);
+  return { ok: true, payload: p as SttTicketV2Payload };
+}
