@@ -247,6 +247,74 @@ export const CONFIG = {
     description:
       "Lianki 自己的语音服务器（你 Mac 上的本地识别）每听写一分钟音频，在成本账（/dev/costs）里记多少美元：按云服务的价格记账，用户不扣积分。默认 0.000513 = Workers AI whisper turbo 的标价。",
   },
+  // Lianki's speech servers for other accounts (flag stt.worker; docs/local-stt.md,
+  // "Lianki's speech servers for everyone"): the quotas, signed into each v2 ticket
+  // or checked by /api/stt/session and the SttRegistry. Owner's numbers, 2026-11-11.
+  "stt.worker.sessionsPerAccount": int({
+    default: 1,
+    min: 0,
+    max: 10,
+    group: "stt-worker",
+    audience: "server",
+    description:
+      "语音服务器：每个账号同时最多几个识别会话（一个会话 = 一个开着麦克风的页面）。0 = 谁都开不了（不影响你自己的麦克风）。",
+  }),
+  "stt.worker.ticketsPerMin": int({
+    default: 6,
+    min: 1,
+    max: 60,
+    unit: "/min",
+    group: "stt-worker",
+    audience: "server",
+    description:
+      "语音服务器：每个账号每分钟最多领几张连接票（每次连上语音服务器要一张，60 秒有效、只能用一次）。超过就这一分钟走云端识别。",
+  }),
+  "stt.worker.minutesPerDay": int({
+    default: 30,
+    min: 0,
+    max: 1440,
+    unit: "min",
+    group: "stt-worker",
+    audience: "server",
+    description:
+      "语音服务器：每个账号每天（日本时间）最多识别多少分钟音频，按成本账里记的 speech.stt.local 累计。用完当天就走云端识别。0 = 不给语音服务器。",
+  }),
+  "stt.worker.maxUtteranceS": int({
+    default: 40,
+    min: 5,
+    max: 120,
+    unit: "s",
+    group: "stt-worker",
+    audience: "server",
+    description: "语音服务器：一句话最长几秒（写进连接票，语音服务器按这个截断，页面改不了）。",
+  }),
+  "stt.worker.sessionMaxS": int({
+    default: 900,
+    min: 60,
+    max: 3600,
+    unit: "s",
+    group: "stt-worker",
+    audience: "server",
+    description:
+      "语音服务器：一个识别会话最长几秒（写进连接票；到时语音服务器断开，页面重新领票再连）。默认 900 = 15 分钟。",
+  }),
+  "stt.worker.macCapacity": int({
+    default: 3,
+    min: 0,
+    max: 32,
+    group: "stt-worker",
+    audience: "server",
+    description: "语音服务器：每台服务器（现在是你的 Mac）同时最多接几路其他用户的会话。0 = 不接。",
+  }),
+  "stt.worker.macReserved": int({
+    default: 1,
+    min: 0,
+    max: 32,
+    group: "stt-worker",
+    audience: "server",
+    description:
+      "语音服务器：每台服务器的容量里留几路给你自己（其他用户最多用 容量 − 留给你的）。默认 1。",
+  }),
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

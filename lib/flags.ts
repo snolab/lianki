@@ -162,6 +162,14 @@ export const FLAGS = {
     default: false,
     audience: "owner",
   },
+  // Lianki's speech servers for other accounts (docs/local-stt.md, "Lianki's speech
+  // servers for everyone"): owner decision 2026-11-11 00:3x JST, shipped dark.
+  "stt.worker": {
+    description:
+      "Lianki 语音服务器对其他账号开放（第一阶段）：名单里的账号（/dev/stt-access 添加/移除）在麦克风里用 Lianki 的语音服务器（SenseVoice）流式识别：先走 WebRTC 直连（STUN，TURN 备用），再走 WSS 隧道，最后才是 Workers AI 云端。暂时免费，每句话按云服务价格记进成本账（/dev/costs，speech.stt.local）。每人同时 1 个会话、每分钟最多 6 张票、每天 30 分钟、一句最长 40 秒、一次会话最长 15 分钟，机器容量 3 路留 1 路给你（都在 /dev/config 改）。用户看到的只有「Lianki 的语音服务器」。关闭（默认）= 相关接口一律 404，你自己的麦克风照旧不变。",
+    default: false,
+    audience: "allowlist",
+  },
   "chat.eta-bar": {
     description:
       "学习伙伴聊天里的任务进度条：助手给每个任务报的预计时间（progress.ts --eta）在聊天输入框上方汇总成一条进度条（总进度按预计时长加权、总剩余时间、下一个到期），点一下打开状态树，每个任务有自己的进度条和剩余时间。预计时间一到，自动在你的线程里发一条「ETA reached for …: report to the owner」给助手（静音，不朗读；不是你说的话，永远不算批准）。没有页面开着也会发（服务器定时）。只给你本人。关闭（默认）= 不显示进度条，也不发到期消息。",
