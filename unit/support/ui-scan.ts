@@ -141,6 +141,17 @@ export function leaves(content: unknown, prefix = ""): [string, Record<string, s
   return Object.entries(content).flatMap(([k, v]) => leaves(v, prefix ? `${prefix}.${k}` : k));
 }
 
-/** Words developers use that a learner should never read (BYOK/API-key wording is the feature, so allowed). */
+/**
+ * Words developers use that a learner should never read (BYOK/API-key wording is the feature, so allowed).
+ * "Cloudflare Workers AI" is the named sub-processor in the privacy notes and the chat's AI disclosure,
+ * a product name like any other, so only a bare "Workers AI" counts.
+ */
 export const JARGON =
-  /\b(D1|Workers? AI|eval|lane|codex|payload|IndexedDB|GM storage|HTTP \d{3}|stack trace|JSON)\b/;
+  /\b(D1|(?<!Cloudflare )Workers? AI|eval|lane|codex|payload|IndexedDB|GM storage|HTTP \d{3}|stack trace|JSON)\b/;
+
+/**
+ * Dictionaries written for a developer or an AI assistant, where HTTP, JSON and
+ * headers are the subject: agent-guide is the prompt a user copies into their
+ * own AI app (lib/agent-guide.ts), read by the assistant, not by the learner.
+ */
+export const JARGON_EXEMPT = new Set(["agent-guide"]);

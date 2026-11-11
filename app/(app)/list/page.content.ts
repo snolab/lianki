@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
 const listPageContent = {
   key: "list-page",
@@ -242,4 +243,29 @@ const listPageContent = {
   },
 } satisfies DeclarationContent;
 
-export default listPageContent;
+const context: KeyContext<typeof listPageContent.content> = {
+  metadata: {
+    title: "The browser tab's title of /list. Keep 'Lianki - ' as is.",
+    description: "The page's search-engine description. One short sentence.",
+  },
+  nextCard: "Button on /list that opens the next card due for review. Short imperative phrase.",
+  totalCards: "Label before the number of all the learner's cards on /list; ends with a colon.",
+  dueCards: "Label before the number of cards due for review now on /list; ends with a colon.",
+  learningActivity: "Heading over the heatmap of reviews per day on /list. Short noun phrase.",
+  deleteCard: "Label before a card's title in the delete confirmation on /list; ends with a colon.",
+  deleteCardTitle: "Tooltip of the delete button on a card row on /list. Imperative.",
+  deleteFailedAlert: "Alert when deleting a card was refused by the server. Short sentence.",
+  deleteErrorAlert:
+    "Alert when deleting a card failed for another reason (no connection). Short sentence.",
+  refresh: "Button that reloads the review heatmap on /list. Imperative verb.",
+  refreshing: "The same button while it reloads. Progressive with an ellipsis.",
+  refreshHeatmapTitle: "Tooltip of that button: reloads the heatmap so the latest reviews show.",
+};
+
+export default {
+  ...listPageContent,
+  description: describeKeys(
+    "The /list page of Lianki, a spaced-repetition app: the learner's cards (saved web pages) with counts, a review-activity heatmap, a next-card button and per-card delete. Lianki is a product name, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;
