@@ -145,6 +145,11 @@ export default async function RootLayout({
   const autoUpdate = flagIn(flags, "app.auto-update");
   // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts): live, no deploy.
   const lexicon = partnerFrame ? undefined : await cfg("voice.lexicon");
+  // Provider voices (lib/cloud-voices.ts): audience owner, so the flag and the dev grant.
+  const cloudVoices =
+    dev && flagIn(flags, "voice.cloud-voices")
+      ? { on: true, map: await cfg("voice.langVoices") }
+      : undefined;
   const boots = {
     strings: partner,
     leave,
@@ -156,6 +161,7 @@ export default async function RootLayout({
     liHub,
     autoUpdate,
     lexicon,
+    cloudVoices,
   };
   const box = boxConfig();
   return (

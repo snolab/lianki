@@ -9,6 +9,11 @@ on, the reader's selection translation and word meanings are called from the
 user's browser to their own provider with their own key — never through
 `lib/workers-ai.ts`, never charged, never written to the shared caches.
 
+A second exception: Li's read-aloud in a **provider voice** (`google:` /
+`azure:`, flag `voice.cloud-voices`) is synthesized by Google Cloud TTS or
+Azure Speech in `lib/cloud-voices.ts`, paid from credits as `voice.cloud`
+([li-sound-hub.md](li-sound-hub.md), "Provider voices").
+
 Every other call is paid from the user's credits, held before the call and
 settled after: [payments.md, "What costs credits"](payments.md#what-costs-credits)
 (`lib/payments/metered.ts`, prices in `lib/payments/prices.ts`).

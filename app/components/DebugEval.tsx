@@ -38,6 +38,7 @@ import {
 } from "@lianki/debug-chat/wire";
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
+import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
@@ -157,8 +158,14 @@ export function DebugEval({
   fullScreen = false,
   liHub = false,
   lexicon,
+  cloudVoices,
   box = null,
 }: {
+  /**
+   * Provider voices (google:, azure:): on with flag voice.cloud-voices and the
+   * dev grant, and the language → voice map (config voice.langVoices). None: off.
+   */
+  cloudVoices?: { on: boolean; map: Record<string, string> };
   /**
    * The read-aloud pronunciation table (config `voice.lexicon`, from the root
    * layout): handed to the voice before anything is read. None: its default.
@@ -185,6 +192,7 @@ export function DebugEval({
 } = {}) {
   // Idempotent and cheap: the live table is in place before the first reply is read.
   if (lexicon !== undefined) setLexicon(lexicon);
+  setCloudVoices(cloudVoices);
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
   const devRef = useRef(dev);

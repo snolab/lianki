@@ -15,7 +15,7 @@
  * (lib/payments/metered.ts) stays paused only while this is unchanged: bump it
  * with any price or ceiling change, and the deploy un-pauses everything.
  */
-export const PRICES_VERSION = "2026-11-09";
+export const PRICES_VERSION = "2026-11-11";
 
 /** Our price over the provider's list price (covers fees, retries, rounding). */
 export const MARGIN = 1.5;
@@ -33,6 +33,38 @@ export const FALLBACK_TEXT_PRICE = { inPerM: 0.35, outPerM: 2.253 };
 export const MELOTTS_USD_PER_MIN = 0.0002;
 /** Deepgram Aura-2 (a lane's own voice): USD per 1,000 input characters. */
 export const AURA2_USD_PER_KCHAR = 0.03;
+/**
+ * Provider voices (`voice.cloud`, lib/cloud-voices.ts): USD per million
+ * billed characters, by tier, from the providers' list prices (read
+ * 2026-11-11). Where a page and an older figure disagree (Google WaveNet: $4
+ * on the page, $16 before), the higher one, so a hold always covers the bill.
+ */
+export const PROVIDER_TTS_USD_PER_M = {
+  "google:standard": 4,
+  "google:wavenet": 16,
+  "google:neural2": 16,
+  "google:chirp": 30,
+  "google:studio": 160,
+  "azure:neural": 16,
+  "azure:hd": 30,
+} as const;
+export type ProviderTier = keyof typeof PROVIDER_TTS_USD_PER_M;
+
+/** A provider voice's price tier, by its name; a name not recognised is the dearest of its provider. */
+export function providerTier(provider: "google" | "azure", name: string): ProviderTier {
+  const n = name.toLowerCase();
+  if (provider === "azure") return /dragonhd|-hd|:hd/.test(n) ? "azure:hd" : "azure:neural";
+  if (n.includes("-standard-")) return "google:standard";
+  if (n.includes("-wavenet-")) return "google:wavenet";
+  if (/-(neural2|polyglot|news)-/.test(n)) return "google:neural2";
+  if (n.includes("-chirp")) return "google:chirp";
+  return "google:studio";
+}
+
+/** Our USD price for `chars` billed characters in a provider voice. */
+export const providerTtsUsd = (provider: "google" | "azure", name: string, chars: number) =>
+  (Math.max(0, chars) / 1e6) * PROVIDER_TTS_USD_PER_M[providerTier(provider, name)] * MARGIN;
+
 /** Whisper large-v3-turbo (the default STT): USD per audio minute; the fallback is cheaper. */
 export const STT_USD_PER_MIN = 0.000513;
 
@@ -73,6 +105,7 @@ export const FEATURES = [
   "blog.translate",
   "words.import-ai",
   "tts",
+  "voice.cloud",
 ] as const;
 export type Feature = (typeof FEATURES)[number];
 

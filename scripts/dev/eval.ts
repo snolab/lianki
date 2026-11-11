@@ -118,8 +118,11 @@
  *       A line's own voice (docs/dev-debug-widget.md, "A line's own voice"):
  *       --voice device:<name> (a voice the phone has, read with speech even
  *       when his output is cloud), melo:<lang>, aura:<speaker>, or
- *       eleven:<id> (an ElevenLabs public preview clip, its own words).
- *       local:<name> is reserved. An unknown id is refused; a device voice
+ *       eleven:<id> (an ElevenLabs public preview clip, its own words),
+ *       google:<voice> or azure:<voice>[/<locale>] (a provider voice made on
+ *       the server and played by the phone; flag voice.cloud-voices, paid
+ *       from credits; without the provider's key the lane's voice reads it;
+ *       docs/li-sound-hub.md, "Provider voices"). local:<name> is reserved. An unknown id is refused; a device voice
  *       the page lacks falls back to the lane's voice, never silence.
  *
  *   bun scripts/dev/eval.ts voices [--no-pair] [--target <text>] [--cloud]
@@ -1340,7 +1343,7 @@ async function main() {
     if (loudFlag) console.error(LOUD_DEPRECATED);
     if (!text) {
       console.error(
-        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--lane main|codex|agy] [--voice main|calm|bright|device:<name>|melo:<lang>|aura:<speaker>|eleven:<id>] "text" | -   (ids: eval.ts voices)',
+        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--lane main|codex|agy] [--voice main|calm|bright|device:<name>|melo:<lang>|aura:<speaker>|eleven:<id>|google:<voice>|azure:<voice>[/<locale>]] "text" | -   (ids: eval.ts voices)',
       );
       process.exit(2);
     }
