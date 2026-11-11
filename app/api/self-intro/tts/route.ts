@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     const session = await auth.api.getSession({ headers: await headers() });
     const email = session?.user?.email;
     if (!email) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "login-required" }, { status: 401 });
     }
 
     const rateLimit = await routeLimit(await accountKey("self-intro-tts", email), {
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     });
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { error: "Too many requests. Please retry later." },
+        { error: "rate-limited" },
         {
           status: 429,
           headers: {
@@ -48,19 +48,13 @@ export async function POST(req: NextRequest) {
 
     // Validate inputs
     if (typeof text !== "string" || text.length === 0 || text.length > MAX_TEXT_LENGTH) {
-      return NextResponse.json(
-        { error: `Text must be 1–${MAX_TEXT_LENGTH} characters` },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "invalid-text-length" }, { status: 400 });
     }
     if (!ALLOWED_VOICES.includes(voice)) {
-      return NextResponse.json(
-        { error: `Invalid voice. Allowed: ${ALLOWED_VOICES.join(", ")}` },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "invalid-voice" }, { status: 400 });
     }
     if (typeof speed !== "number" || speed < 0.25 || speed > 4.0) {
-      return NextResponse.json({ error: "Speed must be between 0.25 and 4.0" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-speed" }, { status: 400 });
     }
 
     if (!isWorkersAiConfigured()) {
@@ -92,6 +86,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     logSanitizedError("self-intro.tts", error);
-    return NextResponse.json({ error: "Failed to generate audio" }, { status: 500 });
+    return NextResponse.json({ error: "tts-failed" }, { status: 500 });
   }
 }

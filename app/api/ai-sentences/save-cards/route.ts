@@ -11,13 +11,13 @@ export async function POST(req: NextRequest) {
     const session = await auth.api.getSession({ headers: await headers() });
     const email = session?.user?.email;
     if (!email) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "login-required" }, { status: 401 });
     }
 
     const { words } = await req.json();
 
     if (!Array.isArray(words) || words.length === 0 || words.length > 100) {
-      return NextResponse.json({ error: "Invalid words array" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-words" }, { status: 400 });
     }
 
     const FSRSNotes = getFSRSNotesCollection(email);
@@ -56,6 +56,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     logSanitizedError("ai-sentences.save-cards", error);
-    return NextResponse.json({ error: "Failed to save cards" }, { status: 500 });
+    return NextResponse.json({ error: "save-failed" }, { status: 500 });
   }
 }

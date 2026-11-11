@@ -10,6 +10,24 @@ import { describeKeys } from "@/lib/i18n-context";
 const dictionary = {
   key: "read-reader",
   content: {
+    metaTitle: t({
+      en: "Reading — Lianki",
+      zh: "阅读 — Lianki",
+      ja: "読書 — Lianki",
+      ko: "읽기 — Lianki",
+      hi: "पढ़ना — Lianki",
+      es: "Lectura — Lianki",
+      fr: "Lecture — Lianki",
+      ar: "القراءة — Lianki",
+      bn: "পড়া — Lianki",
+      pt: "Leitura — Lianki",
+      ru: "Чтение — Lianki",
+      ur: "مطالعہ — Lianki",
+      id: "Membaca — Lianki",
+      de: "Lesen — Lianki",
+      sw: "Kusoma — Lianki",
+      mr: "वाचन — Lianki",
+    }),
     back: t({
       en: "Back to books",
       zh: "返回书架",
@@ -338,6 +356,8 @@ const dictionary = {
 };
 
 const context: Record<keyof typeof dictionary.content, string> = {
+  metaTitle:
+    "The browser tab's title while a book or text is open in the reader. The book's own title is private and stays out of it. One short noun for the activity, then ' — Lianki'. Lianki is a product name: keep it, and the dash, as is.",
   back: "Leaves the open book for the list of the learner's books and texts on /read. Shown three ways: the screen-reader label and tooltip of the ← button at the start of the reader's top toolbar, the visible text of the button after the book's last paragraph (so the learner goes back without scrolling up), and the back link at the top of the classic reader. An imperative phrase.",
   contents:
     "Heading of the sheet that opens from the progress ring in the reader's toolbar: the book's chapters (tap one to jump there) and its word summary. A book's table of contents; a short noun.",
