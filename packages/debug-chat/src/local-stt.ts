@@ -34,6 +34,7 @@ import type { SttSignals } from "./stt-guard";
 import { reportPageError } from "./page-errors";
 import { type SpeakerTag, cleanSpeaker } from "./wire";
 import { isDesktop, sttMayReopen } from "./voice-bg";
+import { isPublicRoute } from "./public-stt";
 
 /** localStorage: the local STT server's WebSocket URL(s) (owner pages only). */
 export const LOCAL_STT_KEY = "lk:debug-local-stt";
@@ -59,7 +60,10 @@ const TAG_PRE = 2;
 
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 
-function oneUrl(raw: string): string | undefined {
+function oneUrl(raw: string, named = false): string | undefined {
+  // Lianki's speech servers by name (rtc:lianki, wss:session): the chat mic's list may mix
+  // them with his sockets (docs/local-stt.md, "His own Mac over WebRTC"); they are not URLs.
+  if (named && isPublicRoute(raw)) return raw;
   let u: URL;
   try {
     u = new URL(raw);
@@ -75,11 +79,11 @@ function oneUrl(raw: string): string | undefined {
  * The URL(s) from localStorage the owner's page may use (wss, or ws on
  * localhost), in order, joined by one space; undefined when none is.
  */
-export function localSttFrom(raw: string | null | undefined): string | undefined {
+export function localSttFrom(raw: string | null | undefined, named = false): string | undefined {
   const urls = (raw ?? "")
     .split(/[\s,]+/)
     .filter(Boolean)
-    .map(oneUrl)
+    .map((u) => oneUrl(u, named))
     .filter((u): u is string => !!u);
   const uniq = [...new Set(urls)];
   return uniq.length ? uniq.join(" ") : undefined;
@@ -107,9 +111,10 @@ export type LocalSttSource = "stored" | "owner-default" | "off" | "none";
 export function localSttRoute(
   stored: string | null | undefined,
   owner: boolean,
+  named = false,
 ): { urls?: string; source: LocalSttSource } {
   if (stored != null) {
-    const urls = stored.trim().toLowerCase() === LOCAL_STT_OFF ? undefined : localSttFrom(stored);
+    const urls = stored.trim().toLowerCase() === LOCAL_STT_OFF ? undefined : localSttFrom(stored, named);
     return urls ? { urls, source: "stored" } : { source: "off" };
   }
   if (owner) return { urls: localSttFrom(OWNER_DEFAULT_LOCAL_STT), source: "owner-default" };
