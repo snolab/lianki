@@ -1,6 +1,7 @@
 import { ServiceWorkerRegistration } from "./ServiceWorkerRegistration";
 import { NewVersionNotice } from "./NewVersionNotice";
-import { DebugEval, type PartnerStrings } from "./DebugEval";
+import type { PartnerStrings } from "./DebugEval";
+import { DebugEvalLazy } from "./DebugEvalLazy";
 import { LeaveGuard } from "./LeaveGuard";
 import { NoCreditsNotice, type NoCreditsStrings } from "./NoCreditsNotice";
 import type { BoxConfig } from "@/lib/box-oauth/client";
@@ -53,7 +54,7 @@ export function OwnerBoots({
       <LeaveGuard message={leave} />
       {credits ? <NoCreditsNotice strings={credits} /> : null}
       <NewVersionNotice autoUpdate={autoUpdate} />
-      <DebugEval
+      <DebugEvalLazy
         strings={strings}
         partnerOpen={open}
         dev={dev}
