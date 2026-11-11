@@ -1,5 +1,6 @@
-// The on/off switch as a box seal (app/components/SealSwitch.tsx; owner,
-// 2026-11-11): markup and roles, the two states' colours and outline from
+// The on/off switch as a two-part box seal, [ 开 | 关 ]
+// (app/components/SealSwitch.tsx; owner, 2026-11-11: a switch shows all its
+// states): markup and roles, both sides' colours and outline from
 // app/globals.css, their contrast in light and dark, the words in 16 locales.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -46,11 +47,14 @@ describe("markup", () => {
     expect(html(false)).toContain('data-seal="off"');
   });
 
-  test("both words are in the box (one shows), and neither is read out", () => {
-    const out = html(false);
-    expect(out).toContain('<span data-word="on">开</span>');
-    expect(out).toContain('<span data-word="off">关闭</span>');
-    expect(out).toMatch(/<span aria-hidden="true" class="lk-sealbox"/);
+  test("both words always show, the current state's side pressed, neither read out", () => {
+    const off = html(false);
+    expect(off).toContain('<span data-word="on">开</span>');
+    expect(off).toContain('<span data-word="off" data-active="true">关</span>');
+    expect(off).toMatch(/<span aria-hidden="true" class="lk-sealbox"/);
+    const on = html(true);
+    expect(on).toContain('<span data-word="on" data-active="true">开</span>');
+    expect(on).toContain('<span data-word="off">关</span>');
   });
 
   test("a form choice can be a checkbox; disabled passes through", () => {
@@ -67,7 +71,7 @@ describe("markup", () => {
 });
 
 describe("the stamp, in a DOM", () => {
-  test("plays once on turning on (not on mount, not on turning off), then clears", async () => {
+  test("plays once on each change of state (not on mount), then clears", async () => {
     const { Window } = await import("happy-dom");
     const win = new Window();
     const g = globalThis as Record<string, unknown>;
@@ -82,15 +86,23 @@ describe("the stamp, in a DOM", () => {
       const seal = () => host.querySelector(".lk-sealbox")!;
       const show = (checked: boolean) =>
         act(() => root.render(createElement(SealSwitch, { checked, "aria-label": "x" })));
+      const end = () =>
+        act(() => {
+          seal().dispatchEvent(new win.Event("animationend", { bubbles: true }) as never);
+        });
+      await show(true);
+      expect(seal().hasAttribute("data-stamping")).toBe(false);
       await show(true);
       expect(seal().hasAttribute("data-stamping")).toBe(false);
       await show(false);
+      expect(seal().hasAttribute("data-stamping")).toBe(true);
+      expect(seal().querySelector("[data-active]")?.getAttribute("data-word")).toBe("off");
+      await end();
       expect(seal().hasAttribute("data-stamping")).toBe(false);
       await show(true);
       expect(seal().hasAttribute("data-stamping")).toBe(true);
-      await act(() => {
-        seal().dispatchEvent(new win.Event("animationend", { bubbles: true }) as never);
-      });
+      expect(seal().querySelector("[data-active]")?.getAttribute("data-word")).toBe("on");
+      await end();
       expect(seal().hasAttribute("data-stamping")).toBe(false);
       await act(() => root.unmount());
     } finally {
@@ -156,26 +168,26 @@ describe("app/globals.css", () => {
       expect(v).toMatch(/^oklch\(/);
   });
 
-  test("on: a filled seal-red box with the paper word", () => {
-    const on = rule(".lk-sealbox");
+  test("the pressed side: filled seal red with the paper word", () => {
+    const on = rule(".lk-sealbox > [data-active]");
     expect(on).toContain("background-color: var(--lk-seal-on)");
     expect(on).toContain("border: 2px solid var(--lk-seal-on)");
     expect(on).toContain("color: var(--lk-seal-on-ink)");
+    expect(on).not.toMatch(/padding|min-width|font-size/);
   });
 
-  test("off: the same box, grey and dashed, no fill", () => {
-    const off = rule('.lk-sealbox[data-seal="off"]');
-    expect(off).toContain("border-style: dashed");
-    expect(off).toContain("border-color: var(--lk-seal-off)");
+  test("the other side: shown, grey and dashed, no fill", () => {
+    const off = rule(".lk-sealbox > span");
+    expect(off).toContain("border: 2px dashed var(--lk-seal-off)");
     expect(off).toContain("background-color: transparent");
     expect(off).toContain("color: var(--lk-seal-off)");
-    expect(off).not.toMatch(/padding|min-width|font-size/);
+    expect(css).not.toMatch(/\.lk-sealbox[^{]*\{[^}]*(visibility: hidden|display: none)/);
   });
 
   test("the tap target is at least 40px tall; no motion when reduced", () => {
     expect(rule(".lk-seal-switch")).toContain("min-height: 2.5rem");
     expect(css).toMatch(
-      /@media \(prefers-reduced-motion: reduce\) \{\s*\.lk-sealbox,\s*\.lk-sealbox\[data-stamping\] \{\s*animation: none;/,
+      /@media \(prefers-reduced-motion: reduce\) \{\s*\.lk-sealbox > span,\s*\.lk-sealbox\[data-stamping\] > \[data-active\] \{\s*animation: none;/,
     );
   });
 });
@@ -185,14 +197,14 @@ describe("the words", () => {
     "on" | "off",
     { translation: Record<string, string> }
   >;
-  test("16 locales, each with two different, short words", () => {
+  test("16 locales, each with two different words that fit one stamp together", () => {
     for (const l of LOCALES) {
       expect(on.translation[l]?.length).toBeGreaterThan(0);
       expect(off.translation[l]?.length).toBeGreaterThan(0);
       expect(on.translation[l]).not.toBe(off.translation[l]);
-      expect(Math.max(on.translation[l]!.length, off.translation[l]!.length)).toBeLessThan(12);
+      expect(on.translation[l]!.length + off.translation[l]!.length).toBeLessThanOrEqual(10);
     }
     expect(on.translation.zh).toBe("开");
-    expect(off.translation.zh).toBe("关闭");
+    expect(off.translation.zh).toBe("关");
   });
 });
