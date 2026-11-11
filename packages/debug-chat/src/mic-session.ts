@@ -26,6 +26,7 @@ import {
   type UploadInfo,
   type Vad,
   type VadEvents,
+  SttError,
   createMic,
   keepStream,
 } from "./mic";
@@ -35,6 +36,7 @@ import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
 import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
 import { micTaps } from "./mic-taps";
+import { type AutoOff, type AutoOffReason, onTrackLost, trackNote } from "./mic-off";
 
 /** What the session needs of a local STT client (local-stt.ts LocalStt). */
 export type LocalClient = StreamStt & {
@@ -54,19 +56,29 @@ export const MIC_SESSION_KEY = "__lkMic";
  * reopen (the echo cancellation switch, aec.ts applyAec). 12: the voice cues
  * (cues.ts), and the guard over what the VAD hears while one plays. 13: the
  * silence guard (stt-guard.ts) over each final, and the route's signals for it.
+ * 14: why it went off (mic-off.ts): `auto`, autoOff(), a lost track reopened.
  */
-export const MIC_SESSION_V = 13;
+export const MIC_SESSION_V = 14;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
 /** Shown by the button when a tap finds another listener owns the room. */
 export const MIC_BLOCKED_NOTE = "in use by a conversation";
 
+/** The slice of a MediaStreamTrack the session uses (the events: mic-off.ts, "track-ended"). */
+export type TrackLike = {
+  readyState: string;
+  stop(): void;
+  muted?: boolean;
+  addEventListener?(type: "ended" | "mute" | "unmute", f: () => void): void;
+};
 /** The slice of a MediaStream the session uses. */
 export type StreamLike = {
   id: string;
-  getTracks(): { readyState: string; stop(): void }[];
+  getTracks(): TrackLike[];
 };
+/** The page's lifecycle, as the session hears it (visibilitychange, freeze/resume, pagehide/pageshow). */
+export type LifeEvent = "visible" | "hidden" | "freeze" | "resume" | "pagehide" | "pageshow";
 export type MicView = {
   state: MicState;
   /** Transcripts still out, and the dimmed partial text. */
@@ -76,6 +88,8 @@ export type MicView = {
   error: unknown;
   /** Reloaded with the mic on, but it could not resume by itself: one tap does. */
   resume: boolean;
+  /** It went off by itself (mic-off.ts): why, and when. Cleared when it comes on or he turns it off. */
+  auto?: AutoOff;
   /** The local streaming STT's socket, when one is configured (the button's dot). */
   local?: LocalState;
   /** Active: everything goes to STT. Passive: only "Linky" wakes it (wake.ts). */
@@ -113,6 +127,11 @@ export type MicDeps = {
   permission?: () => Promise<"granted" | "denied" | "prompt" | "unknown">;
   /** Try to get the AudioContext running without a gesture; false if it stays suspended. */
   resumeAudio?: () => Promise<boolean>;
+  /** The page is visible now (a hidden page never asks for the mic). Absent: always visible. */
+  visible?: () => boolean;
+  /** Subscribe to the page's lifecycle; returns an unsubscribe. */
+  lifecycle?: (f: (ev: LifeEvent) => void) => () => void;
+  now?: () => number;
   log?: (ev: Record<string, unknown>) => void;
   /** Overrides of the silence guard (createMic's `guard`), for tests. */
   guard?: Partial<SttGuardLimits>;
@@ -185,6 +204,48 @@ export function createMicSession(
       }
     },
   };
+  const now = deps.now ?? Date.now;
+  const visible = () => deps.visible?.() ?? true;
+  const trackAt = () => trackNote(stream?.getTracks()[0]);
+  /** Every off goes to the dev log with who did it (mic-off.ts): the next one explains itself. */
+  const offLog = (by: "user" | "auto", reason: string) =>
+    deps.log?.({ ev: "mic-off", by, reason, was: view.state, visible: visible(), track: trackAt() });
+  /** Off by itself: shown as its own state (mic-off.ts micLook) with its reason. */
+  const markAuto = (reason: AutoOffReason) => emit({ auto: { reason, at: now() } });
+  /** A track lost while hidden: reopened once the page is visible. */
+  let lost: AutoOffReason | null = null;
+  /** A reload's resume put off until the page is visible. */
+  let resumeLater = false;
+  const watched = new WeakSet<object>();
+  /** The track's own events: an end is undone if it can be, a mute is only logged. */
+  const watch = (s: StreamLike) => {
+    if (watched.has(s)) return;
+    watched.add(s);
+    for (const t of s.getTracks()) {
+      const note = (what: string) =>
+        s === stream && deps.log?.({ ev: "mic-track", what, visible: visible(), state: view.state });
+      t.addEventListener?.("mute", () => note("mute"));
+      t.addEventListener?.("unmute", () => note("unmute"));
+      t.addEventListener?.("ended", () => {
+        if (s !== stream) return;
+        const then = onTrackLost({ on: mic.state() !== "off", visible: visible() });
+        deps.log?.({ ev: "mic-track", what: "ended", visible: visible(), state: view.state, then });
+        if (then === "reopen") void recover("track-ended");
+        else if (then === "wait") lost = "track-ended";
+      });
+    }
+  };
+  /** Reopen after a lost track (the page is visible); if it cannot, it shows as off by itself. */
+  const recover = async (reason: AutoOffReason) => {
+    lost = null;
+    const at = offs;
+    const ok = await session.reopen();
+    deps.log?.({ ev: "mic-recover", reason, ok });
+    if (ok || at !== offs) return;
+    store.clear();
+    offLog("auto", reason);
+    markAuto(reason);
+  };
   /** The live stream, or a new one (the only getUserMedia). */
   /** Bumped by every explicit off: a reopen or an open under way does not turn the mic back on. */
   let offs = 0;
@@ -200,6 +261,7 @@ export function createMicSession(
       return s;
     }
     stream = s;
+    watch(s);
     return stream;
   };
   const stopStream = () => {
@@ -300,7 +362,11 @@ export function createMicSession(
       prev = s;
       // Listening always starts active: a tap on means "I'm talking to you".
       if (was === "off" && s !== "off") wake.set("active", "mic-on");
-      emit({ state: s, wakeReason: wake.view().reason, ...(s !== "off" ? { resume: false } : {}) });
+      emit({
+        state: s,
+        wakeReason: wake.view().reason,
+        ...(s !== "off" ? { resume: false, auto: undefined } : {}),
+      });
       deps.onState?.(s, was);
     },
     // A command tap (mic-taps.ts) may keep it; the rest goes to the chat as before.
@@ -313,7 +379,15 @@ export function createMicSession(
       emit({ pending: n, interim });
       sink?.onPending(n, interim);
     },
-    onError: (e) => emit({ error: e }),
+    onError: (e) => {
+      // A 401 turns listening off (createMic): signed out, not his off.
+      if (e instanceof SttError && e.status === 401 && mic.state() !== "off") {
+        store.clear();
+        offLog("auto", "sign-in");
+        markAuto("sign-in");
+      }
+      emit({ error: e });
+    },
     onProb: (p) => deps.onProb?.(p),
     log: (ev) => deps.log?.(ev),
     guard: deps.guard,
@@ -329,7 +403,22 @@ export function createMicSession(
 
   // /vibe owns the room (mic-taps.ts block): this mic goes off and stays off.
   const unblock = taps.onBlock?.(() => {
-    if (mic.state() !== "off") void session.off();
+    if (mic.state() !== "off") void session.autoOff("vibe");
+  });
+  // The page's lifecycle: logged while the mic is on; visible again undoes a lost track.
+  const unlife = deps.lifecycle?.((ev) => {
+    if (mic.state() !== "off" || lost || resumeLater)
+      deps.log?.({ ev: "mic-life", what: ev, state: view.state, track: trackAt(), lost: lost ?? undefined });
+    if (ev !== "visible" && ev !== "resume" && ev !== "pageshow") return;
+    if (!visible()) return;
+    if (resumeLater) {
+      resumeLater = false;
+      void session.autoResume();
+      return;
+    }
+    const st = mic.state();
+    const dead = st !== "off" && st !== "loading" && !!stream && !live(stream);
+    if (lost || dead) void recover(lost ?? "track-ended");
   });
 
   const session = {
@@ -371,13 +460,30 @@ export function createMicSession(
       if (mic.state() === "off") {
         store.on();
         await mic.toggle();
-      } else await session.off();
+      } else await session.off("tap");
     },
-    /** The explicit off: the VAD, the stream and the reload flag all go. */
-    async off() {
+    /** The explicit off: the VAD, the stream and the reload flag all go. `why`: for the dev log. */
+    async off(why = "api") {
+      if (mic.state() !== "off") offLog("user", why);
       offs++;
+      lost = null;
+      resumeLater = false;
       store.clear();
-      emit({ resume: false });
+      emit({ resume: false, auto: undefined });
+      await mic.off();
+      stopStream();
+    },
+    /**
+     * Off by itself (another tab took the mic, /vibe took the room): like the
+     * explicit off, but shown as "off by itself, tap to resume" with its reason.
+     */
+    async autoOff(reason: AutoOffReason) {
+      if (mic.state() === "off") return;
+      offLog("auto", reason);
+      offs++;
+      lost = null;
+      store.clear();
+      markAuto(reason);
       await mic.off();
       stopStream();
     },
@@ -419,6 +525,8 @@ export function createMicSession(
           ok = mic.state() !== "off";
           deps.log?.({ ev: "mic-reopen", ok });
         } while (ok && reopenAgain);
+        // Not back: off by itself (a lost track's recover() then names its own reason).
+        if (!ok) markAuto("reopen-failed");
         return ok;
       };
       reopenRun = run().finally(() => {
@@ -445,7 +553,7 @@ export function createMicSession(
       if (!on || (!id && !test)) {
         enrolHook = null;
         enrolId = "";
-        if (enrolOpened && mic.state() !== "off") await session.off();
+        if (enrolOpened && mic.state() !== "off") await session.off("enrol");
         enrolOpened = false;
         return;
       }
@@ -474,6 +582,7 @@ export function createMicSession(
       unhold?.();
       unpin();
       unblock?.();
+      unlife?.();
       listeners.clear();
       sink = null;
       const s = stream;
@@ -488,6 +597,12 @@ export function createMicSession(
     /** After a reload with the mic on: resume without a gesture if we may, else wait for a tap. */
     async autoResume() {
       if (!store.get() || taps.blocked?.()) return;
+      // A hidden page never asks for the mic (Android refuses or hangs): when it is visible.
+      if (!visible()) {
+        resumeLater = true;
+        deps.log?.({ ev: "mic-resume", path: "wait-visible" });
+        return;
+      }
       const tap = (reason: string) => {
         emit({ resume: true });
         deps.log?.({ ev: "mic-resume", path: "tap", reason });
@@ -514,7 +629,13 @@ export function createMicSession(
       deps.log?.({ ev: "mic-resume", path: "auto", ok: true, permission: perm });
     },
   };
-  if (from?.on) void mic.toggle();
+  if (from?.stream) watch(from.stream);
+  if (from?.on)
+    void mic.toggle().then(() => {
+      if (mic.state() !== "off") return;
+      offLog("auto", "migrate-failed");
+      markAuto("migrate-failed");
+    });
   return session;
 }
 

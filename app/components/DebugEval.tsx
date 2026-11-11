@@ -266,10 +266,18 @@ export function DebugEval({
         (why) => {
           const looking = document.visibilityState === "visible" && document.hasFocus();
           const d = onTakeover(why, { mic: voice().state().mic, looking });
-          if (d.micOff)
-            void (globalThis as { __lkMic?: { off?: () => Promise<void> } }).__lkMic
-              ?.off?.()
-              .catch(() => {});
+          if (d.micOff) {
+            // Off by itself, with its reason (mic-off.ts): never the plain off he chose.
+            const m = (
+              globalThis as {
+                __lkMic?: {
+                  off?: (why?: string) => Promise<void>;
+                  autoOff?: (r: "other-tab") => Promise<void>;
+                };
+              }
+            ).__lkMic;
+            void (m?.autoOff ? m.autoOff("other-tab") : m?.off?.("other-tab"))?.catch(() => {});
+          }
           if (d.stopReading) voice().stop();
         },
       );
