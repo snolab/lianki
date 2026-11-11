@@ -85,13 +85,19 @@ from ticket import (  # noqa: E402
 )
 import voiceprint as VP  # noqa: E402
 from engines import simplified, tidy  # noqa: E402
-from rolling import Rolling  # noqa: E402
+from rolling import CTX_S, Rolling, join_spans, language_spans  # noqa: E402
 
 #: A partial every this much new audio (--partial-step)… The owner's bar: the next feedback
 #: within 0.2 s of speech, a wrong word being better than none, so the step is well under it.
 PARTIAL_STEP_S = 0.1
 #: …once the utterance is this long (--partial-min).
 PARTIAL_MIN_S = 0.1
+#: Partials decode only the unsettled tail with some context (rolling.py) when 1; by default
+#: they decode the whole utterance: as fast to change on screen at these lengths, and cleaner
+#: (docs/local-stt.md, "Rolling partials").
+ROLLING = os.environ.get("LIANKI_STT_ROLLING", "0") == "1"
+#: A switched utterance's final read stretch by stretch (rolling.py language_spans): off by default.
+LANG_SPANS = os.environ.get("LIANKI_STT_LANG_SPANS", "0") == "1"
 #: Longest utterance kept (the mic cuts at 30 s).
 MAX_S = 40
 #: An enrolment not saved or cancelled within this long is dropped.
@@ -128,6 +134,11 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def lang_of(got: list[tuple[str, str]]) -> str:
+    """The language of the longest stretch's text (a fallback when the longest span had none)."""
+    return max(got, key=lambda t: len(t[0]))[1]
+
+
 class Utterance:
     def __init__(self, uid: int):
         self.id = uid
@@ -150,6 +161,8 @@ class Utterance:
         self.cleared = False
         #: Partials decode only the unsettled tail (rolling.py); the final still reads it all.
         self.roll = Rolling()
+        #: The languages of a switched utterance, stretch by stretch (its final was read so).
+        self.switched: list[str] | None = None
 
     def audio(self) -> np.ndarray:
         parts = ([self.pre] if self.pre is not None else []) + self.chunks
@@ -359,14 +372,16 @@ class Server:
         so its cost stays flat however long the utterance. Engines without token times,
         and the words after "Linky" (text_from), decode the whole utterance as before.
         """
-        tail_of = getattr(self.engine, "tail", None)
+        tail_of = getattr(self.engine, "tail", None) if ROLLING else None
         if tail_of is None or u.text_from:
             text, _lang = await self.decode(u.audio())
             return text
-        audio = u.audio()[u.roll.at:]
+        whole = u.audio()
+        ctx = min(u.roll.at, int(CTX_S * RATE))  # settled audio heard again, as context
+        audio = whole[u.roll.at - ctx:]
         loop = asyncio.get_running_loop()
         tokens, times, lang = await loop.run_in_executor(self.pool, tail_of, audio)
-        tail = u.roll.update(tokens, times, lang, len(audio))
+        tail = u.roll.update(tokens, times, lang, len(audio) - ctx, ctx)
         # Each piece in its own language's script (zh → simplified); spaces between words kept.
         pieces = [(s.text, s.lang) for s in u.roll.segments] + [(tail, lang)]
         return tidy("".join(simplified(t) if lg in ("zh", "yue") else t for t, lg in pieces), "")
@@ -444,6 +459,21 @@ class Server:
             async def text_of():
                 if len(heard) < RATE // 10:  # a bare "Linky": nothing after it to read
                     return "", "", None
+                # The speaker changed language (the partials' passes heard it, rolling.py):
+                # each stretch re-read in its own language, and that is the final (backfill).
+                # Off unless LIANKI_STT_LANG_SPANS=1: on mixed clips it rescued the first
+                # language, but read silence as 「Yeah」 (docs/local-stt.md, "Language switch").
+                spans_of = getattr(self.engine, "spans", None) if LANG_SPANS else None
+                spans = [] if u.text_from or not spans_of else language_spans(u.roll.segments)
+                langs = {lang for _, _, lang in spans} | ({u.roll.tail_lang} - {""})
+                if spans and len(langs) > 1:
+                    loop = asyncio.get_running_loop()
+                    got = await loop.run_in_executor(self.pool, spans_of, audio, spans, u.roll.at)
+                    if got:
+                        u.switched = [lang for _, lang in got]
+                        main = max(spans + [(u.roll.at, len(audio), u.roll.tail_lang)],
+                                   key=lambda sp: sp[1] - sp[0])[2] or lang_of(got)
+                        return join_spans([t for t, _ in got]), main, None
                 return await self.decode_final(heard)
 
             # The filter on (never an enrolment sentence): the check comes first, and audio it
@@ -502,6 +532,8 @@ class Server:
             }
             if auto_lang:
                 msg["langAuto"] = auto_lang  # what auto-detect said before the short-utterance pick
+            if u.switched:
+                msg["langs"] = u.switched  # a switched utterance: read stretch by stretch, in these
             tag = ""
             if enrol and spk is not None:
                 msg["enrol"] = spk
@@ -529,6 +561,8 @@ class Server:
                     tag += f", would filter ({self.would_filter})"
             await send(msg)
             picked = f", lang {auto_lang}->{lang}" if auto_lang else ""
+            if u.switched:
+                picked += f", langs {'+'.join(u.switched)}"
             log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, decode {ms} ms, {len(text)} chars{picked}{tag}")
 
         ready = {"t": "ready", "engine": self.engine.name, "model": self.engine.model}

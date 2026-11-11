@@ -100,6 +100,26 @@ class SenseVoice:
         self.r.decode_stream(s)
         return list(s.result.tokens), list(s.result.timestamps), (s.result.lang or "").strip("<|>")
 
+    def spans(self, audio: np.ndarray, spans: list[tuple[int, int, str]], tail_from: int) -> list[tuple[str, str]] | None:
+        """
+        A switched utterance read stretch by stretch (rolling.py language_spans): each
+        settled stretch with its own language forced, then the unsettled rest from
+        `tail_from` auto-detected (it may hold two languages). (text, lang) per stretch
+        that reads as something; None when none does (the whole decode stands).
+        """
+        if not self.picker:
+            return None
+        out = []
+        for a, b, lang in spans:
+            text = self.picker.read(audio[a:b], lang)
+            if text.strip():  # a stretch of silence reads as nothing: skipped
+                out.append((tidy(text, lang), lang))
+        if len(audio) - tail_from >= RATE // 10:
+            text, lang = self.transcribe(audio[tail_from:])
+            if text.strip():
+                out.append((text, lang))
+        return out or None
+
     def final(self, audio: np.ndarray) -> tuple[str, str, str | None]:
         """
         The whole utterance: (text, lang, the auto language it replaced or None).
@@ -307,6 +327,23 @@ class LangPicker:
             marks = set("，。？！、,.?!；;：:…")
             self._punct_mask = np.array([t in marks for t in self.tokens])
         return self._punct_mask
+
+    def read(self, audio: np.ndarray, lang: str) -> str:
+        """The audio read with `lang` forced (zh, en, ja, ko, yue): one stretch of a switched utterance."""
+        if not hasattr(self, "_lid_of"):
+            meta = self.sess.get_modelmeta().custom_metadata_map
+            self._lid_of = {k[5:]: int(v) for k, v in meta.items() if k.startswith("lang_")}
+        lid = self._lid_of.get(lang)
+        x = self.features(audio)
+        if lid is None or len(x) == 0:
+            return ""
+        logits = self.sess.run(None, {
+            "x": x[None],
+            "x_length": np.array([len(x)], np.int32),
+            "language": np.array([lid], np.int32),
+            "text_norm": np.array([self.itn], np.int32),
+        })[0]
+        return self.reading(logits[0, 4:]).text
 
     def reading(self, z: np.ndarray) -> Reading:
         z = z - z.max(-1, keepdims=True)
