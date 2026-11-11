@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
 const addNotePageContent = {
   key: "add-note-page",
@@ -62,4 +63,20 @@ const addNotePageContent = {
   },
 } satisfies DeclarationContent;
 
-export default addNotePageContent;
+const context: KeyContext<typeof addNotePageContent.content> = {
+  metadata: {
+    title: "The browser tab's title of the /add-note page. Keep ' - Lianki' as is.",
+    description:
+      "The page's search-engine description: this page adds a web address to the learner's review queue. One short sentence.",
+  },
+  adding:
+    "Shown on /add-note while the address is being saved as a card. A short progressive phrase with an ellipsis.",
+};
+
+export default {
+  ...addNotePageContent,
+  description: describeKeys(
+    "The /add-note page of Lianki, a spaced-repetition app: it saves a web address (a page the learner wants to review later) as a card. Lianki is a product name, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

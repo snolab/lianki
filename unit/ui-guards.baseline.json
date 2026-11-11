@@ -94,23 +94,6 @@
     "app/api/words/telemetry/route.ts": 1
   },
   "missingLocales": [],
-  "noDescription": [
-    "add-note-page",
-    "contact-form",
-    "first-run",
-    "list-page",
-    "profile-page",
-    "sign-in-page"
-  ],
-  "jargon": [
-    "agent-guide.answers",
-    "agent-guide.chatIntro",
-    "agent-guide.limits429",
-    "agent-guide.tokenJson",
-    "learning-partner.aiHint",
-    "learning-partner.aiStatus",
-    "privacy-page.aiBody",
-    "privacy-page.filesBody",
-    "privacy-page.voiceBody"
-  ]
+  "noDescription": [],
+  "jargon": []
 }

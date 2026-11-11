@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
 const signInPageContent = {
   key: "sign-in-page",
@@ -584,4 +585,55 @@ const signInPageContent = {
   },
 } satisfies DeclarationContent;
 
-export default signInPageContent;
+const context: KeyContext<typeof signInPageContent.content> = {
+  metadata: {
+    title: "The browser tab's title of the sign-in page. Keep ' - Lianki' as is.",
+    description: "The page's search-engine description. One sentence.",
+  },
+  heading: "Heading of the sign-in page: sign in, or create an account (the same step).",
+  signInWithGithub: "Button: sign in with a GitHub account. Keep GitHub as is.",
+  signInWithGoogle: "Button: sign in with a Google account. Keep Google as is.",
+  checkEmail: "Shown after a sign-in link was emailed. Short sentence.",
+  emailPlaceholder: "Placeholder of the email field. One word.",
+  sending: "A send button while it sends. Progressive with an ellipsis.",
+  sendSignInLink: "Button that emails a sign-in link. Imperative phrase.",
+  subtitle:
+    "Line under the heading: a new visitor's account is made from their email, no password. Two short sentences.",
+  otherWays: "Divider label above the Google / GitHub / passkey buttons. Short phrase.",
+  blockedNote:
+    "A note under those buttons, only where Google and GitHub may be unreachable (empty in most locales; zh: they may be blocked in mainland China, use email). Leave it empty unless the same holds for that language's readers.",
+  useDifferentEmail: "Link back to the email field to type another address. Imperative phrase.",
+  checkSpam:
+    "Help line after a link was sent: check the spam folder; the link works for a few minutes.",
+  captchaChecking: "Shown while the automatic human check runs. Progressive with an ellipsis.",
+  captchaFailed: "Shown when the human check failed to load; a tap retries. Two short sentences.",
+  continueAsGuest:
+    "Link: keep using the app without an account, cards stay on this device. Keep the arrow.",
+  sendCode: "Button that emails a 6-digit sign-in code. Imperative phrase.",
+  codeSentTo: "Text before the address the code went to (the address follows).",
+  codeLabel: "Label of the field for the 6-digit code.",
+  verifyCode: "Button that signs in with the typed code. Imperative.",
+  verifying: "That button while it checks the code. Progressive with an ellipsis.",
+  resendCode: "Link that emails a new code. Imperative phrase.",
+  codeCheckSpam:
+    "Help line after a code was sent: check the spam folder; the code is valid for 15 minutes. Keep 15.",
+  signInWithPasskey: "Button: sign in with a passkey. The platform's own word for passkey.",
+  passkeyFailed: "Error when the passkey sign-in failed: try again or use email.",
+  suggestHeading:
+    "Heading of the offer, after signing in by email, to save a passkey for faster sign-in next time.",
+  suggestBody:
+    "Text of that offer: a passkey signs in with fingerprint, face or screen lock, no code to wait for.",
+  addPasskey: "Button in that offer that creates a passkey. Imperative.",
+  addingPasskey: "That button while the device's passkey prompt is open. Progressive.",
+  notNow: "Button that declines the offer for now. Short.",
+  passkeyAddFailed:
+    "Error when creating the passkey failed; the learner is signed in anyway and can add one later on the profile page.",
+};
+
+export default {
+  ...signInPageContent,
+  description: describeKeys(
+    "The sign-in page of Lianki (/sign-in): sign in or create an account with an emailed 6-digit code, Google, GitHub or a passkey (fingerprint, face or screen lock); or keep using it without an account. Google, GitHub and Lianki are product names, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

@@ -99,6 +99,12 @@ import versionNotice from "@/app/components/version-notice.content";
 import statsPage from "@/app/(app)/stats/page.content";
 import membershipPage from "@/app/(app)/membership/membership-page.content";
 import sitesPage from "@/app/(app)/sites/page.content";
+import addNotePage from "@/app/(app)/add-note/page.content";
+import listPage from "@/app/(app)/list/page.content";
+import firstRun from "@/app/components/first-run.content";
+import contactForm from "@/app/contact-form.content";
+import profilePage from "@/app/(app)/my/profile/page.content";
+import signInPage from "@/app/(app)/sign-in/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -226,6 +232,12 @@ describe.each([
   ["stats-page", statsPage],
   ["membership-page", membershipPage],
   ["home-page", sitesPage],
+  ["add-note-page", addNotePage],
+  ["list-page", listPage],
+  ["first-run", firstRun],
+  ["contact-form", contactForm],
+  ["profile-page", profilePage],
+  ["sign-in-page", signInPage],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };
