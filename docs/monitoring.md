@@ -93,17 +93,57 @@ the **pairing modal** (`packages/debug-chat/src/DebugPairModal.tsx`). The modal 
 at least half the screen on every open page of its audience, so on both
 devices, and answering on one closes it everywhere. It shows the
 requester's label, the 4-hex code the sender prints too, one sentence of what
-Allow grants ("<label> wants to run code on your debug pages for 8 hours" /
-"… wants to chat with you for 30 days"), for an eval request the audience's
+Allow grants ("<label> wants to run code on your pages for 8 hours" — the
+length and, with "all", "on all your pages, on every device", come from the
+hub with the request, so the sentence is always what Allow will grant; 16
+locales, UiStrings `pairEval`…`grantDays` / "… wants to chat with you for 30
+days"), for an eval request the audience's
 open pages with a checkbox each (path, device hint; only this page ticked at
 first), and large
 buttons: **Authorize this page** (or "Authorize N pages" / "Authorize all
 pages", following the ticks), **Authorize all pages**, and **Deny**. There is
 no scope choice on the page: Allow grants what was asked for. An eval request
-gets the 8-hour **eval grant** (`EVAL_GRANT_MS`; eval and chat); a chat
-request gets the 30-day chat grant. Both are resumable (Scopes, below), so
+gets the **eval grant** (eval and chat); a chat request gets the 30-day chat
+grant.
+
+**The eval grant's length and pages are live config** (docs/config-store.md):
+`debug.evalGrantHours` (default 8 in code, 1–720; 720 = 30 days) and
+`debug.evalGrantPages` (`chosen`, the default: the pages ticked; `all`: every
+page of the owner, on every device, also pages opened later — never a
+friend's, whose previews keep their hour on their own pages). lianki-push has
+no D1: at each eval knock it asks the main Worker over
+`DebugSessions.config(key)` (`lib/eval-grant-config.ts`; anything unreadable
+gives the defaults; an older main Worker with no `config` is not waited on)
+and keeps both with the pairing, so the modal says them and Allow grants
+exactly them. A grant keeps its length (`ms`), and a renewal extends by it.
+A change reaches only new pairings: a grant already given keeps its `until`
+and pages. End (or Deny) still deletes the grant at once, and every eval is
+still logged. Both are resumable (Scopes, below), so
 the owner is asked once per sender, not once per command or per reconnect.
 (A page from before still sends `scope:"chat"`, and that still counts.)
+
+**After a reload (rejoin).** A page id lives in sessionStorage, so it
+survives a reload but not an app restart: an installed app the system killed
+and opened again (Android does this to a PWA in the background) comes back
+as a new page, and a page-scoped grant did not cover it — the sender resumed
+its grant fine, but every eval reached 0 pages (`[]`), and no prompt showed,
+since the grant was still valid. Now a page-scoped grant also notes each
+granted page's device (`devices`, the page's `dev=` id, recorded whenever the
+grant is written), and an owner page that connects on that device under a
+new id, while the granted page of that device is gone, takes its place
+(`debug.rejoin`): the sender reaches it at once, no prompt. Never another
+device, never while the granted page is still open, never a friend's or a
+chat-only page. Grants made before this have no `devices`: "Add this page"
+in the pill's menu, or an `all` grant, covers them.
+
+The page's own side: remote eval runs where debug mode is on and either the
+server rendered the page for a `dev` holder or the hub put this socket in the
+owner's thread (`lib/debug-rejoin.ts` `mayRunEval`). Both answers come from
+the permission snapshot, which fails closed for one request when it cannot
+be read; one such "no" used to stick for the page's whole life (evals
+dropped silently). A friend verdict on a page the server rendered for a
+`dev` holder (or on a device that was the owner's last time,
+`lk:debug-was-owner`) reconnects after 2 s, 8 s and 30 s, then is accepted.
 
 **Which pages.** A chat grant always covers every page of the owner: a
 phone's page drops its socket after 30 s in the background and comes back,
@@ -126,7 +166,7 @@ closes that socket with 4409. Only the socket: the stored grant (and its
 page ids) stays, so the sender reconnects with its token — silently — once
 a page is back. No timer: the hub notes when the pages went and checks on
 the next event of any kind, the way it checks expiry; a granted page coming
-back resets the clock. **Deny** or **End** deletes the grant; the 8 hours
+back resets the clock. **Deny** or **End** deletes the grant; its length
 running out ends it. One pairing may wait at a time (2 minutes at most), so
 prompts cannot be spammed; with no debug page open the sender is turned
 away at once.

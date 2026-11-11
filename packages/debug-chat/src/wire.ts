@@ -462,6 +462,13 @@ export type PairInfo = {
   scope?: Scope;
   /** The page ids an approved pairing reaches; absent = all this audience's pages. */
   pages?: string[];
+  /**
+   * An eval request: how long Allow lasts (the hub's live config,
+   * `debug.evalGrantHours`); absent from an older hub = 8 hours.
+   */
+  grantMs?: number;
+  /** An eval request whose Allow covers every page of the owner (`debug.evalGrantPages` "all"). */
+  allPages?: boolean;
 };
 
 /** An open debug page: its socket's id, current label (path…), and when it connected. */
@@ -533,12 +540,51 @@ export function pageParts(label: string): { path: string; device: string } {
   };
 }
 
-/** What Allow grants, in one sentence (the requester declared its scope when it knocked). */
-export function pairSentence(p: Pick<PairInfo, "label" | "scope">, friend: boolean): string {
+/** The words for an eval grant's sentence (UiStrings pairEval…grantDays; English when absent). */
+export type GrantWords = {
+  pairEval: string;
+  pairEvalAll: string;
+  grantHour: string;
+  grantHours: string;
+  grantDays: string;
+};
+const GRANT_EN: GrantWords = {
+  pairEval: "{label} wants to run code on your pages for {time}.",
+  pairEvalAll: "{label} wants to run code on all your pages, on every device, for {time}.",
+  grantHour: "1 hour",
+  grantHours: "{n} hours",
+  grantDays: "{n} days",
+};
+/** An eval grant from a hub that does not say its length: 8 hours. */
+const DEFAULT_GRANT_MS = 8 * 60 * 60_000;
+
+/**
+ * A grant length for people: whole days from 2 days up ("30 days"), else
+ * hours ("8 hours", "1 hour"), from the localized patterns (`{n}` is the number).
+ */
+export function grantLength(ms: number, w: GrantWords = GRANT_EN): string {
+  const hours = Math.max(1, Math.round(ms / 3_600_000));
+  if (hours === 1) return w.grantHour;
+  if (hours >= 48 && hours % 24 === 0) return w.grantDays.replaceAll("{n}", String(hours / 24));
+  return w.grantHours.replaceAll("{n}", String(hours));
+}
+
+/**
+ * What Allow grants, in one sentence (the requester declared its scope when it
+ * knocked; an eval request carries the grant's length and page scope from the
+ * hub's live config).
+ */
+export function pairSentence(
+  p: Pick<PairInfo, "label" | "scope" | "grantMs" | "allPages">,
+  friend: boolean,
+  w: GrantWords = GRANT_EN,
+): string {
   if (friend) return `${p.label} wants to preview a change on this page for 1 hour.`;
-  return p.scope === "chat"
-    ? `${p.label} wants to chat with you for 30 days.`
-    : `${p.label} wants to run code on your pages for 8 hours.`;
+  if (p.scope === "chat") return `${p.label} wants to chat with you for 30 days.`;
+  const ms = typeof p.grantMs === "number" && p.grantMs > 0 ? p.grantMs : DEFAULT_GRANT_MS;
+  return (p.allPages ? w.pairEvalAll : w.pairEval)
+    .replaceAll("{label}", p.label)
+    .replaceAll("{time}", grantLength(ms, w));
 }
 
 /** The pairing modal's Allow button, for the pages ticked. */

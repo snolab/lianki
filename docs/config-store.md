@@ -91,6 +91,11 @@ public: `words.pinchGainPct` (40: fingers twice as far apart → rows 2^0.4 ≈
 `words.pinchDeadZonePct` (6: a smaller change of the spread moves nothing),
 `words.pinchSmoothMs` (70: the height eases toward the fingers; 0 = none).
 
+The owner's remote-eval grant (2026-11-11; docs/monitoring.md, "Remote eval"),
+read by the debug hub over `DebugSessions.config` at each pairing
+(`lib/eval-grant-config.ts`): `debug.evalGrantHours` (8; 720 = 30 days) and
+`debug.evalGrantPages` (`chosen`; `all` = every page of the owner, every device).
+
 Read outside the main Worker: `chat.ownerWaitRemindDays` (text, "1,3,7" days)
 is the progress hub's reminder spacing for nodes waiting on the owner
 (docs/state-tree.md, "Waiting on the owner"). lianki-push has no D1, so it asks
