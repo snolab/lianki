@@ -104,9 +104,12 @@ import {
   progressGate,
 } from "./progress";
 
+import { STT_SIGNAL_PATH, STT_WORKER_PATH } from "./stt-registry";
+
 export { DebugHub } from "./debug";
 export { ProgressHub } from "./progress";
 export { ReadStreamHub } from "./read-stream";
+export { SttRegistry } from "./stt-registry";
 
 type Socket = WebSocket & {
   accept?: () => void;
@@ -137,7 +140,13 @@ export type Env = {
   SESSIONS?: {
     live(user: string, session: string): Promise<unknown>;
     boxChat?(clientId: string): Promise<unknown>;
+    flag?(key: string): Promise<unknown>;
+    config?(key: string): Promise<unknown>;
+    sttWorker?(pubkey: string): Promise<unknown>;
+    bookStt?(userId: string, audioMs: number): Promise<unknown>;
   };
+  /** Lianki's speech servers' registry (stt-registry.ts). Optional only so older test envs type-check. */
+  STT?: Namespace;
   /** Agents' bearer token for POST /api/version/progress (a Worker secret). */
   PROGRESS_TOKEN?: string;
   /**
@@ -252,6 +261,26 @@ export default {
     if (url.pathname === "/api/version/ws") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
       return env.HUB.get(env.HUB.idFromName("version")).fetch(req);
+    }
+    // Lianki's speech servers (stt-registry.ts): 404 while the flag stt.worker is
+    // off (or cannot be read), and for anything but a socket. No identity passes:
+    // a worker proves its key, a page shows its v2 ticket; neither has a cookie here.
+    if (url.pathname === STT_WORKER_PATH || url.pathname === STT_SIGNAL_PATH) {
+      const none = () => new Response(null, { status: 404 });
+      if (!wantsSocket || !env.STT) return none();
+      let on: unknown = false;
+      try {
+        on = await env.SESSIONS?.flag?.("stt.worker");
+      } catch {}
+      if (on !== true) return none();
+      const headers = new Headers(req.headers);
+      for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
+      headers.delete(DEV_BRIDGE_HEADER);
+      headers.delete(EMBED_HEADER);
+      headers.delete(BOX_HEADER);
+      headers.delete("cookie");
+      headers.delete("authorization");
+      return env.STT.get(env.STT.idFromName("stt")).fetch(new Request(req, { headers }));
     }
     if (url.pathname === "/api/version/read-stream") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });

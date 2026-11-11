@@ -3493,6 +3493,10 @@ Sasisha kadi kwa anwani mpya?`,
     micFailed: `In ${CHAT}: small note by the mic button for any other failure of the mic or of speech recognition. Two short sentences: it failed, try again.`,
     endedElsewhere: `In ${CHAT}: a line above the chat box when the chat was closed from another open page of Lianki; it reconnects when the user comes back to this page.`,
     rateLimited: `In ${CHAT}: a line above the chat box when the user sent too many messages; the last one was not sent; {n} is how many minutes to wait. Keep {n}.`,
+    sttServersTitle: `In ${CHAT}: the heading of a small card shown once per device when the mic turns on and the user may use Lianki's own speech-to-text servers: they turn speech into text faster, while the user speaks. A short noun phrase.`,
+    sttServersBody: `In ${CHAT}: the text of that card: the voice is sent to Lianki's speech servers, which write it out while the user speaks; the audio is not stored, only what the user sends is kept; free for now. Call them only 'Lianki's speech servers' (never a computer or a person). Two or three short sentences.`,
+    sttServersAgree: `In ${CHAT}: the card's main button: agree and use Lianki's speech servers from now on, on this device. An imperative phrase.`,
+    sttServersLater: `In ${CHAT}: the card's second button: do not use them now (speech recognition stays as it was). The platform's usual 'Not now'.`,
   };
 
   // packages/debug-chat/src/ui-strings.ts

@@ -235,6 +235,8 @@ import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import { withLane } from "./voices";
 import { LaneTag, laneAvatar } from "./LaneMark";
+import { PUBLIC_ROUTE_LIST, publicSttAvailable, readConsent, writeConsent } from "./public-stt";
+import { SttServersCard } from "./SttServersCard";
 import { type Frontier, treeFrontier } from "./frontier-view";
 import {
   type TreeSource,
@@ -2397,6 +2399,27 @@ export function DebugChat({
   const micOn = useRef(false);
   /** The mic is on (drives the open log too: iOS drops input focus on a button tap). */
   const [micActive, setMicActive] = useState(false);
+  /**
+   * Lianki's speech servers for an account other than the owner (public-stt.ts):
+   * asked once per page when the mic first turns on (GET /api/stt/session: 404
+   * while the flag stt.worker is off or the account is not on the list), never in
+   * an utterance's path. "ask" shows the consent card; only "on" changes the route.
+   * The owner's own route (sttRoute) is never touched.
+   */
+  const [publicStt, setPublicStt] = useState<"unknown" | "no" | "ask" | "on">("unknown");
+  useEffect(() => {
+    if (owner || !micActive || publicStt !== "unknown" || sttRoute.source !== "none") return;
+    let live = true;
+    void publicSttAvailable().then((ok) => {
+      if (!live) return;
+      const c = readConsent();
+      setPublicStt(!ok || c === "off" ? "no" : c === "on" ? "on" : "ask");
+    });
+    return () => {
+      live = false;
+    };
+  }, [owner, micActive, publicStt, sttRoute.source]);
+  const micRoute = sttRoute.source === "none" && !owner && publicStt === "on" ? PUBLIC_ROUTE_LIST : sttRoute.urls;
   /** The history takes the pointer: wheel and drag scroll it, its lines select (log-engage.ts). */
   const engaged = logEngaged({ typing, plusMenu: attachMenu || picking, micActive, held });
   const busyRef = useRef(false);
@@ -3209,7 +3232,7 @@ export function DebugChat({
           }}
           // Only while the hub says this window records (clips.ts); the key is the sink URL only.
           clipSink={friend ? undefined : activeSink(clipsHub)}
-          localStt={sttRoute.urls}
+          localStt={micRoute}
           label={pages.find((p) => p.id === selfPage)?.label ?? location.pathname}
           gesture={micGesture}
         />
@@ -4646,6 +4669,15 @@ export function DebugChat({
         >
           {t.attachDrop}
         </div>
+      )}
+      {open && !notice && publicStt === "ask" && (
+        <SttServersCard
+          onAgree={() => {
+            writeConsent("on");
+            setPublicStt("on");
+          }}
+          onLater={() => setPublicStt("no")}
+        />
       )}
       {open && !notice && filesRef.current && <PendingChips t={t} pending={pending} />}
       {open && attached && !notice && (

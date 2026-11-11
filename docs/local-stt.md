@@ -1146,6 +1146,104 @@ TURN credentials are minted per session from Cloudflare Realtime TURN with
 the Worker secrets `STT_TURN_KEY_ID` / `STT_TURN_KEY_TOKEN` (**not set**: the
 owner's approval first); without them STUN only.
 
+**The registry** (`workers/push/src/stt-registry.ts`, Durable Object
+`SttRegistry` in lianki-push, binding `STT`; no route of its own: the existing
+`lianki.com/api/version/*` route reaches it). Both paths are 404 while the flag
+is off (lianki-push asks `DebugSessions.flag`) and for anything but a socket;
+no cookie or identity header passes to it.
+
+- `/api/version/stt/worker`: a speech server's `stt-peer` dials **out** (no
+  inbound port on the server; an Origin is refused: not a browser). The hub
+  sends `{t:"challenge", nonce}`; the worker answers `{t:"auth", key, sig}`,
+  Ed25519 over `lianki-stt-worker\n<nonce>`; the key must be a live
+  `stt_worker` row (`DebugSessions.sttWorker`, only while the flag is on),
+  else 4401/4403. One socket per worker: a reconnect replaces the old one.
+- `/api/version/stt/signal`: a lianki.com page offering `lianki-stt2, <v2
+  ticket>`. Before the upgrade: the ticket (signature with
+  `PARTNER_TICKET_PUB`, the same key pair's public half; claims; once, jtis in
+  the DO's storage) else 401; the account's live sessions under
+  `sessionsPerAccount` else 429; a worker with room — the account's own worker
+  first (`owner_user_id`), then the least busy shared one under its capacity
+  (`stt_worker.capacity` or `macCapacity`) minus `macReserved` — else 503.
+  Then `{t:"ready", sid}`, and offer / answer / ICE pass between that page and
+  that worker only; the ticket goes on to the worker with the offer, and its
+  speech server checks it again. A worker speaks only for its own sessions.
+- **Booking**: the worker reports each final's audio length (`{t:"usage",
+  sid, audioMs}`) and the hub books it to the ticket's account
+  (`DebugSessions.bookStt`: `speech.stt.local`, at most 120 s per report, the
+  `stt.local.costPerMinUsd` rate). The page does not book these itself.
+- A session counts until its signed length plus 60 s (checked when the hub
+  next counts; no timer), or until the page's signal socket closes; a worker
+  that goes away ends its pages (`{t:"end", reason:"worker-gone"}`), which go
+  on with the next route.
+- **Adding a worker** (after the owner's tap card): `stt-peer keygen` on the
+  server prints its public key; `bun scripts/local-stt/stt-worker-add.ts --id
+  mac --name "…" --key <public key>` writes the row (wrangler d1, audited as
+  `cli`). Revoke on `/dev/stt-access`.
+
+**stt-peer** (`scripts/local-stt/stt-peer`, Go + pion/webrtc): the sidecar on
+a speech server. It keeps one connection to the registry (dialled out; after a
+drop it dials again, waiting 1 s doubling to 30 s), answers each offer with a
+peer connection (STUN from `--stun`; the page's TURN when its ICE servers
+include it), and bridges the page's DataChannel `stt` one-to-one to a fresh
+socket on server.py's peer listener: text to text, binary to binary, the same
+protocol as every other route. The page's v2 ticket goes along in
+`Sec-WebSocket-Protocol` with Origin `https://lianki.com`; **server.py checks
+it itself**, so the bridge decides nothing about who may speak. It reports
+each final's `audioMs` to the registry for booking, refuses offers past
+`--capacity` (`{t:"end", reason:"busy"}`), and never logs text, audio or
+tickets. Its key: `stt-peer keygen` writes `~/.config/lianki-stt/worker.key`
+(the Ed25519 seed, 0600, never overwritten) and prints the public half; a key
+file that is a symlink, not ours, or readable by others is refused. Build and
+run (the toolchain from go.dev, checksum checked, in `~/.cache/lianki-stt/toolchain`):
+
+```bash
+cd scripts/local-stt/stt-peer && go build -o ~/.cache/lianki-stt/stt-peer .
+~/.cache/lianki-stt/stt-peer keygen          # once; then the owner's tap card, then stt-worker-add.ts
+oxmgr start --name lianki-stt-peer --restart always "$HOME/.cache/lianki-stt/stt-peer --server ws://127.0.0.1:5189"
+```
+
+**The peer listener** (`server.py --peer-port 5189 [--peer-max 2]`, off by
+default; 127.0.0.1 only): checks, before the upgrade, Origin lianki.com (403),
+a free slot (503), and a **v2** ticket beside `lianki-stt2` (401; a v1 ticket
+or the owner's subprotocol is refused). The ticket's `lim` holds on the
+socket: audio past `utt` seconds is not kept, and the socket closes with 4408
+after `sess`. **None of the owner's voiceprint features answer there**: no
+speaker check, no speaker proof (the hub would never take one for another
+account), no filter, and enrolment and voiceprint ops answer `not on this
+route`. Per-account prints, when they come, live under
+`voiceprints/accounts/<hash of the account id>` (`account_store`), never in
+the owner's folder. The owner's own listeners (tailnet, tunnel) are unchanged.
+
+**The page** (`packages/debug-chat/src/public-stt.ts`). Only where the owner's
+route is "none" (not the owner: `localSttRoute` decides first, so his page
+never changes) and only on `https://lianki.com`: the first time the mic turns
+on in a page, `GET /api/stt/session` once (404: nothing more happens, the mic
+is exactly as before). On 204 the consent card (`SttServersCard.tsx`, strings
+`sttServers*` in `chat-ui-locales.ts`, 16 locales): "Your voice goes to
+Lianki's speech servers, which write it out while you speak. The audio is not
+stored; only what you send is kept. Free for now." — **Use Lianki's speech
+servers** / **Not now**. Nothing is sent before that tap (a synthetic click is
+ignored); the answer is kept per device (`lk:stt-servers`, `on` / `off`;
+"Not now" asks again on the next page). Agreed, the mic's route list becomes
+`PUBLIC_ROUTES` = `rtc:lianki wss:session`, raced by the same
+`createLocalStt` (protocol, held utterances, fallback, dot), with `open` =
+`publicOpen` and a longer `connectTimeoutMs` (6 s: a session, signalling and
+ICE come before `ready`):
+
+- `rtc:lianki`: `POST /api/stt/session` → the registry's signal socket
+  (`lianki-stt2, <ticket>`) → on `ready`, an `RTCPeerConnection` with the
+  session's ICE servers and a DataChannel `stt` (ordered) → offer, trickled
+  ICE, answer. The channel, once open, is the socket. The signal socket stays
+  open for the session (the registry counts by it).
+- `wss:session`: its own session (a ticket is spent once per route); the
+  session's `wss` URL with `lianki-stt2, <ticket>`, or an at-once failure when
+  there is none (the default).
+- No hello, device, thread or filter on these sockets, and the page does not
+  report usage (`reportLocalStt`): the registry books it. Any failure before
+  `ready` loses the race; all lost = the cloud, per utterance, as always.
+  The order is the pluggable part (later: a user's own Mac first).
+
 ## WebRTC
 
 The owner's own route still does not use it. The phone already reaches the
@@ -1189,6 +1287,13 @@ everyone" above), not aiortc.
   tailnet listener up; `public.json` turning it on with the key it names, and
   a missing key keeping it off. It runs `scripts/local-stt/test_ticket.py`
   too (including the full ticket store recovering once its jtis expire). Skipped where the venv (with `cryptography`) is missing.
+- Lianki's speech servers for everyone: `unit/stt-ticket.test.ts` (v2),
+  `unit/stt-worker-store.test.ts`, `unit/stt-session.test.ts`,
+  `unit/stt-registry.test.ts` (the registry, its routes' 404 while off, the
+  RPCs, the add CLI), `unit/local-stt-peer.test.ts` (the real server's peer
+  listener: v2 only, the limits, no voiceprint features; venv only) and
+  `unit/stt-peer-go.test.ts` (`go test`: a page reaching a fake speech
+  server over a real DataChannel through stt-peer; where Go is installed).
 - `unit/stt-tunnel.test.ts`: `tunnel.sh up` and `down` against stand-ins for
   oxmgr, cloudflared and curl: the oxmgr entry left exactly as it was, the
   custom key path reaching the server, and the restore when the listener

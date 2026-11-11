@@ -142,6 +142,7 @@ export default function PreferencesClient({
     examples,
     reviewOrder: reviewOrderUi,
     resetSection,
+    licardsGroup,
     paperHeading,
     watchTime,
   } = useIntlayer("preferences-page");
@@ -354,6 +355,17 @@ export default function PreferencesClient({
         </div>
       </section>
 
+      {/* API Tokens */}
+      <TokenManager />
+
+      {/* Used only by the userscript or extension on other sites: watch time, review filters */}
+      <div className="mt-14 mb-6 border-t border-gray-700/40 pt-8" data-section="licards-group">
+        <h2 className="text-2xl font-semibold mb-2 text-gray-900 dark:text-white">
+          {licardsGroup.heading}
+        </h2>
+        <p className="text-gray-400">{licardsGroup.note}</p>
+      </div>
+
       {/* Watch tracking */}
       <section className="mb-10">
         <SectionHeading
@@ -528,9 +540,6 @@ export default function PreferencesClient({
           </ul>
         </div>
       </section>
-
-      {/* API Tokens */}
-      <TokenManager />
 
       {/* Save: floats above the bottom island, lit while there is something to save */}
       <div

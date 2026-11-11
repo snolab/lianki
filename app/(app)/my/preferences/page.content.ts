@@ -321,6 +321,45 @@ const preferencesPageContent = {
       },
     },
 
+    licardsGroup: {
+      heading: t({
+        en: "LiCards: userscript and extension",
+        zh: "链卡：用户脚本和扩展",
+        ja: "LiCards：ユーザースクリプトと拡張機能",
+        ko: "LiCards: 유저스크립트와 확장 프로그램",
+        hi: "LiCards: यूज़रस्क्रिप्ट और एक्सटेंशन",
+        es: "LiCards: userscript y extensión",
+        fr: "LiCards : userscript et extension",
+        ar: "LiCards: سكربت المستخدم والإضافة",
+        bn: "LiCards: ইউজারস্ক্রিপ্ট ও এক্সটেনশন",
+        pt: "LiCards: userscript e extensão",
+        ru: "LiCards: юзерскрипт и расширение",
+        ur: "LiCards: یوزر اسکرپٹ اور ایکسٹینشن",
+        id: "LiCards: userscript dan ekstensi",
+        de: "LiCards: Userscript und Erweiterung",
+        sw: "LiCards: userscript na kiendelezi",
+        mr: "LiCards: यूजरस्क्रिप्ट आणि एक्स्टेंशन",
+      }),
+      note: t({
+        en: "These settings are used by the Lianki userscript or browser extension on the sites you visit. Without one installed on this device they change nothing.",
+        zh: "以下设置由 Lianki 用户脚本或浏览器扩展在你浏览的网站上使用。本设备未安装时，它们不起作用。",
+        ja: "以下の設定は、閲覧中のサイトで Lianki のユーザースクリプトまたはブラウザ拡張機能が使います。この端末に入っていなければ何も変わりません。",
+        ko: "아래 설정은 방문하는 사이트에서 Lianki 유저스크립트나 브라우저 확장 프로그램이 사용합니다. 이 기기에 설치되어 있지 않으면 아무 효과가 없습니다.",
+        hi: "ये सेटिंग्स आपकी देखी जाने वाली साइटों पर Lianki यूज़रस्क्रिप्ट या ब्राउज़र एक्सटेंशन इस्तेमाल करता है। इस डिवाइस पर इनमें से कोई इंस्टॉल न हो तो इनका कोई असर नहीं होता।",
+        es: "Estos ajustes los usa el userscript o la extensión de navegador de Lianki en los sitios que visitas. Si este dispositivo no tiene ninguno instalado, no cambian nada.",
+        fr: "Ces réglages servent au userscript ou à l'extension de navigateur Lianki sur les sites que vous visitez. Sans l'un des deux sur cet appareil, ils ne changent rien.",
+        ar: "يستخدم هذه الإعدادات سكربت المستخدم أو إضافة المتصفح من Lianki على المواقع التي تزورها. إن لم يكن أيٌّ منهما مثبتًا على هذا الجهاز فلا أثر لها.",
+        bn: "এই সেটিংগুলো আপনার দেখা সাইটগুলোতে Lianki ইউজারস্ক্রিপ্ট বা ব্রাউজার এক্সটেনশন ব্যবহার করে। এই ডিভাইসে কোনোটি ইনস্টল না থাকলে এগুলোর কোনো প্রভাব নেই।",
+        pt: "Estas configurações são usadas pelo userscript ou pela extensão de navegador do Lianki nos sites que você visita. Sem um deles instalado neste dispositivo, não mudam nada.",
+        ru: "Эти настройки использует юзерскрипт или расширение браузера Lianki на сайтах, которые вы посещаете. Если на этом устройстве нет ни того, ни другого, они ни на что не влияют.",
+        ur: "یہ ترتیبات آپ کی دیکھی جانے والی سائٹس پر Lianki یوزر اسکرپٹ یا براؤزر ایکسٹینشن استعمال کرتا ہے۔ اس ڈیوائس پر ان میں سے کوئی انسٹال نہ ہو تو ان کا کوئی اثر نہیں۔",
+        id: "Pengaturan ini dipakai userscript atau ekstensi browser Lianki di situs yang kamu kunjungi. Tanpa salah satunya di perangkat ini, pengaturan ini tidak berpengaruh.",
+        de: "Diese Einstellungen nutzt das Lianki-Userscript oder die Browser-Erweiterung auf den Seiten, die du besuchst. Ist auf diesem Gerät keins von beiden installiert, bewirken sie nichts.",
+        sw: "Mipangilio hii hutumiwa na userscript au kiendelezi cha kivinjari cha Lianki kwenye tovuti unazotembelea. Bila kimojawapo kwenye kifaa hiki, haibadilishi chochote.",
+        mr: "ही सेटिंग्ज तुम्ही भेट देता त्या साइट्सवर Lianki यूजरस्क्रिप्ट किंवा ब्राउझर एक्स्टेंशन वापरते. या डिव्हाइसवर यापैकी काहीच नसेल तर यांचा काही परिणाम होत नाही.",
+      }),
+    },
+
     mobileFilters: {
       regexBadge: t({
         en: "regex",
@@ -984,6 +1023,10 @@ export default {
       "Tiny badge on a saved review filter whose text is a regular expression (a search pattern with wildcards) rather than plain text. One short word; the locale's usual short word for a regex is fine.",
     "reviewOrder.defaultMark":
       "Marks one radio option in 'Next card order' as the one used unless changed, shown right after its label, e.g. 'Just came due first (default)'. Keep the parentheses, in the locale's own style.",
+    "licardsGroup.heading":
+      "Heading of the settings page's last group, over the settings only the Lianki userscript or browser extension uses (watch time, review filters). LiCards is the product name (zh: 链卡); 'userscript' is a script run by Tampermonkey-style managers. Short noun phrase.",
+    "licardsGroup.note":
+      "One or two sentences under that group heading: these settings take effect only through the userscript or extension on other sites, and do nothing on a device without either. Keep Lianki as is.",
     "mobileFilters.heading":
       "Section heading on the settings page: filters that keep matching cards out of the review queue. '(current device)' matters: they apply only on the device they were set on. Short noun phrase plus that short note in parentheses.",
     "mobileFilters.description":

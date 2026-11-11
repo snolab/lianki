@@ -529,10 +529,18 @@ export function ByokSettings({
             {c.remove}
           </button>
         </div>
-        {status && (
+        {status ? (
           <p className={`text-sm ${TONE[status.tone]}`} role="status" data-testid="byok-status">
             {status.text}
           </p>
+        ) : (
+          // Focusing the missing field can scroll the hint by the box off screen: repeat it here, until it is filled in.
+          wanted &&
+          gapText && (
+            <p className={`text-sm ${TONE.err}`} role="status" data-testid="byok-gap-near">
+              {gapText}
+            </p>
+          )
         )}
         {suggestRelay && !device.backend.relay && (
           <button
