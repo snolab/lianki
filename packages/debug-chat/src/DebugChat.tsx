@@ -69,6 +69,8 @@ import { learnSttHint } from "./stt-hint";
 import { DevMenuGroup } from "./DevMenuGroup";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
+import { LinkChip } from "./LinkChip";
+import { type EvalLink, type EvalSession, selectionState } from "./link-state";
 import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
@@ -711,6 +713,19 @@ export type DebugChatProps = {
    * from real beats only): a spinner at the right end of the input.
    */
   busy?: { label: string } | null;
+  /**
+   * The connection chip (LinkChip.tsx), left of the progress bar: given only on
+   * a developer's page (DebugEval: `dev`, or the hub's verdict). `link`: remote
+   * code on this page; `sessions`: the eval grants in time; `beatAt`: the
+   * agent's latest heartbeat (it saw what came before); `onEnd` revokes one.
+   */
+  link?: {
+    state: EvalLink;
+    sessions: (EvalSession & { here: boolean })[];
+    now: number;
+    beatAt?: number;
+    onEnd: (pair: string) => void;
+  };
   /** A line in the pill's menu (where this widget was loaded from, or why not). */
   note?: string;
   /** This audience's open debug pages (tabs, devices), one row each in the menu. */
@@ -896,6 +911,7 @@ export function DebugChat({
   etaBar = false,
   onEtaDue,
   etaSource,
+  link,
   fullScreen: fullScreenFlag = false,
   backToClose,
 }: DebugChatProps) {
@@ -4232,6 +4248,14 @@ export function DebugChat({
   });
   /** The progress bar (EtaBar) shows over the input. */
   const etaShown = open && !tree && etaBar && etaList.length > 0;
+  /** The connection chip: a developer's page, the chat open, not over the tree. */
+  const linkShown = open && !tree && !notice && owner && !!link;
+  const selState = selectionState({
+    attached: !!attached,
+    lines: messages,
+    beatAt: link?.beatAt,
+    listeners: listeners ?? 0,
+  });
   /**
    * The bar and the progress bar as one glass strip (owner, 2026-11-10); not
    * while the typing glass is the frame, nor full screen (the screen is the glass).
@@ -4692,10 +4716,11 @@ export function DebugChat({
           }}
         />
       )}
-      {etaShown && (
+      {(etaShown || linkShown) && (
         // Right over the bar. flow-root: the bar's own margin counts in the
         // height the buttons above step over. In the strip it has no margin
-        // and no track: the strip's glass is behind it.
+        // and no track: the strip's glass is behind it. The connection chip
+        // (a developer's page) sits at its left.
         <div
           ref={setEtaBox}
           data-testid="debug-chat-eta-slot"
@@ -4704,13 +4729,37 @@ export function DebugChat({
           className="flow-root"
           style={strip ? { padding: `${STRIP_INSET_PX}px ${STRIP_INSET_PX}px 0` } : undefined}
         >
-          <EtaBar
-            tasks={etaList}
-            now={etaNow}
-            strings={t}
-            glass={strip}
-            onOpen={() => setGanttOpen(true)}
-          />
+          {linkShown && link ? (
+            <div className="flex items-end gap-1">
+              <LinkChip
+                t={ui}
+                link={link.state}
+                selection={selState}
+                sessions={link.sessions}
+                now={link.now}
+                onEnd={link.onEnd}
+              />
+              {etaShown && (
+                <div className="min-w-0 flex-1">
+                  <EtaBar
+                    tasks={etaList}
+                    now={etaNow}
+                    strings={t}
+                    glass={strip}
+                    onOpen={() => setGanttOpen(true)}
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            <EtaBar
+              tasks={etaList}
+              now={etaNow}
+              strings={t}
+              glass={strip}
+              onOpen={() => setGanttOpen(true)}
+            />
+          )}
         </div>
       )}
       {/* The log above is click-through: taps reach the page under it. Only the

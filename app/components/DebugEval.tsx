@@ -26,6 +26,7 @@ import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
 import { getKey, isKey, setKey } from "@lianki/debug-chat/storage-keys";
 import { WAS_OWNER_KEY, devParts, mayRunEval, rejoinDelay } from "@/lib/debug-rejoin";
+import { type SocketPhase, evalLink, evalSessions } from "@lianki/debug-chat/link-state";
 import {
   type ChatContext,
   type ChatStrings,
@@ -178,6 +179,8 @@ export function DebugEval({
   /** The hub said this friend's thread is answered by the AI. */
   const [friendAi, setFriendAi] = useState(false);
   const [live, setLive] = useState(false);
+  /** The hub socket's phase, for the connection chip (link-state.ts). */
+  const [phase, setPhase] = useState<SocketPhase>("closed");
   const [toast, setToast] = useState<string | null>(null);
   const [state, setState] = useState<HubState | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -437,8 +440,10 @@ export function DebugEval({
       );
       ws = sock;
       sockRef.current = sock;
+      setPhase("opening");
       sock.onopen = () => {
         opened.add(sock);
+        setPhase("open");
         setClipsSender((m) => {
           if (sock.readyState !== WebSocket.OPEN) return false;
           sock.send(JSON.stringify(m));
@@ -646,6 +651,7 @@ export function DebugEval({
         if (ws !== sock) return;
         ws = null;
         hubOwnerRef.current = false;
+        setPhase("closed");
         setClipsSender(null);
         reporter.detach();
         sockRef.current = null;
@@ -674,6 +680,7 @@ export function DebugEval({
       }
       const sock = ws;
       ws = null;
+      setPhase("closed");
       setClipsSender(null);
       sockRef.current = null;
       liveRef.current = false;
@@ -894,6 +901,8 @@ export function DebugEval({
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
   const isFriend = friend !== null;
+  /** The chat's developer parts (pairings, the connection chip): a `dev` verdict, the server's or the hub's. */
+  const devUi = owner && !isFriend && devParts({ dev, hubOwner: owner && !box });
   // On a box the layout's flag is the box server's own (its local D1, no
   // session): production's answer for the signed-in account decides there.
   const boxAccount = useBoxAccount();
@@ -974,7 +983,28 @@ export function DebugEval({
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
-          owner={owner && !isFriend && devParts({ dev, hubOwner: owner && !box })}
+          owner={devUi}
+          // The connection chip (LinkChip.tsx): remote code on this page, and the selection.
+          link={
+            devUi
+              ? {
+                  state: evalLink({
+                    debug: debugOn(),
+                    socket: phase,
+                    sessions,
+                    self: state?.self,
+                    now: Date.now(),
+                  }),
+                  sessions: evalSessions(sessions, state?.self, Date.now()),
+                  now: Date.now(),
+                  beatAt: beatRef.current?.beatAt,
+                  onEnd: (pair) => {
+                    const s = sessions.find((x) => x.pair === pair);
+                    if (s) answer("revoke", s);
+                  },
+                }
+              : undefined
+          }
           strings={friendStrings}
           treeSource={treeOn ? ownerTree : undefined}
           etaBar={etaOn && treeOn && !!ownerTree}
