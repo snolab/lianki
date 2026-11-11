@@ -42,6 +42,7 @@ import {
 import { byokModels, testByok, type ByokErrorKind } from "@/lib/byok/call";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { markClean } from "@/lib/page-dirty";
+import { SealSwitch } from "@/app/components/SealSwitch";
 
 type Status = { tone: "ok" | "err" | "info"; text: string } | null;
 
@@ -315,21 +316,11 @@ export function ByokSettings({
   };
 
   const relayRow = preset.relay ? (
-    <label className="flex items-start gap-3" data-testid="byok-relay-row">
-      <input
-        type="checkbox"
-        className="mt-1 h-5 w-5 shrink-0"
-        checked={signedIn && !!device.backend.relay}
-        disabled={!signedIn}
-        onChange={(e) => {
-          setSuggestRelay(false);
-          setStatus(null);
-          setBackend({ relay: e.target.checked || undefined });
-        }}
-        data-testid="byok-relay"
-      />
-      <span>
-        <span className="block font-medium">{c.relay}</span>
+    <div className="flex items-start gap-3" data-testid="byok-relay-row">
+      <span className="flex-1">
+        <span id="byok-relay-label" className="block font-medium">
+          {c.relay}
+        </span>
         <span className="block text-sm opacity-75">
           {c.relayHint.value.replaceAll("{name}", preset.name)}
         </span>
@@ -343,7 +334,18 @@ export function ByokSettings({
           </a>
         )}
       </span>
-    </label>
+      <SealSwitch
+        checked={signedIn && !!device.backend.relay}
+        disabled={!signedIn}
+        aria-labelledby="byok-relay-label"
+        onClick={() => {
+          setSuggestRelay(false);
+          setStatus(null);
+          setBackend({ relay: !device.backend.relay || undefined });
+        }}
+        data-testid="byok-relay"
+      />
+    </div>
   ) : null;
 
   useBackToClose(notice, () => setNotice(false));
@@ -365,17 +367,16 @@ export function ByokSettings({
       <p className="mb-1 opacity-80">{c.intro}</p>
       <p className="mb-4 text-sm opacity-70">{c.serverSide}</p>
 
-      <label className="flex items-start gap-3 rounded-lg bg-[oklch(0.5_0.02_250/0.08)] p-3">
-        <input
-          type="checkbox"
-          className="mt-1 h-5 w-5 shrink-0"
-          checked={wanted || (device.enabled && acked)}
-          onChange={(e) => turn(e.target.checked)}
-          data-testid="byok-enable"
-        />
-        <span>
-          <span className="block font-medium">{c.enable}</span>
-          <span className="mt-1 block text-sm opacity-75" data-testid="byok-notice-short">
+      <div className="flex items-start gap-3 rounded-lg bg-[oklch(0.5_0.02_250/0.08)] p-3">
+        <span className="flex-1">
+          <span id="byok-enable-label" className="block font-medium">
+            {c.enable}
+          </span>
+          <span
+            id="byok-notice-short"
+            className="mt-1 block text-sm opacity-75"
+            data-testid="byok-notice-short"
+          >
             {c.noticeShort}
             {device.backend.relay && <span className="mt-1 block">{c.noticeRelay}</span>}
           </span>
@@ -389,7 +390,14 @@ export function ByokSettings({
             </span>
           )}
         </span>
-      </label>
+        <SealSwitch
+          checked={wanted || (device.enabled && acked)}
+          aria-labelledby="byok-enable-label"
+          aria-describedby="byok-notice-short"
+          onClick={() => turn(!(wanted || (device.enabled && acked)))}
+          data-testid="byok-enable"
+        />
+      </div>
 
       <form
         className="mt-4 flex flex-col gap-3"
@@ -554,17 +562,11 @@ export function ByokSettings({
           </button>
         )}
 
-        <label className={`mt-2 flex items-start gap-3 ${signedIn ? "" : "opacity-70"}`}>
-          <input
-            type="checkbox"
-            className="mt-1 h-5 w-5 shrink-0"
-            checked={signedIn && synced}
-            disabled={!signedIn}
-            onChange={(e) => toggleSync(e.target.checked)}
-            data-testid="byok-sync"
-          />
-          <span>
-            <span className="block font-medium">{c.sync}</span>
+        <div className={`mt-2 flex items-start gap-3 ${signedIn ? "" : "opacity-70"}`}>
+          <span className="flex-1">
+            <span id="byok-sync-label" className="block font-medium">
+              {c.sync}
+            </span>
             <span className="block text-sm opacity-75">{c.syncHint}</span>
             {!signedIn && (
               <a
@@ -576,12 +578,18 @@ export function ByokSettings({
               </a>
             )}
           </span>
-        </label>
+          <SealSwitch
+            checked={signedIn && synced}
+            disabled={!signedIn}
+            aria-labelledby="byok-sync-label"
+            onClick={() => toggleSync(!synced)}
+            data-testid="byok-sync"
+          />
+        </div>
         {showKeySync && (
-          <label className="flex items-start gap-3 opacity-60" data-testid="byok-key-sync">
-            <input type="checkbox" className="mt-1 h-5 w-5 shrink-0" disabled checked={false} />
-            <span>
-              <span className="block font-medium">
+          <div className="flex items-start gap-3 opacity-60" data-testid="byok-key-sync">
+            <span className="flex-1">
+              <span id="byok-key-sync-label" className="block font-medium">
                 {c.keySync}
                 <span className="ms-2 rounded-full bg-[oklch(0.62_0.132_22.3/0.16)] px-2 py-0.5 text-xs">
                   {c.soon}
@@ -589,7 +597,8 @@ export function ByokSettings({
               </span>
               <span className="block text-sm">{c.keySyncWarn}</span>
             </span>
-          </label>
+            <SealSwitch checked={false} disabled aria-labelledby="byok-key-sync-label" />
+          </div>
         )}
       </form>
 

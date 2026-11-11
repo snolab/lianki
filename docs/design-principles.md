@@ -36,10 +36,19 @@ Every colour is oklch. Tokens live in `app/globals.css`:
   (and may take a distinct hue), never red alone.
 - **Switches are box seals** (owner, 2026-11-11). Every on/off control is
   `SealSwitch` (`app/components/SealSwitch.tsx`; a row that is itself the
-  switch draws `SealStamp`): on = a filled seal-red rectangular stamp with the
-  state word in paper colour (开 / Open), off = the same box, grey and dashed,
-  with the grey word (关闭 / Closed). No pill track, no knob. The words are the
+  switch draws `SealStamp`). No pill track, no knob. The words are the
   `seal-switch` dictionary; the colours `--lk-seal-*` in `app/globals.css`.
+- **A switch shows all its states** (owner, 2026-11-11 18:50 JST: "状态转移按钮
+  要明示所有状态"). The seal is two halves side by side, `[ 开 | 关 ]`
+  (On / Off), both always visible: the half naming the current state is filled
+  seal red with the word in paper colour, the other stays grey with a dashed
+  outline and the grey word. A segmented choice works the same way: every
+  option shows, the chosen one filled seal red (`bg-primary text-on-primary`),
+  the rest grey or outlined. A control that shows only its current state (a
+  bare checkbox for a setting, a pill that only lights up, a button whose label
+  flips) is not used for an on/off setting; `unit/switch-guard.test.ts` counts
+  bare checkboxes and lit-up pills so new ones fail. Checkboxes that pick items
+  from a list (select rows, pick scopes) are selection, not a state, and stay.
 - **Green only means done.** It may stay as a semantic success/done status
   (a saved notice, a check mark); never as a button, link or accent.
 - **No blue, sky, cyan, indigo or teal** on screen. `blue-*` classes are

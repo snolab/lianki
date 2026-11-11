@@ -17,6 +17,7 @@ import {
   setLinkConfirm,
 } from "@/lib/external-link";
 import { DONT_ASK_EVENT, DONT_ASK_KEY } from "@/lib/dont-ask";
+import { SealSwitch } from "@/app/components/SealSwitch";
 
 const QUIET =
   "min-h-11 shrink-0 rounded-full bg-[oklch(0.5_0.02_250/0.12)] px-4 text-sm font-medium hover:bg-[oklch(0.5_0.02_250/0.2)] pointer-fine:min-h-9";
@@ -51,16 +52,17 @@ export function ExternalLinkSettings() {
   return (
     <section className="mb-10 max-w-xl" data-section="external-links" data-testid="external-links">
       <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>
-      <label className="mb-4 flex min-h-11 cursor-pointer items-center gap-3">
-        <input
-          type="checkbox"
-          className="size-5 shrink-0 accent-[oklch(0.5_0.154_22.3)]"
+      <div className="mb-4 flex min-h-11 items-center gap-3">
+        <span id="external-links-ask-label" className="flex-1">
+          {c.ask}
+        </span>
+        <SealSwitch
           checked={policy.confirm}
-          onChange={(e) => setLinkConfirm(e.target.checked)}
+          aria-labelledby="external-links-ask-label"
+          onClick={() => setLinkConfirm(!policy.confirm)}
           data-testid="external-links-ask"
         />
-        <span>{c.ask}</span>
-      </label>
+      </div>
       <h3 className="mb-2 font-medium">{c.sites}</h3>
       {policy.hosts.length === 0 ? (
         <p className="text-sm opacity-80">{c.none}</p>
