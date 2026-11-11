@@ -1181,6 +1181,40 @@ no cookie or identity header passes to it.
   mac --name "…" --key <public key>` writes the row (wrangler d1, audited as
   `cli`). Revoke on `/dev/stt-access`.
 
+**stt-peer** (`scripts/local-stt/stt-peer`, Go + pion/webrtc): the sidecar on
+a speech server. It keeps one connection to the registry (dialled out; after a
+drop it dials again, waiting 1 s doubling to 30 s), answers each offer with a
+peer connection (STUN from `--stun`; the page's TURN when its ICE servers
+include it), and bridges the page's DataChannel `stt` one-to-one to a fresh
+socket on server.py's peer listener: text to text, binary to binary, the same
+protocol as every other route. The page's v2 ticket goes along in
+`Sec-WebSocket-Protocol` with Origin `https://lianki.com`; **server.py checks
+it itself**, so the bridge decides nothing about who may speak. It reports
+each final's `audioMs` to the registry for booking, refuses offers past
+`--capacity` (`{t:"end", reason:"busy"}`), and never logs text, audio or
+tickets. Its key: `stt-peer keygen` writes `~/.config/lianki-stt/worker.key`
+(the Ed25519 seed, 0600, never overwritten) and prints the public half; a key
+file that is a symlink, not ours, or readable by others is refused. Build and
+run (the toolchain from go.dev, checksum checked, in `~/.cache/lianki-stt/toolchain`):
+
+```bash
+cd scripts/local-stt/stt-peer && go build -o ~/.cache/lianki-stt/stt-peer .
+~/.cache/lianki-stt/stt-peer keygen          # once; then the owner's tap card, then stt-worker-add.ts
+oxmgr start --name lianki-stt-peer --restart always "$HOME/.cache/lianki-stt/stt-peer --server ws://127.0.0.1:5189"
+```
+
+**The peer listener** (`server.py --peer-port 5189 [--peer-max 2]`, off by
+default; 127.0.0.1 only): checks, before the upgrade, Origin lianki.com (403),
+a free slot (503), and a **v2** ticket beside `lianki-stt2` (401; a v1 ticket
+or the owner's subprotocol is refused). The ticket's `lim` holds on the
+socket: audio past `utt` seconds is not kept, and the socket closes with 4408
+after `sess`. **None of the owner's voiceprint features answer there**: no
+speaker check, no speaker proof (the hub would never take one for another
+account), no filter, and enrolment and voiceprint ops answer `not on this
+route`. Per-account prints, when they come, live under
+`voiceprints/accounts/<hash of the account id>` (`account_store`), never in
+the owner's folder. The owner's own listeners (tailnet, tunnel) are unchanged.
+
 ## WebRTC
 
 The owner's own route still does not use it. The phone already reaches the
@@ -1224,6 +1258,13 @@ everyone" above), not aiortc.
   tailnet listener up; `public.json` turning it on with the key it names, and
   a missing key keeping it off. It runs `scripts/local-stt/test_ticket.py`
   too (including the full ticket store recovering once its jtis expire). Skipped where the venv (with `cryptography`) is missing.
+- Lianki's speech servers for everyone: `unit/stt-ticket.test.ts` (v2),
+  `unit/stt-worker-store.test.ts`, `unit/stt-session.test.ts`,
+  `unit/stt-registry.test.ts` (the registry, its routes' 404 while off, the
+  RPCs, the add CLI), `unit/local-stt-peer.test.ts` (the real server's peer
+  listener: v2 only, the limits, no voiceprint features; venv only) and
+  `unit/stt-peer-go.test.ts` (`go test`: a page reaching a fake speech
+  server over a real DataChannel through stt-peer; where Go is installed).
 - `unit/stt-tunnel.test.ts`: `tunnel.sh up` and `down` against stand-ins for
   oxmgr, cloudflared and curl: the oxmgr entry left exactly as it was, the
   custom key path reaching the server, and the restore when the listener
