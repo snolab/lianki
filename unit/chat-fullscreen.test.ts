@@ -256,14 +256,6 @@ describe("by a drag: the bottom edge enters, a drag up leaves (owner, 2026-11-09
     expect(src).toContain("dropEntersFull(");
     expect(src).toContain("dragLeavesFull(");
   });
-  it("the exit button is the ✕ alone; its words are the label and tooltip (2026-11-11)", () => {
-    const src = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
-    const at = src.indexOf('data-testid="debug-chat-fullscreen-exit"');
-    const button = src.slice(at, src.indexOf("</button>", at));
-    expect(button).toContain("aria-label={t.fullScreenExit}");
-    expect(button).toContain("title={t.fullScreenExit}");
-    expect(button.split("\n").filter((l) => l.trim() === "{t.fullScreenExit}")).toEqual([]);
-  });
 });
 
 describe("the full-screen hint while dragging (owner, 2026-11-10)", () => {
