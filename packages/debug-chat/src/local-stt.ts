@@ -34,7 +34,7 @@ import type { SttSignals } from "./stt-guard";
 import { reportPageError } from "./page-errors";
 import { type SpeakerTag, cleanSpeaker } from "./wire";
 import { isDesktop, sttMayReopen } from "./voice-bg";
-import { isPublicRoute } from "./public-stt";
+import { STT_AVAILABLE_EVENT, isPublicRoute } from "./public-stt";
 
 /** localStorage: the local STT server's WebSocket URL(s) (owner pages only). */
 export const LOCAL_STT_KEY = "lk:debug-local-stt";
@@ -353,8 +353,11 @@ export function createLocalStt(
     setTimer?: (f: () => void, ms: number) => unknown;
     clearTimer?: (t: unknown) => void;
     log?: (ev: Record<string, unknown>) => void;
-    /** Subscribe to the page's "visible again" and "online" events; returns an unsubscribe. */
-    watch?: (f: (why: "visible" | "online") => void) => () => void;
+    /**
+     * Subscribe to the page's "visible again" and "online" events, and "available" (a
+     * speech server free again, public-stt.ts's lobby); returns an unsubscribe.
+     */
+    watch?: (f: (why: "visible" | "online" | "available") => void) => () => void;
     /** Whether the page is visible (a hidden page waits for visibilitychange). */
     visible?: () => boolean;
     /** This device's slug ("iphone"), sent as {t:"hello"} so finals are scored against its print. */
@@ -716,7 +719,11 @@ export function createLocalStt(
   const keep = (on: boolean) => {
     kept = on;
     if (on) {
-      unwatch ??= watch((why) => reconnect(why));
+      unwatch ??= watch((why) => {
+        // A worker just came up: race now, whatever the backoff says.
+        if (why === "available") fails = 0;
+        reconnect(why);
+      });
       connect();
       return;
     }
@@ -990,17 +997,20 @@ export function createLocalStt(
   };
 }
 
-/** The page's "visible again" and "online" events (none outside a browser). */
-function watchPage(f: (why: "visible" | "online") => void): () => void {
+/** The page's "visible again" and "online" events, and a speech server free again (none outside a browser). */
+function watchPage(f: (why: "visible" | "online" | "available") => void): () => void {
   if (typeof window === "undefined" || typeof document === "undefined") return () => {};
   const vis = () => {
     if (document.visibilityState === "visible") f("visible");
   };
   const onl = () => f("online");
+  const avail = () => f("available");
   document.addEventListener("visibilitychange", vis);
   window.addEventListener("online", onl);
+  window.addEventListener(STT_AVAILABLE_EVENT, avail);
   return () => {
     document.removeEventListener("visibilitychange", vis);
     window.removeEventListener("online", onl);
+    window.removeEventListener(STT_AVAILABLE_EVENT, avail);
   };
 }
