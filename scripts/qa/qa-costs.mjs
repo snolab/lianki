@@ -8,7 +8,8 @@
 // Proves: a non-admin gets a plain 404 (page and API); a speech-server
 // utterance reported by a page is booked to that account (204, then a row);
 // the admin sees totals, features and the account by display name — never its
-// email — with no sideways scroll at 360 px.
+// email — the day and hour × service tables and the charts (a bar tapped
+// shows its values) — with no sideways scroll at 360 px.
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -115,6 +116,42 @@ async function run(name, device, colorScheme) {
     features.includes("speech.stt.local") && features.includes("words.tts"),
     `${tag}: by feature lists the booked features`,
   );
+  // The day × service and hour × service tables, and the charts.
+  for (const id of ["costs-matrix-days", "costs-matrix-hours"]) {
+    const m = page.getByTestId(id);
+    const shown = await m
+      .waitFor({ timeout: budget(10_000) })
+      .then(() => true)
+      .catch(() => false);
+    const text = shown ? ((await m.textContent()) ?? "") : "";
+    check(
+      shown && text.includes("speech.stt.local") && text.includes("words.tts"),
+      `${tag}: ${id} renders with the booked services as columns`,
+    );
+    check((await page.getByTestId(`${id}-row`).count()) > 0, `${tag}: ${id} has bucket rows`);
+  }
+  for (const id of ["costs-chart-days", "costs-chart-hours", "costs-chart-accounts"])
+    check(await page.getByTestId(id).isVisible(), `${tag}: ${id} is drawn`);
+  // Tap / click the last hour's bar (this hour: the rows booked above): its exact values show.
+  await page
+    .getByTestId("costs-chart-hours")
+    .locator("rect[data-bar]")
+    .last()
+    .click({ timeout: budget(5_000) })
+    .catch(() => {});
+  check(
+    await page
+      .getByTestId("costs-chart-hours-tip")
+      .waitFor({ timeout: budget(5_000) })
+      .then(() => true)
+      .catch(() => false),
+    `${tag}: a bar shows its exact values`,
+  );
+  await page.getByTestId("costs-split-paid").click();
+  check(
+    (await page.getByTestId("costs-split-paid").getAttribute("aria-pressed")) === "true",
+    `${tag}: the free vs paid split switches`,
+  );
   check(!(await page.content()).includes(PLAIN), `${tag}: no email on the page`);
   check(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -142,6 +179,11 @@ try {
     (await plain.page.request.get(`${BASE}/api/dev/costs`)).status() === 404,
     "and on /api/dev/costs",
   );
+  for (const view of ["days", "hours"])
+    check(
+      (await plain.page.request.get(`${BASE}/api/dev/costs?view=${view}`)).status() === 404,
+      `and on the ${view} view`,
+    );
   // The page's report of a speech-server utterance: booked to this account.
   const report = await plain.page.request.post(`${BASE}/api/debug/stt/local`, {
     headers: { origin: BASE, "content-type": "application/json" },

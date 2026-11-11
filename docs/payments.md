@@ -483,10 +483,30 @@ admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
   is the charge key's prefix (`<feature>:<userId>:…`; none = a Learning
   Partner reply). Strings: `costs.content.ts` (`dev-costs`, 16 locales with
   context lines); the page name is `costs` in `dev-pages`.
+- **Per day and per hour, by service** (owner, 2026-11-11;
+  `lib/payments/cost-buckets.ts`). `?view=days` is a day × feature matrix
+  (every JST day of the range, empty ones too); `?view=hours&hours=N` an
+  hour × feature matrix of the range's last N JST hours (default 48, at most
+  `COSTS_MAX_HOURS` = 168, never after the current hour). An hour is the
+  `at` / `settledAt` time + 9 h cut to `YYYY-MM-DDTHH` (JST has no daylight
+  saving). The hourly free query is bounded by the indexed `day` column as
+  well as `at`, the paid one by the `settledAt` index, so no new index. The
+  page shows both as tables (`CostMatrix.tsx`: rows a VirtualList, columns
+  the services dearest first, row sums right, column sums on top; each cell
+  free cost over paid cost on a seal-red heat ground, `heat.ts`, AA text on
+  every level in light and dark) and as **charts** (`CostCharts.tsx`, inline
+  SVG, no library): cost per day and per hour stacked by service (top five,
+  the rest "other") or free vs paid, and the top ten accounts' free/paid
+  bars. Each red/gold series carries its own pattern and a legend label, so
+  colour is never alone; hover, tap or ←/→ shows a bar's exact values; the
+  chart points at its table with `aria-describedby`.
 - Tests: `unit/cost-ledger.test.ts` (booking, failure, the speech-server
-  route, aggregation, the API's 404); QA `scripts/qa/qa-costs.mjs` (suite
-  `costs`: non-admin 404, a speech-server report booked, the account by name
-  with no email, 360 px light + dark).
+  route, aggregation, the API's 404); `unit/cost-buckets.test.ts` (JST hour
+  and day edges, no DST, the hour window cap, the matrix sums, both views and
+  their 404, the heat scale's AA); QA `scripts/qa/qa-costs.mjs` (suite
+  `costs`: non-admin 404 on the page and every view, a speech-server report
+  booked, the account by name with no email, both matrices and the charts, a
+  tapped bar's values, 360 px light + dark).
 
 ### Providers
 
