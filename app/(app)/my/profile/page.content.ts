@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
 const profilePageContent = {
   key: "profile-page",
@@ -548,4 +549,49 @@ const profilePageContent = {
   },
 } satisfies DeclarationContent;
 
-export default profilePageContent;
+const context: KeyContext<typeof profilePageContent.content> = {
+  metadata: {
+    title: "The browser tab's title of the profile page. Keep ' - Lianki' as is.",
+    description: "The page's search-engine description. One short sentence.",
+  },
+  heading: "Heading of the profile page. One word.",
+  userInformation: "Heading of the section with the learner's name, email and avatar.",
+  name: "Label before the learner's name; ends with a colon.",
+  notAvailable: "Shown in place of a value the account does not have. Very short.",
+  email: "Label before the learner's email address; ends with a colon.",
+  avatar: "Label before the learner's picture; ends with a colon.",
+  userAvatarAlt: "Screen-reader text of the learner's picture.",
+  sessionDetails: "Heading of the section about the current sign-in session.",
+  editPreferences: "Link to the settings page. Imperative phrase.",
+  backToHome: "Link back to the home page. Imperative phrase.",
+  passkeys: "Heading of the passkeys section. The platform's own word for passkeys.",
+  passkeysIntro:
+    "Line under that heading: a passkey signs in with fingerprint, face or screen lock instead of an emailed code.",
+  noPasskeys: "Shown when the account has no passkey yet. Short sentence.",
+  addPasskey: "Button that creates a passkey on this device. Imperative.",
+  addingPasskey:
+    "The same button while the device's own passkey prompt is open. Progressive with an ellipsis.",
+  addedOn: "Label before the date a passkey was added. One word.",
+  rename: "Button that renames a passkey. Imperative verb.",
+  save: "Button that saves a passkey's new name. Imperative verb.",
+  cancel: "Button that stops renaming without saving. Imperative verb.",
+  deletePasskey: "Button that deletes a passkey. Imperative verb.",
+  confirmDelete:
+    "Confirmation before deleting a passkey: email sign-in still works afterwards. A question, then a sentence.",
+  passkeyName: "Screen-reader label of the field for a passkey's name.",
+  addFailed: "Error when creating a passkey failed. Two short sentences: it failed, try again.",
+  alreadyRegistered: "Error when this device already holds a passkey for this account.",
+  signInAgain:
+    "Error when the session is too old to add a passkey: sign out, sign in again, then add it. Imperative.",
+  notSupported: "Error when this browser cannot use passkeys. Short sentence.",
+  actionFailed: "Generic error for a failed rename or delete. Two short sentences.",
+  passkeyUnnamed: "Default name of a passkey with no name of its own. The platform's word.",
+};
+
+export default {
+  ...profilePageContent,
+  description: describeKeys(
+    "The learner's own profile page on Lianki (/my/profile): name, email and avatar, session details, and the passkeys used to sign in (a passkey is a sign-in by fingerprint, face or screen lock instead of an emailed code). Lianki is a product name, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

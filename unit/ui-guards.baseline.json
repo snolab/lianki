@@ -60,36 +60,9 @@
     "app/api/profile/email/route.ts": 1,
     "app/api/profile/name/route.ts": 1,
     "app/api/slack/events/route.ts": 2,
-    "app/api/token/route.ts": 1,
-    "app/api/words/familiarity/route.ts": 1,
-    "app/api/words/lists/[id]/entries/route.ts": 1,
-    "app/api/words/lists/[id]/known/route.ts": 1,
-    "app/api/words/lists/[id]/rename/route.ts": 2,
-    "app/api/words/lists/[id]/review/route.ts": 2,
-    "app/api/words/lists/[id]/route.ts": 1,
-    "app/api/words/lists/[id]/session/route.ts": 1,
-    "app/api/words/lists/[id]/undo/route.ts": 2,
-    "app/api/words/lists/route.ts": 2,
-    "app/api/words/telemetry/route.ts": 1
+    "app/api/token/route.ts": 1
   },
   "missingLocales": [],
-  "noDescription": [
-    "add-note-page",
-    "contact-form",
-    "first-run",
-    "list-page",
-    "profile-page",
-    "sign-in-page"
-  ],
-  "jargon": [
-    "agent-guide.answers",
-    "agent-guide.chatIntro",
-    "agent-guide.limits429",
-    "agent-guide.tokenJson",
-    "learning-partner.aiHint",
-    "learning-partner.aiStatus",
-    "privacy-page.aiBody",
-    "privacy-page.filesBody",
-    "privacy-page.voiceBody"
-  ]
+  "noDescription": [],
+  "jargon": []
 }

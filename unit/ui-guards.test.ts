@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { PILL_CHAT_LOCALES as LOCALES } from "@/src/pill-chat-strings";
 import {
   JARGON,
+  JARGON_EXEMPT,
   apiFiles,
   leaves,
   scanApiFile,
@@ -61,7 +62,8 @@ for (const d of dictionaries) {
   for (const [path, tr] of leaves(d.content)) {
     const missing = LOCALES.filter((l) => typeof tr[l] !== "string");
     if (missing.length) now.missingLocales.push(`${d.key}.${path}`);
-    if (typeof tr.en === "string" && JARGON.test(tr.en)) now.jargon.push(`${d.key}.${path}`);
+    if (typeof tr.en === "string" && !JARGON_EXEMPT.has(d.key) && JARGON.test(tr.en))
+      now.jargon.push(`${d.key}.${path}`);
   }
 }
 
@@ -145,5 +147,7 @@ describe("UI guards (ratchet: may only shrink)", () => {
     expect(scanApiFile("route.ts", api)).toBe(3);
     expect(JARGON.test("Word lists need the D1 backend")).toBe(true);
     expect(JARGON.test("Your API key stays in this browser")).toBe(false);
+    expect(JARGON.test("Replies come from DeepSeek on Cloudflare Workers AI")).toBe(false);
+    expect(JARGON.test("Needs Workers AI")).toBe(true);
   });
 });

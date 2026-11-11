@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   if (repo instanceof NextResponse) return repo;
   const { id } = await params;
   const list = await repo.getList(id);
-  if (!list) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!list) return NextResponse.json({ error: "not-found" }, { status: 404 });
   const limit = Math.min(500, Number(req.nextUrl.searchParams.get("limit")) || 200);
   return NextResponse.json({
     list,

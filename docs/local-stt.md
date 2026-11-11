@@ -1032,6 +1032,22 @@ socket closed, `error`, no final within 4 s), posts the WAV to
 `/api/debug/stt` instead. The echo guard, the hallucination guard and
 the clip sink see the text exactly as they do a route transcript.
 
+### Which engine a line came from
+
+Every voice line carries `stt: {route: "local"|"cloud", engine?, fallback?:
+true}` (`wire.ts` `SttTag`), set by the page from what actually answered its
+final: `route: "local"` with the server's final `model` (e.g.
+`sensevoice-small-2024-07-17-int8`), or `route: "cloud"` with the route's
+`model` (`@cf/openai/whisper-large-v3-turbo`, or `@cf/openai/whisper` when the
+route fell back itself). `fallback: true` = the Mac was asked and failed, so
+the cloud answered. MicButton marks it on the utterance in the latency store
+(`latency.ts` `takeLine`); push to talk is always the cloud. The hub keeps it
+on the stored line (and on each part of a merged one), `eval.ts chat` /
+`lianki-dev listen` print it, and the chat shows a tiny tag after the line
+("local · sensevoice-small-…", "cloud · whisper-large-v3-turbo · fallback")
+only to a `dev` holder (DebugChat `owner`). Never text, never for friends or
+normal users.
+
 ## Noise
 
 The browser's own noise suppression, echo cancellation and auto gain are on

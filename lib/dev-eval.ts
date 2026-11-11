@@ -22,6 +22,8 @@ import {
   type MessageSource,
   type VoiceTiming,
   cleanTiming,
+  type SttTag,
+  cleanStt,
   type SpeakerTag,
   cleanSpeaker,
   type ChatContext,
@@ -78,6 +80,11 @@ export {
   draftSource,
   type VoiceTiming,
   cleanTiming,
+  type SttTag,
+  type SttRoute,
+  cleanStt,
+  sttTagOf,
+  sttTagText,
   type SpeakerTag,
   type SpeakerDecision,
   cleanSpeaker,
@@ -278,6 +285,8 @@ export type PageMessage =
       to?: string;
       source?: MessageSource;
       timing?: VoiceTiming;
+      /** A voice line's recognizer (SttTag; dev-only in the UI): route, engine, fallback. */
+      stt?: SttTag;
       /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
       wake?: "active" | "passive";
       /**
@@ -608,6 +617,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
+    const stt = m.source === "stt" ? cleanStt(m.stt) : undefined;
     const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
     const context = cleanContext(m.context);
     const attachments = cleanAttachments(m.attachments);
@@ -619,6 +629,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(to && to !== ROOT_NODE ? { to } : {}),
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
+      ...(stt ? { stt } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
       ...(speakerProof ? { speakerProof } : {}),
       ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)

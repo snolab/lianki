@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const repo = await wordsRepo();
   if (repo instanceof NextResponse) return repo;
   const parsed = CreateBody.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Invalid list" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "invalid-list" }, { status: 400 });
   const id = await repo.createList(parsed.data);
   return NextResponse.json({ list: await repo.getList(id) });
 }
@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest) {
         .max(200),
     })
     .safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Invalid order" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "invalid-order" }, { status: 400 });
   await repo.reorder(
     parsed.data.order.map((x) =>
       typeof x === "string" ? { id: x, parentId: undefined } : { id: x.id, parentId: x.parentId },
