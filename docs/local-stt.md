@@ -1215,6 +1215,35 @@ route`. Per-account prints, when they come, live under
 `voiceprints/accounts/<hash of the account id>` (`account_store`), never in
 the owner's folder. The owner's own listeners (tailnet, tunnel) are unchanged.
 
+**The page** (`packages/debug-chat/src/public-stt.ts`). Only where the owner's
+route is "none" (not the owner: `localSttRoute` decides first, so his page
+never changes) and only on `https://lianki.com`: the first time the mic turns
+on in a page, `GET /api/stt/session` once (404: nothing more happens, the mic
+is exactly as before). On 204 the consent card (`SttServersCard.tsx`, strings
+`sttServers*` in `chat-ui-locales.ts`, 16 locales): "Your voice goes to
+Lianki's speech servers, which write it out while you speak. The audio is not
+stored; only what you send is kept. Free for now." — **Use Lianki's speech
+servers** / **Not now**. Nothing is sent before that tap (a synthetic click is
+ignored); the answer is kept per device (`lk:stt-servers`, `on` / `off`;
+"Not now" asks again on the next page). Agreed, the mic's route list becomes
+`PUBLIC_ROUTES` = `rtc:lianki wss:session`, raced by the same
+`createLocalStt` (protocol, held utterances, fallback, dot), with `open` =
+`publicOpen` and a longer `connectTimeoutMs` (6 s: a session, signalling and
+ICE come before `ready`):
+
+- `rtc:lianki`: `POST /api/stt/session` → the registry's signal socket
+  (`lianki-stt2, <ticket>`) → on `ready`, an `RTCPeerConnection` with the
+  session's ICE servers and a DataChannel `stt` (ordered) → offer, trickled
+  ICE, answer. The channel, once open, is the socket. The signal socket stays
+  open for the session (the registry counts by it).
+- `wss:session`: its own session (a ticket is spent once per route); the
+  session's `wss` URL with `lianki-stt2, <ticket>`, or an at-once failure when
+  there is none (the default).
+- No hello, device, thread or filter on these sockets, and the page does not
+  report usage (`reportLocalStt`): the registry books it. Any failure before
+  `ready` loses the race; all lost = the cloud, per utterance, as always.
+  The order is the pluggable part (later: a user's own Mac first).
+
 ## WebRTC
 
 The owner's own route still does not use it. The phone already reaches the

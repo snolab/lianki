@@ -99,6 +99,10 @@ export type ChatExtra = {
   micFailed: string;
   endedElsewhere: string;
   rateLimited: string;
+  sttServersTitle: string;
+  sttServersBody: string;
+  sttServersAgree: string;
+  sttServersLater: string;
 };
 
 const CHAT = "the Learning Partner chat (Li), a small chat panel on every Lianki page";
@@ -161,6 +165,10 @@ export const EXTRA_CONTEXT: ChatExtra = {
   micFailed: `In ${CHAT}: small note by the mic button for any other failure of the mic or of speech recognition. Two short sentences: it failed, try again.`,
   endedElsewhere: `In ${CHAT}: a line above the chat box when the chat was closed from another open page of Lianki; it reconnects when the user comes back to this page.`,
   rateLimited: `In ${CHAT}: a line above the chat box when the user sent too many messages; the last one was not sent; {n} is how many minutes to wait. Keep {n}.`,
+  sttServersTitle: `In ${CHAT}: the heading of a small card shown once per device when the mic turns on and the user may use Lianki's own speech-to-text servers: they turn speech into text faster, while the user speaks. A short noun phrase.`,
+  sttServersBody: `In ${CHAT}: the text of that card: the voice is sent to Lianki's speech servers, which write it out while the user speaks; the audio is not stored, only what the user sends is kept; free for now. Call them only 'Lianki's speech servers' (never a computer or a person). Two or three short sentences.`,
+  sttServersAgree: `In ${CHAT}: the card's main button: agree and use Lianki's speech servers from now on, on this device. An imperative phrase.`,
+  sttServersLater: `In ${CHAT}: the card's second button: do not use them now (speech recognition stays as it was). The platform's usual 'Not now'.`,
 };
 
 /** The 13 app locales ui-strings.ts does not carry. */
@@ -555,6 +563,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "The mic didn't work. Please try again.",
     endedElsewhere: "Ended from another page. It reconnects when you come back to this page.",
     rateLimited: "Too many messages: that one was not sent. Try again in {n} min.",
+    sttServersTitle: "Faster speech to text",
+    sttServersBody: "Your voice goes to Lianki's speech servers, which write it out while you speak. The audio is not stored; only what you send is kept. Free for now.",
+    sttServersAgree: "Use Lianki's speech servers",
+    sttServersLater: "Not now",
   },
   zh: {
     speakMicTitle: "麦克风开着：回复总会朗读（关掉麦克风后恢复你的设置）",
@@ -586,6 +598,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "麦克风没能工作，请重试。",
     endedElsewhere: "已在另一个页面结束。回到这个页面时会重新连接。",
     rateLimited: "消息太多：那一条没有发出。请 {n} 分钟后再试。",
+    sttServersTitle: "更快的语音转文字",
+    sttServersBody: "你的声音会发送到 Lianki 的语音服务器，边说边转成文字。音频不会保存，只保留你发出的内容。目前免费。",
+    sttServersAgree: "使用 Lianki 的语音服务器",
+    sttServersLater: "暂不",
   },
   hi: {
     speakMicTitle: "माइक चालू है: जवाब हमेशा बोलकर पढ़े जाते हैं (माइक बंद होने पर आपकी सेटिंग लौट आती है)",
@@ -617,6 +633,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "माइक काम नहीं कर सका। कृपया फिर से कोशिश करें।",
     endedElsewhere: "दूसरे पेज से बंद किया गया। इस पेज पर लौटने पर फिर जुड़ जाएगा।",
     rateLimited: "बहुत सारे संदेश: वह नहीं भेजा गया। {n} मिनट बाद फिर कोशिश करें।",
+    sttServersTitle: "तेज़ आवाज़ से टेक्स्ट",
+    sttServersBody: "आपकी आवाज़ Lianki के स्पीच सर्वरों पर जाती है, जो बोलते-बोलते उसे लिख देते हैं। ऑडियो सहेजा नहीं जाता; सिर्फ़ वही रखा जाता है जो आप भेजते हैं। अभी मुफ़्त।",
+    sttServersAgree: "Lianki के स्पीच सर्वर इस्तेमाल करें",
+    sttServersLater: "अभी नहीं",
   },
   es: {
     speakMicTitle: "El micrófono está activado: las respuestas siempre se leen en voz alta (tu ajuste vuelve al apagarlo)",
@@ -648,6 +668,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "El micrófono no funcionó. Inténtalo de nuevo.",
     endedElsewhere: "Se cerró desde otra página. Se vuelve a conectar cuando regreses a esta página.",
     rateLimited: "Demasiados mensajes: ese no se envió. Inténtalo de nuevo en {n} min.",
+    sttServersTitle: "Voz a texto más rápida",
+    sttServersBody: "Tu voz va a los servidores de voz de Lianki, que la escriben mientras hablas. El audio no se guarda; solo se conserva lo que envías. Gratis por ahora.",
+    sttServersAgree: "Usar los servidores de voz de Lianki",
+    sttServersLater: "Ahora no",
   },
   fr: {
     speakMicTitle: "Le micro est activé : les réponses sont toujours lues à voix haute (votre réglage revient à l'arrêt)",
@@ -679,6 +703,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "Le micro n'a pas fonctionné. Réessayez.",
     endedElsewhere: "Fermé depuis une autre page. La connexion revient quand vous revenez sur cette page.",
     rateLimited: "Trop de messages : celui-ci n'a pas été envoyé. Réessayez dans {n} min.",
+    sttServersTitle: "Dictée plus rapide",
+    sttServersBody: "Votre voix part vers les serveurs vocaux de Lianki, qui l'écrivent pendant que vous parlez. L'audio n'est pas conservé ; seul ce que vous envoyez est gardé. Gratuit pour l'instant.",
+    sttServersAgree: "Utiliser les serveurs vocaux de Lianki",
+    sttServersLater: "Pas maintenant",
   },
   ar: {
     speakMicTitle: "الميكروفون يعمل: تُقرأ الردود دائمًا بصوت عالٍ (يعود إعدادك عند إيقافه)",
@@ -710,6 +738,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "لم يعمل الميكروفون. يُرجى المحاولة مجددًا.",
     endedElsewhere: "أُنهي من صفحة أخرى. يعود الاتصال عند رجوعك إلى هذه الصفحة.",
     rateLimited: "رسائل كثيرة: لم تُرسل تلك الرسالة. حاول مجددًا بعد {n} دقيقة.",
+    sttServersTitle: "تحويل أسرع للكلام إلى نص",
+    sttServersBody: "يُرسَل صوتك إلى خوادم الكلام في Lianki، فتكتبه أثناء حديثك. لا يُحفَظ الصوت؛ يُحفَظ فقط ما ترسله. مجاني حاليًا.",
+    sttServersAgree: "استخدام خوادم الكلام في Lianki",
+    sttServersLater: "ليس الآن",
   },
   bn: {
     speakMicTitle: "মাইক চালু: উত্তর সবসময় জোরে পড়া হয় (মাইক বন্ধ হলে আপনার সেটিং ফিরে আসে)",
@@ -741,6 +773,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "মাইক কাজ করেনি। আবার চেষ্টা করুন।",
     endedElsewhere: "অন্য পেজ থেকে বন্ধ হয়েছে। এই পেজে ফিরলে আবার যুক্ত হবে।",
     rateLimited: "অনেক বেশি বার্তা: ওটি পাঠানো হয়নি। {n} মিনিট পরে আবার চেষ্টা করুন।",
+    sttServersTitle: "আরও দ্রুত কথা থেকে লেখা",
+    sttServersBody: "আপনার কণ্ঠ Lianki-এর স্পিচ সার্ভারে যায়, যা কথা বলার সঙ্গে সঙ্গে তা লিখে দেয়। অডিও সংরক্ষণ করা হয় না; শুধু আপনি যা পাঠান তা-ই রাখা হয়। আপাতত বিনামূল্যে।",
+    sttServersAgree: "Lianki-এর স্পিচ সার্ভার ব্যবহার করুন",
+    sttServersLater: "এখন নয়",
   },
   pt: {
     speakMicTitle: "O microfone está ligado: as respostas são sempre lidas em voz alta (sua configuração volta quando ele parar)",
@@ -772,6 +808,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "O microfone não funcionou. Tente novamente.",
     endedElsewhere: "Encerrado em outra página. Reconecta quando você voltar a esta página.",
     rateLimited: "Mensagens demais: essa não foi enviada. Tente de novo em {n} min.",
+    sttServersTitle: "Voz para texto mais rápida",
+    sttServersBody: "Sua voz vai para os servidores de voz da Lianki, que a escrevem enquanto você fala. O áudio não é guardado; só fica o que você envia. Grátis por enquanto.",
+    sttServersAgree: "Usar os servidores de voz da Lianki",
+    sttServersLater: "Agora não",
   },
   ru: {
     speakMicTitle: "Микрофон включён: ответы всегда читаются вслух (ваша настройка вернётся, когда он выключится)",
@@ -803,6 +843,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "Микрофон не сработал. Попробуйте ещё раз.",
     endedElsewhere: "Завершено на другой странице. Подключение вернётся, когда вы вернётесь на эту страницу.",
     rateLimited: "Слишком много сообщений: это не отправлено. Попробуйте через {n} мин.",
+    sttServersTitle: "Быстрее из речи в текст",
+    sttServersBody: "Ваш голос отправляется на речевые серверы Lianki, которые записывают его текстом прямо во время речи. Звук не сохраняется; остаётся только то, что вы отправили. Пока бесплатно.",
+    sttServersAgree: "Использовать речевые серверы Lianki",
+    sttServersLater: "Не сейчас",
   },
   ur: {
     speakMicTitle: "مائیک آن ہے: جوابات ہمیشہ بلند آواز میں پڑھے جاتے ہیں (مائیک بند ہونے پر آپ کی ترتیب واپس آ جاتی ہے)",
@@ -834,6 +878,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "مائیک کام نہیں کر سکا۔ براہِ کرم دوبارہ کوشش کریں۔",
     endedElsewhere: "دوسرے صفحے سے بند کیا گیا۔ اس صفحے پر واپس آنے پر دوبارہ جڑ جائے گا۔",
     rateLimited: "بہت زیادہ پیغامات: وہ نہیں بھیجا گیا۔ {n} منٹ بعد دوبارہ کوشش کریں۔",
+    sttServersTitle: "آواز سے متن، زیادہ تیز",
+    sttServersBody: "آپ کی آواز Lianki کے اسپیچ سرورز کو جاتی ہے، جو بولتے بولتے اسے لکھ دیتے ہیں۔ آڈیو محفوظ نہیں کیا جاتا؛ صرف وہی رکھا جاتا ہے جو آپ بھیجتے ہیں۔ ابھی مفت۔",
+    sttServersAgree: "Lianki کے اسپیچ سرورز استعمال کریں",
+    sttServersLater: "ابھی نہیں",
   },
   id: {
     speakMicTitle: "Mikrofon menyala: balasan selalu dibacakan (pengaturan Anda kembali saat mikrofon berhenti)",
@@ -865,6 +913,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "Mikrofon tidak berfungsi. Silakan coba lagi.",
     endedElsewhere: "Diakhiri dari halaman lain. Tersambung lagi saat Anda kembali ke halaman ini.",
     rateLimited: "Terlalu banyak pesan: pesan itu tidak terkirim. Coba lagi dalam {n} menit.",
+    sttServersTitle: "Suara ke teks lebih cepat",
+    sttServersBody: "Suara Anda dikirim ke server suara Lianki, yang menuliskannya saat Anda berbicara. Audio tidak disimpan; hanya yang Anda kirim yang disimpan. Gratis untuk saat ini.",
+    sttServersAgree: "Pakai server suara Lianki",
+    sttServersLater: "Nanti saja",
   },
   de: {
     speakMicTitle: "Das Mikrofon ist an: Antworten werden immer vorgelesen (deine Einstellung kommt zurück, wenn es aus ist)",
@@ -896,6 +948,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "Das Mikrofon hat nicht funktioniert. Bitte versuche es erneut.",
     endedElsewhere: "Auf einer anderen Seite beendet. Die Verbindung kommt zurück, wenn du zu dieser Seite zurückkehrst.",
     rateLimited: "Zu viele Nachrichten: diese wurde nicht gesendet. Versuche es in {n} Min. erneut.",
+    sttServersTitle: "Schneller von Sprache zu Text",
+    sttServersBody: "Ihre Stimme geht an die Sprachserver von Lianki, die sie schon beim Sprechen aufschreiben. Die Aufnahme wird nicht gespeichert; nur was Sie senden, bleibt. Vorerst kostenlos.",
+    sttServersAgree: "Sprachserver von Lianki nutzen",
+    sttServersLater: "Nicht jetzt",
   },
   ja: {
     speakMicTitle: "マイクがオンです：返信は常に読み上げます（マイクを止めると設定が戻ります）",
@@ -927,6 +983,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "マイクが動作しませんでした。もう一度お試しください。",
     endedElsewhere: "別のページで終了しました。このページに戻ると再接続します。",
     rateLimited: "メッセージが多すぎます：今のメッセージは送信されていません。{n} 分後にもう一度お試しください。",
+    sttServersTitle: "もっと速い音声入力",
+    sttServersBody: "あなたの声は Lianki の音声サーバーに送られ、話しながら文字になります。音声は保存されず、送信した内容だけが残ります。当面は無料です。",
+    sttServersAgree: "Lianki の音声サーバーを使う",
+    sttServersLater: "今はしない",
   },
   sw: {
     speakMicTitle: "Maikrofoni imewashwa: majibu husomwa kwa sauti kila wakati (mpangilio wako unarudi ikizimwa)",
@@ -958,6 +1018,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "Maikrofoni haikufanya kazi. Tafadhali jaribu tena.",
     endedElsewhere: "Imefungwa kutoka ukurasa mwingine. Itaunganika tena ukirudi kwenye ukurasa huu.",
     rateLimited: "Ujumbe mwingi mno: huo haukutumwa. Jaribu tena baada ya dakika {n}.",
+    sttServersTitle: "Usemi kwa maandishi kwa haraka zaidi",
+    sttServersBody: "Sauti yako inatumwa kwa seva za usemi za Lianki, zinazoiandika unapoongea. Sauti haihifadhiwi; kinachohifadhiwa ni ulichotuma tu. Bure kwa sasa.",
+    sttServersAgree: "Tumia seva za usemi za Lianki",
+    sttServersLater: "Si sasa",
   },
   mr: {
     speakMicTitle: "माइक चालू आहे: उत्तरे नेहमी मोठ्याने वाचली जातात (माइक थांबल्यावर तुमची सेटिंग परत येते)",
@@ -989,6 +1053,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "माइक चालला नाही. कृपया पुन्हा प्रयत्न करा.",
     endedElsewhere: "दुसऱ्या पानावरून बंद केले. या पानावर परत आल्यावर पुन्हा जोडले जाईल.",
     rateLimited: "खूप संदेश: तो पाठवला गेला नाही. {n} मिनिटांनी पुन्हा प्रयत्न करा.",
+    sttServersTitle: "अधिक वेगाने आवाजातून मजकूर",
+    sttServersBody: "तुमचा आवाज Lianki च्या स्पीच सर्व्हरकडे जातो, जे बोलता-बोलता तो लिहून देतात. ऑडिओ साठवला जात नाही; फक्त तुम्ही पाठवलेले ठेवले जाते. सध्या मोफत.",
+    sttServersAgree: "Lianki चे स्पीच सर्व्हर वापरा",
+    sttServersLater: "आता नाही",
   },
   ko: {
     speakMicTitle: "마이크가 켜져 있습니다: 답장을 항상 소리 내어 읽습니다(마이크가 꺼지면 설정이 돌아옵니다)",
@@ -1020,6 +1088,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     micFailed: "마이크가 작동하지 않았습니다. 다시 시도해 주세요.",
     endedElsewhere: "다른 페이지에서 종료되었습니다. 이 페이지로 돌아오면 다시 연결됩니다.",
     rateLimited: "메시지가 너무 많습니다: 방금 메시지는 전송되지 않았습니다. {n}분 후에 다시 시도하세요.",
+    sttServersTitle: "더 빠른 음성 입력",
+    sttServersBody: "목소리는 Lianki 음성 서버로 보내져 말하는 동안 글자로 바뀝니다. 음성은 저장되지 않으며, 보낸 내용만 남습니다. 당분간 무료입니다.",
+    sttServersAgree: "Lianki 음성 서버 사용",
+    sttServersLater: "나중에",
   },
 };
 

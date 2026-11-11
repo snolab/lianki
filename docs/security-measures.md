@@ -510,6 +510,41 @@ default 600000 = 10 min; 0 = a prompt per op as before). Details and the flow:
   shortening, per-op single use, another account / session / device refused,
   a grant opens no challenge or ticket, no grant → the prompt).
 
+## 15. Lianki's speech servers for other accounts (2026-11-11, dark)
+
+The owner's decision (Slack, 2026-11-11 00:3x JST): other accounts may stream
+their mic to the same speech server, through WebRTC first. Shipped dark: flag
+`stt.worker` off; everything below answers 404 while it is. Details:
+[local-stt.md](local-stt.md), "Lianki's speech servers for everyone".
+
+- **No new door to the owner's Mac.** The speech server dials **out** to the
+  registry (lianki-push DO; no inbound port, no new Worker route: under the
+  existing `/api/version/*`). A page reaches it only through a DataChannel the
+  sidecar (`stt-peer`) answers, bridged to a separate 127.0.0.1 listener.
+- **Who.** An admin-managed allowlist (`/dev/stt-access`, default deny,
+  audited). Each session needs a **v2 ticket** (Ed25519, its own audience
+  `lianki-stt2`, the account id, scope, limits; 60 s; spent once by the
+  registry and once by the speech server). A v2 ticket never opens the
+  owner's tunnel listener and a v1 ticket never a public session.
+- **Workers.** Only keys in `stt_worker` (added by the CLI after the owner's
+  tap card) may register, by signing the registry's nonce; revocable at
+  `/dev/stt-access`. A worker speaks only for its own sessions.
+- **Limits.** Per account: one live session, 6 tickets a minute, 30 audio
+  minutes a day; per utterance 40 s and per session 900 s (signed into the
+  ticket, enforced by the speech server); capacity 3 with 1 kept for the
+  owner (config `stt.worker.*`).
+- **The owner's data stays his.** On the peer listener: no speaker check, no
+  speaker proof, no voiceprint filter, no enrolment or voiceprint op.
+- **Consent.** A card before anything is sent; user-facing text says only
+  "Lianki's speech servers"; the audio is not stored.
+- **Not done (needs the owner):** TURN (secrets `STT_TURN_KEY_ID`,
+  `STT_TURN_KEY_TOKEN`), a WSS tunnel hostname for the fallback (DNS + tunnel
+  ingress), the first worker row, and the allowlist rows.
+- **Tests**: `unit/stt-ticket.test.ts`, `unit/stt-worker-store.test.ts`,
+  `unit/stt-session.test.ts`, `unit/stt-registry.test.ts`,
+  `unit/local-stt-peer.test.ts`, `unit/stt-peer-go.test.ts`,
+  `unit/public-stt.test.ts`.
+
 ## Owner checklist
 
 Things this repo cannot do by itself:

@@ -326,6 +326,12 @@ export function createLocalStt(
      * changes. Not given, or failing: no filter, exactly as without one.
      */
     filter?: () => boolean | Promise<boolean>;
+    /**
+     * How long the race may take (default CONNECT_TIMEOUT_MS). Lianki's speech
+     * servers for other accounts (public-stt.ts) give WebRTC longer: a session,
+     * signalling and ICE come before `ready`.
+     */
+    connectTimeoutMs?: number;
   } = {},
 ): LocalStt {
   const urls = (Array.isArray(url) ? url : url.split(/[\s,]+/)).filter(Boolean);
@@ -396,7 +402,8 @@ export function createLocalStt(
   };
   const hostOf = (u: string) => {
     try {
-      return new URL(u).host;
+      // A route with no host (public-stt.ts: rtc:lianki) is named as it is.
+      return new URL(u).host || u;
     } catch {
       return "?";
     }
@@ -644,7 +651,7 @@ export function createLocalStt(
         for (const o of endRace(r)) o.close();
         failed();
         lost("unreachable", undefined, urls.join(" "));
-      }, CONNECT_TIMEOUT_MS),
+      }, d.connectTimeoutMs ?? CONNECT_TIMEOUT_MS),
     );
     start();
   };

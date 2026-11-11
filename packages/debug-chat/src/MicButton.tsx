@@ -34,6 +34,7 @@ import { voiceLatency, noteSttVia } from "./latency";
 import { type SttTag, sttTagOf } from "./wire";
 import { postSessionClip } from "./clips-store";
 import { createLocalStt } from "./local-stt";
+import { PUBLIC_CONNECT_TIMEOUT_MS, isPublicRoutes, publicOpen } from "./public-stt";
 import type { SttSignals } from "./stt-guard";
 import { VOICE_DEVICE_KEY, deviceSlug, filterSwitch, filterVerdict, noteFiltered, noteSpeaker, subscribeFiltered } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
@@ -517,8 +518,16 @@ function session(): MicSession {
       };
     },
     // The device goes along, so the Mac scores finals against this device's voiceprint.
+    // Lianki's speech servers for another account (public-stt.ts): no device, no thread,
+    // no filter (none of the owner's voiceprint applies), WebRTC then the WSS tunnel.
     localStt: (url) =>
-      createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner", filter: filterSwitch() }),
+      isPublicRoutes(url)
+        ? createLocalStt(url, {
+            log: (ev) => v.log(ev),
+            open: publicOpen({ log: (ev) => v.log(ev) }),
+            connectTimeoutMs: PUBLIC_CONNECT_TIMEOUT_MS,
+          })
+        : createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner", filter: filterSwitch() }),
     speaker: noteSpeaker,
     filtered: (r) => void v.log({ ev: "voice-filtered", mode: "passive", n: noteFiltered("filtered", r).n, ...r }),
     // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
@@ -541,7 +550,8 @@ function session(): MicSession {
           try {
             const f = await local;
             // Served by the speech server: booked as a cloud call (cost ledger), filtered or not.
-            if (!partial) reportLocalStt(durationMs, fetch);
+            // Not for Lianki's speech servers' public routes: the registry books those itself.
+            if (!partial && !isPublicRoutes(cfg.localStt ?? "")) reportLocalStt(durationMs, fetch);
             // The filter stopped it on the Mac: not text, not the cloud, not the clip sink.
             if (filterVerdict(f, durationMs, (ev) => v.log(ev))) return "";
             out = f;
