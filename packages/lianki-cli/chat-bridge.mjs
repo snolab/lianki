@@ -2,15 +2,16 @@
 import { spawn } from "node:child_process";
 
 export const BRIDGE_DEFAULTS = {
-  timeoutMs: 3000, deliveryTimeoutMs: 15000, contextLines: 12, lineChars: 2000, continuationMs: 8000, remembered: 256,
+  timeoutMs: 6500, deliveryTimeoutMs: 15000, contextLines: 12, lineChars: 2000, continuationMs: 8000, remembered: 256,
 };
 
 export function bridgeConfig(env = {}) {
   return Object.fromEntries(Object.entries(BRIDGE_DEFAULTS).map(([key, fallback]) => {
     const name = `LIANKI_CHAT_BRIDGE_${key.replace(/[A-Z]/g, (s) => `_${s}`).toUpperCase()}`;
     const n = Number(env[name]);
-    // Protocol maxima bound the data the optional classifier receives.
-    return [key, Number.isSafeInteger(n) && n > 0 ? Math.min(n, fallback) : fallback];
+    // Only the request deadline can grow: cover a configured 10s server timeout plus transport.
+    // Protocol/data maxima remain capped at their defaults.
+    return [key, Number.isSafeInteger(n) && n > 0 ? Math.min(n, key === "timeoutMs" ? 12000 : fallback) : fallback];
   }));
 }
 

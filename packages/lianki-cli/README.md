@@ -339,8 +339,24 @@ cases, posts nothing, and prints status/latency. Missing auth or an undeployed
 operation reports blocked. Private recordings have not been used for testing.
 Local regression suites use stub providers and local databases.
 
+The provider deadline defaults to 5 seconds (`chat.prepareTimeoutMs`, configurable
+from 200 ms to 10 seconds). The bridge waits 6.5 seconds by default, including
+hub, billing and transport overhead; `LIANKI_CHAT_BRIDGE_TIMEOUT_MS` may lower it
+or raise it to 12 seconds when the server deadline is raised. Responses return
+as soon as ready; there are no automatic model retries. A lower bridge deadline
+can abandon a call that the server still completes and settles.
+
+Provider failures return safe error categories (`provider-timeout`,
+`provider-http` with numeric `status`, `provider-network`,
+`provider-invalid-json`, `provider-invalid-response`, `provider-refused`), without
+provider response bodies or exception messages. The model may return plain JSON
+or one complete `json` code fence; surrounding prose is rejected. The bridge
+retains those categories and distinguishes its own `prepare-timeout`,
+`prepare-http` and `prepare-invalid-json`, forwarding the original turn on failure.
+
 The bridge's `LIANKI_CHAT_BRIDGE_*` defaults and turn assembler's
-`LIANKI_CHAT_TURN_*` defaults are env-overridable within their protocol maxima;
+`LIANKI_CHAT_TURN_*` defaults are env-overridable within their protocol maxima
+(the request timeout has the separate 12-second ceiling above);
 see their registries for names. For example, `LIANKI_CHAT_TURN_QUIET_MS` sets
 the quiet window. Use the installed CLI or `bun packages/lianki-cli/lianki.mjs`;
 `lianki-dev` has a separate flag parser. Publication, deployment and a live

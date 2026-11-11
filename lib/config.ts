@@ -420,7 +420,7 @@ export const CONFIG = {
       "语音服务器：每台服务器的容量里留几路给你自己（其他用户最多用 容量 − 留给你的）。默认 1。",
   }),
   "chat.prepareTimeoutMs": int({
-    default: 1500,
+    default: 5000,
     min: 200,
     max: 10000,
     unit: "ms",
