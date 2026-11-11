@@ -411,16 +411,36 @@ language, and backfill it. The whole-utterance decode reads one language: on
 a Chinese then Japanese clip (the model's own `test_wavs`, joined) it keeps
 the Japanese and leaves the Chinese as 「开饭9」.
 
-`LIANKI_STT_LANG_SPANS=1` (with rolling on): the settled stretches carry the
-language their pass heard (`rolling.py` `language_spans`; under 1 s joins its
-neighbour, silence has none); when there are two or more, the final reads
-each settled stretch with its language forced (`LangPicker.read`, the int8
-model the language pick already loads) and the unsettled tail auto-detected,
-and the final message carries `langs`. On the joined clips it restores the
-first language (「开饭时间早上9点至下午5点。うちの中学は…」), but silence
-between stretches still reads as 「Yeah」「嗯」 and a true one-language clip
-was split by a misheard stretch, so it is off. Next: cut stretches where the
-VAD hears silence, not at CTC gaps.
+**On by default** (`LIANKI_STT_SWITCH=0` turns it off; `switch.py`, tests
+`test_switch.py`). The cuts are where **Silero hears silence**, not CTC gaps,
+so every stretch holds speech and silence is never read on its own (the
+rolling decode's stretches read it as 「Yeah」「嗯」):
+
+- **While he speaks**: Silero (`silero_vad.onnx`, min silence 0.25 s) hears
+  each chunk as it comes (`Tracker.feed`, ~3 ms per audio second), and each
+  speech run's language is picked from its first 1.5 s as soon as the run is
+  that long, on the language picker's side pool (`LangPicker.lang_probs`: the
+  model's language frame, softmax over zh/en/ja/ko/yue, ~80 ms). The page's
+  pre-pad arrives with `end`; it only shifts the positions (`prepend`), the
+  picks stand.
+- **At the final**: the whole decode runs as before; beside it, the runs are
+  planned (`plan`): a run is trusted for its language when it is ≥ 1 s and
+  p ≥ 0.8; the rest take the language before them. **English never starts a
+  switch** while another language is trusted (`CARRIED`): SenseVoice writes
+  English terms inside Chinese or Japanese text, and reading them alone
+  mangled them (「whisper large v3 turbo」 on the owner's clips). yue counts
+  as zh. Two or more stretches: each is decoded on its own (auto, full
+  precision; forced to its language when auto hears another, not English),
+  joined, and the final carries `langs`. One stretch: the whole decode stands.
+- **Measured** (2026-11-11, load 9–13, `stream-clip.ts`, on vs off): zh+ja
+  「开饭时间早上9点至下午5点。うちの中学は…」 (off: 「开饭9 うちの…」);
+  ja+ko keeps both (off: also both); en+zh: no switch (English), the whole
+  decode stands. End → final on the 12 owner clips 55–313 ms on vs 55–367 ms
+  off (noise); the switched ones 135–255 ms vs 121–146 ms. **0 of 208**
+  owner clips (≥ 1 s) were split.
+- Guests on the peer listener get it too (it reads only their own audio).
+
+The rolling decode's own language spans (`LIANKI_STT_LANG_SPANS`) are gone.
 
 ## Protocol
 
