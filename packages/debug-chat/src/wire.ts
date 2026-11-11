@@ -454,6 +454,8 @@ export function avatarColors(seed: string): { bg: string; fg: string; hue: numbe
 
 /** What the hub tells pages: the pairing waiting for an answer, and the approved sessions. */
 export type PairInfo = {
+  /** Explicit remembered account/device trust; until remains only a finite execution lease. */
+  persistent?: boolean;
   pair: string;
   code: string;
   label: string;
