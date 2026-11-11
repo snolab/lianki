@@ -336,9 +336,11 @@ export function AppShell({
             aria-label={labels.ui.menu}
             data-drawer
           >
-            <button
-              type="button"
-              aria-label={labels.ui.closeMenu}
+            {/* The backdrop: a tap outside closes the drawer. For keyboards
+                and screen readers the drawer's own "«" is the one Close. */}
+            <div
+              aria-hidden
+              data-drawer-backdrop
               className="absolute inset-0 bg-black/40"
               onClick={() => setDrawerOpen(false)}
             />

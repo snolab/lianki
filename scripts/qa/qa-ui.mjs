@@ -248,7 +248,7 @@ for (const path of ["/lab", "/lab/ai-vocab", "/lab/polyglot"]) {
     .catch(() => false);
   check(
     opened && backdrop === 1 && closed,
-    `drawer: a modal dialog, backdrop "Close menu", Escape closes it (${opened}/${backdrop}/${closed})`,
+    `drawer: a modal dialog, one "Close menu" (its «; the backdrop is pointer-only), Escape closes it (${opened}/${backdrop}/${closed})`,
   );
 
   // The bottom island (docs/bottom-nav.md): its Menu opens the same drawer,
@@ -445,7 +445,7 @@ for (const [w, h] of [
   // The phone drawer: its "«" closes it, and no icon is clipped there either.
   await fold.setViewportSize({ width: 360, height: 700 });
   await fold.evaluate(() => scrollTo(0, 0));
-  await fold.getByRole("button", { name: "Menu", exact: true }).click();
+  await fold.locator("header").getByRole("button", { name: "Menu", exact: true }).click();
   const drawer = fold.locator("[data-drawer]");
   await drawer.waitFor({ timeout: budget(5000) });
   const phoneClipped = await fold.evaluate(() => {

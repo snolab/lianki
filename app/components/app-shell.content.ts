@@ -658,7 +658,7 @@ const context: {
     expand:
       "Tooltip and screen-reader label of the small '»' button at the top left (in the top bar, or floating once it has scrolled away) shown while the left navigation sidebar is folded away: it brings the sidebar back. Imperative phrase.",
     closeMenu:
-      "Visible label of the '«' button at the top of the navigation drawer on phones, and screen-reader label of that button and of the dimmed backdrop: both close the drawer. Imperative phrase.",
+      "Visible label, tooltip and screen-reader label of the '«' button at the top of the navigation drawer on phones: it closes the drawer. Imperative phrase.",
     more: "Tooltip and label of the '⋯' button near the bottom of the desktop sidebar when the window is too short to show every link: it opens a small list of the links that did not fit. One short word, as in a 'More' menu.",
   },
 };
