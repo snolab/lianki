@@ -39,17 +39,19 @@ export async function sttAllowed(db: SttDb, userId: string): Promise<boolean> {
 
 export type SttAccessRow = {
   userId: string;
-  email: string | null;
   name: string | null;
   addedBy: string;
   addedAt: number;
 };
 
-/** The allowlist, newest first, with each account's email and name (the admin page). */
+/**
+ * The allowlist, newest first, with each account's display name (the admin
+ * page). Never the email: the page shows a name or the account id.
+ */
 export async function listSttAccess(db: SttDb): Promise<SttAccessRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT a.user_id AS userId, u.email AS email, u.name AS name, a.added_by AS addedBy,
+      `SELECT a.user_id AS userId, u.name AS name, a.added_by AS addedBy,
               a.added_at AS addedAt
        FROM stt_access a LEFT JOIN user u ON u.id = a.user_id ORDER BY a.added_at DESC`,
     )

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
+import { accountLabel, txt, workerMeta } from "./lines";
 
-type Allowed = { userId: string; email: string | null; name: string | null; addedAt: number };
+type Allowed = { userId: string; name: string | null; addedAt: number };
 type Worker = {
   id: string;
   name: string;
@@ -18,13 +19,12 @@ const API = "/api/dev/stt-access";
 const LINE = "border-[oklch(0.88_0_0)] dark:border-[oklch(0.35_0_0)]";
 const BTN =
   "rounded-md px-3 py-1 text-sm border border-[oklch(0_0_0/0.25)] dark:border-[oklch(1_0_0/0.25)] disabled:opacity-50";
-const fill = (s: string, vars: Record<string, string | number>) =>
-  s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 
 /** The allowlist (add by email, remove) and the registered speech servers (revoke). */
 export default function SttAccessAdmin() {
   const c = useIntlayer("dev-stt-access");
   const { locale } = useLocale();
+  const failed = txt(c.failed);
   const [state, setState] = useState<State | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [email, setEmail] = useState("");
@@ -39,8 +39,8 @@ export default function SttAccessAdmin() {
     fetch(API, { cache: "no-store" })
       .then((r) => (r.ok ? (r.json() as Promise<State>) : Promise.reject(r.status)))
       .then(setState)
-      .catch(() => setErr(String(c.failed)));
-  }, [c.failed]);
+      .catch(() => setErr(failed));
+  }, [failed]);
 
   async function op(body: Record<string, string>) {
     setBusy(true);
@@ -56,9 +56,9 @@ export default function SttAccessAdmin() {
         setState(data);
         setConfirm(null);
         if (body.op === "add") setEmail("");
-      } else setErr(String(data.error === "no-such-user" ? c.noSuchUser : c.failed));
+      } else setErr(txt(data.error === "no-such-user" ? c.noSuchUser : c.failed));
     } catch {
-      setErr(String(c.failed));
+      setErr(txt(c.failed));
     } finally {
       setBusy(false);
     }
@@ -94,8 +94,8 @@ export default function SttAccessAdmin() {
         >
           <input
             type="email"
-            aria-label={String(c.email)}
-            placeholder={String(c.email)}
+            aria-label={txt(c.email)}
+            placeholder={txt(c.email)}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className={`min-w-0 flex-1 rounded-md border px-2 py-1 text-sm bg-transparent ${LINE}`}
@@ -116,8 +116,8 @@ export default function SttAccessAdmin() {
               className={`py-2 border-b ${LINE} flex flex-wrap items-center gap-2`}
             >
               <span className="min-w-0 flex-1 break-all text-sm">
-                {a.name ? `${a.name} · ` : ""}
-                {a.email ?? a.userId}
+                {accountLabel(a)}
+                {a.name ? <code className="ml-2 text-xs opacity-70">{a.userId}</code> : null}
                 <span className="block text-xs opacity-70">{when(a.addedAt)}</span>
               </span>
               {confirm === `u:${a.userId}` ? (
@@ -157,8 +157,7 @@ export default function SttAccessAdmin() {
                 <span className="font-medium">{w.name}</span>{" "}
                 <code className="text-xs opacity-70">{w.id}</code>
                 <span className="block text-xs opacity-70">
-                  {fill(String(c.capacity), { n: w.capacity ?? String(c.capacityDefault) })}
-                  {w.ownerUserId ? ` · ${c.personal}` : ""} · {when(w.createdAt)}
+                  {workerMeta(w, c, when(w.createdAt))}
                 </span>
               </span>
               {w.revokedAt ? (
