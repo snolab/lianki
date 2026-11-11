@@ -391,17 +391,17 @@ wrong word being better than none. 0.2 s is the worst acceptable, not the goal.
 
 One socket per page; utterances one after another (`server.py` docstring):
 
-| from   | message                                                   | meaning                                         |
-| ------ | --------------------------------------------------------- | ----------------------------------------------- |
-| client | `{"t":"begin","id":N}`                                    | a new utterance                                 |
-| client | binary `0x01` + int16le PCM                               | frames of the current one, as heard             |
-| client | binary `0x02` + int16le PCM                               | the VAD's pre-pad: audio before the first frame |
-| client | `{"t":"end","id":N}`                                      | decode it now                                   |
-| client | `{"t":"cancel","id":N}`                                   | drop it (misfire, the agent speaking)           |
-| server | `{"t":"ready","engine","model"}`                          | on connect                                      |
-| server | `{"t":"partial","id","text","audioMs"}`                   | every 0.1 s of new audio (`--partial-step`), when the text changed |
+| from   | message                                                             | meaning                                                                                                                                      |
+| ------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| client | `{"t":"begin","id":N}`                                              | a new utterance                                                                                                                              |
+| client | binary `0x01` + int16le PCM                                         | frames of the current one, as heard                                                                                                          |
+| client | binary `0x02` + int16le PCM                                         | the VAD's pre-pad: audio before the first frame                                                                                              |
+| client | `{"t":"end","id":N}`                                                | decode it now                                                                                                                                |
+| client | `{"t":"cancel","id":N}`                                             | drop it (misfire, the agent speaking)                                                                                                        |
+| server | `{"t":"ready","engine","model"}`                                    | on connect                                                                                                                                   |
+| server | `{"t":"partial","id","text","audioMs"}`                             | every 0.1 s of new audio (`--partial-step`), when the text changed                                                                           |
 | server | `{"t":"final","id","text","lang","model","ms","audioMs","signals"}` | the whole utterance decoded; `signals`: `{decoder, logprob?}` for the page's silence guard ([workers-ai.md](workers-ai.md), "Silence guard") |
-| server | `{"t":"error","id","error"}`                              | then the page falls back                        |
+| server | `{"t":"error","id","error"}`                                        | then the page falls back                                                                                                                     |
 
 `GET /health` on the same port answers `{ok, engine, model}`.
 
@@ -411,27 +411,27 @@ line says `lang en->ja`, never the text.
 
 The voiceprint adds these (next section):
 
-| from   | message                                                                         | meaning                                                         |
-| ------ | ------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| client | `{"t":"hello","device":"iphone"}`                                               | after `ready`: score this socket's finals against that print    |
-| client | `{"t":"begin","id":N,"enrol":"<enrolment id>"}`                                 | an enrolment sentence: not scored, its final carries `enrol`    |
-| client | `{"t":"end","id":N,"textFrom":S}`                                               | text from sample S on (after "Linky"); the speaker hears it all |
-| client | `{"t":"enrol","op":"start","rid","device","ticket","keepAudio":false}`          | open an enrolment: needs an `enrol` ticket for that device (passkey) |
-| client | `{"t":"enrol","op":"commit"\|"cancel","rid","enrolment"}`                       | save it (10 sentences at least), or drop it                     |
-| client | `{"t":"voiceprint","op":"status"\|"delete","rid","ticket"[,"device":D\|"*"]}`   | what is enrolled (status ticket); delete the print only (passkey ticket) |
-| client | `{"t":"voiceprint","op":"delete-audio","rid","device":D\|"*","ticket"}`         | delete only the kept enrolment recordings (its own passkey ticket) |
-| server | status answer + `"bands":{model:{minSpeechS,minSnrDb,bands:[{minS,me,other}]}}`, `"recordings":n` | the decision's thresholds (the test shows them); kept recordings |
-| server | delete answer + `"recordings":n`                                                | the kept recordings left on the Mac (the panel then asks)       |
-| client | `{"t":"voiceprint","op":"export","rid","device":D\|"*","ticket"}`               | the features, for his account (passkey ticket): `prints` back   |
-| client | `{"t":"voiceprint","op":"restore","rid","device":D\|"*","prints":[…],"ticket"}` | write prints read from his account (passkey ticket)             |
-| client | `{"t":"filter","on":bool}`                                                      | the voiceprint filter on this socket (off until said)           |
-| server | `ready` + `"speaker":{"models":["campp"]}`                                      | the check is on                                                 |
-| server | `final` + `"speaker":{score,decision,model,device,speechS,snrDb[,reason]}`      | the check on that final                                         |
-| server | `final` + `"speakerProof":"<payload>.<sig>"`                                    | the Mac's signature over that tag and the final's text          |
-| server | `final` + `"enrol":{ok,n[,reason]}`                                             | an enrolment sentence kept (or why not)                         |
-| server | `{"t":"enrol"\|"voiceprint","rid","ok"[,"error"],…}`                            | the answer to a request                                         |
-| server | `final` + `"filtered":{reason,score}`, text empty                               | the filter stopped it: nothing decoded, no proof                |
-| server | `final` + `"wouldFilter":reason`                                                | the filter is not on; it would have stopped this one            |
+| from   | message                                                                                           | meaning                                                                  |
+| ------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| client | `{"t":"hello","device":"iphone"}`                                                                 | after `ready`: score this socket's finals against that print             |
+| client | `{"t":"begin","id":N,"enrol":"<enrolment id>"}`                                                   | an enrolment sentence: not scored, its final carries `enrol`             |
+| client | `{"t":"end","id":N,"textFrom":S}`                                                                 | text from sample S on (after "Linky"); the speaker hears it all          |
+| client | `{"t":"enrol","op":"start","rid","device","ticket","keepAudio":false}`                            | open an enrolment: needs an `enrol` ticket for that device (passkey)     |
+| client | `{"t":"enrol","op":"commit"\|"cancel","rid","enrolment"}`                                         | save it (10 sentences at least), or drop it                              |
+| client | `{"t":"voiceprint","op":"status"\|"delete","rid","ticket"[,"device":D\|"*"]}`                     | what is enrolled (status ticket); delete the print only (passkey ticket) |
+| client | `{"t":"voiceprint","op":"delete-audio","rid","device":D\|"*","ticket"}`                           | delete only the kept enrolment recordings (its own passkey ticket)       |
+| server | status answer + `"bands":{model:{minSpeechS,minSnrDb,bands:[{minS,me,other}]}}`, `"recordings":n` | the decision's thresholds (the test shows them); kept recordings         |
+| server | delete answer + `"recordings":n`                                                                  | the kept recordings left on the Mac (the panel then asks)                |
+| client | `{"t":"voiceprint","op":"export","rid","device":D\|"*","ticket"}`                                 | the features, for his account (passkey ticket): `prints` back            |
+| client | `{"t":"voiceprint","op":"restore","rid","device":D\|"*","prints":[…],"ticket"}`                   | write prints read from his account (passkey ticket)                      |
+| client | `{"t":"filter","on":bool}`                                                                        | the voiceprint filter on this socket (off until said)                    |
+| server | `ready` + `"speaker":{"models":["campp"]}`                                                        | the check is on                                                          |
+| server | `final` + `"speaker":{score,decision,model,device,speechS,snrDb[,reason]}`                        | the check on that final                                                  |
+| server | `final` + `"speakerProof":"<payload>.<sig>"`                                                      | the Mac's signature over that tag and the final's text                   |
+| server | `final` + `"enrol":{ok,n[,reason]}`                                                               | an enrolment sentence kept (or why not)                                  |
+| server | `{"t":"enrol"\|"voiceprint","rid","ok"[,"error"],…}`                                              | the answer to a request                                                  |
+| server | `final` + `"filtered":{reason,score}`, text empty                                                 | the filter stopped it: nothing decoded, no proof                         |
+| server | `final` + `"wouldFilter":reason`                                                                  | the filter is not on; it would have stopped this one                     |
 
 ## Voiceprint: "only my voice"
 
@@ -592,7 +592,7 @@ page → PUT /api/my/voiceprint {ticket, prints}              the same ticket, s
 - **What is kept.** D1 `voiceprint` (`db/migrations/0071_voiceprint.sql`),
   one row per account, device and model: `dim`, `n`, `updated_at` in clear,
   and `payload`, the sealed JSON of `{centroid, embeddings, speechS, self,
-  created, updated}`. No audio, no text, no file path, no `audio` flag: a
+created, updated}`. No audio, no text, no file path, no `audio` flag: a
   print or a body with any other key is refused whole, on lianki.com
   (`parsePrint`, `PRINT_KEYS`) and on the Mac (`check_export`,
   `EXPORT_KEYS`); the page keeps only those keys too (`featuresOnly`).
@@ -668,13 +668,13 @@ socket's `hello`), or, when this device has none, the best of the other
 devices' prints (`device` in the result says whose). The decision
 (`voiceprint.decide`):
 
-| speech in the final | `me` at score ≥ | `other` under | otherwise   |
-| ------------------- | --------------- | ------------- | ----------- |
+| speech in the final | `me` at score ≥ | `other` under | otherwise             |
+| ------------------- | --------------- | ------------- | --------------------- |
 | < 1.5 s             | –               | –             | **unknown** (`short`) |
-| 1.5 – 3 s           | 0.28            | 0.18          | unknown (`between`) |
-| ≥ 3 s               | 0.30            | 0.20          | unknown (`between`) |
+| 1.5 – 3 s           | 0.28            | 0.18          | unknown (`between`)   |
+| ≥ 3 s               | 0.30            | 0.20          | unknown (`between`)   |
 | SNR < 10 dB (any)   | –               | –             | **unknown** (`noise`) |
-| nothing enrolled    | –               | –             | unknown (`no-print`) |
+| nothing enrolled    | –               | –             | unknown (`no-print`)  |
 
 `me` is #394's threshold for 1 % false accepts over 109 other voices (real
 people, TTS in nine languages, the shop PA, voices in the background) at
@@ -739,12 +739,12 @@ bands on those after he enrols, before anything relies on them.
 clips 1.8–14.4 s, a throwaway print in a temp folder, at `nice 20` and
 background QoS, one thread each, beside the live server):
 
-| | median | p90 | max |
-| --- | --- | --- | --- |
-| SenseVoice final alone | 300 ms | 553 ms | 876 ms |
-| CAM++ + gate alone (17.7 ms per audio second) | 78 ms | 147 ms | 243 ms |
-| both side by side, as the server runs them | 307 ms | 572 ms | 958 ms |
-| **added to a final** | **13 ms** | **52 ms** | 111 ms |
+|                                               | median    | p90       | max    |
+| --------------------------------------------- | --------- | --------- | ------ |
+| SenseVoice final alone                        | 300 ms    | 553 ms    | 876 ms |
+| CAM++ + gate alone (17.7 ms per audio second) | 78 ms     | 147 ms    | 243 ms |
+| both side by side, as the server runs them    | 307 ms    | 572 ms    | 958 ms |
+| **added to a final**                          | **13 ms** | **52 ms** | 111 ms |
 
 At normal priority (the live server: P-cores, the decode on 4 threads) the
 background figures are about 3× too slow (#394's unloaded check), so CAM++
@@ -894,24 +894,24 @@ his 20 labelled iPhone clips (labelled by an agent, see
 enrols, before relying on the line: reading aloud on the device will shift
 his scores.
 
-| his own speech, at line 0.15 (≥ 2 s, ≥ 8 dB) | n | stopped |
-| --- | --- | --- |
-| whole clips, 5-fold; clean, phone band, dull, −12 / −24 dB | 20 each | 0 |
-| 3 s and 5 s crops | 32, 19 | 0 |
-| restaurant 20 / 10 / 5 / 0 dB, street 10 dB (whole) | 20 each | 0 |
-| only 10 clips in the mean, 30 draws (the panel's minimum) | 300 | **8 (2.7 %)** |
-| the 191 unlabelled clips (a mixture: an upper bound on his) | 191 | 0 |
+| his own speech, at line 0.15 (≥ 2 s, ≥ 8 dB)                | n       | stopped       |
+| ----------------------------------------------------------- | ------- | ------------- |
+| whole clips, 5-fold; clean, phone band, dull, −12 / −24 dB  | 20 each | 0             |
+| 3 s and 5 s crops                                           | 32, 19  | 0             |
+| restaurant 20 / 10 / 5 / 0 dB, street 10 dB (whole)         | 20 each | 0             |
+| only 10 clips in the mean, 30 draws (the panel's minimum)   | 300     | **8 (2.7 %)** |
+| the 191 unlabelled clips (a mixture: an upper bound on his) | 191     | 0             |
 
 Zero of 71 clean whole and cropped clips has a 95 % upper bound of about 4 %,
 so read "0" as "under 4 %". The 2.7 % comes from a few poor means: **read all 20
 sentences at enrolment**, not 10.
 
-| line (same gates) | his, 10 clips in the mean | real people, clean: whole · 3 s | TTS, clean | shop PA | real people · TTS, in a noisy room |
-| --- | --- | --- | --- | --- | --- |
-| 0.08 | 0.7 % | 29 % · 18 % | 73 % | 17 % | 29 % · 19 % |
-| 0.12 | 2.3 % | 43 % · 36 % | 83 % | 33 % | 50 % · 23 % |
-| **0.15** | **2.7 %** | **71 % · 55 %** | **88 %** | **58 %** | **57 % · 27 %** |
-| 0.18 | 3.7 % (his 3 s crops: 3.1 %) | 79 % · 82 % | 92 % | 83 % | 57 % · 27 % |
+| line (same gates) | his, 10 clips in the mean    | real people, clean: whole · 3 s | TTS, clean | shop PA  | real people · TTS, in a noisy room |
+| ----------------- | ---------------------------- | ------------------------------- | ---------- | -------- | ---------------------------------- |
+| 0.08              | 0.7 %                        | 29 % · 18 %                     | 73 %       | 17 %     | 29 % · 19 %                        |
+| 0.12              | 2.3 %                        | 43 % · 36 %                     | 83 %       | 33 %     | 50 % · 23 %                        |
+| **0.15**          | **2.7 %**                    | **71 % · 55 %**                 | **88 %**   | **58 %** | **57 % · 27 %**                    |
+| 0.18              | 3.7 % (his 3 s crops: 3.1 %) | 79 % · 82 %                     | 92 %       | 83 %     | 57 % · 27 %                        |
 
 **What this does not show.**
 
@@ -973,13 +973,13 @@ and works as before.
 
 **Measured** on 2026-10-31 over the owner's 211 saved clips, files only:
 
-| set                                                     | clips | auto only | with the pick |
-| ------------------------------------------------------- | ----- | --------- | ------------- |
-| short Japanese                                          | 7     | 4         | **7**         |
-| short Chinese (2 of them were misread as en by auto)    | 30    | 28        | **30**        |
-| short English                                           | 10    | 10        | 10            |
+| set                                                      | clips | auto only | with the pick |
+| -------------------------------------------------------- | ----- | --------- | ------------- |
+| short Japanese                                           | 7     | 4         | **7**         |
+| short Chinese (2 of them were misread as en by auto)     | 30    | 28        | **30**        |
+| short English                                            | 10    | 10        | 10            |
 | other short clips, unlabelled (mostly background, noise) | 96    | –         | 7 switched    |
-| longer than 4 s                                         | 68    | –         | untouched     |
+| longer than 4 s                                          | 68    | –         | untouched     |
 
 The labels are the agent's own judgement, made from the forced decodes and
 the conversation around each clip; no clip had a `.ref.txt`. The thresholds
@@ -1184,7 +1184,7 @@ no cookie or identity header passes to it.
   `stt_worker` row (`DebugSessions.sttWorker`, only while the flag is on),
   else 4401/4403. One socket per worker: a reconnect replaces the old one.
 - `/api/version/stt/signal`: a lianki.com page offering `lianki-stt2, <v2
-  ticket>`. Before the upgrade: the ticket (signature with
+ticket>`. Before the upgrade: the ticket (signature with
   `PARTNER_TICKET_PUB`, the same key pair's public half; claims; once, jtis in
   the DO's storage) else 401; the account's live sessions under
   `sessionsPerAccount` else 429; a worker with room — the account's own worker
@@ -1194,7 +1194,7 @@ no cookie or identity header passes to it.
   that worker only; the ticket goes on to the worker with the offer, and its
   speech server checks it again. A worker speaks only for its own sessions.
 - **Booking**: the worker reports each final's audio length (`{t:"usage",
-  sid, audioMs}`) and the hub books it to the ticket's account
+sid, audioMs}`) and the hub books it to the ticket's account
   (`DebugSessions.bookStt`: `speech.stt.local`, at most 120 s per report, the
   `stt.local.costPerMinUsd` rate). The page does not book these itself.
 - A session counts until its signed length plus 60 s (checked when the hub
@@ -1203,7 +1203,7 @@ no cookie or identity header passes to it.
   on with the next route.
 - **Adding a worker** (after the owner's tap card): `stt-peer keygen` on the
   server prints its public key; `bun scripts/local-stt/stt-worker-add.ts --id
-  mac --name "…" --key <public key>` writes the row (wrangler d1, audited as
+mac --name "…" --key <public key>` writes the row (wrangler d1, audited as
   `cli`). Revoke on `/dev/stt-access`.
 
 **stt-peer** (`scripts/local-stt/stt-peer`, Go + pion/webrtc): the sidecar on

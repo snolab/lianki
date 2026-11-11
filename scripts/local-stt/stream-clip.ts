@@ -79,7 +79,8 @@ for (const file of clips) {
     partials++;
     first ??= now - t0;
     maxGap = Math.max(maxGap, now - last);
-    if (voicedShare(voiced, lastSent, sent) >= 0.5) maxSpeechGap = Math.max(maxSpeechGap, now - last);
+    if (voicedShare(voiced, lastSent, sent) >= 0.5)
+      maxSpeechGap = Math.max(maxSpeechGap, now - last);
     last = now;
     lastSent = sent;
     if (!fast) console.log(`  … ${text}`);
