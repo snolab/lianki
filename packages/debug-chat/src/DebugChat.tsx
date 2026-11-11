@@ -237,6 +237,7 @@ import { withLane } from "./voices";
 import { LaneTag, laneAvatar } from "./LaneMark";
 import { PUBLIC_ROUTE_LIST, publicSttAvailable, readConsent, writeConsent } from "./public-stt";
 import { SttServersCard } from "./SttServersCard";
+import { MicCaret } from "./MicCaret";
 import { type Frontier, treeFrontier } from "./frontier-view";
 import {
   type TreeSource,
@@ -5029,9 +5030,9 @@ export function DebugChat({
               </p>
             ) : (
               <>
-                {interim && (
-                  // A mirror of the draft, invisible, then the interim text dimmed:
-                  // it shows where the transcript will land.
+                {(interim || micActive) && (
+                  // A mirror of the draft, invisible, then the interim text dimmed and the
+                  // caret that follows the voice (MicCaret): where the transcript will land.
                   <div
                     ref={mirror}
                     aria-hidden
@@ -5040,6 +5041,7 @@ export function DebugChat({
                     <span className="invisible">{draft}</span>
                     <span data-testid="debug-chat-mic-pending" className="text-gray-400">
                       {joinText(draft, interim).slice(draft.length)}
+                      {micActive && <MicCaret />}
                     </span>
                   </div>
                 )}
@@ -5057,7 +5059,7 @@ export function DebugChat({
                   placeholder={
                     holding
                       ? DRAG_HINT
-                      : interim
+                      : interim || micActive
                         ? ""
                         : target !== ROOT_NODE
                           ? `Message ${pathLabel(target)}…`
