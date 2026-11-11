@@ -78,7 +78,7 @@ export type TokenAtt = {
   checkedAt?: number;
 };
 
-export type ChatTokenOp = "say" | "ask" | "read" | "listen" | "recheck";
+export type ChatTokenOp = "say" | "ask" | "read" | "listen" | "recheck" | "prepare";
 export type ChatTokenAnswer =
   | {
       ok: true;
@@ -91,6 +91,7 @@ export type ChatTokenAnswer =
     }
   | { ok: false; error: string; retryAfterMs?: number };
 export type ChatTokenRpc = {
+  prepareChatTurn?(req: { userId: string; input: unknown }): Promise<unknown>;
   chatToken?(req: {
     op: ChatTokenOp;
     token?: string;
@@ -253,7 +254,7 @@ export class TokenChat {
       return json({ ok: false, error: "expected a JSON object" }, 400);
     }
     const op = body.op;
-    if (op !== "say" && op !== "ask" && op !== "read")
+    if (op !== "say" && op !== "ask" && op !== "read" && op !== "prepare")
       return json({ ok: false, error: 'op must be "say", "ask" or "read"' }, 400);
     // `lianki mcp` names itself (x-lianki-client) for the audit log; the main
     // Worker keeps it only in its one known shape (lib/api-token-client.ts).
@@ -262,6 +263,16 @@ export class TokenChat {
     if (!v.ok) return refusal(v);
     const thread = await this.threadOf(v);
     if (!thread) return json({ ok: false, error: "blocked" }, 403);
+    if (op === "prepare") {
+      const rpc = this.host.rpc();
+      if (!rpc?.prepareChatTurn) return json({ ok: false, error: "unavailable" }, 503);
+      try {
+        const result = await rpc.prepareChatTurn({ userId: v.userId, input: body.input });
+        return json(result);
+      } catch {
+        return json({ ok: false, error: "unavailable" }, 503);
+      }
+    }
     if (op === "read") {
       const n = typeof body.limit === "number" && Number.isInteger(body.limit) ? body.limit : 30;
       const list = (await this.host.history(thread)).slice(-Math.max(1, Math.min(MAX_READ, n)));

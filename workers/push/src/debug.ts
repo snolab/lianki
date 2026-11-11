@@ -488,6 +488,7 @@ const renewDueAt = (until: number, t: number) => until - t <= EVAL_RENEW_BEFORE_
  * SESSIONS service binding: no URL, nothing public): "live" | "gone" | "busy".
  */
 type SessionsRpc = {
+  prepareChatTurn?(req: { userId: string; input: unknown }): Promise<unknown>;
   live(user: string, session: string): Promise<unknown>;
   /** A feature flag's value (lib/flags.ts); an older main Worker has no such method. */
   flag?(key: string): Promise<unknown>;
@@ -2927,7 +2928,7 @@ export class DebugHub {
       // Its attachment (the page selection) stays on the sender's own thread.
       // Files are the owner's only (the upload is owner-only): a friend's refs are dropped.
       if (page.thread !== OWNER_THREAD)
-        return this.friendChat(ws, page, m.id, m.text, m.context, m.scene);
+        return this.friendChat(ws, page, m.id, m.text, m.context, m.scene, m.source === "stt");
       const line = async (speaker: SpeakerTag | undefined) => {
         // Voice lines only: a typed line never asks the flag, never merges, never waits.
         const merging = m.source === "stt" && (await this.mergeOn());
@@ -3030,6 +3031,7 @@ export class DebugHub {
     text: string,
     context?: ChatContext,
     scene?: SttScene,
+    spoken = false,
   ) {
     const t = this.now();
     const userId = page.thread;
@@ -3072,6 +3074,7 @@ export class DebugHub {
       email,
       ...(page.sender ? { sender: page.sender } : {}),
       ...(context ? { context } : {}),
+      ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
     });
     // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
     const ai = await this.aiState();

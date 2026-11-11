@@ -115,7 +115,7 @@ beforeEach(() => {
 const mint = (who: typeof OWNER, name: string, scopes = CHAT, days = 30) =>
   createToken(db(), who, { name, scopes, expiresAt: new Date(t + days * DAY) }, t);
 
-function hubSetup() {
+function hubSetup(extraRpc: Record<string, any> = {}) {
   const sockets: FakeSocket[] = [];
   const hub = new DebugHub(
     {
@@ -127,6 +127,7 @@ function hubSetup() {
       SESSIONS: {
         live: async () => "gone",
         chatToken: (req: unknown) => chatTokenCheck(db(), req, t),
+        ...extraRpc,
       },
     },
     () => t,
@@ -163,6 +164,39 @@ function hubSetup() {
 }
 
 describe("tokens: permissions as data, expiry required, one account", () => {
+  it("prepare requires read and write, and binds payer to the authenticated account", async () => {
+    const calls: any[] = [];
+    const h = hubSetup({
+      prepareChatTurn: async (req: unknown) => {
+        calls.push(req);
+        return { ok: true, verdict: { v: 1, action: "forward" } };
+      },
+    });
+    const readOnly = await mint(ALICE, "reader", ["chat:read"]);
+    const full = await mint(ALICE, "assistant");
+    const body = {
+      op: "prepare",
+      userId: BOB.userId,
+      thread: "owner",
+      input: { v: 1, requestId: "r1", text: "hello", context: [] },
+    };
+    expect((await h.http(readOnly.token, body)).status).toBe(403);
+    expect(calls).toHaveLength(0);
+    expect((await h.http(full.token, body)).body.ok).toBe(true);
+    expect(calls[0]).toEqual({ userId: ALICE.userId, input: body.input });
+  });
+  it("prepare authentication has an independent counter and leaves normal send/read budgets available", async () => {
+    const h = hubSetup({
+      prepareChatTurn: async () => ({ ok: true, verdict: { v: 1, action: "forward" } }),
+    });
+    const token = await mint(ALICE, "assistant");
+    for (let i = 0; i < CHAT_LIMITS.post.max + 1; i++)
+      expect(
+        (await h.http(token.token, { op: "prepare", input: { requestId: String(i) } })).status,
+      ).toBe(200);
+    expect((await h.http(token.token, { op: "say", text: "normal reply" })).status).toBe(200);
+    expect((await h.http(token.token, { op: "read", limit: 1 })).status).toBe(200);
+  });
   it("only known permissions; eval, pair, grant are not permissions", () => {
     expect(parseScopes(["chat:write", "study", "chat:write"])).toEqual(["study", "chat:write"]);
     for (const bad of [
@@ -315,6 +349,24 @@ describe("the hub: a named MCP client reaches the audit log", () => {
 });
 
 describe("the hub: own thread only", () => {
+  it("friend voice source comes only from the authenticated page's validated chat message", async () => {
+    const h = hubSetup();
+    const token = await mint(ALICE, "reader");
+    const page = await h.page({ ...ALICE, owner: false });
+    await h.msg(page, {
+      type: "chat",
+      id: "spoken",
+      text: "voice fragment",
+      source: "stt",
+      thread: "owner",
+      from: "owner",
+    });
+    await h.msg(page, { type: "chat", id: "typed", text: "typed fragment" });
+    const history = (await h.http(token.token, { op: "read" })).body.messages as any[];
+    const spoken = history.find((m) => m.id === "spoken");
+    expect(spoken).toMatchObject({ from: "friend", thread: ALICE.userId, source: "stt" });
+    expect(history.find((m) => m.id === "typed")?.source).toBeUndefined();
+  });
   it("a user's token posts into that user's thread, labelled with its lane, as an agent line", async () => {
     const s = hubSetup();
     const a = await mint(ALICE, "my-mac");

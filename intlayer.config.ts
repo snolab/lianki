@@ -1,6 +1,11 @@
 import type { IntlayerConfig } from "intlayer";
 
 const config: IntlayerConfig = {
+  content: {
+    // Scan only source dictionaries, never preserved nested checkout copies.
+    // A root-wide scan folds every worktree's declarations into client bundles.
+    contentDir: ["app", "lib"],
+  },
   internationalization: {
     // Top 16 languages by number of speakers
     locales: [

@@ -726,10 +726,12 @@ describe("chat (your own thread, with a chat token)", () => {
     expect((await h.run("chat", "say", "-")).code).toBe(0);
     expect(seen[0]!.body).toEqual({ op: "say", text: "-starts with a dash" });
     expect((await h.run("chat", "say", "--quiet", "-")).code).toBe(0);
+    expect((await h.run("chat", "send", "-")).code).toBe(0);
+    expect(seen.at(-1)!.body).toMatchObject({ op: "say", text: "-starts with a dash" });
     expect(seen[1]!.body).toMatchObject({ text: "-starts with a dash", quiet: true });
     const both = await h.run("chat", "say", "-", "extra");
     expect(both.code).not.toBe(0);
-    expect(seen).toHaveLength(2);
+    expect(seen).toHaveLength(3);
   });
 
   test("read and ask without --wait", async () => {
@@ -800,6 +802,130 @@ describe("chat (your own thread, with a chat token)", () => {
     expect(r.code).toBe(2);
     expect(envelope(r.err).error).toMatchObject({ code: "auth_refused" });
     expect(envelope(r.err).error.hint).toContain("permission");
+  });
+
+  test("prepare uses the account token without posting, and validates its text", async () => {
+    const seen: Call[] = [];
+    const verdict = { v: 1, action: "forward", turn: "complete", polished: "不要删除按钮。" };
+    const h = harness({
+      env,
+      server: {
+        "POST /api/version/chat": (c) => {
+          seen.push(c);
+          return json({ ok: true, verdict, charged: 0 });
+        },
+      },
+    });
+    const r = await h.run(
+      "chat",
+      "prepare",
+      "不要删除按钮",
+      "--context",
+      "请修改按钮颜色",
+      "--json",
+    );
+    expect(r.code).toBe(0);
+    expect(envelope(r.out)).toMatchObject({
+      command: "chat prepare",
+      data: { verdict, charged: 0 },
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      auth: `Bearer ${TOKEN}`,
+      query: "",
+      body: {
+        op: "prepare",
+        input: { v: 1, text: "不要删除按钮", context: [{ from: "user", text: "请修改按钮颜色" }] },
+      },
+    });
+    expect(seen[0]!.body.input.requestId).toBeString();
+    expect((await h.run("chat", "prepare", "", "--json")).code).toBe(1);
+    expect((await h.run("chat", "prepare", "x".repeat(6001), "--json")).code).toBe(1);
+    expect(seen).toHaveLength(1);
+  });
+
+  test("read formats its human output with the lane and time", async () => {
+    const h = harness({ env, server: chatServer([]) });
+    expect((await h.run("chat", "read")).out).toBe("1970-01-01 00:00:00  codex: 【codex】hi");
+  });
+
+  test("listen streams history, live lines and card answers until its token is revoked", async () => {
+    const old = { id: "old", from: "agent", label: "codex", text: "earlier", at: 0 };
+    const live = { id: "new", from: "owner", text: "please continue", at: 1000 };
+    const answered = { type: "answered", askId: "a1", answer: { choices: { q1: ["o1"] } } };
+    for (const machine of [false, true]) {
+      const h = harness({ env });
+      const sent: any[] = [];
+      let closed = false;
+      (h.deps as any).WebSocket = class {
+        onopen?: () => void;
+        onmessage?: (e: { data: string }) => void;
+        constructor() {
+          queueMicrotask(() => this.onopen?.());
+        }
+        send(raw: string) {
+          sent.push(JSON.parse(raw));
+          for (const event of [
+            "malformed frame",
+            JSON.stringify({ type: "ready", thread: "owner" }),
+            JSON.stringify({ type: "history", messages: [old] }),
+            JSON.stringify({ type: "chat", message: live }),
+            JSON.stringify(answered),
+            JSON.stringify({ type: "revoked" }),
+          ])
+            queueMicrotask(() => this.onmessage?.({ data: event }));
+        }
+        close() {
+          closed = true;
+        }
+      };
+      const r = await h.run("chat", "listen", "--history", "2", ...(machine ? ["--json"] : []));
+      expect(r.code).toBe(2);
+      expect(closed).toBe(true);
+      expect(sent).toEqual([{ type: "auth", token: TOKEN, history: 2 }]);
+      if (machine) {
+        const events = r.out.split("\n").map((x) => JSON.parse(x));
+        expect(events).toContainEqual({ type: "chat", message: old, history: true });
+        expect(events).toContainEqual({ type: "chat", message: live });
+        expect(events).toContainEqual(answered);
+        expect(envelope(r.err).error.code).toBe("auth_refused");
+      } else {
+        expect(r.out).toContain("1970-01-01 00:00:00  codex: earlier");
+        expect(r.out).toContain("1970-01-01 00:00:01  owner: please continue");
+        expect(r.out).toContain(JSON.stringify(answered));
+        expect(r.err).toContain("revoked");
+      }
+      expect(r.out).not.toContain("malformed frame");
+    }
+  });
+
+  test("listen reports a closed socket as auth or network failure instead of hanging", async () => {
+    for (const closeCode of [4401, 1006]) {
+      const h = harness({ env });
+      let closed = false;
+      (h.deps as any).WebSocket = class {
+        onopen?: () => void;
+        onerror?: () => void;
+        onclose?: (event: { code: number; reason: string }) => void;
+        constructor() {
+          queueMicrotask(() => this.onopen?.());
+        }
+        send() {
+          queueMicrotask(() => {
+            this.onerror?.();
+            this.onclose?.({ code: closeCode, reason: "disconnected" });
+          });
+        }
+        close() {
+          closed = true;
+        }
+      };
+      const r = await h.run("chat", "listen", "--json");
+      expect(r.code).toBe(closeCode === 4401 ? 2 : 4);
+      expect(envelope(r.err).error.code).toBe(closeCode === 4401 ? "auth_refused" : "network");
+      expect(envelope(r.err).error.message).toContain("disconnected");
+      expect(closed).toBe(true);
+    }
   });
 
   test("there is no eval, pair or grant command", async () => {

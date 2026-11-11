@@ -238,6 +238,152 @@ lianki settings set --help
 
 Within `v: 1` fields are only ever added; removing or renaming one bumps `v`.
 
+## Agent chat workflow (unreleased)
+
+`send` aliases `say`, including `-` for stdin. `read` fetches bounded history;
+plain `listen` remains the existing event stream. Each command uses only the
+account represented by its existing Lianki token.
+
+```bash
+lianki chat read --limit 30 --json
+lianki chat listen --history 12 --json
+lianki chat send "Working on the button now"
+lianki chat prepare "Please fix the button" --json
+lianki chat listen --deliver . --cwd /path/to/assistant
+```
+
+`listen --deliver` and `chat bridge` compose receiving, lightweight turn
+preparation and delivery through `ay`, for any supported assistant. The CLI
+builds a continuous voice run before waking the assistant: 1.2 seconds of
+quiet, at most six seconds, 24 revisions or 6,000 characters. These are env
+config defaults in `chat-receiver.mjs`. Urgent stop/cancel messages immediately
+discard pending speech and are delivered at once. An assistant reply or typed
+message is a hard boundary. History is context only; IDs deduplicate live
+messages, and edits replace the corresponding full text. No automatic reply
+is posted. The handoff uses `lianki.chat.agent.v1` and includes a `chat send`
+reply command, authoritative raw text, every buffered revision and any
+separately labelled polish suggestion. A slow UI polish never delays delivery.
+
+Cloud preparation is the default for composed listening. The new authenticated
+`POST /api/version/chat {op:"prepare",input}` requires both `chat:read` and
+`chat:write`, with an independent authentication quota. The push Worker sends
+only the authenticated user ID to `SESSIONS.prepareChatTurn`. The main Worker
+uses the existing Cloudflare DeepSeek Flash provider with reasoning disabled,
+a fixed JSON prompt and the same credit hold/settle/refund system. It does not
+change Learning Partner replies or their refusal to answer developer accounts.
+No local Cloudflare key is required. Body-supplied identities, models, prompts
+and URLs cannot choose the payer or provider. The model sees only bounded text
+and recent context, never grants, paths, audio, attachments or account tokens.
+
+One fixed model call classifies household/background speech, identifies turn
+boundaries and suggests punctuation/stutter cleanup. `polishCheck` rejects
+semantic drift, including removed negations. Only a high-confidence unrelated
+verdict suppresses a turn. Unavailable RPC, no credits, invalid results, limits
+and timeouts report `prepare-unavailable` and forward the assembled raw turn.
+`--ai off` disables cloud calls and keeps bounded raw assembly. `chat prepare`
+uses credits but posts no chat messages. The `chat.prepare` ledger feature and
+`chat.prepare*` live config keys are separate from replies: default model
+budgets are 60 calls/account/10 minutes and 200 calls/site/day. The site cap can
+be reached early; it is not automatically raised. Duplicate/unfunded requests
+never consume the model-attempt budgets. Input is limited to 9,000 total
+characters and role enums; the hold counts serialized JSON/framing as well.
+
+For an existing grant receiver, use one stream and aggregate **before** routing:
+
+```bash
+bun scripts/dev/eval.ts chat --no-pair |
+  bun packages/lianki-cli/lianki.mjs chat bridge --stdin --deliver . --cwd /path/to/assistant
+```
+
+Do not put `eval.ts --route chat` before this pipeline: only the first fragment
+may name the intended assistant. Give the assembled handoff to one dispatcher,
+which can use the existing `lib/lane-route.ts` matcher on its complete text.
+Configure `--deliver`/`--cwd` for that dispatcher and let it choose the target.
+Keep competing responders for the same thread off. The CLI never starts,
+stops or replaces another listener. `--stdin` trusts its input transport and
+limits it to `owner` by default; `--thread <id>` explicitly selects another
+trusted input stream. Direct sockets derive their scope from authentication.
+
+Optional active history cleanup is deliberately narrower than preparation:
+
+```bash
+bun scripts/dev/eval.ts chat --no-pair |
+  bun packages/lianki-cli/lianki.mjs chat bridge --stdin --deliver . \
+    --cwd /path/to/assistant --polish --grant-repo /path/to/checkout
+```
+
+Only this explicit owner-grant path writes messages. It calls existing
+`eval.ts edit --no-pair` or `edit --merge` with ordered IDs, verifies the returned
+ID/text/run, and preserves the existing identity, recent-message, settled
+speech, consecutive-run, raw and undo guards. Rejected writes emit
+`polish-refused`; raw remains the task authority. There is no summary fallback
+or relaxed word guard. Ordinary account tokens get suggestions only, never a
+new edit capability. Expected self-edits are registered before the request,
+so a broadcast before its acknowledgement cannot cause another task. The echo
+cache is bounded to 64 fingerprints/60 seconds. UI writes run in parallel;
+on shutdown, the CLI aborts its own pending subprocesses, with a 15-second
+transport deadline as a backstop. An already applied server edit retains undo.
+
+The optional `--filter-service http://127.0.0.1:5196/v1/filter` adapter is for
+local testing, not the default provider. `scripts/dev/chat-filter-service.ts`
+uses inherited Cloudflare credentials and a separate
+`LIANKI_CHAT_FILTER_TOKEN` for loopback authentication. The account token is
+never sent there. Without provider configuration it is unavailable; it creates
+no credentials. The default cloud path needs no such adapter.
+
+The new cloud operation must be reviewed and deployed before it can run;
+this source change does not enable it in production or switch any listener.
+Run `bun --no-env-file scripts/dev/chat-filter-smoke.ts` with an existing
+inherited account token after deployment approval. It sends only synthetic
+cases, posts nothing, and prints status/latency. Missing auth or an undeployed
+operation reports blocked. Private recordings have not been used for testing.
+Local regression suites use stub providers and local databases.
+
+The bridge's `LIANKI_CHAT_BRIDGE_*` defaults and turn assembler's
+`LIANKI_CHAT_TURN_*` defaults are env-overridable within their protocol maxima;
+see their registries for names. For example, `LIANKI_CHAT_TURN_QUIET_MS` sets
+the quiet window. Use the installed CLI or `bun packages/lianki-cli/lianki.mjs`;
+`lianki-dev` has a separate flag parser. Publication, deployment and a live
+listener switch remain separate review/approval steps.
+
+### Friend threads from an existing authorized grant stream
+
+Public account tokens remain restricted to their own thread. A trusted grant
+stream can instead use an explicit reply transport for one friend:
+
+```bash
+bun scripts/dev/eval.ts chat --no-pair |
+  bun packages/lianki-cli/lianki.mjs chat bridge --stdin --thread FRIEND_ID \
+    --reply-transport grant --grant-repo /path/to/checkout --deliver . --cwd /path/to/assistant
+```
+
+For all friend threads, replace `--thread FRIEND_ID` with `--friends`. This
+excludes the owner and gives each friend its own assembler, deduplication
+records and lightweight-model context. Replies use only the existing
+`eval.ts say --no-pair --to FRIEND_ID` grant transport, whose server checks
+the actual target. Non-owner stdin without this explicit transport is refused,
+so a reply cannot silently go to the owner's account. No new public-token
+cross-account capability is added. A real voice `source: stt` is retained only
+from the authenticated page's validated message; the CLI never guesses it.
+Assistant lines are context only, and owner speech is never a friend request.
+
+These handoffs carry a trusted `principal` with `authority: friend-chat-only`.
+A friend's request authorizes only a chat reply to that fixed destination,
+never owner-local tools, repositories, history, deployments or other accounts.
+Friend taps are marked as friends, never as owner approvals. This restriction
+applies to an owner-operated grant relay; a normal user's own direct-token
+assistant workflow is unchanged. Per-thread payload/context isolation does
+**not** create separate model sessions in a shared terminal. Use separately
+isolated recipients if that stronger boundary is required.
+
+The inbox has bounded defaults (`INBOX_DEFAULTS`): 64 active thread states and
+30-minute idle expiry. Only idle states may expire; reaching capacity fails
+explicitly rather than silently merging users or dropping a pending turn.
+`LIANKI_CHAT_INBOX_MAX_THREADS` and `LIANKI_CHAT_INBOX_IDLE_TTL_MS` can lower the
+defaults. Cloud preparation uses the relay's existing authenticated account
+and credits; the friend thread ID cannot select a different payer. Ordinary
+token owners still cannot read or write a different person's thread.
+
 ## Changes in 0.4.0
 
 - New: `lianki mcp`, a local MCP server with tools for cards, settings and

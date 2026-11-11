@@ -3352,7 +3352,7 @@ describe("DebugHub agent edits of voice messages", () => {
     const { c, token } = await agent(s, owner);
     const f = await s.friend("f1", "f1@x.com");
     await s.msg(f, voice("fv", "friend voice"));
-    expect((chats(c).at(-1) as { source?: string }).source).toBeUndefined();
+    expect((chats(c).at(-1) as { source?: string }).source).toBe("stt");
     await s.msg(c, { type: "edit", id: "fv", text: "Friend voice." });
     expect(c.last("error")?.error).toContain("friends' lines can never be edited");
     // A preview pairing made for the friend cannot edit either.

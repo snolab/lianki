@@ -24,6 +24,7 @@ import {
   type SessionDb,
 } from "./lib/debug-session";
 import { partnerReply, type PartnerEnv } from "./lib/partner-ai";
+import { prepareChatTurn } from "./lib/chat-prepare";
 import type { PartnerResult } from "./lib/partner-ai-config";
 import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
 import { type ChatTokenAnswer, type ChatTokenDb, chatTokenCheck } from "./lib/chat-token";
@@ -210,6 +211,11 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async partnerReply(req: unknown): Promise<PartnerResult> {
     if (!allowPartner()) return { ok: false, error: "busy" };
     return partnerReply(this.env as PartnerEnv, req);
+  }
+
+  async prepareChatTurn(req: unknown) {
+    if (!allowPartner()) return { ok: false, error: "busy" };
+    return prepareChatTurn(this.env as PartnerEnv, req);
   }
 
   /**
