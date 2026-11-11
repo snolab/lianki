@@ -2174,7 +2174,7 @@ export function DebugChat({
    * the owner's page defaults to his Mac. Never on a friend's page.
    */
   const storedStt = read(LOCAL_STT_KEY);
-  const sttRoute = friend ? { source: "none" as const } : localSttRoute(storedStt, owner);
+  const sttRoute = friend ? { source: "none" as const } : localSttRoute(storedStt, owner, true); // rtc:lianki may be mixed in (MicButton isMixedRoutes)
   useEffect(() => {
     // The devLog says where speech goes: `via` on the ready line, and here the route's source.
     if (sttRoute.source !== "none")

@@ -116,6 +116,23 @@ describe("localSttFrom", () => {
     ).toBe("wss://stt.lianki.com/");
     expect(localSttFrom(" , ")).toBeUndefined();
   });
+
+  it("keeps Lianki's speech servers by name only for the chat mic, which can mix them in", () => {
+    expect(localSttFrom("rtc:lianki", true)).toBe("rtc:lianki");
+    expect(localSttFrom("rtc:lianki wss://mac.ts.net/lianki-stt", true)).toBe(
+      "rtc:lianki wss://mac.ts.net/lianki-stt",
+    );
+    expect(localSttFrom("rtc:evil wss:session", true)).toBe("wss:session");
+    // vibe and /words open plain sockets only: a name is dropped there, as before.
+    expect(localSttFrom("rtc:lianki wss://mac.ts.net/lianki-stt")).toBe(
+      "wss://mac.ts.net/lianki-stt",
+    );
+    expect(localSttRoute("rtc:lianki", true)).toEqual({ source: "off" });
+    expect(localSttRoute("rtc:lianki wss://mac.ts.net/lianki-stt", true, true)).toEqual({
+      urls: "rtc:lianki wss://mac.ts.net/lianki-stt",
+      source: "stored",
+    });
+  });
 });
 
 describe("needsTicket / fetchSttTicket", () => {
