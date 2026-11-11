@@ -9,7 +9,7 @@ behind a localStorage flag, and any failure falls back to `/api/debug/stt`
 ```
 phone (lianki.com, debug chat mic)
   Silero VAD ─ frames (16 kHz int16, 32 ms) ─▶ wss://<mac>.ts.net/lianki-stt  (tailscale serve, tailnet only)
-            ◀─ {partial} every 0.4 s of audio ─  scripts/local-stt/server.py
+            ◀─ {partial} every 0.1 s of audio ─  scripts/local-stt/server.py
             ─ pre-pad + {end} ─▶                   SenseVoice-Small (sherpa-onnx, CPU)
             ◀─ {final} ~50–190 ms later ─
   on any failure: POST /api/debug/stt (unchanged)
@@ -328,7 +328,8 @@ Mac to itself through `tailscale serve`, so no radio hop):
 | 43Z-11 | 3.1  | 4        | 429 ms        | 45 ms       |
 
 - **First partial ~0.42–0.44 s** after the first frame (0.3 s of audio, then
-  the 0.4 s step), whatever the length.
+  the 0.4 s step), whatever the length. (That table is the old step; since
+  "Rolling partials" below it is 113–133 ms.)
 - **End → final 44–187 ms**, growing ~9 ms per second of speech. The route
   path today is an upload of the whole WAV plus Workers AI turbo, the
   documented example being 812 ms, before any network from the phone.
@@ -362,6 +363,30 @@ The phone's own numbers (radio, tailnet relay) come from the devLog:
 utterance, `local-stt-fallback {error}` when it fell back. They need the owner
 talking into the phone; they are not measured here.
 
+## Rolling partials
+
+The owner's floor (2026-11-11): **the next feedback within 0.2 s** of speech, a
+wrong word being better than none. 0.2 s is the worst acceptable, not the goal.
+
+- **Step**: a partial every `--partial-step` 0.1 s of new audio, from
+  `--partial-min` 0.1 s (were 0.4 s and 0.3 s).
+- **Only the tail is decoded** (`rolling.py`, tests `test_rolling.py`):
+  SenseVoice is not a streaming model, so a partial used to decode the whole
+  utterance again (245 ms per pass at 21 s). Now a token is settled when two
+  passes in a row agree on it and the next token began 0.6 s before the end of
+  the heard audio; its audio leaves the tail, its text joins the settled
+  segments with the language its pass heard. The pass stays short whatever the
+  length. The final still decodes the whole utterance (and the short-utterance
+  language pick), so the settled partials never decide the final text.
+- **Measured** (`stream-clip.ts`, 12 clips, real-time pace, a test server on
+  127.0.0.1): first partial 113–133 ms (was ~430 ms); end → final 55–206 ms;
+  the longest gap between partials while the speaker talks ("in speech",
+  frames louder than a quarter of the clip's 90th-percentile RMS)
+  133–654 ms. Over the floor: CTC emits blank for a syllable it is not yet
+  sure of, so the text does not change for a few passes.
+- `stream-clip.ts` prints `first`, `max gap (in speech …)` and end → final per
+  clip; the in-speech gap is the acceptance number, not the mean.
+
 ## Protocol
 
 One socket per page; utterances one after another (`server.py` docstring):
@@ -374,7 +399,7 @@ One socket per page; utterances one after another (`server.py` docstring):
 | client | `{"t":"end","id":N}`                                      | decode it now                                   |
 | client | `{"t":"cancel","id":N}`                                   | drop it (misfire, the agent speaking)           |
 | server | `{"t":"ready","engine","model"}`                          | on connect                                      |
-| server | `{"t":"partial","id","text","audioMs"}`                   | every 0.4 s of new audio, when the text changed |
+| server | `{"t":"partial","id","text","audioMs"}`                   | every 0.1 s of new audio (`--partial-step`), when the text changed |
 | server | `{"t":"final","id","text","lang","model","ms","audioMs","signals"}` | the whole utterance decoded; `signals`: `{decoder, logprob?}` for the page's silence guard ([workers-ai.md](workers-ai.md), "Silence guard") |
 | server | `{"t":"error","id","error"}`                              | then the page falls back                        |
 
