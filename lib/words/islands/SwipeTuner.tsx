@@ -10,6 +10,7 @@
  */
 import { useState } from "react";
 import { useSwipeFeel } from "@/lib/words/swipe-core";
+import { SealSwitch } from "@/app/components/SealSwitch";
 import { FEEL_KEYS, FEEL_RANGES, type FeelPreset, type SwipeFeel } from "@/lib/words/swipe-feel";
 import { dampingRatio } from "@/lib/words/swipe-physics";
 
@@ -57,7 +58,7 @@ export function SwipeTuner() {
             type="button"
             onClick={() => pick(p)}
             aria-pressed={preset === p}
-            className={`min-h-10 rounded-full px-3 ${preset === p ? "bg-[oklch(0.55_0.12_60/0.3)] font-semibold" : "opacity-70"}`}
+            className={`min-h-10 rounded-full border px-3 ${preset === p ? "border-transparent bg-primary font-semibold text-on-primary" : "border-current/30 opacity-70"}`}
           >
             {p}
           </button>
@@ -89,14 +90,17 @@ export function SwipeTuner() {
             const tweaked = k in prefs.tweaks;
             if (r === null)
               return (
-                <label key={k} className="flex min-h-10 items-center gap-2">
-                  <input
-                    type="checkbox"
+                <div key={k} className="flex min-h-10 items-center gap-2">
+                  <span id={`tune-${k}`} className={tweaked ? "font-semibold" : ""}>
+                    {LABELS[k]}
+                  </span>
+                  <SealSwitch
+                    size="sm"
                     checked={v as boolean}
-                    onChange={(e) => tweak(k, e.target.checked)}
+                    aria-labelledby={`tune-${k}`}
+                    onClick={() => tweak(k, !v)}
                   />
-                  <span className={tweaked ? "font-semibold" : ""}>{LABELS[k]}</span>
-                </label>
+                </div>
               );
             return (
               <label key={k} className="grid grid-cols-[8.5rem_1fr_3.2rem] items-center gap-2">

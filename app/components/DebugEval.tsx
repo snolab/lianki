@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   type ChatMessage,
@@ -42,15 +42,12 @@ import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
-import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { withLane } from "@lianki/debug-chat/voices";
 import { spokenOf } from "@lianki/debug-chat/rich-text";
 import { missedReply } from "@lianki/debug-chat/speak-rules";
 import { voice } from "@lianki/debug-chat/voice";
 import { isDesktop, keepHub, onTakeover, voiceBusy } from "@lianki/debug-chat/voice-bg";
 import { useVoiceTitleHint } from "./useVoiceTitleHint";
-import { DebugChatHost } from "@lianki/debug-chat/DebugChatHost";
-import { DebugPairModal } from "@lianki/debug-chat/DebugPairModal";
 import {
   clipsConnectQuery,
   installClipsLifecycle,
@@ -81,6 +78,19 @@ const RELABEL_MS = 300;
 const AGENT_AVATAR = "/icon-192.png";
 /** The chat's full screen gets the app's Back-closes-an-overlay entry (lib/back-to-close.ts). */
 const backToCloseChat = (onBack: () => void) => openBackToClose(window, onBack);
+
+/**
+ * The chat and the pairing modal load only when shown: most pages (a guest's,
+ * a learner without the Learning Partner) never show them, and the owner's
+ * pages paint and hydrate before the chat's code arrives (docs/cold-start.md).
+ * Replies are read aloud through voice() itself, which needs neither.
+ */
+const DebugChatHost = lazy(() =>
+  import("@lianki/debug-chat/DebugChatHost").then((m) => ({ default: m.DebugChatHost })),
+);
+const DebugPairModal = lazy(() =>
+  import("@lianki/debug-chat/DebugPairModal").then((m) => ({ default: m.DebugPairModal })),
+);
 /** sessionStorage: this tab's page id (docs/monitoring.md, "Remote eval"). */
 const TAB_KEY = "lk:debug-tab";
 /** The chat lines cut out of page errors: the latest this many. */
@@ -262,10 +272,18 @@ export function DebugEval({
         (why) => {
           const looking = document.visibilityState === "visible" && document.hasFocus();
           const d = onTakeover(why, { mic: voice().state().mic, looking });
-          if (d.micOff)
-            void (globalThis as { __lkMic?: { off?: () => Promise<void> } }).__lkMic
-              ?.off?.()
-              .catch(() => {});
+          if (d.micOff) {
+            // Off by itself, with its reason (mic-off.ts): never the plain off he chose.
+            const m = (
+              globalThis as {
+                __lkMic?: {
+                  off?: (why?: string) => Promise<void>;
+                  autoOff?: (r: "other-tab") => Promise<void>;
+                };
+              }
+            ).__lkMic;
+            void (m?.autoOff ? m.autoOff("other-tab") : m?.off?.("other-tab"))?.catch(() => {});
+          }
           if (d.stopReading) voice().stop();
         },
       );
@@ -574,7 +592,7 @@ export function DebugEval({
           reBeat();
           const said = missed.line && spokenOf(missed.line);
           if (missed.line && said && (tabsRef.current?.isSpeaker() ?? true))
-            speakReply(said, missed.line);
+            voice().reply(said, missed.line);
           return;
         }
         // An ask answered by a tap (on this page or another): the card shows it.
@@ -601,7 +619,7 @@ export function DebugEval({
           if (m.from === "agent") {
             agentAtRef.current = Math.max(agentAtRef.current, Number(m.at) || 0);
             reBeat();
-            // Every tab shows it; only one reads it aloud. speakReply queues it
+            // Every tab shows it; only one reads it aloud. voice().reply queues it
             // (voice.ts): always read while the mic is on, else by the focus rule.
             const fresh = !spokenIds.current.has(m.id);
             spokenIds.current.add(m.id);
@@ -610,7 +628,7 @@ export function DebugEval({
             // Its words, not its markup (rich-text.ts): a line of only code says nothing.
             const said = spokenOf(m);
             const spoken =
-              fresh && !!said && (tabsRef.current?.isSpeaker() ?? true) && speakReply(said, m);
+              fresh && !!said && (tabsRef.current?.isSpeaker() ?? true) && voice().reply(said, m);
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);
@@ -941,67 +959,71 @@ export function DebugEval({
   return (
     <>
       {chat && (
-        <DebugChatHost
-          // A verified pointer is the owner's (the server checked the session).
-          hot={(owner && !isFriend) || (liveState.on && !!liveState.claim.widget)}
-          src={widgetSource(liveState)}
-          busy={busy}
-          pages={state?.pages ?? []}
-          selfPage={state?.self}
-          onEndPage={endPage}
-          onOpenPage={(path) => router.push(path)}
-          live={live}
-          listeners={state?.listeners ?? sessions.length}
-          messages={messages}
-          onSend={sendChat}
-          onAnswer={sendAnswer}
-          onPassageEnd={() => sendHub({ type: "passage-end" })}
-          onUnmerge={(id) => sendHub({ type: "unmerge", id })}
-          nodes={state?.nodes}
-          notice={
-            friend === "blocked"
-              ? (strings?.unavailable ?? "Chat is not available for this account.")
-              : undefined
-          }
-          warning={warning ?? undefined}
-          warningHref={
-            warning && warning === creditsLine
-              ? { href: "/membership", label: strings?.aiCreditsLink ?? "Get credits" }
-              : undefined
-          }
-          sessions={sessions}
-          onEnd={(x) => answer("revoke", x)}
-          onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
-          evalRan={!!toast}
-          friend={isFriend}
-          owner={owner && !isFriend && devParts({ dev, hubOwner: owner && !box })}
-          strings={friendStrings}
-          treeSource={treeOn ? ownerTree : undefined}
-          etaBar={etaOn && treeOn && !!ownerTree}
-          // This page's ETA timer went off: the hub pings the agent at most once per estimate.
-          onEtaDue={(id) => ownerTree?.send({ type: "eta", id })}
-          treeRepo="snolab/lianki"
-          // The chat inbox: the owner's own pages only (owner-only upload, lib/inbox/).
-          files={owner && !isFriend ? ownerFiles : undefined}
-          // The account's chat history (docs/chat-history.md): every signed-in user's own.
-          onHistory={() => router.push("/chat/history")}
-          agentAvatar={AGENT_AVATAR}
-          viewer={boxViewer(!!box, boxAccount, viewer)}
-          fullScreen={fullScreen}
-          // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
-          backToClose={backToCloseChat}
-        />
+        <Suspense fallback={null}>
+          <DebugChatHost
+            // A verified pointer is the owner's (the server checked the session).
+            hot={(owner && !isFriend) || (liveState.on && !!liveState.claim.widget)}
+            src={widgetSource(liveState)}
+            busy={busy}
+            pages={state?.pages ?? []}
+            selfPage={state?.self}
+            onEndPage={endPage}
+            onOpenPage={(path) => router.push(path)}
+            live={live}
+            listeners={state?.listeners ?? sessions.length}
+            messages={messages}
+            onSend={sendChat}
+            onAnswer={sendAnswer}
+            onPassageEnd={() => sendHub({ type: "passage-end" })}
+            onUnmerge={(id) => sendHub({ type: "unmerge", id })}
+            nodes={state?.nodes}
+            notice={
+              friend === "blocked"
+                ? (strings?.unavailable ?? "Chat is not available for this account.")
+                : undefined
+            }
+            warning={warning ?? undefined}
+            warningHref={
+              warning && warning === creditsLine
+                ? { href: "/membership", label: strings?.aiCreditsLink ?? "Get credits" }
+                : undefined
+            }
+            sessions={sessions}
+            onEnd={(x) => answer("revoke", x)}
+            onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
+            evalRan={!!toast}
+            friend={isFriend}
+            owner={owner && !isFriend && devParts({ dev, hubOwner: owner && !box })}
+            strings={friendStrings}
+            treeSource={treeOn ? ownerTree : undefined}
+            etaBar={etaOn && treeOn && !!ownerTree}
+            // This page's ETA timer went off: the hub pings the agent at most once per estimate.
+            onEtaDue={(id) => ownerTree?.send({ type: "eta", id })}
+            treeRepo="snolab/lianki"
+            // The chat inbox: the owner's own pages only (owner-only upload, lib/inbox/).
+            files={owner && !isFriend ? ownerFiles : undefined}
+            // The account's chat history (docs/chat-history.md): every signed-in user's own.
+            onHistory={() => router.push("/chat/history")}
+            agentAvatar={AGENT_AVATAR}
+            viewer={boxViewer(!!box, boxAccount, viewer)}
+            fullScreen={fullScreen}
+            // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
+            backToClose={backToCloseChat}
+          />
+        </Suspense>
       )}
       {/* A pairing request: a big modal on every open page of its audience. */}
       {pending && (
-        <DebugPairModal
-          pending={pending}
-          friend={isFriend}
-          pages={state?.pages ?? []}
-          selfPage={state?.self}
-          onAllow={(pages) => answer("allow", pending, pages)}
-          onDeny={() => answer("deny", pending)}
-        />
+        <Suspense fallback={null}>
+          <DebugPairModal
+            pending={pending}
+            friend={isFriend}
+            pages={state?.pages ?? []}
+            selfPage={state?.self}
+            onAllow={(pages) => answer("allow", pending, pages)}
+            onDeny={() => answer("deny", pending)}
+          />
+        </Suspense>
       )}
       {/* With the chat box up, the rest lives inside it (nothing debug floats on the page). */}
       {!chat && (

@@ -2174,7 +2174,7 @@ export function DebugChat({
    * the owner's page defaults to his Mac. Never on a friend's page.
    */
   const storedStt = read(LOCAL_STT_KEY);
-  const sttRoute = friend ? { source: "none" as const } : localSttRoute(storedStt, owner);
+  const sttRoute = friend ? { source: "none" as const } : localSttRoute(storedStt, owner, true); // rtc:lianki may be mixed in (MicButton isMixedRoutes)
   useEffect(() => {
     // The devLog says where speech goes: `via` on the ready line, and here the route's source.
     if (sttRoute.source !== "none")
@@ -4354,8 +4354,9 @@ export function DebugChat({
       />
       {/* The way out of full screen (owner, 2026-11-09 18:25 JST: no button to
           enter it, a drag to the bottom edge does; "an exit button is still
-          needed"): ✕ and its words, at the top corner under the notch, in the
-          flow so the log starts under it. Escape, Back, the menu and a drag up
+          needed"): ✕ alone (2026-11-11: "字不用打出来"), its words as the
+          label and tooltip, at the top corner under the notch, in the flow so
+          the log starts under it. Escape, Back, the menu and a drag up
           leave too. Entering without a drag: the menu's Full screen row. */}
       {open && full && (
         <div className="pointer-events-none flex shrink-0 justify-end">
@@ -4363,18 +4364,18 @@ export function DebugChat({
             type="button"
             data-testid="debug-chat-fullscreen-exit"
             title={t.fullScreenExit}
+            aria-label={t.fullScreenExit}
             // Keeps the input's focus, so the keyboard and the draft's caret stay
             // (WebKit moves the focus on the tap's mousedown, not its pointerdown).
             onPointerDown={(e) => e.preventDefault()}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setFull(false)}
-            style={{ background: INPUT_BG, minHeight: 40 }}
-            className="tap-40 pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-current/25 ps-3 pe-3.5 text-sm text-gray-700 backdrop-blur-md dark:text-gray-200"
+            style={{ background: INPUT_BG, minHeight: 40, minWidth: 40 }}
+            className="tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full border border-current/25 text-gray-700 backdrop-blur-md dark:text-gray-200"
           >
             <span aria-hidden className="text-base leading-none">
               ✕
             </span>
-            {t.fullScreenExit}
           </button>
         </div>
       )}

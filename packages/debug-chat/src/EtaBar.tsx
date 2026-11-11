@@ -49,7 +49,9 @@ export const keepFocus = (e: { preventDefault(): void }) => e.preventDefault();
  * text's contrast is known on every part: `text`, `muted` (a row's
  * description) and `late` (a negative time, red) are each WCAG AA (4.5:1) on
  * the track, the planned bar, the progress fill, the overrun and done
- * (unit/eta.test.ts computes it).
+ * (unit/eta.test.ts computes it). The planned bar and the progress fill are
+ * gold (owner, 2026-11-11 19:58 JST: "任务进度条可以用金色"), the hue of the
+ * app's own gold (oklch … 86).
  */
 export const ETA_COLORS = {
   light: {
@@ -57,8 +59,8 @@ export const ETA_COLORS = {
     muted: "oklch(0.45 0.02 260)",
     late: "oklch(0.47 0.17 27)",
     track: "oklch(0.96 0.006 260)",
-    bar: "oklch(0.905 0.044 22.3)",
-    fill: "oklch(0.86 0.077 22.3)",
+    bar: "oklch(0.91 0.07 86)",
+    fill: "oklch(0.87 0.12 86)",
     past: "oklch(0.9 0.05 25)",
     done: "oklch(0.89 0.06 150)",
   },
@@ -67,8 +69,8 @@ export const ETA_COLORS = {
     muted: "oklch(0.8 0.01 260)",
     late: "oklch(0.8 0.12 25)",
     track: "oklch(0.24 0.01 260)",
-    bar: "oklch(0.3 0.044 22.3)",
-    fill: "oklch(0.38 0.088 22.3)",
+    bar: "oklch(0.31 0.045 86)",
+    fill: "oklch(0.4 0.085 86)",
     past: "oklch(0.36 0.08 25)",
     done: "oklch(0.38 0.07 150)",
   },

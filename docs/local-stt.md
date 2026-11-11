@@ -1346,10 +1346,47 @@ account id>` writes the `stt_worker` row with `owner_user_id` (the registry
   them. The race's deadline is the public one (6 s: session, signalling,
   ICE). `/api/stt/session` still needs flag `stt.worker` and his account on
   `/dev/stt-access`. A mixed list does not report usage from the page
-  (`reportLocalStt`): the registry books the WebRTC route's minutes.
+  (`reportLocalStt`): the registry books the WebRTC route's minutes. The
+  stored value (`lk:agent-local-stt`) keeps the names `rtc:lianki` /
+  `wss:session` only for the chat mic (`localSttRoute(…, named)`); until
+  2026-11-11 they were dropped as non-URLs, so a mixed list never reached
+  WebRTC. vibe and the /words mic open plain sockets and still drop them.
 - **Comparing**: `rtc:lianki` alone vs the tailnet URL alone on the same
   phone, read from the devLog (`local-stt-final {firstPartialMs,
 endToFinalMs}`, `stt-route`).
+
+## Routes that come and go
+
+The owner's ask (2026-11-11 20:15 JST): work smoothly while he travels and
+while speech servers go down and come back. Four parts, each with tests;
+the first is in place, the rest land in later PRs:
+
+1. **The utterance in flight survives a dropped route** (`local-stt.ts`,
+   `Rec`). Every utterance keeps its frames (packed int16, ~1 MB for 30 s).
+   A socket that drops while the mic is on (`keep`) does not reject it: it
+   waits for the next route (an immediate race, past any backoff, since
+   speech is waiting) and is **replayed** there — begin, every frame, and its
+   pre-pad and end if it had ended — so partials go on and the final is
+   local. An utterance that had already ended waits `REPLAY_WAIT_MS`
+   (1.5 s) for that, then rejects and the cloud takes it (MicButton's
+   fallback sends the whole WAV, so no word is lost either way). Every route
+   failing rejects it at once. devLog: `local-stt {state:"replayed"}`,
+   `{state:"replay-timeout"}`. With the mic off (no `keep`) a drop rejects
+   at once, as before.
+2. **Changing networks** (planned): ICE restart on `online`, on visible and
+   on `disconnected`; the signal socket resumes the same session with a
+   resume token, so neither a new ticket nor a new worker.
+3. **Workers going down and coming back** (planned): stt-peer heartbeats;
+   the registry skips a silent worker and keeps sessions through its own
+   blips; with no worker, the page goes to the cloud at once and waits on a
+   light lobby socket, which the registry tells when a worker registers.
+4. **Several workers** (planned): the account's own first, then by load
+   (sessions ÷ capacity) and by whether the page and the worker reach the
+   same Cloudflare colo.
+
+Live audio out (Li speaking over the same channel) is kept open: server →
+page binary frames would carry their own tag (3), and `ready` would name the
+capability.
 
 ## WebRTC
 

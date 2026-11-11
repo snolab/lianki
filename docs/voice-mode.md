@@ -373,6 +373,51 @@ up for capture, so the bed adds little. Without the mic the cost is bounded by
 the 60 s linger, and it never runs hidden, so it cannot drain a locked phone.
 The passive mic is the longest case.
 
+## Mic off by itself
+
+On 2026-11-11 (19:08 JST) the owner's chat mic went grey on his Android 10
+phone (Chrome 156, installed app) with nobody turning it off. Nothing was
+logged, so the cause could not be read back. Since then every off says who
+did it (`packages/debug-chat/src/mic-off.ts`, `mic-session.ts`):
+
+| look (`micLook`)                       | meaning                                                                                      |
+| -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| on (red ring, gold, dashed grey)       | listening, capturing, reading a reply, passive                                               |
+| `off`: grey icon, no ring              | he turned it off (a tap, Escape, a voice mode or enrolment ending)                           |
+| `off-self`: grey icon, dashed red ring | it went off by itself, or a reload could not resume it: a tap resumes; a note above says why |
+
+The reasons it goes off by itself (`AutoOffReason`) and what each does:
+
+- `track-ended`: the browser or the system ended the microphone track (a call,
+  another app, the permission expiring, the app backgrounded). Visible: it is
+  reopened at once and never shows as off. Hidden: it waits, and is reopened
+  when the page is visible again (a hidden page never asks for the mic;
+  Android refuses or hangs). A track found dead on return with no event
+  (missed while frozen) is reopened the same way. Only if it cannot come back
+  does it show `off-self` ("Mic stopped by the device").
+- `other-tab`: another Lianki page on this device turned its mic on (one
+  listener per device, `voice-bg.ts onTakeover`). Before, this was a silent
+  plain off; now it shows "Another Lianki page took the mic".
+- `sign-in`: the speech route answered 401.
+- `vibe`: /vibe took the room.
+- `reopen-failed`, `migrate-failed`: the echo switch's reopen, or a newer
+  widget taking the session over, could not bring it back.
+
+A reload while hidden waits for visible before its auto-resume asks for the
+mic. A mute (the source giving nothing for a while) is only logged.
+
+**Dev log** (debug mode, `wrangler tail lianki`): `{ev: "mic-off", by:
+"user"|"auto", reason, was, visible, track}` for every off;
+`{ev: "mic-track", what: "ended"|"mute"|"unmute", then}`; `{ev: "mic-recover",
+reason, ok}`; `{ev: "mic-life", what: "hidden"|"visible"|"freeze"|"resume"|
+"pagehide"|"pageshow", state, track, lost}` while the mic is on.
+
+Not the cause, checked: the voice-level caret (#898, `voice-level.ts`) only
+reads frames; push to talk and the hold only pause capture, never turn it
+off; a local STT or WebRTC route failing falls back to the cloud; there is no
+idle timer; a suspended AudioContext leaves the state as it is.
+Tests: `unit/mic-off.test.ts` (fakes only, no sound).
+
 ## Safety: what voice can reach
 
 Only the six `VoiceActions`: move, grade, show, read, undo and exit (which

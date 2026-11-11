@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/app/components/icons";
+import { SealStamp } from "@/app/components/SealSwitch";
 import { useIntlayer } from "next-intlayer";
 import { notePrefWrite } from "@lianki/ui-state";
 import {
@@ -249,18 +250,16 @@ export default function ImmersionClient({ preferred }: { preferred: ImmersionLan
           <button
             type="button"
             onClick={toggleTransposed}
-            aria-pressed={transposed}
+            role="switch"
+            aria-checked={transposed}
             title={t.transpose.value}
-            className={`shrink-0 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
-              transposed
-                ? "border-blue-600 bg-blue-600 text-white dark:border-blue-500 dark:bg-blue-500"
-                : "border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-700 dark:text-gray-300 dark:hover:border-gray-500"
-            }`}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-300 py-1 ps-3 pe-1 text-sm text-gray-700 hover:border-gray-400 dark:border-gray-700 dark:text-gray-200 dark:hover:border-gray-500"
           >
-            <span aria-hidden className="me-1.5">
+            <span aria-hidden>
               <Icon name="arrowsLeftRight" />
             </span>
             {t.transpose}
+            <SealStamp on={transposed} size="sm" />
           </button>
         </div>
       </div>
