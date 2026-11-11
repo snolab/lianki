@@ -12,6 +12,7 @@
     "chat-bridge.mjs",
     "chat-receiver.mjs",
     "chat-polish.mjs",
+    "chat-inbox.mjs",
     "auth.mjs",
     "mcp.mjs",
     "README.md",

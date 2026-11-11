@@ -349,6 +349,24 @@ describe("the hub: a named MCP client reaches the audit log", () => {
 });
 
 describe("the hub: own thread only", () => {
+  it("friend voice source comes only from the authenticated page's validated chat message", async () => {
+    const h = hubSetup();
+    const token = await mint(ALICE, "reader");
+    const page = await h.page({ ...ALICE, owner: false });
+    await h.msg(page, {
+      type: "chat",
+      id: "spoken",
+      text: "voice fragment",
+      source: "stt",
+      thread: "owner",
+      from: "owner",
+    });
+    await h.msg(page, { type: "chat", id: "typed", text: "typed fragment" });
+    const history = (await h.http(token.token, { op: "read" })).body.messages as any[];
+    const spoken = history.find((m) => m.id === "spoken");
+    expect(spoken).toMatchObject({ from: "friend", thread: ALICE.userId, source: "stt" });
+    expect(history.find((m) => m.id === "typed")?.source).toBeUndefined();
+  });
   it("a user's token posts into that user's thread, labelled with its lane, as an agent line", async () => {
     const s = hubSetup();
     const a = await mint(ALICE, "my-mac");

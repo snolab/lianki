@@ -346,6 +346,44 @@ the quiet window. Use the installed CLI or `bun packages/lianki-cli/lianki.mjs`;
 `lianki-dev` has a separate flag parser. Publication, deployment and a live
 listener switch remain separate review/approval steps.
 
+### Friend threads from an existing authorized grant stream
+
+Public account tokens remain restricted to their own thread. A trusted grant
+stream can instead use an explicit reply transport for one friend:
+
+```bash
+bun scripts/dev/eval.ts chat --no-pair |
+  bun packages/lianki-cli/lianki.mjs chat bridge --stdin --thread FRIEND_ID \
+    --reply-transport grant --grant-repo /path/to/checkout --deliver . --cwd /path/to/assistant
+```
+
+For all friend threads, replace `--thread FRIEND_ID` with `--friends`. This
+excludes the owner and gives each friend its own assembler, deduplication
+records and lightweight-model context. Replies use only the existing
+`eval.ts say --no-pair --to FRIEND_ID` grant transport, whose server checks
+the actual target. Non-owner stdin without this explicit transport is refused,
+so a reply cannot silently go to the owner's account. No new public-token
+cross-account capability is added. A real voice `source: stt` is retained only
+from the authenticated page's validated message; the CLI never guesses it.
+Assistant lines are context only, and owner speech is never a friend request.
+
+These handoffs carry a trusted `principal` with `authority: friend-chat-only`.
+A friend's request authorizes only a chat reply to that fixed destination,
+never owner-local tools, repositories, history, deployments or other accounts.
+Friend taps are marked as friends, never as owner approvals. This restriction
+applies to an owner-operated grant relay; a normal user's own direct-token
+assistant workflow is unchanged. Per-thread payload/context isolation does
+**not** create separate model sessions in a shared terminal. Use separately
+isolated recipients if that stronger boundary is required.
+
+The inbox has bounded defaults (`INBOX_DEFAULTS`): 64 active thread states and
+30-minute idle expiry. Only idle states may expire; reaching capacity fails
+explicitly rather than silently merging users or dropping a pending turn.
+`LIANKI_CHAT_INBOX_MAX_THREADS` and `LIANKI_CHAT_INBOX_IDLE_TTL_MS` can lower the
+defaults. Cloud preparation uses the relay's existing authenticated account
+and credits; the friend thread ID cannot select a different payer. Ordinary
+token owners still cannot read or write a different person's thread.
+
 ## Changes in 0.4.0
 
 - New: `lianki mcp`, a local MCP server with tools for cards, settings and

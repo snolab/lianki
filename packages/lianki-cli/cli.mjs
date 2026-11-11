@@ -15,6 +15,8 @@ import { createChatBridge, filterDecision, ayDeliver, bridgeConfig } from "./cha
 import { createInterface } from "node:readline";
 import { createChatReceiver, turnConfig } from "./chat-receiver.mjs";
 import { applyGrantPolish } from "./chat-polish.mjs";
+import { createFriendInbox, INBOX_DEFAULTS } from "./chat-inbox.mjs";
+import { join } from "node:path";
 
 export const SCHEMA_VERSION = 1;
 export const DEFAULT_URL = "https://lianki.com";
@@ -685,6 +687,15 @@ async function cmdChatListen(c) {
 }
 
 async function cmdChatBridge(c) {
+  const grantReply = c.argv["reply-transport"] === "grant";
+  if (c.argv.stdin && c.argv.thread === "own") throw usage("--thread needs a concrete server thread id; own is only an authenticated socket alias");
+  const friends = Boolean(c.argv.friends);
+  if (friends && c.argv.thread) throw usage("--friends and --thread are mutually exclusive");
+  if ((friends || grantReply) && (!c.argv.stdin || !c.argv["grant-repo"]))
+    throw usage("friend/grant delivery requires trusted --stdin and --grant-repo <checkout>");
+  if ((friends || (c.argv.thread && c.argv.thread !== "owner")) && !grantReply)
+    throw usage("non-owner stdin needs --reply-transport grant; an account token cannot reply to another thread");
+  if (friends && c.argv.polish) throw usage("--polish is owner-only; friends receive suggestions without history edits");
   if (c.argv.thread && !c.argv.stdin) throw usage("--thread applies only to trusted --stdin input; a direct socket uses the authenticated thread");
   if (c.argv.polish && (!c.argv.stdin || !c.argv["grant-repo"] || (c.argv.thread && c.argv.thread !== "owner")))
     throw usage("--polish requires trusted owner --stdin and --grant-repo <checkout>; API tokens cannot edit chat messages");
@@ -706,10 +717,14 @@ async function cmdChatBridge(c) {
   const config = bridgeConfig(c.deps.env);
   const history = Number(c.argv.history ?? config.contextLines);
   if (!Number.isInteger(history) || history < 0 || history > 100) throw usage("--history must be 0–100");
+  let accountToken;
+  const makeReceiver = (thread) => {
   const bridge = createChatBridge({
     api: c.base,
     config,
-    thread: c.argv.thread ?? "owner",
+    thread,
+    principal: grantReply && thread !== "owner" ? { type: "friend", thread, authority: "friend-chat-only" } : undefined,
+    replyCommand: grantReply ? () => ["bun", join(c.argv["grant-repo"], "scripts/dev/eval.ts"), "say", "--no-pair", "--to", thread, "<reply>"] : undefined,
     addressed: (text) => /(?:codex|claude|小可|小克|linky|lianki|帮我|请你|帮忙|修复|实现|部署|提交|合并|检查|继续|撤销|停止|重试|please|could you|can you)/iu.test(text),
     deliver: async (body) => {
       if (c.argv["dry-run"]) return c.deps.out(body);
@@ -732,9 +747,8 @@ async function cmdChatBridge(c) {
     },
     report: (data) => c.deps.err(JSON.stringify(data)),
   });
-  let accountToken;
   const receiver = createChatReceiver({
-    bridge, config: turnConfig(c.deps.env), requestId: () => randomId(),
+    bridge, thread, lockScope: Boolean(c.argv.stdin), config: turnConfig(c.deps.env), requestId: () => randomId(),
     report: (data) => c.deps.err(JSON.stringify(data)),
     onError: (e) => { failed ??= e; signalFailure(e); controller.abort(); stopInput?.(); },
     polish: c.argv.polish && !c.argv["dry-run"] ? (turn, suggestion) => applyGrantPolish(c.argv["grant-repo"], turn, suggestion, { signal: controller.signal }) : undefined,
@@ -755,6 +769,13 @@ async function cmdChatBridge(c) {
       return { action: "forward", turn: "uncertain", reason: "unavailable" };
     },
   });
+  return receiver;
+  };
+  const inboxConfig = Object.fromEntries(Object.entries(INBOX_DEFAULTS).map(([key, fallback]) => {
+    const value = Number(c.deps.env[`LIANKI_CHAT_INBOX_${key.replace(/[A-Z]/g, (s) => `_${s}`).toUpperCase()}`]);
+    return [key, Number.isSafeInteger(value) && value > 0 ? Math.min(value, fallback) : fallback];
+  }));
+  const receiver = friends ? createFriendInbox({ createReceiver: makeReceiver, config: inboxConfig }) : makeReceiver(c.argv.thread ?? "owner");
   const accept = (event) => {
     const job = receiver.accept(event);
     jobs.add(job);
@@ -1031,6 +1052,8 @@ function build(args, deps, box) {
               .option("history", { type: "number", describe: "Recent lines used as memory only (0–100)" })
               .option("polish", { type: "boolean", describe: "Opt in to guarded owner-grant edit/merge via --stdin; retains raw/undo" })
               .option("grant-repo", { type: "string", describe: "Checkout with the existing owner chat grant and eval.ts" })
+              .option("reply-transport", { choices: ["own", "grant"], default: "own", describe: "Own-account chat send or explicitly authorized grant reply transport" })
+              .option("friends", { type: "boolean", describe: "Multiplex friend threads from trusted grant stdin; excludes owner" })
               .option("filter-service", { type: "string", describe: "Optional v1 filter service URL; failures forward" })
               .option("ai", { choices: ["cloud", "off"], default: "cloud", describe: "Cloud turn preparation or bounded raw assembly only" })
               .option("dry-run", { type: "boolean", describe: "Print handoffs without delivering or replying" }),

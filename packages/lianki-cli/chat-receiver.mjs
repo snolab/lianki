@@ -11,11 +11,11 @@ export function turnConfig(env = {}) {
 
 const urgent = (s) => /^(?:(?:codex|claude|agy|小可|linky)[,，:：\s]*)?(?:(?:please|请|马上|立即)\s*)?(?:停止|取消|先停一下|停一下|停下|别做了|不要继续|撤销|やめて|中止|(?:stop|cancel|abort|never mind)\b)/iu.test(s.trim());
 
-/** @param {{bridge: any, prepare?: (input: any) => Promise<any>, config?: Record<string, number>, now?: () => number, requestId: () => string, report?: (event: any) => void, onError?: (error: any) => void, polish?: (turn: any, suggestion: string) => Promise<any>}} options */
-export function createChatReceiver({ bridge, prepare, config = {}, now = Date.now, requestId, report = () => {}, onError = () => {}, polish }) {
+/** @param {{bridge: any, prepare?: (input: any) => Promise<any>, config?: Record<string, number>, now?: () => number, requestId: () => string, report?: (event: any) => void, onError?: (error: any) => void, polish?: (turn: any, suggestion: string) => Promise<any>, thread?: string, lockScope?: boolean}} options */
+export function createChatReceiver({ bridge, prepare, config = {}, now = Date.now, requestId, report = () => {}, onError = () => {}, polish, thread = "owner", lockScope = false }) {
   const cfg = { ...TURN_DEFAULTS, ...config };
   const known = new Map();
-  let scope = "owner";
+  let scope = thread;
   let turn;
   let quiet;
   let maximum;
@@ -99,7 +99,10 @@ export function createChatReceiver({ bridge, prepare, config = {}, now = Date.no
   return {
     async accept(event) {
       for (const [id, item] of expectedPolish) if (now() - item.at >= cfg.echoTtlMs) expectedPolish.delete(id);
-      if (event.type === "ready") { scope = event.thread ?? scope; return bridge.accept(event); }
+      if (event.type === "ready") {
+        if (lockScope) return;
+        scope = event.thread ?? scope; return bridge.accept(event);
+      }
       if (event.type === "history" || event.history) {
         const list = event.type === "history" ? event.messages ?? [] : [event.message ?? event];
         for (const m of list) if (typeof m.id === "string" && typeof m.text === "string" && inScope(m)) remember(m);
@@ -139,6 +142,7 @@ export function createChatReceiver({ bridge, prepare, config = {}, now = Date.no
         return bridge.accept(event);
       }
       if (!["owner", "friend", "user"].includes(m.from)) return;
+      if (scope !== "owner" && m.from === "owner") return;
       if (known.get(m.id)?.text === m.text) return;
       remember(m);
       if (urgent(m.text)) {
@@ -162,6 +166,7 @@ export function createChatReceiver({ bridge, prepare, config = {}, now = Date.no
       else schedule();
     },
     async finish() { await flush(true); await Promise.all(tasks); },
+    pending() { return Boolean(turn || flushing || tasks.size); },
     stop() { generation++; cancelEpoch++; turn = undefined; clear(); },
   };
 }
