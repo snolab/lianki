@@ -17,12 +17,12 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
  */
 export async function POST(req: Request) {
   if (!sameOriginPost(req))
-    return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: NO_STORE });
+    return NextResponse.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
   const user = await authUserOrNull();
   if (!user)
-    return NextResponse.json({ error: "Login required" }, { status: 401, headers: NO_STORE });
+    return NextResponse.json({ error: "login-required" }, { status: 401, headers: NO_STORE });
   if (dbBackend() !== "d1")
-    return NextResponse.json({ error: "Not available" }, { status: 503, headers: NO_STORE });
+    return NextResponse.json({ error: "unavailable" }, { status: 503, headers: NO_STORE });
   const body = (await req.json().catch(() => null)) as {
     request?: unknown;
     state?: unknown;
@@ -37,6 +37,6 @@ export async function POST(req: Request) {
     expiry: body?.expiry,
   });
   if (!out.ok)
-    return NextResponse.json({ error: "Refused" }, { status: out.status, headers: NO_STORE });
+    return NextResponse.json({ error: "refused" }, { status: out.status, headers: NO_STORE });
   return NextResponse.json({ redirect: out.redirect }, { headers: NO_STORE });
 }

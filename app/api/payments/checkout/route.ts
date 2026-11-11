@@ -33,17 +33,17 @@ export async function GET() {
 export async function POST(req: Request) {
   // Fulfilment writes D1 only; the Mongo copy is a frozen rollback.
   if (dbBackend() !== "d1") {
-    return NextResponse.json({ error: "Payments are not enabled" }, { status: 503 });
+    return NextResponse.json({ error: "payments-off" }, { status: 503 });
   }
   // One flag snapshot for the gate and the session (fail closed: unreadable = off).
   const flags = await readFlags();
   const mode = stripeMode(process.env, flags);
-  if (!mode) return NextResponse.json({ error: "Payments are not enabled" }, { status: 503 });
+  if (!mode) return NextResponse.json({ error: "payments-off" }, { status: 503 });
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user) return NextResponse.json({ error: "login-required" }, { status: 401 });
   // Test mode is the owner's alone; to anyone else Stripe is simply off.
   if (!stripeOpenTo(session.user.email, process.env, flags)) {
-    return NextResponse.json({ error: "Payments are not enabled" }, { status: 503 });
+    return NextResponse.json({ error: "payments-off" }, { status: 503 });
   }
 
   const body = (await req.json().catch(() => null)) as {
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     turnstileToken?: unknown;
   } | null;
   const pass = passFor(body?.passId);
-  if (!pass) return NextResponse.json({ error: "Unknown pass" }, { status: 400 });
+  if (!pass) return NextResponse.json({ error: "unknown-pass" }, { status: 400 });
 
   const env = runtimeNodeEnv();
   const guard = await guardCheckout(getD1() as unknown as ThrottleDb, {
@@ -88,6 +88,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ url });
   } catch (error) {
     console.error("[payments] checkout:", error);
-    return NextResponse.json({ error: "Could not start checkout" }, { status: 502 });
+    return NextResponse.json({ error: "checkout-failed" }, { status: 502 });
   }
 }

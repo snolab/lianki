@@ -22,7 +22,7 @@ const NO_STORE = { "Cache-Control": "no-store", Pragma: "no-cache" };
  */
 export async function POST(req: Request) {
   if (dbBackend() !== "d1")
-    return NextResponse.json({ error: "Not available" }, { status: 503, headers: NO_STORE });
+    return NextResponse.json({ error: "unavailable" }, { status: 503, headers: NO_STORE });
   const db = getD1() as unknown as D1Like;
   const limit = await hit(
     db as unknown as ThrottleDb,
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   );
   if (!limit.allowed)
     return NextResponse.json(
-      { error: "Too many requests" },
+      { error: "rate-limited" },
       {
         status: 429,
         headers: { ...NO_STORE, "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) },
@@ -76,13 +76,10 @@ export async function GET(req: Request) {
 
 export async function DELETE(req: Request) {
   if (dbBackend() !== "d1")
-    return NextResponse.json({ error: "Not available" }, { status: 503, headers: NO_STORE });
+    return NextResponse.json({ error: "unavailable" }, { status: 503, headers: NO_STORE });
   const m = /^Bearer (lk_[0-9a-f]{64})$/.exec(req.headers.get("Authorization") ?? "");
   if (!m)
-    return NextResponse.json(
-      { error: "Bearer token required" },
-      { status: 401, headers: NO_STORE },
-    );
+    return NextResponse.json({ error: "bearer-required" }, { status: 401, headers: NO_STORE });
   const db = getD1() as unknown as D1Like;
   const id = await sha256Hex(m[1]);
   const row = await db

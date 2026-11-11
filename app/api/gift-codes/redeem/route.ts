@@ -15,9 +15,9 @@ const REDEEM_PER_IP = { max: 30, windowMs: 10 * 60_000 };
 
 /** `{ code }` → Pro days for the signed-in user, once per person per code. */
 export async function POST(req: Request) {
-  if (dbBackend() !== "d1") return NextResponse.json({ error: "Unavailable" }, { status: 503 });
+  if (dbBackend() !== "d1") return NextResponse.json({ error: "unavailable" }, { status: 503 });
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user) return NextResponse.json({ error: "login-required" }, { status: 401 });
   const limited =
     (await tooMany(`gift-redeem:user:${session.user.id}`, REDEEM_PER_USER)) ??
     (await tooMany(`gift-redeem:ip:${clientIp(req.headers)}`, REDEEM_PER_IP));

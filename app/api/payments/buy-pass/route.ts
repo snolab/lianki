@@ -14,9 +14,9 @@ import { rewardPurchase } from "@/lib/referrals/store";
  * top-up.
  */
 export async function POST(req: Request) {
-  if (dbBackend() !== "d1") return NextResponse.json({ error: "Unavailable" }, { status: 503 });
+  if (dbBackend() !== "d1") return NextResponse.json({ error: "unavailable" }, { status: 503 });
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user) return NextResponse.json({ error: "login-required" }, { status: 401 });
   const body = (await req.json().catch(() => null)) as { passId?: unknown; key?: unknown } | null;
   const key = spendKey(body?.key) ?? crypto.randomUUID();
   const d1 = getD1() as unknown as D1WithBatch;

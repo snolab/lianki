@@ -13,8 +13,8 @@ import { providerFor } from "@/lib/payments/providers";
  */
 export async function POST(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const provider = providerFor((await ctx.params).provider);
-  if (!provider) return NextResponse.json({ error: "Unknown provider" }, { status: 404 });
-  if (dbBackend() !== "d1") return NextResponse.json({ error: "Not enabled" }, { status: 503 });
+  if (!provider) return NextResponse.json({ error: "unknown-provider" }, { status: 404 });
+  if (dbBackend() !== "d1") return NextResponse.json({ error: "payments-off" }, { status: 503 });
   // A throw is a 500, so the provider retries.
   const r = await handleProviderWebhook(getD1() as unknown as D1WithBatch, provider, req);
   return NextResponse.json(r.body, { status: r.status });

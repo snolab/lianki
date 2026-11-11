@@ -21,9 +21,9 @@ import { providersFor, publicProvider } from "@/lib/payments/providers";
  * one for the owner only).
  */
 export async function GET() {
-  if (dbBackend() !== "d1") return NextResponse.json({ error: "Unavailable" }, { status: 503 });
+  if (dbBackend() !== "d1") return NextResponse.json({ error: "unavailable" }, { status: 503 });
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user) return NextResponse.json({ error: "login-required" }, { status: 401 });
   const d1 = getD1();
   // Expired holds of this wallet are released on its next read (no timer).
   try {
