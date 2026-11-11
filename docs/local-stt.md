@@ -1253,9 +1253,37 @@ sid, audioMs}`) and the hub books it to the ticket's account
   (`DebugSessions.bookStt`: `speech.stt.local`, at most 120 s per report, the
   `stt.local.costPerMinUsd` rate). The page does not book these itself.
 - A session counts until its signed length plus 60 s (checked when the hub
-  next counts; no timer), or until the page's signal socket closes; a worker
-  that goes away ends its pages (`{t:"end", reason:"worker-gone"}`), which go
-  on with the next route.
+  next counts; no timer), or until the page's signal socket closes.
+- **Routes that come and go** (2026-11-11, the owner travelling, servers going
+  down and up):
+  - **Heartbeat**: stt-peer sends `ping` every 15 s; the runtime answers
+    `pong` while the hub hibernates and keeps the time
+    (`setWebSocketAutoResponse`). A worker silent for `WORKER_SILENT_MS`
+    (45 s) is closed (4408) when next seen, never picked; stt-peer redials
+    when nothing came back for 35 s.
+  - **A worker's socket dropping** (a redeploy, a blip, its own redial) no
+    longer ends its pages: the sessions are peer to peer. Its pages hear
+    `{t:"worker-away"}`, then `{t:"worker-back"}` when it registers again;
+    stt-peer keeps its sessions across redials. A worker that is really gone
+    takes its peer connections with it, and the page takes the next route.
+  - **A page's signal socket dropping** (not closed by the page, code other
+    than 1000/1005) leaves the session resumable for `RESUME_GRACE_MS` (20 s;
+    storage `det:<sid>`). `ready` carries a `resume` token; the page reconnects
+    offering `lianki-stt2-resume, <sid>.<resume>` and gets
+    `{t:"ready", sid, resume, resumed:true}` (a fresh token; the old one is
+    spent), the same worker. Not back in time: the next signal sweeps it and
+    tells the worker `close`.
+  - **ICE restart**: a page's second offer on its session passes like the
+    first; stt-peer answers it on the same peer connection (`restart`), so the
+    DataChannel and the speech server's socket go on.
+  - **Lobby**: with `?lobby=1` and no worker free, the page gets a socket and
+    `{t:"wait"}` instead of a 503 (one per account); it is told
+    `{t:"available"}` and closed when a worker registers or a session ends.
+    Without `?lobby=1` (an older page): 503 as before.
+  - **Picking**: the account's own workers first, then a shared one; within
+    each, the one at the page's Cloudflare colo first (`x-lk-colo`, set by
+    lianki-push from `request.cf.colo`, a client's own dropped), then the
+    least loaded (sessions ÷ its limit).
 - **Adding a worker** (after the owner's tap card): `stt-peer keygen` on the
   server prints its public key; `bun scripts/local-stt/stt-worker-add.ts --id
 mac --name "…" --key <public key>` writes the row (wrangler d1, audited as
