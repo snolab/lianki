@@ -169,6 +169,46 @@ describe("/api/stt/session", () => {
   });
 });
 
+describe("failures", () => {
+  test("another method 405; a key that will not load 503; a TURN failure is STUN only", async () => {
+    const k = await keys();
+    const put = new Request("https://lianki.com/api/stt/session", { method: "PUT" });
+    expect((await handleSttSession(put, deps({ priv: k.priv }))).status).toBe(405);
+    const badKey = deps({
+      key: async () => {
+        throw new Error("bad jwk");
+      },
+    });
+    expect((await handleSttSession(req(), badKey)).status).toBe(503);
+    const r = await handleSttSession(
+      req(),
+      deps({
+        priv: k.priv,
+        turn: async () => {
+          throw new Error("turn down");
+        },
+      }),
+    );
+    expect(((await r.json()) as { iceServers: unknown[] }).iceServers).toHaveLength(1);
+    expect((await handleSttSession(req(), deps({ priv: k.priv, db: null }))).status).toBe(503);
+  });
+
+  test("TURN: an error answer or a bad key id is null", async () => {
+    const f = (async () => new Response("no", { status: 500 })) as unknown as typeof fetch;
+    expect(
+      await cloudflareTurn({ STT_TURN_KEY_ID: "abc", STT_TURN_KEY_TOKEN: "t" }, 900, f),
+    ).toBeNull();
+    expect(
+      await cloudflareTurn({ STT_TURN_KEY_ID: "a/b", STT_TURN_KEY_TOKEN: "t" }, 900, f),
+    ).toBeNull();
+    const list = (async () =>
+      Response.json({ iceServers: [{ urls: "turn:x" }, { nope: 1 }] })) as unknown as typeof fetch;
+    expect(
+      await cloudflareTurn({ STT_TURN_KEY_ID: "abc", STT_TURN_KEY_TOKEN: "t" }, 900, list),
+    ).toEqual([{ urls: "turn:x" }]);
+  });
+});
+
 describe("helpers", () => {
   test("stun URLs only; wss only", () => {
     expect(stunServers("stun:a.b:3478, https://x stuns:c.d")).toEqual([
