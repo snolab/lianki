@@ -1,10 +1,12 @@
 /**
- * The widget's own strings in Chinese or Japanese, picked by the page's
- * language (`<html lang="zh…">`, `"ja"`), until the host passes localized
- * ones. English otherwise. The tree's strings (StateTree.tsx TreeStrings) included.
+ * The widget's own strings for the page's language (`<html lang>`), until the
+ * host passes localized ones: en / zh / ja here, the app's other 13 locales in
+ * chat-ui-locales.ts (user-facing) and dev-ui-locales.ts (developer-only).
+ * The tree's strings (StateTree.tsx TreeStrings) included.
  */
 import type { TreeStrings } from "./StateTree";
 import { OTHER_LEGACY, chatLocale } from "./chat-ui-locales";
+import { OTHER_DEV, OTHER_TREE } from "./dev-ui-locales";
 
 export type UiStrings = {
   stateTree: string;
@@ -385,6 +387,33 @@ export const TREE_ZH: TreeStrings = {
   live: "来自开发服务器的实时数据",
 };
 
+/** The tree's strings in Japanese. */
+export const TREE_JA: TreeStrings = {
+  tree: "状態ツリー",
+  back: "チャットに戻る",
+  needsMe: "自分待ち",
+  needsYou: "あなた待ち",
+  openCount: "未完了 {n} 件",
+  needsYouCount: "あなた待ち {n} 件",
+  copy: "コピー",
+  copied: "コピーしました",
+  expand: "展開",
+  collapse: "折りたたむ",
+  loading: "読み込み中…",
+  failed: "状態ツリーを読み込めません",
+  empty: "状態ツリーは空です。",
+  nothingNeedsYou: "あなた待ちの項目はありません。",
+  you: "あなた",
+  open: "未着手",
+  doing: "進行中",
+  blocked: "停滞",
+  done: "完了",
+  lastDone: "最近の完了",
+  nowDoing: "進行中",
+  upNext: "次",
+  live: "開発サーバーのライブデータ",
+};
+
 /** The page's language is Chinese. */
 export function isZh(lang: string | null | undefined = globalThis.document?.documentElement.lang) {
   return /^zh\b/i.test(lang ?? "");
@@ -398,18 +427,24 @@ export function isJa(lang: string | null | undefined = globalThis.document?.docu
 /**
  * The widget's strings for the page's language: zh, ja or English, and for the
  * app's other 13 locales the strings every chat user sees (chat-ui-locales.ts)
- * over English; developer-only strings stay English there.
+ * with the developer-only ones (dev-ui-locales.ts).
  */
 export const uiStrings = (lang?: string | null): UiStrings => {
   if (isZh(lang)) return UI_ZH;
   if (isJa(lang)) return UI_JA;
   const loc = chatLocale(lang);
-  return loc === "en" || loc === "zh" || loc === "ja" ? UI_EN : { ...UI_EN, ...OTHER_LEGACY[loc] };
+  return loc === "en" || loc === "zh" || loc === "ja"
+    ? UI_EN
+    : { ...OTHER_DEV[loc], ...OTHER_LEGACY[loc] };
 };
 
-/** The tree's defaults for the page's language, under the host's own. */
-export const treeDefaults = (lang?: string | null): Partial<TreeStrings> =>
-  isZh(lang) ? TREE_ZH : {};
+/** The tree's defaults for the page's language, under the host's own (English: none). */
+export const treeDefaults = (lang?: string | null): Partial<TreeStrings> => {
+  if (isZh(lang)) return TREE_ZH;
+  if (isJa(lang)) return TREE_JA;
+  const loc = chatLocale(lang);
+  return loc === "en" || loc === "zh" || loc === "ja" ? {} : OTHER_TREE[loc];
+};
 
 /** Opacity blink for in-progress items (globals.css lk-blink: 1 → 0.35 → 1, 1.6 s). */
 export const BLINK = "animate-lk-blink motion-reduce:animate-none";

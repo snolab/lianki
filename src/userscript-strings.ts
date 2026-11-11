@@ -52,6 +52,10 @@ export type UserscriptStrings = {
   speedUnrated: string;
   heatOn: string;
   heatOff: string;
+  gdocStart: string;
+  gdocStop: string;
+  gdocFailed: string;
+  gdocOpen: string;
 };
 
 export const USERSCRIPT_CONTEXT: Record<keyof UserscriptStrings, string> = {
@@ -130,6 +134,14 @@ export const USERSCRIPT_CONTEXT: Record<keyof UserscriptStrings, string> = {
     "A short note in the middle of a video page after Alt+H turned the difficulty marks over the video on. A short state phrase.",
   heatOff:
     "A short note in the middle of a video page after Alt+H turned the difficulty marks off. A short state phrase.",
+  gdocStart:
+    "A button the Lianki userscript adds to a Google Docs page: switches on sending this document live to Lianki, so its text appears in Lianki's reader as the user types. Imperative, short: a small floating button in the bottom-left corner. Keep Lianki as is.",
+  gdocStop:
+    "The same Google Docs button while the document is being sent live: switches the sending off. Imperative, short.",
+  gdocFailed:
+    "The same Google Docs button when the last send to Lianki failed; it tries again by itself. A short state phrase.",
+  gdocOpen:
+    "A link next to that button on Google Docs, shown while sending is on: opens this document in Lianki's reader. Imperative, short. Keep Lianki as is.",
 };
 
 export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
@@ -175,6 +187,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "not rated yet · , slower · . faster",
     heatOn: "Difficulty overlay on",
     heatOff: "Difficulty overlay off",
+    gdocStart: "Stream to Lianki",
+    gdocStop: "Stop streaming",
+    gdocFailed: "Sync failed, retrying",
+    gdocOpen: "Open in Lianki",
   },
   zh: {
     again: "重来",
@@ -217,6 +233,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "尚未标记 · , 减速 · . 加速",
     heatOn: "难度标记已开启",
     heatOff: "难度标记已关闭",
+    gdocStart: "同步到 Lianki",
+    gdocStop: "停止同步",
+    gdocFailed: "同步失败，重试中",
+    gdocOpen: "在 Lianki 中打开",
   },
   hi: {
     again: "फिर से",
@@ -259,6 +279,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "अभी रेट नहीं · , धीमा · . तेज़",
     heatOn: "कठिनाई ओवरले चालू",
     heatOff: "कठिनाई ओवरले बंद",
+    gdocStart: "Lianki पर लाइव भेजें",
+    gdocStop: "लाइव भेजना बंद करें",
+    gdocFailed: "सिंक नहीं हुआ, फिर से कोशिश हो रही है",
+    gdocOpen: "Lianki में खोलें",
   },
   es: {
     again: "Otra vez",
@@ -302,6 +326,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "sin valorar · , más lento · . más rápido",
     heatOn: "Capa de dificultad activada",
     heatOff: "Capa de dificultad desactivada",
+    gdocStart: "Enviar en directo a Lianki",
+    gdocStop: "Dejar de enviar",
+    gdocFailed: "No se pudo sincronizar; reintentando",
+    gdocOpen: "Abrir en Lianki",
   },
   fr: {
     again: "À revoir",
@@ -346,6 +374,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "pas encore noté · , plus lent · . plus rapide",
     heatOn: "Repères de difficulté activés",
     heatOff: "Repères de difficulté désactivés",
+    gdocStart: "Diffuser vers Lianki",
+    gdocStop: "Arrêter la diffusion",
+    gdocFailed: "Échec de la synchro, nouvel essai",
+    gdocOpen: "Ouvrir dans Lianki",
   },
   ar: {
     again: "مجددًا",
@@ -389,6 +421,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "لم يُقيَّم بعد · , أبطأ · . أسرع",
     heatOn: "طبقة الصعوبة مفعّلة",
     heatOff: "طبقة الصعوبة متوقفة",
+    gdocStart: "بثّ مباشر إلى Lianki",
+    gdocStop: "إيقاف البث",
+    gdocFailed: "تعذّرت المزامنة، تجري إعادة المحاولة",
+    gdocOpen: "فتح في Lianki",
   },
   bn: {
     again: "আবার",
@@ -432,6 +468,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "এখনো রেট করা হয়নি · , ধীরে · . দ্রুত",
     heatOn: "কঠিনতা ওভারলে চালু",
     heatOff: "কঠিনতা ওভারলে বন্ধ",
+    gdocStart: "Lianki-তে লাইভ পাঠান",
+    gdocStop: "লাইভ পাঠানো বন্ধ করুন",
+    gdocFailed: "সিঙ্ক হয়নি, আবার চেষ্টা চলছে",
+    gdocOpen: "Lianki-তে খুলুন",
   },
   pt: {
     again: "De novo",
@@ -475,6 +515,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "ainda sem nota · , mais devagar · . mais rápido",
     heatOn: "Camada de dificuldade ativada",
     heatOff: "Camada de dificuldade desativada",
+    gdocStart: "Transmitir para o Lianki",
+    gdocStop: "Parar a transmissão",
+    gdocFailed: "Falha na sincronização, tentando de novo",
+    gdocOpen: "Abrir no Lianki",
   },
   ru: {
     again: "Снова",
@@ -518,6 +562,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "ещё не оценено · , медленнее · . быстрее",
     heatOn: "Метки сложности включены",
     heatOff: "Метки сложности выключены",
+    gdocStart: "Транслировать в Lianki",
+    gdocStop: "Остановить трансляцию",
+    gdocFailed: "Не удалось синхронизировать, пробуем снова",
+    gdocOpen: "Открыть в Lianki",
   },
   ur: {
     again: "دوبارہ",
@@ -561,6 +609,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "ابھی درجہ نہیں · , آہستہ · . تیز",
     heatOn: "مشکل اوورلے آن",
     heatOff: "مشکل اوورلے آف",
+    gdocStart: "Lianki پر لائیو بھیجیں",
+    gdocStop: "لائیو بھیجنا بند کریں",
+    gdocFailed: "ہم آہنگی نہیں ہوئی، دوبارہ کوشش جاری ہے",
+    gdocOpen: "Lianki میں کھولیں",
   },
   id: {
     again: "Lagi",
@@ -604,6 +656,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "belum dinilai · , lebih lambat · . lebih cepat",
     heatOn: "Lapisan kesulitan aktif",
     heatOff: "Lapisan kesulitan nonaktif",
+    gdocStart: "Kirim langsung ke Lianki",
+    gdocStop: "Berhenti mengirim",
+    gdocFailed: "Gagal sinkron, mencoba lagi",
+    gdocOpen: "Buka di Lianki",
   },
   de: {
     again: "Nochmal",
@@ -647,6 +703,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "noch nicht bewertet · , langsamer · . schneller",
     heatOn: "Schwierigkeitsanzeige an",
     heatOff: "Schwierigkeitsanzeige aus",
+    gdocStart: "Live an Lianki senden",
+    gdocStop: "Senden beenden",
+    gdocFailed: "Synchronisieren fehlgeschlagen, neuer Versuch",
+    gdocOpen: "In Lianki öffnen",
   },
   ja: {
     again: "もう一度",
@@ -690,6 +750,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "未評価 · , 遅く · . 速く",
     heatOn: "難易度表示オン",
     heatOff: "難易度表示オフ",
+    gdocStart: "Lianki にライブ送信",
+    gdocStop: "送信を止める",
+    gdocFailed: "同期に失敗、再試行中",
+    gdocOpen: "Lianki で開く",
   },
   sw: {
     again: "Tena",
@@ -733,6 +797,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "bado haijapimwa · , polepole · . haraka",
     heatOn: "Alama za ugumu zimewashwa",
     heatOff: "Alama za ugumu zimezimwa",
+    gdocStart: "Tuma moja kwa moja kwa Lianki",
+    gdocStop: "Acha kutuma",
+    gdocFailed: "Usawazishaji umeshindwa, inajaribu tena",
+    gdocOpen: "Fungua kwenye Lianki",
   },
   mr: {
     again: "पुन्हा",
@@ -775,6 +843,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "अजून रेट नाही · , हळू · . जलद",
     heatOn: "कठीणता ओव्हरले चालू",
     heatOff: "कठीणता ओव्हरले बंद",
+    gdocStart: "Lianki वर थेट पाठवा",
+    gdocStop: "थेट पाठवणे थांबवा",
+    gdocFailed: "सिंक झाले नाही, पुन्हा प्रयत्न करत आहे",
+    gdocOpen: "Lianki मध्ये उघडा",
   },
   ko: {
     again: "다시",
@@ -818,6 +890,10 @@ export const USERSCRIPT_STRINGS: Record<UserscriptLocale, UserscriptStrings> = {
     speedUnrated: "아직 평가 안 됨 · , 느리게 · . 빠르게",
     heatOn: "난이도 표시 켬",
     heatOff: "난이도 표시 끔",
+    gdocStart: "Lianki로 실시간 보내기",
+    gdocStop: "보내기 중지",
+    gdocFailed: "동기화 실패, 다시 시도 중",
+    gdocOpen: "Lianki에서 열기",
   },
 };
 

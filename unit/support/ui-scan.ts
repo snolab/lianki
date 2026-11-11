@@ -42,8 +42,13 @@ const isLiteral = (
 function words(text: string): boolean {
   const t = text.replace(/\$\{[^}]*\}/g, " ").trim();
   if (!WORDS.test(t)) return false;
-  return !t.split(/\s+/).every((w) => ALLOWED.has(w.replace(/[^\w]/g, "")) || !WORDS.test(w));
+  return !t
+    .split(/\s+/)
+    .every((w) => ALLOWED.has(w.replace(/[^\w]/g, "")) || URL_LIKE.test(w) || !WORDS.test(w));
 }
+
+/** An example web address (a placeholder like https://example.com/a.txt) reads the same in every language. */
+const URL_LIKE = /^["'`]?https?:\/\/\S+$/;
 
 const RAW_ERROR = /\.message\b|String\((e|err|error)\)|statusText|\.digest\b/;
 
