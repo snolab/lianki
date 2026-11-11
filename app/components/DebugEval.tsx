@@ -24,7 +24,8 @@ import { ETA_FLAG } from "@/lib/eta-ping";
 import { boxViewer, ownerFlagOn } from "@/lib/box-oauth/session";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
-import { isKey } from "@lianki/debug-chat/storage-keys";
+import { getKey, isKey, setKey } from "@lianki/debug-chat/storage-keys";
+import { WAS_OWNER_KEY, devParts, mayRunEval, rejoinDelay } from "@/lib/debug-rejoin";
 import {
   type ChatContext,
   type ChatStrings,
@@ -113,8 +114,8 @@ const pageLabel = () => {
  *
  * A sender (scripts/dev/eval.ts) asking to pair shows up here as a prompt with
  * its label and a short code it prints too; nothing runs unless the owner
- * allows it — for 8 hours at most (resumable with its token, so it is not
- * asked again in that time), or an hour for a friend's preview — and "End"
+ * allows it — for as long as the modal says (live config
+ * debug.evalGrantHours; resumable with its token, so it is not asked again in that time), or an hour for a friend's preview — and "End"
  * revokes it. Code it sends arrives
  * as {id, code, to}; it is run here, and the result (or error) goes back over
  * the socket to the sender and to /api/dev/log (Worker logs).
@@ -218,6 +219,11 @@ export function DebugEval({
   const [viewer, setViewer] = useState<Sender | undefined>(undefined);
   const sockRef = useRef<WebSocket | null>(null);
   const friendRef = useRef(false);
+  /**
+   * The hub put this socket in the owner's thread (a state with no friend-status
+   * first; never on a box): as good as `dev` for remote eval (lib/debug-rejoin.ts).
+   */
+  const hubOwnerRef = useRef(false);
   /** The chat's lines, for page-errors to cut out (never sent with an error). */
   const messagesRef = useRef<ChatMessage[]>([]);
   useEffect(() => {
@@ -389,6 +395,38 @@ export function DebugEval({
 
     /** A box chat ticket is being fetched (docs/box-oauth.md, "Chat on the owner's box"). */
     let boxPending = false;
+    /** Friend verdicts asked about again on this page (lib/debug-rejoin.ts), and the wait before the next. */
+    let rejoinTries = 0;
+    let rejoinTimer: ReturnType<typeof setTimeout> | undefined;
+    /**
+     * The hub called this page a friend's, but the server rendered it for a
+     * `dev` holder or this device was the owner's last time: one fail-closed
+     * permission read can say that. Ask again on a fresh socket, a few times.
+     */
+    const doubtFriend = (sock: WebSocket) => {
+      const wait = rejoinDelay({
+        dev: devRef.current,
+        wasOwner: getKey(WAS_OWNER_KEY) === "1",
+        tries: rejoinTries,
+      });
+      if (wait === null) {
+        // Asked enough: this device is a friend's now; stop doubting on later loads.
+        if (rejoinTries > 0) setKey(WAS_OWNER_KEY, "0");
+        return;
+      }
+      rejoinTries++;
+      clearTimeout(rejoinTimer);
+      rejoinTimer = setTimeout(() => {
+        if (ws !== sock || disposed) return;
+        devLog({ ev: "eval-rejoin", tries: rejoinTries });
+        // Forget the friend verdict: the next socket's first message decides again.
+        friendRef.current = false;
+        setFriend(null);
+        setFriendAi(false);
+        reporter = newReporter();
+        sock.close(1000, "rejoin");
+      }, wait);
+    };
     /** This effect was cleaned up (unmount, or React running it twice in dev): a late ticket opens nothing. */
     let disposed = false;
     const connect = () => {
@@ -468,6 +506,8 @@ export function DebugEval({
         if (msg.type === "clips") return void onClipsState(msg);
         if (msg.type === "friend-status") {
           friendRef.current = true;
+          hubOwnerRef.current = false;
+          if (msg.status !== "blocked") doubtFriend(sock);
           // Never a friend's errors: nothing queued is sent, nothing more is kept.
           reporter.disable();
           unhookErrors();
@@ -521,6 +561,11 @@ export function DebugEval({
           // Friends hear friend-status before any state: no status yet = the owner.
           if (!friendRef.current) {
             setOwner(true);
+            if (!boxRef.current) {
+              hubOwnerRef.current = true;
+              rejoinTries = 0;
+              setKey(WAS_OWNER_KEY, "1");
+            }
             reporter.attach((m) => {
               if (sock.readyState !== WebSocket.OPEN) throw new Error("socket closed");
               sock.send(JSON.stringify(m));
@@ -619,8 +664,13 @@ export function DebugEval({
         }
         if (msg.type !== "eval") return;
         if (typeof msg.id !== "string" || typeof msg.to !== "string") return;
-        // Remote eval: debug mode on, and a `dev` holder's page only.
-        if (typeof msg.code !== "string" || !debugOn() || !devRef.current) return;
+        // Remote eval: debug mode on, and a `dev` holder's page only — as the
+        // server rendered it, or as the hub found it when this socket opened.
+        if (
+          typeof msg.code !== "string" ||
+          !mayRunEval({ debug: debugOn(), dev: devRef.current, hubOwner: hubOwnerRef.current })
+        )
+          return;
         void run(sock, msg.id, msg.to, msg.code);
       };
       // Dropped by the network: reopen on that event if still wanted. One
@@ -630,6 +680,7 @@ export function DebugEval({
       sock.onclose = (e) => {
         if (ws !== sock) return;
         ws = null;
+        hubOwnerRef.current = false;
         setClipsSender(null);
         reporter.detach();
         sockRef.current = null;
@@ -727,6 +778,7 @@ export function DebugEval({
       window.removeEventListener("storage", onStorage);
       clearTimeout(hideToast);
       clearTimeout(beatTimer.current);
+      clearTimeout(rejoinTimer);
       disposed = true;
       disconnect();
       unhookErrors();
@@ -958,7 +1010,7 @@ export function DebugEval({
             onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
             evalRan={!!toast}
             friend={isFriend}
-            owner={owner && !isFriend && dev}
+            owner={owner && !isFriend && devParts({ dev, hubOwner: owner && !box })}
             strings={friendStrings}
             treeSource={treeOn ? ownerTree : undefined}
             etaBar={etaOn && treeOn && !!ownerTree}

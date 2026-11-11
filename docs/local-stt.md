@@ -1429,6 +1429,13 @@ under "Lianki's speech servers for everyone", "Routes that come and go":
    one in flight if it is still held.
 4. **Several workers**: the account's own first, then the one at the page's
    Cloudflare colo, then the least loaded (sessions ÷ its limit).
+5. **A spare session** (`spareSessions`): lianki.com's session answer took
+   1.4–3.5 s on 2026-11-11 (the main Worker's own time to first byte, not the
+   network), and a failover race should not wait for it. After the WebRTC
+   route takes a session, one more is fetched and kept; the next race uses
+   it at once if at least `SPARE_MIN_LEFT_MS` (15 s) of its 60 s ticket is
+   left. Never refreshed on a timer, so an idle page mints no tickets
+   (`stt.worker.ticketsPerMin` is 6).
 
 Live audio out (Li speaking over the same channel) is kept open: server →
 page binary frames would carry their own tag (3), and `ready` would name the

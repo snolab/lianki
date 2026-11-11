@@ -292,6 +292,27 @@ export const CONFIG = {
     description:
       "声纹操作（录入、存到账号、恢复、删除、重算、导出）的一次 Face ID 管多久（毫秒）：默认 600000 = 10 分钟，在这段时间里同一台设备、同一次登录不再弹出通行密钥。0 = 每次操作都要 Face ID。只管声纹，不管别的验证。改短会让已经发出的授权也跟着变短。",
   }),
+  // The owner's remote-eval grant (docs/monitoring.md, "Remote eval (owner debug)"):
+  // read by the debug hub (lianki-push) over DebugSessions.config at each pairing,
+  // through lib/eval-grant-config.ts (whose defaults must equal these).
+  "debug.evalGrantHours": int({
+    default: 8,
+    min: 1,
+    max: 720,
+    unit: "h",
+    group: "debug",
+    audience: "server",
+    description:
+      "远程调试（eval.ts）配对时你点「允许」后，这次授权管多久（小时）：默认 8；720 = 30 天。只对改了之后的新配对生效，已经给出的授权不变。「结束」随时立刻删除授权，每次执行仍然都记日志。",
+  }),
+  "debug.evalGrantPages": {
+    default: "chosen" as "chosen" | "all",
+    schema: z.enum(["chosen", "all"]),
+    group: "debug",
+    audience: "server",
+    description:
+      "远程调试的授权覆盖哪些页面：chosen（默认）= 配对弹窗里勾选的页面；all = 你所有设备上的所有页面，包括之后才打开的（只有你自己的页面，朋友的永远不算）。只对新配对生效。",
+  },
   // Lianki's own speech server (docs/local-stt.md) booked as if it were a cloud
   // service (docs/payments.md, "Cost ledger"): Workers AI whisper turbo's list price.
   "stt.local.costPerMinUsd": {
