@@ -11,8 +11,7 @@ audio after what is already settled. A token is settled when two passes in a
 row agree on it (their common prefix), up to a punctuation mark well before
 the end of the audio heard so far (`keep_s`): a mark sits in a pause, so no
 word is cut in two. Its audio is then dropped from the tail; its text joins the
-settled text, with the language its pass heard (kept per segment, for a later
-pass that re-reads a span in another language and backfills it).
+settled text, with the language its pass heard.
 
 Pure logic, no model: the server hands it each pass's tokens and their
 times (sherpa-onnx's `result.tokens` / `result.timestamps`, seconds from the
@@ -68,44 +67,6 @@ def join_spans(texts: list[str]) -> str:
             out += " "
         out += t
     return out
-
-
-def language_spans(segments: list[Segment], min_s: float = 1.0) -> list[tuple[int, int, str]]:
-    """
-    The settled part of the utterance cut where the speaker changed language (the owner,
-    2026-11-11: re-read the part in the right language, then backfill): (start, end,
-    lang) in samples, neighbours of one language merged. A stretch shorter than `min_s`
-    (a loanword, a misheard language) joins the one before it, or the next when it is
-    first. The unsettled tail is not here: its pass may hold two languages, so it keeps
-    the auto-detected reading (a forced one drops the other language's words).
-    """
-    raw = [(s.start, s.end, s.lang) for s in segments if s.end > s.start]
-    spans: list[list] = []
-    for a, b, lang in raw:
-        lang = lang or (spans[-1][2] if spans else "")
-        if spans and spans[-1][2] == lang:
-            spans[-1][1] = b
-        else:
-            spans.append([a, b, lang])
-    short = min_s * RATE
-    changed = True
-    while changed and len(spans) > 1:
-        changed = False
-        for i, (a, b, _) in enumerate(spans):
-            if b - a < short:
-                j = i - 1 if i > 0 else i + 1
-                lo, hi = min(i, j), max(i, j)
-                keep = spans[j][2]
-                spans[lo:hi + 1] = [[spans[lo][0], spans[hi][1], keep]]
-                changed = True
-                break
-    merged: list[tuple[int, int, str]] = []
-    for a, b, lang in spans:
-        if merged and merged[-1][2] == lang:
-            merged[-1] = (merged[-1][0], b, lang)
-        else:
-            merged.append((a, b, lang))
-    return merged
 
 
 @dataclass

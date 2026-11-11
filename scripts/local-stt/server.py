@@ -86,7 +86,8 @@ from ticket import (  # noqa: E402
 )
 import voiceprint as VP  # noqa: E402
 from engines import simplified, tidy  # noqa: E402
-from rolling import CTX_S, Rolling, join_spans, language_spans  # noqa: E402
+from rolling import CTX_S, Rolling, join_spans  # noqa: E402
+from switch import plan, runs_of  # noqa: E402
 
 #: A partial every this much new audio (--partial-step)… The owner's bar: the next feedback
 #: within 0.2 s of speech, a wrong word being better than none, so the step is well under it.
@@ -97,8 +98,6 @@ PARTIAL_MIN_S = 0.1
 #: they decode the whole utterance: as fast to change on screen at these lengths, and cleaner
 #: (docs/local-stt.md, "Rolling partials").
 ROLLING = os.environ.get("LIANKI_STT_ROLLING", "0") == "1"
-#: A switched utterance's final read stretch by stretch (rolling.py language_spans): off by default.
-LANG_SPANS = os.environ.get("LIANKI_STT_LANG_SPANS", "0") == "1"
 #: Longest utterance kept (the mic cuts at 30 s).
 MAX_S = 40
 #: An enrolment not saved or cancelled within this long is dropped.
@@ -137,11 +136,6 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def lang_of(got: list[tuple[str, str]]) -> str:
-    """The language of the longest stretch's text (a fallback when the longest span had none)."""
-    return max(got, key=lambda t: len(t[0]))[1]
-
-
 class Utterance:
     def __init__(self, uid: int):
         self.id = uid
@@ -164,6 +158,8 @@ class Utterance:
         self.cleared = False
         #: Partials decode only the unsettled tail (rolling.py); the final still reads it all.
         self.roll = Rolling()
+        #: Speech runs and their languages, while the speaker talks (switch.py); None: no tracker.
+        self.sw = None
         #: The languages of a switched utterance, stretch by stretch (its final was read so).
         self.switched: list[str] | None = None
 
@@ -365,6 +361,15 @@ class Server:
             return {**out, "ok": False, "error": str(e)[:200]}
         return {**out, "ok": False, "error": "unknown request"}
 
+    def tracker(self):
+        """A language switch tracker for a new utterance (switch.py), or None."""
+        make = getattr(self.engine, "switch_tracker", None)
+        try:
+            return make() if make else None
+        except Exception as e:  # no switch, as before
+            log(f"language switch off: {type(e).__name__}: {e}")
+            return None
+
     async def decode(self, audio: np.ndarray):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.pool, self.engine.transcribe, audio)
@@ -462,22 +467,29 @@ class Server:
             async def text_of():
                 if len(heard) < RATE // 10:  # a bare "Linky": nothing after it to read
                     return "", "", None
-                # The speaker changed language (the partials' passes heard it, rolling.py):
-                # each stretch re-read in its own language, and that is the final (backfill).
-                # Off unless LIANKI_STT_LANG_SPANS=1: on mixed clips it rescued the first
-                # language, but read silence as 「Yeah」 (docs/local-stt.md, "Language switch").
-                spans_of = getattr(self.engine, "spans", None) if LANG_SPANS else None
-                spans = [] if u.text_from or not spans_of else language_spans(u.roll.segments)
-                langs = {lang for _, _, lang in spans} | ({u.roll.tail_lang} - {""})
-                if spans and len(langs) > 1:
-                    loop = asyncio.get_running_loop()
-                    got = await loop.run_in_executor(self.pool, spans_of, audio, spans, u.roll.at)
-                    if got:
-                        u.switched = [lang for _, lang in got]
-                        main = max(spans + [(u.roll.at, len(audio), u.roll.tail_lang)],
-                                   key=lambda sp: sp[1] - sp[0])[2] or lang_of(got)
-                        return join_spans([t for t, _ in got]), main, None
-                return await self.decode_final(heard)
+                if u.sw is None or u.text_from:
+                    return await self.decode_final(heard)
+                # The speaker changed language (docs/local-stt.md, "Language switch"): the
+                # stretches between silences, each re-read in its own language, are the final
+                # (backfill). The whole decode runs beside the last run's language pick, and
+                # stands when there is no switch, so most finals wait for nothing more.
+                whole = asyncio.ensure_future(self.decode_final(heard))
+                try:
+                    runs = u.sw.close()
+                    probs = await asyncio.gather(*(asyncio.wrap_future(f) for _, _, f in runs))
+                    stretches = plan(runs_of([(a, b, p) for (a, b, _), p in zip(runs, probs)]))
+                except Exception as e:  # the whole decode, as before
+                    log(f"language switch failed: {type(e).__name__}: {e}")
+                    stretches = []
+                if len(stretches) < 2:
+                    return await whole
+                loop = asyncio.get_running_loop()
+                got = await loop.run_in_executor(self.pool, self.engine.read_stretches, audio, stretches)
+                if not got:
+                    return await whole
+                u.switched = [lang for _, lang in got]
+                main = max(stretches, key=lambda sp: sp[1] - sp[0])[2]
+                return join_spans([t for t, _ in got]), main, None
 
             # The filter on (never an enrolment sentence): the check comes first, and audio it
             # stops is not transcribed at all. A check that fails lets it through, as today.
@@ -584,6 +596,8 @@ class Server:
                         x = pcm(body)
                         cur.chunks.append(x)
                         cur.n += len(x)
+                        if cur.sw is not None:
+                            cur.sw.feed(x)
                         if (
                             not cur.partial_busy
                             and cur.n >= self.partial_min_s * RATE
@@ -594,6 +608,8 @@ class Server:
                     elif tag == 2:
                         cur.pre = pcm(body)
                         cur.roll = Rolling()  # the samples moved: settle again from the start
+                        if cur.sw is not None:
+                            cur.sw.prepend(cur.pre)  # the picks made while he spoke stand
                     continue
                 try:
                     m = json.loads(msg)
@@ -606,6 +622,7 @@ class Server:
                     if cur is not None:
                         cur.done = True
                     cur = Utterance(uid)
+                    cur.sw = self.tracker()
                     e = m.get("enrol")
                     cur.enrol = e if isinstance(e, str) and 0 < len(e) <= 64 else None
                     q = m.get("uid")

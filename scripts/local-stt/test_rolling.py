@@ -10,7 +10,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from rolling import RATE, Rolling, Segment, join_tokens, language_spans  # noqa: E402
+from rolling import RATE, Rolling, Segment, join_tokens  # noqa: E402
 
 
 class RollingTest(unittest.TestCase):
@@ -74,27 +74,6 @@ class RollingTest(unittest.TestCase):
         s = r.segments[0]
         self.assertEqual((s.text, s.lang, s.start), ("はい。", "ja", 0))
         self.assertEqual(s.end, r.at)
-
-    def test_one_language_is_one_span(self):
-        segs = [Segment("a", "zh", 0, RATE), Segment("b", "zh", RATE, 2 * RATE)]
-        self.assertEqual(language_spans(segs), [(0, 2 * RATE, "zh")])
-
-    def test_a_switch_cuts_where_the_language_changed(self):
-        segs = [Segment("a", "zh", 0, 2 * RATE), Segment("b", "ja", 2 * RATE, 4 * RATE)]
-        self.assertEqual(language_spans(segs), [(0, 2 * RATE, "zh"), (2 * RATE, 4 * RATE, "ja")])
-
-    def test_a_short_stretch_joins_its_neighbour(self):
-        # 0.5 s of "en" inside Chinese (a loanword) is not a switch.
-        segs = [Segment("a", "zh", 0, 2 * RATE), Segment("b", "en", 2 * RATE, int(2.5 * RATE)),
-                Segment("c", "zh", int(2.5 * RATE), 4 * RATE)]
-        self.assertEqual(language_spans(segs), [(0, 4 * RATE, "zh")])
-        # A short first stretch joins the next one.
-        segs = [Segment("a", "en", 0, RATE // 2), Segment("b", "ja", RATE // 2, 3 * RATE)]
-        self.assertEqual(language_spans(segs), [(0, 3 * RATE, "ja")])
-
-    def test_an_unknown_language_takes_the_one_before(self):
-        segs = [Segment("a", "zh", 0, 2 * RATE), Segment("b", "", 2 * RATE, 4 * RATE)]
-        self.assertEqual(language_spans(segs), [(0, 4 * RATE, "zh")])
 
     def test_silence_has_no_language(self):
         r = Rolling()

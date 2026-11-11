@@ -100,25 +100,38 @@ class SenseVoice:
         self.r.decode_stream(s)
         return list(s.result.tokens), list(s.result.timestamps), (s.result.lang or "").strip("<|>")
 
-    def spans(self, audio: np.ndarray, spans: list[tuple[int, int, str]], tail_from: int) -> list[tuple[str, str]] | None:
+    def switch_tracker(self):
         """
-        A switched utterance read stretch by stretch (rolling.py language_spans): each
-        settled stretch with its own language forced, then the unsettled rest from
-        `tail_from` auto-detected (it may hold two languages). (text, lang) per stretch
-        that reads as something; None when none does (the whole decode stands).
+        A language switch tracker for one utterance (switch.py), or None: no language
+        picker, no Silero model, or LIANKI_STT_SWITCH=0.
         """
-        if not self.picker:
+        if not self.picker or os.environ.get("LIANKI_STT_SWITCH", "1") == "0":
             return None
+        vad = os.path.join(MODELS, "silero_vad.onnx")
+        if not os.path.exists(vad):
+            return None
+        from switch import Tracker
+
+        return Tracker(vad, self.picker.lang_probs, self.side)
+
+    def read_stretches(self, audio: np.ndarray, stretches: list[tuple[int, int, str]]) -> list[tuple[str, str]]:
+        """
+        A switched utterance read stretch by stretch (switch.py plan): each stretch holds
+        one language, so the auto decode reads it in that language, in full precision;
+        where it still hears another one (not English, which it writes inside any
+        language, switch.CARRIED), the stretch is read with its language forced.
+        (text, lang) per stretch that reads as something.
+        """
+        from switch import CARRIED, SAME
+
         out = []
-        for a, b, lang in spans:
-            text = self.picker.read(audio[a:b], lang)
-            if text.strip():  # a stretch of silence reads as nothing: skipped
-                out.append((tidy(text, lang), lang))
-        if len(audio) - tail_from >= RATE // 10:
-            text, lang = self.transcribe(audio[tail_from:])
+        for a, b, lang in stretches:
+            text, heard = self.transcribe(audio[a:b])
+            if SAME.get(heard, heard) != lang and heard not in CARRIED:
+                text = tidy(self.picker.read(audio[a:b], lang), lang)
             if text.strip():
                 out.append((text, lang))
-        return out or None
+        return out
 
     def final(self, audio: np.ndarray) -> tuple[str, str, str | None]:
         """
@@ -327,6 +340,26 @@ class LangPicker:
             marks = set("，。？！、,.?!；;：:…")
             self._punct_mask = np.array([t in marks for t in self.tokens])
         return self._punct_mask
+
+    #: The languages a switched utterance may be read in (SenseVoice's own five).
+    SPOKEN = ("zh", "en", "ja", "ko", "yue")
+
+    def lang_probs(self, audio: np.ndarray) -> dict[str, float]:
+        """How sure the model's language frame is of each spoken language (they sum to 1): switch.py."""
+        x = self.features(audio)
+        if len(x) == 0:
+            return {}
+        if not hasattr(self, "_lang_tok"):
+            self._lang_tok = np.array([self.tokens.index(f"<|{lg}|>") for lg in self.SPOKEN])
+        z = self.sess.run(None, {
+            "x": x[None],
+            "x_length": np.array([len(x)], np.int32),
+            "language": self.lid[:1],
+            "text_norm": np.array([self.itn], np.int32),
+        })[0][0, 0, self._lang_tok]
+        p = np.exp(z - z.max())
+        p /= p.sum()
+        return {lg: float(v) for lg, v in zip(self.SPOKEN, p)}
 
     def read(self, audio: np.ndarray, lang: str) -> str:
         """The audio read with `lang` forced (zh, en, ja, ko, yue): one stretch of a switched utterance."""
