@@ -6,6 +6,7 @@
  */
 import { ROOT_NODE, agentIdOf, nodePath } from "@/lib/dev-eval";
 import { LANE_IDS, type LaneId, isLaneId, parseLineVoice } from "@/packages/debug-chat/src/voices";
+import { parsePlay } from "@/packages/debug-chat/src/play-audio";
 
 export type NodeOpts = { node?: string; agent?: string };
 
@@ -103,6 +104,32 @@ export function sayLane(lane?: string, voice?: string): SayLane | { error: strin
   const v = voice === undefined ? undefined : parseLineVoice(voice);
   if (v && "error" in v) return { error: `--voice: ${v.error}` };
   return { ...(lane ? { lane } : {}), ...(voice ? { voice } : {}) };
+}
+
+/** A say's audio as sent to the hub (play-audio.ts; docs/li-sound-hub.md, "Playing audio from an agent"). */
+export type SayPlay = { audio?: { src: string; title?: string; kind?: string } };
+
+/**
+ * `--play <src>` (with `--title`, `--kind`) checked by the same parser the hub
+ * uses (play-audio.ts parsePlay): an https URL with a public host name, or
+ * file:<id>. The deny list and the permission are the hub's; a bad src is an
+ * error here, before a socket opens.
+ */
+export function sayPlay(play?: string, title?: string, kind?: string): SayPlay | { error: string } {
+  if (play === undefined) {
+    if (title !== undefined || kind !== undefined)
+      return { error: "--title and --kind go with --play <src>" };
+    return {};
+  }
+  const p = parsePlay({ src: play, title, kind });
+  if (!p.ok) return { error: p.error };
+  return {
+    audio: {
+      src: p.audio.src,
+      ...(p.audio.title ? { title: p.audio.title } : {}),
+      ...(kind !== undefined ? { kind: p.audio.kind } : {}),
+    },
+  };
 }
 
 /** Printed (stderr) when an old command still passes `say --loud`: it does nothing now. */

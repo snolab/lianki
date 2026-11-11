@@ -86,7 +86,11 @@ export type AuditKind =
   | "stt-access.allow"
   | "stt-access.disallow"
   | "stt-worker.add"
-  | "stt-worker.revoke";
+  | "stt-worker.revoke"
+  // An agent's audio line (`say --play`; lib/play-check.ts): every one the hub
+  // posts. Actor: the token's account, or "grant"; subject: the src's host
+  // only (never the URL); detail: the kind and the token's name or the sender.
+  | "chat.play";
 
 export type AuditEntry = {
   kind: AuditKind;

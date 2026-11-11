@@ -143,6 +143,8 @@ export default async function RootLayout({
   const etaBar = flagIn(flags, ETA_FLAG);
   // A new version applies itself on a clean page (lib/auto-update.ts); off: the Refresh button.
   const autoUpdate = flagIn(flags, "app.auto-update");
+  // An agent's audio lines play on his phone (docs/li-sound-hub.md); dev holders only (the flag's audience).
+  const playAudio = flagIn(flags, "chat.play-audio");
   // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts): live, no deploy.
   const lexicon = partnerFrame ? undefined : await cfg("voice.lexicon");
   const boots = {
@@ -155,6 +157,7 @@ export default async function RootLayout({
     etaBar,
     liHub,
     autoUpdate,
+    playAudio,
     lexicon,
   };
   const box = boxConfig();

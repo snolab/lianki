@@ -28,6 +28,7 @@ JSON envelope, so an agent reads both the same way.
 lianki-dev say --as codex "PR #670 is green"        # → 【codex】PR #670 is green
 lianki-dev say --voice device:Meijia "你好呀"         # one line in a phone voice (ids: lianki-dev voices)
 lianki-dev voices                                   # the phone's device voices + the cloud's, as ids
+lianki-dev say --play https://cdn.example.com/a.mp3 "listen"   # audio his phone plays (li-sound-hub.md, "Playing audio from an agent")
 lianki-dev ask --as judge --node /dev/cli --q "Ship it?" --opt Yes --opt No --wait
 lianki-dev progress --as codex --path /dev/cli --task "CLI: one entry for the lanes" --status doing --pct 40 --eta 30m
 lianki-dev progress stats --as codex --since 7d    # your done tasks: estimate vs actual, median ratio
@@ -105,7 +106,8 @@ serve` (the grant path), never in the public CLI.
 
 **A lane gets its token** from the owner: lianki.com/preferences → API tokens
 → name = the lane (`codex`, `agy`, `main`…), permissions `chat:read`,
-`chat:write`, `chat:ask` (nothing else), an expiry (required; ≤ 1 year). The
+`chat:write`, `chat:ask`, and `chat:play` for a lane that plays audio on his
+phone (`say --play`), nothing else; an expiry (required; ≤ 1 year). The
 secret is shown once; the owner hands it to that lane only, as `LIANKI_TOKEN`
 (never in a URL, a log, a commit or a chat line). One click on Revoke kills it:
 its next call is refused and a listening socket closes at once. Agents never

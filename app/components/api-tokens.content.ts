@@ -353,6 +353,42 @@ const dictionary = {
       mr: "तुमच्या चॅटमध्ये प्रश्न कार्ड पाठवणे. कार्डचे उत्तर फक्त तुमच्या स्वतःच्या टॅपनेच मिळते; टोकनला ते कधीच जमत नाही.",
       ko: "채팅에 질문 카드를 올립니다. 카드에는 내가 직접 탭해야만 답할 수 있으며, 토큰은 절대 답할 수 없습니다.",
     }),
+    scopeChatPlay: t({
+      en: "Play audio in the chat",
+      zh: "在聊天中播放音频",
+      hi: "चैट में ऑडियो चलाना",
+      es: "Reproducir audio en el chat",
+      fr: "Lire de l'audio dans le chat",
+      ar: "تشغيل صوت في الدردشة",
+      bn: "চ্যাটে অডিও চালানো",
+      pt: "Tocar áudio no chat",
+      ru: "Воспроизводить аудио в чате",
+      ur: "چیٹ میں آڈیو چلانا",
+      id: "Memutar audio di chat",
+      de: "Audio im Chat abspielen",
+      ja: "チャットで音声を再生",
+      sw: "Kucheza sauti kwenye gumzo",
+      mr: "चॅटमध्ये ऑडिओ वाजवणे",
+      ko: "채팅에서 오디오 재생",
+    }),
+    scopeChatPlayHint: t({
+      en: "Post a message with an audio link (a file or a live stream) that your phone can play. Every play is logged.",
+      zh: "发一条带音频链接（文件或直播流）的消息，你的手机可以播放。每次播放都有记录。",
+      hi: "ऑडियो लिंक (फ़ाइल या लाइव स्ट्रीम) वाला संदेश भेजना, जिसे आपका फ़ोन चला सकता है। हर बार चलाना दर्ज होता है।",
+      es: "Publicar un mensaje con un enlace de audio (un archivo o una emisión en directo) que tu teléfono puede reproducir. Cada reproducción queda registrada.",
+      fr: "Publier un message avec un lien audio (un fichier ou un flux en direct) que votre téléphone peut lire. Chaque lecture est enregistrée.",
+      ar: "نشر رسالة برابط صوتي (ملف أو بث مباشر) يمكن لهاتفك تشغيله. يُسجَّل كل تشغيل.",
+      bn: "অডিও লিংকসহ (ফাইল বা লাইভ স্ট্রিম) একটি বার্তা পাঠানো, যা আপনার ফোন চালাতে পারে। প্রতিবার চালানো লিখে রাখা হয়।",
+      pt: "Publicar uma mensagem com um link de áudio (um arquivo ou uma transmissão ao vivo) que o seu telefone pode tocar. Cada reprodução fica registrada.",
+      ru: "Отправлять сообщение со ссылкой на аудио (файл или прямой эфир), которое может воспроизвести ваш телефон. Каждое воспроизведение записывается.",
+      ur: "آڈیو لنک (فائل یا لائیو اسٹریم) والا پیغام بھیجنا جسے آپ کا فون چلا سکتا ہے۔ ہر بار چلانا درج ہوتا ہے۔",
+      id: "Mengirim pesan dengan tautan audio (berkas atau siaran langsung) yang bisa diputar ponsel Anda. Setiap pemutaran dicatat.",
+      de: "Eine Nachricht mit einem Audio-Link (Datei oder Livestream) posten, den dein Handy abspielen kann. Jedes Abspielen wird protokolliert.",
+      ja: "スマホで再生できる音声リンク（ファイルまたはライブ配信）付きのメッセージを投稿します。再生はすべて記録されます。",
+      sw: "Kutuma ujumbe wenye kiungo cha sauti (faili au mtiririko wa moja kwa moja) ambao simu yako inaweza kucheza. Kila uchezaji hurekodiwa.",
+      mr: "ऑडिओ लिंक (फाइल किंवा थेट प्रवाह) असलेला संदेश पाठवणे, जो तुमचा फोन वाजवू शकतो. प्रत्येक वाजवणे नोंदवले जाते.",
+      ko: "휴대폰에서 재생할 수 있는 오디오 링크(파일 또는 라이브 스트림)가 담긴 메시지를 올립니다. 재생할 때마다 기록됩니다.",
+    }),
     never: t({
       en: "A token can never run code, pair a device, approve anything, or reach another account's chat.",
       zh: "令牌永远不能运行代码、配对设备、批准任何操作，也不能访问其他账户的聊天。",
@@ -899,6 +935,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Checkbox label, one permission of an API token: post question cards (a question with answer buttons) in the user's chat. Short verb phrase.",
   scopeChatAskHint:
     "Small text under the 'Ask in the chat' permission checkbox: the token may post question cards with answer buttons; only the user tapping a button answers one, the token itself never can. Two short clauses.",
+  scopeChatPlay:
+    "Checkbox label, one permission of an API token: post chat messages that carry an audio link (a sound file or a live radio-like stream) the user's phone can play. Short verb phrase.",
+  scopeChatPlayHint:
+    "Small text under the 'Play audio in the chat' permission checkbox: the token may post a message with an audio link (a file or a live stream) that the user's phone can play; every play is written to a log. Two short sentences.",
   never:
     "Note under the permission checkboxes: no token can ever run code, pair (connect) a device, approve anything, or reach another account's chat — these are not permissions one can give. One sentence, reassuring and factual.",
   scopeEval:

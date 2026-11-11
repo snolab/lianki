@@ -46,6 +46,7 @@ export const SCOPES = [
   { id: "chat:read", group: "chat" }, // read lines, listen
   { id: "chat:write", group: "chat" }, // post a line
   { id: "chat:ask", group: "chat" }, // post an ask card (only a tap answers it)
+  { id: "chat:play", group: "chat" }, // post a line with audio his phone plays (`say --play`)
   // Run code on the owner's open pages (eval.ts, lianki-dev), no pairing tap:
   // a site owner's token only (OWNER_SCOPES), at most EVAL_MAX_DAYS.
   { id: "eval", group: "owner" },

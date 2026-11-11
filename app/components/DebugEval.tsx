@@ -45,6 +45,7 @@ import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { withLane } from "@lianki/debug-chat/voices";
+import { autoPlayLine } from "@lianki/debug-chat/li-player";
 import { spokenOf } from "@lianki/debug-chat/rich-text";
 import { missedReply } from "@lianki/debug-chat/speak-rules";
 import { voice } from "@lianki/debug-chat/voice";
@@ -158,6 +159,7 @@ export function DebugEval({
   etaBar = false,
   fullScreen = false,
   liHub = false,
+  playAudio = false,
   lexicon,
   box = null,
 }: {
@@ -184,6 +186,11 @@ export function DebugEval({
   fullScreen?: boolean;
   /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
   liHub?: boolean;
+  /**
+   * Flag `chat.play-audio` (audience owner): an agent's `say --play` lines get
+   * a ▶ and may play by themselves (docs/li-sound-hub.md, "Playing audio from an agent").
+   */
+  playAudio?: boolean;
 } = {}) {
   // Idempotent and cheap: the live table is in place before the first reply is read.
   if (lexicon !== undefined) setLexicon(lexicon);
@@ -254,6 +261,10 @@ export function DebugEval({
   // Li's sound hub, phase 0 (docs/li-sound-hub.md): it only observes, on the
   // owner's pages with `voice.li-hub` on. Off, the module is not even loaded.
   const liOn = liHub && owner && friend === null;
+  // An agent's audio lines: the flag, and a `dev` holder's own thread (the flag's audience).
+  const playOn = playAudio && dev && owner && friend === null;
+  const playRef = useRef(playOn);
+  playRef.current = playOn;
   useEffect(() => {
     if (!liOn) return;
     let stop = () => {};
@@ -644,6 +655,9 @@ export function DebugEval({
             const spoken =
               fresh && !!said && (tabsRef.current?.isSpeaker() ?? true) && voice().reply(said, m);
             voiceLatency().heard(m, spoken === true);
+            // `say --play`: plays by itself only on a visible, unlocked phone page with the mic off.
+            if (fresh && m.audio && playRef.current)
+              autoPlayLine(m, tabsRef.current?.isSpeaker() ?? true, devLog);
           } else {
             setWarning(null);
             voiceLatency().heard(m);
@@ -1046,6 +1060,7 @@ export function DebugEval({
             agentAvatar={AGENT_AVATAR}
             viewer={boxViewer(!!box, boxAccount, viewer)}
             fullScreen={fullScreen}
+            playAudio={playOn}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
             backToClose={backToCloseChat}
           />

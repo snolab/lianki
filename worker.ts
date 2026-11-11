@@ -27,6 +27,7 @@ import { partnerReply, type PartnerEnv } from "./lib/partner-ai";
 import type { PartnerResult } from "./lib/partner-ai-config";
 import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
 import { type ChatTokenAnswer, type ChatTokenDb, chatTokenCheck } from "./lib/chat-token";
+import { type PlayCheckAnswer, type PlayCheckDb, playCheck } from "./lib/play-check";
 import { type EvalTokenAnswer, type EvalTokenDb, evalTokenCheck } from "./lib/eval-token";
 import type { InboxDb } from "./lib/inbox/store";
 import { type ChatLogDb, chatLogOp } from "./lib/chat-log";
@@ -231,6 +232,17 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async chatToken(req: unknown): Promise<ChatTokenAnswer> {
     if (!allowChatToken()) return { ok: false, error: "rate" };
     return chatTokenCheck(this.env.DB as unknown as ChatTokenDb, req);
+  }
+
+  /**
+   * May the hub post a line with audio (`say --play`; lib/play-check.ts)? The
+   * flag, the deny list, a token's chat:play and dev grant, the rate limit;
+   * each allowed play is audited. Only the host and kind come here, never a
+   * URL. Deny by default; a D1 error throws and the hub refuses.
+   */
+  async playAudio(req: unknown): Promise<PlayCheckAnswer> {
+    if (!allowChatToken()) return { ok: false, error: "rate" };
+    return playCheck(this.env.DB as unknown as PlayCheckDb, req);
   }
 
   /**

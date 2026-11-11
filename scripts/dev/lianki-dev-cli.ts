@@ -87,7 +87,7 @@ ${GLOBAL}
   --pair        let this run ask the owner's devices to pair (not with --as)
 ${EXITS}
 \`lianki-dev <command> --help\` for one command.`,
-  say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] [--voice <id>] "text" | -
+  say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] [--voice <id>] [--play <src> [--title <t>] [--kind file|stream]] "text" | -
   One chat line with the saved grant, then exit (eval.ts say). - reads stdin.
   With --as <lane> the text is sent as 【<lane>】text. Read aloud unless --quiet,
   in the lane's own voice (codex, agy: docs/dev-debug-widget.md, "Lanes and
@@ -99,6 +99,11 @@ ${EXITS}
     aura:<speaker>         a Workers AI Aura-2 speaker (luna orion thalia celeste nestor carina)
     eleven:<id>            an ElevenLabs public preview clip (its own words)
   An unknown id is refused; a voice the phone lacks falls back to the lane's.
+  --play <src> puts audio on the line that his phone plays: an https URL of a
+  file or a stream (mp3 ogg wav webm m4a, HLS .m3u8, Icecast) or file:<id>
+  from My Files; --title names it. Never an IP address or credentials in the
+  URL; the server never fetches it. Flag chat.play-audio; a lane token needs
+  chat:play (docs/li-sound-hub.md, "Playing audio from an agent").
   stdout: the hub's {"type":"said",…} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
@@ -258,7 +263,18 @@ export function labelText(text: string, lane: string | undefined): string {
 }
 
 /** say's flags that take a value: everything else not a flag is the text. */
-const SAY_VALUED = new Set(["--to", "--task-path", "--agent", "--label", "--voice"]);
+const SAY_VALUED = new Set([
+  "--to",
+  "--task-path",
+  "--agent",
+  "--label",
+  "--voice",
+  "--play",
+  "--title",
+  "--kind",
+]);
+/** say's flags a lane token's `lianki chat say` takes too (each with a value). */
+const CHAT_SAY_VALUED = new Set(["--play", "--title", "--kind"]);
 
 /**
  * The argv for `eval.ts <cmd> …` that a subcommand runs, or an Error (usage).
@@ -357,6 +373,7 @@ export function chatArgv(
   if (sub === "say") {
     let text: string | undefined;
     const out: string[] = [];
+    const valued: string[] = [];
     for (let i = 0; i < rest.length; i++) {
       const a = rest[i]!;
       if (a === "--") {
@@ -365,15 +382,20 @@ export function chatArgv(
       }
       if (a === "--quiet") out.push(a);
       else if (a === "--loud") continue;
-      else if (a.startsWith("--"))
+      else if (CHAT_SAY_VALUED.has(a)) {
+        const v = rest[++i];
+        if (v === undefined) return new Error(`${a} needs a value`);
+        valued.push(a, v);
+      } else if (a.startsWith("--"))
         return new Error(`say: ${a} needs the grant path (unset LIANKI_TOKEN)`);
       else if (text === undefined) text = a === "-" ? (stdin ?? "") : a;
       else return new Error(`say takes one text (quote it): ${a}`);
     }
     const body = (text ?? "").trim();
     if (!body) return new Error("say needs a text (or - for stdin)");
-    // The text goes on stdin (`-`), so one starting with "-" is never read as a flag.
-    return Object.assign(["chat", "say", ...out, "-"], { stdin: body });
+    // The text goes on stdin (`-`), so one starting with "-" is never read as a flag;
+    // the public CLI reads `-` as stdin only right after `say` or `--quiet`.
+    return Object.assign(["chat", "say", ...out, "-", ...valued], { stdin: body });
   }
   if (sub === "ask") {
     const out: string[] = [];

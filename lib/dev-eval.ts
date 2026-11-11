@@ -35,6 +35,7 @@ import {
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
 import { LANE_IDS, type LaneId, isLaneId, parseLineVoice } from "../packages/debug-chat/src/voices";
+import { type LineAudio, parsePlay } from "../packages/debug-chat/src/play-audio";
 import { cleanProofs } from "./speaker-proof";
 import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
 
@@ -223,6 +224,11 @@ export type ControllerMessage =
        * or a typed one (voices.ts parseLineVoice: device:, melo:, aura:, eleven:).
        */
       voice?: string;
+      /**
+       * `say --play <src>`: audio the page plays on this line (play-audio.ts
+       * parsePlay; the hub asks the main Worker before posting it).
+       */
+      audio?: LineAudio;
     }
   | { type: "busy"; to?: string; label?: string }
   /**
@@ -455,6 +461,13 @@ export function parseControllerMessage(
     if (parsed && "error" in parsed) return { ok: false, error: parsed.error };
     const lane = isLaneId(m.lane) ? m.lane : undefined;
     const voice = parsed ? (m.voice as string) : undefined;
+    let audio: LineAudio | undefined;
+    if (m.audio !== undefined) {
+      const a = (m.audio && typeof m.audio === "object" ? m.audio : {}) as Record<string, unknown>;
+      const p = parsePlay({ src: a.src, title: a.title, kind: a.kind });
+      if (!p.ok) return { ok: false, error: p.error };
+      audio = p.audio;
+    }
     return {
       ok: true,
       value: {
@@ -467,6 +480,7 @@ export function parseControllerMessage(
         ...(quiet ? { quiet: true as const } : {}),
         ...(lane ? { lane } : {}),
         ...(voice ? { voice } : {}),
+        ...(audio ? { audio } : {}),
       },
     };
   }
