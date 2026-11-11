@@ -142,27 +142,49 @@ export async function prepareChatTurn(
           windowMs: 24 * 60 * 60_000,
         });
         if (!siteLimit.allowed) throw new PrepareRateError();
-        const res = await (deps.fetch ?? fetch)(
-          `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1/chat/completions`,
-          {
-            method: "POST",
-            headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-            signal: AbortSignal.timeout(timeout),
-            body: JSON.stringify({
-              model: PARTNER_AI_MODEL,
-              reasoning_effort: PARTNER_AI_REASONING,
-              temperature: 0,
-              max_tokens: output,
-              messages,
-            }),
-          },
-        );
-        if (!res.ok) throw Error("prepare-provider-failed");
-        const j = (await res.json()) as {
-          choices?: { message?: { content?: string } }[];
+        const signal = AbortSignal.timeout(timeout);
+        let j: {
+          choices?: { message?: { content?: string; refusal?: unknown }; finish_reason?: string }[];
           usage?: { prompt_tokens?: number; completion_tokens?: number };
         };
-        const content = JSON.parse(j.choices?.[0]?.message?.content ?? "null");
+        let content: unknown;
+        try {
+          const res = await (deps.fetch ?? fetch)(
+            `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1/chat/completions`,
+            {
+              method: "POST",
+              headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+              signal,
+              body: JSON.stringify({
+                model: PARTNER_AI_MODEL,
+                reasoning_effort: PARTNER_AI_REASONING,
+                temperature: 0,
+                max_tokens: output,
+                messages,
+              }),
+            },
+          );
+          if (!res.ok) throw new PrepareProviderError("provider-http", res.status);
+          j = await res.json();
+          const choice = j?.choices?.[0];
+          if (choice?.message?.refusal || choice?.finish_reason === "content_filter")
+            throw new PrepareProviderError("provider-refused");
+          const text = choice?.message?.content;
+          if (typeof text !== "string" || !text.trim())
+            throw new PrepareProviderError("provider-invalid-response");
+          // Accept only a complete JSON fence, never JSON extracted from surrounding prose.
+          const trimmed = text.trim();
+          const fenced = /^```json[ \t]*\r?\n([\s\S]*?)\r?\n```$/i.exec(trimmed);
+          content = JSON.parse(fenced ? fenced[1]! : trimmed);
+          if (!content || typeof content !== "object" || Array.isArray(content))
+            throw new PrepareProviderError("provider-invalid-response");
+        } catch (e) {
+          if (e instanceof PrepareProviderError) throw e;
+          if (signal.aborted) throw new PrepareProviderError("provider-timeout");
+          throw new PrepareProviderError(
+            e instanceof SyntaxError ? "provider-invalid-json" : "provider-network",
+          );
+        }
         const tokensIn =
           typeof j.usage?.prompt_tokens === "number" && j.usage.prompt_tokens >= 0
             ? j.usage.prompt_tokens
@@ -181,8 +203,20 @@ export async function prepareChatTurn(
       ? { ok: true, verdict: result.value, charged: result.charged }
       : { ok: false, error: result.reason };
   } catch (e) {
+    if (e instanceof PrepareProviderError)
+      return { ok: false, error: e.code, ...(e.status === undefined ? {} : { status: e.status }) };
     return { ok: false, error: e instanceof PrepareRateError ? "rate" : "model-failed" };
   }
 }
 
 class PrepareRateError extends Error {}
+
+/** Safe diagnostic categories only: never retain provider text, tokens or exception messages. */
+class PrepareProviderError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status?: number,
+  ) {
+    super(code);
+  }
+}

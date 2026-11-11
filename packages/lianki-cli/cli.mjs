@@ -756,16 +756,24 @@ async function cmdChatBridge(c) {
       if (service) return filterDecision(service, { v: 1, message: { text: input.text.slice(0, config.lineChars), source: "stt" }, context: input.context }, {
         fetch: c.deps.fetch, token: c.deps.env.LIANKI_CHAT_FILTER_TOKEN, timeoutMs: config.timeoutMs,
       });
+      let signal;
       try {
         accountToken ??= await needToken(c);
+        signal = AbortSignal.timeout(config.timeoutMs);
         const res = await c.deps.fetch(`${c.base}${CHAT_PATH}`, {
           method: "POST", headers: { authorization: `Bearer ${accountToken}`, "content-type": "application/json" },
-          body: JSON.stringify({ op: "prepare", input }), signal: AbortSignal.timeout(config.timeoutMs),
+          body: JSON.stringify({ op: "prepare", input }), signal,
         });
+        if (!res.ok) {
+          c.deps.err(JSON.stringify({ type: "prepare-unavailable", reason: "prepare-http", status: res.status }));
+          return { action: "forward", turn: "uncertain", reason: "unavailable" };
+        }
         const result = await res.json();
-        if (res.ok && result.ok && result.verdict?.v === 1) return result.verdict;
-        c.deps.err(JSON.stringify({ type: "prepare-unavailable", reason: result.error ?? "server" }));
-      } catch { c.deps.err(JSON.stringify({ type: "prepare-unavailable", reason: "network-or-auth" })); }
+        if (result?.ok && result.verdict?.v === 1) return result.verdict;
+        c.deps.err(JSON.stringify({ type: "prepare-unavailable", reason: result?.error ?? "server", ...(Number.isInteger(result?.status) ? { status: result.status } : {}) }));
+      } catch (e) {
+        c.deps.err(JSON.stringify({ type: "prepare-unavailable", reason: signal?.aborted ? "prepare-timeout" : e instanceof SyntaxError ? "prepare-invalid-json" : "network-or-auth" }));
+      }
       return { action: "forward", turn: "uncertain", reason: "unavailable" };
     },
   });

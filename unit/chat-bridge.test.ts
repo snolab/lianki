@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Readable } from "node:stream";
-import { createChatBridge, filterDecision } from "../packages/lianki-cli/chat-bridge.mjs";
+import {
+  createChatBridge,
+  filterDecision,
+  bridgeConfig,
+  BRIDGE_DEFAULTS,
+} from "../packages/lianki-cli/chat-bridge.mjs";
 import {
   createFilterHandler,
   createWorkersClassifier,
@@ -562,3 +567,61 @@ test("CLI forwards raw speech when cloud preparation has no credits or fails", a
     expect(errors.join("\n")).toContain(failure === "network" ? "network-or-auth" : "no-credits");
   }
 });
+
+test("prepare client deadline leaves provider overhead and only its timeout can be raised", () => {
+  expect(BRIDGE_DEFAULTS.timeoutMs).toBe(6500);
+  expect(
+    bridgeConfig({
+      LIANKI_CHAT_BRIDGE_TIMEOUT_MS: "11000",
+      LIANKI_CHAT_BRIDGE_CONTEXT_LINES: "100",
+    }),
+  ).toMatchObject({ timeoutMs: 11000, contextLines: 12 });
+  expect(bridgeConfig({ LIANKI_CHAT_BRIDGE_TIMEOUT_MS: "99999" }).timeoutMs).toBe(12000);
+  expect(bridgeConfig({ LIANKI_CHAT_BRIDGE_TIMEOUT_MS: "200" }).timeoutMs).toBe(200);
+  expect(bridgeConfig({ LIANKI_CHAT_BRIDGE_TIMEOUT_MS: "NaN" }).timeoutMs).toBe(6500);
+});
+for (const [failure, expected] of [
+  ["http", { reason: "prepare-http", status: 503 }],
+  ["json", { reason: "prepare-invalid-json" }],
+  ["timeout", { reason: "prepare-timeout" }],
+  ["provider", { reason: "provider-http", status: 429 }],
+] as const) {
+  test(`bridge reports safe ${failure} diagnostic and forwards raw once`, async () => {
+    const errors: string[] = [],
+      delivered: any[] = [];
+    const code = await run(["chat", "bridge", "--stdin", "--deliver", "fixture"], {
+      env: { LIANKI_TOKEN: `lk_${"ab".repeat(32)}`, LIANKI_CHAT_BRIDGE_TIMEOUT_MS: "10" },
+      bridgeInput: Readable.from([JSON.stringify(line("diagnostic", "不要删除按钮")) + "\n"]),
+      fetch: async (_url: string, init: RequestInit) => {
+        if (failure === "http") return new Response("SECRET-response-body", { status: 503 });
+        if (failure === "json") return new Response("SECRET-response-body");
+        if (failure === "provider")
+          return Response.json({ ok: false, error: "provider-http", status: 429 });
+        return new Promise((_, reject) => {
+          const timer = setTimeout(() => reject(Error("SECRET-network-message")), 500);
+          init.signal!.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(init.signal!.reason);
+            },
+            { once: true },
+          );
+        });
+      },
+      deliver: async (_target: string, _cwd: string, body: string) => {
+        delivered.push(JSON.parse(body));
+      },
+      out: () => {},
+      err: (s: string) => errors.push(s),
+    });
+    expect(code).toBe(0);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].message.text).toBe("不要删除按钮");
+    expect(errors.map((s) => JSON.parse(s))).toContainEqual({
+      type: "prepare-unavailable",
+      ...expected,
+    });
+    expect(errors.join("\n")).not.toContain("SECRET-");
+  });
+}

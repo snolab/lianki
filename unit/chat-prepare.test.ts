@@ -124,7 +124,7 @@ test("no credits never calls inference; provider failure refunds", async () => {
       { userId: "u_test", input: { ...input, requestId: "req-2" } },
       { fetch: request },
     ),
-  ).toMatchObject({ ok: false, error: "model-failed" });
+  ).toMatchObject({ ok: false, error: "provider-network" });
   expect(await getBalance(env().DB, "u_test")).toBe(100);
 });
 test("D1 limits apply across request IDs before a provider call", async () => {
@@ -147,3 +147,132 @@ test("D1 limits apply across request IDs before a provider call", async () => {
     ),
   ).toMatchObject({ ok: false, error: "rate" });
 });
+
+const answer = JSON.stringify({ action: "forward", turn: "complete", polished: input.text });
+const envelope = (content: string) =>
+  Response.json({
+    choices: [{ message: { content } }],
+    usage: { prompt_tokens: 50, completion_tokens: 20 },
+  });
+for (const [name, request, expected] of [
+  [
+    "provider HTTP rejection",
+    async () => new Response("SECRET-provider-body", { status: 403 }),
+    { error: "provider-http", status: 403 },
+  ],
+  [
+    "provider throttling",
+    async () => new Response("SECRET-provider-body", { status: 429 }),
+    { error: "provider-http", status: 429 },
+  ],
+  [
+    "invalid provider envelope JSON",
+    async () => new Response("SECRET-provider-body"),
+    { error: "provider-invalid-json" },
+  ],
+  [
+    "invalid model JSON",
+    async () => envelope("SECRET-provider-body"),
+    { error: "provider-invalid-json" },
+  ],
+  [
+    "prose around a JSON fence",
+    async () => envelope("explanation\n```json\n" + answer + "\n```"),
+    { error: "provider-invalid-json" },
+  ],
+  [
+    "non-JSON code fence",
+    async () => envelope("```javascript\n" + answer + "\n```"),
+    { error: "provider-invalid-json" },
+  ],
+  [
+    "missing content",
+    async () => Response.json({ choices: [] }),
+    { error: "provider-invalid-response" },
+  ],
+  [
+    "refusal",
+    async () => Response.json({ choices: [{ message: { refusal: "SECRET-provider-body" } }] }),
+    { error: "provider-refused" },
+  ],
+] as const) {
+  test(`${name} returns safe diagnostics and refunds`, async () => {
+    const result = await prepareChatTurn(
+      env(),
+      { userId: "u_test", input },
+      { fetch: request as unknown as typeof fetch },
+    );
+    expect(result).toEqual({ ok: false, ...expected });
+    expect(JSON.stringify(result)).not.toContain("SECRET-provider-body");
+    expect(await getBalance(env().DB, "u_test")).toBe(100);
+  });
+}
+test("a complete json fence is accepted and settles usage", async () => {
+  const result = await prepareChatTurn(
+    env(),
+    { userId: "u_test", input },
+    {
+      fetch: (async () => envelope("  ```json\n" + answer + "\n```  ")) as unknown as typeof fetch,
+    },
+  );
+  expect(result).toMatchObject({ ok: true, verdict: { turn: "complete", polished: input.text } });
+  expect(d1.raw().prepare("SELECT note FROM credit_ledger WHERE reason='ai'").get()).toMatchObject({
+    note: "chat.prepare",
+  });
+});
+test("default provider deadline allows responses slower than the old 1500ms budget", async () => {
+  const result = await prepareChatTurn(
+    env(),
+    { userId: "u_test", input },
+    {
+      fetch: (async (_url: unknown, init: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          const timer = setTimeout(() => resolve(envelope(answer)), 1650);
+          init.signal!.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(init.signal!.reason);
+            },
+            { once: true },
+          );
+        })) as typeof fetch,
+    },
+  );
+  expect(result).toMatchObject({ ok: true });
+}, 4000);
+for (const phase of ["fetch", "body"] as const) {
+  test(`provider timeout during ${phase} is identifiable and refunds`, async () => {
+    d1.raw()
+      .prepare(
+        "INSERT INTO config_values(key,value_json,updated_at,updated_by) VALUES(?,?,1,'test')",
+      )
+      .run("chat.prepareTimeoutMs", "200");
+    const request = (async (_url: unknown, init: RequestInit) => {
+      const wait = () =>
+        new Promise<Response>((resolve, reject) => {
+          const timer = setTimeout(() => resolve(envelope(answer)), 1000);
+          init.signal!.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(init.signal!.reason);
+            },
+            { once: true },
+          );
+        });
+      if (phase === "fetch") return wait();
+      const res = envelope(answer);
+      res.json = async () => {
+        await wait();
+        return {};
+      };
+      return res;
+    }) as typeof fetch;
+    expect(await prepareChatTurn(env(), { userId: "u_test", input }, { fetch: request })).toEqual({
+      ok: false,
+      error: "provider-timeout",
+    });
+    expect(await getBalance(env().DB, "u_test")).toBe(100);
+  });
+}
