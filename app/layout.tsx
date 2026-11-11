@@ -142,6 +142,8 @@ export default async function RootLayout({
   const etaBar = flagIn(flags, ETA_FLAG);
   // A new version applies itself on a clean page (lib/auto-update.ts); off: the Refresh button.
   const autoUpdate = flagIn(flags, "app.auto-update");
+  // An agent's audio lines play on his phone (docs/li-sound-hub.md); dev holders only (the flag's audience).
+  const playAudio = flagIn(flags, "chat.play-audio");
   const boots = {
     strings: partner,
     leave,
@@ -152,6 +154,7 @@ export default async function RootLayout({
     etaBar,
     liHub,
     autoUpdate,
+    playAudio,
   };
   const box = boxConfig();
   return (

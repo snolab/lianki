@@ -229,6 +229,9 @@ import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
 import { type ScrollBox, forwardWheel } from "./wheel-forward";
 import { AskCard } from "./AskCard";
+import { PlayChip } from "./PlayChip";
+import { browserPlayEnv, liPlayer } from "./li-player";
+import { lineAudioOf } from "./play-audio";
 import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
@@ -790,6 +793,11 @@ export type DebugChatProps = {
    * lists each. Needs `treeSource`.
    */
   etaBar?: boolean;
+  /**
+   * Flag `chat.play-audio` on a `dev` holder's own thread: a line's audio
+   * (`say --play`) gets its ▶ chip (PlayChip.tsx, li-player.ts). Off: no chip.
+   */
+  playAudio?: boolean;
   /** This page's timer saw a task's estimate run out, unsent: tell the hub (once per estimate). */
   onEtaDue?: (id: string) => void;
   /**
@@ -894,12 +902,29 @@ export function DebugChat({
   files,
   onHistory,
   etaBar = false,
+  playAudio = false,
   onEtaDue,
   etaSource,
   fullScreen: fullScreenFlag = false,
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
+  // Li's player (li-player.ts): one per page; made only with the flag on.
+  const player = useMemo(() => (playAudio ? liPlayer(browserPlayEnv() ?? undefined) : null), [playAudio]);
+  useEffect(() => {
+    if (!player || typeof window === "undefined") return;
+    // Any tap on the page primes its element, so a later line may play by itself (iOS).
+    return unlockOnGesture(window, () => {
+      if (activationNow() === false) return false;
+      player.unlock();
+      return true;
+    });
+  }, [player]);
+  /** A line's ▶ chip, when it carries audio and the flag is on. */
+  const playChip = (m: ChatMessage) => {
+    const a = player && m.from === "agent" ? lineAudioOf(m.audio) : undefined;
+    return a ? <PlayChip id={m.id} audio={a} player={player} /> : null;
+  };
   /**
    * Agent lines with their lane (voices.ts): a `【lane】` prefix becomes the name tag and mark.
    * A line inside a summary (`collapsedInto`) is not shown: the summary's tap shows it as heard.
@@ -4120,6 +4145,7 @@ export function DebugChat({
               sendText={(text) => sendRef.current(text)}
             />
           )}
+          {playChip(m)}
           {p.mark}
           {asLine && <span className="sr-only"> · {showAll}</span>}
         </div>
@@ -4539,6 +4565,7 @@ export function DebugChat({
                             sendText={(text) => sendRef.current(text)}
                           />
                         )}
+                        {playChip(m)}
                         {polish(m).mark}
                         {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
                         {(() => {

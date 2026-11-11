@@ -451,6 +451,55 @@ describe("DebugHub chat", () => {
     expect(chats(p).some((m) => m.text === "<b>hi</b>")).toBe(false);
   });
 
+  it("say --play: the main Worker says yes first (host and kind only), then the line carries its audio", async () => {
+    const asked: Record<string, unknown>[] = [];
+    let answer: unknown = { ok: true };
+    const { hub, page, controller, msg, pairOf } = setup({
+      SESSIONS: {
+        live: async () => "gone",
+        playAudio: async (req: Record<string, unknown>) => (asked.push(req), answer),
+      },
+    });
+    const p = page();
+    const c = controller("main lane");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    const audio = { src: "https://cdn.example.com/p/a.mp3?sig=secret", title: "Lesson" };
+    await msg(c, { type: "say", text: "listen", audio });
+    expect(asked).toEqual([
+      { via: "grant", label: "main lane", host: "cdn.example.com", kind: "file" },
+    ]);
+    expect(chats(p).at(-1)).toMatchObject({
+      text: "listen",
+      audio: { src: audio.src, kind: "file", mime: "audio/mpeg", title: "Lesson" },
+    });
+    expect((await hub.history()).at(-1)?.audio?.kind).toBe("file");
+    // Refused (the flag off): nothing posted, the sender told how to turn it on.
+    answer = { ok: false, error: "flag" };
+    const before = chats(p).length;
+    await msg(c, { type: "say", text: "again", audio });
+    expect(chats(p).length).toBe(before);
+    expect(String(c.last("error")?.error)).toContain("dev/flags#chat.play-audio");
+    // A bad src never reaches the main Worker.
+    await msg(c, { type: "say", text: "x", audio: { src: "https://127.0.0.1/a.mp3" } });
+    expect(asked.length).toBe(2);
+    expect(String(c.last("error")?.error)).toContain("IP");
+    // The main Worker failing: refused, never posted.
+    answer = Promise.reject(new Error("d1 down"));
+    await msg(c, { type: "say", text: "y", audio });
+    expect(chats(p).length).toBe(before);
+    expect(String(c.last("error")?.error)).toContain("nothing was sent");
+  });
+
+  it("say --play with an older main Worker (no playAudio): refused", async () => {
+    const { page, controller, msg, pairOf } = setup({ SESSIONS: { live: async () => "gone" } });
+    const p = page();
+    const c = controller("main lane");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    await msg(c, { type: "say", text: "x", audio: { src: "https://cdn.example.com/a.mp3" } });
+    expect(chats(p).some((m) => m.text === "x")).toBe(false);
+    expect(String(c.last("error")?.error)).toContain("nothing was sent");
+  });
+
   it("say --quiet: the hub keeps the flag (true only) and forwards it, live and in history; an old loud is dropped", async () => {
     const { hub, page, controller, msg, pairOf } = setup();
     const p = page();

@@ -7,6 +7,7 @@
 
 import type { Ask, AskAnswer } from "./ask";
 import type { LaneId, VoiceId } from "./voices";
+import type { LineAudio } from "./play-audio";
 
 export * from "./node-path";
 
@@ -133,6 +134,12 @@ export type ChatMessage = {
    * Absent = its lane's.
    */
   voice?: VoiceId | (string & {});
+  /**
+   * Audio to play on this line (`say --play <src>`; play-audio.ts, li-player.ts;
+   * docs/li-sound-hub.md, "Playing audio from an agent"): checked by the hub,
+   * played only by the page. Absent = none.
+   */
+  audio?: LineAudio;
   /**
    * The mic's wake-word mode when the owner sent the line (docs/wake-word.md):
    * "active", or "passive" (it came through "Linky"). Absent = the mic was

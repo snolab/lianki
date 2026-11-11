@@ -720,6 +720,29 @@ describe("chat (your own thread, with a chat token)", () => {
     expect(seen[1]!.body.quiet).toBe(true);
   });
 
+  test("say --play sends the audio with the line; a bad src is a usage error before any call", async () => {
+    const seen: Call[] = [];
+    const h = harness({ env, server: chatServer(seen) });
+    const r = await h.run(
+      "chat",
+      "say",
+      "--play",
+      "https://cdn.example.com/a.mp3",
+      "--title",
+      "L3",
+      "listen",
+    );
+    expect(r.code).toBe(0);
+    expect(seen[0]!.body).toEqual({
+      op: "say",
+      text: "listen",
+      play: { src: "https://cdn.example.com/a.mp3", title: "L3" },
+    });
+    const bad = await h.run("chat", "say", "--play", "http://cdn.example.com/a.mp3", "x");
+    expect(bad.code).toBe(1);
+    expect(seen.length).toBe(1);
+  });
+
   test("say - reads the line from stdin (yargs alone drops a bare -)", async () => {
     const seen: Call[] = [];
     const h = harness({ env, server: chatServer(seen), stdin: "  -starts with a dash\n" });

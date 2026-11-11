@@ -4,7 +4,7 @@
  * (debug.ts calls in here). docs/lianki-dev-cli.md, "lianki chat".
  *
  *   POST /api/version/chat  Authorization: Bearer lk_…
- *        {op:"say", text, quiet?}                → {ok, id}
+ *        {op:"say", text, quiet?, play?:{src,title?,kind?}} → {ok, id}   (play: chat:play)
  *        {op:"ask", question, options | questions, expiresAt?} → {ok, id, askId}
  *        {op:"read", limit?}                     → {ok, thread, lane, messages}
  *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?};
@@ -40,6 +40,7 @@ import type { ChatMessage, EditedEvent } from "../../../packages/debug-chat/src/
 import { type Ask, parseAsk, askText } from "../../../packages/debug-chat/src/ask";
 import { OWNER_THREAD, chatText, isUserId } from "../../../lib/dev-eval";
 import { laneOf } from "../../../packages/debug-chat/src/voices";
+import { parsePlay, playRefusal, srcHost } from "../../../packages/debug-chat/src/play-audio";
 
 export const CHAT_PATH = "/api/version/chat";
 export const REVOKED_PATH = "/internal/chat-tokens/revoked";
@@ -97,6 +98,8 @@ export type ChatTokenRpc = {
     tokenHash?: string;
     client?: string;
   }): Promise<unknown>;
+  /** `say --play` (lib/play-check.ts): chat:play, the flag, deny list, rate; audited. */
+  playAudio?(req: Record<string, unknown>): Promise<unknown>;
 };
 
 export interface TokenHost {
@@ -211,13 +214,58 @@ export class TokenChat {
     } satisfies ChatMessage & { thread: string };
   }
 
-  private async say(thread: string, lane: string, m: Record<string, unknown>) {
+  private async say(
+    thread: string,
+    lane: string,
+    m: Record<string, unknown>,
+    cred: { token: string } | { tokenHash: string },
+  ) {
     const text = typeof m.text === "string" ? laneText(lane, m.text.trim()) : undefined;
     if (!text) return { error: "say needs text (at most the chat's limit)" };
-    const line = this.line(thread, lane, text, m.quiet === true ? { quiet: true } : {});
+    // `say --play`: parsed here (never fetched), then the main Worker's yes (chat:play, flag, rate).
+    let audio: ChatMessage["audio"];
+    if (m.play !== undefined) {
+      const raw = (m.play && typeof m.play === "object" ? m.play : {}) as Record<string, unknown>;
+      const p = parsePlay({ src: raw.src, title: raw.title, kind: raw.kind });
+      if (!p.ok) return { error: p.error };
+      const refused = await this.playVerdict({
+        via: "token",
+        ...cred,
+        host: srcHost(p.audio.src),
+        kind: p.audio.kind,
+      });
+      if (refused) return { error: refused };
+      audio = p.audio;
+    }
+    const line = this.line(thread, lane, text, {
+      ...(m.quiet === true ? { quiet: true } : {}),
+      ...(audio ? { audio } : {}),
+    });
     await this.host.post(line);
-    console.log(JSON.stringify({ msg: "debug.token-say", lane, owner: thread === OWNER_THREAD }));
+    console.log(
+      JSON.stringify({
+        msg: "debug.token-say",
+        lane,
+        owner: thread === OWNER_THREAD,
+        ...(audio ? { play: { host: srcHost(audio.src), kind: audio.kind } } : {}),
+      }),
+    );
     return { id: line.id };
+  }
+
+  /** null: the audio line may go; else why not (deny by default). */
+  private async playVerdict(req: Record<string, unknown>): Promise<string | null> {
+    const rpc = this.host.rpc();
+    if (!rpc?.playAudio) return playRefusal("unavailable");
+    try {
+      const a = (await rpc.playAudio(req)) as { ok?: unknown; error?: unknown } | null;
+      return a?.ok === true ? null : playRefusal(String(a?.error ?? "unavailable"));
+    } catch (e) {
+      console.error(
+        JSON.stringify({ msg: "debug.token-play-failed", error: String(e).slice(0, 200) }),
+      );
+      return playRefusal("unavailable");
+    }
   }
 
   private async ask(thread: string, lane: string, m: Record<string, unknown>) {
@@ -273,7 +321,9 @@ export class TokenChat {
       });
     }
     const out =
-      op === "say" ? await this.say(thread, v.lane, body) : await this.ask(thread, v.lane, body);
+      op === "say"
+        ? await this.say(thread, v.lane, body, { token: m[1]! })
+        : await this.ask(thread, v.lane, body);
     if ("error" in out) return json({ ok: false, error: out.error }, 400);
     return json({ ok: true, lane: v.lane, ...out });
   }
@@ -317,7 +367,9 @@ export class TokenChat {
     // The thread is the one this socket authenticated for; an account cannot change hands.
     if (thread !== a.thread) return close(ws, TOKEN_REFUSED, "refused");
     const out =
-      m.type === "say" ? await this.say(thread, v.lane, m) : await this.ask(thread, v.lane, m);
+      m.type === "say"
+        ? await this.say(thread, v.lane, m, { tokenHash: a.hash! })
+        : await this.ask(thread, v.lane, m);
     if ("error" in out) return send(ws, { type: "error", error: out.error });
     send(ws, m.type === "say" ? { type: "sent", ...out } : { type: "asked", ...out });
   }

@@ -182,6 +182,13 @@ export const FLAGS = {
     default: false,
     audience: "owner",
   },
+  "chat.play-audio": {
+    description:
+      "助手在你手机上播放音频（docs/li-sound-hub.md「Playing audio from an agent」）：助手用 say --play <https 地址 | file:我的文件> 发一条带 ▶ 的消息，可以是音频文件，也可以是直播流（HLS / Icecast）。只在手机页面、页面在前台、已经点过一下（声音已解锁）、麦克风没开时自动播放；否则 ▶ 等你点，并说明原因。Mac 上永远不自动播放。Li 说话时它暂停，等 Li 说完再继续；不改任何音量。服务器从不去抓那个地址。通道令牌要有「chat:play」权限，每条都记进安全日志（谁、哪个网站、什么时候），限速和禁止的网站在 /dev/config（chat.play.*）。关闭（默认）= 不显示 ▶，带音频的消息被拒绝。",
+    default: false,
+    group: "stt",
+    audience: "owner",
+  },
   "partner.ai-reply": {
     description:
       "学习伙伴由 AI 回复（除你以外的所有用户）：打开后，普通登录用户在任意页面都能看到学习伙伴聊天框（不用调试模式），他们的消息由 Cloudflare Workers AI 上的 DeepSeek 模型在服务器端回复，只读他们自己的词表、到期卡片和学习计划。你的线程永远不经过模型，仍是你的 Claude 通道；通道先回复则 AI 不再回复。每人每日 token 上限和全站每日花费上限在 lib/partner-ai-config.ts。关闭（默认）= 照旧：只有调试模式的朋友能聊，由开发通道回复。",

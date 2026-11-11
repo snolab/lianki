@@ -24,6 +24,7 @@ const SCOPE_TEXT: Record<ScopeId, { label: string; hint: string }> = {
   "chat:read": { label: "scopeChatRead", hint: "scopeChatReadHint" },
   "chat:write": { label: "scopeChatWrite", hint: "scopeChatWriteHint" },
   "chat:ask": { label: "scopeChatAsk", hint: "scopeChatAskHint" },
+  "chat:play": { label: "scopeChatPlay", hint: "scopeChatPlayHint" },
   eval: { label: "scopeEval", hint: "scopeEvalHint" },
 };
 

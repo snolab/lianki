@@ -68,3 +68,109 @@ versioning.
    by itself; each mic user asks the hub for a capture.
 2. The hub decides: one capture per page, one sink at a time by rank, the
    cues and the bed included.
+
+## Playing audio from an agent
+
+The owner, 2026-11-11 20:20 JST: "ensure we are able to play any audio stream
+by agent". Phase 1 ships dark behind **`chat.play-audio`** (audience owner,
+default off, <https://lianki.com/dev/flags#chat.play-audio>).
+
+```bash
+lianki-dev say --play https://cdn.example.com/lesson3.mp3 --title "Lesson 3" "listen to this"
+lianki-dev say --play https://radio.example.org/live.m3u8 "the station"     # HLS: kind stream
+lianki-dev say --play file:0123456789abcdef0123 "your recording"           # from My Files
+lianki chat say --play https://ice.example.net/stream --kind stream "live"  # a lane token (chat:play)
+```
+
+**The line.** The hub stores `audio: {src, kind, mime?, title?}` on the chat
+line (`wire.ts` ChatMessage.audio). `kind` is `file | stream | rtc | gen |
+webaudio`; the wire takes `file` and `stream` today and refuses the others by
+name. One parser, `play-audio.ts parsePlay`, is used by eval.ts, the public
+CLI's shape check, the hub, the token path and the page (a stored line is
+parsed again before its chip shows).
+
+**What a src may be.** `https://` only; no user name or password in it; a
+named public host (never an IP literal in any spelling, never `localhost`,
+`.local`, `.internal`, `.lan`, `.home.arpa` or a one-label name); not on the
+deny list (config `chat.play.denyHosts`, empty by default: "any stream" means
+no allowlist). `file:<20 hex>` is a My Files id. The kind is guessed from the
+path: an audio extension is `file`, `.m3u8` is a `stream` with the HLS type,
+anything else (Icecast `/stream`) is a `stream`; `--kind` overrides.
+
+**The server never fetches a src** (no SSRF). The hub sends the main Worker
+only the host and the kind (`DebugSessions.playAudio`, `lib/play-check.ts`),
+which answers yes or no: the flag on; the host not denied; for a lane token,
+`chat:play` and a `dev` holder's account (the flag's audience, a permission,
+not an email); per token (or per sender on the grant path) at most
+`chat.play.perTenMin` audio lines in 10 minutes (default 20, D1-counted).
+Every allowed one is in `security_audit` as `chat.play` (actor: the token's
+account or `grant`; subject: the host; detail: the kind and the token's name
+or the sender). A refusal goes back to the sender with what to do (the flag
+link, the config key, the permission); an older main Worker or a failed call
+refuses.
+
+**My Files.** The page asks `POST /api/my/files/<id>/play` (its own session,
+same origin, the My Files gate and the flag): for the user's own audio file,
+a URL `…/play?exp&sig`, HMAC-signed (owner, file, expiry; a key derived from
+`AUTH_SECRET` with its own label), valid one hour. `GET` on it serves the file
+inline with byte ranges (iOS asks for ranges while it plays); expired, forged,
+another file's signature or a non-audio file: 404 (`lib/import/play-url.ts`).
+
+**On the page.** With the flag on and the viewer holding `dev` in their own
+thread, a line with audio shows its ▶ chip (`PlayChip.tsx`): play/pause, stop,
+the title, a progress bar for a file or a "Live" badge for a stream, and a
+line in words when it is not playing by itself. It plays **by itself** only
+when all hold (`autoplayDecision`): a live line (not history), not a desktop
+(`isDesktop()`: his Mac never plays by itself), the tab that reads replies
+aloud, not `--quiet`, the page visible, his mic off, and the player already
+unlocked (a tap on this page primed its element, or the browser says the page
+was activated). Otherwise the ▶ waits for a tap and says why ("🔊 Tap to
+play", "The mic is on: turn it off to play"). A browser refusal
+(NotAllowedError) is the same tap, never silence; a load failure or a stream
+the browser cannot play says so. Volume is never touched.
+
+**Li's player** (`li-player.ts`, `globalThis.__lkLiPlay`, versioned) is the one
+way line audio plays, every kind through the same object, so they share the
+controls, the rules and the log:
+
+- **sources by kind**: `register(kind, source)`; `file` and `stream` play on
+  the page's one `<audio>` element (HLS only where the browser plays it
+  itself: Safari, iOS; elsewhere "this browser can't play this stream");
+- **the page's audio owner**: it claims as `AUDIO_PRIO.play` (2, a card's rank):
+  Li's voice (3) pauses it and it goes on after; it pauses the reader's
+  paragraph (1); a newer equal claim wins. A line whose caption Li reads
+  plays right after the caption;
+- **the mic**: a play with his mic open is held with the reason; the mic
+  opening (the `__lkMic` session, or /vibe's room) pauses it;
+- **the log**: `devLog` `{ev:"play", id, outcome, host, kind}` and
+  `{ev:"play-auto", play, why}` (host only, never the URL).
+
+**Tests** (fakes only; nothing plays): `unit/play-audio.test.ts` (the src
+check, the autoplay decision), `unit/li-player.test.ts` (the player on a fake
+element: blocked → tap, mic, Li's claim, sources, file URLs),
+`unit/play-chip.test.ts`, `unit/play-check.test.ts` (flag, deny list, scope,
+rate, audit; the token path through the hub), `unit/debug-hub.test.ts`
+("say --play"), `unit/play-url.test.ts`, `unit/play-cli.test.ts` and
+`unit/lianki-cli.test.ts` (the flags).
+
+### Next phases (not built)
+
+The kinds are already in the type and the player takes a source per kind, so
+none of these changes the line or the chip.
+
+2. **`rtc`: a live stream over WebRTC** (the voice lane owns WebRTC,
+   [local-stt.md](local-stt.md), "His own Mac over WebRTC"): an Opus track
+   from the Mac to the phone on the existing peer connection (today a
+   DataChannel only). Its source attaches the track to the element
+   (`srcObject`); the mic rule matters most here (echo).
+2. **`gen`: a server-generated stream**: ffmpeg or a TTS engine on the Mac or
+   a Worker produces audio as it goes, delivered as HTTP chunked audio or HLS
+   (then it plays like a `stream`), or as a WebRTC track through the voice
+   lane (then like `rtc`). The hub still never fetches it; the page does.
+3. **`webaudio`: the phone builds the sound** in WebAudio from a declarative
+   recipe on the line (tones, envelopes, sample sequences, several sources
+   mixed): data only, read by one fixed interpreter in the bundle. Code from
+   the wire never runs; anything beyond the recipe goes through the eval
+   grant as today.
+- hls.js for HLS where the browser has no native HLS (Chrome on Android,
+  desktop Chrome): a source registered for `stream` with the HLS type.

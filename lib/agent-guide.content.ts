@@ -335,6 +335,24 @@ const dictionary = {
       mr: "चॅटमध्ये विचारणे: उत्तरांच्या बटणांसह प्रश्न कार्ड पाठवणे. त्याचे उत्तर फक्त वापरकर्ता Lianki मध्ये बटण दाबून देऊ शकतो.",
       ko: "채팅에서 질문하기: 답변 버튼이 있는 질문 카드 올리기. 답은 사용자만 Lianki에서 버튼을 눌러 할 수 있습니다.",
     }),
+    scopeChatPlay: t({
+      en: "Play audio in the chat: post a message with an https audio link (a file or a live stream) in the field play; the user's phone shows a play button and may play it. The server never opens the link.",
+      zh: "在聊天里播放音频：在 play 字段里放一个 https 音频链接（文件或直播流）发消息；用户的手机显示播放按钮，可以播放。服务器从不打开这个链接。",
+      hi: "चैट में ऑडियो चलाना: play फ़ील्ड में https ऑडियो लिंक (फ़ाइल या लाइव स्ट्रीम) के साथ संदेश भेजें; उपयोगकर्ता के फ़ोन पर चलाने का बटन दिखता है। सर्वर लिंक कभी नहीं खोलता।",
+      es: "Reproducir audio en el chat: publicar un mensaje con un enlace de audio https (un archivo o una emisión en directo) en el campo play; el teléfono del usuario muestra un botón para reproducirlo. El servidor nunca abre el enlace.",
+      fr: "Lire de l'audio dans le chat : publier un message avec un lien audio https (un fichier ou un flux en direct) dans le champ play ; le téléphone de l'utilisateur affiche un bouton de lecture. Le serveur n'ouvre jamais le lien.",
+      ar: "تشغيل صوت في المحادثة: نشر رسالة برابط صوتي https (ملف أو بث مباشر) في الحقل play؛ يعرض هاتف المستخدم زر تشغيل. لا يفتح الخادم الرابط أبدًا.",
+      bn: "চ্যাটে অডিও চালানো: play ঘরে একটি https অডিও লিংক (ফাইল বা লাইভ স্ট্রিম) দিয়ে বার্তা পাঠান; ব্যবহারকারীর ফোনে চালানোর বোতাম দেখা যায়। সার্ভার কখনো লিংকটি খোলে না।",
+      pt: "Tocar áudio no chat: enviar uma mensagem com um link de áudio https (um arquivo ou uma transmissão ao vivo) no campo play; o telefone do usuário mostra um botão para tocar. O servidor nunca abre o link.",
+      ru: "Аудио в чате: отправить сообщение со ссылкой https на аудио (файл или прямой эфир) в поле play; телефон пользователя покажет кнопку воспроизведения. Сервер никогда не открывает ссылку.",
+      ur: "چیٹ میں آڈیو چلانا: play فیلڈ میں https آڈیو لنک (فائل یا لائیو اسٹریم) کے ساتھ پیغام بھیجیں؛ صارف کے فون پر چلانے کا بٹن دکھتا ہے۔ سرور لنک کبھی نہیں کھولتا۔",
+      id: "Memutar audio di chat: kirim pesan dengan tautan audio https (berkas atau siaran langsung) di kolom play; ponsel pengguna menampilkan tombol putar. Server tidak pernah membuka tautan itu.",
+      de: "Audio im Chat abspielen: eine Nachricht mit einem https-Audio-Link (Datei oder Livestream) im Feld play posten; das Handy der Person zeigt einen Abspielknopf. Der Server öffnet den Link nie.",
+      ja: "チャットで音声を再生：play フィールドに https の音声リンク（ファイルまたはライブ配信）を入れてメッセージを投稿します。ユーザーのスマホに再生ボタンが出ます。サーバーはリンクを開きません。",
+      sw: "Kucheza sauti kwenye gumzo: tuma ujumbe wenye kiungo cha sauti cha https (faili au mtiririko wa moja kwa moja) katika sehemu ya play; simu ya mtumiaji huonyesha kitufe cha kucheza. Seva haifungui kiungo kamwe.",
+      mr: "चॅटमध्ये ऑडिओ वाजवणे: play क्षेत्रात https ऑडिओ लिंक (फाइल किंवा थेट प्रवाह) देऊन संदेश पाठवा; वापरकर्त्याच्या फोनवर वाजवण्याचे बटण दिसते. सर्व्हर कधीही लिंक उघडत नाही.",
+      ko: "채팅에서 오디오 재생: play 필드에 https 오디오 링크(파일 또는 라이브 스트림)를 넣어 메시지를 올립니다. 사용자의 휴대폰에 재생 버튼이 나타납니다. 서버는 링크를 절대 열지 않습니다.",
+    }),
     scopeEval: t({
       en: "Run code on the user's open Lianki pages: only for Lianki's own developer tools, not through this API. Never use it unless the user asks for exactly that.",
       zh: "在用户打开的炼记页面上运行代码：只供炼记自己的开发者工具使用，不经过这个 API。除非用户明确要求，否则绝不使用。",
@@ -951,6 +969,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "List item under 'What this token may do' in the AI-assistant instructions, for the 'Post in the chat' permission: post messages in the user's chat, each labelled with the token's name. Starts with the permission's name and a colon.",
   scopeChatAsk:
     "List item under 'What this token may do' in the AI-assistant instructions, for the 'Ask in the chat' permission: post a question card with answer buttons that only the user can answer by tapping in Lianki. Starts with the permission's name and a colon.",
+  scopeChatPlay:
+    "List item under 'What this token may do' in the AI-assistant instructions, for the 'Play audio in the chat' permission: post a message with an https audio link (a file or a live stream) in the JSON field play; the user's phone shows a play button; the server never opens the link. Keep 'play' and 'https' as is. Starts with the permission's name and a colon.",
   scopeEval:
     "List item under 'What this token may do', only for the site owner's tokens with the 'Run code on your pages' permission: it is for Lianki's own developer tools, not this API, and the assistant must never use it unless asked for exactly that. Serious, a warning.",
   cannot:

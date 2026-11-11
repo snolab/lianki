@@ -599,7 +599,25 @@ function chatSocket(c, token, { history = 0, onReady, onEvent, timeoutMs }) {
   });
 }
 
+/**
+ * `say --play <src> [--title …] [--kind file|stream]`: audio the user's phone
+ * may play on this line. Only its shape is checked here (https:// or
+ * file:<id>); lianki.com checks the rest and never fetches it.
+ */
+export function playOf(argv) {
+  if (argv.play === undefined) return undefined;
+  const src = String(argv.play ?? "").trim();
+  if (!/^(https:\/\/\S+|file:[0-9a-f]{20})$/.test(src))
+    throw usage("--play takes an https URL or file:<id> (a My Files id)", 'lianki chat say --play https://example.com/a.mp3 "listen"');
+  const kind = argv.kind === undefined ? undefined : String(argv.kind);
+  if (kind !== undefined && kind !== "file" && kind !== "stream")
+    throw usage("--kind is file or stream", 'lianki chat say --play https://radio.example/live --kind stream "live"');
+  const title = argv.title === undefined ? undefined : String(argv.title).trim();
+  return { src, ...(title ? { title } : {}), ...(kind ? { kind } : {}) };
+}
+
 async function cmdChatSay(c) {
+  const play = playOf(c.argv);
   const token = await needToken(c);
   const parts = (c.argv.text ?? []).map(String);
   if (c.argv.stdin && parts.length > 0) throw usage("say takes its text or - (stdin), not both", 'lianki chat say "PR #12 is green"');
@@ -608,7 +626,7 @@ async function cmdChatSay(c) {
   const { data } = await call(c, token, {
     method: "POST",
     path: CHAT_PATH,
-    body: { op: "say", text, ...(c.argv.quiet ? { quiet: true } : {}) },
+    body: { op: "say", text, ...(c.argv.quiet ? { quiet: true } : {}), ...(play ? { play } : {}) },
   });
   emit(c, "chat say", { id: data.id, lane: data.lane ?? null }, (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`);
 }
@@ -843,9 +861,16 @@ function build(args, deps, box) {
                 y
                   .positional("text", { type: "string", describe: "The line" })
                   .option("quiet", { type: "boolean", describe: "Shown, never read aloud" })
+                  .option("play", {
+                    type: "string",
+                    describe: "Audio the phone plays on this line: an https URL (file or stream) or file:<id> (needs chat:play)",
+                  })
+                  .option("title", { type: "string", describe: "With --play: a short name on its play button" })
+                  .option("kind", { type: "string", describe: "With --play: file or stream (default: from the URL)" })
                   .option("stdin", { type: "boolean", hidden: true }),
                 [
                   ['lianki chat say "PR #12 is green"', "→ 【<token name>】PR #12 is green"],
+                  ['lianki chat say --play https://example.com/hello.mp3 "listen to this"', "a line with a ▶ on the phone"],
                   ["git log -1 --format=%s | lianki chat say -", ""],
                 ],
               ),
