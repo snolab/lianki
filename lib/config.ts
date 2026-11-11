@@ -22,6 +22,7 @@
  * Client-safe: no D1 here.
  */
 import { z } from "zod";
+import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
 
 export type ConfigAudience = "server" | "public";
 
@@ -212,6 +213,29 @@ export const CONFIG = {
     description:
       "任务标成「完成但未验证」时，自动建一个「verify: <名字>」子任务交给同一条线，给它多少分钟的预计时间。",
   }),
+  // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts;
+  // docs/li-sound-hub.md, "Pronunciation table"): handed to the chat by the root layout.
+  "voice.lexicon": {
+    default: DEFAULT_LEXICON as LexEntry[],
+    schema: z
+      .array(
+        z
+          .object({
+            term: z.string().min(1).max(LEX_LIMITS.term),
+            say: z.string().min(1).max(LEX_LIMITS.say),
+            lang: z.string().regex(LEX_LANG, "a language: zh, ja, zh-TW…").optional(),
+            ignoreCase: z.boolean().optional(),
+            ph: z.string().min(1).max(LEX_LIMITS.ph).optional(),
+            alphabet: z.enum(["ipa", "x-sampa"]).optional(),
+          })
+          .strict(),
+      )
+      .max(LEX_LIMITS.entries) as z.ZodType<LexEntry[]>,
+    group: "voice",
+    audience: "public",
+    description:
+      'Li 朗读时的读音表（JSON 数组）：每条 {term 写法, say 读法, lang 可选语言如 zh / ja / zh-TW, ignoreCase 可选不分大小写, ph 可选音标}。只改读出来的声音，屏幕上的文字不变。整词匹配、默认区分大小写；同一个词有几条时，语言最具体的那条生效（zh-TW 胜过 zh，zh 胜过不写语言）。例：{"term":"WebRTC","say":"Web R T C"}。',
+  },
   // The voiceprint in his account (docs/local-stt.md, "Voiceprint in your account"):
   // handed to the panel by GET /api/my/voiceprint.
   "voiceprint.extractor": {

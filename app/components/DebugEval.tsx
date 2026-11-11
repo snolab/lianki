@@ -37,6 +37,7 @@ import {
   cleanTiming,
 } from "@lianki/debug-chat/wire";
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
+import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
@@ -155,8 +156,14 @@ export function DebugEval({
   etaBar = false,
   fullScreen = false,
   liHub = false,
+  lexicon,
   box = null,
 }: {
+  /**
+   * The read-aloud pronunciation table (config `voice.lexicon`, from the root
+   * layout): handed to the voice before anything is read. None: its default.
+   */
+  lexicon?: unknown;
   /**
    * On a box: its sign-in config (lib/box-oauth/mode.ts). The chat then talks only
    * to lianki.com's hub with a box:chat ticket, never to the box's own host.
@@ -176,6 +183,8 @@ export function DebugEval({
   /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
   liHub?: boolean;
 } = {}) {
+  // Idempotent and cheap: the live table is in place before the first reply is read.
+  if (lexicon !== undefined) setLexicon(lexicon);
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
   const devRef = useRef(dev);
