@@ -1,6 +1,6 @@
 module lianki.com/stt-peer
 
-go 1.27.4
+go 1.24.0
 
 require (
 	github.com/coder/websocket v1.8.15

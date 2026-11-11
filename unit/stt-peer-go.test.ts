@@ -4,7 +4,7 @@
  * registry's challenge signature, and a page reaching a fake speech server over
  * a real WebRTC DataChannel through it (order kept, the final's audio booked,
  * a session past capacity refused). Runs `go test` where Go is installed (on
- * the speech server: ~/.cache/lianki-stt/toolchain/go); skipped elsewhere (CI).
+ * the speech server: ~/.cache/lianki-stt/toolchain/go, go.mod needs 1.24+); skipped elsewhere (CI).
  */
 import { describe, expect, it } from "bun:test";
 import { existsSync } from "node:fs";
@@ -12,7 +12,8 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 const LOCAL_GO = join(homedir(), ".cache/lianki-stt/toolchain/go/bin/go");
-const GO = existsSync(LOCAL_GO) ? LOCAL_GO : Bun.which("go");
+// Only the speech server's own toolchain: CI's Go is another version and would fetch pion each run.
+const GO = existsSync(LOCAL_GO) ? LOCAL_GO : null;
 const DIR = resolve(import.meta.dir, "../scripts/local-stt/stt-peer");
 
 describe.skipIf(!GO)("stt-peer", () => {
