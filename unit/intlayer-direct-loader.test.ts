@@ -1,9 +1,11 @@
 /**
- * lib/build/intlayer-direct-loader.cjs: browser code's useIntlayer("key")
- * becomes useDictionary(<that dictionary>), so a page ships only the
- * dictionaries it uses, and the browser's lookup table is an empty stub
- * (lib/stubs/intlayer-no-dictionaries.mjs, docs/cold-start.md). The stub is
- * only safe while every client call can be rewritten: the last test holds that.
+ * lib/build/intlayer-direct-loader.cjs: every dictionary lookup by key —
+ * useIntlayer("key") from next-intlayer and next-intlayer/server, and
+ * getIntlayer("key") from intlayer — becomes a direct import of that one
+ * dictionary, so code carries only the dictionaries it uses, and the lookup
+ * table itself is an empty stub (lib/stubs/intlayer-no-dictionaries.mjs,
+ * docs/cold-start.md). The stub is only safe while every lookup can be
+ * rewritten: the last test holds that for the whole app.
  */
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
@@ -11,13 +13,14 @@ import path from "node:path";
 const loader = require("../lib/build/intlayer-direct-loader.cjs") as {
   (this: { resourcePath: string; rootContext?: string }, source: string): string;
   rewrite: (source: string, resourcePath: string, root: string) => string;
+  leftovers: (source: string) => string[];
 };
-const { rewrite } = loader;
+const { rewrite, leftovers } = loader;
 
 const ROOT = "/repo";
 
 describe("the direct-dictionary rewrite", () => {
-  test("a literal key becomes a direct import of its dictionary", () => {
+  test("useIntlayer from next-intlayer becomes useDictionary on that dictionary", () => {
     const src = [
       `"use client";`,
       `import { useIntlayer } from "next-intlayer";`,
@@ -31,28 +34,49 @@ describe("the direct-dictionary rewrite", () => {
     const out = rewrite(src, `${ROOT}/app/components/A.tsx`, ROOT);
     expect(out.startsWith(`"use client";`)).toBe(true);
     expect(out).not.toContain("useIntlayer");
-    expect(out).toContain(`__lkUseDictionary(__lkDict0)`);
-    expect(out).toContain(`__lkUseDictionary(__lkDict1, "ja")`);
-    expect(out.match(/__lkUseDictionary\(__lkDict0\)/g)).toHaveLength(2);
-    expect(out).toContain(`import { useDictionary as __lkUseDictionary } from "next-intlayer";`);
+    expect(out).toContain(`__lk_useDictionary(__lkDict1, "ja")`);
+    expect(out.match(/__lk_useDictionary\(__lkDict0\)/g)).toHaveLength(2);
+    expect(out).toContain(`import { useDictionary as __lk_useDictionary } from "next-intlayer";`);
     expect(out).toContain(`import __lkDict0 from "../../.intlayer/dictionary/app-shell.json";`);
     expect(out).toContain(`import __lkDict1 from "../../.intlayer/dictionary/words-page.json";`);
   });
 
-  test("other names imported beside useIntlayer stay", () => {
-    const src = `import { useIntlayer, useLocale } from "next-intlayer";\nconst x = useIntlayer("a");`;
-    const out = rewrite(src, `${ROOT}/a.tsx`, ROOT);
-    expect(out).toContain(`import { useLocale } from "next-intlayer"`);
-    expect(out).toContain(`import __lkDict0 from "./.intlayer/dictionary/a.json";`);
+  test("getIntlayer from intlayer becomes getDictionary, other names stay", () => {
+    const src = `import { getIntlayer, t } from "intlayer";\nconst x = getIntlayer("nav-home", locale as never);`;
+    const out = rewrite(src, `${ROOT}/app/page.tsx`, ROOT);
+    expect(out).toContain(`import { t } from "intlayer"`);
+    expect(out).toContain(`__lk_getDictionary(__lkDict0, locale as never)`);
+    expect(out).toContain(`import { getDictionary as __lk_getDictionary } from "intlayer";`);
+    expect(out).toContain(`import __lkDict0 from "../.intlayer/dictionary/nav-home.json";`);
   });
 
-  test("a variable key, or no next-intlayer import, leaves the file as it is", () => {
+  test("useIntlayer from next-intlayer/server becomes its useDictionary", () => {
+    const src = `import { useIntlayer } from "next-intlayer/server";\nconst c = useIntlayer("polyglot-layout");`;
+    const out = rewrite(src, `${ROOT}/x.tsx`, ROOT);
+    expect(out).toContain(
+      `import { useDictionary as __lk_useDictionary } from "next-intlayer/server";`,
+    );
+    expect(out).toContain(`__lk_useDictionary(__lkDict0)`);
+  });
+
+  test("both kinds in one file share the dictionary imports", () => {
+    const src = `import { useIntlayer } from "next-intlayer";\nimport { getIntlayer } from "intlayer";\nuseIntlayer("a");\ngetIntlayer("a", "en");\ngetIntlayer("b");`;
+    const out = rewrite(src, `${ROOT}/x.tsx`, ROOT);
+    expect(out).toContain(`__lk_useDictionary(__lkDict0)`);
+    expect(out).toContain(`__lk_getDictionary(__lkDict0, "en")`);
+    expect(out).toContain(`__lk_getDictionary(__lkDict1)`);
+    expect(out.match(/import __lkDict0 /g)).toHaveLength(1);
+  });
+
+  test("a variable key, an unknown module, or a doubled name leaves the file as it is", () => {
     const variable = `import { useIntlayer } from "next-intlayer";\nconst a = useIntlayer("a");\nconst b = useIntlayer(key);`;
     expect(rewrite(variable, `${ROOT}/a.tsx`, ROOT)).toBe(variable);
+    expect(leftovers(variable)).toEqual(["useIntlayer from next-intlayer"]);
     const local = `const useIntlayer = (k) => k;\nuseIntlayer("a");`;
     expect(rewrite(local, `${ROOT}/a.tsx`, ROOT)).toBe(local);
-    const server = `import { useIntlayer } from "next-intlayer/server";\nuseIntlayer("a");`;
-    expect(rewrite(server, `${ROOT}/a.tsx`, ROOT)).toBe(server);
+    expect(leftovers(local)).toEqual([]);
+    const both = `import { useIntlayer } from "next-intlayer";\nimport { useIntlayer as u } from "next-intlayer/server";\nuseIntlayer("a");`;
+    expect(rewrite(both, `${ROOT}/a.tsx`, ROOT)).toBe(both);
   });
 
   test("as a loader it resolves against the project root", () => {
@@ -64,16 +88,15 @@ describe("the direct-dictionary rewrite", () => {
   });
 });
 
-describe("every client file can be rewritten", () => {
-  test("no useIntlayer call from next-intlayer with a non-literal key", async () => {
+describe("every lookup in the app can be rewritten", () => {
+  test("no file looks a dictionary up with a non-literal key", async () => {
     const root = path.join(import.meta.dir, "..");
     const left: string[] = [];
     for (const dir of ["app", "lib", "packages", "src"]) {
-      for await (const f of new Bun.Glob(`${dir}/**/*.{ts,tsx}`).scan({ cwd: root })) {
+      for await (const f of new Bun.Glob(`${dir}/**/*.{ts,tsx,mjs}`).scan({ cwd: root })) {
         if (f.includes("node_modules")) continue;
         const s = await Bun.file(path.join(root, f)).text();
-        if (!/from\s*["']next-intlayer["']/.test(s) || !s.includes("useIntlayer(")) continue;
-        if (rewrite(s, path.join(root, f), root) === s) left.push(f);
+        for (const l of leftovers(s)) left.push(`${f}: ${l}`);
       }
     }
     expect(left).toEqual([]);

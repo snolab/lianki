@@ -6,9 +6,15 @@
   "main": "worker.ts",
   "compatibility_date": "2025-05-05",
   "compatibility_flags": ["nodejs_compat"],
+  // Minified: the Worker's isolate holds its whole source, and unminified it
+  // passed Workers' 128 MB before serving a request — so no isolate was kept,
+  // and every request paid a fresh start (~1.4 s before the first byte,
+  // docs/cold-start.md, "Server render on a cold isolate"). Names are kept
+  // (wrangler's keep_names default), so stack traces and `__name` still read.
+  "minify": true,
   "assets": {
     "directory": ".open-next/assets",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
   },
   // The deployed Worker uses the D1 backend; local `next dev` stays on mongodb
   // via .env.local.
@@ -18,7 +24,7 @@
     // isolate logs "Base URL could not be determined". `www` 308s to the apex
     // before Next runs, so the apex is the only origin auth ever serves.
     // Locally, .dev.vars overrides this (qa:all writes its own port there).
-    "BETTER_AUTH_BASE_URL": "https://lianki.com"
+    "BETTER_AUTH_BASE_URL": "https://lianki.com",
   },
   // Workers Logs: requests and console output kept and searchable in the
   // dashboard (Observability), not only live via `wrangler tail`.
@@ -36,7 +42,7 @@
   "upload_source_maps": false,
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "head_sampling_rate": 1,
   },
   // The study ledger's daily anchor (worker.ts `scheduled`, lib/lian/anchor.ts,
   // docs/lian.md): just after UTC midnight it anchors every day that has ended
@@ -48,15 +54,15 @@
       "binding": "DB",
       "database_name": "lianki",
       "database_id": "a2c6b8cf-8a94-4cdc-99fd-bbbf6b679f4c",
-      "migrations_dir": "db/migrations"
-    }
+      "migrations_dir": "db/migrations",
+    },
   ],
   // R2 bucket for TTS audio cache and readMaterials content (replaces GridFS).
   // Bound as `BLOBS` — see lib/d1/index.ts.
   "r2_buckets": [
     {
       "binding": "BLOBS",
-      "bucket_name": "lianki-blobs"
-    }
-  ]
+      "bucket_name": "lianki-blobs",
+    },
+  ],
 }
