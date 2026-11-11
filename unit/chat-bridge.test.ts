@@ -485,3 +485,80 @@ test("one failed delivery aborts another in-flight delivery without draining for
   expect(signals).toHaveLength(2);
   expect(signals.every((s) => s.aborted)).toBe(true);
 }, 1000);
+
+test("CLI prepares spoken turns through the account cloud API and keeps raw text authoritative", async () => {
+  const requests: any[] = [];
+  const delivered: any[] = [];
+  const errors: string[] = [];
+  const code = await run(["chat", "bridge", "--stdin", "--deliver", "test-agent"], {
+    env: { LIANKI_TOKEN: `lk_${"ab".repeat(32)}` },
+    bridgeInput: Readable.from([JSON.stringify(line("spoken", "请修复按钮")) + "\n"]),
+    fetch: async (url: string, init: RequestInit) => {
+      requests.push({
+        url: String(url),
+        body: JSON.parse(String(init.body)),
+        headers: init.headers,
+      });
+      return Response.json({
+        ok: true,
+        verdict: { v: 1, action: "forward", turn: "complete", polished: "请修复按钮。" },
+      });
+    },
+    deliver: async (_target: string, _cwd: string, body: string) => {
+      delivered.push(JSON.parse(body));
+    },
+    out: () => {},
+    err: (s: string) => errors.push(s),
+  });
+  expect(code).toBe(0);
+  expect(requests).toHaveLength(1);
+  expect(requests[0].url).toBe("https://lianki.com/api/version/chat");
+  expect(requests[0].headers.authorization).toBe(`Bearer lk_${"ab".repeat(32)}`);
+  expect(requests[0].body).toMatchObject({
+    op: "prepare",
+    input: { v: 1, text: "请修复按钮", context: [] },
+  });
+  expect(requests[0].body.input.requestId).toBeString();
+  expect(delivered).toHaveLength(1);
+  expect(delivered[0].message).toMatchObject({
+    id: "spoken",
+    text: "请修复按钮",
+    raw: "请修复按钮",
+    polished: "请修复按钮。",
+    polishAuthority: "advisory; raw is authoritative",
+  });
+  expect(errors.join("\n")).not.toContain("prepare-unavailable");
+});
+
+test("CLI forwards raw speech when cloud preparation has no credits or fails", async () => {
+  for (const failure of ["no-credits", "network"] as const) {
+    let requests = 0;
+    const delivered: any[] = [];
+    const errors: string[] = [];
+    const code = await run(["chat", "bridge", "--stdin", "--deliver", "test-agent"], {
+      env: { LIANKI_TOKEN: `lk_${"ab".repeat(32)}` },
+      bridgeInput: Readable.from([JSON.stringify(line("spoken", "不要删除按钮")) + "\n"]),
+      fetch: async () => {
+        requests++;
+        if (failure === "network") throw Error("offline");
+        return Response.json({ ok: false, error: "no-credits" });
+      },
+      deliver: async (_target: string, _cwd: string, body: string) => {
+        delivered.push(JSON.parse(body));
+      },
+      out: () => {},
+      err: (s: string) => errors.push(s),
+    });
+    expect(code).toBe(0);
+    expect(requests).toBe(1);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].message).toMatchObject({
+      id: "spoken",
+      text: "不要删除按钮",
+      raw: "不要删除按钮",
+    });
+    expect(delivered[0].message.polished).toBeUndefined();
+    expect(errors.join("\n")).toContain("prepare-unavailable");
+    expect(errors.join("\n")).toContain(failure === "network" ? "network-or-auth" : "no-credits");
+  }
+});
