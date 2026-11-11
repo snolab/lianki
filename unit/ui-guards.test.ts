@@ -143,6 +143,10 @@ describe("UI guards (ratchet: may only shrink)", () => {
     const urls = `<p><input placeholder="https://example.com/list.txt" />https://example.com/a
       <i>Paste https://example.com/a here</i></p>`;
     expect(scanUiFile("y.tsx", urls)).toEqual({ literals: 1, rawErrors: 0 });
+    // Glyph entities, keys passed as values, domains, key caps and CSS are not text.
+    const quiet = `<p>&rarr; <b>ESC</b> {setError("wrongType")} <i title="example.com" />
+      <style>{\`.a { color: oklch(0.9 0 0) }\`}</style> Back &larr;</p>`;
+    expect(scanUiFile("z.tsx", quiet)).toEqual({ literals: 1, rawErrors: 0 });
     const api = `json({ error: "login-required" }); json({ error: "Login required" }); json({ error: e.message }); json({ error: \`bad \${x}\` })`;
     expect(scanApiFile("route.ts", api)).toBe(3);
     expect(JARGON.test("Word lists need the D1 backend")).toBe(true);

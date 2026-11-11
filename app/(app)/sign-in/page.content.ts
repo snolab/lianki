@@ -582,6 +582,24 @@ const signInPageContent = {
       sw: "Imeshindwa kuongeza passkey. Umeingia — unaweza kuiongeza baadaye kwenye ukurasa wa wasifu.",
       mr: "पासकी जोडता आली नाही. तुम्ही साइन इन आहात — नंतर प्रोफाइल पेजवर जोडू शकता.",
     }),
+    password: t({
+      en: "Password",
+      zh: "密码",
+      ja: "パスワード",
+      ko: "비밀번호",
+      hi: "पासवर्ड",
+      es: "Contraseña",
+      fr: "Mot de passe",
+      ar: "كلمة المرور",
+      bn: "পাসওয়ার্ড",
+      pt: "Senha",
+      ru: "Пароль",
+      ur: "پاس ورڈ",
+      id: "Kata sandi",
+      de: "Passwort",
+      sw: "Nenosiri",
+      mr: "पासवर्ड",
+    }),
   },
 } satisfies DeclarationContent;
 
@@ -628,6 +646,8 @@ const context: KeyContext<typeof signInPageContent.content> = {
   notNow: "Button that declines the offer for now. Short.",
   passkeyAddFailed:
     "Error when creating the passkey failed; the learner is signed in anyway and can add one later on the profile page.",
+  password:
+    "Screen-reader label and placeholder of the password field on the sign-in page (shown only where password sign-in is switched on, e.g. test servers). One noun.",
 };
 
 export default {

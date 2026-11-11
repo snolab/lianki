@@ -22,6 +22,10 @@ const ALLOWED = new Set([
   "Google",
   "GitHub",
   "OK",
+  // Key-cap names and the text-size sample on a button: the same in every language.
+  "Esc",
+  "ESC",
+  "Aa",
 ]);
 const ATTRS = new Set(["aria-label", "placeholder", "title", "alt", "label"]);
 const CALLS = new Set([
@@ -40,15 +44,33 @@ const isLiteral = (
   ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) || ts.isTemplateExpression(n);
 
 function words(text: string): boolean {
-  const t = text.replace(/\$\{[^}]*\}/g, " ").trim();
+  // HTML entities (&rarr;, &middot;) are glyphs, not words.
+  const t = text
+    .replace(/\$\{[^}]*\}/g, " ")
+    .replace(/&[a-z]+;/g, " ")
+    .trim();
   if (!WORDS.test(t)) return false;
   return !t
     .split(/\s+/)
-    .every((w) => ALLOWED.has(w.replace(/[^\w]/g, "")) || URL_LIKE.test(w) || !WORDS.test(w));
+    .every(
+      (w) =>
+        ALLOWED.has(w.replace(/[^\w]/g, "")) ||
+        URL_LIKE.test(w) ||
+        DOMAIN_LIKE.test(w) ||
+        KEY_LIKE.test(w) ||
+        !WORDS.test(w),
+    );
 }
 
 /** An example web address (a placeholder like https://example.com/a.txt) reads the same in every language. */
 const URL_LIKE = /^["'`]?https?:\/\/\S+$/;
+/** A bare domain or its ending (example.com, .com): the same in every language. */
+const DOMAIN_LIKE = /^["'`]?[\w-]*(\.[a-z]{2,})+["'`]?$/;
+/**
+ * A dictionary key or code passed around as a value (setError("wrongType"),
+ * "yaml-failed"): camelCase or kebab-case, one token; the text is looked up.
+ */
+const KEY_LIKE = /^["'`]?[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*|-[a-z0-9]+)+["'`]?$/;
 
 const RAW_ERROR = /\.message\b|String\((e|err|error)\)|statusText|\.digest\b/;
 
@@ -67,6 +89,10 @@ export function scanUiFile(path: string, src = readFileSync(path, "utf8")): UiCo
   const text = (n: ts.Node) => n.getText(sf);
   const inJsxChildren = (n: ts.Node) =>
     !!n.parent && (ts.isJsxElement(n.parent) || ts.isJsxFragment(n.parent));
+  const inStyle = (n: ts.Node) =>
+    !!n.parent &&
+    ts.isJsxElement(n.parent) &&
+    n.parent.openingElement.tagName.getText(sf) === "style";
   const visit = (n: ts.Node): void => {
     if (ts.isJsxText(n)) {
       if (words(n.getText(sf))) counts.literals++;
@@ -85,10 +111,12 @@ export function scanUiFile(path: string, src = readFileSync(path, "utf8")): UiCo
         if (isLiteral(arg) && words(text(arg))) counts.literals++;
         else if (!ts.isStringLiteral(arg) && RAW_ERROR.test(text(arg))) counts.rawErrors++;
       }
+    } else if (ts.isJsxExpression(n) && inStyle(n)) {
+      // CSS inside a <style> element is not text.
     } else if (ts.isJsxExpression(n) && n.expression && inJsxChildren(n)) {
       const t = text(n.expression);
       if (isLiteral(n.expression) && words(t)) counts.literals++;
-      else if (RAW_ERROR.test(t) && !/\bt\.|content\.|text\./.test(t)) counts.rawErrors++;
+      else if (RAW_ERROR.test(t) && !/\bt\.|content\.|text\.|strings\./.test(t)) counts.rawErrors++;
     } else if (ts.isTemplateExpression(n) && text(n).startsWith("`HTTP ${")) {
       counts.rawErrors++;
     }
