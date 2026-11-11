@@ -1,7 +1,16 @@
 /**
  * The inbox's D1 rows (db/migrations/0035_inbox.sql): one per file, and one
  * usage row per user, written in the same batch as each insert and delete.
+ * `source` (0068_import_files.sql) tells the chat's attachments ('chat') from
+ * the Import panel's stored files ('import'); usage and caps are shared.
  */
+
+/** Where a stored file came from: the chat's attachments, the Import panel, /self-intro, an own book on /books. */
+/** `voiceprint`: his enrolment recordings (docs/local-stt.md, "Voiceprint in your account"). */
+export const INBOX_SOURCES = ["chat", "import", "self-intro", "books", "voiceprint"] as const;
+export type InboxSource = (typeof INBOX_SOURCES)[number];
+export const isInboxSource = (v: unknown): v is InboxSource =>
+  typeof v === "string" && (INBOX_SOURCES as readonly string[]).includes(v);
 
 /** The slice of D1 used here (the real binding, or lib/d1/testDb.ts). */
 export type InboxStmt = {
@@ -26,6 +35,7 @@ export type InboxItem = {
   createdMs: number;
   processedMs: number | null;
   lineId: string | null;
+  source: InboxSource;
 };
 
 export type InboxUsage = {
@@ -47,8 +57,10 @@ type Row = {
   created_ms: number;
   processed_ms: number | null;
   line_id: string | null;
+  source: string | null;
 };
-const COLS = "id, owner_id, name, type, size, sha256, r2_key, created_ms, processed_ms, line_id";
+const COLS =
+  "id, owner_id, name, type, size, sha256, r2_key, created_ms, processed_ms, line_id, source";
 const item = (r: Row): InboxItem => ({
   id: r.id,
   ownerId: r.owner_id,
@@ -60,10 +72,31 @@ const item = (r: Row): InboxItem => ({
   createdMs: Number(r.created_ms),
   processedMs: r.processed_ms === null ? null : Number(r.processed_ms),
   lineId: r.line_id,
+  source: isInboxSource(r.source) ? r.source : "chat",
 });
 
-/** A user's stored files, newest first (at most `limit`). */
-export async function listItems(db: InboxDb, ownerId: string, limit = 200): Promise<InboxItem[]> {
+/** A user's stored files from one source, newest first (at most `limit`). */
+export async function listItems(
+  db: InboxDb,
+  ownerId: string,
+  limit = 200,
+  source: InboxSource = "chat",
+): Promise<InboxItem[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT ${COLS} FROM inbox_item WHERE owner_id = ? AND source = ? ORDER BY created_ms DESC LIMIT ?`,
+    )
+    .bind(ownerId, source, limit)
+    .all<Row>();
+  return results.map(item);
+}
+
+/** Every file a user stored, from every source, newest first (/my/files). */
+export async function listAllItems(
+  db: InboxDb,
+  ownerId: string,
+  limit = 500,
+): Promise<InboxItem[]> {
   const { results } = await db
     .prepare(`SELECT ${COLS} FROM inbox_item WHERE owner_id = ? ORDER BY created_ms DESC LIMIT ?`)
     .bind(ownerId, limit)
@@ -71,12 +104,12 @@ export async function listItems(db: InboxDb, ownerId: string, limit = 200): Prom
   return results.map(item);
 }
 
-/** Every owner's files (the agent's view: the inbox is the owners'), newest first. */
+/** Every owner's chat files (the agent's view: the inbox is the owners'), newest first. */
 export async function listItemsOf(db: InboxDb, ownerIds: string[], limit = 200) {
   if (!ownerIds.length) return [];
   const { results } = await db
     .prepare(
-      `SELECT ${COLS} FROM inbox_item WHERE owner_id IN (${ownerIds.map(() => "?").join(",")}) ORDER BY created_ms DESC LIMIT ?`,
+      `SELECT ${COLS} FROM inbox_item WHERE source = 'chat' AND owner_id IN (${ownerIds.map(() => "?").join(",")}) ORDER BY created_ms DESC LIMIT ?`,
     )
     .bind(...ownerIds, limit)
     .all<Row>();
@@ -115,13 +148,26 @@ export async function uploadedSince(db: InboxDb, ownerId: string, since: number)
 }
 
 /** A stored file's row and its usage, in one batch (one transaction). */
-export async function insertItem(db: InboxDb, it: Omit<InboxItem, "processedMs" | "lineId">) {
+export async function insertItem(
+  db: InboxDb,
+  it: Omit<InboxItem, "processedMs" | "lineId" | "source"> & { source?: InboxSource },
+) {
   await db.batch([
     db
       .prepare(
-        "INSERT INTO inbox_item (id, owner_id, name, type, size, sha256, r2_key, created_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO inbox_item (id, owner_id, name, type, size, sha256, r2_key, created_ms, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .bind(it.id, it.ownerId, it.name, it.type, it.size, it.sha256, it.r2Key, it.createdMs),
+      .bind(
+        it.id,
+        it.ownerId,
+        it.name,
+        it.type,
+        it.size,
+        it.sha256,
+        it.r2Key,
+        it.createdMs,
+        it.source ?? "chat",
+      ),
     db
       .prepare(
         `INSERT INTO inbox_usage (user_id, bytes_stored, bytes_uploaded, items, settled_ms, updated_ms) VALUES (?, ?, ?, 1, ?, ?)

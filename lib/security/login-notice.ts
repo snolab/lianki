@@ -9,7 +9,10 @@
  * one. The sign-up itself is not announced: the account was made by that
  * browser a moment ago.
  */
-import type { MailLocale } from "@/lib/sign-in-mail";
+import { renderBuiltin } from "@/lib/mail-templates/compose";
+import { MAIL_CONTACT_URL, loginNoticeCopy } from "@/lib/mail-templates/defs";
+import type { MailLocale } from "@/lib/mail-templates/locales";
+import { isTimeZone, zonedDateTime } from "@/lib/dates";
 import { sha256Hex, type ThrottleDb } from "./throttle";
 
 export const DEVICE_COOKIE = "lk_device";
@@ -85,121 +88,119 @@ export async function recordSignIn(
   return { deviceId, notify: !isSignUp, newDevice: true };
 }
 
-/** "Tokyo, 13, JP" from Cloudflare's request.cf, or its visitor-location headers. */
+/**
+ * "Tokyo, Japan" from Cloudflare's request.cf, or its visitor-location
+ * headers. The country is named in the reader's language when `locale` is
+ * given (日本, Japan); a region that repeats the city or is only a code (13)
+ * is left out.
+ */
 export function approximateLocation(
   cf: { city?: unknown; region?: unknown; country?: unknown } | null | undefined,
   headers?: Headers | null,
+  locale?: string,
 ): string {
-  const parts = [
-    cf?.city ?? headers?.get("cf-ipcity"),
-    cf?.region ?? headers?.get("cf-region"),
-    cf?.country ?? headers?.get("cf-ipcountry"),
-  ]
-    .map((p) => (typeof p === "string" ? p.trim() : ""))
-    .filter((p) => p && p !== "XX" && p !== "T1");
-  return parts.join(", ");
+  const clean = (p: unknown) => (typeof p === "string" ? p.trim() : "");
+  const city = clean(cf?.city ?? headers?.get("cf-ipcity"));
+  let region = clean(cf?.region ?? headers?.get("cf-region"));
+  let country = clean(cf?.country ?? headers?.get("cf-ipcountry"));
+  if (country === "XX" || country === "T1") country = "";
+  if (region === city || /^[0-9]+$/.test(region)) region = "";
+  if (locale && /^[A-Z]{2}$/.test(country)) {
+    try {
+      const loc = locale === "zh-Hant" ? "zh-TW" : locale;
+      country = new Intl.DisplayNames([loc], { type: "region" }).of(country) ?? country;
+    } catch {}
+  }
+  return [city, region, country].filter(Boolean).join(", ");
 }
 
-/** `2026-10-30 14:05 UTC` — unambiguous in every locale. */
+/** `2026-10-30 14:05 UTC`: kept for logs; the mail itself says local time (zonedDateTime). */
 export function utcStamp(d: Date): string {
   return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+/**
+ * "Safari · iPhone" from a user-agent string: the browser and the device or
+ * system, which a reader recognises. The raw string when neither is known.
+ */
+export function describeBrowser(ua: string | null | undefined): string {
+  const s = (ua ?? "").slice(0, 400);
+  if (!s) return "";
+  const browser = /Edg(e|A|iOS)?\//.test(s)
+    ? "Edge"
+    : /OPR\/|Opera/.test(s)
+      ? "Opera"
+      : /SamsungBrowser\//.test(s)
+        ? "Samsung Internet"
+        : /Firefox\/|FxiOS\//.test(s)
+          ? "Firefox"
+          : /Chrome\/|CriOS\//.test(s)
+            ? "Chrome"
+            : /Safari\//.test(s) && /Version\/|iPhone|iPad|Macintosh/.test(s)
+              ? "Safari"
+              : "";
+  const device = /iPhone/.test(s)
+    ? "iPhone"
+    : /iPad/.test(s)
+      ? "iPad"
+      : /Android/.test(s)
+        ? "Android"
+        : /CrOS/.test(s)
+          ? "ChromeOS"
+          : /Windows/.test(s)
+            ? "Windows"
+            : /Mac OS X|Macintosh/.test(s)
+              ? "macOS"
+              : /Linux/.test(s)
+                ? "Linux"
+                : "";
+  if (!browser && !device) return s.slice(0, 200);
+  return [browser, device].filter(Boolean).join(" · ");
+}
 
-const COPY = {
-  en: {
-    subject: "New sign-in to your Lianki account",
-    intro: "Your Lianki account was just signed in to from a browser it has not used before.",
-    time: "Time",
-    location: "Approximate location",
-    unknown: "unknown",
-    device: "Browser",
-    ok: "If this was you, there is nothing to do.",
-    notYou:
-      "If it was not you, sign in, remove any passkey you do not recognise on your profile page, and tell us at https://lianki.com/contact.",
-  },
-  zh: {
-    subject: "你的炼記账号有新的登录",
-    intro: "你的炼記（Lianki）账号刚刚在一个以前未使用过的浏览器上登录。",
-    time: "时间",
-    location: "大致位置",
-    unknown: "未知",
-    device: "浏览器",
-    ok: "如果是你本人操作，无需处理。",
-    notYou:
-      "如果不是你本人，请登录后在个人资料页删除不认识的通行密钥，并通过 https://lianki.com/contact 联系我们。",
-  },
-} as const;
-
-export function loginNoticeMail(
+/**
+ * The notice's values for template `login-notice` (lib/mail-templates/defs.ts).
+ * Time: the reader's local time, labelled with its zone (lib/dates.ts) — the
+ * account's own zone when it has one, else the zone captured with this
+ * sign-in (Cloudflare's request.cf.timezone), else UTC, labelled "UTC".
+ * Location in the reader's language, the browser as "Safari · iPhone", or
+ * the locale's word for "unknown"; the contact link.
+ */
+export function loginNoticeValues(
   locale: MailLocale,
-  info: { when: Date; location: string; userAgent: string | null | undefined },
-): { subject: string; text: string; html: string } {
-  const c = COPY[locale];
-  const rows: [string, string][] = [
-    [c.time, utcStamp(info.when)],
-    [c.location, info.location || c.unknown],
-    [c.device, (info.userAgent ?? "").slice(0, 400) || c.unknown],
-  ];
+  info: {
+    when: Date;
+    location: string;
+    userAgent: string | null | undefined;
+    /** The account's time zone (IANA), when it has one. */
+    accountTimeZone?: string | null;
+    /** The time zone captured with this sign-in (request.cf.timezone). */
+    eventTimeZone?: string | null;
+  },
+): Record<string, string> {
+  const c = loginNoticeCopy(locale);
+  const tz = isTimeZone(info.accountTimeZone)
+    ? info.accountTimeZone
+    : isTimeZone(info.eventTimeZone)
+      ? info.eventTimeZone
+      : null;
   return {
-    subject: c.subject,
-    text: [c.intro, "", ...rows.map(([k, v]) => `${k}: ${v}`), "", c.ok, c.notYou].join("\n"),
-    html:
-      `<p>${esc(c.intro)}</p>` +
-      `<table>${rows.map(([k, v]) => `<tr><td><b>${esc(k)}</b></td><td>${esc(v)}</td></tr>`).join("")}</table>` +
-      `<p>${esc(c.ok)}<br>${esc(c.notYou)}</p>`,
+    time: zonedDateTime(info.when, locale, tz),
+    location: info.location || c.unknown,
+    browser: describeBrowser(info.userAgent) || c.unknown,
+    contactUrl: MAIL_CONTACT_URL,
   };
 }
 
-/**
- * A language tag (any form: `zh`, `zh-CN`, `zh_Hans`, `en-US`) → the notice's
- * template language, or null when the tag is empty or unusable. Every Chinese
- * tag gets the Simplified template, the only Chinese one there is.
- */
-export function noticeTemplateLocale(tag: unknown): MailLocale | null {
-  if (typeof tag !== "string") return null;
-  const base = tag.trim().replace(/_/g, "-").toLowerCase().split("-")[0];
-  if (!base || !/^[a-z]{2,3}$/.test(base)) return null;
-  return base === "zh" ? "zh" : "en";
-}
-
-/**
- * The notice's language is the account's, never the signing-in browser's
- * (whoever signs in may not own the account): (1) the language set on the
- * account (`ui.locale`, docs/prefs-sync.md), (2) the browser language recorded
- * at sign-up (`user.signupLocale`), (3) English.
- */
-export function noticeLocale(who: { accountLocale?: unknown; signupLocale?: unknown }): MailLocale {
-  return noticeTemplateLocale(who.accountLocale) ?? noticeTemplateLocale(who.signupLocale) ?? "en";
-}
-
-/** A stored pref value (JSON text) → the string it holds, or null. */
-function prefString(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  try {
-    const v = JSON.parse(raw) as unknown;
-    return typeof v === "string" ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The account's language for the notice, from D1. Each read fails on its own
- * to null — `user.signupLocale` exists only once its migration has run — so
- * the worst case is English.
- */
-export async function accountNoticeLocale(db: ThrottleDb, userId: string): Promise<MailLocale> {
-  // async, so a prepare that throws at once (no such column) is caught too
-  const read = async <T>(sql: string) => db.prepare(sql).bind(userId).first<T>();
-  const [pref, user] = await Promise.all([
-    read<{ value: string }>(
-      "SELECT value FROM user_prefs WHERE user_id = ?1 AND key = 'ui.locale'",
-    ).catch(() => null),
-    read<{ signupLocale: string | null }>("SELECT signupLocale FROM user WHERE id = ?1").catch(
-      () => null,
-    ),
-  ]);
-  return noticeLocale({ accountLocale: prefString(pref?.value), signupLocale: user?.signupLocale });
+/** The built-in notice (no stored edit), for tests and previews. */
+export function loginNoticeMail(
+  locale: MailLocale,
+  info: Parameters<typeof loginNoticeValues>[1],
+): { subject: string; text: string; html: string } {
+  const { subject, text, html } = renderBuiltin(
+    "login-notice",
+    locale,
+    loginNoticeValues(locale, info),
+  );
+  return { subject, text, html };
 }

@@ -6,6 +6,7 @@ import { pageLeaving } from "@/lib/page-leaving";
 import { useTextScale } from "@/lib/use-text-size";
 import { useBackToClose } from "@/lib/use-back-to-close";
 import { SettingsSheet } from "./SettingsSheet";
+import { Shatter } from "./Shatter";
 import { ListPreview, PreviewButton } from "./ListPreview";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { advanceTop, keyGradeMove, shouldAdvance } from "@/lib/words/advance";
@@ -43,7 +44,9 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
+import { useImportPanel } from "./ImportPanel";
 import { useIntlayer, useLocale } from "next-intlayer";
+import WordsOnboarding from "./WordsOnboarding";
 import {
   closestCenter,
   DndContext,
@@ -69,6 +72,8 @@ import {
   withoutNode,
 } from "@/lib/words/tree";
 import { shownName } from "@/lib/words/lang-groups";
+import { orderByPreferred } from "@/lib/lang-order";
+import { usePreferredLangs } from "@/lib/use-preferred-langs";
 import { planArrange } from "@/lib/words/arrange";
 import {
   buildAddTree,
@@ -94,7 +99,7 @@ import {
   type Register,
   type Scenario,
 } from "@/lib/words/phrases";
-import { createDeferredDelete, UNDO_MS, type FlushReason } from "@/lib/words/deferred-delete";
+import { createDeferredDelete, undoMs, type FlushReason } from "@/lib/words/deferred-delete";
 import type { WordCard, WordList } from "@/lib/repos/wordsD1";
 import { spokenText } from "@/lib/words/spoken";
 import type { VoiceAccess } from "@/lib/words/voice-access";
@@ -102,6 +107,8 @@ import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/wor
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
 import { MEANING_VOICE, prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { backParts, ROW_LINE_LH, rowMetrics } from "@/lib/words/row-layout";
+import { backAvail, backLines } from "@/lib/words/row-pinch";
+import { ROW_H_VAR, useRowPinch } from "@/lib/words/use-row-pinch";
 import { withPickedExample, type Example } from "@/lib/words/example-pick";
 import {
   SongClipButton,
@@ -128,6 +135,7 @@ import {
 import {
   followAudio,
   followSpeech,
+  ownedBy,
   spokenIn,
   spokenWord,
   type Span as SpokenSpan,
@@ -152,6 +160,13 @@ import {
   type CtxLike as PoolCtx,
 } from "@/lib/words/clip-pool";
 import { debugOn, devLog } from "@/lib/debug-client";
+import {
+  ApiError,
+  type ErrorReason,
+  OfflineError,
+  reasonOf,
+  reasonText,
+} from "@/lib/words/error-reason";
 import { useInputModality } from "@/lib/use-input-modality";
 import { EmptyTray } from "./EmptyTray";
 import type { Patch, RowFill } from "@/lib/read/review-row-fill";
@@ -250,6 +265,7 @@ import {
 } from "./gradeSound";
 import { formatInterval, parseCard, previewInterval, reviewWord } from "@/lib/words/schedule";
 import { noteBadgeSeen } from "@/lib/app-badge";
+import { SealStamp } from "@/app/components/SealSwitch";
 
 /**
  * Sub-second word-list review.
@@ -550,16 +566,19 @@ export function MarkedExample({
   fam,
   heads,
   forms = [],
+  owner,
 }: {
   text: string;
   lang: string;
   fam?: FamMap;
   heads?: HeadMap;
   forms?: readonly (string | null | undefined)[];
+  /** The card this example is on (keyOf): only that card's reading lights it. */
+  owner?: string;
 }) {
   const known = fam?.get(famLang(lang));
   const spans = targetSpans(text, forms, lang, heads?.get(famLang(lang)));
-  const spoken = useSpokenSpan(text);
+  const spoken = useSpokenSpan(text, owner);
   const spokenEl = useSpokenFollow(spoken);
   if (!known && !spans.length && !spoken) return <>{text}</>;
   const piece = (p: Piece & { spoken: boolean }, k: number) => {
@@ -602,11 +621,11 @@ export function MarkedExample({
  * (spokenWord, lib/words/spoken-word.ts). Only the example being read
  * re-renders as the voice moves on.
  */
-function useSpokenSpan(text: string): SpokenSpan | null {
+function useSpokenSpan(text: string, owner?: string): SpokenSpan | null {
   const key = useSyncExternalStore(
     spokenWord.subscribe,
     () => {
-      const s = spokenIn(spokenWord.get(), text);
+      const s = spokenIn(spokenWord.get(), text, owner);
       return s ? `${s[0]}:${s[1]}` : "";
     },
     () => "",
@@ -733,7 +752,7 @@ function WhisperModeSetting({
           role="radio"
           aria-checked={mode === m}
           onClick={() => pick(m)}
-          className={`rounded-full px-2 py-0.5 ${mode === m ? "bg-emerald-500/20 font-semibold text-emerald-900 dark:text-emerald-100" : "opacity-70"}`}
+          className={`rounded-full px-2 py-0.5 ${mode === m ? "bg-blue-600/15 font-semibold text-blue-800 dark:bg-blue-400/20 dark:text-blue-100" : "opacity-70"}`}
         >
           {text[k].value}
         </button>
@@ -753,30 +772,18 @@ function TogglePill({
   label: string;
   hint?: string;
 }) {
+  // The label, then the box seal every switch uses (SealSwitch.tsx); the
+  // whole row is the switch, named by its label.
   return (
     <button
       role="switch"
       aria-checked={on}
       title={hint}
       onClick={() => onChange(!on)}
-      className={`inline-flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs transition-colors ${
-        on
-          ? "bg-emerald-500/20 text-emerald-900 dark:text-emerald-100"
-          : "bg-black/5 dark:bg-white/10 opacity-80"
-      }`}
+      className="inline-flex min-h-8 items-center gap-2 rounded-md ps-2 pe-1 text-xs hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-blue-600 dark:focus-visible:outline-blue-300"
     >
-      <span
-        className={`relative h-4 w-7 rounded-full transition-colors ${
-          on ? "bg-emerald-500" : "bg-black/25 dark:bg-white/30"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${
-            on ? "left-3.5" : "left-0.5"
-          }`}
-        />
-      </span>
       {label}
+      <SealStamp on={on} size="sm" />
     </button>
   );
 }
@@ -1198,7 +1205,7 @@ function useSpeech(serverVoice = false) {
    * limit, offline). `track`: mark the word being said (an example).
    */
   const serverSpeak = useCallback(
-    async (text: string, lang: string, done: Done, track = false) => {
+    async (text: string, lang: string, done: Done, track = false, owner?: string) => {
       const gen = generation.current;
       const t0 = performance.now();
       // Prefetched, most of the time: then it plays at once, still inside the
@@ -1214,7 +1221,7 @@ function useSpeech(serverVoice = false) {
       audio.current = c;
       if (track) {
         unfollow();
-        follow.current = followAudio(c.el, text, lang, FRAMES);
+        follow.current = followAudio(c.el, text, lang, FRAMES, ownedBy(owner));
       }
       // Debug mode only: how long from "say it" to sound, and where it went —
       // waiting for the clip, or the element starting to play.
@@ -1248,7 +1255,14 @@ function useSpeech(serverVoice = false) {
 
   /** `serverTried`: the server already failed this text — don't ask again. */
   const browserSpeak = useCallback(
-    (text: string, lang: string, done: Done, serverTried = false, track = false) => {
+    (
+      text: string,
+      lang: string,
+      done: Done,
+      serverTried = false,
+      track = false,
+      owner?: string,
+    ) => {
       const gen = generation.current;
       const viaServer = () => {
         if (serverTried) {
@@ -1256,7 +1270,7 @@ function useSpeech(serverVoice = false) {
           devLog({ ev: "silent", lang, text, reason: "no server clip, no browser voice" });
           return done(false);
         }
-        void serverSpeak(text, lang, done, track).then(
+        void serverSpeak(text, lang, done, track, owner).then(
           (ok) => !ok && gen === generation.current && done(false),
         );
       };
@@ -1272,12 +1286,18 @@ function useSpeech(serverVoice = false) {
       u.rate = 0.9;
       // The word being said: exact from boundary events, else estimated.
       const words = track
-        ? followSpeech(text, lang, u.rate, {
-            now: () => performance.now(),
-            frames: FRAMES,
-            setTimer: (fn, ms) => setTimeout(fn, ms),
-            clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
-          })
+        ? followSpeech(
+            text,
+            lang,
+            u.rate,
+            {
+              now: () => performance.now(),
+              frames: FRAMES,
+              setTimer: (fn, ms) => setTimeout(fn, ms),
+              clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+            },
+            ownedBy(owner),
+          )
         : null;
       if (words) {
         unfollow();
@@ -1341,11 +1361,13 @@ function useSpeech(serverVoice = false) {
       // The server voice by default: browser voices can mislead (Japanese read
       // in a Chinese accent). The browser speaks only where the server can't —
       // a language or text it has no voice for, the rate limit, offline.
-      if (!viaServer(p)) return browserSpeak(p.text, p.lang, done, false, track);
+      if (!viaServer(p)) return browserSpeak(p.text, p.lang, done, false, track, p.owner);
       const gen = generation.current;
-      void serverSpeak(p.text, p.lang, done, track).then(
+      void serverSpeak(p.text, p.lang, done, track, p.owner).then(
         (ok) =>
-          !ok && gen === generation.current && browserSpeak(p.text, p.lang, done, true, track),
+          !ok &&
+          gen === generation.current &&
+          browserSpeak(p.text, p.lang, done, true, track, p.owner),
       );
     },
     [serverVoice, viaServer, serverSpeak, browserSpeak, unfollow],
@@ -1524,12 +1546,18 @@ function Glance({
   className,
   title,
   lines = 1,
+  cell,
+  hidden = false,
   children,
 }: {
   active: boolean;
   className: string;
   title?: string;
   lines?: number;
+  /** A back cell, first or second in the row (measured by the card-height pinch). */
+  cell?: 1 | 2;
+  /** No room for it (a short row): kept, at no height, so it is still measured. */
+  hidden?: boolean;
   children: React.ReactNode;
 }) {
   const wrap = lines > 1;
@@ -1642,8 +1670,12 @@ function Glance({
     );
     return () => anim.cancel();
   }, [over, wrap, following]);
-  const follow = { [FOLLOW_ATTR]: "" };
-  const clip = following ? "overflow-auto lk-ex-follow" : "overflow-hidden";
+  const follow = {
+    [FOLLOW_ATTR]: "",
+    ...(cell ? { "data-back-cell": String(cell) } : {}),
+    ...(hidden ? { "aria-hidden": true } : {}),
+  };
+  const clip = `${following ? "overflow-auto lk-ex-follow" : "overflow-hidden"}${hidden ? " slip-cell-hidden" : ""}`;
   if (wrap)
     return (
       <span
@@ -1697,8 +1729,10 @@ function lineHeightOf(o: HTMLElement): number {
  * slip fades (.lk-back in globals.css): the copy further down is the one
  * to answer now.
  */
-function Countdown({ due, back }: { due: number; back: boolean }) {
+function Countdown({ due, back, crack }: { due: number; back: boolean; crack?: string }) {
   const [now, setNow] = useState(() => Date.now());
+  // Still counting as the row mounted: an end seen here cracks live, once.
+  const [liveAtMount] = useState(() => due > now);
   useEffect(() => {
     const left = due - now;
     if (left <= 0 || left > 3_600_000) return;
@@ -1710,7 +1744,14 @@ function Countdown({ due, back }: { due: number; back: boolean }) {
   const text = useIntlayer("words-page");
   const left = due - now;
   if (left > 0) return <>{formatInterval(left)}</>;
-  return back ? <span className="lk-back">{text.back}</span> : <>{text.now}</>;
+  if (!back) return <>{text.now}</>;
+  return (
+    <>
+      <span className="lk-back">{text.back}</span>
+      {/* Locked now: cracked glass (`words.shatter`), keyed by the card. */}
+      {crack !== undefined && <Shatter seed={crack} live={liveAtMount} />}
+    </>
+  );
 }
 
 /** Due time (ms) of a stored card JSON. */
@@ -1724,9 +1765,6 @@ const dueOf = (card: string) => {
 
 const localDay = () => new Date().toLocaleDateString("en-CA");
 
-/** The request never reached the server: no network. */
-class OfflineError extends Error {}
-
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -1735,9 +1773,13 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
       headers: { "content-type": "application/json", ...init?.headers },
     });
   } catch {
-    throw new OfflineError("offline");
+    throw new OfflineError();
   }
-  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? res.statusText);
+  if (!res.ok) {
+    // The server's code and status, mapped to plain words where shown (lib/words/error-reason.ts).
+    const code = (await res.json().catch(() => null))?.error;
+    throw new ApiError(res.status, typeof code === "string" ? code : "");
+  }
   return res.json() as Promise<T>;
 }
 
@@ -1955,16 +1997,35 @@ export default function WordsClient({
   config: given,
   voice = "off",
   ytSongs = false,
+  importOn = false,
+  importAiOn = false,
+  pinch = false,
+  onboarding = false,
+  shatter = false,
+  dev = false,
 }: {
   config?: DrillConfig;
   /** Voice mode (docs/voice-mode.md): the flag's verdict for this user, from the server. */
   voice?: VoiceAccess;
   /** YouTube songs (`read.youtube-songs`, or the owner): an example with a song clip gets its ▶. */
   ytSongs?: boolean;
+  /** The Import button at the top (`import.any`: every user while on; the owner on or off). */
+  importOn?: boolean;
+  /** "Words with AI" on stored files (`words.import-ai`); credits are checked when the panel opens. */
+  importAiOn?: boolean;
+  /** The card-height pinch on the list (`words.pinch-card-height`, on by default). */
+  pinch?: boolean;
+  /** `words.onboarding`: the walkthrough and its "?" by the heading (/words only, not /alphabet). */
+  onboarding?: boolean;
+  /** `words.shatter` (lib/words/shatter-gate.ts): a locked "↓ back" slip shows cracked glass. */
+  shatter?: boolean;
+  /** Holds `dev`: debug mode also offers whisper mode and the swipe's feel and tuner. */
+  dev?: boolean;
 }) {
   // /words's own title and intro follow the app's language; other drills
   // (/alphabet) bring theirs.
   const text = useIntlayer("words-page");
+  const whyText = useIntlayer("words-status");
   const [wordsTitle, wordsIntro, wordsAll] = [
     text.title.value,
     text.intro.value,
@@ -1977,7 +2038,7 @@ export default function WordsClient({
   const [allLists, setLists] = useState<WordList[] | null>(null);
   const [catalog, setCatalog] = useState<CatalogMeta[] | null>(null);
   const [listId, setListId] = useListParam(config.base);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorReason | null>(null);
   /** The lists shown came from the offline copy. */
   const [offline, setOffline] = useState(false);
   useOfflineShell();
@@ -1999,7 +2060,7 @@ export default function WordsClient({
       if (cached) {
         setLists(withPendingRenames(cached, await queued()));
         setOffline(true);
-      } else setError((e as Error).message);
+      } else setError(reasonOf(e, "lists"));
     }
   }, []);
 
@@ -2085,7 +2146,9 @@ export default function WordsClient({
   if (error)
     return (
       <div className="p-8 text-red-400">
-        {error === "Login required" ? text.signInToUse : error}
+        {error === "signIn"
+          ? text.signInToUse
+          : fill(text.couldntLoad.value, { error: reasonText(whyText, error) })}
       </div>
     );
   if (!lists || !catalog || !fullCatalog)
@@ -2126,6 +2189,9 @@ export default function WordsClient({
             lists={studying}
             catalog={fullCatalog}
             voice={voice}
+            pinch={pinch}
+            shatter={shatter}
+            dev={dev}
             title={
               listId === ALL
                 ? (config.allTitle ?? `All ${config.title.toLowerCase()}`)
@@ -2148,6 +2214,9 @@ export default function WordsClient({
         lists={lists}
         catalog={fullCatalog}
         offline={offline}
+        importOn={importOn && !!config.imports}
+        importAiOn={importAiOn}
+        onboarding={onboarding && !given}
         onOpen={setListId}
         onRefresh={refreshLists}
         onDelete={(list, isGroup) => deleter.remove({ list, isGroup })}
@@ -2200,7 +2269,7 @@ function UndoDeleteToast({ doomed, onUndo }: { doomed: DoomedList; onUndo: () =>
       <button
         ref={undo}
         onClick={onUndo}
-        className="min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]"
+        className="min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.165_22.3)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.132_22.3)]"
       >
         {text.undoDelete}
       </button>
@@ -2208,7 +2277,7 @@ function UndoDeleteToast({ doomed, onUndo }: { doomed: DoomedList; onUndo: () =>
       <span
         aria-hidden
         className="lk-undo-timer pointer-events-none absolute inset-x-3 bottom-0 h-0.5 origin-left rounded-full bg-[oklch(0.5_0_0/0.35)] rtl:origin-right"
-        style={{ animationDuration: `${UNDO_MS}ms` }}
+        style={{ animationDuration: `${undoMs()}ms` }}
       />
     </div>
   );
@@ -2431,7 +2500,7 @@ function SortableListRow({
             }}
             onBlur={(e) => endEdit(e.currentTarget.value)}
             // 16px text: phones do not zoom into the field.
-            className="w-full min-h-11 rounded-md px-2 text-base font-medium bg-[oklch(1_0_0/0.7)] dark:bg-[oklch(0.2_0_0/0.7)] ring-1 ring-[oklch(0.5_0_0/0.35)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.6_0.15_250)]"
+            className="w-full min-h-11 rounded-md px-2 text-base font-medium bg-[oklch(1_0_0/0.7)] dark:bg-[oklch(0.2_0_0/0.7)] ring-1 ring-[oklch(0.5_0_0/0.35)] focus:outline-none focus:ring-2 focus:ring-[oklch(0.6_0.165_22.3)]"
           />
         </form>
       ) : (
@@ -2440,7 +2509,7 @@ function SortableListRow({
         <button
           type="button"
           data-open-list={l.id}
-          className="flex min-h-14 min-w-0 flex-1 items-center gap-2 self-stretch rounded-md py-2 ps-1 text-start focus-visible:outline-2 focus-visible:outline-[oklch(0.6_0.15_250)]"
+          className="flex min-h-14 min-w-0 flex-1 items-center gap-2 self-stretch rounded-md py-2 ps-1 text-start focus-visible:outline-2 focus-visible:outline-[oklch(0.6_0.165_22.3)]"
           onClick={() => onOpen(l.id)}
           title={
             (isGroup ? `${text.groupRowHint.value}\n` : "") +
@@ -2614,6 +2683,9 @@ function ListPicker({
   lists,
   catalog,
   offline,
+  importOn,
+  importAiOn,
+  onboarding,
   onOpen,
   onRefresh,
   onDelete,
@@ -2625,6 +2697,12 @@ function ListPicker({
   catalog: CatalogMeta[];
   /** Showing the offline copy of the lists. */
   offline: boolean;
+  /** Show the Import button and panel at the top (ImportPanel.tsx). */
+  importOn: boolean;
+  /** "Words with AI" on stored files, if the user's credits cover it. */
+  importAiOn: boolean;
+  /** The walkthrough's "?" after the heading (WordsOnboarding.tsx). */
+  onboarding: boolean;
   onOpen: (id: string) => void;
   /** Reload the lists from the server. */
   onRefresh: () => Promise<void>;
@@ -2637,6 +2715,7 @@ function ListPicker({
   const groupSource = groupSourceOf(config);
   const isGroup = (l: WordList) => l.source === groupSource;
   const text = useIntlayer("words-page");
+  const whyText = useIntlayer("words-status");
   const phraseText = useIntlayer("words-phrases");
   const catalogById = useMemo(() => new Map(catalog.map((c) => [c.id, c])), [catalog]);
   const isPhrase = (l: WordList) => isPhraseMeta(catalogById.get(l.source ?? ""));
@@ -2648,7 +2727,7 @@ function ListPicker({
   const [download, setDownload] = useState<{
     done: number;
     total: number;
-    error?: string;
+    error?: ErrorReason;
   } | null>(null);
 
   // Folded groups, per tab (docs/ui-state.md: session `lk:ui:words`).
@@ -2741,7 +2820,18 @@ function ListPicker({
   // "Add a list" as a tree with checkboxes (lib/words/add-tree.ts): tick
   // lists, languages or whole branches, then add them all in one go. Adding
   // never starts studying: the learner stays here and opens a list himself.
-  const addTree = useMemo(() => buildAddTree(builtIn, SCENARIOS, EXTERNAL_SEARCHES), [builtIn]);
+  // Languages in the order of Settings → Preferred languages (lib/lang-order.ts),
+  // the rest after them as the catalog has them.
+  const { langs: preferred } = usePreferredLangs();
+  const addTree = useMemo(
+    () =>
+      orderByPreferred(
+        buildAddTree(builtIn, SCENARIOS, EXTERNAL_SEARCHES),
+        (n) => (n.kind === "lang" ? n.lang : null),
+        preferred,
+      ),
+    [builtIn, preferred],
+  );
   // A link to #add-list arrives before the tree exists, so the browser finds
   // nothing to scroll to; scroll once the tree is on the page.
   useEffect(() => {
@@ -2853,7 +2943,7 @@ function ListPicker({
   };
   useEffect(() => {
     if (!arrangedNow) return;
-    const t = setTimeout(() => setArrangedNow(null), UNDO_MS);
+    const t = setTimeout(() => setArrangedNow(null), undoMs());
     return () => clearTimeout(t);
   }, [arrangedNow]);
 
@@ -2883,7 +2973,7 @@ function ListPicker({
         }
       }
     } catch (e) {
-      done.error = (e as Error).message;
+      done.error = reasonOf(e, "add");
     }
     setTicked((t) => new Set([...t].filter((id) => !picks.some((c) => c.id === id))));
     await onRefresh().catch(() => {});
@@ -2907,7 +2997,7 @@ function ListPicker({
   // The toast runs out on its own; the new rows lose their outline with it.
   useEffect(() => {
     if (!addedNow) return;
-    const t = setTimeout(() => setAddedNow(null), UNDO_MS);
+    const t = setTimeout(() => setAddedNow(null), undoMs());
     return () => clearTimeout(t);
   }, [addedNow]);
   // Bring the first new row into view (it may sit inside a folded group).
@@ -2964,6 +3054,13 @@ function ListPicker({
     return shownName(row, parent);
   };
 
+  // The Import button and its panel (ImportPanel.tsx): a list made from a
+  // table shows up in the lists at once.
+  const importPanel = useImportPanel({
+    onAdded: () => void onRefresh(),
+    aiOn: importAiOn,
+  });
+
   const addGroup = async () => {
     const name = prompt(text.groupName.value)?.trim();
     if (!name) return;
@@ -2977,8 +3074,15 @@ function ListPicker({
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">{config.title}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-0.5">
+            <h1 className="min-w-0 text-2xl font-semibold">{config.title}</h1>
+            {onboarding && <WordsOnboarding />}
+          </div>
+          {importOn && importPanel.button}
+        </div>
         <p className="opacity-70 text-sm mt-1">{config.intro}</p>
+        {importOn && importPanel.panel}
         <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
           {offline ? (
             <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
@@ -2994,7 +3098,7 @@ function ListPicker({
                     setDownload({ done, total }),
                   );
                 } catch (e) {
-                  setDownload({ done: 0, total: 0, error: (e as Error).message });
+                  setDownload({ done: 0, total: 0, error: reasonOf(e, "download") });
                 }
               }}
               className="px-3 py-1.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20 disabled:opacity-50"
@@ -3007,7 +3111,7 @@ function ListPicker({
           {download && !offline && (
             <span className="opacity-70 tabular-nums">
               {download.error
-                ? fill(text.downloadFailed.value, { error: download.error })
+                ? fill(text.downloadFailed.value, { error: reasonText(whyText, download.error) })
                 : download.done < download.total
                   ? fill(text.downloading.value, { done: download.done, total: download.total })
                   : text.savedOnDevice}
@@ -3019,7 +3123,7 @@ function ListPicker({
       {studyable.length > 1 && (
         <button
           onClick={() => onOpen(ALL)}
-          className="w-full flex items-center gap-3 rounded-lg bg-emerald-500/20 dark:bg-emerald-700/40 hover:bg-emerald-500/30 dark:hover:bg-emerald-700/60 px-4 py-3 text-left"
+          className="w-full flex items-center gap-3 rounded-lg bg-gold-300/50 dark:bg-gold-300/20 hover:bg-gold-300/70 dark:hover:bg-gold-300/30 px-4 py-3 text-left"
         >
           {keys && <kbd className="text-xs opacity-50">0</kbd>}
           <span className="flex-1">
@@ -3184,7 +3288,13 @@ function ListPicker({
 }
 
 /** What one "Add selected" did: the new lists, any group made for them, a failure. */
-type AddedNow = { ids: string[]; names: string[]; made: string[]; error?: string; at: number };
+type AddedNow = {
+  ids: string[];
+  names: string[];
+  made: string[];
+  error?: ErrorReason;
+  at: number;
+};
 
 /**
  * One node of the "Add a list" tree: the whole row ticks it (a language or a
@@ -3519,7 +3629,7 @@ function langName(code: string, locale: string) {
 /**
  * "Added: JLPT N5 and JLPT N4", as glass over the bottom of the page: one
  * layer, with Start studying (one list added) and Undo. It runs out with the
- * new rows' outline (UNDO_MS).
+ * new rows' outline (undoMs(), config words.undoMs).
  */
 function AddedToast({
   added,
@@ -3531,16 +3641,17 @@ function AddedToast({
   onUndo?: () => void;
 }) {
   const text = useIntlayer("words-page");
+  const whyText = useIntlayer("words-status");
   const { locale } = useLocale();
   let names = added.names.join(", ");
   try {
     names = new Intl.ListFormat([locale], { type: "conjunction" }).format(added.names);
   } catch {}
   const said = added.error
-    ? fill(text.addFailed.value, { error: added.error })
+    ? fill(text.addFailed.value, { error: reasonText(whyText, added.error) })
     : fill(text.addedToast.value, { names });
   const action =
-    "min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.15_250)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.12_250)]";
+    "min-h-11 min-w-11 shrink-0 rounded-lg px-3 font-medium text-[oklch(0.5_0.165_22.3)] hover:bg-[oklch(0.5_0_0/0.1)] dark:text-[oklch(0.78_0.132_22.3)]";
   return (
     <div
       role="status"
@@ -3563,7 +3674,7 @@ function AddedToast({
       <span
         aria-hidden
         className="lk-undo-timer pointer-events-none absolute inset-x-3 bottom-0 h-0.5 origin-left rounded-full bg-[oklch(0.5_0_0/0.35)] rtl:origin-right"
-        style={{ animationDuration: `${UNDO_MS}ms` }}
+        style={{ animationDuration: `${undoMs()}ms` }}
       />
     </div>
   );
@@ -3671,8 +3782,17 @@ export function Study({
   onExit,
   voice,
   scope,
+  pinch = false,
+  shatter = false,
+  dev = false,
 }: {
+  /** Holds `dev`: debug mode also offers whisper mode and the swipe's feel and tuner. */
+  dev?: boolean;
   scope?: StudyScope;
+  /** A locked "↓ back" slip shows cracked glass (`words.shatter`, Shatter.tsx). */
+  shatter?: boolean;
+  /** The card-height pinch (`words.pinch-card-height`, lib/words/use-row-pinch.ts). */
+  pinch?: boolean;
   config: DrillConfig;
   /** Whether the voice mode switch is offered (lib/words/voice-access.ts). */
   voice: VoiceAccess;
@@ -3696,8 +3816,8 @@ export function Study({
   const [row, setRow] = useState(0);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<ErrorReason | null>(null);
+  const [syncError, setSyncError] = useState<ErrorReason | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /** The row whose other actions are open (double tap / right click). */
   const [sheet, setSheet] = useState<number | null>(null);
@@ -3812,7 +3932,10 @@ export function Study({
   const { locale } = useLocale();
   /** What a tap, a hold or the focus reads: word → example → meaning (the row's order). */
   const partsOf = useCallback(
-    (it: Item) => sayParts(it, it.lang, !!config.readingOnBack, String(locale)),
+    (it: Item) =>
+      sayParts(it, it.lang, !!config.readingOnBack, String(locale)).map((p) =>
+        p.kind === "example" ? { ...p, owner: keyOf(it) } : p,
+      ),
     [config.readingOnBack, locale],
   );
   /** A word's tags, for the double-tap sheet: its list and the list's level (JLPT, CEFR…). */
@@ -4063,7 +4186,7 @@ export function Study({
       const due = orderedDue(session.lists);
       setQueue([...due, ...spreadPairs(fresh, PAGE, due.length, due)]);
       setLoading(false);
-    })().catch((e) => alive && setLoadError((e as Error).message));
+    })().catch((e) => alive && setLoadError(reasonOf(e, "study")));
     return () => {
       alive = false;
     };
@@ -4225,6 +4348,7 @@ export function Study({
     })();
   };
   const text = useIntlayer("words-page");
+  const whyText = useIntlayer("words-status");
   const ratingLabel = useRatingLabel();
   const grades4 = {
     again: ratingLabel[1],
@@ -4326,10 +4450,25 @@ export function Study({
   const cardScale = useTextScale("cards");
   // A scope may ask for more lines in every row (the reader's review: one).
   const extraLines = scope?.extraLines ?? 0;
-  const { rowH: ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale, extraLines);
+  const { rowH: DEFAULT_ROW_H, a: SWIPE_A } = rowMetrics(touch, cardScale, extraLines);
   const listRef = useRef<HTMLDivElement>(null);
   /** The list element as state, for effects that must start when it mounts. */
   const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
+  // A two-finger vertical pinch sets every row's height (owner, 2026-11-10);
+  // the back cells get the lines the height has room for (lib/words/row-pinch.ts).
+  const pinchK = Math.max(1, cardScale);
+  // Rows, spacers and cords take their height from the list's `--row-h`
+  // (rowHeight below): a pinch moves it per frame with no render.
+  const { rowH: ROW_H, owns: pinchOwns } = useRowPinch({
+    list: listEl,
+    on: pinch,
+    touch,
+    k: pinchK,
+    defaultH: DEFAULT_ROW_H,
+  });
+  const backRoom = backLines(backAvail(ROW_H, pinchK, touch), touch);
+  /** `n` rows' height (plus `px`) as CSS: the live `--row-h`, React's height as the fallback. */
+  const rowsHeight = (n: number, px = 0) => `calc(${px}px + ${n} * var(${ROW_H_VAR}, ${ROW_H}px))`;
   const setListRef = useCallback((el: HTMLDivElement | null) => {
     listRef.current = el;
     setListEl(el);
@@ -4535,9 +4674,10 @@ export function Study({
     const was = rowHWas.current;
     rowHWas.current = ROW_H;
     const el = listRef.current;
-    if (was === ROW_H || !el) return;
+    // A pinch keeps the row between its fingers in place itself (use-row-pinch.ts).
+    if (was === ROW_H || !el || pinchOwns(ROW_H)) return;
     el.scrollTop = pad + ((el.scrollTop - pad) / was) * ROW_H;
-  }, [ROW_H, pad]);
+  }, [ROW_H, pad, pinchOwns]);
   // The list fills the window (.lk-words-list); the toolbar and the help strip
   // float over it. Measured whenever any of them changes size (settings open,
   // hints change, the window turns), never polled. Measured against the list's
@@ -4881,7 +5021,7 @@ export function Study({
     })()
       // With nothing on screen, a failure is the page's error (with Retry),
       // not a quiet note under an empty list.
-      .catch((e) => (queue.length ? setSyncError : setLoadError)((e as Error).message))
+      .catch((e) => (queue.length ? setSyncError : setLoadError)(reasonOf(e, "more")))
       .finally(() => {
         fetching.current = false;
       });
@@ -5219,11 +5359,22 @@ export function Study({
   const finished = studyFinished(exhausted, ahead.length);
   const exitLabel = scope?.exitLabel ?? text.backToLists.value;
 
-  const status = (it: Item, i: number) => {
+  /** `inRow`: the list's slip, which cracks once locked; not the sheet's copy of the label. */
+  const status = (it: Item, i: number, inRow = false) => {
     const g = grades.get(i);
     if (g) {
       // Saved: when it actually comes back. Not yet saved: the preview.
-      if (g.card) return <Countdown due={dueOf(g.card)} back={requeue.current.requeued.has(i)} />;
+      if (g.card)
+        return (
+          <Countdown
+            // Rows are keyed by index: a copy joining above moves words between
+            // them, and the countdown's "ended on screen" belongs to its word.
+            key={`${keyOf(it)}@${dueOf(g.card)}`}
+            due={dueOf(g.card)}
+            back={requeue.current.requeued.has(i)}
+            crack={inRow && shatter ? keyOf(it) : undefined}
+          />
+        );
       return previewInterval(it.card, g.rating, paramsOf.get(it.listId)!);
     }
     if (it.kind === "new" || !it.card) return text.statusNew.value;
@@ -5302,12 +5453,6 @@ export function Study({
                 <span className="mr-1 rounded bg-red-700 px-1 text-white" data-debug-badge>
                   {partnerName}
                 </span>
-                {/* Design prototypes, to try on the device itself. */}
-                {["slip"].map((p) => (
-                  <a key={p} href={`/proto/${p}`} data-debug-proto={p} className="mr-1 underline">
-                    proto/{p}
-                  </a>
-                ))}
               </>
             )}
             {fill(text.stats.value, {
@@ -5335,7 +5480,7 @@ export function Study({
         </div>
         {syncError && (
           <div className="text-red-500 text-sm mt-1">
-            {fill(text.couldntLoadMore.value, { error: syncError })}
+            {fill(text.couldntLoadMore.value, { error: reasonText(whyText, syncError) })}
           </div>
         )}
         {notice && <div className="text-amber-600 dark:text-amber-300 text-sm mt-1">{notice}</div>}
@@ -5402,7 +5547,7 @@ export function Study({
                 <span className="fs-10 opacity-60">{vtext.keepAwakeHint}</span>
               </span>
             )}
-            {debug && <WhisperModeSetting text={text} />}
+            {debug && dev && <WhisperModeSetting text={text} />}
             {speech.on && serverVoice && (
               <span className="w-full text-xs opacity-60" data-voice-credit>
                 {/* Credits: the voice names stay as their makers write them. */}
@@ -5475,8 +5620,8 @@ export function Study({
                       hint={text.newSwipeHint.value}
                     />
                   )}
-                  {/* The swipe's feel (docs/swipe-core.md): debug mode only, this device only. */}
-                  {touch && debug && (
+                  {/* The swipe's feel (docs/swipe-core.md): debug mode and `dev` only, this device only. */}
+                  {touch && debug && dev && (
                     <>
                       <TogglePill
                         on={feelPrefs.preset === "heavy"}
@@ -5537,7 +5682,9 @@ export function Study({
 
       {loadError ? (
         <div className="space-y-3 py-8 text-center">
-          <div className="text-red-500">{fill(text.couldntLoad.value, { error: loadError })}</div>
+          <div className="text-red-500">
+            {fill(text.couldntLoad.value, { error: reasonText(whyText, loadError) })}
+          </div>
           <button
             className="px-4 py-2 rounded bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/20"
             onClick={() => location.reload()}
@@ -5565,7 +5712,7 @@ export function Study({
         <SwipeProviders mirror={mirror}>
           {/* The feel's sources and its tuner: islands (docs/swipe-core.md). */}
           {touch && <SwipeFeelIsland />}
-          {touch && <SwipeTunerIsland />}
+          {touch && dev && <SwipeTunerIsland />}
           <div
             ref={setListRef}
             // The whole window, edge to edge, under the glass overlays
@@ -5578,6 +5725,8 @@ export function Study({
               overflowAnchor: "none",
               scrollPaddingTop: bar.top,
               scrollPaddingBottom: bar.bottom,
+              // The card-height pinch is the list's own: never the page's zoom.
+              ...(pinch && touch ? { touchAction: "pan-y" } : {}),
             }}
             onScroll={(e) => {
               syncScroll(e.currentTarget.scrollTop);
@@ -5614,10 +5763,10 @@ export function Study({
               aria-hidden
               data-paper-layer
               className="lk-paper-layer"
-              style={{ height: pad * 2 + queue.length * ROW_H }}
+              style={{ height: rowsHeight(queue.length, pad * 2) }}
             />
             {touch && !native && <SwipeUnderlay ref={underlay} />}
-            <div className="relative" style={{ height: pad + from * ROW_H }}>
+            <div className="relative" style={{ height: rowsHeight(from, pad) }}>
               {pad - bar.top > 140 && <EmptyTray style={{ top: bar.top, height: pad - bar.top }} />}
             </div>
             {queue.slice(from, to).map((it, k) => {
@@ -5707,8 +5856,8 @@ export function Study({
                       : hasExamples
                         ? "grid-cols-[1.25rem_var(--term-w,12rem)_var(--ex-w,minmax(10rem,1fr))_minmax(8rem,1fr)_3.5rem] fs-15"
                         : "grid-cols-[1.25rem_var(--term-w,12rem)_1fr_3.5rem] fs-15"
-                  } ${rating ? RATING_STYLE[rating] : ""}`}
-                  style={{ height: ROW_H }}
+                  } ${rating ? `${RATING_STYLE[rating]} slip-done` : ""}`}
+                  style={{ height: `var(${ROW_H_VAR}, ${ROW_H}px)` }}
                   a={SWIPE_A}
                 >
                   {/* The grade, stamped like a small seal (盖章) at the slip's left end. */}
@@ -5722,9 +5871,9 @@ export function Study({
                   <Glance
                     active={glancing}
                     title={it.reading ? `${it.term} ${it.reading}` : it.term}
-                    className={`font-medium ${
+                    className={`slip-term font-medium ${
                       it.kind === "new"
-                        ? "text-emerald-600 dark:text-emerald-400"
+                        ? "text-blue-600 dark:text-blue-300"
                         : it.kind === "again"
                           ? "text-amber-600 dark:text-amber-300"
                           : ""
@@ -5753,7 +5902,7 @@ export function Study({
                           : "text-sm opacity-70";
                       // Desktop: a card without an example spans both columns.
                       const span = !touch && hasExamples && parts.length === 1 ? "col-span-2" : "";
-                      const look = `${tone} ${span} transition-[filter] duration-75 ${
+                      const look = `slip-back ${tone} ${span} transition-[filter] duration-75 ${
                         touch ? "block min-w-0" : ""
                       } ${show ? "" : "slip-blank"}`;
                       // The taller rows' room (owner, 2026-11-03): on a phone the
@@ -5761,7 +5910,12 @@ export function Study({
                       // one line; on desktop each column may take two lines.
                       // A scope's extra lines go to the first line on a phone, to
                       // each column on desktop (side by side: one line taller).
-                      const lines = !touch || first ? 2 + extraLines : 1;
+                      // The row's height decides (lib/words/row-pinch.ts backLines): at
+                      // the default, as above; pinched, more or fewer, down to the word alone.
+                      const room = first ? backRoom.first : backRoom.second;
+                      const lines = Math.max(1, room);
+                      const cellNo = first ? 1 : 2;
+                      const hide = room <= 0;
                       if (k === "meaning")
                         return (
                           <Glance
@@ -5770,6 +5924,8 @@ export function Study({
                             title={show ? it.back : undefined}
                             className={look}
                             lines={lines}
+                            cell={cellNo}
+                            hidden={hide}
                           >
                             {config.readingOnBack && it.reading && it.reading !== it.term && (
                               <bdi className="mr-2 font-medium">{it.reading}</bdi>
@@ -5797,7 +5953,9 @@ export function Study({
                               active={glancing && show}
                               title={show ? it.ex : undefined}
                               className={look}
-                              lines={1 + extraLines}
+                              lines={Math.max(1, room - 1)}
+                              cell={cellNo}
+                              hidden={hide}
                             >
                               {show && <SongClipButton clip={it.clip} text={it.ex} />}
                               <bdi lang={it.lang} data-row-example>
@@ -5807,13 +5965,16 @@ export function Study({
                                   fam={fam.current}
                                   heads={heads.current}
                                   forms={[it.term, it.reading]}
+                                  owner={keyOf(it)}
                                 />
                               </bdi>
                             </Glance>
                             <Glance
                               active={glancing && show}
                               title={show ? it.exTr : undefined}
-                              className={`text-xs opacity-60 transition-[filter] duration-75 ${show ? "" : "slip-blank"}`}
+                              className={`slip-back text-xs opacity-60 transition-[filter] duration-75 ${show ? "" : "slip-blank"}`}
+                              cell={cellNo}
+                              hidden={room <= 1}
                             >
                               <span data-row-ex-tr>{it.exTr}</span>
                             </Glance>
@@ -5828,6 +5989,8 @@ export function Study({
                           }
                           className={look}
                           lines={lines}
+                          cell={cellNo}
+                          hidden={hide}
                         >
                           {it.ex ? (
                             <>
@@ -5839,6 +6002,7 @@ export function Study({
                                   fam={fam.current}
                                   heads={heads.current}
                                   forms={[it.term, it.reading]}
+                                  owner={keyOf(it)}
                                 />
                               </bdi>
                               {it.exTr && (
@@ -5875,12 +6039,12 @@ export function Study({
                     style={rating ? { color: "var(--grade)" } : undefined}
                     title={rating ? ratingLabel[rating] : text.dueTitle.value}
                   >
-                    {status(it, i)}
+                    {status(it, i, true)}
                   </span>
                 </Row>
               );
             })}
-            <div className="relative" style={{ height: (queue.length - to) * ROW_H + pad }}>
+            <div className="relative" style={{ height: rowsHeight(queue.length - to, pad) }}>
               {/* After the last word, in every state (not started, half way,
               all done): the tray is the way back, as the toolbar's exit. */}
               <div
@@ -6038,6 +6202,7 @@ function SlipSheet({
                 lang={item.lang}
                 heads={heads}
                 forms={[item.term, item.reading]}
+                owner={keyOf(item)}
               />
             </div>
             {item.exTr && <div className="mt-1 text-sm opacity-60">{item.exTr}</div>}
@@ -6113,7 +6278,15 @@ function SlipCords({
   const cells = [];
   for (let i = from; i < to; i++)
     cells.push(
-      <span key={i} data-cords={i === loose ? "loose" : "tied"} style={{ top: i * h, height: h }}>
+      <span
+        key={i}
+        data-cords={i === loose ? "loose" : "tied"}
+        // The live row height (a pinch moves it with no render), as the rows.
+        style={{
+          top: `calc(${i} * var(${ROW_H_VAR}, ${h}px))`,
+          height: `var(${ROW_H_VAR}, ${h}px)`,
+        }}
+      >
         <svg className="slip-cord" style={{ left: 0 }}>
           <path d={left} />
         </svg>
@@ -6127,7 +6300,11 @@ function SlipCords({
       aria-hidden
       data-slip-cords
       className="slip-cords"
-      style={{ top, height: count * h, ["--cord-ease" as string]: MIN_JERK_EASING }}
+      style={{
+        top,
+        height: `calc(${count} * var(${ROW_H_VAR}, ${h}px))`,
+        ["--cord-ease" as string]: MIN_JERK_EASING,
+      }}
     >
       {cells}
     </div>
@@ -6322,7 +6499,7 @@ function TouchWordRow({
 
 /**
  * Variant B of the swipe A/B test (lib/words/swipe-ab.ts): WordRow's slip,
- * but each row is its own horizontal scroller (public/proto/slip.html). The
+ * but each row is its own horizontal scroller (the slip prototype, since deleted). The
  * browser locks the axis, follows the finger, coasts, snaps to the levels at
  * 0, ±a, ±2a and stops hard at ±2a — all on the compositor; script runs only
  * as a gesture starts and ends. What the slip uncovers is the same grade

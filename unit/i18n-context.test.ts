@@ -2,13 +2,19 @@ import { describe, expect, it } from "bun:test";
 import words from "@/app/(app)/words/page.content";
 import wordsImportAnkiweb from "@/app/(app)/words/import/ankiweb.content";
 import importWordlist from "@/app/(app)/import/wordlist-import.content";
+import importPage from "@/app/(app)/import/page.content";
+import importSections from "@/app/(app)/import/import-sections.content";
+import wordsImportPanel from "@/app/(app)/words/import-panel.content";
+import myFiles from "@/app/(app)/my/files/my-files.content";
 import bottomNav from "@/app/components/bottom-nav.content";
 import learningPartner from "@/app/components/learning-partner.content";
 import devSwitch from "@/app/components/dev-switch.content";
+import sealSwitch from "@/app/components/seal-switch.content";
 import liveView from "@/app/components/live-view.content";
 import reviewPage from "@/app/(app)/review/page.content";
 import navHome from "@/app/(app)/home/page.content";
 import appShell from "@/app/components/app-shell.content";
+import myPage from "@/app/(app)/my/page.content";
 import landing from "@/app/[locale]/page.content";
 import learn from "@/app/(app)/learn/page.content";
 import polyglot from "@/app/(app)/lab/polyglot/page.content";
@@ -17,16 +23,26 @@ import wordsImport from "@/app/(app)/words/import/page.content";
 import wordsPhrases from "@/app/(app)/words/phrases.content";
 import wordsVoiceMode from "@/app/(app)/words/voice-mode.content";
 import wordsListPreview from "@/app/(app)/words/list-preview.content";
+import dataPage from "@/app/(app)/data/page.content";
+import listUi from "@/app/(app)/list/list-ui.content";
+import wordsStatus from "@/app/(app)/words/words-status.content";
 import leaveGuard from "@/app/components/leave-guard.content";
+import creditsUsage from "@/app/(app)/membership/credits/credits-usage.content";
 import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
+import devTemplates from "@/app/(app)/dev/templates/templates.content";
+import devMails from "@/app/(app)/dev/mails/mails.content";
 import devUsers from "@/app/(app)/dev/users/users.content";
 import devPregrant from "@/app/(app)/dev/users/pregrant.content";
 import textSize from "@/app/components/text-size.content";
 import boxSignIn from "@/app/(app)/sign-in/box-sign-in.content";
+import blogPage from "@/app/[locale]/blog/page.content";
 import walletCard from "@/app/(app)/membership/wallet-card.content";
 import inviteCard from "@/app/(app)/membership/invite-card.content";
 import emailInvite from "@/app/(app)/membership/email-invite.content";
 import inviteMail from "@/lib/referrals/invite-mail.content";
+import mailSignIn from "@/lib/mail-templates/sign-in-mail.content";
+import mailLoginNotice from "@/lib/mail-templates/login-notice-mail.content";
+import mailEmailChange from "@/lib/mail-templates/email-change-mail.content";
 import creditUnits from "@/app/(app)/membership/credit-units.content";
 import readEpub from "@/app/(app)/reader/read-epub.content";
 import readGdoc from "@/app/(app)/reader/read-gdoc.content";
@@ -42,19 +58,28 @@ import connectionsPage from "@/app/(app)/connections/page.content";
 import readGdocDrive from "@/app/(app)/reader/read-gdoc-drive.content";
 import drivePick from "@/app/(app)/connections/drive-pick.content";
 import readRowMenu from "@/app/(app)/reader/read-row-menu.content";
+import readList from "@/app/(app)/reader/read-list.content";
+import readHome from "@/app/(app)/reader/read-home.content";
 import selfIntroImport from "@/app/(app)/self-intro/import.content";
-import booksPage from "@/app/(app)/books/page.content";
+import booksPage from "@/app/(app)/library/page.content";
+import myBooks from "@/app/(app)/books/my-books.content";
 import readFormTags from "@/app/(app)/reader/read-form-tags.content";
 import learnerLevels from "@/app/components/level-badge.content";
 import learnerLevelUi from "@/app/components/level-ui.content";
-import profileEdit from "@/app/(app)/profile/profile-edit.content";
+import profileEdit from "@/app/(app)/my/profile/profile-edit.content";
+import profileSession from "@/app/(app)/my/profile/session-basics.content";
+import preferencesPage from "@/app/(app)/my/preferences/page.content";
 import byokSettings from "@/app/components/byok-settings.content";
 import titleRules from "@/app/components/title-rules.content";
 import externalLink from "@/app/components/external-link.content";
+import virtualList from "@/app/components/virtual-list.content";
+import dontAsk from "@/app/components/dont-ask.content";
 import appBadge from "@/app/components/app-badge.content";
 import languageSettings from "@/app/components/language-settings.content";
+import preferredLangs from "@/app/components/preferred-langs.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
 import apiTokens from "@/app/components/api-tokens.content";
+import agentGuide from "@/lib/agent-guide.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
 import chatHistoryPage from "@/app/(app)/chat/history/page.content";
 import devDesign from "@/app/(app)/dev/design/page.content";
@@ -62,7 +87,24 @@ import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
 import devPages from "@/app/(app)/dev/dev-pages.content";
 import ytSongs from "@/app/components/yt-clip/yt-songs.content";
 import pillChat from "@/app/components/pill-chat.content";
+import userscriptUi from "@/app/components/userscript.content";
+import chatUi from "@/app/components/chat-ui.content";
 import signInErrors from "@/app/(app)/sign-in/errors.content";
+import activityTally from "@/app/(app)/list/components/activity-tally.content";
+import devFlagToast from "@/app/(app)/dev/flags/flag-toast.content";
+import devConfig from "@/app/(app)/dev/config/config-admin.content";
+import hotkeyHelp from "@/app/components/hotkey-help.content";
+import languageSwitcher from "@/app/components/language-switcher.content";
+import versionNotice from "@/app/components/version-notice.content";
+import statsPage from "@/app/(app)/stats/page.content";
+import membershipPage from "@/app/(app)/membership/membership-page.content";
+import sitesPage from "@/app/(app)/sites/page.content";
+import addNotePage from "@/app/(app)/add-note/page.content";
+import listPage from "@/app/(app)/list/page.content";
+import firstRun from "@/app/components/first-run.content";
+import contactForm from "@/app/contact-form.content";
+import profilePage from "@/app/(app)/my/profile/page.content";
+import signInPage from "@/app/(app)/sign-in/page.content";
 import { describeKeys, flattenContext, keyContext } from "@/lib/i18n-context";
 
 // Owner rule (2026-10-30): a short string is never translated on its own —
@@ -94,31 +136,46 @@ describe.each([
   ["words-page", words],
   ["words-import-ankiweb", wordsImportAnkiweb],
   ["import-wordlist", importWordlist],
+  ["import-page", importPage],
+  ["import-sections", importSections],
+  ["words-import-panel", wordsImportPanel],
   ["bottom-nav", bottomNav],
   ["learning-partner", learningPartner],
   ["dev-switch", devSwitch],
+  ["seal-switch", sealSwitch],
   ["live-view", liveView],
   ["review-page", reviewPage],
   ["nav-home", navHome],
   ["app-shell", appShell],
+  ["my-page", myPage],
   ["landing-page", landing],
   ["learn-page", learn],
+  ["blog-page", blogPage],
   ["polyglot-page", polyglot],
   ["self-intro-page", selfIntro],
   ["words-import", wordsImport],
   ["words-phrases", wordsPhrases],
   ["words-voice-mode", wordsVoiceMode],
   ["words-list-preview", wordsListPreview],
+  ["data-page", dataPage],
+  ["list-ui", listUi],
+  ["words-status", wordsStatus],
   ["leave-guard", leaveGuard],
   ["dev-permissions", devPermissions],
+  ["dev-templates", devTemplates],
+  ["dev-mails", devMails],
   ["dev-users", devUsers],
   ["dev-pregrant", devPregrant],
   ["text-size", textSize],
   ["box-sign-in", boxSignIn],
   ["wallet-card", walletCard],
+  ["credits-usage", creditsUsage],
   ["invite-card", inviteCard],
   ["email-invite", emailInvite],
   ["invite-mail", inviteMail],
+  ["mail-sign-in", mailSignIn],
+  ["mail-login-notice", mailLoginNotice],
+  ["mail-email-change", mailEmailChange],
   ["credit-units", creditUnits],
   ["read-epub", readEpub],
   ["read-gdoc", readGdoc],
@@ -134,20 +191,28 @@ describe.each([
   ["read-gdoc-drive", readGdocDrive],
   ["drive-pick", drivePick],
   ["read-row-menu", readRowMenu],
+  ["read-list", readList],
+  ["read-home", readHome],
   ["self-intro-import", selfIntroImport],
   ["books-page", booksPage],
+  ["my-books", myBooks],
   ["read-form-tags", readFormTags],
   ["learner-levels", learnerLevels],
   ["learner-level-ui", learnerLevelUi],
   ["profile-edit", profileEdit],
+  ["profile-session", profileSession],
   ["byok-settings", byokSettings],
   ["title-rules", titleRules],
   ["external-link", externalLink],
+  ["virtual-list", virtualList],
+  ["dont-ask", dontAsk],
   ["app-badge", appBadge],
   ["language-settings", languageSettings],
+  ["preferred-langs", preferredLangs],
   ["sign-in-errors", signInErrors],
   ["privacy-page", privacyPage],
   ["api-tokens", apiTokens],
+  ["agent-guide", agentGuide],
   ["roadmap-page", roadmapPage],
   ["chat-history-page", chatHistoryPage],
   ["dev-design", devDesign],
@@ -155,6 +220,24 @@ describe.each([
   ["dev-pages", devPages],
   ["yt-songs", ytSongs],
   ["pill-chat", pillChat],
+  ["userscript-ui", userscriptUi],
+  ["chat-ui", chatUi],
+  ["my-files", myFiles],
+  ["activity-tally", activityTally],
+  ["dev-flag-toast", devFlagToast],
+  ["dev-config", devConfig],
+  ["hotkey-help", hotkeyHelp],
+  ["language-switcher", languageSwitcher],
+  ["version-notice", versionNotice],
+  ["stats-page", statsPage],
+  ["membership-page", membershipPage],
+  ["home-page", sitesPage],
+  ["add-note-page", addNotePage],
+  ["list-page", listPage],
+  ["first-run", firstRun],
+  ["contact-form", contactForm],
+  ["profile-page", profilePage],
+  ["sign-in-page", signInPage],
 ])("%s", (_name, dict) => {
   // Translation leaves, nested groups included, keyed `group.key`.
   type Node = { nodeType?: string; translation?: Record<string, string> };
@@ -185,5 +268,31 @@ describe.each([
       return c.split(/\s+/).length < 5 || c.trim() === en(k).trim();
     });
     expect(thin).toEqual([]);
+  });
+});
+
+// preferences-page adopts the pattern key by key ("Only recent keys have a line
+// so far"), so it is not in the full list above; its newer keys are held here.
+describe("preferences-page: keys that already carry context", () => {
+  const context = keyContext(preferencesPage.description);
+  it.each([
+    "paperHeading",
+    "resetSection",
+    "watchTime.heading",
+    "watchTime.description",
+    "watchTime.toggle",
+    "watchTime.toggleHint",
+    "mobileFilters.regexBadge",
+  ])("%s has a line of 5+ words", (k) => {
+    expect((context[k] ?? "").split(/\s+/).length).toBeGreaterThanOrEqual(5);
+  });
+  it("the Paper heading is a translated key, not the old hardcoded '紙紋 Paper'", () => {
+    const tr = (
+      preferencesPage.content as unknown as {
+        paperHeading: { translation: Record<string, string> };
+      }
+    ).paperHeading.translation;
+    expect(Object.keys(tr)).toHaveLength(16);
+    expect(Object.values(tr)).not.toContain("紙紋 Paper");
   });
 });

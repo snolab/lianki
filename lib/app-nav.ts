@@ -27,6 +27,11 @@ export type NavItem = {
    */
   flag?: FlagKey;
   /**
+   * Developers only (a `dev` grant, lib/permissions.ts): the page 404s for
+   * anyone else, and the item is shown only when the server lists its key.
+   */
+  dev?: true;
+  /**
    * "menu": reached from the account menu (avatar; also pinned at the rail's
    * foot), not the rail. Owner, 2026-11-09: import, data and settings are
    * account things; their URLs stay as they are.
@@ -41,31 +46,41 @@ export type NavItem = {
 // group key stays "advanced".
 export const APP_NAV: NavItem[] = [
   { key: "home", href: "/home", icon: "house", group: "main" },
+  { key: "today", href: "/today", icon: "sparkle", group: "main", flag: "today.goal" },
   { key: "words", href: "/words", icon: "textAa", group: "main" },
   { key: "alphabet", href: "/alphabet", icon: "textAUnderline", group: "main" },
   { key: "learn", href: "/learn", icon: "graduationCap", group: "main" },
   { key: "selfIntro", href: "/self-intro", icon: "userSound", group: "main" },
   { key: "read", href: "/reader", icon: "bookOpen", group: "main" },
-  { key: "books", href: "/books", icon: "books", group: "main", flag: "books.catalogue" },
+  // My books (the user's shelf) and the catalogue it is filled from (owner, 2026-11-10).
+  { key: "books", href: "/books", icon: "bookBookmark", group: "main", flag: "books.mine" },
+  { key: "library", href: "/library", icon: "books", group: "main", flag: "library.catalogue" },
   { key: "roadmap", href: "/roadmap", icon: "mapTrifold", group: "main" },
   { key: "sites", href: "/sites", icon: "globe", group: "advanced" },
   { key: "review", href: "/review", icon: "play", group: "advanced" },
   { key: "cards", href: "/list", icon: "cards", group: "advanced" },
   { key: "addNote", href: "/add-note", icon: "plusCircle", group: "advanced" },
   // Experiments (实验室): /lab lists them all; each lives under /lab/<name>.
-  { key: "lab", href: "/lab", icon: "flask", group: "lab" },
-  { key: "aiVocab", href: "/lab/ai-vocab", icon: "brain", group: "lab" },
-  { key: "polyglot", href: "/lab/polyglot", icon: "globeHemisphereWest", group: "lab" },
+  // Developers only (owner, 2026-11-10): app/(app)/lab/layout.tsx 404s the rest.
+  { key: "lab", href: "/lab", icon: "flask", group: "lab", dev: true },
+  { key: "aiVocab", href: "/lab/ai-vocab", icon: "brain", group: "lab", dev: true },
+  { key: "polyglot", href: "/lab/polyglot", icon: "globeHemisphereWest", group: "lab", dev: true },
+  // Owner, 2026-11-10: /my is the user's manager for all their own data
+  // (profile, preferences, files); first in the account menu after Profile.
+  { key: "myData", href: "/my", icon: "folder", group: "account", place: "menu" },
   { key: "import", href: "/import", icon: "uploadSimple", group: "data", place: "menu" },
   { key: "data", href: "/data", icon: "database", group: "data", place: "menu" },
-  { key: "preferences", href: "/preferences", icon: "gearSix", group: "account", place: "menu" },
+  { key: "preferences", href: "/my/preferences", icon: "gearSix", group: "account", place: "menu" },
   { key: "membership", href: "/membership", icon: "star", group: "account" },
 ];
 
-/** The nav items this viewer gets: every unflagged one, and flagged ones in `shown`. */
+/** The nav items this viewer gets: every unflagged one, and flagged or dev ones in `shown`. */
 export function visibleNav(shown: readonly string[] = []): NavItem[] {
-  return APP_NAV.filter((i) => !i.flag || shown.includes(i.key));
+  return APP_NAV.filter((i) => (!i.flag && !i.dev) || shown.includes(i.key));
 }
+
+/** The keys of the developer-only items, for a server that knows the viewer holds `dev`. */
+export const DEV_NAV_KEYS: string[] = APP_NAV.filter((i) => i.dev).map((i) => i.key);
 
 /** The rail's (and drawer's) items: the visible ones the account menu does not carry. */
 export function railNav(shown: readonly string[] = []): NavItem[] {

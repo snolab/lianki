@@ -16,6 +16,11 @@ import {
   fullScreenAllowed,
   fullScreenBox,
   fullScreenOn,
+  FULL_LEAVE_PX,
+  dragLeavesFull,
+  dropEntersFull,
+  FULL_HINT_STYLE,
+  fullHintStep,
 } from "@lianki/debug-chat/full-screen";
 import { CHAT_VIEW_INITIAL, chatPrefs } from "@lianki/debug-chat/ui-store";
 import { CHAT_STRINGS_EN } from "@lianki/debug-chat/wire";
@@ -209,5 +214,75 @@ describe("strings", () => {
       expect(uiStrings(lang).fullScreen.length).toBeGreaterThan(0);
       expect(uiStrings(lang).fullScreenExit.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("by a drag: the bottom edge enters, a drag up leaves (owner, 2026-11-09 18:25 JST)", () => {
+  const at = (barBottom: number, o: Partial<Parameters<typeof dropEntersFull>[0]> = {}) =>
+    dropEntersFull({ allowed: true, open: true, full: false, barBottom, vh: 844, ...o });
+  it("a bar dropped flush against the bottom edge enters full screen", () => {
+    expect(at(844)).toBe(true);
+    expect(at(843.6)).toBe(true);
+  });
+  it("short of the edge, even by a pixel, it stays a panel", () => {
+    expect(at(843)).toBe(false);
+    // The panel's own place: 0.5rem above the edge.
+    expect(at(836)).toBe(false);
+  });
+  it("the top edge never enters (it would hide the history, 18:26 JST)", () => {
+    // A bar of 44 px pushed against the top: its bottom is far from the screen's.
+    expect(at(44)).toBe(false);
+    expect(at(0)).toBe(false);
+  });
+  it("only an open chat that may go full screen, and not twice", () => {
+    expect(at(844, { allowed: false })).toBe(false);
+    expect(at(844, { open: false })).toBe(false);
+    expect(at(844, { full: true })).toBe(false);
+  });
+  it("a drag up past FULL_LEAVE_PX leaves; a wobble, sideways or down stays", () => {
+    expect(FULL_LEAVE_PX).toBeGreaterThan(20);
+    expect(dragLeavesFull({ full: true, dy: -FULL_LEAVE_PX })).toBe(true);
+    expect(dragLeavesFull({ full: true, dy: -200 })).toBe(true);
+    expect(dragLeavesFull({ full: true, dy: -(FULL_LEAVE_PX - 1) })).toBe(false);
+    expect(dragLeavesFull({ full: true, dy: 0 })).toBe(false);
+    expect(dragLeavesFull({ full: true, dy: 120 })).toBe(false);
+    expect(dragLeavesFull({ full: false, dy: -200 })).toBe(false);
+  });
+  it("the chat has no button to enter, only an exit button and the menu's row", () => {
+    const src = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
+    expect(src).not.toContain('data-testid="debug-chat-fullscreen"');
+    expect(src).toContain('data-testid="debug-chat-fullscreen-exit"');
+    expect(src).toContain('data-testid="debug-menu-fullscreen"');
+    expect(src).toContain("dropEntersFull(");
+    expect(src).toContain("dragLeavesFull(");
+  });
+});
+
+describe("the full-screen hint while dragging (owner, 2026-11-10)", () => {
+  it("steps only when the drop rule flips: in at the bottom edge, out when backing off", () => {
+    const at = (barBottom: number) =>
+      dropEntersFull({ allowed: true, open: true, full: false, barBottom, vh: 844 });
+    let on = false;
+    const steps: (string | null)[] = [];
+    for (const b of [600, 800, 844, 844, 820, 844]) {
+      const next = at(b);
+      steps.push(fullHintStep(on, next));
+      on = next;
+    }
+    expect(steps).toEqual([null, null, "enter", null, "leave", "enter"]);
+    // The top edge never: a bar pushed to the top is no drop into full screen.
+    expect(at(60)).toBe(false);
+  });
+
+  it("the preview grows from the bottom edge, behind the chat, never takes a touch", () => {
+    const off = FULL_HINT_STYLE(false, false);
+    const on = FULL_HINT_STYLE(true, false);
+    expect(off.transform).toBe("scaleY(0)");
+    expect(on.transform).toBe("scaleY(1)");
+    expect(on.transformOrigin).toBe("bottom");
+    expect(on.pointerEvents).toBe("none");
+    expect(on.zIndex).toContain("- 1");
+    expect(JSON.stringify(on)).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i);
+    expect(FULL_HINT_STYLE(true, true).transition).toBe("none");
   });
 });

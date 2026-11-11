@@ -28,6 +28,7 @@ import Link from "next/link";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { type Virtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
+import { devLog } from "@/lib/debug-client";
 import { AUDIO_PRIO, audioOwner, audioOwnerId } from "@lianki/debug-chat/audio-claim";
 import { createUiStore, useUi } from "@lianki/ui-state";
 import type { ReadMaterial } from "../ReadListClient";
@@ -662,7 +663,11 @@ function Reader({
             );
         },
         onend: () => dispatch({ type: "ended", token }),
-        onerror: (error) => dispatch({ type: "failed", token, error }),
+        onerror: (why, noVoice, engine = "speech") => {
+          // The detail is for the dev log; the alert names only which voice failed.
+          devLog({ ev: "read-play-fail", why, engine, noVoice: !!noVoice });
+          dispatch({ type: "failed", token, error: engine });
+        },
       },
     );
     // The token alone says which utterance this is.
@@ -1346,6 +1351,7 @@ function Reader({
         },
         onerror: (why, noVoice) => {
           if (said.current === stop) said.current = null;
+          devLog({ ev: "read-say-fail", why, noVoice: !!noVoice });
           setSayFail({ u, why, ...(noVoice ? { noVoice: l } : {}) });
         },
       });
@@ -1687,6 +1693,7 @@ function Reader({
         // Never silent without saying so: the card says why.
         onerror: (why, noVoice) => {
           if (said.current === stop) said.current = null;
+          devLog({ ev: "read-say-fail", why, noVoice: !!noVoice });
           setSayFail({ u: target, why, ...(noVoice ? { noVoice: voice } : {}) });
         },
       });
@@ -2281,7 +2288,7 @@ function Reader({
             title={speaking ? tp.pause.value : tp.play.value}
             data-testid="read-play"
             data-status={player.status}
-            className="grid h-10 w-10 place-items-center rounded-full bg-[oklch(0.55_0.13_250)] text-[oklch(0.99_0_0)] [text-shadow:none]"
+            className="grid h-10 w-10 place-items-center rounded-full bg-[oklch(0.55_0.143_22.3)] text-[oklch(0.99_0_0)] [text-shadow:none]"
           >
             <span aria-hidden>{speaking ? "❚❚" : "▶"}</span>
           </button>
@@ -2299,7 +2306,7 @@ function Reader({
                   ? fill(ts.noVoiceFor.value, {
                       lang: langLabel(sayFail.noVoice, String(locale)),
                     })
-                  : `${ts.sayFailed.value} (${sayFail.why})`
+                  : ts.sayFailed.value
                 : null)
             }
             translation={plan ? autoTrans.translation : null}
@@ -2384,7 +2391,7 @@ function Reader({
         )}
         {player.status === "error" && (
           <p role="alert" data-testid="read-status" data-status="error" className="sr-only">
-            {tp.failed} ({player.error})
+            {tp.failed} {player.error === "cloud" ? tp.failedCloud : tp.failedSpeech}
           </p>
         )}
         <p aria-live="polite" className="sr-only">

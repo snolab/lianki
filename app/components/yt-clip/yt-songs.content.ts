@@ -333,12 +333,30 @@ const dictionary = {
       sw: "Gusa ▶ kwenye video ili kuanza.",
       mr: "सुरू करण्यासाठी व्हिडिओतील ▶ वर टॅप करा.",
     }),
+    back: t({
+      en: "Back to books",
+      zh: "返回书架",
+      ja: "本の一覧へ戻る",
+      ko: "책 목록으로",
+      hi: "किताबों पर वापस",
+      es: "Volver a los libros",
+      fr: "Retour aux livres",
+      ar: "العودة إلى الكتب",
+      bn: "বইয়ের তালিকায় ফিরুন",
+      pt: "Voltar aos livros",
+      ru: "Назад к книгам",
+      ur: "کتابوں پر واپس",
+      id: "Kembali ke buku",
+      de: "Zurück zu den Büchern",
+      sw: "Rudi kwenye vitabu",
+      mr: "पुस्तकांकडे परत",
+    }),
   },
 };
 
 const context: Record<keyof typeof dictionary.content, string> = {
   entry:
-    "Name of the feature that turns a song on YouTube into reading material: shown on a button on the /read page (after a plus sign, beside Import Text Material and Import EPUB) and as the heading of its page. A short noun phrase; keep YouTube as written.",
+    "Name of the feature that turns a song on YouTube into reading material: shown as an option in the Import pop-up on /reader (after a plus sign, beside Import text and Import EPUB) and as the heading of its page. A short noun phrase; keep YouTube as written.",
   intro:
     "Introduction under the heading of the new YouTube song page: the user pastes a YouTube video link and the song's lyrics with time stamps; each lyric line becomes a passage (paragraph) in their /read reading, and a small play button ▶ beside it plays just that line of the song. Keep the ▶ symbol.",
   urlLabel:
@@ -372,6 +390,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Screen-reader label of the × button that closes the small video player popup in the reader. One word, the usual Close of a dialog.",
   tapToStart:
     "Hint under the small YouTube player popup, shown when the phone's browser did not let the video start by itself: the user should tap the play button ▶ inside the video. One sentence; keep the ▶ symbol.",
+  back: "Small link at the top of the new YouTube song page, after a ← arrow: leaves the form for the /read list of the learner's books and texts (the same words as the reader's own back button). An imperative phrase.",
 };
 
 export default {

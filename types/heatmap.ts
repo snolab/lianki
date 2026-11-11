@@ -1,6 +1,7 @@
 export type HeatmapData = Record<string, number>;
 
-export type ColorIntensity = 0 | 1 | 2 | 3 | 4;
+/** Strokes of 正 drawn for a day with reviews (app/lib/heatmap-utils.ts). */
+export type TallyStrokes = 1 | 2 | 3 | 4 | 5;
 
 export interface ActivityHeatmapProps {
   data: HeatmapData;
@@ -9,8 +10,6 @@ export interface ActivityHeatmapProps {
 }
 
 export interface HeatmapTooltipProps {
-  date: string;
-  count: number;
-  isVisible: boolean;
+  label: string;
   position: { x: number; y: number };
 }

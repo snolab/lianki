@@ -3,6 +3,7 @@
 import type { StoreStats } from "@/app/lib/notesAdmin";
 import { Icon, type IconName } from "@/app/components/icons";
 import type { LocalSnapshot, UserscriptStatus } from "@/app/lib/localStore";
+import { useIntlayer } from "next-intlayer";
 
 type Props = {
   heading: string;
@@ -17,6 +18,8 @@ type Props = {
   pushLabel: string;
   onPush: () => void;
   scriptHint: string;
+  /** Holds `dev`: the diagnostics (userscript version, its count here, the backend). */
+  dev?: boolean;
 };
 
 function StoreCard({
@@ -63,7 +66,9 @@ export default function StoreConsole({
   pushLabel,
   onPush,
   scriptHint,
+  dev = false,
 }: Props) {
+  const s = useIntlayer("data-page").store;
   const localDirty = local?.cards.filter((c) => c.synced === false).length ?? 0;
 
   return (
@@ -73,40 +78,43 @@ export default function StoreConsole({
       </h2>
 
       <div className="flex flex-wrap gap-4">
-        <StoreCard icon="floppyDisk" name="Script" where="Userscript (GM storage)">
+        <StoreCard icon="floppyDisk" name={s.scriptName.value} where={s.scriptWhere.value}>
           {script ? (
             <>
-              <Stat label="Cards" value={script.cardCount} />
-              <Stat label="Due" value={script.dueCount} />
-              <Stat label="Version" value={`v${script.version}`} />
-              <Stat label="Last sync" value={new Date(script.lastSync).toLocaleTimeString()} />
+              <Stat label={s.cards.value} value={script.cardCount} />
+              <Stat label={s.due.value} value={script.dueCount} />
+              {/* Diagnostics, for developers only (English). */}
+              {dev && <Stat label="Version" value={`v${script.version}`} />}
+              <Stat
+                label={s.lastSync.value}
+                value={new Date(script.lastSync).toLocaleTimeString()}
+              />
             </>
           ) : (
             <p className="text-xs text-gray-500 dark:text-gray-400">{scriptHint}</p>
           )}
         </StoreCard>
 
-        <StoreCard icon="folderSimple" name="Local" where="This browser (IndexedDB)">
-          <Stat label="Cards" value={local ? local.cards.length : "…"} />
-          <Stat label="Unsynced" value={local ? localDirty : "…"} />
-          <Stat label="Script count" value={local?.gmCount ?? "—"} />
+        <StoreCard icon="folderSimple" name={s.localName.value} where={s.localWhere.value}>
+          <Stat label={s.cards.value} value={local ? local.cards.length : "…"} />
+          <Stat label={s.unsynced.value} value={local ? localDirty : "…"} />
+          {dev && <Stat label="Script count" value={local?.gmCount ?? "—"} />}
         </StoreCard>
 
         <StoreCard
           icon="cloud"
-          name="Cloud"
-          where={cloud ? cloud.backend.toUpperCase() : "Signed out"}
+          name={s.cloudName.value}
+          where={isLoggedIn ? s.cloudWhere.value : s.signedOut.value}
         >
           {isLoggedIn ? (
             <>
-              <Stat label="Cards" value={cloud ? cloud.notes : "…"} />
-              <Stat label="Due" value={cloud ? cloud.due : "…"} />
-              <Stat label="Roadmap goals" value={cloud ? cloud.goals : "…"} />
+              <Stat label={s.cards.value} value={cloud ? cloud.notes : "…"} />
+              <Stat label={s.due.value} value={cloud ? cloud.due : "…"} />
+              <Stat label={s.goals.value} value={cloud ? cloud.goals : "…"} />
+              {dev && cloud && <Stat label="Backend" value={cloud.backend} />}
             </>
           ) : (
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Sign in to sync your cards across devices.
-            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{s.signInSync}</p>
           )}
         </StoreCard>
       </div>
@@ -117,10 +125,10 @@ export default function StoreConsole({
           type="button"
           onClick={onPush}
           disabled={!isLoggedIn || pushing || pendingPush === 0}
-          title={isLoggedIn ? undefined : "Sign in to push your local cards to the cloud"}
+          title={isLoggedIn ? undefined : s.pushSignIn.value}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {pushing ? "Pushing…" : `${pushLabel} (${pendingPush})`}
+          {pushing ? s.pushing : `${pushLabel} (${pendingPush})`}
         </button>
         {pushResult && (
           <span className="text-sm text-gray-600 dark:text-gray-400">{pushResult}</span>

@@ -32,7 +32,7 @@ export default async function ChatHistoryPage({
     return (
       <div className="mx-auto max-w-2xl px-4 py-10">
         <h1 className="mb-4 text-2xl font-bold">{labels.title}</h1>
-        <a href="/sign-in" className="text-[oklch(0.55_0.18_255)] underline">
+        <a href="/sign-in" className="text-[oklch(0.55_0.198_22.3)] underline">
           {labels.signIn}
         </a>
       </div>

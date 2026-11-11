@@ -44,6 +44,9 @@ export type AuditKind =
   // everywhere), used (at most once a minute per token, when last_used_at is
   // written), and refused for a known token (expired, missing the permission,
   // over its rate limit). Subject: the token's tag; detail: name and scopes.
+  // A use through `lianki mcp` ends "via mcp/<version> <tool>" (chat, and the
+  // card and settings routes, which log only such named uses;
+  // lib/api-token-client.ts).
   | "api-token.create"
   | "api-token.revoke"
   | "api-token.revoke-all"
@@ -62,8 +65,28 @@ export type AuditKind =
   | "pregrant.claim"
   // The old owner role (site_role, removed 2026-11-09): no longer written, kept
   // so its past rows still read as a known kind.
+  // Mail templates (lib/mail-templates, docs/mail-templates.md): a version saved, a
+  // version made active (rollback), a test mail sent to the editor himself.
+  // Subject: "<template>:<locale>"; detail: the version.
+  | "mail-template.save"
+  | "mail-template.activate"
+  | "mail-template.test-send"
+  // The send log at /dev/mails (lib/mail-log, docs/mail-templates.md "Send
+  // log"): a mail sent again (subject: its log row id, detail: the template),
+  // an address suppressed by hand (subject: the row id) or taken off the list
+  // (subject: the first 12 hex of its hash). Never an address.
+  | "mail-log.resend"
+  | "mail-log.suppress"
+  | "mail-log.unsuppress"
   | "site-role.grant"
-  | "site-role.revoke";
+  | "site-role.revoke"
+  // Lianki's speech servers for other accounts (lib/stt-worker/store.ts): the
+  // /dev/stt-access allowlist (subject: the account id) and the workers allowed
+  // to register (subject: the worker id). Never an email or a key.
+  | "stt-access.allow"
+  | "stt-access.disallow"
+  | "stt-worker.add"
+  | "stt-worker.revoke";
 
 export type AuditEntry = {
   kind: AuditKind;

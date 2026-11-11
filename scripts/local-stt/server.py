@@ -45,7 +45,11 @@ The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
                    {"t":"enrol","op":"start","rid":R,"device":D,"consent":true,"keepAudio":false}
                    {"t":"enrol","op":"commit"|"cancel","rid":R}
                    {"t":"voiceprint","op":"status","rid":R}
-                   {"t":"voiceprint","op":"delete","rid":R,"device":D|"*"}
+                   {"t":"voiceprint","op":"delete","rid":R,"device":D|"*"}   the print only
+                   {"t":"voiceprint","op":"delete-audio","rid":R,"device":D|"*"}   the kept recordings only
+                   {"t":"voiceprint","op":"export","rid":R,"device":D|"*"[,"recordings":true]}   features
+                       (and the kept recordings, base64 wav, for My Files), for the account
+                   {"t":"voiceprint","op":"restore","rid":R,"device":D|"*","prints":[…]}   from the account
                    {"t":"filter","on":bool}                  the voiceprint filter on this socket
   server → client  ready gains "speaker":{"models":[…]} when the check is on
                    final gains "speaker":{score,decision:"me"|"other"|"unknown",model,device,
@@ -76,7 +80,9 @@ from websockets.exceptions import ConnectionClosed
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from engines import RATE, load_engine  # noqa: E402
-from ticket import SUBPROTOCOL, VOICEPRINT_AUD, Tickets, file_problem, load_public_key, offered  # noqa: E402
+from ticket import (  # noqa: E402
+    SUBPROTOCOL, V2_AUD, VOICEPRINT_AUD, Tickets, file_problem, load_public_key, offered,
+)
 import voiceprint as VP  # noqa: E402
 
 #: A partial every this much new audio…
@@ -101,6 +107,15 @@ ORIGINS = [
 PUBLIC_ORIGINS = ["https://lianki.com", "https://www.lianki.com"]
 #: Sockets open at once on the tunnel listener (the page's race opens one; a second page, one more).
 MAX_PUBLIC = 2
+#: The peer listener (docs/local-stt.md, "Lianki's speech servers for everyone"): other
+#: accounts' sessions, bridged from WebRTC by stt-peer on this Mac. 127.0.0.1 only, each
+#: socket with its own v2 ticket (ticket.py V2_AUD), checked here before the upgrade.
+PEER_SUBPROTOCOL = "lianki-stt2"
+PEER_ORIGINS = ["https://lianki.com"]
+#: Sockets at once on the peer listener: config stt.worker.macCapacity - macReserved (3 - 1).
+MAX_PEER = 2
+#: Their own subfolder of the voiceprint store, per account (none enrolled yet; see account_store).
+ACCOUNTS_DIR = "accounts"
 #: Where tunnel.sh turns the tunnel listener on and off, so the oxmgr entry never changes.
 PUBLIC_CONFIG = os.path.expanduser("~/.config/lianki-stt/public.json")
 DEFAULT_PUBKEY = os.path.expanduser("~/.config/lianki-stt/ticket.pub")
@@ -208,6 +223,11 @@ class Server:
         ("enrol", "start"): lambda m: {"op": "enrol", "device": m.get("device"), "uv": True,
                                        "keepAudio": m.get("keepAudio") is True},
         ("voiceprint", "delete"): lambda m: {"op": "delete", "device": m.get("device"), "uv": True},
+        # The kept enrolment recordings: their own op and ticket, never part of a print delete.
+        ("voiceprint", "delete-audio"): lambda m: {"op": "delete-audio", "device": m.get("device"), "uv": True},
+        # The account copy (docs/local-stt.md, "Voiceprint in your account"): features out, a print in.
+        ("voiceprint", "export"): lambda m: {"op": "export", "device": m.get("device"), "uv": True},
+        ("voiceprint", "restore"): lambda m: {"op": "restore", "device": m.get("device"), "uv": True},
     }
 
     async def control(self, m: dict, device: str | None = None) -> dict:
@@ -255,20 +275,65 @@ class Server:
                 self.enrolments.pop(eid, None)
                 self.enrol_at.pop(eid, None)
                 log(f"voiceprint saved ({e.device}, {res['n']} sentences, {','.join(res['models'])}, self {res['self']})")
+                if m.get("export") is True:
+                    # Re-computed from his recordings: the new features back to the page for his
+                    # account, under the same passkey approval as the enrolment (features only).
+                    res["prints"] = await loop.run_in_executor(self.spk_pool, v.store.export, e.device)
                 return {**out, "ok": True, **res}
             if t == "voiceprint" and op == "status":
                 prints = await loop.run_in_executor(self.spk_pool, v.status)
-                return {**out, "ok": True, "prints": prints, "models": v.order, "filter": self.filter_state(device)}
+                kept = await loop.run_in_executor(self.spk_pool, v.store.audio_count, None)
+                return {**out, "ok": True, "prints": prints, "models": v.order, "filter": self.filter_state(device),
+                        "bands": VP.bands_info(v.order), "recordings": kept}
             if t == "voiceprint" and op == "delete":
                 device = m.get("device")
                 if device != "*" and not VP.valid_device(device):
                     return {**out, "ok": False, "error": "bad device"}
                 who = None if device == "*" else device
                 dropped = self._drop_enrolments(who)  # before the delete: queued sentences see it
+                # The print only: kept recordings are a separate question (delete-audio).
                 n = await loop.run_in_executor(self.spk_pool, v.store.delete, who)
                 v.refresh()
-                log(f"voiceprint deleted ({device}, {n} files, {dropped} open enrolment(s) dropped)")
+                kept = await loop.run_in_executor(self.spk_pool, v.store.audio_count, who)
+                log(f"voiceprint deleted ({device}, {n} files, {dropped} open enrolment(s) dropped, {kept} recording(s) kept)")
+                return {**out, "ok": True, "deleted": n, "recordings": kept}
+            if t == "voiceprint" and op == "delete-audio":
+                device = m.get("device")
+                if device != "*" and not VP.valid_device(device):
+                    return {**out, "ok": False, "error": "bad device"}
+                who = None if device == "*" else device
+                n = await loop.run_in_executor(self.spk_pool, v.store.delete_audio, who)
+                log(f"voiceprint recordings deleted ({device}, {n} file(s))")
                 return {**out, "ok": True, "deleted": n}
+            if t == "voiceprint" and op == "export":
+                # Features only (voiceprint.EXPORT_KEYS): never audio, never a path.
+                device = m.get("device")
+                if device != "*" and not VP.valid_device(device):
+                    return {**out, "ok": False, "error": "bad device"}
+                who = None if device == "*" else device
+                prints = await loop.run_in_executor(self.spk_pool, v.store.export, who)
+                if m.get("recordings") is True:
+                    # The kept enrolment audio too, for his account's My Files (read here, never deleted).
+                    recs = await loop.run_in_executor(self.spk_pool, v.store.recordings, who)
+                    log(f"voiceprint exported ({device}, {len(prints)} print(s), {len(recs)} recording(s))")
+                    return {**out, "ok": True, "prints": prints, "recordings": recs}
+                log(f"voiceprint exported ({device}, {len(prints)} print(s), features only)")
+                return {**out, "ok": True, "prints": prints}
+            if t == "voiceprint" and op == "restore":
+                device = m.get("device")
+                prints = m.get("prints")
+                if device != "*" and not VP.valid_device(device):
+                    return {**out, "ok": False, "error": "bad device"}
+                if not isinstance(prints, list) or not 0 < len(prints) <= 16:
+                    return {**out, "ok": False, "error": "no prints"}
+                for p in prints:
+                    q = VP.check_export(p)  # all checked before anything is written
+                    if device != "*" and q["device"] != device:
+                        return {**out, "ok": False, "error": "wrong device"}
+                done = [await loop.run_in_executor(self.spk_pool, v.store.restore, p) for p in prints]
+                v.refresh()
+                log(f"voiceprint restored ({device}, {len(done)} print(s))")
+                return {**out, "ok": True, "restored": done}
         except VP.StoreError as e:
             if t == "enrol" and op == "commit" and isinstance(eid, str):
                 self.enrolments.pop(eid, None)
@@ -289,9 +354,26 @@ class Server:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.pool, fin, audio)
 
-    async def handler(self, ws, via: str = "tailnet"):
+    async def handler(self, ws, via: str = "tailnet", limits: dict | None = None):
+        """
+        One page. `limits` (the peer listener: another account's v2 ticket, `lim`):
+        that ticket's longest utterance and session, and none of the owner's
+        voiceprint features on this socket (no speaker check, no proof, no filter,
+        no enrolment or voiceprint ops: those are his, and per-account prints
+        are not enrolled yet).
+        """
         peer = ws.request.headers.get("origin", "?")
         log(f"page attached ({peer}, {via})")
+        guest = limits is not None
+        max_samples = int((limits or {}).get("utt", MAX_S)) * RATE
+        session_end = None
+        if guest:
+            async def end_session():
+                await asyncio.sleep(int(limits.get("sess", 900)))
+                log(f"session over ({via})")
+                await ws.close(4408, "session over")
+
+            session_end = asyncio.create_task(end_session())
         cur: Utterance | None = None
         #: This socket's device (hello): whose print its finals are scored against.
         conn: dict = {"device": None, "thread": None, "filter": False}
@@ -365,7 +447,12 @@ class Server:
             async def no_check():
                 return checked
 
-            side = self.enrol_add(enrol, audio) if enrol else (no_check() if checked is not None else self.verify(audio, conn["device"]))
+            if guest:
+                side = no_check()  # another account: never scored against the owner's prints
+            elif enrol:
+                side = self.enrol_add(enrol, audio)
+            else:
+                side = no_check() if checked is not None else self.verify(audio, conn["device"])
             res = await asyncio.gather(text_of(), side, return_exceptions=True)
             if isinstance(res[0], BaseException):
                 await send({"t": "error", "id": u.id, "error": str(res[0])[:200]})
@@ -420,7 +507,7 @@ class Server:
             log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, decode {ms} ms, {len(text)} chars{picked}{tag}")
 
         ready = {"t": "ready", "engine": self.engine.name, "model": self.engine.model}
-        if self.verifier:
+        if self.verifier and not guest:
             ready["speaker"] = {"models": self.verifier.order}
         await send(ready)
         try:
@@ -430,7 +517,7 @@ class Server:
                         continue
                     tag, body = msg[0], msg[1:]
                     if tag == 1:
-                        if cur.n >= MAX_S * RATE:
+                        if cur.n >= max_samples:
                             continue
                         x = pcm(body)
                         cur.chunks.append(x)
@@ -466,16 +553,23 @@ class Server:
                     if isinstance(tf, int) and not isinstance(tf, bool) and tf > 0:
                         cur.text_from = tf
                     asyncio.create_task(final(cur))
+                elif t == "hello" and guest:
+                    pass  # no device, no thread: nothing of the owner's applies to this socket
                 elif t == "hello":
                     d = m.get("device")
                     conn["device"] = d if VP.valid_device(d) else None
                     th = m.get("thread")
                     conn["thread"] = th if isinstance(th, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", th) else None
+                elif t == "filter" and guest:
+                    await send({"t": "filter", "on": False})
                 elif t == "filter":
                     # The page says on or off (docs/local-stt.md, "Only my voice"); no message, no filter.
                     conn["filter"] = m.get("on") is True and self.verifier is not None
                     log(f"voice filter {'on' if conn['filter'] else 'off'} ({conn['device']})")
                     await send({"t": "filter", "on": conn["filter"]})
+                elif t in ("enrol", "voiceprint") and guest:
+                    await send({"t": t, "rid": m.get("rid"), "op": m.get("op"), "ok": False,
+                                "error": "not on this route"})
                 elif t in ("enrol", "voiceprint"):
                     await send(await self.control(m, conn["device"]))
                 elif t == "cancel" and cur is not None and cur.id == uid:
@@ -486,6 +580,8 @@ class Server:
         except ConnectionClosed:
             pass  # the page went away (reload, backgrounded): no close frame from iOS
         finally:
+            if session_end:
+                session_end.cancel()
             log(f"page detached ({peer}, {via})")
 
 
@@ -530,6 +626,81 @@ class PublicGate:
                 self.open -= 1
 
         return run
+
+
+class PeerGate:
+    """
+    The peer listener's door (stt-peer's bridge for other accounts): Origin, a free
+    slot, and a v2 ticket offered beside "lianki-stt2" - all before the upgrade. The
+    ticket's limits go to the handler; its account id is never logged.
+    """
+
+    def __init__(self, tickets: Tickets, max_open: int = MAX_PEER):
+        self.tickets = tickets
+        self.max_open = max_open
+        self.open = 0
+
+    def check(self, conn, req):
+        if req.headers.get("Origin") not in PEER_ORIGINS:
+            log("peer: refused, wrong origin")
+            return conn.respond(HTTPStatus.FORBIDDEN, "Forbidden\n")
+        if self.open >= self.max_open:
+            log("peer: refused, too many sockets")
+            return conn.respond(HTTPStatus.SERVICE_UNAVAILABLE, "Busy\n")
+        raw = ", ".join(req.headers.get_all("Sec-WebSocket-Protocol"))
+        names = [x.strip() for x in raw.split(",") if x.strip()]
+        others = [n for n in names if n != PEER_SUBPROTOCOL]
+        if PEER_SUBPROTOCOL not in names or len(others) != 1:
+            log("peer: refused, no ticket")
+            return conn.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+        if self.tickets.full():
+            log("peer: refused, ticket store full")
+            return conn.respond(HTTPStatus.SERVICE_UNAVAILABLE, "Busy\n")
+        why, p = self.tickets.check_payload(others[0])
+        if why:
+            log(f"peer: refused, ticket {why}")  # the reason only, never the ticket
+            return conn.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+        conn.lianki_limits = dict(p["lim"])
+        return None
+
+    def wrap(self, handler):
+        async def run(ws):
+            self.open += 1
+            try:
+                if self.open > self.max_open:
+                    await ws.close(1013, "busy")
+                    return
+                await handler(ws, "peer", getattr(ws, "lianki_limits", None) or {"utt": MAX_S, "sess": 60})
+            finally:
+                self.open -= 1
+
+        return run
+
+
+def account_store(root: str, sub: str) -> str:
+    """
+    Where an account's own voiceprints would live (per-account keying, docs/local-stt.md):
+    a subfolder named by a hash of its id, never the id itself, never the owner's root.
+    """
+    import hashlib
+
+    if not isinstance(sub, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", sub):
+        raise ValueError("bad account id")
+    tag = hashlib.sha256(f"lianki-stt-account\n{sub}".encode()).hexdigest()[:24]
+    return os.path.join(root, ACCOUNTS_DIR, tag)
+
+
+async def start_peer(serve, gate, srv, port: int):
+    """The peer listener, or None: it failing to start never takes the others down."""
+    try:
+        peer = await serve(gate.wrap(srv.handler), "127.0.0.1", port,
+                           origins=PEER_ORIGINS, subprotocols=[PEER_SUBPROTOCOL],
+                           process_request=gate.check, max_size=4 * 1024 * 1024)
+    except Exception as e:
+        log(f"peer listener off: cannot listen on 127.0.0.1:{port} ({type(e).__name__}: {e})")
+        return None
+    log(f"peer listener on ws://127.0.0.1:{port} (v2 tickets required)")
+    return peer
 
 
 def public_settings(port: int, pubkey: str | None, config: str) -> tuple[int, str]:
@@ -618,6 +789,9 @@ async def main() -> None:
                     help=f"the Ed25519 public key for tickets (default {DEFAULT_PUBKEY})")
     ap.add_argument("--public-config", default=PUBLIC_CONFIG,
                     help='{"port":…,"pubkey":…} written by tunnel.sh; "" for none')
+    ap.add_argument("--peer-port", type=int, default=0,
+                    help="also listen here for stt-peer (other accounts, v2 tickets required); 0 = off")
+    ap.add_argument("--peer-max", type=int, default=MAX_PEER, help="sockets at once on the peer listener")
     ap.add_argument("--speaker", default=os.environ.get("LIANKI_STT_SPEAKER", "campp"),
                     help='speaker check models in order ("campp", "campp,eres2netv2"); "" or 0 = off')
     ap.add_argument("--voiceprints", default=VP.STORE_DIR, help="where the voiceprints are kept (0700)")
@@ -635,6 +809,15 @@ async def main() -> None:
             # Fail closed: no key, no public listener (the tailnet one still runs).
             reason = str(e) if isinstance(e, ValueError) else type(e).__name__
             log(f"public listener off: no usable ticket key at {pubkey} ({reason})")
+
+    peer_gate = None
+    if a.peer_port:
+        pk = pubkey or DEFAULT_PUBKEY
+        try:
+            peer_gate = PeerGate(Tickets(load_public_key(pk), aud=V2_AUD), max_open=max(0, a.peer_max))
+        except (OSError, ValueError) as e:
+            reason = str(e) if isinstance(e, ValueError) else type(e).__name__
+            log(f"peer listener off: no usable ticket key at {pk} ({reason})")
 
     from websockets.asyncio.server import serve
     from websockets.http11 import Response
@@ -681,6 +864,7 @@ async def main() -> None:
     async with serve(srv.handler, a.host, a.port, origins=ORIGINS + a.origin,
                      process_request=health, max_size=4 * 1024 * 1024):
         public = await start_public(serve, gate, srv, port) if gate else None
+        peer = await start_peer(serve, peer_gate, srv, a.peer_port) if peer_gate else None
         log(f"listening on ws://{a.host}:{a.port}")
         if a.tailnet:
             tailnet(a.tailnet, a.port, True)
@@ -690,6 +874,8 @@ async def main() -> None:
         finally:
             if public:
                 public.close()
+            if peer:
+                peer.close()
             if a.tailnet:
                 tailnet(a.tailnet, a.port, False)
 

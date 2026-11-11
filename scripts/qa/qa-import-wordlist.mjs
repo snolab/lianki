@@ -3,17 +3,39 @@
 //
 //   QA_BASE=http://localhost:3000 bun scripts/qa/qa-import-wordlist.mjs [outDir]
 //
-// In qa:all (suite import-wordlist), or against any local server on local D1:
-// it turns `import.any` on in the local D1 for the middle part and deletes the
-// row at the end.
+// In qa:all (suite import-wordlist), or against any local server on local D1.
+// `import.any` (lib/import/words-handler.ts, importAnyOn): off, the owner only;
+// on, every signed-in user. The accounts that import are granted `dev` in the
+// LOCAL account_permission (as qa-app-badge does; removed at the end). The
+// light run has the flag off, the dark run on (the row is deleted at the end).
 //
-// - flag off, not the owner: no section on /import, and the route answers 404;
-// - flag on: a CSV file dropped in shows the preview counts (new / skipped),
+// - not the owner, flag off: no section on /import, the route answers 404,
+//   no Import button on /words;
+// - not the owner, flag on: the section, the route and the Import button are
+//   all there;
+// - the owner, flag off or on: a CSV file dropped in shows the preview counts (new / skipped),
 //   "Add N words" makes a /words list, and the recent-imports list shows it;
 // - the same list pasted again: everything is "already in your words";
-// - a binary file: a plain error, nothing sent.
+// - a binary file: a plain error, nothing sent;
+// - /words: the Import button at the top opens the panel; "Preset word sets"
+//   jumps to the Add a list tree; "CSV or Excel table" shows the templates,
+//   which download (header row, BOM) and, uploaded back (.xlsx, then .csv),
+//   preview and add like any list; an old .xls gets a plain error.
+// - column mapping (lib/import/column-map.ts): a header-less table opens with
+//   its columns on word / meaning / example by order; chips dragged by mouse
+//   and moved by keyboard (Space, arrows, Space) put each column on its field,
+//   the card preview follows at once, and the list holds what the cards showed.
+// - "Any file" (stored, not processed): a file of any type uploaded in the
+//   panel is listed with its name and size, and Delete removes it; without
+//   the gate its route is 404 like the rest.
+// - "Words with AI" on a stored file (`words.import-ai`, off in the light run,
+//   on in the dark): off → a `dev` holder only (another user: GET says off);
+//   on → every user. A new account with no credits is never offered it (GET
+//   says unavailable, no button on the file) and converting its stored file
+//   is refused before any model call (402, or 503 where no Workers AI is
+//   configured).
 import { spawnSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, devices } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
@@ -38,12 +60,18 @@ const d1 = (command) => {
   );
   if (r.status !== 0) throw new Error(`local D1: ${r.stderr}`);
 };
-const setFlag = (on) =>
+const AI_FLAG = "words.import-ai";
+const setFlag = (on, key = FLAG) =>
   d1(
     on
-      ? `INSERT OR REPLACE INTO feature_flags (key, enabled, updated_at, updated_by) VALUES ('${FLAG}', 1, '2026-11-09T00:00:00.000Z', 'qa')`
-      : `DELETE FROM feature_flags WHERE key = '${FLAG}'`,
+      ? `INSERT OR REPLACE INTO feature_flags (key, enabled, updated_at, updated_by) VALUES ('${key}', 1, '2026-11-09T00:00:00.000Z', 'qa')`
+      : `DELETE FROM feature_flags WHERE key = '${key}'`,
   );
+const convert = (ctx, fileId) =>
+  ctx.request.post("/api/import/ai", {
+    data: { fileId, locale: "en" },
+    headers: { origin: BASE, "content-type": "application/json" },
+  });
 
 const CSV = [
   "Word,Meaning,Example",
@@ -54,6 +82,12 @@ const CSV = [
   ",no word here,",
 ].join("\n");
 
+/** A table without a header, columns out of order: example, meaning, note, word. */
+const MAPPED = [
+  "¡Buenos días!,good morning,greeting,buenos días",
+  "Un ratón.,mouse,animal,ratón",
+].join("\n");
+
 const preview = (ctx, text) =>
   ctx.request.post("/api/import/words", {
     data: { step: "preview", text, fileName: "qa.csv" },
@@ -61,39 +95,98 @@ const preview = (ctx, text) =>
   });
 
 async function signUp(ctx, tag) {
+  const email = `qa+wl${tag}${Date.now()}@lianki.test`;
   const r = await ctx.request.post("/api/auth/sign-up/email", {
-    data: { email: `qa+wl${tag}${Date.now()}@lianki.test`, password: PW, name: "QA WL" },
+    data: { email, password: PW, name: "QA WL" },
     headers: { origin: BASE },
   });
   check(r.ok(), `sign-up (${r.status()})`);
+  return email;
+}
+
+/** Local throwaway accounts granted `dev` by this run, removed at the end. */
+const granted = [];
+const grantDev = (email) => {
+  granted.push(email);
+  d1(
+    `INSERT OR REPLACE INTO account_permission (email, permission, granted_by, granted_at) VALUES ('${email}', 'dev', 'qa', ${Date.now()})`,
+  );
+};
+
+/** Not the owner, flag off: nothing on /import or /words, and the route is 404. */
+async function notTheOwner(tag) {
+  const ctx = await newSilentContext(browser, { baseURL: BASE });
+  await signUp(ctx, tag.replace(/\W+/g, ""));
+  const page = await ctx.newPage();
+  await page.goto("/import");
+  check(
+    (await page.locator('[data-qa="wordlist-import"]').count()) === 0,
+    `${tag}, not the owner: no word-list section on /import`,
+  );
+  check((await preview(ctx, CSV)).status() === 404, `${tag}, not the owner: the route is 404`);
+  check(
+    (await ctx.request.get("/api/import/files")).status() === 404,
+    `${tag}, not the owner: the stored-files route is 404`,
+  );
+  const ai = await (await ctx.request.get("/api/import/ai")).json();
+  check(ai.on === false, `${tag}, not the owner: Words with AI is off (${JSON.stringify(ai)})`);
+  await page.goto("/words?lang=en");
+  await page.waitForTimeout(3000);
+  check(
+    (await page.locator('[data-qa="words-import-button"]').count()) === 0,
+    `${tag}, not the owner: no Import button on /words`,
+  );
+  await ctx.close();
+}
+
+/** Not the owner, flag on: the section on /import, the route, the Import button on /words. */
+async function everyone(tag) {
+  const ctx = await newSilentContext(browser, { baseURL: BASE });
+  await signUp(ctx, tag.replace(/\W+/g, ""));
+  // Flags are cached 30 s per isolate: wait for the flag to reach the server.
+  for (let i = 0; i < 25 && (await preview(ctx, CSV)).status() === 404; i++)
+    await new Promise((r) => setTimeout(r, 2000));
+  const page = await ctx.newPage();
+  await page.goto("/import");
+  check(
+    (await page.locator('[data-qa="wordlist-import"]').count()) === 1,
+    `${tag}, not the owner: the word-list section on /import`,
+  );
+  check((await preview(ctx, CSV)).status() === 200, `${tag}, not the owner: the route answers`);
+  check(
+    (await ctx.request.get("/api/import/files")).status() === 200,
+    `${tag}, not the owner: the stored-files route answers`,
+  );
+  const ai = await (await ctx.request.get("/api/import/ai")).json();
+  check(
+    ai.available === false,
+    `${tag}, not the owner, no credits: Words with AI not offered (${JSON.stringify(ai)})`,
+  );
+  await page.goto("/words?lang=en");
+  await page.locator('[data-qa="words-import-button"]').waitFor({ timeout: 15000 });
+  check(true, `${tag}, not the owner: the Import button on /words`);
+  await ctx.close();
 }
 
 const browser = await launchSilent(chromium);
 try {
   setFlag(false);
-  {
-    const ctx = await newSilentContext(browser, { baseURL: BASE });
-    await signUp(ctx, "off");
-    const page = await ctx.newPage();
-    await page.goto("/import");
-    check(
-      (await page.locator('[data-qa="wordlist-import"]').count()) === 0,
-      "flag off: no word-list section on /import",
-    );
-    check((await preview(ctx, CSV)).status() === 404, "flag off: the route is 404");
-    await ctx.close();
-  }
+  await notTheOwner("flag off");
 
-  setFlag(true);
   for (const scheme of ["light", "dark"]) {
+    // Light: the owner with the flag off; dark: with it on.
+    if (scheme === "dark") {
+      setFlag(true);
+      setFlag(true, AI_FLAG);
+    }
     console.log(`— iPhone 13 ${scheme}`);
     const ctx = await newSilentContext(browser, {
       ...devices["iPhone 13"],
       baseURL: BASE,
       colorScheme: scheme,
     });
-    await signUp(ctx, scheme);
-    // The server caches flags for 30 s (docs/feature-flags.md): wait for the switch to reach it.
+    grantDev(await signUp(ctx, scheme));
+    // Permission grants are cached 20 s per isolate: wait for the grant to reach the server.
     for (let i = 0; i < 25 && (await preview(ctx, "x")).status() === 404; i++)
       await new Promise((r) => setTimeout(r, 2000));
 
@@ -143,18 +236,316 @@ try {
     );
     check(/qa-spanish\.csv/.test(await section.innerText()), "recent imports list the file");
 
+    // Column mapping: a table without a header, its columns out of order.
+    await page.goto("/import?lang=en");
+    await page
+      .locator('[data-qa="wordlist-file"]')
+      .setInputFiles({ name: "qa-mapped.csv", mimeType: "text/csv", buffer: Buffer.from(MAPPED) });
+    const mapper = page.locator('[data-qa="wordlist-mapper"]');
+    await mapper.waitFor({ timeout: 15000 });
+    const slotCols = (slot) =>
+      page
+        .locator(`[data-qa="wordlist-slot-${slot}"] [data-qa="wordlist-chip"]`)
+        .evaluateAll((els) => els.map((e) => Number(e.dataset.col)));
+    check(
+      JSON.stringify(await slotCols("term")) === "[0]" &&
+        JSON.stringify(await slotCols("back")) === "[1]" &&
+        JSON.stringify(await slotCols("ex")) === "[2]" &&
+        JSON.stringify(await slotCols("ignore")) === "[3]",
+      "mapping: by column order without a header (word, meaning, example; the 4th ignored)",
+    );
+    const firstCard = () =>
+      page.locator('[data-qa="wordlist-card"]').first().innerText({ timeout: 5000 });
+    check(
+      (await firstCard()).startsWith("¡Buenos días!"),
+      "cards: the wrong column shows as the word at first",
+    );
+    /**
+     * Drag a chip with a finger onto a slot (dnd-kit's touch sensor: a short
+     * hold picks it up, as on an iPhone), over CDP touch events.
+     */
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) =>
+      cdp.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1 }],
+      });
+    const drag = async (col, slot) => {
+      await page.evaluate(() =>
+        document
+          .querySelector('[data-qa="wordlist-slot-reading"]')
+          .scrollIntoView({ block: "center", behavior: "instant" }),
+      );
+      const a = await page.locator(`[data-qa="wordlist-chip"][data-col="${col}"]`).boundingBox();
+      const b = await page.locator(`[data-qa="wordlist-slot-${slot}"]`).boundingBox();
+      const [x0, y0] = [a.x + a.width / 2, a.y + a.height / 2];
+      const [x1, y1] = [b.x + b.width / 2, b.y + b.height - 10];
+      await touch("touchStart", x0, y0);
+      await page.waitForTimeout(300);
+      for (let i = 1; i <= 14; i++) {
+        await touch("touchMove", x0 + ((x1 - x0) * i) / 14, y0 + ((y1 - y0) * i) / 14);
+        await page.waitForTimeout(20);
+      }
+      await page.waitForTimeout(150);
+      await touch("touchEnd", x1, y1);
+      await page.waitForTimeout(300);
+    };
+    await drag(0, "ex"); // "¡Buenos días!" is the example
+    await drag(3, "term"); // "buenos días" is the word
+    check(
+      JSON.stringify(await slotCols("term")) === "[3]" &&
+        JSON.stringify((await slotCols("ex")).sort()) === "[0,2]",
+      `mapping: chips dragged onto their fields (word ${JSON.stringify(await slotCols("term"))}, example ${JSON.stringify(await slotCols("ex"))})`,
+    );
+    // Keyboard: Space picks the old example chip up, arrows carry it to Ignore, Space drops it.
+    const kChip = page.locator('[data-qa="wordlist-chip"][data-col="2"]');
+    await kChip.focus();
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(150);
+    for (let i = 0; i < 6 && !(await slotCols("ignore")).includes(2); i++) {
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(150);
+    }
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(300);
+    check(
+      (await slotCols("ignore")).includes(2),
+      `mapping: a chip moved by keyboard (ignore ${JSON.stringify(await slotCols("ignore"))})`,
+    );
+    const card = await firstCard();
+    check(
+      card.startsWith("buenos días") &&
+        card.includes("¡Buenos días!") &&
+        card.includes("good morning"),
+      `cards: the preview follows the chips (${card.replace(/\n/g, " | ")})`,
+    );
+    await page.screenshot({ path: join(OUT, `mapping-${scheme}.png`), fullPage: true });
+    // Counts follow the mapping too (asked again once the chips rest).
+    await page.waitForFunction(
+      () =>
+        /2 new/.test(document.querySelector('[data-qa="wordlist-preview-box"]')?.textContent ?? ""),
+      null,
+      { timeout: 10000 },
+    );
+    await page.locator('[data-qa="wordlist-lang"]').selectOption("es");
+    await page.locator('[data-qa="wordlist-add"]').click();
+    await page.locator('[data-qa="wordlist-done"]').waitFor({ timeout: 15000 });
+    const mHref = await page
+      .locator('[data-qa="wordlist-import"] a[href^="/words?list="]')
+      .first()
+      .getAttribute("href");
+    const mEntries = await (
+      await ctx.request.get(`/api/words/lists/${mHref?.split("=")[1]}/entries`)
+    ).json();
+    const e0 = (mEntries.entries ?? [])[0] ?? {};
+    check(
+      e0.term === "buenos días" && e0.back === "good morning" && e0.ex === "¡Buenos días!",
+      `commit: the server parsed with the mapping (${e0.term} / ${e0.back} / ${e0.ex})`,
+    );
+    // The page's mapping is checked again on the server: a column out of range is dropped.
+    const odd = await (
+      await ctx.request.post("/api/import/words", {
+        data: { step: "preview", text: MAPPED, fileName: "m.csv", mapping: { term: [9] } },
+        headers: { origin: BASE, "content-type": "application/json" },
+      })
+    ).json();
+    check(odd.fresh === 0, `a mapping with no real word column adds nothing (${odd.fresh})`);
+
     // The same words again: nothing new.
     const again = await (await preview(ctx, CSV)).json();
     check(
       again.fresh === 0 && again.have === 3,
       `again: 0 new, 3 already have (${again.fresh}/${again.have})`,
     );
+    // /words → Import (docs/import-material.md, "On /words"): the button opens
+    // the panel; the templates download with the header row; the filled-in
+    // .xlsx and .csv go through the same preview and "Add N words".
+    await page.goto("/words?lang=en");
+    const importBtn = page.locator('[data-qa="words-import-button"]');
+    await importBtn.waitFor({ timeout: 30000 });
+    const btnBox = await importBtn.boundingBox();
+    check(!!btnBox && btnBox.y < 260, `/words: Import button at the top (y=${btnBox?.y})`);
+    await importBtn.click();
+    const panel = page.locator('[data-qa="words-import-panel"]');
+    await panel.waitFor({ timeout: 5000 });
+    check(
+      (await panel
+        .locator('[data-qa="words-import-preset"], [data-qa="words-import-table"]')
+        .count()) === 2,
+      "/words: the panel lists preset sets and a CSV / Excel table",
+    );
+    await page.locator('[data-qa="words-import-preset"]').click();
+    await page.waitForTimeout(800);
+    check((await panel.count()) === 0, "preset sets: the panel closes");
+    check(
+      await page.locator("[data-add-tree]").evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return r.top < innerHeight && r.bottom > 0;
+      }),
+      "preset sets: the 'Add a list' tree is in view",
+    );
+    // "Any file": stored and listed, then deleted.
+    await importBtn.click();
+    await page.locator('[data-qa="words-import-files"]').click();
+    const filesBody = page.locator('[data-qa="words-import-files-body"]');
+    await filesBody.waitFor({ timeout: 15000 });
+    await filesBody.locator('[data-qa="words-import-files-input"]').setInputFiles({
+      name: "lesson-notes.bin",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from([0, 1, 2, 3, 250, 251]),
+    });
+    const stored = filesBody.locator('[data-qa="words-import-file"]');
+    await stored.first().waitFor({ timeout: 15000 });
+    const row = await stored.first().innerText();
+    check(
+      /lesson-notes\.bin/.test(row) && /6 B/.test(row),
+      `any file: stored and listed (${row.replace(/\s+/g, " ")})`,
+    );
+    await page.screenshot({ path: join(OUT, `words-files-${scheme}.png`), fullPage: true });
+    // "Words with AI": never offered without credits; flag off, not even routed.
+    check(
+      (await stored.first().locator('[data-qa="words-import-file-ai"]').count()) === 0,
+      "/words: no credits → no 'Words with AI' on the stored file",
+    );
+    const quota = await (await ctx.request.get("/api/import/ai")).json();
+    check(
+      quota.available === false,
+      `GET /api/import/ai: not available (${JSON.stringify(quota)})`,
+    );
+    const fileId = (await (await ctx.request.get("/api/import/files")).json()).items?.[0]?.id;
+    let conv = (await convert(ctx, fileId)).status();
+    // The flag just turned on reaches the server within its 30 s cache.
+    for (let i = 0; conv === 404 && i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      conv = (await convert(ctx, fileId)).status();
+    }
+    check(
+      conv === 402 || conv === 503,
+      `POST /api/import/ai: refused without credits (402/503) (${conv})`,
+    );
+    // My Files: the file in the Word lists folder, served back to its owner.
+    const mine = await (await ctx.request.get("/api/my/files")).json();
+    check(
+      (mine.items ?? []).some((i) => i.id === fileId && i.source === "import"),
+      "/api/my/files: the file, from the Import panel",
+    );
+    const back = await ctx.request.get(`/api/my/files/${fileId}`);
+    check(
+      back.status() === 200 && (await back.body()).length === 6,
+      `GET /api/my/files/<id>: the owner gets the bytes (${back.status()})`,
+    );
+    const filesPage = await ctx.newPage();
+    await filesPage.goto("/my/files?lang=en");
+    const folder = filesPage.locator('[data-qa="my-files-folder-import"]');
+    await folder.waitFor({ timeout: 15000 });
+    // One virtual list: the folder heading is a row, its files the rows under it.
+    check(
+      (await filesPage
+        .locator('[data-qa="my-file"][data-folder="import"]', { hasText: "lesson-notes.bin" })
+        .count()) === 1,
+      "/my/files: the file in the Word lists folder",
+    );
+    await filesPage.screenshot({ path: join(OUT, `my-files-${scheme}.png`), fullPage: true });
+    check(
+      await filesPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      "/my/files: no sideways scroll at phone width",
+    );
+    await filesPage.close();
+    await stored.first().locator('[data-qa="words-import-file-delete"]').click();
+    await page.waitForTimeout(1500);
+    check((await stored.count()) === 0, "any file: Delete removes it");
+    const left = await (await ctx.request.get("/api/import/files")).json();
+    check((left.items ?? []).length === 0, "any file: gone on the server too");
+    await page.locator('[data-qa="words-import-table"]').click();
+    const body = page.locator('[data-qa="words-import-table-body"]');
+    await body.locator('[data-qa="wordlist-templates"]').waitFor({ timeout: 15000 });
+    await page.screenshot({ path: join(OUT, `words-panel-${scheme}.png`), fullPage: true });
+
+    const save = async (sel, name) => {
+      const [dl] = await Promise.all([page.waitForEvent("download"), body.locator(sel).click()]);
+      const path = join(OUT, `${scheme}-${name}`);
+      await dl.saveAs(path);
+      return { name: dl.suggestedFilename(), bytes: readFileSync(path) };
+    };
+    const xlsx = await save('[data-qa="wordlist-template-xlsx"]', "template.xlsx");
+    check(
+      xlsx.name === "lianki-words-template.xlsx" && xlsx.bytes.subarray(0, 2).toString() === "PK",
+      `XLSX template downloads (${xlsx.name}, ${xlsx.bytes.length} bytes)`,
+    );
+    const csv = await save('[data-qa="wordlist-template-csv"]', "template.csv");
+    const csvText = csv.bytes.toString("utf8");
+    check(
+      csvText.startsWith("﻿Word,Meaning,Example\r\n") && /\r\napple,/.test(csvText),
+      "CSV template: BOM, the English header row, example rows",
+    );
+
+    // The .xlsx template, uploaded as it is: its 3 example words.
+    await body.locator('[data-qa="wordlist-file"]').setInputFiles({
+      name: "my-words.xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: xlsx.bytes,
+    });
+    const box2 = body.locator('[data-qa="wordlist-preview-box"]');
+    await box2.waitFor({ timeout: 15000 });
+    const sum2 = await box2.innerText();
+    check(/3 new/.test(sum2), `xlsx preview: 3 new (${sum2.split("\n")[0]})`);
+    check(/Columns read from the header row/.test(sum2), "xlsx preview: the header row was read");
+    await body.locator('[data-qa="wordlist-lang"]').selectOption("en");
+    await body.locator('[data-qa="wordlist-add"]').click();
+    const done2 = body.locator('[data-qa="wordlist-done"]');
+    await done2.waitFor({ timeout: 15000 });
+    check(/Added 3 words to “my-words”/.test(await done2.innerText()), "xlsx: 3 words added");
+    await page
+      .locator("[data-list-row]")
+      .filter({ hasText: "my-words" })
+      .first()
+      .waitFor({ timeout: 15000 });
+    check(true, "/words: the new list shows in the lists without a reload");
+
+    // The CSV template next: the same words, so all already there.
+    await body.getByRole("button", { name: /import another/i }).click();
+    await body.locator('[data-qa="wordlist-file"]').setInputFiles({
+      name: "template.csv",
+      mimeType: "text/csv",
+      buffer: csv.bytes,
+    });
+    await box2.waitFor({ timeout: 15000 });
+    const sum3 = await box2.innerText();
+    check(
+      /0 new/.test(sum3) && /3 already in your words/.test(sum3),
+      "csv template: 3 already there",
+    );
+
+    // An old .xls: a plain error naming the fix.
+    await body.locator('[data-qa="wordlist-file"]').setInputFiles({
+      name: "old.xls",
+      mimeType: "application/vnd.ms-excel",
+      buffer: Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0, 0, 0]),
+    });
+    const err2 = body.locator('[data-qa="wordlist-error"]');
+    await err2.waitFor({ timeout: 10000 });
+    check(
+      /old Excel file/.test(await err2.innerText()),
+      "an .xls: 'old Excel file', save as .xlsx",
+    );
+    check(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      "/words: no sideways scroll at phone width",
+    );
     check(errs.length === 0, `no page errors (${errs.join(" | ")})`);
     await ctx.close();
   }
+  // The flag has been on for the whole dark run (past the 30 s flag cache):
+  // it reaches every signed-in user.
+  await everyone("flag on");
 } finally {
   try {
     setFlag(false);
+    setFlag(false, AI_FLAG);
+    if (granted.length)
+      d1(
+        `DELETE FROM account_permission WHERE email IN (${granted.map((e) => `'${e}'`).join(", ")})`,
+      );
   } catch (e) {
     console.error(e);
   }

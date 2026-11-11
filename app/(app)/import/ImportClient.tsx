@@ -2,7 +2,9 @@
 
 import { useCallback, useRef, useState } from "react";
 import JSZip from "jszip";
+import { useIntlayer } from "next-intlayer";
 import { authClient } from "@/lib/auth-client";
+import { around, fill } from "./text";
 
 type ParsedNote = {
   url: string;
@@ -12,30 +14,55 @@ type ParsedNote = {
 
 type Stage = "idle" | "parsing" | "syncing" | "done" | "error" | "auth";
 
+/** Why an import stopped, as a key of the translated messages; the raw detail goes to the console only. */
+type ImportError = "errBadFile" | "errSaveFailed" | "errFailed";
+
+/** A failure with a known meaning; anything else is shown as the generic line. */
+class ImportFailure extends Error {
+  constructor(readonly kind: ImportError | "auth") {
+    super(kind);
+  }
+}
+
 async function parseApkgInBrowser(
   file: File,
   onProgress: (parsed: number, total: number) => void,
 ): Promise<{ deckName: string; notes: ParsedNote[] }> {
   const buffer = await file.arrayBuffer();
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await JSZip.loadAsync(buffer).catch((e: unknown) => {
+    console.warn("[import] not a zip", e);
+    throw new ImportFailure("errBadFile");
+  });
 
   const dbFileName = zip.file("collection.anki21")
     ? "collection.anki21"
     : zip.file("collection.anki2")
       ? "collection.anki2"
       : null;
-  if (!dbFileName) throw new Error("Invalid APKG file: no collection database found");
+  if (!dbFileName) {
+    console.warn("[import] no collection database in the .apkg");
+    throw new ImportFailure("errBadFile");
+  }
 
   const dbData = await zip.file(dbFileName)!.async("uint8array");
 
   // dynamically import sql.js (browser build) to avoid SSR issues
   const initSqlJs = (await import("sql.js")).default;
   const SQL = await initSqlJs({ locateFile: () => "/sql-wasm.wasm" });
-  const db = new SQL.Database(dbData);
+  let db: InstanceType<typeof SQL.Database>;
+  try {
+    db = new SQL.Database(dbData);
+  } catch (e) {
+    console.warn("[import] unreadable collection", e);
+    throw new ImportFailure("errBadFile");
+  }
 
   try {
     const colResult = db.exec("SELECT models, decks FROM col LIMIT 1");
-    if (!colResult.length) throw new Error("Invalid APKG: empty col table");
+    if (!colResult.length) {
+      console.warn("[import] empty col table");
+      throw new ImportFailure("errBadFile");
+    }
 
     const modelsJson = JSON.parse(colResult[0].values[0][0] as string);
     const decksJson = JSON.parse(colResult[0].values[0][1] as string);
@@ -77,6 +104,10 @@ async function parseApkgInBrowser(
     }
     onProgress(rows.length, rows.length);
     return { deckName, notes };
+  } catch (e) {
+    if (e instanceof ImportFailure) throw e;
+    console.warn("[import] could not read the deck", e);
+    throw new ImportFailure("errBadFile");
   } finally {
     db.close();
   }
@@ -99,8 +130,9 @@ async function syncBatches(
       body: JSON.stringify({ cards: batch }),
     });
     if (!res.ok) {
-      if (res.status === 401) throw new Error("auth");
-      throw new Error((await res.json()).error || "Sync failed");
+      if (res.status === 401) throw new ImportFailure("auth");
+      console.warn("[import] save failed", res.status, await res.text().catch(() => ""));
+      throw new ImportFailure("errSaveFailed");
     }
     const data = await res.json();
     imported += data.imported;
@@ -110,29 +142,8 @@ async function syncBatches(
   return { imported, skipped };
 }
 
-interface ImportClientProps {
-  title: string;
-  description: string;
-  dropzone: string;
-  maxSize: string;
-  importButton: string;
-  parsing: string;
-  syncing: string;
-  importComplete: string;
-  viewDashboard: string;
-}
-
-export default function ImportClient({
-  title,
-  description,
-  dropzone,
-  maxSize,
-  importButton,
-  parsing,
-  syncing,
-  importComplete,
-  viewDashboard,
-}: ImportClientProps) {
+export default function ImportClient() {
+  const t = useIntlayer("import-page");
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [stage, setStage] = useState<Stage>("idle");
@@ -144,12 +155,12 @@ export default function ImportClient({
     skipped: number;
     total: number;
   } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ImportError | "wrongType" | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback((f: File) => {
     if (!f.name.endsWith(".apkg")) {
-      setError("Please select an .apkg file");
+      setError("wrongType");
       return;
     }
     setFile(f);
@@ -182,11 +193,12 @@ export default function ImportClient({
       setStage("done");
       setFile(null);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Import failed";
-      if (msg === "auth") {
+      const kind = err instanceof ImportFailure ? err.kind : "errFailed";
+      if (!(err instanceof ImportFailure)) console.warn("[import] failed", err);
+      if (kind === "auth") {
         setStage("auth");
       } else {
-        setError(msg);
+        setError(kind);
         setStage("error");
       }
     }
@@ -197,8 +209,8 @@ export default function ImportClient({
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-4xl font-bold mb-4">{title}</h1>
-        <p className="text-lg mb-8 text-gray-600 dark:text-gray-400">{description}</p>
+        <h1 className="text-4xl font-bold mb-4">{t.title}</h1>
+        <p className="text-lg mb-8 text-gray-600 dark:text-gray-400">{t.description}</p>
 
         {/* Drop zone */}
         <div
@@ -234,13 +246,13 @@ export default function ImportClient({
             <div>
               <div className="text-lg font-medium">{file.name}</div>
               <div className="text-sm text-gray-500 mt-1">
-                {(file.size / 1024 / 1024).toFixed(2)} MB
+                {fill(t.sizeMb, { n: (file.size / 1024 / 1024).toFixed(2) })}
               </div>
             </div>
           ) : (
             <div>
-              <div className="text-lg text-gray-500 mb-2">{dropzone}</div>
-              <div className="text-sm text-gray-400">{maxSize}</div>
+              <div className="text-lg text-gray-500 mb-2">{t.dropzone}</div>
+              <div className="text-sm text-gray-400">{t.maxSize}</div>
             </div>
           )}
         </div>
@@ -251,7 +263,7 @@ export default function ImportClient({
             onClick={handleImport}
             className="w-full mt-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
           >
-            {importButton}
+            {t.importButton}
           </button>
         )}
 
@@ -259,7 +271,7 @@ export default function ImportClient({
         {stage === "parsing" && (
           <div className="mt-6">
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-              <span>{parsing}</span>
+              <span>{t.parsing}</span>
               <span>
                 {parseProgress.done} / {parseProgress.total || "?"}
               </span>
@@ -277,14 +289,14 @@ export default function ImportClient({
         {stage === "syncing" && (
           <div className="mt-6">
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-              <span>{syncing}</span>
+              <span>{t.syncing}</span>
               <span>
                 {syncProgress.done} / {syncProgress.total}
               </span>
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
               <div
-                className="bg-green-500 h-2 rounded-full transition-all"
+                className="bg-blue-600 dark:bg-blue-400 h-2 rounded-full transition-all"
                 style={{ width: `${pct(syncProgress.done, syncProgress.total)}%` }}
               />
             </div>
@@ -295,7 +307,7 @@ export default function ImportClient({
         {stage === "auth" && (
           <div className="mt-6 p-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
             <p className="text-yellow-800 dark:text-yellow-200 font-medium mb-4">
-              Sign in to save your imported cards to the cloud.
+              {t.signInToSave}
             </p>
             <div className="space-y-3">
               <button
@@ -307,7 +319,7 @@ export default function ImportClient({
                 }
                 className="w-full px-6 py-2 bg-gray-900 text-white rounded hover:bg-gray-700 font-medium"
               >
-                Sign in with GitHub
+                {t.signInGithub}
               </button>
               <button
                 onClick={() =>
@@ -318,7 +330,7 @@ export default function ImportClient({
                 }
                 className="w-full px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
               >
-                Sign in with Google
+                {t.signInGoogle}
               </button>
             </div>
           </div>
@@ -327,7 +339,7 @@ export default function ImportClient({
         {/* Error */}
         {error && (
           <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
-            {error}
+            {t[error]}
           </div>
         )}
 
@@ -335,21 +347,23 @@ export default function ImportClient({
         {result && stage === "done" && (
           <div className="mt-4 p-6 bg-green-50 dark:bg-green-900/20 rounded-lg">
             <h2 className="text-xl font-semibold text-green-700 dark:text-green-400 mb-2">
-              {importComplete}
+              {t.importComplete}
             </h2>
             <div className="space-y-1 text-sm">
               <div>
-                Deck: <strong>{result.deckName}</strong>
+                {around(t.resultDeck, "name")[0]}
+                <strong>{result.deckName}</strong>
+                {around(t.resultDeck, "name")[1]}
               </div>
-              <div>Imported: {result.imported} cards</div>
-              {result.skipped > 0 && <div>Skipped: {result.skipped} (already existed)</div>}
-              <div>Total notes in deck: {result.total}</div>
+              <div>{fill(t.resultImported, { n: result.imported })}</div>
+              {result.skipped > 0 && <div>{fill(t.resultSkipped, { n: result.skipped })}</div>}
+              <div>{fill(t.resultTotal, { n: result.total })}</div>
             </div>
             <a
               href="/list"
-              className="inline-block mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+              className="inline-block mt-4 px-4 py-2 bg-primary text-on-primary rounded hover:bg-blue-700 text-sm"
             >
-              {viewDashboard}
+              {t.viewDashboard}
             </a>
           </div>
         )}

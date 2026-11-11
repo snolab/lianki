@@ -23,16 +23,20 @@ import { useBoxAccount } from "./BoxApiBridge";
 import { ETA_FLAG } from "@/lib/eta-ping";
 import { boxViewer, ownerFlagOn } from "@/lib/box-oauth/session";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
+import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
 import { isKey } from "@lianki/debug-chat/storage-keys";
 import {
   type ChatContext,
   type ChatStrings,
   type VoiceTiming,
+  type WithdrawnEvent,
+  applyWithdrawn,
   cleanContext,
   cleanAttachments,
   type AttachmentRef,
   cleanTiming,
 } from "@lianki/debug-chat/wire";
+import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
@@ -40,6 +44,7 @@ import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { speakReply } from "@lianki/debug-chat/DebugChat";
 import { withLane } from "@lianki/debug-chat/voices";
 import { spokenOf } from "@lianki/debug-chat/rich-text";
+import { missedReply } from "@lianki/debug-chat/speak-rules";
 import { voice } from "@lianki/debug-chat/voice";
 import { isDesktop, keepHub, onTakeover, voiceBusy } from "@lianki/debug-chat/voice-bg";
 import { useVoiceTitleHint } from "./useVoiceTitleHint";
@@ -64,6 +69,7 @@ import { islandStore } from "@/lib/islands/store";
 import { useIslands } from "@/lib/islands/useIslands";
 import { useLiveView, widgetSource } from "@/lib/live-view/client";
 import { inboxFiles, linkInboxLine } from "@/lib/inbox/client";
+import { pageBuildId } from "@/lib/build-id";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
@@ -76,8 +82,6 @@ const AGENT_AVATAR = "/icon-192.png";
 const backToCloseChat = (onBack: () => void) => openBackToClose(window, onBack);
 /** sessionStorage: this tab's page id (docs/monitoring.md, "Remote eval"). */
 const TAB_KEY = "lk:debug-tab";
-/** The build the page runs, on each page-error ("dev" under next dev). */
-const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
 /** The chat lines cut out of page errors: the latest this many. */
 const SENSITIVE_LINES = 50;
 
@@ -125,6 +129,8 @@ export type PartnerStrings = ChatStrings & {
   /** Out of credits: the model was not asked; the line links to where credits are bought. */
   aiCredits: string;
   aiCreditsLink: string;
+  /** "At least {need} credits ({short} more)", when the refusal carried the numbers. */
+  aiCreditsNeed?: string;
 };
 
 /**
@@ -135,6 +141,7 @@ export type PartnerStrings = ChatStrings & {
 export function DebugEval({
   strings,
   partnerOpen = false,
+  dev = false,
   etaBar = false,
   fullScreen = false,
   liHub = false,
@@ -147,6 +154,11 @@ export function DebugEval({
   box?: BoxConfig | null;
   strings?: Partial<PartnerStrings>;
   partnerOpen?: boolean;
+  /**
+   * The viewer holds `dev` (lib/permissions.ts, from the server): only then does
+   * this page run remote eval, and the chat show pairings and full page paths.
+   */
+  dev?: boolean;
   /** Flag chat.eta-bar (lib/eta-ping.ts): the ETA bar on the owner's chat, and its pings. */
   etaBar?: boolean;
   /** `partner.fullscreen` on: the chat's full screen for every chat user (off: the owner only). */
@@ -156,6 +168,8 @@ export function DebugEval({
 } = {}) {
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
+  const devRef = useRef(dev);
+  devRef.current = dev;
   const boxRef = useRef(box);
   boxRef.current = box;
   const stringsRef = useRef(strings);
@@ -291,7 +305,8 @@ export function DebugEval({
     // dropped for good on a friend's.
     const newReporter = () =>
       createPageErrorReporter({
-        rev: BUILD_ID,
+        // The build the page runs ("dev" under next dev): from <html data-build>.
+        rev: pageBuildId(),
         pagePath: () => location.pathname,
         sensitive: () => [
           ...typedText(document),
@@ -431,14 +446,23 @@ export function DebugEval({
           return;
         }
         if (msg.type === "page-ended") {
-          setWarning("Ended from another page. It reconnects when you come back to this page.");
+          setWarning(chatExtra().endedElsewhere);
           return;
         }
         if (msg.type === "ai-credits") {
           const s = stringsRef.current;
-          const line = (
-            s?.aiCredits ?? "Your {name} needs credits to reply. Add credits to keep chatting."
-          ).replaceAll("{name}", s?.name || "Learning Partner");
+          const need = Number((msg as { need?: unknown }).need);
+          const have = Number((msg as { have?: unknown }).have);
+          const numbers =
+            Number.isFinite(need) && Number.isFinite(have) && s?.aiCreditsNeed
+              ? ` ${s.aiCreditsNeed
+                  .replaceAll("{need}", String(need))
+                  .replaceAll("{short}", String(Math.max(0, need - have)))}`
+              : "";
+          const line =
+            (
+              s?.aiCredits ?? "Your {name} needs credits to reply. Add credits to keep chatting."
+            ).replaceAll("{name}", s?.name || "Learning Partner") + numbers;
           setCreditsLine(line);
           setWarning(line);
           return;
@@ -454,7 +478,7 @@ export function DebugEval({
         }
         if (msg.type === "rate-limited") {
           const min = Math.max(1, Math.ceil(Number(msg.retryIn) / 60_000) || 1);
-          setWarning(`Too many messages: that one was not sent. Try again in ${min} min.`);
+          setWarning(chatExtra().rateLimited.replace("{n}", String(min)));
           return;
         }
         if (msg.type === "state") {
@@ -494,16 +518,32 @@ export function DebugEval({
         if (msg.type === "history" && Array.isArray(msg.messages)) {
           // A `【lane】` prefix becomes the line's lane (voices.ts): its mark, tag and voice.
           const list = trimHistory((msg.messages as ChatMessage[]).map(withLane));
+          // After a reconnect, a reply sent while the socket was down comes only
+          // in the history: read the newest one past what this page saw (never
+          // old history; speak-rules.ts missedReply).
+          const missed = missedReply(list, agentAtRef.current, spokenIds.current);
+          for (const id of missed.gap) spokenIds.current.add(id);
           for (const m of list)
             if (m.from === "agent") agentAtRef.current = Math.max(agentAtRef.current, m.at);
           setMessages(list);
           reBeat();
+          const said = missed.line && spokenOf(missed.line);
+          if (missed.line && said && (tabsRef.current?.isSpeaker() ?? true))
+            speakReply(said, missed.line);
           return;
         }
         // An ask answered by a tap (on this page or another): the card shows it.
         if (msg.type === "answered" && typeof msg.id === "string" && msg.answer) {
           const answer = msg.answer as ChatMessage["answer"];
           setMessages((list) => list.map((x) => (x.id === msg.id ? { ...x, answer } : x)));
+          return;
+        }
+        // The agent withdrew an open ask: the card greys out and is never read aloud.
+        if (msg.type === "withdrawn" && typeof msg.id === "string") {
+          const e = msg as unknown as WithdrawnEvent;
+          if (typeof e.askId !== "string" || typeof e.withdrawnAt !== "number") return;
+          markWithdrawn(e.id);
+          setMessages((list) => list.map((m) => applyWithdrawn(m, e)));
           return;
         }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
@@ -544,7 +584,8 @@ export function DebugEval({
         }
         if (msg.type !== "eval") return;
         if (typeof msg.id !== "string" || typeof msg.to !== "string") return;
-        if (typeof msg.code !== "string" || !debugOn()) return;
+        // Remote eval: debug mode on, and a `dev` holder's page only.
+        if (typeof msg.code !== "string" || !debugOn() || !devRef.current) return;
         void run(sock, msg.id, msg.to, msg.code);
       };
       // Dropped by the network: reopen on that event if still wanted. One
@@ -881,7 +922,7 @@ export function DebugEval({
           onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
           evalRan={!!toast}
           friend={isFriend}
-          owner={owner && !isFriend}
+          owner={owner && !isFriend && dev}
           strings={friendStrings}
           treeSource={treeOn ? ownerTree : undefined}
           etaBar={etaOn && treeOn && !!ownerTree}

@@ -17,10 +17,13 @@
  */
 import type { UiStrings } from "./ui-strings";
 import { voice } from "./voice";
-import type { ChatMessage, VoiceTiming } from "./wire";
+import type { ChatMessage, SttTag, VoiceTiming } from "./wire";
 
-/** One utterance's marks while it is on its way (keyed by the mic's seq). */
-export type UttMarks = VoiceTiming & { dropped?: boolean };
+/**
+ * One utterance's marks while it is on its way (keyed by the mic's seq).
+ * `stt`: which recognizer made its final (MicButton), sent beside the line's timing.
+ */
+export type UttMarks = VoiceTiming & { dropped?: boolean; stt?: SttTag };
 
 /** A voice line after it was sent, until its reply (and its first sound). */
 export type LatencyRecord = {
@@ -104,7 +107,7 @@ export function breakdown(r: Pick<LatencyRecord, "timing"> & Partial<LatencyReco
 export function pickTiming(
   marks: ReadonlyMap<number, UttMarks>,
   now: number,
-): { timing: VoiceTiming; used: number[] } | undefined {
+): { timing: VoiceTiming; used: number[]; stt?: SttTag } | undefined {
   let best: [number, UttMarks] | undefined;
   for (const e of marks) {
     const m = e[1];
@@ -114,11 +117,11 @@ export function pickTiming(
   if (!best) return undefined;
   const end = best[1].t_speechEnd as number;
   const used = [...marks].filter(([, m]) => (m.t_speechEnd ?? 0) <= end).map(([k]) => k);
-  const { dropped: _d, ...timing } = best[1];
+  const { dropped: _d, stt, ...timing } = best[1];
   // A line joined from several utterances began when the first of them did.
   const starts = used.flatMap((k) => marks.get(k)?.t_speechStart ?? []);
   if (starts.length) timing.t_speechStart = Math.min(...starts);
-  return { timing: { ...timing, t_sent: now }, used };
+  return { timing: { ...timing, t_sent: now }, used, ...(stt ? { stt } : {}) };
 }
 
 /** Seconds with one decimal, for the menu. */
@@ -281,6 +284,13 @@ export function createLatency(d: {
     });
     for (const f of subs) f();
   };
+  /** A voice line is about to go out: its timing and recognizer (empty if the mic left none). */
+  const takeLine = (): { timing?: VoiceTiming; stt?: SttTag } => {
+    const p = pickTiming(marks, now());
+    if (!p) return {};
+    for (const k of p.used) marks.delete(k);
+    return { timing: p.timing, ...(p.stt ? { stt: p.stt } : {}) };
+  };
   return {
     /**
      * The mic's marks for utterance `seq`. One with `t_speechEnd` starts the
@@ -300,12 +310,9 @@ export function createLatency(d: {
         if (!m.dropped && m.t_sttDone !== undefined && m.t_shown === undefined) m.t_shown = t;
     },
     /** A voice line is about to go out: its timing (undefined if the mic left none). */
-    take(): VoiceTiming | undefined {
-      const p = pickTiming(marks, now());
-      if (!p) return undefined;
-      for (const k of p.used) marks.delete(k);
-      return p.timing;
-    },
+    take: (): VoiceTiming | undefined => takeLine().timing,
+    /** The same, with the recognizer of that utterance (SttTag) when MicButton marked one. */
+    takeLine,
     /** The line went out with this id; an earlier record still open is closed as is. */
     sent(id: string, text: string, timing: VoiceTiming) {
       finish();
@@ -354,7 +361,7 @@ export function createLatency(d: {
 }
 
 const KEY = "__lkLatency";
-const V = 1;
+const V = 2;
 
 /**
  * The page's store, shared by every copy of this module (the deployed

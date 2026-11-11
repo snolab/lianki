@@ -9,7 +9,7 @@
 // passed in, so the flow is unit-tested without either.
 
 import { gdocUrlOf } from "@/lib/gdoc/url";
-import type { PickerSetup } from "./picker-client";
+import { pickWithRetry, type PickerSetup } from "./picker-setup";
 
 /** The `fetch` this needs (a plain function, so tests can pass one). */
 export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
@@ -73,23 +73,34 @@ async function toConsent(deps: PickDeps, page: PickPage): Promise<PickOutcome> {
   return r === "ok" ? { kind: "leaving" } : { kind: "error", code: r };
 }
 
-/** Open the Picker, then import every picked doc in turn. */
-export async function pickAndImport(page: PickPage, deps: PickDeps): Promise<PickOutcome> {
-  let setup: PickerSetup;
+/**
+ * POST /api/connections/google/picker: the JSON as `setup` (checked by
+ * pickWithRetry before the Picker sees it), or what the page does instead.
+ * A network failure or a body that is not JSON is a bad setup, retried once.
+ */
+export async function fetchSetup(
+  f: Fetch,
+): Promise<{ setup: unknown } | { other: PickOutcome | "consent" }> {
+  let r: Response;
   try {
-    const r = await post(deps.fetch, "/api/connections/google/picker", {});
-    if (r.status === 503) return { kind: "error", code: "not-configured" };
-    if (r.status === 409) return toConsent(deps, page);
-    if (r.status === 429) return { kind: "error", code: "rate-limited" };
-    if (!r.ok) return { kind: "error", code: "failed" };
-    setup = (await r.json()) as PickerSetup;
+    r = await post(f, "/api/connections/google/picker", {});
   } catch {
-    return { kind: "error", code: "failed" };
+    return { setup: null };
   }
+  if (r.status === 503) return { other: { kind: "error", code: "not-configured" } };
+  if (r.status === 409) return { other: "consent" };
+  if (r.status === 429) return { other: { kind: "error", code: "rate-limited" } };
+  if (!r.ok) return { other: { kind: "error", code: "failed" } };
+  return { setup: await r.json().catch(() => null) };
+}
 
+/** Open the Picker (once more if the first try failed), then import every picked doc in turn. */
+export async function pickAndImport(page: PickPage, deps: PickDeps): Promise<PickOutcome> {
   let ids: string[];
   try {
-    ids = [...new Set(await deps.pick(setup))];
+    const got = await pickWithRetry(() => fetchSetup(deps.fetch), deps.pick);
+    if ("other" in got) return got.other === "consent" ? toConsent(deps, page) : got.other;
+    ids = [...new Set(got.ids)];
   } catch {
     return { kind: "error", code: "failed" };
   }

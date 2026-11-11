@@ -7,7 +7,7 @@ The content script matches `*://*/*` and, since the watch-time feature, records
 before this ships; the previous disclosure predates this and is now incomplete.
 
 **What is recorded** — only while *Record watch time* is on, which the user can
-switch off at `/preferences` — keyed by normalized URL, for every
+switch off at `/my/preferences` — keyed by normalized URL, for every
 `<video>`/`<audio>` the user plays:
 
 | field | meaning |
@@ -33,7 +33,7 @@ permission surface is every site, and the disclosure has to reflect that.
 **Retention:** rows live until the user deletes the note. Locally, an LRU keeps at
 most 500 per-URL caches (`lianki_devbundle_*`/`lk:watch:*`).
 
-**Opting out:** `/preferences` → **Watch time** → *Record watch time*. Off means
+**Opting out:** `/my/preferences` → **Watch time** → *Record watch time*. Off means
 `isWatchActive()` returns false for every media element, so nothing is measured
 and nothing is sent. Existing statistics are kept; they stop growing. The
 preference is stored per user (`preferences.watch_tracking`) and reaches the

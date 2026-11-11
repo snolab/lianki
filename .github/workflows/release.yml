@@ -1,0 +1,69 @@
+name: Publish CLI
+
+# Publishes packages/lianki-cli (npm package `lianki`) on `lianki-cli-v*` tags.
+#
+# Auth: npm Trusted Publishing via GitHub Actions OIDC; no npm token.
+# npm's trusted publisher must match snolab/lianki, workflow release.yml,
+# with no environment name, and allow direct npm publish.
+# Node 24 and npm >=11.5.1 support the OIDC credential exchange.
+#
+# The only way `lianki` reaches npm: push a tag `lianki-cli-v<version>` that
+# matches packages/lianki-cli/package.json, on a commit already on main. No
+# manual dispatch, and nobody runs `npm publish` from a laptop.
+on:
+  push:
+    tags:
+      - "lianki-cli-v*"
+
+permissions:
+  contents: read
+  id-token: write # npm trusted publishing and provenance signing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/lianki-cli
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+      - run: |
+          npm install -g npm@latest
+          hash -r
+          echo "node: $(node -v)  npm: $(npm -v)"
+      - name: Verify the tag is on main and matches the version
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::$GITHUB_REF_NAME is not on main"; exit 1; }
+          pkg_version=$(node -p "require('./package.json').version")
+          tag_version="${GITHUB_REF_NAME#lianki-cli-v}"
+          if [ "$pkg_version" != "$tag_version" ]; then
+            echo "::error::package.json version ($pkg_version) != tag ($tag_version)"
+            exit 1
+          fi
+      - name: Files in the tarball
+        run: npm pack --dry-run
+      # From the packed tarball in an empty folder, as `npx lianki` would run
+      # it: no build step, no workspace, a fresh config dir (so: not signed in).
+      - name: Smoke test the tarball under Node
+        run: |
+          tgz="$PWD/$(npm pack --silent)"
+          mkdir "$RUNNER_TEMP/smoke" && cd "$RUNNER_TEMP/smoke"
+          npm init -y >/dev/null && npm install --no-audit --no-fund "$tgz"
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/smoke-config"
+          npx lianki --help
+          [ "$(npx lianki --version)" = "${GITHUB_REF_NAME#lianki-cli-v}" ]
+          set +e; npx lianki next --json </dev/null; code=$?; set -e
+          [ "$code" = 2 ] || { echo "::error::expected exit 2 (not signed in), got $code"; exit 1; }
+          # `lianki mcp` loads the MCP SDK from the tarball's dependencies, then
+          # stops before serving: not signed in, exit 2, nothing on stdout.
+          set +e; out=$(npx lianki mcp </dev/null); code=$?; set -e
+          [ "$code" = 2 ] && [ -z "$out" ] || { echo "::error::lianki mcp: expected exit 2 and no stdout, got $code"; exit 1; }
+          rm "$tgz"
+      - run: npm publish --access public --provenance

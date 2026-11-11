@@ -9,8 +9,7 @@ import {
   type LinkClick,
   readLinkPolicy,
   setLeavePresenter,
-  setLinkConfirm,
-  allowHost,
+  answerLeave,
 } from "@/lib/external-link";
 import { allowedHostOf } from "@lianki/core/externalLink";
 
@@ -25,7 +24,7 @@ export type ExternalLinkStrings = {
 };
 
 const BTN =
-  "min-h-11 flex-1 rounded-full px-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.55_0.14_250)]";
+  "min-h-11 flex-1 rounded-full px-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[oklch(0.55_0.154_22.3)]";
 
 /**
  * Every page's disclaimer before another website (owner, 2026-11-09;
@@ -91,8 +90,7 @@ export function ExternalLinkGuard({ strings }: { strings: ExternalLinkStrings })
 
   function go() {
     if (!req) return;
-    if (skipAll) setLinkConfirm(false);
-    else if (skipSite) allowHost(req.host);
+    answerLeave(req.host, { skipSite, skipAll });
     setReq(null);
     followLink(req.href, req.newTab);
   }
@@ -134,7 +132,7 @@ export function ExternalLinkGuard({ strings }: { strings: ExternalLinkStrings })
             <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
               <input
                 type="checkbox"
-                className="size-5 shrink-0 accent-[oklch(0.5_0.14_250)]"
+                className="size-5 shrink-0 accent-[oklch(0.5_0.154_22.3)]"
                 checked={skipSite || skipAll}
                 disabled={skipAll}
                 onChange={(e) => setSkipSite(e.target.checked)}
@@ -146,7 +144,7 @@ export function ExternalLinkGuard({ strings }: { strings: ExternalLinkStrings })
           <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
             <input
               type="checkbox"
-              className="size-5 shrink-0 accent-[oklch(0.5_0.14_250)]"
+              className="size-5 shrink-0 accent-[oklch(0.5_0.154_22.3)]"
               checked={skipAll}
               onChange={(e) => setSkipAll(e.target.checked)}
               data-testid="external-link-skip-all"
@@ -168,7 +166,7 @@ export function ExternalLinkGuard({ strings }: { strings: ExternalLinkStrings })
           <button
             ref={goRef}
             type="button"
-            className={`${BTN} bg-[oklch(0.42_0.13_250)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.36_0.13_250)] dark:bg-[oklch(0.78_0.1_250)] dark:text-[oklch(0.18_0.02_250)] dark:hover:bg-[oklch(0.84_0.08_250)]`}
+            className={`${BTN} bg-[oklch(0.42_0.143_22.3)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.36_0.143_22.3)] dark:bg-[oklch(0.78_0.11_22.3)] dark:text-[oklch(0.18_0.02_250)] dark:hover:bg-[oklch(0.84_0.088_22.3)]`}
             onClick={go}
             data-testid="external-link-go"
           >

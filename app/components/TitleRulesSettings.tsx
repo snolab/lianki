@@ -23,7 +23,7 @@ import {
 import { readTitleRulesPref, TITLE_RULES_KEY } from "@/lib/titles/client";
 
 const FIELD =
-  "w-full rounded-lg border border-[oklch(0.5_0.02_250/0.35)] bg-[oklch(1_0_0/0.6)] px-3 py-2 text-base outline-none focus:border-[oklch(0.6_0.14_250)] focus:ring-1 focus:ring-[oklch(0.6_0.14_250)] dark:bg-[oklch(0.25_0.01_250/0.6)]";
+  "w-full rounded-lg border border-[oklch(0.5_0.02_250/0.35)] bg-[oklch(1_0_0/0.6)] px-3 py-2 text-base outline-none focus:border-[oklch(0.6_0.154_22.3)] focus:ring-1 focus:ring-[oklch(0.6_0.154_22.3)] dark:bg-[oklch(0.25_0.01_250/0.6)]";
 const BTN =
   "min-h-11 rounded-full px-4 text-sm font-medium transition-colors disabled:opacity-50 pointer-fine:min-h-9";
 const QUIET = `${BTN} bg-[oklch(0.5_0.02_250/0.12)] hover:bg-[oklch(0.5_0.02_250/0.2)]`;
@@ -197,7 +197,7 @@ export function TitleRulesSettings() {
         {error && <p className={ERR}>{error}</p>}
         <button
           type="submit"
-          className={`${BTN} bg-[oklch(0.55_0.15_250)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.15_250)]`}
+          className={`${BTN} bg-[oklch(0.55_0.165_22.3)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.165_22.3)]`}
           disabled={!pattern.trim()}
         >
           {c.add}

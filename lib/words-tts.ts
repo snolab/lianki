@@ -4,6 +4,7 @@ import { VOICE_CREDITS, voiceKey } from "@/lib/voice";
 import { MAX_TTS_TEXT, ttsParams } from "@/lib/voice-clip";
 import { personKey } from "@/lib/rateLimit";
 import { auraSpeakers } from "@lianki/debug-chat/voices";
+import { refusal, type Metered } from "@/lib/payments/metered";
 
 /**
  * /api/words/tts's logic (app/api/words/tts/route.ts wires the real I/O).
@@ -78,6 +79,12 @@ export type WordsTtsDeps = {
     signal?: AbortSignal;
   }): Promise<{ audio: Uint8Array<ArrayBuffer>; contentType: string }>;
   log(where: string, err: unknown): void;
+  /**
+   * A generated clip paid from the user's credits (lib/payments/paid-calls.ts
+   * paidSpeech): held by the text's length (Aura-2's price when a speaker is
+   * asked), settled after. None: unmetered (tests, tools).
+   */
+  pay?<T>(text: string, aura: boolean, run: () => Promise<T>): Promise<Metered<T>>;
   /** Is this text the user's own private words? Asked once, on a miss about to be kept. */
   isPrivate?(email: string, text: string, lang: string): Promise<boolean>;
 };
@@ -160,14 +167,21 @@ export async function wordsTts(
 
   try {
     let voiced = speaker ? AURA_VOICE : "melotts";
-    const said = speaker
-      ? await deps.speech({ text, lang, speaker, signal }).catch((err) => {
-          // Never silence: the language's one voice instead.
-          deps.log("words.tts.aura", err);
-          voiced = "melotts";
-          return deps.speech({ text, lang, signal });
-        })
-      : await deps.speech({ text, lang, signal });
+    const gen = () =>
+      speaker
+        ? deps.speech({ text, lang, speaker, signal }).catch((err) => {
+            // Never silence: the language's one voice instead.
+            deps.log("words.tts.aura", err);
+            voiced = "melotts";
+            return deps.speech({ text, lang, signal });
+          })
+        : deps.speech({ text, lang, signal });
+    let said: Awaited<ReturnType<typeof gen>>;
+    if (deps.pay) {
+      const paid = await deps.pay(text, Boolean(speaker), gen);
+      if (!paid.ok) return refusal(paid);
+      said = paid.value;
+    } else said = await gen();
     const { audio, contentType } = said;
     // A fallback clip is not kept under the speaker's key.
     if (store && voiced === (speaker ? AURA_VOICE : "melotts"))

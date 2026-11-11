@@ -29,8 +29,9 @@ stay on the folded row, because they say why the switch does nothing.
   **Set `audience` on a new flag that does not reach every user once on**, or this
   view will call it shipped.
 - **Search** covers the key, an old key and the description. **Filters**: 全部 /
-  开着 / 默认关 (every default is off, so that is "off now"), and 7 天内改过, from the
-  row's `updated_at`. There is no "on for me": the store has one value per flag,
+  开着 / 关着 (off now, whatever the default), and 7 天内改过, from the row's
+  `updated_at`. A row never changed reads 从未改过（默认关）, or （默认开） for a
+  default-on flag. There is no "on for me": the store has one value per flag,
   and who else a flag lets in (`|| owner`) lives in each feature's gate.
 - **A link always arrives.** `#<key>`, or an old key through `FLAG_OLD_KEYS`, opens
   the section and the row, scrolls and highlights, whatever is typed or filtered.
@@ -50,7 +51,17 @@ stay on the folded row, because they say why the switch does nothing.
 - **Announce with the link.** Anything shipped default-off is announced with its `https://lianki.com/dev/flags#<key>` link, which opens that flag's card.
 - **Only registry keys exist.** `setFlag` refuses any other key (400 on the
   API); a stored row for a key no longer in the registry is ignored.
-- **Every default is OFF**, and so is a flag that cannot be read (a D1 error,
+- **Positive flags only** (owner rule, 2026-11-10): a switch that is ON
+  provides a feature, never forbids one. No `-off` / `disable` keys: a kill
+  switch for something already live is a flag that is **on by default**.
+- **Defaults are OFF**, but for such a flag (`default: true` in
+  `lib/flags.ts`; today `stt.polish`, and `today.goal`, `words.onboarding` and
+  `words.pinch-card-height`, which the owner shipped on for everyone on 2026-11-10,
+  and `words.shatter`, on for `dev` holders).
+  A key with no stored row reads as
+  its default; a stored row always wins, either way. `closedFlags()` is what an
+  unreadable store gives.
+- **Unreadable is OFF**, every flag, a default-on one too (a D1 error,
   the Mongo backend, no request context). A failed read is logged
   (`flags.read-failed`) and not cached, so the next request tries again.
 - **Cache: 30 s per isolate** (`FLAG_CACHE_MS`). `readFlags()` costs one small
@@ -83,10 +94,15 @@ stay on the folded row, because they say why the switch does nothing.
 | `payments.stripe.live` | Stripe takes real money (also needs an `sk_live_` key)         |
 | `payments.komoju.live` | KOMOJU takes real money (also needs an `sk_live_` key)         |
 | `words.voice-mode`     | everyone gets the /words voice commands switch (off: the owner's preview only) — [voice-mode.md](voice-mode.md) |
-| `stt.polish-off`       | the agent can no longer polish the owner's voice lines; the chat keeps only what STT heard (off: polish from context only) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached |
+| `words.pinch-card-height` | **on by default, everyone.** A two-finger vertical pinch on the /words list sets every card's height, from the word alone to everything on screen shown; synced as `words.cardHeight` (off: the default height, the stored choice unused) — `lib/words/row-pinch.ts` |
+| `today.goal`           | **on by default.** /today: today's goal full screen — one number (cards due now, /words's own count), a progress bar (cards done since local midnight), Start to /words; gold ground and seal ink in light, seal ground and gold ink in dark; in the rail and on /home (off: 404, no links) — `lib/today/goal.ts` |
+| `words.onboarding`     | **on by default.** /words plays a short animated walkthrough (tap, rate by feel, handled cards fade and can be undone, cards come back, pinch for height) once per account, then folds it into a circled "?" by the title that replays it (off: no walkthrough, no "?") — `lib/words/onboarding.ts` |
+| `stt.polish`           | **on by default.** The agent may polish the owner's voice lines from their context and summarise room talk (off: the chat keeps only what STT heard, no edits or summaries) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached; only exactly `false` turns it off there, an unreadable answer holds edits back (logged `debug.polish-flag-unread`). Replaced the inverted `stt.polish-off` (migration 0067 carried a stored value over inverted) |
 | `stt.merge`            | a spoken line that continues the last one amends it instead of adding a bubble; the agent hears the complete line, and the passage is polished once at its end; undo splits it back (off: one line per utterance) — [dev-debug-widget.md](dev-debug-widget.md), "Continuous speech amends the last line". Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `connections.google`   | every signed-in user gets /connections (Google Drive, `drive.file`) and the private Google Docs import on /reader (off: the owner only) — [connections.md](connections.md) |
+| `stt.voiceprint-cloud` | **on by default** (`audience: "owner"`, plus the `dev` grant the voiceprint tickets need): the Voiceprint panel gets "Save to my account" / "Restore from my account"; with his passkey the Mac's voice features (numbers, never audio) are kept encrypted in his own account (D1 `voiceprint`), and Delete removes them there too (off: the print stays on the Mac only; /api/my/voiceprint answers 404) — [local-stt.md](local-stt.md), "Voiceprint in your account" |
 | `stt.voiceprint-filter` | the owner's local STT does not transcribe or post a line that clearly is not his voice, on devices where he has enrolled; his route only, not a security gate (off: as ever, only counting what it would have stopped) — [local-stt.md](local-stt.md), "Only my voice" |
+| `stt.worker`           | accounts on the /dev/stt-access allowlist stream their mic to Lianki's speech servers (SenseVoice): WebRTC first, then the WSS tunnel, then Workers AI; free, booked per utterance as `speech.stt.local`; quotas in config `stt.worker.*` (off: every public STT endpoint answers 404; the owner's own mic unchanged) — [local-stt.md](local-stt.md), "Lianki's speech servers for everyone" |
 | `partner.ai-reply`     | every signed-in user but the owner gets the Learning Partner chat on every page, answered by DeepSeek on Workers AI (off: debug-mode friends only, lanes answer) — [partner-ai.md](partner-ai.md). Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `self-intro.import`    | every signed-in user gets the /self-intro import step: write about yourself or add files, AI lists facts to confirm; files never stored (off: the owner only) — [self-intro-import.md](self-intro-import.md) |
 | `box.oauth`            | my-<hash> and my-<name> boxes sign in through lianki.com, each only as its bound account, and call allowlisted /api routes with a short-lived token (off: every route of it answers 404) — [box-oauth.md](box-oauth.md) |
@@ -94,13 +110,16 @@ stay on the folded row, because they say why the switch does nothing.
 | `read.gdoc-stream`     | every user gets the userscript's "Stream to Lianki" switch on Google Docs, and live readers at `/reader/<id>?streamingFrom=google-docs` (off: the owner only) — [connections.md](connections.md), "Live stream" |
 | `read.live-polish`     | every user gets the AI polish of a live doc's text into a speech draft (off: the owner only) — [connections.md](connections.md), "Polish" |
 | `read.youtube-songs`   | every signed-in user gets /reader → YouTube song: a YouTube link plus timed lyrics (LRC/SRT/VTT) become a /reader text, each line with a ▶ that plays that line in YouTube's own player in a popup, and word cards made from a line keep its clip: their example gets the same ▶ in /words and the reader's word review; lyrics private to the account, nothing downloaded (off: the owner only; /reader/youtube and its route 404) — [youtube-song-examples.md](youtube-song-examples.md) |
-| `books.catalogue`      | every visitor gets /books, the public-domain library, and can add its books to their own reading (off: the owner only) — [books-plan.md](books-plan.md), "The catalogue: /books" |
-| `levels`               | every user sees their learner level: a chip by the avatar in the nav (signed in) and a level card on /profile (guests too), from `GET /api/levels/me`; study days are recorded either way (off: the owner only) — [levels.md](levels.md) |
+| `library.catalogue`    | **on by default, everyone.** /library, the book catalogue: browse, add to my reading, find more; its nav item, the reader's link and `/api/books/import|resolve|search` (off: 404, no links; `dev` holders keep it). Replaced `books.catalogue` on 2026-11-10 — [books-plan.md](books-plan.md), "/library and /books" |
+| `books.mine`           | **on by default, everyone.** /books, My books: the user's shelf of books added from /library and imported themselves; an old /books/<lang>/<slug> link stays for a book on the shelf (off: /books and every old link go to /library, no nav item; `dev` holders keep it) — [books-plan.md](books-plan.md), "/library and /books" |
+| `levels`               | every user sees their learner level: a chip by the avatar in the nav (signed in) and a level card on /my/profile (guests too), from `GET /api/levels/me`; study days are recorded either way (off: the owner only) — [levels.md](levels.md) |
 | `read.vibe`            | the owner, and only the owner, can start /vibe: a conversation transcribed on his Mac into a private doc. **Off: nobody, the owner included** (no bypass) — [vibe.md](vibe.md) |
 | `partner.fullscreen`   | everyone who has the Learning Partner chat gets its full-screen button: the chat fills the app; the button, Escape or Back return to the panel (off: the owner only) — [dev-debug-widget.md](dev-debug-widget.md), "Full screen" |
 | `byok.sync`            | everyone sees the disabled 「同步 API key」 row (即将推出, with its warning) in Settings → 自己的 AI; nothing on the server stores a key yet (off: the owner only) — [byok.md](byok.md) |
-| `import.any`           | every signed-in user gets /import → "Import a word list": a .txt/.csv/.tsv file or paste → preview (new / already have / skipped) → a new /words list (off: the owner only) — [import-material.md](import-material.md) |
+| `import.any`           | every signed-in user gets /import → "Import a word list" and the Import button on /words: presets, or a .txt/.csv/.tsv/Excel file or paste → preview (new / already have / skipped) → a new /words list; free, no credits (off: the owner only, `importAnyOn`) — [import-material.md](import-material.md) |
+| `words.import-ai`      | on: every signed-in user whose credits cover the smallest hold gets **Words with AI** on each stored file in the /words Import panel ("Any file"): the server reads the file, DeepSeek writes the word-list CSV template, then the CSV import's own preview and add, paid from their credits (hold, settle, refund). Off: holders of the `dev` permission only (`isDev`, a per-account grant), likewise with credits — [import-material.md](import-material.md) |
 | `voice.li-hub`         | on the owner's pages (debug mode), Li's sound hub logs who holds the mic and who plays (`audio-owner`, `audio-conflict`); observes only, changes no sound (off: nothing runs) — [li-sound-hub.md](li-sound-hub.md) |
+| `words.shatter`        | **on by default** (`audience: "owner"`, `isDev`): on /words a slip whose countdown ended and reads "↓ back" (locked, lib/words/requeue.ts) shows cracked glass under its text, cracking once if it ends on screen; the same cracks per card (off: nobody, the owner included) — [words-session-spec.md](words-session-spec.md), "Locked slips crack" |
 | `pwa.app-badge`        | the owner (`audience: "owner"`, `isDev`) gets the number on the installed app's icon (open Li asks + due cards, per the synced `notify.badge`) and its row in Settings → Notifications; nobody else (off: nobody, the owner included; a page clears any leftover badge) — [app-badge.md](app-badge.md) |
 | `ext.pill-chat`        | the userscript's pill gets a **Li** button on every site: a per-site trust prompt first (default deny), then Li in the lianki.com frame; sites list in the manager's menu. First slice reuses the owner's partner ticket, so on means the owner only (`audience: "owner"`); off: no Li button anywhere, and an open attempt is refused — [userscript-li-chat.md](userscript-li-chat.md) |
 | `membership.email-invite` | every Pro user gets "Invite by email" in the invite card on /membership: one friend's address → a mail with their own /i/CODE link in their account language; daily and per-address limits, unsubscribe / report, no address stored (off: admins only) — [payments.md](payments.md), "Invite by email" |
@@ -133,7 +152,7 @@ page is owner-only and Chinese only) and a context line, as docs/i18n.md asks.
 | `partner.ai-reply`     | `workers-ai.credentials` (`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_TOKEN` or `CLOUDFLARE_API_TOKEN`); `ai-credits.migration` (0041: `credit_ai_charge` exists, `credit_ledger` accepts `'ai'`) |
 | `connections.google`   | `google.oauth-client` (`AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`); `google.picker-key` (`pickerConfig`); `auth-secret` (`AUTH_SECRET` ≥ 32 chars, seals tokens) |
 
-The others need nothing a check could see: `books.catalogue` works without R2
+The others need nothing a check could see: `library.catalogue` works without R2
 (no cache) and its tables came with the reader migrations; the rest are UI
 rollouts. Add a check only for a real, observable requirement.
 
@@ -183,7 +202,7 @@ on deploy. Instead:
 2. Anything reading `feature_flags` with its own SQL has to follow the same
    order. `activeForCookie` (`lib/live-view/custom.ts`) does, with `COALESCE`.
    `flagLive` (`lib/debug-session.ts`) and `flagOn` (`lib/partner-ai.ts`) do
-   not: they read `stt.polish-off`, `stt.merge` and `partner.ai-reply`, so renaming
+   not: they read `stt.polish`, `stt.merge` and `partner.ai-reply`, so renaming
    one of those means changing them too.
 3. The first change at `/dev/flags` writes the row under the new key. The old
    row and its log entries stay as history. The API refuses the old key (400),

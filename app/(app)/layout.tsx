@@ -20,8 +20,11 @@ import { LIVE_VIEW_COOKIE, liveViewFor } from "@/lib/live-view/shell.server";
 import type { LiveViewLabels } from "@/app/components/LiveView";
 import { dbBackend } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
+import { publicConfig } from "@/lib/config-store";
+import { PublicConfig } from "@/app/components/PublicConfig";
 import { isDev } from "@/lib/permissions";
-import { booksOn } from "@/lib/books/gate";
+import { DEV_NAV_KEYS } from "@/lib/app-nav";
+import { booksMineOn, libraryOn } from "@/lib/books/gate";
 import { levelsOn } from "@/lib/level-progress";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -45,15 +48,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     () => getIntlayer("live-view", locale) as unknown as LiveViewLabels,
   );
 
-  // Flag-gated nav items (lib/app-nav.ts `flag`): /books shows for the owner
-  // only while `books.catalogue` is off. readFlags is cached 30 s per isolate.
+  // Flag-gated nav items (lib/app-nav.ts `flag`): /books (My books, `books.mine`)
+  // and /library (`library.catalogue`), both on for everyone by default; a `dev`
+  // holder keeps them while off. readFlags is cached 30 s per isolate.
   const flags = dbBackend() === "d1" ? await readFlags() : null;
   const owner = isDev(user?.email ?? null);
-  const navShown = booksOn(flags, owner) ? ["books"] : [];
+  const navShown: string[] = [];
+  if (booksMineOn(flags, owner)) navShown.push("books");
+  if (libraryOn(flags, owner)) navShown.push("library");
+  // Today's goal (/today): `today.goal`, on by default, for everyone.
+  if (flags?.["today.goal"]) navShown.push("today");
+  // The Lab group (/lab/**): developers only (lib/app-nav.ts `dev`).
+  if (owner) navShown.push(...DEV_NAV_KEYS);
   // The level chip by the avatar (docs/levels.md): signed in, D1, `levels` on or the owner.
   const levels = Boolean(user) && flags !== null && levelsOn(flags, owner);
   // The app-icon badge (docs/app-badge.md): signed in, D1, `pwa.app-badge` on, the owner only.
   const appBadge = Boolean(user) && flags !== null && appBadgeOn(flags, owner);
+
+  // Public config values (docs/config-store.md): cached 30 s, the defaults off D1.
+  const config = await publicConfig();
 
   const { appName, nav } = getIntlayer("landing-page", locale);
   const shell = getIntlayer("app-shell", locale);
@@ -72,27 +85,29 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <IntlayerServerProvider locale={locale}>
       <IntlayerClientProvider locale={locale}>
         <div lang={lang} dir={dir} className="min-h-screen">
-          <AppShell
-            locale={locale}
-            appName={appName}
-            labels={labels}
-            user={user}
-            firstRun={firstRun}
-            devSwitch={devSwitchFor(
-              user?.email,
-              // Strings for the owner only: anyone else's page carries none of them.
-              () => getIntlayer("dev-switch", locale) as unknown as DevSwitchLabels,
-            )}
-            liveView={liveView}
-            navShown={navShown}
-            levels={levels}
-          >
-            {pendingInvite && <InviteClaim />}
-            <PrefSync signedIn={Boolean(user)} />
-            {localeState.adopt && <AccountLocaleAdopt locale={localeState.adopt.locale} />}
-            <AppBadge on={appBadge} />
-            {children}
-          </AppShell>
+          <PublicConfig values={config}>
+            <AppShell
+              locale={locale}
+              appName={appName}
+              labels={labels}
+              user={user}
+              firstRun={firstRun}
+              devSwitch={devSwitchFor(
+                user?.email,
+                // Strings for the owner only: anyone else's page carries none of them.
+                () => getIntlayer("dev-switch", locale) as unknown as DevSwitchLabels,
+              )}
+              liveView={liveView}
+              navShown={navShown}
+              levels={levels}
+            >
+              {pendingInvite && <InviteClaim />}
+              <PrefSync signedIn={Boolean(user)} />
+              {localeState.adopt && <AccountLocaleAdopt locale={localeState.adopt.locale} />}
+              <AppBadge on={appBadge} />
+              {children}
+            </AppShell>
+          </PublicConfig>
         </div>
       </IntlayerClientProvider>
     </IntlayerServerProvider>

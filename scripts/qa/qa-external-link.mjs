@@ -11,6 +11,8 @@
 // - "Don't ask again for this site": the next click on that site goes at once,
 //   another site still asks;
 // - "Don't ask again for any site": no site asks after that;
+// - a "don't ask again" whose day has come asks again, and is dropped when
+//   not ticked again (lib/dont-ask.ts);
 // - a lianki.com subdomain never asks;
 // - the dialog fits a 360 px screen, light and dark.
 import { mkdirSync } from "node:fs";
@@ -139,6 +141,31 @@ try {
       stored[0] === "0" && stored[1] === JSON.stringify(["example.com"]),
       `${tag} both settings are kept for the account sync`,
     );
+
+    // 7. "Don't ask again" is not forever (lib/dont-ask.ts): once a site's day
+    //    comes it asks again, and going on without the box drops the choice.
+    await page.evaluate(() => {
+      const d = Math.floor(Date.now() / 86_400_000);
+      localStorage.setItem("lk:link-confirm", "1");
+      localStorage.setItem(
+        "lk:dont-ask",
+        JSON.stringify({ "link-site:example.com": [1, d - 7, d] }),
+      );
+    });
+    await clickOut("https://example.com/qa-7");
+    await dialog.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+    check(await visible(), `${tag} a site's "don't ask again" asks again once its day comes`);
+    await page.getByTestId("external-link-go").click();
+    check(await landed("https://example.com/qa-7"), `${tag} goes without the box`);
+    const after = await page
+      .goto(`${BASE}${PAGE}`)
+      .then(() =>
+        page.evaluate(() => [
+          localStorage.getItem("lk:link-allowed"),
+          localStorage.getItem("lk:dont-ask"),
+        ]),
+      );
+    check(after[0] === "[]" && after[1] === "{}", `${tag} not ticked again: the choice is dropped`);
 
     // 6. Our own hosts never ask (asking turned back on first).
     await page.evaluate(() => localStorage.setItem("lk:link-confirm", "1"));

@@ -1,7 +1,8 @@
 import { isSessionTag, isUserId, sessionTag } from "@/lib/dev-eval";
 import { readHolders } from "@/lib/account-permission";
 import { normalizeEmail } from "@/lib/permissions";
-import { isFlagKey } from "@/lib/flags";
+import { FLAGS, isFlagKey } from "@/lib/flags";
+import { CONFIG, isConfigKey, parseStoredConfig } from "@/lib/config";
 
 /**
  * Is the owner's sign-in session with this tag still live? Asked by
@@ -71,7 +72,8 @@ export function rateLimiter(max: number, windowMs: number, now: () => number = D
 /**
  * One feature flag, straight from D1 (`feature_flags`; lib/flags-store.ts
  * keeps the cached path for requests). Registry keys only; no DB, or a key
- * not in lib/flags.ts, is false. Only exactly 1 is on. Throws on a D1 error.
+ * not in lib/flags.ts, is false. A stored row is on only when exactly 1; no
+ * row is the registry default. Throws on a D1 error.
  */
 export async function flagLive(db: SessionDb | null | undefined, key: unknown): Promise<boolean> {
   if (!db || !isFlagKey(key)) return false;
@@ -79,5 +81,22 @@ export async function flagLive(db: SessionDb | null | undefined, key: unknown): 
     .prepare("SELECT enabled FROM feature_flags WHERE key = ?")
     .bind(key)
     .all<{ enabled: number }>();
-  return results[0]?.enabled === 1;
+  // A stored row decides; with none, the registry default (stt.polish is on by default).
+  const row = results[0];
+  return row ? row.enabled === 1 : (FLAGS[key].default as boolean);
+}
+
+/**
+ * A config value for a hub without D1 (lib/config.ts registry keys only;
+ * anything else is undefined): the stored row if it validates, else the
+ * default (docs/config-store.md, "fail to defaults"). A D1 error throws.
+ */
+export async function configLive(db: SessionDb | null | undefined, key: unknown): Promise<unknown> {
+  if (!isConfigKey(key)) return undefined;
+  if (!db) return CONFIG[key].default;
+  const { results } = await db
+    .prepare("SELECT value_json FROM config_values WHERE key = ?")
+    .bind(key)
+    .all<{ value_json: string }>();
+  return parseStoredConfig(key, results[0]?.value_json) ?? CONFIG[key].default;
 }

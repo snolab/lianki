@@ -86,7 +86,7 @@ export function TrayBack({
       type="button"
       onClick={onExit}
       data-testid="study-done-back"
-      className="pointer-events-auto flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 rounded-2xl px-4 py-2 text-sm font-medium text-[oklch(0.45_0.02_260)] outline-none hover:bg-[oklch(0.5_0_0/0.08)] focus:bg-[oklch(0.6_0.12_250/0.16)] focus:ring-[3px] focus:ring-[oklch(0.6_0.14_250)] active:bg-[oklch(0.5_0_0/0.12)] dark:text-[oklch(0.8_0.01_260)]"
+      className="pointer-events-auto flex min-h-11 min-w-11 flex-col items-center justify-center gap-1 rounded-2xl px-4 py-2 text-sm font-medium text-[oklch(0.45_0.02_260)] outline-none hover:bg-[oklch(0.5_0_0/0.08)] focus:bg-[oklch(0.6_0.132_22.3/0.16)] focus:ring-[3px] focus:ring-[oklch(0.6_0.154_22.3)] active:bg-[oklch(0.5_0_0/0.12)] dark:text-[oklch(0.8_0.01_260)]"
     >
       {art && (
         // aria-hidden: the button's name is its label.

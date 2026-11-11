@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { Icon } from "@/app/components/icons";
+import { VirtualList } from "@/app/components/VirtualList";
 import { useIntlayer } from "next-intlayer";
 import { dueMs } from "@/app/ems";
 import { SyncStatusBanner } from "./SyncStatusBanner";
 import { displayTitle } from "@/lib/titles/client";
+import { fill } from "@/lib/roadmap/labels";
 
 type FSRSCard = {
   url: string;
@@ -36,8 +38,18 @@ type FSRSCard = {
   synced?: boolean;
 };
 
+/** A card's site, for the "delete all from this site" button. */
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+};
+
 export default function GuestListClient() {
   const { totalCards, dueCards, learningActivity } = useIntlayer("list-page");
+  const g = useIntlayer("list-ui").guest;
   const [cards, setCards] = useState<FSRSCard[]>([]);
   const [localCount, setLocalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -108,7 +120,7 @@ export default function GuestListClient() {
       setLoading(false);
     } catch (err) {
       console.error("[Lianki] Failed to load cards from IndexedDB:", err);
-      setError("Failed to load local cards. Please make sure the userscript is installed.");
+      setError(g.loadFailed.value);
       setLoading(false);
     }
   }
@@ -117,7 +129,7 @@ export default function GuestListClient() {
     return (
       <div className="space-y-4">
         <div className="h-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />
-        <div className="text-gray-500 text-center">Loading local cards...</div>
+        <div className="text-gray-500 text-center">{g.loading}</div>
       </div>
     );
   }
@@ -125,19 +137,17 @@ export default function GuestListClient() {
   if (error) {
     return (
       <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-        <h3 className="text-yellow-800 dark:text-yellow-200 font-semibold mb-2">Guest Mode</h3>
+        <h3 className="text-yellow-800 dark:text-yellow-200 font-semibold mb-2">{g.title}</h3>
         <p className="text-yellow-700 dark:text-yellow-300 mb-4">{error}</p>
         <div className="space-y-2 text-sm">
-          <p>
-            Install the{" "}
+          <p>{g.installHint}</p>
+          <p className="flex flex-wrap gap-4">
             <a href="/lianki.user.js" className="underline font-semibold">
-              Lianki userscript
-            </a>{" "}
-            to use offline mode, or{" "}
+              {g.installLink}
+            </a>
             <a href="/sign-in" className="underline font-semibold">
-              sign in
-            </a>{" "}
-            to sync across devices.
+              {g.signInLink}
+            </a>
           </p>
         </div>
       </div>
@@ -152,15 +162,12 @@ export default function GuestListClient() {
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h3 className="text-blue-800 dark:text-blue-200 font-semibold mb-1">
-              Guest Mode - Local Storage
-            </h3>
+            <h3 className="text-blue-800 dark:text-blue-200 font-semibold mb-1">{g.bannerTitle}</h3>
             <p className="text-blue-700 dark:text-blue-300 text-sm">
-              Your cards are stored locally.{" "}
+              {g.bannerText}{" "}
               <a href="/sign-in" className="underline font-semibold">
-                Sign in
-              </a>{" "}
-              to sync across devices.
+                {g.signInLink}
+              </a>
             </p>
           </div>
           <SyncStatusBanner />
@@ -181,108 +188,107 @@ export default function GuestListClient() {
       <section className="my-8">
         <h2 className="text-xl font-semibold mb-4">{learningActivity}</h2>
         <div className="bg-gray-100 dark:bg-gray-800 rounded-md p-4 text-center text-gray-500">
-          Sign in to see your learning activity heatmap
+          {g.heatmapSignIn}
         </div>
       </section>
 
       {/* Card List */}
-      <ul className="space-y-2 overflow-x-hidden">
-        {cards.length === 0 ? (
-          <li className="text-gray-500 text-center py-8">
-            No cards yet. Press Alt+F on any webpage to add your first card!
-          </li>
-        ) : (
-          cards.map((note, idx) => {
-            const due = dueMs(note.card.due);
-            const title = note.title;
-            const url = note.url;
-            const logs = note.log || [];
-            const isSynced = note.synced;
+      <VirtualList
+        items={cards}
+        getKey={(note) => note.url}
+        name="list-guest"
+        hasMore={false}
+        loading={false}
+        onReachEnd={() => {}}
+        estimateSize={32}
+        gap={8}
+        className="overflow-x-hidden"
+        testId="guest-cards-list"
+        empty={<p className="text-gray-500 text-center py-8">{g.empty}</p>}
+        renderItem={(note) => {
+          const due = dueMs(note.card.due);
+          const title = note.title;
+          const url = note.url;
+          const logs = note.log || [];
+          const isSynced = note.synced;
 
-            return (
-              <li key={idx} className="break-words overflow-hidden flex items-start gap-2">
-                <span className="flex-shrink-0">{due}</span>
-                <span className="flex-shrink-0 text-xs">
-                  {logs.map((l, i) => (
-                    <span
-                      key={i}
-                      className={
-                        l.rating === 1
-                          ? "text-red-500"
-                          : l.rating === 2
-                            ? "text-yellow-500"
-                            : l.rating === 3
-                              ? "text-green-500"
-                              : "text-blue-500"
-                      }
-                    >
-                      •
-                    </span>
-                  ))}
+          return (
+            <div className="break-words overflow-hidden flex items-start gap-2">
+              <span className="flex-shrink-0">{due}</span>
+              <span className="flex-shrink-0 text-xs">
+                {logs.map((l, i) => (
+                  <span
+                    key={i}
+                    className={
+                      l.rating === 1
+                        ? "text-red-500"
+                        : l.rating === 2
+                          ? "text-yellow-500"
+                          : l.rating === 3
+                            ? "text-green-500"
+                            : "text-blue-500"
+                    }
+                  >
+                    •
+                  </span>
+                ))}
+              </span>
+              <a href={url} className="break-all flex-1">
+                {displayTitle(title, url) || url}
+              </a>
+              {isSynced ? (
+                <span className="flex-shrink-0 text-green-500 text-xs" title={g.synced.value}>
+                  <Icon name="cloud" label={g.synced.value} />
                 </span>
-                <a href={url} className="break-all flex-1">
-                  {displayTitle(title, url) || url}
-                </a>
-                {isSynced ? (
-                  <span className="flex-shrink-0 text-green-500 text-xs" title="Synced to cloud">
-                    <Icon name="cloud" label="Synced to cloud" />
-                  </span>
-                ) : (
-                  <span className="flex-shrink-0 text-gray-400 text-xs" title="Local only">
-                    <Icon name="floppyDisk" label="Local only" />
-                  </span>
-                )}
-                <button
-                  className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
-                  title="Delete this card"
-                  onClick={() => {
-                    const q = JSON.parse(localStorage.getItem("__lianki_delete_queue") || "[]");
-                    q.push({ url });
-                    localStorage.setItem("__lianki_delete_queue", JSON.stringify(q));
-                    setCards((prev) => prev.filter((c) => c.url !== url));
-                  }}
-                >
-                  <Icon name="trash" label="Delete this card" />
-                </button>
-                <button
-                  className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
-                  aria-label="Delete all cards from this site"
-                  title={`Delete all cards from ${(() => {
-                    try {
-                      return new URL(url).hostname;
-                    } catch {
-                      return url;
-                    }
-                  })()}`}
-                  onClick={() => {
-                    let domain: string;
-                    try {
-                      domain = new URL(url).hostname;
-                    } catch {
-                      return;
-                    }
-                    const q = JSON.parse(localStorage.getItem("__lianki_delete_queue") || "[]");
-                    q.push({ domain });
-                    localStorage.setItem("__lianki_delete_queue", JSON.stringify(q));
-                    setCards((prev) =>
-                      prev.filter((c) => {
-                        try {
-                          return new URL(c.url).hostname !== domain;
-                        } catch {
-                          return true;
-                        }
-                      }),
-                    );
-                  }}
-                >
-                  <Icon name="trash" />
-                  <Icon name="globe" />
-                </button>
-              </li>
-            );
-          })
-        )}
-      </ul>
+              ) : (
+                <span className="flex-shrink-0 text-gray-400 text-xs" title={g.localOnly.value}>
+                  <Icon name="floppyDisk" label={g.localOnly.value} />
+                </span>
+              )}
+              <button
+                className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
+                title={g.deleteCard.value}
+                onClick={() => {
+                  const q = JSON.parse(localStorage.getItem("__lianki_delete_queue") || "[]");
+                  q.push({ url });
+                  localStorage.setItem("__lianki_delete_queue", JSON.stringify(q));
+                  setCards((prev) => prev.filter((c) => c.url !== url));
+                }}
+              >
+                <Icon name="trash" label={g.deleteCard.value} />
+              </button>
+              <button
+                className="flex-shrink-0 text-gray-400 hover:text-red-500 text-xs px-1"
+                aria-label={fill(g.deleteSite.value, { host: hostOf(url) })}
+                title={fill(g.deleteSite.value, { host: hostOf(url) })}
+                onClick={() => {
+                  let domain: string;
+                  try {
+                    domain = new URL(url).hostname;
+                  } catch {
+                    return;
+                  }
+                  const q = JSON.parse(localStorage.getItem("__lianki_delete_queue") || "[]");
+                  q.push({ domain });
+                  localStorage.setItem("__lianki_delete_queue", JSON.stringify(q));
+                  setCards((prev) =>
+                    prev.filter((c) => {
+                      try {
+                        return new URL(c.url).hostname !== domain;
+                      } catch {
+                        return true;
+                      }
+                    }),
+                  );
+                }}
+              >
+                <Icon name="trash" />
+                <Icon name="globe" />
+              </button>
+            </div>
+          );
+        }}
+      />
     </div>
   );
 }

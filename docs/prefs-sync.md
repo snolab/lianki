@@ -46,6 +46,8 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:words-grade-tones`         | Grade tones                                          | **synced** | `words.gradeTones`     | a habit                                                                                                                                                  |
 | `lk:words-voice-mode`          | Voice commands (docs/voice-mode.md)                  | **synced** | `words.voiceMode`      | a habit; the mic itself is still asked for on each device                                                                                                |
 | `lk:words-swipe-mirror`        | Mirror swipe sides (← Good, → Hard)                  | **synced** | `words.swipeMirror`    | owner, 2026-11-03: which hand swipes is a habit. Telemetry rows tag `mirror=1`                                                                           |
+| `lk:words-card-height`         | Card height (two-finger pinch on the list)           | **synced** | `words.cardHeight`     | owner, 2026-11-10: a reading habit, like the text size. A factor of the default row height, so it means the same on a phone and a desk (lib/words/row-pinch.ts) |
+| `lk:words-onboarded` | First-visit walkthrough seen (lib/words/onboarding.ts) | **synced** | `words.onboarded` | finished or skipped once is enough on every device; replayed from the "?" by the title |
 | `lk:swipe-ab`                  | New swipe (Experimental)                             | **synced** | `swipe.variant`        | owner, 02:22. Telemetry still tags each row with the variant                                                                                             |
 | `lk:pref:swipe-feel` `.preset` | Heavy swipe (Experimental)                           | **synced** | `swipe-feel.preset`    | owner, 02:22                                                                                                                                             |
 | `lk:pref:swipe-feel` `.tweaks` | swipe tuning sliders                                 | **synced** | `swipe-feel.tweaks`    | owner, 02:22. One field, because the sliders reset together with the preset                                                                              |
@@ -57,7 +59,7 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:pref:read-auto`            | /reader: read on without waiting                     | device     | —                      | owner, 2026-11-03: "remembered per device"; off by default                                                                                               |
 | `lk:read-scan-open`            | /reader: the word scan's details at the top unfolded | device     | —                      | a matter of screen room: folded on a phone, open on a wide screen until he toggles it (lib/read/scan-buckets.ts)                                         |
 | `lk:read-sense-picks`          | /reader: which language's entry a word means         | **synced** | `read.sensePicks`      | owner, 2026-11-05: his pick (云 as Chinese "cloud" in a Japanese line) follows him; word@sentence-hash → lang + term, newest 24 (lib/read/sense-pick.ts) |
-| `lk:read-polish-offer`         | /reader: offer to tidy a raw transcript              | **synced** | `read.polishOffer`     | owner, 2026-11-06: "dont show"; he reads on several devices. /preferences, or the offer's own button. The action stays in the contents sheet             |
+| `lk:read-polish-offer`         | /reader: offer to tidy a raw transcript              | **synced** | `read.polishOffer`     | owner, 2026-11-06: "dont show"; he reads on several devices. /my/preferences, or the offer's own button. The action stays in the contents sheet             |
 | `lk:read-translator-notes`     | /reader: translator's notes in translations          | **synced** | `read.translatorNotes` | owner, 2026-11-06: "use (...) to explain the cultural difference"; on by default                                                                         |
 | `lk:vibe-translate-min-pct`    | /vibe: a language's share before lines go into it    | **synced** | `vibe.translateMinPct` | owner, 2026-11-06: 20 is his number, as a setting ([vibe.md](vibe.md), "Translations")                                                                   |
 | `lk:read-polish-skips`         | /reader: texts he said no to tidying                 | **synced** | `read.polishSkips`     | the same: material ids, the newest 40 (lib/read/polish-offer.ts). Nothing else about the text                                                            |
@@ -81,6 +83,7 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:home:pins`                                   | pinned sites             | **synced** | `home.pins`              | the home matrix's public site URLs only (a site of your own cards stays on the device)          |
 | `lk:lab:immersion:langs`                         | lab: language order      | **synced** | `lab.immersionLangs`     | a habit (phase 3, low priority)                                                                 |
 | `lk:lab:immersion:transpose`                     | lab: transposed table    | **synced** | `lab.immersionTranspose` | a habit (phase 3)                                                                               |
+| `lk:lang-preferred`                              | preferred languages      | **synced** | `lang.preferred`         | the languages /words, /alphabet and /books list first (lib/lang-order.ts); `[]` = automatic     |
 | `lk:input-modality`                              | touch or keyboard last   | device     | —                        | what is in your hands on this device                                                            |
 | `lk:first-run`                                   | local or account answer  | device     | —                        | asked before there is an account to sync to                                                     |
 | `lk:storage-persist`                             | persistent storage asked | device     | —                        | a browser permission on this device                                                             |
@@ -99,7 +102,7 @@ listed once.
 | `lk:voice-cue-speech`                         | sound when speech starts and ends  | **synced**       | `chat-voice.cueSpeech` | the same, its own switch (owner, 2026-11-05)                                                                                                                                             |
 | `lk:voice-aec`                                | echo cancel, mic stays open        | device           | —                      | **decided: device.** It depends on the hardware: speakers next to the mic need it off on some devices, headphones never do. Syncing it would break barge-in on one device to fix another |
 | `lk:voice-keep-awake`                         | keep speaker awake                 | device           | —                      | the speaker, the headphones and how they sleep belong to this device. Absent = on; `"0"` = off (output-bed.ts)                                                                           |
-| `lk:agent:voiced`                             | mic used here: replies read aloud  | session          | —                      | sticky until he mutes; a new tab starts without it                                                                                                                                       |
+| `lk:agent:voiced`                             | mic used here: replies read aloud  | device           | —                      | sticky until he mutes; localStorage since 2026-11-10 (an iOS PWA relaunch cleared the session copy)                                                                                     |
 | `lk:agent:mic`                                | mic on                             | device → session | —                      | owner: device. A mic must not open by itself on another device                                                                                                                           |
 | `lk:agent:stt-hint`                           | STT language hint                  | device           | —                      | learnt from typed lines, cheap to relearn; not a choice                                                                                                                                  |
 | `lk:agent-chat-open` (`lk:debug-chat-open`)   | chat open, full screen             | device → session | —                      | owner: full screen is device-local                                                                                                                                                       |
@@ -107,6 +110,7 @@ listed once.
 | `lk:pref:chat-fold`                           | tucked into the edge, which        | device           | —                      | owner: per device (2026-11-04); fold.ts                                                                                                                                                  |
 | `lk:pref:gantt`                               | Gantt time axis, log/linear        | device           | —                      | owner: per device (2026-11-09 15:27 JST); GanttFull.tsx, ui-store.ts ganttPrefs                                                                                                          |
 | `lk:debug-local-stt`                          | local STT URL                      | device           | —                      | **never on the server**: a tailnet URL                                                                                                                                                   |
+| `lk:stt-servers`                              | Lianki's speech servers, agreed    | device           | —                      | consent is per device, like `lk:debug` (local-stt.md, "Lianki's speech servers for everyone"); "on" / "off"                                                                              |
 | `lk:debug-widget-src`, `lk:agent-widget-src`  | hot-loaded widget                  | device           | —                      | **never on the server**: a dev-server URL                                                                                                                                                |
 | `lk:slots-src`, `lk:tree-src`                 | hot-loaded slots, tree             | device           | —                      | **never on the server**: dev URLs                                                                                                                                                        |
 | `lk:debug-clip-sink`                          | clip sink (legacy)                 | device           | —                      | **no longer read**: the sink and the recording switch are the hub's (dev-debug-widget.md, "Recording")                                                                                   |
@@ -152,10 +156,40 @@ listed once.
 | `lk:link-confirm` | ask before another site ("any site" box off) | **synced** | `links.confirm`      | owner, 2026-11-09: "for my account, all domains"                                                                                  |
 | `lk:link-allowed` | sites not asked about ("this site" box)      | **synced** | `links.allowedHosts` | owner, 2026-11-09: kept with the account. A third exception to "nothing typed": bare public hosts only, newest 80, no device host |
 
+### "Don't ask again" (lib/dont-ask.ts)
+
+| Key           | Setting                                                    | Class      | Server key     | Reason                                                                                                                                                       |
+| ------------- | ---------------------------------------------------------- | ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lk:dont-ask` | every "don't ask again" choice: times chosen, day chosen, day it asks again | **synced** | `asks.dontAsk` | owner, 2026-11-10: such a choice expires and comes back spaced; reviewed per account at /my/preferences. Known ids only; a site id carries a public host, as `links.allowedHosts` |
+
+Owner, 2026-11-10: no "don't ask again" sticks for good. Every dialog that
+offers one goes through `lib/dont-ask.ts`:
+
+- **Picked**: the question stays away for `DONT_ASK_CONFIG.reaskDays[0]`
+  days (7). Picked again when it comes back: the next interval (30, 90, 365,
+  then 365 each time). The intervals live in that one constant, keyed
+  `dontAsk`, for the config store.
+- **Came back and answered without the box**: the choice is dropped (the
+  dialog's own setting is reset too), and the count starts over next time.
+- **No entry** reads as "ask": a choice stored before this map existed, or
+  one dropped to keep the value under the 2 KB cap (newest 40 kept), is asked
+  about once more.
+- The dialog's own key (`links.confirm`, `links.allowedHosts`,
+  `read.polishOffer`) still says what was chosen; the map says until when.
+  Turning the setting back on forgets the entry.
+- **Review**: /my/preferences → "Questions you turned off" lists every entry
+  (when chosen, when it asks again; due ones say so), with Keep (= picked
+  again: a longer wait) and Ask again now per row and for all.
+
+Today's kinds: `link-any` and `link-site:<host>` (docs/external-links.md),
+`read-polish` (the reader's offer to tidy a transcript). A new dialog adds its
+kind to `DONT_ASK_KINDS` and a row name in `dont-ask.content.ts`.
+
 ### Notifications (docs/app-badge.md)
 
 | Key               | Setting                                                                   | Class      | Server key     | Reason                                                                                                                    |
 | ----------------- | ------------------------------------------------------------------------- | ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `lk:mail-login-notice` | the security notice mail after a sign-in from a new browser (on by default) | **synced** | `mail.loginNotice` | owner, 2026-11-10 ([mail-templates.md](mail-templates.md), "Unsubscribe"). The server reads it at every send; off only after a warning |
 | `lk:notify-badge` | what the app-icon badge counts: off, ask-cards, due-cards, both (default) | **synced** | `notify.badge` | owner, 2026-11-09. A habit; the server also reads it, for a push that carries no counts (`GET /api/badge` without `mode`) |
 
 ### Not prefs (left alone)

@@ -85,10 +85,17 @@
  * unchanged, `source: "stt"`. The agent may polish it ({type:"edit", id,
  * text}) — STT gets words wrong and has no context — only if all hold: the
  * sender holds a live owner grant (chat or eval; never a friend's pairing),
- * the line is the owner's latest in the owner thread, it is `stt`, and it
- * was polished fewer than MAX_EDITS times. The first STT text stays as
- * `raw`; `edited: {at, by, count}` marks it. Pages and listeners hear
- * {type:"edited", id, thread, text, raw, edited}. Friends' lines never.
+ * the line is among the owner's last EDITABLE_LINES in the owner thread, it
+ * is `stt`, and it was polished fewer than MAX_EDITS times. The first STT
+ * text stays as `raw`; `edited: {at, by, count}` marks it. Pages and
+ * listeners hear {type:"edited", id, thread, text, raw, edited}. Friends'
+ * lines never. {type:"summary", ids|last, text} collapses a consecutive run
+ * of those voice lines (room talk) into one line saying what was said; the
+ * others stay stored with `collapsedInto`. {type:"merge", ids, text} rewrites
+ * a run of his consecutive voice lines as ONE fluent passage (mergeCheck: a
+ * length cap, not the word rules); the first line keeps what it read in
+ * `premerge` and {type:"unmerge", id} (his page, or the lane) restores the
+ * run. All need flag stt.polish (on by default).
  *
  * Continuous speech (flag stt.merge, voice-merge.ts; docs/dev-debug-widget.md,
  * "Continuous speech amends the last line"). With the flag on, an owner's voice
@@ -191,6 +198,10 @@ import {
   type EditedEvent,
   type FriendRecord,
   MAX_EDITS,
+  EDITABLE_LINES,
+  MERGE_LINES,
+  type SummaryMark,
+  type PassageMark,
   type HubState,
   type Identity,
   MAX_LABEL,
@@ -233,9 +244,15 @@ import type {
   PolishDueEvent,
   SpeakerTag,
   SttScene,
+  WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
-import { polishCheck, polishContext } from "../../../packages/debug-chat/src/polish";
+import {
+  mergeCheck,
+  polishCheck,
+  polishContext,
+  summaryCheck,
+} from "../../../packages/debug-chat/src/polish";
 import { MAX_UTTERANCE_MS } from "../../../packages/debug-chat/src/mic";
 import {
   type MergeCandidate,
@@ -263,13 +280,15 @@ import {
 } from "../../../lib/partner-ai-config";
 import { CHAT_PATH, REVOKED_PATH, TokenChat, tokenAtt } from "./token-chat";
 import { BOX_HEADER, EMBED_HEADER } from "./auth";
-import { type ChatLogRequest, chatLogLine } from "../../../lib/chat-log-line";
+import { type ChatLogRequest, chatLogLine, passageLogId } from "../../../lib/chat-log-line";
 import {
   ETA_AGENT,
   ETA_FLAG,
+  ETA_HEARD_PATH,
   ETA_LABEL,
   ETA_PATH,
   etaLineText,
+  forLanes,
   parseEtaPing,
 } from "../../../lib/eta-ping";
 import {
@@ -475,7 +494,12 @@ type SessionsRpc = {
     target?: string;
   }): Promise<unknown>;
   /** `lianki chat`: an API token's check for one chat operation (lib/chat-token.ts). */
-  chatToken?(req: { op: string; token?: string; tokenHash?: string }): Promise<unknown>;
+  chatToken?(req: {
+    op: string;
+    token?: string;
+    tokenHash?: string;
+    client?: string;
+  }): Promise<unknown>;
   /** May this box keep chatting (docs/box-oauth.md)? An older main Worker has none: no. */
   boxChat?(clientId: string): Promise<unknown>;
   /** May this box hold the owner's page powers (docs/box-oauth.md)? An older main Worker has none: no. */
@@ -492,8 +516,8 @@ const AI_BEAT_MS = 8_000;
 /** Daily usage keys (docs/partner-ai.md, "Caps"): a user's tokens, the site's micro-USD. */
 const aiUserKey = (day: string, userId: string) => `ai:${day}:u:${userId}`;
 const aiSiteKey = (day: string) => `ai:${day}:site`;
-/** The owner's off switch for agent polish (lib/flags.ts, /dev/flags). */
-export const POLISH_OFF_FLAG = "stt.polish-off";
+/** The owner's switch for agent polish and summaries of his voice lines: ON (the default) = active (lib/flags.ts, /dev/flags). */
+export const POLISH_FLAG = "stt.polish";
 /** The owner's switch for continuous speech amending the last line (voice-merge.ts). */
 export const MERGE_FLAG = "stt.merge";
 /** At most one live-session check per grant in this long (a burst of uses asks once). */
@@ -642,6 +666,12 @@ const whereOf = (url: URL) => {
 const forNode = (list: ChatMessage[], node?: string) =>
   node ? list.filter((m) => routeTo(node, m.to)) : list;
 
+/** The progress hub's namespace (the PROGRESS binding of this Worker). */
+type ProgressNs = {
+  idFromName(name: string): unknown;
+  get(id: unknown): { fetch(req: Request): Promise<Response> };
+};
+
 export class DebugHub {
   /**
    * Every stored grant by hash: read once per instance (an evicted hub reads
@@ -668,6 +698,8 @@ export class DebugHub {
   private aiTurn = new Map<string, number>();
   /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
   private tokens: TokenChat;
+  /** The progress hub (same Worker): told when a listener connects, so queued ETA lines go out. */
+  private progress?: ProgressNs;
 
   constructor(
     private ctx: DebugState,
@@ -677,6 +709,7 @@ export class DebugHub {
     // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
     this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
     this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
+    this.progress = (env as { PROGRESS?: ProgressNs } | undefined)?.PROGRESS;
     this.tokens = new TokenChat({
       now: () => this.now(),
       rpc: () => this.sessions,
@@ -903,32 +936,57 @@ export class DebugHub {
   }
 
   /**
-   * The agent polishes the owner's latest voice line (see "Voice edits"
-   * above). Every refusal is an {type:"error"} naming the rule it broke.
+   * The owner thread's kept lines, newest first, and the owner's own last
+   * EDITABLE_LINES among them: the lines an agent may polish or summarise.
+   */
+  private async editable(depth: number = EDITABLE_LINES) {
+    const kept = [
+      ...(await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(OWNER_THREAD).prefix,
+        reverse: true,
+        limit: CHAT_HISTORY,
+      })),
+    ];
+    // A line already inside a summary is not one of his lines any more: the summary is.
+    const own = kept.filter(([, x]) => x.from === "owner" && !x.collapsedInto);
+    return { kept, recent: own.slice(0, depth) };
+  }
+
+  /** May this controller edit the owner's lines? A refusal's reason, else null. */
+  private async mayEdit(c: ControllerAtt): Promise<string | null> {
+    if (c.forUser) return "a pairing for a friend cannot edit";
+    const g = c.grant ? await this.ctx.storage.get<Grant>(`grant:${c.grant}`) : undefined;
+    if (!g || g.until <= this.now()) return "edit needs a live chat grant from the owner";
+    return null;
+  }
+
+  /**
+   * The agent polishes one of the owner's last EDITABLE_LINES voice lines (see
+   * "Voice edits" above). Every refusal is an {type:"error"} naming the rule it broke.
    */
   private async edit(ws: Socket, c: ControllerAtt, m: { id: string; text: string }) {
     const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
-    if (c.forUser) return fail("a pairing for a friend cannot edit");
-    const g = c.grant ? await this.ctx.storage.get<Grant>(`grant:${c.grant}`) : undefined;
-    if (!g || g.until <= this.now()) return fail("edit needs a live chat grant from the owner");
-    // The owner's latest line in the owner thread, and its storage key.
-    const kept = await this.ctx.storage.list<ChatMessage>({
-      prefix: threadKeys(OWNER_THREAD).prefix,
-      reverse: true,
-      limit: CHAT_HISTORY,
-    });
-    const latest = [...kept].find(([, x]) => x.from === "owner");
-    if (!latest || latest[1].id !== m.id) {
-      const known = [...kept].some(([, x]) => x.id === m.id);
+    const no = await this.mayEdit(c);
+    if (no) return fail(no);
+    const { kept, recent: mine } = await this.editable();
+    const target = mine.find(([, x]) => x.id === m.id);
+    if (!target) {
+      const known = kept.some(([, x]) => x.id === m.id);
       return fail(
         known
-          ? `message ${m.id} is not the owner's latest: only the latest may be polished`
+          ? `message ${m.id} is not among the owner's last ${EDITABLE_LINES} lines: only those may be polished`
           : `no message ${m.id} in the owner's thread (friends' lines can never be edited)`,
       );
     }
-    const [key, line] = latest;
+    const [key, line] = target;
     if (line.source !== "stt")
       return fail(`message ${m.id} was typed, not spoken: only voice (stt) lines may be polished`);
+    if (line.summary)
+      return fail(`message ${m.id} is a summary: its lines are kept as heard, nothing to polish`);
+    if (line.passage)
+      return fail(
+        `message ${m.id} is a merged passage: undo it (unmerge) or merge the run again, not a polish`,
+      );
     const count = line.edited?.count ?? 0;
     if (count >= MAX_EDITS) return fail(`message ${m.id} was already polished ${MAX_EDITS} times`);
     if (m.text === line.text) return fail(`message ${m.id} already reads that way`);
@@ -938,13 +996,17 @@ export class DebugHub {
     // Held to the context (polish.ts): the raw STT text against the thread's
     // other lines, the page it was spoken on, and the words on its screen.
     const raw = line.raw ?? line.text;
-    const recent = [...kept].filter(([k]) => k !== key).map(([, x]) => x.text);
+    // The thread's other lines, before and after it (the agent's replies too).
+    const recent = kept.filter(([k]) => k !== key).map(([, x]) => x.text);
     // A merged line's parts are context too: later words correct what earlier ones really were.
     recent.push(...partTexts(line));
     const v = polishCheck(raw, m.text, polishContext(line, recent));
-    if (!v.ok) return fail(`not polished, the raw line stands: ${v.reason}`);
-    if (await this.polishOff())
-      return fail(`polish is off (${POLISH_OFF_FLAG} at /dev/flags): the raw line stands`);
+    if (!v.ok) {
+      console.log(JSON.stringify({ msg: "debug.polish-refused", id: line.id, reason: v.reason }));
+      return fail(`not polished, the raw line stands: ${v.reason}`);
+    }
+    if (!(await this.polishOn()))
+      return fail(`polish is off (${POLISH_FLAG} at /dev/flags): the raw line stands`);
     const t = this.now();
     const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
     const next: ChatMessage = {
@@ -975,6 +1037,289 @@ export class DebugHub {
       }),
     );
     this.tellEdit(out, line.to, ws);
+  }
+
+  /**
+   * The agent collapses a run of the owner's voice lines that were not
+   * addressed to it (room talk, someone else speaking) into one short summary
+   * (docs/dev-debug-widget.md, "Summaries"). Only his own `stt` lines among his
+   * last EDITABLE_LINES, consecutive in the thread (nobody spoke in between),
+   * none still being spoken or already summarised, and the summary passes
+   * `summaryCheck`. Nothing is deleted: the first line takes the summary as its
+   * text and every line's heard text, joined, as `raw`; the others stay stored
+   * with `collapsedInto`. The account's history keeps every line as it was and
+   * gains the summary as a line of its own.
+   */
+  private async summarise(
+    ws: Socket,
+    c: ControllerAtt,
+    m: { ids?: string[]; last?: number; text: string },
+  ) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    const no = await this.mayEdit(c);
+    if (no) return fail(no);
+    const { kept, recent: mine } = await this.editable();
+    let picked: [string, ChatMessage][];
+    if (m.last) picked = mine.slice(0, m.last);
+    else {
+      picked = [];
+      for (const id of new Set(m.ids ?? [])) {
+        const hit = mine.find(([, x]) => x.id === id);
+        if (!hit)
+          return fail(
+            `message ${id} is not among the owner's last ${EDITABLE_LINES} lines: only those may be summarised`,
+          );
+        picked.push(hit);
+      }
+    }
+    if (!picked.length) return fail("no lines of the owner's to summarise");
+    // Oldest first, in thread order (kept is newest first).
+    const at = (k: string) => kept.findIndex(([key]) => key === k);
+    picked.sort((a, b) => at(b[0]) - at(a[0]));
+    const idx = picked.map(([k]) => at(k));
+    for (let i = 1; i < idx.length; i++)
+      if (idx[i - 1]! - idx[i]! !== 1)
+        return fail("the lines are not consecutive: a summary covers one run nobody spoke into");
+    for (const [, x] of picked) {
+      if (x.source !== "stt")
+        return fail(
+          `message ${x.id} was typed, not spoken: only voice (stt) lines may be summarised`,
+        );
+      if (x.summary) return fail(`message ${x.id} is already a summary`);
+      if (x.passage) return fail(`message ${x.id} is a merged passage: undo it first`);
+      if (x.parts && !x.settled && this.now() - lastPartAt(x) < MAX_UTTERANCE_MS)
+        return fail(`message ${x.id} is still being spoken`);
+    }
+    const heard = picked.map(([, x]) => x.raw ?? x.text);
+    const v = summaryCheck(heard, m.text);
+    if (!v.ok) {
+      console.log(JSON.stringify({ msg: "debug.summary-refused", reason: v.reason }));
+      return fail(`not summarised, the lines stand: ${v.reason}`);
+    }
+    if (!(await this.polishOn()))
+      return fail(`polish is off (${POLISH_FLAG} at /dev/flags): the lines stand`);
+    const t = this.now();
+    const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
+    const [[firstKey, first], ...rest] = picked as [
+      [string, ChatMessage],
+      ...[string, ChatMessage][],
+    ];
+    const summary: SummaryMark = { at: t, by, ids: picked.map(([, x]) => x.id) };
+    const edited = first.edited ?? { at: t, by, count: 0 };
+    const next: ChatMessage = { ...first, text: m.text, raw: heard.join("\n"), edited, summary };
+    await this.ctx.storage.put(firstKey, next);
+    for (const [k, x] of rest)
+      await this.ctx.storage.put(k, { ...x, collapsedInto: first.id } satisfies ChatMessage);
+    // History keeps every line as heard (or polished); the summary joins it as its own line.
+    const logged = chatLogLine({
+      id: `${first.id}.summary`,
+      from: "owner",
+      text: m.text,
+      at: first.at,
+    });
+    if (logged) await this.chatLog({ op: "put", thread: OWNER_THREAD, lines: [logged] });
+    const out: EditedEvent = {
+      type: "edited",
+      id: first.id,
+      thread: OWNER_THREAD,
+      text: next.text,
+      raw: next.raw as string,
+      edited,
+      summary,
+    };
+    console.log(
+      JSON.stringify({
+        msg: "debug.summary",
+        pair: c.pair,
+        id: first.id,
+        lines: summary.ids.length,
+        by,
+        len: m.text.length,
+      }),
+    );
+    this.tellEdit(out, first.to, ws);
+  }
+
+  /**
+   * The agent rewrites a run of the owner's consecutive voice lines as ONE
+   * fluent passage (docs/dev-debug-widget.md, "Merged passages"): his own
+   * words, joined, with connectives and fragment fixes, the meaning unchanged.
+   * Accepted only if the sender may edit, every line is his `stt` line among
+   * his last MERGE_LINES, not a summary or passage, not still being spoken,
+   * the lines are consecutive in the thread (nothing at all in between: an
+   * agent reply, an ask card or anyone's line ends a run), and `mergeCheck`
+   * passes (a length cap instead of the per-line word rules). Nothing is
+   * deleted: the first line keeps what it read in `premerge` and takes the
+   * passage; the others stay stored with `collapsedInto`; undo restores them.
+   */
+  private async mergeRun(ws: Socket, c: ControllerAtt, m: { ids: string[]; text: string }) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    const no = await this.mayEdit(c);
+    if (no) return fail(no);
+    const { kept, recent: mine } = await this.editable(MERGE_LINES);
+    const picked: [string, ChatMessage][] = [];
+    for (const id of new Set(m.ids)) {
+      const hit = mine.find(([, x]) => x.id === id);
+      if (!hit) {
+        const known = kept.some(([, x]) => x.id === id);
+        return fail(
+          known
+            ? `message ${id} is not among the owner's last ${MERGE_LINES} lines (or is inside a summary or passage): only those may be merged`
+            : `no message ${id} in the owner's thread (friends' lines can never be edited)`,
+        );
+      }
+      picked.push(hit);
+    }
+    if (picked.length < 2) return fail("a merge joins two or more of the owner's lines");
+    for (const [, x] of picked) {
+      if (x.source !== "stt")
+        return fail(`message ${x.id} was typed, not spoken: only voice (stt) lines may be merged`);
+      if (x.summary) return fail(`message ${x.id} is a summary`);
+      if (x.passage) return fail(`message ${x.id} is already a merged passage: undo it first`);
+      if (x.parts && !x.settled && this.now() - lastPartAt(x) < MAX_UTTERANCE_MS)
+        return fail(`message ${x.id} is still being spoken: merge it once the passage ends`);
+    }
+    // Oldest first, in thread order (kept is newest first).
+    const at = (k: string) => kept.findIndex(([key]) => key === k);
+    picked.sort((a, b) => at(b[0]) - at(a[0]));
+    const idx = picked.map(([k]) => at(k));
+    // Nothing at all between them (kept holds every line, hidden ones too): else two runs.
+    for (let i = 1; i < idx.length; i++)
+      if (idx[i - 1]! - idx[i]! !== 1) {
+        const between = kept[idx[i - 1]! - 1]?.[1];
+        return fail(
+          `the lines are not consecutive: ${between ? `message ${between.id} (${between.from}) is` : "another message is"} between them, so they are separate runs`,
+        );
+      }
+    const heard = picked.map(([, x]) => x.raw ?? x.text);
+    const v = mergeCheck(heard, m.text);
+    if (!v.ok) {
+      console.log(JSON.stringify({ msg: "debug.passage-refused", reason: v.reason }));
+      return fail(`not merged, the lines stand: ${v.reason}`);
+    }
+    if (!(await this.polishOn()))
+      return fail(`polish is off (${POLISH_FLAG} at /dev/flags): the lines stand`);
+    const t = this.now();
+    const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
+    const [[firstKey, first], ...rest] = picked as [
+      [string, ChatMessage],
+      ...[string, ChatMessage][],
+    ];
+    const passage: PassageMark = { at: t, by, ids: picked.map(([, x]) => x.id) };
+    const edited = { at: t, by, count: first.edited?.count ?? 0 };
+    const premerge: NonNullable<ChatMessage["premerge"]> = {
+      text: first.text,
+      ...(first.raw !== undefined ? { raw: first.raw } : {}),
+      ...(first.edited ? { edited: first.edited } : {}),
+    };
+    const next: ChatMessage = {
+      ...first,
+      text: m.text,
+      raw: heard.join("\n"),
+      edited,
+      passage,
+      premerge,
+    };
+    await this.ctx.storage.put(firstKey, next);
+    for (const [k, x] of rest)
+      await this.ctx.storage.put(k, { ...x, collapsedInto: first.id } satisfies ChatMessage);
+    // History keeps every line as it was; the passage joins it as its own line (undo drops it).
+    const logged = chatLogLine({
+      id: passageLogId(first.id),
+      from: "owner",
+      text: m.text,
+      at: first.at,
+    });
+    if (logged) await this.chatLog({ op: "put", thread: OWNER_THREAD, lines: [logged] });
+    const out: EditedEvent = {
+      type: "edited",
+      id: first.id,
+      thread: OWNER_THREAD,
+      text: next.text,
+      raw: next.raw as string,
+      edited,
+      passage,
+    };
+    console.log(
+      JSON.stringify({
+        msg: "debug.passage",
+        pair: c.pair,
+        id: first.id,
+        lines: passage.ids.length,
+        by,
+        len: m.text.length,
+        heard: heard.reduce((n, h) => n + h.length, 0),
+      }),
+    );
+    this.tellEdit(out, first.to, ws);
+  }
+
+  /** The lane takes back its own merged passage (eval.ts edit --unmerge). */
+  private async unmergeByAgent(ws: Socket, c: ControllerAtt, id: string) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    const no = await this.mayEdit(c);
+    if (no) return fail(no);
+    const kept = [
+      ...(await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(OWNER_THREAD).prefix,
+        reverse: true,
+        limit: CHAT_HISTORY,
+      })),
+    ];
+    const at = kept.findIndex(([, x]) => x.id === id);
+    if (at < 0 || !kept[at][1].passage) return fail(`message ${id} is not a merged passage`);
+    return this.restorePassage(kept, at, cleanLabel(c.assignee ?? c.label, 80) || "agent", ws);
+  }
+
+  /**
+   * Undo a merged passage: its first line reads again what it read before
+   * (`premerge`), the others lose `collapsedInto`, and the history drops the
+   * passage line. Never gated by the flag: turning it off must not strand a
+   * passage. Pages and listeners hear {type:"edited", …, restored}.
+   */
+  private async restorePassage(
+    kept: [string, ChatMessage][],
+    at: number,
+    by: string,
+    sender?: Socket,
+  ) {
+    const [key, line] = kept[at];
+    const mark = line.passage as PassageMark;
+    const { passage: _p, premerge, raw: _r, edited: _e, ...base } = line;
+    const pre = premerge ?? { text: line.text };
+    const first: ChatMessage = {
+      ...base,
+      text: pre.text,
+      ...(pre.raw !== undefined ? { raw: pre.raw } : {}),
+      ...(pre.edited ? { edited: pre.edited } : {}),
+    };
+    await this.ctx.storage.put(key, first);
+    const restored: ChatMessage[] = [first];
+    for (const [k, x] of kept)
+      if (x.collapsedInto === line.id && mark.ids.includes(x.id)) {
+        const { collapsedInto: _c, ...back } = x;
+        await this.ctx.storage.put(k, back);
+        restored.push(back);
+      }
+    // Oldest first, as the passage listed them.
+    restored.sort((a, b) => mark.ids.indexOf(a.id) - mark.ids.indexOf(b.id));
+    await this.chatLog({ op: "drop", thread: OWNER_THREAD, ids: [passageLogId(line.id)] });
+    console.log(
+      JSON.stringify({ msg: "debug.passage-undo", id: line.id, lines: restored.length, by }),
+    );
+    this.tellEdit(
+      {
+        type: "edited",
+        id: line.id,
+        thread: OWNER_THREAD,
+        text: first.text,
+        raw: first.raw ?? first.text,
+        edited: first.edited ?? { at: this.now(), by: UNMERGE_BY, count: 0 },
+        restored,
+      },
+      line.to,
+      sender,
+    );
   }
 
   /** An edit of an owner's line: its pages, and the listeners by the line's node. */
@@ -1032,6 +1377,8 @@ export class DebugHub {
     const [key, prev] = latest;
     // The same page on the same path: another device, or a page he moved to, is a new turn.
     if (prev.label !== page.label) return refuse("other-page");
+    // A summarised run is closed: nothing more joins it, nor a line hidden inside it.
+    if (prev.summary || prev.passage || prev.collapsedInto) return refuse("summarised");
     // A card waiting for him just before it, or one tapped since: an answer stays its own act.
     const before = kept[1]?.[1];
     if (before?.ask && askState(before, cur.at) === "open") return refuse("open-ask");
@@ -1083,6 +1430,8 @@ export class DebugHub {
     ];
     const at = kept.findIndex(([, x]) => x.id === id);
     const line = at < 0 ? undefined : kept[at][1];
+    // A passage the lane wrote goes back to its lines first (its first line may hold parts too).
+    if (line?.passage) return this.restorePassage(kept, at, page.label);
     if (!line?.parts) return fail(`message ${id} is not a merged line`);
     const lines = splitLine(line).map((x) => ({ ...x, thread: OWNER_THREAD }));
     const grow = lines.length - 1;
@@ -1120,7 +1469,7 @@ export class DebugHub {
 
   /**
    * The page that spoke went quiet after a merged line. Nothing more joins it,
-   * and the listeners hear it is time for its one polish. With stt.polish-off on
+   * and the listeners hear it is time for its one polish. With stt.polish off
    * (or unsure) they hear nothing, so no lane wakes for it: the raw line stands.
    */
   private async passageEnd(page: PageAtt) {
@@ -1134,8 +1483,9 @@ export class DebugHub {
     if (!latest) return;
     const [key, line] = latest;
     if (!line.parts || line.settled || line.label !== page.label) return;
+    if (line.collapsedInto || line.passage) return;
     await this.ctx.storage.put(key, { ...line, settled: true } satisfies ChatMessage);
-    if ((line.edited?.count ?? 0) >= MAX_EDITS || (await this.polishOff())) return;
+    if ((line.edited?.count ?? 0) >= MAX_EDITS || !(await this.polishOn())) return;
     const out: PolishDueEvent = {
       type: "polish-due",
       id: line.id,
@@ -1233,6 +1583,63 @@ export class DebugHub {
     for (const { ws: l, a } of this.listeners())
       if (audience(a) === page.thread || page.thread === OWNER_THREAD || !a.forUser)
         send(l, page.thread === OWNER_THREAD ? out : { ...out, thread: page.thread });
+  }
+
+  /**
+   * The agent withdraws an ask card it sent (eval.ts withdraw), so nobody
+   * has to tap an obsolete question: by askId or message id, only in the
+   * thread named (`to`, as for ask: the owner's by default, else the friend's
+   * the card was sent to), only an agent line with an ask, only while open
+   * (not answered, expired or already withdrawn), and only with a live chat
+   * grant (never a pairing for a friend). Stamped on the ask
+   * (`ask.withdrawnAt`), kept (a reload shows it withdrawn; a later tap is
+   * refused by askState), and sent to that thread's pages and the listeners.
+   */
+  private async withdraw(ws: Socket, c: ControllerAtt, m: { id: string; to?: string }) {
+    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
+    if (c.forUser) return fail("a pairing for a friend cannot withdraw");
+    const g = c.grant ? await this.ctx.storage.get<Grant>(`grant:${c.grant}`) : undefined;
+    if (!g || g.until <= this.now()) return fail("withdraw needs a live chat grant from the owner");
+    const dest = await this.sayTarget(m.to);
+    if ("error" in dest) return fail(dest.error);
+    const kept = await this.ctx.storage.list<ChatMessage>({
+      prefix: threadKeys(dest.thread).prefix,
+      reverse: true,
+      limit: CHAT_HISTORY,
+    });
+    const hit = [...kept].find(([, x]) => x.ask && (x.ask.askId === m.id || x.id === m.id));
+    if (!hit) return fail(`no ask ${m.id} in that thread`);
+    const [key, line] = hit;
+    if (line.from !== "agent" || !line.ask) return fail(`message ${m.id} is not an agent's ask`);
+    const t = this.now();
+    const state = askState(line, t);
+    if (state !== "open") return fail(`ask ${line.ask.askId} is ${state}`);
+    const ask: Ask = { ...line.ask, withdrawnAt: t };
+    await this.ctx.storage.put(key, { ...line, ask } satisfies ChatMessage);
+    const out: WithdrawnEvent = {
+      type: "withdrawn",
+      id: line.id,
+      askId: ask.askId,
+      thread: dest.thread,
+      withdrawnAt: t,
+    };
+    console.log(
+      JSON.stringify({
+        msg: "debug.withdraw",
+        pair: c.pair,
+        thread: dest.thread,
+        askId: ask.askId,
+        by: cleanLabel(c.assignee ?? c.label, 80) || "agent",
+      }),
+    );
+    for (const { ws: p } of this.pages(dest.thread)) send(p, out);
+    // The owner-approved listeners (never a friend's pairing); the requester among them.
+    let told = false;
+    for (const { ws: l } of this.listeners()) {
+      if (l === ws) told = true;
+      send(l, out);
+    }
+    if (!told) send(ws, out);
   }
 
   /** The live node grants (`ngrant:`), lapsed ones dropped as they are met. */
@@ -1404,6 +1811,12 @@ export class DebugHub {
     }
     if (on === "busy") return Response.json({ error: "flag unreadable" }, { status: 503 });
     if (on !== true) return Response.json({ ok: true, delivered: false, reason: "flag off" });
+    // A lanes' line with no one listening at the root is not posted: the
+    // progress hub keeps it queued and sends it when a listener connects
+    // (listenerUp), so its receipt clock starts only once someone has it.
+    const listeners = this.agents().filter((c) => routeTo(c.a.node, ROOT_NODE)).length;
+    if (forLanes(ping) && listeners === 0)
+      return Response.json({ ok: true, delivered: false, queued: true, listeners: 0 });
     const line: ChatMessage & { thread: string } = {
       id: crypto.randomUUID().slice(0, 8),
       from: "agent",
@@ -1414,9 +1827,15 @@ export class DebugHub {
       to: ROOT_NODE,
       agentId: ETA_AGENT,
       source: "eta",
-      // The agents' line is quiet; the owner's (late, silent) is read aloud like any agent line.
-      ...(ping.kind === "late" || ping.kind === "silent" ? {} : { quiet: true }),
-      eta: { id: ping.id, etaAt: ping.etaAt },
+      // The lanes' lines are quiet; the owner's (late, silent, waiting, blocked on him) are read aloud like any agent line.
+      ...(forLanes(ping) ? { quiet: true } : {}),
+      eta: {
+        id: ping.id,
+        etaAt: ping.etaAt,
+        ...(ping.kind && ping.kind !== "due" ? { kind: ping.kind } : {}),
+        ...(ping.code ? { code: ping.code } : {}),
+        ...(ping.lane ? { lane: ping.lane } : {}),
+      },
     };
     await this.post(line);
     console.log(
@@ -1427,7 +1846,26 @@ export class DebugHub {
         etaAt: ping.etaAt,
       }),
     );
-    return Response.json({ ok: true, delivered: true, listeners: this.agents().length });
+    return Response.json({ ok: true, delivered: true, listeners });
+  }
+
+  /**
+   * A listener (not a heartbeat-only socket) connected: tell the progress hub
+   * (ETA_HEARD_PATH), which sends the lanes' ETA lines it held queued for want
+   * of one (docs/state-tree.md, "Receipts"). Best effort: a failure leaves them
+   * queued for the next listener.
+   */
+  private async listenerUp(a: ControllerAtt) {
+    if (a.beat || !this.progress || !routeTo(a.node, ROOT_NODE)) return;
+    try {
+      await this.progress
+        .get(this.progress.idFromName("progress"))
+        .fetch(new Request(`https://lianki-push${ETA_HEARD_PATH}`, { method: "POST" }));
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.eta-heard-failed", error: String(e).slice(0, 200) }),
+      );
+    }
   }
 
   /**
@@ -1495,20 +1933,29 @@ export class DebugHub {
   }
 
   /**
-   * Has the owner switched agent polish off (POLISH_OFF_FLAG at /dev/flags)?
-   * Asked of the main Worker's DebugSessions entrypoint on each edit (edits are
-   * one per voice line at most). Only an answer of exactly false lets polish
-   * through; "busy", an error or an odd answer count as off (unsure: the raw
-   * line stands). No binding, or a main Worker from before `flag()`: not off,
-   * polish as before, so the deploy order never matters.
+   * Is agent polish on (POLISH_FLAG at /dev/flags, on by default)? Asked of the
+   * main Worker's DebugSessions entrypoint on each edit (one per voice line at
+   * most), uncached. Only an answer of exactly false switches it off. A read
+   * that fails — "busy" or an error — is unsure: polish waits and the raw line
+   * stands, as before, and it is logged (`debug.polish-flag-unread`). No
+   * binding, or a main Worker from before `flag()`: on, as ever.
    */
-  private async polishOff(): Promise<boolean> {
-    if (!this.sessions?.flag) return false;
+  private async polishOn(): Promise<boolean> {
+    if (!this.sessions?.flag) return true;
+    let v: unknown;
     try {
-      return (await this.flagValue(POLISH_OFF_FLAG)) !== false;
-    } catch {
-      return true;
+      v = await this.flagValue(POLISH_FLAG);
+    } catch (e) {
+      console.log(
+        JSON.stringify({ msg: "debug.polish-flag-unread", error: String(e).slice(0, 200) }),
+      );
+      return false;
     }
+    if (v === "busy") {
+      console.log(JSON.stringify({ msg: "debug.polish-flag-unread", error: "busy" }));
+      return false;
+    }
+    return v !== false;
   }
 
   /** Run read-check-write with no other event in between (the DO's own gate, where there is one). */
@@ -1908,6 +2355,7 @@ export class DebugHub {
     console.log(
       JSON.stringify({ msg: "debug.eval-token", pair: a.pair, label: a.label, tag: ok.tag }),
     );
+    await this.listenerUp(a);
     this.broadcast();
   }
 
@@ -2009,6 +2457,7 @@ export class DebugHub {
     console.log(JSON.stringify({ msg: "debug.resume", pair: a.pair, label: a.label, scope }));
     await this.loadGrants();
     this.broadcast();
+    await this.listenerUp(a);
   }
 
   /**
@@ -2387,6 +2836,7 @@ export class DebugHub {
             continues: m.continues,
             text: m.text,
             ...(m.timing ? { timing: m.timing } : {}),
+            ...(m.stt ? { stt: m.stt } : {}),
             ...(m.to ? { to: m.to } : {}),
             ...(m.wake ? { wake: m.wake } : {}),
             ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
@@ -2407,6 +2857,8 @@ export class DebugHub {
           ...(m.to ? { to: m.to } : {}),
           ...(m.source ? { source: m.source } : {}),
           ...(m.timing ? { timing: m.timing } : {}),
+          // Which recognizer made the text (SttTag): route and engine, never text.
+          ...(m.stt ? { stt: m.stt } : {}),
           ...(m.wake ? { wake: m.wake } : {}),
           ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
           ...(m.context ? { context: m.context } : {}),
@@ -2722,7 +3174,12 @@ export class DebugHub {
       // Off, the owner, or a line already answered: nothing to say (the lanes
       // still answer). No credits: the page says how to get some. Otherwise it failed.
       if (res.error === "no-credits")
-        for (const { ws } of this.pages(thread)) send(ws, { type: "ai-credits" });
+        for (const { ws } of this.pages(thread))
+          send(ws, {
+            type: "ai-credits",
+            // The minimum one reply needs and the balance (numbers only), for the chat's line.
+            ...(res.need !== undefined ? { need: res.need, have: res.have ?? 0 } : {}),
+          });
       else if (res.error !== "off" && res.error !== "owner" && res.error !== "duplicate")
         for (const { ws } of this.pages(thread)) send(ws, { type: "ai-failed" });
       return;
@@ -2835,6 +3292,7 @@ export class DebugHub {
     await this.scheduleRenewal(g);
     this.broadcast();
     send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
+    await this.listenerUp(a);
   }
 
   /** End (revoke) a sleeping eval grant, or add the answering page to it. */
@@ -2888,6 +3346,7 @@ export class DebugHub {
     );
     this.broadcast();
     send(ws, { type: "history", messages: forNode(await this.history(), a.node) });
+    await this.listenerUp(a);
   }
 
   /**
@@ -3029,6 +3488,10 @@ export class DebugHub {
       return this.nodeGrant(ws, c, m.value);
     }
     if (m.value.type === "edit") return this.edit(ws, c, m.value);
+    if (m.value.type === "withdraw") return this.withdraw(ws, c, m.value);
+    if (m.value.type === "summary") return this.summarise(ws, c, m.value);
+    if (m.value.type === "merge") return this.mergeRun(ws, c, m.value);
+    if (m.value.type === "unmerge") return this.unmergeByAgent(ws, c, m.value.id);
     if (m.value.type === "ask") return this.ask(ws, c, m.value.ask, m.value.to);
     if (m.value.type === "say") {
       if (c.forUser)

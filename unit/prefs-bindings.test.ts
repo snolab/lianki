@@ -47,6 +47,7 @@ const SAMPLE: Record<string, unknown> = {
   "words.gradeTones": false,
   "words.voiceMode": true,
   "words.swipeMirror": true,
+  "words.onboarded": true,
   "swipe.variant": "native",
   "swipe-feel.preset": "heavy",
   "swipe-feel.tweaks": { friction: 10 },
@@ -61,6 +62,7 @@ const SAMPLE: Record<string, unknown> = {
   "home.pins": [[...CATALOG_URLS][0]],
   "lab.immersionLangs": ["ja"],
   "lab.immersionTranspose": true,
+  "lang.preferred": ["ja", "zh-Hans"],
   "chat-voice.rate": 2,
   "chat-voice.out": "cloud",
   "chat-voice.speak": false,
@@ -68,6 +70,7 @@ const SAMPLE: Record<string, unknown> = {
   "chat-voice.cueSpeech": false,
   "links.confirm": false,
   "notify.badge": "ask-cards",
+  "mail.loginNotice": false,
   "links.allowedHosts": ["en.wikipedia.org", "youtube.com"],
 };
 

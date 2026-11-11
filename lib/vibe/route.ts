@@ -7,27 +7,42 @@ import { dbBackend, getD1 } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
 import type { D1Batch } from "@/lib/read/reader-store";
+import { CREDITS_HEADER, CREDITS_NEEDED, CREDITS_PAUSED } from "@/lib/payments/no-credits-watch";
 import { readJsonCapped } from "@/lib/security/route-guard";
 import { sameOriginJson } from "@/lib/security/same-origin";
 import { NOT_FOUND, vibeUserId, type Reply } from "./api";
 
 export const reply = (r: Reply) =>
-  NextResponse.json(r.body, { status: r.status, headers: { "cache-control": "no-store" } });
+  NextResponse.json(r.body, {
+    status: r.status,
+    headers: {
+      "cache-control": "no-store",
+      // A credit refusal (lib/payments/metered.ts): the page's notice hears it.
+      ...(r.body.error === "no-credits" ? { [CREDITS_HEADER]: CREDITS_NEEDED } : {}),
+      ...(r.body.error === "credits-paused" ? { [CREDITS_HEADER]: CREDITS_PAUSED } : {}),
+    },
+  });
 
 /** The signed-in owner while `read.vibe` is on; null for everyone and everything else. */
-export async function vibeGate(): Promise<{ userId: string; db: D1Batch } | null> {
+export async function vibeGate(): Promise<{
+  userId: string;
+  email: string | null;
+  db: D1Batch;
+} | null> {
   const session = await auth.api.getSession({ headers: await headers() });
   const id = session?.user?.id;
   const who = id ? { userId: id, owner: isDev(session.user.email ?? null) } : null;
   const userId = vibeUserId(who, who ? await readFlags() : null, dbBackend());
-  return userId ? { userId, db: getD1() as unknown as D1Batch } : null;
+  return userId
+    ? { userId, email: session?.user?.email ?? null, db: getD1() as unknown as D1Batch }
+    : null;
 }
 
 /** A write: the gate, then a same-origin JSON body under `maxBytes`. */
 export async function vibeWrite(
   req: Request,
   maxBytes: number,
-  run: (g: { userId: string; db: D1Batch }, body: unknown) => Promise<Reply>,
+  run: (g: { userId: string; email: string | null; db: D1Batch }, body: unknown) => Promise<Reply>,
 ): Promise<NextResponse> {
   const g = await vibeGate();
   if (!g) return reply(NOT_FOUND);

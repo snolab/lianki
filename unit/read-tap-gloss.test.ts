@@ -109,7 +109,13 @@ beforeEach(async () => {
   modelCalls = 0;
   charges = [];
   logSpy = spyOn(console, "log").mockImplementation((line: unknown) => {
-    if (typeof line === "string" && line.includes('"read.gloss.cost"')) charges.push(line);
+    // A paid call without a wallet in reach (these tests' ai has no db): logged unmetered.
+    if (
+      typeof line === "string" &&
+      line.includes('"credits.unmetered"') &&
+      line.includes('"what":"read.gloss"')
+    )
+      charges.push(line);
   });
 });
 afterEach(() => logSpy.mockRestore());

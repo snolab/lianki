@@ -18,11 +18,15 @@
  *   staying silent.
  * - Mic on: every reply is read, whatever the speaker toggle or focus says
  *   (the toggle itself is never changed, so it is "restored" when the mic
- *   stops). Mic off: a reply is read with the toggle on, and either the mic
- *   has been used in this tab (sticky, `voiced`: replies to typed lines are
- *   read too, owner 2026-11-04) or the chat input is focused in a visible
- *   tab (the focus rule). Sticky means no time window: it lasts until he
- *   mutes (the toggle off clears it, `unvoice`); his mute always wins.
+ *   stops). Mic off, on a phone (touch, `touch`): the speaker toggle alone
+ *   decides (owner 2026-11-10: the focus rule needed the keyboard up, so a
+ *   reader on /reader heard nothing). Mic off, on a computer: a reply is
+ *   read with the toggle on, and either the mic has been used on this device
+ *   (sticky, `voiced`, localStorage: replies to typed lines are read too,
+ *   owner 2026-11-04; an iOS PWA relaunch clears sessionStorage, so it is no
+ *   longer kept there) or the chat input is focused in a visible tab (the
+ *   focus rule). Sticky means no time window: it lasts until he mutes (the
+ *   toggle off clears it, `unvoice`); his mute always wins.
  * - Echo (`lk:voice-aec`, default on): the mic stays open while the agent
  *   speaks — echo cancellation, then the text guard (echo.ts) drops what
  *   leaks through. The user speaking over the agent ducks it to DUCK_LEVEL;
@@ -90,18 +94,29 @@ export const BARGE_IN_PROB = 0.7;
  * the whole queue would wait behind it in silence (2026-11-03).
  */
 export const SPEECH_START_MS = 8_000;
+/**
+ * A sentence handed to speechSynthesis that, this long after, has not started
+ * and is neither speaking nor pending was dropped: iOS WebKit returns from
+ * speak() with no event at all until the page has spoken once inside a tap
+ * (SpeechSynthesis::speak, RequireUserGestureForSpeechStart). Every page load
+ * starts locked, a debug device's reload after a deploy included, so a reply
+ * on /reader with no tap on the chat waited behind it forever and nothing
+ * after it was read either (2026-11-10). It is treated as refused: the
+ * reading waits for the next tap anywhere (`unblock`), which unlocks speech.
+ */
+export const SPEECH_REFUSED_MS = 1_000;
 /** Sentences are cut to at most this many characters (the TTS route's limit). */
 export const CHUNK_MAX = 200;
 /** localStorage: the speaker toggle ("0" = replies silent). */
 export const SPEAK_KEY = "lk:debug-chat-speak";
-/** sessionStorage (this tab): "1" once the mic was used here, until he mutes (sticky read-aloud). */
+/** localStorage (this device): "1" once the mic was used here, until he mutes (sticky read-aloud). */
 export const VOICED_KEY = "lk:agent:voiced";
 /** A reply with the same text within this long is a re-delivery, not a new one. */
 export const REPLY_DEDUPE_MS = 10 * 60_000;
 /** globalThis key of the shared session. */
 const KEY = "__lkVoice";
 /** The session's version: a copy on the page with another one is replaced. */
-const V = 3;
+const V = 4;
 
 const CJK_STOP = "。．！？";
 const LATIN_STOP = ".!?";
@@ -211,7 +226,13 @@ export type UtterLike = {
   onstart?: ((e?: unknown) => void) | null;
   onboundary: ((e: { charIndex: number; name?: string }) => void) | null;
 };
-export type SynthLike = { speak(u: UtterLike): void; cancel(): void };
+export type SynthLike = {
+  speak(u: UtterLike): void;
+  cancel(): void;
+  /** speechSynthesis.speaking / .pending: both false right after speak() = it was dropped. */
+  speaking?: boolean;
+  pending?: boolean;
+};
 
 /** One sentence playing, on either route. */
 export type Playback = {
@@ -250,8 +271,10 @@ export type CloudOut = {
 export type VoiceState = {
   /** The mic is on (listening, loading or capturing). */
   mic: boolean;
-  /** The mic was used in this tab: replies are read with the toggle on, focused or not (sticky). */
+  /** The mic was used on this device: replies are read with the toggle on, focused or not (sticky). */
   voiced?: boolean;
+  /** A phone (touch): the speaker toggle alone decides, no focus needed. */
+  touch?: boolean;
   /** An utterance is playing, or just ended (the tail). */
   speaking: boolean;
   /** The mic holds its capture: speaking, with echo cancellation off (lk:voice-aec = "0"). */
@@ -272,7 +295,11 @@ export type VoiceState = {
 export type Why = "speech" | "tap" | "typing";
 export type OutMode = "speech" | "cloud";
 
-/** `voice`: the line's voice (voices.ts), absent = main; `pick`: its own voice beyond the table. */
+/**
+ * `voice`: the line's voice (voices.ts), absent = main; `pick`: its own voice
+ * beyond the table; `id`: the line it came from (its meta), so a withdrawn ask
+ * can be dropped (`drop`).
+ */
 type Sentence = {
   text: string;
   lang: string;
@@ -280,6 +307,7 @@ type Sentence = {
   at: number;
   voice?: VoiceId;
   pick?: LinePick;
+  id?: string;
 };
 /** What the agent said, and when (for the echo guard). */
 type Said = { text: string; start: number; end?: number };
@@ -303,8 +331,14 @@ export function createVoice(d: {
   enabled: () => boolean;
   /** The focus rule: this tab is visible and the chat input has focus. */
   here: () => boolean;
-  /** Where "the mic was used here" is kept (sessionStorage in the page; memory if absent). */
+  /** Where "the mic was used here" is kept (localStorage in the page; memory if absent). */
   voiced?: { get(): boolean; set(on: boolean): void };
+  /**
+   * A phone or tablet (no fine pointer, voice-bg.ts isDesktop): the speaker
+   * toggle alone decides, since the input is rarely focused there (the
+   * keyboard would cover the page). Absent: false.
+   */
+  touch?: () => boolean;
   /** The cloud output, for `mode() === "cloud"`, and for a language speechSynthesis has no voice for. */
   cloud?: () => CloudOut | null;
   /** speechSynthesis has a voice for `lang` (absent: assume it has). */
@@ -346,6 +380,7 @@ export function createVoice(d: {
     get: () => voicedMem,
     set: (on: boolean) => void (voicedMem = on),
   };
+  const touch = () => d.touch?.() ?? false;
   let speaking = false;
   const queue: Sentence[] = [];
   /** Replies queued lately, so a re-delivered one is not read twice. */
@@ -370,6 +405,7 @@ export function createVoice(d: {
   const state = (): VoiceState => ({
     mic,
     voiced: voiced.get(),
+    touch: touch(),
     speaking,
     hold: speaking && !aec(),
     ducked: !!duck,
@@ -382,8 +418,8 @@ export function createVoice(d: {
     const s = state();
     for (const f of subs) f(s);
   };
-  /** Mic off: the toggle on, and the mic used here (sticky) or the focus rule. */
-  const focusRule = () => d.enabled() && (voiced.get() || d.here());
+  /** Mic off: the toggle on, and a phone, the mic used here (sticky) or the focus rule. */
+  const focusRule = () => d.enabled() && (touch() || voiced.get() || d.here());
   /** Nothing on this device can read `lang`: no speechSynthesis, or no voice for it. */
   const noVoice = (lang: string) => !d.synth() || (d.hasVoice ? !d.hasVoice(lang) : false);
   /**
@@ -462,9 +498,24 @@ export function createVoice(d: {
           ev.onerror();
         }, SPEECH_START_MS)
       : undefined;
+    // Dropped without an event (iOS before the page's first tap): refused, wait for a tap.
+    // (Only where the engine says whether it is speaking: a fake in a test may not.)
+    let refused: unknown =
+      typeof s.speaking === "boolean"
+        ? setTimer(() => {
+            refused = undefined;
+            if (e !== epoch || s.speaking !== false || s.pending !== false) return;
+            log({ ev: "voice-refused", route: "speech", lang: head.lang, ms: SPEECH_REFUSED_MS });
+            settle();
+            u.onend = u.onerror = u.onstart = u.onboundary = null;
+            ev.onfail?.("speech NotAllowedError (dropped: no tap on this page yet)");
+          }, SPEECH_REFUSED_MS)
+        : undefined;
     const settle = () => {
       clearTimer(watch);
       watch = undefined;
+      clearTimer(refused);
+      refused = undefined;
     };
     u.onend = () => (settle(), ev.onend());
     u.onerror = (x) => {
@@ -744,10 +795,12 @@ export function createVoice(d: {
       while (recent.length > 20) recent.shift();
       const lang = pickLang(text);
       // An ElevenLabs preview stands for the whole line: one item, its text kept for a fallback.
-      const add =
+      const idOf = typeof meta?.id === "string" ? { id: meta.id } : {};
+      const add = (
         pick?.kind === "eleven" && cloud() && text.trim()
           ? [{ text, lang, from: 0, at: 0, ...(voice ? { voice } : {}), pick }]
-          : toSentences(text, lang, voice, pick?.kind === "eleven" ? undefined : pick);
+          : toSentences(text, lang, voice, pick?.kind === "eleven" ? undefined : pick)
+      ).map((s) => ({ ...s, ...idOf }));
       if (!add.length) return false;
       if (!queue.length) prepare(add[0]!);
       queue.push(...add);
@@ -845,6 +898,20 @@ export function createVoice(d: {
       if (!voiced.get()) return;
       voiced.set(false);
       emit();
+    },
+    /**
+     * Drop line `id`'s sentences (an ask withdrawn while queued or playing):
+     * stopped if it is playing; the other lines read on. False: none queued.
+     */
+    drop(id: string): boolean {
+      const before = queue.length;
+      if (current && queue[0]?.id === id) halt(false);
+      for (let i = queue.length - 1; i >= 0; i--) if (queue[i]!.id === id) queue.splice(i, 1);
+      if (queue.length === before) return false;
+      log({ ev: "voice-drop", sentences: before - queue.length });
+      next();
+      emit();
+      return true;
     },
     /** Clear the queue and stop reading ("Stop reading", the focus rule). */
     stop() {
@@ -1006,19 +1073,19 @@ export function unheard(v: Voice = voice()): Unheard {
   return s.__unheard ?? (s.__unheard = unheardSet());
 }
 
-/** VOICED_KEY in this tab's sessionStorage, guarded (private mode, sandboxed frames throw). */
+/** VOICED_KEY in localStorage, guarded (private mode, sandboxed frames throw). */
 const voicedStore = {
   get: () => {
     try {
-      return sessionStorage.getItem(VOICED_KEY) === "1";
+      return localStorage.getItem(VOICED_KEY) === "1";
     } catch {
       return false;
     }
   },
   set: (on: boolean) => {
     try {
-      if (on) sessionStorage.setItem(VOICED_KEY, "1");
-      else sessionStorage.removeItem(VOICED_KEY);
+      if (on) localStorage.setItem(VOICED_KEY, "1");
+      else localStorage.removeItem(VOICED_KEY);
     } catch {}
   },
 };
@@ -1033,6 +1100,7 @@ export function voice(): Voice {
     enabled: speechEnabled,
     here: speakHere,
     voiced: voicedStore,
+    touch: () => !isDesktop(),
     cloud: cloudOut,
     // getVoices() can be empty (some Android Chromes always): the cloud reads those.
     hasVoice: (lang) => {

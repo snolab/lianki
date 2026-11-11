@@ -15,9 +15,10 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await appLocale();
+  const t = getIntlayer("import-page", locale);
   return {
-    title: "Import Anki Deck — Lianki",
-    description: "Import your existing Anki flashcard decks (.apkg files) into Lianki.",
+    title: t.metaTitle,
+    description: t.metaDescription,
     ...generateAppHreflangMetadata(locale, "/import"),
   };
 }
@@ -31,43 +32,23 @@ export default async function ImportPage() {
     // Guest: the paste importer renders disabled with a sign-in hint.
   }
   const isLoggedIn = Boolean(email);
-  // The word-list import (docs/import-material.md): dark behind `import.any`;
-  // the owner sees it while it is off.
+  // The word-list import (docs/import-material.md): every signed-in user while
+  // `import.any` is on; the owner on or off (importAnyOn).
   const wordListOn = !!email && importAnyOn(await readFlags(), isDev(email));
-  const {
-    title,
-    description,
-    dropzone,
-    maxSize,
-    importButton,
-    parsing,
-    syncing,
-    importComplete,
-    viewDashboard,
-  } = getIntlayer("import-page", locale);
+  const t = getIntlayer("import-page", locale);
 
   return (
     <div className="flex flex-col">
       <div className="flex-grow">
         <div className="max-w-2xl mx-auto px-8 pb-16">
-          <ImportClient
-            title={title}
-            description={description}
-            dropzone={dropzone}
-            maxSize={maxSize}
-            importButton={importButton}
-            parsing={parsing}
-            syncing={syncing}
-            importComplete={importComplete}
-            viewDashboard={viewDashboard}
-          />
+          <ImportClient />
           {wordListOn && <WordListImport signedIn={isLoggedIn} />}
           <PasteLinksSection isLoggedIn={isLoggedIn} />
           <YamlImportSection />
           <p className="mt-8 text-sm text-gray-500 dark:text-gray-400">
-            Looking for exports, bulk delete or the storage overview?{" "}
+            {t.dataToolsLead}{" "}
             <a href="/data" className="underline font-medium">
-              Full data tools →
+              {t.dataToolsLink}
             </a>
           </p>
         </div>

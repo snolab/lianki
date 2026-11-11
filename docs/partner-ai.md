@@ -122,7 +122,10 @@ Owner, 2026-11-05 (Slack, typed): "A, ensure it costs credits" + "stop working
 when user have no credits" + "扣 first and return when fail". Each reply is
 paid from the user's credit wallet (docs/payments.md, "Credits"), in the main
 Worker (`lib/partner-ai.ts` → `lib/payments/ai-credits.ts`), after the hub's
-caps and before the model:
+caps and before the model. No account is exempt by its permissions (owner,
+2026-11-10): the `dev` holders' threads are not answered by the model at all
+(the lanes answer them), so there is nothing to make free; every reply that is
+made is paid like this:
 
 1. **Sweep.** Reservations still `pending` `CHARGE_STALE_MS` (10 min) after
    they were taken belong to a reply that crashed between reserve and settle:
@@ -155,6 +158,8 @@ nothing and the fraction carries: the wallet's history merges a reply's
 reservation and refund into one "AI replies" row and hides those that kept
 nothing (`ledger()` in `credits-store.ts`). The hub's `partner.reply` log adds
 `charged` (whole credits kept). Unit tests: `unit/partner-ai-credits.test.ts`.
+
+Since 2026-11-09 the price is the one table's (`lib/payments/prices.ts`: list price × `MARGIN`), as for every other paid call — docs/payments.md, "What costs credits". The hub's caps still count list prices (`costUsd`).
 
 ## Privacy
 

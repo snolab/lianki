@@ -1,0 +1,147 @@
+/**
+ * Paid provider calls for the routes that call Workers AI directly (the labs,
+ * self-intro's translate and speech, the roadmap, the legacy /api/tts): each
+ * one held, called with the feature's fixed limit, and settled through
+ * `metered` (docs/payments.md, "What costs credits").
+ *
+ * The limits are per feature and the same for everyone (`MAX_OUT`), never
+ * shrunk to fit a balance: not enough for the hold → refused.
+ */
+import type OpenAI from "openai";
+import { metered, type Metered, type Payer } from "./metered";
+import type { D1WithBatch } from "./credits-store";
+import type { D1Like } from "@/lib/d1/types";
+import { workerWaitUntil } from "@/lib/d1";
+import { bookCost, providerUsd } from "./cost-ledger";
+import { speechHoldUsd, speechUsd, sttUsd, textHoldUsd, textUsd, type Feature } from "./prices";
+
+/** The most output tokens each chat feature may produce (its answer's ceiling). */
+export const MAX_OUT = {
+  "ai-sentences": 1200,
+  "polyglot.translate": 3000,
+  "self-intro.translate": 600,
+  "roadmap.generate": 3000,
+  "blog.translate": 32_000,
+} as const satisfies Partial<Record<Feature, number>>;
+
+export type PaidPayer = Payer & { db: D1WithBatch | null };
+
+type Msg = { role: string; content: string };
+type ChatBody = { model: string; messages: Msg[]; max_tokens: number } & Record<string, unknown>;
+type Completion = {
+  choices: { message?: { content?: string | null } }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
+};
+export type Create = (body: ChatBody) => Promise<Completion>;
+
+const chars = (messages: Msg[]) => messages.reduce((n, m) => n + m.content.length, 0);
+
+/** The hold of a chat call: its prompt at the ceiling, every output token. */
+export const chatHoldUsd = (body: Pick<ChatBody, "model" | "messages" | "max_tokens">) =>
+  textHoldUsd(body.model, chars(body.messages), body.max_tokens);
+
+/** A chat completion paid from the user's credits. */
+export function paidChat(
+  payer: PaidPayer,
+  what: Feature,
+  body: ChatBody,
+  create: Create,
+): Promise<Metered<Completion>> {
+  const hold = chatHoldUsd(body);
+  return metered({ d1: payer.db }, payer, { what, holdUsd: hold }, async () => {
+    const r = await create(body);
+    const u = r.usage;
+    const usd =
+      u?.prompt_tokens || u?.completion_tokens
+        ? textUsd(body.model, u.prompt_tokens ?? 0, u.completion_tokens ?? 0)
+        : hold;
+    return { value: r, usd };
+  });
+}
+
+/** The OpenAI client's create, as `paidChat` calls it. */
+export const openAiCreate =
+  (client: OpenAI): Create =>
+  async (body) =>
+    (await client.chat.completions.create(body as never)) as unknown as Completion;
+
+/** Speech paid from the user's credits: held by the text's length, settled the same way. */
+export function paidSpeech<T>(
+  payer: PaidPayer,
+  what: Feature,
+  text: string,
+  run: () => Promise<T>,
+  aura = false,
+): Promise<Metered<T>> {
+  return metered(
+    { d1: payer.db },
+    payer,
+    { what, holdUsd: speechHoldUsd(text.length, aura) },
+    async () => ({ value: await run(), usd: speechUsd(text.length, aura) }),
+  );
+}
+
+/** A transcription paid from the user's credits: held and settled by the audio's size. */
+export function paidStt<T>(
+  payer: PaidPayer,
+  bytes: number,
+  run: () => Promise<T>,
+): Promise<Metered<T>> {
+  const usd = sttUsd(bytes);
+  return metered({ d1: payer.db }, payer, { what: "speech.stt", holdUsd: usd }, async () => ({
+    value: await run(),
+    usd,
+  }));
+}
+
+/** Who used a free call, for the cost ledger (lib/payments/cost-ledger.ts). */
+export type FreeBook = {
+  /** The account that used it; null for a guest. */
+  userId: string | null | undefined;
+  /** D1, or null without it (the frozen Mongo backend, local dev): nothing is booked. */
+  db: D1Like | null;
+  /** Audio seconds (speech to text) or characters (speech). */
+  units?: number;
+  /**
+   * Keeps the booking running after the response (the request's waitUntil);
+   * answers false when there is none, and then the booking is awaited.
+   */
+  defer?: (p: Promise<unknown>) => boolean;
+  now?: () => Date;
+};
+
+/**
+ * Free for everyone by the owner's decision (2026-11-09, card o3): word
+ * read-aloud (`words.tts`, legacy `tts`) and the microphone (`speech.stt`).
+ * No hold, no charge. What it cost us is logged (`credits.free`, the feature
+ * and USD) and booked per account in the cost ledger (owner, 2026-11-11;
+ * docs/payments.md, "Cost ledger") — after the call, off its path: a failed
+ * booking is logged and never fails or delays the user's call.
+ */
+export async function freeCall<T>(
+  what: Feature,
+  usd: number,
+  run: () => Promise<T>,
+  book: FreeBook | null = null,
+  log: (o: Record<string, unknown>) => void = (o) => console.log(JSON.stringify(o)),
+): Promise<Metered<T>> {
+  const value = await run();
+  log({ event: "credits.free", what, why: "free-feature", usd });
+  if (book?.db) {
+    const p = bookCost(
+      book.db,
+      { userId: book.userId, feature: what, usd: providerUsd(usd), units: book.units },
+      (book.now ?? (() => new Date()))(),
+      log,
+    ).catch(() => false);
+    let deferred = false;
+    try {
+      deferred = (book.defer ?? workerWaitUntil)(p);
+    } catch {}
+    if (!deferred) await p;
+  }
+  return { ok: true, value, charged: 0, free: "feature" };
+}
+
+/** The features `freeCall` serves (docs/payments.md, "What costs credits"). */
+export const FREE_FEATURES: readonly Feature[] = ["words.tts", "tts", "speech.stt"];

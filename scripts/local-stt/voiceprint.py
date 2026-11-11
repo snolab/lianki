@@ -9,8 +9,11 @@ from docs/stt-ab.md, "Noise and speaker grid", #394).
   enrolment. One file per device and model, so ERes2NetV2 can be added per
   device later without touching the CAM++ print.
 - **Where:** on this Mac only, `~/.config/lianki-stt/voiceprints/` (dir 0700,
-  files 0600, written atomically), next to the STT server. Never the Worker,
-  D1, the hub or the repo. `LIANKI_STT_VOICEPRINTS` moves it (the tests).
+  files 0600, written atomically), next to the STT server; never the hub or
+  the repo. A copy of the features (never audio) goes to the owner's own
+  Lianki account only when he taps "Save to my account" with his passkey
+  (`Store.export`, the `export` op), and comes back with `restore`.
+  `LIANKI_STT_VOICEPRINTS` moves it (the tests).
 - **Verification:** each final utterance's embedding against the device's
   print (any device's when this one has none): cosine score, then a decision
   `me | other | unknown` from per-duration bands, with a noise gate (an SNR
@@ -20,7 +23,8 @@ The CLI (never touches ~/lianki-voice-clips; it only reads files you name):
 
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py list
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --device iphone
-    ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --all
+    ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --all            # the prints; recordings stay
+    ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete-audio --all      # only the kept recordings
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py score a.wav b.wav [--device iphone]
 """
 from __future__ import annotations
@@ -183,6 +187,20 @@ def decide(model: Model, score: float, speech_s: float, snr_db: float) -> tuple[
     return "unknown", "between"
 
 
+def bands_info(order: list[str]) -> dict:
+    """The decision's thresholds per loaded model, for the panel's test mode (no secrets: the table in docs/local-stt.md)."""
+    return {
+        m: {
+            "minSpeechS": MIN_SPEECH_S,
+            "minSnrDb": MIN_SNR_DB,
+            "bands": [{"minS": b.min_s, "me": b.accept, "other": b.reject} for b in MODELS[m].bands],
+            **({"provisional": True} if MODELS[m].provisional else {}),
+        }
+        for m in order
+        if m in MODELS
+    }
+
+
 def filter_reason(spk: dict | None, device: str | None) -> str | None:
     """
     Why the voiceprint filter should stop this final, or None: None whenever in
@@ -306,7 +324,7 @@ class Store:
 
     # -- writing
     def save(self, device: str, model: str, embeddings: list[np.ndarray], speech_s: list[float],
-             audio: bool) -> dict:
+             audio: bool, created: str | None = None) -> dict:
         self._ready(create=True)
         f = self._file(device, model)
         E = np.array([unit(e) for e in embeddings], dtype=np.float32)
@@ -326,7 +344,7 @@ class Store:
             "model": model,
             "dim": int(E.shape[1]),
             "n": int(len(E)),
-            "created": (old or {}).get("created", now),
+            "created": created or (old or {}).get("created", now),
             "updated": now,
             "audio": bool(audio),
             "self": {"min": round(min(loo), 3), "median": round(float(np.median(loo)), 3)} if loo else None,
@@ -337,6 +355,80 @@ class Store:
         write_private(f, json.dumps(p).encode())
         p["_centroid"] = c
         return p
+
+    # -- the account copy (docs/local-stt.md, "Voiceprint in your account")
+    def export(self, device: str | None) -> list[dict]:
+        """
+        The features of one device's prints (None: every device), for the
+        owner's Lianki account: exactly EXPORT_KEYS, numbers only. Never the
+        `audio` flag, never a kept wav, never a path.
+        """
+        if device is not None and not valid_device(device):
+            raise StoreError("bad device")
+        out = []
+        for s in self.prints():
+            if device is not None and s["device"] != device:
+                continue
+            p = self.load(s["device"], s["model"])
+            if p:
+                out.append({k: p[k] for k in EXPORT_KEYS if k in p})
+        return out
+
+    def recordings(self, device: str | None) -> list[dict]:
+        """
+        The kept enrolment recordings (`<device>.audio/NN.wav`, the opt-in
+        audio), for his account's My Files: read only, never moved or deleted
+        here. Regular private files of ours only (a link or a loose file is
+        skipped); at most RECORDINGS_MAX per device and RECORDING_MAX_BYTES each.
+        """
+        import base64
+
+        if device is not None and not valid_device(device):
+            raise StoreError("bad device")
+        out: list[dict] = []
+        if not self._ready(create=False):
+            return out
+        created = {s["device"]: s.get("created") for s in self.prints()}
+        for name in sorted(os.listdir(self.root)):
+            m = re.match(r"^([a-z0-9][a-z0-9-]{0,31})\.audio$", name)
+            if not m or (device is not None and m.group(1) != device):
+                continue
+            d = os.path.join(self.root, name)
+            if path_problem(d, want_dir=True):
+                print(f"recordings skipped: {name} not private", file=sys.stderr, flush=True)
+                continue
+            n = 0
+            for w in sorted(os.listdir(d)):
+                f = os.path.join(d, w)
+                if not re.fullmatch(r"\d{2}\.wav", w) or path_problem(f, want_dir=False):
+                    continue
+                if n >= RECORDINGS_MAX or os.lstat(f).st_size > RECORDING_MAX_BYTES:
+                    continue
+                with open(f, "rb") as fh:
+                    data = fh.read()
+                out.append({"device": m.group(1), "name": w, "created": created.get(m.group(1)),
+                            "wav": base64.b64encode(data).decode("ascii")})
+                n += 1
+        return out
+
+    def restore(self, p: object) -> dict:
+        """
+        Write one print read back from the account (export's form, checked
+        strictly: any other key is refused). The centroid and self scores are
+        recomputed from the embeddings; the audio flag of a print already here
+        stays as it was (restore never touches a kept-audio folder).
+        """
+        q = check_export(p)
+        with self.lock():
+            old = None
+            try:
+                old = self.load(q["device"], q["model"])
+            except StoreError:
+                pass
+            E = [np.array(e, dtype=np.float32) for e in q["embeddings"]]
+            saved = self.save(q["device"], q["model"], E, q["speechS"], bool((old or {}).get("audio")),
+                              created=q.get("created"))
+        return {k: saved[k] for k in ("device", "model", "n")}
 
     # -- the lock
     def lock(self):
@@ -392,21 +484,47 @@ class Store:
         g[k] = int(g.get(k, 0)) + 1 if isinstance(g.get(k, 0), int) else 1
         write_private(os.path.join(self.root, GENERATIONS), json.dumps(g).encode())
 
-    def delete(self, device: str | None) -> int:
+    def delete(self, device: str | None, audio: bool = False) -> int:
         """
-        Remove one device's prints (every model) and its kept audio, or all
-        (device None), and bump the generation so a pending enrolment cannot
-        save over the delete. Count of files.
+        Remove one device's prints (every model), or all (device None), and
+        bump the generation so a pending enrolment cannot save over the delete.
+        The kept enrolment recordings stay unless `audio` is True: deleting the
+        print never deletes them implicitly (owner, 2026-11-11; the panel asks
+        separately, `delete_audio`). Count of files.
         """
         if device is not None and not valid_device(device):
             raise StoreError("bad device")
         self._ready(create=True)
         with self.lock():
-            n = self._delete(device)
+            n = self._delete(device, prints=True, audio=audio)
             self.bump(device)
         return n
 
-    def _delete(self, device: str | None) -> int:
+    def delete_audio(self, device: str | None) -> int:
+        """Only the kept enrolment recordings (`<device>.audio/`) of one device, or all. Count of files."""
+        if device is not None and not valid_device(device):
+            raise StoreError("bad device")
+        if not self._ready(create=False):
+            return 0
+        with self.lock():
+            return self._delete(device, prints=False, audio=True)
+
+    def audio_count(self, device: str | None = None) -> int:
+        """How many kept enrolment recordings there are (one device, or all): a count, nothing read."""
+        if not self._ready(create=False):
+            return 0
+        n = 0
+        for name in os.listdir(self.root):
+            m = re.match(r"^([a-z0-9][a-z0-9-]{0,31})\.audio$", name)
+            if not m or (device is not None and m.group(1) != device):
+                continue
+            d = os.path.join(self.root, name)
+            if path_problem(d, want_dir=True):
+                continue
+            n += sum(1 for w in os.listdir(d) if re.fullmatch(r"\d{2}\.wav", w))
+        return n
+
+    def _delete(self, device: str | None, prints: bool = True, audio: bool = False) -> int:
         n = 0
         for name in sorted(os.listdir(self.root)):
             full = os.path.join(self.root, name)
@@ -414,6 +532,8 @@ class Store:
             if not m or (device is not None and m.group(1) != device):
                 continue
             if name.endswith(".audio"):
+                if not audio:
+                    continue
                 if os.path.islink(full) or not os.path.isdir(full):
                     os.unlink(full)
                     n += 1
@@ -422,7 +542,7 @@ class Store:
                     os.unlink(os.path.join(full, w))
                     n += 1
                 os.rmdir(full)
-            else:
+            elif prints:
                 os.unlink(full)
                 n += 1
         return n
@@ -438,6 +558,55 @@ class Store:
         if why:
             raise StoreError(f"{d} {why}")
         write_private(os.path.join(d, f"{i:02d}.wav"), wav_bytes(audio))
+
+
+#: Kept recordings handed over per device at most, and the largest one (a 30 s sentence is ~1 MB).
+RECORDINGS_MAX = 40
+RECORDING_MAX_BYTES = 2 * 1024 * 1024
+
+#: What leaves the Mac for the owner's account (lib/voiceprint-cloud.ts PRINT_KEYS): features only.
+EXPORT_KEYS = ("device", "model", "dim", "n", "created", "updated", "self", "speechS", "centroid", "embeddings")
+_REQUIRED = ("device", "model", "dim", "n", "speechS", "centroid", "embeddings")
+
+
+def check_export(p: object) -> dict:
+    """A print in export form, exactly: the keys, the device and model, n x dim finite floats."""
+    import math
+
+    if not isinstance(p, dict):
+        raise StoreError("not a print")
+    extra = [k for k in p if k not in EXPORT_KEYS]
+    if extra:
+        raise StoreError(f"not features: {', '.join(sorted(map(str, extra))[:3])}")
+    for k in _REQUIRED:
+        if k not in p:
+            raise StoreError(f"missing {k}")
+    if not valid_device(p["device"]) or p["model"] not in MODELS:
+        raise StoreError("bad device or model")
+    dim, n = p["dim"], p["n"]
+    if not isinstance(dim, int) or isinstance(dim, bool) or not 1 <= dim <= 1024:
+        raise StoreError("bad dim")
+    if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= ENROL_MAX:
+        raise StoreError("bad n")
+
+    def num(x, lim) -> bool:
+        return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) and abs(x) <= lim
+
+    def vec(v) -> bool:
+        return isinstance(v, list) and len(v) == dim and all(num(x, 4) for x in v)
+
+    if not vec(p["centroid"]):
+        raise StoreError("bad centroid")
+    E = p["embeddings"]
+    if not isinstance(E, list) or len(E) != n or not all(vec(e) for e in E):
+        raise StoreError("bad embeddings")
+    S = p["speechS"]
+    if not isinstance(S, list) or len(S) != n or not all(num(x, 600) and x >= 0 for x in S):
+        raise StoreError("bad speechS")
+    for k in ("created", "updated"):
+        if p.get(k) is not None and not (isinstance(p[k], str) and len(p[k]) <= 40):
+            raise StoreError(f"bad {k}")
+    return p
 
 
 def write_private(path: str, data: bytes) -> None:
@@ -784,10 +953,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--store", default=STORE_DIR)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="the prints kept (no embeddings shown)")
-    d = sub.add_parser("delete", help="delete a device's voiceprint (every model, and any kept enrolment audio)")
+    d = sub.add_parser("delete", help="delete a device's voiceprint (every model); the kept recordings only with --audio")
     g = d.add_mutually_exclusive_group(required=True)
     g.add_argument("--device")
     g.add_argument("--all", action="store_true")
+    d.add_argument("--audio", action="store_true", help="also delete the kept enrolment recordings")
+    da = sub.add_parser("delete-audio", help="delete only the kept enrolment recordings (the print stays)")
+    ga = da.add_mutually_exclusive_group(required=True)
+    ga.add_argument("--device")
+    ga.add_argument("--all", action="store_true")
     s = sub.add_parser("score", help="score WAV files against the stored print (read-only)")
     s.add_argument("wavs", nargs="+")
     s.add_argument("--device", default=None)
@@ -808,8 +982,18 @@ def main(argv: list[str] | None = None) -> int:
             if a.device is not None and not valid_device(a.device):
                 print("bad device name", file=sys.stderr)
                 return 2
-            n = store.delete(None if a.all else a.device)
+            n = store.delete(None if a.all else a.device, audio=a.audio)
             print(f"deleted {n} file(s) from {a.store}")
+            left = store.audio_count(None if a.all else a.device)
+            if left:
+                print(f"{left} kept recording(s) left (delete-audio, or delete --audio, removes them)")
+            return 0
+        if a.cmd == "delete-audio":
+            if a.device is not None and not valid_device(a.device):
+                print("bad device name", file=sys.stderr)
+                return 2
+            n = store.delete_audio(None if a.all else a.device)
+            print(f"deleted {n} recording(s) from {a.store}")
             return 0
         if a.cmd == "attest-key":
             print(Attestor().public())

@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
 /**
  * The first-run choice. Signed-out visitors already get a working app on the
@@ -122,4 +123,19 @@ const firstRunContent = {
   },
 } satisfies DeclarationContent;
 
-export default firstRunContent;
+const context: KeyContext<typeof firstRunContent.content> = {
+  title: "Heading of the first-run choice: how the visitor wants to start. A question.",
+  body: "Text under the heading: the app works right away with cards kept in this browser; an account syncs them across devices. Two sentences.",
+  useLocally: "Button: start using Lianki on this device without an account. Imperative.",
+  createAccount: "Button: go to sign-in, which also creates an account. Imperative.",
+  syncFree: "Small line under the buttons: syncing across devices costs nothing. Short sentence.",
+  switchLater: "Small line: the choice can be changed later, nothing is locked in. Short sentence.",
+};
+
+export default {
+  ...firstRunContent,
+  description: describeKeys(
+    "The first-run choice in Lianki, shown once to a signed-out visitor: use the app on this device right away (cards stay in the browser), or sign in so cards sync across devices, free. 'Sign in' must not read as a paywall. Lianki is a product name, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

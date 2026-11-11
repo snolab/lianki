@@ -39,9 +39,11 @@ the mail.
 ## Resend webhook (bounces and complaints)
 
 `POST https://lianki.com/api/email/resend-webhook` (`lib/resend-webhook.ts`)
-takes Resend's `email.bounced` and `email.complained` events and suppresses the
-address for invite mail (docs/payments.md, "Invite by email"). Every other event
-is answered 204 and ignored.
+takes Resend's `email.delivered`, `email.bounced` and `email.complained`
+events: bounces and complaints suppress the address for invite mail
+(docs/payments.md, "Invite by email"), and all three move the mail's row in the
+send log (docs/mail-templates.md, "Send log"). Every other event is answered
+204 and ignored.
 
 - **Secret**: `RESEND_WEBHOOK_SECRET`, the webhook's signing secret from Resend
   (`whsec_…`), a Worker secret only — no default, nothing in `wrangler.jsonc`,
@@ -59,8 +61,8 @@ is answered 204 and ignored.
 Setting it up (the main lane, once this endpoint is deployed):
 
 1. Resend → Webhooks → Add endpoint: URL
-   `https://lianki.com/api/email/resend-webhook`, events `email.bounced` and
-   `email.complained` only.
+   `https://lianki.com/api/email/resend-webhook`, events `email.delivered`,
+   `email.bounced` and `email.complained` only.
 2. Copy the endpoint's signing secret and set it on the Worker:
    `bunx wrangler secret put RESEND_WEBHOOK_SECRET` (it takes effect at once, no
    deploy).
@@ -106,8 +108,8 @@ secrets or settings: it is always on.
 
 ## Profile edits
 
-`/profile` edits the display name and the picture (`lib/profile/`,
-`app/(app)/profile/ProfileFields.tsx`). Every write is same-origin, for the
+`/my/profile` edits the display name and the picture (`lib/profile/`,
+`app/(app)/my/profile/ProfileFields.tsx`). Every write is same-origin, for the
 session's own user; nothing in a request can name a user.
 
 - **better-auth's HTTP `/update-user` is closed**: `disabledPaths:
@@ -141,14 +143,14 @@ cascades, the object does not).
 
 ## Changing the email
 
-`lib/profile/email-change.ts`, pen on `/profile`. Not better-auth's `/change-email`
+`lib/profile/email-change.ts`, pen on `/my/profile`. Not better-auth's `/change-email`
 (left disabled): it updates the user row alone, with no way to put the moves below
 into its transaction, and it applies on a GET, which a mail scanner would trigger.
 
 1. `POST /api/profile/email` (same origin, session under a day old, D1 limits per
    user and per target address). A link goes to the **new** address and a notice,
    with that address masked, to the **old** one. Nothing changes.
-2. The link opens `/profile/email-confirm#<user id>.<token>`: a fragment, so the
+2. The link opens `/my/profile/email-confirm#<user id>.<token>`: a fragment, so the
    token reaches no log, and a press on the page is what applies it, so a mail
    scanner changes nothing. D1 `email_change_request` keeps the token's hash, for
    1 hour, one per user: a newer request kills the older link.
@@ -250,7 +252,7 @@ these rows newest first, 50 a page, with the time in JST, the actor's address
   view, the whole-page dev server and its tunnel gate, the owner chat thread (chat
   log, inbox agent, lane chat tokens, `box:chat`), `eval` (eval tokens, `box:eval`,
   debug-session renewal), the pill chat and partner ticket, the my-box allowlist,
-  and features shipped dark (`booksOn(flags, isDev(…))`, YouTube songs). The
+  and features shipped dark (`libraryOn(flags, isDev(…))`, YouTube songs). The
   Learning Partner AI refuses a `dev` holder (his thread is the dev lanes').
 - Neither implies the other; each is its own grant. Which permission a `/dev`
   page checks is listed in `lib/dev-page-permissions.ts` (a unit test keeps it
@@ -399,7 +401,12 @@ The same key signs the **voiceprint tickets** (`aud` `lianki-voiceprint`,
 `POST /api/dev/voiceprint-ticket`; enrol and delete only after the owner's
 passkey with user verification; [local-stt.md](local-stt.md), "Voiceprint:
 who may enrol and delete"). Without `ticket.pub` on the Mac, every
-voiceprint op is refused.
+voiceprint op is refused. lianki.com checks the same tickets itself before
+it writes or deletes the voiceprint features kept in an account
+(`/api/my/voiceprint`; passkey tickets carry the account's `uid`). Those
+features are sealed with a key derived (HKDF) from **`AUTH_SECRET`**, info
+`lianki/voiceprint/features-at-rest/v1`: no secret of their own
+([local-stt.md](local-stt.md), "Voiceprint in your account").
 
 ## Speaker attestation key (`STT_SPEAKER_PUB`)
 
@@ -478,12 +485,16 @@ login`'s and the agent lanes' tokens.
   Ids, the audit log and hub sockets carry the hash (or its first 16 hex, the
   `tag`), never the token. No token in a URL: `DELETE /api/token` takes
   `{id}` in the body.
-- **Page**: Settings (`/preferences`) → API tokens
-  (`app/(app)/list/components/TokenManager.tsx`, strings in
+- **Page**: Settings (`/my/preferences`) → API tokens
+  (`app/(app)/my/preferences/TokenManager.tsx`, strings in
   `app/components/api-tokens.content.ts`): the owning account, each token's
-  name, permissions, created, expiry, last used, and one-click Revoke; the
+  name, permissions, created, expiry, last used, and Revoke behind an inline confirm (RevokeConfirm.tsx; Esc or Cancel backs out); the
   form takes name, permissions and expiry. `/api/token` (`lib/api-token-api.ts`)
   takes a browser session only; a token can never make or list tokens.
+- **Instructions for the user's AI assistant**: every token row (and the new
+  token's box) offers a copyable prompt built from the token's permissions, in
+  the page's language, never containing the secret; also public at
+  `GET /api/agent-guide` ([api-for-agents.md](api-for-agents.md)).
 - **Audit** (`security_audit`): `api-token.create`, `.revoke`, `.revoke-all`,
   `.use` (when last used is written), `.refused` (a known token expired, out
   of scope or over its rate limit; at most 5 per 10 min per token).
@@ -576,7 +587,8 @@ otherwise holds only the account, the token's name and the CLI's device id.
 The CLI never prints the token. `lianki auth status` says who and whether the
 server still accepts it; `lianki auth logout` revokes it on the server
 (`DELETE /api/cli-login/token` with the token itself, which can delete only
-itself) and forgets it.
+itself) and forgets it. `GET /api/cli-login/token` with the token answers
+its own name, permissions and expiry (read-only; `lianki mcp` uses it).
 
 Only `/api/prefs` accepts the token as `Authorization: Bearer` this way
 (`lib/api-token-user.ts`, D1 only; a bad token is 401, never a fall back to

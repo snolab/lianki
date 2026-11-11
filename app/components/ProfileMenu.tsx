@@ -7,15 +7,14 @@
  * scrolled away, and the foot of the phone drawer. The account menu is never
  * out of reach (owner, 2026-11-09).
  */
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
-import { isOwnAvatar } from "@/lib/profile/avatar";
 import { MENU_NAV } from "@/lib/app-nav";
 import { signOut } from "@/lib/sign-out";
 import { Icon } from "./icons";
+import { UserAvatar } from "./UserAvatar";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useDebugToggle } from "./useDebugToggle";
 import { DevServerDot, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
@@ -100,23 +99,12 @@ export function ProfileMenu({
         }
       >
         {devSwitch?.mode === "back" && <DevServerDot label={devSwitch.labels.name} />}
-        {user.image ? (
-          <Image
-            className="w-8 h-8 shrink-0 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"
-            alt={user.name}
-            src={user.image}
-            // An upload of ours is already small, and next/image's loader can't fetch /api/*.
-            unoptimized={isOwnAvatar(user.image) || user.image.startsWith("blob:")}
-            width={32}
-            height={32}
-          />
-        ) : (
-          foot && (
-            <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
-              <Icon name="user" />
-            </span>
-          )
-        )}
+        <UserAvatar
+          name={user.name}
+          image={user.image}
+          size={32}
+          className="w-8 h-8 shrink-0 ring-2 ring-gray-200 dark:ring-gray-700"
+        />
         <span className={`${showName} min-w-0 max-w-[120px] truncate`}>{user.name}</span>
         {!compact && <ChevronIcon open={open} up={foot} />}
       </button>
@@ -145,7 +133,7 @@ export function ProfileMenu({
             {debug && ` · ${partner.name.value}`}
           </div>
           {/* Owner's order, 2026-11-09: profile, import, data, settings, language, sign out. */}
-          <MenuLink href="/profile" icon="user">
+          <MenuLink href="/my/profile" icon="user">
             {labels.profile}
           </MenuLink>
           {MENU_NAV.map((item) => (
@@ -155,6 +143,10 @@ export function ProfileMenu({
           ))}
           <MenuLink href="/membership" icon="star">
             {labels.membership}
+          </MenuLink>
+          {/* Owner, 2026-11-09: the credits usage list one tap from the account menu. */}
+          <MenuLink href="/membership/credits" icon="list">
+            {labels.creditsUsage}
           </MenuLink>
           <LanguageSwitcher variant="menu" />
           {/* One preview control: the whole-page switch, with Live view (dev

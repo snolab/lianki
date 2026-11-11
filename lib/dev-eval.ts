@@ -10,6 +10,8 @@
 
 import {
   MAX_CHAT,
+  EDITABLE_LINES,
+  MERGE_LINES,
   ROOT_NODE,
   agentIdOf,
   nodePath,
@@ -20,6 +22,8 @@ import {
   type MessageSource,
   type VoiceTiming,
   cleanTiming,
+  type SttTag,
+  cleanStt,
   type SpeakerTag,
   cleanSpeaker,
   type ChatContext,
@@ -66,12 +70,21 @@ export {
   type EditMark,
   type EditedEvent,
   MAX_EDITS,
+  EDITABLE_LINES,
+  type SummaryMark,
+  type PassageMark,
+  MERGE_LINES,
   applyEdit,
   applyEditTo,
   dictatedDraft,
   draftSource,
   type VoiceTiming,
   cleanTiming,
+  type SttTag,
+  type SttRoute,
+  cleanStt,
+  sttTagOf,
+  sttTagText,
   type SpeakerTag,
   type SpeakerDecision,
   cleanSpeaker,
@@ -225,6 +238,27 @@ export type ControllerMessage =
    */
   | { type: "edit"; id: string; text: string }
   /**
+   * Withdraw the agent's open ask card, by its askId or its message id, in
+   * the owner's thread or `to` a friend's (the thread it was sent to):
+   * docs/dev-debug-widget.md, "Withdrawing an ask".
+   */
+  | { type: "withdraw"; id: string; to?: string }
+  /**
+   * Collapse a run of the owner's voice lines that were not addressed to the
+   * agent (room talk) into one short summary; the lines stay kept, the raw
+   * text a tap away: docs/dev-debug-widget.md, "Summaries". By `ids`, or his
+   * `last` N lines.
+   */
+  | { type: "summary"; ids?: string[]; last?: number; text: string }
+  /**
+   * Rewrite a run of the owner's consecutive voice lines (nothing else spoken
+   * in between, one topic) as ONE fluent passage; the lines stay kept, a tap
+   * shows them, and undo restores them: docs/dev-debug-widget.md, "Merged passages".
+   */
+  | { type: "merge"; ids: string[]; text: string }
+  /** Undo a merged passage (by its first line's id): its lines come back as they were. */
+  | { type: "unmerge"; id: string }
+  /**
    * Let senders within node `from` address nodes within `to` for `ms` (the
    * fallback for a scoped grant token): only a listener whose node holds both.
    */
@@ -251,6 +285,8 @@ export type PageMessage =
       to?: string;
       source?: MessageSource;
       timing?: VoiceTiming;
+      /** A voice line's recognizer (SttTag; dev-only in the UI): route, engine, fallback. */
+      stt?: SttTag;
       /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
       wake?: "active" | "passive";
       /**
@@ -453,6 +489,42 @@ export function parseControllerMessage(
     if (!text) return { ok: false, error: `edit needs text of 1–${MAX_CHAT} chars` };
     return { ok: true, value: { type: "edit", id, text } };
   }
+  if (m?.type === "withdraw") {
+    const id = str(m.id, 64)?.trim();
+    if (!id || !/^[A-Za-z0-9_-]{1,64}$/.test(id))
+      return { ok: false, error: "withdraw needs the askId or message id of the ask" };
+    const to = str(m.to, 320)?.trim();
+    return { ok: true, value: { type: "withdraw", id, ...(to ? { to } : {}) } };
+  }
+  if (m?.type === "summary") {
+    const text = chatText(m.text);
+    if (!text) return { ok: false, error: `summary needs text of 1–${MAX_CHAT} chars` };
+    if (m.last !== undefined) {
+      const last = m.last;
+      if (typeof last !== "number" || !Number.isInteger(last) || last < 1 || last > EDITABLE_LINES)
+        return { ok: false, error: `summary last takes 1–${EDITABLE_LINES}` };
+      return { ok: true, value: { type: "summary", last, text } };
+    }
+    const given: unknown[] = Array.isArray(m.ids) ? m.ids : [];
+    const ids = given.map((x) => str(x, 64)?.trim()).filter((x): x is string => !!x);
+    if (!ids.length || ids.length > EDITABLE_LINES || ids.length !== given.length)
+      return { ok: false, error: `summary needs 1–${EDITABLE_LINES} message ids, or last` };
+    return { ok: true, value: { type: "summary", ids, text } };
+  }
+  if (m?.type === "merge") {
+    const text = chatText(m.text);
+    if (!text) return { ok: false, error: `merge needs text of 1–${MAX_CHAT} chars` };
+    const given: unknown[] = Array.isArray(m.ids) ? m.ids : [];
+    const ids = given.map((x) => str(x, 64)?.trim()).filter((x): x is string => !!x);
+    if (ids.length < 2 || ids.length > MERGE_LINES || ids.length !== given.length)
+      return { ok: false, error: `merge needs 2–${MERGE_LINES} message ids` };
+    return { ok: true, value: { type: "merge", ids, text } };
+  }
+  if (m?.type === "unmerge") {
+    const id = str(m.id, 64)?.trim();
+    if (!id) return { ok: false, error: "unmerge needs the id of the merged passage" };
+    return { ok: true, value: { type: "unmerge", id } };
+  }
   if (m?.type === "grant" || m?.type === "ungrant") {
     const from = nodePath(m.from);
     const to = nodePath(m.to);
@@ -480,7 +552,7 @@ export function parseControllerMessage(
     return {
       ok: false,
       error:
-        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"} or {"type":"grant","from","to"}',
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"}, {"type":"summary","ids"|"last","text"}, {"type":"merge","ids","text"}, {"type":"unmerge","id"}, {"type":"withdraw","id"} or {"type":"grant","from","to"}',
     };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
@@ -545,6 +617,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     // An address that is not a node path is dropped: the line goes to the main thread.
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
+    const stt = m.source === "stt" ? cleanStt(m.stt) : undefined;
     const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
     const context = cleanContext(m.context);
     const attachments = cleanAttachments(m.attachments);
@@ -556,6 +629,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(to && to !== ROOT_NODE ? { to } : {}),
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
+      ...(stt ? { stt } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
       ...(speakerProof ? { speakerProof } : {}),
       ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)

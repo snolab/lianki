@@ -1,6 +1,7 @@
 // Word lists (/words) end to end on the D1 Worker: sign up, add a catalog list,
 // grade one screen by exception, and check what the server stored.
 import { chromium } from "playwright";
+import { spawnSync } from "node:child_process";
 import { buildApkg } from "./apkg-fixture.mjs";
 import { launchSilent, newSilentContext } from "./silent.mjs";
 import { availableParallelism } from "node:os";
@@ -215,23 +216,18 @@ async function revealOrder(pg, variant) {
     // queued pointermoves are coalesced away, and the slip is never painted
     // off its spot — the probe then sees the card (CI main runs, and 5 of 5
     // local runs with extra observers attached). A screenshot forces a
-    // rendering update; the app's own rAF paint then runs as on a device.
-    await pg.screenshot();
-    // The label fades in (150ms); a loaded runner may take longer to paint.
-    await pg
-      .waitForFunction(
-        ([x, y]) =>
-          document
-            .elementsFromPoint(x, y)
-            .some(
-              (e) =>
-                Number(getComputedStyle(e.closest("[data-reveal]") ?? e).opacity) > 0.5 &&
-                e.closest("[data-reveal]"),
-            ),
-        [x, y],
-        { timeout: budget(2000) },
-      )
-      .catch(() => {});
+    // rendering update, so the app's own rAF paint runs as on a device. One
+    // was not enough: the slip follows the finger on a spring (paint() asks
+    // for frame after frame until it settles), and on a loaded runner the
+    // moves can land after that one forced frame ("transform=none
+    // underlay=visible", merge queue 2026-11-09). So keep forcing frames
+    // until the label shows (it also fades in, 150 ms), on a load budget.
+    const until = Date.now() + budget(4000);
+    while (true) {
+      await pg.screenshot();
+      if ((await hit()) === "label:3" || Date.now() > until) break;
+      await pg.waitForTimeout(50);
+    }
     mid = await hit();
     if (mid !== "label:3") {
       // Why not: the slip's transform and the underlay's state.
@@ -402,7 +398,10 @@ try {
   const rows = page.locator('[role="listitem"]');
   await rows.first().waitFor({ timeout: budget(15000) });
   check((await rows.count()) >= 20, `the list opens with ${await rows.count()} words`);
-  check((await page.locator("span.text-emerald-600").count()) > 0, "new words are shown in green");
+  check(
+    (await page.locator(".slip-term.text-blue-600").count()) > 0,
+    "new words are shown in seal red",
+  );
   const statusOf = async (i) => (await rows.nth(i).locator("span.tabular-nums").innerText()).trim();
   check((await statusOf(0)) === "new", `an ungraded new word says "new": ${await statusOf(0)}`);
 
@@ -851,10 +850,10 @@ try {
       `debug on, /words names the Learning Partner and shows no "debug" (badge "${badge}", ${JSON.stringify(hits)})`,
     );
   }
+  // The slip prototype is gone (owner, 2026-11-10): debug mode links no prototype.
   check(
-    (await page.locator('[data-debug-proto="slip"][href="/proto/slip"]').count()) === 1 &&
-      (await page.locator("[data-debug-proto]").count()) === 1,
-    "debug mode links the slip prototype (and nothing else)",
+    (await page.locator("[data-debug-proto]").count()) === 0,
+    "debug mode links no design prototype",
   );
   for (let k = 0; k < 7; k++) await gear.click({ force: true });
   check((await page.locator("[data-debug-badge]").count()) === 0, "seven more turn it off");
@@ -876,13 +875,13 @@ try {
   }
 
   // With the Learning Partner on (via the ?agent=1 alias), no visible text on
-  // /profile, /preferences or the profile menu says "debug" (/words is checked
+  // /my/profile, /my/preferences or the profile menu says "debug" (/words is checked
   // above). Owner-only dev pages are exempt.
   {
     const origin = new URL(page.url()).origin;
     const tab = await ctx.newPage();
     const seen = {};
-    for (const path of ["/profile?agent=1", "/preferences"]) {
+    for (const path of ["/my/profile?agent=1", "/my/preferences"]) {
       await tab.goto(`${origin}${path}`, { waitUntil: "networkidle" });
       seen[path] = await debugText(tab);
     }
@@ -902,12 +901,12 @@ try {
     );
     check(
       Object.values(seen).every((h) => h.length === 0),
-      `no visible "debug" on /profile, /preferences or the menu with it on (${JSON.stringify(seen)})`,
+      `no visible "debug" on /my/profile, /my/preferences or the menu with it on (${JSON.stringify(seen)})`,
     );
     // ?agent=0 is applied after hydration, which can come after "load": wait
     // for the flag itself, or closing the tab can leave the Learning Partner
     // on for every later check (the version notice then auto-reloads).
-    await tab.goto(`${origin}/profile?agent=0`, { waitUntil: "load" });
+    await tab.goto(`${origin}/my/profile?agent=0`, { waitUntil: "load" });
     await tab.waitForFunction(
       () => localStorage.getItem("lk:agent") === "0" && localStorage.getItem("lk:debug") === "0",
       null,
@@ -1106,7 +1105,9 @@ try {
   // New-version notice: lianki-push (workers/push) names the serving build
   // over a WebSocket; a page from an older build offers a refresh. The push
   // service is not part of the local Worker, so the socket is mocked here.
-  await page.routeWebSocket("**/api/version/ws", (ws) =>
+  // The page names its build in ?b= (smart refresh); a bare {build} — no
+  // fingerprints — means "cannot tell", so the button shows.
+  await page.routeWebSocket(/\/api\/version\/ws(\?|$)/, (ws) =>
     ws.send(JSON.stringify({ build: "some-newer-build" })),
   );
   // A Learning Partner device reloads by itself instead of showing the
@@ -1289,7 +1290,7 @@ try {
     });
     if (!made.ok()) throw new Error(`phone ${name}: add list ${made.status()}`);
     const { list } = await made.json();
-    return { phone, listUrl: `${BASE}/words?list=${list.id}`, ttsAsked, ttsTexts };
+    return { phone, email, listUrl: `${BASE}/words?list=${list.id}`, ttsAsked, ttsTexts };
   };
   /**
    * Waits until the list and every slip are at rest: list scroll, slip
@@ -2180,6 +2181,112 @@ try {
     }
   };
 
+  /**
+   * A slip that can no longer be swiped cracks (flag `words.shatter`, on by
+   * default, owner audience = the `dev` grant; Shatter.tsx). This account is
+   * granted `dev` in the LOCAL D1 (as qa-app-badge does), removed at the end.
+   * A miss (1 = Again) counts down; a fake clock runs it out on screen: that
+   * slip shows the cracks, running once, under its text; a row with time left
+   * and an ungraded row show none; with reduced motion the cracks are at rest.
+   */
+  const shatterPass = async () => {
+    const tag = "phone/shatter:";
+    const { phone, email, listUrl } = await newPhone("shatter");
+    const d1 = (sql) =>
+      spawnSync("bunx", ["wrangler", "d1", "execute", "lianki", "--local", "--command", sql], {
+        encoding: "utf8",
+      });
+    const grant = d1(
+      `INSERT OR REPLACE INTO account_permission (email, permission, granted_by, granted_at) VALUES ('${email}', 'dev', 'qa', ${Date.now()})`,
+    );
+    try {
+      if (grant.status !== 0) return check(false, `${tag} local D1 grant: ${grant.stderr}`);
+      // Grants reach the server's snapshot within 20 s: wait until the page says so.
+      let on = false;
+      for (let end = Date.now() + 40000; !on && Date.now() < end; ) {
+        on = /\\?"shatter\\?":true/.test(await (await phone.request.get(listUrl)).text());
+        if (!on) await new Promise((r) => setTimeout(r, 2000));
+      }
+      check(on, `${tag} a dev holder gets the flag's verdict, on`);
+      if (!on) return;
+      const m = await phone.newPage();
+      m.on("pageerror", (e) => errs.push(`PAGEERROR (${tag}) ${e.message}`));
+      await m.goto(listUrl, { waitUntil: "networkidle" });
+      const rows = m.locator('[role="listitem"]');
+      await rows.nth(3).waitFor({ timeout: budget(15000) });
+      // A fake clock that still runs, from here on: fastForward ends the countdown.
+      await m.clock.install();
+      const graded = m.waitForResponse((r) => /\/api\/words\/lists\/[^/]+\/review/.test(r.url()));
+      await m.keyboard.press("Digit1");
+      await graded.catch(() => null);
+      await m.waitForTimeout(300);
+      const cracks = () =>
+        m.evaluate(() =>
+          [...document.querySelectorAll('[role="listitem"]')].slice(0, 6).map((r) => {
+            const s = r.querySelector(".lk-shatter");
+            const svg = s?.querySelector("svg");
+            const cs = s && getComputedStyle(s);
+            return {
+              i: Number(r.dataset.i),
+              back: !!r.querySelector(".lk-back"),
+              shatter: s?.dataset.shatter ?? null,
+              paths: s ? s.querySelectorAll("path").length : 0,
+              z: cs?.zIndex,
+              pe: cs?.pointerEvents,
+              run: svg ? getComputedStyle(svg).animationName : null,
+              fit: s
+                ? Math.abs(s.getBoundingClientRect().height - r.getBoundingClientRect().height) <= 1
+                : null,
+            };
+          }),
+        );
+      const before = await cracks();
+      check(
+        before.every((r) => r.shatter === null),
+        `${tag} while it counts down, no slip cracks (${JSON.stringify(before.map((r) => r.shatter))})`,
+      );
+      // Again comes back within minutes: past it, the slip reads "↓ back", locked.
+      await m.clock.fastForward("25:00");
+      await m.waitForTimeout(800);
+      const after = await cracks();
+      const hit = after.find((r) => r.i === 0);
+      check(
+        hit?.back && hit.shatter === "live" && hit.paths >= 10,
+        `${tag} the ended slip cracks, live (${JSON.stringify(hit)})`,
+      );
+      check(
+        hit?.z === "-1" && hit.pe === "none" && hit.fit,
+        `${tag} under the text, untouchable, the slip's own height (${JSON.stringify(hit)})`,
+      );
+      check(hit?.run === "lk-crack-run", `${tag} the cracks run out once (${hit?.run})`);
+      check(
+        after.filter((r) => r.i !== 0).every((r) => r.shatter === null),
+        `${tag} the other slips, ungraded or counting, stay whole`,
+      );
+      await shot(m, "words-shatter-light");
+      // Reduced motion: the cracks at rest, no run, no flash.
+      await m.emulateMedia({ reducedMotion: "reduce" });
+      const calm = await m.evaluate(() => {
+        const s = document.querySelector('[role="listitem"][data-i="0"] .lk-shatter');
+        const hit = s?.querySelector(".lk-shatter-hit");
+        return {
+          run: s ? getComputedStyle(s.querySelector("svg")).animationName : null,
+          flash: hit ? getComputedStyle(hit).display : "none",
+        };
+      });
+      check(
+        calm.run === "none" && calm.flash === "none",
+        `${tag} reduced motion: the cracks at rest (${JSON.stringify(calm)})`,
+      );
+      await m.emulateMedia({ colorScheme: "dark", reducedMotion: null });
+      await shot(m, "words-shatter-dark");
+      await m.close();
+    } finally {
+      d1(`DELETE FROM account_permission WHERE email = '${email}' AND granted_by = 'qa'`);
+      await phone.close();
+    }
+  };
+
   // iPhone on WebKit, both swipe variants: the page itself never scrolls, and
   // the list opens with its first word in the middle of the screen — on
   // load, on reload, and when the list is shown again (pageshow). In its own
@@ -2519,11 +2626,28 @@ try {
           // touch sequence iOS gives: touchstart, pointercancel as the scroller
           // takes over, a scroll to the Good level, touchend resting there)
           // grades and glides back to centre.
-          const s = await w.evaluate(async () => {
+          // Headless WebKit can stall its rendering updates, and scroll events
+          // are only dispatched in one: the slip's own scroll listener (which
+          // marks the gesture a slide, lib/words/native-slip-gesture.ts) then
+          // had not run before the touchend 50 ms later, so the lift graded
+          // nothing (Full QA 2026-11-10: slid 44, graded false). On a device
+          // the scroll event comes frames before any lift. So each step waits
+          // for what the next one needs — the scroll event delivered, then the
+          // grade stamp and the slip home — forcing frames with screenshots
+          // while it waits, on a load budget; never a fixed sleep.
+          const frames = async (done) => {
+            for (const until = Date.now() + budget(5000); ; ) {
+              if ((await done()) || Date.now() > until) return;
+              await w.screenshot();
+              await w.waitForTimeout(30);
+            }
+          };
+          const s = await w.evaluate(() => {
             const bar = document.querySelector("[data-words-top]").getBoundingClientRect().bottom;
             const row = [...document.querySelectorAll(".slip-native")].find(
               (x) => x.getBoundingClientRect().top > bar + 60,
             );
+            row.setAttribute("data-qa-swipe", "");
             const b = row.getBoundingClientRect();
             const y = b.top + b.height / 2;
             const face = (x) => !!document.elementFromPoint(x, y)?.closest(".slip-face");
@@ -2541,19 +2665,38 @@ try {
               Object.defineProperty(e, "changedTouches", { value: t });
               sc.dispatchEvent(e);
             };
+            window.__qaSwipe = { fire, y, b, sc, scrolled: false };
             fire("touchstart", 100);
             sc.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
             sc.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
+            // Registered after the slip's own listener (added on touchstart):
+            // once this one has run, the slip's has too.
+            sc.addEventListener("scroll", () => (window.__qaSwipe.scrolled = true), {
+              once: true,
+            });
             sc.scrollTo({ left: a, behavior: "instant" });
-            await new Promise((r) => setTimeout(r, 50));
             out.slid = sc.scrollLeft;
-            fire("touchend", 100 + a);
-            await new Promise((r) => setTimeout(r, 1500));
-            out.after = sc.scrollLeft;
-            out.faceAfter = face(b.left + 20);
-            out.graded = !!row.querySelector(".slip-face .lk-stamp");
             return out;
           });
+          await frames(() => w.evaluate(() => window.__qaSwipe.scrolled));
+          await w.evaluate(() =>
+            window.__qaSwipe.fire("touchend", 100 + window.__qaSwipe.sc.scrollLeft),
+          );
+          const end = () =>
+            w.evaluate(() => {
+              const { sc, b, y } = window.__qaSwipe;
+              const row = document.querySelector("[data-qa-swipe]");
+              return {
+                after: sc.scrollLeft,
+                faceAfter: !!document.elementFromPoint(b.left + 20, y)?.closest(".slip-face"),
+                graded: !!row?.querySelector(".slip-face .lk-stamp"),
+              };
+            });
+          await frames(async () => {
+            const e = await end();
+            return e.graded && Math.abs(e.after - s.rest) < 1 && e.faceAfter;
+          });
+          Object.assign(s, await end());
           check(
             s.faceAtRest && s.rest === 2 * s.a,
             `${tag} at rest the slip's face covers its label strip (${JSON.stringify(s)})`,
@@ -2622,6 +2765,7 @@ try {
       ["phone/native", () => firstPass("native")],
       ["phone/js+heavy", () => heavyPass("js")],
       ["phone/native+heavy", () => heavyPass("native")],
+      ["phone/shatter", shatterPass],
     ];
     for (const variant of ["js", "native"])
       for (const feel of ["light", "heavy"])
@@ -2899,7 +3043,7 @@ try {
     (await serverLists()).some((l) => l.id === group),
     "the delete waits for the Undo window",
   );
-  await page.waitForTimeout(8000); // the Undo window (UNDO_MS)
+  await page.waitForTimeout(8000); // the Undo window (config words.undoMs, default 8000)
   const settled = await waitFor((ls) => !ls.some((l) => l.id === group));
   check(
     !settled.some((l) => l.id === group) &&

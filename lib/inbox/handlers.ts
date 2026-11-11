@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { cleanFileName } from "@lianki/debug-chat/wire";
 import { INBOX } from "./config";
 import { chargeInbox, monthlyUsd, readUsd, storageUsd, uploadUsd } from "./charge";
-import type { InboxUsage } from "./store";
+import type { InboxSource, InboxUsage } from "./store";
 import { fileHeaders, inboxKey, isInboxId, newInboxId } from "./keys";
 import { SNIFF_BYTES, sniff } from "./sniff";
 import {
@@ -141,6 +141,20 @@ function fixedLength(s: ReadableStream<Uint8Array>, len: number) {
 export async function upload(req: Request, d: InboxDeps): Promise<Response> {
   const who = await owner(d);
   if (!who) return notFound();
+  return storeUpload(req, who, d, "chat");
+}
+
+/**
+ * Store one uploaded file for `who` under `source`, with every cap: the
+ * rate, the file size, the rolling day, the stored total. The gate is the
+ * caller's (the chat inbox: the owner; the Import panel: its flag).
+ */
+export async function storeUpload(
+  req: Request,
+  who: { id: string },
+  d: InboxDeps,
+  source: InboxSource,
+): Promise<Response> {
   if (d.allow && !d.allow()) return json({ error: "rate-limited" }, 429);
   const len = Number(req.headers.get("content-length"));
   if (!Number.isSafeInteger(len) || len <= 0 || !req.body)
@@ -192,19 +206,32 @@ export async function upload(req: Request, d: InboxDeps): Promise<Response> {
     sha256: body.sha256(),
     r2Key: key,
     createdMs: now,
+    source,
   });
   await chargeInbox(who.id, { kind: "upload", usd: uploadUsd(), bytes: len });
   // Never the name in a log: a user's text.
-  console.log(JSON.stringify({ event: "inbox.upload", id, type, size: len }));
-  return json({ id, name, type, size: len }, 201);
+  console.log(JSON.stringify({ event: "inbox.upload", id, type, size: len, source }));
+  return json({ id, name, type, size: len, at: now }, 201);
 }
 
 /** GET /api/dev/inbox — the owner's files, newest first, and his usage. */
 export async function list(d: InboxDeps): Promise<Response> {
   const who = await owner(d);
   if (!who) return notFound();
+  return listFor(who, d, "chat");
+}
+
+/** `who`'s files from `source`, newest first, and their usage (storage settled to now). */
+export async function listFor(
+  who: { id: string },
+  d: InboxDeps,
+  source: InboxSource,
+): Promise<Response> {
   const db = d.db();
-  const [items, usage] = await Promise.all([listItems(db, who.id), usageOf(db, who.id)]);
+  const [items, usage] = await Promise.all([
+    listItems(db, who.id, 200, source),
+    usageOf(db, who.id),
+  ]);
   // Opening the inbox settles the storage it has used so far (event-driven, no polling).
   const now = (d.now ?? Date.now)();
   await settleStorage(who.id, usage, now);
@@ -263,13 +290,39 @@ export async function download(req: Request, id: string, d: InboxDeps): Promise<
   return new Response(obj.body, { headers: fileHeaders(it) });
 }
 
+/**
+ * One of `who`'s own files, served back to them only (any source): the
+ * stored, sniffed type, inline only for a safe image, else an attachment;
+ * no shared link exists. Anyone else, or a missing id: 404.
+ */
+export async function serveOwn(id: string, who: { id: string }, d: InboxDeps): Promise<Response> {
+  if (!isInboxId(id)) return notFound();
+  const it = await getItem(d.db(), id);
+  if (!it || it.ownerId !== who.id) return notFound();
+  const obj = await d.bucket().get(it.r2Key);
+  if (!obj) return notFound();
+  await chargeInbox(it.ownerId, { kind: "read", usd: readUsd(), bytes: it.size });
+  return new Response(obj.body, { headers: fileHeaders(it) });
+}
+
 /** DELETE /api/dev/inbox/<id> — the owner's own session only; the file and its row go for good. */
 export async function remove(id: string, d: InboxDeps): Promise<Response> {
   const who = await owner(d);
-  if (!who || !isInboxId(id)) return notFound();
+  if (!who) return notFound();
+  return removeFor(id, who, d, "chat");
+}
+
+/** Delete one of `who`'s own files (from `source`; null: any source), for good (R2 object, row, usage). */
+export async function removeFor(
+  id: string,
+  who: { id: string },
+  d: InboxDeps,
+  source: InboxSource | null,
+): Promise<Response> {
+  if (!isInboxId(id)) return notFound();
   const db = d.db();
   const it = await getItem(db, id);
-  if (!it || it.ownerId !== who.id) return notFound();
+  if (!it || it.ownerId !== who.id || (source !== null && it.source !== source)) return notFound();
   const now = (d.now ?? Date.now)();
   // Everything stored (this file included) is settled up to now, then it goes.
   await settleStorage(it.ownerId, await usageOf(db, it.ownerId), now);

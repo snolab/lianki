@@ -18,6 +18,7 @@
  * sends {type:"eta", id} on the progress socket, and the hub (which also has
  * its own alarm) sends the agent at most one line per estimate.
  */
+import { compactSpan } from "@snomiao/rgui/gantt";
 import type { TreeEta, TreeNode } from "./state-tree";
 
 /** A done task stays this long, then leaves the bar and the list. */
@@ -92,16 +93,56 @@ export const minutesLeft = (ms: number) => (ms <= 0 ? 0 : Math.ceil(ms / 60_000)
 /**
  * Every time label of the bar, the list and the minimized line, in one
  * language-neutral form (owner, 2026-11-08 20:34 JST): under an hour "<n>M"
- * (whole minutes, rounded up: "5M", "40M"); from an hour, hours to one
- * decimal, rounded, a whole number without it ("1H", "1.5H" for 1 h 29 min,
- * "2.5H"). Past due it is negative ("-5M", "-1.5H"), drawn red (EtaBar.tsx).
+ * (whole minutes, rounded up: "5M", "40M"); from an hour the largest unit it
+ * reaches, to one decimal, a whole number without it: hours ("1H", "1.5H"
+ * for 1 h 29 min), then days, weeks, months, years ("1.5D", "2W", "3Mo",
+ * "1.2Y"; owner, 2026-11-10: over a year is Y, not D). One formatter with
+ * the Gantt's axis labels (rgui gantt compactSpan). Past due it is negative
+ * ("-5M", "-1.5H"), drawn red (EtaBar.tsx).
  */
 export function compactTime(ms: number): string {
   const min = minutesLeft(Math.abs(ms));
   const sign = ms < 0 && min > 0 ? "-" : "";
-  if (min < 60) return `${sign}${min}M`;
-  return `${sign}${Math.round(min / 6) / 10}H`;
+  // One formatter with the Gantt's axis (rgui compactSpan): Y, Mo, W, D, H, M by size.
+  return `${sign}${compactSpan(min * 60_000, min)}`;
 }
+
+/** A range up to this many minutes is labelled in minutes at both ends. */
+export const RANGE_MINUTES_MAX = 99;
+
+/**
+ * A range's label (owner, 2026-11-10): "12–63M", one unit shared when both
+ * ends have it, else each its own ("40M–1.5H"). Both ahead only; callers
+ * pass the time left to the P5 and to the P95.
+ */
+export function rangeTime(minMs: number, maxMs: number): string {
+  const a = compactTime(minMs);
+  const b = compactTime(maxMs);
+  if (a === b) return b;
+  // Up to RANGE_MINUTES_MAX both ends stay in minutes ("12–63M", not "12M–1.1H").
+  if (maxMs > 0 && minutesLeft(maxMs) <= RANGE_MINUTES_MAX)
+    return `${minutesLeft(minMs)}–${minutesLeft(maxMs)}M`;
+  const unit = (x: string) => /[A-Za-z]+$/.exec(x)?.[0] ?? "";
+  return unit(a) === unit(b) ? `${a.slice(0, -unit(a).length)}–${b}` : `${a}–${b}`;
+}
+
+/**
+ * A task's time label: its range ("12–63M") until the P5 passes, then the
+ * time left to the estimate (the P95: "51M", "-5M" past it). A task with
+ * one number shows that, as before.
+ */
+export function etaLabel(t: { at: number; min?: number; done?: boolean }, now: number): string {
+  if (!t.done && t.min !== undefined && t.min > now && t.min < t.at)
+    return rangeTime(t.min - now, t.at - now);
+  return compactTime(t.at - now);
+}
+
+/** Parked on a person (TreeEta.parked): no work runs, its time is a reminder. */
+export const isParked = (t: { done?: boolean; parked?: string }) => !t.done && !!t.parked;
+
+/** The red mark before a task that waits for the owner: "?" for a decision, else "!"; none otherwise. */
+export const parkMark = (t: { done?: boolean; parked?: string; question?: boolean }) =>
+  !t.done && t.parked === "owner" ? (t.question ? "?" : "!") : null;
 
 /** Past due: a negative label, drawn red. */
 export const isLate = (ms: number) => compactTime(ms).startsWith("-");
@@ -157,6 +198,11 @@ export function ganttWindow(tasks: readonly EtaTask[], now: number): GanttWindow
 export type GanttRow = { left: number; plan: number; fill: number; over: number; now: number };
 export function ganttRow(t: EtaTask, w: GanttWindow, now: number): GanttRow {
   const x = (ms: number) => Math.min(100, Math.max(0, ((ms - w.lo) / (w.hi - w.lo)) * 100));
+  // A done task as it really ran: start → its finish, no overrun (owner, 2026-11-11 01:08 JST).
+  if (t.done && t.doneAt !== undefined) {
+    const left = x(Math.min(t.start, t.doneAt));
+    return { left, plan: Math.max(0, x(t.doneAt) - left), fill: 100, over: 0, now: x(now) };
+  }
   const left = x(t.start);
   const due = x(t.at);
   const end = t.done ? x(t.doneAt ?? t.at) : x(now);
@@ -305,7 +351,7 @@ export function etaParts(tasks: readonly EtaTask[], now: number): EtaPart[] | nu
   if (!ends) return null;
   const part = (t: EtaTask): EtaPart => ({
     name: splitTitle(t.title).name,
-    min: compactTime(t.at - now),
+    min: etaLabel(t, now),
     ...(isLate(t.at - now) ? { late: true } : {}),
   });
   return ends.small ? [part(ends.small), part(ends.big)] : [part(ends.big)];

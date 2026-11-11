@@ -13,7 +13,7 @@
  *   lianki-dev lane-listen --as codex --dry-run       # print what it would hand over
  *
  * The token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (0600),
- * made by the owner (lianki.com/preferences → API tokens; name = the lane,
+ * made by the owner (lianki.com/my/preferences → API tokens; name = the lane,
  * chat:read chat:write chat:ask, an expiry). Never printed; a lane never
  * makes one. Without it, exit 2 and say which token is needed.
  *
@@ -131,7 +131,7 @@ async function main(): Promise<number> {
         const l = lineOf(raw);
         if (!l || l.history || seen.has(l.id)) continue;
         seen.add(l.id);
-        if (!laneTakes(o.lane, l, { tests: o.tests })) continue;
+        if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests })) continue;
         backoff = 1_000;
         const code = await deliver(o, handoff(o.lane, l, o.repo));
         log({ type: "delivered", lane: o.lane, id: l.id, test: testText(l) !== null, ay: code });

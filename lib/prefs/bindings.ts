@@ -24,7 +24,11 @@ import { LOCALE_PICK_KEY } from "@/lib/app-locale";
 import { ACCT_COOKIE_LINE } from "@/lib/account-locale";
 import { BYOK_BACKEND_KEY } from "@/lib/byok/config";
 import { LINK_CONFIRM_KEY, LINK_ALLOWED_KEY } from "@/lib/external-link";
+import { DONT_ASK_KEY } from "@/lib/dont-ask";
 import { BADGE_DEFAULT, BADGE_PREF_KEY } from "@/lib/app-badge";
+import { MAIL_LOGIN_NOTICE_KEY } from "@/lib/mail-prefs";
+import { CARD_HEIGHT_KEY } from "@/lib/words/row-pinch";
+import { PREFERRED_LANGS_KEY } from "@/lib/lang-order";
 
 type Ls = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const ls = (): Ls | null => {
@@ -191,6 +195,10 @@ export function prefBindings(): PrefBinding[] {
     plain("words.gradeTones", "lk:words-grade-tones", bool10, true),
     plain("words.voiceMode", "lk:words-voice-mode", bool10, false),
     plain("words.swipeMirror", "lk:words-swipe-mirror", bool10, false),
+    // lib/words/row-pinch.ts: the rows' height, pinched on the /words list.
+    plain("words.cardHeight", CARD_HEIGHT_KEY, num, 1),
+    // lib/words/onboarding.ts: the first-visit walkthrough, seen once per account.
+    plain("words.onboarded", "lk:words-onboarded", bool10, false),
     plain("swipe.variant", "lk:swipe-ab", text, "js"),
     field("swipe-feel.preset", "swipe-feel", 1, "preset", "light"),
     field("swipe-feel.tweaks", "swipe-feel", 1, "tweaks", {}),
@@ -213,6 +221,8 @@ export function prefBindings(): PrefBinding[] {
     homePins(),
     plain("lab.immersionLangs", "lk:lab:immersion:langs", jsonCodec, []),
     plain("lab.immersionTranspose", "lk:lab:immersion:transpose", bool10, false),
+    // lib/lang-order.ts: preferred languages first wherever material comes in many languages.
+    plain("lang.preferred", PREFERRED_LANGS_KEY, jsonCodec, []),
     // lib/read/sense-pick.ts: which entry a word in a book means, per word and sentence.
     plain("read.sensePicks", "lk:read-sense-picks", jsonCodec, {}),
     // lib/read/polish-offer.ts: the offer to tidy a raw transcript.
@@ -227,8 +237,12 @@ export function prefBindings(): PrefBinding[] {
     // lib/external-link.ts: the disclaimer before another site, and the sites not asked about.
     plain("links.confirm", LINK_CONFIRM_KEY, bool10, true),
     plain("links.allowedHosts", LINK_ALLOWED_KEY, jsonCodec, []),
+    // lib/dont-ask.ts: every "don't ask again" and the day it asks again.
+    plain("asks.dontAsk", DONT_ASK_KEY, jsonCodec, {}),
     // lib/app-badge.ts: what the app-icon badge counts.
     plain("notify.badge", BADGE_PREF_KEY, text, BADGE_DEFAULT),
+    // lib/mail-prefs.ts: the security notice mail (new-browser sign-in), on by default.
+    plain("mail.loginNotice", MAIL_LOGIN_NOTICE_KEY, bool10, true),
     plain("chat-voice.rate", "lk:agent-speech-rate", num, 1.5),
     plain("chat-voice.out", "lk:voice-out", text, "speech"),
     // The chat reads lk:agent-chat-speak, then its old name (storage-keys.ts).

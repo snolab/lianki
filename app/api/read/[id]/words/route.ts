@@ -26,11 +26,11 @@ import { cardIndex, foldsOf, hitOf, inDict, inKeys, statsLemmas, termKeys } from
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
   const { id } = await params;
   const material = await getReadMaterialById(session.user.id, id);
-  if (!material) return NextResponse.json({ error: "Material not found" }, { status: 404 });
+  if (!material) return NextResponse.json({ error: "not-found" }, { status: 404 });
 
   const { stats } = await materialWords(material, session.user.id);
   const email = session.user.email;

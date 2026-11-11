@@ -35,7 +35,7 @@ type Conn = { email: string | null; scopes: string[]; status: "ok" | "reconnect"
 
 const btn =
   "px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed";
-const primary = `${btn} bg-[oklch(0.55_0.18_255)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.18_255)]`;
+const primary = `${btn} bg-[oklch(0.55_0.198_22.3)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.198_22.3)]`;
 const quiet = `${btn} border border-[oklch(0.85_0.01_260)] dark:border-[oklch(0.4_0.02_260)] hover:bg-[oklch(0.96_0.005_260)] dark:hover:bg-[oklch(0.3_0.02_260)]`;
 const bad = "text-sm text-[oklch(0.58_0.2_27)] dark:text-[oklch(0.72_0.16_27)]";
 

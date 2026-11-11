@@ -7,6 +7,7 @@
 // serves guests, the MongoDB backend, and anyone the server says reader v2 is
 // off for; everyone else gets lib/read/reader-server.ts.
 
+import { publicCfg } from "@/lib/config-client";
 import type { SwipeRating } from "@/lib/words/swipe";
 import type { GradeRequest } from "./reader-api";
 import { type Block, itemWords, localItems } from "./reader-model";
@@ -79,9 +80,10 @@ export interface ReaderData {
  * A starting reading speed, words a minute, until his own is measured: a
  * common-knowledge figure for reading a foreign language (design-principles.md,
  * "No fixed numbers for users": a rule that holds at every scale, replaced by
- * his measured speed as data comes in — the backend's job).
+ * his measured speed as data comes in — the backend's job). Config
+ * `read.startWpm` (lib/config.ts, docs/config-store.md).
  */
-export const START_WPM = 120;
+export const startWpm = (): number => publicCfg("read.startWpm");
 
 export function localReaderData(): ReaderData {
   const grades = new Map<string, SwipeRating[]>();
@@ -94,7 +96,7 @@ export function localReaderData(): ReaderData {
         chapterStarts: b.chapterStarts,
         lang: b.lang,
         langOf: b.langOf,
-        target: itemWords(START_WPM),
+        target: itemWords(startWpm()),
       }),
     }),
     canUndo: () => true,

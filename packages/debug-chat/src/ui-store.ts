@@ -166,16 +166,49 @@ export const chatFold = () =>
  * The full-screen Gantt's time axis, logarithmic (the default) or linear
  * (GanttFull.tsx, the Linear | Log toggle; owner, 2026-11-09 15:27 JST):
  * localStorage `lk:pref:gantt`, this device only, never synced.
+ * `fitPercentile` and `fitWidth` override the home view's zoom defaults
+ * (gantt-view.ts GANTT_FIT_PERCENTILE, GANTT_FIT_WIDTH) for this device; no
+ * UI sets them yet, absent means the defaults.
  */
-export type GanttPrefs = { scale: "log" | "linear" };
+export type GanttPrefs = { scale: "log" | "linear"; fitPercentile?: number; fitWidth?: number };
 export const GANTT_PREFS_INITIAL: GanttPrefs = { scale: "log" };
+/** A share in (0, 1], else nothing. */
+const share = (v: unknown) => (typeof v === "number" && v > 0 && v <= 1 ? v : undefined);
 export const ganttPrefs = () =>
   createUiStore<GanttPrefs>("gantt", 1, GANTT_PREFS_INITIAL, {
     storage: "local",
     clean: (v) => {
       const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
-      return o.scale === "log" || o.scale === "linear" ? { scale: o.scale } : {};
+      const out: Partial<GanttPrefs> = {};
+      if (o.scale === "log" || o.scale === "linear") out.scale = o.scale;
+      const p = share(o.fitPercentile);
+      const w = share(o.fitWidth);
+      if (p !== undefined) out.fitPercentile = p;
+      if (w !== undefined) out.fitWidth = w;
+      return out;
     },
+  });
+
+/**
+ * The Gantt's open categories (gantt-groups.ts; the ▸/▾ on a parent row, in
+ * the full-screen Gantt and the chat's task list alike): sessionStorage
+ * `lk:ui:gantt-groups`, this tab only. Folded is the default, so an empty
+ * list is every category folded. UI state only: category ids, never tasks.
+ */
+export type GanttGroupsUi = { open: string[] };
+export const GANTT_GROUPS_UI_INITIAL: GanttGroupsUi = { open: [] };
+export function cleanGanttGroupsUi(v: unknown): Partial<GanttGroupsUi> {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  if (!Array.isArray(o.open)) return {};
+  const ids = o.open.filter(
+    (x): x is string => typeof x === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(x),
+  );
+  return { open: [...new Set(ids)].slice(0, 50) };
+}
+export const ganttGroupsUi = () =>
+  createUiStore<GanttGroupsUi>("gantt-groups", 1, GANTT_GROUPS_UI_INITIAL, {
+    storage: "session",
+    clean: cleanGanttGroupsUi,
   });
 
 /** The chat's UI store (one per page, shared by hot-swapped widget copies). */

@@ -11,12 +11,33 @@ name: Deploy Worker
 # fast lint + typecheck + unit job on a push to main; qa:all already ran in the
 # merge queue before the merge, and runs nightly (nightly-qa.yml), so the
 # deploy does not wait for it again.
+#
+# Held while full QA is red (docs/shipping.md, "Full QA and the deploy hold"):
+# the `hold` job reads the latest finished run of nightly-qa.yml ("Full QA",
+# on main after merges) and deploys nothing while it failed, starting a new full
+# run if none is queued. A green full run that follows a red one lifts the
+# hold: Full QA dispatches this workflow with lifted_by (its run) and sha (the
+# commit it tested), checked here before that commit deploys. To deploy anyway,
+# run this workflow by hand with override_hold.
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      override_hold:
+        description: Deploy even though full QA is red on main
+        type: boolean
+        default: false
+      lifted_by:
+        description: (Full QA sets this) the green Full QA run that lifts the hold
+        type: string
+        default: ""
+      sha:
+        description: (Full QA sets this) the commit that run tested, to deploy
+        type: string
+        default: ""
 
 # Queue rather than cancel: a cancelled deploy can leave the D1 migration
 # applied with the old Worker still serving.
@@ -28,8 +49,48 @@ env:
   NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
-  deploy:
+  # The full-QA hold, as a check this workflow reads (scripts/ci/full-qa.ts).
+  hold:
+    name: Full QA hold
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write # read Full QA's runs; start one while held
+      contents: read
+    outputs:
+      deploy: ${{ steps.hold.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
+      - id: hold
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OVERRIDE: ${{ inputs.override_hold }}
+          LIFTED_BY: ${{ inputs.lifted_by }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          if [ "$OVERRIDE" = "true" ]; then
+            echo "::warning title=Full QA hold overridden::deploying by hand regardless of full QA"
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$LIFTED_BY" ]; then
+            bun scripts/ci/full-qa.ts lifted "$LIFTED_BY" "$SHA"
+          else
+            bun scripts/ci/full-qa.ts hold
+          fi
+      # Held: this run goes red on purpose, so a held deploy (or a lift that
+      # does not check out) is seen, not mistaken for one that happened.
+      - name: Held?
+        if: steps.hold.outputs.deploy != 'true'
+        env:
+          REASON: ${{ steps.hold.outputs.reason }}
+        run: |
+          echo "::error title=Deploy held::$REASON. A green full QA run deploys main; to deploy now, run this workflow by hand with override_hold."
+          exit 1
+
+  deploy:
+    needs: hold
+    if: needs.hold.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -39,7 +100,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # The commit CI just passed, not whatever main is by now.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # A lift deploys the commit its Full QA run tested.
+          ref: ${{ github.event.workflow_run.head_sha || inputs.sha || github.sha }}
       # wrangler requires Node >= 22.
       - uses: actions/setup-node@v4
         with:
@@ -58,6 +120,12 @@ jobs:
           CF_BUILD: "1"
           DB_BACKEND: d1
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+      # Smart refresh (docs/shipping.md): per-route hashes of the client chunks,
+      # served as /_lk/route-fp.json and handed to lianki-push on the first
+      # request, so only pages whose code changed offer "New version · Refresh".
+      # A `Force-Refresh: yes` trailer on the commit makes every page offer it.
+      - name: Route fingerprints
+        run: bun scripts/build/route-fingerprints.ts --out .open-next/assets/_lk/route-fp.json
       # The exact files the Worker will serve as static assets: no secrets, env
       # files, keys or server source maps (docs/security-measures.md).
       - name: Static asset hygiene

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { gdocIdOf, gdocUrlOf } from "@/lib/gdoc/url";
 import { startGoogleConnect } from "@/lib/connections/connect-client";
+import { pickWithRetry } from "@/lib/connections/picker-setup";
 
 /**
  * A private Google Doc on /read (docs/connections.md): "Choose in Google
@@ -48,25 +49,38 @@ export function GdocDriveImport(p: {
   async function choose() {
     setBusy(true);
     try {
-      const r = await fetch("/api/connections/google/picker", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "{}",
-      });
-      if (r.status === 503) return setMsg({ alert: true, text: t.notConfigured.value });
-      if (r.status === 409) {
-        if ((await connect()) === "ok") return; // leaving for Google
-        return;
-      }
-      if (!r.ok) return setMsg({ alert: true, text: t.connectFailed.value });
-      const setup = (await r.json()) as { accessToken: string; apiKey: string; appId: string };
       const { pickGoogleDoc } = await import("@/lib/connections/picker-client");
-      let picked: string | null;
+      // A fresh token request per try; the Picker is tried once more if the
+      // first one failed (pickWithRetry: a bad setup or a Picker error).
+      let got: { ids: string[] } | { other: "off" | "connect" | "failed" };
       try {
-        picked = await pickGoogleDoc(setup, id);
+        got = await pickWithRetry<"off" | "connect" | "failed">(
+          async () => {
+            const r = await fetch("/api/connections/google/picker", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: "{}",
+            }).catch(() => null);
+            if (!r) return { setup: null };
+            if (r.status === 503) return { other: "off" as const };
+            if (r.status === 409) return { other: "connect" as const };
+            if (!r.ok) return { other: "failed" as const };
+            return { setup: await r.json().catch(() => null) };
+          },
+          async (setup) => {
+            const one = await pickGoogleDoc(setup, id);
+            return one ? [one] : [];
+          },
+        );
       } catch {
         return setMsg({ alert: true, text: t.connectFailed.value });
       }
+      if ("other" in got) {
+        if (got.other === "off") return setMsg({ alert: true, text: t.notConfigured.value });
+        if (got.other === "connect") return void (await connect()); // leaving for Google, or says why not
+        return setMsg({ alert: true, text: t.connectFailed.value });
+      }
+      const picked = got.ids[0];
       if (!picked) return;
       const res = await fetch("/api/read/gdoc", {
         method: "POST",
@@ -111,7 +125,7 @@ export function GdocDriveImport(p: {
         type="button"
         onClick={choose}
         disabled={busy || !id}
-        className="px-4 py-2 rounded-lg text-sm font-medium bg-[oklch(0.55_0.18_255)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.18_255)] disabled:opacity-50 disabled:cursor-not-allowed"
+        className="lk-btn lk-btn-secondary"
       >
         {t.chooseInDrive}
       </button>

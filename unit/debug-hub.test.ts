@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { DebugHub, type Socket, type Storage, hashToken } from "@/workers/push/src/debug";
 import { rpcStub } from "./support/rpc-stub";
-import push, { type Env, VersionHub } from "@/workers/push/src/index";
+import push, { type Env, KEEP_FINGERPRINTS, VersionHub } from "@/workers/push/src/index";
+import { FINGERPRINTS_HEADER } from "@/lib/smart-refresh";
 import { DEV_BRIDGE_HEADER, debugIdentity } from "@/workers/push/src/auth";
 import {
   APPROVAL_MS,
@@ -19,7 +20,10 @@ import {
   type Identity,
   hashId,
   MAX_EDITS,
+  EDITABLE_LINES,
+  applyEditTo,
 } from "@/lib/dev-eval";
+import { MERGE_RATIO, MERGE_SLACK } from "@/packages/debug-chat/src/polish";
 
 /** A socket as the hibernation API hands it to the hub, recording what it was sent. */
 class FakeSocket implements Socket {
@@ -925,12 +929,15 @@ describe("VersionHub", () => {
         storage: {
           get: async <T>(k: string) => store.get(k) as T | undefined,
           put: async (k: string, v: unknown) => void store.set(k, v),
+          delete: async (k: string) => store.delete(k),
         },
       },
       {} as Env,
     );
-    const publish = (b: string) =>
-      hub.fetch(new Request("https://lianki-push/internal/publish", { method: "POST", body: b }));
+    const publish = (b: string, headers: Record<string, string> = {}) =>
+      hub.fetch(
+        new Request("https://lianki-push/internal/publish", { method: "POST", body: b, headers }),
+      );
     return { hub, sockets, publish };
   };
 
@@ -945,6 +952,66 @@ describe("VersionHub", () => {
     hub.webSocketMessage();
     hub.webSocketClose(sockets[0] as unknown as WebSocket, 1001);
     expect(sockets[0].closed).toBe(1001);
+  });
+
+  // Smart refresh (lib/smart-refresh.ts): each page hears what changed since its own build.
+  const fpOf = (build: string, words: string, force = false) => ({
+    build,
+    shell: "s",
+    routes: { "/words": words, "/list": "l" },
+    ...(force ? { force: true } : {}),
+  });
+  /** As the main Worker publishes (lib/announce-build.ts): the bare id, fingerprints in a header. */
+  const announce = (
+    publish: (b: string, h: Record<string, string>) => Promise<Response>,
+    b: string,
+    words: string,
+    force = false,
+    fpBuild = b,
+  ) =>
+    publish(b, {
+      [FINGERPRINTS_HEADER]: encodeURIComponent(JSON.stringify(fpOf(fpBuild, words, force))),
+    });
+
+  it("tells each page what changed since its own build", async () => {
+    const { hub, sockets, publish } = make();
+    await announce(publish, "b1", "w1");
+    await hub.fetch(new Request("https://lianki.com/api/version/ws?b=b1"));
+    await hub.fetch(new Request("https://lianki.com/api/version/ws")); // a page from before
+    expect(sockets[0].sent).toEqual([
+      { build: "b1", shell: false, routes: { "/words": 0, "/list": 0 } },
+    ]);
+    expect(sockets[1].sent).toEqual([{ build: "b1" }]);
+    // b2 changes /words only.
+    expect(await (await announce(publish, "b2", "w2")).json()).toEqual({ build: "b2", pushed: 2 });
+    expect(sockets[0].sent[1]).toEqual({
+      build: "b2",
+      shell: false,
+      routes: { "/words": 1, "/list": 0 },
+    });
+    expect(sockets[1].sent[1]).toEqual({ build: "b2" });
+    // A forced deploy says so to every page.
+    await announce(publish, "b3", "w2", true);
+    expect(sockets[0].sent[2]).toMatchObject({ build: "b3", force: true });
+    expect(sockets[1].sent[2]).toEqual({ build: "b3", force: true });
+    // Fingerprints naming another build than announced are ignored.
+    await announce(publish, "b4", "w9", false, "bX");
+    expect(sockets[0].sent[3]).toEqual({ build: "b4" });
+    // A malformed header: the build alone.
+    await publish("b5", { [FINGERPRINTS_HEADER]: "%E0%A4%A" });
+    expect(sockets[0].sent[4]).toEqual({ build: "b5" });
+  });
+
+  it("keeps fingerprints for the last builds only", async () => {
+    const { hub, publish } = make();
+    const store = (hub as unknown as { ctx: { storage: { get(k: string): Promise<unknown> } } }).ctx
+      .storage;
+    for (let i = 0; i < KEEP_FINGERPRINTS + 2; i++) await announce(publish, `b${i}`, `w${i}`);
+    await announce(publish, "b5", "w5"); // a repeat is kept once
+    expect(await store.get("fp:b0")).toBeUndefined();
+    expect(await store.get("fp:b1")).toBeUndefined();
+    expect(await store.get("fp:b2")).toBeDefined();
+    expect(((await store.get("fp-order")) as string[]).length).toBe(KEEP_FINGERPRINTS);
   });
 });
 
@@ -1426,6 +1493,30 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
     expect(stored.map((m) => m.wake)).toEqual(["passive", undefined, "active"]);
     // The reason rides only with a mode, and only a known one.
     expect(stored.map((m) => m.wakeReason)).toEqual(["rejects", undefined, undefined]);
+  });
+
+  it("a voice line keeps its recognizer tag (stt) and forwards it; typed or malformed ones drop it", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const local = { route: "local", engine: "sensevoice-small-2024-07-17-int8" };
+    await s.msg(owner, { type: "chat", id: "t1", text: "hello", source: "stt", stt: local });
+    expect(c.last("chat")?.message).toMatchObject({ id: "t1", stt: local });
+    const cloud = { route: "cloud", engine: "@cf/openai/whisper-large-v3-turbo", fallback: true };
+    await s.msg(owner, { type: "chat", id: "t2", text: "again", source: "stt", stt: cloud });
+    await s.msg(owner, { type: "chat", id: "t3", text: "typed", stt: local });
+    await s.msg(owner, {
+      type: "chat",
+      id: "t4",
+      text: "odd",
+      source: "stt",
+      stt: { route: "mars" },
+    });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as Record<string, unknown>)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    expect(stored.map((m) => m.stt)).toEqual([local, cloud, undefined, undefined]);
   });
 
   it("a voice line keeps only a speaker tag the Mac signed over exactly its words", async () => {
@@ -2797,22 +2888,22 @@ describe("DebugHub agent edits of voice messages", () => {
     expect(stored(s)[0]).toMatchObject({ text: "fix the sink button" });
   });
 
-  it("refuses every polish while the owner's stt.polish-off flag is on", async () => {
+  it("refuses every polish while the owner's stt.polish flag is exactly false", async () => {
     const asked: string[] = [];
-    let on = true;
+    let on: unknown = false;
     const SESSIONS = {
       live: async () => "live",
-      flag: async (k: string) => (k === "stt.polish-off" ? (asked.push(k), on) : false),
+      flag: async (k: string) => (k === "stt.polish" ? (asked.push(k), on) : false),
     };
     const s = setup({ SESSIONS });
     const owner = s.page();
     const { c } = await agent(s, owner);
     await s.msg(owner, voice("v1", "hello world"));
     await s.msg(c, { type: "edit", id: "v1", text: "Hello, world." });
-    expect(c.last("error")?.error).toContain("polish is off");
-    expect(asked).toEqual(["stt.polish-off"]);
+    expect(c.last("error")?.error).toContain("polish is off (stt.polish");
+    expect(asked).toEqual(["stt.polish"]);
     expect(owner.last("edited")).toBeUndefined();
-    on = false;
+    on = true;
     await s.msg(c, { type: "edit", id: "v1", text: "Hello, world." });
     expect(owner.last("edited")).toMatchObject({ text: "Hello, world.", raw: "hello world" });
   });
@@ -2844,21 +2935,398 @@ describe("DebugHub agent edits of voice messages", () => {
     expect(owner.last("edited")).toBeUndefined();
   });
 
-  it("refuses any but the owner's latest line; agent replies after it do not count", async () => {
+  it("edits any of the owner's last EDITABLE_LINES lines; agent replies do not count; older ones are refused", async () => {
+    expect(EDITABLE_LINES).toBe(5);
     const s = setup();
     const owner = s.page();
     const { c } = await agent(s, owner);
-    await s.msg(owner, voice("v1", "first"));
-    await s.msg(owner, voice("v2", "second"));
-    await s.msg(c, { type: "say", text: "on it" });
-    await s.msg(c, { type: "edit", id: "v1", text: "First." });
-    expect(c.last("error")?.error).toContain("not the owner's latest");
-    await s.msg(c, { type: "edit", id: "v2", text: "Second." });
-    expect(owner.last("edited")).toMatchObject({ id: "v2", text: "Second." });
+    for (let i = 1; i <= 6; i++) {
+      await s.msg(owner, voice(`v${i}`, `line ${i}`));
+      await s.msg(c, { type: "say", text: `reply ${i}` });
+    }
+    await s.msg(c, { type: "edit", id: "v1", text: "Line 1." });
+    expect(c.last("error")?.error).toContain("not among the owner's last 5 lines");
+    await s.msg(c, { type: "edit", id: "v2", text: "Line 2." });
+    expect(owner.last("edited")).toMatchObject({ id: "v2", text: "Line 2." });
+    await s.msg(c, { type: "edit", id: "v6", text: "Line 6." });
+    expect(owner.last("edited")).toMatchObject({ id: "v6", text: "Line 6." });
     // The agent's own line is never the target.
     const said = c.last("said")?.id as string;
     await s.msg(c, { type: "edit", id: said, text: "x" });
-    expect(c.last("error")?.error).toContain("not the owner's latest");
+    expect(c.last("error")?.error).toContain("not among the owner's last");
+  });
+
+  it("an earlier line's polish draws on lines after it, the agent's replies included", async () => {
+    const s = setup();
+    const owner = s.page();
+    const { c } = await agent(s, owner);
+    await s.msg(owner, voice("v1", "turn the fl on"));
+    await s.msg(c, { type: "say", text: "Which flag do you mean?" });
+    await s.msg(owner, voice("v2", "the polish one"));
+    await s.msg(c, { type: "edit", id: "v1", text: "Turn the flag on." });
+    expect(owner.last("edited")).toMatchObject({
+      id: "v1",
+      text: "Turn the flag on.",
+      raw: "turn the fl on",
+    });
+    // A function word in a clause, no context needed.
+    await s.msg(owner, voice("v3", "我在房间看书"));
+    await s.msg(c, { type: "edit", id: "v3", text: "我在房间里看书。" });
+    expect(owner.last("edited")).toMatchObject({ id: "v3", text: "我在房间里看书。" });
+  });
+
+  it("logs a refused polish with its reason", async () => {
+    const logs: string[] = [];
+    const real = console.log;
+    console.log = (x: string) => void logs.push(String(x));
+    try {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("v1", "fix the sink button"));
+      await s.msg(c, { type: "edit", id: "v1", text: "Fix the sync button." });
+    } finally {
+      console.log = real;
+    }
+    expect(
+      logs.some((l) => l.includes("debug.polish-refused") && l.includes("not in the context")),
+    ).toBe(true);
+  });
+
+  describe("summaries of room talk", () => {
+    const ROOM = ["那个房子一个月多少钱啊我觉得太贵了", "对啊而且离地铁站还挺远的你说呢"];
+    const withLog = () => {
+      const reqs: { op: string; lines: Record<string, unknown>[] }[] = [];
+      const SESSIONS = {
+        live: async () => "live",
+        chatLog: async (r: { op: string; lines: Record<string, unknown>[] }) => {
+          reqs.push(structuredClone(r));
+          return { ok: true, written: r.lines.length };
+        },
+      };
+      return { reqs, s: setup({ SESSIONS }) };
+    };
+
+    it("collapses consecutive voice lines into one: kept, raw recoverable, history keeps all", async () => {
+      const { reqs, s } = withLog();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("r1", ROOM[0]!));
+      await s.msg(owner, voice("r2", ROOM[1]!));
+      reqs.length = 0;
+      await s.msg(c, { type: "summary", ids: ["r2", "r1"], text: "（旁人在聊租房，嫌贵）" });
+      const ev = owner.last("edited") as Record<string, unknown>;
+      expect(ev).toMatchObject({
+        id: "r1",
+        text: "（旁人在聊租房，嫌贵）",
+        raw: `${ROOM[0]}\n${ROOM[1]}`,
+        summary: { by: "main lane", ids: ["r1", "r2"] },
+      });
+      expect(c.last("edited")).toMatchObject({ id: "r1", summary: { ids: ["r1", "r2"] } });
+      // Both lines stay stored; the second is marked inside the summary.
+      expect(stored(s)).toEqual([
+        expect.objectContaining({
+          id: "r1",
+          text: "（旁人在聊租房，嫌贵）",
+          raw: `${ROOM[0]}\n${ROOM[1]}`,
+        }),
+        expect.objectContaining({ id: "r2", text: ROOM[1], collapsedInto: "r1" }),
+      ]);
+      // History: the summary is added as its own line; nothing is updated or dropped.
+      expect(reqs).toEqual([
+        {
+          op: "put",
+          thread: "owner",
+          lines: [
+            expect.objectContaining({
+              id: "r1.summary",
+              from: "owner",
+              text: "（旁人在聊租房，嫌贵）",
+            }),
+          ],
+        } as never,
+      ]);
+    });
+
+    it("takes his last N lines with last", async () => {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("r1", ROOM[0]!));
+      await s.msg(owner, voice("r2", ROOM[1]!));
+      await s.msg(c, { type: "summary", last: 2, text: "（旁人在聊租房，嫌贵）" });
+      expect(owner.last("edited")).toMatchObject({ id: "r1", summary: { ids: ["r1", "r2"] } });
+    });
+
+    it("refuses a typed line, a run someone spoke into, one past the last N, and a bare marker", async () => {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, { type: "chat", id: "t1", text: ROOM[0]! });
+      await s.msg(c, { type: "summary", ids: ["t1"], text: "（旁人在聊租房）" });
+      expect(c.last("error")?.error).toContain("typed, not spoken");
+      await s.msg(owner, voice("r1", ROOM[0]!));
+      await s.msg(c, { type: "say", text: "嗯？" });
+      await s.msg(owner, voice("r2", ROOM[1]!));
+      await s.msg(c, { type: "summary", ids: ["r1", "r2"], text: "（旁人在聊租房，嫌贵）" });
+      expect(c.last("error")?.error).toContain("not consecutive");
+      await s.msg(c, { type: "summary", ids: ["r2"], text: "（杂音）" });
+      expect(c.last("error")?.error).toContain("not summarised");
+      for (let i = 0; i < 5; i++) await s.msg(owner, voice(`x${i}`, `line ${i}`));
+      await s.msg(c, { type: "summary", ids: ["r2"], text: "（旁人在聊）" });
+      expect(c.last("error")?.error).toContain("not among the owner's last 5 lines");
+      expect(owner.last("edited")).toBeUndefined();
+    });
+
+    it("a summary line is not polished again; the polish flag off refuses summaries too", async () => {
+      const s = setup({
+        SESSIONS: { live: async () => "live", flag: async (k: string) => k !== "stt.polish" },
+      });
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("r1", ROOM[0]!));
+      await s.msg(c, { type: "summary", ids: ["r1"], text: "（问房租）" });
+      expect(c.last("error")?.error).toContain("polish is off");
+      const s2 = setup();
+      const o2 = s2.page();
+      const a2 = await agent(s2, o2);
+      await s2.msg(o2, voice("r1", ROOM[0]!));
+      await s2.msg(a2.c, { type: "summary", ids: ["r1"], text: "（问房租）" });
+      await s2.msg(a2.c, { type: "edit", id: "r1", text: "旁人在问房租。" });
+      expect(a2.c.last("error")?.error).toContain("is a summary");
+    });
+
+    it("pages hide the collapsed lines (applyEditTo), and show the first as the summary", () => {
+      const list = [
+        {
+          id: "r1",
+          from: "owner" as const,
+          label: "",
+          text: ROOM[0]!,
+          at: 1,
+          source: "stt" as const,
+        },
+        {
+          id: "r2",
+          from: "owner" as const,
+          label: "",
+          text: ROOM[1]!,
+          at: 2,
+          source: "stt" as const,
+        },
+        { id: "a", from: "agent" as const, label: "", text: "嗯", at: 3 },
+      ];
+      const out = applyEditTo(list, {
+        id: "r1",
+        thread: "owner",
+        text: "（旁人在聊租房）",
+        raw: ROOM.join("\n"),
+        edited: { at: 4, by: "x", count: 0 },
+        summary: { at: 4, by: "x", ids: ["r1", "r2"] },
+      });
+      expect(
+        out.map((m) => [m.id, m.text, (m as { collapsedInto?: string }).collapsedInto]),
+      ).toEqual([
+        ["r1", "（旁人在聊租房）", undefined],
+        ["r2", ROOM[1], "r1"],
+        ["a", "嗯", undefined],
+      ]);
+    });
+  });
+
+  describe("merged passages (a run of his voice lines as one)", () => {
+    const RUN = ["我想把那个按钮", "放到右边", "然后颜色改成红色"];
+    const PASSAGE = "我想把那个按钮放到右边，然后把颜色改成红色。";
+    const withLog = () => {
+      const reqs: Record<string, unknown>[] = [];
+      const SESSIONS = {
+        live: async () => "live",
+        chatLog: async (r: Record<string, unknown>) => {
+          reqs.push(structuredClone(r));
+          return { ok: true, written: 1 };
+        },
+      };
+      return { reqs, s: setup({ SESSIONS }) };
+    };
+    const three = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+      for (const [i, t] of RUN.entries()) await s.msg(owner, voice(`m${i}`, t));
+    };
+
+    it("merges consecutive voice lines into one passage: originals kept, history gains it", async () => {
+      const { reqs, s } = withLog();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await three(s, owner);
+      reqs.length = 0;
+      await s.msg(c, { type: "merge", ids: ["m2", "m0", "m1"], text: PASSAGE });
+      const ev = owner.last("edited") as Record<string, unknown>;
+      expect(ev).toMatchObject({
+        id: "m0",
+        text: PASSAGE,
+        raw: RUN.join("\n"),
+        passage: { by: "main lane", ids: ["m0", "m1", "m2"] },
+      });
+      expect(c.last("edited")).toMatchObject({ id: "m0", passage: { ids: ["m0", "m1", "m2"] } });
+      expect(stored(s)).toEqual([
+        expect.objectContaining({ id: "m0", text: PASSAGE, premerge: { text: RUN[0] } }),
+        expect.objectContaining({ id: "m1", text: RUN[1], collapsedInto: "m0" }),
+        expect.objectContaining({ id: "m2", text: RUN[2], collapsedInto: "m0" }),
+      ]);
+      expect(reqs).toEqual([
+        {
+          op: "put",
+          thread: "owner",
+          lines: [expect.objectContaining({ id: "m0.merged", from: "owner", text: PASSAGE })],
+        },
+      ]);
+      // A page applying the event shows one bubble.
+      const list = RUN.map((text, i) => ({
+        id: `m${i}`,
+        from: "owner" as const,
+        label: "",
+        text,
+        at: i,
+        source: "stt" as const,
+      }));
+      const shown = applyEditTo(list, ev as never).filter(
+        (m) => !(m as { collapsedInto?: string }).collapsedInto,
+      );
+      expect(shown.map((m) => m.text)).toEqual([PASSAGE]);
+    });
+
+    it("refuses a run with any other message between: an agent reply, an ask card, a typed line", async () => {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await s.msg(owner, voice("m0", RUN[0]!));
+      await s.msg(c, { type: "say", text: "嗯？" });
+      await s.msg(owner, voice("m1", RUN[1]!));
+      await s.msg(c, { type: "merge", ids: ["m0", "m1"], text: "我想把那个按钮放到右边。" });
+      expect(c.last("error")?.error).toContain("not consecutive");
+      await s.msg(c, { type: "ask", askId: "q1", question: "哪个？", options: ["A", "B"] });
+      await s.msg(owner, voice("m2", RUN[2]!));
+      await s.msg(c, { type: "merge", ids: ["m1", "m2"], text: "放到右边，然后颜色改成红色。" });
+      expect(c.last("error")?.error).toContain("not consecutive");
+      await s.msg(owner, { type: "chat", id: "t1", text: "typed" });
+      await s.msg(owner, voice("m3", RUN[0]!));
+      await s.msg(c, { type: "merge", ids: ["t1", "m3"], text: "typed，我想把那个按钮" });
+      expect(c.last("error")?.error).toContain("typed, not spoken");
+      expect(owner.last("edited")).toBeUndefined();
+    });
+
+    it("caps the length by ratio, refuses one line, empty text, and an unknown id", async () => {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await three(s, owner);
+      const total = RUN.join("").length;
+      await s.msg(c, {
+        type: "merge",
+        ids: ["m0", "m1", "m2"],
+        text: "啊".repeat(Math.ceil(total * MERGE_RATIO) + MERGE_SLACK + 1),
+      });
+      expect(c.last("error")?.error).toContain("not merged, the lines stand");
+      await s.msg(c, {
+        type: "merge",
+        ids: ["m0", "m1", "m2"],
+        text: "啊".repeat(Math.ceil(total * MERGE_RATIO) + MERGE_SLACK),
+      });
+      expect(owner.last("edited")).toMatchObject({ passage: { ids: ["m0", "m1", "m2"] } });
+      const s2 = setup();
+      const o2 = s2.page();
+      const a2 = await agent(s2, o2);
+      await three(s2, o2);
+      await s2.msg(a2.c, { type: "merge", ids: ["m0"], text: "x" });
+      expect(a2.c.last("error")?.error).toContain("2–");
+      await s2.msg(a2.c, { type: "merge", ids: ["m0", "m1"], text: "   " });
+      expect(a2.c.last("error")?.error).toContain("merge needs text");
+      await s2.msg(a2.c, { type: "merge", ids: ["m0", "nope"], text: "x" });
+      expect(a2.c.last("error")?.error).toContain("no message nope");
+      expect(o2.last("edited")).toBeUndefined();
+    });
+
+    it("undo from his page restores every line as it was; history drops the passage", async () => {
+      const { reqs, s } = withLog();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await three(s, owner);
+      // The first line was polished before: the undo brings the polish back, not the raw.
+      await s.msg(c, { type: "edit", id: "m0", text: "我想把那个按钮，" });
+      await s.msg(c, { type: "merge", ids: ["m0", "m1", "m2"], text: PASSAGE });
+      reqs.length = 0;
+      await s.msg(owner, { type: "unmerge", id: "m0" });
+      const ev = owner.last("edited") as { restored: Record<string, unknown>[] };
+      expect(ev.restored.map((m) => [m.id, m.text])).toEqual([
+        ["m0", "我想把那个按钮，"],
+        ["m1", RUN[1]],
+        ["m2", RUN[2]],
+      ]);
+      expect(c.last("edited")).toMatchObject({ restored: expect.any(Array) });
+      const after = stored(s);
+      expect(after.map((m) => [m.id, m.text, m.collapsedInto, m.passage, m.premerge])).toEqual([
+        ["m0", "我想把那个按钮，", undefined, undefined, undefined],
+        ["m1", RUN[1], undefined, undefined, undefined],
+        ["m2", RUN[2], undefined, undefined, undefined],
+      ]);
+      expect(after[0]).toMatchObject({ raw: RUN[0], edited: { count: 1 } });
+      expect(reqs).toEqual([{ op: "drop", thread: "owner", ids: ["m0.merged"] }]);
+      // A page applying the undo shows the three lines again.
+      const merged = [
+        { id: "m0", from: "owner" as const, label: "", text: PASSAGE, at: 0 },
+        { id: "m1", from: "owner" as const, label: "", text: RUN[1]!, at: 1, collapsedInto: "m0" },
+      ];
+      const back = applyEditTo(merged, ev as never);
+      expect(back.filter((m) => !m.collapsedInto).map((m) => m.text)).toEqual([
+        "我想把那个按钮，",
+        RUN[1],
+      ]);
+      // Restored lines may be merged again.
+      await s.msg(c, { type: "merge", ids: ["m1", "m2"], text: "放到右边，然后颜色改成红色。" });
+      expect(owner.last("edited")).toMatchObject({ passage: { ids: ["m1", "m2"] } });
+    });
+
+    it("the lane can undo too; a passage is not polished, summarised or merged again", async () => {
+      const s = setup();
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await three(s, owner);
+      await s.msg(c, { type: "merge", ids: ["m0", "m1"], text: "我想把那个按钮放到右边。" });
+      await s.msg(c, { type: "edit", id: "m0", text: "我想把按钮放到右边。" });
+      expect(c.last("error")?.error).toContain("merged passage");
+      await s.msg(c, {
+        type: "merge",
+        ids: ["m0", "m2"],
+        text: "我想把那个按钮放到右边，然后颜色改成红色。",
+      });
+      expect(c.last("error")?.error).toContain("already a merged passage");
+      await s.msg(c, { type: "summary", ids: ["m0"], text: "（他在说按钮）" });
+      expect(c.last("error")?.error).toContain("merged passage");
+      await s.msg(c, { type: "unmerge", id: "m2" });
+      expect(c.last("error")?.error).toContain("not a merged passage");
+      await s.msg(c, { type: "unmerge", id: "m0" });
+      expect(c.last("edited")).toMatchObject({ id: "m0", restored: expect.any(Array) });
+      expect(stored(s).map((m) => m.text)).toEqual(RUN);
+    });
+
+    it("a friend's page cannot undo, a friend's pairing cannot merge, and the polish flag off refuses", async () => {
+      const s = setup({
+        SESSIONS: { live: async () => "live", flag: async (k: string) => k !== "stt.polish" },
+      });
+      const owner = s.page();
+      const { c } = await agent(s, owner);
+      await three(s, owner);
+      await s.msg(c, { type: "merge", ids: ["m0", "m1"], text: "我想把那个按钮放到右边。" });
+      expect(c.last("error")?.error).toContain("polish is off");
+      const s2 = setup();
+      const o2 = s2.page();
+      const a2 = await agent(s2, o2);
+      await three(s2, o2);
+      await s2.msg(a2.c, { type: "merge", ids: ["m0", "m1"], text: "我想把那个按钮放到右边。" });
+      const f = await s2.friend();
+      await s2.msg(f, { type: "unmerge", id: "m0" });
+      expect(f.last("error")?.error).toContain("owner");
+      expect(stored(s2)[0]).toMatchObject({ passage: { ids: ["m0", "m1"] } });
+    });
   });
 
   it("refuses an unknown id, an unchanged text, and empty or missing fields", async () => {
@@ -3079,6 +3547,111 @@ describe("DebugHub ask cards (the agent asks, a person taps)", () => {
     expect(f.last("answered")).toMatchObject({ answer: { thread: "f1", source: "tap" } });
     expect(c.last("answered")).toMatchObject({ thread: "f1", answer: { thread: "f1" } });
   });
+
+  describe("withdraw (the agent takes back an obsolete ask)", () => {
+    it("by askId or message id: stamped, kept, sent to the pages and listeners; taps refused", async () => {
+      const s = setup();
+      const owner = s.page();
+      const mac = s.page("/list Macintosh");
+      const c = await agent(s, owner);
+      await s.msg(c, askOne);
+      const msgId = (chats(owner).at(-1) as { id: string }).id;
+      s.tick(5);
+      await s.msg(c, { type: "withdraw", id: "cal1" });
+      const ev = {
+        type: "withdrawn",
+        id: msgId,
+        askId: "cal1",
+        thread: "owner",
+        withdrawnAt: 1_000_005,
+      };
+      expect(owner.last("withdrawn")).toEqual(ev);
+      expect(mac.last("withdrawn")).toEqual(ev);
+      expect(c.last("withdrawn")).toEqual(ev);
+      expect((await s.hub.history()).at(-1)?.ask?.withdrawnAt).toBe(1_000_005);
+      await s.msg(owner, { type: "answer", askId: "cal1", choices: { q1: "o1" } });
+      expect(owner.last("error")?.error).toContain("is withdrawn");
+      expect(owner.last("answered")).toBeUndefined();
+      // Once only.
+      await s.msg(c, { type: "withdraw", id: msgId });
+      expect(c.last("error")?.error).toBe("ask cal1 is withdrawn");
+      // By message id, on another ask.
+      await s.msg(c, { ...askOne, askId: "cal2" });
+      const id2 = (chats(owner).at(-1) as { id: string }).id;
+      await s.msg(c, { type: "withdraw", id: id2 });
+      expect(owner.last("withdrawn")).toMatchObject({ id: id2, askId: "cal2" });
+    });
+
+    it("only open asks: an answered or expired one, or a line without an ask, is refused", async () => {
+      const s = setup();
+      const owner = s.page();
+      const c = await agent(s, owner);
+      await s.msg(c, askOne);
+      await s.msg(owner, { type: "answer", askId: "cal1", choices: { q1: "o1" } });
+      await s.msg(c, { type: "withdraw", id: "cal1" });
+      expect(c.last("error")?.error).toBe("ask cal1 is answered");
+      await s.msg(c, { ...askOne, askId: "soon", expiresAt: Date.now() + 60_000 });
+      // Past its expiry on the hub's clock (ticking that far would lapse the grant too).
+      for (const [k, v] of s.storage.store)
+        if ((v as { ask?: { askId: string } })?.ask?.askId === "soon")
+          s.storage.store.set(k, {
+            ...(v as object),
+            ask: { ...(v as { ask: object }).ask, expiresAt: 1 },
+          });
+      await s.msg(c, { type: "withdraw", id: "soon" });
+      expect(c.last("error")?.error).toBe("ask soon is expired");
+      await s.msg(c, { type: "say", text: "plain line" });
+      const plain = (chats(owner).at(-1) as { id: string }).id;
+      await s.msg(c, { type: "withdraw", id: plain });
+      expect(c.last("error")?.error).toContain(`no ask ${plain}`);
+      expect(owner.last("withdrawn")).toBeUndefined();
+    });
+
+    it("needs a live owner grant; never a friend's pairing, a stranger, or a malformed id", async () => {
+      const s = setup();
+      const owner = s.page();
+      const c = s.controller("agent");
+      await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+      const token = c.last("approved")?.token as string;
+      await s.msg(c, askOne);
+      const stranger = s.controller("stranger");
+      await s.msg(stranger, { type: "withdraw", id: "cal1" });
+      expect(stranger.last("error")?.error).toBe("not approved yet");
+      await s.msg(c, { type: "withdraw", id: "cal 1; drop" });
+      expect(c.last("error")?.error).toContain("withdraw needs the askId");
+      const f = await s.friend("f1", "f1@x.com");
+      await s.msg(f, { type: "chat", id: "hi", text: "hello" });
+      const preview = await s.forFriend(token, "f1@x.com");
+      await s.msg(f, { type: "allow", pair: s.pairOf(f) });
+      await s.msg(preview, { type: "withdraw", id: "cal1" });
+      expect(preview.last("error")?.error).toBe("a pairing for a friend cannot withdraw");
+      s.storage.store.delete(`grant:${await hashToken(token)}`);
+      await s.msg(c, { type: "withdraw", id: "cal1" });
+      expect(c.last("error")?.error).toBe("withdraw needs a live chat grant from the owner");
+      expect((await s.hub.history()).at(-1)?.ask?.withdrawnAt).toBeUndefined();
+    });
+
+    it("thread-scoped: a friend's card only in their thread, never the owner's from there", async () => {
+      const s = setup();
+      const owner = s.page();
+      const c = await agent(s, owner);
+      const f = await s.friend("f1", "f1@x.com", "/words Android");
+      await s.msg(f, { type: "chat", id: "hi", text: "hello" });
+      await s.msg(c, askOne);
+      await s.msg(c, { ...askOne, askId: "fa", to: "f1@x.com" });
+      // The owner's thread by default: the friend's card is not there, and the reverse.
+      await s.msg(c, { type: "withdraw", id: "fa" });
+      expect(c.last("error")?.error).toBe("no ask fa in that thread");
+      await s.msg(c, { type: "withdraw", id: "cal1", to: "f1@x.com" });
+      expect(c.last("error")?.error).toBe("no ask cal1 in that thread");
+      await s.msg(c, { type: "withdraw", id: "fa", to: "f1@x.com" });
+      expect(f.last("withdrawn")).toMatchObject({ askId: "fa", thread: "f1" });
+      expect(owner.last("withdrawn")).toBeUndefined();
+      expect(c.last("withdrawn")).toMatchObject({ askId: "fa", thread: "f1" });
+      expect((await s.hub.history()).at(-1)?.ask?.withdrawnAt).toBeUndefined();
+      expect((await s.hub.history("f1")).at(-1)?.ask?.withdrawnAt).toBeNumber();
+    });
+  });
 });
 
 describe("DebugHub page errors", () => {
@@ -3182,7 +3755,7 @@ describe("DebugHub continuous speech (stt.merge)", () => {
   const rig = async (flags: Record<string, unknown> = { "stt.merge": true }) => {
     const SESSIONS = {
       live: async () => "live",
-      flag: async (k: string) => flags[k] ?? false,
+      flag: async (k: string) => flags[k] ?? k === "stt.polish",
     };
     const s = setup({ SESSIONS });
     const owner = s.page();
@@ -3261,7 +3834,10 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     const mac = await speakerKey();
     const s = setup({
       STT_SPEAKER_PUB: mac.pub,
-      SESSIONS: { live: async () => "live", flag: async (k: string) => k === "stt.merge" },
+      SESSIONS: {
+        live: async () => "live",
+        flag: async (k: string) => k === "stt.merge" || k === "stt.polish",
+      },
     });
     const owner = s.page();
     const proof = (text: string, uid: string) =>
@@ -3517,8 +4093,8 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     expect(c.last("error")?.error).toContain("not polished");
   });
 
-  it("stt.polish-off on: merges with no rewrite, and no lane is woken to polish", async () => {
-    const { s, owner, c, two, lines } = await rig({ "stt.merge": true, "stt.polish-off": true });
+  it("stt.polish off: merges with no rewrite, and no lane is woken to polish", async () => {
+    const { s, owner, c, two, lines } = await rig({ "stt.merge": true, "stt.polish": false });
     await two();
     await s.msg(owner, { type: "passage-end" });
     expect(lines()[0].text).toBe("那你能不能给，给我显示一个按钮。");
@@ -3618,6 +4194,19 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     expect((await post(s, { ...ping, kind: "late" })).status).toBe(400);
   });
 
+  it("waiting on the owner: his reminder carries the reason, read aloud, no lane prompt", async () => {
+    const s = setup(on());
+    const owner = s.page();
+    await post(s, { ...ping, title: "DNS 切换: apex", kind: "waiting", reason: "批准 DNS 改动" });
+    const line = chats(owner).at(-1) as Record<string, unknown>;
+    expect(line.text).toBe("DNS 切换：在等你——批准 DNS 改动");
+    expect(line.quiet).toBeUndefined();
+    expect(line).toMatchObject({ source: "eta", from: "agent" });
+    // No reason (status waiting-owner without needs) is still one.
+    await post(s, { ...ping, title: "DNS 切换: apex", kind: "waiting" });
+    expect((chats(owner).at(-1) as Record<string, unknown>).text).toBe("DNS 切换：在等你");
+  });
+
   it("flag off (or unreadable): nothing posted; unreadable is a 503 so the progress hub retries", async () => {
     const off = setup(on({}));
     const p = off.page();
@@ -3655,6 +4244,65 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     const line = chats(owner).at(-1) as Record<string, unknown>;
     expect(line.from).toBe("owner");
     expect(line.source).toBeUndefined();
+  });
+
+  it("receipts: a lanes' line with no listener is queued, not posted; a listener connecting tells the progress hub", async () => {
+    const calls: string[] = [];
+    const PROGRESS = {
+      idFromName: (n: string) => n,
+      get: () => ({
+        fetch: async (req: Request) => {
+          calls.push(new URL(req.url).pathname);
+          return Response.json({ ok: true });
+        },
+      }),
+    };
+    const s = setup({ ...on(), PROGRESS });
+    const owner = s.page();
+    const res = await post(s, { ...ping, code: "k3x9qa" });
+    expect(await res.json()).toMatchObject({ delivered: false, queued: true, listeners: 0 });
+    expect(chats(owner)).toEqual([]);
+    // The owner's own lines never wait for a listener.
+    await post(s, { ...ping, kind: "silent" });
+    expect(chats(owner).length).toBe(1);
+    await lane(s, owner);
+    expect(calls).toEqual(["/internal/eta-heard"]);
+    // Now heard: posted, with its receipt code in the text and on the line.
+    expect(await (await post(s, { ...ping, code: "k3x9qa" })).json()).toMatchObject({
+      delivered: true,
+      listeners: 1,
+    });
+    const line = chats(owner).at(-1) as Record<string, any>;
+    expect(line.eta).toMatchObject({ id: "/words/swipe", code: "k3x9qa" });
+    expect(line.text).toContain("progress.ts ack k3x9qa");
+  });
+
+  it("the coordinating lane's line and blocked nudges: quiet for a lane, read aloud for the owner", async () => {
+    const s = setup(on());
+    const owner = s.page();
+    await lane(s, owner);
+    await post(s, { ...ping, kind: "main", lane: "main", code: "k3x9qa", ownerMin: 5 });
+    const main = chats(owner).at(-1) as Record<string, any>;
+    expect(main.quiet).toBe(true);
+    expect(main.eta).toMatchObject({ kind: "main", lane: "main" });
+    expect(main.text).toStartWith("@main: swipe-agent has not acked");
+    await post(s, {
+      ...ping,
+      title: "Rebase: x",
+      kind: "blocked",
+      lane: "codex",
+      reason: "合并 #812",
+    });
+    const nudge = chats(owner).at(-1) as Record<string, any>;
+    expect(nudge.quiet).toBe(true);
+    expect(nudge.eta).toMatchObject({ kind: "blocked", lane: "codex" });
+    expect(nudge.text).toContain("@codex: Rebase: x (/words/swipe) is blocked on you: 合并 #812");
+    await post(s, { ...ping, title: "DNS: apex", kind: "blocked", lane: "owner", reason: "批准" });
+    const his = chats(owner).at(-1) as Record<string, any>;
+    expect(his.quiet).toBeUndefined();
+    expect(his.text).toBe("DNS 卡住了，等你——批准");
+    // A nudge must name who.
+    expect((await post(s, { ...ping, kind: "blocked" })).status).toBe(400);
   });
 });
 

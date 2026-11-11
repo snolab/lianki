@@ -43,18 +43,24 @@ export const APP_ROUTES = [
   "import",
   "lab",
   "learn",
+  // /library: the catalogue; /books is the user's own shelf (docs/books-plan.md).
+  "library",
   "list",
+  // /mail/unsubscribe: a mail's one-click Unsubscribe page (docs/mail-templates.md).
+  "mail",
   "membership",
+  // The user's own data: /my/profile, /my/preferences, /my/files (docs/url-principles.md).
+  "my",
   "next",
-  "preferences",
   "privacy",
-  "profile",
   "reader",
   "review",
   "roadmap",
   "self-intro",
   "sign-in",
   "stats",
+  // The day's goal, full screen (lib/today/goal.ts).
+  "today",
   "vibe",
   "words",
   "sites",

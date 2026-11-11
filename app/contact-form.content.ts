@@ -1,4 +1,5 @@
 import { t, type DeclarationContent } from "intlayer";
+import { describeKeys, flattenContext, type KeyContext } from "@/lib/i18n-context";
 
 const contactFormContent = {
   key: "contact-form",
@@ -328,4 +329,32 @@ const contactFormContent = {
   },
 } satisfies DeclarationContent;
 
-export default contactFormContent;
+const context: KeyContext<typeof contactFormContent.content> = {
+  title: "Heading of the contact form. Short.",
+  nameLabel: "Label of the name field. One word.",
+  namePlaceholder: "Placeholder in the name field.",
+  emailLabel: "Label of the email field. One word.",
+  emailPlaceholder: "Placeholder in the email field: an example address. Keep it an address.",
+  phoneLabel: "Label of the optional phone field. One word.",
+  phonePlaceholder: "Placeholder in the phone field: an example international number.",
+  messageLabel: "Label of the message field. One word.",
+  messagePlaceholder:
+    "Placeholder in the message field: invites the visitor to say what they want to learn.",
+  optional: "Marker after an optional field's label, in parentheses.",
+  template1:
+    "A one-tap message starter that fills the message field, in the visitor's own voice: learn a language faster.",
+  template2: "Another message starter: learn a musical instrument faster.",
+  template3: "Another message starter: learn skills in general faster.",
+  sendButton: "The form's submit button. Imperative.",
+  sending: "The submit button while sending. Progressive with an ellipsis.",
+  successMessage: "Shown after the message was sent: we will answer soon. Two short sentences.",
+  errorMessage: "Shown when sending failed: try again. Two short sentences.",
+};
+
+export default {
+  ...contactFormContent,
+  description: describeKeys(
+    "The contact form of Lianki, a spaced-repetition learning app: name, email, optional phone and a message, with three one-tap message starters. Lianki is a product name, not translated.",
+    flattenContext(context),
+  ),
+} satisfies DeclarationContent;

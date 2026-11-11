@@ -1,8 +1,10 @@
 "use client";
 import { useSignedIn } from "@/app/components/BoxApiBridge";
 
-import { useState, useEffect, useRef } from "react";
-import { useIntlayer } from "next-intlayer";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { ModalSheet } from "@/app/components/ModalSheet";
+import { loadAnchor } from "@/lib/read/reader-pos";
+import { useIntlayer, useLocale } from "next-intlayer";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { isoDay, longDate } from "@/lib/dates";
@@ -13,6 +15,8 @@ import { DrivePick, DrivePickHowTo } from "../connections/DrivePick";
 import { RowMenu, TitleEditor } from "./RowMenu";
 import { cleanTitle } from "@/lib/read/title";
 import { gdocUrlOf } from "@/lib/gdoc/url";
+import { VirtualList } from "@/app/components/VirtualList";
+import { useInfiniteList } from "@/app/components/useInfiniteList";
 
 export interface ReadMaterial {
   id: string;
@@ -27,8 +31,28 @@ export interface ReadMaterial {
   updatedAt: string;
 }
 
+/** "Continue reading": a list row plus where the reading position is. */
+export type LastRead = ReadMaterial & { line: number; readAt?: string };
+
 const STORAGE_KEY = "lianki-read-materials";
-const PAGE_SIZE = 10;
+
+/** Signed out: the text in this browser whose position moved last (its anchors). */
+function lastLocal(materials: ReadMaterial[]): LastRead | null {
+  let best: LastRead | null = null;
+  let at = 0;
+  for (const m of materials) {
+    const a = loadAnchor(m.id);
+    if (!a || a.at <= at) continue;
+    at = a.at;
+    best = {
+      ...m,
+      lineCount: m.lines.length,
+      line: a.line,
+      readAt: new Date(a.at).toISOString(),
+    };
+  }
+  return best;
+}
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -63,8 +87,11 @@ export function ReadListClient({
   drive = false,
   books = false,
   youtube = false,
+  extra,
 }: {
   isLoggedIn: boolean;
+  /** More entries for the Import pop-up's foot (the /vibe link where allowed). */
+  extra?: ReactNode;
   /** A YouTube song with timed lyrics can be added (lib/yt-songs/gate.ts). */
   youtube?: boolean;
   /** Google Docs import shown (signed in on D1, page.tsx). */
@@ -77,15 +104,39 @@ export function ReadListClient({
   // On a box, from lianki.com (BoxApiBridge); else the server's answer.
   const isLoggedIn = useSignedIn(serverSignedIn);
   const router = useRouter();
-  const [materials, setMaterials] = useState<ReadMaterial[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [importText, setImportText] = useState("");
   const [importTitle, setImportTitle] = useState("");
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
-  // Bumped after several docs came from Google Drive: the list loads again.
-  const [reload, setReload] = useState(0);
+  // The Import pop-up, and the book read last ("Continue reading").
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const closeSheet = useCallback(() => setSheetOpen(false), []);
+  const [last, setLast] = useState<LastRead | null>(null);
+  // No pages (owner, 2026-11-10): batches as the list nears its end. Signed
+  // out, the whole list is this browser's, so it comes in one batch.
+  const list = useInfiniteList<ReadMaterial, number>({
+    getKey: (m) => m.id,
+    deps: [isLoggedIn],
+    fetchBatch: async (page, size) => {
+      if (!isLoggedIn) {
+        const local = getLocalMaterials();
+        setLast(lastLocal(local));
+        return { items: local, next: null };
+      }
+      const p = page ?? 1;
+      const res = await fetch(`/api/read?page=${p}&pageSize=${size}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as {
+        materials: ReadMaterial[];
+        last?: LastRead | null;
+        total: number;
+        totalPages: number;
+      };
+      if (p === 1) setLast(data.last ?? null);
+      return { items: data.materials, next: p < data.totalPages ? p + 1 : null, total: data.total };
+    },
+  });
+  const materials = list.items;
+  const setMaterials = list.setItems;
   const epubText = useIntlayer("read-epub");
   const booksText = useIntlayer("books-page");
   const epubInput = useRef<HTMLInputElement>(null);
@@ -94,6 +145,14 @@ export function ReadListClient({
   const gdocText = useIntlayer("read-gdoc");
   const ytText = useIntlayer("yt-songs");
   const rowText = useIntlayer("read-row-menu");
+  const listText = useIntlayer("read-list");
+  const homeText = useIntlayer("read-home");
+  const { locale } = useLocale();
+  const linesText = (n: number) =>
+    (new Intl.PluralRules(locale).select(n) === "one"
+      ? listText.linesOne.value
+      : listText.linesOther.value
+    ).replace("{n}", String(n));
   // The row whose title is a text field right now (row menu → Rename).
   const [renaming, setRenaming] = useState<string | null>(null);
   const [gdocOpen, setGdocOpen] = useState(false);
@@ -103,6 +162,25 @@ export function ReadListClient({
   // A doc that is not shared by link: offer Google Drive instead (GdocDriveImport).
   const [gdocPrivate, setGdocPrivate] = useState(false);
   const [driveReturned, setDriveReturned] = useState<string | null>(null);
+
+  // Back from Google's consent screen (?pick=… for Drive, ?gdoc=… for one
+  // doc): the pop-up opens on it. A layout effect, so it reads the URL before
+  // the children's effects clean it.
+  useLayoutEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.has("pick") || q.has("gdoc")) setSheetOpen(true);
+  }, []);
+
+  // An EPUB that could not be read says why inside the pop-up: open it.
+  useEffect(() => {
+    if (epubError) setSheetOpen(true);
+  }, [epubError]);
+
+  // Signed out, pasting text is the only way in: the pop-up opens on its form.
+  const openSheet = () => {
+    if (!isLoggedIn) setIsImporting(true);
+    setSheetOpen(true);
+  };
 
   // Back from Google's consent screen (/read?gdoc=<id>&google=<result>):
   // reopen the import on that doc with the Drive button, then clean the URL.
@@ -214,36 +292,11 @@ export function ReadListClient({
     }
   };
 
-  // Load materials
-  useEffect(() => {
-    async function loadMaterials() {
-      setLoading(true);
-      if (isLoggedIn) {
-        try {
-          const res = await fetch(`/api/read?page=${page}&pageSize=${PAGE_SIZE}`);
-          if (res.ok) {
-            const data = await res.json();
-            setMaterials(data.materials);
-            setTotalPages(data.totalPages);
-          }
-        } catch (err) {
-          console.error("Failed to load materials:", err);
-        }
-      } else {
-        const local = getLocalMaterials();
-        setMaterials(local.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
-        setTotalPages(Math.ceil(local.length / PAGE_SIZE) || 1);
-      }
-      setLoading(false);
-    }
-    loadMaterials();
-  }, [isLoggedIn, page, reload]);
-
   const handleImport = async () => {
     if (!importText.trim()) return;
 
     const lines = parseLinesFromContent(importText);
-    const title = importTitle.trim() || `Import ${isoDay()}`;
+    const title = importTitle.trim() || listText.defaultTitle.value.replace("{date}", isoDay());
 
     if (isLoggedIn) {
       try {
@@ -296,6 +349,7 @@ export function ReadListClient({
         const j = (await res.json().catch(() => null)) as { title?: string } | null;
         if (!res.ok || !j?.title) return false;
         setMaterials((prev) => prev.map((m) => (m.id === id ? { ...m, title: j.title! } : m)));
+        setLast((l) => (l?.id === id ? { ...l, title: j.title! } : l));
         return true;
       } catch {
         return false;
@@ -305,6 +359,7 @@ export function ReadListClient({
     if (!clean) return false;
     saveLocalMaterials(getLocalMaterials().map((m) => (m.id === id ? { ...m, title: clean } : m)));
     setMaterials((prev) => prev.map((m) => (m.id === id ? { ...m, title: clean } : m)));
+    setLast((l) => (l?.id === id ? { ...l, title: clean } : l));
     return true;
   };
 
@@ -325,6 +380,7 @@ export function ReadListClient({
       try {
         await fetch(`/api/read/${id}`, { method: "DELETE" });
         setMaterials((prev) => prev.filter((m) => m.id !== id));
+        setLast((l) => (l?.id === id ? null : l));
       } catch (err) {
         console.error("Failed to delete:", err);
       }
@@ -333,37 +389,278 @@ export function ReadListClient({
       const updated = all.filter((m) => m.id !== id);
       saveLocalMaterials(updated);
       setMaterials((prev) => prev.filter((m) => m.id !== id));
+      setLast((l) => (l?.id === id ? null : l));
     }
   };
 
+  const errorLine = "text-sm text-[oklch(0.58_0.2_27)] dark:text-[oklch(0.72_0.16_27)]";
+  const field =
+    "w-full min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary focus:border-transparent";
+  const option = "lk-btn lk-btn-secondary w-full py-3 justify-start text-start";
+  const libraryLink = books && (
+    <Link
+      href="/library"
+      data-testid="read-browse-books"
+      className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-300 hover:underline"
+    >
+      {booksText.browse} &rarr;
+    </Link>
+  );
+
   return (
-    <div className="space-y-6">
-      {/* The shared public-domain library: a link only, its books never listed here. */}
-      {books && (
-        <Link
-          href="/books"
-          data-testid="read-browse-books"
-          className="inline-flex items-center gap-1 text-sm font-medium text-[oklch(0.5_0.16_255)] dark:text-[oklch(0.78_0.12_255)] hover:underline"
+    <div>
+      {/* A compact header: the title and the one main action. */}
+      <header className="mb-5 flex items-center gap-3">
+        <h1 className="flex-1 min-w-0 text-2xl sm:text-3xl font-bold leading-tight">
+          {listText.heading}
+        </h1>
+        <button
+          type="button"
+          data-testid="read-import"
+          aria-haspopup="dialog"
+          aria-expanded={sheetOpen}
+          onClick={openSheet}
+          className="lk-btn lk-btn-primary min-h-11 shrink-0 px-4"
         >
-          {booksText.browse} &rarr;
-        </Link>
-      )}
-      {/* Import Button / Form */}
-      {!isImporting ? (
-        <div className="space-y-2">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              onClick={() => setIsImporting(true)}
-              className="flex-1 py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
+          <span aria-hidden="true">+</span> {homeText.importButton}
+        </button>
+      </header>
+
+      {!isLoggedIn && (
+        <section data-testid="read-welcome" className="mb-6">
+          <p className="text-gray-600 dark:text-gray-400">
+            {listText.intro}
+            {/* No space after a full-width stop (zh, ja). */}
+            {/[。！？]$/.test(String(listText.intro.value)) ? "" : " "}
+            {listText.signInToSave}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <Link
+              href="/sign-in?to=%2Freader"
+              data-testid="read-sign-in"
+              className="lk-btn lk-btn-secondary min-h-11 px-5"
             >
-              + Import Text Material
-            </button>
-            {isLoggedIn && (
+              {homeText.signIn}
+            </Link>
+            {libraryLink}
+          </div>
+        </section>
+      )}
+
+      {last && <ContinueCard last={last} label={homeText.continueHeading.value} />}
+
+      {materials.length > 0 && (
+        <h2 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-400">
+          {homeText.listHeading}
+        </h2>
+      )}
+      <VirtualList
+        items={materials}
+        getKey={(m) => m.id}
+        name="reader"
+        hasMore={list.hasMore}
+        loading={list.loading}
+        error={list.error}
+        total={list.total}
+        onReachEnd={list.loadMore}
+        estimateSize={76}
+        gap={12}
+        testId="read-list"
+        empty={
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">{listText.empty}</div>
+        }
+        renderItem={(material) => (
+          <div
+            data-row-id={material.id}
+            data-testid="read-row"
+            className="flex items-center justify-between gap-2 p-4 pe-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+          >
+            {renaming === material.id ? (
+              <TitleEditor
+                initial={material.title}
+                onSave={(title) => handleRename(material.id, title)}
+                onDone={() => endRename(material.id)}
+              />
+            ) : (
+              <>
+                <Link href={`/reader/${material.id}`} className="flex-1 min-w-0">
+                  <h3 className="font-medium truncate" data-testid="read-row-title">
+                    {material.title}
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {linesText(material.lineCount ?? material.lines.length)} &middot;{" "}
+                    {material.words && (
+                      <span className="tabular-nums" data-testid="read-row-words">
+                        <WordCountText words={material.words} /> &middot;{" "}
+                      </span>
+                    )}
+                    {longDate(material.updatedAt)}
+                  </p>
+                </Link>
+                {material.words && (
+                  <Link href={`/reader/${material.id}`} className="ms-2" tabIndex={-1}>
+                    <BookRing words={material.words} />
+                  </Link>
+                )}
+                <RowMenu
+                  title={material.title}
+                  onRename={() => setRenaming(material.id)}
+                  onDelete={() => void handleDelete(material.id, material.title)}
+                />
+              </>
+            )}
+          </div>
+        )}
+      />
+
+      {/* Every way to add something to read, in one pop-up. Its content stays
+          mounted while closed: the EPUB input, the Drive return auto-pick. */}
+      <ModalSheet
+        open={sheetOpen}
+        onClose={closeSheet}
+        title={homeText.sheetTitle}
+        closeLabel={homeText.close.value}
+        testId="read-import-sheet"
+      >
+        {isImporting && (
+          <form
+            data-testid="read-text-form"
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleImport();
+            }}
+          >
+            <input
+              type="text"
+              value={importTitle}
+              onChange={(e) => setImportTitle(e.target.value)}
+              placeholder={listText.titlePlaceholder.value}
+              aria-label={listText.titlePlaceholder.value}
+              className={field}
+            />
+            <textarea
+              data-autofocus
+              autoFocus
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder={listText.textPlaceholder.value}
+              aria-label={listText.textPlaceholder.value}
+              rows={8}
+              className={`${field} resize-y font-mono text-sm`}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImporting(false);
+                  setImportText("");
+                  setImportTitle("");
+                  if (!isLoggedIn) setSheetOpen(false);
+                }}
+                className="lk-btn lk-btn-quiet min-h-11"
+              >
+                {listText.cancel}
+              </button>
+              <button
+                type="submit"
+                disabled={!importText.trim()}
+                className="lk-btn lk-btn-primary min-h-11"
+              >
+                {listText.submit} ({linesText(parseLinesFromContent(importText).length)})
+              </button>
+            </div>
+            {!isLoggedIn && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">{homeText.signInForMore}</p>
+            )}
+          </form>
+        )}
+
+        {isLoggedIn && gdoc && gdocOpen && !isImporting && (
+          <div className="space-y-2">
+            <form
+              data-testid="read-gdoc-form"
+              className="flex flex-col gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleGdoc();
+              }}
+            >
+              <input
+                type="url"
+                inputMode="url"
+                data-autofocus
+                autoFocus
+                value={gdocUrl}
+                onChange={(e) => setGdocUrl(e.target.value)}
+                aria-label={gdocText.urlLabel.value}
+                placeholder="https://docs.google.com/document/d/…"
+                disabled={gdocBusy}
+                className={field}
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGdocOpen(false);
+                    setGdocUrl("");
+                    setGdocError("");
+                    setGdocPrivate(false);
+                  }}
+                  className="lk-btn lk-btn-quiet min-h-11"
+                >
+                  {gdocText.cancel}
+                </button>
+                <button
+                  type="submit"
+                  disabled={gdocBusy || !gdocUrl.trim()}
+                  className="lk-btn lk-btn-primary min-h-11"
+                >
+                  {gdocBusy ? gdocText.importing : gdocText.submit}
+                </button>
+              </div>
+            </form>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{gdocText.note}</p>
+            {drive && gdocPrivate && (
+              <GdocDriveImport
+                key={`${gdocUrl}|${driveReturned ?? ""}`}
+                url={gdocUrl}
+                returned={driveReturned}
+                errorText={gdocErrorText}
+                onImported={(id) => router.push(`/reader/${id}`)}
+              />
+            )}
+            {gdocError && (
+              <p role="alert" data-testid="read-gdoc-error" className={errorLine}>
+                {gdocError}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* The options: hidden, not unmounted, while a form is open. */}
+        <div hidden={isImporting || gdocOpen} className="flex flex-col gap-2">
+          <button
+            type="button"
+            data-testid="read-import-text"
+            onClick={() => setIsImporting(true)}
+            className={option}
+          >
+            <span aria-hidden="true">+</span> {listText.importText}
+          </button>
+          {isLoggedIn && (
+            <>
               <label
                 data-testid="read-import-epub"
-                className={`flex-1 py-4 text-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors ${epubBusy ? "pointer-events-none opacity-60" : ""}`}
+                className={`${option} focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary ${epubBusy ? "pointer-events-none opacity-60" : ""}`}
               >
-                {epubBusy ? epubText.reading : <>+ {epubText.importEpub}</>}
+                {epubBusy ? (
+                  epubText.reading
+                ) : (
+                  <>
+                    <span aria-hidden="true">+</span> {epubText.importEpub}
+                  </>
+                )}
                 <input
                   ref={epubInput}
                   type="file"
@@ -376,223 +673,93 @@ export function ReadListClient({
                   }}
                 />
               </label>
-            )}
-            {isLoggedIn && gdoc && !gdocOpen && (
-              <button
-                type="button"
-                data-testid="read-import-gdoc"
-                onClick={() => setGdocOpen(true)}
-                className="flex-1 py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
-              >
-                + {gdocText.importGdoc}
-              </button>
-            )}
-            {isLoggedIn && drive && (
-              <DrivePick page="/reader" compact onImported={() => setReload((n) => n + 1)} />
-            )}
-            {isLoggedIn && youtube && (
-              <Link
-                href="/reader/youtube"
-                data-testid="read-import-youtube"
-                className="flex-1 py-4 text-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-blue-500 hover:text-blue-500 dark:hover:border-blue-400 dark:hover:text-blue-400 transition-colors"
-              >
-                + {ytText.entry}
-              </Link>
-            )}
-          </div>
-          {isLoggedIn && (
-            <p className="text-xs text-gray-500 dark:text-gray-400">{epubText.note}</p>
-          )}
-          {isLoggedIn && drive && <DrivePickHowTo />}
-          {isLoggedIn && gdoc && gdocOpen && (
-            <form
-              data-testid="read-gdoc-form"
-              className="flex flex-col sm:flex-row gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void handleGdoc();
-              }}
-            >
-              <input
-                type="url"
-                inputMode="url"
-                autoFocus
-                value={gdocUrl}
-                onChange={(e) => setGdocUrl(e.target.value)}
-                aria-label={gdocText.urlLabel.value}
-                placeholder="https://docs.google.com/document/d/…"
-                disabled={gdocBusy}
-                className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGdocOpen(false);
-                    setGdocUrl("");
-                    setGdocError("");
-                    setGdocPrivate(false);
-                  }}
-                  className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
-                >
-                  {gdocText.cancel}
-                </button>
-                <button
-                  type="submit"
-                  disabled={gdocBusy || !gdocUrl.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {gdocBusy ? gdocText.importing : gdocText.submit}
-                </button>
-              </div>
-            </form>
-          )}
-          {isLoggedIn && gdoc && gdocOpen && (
-            <p className="text-xs text-gray-500 dark:text-gray-400">{gdocText.note}</p>
-          )}
-          {isLoggedIn && gdoc && drive && gdocOpen && gdocPrivate && (
-            <GdocDriveImport
-              key={`${gdocUrl}|${driveReturned ?? ""}`}
-              url={gdocUrl}
-              returned={driveReturned}
-              errorText={gdocErrorText}
-              onImported={(id) => router.push(`/reader/${id}`)}
-            />
-          )}
-          {gdocError && (
-            <p
-              role="alert"
-              data-testid="read-gdoc-error"
-              className="text-sm text-[oklch(0.58_0.2_27)] dark:text-[oklch(0.72_0.16_27)]"
-            >
-              {gdocError}
-            </p>
-          )}
-          {epubError && (
-            <p
-              role="alert"
-              data-testid="read-epub-error"
-              className="text-sm text-[oklch(0.58_0.2_27)] dark:text-[oklch(0.72_0.16_27)]"
-            >
-              {epubError}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-4">
-          <input
-            type="text"
-            value={importTitle}
-            onChange={(e) => setImportTitle(e.target.value)}
-            placeholder="Title (optional)"
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-          <textarea
-            value={importText}
-            onChange={(e) => setImportText(e.target.value)}
-            placeholder="Paste your text here... Each line will become a learning segment."
-            rows={10}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y font-mono text-sm"
-          />
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={() => {
-                setIsImporting(false);
-                setImportText("");
-                setImportTitle("");
-              }}
-              className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleImport}
-              disabled={!importText.trim()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Import ({parseLinesFromContent(importText).length} lines)
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Loading state */}
-      {loading ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">Loading...</div>
-      ) : materials.length === 0 ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-          No materials imported yet. Click the button above to get started.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {materials.map((material) => (
-            <div
-              key={material.id}
-              data-row-id={material.id}
-              data-testid="read-row"
-              className="flex items-center justify-between gap-2 p-4 pe-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-            >
-              {renaming === material.id ? (
-                <TitleEditor
-                  initial={material.title}
-                  onSave={(title) => handleRename(material.id, title)}
-                  onDone={() => endRename(material.id)}
-                />
-              ) : (
-                <>
-                  <Link href={`/reader/${material.id}`} className="flex-1 min-w-0">
-                    <h3 className="font-medium truncate" data-testid="read-row-title">
-                      {material.title}
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {material.lineCount ?? material.lines.length} lines &middot;{" "}
-                      {material.words && (
-                        <span className="tabular-nums" data-testid="read-row-words">
-                          <WordCountText words={material.words} /> &middot;{" "}
-                        </span>
-                      )}
-                      {longDate(material.updatedAt)}
-                    </p>
-                  </Link>
-                  {material.words && (
-                    <Link href={`/reader/${material.id}`} className="ms-2" tabIndex={-1}>
-                      <BookRing words={material.words} />
-                    </Link>
-                  )}
-                  <RowMenu
-                    title={material.title}
-                    onRename={() => setRenaming(material.id)}
-                    onDelete={() => void handleDelete(material.id, material.title)}
-                  />
-                </>
+              <p className="-mt-1 mb-1 text-xs text-gray-500 dark:text-gray-400">{epubText.note}</p>
+              {epubError && (
+                <p role="alert" data-testid="read-epub-error" className={errorLine}>
+                  {epubError}
+                </p>
               )}
+            </>
+          )}
+          {isLoggedIn && gdoc && (
+            <button
+              type="button"
+              data-testid="read-import-gdoc"
+              onClick={() => setGdocOpen(true)}
+              className={option}
+            >
+              <span aria-hidden="true">+</span> {gdocText.importGdoc}
+            </button>
+          )}
+          {isLoggedIn && drive && (
+            <>
+              <DrivePick page="/reader" compact onImported={list.reload} />
+              <DrivePickHowTo />
+            </>
+          )}
+          {isLoggedIn && youtube && (
+            <Link href="/reader/youtube" data-testid="read-import-youtube" className={option}>
+              <span aria-hidden="true">+</span> {ytText.entry}
+            </Link>
+          )}
+          {!isLoggedIn && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">{homeText.signInForMore}</p>
+          )}
+          {(libraryLink || extra) && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-5">
+              {libraryLink}
+              {extra}
             </div>
-          ))}
+          )}
         </div>
-      )}
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50"
-          >
-            Prev
-          </button>
-          <span className="text-sm text-gray-600 dark:text-gray-400">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
-      )}
+      </ModalSheet>
     </div>
+  );
+}
+
+/** Where a line sits in a text, 0–100: the first line 0, the last 100. */
+function throughPct(line: number, lineCount: number): number {
+  if (lineCount <= 1) return line > 0 ? 100 : 0;
+  return Math.max(0, Math.min(100, Math.round((line / (lineCount - 1)) * 100)));
+}
+
+/** The book read last, reopened where it was left, with how far in. */
+function ContinueCard({ last, label }: { last: LastRead; label: string }) {
+  const homeText = useIntlayer("read-home");
+  const pct = throughPct(last.line, last.lineCount ?? last.lines.length);
+  return (
+    <section aria-label={label} data-testid="read-continue" className="mb-6">
+      <h2 className="mb-2 text-sm font-semibold text-gold-ink">{label}</h2>
+      <Link
+        href={`/reader/${encodeURIComponent(last.id)}`}
+        data-testid="read-continue-link"
+        className="flex items-center gap-3 rounded-xl bg-gold-100 p-4 text-[var(--foreground)] transition-colors hover:bg-gold-200 dark:bg-gold-950 dark:hover:bg-gold-900"
+      >
+        <span className="flex-1 min-w-0">
+          <span className="block text-lg font-semibold leading-snug line-clamp-2">
+            {last.title}
+          </span>
+          <span
+            aria-hidden="true"
+            className="mt-2 block h-1.5 overflow-hidden rounded-full bg-gold-200 dark:bg-gold-800"
+          >
+            <span className="block h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+          </span>
+          <span
+            className="mt-1.5 block text-sm tabular-nums text-gray-700 dark:text-gray-300"
+            data-testid="read-continue-pct"
+          >
+            {homeText.through.value.replace("{p}", String(pct))}
+            {last.readAt ? ` · ${longDate(last.readAt)}` : null}
+          </span>
+        </span>
+        <span
+          aria-hidden="true"
+          className="text-2xl text-blue-600 dark:text-blue-300 rtl:-scale-x-100"
+        >
+          {"›"}
+        </span>
+      </Link>
+    </section>
   );
 }

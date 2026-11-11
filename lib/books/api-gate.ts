@@ -1,5 +1,5 @@
 // The /api/books/* gate, shared by import, resolve and search: a session, D1,
-// and `books.catalogue` or the owner; plus a per-user D1 rate limit.
+// and `library.catalogue` (or the `dev` permission); plus a per-user D1 rate limit.
 
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
@@ -8,7 +8,7 @@ import { dbBackend, getD1 } from "@/lib/d1";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
 import { hit } from "@/lib/security/throttle";
-import { booksOn } from "./gate";
+import { libraryOn } from "./gate";
 
 export const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
 
@@ -18,7 +18,8 @@ export async function booksApiUser(): Promise<{ userId: string } | NextResponse>
   const userId = session?.user?.id;
   if (!userId) return fail("Unauthorized", 401);
   if (dbBackend() !== "d1") return fail("Not found", 404);
-  if (!booksOn(await readFlags(), isDev(session.user.email ?? null))) return fail("Not found", 404);
+  if (!libraryOn(await readFlags(), isDev(session.user.email ?? null)))
+    return fail("Not found", 404);
   return { userId };
 }
 

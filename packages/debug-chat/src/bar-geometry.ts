@@ -79,6 +79,24 @@ export const TAP_44_CSS =
   '[data-lk-tap]{position:relative}[data-lk-tap]::before,[data-lk-tap].tap-40::before{content:"";position:absolute;inset-inline:0;top:50%;height:max(100%,44px);transform:translateY(-50%)}';
 
 /**
+ * A press target, not text (owner, 2026-11-11): a long press on the mic
+ * (push to talk) or the bar must not start an iOS selection or its callout.
+ * Only on controls and the bar; the input and the log stay selectable.
+ */
+export const NO_SELECT = {
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  WebkitTouchCallout: "none",
+} as CSSProperties;
+
+/** The input inside a NO_SELECT bar: text again. */
+export const TEXT_SELECT = {
+  userSelect: "text",
+  WebkitUserSelect: "text",
+  WebkitTouchCallout: "default",
+} as CSSProperties;
+
+/**
  * The mic: CONTROL_W wide to the touch, its circle the line-sized square at
  * its end (the start padding takes the rest). Folded, that end is the bar's corner.
  */
@@ -98,3 +116,16 @@ export const MIC_RING: CSSProperties = {
   insetInlineEnd: "var(--lk-mic-ring)",
   insetInlineStart: `calc(var(--lk-mic-w) - var(--lk-bar-line, ${BAR_LINE}) + var(--lk-mic-ring))`,
 };
+
+/**
+ * The glass strip's corners (owner, 2026-11-10): with the progress bar in
+ * it, the bar is a full pill (its end caps half its height) and the strip's
+ * top corners are concentric with those caps — the cap's radius plus the
+ * inset between them, the same centre. `slotH` is the bar's slot (the inset
+ * above it included), as measured; the bottom corners stay the bar's own.
+ */
+export const STRIP_INSET_PX = 4;
+export function stripTopRadius(slotH: number, inset = STRIP_INSET_PX): number {
+  const barH = Math.max(0, slotH - inset);
+  return Math.round((barH / 2 + inset) * 10) / 10;
+}

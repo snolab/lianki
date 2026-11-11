@@ -419,6 +419,24 @@ const dictionary = {
       sw: "Tafadhali kamilisha ukaguzi wa usalama kisha ujaribu tena.",
       mr: "सुरक्षा तपासणी पूर्ण करून पुन्हा प्रयत्न करा.",
     }),
+    usageLink: t({
+      en: "Credits usage",
+      zh: "积分明细",
+      ja: "クレジット利用明細",
+      ko: "크레딧 사용 내역",
+      hi: "क्रेडिट का उपयोग",
+      es: "Uso de créditos",
+      fr: "Utilisation des crédits",
+      ar: "استخدام الرصيد",
+      bn: "ক্রেডিট ব্যবহার",
+      pt: "Uso de créditos",
+      ru: "Расход баланса",
+      ur: "کریڈٹ کا استعمال",
+      id: "Pemakaian kredit",
+      de: "Guthabenverbrauch",
+      sw: "Matumizi ya salio",
+      mr: "क्रेडिट वापर",
+    }),
     reasons: {
       topup: t({
         en: "Top-up",
@@ -575,6 +593,7 @@ const context: KeyContext<typeof dictionary.content> = {
   failed: `${W} generic error notice after a top-up or pass purchase fails. Short sentence asking to try again.`,
   tooMany: `${W} error when top-up attempts hit the rate limit. Asks the user to wait a few minutes.`,
   captcha: `${W} error when the Turnstile security check was not passed before a top-up. Asks to complete it and retry.`,
+  usageLink: `${W} link beside the history heading that opens /membership/credits, the full itemised credits usage page (filters, month totals, CSV). Two to four words, the page's name.`,
   reasons: {
     topup: `${W} history row label: credits bought with money. One noun.`,
     pass: `${W} history row label: credits spent on a Pro pass (followed by ' · 1 month'). One noun.`,

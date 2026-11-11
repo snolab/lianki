@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { Icon, type IconName } from "@/app/components/icons";
 import { longDateTime } from "@/lib/dates";
+import { useIntlayer } from "next-intlayer";
+import { fill } from "@/lib/roadmap/labels";
 
 type Props = {
   /** MongoDB card count. Pass null/undefined for guest (no cloud storage). */
@@ -27,21 +29,23 @@ function Box({ icon, label, count }: { icon: IconName; label: string; count: num
 }
 
 function UserscriptBox({ status }: { status: UserscriptStatus | null }) {
+  const s = useIntlayer("list-ui").sync;
   if (!status) return null;
   return (
     <div
       className="flex flex-col items-center border border-blue-300 dark:border-blue-700 rounded-md px-3 py-2 min-w-[64px] text-center"
-      title={`Last sync: ${longDateTime(status.lastSync)}`}
+      title={fill(s.lastSync.value, { time: longDateTime(status.lastSync) })}
     >
       <Icon name="puzzlePiece" className="text-lg mb-0.5" />
-      <span className="text-xs text-gray-500 dark:text-gray-400">Extension</span>
+      <span className="text-xs text-gray-500 dark:text-gray-400">{s.userscript}</span>
       <span className="font-mono font-bold text-sm">v{status.version}</span>
-      <span className="text-xs text-gray-400">{status.cardCount} cards</span>
+      <span className="text-xs text-gray-400">{fill(s.cards.value, { n: status.cardCount })}</span>
     </div>
   );
 }
 
 export function SyncStatusBanner({ mongoCount }: Props) {
+  const s = useIntlayer("list-ui").sync;
   const [gmCount, setGmCount] = useState<number | null>(null);
   const [idbCount, setIdbCount] = useState<number | null>(null);
   const [userscript, setUserscript] = useState<UserscriptStatus | null>(null);
@@ -80,13 +84,13 @@ export function SyncStatusBanner({ mongoCount }: Props) {
     <div className="flex items-center gap-2 flex-wrap">
       <UserscriptBox status={userscript} />
       {userscript && <span className="text-gray-400 text-lg">→</span>}
-      <Box icon="floppyDisk" label="Script" count={gmCount} />
+      <Box icon="floppyDisk" label={s.script.value} count={gmCount} />
       <span className="text-gray-400 text-lg">→</span>
-      <Box icon="folderSimple" label="Local" count={idbCount} />
+      <Box icon="folderSimple" label={s.local.value} count={idbCount} />
       {!isGuest && (
         <>
           <span className="text-gray-400 text-lg">→</span>
-          <Box icon="cloud" label="Cloud" count={mongoCount} />
+          <Box icon="cloud" label={s.cloud.value} count={mongoCount} />
         </>
       )}
     </div>

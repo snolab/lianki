@@ -374,7 +374,9 @@ else can catch it ([secrets-and-auth.md](secrets-and-auth.md), "CLI login"):
 - **Narrow reach.** Only `/api/prefs` takes the token as `Authorization:
 Bearer` for a user's data (`lib/api-token-user.ts`; a test fails if any
   other route imports it); a bad token is 401 with no fall back to the cookie.
-  `DELETE /api/cli-login/token` lets a token revoke itself and nothing else.
+  `DELETE /api/cli-login/token` lets a token revoke itself and nothing else;
+  `GET` on the same path tells a token its own name, permissions and expiry
+  (`lianki mcp` lists its tools by them), nothing about any other token.
 - **Limits.** The exchange: 10 per IP per 15 minutes (`auth_throttle`).
 - **On the Mac**: the macOS Keychain, written through `security -i` on stdin
   (never in a process list), else a 0600 file; the CLI never prints it.
@@ -472,6 +474,76 @@ address are stored. Local servers never send. Hard bounces and complaints
 arrive by Resend's Svix-signed webhook (`RESEND_WEBHOOK_SECRET`; 503 without it,
 401 on a bad or stale signature) and suppress the address; a complaint about an
 invite counts toward its inviter's report block. Details: [payments.md](payments.md), "Invite by email".
+
+## 14. Voiceprint ops: one passkey approval for ten minutes (2026-11-11)
+
+The owner's tap card (2026-11-11 01:28 JST): one Face ID / Touch ID covers
+every voiceprint op (enrol, save to account, restore, delete, delete the kept
+recordings, re-compute, export) for `voiceprint.passkeyWindowMs` (config,
+default 600000 = 10 min; 0 = a prompt per op as before). Details and the flow:
+[local-stt.md](local-stt.md), "One approval for ten minutes".
+
+- **What it is.** After a verified assertion with UV, lianki.com returns a
+  grant (Ed25519, `aud` `lianki-voiceprint-grant`) bound to the account (uid),
+  the sign-in session (a SHA-256 tag of the session id) and the page's device
+  slug. The page keeps it in module memory only (no storage, not on
+  `globalThis`): a reload or a sign-out drops it, and a sign-out also ends the
+  session it is bound to, so lianki.com refuses it. From it, `POST
+  /api/dev/voiceprint-ticket {step:"grant"}` mints a normal voiceprint ticket:
+  single use (a fresh jti, spent once on the Mac and once on lianki.com), 60 s
+  and never past the grant. The Mac's checks (aud, op, device, uv, once) are
+  unchanged, and so is everything that is not a voiceprint ticket: the grant's
+  audience is accepted nowhere else, so it is never a step-up for anything
+  else (payments, permissions, tokens, sign-in).
+- **The trade-off.** Inside the window, page code on that device and session
+  (an eval, an injected script, a malicious extension) can obtain voiceprint
+  tickets without the owner's face: it could delete the print or the kept
+  recordings, export the features to his own account, restore or re-enrol,
+  and start an enrolment that keeps audio. Before, each of those needed a
+  fresh Face ID. What still holds: it cannot leave this account (uid), this
+  sign-in session or this device; the panel's buttons still ignore synthetic
+  clicks; the Mac only accepts a ticket once, for its op and device; nothing
+  outlives the window, and a shorter `voiceprint.passkeyWindowMs` (or 0) at
+  /dev/config shortens or ends grants already out at once. The panel shows
+  the window's end ("… until 14:05") with **End now**.
+- **Tests**: `unit/voiceprint-window.test.ts` (window expiry and config
+  shortening, per-op single use, another account / session / device refused,
+  a grant opens no challenge or ticket, no grant → the prompt).
+
+## 15. Lianki's speech servers for other accounts (2026-11-11, dark)
+
+The owner's decision (Slack, 2026-11-11 00:3x JST): other accounts may stream
+their mic to the same speech server, through WebRTC first. Shipped dark: flag
+`stt.worker` off; everything below answers 404 while it is. Details:
+[local-stt.md](local-stt.md), "Lianki's speech servers for everyone".
+
+- **No new door to the owner's Mac.** The speech server dials **out** to the
+  registry (lianki-push DO; no inbound port, no new Worker route: under the
+  existing `/api/version/*`). A page reaches it only through a DataChannel the
+  sidecar (`stt-peer`) answers, bridged to a separate 127.0.0.1 listener.
+- **Who.** An admin-managed allowlist (`/dev/stt-access`, default deny,
+  audited). Each session needs a **v2 ticket** (Ed25519, its own audience
+  `lianki-stt2`, the account id, scope, limits; 60 s; spent once by the
+  registry and once by the speech server). A v2 ticket never opens the
+  owner's tunnel listener and a v1 ticket never a public session.
+- **Workers.** Only keys in `stt_worker` (added by the CLI after the owner's
+  tap card) may register, by signing the registry's nonce; revocable at
+  `/dev/stt-access`. A worker speaks only for its own sessions.
+- **Limits.** Per account: one live session, 6 tickets a minute, 30 audio
+  minutes a day; per utterance 40 s and per session 900 s (signed into the
+  ticket, enforced by the speech server); capacity 3 with 1 kept for the
+  owner (config `stt.worker.*`).
+- **The owner's data stays his.** On the peer listener: no speaker check, no
+  speaker proof, no voiceprint filter, no enrolment or voiceprint op.
+- **Consent.** A card before anything is sent; user-facing text says only
+  "Lianki's speech servers"; the audio is not stored.
+- **Not done (needs the owner):** TURN (secrets `STT_TURN_KEY_ID`,
+  `STT_TURN_KEY_TOKEN`), a WSS tunnel hostname for the fallback (DNS + tunnel
+  ingress), the first worker row, and the allowlist rows.
+- **Tests**: `unit/stt-ticket.test.ts`, `unit/stt-worker-store.test.ts`,
+  `unit/stt-session.test.ts`, `unit/stt-registry.test.ts`,
+  `unit/local-stt-peer.test.ts`, `unit/stt-peer-go.test.ts`,
+  `unit/public-stt.test.ts`.
 
 ## Owner checklist
 

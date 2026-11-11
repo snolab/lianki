@@ -116,10 +116,9 @@ self.addEventListener("fetch", (event) => {
   if (request.headers.get("accept")?.includes("text/html")) {
     event.respondWith(
       fetch(request)
-        .then((res) => {
-          // Cache successful HTML responses
-          const cloned = res.clone();
-          if (cacheable(res)) caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
+        .then(async (res) => {
+          // Cache successful HTML responses (before the page gets it: keep()).
+          if (cacheable(res)) await keep(request, res);
           return res;
         })
         .catch(async () => {
@@ -147,7 +146,7 @@ async function cacheThenNetwork(request) {
   const cached = await cache.match(request);
   if (cached) return cached;
   const res = await fetch(request);
-  if (cacheable(res)) cache.put(request, res.clone());
+  if (cacheable(res)) await keep(request, res);
   return res;
 }
 
@@ -155,11 +154,31 @@ async function networkThenCache(request) {
   const cache = await caches.open(CACHE_NAME);
   try {
     const res = await fetch(request);
-    if (cacheable(res)) cache.put(request, res.clone());
+    if (cacheable(res)) await keep(request, res);
     return res;
   } catch {
     return (await cache.match(request)) ?? Response.error();
   }
+}
+
+/**
+ * Write a copy of `res` to the cache, and only then let the page have `res`.
+ *
+ * Never hand the page a response while its clone is still being written: in
+ * WebKit (the owner's iPhone PWA) a page that navigated away before such a
+ * response finished left the cache write hanging, and the next navigation in
+ * that tab never started — no request reached the server for 30 s and more.
+ * Seen as qa-sign-out timing out in WebKit only (Full QA, 2026-11-10). In the
+ * Playwright image's WebKit, 100 runs of six quick navigations each: 6 hung
+ * with the write in the background, none with it awaited, none with no cache
+ * write at all (unit/sw-cache-write.test.ts holds the order). The cost: the
+ * page gets a response once it has fully arrived, not as it streams. A failed
+ * write (quota, private mode) still answers the page.
+ */
+async function keep(request, res) {
+  try {
+    await (await caches.open(CACHE_NAME)).put(request, res.clone());
+  } catch {}
 }
 
 /** Kept for offline use: a good answer that is not the owner's live preview (x-lk-live). */

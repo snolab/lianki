@@ -10,6 +10,7 @@ import {
   IDLE_RESUME_MS,
   RESUME_TAIL_MS,
   SPEAK_KEY,
+  SPEECH_REFUSED_MS,
   SPEECH_START_MS,
   type UtterLike,
   chunk,
@@ -66,11 +67,21 @@ describe("sentences", () => {
 
 /** speechSynthesis in memory: one utterance at a time is all the session ever gives it. */
 function harness(
-  o: { enabled?: boolean; here?: boolean; owner?: { claim(): boolean; release(): void } } = {},
+  o: {
+    enabled?: boolean;
+    here?: boolean;
+    touch?: boolean;
+    owner?: { claim(): boolean; release(): void };
+  } = {},
 ) {
   const spoken: (UtterLike & { lang: string })[] = [];
   let cancels = 0;
-  const flags = { enabled: o.enabled ?? true, here: o.here ?? false, synth: true };
+  const flags = {
+    enabled: o.enabled ?? true,
+    here: o.here ?? false,
+    touch: o.touch ?? false,
+    synth: true,
+  };
   const timers: { f: () => void; ms: number; live: boolean }[] = [];
   const v = createVoice({
     synth: () =>
@@ -84,6 +95,7 @@ function harness(
       ({ text, lang, onend: null, onerror: null, onboundary: null }) as UtterLike,
     enabled: () => flags.enabled,
     here: () => flags.here,
+    touch: () => flags.touch,
     owner: o.owner,
     setTimer: (f, ms) => {
       const t = { f, ms, live: true };
@@ -185,6 +197,37 @@ describe("voice session: the focus rule (mic off)", () => {
   });
 });
 
+describe("voice session: on a phone the speaker toggle alone decides (owner 2026-11-10)", () => {
+  it("reads with the input unfocused and the mic never used", () => {
+    const h = harness({ enabled: true, here: false, touch: true });
+    expect(h.v.voiced()).toBe(false);
+    expect(h.v.shouldSpeak()).toBe(true);
+    expect(h.v.state().touch).toBe(true);
+    expect(h.v.reply("Read on the reader.")).toBe(true);
+    expect(h.texts()).toEqual(["Read on the reader."]);
+  });
+
+  it("his mute still wins", () => {
+    const h = harness({ enabled: false, here: false, touch: true });
+    expect(h.v.shouldSpeak()).toBe(false);
+    expect(h.v.reply("Muted.")).toBe(false);
+  });
+
+  it("the mic stopping keeps reading on a phone (the toggle is on)", () => {
+    const h = harness({ enabled: true, here: false, touch: true });
+    h.v.setMic(true);
+    h.v.reply("One. Two.");
+    h.v.setMic(false);
+    expect(h.v.state().queued).toBe(2);
+  });
+
+  it("a computer still needs focus or the sticky mic state", () => {
+    const h = harness({ enabled: true, here: false, touch: false });
+    expect(h.v.state().touch).toBe(false);
+    expect(h.v.reply("Unfocused desk.")).toBe(false);
+  });
+});
+
 describe("voice session: sticky read-aloud once the mic was used (owner 2026-11-04)", () => {
   it("after the mic, replies to typed lines are read with the input unfocused; no time window", () => {
     const h = harness({ enabled: true, here: false });
@@ -224,7 +267,7 @@ describe("voice session: sticky read-aloud once the mic was used (owner 2026-11-
     expect(h.v.state().queued).toBe(2);
   });
 
-  it("keeps the state where it is told (sessionStorage in the page)", () => {
+  it("keeps the state where it is told (localStorage in the page)", () => {
     let kept = false;
     const v = createVoice({
       synth: () => null,
@@ -242,6 +285,26 @@ describe("voice session: sticky read-aloud once the mic was used (owner 2026-11-
 });
 
 describe("voice session: the queue", () => {
+  it("drop: a withdrawn line's sentences go (stopped if playing); the others read on", () => {
+    const h = harness();
+    h.v.setMic(true);
+    h.v.reply("Ask one. Ask two.", { id: "ask" });
+    h.v.reply("Plain line.", { id: "p" });
+    expect(h.texts()).toEqual(["Ask one."]);
+    expect(h.v.drop("ask")).toBe(true);
+    expect(h.cancels()).toBe(1);
+    expect(h.texts()).toEqual(["Ask one.", "Plain line."]);
+    expect(h.v.state().queued).toBe(1);
+    expect(h.v.drop("ask")).toBe(false);
+    // Queued behind another line: only its own sentences go, the playing one is untouched.
+    h.v.reply("Later ask.", { id: "ask2" });
+    expect(h.v.drop("ask2")).toBe(true);
+    expect(h.cancels()).toBe(1);
+    h.end();
+    expect(h.texts()).toEqual(["Ask one.", "Plain line."]);
+    expect(h.v.state().queued).toBe(0);
+  });
+
   it("FIFO, one utterance per sentence; a new reply waits and never cuts one off", () => {
     const h = harness();
     h.v.setMic(true);
@@ -428,9 +491,14 @@ describe("voice(): the browser session, shared on globalThis", () => {
   it("one session per page, reading through speechSynthesis with the speaker setting and focus", () => {
     const g = globalThis as Record<string, unknown>;
     const saved = Object.fromEntries(
-      ["speechSynthesis", "SpeechSynthesisUtterance", "localStorage", "document", "__lkVoice"].map(
-        (k) => [k, g[k]],
-      ),
+      [
+        "speechSynthesis",
+        "SpeechSynthesisUtterance",
+        "localStorage",
+        "document",
+        "matchMedia",
+        "__lkVoice",
+      ].map((k) => [k, g[k]]),
     );
     const spoken: (EventTarget & { text: string; lang: string; voice?: unknown })[] = [];
     let store: Record<string, string> | null = {};
@@ -455,6 +523,8 @@ describe("voice(): the browser session, shared on globalThis", () => {
         },
       };
       g.document = doc;
+      // A computer (fine pointer): the focus rule applies.
+      g.matchMedia = () => ({ matches: true });
       delete g.__lkVoice;
       const v = voice();
       expect(voice()).toBe(v);
@@ -1115,6 +1185,94 @@ describe("voice session: never silent without saying so (Android, no speechSynth
     // One that starts is not given up on.
     spoken[1].onstart?.();
     expect(timers.filter((x) => x.live && x.ms === SPEECH_START_MS)).toHaveLength(0);
+  });
+
+  it("iOS dropping speak() before the page's first tap (no event at all) waits for a tap, never stuck", () => {
+    // WebKit on iOS: speak() outside a gesture returns with no event, and
+    // speechSynthesis stays idle. The reply on /reader after a reload waited
+    // behind it forever, and every later one too (2026-11-10).
+    let unlocked = false;
+    const spoken: UtterLike[] = [];
+    const synth = {
+      speaking: false,
+      pending: false,
+      speak: (u: UtterLike) => {
+        if (!unlocked) return; // dropped
+        spoken.push(u);
+        synth.speaking = true;
+      },
+      cancel: () => {},
+    };
+    const timers: { f: () => void; ms: number; live: boolean }[] = [];
+    const logs: Record<string, unknown>[] = [];
+    const v = createVoice({
+      synth: () => synth,
+      utter: (text) => ({ text, onend: null, onerror: null, onboundary: null }) as UtterLike,
+      enabled: () => true,
+      here: () => false,
+      touch: () => true,
+      setTimer: (f, ms) => {
+        const t = { f, ms, live: true };
+        timers.push(t);
+        return t;
+      },
+      clearTimer: (t) => {
+        if (t) (t as { live: boolean }).live = false;
+      },
+    });
+    v.setLog((ev) => void logs.push(ev));
+    const fire = (ms: number) => {
+      for (const t of timers.filter((x) => x.live && x.ms === ms)) {
+        t.live = false;
+        t.f();
+      }
+    };
+    expect(v.reply("你好。在吗？")).toBe(true);
+    expect(spoken).toHaveLength(0);
+    fire(SPEECH_REFUSED_MS);
+    expect(v.state()).toMatchObject({ blocked: true, queued: 2, speaking: false });
+    expect(logs.some((l) => l.ev === "voice-refused")).toBe(true);
+    // A later reply queues behind, it does not vanish.
+    v.reply("第二句。");
+    expect(v.state().queued).toBe(3);
+    // The tap (DebugChat's unblockVoice speaks an empty utterance in it): read on from the first.
+    unlocked = true;
+    v.unblock();
+    expect(spoken.map((u) => u.text)).toEqual(["你好。"]);
+    fire(SPEECH_REFUSED_MS);
+    expect(v.state().blocked).toBe(false);
+    synth.speaking = false;
+    spoken[0].onend?.();
+    synth.speaking = true;
+    expect(spoken.map((u) => u.text)).toEqual(["你好。", "在吗？"]);
+  });
+
+  it("an utterance that is speaking or pending is never taken for a dropped one", () => {
+    const spoken: UtterLike[] = [];
+    const synth = {
+      speaking: false,
+      pending: true,
+      speak: (u: UtterLike) => void spoken.push(u),
+      cancel: () => {},
+    };
+    const timers: { f: () => void; ms: number; live: boolean }[] = [];
+    const v = createVoice({
+      synth: () => synth,
+      utter: (text) => ({ text, onend: null, onerror: null, onboundary: null }) as UtterLike,
+      enabled: () => true,
+      here: () => true,
+      setTimer: (f, ms) => {
+        const t = { f, ms, live: true };
+        timers.push(t);
+        return t;
+      },
+      clearTimer: (t) => {
+        if (t) (t as { live: boolean }).live = false;
+      },
+    });
+    v.reply("One.");
+    for (const t of timers.filter((x) => x.live && x.ms === SPEECH_REFUSED_MS)) t.f();
+    expect(v.state()).toMatchObject({ blocked: false, queued: 1, speaking: true });
   });
 
   it("speechSynthesis refusing (not-allowed, no tap yet) waits for the tap instead of skipping", () => {

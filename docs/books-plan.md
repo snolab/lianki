@@ -187,6 +187,9 @@ Owner, 01:36–01:44 JST: "这几个公版的你直接帮我列到预置里。�
 then: a /books page for every user, grouped by language, stable slugs in the
 title's own language, the source link visible inside the imported book.
 
+> Since 2026-11-10 this catalogue is **/library**, and /books is the user's
+> own shelf: see "/library and /books" below.
+
 - **Roles.** **/books** (nav "公版书库 / Public-domain library") is the shared
   catalogue and never lists anyone's own books. **/reader** (nav "我的阅读 / My
   reading") is the user's own material — pasted text, EPUBs, Google Docs, and
@@ -290,7 +293,98 @@ title's own language, the source link visible inside the imported book.
   its one action is the primary.
 - **Gate:** flag `books.catalogue` (off: the owner only), D1 only; the nav
   item carries `flag` in `lib/app-nav.ts` and the layout passes the visible
-  ones. An added book opens in the reader.
+  ones. An added book opens in the reader. Replaced on 2026-11-10 by
+  `library.catalogue` (below).
+
+### /library and /books (owner, 01:47 JST 2026-11-10)
+
+The catalogue moved: **/library** (nav 书库 / Library) is the catalogue
+described above, **/books** (nav 我的书 / My books) is the user's own shelf.
+"公版" is gone from the catalogue's title, nav item and links (the intro still
+explains the public-domain rule; the statuses of the find-more search keep it,
+they are about that rule).
+
+- **/library**, **/library/<lang>/<slug>**: everything this section's
+  catalogue had (lists, filter, find more, the book page). Each card's one
+  action is "加入我的阅读"; the book then sits on /books and in /reader.
+  `bookHref` gives `/library/<lang>/<slug>`. The `/api/books/*` routes keep
+  their names (docs/url-principles.md, rule 7).
+- **/books**: My books, signed in (a visitor sees a sign-in button and a link
+  to /library). The shelf is the user's read_materials whose `source_key`
+  says it is a book: `preset:<lang>/<slug>` (added from /library) or
+  `file:<id>` (a book file they imported themselves) — `lib/books/shelf.ts`,
+  one query, no book text read. Pasted text, Google Docs, vibes and songs
+  stay in /reader only. EPUBs imported in /reader before this have no source
+  key and stay in /reader. Grouped by language, the preferred languages first
+  (`orderByPreferred`, lib/lang-order.ts), newest first inside a group; a
+  book opens at /reader/<id>.
+- **Old links /books/<lang>/<slug>** (saved links, shares): never broken,
+  decided per viewer by `legacyBookTarget` (lib/books/legacy-link.ts):
+  - the book is on the viewer's shelf (signed in, `books.mine` on, added): the
+    page stays, their own book's page, with "← 我的书";
+  - anyone else (signed out, not added, `books.mine` off): **308** to
+    `/library/<lang>/<slug>`, the query kept, the slug normalised as the
+    route does (a bad one still lands on /library, which 404s).
+
+  It is not a `MOVED_ROUTES` row: that table holds unconditional moves, and
+  this answer depends on the viewer. The page is dynamic, so the redirect is
+  sent with `Cache-Control: private, no-store` and no browser keeps the 308.
+  `/books` itself never redirects while `books.mine` is on; off, it is a
+  temporary redirect to /library.
+- **Gates** (lib/books/gate.ts): two positive flags, on by default, no
+  audience (owner: never owner-only): `library.catalogue` (/library, its nav
+  item, the reader's link, `/api/books/import|resolve|search`) and
+  `books.mine` (/books, its nav item, the shelf's page for old links). A
+  `dev` holder keeps both while a flag is off. `books.catalogue` was migrated,
+  not aliased: it was on for everyone, the new key defaults on, and its
+  stored row is ignored now (an unknown key).
+- **Tests:** `unit/books-shelf.test.ts` (shelf rows, grouping, the query,
+  every legacy-link case), `unit/books-catalogue.test.ts` (gates, nav,
+  `/library` hrefs).
+
+### Your own books on /books (owner, 01:47 JST 2026-11-10)
+
+"Import your own book" on /books: the user picks an EPUB (or a plain-text
+.txt/.md file); it becomes one of their books and opens in the reader.
+
+- **Stored in My Files.** The browser sends the file to
+  `POST /api/import/files?source=books`: the file store's own row and R2
+  object (`inbox_item` source `books`, folder "Books" / 书 on /my/files), its
+  limits (one file 20 MB, the rolling day, the stored total:
+  `lib/inbox/config.ts`) and its privacy: only the uploader lists, opens or
+  deletes it, no shared link. Upload and storage are recorded like any
+  stored file (`lib/inbox/charge.ts`, which records cost and debits nothing
+  yet). The gate for this source is `books.mine` (every other source keeps
+  `import.any`); /my/files lists a user's files when either is on.
+- **Parsed on the server, no AI, no credits:** `POST /api/books/mine
+  { file }` (lib/books/own-import.ts) reads the stored file back and parses it
+  with the reader's own EPUB parser (lib/epub/, now also run in the Worker,
+  same zip-bomb limits): chapters (EPUB 3 nav, else NCX, else one per
+  document), title, author, language (`dc:language`, canonical BCP 47, else
+  detected from the first lines, lib/read/lang-detect.ts) and the cover
+  (lib/epub/cover.ts: EPUB 3 `cover-image`, EPUB 2 `<meta name="cover">`,
+  else an image named "cover"; JPEG/PNG/GIF/WebP whose bytes match their
+  type, at most 2 MB; never SVG). A text file: one paragraph per line, the
+  file name as its title, `source: "text"`. DRM-protected books are refused,
+  never decrypted. A file that is not a readable book is deleted again and
+  the reason shown (unsupported, not an EPUB, DRM, no text, too much text).
+- **One book per file:** the read_material is keyed `file:<file id>`, so it
+  sits on the shelf (lib/books/shelf.ts) and importing the same stored file
+  again opens it. The book's meta carries `cover: 1` when it has one.
+- **The cover** is kept at R2 `books-cover/<user>/<file id>` and served only
+  to its owner, `GET /api/books/mine/<book id>/cover` (private cache, nosniff,
+  `default-src 'none'`); anyone else 404. Deleting the file in My Files
+  deletes the cover; the book stays in their reading until they delete it in
+  /reader.
+- **Limits are named** in `OWN_BOOK` (lib/books/own-import.ts): the file cap
+  (the store's), the cover cap, the accepted types, the lines read to detect
+  a language.
+- **Tests:** `unit/books-own-import.test.ts` builds its own fixtures (EPUB 3
+  and EPUB 2 with text written for the test, a 1×1 PNG cover, text files):
+  formats, titles, languages, chapters, covers (a fake or oversized one left
+  out), DRM / not a book / no text / too large, once per file, another
+  account's or another folder's file 404, a failed parse removes the file.
+  QA `qa-books` imports a generated EPUB at iPhone size, light and dark.
 
 ### Admission rule: public domain per country (owner, 02:18 JST 2026-11-05)
 

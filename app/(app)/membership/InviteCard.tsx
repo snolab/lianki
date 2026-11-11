@@ -128,7 +128,7 @@ export function InviteCard({ onProChanged }: { onProChanged: () => void }) {
                   className={f.activated ? "text-green-600" : "opacity-50"}
                 />
                 <span className="font-mono">{f.email}</span>
-                {f.purchased && <Icon name="star" className="text-yellow-500" />}
+                {f.purchased && <Icon name="star" className="text-gold-600 dark:text-gold-300" />}
               </li>
             ))}
           </ul>
@@ -163,6 +163,7 @@ export function InviteCard({ onProChanged }: { onProChanged: () => void }) {
           <p
             className={`text-sm ${giftMsg.ok ? "text-green-700 dark:text-green-300" : "text-red-600 dark:text-red-400"}`}
           >
+            {!giftMsg.ok && <Icon name="warning" className="me-1.5" />}
             {giftMsg.text}
           </p>
         )}

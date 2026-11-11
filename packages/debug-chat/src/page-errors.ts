@@ -129,7 +129,7 @@ export function argText(v: unknown): string {
 
 export type ReporterOpts = {
   now?: () => number;
-  /** The build (NEXT_PUBLIC_BUILD_ID). */
+  /** The build (<html data-build>, lib/build-id.ts). */
   rev?: string;
   /** The page's own path (location.pathname). */
   pagePath: () => string;

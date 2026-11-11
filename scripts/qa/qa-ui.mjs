@@ -128,6 +128,16 @@ log(`✓ roadmap loaded: ${await page.title()}`);
   }
 }
 
+// 5b'. /lab/** is for developers only (owner, 2026-11-10): a 404 here too.
+for (const path of ["/lab", "/lab/ai-vocab", "/lab/polyglot"]) {
+  const r = await ctx.request.get(`${BASE}${path}`, { maxRedirects: 0 });
+  if (r.status() === 404) log(`✓ ${path} is 404 for a signed-in user without dev`);
+  else {
+    log(`✗ ${path} for a user without dev: HTTP ${r.status()} (want 404)`);
+    ok = false;
+  }
+}
+
 // 5c0. Regressions from the iOS device QA (2026-10-29).
 {
   // /list delete buttons once read "[object Object]" (IntlayerNode in an
@@ -141,7 +151,7 @@ log(`✓ roadmap loaded: ${await page.title()}`);
     return r.status;
   });
   await page.goto(`${BASE}/list`, { waitUntil: "networkidle" });
-  const del = page.locator("li > button:last-child").first();
+  const del = page.locator('[data-testid="list-card"] > button:last-child').first();
   const title = added === 200 ? await del.getAttribute("title").catch(() => null) : null;
   const label = added === 200 ? await del.getAttribute("aria-label").catch(() => null) : null;
   check(
@@ -196,9 +206,9 @@ log(`✓ roadmap loaded: ${await page.title()}`);
     );
     const shift = await cls.evaluate(() => window.__cls);
     check(
-      info.length === 8 &&
+      info.length === 9 &&
         info.every((c) => c.text > 20 && c.h >= 160 && c.art && c.hidden && c.wordless && !c.img),
-      `/home Explore: 8 cards, each with a line of text over a wordless drawing (${JSON.stringify(info[0])})`,
+      `/home Explore: 9 cards without dev (the Lab two hidden; the LiCards three last), each with a line of text over a wordless drawing (${JSON.stringify(info[0])})`,
     );
     check(shift < 0.01, `/home Explore cards cause no layout shift (CLS ${shift.toFixed(4)})`);
     // The Word lists card opens the "Add a list" tree, in view, even when this
@@ -330,14 +340,16 @@ for (const [w, h] of [
     return r;
   };
   const top = await reach();
-  const want = ["/home", "/words", "/review", "/lab/polyglot", "/membership"];
+  const want = ["/home", "/words", "/review", "/roadmap", "/membership"];
   check(
     top.lost.length === 0 &&
       want.every((x) => top.hrefs.includes(x)) &&
-      !["/import", "/data", "/preferences"].some((x) => top.hrefs.includes(x)) &&
+      !["/my", "/import", "/data", "/my/preferences", "/lab", "/lab/polyglot"].some((x) =>
+        top.hrefs.includes(x),
+      ) &&
       top.footIn &&
       !top.footShown,
-    `rail ${w}x${h}: every link on screen or in "⋯", none of import/data/settings, foot kept for the account menu (${JSON.stringify(top)})`,
+    `rail ${w}x${h}: every link on screen or in "⋯", none of import/data/settings/lab, foot kept for the account menu (${JSON.stringify(top)})`,
   );
   await rail.mouse.wheel(0, 600);
   await rail
@@ -354,7 +366,7 @@ for (const [w, h] of [
       down.hrefs.length === top.hrefs.length &&
       down.footIn &&
       down.footShown &&
-      ["/profile", "/import", "/data", "/preferences"].every((x) => menu.includes(x)),
+      ["/my/profile", "/my", "/import", "/data", "/my/preferences"].every((x) => menu.includes(x)),
     `rail ${w}x${h} scrolled: same links, the account menu at the foot has profile/import/data/settings (${JSON.stringify({ down, menu })})`,
   );
   await rail.close();
@@ -362,7 +374,7 @@ for (const [w, h] of [
 
 // 5b2. Name and picture: pen, edit, save; the nav changes without a reload.
 {
-  await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });
   const shown = page.locator("[data-profile-menu]");
   await page.getByTestId("edit-name").click();
   const input = page.locator("#profile-name");
@@ -427,7 +439,7 @@ for (const [w, h] of [
 // 5c. Passkeys: add one on the profile page, rename it, sign out, sign back in
 // with it, then delete it.
 {
-  await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });
   await page.getByText("No passkeys yet.").waitFor({ timeout: budget(10000) });
   await page.getByRole("button", { name: "Add a passkey" }).click();
   const list = page.getByTestId("passkey-list");
@@ -469,7 +481,7 @@ for (const [w, h] of [
   const back = await getSession();
   check(back?.user?.email === EMAIL, `signed back in with the passkey (url=${page.url()})`);
 
-  await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });
   await list.waitFor({ timeout: budget(10000) });
   await list.getByRole("button", { name: "Delete" }).click();
   await list.getByRole("button", { name: "Delete" }).click(); // confirm
@@ -480,7 +492,7 @@ for (const [w, h] of [
 // Page titles: the test box, adding and removing a pattern, restoring a default
 // (docs/title-clean.md). Signed in again above, so the change syncs as well.
 {
-  await page.goto(`${BASE}/preferences`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/preferences`, { waitUntil: "networkidle" });
   const box = page.getByTestId("title-rules");
   await box.waitFor({ timeout: budget(10000) });
   const after = box.getByTestId("title-rules-after");
@@ -542,6 +554,112 @@ for (const [w, h] of [
     { timeout: budget(5000) },
   );
   check(true, "titles: your own pattern can be removed");
+}
+
+// API tokens: Revoke asks first (app/(app)/my/preferences/RevokeConfirm.tsx).
+// Cancel and Esc keep the token; only the confirming Revoke deletes it.
+{
+  const made = await page.evaluate(async () => {
+    const r = await fetch("/api/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "qa-revoke", scopes: ["study"], expiry: { days: 7 } }),
+    });
+    return r.status;
+  });
+  check(made === 200 || made === 201, `tokens: one made for the revoke check (HTTP ${made})`);
+  await page.goto(`${BASE}/my/preferences`, { waitUntil: "networkidle" });
+  const row = page.getByTestId("token-row").filter({ hasText: "qa-revoke" });
+  await row.waitFor({ timeout: budget(10000) });
+
+  // Its instructions for the user's AI assistant (lib/agent-guide.ts): the
+  // header with a placeholder, the card section for `study`, never a secret.
+  await row.getByTestId("token-guide").locator("summary").click();
+  const guide = await row.getByTestId("token-guide-text").innerText();
+  check(
+    guide.includes("Authorization: Bearer <YOUR_TOKEN>") && guide.includes("/api/fsrs/due"),
+    "tokens: the AI-assistant instructions name the header and this token's endpoints",
+  );
+  check(
+    !/lk_[0-9a-f]{64}/i.test(guide) && !guide.includes("/api/version/chat"),
+    "tokens: the instructions hold no token and no chat section for a cards-only token",
+  );
+  await row.getByTestId("token-revoke").click();
+  const ask = row.getByTestId("token-revoke-confirm");
+  await ask.waitFor({ timeout: budget(5000) });
+  check(
+    (await ask.innerText()).includes("Revoke qa-revoke? Apps using it stop working at once."),
+    "tokens: Revoke asks first, naming the token",
+  );
+  check(
+    await row.getByTestId("token-revoke-cancel").evaluate((b) => b === document.activeElement),
+    "tokens: Cancel has the focus",
+  );
+  await page.keyboard.press("Escape");
+  await row.getByTestId("token-revoke").waitFor({ timeout: budget(5000) });
+  check(
+    await row.getByTestId("token-revoke").evaluate((b) => b === document.activeElement),
+    "tokens: Esc backs out and returns the focus to Revoke",
+  );
+  await page.keyboard.press("Enter"); // the keyboard opens the question again
+  await row.getByTestId("token-revoke-cancel").click();
+  check((await row.count()) === 1, "tokens: Cancel keeps the token");
+  await row.getByTestId("token-revoke").click();
+  await row.getByTestId("token-revoke-yes").click();
+  await row.waitFor({ state: "detached", timeout: budget(10000) });
+  const left = await page.evaluate(async () =>
+    ((await (await fetch("/api/token")).json()).tokens ?? []).filter((t) => t.name === "qa-revoke"),
+  );
+  check(left.length === 0, "tokens: the confirming Revoke deletes it");
+}
+
+// Profile: every signed-in user sees this sign-in's start and expiry
+// (SessionBasicsCard), never the raw session (dev only).
+{
+  await page.goto(`${BASE}/my/profile`, { waitUntil: "networkidle" });
+  const card = page.getByTestId("session-basics");
+  await card.waitFor({ timeout: budget(10000) });
+  const text = await card.innerText();
+  check(
+    /Signed in since .*\d{4}/.test(text) && /This session expires .*\d{4}/.test(text),
+    "profile: this sign-in's start and expiry are shown",
+  );
+  check(
+    !(await page.getByTestId("session-details").count()) && !/token|ipAddress/i.test(text),
+    "profile: no raw session dump or internals for an ordinary user",
+  );
+}
+
+// /my (owner, 2026-11-10): the user's own data in one place. The old
+// /profile and /preferences answer 308 to /my/…, subpath and query kept.
+{
+  for (const [from, to] of [
+    ["/profile?agent=0", "/my/profile?agent=0"],
+    ["/preferences?lang=en", "/my/preferences?lang=en"],
+    ["/profile/email-confirm", "/my/profile/email-confirm"],
+  ]) {
+    const res = await fetch(`${BASE}${from}`, { redirect: "manual" });
+    const at = new URL(res.headers.get("location") ?? "", BASE);
+    check(
+      res.status === 308 && at.pathname + at.search === to,
+      `${from} answers 308 to ${to} (got ${res.status} ${at.pathname}${at.search})`,
+    );
+  }
+  await page.goto(`${BASE}/my`, { waitUntil: "networkidle" });
+  const cards = await page.evaluate(() =>
+    [...document.querySelectorAll("[data-my-card]")].map((a) => a.getAttribute("href")),
+  );
+  check(
+    ["/my/profile", "/my/preferences", "/my/files"].every((x) => cards.includes(x)),
+    `/my: cards for profile, preferences and files (${JSON.stringify(cards)})`,
+  );
+  // The listing loads after the page (GET /api/my/files): wait for the page itself.
+  await page.goto(`${BASE}/my/files`, { waitUntil: "domcontentloaded" });
+  await page.locator('[data-qa="my-files"]').waitFor({ timeout: 30000 });
+  check(
+    !(await page.getByText(/This page could not be found/i).count()),
+    "/my/files: the page exists",
+  );
 }
 
 // Sign-in errors are the page's own words, never the server's text

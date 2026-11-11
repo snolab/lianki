@@ -2,7 +2,10 @@
 // read from the Worker's assets once per isolate, the shared word_gloss rows,
 // and the model for what neither has.
 import type { D1Like } from "@/lib/d1/types";
-import { PARTNER_AI_MODEL, PARTNER_AI_REASONING, costUsd } from "@/lib/partner-ai-config";
+import { PARTNER_AI_MODEL, PARTNER_AI_REASONING } from "@/lib/partner-ai-config";
+import type { D1WithBatch } from "@/lib/payments/credits-store";
+import { metered, type Metered } from "@/lib/payments/metered";
+import { textHoldUsd, textUsd, type Feature } from "@/lib/payments/prices";
 import { routeLimit } from "@/lib/security/route-guard";
 import { isWorkersAiConfigured, workersAiOpenAI } from "@/lib/workers-ai";
 import type { BookCtx, RangeWord } from "./book-word-list";
@@ -58,19 +61,55 @@ async function cachedGlosses(db: D1Like, lang: string, terms: string[]) {
 }
 
 /**
- * What a generation cost, settled against the user. The credits are being
- * redesigned (owner, 2026-11-04: a new unit and real-cost metering), so for
- * now this only records the real cost; the debit goes here, and only here.
+ * Who pays a model call: the user, from their credits (lib/payments/metered.ts
+ * — hold the most it can cost, call, settle the real cost, refund the rest).
+ * `db` null: no wallet to charge (Mongo backend, local dev) — runs unmetered.
  */
-export async function chargeAi(
-  userId: string,
-  use: { usd: number; what?: string; words?: number; chars?: number },
-) {
-  void userId;
-  const { what = "read.gloss", ...rest } = use;
-  console.log(JSON.stringify({ event: `${what}.cost`, ...rest }));
-  return { ok: true as const };
+export type AiPayer = { userId: string; email?: string | null; db?: D1WithBatch | null };
+
+/** A call the user's credits did not cover: the provider was never asked. */
+export type NoCredits = { balance: number; need: number };
+
+type Part = { type?: string; text?: unknown };
+/** The characters of a chat call's prompt (text parts too): what its input tokens are held from. */
+export const promptChars = (messages: readonly { content?: unknown }[]) =>
+  messages.reduce((n, m) => {
+    if (typeof m.content === "string") return n + m.content.length;
+    if (!Array.isArray(m.content)) return n;
+    return (m.content as Part[]).reduce(
+      (k, p) => k + (typeof p?.text === "string" ? p.text.length : 0),
+      n,
+    );
+  }, 0);
+
+/**
+ * The one charge seam for the reader's and self-intro's model calls: hold
+ * `holdUsd` (lib/payments/prices.ts), run, settle. A refusal or a retried
+ * key comes back as `{ ok: false }` and nothing was called.
+ */
+export function payAi<T>(
+  ai: AiPayer,
+  what: Feature,
+  holdUsd: number,
+  run: () => Promise<{ value: T; usd: number }>,
+): Promise<Metered<T>> {
+  return metered(
+    { d1: ai.db ?? null },
+    { userId: ai.userId, email: ai.email },
+    { what, holdUsd },
+    run,
+  );
 }
+
+/** A delivered answer's price: its reported tokens, or — none reported — the whole hold. */
+export const usageUsd = (
+  model: string,
+  usage: { prompt_tokens?: number; completion_tokens?: number } | undefined,
+  holdUsd: number,
+) =>
+  usage?.prompt_tokens || usage?.completion_tokens
+    ? textUsd(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0)
+    : holdUsd;
 
 /** Words per model call, and the answer's ceiling per word (a gloss is a line). */
 const BATCH = 40;
@@ -94,11 +133,13 @@ async function generateBatch(
   lang: string,
   chunk: { term: string; ex: string | null }[],
 ) {
+  const messages = glossMessages(lang, chunk);
+  const maxOut = chunk.length * TOKENS_PER_WORD;
   try {
     const r = await complete({
       model: PARTNER_AI_MODEL,
-      messages: glossMessages(lang, chunk),
-      max_tokens: chunk.length * TOKENS_PER_WORD,
+      messages,
+      max_tokens: maxOut,
       temperature: 0.2,
       reasoning_effort: PARTNER_AI_REASONING,
     });
@@ -106,7 +147,8 @@ async function generateBatch(
       r.choices?.[0]?.message?.content ?? "",
       chunk.map((x) => x.term),
     );
-    return { got, usd: costUsd(r.usage?.prompt_tokens ?? 0, r.usage?.completion_tokens ?? 0) };
+    const hold = textHoldUsd(PARTNER_AI_MODEL, promptChars(messages), maxOut);
+    return { got, usd: usageUsd(PARTNER_AI_MODEL, r.usage, hold) };
   } catch (err) {
     console.error("read.gloss: model failed", String(err).slice(0, 200));
     return { got: new Map<string, string>(), usd: 0 };
@@ -115,19 +157,40 @@ async function generateBatch(
 
 /**
  * The model's glosses for these headwords (the batches at once: the review
- * waits for them), written to word_gloss, their real cost settled.
+ * waits for them), written to word_gloss, paid from the user's credits: the
+ * batches' most is held first, their real cost kept. Not covered → nothing
+ * asked, `ai.refused` set.
  */
 async function generate(
   db: D1Like,
   lang: string,
   words: { term: string; ex: string | null }[],
-  ai: { userId: string; complete: Complete },
+  ai: GlossAi,
+  complete: Complete,
   share: (term: string) => boolean,
 ): Promise<Map<string, string>> {
   const chunks: (typeof words)[] = [];
   for (let i = 0; i < words.length; i += BATCH) chunks.push(words.slice(i, i + BATCH));
-  const done = await Promise.all(chunks.map((c) => generateBatch(ai.complete, lang, c)));
-  const made = new Map(done.flatMap((d) => [...d.got]));
+  const hold = chunks.reduce(
+    (n, c) =>
+      n +
+      textHoldUsd(
+        PARTNER_AI_MODEL,
+        promptChars(glossMessages(lang, c)),
+        c.length * TOKENS_PER_WORD,
+      ),
+    0,
+  );
+  const paid = await payAi(ai, "read.gloss", hold, async () => {
+    const done = await Promise.all(chunks.map((c) => generateBatch(complete, lang, c)));
+    return { value: done, usd: done.reduce((n, d) => n + d.usd, 0) };
+  });
+  if (!paid.ok) {
+    if (paid.reason === "no-credits") ai.refused = { balance: paid.balance, need: paid.need };
+    if (paid.reason === "paused") ai.refused = "paused";
+    return new Map();
+  }
+  const made = new Map(paid.value.flatMap((d) => [...d.got]));
   const at = new Date().toISOString();
   for (const [term, back] of made)
     if (share(term))
@@ -137,10 +200,11 @@ async function generate(
         )
         .bind(lang, term, back, PARTNER_AI_MODEL, at)
         .run();
-  const usd = done.reduce((n, d) => n + d.usd, 0);
-  if (usd > 0) await chargeAi(ai.userId, { usd, words: made.size });
   return made;
 }
+
+/** A gloss's payer; `refused` is set when their credits did not cover the model's words. */
+export type GlossAi = AiPayer & { complete?: Complete; refused?: NoCredits | "paused" };
 
 /** Model calls per user per window: a guard against runaway cost, not a quota shown to anyone. */
 const AI_LIMIT = { windowMs: 10 * 60_000, max: 30 };
@@ -156,7 +220,7 @@ export async function fillGlosses(
   db: D1Like,
   book: BookCtx,
   words: RangeWord[],
-  ai: { userId: string; complete?: Complete } | null,
+  ai: GlossAi | null,
 ): Promise<RangeWord[]> {
   if (book.lang === "und" || words.every((x) => x.back)) return words;
   const deck = await deckGlosses(book.lang).catch(() => new Map<string, GlossEntry>());
@@ -184,13 +248,7 @@ export async function fillGlosses(
     ask.length &&
     (await routeLimit(`read-gloss:${ai.userId}`, AI_LIMIT)).allowed
   )
-    for (const [term, back] of await generate(
-      db,
-      book.lang,
-      ask,
-      { userId: ai.userId, complete },
-      share,
-    ))
+    for (const [term, back] of await generate(db, book.lang, ask, ai, complete, share))
       known.set(term, back);
   return out.map((x) => {
     if (x.back) return x;

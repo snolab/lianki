@@ -84,6 +84,18 @@ export type ChatMessage = {
   raw?: string;
   /** Set when the agent polished the line: when, by which agent, and how many times. */
   edited?: EditMark;
+  /** The agent summarised a run of voice lines starting here (SummaryMark); `text` is the summary. */
+  summary?: SummaryMark;
+  /** This voice line is inside a summary that starts at that line: hidden, still kept. */
+  collapsedInto?: string;
+  /**
+   * The agent merged a run of his voice lines starting here into one fluent
+   * passage (PassageMark); `text` is the passage, `raw` every line as heard.
+   * The other lines carry `collapsedInto`. Undo restores them all.
+   */
+  passage?: PassageMark;
+  /** On a passage's first line, hub-side: what it read before the merge, for the undo. */
+  premerge?: { text: string; raw?: string; edited?: EditMark };
   /**
    * Stamped by the hub only, with flag `stt.merge` on (voice-merge.ts): an owner's
    * voice line the next utterance may amend. Absent = always a new line.
@@ -102,6 +114,8 @@ export type ChatMessage = {
    * send none, and an older hub drops it.
    */
   timing?: VoiceTiming;
+  /** A voice line's recognizer (SttTag): which route and engine made its text. Dev-only in the UI. */
+  stt?: SttTag;
   /**
    * An agent line sent with `say --quiet` (FYI, progress, deploy notices):
    * shown, never read aloud. Only ever `true`; the hub drops anything else.
@@ -163,7 +177,16 @@ export type ChatMessage = {
    * `source: "eta"` lines only: the state-tree node whose estimate ran out,
    * and that estimate (lib/eta-ping.ts). Automatic, never the owner speaking.
    */
-  eta?: { id: string; etaAt: number };
+  eta?: {
+    id: string;
+    etaAt: number;
+    /** Which line (lib/eta-ping.ts EtaPingKind); absent: "due". */
+    kind?: string;
+    /** "due" / "main": the receipt code a lane acks with (`progress.ts ack <code>`). */
+    code?: string;
+    /** "main" / "blocked": the lane (or "owner") it is for. */
+    lane?: string;
+  };
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
@@ -181,6 +204,26 @@ export type AnsweredEvent = {
   labels: Record<string, string[]>;
 };
 
+/**
+ * The hub telling pages and listeners that the agent withdrew an open ask
+ * (eval.ts withdraw): the card greys out, takes no tap, and is never read aloud.
+ */
+export type WithdrawnEvent = {
+  type: "withdrawn";
+  /** The ask's message id, the ask's own id, and its thread. */
+  id: string;
+  askId: string;
+  thread: string;
+  withdrawnAt: number;
+};
+
+/** A message updated by a WithdrawnEvent; any other message is returned as is. */
+export function applyWithdrawn<M extends ChatMessage>(m: M, e: Omit<WithdrawnEvent, "type">): M {
+  if (m.id !== e.id || !m.ask || m.ask.askId !== e.askId || (m.thread ?? "owner") !== e.thread)
+    return m;
+  return { ...m, ask: { ...m.ask, withdrawnAt: e.withdrawnAt } };
+}
+
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
 export type MessageSource = "stt";
 /**
@@ -197,12 +240,38 @@ export type MergedPart = {
   text: string;
   at: number;
   timing?: VoiceTiming;
+  stt?: SttTag;
   speaker?: SpeakerTag;
   wake?: "active" | "passive";
   wakeReason?: ChatMessage["wakeReason"];
 };
 /** How many times the agent may polish one voice line. */
 export const MAX_EDITS = 3;
+/**
+ * How far back the agent may polish or summarise: any of the owner's last
+ * EDITABLE_LINES lines in the owner thread (not only the latest).
+ */
+export const EDITABLE_LINES = 5;
+/**
+ * A run of the owner's voice lines the agent summarised (room talk, someone
+ * else speaking): on the run's first line, which shows the summary; the others
+ * carry `collapsedInto` and are hidden on the page. Nothing is deleted: every
+ * line stays stored with its text, and the first line's `raw` holds them all.
+ */
+export type SummaryMark = { at: number; by: string; ids: string[] };
+/**
+ * How many of the owner's latest lines a merge may reach back over: a run of
+ * his consecutive voice lines (docs/dev-debug-widget.md, "Merged passages").
+ * A default; the hub's limit.
+ */
+export const MERGE_LINES = 12;
+/**
+ * A run of the owner's consecutive voice lines the agent rewrote as ONE fluent
+ * passage (his own words, connectives and fragment fixes, same meaning): on the
+ * run's first line; the others carry `collapsedInto`. `ids` are oldest first.
+ * Nothing is deleted, and the owner's undo restores every line as it was.
+ */
+export type PassageMark = { at: number; by: string; ids: string[] };
 /**
  * The hub's broadcast after an agent polished a voice line: the pages and
  * listeners update that line in place (never read aloud again).
@@ -220,6 +289,12 @@ export type EditedEvent = {
   merged?: { id: string; text: string };
   /** An undo: the lines this one goes back to, in order; the first keeps this id. */
   split?: ChatMessage[];
+  /** A summary of a run of lines starting at `id` (its other lines are hidden). */
+  summary?: SummaryMark;
+  /** A merged passage of a run of lines starting at `id` (its other lines are hidden). */
+  passage?: PassageMark;
+  /** A passage undone: these lines, as they were before it, replace their copies (none hidden). */
+  restored?: ChatMessage[];
 };
 
 /** The hub to the listeners: a merged passage ended, polish it now, from `raw`. */
@@ -235,11 +310,35 @@ export type PolishDueEvent = {
 /** A message updated by an EditedEvent; any other message is returned as is. */
 export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "type">): M {
   if (m.id !== e.id || (m.thread ?? "owner") !== e.thread) return m;
-  return { ...m, text: e.text, raw: e.raw, edited: e.edited, ...(e.parts ? { parts: e.parts } : {}) };
+  return {
+    ...m,
+    text: e.text,
+    raw: e.raw,
+    edited: e.edited,
+    ...(e.parts ? { parts: e.parts } : {}),
+    ...(e.summary ? { summary: e.summary } : {}),
+    ...(e.passage ? { passage: e.passage } : {}),
+  };
 }
 
 /** The list after an EditedEvent: the line changed in place, or split back into its lines. */
 export function applyEditTo<M extends ChatMessage>(list: M[], e: Omit<EditedEvent, "type">): M[] {
+  if (e.restored) {
+    const back = new Map(e.restored.map((m) => [m.id, m]));
+    return list.map((m) => {
+      const r = (m.thread ?? "owner") === e.thread ? back.get(m.id) : undefined;
+      return r ? ({ ...r, thread: m.thread } as M) : m;
+    });
+  }
+  const run = e.summary ?? e.passage;
+  if (run) {
+    const rest = new Set(run.ids.filter((id) => id !== e.id));
+    return list.map((m) =>
+      (m.thread ?? "owner") === e.thread && rest.has(m.id)
+        ? { ...m, collapsedInto: e.id }
+        : applyEdit(m, e),
+    );
+  }
   if (!e.split) return list.map((m) => applyEdit(m, e));
   const split = e.split as M[];
   return list.flatMap((m) => (m.id === e.id && (m.thread ?? "owner") === e.thread ? split : [m]));
@@ -512,6 +611,10 @@ export type ChatStrings = {
   cueSend: string;
   /** The chat menu's switch: soft tones when he starts and stops speaking. */
   cueSpeech: string;
+  /** The speaker row, on: on a phone every reply is read (voice.ts, the toggle alone decides). */
+  readAloud: string;
+  /** The speaker row, on, on a computer: replies are read while the input has focus. */
+  readAloudTyping: string;
   compactIdle: string;
   /** The menu's collapsed Dev group (DevMenuGroup.tsx), the owner's pages only: its heading. */
   devGroup: string;
@@ -534,13 +637,13 @@ export type ChatStrings = {
   vpNone: string;
   /** One row per enrolled device in the voiceprint panel: {device} is a device name like iphone or android, {n} how many sentences were read for it. Keep both placeholders. */
   vpPrint: string;
-  /** Note in the voiceprint panel when the speech model on the owner's own computer (a Mac) is not reachable; the mic button shows a green dot when it is. Keep 'Mac'. One sentence. */
+  /** Note in the voiceprint panel when Lianki's speech server (the service that turns speech into text and checks the voice) is not reachable; the mic button shows a green dot when it is. 'Lianki's speech server' is the company's own server; never name a person's computer. One sentence. */
   vpOff: string;
   /** Button in the voiceprint panel that starts enrolling the user's voice on the phone or computer in hand (it first shows a consent card; nothing is recorded yet). Imperative verb phrase. */
   vpEnrol: string;
-  /** The consent card shown before any enrolment audio is captured: what happens, what is kept (numbers, not audio), where (only on the owner's Mac, at the given folder path; keep the path exactly), what it is for, and that it can be deleted. {n} is a range like 10–20; {name} is the assistant's name. Keep 'Mac' and 'Lianki'. Plain, honest, several sentences. */
+  /** The consent card shown before any enrolment audio is captured: what happens, what is kept (numbers that describe the voice, not audio) and where (on Lianki's speech servers; after a passkey confirmation, an encrypted copy of the numbers in the user's Lianki account, readable only by that account, so it can be restored); that the recordings are kept only if the user turns on the switch below, then on Lianki's speech servers and, when saved to the account, in My Files → Voiceprint, private, so the voiceprint can be computed again later; what it is for; and that all of it can be deleted at any time here. {n} is the number of sentences, {name} the chat partner's name; keep both placeholders. 'Lianki's speech servers' are the company's servers; never name a person's computer. Plain, complete, no marketing. */
   vpConsent: string;
-  /** On/off checkbox on the consent card, off by default: when on, the audio of the enrolment sentences is also kept on the owner's Mac (normally only the numbers are). First person, a statement of what is kept. */
+  /** On/off checkbox on the consent card, off by default: when on, the recordings of the enrolment sentences are also kept: on Lianki's speech servers, and in My Files (the user's private file store in their Lianki account) once they save to their account. First person, a statement of what is kept; keep 'My Files' as the app names it in this language. */
   vpKeepAudio: string;
   /** Button on the consent card: the user agrees and enrolment recording starts (the microphone turns on). First person agreement plus imperative verb, short. */
   vpAgree: string;
@@ -558,33 +661,33 @@ export type ChatStrings = {
   vpMismatch: string;
   /** Note during enrolment: the words recognised were not the sentence shown, so the user should read the shown sentence again. Two short sentences. */
   vpText: string;
-  /** Note during enrolment: the owner's own computer (Mac) running the speech model did not answer for that sentence; the mic button's green dot shows whether it is connected. Two short sentences; keep 'Mac'. */
+  /** Note during enrolment: Lianki's speech server (which turns speech into text and builds the voiceprint) did not answer for that sentence; the mic button's green dot shows whether it is connected. Two short sentences; never name a person's computer. */
   vpUnreachable: string;
   /** Button during enrolment that moves on to the next sentence without reading the one shown (too hard to read). Imperative verb, one word. */
   vpSkip: string;
-  /** Button during enrolment, enabled once enough sentences are kept: saves the voiceprint on the owner's Mac and ends enrolment. Imperative verb phrase. */
+  /** Button during enrolment, enabled once enough sentences are kept: saves the voiceprint on Lianki's speech server and ends enrolment. Imperative verb phrase. */
   vpSave: string;
-  /** Status in the voiceprint panel while the voiceprint is being written on the Mac. Progressive form, ends with an ellipsis. */
+  /** Status in the voiceprint panel while the voiceprint is being written on Lianki's speech server. Progressive form, ends with an ellipsis. */
   vpSaving: string;
-  /** Confirmation in the voiceprint panel after enrolment: the voiceprint was saved on the owner's Mac. One short sentence; keep 'Mac'. */
+  /** Confirmation in the voiceprint panel after enrolment: the voiceprint was saved on Lianki's speech server. One short sentence. */
   vpSaved: string;
   /** Button in the voiceprint panel that deletes the user's own voiceprint (asks to confirm first). First person 'my'; imperative verb phrase. */
   vpDelete: string;
-  /** Confirmation question after tapping Delete my voiceprint: it removes the voiceprint of every enrolled device from the owner's Mac, and does not touch the separately saved voice clips. A question and a reassurance. */
+  /** Confirmation question after tapping Delete my voiceprint: it removes the voiceprint of every enrolled device from Lianki's speech servers and from the user's Lianki account, and does not touch the separately saved voice clips. A question and a reassurance. */
   vpDeleteConfirm: string;
   /** The confirming button under that question: deletes the voiceprint now. Imperative verb, one word. */
   vpDeleteYes: string;
   /** Confirmation in the voiceprint panel after deleting: the voiceprint is gone. One short sentence. */
   vpDeleted: string;
-  /** Error line in the voiceprint panel; {error} is a short technical reason in English from the Mac. Keep {error} inside the parentheses. */
+  /** Error line in the voiceprint panel; {error} is a short technical reason in English from Lianki's speech server. Keep {error} inside the parentheses. */
   vpFailed: string;
   /** Button and screen-reader label that closes the voiceprint panel (shown as ✕ or under a finished step). Imperative verb, one word. */
   vpClose: string;
-  /** Status line in the voiceprint panel: the owner's 'Only my voice' filter is working: speech that does not match his voiceprint is dropped on his Mac before it is transcribed. Keep 'Mac'; one sentence. */
+  /** Status line in the voiceprint panel: the 'Only my voice' filter is working: speech that does not match the user's voiceprint is dropped on Lianki's speech server before it is transcribed. 'Only my voice' is the feature's name. One sentence after the name. */
   vpFilterOn: string;
   /** Status line in the voiceprint panel: the 'Only my voice' filter is switched off, so all speech is transcribed as usual. One sentence. */
   vpFilterOff: string;
-  /** Status line in the voiceprint panel: the 'Only my voice' filter is switched on but cannot work (this phone or computer has no voiceprint yet, or the check on the Mac is unavailable), so all speech is transcribed as usual. Keep 'Mac'; one sentence. */
+  /** Status line in the voiceprint panel: the 'Only my voice' filter is switched on but cannot work yet (this phone or computer has no voiceprint, or the check on Lianki's speech server is unavailable), so all speech is transcribed as usual. Two short sentences. */
   vpFilterWaiting: string;
   /** Count in the voiceprint panel: {n} spoken lines were dropped today by the 'Only my voice' filter because the voice did not match; {score} is the last match score, a small decimal like 0.07. Keep both placeholders; short. */
   vpFilterCount: string;
@@ -592,7 +695,95 @@ export type ChatStrings = {
   vpFilterWould: string;
   /** Checkbox in the voiceprint panel that pauses the 'Only my voice' filter on the phone or computer in hand only. A short statement. */
   vpFilterPause: string;
-  /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: the owner's Mac confirmed the line was spoken in his own voice. Short phrase, no full stop. */
+  /** Line in the voiceprint panel: how many recordings of the owner's enrolment sentences are kept in My Files → Voiceprint (his private file store). {n} is a number; keep the placeholder and 'My Files'. Short. */
+  vpRecHas: string;
+  /** Note in the voiceprint panel after saving to the account: {n} recordings of the enrolment sentences were newly put into My Files → Voiceprint (private). Keep the placeholder and 'My Files'; one short sentence. */
+  vpRecSaved: string;
+  /** Button in the voiceprint panel: computes the voiceprint's numbers again from the recordings kept in My Files (for example after a better voice model arrives), and stores them on Lianki's speech server and in the account; the passkey prompt comes next. First person 'my'; imperative verb phrase. */
+  vpRecompute: string;
+  /** Status in the voiceprint panel while the voiceprint is being computed again from the recordings in My Files. Progressive form, ends with an ellipsis. */
+  vpRecomputing: string;
+  /** Confirmation in the voiceprint panel: the voiceprint was computed again from the recordings and saved on Lianki's speech server and in the account; {n} is how many device prints. Keep the placeholder; one short sentence. */
+  vpRecomputed: string;
+  /** Question in the voiceprint panel right after the voiceprint was deleted: the {n} recordings of the enrolment sentences are still in My Files → Voiceprint; does the user want to delete them too? Nothing is deleted unless they tap the button below. Keep the placeholder and 'My Files'; a statement and a question. */
+  vpRecDeleteOffer: string;
+  /** Button under that question: deletes the enrolment recordings from My Files → Voiceprint for good. Imperative verb phrase, short. */
+  vpRecDeleteYes: string;
+  /** Confirmation in the voiceprint panel: the enrolment recordings were deleted from My Files. One short sentence; keep 'My Files'. */
+  vpRecDeleted: string;
+  /** Button in the voiceprint panel: copies the voiceprint (numbers describing the owner's voice, never a recording) from Lianki's speech server into his own Lianki account, encrypted; the passkey prompt (Face ID / Touch ID) comes next. First person 'my'; imperative verb phrase, short. */
+  vpCloudSave: string;
+  /** Button in the voiceprint panel: puts the voiceprint saved in the owner's Lianki account back onto Lianki's speech server; the passkey prompt comes next. First person 'my'; imperative verb phrase, short. */
+  vpCloudRestore: string;
+  /** Status in the voiceprint panel while the voiceprint's numbers are being copied from Lianki's speech server into the owner's account (after the passkey prompt). Progressive form, ends with an ellipsis. */
+  vpCloudSaving: string;
+  /** Status in the voiceprint panel while the voiceprint from the user's account is being written back onto Lianki's speech server. Progressive form, ends with an ellipsis. */
+  vpCloudRestoring: string;
+  /** Confirmation in the voiceprint panel: the voiceprint's numbers are now saved, encrypted, in the owner's Lianki account; {n} is how many device prints were saved. Keep the placeholder; one short sentence. */
+  vpCloudSaved: string;
+  /** Confirmation in the voiceprint panel: the voiceprint from the user's account was written back onto Lianki's speech server; {n} is how many device prints. Keep the placeholder; one short sentence. */
+  vpCloudRestored: string;
+  /** Line in the voiceprint panel listing which devices' voiceprints are saved in the owner's Lianki account; {devices} is a comma-separated list of device names like 'iphone, android'. Keep the placeholder; short. */
+  vpCloudHas: string;
+  /** Line in the voiceprint panel when nothing of the voiceprint is saved in the owner's Lianki account yet. One short sentence. */
+  vpCloudNone: string;
+  /** Error line in the voiceprint panel about the copy in the owner's account (saving, restoring or deleting it); {error} is a short technical reason in English. Keep {error} inside the parentheses; it is not a danger warning, just a failure note. */
+  vpCloudFailed: string;
+  /** Button in the voiceprint panel: starts a test mode where the user (or someone else) speaks and the panel shows at once whether Lianki's speech servers recognised the voice as the user's. First person 'my'; imperative verb phrase, short. */
+  vpTest: string;
+  /** First line of the voiceprint test: tells the user to say any sentence; Lianki's speech servers (the company's servers; never name a person's computer) compare it with this device's voiceprint, and nothing is recorded or kept. One or two short sentences. */
+  vpTestIntro: string;
+  /** Status in the voiceprint test while the microphone is being turned on. Progressive form, ends with an ellipsis. */
+  vpTestStarting: string;
+  /** Result word in the voiceprint test: the Mac decided the voice is the owner's own. One word or two, like 'Me' / 'It's me'. */
+  vpTestMe: string;
+  /** Result word in the voiceprint test: the Mac decided the voice is someone else's, not the owner's. Short, two or three words. */
+  vpTestOther: string;
+  /** Result word in the voiceprint test: the Mac could not decide whose voice it is (too short, too noisy, or the score fell between the two thresholds). Short, two or three words. */
+  vpTestUnknown: string;
+  /** Line in the voiceprint test when Lianki's speech servers did not answer for a spoken line, so nothing was scored. Never name a person's computer; one short sentence. */
+  vpTestNoMac: string;
+  /** Detail line under one result of the voiceprint test. {score} is the match score (a decimal like 0.412), {device} the device whose voiceprint it was compared with (like 'iphone'), {model} the voice model name (like 'campp'), {speech} seconds of speech, {snr} the signal-to-noise ratio in decibels. Keep every placeholder and the units 's' and 'dB'; compact, with middle dots. */
+  vpTestScore: string;
+  /** Line in the voiceprint test showing the thresholds the Mac used for that result: 'me' at a score of {me} or more, 'someone else' below {other}, for {s} seconds of speech and more. Keep the placeholders; the words for 'me' and 'someone else' match the result words. Compact; ends with a full stop. */
+  vpTestLines: string;
+  /** Line in the voiceprint test after the thresholds: with less than {s} seconds of speech or a signal-to-noise ratio under {snr} dB the result is always 'not sure'. Keep the placeholders and units; the words for 'not sure' match the result word. One short sentence. */
+  vpTestGate: string;
+  /** Reason after 'Not sure' in the voiceprint test: the line had too little speech to judge. A short phrase, lower case, no full stop. */
+  vpTestWhyShort: string;
+  /** Reason after 'Not sure' in the voiceprint test: too much background noise to judge. A short phrase, lower case, no full stop. */
+  vpTestWhyNoise: string;
+  /** Reason after 'Not sure' in the voiceprint test: the score fell between the 'me' threshold and the 'someone else' threshold. A short phrase, lower case, no full stop. */
+  vpTestWhyBetween: string;
+  /** Reason after 'Not sure' in the voiceprint test: no voiceprint is enrolled to compare with. A short phrase, lower case, no full stop. */
+  vpTestWhyNoPrint: string;
+  /** Line under a voiceprint test result: the 'Only my voice' filter (it is switched on) stopped this line, so in normal use it would not have been transcribed. Keep the quoted feature name as in the other filter lines; one short sentence. */
+  vpTestStopped: string;
+  /** Line under a voiceprint test result: the 'Only my voice' filter is off, but it would have stopped this line if it were on. Keep the quoted feature name as in the other filter lines; one short sentence. */
+  vpTestWould: string;
+  /** Running count in the voiceprint test of how many lines got each result so far: {me} times 'me', {other} times 'someone else', {unknown} times 'not sure'. Keep the placeholders; the result words match the result words; compact, with middle dots. */
+  vpTestTally: string;
+  /** Prompt in the voiceprint test after the first result: ask the owner to let another person say one sentence too, so he can compare the results. One short sentence, friendly. */
+  vpTestOthers: string;
+  /** Link in the voiceprint test to the developer switches page where the 'Only my voice' filter is turned on or off. Keep '/dev/flags' as is; short. */
+  vpTestFlag: string;
+  /** Button that ends the voiceprint test and gives the microphone back to the chat. Imperative or 'done', one word. */
+  vpTestDone: string;
+  /** Note in the voiceprint panel: the owner approved with his passkey (Face ID / Touch ID) and, until {time} (a clock time like 14:05), further voiceprint changes on this device need no new prompt. Keep {time} and 'Face ID'; one sentence. */
+  vpGrant: string;
+  /** Button beside that note: ends the approval window now, so the next voiceprint change asks for Face ID again. Short verb phrase. */
+  vpGrantEnd: string;
+  /** Question in the voiceprint panel right after the voiceprint was deleted: {n} recordings of the enrolment sentences are still kept on Lianki's speech servers; does the user want to delete them too? Nothing is deleted unless they tap the delete button; keeping them is the default. Keep the placeholder; never name a person's computer; a statement and a question. */
+  vpMacRecOffer: string;
+  /** Button under that question: deletes the enrolment recordings from Lianki's speech servers for good (a passkey prompt may come next). Imperative verb phrase, short; never name a person's computer. */
+  vpMacRecYes: string;
+  /** Button under that question, the default choice: keeps the enrolment recordings on Lianki's speech servers and closes the question. Short verb phrase. */
+  vpMacRecKeep: string;
+  /** Confirmation in the voiceprint panel: the enrolment recordings were deleted from Lianki's speech servers. One short sentence; never name a person's computer. */
+  vpMacRecDeleted: string;
+  /** Note in the voiceprint panel after the user chose to keep the enrolment recordings: they stay on Lianki's speech servers. One short sentence; never name a person's computer. */
+  vpMacRecKept: string;
+  /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: Lianki's speech server confirmed the line was spoken in his own voice. Short phrase, no full stop. */
   vpVerified: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
   notReadHidden: string;
@@ -674,10 +865,48 @@ export type ChatStrings = {
   etaGanttLinear: string;
   /** The other of the two buttons of that switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis logarithmically, near times wide and far times compressed, so minutes and days fit one screen. A single short word for 'logarithmic' as on a chart's axis, abbreviated if usual (对数 in Chinese, 'Log' in English); the button is narrow. */
   etaGanttLog: string;
+  /** A task waiting for the owner (Gantt and list): the red mark's label, and before its reminder time. */
+  etaWaitingYou: string;
+  /** The full-screen Gantt's one-line legend: the underline is the reported progress, the red line now. */
+  etaGanttLegend: string;
+  /** A parked task's time: when its reminder goes off, `{t}` a compact time ("9.1H"). */
+  etaReminder: string;
+  /** The full-screen Gantt's legend, second part: the ETA ticks and the ghost bar of the original plan. */
+  etaGanttLegendTicks: string;
+  /** A tapped ETA tick's group (`{names}`: task names): ends moved earlier. */
+  etaTickEarlier: string;
+  /** …ends moved later. */
+  etaTickLater: string;
+  /** …estimates re-confirmed unchanged. */
+  etaTickConfirmed: string;
+  /** …a first estimate. */
+  etaTickSet: string;
+  /** …status changed only. */
+  etaTickStatus: string;
+  /** The tick note's close button (screen reader, tooltip). */
+  etaTickClose: string;
   /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
   etaMinutes: string;
   /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
   etaList: string;
+  /** Category name of a parent row in the task timeline (Gantt): the chat and voice work. */
+  etaGroupChat: string;
+  /** Category: the timeline (Gantt) and progress reporting itself. */
+  etaGroupGantt: string;
+  /** Category: the words (flashcard) page. */
+  etaGroupWords: string;
+  /** Category: lists and the interface (pages, design, translations). */
+  etaGroupUi: string;
+  /** Category: importing material and files. */
+  etaGroupImport: string;
+  /** Category: the account and its settings (profile, preferences, payments). */
+  etaGroupAccount: string;
+  /** Category: releases and CI (tests, deploys). */
+  etaGroupShip: string;
+  /** Category: architecture and long-term work (everything else lands here). */
+  etaGroupArch: string;
+  /** Screen-reader label of the ▸/▾ button on a category row: `{group}` is the category's name. */
+  etaGroupToggle: string;
 };
 
 export const CHAT_STRINGS_EN: ChatStrings = {
@@ -706,6 +935,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   clipsAutoStop: "Auto-stop after {n} min",
   cueSend: "Sound when a voice message is sent",
   cueSpeech: "Sound when speech starts and ends",
+  readAloud: "Replies read aloud",
+  readAloudTyping: "Replies read aloud while typing",
   compactIdle: "Only the last message while not typing",
   devGroup: "Dev",
   compactShowAll: "Show the whole chat",
@@ -717,10 +948,10 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpTitle: "Your voiceprint",
   vpNone: "No voiceprint yet.",
   vpPrint: "{device}: {n} sentences",
-  vpOff: "Needs the local speech model on your Mac (the green dot on the mic).",
+  vpOff: "Needs Lianki's speech server (the green dot on the mic).",
   vpEnrol: "Enrol this device",
-  vpConsent: "Before anything is recorded: you will read {n} short sentences aloud. Your Mac turns them into a voiceprint (numbers that describe your voice, not a recording) and keeps it only there, in ~/.config/lianki-stt/voiceprints, never on Lianki's servers. It is used to check that a line spoken to your {name} is your voice. You can delete it here at any time.",
-  vpKeepAudio: "Also keep the recordings of these sentences on my Mac",
+  vpConsent: "Before anything is recorded: you will read {n} short sentences aloud. Lianki's speech servers turn them into a voiceprint (numbers that describe your voice, not a recording) and keep it there. After you confirm with your passkey, a copy of these numbers is also kept in your Lianki account, encrypted and readable only by your account, so it can be restored later. The recordings are kept only if you turn that on below: then on Lianki's speech servers and, when you save to your account, in My Files → Voiceprint, private to you, so the voiceprint can be computed again later. It is used to check that a line spoken to your {name} is your voice. You can delete all of it here at any time.",
+  vpKeepAudio: "Also keep the recordings of these sentences (on Lianki's speech servers, and in My Files when I save to my account)",
   vpAgree: "I agree, start",
   vpCancel: "Cancel",
   vpRead: "Read this aloud, then pause:",
@@ -729,24 +960,68 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpNoise: "Too noisy here. Try again somewhere quieter.",
   vpMismatch: "That did not sound like the other sentences. Read it again.",
   vpText: "That was not this sentence. Read it again.",
-  vpUnreachable: "Your Mac did not answer. Check the green dot on the mic.",
+  vpUnreachable: "Lianki's speech server did not answer. Check the green dot on the mic.",
   vpSkip: "Skip",
   vpSave: "Save voiceprint",
   vpSaving: "Saving…",
-  vpSaved: "Voiceprint saved on your Mac.",
+  vpSaved: "Voiceprint saved on Lianki's speech server.",
   vpDelete: "Delete my voiceprint",
-  vpDeleteConfirm: "Delete your voiceprint from your Mac, for every device? Your saved voice clips are not touched.",
+  vpDeleteConfirm: "Delete your voiceprint for every device, from Lianki's speech servers and from your account? Your saved voice clips are not touched. Recordings are kept: you are asked about them next.",
   vpDeleteYes: "Delete",
   vpDeleted: "Voiceprint deleted.",
   vpFailed: "Voiceprint: something went wrong ({error})",
   vpClose: "Close",
+  vpTest: "Test my voiceprint",
+  vpTestIntro: "Say any sentence. Lianki's speech servers compare it with this device's voiceprint; nothing is recorded or kept.",
+  vpTestStarting: "Turning the mic on…",
+  vpTestMe: "Me",
+  vpTestOther: "Someone else",
+  vpTestUnknown: "Not sure",
+  vpTestNoMac: "Lianki's speech servers did not score this line.",
+  vpTestScore: "score {score} vs {device} ({model}) · {speech} s of speech · SNR {snr} dB",
+  vpTestLines: "Lines used: me at {me} or more, someone else under {other} (from {s} s of speech).",
+  vpTestGate: "Under {s} s of speech or {snr} dB SNR: always not sure.",
+  vpTestWhyShort: "too little speech",
+  vpTestWhyNoise: "too noisy",
+  vpTestWhyBetween: "between the two lines",
+  vpTestWhyNoPrint: "no voiceprint to compare with",
+  vpTestStopped: "“Only my voice” stopped this line.",
+  vpTestWould: "“Only my voice” would stop this line when on.",
+  vpTestTally: "So far: me {me} · someone else {other} · not sure {unknown}",
+  vpTestOthers: "Now let someone else say one sentence, to compare.",
+  vpTestFlag: "Switch it in /dev/flags",
+  vpTestDone: "Done",
+  vpGrant: "Face ID approved: voiceprint changes need no new prompt until {time}.",
+  vpGrantEnd: "End now",
+  vpMacRecOffer: "{n} recordings of your enrolment are still kept on Lianki's speech servers. Delete them too?",
+  vpMacRecYes: "Delete them from the speech servers",
+  vpMacRecKeep: "Keep them",
+  vpMacRecDeleted: "Recordings deleted from the speech servers.",
+  vpMacRecKept: "The recordings stay on the speech servers.",
   vpVerified: "Your voice, verified",
-  vpFilterOn: "Only my voice: on. Speech that does not match is dropped on your Mac.",
+  vpFilterOn: "Only my voice: on. Speech that does not match is dropped on Lianki's speech server.",
   vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
-  vpFilterWaiting: "Only my voice: needs a voiceprint on this device and the check on your Mac. Until then all speech is transcribed as usual.",
+  vpFilterWaiting: "Only my voice: needs a voiceprint on this device and the check on Lianki's speech server. Until then all speech is transcribed as usual.",
   vpFilterCount: "Dropped today: {n}. Voice did not match (last score {score}).",
   vpFilterWould: "Would have been dropped today: {n} (still sent).",
   vpFilterPause: "Pause on this device",
+  vpRecHas: "Recordings in My Files: {n}.",
+  vpRecSaved: "{n} recordings saved to My Files → Voiceprint.",
+  vpRecompute: "Re-compute from my recordings",
+  vpRecomputing: "Re-computing from your recordings…",
+  vpRecomputed: "Re-computed from your recordings ({n}).",
+  vpRecDeleteOffer: "Your {n} recordings are still in My Files → Voiceprint. Delete them too?",
+  vpRecDeleteYes: "Delete the recordings",
+  vpRecDeleted: "Recordings deleted from My Files.",
+  vpCloudSave: "Save to my account",
+  vpCloudRestore: "Restore from my account",
+  vpCloudSaving: "Saving to your account…",
+  vpCloudRestoring: "Restoring on Lianki's speech server…",
+  vpCloudSaved: "Saved in your account ({n}).",
+  vpCloudRestored: "Restored on Lianki's speech server from your account ({n}).",
+  vpCloudHas: "In your account: {devices}.",
+  vpCloudNone: "Not saved in your account yet.",
+  vpCloudFailed: "Your account copy: something went wrong ({error})",
   notReadHidden: "· not read aloud: the page was in the background",
   attachOpen: "Add or attach",
   attachGroupAdd: "Add",
@@ -783,7 +1058,26 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaGanttScale: "Time axis",
   etaGanttLinear: "Linear",
   etaGanttLog: "Log",
+  etaWaitingYou: "Waiting for you",
+  etaGanttLegend: "Underline = reported progress · red line = now",
+  etaReminder: "reminder in {t}",
+  etaGanttLegendTicks: "tick = estimate changed or confirmed · faint grey = original plan",
+  etaTickEarlier: "moved up: {names}",
+  etaTickLater: "postponed: {names}",
+  etaTickConfirmed: "confirmed: {names}",
+  etaTickSet: "estimated: {names}",
+  etaTickStatus: "status changed: {names}",
+  etaTickClose: "Close",
   etaList: "Timed tasks",
+  etaGroupChat: "Chat & voice",
+  etaGroupGantt: "Timeline & progress",
+  etaGroupWords: "Words page",
+  etaGroupUi: "Lists & interface",
+  etaGroupImport: "Import & files",
+  etaGroupAccount: "Account & settings",
+  etaGroupShip: "Release & CI",
+  etaGroupArch: "Architecture & long-term",
+  etaGroupToggle: "Tasks in {group}",
   etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",
   attachGroupView: "View",
@@ -1056,4 +1350,54 @@ export function cleanTiming(raw: unknown): VoiceTiming | undefined {
     any = true;
   }
   return any ? out : undefined;
+}
+
+/**
+ * Which recognizer produced a voice line's final text (docs/local-stt.md,
+ * "Which engine a line came from"): `route` "local" = one of Lianki's speech
+ * servers (the owner's Mac; `engine` from its final's `model`), "cloud" =
+ * /api/debug/stt (`engine` = the Workers AI model the route answered with).
+ * `fallback`: the local server was asked and failed, so the cloud answered.
+ * Set by the page from what actually answered; dev-only in the UI (never
+ * shown to friends or normal users); it never carries text.
+ */
+export type SttRoute = "local" | "cloud";
+export type SttTag = { route: SttRoute; engine?: string; fallback?: true };
+/** An engine or model id: "sensevoice-small-2024-07-17-int8", "@cf/openai/whisper-large-v3-turbo". */
+const STT_ENGINE = /^[@A-Za-z0-9][A-Za-z0-9@._/+:-]{0,79}$/;
+
+/** An SttTag from the wire, or undefined: known keys only, each checked. */
+export function cleanStt(raw: unknown): SttTag | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  if (r.route !== "local" && r.route !== "cloud") return undefined;
+  const out: SttTag = { route: r.route };
+  if (typeof r.engine === "string" && STT_ENGINE.test(r.engine)) out.engine = r.engine;
+  if (r.fallback === true && r.route === "cloud") out.fallback = true;
+  return out;
+}
+
+/**
+ * The tag a final gets (MicButton): `model` as the recognizer reported it
+ * ("local:<model>" from local-stt.ts, or the cloud route's `model`).
+ */
+export function sttTagOf(route: SttRoute, model: string | undefined, fallback = false): SttTag {
+  const engine = model?.replace(/^local:/, "");
+  return cleanStt({ route, engine: engine === "?" ? undefined : engine, fallback }) ?? { route };
+}
+
+/**
+ * The dev-only tag's words (DebugChat): where it ran, the engine without its
+ * vendor prefix ("@cf/openai/"), and the fallback mark. Undefined for a viewer
+ * without `dev` (no internals in user UI) or a line without a tag.
+ */
+export function sttTagText(
+  stt: SttTag | undefined,
+  dev: boolean,
+  l: { latLocal: string; latCloud: string; sttFallback: string },
+): string | undefined {
+  if (!dev || !stt) return undefined;
+  const where = stt.route === "local" ? l.latLocal : l.latCloud;
+  const engine = stt.engine?.split("/").at(-1);
+  return [where, engine, stt.fallback ? l.sttFallback : undefined].filter(Boolean).join(" · ");
 }

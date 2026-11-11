@@ -1,16 +1,20 @@
 /**
  * lianki-push — the new-version notice, event-driven end to end
- * (app/components/NewVersionNotice.tsx is the page's side), and the owner's
+ * (app/components/VersionNotice.tsx is the page's side), and the owner's
  * remote-eval hub (debug.ts; app/components/DebugEval.tsx is the page).
  *
- *   GET  /api/version/ws       WebSocket. On connect: {"build": "<id>"} —
+ *   GET  /api/version/ws?b=<the page's build>
+ *                              WebSocket. On connect: {"build": "<id>"} —
  *                              the build serving now — and again whenever
- *                              a new one is published. Nothing else is sent.
+ *                              a new one is published, with what changed
+ *                              for that page's build: {shell, routes, force}
+ *                              (smart refresh: lib/smart-refresh.ts).
  *   POST /internal/publish     The main Worker, over its service binding
  *                              (PUSH), on the first request a new isolate
- *                              serves: body = its build id. A new one is
- *                              stored and pushed to every page; the same one
- *                              again does nothing.
+ *                              serves: body = its build id, and its route
+ *                              fingerprints in x-lk-fingerprints. A new build
+ *                              is stored and pushed to every page; the same
+ *                              one again does nothing.
  *   GET  /api/version/stream   The old SSE notice, for pages from before:
  *                              one "new version" event, then silence.
  *   GET  /api/version/debug    WebSocket for a signed-in user's debug-mode
@@ -84,6 +88,12 @@ import {
   offersPartner,
   partnerTicket,
 } from "./auth";
+import {
+  FINGERPRINTS_HEADER,
+  type RouteFingerprints,
+  parseFingerprints,
+  versionNews,
+} from "../../../lib/smart-refresh";
 import { CHAT_BACKFILL_PATH, EVAL_TOKEN_HEADER, IDENTITY_HEADERS } from "./debug";
 import { CHAT_PATH, REVOKED_PATH } from "./token-chat";
 import {
@@ -94,15 +104,26 @@ import {
   progressGate,
 } from "./progress";
 
+import { STT_SIGNAL_PATH, STT_WORKER_PATH } from "./stt-registry";
+
 export { DebugHub } from "./debug";
 export { ProgressHub } from "./progress";
 export { ReadStreamHub } from "./read-stream";
+export { SttRegistry } from "./stt-registry";
 
-type Socket = WebSocket & { accept?: () => void };
+type Socket = WebSocket & {
+  accept?: () => void;
+  serializeAttachment?(v: unknown): void;
+  deserializeAttachment?(): unknown;
+};
 type State = {
   acceptWebSocket(ws: Socket): void;
   getWebSockets(): Socket[];
-  storage: { get<T>(k: string): Promise<T | undefined>; put(k: string, v: unknown): Promise<void> };
+  storage: {
+    get<T>(k: string): Promise<T | undefined>;
+    put(k: string, v: unknown): Promise<void>;
+    delete?(k: string): Promise<unknown>;
+  };
 };
 type Stub = { fetch(req: Request): Promise<Response> };
 type Namespace = { idFromName(name: string): unknown; get(id: unknown): Stub };
@@ -119,7 +140,13 @@ export type Env = {
   SESSIONS?: {
     live(user: string, session: string): Promise<unknown>;
     boxChat?(clientId: string): Promise<unknown>;
+    flag?(key: string): Promise<unknown>;
+    config?(key: string): Promise<unknown>;
+    sttWorker?(pubkey: string): Promise<unknown>;
+    bookStt?(userId: string, audioMs: number): Promise<unknown>;
   };
+  /** Lianki's speech servers' registry (stt-registry.ts). Optional only so older test envs type-check. */
+  STT?: Namespace;
   /** Agents' bearer token for POST /api/version/progress (a Worker secret). */
   PROGRESS_TOKEN?: string;
   /**
@@ -131,7 +158,32 @@ export type Env = {
 };
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
-const message = (build: string) => JSON.stringify({ build });
+/** Fingerprints are kept for this many builds; a page older than that just gets the button. */
+export const KEEP_FINGERPRINTS = 30;
+const fpKey = (build: string) => `fp:${build}`;
+
+/** The build a page said it runs (?b= on connect), kept on its socket across hibernation. */
+const pageBuild = (ws: Socket): string | undefined => {
+  try {
+    const a = ws.deserializeAttachment?.() as { b?: unknown } | null | undefined;
+    return typeof a?.b === "string" ? a.b : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** The publish body: a bare build id (before smart refresh), or {build, fingerprints}. */
+function readPublish(req: Request, body: string): { build: string; fp: RouteFingerprints | null } {
+  const build = body.slice(0, 64);
+  // In a header, so the body stays the bare id an older lianki-push reads
+  // (the main Worker deploys first: docs/shipping.md, "Deploy order").
+  const header = req.headers.get(FINGERPRINTS_HEADER);
+  let fp: RouteFingerprints | null = null;
+  try {
+    if (header) fp = parseFingerprints(JSON.parse(decodeURIComponent(header)));
+  } catch {}
+  return { build, fp: fp && fp.build === build ? fp : null };
+}
 
 export class VersionHub {
   constructor(
@@ -139,26 +191,55 @@ export class VersionHub {
     private env: Env,
   ) {}
 
+  /** What to tell a page of build `from` about the serving `build` (lib/smart-refresh.ts). */
+  private async news(build: string, from: string | undefined, memo: Map<string, string>) {
+    const key = from ?? "";
+    let msg = memo.get(key);
+    if (msg === undefined) {
+      const store = this.ctx.storage;
+      const to = await store.get<RouteFingerprints>(fpKey(build));
+      const was = from ? await store.get<RouteFingerprints>(fpKey(from)) : undefined;
+      msg = JSON.stringify(versionNews(build, was, to));
+      memo.set(key, msg);
+    }
+    return msg;
+  }
+
+  /** Keep `fp` for its build, forgetting the oldest beyond KEEP_FINGERPRINTS. */
+  private async keep(fp: RouteFingerprints) {
+    const store = this.ctx.storage;
+    if (await store.get(fpKey(fp.build))) return;
+    await store.put(fpKey(fp.build), fp);
+    const order = [...((await store.get<string[]>("fp-order")) ?? []), fp.build];
+    const drop = order.splice(0, Math.max(0, order.length - KEEP_FINGERPRINTS));
+    for (const b of drop) await store.delete?.(fpKey(b));
+    await store.put("fp-order", order);
+  }
+
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname.endsWith("/publish")) {
-      const build = (await req.text()).trim().slice(0, 64);
+      const { build, fp } = readPublish(req, (await req.text()).trim());
       if (!build) return new Response("empty build id", { status: 400 });
+      if (fp) await this.keep(fp);
       // Every isolate of a version announces it: only the first is news.
       if ((await this.ctx.storage.get<string>("build")) === build)
         return Response.json({ build, pushed: 0 });
       await this.ctx.storage.put("build", build);
       const sockets = this.ctx.getWebSockets();
+      const memo = new Map<string, string>();
       for (const ws of sockets)
         try {
-          ws.send(message(build));
+          ws.send(await this.news(build, pageBuild(ws), memo));
         } catch {}
       return Response.json({ build, pushed: sockets.length });
     }
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
+    const from = url.searchParams.get("b")?.slice(0, 64) || undefined;
+    if (from) pair[1].serializeAttachment?.({ b: from });
     const build = await this.ctx.storage.get<string>("build");
-    if (build) pair[1].send(message(build));
+    if (build) pair[1].send(await this.news(build, from, new Map()));
     return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
   }
 
@@ -180,6 +261,26 @@ export default {
     if (url.pathname === "/api/version/ws") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });
       return env.HUB.get(env.HUB.idFromName("version")).fetch(req);
+    }
+    // Lianki's speech servers (stt-registry.ts): 404 while the flag stt.worker is
+    // off (or cannot be read), and for anything but a socket. No identity passes:
+    // a worker proves its key, a page shows its v2 ticket; neither has a cookie here.
+    if (url.pathname === STT_WORKER_PATH || url.pathname === STT_SIGNAL_PATH) {
+      const none = () => new Response(null, { status: 404 });
+      if (!wantsSocket || !env.STT) return none();
+      let on: unknown = false;
+      try {
+        on = await env.SESSIONS?.flag?.("stt.worker");
+      } catch {}
+      if (on !== true) return none();
+      const headers = new Headers(req.headers);
+      for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
+      headers.delete(DEV_BRIDGE_HEADER);
+      headers.delete(EMBED_HEADER);
+      headers.delete(BOX_HEADER);
+      headers.delete("cookie");
+      headers.delete("authorization");
+      return env.STT.get(env.STT.idFromName("stt")).fetch(new Request(req, { headers }));
     }
     if (url.pathname === "/api/version/read-stream") {
       if (!wantsSocket) return new Response("WebSocket only", { status: 426 });

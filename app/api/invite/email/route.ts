@@ -2,7 +2,7 @@ import { dbBackend } from "@/lib/d1";
 import { emailInviteStatus, sendEmailInvite } from "@/lib/referrals/email-invite";
 import { emailInviteDeps } from "@/lib/referrals/email-invite-deps";
 
-const off = () => Response.json({ error: "Not found" }, { status: 404 });
+const off = () => Response.json({ error: "not-found" }, { status: 404 });
 
 /** May this user invite by email; today's remaining; their own masked history. */
 export const GET = () => (dbBackend() === "d1" ? emailInviteStatus(emailInviteDeps) : off());

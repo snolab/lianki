@@ -240,6 +240,43 @@ Gift codes can carry credits (`gift_code.credits`) as well as, or instead of,
 Pro days; both land in one batch with the `membership_grant` marker, once per
 person per code.
 
+### Credits usage (`/membership/credits`)
+
+Owner, 2026-11-09: a prominent place to audit credits. One tap from the
+account menu ("Credits usage") and from the wallet card's history heading.
+Rules in `lib/payments/credit-usage.ts`, the handler in
+`credit-usage-handler.ts`, the page in `app/(app)/membership/credits/`,
+`GET /api/payments/credits/usage` (`?tz&group&from&to&offset&limit`, or
+`&format=csv`).
+
+- **Every ledger line of the signed-in user, only theirs** (the user id is the
+  session's, never the query's): time in the viewer's zone, feature, amount,
+  the balance after it.
+- **Actual spend only** (owner, 2026-11-09): a paid action is one line of its
+  net charge — what it really cost. Its hold and the release `settleAi`
+  writes (an `ai:` refund with the same refId) never show, on the page or in
+  the CSV; an action that kept nothing (a failure, a refusal, a reply under a
+  credit) is not shown at all. A hold not settled yet reads "Still running".
+  The ledger keeps every row; this is display only (admin views see all).
+- **A refund after the fact is its own line**, linked to the line it gives
+  back: a pass refunded to the wallet (`pass:<refId>`), a reversed top-up
+  (`topup:<refId>`). Every `ai:` refund is a settle today — there is no
+  later-refund path for an AI charge; one would need a refId of its own.
+- **Feature**: an `ai` row's `note` is the metered call's feature id
+  (`FEATURES` maps each to a group and the page it was used on); no note = a
+  Learning Partner reply. Other reasons are their own feature. A line links to
+  that page; it never carries what the user wrote.
+- **Balance after**: the running sum of the ledger in written order, started so
+  that it ends on the cached `credit_balance` (a wallet over `MAX_ROWS` =
+  20,000 lines shows its newest).
+- **Filters** by feature group and local day range (inclusive); **this
+  month's** totals per group in the viewer's zone; **CSV** of the filtered
+  lines, oldest first (one row per action, its net amount; `status` pending;
+  `refund_of` the time of the line a refund gives back), times in UTC and
+  local, formula-looking cells defused.
+- Tests: `unit/credit-usage.test.ts`; QA `scripts/qa/qa-credits-usage.mjs`
+  (suite `credits-usage`).
+
 ### Refunds
 
 - **A pass bought with credits**: `/dev/credits` → "退回余额" returns the
@@ -250,6 +287,206 @@ person per code.
   balance never goes negative; refund the pass first, or settle by hand.
 - No refund of unused credits to the user's card yet — see the open question
   below.
+
+### What costs credits
+
+Owner, 2026-11-09: "every paid service must run on the USER's credits". Every
+server path a signed-in user can reach that calls a paid provider is paid from
+that user's wallet — or by their own key (BYOK, [byok.md](byok.md): the call
+goes from their browser to their provider and never reaches ours), or it is
+free for everyone because nothing is billed (cached answers, recorded clips).
+There is **no free allowance**: a balance of 0 gets the refusal below — except
+the features the owner keeps free (2026-11-09, card o3): **word read-aloud**
+(`words.tts`, legacy `tts`) and **the microphone** (`speech.stt`). They take no
+hold and charge nothing; each call logs its cost to us (`freeCall` in
+`lib/payments/paid-calls.ts`, `credits.free` with `why: "free-feature"`), so
+the choice can be revisited with numbers.
+
+**Pre-authorisation + refund** (`lib/payments/metered.ts`, on top of
+`lib/payments/ai-credits.ts`):
+
+1. **Sweep** — holds still pending `HOLD_STALE_MS` (10 min) after they were
+   taken belong to a call that crashed: released in full. Run on the next paid
+   request, never by a timer.
+2. **Hold** — the most the call can cost is debited in whole credits before the
+   provider is asked: an `ai` ledger row (refId `ai:<feature>:<userId>:<uuid>`,
+   `note` = the feature id) and the balance change in **one D1 batch**. The
+   balance's `CHECK (balance >= 0)` (`0024_credits.sql`) trips on an overdraft
+   and rolls the batch back, so a negative balance cannot be written by any
+   code path, and N concurrent holds on a small balance pass only as far as it
+   covers (unit test "N parallel holds"). Not enough → **refused, the provider
+   never called**: HTTP **402** `{error: "no-credits", balance, need, topUp:
+   "/membership"}` with the header `x-lianki-credits: needed`.
+3. **Call** — with the feature's fixed limits (max output tokens, text length,
+   audio size: the same for everyone, never shrunk to fit a low balance).
+4. **Settle** — the real cost (provider-reported tokens; for speech and
+   transcription, estimated from the text length or audio size) is kept;
+   fractions of a credit carry in `credit_ai_carry`; the rest comes back as a
+   `refund` row with the same refId. The provider failed → full refund. Once
+   only (`pending → settled`).
+
+**The hold is a hard cap.** It is computed from the very limits the call is
+made with — 2 input tokens per prompt character (a ceiling: Latin text is
+~0.3, CJK ~1), 4,000 per image, every output token the call may produce;
+speech at 3 characters a second; audio at 2,000 bytes a second — so the real
+cost is at most the hold by construction. The answer ceilings are data
+(`MAX_OUT` in `lib/payments/paid-calls.ts`, the `max_tokens` of each seam
+call), the same for everyone and never shrunk to fit a balance.
+
+**Neither side eats an overage.** Our unit price is the provider's list price
+× `MARGIN`, and the hold is that price × the call's ceilings, so a capped call's
+hold covers the provider's real bill (unit test "every hold covers the
+provider's real bill", `unit/paid-routes.test.ts`, for every model and kind).
+If a call still costs more than its hold (pricing drift, a ceiling wrong), it
+is settled at the hold (never charged past it), alerted (`credits.overage`,
+feature and amounts only, plus an error line), and **the feature is paused for
+everyone**: a row in `credit_feature_pause` (`0065_credit_feature_pause.sql`)
+under the current `PRICES_VERSION`. A paused feature refuses before any hold
+or call — HTTP **503** `{error: "credits-paused"}` with `x-lianki-credits:
+paused`, and the page's notice says "temporarily unavailable, nothing was
+charged" in the user's language. It resumes when the price table is fixed and
+`PRICES_VERSION` bumped (a deploy): the old row no longer matches. No timer, no
+manual switch to forget.
+
+**Every account pays the same** (owner, 2026-11-10: "admin/dev permission does
+not mean unlimited AI credits"). An `admin` or `dev` holder — the owner
+included — takes the same hold, is charged the same, gets the same 402 with
+`need` / `recommended` at a low balance, and his calls show on the credits page
+like anyone's. No permission, flag or email is consulted in `takeHold` or in
+`creditsCover` (the "is it offered" checks of /self-intro and "Words with AI").
+Feature _visibility_ gates (`owner || flag`, e.g. `importAiOn`,
+`selfIntroImportOn`) only decide whether a dev holder sees a feature before its
+flag is on; they never skip the wallet. The STT rate limit `STT_MAX_OWNER`
+(`lib/stt-handler.ts`) is a call cap per 10 minutes on a free feature, not credits.
+
+**Who pays nothing.** The free features above (for everyone). A BYOK call
+never reaches the server. Without D1 (the frozen Mongo backend, local dev)
+nothing can be charged: the call runs and logs `credits.unmetered`.
+
+**Not enough credits: the numbers** (owner, 2026-11-10). Every 402 from
+`takeHold` carries, in the body and in headers (`x-lianki-credits-need`,
+`-have`, `-recommended`), whole credits:
+
+- `need` — the minimum to start: this call's hold;
+- `recommended` — the balance to finish the whole action without stopping
+  midway: a high percentile (`RECOMMEND_PERCENTILE`, P95; the owner also
+  named P99) of this feature's past real per-call costs
+  (`credit_ai_charge.costMicro`, settled, every user, numbers only) × the
+  calls the action has left (`takeHold`'s `action.units`; 1 for a single
+  call); under `MIN_SAMPLES` (20) settled calls, the hold × the calls left.
+  Never below `need`. `lib/payments/recommend.ts`;
+- `have` — the spendable balance.
+
+The page-wide notice reads the headers (never the body) and adds "开始至少需要
+N 积分，完成整个任务建议 R 积分（当前 H）", or "至少需要 N 积分（还差 M）"
+when starting is finishing (`credits-needed.content.ts` `needLine` /
+`needShort`). The Learning Partner chat's line adds the same short form (the
+reply's hold and the balance, sent with `ai-credits`). /self-intro's start
+note and "Words with AI" say both numbers in place; a multi-part action also
+says how far it got ("已完成 X/Y 部分，充值后继续") and resumes from its
+kept parts (docs/import-material.md, "Resume").
+
+**The page.** Any 402 with that header shows one notice, on any page, in the
+user's language with a "Get credits" link (`NoCreditsNotice`,
+`credits-needed.content.ts`, `lib/payments/no-credits-watch.ts` — it looks at
+the status and header only, never the body).
+
+**Prices as data.** `lib/payments/prices.ts` is the one table: provider list
+prices in USD (Cloudflare Workers AI pricing page, read 2026-11-09) × `MARGIN`
+(1.5: card fees, retries and rounding), turned into credits at
+`CREDITS_PER_USD` (150; `lib/payments/credits.ts`). So one USD of provider cost
+is 225 credits.
+
+| feature (ledger `note`) | route | flag | provider · model | billing | typical / hold |
+| --- | --- | --- | --- | --- | --- |
+| `partner.reply` | lianki-push hub → `DebugSessions.partnerReply` | `partner.ai-reply` | Workers AI · DeepSeek v4.1 flash | wallet (since 2026-11-05; margin since 2026-11-09). The owner's thread never goes to the model. Ledger note is empty for these. | ~0.2 / ≤ 10 credits |
+| `read.gloss` | `/api/read/[id]/gloss`, `grade`, `make-cards`, `word-session`, `batch-grade` | — | Workers AI · DeepSeek | wallet. Deck meanings and `word_gloss` hits are free; `own: true` (BYOK) asks no model of ours. A tap refused → 402; a bulk call leaves the words without a meaning. | ~0.05 per word / 2 per 40-word batch |
+| `read.translate` | `/api/read/[id]/translate` | — | Workers AI · DeepSeek | wallet; a `read_translation` hit is free | ~0.1 / 1 |
+| `vibe.translate` | `/api/vibe/[id]/translate`, the reader on a /vibe doc | `read.vibe` | Workers AI · DeepSeek | wallet; a line already translated is free | ~0.1 / 1 |
+| `read.polish` | `/api/read/[id]/polish` | — | Workers AI · DeepSeek | wallet, one hold for the whole document | ~0.3 per 1,000 characters / up to its chunks' max |
+| `read.live-polish` | `/api/read/[id]/polish-live` | `read.live-polish` | Workers AI · DeepSeek (or `READ_POLISH_MODEL`) | wallet | ~0.2 / 1–3 |
+| `self-intro.import` | `/api/self-intro/import` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.5 / ≤ 9 (40,000 characters + 4 images) |
+| `self-intro.followup` | `/api/self-intro/followup` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.2 / 1 |
+| `words.import-ai` | `/api/import/ai` (the /words Import panel, "Words with AI" on a stored file) | `words.import-ai` | Workers AI · DeepSeek | wallet: one hold per chunk call, settled at its real cost; a failed call or a chunk with no rows keeps nothing; each hold a hard cap; out of credits midway: 402 with completed / total, the paid chunks kept for a resume | ~0.6 per 6,000 characters / ~3 per chunk; a full file (10 chunks + 4 images) ≤ 23; offered from 2 |
+| `words.tts` | `/api/words/tts` (cache miss only) | — | Workers AI · MeloTTS / Aura-2 | **free** — owner, 2026-11-09 (card o3): word read-aloud stays free for now; each miss logs what it cost us (`credits.free`, `why: "free-feature"`) | MeloTTS ~0.001 per clip; Aura-2 ~0.7 per 100 characters |
+| `speech.stt` | `/api/debug/stt` (the chat's mic, voice mode) | `words.voice-mode` | Workers AI · Whisper turbo | **free** — owner, 2026-11-09 (card o3): the microphone stays free for now; each transcription logs what it cost us. The owner's local STT (his Mac) costs nothing | ~0.03 per 15 s utterance |
+| `ai-sentences` | `/api/ai-sentences/generate`, `/new-word` | — (`/lab/ai-vocab`) | Workers AI · Llama 3.3 70B | wallet | ~0.3 |
+| `polyglot.translate`, `polyglot.tts` | `/api/polyglot/*` | — (`/lab/polyglot`) | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
+| `self-intro.translate`, `self-intro.tts` | `/api/self-intro/translate`, `/tts` | — | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
+| `roadmap.generate` | `/api/roadmap/generate` | — | Workers AI · Llama | wallet | ~1 |
+| `blog.translate` | `/api/translate` (blog post, any signed-in user; the result is shared) | — | Workers AI · gpt-oss-120b | wallet: held before the stream, settled when it ends; a translation already in the PR is free | ~5 per post |
+| `tts` | `/api/tts` (legacy; no page calls it) | — | Workers AI · MeloTTS | **free** with word read-aloud (2026-11-09); cost logged | ~0.01 |
+
+Not charged, on purpose (no provider bill per call):
+
+| path | why free |
+| --- | --- |
+| recorded word clips (`workers/voice`, R2 `voice/`) | pre-rendered once by the owner; R2 egress is free |
+| cached TTS (`tts/` in R2), `word_gloss`, `read_translation`, `vibe_translation` | the answer is stored; no provider call |
+| `/api/import/youtube` | YouTube Data API: free quota, no money |
+| Google Drive / Docs (`/connections`, `read.gdoc-stream`) | Google APIs on the user's own OAuth token; no per-call bill |
+| `/library` catalogue (`library.catalogue`) | public-domain texts cached in R2; no provider call |
+| BYOK (`byok.sync`) | the user's own key, from their browser |
+| the inbox (R2 storage and operations, `lib/inbox/charge.ts`) | metered and logged, not yet debited: cents per GB-month; a follow-up |
+| owner-only tools (`/dev/*`, the owner's STT bench `?model=`, local STT) | the owner pays (local STT is still booked in the cost ledger below) |
+
+### Cost ledger (`/dev/costs`)
+
+Owner, 2026-11-11: a free feature charges nothing, but **its real cost is
+booked per account**, and an administrator sees who consumed what. Users keep
+seeing only what they are charged (`/membership/credits`); this view is
+admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
+`lib/payments/costs-route.ts` (`GET /api/dev/costs`), the page in
+`app/(app)/dev/costs/`, the table in `db/migrations/0072_cost_ledger.sql`.
+
+- **`cost_ledger`**: one row per served free call — `user_id` (the account
+  id, `''` for a guest), `feature`, `usd_micro` (the provider's cost in
+  millionths of a USD, REAL so a MeloTTS clip's few millionths are kept),
+  `units` (audio seconds for speech to text, characters for speech), `day`
+  (JST, YYYY-MM-DD) and `at`. Indexed by (day, user) and (feature, day). No
+  text, no audio, no email.
+- **Who books.** `freeCall` (`lib/payments/paid-calls.ts`) takes the payer
+  (`{userId, db, units}`) from every caller: `/api/words/tts` (cache misses;
+  recorded clips and cached audio cost nothing and are not booked),
+  `/api/tts`, `/api/debug/stt`. The cost booked is our price ÷ `MARGIN` — the
+  provider's list price — so free and paid add up in the same unit. The
+  lianki-voice Worker serves recorded clips (no provider bill) and passes
+  misses on to `/api/words/tts`, which books them, so it books nothing itself.
+- **Never in the user's way.** The booking runs after the call, under the
+  request's `waitUntil` (awaited only where there is none: dev, tests). A
+  failed write logs `cost.book.failed` (the feature and the error only) and
+  the user's call answers as if nothing happened (unit test "a ledger failure
+  never breaks or fails the user's call"). Without D1 nothing is booked.
+- **Lianki's speech server, as a cloud service.** The owner's Mac STT
+  ([local-stt.md](local-stt.md)) streams from the page straight to the Mac;
+  no utterance touches lianki.com on its own. So the page reports each one it
+  was served: the chat mic (`MicButton.tsx`, `reportLocalStt`, every final the
+  Mac answered, filtered or not) and /vibe (`served` in `lib/vibe/session.ts`)
+  POST `{audioMs}` to `/api/debug/stt/local` (same-origin JSON, signed in,
+  `LOCAL_STT_MAX_REPORTS` per 10 min, fire and forget). The server books
+  feature `speech.stt.local`: `audioMs` clamped to one utterance
+  (`LOCAL_STT_MAX_AUDIO_MS`, 30 s) × the config key
+  **`stt.local.costPerMinUsd`** (default 0.000513, Workers AI whisper turbo's
+  list price per audio minute, [workers-ai.md](workers-ai.md); editable at
+  `/dev/config`). Not booked: a box token's chat (box tokens never reach
+  `/api/debug`), and an utterance whose page closed before the report left
+  (`keepalive` covers most).
+- **The page** (`isAdmin`, 404 otherwise, page and API): a JST day range
+  (default the last 30 days, at most `COSTS_MAX_DAYS`); totals; **by
+  feature** and **by day** (a VirtualList with a seal-red bar per day); **by
+  account**, dearest first — the top three marked — as a VirtualList loading
+  `lists.batchSize` rows as it scrolls, each with its display name and
+  account id (never an email). Every table shows free cost and paid cost side
+  by side, plus what paid features charged (credits) and the calls. The paid
+  side is read from `credit_ai_charge` (settled rows by `settledAt`, JST):
+  `costMicro` ÷ `CREDITS_PER_USD` ÷ `MARGIN` is its provider cost; the feature
+  is the charge key's prefix (`<feature>:<userId>:…`; none = a Learning
+  Partner reply). Strings: `costs.content.ts` (`dev-costs`, 16 locales with
+  context lines); the page name is `costs` in `dev-pages`.
+- Tests: `unit/cost-ledger.test.ts` (booking, failure, the speech-server
+  route, aggregation, the API's 404); QA `scripts/qa/qa-costs.mjs` (suite
+  `costs`: non-admin 404, a speech-server report booked, the account by name
+  with no email, 360 px light + dark).
 
 ### Providers
 
@@ -481,10 +718,12 @@ the invite card on `/membership`; Lianki mails that friend the inviter's existin
   included), a suppressed one, one mailed recently, or a blocked inviter — no
   mail, and the same `{status:"sent"}` as a real send. Every one of these counts
   against the daily limit, so the limit cannot be used to probe.
-- **No address stored**: `recipientHash` = SHA-256 of the canonical address;
-  `recipientMasked` (`a***@example.com`) only for the inviter's own history.
-  Keyed by user id, so nothing moves on an email change (not in
-  `EMAIL_KEYED_TABLES`). No log line holds an address.
+- **No address in the invite tables**: `recipientHash` = SHA-256 of the
+  canonical address; `recipientMasked` (`a***@example.com`) only for the
+  inviter's own history. Keyed by user id, so nothing moves on an email change
+  (not in `EMAIL_KEYED_TABLES`). No log line holds an address. Since
+  2026-11-09 the send log (`mail_log`) does keep it, by owner decision:
+  developers only, deleted with the inviter's account.
 - **Language**: the inviter's account language (`ui.locale` in `user_prefs`),
   else `user.signupLocale`, else English (`lib/signup-locale.ts`). zh / zh-CN /
   zh-Hans read the Simplified template; there is no Traditional one, so zh-Hant
@@ -509,6 +748,9 @@ the invite card on `/membership`; Lianki mails that friend the inviter's existin
   token is `<logId>.<HMAC>` with a key derived from `AUTH_SECRET` by HKDF (no new
   secret), so nobody can opt out an address they did not receive. A GET on the
   one-click URL only redirects to the page. Per-IP limit 30 / 15 min.
+- **Send log**: every invite mail also has a row in `mail_log` with the
+  address (dev-only, /dev/mails; [mail-templates.md](mail-templates.md), "Send
+  log"); its Resend there goes through `inviteOne`, under every limit below.
 - **Bounces and complaints**: Resend's webhook, `POST /api/email/resend-webhook`
   (`lib/resend-webhook.ts`; Svix-signed, secret `RESEND_WEBHOOK_SECRET`; setup
   in [secrets-and-auth.md](secrets-and-auth.md), "Resend webhook"). A hard

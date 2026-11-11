@@ -194,14 +194,14 @@
     --plan-no: oklch(0.68 0.13 25);
   }
   [data-skin="paper"] .lk-plan--pro {
-    /* 瓷青紙: indigo sutra paper, gold ink */
-    --plan-bg: oklch(0.3 0.06 262);
+    /* 朱紙: seal-red sutra paper, gold ink (the bold variant; 6:1) */
+    --plan-bg: oklch(0.44 0.17 22.3);
     --plan-tex: url(/membership/flecks.svg), url(/membership/fibres-dark.svg);
     --plan-blend: normal;
     --plan-ink: oklch(0.92 0.035 88);
-    --plan-title: oklch(0.85 0.1 86);
-    --plan-stroke: oklch(0.82 0.1 86 / 0.85);
-    --plan-yes: oklch(0.84 0.1 86);
+    --plan-title: oklch(0.89 0.12 86);
+    --plan-stroke: oklch(0.89 0.12 86 / 0.85);
+    --plan-yes: oklch(0.89 0.12 86);
   }
 }
 
@@ -357,7 +357,10 @@
   --plan-bg: oklch(0.945 0.018 85);
   --plan-tex: var(--plan-polish), var(--plan-veil), url(/membership/marble-gold.svg);
   --plan-ink: oklch(0.25 0.015 60);
-  --plan-title: var(--brand);
+  /* seal red a shade deeper than the brand: 3:1 over the gold veins wherever
+   * the title lands (the slab is scaled to the card, so a longer title or a
+   * taller card moves the veins under it) */
+  --plan-title: oklch(from var(--brand) calc(l - 0.05) c h);
   --plan-carve: 0 1px 0 oklch(1 0 0 / 0.85), 0 -1px 0 oklch(0.3 0.1 22 / 0.35);
   --plan-yes: var(--brand);
   --plan-line: oklch(0.25 0.015 60 / 0.4);

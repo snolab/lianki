@@ -464,6 +464,25 @@ export async function getProgress(
 }
 
 /**
+ * The books read most recently, newest first: the positions whose anchor was
+ * taken last (several, so a deleted book can be skipped). /reader's
+ * "Continue reading" opens the first one that still exists.
+ */
+export async function recentProgress(
+  db: D1Like,
+  userId: string,
+  limit: number,
+): Promise<{ materialId: string; line: number; at: string }[]> {
+  const { results } = await db
+    .prepare(
+      "SELECT material_id, line, anchor_at FROM read_progress WHERE user_id = ? ORDER BY anchor_at DESC LIMIT ?",
+    )
+    .bind(userId, limit)
+    .all<{ material_id: string; line: number; anchor_at: string }>();
+  return (results ?? []).map((r) => ({ materialId: r.material_id, line: r.line, at: r.anchor_at }));
+}
+
+/**
  * Save a position: the anchor when its client time is the newest seen, the
  * high-water line only upward. Returns the lines it moved over, for extraction.
  */

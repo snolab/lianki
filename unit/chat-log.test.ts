@@ -4,7 +4,7 @@ import { createTestD1 } from "../lib/d1/testDb";
 import { answerText, chatLogLine, parseChatLogLine } from "../lib/chat-log-line";
 import { type ChatLogDb, chatLogOp, deleteLine, deleteRange, listHistory } from "../lib/chat-log";
 import { deleteHistory, getHistory, type HistoryUser } from "../lib/chat-history-api";
-import { byDay, dayRange, plainText } from "../lib/chat-history-view";
+import { byDay, dayRange, dayRows, plainText } from "../lib/chat-history-view";
 
 const SCHEMA =
   "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT);\n" +
@@ -153,6 +153,20 @@ describe("chatLogOp: the hub's writes", () => {
     expect(rows()).toEqual([]);
   });
 
+  it("drop: only a passage's derived .merged line; a line he said never", async () => {
+    await put("owner", line("m0"));
+    await put("owner", line("m0.merged", { text: "passage" }));
+    for (const ids of [["m0"], ["m0.merged", "m0"], [], "m0.merged"])
+      expect(await chatLogOp(db, { op: "drop", thread: "owner", ids })).toMatchObject({
+        ok: false,
+      });
+    expect(rows().map((r) => r.id)).toEqual(["m0", "m0.merged"]);
+    expect(await chatLogOp(db, { op: "drop", thread: "owner", ids: ["m0.merged"] })).toMatchObject({
+      ok: true,
+    });
+    expect(rows().map((r) => r.id)).toEqual(["m0"]);
+  });
+
   it("backfill: the owner's thread only, once per account (a deleted line stays deleted)", async () => {
     const lines = [chatLogLine(line("h1")), chatLogLine(line("h2", { at: T0 + 1 }))];
     expect(await chatLogOp(db, { op: "backfill", thread: "fr1", lines })).toMatchObject({
@@ -168,7 +182,7 @@ describe("chatLogOp: the hub's writes", () => {
   it("refuses a bad request, writes nothing", async () => {
     for (const r of [
       null,
-      { op: "drop", thread: "owner", lines: [] },
+      { op: "nuke", thread: "owner", lines: [] },
       { op: "put", thread: "owner" },
     ])
       expect(await chatLogOp(db, r)).toMatchObject({ ok: false });
@@ -357,6 +371,22 @@ describe("the page's helpers", () => {
       from: new Date(2026, 10, 7).getTime(),
       to: new Date(2026, 10, 8).getTime(),
     });
+  });
+
+  it("rows for the virtual list: each day's heading, then its lines", () => {
+    const a = { id: "a", at: new Date(2026, 10, 7, 23, 0).getTime() };
+    const b = { id: "b", at: new Date(2026, 10, 7, 1, 0).getTime() };
+    const c = { id: "c", at: new Date(2026, 10, 6, 12, 0).getTime() };
+    const rows = dayRows([a, b, c], (l) => l.id);
+    expect(rows.map((r) => r.key)).toEqual([
+      "day:2026-11-07",
+      "line:a",
+      "line:b",
+      "day:2026-11-06",
+      "line:c",
+    ]);
+    expect(rows[0]).toMatchObject({ kind: "day", n: 2, first: a });
+    expect(dayRows([], (l: { at: number }) => String(l.at))).toEqual([]);
   });
 
   it("an agent line's rich-text tags are shown plain", () => {

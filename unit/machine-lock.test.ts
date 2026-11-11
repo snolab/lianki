@@ -116,6 +116,18 @@ function wrapper(
   return { child: c, done, log: () => readFileSync(log, "utf8") };
 }
 
+/**
+ * Until the waiter has printed its whole first report: the `waiting:` line and a
+ * `held by` line naming each of `holders`. They are separate writes, so a test
+ * that stops at the first one can read the log between them (that flaked in CI).
+ */
+const waitingOn = (w: ReturnType<typeof wrapper>, ...holders: string[]) =>
+  until(`the waiter to name ${holders.join(", ") || "its reason"}`, () => {
+    const log = w.log();
+    const named = log.split("\n").filter((l) => l.includes("held by"));
+    return log.includes("waiting:") && holders.every((h) => named.some((l) => l.includes(h)));
+  });
+
 /** A shell line that runs until the test creates `<name>.go`; `$$` lands in `<name>.up`. */
 const blocker = (name: string, then = "") =>
   `echo $$ > ${name}.up.tmp; mv ${name}.up.tmp ${name}.up; until [ -f ${name}.go ]; do sleep 0.02; done; ${then}`;
@@ -210,25 +222,37 @@ describe("liveness", () => {
     }
   });
 
-  test.skipIf(!hasPs || process.platform === "win32")("a zombie is dead", async () => {
-    // A shell that replaces itself with a sleep after starting a child that
-    // exits at once: nobody reaps the child while the sleep runs.
-    const c = spawn("sh", ["-c", `sh -c 'exit 0' & echo $! > ${join(dir, "z")}; exec sleep 30`], {
-      stdio: "ignore",
-    });
-    running.push(c);
-    await until(
-      "the child's pid",
-      () => existsSync(join(dir, "z")) && !!readFileSync(join(dir, "z"), "utf8").trim(),
-    );
-    const pid = Number(readFileSync(join(dir, "z"), "utf8"));
-    await until("the zombie", () =>
-      spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).stdout.startsWith(
-        "Z",
-      ),
-    );
-    expect(isHolderAlive({ pid, startTime: null })).toBe(false);
-  });
+  test.skipIf(!hasPs || process.platform === "win32")(
+    "a zombie is dead",
+    async () => {
+      // A shell starts a child, then replaces itself with a sleep, which never
+      // reaps. The child exits only once the sleep is in place: had it exited
+      // while the shell still ran, the shell would have reaped it, no zombie ever
+      // (what timed this test out under load).
+      const ps = (pid: number, field: string) =>
+        spawnSync("ps", ["-o", `${field}=`, "-p", String(pid)], { encoding: "utf8" }).stdout.trim();
+      const c = spawn(
+        "sh",
+        [
+          "-c",
+          // Also ends with its parent, so a failed test leaves nothing behind.
+          `sh -c 'until [ -f z.go ] || ! kill -0 $PPID 2>/dev/null; do sleep 0.01; done' & echo $! > z.tmp; mv z.tmp z; exec sleep 30`,
+        ],
+        { cwd: dir, stdio: "ignore" },
+      );
+      running.push(c);
+      await until("the child's pid", () => existsSync(join(dir, "z")));
+      const pid = Number(readFileSync(join(dir, "z"), "utf8"));
+      await until("the shell to become the sleep", () =>
+        /(^|\/)sleep$/.test(ps(c.pid as number, "comm")),
+      );
+      expect(isHolderAlive({ pid, startTime: null })).toBe(true);
+      writeFileSync(join(dir, "z.go"), "");
+      await until("the zombie", () => ps(pid, "stat").startsWith("Z"));
+      expect(isHolderAlive({ pid, startTime: null })).toBe(false);
+    },
+    30_000,
+  );
 });
 
 describe("the lock file", () => {
@@ -537,22 +561,16 @@ describe("the wrapper, as real processes", () => {
       expect(heldBy()?.worktree).toEndWith(dir.split("/").pop() as string);
 
       const b = wrapper("b", "echo b-ran >> order");
-      await until("b to wait", () => {
-        try {
-          return b.log().includes("waiting");
-        } catch {
-          return false;
-        }
-      });
+      await waitingOn(b, `pid ${a.child.pid}`);
       expect(existsSync(join(dir, "order"))).toBe(false);
-      expect(b.log().match(/held by/g)).toHaveLength(1);
       expect(b.log()).toContain("the first run");
-      expect(b.log()).toContain(`pid ${a.child.pid}`);
 
       go("a");
       expect(await a.done).toBe(0);
       expect(await b.done).toBe(0);
       expect(readFileSync(join(dir, "order"), "utf8")).toBe("a-end\nb-ran\n");
+      // Once over the whole wait, however many polls it took.
+      expect(b.log().match(/held by/g)).toHaveLength(1);
       expect(existsSync(lock)).toBe(false);
     },
     TIMEOUT,
@@ -567,7 +585,7 @@ describe("the wrapper, as real processes", () => {
       const pid = a.child.pid as number;
 
       const b = wrapper("b", "echo b-ran >> order");
-      await until("b to wait", () => b.log().includes("waiting"));
+      await waitingOn(b);
       expect(existsSync(join(dir, "order"))).toBe(false);
 
       a.child.kill("SIGKILL");
@@ -616,10 +634,8 @@ describe("the wrapper, as real processes", () => {
       expect(readLock(`${lock}.2`)?.holder?.command).toBe("run b");
 
       const c = wrapper("c", "echo c-ran >> order", two);
-      await until("c to wait", () => c.log().includes("waiting"));
+      await waitingOn(c, "`run a`", "`run b`");
       expect(c.log()).toContain("waiting: 2 runs, the safety cap");
-      expect(c.log()).toContain("run a");
-      expect(c.log()).toContain("run b");
       expect(existsSync(join(dir, "order"))).toBe(false);
 
       go("b");
@@ -644,7 +660,7 @@ describe("the wrapper, as real processes", () => {
       await until("b to start", () => up("b"));
       const bCommand = Number(readFileSync(join(dir, "b.up"), "utf8"));
       const c = wrapper("c", "echo c-ran >> order", two);
-      await until("c to wait", () => c.log().includes("waiting"));
+      await waitingOn(c);
 
       b.child.kill("SIGKILL");
       expect(await c.done).toBe(0);
@@ -691,7 +707,7 @@ describe("the wrapper, as real processes", () => {
       const a = wrapper("a", blocker("a"));
       await until("a to start", () => up("a"));
       const b = wrapper("b", "echo ran >> order", { [TOKEN_ENV]: "from-a-finished-run" });
-      await until("b to wait", () => b.log().includes("waiting"));
+      await waitingOn(b);
       expect(existsSync(join(dir, "order"))).toBe(false);
       go("a");
       expect(await b.done).toBe(0);
@@ -771,7 +787,7 @@ describe("the wrapper, as real processes", () => {
       const a = wrapper("a", blocker("a"));
       await until("a to start", () => up("a"));
       const b = wrapper("b", "echo ran >> order");
-      await until("b to wait", () => b.log().includes("waiting"));
+      await waitingOn(b);
       b.child.kill("SIGTERM");
       expect(await b.done).toBe(143);
       expect(existsSync(join(dir, "order"))).toBe(false);
@@ -864,7 +880,9 @@ describe("what is wired to the lock", () => {
     );
     expect(sensitive).toEqual([
       "WORDS",
+      "WORDS PINCH",
       "READ EPUB",
+      "VIRTUAL LIST",
       "READ SEL ONE",
       "SYNC",
       "PARTNER FRAME",

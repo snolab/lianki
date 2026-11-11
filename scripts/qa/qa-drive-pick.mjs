@@ -14,7 +14,7 @@
 //   ('connections.google', 1, datetime('now'), 'qa')"
 // (delete the row after; the other read suites expect it off).
 //
-// Checks: the button and the three-step how-to show next to "Import Google
+// Checks: the button and the three-step how-to show in the Import pop-up next to "Import Google
 // Doc"; a tap opens the Picker with multi-select on and no preselected doc;
 // both picked docs import through Drive; the result line says 2; not
 // connected (409) goes to Google's consent with return /reader?pick=drive; back
@@ -45,7 +45,7 @@ const PICKER_STUB = `(() => {
     ViewId: { DOCUMENTS: "docs" },
     DocsViewMode: { LIST: "list" },
     Feature: { MULTISELECT_ENABLED: "multi" },
-    Action: { PICKED: "picked", CANCEL: "cancel" },
+    Action: { PICKED: "picked", CANCEL: "cancel", ERROR: "error" },
     Response: { ACTION: "action", DOCUMENTS: "docs" },
     Document: { ID: "id", MIME_TYPE: "mimeType" },
     DocsView: class {
@@ -53,15 +53,19 @@ const PICKER_STUB = `(() => {
       setMimeTypes() {} setMode() {} setIncludeFolders() {}
     },
     PickerBuilder: class {
-      addView() {} setDeveloperKey() {} setAppId() {} setOrigin() {}
+      addView() {} setAppId() {} setOrigin() {}
       setOAuthToken(t) { window.__picker.token = t; }
+      setDeveloperKey(k) { window.__picker.key = k; }
       enableFeature(f) { if (f === "multi") window.__picker.multi = true; }
       setCallback(cb) { this.cb = cb; }
       build() {
         window.__picker.built++;
         const cb = this.cb;
+        // failFirst: the first Picker reports an error (the iPhone first-open bug).
+        const fail = window.__picker.failFirst && window.__picker.built === 1;
         return {
           setVisible() {
+            if (fail) return setTimeout(() => cb({ action: "error" }), 50);
             setTimeout(() => cb({ action: "picked", docs: [{ id: "${A}" }, { id: "${B}" }] }), 50);
           },
           dispose() {},
@@ -89,7 +93,13 @@ async function account(device, tag) {
 async function mockRoutes(ctx, state) {
   await ctx.route("**/api/connections/google/picker", (r) =>
     state.connected
-      ? r.fulfill({ json: { accessToken: "qa-token", apiKey: "qa-key", appId: "1" } })
+      ? r.fulfill({
+          json: {
+            accessToken: "qa-token-0000",
+            apiKey: "qa-fake-picker-key-000000",
+            appId: "123456789012",
+          },
+        })
       : r.fulfill({ status: 409, json: { error: "not-connected" } }),
   );
   await ctx.route("**/api/connections/google/start", (r) => {
@@ -120,8 +130,11 @@ for (const [name, device] of [
   page.on("pageerror", (e) => errs.push(e.message));
 
   await page.goto("/reader", { waitUntil: "networkidle" });
-  const btn = page.locator('[data-testid="drive-pick-read"] [data-testid="drive-pick"]');
-  check(await btn.isVisible(), `${name}: the Drive button shows on /reader`);
+  const btn = page.locator('[data-testid="drive-pick-reader"] [data-testid="drive-pick"]');
+  // The import options live in the Import pop-up, opened by the header's one button.
+  const openImport = () => page.getByTestId("read-import").click();
+  await openImport();
+  check(await btn.isVisible(), `${name}: the Drive button shows in /reader's Import pop-up`);
   check(
     await page.locator('[data-testid="read-import-gdoc"]').isVisible(),
     `${name}: paste-link import still there`,
@@ -151,7 +164,7 @@ for (const [name, device] of [
     .catch(() => {});
   const pk = await page.evaluate(() => window.__picker);
   check(pk.built === 1 && pk.multi && pk.fileIds === null, `${name}: Picker multi-select, no link`);
-  check(pk.token === "qa-token", `${name}: Picker gets the Drive token`);
+  check(pk.token === "qa-token-0000", `${name}: Picker gets the Drive token`);
   check(
     state.imports.length === 2 &&
       state.imports.every((b) => b.via === "drive") &&
@@ -166,6 +179,7 @@ for (const [name, device] of [
   // Not connected: to Google's consent, coming back to /reader?pick=drive.
   state.connected = false;
   await page.goto("/reader", { waitUntil: "networkidle" });
+  await openImport();
   await btn.click();
   await page.waitForURL(/accounts\.google\.com/, { timeout: 8000 }).catch(() => {});
   check(
@@ -185,11 +199,30 @@ for (const [name, device] of [
     `${name}: Picker opens with no tap after connecting`,
   );
   check(new URL(page.url()).search === "", `${name}: pick words left the URL`);
+  check(
+    await page.getByTestId("read-import-sheet").isVisible(),
+    `${name}: the Import pop-up is open on the way back`,
+  );
 
   // A denial opens nothing.
   await page.goto("/reader?pick=drive&google=denied", { waitUntil: "networkidle" });
   await page.waitForTimeout(500);
   check((await page.evaluate(() => window.__picker.built)) === 0, `${name}: denied → no Picker`);
+
+  // The first Picker reports an error: a fresh token and a second Picker, no tap.
+  await page.goto("/reader", { waitUntil: "networkidle" });
+  await page.evaluate(() => (window.__picker.failFirst = true));
+  state.imports = [];
+  await openImport();
+  await btn.click();
+  await page
+    .waitForFunction(() => window.__picker?.built === 2, null, { timeout: 8000 })
+    .catch(() => {});
+  await page.waitForTimeout(500);
+  check(
+    (await page.evaluate(() => window.__picker.built)) === 2 && state.imports.length === 2,
+    `${name}: a Picker error on the first open → opened again, both imported`,
+  );
 
   check(errs.length === 0, `${name}: no page errors (${errs.join("; ")})`);
   await ctx.close();

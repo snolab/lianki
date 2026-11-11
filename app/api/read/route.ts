@@ -3,13 +3,14 @@ import { auth } from "@/auth";
 import { headers } from "next/headers";
 import {
   findReadMaterialByText,
+  getReadMaterialById,
   getReadMaterialContent,
   listReadMaterials,
   replaceReadMaterialContent,
   saveReadMaterial,
 } from "@/lib/getReadMaterialsCollection";
 import { parseBookMeta } from "@/lib/read/book";
-import { saveContentHash } from "@/lib/read/reader-store";
+import { recentProgress, saveContentHash } from "@/lib/read/reader-store";
 import { bookHash } from "@/lib/read/units";
 import { isoDay } from "@/lib/dates";
 import { BOOK_LIMITS, bookMetaOf, checkBook } from "@/lib/read/book";
@@ -27,7 +28,7 @@ const d1OrNull = () => (dbBackend() === "d1" ? getD1() : null);
 export async function GET(request: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -59,16 +60,9 @@ export async function GET(request: NextRequest) {
   const words = await summarizeMaterials(d1OrNull(), session.user, items);
 
   return NextResponse.json({
-    materials: materials.map((m, i) => ({
-      id: m._id.toString(),
-      title: m.title,
-      // The list shows a count only; a whole book's lines stay out of it.
-      lines: [],
-      lineCount: m.lines.length,
-      words: words[i],
-      createdAt: m.createdAt.toISOString(),
-      updatedAt: m.updatedAt.toISOString(),
-    })),
+    materials: materials.map((m, i) => listRow(m, words[i])),
+    // The first batch carries "Continue reading": the book read last, and where.
+    ...(page === 1 ? { last: await lastRead(session.user) } : {}),
     total,
     page,
     pageSize,
@@ -76,11 +70,50 @@ export async function GET(request: NextRequest) {
   });
 }
 
+type ListedMaterial = Awaited<ReturnType<typeof listReadMaterials>>["materials"][number];
+type Summary = Awaited<ReturnType<typeof summarizeMaterials>>[number];
+
+/** One row of the /reader list. */
+function listRow(m: ListedMaterial, words: Summary) {
+  return {
+    id: m._id.toString(),
+    title: m.title,
+    // The list shows a count only; a whole book's lines stay out of it.
+    lines: [],
+    lineCount: m.lines.length,
+    words,
+    createdAt: m.createdAt.toISOString(),
+    updatedAt: m.updatedAt.toISOString(),
+  };
+}
+
+/** How many recent positions are tried for "Continue reading" (a deleted book is skipped). */
+const LAST_READ_TRIES = 5;
+
+/** The book whose reading position moved last, as a list row plus its line; null when none. */
+async function lastRead(user: { id: string; email?: string | null }) {
+  const db = d1OrNull();
+  if (!db) return null;
+  try {
+    for (const p of await recentProgress(db, user.id, LAST_READ_TRIES)) {
+      const m = await getReadMaterialById(user.id, p.materialId);
+      if (!m) continue;
+      const [words] = await summarizeMaterials(db, user, [
+        { material: m, stats: (await materialWords(m, user.id)).stats },
+      ]);
+      return { ...listRow(m, words), line: p.line, readAt: p.at };
+    }
+  } catch (err) {
+    console.error("read: last read", err);
+  }
+  return null;
+}
+
 // POST /api/read - Create new material
 export async function POST(request: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
 
   // A book's text is capped by checkBook (1.5 MB of text); its JSON with the
@@ -90,7 +123,7 @@ export async function POST(request: NextRequest) {
   const body: unknown = read.value;
 
   if (body === null || typeof body !== "object") {
-    return NextResponse.json({ error: "Request body must be a JSON object" }, { status: 400 });
+    return NextResponse.json({ error: "invalid-json" }, { status: 400 });
   }
 
   const { title, content, book } = body as { title?: unknown; content?: unknown; book?: unknown };
@@ -149,11 +182,11 @@ export async function POST(request: NextRequest) {
   }
 
   if (typeof content !== "string" || content.length === 0) {
-    return NextResponse.json({ error: "Content is required" }, { status: 400 });
+    return NextResponse.json({ error: "content-required" }, { status: 400 });
   }
 
   if (typeof title !== "undefined" && typeof title !== "string") {
-    return NextResponse.json({ error: "Title must be a string" }, { status: 400 });
+    return NextResponse.json({ error: "invalid-title" }, { status: 400 });
   }
   // Pasted text: the same caps as a book.
   if (

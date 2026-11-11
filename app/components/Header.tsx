@@ -1,11 +1,10 @@
 "use client";
-import { isOwnAvatar } from "@/lib/profile/avatar";
 
-import Image from "next/image";
 import { BrandName } from "./BrandName";
 import Link from "next/link";
 import { signOut } from "@/lib/sign-out";
 import { Icon } from "./icons";
+import { UserAvatar } from "./UserAvatar";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useState } from "react";
 import { island } from "@/lib/islands/Island";
@@ -20,7 +19,8 @@ interface HeaderProps {
   blogLabel: string;
   learnLabel: string;
   importLabel: string;
-  aiVocabLabel: string;
+  /** Unused: AI vocab is a Lab page, developers only (app/(app)/lab/layout.tsx). */
+  aiVocabLabel?: string;
   signInLabel: string;
   dashboardLabel: string;
   profileLabel: string;
@@ -41,7 +41,6 @@ export function Header({
   blogLabel,
   learnLabel,
   importLabel,
-  aiVocabLabel,
   signInLabel,
   dashboardLabel,
   profileLabel,
@@ -80,11 +79,6 @@ export function Header({
             {importLabel}
           </Link>
 
-          {/* AI Vocab Button */}
-          <Link href="/lab/ai-vocab" className="text-base md:text-lg font-medium hover:underline">
-            {aiVocabLabel}
-          </Link>
-
           {/* Roadmap Button */}
           {roadmapLabel && (
             <Link href="/roadmap" className="text-base md:text-lg font-medium hover:underline">
@@ -111,17 +105,12 @@ export function Header({
                 onBlur={() => setTimeout(() => setIsProfileOpen(false), 150)}
                 className="flex items-center gap-2 text-lg font-medium hover:opacity-80 transition-opacity"
               >
-                {user.image && (
-                  <Image
-                    className="w-8 h-8 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"
-                    alt={user.name}
-                    src={user.image}
-                    // An upload of ours is already small, and next/image's loader can't fetch /api/*.
-                    unoptimized={isOwnAvatar(user.image) || user.image.startsWith("blob:")}
-                    width={32}
-                    height={32}
-                  />
-                )}
+                <UserAvatar
+                  name={user.name}
+                  image={user.image}
+                  size={32}
+                  className="w-8 h-8 ring-2 ring-gray-200 dark:ring-gray-700"
+                />
                 {/* Show username on desktop, hide on mobile */}
                 <span className="hidden md:inline min-w-[80px] max-w-[120px] truncate">
                   {user.name}
@@ -155,13 +144,13 @@ export function Header({
                     {dashboardLabel}
                   </Link>
                   <Link
-                    href="/profile"
+                    href="/my/profile"
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     {profileLabel}
                   </Link>
                   <Link
-                    href="/preferences"
+                    href="/my/preferences"
                     className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     {preferencesLabel}

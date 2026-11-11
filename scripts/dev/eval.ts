@@ -144,15 +144,50 @@
  *       (docs/dev-debug-widget.md, "Continuous speech amends the last line".)
  *
  *   bun scripts/dev/eval.ts edit [<msgId>|--last] [--no-pair] "polished text"   (or - for stdin)
- *       Polish the owner's latest line when it came from the mic (STT gets
- *       words wrong, and has no context): the hub keeps the first STT text as
- *       `raw`, marks the line edited, and updates it in place on every page
- *       (never read aloud again). Only the owner's LATEST line, only
- *       "source":"stt", at most 3 times; friends' lines never. --last targets
- *       the owner's latest line. Uses the saved grant; never pairs.
- *       The hub refuses a polish its context does not support (polish.ts):
- *       fix punctuation, homophones the line's `scene`, selection or thread
- *       disambiguate, and stutters; never add, drop or invent words.
+ *       Polish one of the owner's last 5 lines when it came from the mic (STT
+ *       gets words wrong, and has no context): the hub keeps the first STT text
+ *       as `raw`, marks the line edited, and updates it in place on every page
+ *       (never read aloud again). Only "source":"stt", at most 3 times;
+ *       friends' lines never. --last targets the owner's latest line. Uses the
+ *       saved grant; never pairs. The hub refuses a polish its context does not
+ *       support (polish.ts): punctuation, homophones the line's `scene`,
+ *       selection or thread (your replies too) disambiguate, a truncated word
+ *       the context completes (fl -> flag), up to 2 function words (的 了 在 里,
+ *       the, of), stutters, and an unclear word as "（没听清，票？，条？）";
+ *       never invent words. (docs/dev-debug-widget.md, "Agent edits".)
+ *
+ *   bun scripts/dev/eval.ts edit --summary (<msgId>… | --last N) [--no-pair] "summary"
+ *       Collapse a run of the owner's consecutive voice lines that were not
+ *       for you (room talk, someone else) into ONE short line saying what was
+ *       said, e.g. "（旁人在聊租房，嫌贵）": one sentence, at most 40% of the raw
+ *       length, never a bare "noise". Nothing is deleted: the lines stay kept
+ *       and in his history, a tap shows them as heard. Keep what matters: he
+ *       may have said something he wants heard; answer it warmly if so.
+ *       (docs/dev-debug-widget.md, "Summaries".)
+ *
+ *   bun scripts/dev/eval.ts edit --merge <id1,id2,…> --text "passage" [--no-pair]   (--text - for stdin)
+ *       Rewrite a RUN of the owner's consecutive voice lines as ONE fluent
+ *       passage: his words joined, connectives and fragment fixes allowed,
+ *       the meaning unchanged. A run ends at ANY other message (your reply,
+ *       an ask card, anyone else's line) or at a change of topic; unsure about
+ *       the topic: do not merge. The hub refuses lines with anything between
+ *       them, typed lines, and a passage longer than 1.3x the lines + 8
+ *       characters. The lines stay kept (a tap shows them as heard) and the
+ *       owner's ↩ restores them. Prints {"type":"edited",…,"passage":{ids}}.
+ *       (docs/dev-debug-widget.md, "Merged passages".)
+ *
+ *   bun scripts/dev/eval.ts edit --unmerge <id> [--no-pair]
+ *       Take back a merged passage (its first line's id): the lines read as
+ *       they did before. Prints {"type":"edited",…,"restored":[{id,text}…]}.
+ *
+ *   bun scripts/dev/eval.ts withdraw [<askId|msgId>|--last] [--to <thread|email>] [--no-pair]
+ *       Take back an ask card that is obsolete, so nobody has to tap it: the
+ *       hub marks it withdrawn and every open page greys it out ("Withdrawn",
+ *       no options, never read aloud); a later tap is refused. Only an
+ *       agent's ask, only while open (not answered or expired), only in the
+ *       thread it was sent to (the owner's, or --to the friend's). --last:
+ *       the latest open ask in the owner's thread. Prints {"type":"withdrawn",…}.
+ *       Uses the saved grant; never pairs.
  *
  *   bun scripts/dev/eval.ts say --to /words/audio "text"
  *       Address a state-tree node instead of a thread (a `--to` starting
@@ -227,7 +262,8 @@ import {
   sayLane,
   sayVolume,
 } from "./node-args";
-import { routeTo } from "@/lib/dev-eval";
+import { type ChatMessage, routeTo } from "@/lib/dev-eval";
+import { askState } from "@lianki/debug-chat/ask";
 import { isRouteLane, laneTakes } from "@/lib/lane-route";
 import { VOICES_PROBE, voicesReport } from "./voices-list";
 import { type BusyArgs, beatMessage, endsBeat, idleFor, parseBusyArgs } from "./busy";
@@ -310,8 +346,16 @@ const noPair = boolFlag("--no-pair");
 const cloudOnly = boolFlag("--cloud");
 /** ask: wait for the tap and print the answer (or time out). */
 const waitFlag = boolFlag("--wait");
-/** edit: the owner's latest line, instead of an id. */
+/** edit: the owner's latest line, instead of an id (with --summary: his last N lines); withdraw: the latest open ask. */
 const lastFlag = boolFlag("--last");
+/** edit: collapse room-talk lines into one summary instead of polishing one. */
+const summaryFlag = boolFlag("--summary");
+/** edit: merge a run of his consecutive voice lines (comma-separated ids) into one passage. */
+const mergeFlag = flag("--merge");
+/** edit --merge: the passage's text (or - for stdin). */
+const textFlag = flag("--text");
+/** edit: undo a merged passage, by its first line's id. */
+const unmergeFlag = flag("--unmerge");
 /** chat: exit on {type:"pages-idle"} instead of staying for pages-back. */
 const exitOnIdle = boolFlag("--exit-on-idle");
 /** chat: answer each live owner/friend line at once with one busy beat ("heard you"). */
@@ -596,6 +640,14 @@ function chat(out?: string, errorsOnly = false) {
           text: m.text,
           raw: m.raw,
           edited: m.edited,
+          // A summary of room talk: these lines are now one (raw: all of them as heard).
+          ...(m.summary ? { summary: m.summary } : {}),
+          // A merged passage: these lines are now one fluent passage (raw: all of them as heard).
+          ...(m.passage ? { passage: m.passage } : {}),
+          // A passage undone: the lines read as before.
+          ...(Array.isArray(m.restored)
+            ? { restored: m.restored.map((x: Msg) => ({ id: x.id, text: x.text, at: x.at })) }
+            : {}),
           // Continuous speech (stt.merge): `text` is the whole line so far; read it again.
           ...(Array.isArray(m.parts) ? { parts: m.parts.length } : {}),
           ...(m.merged ? { merged: m.merged } : {}),
@@ -658,7 +710,16 @@ function chat(out?: string, errorsOnly = false) {
           rev: m.rev ?? null,
           at: new Date(Number(m.at) || Number(m.hubAt)).toISOString(),
         });
-      else if (m.type === "error") console.error(`hub: ${m.error}`);
+      // An ask the agent withdrew (eval.ts withdraw): printed only; the hub decided it.
+      else if (m.type === "withdrawn")
+        print({
+          type: "withdrawn",
+          id: m.id,
+          askId: m.askId,
+          thread: m.thread ?? "owner",
+          withdrawnAt: m.withdrawnAt,
+        });
+      else if (m.type === "error") console.error(`hub: ${logSafe(m.error)}`);
     };
     ws.onclose = (e) => closed(e.code);
     const closed = (code: number) => {
@@ -846,6 +907,8 @@ function ask(
         if (!wait) done(() => resolve(m));
         else console.error(`asked (${askId}); waiting for the tap…`);
       } else if (m.type === "answered" && askId && m.askId === askId) done(() => resolve(m));
+      else if (m.type === "withdrawn" && askId && m.askId === askId)
+        done(() => reject(new Error(`ask ${askId} was withdrawn`)));
       else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
     };
     ws.onclose = (e) => {
@@ -861,7 +924,13 @@ function ask(
  * owner said last, from the history the hub sends on resume). Resolves with
  * the hub's {type:"edited"}; rejects with the rule it broke. Never pairs.
  */
-function edit(text: string, id: string | undefined, last: boolean): Promise<Msg> {
+function edit(
+  text: string,
+  id: string | undefined,
+  last: boolean,
+  summary?: { ids?: string[]; last?: number },
+  run?: { merge: string[] } | { unmerge: string },
+): Promise<Msg> {
   const grant = chatGrant();
   if (!grant)
     return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
@@ -877,9 +946,35 @@ function edit(text: string, id: string | undefined, last: boolean): Promise<Msg>
       ws.close();
       fn();
     };
-    const go = () => ws.send(JSON.stringify({ type: "edit", id: target, text }));
+    const go = () =>
+      ws.send(
+        JSON.stringify(
+          run
+            ? "merge" in run
+              ? { type: "merge", ids: run.merge, text }
+              : { type: "unmerge", id: run.unmerge }
+            : summary
+              ? { type: "summary", ...summary, text }
+              : { type: "edit", id: target, text },
+        ),
+      );
     ws.onmessage = (e) => {
       const m = JSON.parse(String(e.data)) as Msg;
+      // A merge or its undo: the hub answers with the passage, or the restored lines.
+      if (run) {
+        if (m.type === "approved") go();
+        else if (m.type === "edited" && ("merge" in run ? m.passage : m.restored))
+          done(() => resolve(m));
+        else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+        return;
+      }
+      // A summary is the hub's to resolve (ids or his last N): its answer carries `summary`.
+      if (summary) {
+        if (m.type === "approved") go();
+        else if (m.type === "edited" && m.summary) done(() => resolve(m));
+        else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+        return;
+      }
       // An id: send at once. --last: wait for the history that follows the approval.
       if (m.type === "approved" && !last) go();
       else if (m.type === "history" && last && target === undefined) {
@@ -889,6 +984,60 @@ function edit(text: string, id: string | undefined, last: boolean): Promise<Msg>
         if (!target) return done(() => reject(new Error("the owner has no line to polish")));
         go();
       } else if (m.type === "edited" && m.id === target) done(() => resolve(m));
+      else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
+    };
+    ws.onclose = (e) => {
+      clearTimeout(give);
+      if (e.code === GRANT_INVALID) rmSync(grant.file, { force: true });
+      reject(new Error(`socket closed (${e.code}${e.reason ? ` ${e.reason}` : ""})`));
+    };
+  });
+}
+
+/**
+ * Withdraw an open ask card (`id`: its askId or message id; with `last` the
+ * latest open ask in the owner's thread, from the history the hub sends). Resolves
+ * with the hub's {type:"withdrawn"}; rejects with the rule it broke. Never pairs.
+ */
+function withdraw(id: string | undefined, last: boolean, to?: string): Promise<Msg> {
+  const grant = chatGrant();
+  if (!grant)
+    return Promise.reject(new Error(`no chat grant in ${TOKEN_FILE}: run \`eval.ts chat\` first`));
+  return new Promise((resolve, reject) => {
+    const ws = openControl(grant.token);
+    let target = id;
+    const give = setTimeout(() => {
+      ws.close();
+      reject(new Error("no answer from the hub within 15 s"));
+    }, 15_000);
+    const done = (fn: () => void) => {
+      clearTimeout(give);
+      ws.close();
+      fn();
+    };
+    const go = () =>
+      ws.send(
+        JSON.stringify({ type: "withdraw", id: target, ...(to && to !== "owner" ? { to } : {}) }),
+      );
+    ws.onmessage = (e) => {
+      const m = JSON.parse(String(e.data)) as Msg;
+      if (m.type === "approved" && !last) go();
+      else if (m.type === "history" && last && target === undefined) {
+        const list = (Array.isArray(m.messages) ? m.messages : []) as ChatMessage[];
+        const now = Date.now();
+        // The history a listener gets is the owner's thread.
+        const open = list.filter(
+          (x) =>
+            x.from === "agent" &&
+            x.ask &&
+            (x.thread ?? "owner") === "owner" &&
+            askState(x, now) === "open",
+        );
+        target = open.at(-1)?.ask?.askId;
+        if (!target) return done(() => reject(new Error("no open ask to withdraw")));
+        go();
+      } else if (m.type === "withdrawn" && (m.askId === target || m.id === target))
+        done(() => resolve(m));
       else if (m.type === "error") done(() => reject(new Error(String(m.reason ?? m.error))));
     };
     ws.onclose = (e) => {
@@ -1044,6 +1193,50 @@ async function main() {
   if (args[0] === "serve") return serve();
   if (args[0] === "chat") return chat(out);
   if (args[0] === "errors") return chat(out, true);
+  if (args[0] === "edit" && unmergeFlag !== undefined) {
+    if (!unmergeFlag || args.length > 1) {
+      console.error("usage: bun scripts/dev/eval.ts edit --unmerge <id> [--no-pair]");
+      process.exit(2);
+    }
+    console.log(
+      JSON.stringify(await edit("", undefined, false, undefined, { unmerge: unmergeFlag })),
+    );
+    return;
+  }
+  if (args[0] === "edit" && mergeFlag !== undefined) {
+    const ids = (mergeFlag ?? "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    // The text: --text, else one trailing argument; - reads stdin.
+    const given = textFlag ?? (args.length === 2 ? args[1] : undefined);
+    const text = (given === "-" ? await Bun.stdin.text() : (given ?? "")).trim();
+    if (ids.length < 2 || !text || args.length > (textFlag === undefined ? 2 : 1)) {
+      console.error(
+        'usage: bun scripts/dev/eval.ts edit --merge <id1,id2,…> --text "passage" | - [--no-pair]',
+      );
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await edit(text, undefined, false, undefined, { merge: ids })));
+    return;
+  }
+  if (args[0] === "edit" && summaryFlag) {
+    const rest = args.slice(1);
+    const raw = rest.at(-1);
+    const text = (raw === "-" ? await Bun.stdin.text() : (raw ?? "")).trim();
+    const heads = rest.slice(0, -1);
+    const n = lastFlag ? Number(heads[0]) : NaN;
+    const ok = lastFlag ? heads.length === 1 && Number.isInteger(n) && n >= 1 : heads.length >= 1;
+    if (!text || !ok) {
+      console.error(
+        'usage: bun scripts/dev/eval.ts edit --summary (<msgId>… | --last N) [--no-pair] "summary" | -',
+      );
+      process.exit(2);
+    }
+    const which = lastFlag ? { last: n } : { ids: heads };
+    console.log(JSON.stringify(await edit(text, undefined, false, which)));
+    return;
+  }
   if (args[0] === "edit") {
     const rest = args.slice(1);
     const id = lastFlag ? undefined : rest.length > 1 ? rest[0] : undefined;
@@ -1056,6 +1249,17 @@ async function main() {
       process.exit(2);
     }
     console.log(JSON.stringify(await edit(text, id, lastFlag)));
+    return;
+  }
+  if (args[0] === "withdraw") {
+    const rest = args.slice(1);
+    if ((lastFlag ? rest.length !== 0 : rest.length !== 1) || (lastFlag && to && to !== "owner")) {
+      console.error(
+        "usage: bun scripts/dev/eval.ts withdraw <askId|msgId> [--to <thread|email>] | --last [--no-pair]",
+      );
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await withdraw(rest[0], lastFlag, to)));
     return;
   }
   if (args[0] === "ask") {
@@ -1179,7 +1383,14 @@ async function main() {
   if (results.some((r) => r.ok !== true)) process.exitCode = 1;
 }
 
+/** A value for the terminal log: control characters (newlines, escapes) become spaces. */
+function logSafe(v: unknown): string {
+  return String(v)
+    .replace(/\n|\r/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
+}
+
 main().catch((e) => {
-  console.error((e as Error).message);
+  console.error(logSafe((e as Error).message));
   process.exit(1);
 });

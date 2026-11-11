@@ -45,6 +45,28 @@
   --color-blue-900: oklch(0.3 0.11 22);
   --color-blue-950: oklch(0.22 0.08 22);
 
+  /* Gold (金) — the second brand colour (owner, 2026-11-10). 300 is the gold
+   * itself, the ground of the bold variant and of secondary buttons (ink text
+   * on it, 12.7:1); 700 is gold you can read as text on paper (5.2:1), 300 on
+   * ink (13.5:1). Hue drifts warmer as it darkens so deep gold reads bronze,
+   * not olive. docs/design-principles.md, "Two colours: seal red and gold". */
+  --color-gold-50: oklch(0.98 0.025 90);
+  --color-gold-100: oklch(0.96 0.05 90);
+  --color-gold-200: oklch(0.93 0.09 88);
+  --color-gold-300: oklch(0.89 0.12 86); /* gold */
+  --color-gold-400: oklch(0.83 0.135 84);
+  --color-gold-500: oklch(0.75 0.14 80);
+  --color-gold-600: oklch(0.62 0.125 74);
+  --color-gold-700: oklch(0.5 0.1 70);
+  --color-gold-800: oklch(0.41 0.08 68);
+  --color-gold-900: oklch(0.33 0.06 66);
+  --color-gold-950: oklch(0.24 0.04 65);
+
+  /* The seal by name (same as blue-600), and the deeper seal of the bold
+   * variant: seal-deep on gold-300 is the measured AA pair, 4.95:1. */
+  --color-seal: oklch(0.53 0.207 22.3);
+  --color-seal-deep: oklch(0.49 0.2 22.3);
+
   /* "white" is the card sheet laid on the paper; "black" is ink. */
   --color-white: oklch(0.985 0.01 85);
   --color-black: oklch(0.17 0.01 60);
@@ -153,6 +175,24 @@
   --background: oklch(0.945 0.02 82); /* 宣紙 */
   --foreground: oklch(0.22 0.015 65); /* 墨 */
   color-scheme: light;
+  /* Two brand colours, by role (docs/design-principles.md, "Two colours").
+   * primary   seal-red fill (buttons, checked, progress), on-primary on it
+   * secondary gold fill, on-secondary on it
+   * gold-ink  gold you can read as text or a link on the page
+   * bold-*    the bold-page variant: gold ground + seal text in light,
+   *           seal ground + gold text in dark (4.95:1 both ways; /today). */
+  --lk-primary: oklch(0.53 0.207 22.3);
+  --lk-on-primary: oklch(0.985 0.01 85);
+  --lk-secondary: oklch(0.89 0.12 86);
+  --lk-on-secondary: oklch(0.21 0.01 60);
+  --lk-gold-ink: oklch(0.5 0.1 70);
+  --lk-bold-bg: oklch(0.89 0.12 86);
+  --lk-bold-fg: oklch(0.49 0.2 22.3);
+  /* The on/off seal (SealSwitch.tsx): on = seal fill + paper word, off = a
+   * dashed grey box + grey word. AA checked in unit/seal-switch.test.ts. */
+  --lk-seal-on: var(--lk-primary);
+  --lk-seal-on-ink: var(--lk-on-primary);
+  --lk-seal-off: oklch(0.46 0.02 68);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -161,6 +201,189 @@
     --background: oklch(0.18 0.01 65); /* 松煙墨 */
     --foreground: oklch(0.92 0.02 82);
     color-scheme: dark;
+    --lk-gold-ink: oklch(0.89 0.12 86);
+    --lk-bold-bg: oklch(0.49 0.2 22.3);
+    --lk-bold-fg: oklch(0.89 0.12 86);
+    --lk-seal-off: oklch(0.72 0.02 72);
+  }
+}
+
+/* The role tokens as Tailwind colours: bg-primary text-on-primary,
+ * bg-secondary text-on-secondary, text-gold-ink, bg-bold-bg text-bold-fg. */
+@theme inline {
+  --color-primary: var(--lk-primary);
+  --color-on-primary: var(--lk-on-primary);
+  --color-secondary: var(--lk-secondary);
+  --color-on-secondary: var(--lk-on-secondary);
+  --color-gold-ink: var(--lk-gold-ink);
+  --color-bold-bg: var(--lk-bold-bg);
+  --color-bold-fg: var(--lk-bold-fg);
+}
+/* A bold page or block: the variant pair in one class. */
+.lk-bold {
+  background-color: var(--lk-bold-bg);
+  color: var(--lk-bold-fg);
+}
+
+/* Buttons by role (docs/design-principles.md, "Two colours"): one
+ * .lk-btn-primary per context (the main action, seal fill), the rest
+ * .lk-btn-secondary (gold outline) or .lk-btn-quiet (no frame, e.g. Cancel).
+ * In the components layer, so a utility (py-4, flex-1) still sizes one. */
+@layer components {
+  .lk-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    border: 2px solid transparent;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    text-align: center;
+    cursor: pointer;
+    transition:
+      background-color 150ms,
+      border-color 150ms,
+      color 150ms;
+  }
+  .lk-btn:focus-visible {
+    outline: 2px solid var(--lk-primary);
+    outline-offset: 2px;
+  }
+  .lk-btn:disabled,
+  .lk-btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .lk-btn-primary {
+    background-color: var(--lk-primary);
+    color: var(--lk-on-primary);
+  }
+  .lk-btn-primary:hover:not(:disabled) {
+    background-color: oklch(from var(--lk-primary) calc(l - 0.05) c h);
+  }
+  .lk-btn-secondary {
+    background-color: transparent;
+    border-color: var(--color-gold-600);
+    color: var(--lk-gold-ink);
+  }
+  @media (prefers-color-scheme: dark) {
+    .lk-btn-secondary {
+      border-color: var(--color-gold-300);
+    }
+  }
+  .lk-btn-secondary:hover:not(:disabled) {
+    background-color: oklch(from var(--lk-secondary) l c h / 0.25);
+  }
+  .lk-btn-quiet {
+    background-color: transparent;
+    color: var(--foreground);
+  }
+  .lk-btn-quiet:hover:not(:disabled) {
+    background-color: oklch(from var(--foreground) l c h / 0.08);
+  }
+  /* A modal sheet (app/components/ModalSheet.tsx): near-opaque glass in the
+   * page's colour, so its text keeps AA over whatever is behind it. */
+  .lk-sheet {
+    background-color: oklch(from var(--background) l c h / 0.98);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .lk-sheet {
+      background-color: var(--background);
+    }
+  }
+
+  /* The on/off switch as a box seal (SealSwitch.tsx; owner, 2026-11-11). The
+   * button is the tap target (40px tall, as every overlay control); the seal
+   * inside is the same box in both states: filled seal red when on, grey and
+   * dashed when off. Both words sit in one grid cell, so it never resizes. */
+  .lk-seal-switch {
+    display: inline-grid;
+    place-items: center;
+    flex-shrink: 0;
+    min-width: 2.75rem;
+    min-height: 2.5rem;
+    padding: 0 0.125rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .lk-seal-switch:focus-visible {
+    outline: 2px solid var(--lk-seal-on);
+    outline-offset: 2px;
+  }
+  .lk-seal-switch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .lk-sealbox {
+    display: inline-grid;
+    place-items: center;
+    flex-shrink: 0;
+    min-width: 2.25rem;
+    padding: 0.125rem 0.375rem;
+    border: 2px solid var(--lk-seal-on);
+    border-radius: 3px;
+    background-color: var(--lk-seal-on);
+    color: var(--lk-seal-on-ink);
+    font-size: 0.8125rem;
+    line-height: 1.125rem;
+    font-weight: 700;
+    white-space: nowrap;
+    user-select: none;
+    transition:
+      background-color 120ms,
+      border-color 120ms,
+      color 120ms;
+  }
+  .lk-sealbox[data-size="sm"] {
+    min-width: 1.875rem;
+    padding: 0 0.25rem;
+    font-size: 0.6875rem;
+    line-height: 1rem;
+  }
+  .lk-sealbox > span {
+    grid-area: 1 / 1;
+  }
+  .lk-sealbox[data-seal="on"] > [data-word="off"],
+  .lk-sealbox[data-seal="off"] > [data-word="on"] {
+    visibility: hidden;
+  }
+  .lk-sealbox[data-seal="off"] {
+    border-style: dashed;
+    border-color: var(--lk-seal-off);
+    background-color: transparent;
+    color: var(--lk-seal-off);
+    font-weight: 600;
+  }
+  .lk-sealbox[data-stamping] {
+    animation: lk-seal-stamp 260ms cubic-bezier(0.3, 1.4, 0.5, 1) 1;
+  }
+}
+
+@keyframes lk-seal-stamp {
+  0% {
+    transform: scale(1.35);
+    opacity: 0.4;
+  }
+  60% {
+    transform: scale(0.94);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lk-sealbox,
+  .lk-sealbox[data-stamping] {
+    animation: none;
+    transition: none;
   }
 }
 
@@ -313,17 +536,17 @@ ruby rt {
   -webkit-box-decoration-break: clone;
 }
 /* The word being read aloud (lib/words/spoken-word.ts), karaoke-style: a
- * cool tint with a bar beneath, unlike the card word's warm highlighter, so
+ * seal-red tint with a bar beneath, unlike the card word's gold highlighter, so
  * the two read apart where they meet. It moves word to word with a short
  * fade; with reduced motion it just jumps. */
 :root {
-  --lk-ex-spoken: oklch(0.85 0.09 220 / 0.7);
-  --lk-ex-spoken-bar: oklch(0.55 0.15 235);
+  --lk-ex-spoken: oklch(0.85 0.099 22.3 / 0.7);
+  --lk-ex-spoken-bar: oklch(0.55 0.165 22.3);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --lk-ex-spoken: oklch(0.45 0.09 225 / 0.75);
-    --lk-ex-spoken-bar: oklch(0.78 0.12 220);
+    --lk-ex-spoken: oklch(0.45 0.099 22.3 / 0.75);
+    --lk-ex-spoken-bar: oklch(0.78 0.132 22.3);
   }
 }
 .lk-ex-spoken {
@@ -671,6 +894,132 @@ html[data-motion="off"] .lk-ex-spoken {
   color: color-mix(in oklch, currentColor 55%, var(--background));
 }
 
+/* A word already reviewed this session (owner, 2026-11-10): kept for undo,
+ * faded like a slip that came back (.lk-back): a veil and muted ink, never
+ * opacity. One ink for the whole slip, the word and its back alike, mixed so
+ * it stays at AA contrast on the veiled slip (light ≈ 5:1, dark ≈ 5.8:1).
+ * Undo takes the grade, and with it this look. The seal keeps its colour;
+ * an unrevealed blank keeps its own light dashes. */
+.slip.slip-done {
+  --slip-veil: oklch(from var(--background) l c h / 0.35);
+  color: color-mix(in oklch, var(--foreground) var(--slip-done-ink, 65%), var(--background));
+}
+@media (prefers-color-scheme: dark) {
+  .slip.slip-done {
+    --slip-done-ink: 80%;
+  }
+}
+.slip-done .slip-back:not(.slip-blank),
+.slip-done .slip-term {
+  opacity: 1;
+  color: inherit;
+}
+
+/* A slip that can no longer be swiped (owner, 2026-11-10 22:59 JST): its
+ * countdown ended, it reads "↓ back" and is locked. Cracked glass, seal-red
+ * cracks with a gold glint (the brand, not danger), drawn under the slip's
+ * text (z-index -1 inside the slip's own stacking context, over its paper and
+ * veil), so the text keeps its AA contrast. Flag words.shatter;
+ * app/(app)/words/Shatter.tsx, lib/words/shatter.ts. Strokes do not scale, so
+ * any row height (the pinch's --row-h) gets the same hairlines. */
+.lk-shatter {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  --crack-shade: oklch(0.49 0.2 22.3 / 0.45);
+  --crack-glint: oklch(0.89 0.12 86 / 0.9);
+}
+@media (prefers-color-scheme: dark) {
+  .lk-shatter {
+    --crack-shade: oklch(0.7 0.16 22.3 / 0.5);
+    --crack-glint: oklch(0.89 0.12 86 / 0.55);
+  }
+}
+.lk-shatter svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.lk-shatter path {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lk-crack-shade path {
+  stroke: var(--crack-shade);
+  stroke-width: 1.6px;
+}
+.lk-crack-glint path {
+  stroke: var(--crack-glint);
+  stroke-width: 0.6px;
+}
+/* The countdown ended on screen: the cracks run out from the impact, once. */
+.lk-shatter-live svg {
+  animation: lk-crack-run 600ms var(--min-jerk) both;
+}
+.lk-shatter-hit {
+  position: absolute;
+  left: var(--crack-x);
+  top: var(--crack-y);
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: -1.25rem 0 0 -1.25rem;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, oklch(0.89 0.12 86 / 0.9), oklch(0.89 0.12 86 / 0));
+  opacity: 0;
+  animation: lk-crack-hit 520ms ease-out;
+}
+@keyframes lk-crack-run {
+  from {
+    clip-path: circle(0% at var(--crack-x) var(--crack-y));
+  }
+  to {
+    clip-path: circle(150% at var(--crack-x) var(--crack-y));
+  }
+}
+@keyframes lk-crack-hit {
+  from {
+    opacity: 1;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+/* Reduced motion: the cracks at rest, no run, no flash. */
+@media (prefers-reduced-motion: reduce) {
+  .lk-shatter-live svg {
+    animation: none;
+  }
+  .lk-shatter-hit {
+    display: none;
+  }
+}
+html[data-motion="off"] .lk-shatter-hit {
+  display: none;
+}
+
+/* Two fingers pinching the card height (lib/words/use-row-pinch.ts): the list
+ * does not scroll natively, so the scroll that keeps the fingers' row in place
+ * is the only one (iOS kept panning under it and the list shook). Still
+ * scrollable by script; overflow-anchor stays none (the list's own style). */
+.lk-words-list.lk-pinching {
+  overflow-y: hidden !important;
+  touch-action: none !important;
+}
+
+/* A back cell the row has no room for (a pinched-in row, lib/words/row-pinch.ts):
+ * laid out at its width, at no height, so the pinch can still measure it. */
+.slip-cell-hidden {
+  height: 0;
+  max-height: 0;
+  visibility: hidden;
+}
+
 /* The slip's action sheet (/words, double tap): slides up, minimum jerk. */
 .lk-sheet-in {
   animation: lk-sheet-in 240ms var(--min-jerk) both;
@@ -951,14 +1300,14 @@ html[data-embed] .lk-statusbar {
 }
 .lk-lang-current,
 .lk-lang-dot-current {
-  border-color: oklch(0.6 0.15 250);
-  background: oklch(0.6 0.15 250 / 0.14);
+  border-color: oklch(0.6 0.165 22.3);
+  background: oklch(0.6 0.165 22.3 / 0.14);
 }
 .lk-lang-preferred {
   box-shadow: 0 0 0 2px oklch(0.72 0.17 150 / 0.8);
 }
 .lk-lang-badge-current {
-  background: oklch(0.55 0.17 250);
+  background: oklch(0.55 0.187 22.3);
   color: oklch(0.99 0 0);
   text-shadow: none;
 }
@@ -1105,7 +1454,7 @@ html[data-embed] [data-words-top] {
   --ink: oklch(0.62 0.02 260);
   --soft: oklch(0.95 0.01 260);
   --card: oklch(1 0 0);
-  --accent: oklch(0.7 0.08 250);
+  --accent: oklch(0.7 0.088 22.3);
 }
 @media (prefers-color-scheme: dark) {
   .lk-tray {
@@ -1302,10 +1651,10 @@ html[data-motion="off"] *::after {
 @keyframes lk-grade-pulse {
   0%,
   100% {
-    background: oklch(0.7 0.08 250 / 0.06);
+    background: oklch(0.7 0.088 22.3 / 0.06);
   }
   50% {
-    background: oklch(0.7 0.08 250 / 0.24);
+    background: oklch(0.7 0.088 22.3 / 0.24);
   }
 }
 @keyframes lk-grade-flash {
@@ -1336,7 +1685,7 @@ html[data-motion="off"] *::after {
 @media (prefers-reduced-motion: reduce) {
   .lk-book [data-lk-pulse] {
     animation: none;
-    background: oklch(0.7 0.08 250 / 0.2);
+    background: oklch(0.7 0.088 22.3 / 0.2);
   }
   .lk-book [data-lk-flash] {
     animation: none;
@@ -1483,14 +1832,14 @@ html[data-read-marks="unknown"] .lk-book [data-pf="n"] {
  * words tapped before, so two taps showed two selections (owner, 2026-11-05
  * 03:00 JST). A deep link's unit flashes once as it lands. */
 .lk-book [data-sel] {
-  background: oklch(0.72 0.11 250 / 0.32);
+  background: oklch(0.86 0.13 86 / 0.5);
   border-radius: 0.15em;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
 @media (prefers-color-scheme: dark) {
   .lk-book [data-sel] {
-    background: oklch(0.62 0.12 250 / 0.42);
+    background: oklch(0.6 0.11 80 / 0.5);
   }
 }
 @keyframes lk-flash {

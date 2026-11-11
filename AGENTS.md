@@ -32,6 +32,11 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
+- **Defaults in code, live values in the DB.** A user-meaningful number, text
+  or icon is a key in `lib/config.ts` read with `cfg()` / `publicCfg()`, never a
+  bare constant; the code holds only its default.
+  [docs/config-store.md](docs/config-store.md).
+
 ## Commands
 
 ```bash
@@ -41,7 +46,7 @@ bun test unit/x.test.ts  # one test file, no queue
 bun run test:unit      # whole unit suite, starts at once (CI adds -- --coverage)
 bun fix                # oxlint --fix + oxfmt
 bun run lint           # oxlint + oxfmt --check, whole repo (pre-push and CI run it)
-bun run qa:all         # full integration gate — CI merge queue + nightly; time-sensitive suites wait for load-based admission
+bun run qa:all         # full integration gate — merge queue (sharded) + Full QA after merges; time-sensitive suites wait for load-based admission
 bun scripts/gate/affected.ts plan  # what pre-push runs for this change, and why (LIANKI_GATE_FULL=1 push: everything)
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
 ```
@@ -52,7 +57,7 @@ Agent lanes talk to the owner and the state tree through **one CLI**,
 `inbox`, `listen`, `progress`, and `lianki-dev doctor` when something fails.
 A lane never pairs. [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md).
 **Lanes chat with their own lane token**: the owner makes one per lane at
-lianki.com/preferences → API tokens (name = the lane, chat permissions, an
+lianki.com/my/preferences → API tokens (name = the lane, chat permissions, an
 expiry) and it is handed to that lane as `LIANKI_TOKEN`; then `lianki chat
 say|ask|read|listen` (or `lianki-dev say/ask/listen`, which uses it when set)
 posts as 【lane】 in the owner's thread only. A token never evals, pairs or
@@ -114,10 +119,12 @@ the same change; translators read it before every string. How:
 While working on Lianki, report to the live state tree
 ([docs/state-tree.md](docs/state-tree.md), "Live progress") at the start, at
 milestones, when blocked, and when done (with the PR):
-`bun scripts/dev/progress.ts --agent <you> --path /<route>/<task> --task "<name>: <description>" --status doing --pct 40 --eta 30m`
-(`--done --pr N` at the end; `--status waiting-owner --needs "…"` when the
-owner must act). The title is "name: description" with a name of at most 20
-characters, because the owner's ETA bar shows only the name (a longer one is
+`bun scripts/dev/progress.ts --agent <you> --path /<route>/<task> --task "<name>: <description>" --status doing --pct 40 --eta 12m-63m`
+(`--eta` is one time or a P5–P95 range; `--confirm` re-confirms it unchanged;
+`batch` writes several nodes as one change; `--done --pr N` at the end, or `--done --verified "<evidence>"` / `--unverified`;
+`--status waiting-owner --needs "…"` when the owner must act; `--status blocked --who <owner|lane> --needs "…"` when
+someone can act now; `--status waiting` when paused on an outside event). The title is "name: description" with a name
+at most 20 columns wide (a Chinese character is 2), because the owner's ETA bar shows only the name (a new wider one is
 refused). `progress.ts stats` shows your estimate vs actual, to calibrate `--eta`. Use the token you were given (`--token` or
 `LIANKI_PROGRESS_TOKEN`); stay inside its scope.
 
@@ -125,8 +132,11 @@ refused). `progress.ts stats` shows your estimate vs actual, to calibrate `--eta
 tells the owner, within 5 minutes, the reason and a new "N minutes from now":
 `progress.ts … --status doing --eta 20m --late "<reason, in his language>"` —
 the hub posts both to him in Li. Past the ETA a new `--eta` without `--late`
-is refused; with nothing for 5 minutes he hears "<name> 超时，未说明原因".
-[docs/state-tree.md](docs/state-tree.md), "ETA overrun".
+is refused. The "ETA reached" line carries a receipt code: ack it at once
+(`progress.ts ack <code>`, or any report on the node). No ack in 5 minutes:
+main is told; no reason 5 minutes later: he hears "<name> 超时，未说明原因",
+then again with backoff.
+[docs/state-tree.md](docs/state-tree.md), "ETA overrun", "Receipts".
 
 ## Where to look
 
@@ -141,7 +151,10 @@ that are expensive to rediscover.
 | Landing changes, CI, branch protection, post-deploy QA                   | [docs/shipping.md](docs/shipping.md)                                |
 | Finding your way around the code                                         | [docs/repo-map.md](docs/repo-map.md)                                |
 | Adding or renaming a route: nouns, /lab, /dev, 308 redirects             | [docs/url-principles.md](docs/url-principles.md)                    |
+| /my: the user's own data (profile, preferences, files)                   | [docs/url-principles.md](docs/url-principles.md), "/my"             |
 | Secrets, auth, OAuth config                                              | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
+| Transactional mail: templates, /dev/templates, locked variables          | [docs/mail-templates.md](docs/mail-templates.md)                    |
+| Every sent mail: the send log at /dev/mails, statuses, Resend rules      | [docs/mail-templates.md](docs/mail-templates.md), "Send log"        |
 | Permissions: `isAdmin`/`isDev`, /dev/permissions, break-glass CLI        | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Who may do what: isAdmin/isDev grants, /dev/permissions, break-glass CLI | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
 | Google Drive connection (/connections), private Docs import              | [docs/connections.md](docs/connections.md)                          |
@@ -159,6 +172,7 @@ that are expensive to rediscover.
 | Li chat from the userscript pill: security gate (stub)                   | [docs/userscript-li-chat.md](docs/userscript-li-chat.md)            |
 | Hot-swapping headless core modules (kernel, swap, leak tests)            | [docs/hot-core.md](docs/hot-core.md)                                |
 | The debug chat widget (packages/debug-chat), hot-loading                 | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
+| Users' own AI assistants: the token prompt, /api/agent-guide            | [docs/api-for-agents.md](docs/api-for-agents.md)                    |
 | `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor           | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                    |
 | Which lane answers him ("codex, …"), codex/agy listeners                 | [docs/lane-listen.md](docs/lane-listen.md)                          |
 | Hot islands: swappable components, shared state                          | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
@@ -190,6 +204,7 @@ that are expensive to rediscover.
 | Study ledger: daily Merkle anchors, proofs, OpenTimestamps               | [docs/lian.md](docs/lian.md)                                        |
 | Learner levels: ladder, names per locale, SVG badges                     | [docs/levels.md](docs/levels.md)                                    |
 | Feature flags: owner on/off at /dev/flags, ship dark, remove             | [docs/feature-flags.md](docs/feature-flags.md)                      |
+| Live config values (numbers, texts): registry, `cfg()`, /dev/config      | [docs/config-store.md](docs/config-store.md)                        |
 | Security measures: admin gate, lockout, scans, card testing              | [docs/security-measures.md](docs/security-measures.md)              |
 | UI layout: content fills the screen, glass overlays                      | [docs/design-principles.md](docs/design-principles.md)              |
 | rgui component library (subtree), its gantt module, upstream sync        | [docs/rgui.md](docs/rgui.md)                                        |

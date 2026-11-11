@@ -8,7 +8,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   const repo = await wordsRepo();
   if (repo instanceof NextResponse) return repo;
   const { id } = await params;
-  if (!(await repo.getList(id))) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!(await repo.getList(id))) return NextResponse.json({ error: "not-found" }, { status: 404 });
   const body = (await req.json().catch(() => null)) as { params?: unknown } | null;
   return NextResponse.json({ params: await repo.updateParams(id, body?.params) });
 }

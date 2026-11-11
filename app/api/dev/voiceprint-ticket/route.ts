@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server";
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
-import { authUserOrNull } from "@/app/signInEmail";
+import { authSessionOrNull } from "@/app/signInEmail";
+import { cfg } from "@/lib/config-store";
 import { isDev } from "@/lib/permissions";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { passkeyRelyingParty } from "@/lib/passkey";
 import { importTicketKey } from "@/lib/stt-ticket";
-import { importTicketVerifyKey } from "@/lib/voiceprint-ticket";
+import { importTicketVerifyKey, sessionTag } from "@/lib/voiceprint-ticket";
 import { type StoredPasskey, voiceprintApproval } from "@/lib/voiceprint-approval";
 
 /**
  * Voiceprint tickets for the owner's local STT server (lib/voiceprint-approval.ts,
  * docs/local-stt.md "Voiceprint: who may enrol and delete"). Owner session
  * only (404 for anyone else, as every /api/dev route). Enrol and delete need
- * a fresh passkey assertion with user verification; status only the session.
+ * a fresh passkey assertion with user verification, or the passkey window's
+ * grant from one (bound to this session; config voiceprint.passkeyWindowMs);
+ * status only the session.
  * 503 without STT_TICKET_KEY or off D1. POST, so nothing caches or prefetches it.
  */
 const b64 = (s: string) => {
@@ -21,7 +24,8 @@ const b64 = (s: string) => {
 };
 
 export const POST = async (req: Request) => {
-  const user = await authUserOrNull();
+  const got = await authSessionOrNull();
+  const user = got?.user;
   if (!isDev(user?.email) || !user?.id)
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   const raw = process.env.STT_TICKET_KEY;
@@ -49,10 +53,16 @@ export const POST = async (req: Request) => {
   const origins = rp.origin ?? [new URL(req.url).origin];
   const db = getD1();
   const userId = user.id as string;
+  // The passkey window: its length from the config store (fail closed: 0, a prompt per op),
+  // bound to this sign-in session, so a sign-out ends it here as well as on the page.
+  const windowMs = await cfg("voiceprint.passkeyWindowMs").catch(() => 0);
+  const sessionId = got?.session?.id;
   const out = await voiceprintApproval(body, {
     key,
     pub,
     userId,
+    windowMs,
+    ...(typeof sessionId === "string" && sessionId ? { sid: await sessionTag(sessionId) } : {}),
     rp: { rpID: rp.rpID, origins },
     passkeys: async () =>
       (

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useIntlayer } from "next-intlayer";
+import { fill } from "@/lib/roadmap/labels";
 
 type Props = {
-  locale: string;
   latestVersion: string;
 };
 
@@ -19,27 +20,8 @@ function semverGt(a: string, b: string): boolean {
   return false;
 }
 
-const installLabels: Record<string, string> = {
-  en: "Install Userscript",
-  ja: "ユーザースクリプトをインストール",
-  zh: "安装用户脚本",
-  ko: "유저스크립트 설치",
-  es: "Instalar Userscript",
-  fr: "Installer le Userscript",
-  de: "Userscript installieren",
-  ru: "Установить пользовательский скрипт",
-  ar: "تثبيت البرنامج النصي",
-  hi: "यूज़रस्क्रिप्ट इंस्टॉल करें",
-  bn: "ইউজারস্ক্রিপ্ট ইনস্টল করুন",
-  pt: "Instalar Userscript",
-  id: "Instal Userscript",
-  tr: "Userscript'i Yükle",
-  ur: "یوزرسکرپٹ انسٹال کریں",
-  sw: "Sakinisha Userscript",
-  mr: "यूझरस्क्रिप्ट स्थापित करा",
-};
-
-export default function UserscriptInstallButton({ locale, latestVersion }: Props) {
+export default function UserscriptInstallButton({ latestVersion }: Props) {
+  const t = useIntlayer("list-ui").install;
   const [status, setStatus] = useState<Status>("loading");
   const [installedVersion, setInstalledVersion] = useState<string | null>(null);
 
@@ -65,7 +47,10 @@ export default function UserscriptInstallButton({ locale, latestVersion }: Props
       <a
         href="/lianki.user.js"
         className="bg-yellow-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-yellow-600 flex items-center gap-2"
-        title={`Installed: v${installedVersion} → Latest: v${latestVersion}`}
+        title={fill(t.updateTitle.value, {
+          installed: installedVersion ?? "?",
+          latest: latestVersion,
+        })}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -79,7 +64,7 @@ export default function UserscriptInstallButton({ locale, latestVersion }: Props
             clipRule="evenodd"
           />
         </svg>
-        Update Userscript (v{latestVersion})
+        {fill(t.update.value, { version: latestVersion })}
       </a>
     );
   }
@@ -87,8 +72,8 @@ export default function UserscriptInstallButton({ locale, latestVersion }: Props
   return (
     <a
       href="/lianki.user.js"
-      className="bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 flex items-center gap-2"
-      title="Install the Lianki userscript to add flashcards from any webpage"
+      className="bg-primary text-on-primary font-bold py-3 px-6 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+      title={t.installTitle.value}
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -102,7 +87,7 @@ export default function UserscriptInstallButton({ locale, latestVersion }: Props
           clipRule="evenodd"
         />
       </svg>
-      {installLabels[locale] ?? installLabels.en}
+      {t.install}
     </a>
   );
 }

@@ -4,6 +4,7 @@ import { useSignedIn } from "@/app/components/BoxApiBridge";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
+import { fill } from "@/lib/roadmap/labels";
 import {
   deleteLocalCards,
   readLocalStore,
@@ -16,6 +17,7 @@ import {
 import { queuePurge } from "@/lib/local-purge";
 import type { HostGroup, NoteRow, StoreStats } from "@/app/lib/notesAdmin";
 import BackupSection from "./BackupSection";
+import { useInfiniteList } from "@/app/components/useInfiniteList";
 import CardTable from "./CardTable";
 import DangerZone from "./DangerZone";
 import HostPanel from "./HostPanel";
@@ -23,7 +25,6 @@ import StoreConsole from "./StoreConsole";
 import { type DataRow, type StoreId } from "./types";
 import { dataFiltersToQuery, defaultFilters, parseDataFilters } from "@/lib/data-filters";
 
-const PAGE_SIZE = 50;
 /** `/api/fsrs/bulk-upsert` caps a request at 500 notes. */
 const PUSH_BATCH = 200;
 
@@ -39,7 +40,14 @@ function localToRow(card: LocalCard): NoteRow {
   };
 }
 
-export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn: boolean }) {
+export default function DataClient({
+  isLoggedIn: serverSignedIn,
+  dev = false,
+}: {
+  isLoggedIn: boolean;
+  /** Holds `dev` (lib/permissions.ts): the stores' and sites' diagnostics are shown. */
+  dev?: boolean;
+}) {
   // On a box, from lianki.com (BoxApiBridge); else the server's answer.
   const isLoggedIn = useSignedIn(serverSignedIn);
   const t = useIntlayer("data-page");
@@ -67,11 +75,13 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
   const [onlyDue, setOnlyDue] = useState(initial.onlyDue);
   const [sort, setSort] = useState(initial.sort);
   const [order, setOrder] = useState<"asc" | "desc">(initial.order);
-  const [page, setPage] = useState(initial.page);
-  const [cloudRows, setCloudRows] = useState<NoteRow[]>([]);
-  const [cloudTotal, setCloudTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The search box waits for typing to pause before the cloud list restarts.
+  const [dq, setDq] = useState(initial.q);
+  useEffect(() => {
+    const id = setTimeout(() => setDq(q), 200);
+    return () => clearTimeout(id);
+  }, [q]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
 
@@ -133,46 +143,39 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
     void refreshHosts();
   }, [refreshLocal, refreshCloud, refreshHosts]);
 
-  // Cloud table: server-side filter/sort/page.
-  useEffect(() => {
-    if (store !== "cloud" || !isLoggedIn) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    const params = new URLSearchParams({
-      page: String(page),
-      size: String(PAGE_SIZE),
-      sort,
-      order,
-      due: onlyDue ? "due" : "all",
-    });
-    if (q) params.set("q", q);
-    if (state != null) params.set("state", String(state));
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/fsrs/list?${params}`);
-        if (!res.ok) throw new Error(`Failed to load cards (${res.status})`);
-        const data: { rows: NoteRow[]; total: number } = await res.json();
-        if (cancelled) return;
-        setCloudRows(data.rows);
-        setCloudTotal(data.total);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load cards");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }, 200); // debounce the search box
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [store, isLoggedIn, q, state, onlyDue, sort, order, page]);
-
-  useEffect(() => {
-    if (store === "local") setLoading(local === null);
-  }, [store, local]);
+  // Cloud table: server-side filter and sort; no pages (owner, 2026-11-10) —
+  // more rows as the table nears its end, a filter or sort starts over.
+  const cloudList = useInfiniteList<NoteRow, number>({
+    getKey: (r) => r.url,
+    deps: [dq, state, onlyDue, sort, order],
+    enabled: store === "cloud" && isLoggedIn,
+    fetchBatch: async (page, size) => {
+      const at = page ?? 0;
+      const params = new URLSearchParams({
+        page: String(at),
+        size: String(size),
+        sort,
+        order,
+        due: onlyDue ? "due" : "all",
+      });
+      if (dq) params.set("q", dq);
+      if (state != null) params.set("state", String(state));
+      const res = await fetch(`/api/fsrs/list?${params}`);
+      if (!res.ok) throw new Error(`Failed to load cards (${res.status})`);
+      const data: { rows: NoteRow[]; total: number } = await res.json();
+      return {
+        items: data.rows,
+        next: (at + 1) * size < data.total ? at + 1 : null,
+        total: data.total,
+      };
+    },
+  });
+  const cloudRows = cloudList.items;
+  const setCloudRows = cloudList.setItems;
+  /** Rows deleted here since the last batch counted the total. */
+  const [cloudGone, setCloudGone] = useState(0);
+  const cloudTotal = Math.max(0, (cloudList.total ?? 0) - cloudGone);
+  useEffect(() => setCloudGone(0), [cloudList.total]);
 
   const localUrls = useMemo(() => new Set((local?.cards ?? []).map((c) => c.url)), [local]);
 
@@ -210,8 +213,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
   }, [local, q, state, onlyDue, sort, order]);
 
   const activeRows: DataRow[] = useMemo(() => {
-    const source =
-      store === "cloud" ? cloudRows : localFiltered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+    const source = store === "cloud" ? cloudRows : localFiltered;
     const syncedByUrl = new Map((local?.cards ?? []).map((c) => [c.url, c.synced]));
     return source.map((row) => ({
       ...row,
@@ -220,7 +222,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
       inCloud: store === "cloud" ? true : (cloudUrls?.has(row.url) ?? false),
       synced: syncedByUrl.get(row.url),
     }));
-  }, [store, cloudRows, localFiltered, page, localUrls, cloudUrls, local]);
+  }, [store, cloudRows, localFiltered, localUrls, cloudUrls, local]);
 
   const total = store === "cloud" ? cloudTotal : localFiltered.length;
 
@@ -237,7 +239,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
   useEffect(() => {
     const write = () => {
       const query = dataFiltersToQuery(
-        { store, q, state, onlyDue, sort, order, page },
+        { store, q, state, onlyDue, sort, order, page: 0 },
         defaults,
         searchParams,
       );
@@ -249,7 +251,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
     // Only the text box needs debouncing; a dropdown or checkbox is one event.
     const timer = setTimeout(write, 300);
     return () => clearTimeout(timer);
-  }, [store, q, state, onlyDue, sort, order, page, defaults, pathname, router, searchParams]);
+  }, [store, q, state, onlyDue, sort, order, defaults, pathname, router, searchParams]);
 
   function changeSort(next: string) {
     if (next === sort) setOrder(order === "asc" ? "desc" : "asc");
@@ -257,12 +259,10 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
       setSort(next);
       setOrder("asc");
     }
-    setPage(0);
   }
 
   function changeStore(next: StoreId) {
     setStore(next);
-    setPage(0);
     setSelected(new Set());
   }
 
@@ -288,18 +288,18 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
           }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? `Push failed (${res.status})`);
+        if (!res.ok) throw new Error(`bulk-upsert ${res.status} ${data.error ?? ""}`);
         upserted += data.upserted ?? 0;
         conflicts += data.conflicts ?? 0;
       }
+      const pushed = fill(t.store.pushed.value, { n: upserted });
       setPushResult(
-        conflicts
-          ? `Pushed ${upserted}; ${conflicts} skipped (the cloud copy was newer).`
-          : `Pushed ${upserted}.`,
+        conflicts ? `${pushed} · ${fill(t.store.skipped.value, { n: conflicts })}` : pushed,
       );
       await refreshCloud();
     } catch (err) {
-      setPushResult(err instanceof Error ? err.message : "Push failed");
+      console.warn("[data] copy to account failed:", err);
+      setPushResult(t.errors.pushFailed.value);
     } finally {
       setPushing(false);
     }
@@ -308,8 +308,8 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
   async function deleteSelected() {
     const urls = [...selected];
     if (!urls.length) return;
-    if (!confirm(`Delete ${urls.length} card${urls.length === 1 ? "" : "s"} from ${store}?`))
-      return;
+    const where = store === "local" ? t.errors.storeLocal.value : t.errors.storeCloud.value;
+    if (!confirm(fill(t.errors.confirmDelete.value, { n: urls.length, store: where }))) return;
 
     setDeleting(true);
     try {
@@ -324,10 +324,10 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(data.error ?? `Delete failed (${res.status})`);
+          throw new Error(`bulk-delete ${res.status} ${data.error ?? ""}`);
         }
         setCloudRows((rows) => rows.filter((r) => !selected.has(r.url)));
-        setCloudTotal((n) => Math.max(0, n - urls.length));
+        setCloudGone((g) => g + urls.length);
         await refreshCloud();
       }
       // Both branches: the userscript's GM storage is a third copy, and it is
@@ -337,7 +337,8 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
       queuePurge(urls);
       setSelected(new Set());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      console.warn("[data] delete failed:", err);
+      setError(t.host.deleteFailed.value);
     } finally {
       setDeleting(false);
     }
@@ -378,7 +379,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
       });
       if (!del.ok) {
         const data = await del.json().catch(() => ({}));
-        throw new Error(data.error ?? `Delete failed (${del.status})`);
+        throw new Error(`bulk-delete ${del.status} ${data.error ?? ""}`);
       }
     }
     // The browser mirror and the userscript's GM storage are the other two
@@ -399,7 +400,8 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
       body: JSON.stringify({ title }),
     });
     if (!res.ok) {
-      setError(`Rename failed (${res.status})`);
+      console.warn("[data] rename failed:", res.status);
+      setError(t.errors.renameFailed.value);
       return;
     }
     setCloudRows((rows) => rows.map((r) => (r.url === url ? { ...r, title } : r)));
@@ -424,6 +426,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
         pushLabel={t.pushLabel.value}
         onPush={pushLocalToCloud}
         scriptHint={t.scriptHint.value}
+        dev={dev}
       />
 
       <CardTable
@@ -433,29 +436,20 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
         cloudAvailable={isLoggedIn}
         rows={activeRows}
         total={total}
-        loading={store === "cloud" ? loading : local === null}
-        error={error}
+        loading={store === "cloud" ? cloudList.loading : local === null}
+        error={error ?? (store === "cloud" && cloudList.error ? t.errors.loadFailed.value : null)}
+        hasMore={store === "cloud" && cloudList.hasMore}
+        listError={store === "cloud" && cloudList.error}
+        onReachEnd={cloudList.loadMore}
         q={q}
-        onQChange={(next) => {
-          setQ(next);
-          setPage(0);
-        }}
+        onQChange={setQ}
         state={state}
-        onStateChange={(next) => {
-          setState(next);
-          setPage(0);
-        }}
+        onStateChange={setState}
         onlyDue={onlyDue}
-        onOnlyDueChange={(next) => {
-          setOnlyDue(next);
-          setPage(0);
-        }}
+        onOnlyDueChange={setOnlyDue}
         sort={sort}
         order={order}
         onSortChange={changeSort}
-        page={page}
-        size={PAGE_SIZE}
-        onPageChange={setPage}
         selected={selected}
         onSelectedChange={setSelected}
         onDeleteSelected={deleteSelected}
@@ -465,7 +459,9 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
         deleteSelectedLabel={t.deleteSelected.value}
       />
 
-      {isLoggedIn && <HostPanel hosts={hosts} loading={hostsLoading} onDeleteHost={deleteHost} />}
+      {isLoggedIn && (
+        <HostPanel hosts={hosts} loading={hostsLoading} onDeleteHost={deleteHost} dev={dev} />
+      )}
 
       <BackupSection
         heading={t.backupHeading.value}
@@ -489,7 +485,7 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
           queuePurge([], { all: true });
           await refreshLocal();
           setSelected(new Set());
-          return `Removed ${n} cards from this browser.`;
+          return fill(t.danger.wiped.value, { n });
         }}
         onDeleteAllCloud={async () => {
           const res = await fetch("/api/fsrs/bulk-delete", {
@@ -498,13 +494,13 @@ export default function DataClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
             body: JSON.stringify({ all: true, confirm: "DELETE" }),
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error ?? `Delete failed (${res.status})`);
+          if (!res.ok) throw new Error(`bulk-delete ${res.status} ${data.error ?? ""}`);
           setCloudRows([]);
-          setCloudTotal(0);
+          setCloudGone(cloudList.total ?? 0);
           setSelected(new Set());
           queuePurge([], { all: true });
           await refreshCloud();
-          return `Deleted ${data.deleted} cards from the cloud.`;
+          return fill(t.danger.deleted.value, { n: data.deleted });
         }}
       />
     </div>

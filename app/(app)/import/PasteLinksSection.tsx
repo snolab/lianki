@@ -2,7 +2,9 @@
 import { useSignedIn } from "@/app/components/BoxApiBridge";
 
 import { useMemo, useState } from "react";
+import { useIntlayer } from "next-intlayer";
 import { extractLinks } from "@/lib/extract-urls";
+import { around, fill, text as str } from "./text";
 
 /**
  * Paste anything with links in it — a markdown list, a chat log, an email, a
@@ -21,10 +23,12 @@ type Outcome = { created: number; existed: number; failed: number; rejected: str
 export default function PasteLinksSection({ isLoggedIn: serverSignedIn }: { isLoggedIn: boolean }) {
   // On a box, from lianki.com (BoxApiBridge); else the server's answer.
   const isLoggedIn = useSignedIn(serverSignedIn);
+  const t = useIntlayer("import-sections");
   const [text, setText] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Which translated line explains the failure; the server's text stays in the console.
+  const [error, setError] = useState<"linksSignIn" | "linksError" | null>(null);
 
   const links = useMemo(() => extractLinks(text), [text]);
   const titled = links.filter((l) => l.title).length;
@@ -42,8 +46,13 @@ export default function PasteLinksSection({ isLoggedIn: serverSignedIn }: { isLo
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ items: links.slice(i, i + CHUNK) }),
         });
+        if (!res.ok) {
+          console.warn("[import] batch-add failed", res.status, await res.text().catch(() => ""));
+          setError(res.status === 401 ? "linksSignIn" : "linksError");
+          setStatus("error");
+          return;
+        }
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? `Import failed (${res.status})`);
         total.created += data.created ?? 0;
         total.existed += data.existed ?? 0;
         total.failed += data.failed ?? 0;
@@ -53,17 +62,19 @@ export default function PasteLinksSection({ isLoggedIn: serverSignedIn }: { isLo
       setStatus("done");
       setText("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
+      console.warn("[import] batch-add failed", err);
+      setError("linksError");
       setStatus("error");
     }
   }
 
   return (
     <div className="mt-10 border-t pt-8">
-      <h2 className="text-2xl font-bold mb-2">Paste links</h2>
+      <h2 className="text-2xl font-bold mb-2">{t.linksHeading}</h2>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
-        Drop in anything with links in it — a markdown list, a chat log, an email. Each link becomes
-        a card; <code>[title](url)</code> keeps its title. Links you already have are skipped.
+        {around(t.linksIntro, "code")[0]}
+        <code>[title](url)</code>
+        {around(t.linksIntro, "code")[1]}
       </p>
 
       <textarea
@@ -71,9 +82,7 @@ export default function PasteLinksSection({ isLoggedIn: serverSignedIn }: { isLo
         onChange={(e) => setText(e.target.value)}
         rows={8}
         spellCheck={false}
-        placeholder={
-          "- [Two-sum](https://leetcode.com/problems/two-sum/)\nhttps://www.youtube.com/watch?v=…\nsee also <https://example.com/x>"
-        }
+        placeholder={str(t.linksPlaceholder)}
         className="w-full rounded-lg border border-gray-300 bg-white p-3 font-mono text-sm dark:border-gray-700 dark:bg-gray-900"
       />
 
@@ -82,47 +91,50 @@ export default function PasteLinksSection({ isLoggedIn: serverSignedIn }: { isLo
           type="button"
           onClick={handleImport}
           disabled={!isLoggedIn || status === "loading" || links.length === 0}
-          title={isLoggedIn ? undefined : "Sign in to import"}
+          title={isLoggedIn ? undefined : str(t.linksSignInHint)}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {status === "loading"
-            ? "Importing…"
-            : `Import ${links.length} link${links.length === 1 ? "" : "s"}`}
+          {status === "loading" ? t.importing : fill(t.linksImport, { n: links.length })}
         </button>
         {text && (
           <span className="text-sm text-gray-500 dark:text-gray-400">
             {links.length === 0
-              ? "No links found yet."
-              : `${links.length} unique link${links.length === 1 ? "" : "s"}` +
-                (titled ? ` · ${titled} with a title` : "")}
+              ? t.linksNone
+              : fill(t.linksFound, { n: links.length }) +
+                (titled ? ` · ${fill(t.linksTitled, { n: titled })}` : "")}
           </span>
         )}
       </div>
 
       {!isLoggedIn && (
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          Sign in to import — cards are created in your cloud account.
-        </p>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{t.linksSignIn}</p>
       )}
 
       {status === "done" && outcome && (
         <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4 text-sm dark:border-green-800 dark:bg-green-900/20">
           <p className="font-medium text-green-800 dark:text-green-300">
-            {outcome.created} new card{outcome.created === 1 ? "" : "s"}
-            {outcome.existed > 0 && ` · ${outcome.existed} already in your deck`}
-            {outcome.failed > 0 && ` · ${outcome.failed} failed`}
+            {fill(t.linksNew, { n: outcome.created })}
+            {outcome.existed > 0 && ` · ${fill(t.linksExisted, { n: outcome.existed })}`}
+            {outcome.failed > 0 && ` · ${fill(t.linksFailed, { n: outcome.failed })}`}
           </p>
           {outcome.rejected.length > 0 && (
             <p className="mt-1 text-gray-600 dark:text-gray-400">
-              Not urls, skipped: {outcome.rejected.slice(0, 5).join(", ")}
-              {outcome.rejected.length > 5 && ` and ${outcome.rejected.length - 5} more`}
+              {fill(t.linksRejected, {
+                list:
+                  outcome.rejected.slice(0, 5).join(", ") +
+                  (outcome.rejected.length > 5
+                    ? ` ${fill(t.linksMore, { n: outcome.rejected.length - 5 })}`
+                    : ""),
+              })}
             </p>
           )}
         </div>
       )}
 
       {status === "error" && error && (
-        <p className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>
+        <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
+          {t[error]}
+        </p>
       )}
     </div>
   );

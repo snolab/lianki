@@ -342,6 +342,55 @@ describe("the hub's done history", () => {
   });
 });
 
+describe("back-dated done nodes (moving old work in)", () => {
+  it("parses endedAt only for a done node", () => {
+    const base = { agent: "w", task: "T: t", status: "done" };
+    expect(parseProgressReport({ ...base, endedAt: 5 })).toMatchObject({ endedAt: 5 });
+    expect(parseProgressReport({ ...base, endedAt: "5" })).toBeInstanceOf(Error);
+    expect(parseProgressReport({ ...base, endedAt: 0 })).toBeInstanceOf(Error);
+    expect(parseProgressReport({ ...base, status: "doing", endedAt: 5 })).toBeInstanceOf(Error);
+    expect(
+      parseProgressArgs([
+        "--agent",
+        "w",
+        "--task",
+        "T: t",
+        "--done",
+        "--ended",
+        "2026-11-01T00:00Z",
+      ]),
+    ).toMatchObject({ report: { endedAt: Date.parse("2026-11-01T00:00Z") } });
+    expect(
+      parseProgressArgs(["--agent", "w", "--task", "T: t", "--done", "--ended", "x"]),
+    ).toBeInstanceOf(Error);
+  });
+  it("the root back-dates; the history takes the date, the stats log does not", async () => {
+    const h = setup();
+    await h.write({ id: "/x/old", task: "Old: o", status: "done", endedAt: 1_000, prs: [1, 2] });
+    const got = (await h.call("/history")).body.items;
+    expect(got).toMatchObject([{ id: "/x/old", endedAt: 1_000, prs: [1, 2] }]);
+    expect([...h.store.keys()].some((k) => k.startsWith("d:"))).toBe(false);
+    // A later write to the done node (another PR) reaches its record.
+    await h.write({ id: "/x/old", task: "Old: o", status: "done", pr: 3 });
+    expect((await h.call("/history")).body.items[0]).toMatchObject({
+      prs: [1, 2, 3],
+      endedAt: 1_000,
+    });
+  });
+  it("a scoped token may not back-date", async () => {
+    const h = setup();
+    const scoped = (await h.call("/grant", { node: "/x", agent: "w" })).body.token as string;
+    const res = await h.hub.fetch(
+      new Request("https://lianki.com/api/version/progress", {
+        method: "POST",
+        headers: { authorization: `Bearer ${scoped}` },
+        body: JSON.stringify({ agent: "w", id: "/x", task: "X", status: "done", endedAt: 5 }),
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("progress.ts history", () => {
   it("parses history, show --all and several PRs", () => {
     expect(parseProgressArgs(["history"])).toEqual({ cmd: "history" });

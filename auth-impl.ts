@@ -12,9 +12,12 @@ import { passkey } from "@better-auth/passkey";
 import { stripGrantedScopesHook } from "@/lib/google-auth-url";
 import { Kysely } from "kysely";
 import { D1Dialect } from "kysely-d1";
-import { isEmailConfigured, sendEmail } from "@/lib/email";
+import { isEmailConfigured, type SendEmailInput } from "@/lib/email";
+import { sendMail } from "@/lib/mail-log/deliver";
 import { trustedOrigins } from "@/lib/trusted-origins";
-import { mailLocale, signInMail } from "@/lib/sign-in-mail";
+import { composeMail } from "@/lib/mail-templates/compose";
+import { recipientMailLocale, requestLocaleTags } from "@/lib/mail-templates/recipient-locale";
+import type { TemplateDb } from "@/lib/mail-templates/store";
 import { db, mongoClient } from "./app/db";
 import { cfRequestProps, dbBackend, getD1, workerWaitUntil } from "./lib/d1";
 import { securityPlugin } from "./lib/security/auth-plugin";
@@ -48,14 +51,10 @@ export type Auth = ReturnType<typeof buildMongoAuth>;
  * the kind, the recipient's domain (never the full address), and Resend's
  * message id or the error — enough to trace "QQ Mail can't sign in".
  */
-async function sendSignInMail(
-  kind: "otp" | "link",
-  email: string,
-  mail: Parameters<typeof sendEmail>[0],
-) {
+async function sendSignInMail(kind: "otp" | "link", email: string, mail: SendEmailInput) {
   const domain = email.split("@")[1]?.toLowerCase() ?? "?";
   try {
-    const { id } = await sendEmail(mail);
+    const { id } = await sendMail(mail);
     console.log(JSON.stringify({ event: "signin.mail.sent", kind, domain, id }));
   } catch (err) {
     console.error(
@@ -68,6 +67,24 @@ async function sendSignInMail(
     );
     throw err;
   }
+}
+
+/**
+ * A sign-in mail through the template store (docs/mail-templates.md): in the
+ * account's language when the address has one, else the asking browser's; an
+ * edited template that fails falls back to the built-in, so this never blocks.
+ */
+async function signInTemplate(
+  email: string,
+  ctx: { headers?: Headers | null } | null | undefined,
+  id: "signin-code" | "signin-link",
+  values: Record<string, string>,
+) {
+  const tdb = dbBackend() === "d1" ? (getD1() as unknown as TemplateDb) : null;
+  const locale = await recipientMailLocale(tdb, { email }, ...requestLocaleTags(ctx?.headers));
+  // `log` keeps no variable of a sign-in mail (lib/mail-log/vars.ts).
+  const { subject, text, html, log } = await composeMail(tdb, id, locale, values);
+  return { subject, text, html, log };
 }
 
 /**
@@ -228,7 +245,7 @@ function baseOptions() {
               sendVerificationOTP: async ({ email, otp }, ctx) => {
                 await sendSignInMail("otp", email, {
                   to: email,
-                  ...signInMail(mailLocale(ctx), { otp }),
+                  ...(await signInTemplate(email, ctx, "signin-code", { code: otp })),
                 });
               },
             }),
@@ -239,7 +256,7 @@ function baseOptions() {
               sendMagicLink: async ({ email, url }, ctx) => {
                 await sendSignInMail("link", email, {
                   to: email,
-                  ...signInMail(mailLocale(ctx), { url }),
+                  ...(await signInTemplate(email, ctx, "signin-link", { url })),
                 });
               },
             }),

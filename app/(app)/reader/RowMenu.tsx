@@ -67,7 +67,7 @@ export function RowMenu(p: { title: string; onRename: () => void; onDelete: () =
           e.preventDefault();
           openAt(at);
         }}
-        className="flex items-center justify-center w-11 h-11 rounded-full text-[oklch(0.55_0.02_260)] dark:text-[oklch(0.72_0.02_260)] hover:bg-[oklch(0.94_0.01_260)] dark:hover:bg-[oklch(0.32_0.02_260)] focus-visible:outline-2 focus-visible:outline-[oklch(0.55_0.18_255)]"
+        className="flex items-center justify-center w-11 h-11 rounded-full text-[oklch(0.55_0.02_260)] dark:text-[oklch(0.72_0.02_260)] hover:bg-[oklch(0.94_0.01_260)] dark:hover:bg-[oklch(0.32_0.02_260)] focus-visible:outline-2 focus-visible:outline-[oklch(0.55_0.198_22.3)]"
       >
         <svg aria-hidden="true" viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
           <circle cx="5" cy="12" r="1.8" />
@@ -209,12 +209,12 @@ export function TitleEditor(p: {
             e.preventDefault();
             p.onDone();
           }}
-          className="flex-1 min-w-0 px-2 min-h-11 rounded-md border border-[oklch(0.8_0.02_260)] dark:border-[oklch(0.45_0.02_260)] bg-[oklch(1_0_0)] dark:bg-[oklch(0.22_0.01_260)] focus:outline-2 focus:outline-[oklch(0.55_0.18_255)]"
+          className="flex-1 min-w-0 px-2 min-h-11 rounded-md border border-[oklch(0.8_0.02_260)] dark:border-[oklch(0.45_0.02_260)] bg-[oklch(1_0_0)] dark:bg-[oklch(0.22_0.01_260)] focus:outline-2 focus:outline-[oklch(0.55_0.198_22.3)]"
         />
         <button
           type="submit"
           disabled={busy || !value.trim()}
-          className={`${small} bg-[oklch(0.55_0.18_255)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.18_255)]`}
+          className={`${small} bg-[oklch(0.55_0.198_22.3)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.198_22.3)]`}
         >
           {t.save}
         </button>

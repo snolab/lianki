@@ -26,13 +26,12 @@ const MAX_WORDS = 600;
  */
 export async function POST(req: NextRequest) {
   const user = await authUserOrNull();
-  if (!user?.email) return NextResponse.json({ error: "Login required" }, { status: 401 });
-  if (dbBackend() !== "d1")
-    return NextResponse.json({ error: "Word lists need the D1 backend" }, { status: 503 });
+  if (!user?.email) return NextResponse.json({ error: "login-required" }, { status: 401 });
+  if (dbBackend() !== "d1") return NextResponse.json({ error: "unavailable" }, { status: 503 });
   const body = (await req.json().catch(() => null)) as { lang?: unknown; words?: unknown } | null;
   const lang = typeof body?.lang === "string" ? body.lang.toLowerCase().split(/[-_]/)[0] : "";
   if (!/^[a-z]{2,3}$/.test(lang) || !Array.isArray(body?.words))
-    return NextResponse.json({ error: "lang and words required" }, { status: 400 });
+    return NextResponse.json({ error: "lang-and-words-required" }, { status: 400 });
   const words = [
     ...new Set(
       body.words

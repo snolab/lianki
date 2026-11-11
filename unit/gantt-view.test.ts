@@ -252,17 +252,31 @@ describe("rows and bars", () => {
     expect(b.fill).toBeCloseTo(W / 2);
     expect(b.over).toBe(0);
   });
-  it("overdue: the overrun runs on to now; done late, to when it finished", () => {
+  it("overdue: the overrun runs on to now; done, start to when it really finished", () => {
     const late = ganttBar({ start: NOW - HOUR, at: NOW - 30 * MIN }, a, NOW);
     expect(late.over).toBeCloseTo(W / 2);
     expect(late.fill).toBe(0);
+    // Done late: the bar runs to its finish, one piece, no separate overrun.
     const done = ganttBar(
       { start: NOW - HOUR, at: NOW - 30 * MIN, done: true, doneAt: NOW - 15 * MIN },
       a,
       NOW,
     );
+    expect(done.x).toBeCloseTo(xOf(a, NOW - HOUR));
+    expect(done.w).toBeCloseTo((W * 3) / 4);
     expect(done.fill).toBeCloseTo(done.w);
-    expect(done.over).toBeCloseTo(W / 4);
+    expect(done.solid).toBeCloseTo(done.w);
+    expect(done.over).toBe(0);
+    // Done early (owner, 2026-11-11 01:08 JST): a 9-hour estimate finished in 15
+    // minutes is a 15-minute bar, not one to the estimate.
+    const early = ganttBar(
+      { start: NOW - HOUR, at: NOW + 8 * HOUR, min: NOW, done: true, doneAt: NOW - 45 * MIN },
+      a,
+      NOW,
+    );
+    expect(early.w).toBeCloseTo(W / 4);
+    expect(early.solid).toBeCloseTo(early.w);
+    expect(early.over).toBe(0);
     // Done without doneAt: no overrun. pct out of range is clamped.
     expect(ganttBar({ start: NOW - HOUR, at: NOW, done: true }, a, NOW).over).toBe(0);
     expect(ganttBar({ start: NOW - HOUR, at: NOW, pct: 300 }, a, NOW).fill).toBeCloseTo(W);
@@ -552,7 +566,7 @@ describe("log ticks: round M/H/D distances that never overlap", () => {
             noOverlap(ticks, charPx);
             for (const k of ticks) {
               expect(k.x).toBeCloseTo(logX(a, k.t, NOW), 6);
-              expect(k.label).toMatch(/^(Now|-?\d+(\.\d)?[MHD])$/);
+              expect(k.label).toMatch(/^(Now|-?\d+(\.\d)?(M|H|D|W|Mo|Y))$/);
               if (!k.now) expect(LOG_TICKS).toContain(Math.abs(k.t - NOW));
             }
           }

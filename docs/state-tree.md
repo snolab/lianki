@@ -48,13 +48,17 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
 
   Report (one POST, then exit):
     bun scripts/dev/progress.ts --agent <you> --path /words/swipe       --task "Native swipe: drag the card with the finger" --status doing --pct 40 --eta 15m
-    … --done --pr 310        when it lands
-    … --status blocked --note "why"
+    … --done --pr 310        when it lands (verified if #310 is merged; see "Done kinds")
+    … --status blocked --who main --needs "rebase #812"   someone can act now
+    … --status waiting --note "Apple review"               paused on an outside event
     … --status waiting-owner --needs "OK the preview" --kind approval
-  --task is "name: description" (':' or '：'): a short name of 1–20
-  characters (graphemes, not bytes), then what it is. The owner's ETA bar
-  shows only the name; the full list shows both. A longer name is refused
-  (with an example); a title with no colon still goes through, with a
+  --task is "name: description" (':' or '：'): a short name 1–20 COLUMNS
+  wide (lib/progress.ts displayWidth: a CJK or other full-width character,
+  or an emoji, is 2 columns — about 10 Chinese characters), then what it is.
+  The owner's ETA bar shows only the name; the full list shows both. The hub
+  refuses a new or renamed name over 20 columns (with an example, "滑动修复：
+  短拖回弹"); a node keeps a name it already has (nodes from before the
+  column rule, 2026-11-11). A title with no colon still goes through, with a
   warning when it is over 20.
   status: doing | blocked | waiting | waiting-owner | review | done
   kind:   task | decision | approval | feedback | person
@@ -83,10 +87,40 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   --token, LIANKI_PROGRESS_TOKEN, PROGRESS_TOKEN or .dev.vars.
 
   ETA pings (flag chat.eta-bar, owner only). --eta is the agent's own
-  estimate, given each time it reports: a duration from now (25m, 1h30m) or an
-  ISO time with its zone. The hub turns it into the node's etaAt on its own
-  clock; a new --eta moves it; free text ("after CI") is shown, no timer.
-    bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "Native swipe: drag with the finger" --status doing --eta 25m
+  estimate, given each time it reports: a duration from now (25m, 1h30m), a
+  range (12m-63m) or an ISO time with its zone. The hub turns it into the
+  node's etaAt on its own clock; a new --eta moves it; free text ("after CI")
+  is shown, no timer.
+    bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "Native swipe: drag with the finger" --status doing --eta 12m-63m
+  A range is P5–P95 of what the task may take (owner, 2026-11-10): etaMinAt is
+  the P5, etaAt the P95. Everything that means "late" counts from the P95:
+  the red "-5M", the "ETA reached" ping below, and the overrun rule; a new
+  --eta between the two needs no --late. Labels read "12–63M" (one unit
+  shared) until the P5 passes, then the time to the P95. The Gantt draws the
+  bar solid to the P5 and a tail fading out to the P95. One number is a range
+  of one: no P5, as before.
+
+  ETA history (owner, 2026-11-10). Each node keeps its last 24 ETA events
+  (etaEvents, oldest first): {at, kind: change | confirm | status, oldEtaAt?,
+  newEtaAt?, oldEtaMinAt?, newEtaMinAt?, status?, by, changeId}. A change is a
+  new estimate (no newEtaAt: cleared by free text); a confirm says the
+  estimate still holds; a status event is a change of status. The first time
+  set is also kept as `plan` {start, etaAt, etaMinAt?}, never moved: the
+  Gantt's faint ghost bar, the original plan.
+    bun scripts/dev/progress.ts --agent <you> --path /words/swipe --task "<same>" --status doing --confirm
+  re-confirms an unchanged estimate cheaply. It counts as on track: no --late,
+  no new time; only before the ETA (a passed one is an overrun: a new --eta
+  with --late). A change or a confirm stamps etaConfirmedAt; `show`, --json
+  and the readers' feed give it with "etaConfirmedAgo" ("7 min ago"), so a
+  coordinator spots a stale estimate.
+  One action across several nodes (a re-plan) shares one changeId and one
+  time, so its ticks line up on the Gantt and a tap shows the group ("moved
+  up: A; postponed: B, C"):
+    bun scripts/dev/progress.ts batch '[{"agent":"<you>","path":"/x/a","task":"A: …","eta":"20m"},{"agent":"<you>","path":"/x/b","task":"B: …","eta":"1h-2h"}]'
+  (POST /batch {changeId?, reports}: each item keyed by the flags, at most 20;
+  all are checked before any is written), or --change-id <id> on separate
+  calls: the hub keeps the first call's time for 10 minutes. Without either,
+  every write is its own change.
   The owner's chat shows one summary line above the input, its background
   filled to the weighted progress (time left, next due;
   packages/debug-chat/src/eta.ts, EtaBar.tsx); a tap opens a full-screen
@@ -100,7 +134,9 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   post one line in the owner's thread, to "/":
     "ETA reached for <task> (<id>): <lane>, within 5 min tell the owner WHY
      and a new "N minutes from now" — bun scripts/dev/progress.ts … --eta <N>m
-     --late "<reason>" … Otherwise he is told "<name> 超时，未说明原因"."
+     --late "<reason>" … Otherwise he is told "<name> 超时，未说明原因".
+     Receipt k3x9qa: ack it now — bun scripts/dev/progress.ts ack k3x9qa …"
+  (see "Receipts" below: no listener, no line yet).
   from "agent", agentId "eta", source "eta", quiet. Every listener at "/" (the
   chat lane's `eval.ts chat`) hears it as it hears his lines; eval.ts prints it
   with "source":"eta","auto":true. It is never the owner speaking, never an
@@ -117,10 +153,88 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   in the owner's language. Once a node's etaAt has passed, a new --eta without
   --late is refused (400); --late without an --eta that sets a time is a usage
   error. Progress without a new estimate (--pct, a note) and --done need none.
-  If neither a reason nor a new estimate comes within 5 minutes of the
-  "ETA reached" line, the hub's alarm posts the owner "<name> 超时，未说明原因"
-  (read aloud), once per etaAt (marked etaSilent). Never let him find out
-  from that line.
+  If neither a reason nor a new estimate comes, the owner hears "<name> 超时，
+  未说明原因" (read aloud) — ten minutes after the line was heard by default,
+  through the receipt chain below (marked etaSilent, once per etaAt). Never
+  let him find out from that line.
+
+  Receipts (peer feedback adopted 2026-11-11; lib/eta-nudge.ts). Every
+  "ETA reached" line carries a receipt code (etaCode, six of a–z 0–9). The
+  lane acks it at once:
+    bun scripts/dev/progress.ts ack k3x9qa
+  (POST /ack {code}, any token whose scope covers the node), or any report
+  on the node counts (etaAcked = that etaAt). The clock starts when a
+  listener got the line (etaHeardAt): the chat hub posts a lanes' line only
+  while someone listens at the root and otherwise answers "queued"; the
+  node keeps etaQueued, no timer runs, and when a listener connects (an
+  eval/chat controller approved or resumed, not a heartbeat socket) the
+  chat hub calls the progress hub's /internal/eta-heard and the queued
+  lines go out then. From etaHeardAt:
+    + chat.etaAckMin (5) without an ack → the coordinating lane
+      (chat.etaCoordinator, "main") gets a quiet line "@main: <lane> has not
+      acked the ETA line for … (receipt …)"; once per etaAt (etaMain).
+    + chat.etaOwnerMin (5) more without a reason and a new ETA → the owner's
+      "<name> 超时，未说明原因". An ack alone does not excuse it; it only
+      spares the coordinating lane.
+  Backoff: after that line, the owner hears "<name> 仍超时，未说明原因（已超
+  40M）" again at chat.nudgeBackoffMin spacing — default 10,20,40,80,160,240
+  minutes, the last repeating (at most every 4 h) — until a reason and a new
+  ETA come or it is done (silentN, silentAt). A first line far past due (the
+  hub was away; an old ping) is marked, never said, and starts no repeats.
+  Waiting-owner reminders keep #823's day spacing (below).
+
+  Blocked and paused (2026-11-11). `blocked` means someone can act now:
+  --who names them ("owner" or a lane; an "@" in front is dropped) and
+  --needs what (the CLI refuses --status blocked without --who). The hub
+  nudges that one at once and then at chat.nudgeBackoffMin spacing until
+  the node leaves blocked or who/needs change (a change starts over;
+  nudgeFor, nudgeN, nudgeAt): the owner by a Li line read aloud, "<name>
+  卡住了，等你——<needs>"; a lane by a quiet line "@<lane>: <task> (<id>) is
+  blocked on you: <needs>…" with eta.lane set, which the root listener sees
+  and lane-listen hands to that lane's agent. A lane's nudge with no
+  listener is held (nudgeQueued) for the next one to connect. `waiting`
+  means paused on an outside event: no nudges, no overrun. Neither gets an
+  "ETA reached" line or "未说明原因", and a new --eta needs no --late; coming
+  back to work with the same, passed etaAt marks it pinged and silent, as
+  for waiting-owner. A node blocked on the owner counts as waiting on him
+  on the board ("Needs me"); --needs with --who <lane> does not. Plain
+  blocked with no --who (older writers) keeps the old behaviour.
+
+  Done kinds (2026-11-11). --done takes --verified "<evidence>" (a PR
+  merged and deployed, a test or screenshot link) or --unverified (done, not
+  confirmed). A plain --done asks gh whether its PRs are merged: all merged →
+  verified "pr #N merged", otherwise (or no PR, or gh cannot tell)
+  unverified. The node keeps doneKind and evidence; the done history, `show`,
+  `history` and /dev/roadmap's Done section show them (dev-facing). An
+  unverified node gets a child "verify: <name>" (a path's <id>/verify, a
+  slug's <id>.verify) assigned to the same lane with a short estimate
+  (chat.verifyEtaMin, 30 minutes) and the usual ETA rules; that child done
+  --verified marks the parent verified ("verify: <evidence>"). Not done:
+  the overrun rule above (a reason and a new time). The owner's check-off
+  (resolve) records no kind: he saw it himself.
+
+  Waiting on the owner (owner, 2026-11-10 21:47 JST). A node that waits on
+  HIM — status waiting-owner, something in `needs`, or kind decision /
+  approval (lib/owner-wait.ts) — is not late work when its etaAt passes. It
+  gets no "ETA reached" lane line and never "未说明原因". Instead the owner
+  hears ONE reminder that carries the reason, read aloud like the overrun
+  lines (same send path, ping kind "waiting"):
+    "<name>：在等你——<needs>"      ("<name>：在等你" when needs is empty)
+  and the hub schedules the next one itself, further out each time: the
+  config key chat.ownerWaitRemindDays (lib/config.ts, editable at
+  /dev/config; default "1,3,7" = a day after the first, then 3 days, then
+  7, then weekly, the last spacing repeating). The hub reads it over the main
+  Worker's DebugSessions.config RPC and uses the default when it cannot. The
+  node keeps remindFor (the etaAt they belong to), remindN (sent) and
+  remindAt (the next). Moving its time needs no --late; a new etaAt starts
+  over (first reminder at that time). The reminders stop when it stops
+  waiting on him: done, resolved by him, or a write that leaves
+  waiting-owner and clears needs. Coming off waiting with the old, passed
+  etaAt marks it pinged and silent, so the lane is not told it is late for
+  time spent waiting on him; a lane past its ETA that hands the node to him
+  (waiting-owner + needs) has his reminder sent at once instead of
+  "未说明原因". Nodes pinged before this existed start their reminders one
+  spacing out, with no line at deploy.
 
   Timing, for agents only (never shown to the owner: his bar and list keep
   the time left and the names). Each node keeps startedAt (its first write
@@ -149,11 +263,16 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
     bun scripts/dev/progress.ts show --all     # the tree plus "history"
   or, on an owner/box reader socket, {type:"history", limit?}: the answer
   {type:"history", items, total} goes to that socket only, never in the
-  snapshot, so the ETA bar and Gantt see nothing new. /dev/roadmap lists it.
+  snapshot, so the ETA bar and Gantt see nothing new. /dev/roadmap lists it
+  (lib/roadmap-tree.ts: open nodes by section, done history folded, both
+  grouped by top-level path; node titles as written). Any write to a done
+  node refreshes its record (a later PR reaches it). Old work moved in after
+  the fact: --done --ended <ISO time> (root token only) back-dates it; such a
+  node stays out of the stats log.
   PRs: --pr 703,707 (or one per report); a node keeps every PR it named in
   `prs` (newest 20), and "#NNN" in its title counts too.
 
-  Limits: name 40, task 120, note 280, needs 120; 200 nodes (oldest done
+  Limits: name 40, task 120, note 280, needs 120; 24 ETA events a node; 200 nodes (oldest done
   dropped first); done nodes pruned after 24 h (Durable Object alarm; the
   done history keeps them); a
   200-event log; 30 writes/min per name, 120 in all. Unset secret: 503.
@@ -259,7 +378,7 @@ Critical path: swipe fix → verify on ?swipe=native → switch the flag; bar �
 - [x] Glass toolbar + help, tablet glass nav, sleeping tray, 80% over-scroll (#293) (done 2026-10-30)
 - [x] Faded "back" slip stays opaque (#294)
 - [x] iOS glass: first card under the toolbar; labels behind the card; page-scroll lock (#299) (done 2026-10-30T01:12)
-- [ ] Bamboo-slip prototype (/proto/slip.html) vs shipped swipe — decide @main-lane
+- [x] Bamboo-slip prototype (/proto/slip.html): deleted (owner, 2026-11-10)
 - [ ] Owner's session spec of 2026-11-03: tall slips, fixed window, review-first, familiar bank, voice commands — [words-session-spec.md](words-session-spec.md) @main-lane
 
 ## Learning Partner (chat)

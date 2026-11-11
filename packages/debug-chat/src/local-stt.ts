@@ -256,7 +256,11 @@ export type LocalStt = {
    * if needed, and resolves with the server's answer to it (matched by a
    * request id). Rejects when the Mac cannot be reached in time.
    */
-  request(msg: Record<string, unknown>): Promise<Record<string, unknown>>;
+  request(
+    msg: Record<string, unknown>,
+    /** A longer wait for a big answer (the kept recordings): default REQUEST_TIMEOUT_MS. */
+    o?: { timeoutMs?: number },
+  ): Promise<Record<string, unknown>>;
   /** The server's speaker-check models from its `ready` (undefined: no check there, or not connected). */
   speaker(): string[] | undefined;
   /** Open the socket now (on mic on), so the first utterance can stream. */
@@ -322,6 +326,12 @@ export function createLocalStt(
      * changes. Not given, or failing: no filter, exactly as without one.
      */
     filter?: () => boolean | Promise<boolean>;
+    /**
+     * How long the race may take (default CONNECT_TIMEOUT_MS). Lianki's speech
+     * servers for other accounts (public-stt.ts) give WebRTC longer: a session,
+     * signalling and ICE come before `ready`.
+     */
+    connectTimeoutMs?: number;
   } = {},
 ): LocalStt {
   const urls = (Array.isArray(url) ? url : url.split(/[\s,]+/)).filter(Boolean);
@@ -392,7 +402,8 @@ export function createLocalStt(
   };
   const hostOf = (u: string) => {
     try {
-      return new URL(u).host;
+      // A route with no host (public-stt.ts: rtc:lianki) is named as it is.
+      return new URL(u).host || u;
     } catch {
       return "?";
     }
@@ -640,7 +651,7 @@ export function createLocalStt(
         for (const o of endRace(r)) o.close();
         failed();
         lost("unreachable", undefined, urls.join(" "));
-      }, CONNECT_TIMEOUT_MS),
+      }, d.connectTimeoutMs ?? CONNECT_TIMEOUT_MS),
     );
     start();
   };
@@ -833,8 +844,8 @@ export function createLocalStt(
     },
     warm: connect,
     keep,
-    async request(msg) {
-      const deadline = now() + REQUEST_TIMEOUT_MS;
+    async request(msg, o) {
+      const deadline = now() + (o?.timeoutMs ?? REQUEST_TIMEOUT_MS);
       await whenReady(deadline);
       const rid = `r${nextRid++}`;
       return new Promise((resolve, reject) => {

@@ -1,10 +1,19 @@
 // The I/O of the transcript polish (the rules: lib/read/polish.ts): the
-// model per chunk, its real cost settled through the one charge seam
-// (chargeAi), and a per-user limit. Nothing about the text is logged.
-import { PARTNER_AI_MODEL, PARTNER_AI_REASONING, costUsd } from "@/lib/partner-ai-config";
+// model per chunk, paid from the user's credits through the one charge seam
+// (payAi: the chunks' most held first), and a per-user limit. Nothing about the text is logged.
+import { refusedAs, type Refused } from "@/lib/payments/metered";
+import { PARTNER_AI_MODEL, PARTNER_AI_REASONING } from "@/lib/partner-ai-config";
+import { textHoldUsd } from "@/lib/payments/prices";
 import { routeLimit } from "@/lib/security/route-guard";
 import { isWorkersAiConfigured } from "@/lib/workers-ai";
-import { chargeAi, workersAiComplete, type Complete } from "./gloss-server";
+import {
+  payAi,
+  promptChars,
+  usageUsd,
+  workersAiComplete,
+  type AiPayer,
+  type Complete,
+} from "./gloss-server";
 import { checkPolish, polishMessages, type PolishChunk } from "./polish";
 
 /** Polishes per user per window: each is a whole document's worth of calls. */
@@ -18,11 +27,12 @@ const maxTokens = (chars: number) => Math.min(8000, 200 + chars * 2);
 
 export type PolishRun =
   | { ok: true; polished: (string[] | null)[] }
-  | { ok: false; error: "not-configured" | "busy" | "too-long" | "model-failed" };
+  | { ok: false; error: "not-configured" | "busy" | "too-long" | "model-failed" }
+  | Refused;
 
 export async function polishChunksAi(
   chunks: readonly PolishChunk[],
-  ai: { userId: string; complete?: Complete },
+  ai: AiPayer & { complete?: Complete },
 ): Promise<PolishRun> {
   if (chunks.length > POLISH_MAX_CHUNKS) return { ok: false, error: "too-long" };
   const complete = ai.complete ?? (isWorkersAiConfigured() ? workersAiComplete : null);
@@ -31,13 +41,13 @@ export async function polishChunksAi(
     return { ok: false, error: "busy" };
   const polished: (string[] | null)[] = chunks.map(() => null);
   let usd = 0;
-  let chars = 0;
   let next = 0;
+  const holdOf = (text: string) =>
+    textHoldUsd(PARTNER_AI_MODEL, promptChars(polishMessages(text)), maxTokens(text.length));
   const worker = async () => {
     while (next < chunks.length) {
       const k = next++;
       const text = chunks[k].text;
-      chars += text.length;
       try {
         const r = await complete({
           model: PARTNER_AI_MODEL,
@@ -46,7 +56,7 @@ export async function polishChunksAi(
           temperature: 0.1,
           reasoning_effort: PARTNER_AI_REASONING,
         });
-        usd += costUsd(r.usage?.prompt_tokens ?? 0, r.usage?.completion_tokens ?? 0);
+        usd += usageUsd(PARTNER_AI_MODEL, r.usage, holdOf(text));
         polished[k] = checkPolish(text, r.choices?.[0]?.message?.content ?? "");
       } catch (err) {
         // The error only: never the text.
@@ -54,8 +64,12 @@ export async function polishChunksAi(
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(PARALLEL, chunks.length) }, worker));
-  if (usd > 0) await chargeAi(ai.userId, { usd, what: "read.polish", chars });
+  const hold = chunks.reduce((n, c) => n + holdOf(c.text), 0);
+  const paid = await payAi(ai, "read.polish", hold, async () => {
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, chunks.length) }, worker));
+    return { value: null, usd };
+  });
+  if (!paid.ok) return refusedAs(paid, { ok: false, error: "busy" } as const);
   console.log(
     JSON.stringify({
       event: "read.polish",

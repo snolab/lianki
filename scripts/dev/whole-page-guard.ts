@@ -25,7 +25,7 @@ export const ENTER_TOKEN_TTL_MS = 10 * 60 * 1000;
 /** Where the enter link lands (owner, 2026-10-31: keep /words?list=all). */
 export const LANDING = "/words?list=all";
 
-/** lianki-push's build-announcement socket (app/components/NewVersionNotice.tsx). */
+/** lianki-push's build-announcement socket (app/components/VersionNotice.tsx). */
 export const BUILD_ANNOUNCE_PATH = "/api/version/ws";
 
 /** The only auth endpoints the dev origin serves. */

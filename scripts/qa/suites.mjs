@@ -14,6 +14,9 @@
  * (Playwright runner suites). A suite with neither needs no Worker: when only
  * such suites are selected, qa:all skips the OpenNext build and wrangler dev.
  *
+ * `everyShard: true` runs the suite at the start of every merge-queue shard
+ * (scripts/qa/shard.mjs), not in one of them.
+ *
  * `id` names the suite for `qa-all.mjs --suites=<id>,…`. `paths` (globs) say
  * which files the suite covers, for the pre-push gate's affected-only run
  * (scripts/gate/affected.ts, docs/shipping.md "Only what changed"): a suite
@@ -43,6 +46,8 @@ export const SUITES = [
     id: "audio-free",
     paths: ["scripts/qa/silent.mjs"],
     sensitive: false,
+    // Sharded runs (scripts/qa/shard.mjs) start each shard with it too.
+    everyShard: true,
   },
   {
     name: "API  (qa-api)",
@@ -75,7 +80,7 @@ export const SUITES = [
     args: ["scripts/qa/qa-sign-out.mjs"],
     base: true,
     id: "sign-out",
-    paths: [...SHELL, ...AUTH, "app/(app)/profile/**", "lib/sign-out.ts"],
+    paths: [...SHELL, ...AUTH, "app/(app)/my/profile/**", "lib/sign-out.ts"],
     sensitive: false,
   },
   // The account's UI language on the first response of a new device; ?lang= still wins (lib/account-locale.ts).
@@ -95,7 +100,7 @@ export const SUITES = [
       "middleware.ts",
       "lib/account-locale*.ts",
       "lib/app-locale*.ts",
-      "app/(app)/preferences/**",
+      "app/(app)/my/preferences/**",
     ],
     sensitive: false,
   },
@@ -152,6 +157,22 @@ export const SUITES = [
     paths: ["app/(app)/words/**", "app/(app)/alphabet/**", "app/api/words/**", "lib/words/**"],
     sensitive: true,
   },
+  // The card-height pinch on /words and the faded reviewed slip (lib/words/row-pinch.ts).
+  {
+    name: "WORDS PINCH (qa-words-pinch)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-words-pinch.mjs"],
+    base: true,
+    id: "words-pinch",
+    // The study view and the pinch's own files; the /words route tree is the words suite's.
+    paths: [
+      "app/(app)/words/WordsClient.tsx",
+      "lib/words/row-pinch.ts",
+      "lib/words/use-row-pinch.ts",
+      "lib/words/row-layout.ts",
+    ],
+    sensitive: true,
+  },
   {
     name: "READ EPUB (qa-read-epub)",
     cmd: "bun",
@@ -160,6 +181,86 @@ export const SUITES = [
     id: "read-epub",
     paths: READ,
     sensitive: true,
+  },
+  // /reader's first screen: one Import button and its pop-up (a labelled modal), Continue reading, 360 px.
+  {
+    name: "READ HOME (qa-read-home)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-read-home.mjs"],
+    base: true,
+    id: "read-home",
+    paths: [
+      "app/(app)/reader/page.tsx",
+      "app/(app)/reader/ReadListClient.tsx",
+      "app/(app)/reader/read-home.content.ts",
+      "app/(app)/reader/GdocDriveImport.tsx",
+      "app/(app)/connections/DrivePick.tsx",
+      "app/components/ModalSheet.tsx",
+      "app/api/read/route.ts",
+      "lib/read/reader-store.ts",
+    ],
+    sensitive: false,
+  },
+  // The shared virtual list on /reader: no pages, a window of rows, more as you scroll, centre row back after Back.
+  {
+    name: "VIRTUAL LIST (qa-virtual-list)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-virtual-list.mjs"],
+    base: true,
+    id: "virtual-list",
+    paths: [
+      "app/components/VirtualList.tsx",
+      "app/components/useInfiniteList.ts",
+      "lib/virtual-list.ts",
+      "app/(app)/reader/ReadListClient.tsx",
+      "app/api/read/route.ts",
+      "app/(app)/list/**",
+      "app/(app)/data/**",
+      "app/lib/notesAdmin.ts",
+    ],
+    sensitive: true,
+  },
+  // /library (the catalogue) and /books (My books): titles, the shelf, old links 308 (docs/books-plan.md).
+  {
+    name: "BOOKS (qa-books)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-books.mjs"],
+    base: true,
+    id: "books",
+    paths: ["app/(app)/books/**", "app/(app)/library/**", "app/api/books/**", "lib/books/**"],
+    sensitive: false,
+  },
+  // /today, today's goal: the one number from /words's counts, red and gold by theme, links (lib/today/goal.ts).
+  {
+    name: "TODAY (qa-today)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-today.mjs"],
+    base: true,
+    id: "today",
+    paths: [
+      "app/(app)/today/**",
+      "app/api/words/today/**",
+      "lib/today/**",
+      "app/(app)/home/**",
+      "lib/app-nav.ts",
+      "scripts/qa/qa-today.mjs",
+    ],
+    sensitive: false,
+  },
+  // The /words first-visit walkthrough: shows once, Skip, replay from the "?", still frames (lib/words/onboarding.ts).
+  {
+    name: "WORDS ONBOARDING (qa-words-onboarding)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-words-onboarding.mjs"],
+    base: true,
+    id: "words-onboarding",
+    paths: [
+      "app/(app)/words/WordsOnboarding.tsx",
+      "app/(app)/words/onboarding.content.ts",
+      "lib/words/onboarding.ts",
+      "scripts/qa/qa-words-onboarding.mjs",
+    ],
+    sensitive: false,
   },
   // Import a word list on /import (docs/import-material.md, M1): flag gate, preview counts, a /words list.
   {
@@ -222,6 +323,67 @@ export const SUITES = [
     ],
     sensitive: false,
   },
+  // The mail template editor (docs/mail-templates.md): edit → live preview → save → test send (stub) → diff → rollback; desktop + phone, light + dark.
+  {
+    name: "MAIL TEMPLATES (qa-templates)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-templates.mjs"],
+    base: true,
+    id: "templates",
+    paths: ["app/(app)/dev/templates/**", "app/api/dev/templates/**", "lib/mail-templates/**"],
+    sensitive: false,
+  },
+  // The config editor /dev/config (docs/config-store.md): save → Changed + history → the next page renders it; invalid refused; reset; non-admin 404; 360 px light + dark.
+  {
+    name: "CONFIG (qa-config)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-config.mjs"],
+    base: true,
+    id: "config",
+    paths: [
+      "app/(app)/dev/config/**",
+      "app/api/dev/config/**",
+      "app/components/PublicConfig.tsx",
+      "lib/config*.ts",
+      "lib/snapshot-cache.ts",
+      "db/migrations/0070_config_values.sql",
+    ],
+    sensitive: false,
+  },
+  // The cost ledger at /dev/costs (docs/payments.md, "Cost ledger"): non-admin 404, a speech-server utterance booked, the account by name (no email); 360 px light + dark.
+  {
+    name: "COSTS (qa-costs)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-costs.mjs"],
+    base: true,
+    id: "costs",
+    paths: [
+      "app/(app)/dev/costs/**",
+      "app/api/dev/costs/**",
+      "app/api/debug/stt/local/**",
+      "lib/payments/cost-ledger.ts",
+      "lib/payments/costs-route.ts",
+      "db/migrations/0072_cost_ledger.sql",
+    ],
+    sensitive: false,
+  },
+  // The send log at /dev/mails (docs/mail-templates.md, "Send log"): search, filter, re-render, Resend (stub), Suppress, suppression list; 360 px light + dark.
+  {
+    name: "MAIL LOG (qa-mails)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-mails.mjs"],
+    base: true,
+    id: "mails",
+    paths: [
+      "app/(app)/dev/mails/**",
+      "app/api/dev/mails/**",
+      "lib/mail-log/**",
+      "lib/mail-templates/**",
+      "lib/resend-webhook.ts",
+      "db/migrations/0066_mail_log.sql",
+    ],
+    sensitive: false,
+  },
   // The marble plan cards on /membership: marble by default, 360 px, measured text contrast over the stone.
   {
     name: "MEMBERSHIP MARBLE (qa-membership-marble)",
@@ -230,6 +392,21 @@ export const SUITES = [
     base: true,
     id: "membership-marble",
     paths: ["app/(app)/membership/**", "public/membership/**", "lib/plan-skin.ts"],
+    sensitive: false,
+  },
+  // The credits usage page: one tap from the wallet card and the account menu, empty state, filters, CSV, AA, 360 px.
+  {
+    name: "CREDITS USAGE (qa-credits-usage)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-credits-usage.mjs"],
+    base: true,
+    id: "credits-usage",
+    paths: [
+      "app/(app)/membership/**",
+      "app/api/payments/credits/**",
+      "lib/payments/credit-usage*.ts",
+      "app/components/ProfileMenu.tsx",
+    ],
     sensitive: false,
   },
   // YouTube songs (docs/youtube-song-examples.md): flag gate, the ▶ per line, the popup's close rules.
@@ -258,6 +435,15 @@ export const SUITES = [
     cmd: "bun",
     args: ["scripts/qa/qa-read-sel-one.ts"],
     sensitive: true,
+  },
+  // Serverless: "New version · Refresh" only when the current page's code changed.
+  {
+    name: "SMART REFRESH",
+    id: "smart-refresh",
+    paths: [], // serverless: its entry's own imports (VersionNotice, lib/smart-refresh, the hub)
+    cmd: "bun",
+    args: ["scripts/qa/qa-smart-refresh.ts"],
+    sensitive: false,
   },
   {
     name: "SYNC (db-sync-matrix)",

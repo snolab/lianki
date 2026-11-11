@@ -397,23 +397,23 @@ test.describe("Guest /list page UI (no auth)", () => {
   // Use a fresh browser context with no cookies to simulate a guest
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("shows 'Guest Mode - Local Storage' heading", async ({ page }) => {
+  test("shows 'Guest mode: cards saved in this browser' heading", async ({ page }) => {
     await page.goto(`${BASE}/list`);
     // Wait for client-side render
-    await page.waitForSelector("text=Guest Mode", { timeout: 10_000 });
-    await expect(page.getByText("Guest Mode - Local Storage")).toBeVisible();
+    await page.waitForSelector("text=Guest mode", { timeout: 10_000 });
+    await expect(page.getByText("Guest mode: cards saved in this browser")).toBeVisible();
   });
 
   test("shows Script and Local storage boxes but NO Cloud box", async ({ page }) => {
     await page.goto(`${BASE}/list`);
     // Wait for the SyncStatusBanner to appear (inside the success state of GuestListClient)
-    await page.waitForSelector("text=Guest Mode - Local Storage", { timeout: 10_000 });
+    await page.waitForSelector("text=Guest mode: cards saved in this browser", { timeout: 10_000 });
 
     // Exact match on label text inside the Box components
-    await expect(page.getByText("Script", { exact: true })).toBeVisible();
-    await expect(page.getByText("Local", { exact: true })).toBeVisible();
+    await expect(page.getByText("In the userscript", { exact: true })).toBeVisible();
+    await expect(page.getByText("This browser", { exact: true })).toBeVisible();
     // No Cloud box for guests
-    await expect(page.getByText("Cloud", { exact: true })).not.toBeVisible();
+    await expect(page.getByText("Your account", { exact: true })).not.toBeVisible();
   });
 
   test("shows 'Sign in' link inside the guest banner", async ({ page }) => {
@@ -482,7 +482,7 @@ test.describe("SyncStatusBanner reads counts from pre-seeded IDB", () => {
 
     // Navigate to /list — the SyncStatusBanner should read these counts
     await page.goto(`${BASE}/list`);
-    await page.waitForSelector("text=Guest Mode - Local Storage", { timeout: 10_000 });
+    await page.waitForSelector("text=Guest mode: cards saved in this browser", { timeout: 10_000 });
 
     // Wait for the IDB read to complete (Script count should go from "…" to "2")
     await page.waitForFunction(

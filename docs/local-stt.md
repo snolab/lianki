@@ -15,6 +15,17 @@ phone (lianki.com, debug chat mic)
   on any failure: POST /api/debug/stt (unchanged)
 ```
 
+**User-facing wording** (owner, 2026-11-11): every string a user can see calls
+this server **"Lianki's speech server(s)"** — never "your Mac", "the owner's
+computer" or "the local model" (it is one of Lianki's speech servers, and may
+move to the cloud). This doc keeps the technical truth. /privacy, "Your voice
+and speech-to-text" (`#voice`), states what users are promised: STT runs only
+when the user asks; the audio is not stored or logged (here: `server.py`
+writes no audio outside opt-in enrolment, the clip sink is the owner's own
+session only, `/api/debug/stt` logs sizes and timings only); only what a user
+keeps is stored (opt-in enrolment recordings in My Files; voiceprint features
+on the speech server and, encrypted, in the account). Keep both true together.
+
 ## Turn it on
 
 On the Mac (once):
@@ -382,7 +393,12 @@ The voiceprint adds these (next section):
 | client | `{"t":"end","id":N,"textFrom":S}`                                               | text from sample S on (after "Linky"); the speaker hears it all |
 | client | `{"t":"enrol","op":"start","rid","device","ticket","keepAudio":false}`          | open an enrolment: needs an `enrol` ticket for that device (passkey) |
 | client | `{"t":"enrol","op":"commit"\|"cancel","rid","enrolment"}`                       | save it (10 sentences at least), or drop it                     |
-| client | `{"t":"voiceprint","op":"status"\|"delete","rid","ticket"[,"device":D\|"*"]}`   | what is enrolled (status ticket); delete (passkey ticket)       |
+| client | `{"t":"voiceprint","op":"status"\|"delete","rid","ticket"[,"device":D\|"*"]}`   | what is enrolled (status ticket); delete the print only (passkey ticket) |
+| client | `{"t":"voiceprint","op":"delete-audio","rid","device":D\|"*","ticket"}`         | delete only the kept enrolment recordings (its own passkey ticket) |
+| server | status answer + `"bands":{model:{minSpeechS,minSnrDb,bands:[{minS,me,other}]}}`, `"recordings":n` | the decision's thresholds (the test shows them); kept recordings |
+| server | delete answer + `"recordings":n`                                                | the kept recordings left on the Mac (the panel then asks)       |
+| client | `{"t":"voiceprint","op":"export","rid","device":D\|"*","ticket"}`               | the features, for his account (passkey ticket): `prints` back   |
+| client | `{"t":"voiceprint","op":"restore","rid","device":D\|"*","prints":[…],"ticket"}` | write prints read from his account (passkey ticket)             |
 | client | `{"t":"filter","on":bool}`                                                      | the voiceprint filter on this socket (off until said)           |
 | server | `ready` + `"speaker":{"models":["campp"]}`                                      | the check is on                                                 |
 | server | `final` + `"speaker":{score,decision,model,device,speechS,snrDb[,reason]}`      | the check on that final                                         |
@@ -409,13 +425,15 @@ phone: mic (Silero VAD) ─ utterance ─▶ server.py ─┬─ SenseVoice deco
 
 **Enrolment.** The chat menu's **Voiceprint** (owner pages with
 `lk:agent-local-stt`) opens a panel over the bar (`VoiceprintPanel.tsx`,
-`voiceprint.ts`): what is enrolled per device, **Enrol this device**, and
+`voiceprint.ts`): what is enrolled per device, **Enrol this device**, **Test my voiceprint** (below), and
 **Delete my voiceprint**. Enrol shows the **consent card first**: he will read
 10–20 sentences; the Mac turns them into numbers that describe his voice,
-not a recording; they are kept only on the Mac at
-`~/.config/lianki-stt/voiceprints`, never on Lianki's servers; what it is
-for; that he can delete it there at any time; and a switch, off by default,
-to also keep the sentences' audio on the Mac. **Nothing is captured until
+not a recording, kept on the Mac at `~/.config/lianki-stt/voiceprints`;
+after his passkey, a copy of those numbers in his Lianki account,
+encrypted and readable only by his account (next-but-one section); what it
+is for; that he can delete it all at any time; and a switch, off by default,
+to also keep the sentences' recordings: on the Mac and, once saved to the
+account, in his My Files → Voiceprint. **Nothing is captured until
 his tap on "I agree, start" and his passkey** (next section). Voice can
 neither start enrolment nor delete (docs/dev-debug-widget.md: recording is
 turned on by a tap, never by voice).
@@ -502,18 +520,123 @@ then a rename). It holds the embeddings, their mean, how long each sentence
 was, and the leave-one-out self scores; no text, no audio. The opted-in
 audio goes to `<device>.audio/NN.wav` (0700 / 0600). A file or folder that
 is a symlink, not ours, or readable by others is refused (logged, the check
-then says "unknown"). Never on the Worker, D1 or the hub; never committed.
+then says "unknown"). Never on the hub; never committed. The features (never
+the audio) also go to his account when he saves them there ("Voiceprint in
+your account", below).
 
 **Delete.** In the panel: **Delete my voiceprint**, then a confirming tap;
-it deletes every device's print and any kept enrolment audio. On the Mac:
+it deletes every device's print. **It never deletes the kept enrolment
+recordings with it** (owner, 2026-11-11): the Mac answers how many it still
+keeps (`recordings`), and the panel then asks separately ("N recordings of
+your enrolment are still kept on Lianki's speech servers. Delete them too?"). **Keep them**
+is the default and the first button; only **Delete them from the speech servers** (one
+more tap, its own `delete-audio` passkey ticket, or the window below) removes
+them (`op:"delete-audio"`, `Store.delete_audio`). On the Mac:
 
 ```bash
 ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py list
-~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --device iphone   # or --all
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --device iphone   # or --all; the print only
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete-audio --all      # only the kept recordings
+~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --all --audio    # both
 ```
 
-The running server sees a CLI delete on the next final (it watches the
-folder's mtime). Neither touches `~/lianki-voice-clips`.
+`delete` says how many kept recordings are left. The running server sees a
+CLI delete on the next final (it watches the folder's mtime). None of these
+touches `~/lianki-voice-clips`.
+
+### Voiceprint in your account
+
+The owner decided on 2026-11-10 (tap card, 23:31 JST): keep his voiceprint's
+**features** in Cloudflare under his own account as well, so a new Mac can
+get it back; then (23:33, 23:35 JST) the enrolment recordings too, in his My
+Files, so the features can be computed again later (below). Flag
+[`stt.voiceprint-cloud`](https://lianki.com/dev/flags#stt.voiceprint-cloud),
+on by default, `audience: "owner"`, and only for an account holding `dev`
+(the grant the voiceprint tickets already need); off: the print is on the Mac
+only and `/api/my/voiceprint` answers 404.
+
+```
+tap "Save to my account" → passkey (Face ID / Touch ID) → ticket {op:"export", device:"*", uv:true, uid}
+page → the Mac {t:"voiceprint", op:"export", ticket}        ticket.py: once; Store.export: features only
+     ← {prints:[{device, model, dim, n, created, updated, self, speechS, centroid, embeddings}]}
+page → PUT /api/my/voiceprint {ticket, prints}              the same ticket, spent once more on lianki.com
+       lib/voiceprint-cloud.ts: exactly those keys (anything else, `audio` included: 400),
+       the ticket's uid = the session's user, sealed (AES-256-GCM) → D1 voiceprint
+```
+
+- **What is kept.** D1 `voiceprint` (`db/migrations/0071_voiceprint.sql`),
+  one row per account, device and model: `dim`, `n`, `updated_at` in clear,
+  and `payload`, the sealed JSON of `{centroid, embeddings, speechS, self,
+  created, updated}`. No audio, no text, no file path, no `audio` flag: a
+  print or a body with any other key is refused whole, on lianki.com
+  (`parsePrint`, `PRINT_KEYS`) and on the Mac (`check_export`,
+  `EXPORT_KEYS`); the page keeps only those keys too (`featuresOnly`).
+- **Encrypted at rest.** The key is HKDF-SHA256 from the existing Worker
+  secret `AUTH_SECRET`, salt `lianki/voiceprint`, info
+  `lianki/voiceprint/features-at-rest/v1` (`voiceprintKey`): no new secret,
+  and not the key that seals the Google tokens. The AAD is the row's user,
+  device and model, so a payload moved to another row does not open.
+  Rotating `AUTH_SECRET` leaves the rows unreadable: they list as
+  `unreadable`; save again from the Mac.
+- **Who.** Every read and write is by the session's user id; nothing in a
+  request names an account. The session cookie only: an API token reads
+  nothing here. Reading the features (`GET ?features=1`) needs the session;
+  writing (`PUT`, an `export` ticket) and deleting (`DELETE`, a `delete`
+  ticket) need a passkey ticket with `uv: true` **for this account** (the
+  ticket's `uid`, added at verify), live (60 s), for that device or `*`.
+  lianki.com spends each ticket once (`verification`,
+  `voiceprint-cloud:<jti>`), apart from the Mac's own store, so one approval
+  covers both halves of a tap and no more.
+- **Restore** ("Restore from my account", the panel; also on a Mac with no
+  print yet): passkey → `restore` ticket; the page reads the features
+  (`GET ?features=1`) and sends them to the Mac (`op:"restore"`), which checks
+  every print before writing any, recomputes the mean and self scores from
+  the embeddings, and leaves a kept-audio folder and its flag as they were.
+- **After an enrolment**, with the flag on, the panel saves to the account
+  at once (one more passkey prompt). If the browser refuses the prompt (no
+  fresh tap) or the save fails, the "Save to my account" button stays there.
+- **Delete** ("Delete my voiceprint" and its confirming tap): one passkey
+  `delete` ticket for `*`; the Mac deletes its prints (never its kept
+  recordings: those are asked about separately, "Delete" above) and
+  lianki.com deletes the account's rows. With the Mac away, the
+  account's rows can still be deleted from the panel. His recordings in My
+  Files are **not** deleted with it: the panel then asks separately ("Your N
+  recordings are still in My Files → Voiceprint. Delete them too?"), and
+  only that tap deletes them.
+
+**The recordings** (owner, tap cards 2026-11-10 23:33 and 23:35 JST: keep
+them in his account so the features can be computed again later; no
+automatic deletion anywhere):
+
+- "Save to my account" also asks the Mac for the recordings it kept (the
+  enrolment's opt-in audio, `<device>.audio/NN.wav`; `export` with
+  `recordings: true`, the same passkey ticket, `Store.recordings`: our own
+  regular private files only, read, never moved or deleted) and uploads each
+  to **My Files → Voiceprint** (`inbox_item` source `voiceprint`, his private
+  R2 file store, `POST /api/import/files?source=voiceprint`), named
+  `voiceprint <device> <enrolment day> NN.wav`. A name already there is
+  skipped, so saving again stores nothing twice. That is also the one-time
+  path for recordings already on the Mac: he taps "Save to my account".
+  Nothing on the Mac is deleted by this, and `~/lianki-voice-clips` is never
+  read.
+- **Re-compute from my recordings** (a later model, a new Mac): the panel
+  downloads them from My Files and hands them to the **feature extractor**,
+  one interface (`FeatureExtractor.extract(device, clips) → {prints, ticket}`,
+  `voiceprint.ts`) chosen by config `voiceprint.extractor` (/dev/config;
+  `mac`, the only implementation for now; `GET /api/my/voiceprint` hands the
+  value to the page). The Mac implementation takes a passkey `enrol` ticket
+  for the device, opens an enrolment and feeds each recording as a sentence
+  (the same checks), commits it on the Mac with `export: true`, and gets the
+  new features back; lianki.com stores them under that same enrol ticket
+  (an `enrol` ticket covers only its own device). A cloud worker can replace
+  it by adding an implementation and changing the config.
+- Retention: kept until he deletes them (in My Files, or the offer after a
+  voiceprint delete). There is no automatic deletion path.
+- Tests: `unit/voiceprint-cloud.test.ts` (sealing and AAD, features only,
+  tickets for another account / op / device / without the passkey, each
+  once, own rows only, the panel's three flows);
+  `scripts/local-stt/test_voiceprint.py` `AccountCopy` and the server flow
+  (export and restore only with their tickets, an `audio` key refused).
 
 **Verification.** Every final is scored against this device's print (the
 socket's `hello`), or, when this device has none, the best of the other
@@ -614,6 +737,71 @@ model in that list with a print. ERes2NetV2's bands (0.34 / 0.25, ≥ 3 s:
 0.37 / 0.27) are #394's 1 % FA points and marked `provisional`; it needs a
 per-device enrolment (#394: it rejected 85–98 % of his Android clips
 against an iPhone enrolment).
+
+### One approval for ten minutes
+
+The owner's tap card (2026-11-11 01:28 JST): **one** passkey approval (Face
+ID / Touch ID) covers **all** voiceprint ops (enrol, save to account,
+restore, delete, delete the kept recordings, re-compute, export) for ten
+minutes. Config [`voiceprint.passkeyWindowMs`](https://lianki.com/dev/config)
+(default 600000; 0 = a prompt per op, as before; at most 30 min).
+
+```
+tap → options → Face ID → POST {…, step:"verify", client:"iphone"}
+     ← {ticket, grant, grantExp}     grant: {aud:"lianki-voiceprint-grant", uid, sid, client, gid, iat, exp = now + window}
+next op (no prompt) → POST {op, device, step:"grant", grant, client}
+     ← {ticket}                      the same ticket as before: aud, op, device, uv:true, uid, a fresh jti,
+                                     iat = now, exp = min(now + 60 s, grant exp)
+page → the Mac {…, ticket}           ticket.py: unchanged (aud, op, device, uv, keepAudio, once)
+```
+
+- **Bound** to the account (`uid` = the session's user), the sign-in session
+  (`sid`, a SHA-256 tag of the session id, never the id) and the page's device
+  slug (`client`). Another account, session or device: 401, and the page
+  asks for the passkey again. A sign-out ends the session, so the grant is
+  refused even if a copy survived.
+- **In page memory only** (`webauthn.ts`, a module variable, not
+  localStorage, sessionStorage or `globalThis`): a reload drops it. The panel
+  shows "Face ID approved: … until 14:05" with **End now**, which drops it.
+- **Each op still gets its own single-use ticket**, its own jti, at most 60 s
+  and never past the grant; within 5 s of the end the page asks for the
+  passkey instead. A shorter window set at /dev/config shortens grants
+  already out (the check is `iat + window`, read at each mint); 0 ends them.
+- **Never anything else.** The grant's audience is accepted only by the
+  `grant` step of `/api/dev/voiceprint-ticket`; it is not a challenge, not a
+  ticket, and no other step-up (payments, permissions, API tokens, sign-in)
+  reads it. `status` needs no passkey at all, as before.
+- **The trade-off** (also docs/security-measures.md, section 14): inside the
+  window, page code on that device and session (an eval, an injected script,
+  an extension) can get voiceprint tickets without his face, so it could
+  delete the print or the recordings, export or restore, or start an
+  enrolment that keeps audio (keepAudio comes from the consent card's switch,
+  no longer re-approved by Face ID inside the window). Ten minutes, one
+  device, one session, one account, and **End now**; the Mac still spends
+  each ticket once.
+- Tests: `unit/voiceprint-window.test.ts`.
+
+### Test my voiceprint
+
+Owner, 2026-11-11 01:03 JST. **Test my voiceprint** in the panel (dev
+permission, like the panel) routes the mic to the test: each utterance goes
+to the Mac as a plain final on the mic's socket (the `hello` names this
+device, so it is scored against this device's print), and only to the panel:
+never the draft, the cloud STT or the clip sink (the enrolment tap with no
+enrolment id, `enrolCapture(…, "", true)`). Nothing is stored: the Mac keeps
+no audio of a final, and the panel keeps only each line's verdict, in memory.
+
+Per line, at once: the decision (**Me** / **Someone else** / **Not sure** and
+why: too little speech, too noisy, between the two lines, no print), the
+CAM++ score, whose print it was scored against and the model, the speech
+seconds and SNR, and the thresholds used for that length (from the Mac's
+status answer `bands`, `voiceprint.bands_info`; the table in "Verification" above as the
+fallback). A running tally (me / someone else / not sure), and after the
+first line: "Now let someone else say one sentence, to compare." The state
+of the "only my voice" filter, with a link to
+[`stt.voiceprint-filter`](https://lianki.com/dev/flags#stt.voiceprint-filter),
+and per line whether the filter stopped it or would have. **Done** gives the
+mic back to the chat; closing the panel does too.
 
 ## Only my voice: the filter
 
@@ -794,6 +982,16 @@ setting has the same problem: all three are primary for him. Calling
 scores to choose between the readings, and it changes the recognizer for every
 decode running at the same time.
 
+## Booked as a cloud service
+
+The speech server costs us nothing per call, but each utterance it serves is
+booked to the account's cost ledger at a cloud-equivalent rate, so /dev/costs
+shows what the voice features would cost on a cloud provider
+([payments.md](payments.md), "Cost ledger"). The utterance never reaches
+lianki.com, so the page reports its length (`reportLocalStt` in `mic.ts`,
+from `MicButton.tsx` and /vibe's `served`) to `/api/debug/stt/local`; the rate
+is the config key `stt.local.costPerMinUsd`. Nothing is charged.
+
 ## Fallback
 
 `createLocalStt` (`packages/debug-chat/src/local-stt.ts`) opens the socket
@@ -834,6 +1032,22 @@ socket closed, `error`, no final within 4 s), posts the WAV to
 `/api/debug/stt` instead. The echo guard, the hallucination guard and
 the clip sink see the text exactly as they do a route transcript.
 
+### Which engine a line came from
+
+Every voice line carries `stt: {route: "local"|"cloud", engine?, fallback?:
+true}` (`wire.ts` `SttTag`), set by the page from what actually answered its
+final: `route: "local"` with the server's final `model` (e.g.
+`sensevoice-small-2024-07-17-int8`), or `route: "cloud"` with the route's
+`model` (`@cf/openai/whisper-large-v3-turbo`, or `@cf/openai/whisper` when the
+route fell back itself). `fallback: true` = the Mac was asked and failed, so
+the cloud answered. MicButton marks it on the utterance in the latency store
+(`latency.ts` `takeLine`); push to talk is always the cloud. The hub keeps it
+on the stored line (and on each part of a merged one), `eval.ts chat` /
+`lianki-dev listen` print it, and the chat shows a tiny tag after the line
+("local · sensevoice-small-…", "cloud · whisper-large-v3-turbo · fallback")
+only to a `dev` holder (DebugChat `owner`). Never text, never for friends or
+normal users.
+
 ## Noise
 
 The browser's own noise suppression, echo cancellation and auto gain are on
@@ -867,15 +1081,179 @@ denoiser, and each costs 0.04–0.10 CER on clean speech. A speaker check
 (CAM++ / ERes2NetV2) is what keeps the PA and background voices out:
 [stt-ab.md](stt-ab.md), "Noise and speaker grid".
 
+## Lianki's speech servers for everyone
+
+The owner's decision (Slack, 2026-11-11 00:3x–00:4x JST): the same
+SenseVoice-Small server becomes a public-grade service for other accounts.
+Everything ships **dark** behind flag
+[`stt.worker`](https://lianki.com/dev/flags#stt.worker) (default off,
+audience: the `/dev/stt-access` allowlist). With it off every endpoint below
+answers 404, and **the owner's own mic route is unchanged** (tailnet, then
+`stt.lianki.com` with a v1 ticket, then the cloud, exactly as above).
+
+```
+page ─ POST /api/stt/session (flag, allowlist, quotas) ─▶ lianki.com Worker
+     ◀─ {ticket v2, ice servers, signal URL} ─
+page ─ WebRTC: offer/answer + ICE over wss://lianki.com/api/version/stt/signal ─▶ SttRegistry (lianki-push DO)
+                                                                            ◀── stt-peer on a worker (dials OUT, Ed25519 worker key)
+page ═ DataChannel (STUN direct; TURN fallback) ═▶ stt-peer ─ ws ─▶ server.py peer listener (verifies the v2 ticket)
+     else WSS tunnel, else Workers AI (/api/debug/stt), per utterance
+```
+
+- **User-facing text** says only "Lianki's speech servers" (see the top of
+  this doc). Free for now; each utterance is booked at cost as
+  `speech.stt.local` ("Booked as a cloud service").
+- **Weak spots** (homophones, dropped words) are left to the replying AI's
+  polish, as for the owner's lines.
+- **Later**: a user's own Mac as their personal worker. The worker registry
+  is per account capable (`stt_worker.owner_user_id`) and the page's route
+  race is pluggable (one transport per route kind).
+
+**Ticket v2** (`lib/stt-ticket.ts` `signSttTicketV2`, `ticket.py` with
+`aud=V2_AUD`): `{aud:"lianki-stt2", v:2, jti, iat, exp, sub, scope:"stt",
+lim:{utt, sess}}`, 60 s, single use, the same `STT_TICKET_KEY`. Its own
+audience: the owner's tunnel listener never takes one, and a v1 ticket never
+opens a public session. `sub` is the account id (never an email) the session
+is booked to; `lim` the longest utterance and session the server enforces,
+signed, so the page cannot raise them. Bad claims are refused before the jti
+is spent.
+
+**Quotas** (config, `/dev/config` group `stt-worker`; defaults are the
+owner's numbers): `stt.worker.sessionsPerAccount` 1,
+`stt.worker.ticketsPerMin` 6, `stt.worker.minutesPerDay` 30,
+`stt.worker.maxUtteranceS` 40, `stt.worker.sessionMaxS` 900,
+`stt.worker.macCapacity` 3 with `stt.worker.macReserved` 1 kept for the
+owner. Over any of them the utterance goes to the cloud, as on any failure.
+
+**Who** (`/dev/stt-access`, admin; `lib/stt-worker/store.ts`, migration
+0073): `stt_access` is the allowlist (default deny), `stt_worker` the speech
+servers allowed to register (Ed25519 public keys; `owner_user_id` set = a
+user's own server, later). Every change is in `security_audit`, ids only.
+
+**`/api/stt/session`** (`lib/stt-worker/session.ts`): 404 while the flag is
+off, whoever asks. `GET` answers 204 for an allowlisted account (the page asks
+once when the mic turns on, never in an utterance's path), else 404. `POST`
+(same-origin JSON) checks, in order: signed in (401), on the list (403,
+`not-allowed`), `sessionsPerAccount` > 0 (403, `off`), tickets in the last
+minute under `ticketsPerMin` (429, `too-many-tickets`; D1 `stt_ticket`), audio
+today (JST) under `minutesPerDay` (429, `daily-limit`; the account's
+`speech.stt.local` rows in the cost ledger), the signing key set (503,
+`tickets-off`). Then: `{ticket, exp, signal, iceServers, limits[, wss]}` — the
+v2 ticket, `/api/version/stt/signal`, STUN from config `stt.worker.stunUrls`
+plus TURN when its key is set, and the WSS fallback when config
+`stt.worker.wssUrl` names one (empty by default: no tunnel exists yet).
+TURN credentials are minted per session from Cloudflare Realtime TURN with
+the Worker secrets `STT_TURN_KEY_ID` / `STT_TURN_KEY_TOKEN` (**not set**: the
+owner's approval first); without them STUN only.
+
+**The registry** (`workers/push/src/stt-registry.ts`, Durable Object
+`SttRegistry` in lianki-push, binding `STT`; no route of its own: the existing
+`lianki.com/api/version/*` route reaches it). Both paths are 404 while the flag
+is off (lianki-push asks `DebugSessions.flag`) and for anything but a socket;
+no cookie or identity header passes to it.
+
+- `/api/version/stt/worker`: a speech server's `stt-peer` dials **out** (no
+  inbound port on the server; an Origin is refused: not a browser). The hub
+  sends `{t:"challenge", nonce}`; the worker answers `{t:"auth", key, sig}`,
+  Ed25519 over `lianki-stt-worker\n<nonce>`; the key must be a live
+  `stt_worker` row (`DebugSessions.sttWorker`, only while the flag is on),
+  else 4401/4403. One socket per worker: a reconnect replaces the old one.
+- `/api/version/stt/signal`: a lianki.com page offering `lianki-stt2, <v2
+  ticket>`. Before the upgrade: the ticket (signature with
+  `PARTNER_TICKET_PUB`, the same key pair's public half; claims; once, jtis in
+  the DO's storage) else 401; the account's live sessions under
+  `sessionsPerAccount` else 429; a worker with room — the account's own worker
+  first (`owner_user_id`), then the least busy shared one under its capacity
+  (`stt_worker.capacity` or `macCapacity`) minus `macReserved` — else 503.
+  Then `{t:"ready", sid}`, and offer / answer / ICE pass between that page and
+  that worker only; the ticket goes on to the worker with the offer, and its
+  speech server checks it again. A worker speaks only for its own sessions.
+- **Booking**: the worker reports each final's audio length (`{t:"usage",
+  sid, audioMs}`) and the hub books it to the ticket's account
+  (`DebugSessions.bookStt`: `speech.stt.local`, at most 120 s per report, the
+  `stt.local.costPerMinUsd` rate). The page does not book these itself.
+- A session counts until its signed length plus 60 s (checked when the hub
+  next counts; no timer), or until the page's signal socket closes; a worker
+  that goes away ends its pages (`{t:"end", reason:"worker-gone"}`), which go
+  on with the next route.
+- **Adding a worker** (after the owner's tap card): `stt-peer keygen` on the
+  server prints its public key; `bun scripts/local-stt/stt-worker-add.ts --id
+  mac --name "…" --key <public key>` writes the row (wrangler d1, audited as
+  `cli`). Revoke on `/dev/stt-access`.
+
+**stt-peer** (`scripts/local-stt/stt-peer`, Go + pion/webrtc): the sidecar on
+a speech server. It keeps one connection to the registry (dialled out; after a
+drop it dials again, waiting 1 s doubling to 30 s), answers each offer with a
+peer connection (STUN from `--stun`; the page's TURN when its ICE servers
+include it), and bridges the page's DataChannel `stt` one-to-one to a fresh
+socket on server.py's peer listener: text to text, binary to binary, the same
+protocol as every other route. The page's v2 ticket goes along in
+`Sec-WebSocket-Protocol` with Origin `https://lianki.com`; **server.py checks
+it itself**, so the bridge decides nothing about who may speak. It reports
+each final's `audioMs` to the registry for booking, refuses offers past
+`--capacity` (`{t:"end", reason:"busy"}`), and never logs text, audio or
+tickets. Its key: `stt-peer keygen` writes `~/.config/lianki-stt/worker.key`
+(the Ed25519 seed, 0600, never overwritten) and prints the public half; a key
+file that is a symlink, not ours, or readable by others is refused. Build and
+run (the toolchain from go.dev, checksum checked, in `~/.cache/lianki-stt/toolchain`):
+
+```bash
+cd scripts/local-stt/stt-peer && go build -o ~/.cache/lianki-stt/stt-peer .
+~/.cache/lianki-stt/stt-peer keygen          # once; then the owner's tap card, then stt-worker-add.ts
+oxmgr start --name lianki-stt-peer --restart always "$HOME/.cache/lianki-stt/stt-peer --server ws://127.0.0.1:5189"
+```
+
+**The peer listener** (`server.py --peer-port 5189 [--peer-max 2]`, off by
+default; 127.0.0.1 only): checks, before the upgrade, Origin lianki.com (403),
+a free slot (503), and a **v2** ticket beside `lianki-stt2` (401; a v1 ticket
+or the owner's subprotocol is refused). The ticket's `lim` holds on the
+socket: audio past `utt` seconds is not kept, and the socket closes with 4408
+after `sess`. **None of the owner's voiceprint features answer there**: no
+speaker check, no speaker proof (the hub would never take one for another
+account), no filter, and enrolment and voiceprint ops answer `not on this
+route`. Per-account prints, when they come, live under
+`voiceprints/accounts/<hash of the account id>` (`account_store`), never in
+the owner's folder. The owner's own listeners (tailnet, tunnel) are unchanged.
+
+**The page** (`packages/debug-chat/src/public-stt.ts`). Only where the owner's
+route is "none" (not the owner: `localSttRoute` decides first, so his page
+never changes) and only on `https://lianki.com`: the first time the mic turns
+on in a page, `GET /api/stt/session` once (404: nothing more happens, the mic
+is exactly as before). On 204 the consent card (`SttServersCard.tsx`, strings
+`sttServers*` in `chat-ui-locales.ts`, 16 locales): "Your voice goes to
+Lianki's speech servers, which write it out while you speak. The audio is not
+stored; only what you send is kept. Free for now." — **Use Lianki's speech
+servers** / **Not now**. Nothing is sent before that tap (a synthetic click is
+ignored); the answer is kept per device (`lk:stt-servers`, `on` / `off`;
+"Not now" asks again on the next page). Agreed, the mic's route list becomes
+`PUBLIC_ROUTES` = `rtc:lianki wss:session`, raced by the same
+`createLocalStt` (protocol, held utterances, fallback, dot), with `open` =
+`publicOpen` and a longer `connectTimeoutMs` (6 s: a session, signalling and
+ICE come before `ready`):
+
+- `rtc:lianki`: `POST /api/stt/session` → the registry's signal socket
+  (`lianki-stt2, <ticket>`) → on `ready`, an `RTCPeerConnection` with the
+  session's ICE servers and a DataChannel `stt` (ordered) → offer, trickled
+  ICE, answer. The channel, once open, is the socket. The signal socket stays
+  open for the session (the registry counts by it).
+- `wss:session`: its own session (a ticket is spent once per route); the
+  session's `wss` URL with `lianki-stt2, <ticket>`, or an at-once failure when
+  there is none (the default).
+- No hello, device, thread or filter on these sockets, and the page does not
+  report usage (`reportLocalStt`): the registry books it. Any failure before
+  `ready` loses the race; all lost = the cloud, per utterance, as always.
+  The order is the pluggable part (later: a user's own Mac first).
+
 ## WebRTC
 
-Not needed for this. The phone already reaches the Mac over the tailnet, and a
-WebSocket of 16 kHz int16 is 32 KB/s, small next to any uplink. WebRTC would
-add Opus compression (less uplink on a weak radio) and a jitter buffer, at
-the cost of signalling through the push hub, ICE, and a Python peer
-(aiortc). It would help only on a poor connection, where the fallback already
-covers the failure case. Off the tailnet (a friend's device) neither applies:
-this is owner-only.
+The owner's own route still does not use it. The phone already reaches the
+Mac over the tailnet, and a WebSocket of 16 kHz int16 is 32 KB/s, small next
+to any uplink. WebRTC would add Opus compression and a jitter buffer, at the
+cost of signalling through the push hub and ICE; it would help only on a poor
+connection, where the fallback already covers the failure case. For other
+accounts (no tailnet) it is the first route: a DataChannel carrying the same
+protocol, through the `stt-peer` sidecar ("Lianki's speech servers for
+everyone" above), not aiortc.
 
 ## Testing
 
@@ -909,6 +1287,13 @@ this is owner-only.
   tailnet listener up; `public.json` turning it on with the key it names, and
   a missing key keeping it off. It runs `scripts/local-stt/test_ticket.py`
   too (including the full ticket store recovering once its jtis expire). Skipped where the venv (with `cryptography`) is missing.
+- Lianki's speech servers for everyone: `unit/stt-ticket.test.ts` (v2),
+  `unit/stt-worker-store.test.ts`, `unit/stt-session.test.ts`,
+  `unit/stt-registry.test.ts` (the registry, its routes' 404 while off, the
+  RPCs, the add CLI), `unit/local-stt-peer.test.ts` (the real server's peer
+  listener: v2 only, the limits, no voiceprint features; venv only) and
+  `unit/stt-peer-go.test.ts` (`go test`: a page reaching a fake speech
+  server over a real DataChannel through stt-peer; where Go is installed).
 - `unit/stt-tunnel.test.ts`: `tunnel.sh up` and `down` against stand-ins for
   oxmgr, cloudflared and curl: the oxmgr entry left exactly as it was, the
   custom key path reaching the server, and the restore when the listener
@@ -918,6 +1303,12 @@ this is owner-only.
   a short, noisy or unprinted one; holds partials; off is exactly as before.
   `unit/voiceprint.test.ts`, "the voiceprint filter on the page": a stopped
   final goes nowhere, the tally, the switch, every failure reading as off.
+- `unit/voiceprint-window.test.ts`: the passkey window (expiry, config
+  shortening, per-op single use, another account / session / device refused,
+  no grant → the prompt), the test mode, and the print delete keeping the
+  Mac's recordings until their own tap; `test_voiceprint.py`
+  `test_deleting_the_print_keeps_the_recordings` and
+  `test_delete_keeps_recordings_until_asked` on the Mac's side.
 - `unit/voiceprint.test.ts`: the page's side of the voiceprint: consent
   gating (nothing captured or started on the Mac before the tap), reading
   and its "again" reasons, save at 10 and by itself at 20, cancel, delete

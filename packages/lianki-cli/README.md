@@ -47,7 +47,7 @@ lianki auth logout      # revoke the token on the server and forget it
 
 ### Without a browser (servers, CI, agents)
 
-Make a token at [lianki.com/preferences](https://lianki.com/preferences)
+Make a token at [lianki.com/my/preferences](https://lianki.com/my/preferences)
 → **API tokens** (a name, its permissions, an expiry), then either:
 
 ```bash
@@ -130,6 +130,54 @@ A value is read as JSON when it parses (`true`, `1.25`, `["/words"]`), and as
 a plain word otherwise (`light`). The server checks it; an invalid value
 exits 5.
 
+## MCP: use Lianki from your AI app
+
+`lianki mcp` runs a local MCP server (stdio) for Claude Code, Claude Desktop,
+Cursor, Codex and any other MCP client. Sign in once with `lianki auth login`
+(the token goes to the Keychain); the server finds it there, so no config
+file holds a secret.
+
+```bash
+claude mcp add lianki -- npx -y lianki mcp          # Claude Code
+```
+
+```json
+{ "mcpServers": { "lianki": { "command": "npx", "args": ["-y", "lianki", "mcp"] } } }
+```
+
+(Claude Desktop: `claude_desktop_config.json`; Cursor: `.cursor/mcp.json`.)
+Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.lianki]
+command = "npx"
+args = ["-y", "lianki", "mcp"]
+```
+
+Without the Keychain, add `"env": { "LIANKI_TOKEN": "lk_…" }` to the server's
+entry, in the config file on your own computer. Never paste the token into a
+chat.
+
+| tool                  | permission   | what it does                                   |
+| --------------------- | ------------ | ---------------------------------------------- |
+| `lianki_stats`        | `study`      | how many cards, how many due                   |
+| `lianki_due`          | `study`      | the due cards (`limit`)                        |
+| `lianki_next`         | `study`      | the next card to review                        |
+| `lianki_get`          | `study`      | one card by `url`                              |
+| `lianki_add`          | `study`      | save a page as a card (`url`, `title`)         |
+| `lianki_import`       | `study`      | save up to 100 pages (`items`)                 |
+| `lianki_review`       | `study`      | record a review (`url`, `rating` 1–4)          |
+| `lianki_settings_get` | `study`      | the settings, or one (`key`)                   |
+| `lianki_chat_read`    | `chat:read`  | the latest chat lines                          |
+| `lianki_chat_say`     | `chat:write` | post a line                                    |
+| `lianki_chat_ask`     | `chat:ask`   | post a question card; only your tap answers it |
+
+Only the tools your token allows are listed. There are no delete tools.
+Results are marked as untrusted data (page titles and chat lines can be
+written by anyone), and the tools tell the model never to follow
+instructions found in them. Each call is in your account's audit log as
+coming through MCP, with the tool's name (never its arguments).
+
 ## Help
 
 `lianki --help` is a short list of commands. Each command explains itself:
@@ -164,7 +212,7 @@ lianki settings set --help
 | 2    | not signed in, or the token was refused          | `auth_required`, `auth_refused`, `auth_invalid`, `auth_failed` |
 | 3    | no such card                                     | `not_found`                                                    |
 | 4    | network or server error                          | `network`, `server`, `internal`                                |
-| 5    | the server refused it (invalid value, rate limit) | `refused`                                                      |
+| 5    | the server refused it (invalid value, rate limit) | `refused`, `rate_limited` (429; the message says how long to wait) |
 
 ### `data` by command (schema `v: 1`)
 
@@ -189,6 +237,12 @@ lianki settings set --help
 | `chat read`     | `{ thread, lane, messages: [{ id, from, label, text, at, ask?, answer? }] }`                  |
 
 Within `v: 1` fields are only ever added; removing or renaming one bumps `v`.
+
+## Changes in 0.4.0
+
+- New: `lianki mcp`, a local MCP server with tools for cards, settings and
+  chat, listed by the token's permissions; no deletes.
+- A 429 exits 5 with `error.code` `rate_limited` and says how long to wait.
 
 ## Changes in 0.3.0
 

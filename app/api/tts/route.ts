@@ -1,3 +1,6 @@
+import { refusal, type Metered } from "@/lib/payments/metered";
+import { freeCall } from "@/lib/payments/paid-calls";
+import { speechUsd } from "@/lib/payments/prices";
 import { NextRequest, NextResponse } from "next/server";
 import {
   isWorkersAiConfigured,
@@ -7,6 +10,7 @@ import {
   WORKERS_AI_NOT_CONFIGURED,
 } from "@/lib/workers-ai";
 import crypto from "crypto";
+import { dbBackend, getD1 } from "@/lib/d1";
 import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { routeLimit } from "@/lib/security/route-guard";
@@ -28,7 +32,7 @@ export const POST = async (req: NextRequest) => {
   // Require authentication
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
   const requester = session.user.email ?? session.user.id;
 
@@ -38,7 +42,7 @@ export const POST = async (req: NextRequest) => {
   });
   if (!rateLimit.allowed) {
     return NextResponse.json(
-      { error: "Too many requests. Please retry later." },
+      { error: "rate-limited" },
       {
         status: 429,
         headers: {
@@ -52,37 +56,28 @@ export const POST = async (req: NextRequest) => {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json({ error: "invalid-json" }, { status: 400 });
   }
 
   const { text, voice = "shimmer", model = "tts-1" } = body || {};
 
   if (typeof text !== "string" || text.length === 0) {
-    return NextResponse.json({ error: "text is required" }, { status: 400 });
+    return NextResponse.json({ error: "text-required" }, { status: 400 });
   }
 
   // Validate text length
   if (text.length > MAX_TEXT_LENGTH) {
-    return NextResponse.json(
-      { error: `Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters` },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "text-too-long" }, { status: 400 });
   }
 
   // Validate voice against allowlist
   if (!ALLOWED_VOICES.includes(voice)) {
-    return NextResponse.json(
-      { error: `Invalid voice. Allowed: ${ALLOWED_VOICES.join(", ")}` },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "invalid-voice" }, { status: 400 });
   }
 
   // Validate model against allowlist
   if (!ALLOWED_MODELS.includes(model)) {
-    return NextResponse.json(
-      { error: `Invalid model. Allowed: ${ALLOWED_MODELS.join(", ")}` },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "invalid-model" }, { status: 400 });
   }
 
   console.log("TTS request:", { textLength: text.length, voice, model });
@@ -126,18 +121,24 @@ export const POST = async (req: NextRequest) => {
     return NextResponse.json({ error: WORKERS_AI_NOT_CONFIGURED }, { status: 500 });
   }
 
-  let audioBuffer: Buffer<ArrayBuffer>;
-  let audioType: string;
+  // Free by the owner's decision (2026-11-09): what a cache miss costs us is logged.
+  let paid: Metered<{ audio: Buffer<ArrayBuffer>; contentType: string }>;
   try {
     // `voice` and `model` stay validated and stay in the cache key, but MeloTTS
     // has neither — one voice per language, no tts-1/tts-1-hd tiers. Kept in
     // the request contract so existing clients do not break; see
     // docs/workers-ai.md for what that costs.
-    ({ audio: audioBuffer, contentType: audioType } = await workersAiSpeech({ text }));
+    paid = await freeCall("tts", speechUsd(text.length), () => workersAiSpeech({ text }), {
+      userId: session.user.id,
+      db: dbBackend() === "d1" ? getD1() : null,
+      units: text.length,
+    });
   } catch (err) {
     logSanitizedError("tts.workersai.generate", err, { requester });
-    return NextResponse.json({ error: "Failed to generate speech" }, { status: 500 });
+    return NextResponse.json({ error: "tts-failed" }, { status: 500 });
   }
+  if (!paid.ok) return refusal(paid);
+  const { audio: audioBuffer, contentType: audioType } = paid.value;
 
   // Cache the audio (R2 or GridFS depending on DB_BACKEND)
   try {

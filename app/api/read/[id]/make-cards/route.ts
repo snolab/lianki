@@ -8,6 +8,7 @@ import {
   json,
   rangeWords,
   readerCtx,
+  payerOf,
 } from "@/lib/read/reader-route";
 import { makeCards, unmakeCards, type RangeWord } from "@/lib/read/book-word-list";
 import { fillGlosses } from "@/lib/read/gloss-server";
@@ -50,7 +51,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let listId: string | null = null;
   const terms: string[] = [];
   for (const g of byLang(book, langs, words)) {
-    const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, { userId: ctx.userId });
+    const gloss = (ws: RangeWord[]) => fillGlosses(ctx.db, g.book, ws, payerOf(ctx));
     const r = await makeCards(ctx.db, ctx.email, g.book, g.words, undefined, gloss);
     listId ??= r.listId;
     terms.push(...r.terms);

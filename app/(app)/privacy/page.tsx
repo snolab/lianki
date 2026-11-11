@@ -30,6 +30,15 @@ export default async function PrivacyPage() {
         <p>{c.byokBody}</p>
         <p>{c.byokRelay}</p>
       </section>
+      <section id="files" className="flex flex-col gap-2">
+        <h2 className="text-lg font-semibold">{c.filesHeading}</h2>
+        <p>{c.filesBody}</p>
+      </section>
+      <section id="voice" className="flex flex-col gap-2">
+        <h2 className="text-lg font-semibold">{c.voiceHeading}</h2>
+        <p>{c.voiceBody}</p>
+        <p>{c.voiceKeep}</p>
+      </section>
     </main>
   );
 }

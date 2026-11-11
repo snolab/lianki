@@ -85,7 +85,7 @@ export type StateFilter = "all" | "on" | "off";
 
 export type FlagFilters = {
   q: string;
-  /** Every default is off, so "default off" is a flag still off now. */
+  /** "off": a flag off now (most are off by default; a default-on one only when switched off). */
   state: StateFilter;
   recent: boolean;
 };

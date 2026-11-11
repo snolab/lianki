@@ -7,12 +7,15 @@
 import { describe, expect, test } from "bun:test";
 import {
   STT_TICKET_AUD,
+  STT_TICKET_V2_AUD,
   b64url,
   fromB64url,
   importTicketKey,
   importTicketPublicKey,
   signSttTicket,
+  signSttTicketV2,
   verifySttTicket,
+  verifySttTicketV2,
 } from "../lib/stt-ticket";
 
 const NOW = 1_800_000_000_000;
@@ -120,5 +123,80 @@ describe("STT tickets", () => {
     ).rejects.toThrow();
     await expect(importTicketKey(JSON.stringify({ kty: "oct", k: "AA" }))).rejects.toThrow();
     await expect(importTicketKey(k.secret)).resolves.toBeDefined();
+  });
+});
+
+describe("STT tickets v2 (Lianki's speech servers for other accounts)", () => {
+  const lim = { utt: 40, sess: 900 };
+
+  test("carries the account, the scope and the limits, signed; good once", async () => {
+    const k = await pair();
+    const key = await importTicketKey(k.secret);
+    const { ticket, payload } = await signSttTicketV2(key, { sub: "acct_1", lim, now: NOW });
+    expect(payload).toMatchObject({
+      aud: STT_TICKET_V2_AUD,
+      v: 2,
+      sub: "acct_1",
+      scope: "stt",
+      lim,
+    });
+    const pub = await importTicketPublicKey(k.pub);
+    const seen = new Map<string, number>();
+    const r = await verifySttTicketV2(ticket, pub, seen, NOW + 1000);
+    expect(r.ok && r.payload.sub).toBe("acct_1");
+    expect(await verifySttTicketV2(ticket, pub, seen, NOW + 2000)).toEqual({
+      ok: false,
+      error: "replayed",
+    });
+  });
+
+  test("a v2 ticket never opens the owner's tunnel, a v1 ticket never a public session", async () => {
+    const k = await pair();
+    const key = await importTicketKey(k.secret);
+    const pub = await importTicketPublicKey(k.pub);
+    const v2 = await signSttTicketV2(key, { sub: "acct_1", lim, now: NOW });
+    expect(await verifySttTicket(v2.ticket, pub, new Map(), NOW)).toEqual({
+      ok: false,
+      error: "wrong aud",
+    });
+    const v1 = await signSttTicket(key, { now: NOW });
+    expect(await verifySttTicketV2(v1.ticket, pub, new Map(), NOW)).toEqual({
+      ok: false,
+      error: "wrong aud",
+    });
+  });
+
+  test("refuses to sign a bad account id or limits", async () => {
+    const key = await importTicketKey((await pair()).secret);
+    await expect(signSttTicketV2(key, { sub: "a@b.c", lim })).rejects.toThrow("bad sub");
+    await expect(signSttTicketV2(key, { sub: "a", lim: { utt: 0, sess: 9 } })).rejects.toThrow(
+      "bad limits",
+    );
+  });
+
+  test("bad claims are refused and spend nothing", async () => {
+    const k = await pair();
+    const key = await importTicketKey(k.secret);
+    const pub = await importTicketPublicKey(k.pub);
+    const claims = {
+      aud: STT_TICKET_V2_AUD,
+      v: 2,
+      jti: "j",
+      iat: NOW / 1000,
+      exp: NOW / 1000 + 60,
+      sub: "acct_1",
+      scope: "voiceprint",
+      lim,
+    };
+    const body = b64url(new TextEncoder().encode(JSON.stringify(claims)));
+    const sig = new Uint8Array(
+      await crypto.subtle.sign({ name: "Ed25519" }, key, new TextEncoder().encode(body)),
+    );
+    const seen = new Map<string, number>();
+    expect(await verifySttTicketV2(`${body}.${b64url(sig)}`, pub, seen, NOW)).toEqual({
+      ok: false,
+      error: "wrong scope",
+    });
+    expect(seen.size).toBe(0);
   });
 });

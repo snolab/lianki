@@ -5,18 +5,30 @@
  *
  *   POST {op:"status"}                                   → {ticket}  (owner session only)
  *   POST {op:"enrol"|"delete", device, step:"options"}   → {options, token}
- *   POST {op, device, step:"verify", token, response}    → {ticket}  (after Face ID / Touch ID)
+ *   POST {op, device, step:"verify", token, response, client}
+ *                                                        → {ticket[, grant, grantExp]}  (after Face ID / Touch ID)
+ *   POST {op, device, step:"grant", grant, client}       → {ticket, grantExp}  (no prompt: inside the window)
  *
  * `options` are WebAuthn request options (JSON form) for the owner's own
  * passkeys with userVerification "required"; `token` carries the challenge,
  * signed (lib/voiceprint-ticket.ts). The assertion must verify against one of
  * the owner's passkeys with the UV flag set; then the Mac gets a 60 s ticket
  * for that op and device whose jti is the challenge (single use there).
+ *
+ * The passkey window (docs/local-stt.md, "One approval for ten minutes"):
+ * with `windowMs` > 0, the verify also returns a grant for this account,
+ * session and `client` device; step "grant" turns it into one more ticket for
+ * any passkey op, single use (a fresh jti), 60 s and never past the grant.
  */
 import {
+  PASSKEY_OPS,
   type VoiceprintOp,
+  VOICEPRINT_TICKET_TTL_S,
   openChallenge,
+  openGrant,
+  randomId,
   signChallenge,
+  signGrant,
   signVoiceprintTicket,
   validDevice,
 } from "@/lib/voiceprint-ticket";
@@ -51,6 +63,14 @@ export type ApprovalDeps = {
    */
   consume: (challenge: string, exp: number) => Promise<boolean>;
   rp: { rpID: string; origins: string[] };
+  /**
+   * The passkey window (config `voiceprint.passkeyWindowMs`): after a verified
+   * assertion, a grant this long lets the page mint per-op tickets with no new
+   * prompt. 0 or absent: every op asks for the passkey, as before.
+   */
+  windowMs?: number;
+  /** The sign-in session, hashed (sessionTag): the grant is bound to it. Absent: no grant. */
+  sid?: string;
   now?: number;
 };
 
@@ -70,13 +90,43 @@ export async function voiceprintApproval(body: unknown, d: ApprovalDeps): Promis
     });
     return { status: 200, json: { ticket, exp } };
   }
-  if (op !== "enrol" && op !== "delete") return bad(400, "bad op");
+  if (!PASSKEY_OPS.includes(op)) return bad(400, "bad op");
   const device = b.device;
   if (!validDevice(device, op)) return bad(400, "bad device");
   // Enrol: keeping the audio is part of what he approves with the passkey.
   const keepAudio = op === "enrol" && b.keepAudio === true;
   const keys = await d.passkeys();
   if (!keys.length) return bad(409, "no passkey: add one on the profile page first");
+  if (b.step === "grant") {
+    // Inside the passkey window: a ticket with no new prompt, from the grant the
+    // last verified assertion gave this page (this account, session and device).
+    const client = b.client;
+    if (!validDevice(client, "enrol")) return bad(400, "bad client");
+    const g = await openGrant(String(b.grant ?? ""), d.pub, {
+      uid: d.userId,
+      sid: d.sid ?? "",
+      client,
+      windowMs: d.windowMs ?? 0,
+      now: d.now,
+    });
+    if (!g) return bad(401, "approval window over");
+    const iat = Math.floor((d.now ?? Date.now()) / 1000);
+    // Never past the grant; at least a few seconds to reach the Mac, or ask again.
+    const exp = Math.min(iat + VOICEPRINT_TICKET_TTL_S, g.exp);
+    if (exp - iat < 5) return bad(401, "approval window over");
+    const { ticket } = await signVoiceprintTicket(d.key, {
+      op,
+      device,
+      uv: true,
+      keepAudio,
+      uid: d.userId,
+      // Its own jti: each ticket is spent once on the Mac and once on lianki.com.
+      jti: randomId(32),
+      iat,
+      exp,
+    });
+    return { status: 200, json: { ticket, exp, grantExp: g.exp } };
+  }
   if (b.step === "options") {
     const { token, challenge } = await signChallenge(d.key, {
       op,
@@ -142,10 +192,25 @@ export async function voiceprintApproval(body: unknown, d: ApprovalDeps): Promis
     device,
     uv: true,
     keepAudio,
+    uid: d.userId,
     jti: ch.challenge,
     // The challenge's own lifetime, fixed when it was issued: never extended.
     iat: ch.iat,
     exp: ch.exp,
   });
+  // The passkey window: one approval covers the voiceprint ops that follow on this
+  // device, in this session, until grantExp. Only with a session and a device to bind it to.
+  const client = b.client;
+  if ((d.windowMs ?? 0) > 0 && d.sid && validDevice(client, "enrol")) {
+    const g = await signGrant(d.key, {
+      uid: d.userId,
+      sid: d.sid,
+      client,
+      gid: ch.challenge,
+      windowMs: d.windowMs!,
+      now: d.now,
+    });
+    return { status: 200, json: { ticket, exp, grant: g.grant, grantExp: g.exp } };
+  }
   return { status: 200, json: { ticket, exp } };
 }

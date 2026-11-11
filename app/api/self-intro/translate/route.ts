@@ -1,3 +1,6 @@
+import { refusal } from "@/lib/payments/metered";
+import { MAX_OUT, openAiCreate, paidChat } from "@/lib/payments/paid-calls";
+import { walletDb } from "@/lib/payments/wallet-db";
 import { NextRequest, NextResponse } from "next/server";
 import {
   isWorkersAiConfigured,
@@ -42,7 +45,7 @@ export async function POST(req: NextRequest) {
     const session = await auth.api.getSession({ headers: await headers() });
     const email = session?.user?.email;
     if (!email) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "login-required" }, { status: 401 });
     }
 
     const rateLimit = await routeLimit(await accountKey("self-intro-translate", email), {
@@ -51,7 +54,7 @@ export async function POST(req: NextRequest) {
     });
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { error: "Too many requests. Please retry later." },
+        { error: "rate-limited" },
         {
           status: 429,
           headers: {
@@ -65,16 +68,13 @@ export async function POST(req: NextRequest) {
 
     // Validate inputs
     if (typeof answer !== "string" || answer.length === 0 || answer.length > MAX_ANSWER_LENGTH) {
-      return NextResponse.json(
-        { error: `Answer must be 1–${MAX_ANSWER_LENGTH} characters` },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "invalid-answer-length" }, { status: 400 });
     }
     if (!Object.keys(QUESTION_TEMPLATES).includes(questionId)) {
-      return NextResponse.json({ error: "Invalid questionId" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-question" }, { status: 400 });
     }
     if (!Object.keys(LANGUAGE_NAMES).includes(targetLanguage)) {
-      return NextResponse.json({ error: "Unsupported targetLanguage" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-language" }, { status: 400 });
     }
 
     if (!isWorkersAiConfigured()) {
@@ -89,29 +89,37 @@ export async function POST(req: NextRequest) {
     const targetLangName = LANGUAGE_NAMES[targetLanguage];
 
     // Use OpenAI to translate
-    const completion = await openai.chat.completions.create({
-      model: textModel(),
-      messages: [
-        {
-          role: "system",
-          content: `You are a professional translator. Translate the given English sentence to ${targetLangName}.
+    const paid = await paidChat(
+      { userId: session!.user.id, email: email, db: walletDb() },
+      "self-intro.translate",
+      {
+        model: textModel(),
+        messages: [
+          {
+            role: "system",
+            content: `You are a professional translator. Translate the given English sentence to ${targetLangName}.
 Only return the translated sentence, nothing else.
 Make it natural and appropriate for self-introduction.
 If the target language is the same as the input, just return it as is.`,
-        },
-        {
-          role: "user",
-          content: englishSentence,
-        },
-      ],
-      temperature: 0.3,
-    });
+          },
+          {
+            role: "user",
+            content: englishSentence,
+          },
+        ],
+        temperature: 0.3,
+        max_tokens: MAX_OUT["self-intro.translate"],
+      },
+      openAiCreate(openai),
+    );
+    if (!paid.ok) return refusal(paid);
+    const completion = paid.value;
 
     const translatedText = completion.choices[0]?.message?.content?.trim() || englishSentence;
 
     return NextResponse.json({ translatedText });
   } catch (error) {
     logSanitizedError("self-intro.translate", error);
-    return NextResponse.json({ error: "Failed to translate" }, { status: 500 });
+    return NextResponse.json({ error: "translate-failed" }, { status: 500 });
   }
 }

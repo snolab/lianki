@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import PermissionsHistory from "./PermissionsHistory";
+import { SealSwitch } from "@/app/components/SealSwitch";
+import { DevToast, type DevToastMsg } from "../DevToast";
 
 type Permission = "admin" | "dev";
 type Row = { email: string; permission: Permission; granted_by: string; granted_at: number };
@@ -22,6 +24,9 @@ const fill = (s: string, vars: Record<string, string | number>) =>
  */
 export default function PermissionsAdmin({ self, seconds }: { self: string; seconds: number }) {
   const c = useIntlayer("dev-permissions");
+  const t = useIntlayer("dev-flag-toast");
+  const [toast, setToast] = useState<DevToastMsg | null>(null);
+  const closeToast = useCallback(() => setToast(null), []);
   const [rows, setRows] = useState<Row[]>([]);
   const [email, setEmail] = useState("");
   const [want, setWant] = useState<Record<Permission, boolean>>({ admin: false, dev: true });
@@ -39,13 +44,18 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
       if (r.status === 404) return location.reload();
       const j = (await r.json().catch(() => ({}))) as { grants?: Row[]; error?: string };
       if (j.grants) setRows(j.grants);
-      if (r.ok) return setErr("");
+      if (r.ok) {
+        setErr("");
+        return "";
+      }
       const known: Record<string, string> = {
         "last-admin": c.errLastAdmin.value,
         "not-granted": c.errNotGranted.value,
         "bad-email": c.errBadEmail.value,
       };
-      setErr(known[j.error ?? ""] ?? fill(c.errOther.value, { status: r.status }));
+      const text = known[j.error ?? ""] ?? fill(c.errOther.value, { status: r.status });
+      setErr(text);
+      return text;
     },
     [c],
   );
@@ -64,14 +74,30 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
   async function run(p: Pending) {
     setBusy(true);
     try {
-      for (const permission of p.permissions)
-        await apply(
+      for (const permission of p.permissions) {
+        const error = await apply(
           await fetch("/api/dev/permissions", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ op: p.op, email: p.email, permission }),
           }),
         );
+        setToast(
+          error === ""
+            ? {
+                ok: true,
+                id: Date.now(),
+                text: fill(t.permSaved.value, {
+                  permission: name(permission),
+                  email: p.email,
+                  seconds,
+                }),
+              }
+            : error
+              ? { ok: false, id: Date.now(), text: error }
+              : null,
+        );
+      }
       if (p.op === "grant") setEmail("");
     } finally {
       setBusy(false);
@@ -101,6 +127,7 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
 
   return (
     <div className="space-y-6">
+      <DevToast msg={toast} onClose={closeToast} />
       <section className="space-y-2">
         <h2 className="font-semibold">{c.holders}</h2>
         {emails.length === 0 && <p className="text-sm opacity-70">{c.none}</p>}
@@ -152,18 +179,20 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
           className="w-full min-w-0 border rounded px-2 py-1 bg-transparent"
         />
         {PERMS.map((p) => (
-          <label key={p} className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
+          <div key={p} className="flex items-start gap-1 text-sm">
+            <SealSwitch
+              role="checkbox"
               checked={want[p]}
-              onChange={(e) => setWant((w) => ({ ...w, [p]: e.target.checked }))}
-              className="mt-1"
+              size="sm"
+              aria-labelledby={`perm-${p}`}
+              onClick={() => setWant((w) => ({ ...w, [p]: !w[p] }))}
+              className="-my-2.5"
             />
-            <span>
+            <span id={`perm-${p}`}>
               <span className="font-medium">{name(p)}</span> —{" "}
               <span className="opacity-80">{p === "admin" ? c.adminHint : c.devHint}</span>
             </span>
-          </label>
+          </div>
         ))}
         <button
           type="button"

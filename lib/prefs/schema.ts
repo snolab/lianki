@@ -21,7 +21,8 @@
  * A third, by the owner (2026-11-09): `links.allowedHosts`, the sites the
  * person said not to be asked about again before leaving for them
  * (@lianki/core/externalLink). Bare public hosts only; device and tailnet
- * hosts, IP addresses, schemes and paths do not pass.
+ * hosts, IP addresses, schemes and paths do not pass. The same hosts appear
+ * in `asks.dontAsk` ids (`link-site:<host>`, lib/dont-ask.ts), under the same rule.
  *
  * A field whose shape changes gets a new key (`swipe-feel.tweaks2`); the old
  * row is then simply no longer read.
@@ -31,6 +32,7 @@ import { allImmersionSites, IMMERSION_LANGUAGES } from "@/lib/immersion-sites";
 import { FEEL_RANGES } from "@/lib/words/swipe-feel";
 import { BLOG_LOCALES } from "@/lib/constants";
 import { TEXT_MAX, TEXT_MIN } from "@/lib/text-size-boot";
+import { CARD_HEIGHT_RANGE } from "@/lib/words/row-pinch";
 import { cleanBackend } from "@/lib/byok/config";
 import {
   isTitleHost,
@@ -41,7 +43,9 @@ import {
   TITLE_RULES_OFF_MAX,
 } from "@lianki/core/titleClean";
 import { isAllowedHost, ALLOWED_HOSTS_MAX } from "@lianki/core/externalLink";
+import { checkDontAsk } from "@/lib/dont-ask";
 import { BADGE_MODES } from "@/lib/app-badge";
+import { LANG_TAG_MAX, LANG_TAG_RE, PREFERRED_LANGS_MAX } from "@/lib/lang-order";
 
 // ── Limits ────────────────────────────────────────────────────────────────
 
@@ -142,6 +146,10 @@ export const PREF_SCHEMAS = {
   "words.gradeTones": z.boolean(),
   "words.voiceMode": z.boolean(),
   "words.swipeMirror": z.boolean(),
+  // the rows' height, a factor of the default (lib/words/row-pinch.ts, pinched on the list)
+  "words.cardHeight": z.number().min(CARD_HEIGHT_RANGE[0]).max(CARD_HEIGHT_RANGE[1]),
+  // the first-visit walkthrough was finished or skipped (lib/words/onboarding.ts)
+  "words.onboarded": z.boolean(),
   // the swipe (Experimental)
   "swipe.variant": z.enum(["js", "native"]),
   "swipe-feel.preset": z.enum(["light", "heavy"]),
@@ -159,6 +167,10 @@ export const PREF_SCHEMAS = {
   "home.pins": z.array(catalogUrl).max(100),
   "lab.immersionLangs": z.array(z.enum(IMMERSION_CODES)).max(IMMERSION_CODES.length),
   "lab.immersionTranspose": z.boolean(),
+  // preferred languages, in order (lib/lang-order.ts): material in many languages lists these first; [] = automatic
+  "lang.preferred": z
+    .array(z.string().max(LANG_TAG_MAX).regex(LANG_TAG_RE))
+    .max(PREFERRED_LANGS_MAX),
   // /read: which language's entry a word means where it stands
   "read.sensePicks": sensePicks,
   // /read: the offer to tidy a raw transcript, off for good or for some texts
@@ -172,8 +184,18 @@ export const PREF_SCHEMAS = {
   // links that leave Lianki: the disclaimer before another site, and its bypasses
   "links.confirm": z.boolean(),
   "links.allowedHosts": z.array(z.string().refine(isAllowedHost)).max(ALLOWED_HOSTS_MAX),
+  // every "don't ask again" and when it asks again (lib/dont-ask.ts): known ids
+  // (a link-site id carries a public host, as above) → [times chosen, day chosen, day due]
+  "asks.dontAsk": z
+    .record(z.string(), z.tuple([z.number().int(), z.number().int(), z.number().int()]))
+    .refine((m) => {
+      const ok = checkDontAsk(m);
+      return Object.keys(m).every((k) => ok[k] !== undefined);
+    }),
   // the app-icon badge (lib/app-badge.ts, docs/app-badge.md): what its number counts
   "notify.badge": z.enum(BADGE_MODES),
+  // mails the account turned off (lib/mail-templates/kinds.ts); false = do not send
+  "mail.loginNotice": z.boolean(),
   // the chat's voice (packages/debug-chat); echo cancel stays on the device
   "chat-voice.rate": z.union([z.literal(1), z.literal(1.25), z.literal(1.5), z.literal(2)]),
   "chat-voice.out": z.enum(["speech", "cloud"]),

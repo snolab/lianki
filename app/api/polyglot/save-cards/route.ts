@@ -54,10 +54,10 @@ export async function POST(req: NextRequest) {
       message: `${cards.length} polyglot cards saved successfully!`,
     });
   } catch (error) {
-    console.error("Save cards error:", error);
+    console.error("[save-cards] failed", error);
     if ((error as Error).message?.includes("email")) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "login-required" }, { status: 401 });
     }
-    return NextResponse.json({ error: "Failed to save cards" }, { status: 500 });
+    return NextResponse.json({ error: "save-failed" }, { status: 500 });
   }
 }

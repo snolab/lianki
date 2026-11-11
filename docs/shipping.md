@@ -20,24 +20,171 @@ the checks run.
 `scripts/ship.ts` uses `git reset --keep`, not `--hard`, so a sync can never
 silently eat uncommitted work.
 
+### The PR on its node
+
+Every PR belongs to a state tree node (docs/planning-tools.md). Once the PR
+is open, ship.ts reports `--pr N` on that node itself, keeping its title and
+status (scripts/ship-node.ts). The node, first found wins:
+
+1. `bun scripts/ship.ts --node /read/review-sheet`
+2. `LIANKI_TASK_PATH=/read/review-sheet` (the lane's node, as `eval.ts` reads it)
+3. a line `Tree: /read/review-sheet` of its own in the commit message
+
+It writes as `LIANKI_AGENT` when set (a scoped token writes only as its own
+agent), else as the node's creator, with the progress token (`progress.ts`
+finds it the same way). No node named, no token, or a node not in the tree:
+ship.ts warns and goes on — the PR still lands; report it by hand
+(`progress.ts … --pr N`). A lane shipping from its own branch with `gh pr
+create` reports `--pr` itself, as before. The node keeps every PR it named
+(`prs`), and /dev/roadmap links them.
+
 ## CI
 
-CI runs **everything**; the pre-push hook runs only what a change reaches
-(below, "Only what changed"). `.github/workflows/ci.yml` has three jobs:
+CI selects tests from the change graph (below, "Only what changed"),
+with full unit coverage in the merge queue and on main.
+`.github/workflows/ci.yml` has these jobs:
 
-- `Lint + typecheck + unit` — oxlint + `oxfmt --check`, typecheck, the whole
-  unit suite with its coverage gate (~20 s). Every PR, every merge group, every
-  push to `main`; when it fails on a push to `main` it posts to Slack #lianki.
-- `qa:all (merge queue)` — the whole `bun run qa:all`, in the Playwright image,
-  on the `merge_group` event only (~6–7 min on a runner). So every PR gets the
-  full integration gate before it lands, while opening a PR and main's deploy
-  wait for neither. It blocks; `QA_BLOCKING: "false"` in ci.yml turns a
-  failure into a warning instead (used while WORDS' Settings-sheet check
-  failed in CI, 2026-11-08).
+- `Lint + typecheck + unit` — oxlint + `oxfmt --check`, typecheck, affected unit
+  tests on PRs, and the whole unit suite with coverage in every merge group
+  and on every push to `main`; when it fails on a push to `main` it posts to Slack #lianki.
+- `qa` — affected suites plus the smoke set, on `merge_group` (and every
+  suite on a manual
+  dispatch), as one build job and three parallel shards
+  (`.github/workflows/qa-sharded.yml`, below). The selector falls back to the full
+  integration gate for core changes, while opening a PR and main's deploy wait
+  for neither. It blocks; `QA_BLOCKING: "false"` in ci.yml turns a failure
+  into a warning instead (used while WORDS' Settings-sheet check failed in CI,
+  2026-11-08).
 - `Typecheck + unit` — the one required check (branch protection names it). A
-  tiny job that is green when the first job passed and the qa job passed or
-  was skipped (outside the merge queue). Adding the qa job needed no change to
-  branch protection.
+  tiny job that is green when the first job passed and `qa` (its build and
+  every shard) passed or was skipped (outside the merge queue). It is the
+  aggregator the shards report through, so neither the qa job nor its shards
+  needed a change to branch protection or the ruleset.
+
+### qa:all in shards
+
+Until 2026-11-10 the merge queue ran qa:all as one job: ~12.5 min (median 755 s:
+container 31 s, setup 25 s, OpenNext build 40–50 s, local D1 migrations 20 s,
+then 25 suites one after another, ~11 min). Now:
+
+1. **`qa build`** (plain runner, Node 24): `qa-all.mjs --prepare` builds the
+   OpenNext Worker and migrates a local D1, then ships `.open-next` and
+   `.wrangler/state` to the shards as one tarball artifact (it keeps the
+   build's internal symlinks). `.next/cache` (Turbopack's build cache, on by
+   default since Next 16.3) is kept in the Actions cache. Only caches saved on
+   `main` reach a merge-queue run (one saved on a `gh-readonly-queue` ref is
+   visible to that ref only), so Full QA's runs on main are what keep it warm.
+2. **`qa:all 1/3`, `2/3`, `3/3`** (Playwright image, `fail-fast: false`):
+   `qa-all.mjs --no-build --shard=i/3` boots its own `wrangler dev` on the
+   prepared build and runs its third of the suites. Time-sensitive suites
+   still run after the plain ones in each shard, as before; CI needs no
+   admission (each runner has its machine to itself).
+
+**The split** (`scripts/qa/shard.mjs`, tested in `unit/qa-shard.test.ts`):
+longest suite first onto the shard with the least time so far, by the median
+seconds in `scripts/qa/suite-timings.json`; a suite not listed counts 30 s.
+Each job computes the same split by itself. AUDIO-FREE (`everyShard: true`)
+starts every shard, because the suites after it rely on its silent layer.
+Every suite prints `qa:all timing <id> <seconds>`; re-record the medians from
+the last green merge-queue runs with `bun scripts/qa/record-timings.ts` when a
+shard runs long (a new suite, a slower one).
+
+Locally, `--shard=i/n` and `--prepare` work the same, and a plain
+`bun run qa:all` is unchanged. Full QA (below) uses the same workflow plus the
+extension smoke test in shard 1.
+
+### Unit tests on a PR
+
+A PR runs `bun scripts/gate/affected.ts unit --parallel` with
+`LIANKI_GATE_BASE=pull_request.base.sha`. The same graph as pre-push selects
+its tests; each test file runs in an isolated worker. A `UNIT_FULL` path or
+an unavailable graph runs the whole suite with coverage. Merge groups and
+pushes to main always run the whole unit suite with coverage.
+
+### Affected-only in the merge queue
+
+Since 2026-11-10 the merge queue runs only the qa suites a merge group can
+reach, plus a smoke set; the full set runs after merges on main (below). The
+`qa plan` job in ci.yml runs `bun scripts/gate/affected.ts ci-qa` with
+`LIANKI_GATE_BASE=merge_group.base_sha`: the files the group changes on top of
+main (this PR and the ones queued ahead of it) go through the same graph and
+`paths` as the pre-push gate (next section, "Only what changed"). It writes
+`suites=<ids>` for the shards:
+
+- the affected suites plus **`QA_SMOKE`** (`api`, `ui`, `sign-out`, in
+  `affected-lib.ts`), always;
+- `suites=` (empty), meaning **every suite**, when a `QA_FULL` path changed
+  (the Worker's build and serving, migrations, qa:all's own machinery, the
+  core) or the graph could not be built — the same fallback as pre-push;
+- every suite on a manual dispatch.
+
+`LIANKI_GATE_CHANGED="lib/x.ts" bun scripts/gate/affected.ts ci-qa` shows
+what a group touching `lib/x.ts` would run. A shard left with no suite exits
+at once.
+
+### Full QA and the deploy hold
+
+`.github/workflows/nightly-qa.yml`, now named **Full QA**, runs every suite
+plus the extension smoke test on `main`. It is **never on a timer** (owner,
+2026-11-10: he can be away for days, and with no merges nothing should run;
+the 03:00 JST nightly cron is gone). It starts from merges, through
+`.github/workflows/full-qa-trigger.yml` on every push to `main`
+(`scripts/ci/full-qa.ts trigger`; the decision is `decideTrigger` in
+`scripts/ci/full-qa-lib.ts`, tested in `unit/full-qa-hold.test.ts`):
+
+- **Covered:** main counts as tested up to the newest full run that is green
+  or still queued/running. Nothing untested: nothing runs.
+- **At once** when a file since then matches a `QA_FULL` path (the core, the
+  Worker's build and serving, migrations, qa:all's own machinery — the same
+  list that sends pre-push and the merge queue to the full set), or when
+  `FULL_QA_MAX_MERGES` (default 10) merges are untested.
+- **Debounce:** otherwise the trigger job waits `FULL_QA_QUIET_MIN` (default 15) minutes and then starts the run. Its concurrency group cancels it when
+  the next merge arrives, and that merge decides again, so the run starts
+  once merges have been quiet that long.
+- **Throttle:** while merges keep coming, the run starts at the latest when
+  the oldest untested merge has waited `FULL_QA_MAX_WAIT_H` (default 4) hours.
+- Also by hand (`gh workflow run nightly-qa.yml -R snolab/lianki`), and from
+  the deploy hold below.
+
+The three numbers are defaults in `FULL_QA_DEFAULTS`; a repo variable of the
+same name (Settings → Secrets and variables → Actions → Variables) overrides
+each without a code change. A running full run is never cancelled: a newer
+start waits behind it.
+
+When it goes red:
+
+1. **#lianki** hears it (`SLACK_WEBHOOK_URL`), with the run link.
+2. **A revert PR** (`scripts/ci/full-qa.ts revert`): every commit on `main`
+   since the last green full run, reverted on `revert/full-qa-<sha>`, for a
+   person to merge or close; nothing merges it by itself. It is opened with
+   the workflow token, which needs the repo setting _Allow GitHub Actions to
+   create and approve pull requests_ (off as of 2026-11-10). Without it the
+   branch is still pushed and the alert carries the compare link instead. A
+   PR opened by the workflow token gets no CI of its own: push to it, or close
+   and reopen it, to start the checks. Commits that do not revert cleanly
+   leave only a warning.
+3. **Deploys are held.** `deploy-worker.yml` starts with the `Full QA hold`
+   job (logic in `scripts/ci/full-qa-lib.ts`, tested in
+   `unit/full-qa-hold.test.ts`): it reads the latest finished Full QA run on
+   main (cancelled runs do not count) and, while that run is red, deploys
+   nothing — the run fails with "Deploy held", so it shows — and starts a
+   Full QA run if none is queued. **Lifting it:** a green Full QA run whose
+   newest decided predecessor was red runs its `On green` job, which
+   dispatches Deploy Worker with `lifted_by=<its run id>` and
+   `sha=<the commit it tested>`; deploy-worker checks that the run is Full
+   QA's, tested that commit and passed every `qa /` job (`liftIsGenuine`), and
+   deploys that commit. A green run with no hold to lift deploys nothing (CI
+   already did). It cannot be a `workflow_run` on Full QA: Full QA is started
+   with the workflow token (by the trigger or by the hold), and a run started
+   that way starts no `workflow_run` — the hold of 2026-11-10 (red at
+   3eb0aeed, green again 23:32 UTC) lifted nothing that way.
+   `workflow_dispatch` is the one event the token may start. **Override:** run Deploy Worker by hand with
+   `override_hold` (`gh workflow run deploy-worker.yml -R snolab/lianki -f
+override_hold=true`).
+
+Concurrency: the free plan gives 20 concurrent jobs. A merge-queue entry now
+takes 5 (checks, build, 3 shards) and the queue builds up to 5 entries, so a
+full queue waits a little for runners rather than failing.
 
 A CI runner is slower than a laptop, and the phone passes of qa-words run side
 by side (#704): WebKit there can go a while without a rendering update, and a
@@ -61,10 +208,10 @@ Two more from the merge queue of 2026-11-09 (state tree /infra/qa-words-flake):
 main's deploy waits for this workflow on the push to `main` (no qa job there:
 it ran in the queue).
 
-The integration gate, `qa:all (D1/Workers)` (`bun run qa:all` plus the
-extension smoke test, ~8 min), also runs **nightly** on main at 03:00 JST in
-`.github/workflows/nightly-qa.yml` (or by hand: `gh workflow run nightly-qa.yml
--R snolab/lianki`), and posts to #lianki when it fails. It left the per-push CI
+The integration gate (qa:all in shards plus the extension smoke test) also
+runs on main **after merges, never on a timer** (below, "Full QA and the deploy
+hold") and
+posts to #lianki when it fails. It left the per-push CI
 on 2026-10-31 so a deploy no longer waits for it. Node 24 (for `node:sqlite`);
 wrangler runs D1 locally, so no Cloudflare secrets are needed. Both alerts need
 the repo secret `SLACK_WEBHOOK_URL` (`scripts/ci/slack-alert.sh`); without it
@@ -120,7 +267,7 @@ pushes. On **native Windows** (Git Bash)
 it skips qa only — lint, typecheck and the unit tests still run — because
 the OpenNext Cloudflare packaging cannot produce a working Worker there (symlink
 copy errors with bun's isolated linker, `ChunkLoadError` on every route with a
-hoisted install; verified 2026-10-14). There CI's runs (merge queue, nightly) are the only
+hoisted install; verified 2026-10-14). There CI's runs (merge queue, Full QA) are the only
 integration gate; `LIANKI_QA_ON_WINDOWS=1` forces the local run, for example to
 re-test after an OpenNext upgrade. WSL counts as Linux and runs the gate
 normally.
@@ -281,7 +428,7 @@ If a time-sensitive suite times out, look at the load first (`uptime`); if it is
 high, wait for it to come down, then retry once. A second failure is a real failure:
 read it.
 
-Two WebKit traps the suites already avoid (2026-11-07, `qa-words`):
+WebKit traps the suites already avoid (2026-11-07, `qa-words`; 2026-11-10, `qa-sign-out`):
 
 - **Waiting for the network.** `waitUntil: "load"` or `"networkidle"` hung 30 s
   in WebKit at load 6–10, on requests no check needs. Navigate with
@@ -293,16 +440,33 @@ Two WebKit traps the suites already avoid (2026-11-07, `qa-words`):
   start nothing from `beforeunload` on — `pagehide` is too late) rather than filtering
   the message; a filter, if any, is for one URL and only while the suite's own
   navigation is under way.
+- **A `goto` that never commits, with no request in the wrangler log.** That was
+  the app's service worker, not the harness (2026-11-10, `qa-sign-out`): it wrote
+  a response's clone to the cache in the background, and when the page left
+  before that response finished, WebKit never started the next navigation.
+  `public/sw.js` `keep()` now finishes the write before the page gets the
+  response. To check a WebKit-only hang like it, run the suite in the CI image
+  (`mcr.microsoft.com/playwright:<version>-noble`, `--network host`) against a
+  local `wrangler dev`, and compare with `serviceWorkers: "block"` on the context.
 
 The manual `mkdir /tmp/lianki-push.lock` from older agent briefs is no longer needed:
 drop it. It stays safe while some agents still use it, because the order only runs
 one way: they hold the old lock and then enter the new one, and nothing holding the
 new lock ever takes the old one.
 
+## Source maps (off since 2026-11-10)
+
+`wrangler deploy` uploads source maps by default. Ours (wrangler's bundle of
+`worker.ts` plus the OpenNext build) reached 61.6 MiB, over Cloudflare's 60 MiB
+limit (error 10021), and every deploy failed. `wrangler.jsonc` now sets
+`"upload_source_maps": false`: stack traces in Workers Logs and `wrangler tail`
+show bundled positions. To turn maps back on, first shrink them under the limit
+(e.g. build with `--outdir`, drop `sourcesContent`, then deploy that bundle).
+
 ## Deploy order
 
 `.github/workflows/deploy-worker.yml` runs after CI passes on `main`: OpenNext
-build, asset hygiene, **Worker exports unchanged**
+build, route fingerprints (see "Smart refresh" below), asset hygiene, **Worker exports unchanged**
 (`scripts/ci/check-worker-exports.ts`), D1 migrations, then the Workers in
 this order:
 
@@ -331,6 +495,64 @@ owner's same-origin live preview (`lib/live-view/page-proxy.ts`): a request
 with no `live=` and no live cookie goes straight through. The export check bundles it like the deploy does
 (`wrangler deploy --dry-run`) and fails the run if the set differs from the
 build's own plus `DebugSessions`.
+
+## Smart refresh: "New version · Refresh" only for changed pages
+
+Owner, 2026-11-09: invite a refresh only when something changed on the page
+he is on. A deploy that touches other pages, the API, D1 or the Workers stays
+silent.
+
+**At build time** `scripts/build/route-fingerprints.ts` (a deploy step, right
+after the OpenNext build) reads the Next build's
+`.next/server/app/**/page_client-reference-manifest.js` — for each route, the
+client JS chunks and CSS of each layout and page it loads — and
+`.next/build-manifest.json` (runtime and polyfills). It writes
+`.open-next/assets/_lk/route-fp.json`:
+
+```json
+{ "build": "<sha20>", "shell": "<hash>", "routes": { "/words": "<hash>", "/read/[id]": "<hash>" } }
+```
+
+- `shell` hashes the content of what every page loads: runtime, polyfills,
+  the root layout's chunks and the global CSS.
+- each route hashes the content of its own chunks and CSS, minus the shell's
+  (route groups dropped from the key: `/(app)/words/page` → `/words`). A
+  change to `app/(app)/layout.tsx` moves every `(app)` route; a change to a
+  component used by one page moves that page only.
+- Content, not file names, and the build id is **never in client code**: it
+  is `<html data-build>` (root layout), read by `lib/build-id.ts`. With the id
+  inlined, the minifier picked different names in that chunk on every build,
+  so every deploy looked like a shell change. Checked on real builds: the same
+  code under two build ids gives identical fingerprints; a one-line change to
+  `StatsClient.tsx` moves `/stats` alone.
+
+**At deploy** the main Worker's first request per isolate
+(`lib/announce-build.ts`) reads that asset through `ASSETS` and posts the build
+id to lianki-push with the fingerprints in the `x-lk-fingerprints` header (the
+body stays the bare id, so the lianki-push still running during the deploy
+reads it as before). The VersionHub keeps fingerprints for the last 30 builds.
+
+**On the page** (`app/components/VersionNotice.tsx`) the socket connects as
+`/api/version/ws?b=<its build>`; the hub answers with what changed since that
+build: `{build, shell: bool, routes: {"/words": 1, "/list": 0, …}, force?}`.
+`refreshDecision` (`lib/smart-refresh.ts`) shows the button only if the shell
+changed, the current route changed (or is new), the deploy is forced, or it
+cannot tell (no fingerprints for the page's build — e.g. the first deploy with
+this, or a page older than 30 builds — or a path no route pattern matches).
+Otherwise the news is kept, and a soft navigation to a route that did change
+shows the button then. Debug devices still auto-reload, but only when the
+button would show. Event-driven as before: no new requests, no polling.
+
+**Forcing it for everyone** (a security fix, a broken client): put a
+`Force-Refresh: yes` trailer on the commit that lands on `main` (or run the
+step with `--force` / `LIANKI_FORCE_REFRESH=1`). The fingerprint file gets
+`"force": true`, and every open page shows the button.
+
+Tests: `unit/smart-refresh.test.ts` (diff → decision), `unit/route-fingerprints.test.ts`,
+the hub in `unit/debug-hub.test.ts`; `scripts/qa/qa-smart-refresh.ts` (qa:all
+`smart-refresh`, serverless) runs the real hub and the real notice in Chromium
+across builds that change another route, the current route, nothing
+client-side, and a forced one.
 
 ## Branch protection — two mechanisms
 
@@ -368,11 +590,17 @@ why protection must stay in place.
 ## Publishing the CLI (npm `lianki`)
 
 `packages/lianki-cli` goes to npm only through
-`.github/workflows/publish-cli.yml`, never `npm publish` from a laptop. It
+`.github/workflows/release.yml`, never `npm publish` from a laptop. It
 runs on a pushed tag `lianki-cli-v<version>`; the tag must sit on a commit
 already on `main` and match `version` in its `package.json`. It packs the
 tarball, smoke-tests it under Node in an empty folder, and publishes with
-`--provenance`, authenticated by the `NPM_TOKEN` repo secret. Publishing is
+`--provenance`, authenticated through GitHub Actions OIDC (npm Trusted
+Publishing), with no npm token. The npm trusted publisher must name
+`snolab/lianki`, workflow `release.yml`, no environment, and allow direct
+`npm publish`. The workflow uses Node 24 and upgrades npm (OIDC requires npm
+11.5.1 or newer). A new trust must complete its first publish within 48 hours
+or be recreated; subsequent successful publishes do not require recreating it.
+Publishing is
 outward-facing: the owner approves each release (tap card) before the tag is
 pushed.
 

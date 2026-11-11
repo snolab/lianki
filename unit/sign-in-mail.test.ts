@@ -2,12 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mailLocale, signInMail } from "@/lib/sign-in-mail";
 
 describe("sign-in mail", () => {
-  test("language follows the app locale header, then Accept-Language", () => {
+  test("language follows the app locale header, then Accept-Language (16 languages + zh-Hant)", () => {
     expect(mailLocale({ headers: new Headers({ "x-lianki-lang": "zh" }) })).toBe("zh");
     expect(mailLocale({ headers: new Headers({ "accept-language": "zh-CN,zh;q=0.9" }) })).toBe(
       "zh",
     );
-    expect(mailLocale({ headers: new Headers({ "accept-language": "ja,en;q=0.8" }) })).toBe("en");
+    expect(mailLocale({ headers: new Headers({ "accept-language": "ja,en;q=0.8" }) })).toBe("ja");
+    expect(mailLocale({ headers: new Headers({ "accept-language": "zh-TW" }) })).toBe("zh-Hant");
     expect(mailLocale(undefined)).toBe("en");
   });
 

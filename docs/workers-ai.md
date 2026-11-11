@@ -9,6 +9,10 @@ on, the reader's selection translation and word meanings are called from the
 user's browser to their own provider with their own key — never through
 `lib/workers-ai.ts`, never charged, never written to the shared caches.
 
+Every other call is paid from the user's credits, held before the call and
+settled after: [payments.md, "What costs credits"](payments.md#what-costs-credits)
+(`lib/payments/metered.ts`, prices in `lib/payments/prices.ts`).
+
 ## Setup
 
 ```bash

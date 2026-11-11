@@ -16,6 +16,7 @@ import {
   readLinkPolicy,
   setLinkConfirm,
 } from "@/lib/external-link";
+import { DONT_ASK_EVENT, DONT_ASK_KEY } from "@/lib/dont-ask";
 
 const QUIET =
   "min-h-11 shrink-0 rounded-full bg-[oklch(0.5_0.02_250/0.12)] px-4 text-sm font-medium hover:bg-[oklch(0.5_0.02_250/0.2)] pointer-fine:min-h-9";
@@ -29,17 +30,20 @@ export function ExternalLinkSettings() {
     reload();
     const onApplied = (e: Event) => {
       const k = (e as CustomEvent<{ key?: string }>).detail?.key;
-      if (k === "links.confirm" || k === "links.allowedHosts") reload();
+      if (k === "links.confirm" || k === "links.allowedHosts" || k === "asks.dontAsk") reload();
     };
     const onStorage = (e: StorageEvent) => {
-      if (e.key === LINK_CONFIRM_KEY || e.key === LINK_ALLOWED_KEY) reload();
+      if (e.key === LINK_CONFIRM_KEY || e.key === LINK_ALLOWED_KEY || e.key === DONT_ASK_KEY)
+        reload();
     };
     window.addEventListener(PREF_APPLIED_EVENT, onApplied);
     window.addEventListener(LINK_POLICY_EVENT, reload);
+    window.addEventListener(DONT_ASK_EVENT, reload);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(PREF_APPLIED_EVENT, onApplied);
       window.removeEventListener(LINK_POLICY_EVENT, reload);
+      window.removeEventListener(DONT_ASK_EVENT, reload);
       window.removeEventListener("storage", onStorage);
     };
   }, [reload]);
@@ -50,7 +54,7 @@ export function ExternalLinkSettings() {
       <label className="mb-4 flex min-h-11 cursor-pointer items-center gap-3">
         <input
           type="checkbox"
-          className="size-5 shrink-0 accent-[oklch(0.5_0.14_250)]"
+          className="size-5 shrink-0 accent-[oklch(0.5_0.154_22.3)]"
           checked={policy.confirm}
           onChange={(e) => setLinkConfirm(e.target.checked)}
           data-testid="external-links-ask"

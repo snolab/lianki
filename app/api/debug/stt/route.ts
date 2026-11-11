@@ -3,12 +3,14 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { boxChatCaller } from "@/lib/box-oauth/chat-ticket";
 import { BOX_IDENTITY_HEADER } from "@/lib/box-oauth/identity";
 import type { BoxDb } from "@/lib/box-oauth/store";
-import { getD1 } from "@/lib/d1";
+import { dbBackend, getD1 } from "@/lib/d1";
 import { devBridgeUser } from "@/lib/dev-bridge-user";
 import { isDev } from "@/lib/permissions";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { STT_WINDOW_MS, handleStt } from "@/lib/stt-handler";
 import { workersAiTranscribe } from "@/lib/workers-ai";
+import { freeCall } from "@/lib/payments/paid-calls";
+import { HOLD_AUDIO_SEC_PER_BYTE, sttUsd } from "@/lib/payments/prices";
 
 /** The debug chat mic's transcription: lib/stt-handler.ts has the rules. */
 export const POST = async (req: Request) => {
@@ -28,6 +30,14 @@ export const POST = async (req: Request) => {
     user: user?.id ? { id: user.id } : null,
     owner: isDev(user?.email),
     transcribe: workersAiTranscribe,
+    // Free by the owner's decision (2026-11-09): what it costs us is logged
+    // and booked to this account (docs/payments.md, "Cost ledger").
+    pay: <T>(bytes: number, run: () => Promise<T>) =>
+      freeCall("speech.stt", sttUsd(bytes), run, {
+        userId: user?.id,
+        db: dbBackend() === "d1" ? getD1() : null,
+        units: bytes * HOLD_AUDIO_SEC_PER_BYTE,
+      }),
     limit: (key, max) => checkRateLimit(key, { windowMs: STT_WINDOW_MS, max }),
   });
 };

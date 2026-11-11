@@ -22,7 +22,10 @@ import { clamp, scaleWidth, scaleX, type GanttAxis } from "./scale";
 /** What a Gantt row needs: when it starts, its estimate, and how it ended. */
 export type GanttTask = {
   start: number;
+  /** The estimate; for a range, its P95 (the bar's end). */
   at: number;
+  /** A range's P5: the bar is solid to it, then a fading tail to `at`. */
+  min?: number;
   pct?: number;
   done?: boolean;
   doneAt?: number;
@@ -32,6 +35,8 @@ export type GanttTask = {
 export type GanttBar = {
   x: number;
   w: number;
+  /** The solid part, px from the bar's start: to the P5 (`min`), else all of it. The rest is the tail. */
+  solid: number;
   /** The progress fill, px from the bar's start. */
   fill: number;
   /** The overrun past the estimate: from x + w, this wide. */
@@ -40,19 +45,59 @@ export type GanttBar = {
 
 /**
  * One task's bar on the axis (px), clamped to the content [0, width]: from
- * its start to its estimate, the progress (pct; a done one all of it) inside,
- * past the estimate the overrun on to now (or to when it finished late).
+ * its start to its estimate, the progress (pct) inside, past the estimate the
+ * overrun on to now. A DONE task with a finish time is drawn as it really
+ * ran (owner, 2026-11-11 01:08 JST: an early finish kept its long bar): from
+ * its start to `doneAt`, all solid and full, no overrun, however early or
+ * late that was against the estimate; the host shows the estimate as the
+ * faint ghost of the plan.
  */
 export function ganttBar(t: GanttTask, a: GanttAxis, now: number): GanttBar {
   const width = scaleWidth(a);
   const x = (ms: number) => clamp(scaleX(a, ms, now), 0, width);
+  if (t.done && t.doneAt !== undefined) {
+    const x0 = x(Math.min(t.start, t.doneAt));
+    const w = x(t.doneAt) - x0;
+    return { x: x0, w, solid: w, fill: w, over: 0 };
+  }
   const x0 = x(Math.min(t.start, t.at));
   const x1 = x(t.at);
   const end = t.done ? x(t.doneAt ?? t.at) : x(now);
   const pct = t.done ? 100 : clamp(t.pct ?? 0, 0, 100);
   const w = x1 - x0;
-  return { x: x0, w, fill: (w * pct) / 100, over: Math.max(0, end - x1) };
+  const solid =
+    t.min === undefined || t.min >= t.at ? w : clamp(x(Math.max(t.min, t.start)) - x0, 0, w);
+  return { x: x0, w, solid, fill: (w * pct) / 100, over: Math.max(0, end - x1) };
 }
+
+/** A span of time on the axis (px), clamped to the content: the ghost bar of the original plan. */
+export function ganttSpan(
+  from: number,
+  to: number,
+  a: GanttAxis,
+  now: number,
+): { x: number; w: number } {
+  const width = scaleWidth(a);
+  const x0 = clamp(scaleX(a, Math.min(from, to), now), 0, width);
+  const x1 = clamp(scaleX(a, Math.max(from, to), now), 0, width);
+  return { x: x0, w: x1 - x0 };
+}
+
+/** A moment's x on the content (px), or null when it lies outside it (a tick is not clamped). */
+export function ganttTickX(at: number, a: GanttAxis, now: number): number | null {
+  const x = scaleX(a, at, now);
+  return x >= 0 && x <= scaleWidth(a) ? x : null;
+}
+
+/**
+ * Does the ghost (the original plan) differ from the bar enough to draw?
+ * Either end moved at least `px` (default 2).
+ */
+export const ghostShows = (
+  ghost: { x: number; w: number },
+  bar: { x: number; w: number },
+  px = 2,
+) => Math.abs(ghost.x - bar.x) >= px || Math.abs(ghost.x + ghost.w - (bar.x + bar.w)) >= px;
 
 /**
  * The rows in display order: open ones first, by start (then estimate); then
@@ -190,4 +235,33 @@ export function windowRows(
     start: clamp(first - overscan, 0, count),
     end: clamp(last + overscan, 0, count),
   };
+}
+
+/**
+ * Overlapping spans split into lanes inside one row (a summary row that
+ * draws its children's bars on one line): greedy interval partitioning,
+ * earliest start first, each span to the first lane free by its start (a
+ * lane is free once its last span has ended; touching spans share it). The
+ * lane count comes from the data: the most spans overlapping at one time,
+ * which is the fewest lanes possible. `lane` is in the input's order; no
+ * spans is 0 lanes. Spans with `to` before `from` are taken as instants.
+ */
+export function packLanes(spans: readonly { from: number; to: number }[]): {
+  lane: number[];
+  lanes: number;
+} {
+  const lane = new Array<number>(spans.length).fill(0);
+  const ends: number[] = [];
+  const order = spans
+    .map((s, i) => ({ i, from: s.from, to: Math.max(s.from, s.to) }))
+    .sort((a, b) => a.from - b.from || a.to - b.to || a.i - b.i);
+  for (const s of order) {
+    let k = ends.findIndex((e) => e <= s.from);
+    if (k < 0) {
+      k = ends.length;
+      ends.push(s.to);
+    } else ends[k] = s.to;
+    lane[s.i] = k;
+  }
+  return { lane, lanes: ends.length };
 }

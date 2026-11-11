@@ -16,6 +16,8 @@ export type WatchStatsStore = {
   getByUrl(url: string): Promise<WatchRow | null>;
   merge(url: string, incoming: WatchStats, title?: string): Promise<WatchRow>;
   overview(topLimit?: number): Promise<WatchOverview>;
+  /** The most-watched rows, biggest first (the language backfill reads these). */
+  listTop(limit?: number): Promise<WatchRow[]>;
 };
 
 type MongoDoc = {
@@ -73,6 +75,10 @@ function mongoStore(email?: string): WatchStatsStore {
         { upsert: true },
       );
       return next;
+    },
+    async listTop(limit = 50) {
+      const docs = await col.find({}).sort({ wall: -1 }).limit(limit).toArray();
+      return docs.map((d) => toRow(d)!).filter(Boolean);
     },
     async overview(topLimit = 20) {
       // Same shape as the D1 repo's overview so the page is backend-agnostic.

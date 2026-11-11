@@ -22,7 +22,7 @@ const SaveRoadmapSchema = z.object({
 
 export async function GET(request: NextRequest) {
   const email = await authEmailOrToken(request);
-  if (!email) return new NextResponse("Unauthorized", { status: 401 });
+  if (!email) return NextResponse.json({ error: "login-required" }, { status: 401 });
 
   if (dbBackend() === "d1") {
     const goals = await new RoadmapGoalsD1Repo(getD1(), email).listAll();
@@ -37,17 +37,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const email = await authEmailOrToken(request);
-  if (!email) return new NextResponse("Unauthorized", { status: 401 });
+  if (!email) return NextResponse.json({ error: "login-required" }, { status: 401 });
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return new NextResponse("Invalid JSON", { status: 400 });
+    return NextResponse.json({ error: "invalid-json" }, { status: 400 });
   }
   const parsed = SaveRoadmapSchema.safeParse(body);
   if (!parsed.success) {
-    return new NextResponse(parsed.error.message, { status: 400 });
+    console.warn("[roadmap] invalid body at", parsed.error.issues[0]?.path.join("."));
+    return NextResponse.json({ error: "invalid-body" }, { status: 400 });
   }
   const { topic, nodes } = parsed.data;
   const now = new Date();
@@ -64,18 +65,18 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const email = await authEmailOrToken(request);
-  if (!email) return new NextResponse("Unauthorized", { status: 401 });
+  if (!email) return NextResponse.json({ error: "login-required" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
-  if (!id) return new NextResponse("Missing id", { status: 400 });
+  if (!id) return NextResponse.json({ error: "missing-id" }, { status: 400 });
 
   if (dbBackend() === "d1") {
     await new RoadmapGoalsD1Repo(getD1(), email).delete(id);
     return NextResponse.json({ ok: true });
   }
 
-  if (!ObjectId.isValid(id)) return new NextResponse("Invalid id", { status: 400 });
+  if (!ObjectId.isValid(id)) return NextResponse.json({ error: "invalid-id" }, { status: 400 });
   await getRoadmapGoalsCollection(email).deleteOne({ _id: new ObjectId(id) });
   return NextResponse.json({ ok: true });
 }

@@ -1,7 +1,7 @@
 "use client";
 import { useSignedIn } from "@/app/components/BoxApiBridge";
 
-import { isEntrySource } from "@/lib/words/entry-list";
+import { dueNow, shownLists } from "@/lib/today/goal";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
@@ -11,16 +11,23 @@ import { loadCatalog } from "@/lib/words/catalog-cache";
 import { HOME_EXPLORE, HOME_EXPLORE_HREF } from "@/lib/home-features";
 import { FeatureCard } from "./FeatureCard";
 
-/** The page-card features, behind "Advanced". */
-const ADVANCED = ["sites", "review", "cards"];
-
 /**
- * Home: navigation and onboarding. Word lists come first — what is due and a
- * Continue, or three steps to start; then the other learning features; the
- * page-card features (sites, page review, the card list and its userscript)
- * last, under Advanced.
+ * Home: navigation. A new learner sees only the title and Explore, every
+ * feature to try for themselves; once they study word lists, what is due and
+ * a Continue sit above Explore. The LiCards (链卡) page-card features close the
+ * Explore grid.
  */
-export default function HomeClient({ isLoggedIn: serverSignedIn }: { isLoggedIn: boolean }) {
+export default function HomeClient({
+  isLoggedIn: serverSignedIn,
+  todayGoal = false,
+  dev = false,
+}: {
+  isLoggedIn: boolean;
+  /** `today.goal`: a link to /today beside Continue. */
+  todayGoal?: boolean;
+  /** Holds `dev`: the Lab experiments (lib/app-nav.ts `dev`) are shown too. */
+  dev?: boolean;
+}) {
   // On a box, from lianki.com (BoxApiBridge); else the server's answer.
   const isLoggedIn = useSignedIn(serverSignedIn);
   const t = useIntlayer("nav-home");
@@ -48,14 +55,10 @@ export default function HomeClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
           { lists?: { due?: number; source?: string }[] } | null,
           { lists?: { id: string }[] } | null,
         ]) => {
-          const ids = new Set((catalog?.lists ?? []).map((c) => c.id));
-          // No catalog (offline, first visit): fall back to every non-group list.
-          const lists = (d?.lists ?? []).filter((l) =>
-            catalog
-              ? !!l.source && (ids.has(l.source) || isEntrySource(l.source))
-              : !l.source?.startsWith("group:"),
-          );
-          setWords({ lists: lists.length, due: lists.reduce((s, l) => s + (l.due ?? 0), 0) });
+          // No catalog (offline, first visit): every non-group list (lib/today/goal.ts).
+          const ids = catalog ? new Set((catalog.lists ?? []).map((c) => c.id)) : null;
+          const lists = shownLists(d?.lists ?? [], ids);
+          setWords({ lists: lists.length, due: dueNow(lists) });
         },
       )
       .catch(() => setWords({ lists: 0, due: 0 }));
@@ -63,56 +66,51 @@ export default function HomeClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
 
   const item = (key: string) => APP_NAV.find((n) => n.key === key)!;
   const label = (key: string) => nav[key]?.value ?? key;
-  const started = !!words && words.lists > 0;
+  const started = words !== null && words.lists > 0;
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-8 space-y-8">
       <h1 className="font-brush text-4xl">{t.title}</h1>
 
-      {/* Word lists: the main path. */}
-      <section className="rounded-2xl border border-black/10 dark:border-white/10 p-5 sm:p-6 space-y-4">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
-          <Icon name="textAa" />
-          {t.wordsTitle}
-        </h2>
-        {started ? (
+      {/* What they already use, once there is some: word lists, due and Continue. */}
+      {started && (
+        <section className="rounded-2xl border border-black/10 dark:border-white/10 p-5 sm:p-6 space-y-4">
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Icon name="textAa" />
+            {t.wordsTitle}
+          </h2>
           <div className="flex flex-wrap items-center gap-4">
             <p className="text-lg tabular-nums">
-              <span className="text-3xl font-semibold">{words!.due}</span> {t.due}
+              <span className="text-3xl font-semibold">{words.due}</span> {t.due}
               <span className="ms-3 text-sm opacity-60">
-                {words!.lists} {t.lists}
+                {words.lists} {t.lists}
               </span>
             </p>
+            {todayGoal && (
+              <Link
+                href="/today"
+                data-home-today
+                className="ms-auto inline-flex items-center gap-1.5 rounded-lg border border-current/30 px-4 py-2.5 font-semibold"
+              >
+                <Icon name="sparkle" />
+                {label("today")}
+              </Link>
+            )}
             <Link
-              href={words!.lists > 1 ? "/words?list=all" : "/words"}
-              className="ms-auto rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5"
+              href={words.lists > 1 ? "/words?list=all" : "/words"}
+              className={`${todayGoal ? "" : "ms-auto "}rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5`}
             >
               {t.cont} →
             </Link>
           </div>
-        ) : (
-          <div className="space-y-4" data-onboarding>
-            <h3 className="font-medium opacity-80">{t.startTitle}</h3>
-            <ol className="space-y-2 list-decimal ps-5 fs-15">
-              <li>{t.step1}</li>
-              <li>{t.step2}</li>
-              <li>{t.step3}</li>
-            </ol>
-            <Link
-              href="/words"
-              className="inline-block rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5"
-            >
-              {t.startButton} →
-            </Link>
-          </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      {/* Other learning features. */}
+      {/* Every feature, to explore. */}
       <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.explore}</h2>
         <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {HOME_EXPLORE.map((k) => (
+          {HOME_EXPLORE.filter((k) => dev || !item(k).dev).map((k) => (
             <li key={k}>
               <FeatureCard
                 featureKey={k}
@@ -121,26 +119,6 @@ export default function HomeClient({ isLoggedIn: serverSignedIn }: { isLoggedIn:
                 label={k === "words" ? t.wordsTitle.value : label(k)}
                 desc={t.cards[k].value}
               />
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {/* LiCards (链卡), the page cards: the advanced path. Not uppercased like
-          the other headings — the brand is spelled LiCards, not LICARDS. */}
-      <section className="space-y-2">
-        <h2 className="text-xs font-semibold tracking-wide opacity-60">{t.advanced}</h2>
-        <p className="text-sm opacity-70">{t.advancedHint}</p>
-        <ul className="flex flex-wrap gap-2">
-          {ADVANCED.map((k) => (
-            <li key={k}>
-              <Link
-                href={item(k).href}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 dark:border-white/10 px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/5"
-              >
-                <Icon name={item(k).icon} className="opacity-80" />
-                {label(k)}
-              </Link>
             </li>
           ))}
         </ul>

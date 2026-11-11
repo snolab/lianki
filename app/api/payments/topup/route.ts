@@ -17,10 +17,9 @@ import { verifyTurnstileToken } from "@/lib/turnstile";
  * credited by the provider's webhook, not here.
  */
 export async function POST(req: Request) {
-  if (dbBackend() !== "d1")
-    return NextResponse.json({ error: "Payments are not enabled" }, { status: 503 });
+  if (dbBackend() !== "d1") return NextResponse.json({ error: "payments-off" }, { status: 503 });
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user) return NextResponse.json({ error: "login-required" }, { status: 401 });
 
   const body = (await req.json().catch(() => null)) as {
     amount?: unknown;
@@ -29,10 +28,7 @@ export async function POST(req: Request) {
   } | null;
   const amount = topupAmount(body?.amount);
   if (amount === null) {
-    return NextResponse.json(
-      { error: `amount must be a whole number of yen, ${TOPUP_MIN}–${TOPUP_MAX}` },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "invalid-amount" }, { status: 400 });
   }
   // Only a provider open to this user: a test-mode one is the owner's alone,
   // a live one needs its live flag on. One flag snapshot for the gate and the
@@ -49,7 +45,7 @@ export async function POST(req: Request) {
     !providerOpenTo(provider, session.user.email, process.env, flags) ||
     !provider.createTopup
   ) {
-    return NextResponse.json({ error: "Payments are not enabled" }, { status: 503 });
+    return NextResponse.json({ error: "payments-off" }, { status: 503 });
   }
 
   const env = runtimeNodeEnv();
@@ -83,6 +79,6 @@ export async function POST(req: Request) {
     return NextResponse.json(start);
   } catch (error) {
     console.error(`[payments] topup via ${provider.id}:`, error);
-    return NextResponse.json({ error: "Could not start checkout" }, { status: 502 });
+    return NextResponse.json({ error: "checkout-failed" }, { status: 502 });
   }
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { shortPage } from "./short-page";
 import { type AdaptState, voiceAdapt } from "./adaptive";
 import {
   type ReactNode,
@@ -44,6 +45,8 @@ import {
   parseAddress,
   pathLabel,
   type VoiceTiming,
+  type SttTag,
+  sttTagText,
   type AttachmentRef,
   type ChatContext,
 } from "./wire";
@@ -70,8 +73,17 @@ import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
-import { BAR_CONTROL, INPUT_START, TAP_44_CSS, barGeometry } from "./bar-geometry";
-import { DebugMic, canCapture, pageCues, pageMic, voiceDevice } from "./MicButton";
+import {
+  BAR_CONTROL,
+  INPUT_START,
+  NO_SELECT,
+  TAP_44_CSS,
+  TEXT_SELECT,
+  barGeometry,
+  STRIP_INSET_PX,
+  stripTopRadius,
+} from "./bar-geometry";
+import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, voiceDevice } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
 import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
@@ -90,8 +102,9 @@ import {
   sentenceState,
 } from "./read-progress";
 import { cloudOut, existingCtx, noSpeechVoices, outMode } from "./voice-out";
+import { UNLOCK_EVENTS, activationNow, unlockOnGesture } from "./speech-unlock";
 import { AEC_EVENT, aecOn, applyAec } from "./aec";
-import type { SpeakMeta } from "./speak-rules";
+import { type SpeakMeta, isWithdrawn } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
   FADE_MS,
@@ -149,6 +162,17 @@ import {
   sheetScrim,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
+import { chatExtra } from "./chat-ui-locales";
+import {
+  NEW_ATTR,
+  SCRUB_ATTR,
+  SCRUB_PULSE_MS,
+  SHIMMER_CSS,
+  createNewLines,
+  newShimmer,
+} from "./shimmer";
+import { type PttState, createPttGesture } from "./ptt";
+import { WAITING_INK, lastPendingIndex, waitingMark } from "./waiting-mark";
 import { TreeChips } from "./TreeChips";
 import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
 import {
@@ -195,6 +219,11 @@ import {
   fullScreenBack,
   fullScreenBox,
   fullScreenOn,
+  dragLeavesFull,
+  dropEntersFull,
+  FULL_HINT_HAPTIC_MS,
+  FULL_HINT_STYLE,
+  fullHintStep,
 } from "./full-screen";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
@@ -206,6 +235,8 @@ import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import { withLane } from "./voices";
 import { LaneTag, laneAvatar } from "./LaneMark";
+import { PUBLIC_ROUTE_LIST, publicSttAvailable, readConsent, writeConsent } from "./public-stt";
+import { SttServersCard } from "./SttServersCard";
 import { type Frontier, treeFrontier } from "./frontier-view";
 import {
   type TreeSource,
@@ -238,7 +269,9 @@ const withClass = <T extends { className: string }>(p: T, cls: string): T => ({
   className: `${p.className} ${cls}`,
 });
 /** The mic's extra gesture, for its title and aria-description. */
-const MIC_SCRUB_HINT = "Drag up or down (or press ↑/↓) to scroll back through the chat";
+const MIC_PTT_HINT = "Hold to talk: one line, sent when you let go (slide away to cancel). Tap: always listening. ↑/↓: scroll back through the chat";
+/** The light haptic when a press becomes push to talk (navigator.vibrate; none on iOS). */
+const PTT_HAPTIC_MS = 10;
 /** A minimized scrub shows this many lines at a time. */
 const SCRUB_LINES = 3;
 const POS_KEY = "lk:debug-chat-pos";
@@ -246,16 +279,37 @@ const POS_KEY = "lk:debug-chat-pos";
 const REALIGN_MS = 1500;
 /** The chat bar: the page shows through at about half. */
 const INPUT_BG = "color-mix(in oklch, var(--background) 55%, transparent)";
+/**
+ * The bottom strip's glass while the progress bar shows (owner, 2026-11-10):
+ * the bar's own look (INPUT_BG, backdrop-blur-md, saturate 150%) over both,
+ * so the input row with no progress bar looks as it always did.
+ */
+const STRIP_GLASS = {
+  background: INPUT_BG,
+  backdropFilter: "blur(12px) saturate(1.5)",
+  WebkitBackdropFilter: "blur(12px) saturate(1.5)",
+} as const;
 
 /**
  * Drag the box (by its header, or the collapsed pill) anywhere on screen: an
  * offset from its bottom-right home, kept on screen and remembered. A press
  * that moves under 5 px is still a click.
  */
-/** Where a drag left the bar and its box: their spans, viewport px (fold.ts edges). */
-type DropSpan = { left: number; right: number; boxLeft: number; boxRight: number };
+/**
+ * Where a drag left the bar and its box: their spans, viewport px (fold.ts
+ * edges); `bottom` is the bar's resting bottom (full-screen.ts dropEntersFull).
+ */
+type DropSpan = { left: number; right: number; boxLeft: number; boxRight: number; bottom: number };
 
-function useDrag(onDrop?: (at: DropSpan) => void) {
+/** Full screen as a drag sees it: on now, and the way out when the drag leaves it upward. */
+type DragFull = { now: () => boolean; leave: () => void };
+
+function useDrag(
+  onDrop?: (at: DropSpan) => void,
+  fullDrag?: DragFull,
+  /** Where the bar would rest after each move; null once the press is over (the full-screen hint). */
+  onMove?: (at: DropSpan | null) => void,
+) {
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     try {
       const v = JSON.parse(read(POS_KEY) ?? "null") as { x: number; y: number } | null;
@@ -275,6 +329,8 @@ function useDrag(onDrop?: (at: DropSpan) => void) {
   } | null>(null);
   const dropRef = useRef(onDrop);
   dropRef.current = onDrop;
+  const moveRef = useRef(onMove);
+  moveRef.current = onMove;
   /** The click that ends a drag is not a tap (cleared on the next press, or after 400 ms). */
   const dragged = useRef(createDragFlag());
   /** The pill is held down: the input shows how to use it. */
@@ -291,6 +347,13 @@ function useDrag(onDrop?: (at: DropSpan) => void) {
     const dy = cy - d.py;
     if (!d.moved && Math.hypot(dx, dy) < 5) return;
     d.moved = true;
+    // Full screen does not move: a drag up past FULL_LEAVE_PX leaves it, and
+    // the panel, back where it was, follows the finger from the next move on
+    // (this frame's rect is still the full-screen bar's).
+    if (fullDrag?.now()) {
+      if (dragLeavesFull({ full: true, dy })) fullDrag.leave();
+      return;
+    }
     const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
     const left = row.left - (pos.x - d.x);
     const top = row.top + liftOf(box) - (pos.y - d.y);
@@ -304,7 +367,9 @@ function useDrag(onDrop?: (at: DropSpan) => void) {
       right: left + x - d.x + row.width,
       boxLeft: b.left + by,
       boxRight: b.right + by,
+      bottom: top + y - d.y + row.height,
     };
+    moveRef.current?.(d.last);
     setPos({ x, y });
   };
   /**
@@ -318,6 +383,7 @@ function useDrag(onDrop?: (at: DropSpan) => void) {
     setHolding(false);
     const d = drag.current;
     drag.current = null;
+    moveRef.current?.(null);
     if (!d?.moved) return;
     dragged.current.dragEnded();
     setPos((p) => {
@@ -350,6 +416,7 @@ function useDrag(onDrop?: (at: DropSpan) => void) {
     onPointerCancel: () => {
       setHolding(false);
       drag.current = null;
+      moveRef.current?.(null);
     },
     style: { touchAction: "none" as const, cursor: "grab" },
   };
@@ -417,7 +484,7 @@ function useDrag(onDrop?: (at: DropSpan) => void) {
 const SPOKEN_STYLE = { color: "light-dark(oklch(0.5 0.01 260), oklch(0.72 0.01 260))" };
 /** The sentence being read: a soft highlight behind it. */
 const SPEAKING_STYLE = {
-  background: "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.05 250 / 0.7))",
+  background: "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.055 22.3 / 0.7))",
   borderRadius: 3,
 };
 /** The full-screen log's wipe in and out. */
@@ -540,15 +607,21 @@ export function speakReply(text: string, meta?: SpeakMeta): boolean {
 }
 
 let unlocked = false;
-/** iOS speaks only after a user gesture: an empty utterance on the first one unlocks it. */
-function unlockSpeech() {
+/**
+ * iOS speaks only after a user gesture: an empty utterance on the first one
+ * unlocks it. A press that is not yet an activation (a touch's pointerdown,
+ * speech-unlock.ts) waits for the one that is. True: nothing left to unlock.
+ */
+function unlockSpeech(): boolean {
   const s = synth();
-  if (unlocked || !s) return;
+  if (unlocked || !s) return true;
+  if (activationNow() === false) return false;
   unlocked = true;
   s.speak(new SpeechSynthesisUtterance(""));
   // The cloud voice's <audio> element too: lk:voice-out = "cloud", or a
   // device with no speechSynthesis voices, whose replies the cloud reads.
   if (outMode() === "cloud" || noSpeechVoices()) cloudOut()?.unlock();
+  return true;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -586,6 +659,8 @@ export type DebugChatProps = {
     opts?: {
       source?: MessageSource;
       timing?: VoiceTiming;
+      /** Which recognizer made a voice line's text (wire.ts SttTag). */
+      stt?: SttTag;
       speakerProof?: string[];
       /** Attached with the + menu (AttachMenu.tsx): the page selection and where. */
       context?: ChatContext;
@@ -618,6 +693,8 @@ export type DebugChatProps = {
    * The hub verified this as the owner's session (DebugEval `owner`): with no
    * stored `lk:agent-local-stt`, the mic defaults to his local STT
    * (localSttRoute, docs/local-stt.md). Never set for friends or other users.
+   * Also requires a `dev` grant (DebugEval): only then does the menu list
+   * pairings (eval sessions) and full page paths with their devices.
    */
   owner?: boolean;
   /** Shown instead of the input when this account cannot chat (blocked). */
@@ -752,6 +829,8 @@ const QUIET: VoiceState = {
 function unblockVoice() {
   // Once: the chip's own tap is also the page's tap (both listen).
   if (!voice().state().blocked) return;
+  // Not an activation yet (a touch's pointerdown): its pointerup or click is.
+  if (activationNow() === false) return;
   void existingCtx()?.resume().catch(() => {});
   // Whatever the mode: a sentence in a language with no voice here goes to the cloud too.
   cloudOut()?.unlock();
@@ -820,8 +899,19 @@ export function DebugChat({
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
-  /** Agent lines with their lane (voices.ts): a `【lane】` prefix becomes the name tag and mark. */
-  const messages = useMemo(() => rawMessages.map(withLane), [rawMessages]);
+  /**
+   * Agent lines with their lane (voices.ts): a `【lane】` prefix becomes the name tag and mark.
+   * A line inside a summary (`collapsedInto`) is not shown: the summary's tap shows it as heard.
+   */
+  const messages = useMemo(
+    () => rawMessages.filter((m) => !m.collapsedInto).map(withLane),
+    [rawMessages],
+  );
+  /** Which lines arrived live: they shimmer while read (shimmer.ts). Seen at render, idempotent. */
+  const newLines = useRef<ReturnType<typeof createNewLines> | null>(null);
+  newLines.current ??= createNewLines();
+  newLines.current.see(messages, Date.now());
+  const shimmerOf = (m: ChatMessage) => newLines.current!.shimmer(m, Date.now());
   const laneOpts = { laneAvatar };
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
   const clipsHub = useUi(clipsLive(), (s) => s.hub);
@@ -890,9 +980,21 @@ export function DebugChat({
   const [rate, setRate] = useState(speechRate);
   /** A drag of the box ended (useDrag): its edge, or a tuck (fold.ts). */
   const onDrop = useRef((_at: DropSpan) => {});
+  /** A drag up out of full screen (set once setFull exists below). */
+  const leaveFull = useRef(() => {});
+  /** A drag of the box moved (useDrag): the full-screen hint (set below, where its rule is). */
+  const onDragMove = useRef((_at: DropSpan | null) => {});
   const { offset, handle, begin, moveTo, end, shift, moved, wasDrag, holding, fit } = useDrag(
     (bar) => onDrop.current(bar),
+    { now: () => fullOn.current, leave: () => leaveFull.current() },
+    (bar) => onDragMove.current(bar),
   );
+  /**
+   * The drag would enter full screen if let go now (owner, 2026-11-10): the
+   * bottom edge grows toward full screen as a preview, with a light haptic.
+   */
+  const [fullHint, setFullHint] = useState(false);
+  const fullHintRef = useRef(false);
   /**
    * How far the chat is folded (fold.ts): open, a pill, or tucked into the
    * screen edge, and the edge it keeps to (on the left, everything mirrors).
@@ -1177,6 +1279,10 @@ export function DebugChat({
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
   const ui = uiStrings();
+  // The strings that were inline here, in the page's language (chat-ui-locales.ts).
+  const ux = chatExtra();
+  const withNew = (label: string, n: number) =>
+    n ? `${label}, ${ux.newCount.replace("{n}", String(n))}` : label;
   /** Agent lines not read aloud because the page was in the background (voice.ts gateVoice). */
   const [unheardIds, setUnheardIds] = useState<ReadonlySet<string>>(() => new Set());
   useEffect(() => {
@@ -2080,15 +2186,17 @@ export function DebugChat({
     setVs(v.state());
     return v.subscribe(setVs);
   }, []);
-  // Playback refused (autoplay): the next tap anywhere on the page lets it go on too.
+  // Any tap or key on the page unlocks Li's voice (speech-unlock.ts): a reply
+  // on /reader is read with no tap on the chat, after a reload too.
+  useEffect(() => unlockOnGesture(window, unlockSpeech), []);
+  // Playback refused (autoplay, or iOS dropping speech before a tap): the next
+  // tap anywhere on the page lets it go on too. Kept until one is an activation.
   useEffect(() => {
     if (!vs.blocked) return;
     const on = () => unblockVoice();
-    window.addEventListener("pointerup", on, { once: true, capture: true });
-    window.addEventListener("keydown", on, { once: true, capture: true });
+    for (const t of UNLOCK_EVENTS) window.addEventListener(t, on, { capture: true, passive: true });
     return () => {
-      window.removeEventListener("pointerup", on, { capture: true });
-      window.removeEventListener("keydown", on, { capture: true });
+      for (const t of UNLOCK_EVENTS) window.removeEventListener(t, on, { capture: true });
     };
   }, [vs.blocked]);
   // The tab hiding stops the reading — unless the mic is on (hands-free), or on
@@ -2198,7 +2306,12 @@ export function DebugChat({
     if (!text) return false;
     const source = draftSource(draftRef.current, pureDictation.current);
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
-    const timing = source ? voiceLatency().take() : undefined;
+    // And which recognizer made it (SttTag): an older store (hot swap) has no takeLine.
+    const lat = voiceLatency();
+    const taken: { timing?: VoiceTiming; stt?: SttTag } = source
+      ? (lat.takeLine?.() ?? { timing: lat.take() }) : {};
+    const timing = taken.timing;
+    const stt = taken.stt;
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
     // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
     const heardFrom = source ? takeSpeaker() : (clearSpeaker(), undefined);
@@ -2229,6 +2342,7 @@ export function DebugChat({
       ...(continues ? { continues } : {}),
       ...(source ? { source } : {}),
       ...(source && timing ? { timing } : {}),
+      ...(source && stt ? { stt } : {}),
       ...(source && speakerProof?.length ? { speakerProof } : {}),
       ...(context ? { context } : {}),
     };
@@ -2285,6 +2399,27 @@ export function DebugChat({
   const micOn = useRef(false);
   /** The mic is on (drives the open log too: iOS drops input focus on a button tap). */
   const [micActive, setMicActive] = useState(false);
+  /**
+   * Lianki's speech servers for an account other than the owner (public-stt.ts):
+   * asked once per page when the mic first turns on (GET /api/stt/session: 404
+   * while the flag stt.worker is off or the account is not on the list), never in
+   * an utterance's path. "ask" shows the consent card; only "on" changes the route.
+   * The owner's own route (sttRoute) is never touched.
+   */
+  const [publicStt, setPublicStt] = useState<"unknown" | "no" | "ask" | "on">("unknown");
+  useEffect(() => {
+    if (owner || !micActive || publicStt !== "unknown" || sttRoute.source !== "none") return;
+    let live = true;
+    void publicSttAvailable().then((ok) => {
+      if (!live) return;
+      const c = readConsent();
+      setPublicStt(!ok || c === "off" ? "no" : c === "on" ? "on" : "ask");
+    });
+    return () => {
+      live = false;
+    };
+  }, [owner, micActive, publicStt, sttRoute.source]);
+  const micRoute = sttRoute.source === "none" && !owner && publicStt === "on" ? PUBLIC_ROUTE_LIST : sttRoute.urls;
   /** The history takes the pointer: wheel and drag scroll it, its lines select (log-engage.ts). */
   const engaged = logEngaged({ typing, plusMenu: attachMenu || picking, micActive, held });
   const busyRef = useRef(false);
@@ -2368,6 +2503,7 @@ export function DebugChat({
     fullByTap.current = on && byTap;
     chatPrefs().setState({ full: on });
   };
+  leaveFull.current = () => setFull(false);
   useLayoutEffect(() => {
     const el = log.current;
     const a = fullAnchor.current;
@@ -2629,9 +2765,38 @@ export function DebugChat({
     foldStore.setState({ tucked: tuckNow, edge: next.edge });
     if ((next.fold === "open") !== open) toggle(next.fold === "open");
   };
+  // While dragging: the moment letting go would enter full screen, preview it.
+  onDragMove.current = (bar) => {
+    const on =
+      !!bar &&
+      dropEntersFull({
+        allowed: fullAllowed && !tucked,
+        open,
+        full: fullOn.current,
+        barBottom: bar.bottom,
+        vh: innerHeight,
+      });
+    const step = fullHintStep(fullHintRef.current, on);
+    if (!step) return;
+    fullHintRef.current = on;
+    setFullHint(on);
+    // A light tick on the way in (Android; navigator.vibrate is absent on iOS).
+    if (step === "enter") navigator.vibrate?.(FULL_HINT_HAPTIC_MS);
+  };
   // A drag of the box ended: it follows its nearest edge (no tuck: that level is removed).
   onDrop.current = (bar) => {
     const vw = innerWidth;
+    // Dropped flush against the bottom: full screen (full-screen.ts dropEntersFull).
+    if (
+      dropEntersFull({
+        allowed: fullAllowed && !tucked,
+        open,
+        full: fullOn.current,
+        barBottom: bar.bottom,
+        vh: innerHeight,
+      })
+    )
+      setFull(true, true);
     foldBy({
       type: "dropped",
       nearest: nearestEdge(bar.boxLeft, bar.boxRight, vw),
@@ -2662,9 +2827,15 @@ export function DebugChat({
       if (!next.delete(id)) next.add(id);
       return next;
     });
-  /** A polished line's text as shown, and its mark (nothing for any other line). */
+  /**
+   * A polished line's text as shown, and its mark (nothing for any other line).
+   * A summary's mark is a visible tag (ui.summary), and its raw is every line as heard.
+   * A merged passage's is a "merged N" tag (ui.merged); its raw is every line as heard too,
+   * and its ↩ restores the lines.
+   */
   const polish = (m: ChatMessage) => {
-    if (!m.edited || m.raw === undefined) return { text: m.text, mark: null };
+    if ((!m.edited && !m.summary && !m.passage) || m.raw === undefined)
+      return { text: m.text, mark: null };
     const raw = rawIds.has(m.id);
     return {
       text: raw ? (
@@ -2677,12 +2848,32 @@ export function DebugChat({
       mark: (
         <>
           <PolishedMark
-            icon={polishedIcon}
-            label={strings?.polished ? t.polished : ui.polished}
+            icon={
+              m.summary ? (
+                <span data-testid="debug-chat-summary" className="rounded border border-current px-1 text-[0.8em]">
+                  {ui.summary}
+                </span>
+              ) : m.passage ? (
+                <span data-testid="debug-chat-passage" className="rounded border border-current px-1 text-[0.8em]">
+                  {ui.merged.replace("{n}", String(m.passage.ids.length))}
+                </span>
+              ) : (
+                polishedIcon
+              )
+            }
+            label={
+              m.summary
+                ? ui.summaryTip
+                : m.passage
+                  ? ui.mergedTip.replace("{n}", String(m.passage.ids.length))
+                  : strings?.polished
+                    ? t.polished
+                    : ui.polished
+            }
             showRaw={raw}
             onToggle={() => toggleRaw(m.id)}
           />
-          {m.parts && onUnmerge ? (
+          {(m.parts || m.passage) && onUnmerge ? (
             <button
               type="button"
               data-testid="debug-chat-unmerge"
@@ -2743,6 +2934,15 @@ export function DebugChat({
       if (!next.length) back.current = 0;
       return next;
     });
+  /** The scrub moved within SCRUB_PULSE_MS: the lines pulse (shimmer.ts); stops when it rests. */
+  const [scrubMoving, setScrubMoving] = useState(false);
+  const scrubRest = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const scrubMoved = () => {
+    setScrubMoving(true);
+    clearTimeout(scrubRest.current);
+    scrubRest.current = setTimeout(() => setScrubMoving(false), SCRUB_PULSE_MS);
+  };
+  useEffect(() => () => clearTimeout(scrubRest.current), []);
   /** Show the SCRUB_LINES lines that end `n` back from the newest. */
   const scrubTo = (n: number) => {
     back.current = n;
@@ -2751,62 +2951,111 @@ export function DebugChat({
     setFloatEpoch((e) => e + 1);
   };
   /**
-   * A press on the mic: a tap toggles it (MicButton); locked vertically it
-   * scrubs the history (minimized) or scrolls the log (expanded); locked
-   * horizontally it moves the box. Either lock swallows the click.
+   * A press on the mic (owner, 2026-11-10, push to talk: ptt.ts): a tap
+   * toggles always-on listening (MicButton's click); a long press is one
+   * voice line, recorded from the pointerdown and sent on release; held, a
+   * slide PTT_CANCEL_PX away arms a cancel. Locked horizontally before the
+   * hold, it moves the box. It no longer scrubs the history (drag the
+   * history itself; ↑/↓ still step through it).
    */
   const micAxis = useRef(createAxisLock());
   const micDragged = useRef(createDragFlag());
-  const micPress = useRef({ x: 0, y: 0, back: 0, scroll: 0 });
+  const micPress = useRef({ x: 0, y: 0 });
+  /** The push-to-talk state for the button (held: the red ring and the elapsed time). */
+  const [pttView, setPttView] = useState<{ state: PttState; since: number }>({
+    state: "idle",
+    since: 0,
+  });
+  const pttRec = useRef<ReturnType<typeof pttRecorder> | null>(null);
+  const pttAt = useRef(0);
+  /** The last press was push to talk: its click is no tap. */
+  const pttWasHold = useRef(false);
+  const ptt = useRef<ReturnType<typeof createPttGesture> | null>(null);
+  ptt.current ??= createPttGesture({
+    press: (at) => {
+      pttAt.current = at;
+      pttRec.current = pttRecorder();
+      pttRec.current.start();
+    },
+    hold: () => {
+      pttWasHold.current = true;
+      // A light tick (Android; iOS has no navigator.vibrate, and that is fine).
+      navigator.vibrate?.(PTT_HAPTIC_MS);
+    },
+    release: (at) => {
+      const rec = pttRec.current;
+      pttRec.current = null;
+      const start = pttAt.current;
+      if (!rec) return;
+      void rec
+        .finish()
+        .then(({ text, audioMs, stt }) => {
+          if (!text) return;
+          const done = Date.now();
+          const timing: VoiceTiming = {
+            t_speechStart: start,
+            t_speechEnd: at,
+            t_uploadStart: at,
+            t_sttDone: done,
+            t_sent: done,
+            audioMs,
+          };
+          const to = targetRef.current;
+          // Sent at once: push to talk has no draft step.
+          sendRef.current(text, to === ROOT_NODE ? undefined : to, {
+            source: "stt",
+            timing,
+            ...(stt ? { stt } : {}),
+          });
+          window.dispatchEvent(
+            new CustomEvent(VOICE_SENT_EVENT, { detail: { sound: pageCues().send() } }),
+          );
+        })
+        // A failed transcription: logged for the dev view, the line is not sent.
+        .catch((e: unknown) => {
+          voice().log({ ev: "ptt-error", error: String((e as Error)?.message ?? e) });
+        });
+    },
+    drop: () => {
+      pttRec.current?.abort();
+      pttRec.current = null;
+    },
+    state: (st) =>
+      setPttView((v) => ({ state: st, since: st === "held" && v.state !== "away" ? Date.now() : v.since })),
+  });
   const micGesture = {
-    description: MIC_SCRUB_HINT,
+    description: MIC_PTT_HINT,
+    ptt: pttView,
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
       micAxis.current.down(e.clientX, e.clientY);
       micDragged.current.down();
-      micPress.current = {
-        x: e.clientX,
-        y: e.clientY,
-        back: floats.length ? back.current : 0,
-        scroll: log.current?.scrollTop ?? 0,
-      };
+      micPress.current = { x: e.clientX, y: e.clientY };
+      pttWasHold.current = false;
+      ptt.current!.down(e.clientX, e.clientY);
       e.currentTarget.setPointerCapture?.(e.pointerId);
     },
     onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
+      const g = ptt.current!;
+      // Held: the finger only arms or disarms the cancel; nothing else moves.
+      if (g.state() === "held" || g.state() === "away") return g.move(e.clientX, e.clientY);
       const was = micAxis.current.axis();
       const m = micAxis.current.move(e.clientX, e.clientY);
-      if (!m) return;
-      if (m.axis === "x") {
-        if (!was) begin(micPress.current.x, micPress.current.y);
-        handle.onPointerMove(e);
-        return;
-      }
-      if (open) {
-        if (!was) logDrag.start();
-        logDrag.move(m.dy);
-        return;
-      }
-      if (!was) setScrubbing(true);
-      const n = scrubBack(micPress.current.back, m.dy, Math.max(0, messages.length - 1));
-      if (!was || n !== back.current) scrubTo(n);
+      if (!m || m.axis !== "x") return;
+      // Sideways before the hold: a drag that moves the box, no clip.
+      g.drag();
+      if (!was) begin(micPress.current.x, micPress.current.y);
+      handle.onPointerMove(e);
     },
     onPointerUp: () => {
       const axis = micAxis.current.up();
-      if (!axis) return;
-      micDragged.current.dragEnded();
+      if (axis) micDragged.current.dragEnded();
       if (axis === "x") handle.onPointerUp();
-      else if (open) logDrag.end();
-      else {
-        setScrubbing(false);
-        setFloatEpoch((e) => e + 1); // the dwell starts over from the release
-      }
+      ptt.current!.up();
     },
     onPointerCancel: () => {
       const axis = micAxis.current.up();
       if (axis === "x") handle.onPointerCancel();
-      if (axis === "y") {
-        setScrubbing(false);
-        logDrag.end();
-      }
+      ptt.current!.cancel();
     },
     onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
       if (open ||(e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
@@ -2814,8 +3063,9 @@ export function DebugChat({
       const from = floats.length ? back.current : -1;
       const n = Math.max(0, Math.min(Math.max(0, messages.length - 1), from + (e.key === "ArrowUp" ? 1 : -1)));
       scrubTo(n);
+      scrubMoved();
     },
-    wasDrag: () => micDragged.current.wasDrag(),
+    wasDrag: () => micDragged.current.wasDrag() || pttWasHold.current,
   };
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   const conns = plural(
@@ -2874,6 +3124,8 @@ export function DebugChat({
       : "oklch(0.62 0.02 70)";
   /** Your lines after the agent last spoke wait for it while it is offline. */
   const lastAgent = messages.findLastIndex((m) => m.from === "agent");
+  /** The last of his lines still waiting (waiting-mark.ts): only it carries the label. */
+  const lastPending = lastPendingIndex(messages);
   const status = notice
     ? "chat unavailable"
     : offline
@@ -2899,21 +3151,21 @@ export function DebugChat({
         data-testid="debug-chat-pill-min"
         // The grip (owner, 2026-11-07 20:34 JST: it did not look draggable):
         // six dots, grab / grabbing. A tap folds or opens, a double tap the menu.
-        aria-label={`${t.dragGrip}${!open && unread ? `, ${unread} new` : ""}`}
+        aria-label={withNew(t.dragGrip, !open ? unread : 0)}
         title={t.dragGrip}
         aria-expanded={open}
         {...handle}
         onPointerDown={(e) => {
           unlockSpeech();
-          // Full screen does not move: the panel keeps its place for the way back.
-          if (!fullOn.current) handle.onPointerDown(e);
+          // In full screen a drag up leaves it (useDrag); the panel keeps its place.
+          handle.onPointerDown(e);
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
         style={{
           ...handle.style,
           ...BAR_CONTROL,
-          // Full screen does not drag; elsewhere grab, grabbing while held.
-          cursor: full ? "pointer" : holding ? "grabbing" : "grab",
+          // Grab, grabbing while held (in full screen a drag up leaves it).
+          cursor: holding ? "grabbing" : "grab",
         }}
         data-lk-tap
         className="tap-40 relative flex shrink-0 items-center justify-center rounded-full"
@@ -2980,7 +3232,7 @@ export function DebugChat({
           }}
           // Only while the hub says this window records (clips.ts); the key is the sink URL only.
           clipSink={friend ? undefined : activeSink(clipsHub)}
-          localStt={sttRoute.urls}
+          localStt={micRoute}
           label={pages.find((p) => p.id === selfPage)?.label ?? location.pathname}
           gesture={micGesture}
         />
@@ -3108,6 +3360,7 @@ export function DebugChat({
               oneLine={oneLine}
               key={m.id}
               m={m}
+              arrivedAt={newLines.current!.arrivedAt(m.id)}
               // The same identity as in the log: the avatar, never the name in its place.
               who={lineAvatar(m, {
                 friend,
@@ -3143,6 +3396,8 @@ export function DebugChat({
     // at the bottom, each fading on its own. Hover or touch holds them.
     <ol
       data-testid="debug-chat-floats"
+      // The mic scrub moving: the lines pulse (shimmer.ts).
+      {...(scrubMoving ? { [SCRUB_ATTR]: true } : {})}
       aria-live="polite"
       className={`flex flex-col gap-0.5 ${ALIGN_ITEMS[place.side]}`}
     >
@@ -3175,6 +3430,8 @@ export function DebugChat({
       url: sttRoute.urls ?? "",
       device: voiceDevice(),
       capture: (on, onFinal, id) => pageMic().enrolCapture(on, onFinal, id),
+      // The voiceprint test: scored finals to the panel only (no draft, cloud or clip sink).
+      testCapture: (on, onFinal) => pageMic().enrolCapture(on, onFinal, "", true),
       log: (ev) => voice().log(ev),
     });
   /** The menu (a double tap on the mark), open or minimized. */
@@ -3202,22 +3459,30 @@ export function DebugChat({
         aria-disabled={vs.mic}
         title={
           vs.mic
-            ? "The mic is on: replies are always read aloud (your setting is back when it stops)"
-            : speak && vs.voiced
-              ? "You used the mic in this tab: replies are read aloud, typed or spoken, until you turn this off"
-              : "Replies are read aloud while you're typing here (the input has focus)"
+            ? ux.speakMicTitle
+            : speak && vs.touch
+              ? ux.speakTouchTitle
+              : speak && vs.voiced
+                ? ux.speakVoicedTitle
+                : ux.speakTypingTitle
         }
         onClick={() => !vs.mic && toggleSpeak()}
         className={`flex items-center gap-2 px-3 py-1.5 text-start ${vs.mic ? "opacity-70" : ""}`}
       >
         <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
         {vs.mic
-          ? "Replies read aloud (mic on)"
-          : speak && vs.voiced
-            ? "Replies read aloud (mic used)"
-            : speak
-              ? "Replies read aloud while typing"
-              : "Replies silent"}
+          ? ux.speakMicOn
+          : speak && vs.touch
+            ? strings?.readAloud
+              ? t.readAloud
+              : ui.readAloud
+            : speak && vs.voiced
+              ? ux.speakMicUsed
+              : speak
+                ? strings?.readAloudTyping
+                  ? t.readAloudTyping
+                  : ui.readAloudTyping
+                : ux.speakSilent}
       </button>
       {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
       <button
@@ -3268,14 +3533,34 @@ export function DebugChat({
         </span>
         {strings?.compactIdle ? t.compactIdle : ui.compactIdle}
       </button>
+      {/* Full screen without a drag (the keyboard's and a screen reader's way
+          in; a drop on the bottom edge is the other, full-screen.ts). */}
+      {fullAllowed && !tucked && (
+        <button
+          type="button"
+          role="menuitemcheckbox"
+          data-testid="debug-menu-fullscreen"
+          aria-checked={full}
+          onClick={() => {
+            setMenu(false);
+            setFull(!full, true);
+          }}
+          className="flex items-center gap-2 px-3 py-1.5 text-start"
+        >
+          <span aria-hidden className="w-[1em] text-center">
+            {full ? "◉" : "○"}
+          </span>
+          {t.fullScreen}
+        </button>
+      )}
       {/* Reading speed, per device: from the next sentence on. */}
       <div
         role="radiogroup"
-        aria-label="Reading speed"
+        aria-label={ux.readingSpeed}
         data-testid="debug-menu-rate"
         className="flex items-center gap-1 px-3 py-1"
       >
-        <span className="me-1 text-gray-500">Speed</span>
+        <span className="me-1 text-gray-500">{ux.speed}</span>
         {SPEECH_RATES.map((r) => (
           <button
             key={r}
@@ -3377,7 +3662,8 @@ export function DebugChat({
           className="flex items-center gap-2 px-3 py-1.5 text-start"
         >
           <span aria-hidden className="inline-block size-2.5 rounded-sm bg-current" />
-          Stop reading{vs.queued > 1 ? ` (${vs.queued} sentences left)` : ""}
+          {ux.stopReading}
+          {vs.queued > 1 ? ` (${ux.sentencesLeft.replace("{n}", String(vs.queued))})` : ""}
         </button>
       )}
       {treeSource && (
@@ -3460,13 +3746,18 @@ export function DebugChat({
         className="flex items-center gap-2 px-3 py-1.5 text-start"
       >
         <span className="w-[1em] text-center">{open ? "–" : "+"}</span>
-        {open ? "Minimize" : ui.restoreChat}
+        {open ? ux.minimize : ui.restoreChat}
       </button>
       {/* Every open page of this chat; ending this one asks twice. */}
       {pages.map((pg) => {
         const self = pg.id === selfPage;
         const key = `page:${pg.id}`;
-        const { path, device } = pageParts(pg.label);
+        const parts = pageParts(pg.label);
+        const path = parts.path;
+        // A developer sees the full path and the device; anyone else the page's
+        // first segment only (owner, 2026-11-11 01:31 JST).
+        const device = owner ? parts.device : "";
+        const shown = owner ? path : shortPage(path);
         return (
           <div
             key={pg.id || pg.label}
@@ -3478,14 +3769,14 @@ export function DebugChat({
             <button
               type="button"
               data-testid="debug-menu-page-open"
-              title={pg.label}
+              title={owner ? pg.label : undefined}
               onClick={() => {
                 setMenu(false);
                 if (!self) onOpenPage?.(path);
               }}
               className="flex min-w-0 flex-1 items-baseline gap-1.5 text-start"
             >
-              <span className="truncate text-gray-700 dark:text-gray-200">{path}</span>
+              <span className="truncate text-gray-700 dark:text-gray-200">{shown}</span>
               <span className="shrink-0 fs-10">
                 {[device, self ? "this page" : ""].filter(Boolean).join(" · ")}
               </span>
@@ -3508,8 +3799,9 @@ export function DebugChat({
           </div>
         );
       })}
+      {/* Pairings (eval sessions): a developer's menu only. */}
       {sessions
-        .filter((x) => x.scope !== "chat")
+        .filter((x) => owner && x.scope !== "chat")
         .map((x) => (
           <div
             key={x.pair}
@@ -3543,7 +3835,7 @@ export function DebugChat({
         ))}
       {/* Ending the chat grant ends the chat itself: apart, in red, two taps. */}
       {sessions
-        .filter((x) => x.scope === "chat" && addable(x))
+        .filter((x) => owner && x.scope === "chat" && addable(x))
         .map((x) => (
           <button
             key={`add-${x.pair}`}
@@ -3629,7 +3921,21 @@ export function DebugChat({
   );
   const resumeItems = resumeLeft
     .map((r) => ({ r, m: messages.find((x) => x.id === r.id && x.from === "agent") }))
-    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m);
+    // A withdrawn ask card is never read on (speak-rules.ts).
+    .filter((x): x is { r: ReadingLeft; m: ChatMessage } => !!x.m && !isWithdrawn(x.m));
+  // An ask withdrawn while it is being read (or waits in the queue): its
+  // sentences are dropped, the other lines read on (an older session without
+  // `drop` stops the reading instead).
+  useEffect(() => {
+    for (const m of messages) {
+      if (!isWithdrawn(m) || !readP.queue.some((e) => e.id === m.id)) continue;
+      const v = voice() as ReturnType<typeof voice> & { drop?: (id: string) => boolean };
+      if (!v.drop) return v.stop();
+      readDispatch({ type: "drop", id: m.id });
+      // Not in the session's queue after all (untagged): stop rather than read it.
+      if (!v.drop(m.id)) return v.stop();
+    }
+  }, [messages, readP.queue]);
   /** Hand the unread rest of those replies back to the voice, as one queued reply each. */
   const resumeNow = () => {
     const v = voice();
@@ -3649,7 +3955,8 @@ export function DebugChat({
       const start = ranges[r.from]?.start;
       if (start === undefined) continue;
       claimed.current.add(m.id);
-      if (v.reply(said.slice(start)))
+      // The line as meta: its sentences carry its id (a withdrawn ask is dropped by it).
+      if (v.reply(said.slice(start), m))
         readDispatch({ type: "enqueue", id: m.id, n: ranges.length - r.from, from: r.from });
     }
     if (focusHack && el) {
@@ -3793,6 +4100,7 @@ export function DebugChat({
         />
         <div
           className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
+          {...shimmerOf(m)}
         >
           <span className="sr-only">{who.name}: </span>
           {m.lane && <LaneTag lane={m.lane} inline />}
@@ -3853,7 +4161,7 @@ export function DebugChat({
           data-chat-restore
           data-shape={HANDLE_SHAPE}
           data-edge={edge}
-          aria-label={`${ui.untuckChat}${unread ? `, ${unread} new` : ""}`}
+          aria-label={withNew(ui.untuckChat, unread)}
           title={ui.untuckChat}
           onPointerDown={pressHandle}
           onClick={() => {
@@ -3921,6 +4229,13 @@ export function DebugChat({
     // Full screen: the glass is the whole chat area, which is the screen.
     fullLog: fullLog !== "off" || full,
   });
+  /** The progress bar (EtaBar) shows over the input. */
+  const etaShown = open && !tree && etaBar && etaList.length > 0;
+  /**
+   * The bar and the progress bar as one glass strip (owner, 2026-11-10); not
+   * while the typing glass is the frame, nor full screen (the screen is the glass).
+   */
+  const strip = etaShown && !full && !typingGlassShown;
   const typingGlassLookNow = (() => {
     const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
     const look = typingGlassLook({
@@ -4036,38 +4351,29 @@ export function DebugChat({
         }}
         className="pointer-events-none absolute -inset-1.5 -z-10 rounded-[1.5rem]"
       />
-      {/* Full screen and back (full-screen.ts): the open chat's top corner, in
-          the panel above its top edge, in full screen at the top of the screen
-          (in the flow, so the log starts under it). */}
-      {open && fullAllowed && !tucked && (
-        <div
-          className={
-            full
-              ? "pointer-events-none flex shrink-0 justify-end"
-              : "pointer-events-none absolute end-0 bottom-full mb-1 flex justify-end"
-          }
-        >
+      {/* The way out of full screen (owner, 2026-11-09 18:25 JST: no button to
+          enter it, a drag to the bottom edge does; "an exit button is still
+          needed"): ✕ and its words, at the top corner under the notch, in the
+          flow so the log starts under it. Escape, Back, the menu and a drag up
+          leave too. Entering without a drag: the menu's Full screen row. */}
+      {open && full && (
+        <div className="pointer-events-none flex shrink-0 justify-end">
           <button
             type="button"
-            data-testid="debug-chat-fullscreen"
-            data-on={full || undefined}
-            aria-pressed={full}
-            aria-label={full ? t.fullScreenExit : t.fullScreen}
-            title={full ? t.fullScreenExit : t.fullScreen}
+            data-testid="debug-chat-fullscreen-exit"
+            title={t.fullScreenExit}
             // Keeps the input's focus, so the keyboard and the draft's caret stay
             // (WebKit moves the focus on the tap's mousedown, not its pointerdown).
             onPointerDown={(e) => e.preventDefault()}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setFull(!full, true)}
-            style={{
-              background: INPUT_BG,
-              width: full ? 40 : 32,
-              height: full ? 40 : 32,
-              fontSize: full ? 20 : 16,
-            }}
-            className="tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full border border-current/25 text-gray-600 backdrop-blur-md dark:text-gray-300"
+            onClick={() => setFull(false)}
+            style={{ background: INPUT_BG, minHeight: 40 }}
+            className="tap-40 pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-current/25 ps-3 pe-3.5 text-sm text-gray-700 backdrop-blur-md dark:text-gray-200"
           >
-            <Icon name={full ? "cornersIn" : "cornersOut"} />
+            <span aria-hidden className="text-base leading-none">
+              ✕
+            </span>
+            {t.fullScreenExit}
           </button>
         </div>
       )}
@@ -4211,6 +4517,8 @@ export function DebugChat({
                         }
                         // Selectable; it takes the pointer while the log is engaged (log-engage.ts).
                         className={LINE_SELECTABLE}
+                        // Just arrived: a soft sweep over its reading time (shimmer.ts).
+                        {...shimmerOf(m)}
                       >
                         {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
                         {m.attachments?.length && m.from !== "agent" ? (
@@ -4231,6 +4539,19 @@ export function DebugChat({
                         )}
                         {polish(m).mark}
                         {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                        {(() => {
+                          // Which recognizer made a voice line: dev holders only (`owner` needs dev).
+                          const tag = m.from === "owner" ? sttTagText(m.stt, owner, ui) : undefined;
+                          return tag ? (
+                            <span
+                              data-testid="debug-chat-stt"
+                              className="ms-1 fs-10 text-gray-500"
+                              title={ui.sttTagTip}
+                            >
+                              {tag}
+                            </span>
+                          ) : null;
+                        })()}
                         {m.from === "agent" && unheardIds.has(m.id) && (
                           <span
                             data-testid="debug-chat-unheard"
@@ -4239,15 +4560,31 @@ export function DebugChat({
                             {t.notReadHidden}
                           </span>
                         )}
-                        {!agentOnline && m.from !== "agent" && i > lastAgent && (
-                          <span
-                            data-testid="debug-chat-queued"
-                            className="ms-1 fs-10 text-gray-500"
-                            title={t.waitingTitle}
-                          >
-                            {t.waiting}
-                          </span>
-                        )}
+                        {(() => {
+                          // Waiting for the partner: the label on the last pending line only;
+                          // the earlier ones a mark in the same ink, named for screen readers.
+                          const w = waitingMark({ i, from: m.from, agentOnline, lastAgent, lastPending });
+                          if (!w) return null;
+                          return w === "label" ? (
+                            <span
+                              data-testid="debug-chat-queued"
+                              className="ms-1 fs-10"
+                              style={{ color: WAITING_INK }}
+                              title={t.waitingTitle}
+                            >
+                              {t.waiting}
+                            </span>
+                          ) : (
+                            <span
+                              data-testid="debug-chat-queued-mark"
+                              role="img"
+                              aria-label={t.waiting.replace(/^[·\s]+/, "")}
+                              title={`${t.waiting.replace(/^[·\s]+/, "")} — ${t.waitingTitle}`}
+                              className="ms-1 inline-block size-1.5 rounded-full align-middle"
+                              style={{ background: WAITING_INK }}
+                            />
+                          );
+                        })()}
                       </span>
                     </span>
                   );
@@ -4259,12 +4596,6 @@ export function DebugChat({
       </ol>
       </div>
       {compact && compactEl}
-      {open && !tree && etaBar && etaList.length > 0 && (
-        // flow-root: the bar's own margin counts in the height the buttons above step over.
-        <div ref={setEtaBox} data-testid="debug-chat-eta-slot" className="flow-root">
-          <EtaBar tasks={etaList} now={etaNow} strings={t} onOpen={() => setGanttOpen(true)} />
-        </div>
-      )}
       {open && warning && (
         <div
           role="alert"
@@ -4334,10 +4665,19 @@ export function DebugChat({
         <div
           data-testid="debug-chat-drop"
           className="pointer-events-auto absolute inset-0 z-30 flex min-h-24 items-center justify-center rounded-xl border-2 border-dashed px-2 text-center fs-13 backdrop-blur-sm"
-          style={{ borderColor: "oklch(0.6 0.12 250)", background: "oklch(0.6 0.12 250 / 0.16)" }}
+          style={{ borderColor: "oklch(0.6 0.132 22.3)", background: "oklch(0.6 0.132 22.3 / 0.16)" }}
         >
           {t.attachDrop}
         </div>
+      )}
+      {open && !notice && publicStt === "ask" && (
+        <SttServersCard
+          onAgree={() => {
+            writeConsent("on");
+            setPublicStt("on");
+          }}
+          onLater={() => setPublicStt("no")}
+        />
       )}
       {open && !notice && filesRef.current && <PendingChips t={t} pending={pending} />}
       {open && attached && !notice && (
@@ -4350,6 +4690,27 @@ export function DebugChat({
             pageSel.clear();
           }}
         />
+      )}
+      {etaShown && (
+        // Right over the bar. flow-root: the bar's own margin counts in the
+        // height the buttons above step over. In the strip it has no margin
+        // and no track: the strip's glass is behind it.
+        <div
+          ref={setEtaBox}
+          data-testid="debug-chat-eta-slot"
+          data-strip={strip || undefined}
+          // The inset is STRIP_INSET_PX on the top and the sides (stripTopRadius).
+          className="flow-root"
+          style={strip ? { padding: `${STRIP_INSET_PX}px ${STRIP_INSET_PX}px 0` } : undefined}
+        >
+          <EtaBar
+            tasks={etaList}
+            now={etaNow}
+            strings={t}
+            glass={strip}
+            onOpen={() => setGanttOpen(true)}
+          />
+        </div>
       )}
       {/* The log above is click-through: taps reach the page under it. Only the
       bar takes pointer events. Its width animates as two grid columns, the
@@ -4376,6 +4737,28 @@ export function DebugChat({
           ...(full ? fullBarSpan(sidebar) : {}),
         }}
       >
+        {strip && (
+          // The strip's one glass (owner, 2026-11-10): behind the progress
+          // bar and the bar alike, so the two read as one surface. Its own
+          // layer, not a wrapper: a backdrop-filter on an ancestor would
+          // become the box of the fixed menus and the floating lines in here.
+          <div
+            aria-hidden
+            data-testid="debug-chat-strip"
+            data-top-radius={stripTopRadius(etaH)}
+            className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 border border-current/25"
+            style={{
+              ...barGeometry(),
+              ...STRIP_GLASS,
+              top: -etaH,
+              // The top corners concentric with the progress pill's end caps
+              // (bar-geometry.ts stripTopRadius); the bottom ones the bar's own.
+              borderTopLeftRadius: stripTopRadius(etaH),
+              borderTopRightRadius: stripTopRadius(etaH),
+              transition: reducedMotion() ? undefined : "border-radius 180ms ease-out, top 180ms ease-out",
+            }}
+          />
+        )}
         <div style={LTR}>
         {open && (shownTarget !== ROOT_NODE || completions.length > 0) && (
           // The target node (a chip: × back to the main thread) and "@/…" completions.
@@ -4495,7 +4878,7 @@ export function DebugChat({
               title={askJumpText}
               onClick={jumpToAsk}
               style={{
-                background: "oklch(0.5 0.17 255)",
+                background: "oklch(0.5 0.187 22.3)",
                 color: "oklch(0.98 0 0)",
                 height: JUMP_H_PX,
                 width: jumpWidth(asksUp.length),
@@ -4527,7 +4910,7 @@ export function DebugChat({
               // Keeps the input's focus, so the log stays open.
               onPointerDown={(e) => e.preventDefault()}
               aria-label={
-                below ? `Scroll to the newest message, ${below} new` : "Scroll to the newest message"
+                withNew(ux.scrollNewest, below)
               }
               onClick={() =>
                 log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" })
@@ -4562,7 +4945,7 @@ export function DebugChat({
           onPointerDown={(e) => {
             if ((e.target as HTMLElement).closest("button, textarea, p, [data-chat-restore]"))
               return;
-            if (!fullOn.current) handle.onPointerDown(e);
+            handle.onPointerDown(e);
           }}
           onPointerMove={(e) => e.target === e.currentTarget && handle.onPointerMove(e)}
           onPointerUp={(e) => e.target === e.currentTarget && handle.onPointerUp()}
@@ -4571,6 +4954,8 @@ export function DebugChat({
             // Radius, padding and the line box as variables: the mic is concentric
             // with the corner by construction (bar-geometry.ts).
             ...barGeometry(),
+            // A press target, not text: a long press here never selects (the input does).
+            ...NO_SELECT,
             background: INPUT_BG,
             // Aside while the log spans the screen; it keeps the pointer (captured).
             opacity: barAside ? 0 : undefined,
@@ -4580,7 +4965,8 @@ export function DebugChat({
             // While the typing glass is up it is the frame: the bar's own box
             // goes inside it (border transparent, width kept; no tint, no blur).
             // Full screen keeps the bar's own box: the glass there is the whole screen.
-            ...barInGlass(typingGlassShown && !full),
+            // In the strip the strip's glass is its surface (the same glass).
+            ...barInGlass((typingGlassShown && !full) || strip),
             transition: reducedMotion() ? undefined : `${FADE}, ${BAR_IN_GLASS_TRANSITION}`,
           }}
           data-in-glass={(typingGlassShown && !full) || undefined}
@@ -4595,6 +4981,8 @@ export function DebugChat({
           )}
           {/* The controls' 44 px touch areas (bar-geometry.ts TAP_44_CSS). */}
           <style>{TAP_44_CSS}</style>
+          {/* New lines and the mic scrub's cue (shimmer.ts). */}
+          <style>{SHIMMER_CSS}</style>
           {controls}
           {/* + : add to Lianki, attach to the line, view the state tree
           (AttachMenu.tsx). Open only; without `attach` (or with a notice) it
@@ -4615,7 +5003,7 @@ export function DebugChat({
           be read), fading out as its slot closes. */}
           <div
             data-testid="debug-chat-input-slot"
-            style={LTR_TEXT}
+            style={{ ...LTR_TEXT, ...TEXT_SELECT }}
             inert={!open}
             aria-hidden={!open || undefined}
             className={`relative flex w-0 min-w-0 flex-1 transition-opacity duration-[180ms] ease-out motion-reduce:transition-none ${open ? "opacity-100" : "max-h-8 overflow-hidden opacity-0"}`}
@@ -4772,8 +5160,8 @@ export function DebugChat({
                   <span
                     role="status"
                     data-testid="debug-chat-busy"
-                    aria-label={`${busy.label || t.name} is working`}
-                    title={`${busy.label || t.name} is working`}
+                    aria-label={ux.working.replace("{name}", busy.label || t.name)}
+                    title={ux.working.replace("{name}", busy.label || t.name)}
                     className="pointer-events-none absolute end-1.5 top-1/2 -translate-y-1/2"
                   >
                     <svg viewBox="0 0 16 16" className="size-3.5 animate-spin" aria-hidden>
@@ -4802,7 +5190,7 @@ export function DebugChat({
             <span
               data-testid="debug-chat-pill-unread"
               className="pointer-events-none absolute -end-1.5 -top-1.5 rounded-full px-1 fs-10 leading-4 text-white"
-              style={{ background: "oklch(0.55 0.2 260)" }}
+              style={{ background: "oklch(0.55 0.21 22.3)" }}
             >
               {unread}
             </span>
@@ -4821,6 +5209,16 @@ export function DebugChat({
       </div>
     </section>
     {tuckEl}
+    {fullAllowed && (
+      // The full-screen preview (full-screen.ts FULL_HINT_STYLE): outside the
+      // section, whose transform would make it the box of a fixed child.
+      <div
+        aria-hidden
+        data-testid="debug-chat-full-hint"
+        data-on={fullHint || undefined}
+        style={FULL_HINT_STYLE(fullHint, reducedMotion())}
+      />
+    )}
     </>
   );
 }
@@ -4860,10 +5258,13 @@ function FloatLine({
   paused,
   onHover,
   onGone,
+  arrivedAt,
 }: {
   /** Its first line only (the tucked handle's peek), else up to three. */
   oneLine?: boolean;
   m: ChatMessage;
+  /** When it arrived live (shimmer.ts createNewLines): it shimmers while read. */
+  arrivedAt?: number;
   /** Who said it (avatar-rules.ts lineAvatar), drawn as in the log. */
   who: ReturnType<typeof lineAvatar>;
   /** What the line shows (a polished line's text, or its raw STT text), and its mark. */
@@ -4879,6 +5280,10 @@ function FloatLine({
   onGone: () => void;
 }) {
   const [phase, setPhase] = useState<FloatPhase>("dwell");
+  // Fixed at mount: the sweep picks up where it is, and no re-render shifts it.
+  const [shim] = useState(() =>
+    arrivedAt === undefined ? null : newShimmer(m.text, arrivedAt, Date.now()),
+  );
   const life = useRef<ReturnType<typeof createFloatLife> | null>(null);
   const live = useRef({ paused, onGone, aboveLeft, onLife });
   live.current = { paused, onGone, aboveLeft, onLife };
@@ -4916,7 +5321,8 @@ function FloatLine({
       onPointerLeave={() => onHover(false)}
       onPointerCancel={() => onHover(false)}
       // Text only, with a strong halo: no background, no box (they float over the page).
-      style={{ textShadow: LINE_HALO, transitionDuration: `${FADE_MS}ms` }}
+      style={{ textShadow: LINE_HALO, transitionDuration: `${FADE_MS}ms`, ...shim?.style }}
+      {...(shim ? { [NEW_ATTR]: true } : {})}
       // The fade runs FADE_MS (ease-out, opacity only); held (touched), the line
       // snaps back to full at once. Reduced motion: no fade, it just goes.
       className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto ${oneLine ? "line-clamp-1" : "line-clamp-3"} max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}

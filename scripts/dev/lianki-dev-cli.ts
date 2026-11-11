@@ -45,6 +45,8 @@ export const SUBCOMMANDS = [
   "say",
   "voices",
   "ask",
+  "withdraw",
+  "edit",
   "inbox",
   "listen",
   "lane-listen",
@@ -67,6 +69,8 @@ export const USAGE: Record<Sub | "main", string> = {
   say       a chat line to the owner (or --to a thread)
   voices    the voice ids say --voice takes: the phone's own, and the cloud's
   ask      an ask card with tappable options
+  withdraw  withdraw an open ask card he no longer needs to answer
+  edit      polish his voice line, merge a run of them into one passage, or undo a merge
   inbox     the chat inbox: list | get <id> [--out <dir>] | done <id>
   listen    listen to the chat (eval.ts chat), one JSON line per event
   lane-listen  a lane's own listener: the owner lines addressed to it, handed to its agent
@@ -105,10 +109,31 @@ ${EXITS}`,
   the cloud's list. --cloud: the cloud's list only, no page asked.
 ${GLOBAL}
 ${EXITS}`,
-  ask: `usage: lianki-dev ask [--to owner|<email>] --q "question" --opt "a" --opt "b" [--multi] [--q …] [--wait] [--timeout <s>]
+  withdraw: `usage: lianki-dev withdraw <askId|msgId> | --last [--to <thread|email>]
+  Withdraws an open ask card (eval.ts withdraw): the hub marks it withdrawn,
+  every open page greys it out ("Withdrawn", no options) and it is never read
+  aloud; a later tap is refused. --last: the latest open ask in the thread.
+  stdout: the hub's {"type":"withdrawn",…} (with --json, as "data").
+${GLOBAL}
+${EXITS}`,
+  ask: `usage: lianki-dev ask [--node /path] [--to owner|<email>] --q "question" --opt "a" --opt "b" [--multi] [--q …] [--wait] [--timeout <s>]
   An ask card (eval.ts ask); the first --opt is the recommended one. --wait
   prints the tap's {"type":"answered",…}, else the hub's {"type":"asked",…}.
   With --as <lane> each question is labelled 【<lane>】.
+  --node: the state tree node the question is about (else LIANKI_TASK_PATH);
+  required with --as <lane>. The question is noted on it ("ask: …"), and with
+  --wait the answer too ("answer: … → …"); the node must be in the tree.
+${GLOBAL}
+${EXITS}`,
+  edit: `usage: lianki-dev edit (<msgId> | --last) "polished text" | -
+       lianki-dev edit --merge <id1,id2,…> --text "passage" | -
+       lianki-dev edit --unmerge <id>
+       lianki-dev edit --summary (<msgId>… | --last N) "summary" | -
+  Edits of the owner's voice lines (eval.ts edit; docs/dev-debug-widget.md,
+  "Agent edits of voice messages"). --merge rewrites a RUN of his consecutive
+  voice lines (nothing between them, one topic) as ONE fluent passage; the
+  lines stay kept, a tap shows them, his ↩ (or --unmerge) restores them.
+  stdout: the hub's {"type":"edited",…} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
   inbox: `usage: lianki-dev inbox [list | get <id> [--out <dir>] | done <id>]
@@ -270,6 +295,32 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
       return new Error('ask needs --q "question" and at least one --opt');
     return ["ask", ...out, ...pair];
   }
+  if (sub === "withdraw") {
+    const ids = rest.filter((a, i) => !a.startsWith("--") && rest[i - 1] !== "--to");
+    if (ids.length > 1) return new Error("withdraw takes one askId (or --last)");
+    if (!ids.length && !rest.includes("--last"))
+      return new Error("withdraw needs <askId> or --last");
+    for (const a of rest)
+      if (a.startsWith("--") && a !== "--last" && a !== "--to")
+        return new Error(`withdraw: unknown flag ${a}`);
+    if (rest.at(-1) === "--to") return new Error("--to needs a value");
+    return ["withdraw", ...rest, ...pair];
+  }
+  if (sub === "edit") {
+    const out = rest.map((a) => (a === "-" && stdin !== undefined ? stdin.trim() : a));
+    const has = (f: string) => out.includes(f);
+    if (has("--merge") && !has("--text") && out.length !== 3)
+      return new Error('edit --merge needs <id1,id2,…> and --text "passage"');
+    if (
+      has("--merge") &&
+      (out[out.indexOf("--merge") + 1] ?? "").split(",").filter(Boolean).length < 2
+    )
+      return new Error("edit --merge joins two or more ids, comma-separated");
+    if (has("--unmerge") && !out[out.indexOf("--unmerge") + 1])
+      return new Error("edit --unmerge needs the passage's id");
+    if (!out.length) return new Error("edit needs a message id (or --last) and a text");
+    return ["edit", ...out, ...pair];
+  }
   if (sub === "inbox") {
     const op = rest[0] ?? "list";
     if (!["list", "get", "done", "rm"].includes(op)) return new Error(`inbox: unknown op ${op}`);
@@ -291,7 +342,7 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
 }
 
 /**
- * With a lane token (LIANKI_TOKEN, made at lianki.com/preferences → API tokens
+ * With a lane token (LIANKI_TOKEN, made at lianki.com/my/preferences → API tokens
  * with the chat permissions): the argv for the public CLI's `lianki chat …`
  * (packages/lianki-cli), which posts as the token's name in the token
  * account's own thread. No `--to`, `--task-path`, `--agent` or `--label`:
@@ -357,7 +408,7 @@ export function chatArgv(
 export function progressArgv(rest: string[], g: Global): string[] {
   if (!g.lane || rest.includes("--agent") || rest.some((a) => a.startsWith("--agent=")))
     return rest;
-  if (["show", "resolve", "grant"].includes(rest[0] ?? "")) return rest;
+  if (["show", "resolve", "grant", "ack"].includes(rest[0] ?? "")) return rest;
   return [...rest, "--agent", g.lane];
 }
 
@@ -451,7 +502,7 @@ export function doctorFindings(f: Facts): Finding[] {
         : {
             check: "lane-token",
             level: "warn",
-            line: `no lane token for ${f.lane}: say/ask use the saved grant; lane-listen needs one (the owner makes it at lianki.com/preferences → API tokens, docs/lane-listen.md)`,
+            line: `no lane token for ${f.lane}: say/ask use the saved grant; lane-listen needs one (the owner makes it at lianki.com/my/preferences → API tokens, docs/lane-listen.md)`,
           },
     );
   out.push({

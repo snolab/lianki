@@ -99,8 +99,8 @@ export function DrivePick(p: {
   }, []);
 
   const button = p.compact
-    ? "w-full py-4 px-2 border-2 border-dashed border-[oklch(0.62_0.15_255)] dark:border-[oklch(0.68_0.13_255)] rounded-lg text-[oklch(0.5_0.17_255)] dark:text-[oklch(0.78_0.11_255)] hover:bg-[oklch(0.96_0.02_255)] dark:hover:bg-[oklch(0.3_0.04_255)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-    : "w-full sm:w-auto px-4 py-2.5 rounded-lg text-sm font-medium bg-[oklch(0.55_0.18_255)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.18_255)] disabled:opacity-50 disabled:cursor-not-allowed";
+    ? "lk-btn lk-btn-secondary w-full py-4 px-2"
+    : "w-full sm:w-auto px-4 py-2.5 rounded-lg text-sm font-medium bg-[oklch(0.55_0.198_22.3)] text-[oklch(0.99_0_0)] hover:bg-[oklch(0.5_0.198_22.3)] disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
     <div

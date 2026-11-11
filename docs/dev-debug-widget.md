@@ -515,8 +515,10 @@ to the main thread, as before, but prints agent lines addressed to a node.
 ## Agent edits of voice messages
 
 STT gets words wrong, and it has no context on the conversation. The chat
-lane does: it may **polish the owner's latest line** when that line came from
-the widget's own mic, so the log reads what was meant.
+lane does: it may **polish any of the owner's last `EDITABLE_LINES` (5) lines**
+when the line came from the widget's own mic, so the log reads what was meant.
+The owner wants this often (2026-11-10): polish whenever the context supports
+it, not only when sure of a homophone.
 
 **Which lines are voice.** The widget sends a line `source: "stt"` when the
 draft is exactly what the mic left there: an STT final sent on its own, or
@@ -536,11 +538,10 @@ echo "polished text" | bun scripts/dev/eval.ts edit --last --no-pair -
 Prints the hub's `{"type":"edited","id","thread","text","raw","edited"}`, or
 fails with the rule it broke. Polish, then reply.
 
-**Polish with the context, or not at all.** Fix punctuation, words misheard
-as a homophone that the context disambiguates, and stutters. Never change the
-meaning, never add or drop a word, never use a word the context does not
-contain. If unsure, do not edit: the raw line stands. The context is what the
-voice line carries and what `eval.ts chat` prints with it:
+**Polish with the context, or not at all.** Never change the meaning, never
+invent a word the raw line and the context both lack. If unsure, write the
+unclear-word bracket (below) or leave the line: the raw line stands. The
+context is what the voice line carries and what `eval.ts chat` prints with it:
 
 - `scene` — where it was spoken: the page's `path`, `title`, and `screen`, the
   text visible on screen outside the chat and not hidden by CSS (the deck's
@@ -548,36 +549,62 @@ voice line carries and what `eval.ts chat` prints with it:
   Captured by `pageScene()` (`packages/debug-chat/src/scene.ts`) when the line
   is sent; voice lines only (`cleanScene` in `wire.ts`).
 - `context.selection`, when something was attached;
-- the thread's other kept lines.
+- the thread's other kept lines, before and after it, **the lane's own replies
+  included** (so a word the lane said, "flag", completes his "fl").
 
-The hub holds every edit to that (`polishCheck` in
-`packages/debug-chat/src/polish.ts`, on the words as `Intl.Segmenter` splits
-them, the same for every script): punctuation, spacing, case and width change
-freely (marks inside a word too: cant → can't); a replaced run must be in the
-context as whole words ("now" is not in "snow"), must not merely drop or add
-characters (不要 → 要 is a removal), and stays within 2x the length of what it
-replaces (the same stretch of audio); a removed run only if it repeats what
-is next to it; added words never. A refusal reads `not polished, the raw line
-stands: …`.
+**What `polishCheck` takes** (`packages/debug-chat/src/polish.ts`, on the words
+as `Intl.Segmenter` splits them; each rule unit-tested in `unit/stt-polish.test.ts`):
 
-**Off switch.** `stt.polish-off` at `/dev/flags` (docs/feature-flags.md):
-on, every edit is refused (`polish is off …`) and the chat keeps only what was
-heard. The hub asks the main Worker's `DebugSessions.flag()` on each edit; only an
-answer of exactly `false` lets polish through (busy or an error: the raw line
-stands). A main Worker without `flag()` means not off, so deploy order does
-not matter. Off (the default) is the behaviour above.
+| change                                                      | allowed when                                                                                                                                                                         | example                                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| punctuation, spacing, case, width (marks inside a word too) | always                                                                                                                                                                               | cant → can't                                                 |
+| a replaced run (a homophone)                                | the new run is in the context as whole words, and within 2x the length of what it replaces                                                                                           | 流失 → 流式, sink → sync                                     |
+| a truncated word completed                                  | a script that spaces its words; the whole word is in the context and the fragment (≥ 2 letters) is not; same 2x bound                                                                | fl → flag, pinner → spinner                                  |
+| a function word added, or swapped for another               | from `FUNCTION_WORDS`, a small list per script class (Han, Kana, Hangul, Latin, Cyrillic), at most `MAX_FUNCTION_FIXES` (2) a line; no context needed                                | 在房间看书 → 在房间里看书, open settings → open the settings |
+| a removed run                                               | it repeats what is next to it (a stutter)                                                                                                                                            | 我我我想 → 我想                                              |
+| an unclear word as a bracket                                | each candidate, alone in its place, passes the rules above or is a sound-alike of the run it replaces; ≤ `MAX_UNCLEAR_CANDIDATES` (3) a bracket, ≤ `MAX_UNCLEAR_BRACKETS` (2) a line | 票 → （没听清，票？，条？）                                  |
+| anything else added or dropped                              | never                                                                                                                                                                                | 要 → 不要, adding 吗                                         |
+
+- **The function-word lists** hold particles, measure words, articles and
+  prepositions only. Negations and question words (不, 没, 吗, not) are absent on
+  purpose: they are meaning. The lists are data per script class, never per language.
+- **A sound-alike** (unclear brackets only) is the same stretch of audio and
+  spelled within half its letters of the raw run (pinner / spinner) or, in a
+  script that does not space its words, as many characters (票 / 条).
+- **The unclear-word bracket** is an opening bracket, the "didn't catch it"
+  phrase in the line's language, each candidate followed by `?`, and a closing
+  bracket, full-width or ASCII: `（没听清，票？，条？）`, `(unclear, ticket?, strip?)`.
+  The phrases are data, `UNCLEAR_PHRASES` (zh 没听清, en unclear, ja 聞き取れず…);
+  write the one for the line's language. It replaces one raw run. The raw text
+  stays as `raw`, a tap away.
+
+A refusal reads `not polished, the raw line stands: …`, and is logged as
+`debug.polish-refused` with its reason in `wrangler tail lianki-push`, which is
+what to tune the rules from.
+
+**The switch.** `stt.polish` at `/dev/flags#stt.polish` (docs/feature-flags.md):
+**on by default** (polish active). Off: every edit and summary is refused
+(`polish is off …`) and the chat keeps only what was heard. The hub asks the
+main Worker's `DebugSessions.flag()` on each edit, uncached. Only an answer of
+exactly `false` turns it off; a read that fails ("busy", an error) holds the
+edit back (the raw line stands) and logs `debug.polish-flag-unread`. A main
+Worker without `flag()` means on. It replaced the inverted `stt.polish-off`
+(positive flags only, 2026-11-10); migration 0067 carried a stored value over
+inverted. It reaches the owner's thread only (`audience: "owner"`): friends'
+lines are never edited, so there is no one else to widen it to yet.
 
 **The rules** (`DebugHub.edit` in `workers/push/src/debug.ts`, each one unit-tested
 in `unit/debug-hub.test.ts`). `{type:"edit", id, text}` is accepted only if:
 
 - the sender holds a live owner grant (chat, or eval, which implies chat); a
   pairing made for a friend never may;
-- the target is the owner's **latest** line in the owner thread (agent replies
-  after it do not count; any earlier line is refused);
-- that line has `source: "stt"`;
+- the target is among the owner's **last `EDITABLE_LINES` (5)** lines in the
+  owner thread (agent replies do not count; a line inside a summary is not one
+  of them; anything older is refused);
+- that line has `source: "stt"`, and is not a summary;
 - it was polished fewer than `MAX_EDITS` (3) times, and the text changes.
 - the polish passes `polishCheck` against the raw text and the context;
-- `stt.polish-off` is not on.
+- `stt.polish` is not off.
 
 Friends' threads and lines can never be edited. On success the stored line
 keeps the first STT text as `raw` (only the first), takes the polished
@@ -593,6 +620,108 @@ never read aloud again. A small muted sparkle after it marks it polished
 the raw STT text, muted; another tap goes back. The icon is one slot:
 `POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
 `polishedIcon` prop.
+
+### Summaries
+
+Room talk and other people's voices reach the chat as his voice lines. The
+lane may collapse a run of them into **one short line saying what was said**,
+`（旁人在聊租房，嫌贵）`. The owner, 2026-11-10: sometimes he says something
+meaningful and wants to be heard and kept company, so a summary **keeps the
+meaningful content and is never reduced to "noise"**. A summarised line can
+still be answered, warmly, like any other: if what was said matters to him,
+reply to it.
+
+```bash
+bun scripts/dev/eval.ts edit --summary --last 2 --no-pair "（旁人在聊租房，嫌贵）"
+bun scripts/dev/eval.ts edit --summary <id1> <id2> --no-pair "（旁人在聊租房，嫌贵）"
+```
+
+`{type:"summary", ids | last, text}` (`DebugHub.summarise`) is a separate kind
+of edit: the word rules do not apply. It is accepted only if:
+
+- the sender may edit (as above), and `stt.polish` is not off;
+- every line is the owner's, `source: "stt"`, among his last `EDITABLE_LINES`,
+  not a summary already, not still being spoken;
+- the lines are **consecutive in the thread**: nobody, the lane included, spoke
+  in between (a reply to one of them keeps it apart);
+- `summaryCheck` passes: one sentence, at most `SUMMARY_SHARE` (40%) of the raw
+  length, and more than one word (a bare "（杂音）" is refused).
+
+**Nothing is deleted.** The run's first line takes the summary as its `text`,
+every line's heard text joined as its `raw`, and `summary: {at, by, ids}`. The
+other lines stay stored as they were, with `collapsedInto: <first id>`. The
+account's history (docs/chat-history.md) keeps every line as it was and gains
+the summary as a line of its own (`<first id>.summary`), so the learning
+partner can search and review both later. Listeners hear `{type:"edited", …,
+summary}`.
+
+**On the page.** The collapsed lines are hidden (`applyEditTo`, the widget's
+message list). The first shows the summary with a small visible tag (摘要 /
+Summary / 要約, tooltip "summary of what was heard, tap to see the lines"); a tap
+shows every line as heard, another tap goes back. A summarised run takes no
+more merges or polishes.
+
+### Merged passages
+
+The owner, 2026-11-11 01:12–01:13 JST: polish his voice lines more boldly. A
+**run** of his consecutive voice lines becomes **one fluent passage**: his own
+words joined, with connectives and fragment fixes, the meaning unchanged.
+
+**When the lane merges (its brief).**
+
+- A run is his voice lines with **nothing in between**. It **ends at any other
+  message**: the lane's reply, an ask card, anyone else's line, a typed line.
+- A run also ends at a **change of topic**. Each run becomes one passage. Unsure
+  whether the topic changed: **do not merge** (polish lines one by one, or leave them).
+- Keep his meaning and his voice: join the fragments, fix where STT cut a
+  sentence, add the connectives (然后, 所以, and, so) that make it read. Never add
+  a request, a negation, a question or a fact he did not say.
+- Room talk is not a passage: that is a summary (above).
+- Merge, then reply to the passage.
+
+```bash
+bun scripts/dev/eval.ts edit --merge m1,m2,m3 --text "我想把那个按钮放到右边，然后把颜色改成红色。" --no-pair
+echo "passage" | bun scripts/dev/eval.ts edit --merge m1,m2 --text - --no-pair
+bun scripts/dev/eval.ts edit --unmerge m1 --no-pair      # take it back
+lianki-dev edit --merge m1,m2 --text "…"                  # the same, from a lane
+```
+
+`{type:"merge", ids, text}` (`DebugHub.mergeRun`) is accepted only if:
+
+- the sender may edit (a live owner grant, as above; never a friend's pairing),
+  and `stt.polish` is not off;
+- 2 to `MERGE_LINES` (12, `wire.ts`) ids, every one his `source: "stt"` line
+  among his last `MERGE_LINES` lines, not a summary or a passage already, not
+  hidden inside one, not still being spoken;
+- the lines are **consecutive in the thread**: the hub refuses ids with any
+  message between them, and names it (`message a1 (agent) is between them`);
+- `mergeCheck` (`polish.ts`) passes. The per-line word rules of `polishCheck`
+  do **not** apply to a merge; instead the passage must have text and be at most
+  `MERGE_RATIO` (1.3) times the lines it joins, in characters, plus
+  `MERGE_SLACK` (8) for connectives. Defaults in one place; the function takes
+  others.
+
+**Nothing is deleted.** The run's first line keeps what it read in `premerge`
+(text, raw, polish mark), takes the passage as its `text`, every line's heard
+text joined as `raw`, and `passage: {at, by, ids}`. The other lines stay stored
+as they were, with `collapsedInto: <first id>`. The account's history
+(docs/chat-history.md) keeps every line and gains the passage as a line of its
+own, `<first id>.merged`. Listeners hear `{type:"edited", …, passage}`; logged
+as `debug.passage` (lines, length, heard length) or `debug.passage-refused`.
+
+**On the page.** One bubble: the passage, with a small visible tag "Merged 3"
+(合并 3 句; `ui.merged`, tooltip `ui.mergedTip`, 16 locales). A tap shows every
+line as heard, another goes back. The ↩ beside it (the same undo as a
+continuous-speech merge, `debug-chat-unmerge`) sends `{type:"unmerge", id}`.
+
+**Undo** (`restorePassage`): his page's ↩, or the lane's `edit --unmerge <id>`
+(`{type:"unmerge", id}` from a controller with an edit grant). The first line
+reads again exactly what it read before (a polish it had comes back), the other
+lines lose `collapsedInto`, the history drops `<first id>.merged` (op `drop`,
+derived ids only). Listeners hear `{type:"edited", …, restored:[…]}`. Not gated
+by the flag. Restored lines may be merged again.
+
+A passage takes no polish, summary or continuous-speech merge: undo it first.
 
 ## Continuous speech amends the last line
 
@@ -686,7 +815,7 @@ An undo: `{type:"edited", …, split:[{id, text, at}…]}`.
   passage-end (a page gone) an `edit` is taken again, but nobody is told: the raw stands.
 - The rules are `polishCheck`'s, unchanged. New: a merged line's parts are in its
   context, so a word later in the passage may correct an earlier one (流失 → 流式).
-- `stt.polish-off` on: merges happen, no polish-due goes out, every edit stays refused.
+- `stt.polish` off: merges happen, no polish-due goes out, every edit stays refused.
 - A single voice line polishes as before, at once. No polish-due, so no extra wake.
 
 **Cost.** Polish is the lane's Claude turn; the hub calls no model, so nothing new
@@ -695,7 +824,7 @@ are N wakes (each `edited` is a wake, as the chat line was) plus one for `polish
 and exactly one polish, however long the passage; flag off, nothing. `MAX_EDITS` (3)
 still caps a line's polishes, and a settled line takes no more parts. Hub: one flag
 read per 30 s on voice lines (`flag()`'s budget is 60 a minute), one storage write per
-merge, one uncached `flag()` read per passage for `stt.polish-off`.
+merge, one uncached `flag()` read per passage for `stt.polish`.
 
 ### Undo
 
@@ -726,8 +855,11 @@ split lines merge no further. It works with the flag off too.
 The chat menu's **Voiceprint** (owner pages with a local STT) opens a panel
 over the bar (`VoiceprintPanel.tsx`, `voiceprint.ts`): enrol this device
 (a consent card first, nothing captured until "I agree, start"), the
-sentences to read, and "Delete my voiceprint" (a confirming tap). The print
-lives only on the Mac; voice lines it verified as him get a small green
+sentences to read, "Save to my account" / "Restore from my account" (the
+features, never audio, encrypted in his account; flag `stt.voiceprint-cloud`),
+and "Delete my voiceprint" (a confirming tap; the Mac and the account). The
+print lives on the Mac, and a copy of its features in his account once he
+saves it there; voice lines it verified as him get a small green
 check (`VoiceMark`). The same rule as recording: starting enrolment and
 deleting are taps, never voice. Details: [local-stt.md](local-stt.md),
 "Voiceprint".
@@ -761,9 +893,38 @@ chat` prints it as an `answered` line.
   chatted once). They never see the owner's asks and cannot answer them; their
   answers reach listeners tagged with their `thread`.
 - The card greys out after the tap, shows the choice, says "Expired" past the
-  deadline, and stays in the history. A page from before this change (no
+  deadline ("Withdrawn" once the agent takes it back, below), and stays in the history. A page from before this change (no
   `onAnswer`) falls back to sending the choice as a typed line — that is
   **not** a tap-grade answer.
+
+### Withdrawing an ask
+
+An ask that became obsolete (the question was settled another way) can be
+taken back, so the owner no longer has to tap it (owner, 2026-11-03):
+
+```bash
+bun scripts/dev/eval.ts withdraw 054357d6-db3 --no-pair   # by askId or message id
+bun scripts/dev/eval.ts withdraw --last                  # latest open ask, owner's thread
+bun scripts/dev/eval.ts withdraw fa1 --to friend@x.com   # a card sent to a friend
+```
+
+- Wire: `{type:"withdraw", id, to?}` (`id` is the askId or the line's id,
+  validated in `lib/dev-eval.ts`); the hub answers and broadcasts
+  `{type:"withdrawn", id, askId, thread, withdrawnAt}` to that thread's
+  pages and the approved listeners (`eval.ts chat` prints it).
+- Hub rules (`withdraw()` in `workers/push/src/debug.ts`): a live chat grant
+  (never a pairing for a friend); only the thread named (`to`, as for `ask`:
+  the owner's by default, else the friend's the card was sent to; a card is
+  never found from another thread); only an agent line carrying an ask; only
+  while open — answered, expired or already withdrawn is refused. It stamps
+  `ask.withdrawnAt` on the kept line (an agent's own `ask` can never preset
+  it: `parseAsk` drops it), so `askState` says `"withdrawn"` and a later tap
+  is refused (`ask … is withdrawn`). `ask --wait` on that ask fails.
+- Page: the card collapses to a greyed "Withdrawn" (`askWithdrawn`, 已撤回)
+  with no options. It is never read aloud (speak-rules.ts rule 3): a line
+  missed while hidden is not read on return, a reading under way stops, and
+  the after-reload resume skips it. Compact mode drops it (only open asks
+  show there).
 
 **Security:** a hub-stamped `source:"tap"` answer from the owner's thread is
 a high-confidence approval — a deliberate touch on the owner's signed-in
@@ -837,19 +998,38 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
   verified `owner`). The root layout reads the flag once per request and passes
   it down (`OwnerBoots` → `DebugEval` → the widget's `fullScreen` prop). Never
   on another site (`embedded`: the userscript's widget, `/embed/partner`).
-- **The control.** A round button with its own SVG (four corners out; in full
-  screen, four corners in), 32 px over the open panel's top corner, 40 px in
-  full screen at the top corner under the notch; both have the 40 px tap area
-  (`tap-40`). Labels `fullScreen` / `fullScreenExit` (learning-partner.content.ts,
-  16 locales with context; `ui-strings.ts` en/zh/ja for hosts with no strings).
-- **Ways back.** The same button, Escape (after the tree's and the + menu's own
+- **In by a drag, no button** (owner, 2026-11-09 18:25 JST: "no dedicated
+  fullscreen button; it should happen when the input box is dragged to the very
+  bottom"). Dragging the open chat (its grip or the bar's edge) until its bar is
+  pushed flush against the bottom edge (the drag keeps it on screen, so it rests
+  flush within half a pixel) enters full screen on the drop (`dropEntersFull`).
+  Only the bottom: the top edge would hide the history (18:26 JST), so a bar
+  pushed against the top stays a panel there. **Before the release** (owner,
+  2026-11-10): the moment the drag meets that condition, a glass sheet grows
+  up from the bottom edge to the whole screen, behind the chat
+  (`FULL_HINT_STYLE`, `data-testid="debug-chat-full-hint"`), with a light
+  haptic where the browser has `navigator.vibrate` (not iOS); backing off the
+  edge folds it away (`fullHintStep`). Reduced motion: it appears at once. In full screen a drag on the grip
+  or the bar's edge that goes `FULL_LEAVE_PX` (48 px) up leaves it
+  (`dragLeavesFull`): the panel comes back, its own size, and follows the finger
+  from there; a smaller wobble, sideways or down, stays. Without a drag (the
+  keyboard, a screen reader): the menu's **Full screen** row (a double tap on the
+  grip), `fullScreen` in 16 locales. The old ⤢ toggle over the panel's top
+  corner is gone; the Gantt's own ⤢ is unrelated.
+- **The way out** (owner, 18:25 JST: "an exit button is still needed"): a pill,
+  ✕ and the words `fullScreenExit`, at the top corner under the notch, 40 px tall
+  with the 40 px tap area (`tap-40`), focusable, AA in both themes
+  (learning-partner.content.ts, 16 locales with context; `ui-strings.ts`
+  en/zh/ja for hosts with no strings). Left by it, Escape or the menu row, the
+  panel is as it was, where the drag dropped it (on the bottom edge).
+- **Ways back.** The exit button, a drag up, Escape (after the tree's and the + menu's own
   Escape; it never turns the mic off), and Back: entering by a tap pushes one
   history entry through the host's `backToClose` (Lianki: `openBackToClose`,
   docs/ui-state.md "Back closes an overlay"), same URL so `?live=` stays.
   Full screen restored by a reload takes its entry at the first press or key
   (the browser may skip an entry pushed with no gesture), and reopened from the
   pill at once, so Back leaves full screen first there too (owner, 2026-11-08;
-  `fullScreenBack`, unit/chat-fullscreen-back.test.ts). Left by the button or
+  `fullScreenBack`, unit/chat-fullscreen-back.test.ts). Left by the exit button, a drag up or
   Escape, the entry is consumed: no orphan, no double back. Minimizing to the
   pill leaves it; reopening comes back full screen, since the choice is kept.
 - **Nothing remounts.** The same section, log, input and mic are restyled in
@@ -892,8 +1072,8 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
 
 Checks: `bun scripts/dev/debug-chat-fullscreen-qa.mjs [--shots <dir>]` (silent
 Chromium and WebKit, 414×896, 390×844, 320×568 and 1280×800, light and dark; the gate,
-toggle, the sidebar, the bar's and input's widths, overlaps, the page beside the
-sidebar, draft, focus, the same elements, the anchor line, side scroll, Escape,
+drop on the bottom edge (not the top, not short of it), the drag up out of it, the exit button (✕ and words, 40 px, AA, keyboard focus), the menu row, no enter button, the sidebar, the bar's and input's widths, overlaps, the page beside the
+sidebar, draft, the same elements, the newest line on entering, side scroll, Escape,
 Back, reload, an emulated keyboard, scroll-down, the arrow and a card). Not
 covered by emulation: a real iPhone home-screen app's keyboard, its pan, and the
 safe areas.
@@ -913,7 +1093,8 @@ transcript are unchanged and keep working.
   synced. Turn it on in the window where you want it (the installed /words
   app), and it stays off everywhere else.
 - **Whole chat back**: a tap on the input (focus) or on the compact line, or
-  a vertical drag on the mic or the empty input (the full-screen log).
+  a vertical drag on the empty input (the full-screen log). The mic is push to
+  talk now (docs/voice-mode.md, "Push to talk").
 - **Folding again** (`compact-view.ts` `foldIn`): after the latest hold —
   1.5 s after the input's blur, 8 s after a tap on the line, 3 s after the
   last scroll or touch in the log, and a new reply's reading time
@@ -924,6 +1105,16 @@ transcript are unchanged and keep working.
   newest two), their pills tappable; an ask that is the last message is the
   line itself, in full.
 - **State tree**: when the tree has the log's place, it stays.
+- **New lines shimmer** (owner, 2026-11-10; `shimmer.ts`): a reply that
+  arrived live (not the history loading in, not the user's own line) gets
+  one soft band sweeping across its text — in the log, the compact line and
+  the minimized floating lines — lasting exactly its reading time
+  (`float-lines.ts dwellMs`, the one source the minimized chat uses), then
+  it is plain text. A mask, alpha only, so the colour and halo are kept.
+  While ↑/↓ on the mic scrubs the minimized history, the lines shown pulse with
+  the same band, ending `SCRUB_PULSE_MS` (two long-presses) after the last
+  step. Off under prefers-reduced-motion and the app's "Turn off
+  animations". Tests: `unit/chat-shimmer.test.ts`.
 
 Checks and screenshots: `bun scripts/dev/debug-chat-compact-qa.mjs --shots
 
@@ -1135,8 +1326,7 @@ focused, a wheel or a click over the history must reach the page under it.
 One rule, `logEngaged` in `log-engage.ts`: the history takes the pointer
 (`LOG_TOUCH`: wheel and drag scroll it, its lines select) while
 
-- the input is in use (focused, or the + menu / its file picker up),
-- the mic is on, or
+- the input is in use (focused, or the + menu / its file picker up), or
 - it is **held**: a **press-and-hold on the history** (500 ms, the
   platform's long-press, within 10 px) engaged it and selected the line
   under the finger ("rest": the log keeps its height, so the line stays
@@ -1145,8 +1335,16 @@ One rule, `logEngaged` in `log-engage.ts`: the history takes the pointer
   to the newest lines, so the drag selects what it started on); or a
   selection is open in the chat. A press anywhere outside the chat drops it.
 
-At rest nothing in the history takes a pointer (the polish mark, sent files
-and ask-card buttons keep theirs), so a wheel scrolls the page and a click
+The mic being on does **not** engage it (owner, 2026-11-10, iPhone on
+/reader): with the input not focused, a drag over the history scrolls the
+page underneath. At rest the log is no scroll box either
+(`overflow-y-hidden`; code still scrolls it to the newest lines, and a wheel
+over the bar moves it), so a drag that starts on a link or a card in it pans
+the page, while a tap on that link or card still works. Full screen, the log
+takes the touch as when typing.
+
+At rest nothing in the history takes a pointer (the polish mark, sent files,
+links and ask-card buttons keep theirs), so a wheel scrolls the page and a click
 lands on it. **How to copy now:** press and hold a message (mouse or
 finger): it is selected; ⌘C / Copy. Or tap the input first, then
 long-press / drag a line as before. On the phone a second long-press on the
@@ -1215,6 +1413,7 @@ There is no time of day in it, and no setting
 | FYI, progress, "deployed", "PR opened", deploy notices, anything unasked | `eval.ts say --quiet "…"` | never                          |
 | the answer to what he just said or asked                                 | `eval.ts say "…"`         | yes, by the page's usual rules |
 | an ask card (approval needed; `eval.ts ask`, PR #384)                    | `eval.ts ask …`           | yes, like a plain line         |
+| a withdrawn ask card (`eval.ts withdraw`)                                | `eval.ts withdraw …`      | never (nor read on later)      |
 
 Default to `--quiet` whenever the line is not a reply to him. `--loud` is
 deprecated: `eval.ts` still accepts it and prints a note, and the line goes
@@ -1228,15 +1427,41 @@ in `debug.say`.
 
 **On the page** (`packages/debug-chat/src/speak-rules.ts`, gated in
 `voice.ts` `gateVoice`), on top of the usual rules (mic on; or the speaker
-toggle on and either the mic used in this tab or the input focused):
+toggle on and either a phone, the mic used on this device, or the input focused):
 
-0. **Mic used here, sticky** (owner, 2026-11-04: "最近用过 mic 输入的话，回我的打字消息也要用语音"):
-   once the mic has been on in a tab, replies are read there with the
-   toggle on whether the input has focus or not, typed lines included
-   (sessionStorage `lk:agent:voiced`). There is no time window: it lasts
-   until he turns "Replies read aloud" off, which clears it; his mute always
-   wins. The menu row says "Replies read aloud (mic used)" while it holds,
-   "Replies read aloud while typing" when only the focus rule applies.
+- **A phone: the toggle alone** (owner, 2026-11-10): on a touch device
+  (voice-bg.ts `isDesktop` false) every reply is read with the speaker
+  toggle on, focused or not: the focus rule needed the keyboard up, so a
+  reader on /reader heard nothing. The menu row says "Replies read aloud"
+  (`ChatStrings.readAloud`).
+- **Mic used here, sticky** (owner, 2026-11-04: "最近用过 mic 输入的话，回我的打字消息也要用语音"):
+  once the mic has been on, replies are read with the toggle on whether
+  the input has focus or not, typed lines included (localStorage
+  `lk:agent:voiced`; it was sessionStorage, which an iOS PWA relaunch
+  clears). There is no time window: it lasts until he turns "Replies read
+  aloud" off, which clears it; his mute always wins. On a computer the menu
+  row says "Replies read aloud (mic used)" while it holds, "Replies read
+  aloud while typing" (`ChatStrings.readAloudTyping`) when only the focus
+  rule applies.
+- **iOS unlock, any tap on the page** (owner, 2026-11-10 23:48 JST: on
+  /reader his replies were silent again): iOS WebKit drops every
+  `speechSynthesis.speak()` with no event until the page has spoken once
+  inside a user gesture, and each page load starts locked, including a
+  debug device's reload after a deploy. The chat unlocked only on a press on
+  the chat itself, and the dropped sentence held the queue forever, so that
+  reply and every later one stayed silent. Now any tap or key on the page
+  unlocks it (`speech-unlock.ts`; a touch's pointerdown is no activation, so
+  its pointerup or click is the one used), and a sentence that has neither
+  started nor is speaking or pending after `SPEECH_REFUSED_MS` (1 s) counts
+  as refused: logged `{ev:"voice-refused"}`, the reading waits as "blocked"
+  and the next tap anywhere reads on from it. Tests:
+  `unit/speech-unlock.test.ts`, `unit/voice-session.test.ts` ("iOS dropping
+  speak()"). Playwright's WebKit on macOS has no such restriction, so no
+  browser check can show it.
+- **Reconnect**: replies sent while the socket was down come back only in
+  the `history` frame; the newest agent line past the last one this page
+  saw is read (speak-rules.ts `missedReply`). The first connect of a page
+  reads nothing: old history is never read aloud.
 
 1. **Quiet** (`quiet: true`): never spoken, even with the mic on.
 2. **Hidden page or locked screen** (`document.visibilityState` "hidden"),
@@ -1614,6 +1839,20 @@ cover it (owner, 2026-11-08, Android); `scripts/dev/debug-chat-eta-overlap-qa.mj
 checks it at 412×915 and 390×844, light and dark, scrolled up, in and out of
 full screen.
 
+**One glass strip** (owner, 2026-11-10): while the bar shows, it and the
+input row are one bottom strip with one frosted surface. The bar's slot sits
+right over the input row; a layer behind both (`data-testid="debug-chat-strip"`,
+absolute inside the row's grid, reaching `etaH` up) carries the input row's
+own glass (`INPUT_BG`, blur 12 px, saturate 1.5, hairline edge), the input
+row drops its own (`barInGlass`), and the bar drops its track (`EtaBar glass`).
+It is a layer, not a wrapper, because a backdrop-filter on an ancestor would
+become the box of the fixed menus and floating lines inside the row. With no
+bar the input row looks as it always did (it already wore that glass). Off
+while the typing glass is the frame, and full screen. While a task is in
+progress the fill shows activity: a soft light sweeps along it
+(`ETA_SHIMMER_CSS`, its own keyframes since the hot widget has no app
+stylesheet); none when all are done, and none under prefers-reduced-motion.
+
 ### Full-screen Gantt
 
 A tap on the ETA bar (or ⤢ on the state tree's list) opens the Gantt full
@@ -1629,6 +1868,125 @@ its background and see-through (`GANTT_COLORS`, oklch with alpha), so the grid
 and the red Now line show through; the text is AA over every bar composited on
 the panel (unit/gantt-view.test.ts composites in sRGB as the browser does).
 Overdue stays red with a minus; queued bars are fainter and dashed.
+
+**ETA ticks, ranges and the original plan** (owner, 2026-11-10;
+docs/state-tree.md, "ETA history"). The hub's ETA events for each node
+(`etaEvents`, mapped to `TreeEta.ticks` in lib/progress-tree.ts) are drawn
+as short vertical ticks on the bar at their time (`ganttTickX`): a change
+12 px, a confirm 7 px, a status change dotted, all `GANTT_COLORS.tick` (AA
+over the bars). Events of one action share a `changeId` and one time, so
+their ticks line up across rows. A tap on a tick (a 16 px hit area) marks
+that change's ticks on every row and opens a note at the bottom:
+"-25M · main / moved up: A; postponed: B, C" (`tickGroup`,
+`tickGroupText`: each row sorted by its old → new estimate into moved up,
+postponed, estimated (the first), confirmed, status changed). ✕ or Escape
+closes the note first. A range (`--eta 12m-63m`: `TreeEta.min` is the P5,
+`at` the P95) draws the bar solid to the P5 (`GanttBar.solid`) and a tail
+fading out to the P95 (`TAIL_CSS`, a gradient; hatched under reduced motion
+or "Turn off animations"); overdue and the red "-5M" count from the P95. The
+label reads "12–63M" until the P5 passes (`eta.ts etaLabel`, `rangeTime`;
+minutes at both ends up to 99), then the time to the P95. Behind the bar a
+very faint grey ghost (`GANTT_COLORS.ghost`) shows the original plan, the
+first start and estimate (`TreeEta.plan`), when it differs by 2 px or more
+(`ghostShows`). The progress underline and arrow stay as they are. The
+legend line adds `etaGanttLegendTicks`.
+
+**The home view** (owner, 2026-11-10; `gantt-view.ts homeView`, on open,
+on reopening, and on the Now button), on either axis: the rows are sorted
+by end time, expected or actual (`ganttRowsByEnd`); the red Now line is at
+the horizontal centre, past left, future right; the open task closest to
+ending (soonest expected end still ahead; with none, the row ending nearest
+now: `focusRow`) is at the vertical centre (`centreRowTop`). The time axis
+(horizontally only; row height never changes) is zoomed so the
+`GANTT_FIT_PERCENTILE` (95%) duration of that row and its
+`GANTT_FIT_NEIGHBOURS` neighbours either side (`fitSpan`) fills the visible
+width and no more — linear: that span across the width; log: that span
+centred on Now from edge to edge — within the axis's zoom limits. Blank
+space at the head and the tail of the rows (`GANTT_END_SPACE`, half the
+view) gives the scroller's own bounce room before the edge and lets the
+first and last rows be centred; these three are named defaults ready for
+the config store. **Pinch on iPhone**: the touch pinch alone zooms, about
+the fingers' midpoint, which also pans the view as it moves; steps are
+batched to one per frame; two fingers down stop the native pan
+(`touchstart` prevented), and Safari's gesture events, which fire with the
+touches there, only stop the page zoom (before, both zoomed: a double, jumpy
+step). On a Mac trackpad the gesture events still zoom.
+
+The fitted zoom's two defaults (owner, 2026-11-10): `GANTT_FIT_PERCENTILE`
+0.95 and `GANTT_FIT_WIDTH` 0.75 — the P95 duration spans 75% of the width.
+A device can override them in `lk:pref:gantt` (`fitPercentile`,
+`fitWidth`; ui-store.ts ganttPrefs), ready for the config store; no UI sets
+them yet. Compact times pick their unit by size, one formatter for the axis
+and every ETA label (rgui `compactSpan`): Y from a year, then Mo, W, D, H,
+M ("1.1Y", never "400D").
+
+**Categories** (owner, 2026-11-10 23:13–23:14 JST: too many small rows).
+The tasks fold into eight parent rows (`gantt-groups.ts`), the same in the
+full-screen Gantt and the chat's task list: 聊天与语音 Chat & voice, 甘特图与进度
+Timeline & progress, 单词页 Words page, 列表与界面 Lists & interface, 导入与文件
+Import & files, 账号与设置 Account & settings, 发布与 CI Release & CI, 架构与长期
+Architecture & long-term (strings `etaGroup*`, 16 locales, each with its
+context line). Which task goes where is data: `gantt-groups.json` maps
+state-tree path patterns to a category — a path ("/words": it and what is
+under it) or a prefix with "\*" ("/chat/gantt\*"); the longest match wins, so
+"/chat/gantt\*" and "/chat/eta\*" take the Gantt's own tasks out of "/chat";
+an id nothing matches lands in the `fallback` category (架构与长期). Today:
+/chat, /voice, /li, /partner, /vibe, /stt → chat; /chat/gantt\*, /chat/eta\*,
+/chat/waiting\*, /research/gantt\*, /gantt, /plan, /progress, /state-tree,
+/roadmap → timeline; /words; /web, /design, /i18n, /reader, /ui, /dev, /mail,
+/home → lists & interface; /import, /self-intro, /books, /connections, /files,
+/read → import; /my, /profile, /prefs, /links, /membership, /payments, /auth →
+account; /ci, /deploy, /release, /research/affected\*, /gate, /ship, /qa →
+release; /arch, /research, /backlog, /box, /infra, /brand, /legal and the
+rest → architecture. The table is ready for the config store
+(`GANTT_GROUPS_KEY` "gantt.groups", the same JSON, checked by `parseGroups`;
+GanttFull and EtaList take it as `groups`); a category added there without a
+string key shows its `label`. An empty table lists every task as before.
+
+A parent row spans its earliest start to its latest end (a range's P95) and
+reads "Name ×N", the time to its last open end (red, negative past it), and
+its progress: the children's reported pct weighted by each estimate
+(`rollup`). It carries a red "!" when any child waits for the owner ("?" for
+a decision only). **Folded** (the default) it draws every child's bar on its
+one row, each with its own start and end, P5–P95 tail, progress underline,
+done/queued/parked looks and red mark; overlapping bars split into lanes
+(rgui gantt `packLanes`: greedy by start, as many lanes as bars overlap at
+once, no fixed number). The lanes share the usual row height until each would
+be under `GANTT_LANE_MIN_PX` (6 px), then the row grows. A tap on a slice
+opens its category and centres that task's row, outlined for 2 s. **Open**,
+the parent shows its roll-up bar and the children follow as their own rows,
+indented. The ▸/▾ at the left is a real button (`aria-expanded`, label
+`etaGroupToggle` "Tasks in {group}", `.tap-40`). What is open is session UI
+state (`lk:ui:gantt-groups`, ui-store.ts `ganttGroupsUi`), shared by the
+Gantt and the list. Rows sort by end time as before: the categories by their
+last end, the children within. The home view's zoom still fits the tasks
+themselves (`fitSpan` over the flat rows); the vertical centre is the line
+holding the focus task: its folded parent, or its own row. ETA ticks are drawn
+on task rows only (a folded slice is too thin for them); a tick's note still
+reads every task. `scripts/dev/debug-chat-gantt-qa.mjs` checks the folded
+rows (one per category, slices, lanes, buttons, the focus category centred),
+a slice tap, ▾ folding back, and then runs its checks with every category
+open; the open set is kept when the Gantt opens again.
+
+**Done tasks are drawn as they really ran** (owner, 2026-11-11 01:08 JST:
+tasks with long estimates that finished fast still ran to the estimate). A
+done task's bar runs from its start to when it finished (`doneAt`, the
+node's endedAt), all solid and full, with no separate overrun, early or late
+(rgui `ganttBar`; the list's `ganttRow` likewise). Its estimate shows only
+as the faint ghost of the plan (the recorded plan, else start → estimate).
+Parent rows, lanes, the axis range, the sort and the home view's zoom use
+the actual end for done tasks; open tasks keep their P5–P95 tails.
+
+**Parked tasks** (owner, 2026-11-10: "9.1H remaining" on a parked item read
+as running): a node blocked, or waiting for the owner (status
+waiting-owner, or an open decision or approval nobody works on;
+lib/progress-tree.ts `parkedOf`), is `parked` on its ETA. In the Gantt and
+the chat's task list its bar is hollow and hatched (`parkedBar`) with no
+progress fill or overrun, its time reads "reminder in 9.1H"
+(`etaReminder`), and one waiting for the owner has a red "!" before its
+name ("?" for a decision), labelled "Waiting for you" (`etaWaitingYou`,
+the late red, AA on the track in both themes). A parked task is never the
+row the home view centres on.
 
 The axis math (scales, ticks, bars) is our component library's gantt module,
 `@snomiao/rgui/gantt` ([rgui.md](rgui.md)); `gantt-view.ts` re-exports it.

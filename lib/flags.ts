@@ -5,9 +5,14 @@
  * Rules:
  * - Only keys listed here exist. The store refuses to write any other key, and
  *   ignores a stored row whose key is not here.
- * - Every default is OFF (`default: false`), so a flag that cannot be read,
- *   a fresh database, and a new flag all mean "off". Ship a new feature dark
- *   behind a flag; when it has been on for good, delete the flag and its checks.
+ * - Every flag is positive: ON provides a feature, never forbids one (owner
+ *   rule, 2026-11-10). No "-off" or "disable" keys.
+ * - A default is OFF (`default: false`) unless the flag guards something that
+ *   is already live: then `default: true`, and a stored row overrides it. A
+ *   new feature ships dark behind a default-off flag; when it has been on for
+ *   good, delete the flag and its checks.
+ * - A flag that cannot be read (D1 error, no D1) is OFF, whatever its default
+ *   (`closedFlags`).
  *
  * Client-safe: no D1 here (the server side is lib/flags-store.ts).
  */
@@ -75,8 +80,11 @@ export type PrereqReason = keyof typeof PREREQ_REASONS;
 export interface FlagDef {
   /** Shown on /dev/flags: what turning it on does (the owner's language). */
   description: string;
-  /** Always off; a flag is a switch the owner turns ON. */
-  default: false;
+  /**
+   * Its state while no row is stored. Off for a new feature; on only for a
+   * flag that keeps something already live switchable (`stt.polish`).
+   */
+  default: boolean;
   /**
    * Checks that must all pass before the flag may be turned ON (the API
    * refuses otherwise; /dev/flags greys the switch). Turning OFF is always
@@ -112,6 +120,18 @@ export const FLAGS = {
     requires: ["komoju.live-key"],
     money: true,
   },
+  // No `audience`: the page and its rail / home links for everyone; ON is the shipped state.
+  "today.goal": {
+    description:
+      "今日目标（/today）：全屏的一页，只有一个数字「还剩 N 张卡片」和一条进度条，加一个「开始」按钮去 /words。数字来自单词列表的真实计数（现在到期的复习卡，和 /words、首页的「到期」一样）；进度条是今天已复习的卡片占（已复习 + 还剩）的比例。亮色金底红字，暗色红底金字。侧栏和首页都有入口。关闭 = 没有这个页面（404），也没有入口。",
+    default: true,
+  },
+  // No `audience`: a walkthrough for everyone on /words; ON is the shipped state.
+  "words.onboarding": {
+    description:
+      "/words 首次引导：第一次打开单词列表时播放一段约五个场景的 SVG 动画（点卡片看答案、按感觉评分、处理过的卡片变淡可撤销、之后卡片在下面再出现、双指上下捏改变卡片高度），可跳过；看完或跳过后缩进标题旁的圆圈「?」按钮，点它重播。是否看过跟随账号同步。关闭 = 不自动播放，也没有「?」按钮。",
+    default: true,
+  },
   "words.voice-mode": {
     description:
       "/words 语音口令模式：设置里出现「语音口令」开关，打开后不用唤醒词，说「下一张、上一张、上下左右、重来/困难/良好/简单、显示答案、再读一遍、撤销、退出语音模式」来操作。关闭时只有站长本人能预览。",
@@ -124,10 +144,16 @@ export const FLAGS = {
     default: false,
     audience: "owner",
   },
-  "stt.polish-off": {
+  "stt.voiceprint-cloud": {
     description:
-      "关闭语音消息的自动润色：打开后，助手不能再改写你的语音消息，聊天里只留识别原文。关闭（默认）= 照旧：助手只按上下文（最近的消息、当前页面、屏幕上的词）改错字和标点，不改原意；原文一直保留，点 ✨ 可看。",
-    default: false,
+      "声纹存到你的账号：声纹面板里多出「保存到我的账号」「从账号恢复」，你按一下、过一次 Face ID / Touch ID，Mac 上的声纹特征（描述声音的数字，不是录音）就加密存进你的 Lianki 账号，只有你的账号能读，随时可删；换一台 Mac 也能恢复。删除声纹时 Mac 和账号里的一起删。只对有 dev 权限的账号开放。关闭 = 声纹只在 Mac 上，账号相关的按钮和接口都没有。",
+    default: true,
+    audience: "owner",
+  },
+  "stt.polish": {
+    description:
+      "语音消息的自动润色：打开（默认）时，助手可以按上下文（最近的消息和助手的回复、当前页面、屏幕上的词、选中的文字）改你语音消息里的错字、标点、被截断的词和漏掉的小词（的、了、在、里这类），不改原意，最近 5 条语音都能改；原文一直保留，点 ✨ 可看。关闭 = 助手不能再改你的语音消息，聊天里只留识别原文。",
+    default: true,
     audience: "owner",
   },
   "stt.merge": {
@@ -135,6 +161,14 @@ export const FLAGS = {
       "连续语音合并：打开后，你接着说的话如果明显是上一句的延续，会并入你刚发的那条语音消息，而不是多出一个气泡；助手收到的是完整的一句，等你说完后再按上下文润色一次整段。只并你自己刚发的语音、中间没有任何人说话、没有问答卡片；语音口令不会被合并。合并后的消息有 ✨ 和撤销按钮，撤销可拆回原来的几条。关闭（默认）= 照旧：每段语音各发一条。",
     default: false,
     audience: "owner",
+  },
+  // Lianki's speech servers for other accounts (docs/local-stt.md, "Lianki's speech
+  // servers for everyone"): owner decision 2026-11-11 00:3x JST, shipped dark.
+  "stt.worker": {
+    description:
+      "Lianki 语音服务器对其他账号开放（第一阶段）：名单里的账号（/dev/stt-access 添加/移除）在麦克风里用 Lianki 的语音服务器（SenseVoice）流式识别：先走 WebRTC 直连（STUN，TURN 备用），再走 WSS 隧道，最后才是 Workers AI 云端。暂时免费，每句话按云服务价格记进成本账（/dev/costs，speech.stt.local）。每人同时 1 个会话、每分钟最多 6 张票、每天 30 分钟、一句最长 40 秒、一次会话最长 15 分钟，机器容量 3 路留 1 路给你（都在 /dev/config 改）。用户看到的只有「Lianki 的语音服务器」。关闭（默认）= 相关接口一律 404，你自己的麦克风照旧不变。",
+    default: false,
+    audience: "allowlist",
   },
   "chat.eta-bar": {
     description:
@@ -170,10 +204,17 @@ export const FLAGS = {
   },
   "import.any": {
     description:
-      "导入词表：所有登录用户都能在 /import 放进或粘贴 .txt / .csv / .tsv 词表（一行一个词，或带「单词/释义/例句」等列名的表格），先看预览（新词几个、已经有几个、跳过几个），确认后变成 /words 里的一个新词表；已经有的词不重复添加。原文不保存，只记下导入结果。关闭（默认）= 只有你本人能看到。",
+      "导入词表（所有登录用户，免费，不扣额度）：在 /import 和 /words 顶上的「导入」按钮里，选预制词组，或放进/粘贴 .txt / .csv / .tsv / Excel 词表（一行一个词，或带「单词/释义/例句」等列名的表格，有模板可下载），先看预览（新词几个、已经有几个、跳过几个），确认后变成 /words 里的一个新词表；已经有的词不重复添加。原文不保存，只记下导入结果。关闭时只有你本人（isDev）能用。",
     default: false,
     group: "words",
   },
+  "words.import-ai": {
+    description:
+      "导入：AI 把已保存的文件变成单词：/words「导入」面板第三项「任意文件」里，每个已保存的文件旁多一个「用 AI 变成单词」按钮。服务器读出这个文件的文字（文本、PDF、Word、网页、字幕 .srt、Excel、照片），交给 DeepSeek（Cloudflare Workers AI）整理成和 CSV 模板一样的表（单词 / 释义 / 例句），然后走 CSV 导入同一条路：先看生成的 CSV（可下载、可修改）和预览，确认后才添加。用户自己的额度付费：先按这个文件最多可能花的扣住，做完按实际结算、多的退回；额度不够就说不够，不缩小；超过扣住的额度就停，不多扣。只有额度够最小一次扣住的人才看得到按钮。打开 = 所有登录用户（额度够的）；关闭（默认）= 只有有 dev 权限的人（额度够的，管理员免费）。",
+    default: false,
+    group: "words",
+  },
+
   "read.gdoc-stream": {
     description:
       "Google 文档实时同步：所有用户都能在 Google 文档页面上用用户脚本打开“同步到 Lianki”，这个文档之后每次改动都会更新到自己的 /reader，打开 /reader/<id>?streamingFrom=google-docs 的阅读页会实时更新并重新标记词。只同步用户自己打开开关的文档，且要保持文档标签页开着。关闭（默认）= 只有你本人能用。",
@@ -189,10 +230,20 @@ export const FLAGS = {
       "YouTube 歌词例句（docs/youtube-song-examples.md）：所有登录用户都能在 /reader 点「YouTube 歌曲」，贴一个 YouTube 链接和带时间的歌词（LRC、SRT 或 VTT），每句歌词变成 /reader 里的一段，旁边的 ▶ 在弹窗里用 YouTube 官方播放器（youtube-nocookie）只播这一句（t0→t1）。从歌词做的单词卡会带上那一句：在 /words 和阅读器的单词复习里，例句前也有 ▶，点了就唱那一句。不下载、不保存任何音视频，只存视频 id；歌词只存在用户自己的账号里，不共享。关闭（默认）= 只有你本人能用，其他人 /reader/youtube 是 404，也看不到 ▶。",
     default: false,
   },
-  "books.catalogue": {
+  // No `audience`: /library, the catalogue, for everyone; ON is the shipped state.
+  // Replaced `books.catalogue` (2026-11-10), on for everyone since 2026-11-05;
+  // its stored row is ignored now (a key not listed here).
+  "library.catalogue": {
     description:
-      "公版书库 /books：所有登录用户都能看到公版书目录（只收美国公版且所有作者/译者/编者去世 80 年以上的原文，每本标明来源和授权），点一下导入成自己的书，之后在 /reader 里阅读。原文不进仓库，服务器按需从来源（Project Gutenberg）下载一次，缓存在 R2 里给所有人共用。关闭（默认）= 只有你本人能看到和导入。",
-    default: false,
+      "书库 /library：所有人都能看到书目（每本只在首次出版国、你所在的国家和美国都属于公有领域时列出，标明来源和授权），登录后点一下「加入我的阅读」，书就进了 /books「我的书」和 /reader。原文不进仓库，服务器按需从来源下载一次，缓存在 R2 里给所有人共用。关闭 = /library 是 404，没有入口；有 dev 权限的人仍能看到。",
+    default: true,
+    group: "read",
+  },
+  // No `audience`: /books, the user's own shelf, for everyone; ON is the shipped state.
+  "books.mine": {
+    description:
+      "我的书 /books：每个登录用户的书架，放从书库 /library 加入的书和自己导入的书（EPUB 或纯文本，存在「我的文件」的「书」文件夹里，只有本人能看到；服务器解析章节、书名、作者、封面和语言，不用 AI、不扣额度）。旧的 /books/<语言>/<书名> 链接：书在书架上就留在 /books，不在就 308 转到 /library。关闭 = /books 不再是书架，旧链接一律转到 /library，侧栏没有「我的书」；有 dev 权限的人仍能看到。",
+    default: true,
     group: "read",
   },
   "my-box": {
@@ -210,7 +261,7 @@ export const FLAGS = {
   },
   levels: {
     description:
-      "学习等级（种子→莲 / 炼气→炼虚）：所有用户都能看到自己的等级（未注册 / 免费 / 付费，付费后按累计有效学习天数升：100、365、1000 天）——登录后导航栏头像旁有一个小徽章，/profile 上有等级卡片（徽章、等级名、学习天数、离下一级还差几天；未注册的访客在 /profile 也能看到自己的等级和注册提示）。学习天数不论开关都在记录。关闭（默认）= 只有你本人能看到。",
+      "学习等级（种子→莲 / 炼气→炼虚）：所有用户都能看到自己的等级（未注册 / 免费 / 付费，付费后按累计有效学习天数升：100、365、1000 天）——登录后导航栏头像旁有一个小徽章，/my/profile 上有等级卡片（徽章、等级名、学习天数、离下一级还差几天；未注册的访客在 /my/profile 也能看到自己的等级和注册提示）。学习天数不论开关都在记录。关闭（默认）= 只有你本人能看到。",
     default: false,
   },
   "read.vibe": {
@@ -244,6 +295,18 @@ export const FLAGS = {
     default: false,
     audience: "owner",
   },
+  // No `audience`: on (the default), every /words list review has it.
+  "words.pinch-card-height": {
+    description:
+      "单词列表复习里双指上下捏合改卡片高度：两指在列表上竖着捏拢 = 卡片变矮、一屏更多词；张开 = 卡片变高、每张显示更多（例句、意思）。最矮只剩单词，最高把屏幕上的卡片内容全部显示出来；松手后停在整行上。高度跟着账号同步到所有设备。页面不会被缩放，单指滑动照旧。打开（默认）= 所有人都能捏；关闭 = 捏合不改高度，已选的高度也不再生效（恢复默认高度）。",
+    default: true,
+  },
+  "words.shatter": {
+    description:
+      "单词列表里倒计时结束、已经不能再滑的卡片（显示「↓ 回来了」的那张）盖上一层碎玻璃裂纹：印泥红的裂缝带一点金色反光，画在文字下面，字照样清楚。倒计时在屏幕上结束的那一刻裂开一次（约 0.6 秒），之后静止；每张卡的裂纹固定不变（按卡片算），减少动画时直接显示静止的裂纹。还有时间的卡片不变。打开（默认）= 有 dev 权限的账号（现在是你本人）能看到；关闭 = 谁都看不到。",
+    default: true,
+    audience: "owner",
+  },
   "membership.email-invite": {
     description:
       "邮件邀请好友：所有 Pro 用户（和管理员）在 /membership 的邀请卡片里多一个「用邮件邀请」框，填一个朋友的邮箱，Lianki 用发件人的账户语言发一封邀请信，里面是他自己的邀请链接（奖励规则不变）。防滥用：每人每天最多 5 封、同一个地址一个月内只收一封（不管谁邀请）、一次只能填一个地址、已有账户的地址不发（发件人看到的结果一样）、信里有退订和举报链接（一键退订），被举报 2 次的发件人不能再发。收件人地址只存哈希，发件人只看到自己发过的打码地址。关闭（默认）= 只有你本人（管理员）能用。",
@@ -274,12 +337,17 @@ export function isFlagKey(key: unknown): key is FlagKey {
   return typeof key === "string" && Object.hasOwn(FLAGS, key);
 }
 
-/** Every flag at its default (off). */
+/** Every flag at its registry default (what a key with no stored row reads as). */
 export function defaultFlags(): Record<FlagKey, boolean> {
-  return Object.fromEntries(FLAG_KEYS.map((k) => [k, FLAGS[k].default])) as Record<
+  return Object.fromEntries(FLAG_KEYS.map((k) => [k, FLAGS[k].default as boolean])) as Record<
     FlagKey,
     boolean
   >;
+}
+
+/** Every flag off: what an unreadable store reads as, whatever the defaults (fail closed). */
+export function closedFlags(): Record<FlagKey, boolean> {
+  return Object.fromEntries(FLAG_KEYS.map((k) => [k, false])) as Record<FlagKey, boolean>;
 }
 
 /** The stored row that decides `key`: its own, or else its old key's (FLAG_OLD_KEYS). */

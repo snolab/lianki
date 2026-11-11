@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  TREE_JA,
   TREE_ZH,
   UI_EN,
   UI_JA,
@@ -12,7 +13,7 @@ import {
 
 describe("the mic's local-STT dot", () => {
   it("says where speech goes in zh, ja and en", () => {
-    expect(localSttStrings("zh-CN").ready).toBe("已连接本地语音模型");
+    expect(localSttStrings("zh-CN").ready).toBe("已连接 Lianki 语音服务器");
     expect(localSttStrings("ja").down).toContain("クラウド");
     expect(localSttStrings("en").connecting).toMatch(/Connecting/);
     expect(localSttStrings(null)).toEqual(localSttStrings("en"));
@@ -32,6 +33,8 @@ describe("ui strings", () => {
     expect(uiStrings("ja")).toBe(UI_JA);
     expect(uiStrings("en")).toBe(UI_EN);
     expect(treeDefaults("zh")).toBe(TREE_ZH);
+    expect(treeDefaults("ja")).toBe(TREE_JA);
+    expect(treeDefaults("de").back).toBe("Zurück zum Chat");
     expect(treeDefaults("en")).toEqual({});
   });
 
@@ -41,5 +44,6 @@ describe("ui strings", () => {
     expect(Object.keys(UI_ZH).sort()).toEqual(Object.keys(UI_EN).sort());
     expect(Object.keys(UI_JA).sort()).toEqual(Object.keys(UI_EN).sort());
     expect(TREE_ZH.openCount).toContain("{n}");
+    expect(Object.keys(TREE_JA).sort()).toEqual(Object.keys(TREE_ZH).sort());
   });
 });

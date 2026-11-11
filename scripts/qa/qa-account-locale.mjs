@@ -130,7 +130,7 @@ try {
   }
 
   // 5. Settings → Language.
-  await page.goto(`${BASE}/preferences?lang=en`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/my/preferences?lang=en`, { waitUntil: "networkidle" });
   const section = page.locator('[data-testid="language-settings"]');
   check((await section.count()) === 1, "Settings has the Language section");
   check(

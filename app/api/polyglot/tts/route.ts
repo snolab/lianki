@@ -1,3 +1,6 @@
+import { refusal } from "@/lib/payments/metered";
+import { paidSpeech } from "@/lib/payments/paid-calls";
+import { walletDb } from "@/lib/payments/wallet-db";
 import { NextRequest, NextResponse } from "next/server";
 import {
   isWorkersAiConfigured,
@@ -19,7 +22,7 @@ export async function POST(req: NextRequest) {
     const session = await auth.api.getSession({ headers: await headers() });
     const email = session?.user?.email;
     if (!email) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "login-required" }, { status: 401 });
     }
 
     const rateLimit = await routeLimit(await accountKey("polyglot-tts", email), {
@@ -28,7 +31,7 @@ export async function POST(req: NextRequest) {
     });
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { error: "Too many requests. Please retry later." },
+        { error: "rate-limited" },
         {
           status: 429,
           headers: {
@@ -40,10 +43,7 @@ export async function POST(req: NextRequest) {
 
     const { text } = await req.json();
     if (typeof text !== "string" || text.length === 0 || text.length > MAX_TEXT_LENGTH) {
-      return NextResponse.json(
-        { error: `Text must be 1-${MAX_TEXT_LENGTH} characters` },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "invalid-text-length" }, { status: 400 });
     }
 
     if (!isWorkersAiConfigured()) {
@@ -52,7 +52,14 @@ export async function POST(req: NextRequest) {
 
     // MeloTTS has no voice or speed control, so the previous "nova" at 1.0x has
     // no equivalent — it picks the voice from the language.
-    const { audio, contentType } = await workersAiSpeech({ text });
+    const paid = await paidSpeech(
+      { userId: session!.user.id, email, db: walletDb() },
+      "polyglot.tts",
+      text,
+      () => workersAiSpeech({ text }),
+    );
+    if (!paid.ok) return refusal(paid);
+    const { audio, contentType } = paid.value;
 
     // Extension follows the real container: MeloTTS returns WAV despite
     // Cloudflare documenting MP3, and a .mp3 file that is actually RIFF is a
@@ -66,6 +73,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     logSanitizedError("polyglot.tts", error);
-    return NextResponse.json({ error: "Failed to generate audio" }, { status: 500 });
+    return NextResponse.json({ error: "tts-failed" }, { status: 500 });
   }
 }

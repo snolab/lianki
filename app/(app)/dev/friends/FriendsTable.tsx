@@ -76,7 +76,7 @@ export default function FriendsTable({ friends }: { friends: Friend[] }) {
                   onClick={() => toggle(f)}
                   className="rounded px-2 py-0.5 text-xs"
                   style={{
-                    background: f.blocked ? "oklch(0.5 0.1 230)" : "oklch(0.5 0.17 25)",
+                    background: f.blocked ? "oklch(0.45 0.02 70)" : "oklch(0.5 0.17 25)",
                     color: "oklch(0.98 0 0)",
                   }}
                 >

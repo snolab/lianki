@@ -24,6 +24,8 @@ import { type AuditDb, audit } from "@/lib/security/audit-log";
 import { hit, type Limit, type ThrottleDb } from "@/lib/security/throttle";
 import { readHolders, type PermissionReadDb } from "@/lib/account-permission";
 import { normalizeEmail } from "@/lib/permissions";
+import { CHAT_LIMITS } from "@/lib/chat-limits";
+import { clientOf } from "@/lib/api-token-client";
 
 const MIN = 60_000;
 
@@ -37,12 +39,8 @@ export const CHAT_OPS = {
 } as const satisfies Record<string, ScopeId>;
 export type ChatOp = keyof typeof CHAT_OPS;
 
-/** Per token, per kind of operation. */
-export const CHAT_LIMITS: Record<"post" | "read" | "listen", Limit> = {
-  post: { max: 60, windowMs: 10 * MIN }, // say + ask
-  read: { max: 240, windowMs: 10 * MIN },
-  listen: { max: 30, windowMs: 10 * MIN },
-};
+/** Per token, per kind of operation (lib/chat-limits.ts). */
+export { CHAT_LIMITS };
 const limitOf = (op: ChatOp) =>
   op === "say" || op === "ask"
     ? "post"
@@ -53,7 +51,13 @@ const limitOf = (op: ChatOp) =>
         : null;
 const REFUSED_AUDITS: Limit = { max: 5, windowMs: 10 * MIN };
 
-export type ChatTokenRequest = { op: ChatOp; token?: string; tokenHash?: string };
+/** `client`: the raw x-lianki-client header, kept only in its one known shape (lib/api-token-client.ts). */
+export type ChatTokenRequest = {
+  op: ChatOp;
+  token?: string;
+  tokenHash?: string;
+  client?: string;
+};
 
 export type ChatTokenAnswer =
   | {
@@ -96,6 +100,7 @@ export async function chatTokenCheck(
   if (typeof cred !== "string" || (byHash && r.token !== undefined))
     return { ok: false, error: "bad request" };
   const c = await checkToken(db, cred, CHAT_OPS[op], now, { byHash });
+  const client = clientOf(r.client);
   if (!c.ok) {
     if (c.reason === "malformed") return { ok: false, error: "bad request" };
     if (c.id && c.userId) await refused(db, c.userId, c.id, `${op} ${c.reason}`, now);
@@ -116,7 +121,7 @@ export async function chatTokenCheck(
         kind: "api-token.use",
         actor: c.user.id,
         subject: tagOf(c.id),
-        detail: `chat ${op} ${c.name}`,
+        detail: `chat ${op} ${c.name}${client ? ` via ${client}` : ""}`,
       },
       now,
     );

@@ -14,9 +14,9 @@ async function signedIn() {
 
 /** The signed-in user's invite link and how their invites are doing. */
 export async function GET(req: Request) {
-  if (dbBackend() !== "d1") return NextResponse.json({ error: "Unavailable" }, { status: 503 });
+  if (dbBackend() !== "d1") return NextResponse.json({ error: "unavailable" }, { status: 503 });
   const user = await signedIn();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "login-required" }, { status: 401 });
   // This GET writes: it makes the code and settles invite rewards. From another
   // site's link it writes nothing and goes to the page that shows all this,
   // whose own same-origin fetch comes back here. Invite links are /i/CODE.
@@ -27,9 +27,9 @@ export async function GET(req: Request) {
 
 /** Claim the invite an /i/CODE link left in a cookie. The cookie is cleared either way. */
 export async function POST() {
-  if (dbBackend() !== "d1") return NextResponse.json({ error: "Unavailable" }, { status: 503 });
+  if (dbBackend() !== "d1") return NextResponse.json({ error: "unavailable" }, { status: 503 });
   const user = await signedIn();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "login-required" }, { status: 401 });
   const jar = await cookies();
   const code = normaliseCode(jar.get(INVITE_COOKIE)?.value);
   jar.delete(INVITE_COOKIE);

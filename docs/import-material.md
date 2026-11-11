@@ -1,9 +1,12 @@
 # Import any material (design stub)
 
+Tree: /import/any
+
 State-tree node `/import/any`. Status: **M1 shipped in its smallest form**
 (word lists from .txt/.csv/.tsv, below); the rest is design. Flag
-**`import.any`**, default off; the owner sees it while it is off
-(`importAnyOn(flags, isDev(email))`), everyone once it is on —
+**`import.any`**, default off, no audience: on, every signed-in user gets it
+(owner decision 2026-11-10 00:45 JST: free, no credits); off, only the owner
+(`isDev`) — `importAnyOn(flags, isDev(email))` —
 https://lianki.com/dev/flags#import.any.
 
 ## What shipped (M1, 2026-11-09)
@@ -46,11 +49,203 @@ until **Add N words**, which makes a new /words list.
 - **Privacy.** The text lives only in the request: no R2 object, no content
   in D1 beyond the words added, logs carry the job id and an error name.
 
+### On /words: the Import button (owner, 2026-11-09)
+
+Same flag. At the top of /words (beside the title) an **Import** button
+opens an inline panel: a list of import sources (`SOURCES` in
+`app/(app)/words/ImportPanel.tsx`, strings `import-panel.content.ts`,
+dictionary `words-import-panel`).
+
+- **Preset word sets** (预制词组) closes the panel and scrolls to the
+  existing "Add a list" tree (exam decks, frequency lists, phrases) — the
+  same picker, not a copy.
+- **CSV or Excel table** opens the word-list import above inside the panel
+  (`WordListImport embedded`), loaded on that tap; a list it makes appears in
+  the lists at once.
+- **Any file** keeps files of any type as the user's own, stored only
+  (below). **Words with AI** on a stored file turns it into a word table on
+  the user's credits (below, "AI: a stored file → words").
+
+### Any file: stored, not processed (owner, 2026-11-10)
+
+"Upload any file, store only, don't process yet." Same gate as the panel
+(`import.any` through `importAnyOn`: a flag, never an email; #777 opens it
+to every signed-in user while it is on).
+
+- **UI.** The panel's third source, **Any file**
+  (`app/(app)/words/StoredFiles.tsx`): drop or pick one or more files of
+  any type; each uploads as it is, and **Your files** lists them with name,
+  size and time, newest first, each with a delete button. Nothing reads,
+  parses or converts them.
+- **Storage = the chat inbox's** (`lib/inbox/`): R2 `lianki-blobs` under
+  `inbox/<user id>/<yyyy>/<mm>/<random id>` (the name is never in the key or
+  a log), one `inbox_item` row each, with **`source = 'import'`**
+  (`0068_import_files.sql`; the chat's rows are `'chat'`) — open question 1
+  below, answered "one table, a source column". The type is sniffed, never
+  trusted from the name. Usage (`inbox_usage`) and the caps are shared with
+  the inbox: 20 MB a file, 200 MB a rolling day, 2 GB stored, 30 uploads a
+  minute (`INBOX`, lib/inbox/config.ts); costs are recorded as the inbox's.
+- **Routes** (`lib/import/files.ts`, `app/api/import/files/`): `POST`
+  (raw body, `x-file-name`), `GET` (the user's import files and usage),
+  `DELETE /<id>` (the R2 object, the row and the usage, for good). Writes
+  are same-origin; 401 for a guest, 404 when the gate is off; a user sees
+  and deletes only their own files. The chat inbox lists only `'chat'` rows
+  and agents' inbox ops only reach those; the import routes only `'import'`.
+- **Retention.** Kept until the user deletes it (as the inbox).
+- **Sources.** `import` (this panel), `self-intro` (/self-intro's add-file
+  area, docs/self-intro-import.md), `chat` (the chat's attachments). Uploads
+  take `?source=import|self-intro`.
+
+### My Files: /my/files (owner, 2026-11-10)
+
+Every file the user stored, in **folders by origin** (`source`):
+Self-introduction, Word lists, Books (own books from /books, source `books`: docs/books-plan.md, "Your own books on /books"), Chat, Voiceprint (the recordings of his voiceprint enrolment, source `voiceprint`, put there by the Voiceprint panel; gate `stt.voiceprint-cloud` + `dev`: docs/local-stt.md, "Voiceprint in your account"), Other (`lib/import/my-files.ts`; a new
+source lands in Other until it gets a folder). Each row: name, size, time,
+**Open** (`GET /api/my/files/<id>`, served to its owner only, as an
+attachment) and × (`DELETE /api/my/files/<id>`: the R2 object and the row,
+after a 5 s Undo toast; a pending delete is sent at once when the page is
+left). Same gate as the store (`import.any`), or `books.mine` (the books folder; a listing needs either). Deleting a book file also deletes its cover (the book stays in /reader). Linked from the Import panel
+("All my files") and from /self-intro. The /my index (and /profile,
+/preferences under /my) is another change; this page is `/my/files` only.
+Tests: `unit/my-files.test.ts`.
+- Tests: `unit/import-files.test.ts`; `scripts/qa/qa-import-wordlist.mjs`
+  (upload in the panel → listed → deleted; 404 without the gate).
+
+### AI: a stored file → words (owner, 2026-11-10)
+
+Flag **`words.import-ai`**, default off, no audience: on → every signed-in
+user; off → holders of the `dev` permission (`isDev`, a per-account data
+grant) — `importAiOn` in `lib/import/ai-convert.ts`, as `importAnyOn`;
+either way only with credits covering the smallest hold —
+https://lianki.com/dev/flags#words.import-ai. No email in any gate.
+
+A stored file (above) → the **same CSV template** the table import takes →
+the table import's own parser, preview and **Add N words**. Not a second
+pipeline.
+
+1. Under **Your files**, each file has **Words with AI** — shown only when
+   `GET /api/import/ai` says `available` (the gate, Workers AI configured,
+   and an admin, no wallet (local dev) or a balance covering the smallest
+   hold). The panel asks when it opens.
+2. `POST /api/import/ai {fileId, locale}` loads **that user's own** stored
+   file (`source = 'import'`, their `owner_id`) from R2 into the request and
+   reads it **on the server** with the readers the repo already has
+   (`lib/import/ai-read.ts`): the self-intro import's parser list
+   (`lib/self-intro/import-parse.ts`: PDF via unpdf, Word/zip with the EPUB
+   zip-bomb limits, HTML, text; subtitles `.srt`/`.vtt` as text) and the
+   table import's `.xlsx` reader. The stored type is sniffed (a Word file is
+   `application/zip`, HTML is `text/plain`), so a known extension picks the
+   reader first. A JPEG/PNG/WebP photo goes to the model as an image (≤ ~1.5
+   MB); other images and unknown types are "can't be read". Text is cut at
+   60,000 characters.
+3. The text is cut into chunks of 6,000 characters on line breaks (at most
+   10; more → "only the first part"), one call per chunk plus one for the
+   image, 3 at a time, to the Learning Partner's DeepSeek on Workers AI
+   (`PARTNER_AI_MODEL`). Each call answers JSON rows `{word, meaning,
+   example}` (schema, zod-checked; the material is data, not instructions).
+   The rows are merged, repeats dropped, capped at 1,500, and written **by
+   code** as the template CSV: the header row in the user's UI language
+   (`templateFor`), then word, meaning, example.
+4. The page (`AiFileImport.tsx`) shows the CSV in an editable box with
+   **Download CSV** (UTF-8 BOM) and **Check again**, and under it
+   `WordListImport seed`: the table import itself, without its templates and
+   inputs, checking that CSV with the same parser and server preview, then
+   **Add N words**.
+
+**Credits** (docs/payments.md, feature `words.import-ai`; owner, 2026-11-10):
+
+- **One hold per call** (a chunk, or the image), its fixed most (its prompt,
+  image, 4,000 output tokens), taken before that call (`takeHold`), settled
+  at its real cost, the rest refunded. The max is never shrunk to fit the
+  balance. A balance never goes below zero (the wallet's CHECK).
+- **Hard cap.** A call that reports more than its hold is settled at the
+  hold and pauses the feature (`credits.overage`); the next call is refused
+  (503), nothing charged past any hold.
+- A failed call, or a chunk that gave no rows, keeps nothing.
+- **Too little to start or to go on** → 402 with `need` (the next call's
+  hold: the minimum to start), `recommended` (the balance to finish every
+  call left: P95 of this feature's past real per-call costs × the calls
+  left, or the hold × the calls left with under 20 samples —
+  `lib/payments/recommend.ts`), `have`, and `completed` / `total`. The page
+  says "开始至少需要 N 积分，完成整个文件建议 R 积分（当前 H）" and, when some
+  parts are done, "已完成 X/Y 部分，充值后继续", with **Get credits** and
+  **Continue**.
+- **Resume.** Every paid chunk's rows are kept per user and file
+  (`ai_chunk_cache`, `0069_ai_chunk_cache.sql`, `lib/import/chunk-cache.ts`,
+  keyed by a hash of the call): Continue (or any later run on the same file)
+  reuses them for free and pays only for the rest. Dropped when the file is
+  deleted. Not a guarantee — hence the recommended balance up front.
+
+**Privacy.** The stored file is read into the request's memory only; its
+text goes to Workers AI and nowhere else; nothing new is written but the
+wallet's rows and each paid chunk's rows (the resume cache, the user's own,
+deleted with the file); logs carry an error name, never content. 20
+conversions per user per 10 minutes (per isolate).
+
+Tests: `unit/import-ai.test.ts` (the CSV contract with a mocked model; the
+gate; hold / settle / refund / hard cap against a real wallet; the route
+reading stored files: own files only, reader by extension, photos, refusals);
+`scripts/qa/qa-import-wordlist.mjs` (no button and 402 without credits, 404
+with the flag off).
+
+### CSV / Excel
+
+- **.xlsx** is read in the browser (`lib/import/xlsx.ts`): the workbook's
+  first sheet (by `workbook.xml` and its relationships), shared strings,
+  inline strings, rich-text runs (phonetic `<rPh>` guides left out), cells in
+  their own column. It then goes on as CSV text (`rowsToCsv`, padded to ≥ 2
+  columns so a one-column header still reads as a header), so the server
+  sees one format with the caps above. Limits: 5 MB file, 32 MB per part,
+  48 MB decompressed in all, 25 000 rows, 26 columns.
+- Reader: **jszip** (already a dependency, MIT, loaded on demand) plus a
+  small scanner of the few XML parts — not SheetJS, whose npm release is
+  frozen with known advisories. Runs the same in bun tests (no DOMParser).
+- **.xls** (the old binary format) is recognised by its OLE signature and
+  refused with "save it as .xlsx or CSV UTF-8" — no BIFF reader.
+
+### Column mapping (owner, 2026-11-10)
+
+A table (CSV, TSV, a sheet) shows a **mapping step** in the preview
+(`app/(app)/import/ColumnMapper.tsx`, `lib/import/column-map.ts`): each file
+column is a chip — its header name, or "Column N", and its first value — on
+one of the fields **Word / Meaning / Example / Reading / Example translation**
+or on **Ignore**. Chips are dragged (dnd-kit: mouse, touch after a short hold
+so the page still scrolls, keyboard: Space, arrows, Space, Escape, with
+spoken announcements) and reordered; two columns in one field are joined in
+their order with "; ". A checkbox says whether the first row is column
+names.
+
+- **Defaults**: the header aliases (`HEADER_ALIASES`), else word, meaning,
+  example by column order (`tableShape().defaults`). Content-based guessing
+  is not built; `MAPPING_GUESSERS` is the hook: a guesser sees the header
+  and the first rows and may return a mapping, which wins when it names a
+  word column.
+- **Live cards**: under the chips, the first rows as /words cards (word and
+  reading, then example and meaning in `BACK_ORDER`, on the slip's paper),
+  parsed in the page with the mapping at every move. The counts (new /
+  already have / skipped) are asked again 400 ms after the chips rest.
+- **Sent with the commit**: `mapping` (columns per field) and `header` go with
+  both steps; the server checks them (zod, then `cleanMapping`: indices in
+  range, each column in one field) and parses with them, so the list holds
+  what the cards showed. No word column: Add stays disabled; the server would
+  skip every row as "no word".
+
+### Templates
+
+"Start from a template" sits at the top of the import with **Excel
+template** and **CSV template** buttons (`lib/import/template.ts`, made on
+the click, nothing static). The header row is in the user's UI language
+(`TEMPLATES`: word / meaning / example per locale, each one an entry of
+`HEADER_ALIASES`), then three example rows (English words, the meaning in
+that language, an English example). CSV: UTF-8 with a BOM and CRLF, so
+Excel opens CJK, Arabic or Devanagari correctly. `.xlsx`: one sheet, header
+bold and frozen. `unit/import-template.test.ts` round-trips every locale:
+template → parse → the example rows, header detected.
+
 Not in this slice (next): the file is **not** kept as an artifact in R2 and
 not counted in usage; no task bar under the nav (the list on /import is the
-stand-in); no push-socket status; no "Front = column A?" question (the
-preview's header note says how columns were read, and the user cannot remap
-them yet); re-importing into an existing list.
+stand-in); no push-socket status; re-importing into an existing list. (The
+"Front = column A?" question is the mapping step above.)
 
 ## Goal
 

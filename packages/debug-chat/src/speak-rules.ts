@@ -10,6 +10,9 @@
  *    "not read aloud" note.
  * 2. A quiet line (`say --quiet`: FYI, progress, deploy notices) is never
  *    read.
+ * 3. A withdrawn ask card (eval.ts withdraw) is never read: by its
+ *    `ask.withdrawnAt`, or by its id once the page heard {type:"withdrawn"}
+ *    (markWithdrawn), for a line kept to read later from before it was.
  *
  *    On a computer (voice-bg.ts) a hidden tab still speaks: switching away
  *    must not stop the voice (owner 2026-11-04); only phones keep rule 1.
@@ -33,10 +36,29 @@ export type SpeakMeta = {
 export const isQuiet = (m: SpeakMeta) => m.quiet === true;
 
 /** Why a line is not read aloud: null = read it (by voice.ts's own rules). */
-export type Silence = "hidden" | "quiet";
+export type Silence = "hidden" | "quiet" | "withdrawn";
+
+/** The ids of ask lines withdrawn while this page was open (shared by every copy of this module). */
+const withdrawnIds = (): Set<string> => {
+  const g = globalThis as unknown as { __lkWithdrawn?: Set<string> };
+  return (g.__lkWithdrawn ??= new Set());
+};
+/** The page heard {type:"withdrawn"} for line `id`: it is never read from now on. */
+export function markWithdrawn(id: string) {
+  const s = withdrawnIds();
+  s.add(id);
+  if (s.size > 200) s.delete(s.values().next().value as string);
+}
+/** A withdrawn ask card (its own mark, or one the page heard about). */
+export const isWithdrawn = (m: SpeakMeta) =>
+  (typeof m.ask === "object" &&
+    m.ask !== null &&
+    (m.ask as { withdrawnAt?: unknown }).withdrawnAt !== undefined) ||
+  (typeof m.id === "string" && withdrawnIds().has(m.id));
 
 export function silenceFor(m: SpeakMeta, at: { hidden: boolean }): Silence | null {
   if (isQuiet(m)) return "quiet";
+  if (isWithdrawn(m)) return "withdrawn";
   if (at.hidden) return "hidden";
   return null;
 }
@@ -68,4 +90,29 @@ export function dropRetiredKeys(store?: Pick<Storage, "removeItem"> | null) {
     try {
       s?.removeItem(k);
     } catch {}
+}
+
+/** An agent line as a history frame carries it (ChatMessage's fields this needs). */
+type HistoryLine = SpeakMeta & { id: string; from: string; at: number };
+
+/**
+ * The line to read when a `history` frame arrives (owner 2026-11-10): after a
+ * reconnect, replies sent while the socket was down come back only in the
+ * history, never as a live `chat` frame. Read the newest agent line newer
+ * than the last one this page saw (`seenAt`), not spoken yet and not quiet;
+ * the older ones in the gap are not a backlog to read. `seenAt` 0 (the first
+ * connect of this page) reads nothing: old history is never read aloud.
+ * Returns the line, and every gap line's id (to mark them spoken, so a late
+ * live copy of one is not read either).
+ */
+export function missedReply<T extends HistoryLine>(
+  list: readonly T[],
+  seenAt: number,
+  spoken: ReadonlySet<string>,
+): { line: T | null; gap: string[] } {
+  if (!(seenAt > 0)) return { line: null, gap: [] };
+  const gap = list.filter((m) => m.from === "agent" && m.at > seenAt && !spoken.has(m.id));
+  let line: T | null = null;
+  for (const m of gap) if (!isQuiet(m) && (!line || m.at >= line.at)) line = m;
+  return { line, gap: gap.map((m) => m.id) };
 }

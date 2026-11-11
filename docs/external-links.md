@@ -46,6 +46,11 @@ that could not be kept. The list keeps the newest 80, under the 2 KB value cap.
 Settings → "Links to other sites" (`ExternalLinkSettings`) turns asking back on
 and removes sites from the list.
 
+Neither bypass is forever (owner, 2026-11-10): each asks again after a spaced
+interval (7 days, then 30, 90, a year as it is ticked again), and a bypass that
+came back and was not ticked again is dropped. See prefs-sync.md, "Don't ask
+again" (`lib/dont-ask.ts`, the review list in Settings).
+
 ## Not covered, and why
 
 - **The userscript and the extension.** They run on other sites' pages, and

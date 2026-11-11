@@ -338,7 +338,7 @@ const dictionary = {
 };
 
 const context: Record<keyof typeof dictionary.content, string> = {
-  pick: "Primary button on the Google Drive card at /connections and next to 'Import Google Doc' on /read: opens Google's file picker so the user can choose one or more of their Google Docs to import. Imperative verb phrase; keep 'Google Drive' as the product's own name in this language.",
+  pick: "Primary button on the Google Drive card at /connections and as an option in the Import pop-up on /reader, next to 'Import Google Doc': opens Google's file picker so the user can choose one or more of their Google Docs to import. Imperative verb phrase; keep 'Google Drive' as the product's own name in this language.",
   howTitle:
     "Small heading above a numbered three-step how-to under the 'Choose docs from Google Drive' button. A noun phrase, not a question.",
   step1:

@@ -12,6 +12,6 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const parsed = z
     .object({ terms: z.array(z.string().max(200)).max(500) })
     .safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Invalid terms" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "invalid-terms" }, { status: 400 });
   return NextResponse.json({ known: [...(await repo.knownTerms(id, parsed.data.terms))] });
 }

@@ -41,6 +41,25 @@ they land. Design details that are still open are marked **open**.
   selected sentence or paragraph is clamped at 4 lines (was 3), a new word's
   context at 3 (was 2), and the meaning and translation scrollers are one line
   (`1lh`) taller.
+- **Pinch for card height** (2026-11-10, flag `words.pinch-card-height`, on for
+  everyone): two fingers moved together or apart vertically on the list make
+  every row shorter and denser or taller with more shown. Continuous under the
+  fingers, settling on a whole line (no settle with motion off). The bounds
+  are the cards': the word alone at the bottom, everything the rows on screen
+  hold at the top. The lines go to the back cells as the default rows give
+  them (`backLines`, `lib/words/row-pinch.ts`); the swipe unit stays. Synced
+  as `words.cardHeight`, a factor of the default row. The page never zooms;
+  a second finger cancels the rows' own gestures. Calm, and the list holds
+  still (owner, 2026-11-10: too sensitive, and the whole list shook): the
+  height follows the spread at a low gain past a small dead zone, eased
+  (config `words.pinchGainPct` 40, `words.pinchDeadZonePct` 6,
+  `words.pinchSmoothMs` 70); the row under the fingers stays under them,
+  frame by frame, with no native scroll during the pinch; the height is one
+  CSS variable (`--row-h`), so React renders only when a row gains or loses
+  a whole line, and the pref is written once, when the pinch ends.
+- **Reviewed words fade** (2026-11-10): a slip graded this session stays (for
+  undo) but fades like a slip that came back: a veil and one muted ink at AA
+  contrast (`.slip-done`, app/globals.css). Undo restores it.
 - **Familiarity inside examples** (19:32 JST): an example's words that have
   one of his cards are marked by how well he knows them — solid line = weak,
   dashed = learning, mastered and card-less words plain (the reader's scheme,
@@ -58,6 +77,16 @@ they land. Design details that are still open are marked **open**.
 - **Binding cords at a fixed position**: dragging a slip never carries the
   cords along (old and new swipe).
 - A slip showing "↓ back"/「回来了」 is locked: no swipe, grade or undo (#427).
+- **Locked slips crack** (2026-11-10 22:59 JST: tell the cards that can no
+  longer be swiped from the ones with time left; flag `words.shatter`, on for
+  `dev` holders). A "↓ back" slip gets cracked glass: seal-red cracks with a
+  gold glint, under the text (so it stays AA), the same pattern every time
+  for the same card (`crackPattern`, `lib/words/shatter.ts`, seeded by the
+  card's key; stretched over any row height, hairlines that do not scale). A
+  countdown that ends on screen cracks once (~0.6 s, from the impact out);
+  a row that mounts already ended, reduced motion and motion off show the
+  cracks at rest. Idle it is a static SVG: no timer, no frames.
+  `app/(app)/words/Shatter.tsx`; the gate `lib/words/shatter-gate.ts`.
 - **The first card opens in the middle** (2026-11-07 17:50 JST: "进入复习列表应该
   把第一张卡滚动到屏幕中间而不是在顶上"): /words and the reader's review list open
   with the first card's centre at the screen's centre, set at once on opening

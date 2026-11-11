@@ -256,6 +256,29 @@ export async function revokeAllTokens(db: D1Like, owner: TokenOwner): Promise<st
   return results.map((r) => r.token_hash);
 }
 
+/**
+ * What a live token may do, asked by the token itself (GET /api/cli-login/token,
+ * `lianki mcp` listing only the tools it allows). Null for an unknown or
+ * expired token, or one whose account is gone. Read-only: no last_used write.
+ */
+export async function describeToken(
+  db: D1Like,
+  token: unknown,
+  now = Date.now(),
+): Promise<{ name: string; scopes: ScopeId[]; expiresAt: string | null } | null> {
+  if (typeof token !== "string" || !TOKEN_RE.test(token)) return null;
+  const r = await db
+    .prepare(
+      `SELECT t.name, t.scopes, t.expires_at FROM api_tokens t JOIN user u ON u.email = t.email
+         AND (t.user_id IS NULL OR u.id = t.user_id)
+       WHERE t.token_hash = ?`,
+    )
+    .bind(await sha256Hex(token))
+    .first<Pick<Row, "name" | "scopes" | "expires_at">>();
+  if (!r || isExpired(r.expires_at, now)) return null;
+  return { name: r.name, scopes: rowScopes(r.scopes), expiresAt: r.expires_at };
+}
+
 export type TokenUser = { id: string; email: string; name: string | null; image: string | null };
 
 export type CheckResult =

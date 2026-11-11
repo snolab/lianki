@@ -4,7 +4,21 @@
  * send, and the context the line carried — and whether the hub takes it.
  */
 import { describe, expect, it } from "bun:test";
-import { polishCheck, polishContext, polishWords } from "../packages/debug-chat/src/polish";
+import {
+  FUNCTION_WORDS,
+  MAX_FUNCTION_FIXES,
+  polishCheck,
+  polishContext,
+  polishWords,
+  SUMMARY_SHARE,
+  summaryCheck,
+  MERGE_RATIO,
+  MERGE_SLACK,
+  mergeCheck,
+  MAX_UNCLEAR_BRACKETS,
+  MAX_UNCLEAR_CANDIDATES,
+  UNCLEAR_PHRASES,
+} from "../packages/debug-chat/src/polish";
 import { cleanScene, MAX_SCENE_SCREEN } from "../packages/debug-chat/src/wire";
 import { flagLive } from "../lib/debug-session";
 import { FLAGS } from "../lib/flags";
@@ -131,6 +145,199 @@ describe("polishCheck: realistic garbles", () => {
   });
 });
 
+describe("polishCheck: a truncated word completed from the context", () => {
+  it("takes fl → flag when flag is on screen or in the thread, the agent's replies included", () => {
+    expect(
+      polishCheck("turn the fl on", "Turn the flag on.", ["/dev/flags", "stt.polish flag"]).ok,
+    ).toBe(true);
+    expect(
+      polishCheck("turn the fl on", "Turn the flag on.", ["I flipped the flag for you"]).ok,
+    ).toBe(true);
+  });
+
+  it("takes a lost leading letter: pinner → spinner, spinner in the context", () => {
+    expect(
+      polishCheck("the pinner never stops", "The spinner never stops.", [
+        "a spinner shows while it loads",
+      ]).ok,
+    ).toBe(true);
+  });
+
+  it("refuses a completion the context does not hold", () => {
+    expect(polishCheck("turn the fl on", "Turn the flag on.", ["settings"]).ok).toBe(false);
+    expect(polishCheck("the pinner never stops", "The spinner never stops.", []).ok).toBe(false);
+  });
+
+  it("refuses when the fragment is itself a word in the context (he may have said it)", () => {
+    expect(polishCheck("fix the pinner", "Fix the spinner.", ["spinner", "pinner"]).ok).toBe(false);
+  });
+
+  it("refuses one letter as evidence, a completion past the same audio, and spaceless scripts", () => {
+    expect(polishCheck("the f is on", "The flag is on.", ["flag"]).ok).toBe(false);
+    expect(polishCheck("the fl is on", "The flagship is on.", ["flagship"]).ok).toBe(false);
+    // 要 → 不要 is an added negation, never a completion.
+    expect(polishCheck("要合并", "不要合并。", ["不要合并"]).ok).toBe(false);
+  });
+});
+
+describe("polishCheck: function words", () => {
+  it("adds a particle or measure word in a clause, with no context needed", () => {
+    expect(polishCheck("我在房间看书", "我在房间里看书。", []).ok).toBe(true);
+    expect(polishCheck("这是我书", "这是我的书。", []).ok).toBe(true);
+    expect(polishCheck("open settings page", "Open the settings page.", []).ok).toBe(true);
+  });
+
+  it("swaps one function word for another", () => {
+    expect(polishCheck("我在房间上看书", "我在房间里看书。", []).ok).toBe(true);
+    expect(polishCheck("go in the page", "Go to the page.", []).ok).toBe(true);
+  });
+
+  it("caps them at MAX_FUNCTION_FIXES a line", () => {
+    expect(MAX_FUNCTION_FIXES).toBe(2);
+    expect(polishCheck("open settings page", "Open the settings of page.", []).ok).toBe(true);
+    expect(polishCheck("open settings page", "Open the settings of the page.", []).ok).toBe(false);
+    const v = polishCheck(
+      "open settings page now",
+      "Open the settings of the page in a minute now.",
+      ["minute"],
+    );
+    expect(v.ok).toBe(false);
+  });
+
+  it("never adds a negation, a question word or a content word", () => {
+    expect(polishCheck("要合并", "不要合并。", []).ok).toBe(false);
+    expect(polishCheck("你去学校", "你去学校吗？", []).ok).toBe(false);
+    expect(polishCheck("deploy it", "Do not deploy it.", []).ok).toBe(false);
+    expect(polishCheck("open settings", "Open the sync settings.", []).ok).toBe(false);
+  });
+
+  it("is data per script class, not per language", () => {
+    expect(Object.keys(FUNCTION_WORDS).sort()).toEqual([
+      "Cyrillic",
+      "Han",
+      "Hangul",
+      "Kana",
+      "Latin",
+    ]);
+    expect(FUNCTION_WORDS.Han).not.toContain("不");
+    expect(FUNCTION_WORDS.Han).not.toContain("吗");
+  });
+});
+
+describe("polishCheck: an unclear word as a bracket of candidates", () => {
+  it("takes full-width and ASCII brackets with sound-alike candidates", () => {
+    expect(polishCheck("给我一张票", "给我一张（没听清，票？，条？）。", []).ok).toBe(true);
+    expect(polishCheck("给我一张票", "给我一张(没听清, 票?, 条?)", []).ok).toBe(true);
+    expect(
+      polishCheck("the pinner is stuck", "The (unclear, pinner?, spinner?) is stuck.", []).ok,
+    ).toBe(true);
+    expect(
+      polishCheck("the pinner is stuck", "The （unclear，spinner？，spinster？） is stuck.", []).ok,
+    ).toBe(true);
+  });
+
+  it("takes a candidate the context supports even when it sounds unlike", () => {
+    expect(
+      polishCheck("open the sink", "Open the (unclear, sink?, synchronisation?).", [
+        "synchronisation",
+      ]).ok,
+    ).toBe(false); // past the same stretch of audio, context or not
+    expect(polishCheck("open the sink", "Open the (unclear, sink?, sync?).", ["Sync now"]).ok).toBe(
+      true,
+    );
+  });
+
+  it("refuses a candidate that is neither a sound-alike nor in the context", () => {
+    expect(
+      polishCheck("the pinner is stuck", "The (unclear, pinner?, deployment?) is stuck.", []).ok,
+    ).toBe(false);
+    expect(polishCheck("给我一张票", "给我一张（没听清，票？，电影票？）", []).ok).toBe(false);
+    // An added negation is never a sound-alike.
+    expect(polishCheck("要合并", "（没听清，要？，不要？）合并", []).ok).toBe(false);
+  });
+
+  it("caps candidates a bracket and brackets a line", () => {
+    expect(MAX_UNCLEAR_CANDIDATES).toBe(3);
+    expect(MAX_UNCLEAR_BRACKETS).toBe(2);
+    expect(polishCheck("给我一张票", "给我一张（没听清，票？，条？，跳？）", []).ok).toBe(true);
+    expect(polishCheck("给我一张票", "给我一张（没听清，票？，条？，跳？，调？）", []).ok).toBe(
+      false,
+    );
+    const three = "一张（没听清，票？，条？）一个（没听清，人？，认？）一本（没听清，书？，输？）";
+    expect(polishCheck("一张票一个人一本书", three, []).ok).toBe(false);
+    const two = "一张（没听清，票？，条？）一个（没听清，人？，认？）一本书";
+    expect(polishCheck("一张票一个人一本书", two, []).ok).toBe(true);
+  });
+
+  it("the phrase is data per line language; an unknown phrase is no bracket", () => {
+    expect(UNCLEAR_PHRASES.zh).toBe("没听清");
+    expect(UNCLEAR_PHRASES.en).toBe("unclear");
+    // Not a bracket: its words are added text, refused as ever.
+    expect(polishCheck("给我一张票", "给我一张（嗯，票？，条？）", []).ok).toBe(false);
+  });
+
+  it("a bracket replaces one raw run; it never adds a word he did not say", () => {
+    expect(polishCheck("给我票", "给我一张（没听清，票？，条？）", []).ok).toBe(false);
+  });
+});
+
+describe("mergeCheck (a run of his lines as one passage)", () => {
+  const run = ["我想把那个按钮", "放到右边", "然后颜色改成红色"];
+
+  it("takes connectives and fragment fixes the per-line rules would refuse", () => {
+    const passage = "我想把那个按钮放到右边，然后把颜色改成红色。";
+    expect(polishCheck(run.join(""), passage, []).ok).toBe(false);
+    expect(mergeCheck(run, passage).ok).toBe(true);
+    expect(
+      mergeCheck(
+        ["so I was thinking", "we move the button", "to the right"],
+        "So I was thinking we could move the button to the right.",
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("refuses one far longer than the lines, one line, and empty text", () => {
+    expect(MERGE_RATIO).toBe(1.3);
+    const total = run.join("").length;
+    const cap = Math.ceil(total * MERGE_RATIO) + MERGE_SLACK;
+    expect(mergeCheck(run, "啊".repeat(cap)).ok).toBe(true);
+    const v = mergeCheck(run, "啊".repeat(cap + 1));
+    expect(v.ok).toBe(false);
+    expect(!v.ok && v.reason).toContain("longer than");
+    expect(mergeCheck([run[0]!], run[0]!).ok).toBe(false);
+    expect(mergeCheck(run, "  ").ok).toBe(false);
+    // The limits are config: a caller may pass its own.
+    expect(mergeCheck(run, "啊".repeat(total + 1), { ratio: 1, slack: 0 }).ok).toBe(false);
+  });
+});
+
+describe("summaryCheck", () => {
+  const room = ["那个房子一个月多少钱啊我觉得太贵了", "对啊而且离地铁站还挺远的你说呢"];
+
+  it("takes one short sentence saying what was said", () => {
+    expect(summaryCheck(room, "（旁人在聊租房，嫌贵）").ok).toBe(true);
+    expect(
+      summaryCheck(
+        ["someone in the room is talking about rent being too high near the station"],
+        "(talk about rent)",
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("refuses a bare noise marker: it says what was said", () => {
+    expect(summaryCheck(room, "（杂音）").ok).toBe(false);
+    expect(summaryCheck(room, "noise").ok).toBe(false);
+  });
+
+  it("refuses one over SUMMARY_SHARE of the raw, more than one sentence, or nothing", () => {
+    expect(SUMMARY_SHARE).toBe(0.4);
+    expect(summaryCheck(room, "旁人在聊房子一个月多少钱太贵了离地铁站很远").ok).toBe(false);
+    expect(summaryCheck(room, "聊租房。嫌贵。").ok).toBe(false);
+    expect(summaryCheck(room, "  ").ok).toBe(false);
+    expect(summaryCheck([], "聊租房").ok).toBe(false);
+  });
+});
+
 describe("polishContext", () => {
   it("draws on the scene, the selection and the thread", () => {
     const ctx = polishContext(
@@ -160,9 +367,10 @@ describe("cleanScene", () => {
   });
 });
 
-describe("the stt.polish-off flag", () => {
-  it("is a registry flag, off by default (polish as before)", () => {
-    expect(FLAGS["stt.polish-off"].default).toBe(false);
+describe("the stt.polish flag", () => {
+  it("is a positive registry flag, on by default (polish active), owner audience", () => {
+    expect(FLAGS["stt.polish"]).toMatchObject({ default: true, audience: "owner" });
+    expect("stt.polish-off" in FLAGS).toBe(false);
   });
 
   it("flagLive reads exactly 1 as on, for registry keys only", async () => {
@@ -175,11 +383,13 @@ describe("the stt.polish-off flag", () => {
         ),
       }),
     });
-    expect(await flagLive(db(1), "stt.polish-off")).toBe(true);
-    expect(await flagLive(db(0), "stt.polish-off")).toBe(false);
-    expect(await flagLive(db(null), "stt.polish-off")).toBe(false);
+    expect(await flagLive(db(1), "stt.polish")).toBe(true);
+    expect(await flagLive(db(0), "stt.polish")).toBe(false);
+    // No row: the registry default, on for stt.polish, off for a default-off flag.
+    expect(await flagLive(db(null), "stt.polish")).toBe(true);
+    expect(await flagLive(db(null), "stt.merge")).toBe(false);
     expect(await flagLive(db(1), "not.a.flag")).toBe(false);
-    expect(await flagLive(undefined, "stt.polish-off")).toBe(false);
-    expect(asked).toEqual(["stt.polish-off", "stt.polish-off", "stt.polish-off"]);
+    expect(await flagLive(undefined, "stt.polish")).toBe(false);
+    expect(asked).toEqual(["stt.polish", "stt.polish", "stt.polish", "stt.merge"]);
   });
 });

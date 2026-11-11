@@ -1,8 +1,17 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import type { D1Like } from "@/lib/d1/types";
-import { defaultFlags, FLAG_KEYS, FLAG_OLD_KEYS, FLAGS, flagIn, isFlagKey } from "@/lib/flags";
+import {
+  closedFlags,
+  defaultFlags,
+  FLAG_KEYS,
+  FLAG_OLD_KEYS,
+  FLAGS,
+  flagIn,
+  isFlagKey,
+} from "@/lib/flags";
 import {
   clearFlagCache,
   FLAG_CACHE_MS,
@@ -33,14 +42,33 @@ afterEach(() => {
 });
 
 describe("registry", () => {
-  test("the payment flags exist, every default is off, unknown keys are not flags", () => {
+  test("the payment flags exist, defaults are off but the few default-on ones, unknown keys are not flags", () => {
     expect(FLAG_KEYS).toContain("payments.stripe.live");
     expect(FLAG_KEYS).toContain("payments.komoju.live");
-    for (const k of FLAG_KEYS) {
-      expect(FLAGS[k].default).toBe(false);
-      expect(FLAGS[k].description.length).toBeGreaterThan(0);
-    }
-    expect(Object.values(defaultFlags()).every((v) => v === false)).toBe(true);
+    // Default-on is for a flag that keeps something already live switchable, or a
+    // feature the owner asked to ship on (today.goal, words.onboarding and the
+    // card-height pinch, 2026-11-10; /library and My books /books, 2026-11-10; the
+    // voiceprint in his account, tap card 2026-11-10 23:31 JST, audience owner + dev;
+    // the cracked "↓ back" slips, asked 2026-11-10 22:59 JST, audience owner + dev).
+    const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
+    expect(on).toEqual([
+      "today.goal",
+      "words.onboarding",
+      "stt.voiceprint-cloud",
+      "stt.polish",
+      "library.catalogue",
+      "books.mine",
+      "words.pinch-card-height",
+      "words.shatter",
+    ]);
+    for (const k of FLAG_KEYS) expect(FLAGS[k].description.length).toBeGreaterThan(0);
+    expect(FLAGS["payments.stripe.live"].default).toBe(false);
+    expect(
+      Object.entries(defaultFlags())
+        .filter(([, v]) => v)
+        .map(([k]) => k),
+    ).toEqual(on);
+    expect(Object.values(closedFlags()).every((v) => v === false)).toBe(true);
     expect(isFlagKey("payments.stripe.live")).toBe(true);
     for (const k of ["payments.paypal.live", "", "toString", "__proto__", 1, null, undefined])
       expect(isFlagKey(k)).toBe(false);
@@ -62,13 +90,13 @@ describe("store", () => {
     d1 = createTestD1(testSchema());
   });
 
-  test("a fresh database reads all off", async () => {
+  test("a fresh database reads every flag at its default (off, but the default-on ones)", async () => {
     expect(await loadFlags(d1)).toEqual(defaultFlags());
     expect(await listFlags(d1)).toEqual(
       FLAG_KEYS.map((key) => ({
         key,
         description: FLAGS[key].description,
-        enabled: false,
+        enabled: FLAGS[key].default as boolean,
         updatedAt: null,
         updatedBy: null,
       })),
@@ -112,6 +140,49 @@ describe("store", () => {
     await expect(setFlag(d1, "payments.stripe.live", true, "  ", NOW)).rejects.toThrow("Who");
     expect(await flagLog(d1)).toEqual([]);
     expect(await loadFlags(d1)).toEqual(defaultFlags());
+  });
+
+  test("a stored row overrides a default-on flag, both ways", async () => {
+    expect((await loadFlags(d1))["stt.polish"]).toBe(true);
+    await setFlag(d1, "stt.polish", false, BY, NOW);
+    expect((await loadFlags(d1))["stt.polish"]).toBe(false);
+    expect((await listFlags(d1)).find((f) => f.key === "stt.polish")?.enabled).toBe(false);
+    await setFlag(d1, "stt.polish", true, BY, NOW);
+    expect((await loadFlags(d1))["stt.polish"]).toBe(true);
+  });
+
+  test("migration 0067 carries stt.polish-off over inverted, and leaves a stt.polish row alone", async () => {
+    const sql = readFileSync("db/migrations/0067_stt_polish_flag.sql", "utf8");
+    const put = (key: string, on: number) =>
+      d1
+        .raw()
+        .prepare(
+          "INSERT INTO feature_flags (key, enabled, updated_at, updated_by) VALUES (?, ?, ?, ?)",
+        )
+        .run(key, on, NOW.toISOString(), BY);
+    put("stt.polish-off", 1);
+    d1.raw().exec(sql);
+    expect((await loadFlags(d1))["stt.polish"]).toBe(false);
+    expect((await flagLog(d1))[0]).toMatchObject({ key: "stt.polish", enabled: false });
+    // Run again (or polish-off off later): an existing stt.polish row wins.
+    d1.raw().prepare("UPDATE feature_flags SET enabled = 0 WHERE key = 'stt.polish-off'").run();
+    d1.raw().exec(sql);
+    expect((await loadFlags(d1))["stt.polish"]).toBe(false);
+    // polish-off stored off: polish stays on.
+    const fresh = createTestD1(testSchema());
+    fresh
+      .raw()
+      .prepare(
+        "INSERT INTO feature_flags (key, enabled, updated_at, updated_by) VALUES ('stt.polish-off', 0, ?, ?)",
+      )
+      .run(NOW.toISOString(), BY);
+    fresh.raw().exec(sql);
+    expect((await loadFlags(fresh))["stt.polish"]).toBe(true);
+    // Nothing stored: no row written, the default (on) stands.
+    const none = createTestD1(testSchema());
+    none.raw().exec(sql);
+    expect(await flagLog(none)).toEqual([]);
+    expect((await loadFlags(none))["stt.polish"]).toBe(true);
   });
 
   test("a stored row for a key the registry no longer knows is ignored; only 1 is on", async () => {
@@ -319,7 +390,7 @@ describe("readFlags: cache window and fail-closed", () => {
           () => broken,
           () => 1,
         ),
-      ).toEqual(defaultFlags());
+      ).toEqual(closedFlags());
       // A getter that throws (no request context) is off too.
       expect(
         await readFlags(
@@ -328,7 +399,7 @@ describe("readFlags: cache window and fail-closed", () => {
           },
           () => 1,
         ),
-      ).toEqual(defaultFlags());
+      ).toEqual(closedFlags());
     } finally {
       console.error = realError;
     }
@@ -434,7 +505,10 @@ describe("readFlags: cache window and fail-closed", () => {
 
   test("off the D1 backend every flag is off, without touching a database", async () => {
     process.env.DB_BACKEND = "mongodb";
-    expect(await readFlags()).toEqual(defaultFlags());
+    // No D1 (the getter's answer off the D1 backend): all off, a default-on flag too.
+    // Given explicitly: unit/support/testMocks.ts may stand in for lib/d1 in a shared run.
+    expect(await readFlags(() => null)).toEqual(closedFlags());
+    clearFlagCache();
     expect(await flagOn("payments.stripe.live")).toBe(false);
   });
 });

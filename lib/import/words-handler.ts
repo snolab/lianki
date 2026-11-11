@@ -17,6 +17,7 @@
  * compared in normalized form (normTerm). Words of built-in catalog lists
  * that were never reviewed are not counted: those live in static files.
  */
+import { cleanMapping, MAX_COLUMNS } from "@/lib/import/column-map";
 import { z } from "zod";
 import type { D1Like } from "@/lib/d1/types";
 import { flagIn, type FlagValues } from "@/lib/flags";
@@ -30,6 +31,7 @@ import {
   WordListError,
   normTerm,
   parseWordList,
+  type ParseOptions,
   splitKnown,
   toEntry,
   type ParsedWordList,
@@ -37,7 +39,12 @@ import {
 
 export const IMPORT_ANY_FLAG = "import.any";
 
-/** Who gets the word-list import: everyone when `import.any` is on, else the owner only. */
+/**
+ * Who gets the word-list import (/import, the Import button on /words, both
+ * routes): every signed-in user while `import.any` is on (owner decision,
+ * 2026-11-10 00:45 JST: a free feature, open to all); the owner (`isDev`, the
+ * permission grant) with the flag on or off.
+ */
 export function importAnyOn(flags: FlagValues | null | undefined, owner: boolean): boolean {
   return owner || flagIn(flags, IMPORT_ANY_FLAG);
 }
@@ -48,16 +55,38 @@ const MAX_BODY = MAX_BYTES * 2 + 4096;
 const RATE = { windowMs: 10 * 60_000, max: 60 };
 const ROWS_PER_PREVIEW = 8;
 
+/** Columns per field, as the mapping step sends them (lib/import/column-map.ts). */
+const slotCols = z
+  .array(
+    z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_COLUMNS - 1),
+  )
+  .max(MAX_COLUMNS)
+  .optional();
+const Mapping = z
+  .object({ term: slotCols, back: slotCols, ex: slotCols, reading: slotCols, exTr: slotCols })
+  .strict();
+/** The mapping step's answer: which column fills which field, and whether row 1 is a header. */
+const MappingFields = {
+  mapping: Mapping.optional(),
+  header: z.boolean().optional(),
+};
+
 const Body = z.discriminatedUnion("step", [
   z.object({
     step: z.literal("preview"),
     text: z.string().max(MAX_BYTES),
     fileName: z.string().max(200).optional(),
+    ...MappingFields,
   }),
   z.object({
     step: z.literal("commit"),
     text: z.string().max(MAX_BYTES),
     fileName: z.string().max(200).optional(),
+    ...MappingFields,
     name: z.string().trim().min(1).max(120),
     lang: z
       .string()
@@ -150,9 +179,13 @@ async function readChecked(
   return { body: parsed.data, email: deps.user.email, db: deps.db };
 }
 
-function parseOrError(text: string, fileName?: string): ParsedWordList | Response {
+function parseOrError(
+  text: string,
+  fileName?: string,
+  opts: ParseOptions = {},
+): ParsedWordList | Response {
   try {
-    return parseWordList(text, fileName);
+    return parseWordList(text, fileName, opts);
   } catch (e) {
     if (e instanceof WordListError)
       return json({ error: e.code }, e.code === "too-large" ? 413 : 400);
@@ -164,7 +197,9 @@ export async function handleWordImport(req: Request, deps: WordImportDeps): Prom
   const checked = await readChecked(req, deps);
   if (checked instanceof Response) return checked;
   const { body, email, db } = checked;
-  const parsed = parseOrError(body.text, body.fileName);
+  // The page's mapping decides the columns (cleaned again in parseWordList).
+  const mapping = (body.mapping && cleanMapping(body.mapping, MAX_COLUMNS)) || undefined;
+  const parsed = parseOrError(body.text, body.fileName, { mapping, header: body.header });
   if (parsed instanceof Response) return parsed;
   const { fresh, have } = splitKnown(parsed.rows, await knownTerms(db, email));
 

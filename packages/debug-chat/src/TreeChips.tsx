@@ -19,7 +19,7 @@ export { navIndexOf } from "./tree-keep";
 const GLYPH: Record<TreeStatus, string> = { open: "○", doing: "◐", blocked: "!", done: "✓" };
 const INK: Record<TreeStatus, string> = {
   open: "oklch(0.62 0.03 260)",
-  doing: "oklch(0.6 0.16 250)",
+  doing: "oklch(0.6 0.176 22.3)",
   blocked: "oklch(0.7 0.16 70)",
   done: "oklch(0.62 0.15 150)",
 };

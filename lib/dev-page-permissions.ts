@@ -8,21 +8,26 @@ import type { Permission } from "./permissions";
 
 export const DEV_PAGE_PERMISSION: Record<string, Permission> = {
   "box-clients": "admin",
+  config: "admin",
+  costs: "admin",
   credits: "admin",
   flags: "admin",
   friends: "admin",
   "gift-codes": "admin",
   membership: "admin",
   permissions: "admin",
+  "stt-access": "admin",
   users: "admin",
   design: "dev",
   levels: "dev",
   lian: "dev",
+  mails: "dev",
   "live-frontends": "dev",
   "new-order": "dev",
   preview: "dev",
   roadmap: "dev",
   "swipe-ab": "dev",
+  templates: "dev",
   tokens: "dev",
 };
 

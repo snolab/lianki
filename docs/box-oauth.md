@@ -182,8 +182,8 @@ level chip, flag-gated nav items).
 Until 2026-11-09 the box's server saw nobody: the tokens are in the tab's
 sessionStorage, which a server never receives. So every page it decides said
 "sign in" to a signed-in tab: `/learn` and `/polyglot` redirected to
-`/sign-in`, `/list` and `/import` showed their guest view, and `/profile`,
-`/preferences`, `/connections`, `/self-intro`, `/ai-vocab`, `/chat/history`,
+`/sign-in`, `/list` and `/import` showed their guest view, and `/my/profile`,
+`/my/preferences`, `/connections`, `/self-intro`, `/ai-vocab`, `/chat/history`,
 `/roadmap` and the `/dev` pages read no user.
 
 Now (`server-session.ts`, `server-auth.ts`):

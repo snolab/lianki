@@ -69,7 +69,14 @@ const QUESTIONS: Question[] = [
   },
 ];
 
-export default function SelfIntroClient({ importOn = false }: { importOn?: boolean }) {
+export default function SelfIntroClient({
+  importOn = false,
+  filesOn = false,
+}: {
+  importOn?: boolean;
+  /** Files can be added (the user's file store, `import.any`). */
+  filesOn?: boolean;
+}) {
   const { selectLanguage, interview, review, errors, success } = useIntlayer("self-intro-page");
 
   // The flow starts by importing material about the user (behind `self-intro.import`).
@@ -197,6 +204,7 @@ export default function SelfIntroClient({ importOn = false }: { importOn?: boole
   if (step === "import") {
     return (
       <ImportStep
+        filesOn={filesOn}
         onSkip={() => setStep("select-language")}
         onDone={(fields) => {
           // The confirmed fields become the interview's answers, still editable there.
@@ -284,7 +292,7 @@ export default function SelfIntroClient({ importOn = false }: { importOn?: boole
             </details>
 
             {generatedSentences[currentQuestion.id] && (
-              <div className="mb-4 p-4 bg-green-50 dark:bg-green-900 rounded-lg">
+              <div className="mb-4 p-4 bg-gold-50 dark:bg-gold-950 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-semibold">{interview.generated}</p>
                   {!isEditing[currentQuestion.id] && (

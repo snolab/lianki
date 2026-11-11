@@ -6,7 +6,8 @@ import {
 } from "@/lib/read/live-polish";
 import { livePolishAi, mayPolishLive } from "@/lib/read/live-polish-server";
 import { polishRefused } from "@/lib/read/polish-offer";
-import { badRequest, bodyOf, json, readerCtx } from "@/lib/read/reader-route";
+import { badRequest, bodyOf, json, readerCtx, payerOf } from "@/lib/read/reader-route";
+import { isRefused, refusalOf } from "@/lib/payments/metered";
 
 /**
  * POST /api/read/[id]/polish-live — passages of a live doc as a speech draft
@@ -24,7 +25,7 @@ import { badRequest, bodyOf, json, readerCtx } from "@/lib/read/reader-route";
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
   if (ctx instanceof NextResponse) return ctx;
-  if (!(await mayPolishLive(ctx.email))) return json({ error: "Not found" }, 404);
+  if (!(await mayPolishLive(ctx.email))) return json({ error: "not-found" }, 404);
   if (polishRefused((await ctx.load()).words.book)) return badRequest("not offered");
   const body = (await bodyOf(req)) as { passages?: unknown; before?: unknown } | null;
   const passages = body?.passages;
@@ -38,8 +39,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (passages.join("").length > LIVE_POLISH_MAX_CHARS) return badRequest("too long");
   const before =
     typeof body?.before === "string" ? body.before.slice(-LIVE_POLISH_CONTEXT_CHARS) : "";
-  const r = await livePolishAi(passages as string[], before, { userId: ctx.userId });
+  const r = await livePolishAi(passages as string[], before, payerOf(ctx));
   if (r.ok) return json({ passages: r.passages });
+  if (isRefused(r)) return refusalOf(r);
   const status = { busy: 429, "model-failed": 502, "not-configured": 503 }[r.error];
   return json({ error: r.error }, status);
 }

@@ -229,7 +229,7 @@ export function YtClipPopup({ ref }: { ref?: Ref<YtClipHandle> }) {
             type="button"
             onClick={replay}
             data-testid="yt-clip-replay"
-            className="shrink-0 rounded-full px-3 py-1.5 text-sm font-medium text-[oklch(0.45_0.16_255)] hover:bg-[oklch(0.5_0.1_255/0.12)] dark:text-[oklch(0.8_0.12_255)]"
+            className="shrink-0 rounded-full px-3 py-1.5 text-sm font-medium text-[oklch(0.45_0.176_22.3)] hover:bg-[oklch(0.5_0.11_22.3/0.12)] dark:text-[oklch(0.8_0.132_22.3)]"
           >
             ↻ {t.replay}
           </button>

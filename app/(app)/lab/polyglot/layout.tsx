@@ -63,7 +63,7 @@ export default async function PolyglotLayout({ children }: { children: React.Rea
         </div>
       )}
       {membership.tier === "pro" && membership.proEndsAt && (
-        <div className="bg-green-600 text-white px-4 py-2 text-center text-sm font-medium">
+        <div className="lk-bold px-4 py-2 text-center text-sm font-medium">
           {content.banner.proMemberUntil.value} {longDate(membership.proEndsAt)}
         </div>
       )}

@@ -1,0 +1,110 @@
+"use client";
+
+import { useMemo, useState, type ReactNode } from "react";
+import { useIntlayer } from "next-intlayer";
+import type { CatalogueBook } from "@/lib/books/catalogue";
+import { booksToc, langSectionId, levelAnchors } from "@/lib/books/toc";
+import { BookCard } from "./BookCard";
+import { BooksToc } from "./BooksToc";
+import { orderByPreferred } from "@/lib/lang-order";
+import { usePreferredLangs } from "@/lib/use-preferred-langs";
+
+/**
+ * The /books list with an instant filter (title, author, language, level):
+ * the catalogue is small and already on the page, so filtering is local —
+ * no request, no AI. Groups by language: the preferred languages first
+ * (lib/lang-order.ts), then the rest as the server ordered them. Its table
+ * of contents (lib/books/toc.ts) follows the filter: a group with no match has
+ * no section and no entry. `finder` (the 找更多书 section) comes after the list.
+ */
+export function BooksBrowser({
+  groups,
+  owned,
+  signedIn,
+  head,
+  finder,
+}: {
+  /** [language code, its display name, its books] in page order. */
+  groups: [string, string, CatalogueBook[]][];
+  owned: Record<string, string>;
+  signedIn: boolean;
+  /** The page heading and intro, above the list. */
+  head: ReactNode;
+  /** The find-more section (signed-in viewers), null when not shown. */
+  finder: ReactNode | null;
+}) {
+  const t = useIntlayer("books-page");
+  const [q, setQ] = useState("");
+  // Settings → Preferred languages first (lib/lang-order.ts), then the rest as
+  // the server ordered them. Server order until mount, so hydration agrees.
+  const { langs: preferred } = usePreferredLangs();
+  const ordered = useMemo(
+    () => orderByPreferred(groups, (g) => g[0], preferred),
+    [groups, preferred],
+  );
+  const shown = useMemo(() => {
+    const words = q.normalize("NFC").toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return ordered;
+    return ordered
+      .map(([lang, name, books]) => {
+        const match = books.filter((b) => {
+          const hay = [b.title, b.author, b.lang, name, b.level, String(b.firstPublicationYear)]
+            .join(" ")
+            .normalize("NFC")
+            .toLowerCase();
+          return words.every((w) => hay.includes(w));
+        });
+        return [lang, name, match] as [string, string, CatalogueBook[]];
+      })
+      .filter(([, , books]) => books.length);
+  }, [ordered, q]);
+
+  const toc = booksToc(
+    shown,
+    finder ? { title: t.findTitle.value, libraries: t.librariesTitle.value } : null,
+  );
+
+  return (
+    <div className="lg:grid lg:grid-cols-[minmax(0,48rem)_13rem] lg:gap-10 lg:justify-center">
+      <div className="min-w-0">
+        {head}
+        <BooksToc items={toc} variant="bar" />
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t.filter.value}
+          aria-label={t.filter.value}
+          data-testid="books-filter"
+          className="w-full mb-8 rounded-lg border border-gray-300 dark:border-gray-600 bg-white/60 dark:bg-gray-900/60 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+        />
+        {shown.length === 0 && <p className="mb-8 text-gray-500 dark:text-gray-400">{t.noMatch}</p>}
+        {shown.map(([lang, name, books]) => {
+          const anchors = levelAnchors(lang, books);
+          return (
+            <section
+              key={lang}
+              id={langSectionId(lang)}
+              className="mb-10 scroll-mt-16"
+              data-testid="books-lang"
+              data-lang={lang}
+            >
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                {name}
+              </h2>
+              {books.map((b, i) => (
+                <div key={b.slug} id={anchors.get(i)} className="scroll-mt-16">
+                  <BookCard book={b} ownedId={owned[`${b.lang}/${b.slug}`]} signedIn={signedIn} />
+                </div>
+              ))}
+            </section>
+          );
+        })}
+        {finder}
+      </div>
+      <aside className="hidden lg:block">
+        <BooksToc items={toc} variant="side" />
+      </aside>
+    </div>
+  );
+}

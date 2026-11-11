@@ -7,8 +7,17 @@
 // Loaded on demand from apis.google.com (Google's only way to ship the
 // Picker), never on page load. The access token handed to it is short-lived
 // (≤ 1 h, drive.file only) and kept in this closure only.
+//
+// Guards ("The API developer key is invalid." on a first open, iPhone PWA,
+// 2026-11-10): the setup is checked before Google sees it, the Picker is
+// built only after `gapi.load("picker")` has called back with a usable
+// namespace and the page is in front, and an error the Picker reports
+// (`Action.ERROR`) is thrown as a PickerError so the caller can try once more.
 
 import { GOOGLE_DOC_MIME_TYPE } from "./scopes";
+import { PickerError, parsePickerSetup, type PickerSetup } from "./picker-setup";
+
+export { PickerError, type PickerSetup };
 
 type Picker = {
   setVisible(v: boolean): void;
@@ -25,7 +34,7 @@ type PickerNS = {
   PickerBuilder: new () => Record<string, (...a: unknown[]) => unknown> & { build(): Picker };
   ViewId: { DOCUMENTS: unknown };
   DocsViewMode: { LIST: unknown };
-  Action: { PICKED: string; CANCEL: string };
+  Action: { PICKED: string; CANCEL: string; ERROR?: string };
   Feature: { MULTISELECT_ENABLED: unknown };
   Response: { ACTION: string; DOCUMENTS: string };
   Document: { ID: string; MIME_TYPE: string };
@@ -39,32 +48,73 @@ declare global {
 }
 
 const API_JS = "https://apis.google.com/js/api.js";
+/** How long api.js and the picker module may take before the load counts as failed. */
+export const PICKER_LOAD_TIMEOUT_MS = 20_000;
 let loading: Promise<PickerNS> | null = null;
 
-function loadPicker(): Promise<PickerNS> {
-  if (window.google?.picker) return Promise.resolve(window.google.picker);
+/** The picker namespace once it is really usable, not a half-loaded object. */
+function ready(): PickerNS | null {
+  const P = window.google?.picker;
+  return P && typeof P.PickerBuilder === "function" && typeof P.DocsView === "function" ? P : null;
+}
+
+/**
+ * api.js, then `gapi.load("picker")`. Resolves only from the load callback
+ * with a usable namespace, never before; a second caller waits on the same
+ * load, and an api.js tag already in the page (an earlier attempt still
+ * loading) is waited on instead of being added twice.
+ */
+export function loadPicker(): Promise<PickerNS> {
+  const now = ready();
+  if (now) return Promise.resolve(now);
   if (loading) return loading;
   loading = new Promise<PickerNS>((resolve, reject) => {
-    const done = () =>
-      window.gapi!.load("picker", {
-        callback: () => (window.google?.picker ? resolve(window.google.picker) : reject()),
-        onerror: () => reject(new Error("picker-load")),
+    const timer = setTimeout(() => reject(new Error("picker-load")), PICKER_LOAD_TIMEOUT_MS);
+    const fail = () => {
+      clearTimeout(timer);
+      reject(new Error("picker-load"));
+    };
+    const done = () => {
+      if (!window.gapi) return fail();
+      window.gapi.load("picker", {
+        callback: () => {
+          const P = ready();
+          if (!P) return fail();
+          clearTimeout(timer);
+          resolve(P);
+        },
+        onerror: fail,
       });
+    };
     if (window.gapi) return done();
-    const s = document.createElement("script");
-    s.src = API_JS;
-    s.async = true;
-    s.onload = done;
-    s.onerror = () => reject(new Error("picker-load"));
-    document.head.appendChild(s);
-  }).catch((e) => {
+    let s = document.querySelector<HTMLScriptElement>(`script[src="${API_JS}"]`);
+    if (!s) {
+      s = document.createElement("script");
+      s.src = API_JS;
+      s.async = true;
+      document.head.appendChild(s);
+    }
+    s.addEventListener("load", done, { once: true });
+    s.addEventListener("error", fail, { once: true });
+  }).finally(() => {
+    // Settled: a later call checks the namespace afresh (and loads again after a failure).
     loading = null;
-    throw e;
   });
   return loading;
 }
 
-export type PickerSetup = { accessToken: string; apiKey: string; appId: string };
+/** Resolves once the page is in front (back from Google's consent it may still be hidden). */
+function whenVisible(): Promise<void> {
+  if (document.visibilityState !== "hidden") return Promise.resolve();
+  return new Promise((resolve) => {
+    const on = () => {
+      if (document.visibilityState === "hidden") return;
+      document.removeEventListener("visibilitychange", on);
+      resolve();
+    };
+    document.addEventListener("visibilitychange", on);
+  });
+}
 
 /** Show the Picker on one doc: the picked doc's id, or null when it was closed. */
 export async function pickGoogleDoc(
@@ -78,13 +128,23 @@ export async function pickGoogleDoc(
  * Show the Picker. With `docId` it opens preselected on that doc; with
  * `multi` the user may tick several. Resolves with the picked docs' ids, or
  * none when the user closed it. Only Google Docs documents can be picked.
+ * Throws a PickerError when the setup is not well formed (it never reaches
+ * Google), the Picker does not load, or the Picker reports an error.
  */
 export async function pickGoogleDocs(
   setup: PickerSetup,
   o: { docId?: string | null; multi?: boolean } = {},
 ): Promise<string[]> {
-  const P = await loadPicker();
-  return new Promise((resolve) => {
+  const good = parsePickerSetup(setup);
+  if (!good) throw new PickerError("bad-setup");
+  let P: PickerNS;
+  try {
+    P = await loadPicker();
+  } catch {
+    throw new PickerError("picker-load");
+  }
+  await whenVisible();
+  return new Promise((resolve, reject) => {
     const view = new P.DocsView(P.ViewId.DOCUMENTS);
     view.setMimeTypes(GOOGLE_DOC_MIME_TYPE);
     view.setIncludeFolders(false);
@@ -94,9 +154,9 @@ export async function pickGoogleDocs(
     const b = new P.PickerBuilder();
     b.addView(view);
     if (o.multi) b.enableFeature(P.Feature.MULTISELECT_ENABLED);
-    b.setOAuthToken(setup.accessToken);
-    b.setDeveloperKey(setup.apiKey);
-    b.setAppId(setup.appId);
+    b.setOAuthToken(good.accessToken);
+    b.setDeveloperKey(good.apiKey);
+    b.setAppId(good.appId);
     b.setOrigin(window.location.origin);
     b.setCallback((data: Record<string, unknown>) => {
       const action = data[P.Response.ACTION];
@@ -109,6 +169,9 @@ export async function pickGoogleDocs(
       } else if (action === P.Action.CANCEL) {
         picker?.dispose();
         resolve([]);
+      } else if (P.Action.ERROR !== undefined && action === P.Action.ERROR) {
+        picker?.dispose();
+        reject(new PickerError("picker-error"));
       }
     });
     picker = b.build();

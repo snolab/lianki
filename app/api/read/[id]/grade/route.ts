@@ -7,9 +7,11 @@ import {
   rangeWords,
   readerCtx,
   wordCtx,
+  payerOf,
 } from "@/lib/read/reader-route";
 import { dwellOf, gradeFor } from "@/lib/read/reader-service";
 import { qualifies, recordStudySafe } from "@/lib/study-days";
+import { cfg } from "@/lib/config-store";
 import { gradeWords } from "@/lib/read/batch-grade-server";
 import { undoRecord, undoWordsStatement } from "@/lib/read/reader-store";
 import type { RangeWord } from "@/lib/read/book-word-list";
@@ -42,7 +44,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!r.ok) return badRequest(r.error);
   // Study days (docs/levels.md): one swipe read for at least reaction time,
   // by the server's clock; a resent grade (duplicate) is not a new read.
-  if (!r.res.duplicate && qualifies(dwellOf(body, now)))
+  if (!r.res.duplicate && qualifies(dwellOf(body, now), await cfg("study.humanReactionMs")))
     await recordStudySafe(ctx.db, ctx.email, 1, now);
   const ew = body?.easyWords;
   if (body?.rating !== 4 || !ew || typeof ew !== "object" || !ctx.email) return json(r.res);
@@ -59,7 +61,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // review fills a missing meaning later).
     const gloss = (ws: RangeWord[]) =>
       Promise.race([
-        fillGlosses(ctx.db, bctx, ws, { userId: ctx.userId }).catch(() => ws),
+        fillGlosses(ctx.db, bctx, ws, payerOf(ctx)).catch(() => ws),
         new Promise<RangeWord[]>((ok) => setTimeout(() => ok(ws), GLOSS_WAIT_MS)),
       ]);
     const c = { db: ctx.db, email: ctx.email, bctx };
@@ -73,6 +75,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
   } catch (err) {
     console.error("read: easy words failed", err);
-    return json({ error: "words not graded" }, 500);
+    return json({ error: "words-not-graded" }, 500);
   }
 }

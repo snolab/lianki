@@ -174,7 +174,7 @@ const dictionary = {
 
 const context: Record<keyof typeof dictionary.content, string> = {
   importEpub:
-    "Button on the /read page, next to the Import Text Material button: opens a file picker to import a whole e-book file (.epub) as reading material. Imperative verb; keep EPUB as written.",
+    "Option in the Import pop-up on /reader, under Import text: opens a file picker to import a whole e-book file (.epub) as reading material. Imperative verb; keep EPUB as written.",
   note: "Small grey note under the Import EPUB button: the import is only for personal study of a book the user owns, only books without copy protection (DRM) and at most 20 MB work, and the book is never shared or listed publicly. Keep EPUB, DRM and 20 MB as written.",
   reading:
     "Status text shown in place of the Import EPUB button while the chosen e-book file is being unpacked and read in the browser, before it is saved. Progressive, ends with an ellipsis.",

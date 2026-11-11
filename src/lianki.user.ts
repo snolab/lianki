@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.31
+// @version     2.24.33
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -55,6 +55,10 @@ import { activeTitleRules, cleanTitle } from "@lianki/core/titleClean";
 import { startGdocStream } from "./gdoc-stream";
 import { mirrorPartnerSwitch, startPartner } from "./partner";
 import { mirrorPillChatFlag, pillChat } from "./pill-chat";
+import { fillUs, friendlyError, userscriptStrings } from "./userscript-strings";
+
+/** The userscript's own strings in the browser's language (userscript-strings.ts). */
+const US = userscriptStrings();
 import {
   REVIEW_FILTERS_EVENT,
   REVIEW_FILTERS_KEY,
@@ -1165,13 +1169,13 @@ function main() {
    * means it answered 401/403 (guest), `offline` means it never answered.
    */
   function storeBadge(store) {
-    if (store === "cloud") return { icon: "\u2601\uFE0F", title: "Synced to your Lianki account" };
+    if (store === "cloud") return { icon: "\u2601\uFE0F", title: US.syncedCloud };
     if (store === "offline") {
-      return { icon: "\uD83D\uDCF4", title: "Offline — saved in this browser, will sync later" };
+      return { icon: "\uD83D\uDCF4", title: US.savedOffline };
     }
     return {
       icon: "\uD83D\uDCBE",
-      title: "Saved in this browser only — sign in to sync (it is free)",
+      title: US.savedLocal,
     };
   }
 
@@ -1419,11 +1423,9 @@ function main() {
       return b;
     };
 
-    const slowerBtn = makeBtn("⏪", "Slower (,/v)", () => pardon(-3, 0.7));
-    const liankiBtn = makeBtn("🔖", "LiCards (Alt+F)", () =>
-      dialog ? closeDialog() : openDialog(),
-    );
-    const fasterBtn = makeBtn("⏩", "Faster (./b)", () => pardon(0, 1.2));
+    const slowerBtn = makeBtn("⏪", US.slower, () => pardon(-3, 0.7));
+    const liankiBtn = makeBtn("🔖", US.liCards, () => (dialog ? closeDialog() : openDialog()));
+    const fasterBtn = makeBtn("⏩", US.faster, () => pardon(0, 1.2));
 
     // Add separators between buttons
     const makeSeparator = () => {
@@ -1487,7 +1489,7 @@ function main() {
       const icon = hasCard ? "📗" : "🔖";
       if (liankiBtn.textContent !== icon) {
         liankiBtn.textContent = icon;
-        liankiBtn.title = hasCard ? "Review this card (Alt+F)" : "Add to LiCards (Alt+F)";
+        liankiBtn.title = hasCard ? US.reviewCard : US.addCard;
       }
     };
     addInterval(updateLiankiIcon, 1000);
@@ -1580,7 +1582,7 @@ function main() {
     const SWIPE_MIN = 40;
     const SWIPE_UP = -1;
     const SWIPE_RATINGS = { left: 1, down: 2, right: 4, up: SWIPE_UP };
-    const RATING_LABELS = { 1: "Again", 2: "Hard", 4: "Easy", [SWIPE_UP]: "Open" };
+    const RATING_LABELS = { 1: US.again, 2: US.hard, 4: US.easy, [SWIPE_UP]: US.open };
     let swiping = false;
     let swipeRating = 0;
     const swipeDirection = (dx, dy) => {
@@ -1858,8 +1860,8 @@ function main() {
     const badge = document.createElement("span");
     const { icon, title } = storeBadge(cardStore);
     const due = offlineReady ? dueCountFromIndex(cardStorage._index(), new Date()) : null;
-    badge.textContent = due === null ? icon : `${icon} ${due} due`;
-    badge.title = due === null ? title : `${title} · ${due} card(s) due`;
+    badge.textContent = due === null ? icon : `${icon} ${fillUs(US.due, { n: due })}`;
+    badge.title = due === null ? title : `${title} · ${fillUs(US.due, { n: due })}`;
     Object.assign(badge.style, {
       marginLeft: "8px",
       fontSize: "12px",
@@ -1896,7 +1898,7 @@ function main() {
       const spinner = document.createElement("span");
       spinner.className = "lk-spinner";
       spinRow.appendChild(spinner);
-      spinRow.appendChild(document.createTextNode("Adding note\u2026"));
+      spinRow.appendChild(document.createTextNode(US.adding));
       const urlDiv = document.createElement("div");
       Object.assign(urlDiv.style, {
         color: "var(--lk-muted)",
@@ -1910,19 +1912,9 @@ function main() {
     } else if (phase === "error") {
       const errDiv = document.createElement("div");
       errDiv.style.color = "var(--lk-error)";
-      errDiv.textContent = `Error: ${error}`;
+      // One plain line; the status, endpoint and error id stay in "Copy error details".
+      errDiv.textContent = friendlyError(error, US);
       dialog.appendChild(errDiv);
-      if (state.errorDetails) {
-        const detailDiv = document.createElement("div");
-        Object.assign(detailDiv.style, {
-          fontSize: "11px",
-          color: "var(--lk-muted)",
-          marginTop: "4px",
-          wordBreak: "break-all",
-        });
-        detailDiv.textContent = state.errorDetails;
-        dialog.appendChild(detailDiv);
-      }
 
       const btnRow = document.createElement("div");
       Object.assign(btnRow.style, {
@@ -1934,13 +1926,13 @@ function main() {
 
       const loginBtn = document.createElement("button");
       loginBtn.setAttribute("style", btn("#2a5f8f"));
-      loginBtn.textContent = "Login to Lianki";
+      loginBtn.textContent = US.signIn;
       loginBtn.addEventListener("click", () => window.open(ORIGIN, "_blank"));
       btnRow.appendChild(loginBtn);
 
       const copyBtn = document.createElement("button");
       copyBtn.setAttribute("style", btn("#444"));
-      copyBtn.textContent = "Copy error";
+      copyBtn.textContent = US.copyError;
       copyBtn.addEventListener("click", () => {
         const parts = [
           `Error: ${error}`,
@@ -1959,9 +1951,9 @@ function main() {
           document.execCommand("copy");
           ta.remove();
         });
-        copyBtn.textContent = "Copied!";
+        copyBtn.textContent = US.copied;
         setTimeout(() => {
-          copyBtn.textContent = "Copy error";
+          copyBtn.textContent = US.copyError;
         }, 2000);
       });
       btnRow.appendChild(copyBtn);
@@ -1989,7 +1981,11 @@ function main() {
       for (const o of options) {
         const b = document.createElement("button");
         b.setAttribute("style", btn("#2a5f8f"));
-        b.appendChild(document.createTextNode(o.label));
+        b.appendChild(
+          document.createTextNode(
+            [US.again, US.hard, US.good, US.easy][Number(o.rating) - 1] ?? o.label,
+          ),
+        );
         b.appendChild(document.createElement("br"));
         const small = document.createElement("small");
         Object.assign(small.style, { color: "rgba(255,255,255,0.9)", fontSize: "11px" });
@@ -2002,14 +1998,13 @@ function main() {
 
       const deleteBtn = document.createElement("button");
       deleteBtn.setAttribute("style", btn("#7a2a2a"));
-      deleteBtn.textContent = "Delete";
+      deleteBtn.textContent = US.delete;
       deleteBtn.addEventListener("click", doDelete);
       dialog.appendChild(deleteBtn);
 
       const hints = document.createElement("div");
       Object.assign(hints.style, { marginTop: "14px", opacity: ".6", fontSize: "11px" });
-      hints.textContent =
-        "A/H=Again \u00b7 S/J=Hard \u00b7 W/K=Good \u00b7 D/L=Easy \u00b7 T/M=Delete \u00b7 Esc=Close";
+      hints.textContent = US.hints;
       dialog.appendChild(hints);
 
       // Notes input
@@ -2019,7 +2014,7 @@ function main() {
       const notesInput = document.createElement("input");
       notesInput.type = "text";
       notesInput.maxLength = 128;
-      notesInput.placeholder = "Notes\u2026";
+      notesInput.placeholder = US.notes;
       notesInput.value = state.notes;
       notesInput.tabIndex = -1; // Don't auto-focus (preserve hotkeys)
       Object.assign(notesInput.style, {
@@ -2077,7 +2072,7 @@ function main() {
       dialog.appendChild(msgDiv);
 
       const restoreBtn = document.createElement("button");
-      restoreBtn.textContent = "Restore it (R)";
+      restoreBtn.textContent = US.restore;
       restoreBtn.setAttribute("style", btn("#2d6a4f"));
       restoreBtn.addEventListener("click", doRestore);
       dialog.appendChild(restoreBtn);
@@ -2088,7 +2083,7 @@ function main() {
         color: "var(--lk-muted)",
         marginTop: "8px",
       });
-      hint.textContent = "Restoring keeps its review history.";
+      hint.textContent = US.restoreHint;
       dialog.appendChild(hint);
     } else if (phase === "reviewed") {
       const msgDiv = document.createElement("div");
@@ -2111,8 +2106,8 @@ function main() {
         gap: "4px",
       });
       const queue = queueStorage.getQueue();
-      if (!navigator.onLine) indicator.textContent = "📴 Offline";
-      else if (syncInProgress) indicator.textContent = "🔄 Syncing...";
+      if (!navigator.onLine) indicator.textContent = `📴 ${US.offline}`;
+      else if (syncInProgress) indicator.textContent = `🔄 ${US.syncing}`;
       else if (queue.length > 0) indicator.textContent = `⏳ ${queue.length}`;
       else indicator.textContent = "✓";
       dialog.appendChild(indicator);
@@ -2216,7 +2211,7 @@ function main() {
       prefetchedNextUrl = result.nextUrl ?? null;
       if (result.nextUrl) prefetchNextPage(result.nextUrl);
       const opt = state.options.find((o) => Number(o.rating) === rating);
-      await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
+      await afterReview(fillUs(US.reviewed, { due: opt?.due ?? "?" }));
     } catch (err) {
       state.phase = "error";
       state.error = err.message;
@@ -2292,7 +2287,7 @@ function main() {
         queueStorage.addToQueue("delete", { url, noteId: state.noteId }, newHLC(deviceId));
       }
 
-      await afterReview("Deleted!");
+      await afterReview(US.deleted);
     } catch (err) {
       state.phase = "error";
       state.error = err.message;
@@ -2358,14 +2353,16 @@ function main() {
     prefetchedNextUrl = null;
 
     if (!nextUrl) {
-      state.message = "Loading next card\u2026";
+      state.message = US.loadingNext;
       renderDialog();
       const data = await getNextUrl().catch(() => ({ url: null, title: null }));
       nextUrl = data.url;
       nextTitle = data.title;
       if (nextUrl) {
         prefetchNextPage(nextUrl);
-        state.message = `Redirecting to:\n${(nextTitle && cleanedTitle(nextTitle, nextUrl)) || nextUrl}`;
+        state.message = fillUs(US.opening, {
+          title: (nextTitle && cleanedTitle(nextTitle, nextUrl)) || nextUrl,
+        });
         renderDialog();
       }
     }
@@ -2381,7 +2378,7 @@ function main() {
       if (!probe.ok) {
         console.warn("[Lianki] Next card is unreachable, skipping:", nextUrl);
         markUnreachable(nextUrl);
-        state.message = `Skipped an unreachable page:\n${nextUrl}`;
+        state.message = fillUs(US.skipped, { url: nextUrl });
         renderDialog();
         prefetchedNextUrl = null;
         const again = await getNextUrl().catch(() => ({ url: null }));
@@ -2390,7 +2387,7 @@ function main() {
           location.href = again.url;
           return;
         }
-        state.message = "Skipped an unreachable page — nothing else is due.";
+        state.message = US.skippedNone;
         renderDialog();
         setTimeout(closeDialog, 3000);
         return;
@@ -2581,11 +2578,7 @@ function main() {
       console.log("[Lianki] Redirect detected:", intendedUrl, "→", actualUrl);
 
       // Ask user if they want to update the card URL
-      const confirmed = confirm(
-        `This page redirected from:\n${intendedUrl}\n\n` +
-          `To:\n${actualUrl}\n\n` +
-          `Update the card to point to the new URL?`,
-      );
+      const confirmed = confirm(fillUs(US.redirectConfirm, { from: intendedUrl, to: actualUrl }));
 
       if (!confirmed) {
         console.log("[Lianki] User declined URL update");
@@ -3358,7 +3351,7 @@ function main() {
       pill.style.color = rateColor(score);
       pill.style.opacity = "1";
     } else {
-      pill.textContent = "unrated · , slower · . faster";
+      pill.textContent = US.speedUnrated;
       pill.style.color = "#cbd5e1";
       pill.style.opacity = "0.75";
     }
@@ -3423,7 +3416,7 @@ function main() {
       GM_setValue("lk:heatmap", heatEnabled() ? "0" : "1");
       if (heatEnabled()) paintHeatmap(heatVideo ?? $$("video,audio")[0]);
       else hideHeatmap();
-      centerTooltip(`Difficulty overlay ${heatEnabled() ? "on" : "off"}`);
+      centerTooltip(heatEnabled() ? US.heatOn : US.heatOff);
     },
     { capture: true, signal },
   );
@@ -3546,7 +3539,7 @@ function main() {
     // say so and add nothing.
     if (offlineReady && cardStorage.isDeleted(url)) {
       state.phase = "deleted";
-      state.message = "You deleted this card.";
+      state.message = US.youDeleted;
       renderDialog();
       return;
     }
@@ -3712,7 +3705,7 @@ function main() {
 
           // Instant feedback!
           const opt = state.options.find((o) => Number(o.rating) === rating);
-          await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
+          await afterReview(fillUs(US.reviewed, { due: opt?.due ?? "?" }));
 
           // Background sync
           tryBackgroundSync();
@@ -3748,7 +3741,7 @@ function main() {
       if (result.nextUrl) prefetchNextPage(result.nextUrl);
 
       const opt = state.options.find((o) => Number(o.rating) === rating);
-      await afterReview(`Reviewed! Next due: ${opt?.due ?? "?"}`);
+      await afterReview(fillUs(US.reviewed, { due: opt?.due ?? "?" }));
     } catch (err) {
       state.phase = "error";
       state.error = err.message;

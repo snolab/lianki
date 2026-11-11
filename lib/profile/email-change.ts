@@ -27,15 +27,9 @@ import {
   sha256Hex,
   type ThrottleDb,
 } from "@/lib/security/throttle";
-import { mailLocale } from "@/lib/sign-in-mail";
 import { readGrants, type PermissionReadDb } from "@/lib/account-permission";
 import { PROFILE } from "./config";
-import {
-  emailChangedMail,
-  emailConfirmMail,
-  emailRequestedMail,
-  emailTakenMail,
-} from "./email-mail";
+import { changeMail, changeMailLocale } from "./email-mail";
 
 /**
  * Every table keyed by the user's address (columns named `email`). Each moves
@@ -159,11 +153,11 @@ export async function requestEmailChange(req: Request, d: EmailDeps): Promise<Re
   );
   if (!target.allowed) return sent();
 
-  const locale = mailLocale(req);
+  const locale = await changeMailLocale(db, who.id, req);
   const taken = isOwnerAlias(owners, email) || (await takenByAnother(db, who.id, email));
   try {
     if (taken) {
-      await d.send({ to: email, ...emailTakenMail(locale) });
+      await d.send({ to: email, ...(await changeMail(db, "email-taken", locale, {}, who.id)) });
     } else {
       const token = newToken();
       await db
@@ -176,10 +170,16 @@ export async function requestEmailChange(req: Request, d: EmailDeps): Promise<Re
         .bind(who.id, await sha256Hex(token), who.email, email, now + PROFILE.emailLinkMs)
         .run();
       // After the #: a fragment reaches no server log and no Referer.
-      const url = `${d.origin()}/profile/email-confirm#${who.id}.${token}`;
-      await d.send({ to: email, ...emailConfirmMail(locale, url) });
+      const url = `${d.origin()}/my/profile/email-confirm#${who.id}.${token}`;
+      await d.send({
+        to: email,
+        ...(await changeMail(db, "email-confirm", locale, { url }, who.id)),
+      });
     }
-    await d.send({ to: who.email, ...emailRequestedMail(locale, maskEmail(email)) });
+    await d.send({
+      to: who.email,
+      ...(await changeMail(db, "email-requested", locale, { address: maskEmail(email) }, who.id)),
+    });
   } catch {
     logFailure("email-change.mail-failed");
     return json({ error: "mail-failed" }, 502);
@@ -276,7 +276,13 @@ export async function confirmEmailChange(req: Request, d: EmailDeps): Promise<Re
   try {
     await d.send({
       to: row.oldEmail,
-      ...emailChangedMail(mailLocale(req), maskEmail(row.newEmail)),
+      ...(await changeMail(
+        db,
+        "email-changed",
+        await changeMailLocale(db, userId, req),
+        { address: maskEmail(row.newEmail) },
+        userId,
+      )),
     });
   } catch {
     logFailure("email-change.notice-failed");

@@ -1,9 +1,12 @@
 /**
- * The widget's own strings in Chinese or Japanese, picked by the page's
- * language (`<html lang="zh…">`, `"ja"`), until the host passes localized
- * ones. English otherwise. The tree's strings (StateTree.tsx TreeStrings) included.
+ * The widget's own strings for the page's language (`<html lang>`), until the
+ * host passes localized ones: en / zh / ja here, the app's other 13 locales in
+ * chat-ui-locales.ts (user-facing) and dev-ui-locales.ts (developer-only).
+ * The tree's strings (StateTree.tsx TreeStrings) included.
  */
 import type { TreeStrings } from "./StateTree";
+import { OTHER_LEGACY, chatLocale } from "./chat-ui-locales";
+import { OTHER_DEV, OTHER_TREE } from "./dev-ui-locales";
 
 export type UiStrings = {
   stateTree: string;
@@ -16,6 +19,22 @@ export type UiStrings = {
   items: string;
   /** The mark on a voice line the agent polished (its tooltip and label). */
   polished: string;
+  /**
+   * The visible tag on a line the agent summarised: a run of the owner's voice
+   * lines that were room talk, collapsed into one short line saying what was
+   * said. A tap shows the lines as heard. Short: one word.
+   */
+  summary: string;
+  /** The tag's tooltip: what the summary is and that a tap shows what was heard. */
+  summaryTip: string;
+  /**
+   * The visible tag on a line the agent merged: a run of the owner's
+   * consecutive voice lines rewritten as one fluent passage. `{n}` = how many
+   * lines. A tap shows the lines as heard. Short.
+   */
+  merged: string;
+  /** The tag's tooltip: what the passage is and that a tap shows the lines as heard. */
+  mergedTip: string;
   /** The menu's Latency row (latency.ts): its title, and before any voice reply. */
   latency: string;
   latencyNone: string;
@@ -62,6 +81,16 @@ export type UiStrings = {
   latRecog: string;
   latLocal: string;
   latCloud: string;
+  /**
+   * Developer-only: the tiny tag after one of his voice lines saying which
+   * speech recognizer turned it into text, e.g. "local · sensevoice-small" or
+   * "cloud · whisper-large-v3-turbo" (latLocal / latCloud, then the engine id).
+   * - sttFallback: one or two words at its end when the local recognizer was
+   *   tried, failed, and the cloud one stood in ("fallback");
+   * - sttTagTip: the tag's tooltip, naming what it is.
+   */
+  sttFallback: string;
+  sttTagTip: string;
   latToAgent: string;
   latAgent: string;
   latVoiceStart: string;
@@ -95,7 +124,10 @@ export type UiStrings = {
    * - askSend: the button that sends the choices of a multi-question card;
    * - askExpired: under a card past its deadline (it can no longer be answered);
    * - askAnswered: under a card that has its answer (it is one-shot);
-   * - askSent: under a card just tapped here, until the answer is confirmed.
+   * - askSent: under a card just tapped here, until the answer is confirmed;
+   * - askWithdrawn: in place of a card's options once the agent took the
+   *   question back (it no longer needs an answer, and cannot be tapped):
+   *   one or two words, like a message marked "withdrawn" in a chat app.
    */
   askRecommended: string;
   askSend: string;
@@ -107,6 +139,8 @@ export type UiStrings = {
   /** The full-screen button and its way back (full-screen.ts), for a host that passes no strings. */
   fullScreen: string;
   fullScreenExit: string;
+  /** A withdrawn ask card's grey state (ChatStrings.askWithdrawn). */
+  askWithdrawn: string;
   /**
    * Compact mode (compact-view.ts), until the host passes localized ones
    * (ChatStrings): the menu switch, and the compact line's tap hint.
@@ -114,6 +148,9 @@ export type UiStrings = {
   /** The menu's two cue switches (cues.ts): when a spoken line goes out; when speech starts and ends. */
   cueSend: string;
   cueSpeech: string;
+  /** The speaker row, on (phone: always; computer: while typing). */
+  readAloud: string;
+  readAloudTyping: string;
   compactIdle: string;
   compactShowAll: string;
   /**
@@ -141,6 +178,10 @@ export const UI_EN: UiStrings = {
   needsYou: "needs you",
   items: "items",
   polished: "Polished",
+  summary: "Summary",
+  summaryTip: "Summary of what was heard. Tap to see the lines as heard.",
+  merged: "Merged {n}",
+  mergedTip: "{n} spoken messages joined into one passage. Tap to see them as heard.",
   latency: "Latency, last voice line",
   micAdapt: "Mic, adapting",
   micAdaptFloor: "room",
@@ -161,6 +202,8 @@ export const UI_EN: UiStrings = {
   latRecog: "recognition",
   latLocal: "local",
   latCloud: "cloud",
+  sttFallback: "fallback",
+  sttTagTip: "Speech recognizer that made this line",
   latToAgent: "to agent",
   latAgent: "agent",
   latVoiceStart: "voice start",
@@ -179,6 +222,9 @@ export const UI_EN: UiStrings = {
   aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while anything plays. Takes effect at once.",
   cueSend: "Sound when a voice message is sent",
   cueSpeech: "Sound when speech starts and ends",
+  askWithdrawn: "Withdrawn",
+  readAloud: "Replies read aloud",
+  readAloudTyping: "Replies read aloud while typing",
   compactIdle: "Only the last message while not typing",
   compactShowAll: "Show the whole chat",
   tuckChat: "Tuck the chat into the screen edge",
@@ -196,6 +242,10 @@ export const UI_ZH: UiStrings = {
   needsYou: "等你处理",
   items: "项",
   polished: "已润色",
+  summary: "摘要",
+  summaryTip: "听到的内容的摘要，点一下看原话",
+  merged: "合并 {n} 句",
+  mergedTip: "把连续说的 {n} 句合成了一段。点一下看原话",
   latency: "延迟（上一句语音）",
   micAdapt: "麦克风（自适应）",
   micAdaptFloor: "环境",
@@ -216,6 +266,8 @@ export const UI_ZH: UiStrings = {
   latRecog: "识别",
   latLocal: "本地",
   latCloud: "云端",
+  sttFallback: "备用",
+  sttTagTip: "这句话由哪个语音识别引擎转写",
   latToAgent: "送达助手",
   latAgent: "助手",
   latVoiceStart: "开始朗读",
@@ -234,6 +286,9 @@ export const UI_ZH: UiStrings = {
   aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，播放声音时麦克风暂停收音。立即生效。",
   cueSend: "语音消息发出时提示音",
   cueSpeech: "开始和结束说话时提示音",
+  askWithdrawn: "已撤回",
+  readAloud: "朗读回复",
+  readAloudTyping: "输入时朗读回复",
   compactIdle: "不打字时只显示最后一条消息",
   compactShowAll: "显示完整聊天",
   tuckChat: "把聊天收进屏幕边",
@@ -251,6 +306,10 @@ export const UI_JA: UiStrings = {
   needsYou: "あなた待ち",
   items: "件",
   polished: "整えました",
+  summary: "要約",
+  summaryTip: "聞こえた内容の要約。タップで元の発言を表示",
+  merged: "{n}件を統合",
+  mergedTip: "続けて話した{n}件を一つの文にまとめました。タップで元の発言を表示",
   latency: "遅延（直前の音声）",
   micAdapt: "マイク（自動調整）",
   micAdaptFloor: "周囲",
@@ -271,6 +330,8 @@ export const UI_JA: UiStrings = {
   latRecog: "認識",
   latLocal: "ローカル",
   latCloud: "クラウド",
+  sttFallback: "代替",
+  sttTagTip: "この行を文字にした音声認識エンジン",
   latToAgent: "エージェントへ",
   latAgent: "エージェント",
   latVoiceStart: "読み上げ開始",
@@ -289,6 +350,9 @@ export const UI_JA: UiStrings = {
   aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、音声の再生中はマイクが一時停止します。すぐに反映されます。",
   cueSend: "音声メッセージ送信時の音",
   cueSpeech: "話し始めと話し終わりの音",
+  askWithdrawn: "取り下げ済み",
+  readAloud: "返事を読み上げる",
+  readAloudTyping: "入力中は返事を読み上げる",
   compactIdle: "入力していないときは最後のメッセージだけ表示",
   compactShowAll: "チャット全体を表示",
   tuckChat: "チャットを画面の端にしまう",
@@ -323,6 +387,33 @@ export const TREE_ZH: TreeStrings = {
   live: "来自开发服务器的实时数据",
 };
 
+/** The tree's strings in Japanese. */
+export const TREE_JA: TreeStrings = {
+  tree: "状態ツリー",
+  back: "チャットに戻る",
+  needsMe: "自分待ち",
+  needsYou: "あなた待ち",
+  openCount: "未完了 {n} 件",
+  needsYouCount: "あなた待ち {n} 件",
+  copy: "コピー",
+  copied: "コピーしました",
+  expand: "展開",
+  collapse: "折りたたむ",
+  loading: "読み込み中…",
+  failed: "状態ツリーを読み込めません",
+  empty: "状態ツリーは空です。",
+  nothingNeedsYou: "あなた待ちの項目はありません。",
+  you: "あなた",
+  open: "未着手",
+  doing: "進行中",
+  blocked: "停滞",
+  done: "完了",
+  lastDone: "最近の完了",
+  nowDoing: "進行中",
+  upNext: "次",
+  live: "開発サーバーのライブデータ",
+};
+
 /** The page's language is Chinese. */
 export function isZh(lang: string | null | undefined = globalThis.document?.documentElement.lang) {
   return /^zh\b/i.test(lang ?? "");
@@ -333,13 +424,27 @@ export function isJa(lang: string | null | undefined = globalThis.document?.docu
   return /^ja\b/i.test(lang ?? "");
 }
 
-/** The widget's strings for the page's language (zh, ja, else English). */
-export const uiStrings = (lang?: string | null): UiStrings =>
-  isZh(lang) ? UI_ZH : isJa(lang) ? UI_JA : UI_EN;
+/**
+ * The widget's strings for the page's language: zh, ja or English, and for the
+ * app's other 13 locales the strings every chat user sees (chat-ui-locales.ts)
+ * with the developer-only ones (dev-ui-locales.ts).
+ */
+export const uiStrings = (lang?: string | null): UiStrings => {
+  if (isZh(lang)) return UI_ZH;
+  if (isJa(lang)) return UI_JA;
+  const loc = chatLocale(lang);
+  return loc === "en" || loc === "zh" || loc === "ja"
+    ? UI_EN
+    : { ...OTHER_DEV[loc], ...OTHER_LEGACY[loc] };
+};
 
-/** The tree's defaults for the page's language, under the host's own. */
-export const treeDefaults = (lang?: string | null): Partial<TreeStrings> =>
-  isZh(lang) ? TREE_ZH : {};
+/** The tree's defaults for the page's language, under the host's own (English: none). */
+export const treeDefaults = (lang?: string | null): Partial<TreeStrings> => {
+  if (isZh(lang)) return TREE_ZH;
+  if (isJa(lang)) return TREE_JA;
+  const loc = chatLocale(lang);
+  return loc === "en" || loc === "zh" || loc === "ja" ? {} : OTHER_TREE[loc];
+};
 
 /** Opacity blink for in-progress items (globals.css lk-blink: 1 → 0.35 → 1, 1.6 s). */
 export const BLINK = "animate-lk-blink motion-reduce:animate-none";
@@ -374,21 +479,21 @@ export type LocalSttStrings = {
 };
 const LOCAL_STT: Record<"en" | "zh" | "ja", LocalSttStrings> = {
   en: {
-    ready: "Local speech model connected",
-    connecting: "Connecting to the local speech model…",
-    down: "Local speech model unreachable: using the cloud",
+    ready: "Connected to Lianki's speech server",
+    connecting: "Connecting to Lianki's speech server…",
+    down: "Lianki's speech server unreachable: using the cloud",
     filtered: "Not your voice: not sent",
   },
   zh: {
-    ready: "已连接本地语音模型",
-    connecting: "正在连接本地语音模型…",
-    down: "本地语音模型连不上，改用云端识别",
+    ready: "已连接 Lianki 语音服务器",
+    connecting: "正在连接 Lianki 语音服务器…",
+    down: "Lianki 语音服务器连不上，改用云端识别",
     filtered: "不是你的声音，没有发送",
   },
   ja: {
-    ready: "ローカル音声モデルに接続済み",
-    connecting: "ローカル音声モデルに接続中…",
-    down: "ローカル音声モデルに接続できません。クラウドで認識します",
+    ready: "Lianki の音声サーバーに接続済み",
+    connecting: "Lianki の音声サーバーに接続中…",
+    down: "Lianki の音声サーバーに接続できません。クラウドで認識します",
     filtered: "あなたの声ではないため送信しませんでした",
   },
 };

@@ -63,10 +63,13 @@ describe("micStatus and error notes", () => {
     expect(micErrorNote(domErr("NotFoundError"))).toBe("No microphone found");
     expect(micErrorNote(new SttError(401, "x"))).toBe("Sign in to use the mic");
     expect(micErrorNote(new SttError(429, "x"))).toMatch(/try again/);
-    expect(micErrorNote(new SttError(502, "x"))).toBe("Transcription failed (502)");
-    expect(micErrorNote(new Error("wasm blocked"))).toBe("Mic: wasm blocked");
-    expect(micErrorNote("odd")).toBe("Mic: odd");
-    expect(micErrorNote(null)).toBe("Mic: null");
+    // Anything else: one plain line, never a status or the browser's message.
+    expect(micErrorNote(new SttError(502, "x"))).toBe("The mic didn't work. Please try again.");
+    expect(micErrorNote(new Error("wasm blocked"))).toBe("The mic didn't work. Please try again.");
+    expect(micErrorNote("odd")).toBe("The mic didn't work. Please try again.");
+    expect(micErrorNote(null)).toBe("The mic didn't work. Please try again.");
+    expect(micErrorNote(domErr("NotFoundError"), "zh-CN")).toBe("找不到麦克风");
+    expect(micErrorNote(new SttError(401, "x"), "pt-BR")).toBe("Entre para usar o microfone");
     expect(isMicDenied(domErr("NotAllowedError"))).toBe(true);
     expect(isMicDenied(new Error("x"))).toBe(false);
     expect(isMicDenied(null)).toBe(false);

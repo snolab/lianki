@@ -479,14 +479,14 @@ export default function SignInClient({ passwordEnabled }: { passwordEnabled: boo
             <form onSubmit={handlePasswordSignIn} className="space-y-3">
               <div>
                 <label htmlFor="password" className="sr-only">
-                  Password
+                  {t.password}
                 </label>
                 <input
                   id="password"
                   type="password"
                   required
                   autoComplete="current-password"
-                  placeholder="Password"
+                  placeholder={t.password.value}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   minLength={8}

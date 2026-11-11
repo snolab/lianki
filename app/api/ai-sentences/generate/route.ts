@@ -1,3 +1,6 @@
+import { refusal } from "@/lib/payments/metered";
+import { MAX_OUT, openAiCreate, paidChat } from "@/lib/payments/paid-calls";
+import { walletDb } from "@/lib/payments/wallet-db";
 import { NextRequest, NextResponse } from "next/server";
 import {
   isWorkersAiConfigured,
@@ -19,7 +22,7 @@ export async function POST(req: NextRequest) {
     const session = await auth.api.getSession({ headers: await headers() });
     const email = session?.user?.email;
     if (!email) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "login-required" }, { status: 401 });
     }
 
     const rateLimit = await routeLimit(await accountKey("ai-sentences", email), {
@@ -28,7 +31,7 @@ export async function POST(req: NextRequest) {
     });
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { error: "Too many requests. Please retry later." },
+        { error: "rate-limited" },
         {
           status: 429,
           headers: { "Retry-After": String(Math.ceil(rateLimit.retryAfterMs / 1000)) },
@@ -39,10 +42,10 @@ export async function POST(req: NextRequest) {
     const { word, language, topic, historySentences } = await req.json();
 
     if (typeof word !== "string" || word.length === 0 || word.length > 100) {
-      return NextResponse.json({ error: "Invalid word" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-word" }, { status: 400 });
     }
     if (typeof language !== "string" || language.length === 0) {
-      return NextResponse.json({ error: "Invalid language" }, { status: 400 });
+      return NextResponse.json({ error: "invalid-language" }, { status: 400 });
     }
 
     if (!isWorkersAiConfigured()) {
@@ -58,12 +61,15 @@ export async function POST(req: NextRequest) {
 
     const topicContext = topic ? `The sentence should relate to the topic: "${topic}".` : "";
 
-    const completion = await openai.chat.completions.create({
-      model: textModel(),
-      messages: [
-        {
-          role: "system",
-          content: `You are a language learning assistant. Generate a natural example sentence using the given word in ${language}.
+    const paid = await paidChat(
+      { userId: session!.user.id, email: email, db: walletDb() },
+      "ai-sentences",
+      {
+        model: textModel(),
+        messages: [
+          {
+            role: "system",
+            content: `You are a language learning assistant. Generate a natural example sentence using the given word in ${language}.
 Return a JSON object with these fields:
 - "word": the target word
 - "sentence": a natural sentence using the word (5-500 characters)
@@ -71,15 +77,20 @@ Return a JSON object with these fields:
 - "explanation": a brief explanation of the sentence relating to the word and context (5-200 characters, in English)
 
 ${topicContext}${historyContext}`,
-        },
-        {
-          role: "user",
-          content: `Generate a sentence for the word: "${word}"`,
-        },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.8,
-    });
+          },
+          {
+            role: "user",
+            content: `Generate a sentence for the word: "${word}"`,
+          },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.8,
+        max_tokens: MAX_OUT["ai-sentences"],
+      },
+      openAiCreate(openai),
+    );
+    if (!paid.ok) return refusal(paid);
+    const completion = paid.value;
 
     const result = JSON.parse(completion.choices[0]?.message?.content || "{}");
 
@@ -91,6 +102,6 @@ ${topicContext}${historyContext}`,
     });
   } catch (error) {
     logSanitizedError("ai-sentences.generate", error);
-    return NextResponse.json({ error: "Failed to generate sentence" }, { status: 500 });
+    return NextResponse.json({ error: "generate-failed" }, { status: 500 });
   }
 }

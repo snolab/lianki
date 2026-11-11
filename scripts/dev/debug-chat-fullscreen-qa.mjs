@@ -4,10 +4,14 @@
  * /harness page, hot widget, in Chromium and WebKit, light and dark, at iPhone
  * size (414×896, 390×844), the narrowest phone (320×568) and a desktop (1280×800):
  *
- *   - the flag gate: no button without `?full` (the harness is not the owner)
- *   - the button: an svg, a 40px tap target, labelled; a tap fills the screen
- *     (a phone) or opens the right sidebar (wider than 35em), and the same
- *     button returns to the panel, at the same place and size
+ *   - the flag gate: without `?full` (the harness is not the owner) a drop on
+ *     the bottom edge stays a panel
+ *   - no button to enter (owner, 2026-11-09 18:25 JST): the input bar dragged
+ *     to the bottom edge fills the screen (a phone) or opens the right sidebar
+ *     (wider than 35em); dragged to the top edge it stays a panel (18:26 JST);
+ *     a drag up from full screen leaves it, the panel following the finger
+ *   - the way out: ✕ and its words, 40px, top corner, keyboard-focusable;
+ *     the menu's Full screen row is the way in without a drag
  *   - the switch keeps the thread, the draft, the focus, the line being read,
  *     and the very same input and mic elements (nothing remounts)
  *   - the bar: the screen's width less the 8 px gutters on a phone, the
@@ -67,7 +71,11 @@ const check = (ok, what, detail = "") => {
 };
 
 const r = (n) => Math.round(n * 10) / 10;
-const FULL = '[data-testid="debug-chat-fullscreen"]';
+/** The old enter/exit toggle: gone (owner, 2026-11-09 18:25 JST). */
+const OLD_TOGGLE = '[data-testid="debug-chat-fullscreen"]';
+const EXIT = '[data-testid="debug-chat-fullscreen-exit"]';
+const GRIP = '[data-testid="debug-chat-pill-min"]';
+const MENU_FULL = '[data-testid="debug-menu-fullscreen"]';
 const SECTION = "[data-debug-widget] section[data-debug-chat]";
 const COL = '[data-testid="debug-chat-column"]';
 const BAR = '[data-testid="debug-chat-pill"]';
@@ -139,34 +147,62 @@ async function run(engine, name, scheme, vp) {
     if (shots)
       await page.screenshot({ path: `${shots}/${name}-${scheme}-${vp.width}-${what}.png` });
   };
+  /**
+   * Drag the input bar by its grip, in steps, to (x, y) (default: the grip's
+   * own x). Past the screen's edge the drag keeps the bar on screen, flush.
+   */
+  const dragGrip = async (y, x) => {
+    const g = await box(GRIP);
+    const sx = g.x + g.width / 2;
+    const sy = g.y + g.height / 2;
+    await page.mouse.move(sx, sy);
+    await page.mouse.down();
+    await page.mouse.move(x ?? sx, y, { steps: 12 });
+    await page.mouse.up();
+    await settle();
+  };
+  /** The bar's bottom edge against the screen's bottom (flush, within a px). */
+  const toBottom = () => dragGrip(vp.height - 1);
 
   try {
-    // The gate: off (no flag, not the owner), no button.
+    // The gate: off (no flag, not the owner): a drop on the bottom edge stays a panel.
     await page.goto(`${ORIGIN}/harness?open&nofrontier&notree`);
     await page.waitForSelector(SECTION, { timeout: 60_000 });
     await settle();
-    check((await page.locator(FULL).count()) === 0, `${tag} flag off, not owner: no button`);
+    await toBottom();
+    check(!(await isFull()), `${tag} flag off, not owner: the bottom edge stays a panel`);
+    await page.evaluate(() => localStorage.removeItem("lk:debug-chat-pos"));
 
     await page.goto(`${ORIGIN}/harness?open&nofrontier&notree&full`);
-    await page.waitForSelector(FULL, { timeout: 60_000 });
+    await page.waitForSelector(SECTION, { timeout: 60_000 });
     await settle();
     await lines(0, 40);
     await page.evaluate(() => globalThis.__push("Some **bold** and `code` here", "agent"));
     await settle();
-    const btn = await box(FULL);
-    check(
-      !!btn && btn.width >= 32 && btn.height >= 32,
-      `${tag} the button is there`,
-      JSON.stringify(btn),
-    );
-    check((await page.locator(`${FULL} svg`).count()) === 1, `${tag} its icon is an svg`);
-    const hit = await page.evaluate((sel) => {
-      const el = document.querySelector(sel);
-      const r = getComputedStyle(el, "::before");
-      return { cls: el.classList.contains("tap-40"), w: r.width, h: r.height };
-    }, FULL);
-    check(hit.cls, `${tag} 40px tap target (tap-40)`, JSON.stringify(hit));
-    check(!!(await page.locator(FULL).getAttribute("aria-label")), `${tag} labelled`);
+    check((await page.locator(OLD_TOGGLE).count()) === 0, `${tag} no button to enter full screen`);
+    check((await page.locator(EXIT).count()) === 0, `${tag} the panel: no exit button`);
+
+    // The top edge: it stays a panel there (it would hide the history).
+    await dragGrip(0);
+    const topBar = await box(BAR);
+    check(topBar.y <= 1, `${tag} top edge: the bar is flush with it`, JSON.stringify(topBar));
+    check(!(await isFull()), `${tag} top edge: no full screen`);
+    await shot("top-edge");
+    // Back down to the middle, then to where it was (the default place).
+    await page.evaluate(() => localStorage.removeItem("lk:debug-chat-pos"));
+    await page.reload();
+    await page.waitForSelector(SECTION, { timeout: 60_000 });
+    await settle();
+    await lines(0, 40);
+    await page.evaluate(() => globalThis.__push("Some **bold** and `code` here", "agent"));
+    await settle();
+    // Dropped short of the edge, by a few px: still a panel.
+    {
+      const b = await box(BAR);
+      const g = await box(GRIP);
+      await dragGrip(g.y + g.height / 2 + (vp.height - (b.y + b.height)) - 6);
+      check(!(await isFull()), `${tag} near the bottom, not flush: still a panel`);
+    }
     const panel = await box(SECTION);
     const barPanel = await box(BAR);
     const inputPanel = await box(INPUT);
@@ -198,9 +234,8 @@ async function run(engine, name, scheme, vp) {
       if (mic) mic.__lkMark = 1;
       return { id: row.dataset.msg, top: row.getBoundingClientRect().top };
     }, COL);
-    await tap(FULL);
-    await settle();
-    check(await isFull(), `${tag} a tap: full screen`);
+    await toBottom();
+    check(await isFull(), `${tag} dragged to the bottom edge: full screen`);
     const fs = await box(SECTION);
     // Wider than the owner's 35em (full-screen.ts SIDEBAR_QUERY): a sidebar
     // docked right, full height, 20–28rem; narrower: the whole screen.
@@ -245,23 +280,21 @@ async function run(engine, name, scheme, vp) {
           sameInput: input.__lkMark === 1,
           sameMic: !mic || mic.__lkMark === 1,
           focused: document.activeElement === input,
+          newest: (() => {
+            const rows = document.querySelectorAll(`${c} [data-testid=debug-chat-line]`);
+            const b = rows[rows.length - 1]?.getBoundingClientRect();
+            const v = document.querySelector(c).getBoundingClientRect();
+            return !!b && b.bottom <= v.bottom + 1 && b.top >= v.top - 1;
+          })(),
         };
       },
       [COL, before.id],
     );
     check(after.draft === "@/wor", `${tag} the draft is kept`, after.draft);
     check(after.sameInput && after.sameMic, `${tag} the same input and mic (no remount)`);
-    check(after.focused, `${tag} the input keeps its focus`);
-    check(
-      after.top !== undefined &&
-        (Math.abs(after.top - before.top) <= 4 ||
-          // No room to hold it (the log's scroll ran out): still in view.
-          (after.clamped &&
-            after.top >= after.view.top - 1 &&
-            after.bottom <= after.view.bottom + 1)),
-      `${tag} the line being read keeps its place`,
-      JSON.stringify({ before, after }),
-    );
+    // The press on the grip leaves the input (as any drag of the chat does), so
+    // the panel was at rest, at its newest line: full screen opens there too.
+    check(after.newest, `${tag} full screen opens at the newest line`, JSON.stringify(after));
     const col = await box(COL);
     const bar = await box(BAR);
     check(col.height > vp.height * 0.5, `${tag} the log takes the height`, `${col.height}`);
@@ -334,7 +367,7 @@ async function run(engine, name, scheme, vp) {
       let ok = bs.length >= 3;
       for (let i = 1; i < bs.length; i++) if (bs[i].left < bs[i - 1].right - 0.5) ok = false;
       const fsBtn = document
-        .querySelector('[data-testid="debug-chat-fullscreen"]')
+        .querySelector('[data-testid="debug-chat-fullscreen-exit"]')
         .getBoundingClientRect();
       const bar = document.querySelector('[data-testid="debug-chat-pill"]').getBoundingClientRect();
       if (fsBtn.bottom > bar.top + 0.5) ok = false;
@@ -345,12 +378,53 @@ async function run(engine, name, scheme, vp) {
     check(side.ok, `${tag} no horizontal scroll`, JSON.stringify(side));
     check((await page.locator(`${COL} strong`).count()) > 0, `${tag} markdown renders`);
     check((await page.locator(MIC).count()) === 1, `${tag} the mic is there`);
-    const exitBtn = await box(FULL);
+    const exitBtn = await box(EXIT);
     check(
-      exitBtn && exitBtn.y >= 0 && exitBtn.x + exitBtn.width <= vp.width && exitBtn.width >= 40,
-      `${tag} the minimise control: top corner, 40px`,
+      exitBtn &&
+        exitBtn.y >= 0 &&
+        exitBtn.y + exitBtn.height <= col.y + 1 &&
+        exitBtn.x + exitBtn.width <= vp.width &&
+        exitBtn.height >= 40,
+      `${tag} the exit button: top corner, above the log, 40px`,
       JSON.stringify(exitBtn),
     );
+    const exitText = (await page.locator(EXIT).innerText()).trim();
+    check(
+      exitText.includes("✕") && exitText.replace("✕", "").trim().length > 0,
+      `${tag} the exit button: ✕ and its words`,
+      exitText,
+    );
+    // Its words against what is behind them: AA (4.5:1), computed in the page.
+    const contrast = await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      const c = document.createElement("canvas").getContext("2d");
+      const rgb = (css) => {
+        c.fillStyle = "#000";
+        c.fillStyle = css;
+        c.fillRect(0, 0, 1, 1);
+        const d = c.getImageData(0, 0, 1, 1).data;
+        return [d[0], d[1], d[2]];
+      };
+      const lum = ([r, g, b]) =>
+        [r, g, b]
+          .map((v) => v / 255)
+          .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+          .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+      const fg = rgb(getComputedStyle(el).color);
+      const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+      // Behind it: the near-opaque full-screen scrim over the page, at worst the page's own background.
+      const bg = dark ? [24, 24, 27] : [250, 250, 250];
+      const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x);
+      return { ratio: (a + 0.05) / (b + 0.05), fg, bg };
+    }, EXIT);
+    check(contrast.ratio >= 4.5, `${tag} the exit button: AA contrast`, JSON.stringify(contrast));
+    await page.evaluate((c) => {
+      const el = document.querySelector(c);
+      el.dispatchEvent(new WheelEvent("wheel", { deltaY: -100 }));
+      el.scrollTop = 300;
+      el.dispatchEvent(new Event("scroll"));
+    }, COL);
+    await settle();
     check(!!(await page.locator(DOWN).count()), `${tag} scrolled up: scroll-down shows`);
     await shot("full");
 
@@ -445,41 +519,82 @@ async function run(engine, name, scheme, vp) {
     await settle();
     check(!(await isFull()), `${tag} Escape: back to the panel`);
     const back = await box(SECTION);
+    const backBar = await box(BAR);
     check(
-      Math.abs(back.x + back.width - (panel.x + panel.width)) <= 2 &&
-        Math.abs(back.y + back.height - (panel.y + panel.height)) <= 2 &&
-        Math.abs(back.width - panel.width) <= 2,
-      `${tag} the panel is where it was`,
-      JSON.stringify({ panel, back }),
+      Math.abs(back.width - panel.width) <= 2 &&
+        // Resting flush, it is shown KEYBOARD_GAP_PX (8) above the edge (keyboard-lift.ts).
+        backBar.y + backBar.height >= vp.height - 8.5,
+      `${tag} the panel as it was, where it was dropped (on the bottom edge)`,
+      JSON.stringify({ panel, back, backBar }),
     );
     check((await page.locator(INPUT).inputValue()) === "@/wor", `${tag} the draft is still there`);
 
     // Back leaves too, and stays on the page.
     const url = page.url();
-    await tap(FULL);
-    await settle();
+    await toBottom();
     check(await isFull(), `${tag} again: full screen`);
     await page.goBack();
     await settle();
     check(!(await isFull()), `${tag} Back: back to the panel`);
     check(page.url() === url, `${tag} Back stays on the page`, page.url());
 
-    // The button's way back; then a reload keeps full screen (this device).
-    await tap(FULL);
+    // A drag up leaves full screen; the panel comes back and follows the finger.
+    await toBottom();
+    check(await isFull(), `${tag} dragged down once more: full screen`);
+    {
+      const g = await box(GRIP);
+      const sy = g.y + g.height / 2;
+      const upTo = Math.round(vp.height * 0.45);
+      // A small wobble up (under FULL_LEAVE_PX) stays full screen.
+      await page.mouse.move(g.x + g.width / 2, sy);
+      await page.mouse.down();
+      await page.mouse.move(g.x + g.width / 2, sy - 20, { steps: 4 });
+      await settle();
+      check(await isFull(), `${tag} a 20 px wobble up: still full screen`);
+      await page.mouse.move(g.x + g.width / 2, upTo, { steps: 14 });
+      await page.mouse.up();
+      await settle();
+      check(!(await isFull()), `${tag} dragged up: back to the panel`);
+      const s = await box(SECTION);
+      const b = await box(BAR);
+      check(
+        Math.abs(s.width - panel.width) <= 2 && b.y + b.height < vp.height - 40,
+        `${tag} dragged up: the panel's size, carried up with the finger`,
+        JSON.stringify({ s, b, upTo }),
+      );
+      await shot("dragged-up");
+    }
+
+    // The exit button, from the keyboard: focus it, Enter.
+    await toBottom();
+    check(await isFull(), `${tag} full screen for the exit button`);
+    await page.locator(EXIT).focus();
+    check(
+      await page.evaluate((sel) => document.activeElement === document.querySelector(sel), EXIT),
+      `${tag} the exit button takes the keyboard focus`,
+    );
+    await page.keyboard.press("Enter");
     await settle();
-    await tap(FULL);
+    check(!(await isFull()), `${tag} the exit button (Enter): back to the panel`);
+
+    // The way in without a drag: the menu's Full screen row (a double tap on the grip).
+    await page.locator(GRIP).dblclick();
     await settle();
-    check(!(await isFull()), `${tag} the minimise control: back to the panel`);
+    check((await page.locator(MENU_FULL).count()) === 1, `${tag} the menu has a Full screen row`);
     const histLen = await page.evaluate(() => history.length);
-    await tap(FULL);
-    await settle();
+    if (await page.locator(MENU_FULL).count()) {
+      await page.locator(MENU_FULL).click();
+      await settle();
+      check(await isFull(), `${tag} the menu row: full screen`);
+    }
+    // A reload keeps full screen (this device).
     await page.reload();
     await page.waitForSelector(SECTION, { timeout: 60_000 });
     await settle();
     check(await isFull(), `${tag} a reload keeps full screen`);
     check(
       (await page.evaluate(() => history.length)) <= histLen + 1,
-      `${tag} entries: one per tap at most`,
+      `${tag} entries: one per entry at most`,
     );
     await page.keyboard.press("Escape");
     await settle();

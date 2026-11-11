@@ -7,6 +7,7 @@
 // for this text on every device, or for all of them from /preferences. The
 // action itself stays in the contents sheet, whatever the offer does.
 import { notePrefWrite } from "@lianki/ui-state/account";
+import { chooseDontAsk, dontAskId, dontAskQuiet, forgetDontAsk } from "@/lib/dont-ask";
 import type { BookMeta, BookSource } from "./book";
 
 /** On the account (lib/prefs/bindings.ts): "0" turns the offer off everywhere. */
@@ -106,8 +107,28 @@ function put(key: string, value: string) {
   }
 }
 
-export const readOfferOn = () => get(OFFER_KEY) !== "0";
-export const writeOfferOn = (on: boolean) => put(OFFER_KEY, on ? "1" : "0");
+const NEVER_ID = dontAskId("read-polish");
+
+/**
+ * The offer is on unless "Don't ask again" holds today: that no comes back
+ * after a spaced interval (lib/dont-ask.ts), so this reads on once it is due.
+ */
+export const readOfferOn = () => get(OFFER_KEY) !== "0" || !dontAskQuiet(NEVER_ID);
+
+/** The switch, or the offer's "Don't ask again" (off: one more time chosen). */
+export function writeOfferOn(on: boolean) {
+  put(OFFER_KEY, on ? "1" : "0");
+  if (on) forgetDontAsk(NEVER_ID);
+  else chooseDontAsk(NEVER_ID);
+}
+
+/**
+ * The offer was answered some other way (tidy, or no to this text): a "Don't
+ * ask again" that came back and was not picked again is dropped.
+ */
+export function answerOffer() {
+  if (get(OFFER_KEY) === "0") writeOfferOn(true);
+}
 
 function readSkips(): string[] {
   try {

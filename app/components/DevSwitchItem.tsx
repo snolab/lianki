@@ -7,6 +7,7 @@ import {
   switchToDevServer,
   type DevSwitchMode,
 } from "@/lib/dev-server-switch";
+import { SealStamp } from "./SealSwitch";
 
 export type DevSwitchLabels = {
   name: string;
@@ -16,12 +17,13 @@ export type DevSwitchLabels = {
 
 export type DevSwitch = { mode: Exclude<DevSwitchMode, null>; labels: DevSwitchLabels };
 
-const BLUE = "oklch(0.62 0.19 255)";
+const BLUE = "oklch(0.62 0.209 22.3)";
 
 /**
  * The owner's "Preview build" toggle in the account menu
  * (lib/dev-server-switch.ts; owner, 2026-11-03 14:45 JST: a switch). On =
  * the dev server, off = lianki.com; flipping it moves the same page across.
+ * Drawn as the box seal every switch uses (SealSwitch.tsx).
  * It exists only while the menu is open, and on lianki.com checks once when
  * it mounts: no polling, nothing left running after the menu closes.
  *
@@ -48,14 +50,8 @@ export function DevSwitchItem({ sw, children }: { sw: DevSwitch; children?: Reac
   const inner = (
     <>
       <span className="flex-1 min-w-0 truncate">{label}</span>
-      <span
-        aria-hidden
-        className={`relative inline-block w-9 h-5 shrink-0 rounded-full transition-colors ${on ? "" : "bg-gray-300 dark:bg-gray-600"} ${up === null ? "animate-pulse" : ""}`}
-        style={on ? { background: BLUE } : undefined}
-      >
-        <span
-          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow ${on ? "start-[18px]" : "start-0.5"}`}
-        />
+      <span aria-hidden className={up === null ? "animate-pulse" : undefined}>
+        <SealStamp on={on} size="sm" />
       </span>
     </>
   );

@@ -8,6 +8,8 @@ import { describe, expect, test } from "bun:test";
 import {
   IMPORTS_ONLY,
   QA_FULL,
+  QA_SMOKE,
+  ciQaSuites,
   UNIT_FULL,
   affectedBy,
   aliasesFrom,
@@ -288,5 +290,29 @@ describe("the real suite list (scripts/qa/suites.mjs)", () => {
     expect(matchesAny("lib/d1/index.ts", UNIT_FULL)).toBe("lib/d1/**");
     expect(matchesAny("scripts/qa/suites.mjs", QA_FULL)).toBe("scripts/qa/suites.mjs");
     expect(matchesAny("lib/words/order.ts", QA_FULL)).toBeNull();
+  });
+});
+
+describe("ciQaSuites (merge queue)", () => {
+  const suites = [
+    { id: "audio-free" },
+    { id: "api" },
+    { id: "ui" },
+    { id: "sign-out" },
+    { id: "words" },
+  ];
+  test("full plan: null, the whole set", () => {
+    expect(ciQaSuites({ mode: "full", reason: "x" }, suites)).toBeNull();
+  });
+  test("affected plus the smoke set, in list order", () => {
+    const plan = {
+      mode: "some" as const,
+      suites: [["words", "lib/words/x.ts"]] as [string, string][],
+      total: 5,
+    };
+    expect(ciQaSuites(plan, suites)).toEqual(["api", "ui", "sign-out", "words"]);
+  });
+  test("nothing affected: the smoke set alone", () => {
+    expect(ciQaSuites({ mode: "some", suites: [], total: 5 }, suites)).toEqual(QA_SMOKE);
   });
 });
