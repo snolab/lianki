@@ -17,8 +17,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   if (repo instanceof NextResponse) return repo;
   const { id } = await params;
   const parsed = Body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Invalid name" }, { status: 400 });
-  if (!(await repo.getList(id))) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!parsed.success) return NextResponse.json({ error: "invalid-name" }, { status: 400 });
+  if (!(await repo.getList(id))) return NextResponse.json({ error: "not-found" }, { status: 404 });
   await repo.renameList(id, parsed.data.name);
   return NextResponse.json({ list: await repo.getList(id) });
 }

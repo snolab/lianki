@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as { lang?: unknown; words?: unknown } | null;
   const lang = typeof body?.lang === "string" ? body.lang.toLowerCase().split(/[-_]/)[0] : "";
   if (!/^[a-z]{2,3}$/.test(lang) || !Array.isArray(body?.words))
-    return NextResponse.json({ error: "lang and words required" }, { status: 400 });
+    return NextResponse.json({ error: "lang-and-words-required" }, { status: 400 });
   const words = [
     ...new Set(
       body.words

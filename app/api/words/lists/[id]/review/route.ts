@@ -34,7 +34,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   if (repo instanceof NextResponse) return repo;
   const { id } = await params;
   const parsed = Body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Invalid reviews" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "invalid-reviews" }, { status: 400 });
   const now = new Date();
   const result = await repo.review(
     id,
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     now,
     parsed.data.cursor,
   );
-  if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!result) return NextResponse.json({ error: "not-found" }, { status: 404 });
   // Study days (docs/levels.md): today by the server's clock, only reviews
   // whose card was on screen at least reaction time; the client's reviewedAt
   // (an offline grade sent later) never picks the day.
