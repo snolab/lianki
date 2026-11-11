@@ -200,6 +200,18 @@ describe.skipIf(!hasVenv)("local STT tunnel listener: the ticket gate", () => {
       err: "",
     });
   });
+
+  it("rolling.py's own tests pass (partials decode only the unsettled tail)", () => {
+    const r = Bun.spawnSync([
+      PY,
+      "-I",
+      resolve(import.meta.dir, "../scripts/local-stt/test_rolling.py"),
+    ]);
+    expect({ code: r.exitCode, err: r.exitCode ? r.stderr.toString() : "" }).toEqual({
+      code: 0,
+      err: "",
+    });
+  });
 });
 
 /** Start server.py with the fake engine; resolves with its output up to "listening". */
