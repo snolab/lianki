@@ -478,6 +478,7 @@ const renewDueAt = (until: number, t: number) => until - t <= EVAL_RENEW_BEFORE_
  * SESSIONS service binding: no URL, nothing public): "live" | "gone" | "busy".
  */
 type SessionsRpc = {
+  prepareChatTurn?(req: { userId: string; input: unknown }): Promise<unknown>;
   live(user: string, session: string): Promise<unknown>;
   /** A feature flag's value (lib/flags.ts); an older main Worker has no such method. */
   flag?(key: string): Promise<unknown>;

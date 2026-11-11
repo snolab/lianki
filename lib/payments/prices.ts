@@ -55,6 +55,7 @@ export const SPEECH_SEC_PER_CHAR = 1 / 6;
 /** Every feature that spends credits — its id is the ledger row's `note` (the usage view's label). */
 export const FEATURES = [
   "partner.reply",
+  "chat.prepare",
   "read.gloss",
   "read.polish",
   "read.live-polish",

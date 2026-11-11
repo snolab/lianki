@@ -726,10 +726,12 @@ describe("chat (your own thread, with a chat token)", () => {
     expect((await h.run("chat", "say", "-")).code).toBe(0);
     expect(seen[0]!.body).toEqual({ op: "say", text: "-starts with a dash" });
     expect((await h.run("chat", "say", "--quiet", "-")).code).toBe(0);
+    expect((await h.run("chat", "send", "-")).code).toBe(0);
+    expect(seen.at(-1)!.body).toMatchObject({ op: "say", text: "-starts with a dash" });
     expect(seen[1]!.body).toMatchObject({ text: "-starts with a dash", quiet: true });
     const both = await h.run("chat", "say", "-", "extra");
     expect(both.code).not.toBe(0);
-    expect(seen).toHaveLength(2);
+    expect(seen).toHaveLength(3);
   });
 
   test("read and ask without --wait", async () => {

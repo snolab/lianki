@@ -26,6 +26,8 @@ import { readHolders, type PermissionReadDb } from "@/lib/account-permission";
 import { normalizeEmail } from "@/lib/permissions";
 import { CHAT_LIMITS } from "@/lib/chat-limits";
 import { clientOf } from "@/lib/api-token-client";
+import { loadConfig } from "./config-store";
+import { defaultConfig } from "./config";
 
 const MIN = 60_000;
 
@@ -36,6 +38,7 @@ export const CHAT_OPS = {
   read: "chat:read",
   listen: "chat:read",
   recheck: "chat:read",
+  prepare: "chat:write",
 } as const satisfies Record<string, ScopeId>;
 export type ChatOp = keyof typeof CHAT_OPS;
 
@@ -105,6 +108,18 @@ export async function chatTokenCheck(
     if (c.reason === "malformed") return { ok: false, error: "bad request" };
     if (c.id && c.userId) await refused(db, c.userId, c.id, `${op} ${c.reason}`, now);
     return { ok: false, error: c.reason === "unknown" ? "unknown" : c.reason };
+  }
+  if (op === "prepare") {
+    const read = await checkToken(db, cred, "chat:read", now, { byHash });
+    if (!read.ok) return { ok: false, error: "scope" };
+    const config = await loadConfig(db).catch(defaultConfig);
+    const limit = await hit(
+      db,
+      `chat-token:${tagOf(c.id)}:prepare`,
+      { max: config["chat.prepareAuthCalls"], windowMs: 10 * MIN },
+      now,
+    );
+    if (!limit.allowed) return { ok: false, error: "rate", retryAfterMs: limit.retryAfterMs };
   }
   const kind = limitOf(op);
   if (kind) {

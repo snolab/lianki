@@ -9,6 +9,9 @@
   "files": [
     "lianki.mjs",
     "cli.mjs",
+    "chat-bridge.mjs",
+    "chat-receiver.mjs",
+    "chat-polish.mjs",
     "auth.mjs",
     "mcp.mjs",
     "README.md",
