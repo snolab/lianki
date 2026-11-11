@@ -95,8 +95,8 @@ export function StackedBars({
   series: Series[];
   /** The full reading of a bucket (tooltip). */
   bucketLabel: (b: string) => string;
-  /** The short axis label of a bucket, or null for none. */
-  tick: (b: string, i: number, n: number) => string | null;
+  /** The short axis label of a bucket (spaced by the chart's width). */
+  tick: (b: string) => string;
   usd: (micro: number) => string;
   totalLabel: string;
   hint: string;
@@ -123,12 +123,8 @@ export function StackedBars({
   const gap = bw > 6 ? 1 : 0;
   const grand = totals.reduce((s, v) => s + v, 0);
 
-  const pick = (clientX: number, el: Element) => {
-    const r = el.getBoundingClientRect();
-    const x = ((clientX - r.left) / r.width) * W - left;
-    if (x < 0 || !n) return;
-    setActive(Math.min(n - 1, Math.max(0, Math.floor(x / bw))));
-  };
+  // One axis label per ~72 px, whatever the number of bars.
+  const tickEvery = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(plotW / 72))));
   const onKey = (e: KeyboardEvent) => {
     if (!n) return;
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
@@ -159,11 +155,8 @@ export function StackedBars({
           aria-label={`${title}: ${totalLabel} ${usd(grand)}. ${hint}`}
           aria-describedby={describedBy}
           className="block touch-pan-y focus-visible:outline-2 focus-visible:outline-[var(--brand)] rounded"
-          onPointerMove={(e) => e.pointerType === "mouse" && pick(e.clientX, e.currentTarget)}
-          onPointerDown={(e) => pick(e.clientX, e.currentTarget)}
           onPointerLeave={(e) => e.pointerType === "mouse" && setActive(null)}
           onKeyDown={onKey}
-          onBlur={() => setActive(null)}
         >
           <defs>
             {SERIES.map((s, i) => (
@@ -224,8 +217,19 @@ export function StackedBars({
                     </g>
                   );
                 })}
+                {/* The bar's hit area, full height: hover, tap or click shows its values. */}
+                <rect
+                  data-bar={b}
+                  x={x}
+                  y={8}
+                  width={Math.max(1, bw)}
+                  height={plotH}
+                  fill="transparent"
+                  onPointerEnter={(e) => e.pointerType === "mouse" && setActive(i)}
+                  onClick={() => setActive(i)}
+                />
                 {(() => {
-                  const t = tick(b, i, n);
+                  const t = i % tickEvery === 0 ? tick(b) : null;
                   return t ? (
                     <text
                       x={x + bw / 2}

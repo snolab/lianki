@@ -112,10 +112,10 @@ export default function CostsAdmin() {
   }, [locale]);
   const series = (m: Matrix) =>
     split === "service"
-      ? featureSeries(m, String(c.other))
-      : freePaidSeries(m, String(c.freeCost), String(c.paidCost));
+      ? featureSeries(m, c.other.value)
+      : freePaidSeries(m, c.freeCost.value, c.paidCost.value);
   const describe = (lab: (b: string) => string) => (b: string, f: string, x: Totals | undefined) =>
-    fill(String(c.cellRead), {
+    fill(c.cellRead.value, {
       bucket: lab(b),
       feature: f,
       free: usd(x?.freeMicro ?? 0),
@@ -123,6 +123,8 @@ export default function CostsAdmin() {
     });
   const hourLabel = (h: string) => `${h.slice(0, 10)} ${h.slice(11)}:00`;
   const hourShort = (h: string) => `${h.slice(5, 10)} ${h.slice(11)}h`;
+  // On the axis: the hour, with the date at midnight.
+  const hourTick = (h: string) => (h.endsWith("T00") ? h.slice(5, 10) : `${h.slice(11)}h`);
 
   const fetchUsers = useCallback(
     async (cursor: number | null, size: number) => {
@@ -227,7 +229,7 @@ export default function CostsAdmin() {
             ))}
           </div>
           <p className="text-xs opacity-70">
-            {fill(String(c.note), { perUsd: CREDITS_PER_USD, margin: MARGIN })}
+            {fill(c.note.value, { perUsd: CREDITS_PER_USD, margin: MARGIN })}
           </p>
           {summary && summary.byDay.length === 0 ? (
             <p className="text-sm" data-testid="costs-empty">
@@ -279,43 +281,43 @@ export default function CostsAdmin() {
           </div>
           {days ? (
             <StackedBars
-              title={String(c.chartDays)}
+              title={c.chartDays.value}
               buckets={days.rows.map((r) => r.bucket)}
               series={series(days)}
               bucketLabel={(b) => b}
-              tick={(b, i, n) => (i % Math.max(1, Math.ceil(n / 6)) === 0 ? b.slice(5) : null)}
+              tick={(b) => b.slice(5)}
               usd={usdShort}
-              totalLabel={String(c.totalCost)}
-              hint={String(c.chartHint)}
+              totalLabel={c.totalCost.value}
+              hint={c.chartHint.value}
               describedBy="costs-day-matrix"
               testId="costs-chart-days"
             />
           ) : null}
           {hourly ? (
             <StackedBars
-              title={String(c.chartHours)}
+              title={c.chartHours.value}
               buckets={hourly.rows.map((r) => r.bucket)}
               series={series(hourly)}
               bucketLabel={(b) => `${hourLabel(b)} JST`}
-              tick={(b, i, n) => (i % Math.max(1, Math.ceil(n / 6)) === 0 ? hourShort(b) : null)}
+              tick={hourTick}
               usd={usdShort}
-              totalLabel={String(c.totalCost)}
-              hint={String(c.chartHint)}
+              totalLabel={c.totalCost.value}
+              hint={c.chartHint.value}
               describedBy="costs-hour-matrix"
               testId="costs-chart-hours"
             />
           ) : null}
           <TopAccounts
-            title={String(c.topAccounts)}
+            title={c.topAccounts.value}
             rows={users.items.slice(0, 10).map((u) => ({
               key: u.userId || "-guest",
-              name: u.userId === "" ? String(c.guest) : (u.name ?? String(c.noName)),
+              name: u.userId === "" ? c.guest.value : (u.name ?? c.noName.value),
               freeMicro: u.freeMicro,
               paidMicro: u.paidMicro,
             }))}
             usd={usdShort}
-            free={String(c.freeCost)}
-            paid={String(c.paidCost)}
+            free={c.freeCost.value}
+            paid={c.paidCost.value}
           />
         </section>
       ) : null}
@@ -353,7 +355,7 @@ export default function CostsAdmin() {
               >
                 {HOUR_CHOICES.map((n) => (
                   <option key={n} value={n}>
-                    {fill(String(c.hoursOption), { n })}
+                    {fill(c.hoursOption.value, { n })}
                   </option>
                 ))}
               </select>
@@ -372,7 +374,7 @@ export default function CostsAdmin() {
             name="dev-costs-hours-matrix"
             describe={describe(hourLabel)}
           />
-          <p className="text-xs opacity-70">{fill(String(c.hourNote), { max: MAX_HOURS })}</p>
+          <p className="text-xs opacity-70">{fill(c.hourNote.value, { max: MAX_HOURS })}</p>
         </section>
       ) : null}
 

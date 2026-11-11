@@ -133,9 +133,12 @@ async function run(name, device, colorScheme) {
   for (const id of ["costs-chart-days", "costs-chart-hours", "costs-chart-accounts"])
     check(await page.getByTestId(id).isVisible(), `${tag}: ${id} is drawn`);
   // Tap / click the last hour's bar (this hour: the rows booked above): its exact values show.
-  const svg = page.getByTestId("costs-chart-hours").locator("svg[role=img]");
-  const box = await svg.boundingBox();
-  if (box) await page.mouse.click(box.x + box.width - 3, box.y + box.height / 2);
+  await page
+    .getByTestId("costs-chart-hours")
+    .locator("rect[data-bar]")
+    .last()
+    .click({ timeout: budget(5_000) })
+    .catch(() => {});
   check(
     await page
       .getByTestId("costs-chart-hours-tip")
