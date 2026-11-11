@@ -35,7 +35,7 @@ async function who(req: Request) {
 export async function GET(req: NextRequest) {
   const user = await who(req);
   if (!user)
-    return NextResponse.json({ error: "Login required" }, { status: 401, headers: NO_STORE });
+    return NextResponse.json({ error: "login-required" }, { status: 401, headers: NO_STORE });
   if (dbBackend() !== "d1")
     return NextResponse.json({ user: user.id, prefs: {}, cursor: 0 }, { headers: NO_STORE });
   const since = Number(req.nextUrl.searchParams.get("since") ?? 0);
@@ -48,21 +48,21 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const user = await who(req);
   if (!user)
-    return NextResponse.json({ error: "Login required" }, { status: 401, headers: NO_STORE });
+    return NextResponse.json({ error: "login-required" }, { status: 401, headers: NO_STORE });
   if (dbBackend() !== "d1")
-    return NextResponse.json({ error: "Not available" }, { status: 503, headers: NO_STORE });
+    return NextResponse.json({ error: "unavailable" }, { status: 503, headers: NO_STORE });
   const text = await req.text();
   if (text.length > MAX_BODY_BYTES)
-    return NextResponse.json({ error: "Too large" }, { status: 413, headers: NO_STORE });
+    return NextResponse.json({ error: "too-large" }, { status: 413, headers: NO_STORE });
   let body: unknown;
   try {
     body = JSON.parse(text);
   } catch {
-    return NextResponse.json({ error: "Bad JSON" }, { status: 400, headers: NO_STORE });
+    return NextResponse.json({ error: "invalid-json" }, { status: 400, headers: NO_STORE });
   }
   const parsed = patchBody.safeParse(body);
   if (!parsed.success)
-    return NextResponse.json({ error: "Bad request" }, { status: 400, headers: NO_STORE });
+    return NextResponse.json({ error: "bad-request" }, { status: 400, headers: NO_STORE });
   const out = await new UserPrefsD1Repo(getD1(), user.id).write(parsed.data.ops);
   return NextResponse.json({ user: user.id, ...out }, { headers: NO_STORE });
 }

@@ -28,7 +28,7 @@ const d1OrNull = () => (dbBackend() === "d1" ? getD1() : null);
 export async function GET(request: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -113,7 +113,7 @@ async function lastRead(user: { id: string; email?: string | null }) {
 export async function POST(request: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "login-required" }, { status: 401 });
   }
 
   // A book's text is capped by checkBook (1.5 MB of text); its JSON with the
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
   const body: unknown = read.value;
 
   if (body === null || typeof body !== "object") {
-    return NextResponse.json({ error: "Request body must be a JSON object" }, { status: 400 });
+    return NextResponse.json({ error: "invalid-json" }, { status: 400 });
   }
 
   const { title, content, book } = body as { title?: unknown; content?: unknown; book?: unknown };
@@ -182,11 +182,11 @@ export async function POST(request: NextRequest) {
   }
 
   if (typeof content !== "string" || content.length === 0) {
-    return NextResponse.json({ error: "Content is required" }, { status: 400 });
+    return NextResponse.json({ error: "content-required" }, { status: 400 });
   }
 
   if (typeof title !== "undefined" && typeof title !== "string") {
-    return NextResponse.json({ error: "Title must be a string" }, { status: 400 });
+    return NextResponse.json({ error: "invalid-title" }, { status: 400 });
   }
   // Pasted text: the same caps as a book.
   if (

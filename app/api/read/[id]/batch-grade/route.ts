@@ -47,7 +47,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       day,
       langs.map((l) => bookInLang(bctx, l).hash),
     );
-    return r ? json(r) : NextResponse.json({ error: "Nothing to undo" }, { status: 409 });
+    return r ? json(r) : NextResponse.json({ error: "nothing-to-undo" }, { status: 409 });
   }
   const { book, w } = await wordCtx(ctx);
   const c: BatchCtx = {

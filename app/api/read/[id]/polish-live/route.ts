@@ -25,7 +25,7 @@ import { isRefused, refusalOf } from "@/lib/payments/metered";
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await readerCtx((await params).id);
   if (ctx instanceof NextResponse) return ctx;
-  if (!(await mayPolishLive(ctx.email))) return json({ error: "Not found" }, 404);
+  if (!(await mayPolishLive(ctx.email))) return json({ error: "not-found" }, 404);
   if (polishRefused((await ctx.load()).words.book)) return badRequest("not offered");
   const body = (await bodyOf(req)) as { passages?: unknown; before?: unknown } | null;
   const passages = body?.passages;
