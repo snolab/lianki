@@ -22,6 +22,7 @@
  * Client-safe: no D1 here.
  */
 import { z } from "zod";
+import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
 
 export type ConfigAudience = "server" | "public";
 
@@ -212,6 +213,29 @@ export const CONFIG = {
     description:
       "任务标成「完成但未验证」时，自动建一个「verify: <名字>」子任务交给同一条线，给它多少分钟的预计时间。",
   }),
+  // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts;
+  // docs/li-sound-hub.md, "Pronunciation table"): handed to the chat by the root layout.
+  "voice.lexicon": {
+    default: DEFAULT_LEXICON as LexEntry[],
+    schema: z
+      .array(
+        z
+          .object({
+            term: z.string().min(1).max(LEX_LIMITS.term),
+            say: z.string().min(1).max(LEX_LIMITS.say),
+            lang: z.string().regex(LEX_LANG, "a language: zh, ja, zh-TW…").optional(),
+            ignoreCase: z.boolean().optional(),
+            ph: z.string().min(1).max(LEX_LIMITS.ph).optional(),
+            alphabet: z.enum(["ipa", "x-sampa"]).optional(),
+          })
+          .strict(),
+      )
+      .max(LEX_LIMITS.entries) as z.ZodType<LexEntry[]>,
+    group: "voice",
+    audience: "public",
+    description:
+      'Li 朗读时的读音表（JSON 数组）：每条 {term 写法, say 读法, lang 可选语言如 zh / ja / zh-TW, ignoreCase 可选不分大小写, ph 可选音标}。只改读出来的声音，屏幕上的文字不变。整词匹配、默认区分大小写；同一个词有几条时，语言最具体的那条生效（zh-TW 胜过 zh，zh 胜过不写语言）。例：{"term":"WebRTC","say":"Web R T C"}。',
+  },
   // The voiceprint in his account (docs/local-stt.md, "Voiceprint in your account"):
   // handed to the panel by GET /api/my/voiceprint.
   "voiceprint.extractor": {
@@ -234,6 +258,27 @@ export const CONFIG = {
     description:
       "声纹操作（录入、存到账号、恢复、删除、重算、导出）的一次 Face ID 管多久（毫秒）：默认 600000 = 10 分钟，在这段时间里同一台设备、同一次登录不再弹出通行密钥。0 = 每次操作都要 Face ID。只管声纹，不管别的验证。改短会让已经发出的授权也跟着变短。",
   }),
+  // The owner's remote-eval grant (docs/monitoring.md, "Remote eval (owner debug)"):
+  // read by the debug hub (lianki-push) over DebugSessions.config at each pairing,
+  // through lib/eval-grant-config.ts (whose defaults must equal these).
+  "debug.evalGrantHours": int({
+    default: 8,
+    min: 1,
+    max: 720,
+    unit: "h",
+    group: "debug",
+    audience: "server",
+    description:
+      "远程调试（eval.ts）配对时你点「允许」后，这次授权管多久（小时）：默认 8；720 = 30 天。只对改了之后的新配对生效，已经给出的授权不变。「结束」随时立刻删除授权，每次执行仍然都记日志。",
+  }),
+  "debug.evalGrantPages": {
+    default: "chosen" as "chosen" | "all",
+    schema: z.enum(["chosen", "all"]),
+    group: "debug",
+    audience: "server",
+    description:
+      "远程调试的授权覆盖哪些页面：chosen（默认）= 配对弹窗里勾选的页面；all = 你所有设备上的所有页面，包括之后才打开的（只有你自己的页面，朋友的永远不算）。只对新配对生效。",
+  },
   // Lianki's own speech server (docs/local-stt.md) booked as if it were a cloud
   // service (docs/payments.md, "Cost ledger"): Workers AI whisper turbo's list price.
   "stt.local.costPerMinUsd": {

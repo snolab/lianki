@@ -49,6 +49,7 @@ import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
 import { cloudOut, cloudSkip, existingCtx, outMode } from "./voice-out";
 import { micAec } from "./aec";
 import { pickLang, pickVoice } from "./wire";
+import { speakForm } from "./lexicon";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
 import { getKey } from "./storage-keys";
 import { hideStops, isDesktop } from "./voice-bg";
@@ -451,10 +452,16 @@ export function createVoice(d: {
       s.pick && s.pick.kind !== "device" ? s.pick : undefined,
     );
   };
-  /** A text's sentences (each at most CHUNK_MAX), in `voice` and `pick`. */
+  /**
+   * A text's sentences (each at most CHUNK_MAX), in `voice` and `pick`, as
+   * they are spoken: terms in their spoken form (lexicon.ts; the chat line on
+   * screen keeps the written one). Sentences are cut from the written text,
+   * so a spoken form never moves a sentence break; chunks from the spoken
+   * one, so a longer spoken form still fits CHUNK_MAX.
+   */
   const toSentences = (text: string, lang: string, voice?: VoiceId, pick?: LinePick): Sentence[] =>
     sentences(text)
-      .flatMap((s) => chunk(s))
+      .flatMap((s) => chunk(speakForm(s, lang)))
       .map((t) => ({
         text: t,
         lang,

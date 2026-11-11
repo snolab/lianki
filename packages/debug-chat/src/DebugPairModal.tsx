@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { uiStrings } from "./ui-strings";
 import { type PageInfo, type PairInfo, allowLabel, pageParts, pairSentence } from "./wire";
 
 /**
@@ -30,7 +31,8 @@ export function DebugPairModal({
   useEffect(() => setTicked(new Set(selfPage ? [selfPage] : [])), [pending.pair, selfPage]);
   // A chat grant always covers every page (a phone's page comes and goes with
   // the app), so a chat request has no page picker: Allow means all.
-  const listed = !friend && pending.scope === "chat" ? [] : pages;
+  // An eval grant set to cover every page (debug.evalGrantPages "all") has none either.
+  const listed = !friend && (pending.scope === "chat" || pending.allPages) ? [] : pages;
   const ids = listed.map((p) => p.id).filter(Boolean);
   const all = ids.length > 0 && ids.every((id) => ticked.has(id));
   const toggle = (id: string) =>
@@ -62,7 +64,7 @@ export function DebugPairModal({
         }}
       >
         <p id="debug-modal-title" className="text-lg leading-snug">
-          {pairSentence(pending, friend)}
+          {pairSentence(pending, friend, uiStrings())}
           {!friend && ids.length > 1 && " Authorize this page only, or more?"}
         </p>
         <p className="text-sm" style={{ color: "oklch(0.8 0.01 260)" }}>

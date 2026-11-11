@@ -19,9 +19,14 @@ describe("chat menu: connected pages for a user without dev", () => {
     expect(src).toContain('.filter((x) => owner && x.scope === "chat" && addable(x))');
     expect(src).toContain('const device = owner ? parts.device : "";');
     expect(src).toContain("title={owner ? pg.label : undefined}");
-    // DebugEval's `owner` needs the server's `dev` verdict, and so does remote eval.
+    // DebugEval's `owner` needs a `dev` verdict — the server's, or the hub's when
+    // this socket opened (lib/debug-rejoin.ts) — and so does remote eval.
     const host = readFileSync("app/components/DebugEval.tsx", "utf8");
-    expect(host).toContain("owner={owner && !isFriend && dev}");
-    expect(host).toContain("!debugOn() || !devRef.current");
+    expect(host).toContain(
+      "owner={owner && !isFriend && devParts({ dev, hubOwner: owner && !box })}",
+    );
+    expect(host).toContain(
+      "mayRunEval({ debug: debugOn(), dev: devRef.current, hubOwner: hubOwnerRef.current })",
+    );
   });
 });

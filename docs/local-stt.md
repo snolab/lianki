@@ -1386,8 +1386,10 @@ endToFinalMs}`, `stt-route`).
 ## Routes that come and go
 
 The owner's ask (2026-11-11 20:15 JST): work smoothly while he travels and
-while speech servers go down and come back. Four parts, each with tests;
-the first is in place, the rest land in later PRs:
+while speech servers go down and come back. Four parts, each with tests
+(`unit/local-stt.test.ts`, `unit/public-stt.test.ts`,
+`unit/stt-registry.test.ts`, stt-peer's `go test`); the registry's side is
+under "Lianki's speech servers for everyone", "Routes that come and go":
 
 1. **The utterance in flight survives a dropped route** (`local-stt.ts`,
    `Rec`). Every utterance keeps its frames (packed int16, ~1 MB for 30 s).
@@ -1401,16 +1403,39 @@ the first is in place, the rest land in later PRs:
    failing rejects it at once. devLog: `local-stt {state:"replayed"}`,
    `{state:"replay-timeout"}`. With the mic off (no `keep`) a drop rejects
    at once, as before.
-2. **Changing networks** (planned): ICE restart on `online`, on visible and
-   on `disconnected`; the signal socket resumes the same session with a
-   resume token, so neither a new ticket nor a new worker.
-3. **Workers going down and coming back** (planned): stt-peer heartbeats;
-   the registry skips a silent worker and keeps sessions through its own
-   blips; with no worker, the page goes to the cloud at once and waits on a
-   light lobby socket, which the registry tells when a worker registers.
-4. **Several workers** (planned): the account's own first, then by load
-   (sessions ÷ capacity) and by whether the page and the worker reach the
-   same Cloudflare colo.
+2. **Changing networks** (`public-stt.ts` `rtc`). The WebRTC route stays
+   open through it: on `online` (always: the old path can look connected
+   for a while), on visible when not connected, on ICE `disconnected` for
+   `DISCONNECTED_GRACE_MS` (1 s; it often comes back by itself) and on
+   `failed`, an **ICE restart** — a new offer (`iceRestart`) on the same peer
+   connection, answered by the same worker, so the DataChannel and the
+   speech server's socket go on and the utterance in flight needs no replay.
+   Not connected within `RESTART_TIMEOUT_MS` (5 s), or failing again during
+   it: the route is lost, and part 1 replays the utterance on the next one.
+   The **signal socket** dropping (a network change kills it first) resumes
+   the same session with its `resume` token (`lianki-stt2-resume`), then
+   restarts ICE; a resume refused, or none back within `RESUME_GRACE_MS`
+   (20 s): the route is lost. devLog `stt-rtc {state: restart | restarted |
+   resume | resumed | signal-dropped | worker-away | worker-back | lobby}`.
+3. **Workers going down and coming back**: stt-peer pings every 15 s and
+   keeps its sessions through registry blips; the registry skips a silent
+   worker and tells pages `worker-away` / `worker-back` (back while not
+   connected: a restart). **No worker free**: the page asks with `?lobby=1`;
+   the registry answers `wait`, the route fails at once (the cloud for now,
+   no 6 s wait) and that socket stays as the **lobby**; when a worker
+   registers or a session ends, it hears `available`, the page dispatches
+   `lk-stt-available`, and the mic (`watchPage` → `keep`'s reconnect, past
+   the backoff) races again — back on WebRTC with the next utterance, or the
+   one in flight if it is still held.
+4. **Several workers**: the account's own first, then the one at the page's
+   Cloudflare colo, then the least loaded (sessions ÷ its limit).
+5. **A spare session** (`spareSessions`): lianki.com's session answer took
+   1.4–3.5 s on 2026-11-11 (the main Worker's own time to first byte, not the
+   network), and a failover race should not wait for it. After the WebRTC
+   route takes a session, one more is fetched and kept; the next race uses
+   it at once if at least `SPARE_MIN_LEFT_MS` (15 s) of its 60 s ticket is
+   left. Never refreshed on a timer, so an idle page mints no tickets
+   (`stt.worker.ticketsPerMin` is 6).
 
 Live audio out (Li speaking over the same channel) is kept open: server →
 page binary frames would carry their own tag (3), and `ready` would name the

@@ -35,13 +35,33 @@ export function formatValue(v: unknown, unit: string | undefined, dflt = "defaul
   return unit ? `${s} ${unit}` : s;
 }
 
-/** The typed text as the value to send: a number for a number key. */
+/** A key whose value is a table or a list (`voice.lexicon`): edited as JSON. */
+export const isStructured = (key: ConfigRow["key"]) => {
+  const d = (CONFIG[key] as ConfigDef).default;
+  return typeof d === "object" && d !== null;
+};
+
+/** A value as the editor shows it: JSON for a table or a list, else its text. */
+export const valueText = (key: ConfigRow["key"], v: unknown): string =>
+  isStructured(key) ? JSON.stringify(v, null, 2) : String(v);
+
+/**
+ * The typed text as the value to send: a number for a number key, the parsed
+ * JSON for a table (text that is not JSON is sent as it is, and the key's
+ * schema refuses it).
+ */
 export function draftValue(key: ConfigRow["key"], text: string): unknown {
   const d = (CONFIG[key] as ConfigDef).default;
   if (typeof d === "number") {
     const t = text.trim();
     return t === "" ? NaN : Number(t);
   }
+  if (isStructured(key))
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
   return text;
 }
 

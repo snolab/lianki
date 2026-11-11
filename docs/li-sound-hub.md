@@ -174,3 +174,43 @@ none of these changes the line or the chip.
    grant as today.
 - hls.js for HLS where the browser has no native HLS (Chrome on Android,
   desktop Chrome): a source registered for `stream` with the HLS type.
+
+## Pronunciation table
+
+Owner, 2026-11-11: Li read "WebRTC" wrongly. Terms now have a spoken form,
+applied to the text before **any** engine in Li's read-aloud — the device's
+speechSynthesis and the cloud alike — and only to what is spoken: the chat
+line on screen keeps the written term.
+
+- **Data, not code.** The table is the config key **`voice.lexicon`**
+  (`lib/config.ts`, a JSON list edited at
+  <https://lianki.com/dev/config#voice.lexicon>, live within 30 s, no
+  deploy). Each entry is `{term, say, lang?, ignoreCase?, ph?, alphabet?}`.
+  The code default (`DEFAULT_LEXICON` in
+  `packages/debug-chat/src/lexicon.ts`) seeds WebRTC, API, MCP, Tailscale,
+  iOS, PWA, STT, TTS, URL, JSON, GitHub, npm, CLI and Lianki.
+- **One matcher for every language.** An entry without `lang` is for every
+  language; with one (`zh`, `ja`, `zh-TW`) it applies to that language and
+  its locales, and per term the most specific entry wins (zh-TW over zh over
+  none). No per-language code.
+- **Whole words.** An ASCII letter, digit or `_` next to the term means it is
+  part of a longer word ("APIs", "API_KEY" are left alone); punctuation and
+  CJK neighbours are edges ("用WebRTC连接"). Case-sensitive unless the entry
+  says `ignoreCase`. One pass, longest term first, so a spoken form is never
+  replaced again.
+- **Where.** `voice.ts` `toSentences`: sentences are cut from the written
+  text, then each is put in its spoken form (`speakForm(text, lang)`) and
+  chunked. The table reaches the page from the root layout
+  (`cfg("voice.lexicon")` → `OwnerBoots` → `DebugEval` → `setLexicon`, kept
+  on `globalThis.__lkLexicon` so a hot-loaded chat reads the same one); an
+  invalid table leaves the default in place.
+- **Per-language runs (PR #502, not merged).** `speakForm` is a pure function
+  of (text, language), so it applies per run as well: call it on each run with
+  the run's language, or on the sentence before it is cut into runs.
+- **SSML engines.** `ph` (IPA, or X-SAMPA with `alphabet`) is for engines that
+  read SSML: `toSsml` writes a term as `<phoneme>` when it has one, else as
+  `<sub alias>` with its spoken form.
+- **Not covered.** /reader's read-aloud tracks the reading position by
+  character offset, so it still reads the written text; /words reads single
+  words and examples from recorded clips.
+- Tests: `unit/lexicon.test.ts`.

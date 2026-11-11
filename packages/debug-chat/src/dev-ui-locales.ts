@@ -54,6 +54,11 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "इको रद्द करना",
     aecHint:
       "चालू: जवाब पढ़े जाते समय भी आप बोल सकते हैं; Android पर स्पीकर कॉल जैसा सुनाई दे सकता है। बंद: बेहतर आवाज़, कुछ भी चलते समय माइक रुक जाता है। तुरंत लागू होता है।",
+    pairEval: "{label} आपके पेजों पर {time} के लिए कोड चलाना चाहता है।",
+    pairEvalAll: "{label} आपके हर डिवाइस के सभी पेजों पर {time} के लिए कोड चलाना चाहता है।",
+    grantHour: "1 घंटा",
+    grantHours: "{n} घंटे",
+    grantDays: "{n} दिन",
   },
   es: {
     stateTree: "Árbol de estado",
@@ -93,6 +98,12 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Cancelación de eco",
     aecHint:
       "Activada: puedes hablar mientras se leen las respuestas; en Android el altavoz puede sonar como una llamada. Desactivada: mejor sonido, el micrófono se pausa mientras algo suena. Se aplica al instante.",
+    pairEval: "{label} quiere ejecutar código en tus páginas durante {time}.",
+    pairEvalAll:
+      "{label} quiere ejecutar código en todas tus páginas, en todos tus dispositivos, durante {time}.",
+    grantHour: "1 hora",
+    grantHours: "{n} horas",
+    grantDays: "{n} días",
   },
   fr: {
     stateTree: "Arbre d'état",
@@ -132,6 +143,12 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Annulation d'écho",
     aecHint:
       "Activée : vous pouvez parler pendant la lecture des réponses ; sur Android, le haut-parleur peut sonner comme un appel. Désactivée : meilleur son, le micro se met en pause pendant toute lecture. Prend effet immédiatement.",
+    pairEval: "{label} veut exécuter du code sur vos pages pendant {time}.",
+    pairEvalAll:
+      "{label} veut exécuter du code sur toutes vos pages, sur tous vos appareils, pendant {time}.",
+    grantHour: "1 heure",
+    grantHours: "{n} heures",
+    grantDays: "{n} jours",
   },
   ar: {
     stateTree: "شجرة الحالة",
@@ -171,6 +188,11 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "إلغاء الصدى",
     aecHint:
       "تشغيل: يمكنك التحدث أثناء قراءة الردود؛ على Android قد يبدو مكبر الصوت كمكالمة. إيقاف: صوت أفضل، ويتوقف الميكروفون مؤقتًا أثناء تشغيل أي صوت. يسري فورًا.",
+    pairEval: "يريد {label} تشغيل تعليمات برمجية على صفحاتك لمدة {time}.",
+    pairEvalAll: "يريد {label} تشغيل تعليمات برمجية على كل صفحاتك، على كل أجهزتك، لمدة {time}.",
+    grantHour: "ساعة واحدة",
+    grantHours: "{n} ساعة",
+    grantDays: "{n} يومًا",
   },
   bn: {
     stateTree: "স্টেট ট্রি",
@@ -210,6 +232,11 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "প্রতিধ্বনি বাতিল",
     aecHint:
       "চালু: উত্তর পড়ার সময়ও আপনি কথা বলতে পারবেন; Android-এ স্পিকার কলের মতো শোনাতে পারে। বন্ধ: ভালো শব্দ, কিছু বাজার সময় মাইক থেমে থাকে। সঙ্গে সঙ্গে কার্যকর হয়।",
+    pairEval: "{label} আপনার পেজগুলোতে {time} ধরে কোড চালাতে চায়।",
+    pairEvalAll: "{label} আপনার সব ডিভাইসের সব পেজে {time} ধরে কোড চালাতে চায়।",
+    grantHour: "১ ঘণ্টা",
+    grantHours: "{n} ঘণ্টা",
+    grantDays: "{n} দিন",
   },
   pt: {
     stateTree: "Árvore de estado",
@@ -249,6 +276,12 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Cancelamento de eco",
     aecHint:
       "Ligado: você pode falar enquanto as respostas são lidas; no Android o alto-falante pode soar como uma chamada. Desligado: som melhor, o microfone pausa enquanto algo toca. Vale na hora.",
+    pairEval: "{label} quer executar código nas suas páginas durante {time}.",
+    pairEvalAll:
+      "{label} quer executar código em todas as suas páginas, em todos os dispositivos, durante {time}.",
+    grantHour: "1 hora",
+    grantHours: "{n} horas",
+    grantDays: "{n} dias",
   },
   ru: {
     stateTree: "Дерево состояния",
@@ -288,6 +321,12 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Эхоподавление",
     aecHint:
       "Вкл.: можно говорить, пока читаются ответы; на Android динамик может звучать как при звонке. Выкл.: звук лучше, микрофон приостанавливается, пока что-то играет. Применяется сразу.",
+    pairEval: "{label} хочет запускать код на ваших страницах в течение {time}.",
+    pairEvalAll:
+      "{label} хочет запускать код на всех ваших страницах, на всех устройствах, в течение {time}.",
+    grantHour: "1 час",
+    grantHours: "{n} ч",
+    grantDays: "{n} дн.",
   },
   ur: {
     stateTree: "اسٹیٹ ٹری",
@@ -327,6 +366,11 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "ایکو ختم کرنا",
     aecHint:
       "آن: جواب پڑھے جانے کے دوران بھی آپ بول سکتے ہیں؛ Android پر اسپیکر کال جیسا لگ سکتا ہے۔ آف: بہتر آواز، کچھ بھی چلتے وقت مائیک رک جاتا ہے۔ فوراً لاگو ہوتا ہے۔",
+    pairEval: "{label} آپ کے صفحات پر {time} تک کوڈ چلانا چاہتا ہے۔",
+    pairEvalAll: "{label} آپ کے ہر آلے کے تمام صفحات پر {time} تک کوڈ چلانا چاہتا ہے۔",
+    grantHour: "1 گھنٹہ",
+    grantHours: "{n} گھنٹے",
+    grantDays: "{n} دن",
   },
   id: {
     stateTree: "Pohon status",
@@ -366,6 +410,12 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Peredam gema",
     aecHint:
       "Aktif: Anda bisa bicara saat balasan dibacakan; di Android speaker bisa terdengar seperti panggilan. Nonaktif: suara lebih penuh, mikrofon berhenti sementara saat ada yang diputar. Langsung berlaku.",
+    pairEval: "{label} ingin menjalankan kode di halaman Anda selama {time}.",
+    pairEvalAll:
+      "{label} ingin menjalankan kode di semua halaman Anda, di semua perangkat, selama {time}.",
+    grantHour: "1 jam",
+    grantHours: "{n} jam",
+    grantDays: "{n} hari",
   },
   de: {
     stateTree: "Statusbaum",
@@ -405,6 +455,12 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Echounterdrückung",
     aecHint:
       "An: Du kannst sprechen, während Antworten vorgelesen werden; unter Android klingt der Lautsprecher evtl. wie ein Anruf. Aus: vollerer Klang, das Mikrofon pausiert, solange etwas abgespielt wird. Wirkt sofort.",
+    pairEval: "{label} möchte {time} lang Code auf deinen Seiten ausführen.",
+    pairEvalAll:
+      "{label} möchte {time} lang Code auf allen deinen Seiten ausführen, auf jedem Gerät.",
+    grantHour: "1 Stunde",
+    grantHours: "{n} Stunden",
+    grantDays: "{n} Tage",
   },
   sw: {
     stateTree: "Mti wa hali",
@@ -444,6 +500,12 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Kuondoa mwangwi",
     aecHint:
       "Imewashwa: unaweza kuongea majibu yakisomwa; kwenye Android spika inaweza kusikika kama simu. Imezimwa: sauti bora, maikrofoni husimama chochote kikicheza. Inaanza mara moja.",
+    pairEval: "{label} anataka kuendesha msimbo kwenye kurasa zako kwa {time}.",
+    pairEvalAll:
+      "{label} anataka kuendesha msimbo kwenye kurasa zako zote, kwenye kila kifaa, kwa {time}.",
+    grantHour: "saa 1",
+    grantHours: "saa {n}",
+    grantDays: "siku {n}",
   },
   mr: {
     stateTree: "स्टेट ट्री",
@@ -483,6 +545,11 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "प्रतिध्वनी रद्द करणे",
     aecHint:
       "चालू: उत्तरे वाचली जात असतानाही तुम्ही बोलू शकता; Android वर स्पीकर कॉलसारखा वाटू शकतो. बंद: चांगला आवाज, काहीही वाजत असताना माइक थांबतो. लगेच लागू होते.",
+    pairEval: "{label} तुमच्या पानांवर {time} कोड चालवू इच्छितो.",
+    pairEvalAll: "{label} तुमच्या प्रत्येक डिव्हाइसवरील सर्व पानांवर {time} कोड चालवू इच्छितो.",
+    grantHour: "1 तास",
+    grantHours: "{n} तास",
+    grantDays: "{n} दिवस",
   },
   ko: {
     stateTree: "상태 트리",
@@ -522,6 +589,11 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "에코 제거",
     aecHint:
       "켜짐: 답장을 읽는 중에도 말할 수 있습니다. Android에서는 스피커가 통화 음질처럼 들릴 수 있습니다. 꺼짐: 음질이 더 좋고, 소리가 재생되는 동안 마이크가 일시 중지됩니다. 바로 적용됩니다.",
+    pairEval: "{label}이(가) {time} 동안 내 페이지에서 코드를 실행하려고 합니다.",
+    pairEvalAll: "{label}이(가) {time} 동안 모든 기기의 모든 내 페이지에서 코드를 실행하려고 합니다.",
+    grantHour: "1시간",
+    grantHours: "{n}시간",
+    grantDays: "{n}일",
   },
 };
 

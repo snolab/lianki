@@ -166,6 +166,26 @@ export type UiStrings = {
   tuckChat: string;
   restoreChat: string;
   untuckChat: string;
+  /**
+   * The remote-code pairing modal (DebugPairModal.tsx), developer only: a
+   * program on the developer's computer (its name is `{label}`) asks to run
+   * code on their open Lianki pages; the modal's first sentence says what
+   * "Allow" grants. `{time}` is how long, from grantHour / grantHours /
+   * grantDays below. Keep `{label}` and `{time}`.
+   * - pairEval: Allow covers the pages ticked in the list below it;
+   * - pairEvalAll: Allow covers all of the developer's pages, on every one of
+   *   their devices, also pages opened later (no list).
+   */
+  pairEval: string;
+  pairEvalAll: string;
+  /**
+   * How long that grant lasts, put into `{time}` above: grantHour = exactly
+   * one hour; grantHours = `{n}` hours (2 or more); grantDays = `{n}` whole
+   * days (2 or more, e.g. 30). A number and a unit only; keep `{n}`.
+   */
+  grantHour: string;
+  grantHours: string;
+  grantDays: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -230,6 +250,11 @@ export const UI_EN: UiStrings = {
   tuckChat: "Tuck the chat into the screen edge",
   restoreChat: "Open the chat",
   untuckChat: "Bring the chat back",
+  pairEval: "{label} wants to run code on your pages for {time}.",
+  pairEvalAll: "{label} wants to run code on all your pages, on every device, for {time}.",
+  grantHour: "1 hour",
+  grantHours: "{n} hours",
+  grantDays: "{n} days",
 };
 
 export const UI_ZH: UiStrings = {
@@ -294,6 +319,11 @@ export const UI_ZH: UiStrings = {
   tuckChat: "把聊天收进屏幕边",
   restoreChat: "展开聊天",
   untuckChat: "拉出聊天",
+  pairEval: "{label} 想在你的页面上运行代码，为期 {time}。",
+  pairEvalAll: "{label} 想在你所有设备的所有页面上运行代码，为期 {time}。",
+  grantHour: "1 小时",
+  grantHours: "{n} 小时",
+  grantDays: "{n} 天",
 };
 
 export const UI_JA: UiStrings = {
@@ -358,6 +388,11 @@ export const UI_JA: UiStrings = {
   tuckChat: "チャットを画面の端にしまう",
   restoreChat: "チャットを開く",
   untuckChat: "チャットを戻す",
+  pairEval: "{label} があなたのページでコードを実行しようとしています（期間：{time}）。",
+  pairEvalAll: "{label} があなたのすべての端末のすべてのページでコードを実行しようとしています（期間：{time}）。",
+  grantHour: "1時間",
+  grantHours: "{n}時間",
+  grantDays: "{n}日間",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */
