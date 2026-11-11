@@ -33,6 +33,16 @@ export const STT_PAGE_ORIGIN = "https://lianki.com";
 export const V2_SUBPROTOCOL = "lianki-stt2";
 /** WebRTC needs a round trip more than a socket: the race waits this long for these routes. */
 export const PUBLIC_CONNECT_TIMEOUT_MS = 6_000;
+/** Resuming a dropped signal socket (stt-registry.ts STT_RESUME_SUBPROTOCOL). */
+export const RESUME_SUBPROTOCOL = "lianki-stt2-resume";
+/** The registry keeps a dropped session this long (stt-registry.ts RESUME_GRACE_MS). */
+export const RESUME_GRACE_MS = 20_000;
+/** ICE `disconnected` this long (it often comes back by itself) → an ICE restart. */
+export const DISCONNECTED_GRACE_MS = 1_000;
+/** An ICE restart not connected within this → the route is lost (the mic replays elsewhere). */
+export const RESTART_TIMEOUT_MS = 5_000;
+/** Dispatched on window when the lobby hears a worker is free: the mic races again (local-stt.ts). */
+export const STT_AVAILABLE_EVENT = "lk-stt-available";
 
 export type PublicSession = {
   ticket: string;
@@ -111,7 +121,7 @@ type ChannelLike = {
 };
 type PeerLike = {
   createDataChannel(label: string, o?: { ordered?: boolean }): ChannelLike;
-  createOffer(): Promise<{ sdp?: string; type: string }>;
+  createOffer(o?: { iceRestart?: boolean }): Promise<{ sdp?: string; type: string }>;
   setLocalDescription(d: { sdp?: string; type: string }): Promise<void>;
   setRemoteDescription(d: { sdp: string; type: "answer" }): Promise<void>;
   addIceCandidate(c: unknown): Promise<void>;
@@ -130,6 +140,13 @@ export type PublicDeps = {
   /** The page's origin as wss:// (the signal socket goes to lianki.com itself). */
   origin?: () => string;
   log?: (ev: Record<string, unknown>) => void;
+  /** The page coming online or back to the foreground; returns an unsubscribe. */
+  events?: (f: (why: "online" | "visible") => void) => () => void;
+  setTimer?: (f: () => void, ms: number) => unknown;
+  clearTimer?: (t: unknown) => void;
+  now?: () => number;
+  /** A worker is free again (the lobby heard it): default, STT_AVAILABLE_EVENT on window. */
+  available?: () => void;
 };
 
 /**
@@ -141,9 +158,25 @@ export function publicOpen(d: PublicDeps = {}): (url: string) => WsLike {
   const peer = d.peer ?? ((o) => new RTCPeerConnection(o) as unknown as PeerLike);
   const socket = d.socket ?? ((u, p) => new WebSocket(u, p) as unknown as SockLike);
   const origin = d.origin ?? (() => location.origin.replace(/^http/, "ws"));
+  const r = {
+    f,
+    peer,
+    socket,
+    origin,
+    log: d.log,
+    events: d.events ?? pageEvents,
+    setTimer: d.setTimer ?? ((g: () => void, ms: number) => setTimeout(g, ms)),
+    clearTimer: d.clearTimer ?? ((t: unknown) => clearTimeout(t as ReturnType<typeof setTimeout>)),
+    now: d.now ?? (() => Date.now()),
+    available:
+      d.available ??
+      (() => {
+        if (typeof window !== "undefined") window.dispatchEvent(new Event(STT_AVAILABLE_EVENT));
+      }),
+  };
   return (url) => {
     const shim = new Shim();
-    if (url === PUBLIC_RTC_URL) void rtc(shim, { f, peer, socket, origin, log: d.log });
+    if (url === PUBLIC_RTC_URL) void rtc(shim, r);
     else if (url === PUBLIC_WSS_URL) void wss(shim, { f, socket, log: d.log });
     else queueMicrotask(() => shim.fail(4000, "not a public route"));
     return shim;
@@ -199,6 +232,24 @@ class Shim implements WsLike {
   }
 }
 
+/**
+ * The WebRTC route (docs/local-stt.md, "Routes that come and go"). The shim is
+ * open from the DataChannel's open until the route is truly gone; in between it
+ * rides out what a phone on the move does:
+ *
+ * - the network changes (online, back in the foreground, ICE `disconnected` for
+ *   DISCONNECTED_GRACE_MS, or `failed`): an ICE restart on the same peer
+ *   connection, so the channel and the speech server's socket go on; not
+ *   connected again within RESTART_TIMEOUT_MS, the shim fails and the mic
+ *   replays the utterance in flight on its next route;
+ * - the signal socket drops: it resumes the same session (`resume` token,
+ *   within RESUME_GRACE_MS), then restarts ICE, since the network changed;
+ * - the worker's own registry socket blips (`worker-away` / `worker-back`): the
+ *   peer connection carries on; a restart if it is not connected on its return;
+ * - no worker free (`wait`): the route fails at once (the cloud meanwhile) and
+ *   the signal socket stays as the lobby, which hears `available` when a worker
+ *   comes up and tells the page (STT_AVAILABLE_EVENT), so the mic races again.
+ */
 async function rtc(
   shim: Shim,
   d: {
@@ -207,6 +258,11 @@ async function rtc(
     socket: NonNullable<PublicDeps["socket"]>;
     origin: () => string;
     log?: PublicDeps["log"];
+    events: NonNullable<PublicDeps["events"]>;
+    setTimer: NonNullable<PublicDeps["setTimer"]>;
+    clearTimer: NonNullable<PublicDeps["clearTimer"]>;
+    now: NonNullable<PublicDeps["now"]>;
+    available: NonNullable<PublicDeps["available"]>;
   },
 ) {
   let s: PublicSession;
@@ -218,14 +274,48 @@ async function rtc(
   if (shim.readyState >= 2) return;
   let pc: PeerLike | null = null;
   let dc: ChannelLike | null = null;
-  const sig = d.socket(`${d.origin()}${s.signal}`, [V2_SUBPROTOCOL, s.ticket]);
+  let sid = "";
+  let resume = "";
+  /** The signal socket that speaks for this session now (a resume replaces it). */
+  let sig: SockLike;
+  /** The session is waiting in the lobby: its socket is not ours to close. */
+  let lobby = false;
+  let restarting = false;
+  let resuming = false;
+  let droppedAt = 0;
+  const timers = new Set<unknown>();
+  const later = (f: () => void, ms: number) => {
+    const t = d.setTimer(() => {
+      timers.delete(t);
+      f();
+    }, ms);
+    timers.add(t);
+    return t;
+  };
+  const cancel = (t: unknown) => {
+    if (t === undefined) return;
+    timers.delete(t);
+    d.clearTimer(t);
+  };
+  let discTimer: unknown;
+  let restartTimer: unknown;
+  const unwatch = d.events((why) => {
+    if (!pc || shim.readyState !== 1) return;
+    // A new network: the old ICE path may look connected for a while yet, so restart now.
+    if (why === "online") restart("online");
+    else if (pc.connectionState !== "connected") restart("visible");
+  });
   shim.cleanup = () => {
+    unwatch();
+    for (const t of timers) d.clearTimer(t);
+    timers.clear();
     try {
       dc?.close();
     } catch {}
     try {
       pc?.close();
     } catch {}
+    if (lobby) return;
     try {
       sig.close(1000, "done");
     } catch {}
@@ -235,23 +325,102 @@ async function rtc(
       sig.send(JSON.stringify(m));
     } catch {}
   };
-  // The signal socket lives as long as the session: the registry counts sessions by it.
-  sig.onclose = (e) => shim.fail(e.code ?? 4002, e.reason || "signal closed");
-  sig.onerror = () => {};
-  // One message at a time, in order: the worker's ICE right behind its answer
-  // must wait for setRemoteDescription, or the browser refuses it.
-  let chain: Promise<void> = Promise.resolve();
-  sig.onmessage = (e) => {
-    chain = chain.then(() => handle(e)).catch(() => {});
+  const log = (state: string, extra: Record<string, unknown> = {}) =>
+    d.log?.({ ev: "stt-rtc", state, ...extra });
+
+  /** An ICE restart: a new offer on the same peer connection, answered by the same worker. */
+  const restart = async (why: string) => {
+    if (!pc || restarting || shim.readyState !== 1) return;
+    if (sig.readyState !== 1) {
+      // The signal socket is gone too: resume it first; the restart follows its ready.
+      return void resumeSignal();
+    }
+    restarting = true;
+    log("restart", { why });
+    cancel(restartTimer);
+    restartTimer = later(() => {
+      if (pc?.connectionState !== "connected") shim.fail(4012, "restart failed");
+    }, RESTART_TIMEOUT_MS);
+    try {
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      say({ t: "offer", sdp: offer.sdp });
+    } catch {
+      shim.fail(4005, "restart offer");
+    }
   };
-  const handle = async (e: { data: unknown }) => {
-    let m: { t?: string; sdp?: string; candidate?: unknown; reason?: string };
+
+  /** The same session on a new signal socket (the page's network changed under it). */
+  const resumeSignal = () => {
+    if (resuming || shim.readyState !== 1) return;
+    if (!resume || d.now() - droppedAt > RESUME_GRACE_MS)
+      return shim.fail(4011, "signal lost");
+    resuming = true;
+    log("resume");
+    const next = d.socket(`${d.origin()}${s.signal}`, [RESUME_SUBPROTOCOL, `${sid}.${resume}`]);
+    wire(next);
+    sig = next;
+  };
+
+  const wire = (sock: SockLike) => {
+    // One message at a time, in order: the worker's ICE right behind its answer
+    // must wait for setRemoteDescription, or the browser refuses it.
+    let chain: Promise<void> = Promise.resolve();
+    sock.onmessage = (e) => {
+      chain = chain.then(() => handle(sock, e)).catch(() => {});
+    };
+    sock.onerror = () => {};
+    sock.onclose = (e) => {
+      if (sock !== sig) return; // replaced by a resume
+      if (lobby) return;
+      // Before the channel opened, or with nothing to resume: the route is lost.
+      if (shim.readyState !== 1 || !resume) return shim.fail(e.code ?? 4002, e.reason || "signal closed");
+      if (resuming) {
+        // That resume failed: once more on the next online / visible, or give up in time.
+        resuming = false;
+        later(() => {
+          if (sig === sock && shim.readyState === 1) shim.fail(4011, "signal lost");
+        }, Math.max(0, RESUME_GRACE_MS - (d.now() - droppedAt)));
+        return;
+      }
+      droppedAt = d.now();
+      log("signal-dropped", { code: e.code });
+      resumeSignal();
+    };
+  };
+
+  const handle = async (sock: SockLike, e: { data: unknown }) => {
+    let m: {
+      t?: string;
+      sdp?: string;
+      candidate?: unknown;
+      reason?: string;
+      sid?: string;
+      resume?: string;
+      resumed?: boolean;
+    };
     try {
       m = JSON.parse(String(e.data));
     } catch {
       return;
     }
+    if (m.t === "wait") {
+      // No worker free: the cloud now; this socket waits in the lobby for one.
+      lobby = true;
+      keepLobby(sock, d.available);
+      log("lobby");
+      return shim.fail(4010, "no worker");
+    }
+    if (m.t === "ready" && m.resumed && sock === sig) {
+      resuming = false;
+      if (typeof m.resume === "string") resume = m.resume;
+      log("resumed");
+      // The network changed under it: restart ICE on the new path.
+      return void restart("resumed");
+    }
     if (m.t === "ready" && !pc) {
+      sid = typeof m.sid === "string" ? m.sid : "";
+      resume = typeof m.resume === "string" ? m.resume : "";
       pc = d.peer({ iceServers: s.iceServers });
       dc = pc.createDataChannel("stt", { ordered: true });
       dc.binaryType = "arraybuffer";
@@ -260,10 +429,27 @@ async function rtc(
         shim.open((x) => (typeof x === "string" ? ch.send(x) : ch.send(x as Uint8Array)));
       ch.onmessage = (ev) => shim.message(ev.data);
       ch.onclose = () => shim.fail(4003, "channel closed");
-      pc.onicecandidate = (ev) => say({ t: "ice", candidate: ev.candidate ? ev.candidate.toJSON() : null });
+      pc.onicecandidate = (ev) =>
+        say({ t: "ice", candidate: ev.candidate ? ev.candidate.toJSON() : null });
       const p = pc;
       pc.onconnectionstatechange = () => {
-        if (p.connectionState === "failed") shim.fail(4004, "ice failed");
+        const st = p.connectionState;
+        if (st === "connected") {
+          if (restarting) log("restarted");
+          restarting = false;
+          cancel(discTimer);
+          cancel(restartTimer);
+          discTimer = restartTimer = undefined;
+        } else if (st === "disconnected") {
+          // Often back by itself within a second; else a restart.
+          cancel(discTimer);
+          discTimer = later(() => {
+            if (p.connectionState === "disconnected") void restart("disconnected");
+          }, DISCONNECTED_GRACE_MS);
+        } else if (st === "failed") {
+          if (restarting || shim.readyState !== 1) shim.fail(4004, "ice failed");
+          else void restart("failed");
+        }
       };
       try {
         const offer = await pc.createOffer();
@@ -282,9 +468,57 @@ async function rtc(
       try {
         await pc.addIceCandidate(m.candidate);
       } catch {}
+    } else if (m.t === "worker-away") {
+      log("worker-away");
+    } else if (m.t === "worker-back") {
+      log("worker-back");
+      if (pc && pc.connectionState !== "connected") void restart("worker-back");
     } else if (m.t === "end") {
       shim.fail(4007, m.reason || "end");
     }
+  };
+
+  sig = d.socket(`${d.origin()}${s.signal}?lobby=1`, [V2_SUBPROTOCOL, s.ticket]);
+  wire(sig);
+}
+
+/** The one lobby socket of this page: a newer one replaces it. */
+let lobbySock: SockLike | null = null;
+function keepLobby(sock: SockLike, available: () => void) {
+  if (lobbySock && lobbySock !== sock)
+    try {
+      lobbySock.close(1000, "replaced");
+    } catch {}
+  lobbySock = sock;
+  sock.onmessage = (e) => {
+    let m: { t?: string } = {};
+    try {
+      m = JSON.parse(String(e.data));
+    } catch {}
+    if (m.t !== "available") return;
+    if (lobbySock === sock) lobbySock = null;
+    try {
+      sock.close(1000, "available");
+    } catch {}
+    available();
+  };
+  sock.onclose = () => {
+    if (lobbySock === sock) lobbySock = null;
+  };
+}
+
+/** The page's "online" and "visible again" (none outside a browser). */
+function pageEvents(f: (why: "online" | "visible") => void): () => void {
+  if (typeof window === "undefined" || typeof document === "undefined") return () => {};
+  const vis = () => {
+    if (document.visibilityState === "visible") f("visible");
+  };
+  const onl = () => f("online");
+  document.addEventListener("visibilitychange", vis);
+  window.addEventListener("online", onl);
+  return () => {
+    document.removeEventListener("visibilitychange", vis);
+    window.removeEventListener("online", onl);
   };
 }
 
