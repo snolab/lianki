@@ -114,6 +114,8 @@ export type ChatMessage = {
    * send none, and an older hub drops it.
    */
   timing?: VoiceTiming;
+  /** A voice line's recognizer (SttTag): which route and engine made its text. Dev-only in the UI. */
+  stt?: SttTag;
   /**
    * An agent line sent with `say --quiet` (FYI, progress, deploy notices):
    * shown, never read aloud. Only ever `true`; the hub drops anything else.
@@ -238,6 +240,7 @@ export type MergedPart = {
   text: string;
   at: number;
   timing?: VoiceTiming;
+  stt?: SttTag;
   speaker?: SpeakerTag;
   wake?: "active" | "passive";
   wakeReason?: ChatMessage["wakeReason"];
@@ -1347,4 +1350,54 @@ export function cleanTiming(raw: unknown): VoiceTiming | undefined {
     any = true;
   }
   return any ? out : undefined;
+}
+
+/**
+ * Which recognizer produced a voice line's final text (docs/local-stt.md,
+ * "Which engine a line came from"): `route` "local" = one of Lianki's speech
+ * servers (the owner's Mac; `engine` from its final's `model`), "cloud" =
+ * /api/debug/stt (`engine` = the Workers AI model the route answered with).
+ * `fallback`: the local server was asked and failed, so the cloud answered.
+ * Set by the page from what actually answered; dev-only in the UI (never
+ * shown to friends or normal users); it never carries text.
+ */
+export type SttRoute = "local" | "cloud";
+export type SttTag = { route: SttRoute; engine?: string; fallback?: true };
+/** An engine or model id: "sensevoice-small-2024-07-17-int8", "@cf/openai/whisper-large-v3-turbo". */
+const STT_ENGINE = /^[@A-Za-z0-9][A-Za-z0-9@._/+:-]{0,79}$/;
+
+/** An SttTag from the wire, or undefined: known keys only, each checked. */
+export function cleanStt(raw: unknown): SttTag | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  if (r.route !== "local" && r.route !== "cloud") return undefined;
+  const out: SttTag = { route: r.route };
+  if (typeof r.engine === "string" && STT_ENGINE.test(r.engine)) out.engine = r.engine;
+  if (r.fallback === true && r.route === "cloud") out.fallback = true;
+  return out;
+}
+
+/**
+ * The tag a final gets (MicButton): `model` as the recognizer reported it
+ * ("local:<model>" from local-stt.ts, or the cloud route's `model`).
+ */
+export function sttTagOf(route: SttRoute, model: string | undefined, fallback = false): SttTag {
+  const engine = model?.replace(/^local:/, "");
+  return cleanStt({ route, engine: engine === "?" ? undefined : engine, fallback }) ?? { route };
+}
+
+/**
+ * The dev-only tag's words (DebugChat): where it ran, the engine without its
+ * vendor prefix ("@cf/openai/"), and the fallback mark. Undefined for a viewer
+ * without `dev` (no internals in user UI) or a line without a tag.
+ */
+export function sttTagText(
+  stt: SttTag | undefined,
+  dev: boolean,
+  l: { latLocal: string; latCloud: string; sttFallback: string },
+): string | undefined {
+  if (!dev || !stt) return undefined;
+  const where = stt.route === "local" ? l.latLocal : l.latCloud;
+  const engine = stt.engine?.split("/").at(-1);
+  return [where, engine, stt.fallback ? l.sttFallback : undefined].filter(Boolean).join(" · ");
 }

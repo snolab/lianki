@@ -45,6 +45,8 @@ import {
   parseAddress,
   pathLabel,
   type VoiceTiming,
+  type SttTag,
+  sttTagText,
   type AttachmentRef,
   type ChatContext,
 } from "./wire";
@@ -655,6 +657,8 @@ export type DebugChatProps = {
     opts?: {
       source?: MessageSource;
       timing?: VoiceTiming;
+      /** Which recognizer made a voice line's text (wire.ts SttTag). */
+      stt?: SttTag;
       speakerProof?: string[];
       /** Attached with the + menu (AttachMenu.tsx): the page selection and where. */
       context?: ChatContext;
@@ -2300,7 +2304,12 @@ export function DebugChat({
     if (!text) return false;
     const source = draftSource(draftRef.current, pureDictation.current);
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
-    const timing = source ? voiceLatency().take() : undefined;
+    // And which recognizer made it (SttTag): an older store (hot swap) has no takeLine.
+    const lat = voiceLatency();
+    const taken: { timing?: VoiceTiming; stt?: SttTag } = source
+      ? (lat.takeLine?.() ?? { timing: lat.take() }) : {};
+    const timing = taken.timing;
+    const stt = taken.stt;
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
     // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
     const heardFrom = source ? takeSpeaker() : (clearSpeaker(), undefined);
@@ -2331,6 +2340,7 @@ export function DebugChat({
       ...(continues ? { continues } : {}),
       ...(source ? { source } : {}),
       ...(source && timing ? { timing } : {}),
+      ...(source && stt ? { stt } : {}),
       ...(source && speakerProof?.length ? { speakerProof } : {}),
       ...(context ? { context } : {}),
     };
@@ -2956,7 +2966,7 @@ export function DebugChat({
       if (!rec) return;
       void rec
         .finish()
-        .then(({ text, audioMs }) => {
+        .then(({ text, audioMs, stt }) => {
           if (!text) return;
           const done = Date.now();
           const timing: VoiceTiming = {
@@ -2969,7 +2979,11 @@ export function DebugChat({
           };
           const to = targetRef.current;
           // Sent at once: push to talk has no draft step.
-          sendRef.current(text, to === ROOT_NODE ? undefined : to, { source: "stt", timing });
+          sendRef.current(text, to === ROOT_NODE ? undefined : to, {
+            source: "stt",
+            timing,
+            ...(stt ? { stt } : {}),
+          });
           window.dispatchEvent(
             new CustomEvent(VOICE_SENT_EVENT, { detail: { sound: pageCues().send() } }),
           );
@@ -4502,6 +4516,19 @@ export function DebugChat({
                         )}
                         {polish(m).mark}
                         {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                        {(() => {
+                          // Which recognizer made a voice line: dev holders only (`owner` needs dev).
+                          const tag = m.from === "owner" ? sttTagText(m.stt, owner, ui) : undefined;
+                          return tag ? (
+                            <span
+                              data-testid="debug-chat-stt"
+                              className="ms-1 fs-10 text-gray-500"
+                              title={ui.sttTagTip}
+                            >
+                              {tag}
+                            </span>
+                          ) : null;
+                        })()}
                         {m.from === "agent" && unheardIds.has(m.id) && (
                           <span
                             data-testid="debug-chat-unheard"

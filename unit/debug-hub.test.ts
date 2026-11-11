@@ -1495,6 +1495,30 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
     expect(stored.map((m) => m.wakeReason)).toEqual(["rejects", undefined, undefined]);
   });
 
+  it("a voice line keeps its recognizer tag (stt) and forwards it; typed or malformed ones drop it", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const local = { route: "local", engine: "sensevoice-small-2024-07-17-int8" };
+    await s.msg(owner, { type: "chat", id: "t1", text: "hello", source: "stt", stt: local });
+    expect(c.last("chat")?.message).toMatchObject({ id: "t1", stt: local });
+    const cloud = { route: "cloud", engine: "@cf/openai/whisper-large-v3-turbo", fallback: true };
+    await s.msg(owner, { type: "chat", id: "t2", text: "again", source: "stt", stt: cloud });
+    await s.msg(owner, { type: "chat", id: "t3", text: "typed", stt: local });
+    await s.msg(owner, {
+      type: "chat",
+      id: "t4",
+      text: "odd",
+      source: "stt",
+      stt: { route: "mars" },
+    });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as Record<string, unknown>)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    expect(stored.map((m) => m.stt)).toEqual([local, cloud, undefined, undefined]);
+  });
+
   it("a voice line keeps only a speaker tag the Mac signed over exactly its words", async () => {
     const mac = await speakerKey();
     const s = setup({ STT_SPEAKER_PUB: mac.pub });

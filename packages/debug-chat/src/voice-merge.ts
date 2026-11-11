@@ -28,6 +28,7 @@ import {
   MAX_CHAT,
   type MergedPart,
   type SpeakerTag,
+  type SttTag,
   type VoiceTiming,
   combineSpeaker,
 } from "./wire";
@@ -68,6 +69,7 @@ const lastTiming = (m: ChatMessage) => m.parts?.at(-1)?.timing ?? m.timing;
 export type MergeCandidate = {
   text: string;
   timing?: VoiceTiming;
+  stt?: SttTag;
   to?: string;
   wake?: "active" | "passive";
   context?: ChatContext;
@@ -122,6 +124,7 @@ function partOf(m: {
   raw?: string;
   at: number;
   timing?: VoiceTiming;
+  stt?: SttTag;
   speaker?: SpeakerTag;
   wake?: "active" | "passive";
   wakeReason?: ChatMessage["wakeReason"];
@@ -131,6 +134,7 @@ function partOf(m: {
     text: m.raw ?? m.text,
     at: m.at,
     ...(m.timing ? { timing: m.timing } : {}),
+    ...(m.stt ? { stt: m.stt } : {}),
     ...(m.speaker ? { speaker: m.speaker } : {}),
     ...(m.wake ? { wake: m.wake } : {}),
     ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
@@ -153,7 +157,7 @@ export function mergeLines(
   at: number,
 ): ChatMessage {
   const raw = joinParts(prev.raw ?? prev.text, cur.text);
-  const { speaker: _speaker, timing: _timing, ...rest } = prev;
+  const { speaker: _speaker, timing: _timing, stt: _stt, ...rest } = prev;
   const a = prev.speaker;
   const b = cur.speaker;
   const weakest = a && b ? combineSpeaker([a, b]) : undefined;
@@ -166,6 +170,7 @@ export function mergeLines(
     parts: [...(prev.parts ?? [partOf(prev)]), partOf(cur)],
     edited: { at, by: MERGE_BY, count: prev.edited?.count ?? 0 },
     ...(cur.timing ? { timing: cur.timing } : {}),
+    ...(cur.stt ? { stt: cur.stt } : {}),
     ...(tag ? { speaker: tag } : {}),
   };
 }
@@ -180,6 +185,7 @@ export function splitLine(line: ChatMessage): ChatMessage[] {
     settled: _settled,
     speaker: _speaker,
     timing: _timing,
+    stt: _stt,
     wake: _wake,
     wakeReason: _wakeReason,
     ...base

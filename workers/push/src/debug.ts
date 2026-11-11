@@ -2836,6 +2836,7 @@ export class DebugHub {
             continues: m.continues,
             text: m.text,
             ...(m.timing ? { timing: m.timing } : {}),
+            ...(m.stt ? { stt: m.stt } : {}),
             ...(m.to ? { to: m.to } : {}),
             ...(m.wake ? { wake: m.wake } : {}),
             ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
@@ -2856,6 +2857,8 @@ export class DebugHub {
           ...(m.to ? { to: m.to } : {}),
           ...(m.source ? { source: m.source } : {}),
           ...(m.timing ? { timing: m.timing } : {}),
+          // Which recognizer made the text (SttTag): route and engine, never text.
+          ...(m.stt ? { stt: m.stt } : {}),
           ...(m.wake ? { wake: m.wake } : {}),
           ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
           ...(m.context ? { context: m.context } : {}),
