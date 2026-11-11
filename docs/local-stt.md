@@ -384,6 +384,14 @@ wrong word being better than none. 0.2 s is the worst acceptable, not the goal.
   frames louder than a quarter of the clip's 90th-percentile RMS)
   133–654 ms. Over the floor: CTC emits blank for a syllable it is not yet
   sure of, so the text does not change for a few passes.
+- **Early guesses** (`LIANKI_STT_BLANK_PENALTY=6`, off by default):
+  partials run the same model in full precision through onnxruntime
+  (`LangPicker.guess`) with the CTC blank's logit lowered, so an unsure
+  syllable shows its best guess; punctuation gets no push (it scattered
+  commas). Back to back on the same 12 clips (load 7–38, not a quiet
+  machine): in-speech gap 197–349 ms vs 134–653 ms without, but end → final
+  219–606 ms vs 56–327 ms (the two runtimes contend for the CPU). Off until
+  that is solved; neither run is under the 0.2 s floor.
 - `stream-clip.ts` prints `first`, `max gap (in speech …)` and end → final per
   clip; the in-speech gap is the acceptance number, not the mean.
 
