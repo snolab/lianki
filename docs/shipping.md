@@ -541,14 +541,27 @@ cannot tell (no fingerprints for the page's build — e.g. the first deploy with
 this, or a page older than 30 builds — or a path no route pattern matches).
 Otherwise the news is kept, and a soft navigation to a route that did change
 shows the button then. Debug devices still auto-reload, but only when the
-button would show. Event-driven as before: no new requests, no polling.
+button would show. Version detection stays event-driven; it does not periodically
+poll for new deployments.
+
+**Before an automatic reload**, `lib/version-probe.ts` immediately fetches
+`/_lk/route-fp.json` from the page's origin with `cache: no-store` and a probe
+query. A successful response must contain valid fingerprints whose `build`
+exactly matches the announced build. Otherwise it retries after 100, 200, 400,
+then at most 800 ms between completed requests. A separate 2500 ms deadline
+includes network and response-body time; exhaustion shows the manual Refresh
+button and stops automatic work. Component cleanup cancels requests and timers.
+A confirmed build still respects the existing dirty-page and idle/navigation
+rules: readiness never overrides unsaved work, an active microphone or a study
+session. Manual Refresh remains available without waiting for a probe.
 
 **Forcing it for everyone** (a security fix, a broken client): put a
 `Force-Refresh: yes` trailer on the commit that lands on `main` (or run the
 step with `--force` / `LIANKI_FORCE_REFRESH=1`). The fingerprint file gets
 `"force": true`, and every open page shows the button.
 
-Tests: `unit/smart-refresh.test.ts` (diff → decision), `unit/route-fingerprints.test.ts`,
+Tests: `unit/version-notice-probe.test.ts` (readiness, backoff, deadlines and
+cancellation), `unit/smart-refresh.test.ts` (diff → decision), `unit/route-fingerprints.test.ts`,
 the hub in `unit/debug-hub.test.ts`; `scripts/qa/qa-smart-refresh.ts` (qa:all
 `smart-refresh`, serverless) runs the real hub and the real notice in Chromium
 across builds that change another route, the current route, nothing
