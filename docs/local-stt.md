@@ -1540,3 +1540,27 @@ everyone" above), not aiortc.
 - `server.py` logs each connection, each final (length and decode time,
   never the text) and every refused handshake (a wrong Origin) through the
   `websockets` logger.
+
+## On-demand Whisper recheck
+
+Each WebSocket keeps up to 60 seconds of its received 16 kHz PCM in a fixed
+float32 RAM ring (3.84 MB). No audio file or transcript log is created. The
+ring survives utterance end/cancel, evicts its oldest samples as frames arrive,
+and is cleared on disconnect. This is 60 seconds of received audio, excluding
+unstreamed gaps, rather than 60 seconds of wall time. VAD pre-pad is inserted
+before the current utterance's frames. Connections never share cached audio.
+Enrolment audio and audio captured with the voiceprint filter enabled are
+excluded; changing the filter or beginning enrolment clears the ring.
+
+Send `{"t":"recheck","rid":"request-id","engine":"mlx-whisper","seconds":15}`
+to re-read the latest received audio (default 15 seconds; greater than zero,
+at most 60). `rid` correlates the response; it does not select an utterance.
+The response is `{"t":"recheck_result","rid":"request-id","engine":"mlx-whisper",
+"ok":true,"text":"…","lang":"zh","audioMs":15000}` or `ok:false` with an
+`error`. Recheck is unavailable while filtering or enrolling. One recheck per
+socket may run at a time; further requests receive `recheck busy`. Whisper
+uses a dedicated serial worker, leaving audio reception and ping responsive.
+The server prewarms it on startup, except with `--engine fake`; warmup failure
+leaves SenseVoice available and a later recheck retries loading Whisper.
+Tests: `unit/local-stt-recheck.test.ts` runs `scripts/local-stt/test_recheck.py`
+with stub engines, without downloading or running a model.
