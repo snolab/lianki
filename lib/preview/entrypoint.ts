@@ -29,6 +29,10 @@ export class PreviewCore extends WorkerEntrypoint<CoreEnv> {
       return Promise.resolve(new Response("Preview origin or path refused", { status: 403 }));
     // The dedicated Core isolate has its own AUTH_SECRET and baseURL. No global
     // auth/cache instance is shared with the production Worker or another tenant.
-    return handler.fetch(req, { ...this.env, DB: db, BLOBS: blobs }, this.ctx);
+    return (
+      handler as {
+        fetch(req: Request, env: unknown, ctx: unknown): Promise<Response>;
+      }
+    ).fetch(req, { ...this.env, DB: db, BLOBS: blobs }, this.ctx);
   }
 }
