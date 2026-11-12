@@ -1110,6 +1110,13 @@ try {
   await page.routeWebSocket(/\/api\/version\/ws(\?|$)/, (ws) =>
     ws.send(JSON.stringify({ build: "some-newer-build" })),
   );
+  // The announcement and the serving-build probe must agree, just as they
+  // do after a real rollout. A mocked socket alone is deliberately refused.
+  await page.route("**/_lk/route-fp.json*", (route) =>
+    route.fulfill({
+      json: { build: "some-newer-build", shell: "qa-shell", routes: {} },
+    }),
+  );
   // A Learning Partner device reloads by itself instead of showing the
   // button: this check is about a user's device, so the flag must be off.
   const partnerFlags = () =>
