@@ -253,7 +253,13 @@ function plain(text: string): Rich {
   return { nodes, spoken: flatten(nodes, true), shown: text };
 }
 
-function build(text: string, tier: RichTier): Rich {
+function stripComments(t: string): string {
+  // Strip <!--lang:...--> and any other HTML comments before rendering
+  return t.replace(/<!--[\s\S]*?-->/g, "");
+}
+
+function build(rawText: string, tier: RichTier): Rich {
+  const text = stripComments(rawText);
   const P = (globalThis as { DOMParser?: typeof DOMParser }).DOMParser;
   if (!P || text.length > MAX_RICH) return plain(text);
   try {
