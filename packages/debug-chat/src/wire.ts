@@ -490,7 +490,8 @@ export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "fr-FR" | 
   const han = (text.match(/\p{Script=Han}/gu) || []).length;
   // Japanese: genuine Japanese text (has kana and either no han or sufficient kana density).
   // A predominantly Chinese message mentioning a short Japanese term (e.g. ポスト投函) stays zh-CN.
-  if (kana > 0 && (han === 0 || kana >= Math.max(3, han * 0.25))) return "ja-JP";
+  // Japanese: any kana when total length is short (e.g. "今日は。"), or sufficient kana density in mixed sentences
+  if (kana > 0 && (han === 0 || text.length <= 10 || kana >= Math.max(3, han * 0.25))) return "ja-JP";
   if (han > 0) return "zh-CN";
   if (FR_PATTERN.test(text)) return "fr-FR";
   return "en-US";

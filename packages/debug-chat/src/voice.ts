@@ -2,7 +2,7 @@
  * Splits text into segments according to <!--lang:xx-XX-->...<!--lang--> tags,
  * falling back to pickLang for untagged segments.
  */
-export function segmentByLang(text: string): { text: string; lang: string }[] {
+export function segmentByLang(text: string, defaultLang: string = pickLang(text)): { text: string; lang: string }[] {
   const parts: { text: string; lang: string }[] = [];
   const tagRe = /<!--lang:([a-zA-Z_-]+)-->([\s\S]*?)<!--lang-->/g;
   let lastIdx = 0;
@@ -10,7 +10,7 @@ export function segmentByLang(text: string): { text: string; lang: string }[] {
   while ((match = tagRe.exec(text)) !== null) {
     const before = text.slice(lastIdx, match.index).trim();
     if (before) {
-      parts.push({ text: before, lang: pickLang(before) });
+      parts.push({ text: before, lang: defaultLang });
     }
     const taggedLang = match[1]!;
     const taggedText = match[2]!.trim();
@@ -21,9 +21,9 @@ export function segmentByLang(text: string): { text: string; lang: string }[] {
   }
   const after = text.slice(lastIdx).trim();
   if (after) {
-    parts.push({ text: after, lang: pickLang(after) });
+    parts.push({ text: after, lang: defaultLang });
   }
-  return parts.length ? parts : [{ text, lang: pickLang(text) }];
+  return parts.length ? parts : [{ text, lang: defaultLang }];
 }
 
 /**
@@ -509,14 +509,19 @@ export function createVoice(d: {
    */
   const toSentences = (text: string, lang: string, voice?: VoiceId, pick?: LinePick): Sentence[] =>
     sentences(text)
-      .flatMap((s): { text: string; written?: string }[] =>
-        isProviderVoice(pick)
-          ? chunk(s).map((w) => ({ text: speakForm(w, lang), written: w }))
-          : chunk(speakForm(s, lang)).map((t) => ({ text: t })),
-      )
+      .flatMap((s): { text: string; written?: string; lang: string }[] => {
+        // If the reply had a default lang but an individual sentence is clearly another script (e.g. Japanese kana "今日は。")
+        const sLang = pickLang(s);
+        const resolvedLang = (sLang === "ja-JP" && lang !== "ja-JP") ? "ja-JP" : lang;
+        return (isProviderVoice(pick)
+          ? chunk(s).map((w) => ({ text: speakForm(w, resolvedLang), written: w, lang: resolvedLang }))
+          : chunk(speakForm(s, resolvedLang)).map((t) => ({ text: t, lang: resolvedLang }))
+        );
+      })
       .map((t) => ({
-        ...t,
-        lang,
+        text: t.text,
+        ...(t.written ? { written: t.written } : {}),
+        lang: t.lang,
         from: 0,
         at: 0,
         ...(voice ? { voice } : {}),
@@ -863,7 +868,8 @@ export function createVoice(d: {
       }
       recent.push({ text: key, at: t });
       while (recent.length > 20) recent.shift();
-      const segments = segmentByLang(text);
+      const lang = pickLang(text);
+      const segments = segmentByLang(text, lang);
       const idOf = typeof meta?.id === "string" ? { id: meta.id } : {};
       const add: Sentence[] = [];
       for (const seg of segments) {
@@ -1171,7 +1177,7 @@ export function voice(): Voice {
   const g = globalThis as unknown as Record<string, Voice | undefined>;
   const have = g[KEY];
   if (have && have.v === V && (have as Gated).__gate === GATE_V) return have;
-  const prevMic = have?.state().mic ?? false;
+  const prevMic = typeof have?.state === "function" ? (have.state().mic ?? false) : false;
   const v = createVoice({
     synth,
     enabled: speechEnabled,
