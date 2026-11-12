@@ -66,7 +66,10 @@ export function hasSessionCookie(headers: Headers): boolean {
   // A box has no session of its own (docs/box-oauth.md), so better-auth never loads
   // there: only its tab's token cookie counts, which auth.ts asks lianki.com about.
   if (process.env.LIANKI_BOX_CLIENT_ID)
-    return /(?:^|;\s*)(?:__Host-)?lk_box_at=lkb_/.test(headers.get("cookie") ?? "");
+    return (
+      /(?:^|;\s*)(?:__Host-)?lk_box_at=lkb_/.test(headers.get("cookie") ?? "") ||
+      /^Bearer lkb_[A-Za-z0-9_-]{16,256}$/.test(headers.get("authorization") ?? "")
+    );
   // A box token's signed identity counts too: auth.ts answers it with no cookie.
   if (headers.has("x-lk-box-identity")) return true;
   return headers.get("cookie")?.includes("better-auth.session_token=") ?? false;

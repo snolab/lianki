@@ -27,6 +27,8 @@
   "tail_consumers": [{ "service": "lianki-monitor" }],
   // lianki-push (workers/push): a new build announces itself through this,
   // and open pages hear it over their WebSocket (lib/announce-build.ts).
+  // Preview CORE bindings live in wrangler.preview.jsonc. Production must not
+  // bind itself: a missing DB must fail closed, never recurse to its own fetch.
   "services": [{ "binding": "PUSH", "service": "lianki-push" }],
   // Source maps are not uploaded: wrangler's bundle of worker.ts plus the
   // OpenNext build produced 61.6 MiB of maps on 2026-11-10, over Cloudflare's

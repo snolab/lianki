@@ -38,6 +38,14 @@ const READ = ["app/(app)/reader/**", "app/api/read/**", "lib/read/**", "lib/epub
 // affected-gate: imports-only — the args below are run, not loaded here
 // (scripts/gate/affected-lib.ts; each suite's entry is matched on its own).
 export const SUITES = [
+  {
+    name: "API PREVIEW RPC (workerd)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-api-preview-proxy.ts"],
+    id: "api-preview-proxy",
+    paths: ["lib/preview/**", "wrangler.preview*.jsonc", "lib/box-oauth/**"],
+    sensitive: false,
+  },
   // First: every suite after it relies on this layer, with nothing on the Mac behind it.
   {
     name: "AUDIO-FREE (qa-audio-free)",
