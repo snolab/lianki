@@ -27,10 +27,12 @@ import { type VersionNews, parseNews, refreshDecision } from "@/lib/smart-refres
 function debugDevice(): boolean {
   return getKey("lk:debug") === "1";
 }
-/** Read without consuming the attempt: an effect may stop during the probe. */
+/** True the first time this tab is told about `build`; later calls say false. */
 function reloadOnceFor(build: string): boolean {
   try {
-    return sessionStorage.getItem("lk:reloaded-for") !== build;
+    if (sessionStorage.getItem("lk:reloaded-for") === build) return false;
+    sessionStorage.setItem("lk:reloaded-for", build);
+    return true;
   } catch {
     return false;
   }
@@ -245,12 +247,6 @@ export function VersionNotice({
           probeVersion({
             build,
             ready: () => {
-              try {
-                sessionStorage.setItem("lk:reloaded-for", build);
-              } catch {
-                setStale(true);
-                return;
-              }
               if (!debugReload) return waitIdle(pendingWrites);
               if (pageIsDirty(document)) waitClean();
               else location.reload();

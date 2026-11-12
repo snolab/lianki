@@ -1107,8 +1107,9 @@ try {
   // service is not part of the local Worker, so the socket is mocked here.
   // The page names its build in ?b= (smart refresh); a bare {build} — no
   // fingerprints — means "cannot tell", so the button shows.
+  let announcedBuild = "some-newer-build";
   await page.routeWebSocket(/\/api\/version\/ws(\?|$)/, (ws) =>
-    ws.send(JSON.stringify({ build: "some-newer-build" })),
+    ws.send(JSON.stringify({ build: announcedBuild })),
   );
   // The announcement and the serving-build probe must agree, just as they
   // do after a real rollout. A mocked socket alone is deliberately refused.
@@ -1124,12 +1125,16 @@ try {
         url.searchParams.has("_lk_probe")
       )
         return Promise.resolve(
-          Response.json({ build: "some-newer-build", shell: "qa-shell", routes: {} }),
+          Response.json({
+            build: sessionStorage.getItem("qa:serving-build"),
+            shell: "qa-shell",
+            routes: {},
+          }),
         );
       return fetcher(input, init);
     };
   });
-  await page.evaluate(() => sessionStorage.setItem("qa:serving-build", "1"));
+  await page.evaluate(() => sessionStorage.setItem("qa:serving-build", "some-newer-build"));
   // A Learning Partner device reloads by itself instead of showing the
   // button: this check is about a user's device, so the flag must be off.
   const partnerFlags = () =>
@@ -1157,7 +1162,9 @@ try {
   // build; when the reload still hears the old build is stale, it shows the
   // button rather than reloading again and again.
   {
+    announcedBuild = "partner-newer-build";
     await page.evaluate(() => {
+      sessionStorage.setItem("qa:serving-build", "partner-newer-build");
       for (const k of ["lk:agent", "lk:debug"]) localStorage.setItem(k, "1");
       sessionStorage.removeItem("lk:reloaded-for");
     });
