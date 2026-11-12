@@ -431,3 +431,21 @@ describe("the box's server sees the tab's sign-in (server-session.ts)", () => {
     expect(cookieLines.at(-1)).toContain("Max-Age=0");
   });
 });
+
+test("preview mode keeps API fetches same-origin while OAuth remains on the provider", async () => {
+  // The installed page config is the same object held by the fetch bridge.
+  config.sameOriginApi = true;
+  try {
+    hold(`lkb_${"p".repeat(32)}`, null);
+    await fetch("/api/preferences");
+    expect(calls[0].url).toBe("/api/preferences");
+    expect(new Headers(calls[0].init.headers).get("authorization")).toBe(
+      `Bearer lkb_${"p".repeat(32)}`,
+    );
+    expect(calls[0].init.credentials).toBe("omit");
+    await startBoxSignIn(config);
+    expect(new URL(assigned[0]).origin).toBe(PROVIDER);
+  } finally {
+    delete config.sameOriginApi;
+  }
+});

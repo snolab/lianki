@@ -12,7 +12,13 @@ const PENDING = "lk:box:pending";
 const TOKENS = "lk:box:tokens";
 
 /** `hub`: the chat socket's URL, when it is not the provider's own (a local QA run only). */
-export type BoxConfig = { clientId: string; provider: string; scope: string; hub?: string };
+export type BoxConfig = {
+  clientId: string;
+  provider: string;
+  scope: string;
+  hub?: string;
+  sameOriginApi?: boolean;
+};
 type Tokens = { access: string; refresh: string | null; until: number };
 
 const b64url = (b: Uint8Array) =>
@@ -252,7 +258,7 @@ export function installBoxFetch(c: BoxConfig): void {
   const send = (path: string, init: RequestInit, access: string | undefined) => {
     const headers = new Headers(init.headers);
     if (access) headers.set("authorization", `Bearer ${access}`);
-    return nativeFetch()(`${c.provider}${path}`, {
+    return nativeFetch()(c.sameOriginApi ? path : `${c.provider}${path}`, {
       ...init,
       headers,
       credentials: "omit",

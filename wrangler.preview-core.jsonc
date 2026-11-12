@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lianki-preview-core-agy",
+  "main": "worker.ts",
+  "compatibility_date": "2025-05-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "vars": {
+    "DB_BACKEND": "d1",
+    "LIANKI_BOX_CLIENT_ID": "REGISTER_EXACT_ORIGIN_IN_DEV_BOX_CLIENTS",
+    "CORE_TENANT": "agy",
+    "CORE_ORIGIN": "https://agy.lianki.pages.dev",
+    "BETTER_AUTH_BASE_URL": "https://agy.lianki.pages.dev"
+  },
+  // Provision centrally; never substitute the production database ID here.
+  "d1_databases": [{ "binding": "PREVIEW_DB", "database_name": "lianki-preview-agy", "database_id": "PROVISION_SEPARATE_SANDBOX_DATABASE", "migrations_dir": "db/migrations" }],
+  "r2_buckets": [{ "binding": "PREVIEW_BLOBS", "bucket_name": "lianki-preview-agy" }]
+}

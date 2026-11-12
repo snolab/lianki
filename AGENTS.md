@@ -194,6 +194,7 @@ that are expensive to rediscover.
 | All sound through Li: `__lkLi` hub, who holds mic / plays                | [docs/li-sound-hub.md](docs/li-sound-hub.md)                        |
 | /words owner spec: tall slips, window, review-first, voice               | [docs/words-session-spec.md](docs/words-session-spec.md)            |
 | PWA cold start: measuring it, per-page dictionaries, lazy chat, SW       | [docs/cold-start.md](docs/cold-start.md)                            |
+| Branch API previews: Core gateway, MyBox auth, sandbox persistence | [docs/api-preview-proxy.md](docs/api-preview-proxy.md) |
 | Sync/offline architecture                                                | [docs/sync-architecture.md](docs/sync-architecture.md)              |
 | Sync conflicts, deletions, tombstones                                    | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
 | Settings that follow the account (`lk:*` key classes)                    | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
