@@ -171,7 +171,7 @@ it("reports CLI failures and supports an injected endpoint transport", async () 
     cliError(new Error("expected CLI failure"));
     expect(process.exitCode).toBe(1);
   } finally {
-    process.exitCode = previous;
+    process.exitCode = previous ?? 0;
   }
   await main(["--build", "a", "--url", "http://localhost/internal/publish"], async () =>
     Response.json({ build: "a", pushed: 0 }),
