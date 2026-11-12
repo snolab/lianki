@@ -1,8 +1,8 @@
 # Local Preview Worker deployments
 
 `bun scripts/dev/deploy-preview.ts` builds and deploys `lianki-preview`, then invokes
-`bun scripts/dev/broadcast-version.ts --build <id>`. This integration script
-must be installed before deploying; a missing script fails before the build.
+`bun scripts/dev/broadcast-version.ts --build <id>`. The broadcast
+script sends authenticated publication only after both deployments succeed.
 `--dry-run` prints the plan without running commands or sending a broadcast.
 A full OpenNext build is still required; this does not promise a subsecond build.
 

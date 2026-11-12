@@ -122,3 +122,20 @@ test("preview push authenticates external publish before reaching the hub", asyn
   expect((await fetch(new Request("https://preview.example/internal/publish"))).status).toBe(404);
   expect((await fetch(new Request("https://preview.example/api/version/debug"))).status).toBe(404);
 });
+
+test("the actual CLI dry-run needs no credentials and performs no deploy", () => {
+  const result = Bun.spawnSync(
+    [
+      process.execPath,
+      new URL("../scripts/dev/deploy-preview.ts", import.meta.url).pathname,
+      "--dry-run",
+    ],
+    { env: settings },
+  );
+  expect(result.exitCode).toBe(0);
+  const output = result.stdout.toString();
+  expect(output).toContain("opennextjs-cloudflare build");
+  expect(output).toContain("route-fingerprints.ts");
+  expect(output).toContain("lianki-push-preview.example.workers.dev/internal/publish");
+  expect(result.stderr.toString()).toBe("");
+});
