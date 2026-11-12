@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { getKey } from "@lianki/debug-chat/storage-keys";
 import { onDirtyNotify } from "@lianki/ui-state/dirty";
 import { pageBuildId } from "@/lib/build-id";
+import { probeVersion } from "@/lib/version-probe";
 import { pageIsDirty, reloadDecision, whenClean } from "@/lib/page-dirty";
 import {
   type ApplyMoment,
@@ -163,9 +164,9 @@ export function VersionNotice({
      * Auto-update for everyone (lib/auto-update.ts): reload a clean page at the
      * first moment it may; meanwhile the pill shows whether it is clean.
      */
-    const waitIdle = () => {
-      const writes = trackWrites(window);
-      stops.push(() => writes.stop(), registerUpdateChecks(document, writes));
+    const waitIdle = (pendingWrites?: ReturnType<typeof trackWrites>) => {
+      const writes = pendingWrites ?? trackWrites(window);
+      if (!pendingWrites) stops.push(() => writes.stop(), registerUpdateChecks(document, writes));
       const clean = () => !pageIsDirty(document);
       applyAt.current = (m) => {
         if (mayApplyAt(m, path.current) && clean()) reloadHere();
@@ -200,6 +201,8 @@ export function VersionNotice({
       rest();
       setAuto(true);
       setStale(true);
+      // The user may have hidden this page while readiness was pending.
+      if (document.visibilityState === "hidden") applyAt.current("hidden");
     };
 
     /** This page is out of date: auto-update, the button, or (a debug device) a reload. */
@@ -213,7 +216,7 @@ export function VersionNotice({
       // reloads the moment it is clean (whenClean: on the page's events, no
       // timer). Once per build: if the reload still serves the old one (the
       // push beat the rollout), fall back to the button instead of reloading
-      // every 1.5 s forever.
+      // repeatedly. First confirm this origin serves the announced build.
       const debug = debugDevice();
       const first = reloadOnceFor(build);
       const decision = reloadDecision({
@@ -221,17 +224,45 @@ export function VersionNotice({
         first: debug && first,
         dirty: pageIsDirty(document),
       });
-      if (decision === "reload")
-        return void setTimeout(() => {
-          if (!pageIsDirty(document)) location.reload();
-          else waitClean();
-        }, 1500);
-      if (decision === "wait") return waitClean();
-      // Everyone else: once per build too, for the same reason.
-      if (first && autoUpdateOn({ flag: autoUpdate, pref: autoUpdatePref() })) return waitIdle();
+      const debugReload = decision === "reload" || decision === "wait";
+      const idleReload = first && autoUpdateOn({ flag: autoUpdate, pref: autoUpdatePref() });
+      if (debugReload || idleReload) {
+        // Start before the probe: a POST begun while the edge rolls out must
+        // still count as dirty when readiness enables background/navigation reload.
+        let pendingWrites: ReturnType<typeof trackWrites> | undefined;
+        let stopPendingChecks = () => {};
+        if (!debugReload) {
+          pendingWrites = trackWrites(window);
+          const uncheck = registerUpdateChecks(document, pendingWrites);
+          let watching = true;
+          stopPendingChecks = () => {
+            if (!watching) return;
+            watching = false;
+            uncheck();
+            pendingWrites!.stop();
+          };
+          stops.push(stopPendingChecks);
+        }
+        stops.push(
+          probeVersion({
+            build,
+            ready: () => {
+              if (!debugReload) return waitIdle(pendingWrites);
+              if (pageIsDirty(document)) waitClean();
+              else location.reload();
+            },
+            unavailable: () => {
+              stopPendingChecks();
+              setStale(true);
+            },
+          }),
+        );
+        return;
+      }
       setStale(true);
     };
     const judge = (news: VersionNews) => {
+      if (done) return;
       const d = refreshDecision(news, own, path.current);
       if (d === "prompt") prompt(news.build);
       else kept = d === "quiet" ? news : null;
@@ -248,6 +279,7 @@ export function VersionNotice({
       ws = sock;
       sock.onopen = () => opened.add(sock);
       sock.onmessage = (e) => {
+        if (done || ws !== sock) return;
         const news = parseNews(e.data);
         if (news) judge(news);
       };
@@ -280,6 +312,7 @@ export function VersionNotice({
     window.addEventListener("focus", update);
     window.addEventListener("blur", update);
     return () => {
+      done = true;
       rejudge.current = () => {};
       document.removeEventListener("visibilitychange", update);
       window.removeEventListener("focus", update);
