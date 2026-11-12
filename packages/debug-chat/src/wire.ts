@@ -454,6 +454,8 @@ export function avatarColors(seed: string): { bg: string; fg: string; hue: numbe
 
 /** What the hub tells pages: the pairing waiting for an answer, and the approved sessions. */
 export type PairInfo = {
+  /** Explicit remembered account/device trust; until remains only a finite execution lease. */
+  persistent?: boolean;
   pair: string;
   code: string;
   label: string;
@@ -475,14 +477,18 @@ export type PairInfo = {
 export type PageInfo = { id: string; label: string; at: number };
 
 /**
- * The language to read a reply in, from its script alone: any kana is
- * Japanese, Hangul Korean, other Han Chinese (zh-CN), and everything else
- * English.
+ * The language to read a reply in, from its script and vocabulary: any kana is
+ * Japanese, Hangul Korean, other Han Chinese (zh-CN), recognized French vocabulary
+ * or diacritics French (fr-FR), and everything else English.
  */
-export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "en-US" {
+const FR_PATTERN =
+  /\b(bonjour|bonsoir|salut|merci|beaucoup|comment|allez|vous|ça|ca|va|très|tres|bien|enchanté|enchante|oui|non|au revoir|bonne|journée|journee|s'il|plaît|plait|rien|prie|suis|est|les|des|une|pour|avec)\b|[àâäéèêëîïôöùûüçœæ]/i;
+
+export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "fr-FR" | "en-US" {
   if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja-JP";
   if (/\p{Script=Hangul}/u.test(text)) return "ko-KR";
   if (/\p{Script=Han}/u.test(text)) return "zh-CN";
+  if (FR_PATTERN.test(text)) return "fr-FR";
   return "en-US";
 }
 
@@ -831,6 +837,10 @@ export type ChatStrings = {
   vpMacRecKept: string;
   /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: Lianki's speech server confirmed the line was spoken in his own voice. Short phrase, no full stop. */
   vpVerified: string;
+  /** Label for speech recognized as another speaker in the room. */
+  vpOther: string;
+  /** Short badge text for another speaker in the room. */
+  vpOtherShort: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
   notReadHidden: string;
   // The input's + menu (attach.tsx).
@@ -1045,6 +1055,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpMacRecDeleted: "Recordings deleted from the speech servers.",
   vpMacRecKept: "The recordings stay on the speech servers.",
   vpVerified: "Your voice, verified",
+  vpOther: "Other speaker",
+  vpOtherShort: "Guest",
   vpFilterOn: "Only my voice: on. Speech that does not match is dropped on Lianki's speech server.",
   vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
   vpFilterWaiting: "Only my voice: needs a voiceprint on this device and the check on Lianki's speech server. Until then all speech is transcribed as usual.",

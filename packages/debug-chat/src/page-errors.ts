@@ -27,7 +27,8 @@ export type PageErrorKind =
   | "fetch"
   | "network"
   | "media"
-  | "socket";
+  | "socket"
+  | "voiceprint";
 
 export type PageErrorWire = {
   type: "page-error";

@@ -9,6 +9,8 @@
  * WebAuthn JSON plumbing, so the widget needs no extra package.
  */
 
+import { reportPageError } from "./page-errors";
+
 export const VOICEPRINT_TICKET_PATH = "/api/dev/voiceprint-ticket";
 
 const toBuf = (s: string): ArrayBuffer => {
@@ -36,34 +38,47 @@ export async function getAssertion(
   o: OptionsJSON,
   creds: Pick<CredentialsContainer, "get"> = navigator.credentials,
 ): Promise<Record<string, unknown>> {
-  const c = (await creds.get({
-    publicKey: {
-      challenge: toBuf(o.challenge),
-      rpId: o.rpId,
-      timeout: o.timeout,
-      userVerification: o.userVerification ?? "required",
-      allowCredentials: (o.allowCredentials ?? []).map((a) => ({
-        id: toBuf(a.id),
-        type: "public-key" as const,
-        ...(a.transports ? { transports: a.transports as AuthenticatorTransport[] } : {}),
-      })),
-    },
-  })) as PublicKeyCredential | null;
-  if (!c) throw new Error("passkey cancelled");
-  const r = c.response as AuthenticatorAssertionResponse;
-  return {
-    id: c.id,
-    rawId: toB64url(c.rawId),
-    type: c.type,
-    response: {
-      clientDataJSON: toB64url(r.clientDataJSON),
-      authenticatorData: toB64url(r.authenticatorData),
-      signature: toB64url(r.signature),
-      ...(r.userHandle ? { userHandle: toB64url(r.userHandle) } : {}),
-    },
-    clientExtensionResults: c.getClientExtensionResults?.() ?? {},
-    ...(c.authenticatorAttachment ? { authenticatorAttachment: c.authenticatorAttachment } : {}),
-  };
+  try {
+    const c = (await creds.get({
+      publicKey: {
+        challenge: toBuf(o.challenge),
+        rpId: o.rpId,
+        timeout: o.timeout,
+        userVerification: o.userVerification ?? "required",
+        allowCredentials: (o.allowCredentials ?? []).map((a) => ({
+          id: toBuf(a.id),
+          type: "public-key" as const,
+          ...(a.transports ? { transports: a.transports as AuthenticatorTransport[] } : {}),
+        })),
+      },
+    })) as PublicKeyCredential | null;
+    if (!c) {
+      reportPageError({ kind: "voiceprint", message: "passkey cancelled by user or window" });
+      throw new Error("passkey cancelled");
+    }
+    const r = c.response as AuthenticatorAssertionResponse;
+    return {
+      id: c.id,
+      rawId: toB64url(c.rawId),
+      type: c.type,
+      response: {
+        clientDataJSON: toB64url(r.clientDataJSON),
+        authenticatorData: toB64url(r.authenticatorData),
+        signature: toB64url(r.signature),
+        ...(r.userHandle ? { userHandle: toB64url(r.userHandle) } : {}),
+      },
+      clientExtensionResults: c.getClientExtensionResults?.() ?? {},
+      ...(c.authenticatorAttachment ? { authenticatorAttachment: c.authenticatorAttachment } : {}),
+    };
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    reportPageError({
+      kind: "voiceprint",
+      message: `WebAuthn getAssertion failed: ${msg} (rpId=${o.rpId ?? "default"}, timeout=${o.timeout ?? "default"})`,
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    throw err;
+  }
 }
 
 export type VoiceprintTicketOp = "status" | "enrol" | "delete" | "delete-audio" | "export" | "restore";

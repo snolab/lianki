@@ -377,8 +377,17 @@ function soundAlike(said: string, cand: string): boolean {
  * (`soundAlike`) without being in the context. The raw text stays as `raw`.
  */
 export function polishCheck(raw: string, polished: string, context: PolishContext): PolishVerdict {
-  const brackets = [...polished.matchAll(UNCLEAR)];
-  if (!brackets.length) return wordCheck(raw, polished, context);
+  // If the polish contains an inferred guess bracket, e.g. "（随口说说？）" or "(just saying?)",
+  // which does not start with an unclear phrase, treat it as a tentative trailing thought
+  // and check the text with the guess bracket stripped.
+  const hasUnclearPrefix = /[（(]\s*(?:没听清|unclear|no se entendió)\s*[，,、]/iu;
+  const strippedOfGuesses = polished.replace(/[（(][^）)]*[？?][）)]/gu, (m) =>
+    hasUnclearPrefix.test(m) ? m : "",
+  );
+  const textToCheck = strippedOfGuesses.trim() ? strippedOfGuesses : polished;
+
+  const brackets = [...textToCheck.matchAll(UNCLEAR)];
+  if (!brackets.length) return wordCheck(raw, textToCheck, context);
   if (brackets.length > MAX_UNCLEAR_BRACKETS)
     return {
       ok: false,
@@ -400,10 +409,10 @@ export function polishCheck(raw: string, polished: string, context: PolishContex
     let out = "";
     let at = 0;
     brackets.forEach((b, i) => {
-      out += polished.slice(at, b.index) + pick[i];
+      out += textToCheck.slice(at, b.index) + pick[i];
       at = b.index! + b[0].length;
     });
-    return out + polished.slice(at);
+    return out + textToCheck.slice(at);
   };
   const alike = new Set(cands.flat().map((x) => polishWords(x).join("")));
   const first = cands.map((c) => c[0]!);
