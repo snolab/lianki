@@ -1169,9 +1169,16 @@ try {
     const shown = await notice.isVisible().catch(() => false);
     await page.waitForTimeout(3000); // a second auto-reload would land in here
     page.off("load", onLoad);
+    const reloadState = await page.evaluate(() => ({
+      agent: localStorage.getItem("lk:agent"),
+      debug: localStorage.getItem("lk:debug"),
+      reloaded: sessionStorage.getItem("lk:reloaded-for"),
+      state: document.querySelector('[data-testid="new-version"]')?.getAttribute("data-state"),
+      focused: document.activeElement?.tagName,
+    }));
     check(
       shown && loads === 2,
-      `a Learning Partner device reloads once for a new build, then shows Refresh (loads ${loads}, shown ${shown})`,
+      `a Learning Partner device reloads once for a new build, then shows Refresh (loads ${loads}, shown ${shown}, ${JSON.stringify(reloadState)})`,
     );
   }
   await page.evaluate(() => {
