@@ -8,32 +8,24 @@ import { VersionNotice } from "@/app/components/VersionNotice";
 const w = window as unknown as {
   __msgs: string[];
   __nav: (p: string) => void;
-  __unmountNotice: () => void;
-  __versionSockets: WebSocket[];
   WebSocket: typeof WebSocket;
 };
 w.__msgs = [];
-w.__versionSockets = [];
 const Real = w.WebSocket;
 w.WebSocket = class extends Real {
   constructor(url: string | URL, protocols?: string | string[]) {
     super(url, protocols);
-    w.__versionSockets.push(this);
     this.addEventListener("message", (e) => w.__msgs.push(String(e.data)));
   }
 };
 
 function Page() {
   const [path, setPath] = useState(location.pathname);
-  const [mounted, setMounted] = useState(true);
-  w.__unmountNotice = () => setMounted(false);
   w.__nav = (p) => {
     history.pushState(null, "", p);
     setPath(p);
   };
-  return mounted ? (
-    <VersionNotice pathname={path} autoUpdate={new URLSearchParams(location.search).has("auto")} />
-  ) : null;
+  return <VersionNotice pathname={path} />;
 }
 
 createRoot(document.getElementById("root")!).render(<Page />);
