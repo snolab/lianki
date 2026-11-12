@@ -747,8 +747,8 @@ class ServerProtocol(unittest.TestCase):
 
         st, d, after, st2, da, st3 = self.run_ws(flow)
         # The test mode's thresholds come with the status (the decision table).
-        self.assertEqual(st["bands"]["campp"]["bands"], [{"minS": 1.5, "me": 0.28, "other": 0.18},
-                                                       {"minS": 3.0, "me": 0.30, "other": 0.20}])
+        self.assertEqual(st["bands"]["campp"]["bands"], [{"minS": 1.5, "me": 0.45, "other": 0.34},
+                                                       {"minS": 3.0, "me": 0.46, "other": 0.36}])
         self.assertEqual((st["bands"]["campp"]["minSpeechS"], st["bands"]["campp"]["minSnrDb"]), (1.5, 10.0))
         self.assertEqual(st["recordings"], V.ENROL_MIN)
         self.assertTrue(d["ok"], d)
