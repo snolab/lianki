@@ -1123,7 +1123,7 @@ try {
         sessionStorage.getItem("qa:serving-build") &&
         url.pathname === "/_lk/route-fp.json" &&
         url.searchParams.has("_lk_probe")
-      )
+      ) {
         return Promise.resolve(
           Response.json({
             build: sessionStorage.getItem("qa:serving-build"),
@@ -1131,6 +1131,7 @@ try {
             routes: {},
           }),
         );
+      }
       return fetcher(input, init);
     };
   });
@@ -1168,14 +1169,18 @@ try {
       for (const k of ["lk:agent", "lk:debug"]) localStorage.setItem(k, "1");
       sessionStorage.removeItem("lk:reloaded-for");
     });
+    // A confirmed build may reload before the first document's load event.
+    // Count committed main-frame navigations so that fast reload is observed.
     let loads = 0;
-    const onLoad = () => loads++;
-    page.on("load", onLoad);
+    const onLoad = (frame) => {
+      if (frame === page.mainFrame()) loads++;
+    };
+    page.on("framenavigated", onLoad);
     await page.reload({ waitUntil: "load" });
     await notice.waitFor({ timeout: budget(20000) }).catch(() => {});
     const shown = await notice.isVisible().catch(() => false);
     await page.waitForTimeout(3000); // a second auto-reload would land in here
-    page.off("load", onLoad);
+    page.off("framenavigated", onLoad);
     const reloadState = await page.evaluate(() => ({
       agent: localStorage.getItem("lk:agent"),
       debug: localStorage.getItem("lk:debug"),
