@@ -1,5 +1,6 @@
 "use client";
 
+import { evalTrustStrings } from "./eval-trust-strings";
 import { shortPage } from "./short-page";
 import { type AdaptState, voiceAdapt } from "./adaptive";
 import {
@@ -19,7 +20,6 @@ import { lineTier, richOf, spokenOf } from "./rich-text";
 import { RichBody, RichLine } from "./RichText";
 import {
   COMPACT_BLUR_MS,
-  COMPACT_PEEK_MS,
   COMPACT_SCROLL_MS,
   compactLines,
   foldIn,
@@ -120,6 +120,7 @@ import {
   minimizeFloat,
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
+import { useMessageDetails } from "./MessageDetails";
 import { PolishedMark } from "./PolishedMark";
 import { LINE_SELECTABLE } from "./copy-line";
 import { type Held, logEngaged, typingLook } from "./log-engage";
@@ -489,6 +490,8 @@ const SPOKEN_STYLE = { color: "light-dark(oklch(0.5 0.01 260), oklch(0.72 0.01 2
 const SPEAKING_STYLE = {
   background: "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.055 22.3 / 0.7))",
   borderRadius: 3,
+  padding: "0 2px",
+  transition: "background-color 150ms ease-in-out",
 };
 /** The full-screen log's wipe in and out. */
 const WIPE = "clip-path 200ms ease-out";
@@ -623,7 +626,8 @@ function unlockSpeech(): boolean {
   s.speak(new SpeechSynthesisUtterance(""));
   // The cloud voice's <audio> element too: lk:voice-out = "cloud", or a
   // device with no speechSynthesis voices, whose replies the cloud reads.
-  if (outMode() === "cloud" || noSpeechVoices()) cloudOut()?.unlock();
+  if (outMode() === "cloud" || noSpeechVoices() || getKey("lk:agent-local-tts") !== "off")
+    cloudOut()?.unlock();
   return true;
 }
 
@@ -874,7 +878,6 @@ export function DebugChat({
   onSend,
   onAnswer,
   onPassageEnd,
-  onUnmerge,
   sessions = [],
   onEnd,
   evalRan = false,
@@ -1298,6 +1301,7 @@ export function DebugChat({
   const ui = uiStrings();
   // The strings that were inline here, in the page's language (chat-ui-locales.ts).
   const ux = chatExtra();
+  const details = useMessageDetails(ux.messageDetails);
   const withNew = (label: string, n: number) =>
     n ? `${label}, ${ux.newCount.replace("{n}", String(n))}` : label;
   /** Agent lines not read aloud because the page was in the background (voice.ts gateVoice). */
@@ -1735,12 +1739,6 @@ export function DebugChat({
     // Full screen is for reading the whole chat: compact waits until it ends.
     fullLog: fullLog !== "off" || full,
   });
-  /** The whole chat, from the compact line: for reading, so a longer hold. */
-  const peek = () => {
-    hold(COMPACT_PEEK_MS);
-    atEnd.current = true;
-    setExpanded(true);
-  };
   useEffect(() => {
     const d = foldIn({
       pref: compactPref,
@@ -2567,6 +2565,8 @@ export function DebugChat({
     if (!full) return;
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
+      // Native message popovers dismiss before the surrounding full-screen chat.
+      if (document.querySelector(":popover-open")) return;
       if (!escapeLeaves({ full: fullOn.current, panelOpen: panelNow.current !== "none", plusMenu: attachMenuNow.current }))
         return;
       e.stopPropagation();
@@ -2847,13 +2847,13 @@ export function DebugChat({
   /**
    * A polished line's text as shown, and its mark (nothing for any other line).
    * A summary's mark is a visible tag (ui.summary), and its raw is every line as heard.
-   * A merged passage's is a "merged N" tag (ui.merged); its raw is every line as heard too,
-   * and its ↩ restores the lines.
+   * Other polished or merged voice lines keep their text in place: the same
+   * sparkle opens their raw transcript in a popover.
    */
   const polish = (m: ChatMessage) => {
     if ((!m.edited && !m.summary && !m.passage) || m.raw === undefined)
       return { text: m.text, mark: null };
-    const raw = rawIds.has(m.id);
+    const raw = Boolean(m.summary) && rawIds.has(m.id);
     return {
       text: raw ? (
         <span data-testid="debug-chat-raw" className="text-gray-500">
@@ -2870,10 +2870,6 @@ export function DebugChat({
                 <span data-testid="debug-chat-summary" className="rounded border border-current px-1 text-[0.8em]">
                   {ui.summary}
                 </span>
-              ) : m.passage ? (
-                <span data-testid="debug-chat-passage" className="rounded border border-current px-1 text-[0.8em]">
-                  {ui.merged.replace("{n}", String(m.passage.ids.length))}
-                </span>
               ) : (
                 polishedIcon
               )
@@ -2881,28 +2877,14 @@ export function DebugChat({
             label={
               m.summary
                 ? ui.summaryTip
-                : m.passage
-                  ? ui.mergedTip.replace("{n}", String(m.passage.ids.length))
-                  : strings?.polished
-                    ? t.polished
-                    : ui.polished
+                : strings?.polished
+                  ? t.polished
+                  : ui.polished
             }
             showRaw={raw}
             onToggle={() => toggleRaw(m.id)}
+            rawText={m.summary ? undefined : m.raw}
           />
-          {(m.parts || m.passage) && onUnmerge ? (
-            <button
-              type="button"
-              data-testid="debug-chat-unmerge"
-              title={t.unmerge}
-              aria-label={t.unmerge}
-              className="pointer-events-auto ms-1 inline-flex select-none items-center align-baseline text-[0.85em] leading-none text-gray-500"
-              style={{ opacity: 0.75 }}
-              onClick={() => onUnmerge(m.id)}
-            >
-              ↩
-            </button>
-          ) : null}
         </>
       ),
     };
@@ -3374,6 +3356,7 @@ export function DebugChat({
     const p = polish(m);
     return (
             <FloatLine
+              details={details.forMessage}
               oneLine={oneLine}
               key={m.id}
               m={m}
@@ -3386,6 +3369,7 @@ export function DebugChat({
                 avatarFor,
                 agentName: t.name,
                 you: t.you,
+                otherName: t.vpOtherShort,
                 ...laneOpts,
               })}
               text={lineText(m, p.text)}
@@ -3394,6 +3378,22 @@ export function DebugChat({
                   <>
                     {p.mark}
                     <VoiceMark label={t.vpVerified} />
+                  </>
+                ) : m.speaker?.decision === "other" ? (
+                  <>
+                    {p.mark}
+                    <span
+                      data-testid="debug-chat-speaker-other"
+                      className="ms-1 inline-flex items-center gap-0.5 rounded px-1 fs-10 font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                      title={
+                        typeof m.speaker.score === "number"
+                          ? `${t.vpOther} (${m.speaker.score})`
+                          : t.vpOther
+                      }
+                    >
+                      <span>👥</span>
+                      <span>{t.vpOtherShort}</span>
+                    </span>
                   </>
                 ) : (
                   p.mark
@@ -3827,7 +3827,7 @@ export function DebugChat({
             className="flex items-center gap-2 px-3 py-1 text-gray-500"
           >
             <span className="min-w-0 flex-1 truncate">
-              {friend ? "preview" : "eval"}: {x.label} · {x.code}
+              {friend ? "preview" : "eval"}: {x.label} · {x.persistent ? evalTrustStrings().remember : x.code}
               {reachNote(x)}
             </span>
             {addable(x) && (
@@ -3878,10 +3878,15 @@ export function DebugChat({
     initialRead(uiStore.getState().spoken),
   );
   useEffect(() => {
-    const v = voice() as ReturnType<typeof voice> & { onStart?: (f: () => void) => () => void };
-    readDispatch({ type: "queued", n: v.state().queued });
-    const off1 = v.subscribe((s) => readDispatch({ type: "queued", n: s.queued }));
-    const off2 = v.onStart?.(() => readDispatch({ type: "start" }));
+    const v = voice() as ReturnType<typeof voice> & {
+      onStart?: (f: (curr?: { id?: string; idx?: number }) => void) => () => void;
+    };
+    const s0 = v.state();
+    readDispatch({ type: "queued", n: s0.queued, current: s0.current });
+    const off1 = v.subscribe((s) =>
+      readDispatch({ type: "queued", n: s.queued, current: s.current }),
+    );
+    const off2 = v.onStart?.((curr) => readDispatch({ type: "start", current: curr }));
     return () => {
       off1();
       off2?.();
@@ -3889,7 +3894,10 @@ export function DebugChat({
   }, []);
   /** Agent lines there before this widget came up: history, never claimed. */
   const historyIds = useRef<Set<string> | null>(null);
-  historyIds.current ??= new Set(messages.map((m) => m.id));
+  const currentVoiceId = voice().state().current?.id;
+  historyIds.current ??= new Set(
+    messages.filter((m) => m.id !== currentVoiceId).map((m) => m.id),
+  );
   const claimed = useRef(new Set<string>());
   useEffect(() => {
     let left = readP.unmatched;
@@ -3897,10 +3905,10 @@ export function DebugChat({
     for (const m of messages) {
       if (m.from !== "agent" || historyIds.current!.has(m.id) || claimed.current.has(m.id)) continue;
       const n = sentenceCount(spokenOf(m, { embedded }));
-      if (!n || n > left) continue;
+      if (!n) continue;
       claimed.current.add(m.id);
       readDispatch({ type: "enqueue", id: m.id, n });
-      left -= n;
+      left -= Math.min(left, n);
       if (!left) break;
     }
   }, [messages, readP.unmatched]);
@@ -4050,6 +4058,7 @@ export function DebugChat({
       avatarFor,
       agentName: t.name,
       you: t.you,
+      otherName: t.vpOtherShort,
       ...laneOpts,
     }),
   );
@@ -4074,10 +4083,10 @@ export function DebugChat({
       avatarFor,
       agentName: t.name,
       you: t.you,
+      otherName: t.vpOtherShort,
       ...laneOpts,
     });
     const p = polish(m);
-    const showAll = strings?.compactShowAll ? t.compactShowAll : ui.compactShowAll;
     const asLine = line && !m.ask;
     return (
       <div
@@ -4085,25 +4094,7 @@ export function DebugChat({
         data-testid={asLine ? "debug-chat-compact-line" : "debug-chat-compact-ask"}
         data-msg={m.id}
         data-from={m.from}
-        {...(asLine
-          ? {
-              role: "button",
-              tabIndex: 0,
-              title: showAll,
-              "aria-controls": "debug-chat-column",
-              "aria-expanded": false,
-              onClick: (e: React.MouseEvent) => {
-                // Its polish mark is its own button (shows the raw STT text); a link is a link.
-                if ((e.target as HTMLElement).closest("button, a")) return;
-                peek();
-              },
-              onKeyDown: (e: React.KeyboardEvent) => {
-                if (e.key !== "Enter" && e.key !== " ") return;
-                e.preventDefault();
-                peek();
-              },
-            }
-          : {})}
+        {...details.forMessage(m, who.name)}
         // A 40px tap target over the page; the text keeps the box's halo.
         className={`pointer-events-auto flex min-h-10 items-start gap-1.5 py-1 leading-snug ${asLine ? "cursor-pointer" : ""}`}
       >
@@ -4137,7 +4128,6 @@ export function DebugChat({
             />
           )}
           {p.mark}
-          {asLine && <span className="sr-only"> · {showAll}</span>}
         </div>
       </div>
     );
@@ -4289,6 +4279,7 @@ export function DebugChat({
   })();
   return (
     <>
+    {details.popup}
     <section
       ref={root}
       data-debug-chat
@@ -4531,6 +4522,7 @@ export function DebugChat({
                       )}
                       {/* The time only on hover (long press on a phone). */}
                       <span
+                        {...details.forMessage(m, who.name)}
                         data-testid="debug-chat-line"
                         data-msg={m.id}
                         data-from={m.from}
@@ -4542,7 +4534,7 @@ export function DebugChat({
                           node ? `${when(m.at)} · ${who.name} · ${node.subtitle}` : when(m.at)
                         }
                         // Selectable; it takes the pointer while the log is engaged (log-engage.ts).
-                        className={LINE_SELECTABLE}
+                        className={`${LINE_SELECTABLE} ${m.speaker?.decision === "other" ? "text-amber-800/90 dark:text-amber-200/90" : ""}`}
                         // Just arrived: a soft sweep over its reading time (shimmer.ts).
                         {...shimmerOf(m)}
                       >
@@ -4565,6 +4557,20 @@ export function DebugChat({
                         )}
                         {polish(m).mark}
                         {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                        {m.speaker?.decision === "other" && (
+                          <span
+                            data-testid="debug-chat-speaker-other"
+                            className="ms-1 inline-flex items-center gap-0.5 rounded px-1 fs-10 font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                            title={
+                              typeof m.speaker.score === "number"
+                                ? `${t.vpOther} (${m.speaker.score})`
+                                : t.vpOther
+                            }
+                          >
+                            <span>👥</span>
+                            <span>{t.vpOtherShort}</span>
+                          </span>
+                        )}
                         {(() => {
                           // Which recognizer made a voice line: dev holders only (`owner` needs dev).
                           const tag = m.from === "owner" ? sttTagText(m.stt, owner, ui) : undefined;
@@ -4731,8 +4737,9 @@ export function DebugChat({
           style={strip ? { padding: `${STRIP_INSET_PX}px ${STRIP_INSET_PX}px 0` } : undefined}
         >
           {linkShown && link ? (
-            <div className="flex items-end gap-1">
+            <div className="flex items-stretch gap-1">
               <LinkChip
+                glass={strip}
                 t={ui}
                 link={link.state}
                 selection={selState}
@@ -5299,6 +5306,7 @@ function GripDots() {
  * `epoch` restarts it; `paused` holds it, back at full opacity if fading.
  */
 function FloatLine({
+  details,
   oneLine,
   m,
   who,
@@ -5312,6 +5320,7 @@ function FloatLine({
   onGone,
   arrivedAt,
 }: {
+  details: ReturnType<typeof useMessageDetails>["forMessage"];
   /** Its first line only (the tucked handle's peek), else up to three. */
   oneLine?: boolean;
   m: ChatMessage;
@@ -5366,6 +5375,8 @@ function FloatLine({
   const fading = phase === "fade";
   return (
     <li
+      {...details(m, who.name)}
+      data-msg={m.id}
       data-testid="debug-chat-float"
       data-from={m.from}
       data-fading={fading || undefined}

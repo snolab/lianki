@@ -1,4 +1,32 @@
 /**
+ * Splits text into segments according to <!--lang:xx-XX-->...<!--lang--> tags,
+ * falling back to pickLang for untagged segments.
+ */
+export function segmentByLang(text: string): { text: string; lang: string }[] {
+  const parts: { text: string; lang: string }[] = [];
+  const tagRe = /<!--lang:([a-zA-Z_-]+)-->([\s\S]*?)<!--lang-->/g;
+  let lastIdx = 0;
+  let match: RegExpExecArray | null;
+  while ((match = tagRe.exec(text)) !== null) {
+    const before = text.slice(lastIdx, match.index).trim();
+    if (before) {
+      parts.push({ text: before, lang: pickLang(before) });
+    }
+    const taggedLang = match[1]!;
+    const taggedText = match[2]!.trim();
+    if (taggedText) {
+      parts.push({ text: taggedText, lang: taggedLang });
+    }
+    lastIdx = tagRe.lastIndex;
+  }
+  const after = text.slice(lastIdx).trim();
+  if (after) {
+    parts.push({ text: after, lang: pickLang(after) });
+  }
+  return parts.length ? parts : [{ text, lang: pickLang(text) }];
+}
+
+/**
  * The voice session (docs/monitoring.md, "Hands-free voice"): the one place
  * that decides when agent replies are read aloud, how loud, and how the mic
  * treats them. Both the bundled DebugEval (its speakReply) and the chat —
@@ -297,6 +325,8 @@ export type VoiceState = {
    * loaded): the reading waits for one tap (`unblock`), the chat shows a chip.
    */
   blocked?: boolean;
+  /** The sentence playing now (its message id and index), if any. */
+  current?: { id?: string; idx?: number };
 };
 
 export type Why = "speech" | "tap" | "typing";
@@ -318,6 +348,7 @@ type Sentence = {
   voice?: VoiceId;
   pick?: LinePick;
   id?: string;
+  idx?: number;
 };
 /** What the agent said, and when (for the echo guard). */
 type Said = { text: string; start: number; end?: number };
@@ -399,6 +430,7 @@ export function createVoice(d: {
   const pauses = new Set<Why | "blocked">();
   /** The sentence playing: how, (speech) the char of the last word boundary heard, and its record. */
   let current: { p: Playback; mark: number; said: Said } | null = null;
+  let currentSentence: Sentence | null = null;
   let tail: unknown;
   let idle: unknown;
   /** Bumped whenever the utterance playing is dropped: its late events are ignored. */
@@ -410,7 +442,7 @@ export function createVoice(d: {
   const said: Said[] = [];
   const subs = new Set<(s: VoiceState) => void>();
   /** Told each time a sentence starts playing (latency.ts). */
-  const starts = new Set<() => void>();
+  const starts = new Set<(curr?: { id?: string; idx?: number }) => void>();
 
   const state = (): VoiceState => ({
     mic,
@@ -422,6 +454,9 @@ export function createVoice(d: {
     queued: queue.length,
     paused: pauses.size > 0,
     blocked: pauses.has("blocked"),
+    current: currentSentence
+      ? { id: currentSentence.id, idx: currentSentence.idx }
+      : undefined,
   });
   const emit = () => {
     if (!speaking) d.owner?.release();
@@ -437,14 +472,15 @@ export function createVoice(d: {
    * mode; in speech mode when the device has no voice for it and the cloud
    * can voice that language.
    */
-  const routeFor = (lang: string, pick?: LinePick): CloudOut | null => {
+  const routeFor = (lang: string, pick?: LinePick, voice?: VoiceId): CloudOut | null => {
     // A line's own voice (voices.ts, "A line's own voice") wins over the output mode:
     // a device voice the device has is read with speech even in cloud mode…
     if (pick?.kind === "device" && devicePick(pick)) return null;
     const c = cloud();
     if (!c) return null;
-    // …and a cloud or ElevenLabs one goes to the cloud even in speech mode.
+    // …and a cloud, local (Kokoro neko) or ElevenLabs one goes to the cloud/audio route even in speech mode.
     if (pick && pick.kind !== "device") return c;
+    if (voice === "bright" && getKey("lk:agent-local-tts") !== "off") return c;
     if (mode() === "cloud") return c;
     return noVoice(lang) && cloudSkip("x", lang) === null ? c : null;
   };
@@ -454,7 +490,7 @@ export function createVoice(d: {
   /** Fetch a sentence's clip ahead, when the cloud will read it. */
   const prepare = (s: Sentence) => {
     if (s.pick?.kind === "eleven") return;
-    routeFor(s.lang, s.pick)?.prepare?.(
+    routeFor(s.lang, s.pick, s.voice)?.prepare?.(
       s.text,
       s.lang,
       s.voice,
@@ -567,7 +603,11 @@ export function createVoice(d: {
   const next = () => {
     if (current || preroll !== null || pauses.size || !canSpeak()) return;
     const head = queue[0];
-    if (!head) return;
+    if (!head) {
+      currentSentence = null;
+      return;
+    }
+    currentSentence = head;
     const wait = d.preroll?.() ?? 0;
     if (wait > 0) {
       // A stop or an interruption meanwhile: this finds nothing to say, or a pause.
@@ -583,6 +623,7 @@ export function createVoice(d: {
       if (e !== epoch) return;
       ended();
       current = null;
+      currentSentence = null;
       queue.shift();
       next();
       if (!current) {
@@ -601,7 +642,10 @@ export function createVoice(d: {
     const ev: PlayEvents = {
       onstart: () => {
         if (e !== epoch) return;
-        for (const f of starts) f();
+        const curr = currentSentence
+          ? { id: currentSentence.id, idx: currentSentence.idx }
+          : undefined;
+        for (const f of starts) f(curr);
       },
       onend: done,
       onerror: done,
@@ -651,7 +695,7 @@ export function createVoice(d: {
     const rec: Said = { text: head.text, start: now() };
     // Before a sound of ours: the reader and word read-aloud pause now (never refused: Li ranks first).
     d.owner?.claim();
-    const c = routeFor(head.lang, head.pick);
+    const c = routeFor(head.lang, head.pick, head.voice);
     current = { p: null as unknown as Playback, mark: head.from, said: rec };
     const p = c
       ? c.play(
@@ -768,7 +812,7 @@ export function createVoice(d: {
       return () => void subs.delete(f);
     },
     /** `f` runs each time a sentence starts playing (audible), on either route. */
-    onStart(f: () => void) {
+    onStart(f: (curr?: { id?: string; idx?: number }) => void) {
       starts.add(f);
       return () => void starts.delete(f);
     },
@@ -819,19 +863,23 @@ export function createVoice(d: {
       }
       recent.push({ text: key, at: t });
       while (recent.length > 20) recent.shift();
-      const lang = pickLang(text);
-      // No voice of its own: the language → voice map's provider voice, if any (config voice.langVoices).
-      const pick = named ?? (meta?.voice === undefined ? langVoice(lang) : undefined);
-      // An ElevenLabs preview stands for the whole line: one item, its text kept for a fallback.
+      const segments = segmentByLang(text);
       const idOf = typeof meta?.id === "string" ? { id: meta.id } : {};
-      const add = (
-        pick?.kind === "eleven" && cloud() && text.trim()
-          ? [{ text, lang, from: 0, at: 0, ...(voice ? { voice } : {}), pick }]
-          : toSentences(text, lang, voice, pick?.kind === "eleven" ? undefined : pick)
-      ).map((s) => ({ ...s, ...idOf }));
-      if (!add.length) return false;
-      if (!queue.length) prepare(add[0]!);
-      queue.push(...add);
+      const add: Sentence[] = [];
+      for (const seg of segments) {
+        const segLang = seg.lang;
+        const segPick = named ?? (meta?.voice === undefined ? langVoice(segLang) : undefined);
+        const segItems = (
+          segPick?.kind === "eleven" && cloud() && seg.text.trim()
+            ? [{ text: seg.text, lang: segLang, from: 0, at: 0, ...(voice ? { voice } : {}), pick: segPick }]
+            : toSentences(seg.text, segLang, voice, segPick?.kind === "eleven" ? undefined : segPick)
+        );
+        add.push(...segItems);
+      }
+      const indexedAdd = add.map((s, idx) => ({ ...s, ...idOf, idx }));
+      if (!indexedAdd.length) return false;
+      if (!queue.length) prepare(indexedAdd[0]!);
+      queue.push(...indexedAdd);
       next();
       emit();
       return true;
@@ -980,7 +1028,7 @@ export function speakHere() {
 const alive = new Set<unknown>();
 
 /** The gate's version: a session gated by an older copy is gated again by this one. */
-const GATE_V = 2;
+const GATE_V = 3;
 /** How many unread line ids are kept (the note under each). */
 const UNHEARD_MAX = 50;
 
@@ -1122,7 +1170,8 @@ const voicedStore = {
 export function voice(): Voice {
   const g = globalThis as unknown as Record<string, Voice | undefined>;
   const have = g[KEY];
-  if (have && have.v === V) return gateVoice(have);
+  if (have && have.v === V && (have as Gated).__gate === GATE_V) return have;
+  const prevMic = have?.state().mic ?? false;
   const v = createVoice({
     synth,
     enabled: speechEnabled,
@@ -1177,10 +1226,16 @@ export function voice(): Voice {
       return u as unknown as UtterLike;
     },
   });
+  if (prevMic) v.setMic(true);
   g[KEY] = v;
   // Leaving: the voice context stops too, unless the mic still runs on it.
   outputBed().onExit(() => {
     if (!v.state().mic) void existingCtx()?.suspend().catch(() => {});
   });
-  return gateVoice(v);
+  const gated = gateVoice(v);
+  // Also patch the previous session object in place if any caller holds a reference to it
+  if (have && have !== gated) {
+    have.reply = gated.reply;
+  }
+  return gated;
 }

@@ -62,14 +62,14 @@ class Decide(unittest.TestCase):
     M = V.MODELS["campp"]
 
     def test_bands(self):
-        # 2 s of clean speech: the short band (me >= 0.28, other < 0.18).
-        self.assertEqual(V.decide(self.M, 0.29, 2.0, 30), ("me", None))
-        self.assertEqual(V.decide(self.M, 0.27, 2.0, 30), ("unknown", "between"))
-        self.assertEqual(V.decide(self.M, 0.17, 2.0, 30), ("other", None))
-        # 3 s and more: the long band (0.30 / 0.20).
-        self.assertEqual(V.decide(self.M, 0.29, 4.0, 30), ("unknown", "between"))
-        self.assertEqual(V.decide(self.M, 0.30, 4.0, 30), ("me", None))
-        self.assertEqual(V.decide(self.M, 0.19, 4.0, 30), ("other", None))
+        # 2 s of clean speech: the short band (me >= 0.45, other < 0.34).
+        self.assertEqual(V.decide(self.M, 0.46, 2.0, 30), ("me", None))
+        self.assertEqual(V.decide(self.M, 0.40, 2.0, 30), ("unknown", "between"))
+        self.assertEqual(V.decide(self.M, 0.33, 2.0, 30), ("other", None))
+        # 3 s and more: the long band (0.46 / 0.36).
+        self.assertEqual(V.decide(self.M, 0.45, 4.0, 30), ("unknown", "between"))
+        self.assertEqual(V.decide(self.M, 0.46, 4.0, 30), ("me", None))
+        self.assertEqual(V.decide(self.M, 0.35, 4.0, 30), ("other", None))
 
     def test_noise_gate(self):
         # Under 1.5 s of speech, or under 10 dB, never me nor other.
@@ -80,12 +80,12 @@ class Decide(unittest.TestCase):
         self.assertEqual(V.decide(self.M, 0.9, 1.5, 10.0), ("me", None))
 
     def test_thresholds_follow_394(self):
-        # docs/stt-ab.md: CAM++ at 1 % FA was 0.278 (2 s) and 0.300 (whole); #380's "other" 0.2.
+        # Calibrated against real-room multi-speaker speech (owner >= 0.50, other <= 0.35).
         short, long_ = self.M.bands
         self.assertEqual((short.min_s, long_.min_s), (V.MIN_SPEECH_S, 3.0))
-        self.assertAlmostEqual(short.accept, 0.28)
-        self.assertAlmostEqual(long_.accept, 0.30)
-        self.assertAlmostEqual(long_.reject, 0.20)
+        self.assertAlmostEqual(short.accept, 0.45)
+        self.assertAlmostEqual(long_.accept, 0.46)
+        self.assertAlmostEqual(long_.reject, 0.36)
         for m in V.MODELS.values():
             for b in m.bands:
                 self.assertLess(b.reject, b.accept)  # an unknown band always exists

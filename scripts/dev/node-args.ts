@@ -65,6 +65,8 @@ export function chatLine(
     ...(m.timing && typeof m.timing === "object" ? { timing: m.timing } : {}),
     // Which recognizer made a voice line's text: {route: "local"|"cloud", engine?, fallback?}.
     ...(m.stt && typeof m.stt === "object" ? { stt: m.stt } : {}),
+    // The Mac's speaker check on a voice line (SpeakerTag: {decision: "me"|"other"|"unknown", score?, device?, model?}).
+    ...(m.speaker && typeof m.speaker === "object" ? { speaker: m.speaker } : {}),
     // The mic's wake-word mode when it was sent (docs/wake-word.md), and why it was in it.
     ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
     ...(typeof m.wakeReason === "string" ? { wakeReason: m.wakeReason } : {}),

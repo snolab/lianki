@@ -244,4 +244,16 @@ describe("lineAvatar", () => {
     expect(a.src).toEqual(["https://example.com/app.png", "https://example.com/s.png"]);
     expect(a.name).toBe("Grace");
   });
+  it("a voice line from another speaker gets its own guest avatar and seed", () => {
+    const m = line({
+      from: "owner",
+      speaker: { decision: "other", score: 0.28 },
+    });
+    const a = lineAvatar(m, { viewer, otherName: "访客" });
+    expect(a.mine).toBe(false);
+    expect(a.name).toBe("访客");
+    expect(a.initialFrom).toBe("访客");
+    expect(a.src).toEqual([]);
+    expect(a.seed).toBe("speaker:other:room:26");
+  });
 });

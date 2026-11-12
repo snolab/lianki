@@ -43,6 +43,7 @@ export const errorLine = (exit: number, message: string) =>
 
 export const SUBCOMMANDS = [
   "say",
+  "reply",
   "voices",
   "ask",
   "withdraw",
@@ -67,6 +68,7 @@ export const USAGE: Record<Sub | "main", string> = {
   main: `usage: lianki-dev <command> [options]
 
   say       a chat line to the owner (or --to a thread)
+  reply     reply to the owner with optional --polish (edit + say in one atomic step)
   voices    the voice ids say --voice takes: the phone's own, and the cloud's
   ask      an ask card with tappable options
   withdraw  withdraw an open ask card he no longer needs to answer
@@ -87,6 +89,7 @@ ${GLOBAL}
   --pair        let this run ask the owner's devices to pair (not with --as)
 ${EXITS}
 \`lianki-dev <command> --help\` for one command.`,
+  reply: `usage: lianki-dev reply [--polish "polished text"] [--id <msgId>] "reply text" | -\n  Atomic polish + reply in one shot.\n${GLOBAL}\n${EXITS}\n`,
   say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] [--voice <id>] "text" | -
   One chat line with the saved grant, then exit (eval.ts say). - reads stdin.
   With --as <lane> the text is sent as 【<lane>】text. Read aloud unless --quiet,

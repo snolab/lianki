@@ -278,6 +278,37 @@ async function progress(g: Global, rest: string[], repo: string | undefined): Pr
   return EXIT.ok;
 }
 
+export function detectMixedLanguage(text: string): {
+  mixed: boolean;
+  langs: string[];
+  reason?: string;
+} {
+  // Strip explicit <!--lang:...-->...<!--lang--> tags
+  const clean = text.replace(/<!--lang:[^>]+-->[\s\S]*?<!--lang-->/g, "");
+  const hasHan = /[\u4e00-\u9fff]/.test(clean);
+  const hasKana = /[\u3040-\u30ff]/.test(clean);
+  const hasHangul = /[\uac00-\ud7af]/.test(clean);
+  const frWords =
+    clean.match(
+      /\b(bonjour|salut|merci|comment|allez|vous|ça|ca|va|très|tres|bien|au revoir)\b|[àâäéèêëîïôöùûüçœæ]/gi,
+    ) || [];
+
+  const langs: string[] = [];
+  if (hasHan && !hasKana) langs.push("zh");
+  if (hasKana) langs.push("ja");
+  if (hasHangul) langs.push("ko");
+  if (frWords.length >= 2) langs.push("fr");
+
+  if (langs.length > 1) {
+    return {
+      mixed: true,
+      langs,
+      reason: `Detected unlabelled mixed languages (${langs.join(" + ")}). Please wrap foreign segments in <!--lang:xx-XX-->...<!--lang-->, or pass --force to send anyway.`,
+    };
+  }
+  return { mixed: false, langs };
+}
+
 async function main(): Promise<number> {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed instanceof Error) {
@@ -287,7 +318,7 @@ async function main(): Promise<number> {
   const { global: g } = parsed;
   let rest = parsed.rest;
   json = g.json;
-  const sub: Sub | undefined = parsed.sub;
+  let sub: Sub | undefined = parsed.sub;
   if (!sub || sub === "help") {
     const topic = sub === "help" ? (rest[0] as Sub | undefined) : undefined;
     console.log(topic && USAGE[topic] ? USAGE[topic] : USAGE.main);
@@ -333,6 +364,45 @@ async function main(): Promise<number> {
   if (sub === "progress") return progress(g, rest, repo);
   if (!repo)
     fail(EXIT.notReady, "no Lianki checkout here: pass --repo <path> (or set LIANKI_REPO)");
+  if (sub === "reply") {
+    // reply [--polish <text>] [--id <id>] <reply text>
+    let polishText: string | undefined;
+    let polishId: string | undefined;
+    const sayRest: string[] = [];
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i]!;
+      if (a === "--polish") {
+        polishText = rest[++i];
+      } else if (a === "--id") {
+        polishId = rest[++i];
+      } else {
+        sayRest.push(a);
+      }
+    }
+    // If polish requested, do edit first
+    if (polishText) {
+      try {
+        const editArgs = polishId ? [polishId, polishText] : ["--last", polishText];
+        const editChild = Bun.spawnSync(
+          [
+            process.execPath,
+            join(repo, "scripts", "dev", "eval.ts"),
+            "edit",
+            "--no-pair",
+            ...editArgs,
+          ],
+          {
+            cwd: repo,
+            stderr: "ignore",
+            stdout: "ignore",
+          },
+        );
+      } catch {}
+    }
+    // Run say with remaining args
+    sub = "say";
+    rest = sayRest;
+  }
   if (sub === "lane-listen") {
     // The lane's own listener (docs/lane-listen.md): its own script, its own token.
     const child = Bun.spawn(
@@ -383,6 +453,21 @@ async function main(): Promise<number> {
       };
     }
   }
+  // Guard against unlabelled mixed languages in say/reply unless --force is given
+  if (sub === "say") {
+    const hasForce = rest.includes("--force");
+    if (hasForce) {
+      rest = rest.filter((a) => a !== "--force");
+    }
+    const messageText = rest.filter((a) => !a.startsWith("-")).join(" ");
+    if (!hasForce && messageText) {
+      const check = detectMixedLanguage(messageText);
+      if (check.mixed) {
+        fail(EXIT.usage, `\x1b[31m[mixed-language-guard]\x1b[0m ${check.reason}`);
+      }
+    }
+  }
+
   const stdin =
     (sub === "say" || sub === "edit") && rest.includes("-") ? await Bun.stdin.text() : undefined;
   // A lane token (LIANKI_TOKEN): say/ask/listen go through the public CLI's

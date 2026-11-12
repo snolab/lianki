@@ -22,7 +22,7 @@
  *   - a message arriving while minimized floats above the bar; lines leave
  *     in order (a short one never fades before a long one above it)
  *   - a voice line the agent polished shows the sparkle mark ("Polished");
- *     a tap shows the raw STT text and back; minimized, the floating line
+ *     a tap previews the raw STT text without changing the line; minimized, the floating line
  *     changes in place; a typed send carries no source
  *
  * getUserMedia is stubbed (counted, then refused): nothing is ever recorded.
@@ -1388,15 +1388,22 @@ try {
       "the polished text is shown",
     );
     await mark.click();
+    const rawTip = page.getByTestId("debug-chat-raw-tip").last();
+    await rawTip.waitFor({ state: "visible" });
     check(
-      (await line.locator('[data-testid="debug-chat-raw"]').textContent()) === "typed line",
-      "a tap on the mark shows the raw STT text",
+      (await rawTip.textContent()) === "typed line" &&
+        (await line.locator('[data-testid="debug-chat-raw"]').count()) === 0 &&
+        (await line.innerText()).includes("Typed line, polished."),
+      "a tap previews the original without replacing the polished message",
     );
-    await mark.click();
-    check(
-      (await line.locator('[data-testid="debug-chat-raw"]').count()) === 0,
-      "a second tap goes back to the polished text",
-    );
+    await page.keyboard.press("Escape");
+    await rawTip.waitFor({ state: "hidden" });
+    await mark.focus();
+    await page.keyboard.press("Enter");
+    await rawTip.waitFor({ state: "visible" });
+    check(await rawTip.isVisible(), "the raw preview opens from the keyboard");
+    await page.keyboard.press("Escape");
+    await rawTip.waitFor({ state: "hidden" });
     // Minimized, a floating line changes in place.
     await page.click('[data-testid="debug-chat-pill-min"]');
     await page.waitForSelector('[data-testid="debug-chat-minimized"]');
@@ -1404,7 +1411,7 @@ try {
     await page.waitForSelector('[data-testid="debug-chat-float"]');
     await page.evaluate(() => window.__polish("A voice line."));
     await page.waitForTimeout(100);
-    const floats = await page.locator('[data-testid="debug-chat-float"]').allTextContents();
+    const floats = await page.locator('[data-testid="debug-chat-float"]').allInnerTexts();
     check(
       floats.filter((t) => t.includes("A voice line.")).length === 1 &&
         !floats.some((t) => t.includes("a voice line")),

@@ -95,7 +95,7 @@ MODELS: dict[str, Model] = {
     "campp": Model(
         "campp",
         os.path.join("speaker", "campplus_zh_en.onnx"),
-        (Band(MIN_SPEECH_S, 0.28, 0.18), Band(3.0, 0.30, 0.20)),
+        (Band(MIN_SPEECH_S, 0.45, 0.34), Band(3.0, 0.46, 0.36)),
     ),
     # ERes2NetV2 is stronger in noise on the iPhone but needs a per-device
     # enrolment (#394 rejected 85-98 % of his Android clips against an iPhone
@@ -107,6 +107,14 @@ MODELS: dict[str, Model] = {
         provisional=True,
     ),
 }
+
+#: High-confidence live utterances from the owner adapt an in-memory running centroid
+#: so conversational tone and mic distance stay calibrated without polluting disk prints.
+ADAPT_MIN_SCORE = 0.56
+ADAPT_MIN_SPEECH_S = 2.0
+ADAPT_MIN_SNR_DB = 14.0
+ADAPT_ALPHA = 0.08
+ADAPT_RECENT_MAX = 6
 
 
 @dataclass(frozen=True)
@@ -700,9 +708,14 @@ class Verifier:
         #: The folder's mtime when the cache was filled: a print saved, or deleted
         #: by the CLI while the server runs, changes it, so the next final sees it.
         self._stamp: int | None = -1
+        #: (device, model) -> adapted running centroid + recent verified embeddings
+        self._adapted: dict[tuple[str, str], np.ndarray] = {}
+        self._recent: dict[tuple[str, str], list[np.ndarray]] = {}
 
     def refresh(self) -> None:
         self._cache.clear()
+        self._adapted.clear()
+        self._recent.clear()
         self._listed = None
         self._stamp = -1
 
@@ -713,6 +726,8 @@ class Verifier:
             stamp = None
         if stamp != self._stamp:
             self._cache.clear()
+            self._adapted.clear()
+            self._recent.clear()
             self._listed = None
             self._stamp = stamp
 
@@ -771,15 +786,43 @@ class Verifier:
         e = self.embed(model, audio) if speech_s > 0 else None
         if e is None:
             return {"decision": "unknown", "reason": "short", "model": model, "device": devices[0], "score": None, **base}
-        best, who = -1.0, devices[0]
+        best, best_base, who = -1.0, -1.0, devices[0]
         for d in devices:
             p = self._print(d, model)
             if p is None:
                 continue
-            s = float(e @ p["_centroid"])
+            k = (d, model)
+            base_s = float(e @ p["_centroid"])
+            s = base_s
+            adap_c = self._adapted.get(k)
+            if adap_c is not None:
+                s = max(s, float(e @ adap_c))
+            rec = self._recent.get(k)
+            if rec:
+                # Blend 70% centroid + 30% best recent verified owner utterance for natural conversational continuity
+                rec_s = max(float(e @ r) for r in rec)
+                s = max(s, 0.7 * base_s + 0.3 * rec_s)
             if s > best:
-                best, who = s, d
+                best, best_base, who = s, base_s, d
         decision, reason = decide(MODELS[model], best, speech_s, snr)
+        # Adapt running centroid only when raw base score against the enrolled print is high-confidence owner
+        if (
+            decision == "me"
+            and best_base >= ADAPT_MIN_SCORE
+            and speech_s >= ADAPT_MIN_SPEECH_S
+            and snr >= ADAPT_MIN_SNR_DB
+        ):
+            k = (who, model)
+            p = self._print(who, model)
+            if p is not None:
+                cur = self._adapted.get(k, p["_centroid"])
+                # Anchor at least 60% to the original enrolled centroid so it can never drift away
+                blended = unit((1.0 - ADAPT_ALPHA) * cur + ADAPT_ALPHA * e)
+                self._adapted[k] = unit(0.6 * p["_centroid"] + 0.4 * blended)
+                ring = self._recent.setdefault(k, [])
+                ring.append(e)
+                if len(ring) > ADAPT_RECENT_MAX:
+                    ring.pop(0)
         out = {"score": round(best, 3), "decision": decision, "model": model, "device": who, **base}
         if reason:
             out["reason"] = reason

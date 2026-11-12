@@ -64,6 +64,8 @@ export function lineAvatar(
     agentName?: string;
     /** The viewer's own name on their lines, localized. */
     you?: string;
+    /** Localized fallback name for another speaker in the room (default "Guest"). */
+    otherName?: string;
     /** A lane's own mark (LaneMark.tsx laneAvatar); undefined = the agent's avatar. */
     laneAvatar?: (lane: LaneId) => AvatarSource | undefined;
   },
@@ -79,6 +81,24 @@ export function lineAvatar(
     // The node's assignee, when the line names one; else the controller's label.
     const name = m.agentId || m.label || opts.agentName || "agent";
     return { src: opts.agentAvatar, name, initialFrom: name, seed: `agent:${name}`, mine: false };
+  }
+  const isOther =
+    m.speaker?.decision === "other" ||
+    (m.speaker?.decision === "unknown" &&
+      typeof m.speaker.score === "number" &&
+      m.speaker.score < 0.36);
+  if (isOther) {
+    const score = m.speaker?.score;
+    const cluster = typeof score === "number" ? Math.round((score + 1) * 20) : 0;
+    const name = opts.otherName || "Guest";
+    const seed = `speaker:other:${m.speaker?.device || "room"}:${cluster}`;
+    return {
+      src: [],
+      name,
+      initialFrom: name,
+      seed,
+      mine: false,
+    };
   }
   const mine = m.from === (opts.friend ? "friend" : "owner");
   const own = opts.avatarFor?.(m);

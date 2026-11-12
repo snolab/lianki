@@ -33,8 +33,8 @@ export type ReadProgress = {
   unmatched: number;
 };
 export type ReadEvent =
-  | { type: "queued"; n: number }
-  | { type: "start" }
+  | { type: "queued"; n: number; current?: { id?: string; idx?: number } }
+  | { type: "start"; current?: { id?: string; idx?: number } }
   | { type: "enqueue"; id: string; n: number; from?: number }
   | { type: "drop"; id: string };
 
@@ -62,8 +62,23 @@ export function readStep(p: ReadProgress, ev: ReadEvent): ReadProgress {
   switch (ev.type) {
     case "queued": {
       const n = Math.max(0, ev.n);
-      if (n === p.queued) return p;
-      if (n > p.queued) return { ...p, queued: n, unmatched: p.unmatched + (n - p.queued) };
+      const curSpeaking = ev.current?.id
+        ? { id: ev.current.id, idx: ev.current.idx ?? 0 }
+        : null;
+      if (n === p.queued) {
+        return curSpeaking &&
+          (!p.speaking || p.speaking.id !== curSpeaking.id || p.speaking.idx !== curSpeaking.idx)
+          ? { ...p, speaking: curSpeaking }
+          : p;
+      }
+      if (n > p.queued) {
+        return {
+          ...p,
+          queued: n,
+          unmatched: p.unmatched + (n - p.queued),
+          speaking: curSpeaking ?? p.speaking,
+        };
+      }
       // Finished sentences go one at a time; more at once is "Stop reading"
       // (the queue cleared): what was left was never heard.
       if (p.queued - n > 1) return { ...p, queue: [], speaking: null, queued: n, unmatched: 0 };
@@ -71,18 +86,32 @@ export function readStep(p: ReadProgress, ev: ReadEvent): ReadProgress {
       const gone = p.queue.slice(0, k);
       const left = p.queue.slice(k);
       const stillSpeaking =
-        p.speaking && left.some((e) => e.id === p.speaking!.id && e.idx === p.speaking!.idx);
+        curSpeaking ??
+        (p.speaking && left.some((e) => e.id === p.speaking!.id && e.idx === p.speaking!.idx)
+          ? p.speaking
+          : left[0] ?? null);
+      const finishedHead =
+        p.speaking &&
+        (!curSpeaking ||
+          curSpeaking.id !== p.speaking.id ||
+          curSpeaking.idx !== p.speaking.idx)
+          ? [p.speaking]
+          : gone;
       return {
         ...p,
         queue: left,
-        done: markDone(p.done, gone),
-        speaking: stillSpeaking ? p.speaking : null,
+        done: markDone(p.done, finishedHead),
+        speaking: stillSpeaking,
         queued: n,
         unmatched: Math.max(0, p.unmatched - (p.queued - n - k)),
       };
     }
-    case "start":
+    case "start": {
+      if (ev.current?.id) {
+        return { ...p, speaking: { id: ev.current.id, idx: ev.current.idx ?? 0 } };
+      }
       return p.queue[0] ? { ...p, speaking: p.queue[0] } : p;
+    }
     case "drop": {
       const left = p.queue.filter((e) => e.id !== ev.id);
       const k = p.queue.length - left.length;
@@ -98,9 +127,12 @@ export function readStep(p: ReadProgress, ev: ReadEvent): ReadProgress {
       if (ev.n <= 0) return p;
       // `from`: a reply resumed mid-way (after a reload) starts at that sentence.
       const add = Array.from({ length: ev.n }, (_, i) => ({ id: ev.id, idx: (ev.from ?? 0) + i }));
+      const nextQueue = [...p.queue, ...add];
+      const speaking = p.speaking ?? (p.queued > 0 ? nextQueue[0] ?? null : null);
       return {
         ...p,
-        queue: [...p.queue, ...add],
+        queue: nextQueue,
+        speaking,
         unmatched: Math.max(0, p.unmatched - ev.n),
       };
     }
