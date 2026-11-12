@@ -1112,11 +1112,24 @@ try {
   );
   // The announcement and the serving-build probe must agree, just as they
   // do after a real rollout. A mocked socket alone is deliberately refused.
-  await page.route("**/_lk/route-fp.json*", (route) =>
-    route.fulfill({
-      json: { build: "some-newer-build", shell: "qa-shell", routes: {} },
-    }),
-  );
+  // This page is controlled by the offline service worker, whose fetches
+  // bypass Playwright routing. Stub the probe at its browser fetch boundary.
+  await page.addInitScript(() => {
+    const fetcher = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : input, location.href);
+      if (
+        sessionStorage.getItem("qa:serving-build") &&
+        url.pathname === "/_lk/route-fp.json" &&
+        url.searchParams.has("_lk_probe")
+      )
+        return Promise.resolve(
+          Response.json({ build: "some-newer-build", shell: "qa-shell", routes: {} }),
+        );
+      return fetcher(input, init);
+    };
+  });
+  await page.evaluate(() => sessionStorage.setItem("qa:serving-build", "1"));
   // A Learning Partner device reloads by itself instead of showing the
   // button: this check is about a user's device, so the flag must be off.
   const partnerFlags = () =>
@@ -1162,6 +1175,7 @@ try {
     );
   }
   await page.evaluate(() => {
+    sessionStorage.removeItem("qa:serving-build");
     localStorage.removeItem("lk:version-notice");
     for (const k of ["lk:agent", "lk:debug"]) localStorage.setItem(k, "0");
   });
