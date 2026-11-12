@@ -621,3 +621,47 @@ vercel logs https://lianki.com 2>&1 | head -80
 Production Next.js hides error messages — the UI shows a digest, the real error
 is in Vercel runtime logs. Match digest to confirm root cause. A repeated digest
 after redeploy means the same error persists.
+
+### Manual version broadcast
+
+`bun scripts/dev/broadcast-version.ts --build <id>` explicitly announces a
+serving build. It uses Wrangler's authenticated remote `PUSH` service binding
+to `https://lianki-push/internal/publish`; it does not deploy a Worker or add a
+public publish endpoint. Wrangler must already be authenticated for this
+account. Run it only after the target build is serving; this is a manual
+operation and is not added to the production deployment workflow.
+
+For a preview pipeline with known changes:
+
+```bash
+bun scripts/dev/broadcast-version.ts --build preview-123 --shell-changed --routes '{"/words":1,"/list":0}'
+```
+
+With `--shell-changed` or `--routes`, the body is explicit `VersionNews` JSON
+(`shell` defaults to false, `routes` to `{}`); the internal hub validates it
+and broadcasts it to all currently connected version sockets. These deltas
+must describe changes relevant to those clients. Without either option the
+body stays the existing bare build id, so the normal fingerprint-based
+announcement behavior remains compatible. Explicit deltas are transient;
+reconnecting clients get the existing fingerprint-based or build-only news.
+A repeated build id is a no-op. Output is `{build,pushed}`; invalid input,
+network failures, refused requests and invalid acknowledgements exit nonzero.
+
+`--url http://localhost:<port>/internal/publish` targets a trusted local
+bridge or test stub instead of Wrangler. A local bridge must forward over
+the service binding with the internal hostname: the production public domain
+intentionally returns 404 for `/internal/publish`.
+
+Tests: `unit/broadcast-version.test.ts` exercises the CLI against the real
+Worker and VersionHub with storage/socket stubs, plus remote-binding cleanup
+and a local HTTP stub. No production broadcast is needed for tests.
+
+For the isolated preview pipeline, `--url` also accepts
+`https://lianki-push-preview.<subdomain>.workers.dev/internal/publish`.
+This path requires `PREVIEW_PUBLISH_TOKEN` and an HTTPS `PREVIEW_ORIGIN`.
+The CLI sends the token as `Authorization: Bearer …`, the origin as `Origin`,
+and `.open-next/assets/_lk/route-fp.json` as the URI-encoded
+`x-lk-fingerprints` header. Missing credentials or fingerprints, mismatched
+build IDs and other remote hosts fail before sending. Redirects are refused.
+The default command still uses the production service binding; preview
+pipelines must always specify their isolated publish URL.

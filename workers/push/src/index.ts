@@ -94,6 +94,7 @@ import {
   parseFingerprints,
   versionNews,
 } from "../../../lib/smart-refresh";
+import { explicitVersionNews } from "../../../lib/version-publish";
 import { CHAT_BACKFILL_PATH, EVAL_TOKEN_HEADER, IDENTITY_HEADERS } from "./debug";
 import { CHAT_PATH, REVOKED_PATH } from "./token-chat";
 import {
@@ -172,7 +173,7 @@ const pageBuild = (ws: Socket): string | undefined => {
   }
 };
 
-/** The publish body: a bare build id (before smart refresh), or {build, fingerprints}. */
+/** Legacy publish body: a bare build id, with optional fingerprints in a header. */
 function readPublish(req: Request, body: string): { build: string; fp: RouteFingerprints | null } {
   const build = body.slice(0, 64);
   // In a header, so the body stays the bare id an older lianki-push reads
@@ -219,7 +220,16 @@ export class VersionHub {
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname.endsWith("/publish")) {
-      const { build, fp } = readPublish(req, (await req.text()).trim());
+      const body = (await req.text()).trim();
+      let explicit;
+      if (req.headers.get("content-type")?.split(";")[0].trim() === "application/json") {
+        try {
+          explicit = explicitVersionNews(JSON.parse(body));
+        } catch {
+          return new Response("invalid version news", { status: 400 });
+        }
+      }
+      const { build, fp } = readPublish(req, explicit?.build ?? body);
       if (!build) return new Response("empty build id", { status: 400 });
       if (fp) await this.keep(fp);
       // Every isolate of a version announces it: only the first is news.
@@ -230,7 +240,9 @@ export class VersionHub {
       const memo = new Map<string, string>();
       for (const ws of sockets)
         try {
-          ws.send(await this.news(build, pageBuild(ws), memo));
+          ws.send(
+            explicit ? JSON.stringify(explicit) : await this.news(build, pageBuild(ws), memo),
+          );
         } catch {}
       return Response.json({ build, pushed: sockets.length });
     }
