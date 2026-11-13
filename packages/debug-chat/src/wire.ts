@@ -877,6 +877,7 @@ export type ChatStrings = {
   attachQuoted: string;
   /** Section heading in the + menu, the last group: things to look at (the state tree). One short word. */
   attachGroupView: string;
+  attachClose: string;
   /** Menu item in the + menu's View group: shows or hides the state tree (the progress outline of what is being built). Short noun phrase, the panel's name. */
   attachTree: string;
   // Files attached to a message (files.ts; FileChips.tsx).
@@ -1154,6 +1155,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",
   attachGroupView: "View",
+  attachClose: "Close the menu",
   attachTree: "State tree",
 };
 

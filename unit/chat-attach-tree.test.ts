@@ -27,7 +27,7 @@ const menu = (p: Partial<Parameters<typeof AttachMenu>[0]> = {}) =>
 const order = (html: string) =>
   [...html.matchAll(/data-testid="(debug-chat-attach-[a-z-]+)"/g)]
     .map((m) => m[1])
-    .filter((id) => id !== "debug-chat-attach-menu");
+    .filter((id) => id !== "debug-chat-attach-menu" && id !== "debug-chat-attach-close");
 
 describe("the + menu's View group", () => {
   it("comes last, after Add and Attach to message", () => {
@@ -79,5 +79,15 @@ describe("the + button", () => {
     expect(button({ sessions: 1 })).toMatch(/data-testid="debug-chat-evals"/);
     expect(button({ sessions: 1 })).not.toContain("animate-pulse");
     expect(button({ sessions: 1, ran: true })).toContain("animate-pulse");
+  });
+});
+
+describe("the + menu's close button", () => {
+  it("comes first, labelled, in every form of the menu", () => {
+    for (const html of [menu(), menu({ attach: false, onHistory: noop })]) {
+      const ids = [...html.matchAll(/data-testid="(debug-chat-attach-[a-z-]+)"/g)].map((m) => m[1]);
+      expect(ids[1]).toBe("debug-chat-attach-close");
+      expect(html).toContain('aria-label="Close the menu"');
+    }
   });
 });

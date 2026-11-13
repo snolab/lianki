@@ -5,7 +5,7 @@
  * button since 2026-11-03). Every button keeps the input's focus (pointerdown preventDefault),
  * so a phone's keyboard stays up and the remembered selection stays put.
  */
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ADD_ITEMS_EVENT,
   ATTACH_KINDS,
@@ -202,6 +202,33 @@ export function AttachMenu({
   onClose: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  /**
+   * Never past the top of the screen (owner, 2026-11-14 "如果超出屏幕上方，就要限制
+   * 一下它的高度"): the menu opens upward from the bar, so its height is capped
+   * at the room between the screen's top and its own bottom edge; it scrolls inside.
+   */
+  const [room, setRoom] = useState<{ px: number; down: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = box.current;
+      const anchor = el?.parentElement;
+      if (!el || !anchor) return;
+      const a = anchor.getBoundingClientRect();
+      const above = Math.floor(a.top - 8);
+      const below = Math.floor((visualViewport?.height ?? innerHeight) - a.bottom - 8);
+      // Upward as before; downward only when it does not fit above and there is
+      // more room below ("如果屏幕上还有空间的话，也可以往下挪").
+      const down = el.scrollHeight > above && below > above;
+      setRoom({ px: Math.max(120, down ? below : above), down });
+    };
+    fit();
+    addEventListener("resize", fit);
+    visualViewport?.addEventListener("resize", fit);
+    return () => {
+      removeEventListener("resize", fit);
+      visualViewport?.removeEventListener("resize", fit);
+    };
+  }, []);
   useEffect(() => {
     const away = (e: Event) => {
       const el = e.target as Element | null;
@@ -231,9 +258,26 @@ export function AttachMenu({
       data-testid="debug-chat-attach-menu"
       // Sized to the screen, not the (maybe narrow) bar, and scrolls when taller than
       // the room above it (owner, 2026-11-14: it ran off the top and could not scroll).
-      style={{ background: "var(--lk-chat-menu-bg, oklch(0.99 0.004 85 / 0.97))" }}
-      className="pointer-events-auto absolute start-0 bottom-full z-10 mb-1 grid w-[min(24rem,calc(100vw-1rem))] grid-cols-1 min-[420px]:grid-cols-2 content-start gap-0.5 max-h-[min(70dvh,32rem)] overflow-y-auto overscroll-contain rounded-2xl p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100"
+      style={{
+        background: "var(--lk-chat-menu-bg, oklch(0.99 0.004 85 / 0.97))",
+        ...(room !== null ? { maxHeight: `min(${room.px}px, 32rem)` } : {}),
+      }}
+      className={`pointer-events-auto absolute start-0 ${room?.down ? "top-full mt-1" : "bottom-full mb-1"} z-10 grid w-[min(24rem,calc(100vw-1rem))] grid-cols-1 min-[420px]:grid-cols-2 content-start gap-0.5 max-h-[min(70dvh,32rem)] overflow-y-auto overscroll-contain rounded-2xl p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100`}
     >
+      {/* An explicit way out (owner, 2026-11-14 "再给一个退出的按钮"), besides Escape and a tap outside. */}
+      <div className="col-span-full flex justify-end">
+        <button
+          type="button"
+          data-testid="debug-chat-attach-close"
+          aria-label={t.attachClose}
+          title={t.attachClose}
+          onPointerDown={keep}
+          onClick={onClose}
+          className="tap-40 flex size-8 items-center justify-center rounded-full fs-15 leading-none opacity-70 hover:bg-[oklch(0.5_0_0/0.08)] hover:opacity-100"
+        >
+          <span aria-hidden>×</span>
+        </button>
+      </div>
       {attach && items.length > 0 && (
         <>
           <div className={heading}>{t.attachGroupAdd}</div>

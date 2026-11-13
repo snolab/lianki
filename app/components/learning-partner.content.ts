@@ -2279,6 +2279,24 @@ const learningPartnerContent = {
       mr: "पेजवरून उद्धृत",
       ko: "페이지에서 인용",
     }),
+    attachClose: t({
+      en: "Close the menu",
+      zh: "关闭菜单",
+      hi: "मेनू बंद करें",
+      es: "Cerrar el menú",
+      fr: "Fermer le menu",
+      ar: "إغلاق القائمة",
+      bn: "মেনু বন্ধ করুন",
+      pt: "Fechar o menu",
+      ru: "Закрыть меню",
+      ur: "مینو بند کریں",
+      id: "Tutup menu",
+      de: "Menü schließen",
+      ja: "メニューを閉じる",
+      sw: "Funga menyu",
+      mr: "मेनू बंद करा",
+      ko: "메뉴 닫기",
+    }),
     attachGroupView: t({
       en: "View",
       zh: "查看",
@@ -3592,6 +3610,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Screen-reader label of the × button on the small quote chip just above the chat input, which shows the page text attached to the next message: removes that attachment (the typed text stays). Imperative verb phrase.",
   attachQuoted:
     "Screen-reader label of a quoted piece of page text: on the chip above the chat input and above a sent message in the chat log, it is text the user selected on the page and attached. Short noun phrase, no full stop.",
+  attachClose:
+    "Label of the small × button at the top of the chat's + menu (the menu with Add, Attach and View): closes the menu. Imperative phrase; read by screen readers and shown as a tooltip.",
   attachGroupView:
     "Section heading in the chat's + menu, the last group, above items that show something to look at rather than add or attach: for now only the state tree. One short word used as a heading (a view, to look), not a verb phrase.",
   attachTree:
