@@ -411,6 +411,17 @@ describe("the hub: own thread only", () => {
     ]);
   });
 
+  it("a lane token's line may carry its own voice; an unknown voice is refused, nothing posted", async () => {
+    const s = hubSetup();
+    const o = await mint(OWNER, "agy");
+    expect((await s.http(o.token, { op: "say", text: "meow", voice: "main" })).status).toBe(200);
+    const bad = await s.http(o.token, { op: "say", text: "nope", voice: "squeaky" });
+    expect(bad.body.error).toBeTruthy();
+    const r = await s.http(o.token, { op: "read" });
+    const lines = r.body.messages as { text: string; voice?: string; lane?: string }[];
+    expect(lines.map((m) => [m.text, m.voice, m.lane])).toEqual([["【agy】meow", "main", "agy"]]);
+  });
+
   it("no token, a revoked one, an expired one, or the wrong permission: refused, nothing posted", async () => {
     const s = hubSetup();
     const p = await s.page({ userId: ALICE.userId, email: ALICE.email, owner: false });

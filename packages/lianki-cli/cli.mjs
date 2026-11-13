@@ -614,7 +614,7 @@ async function cmdChatSay(c) {
   const { data } = await call(c, token, {
     method: "POST",
     path: CHAT_PATH,
-    body: { op: "say", text, ...(c.argv.quiet ? { quiet: true } : {}) },
+    body: { op: "say", text, ...(c.argv.quiet ? { quiet: true } : {}), ...(c.argv.voice ? { voice: String(c.argv.voice) } : {}) },
   });
   emit(c, "chat say", { id: data.id, lane: data.lane ?? null }, (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`);
 }
@@ -999,9 +999,11 @@ function build(args, deps, box) {
                 y
                   .positional("text", { type: "string", describe: "The line" })
                   .option("quiet", { type: "boolean", describe: "Shown, never read aloud" })
+                  .option("voice", { type: "string", describe: "Read this line in another voice: main | calm | bright, device:<name>, melo:<lang>" })
                   .option("stdin", { type: "boolean", hidden: true }),
                 [
                   ['lianki chat say "PR #12 is green"', "→ 【<token name>】PR #12 is green"],
+                  ['lianki chat say --voice main "hi"', "read in main's voice instead of the lane's"],
                   ["git log -1 --format=%s | lianki chat say -", ""],
                 ],
               ),

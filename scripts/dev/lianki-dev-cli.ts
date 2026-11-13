@@ -365,7 +365,11 @@ export function chatArgv(
       }
       if (a === "--quiet") out.push(a);
       else if (a === "--loud") continue;
-      else if (a.startsWith("--"))
+      else if (a === "--voice" || a.startsWith("--voice=")) {
+        const v = a === "--voice" ? rest[++i] : a.slice("--voice=".length);
+        if (!v) return new Error("say: --voice needs an id");
+        out.push("--voice", v);
+      } else if (a.startsWith("--"))
         return new Error(`say: ${a} needs the grant path (unset LIANKI_TOKEN)`);
       else if (text === undefined) text = a === "-" ? (stdin ?? "") : a;
       else return new Error(`say takes one text (quote it): ${a}`);
