@@ -9,6 +9,7 @@ import dict from "@/lib/agent-guide.content";
 import {
   GUIDE_KEYS,
   MCP_CLIENTS,
+  MCP_REMOTE_CLIENTS,
   TOKEN_PLACEHOLDER,
   agentGuide,
   guideStrings,
@@ -135,8 +136,23 @@ describe("agent guide: no secret in the prompt; the key lives where the AI runs"
     expect(codex).toBe('[mcp_servers.lianki]\ncommand = "npx"\nargs = ["-y", "lianki", "mcp"]');
   });
 
+  it("names the remote server: lianki.com/mcp with the token as a bearer header", () => {
+    const g = guide(["study"]);
+    for (const c of MCP_REMOTE_CLIENTS)
+      expect(g).toContain(`${c.label}:\n\`\`\`${c.lang}\n${c.code}\n`);
+    expect(g).toContain(
+      `claude mcp add --transport http lianki https://lianki.com/mcp --header "Authorization: Bearer ${TOKEN_PLACEHOLDER}"`,
+    );
+    const cursor = JSON.parse(MCP_REMOTE_CLIENTS.find((c) => c.lang === "json")!.code);
+    expect(cursor.mcpServers.lianki).toEqual({
+      url: "https://lianki.com/mcp",
+      headers: { Authorization: `Bearer ${TOKEN_PLACEHOLDER}` },
+    });
+  });
+
   it("a token reaches the snippets only as the placeholder", () => {
-    for (const c of MCP_CLIENTS) expect(/lk_[0-9a-f]{64}/i.test(c.code)).toBe(false);
+    for (const c of [...MCP_CLIENTS, ...MCP_REMOTE_CLIENTS])
+      expect(/lk_[0-9a-f]{64}/i.test(c.code)).toBe(false);
   });
 });
 

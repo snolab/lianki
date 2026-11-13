@@ -1,0 +1,21 @@
+// lianki-mcp: the remote MCP server at https://lianki.com/mcp (src/mcp.ts,
+// docs/api-for-agents.md "Connect via MCP"). MCP Streamable HTTP, stateless.
+// It holds no secret and no data: every tool forwards the caller's own
+// `Authorization: Bearer lk_…` to the main Worker (MAIN) or, for the chat, to
+// lianki-push (PUSH, which owns lianki.com/api/version/*), and those check
+// the token as for any other API call. No workers.dev URL.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "lianki-mcp",
+  "main": "src/index.ts",
+  "workers_dev": false,
+  "compatibility_date": "2026-10-01",
+  // `*`: also /mcp/ and /mcp?…; any other path under it goes on to MAIN unchanged.
+  "routes": [{ "pattern": "lianki.com/mcp*", "zone_name": "lianki.com" }],
+  "services": [
+    { "binding": "MAIN", "service": "lianki" },
+    { "binding": "PUSH", "service": "lianki-push" },
+  ],
+  "tail_consumers": [{ "service": "lianki-monitor" }],
+  "observability": { "enabled": true },
+}

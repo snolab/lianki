@@ -94,6 +94,14 @@ describe("size-snapping (snapAxis, fullLogBox)", () => {
     expect(tablet).toEqual({ left: 690, width: 320, top: 32, bottom: 1338, hideBar: true });
   });
 
+  it("the mic on (barTop given): the bar stays, the box ends above it", () => {
+    const b = fullLogBox({ vh: 844, visibleTop: 0, visibleBottom: 844, safe, log, barTop: 760 });
+    expect(b).toEqual({ left: 62, width: 320, top: 55, bottom: 752, hideBar: false });
+    // The bar below the visible area (keyboard up): the visible area still decides.
+    const k = fullLogBox({ vh: 844, visibleTop: 0, visibleBottom: 508, safe, log, barTop: 760 });
+    expect(k).toMatchObject({ bottom: 500, hideBar: false });
+  });
+
   it("with the keyboard up, it stops at the visible area", () => {
     const b = fullLogBox({ vh: 844, visibleTop: 0, visibleBottom: 508, safe, log });
     expect(b).toMatchObject({ width: 320, top: 55, bottom: 500 });

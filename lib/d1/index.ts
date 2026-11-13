@@ -1,4 +1,5 @@
 import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
+import { dataGateway, blobGateway, type GatewayEnv } from "../preview/gateway";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 export type LiankiEnv = {
@@ -9,13 +10,13 @@ export type LiankiEnv = {
 /** D1 binding from the Cloudflare request context. Only valid inside a request. */
 export function getD1(): D1Database {
   const { env } = getCloudflareContext();
-  return (env as unknown as LiankiEnv).DB;
+  return dataGateway(env as unknown as GatewayEnv);
 }
 
 /** R2 bucket binding from the Cloudflare request context. */
 export function getBlobs(): R2Bucket {
   const { env } = getCloudflareContext();
-  return (env as unknown as LiankiEnv).BLOBS;
+  return blobGateway(env as unknown as GatewayEnv);
 }
 
 /** Selected DB backend. `d1` once cut over; defaults to `mongodb` for revertability. */

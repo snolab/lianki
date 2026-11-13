@@ -73,8 +73,10 @@ expiry. It is kept on the Mac at `~/.config/lianki/lanes/<lane>.token`, mode
 `lane-listen` exits 2 naming the token it needs, and `say --as <lane>` keeps
 using the saved grant (still labelled 【lane】).
 
-With a token present, `say` takes no `--to`/`--voice` (the token path has
-none): the line goes to the owner's thread in the lane's own voice.
+With a token present, `say` takes no `--to` (the token path has none): the
+line goes to the owner's thread in the lane's own voice, or in the one
+`--voice` names (`main` is the chat lane's cat-girl voice; the same ids as
+the grant path, checked by the hub).
 
 ## Running them
 

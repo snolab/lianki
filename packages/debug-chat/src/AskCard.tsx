@@ -23,8 +23,9 @@ const pill = {
 /**
  * An ask card under an agent line (ask.ts): each question with its options
  * as pills, the recommended one marked. One question with one choice sends
- * on the tap; a batch (or a multi-choice question) sends with "Send" once
- * every question has a choice. One-shot: after the tap it greys out showing
+ * on the tap; a batch of single-choice questions sends on the tap that answers
+ * the last one; a multi-choice question sends with "Send" once every question
+ * has a choice. One-shot: after the tap it greys out showing
  * the choice; past its expiry it says so; withdrawn by the agent, it
  * collapses to a greyed "Withdrawn" with no options. The answer itself is stamped by
  * the hub; with an older page (no `onAnswer`), the choice goes as a typed
@@ -51,6 +52,7 @@ export function AskCard({
   const shown = answer?.choices ?? sent;
   const done = state !== "open" || !!sent;
   const quick = ask.questions.length === 1 && !ask.questions[0]!.multi;
+  const singleOnly = ask.questions.every((q) => !q.multi);
   // Taken back by the agent: nothing to tap, only the mark.
   if (state === "withdrawn")
     return (
@@ -88,11 +90,13 @@ export function AskCard({
   const tap = (qid: string, oid: string, multi: boolean) => {
     if (done) return;
     if (quick) return submit({ [qid]: [oid] });
-    setPicked((p) => {
-      const cur = p[qid] ?? [];
-      const next = multi ? (cur.includes(oid) ? cur.filter((x) => x !== oid) : [...cur, oid]) : [oid];
-      return { ...p, [qid]: next };
-    });
+    const cur = picked[qid] ?? [];
+    const mine = multi ? (cur.includes(oid) ? cur.filter((x) => x !== oid) : [...cur, oid]) : [oid];
+    const next = { ...picked, [qid]: mine };
+    // All single-choice: the tap that answers the last question sends, no "Send"
+    // (owner, 2026-11-14: "点了就应该已经可以了"). A multi-choice question keeps it.
+    if (singleOnly && ask.questions.every((q) => (next[q.id] ?? []).length > 0)) return submit(next);
+    setPicked(next);
   };
   const complete = ask.questions.every((q) => (picked[q.id] ?? []).length > 0);
 
@@ -143,7 +147,7 @@ export function AskCard({
           </span>
         </span>
       ))}
-      {!quick && !done && (
+      {!singleOnly && !done && (
         <button
           type="button"
           data-testid="debug-chat-ask-send"

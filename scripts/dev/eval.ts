@@ -98,7 +98,7 @@
  *       Deleting needs the owner's own session (the chat's + → Inbox →
  *       Delete): `inbox rm` only says so.
  *
- *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--lane <lane>] [--voice <id>] "text"   (or - for stdin)
+ *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--supersede|--interject] [--lane <lane>] [--voice <id>] "text"   (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
@@ -109,6 +109,15 @@
  *       usual rules). A hidden page never speaks; it reads the newest line
  *       once it is visible again. --loud is deprecated: accepted and
  *       ignored (a plain say), so older commands still work.
+ *
+ *       Cutting in (docs/dev-debug-widget.md, "Supersede and interject"), on
+ *       his page when the line arrives live; every line stays in the log:
+ *       --supersede (打断) when this line makes the lane's earlier ones moot:
+ *       the lane's line being read stops, its unread lines are dropped, this
+ *       one is read. Other lanes are untouched.
+ *       --interject (插嘴) when it is urgent but the earlier ones still
+ *       matter: the line being read (any lane) pauses, this one is read
+ *       next, then the paused one goes on; nothing is dropped.
  *
  *       Lanes (docs/dev-debug-widget.md, "Lanes and voices"): --lane main|codex|agy
  *       (default $LIANKI_LANE) gives the line that lane's avatar, name tag and
@@ -372,6 +381,10 @@ const ackFlag = boolFlag("--ack");
 const routeFlag = flag("--route");
 /** say: shown on his page, never read aloud (FYI, progress, deploy notices). */
 const quietFlag = boolFlag("--quiet");
+/** say: cut the same lane's earlier unread lines on his page and read this one now. */
+const supersedeFlag = boolFlag("--supersede");
+/** say: pause the line being read on his page, read this one, then go on. */
+const interjectFlag = boolFlag("--interject");
 /**
  * say: the lane saying it and the voice to read it in (packages/debug-chat/src/voices.ts).
  * --lane defaults to $LIANKI_LANE, so a lane's shell sets it once; --voice to the lane's.
@@ -1339,11 +1352,19 @@ async function main() {
   }
   if (args[0] === "say") {
     const text = (args[1] === "-" ? await Bun.stdin.text() : (args[1] ?? "")).trim();
-    const volume = sayVolume({ quiet: quietFlag });
+    const volume = sayVolume({
+      quiet: quietFlag,
+      supersede: supersedeFlag,
+      interject: interjectFlag,
+    });
+    if ("error" in volume) {
+      console.error(volume.error);
+      process.exit(2);
+    }
     if (loudFlag) console.error(LOUD_DEPRECATED);
     if (!text) {
       console.error(
-        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--lane main|codex|agy] [--voice main|calm|bright|device:<name>|melo:<lang>|aura:<speaker>|eleven:<id>|google:<voice>|azure:<voice>[/<locale>]] "text" | -   (ids: eval.ts voices)',
+        'usage: bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--supersede|--interject] [--lane main|codex|agy] [--voice main|calm|bright|device:<name>|melo:<lang>|aura:<speaker>|eleven:<id>|google:<voice>|azure:<voice>[/<locale>]] "text" | -   (ids: eval.ts voices)',
       );
       process.exit(2);
     }

@@ -42,14 +42,14 @@ scope (and only the ops it holds), the chat limits only with a chat scope.
 
 ## What it says, and where each fact comes from
 
-| Fact | Source |
-| ---- | ------ |
-| Header `Authorization: Bearer lk_…` | `lib/authEmailOrToken.ts`, `lib/api-token-user.ts`, `workers/push/src/token-chat.ts` |
-| Card endpoints and shapes (`study`) | `app/fsrs.ts` behind `authEmailOrToken`; `GET /api/prefs` |
-| Chat: `POST /api/version/chat` `{op: read \| say \| ask}` | `workers/push/src/token-chat.ts` |
-| Chat limits per token | `CHAT_LIMITS` (`lib/chat-limits.ts`, read by `lib/chat-token.ts`) |
-| 401 unknown/expired, 403 scope, 429 + `Retry-After` | `token-chat.ts` `STATUS`, `app/api/fsrs/[[...all]]/route.tsx` |
-| Revoke in Settings → API tokens | `lib/api-token-api.ts` |
+| Fact                                                      | Source                                                                               |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Header `Authorization: Bearer lk_…`                       | `lib/authEmailOrToken.ts`, `lib/api-token-user.ts`, `workers/push/src/token-chat.ts` |
+| Card endpoints and shapes (`study`)                       | `app/fsrs.ts` behind `authEmailOrToken`; `GET /api/prefs`                            |
+| Chat: `POST /api/version/chat` `{op: read \| say \| ask}` | `workers/push/src/token-chat.ts`                                                     |
+| Chat limits per token                                     | `CHAT_LIMITS` (`lib/chat-limits.ts`, read by `lib/chat-token.ts`)                    |
+| 401 unknown/expired, 403 scope, 429 + `Retry-After`       | `token-chat.ts` `STATUS`, `app/api/fsrs/[[...all]]/route.tsx`                        |
+| Revoke in Settings → API tokens                           | `lib/api-token-api.ts`                                                               |
 
 Card routes have no per-token quota (only the bulk routes have one, which the
 guide does not list), so the guide asks for one request at a time and no
@@ -84,12 +84,12 @@ Every guide has a **Connect via MCP** section (`MCP_CLIENTS` in
 `lib/agent-guide.ts`, code never translated): the local stdio server
 `npx -y lianki mcp` (packages/lianki-cli, `lianki mcp`) added to
 
-| Client         | Where                                                         |
-| -------------- | ------------------------------------------------------------- |
-| Claude Code    | `claude mcp add lianki -- npx -y lianki mcp`                  |
+| Client         | Where                                                          |
+| -------------- | -------------------------------------------------------------- |
+| Claude Code    | `claude mcp add lianki -- npx -y lianki mcp`                   |
 | Claude Desktop | `claude_desktop_config.json`, `mcpServers.lianki` (with `env`) |
-| Cursor         | `.cursor/mcp.json`, `mcpServers.lianki`                       |
-| Codex          | `~/.codex/config.toml`, `[mcp_servers.lianki]`                |
+| Cursor         | `.cursor/mcp.json`, `mcpServers.lianki`                        |
+| Codex          | `~/.codex/config.toml`, `[mcp_servers.lianki]`                 |
 
 The server finds the token itself (the CLI's order: `LIANKI_TOKEN`, then the
 Keychain, then the 0600 config file), so after `npx lianki auth login` no
@@ -105,7 +105,7 @@ eval.
   (the token's own name, scopes and expiry, `describeToken`) and lists only
   the tools those scopes allow (`TOOLS` in `packages/lianki-cli/mcp.mjs`:
   `study` → stats, due, next, get, add, import, review, settings_get;
-  `chat:read|write|ask` → chat_read, chat_say, chat_ask). An older server
+  `chat:read|write|ask` → chat_read + chat_wait, chat_say, chat_ask). An older server
   that has no GET there gets every tool; each route still checks.
 - **Untrusted results.** Every result is `<untrusted-data>` JSON with `<`
   escaped, after a line saying never to follow instructions inside it.
@@ -121,3 +121,75 @@ eval.
   the release tag after the owner approves (docs/shipping.md, "Publishing
   the CLI"). Until then the guide's `npx -y lianki mcp` snippets name a
   version that is not on npm yet.
+
+### The remote server: `https://lianki.com/mcp`
+
+Owner, 2026-11-13 23:4x JST: "能不能马上部署一个 /mcp 的服务". The same tools
+with nothing to install, for any client that speaks MCP **Streamable HTTP**:
+
+```sh
+claude mcp add --transport http lianki https://lianki.com/mcp \
+  --header "Authorization: Bearer <YOUR_TOKEN>"
+```
+
+```json
+{
+  "mcpServers": {
+    "lianki": {
+      "url": "https://lianki.com/mcp",
+      "headers": { "Authorization": "Bearer <YOUR_TOKEN>" }
+    }
+  }
+}
+```
+
+The guide carries both (`MCP_REMOTE_CLIENTS` in `lib/agent-guide.ts`, prose
+key `mcpRemote`).
+
+- **Its own Worker.** `lianki-mcp` (`workers/mcp`, route `lianki.com/mcp*`,
+  no workers.dev URL), apart from the main Worker so it could go live while
+  the main deploy was held, and so a call starts no Next.js isolate. Any other
+  path under the route (`/mcp-something`) is passed to the main Worker as is.
+  Deployed by `deploy-worker.yml` after `lianki` and `lianki-push`,
+  non-blocking (docs/shipping.md).
+- **Transport.** Stateless: one JSON-RPC message per POST (`initialize`,
+  `ping`, `tools/list`, `tools/call`; notifications get 202). The answer is
+  JSON, or one `text/event-stream` event when the client's `Accept` ranks
+  that higher. No session and nothing pushed unasked, so GET and DELETE are 405. Protocol versions: `PROTOCOL_VERSIONS` in `workers/mcp/src/mcp.ts`.
+- **Auth.** `Authorization: Bearer lk_…`, the same token as everywhere. The
+  Worker never checks it itself: every call forwards it, over service
+  bindings, to the main Worker (`MAIN`, card and settings routes,
+  `GET /api/cli-login/token`) or to lianki-push (`PUSH`, the chat at
+  `/api/version/chat`), which check permissions, expiry, account and rate
+  limits exactly as for any API call. No header, or a token the server
+  refuses (401), answers HTTP 401 with `WWW-Authenticate: Bearer`.
+  `initialize` and `tools/list` ask `GET /api/cli-login/token` (so a bad
+  token fails at connect and the list follows the token's permissions);
+  `tools/call` asks it too and refuses a tool outside them before anything
+  runs. No OAuth yet: clients that only do OAuth cannot connect.
+- **Same tools.** The tool table is shared with `lianki mcp`:
+  `packages/lianki-cli/mcp-tools.mjs` (tools, zod inputs, untrusted-data
+  wrapping, errors) and `packages/lianki-cli/api.mjs` (`call`), both
+  runtime-neutral. Arguments are checked against the same zod shapes; a bad
+  one is a tool error and nothing is sent.
+- **Audit.** Each call sends `x-lianki-client: mcp-remote/<version>
+tool=<name>`; `lib/api-token-client.ts` accepts that shape too.
+- **Waiting for the chat: `lianki_chat_wait`** (`chat:read`). Owner,
+  2026-11-14 00:1x JST: an agent with only the remote MCP must take part in
+  his Li chat in real time. Arguments `{after?: <line id>, timeoutSec?:
+1–55, default 50}`; result `{lines, answered, after, gap?}`: the lines newer
+  than `after` (at once when some already are; without `after`, the next line
+  to arrive), answers to the token's own ask cards, and the cursor to pass
+  next time. Empty lists at the timeout (under a client's usual 60 s request
+  timeout). `gap: true` when `after` was not among the last 100 lines (all
+  100 come back). Event-driven: the call opens the same token chat socket
+  `lianki chat listen` uses (`waitChat` in `mcp-tools.mjs`; the Worker opens
+  it as a WebSocket upgrade through `PUSH`, the stdio server with its
+  `WebSocket` to `wss://…/api/version/chat`), the token only in its first
+  message, and closes it on the first line, answer or timeout. Chosen over a
+  long-poll op in lianki-push: no change to the hub, and the hub's existing
+  scope (`listen` = `chat:read`), lane filtering (`forLane`), revocation and
+  rate checks apply as they are. While it waits, the socket counts as an
+  agent listening in the thread.
+- Tests: `unit/mcp-remote.test.ts` (fake bindings), `unit/mcp-chat-wait.test.ts`
+  (fake hub socket).

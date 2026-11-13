@@ -214,8 +214,12 @@ on the Mac now, behind the KWS hit: [local-stt.md](local-stt.md), "Voiceprint".
   sent exactly "What's next?".
 - **Rejections** are empty and hallucinated finals, and the agent's
   `ignored`. Echo drops (the agent's own voice) do not count.
-- **Off switch:** localStorage `lk:agent-wake` = `"0"` means the mic is
-  never passive.
+- **Switch (off by default since 2026-11-14):** the chat menu's **Wake word
+  (Linky)** sets localStorage `lk:agent-wake` = `"1"`; without it the mic is
+  never passive (no spotter, and the session refuses any move to passive,
+  rejects included). Turning it off while passive makes the mic active at
+  once. Owner: the mic kept going passive after lines that were not for the
+  agent (his humming, room talk), "给我默认关闭这个模式".
 - **Load timeout (2026-11-02):** `load()` gives up after `LOAD_TIMEOUT_MS`
   (15 s): the spotter is "failed" (`{ev: "wake-kws", error: "load-timeout"}`),
   the mic goes back to active (`kws-failed`), and an utterance that was

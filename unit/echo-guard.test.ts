@@ -3,6 +3,7 @@ import {
   ECHO_MIN_CHARS,
   ECHO_SIMILARITY,
   dice,
+  echoContained,
   echoScore,
   grams,
   normalizeEcho,
@@ -84,5 +85,31 @@ describe("echo guard: echoScore", () => {
     expect(echoScore("anything at all", [])).toEqual({ score: 0, against: null, drop: false });
     expect(echoScore("  ...  ", spoken)).toEqual({ score: 0, against: null, drop: false });
     expect(echoScore("anything at all", ["!!!"])).toEqual({ score: 0, against: null, drop: false });
+  });
+});
+
+describe("echo guard: containment (talk-over)", () => {
+  it("a fragment of a sentence is fully inside it, though Dice would score it low", () => {
+    const said = "今天天气很好，我们去公园散步吧。";
+    expect(echoContained("我们去公园", [said])).toBe(1);
+    expect(dice(grams("我们去公园", 2), grams(normalizeEcho(said), 2))).toBeLessThan(
+      ECHO_SIMILARITY,
+    );
+  });
+
+  it("a slightly misheard fragment stays high; his own words score low", () => {
+    const said = "The weather is lovely today. Shall we go for a walk?";
+    expect(echoContained("the weather is lovly today", [said])).toBeGreaterThanOrEqual(0.6);
+    expect(echoContained("wait what does that mean", [said])).toBeLessThan(0.3);
+  });
+
+  it("mostly his words with a bit of hers is not echo; nothing spoken scores 0", () => {
+    const said = "The weather is lovely today.";
+    expect(
+      echoContained("lovely today but can you explain the grammar first", [said]),
+    ).toBeLessThan(0.6);
+    expect(echoContained("hello", [])).toBe(0);
+    expect(echoContained("…", [said])).toBe(0);
+    expect(echoContained("好", ["好的。"])).toBe(1);
   });
 });

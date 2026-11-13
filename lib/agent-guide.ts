@@ -25,7 +25,8 @@
  * (`npx lianki auth login`, or Settings with only the permissions needed),
  * to keep it where the assistant runs (keychain, an environment variable, the
  * MCP config's `env` block) and never in a chat, and how to connect the local
- * `lianki mcp` server (packages/lianki-cli/mcp.mjs).
+ * `lianki mcp` server (packages/lianki-cli/mcp.mjs) or the remote one at
+ * https://lianki.com/mcp (workers/mcp).
  */
 import { CHAT_LIMITS } from "@/lib/chat-limits";
 import { SCOPE_IDS, type ScopeId } from "@/lib/api-tokens";
@@ -62,6 +63,27 @@ export const MCP_CLIENTS: { label: string; lang: string; code: string }[] = [
   },
 ];
 
+/** The remote MCP server (workers/mcp, lianki-mcp): Streamable HTTP, the token as a bearer header. */
+export const MCP_REMOTE_URL = `${GUIDE_BASE}/mcp`;
+const BEARER = `Bearer ${TOKEN_PLACEHOLDER}`;
+/** How a client connects to the remote server: a label and a code block, never translated. */
+export const MCP_REMOTE_CLIENTS: { label: string; lang: string; code: string }[] = [
+  {
+    label: "Claude Code",
+    lang: "sh",
+    code: `claude mcp add --transport http lianki ${MCP_REMOTE_URL} --header "Authorization: ${BEARER}"`,
+  },
+  {
+    label: "Cursor (.cursor/mcp.json)",
+    lang: "json",
+    code: JSON.stringify(
+      { mcpServers: { lianki: { url: MCP_REMOTE_URL, headers: { Authorization: BEARER } } } },
+      null,
+      2,
+    ),
+  },
+];
+
 /** Every key of the `agent-guide` dictionary (its content is typed by this). */
 export const GUIDE_KEYS = [
   "title",
@@ -77,6 +99,7 @@ export const GUIDE_KEYS = [
   "mcpHeading",
   "mcpIntro",
   "mcpEnv",
+  "mcpRemote",
   "scopesHeading",
   "scopeStudy",
   "scopeChatRead",
@@ -187,6 +210,10 @@ export function agentGuide({ scopes, t, name, expires }: GuideInput): string {
     "",
     ...MCP_CLIENTS.flatMap((c) => [`${c.label}:`, "```" + c.lang, c.code, "```", ""]),
     t.mcpEnv,
+    "",
+    t.mcpRemote,
+    "",
+    ...MCP_REMOTE_CLIENTS.flatMap((c) => [`${c.label}:`, "```" + c.lang, c.code, "```", ""]),
   );
 
   p(

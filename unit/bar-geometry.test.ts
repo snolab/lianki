@@ -104,3 +104,12 @@ describe("a long press on the mic selects no text (owner, 2026-11-11)", () => {
     expect(slot.slice(0, slot.indexOf("className="))).toContain("...TEXT_SELECT");
   });
 });
+
+describe("the mic's note stacks over the task strip (owner, 2026-11-13)", () => {
+  test("the note is lifted by the strip's measured height, never drawn on it", () => {
+    const mic = readFileSync("packages/debug-chat/src/MicButton.tsx", "utf8");
+    expect(mic).toContain("marginBottom: MIC_NOTE_GAP_PX + noteLift");
+    const chat = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
+    expect(chat).toContain("noteLift={etaH}");
+  });
+});

@@ -1302,7 +1302,10 @@ html[data-embed] .lk-statusbar {
   --lk-lang-top: calc(env(safe-area-inset-top) + 3.5rem + 0.5rem);
   --lk-lang-bottom: calc(max(env(safe-area-inset-bottom), var(--lk-bottom-reserve, 0px)) + 0.5rem);
   top: var(--lk-lang-top);
-  inset-inline: calc(0.75rem + env(safe-area-inset-left)) calc(0.75rem + env(safe-area-inset-right));
+  /* Clear of the Li chat docked as a sidebar (--lk-chat-side, full-screen.ts): the sheet
+   * sat under it on a computer (owner, 2026-11-14). */
+  inset-inline: calc(0.75rem + env(safe-area-inset-left))
+    calc(0.75rem + env(safe-area-inset-right) + var(--lk-chat-side, 0px));
   max-height: calc(100vh - var(--lk-lang-top) - var(--lk-lang-bottom));
   max-height: calc(100dvh - var(--lk-lang-top) - var(--lk-lang-bottom));
   box-shadow: 0 12px 40px oklch(0 0 0 / 0.22);

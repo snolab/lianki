@@ -87,7 +87,7 @@ ${GLOBAL}
   --pair        let this run ask the owner's devices to pair (not with --as)
 ${EXITS}
 \`lianki-dev <command> --help\` for one command.`,
-  say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] [--voice <id>] "text" | -
+  say: `usage: lianki-dev say [--to <thread|email|/node>] [--quiet] [--supersede|--interject] [--voice <id>] "text" | -
   One chat line with the saved grant, then exit (eval.ts say). - reads stdin.
   With --as <lane> the text is sent as 【<lane>】text. Read aloud unless --quiet,
   in the lane's own voice (codex, agy: docs/dev-debug-widget.md, "Lanes and
@@ -99,6 +99,12 @@ ${EXITS}
     aura:<speaker>         a Workers AI Aura-2 speaker (luna orion thalia celeste nestor carina)
     eleven:<id>            an ElevenLabs public preview clip (its own words)
   An unknown id is refused; a voice the phone lacks falls back to the lane's.
+  Cutting in (his page, live only; every line stays in the log):
+    --supersede  (打断) this line makes your earlier ones moot: your line being
+                 read stops, your unread ones go, this one is read
+    --interject  (插嘴) urgent, but the earlier ones still matter: the line
+                 being read (any lane) pauses, this one is read, then it goes on
+  One of the two. Also with LIANKI_TOKEN (lianki chat say --supersede).
   stdout: the hub's {"type":"said",…} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
@@ -257,6 +263,9 @@ export function labelText(text: string, lane: string | undefined): string {
   return text.startsWith(tag) ? text : `${tag}${text}`;
 }
 
+/** say: the two ways to cut into the reading are one choice. */
+const BOTH_CUTS = "say: --supersede and --interject cannot go together (pick one)";
+
 /** say's flags that take a value: everything else not a flag is the text. */
 const SAY_VALUED = new Set(["--to", "--task-path", "--agent", "--label", "--voice"]);
 
@@ -280,11 +289,12 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
         const v = rest[++i];
         if (v === undefined) return new Error(`${a} needs a value`);
         out.push(a, v);
-      } else if (a === "--quiet" || a === "--loud") out.push(a);
+      } else if (["--quiet", "--loud", "--supersede", "--interject"].includes(a)) out.push(a);
       else if (a.startsWith("--")) return new Error(`say: unknown flag ${a}`);
       else if (text === undefined) text = a === "-" ? (stdin ?? "") : a;
       else return new Error(`say takes one text (quote it): ${a}`);
     }
+    if (out.includes("--supersede") && out.includes("--interject")) return new Error(BOTH_CUTS);
     const body = (text ?? "").trim();
     if (!body) return new Error("say needs a text (or - for stdin)");
     return ["say", ...out, labelText(body, g.lane), ...pair];
@@ -363,13 +373,18 @@ export function chatArgv(
         text = rest.slice(i + 1).join(" ");
         break;
       }
-      if (a === "--quiet") out.push(a);
+      if (a === "--quiet" || a === "--supersede" || a === "--interject") out.push(a);
       else if (a === "--loud") continue;
-      else if (a.startsWith("--"))
+      else if (a === "--voice" || a.startsWith("--voice=")) {
+        const v = a === "--voice" ? rest[++i] : a.slice("--voice=".length);
+        if (!v) return new Error("say: --voice needs an id");
+        out.push("--voice", v);
+      } else if (a.startsWith("--"))
         return new Error(`say: ${a} needs the grant path (unset LIANKI_TOKEN)`);
       else if (text === undefined) text = a === "-" ? (stdin ?? "") : a;
       else return new Error(`say takes one text (quote it): ${a}`);
     }
+    if (out.includes("--supersede") && out.includes("--interject")) return new Error(BOTH_CUTS);
     const body = (text ?? "").trim();
     if (!body) return new Error("say needs a text (or - for stdin)");
     // The text goes on stdin (`-`), so one starting with "-" is never read as a flag.

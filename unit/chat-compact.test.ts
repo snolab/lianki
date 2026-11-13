@@ -121,6 +121,7 @@ describe("chatPrefs (per device)", () => {
     expect(JSON.parse(data.get("lk:pref:chat-view")!).state).toEqual({
       compact: true,
       full: false,
+      etaFolded: false,
     });
     resetUiStores();
     expect(chatPrefs().getState().compact).toBe(true);

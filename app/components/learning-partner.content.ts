@@ -2729,6 +2729,42 @@ const learningPartnerContent = {
       mr: "सर्व कामे पूर्ण स्क्रीन टाइमलाइनवर पाहा",
       ko: "모든 작업을 전체 화면 타임라인으로 보기",
     }),
+    etaHide: t({
+      en: "Hide the task bar",
+      zh: "隐藏任务栏",
+      hi: "काम की पट्टी छिपाएँ",
+      es: "Ocultar la barra de tareas",
+      fr: "Masquer la barre des tâches",
+      ar: "إخفاء شريط المهام",
+      bn: "কাজের বার লুকান",
+      pt: "Ocultar a barra de tarefas",
+      ru: "Скрыть полосу задач",
+      ur: "کاموں کی پٹی چھپائیں",
+      id: "Sembunyikan bilah tugas",
+      de: "Aufgabenleiste ausblenden",
+      ja: "タスクバーを隠す",
+      sw: "Ficha upau wa kazi",
+      mr: "कामांची पट्टी लपवा",
+      ko: "작업 막대 숨기기",
+    }),
+    etaShow: t({
+      en: "Show the task bar",
+      zh: "显示任务栏",
+      hi: "काम की पट्टी दिखाएँ",
+      es: "Mostrar la barra de tareas",
+      fr: "Afficher la barre des tâches",
+      ar: "إظهار شريط المهام",
+      bn: "কাজের বার দেখান",
+      pt: "Mostrar a barra de tarefas",
+      ru: "Показать полосу задач",
+      ur: "کاموں کی پٹی دکھائیں",
+      id: "Tampilkan bilah tugas",
+      de: "Aufgabenleiste einblenden",
+      ja: "タスクバーを表示",
+      sw: "Onyesha upau wa kazi",
+      mr: "कामांची पट्टी दाखवा",
+      ko: "작업 막대 보기",
+    }),
     etaGanttClose: t({
       en: "Close the timeline",
       zh: "关闭时间线",
@@ -3604,6 +3640,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Shown for a few seconds in the progress bar above the chat input and in a task's row in the state tree when that task was finished. One word, a status (past participle or adjective).",
   etaOpen:
     "Screen-reader label and tooltip of the progress bar above the chat input (and of the expand button on the task list in the state tree): tapping it opens a full-screen timeline (a Gantt chart) of every task with its own bar and time left. Imperative verb phrase.",
+  etaHide:
+    "Screen-reader label and tooltip of the small ▾ button at the end of the progress bar above the chat input: hides the bar, leaving only a small ▸ with a clock, so more of the chat shows. Imperative verb phrase, short.",
+  etaShow:
+    "Screen-reader label and tooltip of that small ▸ button (with a clock) left where the hidden progress bar above the chat input was: shows the bar again. Imperative verb phrase, short.",
   etaGanttClose:
     "Screen-reader label and tooltip of the × button at the top of the full-screen task timeline (a Gantt chart of the assistant's tasks): closes the timeline and returns to the chat. Imperative verb phrase, very short.",
   etaGanttScale:

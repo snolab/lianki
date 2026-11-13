@@ -40,7 +40,7 @@
  */
 
 /** A lane: who is talking in the owner's chat. */
-export const LANE_IDS = ["main", "codex", "agy"] as const;
+export const LANE_IDS = ["main", "codex", "agy", "claude"] as const;
 export type LaneId = (typeof LANE_IDS)[number];
 
 /** A voice a line is read in. */
@@ -203,14 +203,32 @@ export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
     },
   },
   agy: {
-    name: "agy",
+    // 杰咪 (owner, 2026-11-14: "你的名字名片还没改"); the lane id and `【agy】` stay.
+    name: "杰咪",
     voice: "bright",
-    aliases: ["agy", "antigravity"],
+    aliases: ["agy", "antigravity", "杰咪"],
     // A four-point spark: bright, high.
     mark: {
       bg: "oklch(0.8 0.14 80)",
       fg: "oklch(0.3 0.08 60)",
       paths: [{ d: "M12 4l1.9 6.1L20 12l-6.1 1.9L12 20l-1.9-6.1L4 12l6.1-1.9Z", fill: true }],
+    },
+  },
+  // Claude Code helping agy (owner, 2026-11-13: named 小可). Low and calm, like codex,
+  // told apart by its mark: three dots in a row, a thought being finished.
+  claude: {
+    // 小克: the 克 of 克劳德 (owner's wife's choice, 2026-11-14); 小可 still reads as this lane.
+    name: "小克",
+    voice: "calm",
+    aliases: ["claude", "小克", "小可"],
+    mark: {
+      bg: "oklch(0.55 0.1 250)",
+      fg: "oklch(0.97 0.02 250)",
+      paths: [
+        { d: "M5.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0Z", fill: true },
+        { d: "M10.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0Z", fill: true },
+        { d: "M15.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0Z", fill: true },
+      ],
     },
   },
 };
@@ -473,8 +491,21 @@ export const ELEVEN_PREVIEWS: readonly ElevenVoice[] = [
   eleven("SAz9YHcvj6GT2YYXdXww", "River", "relaxed, neutral", "e6c95f0b-2227-491a-b3d7-2249240decb7"),
 ];
 
-/** Mac-local engines a `local:` id may name: none is built yet (reserved). */
-export const LOCAL_ENGINES: readonly string[] = [];
+/** Mac-local engines a `local:` id may name (Kokoro-82M catgirl TTS at /lianki-tts). */
+export const LOCAL_ENGINES: readonly string[] = [
+  "neko",
+  "neko-moe",
+  "neko-soft",
+  // Little-child blends (kokoro-tts-server.py presets; owner, 2026-11-14 "小宝宝的声线").
+  "baby",
+  "baby-soft",
+  "xiaoxiao",
+  "xiaobei",
+  "yunxi",
+  "alpha",
+  "heart",
+  "bella",
+];
 
 /** A line's voice, parsed. */
 export type LineVoice =
@@ -483,6 +514,7 @@ export type LineVoice =
   | { kind: "melo"; lang: string }
   | { kind: "aura"; speaker: string; lang: string }
   | { kind: "eleven"; id: string; preview: string }
+  | { kind: "local"; name: string }
   /** A Google Cloud TTS voice by name ("cmn-TW-Wavenet-A"); `lang` its locale (cmn-TW). */
   | { kind: "google"; id: string; name: string; lang: string }
   /**
@@ -577,12 +609,15 @@ export function parseLineVoice(raw: unknown): LineVoice | { error: string } {
       lang: locale ?? m[1]!,
     };
   }
-  if (kind === "local")
-    return {
-      error: LOCAL_ENGINES.length
-        ? `unknown local voice ${rest}: one of ${LOCAL_ENGINES.join(", ")}`
-        : "local:<name> is reserved for Mac-local engines; none is built yet",
-    };
+  if (kind === "local") {
+    if (!(LOCAL_ENGINES as readonly string[]).includes(rest))
+      return {
+        error: LOCAL_ENGINES.length
+          ? `unknown local voice ${rest}: one of ${LOCAL_ENGINES.join(", ")}`
+          : "local:<name> is reserved for Mac-local engines; none is built yet",
+      };
+    return { kind: "local", name: rest };
+  }
   return { error: `unknown voice ${raw}: one of ${kinds}` };
 }
 

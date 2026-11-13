@@ -340,7 +340,16 @@ describe("cloud voices", () => {
     expect(el.preservesPitch).toBe(true);
     // zh: the one MeloTTS voice at the lane's speed, pitch kept (a pitch-free clip stalls on iOS).
     voiceHeader = "melotts";
-    await play({ text: "好。", lang: "zh-CN", at: 0, volume: 1, rate: 1, voice: "bright" });
+    // The Mac-local Kokoro voices (lk:agent-local-tts) off: bright goes to the cloud route.
+    const g = globalThis as Record<string, unknown>;
+    const savedStorage = g.localStorage;
+    g.localStorage = { getItem: (k: string) => (k === "lk:agent-local-tts" ? "off" : null) };
+    try {
+      await play({ text: "好。", lang: "zh-CN", at: 0, volume: 1, rate: 1, voice: "bright" });
+    } finally {
+      if (savedStorage === undefined) delete g.localStorage;
+      else g.localStorage = savedStorage;
+    }
     expect(fetched.at(-1)).toBe(
       `/api/words/tts?lang=zh&text=${encodeURIComponent("好。")}&store=0`,
     );
@@ -361,6 +370,9 @@ describe("cloud voices", () => {
     expect(fetched.at(-1)).toBe("/api/words/tts?lang=en&text=Yo.&store=0&speaker=luna");
     expect(el.playbackRate).toBe(1);
     expect(el.preservesPitch).toBe(true);
+    // A calm lane in zh with the Mac-local voices on: its own Kokoro voice, not the baby one.
+    await play({ text: "好。", lang: "zh-CN", at: 0, volume: 1, rate: 1, voice: "calm" });
+    expect(fetched.at(-1)).toContain("/tts?voice=yunxi&text=");
   });
 });
 
@@ -475,7 +487,10 @@ describe("parseLineVoice: one strict parser for a line's voice", () => {
       null,
     ])
       expect(parseLineVoice(bad)).toHaveProperty("error");
-    expect((parseLineVoice("local:kokoro") as { error: string }).error).toContain("reserved");
+    expect((parseLineVoice("local:kokoro") as { error: string }).error).toContain(
+      "unknown local voice kokoro",
+    );
+    expect(parseLineVoice("local:neko-moe")).toEqual({ kind: "local", name: "neko-moe" });
   });
 
   it("finds a device voice by exact name, any case, or its model at the best grade", () => {
@@ -509,5 +524,16 @@ describe("parseLineVoice: one strict parser for a line's voice", () => {
     expect(cloud).toContain("eleven:cgSgspJ2msm6clMCkdW9");
     for (const id of cloud) expect(isLineVoiceId(id)).toBe(true);
     for (const e of ELEVEN_PREVIEWS) expect(e.preview).not.toContain("?");
+  });
+});
+
+describe("the claude lane (小可)", () => {
+  it("a 【小可】 or 【claude】 prefix is the claude lane: its mark, the calm voice, the prefix off", () => {
+    for (const p of ["【小可】", "【claude】", "【小克】"]) {
+      const r = laneOf({ text: `${p}好的` });
+      expect(r).toEqual({ lane: "claude", text: "好的" });
+      expect(voiceIdOf({ text: `${p}好的` })).toBe("calm");
+    }
+    expect(LANES.claude.mark?.paths.length).toBe(3);
   });
 });

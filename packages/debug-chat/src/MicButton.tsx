@@ -463,12 +463,16 @@ export const voiceDevice = () => {
   return deviceSlug(typeof navigator === "undefined" ? "" : navigator.userAgent, o);
 };
 
-/** The wake word is off on this device (localStorage lk:agent-wake = "0"; docs/wake-word.md). */
+/**
+ * The wake word is off on this device unless switched on (localStorage lk:agent-wake = "1";
+ * docs/wake-word.md). Off by default since 2026-11-14 (owner: "给我默认关闭这个模式"): the
+ * mic kept going passive after lines that were not for the agent.
+ */
 const wakeOff = () => {
   try {
-    return localStorage.getItem("lk:agent-wake") === "0";
+    return localStorage.getItem("lk:agent-wake") !== "1";
   } catch {
-    return false;
+    return true;
   }
 };
 
@@ -510,8 +514,11 @@ function session(): MicSession {
       if (!active) suspendIdle();
     },
     onProb: (p) => v.userFrame(p),
+    // Talk-over: his words over Li's reading pause it before his utterance ends (voice.ts).
+    interim: (t) => v.heardInterim(t),
     // Only with lk:voice-aec off: else the mic stays open and the user can barge in.
-    // Held while the chat reads (voice.ts) or the page plays word audio (page-audio.ts).
+    // Held while the chat reads (voice.ts; never with flag voice.talk-over) or the page
+    // plays word audio (page-audio.ts).
     subscribeHold: (f) => {
       const page = pageAudio();
       // Push to talk recording holds it too: the hold is one line, not the VAD's.
@@ -565,8 +572,9 @@ function session(): MicSession {
         recorder(v).enabled(),
     },
     // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
-    // localStorage lk:agent-wake = "0" turns the wake word off (never passive).
+    // Only with the wake word switched on (lk:agent-wake = "1"); off by default, never passive.
     kws: wakeOff() ? undefined : (onState) => createKws({ log: (ev) => v.log(ev), onState }),
+    wakeAllowed: () => !wakeOff(),
     upload: async (wav, { seq, durationMs, partial, local, onEcho, onSignals }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
@@ -605,13 +613,15 @@ function session(): MicSession {
           }
         } else out = await postStt(wav, fetch, "audio/wav", sttHint());
         onSignals?.(out.signals);
+        // From `at` (taken before the transcription await): when the speech began.
+        const spokeAt = at - durationMs;
         // The text guard: the agent's own words that leaked past the AEC are dropped.
-        const chatEcho = v.echoCheck(out.text, durationMs);
+        // Talk-over (AEC off, flag voice.talk-over): by time and text together, and
+        // what is not her echo, heard while she reads, pauses the reading (voice.ts duplexHeard).
+        const chatEcho = v.duplex() ? v.duplexHeard(out.text, spokeAt, at) : v.echoCheck(out.text, durationMs);
         // The page reads aloud too (/read): what it said is the same kind of echo.
         // But first the page may claim the line as the user's own (/read's shadowing).
         const page = pageAudio();
-        // From `at` (taken before the transcription await): when the speech began.
-        const spokeAt = at - durationMs;
         if (!partial && !chatEcho.drop && page.heard(out.text, spokeAt)) {
           v.log({ ev: "voice-utt-page", durationMs, chars: out.text.length });
           return "";
@@ -711,6 +721,16 @@ function session(): MicSession {
 /** The page's mic session (the voiceprint card routes enrolment sentences through it). */
 export const pageMic = session;
 
+/** The wake word on this device (the menu's switch): on = lk:agent-wake "1"; off (the default) never goes passive, and a passive mic goes active at once. */
+export const wakeWordOn = () => !wakeOff();
+export function setWakeWord(on: boolean) {
+  try {
+    if (on) localStorage.setItem("lk:agent-wake", "1");
+    else localStorage.removeItem("lk:agent-wake");
+  } catch {}
+  if (!on) session().wake("active", "tap");
+}
+
 /** Phosphor "microphone" (MIT, (c) 2023 Phosphor Icons), regular and fill. */
 const MIC_PATH = {
   regular:
@@ -749,22 +769,35 @@ export const canCapture = () =>
  * transcript goes through the echo guard first. With it off, capture is held
  * while the agent speaks, as before.
  */
+/** The note's gap over the bar (or over the strip above it), px. */
+export const MIC_NOTE_GAP_PX = 8;
+
 export function DebugMic({
   onText,
+  onBreak,
   onPending,
   onActive,
   clipSink,
   localStt,
   label,
   gesture,
+  noteLift = 0,
 }: {
   onText: (text: string) => void;
+  /** A final split by speaker on the Mac: the draft so far goes out as its own line first. */
+  onBreak?: () => void;
   onPending: (n: number, interim: string) => void;
   onActive: (on: boolean) => void;
   clipSink?: string;
   /** The owner's local streaming STT (local-stt.ts): utterances stream there first. */
   localStt?: string;
   label: string;
+  /**
+   * The height (px) of what sits right over the bar (the ETA task strip, or
+   * its ▸ when hidden): the note (Wi-Fi, errors) goes above it, never on it
+   * (owner, 2026-11-13: the Wi-Fi note covered the task strip).
+   */
+  noteLift?: number;
   /**
    * The chat bar's own press handling (DebugChat): a vertical drag scrubs the
    * history, a horizontal one moves the bar; `wasDrag` swallows the click that
@@ -809,8 +842,8 @@ export function DebugMic({
   /** Whisper settings in force (adaptive.ts): shown on the button's tooltip. */
   const [whisper, setWhisper] = useState(() => voiceAdapt().state().whisper);
   useEffect(() => voiceAdapt().subscribe((s) => setWhisper(s.whisper)), []);
-  const cb = useRef({ onText, onPending, onActive, clipSink, localStt, label });
-  cb.current = { onText, onPending, onActive, clipSink, localStt, label };
+  const cb = useRef({ onText, onBreak, onPending, onActive, clipSink, localStt, label });
+  cb.current = { onText, onBreak, onPending, onActive, clipSink, localStt, label };
   const mic = useRef<MicSession | null>(null);
 
   useEffect(() => {
@@ -835,6 +868,7 @@ export function DebugMic({
     });
     const detach = m.attach({
       onText: (t) => cb.current.onText(t),
+      onBreak: () => cb.current.onBreak?.(),
       onPending: (n, interim) => cb.current.onPending(n, interim),
     });
     const v = voice();
@@ -931,8 +965,8 @@ export function DebugMic({
           role="alert"
           data-testid="debug-chat-mic-note"
           // From the mic's start, over the bar: the mic is near the box's inner edge.
-          className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap fs-10"
-          style={{ color: "oklch(0.6 0.17 45)" }}
+          className="pointer-events-none absolute start-0 bottom-full whitespace-nowrap fs-10"
+          style={{ color: "oklch(0.6 0.17 45)", marginBottom: MIC_NOTE_GAP_PX + noteLift }}
         >
           {note}
         </span>
@@ -1032,6 +1066,7 @@ export function DebugMic({
           // The agent speaks: a slow blue ring, so it is never mistaken for capture.
           <span
             aria-hidden
+            key="speaking"
             data-testid="debug-chat-mic-speaking"
             className="pointer-events-none absolute rounded-full animate-pulse motion-reduce:animate-none"
             style={{ ...MIC_RING, boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
@@ -1040,6 +1075,7 @@ export function DebugMic({
           // Passive: a dashed ring, pulsing slowly while the spotter downloads.
           <span
             aria-hidden
+            key="passive"
             data-testid="debug-chat-mic-passive"
             className={`pointer-events-none absolute rounded-full border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
             style={{ ...MIC_RING, borderColor: WAIT }}
@@ -1048,6 +1084,7 @@ export function DebugMic({
           // Off by itself (a reload, a lost track, another tab; mic-off.ts): one tap resumes.
           <span
             aria-hidden
+            key="resume"
             data-testid="debug-chat-mic-resume"
             className={`pointer-events-none absolute rounded-full border-2 border-dashed`}
             style={{ ...MIC_RING, borderColor: REC }}
@@ -1057,6 +1094,7 @@ export function DebugMic({
           // is captured. The ring alone shows it: no text on the button (owner, 2026-11-03).
           <span
             aria-hidden
+            key="ring"
             data-testid="debug-chat-mic-ring"
             data-rec={rec || undefined}
             className="pointer-events-none absolute rounded-full"

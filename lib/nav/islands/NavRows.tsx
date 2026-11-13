@@ -15,7 +15,7 @@ import type { IslandProps } from "@/lib/islands/contract";
 import { useUi } from "@lianki/ui-state";
 import { navPins, navUi, setDrawerOpen, togglePin } from "../ui-store";
 import { openChat } from "./chat";
-import { useDebugMode, useWordsHint } from "./signals";
+import { usePartnerEntry, useWordsHint } from "./signals";
 import { useNavText } from "./text";
 
 export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
@@ -25,7 +25,7 @@ export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
   const recent = useUi(navUi, (s) => s.recent);
   const hint = useWordsHint(pathname);
   const [help, setHelp] = useState(false);
-  const debug = useDebugMode();
+  const partner = usePartnerEntry();
   if (collapsed) return null;
 
   const key = activeNavKey(pathname);
@@ -123,12 +123,15 @@ export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
           {hint}
         </div>
       )}
-      {/* The Learning Partner (debug mode, where the chat is on): it is no longer on the island. */}
-      {debug && (
+      {/* The Learning Partner, wherever the chat is (lib/partner-entry.ts): every
+          partner user, and debug mode. It is always findable here, whatever
+          the chat's fold; a tap opens it (the same as its pill's Li). */}
+      {partner && (
         <ul>
           <li>
             <button
               type="button"
+              data-nav-partner
               onClick={() => {
                 setDrawerOpen(false);
                 openChat();

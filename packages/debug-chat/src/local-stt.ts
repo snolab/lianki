@@ -212,7 +212,37 @@ export type LocalFinal = {
   filtered?: FilterVerdict;
   /** The filter is not on; this is what it would have stopped (a count, the line still lands). */
   wouldFilter?: string;
+  /**
+   * Two speakers were heard in it (the speaker "mixed"): the Mac cut it where the
+   * speaker changes and read and checked each part on its own (docs/local-stt.md,
+   * "Two speakers in one final"). `text` is their texts joined; each part becomes
+   * its own line, with its own tag and its own proof over its own words.
+   */
+  parts?: LocalPart[];
 };
+
+/** One speaker's part of a final that held two (LocalFinal.parts). */
+export type LocalPart = { text: string; speaker?: SpeakerTag; proof?: string };
+
+/** At most this many parts in one final (one cut per window hop of a 30 s utterance is far more). */
+export const MAX_PARTS = 8;
+
+/** The server's `parts`: each with text, else none at all (the final stays one line). */
+export function partsOf(raw: unknown): LocalPart[] | undefined {
+  if (!Array.isArray(raw) || raw.length < 2 || raw.length > MAX_PARTS) return undefined;
+  const out: LocalPart[] = [];
+  for (const r of raw as Record<string, unknown>[]) {
+    if (!r || typeof r !== "object" || typeof r.text !== "string" || !r.text.trim()) return undefined;
+    const speaker = cleanSpeaker(r.speaker);
+    const proof = r.speakerProof;
+    out.push({
+      text: r.text,
+      ...(speaker ? { speaker } : {}),
+      ...(speaker && typeof proof === "string" && proof.length <= 6000 ? { proof } : {}),
+    });
+  }
+  return out;
+}
 
 /** Why the Mac's voiceprint filter stopped a final (scripts/local-stt/voiceprint.py filter_reason). */
 export type FilterVerdict = { reason: string; score?: number };
@@ -474,6 +504,7 @@ export function createLocalStt(
     on?: unknown;
     enrol?: unknown;
     signals?: unknown;
+    parts?: unknown;
   };
   const enrolOf = (raw: unknown): EnrolSentence | undefined => {
     if (!raw || typeof raw !== "object") return undefined;
@@ -516,6 +547,7 @@ export function createLocalStt(
       const speaker = cleanSpeaker(m.speaker);
       const enrol = enrolOf(m.enrol);
       const filtered = filterOf(m.filtered);
+      const parts = filtered ? undefined : partsOf(m.parts);
       p.resolve({
         text: m.text ?? "",
         model: `local:${m.model ?? "?"}`,
@@ -531,6 +563,7 @@ export function createLocalStt(
         signals: localSignals(m.signals),
         ...(filtered ? { filtered } : {}),
         ...(typeof m.wouldFilter === "string" ? { wouldFilter: m.wouldFilter } : {}),
+        ...(parts ? { parts } : {}),
       });
     } else if (m.t === "error") {
       clearTimer(p.timer);
