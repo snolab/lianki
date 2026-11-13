@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getIntlayer } from "intlayer";
 import { authUserOrNull } from "@/app/signInEmail";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, isAdmin, isDev } from "@/lib/permissions";
 import { DEV_PAGE_PERMISSION } from "@/lib/dev-page-permissions";
 import { appLocale } from "@/lib/app-locale.server";
 import { devPageText, devPageTitle, type DevPageName } from "./dev-page-title";
@@ -19,8 +19,8 @@ const camel = (slug: string) => slug.replace(/-([a-z])/g, (_, c: string) => c.to
 
 /** A page's name: its own dictionary for the two that keep one, else dev-pages. */
 function pageName(slug: string, locale: string): string {
-  if (slug === "design" || slug === "roadmap")
-    return String(getIntlayer(`dev-${slug}` as "dev-design", locale as never).metaTitle);
+  if (slug === "design") return String(getIntlayer("dev-design", locale as never).metaTitle);
+  if (slug === "roadmap") return String(getIntlayer("dev-roadmap", locale as never).metaTitle);
   return devPageTitle(camel(slug) as DevPageName, locale).split(" — ")[0]!;
 }
 
@@ -32,8 +32,9 @@ function pageName(slug: string, locale: string): string {
 export default async function DevIndexPage() {
   const user = await authUserOrNull();
   const email = user?.email;
+  // Dev or admin only, like every /dev page; each listed page is one the viewer may open.
+  if (!isDev(email) && !isAdmin(email)) notFound();
   const mine = Object.entries(DEV_PAGE_PERMISSION).filter(([, p]) => hasPermission(email, p));
-  if (!mine.length) notFound();
   const locale = await appLocale();
   const heading = await devPageText("dashboard");
   // The preview build: next dev under scripts/dev/whole-page.ts (the gate rewrites Host).
