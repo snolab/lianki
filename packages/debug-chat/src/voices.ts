@@ -216,9 +216,10 @@ export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
   // Claude Code helping agy (owner, 2026-11-13: named 小可). Low and calm, like codex,
   // told apart by its mark: three dots in a row, a thought being finished.
   claude: {
-    name: "小可",
+    // 小克: the 克 of 克劳德 (owner's wife's choice, 2026-11-14); 小可 still reads as this lane.
+    name: "小克",
     voice: "calm",
-    aliases: ["claude", "小可", "小克"],
+    aliases: ["claude", "小克", "小可"],
     mark: {
       bg: "oklch(0.55 0.1 250)",
       fg: "oklch(0.97 0.02 250)",
