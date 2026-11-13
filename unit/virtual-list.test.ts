@@ -8,6 +8,9 @@ import {
   mergeBatch,
   offsetFor,
   PREFETCH_ROWS,
+  PREFETCH_SCREENS,
+  RESERVE_SCREENS,
+  reserveBelow,
   RESTORE_MAX_BATCHES,
   restoreStep,
   setSize,
@@ -50,6 +53,25 @@ describe("loading more", () => {
     expect(shouldLoadMore({ ...base, lastIndex: 10 })).toBe(false);
     expect(shouldLoadMore({ ...base, lastIndex: 29, asked: 30 })).toBe(false);
     expect(shouldLoadMore({ ...base, lastIndex: 25, prefetch: 2 })).toBe(false);
+  });
+  test("two screens before the end by distance, even far from the last rows", () => {
+    expect(
+      shouldLoadMore({ ...base, lastIndex: 10, belowPx: 800 * PREFETCH_SCREENS, viewportPx: 800 }),
+    ).toBe(true);
+    expect(
+      shouldLoadMore({
+        ...base,
+        lastIndex: 10,
+        belowPx: 800 * PREFETCH_SCREENS + 1,
+        viewportPx: 800,
+      }),
+    ).toBe(false);
+    expect(shouldLoadMore({ ...base, lastIndex: 10, belowPx: 0, viewportPx: 0 })).toBe(false);
+  });
+  test("space kept below while more may come, none at the end", () => {
+    expect(reserveBelow(true, 800)).toBe(Math.round(800 * RESERVE_SCREENS));
+    expect(reserveBelow(false, 800)).toBe(0);
+    expect(reserveBelow(true, 0)).toBe(0);
   });
   test("never while loading, after an error, or with no more", () => {
     expect(shouldLoadMore({ ...base, lastIndex: 29, loading: true })).toBe(false);

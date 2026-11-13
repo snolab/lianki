@@ -25,6 +25,25 @@ export const RESTORE_MAX_BATCHES = 20;
 export const PREFETCH_ROWS = 5;
 
 /**
+ * Screens of list still below the viewport at which the next batch is asked
+ * for, so it arrives before the reader gets there (owner, 2026-11-14: "滚到下面
+ * 再加载的时候会卡一下").
+ */
+export const PREFETCH_SCREENS = 2;
+
+/**
+ * Empty space kept below the last row while more may come, in screens: the
+ * scroll never hits a hard end mid-load; once the list is known to be complete
+ * it goes and the page settles back (owner: "哪怕滚完了再被弹回来都可以").
+ */
+export const RESERVE_SCREENS = 1.5;
+
+/** The empty space (px) to keep below the rows: some while more may load, none at the end. */
+export function reserveBelow(hasMore: boolean, viewport: number): number {
+  return hasMore && viewport > 0 ? Math.round(viewport * RESERVE_SCREENS) : 0;
+}
+
+/**
  * The row under the viewport's centre line, as an index into the items, or
  * null when the centre is above the list (the list starts lower on the page:
  * nothing to remember) or there are no rows. Past the last row: the last row.
@@ -57,11 +76,21 @@ export function shouldLoadMore(s: {
   error: boolean;
   asked: number | null;
   prefetch?: number;
+  /** Px of rows still below the viewport's bottom, and the viewport's height (both or neither). */
+  belowPx?: number;
+  viewportPx?: number;
 }): boolean {
   if (!s.hasMore || s.loading || s.error) return false;
   if (s.asked === s.count) return false;
   if (s.count === 0) return true;
   if (s.lastIndex === null) return false;
+  if (
+    s.belowPx !== undefined &&
+    s.viewportPx !== undefined &&
+    s.viewportPx > 0 &&
+    s.belowPx <= s.viewportPx * PREFETCH_SCREENS
+  )
+    return true;
   return s.lastIndex >= s.count - 1 - (s.prefetch ?? PREFETCH_ROWS);
 }
 
