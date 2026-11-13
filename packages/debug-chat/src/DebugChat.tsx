@@ -3701,14 +3701,13 @@ export function DebugChat({
     </div>
   );
   /** One floating line; `above` is the line before it (its dwell waits for that one's). */
-  const floatLine = (f: ChatMessage, above: string | undefined, oneLine = false) => {
+  const floatLine = (f: ChatMessage, above: string | undefined) => {
     // The latest copy of the line: an edit changes it in place.
     const m = messages.find((x) => x.id === f.id) ?? f;
     const p = polish(m);
     return (
             <FloatLine
               details={details.forMessage}
-              oneLine={oneLine}
               key={m.id}
               m={m}
               arrivedAt={newLines.current!.arrivedAt(m.id)}
@@ -4508,7 +4507,7 @@ export function DebugChat({
           />
         </span>
         <div
-          className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
+          className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-3" : "whitespace-pre-wrap"}`}
           {...shimmerOf(m)}
         >
           <span className="sr-only">{who.name}: </span>
@@ -4638,7 +4637,7 @@ export function DebugChat({
             }}
             className="pointer-events-none fixed z-[var(--lk-z-chat,80)] flex w-max max-w-[min(20rem,calc(100vw-6rem))] -translate-y-1/2 cursor-pointer flex-col lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100"
           >
-            {floatLine(peek, undefined, true)}
+            {floatLine(peek, undefined)}
           </ol>
         )}
       </>
@@ -5766,7 +5765,6 @@ function GripDots() {
  */
 function FloatLine({
   details,
-  oneLine,
   m,
   who,
   text,
@@ -5783,8 +5781,6 @@ function FloatLine({
   details: ReturnType<typeof useMessageDetails>["forMessage"];
   /** Its lane was just called by name (addressed.ts): its avatar pulses. */
   flash?: ReturnType<typeof flashProps>;
-  /** Its first line only (the tucked handle's peek), else up to three. */
-  oneLine?: boolean;
   m: ChatMessage;
   /** When it arrived live (shimmer.ts createNewLines): it shimmers while read. */
   arrivedAt?: number;
@@ -5850,7 +5846,7 @@ function FloatLine({
       {...(shim ? { [NEW_ATTR]: true } : {})}
       // The fade runs FADE_MS (ease-out, opacity only); held (touched), the line
       // snaps back to full at once. Reduced motion: no fade, it just goes.
-      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto ${oneLine ? "line-clamp-1" : "line-clamp-3"} max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
+      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
     >
       <span className="me-1 inline-block rounded-full align-[-0.25em]" {...flash}>
         <Avatar
