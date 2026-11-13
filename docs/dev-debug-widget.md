@@ -718,6 +718,58 @@ by the flag. Restored lines may be merged again.
 
 A passage takes no polish, summary or continuous-speech merge: undo it first.
 
+### Automatic polish
+
+The owner, 2026-11-14 05:45 JST: "你们 polish 我的线的频率还是很低，很少 polish
+出来", and: "我希望几乎我的每一句话都要 polish 一下，因为我经常说话断断续续的".
+A polish that depends on a lane choosing to make one rarely comes. So the hub
+polishes **every spoken line itself**, at once, and the lanes may still
+re-polish later. Flag **`voice.auto-polish`** (`/dev/flags#voice.auto-polish`,
+on by default, audience owner: the hub only ever edits the owner thread, so
+there is no one else to reach). `stt.polish` off still refuses every edit.
+
+**Where it runs: the hub** (`DebugHub` in `workers/push/src/debug.ts`,
+"Automatic polish"), not the page. The hub already reaches the main Worker
+over the `SESSIONS` binding, and an owner page's attestation carries his user
+id (`PageAtt.user`), so the polish works on every device, with the page gone
+too, and is billed to his account like any AI call. The page (DebugEval)
+would only have worked on the device that spoke. The model is the chat CLI's
+cheap prepare model (DeepSeek on Workers AI, `PARTNER_AI_MODEL`), called by
+`DebugSessions.polishLines` → `lib/chat-polish.ts`: metered as
+`voice.auto-polish` (held from his credits before the call, settled after, no
+admin bypass), rate-limited in D1 (`voice.autoPolishUserCalls` per 10 min,
+`voice.autoPolishSiteCalls` per day), `voice.autoPolishTimeoutMs` (6 s),
+`voice.autoPolishOutputTokens`. The prompt fixes mis-heard words, fillers and
+punctuation from a little context, keeps his meaning and wording, never
+answers or summarises, and treats the input as data.
+
+**When.** A kept `source: "stt"` line of his arms a tail timer,
+`voice.autoPolishTailMs` (1.5 s); another voice line inside the window restarts
+it, so the fragments of one thought go together. A line shorter than
+`voice.autoPolishMinChars` (2) is left alone. A settled passage
+(`polish-due`) goes at once, no tail. The **run** is his newest consecutive
+voice lines nobody touched: it ends at any other line (typed, a lane's, a
+friend's), a line already polished (an agent got there first), a summary or
+passage, a line still being spoken, or a gap over `AUTO_POLISH_RUN_MS`
+(60 s); at most `MERGE_LINES`. Up to `AUTO_POLISH_CONTEXT` (6) kept lines
+before it go along as context, each cut to 300 characters.
+
+**How it lands: the same path as an agent's.** `merged` back for two or more
+lines → `mergeLines` (the merge rules above: consecutive, one speaker,
+`mergeCheck`, `stt.polish`), the raw lines kept for undo, "Merged N" shown.
+Otherwise `polishLine` per changed line (raw kept, the polished sparkle, the
+read-back in his voice fires). Both stamped `edited.by: "auto"` (`AUTO_POLISH_BY`).
+A line that changed, or was polished by an agent, while the model worked is
+skipped (`debug.auto-polish-skip`, `stale`); an answer that changes nothing
+stores nothing. One automatic polish at a time per hub; a line landing meanwhile
+runs it again after. Logged `debug.auto-polish` (lines, merged, polished, ms),
+`debug.auto-polish-skip` (why: `flag-unread`, `flag-busy`, `no-user`,
+`rpc-failed`, `stale`, or the main Worker's error such as `no-credits`),
+`debug.auto-polish-refused` (the edit path's reason). A page with no user id
+(an embed, a box) never asks. Tests: `unit/debug-hub-auto-polish.test.ts`
+(the hub, with its timer fired by hand), `unit/auto-polish-model.test.ts`
+(the contract and the metering).
+
 ## The live speech line
 
 The owner, 2026-11-14 04:25 JST: the words being recognised while he speaks are not
@@ -843,8 +895,8 @@ An undo: `{type:"edited", …, split:[{id, text, at}…]}`.
 - `stt.polish` off: merges happen, no polish-due goes out, every edit stays refused.
 - A single voice line polishes as before, at once. No polish-due, so no extra wake.
 
-**Cost.** Polish is the lane's Claude turn; the hub calls no model, so nothing new
-is billed per call. Today N fragments are N lines and up to N polishes. Merged, they
+**Cost.** A lane's polish is its Claude turn; the hub's own ("Automatic polish"
+below) is one cheap metered call per run. Today N fragments are N lines and up to N polishes. Merged, they
 are N wakes (each `edited` is a wake, as the chat line was) plus one for `polish-due`,
 and exactly one polish, however long the passage; flag off, nothing. A line's
 polishes are not capped (2026-11-14), and a settled line takes no more parts. Hub: one flag
