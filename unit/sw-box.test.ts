@@ -86,6 +86,20 @@ describe("the service worker on a box", () => {
     }
   });
 
+  test("the preview build's hosts (next dev) are treated like a box; production is not", async () => {
+    for (const host of ["preview.lianki.com", "taku.onca-tint.ts.net"]) {
+      const sw = await load(host, ["lianki-v2"]);
+      await sw.settle("install");
+      expect(sw.opened).toEqual([]);
+      await sw.settle("activate");
+      expect(sw.deleted).toEqual(["lianki-v2"]);
+      expect(await sw.settle("fetch", get(`https://${host}/_next/static/chunks/a.js`))).toBe(false);
+    }
+    const prod = await load("lianki.com", []);
+    await prod.settle("install");
+    expect(prod.opened.length).toBeGreaterThan(0);
+  });
+
   test("look-alikes and other hosts keep caching", async () => {
     for (const host of [
       "my-example.lianki.com.evil.com",
