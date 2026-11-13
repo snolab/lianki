@@ -106,6 +106,10 @@ const LOCAL_ORIGIN = /^http:\/\/127\.0\.0\.1:[0-9]{2,5}$/;
 export function isBoxOrigin(origin: string | null | undefined, dev = false): boolean {
   if (!origin) return false;
   if (origin.startsWith("https://") && isBoxHost(origin.slice("https://".length))) return true;
+  // Shape is only a filter: exact origin/account binding and the live allowlist
+  // remain mandatory in every lookup, including the OAuth code exchange.
+  if (/^https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.lianki\.pages\.dev$/.test(origin))
+    return true;
   return dev && LOCAL_ORIGIN.test(origin);
 }
 

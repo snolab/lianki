@@ -1002,6 +1002,66 @@ describe("the minimized line: the nearest task and the last, in minutes", () => 
   });
 });
 
+describe("the bar's hide/show toggle (EtaFold)", () => {
+  const two = [task({ id: "/a", at: 10 * MIN }), task({ id: "/b", title: "B", at: 30 * MIN })];
+  const html = (el: Parameters<typeof renderToString>[0]) =>
+    renderToString(el).replace(/<!-- -->/g, "");
+  const bar = (folded: boolean) =>
+    html(
+      createElement(EtaBar, {
+        tasks: two,
+        now: 5 * MIN,
+        strings: CHAT_STRINGS_EN,
+        onOpen: () => {},
+        folded,
+        onFold: () => {},
+      }),
+    );
+
+  it("shown: the line and a ▾ that says it hides the bar", () => {
+    const out = bar(false);
+    expect(out).toContain('data-testid="debug-chat-eta-bar"');
+    expect(out).toMatch(/data-testid="debug-chat-eta-fold"[^>]*aria-expanded="true"/);
+    expect(out).toContain(`aria-label="${CHAT_STRINGS_EN.etaHide}"`);
+    expect(out).toContain('data-open="true"');
+  });
+
+  it("hidden: no line, only the ▸ with the clock, which says it shows the bar again", () => {
+    const out = bar(true);
+    expect(out).not.toContain('data-testid="debug-chat-eta-bar"');
+    expect(out).toMatch(/data-testid="debug-chat-eta-fold"[^>]*data-folded="true"/);
+    expect(out).toContain('aria-expanded="false"');
+    expect(out).toContain(`aria-label="${CHAT_STRINGS_EN.etaShow}"`);
+    expect(out).toContain('data-open="false"');
+    expect(out).not.toMatch(/#[0-9a-f]{3,6}\b|rgb\(/i); // oklch only
+  });
+
+  it("no tasks: nothing, folded or not; without onFold, no toggle", () => {
+    const none = (folded: boolean) =>
+      html(
+        createElement(EtaBar, {
+          tasks: [],
+          now: 0,
+          strings: CHAT_STRINGS_EN,
+          onOpen: () => {},
+          folded,
+          onFold: () => {},
+        }),
+      );
+    expect(none(true)).toBe("");
+    expect(none(false)).toBe("");
+    const plain = html(
+      createElement(EtaBar, {
+        tasks: two,
+        now: 5 * MIN,
+        strings: CHAT_STRINGS_EN,
+        onOpen: () => {},
+      }),
+    );
+    expect(plain).not.toContain("debug-chat-eta-fold");
+  });
+});
+
 describe("the line's fill keeps its text readable", () => {
   const lum = (css: string) => {
     const m = /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)\)$/.exec(css);

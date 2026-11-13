@@ -81,12 +81,28 @@ export function chatLine(
   };
 }
 
-/** Whether a `say` is read aloud: `--quiet` = shown, never read aloud. */
-export type SayVolume = { quiet?: true };
+/**
+ * Whether and how a `say` is read aloud: `--quiet` = shown, never read
+ * aloud; `--supersede` = arriving live, it stops the same lane's line being
+ * read and drops that lane's unread ones; `--interject` = it pauses the line
+ * being read, is read next, and the paused one goes on
+ * (packages/debug-chat/src/voice.ts).
+ */
+export type SayVolume = { quiet?: true; cut?: "supersede" | "interject" };
 
-/** The say's flags as sent to the hub. */
-export function sayVolume(f: { quiet: boolean }): SayVolume {
-  return f.quiet ? { quiet: true } : {};
+/** The say's flags as sent to the hub; --supersede with --interject is an error. */
+export function sayVolume(f: {
+  quiet: boolean;
+  supersede?: boolean;
+  interject?: boolean;
+}): SayVolume | { error: string } {
+  if (f.supersede && f.interject)
+    return { error: "say: --supersede and --interject cannot go together (pick one)" };
+  return {
+    ...(f.quiet ? { quiet: true as const } : {}),
+    ...(f.supersede ? { cut: "supersede" as const } : {}),
+    ...(f.interject ? { cut: "interject" as const } : {}),
+  };
 }
 
 /** A say's lane and voice as sent to the hub (packages/debug-chat/src/voices.ts). */

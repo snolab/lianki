@@ -9,6 +9,7 @@ import {
   DUCK_RELEASE_MS,
   IDLE_RESUME_MS,
   RESUME_TAIL_MS,
+  TALK_OVER_SLACK_MS,
   SPEAK_KEY,
   SPEECH_REFUSED_MS,
   SPEECH_START_MS,
@@ -610,6 +611,8 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 function cloudHarness(
   o: {
     aec?: boolean;
+    /** Flag voice.talk-over. */
+    talkOver?: boolean;
     mode?: "speech" | "cloud";
     status?: (text: string) => number;
     hasVoice?: (lang: string) => boolean;
@@ -653,7 +656,7 @@ function cloudHarness(
   const timers: { f: () => void; ms: number; live: boolean }[] = [];
   const logs: Record<string, unknown>[] = [];
   const reports: string[] = [];
-  const flags = { aec: o.aec ?? true, mode: o.mode ?? "cloud" };
+  const flags = { aec: o.aec ?? true, mode: o.mode ?? "cloud", talkOver: o.talkOver ?? false };
   const v = createVoice({
     synth: () => ({
       speak: (u) => void spoken.push(u as UtterLike & { lang: string }),
@@ -668,6 +671,7 @@ function cloudHarness(
     hasVoice: o.hasVoice,
     mode: () => flags.mode,
     aec: () => flags.aec,
+    talkOver: () => flags.talkOver,
     now: () => h0.t,
     log: (e) => void logs.push(e),
     report: (m) => void reports.push(m),
@@ -1391,5 +1395,115 @@ describe("voice session: a line's own voice (voices.ts parseLineVoice)", () => {
     await tick();
     expect(h.spoken[0]).toMatchObject({ text: "Hello.", pick: undefined });
     expect(h.fetched).toEqual([]);
+  });
+});
+
+describe("voice session: talk-over (aec off, flag voice.talk-over)", () => {
+  /** Speech route: Li reads "One sentence here. Then another one." from t=1000. */
+  const reading = (o: { talkOver?: boolean; aec?: boolean } = {}) => {
+    const h = cloudHarness({ mode: "speech", aec: o.aec ?? false, talkOver: o.talkOver ?? true });
+    h.v.setMic(true);
+    h.h0.t = 1_000;
+    h.v.reply("The weather is lovely today. Shall we go for a walk?");
+    return h;
+  };
+
+  it("flag on + aec off: no hold while Li reads (the mic never goes gold)", () => {
+    const h = reading();
+    expect(h.v.duplex()).toBe(true);
+    expect(h.v.state()).toMatchObject({ speaking: true, hold: false });
+  });
+
+  it("flag off + aec off: today's hold", () => {
+    const h = reading({ talkOver: false });
+    expect(h.v.duplex()).toBe(false);
+    expect(h.v.state()).toMatchObject({ speaking: true, hold: true });
+  });
+
+  it("aec on: unchanged (no hold, not duplex, the VAD ducks as before)", () => {
+    const h = reading({ aec: true });
+    expect(h.v.duplex()).toBe(false);
+    expect(h.v.state().hold).toBe(false);
+    h.v.userSpeech();
+    expect(h.v.state()).toMatchObject({ ducked: true, paused: false });
+  });
+
+  it("the VAD alone (her own voice fires it too) neither ducks nor pauses", () => {
+    const h = reading();
+    h.v.userSpeech();
+    expect(h.v.state()).toMatchObject({ ducked: false, paused: false, speaking: true });
+    expect(h.live(BARGE_IN_MS)).toBe(false);
+  });
+
+  it("echo at the same time: a transcript of the sentence playing is dropped, the reading goes on", () => {
+    const h = reading();
+    h.v.userSpeech();
+    h.h0.t = 2_500;
+    h.v.userIdle();
+    const r = h.v.duplexHeard("the weather is lovely today", 1_100, 2_500);
+    expect(r).toMatchObject({ drop: true, during: true, paused: false });
+    expect(h.v.state()).toMatchObject({ paused: false, speaking: true });
+  });
+
+  it("a partial echo (a fragment, slightly misheard) is dropped too", () => {
+    const h = reading();
+    h.v.userSpeech();
+    h.h0.t = 1_800;
+    h.v.heardInterim("weather is lovely");
+    expect(h.v.state()).toMatchObject({ paused: false, speaking: true });
+  });
+
+  it("same words at a different time (he repeats her phrase later): kept", () => {
+    const h = reading();
+    h.h0.t = 3_000;
+    h.spoken[0].onend?.(); // sentence 1 ends at 3000
+    h.h0.t = 5_000;
+    h.spoken[1].onend?.(); // sentence 2 ends at 5000
+    h.fire(RESUME_TAIL_MS);
+    h.h0.t = 30_000;
+    const r = h.v.duplexHeard("The weather is lovely today", 28_000, 30_000);
+    expect(r).toMatchObject({ drop: false, during: false, paused: false });
+    // Just outside the slack of the last sentence: still his.
+    const near = h.v.duplexHeard("Shall we go for a walk", 5_000 + TALK_OVER_SLACK_MS + 1, 7_000);
+    expect(near.drop).toBe(false);
+  });
+
+  it("different words while she reads: kept, and the reading pauses (resumed as after a barge-in)", () => {
+    const h = reading();
+    h.v.userSpeech();
+    h.h0.t = 2_000;
+    const r = h.v.duplexHeard("wait, what does lovely mean", 1_200, 2_000);
+    expect(r).toMatchObject({ drop: false, during: true, paused: true });
+    expect(h.v.state()).toMatchObject({ paused: true, speaking: false, queued: 2 });
+    expect(h.logs.some((l) => l.ev === "voice-talk-over")).toBe(true);
+    // He is still talking: no idle timer until his speech ends.
+    expect(h.live(IDLE_RESUME_MS)).toBe(false);
+    h.v.userIdle();
+    h.fire(IDLE_RESUME_MS);
+    expect(h.v.state()).toMatchObject({ paused: false, speaking: true });
+  });
+
+  it("his interim words pause before his utterance ends", () => {
+    const h = reading();
+    h.v.userSpeech();
+    h.h0.t = 1_600;
+    h.v.heardInterim("stop for a second please");
+    expect(h.v.state()).toMatchObject({ paused: true });
+  });
+
+  it("a final of his after his speech ended pauses and reads on after the quiet", () => {
+    const h = reading();
+    h.v.userSpeech();
+    h.h0.t = 2_000;
+    h.v.userIdle();
+    h.v.duplexHeard("how do you say walk in French", 1_200, 2_000);
+    expect(h.v.state().paused).toBe(true);
+    expect(h.live(IDLE_RESUME_MS)).toBe(true);
+  });
+
+  it("flag off: duplexHeard never pauses (the hold path is in force)", () => {
+    const h = reading({ talkOver: false });
+    const r = h.v.duplexHeard("something else entirely", 1_100, 1_500);
+    expect(r.paused).toBe(false);
   });
 });

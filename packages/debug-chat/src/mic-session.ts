@@ -36,6 +36,7 @@ import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
 import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
 import { micTaps } from "./mic-taps";
+import { reportPageError } from "./page-errors";
 import { type AutoOff, type AutoOffReason, onTrackLost, trackNote } from "./mic-off";
 
 /** What the session needs of a local STT client (local-stt.ts LocalStt). */
@@ -119,6 +120,8 @@ export type MicDeps = {
   /** The voice session's side of a state change (voice.ts: setMic, userSpeech, …). */
   onState?: (s: MicState, prev: MicState) => void;
   onProb?: (p: number) => void;
+  /** The interim text of the utterance under way, each time it changes (voice.ts heardInterim: talk-over). */
+  interim?: (text: string) => void;
   /** Subscribe to "hold capture" (the agent speaking, AEC off); returns an unsubscribe. */
   subscribeHold?: (f: (hold: boolean) => void) => () => void;
   /** sessionStorage, guarded (iOS private mode throws). */
@@ -147,6 +150,11 @@ export type MicDeps = {
    * The on-device "Linky" spotter (wake-kws.ts createKws), made on first use:
    * the first time the mic goes passive. Without it the mic never goes passive.
    */
+  /**
+   * The wake word allowed right now (the menu's "Wake word" switch, lk:agent-wake):
+   * false keeps the mic active — nothing moves it to passive, not even rejects.
+   */
+  wakeAllowed?: () => boolean;
   kws?: (onState: (s: KwsState) => void) => {
     load(): Promise<void>;
     spot(audio: Float32Array): Promise<SpotResult>;
@@ -154,7 +162,12 @@ export type MicDeps = {
 };
 
 type Listener = (v: MicView) => void;
-type Sink = { onText: (t: string) => void; onPending: (n: number, interim: string) => void };
+type Sink = {
+  onText: (t: string) => void;
+  onPending: (n: number, interim: string) => void;
+  /** A final split by speaker (createMic onBreak): the draft so far goes out first. */
+  onBreak?: () => void;
+};
 
 export type MicSession = ReturnType<typeof createMicSession>;
 
@@ -210,8 +223,14 @@ export function createMicSession(
   /** Every off goes to the dev log with who did it (mic-off.ts): the next one explains itself. */
   const offLog = (by: "user" | "auto", reason: string) =>
     deps.log?.({ ev: "mic-off", by, reason, was: view.state, visible: visible(), track: trackAt() });
-  /** Off by itself: shown as its own state (mic-off.ts micLook) with its reason. */
-  const markAuto = (reason: AutoOffReason) => emit({ auto: { reason, at: now() } });
+  /**
+   * Off by itself: shown as its own state (mic-off.ts micLook) with its reason, and
+   * reported (owner 2026-11-13 "你能不能不要关我的麦克风？": the reason was only on his screen).
+   */
+  const markAuto = (reason: AutoOffReason) => {
+    emit({ auto: { reason, at: now() } });
+    reportPageError({ kind: "media", message: `mic off by itself: ${reason}` });
+  };
   /** A track lost while hidden: reopened once the page is visible. */
   let lost: AutoOffReason | null = null;
   /** A reload's resume put off until the page is visible. */
@@ -316,6 +335,8 @@ export function createMicSession(
   const command = (c: WakeCommand, reason: WakeReason = "agent") => {
     // Pinned (a voice mode is on, mic-taps.ts): it stays active.
     if (taps.pinned() && c !== "active") return;
+    // The wake word switched off in the menu: the mic stays active (owner, 2026-11-14).
+    if (c !== "active" && deps.wakeAllowed && !deps.wakeAllowed()) return;
     if (c === "ignored") return void wake.reject();
     if (c === "passive" && !deps.kws) return;
     wake.set(c, reason);
@@ -375,7 +396,9 @@ export function createMicSession(
       if (sink) sink.onText(t);
       else held.push(t);
     },
+    onBreak: () => sink?.onBreak?.(),
     onPending: (n, interim) => {
+      if (interim) deps.interim?.(interim);
       emit({ pending: n, interim });
       sink?.onPending(n, interim);
     },

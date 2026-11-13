@@ -18,6 +18,7 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { chatWanted } from "@/lib/partner-entry";
 import { noteBadgeSeen } from "@/lib/app-badge";
 import { type BoxConfig, boxChatHub } from "@/lib/box-oauth/client";
 import { useBoxAccount } from "./BoxApiBridge";
@@ -42,6 +43,7 @@ import {
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
+import { setTalkOver } from "@lianki/debug-chat/aec";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
@@ -162,8 +164,11 @@ export function DebugEval({
   liHub = false,
   lexicon,
   cloudVoices,
+  talkOver = false,
   box = null,
 }: {
+  /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
+  talkOver?: boolean;
   /**
    * Provider voices (google:, azure:): on with flag voice.cloud-voices and the
    * dev grant, and the language → voice map (config voice.langVoices). None: off.
@@ -196,6 +201,7 @@ export function DebugEval({
   // Idempotent and cheap: the live table is in place before the first reply is read.
   if (lexicon !== undefined) setLexicon(lexicon);
   setCloudVoices(cloudVoices);
+  setTalkOver(talkOver);
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
   const devRef = useRef(dev);
@@ -341,7 +347,8 @@ export function DebugEval({
     if (typeof WebSocket === "undefined") return;
     let ws: WebSocket | null = null;
     /** The chat is wanted: debug mode, or the Learning Partner opened to users (partnerOpen). */
-    const chatOn = () => debugOn() || openRef.current;
+    // Never false for a partner user (lib/partner-entry.ts): the chat folds, it never goes away.
+    const chatOn = () => chatWanted(debugOn(), openRef.current);
     let idle: ReturnType<typeof setTimeout> | undefined;
     let hideToast: ReturnType<typeof setTimeout> | undefined;
     const opened = new WeakSet<WebSocket>();
@@ -651,7 +658,11 @@ export function DebugEval({
             // Its words, not its markup (rich-text.ts): a line of only code says nothing.
             const said = spokenOf(m);
             const spoken =
-              fresh && !!said && (tabsRef.current?.isSpeaker() ?? true) && voice().reply(said, m);
+              fresh &&
+              !!said &&
+              (tabsRef.current?.isSpeaker() ?? true) &&
+              // live: a superseding or interjecting line cuts in (voice.ts); history never does.
+              voice().reply(said, m, { live: true });
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);

@@ -146,6 +146,12 @@ describe("getSession on a box's server", () => {
     expect(isDev("ann@test.example")).toBe(true);
   });
 
+  test("same-origin preview API bearer identifies the account without a cookie", async () => {
+    const s = await boxServerGetSession(new Headers({ authorization: `Bearer ${TOKEN}` }));
+    expect(s?.user.id).toBe("u1");
+    expect(new Headers(calls[0].init.headers).get("cookie")).toBeNull();
+  });
+
   test("no cookie, or no box config: nobody, and lianki.com is not asked", async () => {
     expect(await boxServerGetSession(new Headers())).toBeNull();
     expect(await boxServerGetSession(undefined)).toBeNull();

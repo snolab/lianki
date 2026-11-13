@@ -28,12 +28,15 @@ Protocol (one socket per page, utterances one after another):
                                                              first frame (VAD pre-pad)
                    text   {"t":"end","id":N}                 decode it now
                    text   {"t":"cancel","id":N}              drop it
+                   text   {"t":"recheck","rid":R,"seconds":15,"engine":"mlx-whisper"}
+                          re-read recent audio from this socket (0 < seconds <= 60)
   server → client  {"t":"ready","engine":…,"model":…}
                    {"t":"partial","id":N,"text":…,"audioMs":…}
                    {"t":"final","id":N,"text":…,"lang":…,"model":…,"ms":decode ms,
                     "audioMs":…,"endToFinalMs":…[,"langAuto":…]}
                    (langAuto: on a short utterance whose auto-detected language
                    lost to a forced ja/zh reading; engines.LangPicker)
+                   {"t":"recheck_result","rid":R,"engine":"mlx-whisper","ok":true,"text":…}
                    {"t":"error","id":N,"error":…}
 
 The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
@@ -58,6 +61,10 @@ The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
                    {"t":"filter","on":bool}                  (the filter's state: voiceprint status, "filter")
                    final gains "filtered":{reason,score} when the filter stopped it (text "",
                     nothing decoded), or "wouldFilter":reason when the filter is not on
+                   final gains "parts":[{text,lang,startMs,audioMs,speaker,speakerProof},…] when two
+                    speakers were heard in it ("mixed"): each part read and checked on its own audio,
+                    its proof over its own text (uid "<uid>-p<i>"); `text` is the parts' texts joined
+                    and `speaker`/`speakerProof` stay the whole final's (a page without parts: one line)
 
 GET /health answers {"ok":true,"engine":…,"speaker":[models]|false} (the same port, plain HTTP).
 """
@@ -66,6 +73,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 import re
 import stat
@@ -172,10 +180,49 @@ def pcm(b: bytes) -> np.ndarray:
     return np.frombuffer(b, dtype="<i2").astype(np.float32) / 32768.0
 
 
+class AudioRingBuffer:
+    """Fixed 60 seconds of float32 PCM in RAM, owned by one socket only."""
+
+    def __init__(self, seconds: int = 60):
+        self.data = np.zeros(seconds * RATE, dtype=np.float32)
+        self.end = 0
+        self.size = 0
+
+    def append(self, audio: np.ndarray) -> None:
+        x = audio[-len(self.data):]
+        n = len(x)
+        first = min(n, len(self.data) - self.end)
+        self.data[self.end:self.end + first] = x[:first]
+        self.data[:n - first] = x[first:]
+        self.end = (self.end + n) % len(self.data)
+        self.size = min(len(self.data), self.size + n)
+
+    def tail(self, n: int) -> np.ndarray:
+        n = min(n, self.size)
+        start = (self.end - n) % len(self.data)
+        first = min(n, len(self.data) - start)
+        return np.concatenate((self.data[start:start + first], self.data[:n - first]))
+
+    def prepend_current(self, audio: np.ndarray, current_n: int) -> None:
+        # VAD sends pre-pad after streaming frames. Insert before this utterance,
+        # preserving the chronological order and evicting only the oldest samples.
+        current = self.tail(current_n)
+        self.end = (self.end - len(current)) % len(self.data)
+        self.size -= len(current)
+        self.append(audio)
+        self.append(current)
+
+    def clear(self) -> None:
+        self.data.fill(0)
+        self.size = self.end = 0
+
+
 class Server:
     def __init__(self, engine, workers: int = 2, verifier: "VP.Verifier | None" = None,
                  vp_tickets: "Tickets | None" = None, attestor: "VP.Attestor | None" = None):
         self.engine = engine
+        self.recheck_engine = None
+        self.recheck_pool = ThreadPoolExecutor(max_workers=1)
         self.pool = ThreadPoolExecutor(max_workers=workers)
         self.partial_step_s = PARTIAL_STEP_S
         self.partial_min_s = PARTIAL_MIN_S
@@ -196,6 +243,28 @@ class Server:
         #: Open enrolments by id (the start answer's `enrolment`), and when each began.
         self.enrolments: dict[str, "VP.Enrolment"] = {}
         self.enrol_at: dict[str, float] = {}
+
+    def warm_recheck(self):
+        """Load once on the dedicated worker; no audio files are ever created."""
+        if self.recheck_engine is None:
+            engine = load_engine("mlx-whisper")
+            engine.transcribe(np.zeros(RATE // 2, dtype=np.float32))
+            self.recheck_engine = engine
+        return self.recheck_engine
+
+    async def recheck(self, m: dict, audio: np.ndarray) -> dict:
+        out = {"t": "recheck_result", "rid": m.get("rid"), "engine": "mlx-whisper"}
+
+        def read():
+            return self.warm_recheck().transcribe(audio)
+
+        try:
+            text, lang = await asyncio.get_running_loop().run_in_executor(self.recheck_pool, read)
+            return {**out, "ok": True, "text": text, "lang": lang,
+                    "audioMs": int(len(audio) / RATE * 1000)}
+        except Exception as e:
+            log(f"recheck failed: {type(e).__name__}")
+            return {**out, "ok": False, "error": "recheck unavailable"}
 
     async def verify(self, audio: np.ndarray, device: str | None):
         if not self.verifier:
@@ -402,6 +471,30 @@ class Server:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.pool, fin, audio)
 
+    async def split(self, audio: np.ndarray, cuts: list[int], device: str | None) -> list[dict] | None:
+        """
+        A final with two speakers in it, cut where the speaker changes (voiceprint.split_points):
+        each part read and checked on its own audio, [{text, lang, startMs, audioMs, speaker}].
+        None (one "mixed" final, as before) when a part reads as nothing or anything fails.
+        """
+        edges = [0, *cuts, len(audio)]
+        spans = list(zip(edges, edges[1:]))
+        try:
+            got = await asyncio.gather(*(self.decode_final(audio[a:b]) for a, b in spans),
+                                       *(self.verify(audio[a:b], device) for a, b in spans))
+        except Exception as e:
+            log(f"speaker split failed: {type(e).__name__}: {e}")
+            return None
+        reads, checks = got[:len(spans)], got[len(spans):]
+        if not all(r[0].strip() for r in reads):
+            return None
+        out = []
+        for (a, b), r, c in zip(spans, reads, checks):
+            c.pop("cuts", None)  # one split, never again inside a part
+            out.append({"text": r[0], "lang": r[1], "startMs": int(a / RATE * 1000),
+                        "audioMs": int((b - a) / RATE * 1000), "speaker": c})
+        return out
+
     async def handler(self, ws, via: str = "tailnet", limits: dict | None = None):
         """
         One page. `limits` (the peer listener: another account's v2 ticket, `lim`):
@@ -422,6 +515,8 @@ class Server:
                 await ws.close(4408, "session over")
 
             session_end = asyncio.create_task(end_session())
+        ring = AudioRingBuffer()
+        recheck_task = None
         cur: Utterance | None = None
         #: This socket's device (hello): whose print its finals are scored against.
         conn: dict = {"device": None, "thread": None, "filter": False}
@@ -531,6 +626,13 @@ class Server:
             spk = None if isinstance(res[1], BaseException) else res[1]
             if isinstance(res[1], BaseException):
                 log(f"speaker check failed: {type(res[1]).__name__}: {res[1]}")
+            # Two speakers in it (owner, 2026-11-13): one line per speaker, each with its own
+            # tag and proof (docs/local-stt.md, "Two speakers in one final"). Not after "Linky":
+            # the cuts are in the whole audio, the text only after it.
+            cuts = spk.pop("cuts", None) if isinstance(spk, dict) and not enrol else None
+            parts = await self.split(audio, cuts, conn["device"]) if cuts and not u.text_from else None
+            if parts:
+                text = join_spans([p["text"] for p in parts])
             ms = int((time.perf_counter() - t0) * 1000)
             msg = {
                 "t": "final",
@@ -560,6 +662,14 @@ class Server:
                 if self.attestor:
                     # Signed for the hub: only a tag that verifies, over this text, is kept on a line.
                     msg["speakerProof"] = self.attestor.sign(spk, text, uid=u.uid, thread=conn.get("thread"))
+                if parts:
+                    # Each part's proof over its own words, under its own uid (the hub burns each).
+                    for i, p in enumerate(parts):
+                        if self.attestor:
+                            uid = f"{u.uid[:56]}-p{i}" if u.uid else None
+                            p["speakerProof"] = self.attestor.sign(p["speaker"], p["text"], uid=uid,
+                                                                   thread=conn.get("thread"))
+                    msg["parts"] = parts
                 d = spk["decision"]
                 self.counts[d] = self.counts.get(d, 0) + 1
                 # The filter off: what it would have stopped (a count on his device, and a real
@@ -572,6 +682,8 @@ class Server:
                 why = f" {spk['reason']}" if spk.get("reason") else ""
                 c = self.counts
                 tag = f", spk {d} {sc}{why} (me {c['me']} other {c['other']} unknown {c['unknown']})"
+                if parts:
+                    tag += ", split " + "+".join(p["speaker"]["decision"] for p in parts)
                 if would:
                     tag += f", would filter ({self.would_filter})"
             await send(msg)
@@ -593,7 +705,11 @@ class Server:
                     if tag == 1:
                         if cur.n >= max_samples:
                             continue
-                        x = pcm(body)
+                        if len(body) % 2:
+                            continue
+                        x = pcm(body)[:max_samples - cur.n]
+                        if not cur.enrol and not conn["filter"]:
+                            ring.append(x)
                         cur.chunks.append(x)
                         cur.n += len(x)
                         if cur.sw is not None:
@@ -606,7 +722,11 @@ class Server:
                             cur.last_partial = cur.n
                             asyncio.create_task(partial(cur))
                     elif tag == 2:
-                        cur.pre = pcm(body)
+                        if len(body) % 2 or cur.pre is not None:
+                            continue
+                        cur.pre = pcm(body)[:max(0, max_samples - cur.n)]
+                        if not cur.enrol and not conn["filter"]:
+                            ring.prepend_current(cur.pre, cur.n)
                         cur.roll = Rolling()  # the samples moved: settle again from the start
                         if cur.sw is not None:
                             cur.sw.prepend(cur.pre)  # the picks made while he spoke stand
@@ -625,6 +745,8 @@ class Server:
                     cur.sw = self.tracker()
                     e = m.get("enrol")
                     cur.enrol = e if isinstance(e, str) and 0 < len(e) <= 64 else None
+                    if cur.enrol:
+                        ring.clear()
                     q = m.get("uid")
                     cur.uid = q if isinstance(q, str) and re.fullmatch(r"[A-Za-z0-9_-]{16,64}", q) else None
                 elif t == "end" and cur is not None and cur.id == uid and not cur.done:
@@ -645,6 +767,7 @@ class Server:
                 elif t == "filter":
                     # The page says on or off (docs/local-stt.md, "Only my voice"); no message, no filter.
                     conn["filter"] = m.get("on") is True and self.verifier is not None
+                    ring.clear()
                     log(f"voice filter {'on' if conn['filter'] else 'off'} ({conn['device']})")
                     await send({"t": "filter", "on": conn["filter"]})
                 elif t in ("enrol", "voiceprint") and guest:
@@ -655,11 +778,35 @@ class Server:
                 elif t == "cancel" and cur is not None and cur.id == uid:
                     cur.done = True
                     cur = None
+                elif t == "recheck":
+                    out = {"t": "recheck_result", "rid": m.get("rid"), "engine": "mlx-whisper", "ok": False}
+                    seconds = m.get("seconds", 15)
+                    if m.get("engine", "mlx-whisper") != "mlx-whisper":
+                        await send({**out, "error": "unsupported engine"})
+                    elif (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
+                          or not math.isfinite(seconds) or not 0 < seconds <= 60):
+                        await send({**out, "error": "seconds must be within (0, 60]"})
+                    elif recheck_task is not None and not recheck_task.done():
+                        await send({**out, "error": "recheck busy"})
+                    elif conn["filter"] or (cur is not None and cur.enrol):
+                        await send({**out, "error": "recheck unavailable while filtering or enrolling"})
+                    elif not ring.size:
+                        await send({**out, "error": "no audio"})
+                    else:
+                        audio = ring.tail(max(1, int(seconds * RATE)))
+
+                        async def recheck_reply(request, snapshot):
+                            await send(await self.recheck(request, snapshot))
+
+                        recheck_task = asyncio.create_task(recheck_reply(m, audio))
                 elif t == "ping":
                     await send({"t": "pong"})
         except ConnectionClosed:
             pass  # the page went away (reload, backgrounded): no close frame from iOS
         finally:
+            ring.clear()
+            if recheck_task:
+                recheck_task.cancel()
             if session_end:
                 session_end.cancel()
             log(f"page detached ({peer}, {via})")
@@ -964,6 +1111,11 @@ async def main() -> None:
             except Exception as e:
                 log(f"speaker tags unsigned: {type(e).__name__}: {e}")
     srv = Server(engine, verifier=verifier, vp_tickets=vp_tickets, attestor=attestor)
+    if a.engine != "fake":
+        try:
+            await asyncio.get_running_loop().run_in_executor(srv.recheck_pool, srv.warm_recheck)
+        except Exception as e:
+            log(f"recheck warmup unavailable: {type(e).__name__}")
     srv.partial_step_s, srv.partial_min_s = max(0.032, a.partial_step), max(0.0, a.partial_min)
     log(f"partials every {srv.partial_step_s:.2f} s of audio, from {srv.partial_min_s:.2f} s")
 

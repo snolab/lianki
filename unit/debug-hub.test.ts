@@ -479,6 +479,22 @@ describe("DebugHub chat", () => {
     expect(h.messages.find((m) => m.text === "approve?")).not.toHaveProperty("loud");
   });
 
+  it("say cut: the hub forwards supersede / interject on the line, and refuses anything else", async () => {
+    const { page, controller, msg, pairOf } = setup();
+    const p = page();
+    const c = controller("main lane");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    await msg(c, { type: "say", text: "moot now", cut: "supersede" });
+    await msg(c, { type: "say", text: "urgent", cut: "interject" });
+    await msg(c, { type: "say", text: "bad", cut: true });
+    const lines = chats(p).slice(-2);
+    expect(lines.map((m) => [m.text, (m as { cut?: string }).cut])).toEqual([
+      ["moot now", "supersede"],
+      ["urgent", "interject"],
+    ]);
+    expect(chats(p).some((m) => m.text === "bad")).toBe(false);
+  });
+
   it("an unapproved controller cannot say", async () => {
     const { page, controller, msg } = setup();
     const p = page();

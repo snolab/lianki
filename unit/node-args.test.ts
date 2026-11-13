@@ -6,6 +6,11 @@ describe("eval.ts say --quiet", () => {
     expect(sayVolume({ quiet: true })).toEqual({ quiet: true });
     expect(sayVolume({ quiet: false })).toEqual({});
   });
+  it("--supersede / --interject are sent as cut; both at once is an error", () => {
+    expect(sayVolume({ quiet: false, supersede: true })).toEqual({ cut: "supersede" });
+    expect(sayVolume({ quiet: true, interject: true })).toEqual({ quiet: true, cut: "interject" });
+    expect(sayVolume({ quiet: false, supersede: true, interject: true })).toHaveProperty("error");
+  });
   it("--loud is a deprecated no-op: eval.ts only prints a note", () => {
     expect(LOUD_DEPRECATED).toContain("deprecated");
   });

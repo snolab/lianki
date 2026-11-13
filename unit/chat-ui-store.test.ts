@@ -74,6 +74,7 @@ describe("migrateChatUi", () => {
       draft: "hello there",
       caret: 5,
       pureDictation: "hello there",
+      interim: { text: "and then I", page: 1_700_000_000_000.5 },
       panel: "tree",
       tree: {
         focus: ["Plan", "Lane B"],
@@ -88,6 +89,18 @@ describe("migrateChatUi", () => {
       attached: { selection: "a quoted line", path: "/words", title: "Words" },
     };
     expect(migrateChatUi(s, CHAT_UI_VERSION)).toEqual(s);
+  });
+
+  it("keeps half a spoken line only when it is words with its page load", () => {
+    expect(migrateChatUi({}, 1).interim).toBeNull();
+    expect(migrateChatUi({ interim: { text: "  ", page: 1 } }, 1).interim).toBeNull();
+    expect(migrateChatUi({ interim: { text: "hi" } }, 1).interim).toBeNull();
+    expect(migrateChatUi({ interim: "hi" }, 1).interim).toBeNull();
+    expect(migrateChatUi({ interim: { text: "x".repeat(20_001), page: 1 } }, 1).interim).toBeNull();
+    expect(migrateChatUi({ interim: { text: "我说到", page: 2 } }, 1).interim).toEqual({
+      text: "我说到",
+      page: 2,
+    });
   });
 
   it("keeps an attached selection only when it is well formed and bounded", () => {

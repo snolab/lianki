@@ -487,6 +487,7 @@ The voiceprint adds these (next section):
 | server | `{"t":"enrol"\|"voiceprint","rid","ok"[,"error"],…}`                                              | the answer to a request                                                  |
 | server | `final` + `"filtered":{reason,score}`, text empty                                                 | the filter stopped it: nothing decoded, no proof                         |
 | server | `final` + `"wouldFilter":reason`                                                                  | the filter is not on; it would have stopped this one                     |
+| server | `final` + `"parts":[{text,lang,startMs,audioMs,speaker,speakerProof},…]`                          | two speakers in it: one line per part ("Split at the speaker change")    |
 
 ## Voiceprint: "only my voice"
 
@@ -733,6 +734,46 @@ devices' prints (`device` in the result says whose). The decision
 | ≥ 3 s               | 0.30            | 0.20          | unknown (`between`)   |
 | SNR < 10 dB (any)   | –               | –             | **unknown** (`noise`) |
 | nothing enrolled    | –               | –             | unknown (`no-print`)  |
+
+**Two speakers in one final.** A whole-final score averages everyone in it:
+half his wife, half him passed as `me` (owner, 2026-11-13). So a `me` final
+long enough for two windows is scored again in 2.5 s windows every 1.25 s
+(`WINDOW_S`, `WINDOW_HOP_S`), each decided alone by the table above; a
+window that is clearly `other` makes the final **unknown** (`mixed`). Windows
+too short or too noisy to decide are skipped. The final's `score` stays the
+whole-final one (the filter below reads it, unchanged); the window scores
+ride along as `windows` in the server's final, never in the signed tag.
+
+**Split at the speaker change** (owner, 2026-11-13 23:1x JST: two lines, each
+with its own tag, not one line marked unknown). The windows that decided form
+runs of one speaker; each cut is halfway through the overlap of the last
+window of one run and the first of the next (`voiceprint.split_points`), and
+only when every part has 1.5 s of speech (`MIN_SPEECH_S`); else the final
+stays one `mixed` line. `server.py` then reads each part on its own audio
+(`decode_final`) and checks each part on its own audio (`verify`), so his half
+gets his ✓ by itself, and sends one final with `parts`:
+
+```
+final {text: the parts joined, speaker: {unknown, mixed}, speakerProof: over that text,   ← a page without parts: one line, as before
+       parts: [{text, lang, startMs, audioMs, speaker, speakerProof}, …]}                ← each proof over that part's own text, uid "<uid>-p<i>"
+```
+
+The page (`local-stt.ts` `partsOf`, `mic.ts` `takeRuns`) uses the parts only
+when the text it kept is the Mac's as sent (no cloud fallback, no cleanup):
+before each part the draft so far goes out as its own line (`onBreak`,
+DebugChat `voiceBreak`; a draft with typed text in it is left alone), then the
+part's tag and proof are noted and its text lands. So the hub sees one line
+per speaker, each verified by its own proof (lib/speaker-proof.ts). Not after
+"Linky" (the cuts are in the whole audio, the text only after it): one `mixed`
+line there. Costs one more decode of the final's audio, only on these finals.
+
+**Merging keeps the speakers apart.** A split part never amends the line
+before it (`continues` is not asked for it). An agent's passage merge
+(`eval.ts edit --merge`, `passageSpeakers` in voice-merge.ts, the hub's
+`mergeRun`) refuses a run with any `other` line, and a run mixing a line
+verified as his with one that is not, so his ✓ never covers someone else's
+words. The live merge (`stt.merge`, `mergeVerdict`) already refuses `other`
+and gives a merged line the weakest tag of its parts.
 
 `me` is #394's threshold for 1 % false accepts over 109 other voices (real
 people, TTS in nine languages, the shop PA, voices in the background) at
@@ -1419,7 +1460,7 @@ under "Lianki's speech servers for everyone", "Routes that come and go":
    the same session with its `resume` token (`lianki-stt2-resume`), then
    restarts ICE; a resume refused, or none back within `RESUME_GRACE_MS`
    (20 s): the route is lost. devLog `stt-rtc {state: restart | restarted |
-   resume | resumed | signal-dropped | worker-away | worker-back | lobby}`.
+resume | resumed | signal-dropped | worker-away | worker-back | lobby}`.
 3. **Workers going down and coming back**: stt-peer pings every 15 s and
    keeps its sessions through registry blips; the registry skips a silent
    worker and tells pages `worker-away` / `worker-back` (back while not
@@ -1543,3 +1584,27 @@ everyone" above), not aiortc.
 - `server.py` logs each connection, each final (length and decode time,
   never the text) and every refused handshake (a wrong Origin) through the
   `websockets` logger.
+
+## On-demand Whisper recheck
+
+Each WebSocket keeps up to 60 seconds of its received 16 kHz PCM in a fixed
+float32 RAM ring (3.84 MB). No audio file or transcript log is created. The
+ring survives utterance end/cancel, evicts its oldest samples as frames arrive,
+and is cleared on disconnect. This is 60 seconds of received audio, excluding
+unstreamed gaps, rather than 60 seconds of wall time. VAD pre-pad is inserted
+before the current utterance's frames. Connections never share cached audio.
+Enrolment audio and audio captured with the voiceprint filter enabled are
+excluded; changing the filter or beginning enrolment clears the ring.
+
+Send `{"t":"recheck","rid":"request-id","engine":"mlx-whisper","seconds":15}`
+to re-read the latest received audio (default 15 seconds; greater than zero,
+at most 60). `rid` correlates the response; it does not select an utterance.
+The response is `{"t":"recheck_result","rid":"request-id","engine":"mlx-whisper",
+"ok":true,"text":"…","lang":"zh","audioMs":15000}` or `ok:false` with an
+`error`. Recheck is unavailable while filtering or enrolling. One recheck per
+socket may run at a time; further requests receive `recheck busy`. Whisper
+uses a dedicated serial worker, leaving audio reception and ping responsive.
+The server prewarms it on startup, except with `--engine fake`; warmup failure
+leaves SenseVoice available and a later recheck retries loading Whisper.
+Tests: `unit/local-stt-recheck.test.ts` runs `scripts/local-stt/test_recheck.py`
+with stub engines, without downloading or running a model.

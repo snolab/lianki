@@ -22,9 +22,12 @@ export function OwnerBoots({
   liHub = false,
   lexicon,
   cloudVoices,
+  talkOver = false,
   box = null,
   autoUpdate = false,
 }: {
+  /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic. */
+  talkOver?: boolean;
   /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
   autoUpdate?: boolean;
   /** Provider voices on (flag voice.cloud-voices + dev) and the language → voice map. */
@@ -63,6 +66,7 @@ export function OwnerBoots({
         liHub={liHub}
         lexicon={lexicon}
         cloudVoices={cloudVoices}
+        talkOver={talkOver}
         box={box}
       />
     </>

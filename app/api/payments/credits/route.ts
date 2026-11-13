@@ -10,6 +10,7 @@ import {
   testLedger,
   type D1WithBatch,
 } from "@/lib/payments/credits-store";
+import { grantAgeBonus } from "@/lib/payments/age-bonus-store";
 import { pendingHolds, sweepStaleAi } from "@/lib/payments/ai-credits";
 import { HOLD_STALE_MS } from "@/lib/payments/metered";
 import { readFlags } from "@/lib/flags-store";
@@ -35,6 +36,13 @@ export async function GET() {
       session.user.id,
     );
   } catch {}
+  // The account-age bonus, granted on the read that would show it (no timer):
+  // once per tier, so a returning user sees it the first time they look.
+  try {
+    await grantAgeBonus(d1 as unknown as D1WithBatch, session.user.id);
+  } catch (e) {
+    console.error("[age-bonus] grant:", e);
+  }
   const flags = await readFlags();
   const providers = providersFor(session.user.email, process.env, flags).map((p) =>
     publicProvider(p, process.env, flags),

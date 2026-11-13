@@ -205,6 +205,8 @@ type EtaText = Pick<
   | "etaReached"
   | "etaDone"
   | "etaOpen"
+  | "etaHide"
+  | "etaShow"
   | "etaList"
   | "etaWaitingYou"
   | "etaReminder"
@@ -256,12 +258,48 @@ export function summaryText(tasks: readonly EtaTask[], now: number, s: EtaText) 
     .join(" · ");
 }
 
+/**
+ * The ▸/▾ that hides or shows the bar (owner, 2026-11-13: hide it so the chat
+ * stays open). Its state is drawn: ▾ with the bar shown, ▸ and the clock alone
+ * with it hidden, a tap away from coming back.
+ */
+function EtaFold({
+  folded,
+  onFold,
+  strings,
+}: {
+  folded: boolean;
+  onFold: (folded: boolean) => void;
+  strings: EtaText;
+}) {
+  const label = folded ? strings.etaShow : strings.etaHide;
+  return (
+    <button
+      type="button"
+      data-testid="debug-chat-eta-fold"
+      data-folded={folded || undefined}
+      aria-expanded={!folded}
+      aria-label={label}
+      title={label}
+      onMouseDown={keepFocus}
+      onClick={() => onFold(!folded)}
+      className="pointer-events-auto inline-flex shrink-0 items-center gap-1 rounded-full border-0 bg-transparent px-1.5 py-0.5 fs-10"
+      style={{ color: both("text") }}
+    >
+      {folded && <EtaClockIcon />}
+      <Disclosure open={!folded} size={10} />
+    </button>
+  );
+}
+
 export function EtaBar({
   tasks,
   now,
   strings,
   onOpen,
   glass = false,
+  folded = false,
+  onFold,
 }: {
   tasks: readonly EtaTask[];
   now: number;
@@ -269,9 +307,49 @@ export function EtaBar({
   onOpen: () => void;
   /** Part of the chat's glass strip (DebugChat): no track, no gap under it. */
   glass?: boolean;
+  /** Hidden by the viewer: only the ▸ to show it again (EtaFold). */
+  folded?: boolean;
+  /** Given: the bar carries its own hide/show toggle. */
+  onFold?: (folded: boolean) => void;
 }) {
   const p = summaryParts(tasks, now, strings);
   if (!p) return null;
+  const line = (
+    <EtaLine p={p} tasks={tasks} now={now} strings={strings} onOpen={onOpen} glass={glass} />
+  );
+  if (!onFold) return line;
+  if (folded)
+    return (
+      <div className={`flex ${glass ? "" : "mb-1"}`}>
+        <EtaFold folded onFold={onFold} strings={strings} />
+      </div>
+    );
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      <div className="min-w-0 flex-1">{line}</div>
+      <div className={glass ? "" : "mb-1"}>
+        <EtaFold folded={false} onFold={onFold} strings={strings} />
+      </div>
+    </div>
+  );
+}
+
+/** The summary line itself: a tap opens the full-screen timeline. */
+function EtaLine({
+  p,
+  tasks,
+  now,
+  strings,
+  onOpen,
+  glass,
+}: {
+  p: NonNullable<ReturnType<typeof summaryParts>>;
+  tasks: readonly EtaTask[];
+  now: number;
+  strings: EtaText;
+  onOpen: () => void;
+  glass: boolean;
+}) {
   const { sum } = p;
   const past = sum.leftMs !== null && sum.leftMs <= 0;
   const text = summaryText(tasks, now, strings);

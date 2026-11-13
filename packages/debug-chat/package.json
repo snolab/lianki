@@ -47,6 +47,7 @@
     "./wake": "./src/wake.ts",
     "./wake-kws": "./src/wake-kws.ts",
     "./voice-out": "./src/voice-out.ts",
+    "./voice-heard": "./src/voice-heard.ts",
     "./echo": "./src/echo.ts",
     "./storage-keys": "./src/storage-keys.ts",
     "./stt-hint": "./src/stt-hint.ts",
