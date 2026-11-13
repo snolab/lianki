@@ -85,7 +85,7 @@ import {
   STRIP_INSET_PX,
   stripTopRadius,
 } from "./bar-geometry";
-import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, voiceDevice } from "./MicButton";
+import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, setWakeWord, voiceDevice, wakeWordOn } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
 import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
@@ -969,6 +969,8 @@ export function DebugChat({
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
   const [aec, setAecState] = useState(aecOn);
+  /** The wake word (lk:agent-wake): the menu's switch; off keeps the mic active. */
+  const [wakeWord, setWakeWordState] = useState(wakeWordOn);
   // A selection started on a chat line stays in the chat (select-fence.ts).
   useEffect(() => installSelectFence(), []);
   // The same switch in /words' Settings sheet: follow it.
@@ -3575,6 +3577,24 @@ export function DebugChat({
           </button>
         ))}
       </div>
+      {/* The wake word (MicButton setWakeWord, lk:agent-wake): off = the mic never goes passive. */}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-wake"
+        aria-checked={wakeWord}
+        title={ui.wakeWordHint}
+        onClick={() => {
+          setWakeWord(!wakeWord);
+          setWakeWordState(!wakeWord);
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {wakeWord ? "◉" : "○"}
+        </span>
+        {ui.wakeWord}
+      </button>
       {/* Dev (DevMenuGroup.tsx): internal diagnostics, on the owner's pages only, collapsed. */}
       <DevMenuGroup owner={owner} label={t.devGroup}>
       {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}

@@ -147,6 +147,11 @@ export type MicDeps = {
    * The on-device "Linky" spotter (wake-kws.ts createKws), made on first use:
    * the first time the mic goes passive. Without it the mic never goes passive.
    */
+  /**
+   * The wake word allowed right now (the menu's "Wake word" switch, lk:agent-wake):
+   * false keeps the mic active — nothing moves it to passive, not even rejects.
+   */
+  wakeAllowed?: () => boolean;
   kws?: (onState: (s: KwsState) => void) => {
     load(): Promise<void>;
     spot(audio: Float32Array): Promise<SpotResult>;
@@ -316,6 +321,8 @@ export function createMicSession(
   const command = (c: WakeCommand, reason: WakeReason = "agent") => {
     // Pinned (a voice mode is on, mic-taps.ts): it stays active.
     if (taps.pinned() && c !== "active") return;
+    // The wake word switched off in the menu: the mic stays active (owner, 2026-11-14).
+    if (c !== "active" && deps.wakeAllowed && !deps.wakeAllowed()) return;
     if (c === "ignored") return void wake.reject();
     if (c === "passive" && !deps.kws) return;
     wake.set(c, reason);

@@ -462,12 +462,16 @@ export const voiceDevice = () => {
   return deviceSlug(typeof navigator === "undefined" ? "" : navigator.userAgent, o);
 };
 
-/** The wake word is off on this device (localStorage lk:agent-wake = "0"; docs/wake-word.md). */
+/**
+ * The wake word is off on this device unless switched on (localStorage lk:agent-wake = "1";
+ * docs/wake-word.md). Off by default since 2026-11-14 (owner: "给我默认关闭这个模式"): the
+ * mic kept going passive after lines that were not for the agent.
+ */
 const wakeOff = () => {
   try {
-    return localStorage.getItem("lk:agent-wake") === "0";
+    return localStorage.getItem("lk:agent-wake") !== "1";
   } catch {
-    return false;
+    return true;
   }
 };
 
@@ -549,8 +553,9 @@ function session(): MicSession {
     speaker: noteSpeaker,
     filtered: (r) => void v.log({ ev: "voice-filtered", mode: "passive", n: noteFiltered("filtered", r).n, ...r }),
     // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
-    // localStorage lk:agent-wake = "0" turns the wake word off (never passive).
+    // Only with the wake word switched on (lk:agent-wake = "1"); off by default, never passive.
     kws: wakeOff() ? undefined : (onState) => createKws({ log: (ev) => v.log(ev), onState }),
+    wakeAllowed: () => !wakeOff(),
     upload: async (wav, { seq, durationMs, partial, local, onEcho, onSignals }, cfg) => {
       const at = Date.now();
       const sink = partial ? undefined : cfg.clipSink;
@@ -694,6 +699,16 @@ function session(): MicSession {
 
 /** The page's mic session (the voiceprint card routes enrolment sentences through it). */
 export const pageMic = session;
+
+/** The wake word on this device (the menu's switch): on = lk:agent-wake "1"; off (the default) never goes passive, and a passive mic goes active at once. */
+export const wakeWordOn = () => !wakeOff();
+export function setWakeWord(on: boolean) {
+  try {
+    if (on) localStorage.setItem("lk:agent-wake", "1");
+    else localStorage.removeItem("lk:agent-wake");
+  } catch {}
+  if (!on) session().wake("active", "tap");
+}
 
 /** Phosphor "microphone" (MIT, (c) 2023 Phosphor Icons), regular and fill. */
 const MIC_PATH = {
