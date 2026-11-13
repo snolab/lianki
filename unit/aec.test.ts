@@ -11,6 +11,8 @@ import {
   noteOpened,
   onOpened,
   openedAec,
+  setTalkOver,
+  talkOver,
 } from "@lianki/debug-chat/aec";
 import { MIC_SESSION_KEY } from "@lianki/debug-chat/mic-session";
 import { captureHeld, createPageAudio, pageAudio } from "@lianki/debug-chat/page-audio";
@@ -212,5 +214,26 @@ describe("page audio: the half-duplex hold for word read-aloud", () => {
     expect(captureHeld(false, true, false)).toBe(true);
     expect(captureHeld(false, false, false)).toBe(false);
     expect(captureHeld(true, false, false)).toBe(true);
+  });
+});
+
+describe("aec: the talk-over flag (voice.talk-over)", () => {
+  // Reached through voice.ts's default deps only when aec is off, which
+  // depended on what earlier files left behind: tested on its own.
+  it("is off until set, and set on globalThis so every bundle agrees", () => {
+    const g = globalThis as Record<string, unknown>;
+    const had = g.__lkTalkOver;
+    try {
+      delete g.__lkTalkOver;
+      expect(talkOver()).toBe(false);
+      setTalkOver(true);
+      expect(talkOver()).toBe(true);
+      expect(g.__lkTalkOver).toBe(true);
+      setTalkOver(false);
+      expect(talkOver()).toBe(false);
+    } finally {
+      if (had === undefined) delete g.__lkTalkOver;
+      else g.__lkTalkOver = had;
+    }
   });
 });
