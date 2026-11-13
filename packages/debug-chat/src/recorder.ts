@@ -75,14 +75,15 @@ export function createRecorder(deps: RecorderDeps) {
   const queue: Item[] = [];
   let bytes = 0;
   let busy = false;
+  let inFlight: Item | undefined;
   let waiting = false;
   /** The route's last answer to "on?" and when it came. */
   let known: { on: boolean; at: number } | null = null;
   let dropped = 0;
   let sent = 0;
 
-  const shift = () => {
-    const it = queue.shift();
+  const shift = (index = 0) => {
+    const [it] = queue.splice(index, 1);
     if (it) bytes -= it.bytes;
   };
   const clear = () => {
@@ -131,6 +132,7 @@ export function createRecorder(deps: RecorderDeps) {
           return;
         }
         const it = queue[0]!;
+        inFlight = it;
         let status = 0;
         if (ok) {
           try {
@@ -175,6 +177,7 @@ export function createRecorder(deps: RecorderDeps) {
         return;
       }
     } finally {
+      inFlight = undefined;
       busy = false;
     }
   }
@@ -200,7 +203,7 @@ export function createRecorder(deps: RecorderDeps) {
       bytes += c.wav.length;
       while (queue.length > L.maxItems || (bytes > L.maxBytes && queue.length > 1)) {
         dropped++;
-        shift();
+        shift(queue[0] === inFlight ? 1 : 0);
       }
       void pump();
     },

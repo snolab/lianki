@@ -83,6 +83,42 @@ function harness(r: ReturnType<typeof route>, now = { t: 1_000 }) {
 }
 
 describe("the recorder", () => {
+  for (const status of [200, 500])
+    it(`preserves the in-flight clip during overflow (${status})`, async () => {
+      let finish!: (r: Response) => void;
+      const ids: string[] = [];
+      let n = 0;
+      const timers: (() => void)[] = [];
+      const rec = createRecorder({
+        id: () => String(++n),
+        setTimer: (f) => timers.push(f),
+        fetch: (async (_url, init) => {
+          if (init?.method !== "POST") return Response.json({ on: true });
+          ids.push(JSON.parse(String(init.body)).id);
+          if (ids.length === 1)
+            return new Promise<Response>((resolve) => {
+              finish = resolve;
+            });
+          return Response.json({});
+        }) as typeof fetch,
+      });
+      rec.add(clip());
+      await settle();
+      for (let i = 0; i < 40; i++) rec.add(clip());
+      finish(new Response("{}", { status }));
+      await settle();
+      if (status === 500) {
+        timers.shift()!();
+        await settle();
+      }
+      expect(ids).toEqual(
+        status === 200
+          ? ["1", ...Array.from({ length: 39 }, (_, i) => String(i + 3))]
+          : ["1", "1", ...Array.from({ length: 39 }, (_, i) => String(i + 3))],
+      );
+      expect(rec.stats()).toMatchObject({ queued: 0, bytes: 0, sent: 40, dropped: 1 });
+    });
+
   it("asks once whether it is on, then posts each clip in order", async () => {
     const r = route();
     const h = harness(r);
