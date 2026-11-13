@@ -74,6 +74,17 @@ one batch: the log row (reading the old value in the same transaction) and the
 upsert or delete. D1 only — there is no Mongo copy (MongoDB is the frozen
 rollback store).
 
+## Removed keys
+
+A key that leaves the registry needs no migration: a stored `config_values`
+row under it is ignored (unknown keys are skipped) and its `config_log` rows
+stay as history. Note the removal in `lib/config.ts` where the key was, and
+here:
+
+| key                                                                                               | removed    | why                                                                       |
+| ------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------- |
+| `credits.ageBonus.day1Usd`, `credits.ageBonus.day7Usd`, `credits.ageBonus.day1Hours`, `credits.ageBonus.day7Hours` | 2026-11-14 | the account-age bonus was replaced by the login streak ([payments.md](payments.md), "Login-streak bonus") |
+
 ## Migrated so far (first batch, 2026-11-10)
 
 | Key                     | Was                                        | Audience |

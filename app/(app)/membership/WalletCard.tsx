@@ -8,7 +8,6 @@ import { Icon } from "@/app/components/icons";
 import { longDate } from "@/lib/dates";
 import { PASSES, type PassId } from "@/lib/payments/passes";
 import type { LedgerEntry } from "@/lib/payments/credits-store";
-import { ageBonusTier } from "@/lib/payments/age-bonus";
 import { streakDayOf, streakNoteOf } from "@/lib/payments/login-streak";
 import type { StreakView } from "@/lib/payments/login-streak-store";
 import { useCredits, yen } from "./use-credits";
@@ -171,9 +170,10 @@ export function WalletCard({
 
   const canTopup = providers.length > 0 && !busy && (!siteKey || Boolean(turnstileToken));
   const reasonLabel = (r: LedgerEntry["reason"]) => s.reasons[r]?.value ?? r;
-  // The account-age bonus is a `gift` row; its refId names the tier.
+  // The retired account-age bonus (2026-11-14; docs/payments.md, "Login-streak
+  // bonus") left `gift` rows whose refId names the tier; they keep their label.
   const ageLabel = (refId: string) => {
-    const tier = ageBonusTier(refId);
+    const tier = /^agebonus:(d1|d7):/.exec(refId)?.[1];
     return tier === "d1" ? s.ageBonusDay1.value : tier === "d7" ? s.ageBonusDay7.value : null;
   };
   // A login-streak grant is a `gift` row too; its note holds the streak length.

@@ -10,7 +10,6 @@ import {
   testLedger,
   type D1WithBatch,
 } from "@/lib/payments/credits-store";
-import { grantAgeBonus } from "@/lib/payments/age-bonus-store";
 import { loginStreakView, type StreakView } from "@/lib/payments/login-streak-store";
 import { homeDay, requestTimeZone } from "@/lib/study-days";
 import { pendingHolds, sweepStaleAi } from "@/lib/payments/ai-credits";
@@ -38,13 +37,6 @@ export async function GET() {
       session.user.id,
     );
   } catch {}
-  // The account-age bonus, granted on the read that would show it (no timer):
-  // once per tier, so a returning user sees it the first time they look.
-  try {
-    await grantAgeBonus(d1 as unknown as D1WithBatch, session.user.id);
-  } catch (e) {
-    console.error("[age-bonus] grant:", e);
-  }
   const flags = await readFlags();
   // The login streak (docs/payments.md, "Login-streak bonus"): read only —
   // a day counts on a real learning action, never on a wallet read.

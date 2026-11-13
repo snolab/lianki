@@ -28,7 +28,6 @@ import listUi from "@/app/(app)/list/list-ui.content";
 import wordsStatus from "@/app/(app)/words/words-status.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import creditsUsage from "@/app/(app)/membership/credits/credits-usage.content";
-import devAgeBonus from "@/app/(app)/dev/credits/age-bonus.content";
 import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
 import devTemplates from "@/app/(app)/dev/templates/templates.content";
 import devMails from "@/app/(app)/dev/mails/mails.content";
@@ -168,7 +167,6 @@ describe.each([
   ["dev-mails", devMails],
   ["dev-users", devUsers],
   ["dev-pregrant", devPregrant],
-  ["dev-age-bonus", devAgeBonus],
   ["text-size", textSize],
   ["box-sign-in", boxSignIn],
   ["wallet-card", walletCard],
