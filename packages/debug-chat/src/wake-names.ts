@@ -18,24 +18,52 @@
  * hot-swapped widget and the mic session share it). Tested in
  * unit/wake-names.test.ts.
  */
-import { LANES, LANE_IDS } from "./voices";
+import { LANE_NAMES, type RouteLane } from "./lane-route";
+import { LANES, LANE_IDS, type LaneId } from "./voices";
 import { type KeywordEntry, LINKY } from "./wake";
-import { nameTokens, plainToken } from "./wake-tokens";
+import { nameTokens, plainToken, toneVariants } from "./wake-tokens";
 
 /** "agent": a name that addresses that agent (its line is prefixed); "owner": his own, wakes only. */
 export type WakeNameKind = "agent" | "owner";
-export type WakeParticipant = { name: string; kind: WakeNameKind };
+export type WakeParticipant = {
+  /** The name as shown: the label's, and the address its wake puts before the line. */
+  name: string;
+  kind: WakeNameKind;
+  /** Other ways the same one is said (a lane's aliases and how STT hears it): one wake word with them. */
+  spellings?: readonly string[];
+};
+
+/** The route lane each chat lane answers as (addressed.ts ROUTE_TO_LANE, inverted). */
+const LANE_ROUTE: Partial<Record<LaneId, RouteLane>> = { codex: "codex", agy: "agy", claude: "chat" };
+
+/**
+ * Every way a lane's name is said: its aliases, and lane-route's names and
+ * the Chinese spellings STT makes of them (coco: 可可, 扣扣; 杰咪: 杰米, 解密;
+ * 小克: 小客, 小课). He says the Latin names the Chinese way (coco as 可可),
+ * which the CMU tokens alone never match. Latin heard spellings (gemini,
+ * codecs…) are words of their own and stay out.
+ */
+export function laneSpellings(id: LaneId): string[] {
+  const route = LANE_ROUTE[id];
+  const r = route ? LANE_NAMES[route] : { exact: [], heard: [] };
+  const han = r.heard.filter((h) => /^\p{Script=Han}+$/u.test(h));
+  return [...new Set([...LANES[id].aliases, ...r.exact, ...han])].filter(
+    (n) => n !== LANES[id].name && !NOT_NAMES.has(n.toLowerCase()),
+  );
+}
 
 /** A lane alias that is a word, not a name: never a wake word ("main", "chat"). */
 export const NOT_NAMES: ReadonlySet<string> = new Set(["main", "chat"]);
 
 /**
- * Names are untuned: the spotter's own defaults (score 1.0, threshold 0.25),
- * stricter than LINKY's 1.5 / 0.15, so a short name ("coco") wakes less on
- * near-misses until it is measured on his voice.
+ * LINKY's tuned 1.5 / 0.15 (docs/wake-word.md, "Tuning on his voice"). The
+ * spotter's own defaults (1.0 / 0.25), used at first, were the setting that
+ * missed "Linky" on his phone, and the names on them hardly woke at all
+ * (owner, 2026-11-14: only 小克 woke). Checked for false wakes on his clips:
+ * docs/wake-word.md, "Names as wake words".
  */
-export const NAME_SCORE = 1;
-export const NAME_THRESHOLD = 0.25;
+export const NAME_SCORE = 1.5;
+export const NAME_THRESHOLD = 0.15;
 /** At or under this many tokens, a one-token difference is a clash ("coco" / "koko"). */
 export const SHORT_TOKENS = 5;
 
@@ -56,9 +84,10 @@ export function wakeParticipants(src: WakeNameSources): WakeParticipant[] {
     const n = (name ?? "").trim();
     if (n && !NOT_NAMES.has(n.toLowerCase())) out.push({ name: n, kind });
   };
+  // One participant per lane, its name first and every other way it is said with it.
   for (const id of LANE_IDS) {
-    add(LANES[id].name, "agent");
-    for (const a of LANES[id].aliases) add(a, "agent");
+    const name = LANES[id].name;
+    if (name) out.push({ name, kind: "agent", spellings: laneSpellings(id) });
   }
   add(src.mainName, "agent");
   for (const a of src.agents ?? []) add(a, "agent");
@@ -91,7 +120,13 @@ export const AGENT_LABEL = "agent:";
 export const OWNER_LABEL = "owner:";
 
 /** One name that made it into the wake words. */
-export type WakeName = WakeParticipant & { label: string; tokens: string[] };
+export type WakeName = WakeParticipant & {
+  label: string;
+  /** Its own spelling's tokens. */
+  tokens: string[];
+  /** Every token sequence it wakes on (spellings × tones). */
+  variants: string[][];
+};
 export type WakeKeywordSet = {
   /** What the spotter gets: LINKY, then one entry per name. */
   entries: KeywordEntry[];
@@ -104,10 +139,29 @@ export type WakeKeywordSet = {
   signature: string;
 };
 
+/** A name's token sequences: each spelling in each tone (wake-tokens.ts toneVariants), unique. */
+function variantsOf(p: WakeParticipant): { tokens: string[] | null; variants: string[][] } {
+  const tokens = nameTokens(p.name);
+  const seen = new Set<string>();
+  const variants: string[][] = [];
+  for (const sp of [p.name, ...(p.spellings ?? [])]) {
+    const t = sp === p.name ? tokens : nameTokens(sp);
+    if (!t) continue;
+    for (const v of toneVariants(t)) {
+      const k = v.join(" ");
+      if (!seen.has(k)) seen.add(k), variants.push(v);
+    }
+  }
+  return { tokens, variants };
+}
+
 /**
  * The wake words for these participants (earlier ones win a clash). The same
- * name twice (any case) is one entry; a name that sounds like a LINKY
- * pronunciation clashes with "Linky".
+ * name twice (any case) is one entry, and so is a name that is another's
+ * spelling (小可 is 小克's); a name that sounds like a LINKY pronunciation
+ * clashes with "Linky". A spelling that clashes is left out of its name's
+ * entry; a name left with none is a clash. Every token sequence is unique
+ * across entries (the spotter refuses the whole list otherwise).
  */
 export function buildWakeKeywords(people: readonly WakeParticipant[]): WakeKeywordSet {
   const names: WakeName[] = [];
@@ -118,19 +172,26 @@ export function buildWakeKeywords(people: readonly WakeParticipant[]): WakeKeywo
     const key = p.name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const tokens = nameTokens(p.name);
-    if (!tokens) {
+    for (const sp of p.spellings ?? []) seen.add(sp.toLowerCase());
+    const { tokens, variants } = variantsOf(p);
+    if (!variants.length) {
       skipped.push(p.name);
       continue;
     }
-    const linky = LINKY.matches.some((m) => clashes(m.tokens, tokens));
-    const other = linky ? undefined : names.find((n) => clashes(n.tokens, tokens));
-    if (linky || other) {
-      clash.push({ name: p.name, with: linky ? "Linky" : other!.name });
+    let first: string | undefined;
+    const kept = variants.filter((v) => {
+      const by = LINKY.matches.some((m) => clashes(m.tokens, v))
+        ? "Linky"
+        : names.find((n) => n.variants.some((x) => clashes(x, v)))?.name;
+      first ??= by;
+      return !by;
+    });
+    if (!kept.length) {
+      clash.push({ name: p.name, with: first! });
       continue;
     }
     const label = `${p.kind === "owner" ? OWNER_LABEL : AGENT_LABEL}${p.name}`;
-    names.push({ ...p, label, tokens });
+    names.push({ ...p, label, tokens: tokens ?? kept[0]!, variants: kept });
   }
   const entries: KeywordEntry[] = [
     LINKY,
@@ -138,7 +199,7 @@ export function buildWakeKeywords(people: readonly WakeParticipant[]): WakeKeywo
       label: n.label,
       score: NAME_SCORE,
       threshold: NAME_THRESHOLD,
-      matches: [{ tokens: n.tokens }],
+      matches: n.variants.map((tokens) => ({ tokens })),
     })),
   ];
   const signature = JSON.stringify(entries);

@@ -275,9 +275,12 @@ never refused.
 
 **The set** (`wake-names.ts`): LINKY first, then
 
-1. the lanes' names and aliases (`voices.ts` LANES): coco, codex, 杰咪, agy,
-   antigravity, 小克, claude (小可 clashes with 小克; "main" and "chat" are
-   words, not names, and are left out);
+1. one entry per lane, under its name (coco, 杰咪, 小克), holding every other
+   way it is said: its aliases (`voices.ts` LANES: codex, agy, antigravity,
+   claude, 小可), lane-route's names, and the Chinese spellings STT makes of
+   them (可可, 扣扣, 杰米, 解密, 小客, 小课…; `laneSpellings`). Latin heard
+   spellings (gemini, codecs) are words of their own and stay out; "main"
+   and "chat" are words, not names;
 2. the main agent's name (the chat's `t.name`, "Learning Partner" by default,
    or the localized name);
 3. the agents in the chat now (the presence list, `presence.ts`): the owner's
@@ -303,11 +306,18 @@ takes keywords as its own tokens, never as text:
   "mcp", "GPT") is spelled out letter by letter. Anything else goes through
   small letter-to-sound rules (snomiao → `S N OW1 M IH0 AE0 OW0`). A wrong
   guess only makes that name harder to wake on.
+- **Every tone** (`toneVariants`, 2026-11-14 fix): the model has one token
+  per toned final, so 杰咪 as `j ié m ī` alone missed him saying jié mǐ
+  (STT: 杰米) or jiě mì (解密), and coco as CMU phones missed 可可. Only 小克
+  woke, because 小客 and 小课 are `x iǎo k è` too. Each Chinese spelling now
+  wakes in every tone of each final (ü kept), up to 25 readings; a longer
+  name keeps its own tones only.
 - A name with any other character (kana, digits, emoji, a character missing
   from the table) is skipped. Every token is checked against the model's
   `tokens.txt`, because the spotter refuses an unknown one.
 
-**Clash rule.** Two names clash when their tokens, ignoring stress and tone,
+**Clash rule.** A spelling or tone reading that clashes is left out of its
+name's entry; a name left with none is a clash. Two names clash when their tokens, ignoring stress and tone,
 are equal, when one is a prefix of the other ("Ann" / "Anna"), or, for names
 of at most 5 tokens, when they are one token apart ("coco" / "koko"). The
 name seen first keeps the sound, so a newcomer or a new name never takes it
@@ -332,9 +342,13 @@ agent's name wakes the mic, the words after it go up as "coco, …" or
 sees itself addressed. "Linky" and his own name only wake the mic, as
 before.
 
-**Thresholds.** Names use the spotter's defaults (score 1.0, threshold 0.25).
-These are stricter than LINKY's tuned 1.5 / 0.15, because short names like
-"coco" have not been measured on his voice yet.
+**Thresholds.** Names use LINKY's tuned 1.5 / 0.15. The spotter's defaults
+(1.0 / 0.25), used at first, are the setting that missed "Linky" on his
+phone. On his 211 clips (the real fp32 model in WASM, files only, nothing
+played) the full set (124 sequences) gave 2 false wakes, both `x iǎo k è`
+(小票, 讲课); the first set (16 sequences, 1.0 / 0.25) gave 1, the same 讲课
+clip. There are still no recordings of him saying the names, so recall is
+not measured.
 
 A page that hot-swaps the widget keeps its old spotter (and Linky alone)
 until the next reload. The mic session version was not bumped, because the

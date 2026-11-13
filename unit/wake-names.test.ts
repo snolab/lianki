@@ -8,17 +8,19 @@ import {
   plainToken,
   spellOut,
   syllableTokens,
+  toneVariants,
   wordPhones,
 } from "@lianki/debug-chat/wake-tokens";
 import {
   NAME_SCORE,
   NAME_THRESHOLD,
-  addressLead,
   buildWakeKeywords,
   clashes,
   createWakeNames,
   editDistance,
   heardName,
+  addressLead,
+  laneSpellings,
   wakeNames,
   wakeParticipants,
 } from "@lianki/debug-chat/wake-names";
@@ -99,37 +101,64 @@ describe("names → model tokens", () => {
 describe("the wake keyword set", () => {
   it("LINKY first, then the lanes, the main agent, agents present, and him", () => {
     const people = wakeParticipants({ mainName: "Li", agents: ["bot"], owner: "Sno" });
-    expect(people.slice(0, 3).map((p) => p.name)).toEqual(["coco", "codex", "coco"]);
+    // One per lane, its other names with it.
+    expect(people.slice(0, 3).map((p) => p.name)).toEqual(["coco", "杰咪", "小克"]);
+    expect(people[0]!.spellings).toContain("codex");
+    expect(people[0]!.spellings).toContain("可可");
     expect(people.map((p) => p.name)).not.toContain("main");
-    expect(people.map((p) => p.name)).not.toContain("chat");
+    expect(people.flatMap((p) => p.spellings ?? [])).not.toContain("chat");
     expect(people.at(-1)).toEqual({ name: "Sno", kind: "owner" });
     const s = buildWakeKeywords(people);
     expect(s.entries[0]).toBe(LINKY);
-    expect(s.names.map((n) => n.name)).toEqual([
-      "coco",
-      "codex",
-      "杰咪",
-      "agy",
-      "antigravity",
-      "小克",
-      "claude",
-      "Li",
-      "bot",
-      "Sno",
-    ]);
-    // 小可 sounds like 小克: the earlier keeps it.
-    expect(s.clash).toEqual([{ name: "小可", with: "小克" }]);
+    expect(s.names.map((n) => n.name)).toEqual(["coco", "杰咪", "小克", "Li", "bot", "Sno"]);
+    // 小可 is 小克's own spelling now: one entry, no clash.
+    expect(s.clash).toEqual([]);
     const coco = s.entries.find((e) => e.label === "agent:coco")!;
-    expect(coco).toEqual({
+    expect(coco).toMatchObject({
       label: "agent:coco",
       score: NAME_SCORE,
       threshold: NAME_THRESHOLD,
-      matches: [{ tokens: ["K", "OW1", "K", "OW2"] }],
     });
+    expect(coco.matches[0]).toEqual({ tokens: ["K", "OW1", "K", "OW2"] });
     expect(s.entries.at(-1)!.label).toBe("owner:Sno");
     // Every token sequence is unique (the spotter refuses duplicates).
     const seqs = s.entries.flatMap((e) => e.matches.map((m) => m.tokens.join(" ")));
     expect(new Set(seqs).size).toBe(seqs.length);
+  });
+
+  // Owner, 2026-11-14: "only 小克 (heard 小课/小客) wakes". Each name had one token
+  // sequence in one tone; the model has a token per toned final, so 杰咪 said
+  // jié mǐ (STT: 杰米) or jiě mì (解密), and coco said 可可, matched nothing,
+  // while 小客 / 小课 happen to be x iǎo k è exactly like 小克.
+  it("a name wakes as he says it: any tone, and the lane's Chinese spellings", () => {
+    const s = buildWakeKeywords(wakeParticipants({}));
+    const said = (label: string) =>
+      new Set(s.entries.find((e) => e.label === label)!.matches.map((m) => m.tokens.join(" ")));
+    const jiemi = said("agent:杰咪");
+    expect(jiemi.has("j ié m ī")).toBe(true); // 杰咪
+    expect(jiemi.has("j ié m ǐ")).toBe(true); // 杰米
+    expect(jiemi.has("j iě m ì")).toBe(true); // 解密
+    const coco = said("agent:coco");
+    expect(coco.has("K OW1 K OW2")).toBe(true); // coco
+    expect(coco.has("k ě k ě")).toBe(true); // 可可
+    expect(coco.has("k ē k ē")).toBe(true); // 科科
+    expect(coco.has("K OW1 D EH0 K S")).toBe(true); // codex
+    const xiaoke = said("agent:小克");
+    expect(xiaoke.has("x iǎo k è")).toBe(true); // 小克, 小客, 小课
+    expect(xiaoke.has("x iǎo k ě")).toBe(true); // 小可
+    // The names' threshold is LINKY's tuned one, not the stricter default.
+    expect([NAME_SCORE, NAME_THRESHOLD]).toEqual([LINKY.score!, LINKY.threshold!]);
+    expect(laneSpellings("agy")).toContain("杰米");
+    expect(laneSpellings("agy")).not.toContain("gemini"); // a word of its own
+  });
+
+  it("tone readings: every tone of each Chinese final, Latin tokens kept", () => {
+    expect(toneVariants(["j", "ié", "m", "ī"])).toHaveLength(25);
+    expect(toneVariants(["j", "ié", "m", "ī"])[0]).toEqual(["j", "ié", "m", "ī"]);
+    expect(toneVariants(["n", "ǚ"]).map((t) => t[1])).toEqual(["ǚ", "ǘ", "ǜ"]); // ü stays ü
+    expect(toneVariants(["K", "OW1", "K", "OW2"])).toEqual([["K", "OW1", "K", "OW2"]]);
+    // Past the cap (four syllables): the spelling alone.
+    expect(toneVariants(nameTokens("扣德克斯")!)).toHaveLength(1);
   });
 
   it("clash: the same sound, one a prefix of the other, or one token apart when short", () => {
@@ -168,6 +197,9 @@ describe("the wake keyword set", () => {
     // The lane router takes the addressed line to that lane.
     expect(routeLine(`${addressLead("agent:coco")}what's next`).lanes).toEqual(["codex"]);
     expect(routeLine(`${addressLead("agent:杰咪")}看一下`).lanes).toEqual(["agy"]);
+    expect(routeLine(`${addressLead("agent:小克")}帮我看一下`).lanes).toEqual(["chat"]);
+    // How STT writes 小克 for him names the chat lane.
+    expect(routeLine("小客，帮我看一下")).toMatchObject({ lanes: ["chat"], addressed: true });
   });
 
   it("the detection's label is kept with the hit", () => {
@@ -272,7 +304,7 @@ describe("the spotter follows the names", () => {
 
   it("logs the names left out; without a store it is Linky alone", async () => {
     const store = createWakeNames();
-    store.set({ agents: ["リンキー"], owner: "小可" });
+    store.set({ agents: ["リンキー"], owner: "晓克" });
     const logs: Record<string, unknown>[] = [];
     const f = fakeWorker();
     await createKws({
@@ -284,7 +316,7 @@ describe("the spotter follows the names", () => {
     expect(logs[0]).toMatchObject({
       ev: "wake-names",
       skipped: ["リンキー"],
-      clash: [{ name: "小可", with: "小克" }],
+      clash: [{ name: "晓克", with: "小克" }],
     });
     const g = fakeWorker();
     await createKws({ worker: () => g.w, allowed: async () => true }).load();
@@ -299,7 +331,7 @@ describe("the spotter follows the names", () => {
 });
 
 describe("a name wakes the mic and addresses the line", () => {
-  function gated(label: string | undefined, lead: (l?: string) => string | void) {
+  function gated(label: string | undefined, lead: (l?: string) => string | void = addressLead) {
     let ev: VadEvents | null = null;
     const texts: string[] = [];
     const logs: Record<string, unknown>[] = [];
@@ -337,7 +369,7 @@ describe("a name wakes the mic and addresses the line", () => {
   }
 
   it("'coco, …': the words after the name go up addressed to coco", async () => {
-    const g = gated("agent:coco", addressLead);
+    const g = gated("agent:coco");
     await g.mic.toggle();
     g.say(3);
     for (let i = 0; i < 4; i++) await tick();
@@ -346,7 +378,7 @@ describe("a name wakes the mic and addresses the line", () => {
   });
 
   it("'Linky, …' stays as before: no name in front", async () => {
-    const g = gated("LINKY", addressLead);
+    const g = gated("LINKY");
     await g.mic.toggle();
     g.say(3);
     for (let i = 0; i < 4; i++) await tick();

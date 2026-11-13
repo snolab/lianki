@@ -268,3 +268,43 @@ export function plainToken(t: string): string {
     .replace(/[̀-ͯ]/g, "")
     .normalize("NFC");
 }
+
+/** A pinyin final without its tone mark (ü keeps its dots): "iǎo" → "iao", "ǚ" → "ü". */
+export function toneless(t: string): string {
+  return t.normalize("NFD").replace(/[̀́̄̌]/g, "").normalize("NFC");
+}
+
+let byTone: Map<string, string[]> | null = null;
+/** The model's finals that are `t` in any tone (the toneless one too), `t` first. */
+function tonesOf(t: string): string[] {
+  if (!byTone) {
+    byTone = new Map();
+    for (const k of KWS_TOKENS) {
+      if (!/^[a-zǜ-ͯÀ-ɏ]+$/u.test(k.normalize("NFC")) || INITIALS.includes(k)) continue;
+      const base = toneless(k);
+      byTone.set(base, [...(byTone.get(base) ?? []), k]);
+    }
+  }
+  const all = byTone.get(toneless(t)) ?? [t];
+  return [t, ...all.filter((x) => x !== t)];
+}
+
+/** At most this many tone readings of one spelling (two syllables in every tone fit). */
+export const MAX_TONE_VARIANTS = 25;
+
+/**
+ * Every tone reading of a Chinese name's tokens (杰咪 j ié m ī → … j ié m ǐ,
+ * j iě m ì …), the spelling's own first. The model has a token per toned
+ * final, so 杰咪 said as jié mǐ (STT: 杰米) or jiě mì (解密) never matches
+ * j ié m ī; tones drift in speech, so a name wakes in any of them. Latin
+ * (CMU) tokens are kept as they are. Capped at MAX_TONE_VARIANTS: past it,
+ * the spelling alone.
+ */
+export function toneVariants(tokens: readonly string[]): string[][] {
+  const choices = tokens.map((t) => (/^[A-Z]/.test(t) || INITIALS.includes(t) ? [t] : tonesOf(t)));
+  const n = choices.reduce((p, c) => p * c.length, 1);
+  if (n > MAX_TONE_VARIANTS) return [[...tokens]];
+  let out: string[][] = [[]];
+  for (const c of choices) out = out.flatMap((p) => c.map((t) => [...p, t]));
+  return out;
+}

@@ -75,8 +75,10 @@ export const LANE_NAMES: Readonly<
     ],
   },
   chat: {
-    exact: ["xiaoke", "小可"],
-    heard: ["xiaoko", "shiaoke", "小克", "小科", "小柯", "晓可", "晓科", "小珂", "肖可"],
+    // 小克: the lane's name (2026-11-14).
+    exact: ["xiaoke", "小可", "小克"],
+    // 小客, 小课: how STT wrote 小克 for him (owner, 2026-11-14).
+    heard: ["xiaoko", "shiaoke", "小客", "小课", "小科", "小柯", "晓可", "晓科", "小珂", "肖可"],
   },
 };
 
