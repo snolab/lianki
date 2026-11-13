@@ -340,9 +340,10 @@ export function createCloudOut(d: {
       return { lang, provider: `local:${pick.name}`, shift: 1 };
     if (voice === "bright" && read(LOCAL_TTS_KEY) !== "off")
       return { lang, provider: "local:neko-cycle", shift: 1 };
-    // The calm lanes (codex, 小克) get a Mac-local voice of their own, so they
-    // never sound like the baby voice beside them (owner, 2026-11-14 "听起来一模一样").
-    if (voice === "calm" && read(LOCAL_TTS_KEY) !== "off")
+    // The calm lanes (codex, 小克) get a Mac-local voice of their own for Chinese
+    // (yunxi is a Mandarin voice), so they never sound like the baby voice beside
+    // them (owner, 2026-11-14 "听起来一模一样"); other languages keep the cloud's.
+    if (voice === "calm" && /^zh/i.test(lang) && read(LOCAL_TTS_KEY) !== "off")
       return { lang, provider: "local:yunxi", shift: 1 };
     if (pick?.kind === "melo") return { lang: pick.lang, shift: 1 };
     if (pick?.kind === "aura") return { lang: pick.lang, speaker: pick.speaker, shift: 1 };

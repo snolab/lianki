@@ -35,7 +35,7 @@ export function laneAvatar(lane: LaneId) {
 }
 
 /**
- * The lane's name over its run of lines (`inline`: before the text, for the
+ * The lane's name leading its run of lines, "name：" (`inline`: a small tag, for the
  * floating and compact lines). Main shows the host's agent name when it is
  * given, else nothing. aria-hidden: the sr-only "name:" already says who.
  */
@@ -50,14 +50,22 @@ export function LaneTag({
 }) {
   const name = LANES[lane].name || agentName;
   if (!name) return null;
+  // At the head of a run the name leads the text, "小克：…" (owner, 2026-11-14:
+  // "把消息的内容接在你们的名字后面，用冒号分隔"); a full-width colon after a CJK name.
+  const colon = /[\u3040-\u30ff\u3400-\u9fff]$/u.test(name) ? "：" : ": ";
   return (
     <span
       aria-hidden
       data-testid="debug-chat-lane"
       data-lane={lane}
-      className={`${inline ? "me-1" : "block truncate"} fs-10 font-semibold leading-tight text-gray-500`}
+      className={
+        inline
+          ? "me-1 fs-10 font-semibold leading-tight text-gray-500"
+          : "font-semibold text-gray-500"
+      }
     >
       {name}
+      {inline ? "" : colon}
     </span>
   );
 }
