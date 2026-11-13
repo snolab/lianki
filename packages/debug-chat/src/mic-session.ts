@@ -36,6 +36,7 @@ import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
 import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
 import { micTaps } from "./mic-taps";
+import { reportPageError } from "./page-errors";
 import { type AutoOff, type AutoOffReason, onTrackLost, trackNote } from "./mic-off";
 
 /** What the session needs of a local STT client (local-stt.ts LocalStt). */
@@ -210,8 +211,14 @@ export function createMicSession(
   /** Every off goes to the dev log with who did it (mic-off.ts): the next one explains itself. */
   const offLog = (by: "user" | "auto", reason: string) =>
     deps.log?.({ ev: "mic-off", by, reason, was: view.state, visible: visible(), track: trackAt() });
-  /** Off by itself: shown as its own state (mic-off.ts micLook) with its reason. */
-  const markAuto = (reason: AutoOffReason) => emit({ auto: { reason, at: now() } });
+  /**
+   * Off by itself: shown as its own state (mic-off.ts micLook) with its reason, and
+   * reported (owner 2026-11-13 "你能不能不要关我的麦克风？": the reason was only on his screen).
+   */
+  const markAuto = (reason: AutoOffReason) => {
+    emit({ auto: { reason, at: now() } });
+    reportPageError({ kind: "media", message: `mic off by itself: ${reason}` });
+  };
   /** A track lost while hidden: reopened once the page is visible. */
   let lost: AutoOffReason | null = null;
   /** A reload's resume put off until the page is visible. */
