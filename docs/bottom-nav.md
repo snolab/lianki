@@ -11,12 +11,12 @@ Four buttons, in this order: Home, Menu, ＋ Create, Search (owner,
 of the capsule's middle. On a 390–430px phone held in the right hand, that is
 the easiest reach for the thumb.
 
-| Button   | Tap                                                    |
-| -------- | ------------------------------------------------------ |
-| Home     | `/home`; shows the due-review badge                     |
-| Menu     | opens the drawer (an edge swipe does too); sync dot     |
-| ＋ Create | the Create sheet (not shown while the chat's + is up)   |
-| Search   | the command palette (Ctrl/⌘ K anywhere)                |
+| Button    | Tap                                                   |
+| --------- | ----------------------------------------------------- |
+| Home      | `/home`; shows the due-review badge                   |
+| Menu      | opens the drawer (an edge swipe does too); sync dot   |
+| ＋ Create | the Create sheet (not shown while the chat's + is up) |
+| Search    | the command palette (Ctrl/⌘ K anywhere)               |
 
 - **Create** offers a link as a card (paste it), words from an Anki deck
   (`/words/import`, .apkg), importing cards and backups (`/import`) and
@@ -28,8 +28,10 @@ the easiest reach for the thumb.
   (owner, 2026-11-03; docs/dev-debug-widget.md, "The + menu"). Without the
   chat, ＋ stays.
 - **The Learning Partner** is no longer on the island. It is reached through
-  its chat bar, and through a "Learning Partner" row in the drawer (debug
-  mode, where the chat is on).
+  its chat bar, and through a "Learning Partner" row at the top of the drawer
+  and the desktop sidebar, for every user who has the chat: `partner.ai-reply`
+  on and signed in, or debug mode (docs/dev-debug-widget.md, "Always
+  findable").
 - **Badges.** Home shows the due-review count: the sum of `due` over the
   cached word lists. A dot on Menu shows when the device is offline (grey) or
   has reviews waiting to sync (amber).
@@ -134,18 +136,18 @@ clear of the island (docs/design-principles.md, "Reserve, don't push").
 
 ## Code
 
-| File                                   | Role                                                                          |
-| -------------------------------------- | ----------------------------------------------------------------------------- |
-| `lib/nav/ui-store.ts`                  | `navUi` (session: drawer open, recent pages), `navPins` (local: pinned pages) |
-| `lib/nav/nav-core.ts`                  | the pure rules: ranking, URL detection, compact, keyboard, docking, badges    |
-| `lib/nav/islands/BottomIsland.tsx`     | the `nav.bottom` island                                                       |
-| `lib/nav/islands/signals.ts`           | its event-driven hooks: scroll, keyboard, chat dock, due/sync, edge swipe     |
-| `lib/nav/islands/SearchPalette.tsx`    | the command palette                                                           |
-| `lib/nav/islands/CreateSheet.tsx`      | the Create sheet                                                              |
-| `lib/nav/islands/NavRows.tsx`          | the `nav.drawer` island: breadcrumbs, pin, pinned and recent pages            |
-| `lib/nav/islands/text.ts`              | every label, from `bottom-nav`, `app-shell`, `landing-page`, `learning-partner` |
-| `app/components/bottom-nav.content.ts` | the strings, in all locales                                                   |
-| `unit/bottom-nav.test.ts`, `unit/nav-core.test.ts` | islands, stores, strings (no literals, oklch only, no polling), rules |
+| File                                               | Role                                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `lib/nav/ui-store.ts`                              | `navUi` (session: drawer open, recent pages), `navPins` (local: pinned pages)   |
+| `lib/nav/nav-core.ts`                              | the pure rules: ranking, URL detection, compact, keyboard, docking, badges      |
+| `lib/nav/islands/BottomIsland.tsx`                 | the `nav.bottom` island                                                         |
+| `lib/nav/islands/signals.ts`                       | its event-driven hooks: scroll, keyboard, chat dock, due/sync, edge swipe       |
+| `lib/nav/islands/SearchPalette.tsx`                | the command palette                                                             |
+| `lib/nav/islands/CreateSheet.tsx`                  | the Create sheet                                                                |
+| `lib/nav/islands/NavRows.tsx`                      | the `nav.drawer` island: breadcrumbs, pin, Learning Partner, pinned, recent     |
+| `lib/nav/islands/text.ts`                          | every label, from `bottom-nav`, `app-shell`, `landing-page`, `learning-partner` |
+| `app/components/bottom-nav.content.ts`             | the strings, in all locales                                                     |
+| `unit/bottom-nav.test.ts`, `unit/nav-core.test.ts` | islands, stores, strings (no literals, oklch only, no polling), rules           |
 
 Both are hot islands (docs/dev-hot-islands.md). To preview a change on the
 owner's phone, run an islands server from your worktree on a port and path

@@ -8,6 +8,7 @@
 import { type RefObject, useEffect, useState } from "react";
 import { debugOn, DEBUG_EVENT } from "@/lib/debug-client";
 import { idbAll, idbGet } from "@/lib/words/idb";
+import { CHAT_VIEWER_ATTR, partnerEntryShown, readChatViewer } from "@/lib/partner-entry";
 import {
   type Box,
   CHAT_MOVED_EVENT,
@@ -28,6 +29,28 @@ export function useDebugMode(): boolean {
   const [on, setOn] = useState(false);
   useEffect(() => {
     const read = () => setOn(debugOn());
+    read();
+    window.addEventListener(DEBUG_EVENT, read);
+    return () => window.removeEventListener(DEBUG_EVENT, read);
+  }, []);
+  return on;
+}
+
+/**
+ * The "Learning Partner" row is shown (lib/partner-entry.ts): a partner user
+ * on every page, any other signed-in user in debug mode; a guest never. The
+ * viewer comes from `<html data-chat-viewer>`, set by the root layout.
+ */
+export function usePartnerEntry(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const read = () =>
+      setOn(
+        partnerEntryShown(
+          readChatViewer(document.documentElement.getAttribute(CHAT_VIEWER_ATTR)),
+          debugOn(),
+        ),
+      );
     read();
     window.addEventListener(DEBUG_EVENT, read);
     return () => window.removeEventListener(DEBUG_EVENT, read);

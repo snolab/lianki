@@ -1168,6 +1168,35 @@ and the unit tests are in `unit/chat-fold.test.ts` and `unit/anchor.test.ts`.
 Browser checks: `bun scripts/dev/debug-chat-fold-qa.mjs [--shots <dir>]`
 runs them in silent browsers at 390×844, with getUserMedia refused.
 
+## Always findable
+
+Owner, 2026-11-14 (~01:00 JST): for a signed-in user with the Learning
+Partner (`partner.ai-reply` on), the chat can fold but never disappear.
+The rules are in `lib/partner-entry.ts`; the tests are in
+`unit/partner-entry.test.ts`.
+
+- **Nothing closes it.** The chat has no close button. The menu's Minimize,
+  the grip and a drag all fold it to the pill at most, so the pill's Li is
+  always on screen (`foldNext` never steps past the pill; the tucked handle
+  stays dormant, see "Folding"). Should a close or hide control ever be
+  added, it folds the chat instead of removing it.
+- **Debug mode does not decide it.** `chatWanted(debug, partnerOpen)` is
+  DebugEval's `chatOn`: turning debug mode off with the hidden 7/10-tap
+  toggles never takes a partner user's chat away. Those toggles still turn
+  the developer parts on and off, and for a `dev` holder (who gets the chat
+  only in debug mode) they stay his switch.
+- **A row in the sidebar.** "Learning Partner" (the `learning-partner`
+  name, 16 locales) sits at the top of the desktop sidebar and of the phone
+  drawer (Menu on the bottom island), above Pinned and Recent. A tap opens
+  the chat, unfolding it as the pill's Li does (`openChat`, `chat.open`).
+  It shows for every partner user, and for any other signed-in user in
+  debug mode. A guest never sees it, and with `partner.ai-reply` off nothing
+  changes for users.
+- **How the nav knows.** The root layout puts `data-chat-viewer` on
+  `<html>`: `partner` (flag on, signed in, no `dev`), `member` (signed in
+  otherwise), absent for a guest. The `nav.drawer` island reads it
+  (`usePartnerEntry`), so its contract is unchanged.
+
 ## Typing glass: the chat box frosts while typing
 
 Owner, 2026-11-02 on /home: "帮我背景玻璃化，在我在这里打字的时候"; corrected
