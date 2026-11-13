@@ -511,3 +511,14 @@ describe("parseLineVoice: one strict parser for a line's voice", () => {
     for (const e of ELEVEN_PREVIEWS) expect(e.preview).not.toContain("?");
   });
 });
+
+describe("the claude lane (小可)", () => {
+  it("a 【小可】 or 【claude】 prefix is the claude lane: its mark, the calm voice, the prefix off", () => {
+    for (const p of ["【小可】", "【claude】", "【小克】"]) {
+      const r = laneOf({ text: `${p}好的` });
+      expect(r).toEqual({ lane: "claude", text: "好的" });
+      expect(voiceIdOf({ text: `${p}好的` })).toBe("calm");
+    }
+    expect(LANES.claude.mark?.paths.length).toBe(3);
+  });
+});

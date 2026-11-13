@@ -40,7 +40,7 @@
  */
 
 /** A lane: who is talking in the owner's chat. */
-export const LANE_IDS = ["main", "codex", "agy"] as const;
+export const LANE_IDS = ["main", "codex", "agy", "claude"] as const;
 export type LaneId = (typeof LANE_IDS)[number];
 
 /** A voice a line is read in. */
@@ -211,6 +211,22 @@ export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
       bg: "oklch(0.8 0.14 80)",
       fg: "oklch(0.3 0.08 60)",
       paths: [{ d: "M12 4l1.9 6.1L20 12l-6.1 1.9L12 20l-1.9-6.1L4 12l6.1-1.9Z", fill: true }],
+    },
+  },
+  // Claude Code helping agy (owner, 2026-11-13: named 小可). Low and calm, like codex,
+  // told apart by its mark: three dots in a row, a thought being finished.
+  claude: {
+    name: "小可",
+    voice: "calm",
+    aliases: ["claude", "小可", "小克"],
+    mark: {
+      bg: "oklch(0.55 0.1 250)",
+      fg: "oklch(0.97 0.02 250)",
+      paths: [
+        { d: "M5.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0Z", fill: true },
+        { d: "M10.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0Z", fill: true },
+        { d: "M15.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0Z", fill: true },
+      ],
     },
   },
 };

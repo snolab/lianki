@@ -99,7 +99,8 @@ export function parseChatLogLine(raw: unknown): ChatLogLine | null {
   if (typeof r.text !== "string" || !r.text.trim()) return null;
   if (typeof r.at !== "number" || !Number.isFinite(r.at) || r.at < 0) return null;
   const lane =
-    r.from === "agent" && (r.lane === "main" || r.lane === "codex" || r.lane === "agy")
+    r.from === "agent" &&
+    (r.lane === "main" || r.lane === "codex" || r.lane === "agy" || r.lane === "claude")
       ? (r.lane as LaneId)
       : r.from === "agent"
         ? "main"
