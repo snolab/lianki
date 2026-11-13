@@ -19,6 +19,7 @@
 import { noteOpened } from "./aec";
 import { encodeWav } from "./mic";
 import type { CloudOut, LinePick, PlayEvents, Playback } from "./voice";
+import { type HeardVoice, pickLocalVoice, pinnedLocalVoice } from "./voice-heard";
 import { MELO_LANGS, VOICES, type VoiceId, cloudVoice } from "./voices";
 
 /** The route's X-Voice for a clip in a lane's own cloud speaker (lib/words-tts.ts). */
@@ -163,6 +164,28 @@ export const ttsUrl = (text: string, lang: string, speaker?: string) =>
 export const providerTtsUrl = (voice: string, text: string) =>
   `/api/voice/tts?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(text)}`;
 
+export const LOCAL_TTS_KEY = "lk:agent-local-tts";
+export const DEFAULT_LOCAL_TTS_BASE = "https://taku.onca-tint.ts.net/lianki-tts";
+
+let nekoTurnIdx = 0;
+
+/**
+ * A Mac-local Kokoro clip's URL, and the concrete voice it asks for:
+ * `neko-cycle` is the voice pinned on this device (voice-heard.ts), else the
+ * rotation's next turn (one per clip).
+ */
+export const localTts = (voice: string, text: string): { url: string; heard: HeardVoice } => {
+  const base = (read(LOCAL_TTS_KEY) || DEFAULT_LOCAL_TTS_BASE).replace(/\/+$/, "");
+  const pinned = voice === "neko-cycle" ? pinnedLocalVoice() : null;
+  const heard = pickLocalVoice(voice, nekoTurnIdx, pinned);
+  if (voice === "neko-cycle" && !pinned) nekoTurnIdx++;
+  return {
+    url: `${base}/tts?voice=${encodeURIComponent(heard.name)}&text=${encodeURIComponent(text)}`,
+    heard,
+  };
+};
+export const localTtsUrl = (voice: string, text: string) => localTts(voice, text).url;
+
 /** Why a provider voice cannot be asked for a sentence (null: ask it). Any language. */
 export function providerSkip(text: string): string | null {
   if (!text.trim()) return "empty";
@@ -215,6 +238,8 @@ export function createCloudOut(d: {
   const clips = new Map<string, Promise<string>>();
   /** Clips that came back in the route's one voice though a speaker was asked for. */
   const fellBack = new Set<string>();
+  /** The concrete voice of each clip (blob URL): a rotated Kokoro name, a provider id, aura:/melo:. */
+  const clipVoice = new Map<string, HeardVoice>();
   let el: ElementLike | null = null;
   let gain: GainLike | null = null;
   let wired = false;
@@ -252,12 +277,18 @@ export function createCloudOut(d: {
     speaker?: string,
     provider?: string,
   ): Promise<string> => {
-    const key = `${provider ?? lang}\n${speaker ?? ""}\n${text}`;
+    // A pin changes what `neko-cycle` asks for: a clip fetched before it is not reused.
+    const pin = provider === "local:neko-cycle" ? pinnedLocalVoice() : null;
+    const key = `${provider ?? lang}${pin ? `@${pin}` : ""}\n${speaker ?? ""}\n${text}`;
     const have = clips.get(key);
     if (have) return have;
-    const url = provider
-      ? providerTtsUrl(provider, text)
-      : ttsUrl(text, lang.split(/[-_]/)[0], speaker);
+    const base = lang.split(/[-_]/)[0]!;
+    const local = provider?.startsWith("local:") ? localTts(provider.slice(6), text) : null;
+    const url = local
+      ? local.url
+      : provider
+        ? providerTtsUrl(provider, text)
+        : ttsUrl(text, base, speaker);
     const p = d.fetch(url).then(async (r) => {
       if (!r.ok) throw new Error(`http ${r.status}${r.headers.get("X-Voice") ? ` ${r.headers.get("X-Voice")}` : ""}`);
       const url = toUrl(await r.blob());
@@ -265,6 +296,13 @@ export function createCloudOut(d: {
       // No X-Voice at all (hidden by CORS): the route did not say, so it is not taken as one.
       const said = r.headers.get("X-Voice");
       if (speaker && said !== null && said !== AURA_VOICE) fellBack.add(url);
+      // The voice this clip is in, for the line's details (voice-heard.ts).
+      clipVoice.set(
+        url,
+        local
+          ? local.heard
+          : { name: provider ?? (speaker && !fellBack.has(url) ? `aura:${speaker}` : `melo:${base}`) },
+      );
       return url;
     });
     clips.set(key, p);
@@ -274,6 +312,7 @@ export function createCloudOut(d: {
       clips.delete(k);
       old.then((u) => {
         fellBack.delete(u);
+        clipVoice.delete(u);
         revoke(u);
       }, ignore);
     }
@@ -297,6 +336,10 @@ export function createCloudOut(d: {
   ): { lang: string; speaker?: string; provider?: string; shift: number } => {
     if (pick?.kind === "google" || pick?.kind === "azure")
       return { lang, provider: pick.id, shift: 1 };
+    if (pick?.kind === "local")
+      return { lang, provider: `local:${pick.name}`, shift: 1 };
+    if (voice === "bright" && read(LOCAL_TTS_KEY) !== "off")
+      return { lang, provider: "local:neko-cycle", shift: 1 };
     if (pick?.kind === "melo") return { lang: pick.lang, shift: 1 };
     if (pick?.kind === "aura") return { lang: pick.lang, speaker: pick.speaker, shift: 1 };
     return { lang, ...cloudVoice(voice ?? "main", lang) };
@@ -311,7 +354,13 @@ export function createCloudOut(d: {
    */
   let plainEl: ElementLike | null = null;
   const plain = () => (plainEl ??= d.plain?.() ?? null);
-  const preview = (url: string, volume: number, live: () => boolean, ev: PlayEvents): Playback => {
+  const preview = (
+    url: string,
+    id: string,
+    volume: number,
+    live: () => boolean,
+    ev: PlayEvents,
+  ): Playback => {
     const a = plain();
     const fail = (why: string) => void Promise.resolve().then(() => live() && ev.onfail?.(why));
     const pb: Playback = {
@@ -331,6 +380,7 @@ export function createCloudOut(d: {
       return pb;
     }
     a.volume = volume;
+    ev.onvoice?.({ name: `eleven:${id}` });
     a.onended = () => live() && ev.onend();
     a.onerror = () => live() && ev.onfail?.("preview error");
     a.onloadedmetadata = null;
@@ -379,7 +429,7 @@ export function createCloudOut(d: {
       const me = ++turn;
       const live = () => me === turn;
       const fail = (why: string) => void Promise.resolve().then(() => live() && ev.onfail?.(why));
-      if (s.pick?.kind === "eleven") return preview(s.pick.preview, s.volume, live, ev);
+      if (s.pick?.kind === "eleven") return preview(s.pick.preview, s.pick.id, s.volume, live, ev);
       const pb: Playback = {
         route: "audio",
         stop() {
@@ -428,6 +478,8 @@ export function createCloudOut(d: {
           // A closed one never runs again: not a tap's matter, that clip fails outright.
           if (stuck === "closed") return ev.onfail?.("audio context closed");
           if (stuck) return ev.onfail?.(`play NotAllowedError (audio context ${stuck})`);
+          const heard = clipVoice.get(url);
+          if (heard) ev.onvoice?.(heard);
           setLevel(s.volume);
           a.onended = () => live() && ev.onend();
           a.onerror = () => live() && ev.onerror();

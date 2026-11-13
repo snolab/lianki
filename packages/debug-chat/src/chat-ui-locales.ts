@@ -71,6 +71,10 @@ export type LegacyStrings = Record<LegacyKey, string>;
 
 export type ChatExtra = {
   messageDetails: string;
+  voiceUsed: string;
+  voiceUseThis: string;
+  voicePinned: string;
+  voiceUnpin: string;
   speakMicTitle: string;
   speakTouchTitle: string;
   speakVoicedTitle: string;
@@ -140,6 +144,10 @@ export const LEGACY_CONTEXT: LegacyStrings = {
 
 export const EXTRA_CONTEXT: ChatExtra = {
   messageDetails: `In ${CHAT}: heading and accessible label of a popover opened by clicking a message. It shows only metadata already carried by that message: sender, timestamp, recognition and voiceprint fields when present. Short noun phrase.`,
+  voiceUsed: `In ${CHAT}, the message details popover: a row naming the voice that actually read this message aloud on this device; {name} is a technical voice id shown as is (e.g. neko-moe, device:Samantha, aura:luna). A label, a colon, then {name}; keep {name}.`,
+  voiceUseThis: `In ${CHAT}, the message details popover: a button beside that voice row, shown when the voice was picked by a rotation that takes turns through several voices: tapping keeps this voice for such lines on this device instead of taking turns. An imperative phrase.`,
+  voicePinned: `In ${CHAT}, the message details popover: the state shown once a voice was kept that way (pinned) on this device; the rotation is off and every such line uses {name}. A short state phrase; keep {name}.`,
+  voiceUnpin: `In ${CHAT}, the message details popover: a button that undoes that pin, so such lines take turns through the voices again (the rotation). An imperative verb, with 'rotate' or 'take turns' in brackets.`,
   speakMicTitle: `In ${CHAT}, the menu's read-aloud row: tooltip while the mic is on; replies are always read aloud then, and the user's own setting comes back when the mic stops.`,
   speakTouchTitle: `In ${CHAT}, the menu's read-aloud row: tooltip when replies are read aloud whether typing or not, until the user turns it off.`,
   speakVoicedTitle: `In ${CHAT}, the menu's read-aloud row: tooltip after the user spoke with the mic on this device: replies are read aloud, typed or spoken, until turned off.`,
@@ -540,6 +548,10 @@ export const OTHER_LEGACY: Record<Other, LegacyStrings> = {
 export const EXTRA: Record<ChatLocale, ChatExtra> = {
   en: {
     messageDetails: "Message details",
+    voiceUsed: "Voice: {name}",
+    voiceUseThis: "Use this voice",
+    voicePinned: "Pinned on this device: {name}",
+    voiceUnpin: "Unpin (rotate)",
     speakMicTitle: "The mic is on: replies are always read aloud (your setting is back when it stops)",
     speakTouchTitle: "Replies are read aloud, typing or not, until you turn this off",
     speakVoicedTitle:
@@ -579,6 +591,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   zh: {
     messageDetails: "消息详情",
+    voiceUsed: "声音：{name}",
+    voiceUseThis: "就用这个声音",
+    voicePinned: "本设备已固定：{name}",
+    voiceUnpin: "取消固定（轮换）",
     speakMicTitle: "麦克风开着：回复总会朗读（关掉麦克风后恢复你的设置）",
     speakTouchTitle: "不论是否在输入，回复都会朗读，直到你关掉",
     speakVoicedTitle: "你在这台设备上用过麦克风：无论打字还是说话，回复都会朗读，直到你关掉",
@@ -617,6 +633,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   hi: {
     messageDetails: "संदेश विवरण",
+    voiceUsed: "आवाज़: {name}",
+    voiceUseThis: "यही आवाज़ इस्तेमाल करें",
+    voicePinned: "इस डिवाइस पर पिन: {name}",
+    voiceUnpin: "पिन हटाएँ (बारी-बारी)",
     speakMicTitle: "माइक चालू है: जवाब हमेशा बोलकर पढ़े जाते हैं (माइक बंद होने पर आपकी सेटिंग लौट आती है)",
     speakTouchTitle: "जवाब बोलकर पढ़े जाते हैं, टाइप करें या न करें, जब तक आप इसे बंद न करें",
     speakVoicedTitle: "आपने इस डिवाइस पर माइक इस्तेमाल किया: जवाब बोलकर पढ़े जाते हैं, टाइप करें या बोलें, जब तक आप बंद न करें",
@@ -655,6 +675,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   es: {
     messageDetails: "Detalles del mensaje",
+    voiceUsed: "Voz: {name}",
+    voiceUseThis: "Usar esta voz",
+    voicePinned: "Fijada en este dispositivo: {name}",
+    voiceUnpin: "Desfijar (alternar)",
     speakMicTitle: "El micrófono está activado: las respuestas siempre se leen en voz alta (tu ajuste vuelve al apagarlo)",
     speakTouchTitle: "Las respuestas se leen en voz alta, escribas o no, hasta que lo desactives",
     speakVoicedTitle: "Usaste el micrófono en este dispositivo: las respuestas se leen en voz alta, escritas o habladas, hasta que lo desactives",
@@ -693,6 +717,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   fr: {
     messageDetails: "Détails du message",
+    voiceUsed: "Voix : {name}",
+    voiceUseThis: "Utiliser cette voix",
+    voicePinned: "Épinglée sur cet appareil : {name}",
+    voiceUnpin: "Désépingler (alterner)",
     speakMicTitle: "Le micro est activé : les réponses sont toujours lues à voix haute (votre réglage revient à l'arrêt)",
     speakTouchTitle: "Les réponses sont lues à voix haute, que vous tapiez ou non, jusqu'à ce que vous désactiviez",
     speakVoicedTitle: "Vous avez utilisé le micro sur cet appareil : les réponses sont lues à voix haute, tapées ou dites, jusqu'à ce que vous désactiviez",
@@ -731,6 +759,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   ar: {
     messageDetails: "تفاصيل الرسالة",
+    voiceUsed: "الصوت: {name}",
+    voiceUseThis: "استخدم هذا الصوت",
+    voicePinned: "مثبّت على هذا الجهاز: {name}",
+    voiceUnpin: "إلغاء التثبيت (تناوب)",
     speakMicTitle: "الميكروفون يعمل: تُقرأ الردود دائمًا بصوت عالٍ (يعود إعدادك عند إيقافه)",
     speakTouchTitle: "تُقرأ الردود بصوت عالٍ سواء كتبت أم لا، حتى توقف ذلك",
     speakVoicedTitle: "استخدمت الميكروفون على هذا الجهاز: تُقرأ الردود بصوت عالٍ، كتابةً أو كلامًا، حتى توقف ذلك",
@@ -769,6 +801,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   bn: {
     messageDetails: "বার্তার বিবরণ",
+    voiceUsed: "কণ্ঠ: {name}",
+    voiceUseThis: "এই কণ্ঠটি ব্যবহার করুন",
+    voicePinned: "এই ডিভাইসে পিন করা: {name}",
+    voiceUnpin: "পিন সরান (পালাক্রমে)",
     speakMicTitle: "মাইক চালু: উত্তর সবসময় জোরে পড়া হয় (মাইক বন্ধ হলে আপনার সেটিং ফিরে আসে)",
     speakTouchTitle: "টাইপ করুন বা না করুন, উত্তর জোরে পড়া হয়, যতক্ষণ না আপনি বন্ধ করেন",
     speakVoicedTitle: "আপনি এই ডিভাইসে মাইক ব্যবহার করেছেন: টাইপ বা কথা, উত্তর জোরে পড়া হয়, যতক্ষণ না বন্ধ করেন",
@@ -807,6 +843,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   pt: {
     messageDetails: "Detalhes da mensagem",
+    voiceUsed: "Voz: {name}",
+    voiceUseThis: "Usar esta voz",
+    voicePinned: "Fixada neste dispositivo: {name}",
+    voiceUnpin: "Desafixar (alternar)",
     speakMicTitle: "O microfone está ligado: as respostas são sempre lidas em voz alta (sua configuração volta quando ele parar)",
     speakTouchTitle: "As respostas são lidas em voz alta, digitando ou não, até você desligar",
     speakVoicedTitle: "Você usou o microfone neste dispositivo: as respostas são lidas em voz alta, digitadas ou faladas, até você desligar",
@@ -845,6 +885,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   ru: {
     messageDetails: "Сведения о сообщении",
+    voiceUsed: "Голос: {name}",
+    voiceUseThis: "Использовать этот голос",
+    voicePinned: "Закреплён на этом устройстве: {name}",
+    voiceUnpin: "Открепить (по очереди)",
     speakMicTitle: "Микрофон включён: ответы всегда читаются вслух (ваша настройка вернётся, когда он выключится)",
     speakTouchTitle: "Ответы читаются вслух, печатаете вы или нет, пока вы это не выключите",
     speakVoicedTitle: "Вы пользовались микрофоном на этом устройстве: ответы читаются вслух, напечатанные или сказанные, пока вы это не выключите",
@@ -883,6 +927,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   ur: {
     messageDetails: "پیغام کی تفصیلات",
+    voiceUsed: "آواز: {name}",
+    voiceUseThis: "یہی آواز استعمال کریں",
+    voicePinned: "اس ڈیوائس پر پن: {name}",
+    voiceUnpin: "پن ہٹائیں (باری باری)",
     speakMicTitle: "مائیک آن ہے: جوابات ہمیشہ بلند آواز میں پڑھے جاتے ہیں (مائیک بند ہونے پر آپ کی ترتیب واپس آ جاتی ہے)",
     speakTouchTitle: "جوابات بلند آواز میں پڑھے جاتے ہیں، ٹائپ کریں یا نہیں، جب تک آپ بند نہ کریں",
     speakVoicedTitle: "آپ نے اس ڈیوائس پر مائیک استعمال کیا: جوابات بلند آواز میں پڑھے جاتے ہیں، لکھیں یا بولیں، جب تک آپ بند نہ کریں",
@@ -921,6 +969,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   id: {
     messageDetails: "Detail pesan",
+    voiceUsed: "Suara: {name}",
+    voiceUseThis: "Pakai suara ini",
+    voicePinned: "Disematkan di perangkat ini: {name}",
+    voiceUnpin: "Lepas sematan (bergiliran)",
     speakMicTitle: "Mikrofon menyala: balasan selalu dibacakan (pengaturan Anda kembali saat mikrofon berhenti)",
     speakTouchTitle: "Balasan dibacakan, mengetik atau tidak, sampai Anda mematikannya",
     speakVoicedTitle: "Anda memakai mikrofon di perangkat ini: balasan dibacakan, diketik atau diucapkan, sampai Anda mematikannya",
@@ -959,6 +1011,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   de: {
     messageDetails: "Nachrichtendetails",
+    voiceUsed: "Stimme: {name}",
+    voiceUseThis: "Diese Stimme verwenden",
+    voicePinned: "Auf diesem Gerät angeheftet: {name}",
+    voiceUnpin: "Lösen (abwechseln)",
     speakMicTitle: "Das Mikrofon ist an: Antworten werden immer vorgelesen (deine Einstellung kommt zurück, wenn es aus ist)",
     speakTouchTitle: "Antworten werden vorgelesen, ob du tippst oder nicht, bis du es ausschaltest",
     speakVoicedTitle: "Du hast auf diesem Gerät das Mikrofon benutzt: Antworten werden vorgelesen, getippt oder gesprochen, bis du es ausschaltest",
@@ -997,6 +1053,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   ja: {
     messageDetails: "メッセージの詳細",
+    voiceUsed: "声：{name}",
+    voiceUseThis: "この声を使う",
+    voicePinned: "この端末で固定中：{name}",
+    voiceUnpin: "固定を解除（ローテーション）",
     speakMicTitle: "マイクがオンです：返信は常に読み上げます（マイクを止めると設定が戻ります）",
     speakTouchTitle: "入力中かどうかに関係なく、オフにするまで返信を読み上げます",
     speakVoicedTitle: "この端末でマイクを使いました：入力でも音声でも、オフにするまで返信を読み上げます",
@@ -1035,6 +1095,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   sw: {
     messageDetails: "Maelezo ya ujumbe",
+    voiceUsed: "Sauti: {name}",
+    voiceUseThis: "Tumia sauti hii",
+    voicePinned: "Imebandikwa kwenye kifaa hiki: {name}",
+    voiceUnpin: "Ondoa kibandiko (kwa zamu)",
     speakMicTitle: "Maikrofoni imewashwa: majibu husomwa kwa sauti kila wakati (mpangilio wako unarudi ikizimwa)",
     speakTouchTitle: "Majibu husomwa kwa sauti, ukiandika au la, hadi utakapozima",
     speakVoicedTitle: "Ulitumia maikrofoni kwenye kifaa hiki: majibu husomwa kwa sauti, yawe yameandikwa au kusemwa, hadi utakapozima",
@@ -1073,6 +1137,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   mr: {
     messageDetails: "संदेशाचा तपशील",
+    voiceUsed: "आवाज: {name}",
+    voiceUseThis: "हाच आवाज वापरा",
+    voicePinned: "या डिव्हाइसवर पिन केला: {name}",
+    voiceUnpin: "पिन काढा (आलटून पालटून)",
     speakMicTitle: "माइक चालू आहे: उत्तरे नेहमी मोठ्याने वाचली जातात (माइक थांबल्यावर तुमची सेटिंग परत येते)",
     speakTouchTitle: "टाइप करा किंवा नका, तुम्ही बंद करेपर्यंत उत्तरे मोठ्याने वाचली जातात",
     speakVoicedTitle: "तुम्ही या डिव्हाइसवर माइक वापरला: टाइप किंवा बोलून, बंद करेपर्यंत उत्तरे मोठ्याने वाचली जातात",
@@ -1111,6 +1179,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   ko: {
     messageDetails: "메시지 세부 정보",
+    voiceUsed: "음성: {name}",
+    voiceUseThis: "이 음성 사용",
+    voicePinned: "이 기기에 고정됨: {name}",
+    voiceUnpin: "고정 해제(번갈아)",
     speakMicTitle: "마이크가 켜져 있습니다: 답장을 항상 소리 내어 읽습니다(마이크가 꺼지면 설정이 돌아옵니다)",
     speakTouchTitle: "입력 여부와 관계없이 끌 때까지 답장을 소리 내어 읽습니다",
     speakVoicedTitle: "이 기기에서 마이크를 사용했습니다: 입력하든 말하든 끌 때까지 답장을 소리 내어 읽습니다",

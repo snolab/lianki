@@ -50,6 +50,14 @@ export const SUITES = [
     everyShard: true,
   },
   {
+    name: "API PREVIEW RPC (workerd)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-api-preview-proxy.ts"],
+    id: "api-preview-proxy",
+    paths: ["lib/preview/**", "wrangler.preview*.jsonc", "lib/box-oauth/**"],
+    sensitive: false,
+  },
+  {
     name: "API  (qa-api)",
     cmd: "bun",
     args: ["scripts/qa/qa-api.mjs"],

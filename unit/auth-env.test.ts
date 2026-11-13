@@ -17,6 +17,21 @@ describe("hasSessionCookie", () => {
     );
   });
 
+  it("recognizes a MyBox bearer on a preview API without accepting production cookies", () => {
+    const saved = process.env.LIANKI_BOX_CLIENT_ID;
+    process.env.LIANKI_BOX_CLIENT_ID = "preview-client";
+    try {
+      expect(hasSessionCookie(new Headers({ authorization: `Bearer lkb_${"a".repeat(32)}` }))).toBe(
+        true,
+      );
+      expect(hasSessionCookie(new Headers({ authorization: "Bearer invalid" }))).toBe(false);
+      expect(hasSessionCookie(h("better-auth.session_token=prod"))).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env.LIANKI_BOX_CLIENT_ID;
+      else process.env.LIANKI_BOX_CLIENT_ID = saved;
+    }
+  });
+
   it("does not mistake other better-auth cookies for a session", () => {
     // session_data alone (the cookie cache) never authenticates without the token.
     expect(hasSessionCookie(h("better-auth.session_data=xyz"))).toBe(false);

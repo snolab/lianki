@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lianki-preview-agy",
+  "main": "worker.ts",
+  "compatibility_date": "2025-05-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "vars": {
+    "DB_BACKEND": "d1",
+    "LIANKI_BOX_CLIENT_ID": "REGISTER_EXACT_ORIGIN_IN_DEV_BOX_CLIENTS",
+    "PREVIEW_MODE": "1",
+    "PREVIEW_TENANT": "agy",
+    "PREVIEW_ORIGIN": "https://agy.lianki.pages.dev",
+    "BETTER_AUTH_BASE_URL": "https://agy.lianki.pages.dev"
+  },
+  // No DB/R2/migrations/cron/PUSH binding or production secrets in a branch.
+  "services": [{ "binding": "CORE", "service": "lianki-preview-core-agy", "entrypoint": "PreviewCore" },
+    { "binding": "CORE_AUTH", "service": "lianki", "entrypoint": "PreviewAuth" }]
+}

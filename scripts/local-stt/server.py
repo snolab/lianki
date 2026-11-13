@@ -28,12 +28,15 @@ Protocol (one socket per page, utterances one after another):
                                                              first frame (VAD pre-pad)
                    text   {"t":"end","id":N}                 decode it now
                    text   {"t":"cancel","id":N}              drop it
+                   text   {"t":"recheck","rid":R,"seconds":15,"engine":"mlx-whisper"}
+                          re-read recent audio from this socket (0 < seconds <= 60)
   server → client  {"t":"ready","engine":…,"model":…}
                    {"t":"partial","id":N,"text":…,"audioMs":…}
                    {"t":"final","id":N,"text":…,"lang":…,"model":…,"ms":decode ms,
                     "audioMs":…,"endToFinalMs":…[,"langAuto":…]}
                    (langAuto: on a short utterance whose auto-detected language
                    lost to a forced ja/zh reading; engines.LangPicker)
+                   {"t":"recheck_result","rid":R,"engine":"mlx-whisper","ok":true,"text":…}
                    {"t":"error","id":N,"error":…}
 
 The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
@@ -70,6 +73,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 import re
 import stat
@@ -176,10 +180,49 @@ def pcm(b: bytes) -> np.ndarray:
     return np.frombuffer(b, dtype="<i2").astype(np.float32) / 32768.0
 
 
+class AudioRingBuffer:
+    """Fixed 60 seconds of float32 PCM in RAM, owned by one socket only."""
+
+    def __init__(self, seconds: int = 60):
+        self.data = np.zeros(seconds * RATE, dtype=np.float32)
+        self.end = 0
+        self.size = 0
+
+    def append(self, audio: np.ndarray) -> None:
+        x = audio[-len(self.data):]
+        n = len(x)
+        first = min(n, len(self.data) - self.end)
+        self.data[self.end:self.end + first] = x[:first]
+        self.data[:n - first] = x[first:]
+        self.end = (self.end + n) % len(self.data)
+        self.size = min(len(self.data), self.size + n)
+
+    def tail(self, n: int) -> np.ndarray:
+        n = min(n, self.size)
+        start = (self.end - n) % len(self.data)
+        first = min(n, len(self.data) - start)
+        return np.concatenate((self.data[start:start + first], self.data[:n - first]))
+
+    def prepend_current(self, audio: np.ndarray, current_n: int) -> None:
+        # VAD sends pre-pad after streaming frames. Insert before this utterance,
+        # preserving the chronological order and evicting only the oldest samples.
+        current = self.tail(current_n)
+        self.end = (self.end - len(current)) % len(self.data)
+        self.size -= len(current)
+        self.append(audio)
+        self.append(current)
+
+    def clear(self) -> None:
+        self.data.fill(0)
+        self.size = self.end = 0
+
+
 class Server:
     def __init__(self, engine, workers: int = 2, verifier: "VP.Verifier | None" = None,
                  vp_tickets: "Tickets | None" = None, attestor: "VP.Attestor | None" = None):
         self.engine = engine
+        self.recheck_engine = None
+        self.recheck_pool = ThreadPoolExecutor(max_workers=1)
         self.pool = ThreadPoolExecutor(max_workers=workers)
         self.partial_step_s = PARTIAL_STEP_S
         self.partial_min_s = PARTIAL_MIN_S
@@ -200,6 +243,28 @@ class Server:
         #: Open enrolments by id (the start answer's `enrolment`), and when each began.
         self.enrolments: dict[str, "VP.Enrolment"] = {}
         self.enrol_at: dict[str, float] = {}
+
+    def warm_recheck(self):
+        """Load once on the dedicated worker; no audio files are ever created."""
+        if self.recheck_engine is None:
+            engine = load_engine("mlx-whisper")
+            engine.transcribe(np.zeros(RATE // 2, dtype=np.float32))
+            self.recheck_engine = engine
+        return self.recheck_engine
+
+    async def recheck(self, m: dict, audio: np.ndarray) -> dict:
+        out = {"t": "recheck_result", "rid": m.get("rid"), "engine": "mlx-whisper"}
+
+        def read():
+            return self.warm_recheck().transcribe(audio)
+
+        try:
+            text, lang = await asyncio.get_running_loop().run_in_executor(self.recheck_pool, read)
+            return {**out, "ok": True, "text": text, "lang": lang,
+                    "audioMs": int(len(audio) / RATE * 1000)}
+        except Exception as e:
+            log(f"recheck failed: {type(e).__name__}")
+            return {**out, "ok": False, "error": "recheck unavailable"}
 
     async def verify(self, audio: np.ndarray, device: str | None):
         if not self.verifier:
@@ -450,6 +515,8 @@ class Server:
                 await ws.close(4408, "session over")
 
             session_end = asyncio.create_task(end_session())
+        ring = AudioRingBuffer()
+        recheck_task = None
         cur: Utterance | None = None
         #: This socket's device (hello): whose print its finals are scored against.
         conn: dict = {"device": None, "thread": None, "filter": False}
@@ -638,7 +705,11 @@ class Server:
                     if tag == 1:
                         if cur.n >= max_samples:
                             continue
-                        x = pcm(body)
+                        if len(body) % 2:
+                            continue
+                        x = pcm(body)[:max_samples - cur.n]
+                        if not cur.enrol and not conn["filter"]:
+                            ring.append(x)
                         cur.chunks.append(x)
                         cur.n += len(x)
                         if cur.sw is not None:
@@ -651,7 +722,11 @@ class Server:
                             cur.last_partial = cur.n
                             asyncio.create_task(partial(cur))
                     elif tag == 2:
-                        cur.pre = pcm(body)
+                        if len(body) % 2 or cur.pre is not None:
+                            continue
+                        cur.pre = pcm(body)[:max(0, max_samples - cur.n)]
+                        if not cur.enrol and not conn["filter"]:
+                            ring.prepend_current(cur.pre, cur.n)
                         cur.roll = Rolling()  # the samples moved: settle again from the start
                         if cur.sw is not None:
                             cur.sw.prepend(cur.pre)  # the picks made while he spoke stand
@@ -670,6 +745,8 @@ class Server:
                     cur.sw = self.tracker()
                     e = m.get("enrol")
                     cur.enrol = e if isinstance(e, str) and 0 < len(e) <= 64 else None
+                    if cur.enrol:
+                        ring.clear()
                     q = m.get("uid")
                     cur.uid = q if isinstance(q, str) and re.fullmatch(r"[A-Za-z0-9_-]{16,64}", q) else None
                 elif t == "end" and cur is not None and cur.id == uid and not cur.done:
@@ -690,6 +767,7 @@ class Server:
                 elif t == "filter":
                     # The page says on or off (docs/local-stt.md, "Only my voice"); no message, no filter.
                     conn["filter"] = m.get("on") is True and self.verifier is not None
+                    ring.clear()
                     log(f"voice filter {'on' if conn['filter'] else 'off'} ({conn['device']})")
                     await send({"t": "filter", "on": conn["filter"]})
                 elif t in ("enrol", "voiceprint") and guest:
@@ -700,11 +778,35 @@ class Server:
                 elif t == "cancel" and cur is not None and cur.id == uid:
                     cur.done = True
                     cur = None
+                elif t == "recheck":
+                    out = {"t": "recheck_result", "rid": m.get("rid"), "engine": "mlx-whisper", "ok": False}
+                    seconds = m.get("seconds", 15)
+                    if m.get("engine", "mlx-whisper") != "mlx-whisper":
+                        await send({**out, "error": "unsupported engine"})
+                    elif (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
+                          or not math.isfinite(seconds) or not 0 < seconds <= 60):
+                        await send({**out, "error": "seconds must be within (0, 60]"})
+                    elif recheck_task is not None and not recheck_task.done():
+                        await send({**out, "error": "recheck busy"})
+                    elif conn["filter"] or (cur is not None and cur.enrol):
+                        await send({**out, "error": "recheck unavailable while filtering or enrolling"})
+                    elif not ring.size:
+                        await send({**out, "error": "no audio"})
+                    else:
+                        audio = ring.tail(max(1, int(seconds * RATE)))
+
+                        async def recheck_reply(request, snapshot):
+                            await send(await self.recheck(request, snapshot))
+
+                        recheck_task = asyncio.create_task(recheck_reply(m, audio))
                 elif t == "ping":
                     await send({"t": "pong"})
         except ConnectionClosed:
             pass  # the page went away (reload, backgrounded): no close frame from iOS
         finally:
+            ring.clear()
+            if recheck_task:
+                recheck_task.cancel()
             if session_end:
                 session_end.cancel()
             log(f"page detached ({peer}, {via})")
@@ -1009,6 +1111,11 @@ async def main() -> None:
             except Exception as e:
                 log(f"speaker tags unsigned: {type(e).__name__}: {e}")
     srv = Server(engine, verifier=verifier, vp_tickets=vp_tickets, attestor=attestor)
+    if a.engine != "fake":
+        try:
+            await asyncio.get_running_loop().run_in_executor(srv.recheck_pool, srv.warm_recheck)
+        except Exception as e:
+            log(f"recheck warmup unavailable: {type(e).__name__}")
     srv.partial_step_s, srv.partial_min_s = max(0.032, a.partial_step), max(0.0, a.partial_min)
     log(f"partials every {srv.partial_step_s:.2f} s of audio, from {srv.partial_min_s:.2f} s")
 

@@ -1300,7 +1300,7 @@ export function DebugChat({
   const ui = uiStrings();
   // The strings that were inline here, in the page's language (chat-ui-locales.ts).
   const ux = chatExtra();
-  const details = useMessageDetails(ux.messageDetails);
+  const details = useMessageDetails(ux.messageDetails, ux);
   const withNew = (label: string, n: number) =>
     n ? `${label}, ${ux.newCount.replace("{n}", String(n))}` : label;
   /** Agent lines not read aloud because the page was in the background (voice.ts gateVoice). */
