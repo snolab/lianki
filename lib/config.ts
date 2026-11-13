@@ -262,6 +262,18 @@ export const CONFIG = {
     description:
       'Li 朗读时哪种语言用哪个谷歌 / Azure 声音（JSON 对象：语言 → 声音），只在开关 voice.cloud-voices 打开时生效。语言先找完整的（zh-TW），再找主语言（zh）。台语和台湾国语从文字认不出来，所以只有标了语言的句子会用到 zh-TW / nan；想让所有中文都用台湾腔，就加 "zh"。声音写法：google:cmn-TW-Wavenet-A、azure:zh-TW-HsiaoChenNeural、azure:zh-CN-XiaoxiaoDialectsNeural/nan-CN（斜线后是它改用的口音）。按字数扣积分；没有密钥时照常用原来的声音。',
   },
+  // The polish read-back in his cloned voice (packages/debug-chat/src/polish-readback.ts),
+  // flag voice.polish-readback: a clip from the Mac's clone server not back by then is skipped.
+  "voice.cloneTimeoutMs": int({
+    default: 20_000,
+    min: 2_000,
+    max: 120_000,
+    unit: "ms",
+    group: "voice",
+    audience: "public",
+    description:
+      "润色后用你的克隆声音读一遍（开关 voice.polish-readback）：每一句等 Mac 上的克隆声音服务器最多多久（毫秒）。一句通常要 5–10 秒生成；超过这个时间就安静跳过这一句，不换别的声音读。",
+  }),
   "voice.azureRegion": {
     default: "eastasia" as string,
     schema: z.string().regex(/^[a-z0-9]{2,30}$/, "an Azure region: eastasia, japaneast…"),

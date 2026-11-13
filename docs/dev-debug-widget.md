@@ -621,6 +621,23 @@ the raw STT text, muted; another tap goes back. The icon is one slot:
 `POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
 `polishedIcon` prop.
 
+**Read back in his own voice** (owner, 2026-11-14; flag `voice.polish-readback`,
+audience owner, <https://lianki.com/dev/flags#voice.polish-readback>): the
+polished text is read to him **once**, in his cloned voice from the Mac's
+clone server (`GET …/lianki-clone-tts/tts?text=` → WAV). The trigger is
+DebugEval's `edited` handler calling `polishReadback`
+(`packages/debug-chat/src/polish-readback.ts`): only his own `source: "stt"`
+line going from raw (or merged, unpolished) to an agent's polish or polished
+passage; never a line's first arrival, a merge, a summary or an undo; never
+twice for one id (memory). It goes into Li's one queue (`voice().reply` with
+`how.pick = {kind: "clone"}`), so the read-aloud switch, the talk-over pause
+and the tab that reads all apply; a hidden page drops it. A clip that fails
+or is not back within config `voice.cloneTimeoutMs` (default 20 s) is skipped
+and logged (`voice-out`, `out: "clone"`), never read in another voice. The
+server is the device key `lk:agent-clone-tts` (`off` = none on that device).
+The line's details name the voice "Voice: yours (cloned)". Tests:
+`unit/polish-readback.test.ts`.
+
 ### Summaries
 
 Room talk and other people's voices reach the chat as his voice lines. The

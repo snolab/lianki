@@ -231,6 +231,13 @@ describe("message details: the voice rows", () => {
     expect(html.match(/debug-chat-voice-pin"/g)?.length).toBe(1);
   });
 
+  it("his own cloned voice (a polish read-back) is named in words, not by its id", () => {
+    const html = render([{ name: "clone:owner" }], null);
+    expect(html).toContain("Voice: yours (cloned)");
+    expect(html).not.toContain("clone:owner<");
+    expect(html).not.toContain("debug-chat-voice-pin");
+  });
+
   it("nothing heard: no rows", () => {
     expect(render([], null)).toBe("");
   });
@@ -261,7 +268,13 @@ describe("message details: the voice rows", () => {
   });
 
   it("the strings exist in all 16 locales, each with a context line, {name} kept", () => {
-    for (const k of ["voiceUsed", "voiceUseThis", "voicePinned", "voiceUnpin"] as const) {
+    for (const k of [
+      "voiceUsed",
+      "voiceUseThis",
+      "voicePinned",
+      "voiceUnpin",
+      "voiceClone",
+    ] as const) {
       expect(EXTRA_CONTEXT[k].length).toBeGreaterThan(40);
       for (const l of CHAT_LOCALES) {
         expect(EXTRA[l][k].trim().length).toBeGreaterThan(0);

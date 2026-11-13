@@ -18,9 +18,13 @@ import {
   subscribeHeard,
 } from "./voice-heard";
 import type { ChatMessage } from "./wire";
+import { CLONE_VOICE_NAME } from "./polish-readback";
 
 /** The details' voice rows' words (chat-ui-locales.ts). */
-export type VoiceWords = Pick<ChatExtra, "voiceUsed" | "voiceUseThis" | "voicePinned" | "voiceUnpin">;
+export type VoiceWords = Pick<
+  ChatExtra,
+  "voiceUsed" | "voiceUseThis" | "voicePinned" | "voiceUnpin" | "voiceClone"
+>;
 
 const SEAL = "oklch(0.6 0.11 22.3)";
 
@@ -48,7 +52,12 @@ export function HeardVoiceRows({
     <div data-testid="debug-chat-message-voice" className="mt-1 flex flex-col gap-1">
       {heard.map((v) => (
         <div key={v.name} className="flex flex-wrap items-center gap-2">
-          <span data-voice={v.name}>{words.voiceUsed.replace("{name}", v.name)}</span>
+          <span data-voice={v.name}>
+            {/* His own cloned voice (polish-readback.ts) in words, not its id. */}
+            {v.name === CLONE_VOICE_NAME && words.voiceClone
+              ? words.voiceClone
+              : words.voiceUsed.replace("{name}", v.name)}
+          </span>
           {v.cycle && v.name !== pinned && (
             <button
               type="button"
@@ -200,8 +209,8 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
               {at.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" })}
             </time>
           )}
-          {voiceWords && typeof selection.message.id === "string" && (
-            <LineVoice lineId={selection.message.id} words={voiceWords} />
+          {voiceWords && m && typeof m.id === "string" && (
+            <LineVoice lineId={m.id} words={voiceWords} />
           )}
           <pre className="m-0 mt-2 whitespace-pre-wrap break-words font-mono fs-10">
             {JSON.stringify(metadata, null, 2)}
