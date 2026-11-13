@@ -18,7 +18,7 @@
  */
 import { noteOpened } from "./aec";
 import { encodeWav } from "./mic";
-import type { CloudOut, LinePick, PlayEvents, Playback } from "./voice";
+import type { CloudOut, LinePick, PlayEvents, Playback, ReadTiming } from "./voice";
 import { type HeardVoice, pickLocalVoice, pinnedLocalVoice } from "./voice-heard";
 import { MELO_LANGS, VOICES, type VoiceId, cloudVoice } from "./voices";
 
@@ -109,6 +109,21 @@ export function audioCtx(): AudioContext | null {
 }
 export const existingCtx = () => audio;
 
+/**
+ * How long a clip has left to play (the chat's reading sweep): its seconds
+ * still to go over its speed, and the share already behind it (a resume by
+ * offset). Null while its length is unknown (no metadata yet, or a stream).
+ */
+export function clipTiming(
+  a: Pick<ElementLike, "duration" | "currentTime" | "playbackRate">,
+): ReadTiming | null {
+  const d = a.duration;
+  if (d === undefined || !Number.isFinite(d) || d <= 0) return null;
+  const at = Math.min(Math.max(0, a.currentTime || 0), d);
+  const rate = a.playbackRate && a.playbackRate > 0 ? a.playbackRate : 1;
+  return { ms: ((d - at) / rate) * 1000, done: at / d };
+}
+
 /** The slice of an HTMLAudioElement the cloud output uses. */
 export type ElementLike = {
   src: string;
@@ -122,6 +137,8 @@ export type ElementLike = {
   /** Keep the voice's pitch at any speed (and Safari's prefixed name). */
   preservesPitch?: boolean;
   webkitPreservesPitch?: boolean;
+  /** Seconds, once the metadata is in (NaN before; Infinity for a stream). */
+  duration?: number;
   onended: (() => void) | null;
   onerror: (() => void) | null;
   onloadedmetadata: (() => void) | null;
@@ -388,10 +405,25 @@ export function createCloudOut(d: {
     ev.onvoice?.({ name: `eleven:${id}` });
     a.onended = () => live() && ev.onend();
     a.onerror = () => live() && ev.onfail?.("preview error");
-    a.onloadedmetadata = null;
+    // Its length may come after it started (no load() first): told then.
+    let started = false;
+    const tell = () => {
+      const t = clipTiming(a);
+      if (t) ev.ontiming?.(t);
+    };
+    a.onloadedmetadata = () => {
+      if (!live()) return;
+      a.onloadedmetadata = null;
+      if (started) tell();
+    };
     a.src = url;
     a.play().then(
-      () => live() && ev.onstart?.(),
+      () => {
+        if (!live()) return;
+        started = true;
+        ev.onstart?.();
+        tell();
+      },
       (e: unknown) => live() && ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`),
     );
     return pb;
@@ -506,7 +538,13 @@ export function createCloudOut(d: {
             a.preservesPitch = true;
             a.webkitPreservesPitch = true;
             a.play().then(
-              () => live() && ev.onstart?.(),
+              () => {
+                if (!live()) return;
+                ev.onstart?.();
+                // The metadata is in: the clip's own length, at its speed.
+                const t = clipTiming(a);
+                if (t) ev.ontiming?.(t);
+              },
               (e: unknown) => {
                 if (live()) ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`);
               },

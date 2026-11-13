@@ -91,7 +91,22 @@ import { micTaps } from "./mic-taps";
 import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
 import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
-import { SPEAK_KEY, type VoiceState, speechEnabled, unheard, voice } from "./voice";
+import {
+  type ReadTiming,
+  SPEAK_KEY,
+  type VoiceState,
+  speechEnabled,
+  unheard,
+  voice,
+} from "./voice";
+import {
+  READ_SWEEP_CSS,
+  SPEAKING_BG,
+  SWEEP_ATTR,
+  initialSweep,
+  sweepStep,
+  sweepStyle,
+} from "./read-sweep";
 import { hideStops, isDesktop } from "./voice-bg";
 import {
   type ReadingLeft,
@@ -486,11 +501,8 @@ function useDrag(
 
 /** A sentence read aloud: a quieter grey, still legible (light and dark). */
 const SPOKEN_STYLE = { color: "light-dark(oklch(0.5 0.01 260), oklch(0.72 0.01 260))" };
-/** The sentence being read: a soft highlight behind it. */
-const SPEAKING_STYLE = {
-  background: "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.055 22.3 / 0.7))",
-  borderRadius: 3,
-};
+/** The sentence being read, its length not known: a soft highlight behind it (else read-sweep.ts). */
+const SPEAKING_STYLE = { background: SPEAKING_BG, borderRadius: 3 };
 /** The full-screen log's wipe in and out. */
 const WIPE = "clip-path 200ms ease-out";
 /** The input-started full-screen log fades in and out, as the bar does the other way. */
@@ -3935,15 +3947,29 @@ export function DebugChat({
   const [readP, readDispatch] = useReducer(readStep, undefined, () =>
     initialRead(uiStore.getState().spoken),
   );
+  /**
+   * The speaking sentence's sweep (read-sweep.ts): when it started, how long
+   * it should take (voice.ts onTiming; an older session copy has none: the
+   * static highlight), held while the reading waits.
+   */
+  const [sweep, sweepDispatch] = useReducer(sweepStep, undefined, initialSweep);
   useEffect(() => {
     const v = voice() as ReturnType<typeof voice> & {
       onStart?: (f: () => void) => () => void;
+      onTiming?: (f: (t: ReadTiming) => void) => () => void;
       onDrop?: (f: (ids: string[]) => void) => () => void;
       onInterject?: (f: (j: { id: string; n: number; at: number }) => void) => () => void;
     };
     readDispatch({ type: "queued", n: v.state().queued });
-    const off1 = v.subscribe((s) => readDispatch({ type: "queued", n: s.queued }));
-    const off2 = v.onStart?.(() => readDispatch({ type: "start" }));
+    const off1 = v.subscribe((s) => {
+      readDispatch({ type: "queued", n: s.queued });
+      sweepDispatch({ type: s.paused ? "pause" : "resume", at: Date.now() });
+    });
+    const off2 = v.onStart?.(() => {
+      readDispatch({ type: "start" });
+      sweepDispatch({ type: "start", at: Date.now() });
+    });
+    const off5 = v.onTiming?.((t) => sweepDispatch({ type: "timing", at: Date.now(), ...t }));
     // say --supersede / --interject (voice.ts): lines cut, or put in ahead of the rest.
     const off3 = v.onDrop?.((ids) => {
       for (const id of ids) readDispatch({ type: "drop", id });
@@ -3957,6 +3983,7 @@ export function DebugChat({
       off2?.();
       off3?.();
       off4?.();
+      off5?.();
     };
   }, []);
   /** Agent lines there before this widget came up: history, never claimed. */
@@ -4083,6 +4110,19 @@ export function DebugChat({
           ranges: sentenceRanges(rich.spoken),
           wrap: (idx, key, children) => {
             const st = sentenceState(readP, m.id, idx);
+            // Speaking, its length known: swept left to right over it (read-sweep.ts).
+            const swept = st === "speaking" ? sweepStyle(sweep) : null;
+            if (swept)
+              return (
+                <span
+                  key={`${key}:${sweep.v}`}
+                  data-read={st}
+                  {...{ [SWEEP_ATTR]: "" }}
+                  style={swept}
+                >
+                  {children}
+                </span>
+              );
             return (
               <span
                 key={key}
@@ -5099,6 +5139,8 @@ export function DebugChat({
           <style>{TAP_44_CSS}</style>
           {/* New lines and the mic scrub's cue (shimmer.ts). */}
           <style>{SHIMMER_CSS}</style>
+          {/* The sentence read aloud, swept over its reading time (read-sweep.ts). */}
+          <style>{READ_SWEEP_CSS}</style>
           {controls}
           {/* + : add to Lianki, attach to the line, view the state tree
           (AttachMenu.tsx). Open only; without `attach` (or with a notice) it

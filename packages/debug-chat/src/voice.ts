@@ -238,6 +238,29 @@ export function heardFraction(text: string, ms: number, rate = 1): number {
   return Math.min(1, (ms / 1000) * cps * Math.max(0.1, rate) / text.length);
 }
 
+/**
+ * Milliseconds per character at rate 1, by script class: how long
+ * speechSynthesis takes to read (the same speeds as SPEECH_CPS). A
+ * character of no listed class, spaces and marks included, is `other`.
+ */
+export const SPEECH_CHAR_MS = {
+  cjk: 1000 / SPEECH_CPS.cjk,
+  other: 1000 / SPEECH_CPS.other,
+} as const;
+/** Script classes by character, first match wins (the rest: `other`). */
+export const SPEECH_SCRIPTS: readonly (readonly [RegExp, keyof typeof SPEECH_CHAR_MS])[] = [
+  [CJK_TEXT, "cjk"],
+];
+/** How long speechSynthesis should take to read `text` at `rate` (no audio to measure). */
+export function speechMs(text: string, rate = 1): number {
+  let ms = 0;
+  for (const ch of text) {
+    const cls = SPEECH_SCRIPTS.find(([re]) => re.test(ch))?.[1] ?? "other";
+    ms += SPEECH_CHAR_MS[cls];
+  }
+  return ms / Math.max(0.1, rate);
+}
+
 /** A sentence in pieces of at most `max` chars: after the last clause mark, else a space, else hard. */
 export function chunk(s: string, max = CHUNK_MAX): string[] {
   const out: string[] = [];
@@ -305,7 +328,16 @@ export type PlayEvents = {
   onfail?(reason: string): void;
   /** The concrete voice it is read in, once known (voice-heard.ts: the line's details). */
   onvoice?(v: HeardVoice): void;
+  /** How long it should take, once known; again if a better figure comes later. */
+  ontiming?(t: ReadTiming): void;
 };
+/**
+ * A sentence's expected reading time, as of when it is told: `ms` still to
+ * go, at the reading speed, and the share `done` already behind it (a
+ * sentence resumed part-way). From the clip's length (audio), or an estimate
+ * from its characters (speechSynthesis, speechMs).
+ */
+export type ReadTiming = { ms: number; done: number };
 /** The cloud output (voice-out.ts createCloudOut). */
 export type CloudOut = {
   /** `written`: a provider voice's text before the lexicon (the server writes it as SSML). */
@@ -477,6 +509,8 @@ export function createVoice(d: {
   const subs = new Set<(s: VoiceState) => void>();
   /** Told each time a sentence starts playing (latency.ts). */
   const starts = new Set<() => void>();
+  /** Told how long the sentence playing should take (the chat's reading sweep, read-sweep.ts). */
+  const timings = new Set<(t: ReadTiming) => void>();
   /** Told the line ids whose unread sentences a superseding line dropped (the chat's read mirror). */
   const drops = new Set<(ids: string[]) => void>();
   /** Told where an interjecting line's sentences went into the queue (the chat's read mirror). */
@@ -619,7 +653,16 @@ export function createVoice(d: {
         return ev.onfail?.("speech NotAllowedError");
       ev.onerror();
     };
-    u.onstart = () => (settle(), ev.onstart?.());
+    u.onstart = () => {
+      settle();
+      ev.onstart?.();
+      // No clip to measure: estimated from its characters at this utterance's speed.
+      const all = speechMs(head.text);
+      ev.ontiming?.({
+        ms: speechMs(head.text.slice(from), u.rate ?? 1),
+        done: all > 0 ? speechMs(head.text.slice(0, from)) / all : 0,
+      });
+    };
     ev.onvoice?.({ name: u.voice?.name ? `device:${u.voice.name}` : "device" });
     s.speak(u);
     return {
@@ -674,6 +717,10 @@ export function createVoice(d: {
       onstart: () => {
         if (e !== epoch) return;
         for (const f of starts) f();
+      },
+      ontiming: (t) => {
+        if (e !== epoch) return;
+        for (const f of timings) f(t);
       },
       onend: done,
       onerror: done,
@@ -885,6 +932,11 @@ export function createVoice(d: {
     onStart(f: () => void) {
       starts.add(f);
       return () => void starts.delete(f);
+    },
+    /** `f` hears how long the sentence playing should take (after its start; again if refined). */
+    onTiming(f: (t: ReadTiming) => void) {
+      timings.add(f);
+      return () => void timings.delete(f);
     },
     /** `f` hears where an interjecting line's sentences were put in the queue (read-progress mirror). */
     onInterject(f: (j: { id: string; n: number; at: number }) => void) {
