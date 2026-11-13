@@ -15,6 +15,9 @@ import {
   LOG_TICKS,
   TICK_GAP_PX,
   initialLogAxis,
+  offScreenSide,
+  REVEAL_PAD,
+  revealScrollLeft,
   initialScale,
   isLog,
   labelPx,
@@ -648,5 +651,34 @@ describe("one interface over both axes", () => {
     const near = ganttBar({ start: NOW, at: NOW + MIN }, log, NOW).w;
     const away = ganttBar({ start: NOW + DAY, at: NOW + DAY + MIN }, log, NOW).w;
     expect(near).toBeGreaterThan(10 * away);
+  });
+});
+
+describe("off-screen arrows", () => {
+  const view = { left: 1000, width: 400 };
+  it("says which edge a bar lies wholly past", () => {
+    expect(offScreenSide({ x: 100, w: 200 }, view)).toBe("earlier");
+    expect(offScreenSide({ x: 1500, w: 50 }, view)).toBe("later");
+  });
+  it("is null when any of the bar shows, edges included", () => {
+    expect(offScreenSide({ x: 800, w: 200 }, view)).toBeNull(); // ends on the left edge
+    expect(offScreenSide({ x: 1400, w: 30 }, view)).toBeNull(); // starts on the right edge
+    expect(offScreenSide({ x: 900, w: 1000 }, view)).toBeNull(); // spans the view
+    expect(offScreenSide({ x: 1100, w: 10 }, view)).toBeNull();
+  });
+  it("treats a negative width as a point, and an unmeasured view as all-visible", () => {
+    expect(offScreenSide({ x: 999, w: -5 }, view)).toBe("earlier");
+    expect(offScreenSide({ x: 0, w: 1 }, { left: 1000, width: 0 })).toBeNull();
+  });
+  it("centres a bar that fits, within the content", () => {
+    expect(revealScrollLeft({ x: 2000, w: 100 }, { width: 400 }, 5000)).toBe(1850);
+    expect(revealScrollLeft({ x: 10, w: 20 }, { width: 400 }, 5000)).toBe(0);
+    expect(revealScrollLeft({ x: 4950, w: 40 }, { width: 400 }, 5000)).toBe(4600);
+    expect(revealScrollLeft({ x: 10, w: 20 }, { width: 400 }, 100)).toBe(0);
+  });
+  it("puts a wide bar's start just in from the left", () => {
+    expect(revealScrollLeft({ x: 2000, w: 390 }, { width: 400 }, 5000)).toBe(
+      2000 - REVEAL_PAD * 400,
+    );
   });
 });

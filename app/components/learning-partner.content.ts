@@ -3089,6 +3089,42 @@ const learningPartnerContent = {
       mr: "बंद करा",
       ko: "닫기",
     }),
+    etaGanttToEarlier: t({
+      en: "Scroll back to {task}",
+      zh: "向前滚动到 {task}",
+      hi: "पीछे स्क्रॉल करके {task} पर जाएँ",
+      es: "Desplazar hacia atrás hasta {task}",
+      fr: "Revenir en arrière jusqu'à {task}",
+      ar: "التمرير إلى الخلف حتى {task}",
+      bn: "পেছনে স্ক্রল করে {task}-এ যান",
+      pt: "Rolar para trás até {task}",
+      ru: "Прокрутить назад к «{task}»",
+      ur: "پیچھے اسکرول کر کے {task} پر جائیں",
+      id: "Gulir mundur ke {task}",
+      de: "Zurück zu {task} scrollen",
+      ja: "{task} まで前へスクロール",
+      sw: "Sogeza nyuma hadi {task}",
+      mr: "मागे स्क्रोल करून {task} वर जा",
+      ko: "{task}(으)로 뒤로 스크롤",
+    }),
+    etaGanttToLater: t({
+      en: "Scroll ahead to {task}",
+      zh: "向后滚动到 {task}",
+      hi: "आगे स्क्रॉल करके {task} पर जाएँ",
+      es: "Desplazar hacia delante hasta {task}",
+      fr: "Avancer jusqu'à {task}",
+      ar: "التمرير إلى الأمام حتى {task}",
+      bn: "সামনে স্ক্রল করে {task}-এ যান",
+      pt: "Rolar para a frente até {task}",
+      ru: "Прокрутить вперёд к «{task}»",
+      ur: "آگے اسکرول کر کے {task} پر جائیں",
+      id: "Gulir maju ke {task}",
+      de: "Vor zu {task} scrollen",
+      ja: "{task} まで先へスクロール",
+      sw: "Sogeza mbele hadi {task}",
+      mr: "पुढे स्क्रोल करून {task} वर जा",
+      ko: "{task}(으)로 앞으로 스크롤",
+    }),
     etaGanttLegendTicks: t({
       en: "tick = estimate changed or confirmed · faint grey = original plan",
       zh: "竖线 = 预计时间改动或确认，淡灰 = 最初计划",
@@ -3769,6 +3805,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "The same tapped-tick note on the task timeline (a Gantt chart): lists the tasks whose status (doing, in review, done…) changed in that action, with no change to their time. {names} is a list of task names (keep it). Lower-case label, colon, no full stop.",
   etaTickClose:
     "Screen-reader label and tooltip of the × button on that tapped-tick note at the bottom of the full-screen task timeline: closes the note (the timeline stays open). One imperative verb.",
+  etaGanttToEarlier:
+    "Screen-reader label and tooltip of a small arrow (pointing left) at the left edge of one task's row in the full-screen task timeline (a Gantt chart). It appears when that task's bar lies entirely off-screen to the left, i.e. EARLIER in time; tapping it scrolls the timeline back so the bar is in view. {task} is the task's name (keep it as is). Imperative, no full stop. Time runs left to right in every language, including right-to-left ones.",
+  etaGanttToLater:
+    "Screen-reader label and tooltip of the same small arrow (pointing right) at the right edge of a task's row in the full-screen task timeline (a Gantt chart), shown when that task's bar lies entirely off-screen to the right, i.e. LATER in time; tapping it scrolls the timeline ahead so the bar is in view. {task} is the task's name (keep it). Imperative, no full stop.",
   etaGanttLegendTicks:
     "Second part of the one-line legend under the header of the full-screen task timeline (a Gantt chart), shown after 'Underline = reported progress · red line = now'. Explains two more marks: a short vertical tick on a task's bar wherever the assistant changed or re-confirmed its time estimate, and a very faint grey bar behind it showing the task's original plan (its first estimate). Keep 'mark = meaning' parts separated as usual; no full stop; lower-case start.",
   etaList:

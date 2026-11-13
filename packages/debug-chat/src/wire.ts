@@ -961,6 +961,10 @@ export type ChatStrings = {
   etaTickStatus: string;
   /** The tick note's close button (screen reader, tooltip). */
   etaTickClose: string;
+  /** The arrow at the left edge of the timeline for a task whose bar is off-screen, earlier (screen reader, tooltip); {task} is its name. */
+  etaGanttToEarlier: string;
+  /** The same arrow at the right edge, for a bar off-screen later. */
+  etaGanttToLater: string;
   /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
   etaMinutes: string;
   /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
@@ -1150,6 +1154,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaTickSet: "estimated: {names}",
   etaTickStatus: "status changed: {names}",
   etaTickClose: "Close",
+  etaGanttToEarlier: "Scroll back to {task}",
+  etaGanttToLater: "Scroll ahead to {task}",
   etaList: "Timed tasks",
   etaGroupChat: "Chat & voice",
   etaGroupGantt: "Timeline & progress",
