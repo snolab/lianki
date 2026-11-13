@@ -9,20 +9,20 @@ that one is the users' (cards, settings, against the public API).
 `lianki-dev` is the owner's dev tooling and takes that CLI's exit codes and
 JSON envelope, so an agent reads both the same way.
 
-| command       | runs                                                                                                                        | needs                        |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| `say`         | `eval.ts say`                                                                                                               | saved grant, network         |
-| `voices`      | `eval.ts voices` (`--cloud`: no page)                                                                                       | saved eval grant, network    |
-| `ask`         | `eval.ts ask`                                                                                                               | saved grant, network         |
-| `withdraw`    | `eval.ts withdraw <askId>\|--last`: an obsolete ask card greys out, untappable, never read aloud                            | saved grant, network         |
-| `edit`        | `eval.ts edit`: polish his voice line, `--merge <ids> --text` a run of them into one passage, `--unmerge <id>`, `--summary` | saved grant, network         |
-| `inbox`       | `eval.ts inbox list\|get\|done`                                                                                             | saved grant, network         |
-| `listen`      | `eval.ts chat` (one JSON line an event)                                                                                     | saved grant, network         |
-| `lane-listen` | `lane-listen.ts`: the owner lines addressed to this lane, to its agent ([lane-listen.md](lane-listen.md))                   | the lane's token, network    |
-| `serve`       | `eval.ts serve`                                                                                                             | saved eval grant, network    |
-| `progress`    | progress.ts's modules (with `--eta`)                                                                                        | progress token, network      |
-| `whoami`      | lane, checkout, hub, grant/token found                                                                                      | nothing                      |
-| `doctor`      | one line per missing piece                                                                                                  | nothing (checks the network) |
+| command       | runs                                                                                                                                                           | needs                        |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `say`         | `eval.ts say`                                                                                                                                                  | saved grant, network         |
+| `voices`      | `eval.ts voices` (`--cloud`: no page)                                                                                                                          | saved eval grant, network    |
+| `ask`         | `eval.ts ask`                                                                                                                                                  | saved grant, network         |
+| `withdraw`    | `eval.ts withdraw <askId>\|--last`: an obsolete ask card greys out, untappable, never read aloud                                                               | saved grant, network         |
+| `edit`        | `eval.ts edit`: polish any of his lines (unrestricted, owner 2026-11-14), `--merge <ids> --text` a run of them into one passage, `--unmerge <id>`, `--summary` | saved grant, network         |
+| `inbox`       | `eval.ts inbox list\|get\|done`                                                                                                                                | saved grant, network         |
+| `listen`      | `eval.ts chat` (one JSON line an event)                                                                                                                        | saved grant, network         |
+| `lane-listen` | `lane-listen.ts`: the owner lines addressed to this lane, to its agent ([lane-listen.md](lane-listen.md))                                                      | the lane's token, network    |
+| `serve`       | `eval.ts serve`                                                                                                                                                | saved eval grant, network    |
+| `progress`    | progress.ts's modules (with `--eta`)                                                                                                                           | progress token, network      |
+| `whoami`      | lane, checkout, hub, grant/token found                                                                                                                         | nothing                      |
+| `doctor`      | one line per missing piece                                                                                                                                     | nothing (checks the network) |
 
 ```bash
 lianki-dev say --as codex "PR #670 is green"        # → 【codex】PR #670 is green

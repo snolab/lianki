@@ -181,16 +181,16 @@ on the Mac now, behind the KWS hit: [local-stt.md](local-stt.md), "Voiceprint".
 
 ## Implementation (2026-10-31)
 
-| Piece | Where |
-| --- | --- |
-| State machine, the `LINKY` keyword (7 pronunciations), the cut after it | `packages/debug-chat/src/wake.ts` |
-| The spotter: a Blob Worker running `@sherpaw/kws@0.3.0` (sherpa-onnx WASM, Apache-2.0) with the zh-en 3M model (fp32, 13 MB, pinned Hugging Face commit) | `packages/debug-chat/src/wake-kws.ts` |
-| The gate on each VAD segment, before upload, only in passive mode | `createMic` `wake` (`mic.ts`) |
-| Everyone's name as a wake word, names → tokens, clashes, the in-place reload (2026-11-14) | `wake-names.ts`, `wake-tokens.ts`, `wake-lexicon.ts`; see "Names as wake words" |
-| Mode, rejections, lazy load, never-deaf fallback, `__lkMic.wake(mode)` | `mic-session.ts` |
-| The button: dashed violet ring (no text), zh/ja/en strings with translator context | `MicButton.tsx`, `ui-strings.ts` (`wakeStrings`) |
+| Piece                                                                                                                                                           | Where                                                                                                                 |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| State machine, the `LINKY` keyword (7 pronunciations), the cut after it                                                                                         | `packages/debug-chat/src/wake.ts`                                                                                     |
+| The spotter: a Blob Worker running `@sherpaw/kws@0.3.0` (sherpa-onnx WASM, Apache-2.0) with the zh-en 3M model (fp32, 13 MB, pinned Hugging Face commit)        | `packages/debug-chat/src/wake-kws.ts`                                                                                 |
+| The gate on each VAD segment, before upload, only in passive mode                                                                                               | `createMic` `wake` (`mic.ts`)                                                                                         |
+| Everyone's name as a wake word, names → tokens, clashes, the in-place reload (2026-11-14)                                                                       | `wake-names.ts`, `wake-tokens.ts`, `wake-lexicon.ts`; see "Names as wake words"                                       |
+| Mode, rejections, lazy load, never-deaf fallback, `__lkMic.wake(mode)`                                                                                          | `mic-session.ts`                                                                                                      |
+| The button: dashed violet ring (no text), zh/ja/en strings with translator context                                                                              | `MicButton.tsx`, `ui-strings.ts` (`wakeStrings`)                                                                      |
 | The chat lane: `{type: "wake", mode: "active" \| "passive" \| "ignored"}`, relayed to the thread's pages, not stored; each owner line carries `wake` (its mode) | `lib/dev-eval.ts`, `workers/push/src/debug.ts`, `app/components/DebugEval.tsx`, `bun scripts/dev/eval.ts wake <mode>` |
-| Browser end to end (fake mic from WAV files, nothing played) | `bun scripts/dev/wake-word-qa.mjs --clip <wav> [--negative <wav>] [--save sent.wav]` |
+| Browser end to end (fake mic from WAV files, nothing played)                                                                                                    | `bun scripts/dev/wake-word-qa.mjs --clip <wav> [--negative <wav>] [--save sent.wav]`                                  |
 
 - **Loading:** nothing loads until the mic first goes passive. Then about
   12 MB of runtime (jsDelivr) and 13 MB of model (Hugging Face) are
@@ -244,10 +244,10 @@ negatives are his real clips, which is the set that decides false wakes.
 The sweep used the browser's fp32 model and the whole segment plus 1 s of
 silence, as `padForSpot` does. It ran on files only, with nothing played.
 
-| Setting                                    | Positives (58) | +babble 10 dB | +babble 5 dB | **His clips (211)** | His noisy copies (48) | Adversarial (52) |
-| ------------------------------------------ | -------------- | ------------- | ------------ | ------------------- | --------------------- | ---------------- |
-| Before: 5 spellings, 0.25 / 1.0            | 46             | 43            | 39           | **0**               | 0                     | 9                |
-| After: 7 spellings, 0.15 / 1.5             | 47             | 44            | 41           | **0**               | 0                     | 12               |
+| Setting                         | Positives (58) | +babble 10 dB | +babble 5 dB | **His clips (211)** | His noisy copies (48) | Adversarial (52) |
+| ------------------------------- | -------------- | ------------- | ------------ | ------------------- | --------------------- | ---------------- |
+| Before: 5 spellings, 0.25 / 1.0 | 46             | 43            | 39           | **0**               | 0                     | 9                |
+| After: 7 spellings, 0.15 / 1.5  | 47             | 44            | 41           | **0**               | 0                     | 12               |
 
 - The threshold barely matters on these sets. Across 0.05–0.30 × score
   1.0–2.0, his clips gave **0 false wakes at every point**; positives moved
@@ -348,8 +348,8 @@ up as "@小克 帮我…", in active mode too. A wake word can take the wrong
 name, and the mention shows which one it took. Before, a name said again
 after the first wake (the mic active, the spotter not asked) reached the
 lane only as STT wrote it, and 小客 named no lane, so it looked as if the
-wake word worked once and then stopped. `polishCheck` accepts an agent's
-polish that makes the same change.
+wake word worked once and then stopped. An agent's polish may make the same
+change (polish is unrestricted, 2026-11-14).
 
 **Thresholds.** Names use LINKY's tuned 1.5 / 0.15. The spotter's defaults
 (1.0 / 0.25), used at first, are the setting that missed "Linky" on his

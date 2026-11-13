@@ -41,7 +41,7 @@ test("fixed input contract rejects arbitrary provider/prompt and bounds context"
       .action,
   ).toBe("forward");
 });
-test("polish cannot remove a negation or rewrite constraints", () => {
+test("polish is unrestricted (owner, 2026-11-14): any non-empty text is kept", () => {
   const contextual = { ...input, context: [{ from: "owner", text: "按钮" }] };
   expect(parsePrepare(contextual)).toEqual(contextual);
   expect(
@@ -52,7 +52,8 @@ test("polish cannot remove a negation or rewrite constraints", () => {
   ).toBe("ignore");
   expect(
     prepareVerdict({ action: "forward", polished: "删除按钮然后改成蓝色" }, input).polished,
-  ).toBeUndefined();
+  ).toBe("删除按钮然后改成蓝色");
+  expect(prepareVerdict({ action: "forward", polished: "  " }, input).polished).toBeUndefined();
   expect(
     prepareVerdict(
       { action: "forward", polished: "不要删除按钮，然后改成蓝色。", turn: "complete" },
