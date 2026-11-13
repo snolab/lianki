@@ -8,6 +8,7 @@
  * the owner set for it), fetched by reference and sanitized again here.
  */
 import { useEffect, useState } from "react";
+import { flashProps } from "./addressed";
 import { LANES, type LaneId, type LaneMark, isLaneId } from "./voices";
 import type { ChatMessage } from "./wire";
 import { AVATAR_PATH, autoMark, isAvatarRef, sanitizeAvatarSvg, svgDataUrl } from "./svg-avatar";
@@ -207,5 +208,39 @@ export function NameTag({
       {mcp && <McpBadge />}
       {inline ? "" : colon}
     </span>
+  );
+}
+
+/**
+ * The lanes an owner line called by name (addressed.ts), as small marks after
+ * it: kept, so the log shows who was called. `pulse`: the line just arrived,
+ * they pulse once (FLASH_MS) in their lane's colour. Each is labelled for
+ * screen readers by `label` ("Addressed: {name}", chat-ui-locales.ts).
+ */
+export function AddressedMarks({
+  lanes,
+  label,
+  pulse = false,
+}: {
+  lanes: readonly LaneId[];
+  label: string;
+  pulse?: boolean;
+}) {
+  return (
+    <>
+      {lanes.map((lane) => (
+        <span
+          key={lane}
+          role="img"
+          data-testid="debug-chat-addressed"
+          aria-label={label.replace("{name}", LANES[lane].name || lane)}
+          title={LANES[lane].name || lane}
+          className="ms-1 inline-block size-3 rounded-full align-middle"
+          {...(pulse ? flashProps(lane) : {})}
+        >
+          {laneAvatar(lane)}
+        </span>
+      ))}
+    </>
   );
 }

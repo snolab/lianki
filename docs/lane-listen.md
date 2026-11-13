@@ -29,6 +29,11 @@ lane answers it. Every listener uses it, so a line gets exactly one answer
 - `codex的…` is talk about codex, not to it: the chat lane takes it.
 - Agent lines, friend lines and other threads are never routed.
 - New spellings go in `LANE_NAMES` with a test in `unit/lane-route.test.ts`.
+- The matcher itself lives in `packages/debug-chat/src/lane-route.ts`
+  (`lib/lane-route.ts` re-exports it), so the chat uses the same rule: a name
+  heard in his live speech, or in a line he sends, flashes that lane's avatar
+  once per utterance, and the sent line keeps a small mark of each lane it
+  called (`addressed.ts`; the chat lane's route `chat` is 小克's avatar).
 
 ## Who listens how
 

@@ -110,6 +110,7 @@ export type ChatExtra = {
   sttServersBody: string;
   sttServersAgree: string;
   sttServersLater: string;
+  addressed: string;
 };
 
 const CHAT = "the Learning Partner chat (Li), a small chat panel on every Lianki page";
@@ -183,6 +184,7 @@ export const EXTRA_CONTEXT: ChatExtra = {
   sttServersBody: `In ${CHAT}: the text of that card: the voice is sent to Lianki's speech servers, which write it out while the user speaks; the audio is not stored, only what the user sends is kept; free for now. Call them only 'Lianki's speech servers' (never a computer or a person). Two or three short sentences.`,
   sttServersAgree: `In ${CHAT}: the card's main button: agree and use Lianki's speech servers from now on, on this device. An imperative phrase.`,
   sttServersLater: `In ${CHAT}: the card's second button: do not use them now (speech recognition stays as it was). The platform's usual 'Not now'.`,
+  addressed: `In ${CHAT}: screen-reader label of a small avatar after one of the user's own messages, showing which assistant the message called by name (e.g. it started with 'coco, …'); {name} is that assistant's name, a proper name shown as is (coco, 杰咪, 小克). A short label, a colon, then {name}; keep {name}.`,
 };
 
 /** The 13 app locales ui-strings.ts does not carry. */
@@ -588,6 +590,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "Your voice goes to Lianki's speech servers, which write it out while you speak. The audio is not stored; only what you send is kept. Free for now.",
     sttServersAgree: "Use Lianki's speech servers",
     sttServersLater: "Not now",
+    addressed: "Addressed: {name}",
   },
   zh: {
     messageDetails: "消息详情",
@@ -630,6 +633,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "你的声音会发送到 Lianki 的语音服务器，边说边转成文字。音频不会保存，只保留你发出的内容。目前免费。",
     sttServersAgree: "使用 Lianki 的语音服务器",
     sttServersLater: "暂不",
+    addressed: "点名：{name}",
   },
   hi: {
     messageDetails: "संदेश विवरण",
@@ -672,6 +676,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "आपकी आवाज़ Lianki के स्पीच सर्वरों पर जाती है, जो बोलते-बोलते उसे लिख देते हैं। ऑडियो सहेजा नहीं जाता; सिर्फ़ वही रखा जाता है जो आप भेजते हैं। अभी मुफ़्त।",
     sttServersAgree: "Lianki के स्पीच सर्वर इस्तेमाल करें",
     sttServersLater: "अभी नहीं",
+    addressed: "संबोधित: {name}",
   },
   es: {
     messageDetails: "Detalles del mensaje",
@@ -714,6 +719,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "Tu voz va a los servidores de voz de Lianki, que la escriben mientras hablas. El audio no se guarda; solo se conserva lo que envías. Gratis por ahora.",
     sttServersAgree: "Usar los servidores de voz de Lianki",
     sttServersLater: "Ahora no",
+    addressed: "Dirigido a: {name}",
   },
   fr: {
     messageDetails: "Détails du message",
@@ -756,6 +762,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "Votre voix part vers les serveurs vocaux de Lianki, qui l'écrivent pendant que vous parlez. L'audio n'est pas conservé ; seul ce que vous envoyez est gardé. Gratuit pour l'instant.",
     sttServersAgree: "Utiliser les serveurs vocaux de Lianki",
     sttServersLater: "Pas maintenant",
+    addressed: "Adressé à : {name}",
   },
   ar: {
     messageDetails: "تفاصيل الرسالة",
@@ -798,6 +805,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "يُرسَل صوتك إلى خوادم الكلام في Lianki، فتكتبه أثناء حديثك. لا يُحفَظ الصوت؛ يُحفَظ فقط ما ترسله. مجاني حاليًا.",
     sttServersAgree: "استخدام خوادم الكلام في Lianki",
     sttServersLater: "ليس الآن",
+    addressed: "موجّه إلى: {name}",
   },
   bn: {
     messageDetails: "বার্তার বিবরণ",
@@ -840,6 +848,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "আপনার কণ্ঠ Lianki-এর স্পিচ সার্ভারে যায়, যা কথা বলার সঙ্গে সঙ্গে তা লিখে দেয়। অডিও সংরক্ষণ করা হয় না; শুধু আপনি যা পাঠান তা-ই রাখা হয়। আপাতত বিনামূল্যে।",
     sttServersAgree: "Lianki-এর স্পিচ সার্ভার ব্যবহার করুন",
     sttServersLater: "এখন নয়",
+    addressed: "সম্বোধিত: {name}",
   },
   pt: {
     messageDetails: "Detalhes da mensagem",
@@ -882,6 +891,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "Sua voz vai para os servidores de voz da Lianki, que a escrevem enquanto você fala. O áudio não é guardado; só fica o que você envia. Grátis por enquanto.",
     sttServersAgree: "Usar os servidores de voz da Lianki",
     sttServersLater: "Agora não",
+    addressed: "Dirigido a: {name}",
   },
   ru: {
     messageDetails: "Сведения о сообщении",
@@ -924,6 +934,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "Ваш голос отправляется на речевые серверы Lianki, которые записывают его текстом прямо во время речи. Звук не сохраняется; остаётся только то, что вы отправили. Пока бесплатно.",
     sttServersAgree: "Использовать речевые серверы Lianki",
     sttServersLater: "Не сейчас",
+    addressed: "Обращение к: {name}",
   },
   ur: {
     messageDetails: "پیغام کی تفصیلات",
@@ -966,6 +977,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "آپ کی آواز Lianki کے اسپیچ سرورز کو جاتی ہے، جو بولتے بولتے اسے لکھ دیتے ہیں۔ آڈیو محفوظ نہیں کیا جاتا؛ صرف وہی رکھا جاتا ہے جو آپ بھیجتے ہیں۔ ابھی مفت۔",
     sttServersAgree: "Lianki کے اسپیچ سرورز استعمال کریں",
     sttServersLater: "ابھی نہیں",
+    addressed: "مخاطب: {name}",
   },
   id: {
     messageDetails: "Detail pesan",
@@ -1008,6 +1020,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "Suara Anda dikirim ke server suara Lianki, yang menuliskannya saat Anda berbicara. Audio tidak disimpan; hanya yang Anda kirim yang disimpan. Gratis untuk saat ini.",
     sttServersAgree: "Pakai server suara Lianki",
     sttServersLater: "Nanti saja",
+    addressed: "Ditujukan ke: {name}",
   },
   de: {
     messageDetails: "Nachrichtendetails",
@@ -1050,6 +1063,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "Ihre Stimme geht an die Sprachserver von Lianki, die sie schon beim Sprechen aufschreiben. Die Aufnahme wird nicht gespeichert; nur was Sie senden, bleibt. Vorerst kostenlos.",
     sttServersAgree: "Sprachserver von Lianki nutzen",
     sttServersLater: "Nicht jetzt",
+    addressed: "Angesprochen: {name}",
   },
   ja: {
     messageDetails: "メッセージの詳細",
@@ -1092,6 +1106,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "あなたの声は Lianki の音声サーバーに送られ、話しながら文字になります。音声は保存されず、送信した内容だけが残ります。当面は無料です。",
     sttServersAgree: "Lianki の音声サーバーを使う",
     sttServersLater: "今はしない",
+    addressed: "呼びかけ：{name}",
   },
   sw: {
     messageDetails: "Maelezo ya ujumbe",
@@ -1134,6 +1149,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "Sauti yako inatumwa kwa seva za usemi za Lianki, zinazoiandika unapoongea. Sauti haihifadhiwi; kinachohifadhiwa ni ulichotuma tu. Bure kwa sasa.",
     sttServersAgree: "Tumia seva za usemi za Lianki",
     sttServersLater: "Si sasa",
+    addressed: "Ameitwa: {name}",
   },
   mr: {
     messageDetails: "संदेशाचा तपशील",
@@ -1176,6 +1192,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "तुमचा आवाज Lianki च्या स्पीच सर्व्हरकडे जातो, जे बोलता-बोलता तो लिहून देतात. ऑडिओ साठवला जात नाही; फक्त तुम्ही पाठवलेले ठेवले जाते. सध्या मोफत.",
     sttServersAgree: "Lianki चे स्पीच सर्व्हर वापरा",
     sttServersLater: "आता नाही",
+    addressed: "उद्देशून: {name}",
   },
   ko: {
     messageDetails: "메시지 세부 정보",
@@ -1218,6 +1235,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersBody: "목소리는 Lianki 음성 서버로 보내져 말하는 동안 글자로 바뀝니다. 음성은 저장되지 않으며, 보낸 내용만 남습니다. 당분간 무료입니다.",
     sttServersAgree: "Lianki 음성 서버 사용",
     sttServersLater: "나중에",
+    addressed: "부름: {name}",
   },
 };
 

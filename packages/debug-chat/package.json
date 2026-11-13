@@ -23,6 +23,7 @@
     "./debug-widget": "./src/debug-widget.ts",
     "./files": "./src/files.ts",
     "./icons": "./src/icons.tsx",
+    "./lane-route": "./src/lane-route.ts",
     "./latency": "./src/latency.ts",
     "./mic": "./src/mic.ts",
     "./stt-guard": "./src/stt-guard.ts",

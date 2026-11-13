@@ -182,6 +182,14 @@ import {
 import { treeDefaults, uiStrings } from "./ui-strings";
 import { chatExtra } from "./chat-ui-locales";
 import {
+  ADDRESSED_CSS,
+  FLASH_MS,
+  addressedLanes,
+  createAddressFlash,
+  flashProps,
+  latestOfLane,
+} from "./addressed";
+import {
   NEW_ATTR,
   SCRUB_ATTR,
   SCRUB_PULSE_MS,
@@ -251,8 +259,14 @@ import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
-import { withLane } from "./voices";
-import { LineTag, agentAvatar as tokenPicture, laneAvatar, withTokenName } from "./LaneMark";
+import { type LaneId, withLane } from "./voices";
+import {
+  AddressedMarks,
+  LineTag,
+  agentAvatar as tokenPicture,
+  laneAvatar,
+  withTokenName,
+} from "./LaneMark";
 import { type ParticipantChange, PresenceStack } from "./PresenceStack";
 import type { Present } from "./presence";
 import { PUBLIC_ROUTE_LIST, publicSttAvailable, readConsent, writeConsent } from "./public-stt";
@@ -966,6 +980,60 @@ export function DebugChat({
     tokenAvatar: tokenPicture,
     participant: (tok: string) => byTok.get(tok),
   };
+  /**
+   * Who the owner called (addressed.ts): each owner line's addressed lanes
+   * (small marks after it, kept), and what flashes now: `lane:<id>` pulses
+   * that lane's most recent avatar, `line:<id>` an arrived line's marks.
+   * Each key is on for FLASH_MS.
+   */
+  const addressedOf = useMemo(() => {
+    const out = new Map<string, LaneId[]>();
+    for (const m of messages) {
+      if (m.from !== "owner") continue;
+      const lanes = addressedLanes(m.text);
+      if (lanes.length) out.set(m.id, lanes);
+    }
+    return out;
+  }, [messages]);
+  const latestLane = useMemo(() => latestOfLane(messages), [messages]);
+  const addrFlash = useRef<ReturnType<typeof createAddressFlash> | null>(null);
+  addrFlash.current ??= createAddressFlash();
+  const [flashOn, setFlashOn] = useState<ReadonlySet<string>>(() => new Set());
+  const flashTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const flashKeys = useCallback((keys: string[]) => {
+    if (!keys.length) return;
+    setFlashOn((s) => new Set([...s, ...keys]));
+    for (const k of keys) {
+      clearTimeout(flashTimers.current.get(k));
+      flashTimers.current.set(
+        k,
+        setTimeout(() => {
+          flashTimers.current.delete(k);
+          setFlashOn((s) => {
+            const n = new Set(s);
+            n.delete(k);
+            return n;
+          });
+        }, FLASH_MS),
+      );
+    }
+  }, []);
+  useEffect(() => {
+    const timers = flashTimers.current;
+    return () => {
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
+  useEffect(() => {
+    const r = addrFlash.current!.lines(messages, Date.now());
+    flashKeys([...r.lanes.map((l) => `lane:${l}`), ...r.arrived.map((a) => `line:${a.id}`)]);
+  }, [messages, flashKeys]);
+  /** Props that flash message `id`'s avatar when it is its lane's most recent and the lane was just called. */
+  const laneFlash = (m: { id: string; lane?: LaneId }) =>
+    m.lane && latestLane[m.lane] === m.id && flashOn.has(`lane:${m.lane}`)
+      ? flashProps(m.lane)
+      : undefined;
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
   const clipsHub = useUi(clipsLive(), (s) => s.hub);
   const clipsAuto = useUi(clipsDevice(), (s) => s.autoStop);
@@ -2673,6 +2741,11 @@ export function DebugChat({
   useEffect(() => setHasMic(!embedded && canCapture()), [embedded]);
   /** Dimmed after the draft: partial transcripts, or "…" for those still out. */
   const [interim, setInterim] = useState("");
+  // A name heard in the live interim flashes its lane at once, once per utterance (addressed.ts).
+  useEffect(() => {
+    const lanes = addrFlash.current!.heard(interim ? joinText(draft, interim) : "", Date.now());
+    flashKeys(lanes.map((l) => `lane:${l}`));
+  }, [interim, draft, flashKeys]);
   const mirror = useRef<HTMLDivElement | null>(null);
   /** A transcript lands in the draft, as typed text would, but is never sent by itself. */
   /**
@@ -3466,15 +3539,19 @@ export function DebugChat({
               })}
               text={lineText(m, p.text)}
               mark={
-                m.speaker?.decision === "me" ? (
-                  <>
-                    {p.mark}
-                    <VoiceMark label={t.vpVerified} />
-                  </>
-                ) : (
-                  p.mark
-                )
+                <>
+                  {p.mark}
+                  {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                  {addressedOf.has(m.id) && (
+                    <AddressedMarks
+                      lanes={addressedOf.get(m.id)!}
+                      label={ux.addressed}
+                      pulse={flashOn.has(`line:${m.id}`)}
+                    />
+                  )}
+                </>
               }
+              flash={laneFlash(m)}
               epoch={floatEpoch}
               aboveLeft={() => (above ? (floatLives.current.get(above)?.remaining() ?? 0) : 0)}
               onLife={(l) => (l ? floatLives.current.set(m.id, l) : floatLives.current.delete(m.id))}
@@ -4224,14 +4301,16 @@ export function DebugChat({
         // A 40px tap target over the page; the text keeps the box's halo.
         className={`pointer-events-auto flex min-h-10 items-start gap-1.5 py-1 leading-snug ${asLine ? "cursor-pointer" : ""}`}
       >
-        <Avatar
-          src={who.src}
-          name={who.name}
-          initialFrom={who.initialFrom}
-          seed={who.seed}
-          size={AVATAR_PX}
-          hidden
-        />
+        <span className="inline-flex shrink-0 rounded-full" {...laneFlash(m)}>
+          <Avatar
+            src={who.src}
+            name={who.name}
+            initialFrom={who.initialFrom}
+            seed={who.seed}
+            size={AVATAR_PX}
+            hidden
+          />
+        </span>
         <div
           className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
           {...shimmerOf(m)}
@@ -4254,6 +4333,13 @@ export function DebugChat({
             />
           )}
           {p.mark}
+          {addressedOf.has(m.id) && (
+            <AddressedMarks
+              lanes={addressedOf.get(m.id)!}
+              label={ux.addressed}
+              pulse={flashOn.has(`line:${m.id}`)}
+            />
+          )}
         </div>
       </div>
     );
@@ -4618,14 +4704,31 @@ export function DebugChat({
                   : {}),
               }}
             >
-              <Avatar
-                src={who.src}
-                name={who.name}
-                initialFrom={who.initialFrom}
-                seed={who.seed}
-                size={AVATAR_PX}
-                hidden
-              />
+              {(() => {
+                // The lane just called by name: its most recent avatar pulses (addressed.ts).
+                const flash = run.map((i) => laneFlash(messages[i]!)).find(Boolean);
+                const avatar = (
+                  <Avatar
+                    src={who.src}
+                    name={who.name}
+                    initialFrom={who.initialFrom}
+                    seed={who.seed}
+                    size={AVATAR_PX}
+                    hidden
+                  />
+                );
+                return flash ? (
+                  <span
+                    data-testid="debug-chat-lane-flash"
+                    className="inline-flex shrink-0 rounded-full"
+                    {...flash}
+                  >
+                    {avatar}
+                  </span>
+                ) : (
+                  avatar
+                );
+              })()}
               <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
                 {node && (
                   <span
@@ -4688,6 +4791,13 @@ export function DebugChat({
                           />
                         )}
                         {polish(m).mark}
+                        {addressedOf.has(m.id) && (
+                          <AddressedMarks
+                            lanes={addressedOf.get(m.id)!}
+                            label={ux.addressed}
+                            pulse={flashOn.has(`line:${m.id}`)}
+                          />
+                        )}
                         {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
                         {(() => {
                           // Which recognizer made a voice line: dev holders only (`owner` needs dev).
@@ -5174,6 +5284,8 @@ export function DebugChat({
           <style>{TAP_44_CSS}</style>
           {/* New lines and the mic scrub's cue (shimmer.ts). */}
           <style>{SHIMMER_CSS}</style>
+          {/* A lane called by name: its avatar's pulse (addressed.ts). */}
+          <style>{ADDRESSED_CSS}</style>
           {/* The sentence read aloud, swept over its reading time (read-sweep.ts). */}
           <style>{READ_SWEEP_CSS}</style>
           {controls}
@@ -5454,8 +5566,11 @@ function FloatLine({
   onHover,
   onGone,
   arrivedAt,
+  flash,
 }: {
   details: ReturnType<typeof useMessageDetails>["forMessage"];
+  /** Its lane was just called by name (addressed.ts): its avatar pulses. */
+  flash?: ReturnType<typeof flashProps>;
   /** Its first line only (the tucked handle's peek), else up to three. */
   oneLine?: boolean;
   m: ChatMessage;
@@ -5525,7 +5640,7 @@ function FloatLine({
       // snaps back to full at once. Reduced motion: no fade, it just goes.
       className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto ${oneLine ? "line-clamp-1" : "line-clamp-3"} max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
     >
-      <span className="me-1 inline-block align-[-0.25em]">
+      <span className="me-1 inline-block rounded-full align-[-0.25em]" {...flash}>
         <Avatar
           src={who.src}
           name={who.name}
