@@ -11,7 +11,12 @@ import {
   tiersOwed,
   usdToCredits,
 } from "@/lib/payments/age-bonus";
-import { applyAgeBonus, grantAgeBonus, previewAgeBonus } from "@/lib/payments/age-bonus-store";
+import {
+  ageBonusConfig,
+  applyAgeBonus,
+  grantAgeBonus,
+  previewAgeBonus,
+} from "@/lib/payments/age-bonus-store";
 import { handleAgeBonus } from "@/lib/payments/age-bonus-api";
 import { getBalance, ledger, type D1WithBatch } from "@/lib/payments/credits-store";
 
@@ -196,6 +201,31 @@ describe("backfill", () => {
     expect(r.usersD1).toBe(2);
     expect(r.usersD7).toBe(1);
     expect(await getBalance(db, "week")).toBe(D1_CREDITS + D7_CREDITS);
+  });
+});
+
+describe("config and a failing write", () => {
+  test("ageBonusConfig reads the four credits.ageBonus.* values (defaults here)", async () => {
+    expect(await ageBonusConfig()).toEqual({
+      day1Usd: CONFIG["credits.ageBonus.day1Usd"].default,
+      day7Usd: CONFIG["credits.ageBonus.day7Usd"].default,
+      day1Hours: CONFIG["credits.ageBonus.day1Hours"].default,
+      day7Hours: CONFIG["credits.ageBonus.day7Hours"].default,
+    });
+  });
+  test("a batch that fails counts its grants as failed and writes nothing", async () => {
+    const { db, addUser, rows } = setup();
+    addUser("u", ago(200));
+    const broken = {
+      ...db,
+      prepare: db.prepare.bind(db),
+      batch: async () => {
+        throw new Error("D1 busy");
+      },
+    } as unknown as D1WithBatch;
+    const r = await applyAgeBonus(broken, NOW, C);
+    expect(r.failed).toBeGreaterThan(0);
+    expect(rows()).toBe(0);
   });
 });
 
