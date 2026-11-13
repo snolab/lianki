@@ -26,12 +26,14 @@ const seal = "text-[oklch(0.5_0.18_25)] dark:text-[oklch(0.78_0.12_25)]";
 export default function RecordingsClient() {
   const t = useIntlayer("my-recordings");
   const { locale } = useLocale();
-  const [days, setDays] = useState<DaySummary[]>([]);
+  const [{ days, clips }, setRecordings] = useState({
+    days: [] as DaySummary[],
+    clips: new Map<string, ClipView[]>(),
+  });
   const [more, setMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const [clips, setClips] = useState<Map<string, ClipView[]>>(new Map());
   const [dayErrors, setDayErrors] = useState<Set<string>>(new Set());
   const [deleteError, setDeleteError] = useState(false);
   const loadingDays = useRef(new Set<string>());
@@ -47,7 +49,13 @@ export default function RecordingsClient() {
     fetch(`${API}${before ? `?before=${before}` : ""}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((b: { days: DaySummary[]; more: boolean }) => {
-        setDays((d) => [...d, ...b.days.filter((x) => !d.some((y) => y.day === x.day))]);
+        setRecordings((current) => ({
+          ...current,
+          days: [
+            ...current.days,
+            ...b.days.filter((x) => !current.days.some((y) => y.day === x.day)),
+          ],
+        }));
         setMore(b.more);
       })
       .catch(() => setError(true))
@@ -72,7 +80,12 @@ export default function RecordingsClient() {
       return next;
     });
     requestRecordings<{ clips: ClipView[] }>(fetch, `?day=${day}`)
-      .then((b) => setClips((m) => new Map(m).set(day, b.clips)))
+      .then((b) =>
+        setRecordings((current) => ({
+          ...current,
+          clips: new Map(current.clips).set(day, b.clips),
+        })),
+      )
       .catch(() => setDayErrors((errors) => new Set(errors).add(day)))
       .finally(() => loadingDays.current.delete(day));
   };
@@ -95,11 +108,10 @@ export default function RecordingsClient() {
       setDeleteError(true);
       return;
     }
-    setDays((d) => d.filter((x) => x.day !== day));
-    setClips((m) => {
-      const n = new Map(m);
-      n.delete(day);
-      return n;
+    setRecordings((current) => {
+      const next = new Map(current.clips);
+      next.delete(day);
+      return { days: current.days.filter((x) => x.day !== day), clips: next };
     });
   };
   const delClip = async (c: ClipView) => {
@@ -111,9 +123,8 @@ export default function RecordingsClient() {
       setDeleteError(true);
       return;
     }
-    const n = withoutClip(days, clips, c);
-    setDays(n.days);
-    setClips(n.clips);
+    // Requests can finish in either order: remove from the latest snapshot.
+    setRecordings((current) => withoutClip(current.days, current.clips, c));
   };
 
   const dayName = (day: string) => {
