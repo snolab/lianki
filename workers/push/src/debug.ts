@@ -108,6 +108,13 @@
  * spoke tells the listeners {type:"polish-due", …}: one polish for the passage,
  * read from the merged raw text, none while it is still being spoken.
  *
+ * Two mics, one line (flag stt.two-mic-merge, on by default; two-mic.ts;
+ * docs/dev-debug-widget.md, "Two mics, one line"). Before an owner's voice
+ * line is posted, twoMicMatch looks for his voice line from ANOTHER page
+ * within config chat.twoMicWindowMs saying the same sentence: then it is not
+ * posted. Its text replaces the stored one in place (the same edit path,
+ * edited.by "two-mic") when twoMicKeep prefers it, else it is dropped.
+ *
  * Resumable grants. The owner's Allow hands the controller a random grant
  * token; only its SHA-256 is stored (`grant:<hash>`), and reconnecting with
  * it (header x-debug-token, or x-liagent-token via index.ts) restores what
@@ -245,6 +252,7 @@ import type {
   PolishDueEvent,
   SpeakerTag,
   SttScene,
+  SttTag,
   WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
@@ -264,6 +272,13 @@ import {
   partTexts,
   splitLine,
 } from "../../../packages/debug-chat/src/voice-merge";
+import {
+  TWO_MIC_BY,
+  TWO_MIC_WINDOW_MAX,
+  TWO_MIC_WINDOW_MS,
+  twoMicKeep,
+  twoMicMatch,
+} from "../../../packages/debug-chat/src/two-mic";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
   HISTORY_LINES,
@@ -542,6 +557,12 @@ const aiSiteKey = (day: string) => `ai:${day}:site`;
 export const POLISH_FLAG = "stt.polish";
 /** The owner's switch for continuous speech amending the last line (voice-merge.ts). */
 export const MERGE_FLAG = "stt.merge";
+/** The owner's switch for one line from two mics (two-mic.ts): ON (the default) = active. */
+export const TWO_MIC_FLAG = "stt.two-mic-merge";
+/** The live window between two mics' copies of one sentence (lib/config.ts). */
+export const TWO_MIC_WINDOW_KEY = "chat.twoMicWindowMs";
+/** How many of the newest lines a two-mic look reads: a few seconds hold far fewer. */
+const TWO_MIC_SCAN = 20;
 /** At most one live-session check per grant in this long (a burst of uses asks once). */
 const SESSION_CHECK_MIN_MS = 30_000;
 /** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
@@ -743,6 +764,8 @@ export class DebugHub {
   /** `unsure`: the flag could not be read (an RPC error, "busy"); the AI cannot answer then. */
   private aiFlag?: { at: number; on: boolean; unsure?: true };
   private mergeFlag?: { at: number; on: boolean };
+  /** The last read of TWO_MIC_FLAG and TWO_MIC_WINDOW_KEY (AI_FLAG_CACHE_MS). */
+  private twoMicConf?: { at: number; on: boolean; windowMs: number };
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
   private agentAt = new Map<string, number>();
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
@@ -1528,6 +1551,96 @@ export class DebugHub {
         merged: { id: cur.id, text: cur.text },
       },
       prev.to,
+    );
+    return true;
+  }
+
+  /**
+   * TWO_MIC_FLAG and TWO_MIC_WINDOW_KEY from the main Worker, at most once per
+   * AI_FLAG_CACHE_MS. The flag is on by default: only exactly false turns it
+   * off. The window falls back to TWO_MIC_WINDOW_MS when it cannot be read.
+   */
+  private async twoMicOn(): Promise<{ on: boolean; windowMs: number }> {
+    const t = this.now();
+    if (this.twoMicConf && t - this.twoMicConf.at < AI_FLAG_CACHE_MS) return this.twoMicConf;
+    let on = true;
+    try {
+      on = (await this.flagValue(TWO_MIC_FLAG)) !== false;
+    } catch {}
+    let windowMs = TWO_MIC_WINDOW_MS;
+    try {
+      const v = this.sessions?.config ? await this.sessions.config(TWO_MIC_WINDOW_KEY) : undefined;
+      if (typeof v === "number" && Number.isFinite(v) && v >= 0) windowMs = v;
+    } catch {}
+    this.twoMicConf = { at: t, on, windowMs };
+    return this.twoMicConf;
+  }
+
+  /** The owner thread's newest lines, newest first (enough for any two-mic window). */
+  private async newest() {
+    return [
+      ...(await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(OWNER_THREAD).prefix,
+        reverse: true,
+        limit: TWO_MIC_SCAN,
+      })),
+    ];
+  }
+
+  /**
+   * His voice line repeats the one his other mic sent a moment ago (two-mic.ts):
+   * true when it was taken care of here — its better text replaced the stored
+   * line's in place, or it was dropped — so it is not posted. False: post it.
+   * The flag and window are asked only when a line could match at all.
+   */
+  private async twoMic(cur: {
+    id: string;
+    text: string;
+    label: string;
+    at: number;
+    stt?: SttTag;
+    speaker?: SpeakerTag;
+  }): Promise<boolean> {
+    if (!twoMicMatch(await this.newest(), cur, TWO_MIC_WINDOW_MAX)) return false;
+    const conf = await this.twoMicOn();
+    if (!conf.on) return false;
+    // Read again: other lines may have landed while the main Worker answered.
+    const hit = twoMicMatch(await this.newest(), cur, conf.windowMs);
+    if (!hit) return false;
+    const [key, line] = hit;
+    const keep = twoMicKeep(line, cur);
+    console.log(
+      JSON.stringify({
+        msg: "debug.two-mic",
+        id: line.id,
+        dup: cur.id,
+        keep,
+        gap: cur.at - lastPartAt(line),
+        head: head(cur.text),
+      }),
+    );
+    if (keep === "drop") return true;
+    const { speaker: _s, stt: _t, ...rest } = line;
+    const next: ChatMessage = {
+      ...rest,
+      text: cur.text,
+      raw: cur.text,
+      ...(cur.stt ? { stt: cur.stt } : {}),
+      ...(cur.speaker ? { speaker: cur.speaker } : {}),
+      edited: { at: cur.at, by: TWO_MIC_BY, count: line.edited?.count ?? 0 },
+    };
+    await this.ctx.storage.put(key, next);
+    await this.chatLogUpdate(OWNER_THREAD, next);
+    this.tellEdit(
+      {
+        type: "edited",
+        id: line.id,
+        thread: OWNER_THREAD,
+        text: next.text,
+        raw: next.raw as string,
+        edited: next.edited as EditedEvent["edited"],
+      },
+      line.to,
     );
     return true;
   }
@@ -3082,6 +3195,19 @@ export class DebugHub {
             ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
             ...(m.context ? { context: m.context } : {}),
             ...(m.attachments ? { attachments: m.attachments } : {}),
+            ...(speaker ? { speaker } : {}),
+          }))
+        )
+          return;
+        // The same sentence from his other mic, a moment ago: one line, not two.
+        if (
+          m.source === "stt" &&
+          (await this.twoMic({
+            id: m.id,
+            text: m.text,
+            label: page.label,
+            at: t,
+            ...(m.stt ? { stt: m.stt } : {}),
             ...(speaker ? { speaker } : {}),
           }))
         )
