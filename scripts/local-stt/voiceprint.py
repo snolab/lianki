@@ -56,6 +56,13 @@ GENERATIONS = "generations.json"
 MIN_SPEECH_S = 1.5
 MIN_SNR_DB = 10.0
 
+#: A "me" final is also scored in windows this long, this far apart: two
+#: speakers in one final (owner, 2026-11-13: half his wife, half him, all ✓)
+#: average to a passing score over the whole. A window that is clearly
+#: someone else turns the final "unknown" ("mixed"); its score is unchanged.
+WINDOW_S = 2.5
+WINDOW_HOP_S = 1.25
+
 #: Enrolment: sentences kept at least / at most, and the check on each one.
 ENROL_MIN = 10
 ENROL_MAX = 20
@@ -759,6 +766,26 @@ class Verifier:
     def embed(self, model: str, audio: np.ndarray) -> np.ndarray | None:
         return self.embedders[model](audio)
 
+    def windows(self, model: str, device: str, audio: np.ndarray) -> list[dict]:
+        """Each WINDOW_S window of a final long enough for two, scored against that print and decided alone."""
+        p = self._print(device, model)
+        win, hop = int(WINDOW_S * RATE), int(WINDOW_HOP_S * RATE)
+        if p is None or len(audio) < win + hop:
+            return []
+        out = []
+        for at in range(0, len(audio) - win + 1, hop):
+            w = audio[at : at + win]
+            speech_s, snr = speech_stats(w)
+            # Too little clear speech in it to say anything: not a vote.
+            if speech_s < MIN_SPEECH_S or snr < MIN_SNR_DB:
+                continue
+            e = self.embed(model, w)
+            if e is None:
+                continue
+            score = float(e @ p["_centroid"])
+            out.append({"score": round(score, 3), "decision": decide(MODELS[model], score, speech_s, snr)[0]})
+        return out
+
     def verify(self, audio: np.ndarray, device: str | None) -> dict:
         """{score, decision, model, device, speechS, snrDb[, reason]} for one final."""
         speech_s, snr = speech_stats(audio)
@@ -780,7 +807,12 @@ class Verifier:
             if s > best:
                 best, who = s, d
         decision, reason = decide(MODELS[model], best, speech_s, snr)
+        windows = self.windows(model, who, audio) if decision == "me" else []
+        if any(w["decision"] == "other" for w in windows):
+            decision, reason = "unknown", "mixed"
         out = {"score": round(best, 3), "decision": decision, "model": model, "device": who, **base}
+        if windows:
+            out["windows"] = [w["score"] for w in windows]
         if reason:
             out["reason"] = reason
         if MODELS[model].provisional:
