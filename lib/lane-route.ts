@@ -32,8 +32,14 @@ export const LANE_NAMES: Readonly<
   Record<RouteLane, { exact: readonly string[]; heard: readonly string[] }>
 > = {
   codex: {
-    exact: ["codex"],
+    // coco: the owner's name for codex (2026-11-14), written coco, never 可可.
+    exact: ["codex", "coco"],
     heard: [
+      "可可",
+      "cocoa",
+      "koko",
+      "扣扣",
+      "科科",
       "codecs",
       "codec",
       "kodex",
@@ -51,8 +57,22 @@ export const LANE_NAMES: Readonly<
     ],
   },
   agy: {
-    exact: ["agy", "antigravity"],
-    heard: ["ajy", "aji", "反重力", "杰米尼", "哲米尼", "gemini", "诶吉歪", "欸吉歪", "诶居外"],
+    // 杰咪: the owner's name for agy (2026-11-14).
+    exact: ["agy", "antigravity", "杰咪"],
+    heard: [
+      "杰米",
+      "洁咪",
+      "解密",
+      "ajy",
+      "aji",
+      "反重力",
+      "杰米尼",
+      "哲米尼",
+      "gemini",
+      "诶吉歪",
+      "欸吉歪",
+      "诶居外",
+    ],
   },
   chat: {
     exact: ["xiaoke", "小可"],

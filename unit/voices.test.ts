@@ -127,7 +127,7 @@ describe("lanes: who said a line", () => {
       { ...base, text: "hi", lane: "codex" },
       { agentAvatar: "logo.svg", laneAvatar: () => mark },
     );
-    expect(codex).toMatchObject({ src: mark, name: "codex", seed: "lane:codex" });
+    expect(codex).toMatchObject({ src: mark, name: "coco", seed: "lane:codex" });
     // The main lane keeps today's look.
     expect(lineAvatar({ ...base, text: "hi", lane: "main" }, { agentAvatar: "logo.svg" })).toEqual(
       today,

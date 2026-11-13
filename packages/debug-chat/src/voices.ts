@@ -192,9 +192,10 @@ export type LaneSpec = {
 export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
   main: { name: "", voice: "main", aliases: ["main", "chat"] },
   codex: {
-    name: "codex",
+    // coco (owner, 2026-11-14: "codex 的话就让它叫做 coco 吧"); the lane id and `【codex】` stay.
+    name: "coco",
     voice: "calm",
-    aliases: ["codex"],
+    aliases: ["codex", "coco"],
     // Two slow waves: calm, low.
     mark: {
       bg: "oklch(0.5 0.143 22.3)",
