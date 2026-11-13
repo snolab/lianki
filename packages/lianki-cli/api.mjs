@@ -79,7 +79,12 @@ export async function call(c, token, { method = "GET", path, query, body, header
   } catch {}
   if (r.status >= 200 && r.status < 300 && data !== null) return { status: r.status, data };
   const said = (data && typeof data.error === "string" && data.error) || text.slice(0, 200);
-  const detail = said.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+  // Tags dropped, then any stray angle bracket (CodeQL: incomplete multi-character sanitization).
+  const detail = said
+    .replace(/<[^>]*>/g, "")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (r.status === 401 || r.status === 403)
     throw new CliError(
       "auth_refused",
