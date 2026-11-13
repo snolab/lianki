@@ -120,7 +120,7 @@ export const REPLY_DEDUPE_MS = 10 * 60_000;
 /** globalThis key of the shared session. */
 const KEY = "__lkVoice";
 /** The session's version: a copy on the page with another one is replaced. */
-const V = 4;
+const V = 5;
 
 const CJK_STOP = "。．！？";
 const LATIN_STOP = ".!?";
@@ -437,14 +437,15 @@ export function createVoice(d: {
    * mode; in speech mode when the device has no voice for it and the cloud
    * can voice that language.
    */
-  const routeFor = (lang: string, pick?: LinePick): CloudOut | null => {
+  const routeFor = (lang: string, pick?: LinePick, voice?: VoiceId): CloudOut | null => {
     // A line's own voice (voices.ts, "A line's own voice") wins over the output mode:
     // a device voice the device has is read with speech even in cloud mode…
     if (pick?.kind === "device" && devicePick(pick)) return null;
     const c = cloud();
     if (!c) return null;
-    // …and a cloud or ElevenLabs one goes to the cloud even in speech mode.
+    // …and a cloud, local (Kokoro neko) or ElevenLabs one goes to the cloud/audio route even in speech mode.
     if (pick && pick.kind !== "device") return c;
+    if (voice === "bright" && getKey("lk:agent-local-tts") !== "off") return c;
     if (mode() === "cloud") return c;
     return noVoice(lang) && cloudSkip("x", lang) === null ? c : null;
   };
@@ -454,7 +455,7 @@ export function createVoice(d: {
   /** Fetch a sentence's clip ahead, when the cloud will read it. */
   const prepare = (s: Sentence) => {
     if (s.pick?.kind === "eleven") return;
-    routeFor(s.lang, s.pick)?.prepare?.(
+    routeFor(s.lang, s.pick, s.voice)?.prepare?.(
       s.text,
       s.lang,
       s.voice,
@@ -651,7 +652,7 @@ export function createVoice(d: {
     const rec: Said = { text: head.text, start: now() };
     // Before a sound of ours: the reader and word read-aloud pause now (never refused: Li ranks first).
     d.owner?.claim();
-    const c = routeFor(head.lang, head.pick);
+    const c = routeFor(head.lang, head.pick, head.voice);
     current = { p: null as unknown as Playback, mark: head.from, said: rec };
     const p = c
       ? c.play(

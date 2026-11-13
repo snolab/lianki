@@ -473,8 +473,18 @@ export const ELEVEN_PREVIEWS: readonly ElevenVoice[] = [
   eleven("SAz9YHcvj6GT2YYXdXww", "River", "relaxed, neutral", "e6c95f0b-2227-491a-b3d7-2249240decb7"),
 ];
 
-/** Mac-local engines a `local:` id may name: none is built yet (reserved). */
-export const LOCAL_ENGINES: readonly string[] = [];
+/** Mac-local engines a `local:` id may name (Kokoro-82M catgirl TTS at /lianki-tts). */
+export const LOCAL_ENGINES: readonly string[] = [
+  "neko",
+  "neko-moe",
+  "neko-soft",
+  "xiaoxiao",
+  "xiaobei",
+  "yunxi",
+  "alpha",
+  "heart",
+  "bella",
+];
 
 /** A line's voice, parsed. */
 export type LineVoice =
@@ -483,6 +493,7 @@ export type LineVoice =
   | { kind: "melo"; lang: string }
   | { kind: "aura"; speaker: string; lang: string }
   | { kind: "eleven"; id: string; preview: string }
+  | { kind: "local"; name: string }
   /** A Google Cloud TTS voice by name ("cmn-TW-Wavenet-A"); `lang` its locale (cmn-TW). */
   | { kind: "google"; id: string; name: string; lang: string }
   /**
@@ -577,12 +588,15 @@ export function parseLineVoice(raw: unknown): LineVoice | { error: string } {
       lang: locale ?? m[1]!,
     };
   }
-  if (kind === "local")
-    return {
-      error: LOCAL_ENGINES.length
-        ? `unknown local voice ${rest}: one of ${LOCAL_ENGINES.join(", ")}`
-        : "local:<name> is reserved for Mac-local engines; none is built yet",
-    };
+  if (kind === "local") {
+    if (!(LOCAL_ENGINES as readonly string[]).includes(rest))
+      return {
+        error: LOCAL_ENGINES.length
+          ? `unknown local voice ${rest}: one of ${LOCAL_ENGINES.join(", ")}`
+          : "local:<name> is reserved for Mac-local engines; none is built yet",
+      };
+    return { kind: "local", name: rest };
+  }
   return { error: `unknown voice ${raw}: one of ${kinds}` };
 }
 

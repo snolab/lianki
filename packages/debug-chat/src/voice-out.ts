@@ -163,6 +163,19 @@ export const ttsUrl = (text: string, lang: string, speaker?: string) =>
 export const providerTtsUrl = (voice: string, text: string) =>
   `/api/voice/tts?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(text)}`;
 
+export const LOCAL_TTS_KEY = "lk:agent-local-tts";
+export const DEFAULT_LOCAL_TTS_BASE = "https://taku.onca-tint.ts.net/lianki-tts";
+
+const NEKO_ROTATION = ["neko", "neko-moe", "neko-soft", "xiaobei", "xiaoxiao", "alpha"] as const;
+let nekoTurnIdx = 0;
+
+export const localTtsUrl = (voice: string, text: string) => {
+  const base = (read(LOCAL_TTS_KEY) || DEFAULT_LOCAL_TTS_BASE).replace(/\/+$/, "");
+  const picked =
+    voice === "neko-cycle" ? NEKO_ROTATION[nekoTurnIdx++ % NEKO_ROTATION.length]! : voice;
+  return `${base}/tts?voice=${encodeURIComponent(picked)}&text=${encodeURIComponent(text)}`;
+};
+
 /** Why a provider voice cannot be asked for a sentence (null: ask it). Any language. */
 export function providerSkip(text: string): string | null {
   if (!text.trim()) return "empty";
@@ -256,7 +269,9 @@ export function createCloudOut(d: {
     const have = clips.get(key);
     if (have) return have;
     const url = provider
-      ? providerTtsUrl(provider, text)
+      ? provider.startsWith("local:")
+        ? localTtsUrl(provider.slice(6), text)
+        : providerTtsUrl(provider, text)
       : ttsUrl(text, lang.split(/[-_]/)[0], speaker);
     const p = d.fetch(url).then(async (r) => {
       if (!r.ok) throw new Error(`http ${r.status}${r.headers.get("X-Voice") ? ` ${r.headers.get("X-Voice")}` : ""}`);
@@ -297,6 +312,10 @@ export function createCloudOut(d: {
   ): { lang: string; speaker?: string; provider?: string; shift: number } => {
     if (pick?.kind === "google" || pick?.kind === "azure")
       return { lang, provider: pick.id, shift: 1 };
+    if (pick?.kind === "local")
+      return { lang, provider: `local:${pick.name}`, shift: 1 };
+    if (voice === "bright" && read(LOCAL_TTS_KEY) !== "off")
+      return { lang, provider: "local:neko-cycle", shift: 1 };
     if (pick?.kind === "melo") return { lang: pick.lang, shift: 1 };
     if (pick?.kind === "aura") return { lang: pick.lang, speaker: pick.speaker, shift: 1 };
     return { lang, ...cloudVoice(voice ?? "main", lang) };
