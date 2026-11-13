@@ -206,6 +206,16 @@ export default function SttAccessAdmin() {
                   {workerMeta(w, c, when(w.createdAt))}
                 </span>
               </span>
+              {!w.revokedAt && w.ownerUserId && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  className={BTN}
+                  onClick={(e) => e.isTrusted && void op({ op: "official-worker", id: w.id })}
+                >
+                  {c.makeOfficial}
+                </button>
+              )}
               {w.revokedAt ? (
                 <span className="text-sm opacity-70">
                   {c.revoked} · {when(w.revokedAt)}

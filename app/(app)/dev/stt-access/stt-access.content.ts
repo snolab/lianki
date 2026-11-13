@@ -316,6 +316,24 @@ const dictionary = {
       mr: "हा स्पीच सर्व्हर रद्द करायचा? तो पुन्हा नोंदू शकणार नाही; परत जोडण्यासाठी तुमची मंजुरी लागेल.",
       ko: "이 음성 서버를 취소할까요? 더는 등록할 수 없고, 다시 추가하려면 승인이 필요합니다.",
     }),
+    makeOfficial: t({
+      en: "Make official",
+      zh: "设为官方服务器",
+      hi: "आधिकारिक बनाएँ",
+      es: "Hacer oficial",
+      fr: "Rendre officiel",
+      ar: "اجعله رسميًا",
+      bn: "অফিশিয়াল করুন",
+      pt: "Tornar oficial",
+      ru: "Сделать официальным",
+      ur: "سرکاری بنائیں",
+      id: "Jadikan resmi",
+      de: "Offiziell machen",
+      ja: "公式サーバーにする",
+      sw: "Ifanye rasmi",
+      mr: "अधिकृत करा",
+      ko: "공식 서버로 지정",
+    }),
     personal: t({
       en: "Personal server of one account",
       zh: "某个账号自己的服务器",
@@ -402,6 +420,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Label on a speech server row whose permission was withdrawn. One word, past participle.",
   confirmRevoke:
     "Confirmation question before revoking a speech server: it can no longer register, and adding it back needs approval. One or two short sentences.",
+  makeOfficial:
+    "Button on a speech server row marked as one user's personal server: turns it into one of Lianki's own shared (official) servers that serve everyone on the list. Short verb phrase.",
   personal:
     "Label on a speech server row: the machine belongs to one user and serves that user only (not one of Lianki's shared servers). Short noun phrase.",
   capacity:

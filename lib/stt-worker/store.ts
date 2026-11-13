@@ -208,6 +208,28 @@ export async function addSttWorker(
 }
 
 /** Revoke a worker: the registry refuses it from its next check on. */
+/**
+ * Mark a speech server as Lianki's own (official): it serves everyone on the
+ * allowlist, not one account (owner, 2026-11-14: "TKUMAC 不要标记为某个账号自己的
+ * 服务器，要标记为官方服务器"). Audited.
+ */
+export async function makeSttWorkerOfficial(
+  db: SttDb,
+  id: string,
+  by: string,
+  now = Date.now(),
+): Promise<boolean> {
+  const r = await db
+    .prepare(
+      "UPDATE stt_worker SET owner_user_id = NULL WHERE id = ?1 AND owner_user_id IS NOT NULL",
+    )
+    .bind(id)
+    .run();
+  const done = changes(r) === 1;
+  if (done) await audit(db, { kind: "stt-worker.official", actor: by, subject: id }, now);
+  return done;
+}
+
 export async function revokeSttWorker(
   db: SttDb,
   id: string,

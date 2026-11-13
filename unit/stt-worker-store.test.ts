@@ -13,6 +13,7 @@ import {
   disallowSttUser,
   listSttAccess,
   listSttWorkers,
+  makeSttWorkerOfficial,
   revokeSttWorker,
   searchUsers,
   sttAllowed,
@@ -142,5 +143,19 @@ describe("searchUsers: the admin's picker", () => {
     const [u] = await searchUsers(d, "bob");
     expect(await allowSttUser(d, u!.id, "u1")).toBeTruthy();
     expect(await sttAllowed(d, "u2")).toBe(true);
+  });
+});
+
+describe("makeSttWorkerOfficial", () => {
+  test("a personal server becomes official once, audited", async () => {
+    const d = await db();
+    const id = "w-mac";
+    await addSttWorker(d, { id, name: "TKUMAC", pubkey: KEY, ownerUserId: "u1" }, "u1");
+    expect(await makeSttWorkerOfficial(d, id, "u1")).toBe(true);
+    expect(await makeSttWorkerOfficial(d, id, "u1")).toBe(false);
+    expect((await listSttWorkers(d)).find((x) => x.id === id)?.ownerUserId ?? null).toBeNull();
+    expect((await auditKinds(d)).map((a) => (a as { kind: string }).kind)).toContain(
+      "stt-worker.official",
+    );
   });
 });

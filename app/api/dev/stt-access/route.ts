@@ -9,6 +9,7 @@ import {
   disallowSttUser,
   listSttAccess,
   listSttWorkers,
+  makeSttWorkerOfficial,
   revokeSttWorker,
   searchUsers,
   type SttDb,
@@ -21,7 +22,7 @@ import {
  * - GET → { flag, allowed: [...], workers: [...] } (a worker's key is never sent);
  *   GET ?q=… → { users: [{id, name, email}] }, accounts whose name or email has it;
  * - POST (same-origin JSON) `{ op: "add", email }` | `{ op: "remove", userId }`
- *   | `{ op: "revoke-worker", id }`. Audited.
+ *   | `{ op: "revoke-worker", id }` | `{ op: "official-worker", id }`. Audited.
  * Adding a worker is the CLI's (scripts/local-stt/stt-worker-add.ts), never this page.
  */
 const NO_STORE = { "cache-control": "no-store" };
@@ -70,6 +71,9 @@ export const POST = async (req: Request) => {
   } else if (b.op === "remove") {
     if (typeof b.userId !== "string" || !b.userId) return bad("user-id-required");
     await disallowSttUser(db(), b.userId, by.id);
+  } else if (b.op === "official-worker") {
+    if (typeof b.id !== "string" || !b.id) return bad("id-required");
+    await makeSttWorkerOfficial(db(), b.id, by.id);
   } else if (b.op === "revoke-worker") {
     if (typeof b.id !== "string" || !b.id) return bad("id-required");
     await revokeSttWorker(db(), b.id, by.id);
