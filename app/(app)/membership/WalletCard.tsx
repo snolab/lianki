@@ -9,6 +9,8 @@ import { longDate } from "@/lib/dates";
 import { PASSES, type PassId } from "@/lib/payments/passes";
 import type { LedgerEntry } from "@/lib/payments/credits-store";
 import { ageBonusTier } from "@/lib/payments/age-bonus";
+import { streakDayOf, streakNoteOf } from "@/lib/payments/login-streak";
+import type { StreakView } from "@/lib/payments/login-streak-store";
 import { useCredits, yen } from "./use-credits";
 
 interface Provider {
@@ -20,6 +22,8 @@ interface Provider {
 interface Wallet {
   balance: number;
   entries: LedgerEntry[];
+  /** The login streak (docs/payments.md, "Login-streak bonus"); absent while its flag is off. */
+  streak?: StreakView;
   topup: { min: number; max: number; quick: number[]; providers: Provider[] };
 }
 
@@ -172,6 +176,27 @@ export function WalletCard({
     const tier = ageBonusTier(refId);
     return tier === "d1" ? s.ageBonusDay1.value : tier === "d7" ? s.ageBonusDay7.value : null;
   };
+  // A login-streak grant is a `gift` row too; its note holds the streak length.
+  const streakLabel = (e: LedgerEntry) => {
+    if (!streakDayOf(e.refId)) return null;
+    const n = streakNoteOf(e.note);
+    return s.streakDay.value.replace("{day}", String(n?.streak ?? ""));
+  };
+  const fill = (text: string, v: Record<string, string>) =>
+    Object.entries(v).reduce((acc, [k, x]) => acc.replace(`{${k}}`, x), text);
+  const streakLine = wallet.streak
+    ? wallet.streak.today
+      ? fill(s.streakToday.value, {
+          day: String(wallet.streak.days),
+          credits: credits(wallet.streak.credits),
+        })
+      : wallet.streak.credits > 0
+        ? fill(s.streakAhead.value, {
+            day: String(wallet.streak.days + 1),
+            credits: credits(wallet.streak.credits),
+          })
+        : null
+    : null;
 
   return (
     <section className={`${card} rounded-lg shadow-lg p-5 sm:p-8 mb-8 space-y-6`} data-wallet>
@@ -187,6 +212,11 @@ export function WalletCard({
           <div className="text-3xl font-bold tabular-nums" data-wallet-balance>
             {credits(wallet.balance)}
           </div>
+          {streakLine && (
+            <div className={`text-xs mt-1 ${muted}`} data-wallet-streak>
+              {streakLine}
+            </div>
+          )}
         </div>
       </header>
 
@@ -393,7 +423,7 @@ export function WalletCard({
               <li key={e.id} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
                   <div>
-                    {ageLabel(e.refId) ?? reasonLabel(e.reason)}
+                    {streakLabel(e) ?? ageLabel(e.refId) ?? reasonLabel(e.reason)}
                     {e.passId === "pro-1m" && ` · ${s.oneMonth.value}`}
                     {e.passId === "pro-12m" && ` · ${s.twelveMonths.value}`}
                   </div>

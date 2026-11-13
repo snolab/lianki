@@ -13,6 +13,7 @@ import {
   parseUsdByDay,
   stepCredits,
   streakDayOf,
+  streakNoteOf,
   streakRefId,
   streakStepOf,
   usdToCredits,
@@ -73,7 +74,9 @@ describe("config and flag", () => {
     expect(streakDayOf("streak:u1:2026-11-14")).toBe("2026-11-14");
     expect(streakDayOf("agebonus:d1:u1")).toBeNull();
     expect(streakStepOf("login streak day 3 (10)")).toBe(3);
+    expect(streakNoteOf("login streak day 3 (10)")).toEqual({ step: 3, streak: 10 });
     expect(streakStepOf("age bonus d1")).toBeNull();
+    expect(streakNoteOf(null)).toBeNull();
   });
 });
 

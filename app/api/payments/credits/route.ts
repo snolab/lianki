@@ -11,6 +11,8 @@ import {
   type D1WithBatch,
 } from "@/lib/payments/credits-store";
 import { grantAgeBonus } from "@/lib/payments/age-bonus-store";
+import { loginStreakView, type StreakView } from "@/lib/payments/login-streak-store";
+import { homeDay, requestTimeZone } from "@/lib/study-days";
 import { pendingHolds, sweepStaleAi } from "@/lib/payments/ai-credits";
 import { HOLD_STALE_MS } from "@/lib/payments/metered";
 import { readFlags } from "@/lib/flags-store";
@@ -44,6 +46,17 @@ export async function GET() {
     console.error("[age-bonus] grant:", e);
   }
   const flags = await readFlags();
+  // The login streak (docs/payments.md, "Login-streak bonus"): read only —
+  // a day counts on a real learning action, never on a wallet read.
+  let streak: StreakView | null = null;
+  if (flags["credits.login-streak"])
+    try {
+      const now = new Date();
+      const d = await homeDay(d1, session.user.email, now, requestTimeZone());
+      streak = await loginStreakView(d1, session.user.id, d.day);
+    } catch (e) {
+      console.error("[login-streak] view:", e);
+    }
   const providers = providersFor(session.user.email, process.env, flags).map((p) =>
     publicProvider(p, process.env, flags),
   );
@@ -57,6 +70,7 @@ export async function GET() {
     balance: await getBalance(d1, session.user.id),
     held: await pendingHolds(d1 as unknown as D1WithBatch, session.user.id).catch(() => 0),
     entries: await ledger(d1, session.user.id, 50),
+    ...(streak ? { streak } : {}),
     topup: {
       min: TOPUP_MIN,
       max: TOPUP_MAX,

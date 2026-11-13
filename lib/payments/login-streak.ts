@@ -59,10 +59,20 @@ export function streakDayOf(refId: string | null | undefined): string | null {
   return m ? m[1]! : null;
 }
 
-/** The cycle step (1-based) a streak length lands on, written into the grant's note. */
+/**
+ * A grant's note, `login streak day <step> (<streak>)`: the cycle step paid
+ * and the streak length that day, or null when the note is not a streak grant's.
+ */
+export function streakNoteOf(
+  note: string | null | undefined,
+): { step: number; streak: number } | null {
+  const m = /^login streak day (\d+) \((\d+)\)/.exec(note ?? "");
+  return m ? { step: Number(m[1]), streak: Number(m[2]) } : null;
+}
+
+/** The cycle step (1-based) a grant's note names. */
 export function streakStepOf(note: string | null | undefined): number | null {
-  const m = /^login streak day (\d+)\b/.exec(note ?? "");
-  return m ? Number(m[1]) : null;
+  return streakNoteOf(note)?.step ?? null;
 }
 
 const DAY_MS = 86_400_000;

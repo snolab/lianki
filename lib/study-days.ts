@@ -62,6 +62,25 @@ export function requestTimeZone(): string | undefined {
 }
 
 /**
+ * The local day of `now` for `email`: in the home zone — the one the first
+ * study day was cut in — so hopping zones (a VPN, a trip) cannot split one
+ * real day into two local dates; a new account takes the request's zone
+ * (`tz`), and UTC when there is none.
+ */
+export async function homeDay(
+  d1: D1Like,
+  email: string,
+  now: Date,
+  tz: string | null | undefined,
+): Promise<{ day: string; tz: string }> {
+  const home = await d1
+    .prepare("SELECT tz FROM study_day WHERE email = ? ORDER BY first_at LIMIT 1")
+    .bind(email.toLowerCase())
+    .first<{ tz: string }>();
+  return localDay(now, home?.tz ?? tz);
+}
+
+/**
  * Record `qualifying` reviews the server just stored for `email`, on today's
  * local day by the server clock `now`, in the user's home zone (`tz` only
  * until there is one). A no-op for 0. Idempotent per day:
@@ -76,14 +95,7 @@ export async function recordStudy(
 ): Promise<StudyDayWrite | null> {
   if (!email || !(qualifying > 0)) return null;
   const key = email.toLowerCase();
-  // The home zone — the one the first study day was cut in — cuts every later
-  // day too, so hopping zones (a VPN, a trip) cannot split one real day into
-  // two local dates. A new account takes the request's zone.
-  const home = await d1
-    .prepare("SELECT tz FROM study_day WHERE email = ? ORDER BY first_at LIMIT 1")
-    .bind(key)
-    .first<{ tz: string }>();
-  const d = localDay(now, home?.tz ?? tz);
+  const d = await homeDay(d1, email, now, tz);
   await d1
     .prepare(
       `INSERT INTO study_day (email, day, tz, first_at, reviews) VALUES (?, ?, ?, ?, ?)
