@@ -201,7 +201,7 @@ export default function TokenManager() {
   };
 
   return (
-    <section id="api-tokens" className="my-8 space-y-4" data-testid="api-tokens">
+    <section id="tokens" className="my-8 space-y-4 scroll-mt-6" data-testid="api-tokens">
       <div>
         <h2 className="text-xl font-semibold mb-2">{s("heading")}</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">{s("intro")}</p>
