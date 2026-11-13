@@ -32,7 +32,7 @@ export type ChatLocale = (typeof CHAT_LOCALES)[number];
 
 /** The app locale for a page language ("pt-BR" → "pt"); English when it is not one. */
 export function chatLocale(
-  lang: string | null | undefined = globalThis.document?.documentElement.lang,
+  lang: string | null | undefined = globalThis.document?.documentElement?.lang,
 ): ChatLocale {
   const base = (lang ?? "").toLowerCase().split(/[-_]/)[0];
   return (CHAT_LOCALES as readonly string[]).includes(base) ? (base as ChatLocale) : "en";
