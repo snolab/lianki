@@ -198,18 +198,19 @@ export function testText(m: RoutedMessage): string | null {
 
 /**
  * Should `lane`'s listener take this line? Owner lines in the owner thread
- * that route to it; with `tests`, also marked test lines. Agent lines, friend
- * lines and other threads never.
+ * that route to it (with `all`, every owner line there); with `tests`, also
+ * marked test lines. Agent lines, friend lines and other threads never.
  */
 export function laneTakes(
   lane: RouteLane,
   m: RoutedMessage,
-  opts: { tests?: boolean } = {},
+  opts: { tests?: boolean; all?: boolean } = {},
 ): boolean {
   if ((m.thread ?? "owner") !== "owner") return false;
   let text: string | null = null;
   if (m.from === "owner" && typeof m.text === "string") text = m.text;
   else if (opts.tests) text = testText(m);
   if (text === null) return false;
-  return routeLine(text).lanes.includes(lane);
+  // `all`: every owner line, addressed or not (owner, 2026-11-14: "coco 也要听所有的话").
+  return (opts.all === true && m.from === "owner") || routeLine(text).lanes.includes(lane);
 }

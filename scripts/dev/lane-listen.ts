@@ -31,10 +31,16 @@ type Opts = {
   cwd?: string;
   tests: boolean;
   dryRun: boolean;
+  /** Every owner line, not only the ones addressed to this lane. */
+  all: boolean;
 };
 
 function parse(argv: string[]): Opts | Error {
-  const o: Partial<Opts> & { tests: boolean; dryRun: boolean } = { tests: false, dryRun: false };
+  const o: Partial<Opts> & { tests: boolean; dryRun: boolean; all: boolean } = {
+    tests: false,
+    dryRun: false,
+    all: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     const v = () => argv[++i];
@@ -44,6 +50,7 @@ function parse(argv: string[]): Opts | Error {
     else if (a === "--cwd") o.cwd = v();
     else if (a === "--tests") o.tests = true;
     else if (a === "--dry-run") o.dryRun = true;
+    else if (a === "--all") o.all = true;
     else return new Error(`lane-listen: unknown argument ${a}`);
   }
   o.lane ??= (process.env.LIANKI_LANE || undefined) as RouteLane | undefined;
@@ -131,7 +138,7 @@ async function main(): Promise<number> {
         const l = lineOf(raw);
         if (!l || l.history || seen.has(l.id)) continue;
         seen.add(l.id);
-        if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests })) continue;
+        if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests, all: o.all })) continue;
         backoff = 1_000;
         const code = await deliver(o, handoff(o.lane, l, o.repo));
         log({ type: "delivered", lane: o.lane, id: l.id, test: testText(l) !== null, ay: code });

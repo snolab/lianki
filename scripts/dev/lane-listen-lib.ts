@@ -114,9 +114,11 @@ export function handoff(lane: RouteLane, l: Line, repo: string): string {
       ? `【owner → ${lane}】(${jst(l.at)} JST, Li chat) ${words}`
       : `【lane-test → ${lane}】(${jst(l.at)} JST) ${words}`,
     "",
-    test === null
-      ? `He addressed this to you by name; only you got it, the other lanes stay silent. Answer once, yourself, short, in his language${said.text ? "" : " (he only said your name: ask what he needs)"}:`
-      : 'This is a routing TEST, not the owner. Answer once, starting "[lane-test] ", one short line, so the test sees you heard it:',
+    test !== null
+      ? 'This is a routing TEST, not the owner. Answer once, starting "[lane-test] ", one short line, so the test sees you heard it:'
+      : said.lanes.includes(lane)
+        ? `He addressed this to you by name; only you got it, the other lanes stay silent. Answer once, yourself, short, in his language${said.text ? "" : " (he only said your name: ask what he needs)"}:`
+        : "Heard, not addressed to you by name (you listen to all his lines): keep it as context. Answer only if it is clearly meant for you; otherwise stay silent, another lane answers. To answer:",
     `  ${reply}`,
     "It posts as your lane (your name, mark and voice) with your own lane token; never read or print the token. Do not hand this to another lane.",
   ].join("\n");

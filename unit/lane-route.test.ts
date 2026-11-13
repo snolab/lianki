@@ -95,6 +95,15 @@ describe("laneTakes: exactly one lane per line (no triple replies)", () => {
   it("an unaddressed owner line goes to the chat lane alone", () => {
     expect(takers(owner("今天学了什么"))).toEqual(["chat"]);
   });
+  it("all: every owner line, never an agent line or another thread", () => {
+    expect(laneTakes("codex", owner("今天学了什么"), { all: true })).toBe(true);
+    expect(laneTakes("codex", { from: "agent", thread: "owner", text: "hi" }, { all: true })).toBe(
+      false,
+    );
+    expect(laneTakes("codex", { from: "owner", thread: "f1", text: "hi" }, { all: true })).toBe(
+      false,
+    );
+  });
   it("two names: both of them, nobody else", () => {
     expect(takers(owner("codex 和 agy，看一下"))).toEqual(["codex", "agy"]);
   });

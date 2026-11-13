@@ -150,3 +150,17 @@ describe("state-tree lines addressed to a lane (docs/state-tree.md, Blocked and 
     expect(lineOf(JSON.stringify(typed))!.etaLane).toBeUndefined();
   });
 });
+
+describe("handoff: a line heard by a listen-to-all lane", () => {
+  it("says it was not addressed and to stay silent unless meant for it", () => {
+    const l = lineOf(
+      JSON.stringify({
+        type: "chat",
+        message: { id: "m1", from: "owner", thread: "owner", text: "今天学了什么", at: 0 },
+      }),
+    )!;
+    const text = handoff("codex", l, "/repo");
+    expect(text).toContain("not addressed to you by name");
+    expect(text).toContain("say --repo /repo --as codex");
+  });
+});
