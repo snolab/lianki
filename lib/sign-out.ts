@@ -10,7 +10,10 @@
  *    first and whatever happens next: on a shared browser the next person must
  *    not find it, and an offline sign-out must not keep it. Owner's card,
  *    2026-11-06. Settings tells the user it will need entering again. The
- *    chat's last lines kept for an instant chat go too (lib/chat-cache.ts).
+ *    chat's last lines kept for an instant chat go too (lib/chat-cache.ts),
+ *    and nothing writes them again: the chat stays mounted through step 1
+ *    with a write timer pending and the hub still sending, so the cache is
+ *    frozen here and cleared once more right before step 3.
  * 1. POST better-auth's own /api/auth/sign-out, which deletes the session and
  *    answers with the session cookies expired (same-origin, so the Origin
  *    check passes; nothing about how sign-in works changes).
@@ -25,7 +28,7 @@ import { removeDevice } from "@/lib/byok/config";
 import { exitOutputBed } from "@lianki/debug-chat/output-bed";
 import { type BadgeNav, setBadge } from "@/lib/app-badge";
 import { CLEAR_MARKER_LINE } from "@/lib/account-locale";
-import { clearChatCache } from "@/lib/chat-cache";
+import { freezeChatCache } from "@/lib/chat-cache";
 
 export const SIGN_OUT_PATH = "/api/auth/sign-out";
 /** public/sw.js KEEP_CACHES: the only cache that is not per-account. */
@@ -42,7 +45,10 @@ type SignOutEnv = {
   endSession?: () => Promise<boolean>;
   /** Drops the `lang_src` marker: the next account's language is read afresh (lib/account-locale.ts). */
   forgetLocale?: () => void;
-  /** Drops the chat's lines kept on the device (lib/chat-cache.ts). */
+  /**
+   * Drops the chat's lines kept on the device and stops further writes
+   * (lib/chat-cache.ts): called first, and again right before leaving.
+   */
   forgetChat?: () => void;
 };
 
@@ -67,7 +73,7 @@ export async function signOut(to = "/", env?: SignOutEnv): Promise<boolean> {
     forgetLocale: () => {
       document.cookie = CLEAR_MARKER_LINE;
     },
-    forgetChat: () => clearChatCache(),
+    forgetChat: () => freezeChatCache(),
   };
   e.forgetByok?.();
   try {
@@ -102,6 +108,11 @@ export async function signOut(to = "/", env?: SignOutEnv): Promise<boolean> {
   } catch {
     // Cache storage can be unavailable (private mode); nothing to clear then.
   }
+  // Whatever the chat wrote while the request ran (a pending timer that beat the
+  // freeze, a hub line) goes before the page does.
+  try {
+    e.forgetChat?.();
+  } catch {}
   e.replace(to);
   return ok;
 }

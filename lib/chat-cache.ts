@@ -5,7 +5,11 @@
  *
  * - One entry per device, under one account: `{account, at, lines}`. A read
  *   for any other account (or a signed-out page) never returns it, and drops it.
- * - Sign-out drops it (lib/sign-out.ts), as does a page rendered with no session.
+ * - Sign-out drops it (lib/sign-out.ts) and freezes writes for the rest of the
+ *   page's life (`freezeChatCache`): the chat's queued write timer, or a hub line
+ *   arriving while the sign-out request is in flight, must not put it back.
+ * - A page rendered with no session drops it too; a page whose account changes
+ *   under it starts over (lib/use-chat-cache.ts).
  * - Only what the chat shows and docs/chat-history.md keeps: each line passes
  *   `cacheLine`, an allowlist. Never the page context or screen text, STT before
  *   polish, page labels, avatars, emails, attachments, timings or speaker tags.
@@ -22,6 +26,14 @@ export const CHAT_CACHE_MAX_BYTES = 200_000;
 
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 type Entry = { v: 1; account: string; at: number; lines: ChatMessage[] };
+
+/**
+ * Set at sign-out: no write lands after it on this page (DebugEval stays mounted
+ * through the sign-out request, with a write timer pending and the hub still
+ * talking). The page is replaced at the end of sign-out, so it never thaws in
+ * the browser; `thawChatCache` is for tests.
+ */
+let frozen = false;
 
 const local = (): Store | null => {
   try {
@@ -107,7 +119,7 @@ export function readChatCache(
   }
 }
 
-/** Keep the newest `max` lines of `account`'s thread (0: keep nothing). */
+/** Keep the newest `max` lines of `account`'s thread (0: keep nothing). Nothing once frozen. */
 export function writeChatCache(
   account: string | null | undefined,
   lines: readonly ChatMessage[],
@@ -115,7 +127,7 @@ export function writeChatCache(
   store: Store | null = local(),
   now = Date.now(),
 ): void {
-  if (!store) return;
+  if (!store || frozen) return;
   try {
     if (!account || !(max > 0)) return void store.removeItem(CHAT_CACHE_KEY);
     let kept = lines.slice(-Math.floor(max)).map(cacheLine);
@@ -135,6 +147,27 @@ export function clearChatCache(store: Store | null = local()): void {
   try {
     store?.removeItem(CHAT_CACHE_KEY);
   } catch {}
+}
+
+/**
+ * Sign-out: forget the lines and refuse every later write on this page. Called
+ * at the start of sign-out and again right before the page is replaced
+ * (lib/sign-out.ts), so neither a pending write timer nor a hub line that
+ * arrives in between leaves a copy behind.
+ */
+export function freezeChatCache(store: Store | null = local()): void {
+  frozen = true;
+  clearChatCache(store);
+}
+
+/** Sign-out has begun on this page: the chat schedules no more writes. */
+export function chatCacheFrozen(): boolean {
+  return frozen;
+}
+
+/** Tests only: a fresh page. */
+export function thawChatCache(): void {
+  frozen = false;
 }
 
 /**

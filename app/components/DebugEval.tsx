@@ -74,7 +74,8 @@ import { useIslands } from "@/lib/islands/useIslands";
 import { useLiveView, widgetSource } from "@/lib/live-view/client";
 import { inboxFiles, linkInboxLine } from "@/lib/inbox/client";
 import { pageBuildId } from "@/lib/build-id";
-import { clearChatCache, readChatCache, reconcileHistory, writeChatCache } from "@/lib/chat-cache";
+import { reconcileHistory } from "@/lib/chat-cache";
+import { useChatCache } from "@/lib/use-chat-cache";
 import { loadChatHost } from "@/lib/chat-host-loader";
 
 /** Hidden this long before the socket is dropped. */
@@ -96,8 +97,6 @@ const backToCloseChat = (onBack: () => void) => openBackToClose(window, onBack);
  * (DebugEvalLazy.tsx), through the same loadChatHost.
  */
 const DebugChatHost = lazy(() => loadChatHost().then((m) => ({ default: m.DebugChatHost })));
-/** The device's copy is written this long after the lines last changed. */
-const CACHE_WRITE_MS = 300;
 const DebugPairModal = lazy(() =>
   import("@lianki/debug-chat/DebugPairModal").then((m) => ({ default: m.DebugPairModal })),
 );
@@ -233,15 +232,17 @@ export function DebugEval({
   const [state, setState] = useState<HubState | null>(null);
   /**
    * The chat's last lines from this device (lib/chat-cache.ts), shown at once
-   * while the socket opens: only this account's, only when the chat is wanted.
-   * DebugEval renders in the browser only, so reading storage here is safe.
+   * while the socket opens: only this account's, only when the chat is wanted;
+   * reset when the page's account changes under this instance, written back
+   * once the hub's are in (lib/use-chat-cache.ts). DebugEval renders in the
+   * browser only, so reading storage in the first render is safe.
    */
-  const [cachedLines] = useState<ChatMessage[]>(() =>
-    !box && cacheLines > 0 && (debugOn() || partnerOpen) ? readChatCache(account) : [],
-  );
-  const [messages, setMessages] = useState<ChatMessage[]>(cachedLines);
-  /** The hub's history has arrived: the lines are the hub's, no longer the device's copy. */
-  const [fromHub, setFromHub] = useState(false);
+  const { cachedLines, messages, setMessages, fromHub, setFromHub } = useChatCache({
+    account,
+    box: !!box,
+    cacheLines,
+    wanted: debugOn() || partnerOpen,
+  });
   /** The chat box stays up across reconnects, until debug mode is turned off. */
   const [chat, setChat] = useState(cachedLines.length > 0);
   /** null on the owner's pages; a friend's chat status otherwise. */
@@ -263,16 +264,6 @@ export function DebugEval({
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
-  // No session on this page (signed out, expired): no chat lines stay on the device.
-  useEffect(() => {
-    if (!account && !box) clearChatCache();
-  }, [account, box]);
-  // Keep the newest lines of this account's thread on the device, once the hub's are in.
-  useEffect(() => {
-    if (!fromHub || box || !account) return;
-    const t = setTimeout(() => writeChatCache(account, messages, cacheLines), CACHE_WRITE_MS);
-    return () => clearTimeout(t);
-  }, [messages, fromHub, account, cacheLines, box]);
   /** The owner's page (a state arrived with no friend-status first): may hot-load the widget. */
   const [owner, setOwner] = useState(false);
   /** The agent's heartbeat (docs/monitoring.md, "Agent is working"). */

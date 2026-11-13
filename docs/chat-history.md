@@ -38,7 +38,12 @@ hub's history replaces them when it arrives. The same never-kept list
 applies there (`cacheLine`, an allowlist, tested in `unit/chat-cache.test.ts`),
 and it also drops page labels and an answer's page label. One account per
 device: another account's page, a page with no session, and sign-out drop it.
-docs/cold-start.md, "The chat at once".
+Sign-out also freezes the cache for the rest of the page (`freezeChatCache`):
+the chat stays mounted through the sign-out request with a write timer
+pending and the hub still sending, and none of that is written back; a
+mounted chat whose account changes under it (the root layout's session
+refresh) starts over for the new account (`lib/use-chat-cache.ts`, tested in
+`unit/use-chat-cache.test.tsx`). docs/cold-start.md, "The chat at once".
 
 ## How it is written
 

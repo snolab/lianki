@@ -1,13 +1,16 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import type { ChatMessage } from "@/lib/dev-eval";
 import {
   CHAT_CACHE_KEY,
   CHAT_CACHE_MAX_BYTES,
   cacheLine,
+  chatCacheFrozen,
   clearChatCache,
+  freezeChatCache,
   readChatCache,
   reconcileHistory,
+  thawChatCache,
   writeChatCache,
 } from "@/lib/chat-cache";
 import {
@@ -123,6 +126,8 @@ describe("chat cache: account isolation", () => {
 });
 
 describe("chat cache: sign-out", () => {
+  afterEach(() => thawChatCache());
+
   it("clearChatCache drops it", () => {
     const s = memStore();
     writeChatCache("acct-a", [line("1")], 40, s);
@@ -130,21 +135,54 @@ describe("chat cache: sign-out", () => {
     expect(s.m.size).toBe(0);
   });
 
-  it("signOut forgets the chat's lines, offline too", async () => {
-    let forgot = 0;
-    await signOut("/", {
-      fetch: async () => {
-        throw new TypeError("offline");
-      },
-      replace: () => {},
-      forgetChat: () => void forgot++,
-    });
-    expect(forgot).toBe(1);
+  it("freezeChatCache drops it and refuses every later write on this page", () => {
+    const s = memStore();
+    writeChatCache("acct-a", [line("1")], 40, s);
+    expect(chatCacheFrozen()).toBe(false);
+    freezeChatCache(s);
+    expect(chatCacheFrozen()).toBe(true);
+    expect(s.m.size).toBe(0);
+    // The chat's pending write timer firing, or a hub line's write: nothing lands.
+    writeChatCache("acct-a", [line("1"), line("2")], 40, s);
+    expect(s.m.size).toBe(0);
+    thawChatCache();
+    writeChatCache("acct-a", [line("1")], 40, s);
+    expect(s.m.size).toBe(1);
   });
 
-  it("the browser's signOut wires forgetChat to clearChatCache", () => {
+  it("signOut forgets the chat's lines first and again right before leaving, offline too", async () => {
+    const order: string[] = [];
+    await signOut("/", {
+      fetch: async () => {
+        order.push("post");
+        throw new TypeError("offline");
+      },
+      replace: () => void order.push("replace"),
+      forgetChat: () => void order.push("forget"),
+    });
+    expect(order).toEqual(["forget", "post", "forget", "replace"]);
+  });
+
+  it("a write that beats the first forget (a timer already due) is undone by the second", async () => {
+    const s = memStore();
+    let timer: (() => void) | undefined = () => writeChatCache("acct-a", [line("1")], 40, s);
+    await signOut("/", {
+      fetch: async () => {
+        // The pending write fires while the request is in flight.
+        timer?.();
+        timer = undefined;
+        return new Response("{}", { status: 200 });
+      },
+      replace: () => {},
+      // A forgetChat that only clears (no freeze): the second call still wins.
+      forgetChat: () => clearChatCache(s),
+    });
+    expect(s.m.size).toBe(0);
+  });
+
+  it("the browser's signOut wires forgetChat to freezeChatCache", () => {
     const src = readFileSync("lib/sign-out.ts", "utf8");
-    expect(src).toContain("forgetChat: () => clearChatCache()");
+    expect(src).toContain("forgetChat: () => freezeChatCache()");
   });
 });
 

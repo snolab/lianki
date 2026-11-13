@@ -130,7 +130,9 @@ What changed:
   (`reconcileHistory`). Isolation: one entry per device, keyed by the account
   id the server rendered the page for (`account`, root layout); a page for
   another account, or with no session, never shows it and drops it; sign-out
-  drops it (`lib/sign-out.ts`). Each line passes an allowlist (`cacheLine`)
+  drops it and freezes writes until the page is replaced (`lib/sign-out.ts`,
+  `freezeChatCache`); an account change under a mounted chat starts it over
+  (`lib/use-chat-cache.ts`). Each line passes an allowlist (`cacheLine`)
   that keeps nothing docs/chat-history.md says is never kept (page context,
   screen text, raw STT, parts, timings, speaker tags, page labels, avatars,
   emails, attachment ids). Not on a box (no session there).
