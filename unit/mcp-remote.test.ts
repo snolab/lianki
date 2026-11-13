@@ -194,7 +194,10 @@ describe("tools", () => {
   test("tools/list follows the token's permissions", async () => {
     const { env } = setup({ scopes: ["chat:read"] });
     const { result } = await (await handle(rpc("tools/list"), env)).json();
-    expect(result.tools.map((t: { name: string }) => t.name)).toEqual(["lianki_chat_read"]);
+    expect(result.tools.map((t: { name: string }) => t.name)).toEqual([
+      "lianki_chat_read",
+      "lianki_chat_wait",
+    ]);
   });
 
   test("tools/call forwards the bearer token and names itself; the result is untrusted data", async () => {

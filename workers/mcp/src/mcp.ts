@@ -7,7 +7,8 @@
  * or a response is accepted with 202). The answer is JSON, or one
  * `text/event-stream` event when the client's Accept prefers that. There is
  * no session and nothing to stream unasked, so GET (the server-to-client
- * stream) and DELETE answer 405.
+ * stream) and DELETE answer 405. One tool holds its POST open:
+ * lianki_chat_wait, up to 55 s, on a token chat socket to PUSH (chatIo).
  *
  * Auth: `Authorization: Bearer <API token>`, the same token `lianki mcp` and
  * the REST API take. It is not checked here: it is forwarded, with the call,
@@ -122,6 +123,43 @@ function context(env: Env, seen: { unauthorized: boolean }) {
 
 type Ctx = ReturnType<typeof context>;
 
+/** A Worker WebSocket (the 101 response's), as far as lianki_chat_wait uses it. */
+type WorkerSocket = {
+  accept(): void;
+  send(data: string): void;
+  close(code?: number, reason?: string): void;
+  addEventListener(
+    type: string,
+    fn: (ev: { data?: unknown; code?: number; reason?: string }) => void,
+  ): void;
+};
+
+/**
+ * lianki_chat_wait's socket: the token chat WebSocket `lianki chat listen`
+ * opens, here through the PUSH binding (lianki-push owns /api/version/chat).
+ * The token goes in its first message (mcp-tools.mjs waitChat), never a header.
+ */
+function chatIo(env: Env, token: string, tool: string) {
+  return {
+    token,
+    openChat: async () => {
+      const res = await env.PUSH.fetch(
+        new Request(new URL(CHAT_PATH, SITE), {
+          headers: {
+            upgrade: "websocket",
+            [CLIENT_HEADER]: `mcp-remote/${SERVER_VERSION} tool=${tool}`,
+          },
+        }),
+      );
+      const ws = (res as Response & { webSocket?: WorkerSocket | null }).webSocket;
+      if (!ws)
+        throw new CliError("server", EXIT.server, `the chat socket was refused (${res.status})`);
+      ws.accept();
+      return ws;
+    },
+  };
+}
+
 async function scopesOf(c: Ctx, token: string): Promise<string[]> {
   try {
     return (await tokenScopes(c, token)) as string[];
@@ -214,7 +252,12 @@ async function dispatch(
         const headers = { [CLIENT_HEADER]: `mcp-remote/${SERVER_VERSION} tool=${t.name}` };
         return (await call(c, token, { ...r, headers } as Parameters<typeof call>[2])).data;
       };
-      const result = await runTool(t, api as never, parsed.args as never);
+      const result = await runTool(
+        t,
+        api as never,
+        parsed.args as never,
+        chatIo(env, token, t.name),
+      );
       // The token itself refused (unknown, expired, revoked): the client should sign in again.
       if (seen.unauthorized) throw new Unauthorized();
       return { jsonrpc: "2.0", id, result };

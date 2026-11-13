@@ -20,6 +20,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CliError, EXIT, call, currentToken } from "./cli.mjs";
 import {
+  CHAT_PATH,
   CLIENT_HEADER,
   INSTRUCTIONS,
   UNTRUSTED_NOTE,
@@ -32,6 +33,29 @@ export * from "./mcp-tools.mjs";
 
 /** The MCP server for this token: only the tools its permissions allow. */
 export function buildServer(c, token, scopes) {
+  // lianki_chat_wait: the socket `lianki chat listen` opens, open before it is handed over.
+  const io = {
+    token,
+    openChat: () =>
+      new Promise((resolve, reject) => {
+        const WS = c.deps.WebSocket ?? globalThis.WebSocket;
+        if (!WS) return reject(new CliError("usage", EXIT.usage, "waiting for the chat needs a WebSocket: Node.js 22 or newer, or Bun"));
+        const u = new URL(CHAT_PATH, c.base + "/");
+        u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+        let ws;
+        try {
+          ws = new WS(u.toString());
+        } catch (e) {
+          return reject(new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`));
+        }
+        const failed = () => reject(new CliError("network", EXIT.server, `cannot reach ${c.site}`));
+        ws.addEventListener("open", () => {
+          ws.removeEventListener?.("close", failed);
+          resolve(ws);
+        });
+        ws.addEventListener("close", failed);
+      }),
+  };
   const server = new McpServer(
     { name: "lianki", version: c.deps.version },
     { instructions: INSTRUCTIONS },
@@ -49,7 +73,7 @@ export function buildServer(c, token, scopes) {
         ...(t.input ? { inputSchema: t.input } : {}),
         annotations: t.annotations,
       },
-      (args) => runTool(t, api, args),
+      (args) => runTool(t, api, args, io),
     );
   }
   return server;

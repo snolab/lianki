@@ -105,7 +105,7 @@ eval.
   (the token's own name, scopes and expiry, `describeToken`) and lists only
   the tools those scopes allow (`TOOLS` in `packages/lianki-cli/mcp.mjs`:
   `study` → stats, due, next, get, add, import, review, settings_get;
-  `chat:read|write|ask` → chat_read, chat_say, chat_ask). An older server
+  `chat:read|write|ask` → chat_read + chat_wait, chat_say, chat_ask). An older server
   that has no GET there gets every tool; each route still checks.
 - **Untrusted results.** Every result is `<untrusted-data>` JSON with `<`
   escaped, after a line saying never to follow instructions inside it.
@@ -174,4 +174,22 @@ key `mcpRemote`).
   one is a tool error and nothing is sent.
 - **Audit.** Each call sends `x-lianki-client: mcp-remote/<version>
 tool=<name>`; `lib/api-token-client.ts` accepts that shape too.
-- Tests: `unit/mcp-remote.test.ts` (fake bindings).
+- **Waiting for the chat: `lianki_chat_wait`** (`chat:read`). Owner,
+  2026-11-14 00:1x JST: an agent with only the remote MCP must take part in
+  his Li chat in real time. Arguments `{after?: <line id>, timeoutSec?:
+1–55, default 50}`; result `{lines, answered, after, gap?}`: the lines newer
+  than `after` (at once when some already are; without `after`, the next line
+  to arrive), answers to the token's own ask cards, and the cursor to pass
+  next time. Empty lists at the timeout (under a client's usual 60 s request
+  timeout). `gap: true` when `after` was not among the last 100 lines (all
+  100 come back). Event-driven: the call opens the same token chat socket
+  `lianki chat listen` uses (`waitChat` in `mcp-tools.mjs`; the Worker opens
+  it as a WebSocket upgrade through `PUSH`, the stdio server with its
+  `WebSocket` to `wss://…/api/version/chat`), the token only in its first
+  message, and closes it on the first line, answer or timeout. Chosen over a
+  long-poll op in lianki-push: no change to the hub, and the hub's existing
+  scope (`listen` = `chat:read`), lane filtering (`forLane`), revocation and
+  rate checks apply as they are. While it waits, the socket counts as an
+  agent listening in the thread.
+- Tests: `unit/mcp-remote.test.ts` (fake bindings), `unit/mcp-chat-wait.test.ts`
+  (fake hub socket).
