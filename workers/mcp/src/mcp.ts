@@ -44,6 +44,7 @@ import {
   toolError,
   toolsFor,
 } from "../../../packages/lianki-cli/mcp-tools.mjs";
+import { guide, wantsGuide } from "./guide";
 
 type Fetcher = { fetch(req: Request): Promise<Response> };
 export type Env = { MAIN: Fetcher; PUSH: Fetcher };
@@ -227,6 +228,8 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   // The route is lianki.com/mcp*: any other path under it (an /mcp-something page) is the app's.
   if (url.pathname !== MCP_PATH && url.pathname !== `${MCP_PATH}/`) return env.MAIN.fetch(req);
+  // A browser opening the address gets the how-to-connect page, not a bare 405.
+  if (wantsGuide(req)) return guide(req, url.origin);
   if (req.method !== "POST")
     return new Response("Method Not Allowed", {
       status: 405,

@@ -144,6 +144,25 @@ describe("protocol", () => {
     expect(res.headers.get("allow")).toBe("POST");
   });
 
+  test("a browser opening the address gets the how-to page (zh or en), linking to the token page", async () => {
+    const { env } = setup();
+    const page = (lang: string) =>
+      handle(
+        new Request(`${ORIGIN}/mcp`, {
+          headers: { accept: "text/html,*/*", "accept-language": lang },
+        }),
+        env,
+      );
+    const zh = await page("zh-CN,zh;q=0.9");
+    expect(zh.status).toBe(200);
+    expect(zh.headers.get("content-type")).toContain("text/html");
+    const zhText = await zh.text();
+    expect(zhText).toContain("偏好设置");
+    expect(zhText).toContain(`${ORIGIN}/my/preferences`);
+    expect(zhText).toContain(`${ORIGIN}/mcp`);
+    expect(await (await page("en-US")).text()).toContain("API tokens");
+  });
+
   test("an Accept that prefers text/event-stream gets one SSE event", async () => {
     const { env } = setup();
     const res = await handle(rpc("ping", undefined, { accept: "text/event-stream" }), env);
