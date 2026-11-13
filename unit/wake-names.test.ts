@@ -19,8 +19,8 @@ import {
   createWakeNames,
   editDistance,
   heardName,
-  addressLead,
   laneSpellings,
+  mentionOf,
   wakeNames,
   wakeParticipants,
 } from "@lianki/debug-chat/wake-names";
@@ -29,6 +29,7 @@ import { type WorkerLike, createKws, workerSource } from "@lianki/debug-chat/wak
 import { type VadEvents, createMic } from "@lianki/debug-chat/mic";
 import { type MicDeps, createMicSession } from "@lianki/debug-chat/mic-session";
 import { routeLine } from "@lianki/debug-chat/lane-route";
+import { wakeMention } from "@lianki/debug-chat/polish";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const RATE = 16_000;
@@ -185,21 +186,22 @@ describe("the wake keyword set", () => {
     expect(s.skipped).toEqual(["リンキー"]);
   });
 
-  it("which name was heard, and the address it puts before the line", () => {
+  it("which name was heard, and the @mention it puts before the line", () => {
     expect(heardName("agent:coco")).toEqual({ name: "coco", kind: "agent" });
     expect(heardName("owner:Sno")).toEqual({ name: "Sno", kind: "owner" });
     expect(heardName("LINKY")).toBeNull();
     expect(heardName(undefined)).toBeNull();
-    expect(addressLead("agent:coco")).toBe("coco, ");
-    expect(addressLead("agent:杰咪")).toBe("杰咪，");
-    expect(addressLead("owner:Sno")).toBe("");
-    expect(addressLead("LINKY")).toBe("");
-    // The lane router takes the addressed line to that lane.
-    expect(routeLine(`${addressLead("agent:coco")}what's next`).lanes).toEqual(["codex"]);
-    expect(routeLine(`${addressLead("agent:杰咪")}看一下`).lanes).toEqual(["agy"]);
-    expect(routeLine(`${addressLead("agent:小克")}帮我看一下`).lanes).toEqual(["chat"]);
-    // How STT writes 小克 for him names the chat lane.
-    expect(routeLine("小客，帮我看一下")).toMatchObject({ lanes: ["chat"], addressed: true });
+    expect(mentionOf("agent:coco")).toBe("@coco");
+    expect(mentionOf("agent:杰咪")).toBe("@杰咪");
+    expect(mentionOf("owner:Sno")).toBe("");
+    expect(mentionOf("LINKY")).toBe("");
+    // The lane router takes the mentioned line to that lane.
+    expect(routeLine(wakeMention("what's next", "@coco")).lanes).toEqual(["codex"]);
+    expect(routeLine(wakeMention("看一下", "@杰咪")).lanes).toEqual(["agy"]);
+    expect(routeLine(wakeMention("帮我看一下", "@小克"))).toMatchObject({
+      lanes: ["chat"],
+      addressed: true,
+    });
   });
 
   it("the detection's label is kept with the hit", () => {
@@ -331,7 +333,7 @@ describe("the spotter follows the names", () => {
 });
 
 describe("a name wakes the mic and addresses the line", () => {
-  function gated(label: string | undefined, lead: (l?: string) => string | void = addressLead) {
+  function gated(label: string | undefined, lead: (l?: string) => string | void = mentionOf) {
     let ev: VadEvents | null = null;
     const texts: string[] = [];
     const logs: Record<string, unknown>[] = [];
@@ -368,12 +370,12 @@ describe("a name wakes the mic and addresses the line", () => {
     };
   }
 
-  it("'coco, …': the words after the name go up addressed to coco", async () => {
+  it("'coco, …': the words after the name go up as '@coco …'", async () => {
     const g = gated("agent:coco");
     await g.mic.toggle();
     g.say(3);
     for (let i = 0; i < 4; i++) await tick();
-    expect(g.texts).toEqual(["coco, what's next"]);
+    expect(g.texts).toEqual(["@coco what's next"]);
     expect(g.logs.find((e) => e.ev === "wake-spot")).toMatchObject({ label: "agent:coco" });
   });
 
@@ -418,7 +420,58 @@ describe("a name wakes the mic and addresses the line", () => {
     for (let i = 0; i < 6; i++) await tick();
     expect(s.view()).toMatchObject({ wake: "active", wakeName: "杰咪" });
     expect(logs).toContainEqual({ ev: "wake-name", label: "agent:杰咪", kind: "agent" });
-    expect(texts).toEqual(["杰咪，看一下"]);
+    expect(texts).toEqual(["@杰咪 看一下"]);
     expect(routeLine(texts[0]!).lanes).toEqual(["agy"]);
+  });
+
+  // Owner, 2026-11-14: "小客 woke it once, then never again". After a wake the
+  // mic is active and the spotter is not asked, so a name said again only ever
+  // reached the lane as STT wrote it ("小客，…"), which named no lane: nothing
+  // called, nothing shown. Now every line that names a lane carries its
+  // @mention, and the mic can be woken by name again after going passive.
+  it("after a name wake, the next lines that name a lane are mentioned, and it wakes again", async () => {
+    let events: VadEvents | null = null;
+    const texts: string[] = [];
+    const said = ["帮我看一下", "小客，再看一下", "杰米，看日志", "好的"];
+    let n = 0;
+    const deps: MicDeps = {
+      guard: { minFrameRms: 0 },
+      getStream: async () => ({ id: "s", getTracks: () => [{ readyState: "live", stop() {} }] }),
+      load: async (ev) => {
+        events = ev;
+        return { start() {}, pause() {}, flush() {}, destroy() {} };
+      },
+      upload: async () => said[n++]!,
+      kws: (f) => ({
+        load: async () => f("ready"),
+        spot: async (a) => ({
+          hit: true,
+          rest: a.subarray(RATE),
+          tokens: ["x"],
+          label: "agent:小克",
+        }),
+      }),
+    };
+    const s = createMicSession(deps);
+    s.attach({ onText: (t) => texts.push(t), onPending: () => {} });
+    await s.toggle();
+    const say = async () => {
+      events!.onSpeechStart();
+      events!.onSpeechEnd(new Float32Array(RATE * 3));
+      for (let i = 0; i < 6; i++) await tick();
+    };
+    s.wake("passive");
+    await say(); // "小克, 帮我看一下" (passive: the spotter heard 小克)
+    expect(s.view()).toMatchObject({ wake: "active", wakeName: "小克" });
+    await say(); // active: "小客，再看一下"
+    await say(); // active: "杰米，看日志"
+    expect(texts).toEqual(["@小克 帮我看一下", "@小克 再看一下", "@杰咪 看日志"]);
+    expect(texts.map((t) => routeLine(t).lanes)).toEqual([["chat"], ["chat"], ["agy"]]);
+    // Passive again, and the name wakes it a second time.
+    s.wake("passive");
+    expect(s.view().wake).toBe("passive");
+    await say();
+    expect(s.view().wake).toBe("active");
+    expect(texts.at(-1)).toBe("@小克 好的");
   });
 });

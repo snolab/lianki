@@ -43,7 +43,16 @@
  * the chat lane may collapse a run of his voice lines that were not addressed
  * to it (room talk, someone else talking) into one short line saying what was
  * said. The word rules above do not apply to it.
+ *
+ * A **wake mention** (`wakeMention`): a lane's name at the start of a voice
+ * line, as STT wrote it ("小客，帮我…"), or the name the wake word heard,
+ * becomes "@<the lane's name>" ("@小克 帮我…"). Wake words can wake on the
+ * wrong name, and an @mention shows which one it took (owner, 2026-11-14).
+ * `polishCheck` accepts that change in an agent's polish too.
  */
+import { ROUTE_TO_LANE } from "./addressed";
+import { routeLine } from "./lane-route";
+import { LANES } from "./voices";
 
 /** The context a polish may draw on. */
 export type PolishContext = string[];
@@ -377,6 +386,33 @@ function soundAlike(said: string, cand: string): boolean {
  * (`soundAlike`) without being in the context. The raw text stays as `raw`.
  */
 export function polishCheck(raw: string, polished: string, context: PolishContext): PolishVerdict {
+  const v = bracketCheck(raw, polished, context);
+  if (v.ok) return v;
+  // The lane's name in front written as its @mention (wakeMention): checked against that.
+  const m = wakeMention(raw);
+  return m !== raw && bracketCheck(m, polished, context).ok ? { ok: true } : v;
+}
+
+/**
+ * The line with the name it is addressed to written as an @mention: the
+ * lanes named at its start (lane-route.ts, with STT's spellings: "小客，帮我"
+ * → "@小克 帮我", "coco 和 杰米，看一下" → "@coco @杰咪 看一下"), else
+ * `mention`, the name the wake word heard (wake-names.ts mentionOf: "@coco"),
+ * put in front. A line that names no one, with no mention, is unchanged.
+ */
+export function wakeMention(text: string, mention?: string): string {
+  if (!text.trim()) return text;
+  const r = routeLine(text);
+  if (r.addressed) {
+    const names = r.lanes.map((l) => `@${LANES[ROUTE_TO_LANE[l]].name}`).join(" ");
+    return r.text ? `${names} ${r.text}` : names;
+  }
+  if (!mention) return text;
+  const rest = text.replace(/^[\s,，、:：.。!！~～-]+/u, "");
+  return rest ? `${mention} ${rest}` : mention;
+}
+
+function bracketCheck(raw: string, polished: string, context: PolishContext): PolishVerdict {
   const brackets = [...polished.matchAll(UNCLEAR)];
   if (!brackets.length) return wordCheck(raw, polished, context);
   if (brackets.length > MAX_UNCLEAR_BRACKETS)

@@ -36,6 +36,7 @@ import {
 import type { FilterVerdict } from "./local-stt";
 import type { SpeakerTag } from "./wire";
 import type { SpotResult, WakeSpot } from "./wake";
+import { wakeMention } from "./polish";
 
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
 export const MAX_UTTERANCE_MS = 30_000;
@@ -788,8 +789,8 @@ export type WakeGate = {
   spot(audio: Float32Array): Promise<SpotResult>;
   /**
    * A wake word was heard (`label`: which, wake-names.ts): the mic becomes
-   * active. Returns what goes before the words after it ("coco, " when a
-   * name was heard, so the line is addressed), or nothing.
+   * active. Returns the @mention for the words after it ("@coco" when an
+   * agent's name was heard, so the line is addressed), or nothing.
    */
   onWake(label?: string): string | void;
   /** "other": the Mac's speaker check said it was not his voice (docs/local-stt.md, "Voiceprint"). */
@@ -1222,7 +1223,7 @@ export function createMic(d: {
             };
             if (!r.hit) return drop();
             const wake = (f?: LocalFinal) => {
-              // A name heard ("coco, …"): the line is addressed to it (wake-names.ts addressLead).
+              // A name heard: the line is addressed to it ("@coco …", polish.ts wakeMention).
               const lead = w.onWake(r.label) || undefined;
               if (!r.rest.length) return drop();
               send(seq, r.rest, toMs(r.rest.length), prob, f ? Promise.resolve(f) : undefined, lead);
@@ -1270,7 +1271,7 @@ export function createMic(d: {
     ms: number,
     prob: number | undefined,
     local?: Promise<LocalFinal>,
-    /** Put before the transcript (the name a wake word addressed); not for dropped lines. */
+    /** The @mention a wake name heard (polish.ts wakeMention); not for dropped lines. */
     lead?: string,
   ) => {
     const wav = encodeWav(audio);
@@ -1350,7 +1351,8 @@ export function createMic(d: {
               !drop && !!text.trim() && !other,
               drop ? "hallucination" : !text.trim() ? "empty" : other ? "other" : "ok",
             );
-          q.resolve(seq, drop ? null : lead && text.trim() ? lead + text.trimStart() : text, split);
+          // A lane named in front ("小客，…"), or the name the wake word heard: its @mention.
+          q.resolve(seq, drop ? null : split ? text : wakeMention(text, lead), split);
         },
         (e) => {
           d.timing?.(seq, { t_sttDone: now(), dropped: true });

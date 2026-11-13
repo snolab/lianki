@@ -75,7 +75,7 @@ export const LANE_NAMES: Readonly<
     ],
   },
   chat: {
-    // 小克: the lane's name (2026-11-14).
+    // 小克: the lane's name (2026-11-14), also its @mention (polish.ts wakeMention).
     exact: ["xiaoke", "小可", "小克"],
     // 小客, 小课: how STT wrote 小克 for him (owner, 2026-11-14).
     heard: ["xiaoko", "shiaoke", "小客", "小课", "小科", "小柯", "晓可", "晓科", "小珂", "肖可"],
@@ -91,8 +91,8 @@ const TAIL = /^(?:\s*(?:lane|线|同学|啊|呀|哈)(?![a-z]))?/iu;
 const PUNCT = /^[\s]*[,，、:：.。!！?？~～—–-]/u;
 const SPACE = /^\s/u;
 const CJK = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
-/** Between two names: "codex 和 agy". */
-const JOIN = /^\s*(?:和|跟|与|还有|及|and|&|\+|\/|、)\s*/iu;
+/** Between two names: "codex 和 agy", "@coco @杰咪". */
+const JOIN = /^\s*(?:和|跟|与|还有|及|and|&|\+|\/|、|@)\s*/iu;
 
 const isLatin = (name: string) => /^[a-z]+$/i.test(name);
 

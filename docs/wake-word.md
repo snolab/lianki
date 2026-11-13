@@ -337,10 +337,19 @@ An unchanged set sends nothing. If a list is refused, the old one stays and
 **Which name woke it.** Each detection carries its keyword's label (`LINKY`,
 `agent:<name>`, `owner:<name>`). It goes into the `wake-spot` log, into a
 `{ev: "wake-name"}` line and into the session's `wakeName`. When an
-agent's name wakes the mic, the words after it go up as "coco, …" or
-"杰咪，…", so `lane-route.ts` sends the line to that lane and a token agent
+agent's name wakes the mic, the words after it go up as "@coco …" or
+"@杰咪 …", so `lane-route.ts` sends the line to that lane and a token agent
 sees itself addressed. "Linky" and his own name only wake the mic, as
 before.
+
+**The @mention** (`polish.ts` `wakeMention`, owner 2026-11-14): every voice
+line that names a lane at its start, as STT wrote it ("小客，帮我…"), goes
+up as "@小克 帮我…", in active mode too. A wake word can take the wrong
+name, and the mention shows which one it took. Before, a name said again
+after the first wake (the mic active, the spotter not asked) reached the
+lane only as STT wrote it, and 小客 named no lane, so it looked as if the
+wake word worked once and then stopped. `polishCheck` accepts an agent's
+polish that makes the same change.
 
 **Thresholds.** Names use LINKY's tuned 1.5 / 0.15. The spotter's defaults
 (1.0 / 0.25), used at first, are the setting that missed "Linky" on his

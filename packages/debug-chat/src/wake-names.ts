@@ -26,7 +26,7 @@ import { nameTokens, plainToken, toneVariants } from "./wake-tokens";
 /** "agent": a name that addresses that agent (its line is prefixed); "owner": his own, wakes only. */
 export type WakeNameKind = "agent" | "owner";
 export type WakeParticipant = {
-  /** The name as shown: the label's, and the address its wake puts before the line. */
+  /** The name as shown: the label's, and the @mention's (wake-mention in polish.ts). */
   name: string;
   kind: WakeNameKind;
   /** Other ways the same one is said (a lane's aliases and how STT hears it): one wake word with them. */
@@ -215,14 +215,14 @@ export function heardName(label: string | undefined): WakeParticipant | null {
 }
 
 /**
- * What goes before the words after the name, so the line is addressed to
- * that agent (lane-route.ts routeLine reads "coco, …"): "coco, " or "杰咪，".
- * Nothing for LINKY or the owner's own name.
+ * The @mention a wake name puts in front of the words after it ("@coco ",
+ * "@杰咪 "), so the line is addressed to that agent (lane-route.ts reads it)
+ * and a wake on the wrong name shows. Nothing for LINKY or the owner's own
+ * name. polish.ts wakeMention writes it into the line.
  */
-export function addressLead(label: string | undefined): string {
+export function mentionOf(label: string | undefined): string {
   const h = heardName(label);
-  if (!h || h.kind !== "agent") return "";
-  return /\p{Script=Han}$/u.test(h.name) ? `${h.name}，` : `${h.name}, `;
+  return h && h.kind === "agent" ? `@${h.name}` : "";
 }
 
 /**

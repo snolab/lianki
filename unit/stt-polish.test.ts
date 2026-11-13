@@ -18,6 +18,7 @@ import {
   MAX_UNCLEAR_BRACKETS,
   MAX_UNCLEAR_CANDIDATES,
   UNCLEAR_PHRASES,
+  wakeMention,
 } from "../packages/debug-chat/src/polish";
 import { cleanScene, MAX_SCENE_SCREEN } from "../packages/debug-chat/src/wire";
 import { flagLive } from "../lib/debug-session";
@@ -391,5 +392,38 @@ describe("the stt.polish flag", () => {
     expect(await flagLive(db(1), "not.a.flag")).toBe(false);
     expect(await flagLive(undefined, "stt.polish")).toBe(false);
     expect(asked).toEqual(["stt.polish", "stt.polish", "stt.polish", "stt.merge"]);
+  });
+});
+
+// Owner, 2026-11-14: a wake word can wake on the wrong name, so the polish
+// writes the name it took as an @mention ("小客，帮我…" → "@小克 帮我…").
+describe("wake mention: the lane named in front becomes its @mention", () => {
+  it("STT's spelling of a lane's name, or the name the wake word heard", () => {
+    expect(wakeMention("小客，帮我看一下")).toBe("@小克 帮我看一下");
+    expect(wakeMention("小课，帮我看一下")).toBe("@小克 帮我看一下");
+    expect(wakeMention("杰米，看一下日志")).toBe("@杰咪 看一下日志");
+    expect(wakeMention("可可，部署了吗")).toBe("@coco 部署了吗");
+    expect(wakeMention("codex 和 解密，看一下")).toBe("@coco @杰咪 看一下");
+    // The wake word heard the name and cut it off: the mention goes in front.
+    expect(wakeMention("帮我看一下", "@小克")).toBe("@小克 帮我看一下");
+    expect(wakeMention("，帮我看一下", "@小克")).toBe("@小克 帮我看一下");
+    // Already mentioned: unchanged in effect.
+    expect(wakeMention("@小克 帮我看一下")).toBe("@小克 帮我看一下");
+    expect(wakeMention("@coco @杰咪 看一下")).toBe("@coco @杰咪 看一下");
+  });
+
+  it("a line that names no one stays as it is", () => {
+    expect(wakeMention("帮我看一下")).toBe("帮我看一下");
+    expect(wakeMention("codex的设计不错")).toBe("codex的设计不错");
+    expect(wakeMention("解密这个文件")).toBe("解密这个文件");
+    expect(wakeMention("")).toBe("");
+    expect(wakeMention("   ", "@coco")).toBe("   ");
+  });
+
+  it("polishCheck takes an agent's polish that makes the mention", () => {
+    expect(polishCheck("小客，帮我看一下", "@小克 帮我看一下", []).ok).toBe(true);
+    expect(polishCheck("杰米，看一下日志", "@杰咪 看一下日志。", []).ok).toBe(true);
+    // Not a lane's name: still a replacement the context must support.
+    expect(polishCheck("小票，帮我看一下", "@小克 帮我看一下", []).ok).toBe(false);
   });
 });
