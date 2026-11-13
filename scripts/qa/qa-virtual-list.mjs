@@ -10,7 +10,10 @@
 // aria-setsize N, no Prev / Next / "Page n of m", fewer rows in the DOM than
 // N, every title reachable by scrolling, an end line at the bottom, ↓ moves
 // focus to the next row, and the row at the viewport's centre is the centre
-// row again after opening one and going Back.
+// row again after opening one and going Back. On /data (random access, 400
+// more cards): aria-rowcount is the whole total at once, only the first pages
+// are asked for, a jump to the end loads the last row and skips the pages in
+// between, and every row is still reachable by scrolling.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, devices } from "playwright";
@@ -248,11 +251,81 @@ for (const [name, device] of [
   }
   await page.emulateMedia({ colorScheme: "light" });
 
-  // /data's card table (cloud): the same list as table rows, no page controls.
+  // /data's card table (cloud): random access — the table is its full length at
+  // once and fetches only the pages under the viewport. MORE extra cards make
+  // it long enough (many pages of `lists.batchSize`) that a jump to the end
+  // must skip pages in between.
+  const MORE = 400;
+  const more = await ctx.request.post("/api/fsrs/bulk-upsert", {
+    headers: { origin: BASE },
+    data: {
+      notes: Array.from({ length: MORE }, (_, i) => ({
+        url: `https://example.com/qa-vlist-more-${i}`,
+        title: `More ${String(i).padStart(3, "0")}`,
+        card: {
+          due: new Date(now + (N + i + 1) * 3600000).toISOString(),
+          stability: 0,
+          difficulty: 0,
+          elapsed_days: 0,
+          scheduled_days: 0,
+          reps: 0,
+          lapses: 0,
+          state: 0,
+        },
+        log: [],
+        hlc: { timestamp: now, counter: N + i, deviceId: "qa" },
+      })),
+    },
+  });
+  check(more.ok(), `${name}: /data: ${MORE} more cards pushed (${more.status()})`);
+  /** Pages the table asked for (its requests carry `sort`; the stats diff does not). */
+  const asked = [];
+  page.on("request", (rq) => {
+    const u = new URL(rq.url());
+    if (u.pathname === "/api/fsrs/list" && u.searchParams.has("sort"))
+      asked.push(Number(u.searchParams.get("page")));
+  });
   await page.goto("/data?store=cloud", { waitUntil: "networkidle" });
   await page.locator('[data-testid="cards-total"]').waitFor();
+  await page.locator("tbody tr[data-key]").first().waitFor();
   const dataTotal = Number((await page.locator('[data-testid="cards-total"]').innerText()).trim());
-  check(dataTotal === N - 1, `${name}: /data total ${dataTotal}`);
+  check(dataTotal === N - 1 + MORE, `${name}: /data total ${dataTotal}`);
+  check(
+    (await page.locator("table[data-sparse]").getAttribute("aria-rowcount")) ===
+      String(dataTotal + 1),
+    `${name}: /data aria-rowcount = total + header`,
+  );
+  const pageSize = await page.locator("tbody tr[data-key]").count();
+  const firstAsked = [...new Set(asked)];
+  check(
+    firstAsked.length > 0 && Math.max(...firstAsked) <= 2,
+    `${name}: /data asks only the first pages at first (${firstAsked})`,
+  );
+  // Jump straight to the end: the last row loads; the pages in between never do.
+  asked.length = 0;
+  await page.evaluate(() => {
+    const box = document.querySelector('[data-testid="data-scroll-cloud"]');
+    box.scrollTop = box.scrollHeight;
+  });
+  await page
+    .locator(`tbody tr[data-key][data-index="${dataTotal - 1}"]`)
+    .waitFor({ timeout: 10000 })
+    .catch(() => {});
+  check(
+    (await page.locator(`tbody tr[data-key][data-index="${dataTotal - 1}"]`).count()) === 1,
+    `${name}: /data a jump to the end loads the last row`,
+  );
+  const jumpAsked = [...new Set(asked)].sort((a, b) => a - b);
+  const lastPage = Math.floor((dataTotal - 1) / Math.max(1, pageSize));
+  check(
+    jumpAsked.length > 0 && jumpAsked.length <= 4 && Math.min(...jumpAsked) >= lastPage - 3,
+    `${name}: /data the jump skips the pages in between (asked ${jumpAsked}, last ${lastPage})`,
+  );
+  await page.screenshot({ path: join(OUT, `data-jump-${name}.png`) });
+  await page.evaluate(() => {
+    document.querySelector('[data-testid="data-scroll-cloud"]').scrollTop = 0;
+  });
+  await page.waitForTimeout(400);
   check(
     (await page.getByRole("button", { name: /^[‹›]$/ }).count()) === 0,
     `${name}: /data no page buttons`,

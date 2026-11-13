@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { displayTitle } from "@/lib/titles/client";
 import { VirtualList } from "@/app/components/VirtualList";
+import type { SparseSource } from "@/app/components/useSparseList";
 import { SealSwitch } from "@/app/components/SealSwitch";
 import { useIntlayer } from "next-intlayer";
 import { fill } from "@/lib/roadmap/labels";
@@ -38,6 +39,8 @@ type Props = {
   /** The last batch failed: the table offers Try again. */
   listError: boolean;
   onReachEnd: () => void;
+  /** Random access (the cloud store): `rows` is sparse by absolute index; see useSparseList. */
+  sparse?: SparseSource;
 
   selected: Set<string>;
   onSelectedChange: (selected: Set<string>) => void;
@@ -81,6 +84,7 @@ export default function CardTable(props: Props) {
     hasMore,
     listError,
     onReachEnd,
+    sparse,
     selected,
     onSelectedChange,
     onDeleteSelected,
@@ -94,7 +98,10 @@ export default function CardTable(props: Props) {
   const [editing, setEditing] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
 
-  const allOnPageSelected = rows.length > 0 && rows.every((r) => selected.has(r.url));
+  // With random access `rows` has holes (rows not loaded): `filter` drops them.
+  // "All" means every loaded row.
+  const loadedRows = sparse ? rows.filter(Boolean) : rows;
+  const allOnPageSelected = loadedRows.length > 0 && loadedRows.every((r) => selected.has(r.url));
 
   function toggle(url: string) {
     const next = new Set(selected);
@@ -105,8 +112,8 @@ export default function CardTable(props: Props) {
 
   function toggleAll() {
     const next = new Set(selected);
-    if (allOnPageSelected) rows.forEach((r) => next.delete(r.url));
-    else rows.forEach((r) => next.add(r.url));
+    if (allOnPageSelected) loadedRows.forEach((r) => next.delete(r.url));
+    else loadedRows.forEach((r) => next.add(r.url));
     onSelectedChange(next);
   }
 
@@ -203,7 +210,9 @@ export default function CardTable(props: Props) {
         style={{ maxHeight: TABLE_BOX_MAX_HEIGHT }}
       >
         <VirtualList
+          key={store}
           items={rows}
+          sparse={sparse}
           getKey={(row) => row.url}
           name={`data-${store}`}
           scrollRef={scrollBox}
@@ -221,6 +230,7 @@ export default function CardTable(props: Props) {
           }
           table={{
             className: "w-full text-sm",
+            columns: COLUMNS.length + 1 + (editable ? 1 : 0),
             label: heading,
             head: (
               <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800">
