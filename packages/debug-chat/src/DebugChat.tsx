@@ -3159,6 +3159,11 @@ export function DebugChat({
           handle.onPointerDown(e);
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
+        // Right-click opens the menu, like the double tap (owner, 2026-11-14: settings from the handle on a computer).
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu(true);
+        }}
         style={{
           ...handle.style,
           ...BAR_CONTROL,
@@ -4164,6 +4169,12 @@ export function DebugChat({
           onClick={() => {
             if (handleDragged.current) return void (handleDragged.current = false);
             foldBy({ type: "handle" });
+          }}
+          // Right-click: bring the chat back with its menu open (settings from the handle).
+          onContextMenu={(e) => {
+            e.preventDefault();
+            foldBy({ type: "handle" });
+            setMenu(true);
           }}
           style={{
             top: handleAt,
