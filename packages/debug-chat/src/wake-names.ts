@@ -64,6 +64,40 @@ export const NOT_NAMES: ReadonlySet<string> = new Set(["main", "chat"]);
  */
 export const NAME_SCORE = 1.5;
 export const NAME_THRESHOLD = 0.15;
+/**
+ * One step looser for the names (owner, 2026-11-14 05:3x JST: "唤醒词的匹配…
+ * 过于谨慎了，触发率不高" — three names in a row, none woke): a higher
+ * keyword score and a lower threshold. A mis-wake now costs little, since
+ * polish turns the heard name into a visible @mention. The device may pin
+ * its own pair in `lk:wake-sense` ("score/threshold", e.g. "2.5/0.08").
+ */
+export const NAME_SCORE_LOOSE = 2.0;
+export const NAME_THRESHOLD_LOOSE = 0.1;
+export const WAKE_SENSE_KEY = "lk:wake-sense";
+
+/** The names' score/threshold: the device's `lk:wake-sense` pair, else the loose pair. */
+export function nameSense(
+  read: (k: string) => string | null = (k) => {
+    try {
+      return typeof localStorage === "undefined" ? null : localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+): { score: number; threshold: number } {
+  let raw = "";
+  try {
+    raw = read(WAKE_SENSE_KEY) ?? "";
+  } catch {
+    raw = "";
+  }
+  const m = /^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/.exec(raw);
+  const score = m ? Number(m[1]) : NaN;
+  const threshold = m ? Number(m[2]) : NaN;
+  return score > 0 && threshold > 0 && threshold < 1
+    ? { score, threshold }
+    : { score: NAME_SCORE_LOOSE, threshold: NAME_THRESHOLD_LOOSE };
+}
 /** At or under this many tokens, a one-token difference is a clash ("coco" / "koko"). */
 export const SHORT_TOKENS = 5;
 
@@ -193,12 +227,13 @@ export function buildWakeKeywords(people: readonly WakeParticipant[]): WakeKeywo
     const label = `${p.kind === "owner" ? OWNER_LABEL : AGENT_LABEL}${p.name}`;
     names.push({ ...p, label, tokens: tokens ?? kept[0]!, variants: kept });
   }
+  const sense = nameSense();
   const entries: KeywordEntry[] = [
     LINKY,
     ...names.map((n) => ({
       label: n.label,
-      score: NAME_SCORE,
-      threshold: NAME_THRESHOLD,
+      score: sense.score,
+      threshold: sense.threshold,
       matches: n.variants.map((tokens) => ({ tokens })),
     })),
   ];

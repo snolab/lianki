@@ -13,7 +13,11 @@ import {
 } from "@lianki/debug-chat/wake-tokens";
 import {
   NAME_SCORE,
+  NAME_SCORE_LOOSE,
   NAME_THRESHOLD,
+  NAME_THRESHOLD_LOOSE,
+  WAKE_SENSE_KEY,
+  nameSense,
   buildWakeKeywords,
   clashes,
   createWakeNames,
@@ -117,8 +121,8 @@ describe("the wake keyword set", () => {
     const coco = s.entries.find((e) => e.label === "agent:coco")!;
     expect(coco).toMatchObject({
       label: "agent:coco",
-      score: NAME_SCORE,
-      threshold: NAME_THRESHOLD,
+      score: NAME_SCORE_LOOSE,
+      threshold: NAME_THRESHOLD_LOOSE,
     });
     expect(coco.matches[0]).toEqual({ tokens: ["K", "OW1", "K", "OW2"] });
     expect(s.entries.at(-1)!.label).toBe("owner:Sno");
@@ -147,8 +151,11 @@ describe("the wake keyword set", () => {
     const xiaoke = said("agent:小克");
     expect(xiaoke.has("x iǎo k è")).toBe(true); // 小克, 小客, 小课
     expect(xiaoke.has("x iǎo k ě")).toBe(true); // 小可
-    // The names' threshold is LINKY's tuned one, not the stricter default.
+    // LINKY's tuned pair is the names' floor; the names run one step looser
+    // (owner, 2026-11-14: three names in a row, none woke).
     expect([NAME_SCORE, NAME_THRESHOLD]).toEqual([LINKY.score!, LINKY.threshold!]);
+    expect(NAME_SCORE_LOOSE).toBeGreaterThan(NAME_SCORE);
+    expect(NAME_THRESHOLD_LOOSE).toBeLessThan(NAME_THRESHOLD);
     expect(laneSpellings("agy")).toContain("杰米");
     expect(laneSpellings("agy")).not.toContain("gemini"); // a word of its own
   });
@@ -473,5 +480,26 @@ describe("a name wakes the mic and addresses the line", () => {
     await say();
     expect(s.view().wake).toBe("active");
     expect(texts.at(-1)).toBe("@小克 好的");
+  });
+});
+
+describe("nameSense: the device's lk:wake-sense pair, else the loose pair", () => {
+  it("reads a valid score/threshold pair", () => {
+    expect(nameSense((k) => (k === WAKE_SENSE_KEY ? "2.5/0.08" : null))).toEqual({
+      score: 2.5,
+      threshold: 0.08,
+    });
+  });
+  it("falls back on nothing, junk, or an out-of-range pair", () => {
+    const loose = { score: NAME_SCORE_LOOSE, threshold: NAME_THRESHOLD_LOOSE };
+    expect(nameSense(() => null)).toEqual(loose);
+    expect(nameSense(() => "loose")).toEqual(loose);
+    expect(nameSense(() => "0/0.1")).toEqual(loose);
+    expect(nameSense(() => "2/1.5")).toEqual(loose);
+    expect(
+      nameSense(() => {
+        throw new Error("no storage");
+      }),
+    ).toEqual(loose);
   });
 });
