@@ -439,7 +439,7 @@ export default function PreferencesClient({
         >
           {mobileFilters.heading}
         </SectionHeading>
-        <p className="text-gray-400 mb-4">{mobileFilters.description}</p>
+        <p className="mb-4 break-words text-gray-400">{mobileFilters.description}</p>
 
         {/* Current Patterns */}
         <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-4">
