@@ -278,11 +278,13 @@ describe("chat prefetch gate", () => {
     expect(loads).toBe(0);
   });
 
-  it("DebugEval prefetches the very module React.lazy loads, behind the gate", () => {
-    const src = readFileSync("app/components/DebugEval.tsx", "utf8");
-    expect(src).toContain('const loadChatHost = () => import("@lianki/debug-chat/DebugChatHost")');
-    expect(src).toContain("lazy(() => loadChatHost()");
-    expect(src).toMatch(
+  it("the prefetch warms the very module React.lazy loads, behind the gate", () => {
+    const loader = readFileSync("lib/chat-host-loader.ts", "utf8");
+    expect(loader).toContain('import("@lianki/debug-chat/DebugChatHost")');
+    const evalSrc = readFileSync("app/components/DebugEval.tsx", "utf8");
+    expect(evalSrc).toContain("lazy(() => loadChatHost()");
+    const lazySrc = readFileSync("app/components/DebugEvalLazy.tsx", "utf8");
+    expect(lazySrc).toMatch(
       /if \(!chatPrefetchWanted\(\{ account,[^;]{0,120}\)\) return;\s*return prefetchWhenIdle\(loadChatHost/,
     );
   });

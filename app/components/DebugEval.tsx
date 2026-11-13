@@ -73,7 +73,7 @@ import { useLiveView, widgetSource } from "@/lib/live-view/client";
 import { inboxFiles, linkInboxLine } from "@/lib/inbox/client";
 import { pageBuildId } from "@/lib/build-id";
 import { clearChatCache, readChatCache, reconcileHistory, writeChatCache } from "@/lib/chat-cache";
-import { chatPrefetchWanted, prefetchWhenIdle } from "@/lib/chat-prefetch";
+import { loadChatHost } from "@/lib/chat-host-loader";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
@@ -89,9 +89,10 @@ const backToCloseChat = (onBack: () => void) => openBackToClose(window, onBack);
  * The chat and the pairing modal load only when shown: most pages (a guest's,
  * a learner without the Learning Partner) never show them, and the owner's
  * pages paint and hydrate before the chat's code arrives (docs/cold-start.md).
- * Replies are read aloud through voice() itself, which needs neither.
+ * Replies are read aloud through voice() itself, which needs neither. The
+ * chat's chunk is prefetched in idle time for a viewer who will see it
+ * (DebugEvalLazy.tsx), through the same loadChatHost.
  */
-const loadChatHost = () => import("@lianki/debug-chat/DebugChatHost");
 const DebugChatHost = lazy(() => loadChatHost().then((m) => ({ default: m.DebugChatHost })));
 /** The device's copy is written this long after the lines last changed. */
 const CACHE_WRITE_MS = 300;
@@ -266,12 +267,6 @@ export function DebugEval({
     const t = setTimeout(() => writeChatCache(account, messages, cacheLines), CACHE_WRITE_MS);
     return () => clearTimeout(t);
   }, [messages, fromHub, account, cacheLines, box]);
-  // The chat's code in idle time after first paint, for a viewer who will see it
-  // (the gate as the page was rendered; once per page).
-  useEffect(() => {
-    if (!chatPrefetchWanted({ account, partnerOpen: openRef.current, debug: debugOn() })) return;
-    return prefetchWhenIdle(loadChatHost, window);
-  }, [account]);
   /** The owner's page (a state arrived with no friend-status first): may hot-load the widget. */
   const [owner, setOwner] = useState(false);
   /** The agent's heartbeat (docs/monitoring.md, "Agent is working"). */

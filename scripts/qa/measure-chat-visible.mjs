@@ -25,6 +25,8 @@ const HUB_MS = Number(process.env.HUB_MS || 300);
 const CPU = Number(process.env.CPU || 4);
 const PATH = process.env.QA_PATH || "/home";
 const NOCACHE = process.env.NOCACHE === "1";
+const NET = process.env.NET || "";
+const COLD = process.env.COLD === "1";
 const PW = "qa-test-pass-1234";
 
 const HISTORY = Array.from({ length: 40 }, (_, i) => ({
@@ -100,6 +102,16 @@ try {
     if (NOCACHE) await page.evaluate(() => localStorage.removeItem("lk:chat-cache"));
     const cdp = await ctx.newCDPSession(page);
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: CPU });
+    // COLD=1: no JS in the HTTP cache (the first load after a deploy).
+    if (COLD) await cdp.send("Network.clearBrowserCache");
+    // NET=4g: fast 4G as in the cold-start runs (9 Mbit/s down, 1.5 up, 60 ms RTT).
+    if (NET === "4g")
+      await cdp.send("Network.emulateNetworkConditions", {
+        offline: false,
+        latency: 60,
+        downloadThroughput: (9_000_000 / 8) | 0,
+        uploadThroughput: (1_500_000 / 8) | 0,
+      });
     await page.goto(`${BASE}${PATH}`);
     await page.waitForFunction(() => window.__marks?.hub, null, { timeout: 60_000 });
     const m = await page.evaluate(() => ({
@@ -126,5 +138,5 @@ const gap = rows.map((x) => x.chat - x.fcp);
 console.log(`FCP→chat P5/P50/P95 ${pct(gap, 5)}/${pct(gap, 50)}/${pct(gap, 95)} ms`);
 console.log(
   `(OPEN_MS ${OPEN_MS}, HUB_MS ${HUB_MS}, CPU ${CPU}x, ${RUNS} runs, ${BASE}${PATH}` +
-    `${NOCACHE ? ", no device copy" : ""})`,
+    `${NOCACHE ? ", no device copy" : ""}${NET ? `, ${NET}` : ""}${COLD ? ", cold HTTP cache" : ""})`,
 );
