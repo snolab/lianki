@@ -487,6 +487,7 @@ The voiceprint adds these (next section):
 | server | `{"t":"enrol"\|"voiceprint","rid","ok"[,"error"],…}`                                              | the answer to a request                                                  |
 | server | `final` + `"filtered":{reason,score}`, text empty                                                 | the filter stopped it: nothing decoded, no proof                         |
 | server | `final` + `"wouldFilter":reason`                                                                  | the filter is not on; it would have stopped this one                     |
+| server | `final` + `"parts":[{text,lang,startMs,audioMs,speaker,speakerProof},…]`                          | two speakers in it: one line per part ("Split at the speaker change")    |
 
 ## Voiceprint: "only my voice"
 
@@ -739,6 +740,37 @@ window that is clearly `other` makes the final **unknown** (`mixed`). Windows
 too short or too noisy to decide are skipped. The final's `score` stays the
 whole-final one (the filter below reads it, unchanged); the window scores
 ride along as `windows` in the server's final, never in the signed tag.
+
+**Split at the speaker change** (owner, 2026-11-13 23:1x JST: two lines, each
+with its own tag, not one line marked unknown). The windows that decided form
+runs of one speaker; each cut is halfway through the overlap of the last
+window of one run and the first of the next (`voiceprint.split_points`), and
+only when every part has 1.5 s of speech (`MIN_SPEECH_S`); else the final
+stays one `mixed` line. `server.py` then reads each part on its own audio
+(`decode_final`) and checks each part on its own audio (`verify`), so his half
+gets his ✓ by itself, and sends one final with `parts`:
+
+```
+final {text: the parts joined, speaker: {unknown, mixed}, speakerProof: over that text,   ← a page without parts: one line, as before
+       parts: [{text, lang, startMs, audioMs, speaker, speakerProof}, …]}                ← each proof over that part's own text, uid "<uid>-p<i>"
+```
+
+The page (`local-stt.ts` `partsOf`, `mic.ts` `takeRuns`) uses the parts only
+when the text it kept is the Mac's as sent (no cloud fallback, no cleanup):
+before each part the draft so far goes out as its own line (`onBreak`,
+DebugChat `voiceBreak`; a draft with typed text in it is left alone), then the
+part's tag and proof are noted and its text lands. So the hub sees one line
+per speaker, each verified by its own proof (lib/speaker-proof.ts). Not after
+"Linky" (the cuts are in the whole audio, the text only after it): one `mixed`
+line there. Costs one more decode of the final's audio, only on these finals.
+
+**Merging keeps the speakers apart.** A split part never amends the line
+before it (`continues` is not asked for it). An agent's passage merge
+(`eval.ts edit --merge`, `passageSpeakers` in voice-merge.ts, the hub's
+`mergeRun`) refuses a run with any `other` line, and a run mixing a line
+verified as his with one that is not, so his ✓ never covers someone else's
+words. The live merge (`stt.merge`, `mergeVerdict`) already refuses `other`
+and gives a merged line the weakest tag of its parts.
 
 `me` is #394's threshold for 1 % false accepts over 109 other voices (real
 people, TTS in nine languages, the shop PA, voices in the background) at

@@ -2335,8 +2335,12 @@ export function DebugChat({
     // stamped mergeable (the flag is on) and no command ran since. The hub decides.
     const tapsNow = micTaps().kept?.() ?? 0;
     const lastLine = messagesNow.current.at(-1);
+    // One speaker's part of a split final: a new line, never an amendment.
+    const fromSplit = splitPart.current;
+    splitPart.current = false;
     const continues =
       source &&
+      !fromSplit &&
       lastLine &&
       tapsAtVoice.current === tapsNow &&
       mergeVerdict(lastLine, {
@@ -2402,6 +2406,8 @@ export function DebugChat({
    * a line sent while the draft still equals it is the mic's, `source: "stt"`.
    */
   const pureDictation = useRef<string | null>(uiStore.getState().pureDictation);
+  /** The next line sent is one speaker's part of a final the Mac split (voiceBreak). */
+  const splitPart = useRef(false);
   /** The draft's length when it last changed outside an IME composition. */
   // A restored draft is settled text, not a burst.
   const settledLen = useRef(draftRef.current.length);
@@ -2688,6 +2694,17 @@ export function DebugChat({
       return;
     }
     arm();
+  };
+  /**
+   * The Mac split a final by speaker (docs/local-stt.md, "Two speakers in one
+   * final"): what dictation put in the draft goes out now, so the next part is a
+   * line of its own with its own tag. That part never continues the line before
+   * it (voice-merge.ts): it is another speaker's by construction. A draft with
+   * typed text in it is left alone; the parts then join it, as before.
+   */
+  const voiceBreak = () => {
+    if (draftRef.current.trim() && draftSource(draftRef.current, pureDictation.current)) submit();
+    splitPart.current = true;
   };
   const arm = () => {
     clearTimeout(timer.current);
@@ -3209,6 +3226,7 @@ export function DebugChat({
         // while minimized.
         <DebugMic
           onText={dictated}
+          onBreak={voiceBreak}
           onPending={(n, text) => {
             micPending.current = n;
             setInterim(text);

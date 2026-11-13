@@ -286,6 +286,44 @@ class Scoring(unittest.TestCase):
         self.assertEqual(alone["decision"], "me")
         self.assertTrue(alone["windows"] and all(w == 1.0 for w in alone["windows"]))
 
+    def test_a_mixed_final_is_cut_where_the_speaker_changes(self):
+        self.enrol("iphone", 350)  # mid-bin: FakeEmbedder bins by 100 Hz
+        him, other = tone(350, speech_s=3.5, seed=1), tone(900, speech_s=3.5, seed=2)
+        mixed = np.concatenate([him, other * 0.6]).astype(np.float32)
+        r = self.v.verify(mixed, "iphone")
+        self.assertEqual(r["reason"], "mixed")
+        [cut] = r["cuts"]
+        # Near the join (4.5 s in), within one hop.
+        self.assertLess(abs(cut - len(him)), V.WINDOW_HOP_S * RATE)
+        # Each part checked on its own audio: his half is "me", the other half "other".
+        self.assertEqual(self.v.verify(mixed[:cut], "iphone")["decision"], "me")
+        self.assertEqual(self.v.verify(mixed[cut:], "iphone")["decision"], "other")
+        # Only him: no cuts.
+        self.assertNotIn("cuts", self.v.verify(tone(350, speech_s=7.0), "iphone"))
+
+    def test_split_points(self):
+        hop = int(V.WINDOW_HOP_S * RATE)
+        win = int(V.WINDOW_S * RATE)
+        # Speech all along, with room noise between the sentences (speech_stats needs a floor).
+        audio = np.concatenate([tone(300, speech_s=2.0, pad_s=0.25, seed=i) for i in range(5)]).astype(np.float32)
+
+        def ws(*ds):
+            return [{"decision": d, "start": i * hop, "end": i * hop + win, "score": 0} for i, d in enumerate(ds) if d]
+
+        # me me | other other: halfway through the overlap of windows 1 and 2.
+        self.assertEqual(V.split_points(ws("me", "me", "other", "other"), audio), [(hop + win + 2 * hop) // 2])
+        # Undecided windows are skipped; a gap is cut halfway too.
+        self.assertEqual(V.split_points(ws("me", "unknown", "unknown", "other", "other"), audio), [(win + 3 * hop) // 2])
+        self.assertEqual(V.split_points(ws("me", None, None, "other"), audio), [(win + 3 * hop) // 2])
+        # Back and forth: two cuts, three parts.
+        self.assertEqual(len(V.split_points(ws("me", "me", "other", "other", "me", "me"), audio)), 2)
+        # One speaker: nothing to cut.
+        self.assertEqual(V.split_points(ws("me", "me", "me"), audio), [])
+        self.assertEqual(V.split_points([], audio), [])
+        # A part with too little speech in it: no split, the final stays one "mixed" line.
+        quiet = np.concatenate([np.full(int(2.5 * RATE), 0.003, dtype=np.float32), audio])
+        self.assertEqual(V.split_points(ws("other", "me", "me", "me"), quiet), [])
+
     def test_own_device_first_then_any(self):
         self.enrol("iphone", 300)
         self.enrol("android", 600)
@@ -885,6 +923,53 @@ class ServerProtocol(unittest.TestCase):
         self.assertTrue(me)
         # His first partial waits for the check: enough speech heard to judge.
         self.assertGreaterEqual(me[0], int(V.FILTER_BELOW["campp"].min_speech_s * 1000))
+
+    def test_two_speakers_split_into_two_finals(self):
+        """Owner, 2026-11-13: half someone else, half him: one part each, each with its own tag and proof."""
+        import base64
+
+        sg = self.signer
+
+        async def flow(ws):
+            await ws.send(json.dumps({"t": "hello", "device": "iphone", "thread": "owner"}))
+            r = await self.ask(ws, {"t": "enrol", "op": "start", "device": "iphone", "keepAudio": False,
+                                    "ticket": sg.vp("enrol", "iphone")})
+            eid = r["enrolment"]
+            for i in range(V.ENROL_MIN):
+                await self.utter(ws, 800 + i, tone(440, seed=i), enrol=eid)
+            await self.ask(ws, {"t": "enrol", "op": "commit", "enrolment": eid})
+            other, him = tone(1000, speech_s=3.5, seed=1) * 0.6, tone(440, speech_s=3.5, seed=2)
+            mixed = await self.utter(ws, 40, np.concatenate([other, him]).astype(np.float32), page_uid="M" * 22)
+            alone = await self.utter(ws, 41, tone(440, speech_s=7.0), page_uid="A" * 22)
+            linky = await self.utter(ws, 42, np.concatenate([other, him]).astype(np.float32), text_from=800)
+            await self.ask(ws, {"t": "voiceprint", "op": "delete", "device": "*", "ticket": sg.vp("delete", "*")})
+            return mixed, alone, linky
+
+        mixed, alone, linky = self.run_ws(flow)
+
+        def payload(proof):
+            body = proof.split(".")[0]
+            return json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+
+        # The whole final as before (a page without parts shows one "mixed" line)…
+        self.assertEqual((mixed["speaker"]["decision"], mixed["speaker"]["reason"]), ("unknown", "mixed"))
+        self.assertNotIn("cuts", mixed["speaker"])
+        self.assertEqual(payload(mixed["speakerProof"])["text"], mixed["text"])
+        # …and its two parts, someone else first, then him with his ✓, each read on its own audio.
+        a, b = mixed["parts"]
+        self.assertEqual((a["speaker"]["decision"], b["speaker"]["decision"]), ("other", "me"))
+        self.assertEqual(mixed["text"], f"{a['text']} {b['text']}")
+        self.assertEqual(a["startMs"], 0)
+        self.assertEqual(b["startMs"], a["audioMs"])
+        for i, part in enumerate((a, b)):
+            p = payload(part["speakerProof"])
+            self.assertEqual((p["text"], p["decision"], p["thread"]), (part["text"], part["speaker"]["decision"], "owner"))
+            self.assertEqual(p["uid"], "M" * 22 + f"-p{i}")
+        # Only him: one final, no parts. After "Linky": not split (the cuts are in the whole audio).
+        self.assertEqual(alone["speaker"]["decision"], "me")
+        self.assertNotIn("parts", alone)
+        self.assertEqual(linky["speaker"]["reason"], "mixed")
+        self.assertNotIn("parts", linky)
 
     def test_flow(self):
         sg = self.signer

@@ -58,6 +58,10 @@ The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
                    {"t":"filter","on":bool}                  (the filter's state: voiceprint status, "filter")
                    final gains "filtered":{reason,score} when the filter stopped it (text "",
                     nothing decoded), or "wouldFilter":reason when the filter is not on
+                   final gains "parts":[{text,lang,startMs,audioMs,speaker,speakerProof},…] when two
+                    speakers were heard in it ("mixed"): each part read and checked on its own audio,
+                    its proof over its own text (uid "<uid>-p<i>"); `text` is the parts' texts joined
+                    and `speaker`/`speakerProof` stay the whole final's (a page without parts: one line)
 
 GET /health answers {"ok":true,"engine":…,"speaker":[models]|false} (the same port, plain HTTP).
 """
@@ -402,6 +406,30 @@ class Server:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.pool, fin, audio)
 
+    async def split(self, audio: np.ndarray, cuts: list[int], device: str | None) -> list[dict] | None:
+        """
+        A final with two speakers in it, cut where the speaker changes (voiceprint.split_points):
+        each part read and checked on its own audio, [{text, lang, startMs, audioMs, speaker}].
+        None (one "mixed" final, as before) when a part reads as nothing or anything fails.
+        """
+        edges = [0, *cuts, len(audio)]
+        spans = list(zip(edges, edges[1:]))
+        try:
+            got = await asyncio.gather(*(self.decode_final(audio[a:b]) for a, b in spans),
+                                       *(self.verify(audio[a:b], device) for a, b in spans))
+        except Exception as e:
+            log(f"speaker split failed: {type(e).__name__}: {e}")
+            return None
+        reads, checks = got[:len(spans)], got[len(spans):]
+        if not all(r[0].strip() for r in reads):
+            return None
+        out = []
+        for (a, b), r, c in zip(spans, reads, checks):
+            c.pop("cuts", None)  # one split, never again inside a part
+            out.append({"text": r[0], "lang": r[1], "startMs": int(a / RATE * 1000),
+                        "audioMs": int((b - a) / RATE * 1000), "speaker": c})
+        return out
+
     async def handler(self, ws, via: str = "tailnet", limits: dict | None = None):
         """
         One page. `limits` (the peer listener: another account's v2 ticket, `lim`):
@@ -531,6 +559,13 @@ class Server:
             spk = None if isinstance(res[1], BaseException) else res[1]
             if isinstance(res[1], BaseException):
                 log(f"speaker check failed: {type(res[1]).__name__}: {res[1]}")
+            # Two speakers in it (owner, 2026-11-13): one line per speaker, each with its own
+            # tag and proof (docs/local-stt.md, "Two speakers in one final"). Not after "Linky":
+            # the cuts are in the whole audio, the text only after it.
+            cuts = spk.pop("cuts", None) if isinstance(spk, dict) and not enrol else None
+            parts = await self.split(audio, cuts, conn["device"]) if cuts and not u.text_from else None
+            if parts:
+                text = join_spans([p["text"] for p in parts])
             ms = int((time.perf_counter() - t0) * 1000)
             msg = {
                 "t": "final",
@@ -560,6 +595,14 @@ class Server:
                 if self.attestor:
                     # Signed for the hub: only a tag that verifies, over this text, is kept on a line.
                     msg["speakerProof"] = self.attestor.sign(spk, text, uid=u.uid, thread=conn.get("thread"))
+                if parts:
+                    # Each part's proof over its own words, under its own uid (the hub burns each).
+                    for i, p in enumerate(parts):
+                        if self.attestor:
+                            uid = f"{u.uid[:56]}-p{i}" if u.uid else None
+                            p["speakerProof"] = self.attestor.sign(p["speaker"], p["text"], uid=uid,
+                                                                   thread=conn.get("thread"))
+                    msg["parts"] = parts
                 d = spk["decision"]
                 self.counts[d] = self.counts.get(d, 0) + 1
                 # The filter off: what it would have stopped (a count on his device, and a real
@@ -572,6 +615,8 @@ class Server:
                 why = f" {spk['reason']}" if spk.get("reason") else ""
                 c = self.counts
                 tag = f", spk {d} {sc}{why} (me {c['me']} other {c['other']} unknown {c['unknown']})"
+                if parts:
+                    tag += ", split " + "+".join(p["speaker"]["decision"] for p in parts)
                 if would:
                     tag += f", would filter ({self.would_filter})"
             await send(msg)

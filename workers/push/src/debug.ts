@@ -262,6 +262,7 @@ import {
   mergeLines,
   mergeVerdict,
   partTexts,
+  passageSpeakers,
   splitLine,
 } from "../../../packages/debug-chat/src/voice-merge";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
@@ -1296,6 +1297,9 @@ export class DebugHub {
       if (x.parts && !x.settled && this.now() - lastPartAt(x) < MAX_UTTERANCE_MS)
         return fail(`message ${x.id} is still being spoken: merge it once the passage ends`);
     }
+    // One speaker per passage: someone else's line never joins his, nor rides on his ✓.
+    const why = passageSpeakers(picked.map(([, x]) => x));
+    if (why) return fail(`not merged, the lines stand: ${why}`);
     // Oldest first, in thread order (kept is newest first).
     const at = (k: string) => kept.findIndex(([key]) => key === k);
     picked.sort((a, b) => at(b[0]) - at(a[0]));

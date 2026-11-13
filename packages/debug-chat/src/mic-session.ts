@@ -154,7 +154,12 @@ export type MicDeps = {
 };
 
 type Listener = (v: MicView) => void;
-type Sink = { onText: (t: string) => void; onPending: (n: number, interim: string) => void };
+type Sink = {
+  onText: (t: string) => void;
+  onPending: (n: number, interim: string) => void;
+  /** A final split by speaker (createMic onBreak): the draft so far goes out first. */
+  onBreak?: () => void;
+};
 
 export type MicSession = ReturnType<typeof createMicSession>;
 
@@ -375,6 +380,7 @@ export function createMicSession(
       if (sink) sink.onText(t);
       else held.push(t);
     },
+    onBreak: () => sink?.onBreak?.(),
     onPending: (n, interim) => {
       emit({ pending: n, interim });
       sink?.onPending(n, interim);

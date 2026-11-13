@@ -735,6 +735,7 @@ export const canCapture = () =>
  */
 export function DebugMic({
   onText,
+  onBreak,
   onPending,
   onActive,
   clipSink,
@@ -743,6 +744,8 @@ export function DebugMic({
   gesture,
 }: {
   onText: (text: string) => void;
+  /** A final split by speaker on the Mac: the draft so far goes out as its own line first. */
+  onBreak?: () => void;
   onPending: (n: number, interim: string) => void;
   onActive: (on: boolean) => void;
   clipSink?: string;
@@ -793,8 +796,8 @@ export function DebugMic({
   /** Whisper settings in force (adaptive.ts): shown on the button's tooltip. */
   const [whisper, setWhisper] = useState(() => voiceAdapt().state().whisper);
   useEffect(() => voiceAdapt().subscribe((s) => setWhisper(s.whisper)), []);
-  const cb = useRef({ onText, onPending, onActive, clipSink, localStt, label });
-  cb.current = { onText, onPending, onActive, clipSink, localStt, label };
+  const cb = useRef({ onText, onBreak, onPending, onActive, clipSink, localStt, label });
+  cb.current = { onText, onBreak, onPending, onActive, clipSink, localStt, label };
   const mic = useRef<MicSession | null>(null);
 
   useEffect(() => {
@@ -819,6 +822,7 @@ export function DebugMic({
     });
     const detach = m.attach({
       onText: (t) => cb.current.onText(t),
+      onBreak: () => cb.current.onBreak?.(),
       onPending: (n, interim) => cb.current.onPending(n, interim),
     });
     const v = voice();
