@@ -632,15 +632,20 @@ async function serve() {
         return res.end(landingHtml(lab, origin));
       }
       // Filtered first (no cookies, CSP, CORS, HSTS… from the app), then the
-      // guard's own frame-ancestors.
-      return proxy(req, res, url, (h) =>
-        framable(
+      // guard's own frame-ancestors. Never cached: next dev's "no-cache" reaches
+      // the browser through Cloudflare as max-age=14400 (the zone's browser TTL),
+      // and its chunk names do not change with their contents, so a browser kept
+      // hours-old chat code after every publish (2026-11-14). no-store is kept.
+      return proxy(req, res, url, (h) => ({
+        ...framable(
           downstreamHeaders(h as Record<string, string | string[] | undefined>, {
             publicHost,
             origin,
           }) as http.IncomingHttpHeaders,
         ),
-      );
+        "cache-control": "no-store",
+        "cdn-cache-control": "no-store",
+      }));
     } catch (e) {
       console.error("[whole-page] tunnel error:", (e as Error).message);
       if (!res.headersSent) res.writeHead(503, { "cache-control": "no-store" });
