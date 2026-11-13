@@ -357,3 +357,20 @@ export function agentGuidePointer({
 }): string {
   return fill(t.pointer, { url: agentGuideUrl(scopes, lang), name: plain(name) || "—" });
 }
+
+/**
+ * Explicit one-time sharing from the new-token box. Unlike the public guide
+ * and ordinary pointer, this message intentionally contains the supplied secret.
+ * Build it only for the clipboard, never for a URL, log or persistent store.
+ */
+export function agentGuideWithToken(o: {
+  scopes: readonly ScopeId[];
+  lang: string;
+  token: string;
+  template: string;
+}): string {
+  const url = agentGuideUrl(o.scopes, o.lang);
+  return o.template.replace(/\{(url|token)\}/g, (_, key: string) =>
+    key === "url" ? url : o.token,
+  );
+}

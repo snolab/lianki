@@ -4,6 +4,19 @@ Owner, 2026-11-10 22:54 JST: many users, ordinary users included, have their
 own AI agents. So we keep offering API tokens to everyone, and every token
 comes with a prompt that teaches the user's agent how to use Lianki's API.
 
+## One-message sharing after creation
+
+Owner, 2026-11-14: the newly created token box additionally offers **Copy AI
+instructions + token**. This explicit action copies a single private message
+with the localized, scope-filtered guide URL and `LIANKI_TOKEN=<secret>`.
+The message is built in memory for the clipboard only, never logged, stored
+or sent by the page. The ordinary instructions-only buttons and public guide
+still contain no secret. Only the one-time creation box can include it.
+
+The creation form also offers **Chat only**: it replaces the selected
+permissions with `chat:read`, `chat:write`, `chat:ask`, removing study and eval.
+The user still picks a name and expiry and taps Create.
+
 ## What the user sees
 
 Settings (`/my/preferences`) → API tokens (`TokenManager.tsx`), for every
@@ -12,7 +25,7 @@ signed-in user, never gated:
 - a line under the intro: copy the instructions beside a token and give them
   to your assistant; they hold no secret; keep the token where the assistant
   runs (keychain via `npx lianki auth login`, an environment variable, its MCP
-  settings), never paste it into a chat;
+  settings), or explicitly copy the combined private message after creation;
 - in every live token's row, **Instructions for your AI assistant** (a
   disclosure, `AgentGuide.tsx`): the text itself, readable before copying, and
   **Copy instructions for your AI assistant**;
@@ -57,10 +70,10 @@ polling loops instead of quoting a number. When a route, a header or a limit
 changes, change `agentGuide` with it; `unit/agent-guide.test.ts` holds the
 header to the server's pattern and the limits to `CHAT_LIMITS`.
 
-## Never the token
+## Instructions-only copies never include the token
 
 Owner, 2026-11-11 00:13–00:25 JST: the prompt for the assistant holds **no
-secret**. It names the token only as `<YOUR_TOKEN>` and tells the assistant:
+secret** (the explicit one-message creation action above is the later exception). It names the token only as `<YOUR_TOKEN>` and tells the assistant:
 
 1. how the user gets one: `npx lianki auth login` (browser sign-in that makes
    the token and stores it in the macOS Keychain, else a 0600 file;

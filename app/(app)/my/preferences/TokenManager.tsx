@@ -12,7 +12,8 @@ import {
 } from "@/app/components/TokenPickers";
 import { RevokeConfirm } from "./RevokeConfirm";
 import { AgentGuide, CopyGuideButton, useAgentGuide, useAgentGuidePointer } from "./AgentGuide";
-import { invitePrefill } from "@lianki/debug-chat/presence";
+import { agentGuideWithToken } from "@/lib/agent-guide";
+import { INVITE_PREFILL, invitePrefill } from "@lianki/debug-chat/presence";
 
 /**
  * Settings → API tokens (lib/api-tokens.ts, /api/token): like GitHub's
@@ -22,7 +23,8 @@ import { invitePrefill } from "@lianki/debug-chat/presence";
  * The account every token acts as is named at the top. The secret is shown
  * once, right after it is made, and never again. Every token also offers the
  * instructions for the user's own AI assistant (AgentGuide, lib/agent-guide.ts),
- * which never contain the secret. Shown to every signed-in user.
+ * which contain no secret unless the user explicitly copies the combined
+ * instructions-and-token message from the one-time box. Shown to every signed-in user.
  */
 type Token = {
   id: string;
@@ -56,6 +58,7 @@ export default function TokenManager() {
   const guide = useAgentGuide();
   const pointer = useAgentGuidePointer();
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
   /** The row asking "Revoke …?", the one being revoked, and the one Cancel returned focus to. */
   const [asking, setAsking] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -109,6 +112,7 @@ export default function TokenManager() {
         expiresAt: j.expiresAt ?? null,
       });
       setCopied(false);
+      setShared(false);
       setName("");
       setScopes([]);
       setExpiry(null);
@@ -151,6 +155,28 @@ export default function TokenManager() {
     if (!secret) return;
     navigator.clipboard.writeText(secret.token).then(() => setCopied(true));
   }
+
+  async function copyWithGuide() {
+    if (!secret) return;
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(
+        agentGuideWithToken({
+          scopes: secret.scopes,
+          lang: String(locale),
+          token: secret.token,
+          template: s("shareMessage"),
+        }),
+      );
+      setShared(true);
+    } catch {
+      setError(s("errCopy"));
+    }
+  }
+
+  const chatOnly =
+    scopes.length === INVITE_PREFILL.scopes.length &&
+    INVITE_PREFILL.scopes.every((scope) => scopes.includes(scope));
 
   const scopeName: Record<ScopeId, string> = {
     study: s("scopeStudy"),
@@ -199,6 +225,14 @@ export default function TokenManager() {
             {secret.token}
           </code>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <button
+              type="button"
+              data-testid="token-share-copy"
+              onClick={copyWithGuide}
+              className="text-sm font-medium bg-primary text-on-primary rounded px-3 py-1.5 hover:opacity-90"
+            >
+              {shared ? s("copied") : s("shareCopy")}
+            </button>
             <button
               type="button"
               onClick={copy}
@@ -298,6 +332,16 @@ export default function TokenManager() {
           />
           <span className="block text-xs opacity-70 mt-1">{s("nameHint")}</span>
         </label>
+        <button
+          type="button"
+          data-testid="token-chat-only"
+          disabled={busy}
+          aria-pressed={chatOnly}
+          onClick={() => setScopes([...INVITE_PREFILL.scopes])}
+          className={`min-h-10 rounded border px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${chatOnly ? "bg-primary border-primary text-on-primary" : "border-current/30 text-primary"}`}
+        >
+          {s("chatOnly")}
+        </button>
         <PermissionPicker
           value={scopes}
           onChange={setScopes}
