@@ -290,6 +290,13 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  "voice.polish-readback": {
+    description:
+      "润色后用你自己的声音读一遍：在你本人的页面上（需要 dev 权限），你用麦克风说的一句话被 Li 润色以后（聊天里那句话变成润色后的文字、带小星星），Li 用你 Mac 上的克隆声音（你自己的声音）把润色后的文字读一遍给你听，每句只读一次。和 Li 的其它朗读排在同一个队列里：朗读开关关着就不读，你插话时照样暂停。只读你自己说的话，不读打字的、别人的或摘要；同一句再润色也不再读。克隆声音服务器没开或超时（/dev/config 的 voice.cloneTimeoutMs，默认 20 秒）就安静跳过，不换别的声音读。每台设备可以在 lk:agent-clone-tts 里改服务器地址，填 off 就这台设备不读。关闭（默认）= 照旧，润色后不读。",
+    default: false,
+    group: "stt",
+    audience: "owner",
+  },
   "voice.cloud-voices": {
     description:
       "Li 用谷歌 / Azure 的声音朗读（docs/li-sound-hub.md，「Provider voices」）：打开后，在你本人的页面上（需要 dev 权限），一句话可以用 google:<声音> 或 azure:<声音> 来读（say --voice google:cmn-TW-Wavenet-A），按语言自动选声音的表在 /dev/config 的 voice.langVoices（默认 zh-TW → 谷歌台湾国语，nan → Azure 闽南语）。声音在服务器上生成，手机用云端 <audio> 播放，没有系统语音的手机也能听。按字数从你的积分扣（和别人一样，没有管理员免费）。没有谷歌 / Azure 密钥时什么都不变，照常用原来的声音。关闭（默认）= 完全不用这些声音。",

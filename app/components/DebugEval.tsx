@@ -44,6 +44,7 @@ import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
+import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
@@ -167,10 +168,16 @@ export function DebugEval({
   lexicon,
   cloudVoices,
   talkOver = false,
+  polishReadback: readback,
   box = null,
 }: {
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
   talkOver?: boolean;
+  /**
+   * Flag `voice.polish-readback` + dev: a voice line an agent polished is read
+   * back once in his cloned voice (polish-readback.ts); config voice.cloneTimeoutMs. None: off.
+   */
+  polishReadback?: { on: boolean; timeoutMs?: number };
   /**
    * Provider voices (google:, azure:): on with flag voice.cloud-voices and the
    * dev grant, and the language → voice map (config voice.langVoices). None: off.
@@ -204,6 +211,7 @@ export function DebugEval({
   if (lexicon !== undefined) setLexicon(lexicon);
   setCloudVoices(cloudVoices);
   setTalkOver(talkOver);
+  setPolishReadback(readback);
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
   const devRef = useRef(dev);
@@ -683,6 +691,17 @@ export function DebugEval({
           // The agent polished a voice line: it changes in place, and is never read aloud again.
           const e = msg as unknown as EditedEvent;
           if (typeof e.id !== "string" || typeof e.text !== "string") return;
+          // His own voice line, raw → polished: read back once in his cloned voice (flag
+          // voice.polish-readback), by the tab that reads, through Li's one queue.
+          polishReadback(
+            messagesRef.current.find((m) => m.id === e.id),
+            e,
+            {
+              reply: (text, meta, how) => voice().reply(text, meta, how),
+              speaker: () => tabsRef.current?.isSpeaker() ?? true,
+              log: (ev) => voice().log(ev),
+            },
+          );
           setMessages((list) => trimHistory(applyEditTo(list, e)));
           // A line that amended another has no echo of its own: this is its answer.
           if (e.merged) voiceLatency().heard({ id: e.merged.id, from: "owner", at: e.edited.at });
