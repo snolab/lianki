@@ -103,7 +103,8 @@ export const LOG_SNAP_H_PX = 1600;
  * opened it. Its width never changes (a wider log would reflow its lines
  * under the reader's eye): only the height snaps (snapAxis), to the visible
  * area from top to bottom, less the notch, the home indicator or the
- * keyboard. The bar steps aside for it.
+ * keyboard. The bar steps aside for it, unless `barTop` is given (the mic
+ * is on: its button stays in sight): then the box ends above the bar.
  */
 export function fullLogBox(d: {
   vh: number;
@@ -114,10 +115,14 @@ export function fullLogBox(d: {
   /** The log's rect now. */
   log: { left: number; width: number; bottom: number; height: number };
   gap?: number;
-}): { left: number; width: number; top: number; bottom: number; hideBar: true } {
+  /** The bar's top edge when the bar stays (the mic is on), viewport px. */
+  barTop?: number;
+}): { left: number; width: number; top: number; bottom: number; hideBar: boolean } {
   const g = d.gap ?? FULL_LOG_GAP_PX;
   const top = Math.max(d.safe.top, d.visibleTop) + g;
-  const bottom = Math.round(Math.min(d.visibleBottom, d.vh - d.safe.bottom) - g);
+  const bottom = Math.round(
+    Math.min(d.visibleBottom, d.vh - d.safe.bottom, d.barTop ?? Infinity) - g,
+  );
   const fullH = bottom - top;
   const height = Math.round(snapAxis(fullH, d.log.height, LOG_SNAP_H_PX - (d.vh - fullH)));
   return {
@@ -125,7 +130,7 @@ export function fullLogBox(d: {
     width: Math.round(d.log.width),
     top: bottom - height,
     bottom,
-    hideBar: true,
+    hideBar: d.barTop === undefined,
   };
 }
 

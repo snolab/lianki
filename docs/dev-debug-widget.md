@@ -1211,6 +1211,9 @@ stays usable while typing. Rules and look in `typing-glass.ts`.
   the old sheet's stronger tint and blur (`SHEET_SCRIM`, `SHEET_FILTER`; the
   contrast checks in `unit/sheet-contrast.test.ts`), and the box goes opaque
   so the blur sees the page. Beside the log the page stays sharp.
+  With the mic on, the bar never steps aside (owner, 2026-11-13): the box
+  ends above it (`fullLogBox barTop`), so the mic button stays in sight to
+  turn it off while he scrolls.
 - **Under the finger** (owner, same evening: "开始拖动之后的输入框/聊天内容老是不在一个位置").
   Under the touch slop (`AXIS_LOCK_PX`) nothing moves, so a tap is still a
   tap. Past it, the switch to the full-screen log runs at once
@@ -1852,6 +1855,13 @@ while the typing glass is the frame, and full screen. While a task is in
 progress the fill shows activity: a soft light sweeps along it
 (`ETA_SHIMMER_CSS`, its own keyframes since the hot widget has no app
 stylesheet); none when all are done, and none under prefers-reduced-motion.
+
+**Hiding the bar** (owner, 2026-11-13): a small ▾ at the bar's end hides it
+(`EtaBar onFold`), leaving only a ▸ with the clock where it was, so more of
+the chat shows; a tap on that brings the bar back. The toggle names what a
+tap does (`etaHide` / `etaShow`) and carries `aria-expanded`. The choice is a
+device preference, `etaFolded` in `lk:pref:chat-view` (`chatPrefs`), shown by
+default, never synced.
 
 ### Full-screen Gantt
 

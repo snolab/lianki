@@ -1721,6 +1721,9 @@ export function DebugChat({
    * re-armed when it fires: no polling, and no render per scroll.
    */
   const compactPref = useUi(chatPrefs(), (s) => s.compact);
+  /** The task bar hidden by its ▸/▾ (ui-store.ts chatPrefs `etaFolded`, this device). */
+  const etaFolded = useUi(chatPrefs(), (s) => s.etaFolded);
+  const foldEta = (v: boolean) => chatPrefs().setState({ etaFolded: v });
   const [expanded, setExpanded] = useState(false);
   const holdUntil = useRef(0);
   const hold = (ms: number) => {
@@ -1831,6 +1834,8 @@ export function DebugChat({
           visibleBottom: vv ? vv.offsetTop + vv.height : innerHeight,
           safe: { top: notch.current, bottom: safeBottom() },
           log: { left: r.left, width: r.width, bottom: r.bottom, height: r.height },
+          // The mic on: the bar (and its mic button) stays; the log ends above it.
+          barTop: micActive ? barEl.current?.getBoundingClientRect().top : undefined,
         });
         // Section-relative: the box's bottom and left edges do not move when
         // the log leaves the flow (the box hangs from its bottom).
@@ -1913,8 +1918,6 @@ export function DebugChat({
       },
     };
   };
-  /** The bar steps aside while the log spans the screen (fullLogBox hideBar). */
-  const barAside = fullLog === "on" && !!fullRef.current.box?.hideBar;
   /**
    * The empty input takes the same vertical drag (with a draft, a drag is the
    * draft's own: it scrolls or selects its text). A tap still focuses it.
@@ -2433,6 +2436,11 @@ export function DebugChat({
   }, [owner, micActive, publicStt, sttRoute.source]);
   const micRoute = sttRoute.source === "none" && !owner && publicStt === "on" ? PUBLIC_ROUTE_LIST : sttRoute.urls;
   /** The history takes the pointer: wheel and drag scroll it, its lines select (log-engage.ts). */
+  /**
+   * The bar steps aside while the log spans the screen (fullLogBox hideBar),
+   * never while the mic is on: its button stays in sight to turn it off.
+   */
+  const barAside = fullLog === "on" && !!fullRef.current.box?.hideBar && !micActive;
   const engaged = logEngaged({ typing, plusMenu: attachMenu || picking, micActive, held });
   const busyRef = useRef(false);
   busyRef.current = engaged && !held;
@@ -4711,6 +4719,8 @@ export function DebugChat({
                     strings={t}
                     glass={strip}
                     onOpen={() => setGanttOpen(true)}
+                    folded={etaFolded}
+                    onFold={foldEta}
                   />
                 </div>
               )}
@@ -4722,6 +4732,8 @@ export function DebugChat({
               strings={t}
               glass={strip}
               onOpen={() => setGanttOpen(true)}
+              folded={etaFolded}
+              onFold={foldEta}
             />
           )}
         </div>

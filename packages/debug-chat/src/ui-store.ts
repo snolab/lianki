@@ -134,11 +134,12 @@ function migrateTree(v: unknown): KeptTree | null {
  * The chat's device preferences for how it looks (localStorage
  * `lk:pref:chat-view`, this device only, never synced): compact mode
  * (compact-view.ts), off until he turns it on on this device; full screen
- * (full-screen.ts), on while the chat fills the app. A stored value from
- * before `full` existed keeps its `compact` and reads `full` as off.
+ * (full-screen.ts), on while the chat fills the app; the task bar hidden
+ * (EtaBar.tsx, its ▸/▾; owner, 2026-11-13), shown by default. A stored value
+ * from before a key existed keeps the others and reads that one as off.
  */
-export type ChatView = { compact: boolean; full: boolean };
-export const CHAT_VIEW_INITIAL: ChatView = { compact: false, full: false };
+export type ChatView = { compact: boolean; full: boolean; etaFolded: boolean };
+export const CHAT_VIEW_INITIAL: ChatView = { compact: false, full: false, etaFolded: false };
 export const chatPrefs = () =>
   createUiStore<ChatView>("chat-view", 1, CHAT_VIEW_INITIAL, { storage: "local" });
 

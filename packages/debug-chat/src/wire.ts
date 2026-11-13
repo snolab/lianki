@@ -905,6 +905,10 @@ export type ChatStrings = {
   etaDone: string;
   /** Screen-reader label and tooltip of the progress bar above the chat input (and of the expand button on the task list in the state tree): tapping it opens a full-screen timeline (a Gantt chart) of every task with its own bar and time left. Imperative verb phrase. */
   etaOpen: string;
+  /** Screen-reader label and tooltip of the small ▾ button at the end of the progress bar above the chat input: hides the bar, leaving only a small ▸ with a clock, so more of the chat shows. Imperative verb phrase, short. */
+  etaHide: string;
+  /** Screen-reader label and tooltip of that small ▸ button (with a clock) left where the hidden progress bar above the chat input was: shows the bar again. Imperative verb phrase, short. */
+  etaShow: string;
   /** Screen-reader label and tooltip of the × button at the top of the full-screen task timeline (a Gantt chart of the assistant's tasks): closes the timeline and returns to the chat. Imperative verb phrase, very short. */
   etaGanttClose: string;
   /** Screen-reader label of a small two-button switch in the header of the full-screen task timeline (a Gantt chart of the assistant's tasks): it chooses how the time axis is drawn, evenly (linear) or compressed further from now (logarithmic). Short noun phrase, no full stop. */
@@ -1102,6 +1106,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaReached: "ETA reached",
   etaDone: "done",
   etaOpen: "Show all tasks on a full-screen timeline",
+  etaHide: "Hide the task bar",
+  etaShow: "Show the task bar",
   etaGanttClose: "Close the timeline",
   etaGanttScale: "Time axis",
   etaGanttLinear: "Linear",
