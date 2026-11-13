@@ -1,7 +1,7 @@
 /**
  * "This sign-in" on /profile, for every signed-in user: when this browser's
  * session began and when it expires. Only those two times — never the token,
- * the IP or the user agent (the raw dump is SessionDetailsCard on /dev/session, dev access
+ * the IP or the user agent (the raw dump is SessionDetailsCard, dev access
  * only). Times are in the request's time zone (Cloudflare places it from the
  * IP; JST for the owner at home), named in the text, UTC when unknown.
  */

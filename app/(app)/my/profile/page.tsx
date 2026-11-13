@@ -5,13 +5,12 @@ import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
 import PasskeysCard from "./PasskeysCard";
 import { ProfileFields } from "./ProfileFields";
+import { SessionDetailsCard } from "./SessionDetailsCard";
 import { SessionBasicsCard, type SessionBasicsLabels } from "./SessionBasicsCard";
 import { dbBackend } from "@/lib/d1";
 import { isEmailConfigured } from "@/lib/email";
 import { readFlags } from "@/lib/flags-store";
 import { isDev } from "@/lib/permissions";
-import { passkeyRelyingParty, passkeyUsableOn } from "@/lib/passkey";
-import { runtimeNodeEnv } from "@/lib/auth-env";
 import { connectionsOn } from "@/lib/connections/gate";
 import { getD1 } from "@/lib/d1";
 import { LEVEL_IDS, type LevelId } from "@/lib/levels";
@@ -60,7 +59,7 @@ export default async function ProfilePage() {
   }
   const user = signedIn;
   const session = await auth.api.getSession({ headers: await headers() });
-  const { heading, userInformation, editPreferences, backToHome } = getIntlayer(
+  const { heading, userInformation, sessionDetails, editPreferences, backToHome } = getIntlayer(
     "profile-page",
     locale,
   );
@@ -69,17 +68,6 @@ export default async function ProfilePage() {
     dbBackend() === "d1" && connectionsOn(await readFlags(), isDev(user.email))
       ? String(getIntlayer("connections-page", locale).title)
       : null;
-
-  // Passkeys only where a ceremony can work: not on a preview site on another domain.
-  const h = await headers();
-  const env = runtimeNodeEnv();
-  const passkeys = passkeyUsableOn(
-    h.get("x-forwarded-host") ?? h.get("host"),
-    passkeyRelyingParty(
-      process.env.BETTER_AUTH_BASE_URL ?? process.env.BETTER_AUTH_URL ?? process.env.NEXTAUTH_URL,
-      env !== "development" && env !== "test",
-    ),
-  );
 
   return (
     <div className="flex flex-col">
@@ -96,7 +84,7 @@ export default async function ProfilePage() {
             emailEditable={dbBackend() === "d1" && isEmailConfigured()}
           />
         </div>
-        {passkeys && <PasskeysCard />}
+        <PasskeysCard />
         <SessionBasicsCard
           session={session?.session}
           locale={locale}
@@ -109,6 +97,12 @@ export default async function ProfilePage() {
               ]),
             ) as unknown as SessionBasicsLabels
           }
+        />
+        {/* A raw dump for diagnosing sign-in: dev access only, never user UI. */}
+        <SessionDetailsCard
+          viewerEmail={user.email}
+          title={String(sessionDetails)}
+          session={session}
         />
         <div className="flex gap-4">
           <a href="/my/preferences" className="text-blue-500 hover:text-blue-600">

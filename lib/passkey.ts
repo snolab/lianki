@@ -52,20 +52,6 @@ export function passkeyRelyingParty(
 }
 
 /**
- * Whether a passkey ceremony can work on a page served at `host` (a Host header,
- * port allowed). The browser refuses unless the RP id is the host or a parent
- * of it, and the server refuses an origin outside its list — so a preview site
- * on another domain (preview.lianki.com against `lianki.com`) can never add or
- * use one, and the UI should not offer it there (owner, 2026-11-14: "只在它能用的
- * 时候把它显示出来").
- */
-export function passkeyUsableOn(host: string | null | undefined, rp: PasskeyRelyingParty): boolean {
-  const h = (host ?? "").trim().toLowerCase().replace(/:\d+$/, "");
-  if (!h || (h !== rp.rpID && !h.endsWith(`.${rp.rpID}`))) return false;
-  return rp.origin === null || rp.origin.some((o) => new URL(o).hostname === h);
-}
-
-/**
  * A readable default name for a new passkey, e.g. "Chrome on macOS", so the
  * list on the profile page says which device each one is without asking.
  */
