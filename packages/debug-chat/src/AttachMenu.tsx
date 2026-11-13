@@ -85,8 +85,10 @@ const iconOf = (name: string | undefined): IconName =>
 /**
  * The + at the start of the input. With `announce` (its Add and Attach groups
  * shown) it announces itself, and the bottom island drops its ＋. `sessions`:
- * the eval/preview sessions (the tree row's count) — a dot on the + while
- * there are any, pulsing when code just ran (`ran`), as on the old tree button.
+ * the eval/preview sessions (the tree row's count) — a small code mark on the
+ * +, dim while code is allowed, lit and pulsing when code just ran (`ran`).
+ * A dot top right: dim when a page selection could be attached, lit when
+ * something is attached (owner, 2026-11-14: allowed ≠ active; one + only).
  */
 export function AttachButton({
   t,
@@ -94,6 +96,8 @@ export function AttachButton({
   announce = true,
   sessions = 0,
   ran = false,
+  attached = false,
+  selectable = false,
   onToggle,
 }: {
   t: ChatStrings;
@@ -101,6 +105,10 @@ export function AttachButton({
   announce?: boolean;
   sessions?: number;
   ran?: boolean;
+  /** Something rides with the next line (a page selection, files): the dot lit. */
+  attached?: boolean;
+  /** A page selection could be attached (allowed, not attached yet): the dot dim. */
+  selectable?: boolean;
   onToggle: () => void;
 }) {
   useEffect(() => (announce ? announceChatAttach() : undefined), [announce]);
@@ -123,12 +131,27 @@ export function AttachButton({
       className="tap-40 relative flex shrink-0 items-center justify-center self-end rounded-full text-base text-gray-500 dark:text-gray-400"
     >
       <Icon name="plus" />
+      {/* Remote code can reach this page: a small code mark, bottom right
+          (owner, 2026-11-14: one + is enough; the link chip is gone). */}
       {sessions > 0 && (
         <span
           aria-hidden
           data-testid="debug-chat-evals"
-          className={`absolute end-1.5 top-1 size-1.5 rounded-full ${ran ? "animate-pulse" : ""}`}
-          style={{ background: "oklch(0.55 0.15 30)" }}
+          data-active={ran || undefined}
+          className={`absolute -end-0.5 bottom-0 inline-flex fs-10 leading-none ${ran ? "animate-pulse motion-reduce:animate-none" : "opacity-40"}`}
+          style={{ color: "oklch(0.55 0.15 30)" }}
+        >
+          <Icon name="code" />
+        </span>
+      )}
+      {/* Something is attached to the next line (a page selection, files): a dot, top right. */}
+      {(attached || selectable) && (
+        <span
+          aria-hidden
+          data-testid="debug-chat-attached-dot"
+          data-active={attached || undefined}
+          className={`absolute end-1.5 top-1 size-1.5 rounded-full ${attached ? "" : "opacity-40"}`}
+          style={{ background: "oklch(0.65 0.17 150)" }}
         />
       )}
     </button>

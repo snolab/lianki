@@ -69,8 +69,7 @@ import { learnSttHint } from "./stt-hint";
 import { DevMenuGroup } from "./DevMenuGroup";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
-import { LinkChip } from "./LinkChip";
-import { type EvalLink, type EvalSession, selectionState } from "./link-state";
+import { type EvalLink, type EvalSession } from "./link-state";
 import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
@@ -4458,12 +4457,6 @@ export function DebugChat({
   const etaShown = open && !tree && etaBar && etaList.length > 0;
   /** The connection chip: a developer's page, the chat open, not over the tree. */
   const linkShown = open && !tree && !notice && owner && !!link;
-  const selState = selectionState({
-    attached: !!attached,
-    lines: messages,
-    beatAt: link?.beatAt,
-    listeners: listeners ?? 0,
-  });
   /**
    * The bar and the progress bar as one glass strip (owner, 2026-11-10); not
    * while the typing glass is the frame, nor full screen (the screen is the glass).
@@ -4966,15 +4959,8 @@ export function DebugChat({
         >
           {linkShown && link ? (
             <div className="flex items-stretch gap-1">
-              <LinkChip
-                glass={strip}
-                t={ui}
-                link={link.state}
-                selection={selState}
-                sessions={link.sessions}
-                now={link.now}
-                onEnd={link.onEnd}
-              />
+              {/* No link chip here any more (owner, 2026-11-14): the + carries the
+                  remote-code mark and the attached dot (AttachMenu). */}
               {presence && (
                 <PresenceStack
                   glass={strip}
@@ -5299,6 +5285,8 @@ export function DebugChat({
               announce={attach && !notice}
               sessions={evalSessions.length}
               ran={evalRan}
+              attached={!!attached}
+              selectable={!!pageSel.sel}
               onToggle={() => setAttachMenu((v) => !v)}
             />
           )}
