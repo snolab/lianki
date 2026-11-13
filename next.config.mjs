@@ -2,13 +2,13 @@ import { fileURLToPath } from "node:url";
 import { withIntlayer } from "next-intlayer/server";
 
 /**
- * Browser code calling useIntlayer("key") imports that one dictionary instead
- * of the entry that holds all of them (lib/build/intlayer-direct-loader.cjs).
+ * Code calling useIntlayer("key") or getIntlayer("key") imports that one
+ * dictionary instead of the entry that holds all of them, in the browser and
+ * on the server alike (lib/build/intlayer-direct-loader.cjs).
  */
-const intlayerDirect = (as) => ({
-  condition: { all: ["browser", { not: "foreign" }, { content: /\buseIntlayer\(/ }] },
+const intlayerDirect = () => ({
+  condition: { all: [{ not: "foreign" }, { content: /\b(?:useIntlayer|getIntlayer)\(/ }] },
   loaders: [fileURLToPath(new URL("./lib/build/intlayer-direct-loader.cjs", import.meta.url))],
-  as,
 });
 
 /** @type {import('next').NextConfig} */
@@ -53,9 +53,9 @@ const nextConfig = {
           loaders: [fileURLToPath(new URL("./lib/build/strip-js-ext-loader.cjs", import.meta.url))],
           as: "*.ts",
         },
-        intlayerDirect("*.ts"),
+        intlayerDirect(),
       ],
-      "*.tsx": [intlayerDirect("*.tsx")],
+      "*.tsx": [intlayerDirect()],
     },
     resolveAlias: {
       "node:sqlite": "./lib/stubs/node-sqlite.js",
@@ -133,13 +133,15 @@ if (process.env.NODE_ENV === "development") {
 
 const config = await withIntlayer(nextConfig);
 
-// The browser gets no dictionary lookup table, only the dictionaries its code
-// imports (lib/stubs/intlayer-no-dictionaries.mjs). withIntlayer sets this
-// alias itself and its value wins over ours, so it is changed afterwards.
-const ENTRY = "@intlayer/dictionaries-entry";
+// No dictionary lookup table anywhere, only the dictionaries each module
+// imports (lib/stubs/intlayer-no-dictionaries.mjs): every lookup is rewritten
+// (above). The visual editor's table goes too: the editor is not configured,
+// so its import never ran, but it was 5.7 MB of the Worker. withIntlayer sets
+// these aliases itself and its values win over ours, so they change afterwards.
 const aliases = config.turbopack?.resolveAlias;
-if (aliases && typeof aliases[ENTRY] === "string") {
-  aliases[ENTRY] = { browser: "./lib/stubs/intlayer-no-dictionaries.mjs", default: aliases[ENTRY] };
+if (aliases) {
+  aliases["@intlayer/dictionaries-entry"] = "./lib/stubs/intlayer-no-dictionaries.mjs";
+  aliases["@intlayer/unmerged-dictionaries-entry"] = "./lib/stubs/intlayer-no-unmerged.mjs";
 }
 
 export default config;

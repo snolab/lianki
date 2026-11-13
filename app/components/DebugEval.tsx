@@ -1,4 +1,5 @@
 "use client";
+import { evalTrustStrings } from "../../packages/debug-chat/src/eval-trust-strings";
 
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -17,6 +18,7 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { chatWanted } from "@/lib/partner-entry";
 import { noteBadgeSeen } from "@/lib/app-badge";
 import { type BoxConfig, boxChatHub } from "@/lib/box-oauth/client";
 import { useBoxAccount } from "./BoxApiBridge";
@@ -24,7 +26,9 @@ import { ETA_FLAG } from "@/lib/eta-ping";
 import { boxViewer, ownerFlagOn } from "@/lib/box-oauth/session";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
-import { isKey } from "@lianki/debug-chat/storage-keys";
+import { getKey, isKey, setKey } from "@lianki/debug-chat/storage-keys";
+import { WAS_OWNER_KEY, devParts, mayRunEval, rejoinDelay } from "@/lib/debug-rejoin";
+import { type SocketPhase, evalLink, evalSessions } from "@lianki/debug-chat/link-state";
 import {
   type ChatContext,
   type ChatStrings,
@@ -37,6 +41,9 @@ import {
   cleanTiming,
 } from "@lianki/debug-chat/wire";
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
+import { setLexicon } from "@lianki/debug-chat/lexicon";
+import { setCloudVoices } from "@lianki/debug-chat/voices";
+import { setTalkOver } from "@lianki/debug-chat/aec";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
@@ -111,8 +118,8 @@ const pageLabel = () => {
  *
  * A sender (scripts/dev/eval.ts) asking to pair shows up here as a prompt with
  * its label and a short code it prints too; nothing runs unless the owner
- * allows it — for 8 hours at most (resumable with its token, so it is not
- * asked again in that time), or an hour for a friend's preview — and "End"
+ * allows it — for as long as the modal says (live config
+ * debug.evalGrantHours; resumable with its token, so it is not asked again in that time), or an hour for a friend's preview — and "End"
  * revokes it. Code it sends arrives
  * as {id, code, to}; it is run here, and the result (or error) goes back over
  * the socket to the sender and to /api/dev/log (Worker logs).
@@ -155,8 +162,23 @@ export function DebugEval({
   etaBar = false,
   fullScreen = false,
   liHub = false,
+  lexicon,
+  cloudVoices,
+  talkOver = false,
   box = null,
 }: {
+  /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
+  talkOver?: boolean;
+  /**
+   * Provider voices (google:, azure:): on with flag voice.cloud-voices and the
+   * dev grant, and the language → voice map (config voice.langVoices). None: off.
+   */
+  cloudVoices?: { on: boolean; map: Record<string, string> };
+  /**
+   * The read-aloud pronunciation table (config `voice.lexicon`, from the root
+   * layout): handed to the voice before anything is read. None: its default.
+   */
+  lexicon?: unknown;
   /**
    * On a box: its sign-in config (lib/box-oauth/mode.ts). The chat then talks only
    * to lianki.com's hub with a box:chat ticket, never to the box's own host.
@@ -176,6 +198,10 @@ export function DebugEval({
   /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
   liHub?: boolean;
 } = {}) {
+  // Idempotent and cheap: the live table is in place before the first reply is read.
+  if (lexicon !== undefined) setLexicon(lexicon);
+  setCloudVoices(cloudVoices);
+  setTalkOver(talkOver);
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
   const devRef = useRef(dev);
@@ -187,6 +213,8 @@ export function DebugEval({
   /** The hub said this friend's thread is answered by the AI. */
   const [friendAi, setFriendAi] = useState(false);
   const [live, setLive] = useState(false);
+  /** The hub socket's phase, for the connection chip (link-state.ts). */
+  const [phase, setPhase] = useState<SocketPhase>("closed");
   const [toast, setToast] = useState<string | null>(null);
   const [state, setState] = useState<HubState | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -201,6 +229,11 @@ export function DebugEval({
   const [viewer, setViewer] = useState<Sender | undefined>(undefined);
   const sockRef = useRef<WebSocket | null>(null);
   const friendRef = useRef(false);
+  /**
+   * The hub put this socket in the owner's thread (a state with no friend-status
+   * first; never on a box): as good as `dev` for remote eval (lib/debug-rejoin.ts).
+   */
+  const hubOwnerRef = useRef(false);
   /** The chat's lines, for page-errors to cut out (never sent with an error). */
   const messagesRef = useRef<ChatMessage[]>([]);
   useEffect(() => {
@@ -314,7 +347,8 @@ export function DebugEval({
     if (typeof WebSocket === "undefined") return;
     let ws: WebSocket | null = null;
     /** The chat is wanted: debug mode, or the Learning Partner opened to users (partnerOpen). */
-    const chatOn = () => debugOn() || openRef.current;
+    // Never false for a partner user (lib/partner-entry.ts): the chat folds, it never goes away.
+    const chatOn = () => chatWanted(debugOn(), openRef.current);
     let idle: ReturnType<typeof setTimeout> | undefined;
     let hideToast: ReturnType<typeof setTimeout> | undefined;
     const opened = new WeakSet<WebSocket>();
@@ -372,6 +406,38 @@ export function DebugEval({
 
     /** A box chat ticket is being fetched (docs/box-oauth.md, "Chat on the owner's box"). */
     let boxPending = false;
+    /** Friend verdicts asked about again on this page (lib/debug-rejoin.ts), and the wait before the next. */
+    let rejoinTries = 0;
+    let rejoinTimer: ReturnType<typeof setTimeout> | undefined;
+    /**
+     * The hub called this page a friend's, but the server rendered it for a
+     * `dev` holder or this device was the owner's last time: one fail-closed
+     * permission read can say that. Ask again on a fresh socket, a few times.
+     */
+    const doubtFriend = (sock: WebSocket) => {
+      const wait = rejoinDelay({
+        dev: devRef.current,
+        wasOwner: getKey(WAS_OWNER_KEY) === "1",
+        tries: rejoinTries,
+      });
+      if (wait === null) {
+        // Asked enough: this device is a friend's now; stop doubting on later loads.
+        if (rejoinTries > 0) setKey(WAS_OWNER_KEY, "0");
+        return;
+      }
+      rejoinTries++;
+      clearTimeout(rejoinTimer);
+      rejoinTimer = setTimeout(() => {
+        if (ws !== sock || disposed) return;
+        devLog({ ev: "eval-rejoin", tries: rejoinTries });
+        // Forget the friend verdict: the next socket's first message decides again.
+        friendRef.current = false;
+        setFriend(null);
+        setFriendAi(false);
+        reporter = newReporter();
+        sock.close(1000, "rejoin");
+      }, wait);
+    };
     /** This effect was cleaned up (unmount, or React running it twice in dev): a late ticket opens nothing. */
     let disposed = false;
     const connect = () => {
@@ -417,8 +483,10 @@ export function DebugEval({
       );
       ws = sock;
       sockRef.current = sock;
+      setPhase("opening");
       sock.onopen = () => {
         opened.add(sock);
+        setPhase("open");
         setClipsSender((m) => {
           if (sock.readyState !== WebSocket.OPEN) return false;
           sock.send(JSON.stringify(m));
@@ -451,6 +519,8 @@ export function DebugEval({
         if (msg.type === "clips") return void onClipsState(msg);
         if (msg.type === "friend-status") {
           friendRef.current = true;
+          hubOwnerRef.current = false;
+          if (msg.status !== "blocked") doubtFriend(sock);
           // Never a friend's errors: nothing queued is sent, nothing more is kept.
           reporter.disable();
           unhookErrors();
@@ -504,6 +574,11 @@ export function DebugEval({
           // Friends hear friend-status before any state: no status yet = the owner.
           if (!friendRef.current) {
             setOwner(true);
+            if (!boxRef.current) {
+              hubOwnerRef.current = true;
+              rejoinTries = 0;
+              setKey(WAS_OWNER_KEY, "1");
+            }
             reporter.attach((m) => {
               if (sock.readyState !== WebSocket.OPEN) throw new Error("socket closed");
               sock.send(JSON.stringify(m));
@@ -583,7 +658,11 @@ export function DebugEval({
             // Its words, not its markup (rich-text.ts): a line of only code says nothing.
             const said = spokenOf(m);
             const spoken =
-              fresh && !!said && (tabsRef.current?.isSpeaker() ?? true) && voice().reply(said, m);
+              fresh &&
+              !!said &&
+              (tabsRef.current?.isSpeaker() ?? true) &&
+              // live: a superseding or interjecting line cuts in (voice.ts); history never does.
+              voice().reply(said, m, { live: true });
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);
@@ -602,8 +681,13 @@ export function DebugEval({
         }
         if (msg.type !== "eval") return;
         if (typeof msg.id !== "string" || typeof msg.to !== "string") return;
-        // Remote eval: debug mode on, and a `dev` holder's page only.
-        if (typeof msg.code !== "string" || !debugOn() || !devRef.current) return;
+        // Remote eval: debug mode on, and a `dev` holder's page only — as the
+        // server rendered it, or as the hub found it when this socket opened.
+        if (
+          typeof msg.code !== "string" ||
+          !mayRunEval({ debug: debugOn(), dev: devRef.current, hubOwner: hubOwnerRef.current })
+        )
+          return;
         void run(sock, msg.id, msg.to, msg.code);
       };
       // Dropped by the network: reopen on that event if still wanted. One
@@ -613,6 +697,8 @@ export function DebugEval({
       sock.onclose = (e) => {
         if (ws !== sock) return;
         ws = null;
+        hubOwnerRef.current = false;
+        setPhase("closed");
         setClipsSender(null);
         reporter.detach();
         sockRef.current = null;
@@ -641,6 +727,7 @@ export function DebugEval({
       }
       const sock = ws;
       ws = null;
+      setPhase("closed");
       setClipsSender(null);
       sockRef.current = null;
       liveRef.current = false;
@@ -710,6 +797,7 @@ export function DebugEval({
       window.removeEventListener("storage", onStorage);
       clearTimeout(hideToast);
       clearTimeout(beatTimer.current);
+      clearTimeout(rejoinTimer);
       disposed = true;
       disconnect();
       unhookErrors();
@@ -748,7 +836,12 @@ export function DebugEval({
    * `scope: "chat"` for a chat request too, so a hub from before requested
    * scopes still grants the right thing.
    */
-  const answer = (type: "allow" | "deny" | "revoke", p: PairInfo, pages?: string[] | "all") => {
+  const answer = (
+    type: "allow" | "deny" | "revoke",
+    p: PairInfo,
+    pages?: string[] | "all",
+    remember = false,
+  ) => {
     const scope = type === "allow" && p.scope === "chat" && !friendRef.current ? "chat" : undefined;
     try {
       sockRef.current?.send(
@@ -757,6 +850,7 @@ export function DebugEval({
           pair: p.pair,
           ...(scope ? { scope } : {}),
           ...(type === "allow" && pages ? { pages } : {}),
+          ...(type === "allow" && remember ? { remember: true } : {}),
         }),
       );
     } catch {}
@@ -860,6 +954,8 @@ export function DebugEval({
   const pending = state?.pending ?? null;
   const sessions = state?.sessions ?? [];
   const isFriend = friend !== null;
+  /** The chat's developer parts (pairings, the connection chip): a `dev` verdict, the server's or the hub's. */
+  const devUi = owner && !isFriend && devParts({ dev, hubOwner: owner && !box });
   // On a box the layout's flag is the box server's own (its local D1, no
   // session): production's answer for the signed-in account decides there.
   const boxAccount = useBoxAccount();
@@ -941,7 +1037,28 @@ export function DebugEval({
             onAddPage={(x) => state?.self && answer("allow", x, [state.self])}
             evalRan={!!toast}
             friend={isFriend}
-            owner={owner && !isFriend && dev}
+            owner={devUi}
+            // The connection chip (LinkChip.tsx): remote code on this page, and the selection.
+            link={
+              devUi
+                ? {
+                    state: evalLink({
+                      debug: debugOn(),
+                      socket: phase,
+                      sessions,
+                      self: state?.self,
+                      now: Date.now(),
+                    }),
+                    sessions: evalSessions(sessions, state?.self, Date.now()),
+                    now: Date.now(),
+                    beatAt: beatRef.current?.beatAt,
+                    onEnd: (pair) => {
+                      const s = sessions.find((x) => x.pair === pair);
+                      if (s) answer("revoke", s);
+                    },
+                  }
+                : undefined
+            }
             strings={friendStrings}
             treeSource={treeOn ? ownerTree : undefined}
             etaBar={etaOn && treeOn && !!ownerTree}
@@ -968,7 +1085,7 @@ export function DebugEval({
             friend={isFriend}
             pages={state?.pages ?? []}
             selfPage={state?.self}
-            onAllow={(pages) => answer("allow", pending, pages)}
+            onAllow={(pages, remember) => answer("allow", pending, pages, remember)}
             onDeny={() => answer("deny", pending)}
           />
         </Suspense>
@@ -989,8 +1106,15 @@ export function DebugEval({
               className="flex items-center gap-2 rounded-full py-0.5 pl-2 pr-0.5"
               style={{ background: "oklch(0.55 0.15 30 / 0.9)" }}
             >
-              <span title={`until ${new Date(s.until ?? 0).toISOString()}`}>
-                {isFriend ? "preview" : s.scope === "chat" ? "chat" : "eval"}: {s.label} · {s.code}
+              <span
+                title={
+                  s.persistent
+                    ? evalTrustStrings().scope
+                    : `until ${new Date(s.until ?? 0).toISOString()}`
+                }
+              >
+                {isFriend ? "preview" : s.scope === "chat" ? "chat" : "eval"}: {s.label} ·{" "}
+                {s.persistent ? evalTrustStrings().remember : s.code}
               </span>
               <button
                 type="button"

@@ -10,13 +10,13 @@ addresses answers.
 lane answers it. Every listener uses it, so a line gets exactly one answer
 (or one per lane he names), never three:
 
-| he says                                    | who answers           |
-| ------------------------------------------ | --------------------- |
-| `codex, …` · `Codex：…` · `@codex …`       | codex alone           |
-| `agy, …` · `A G Y …` · `antigravity, …`    | agy alone             |
-| `xiaoke, …` · `小可，…` · `Xiao Ke, …`     | the chat lane         |
-| `codex 和 agy，…` · `codex and agy: …`     | codex and agy         |
-| anything without a name in front           | the chat lane alone   |
+| he says                                 | who answers         |
+| --------------------------------------- | ------------------- |
+| `codex, …` · `Codex：…` · `@codex …`    | codex alone         |
+| `agy, …` · `A G Y …` · `antigravity, …` | agy alone           |
+| `xiaoke, …` · `小可，…` · `Xiao Ke, …`  | the chat lane       |
+| `codex 和 agy，…` · `codex and agy: …`  | codex and agy       |
+| anything without a name in front        | the chat lane alone |
 
 - The name comes first, after an optional wake word or greeting (`Linky,`,
   `hey`, `嘿`, `@`). `codex 线` / `codex lane` count as the name.
@@ -32,11 +32,11 @@ lane answers it. Every listener uses it, so a line gets exactly one answer
 
 ## Who listens how
 
-| lane  | listener                                                                 | posts with                    |
-| ----- | ------------------------------------------------------------------------ | ----------------------------- |
-| chat  | `eval.ts chat --route chat …` (the saved grant, as before)               | `eval.ts say` (the grant)     |
-| codex | `lianki-dev lane-listen --as codex --cwd ~/ws/snolab/lianki/tree/codex`  | its own lane token            |
-| agy   | `lianki-dev lane-listen --as agy --cwd ~/ws/snolab/lianki/tree/agy`      | its own lane token            |
+| lane  | listener                                                                | posts with                |
+| ----- | ----------------------------------------------------------------------- | ------------------------- |
+| chat  | `eval.ts chat --route chat …` (the saved grant, as before)              | `eval.ts say` (the grant) |
+| codex | `lianki-dev lane-listen --as codex --cwd ~/ws/snolab/lianki/tree/codex` | its own lane token        |
+| agy   | `lianki-dev lane-listen --as agy --cwd ~/ws/snolab/lianki/tree/agy`     | its own lane token        |
 
 `--route chat` drops the owner lines that route elsewhere (not printed, not
 acked, their edits neither); everything else the chat listener printed is
@@ -73,8 +73,10 @@ expiry. It is kept on the Mac at `~/.config/lianki/lanes/<lane>.token`, mode
 `lane-listen` exits 2 naming the token it needs, and `say --as <lane>` keeps
 using the saved grant (still labelled 【lane】).
 
-With a token present, `say` takes no `--to`/`--voice` (the token path has
-none): the line goes to the owner's thread in the lane's own voice.
+With a token present, `say` takes no `--to` (the token path has none): the
+line goes to the owner's thread in the lane's own voice, or in the one
+`--voice` names (`main` is the chat lane's cat-girl voice; the same ids as
+the grant path, checked by the hub).
 
 ## Running them
 
@@ -88,6 +90,17 @@ oxmgr start "bun ~/ws/snolab/lianki/tree/main/scripts/dev/lianki-dev.ts lane-lis
 and the chat lane's listener gets `--route chat` at the same moment, never
 before: until codex and agy listen, a line addressed to them would reach no
 one.
+
+## Public CLI composition
+
+The public CLI now has an unreleased composition layer for new installations:
+`lianki chat listen --deliver . --cwd /path/to/agent`, also exposed as
+`lianki chat bridge`. Existing `say` remains; `send` is its alias, and
+`lianki chat read --limit 30 --json` reads finite history. Plain `listen`
+remains a JSON/event stream. For optional Cloudflare AI filtering, stdin
+adapters, update/dedup semantics and deployment boundaries, see
+[the CLI workflow](../packages/lianki-cli/README.md#agent-chat-workflow-unreleased).
+This does not replace or restart any current lane listener automatically.
 
 ## Stall watch: a lane stuck on a prompt
 

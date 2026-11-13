@@ -1,5 +1,6 @@
 "use client";
 
+import { evalTrustStrings } from "./eval-trust-strings";
 import { shortPage } from "./short-page";
 import { type AdaptState, voiceAdapt } from "./adaptive";
 import {
@@ -19,7 +20,6 @@ import { lineTier, richOf, spokenOf } from "./rich-text";
 import { RichBody, RichLine } from "./RichText";
 import {
   COMPACT_BLUR_MS,
-  COMPACT_PEEK_MS,
   COMPACT_SCROLL_MS,
   compactLines,
   foldIn,
@@ -69,6 +69,8 @@ import { learnSttHint } from "./stt-hint";
 import { DevMenuGroup } from "./DevMenuGroup";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
+import { LinkChip } from "./LinkChip";
+import { type EvalLink, type EvalSession, selectionState } from "./link-state";
 import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
@@ -83,7 +85,7 @@ import {
   STRIP_INSET_PX,
   stripTopRadius,
 } from "./bar-geometry";
-import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, voiceDevice } from "./MicButton";
+import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, setWakeWord, voiceDevice, wakeWordOn } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
 import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
@@ -119,6 +121,7 @@ import {
   minimizeFloat,
 } from "./float-lines";
 import { Icon, POLISHED_ICON } from "./icons";
+import { useMessageDetails } from "./MessageDetails";
 import { PolishedMark } from "./PolishedMark";
 import { LINE_SELECTABLE } from "./copy-line";
 import { type Held, logEngaged, typingLook } from "./log-engage";
@@ -712,6 +715,19 @@ export type DebugChatProps = {
    * from real beats only): a spinner at the right end of the input.
    */
   busy?: { label: string } | null;
+  /**
+   * The connection chip (LinkChip.tsx), left of the progress bar: given only on
+   * a developer's page (DebugEval: `dev`, or the hub's verdict). `link`: remote
+   * code on this page; `sessions`: the eval grants in time; `beatAt`: the
+   * agent's latest heartbeat (it saw what came before); `onEnd` revokes one.
+   */
+  link?: {
+    state: EvalLink;
+    sessions: (EvalSession & { here: boolean })[];
+    now: number;
+    beatAt?: number;
+    onEnd: (pair: string) => void;
+  };
   /** A line in the pill's menu (where this widget was loaded from, or why not). */
   note?: string;
   /** This audience's open debug pages (tabs, devices), one row each in the menu. */
@@ -860,7 +876,6 @@ export function DebugChat({
   onSend,
   onAnswer,
   onPassageEnd,
-  onUnmerge,
   sessions = [],
   onEnd,
   evalRan = false,
@@ -897,6 +912,7 @@ export function DebugChat({
   etaBar = false,
   onEtaDue,
   etaSource,
+  link,
   fullScreen: fullScreenFlag = false,
   backToClose,
 }: DebugChatProps) {
@@ -954,6 +970,8 @@ export function DebugChat({
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
   const [aec, setAecState] = useState(aecOn);
+  /** The wake word (lk:agent-wake): the menu's switch; off keeps the mic active. */
+  const [wakeWord, setWakeWordState] = useState(wakeWordOn);
   // A selection started on a chat line stays in the chat (select-fence.ts).
   useEffect(() => installSelectFence(), []);
   // The same switch in /words' Settings sheet: follow it.
@@ -1283,6 +1301,7 @@ export function DebugChat({
   const ui = uiStrings();
   // The strings that were inline here, in the page's language (chat-ui-locales.ts).
   const ux = chatExtra();
+  const details = useMessageDetails(ux.messageDetails, ux);
   const withNew = (label: string, n: number) =>
     n ? `${label}, ${ux.newCount.replace("{n}", String(n))}` : label;
   /** Agent lines not read aloud because the page was in the background (voice.ts gateVoice). */
@@ -1705,6 +1724,9 @@ export function DebugChat({
    * re-armed when it fires: no polling, and no render per scroll.
    */
   const compactPref = useUi(chatPrefs(), (s) => s.compact);
+  /** The task bar hidden by its ▸/▾ (ui-store.ts chatPrefs `etaFolded`, this device). */
+  const etaFolded = useUi(chatPrefs(), (s) => s.etaFolded);
+  const foldEta = (v: boolean) => chatPrefs().setState({ etaFolded: v });
   const [expanded, setExpanded] = useState(false);
   const holdUntil = useRef(0);
   const hold = (ms: number) => {
@@ -1720,12 +1742,6 @@ export function DebugChat({
     // Full screen is for reading the whole chat: compact waits until it ends.
     fullLog: fullLog !== "off" || full,
   });
-  /** The whole chat, from the compact line: for reading, so a longer hold. */
-  const peek = () => {
-    hold(COMPACT_PEEK_MS);
-    atEnd.current = true;
-    setExpanded(true);
-  };
   useEffect(() => {
     const d = foldIn({
       pref: compactPref,
@@ -1821,6 +1837,8 @@ export function DebugChat({
           visibleBottom: vv ? vv.offsetTop + vv.height : innerHeight,
           safe: { top: notch.current, bottom: safeBottom() },
           log: { left: r.left, width: r.width, bottom: r.bottom, height: r.height },
+          // The mic on: the bar (and its mic button) stays; the log ends above it.
+          barTop: micActive ? barEl.current?.getBoundingClientRect().top : undefined,
         });
         // Section-relative: the box's bottom and left edges do not move when
         // the log leaves the flow (the box hangs from its bottom).
@@ -1903,8 +1921,6 @@ export function DebugChat({
       },
     };
   };
-  /** The bar steps aside while the log spans the screen (fullLogBox hideBar). */
-  const barAside = fullLog === "on" && !!fullRef.current.box?.hideBar;
   /**
    * The empty input takes the same vertical drag (with a draft, a drag is the
    * draft's own: it scrolls or selects its text). A tap still focuses it.
@@ -2325,8 +2341,12 @@ export function DebugChat({
     // stamped mergeable (the flag is on) and no command ran since. The hub decides.
     const tapsNow = micTaps().kept?.() ?? 0;
     const lastLine = messagesNow.current.at(-1);
+    // One speaker's part of a split final: a new line, never an amendment.
+    const fromSplit = splitPart.current;
+    splitPart.current = false;
     const continues =
       source &&
+      !fromSplit &&
       lastLine &&
       tapsAtVoice.current === tapsNow &&
       mergeVerdict(lastLine, {
@@ -2392,6 +2412,28 @@ export function DebugChat({
    * a line sent while the draft still equals it is the mic's, `source: "stt"`.
    */
   const pureDictation = useRef<string | null>(uiStore.getState().pureDictation);
+  /**
+   * Half a spoken line when the page reloaded (ui-store.ts `interim`): read
+   * once, before the mic reports its own (empty) interim, and put in the draft
+   * as dictation, unsent, so he can go on. Not after a hot swap: the same page
+   * load's mic is still hearing that utterance and will send its final.
+   */
+  const keptInterim = useRef(uiStore.getState().interim);
+  useEffect(() => {
+    const kept = keptInterim.current;
+    keptInterim.current = null;
+    if (!kept || kept.page === performance.timeOrigin) return;
+    const next = joinText(draftRef.current, kept.text);
+    pureDictation.current = dictatedDraft(draftRef.current, pureDictation.current, next);
+    caretToEnd.current = true;
+    draftRef.current = next;
+    setDraft(next);
+    uiStore.setState({ interim: null });
+    // Runs once on mount; the refs are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /** The next line sent is one speaker's part of a final the Mac split (voiceBreak). */
+  const splitPart = useRef(false);
   /** The draft's length when it last changed outside an IME composition. */
   // A restored draft is settled text, not a burst.
   const settledLen = useRef(draftRef.current.length);
@@ -2423,6 +2465,11 @@ export function DebugChat({
   }, [owner, micActive, publicStt, sttRoute.source]);
   const micRoute = sttRoute.source === "none" && !owner && publicStt === "on" ? PUBLIC_ROUTE_LIST : sttRoute.urls;
   /** The history takes the pointer: wheel and drag scroll it, its lines select (log-engage.ts). */
+  /**
+   * The bar steps aside while the log spans the screen (fullLogBox hideBar),
+   * never while the mic is on: its button stays in sight to turn it off.
+   */
+  const barAside = fullLog === "on" && !!fullRef.current.box?.hideBar && !micActive;
   const engaged = logEngaged({ typing, plusMenu: attachMenu || picking, micActive, held });
   const busyRef = useRef(false);
   busyRef.current = engaged && !held;
@@ -2552,6 +2599,8 @@ export function DebugChat({
     if (!full) return;
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
+      // Native message popovers dismiss before the surrounding full-screen chat.
+      if (document.querySelector(":popover-open")) return;
       if (!escapeLeaves({ full: fullOn.current, panelOpen: panelNow.current !== "none", plusMenu: attachMenuNow.current }))
         return;
       e.stopPropagation();
@@ -2676,6 +2725,17 @@ export function DebugChat({
       return;
     }
     arm();
+  };
+  /**
+   * The Mac split a final by speaker (docs/local-stt.md, "Two speakers in one
+   * final"): what dictation put in the draft goes out now, so the next part is a
+   * line of its own with its own tag. That part never continues the line before
+   * it (voice-merge.ts): it is another speaker's by construction. A draft with
+   * typed text in it is left alone; the parts then join it, as before.
+   */
+  const voiceBreak = () => {
+    if (draftRef.current.trim() && draftSource(draftRef.current, pureDictation.current)) submit();
+    splitPart.current = true;
   };
   const arm = () => {
     clearTimeout(timer.current);
@@ -2832,13 +2892,13 @@ export function DebugChat({
   /**
    * A polished line's text as shown, and its mark (nothing for any other line).
    * A summary's mark is a visible tag (ui.summary), and its raw is every line as heard.
-   * A merged passage's is a "merged N" tag (ui.merged); its raw is every line as heard too,
-   * and its ↩ restores the lines.
+   * Other polished or merged voice lines keep their text in place: the same
+   * sparkle opens their raw transcript in a popover.
    */
   const polish = (m: ChatMessage) => {
     if ((!m.edited && !m.summary && !m.passage) || m.raw === undefined)
       return { text: m.text, mark: null };
-    const raw = rawIds.has(m.id);
+    const raw = Boolean(m.summary) && rawIds.has(m.id);
     return {
       text: raw ? (
         <span data-testid="debug-chat-raw" className="text-gray-500">
@@ -2855,10 +2915,6 @@ export function DebugChat({
                 <span data-testid="debug-chat-summary" className="rounded border border-current px-1 text-[0.8em]">
                   {ui.summary}
                 </span>
-              ) : m.passage ? (
-                <span data-testid="debug-chat-passage" className="rounded border border-current px-1 text-[0.8em]">
-                  {ui.merged.replace("{n}", String(m.passage.ids.length))}
-                </span>
               ) : (
                 polishedIcon
               )
@@ -2866,28 +2922,14 @@ export function DebugChat({
             label={
               m.summary
                 ? ui.summaryTip
-                : m.passage
-                  ? ui.mergedTip.replace("{n}", String(m.passage.ids.length))
-                  : strings?.polished
-                    ? t.polished
-                    : ui.polished
+                : strings?.polished
+                  ? t.polished
+                  : ui.polished
             }
             showRaw={raw}
             onToggle={() => toggleRaw(m.id)}
+            rawText={m.summary ? undefined : m.raw}
           />
-          {(m.parts || m.passage) && onUnmerge ? (
-            <button
-              type="button"
-              data-testid="debug-chat-unmerge"
-              title={t.unmerge}
-              aria-label={t.unmerge}
-              className="pointer-events-auto ms-1 inline-flex select-none items-center align-baseline text-[0.85em] leading-none text-gray-500"
-              style={{ opacity: 0.75 }}
-              onClick={() => onUnmerge(m.id)}
-            >
-              ↩
-            </button>
-          ) : null}
         </>
       ),
     };
@@ -3163,6 +3205,11 @@ export function DebugChat({
           handle.onPointerDown(e);
         }}
         onClick={() => !wasDrag() && gripTaps.current?.tap()}
+        // Right-click opens the menu, like the double tap (owner, 2026-11-14: settings from the handle on a computer).
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu(true);
+        }}
         style={{
           ...handle.style,
           ...BAR_CONTROL,
@@ -3215,9 +3262,15 @@ export function DebugChat({
         // while minimized.
         <DebugMic
           onText={dictated}
+          onBreak={voiceBreak}
           onPending={(n, text) => {
             micPending.current = n;
             setInterim(text);
+            // Kept for a reload mid-sentence (keptInterim above); "" clears it.
+            if ((uiStore.getState().interim?.text ?? "") !== text)
+              uiStore.setState({
+                interim: text.trim() ? { text, page: performance.timeOrigin } : null,
+              });
             // The speech after a held line came to nothing: hold it again.
             if (!n && !text) {
               joiner.current?.idle();
@@ -3237,6 +3290,8 @@ export function DebugChat({
           localStt={micRoute}
           label={pages.find((p) => p.id === selfPage)?.label ?? location.pathname}
           gesture={micGesture}
+          // Its note goes over the task strip, not on it.
+          noteLift={etaH}
         />
       )}
     </>
@@ -3359,6 +3414,7 @@ export function DebugChat({
     const p = polish(m);
     return (
             <FloatLine
+              details={details.forMessage}
               oneLine={oneLine}
               key={m.id}
               m={m}
@@ -3580,6 +3636,24 @@ export function DebugChat({
           </button>
         ))}
       </div>
+      {/* The wake word (MicButton setWakeWord, lk:agent-wake): off = the mic never goes passive. */}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        data-testid="debug-menu-wake"
+        aria-checked={wakeWord}
+        title={ui.wakeWordHint}
+        onClick={() => {
+          setWakeWord(!wakeWord);
+          setWakeWordState(!wakeWord);
+        }}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
+      >
+        <span aria-hidden className="w-[1em] text-center">
+          {wakeWord ? "◉" : "○"}
+        </span>
+        {ui.wakeWord}
+      </button>
       {/* Dev (DevMenuGroup.tsx): internal diagnostics, on the owner's pages only, collapsed. */}
       <DevMenuGroup owner={owner} label={t.devGroup}>
       {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}
@@ -3812,7 +3886,7 @@ export function DebugChat({
             className="flex items-center gap-2 px-3 py-1 text-gray-500"
           >
             <span className="min-w-0 flex-1 truncate">
-              {friend ? "preview" : "eval"}: {x.label} · {x.code}
+              {friend ? "preview" : "eval"}: {x.label} · {x.persistent ? evalTrustStrings().remember : x.code}
               {reachNote(x)}
             </span>
             {addable(x) && (
@@ -3863,13 +3937,27 @@ export function DebugChat({
     initialRead(uiStore.getState().spoken),
   );
   useEffect(() => {
-    const v = voice() as ReturnType<typeof voice> & { onStart?: (f: () => void) => () => void };
+    const v = voice() as ReturnType<typeof voice> & {
+      onStart?: (f: () => void) => () => void;
+      onDrop?: (f: (ids: string[]) => void) => () => void;
+      onInterject?: (f: (j: { id: string; n: number; at: number }) => void) => () => void;
+    };
     readDispatch({ type: "queued", n: v.state().queued });
     const off1 = v.subscribe((s) => readDispatch({ type: "queued", n: s.queued }));
     const off2 = v.onStart?.(() => readDispatch({ type: "start" }));
+    // say --supersede / --interject (voice.ts): lines cut, or put in ahead of the rest.
+    const off3 = v.onDrop?.((ids) => {
+      for (const id of ids) readDispatch({ type: "drop", id });
+    });
+    const off4 = v.onInterject?.((j) => {
+      claimed.current.add(j.id);
+      readDispatch({ type: "insert", ...j });
+    });
     return () => {
       off1();
       off2?.();
+      off3?.();
+      off4?.();
     };
   }, []);
   /** Agent lines there before this widget came up: history, never claimed. */
@@ -4062,7 +4150,6 @@ export function DebugChat({
       ...laneOpts,
     });
     const p = polish(m);
-    const showAll = strings?.compactShowAll ? t.compactShowAll : ui.compactShowAll;
     const asLine = line && !m.ask;
     return (
       <div
@@ -4070,25 +4157,7 @@ export function DebugChat({
         data-testid={asLine ? "debug-chat-compact-line" : "debug-chat-compact-ask"}
         data-msg={m.id}
         data-from={m.from}
-        {...(asLine
-          ? {
-              role: "button",
-              tabIndex: 0,
-              title: showAll,
-              "aria-controls": "debug-chat-column",
-              "aria-expanded": false,
-              onClick: (e: React.MouseEvent) => {
-                // Its polish mark is its own button (shows the raw STT text); a link is a link.
-                if ((e.target as HTMLElement).closest("button, a")) return;
-                peek();
-              },
-              onKeyDown: (e: React.KeyboardEvent) => {
-                if (e.key !== "Enter" && e.key !== " ") return;
-                e.preventDefault();
-                peek();
-              },
-            }
-          : {})}
+        {...details.forMessage(m, who.name)}
         // A 40px tap target over the page; the text keeps the box's halo.
         className={`pointer-events-auto flex min-h-10 items-start gap-1.5 py-1 leading-snug ${asLine ? "cursor-pointer" : ""}`}
       >
@@ -4122,7 +4191,6 @@ export function DebugChat({
             />
           )}
           {p.mark}
-          {asLine && <span className="sr-only"> · {showAll}</span>}
         </div>
       </div>
     );
@@ -4169,6 +4237,12 @@ export function DebugChat({
           onClick={() => {
             if (handleDragged.current) return void (handleDragged.current = false);
             foldBy({ type: "handle" });
+          }}
+          // Right-click: bring the chat back with its menu open (settings from the handle).
+          onContextMenu={(e) => {
+            e.preventDefault();
+            foldBy({ type: "handle" });
+            setMenu(true);
           }}
           style={{
             top: handleAt,
@@ -4233,6 +4307,14 @@ export function DebugChat({
   });
   /** The progress bar (EtaBar) shows over the input. */
   const etaShown = open && !tree && etaBar && etaList.length > 0;
+  /** The connection chip: a developer's page, the chat open, not over the tree. */
+  const linkShown = open && !tree && !notice && owner && !!link;
+  const selState = selectionState({
+    attached: !!attached,
+    lines: messages,
+    beatAt: link?.beatAt,
+    listeners: listeners ?? 0,
+  });
   /**
    * The bar and the progress bar as one glass strip (owner, 2026-11-10); not
    * while the typing glass is the frame, nor full screen (the screen is the glass).
@@ -4266,6 +4348,7 @@ export function DebugChat({
   })();
   return (
     <>
+    {details.popup}
     <section
       ref={root}
       data-debug-chat
@@ -4481,8 +4564,6 @@ export function DebugChat({
                 hidden
               />
               <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
-                {/* A lane's name tag (voices.ts), once per run; lines with no lane have none. */}
-                {m0.lane && <LaneTag lane={m0.lane} agentName={t.name} />}
                 {node && (
                   <span
                     aria-hidden
@@ -4492,6 +4573,8 @@ export function DebugChat({
                     {node.subtitle}
                   </span>
                 )}
+                {/* A lane's name, "name：", once per run, then the text; lines with no lane have none. */}
+                {m0.lane && <LaneTag lane={m0.lane} agentName={t.name} />}
                 {/* Screen readers hear the name once per run, from the sr-only span. */}
                 <span className="sr-only">
                   {who.name}
@@ -4508,6 +4591,7 @@ export function DebugChat({
                       )}
                       {/* The time only on hover (long press on a phone). */}
                       <span
+                        {...details.forMessage(m, who.name)}
                         data-testid="debug-chat-line"
                         data-msg={m.id}
                         data-from={m.from}
@@ -4694,10 +4778,11 @@ export function DebugChat({
           }}
         />
       )}
-      {etaShown && (
+      {(etaShown || linkShown) && (
         // Right over the bar. flow-root: the bar's own margin counts in the
         // height the buttons above step over. In the strip it has no margin
-        // and no track: the strip's glass is behind it.
+        // and no track: the strip's glass is behind it. The connection chip
+        // (a developer's page) sits at its left.
         <div
           ref={setEtaBox}
           data-testid="debug-chat-eta-slot"
@@ -4706,13 +4791,42 @@ export function DebugChat({
           className="flow-root"
           style={strip ? { padding: `${STRIP_INSET_PX}px ${STRIP_INSET_PX}px 0` } : undefined}
         >
-          <EtaBar
-            tasks={etaList}
-            now={etaNow}
-            strings={t}
-            glass={strip}
-            onOpen={() => setGanttOpen(true)}
-          />
+          {linkShown && link ? (
+            <div className="flex items-stretch gap-1">
+              <LinkChip
+                glass={strip}
+                t={ui}
+                link={link.state}
+                selection={selState}
+                sessions={link.sessions}
+                now={link.now}
+                onEnd={link.onEnd}
+              />
+              {etaShown && (
+                <div className="min-w-0 flex-1">
+                  <EtaBar
+                    tasks={etaList}
+                    now={etaNow}
+                    strings={t}
+                    glass={strip}
+                    onOpen={() => setGanttOpen(true)}
+                    folded={etaFolded}
+                    onFold={foldEta}
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            <EtaBar
+              tasks={etaList}
+              now={etaNow}
+              strings={t}
+              glass={strip}
+              onOpen={() => setGanttOpen(true)}
+              folded={etaFolded}
+              onFold={foldEta}
+            />
+          )}
         </div>
       )}
       {/* The log above is click-through: taps reach the page under it. Only the
@@ -5251,6 +5365,7 @@ function GripDots() {
  * `epoch` restarts it; `paused` holds it, back at full opacity if fading.
  */
 function FloatLine({
+  details,
   oneLine,
   m,
   who,
@@ -5264,6 +5379,7 @@ function FloatLine({
   onGone,
   arrivedAt,
 }: {
+  details: ReturnType<typeof useMessageDetails>["forMessage"];
   /** Its first line only (the tucked handle's peek), else up to three. */
   oneLine?: boolean;
   m: ChatMessage;
@@ -5318,6 +5434,8 @@ function FloatLine({
   const fading = phase === "fade";
   return (
     <li
+      {...details(m, who.name)}
+      data-msg={m.id}
       data-testid="debug-chat-float"
       data-from={m.from}
       data-fading={fading || undefined}

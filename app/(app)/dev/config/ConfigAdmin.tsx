@@ -13,7 +13,9 @@ import {
   formatValue,
   groupConfigRows,
   historyOf,
+  isStructured,
   sameValue,
+  valueText,
 } from "./config-view";
 
 type State = { rows: ConfigRow[]; log: ConfigLogEntry[]; cacheSeconds: number };
@@ -111,7 +113,7 @@ export default function ConfigAdmin() {
           </h2>
           {g.rows.map((row) => (
             <ConfigCard
-              key={`${row.key}:${String(row.value)}:${row.updatedAt}`}
+              key={`${row.key}:${valueText(row.key, row.value)}:${row.updatedAt}`}
               row={row}
               log={historyOf(state.log, row.key)}
               busy={busy}
@@ -142,11 +144,13 @@ function ConfigCard({
 }) {
   const t = useIntlayer("dev-config");
   const def = CONFIG[row.key] as ConfigDef;
-  const [text, setText] = useState(String(row.value));
+  const [text, setText] = useState(valueText(row.key, row.value));
   const [note, setNote] = useState("");
   const [open, setOpen] = useState(false);
   const changed = !sameValue(row.value, row.default);
-  const dirty = text.trim() !== String(row.value);
+  const dirty = text.trim() !== valueText(row.key, row.value).trim();
+  // A table (voice.lexicon) is edited as JSON in a box of its own.
+  const structured = isStructured(row.key);
   const numeric = typeof row.default === "number";
   const noteOrNull = note.trim() || null;
 
@@ -189,19 +193,29 @@ function ConfigCard({
           if (dirty) void onSave(text, noteOrNull);
         }}
       >
-        <label className="flex items-center gap-1.5">
-          <input
+        {structured ? (
+          <textarea
             aria-label={t.value.value}
-            className={`${field} w-28 font-mono`}
-            inputMode={numeric ? "numeric" : undefined}
-            type={numeric ? "number" : "text"}
-            min={def.min}
-            max={def.max}
+            className={`${field} min-h-48 w-full basis-full font-mono text-xs`}
+            spellCheck={false}
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
-          {def.unit && <span className="text-xs opacity-70">{def.unit}</span>}
-        </label>
+        ) : (
+          <label className="flex items-center gap-1.5">
+            <input
+              aria-label={t.value.value}
+              className={`${field} w-28 font-mono`}
+              inputMode={numeric ? "numeric" : undefined}
+              type={numeric ? "number" : "text"}
+              min={def.min}
+              max={def.max}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+            {def.unit && <span className="text-xs opacity-70">{def.unit}</span>}
+          </label>
+        )}
         <input
           aria-label={t.note.value}
           placeholder={t.note.value}

@@ -30,6 +30,15 @@ export type SpeakMeta = {
   /** Its lane and voice (voices.ts): which voice reads it, never whether. */
   lane?: unknown;
   voice?: unknown;
+  /**
+   * `say --supersede` / `--interject` (voice.ts): arriving live, "supersede"
+   * cuts its sender's earlier unread lines; "interject" is read next and the
+   * line it paused goes on after.
+   */
+  cut?: unknown;
+  /** Who sent it when it names no lane: a lane token's name, else the agent id (voice.ts speakerOf). */
+  tokenLane?: unknown;
+  agentId?: unknown;
 };
 
 /** Quiet: `say --quiet`. An ask card is read like any other line. */

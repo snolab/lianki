@@ -481,7 +481,9 @@ this order:
    `PUSH` binding is to lianki-push's default `fetch`, which already exists,
    and a route lianki-push adds later is only called with a fallback (the
    sign-out notice goes to the D1 outbox until lianki-push answers).
-4. `lianki-voice` — last and non-blocking.
+4. `lianki-voice` — non-blocking.
+5. `lianki-mcp` (`workers/mcp`, route `lianki.com/mcp*`, the remote MCP
+   server) — last and non-blocking: it binds both `lianki` and `lianki-push`.
 
 Until 2026-11-02 lianki-push went before `lianki`; that was fine while every
 binding between them was a plain one. Adding a new entrypoint or RPC method:
@@ -541,14 +543,27 @@ cannot tell (no fingerprints for the page's build — e.g. the first deploy with
 this, or a page older than 30 builds — or a path no route pattern matches).
 Otherwise the news is kept, and a soft navigation to a route that did change
 shows the button then. Debug devices still auto-reload, but only when the
-button would show. Event-driven as before: no new requests, no polling.
+button would show. Version detection stays event-driven; it does not periodically
+poll for new deployments.
+
+**Before an automatic reload**, `lib/version-probe.ts` immediately fetches
+`/_lk/route-fp.json` from the page's origin with `cache: no-store` and a probe
+query. A successful response must contain valid fingerprints whose `build`
+exactly matches the announced build. Otherwise it retries after 100, 200, 400,
+then at most 800 ms between completed requests. A separate 2500 ms deadline
+includes network and response-body time; exhaustion shows the manual Refresh
+button and stops automatic work. Component cleanup cancels requests and timers.
+A confirmed build still respects the existing dirty-page and idle/navigation
+rules: readiness never overrides unsaved work, an active microphone or a study
+session. Manual Refresh remains available without waiting for a probe.
 
 **Forcing it for everyone** (a security fix, a broken client): put a
 `Force-Refresh: yes` trailer on the commit that lands on `main` (or run the
 step with `--force` / `LIANKI_FORCE_REFRESH=1`). The fingerprint file gets
 `"force": true`, and every open page shows the button.
 
-Tests: `unit/smart-refresh.test.ts` (diff → decision), `unit/route-fingerprints.test.ts`,
+Tests: `unit/version-notice-probe.test.ts` (readiness, backoff, deadlines and
+cancellation), `unit/smart-refresh.test.ts` (diff → decision), `unit/route-fingerprints.test.ts`,
 the hub in `unit/debug-hub.test.ts`; `scripts/qa/qa-smart-refresh.ts` (qa:all
 `smart-refresh`, serverless) runs the real hub and the real notice in Chromium
 across builds that change another route, the current route, nothing
@@ -621,3 +636,47 @@ vercel logs https://lianki.com 2>&1 | head -80
 Production Next.js hides error messages — the UI shows a digest, the real error
 is in Vercel runtime logs. Match digest to confirm root cause. A repeated digest
 after redeploy means the same error persists.
+
+### Manual version broadcast
+
+`bun scripts/dev/broadcast-version.ts --build <id>` explicitly announces a
+serving build. It uses Wrangler's authenticated remote `PUSH` service binding
+to `https://lianki-push/internal/publish`; it does not deploy a Worker or add a
+public publish endpoint. Wrangler must already be authenticated for this
+account. Run it only after the target build is serving; this is a manual
+operation and is not added to the production deployment workflow.
+
+For a preview pipeline with known changes:
+
+```bash
+bun scripts/dev/broadcast-version.ts --build preview-123 --shell-changed --routes '{"/words":1,"/list":0}'
+```
+
+With `--shell-changed` or `--routes`, the body is explicit `VersionNews` JSON
+(`shell` defaults to false, `routes` to `{}`); the internal hub validates it
+and broadcasts it to all currently connected version sockets. These deltas
+must describe changes relevant to those clients. Without either option the
+body stays the existing bare build id, so the normal fingerprint-based
+announcement behavior remains compatible. Explicit deltas are transient;
+reconnecting clients get the existing fingerprint-based or build-only news.
+A repeated build id is a no-op. Output is `{build,pushed}`; invalid input,
+network failures, refused requests and invalid acknowledgements exit nonzero.
+
+`--url http://localhost:<port>/internal/publish` targets a trusted local
+bridge or test stub instead of Wrangler. A local bridge must forward over
+the service binding with the internal hostname: the production public domain
+intentionally returns 404 for `/internal/publish`.
+
+Tests: `unit/broadcast-version.test.ts` exercises the CLI against the real
+Worker and VersionHub with storage/socket stubs, plus remote-binding cleanup
+and a local HTTP stub. No production broadcast is needed for tests.
+
+For the isolated preview pipeline, `--url` also accepts
+`https://lianki-push-preview.<subdomain>.workers.dev/internal/publish`.
+This path requires `PREVIEW_PUBLISH_TOKEN` and an HTTPS `PREVIEW_ORIGIN`.
+The CLI sends the token as `Authorization: Bearer …`, the origin as `Origin`,
+and `.open-next/assets/_lk/route-fp.json` as the URI-encoded
+`x-lk-fingerprints` header. Missing credentials or fingerprints, mismatched
+build IDs and other remote hosts fail before sending. Redirects are refused.
+The default command still uses the production service binding; preview
+pipelines must always specify their isolated publish URL.

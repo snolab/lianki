@@ -115,7 +115,7 @@ beforeEach(() => {
 const mint = (who: typeof OWNER, name: string, scopes = CHAT, days = 30) =>
   createToken(db(), who, { name, scopes, expiresAt: new Date(t + days * DAY) }, t);
 
-function hubSetup() {
+function hubSetup(extraRpc: Record<string, any> = {}) {
   const sockets: FakeSocket[] = [];
   const hub = new DebugHub(
     {
@@ -127,6 +127,7 @@ function hubSetup() {
       SESSIONS: {
         live: async () => "gone",
         chatToken: (req: unknown) => chatTokenCheck(db(), req, t),
+        ...extraRpc,
       },
     },
     () => t,
@@ -163,6 +164,39 @@ function hubSetup() {
 }
 
 describe("tokens: permissions as data, expiry required, one account", () => {
+  it("prepare requires read and write, and binds payer to the authenticated account", async () => {
+    const calls: any[] = [];
+    const h = hubSetup({
+      prepareChatTurn: async (req: unknown) => {
+        calls.push(req);
+        return { ok: true, verdict: { v: 1, action: "forward" } };
+      },
+    });
+    const readOnly = await mint(ALICE, "reader", ["chat:read"]);
+    const full = await mint(ALICE, "assistant");
+    const body = {
+      op: "prepare",
+      userId: BOB.userId,
+      thread: "owner",
+      input: { v: 1, requestId: "r1", text: "hello", context: [] },
+    };
+    expect((await h.http(readOnly.token, body)).status).toBe(403);
+    expect(calls).toHaveLength(0);
+    expect((await h.http(full.token, body)).body.ok).toBe(true);
+    expect(calls[0]).toEqual({ userId: ALICE.userId, input: body.input });
+  });
+  it("prepare authentication has an independent counter and leaves normal send/read budgets available", async () => {
+    const h = hubSetup({
+      prepareChatTurn: async () => ({ ok: true, verdict: { v: 1, action: "forward" } }),
+    });
+    const token = await mint(ALICE, "assistant");
+    for (let i = 0; i < CHAT_LIMITS.post.max + 1; i++)
+      expect(
+        (await h.http(token.token, { op: "prepare", input: { requestId: String(i) } })).status,
+      ).toBe(200);
+    expect((await h.http(token.token, { op: "say", text: "normal reply" })).status).toBe(200);
+    expect((await h.http(token.token, { op: "read", limit: 1 })).status).toBe(200);
+  });
   it("only known permissions; eval, pair, grant are not permissions", () => {
     expect(parseScopes(["chat:write", "study", "chat:write"])).toEqual(["study", "chat:write"]);
     for (const bad of [
@@ -315,6 +349,24 @@ describe("the hub: a named MCP client reaches the audit log", () => {
 });
 
 describe("the hub: own thread only", () => {
+  it("friend voice source comes only from the authenticated page's validated chat message", async () => {
+    const h = hubSetup();
+    const token = await mint(ALICE, "reader");
+    const page = await h.page({ ...ALICE, owner: false });
+    await h.msg(page, {
+      type: "chat",
+      id: "spoken",
+      text: "voice fragment",
+      source: "stt",
+      thread: "owner",
+      from: "owner",
+    });
+    await h.msg(page, { type: "chat", id: "typed", text: "typed fragment" });
+    const history = (await h.http(token.token, { op: "read" })).body.messages as any[];
+    const spoken = history.find((m) => m.id === "spoken");
+    expect(spoken).toMatchObject({ from: "friend", thread: ALICE.userId, source: "stt" });
+    expect(history.find((m) => m.id === "typed")?.source).toBeUndefined();
+  });
   it("a user's token posts into that user's thread, labelled with its lane, as an agent line", async () => {
     const s = hubSetup();
     const a = await mint(ALICE, "my-mac");
@@ -343,6 +395,25 @@ describe("the hub: own thread only", () => {
     expect(ownerPage.of("chat")).toEqual([]);
   });
 
+  it("say cut: supersede / interject kept on the line; anything else refused, nothing posted", async () => {
+    const s = hubSetup();
+    const o = await mint(OWNER, "codex");
+    const page = await s.page({ userId: OWNER.userId, email: OWNER.email, owner: true });
+    expect((await s.http(o.token, { op: "say", text: "moot", cut: "supersede" })).status).toBe(200);
+    expect(page.of("chat").at(-1)?.message).toMatchObject({ cut: "supersede", lane: "codex" });
+    expect((await s.http(o.token, { op: "say", text: "urgent", cut: "interject" })).status).toBe(
+      200,
+    );
+    expect(page.of("chat").at(-1)?.message).toMatchObject({ cut: "interject" });
+    expect((await s.http(o.token, { op: "say", text: "plain" })).status).toBe(200);
+    expect((page.of("chat").at(-1)?.message as Record<string, unknown>).cut).toBeUndefined();
+    for (const cut of [true, "true", "SUPERSEDE", 1, null]) {
+      const r = await s.http(o.token, { op: "say", text: "bad", cut });
+      expect(r.status).toBe(400);
+    }
+    expect(page.of("chat").length).toBe(3);
+  });
+
   it("the owner's lane token posts into the owner thread; a read sees only its own thread", async () => {
     const s = hubSetup();
     const o = await mint(OWNER, "codex");
@@ -357,6 +428,17 @@ describe("the hub: own thread only", () => {
     expect((ra.body.messages as { text: string }[]).map((m) => m.text)).toEqual([
       "【alice】alice line",
     ]);
+  });
+
+  it("a lane token's line may carry its own voice; an unknown voice is refused, nothing posted", async () => {
+    const s = hubSetup();
+    const o = await mint(OWNER, "agy");
+    expect((await s.http(o.token, { op: "say", text: "meow", voice: "main" })).status).toBe(200);
+    const bad = await s.http(o.token, { op: "say", text: "nope", voice: "squeaky" });
+    expect(bad.body.error).toBeTruthy();
+    const r = await s.http(o.token, { op: "read" });
+    const lines = r.body.messages as { text: string; voice?: string; lane?: string }[];
+    expect(lines.map((m) => [m.text, m.voice, m.lane])).toEqual([["【agy】meow", "main", "agy"]]);
   });
 
   it("no token, a revoked one, an expired one, or the wrong permission: refused, nothing posted", async () => {

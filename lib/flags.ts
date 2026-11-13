@@ -120,6 +120,12 @@ export const FLAGS = {
     requires: ["komoju.live-key"],
     money: true,
   },
+  // No `audience`: for everyone; ON is the shipped state.
+  "app.auto-update": {
+    description:
+      "有新版本时自动更新（lib/auto-update.ts）：页面「干净」时（没有未发送的聊天草稿、没在录音或按住说话、没在朗读或播放、没有打开的对话框或改过的表单、没有正在保存的请求、没在 /words 或 /review 的进行中、没在录声纹）自己刷新：切到后台时、换到别的页面时、或者一段时间没有操作后；回来时停在原来的位置。右下角显示「有新版本，空闲时自动更新」；页面不干净时显示「有新版本，有未保存内容」，干净了再更新。用户可在「设置」里自己关掉。关闭 = 和以前一样，只显示「有新版本 · 刷新」按钮。",
+    default: true,
+  },
   // No `audience`: the page and its rail / home links for everyone; ON is the shipped state.
   "today.goal": {
     description:
@@ -150,9 +156,16 @@ export const FLAGS = {
     default: true,
     audience: "owner",
   },
+  "voice.clone": {
+    description:
+      "用你自己的声音朗读：把一段你的声音样本（一段不超过 30 秒的录音和它的文字）加密存进你的 Lianki 账号，换一台 Mac 也能用你的声音合成语音。存入、替换、删除每次都要过一次 Face ID / Touch ID（不走十分钟免验证窗口）；只有你的账号能读，随时可删。只对有 dev 权限的账号开放。关闭（默认）= 账号里不存声音样本，/api/my/voice-clone-ref 不存在（404），已存的样本留着但读不到。",
+    default: false,
+    audience: "owner",
+    group: "stt",
+  },
   "stt.polish": {
     description:
-      "语音消息的自动润色：打开（默认）时，助手可以按上下文（最近的消息和助手的回复、当前页面、屏幕上的词、选中的文字）改你语音消息里的错字、标点、被截断的词和漏掉的小词（的、了、在、里这类），不改原意，最近 5 条语音都能改；原文一直保留，点 ✨ 可看。关闭 = 助手不能再改你的语音消息，聊天里只留识别原文。",
+      "语音消息的自动润色：打开（默认）时，助手可以按上下文（最近的消息和助手的回复、当前页面、屏幕上的词、选中的文字）改你语音消息里的错字、标点、被截断的词和漏掉的小词（的、了、在、里这类），不改原意，最近 15 条语音都能改；原文一直保留，点 ✨ 可看。关闭 = 助手不能再改你的语音消息，聊天里只留识别原文。",
     default: true,
     audience: "owner",
   },
@@ -160,6 +173,13 @@ export const FLAGS = {
     description:
       "连续语音合并：打开后，你接着说的话如果明显是上一句的延续，会并入你刚发的那条语音消息，而不是多出一个气泡；助手收到的是完整的一句，等你说完后再按上下文润色一次整段。只并你自己刚发的语音、中间没有任何人说话、没有问答卡片；语音口令不会被合并。合并后的消息有 ✨ 和撤销按钮，撤销可拆回原来的几条。关闭（默认）= 照旧：每段语音各发一条。",
     default: false,
+    audience: "owner",
+  },
+  // Owner, 2026-11-14 02:15 JST: the mic open on two devices doubled every sentence.
+  "stt.two-mic-merge": {
+    description:
+      "两个麦克风合成一条：你在两台设备（比如 Windows 和 Mac）上同时开着麦克风时，同一句话两边各识别一次。打开（默认）时，另一台设备几秒内（/dev/config 的 chat.twoMicWindowMs，默认 4 秒）发来几乎一样的语音消息，就当成同一句，只留一条：声纹认出是你的那条优先，其次声纹分数高的，再其次更完整的那条文字；声纹说是别人的话不会和你的合并，打字的消息从不合并。关闭 = 照旧：每台设备各发一条。",
+    default: true,
     audience: "owner",
   },
   // Lianki's speech servers for other accounts (docs/local-stt.md, "Lianki's speech
@@ -273,6 +293,20 @@ export const FLAGS = {
   "voice.li-hub": {
     description:
       "声音都经过 Li（第 0 步，只观察，docs/li-sound-hub.md）：打开后，在你本人的页面上（调试模式），Li 记录谁在用麦克风（聊天麦克风、对话日记的录音）、谁在出声（Li 的朗读、/words 读词、阅读器朗读、页面上的 <audio> 和浏览器语音），写进 Worker 日志：每次变化一条 audio-owner，两个录音同时开着或两个声音同时在放时一条 audio-conflict。不改变任何声音或麦克风的行为。关闭（默认）= 完全不运行，和以前一模一样。",
+    default: false,
+    group: "stt",
+    audience: "owner",
+  },
+  "voice.talk-over": {
+    description:
+      "朗读时插话（不关麦克风）：在你本人的页面上（需要 dev 权限），回声消除关着（lk:voice-aec = 0）时，Li 朗读回复的时候麦克风不再暂停（不会变成金色的「暂停收音」圈），一直在听。你一开口，Li 就停下来听你说，说完照原来的规则接着读（你的话发出去后，或安静 1.5 秒后）。Li 自己的声音不会被当成你的话：识别出来的一句话，如果时间上和 Li 正在读的那一句重叠、内容也基本就是那一句，就当回声丢掉；同样的词在别的时间说就是你的。/words 读单词时照旧暂停收音；回声消除开着时一切照旧。关闭（默认）= 照旧：回声消除关着时，Li 朗读期间麦克风暂停收音。",
+    default: false,
+    group: "stt",
+    audience: "owner",
+  },
+  "voice.cloud-voices": {
+    description:
+      "Li 用谷歌 / Azure 的声音朗读（docs/li-sound-hub.md，「Provider voices」）：打开后，在你本人的页面上（需要 dev 权限），一句话可以用 google:<声音> 或 azure:<声音> 来读（say --voice google:cmn-TW-Wavenet-A），按语言自动选声音的表在 /dev/config 的 voice.langVoices（默认 zh-TW → 谷歌台湾国语，nan → Azure 闽南语）。声音在服务器上生成，手机用云端 <audio> 播放，没有系统语音的手机也能听。按字数从你的积分扣（和别人一样，没有管理员免费）。没有谷歌 / Azure 密钥时什么都不变，照常用原来的声音。关闭（默认）= 完全不用这些声音。",
     default: false,
     group: "stt",
     audience: "owner",

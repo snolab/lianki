@@ -36,12 +36,12 @@ prefix and the owner's **`payments.stripe.live` feature flag**
 secret change) — in `stripeMode` (`lib/payments/stripe.ts`). It fails closed,
 the same rule as KOMOJU:
 
-| `STRIPE_SECRET_KEY` | flag `payments.stripe.live` | mode     | who can see and pay            |
-| ------------------- | --------------------------- | -------- | ------------------------------ |
-| `sk_test_…`         | off                         | **test** | an `admin` holder only |
-| `sk_live_…`         | **on**                      | **live** | everyone                       |
+| `STRIPE_SECRET_KEY` | flag `payments.stripe.live` | mode     | who can see and pay                 |
+| ------------------- | --------------------------- | -------- | ----------------------------------- |
+| `sk_test_…`         | off                         | **test** | an `admin` holder only              |
+| `sk_live_…`         | **on**                      | **live** | everyone                            |
 | `sk_live_…`         | off                         | **off**  | nobody — no test mode on a live key |
-| anything else       | anything                    | **off**  | nobody: checkout answers 503   |
+| anything else       | anything                    | **off**  | nobody: checkout answers 503        |
 
 "Anything else" includes a missing `STRIPE_WEBHOOK_SECRET`, a test key with
 the flag on, and any other key format — restricted `rk_…` keys too (the code
@@ -73,11 +73,11 @@ refused before the redirect.
 
 ### Secrets (names only — never paste values into chat or commits)
 
-| name                     | value                                                       |
-| ------------------------ | ----------------------------------------------------------- |
+| name                     | value                                                            |
+| ------------------------ | ---------------------------------------------------------------- |
 | `STRIPE_SECRET_KEY`      | `sk_test_…` (test) or `sk_live_…` (live) — Developers → API keys |
-| `STRIPE_WEBHOOK_SECRET`  | `whsec_…` of the webhook endpoint below, **in the same mode** |
-| `STRIPE_PAYMENT_METHODS` | optional, comma-separated (default `card,alipay,wechat_pay`) |
+| `STRIPE_WEBHOOK_SECRET`  | `whsec_…` of the webhook endpoint below, **in the same mode**    |
+| `STRIPE_PAYMENT_METHODS` | optional, comma-separated (default `card,alipay,wechat_pay`)     |
 
 Each is a Worker secret (`bunx wrangler secret put <name>`); secrets apply at
 once, no deploy needed.
@@ -123,6 +123,7 @@ review asks for them), and the owner's 資格外活動許可. Then:
    the owner included — nothing half-live, and no test mode on a live key.
    Then turn **`payments.stripe.live`** on at `https://lianki.com/dev/flags`;
    it reaches every request within 30 s, no deploy.
+
 3. **One small real payment**: as the owner, top up **¥100** by card
    (Stripe now has no "(test)" label, and a second, non-owner account sees it
    too). Check: `wrangler tail lianki` shows no error; the balance is +¥100
@@ -222,13 +223,13 @@ top-up reads "¥600 → 600 credits". `/dev/credits` and `/dev/gift-codes` say �
 
 ### Endpoints
 
-| endpoint                                 | does                                                                                                                                                                 |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/payments/credits`              | balance, the newest 50 entries, top-up limits and the **enabled** providers                                                                                          |
-| `POST /api/payments/topup`               | `{amount, provider?, turnstileToken}`, ¥100–¥10,000 whole yen → `{kind:"redirect",url}` or `{kind:"qr",qr}`. Same rate limit + Turnstile as pass checkout           |
-| `POST /api/payments/buy-pass`            | `{passId, key}` → 200 `{balance, proEndsAt}`, or **402** `{balance, price, missing}` — the page offers a top-up of exactly `missing` (at least the ¥100 minimum)      |
-| `POST /api/payments/webhook/<provider>`  | the provider's webhook; it verifies its own signature, then credits the ledger keyed by provider + paymentId                                                         |
-| `POST /api/payments/stripe-webhook`      | Stripe's single endpoint: passes as before, and sessions with `metadata.kind = "topup"` credit the wallet                                                            |
+| endpoint                                    | does                                                                                                                                                             |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/payments/credits`                 | balance, the newest 50 entries, top-up limits and the **enabled** providers                                                                                      |
+| `POST /api/payments/topup`                  | `{amount, provider?, turnstileToken}`, ¥100–¥10,000 whole yen → `{kind:"redirect",url}` or `{kind:"qr",qr}`. Same rate limit + Turnstile as pass checkout        |
+| `POST /api/payments/buy-pass`               | `{passId, key}` → 200 `{balance, proEndsAt}`, or **402** `{balance, price, missing}` — the page offers a top-up of exactly `missing` (at least the ¥100 minimum) |
+| `POST /api/payments/webhook/<provider>`     | the provider's webhook; it verifies its own signature, then credits the ledger keyed by provider + paymentId                                                     |
+| `POST /api/payments/stripe-webhook`         | Stripe's single endpoint: passes as before, and sessions with `metadata.kind = "topup"` credit the wallet                                                        |
 | `GET/POST /api/dev/credits`, `/dev/credits` | owner only (404 otherwise): look a wallet up; add/take credits (`sponsor`/`adjust`/`gift`); refund a credit-bought pass to the wallet; reverse a refunded top-up |
 
 Quick amounts are ¥600, ¥1,200, ¥3,000 and ¥5,000, so they line up with the
@@ -239,6 +240,55 @@ triggers the inviter's first-pass bonus.
 Gift codes can carry credits (`gift_code.credits`) as well as, or instead of,
 Pro days; both land in one batch with the `membership_grant` marker, once per
 person per code.
+
+### Account-age bonus
+
+Owner decision 2026-11-14 (tap on an ask card): every account at least
+**1 day** old gets **$1** of credits, and at least **7 days** old **$2 more**
+($3 in all by day 7) — for accounts that already existed and, automatically,
+for every future account as it reaches each age.
+
+| piece                                           | where                                                                                                                      |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| rules (pure): tiers owed, USD → credits, refIds | `lib/payments/age-bonus.ts`                                                                                                |
+| grants over D1, preview, backfill               | `lib/payments/age-bonus-store.ts`                                                                                          |
+| backfill endpoint (admin only, 404 otherwise)   | `POST /api/dev/credits/age-bonus` → `lib/payments/age-bonus-api.ts`                                                        |
+| backfill UI                                     | the "Account-age bonus" panel on `/dev/credits` (`AgeBonusPanel.tsx`; strings `age-bonus.content.ts`, key `dev-age-bonus`) |
+| wallet label                                    | `wallet-card.content.ts` `ageBonusDay1` / `ageBonusDay7` ("Welcome bonus · 1 day / 7 days")                                |
+| tests                                           | `unit/age-bonus.test.ts`                                                                                                   |
+
+- **Config** (`lib/config.ts`, `/dev/config`, group `credits`, all `money`):
+  `credits.ageBonus.day1Usd` (1), `credits.ageBonus.day7Usd` (2),
+  `credits.ageBonus.day1Hours` (24), `credits.ageBonus.day7Hours` (168). The
+  amounts become credits at `CREDITS_PER_USD`, rounded to a whole credit
+  (150 and 300 today). An amount of 0 turns that tier off.
+- **The rule**: a tier is owed when `now − user.createdAt ≥ its hours`, its
+  amount is above 0 and it was not granted yet. A changed amount or age
+  applies to grants made after the change; nothing granted is redone.
+- **Ledger**: reason `gift` (no new reason, so no CHECK migration), refId
+  `agebonus:d1:<userId>` / `agebonus:d7:<userId>`, note `age bonus d1|d7`.
+  UNIQUE (reason, refId) makes each tier once per account. The statements are
+  race-proof on their own (as `creditTopup`): the ledger row is
+  `INSERT OR IGNORE … WHERE EXISTS (the user)` and the balance moves only
+  `WHERE EXISTS` that very row, all in one D1 batch — so a sign-in racing the
+  backfill, a double click or a re-run never grants twice and never fails a
+  batch.
+- **Automatic, event-driven** (no cron): `grantAgeBonus` runs in the
+  better-auth `databaseHooks.session.create.after` (every sign-in, right after
+  the pre-grant claim, `auth-impl.ts`) and on every wallet read
+  (`GET /api/payments/credits`), so a returning user sees it the first time
+  they look. Cheap when there is nothing to do: one user row read, and for an
+  account old enough one indexed lookup of its two refIds. Never fails the
+  sign-in or the wallet read.
+- **Backfill** (once, by the owner): `/dev/credits` → Preview (counts accounts
+  owed the 1-day / 7-day tier, distinct accounts, total credits; writes
+  nothing) → Apply (asks first; grants in batches of 40, returns what this run
+  granted plus `failed`). Apply is idempotent: a second Apply grants 0. Logged
+  as `credits.ageBonus.apply`.
+- **Shown** in the wallet history as "Welcome bonus · 1 day" / "· 7 days"
+  (16 locales), recognised by the refId; elsewhere it reads as a gift.
+- Every account counts, verified email or not (the owner's rule as decided);
+  if sign-up farming shows up, setting the amounts to 0 stops new grants at once.
 
 ### Credits usage (`/membership/credits`)
 
@@ -316,7 +366,7 @@ the choice can be revisited with numbers.
    code path, and N concurrent holds on a small balance pass only as far as it
    covers (unit test "N parallel holds"). Not enough → **refused, the provider
    never called**: HTTP **402** `{error: "no-credits", balance, need, topUp:
-   "/membership"}` with the header `x-lianki-credits: needed`.
+"/membership"}` with the header `x-lianki-credits: needed`.
 3. **Call** — with the feature's fixed limits (max output tokens, text length,
    audio size: the same for everyone, never shrunk to fit a low balance).
 4. **Settle** — the real cost (provider-reported tokens; for speech and
@@ -397,38 +447,39 @@ prices in USD (Cloudflare Workers AI pricing page, read 2026-11-09) × `MARGIN`
 `CREDITS_PER_USD` (150; `lib/payments/credits.ts`). So one USD of provider cost
 is 225 credits.
 
-| feature (ledger `note`) | route | flag | provider · model | billing | typical / hold |
-| --- | --- | --- | --- | --- | --- |
-| `partner.reply` | lianki-push hub → `DebugSessions.partnerReply` | `partner.ai-reply` | Workers AI · DeepSeek v4.1 flash | wallet (since 2026-11-05; margin since 2026-11-09). The owner's thread never goes to the model. Ledger note is empty for these. | ~0.2 / ≤ 10 credits |
-| `read.gloss` | `/api/read/[id]/gloss`, `grade`, `make-cards`, `word-session`, `batch-grade` | — | Workers AI · DeepSeek | wallet. Deck meanings and `word_gloss` hits are free; `own: true` (BYOK) asks no model of ours. A tap refused → 402; a bulk call leaves the words without a meaning. | ~0.05 per word / 2 per 40-word batch |
-| `read.translate` | `/api/read/[id]/translate` | — | Workers AI · DeepSeek | wallet; a `read_translation` hit is free | ~0.1 / 1 |
-| `vibe.translate` | `/api/vibe/[id]/translate`, the reader on a /vibe doc | `read.vibe` | Workers AI · DeepSeek | wallet; a line already translated is free | ~0.1 / 1 |
-| `read.polish` | `/api/read/[id]/polish` | — | Workers AI · DeepSeek | wallet, one hold for the whole document | ~0.3 per 1,000 characters / up to its chunks' max |
-| `read.live-polish` | `/api/read/[id]/polish-live` | `read.live-polish` | Workers AI · DeepSeek (or `READ_POLISH_MODEL`) | wallet | ~0.2 / 1–3 |
-| `self-intro.import` | `/api/self-intro/import` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.5 / ≤ 9 (40,000 characters + 4 images) |
-| `self-intro.followup` | `/api/self-intro/followup` | `self-intro.import` | Workers AI · DeepSeek | wallet | ~0.2 / 1 |
-| `words.import-ai` | `/api/import/ai` (the /words Import panel, "Words with AI" on a stored file) | `words.import-ai` | Workers AI · DeepSeek | wallet: one hold per chunk call, settled at its real cost; a failed call or a chunk with no rows keeps nothing; each hold a hard cap; out of credits midway: 402 with completed / total, the paid chunks kept for a resume | ~0.6 per 6,000 characters / ~3 per chunk; a full file (10 chunks + 4 images) ≤ 23; offered from 2 |
-| `words.tts` | `/api/words/tts` (cache miss only) | — | Workers AI · MeloTTS / Aura-2 | **free** — owner, 2026-11-09 (card o3): word read-aloud stays free for now; each miss logs what it cost us (`credits.free`, `why: "free-feature"`) | MeloTTS ~0.001 per clip; Aura-2 ~0.7 per 100 characters |
-| `speech.stt` | `/api/debug/stt` (the chat's mic, voice mode) | `words.voice-mode` | Workers AI · Whisper turbo | **free** — owner, 2026-11-09 (card o3): the microphone stays free for now; each transcription logs what it cost us. The owner's local STT (his Mac) costs nothing | ~0.03 per 15 s utterance |
-| `ai-sentences` | `/api/ai-sentences/generate`, `/new-word` | — (`/lab/ai-vocab`) | Workers AI · Llama 3.3 70B | wallet | ~0.3 |
-| `polyglot.translate`, `polyglot.tts` | `/api/polyglot/*` | — (`/lab/polyglot`) | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
-| `self-intro.translate`, `self-intro.tts` | `/api/self-intro/translate`, `/tts` | — | Workers AI · Llama / MeloTTS | wallet | ~0.3 / ~0.01 |
-| `roadmap.generate` | `/api/roadmap/generate` | — | Workers AI · Llama | wallet | ~1 |
-| `blog.translate` | `/api/translate` (blog post, any signed-in user; the result is shared) | — | Workers AI · gpt-oss-120b | wallet: held before the stream, settled when it ends; a translation already in the PR is free | ~5 per post |
-| `tts` | `/api/tts` (legacy; no page calls it) | — | Workers AI · MeloTTS | **free** with word read-aloud (2026-11-09); cost logged | ~0.01 |
+| feature (ledger `note`)                  | route                                                                        | flag                 | provider · model                               | billing                                                                                                                                                                                                                                                                                | typical / hold                                                                                    |
+| ---------------------------------------- | ---------------------------------------------------------------------------- | -------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `partner.reply`                          | lianki-push hub → `DebugSessions.partnerReply`                               | `partner.ai-reply`   | Workers AI · DeepSeek v4.1 flash               | wallet (since 2026-11-05; margin since 2026-11-09). The owner's thread never goes to the model. Ledger note is empty for these.                                                                                                                                                        | ~0.2 / ≤ 10 credits                                                                               |
+| `read.gloss`                             | `/api/read/[id]/gloss`, `grade`, `make-cards`, `word-session`, `batch-grade` | —                    | Workers AI · DeepSeek                          | wallet. Deck meanings and `word_gloss` hits are free; `own: true` (BYOK) asks no model of ours. A tap refused → 402; a bulk call leaves the words without a meaning.                                                                                                                   | ~0.05 per word / 2 per 40-word batch                                                              |
+| `read.translate`                         | `/api/read/[id]/translate`                                                   | —                    | Workers AI · DeepSeek                          | wallet; a `read_translation` hit is free                                                                                                                                                                                                                                               | ~0.1 / 1                                                                                          |
+| `vibe.translate`                         | `/api/vibe/[id]/translate`, the reader on a /vibe doc                        | `read.vibe`          | Workers AI · DeepSeek                          | wallet; a line already translated is free                                                                                                                                                                                                                                              | ~0.1 / 1                                                                                          |
+| `read.polish`                            | `/api/read/[id]/polish`                                                      | —                    | Workers AI · DeepSeek                          | wallet, one hold for the whole document                                                                                                                                                                                                                                                | ~0.3 per 1,000 characters / up to its chunks' max                                                 |
+| `read.live-polish`                       | `/api/read/[id]/polish-live`                                                 | `read.live-polish`   | Workers AI · DeepSeek (or `READ_POLISH_MODEL`) | wallet                                                                                                                                                                                                                                                                                 | ~0.2 / 1–3                                                                                        |
+| `self-intro.import`                      | `/api/self-intro/import`                                                     | `self-intro.import`  | Workers AI · DeepSeek                          | wallet                                                                                                                                                                                                                                                                                 | ~0.5 / ≤ 9 (40,000 characters + 4 images)                                                         |
+| `self-intro.followup`                    | `/api/self-intro/followup`                                                   | `self-intro.import`  | Workers AI · DeepSeek                          | wallet                                                                                                                                                                                                                                                                                 | ~0.2 / 1                                                                                          |
+| `words.import-ai`                        | `/api/import/ai` (the /words Import panel, "Words with AI" on a stored file) | `words.import-ai`    | Workers AI · DeepSeek                          | wallet: one hold per chunk call, settled at its real cost; a failed call or a chunk with no rows keeps nothing; each hold a hard cap; out of credits midway: 402 with completed / total, the paid chunks kept for a resume                                                             | ~0.6 per 6,000 characters / ~3 per chunk; a full file (10 chunks + 4 images) ≤ 23; offered from 2 |
+| `words.tts`                              | `/api/words/tts` (cache miss only)                                           | —                    | Workers AI · MeloTTS / Aura-2                  | **free** — owner, 2026-11-09 (card o3): word read-aloud stays free for now; each miss logs what it cost us (`credits.free`, `why: "free-feature"`)                                                                                                                                     | MeloTTS ~0.001 per clip; Aura-2 ~0.7 per 100 characters                                           |
+| `speech.stt`                             | `/api/debug/stt` (the chat's mic, voice mode)                                | `words.voice-mode`   | Workers AI · Whisper turbo                     | **free** — owner, 2026-11-09 (card o3): the microphone stays free for now; each transcription logs what it cost us. The owner's local STT (his Mac) costs nothing                                                                                                                      | ~0.03 per 15 s utterance                                                                          |
+| `ai-sentences`                           | `/api/ai-sentences/generate`, `/new-word`                                    | — (`/lab/ai-vocab`)  | Workers AI · Llama 3.3 70B                     | wallet                                                                                                                                                                                                                                                                                 | ~0.3                                                                                              |
+| `polyglot.translate`, `polyglot.tts`     | `/api/polyglot/*`                                                            | — (`/lab/polyglot`)  | Workers AI · Llama / MeloTTS                   | wallet                                                                                                                                                                                                                                                                                 | ~0.3 / ~0.01                                                                                      |
+| `self-intro.translate`, `self-intro.tts` | `/api/self-intro/translate`, `/tts`                                          | —                    | Workers AI · Llama / MeloTTS                   | wallet                                                                                                                                                                                                                                                                                 | ~0.3 / ~0.01                                                                                      |
+| `roadmap.generate`                       | `/api/roadmap/generate`                                                      | —                    | Workers AI · Llama                             | wallet                                                                                                                                                                                                                                                                                 | ~1                                                                                                |
+| `blog.translate`                         | `/api/translate` (blog post, any signed-in user; the result is shared)       | —                    | Workers AI · gpt-oss-120b                      | wallet: held before the stream, settled when it ends; a translation already in the PR is free                                                                                                                                                                                          | ~5 per post                                                                                       |
+| `voice.cloud`                            | `/api/voice/tts` (Li's read-aloud in a `google:` / `azure:` voice)           | `voice.cloud-voices` | Google Cloud TTS / Azure Speech                | wallet: held and charged at the voice tier's list price per million billed characters (the SSML body) × `MARGIN` (`PROVIDER_TTS_USD_PER_M`: Google Standard $4, WaveNet / Neural2 $16, Chirp $30, Studio and unknown names $160; Azure neural $16, HD $30); no key = 503, nothing held | Standard ~0.09, WaveNet ~0.36 per 100 characters / the same                                       |
+| `tts`                                    | `/api/tts` (legacy; no page calls it)                                        | —                    | Workers AI · MeloTTS                           | **free** with word read-aloud (2026-11-09); cost logged                                                                                                                                                                                                                                | ~0.01                                                                                             |
 
 Not charged, on purpose (no provider bill per call):
 
-| path | why free |
-| --- | --- |
-| recorded word clips (`workers/voice`, R2 `voice/`) | pre-rendered once by the owner; R2 egress is free |
-| cached TTS (`tts/` in R2), `word_gloss`, `read_translation`, `vibe_translation` | the answer is stored; no provider call |
-| `/api/import/youtube` | YouTube Data API: free quota, no money |
-| Google Drive / Docs (`/connections`, `read.gdoc-stream`) | Google APIs on the user's own OAuth token; no per-call bill |
-| `/library` catalogue (`library.catalogue`) | public-domain texts cached in R2; no provider call |
-| BYOK (`byok.sync`) | the user's own key, from their browser |
-| the inbox (R2 storage and operations, `lib/inbox/charge.ts`) | metered and logged, not yet debited: cents per GB-month; a follow-up |
-| owner-only tools (`/dev/*`, the owner's STT bench `?model=`, local STT) | the owner pays (local STT is still booked in the cost ledger below) |
+| path                                                                            | why free                                                             |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| recorded word clips (`workers/voice`, R2 `voice/`)                              | pre-rendered once by the owner; R2 egress is free                    |
+| cached TTS (`tts/` in R2), `word_gloss`, `read_translation`, `vibe_translation` | the answer is stored; no provider call                               |
+| `/api/import/youtube`                                                           | YouTube Data API: free quota, no money                               |
+| Google Drive / Docs (`/connections`, `read.gdoc-stream`)                        | Google APIs on the user's own OAuth token; no per-call bill          |
+| `/library` catalogue (`library.catalogue`)                                      | public-domain texts cached in R2; no provider call                   |
+| BYOK (`byok.sync`)                                                              | the user's own key, from their browser                               |
+| the inbox (R2 storage and operations, `lib/inbox/charge.ts`)                    | metered and logged, not yet debited: cents per GB-month; a follow-up |
+| owner-only tools (`/dev/*`, the owner's STT bench `?model=`, local STT)         | the owner pays (local STT is still booked in the cost ledger below)  |
 
 ### Cost ledger (`/dev/costs`)
 
@@ -528,16 +579,16 @@ in `GET /api/payments/credits`. A test-mode refund takes them back from the
 test ledger only. To try buying a pass with the balance, give the owner
 credits at `/dev/credits` (adjust) instead.
 
-| id                | kind     | methods                                     | env (secrets)                                  | state       |
-| ----------------- | -------- | ------------------------------------------- | ---------------------------------------------- | ----------- |
-| `stripe`          | checkout | card, Alipay, WeChat Pay                    | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (+ flag `payments.stripe.live` for live) | implemented — test mode until live ([above](#turning-it-on)) |
-| `komoju`          | checkout | card, konbini, PayPay, Alipay, WeChat Pay   | `KOMOJU_SECRET_KEY`, `KOMOJU_WEBHOOK_SECRET` (+ flag `payments.komoju.live` for live) | implemented — test mode until live (below) |
-| `payjp`           | checkout | card (3-D Secure, checkout-policy.ts)       | `PAYJP_SECRET_KEY`, `PAYJP_WEBHOOK_TOKEN`      | slot        |
-| `paddle`          | checkout | card, PayPal, Apple Pay                     | `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`      | slot        |
-| `usdt`            | checkout | USDT TRC-20 / ERC-20 (QR)                   | `USDT_GATEWAY_API_KEY`, `USDT_GATEWAY_WEBHOOK_SECRET` | slot |
-| `afdian`          | grant    | 爱发电 (Alipay, WeChat Pay)                  | `AFDIAN_USER_ID`, `AFDIAN_API_TOKEN`           | slot        |
-| `patreon`         | grant    | Patreon                                     | `PATREON_WEBHOOK_SECRET`                       | slot        |
-| `github-sponsors` | grant    | GitHub Sponsors (as credits, not Pro days)  | `GITHUB_SPONSORS_CREDITS`                      | slot        |
+| id                | kind     | methods                                    | env (secrets)                                                                         | state                                                        |
+| ----------------- | -------- | ------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `stripe`          | checkout | card, Alipay, WeChat Pay                   | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (+ flag `payments.stripe.live` for live) | implemented — test mode until live ([above](#turning-it-on)) |
+| `komoju`          | checkout | card, konbini, PayPay, Alipay, WeChat Pay  | `KOMOJU_SECRET_KEY`, `KOMOJU_WEBHOOK_SECRET` (+ flag `payments.komoju.live` for live) | implemented — test mode until live (below)                   |
+| `payjp`           | checkout | card (3-D Secure, checkout-policy.ts)      | `PAYJP_SECRET_KEY`, `PAYJP_WEBHOOK_TOKEN`                                             | slot                                                         |
+| `paddle`          | checkout | card, PayPal, Apple Pay                    | `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`                                             | slot                                                         |
+| `usdt`            | checkout | USDT TRC-20 / ERC-20 (QR)                  | `USDT_GATEWAY_API_KEY`, `USDT_GATEWAY_WEBHOOK_SECRET`                                 | slot                                                         |
+| `afdian`          | grant    | 爱发电 (Alipay, WeChat Pay)                | `AFDIAN_USER_ID`, `AFDIAN_API_TOKEN`                                                  | slot                                                         |
+| `patreon`         | grant    | Patreon                                    | `PATREON_WEBHOOK_SECRET`                                                              | slot                                                         |
+| `github-sponsors` | grant    | GitHub Sponsors (as credits, not Pro days) | `GITHUB_SPONSORS_CREDITS`                                                             | slot                                                         |
 
 `checkout` providers start a payment of an amount the user picks; `grant`
 providers have no button — money arrives on another platform and its webhook
@@ -608,6 +659,7 @@ button.
    `sk_live_`; if KOMOJU's live key has another format, KOMOJU stays **off**
    (no button anywhere) — accepting that format is then a one-line code change
    in `komojuMode`, reviewed like any payment change.
+
 3. **One small real payment**: as the owner, top up **¥100** by card on
    `/membership` (KOMOJU now has no "(test)" label, and a second, non-owner
    account sees it too). Check: `wrangler tail lianki` shows no error; the
@@ -713,16 +765,16 @@ Owner request 2026-11-09. A Pro user (or an admin) types one friend's address in
 the invite card on `/membership`; Lianki mails that friend the inviter's existing
 `/i/CODE` link. Same code, same rewards as a shared link — no new code type.
 
-| piece | where |
-| --- | --- |
-| limits (one object) | `lib/referrals/email-invite-config.ts` (`EMAIL_INVITE`, `INVITE_MAIL_SENDER`) |
-| send, status, opt-out, tokens | `lib/referrals/email-invite.ts`; routes `app/api/invite/email/route.ts`, `app/api/invite/email/opt-out/route.ts` |
-| the template (one module) | `lib/referrals/invite-mail.ts` + strings `lib/referrals/invite-mail.content.ts` (16 locales, context lines) |
-| preview, sends nothing | `previewInviteMail()` / `renderFor()`; admin-only `GET /api/dev/invite-mail-preview?format=html\|text\|json&locale=` renders his own mail |
-| UI | `app/(app)/membership/EmailInviteBox.tsx`; opt-out page `/membership/invite-opt-out` |
-| tables | `db/migrations/0061_invite_email.sql`: `invite_email_log`, `invite_email_recipient`, `invite_email_suppression` |
-| bounces, complaints | `lib/resend-webhook.ts`; route `app/api/email/resend-webhook/route.ts` |
-| tests | `unit/email-invite.test.ts`, `unit/resend-webhook.test.ts`; QA `scripts/qa/qa-email-invite.mjs` (suite `email-invite`) |
+| piece                         | where                                                                                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| limits (one object)           | `lib/referrals/email-invite-config.ts` (`EMAIL_INVITE`, `INVITE_MAIL_SENDER`)                                                             |
+| send, status, opt-out, tokens | `lib/referrals/email-invite.ts`; routes `app/api/invite/email/route.ts`, `app/api/invite/email/opt-out/route.ts`                          |
+| the template (one module)     | `lib/referrals/invite-mail.ts` + strings `lib/referrals/invite-mail.content.ts` (16 locales, context lines)                               |
+| preview, sends nothing        | `previewInviteMail()` / `renderFor()`; admin-only `GET /api/dev/invite-mail-preview?format=html\|text\|json&locale=` renders his own mail |
+| UI                            | `app/(app)/membership/EmailInviteBox.tsx`; opt-out page `/membership/invite-opt-out`                                                      |
+| tables                        | `db/migrations/0061_invite_email.sql`: `invite_email_log`, `invite_email_recipient`, `invite_email_suppression`                           |
+| bounces, complaints           | `lib/resend-webhook.ts`; route `app/api/email/resend-webhook/route.ts`                                                                    |
+| tests                         | `unit/email-invite.test.ts`, `unit/resend-webhook.test.ts`; QA `scripts/qa/qa-email-invite.mjs` (suite `email-invite`)                    |
 
 - **Who**: `isAdmin` always; Pro (`proEndsAt` in the future, not trial) once the
   flag `membership.email-invite` is on. Off: admins only.
@@ -790,14 +842,14 @@ the invite card on `/membership`; Lianki mails that friend the inviter's existin
 Owner request 2026-11-09. An admin gives Pro days to addresses that have **no
 account yet**, so the days are waiting when that person signs up.
 
-| piece | where |
-| --- | --- |
-| parse, preview, apply, revoke, claim | `lib/referrals/pregrant.ts` |
-| route (admin only, 404 otherwise) | `app/api/dev/pregrants/route.ts`: GET list, POST `preview` / `apply`, DELETE `?id=` |
-| UI | the "Pre-grant" panel on `/dev/users` (`PregrantPanel.tsx`); open grants are rows of the users table tagged pending (or lapsed), each with Revoke. Strings: `pregrant.content.ts` (`dev-pregrant`, 16 locales, context lines) |
-| table | `db/migrations/0063_pending_membership.sql`: `pending_membership` |
-| the claim | better-auth `databaseHooks.session.create.after` (every sign-in) and `user.update.after` (an address verified later), `auth-impl.ts` |
-| tests | `unit/pregrant.test.ts`; QA `scripts/qa/qa-pregrant.mjs` (suite `pregrant`) |
+| piece                                | where                                                                                                                                                                                                                         |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| parse, preview, apply, revoke, claim | `lib/referrals/pregrant.ts`                                                                                                                                                                                                   |
+| route (admin only, 404 otherwise)    | `app/api/dev/pregrants/route.ts`: GET list, POST `preview` / `apply`, DELETE `?id=`                                                                                                                                           |
+| UI                                   | the "Pre-grant" panel on `/dev/users` (`PregrantPanel.tsx`); open grants are rows of the users table tagged pending (or lapsed), each with Revoke. Strings: `pregrant.content.ts` (`dev-pregrant`, 16 locales, context lines) |
+| table                                | `db/migrations/0063_pending_membership.sql`: `pending_membership`                                                                                                                                                             |
+| the claim                            | better-auth `databaseHooks.session.create.after` (every sign-in) and `user.update.after` (an address verified later), `auth-impl.ts`                                                                                          |
+| tests                                | `unit/pregrant.test.ts`; QA `scripts/qa/qa-pregrant.mjs` (suite `pregrant`)                                                                                                                                                   |
 
 - **The list**: one address per line, or CSV `email,days,note` (the note may
   hold commas; a header line and `#` comments are skipped). Days and note fall

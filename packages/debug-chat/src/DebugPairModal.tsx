@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { evalTrustStrings } from "./eval-trust-strings";
+import { uiStrings } from "./ui-strings";
 import { type PageInfo, type PairInfo, allowLabel, pageParts, pairSentence } from "./wire";
 
 /**
@@ -22,15 +24,19 @@ export function DebugPairModal({
   friend: boolean;
   pages: PageInfo[];
   selfPage?: string;
-  onAllow: (pages: string[] | "all") => void;
+  onAllow: (pages: string[] | "all", remember?: boolean) => void;
   onDeny: () => void;
 }) {
+  const [remember, setRemember] = useState(false);
+  const trustStrings = evalTrustStrings();
+  useEffect(() => setRemember(false), [pending.pair]);
   const [ticked, setTicked] = useState<Set<string>>(() => new Set(selfPage ? [selfPage] : []));
   // A new request starts again from "this page only".
   useEffect(() => setTicked(new Set(selfPage ? [selfPage] : [])), [pending.pair, selfPage]);
   // A chat grant always covers every page (a phone's page comes and goes with
   // the app), so a chat request has no page picker: Allow means all.
-  const listed = !friend && pending.scope === "chat" ? [] : pages;
+  // An eval grant set to cover every page (debug.evalGrantPages "all") has none either.
+  const listed = remember || (!friend && (pending.scope === "chat" || pending.allPages)) ? [] : pages;
   const ids = listed.map((p) => p.id).filter(Boolean);
   const all = ids.length > 0 && ids.every((id) => ticked.has(id));
   const toggle = (id: string) =>
@@ -40,7 +46,7 @@ export function DebugPairModal({
       return n;
     });
   // A hub from before page lists sends none: Allow then means all, as it did.
-  const allow = () => onAllow(ids.length === 0 || all ? "all" : ids.filter((id) => ticked.has(id)));
+  const allow = () => onAllow(ids.length === 0 || all ? "all" : ids.filter((id) => ticked.has(id)), remember);
   const count = ids.filter((id) => ticked.has(id)).length;
 
   return (
@@ -62,7 +68,7 @@ export function DebugPairModal({
         }}
       >
         <p id="debug-modal-title" className="text-lg leading-snug">
-          {pairSentence(pending, friend)}
+          {remember ? `${pending.label} · ${trustStrings.remember}` : pairSentence(pending, friend, uiStrings())}
           {!friend && ids.length > 1 && " Authorize this page only, or more?"}
         </p>
         <p className="text-sm" style={{ color: "oklch(0.8 0.01 260)" }}>
@@ -75,6 +81,15 @@ export function DebugPairModal({
             ? "Allow only if the agent told you this code in the chat."
             : "Allow only if your terminal shows the same code."}
         </p>
+        {!friend && pending.scope !== "chat" && (
+          <fieldset className="flex flex-col gap-2" data-testid="debug-modal-trust">
+            <label><input type="radio" name="eval-trust" checked={!remember}
+              onChange={() => setRemember(false)} /> {trustStrings.temporary}</label>
+            <label><input type="radio" name="eval-trust" checked={remember}
+              onChange={() => setRemember(true)} /> {trustStrings.remember}</label>
+            {remember && <p className="text-sm">{trustStrings.scope}</p>}
+          </fieldset>
+        )}
         {ids.length > 0 && (
           // Only the list scrolls; the sentence, the code and the buttons stay put.
           <ul

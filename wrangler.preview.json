@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lianki-preview",
+  "main": "worker.preview.ts",
+  "workers_dev": true,
+  "routes": [],
+  "compatibility_date": "2025-05-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "minify": true,
+  "upload_source_maps": false,
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "vars": { "DB_BACKEND": "d1" },
+  "services": [{ "binding": "PUSH", "service": "lianki-push-preview" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "lianki-preview", "database_id": "REPLACE_WITH_PREVIEW_D1_ID", "migrations_dir": "db/migrations" }],
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "lianki-preview-blobs" }],
+  "triggers": { "crons": [] }
+}

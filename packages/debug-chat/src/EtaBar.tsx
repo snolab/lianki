@@ -49,7 +49,9 @@ export const keepFocus = (e: { preventDefault(): void }) => e.preventDefault();
  * text's contrast is known on every part: `text`, `muted` (a row's
  * description) and `late` (a negative time, red) are each WCAG AA (4.5:1) on
  * the track, the planned bar, the progress fill, the overrun and done
- * (unit/eta.test.ts computes it).
+ * (unit/eta.test.ts computes it). The planned bar and the progress fill are
+ * gold (owner, 2026-11-11 19:58 JST: "任务进度条可以用金色"), the hue of the
+ * app's own gold (oklch … 86).
  */
 export const ETA_COLORS = {
   light: {
@@ -57,8 +59,8 @@ export const ETA_COLORS = {
     muted: "oklch(0.45 0.02 260)",
     late: "oklch(0.47 0.17 27)",
     track: "oklch(0.96 0.006 260)",
-    bar: "oklch(0.905 0.044 22.3)",
-    fill: "oklch(0.86 0.077 22.3)",
+    bar: "oklch(0.91 0.07 86)",
+    fill: "oklch(0.87 0.12 86)",
     past: "oklch(0.9 0.05 25)",
     done: "oklch(0.89 0.06 150)",
   },
@@ -67,8 +69,8 @@ export const ETA_COLORS = {
     muted: "oklch(0.8 0.01 260)",
     late: "oklch(0.8 0.12 25)",
     track: "oklch(0.24 0.01 260)",
-    bar: "oklch(0.3 0.044 22.3)",
-    fill: "oklch(0.38 0.088 22.3)",
+    bar: "oklch(0.31 0.045 86)",
+    fill: "oklch(0.4 0.085 86)",
     past: "oklch(0.36 0.08 25)",
     done: "oklch(0.38 0.07 150)",
   },
@@ -203,6 +205,8 @@ type EtaText = Pick<
   | "etaReached"
   | "etaDone"
   | "etaOpen"
+  | "etaHide"
+  | "etaShow"
   | "etaList"
   | "etaWaitingYou"
   | "etaReminder"
@@ -254,12 +258,48 @@ export function summaryText(tasks: readonly EtaTask[], now: number, s: EtaText) 
     .join(" · ");
 }
 
+/**
+ * The ▸/▾ that hides or shows the bar (owner, 2026-11-13: hide it so the chat
+ * stays open). Its state is drawn: ▾ with the bar shown, ▸ and the clock alone
+ * with it hidden, a tap away from coming back.
+ */
+function EtaFold({
+  folded,
+  onFold,
+  strings,
+}: {
+  folded: boolean;
+  onFold: (folded: boolean) => void;
+  strings: EtaText;
+}) {
+  const label = folded ? strings.etaShow : strings.etaHide;
+  return (
+    <button
+      type="button"
+      data-testid="debug-chat-eta-fold"
+      data-folded={folded || undefined}
+      aria-expanded={!folded}
+      aria-label={label}
+      title={label}
+      onMouseDown={keepFocus}
+      onClick={() => onFold(!folded)}
+      className="pointer-events-auto inline-flex shrink-0 items-center gap-1 rounded-full border-0 bg-transparent px-1.5 py-0.5 fs-10"
+      style={{ color: both("text") }}
+    >
+      {folded && <EtaClockIcon />}
+      <Disclosure open={!folded} size={10} />
+    </button>
+  );
+}
+
 export function EtaBar({
   tasks,
   now,
   strings,
   onOpen,
   glass = false,
+  folded = false,
+  onFold,
 }: {
   tasks: readonly EtaTask[];
   now: number;
@@ -267,9 +307,49 @@ export function EtaBar({
   onOpen: () => void;
   /** Part of the chat's glass strip (DebugChat): no track, no gap under it. */
   glass?: boolean;
+  /** Hidden by the viewer: only the ▸ to show it again (EtaFold). */
+  folded?: boolean;
+  /** Given: the bar carries its own hide/show toggle. */
+  onFold?: (folded: boolean) => void;
 }) {
   const p = summaryParts(tasks, now, strings);
   if (!p) return null;
+  const line = (
+    <EtaLine p={p} tasks={tasks} now={now} strings={strings} onOpen={onOpen} glass={glass} />
+  );
+  if (!onFold) return line;
+  if (folded)
+    return (
+      <div className={`flex ${glass ? "" : "mb-1"}`}>
+        <EtaFold folded onFold={onFold} strings={strings} />
+      </div>
+    );
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      <div className="min-w-0 flex-1">{line}</div>
+      <div className={glass ? "" : "mb-1"}>
+        <EtaFold folded={false} onFold={onFold} strings={strings} />
+      </div>
+    </div>
+  );
+}
+
+/** The summary line itself: a tap opens the full-screen timeline. */
+function EtaLine({
+  p,
+  tasks,
+  now,
+  strings,
+  onOpen,
+  glass,
+}: {
+  p: NonNullable<ReturnType<typeof summaryParts>>;
+  tasks: readonly EtaTask[];
+  now: number;
+  strings: EtaText;
+  onOpen: () => void;
+  glass: boolean;
+}) {
   const { sum } = p;
   const past = sum.leftMs !== null && sum.leftMs <= 0;
   const text = summaryText(tasks, now, strings);

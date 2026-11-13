@@ -10,63 +10,25 @@
 //   - The token is never printed, in any mode.
 
 import yargs from "yargs";
+import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call } from "./api.mjs";
 import { DEVICE_RE, randomId, s256, TOKEN_RE } from "./auth.mjs";
+import { createChatBridge, filterDecision, ayDeliver, bridgeConfig } from "./chat-bridge.mjs";
+import { createInterface } from "node:readline";
+import { createChatReceiver, turnConfig } from "./chat-receiver.mjs";
+import { applyGrantPolish } from "./chat-polish.mjs";
+import { createFriendInbox, INBOX_DEFAULTS } from "./chat-inbox.mjs";
+import { join } from "node:path";
+
+export { CliError, EXIT, PREF_KEYS, call };
 
 export const SCHEMA_VERSION = 1;
 export const DEFAULT_URL = "https://lianki.com";
-export const EXIT = { ok: 0, usage: 1, auth: 2, notFound: 3, server: 4, refused: 5 };
 
-/**
- * The settings that follow the account, as lib/prefs/schema.ts listed them
- * when this version was published. A newer server may know more keys: those
- * still work (the server checks every key and value), and `settings list`
- * shows any the server returns. unit/lianki-cli.test.ts checks that none of
- * these has been removed from the server.
- */
-export const PREF_KEYS = [
-  "words.showAll",
-  "words.readAloud",
-  "words.serverVoice",
-  "words.speakOnSwipe",
-  "words.gradeTones",
-  "words.voiceMode",
-  "words.swipeMirror",
-  "swipe.variant",
-  "swipe-feel.preset",
-  "swipe-feel.tweaks",
-  "motion.animations",
-  "ui.paper",
-  "text-size.ui",
-  "text-size.chat",
-  "text-size.cards",
-  "ui.locale",
-  "nav-pins.pinned",
-  "home.lang",
-  "home.pins",
-  "lab.immersionLangs",
-  "lab.immersionTranspose",
-  "chat-voice.rate",
-  "chat-voice.out",
-  "chat-voice.speak",
-  "chat-voice.cueSend",
-  "chat-voice.cueSpeech",
-];
 
 const RATINGS = { again: 1, hard: 2, good: 3, easy: 4, 1: 1, 2: 2, 3: 3, 4: 4 };
 const RATING_NAME = { 1: "again", 2: "hard", 3: "good", 4: "easy" };
 
-export class CliError extends Error {
-  constructor(code, exit, message, hint) {
-    super(message);
-    this.code = code;
-    this.exit = exit;
-    this.hint = hint;
-  }
-}
 const usage = (msg, hint) => new CliError("usage", EXIT.usage, msg, hint);
-const LOGIN_HINT = "lianki auth login   (agents: set LIANKI_TOKEN=lk_… or pass --token)";
-const SCOPE_HINT =
-  "the token lacks that permission: make one that has it at lianki.com/my/preferences → API tokens, or lianki auth login again";
 
 // ── Context: where, who, how to print ─────────────────────────────────────
 
@@ -128,59 +90,6 @@ async function stdinToken(deps) {
 
 // ── HTTP ──────────────────────────────────────────────────────────────────
 
-export async function call(c, token, { method = "GET", path, query, body, headers: extra }) {
-  const url = new URL(path, c.base + "/");
-  for (const [k, v] of Object.entries(query ?? {}))
-    if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
-  const headers = { accept: "application/json", ...extra };
-  if (token) headers.authorization = `Bearer ${token}`;
-  if (body !== undefined) headers["content-type"] = "application/json";
-  let r;
-  try {
-    r = await c.deps.fetch(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      redirect: "manual",
-    });
-  } catch (e) {
-    throw new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`);
-  }
-  const text = await r.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {}
-  if (r.status >= 200 && r.status < 300 && data !== null) return { status: r.status, data };
-  const said = (data && typeof data.error === "string" && data.error) || text.slice(0, 200);
-  const detail = said.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
-  if (r.status === 401 || r.status === 403)
-    throw new CliError(
-      "auth_refused",
-      EXIT.auth,
-      `${c.site} refused the token (${r.status}${/^(unknown|expired|scope|blocked)$/.test(detail) ? `: ${detail}` : ""})`,
-      detail === "scope" ? SCOPE_HINT : LOGIN_HINT,
-    );
-  // The FSRS router answers a missing card with a 500 "Error: note not found".
-  if (r.status === 404 || /note not found/i.test(detail))
-    throw new CliError("not_found", EXIT.notFound, detail && !/^404$/.test(detail) ? detail : "not found");
-  if (r.status === 429) {
-    // Passed on as is: how long the server asked us to wait (seconds), if it said.
-    const wait = Number(r.headers?.get?.("retry-after"));
-    const e = new CliError(
-      "rate_limited",
-      EXIT.refused,
-      `${c.site} refused it (429: too many requests)${wait > 0 ? `; retry after ${wait} s` : ""}`,
-    );
-    e.retryAfter = wait > 0 ? wait : null;
-    throw e;
-  }
-  if (r.status >= 300 && r.status < 400)
-    throw new CliError("server", EXIT.server, `${c.site} redirected (${r.status}); check --api`);
-  if (r.status >= 500 || data === null)
-    throw new CliError("server", EXIT.server, `${c.site} failed (${r.status})${detail ? `: ${detail}` : ""}`);
-  throw new CliError("refused", EXIT.refused, `${c.site} refused it (${r.status})${detail ? `: ${detail}` : ""}`);
-}
 
 // ── Output ────────────────────────────────────────────────────────────────
 
@@ -570,7 +479,7 @@ function chatSocket(c, token, { history = 0, onReady, onEvent, timeoutMs }) {
       }
       if (m.type === "ready") {
         try {
-          await onReady?.(ws, m);
+          if (onReady) await onReady(ws, m);
         } catch (e) {
           return finish(e);
         }
@@ -608,7 +517,15 @@ async function cmdChatSay(c) {
   const { data } = await call(c, token, {
     method: "POST",
     path: CHAT_PATH,
-    body: { op: "say", text, ...(c.argv.quiet ? { quiet: true } : {}) },
+    body: {
+      op: "say",
+      text,
+      ...(c.argv.quiet ? { quiet: true } : {}),
+      ...(c.argv.voice ? { voice: String(c.argv.voice) } : {}),
+      // How it cuts into the reading when it arrives live: stop yours, or pause and go on.
+      ...(c.argv.supersede ? { cut: "supersede" } : {}),
+      ...(c.argv.interject ? { cut: "interject" } : {}),
+    },
   });
   emit(c, "chat say", { id: data.id, lane: data.lane ?? null }, (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`);
 }
@@ -652,10 +569,19 @@ async function cmdChatRead(c) {
   );
 }
 
+async function cmdChatPrepare(c) {
+  const token = await needToken(c);
+  const text = (c.argv.text ?? []).map(String).join(" ").trim();
+  if (!text || text.length > 6000) throw usage("prepare needs 1–6000 characters");
+  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "prepare", input: { v: 1, requestId: randomId(), text, context: c.argv.context ? [{ from: "user", text: String(c.argv.context).slice(0, 2000) }] : [] } } });
+  emit(c, "chat prepare", data, (d) => JSON.stringify(d));
+}
+
 const chatLine = (m) =>
   `${new Date(m.at).toISOString().slice(0, 19).replace("T", " ")}  ${m.from === "agent" ? m.label || "agent" : m.from}: ${m.text}`;
 
 async function cmdChatListen(c) {
+  if (c.argv.deliver || c.argv["filter-service"] || c.argv["dry-run"]) return cmdChatBridge(c);
   const token = await needToken(c);
   const history = Number(c.argv.history ?? 0);
   if (!Number.isInteger(history) || history < 0 || history > 100) throw usage("--history must be 0–100");
@@ -669,6 +595,147 @@ async function cmdChatListen(c) {
       return false;
     },
   });
+}
+
+async function cmdChatBridge(c) {
+  const grantReply = c.argv["reply-transport"] === "grant";
+  if (c.argv.stdin && c.argv.thread === "own") throw usage("--thread needs a concrete server thread id; own is only an authenticated socket alias");
+  const friends = Boolean(c.argv.friends);
+  if (friends && c.argv.thread) throw usage("--friends and --thread are mutually exclusive");
+  if ((friends || grantReply) && (!c.argv.stdin || !c.argv["grant-repo"]))
+    throw usage("friend/grant delivery requires trusted --stdin and --grant-repo <checkout>");
+  if ((friends || (c.argv.thread && c.argv.thread !== "owner")) && !grantReply)
+    throw usage("non-owner stdin needs --reply-transport grant; an account token cannot reply to another thread");
+  if (friends && c.argv.polish) throw usage("--polish is owner-only; friends receive suggestions without history edits");
+  if (c.argv.thread && !c.argv.stdin) throw usage("--thread applies only to trusted --stdin input; a direct socket uses the authenticated thread");
+  if (c.argv.polish && (!c.argv.stdin || !c.argv["grant-repo"] || (c.argv.thread && c.argv.thread !== "owner")))
+    throw usage("--polish requires trusted owner --stdin and --grant-repo <checkout>; API tokens cannot edit chat messages");
+  const target = c.argv.deliver;
+  if (!target && !c.argv["dry-run"]) throw usage("bridge needs --deliver <ay target> or --dry-run");
+  const service = c.argv["filter-service"];
+  if (service) {
+    const u = new URL(service);
+    if (u.username || u.password || u.search || u.hash || !/^https?:$/.test(u.protocol) ||
+      (u.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)))
+      throw usage("--filter-service must be HTTPS or loopback HTTP, without credentials or query");
+  }
+  const jobs = new Set();
+  let failed;
+  let stopInput;
+  const controller = new AbortController();
+  let signalFailure;
+  const failure = new Promise((resolve) => { signalFailure = resolve; });
+  const config = bridgeConfig(c.deps.env);
+  const history = Number(c.argv.history ?? config.contextLines);
+  if (!Number.isInteger(history) || history < 0 || history > 100) throw usage("--history must be 0–100");
+  let accountToken;
+  const makeReceiver = (thread) => {
+  const bridge = createChatBridge({
+    api: c.base,
+    config,
+    thread,
+    principal: grantReply && thread !== "owner" ? { type: "friend", thread, authority: "friend-chat-only" } : undefined,
+    replyCommand: grantReply ? () => ["bun", join(c.argv["grant-repo"], "scripts/dev/eval.ts"), "say", "--no-pair", "--to", thread, "<reply>"] : undefined,
+    addressed: (text) => /(?:codex|claude|小可|小克|linky|lianki|帮我|请你|帮忙|修复|实现|部署|提交|合并|检查|继续|撤销|停止|重试|please|could you|can you)/iu.test(text),
+    deliver: async (body) => {
+      if (c.argv["dry-run"]) return c.deps.out(body);
+      if (controller.signal.aborted) throw new Error("chat delivery stopped");
+      let timer;
+      let onAbort = () => {};
+      try {
+        return await Promise.race([
+          (c.deps.deliver ?? ayDeliver)(String(target), c.argv.cwd, body, { signal: controller.signal }),
+          new Promise((_, reject) => {
+            onAbort = () => reject(new Error("chat delivery stopped"));
+            controller.signal.addEventListener("abort", onAbort, { once: true });
+            timer = setTimeout(() => reject(new Error("chat delivery timed out")), config.deliveryTimeoutMs);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+        controller.signal.removeEventListener("abort", onAbort);
+      }
+    },
+    report: (data) => c.deps.err(JSON.stringify(data)),
+  });
+  const receiver = createChatReceiver({
+    bridge, thread, lockScope: Boolean(c.argv.stdin), config: turnConfig(c.deps.env), requestId: () => randomId(),
+    report: (data) => c.deps.err(JSON.stringify(data)),
+    onError: (e) => { failed ??= e; signalFailure(e); controller.abort(); stopInput?.(); },
+    polish: c.argv.polish && !c.argv["dry-run"] ? (turn, suggestion) => applyGrantPolish(c.argv["grant-repo"], turn, suggestion, { signal: controller.signal }) : undefined,
+    prepare: c.argv.ai === "off" ? undefined : async (input) => {
+      if (service) return filterDecision(service, { v: 1, message: { text: input.text.slice(0, config.lineChars), source: "stt" }, context: input.context }, {
+        fetch: c.deps.fetch, token: c.deps.env.LIANKI_CHAT_FILTER_TOKEN, timeoutMs: config.timeoutMs,
+      });
+      let signal;
+      try {
+        accountToken ??= await needToken(c);
+        signal = AbortSignal.timeout(config.timeoutMs);
+        const res = await c.deps.fetch(`${c.base}${CHAT_PATH}`, {
+          method: "POST", headers: { authorization: `Bearer ${accountToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ op: "prepare", input }), signal,
+        });
+        if (!res.ok) {
+          c.deps.err(JSON.stringify({ type: "prepare-unavailable", reason: "prepare-http", status: res.status }));
+          return { action: "forward", turn: "uncertain", reason: "unavailable" };
+        }
+        const result = await res.json();
+        if (result?.ok && result.verdict?.v === 1) return result.verdict;
+        c.deps.err(JSON.stringify({ type: "prepare-unavailable", reason: result?.error ?? "server", ...(Number.isInteger(result?.status) ? { status: result.status } : {}) }));
+      } catch (e) {
+        c.deps.err(JSON.stringify({ type: "prepare-unavailable", reason: signal?.aborted ? "prepare-timeout" : e instanceof SyntaxError ? "prepare-invalid-json" : "network-or-auth" }));
+      }
+      return { action: "forward", turn: "uncertain", reason: "unavailable" };
+    },
+  });
+  return receiver;
+  };
+  const inboxConfig = Object.fromEntries(Object.entries(INBOX_DEFAULTS).map(([key, fallback]) => {
+    const value = Number(c.deps.env[`LIANKI_CHAT_INBOX_${key.replace(/[A-Z]/g, (s) => `_${s}`).toUpperCase()}`]);
+    return [key, Number.isSafeInteger(value) && value > 0 ? Math.min(value, fallback) : fallback];
+  }));
+  const receiver = friends ? createFriendInbox({ createReceiver: makeReceiver, config: inboxConfig }) : makeReceiver(c.argv.thread ?? "owner");
+  const accept = (event) => {
+    const job = receiver.accept(event);
+    jobs.add(job);
+    void job.then(() => jobs.delete(job), (e) => {
+      jobs.delete(job);
+      failed ??= e;
+      signalFailure(e);
+      controller.abort();
+      stopInput?.();
+    });
+    return job;
+  };
+  try {
+    if (c.argv.stdin) {
+      // Stream rather than readStdin(): voice messages must reach the agent before EOF.
+      const input = c.deps.bridgeInput ?? process.stdin;
+      const lines = createInterface({ input, crlfDelay: Infinity });
+      stopInput = () => lines.close();
+      for await (const line of lines) {
+        if (failed) throw failed;
+        let event;
+        try { event = JSON.parse(line); } catch { continue; }
+        accept(event);
+      }
+    } else {
+      const token = await needToken(c);
+      await chatSocket(c, token, { history, onEvent: async (m) => {
+        if (failed) throw failed;
+        await accept(m);
+        return false;
+      } });
+    }
+  } catch (e) {
+    failed ??= e;
+  } finally {
+    if (!failed) await Promise.race([Promise.allSettled(jobs), failure]);
+    if (!failed) await Promise.race([receiver.finish(), failure]);
+    receiver.stop();
+    controller.abort();
+  }
+  if (failed) throw failed;
 }
 
 // ── mcp ───────────────────────────────────────────────────────────────────
@@ -831,21 +898,32 @@ function build(args, deps, box) {
         [["lianki settings list", ""]],
       ),
     )
-    .command("chat", "Your own chat thread: say, ask, read, listen", (y) =>
+    .command("chat", "Your own chat thread: send, say, ask, read, listen, bridge", (y) =>
       examples(
         sub(y)
-          .usage("lianki chat <say|ask|read|listen> — your own chat thread only; lines show the token's name")
+          .usage("lianki chat <send|say|ask|read|listen|bridge> — your own chat thread only; lines show the token's name")
           .command(
-            "say [text..]",
+            ["say [text..]", "send [text..]"],
             "Post a line (- reads it from stdin)",
             (y) =>
               examples(
                 y
                   .positional("text", { type: "string", describe: "The line" })
                   .option("quiet", { type: "boolean", describe: "Shown, never read aloud" })
+                  .option("voice", { type: "string", describe: "Read this line in another voice: main | calm | bright, device:<name>, melo:<lang>" })
+                  .option("supersede", {
+                    type: "boolean",
+                    describe: "Makes your earlier lines moot: stops reading them, reads this one first",
+                    conflicts: "interject",
+                  })
+                  .option("interject", {
+                    type: "boolean",
+                    describe: "Urgent: pauses the line being read, reads this one, then goes on",
+                  })
                   .option("stdin", { type: "boolean", hidden: true }),
                 [
                   ['lianki chat say "PR #12 is green"', "→ 【<token name>】PR #12 is green"],
+                  ['lianki chat say --voice main "hi"', "read in main's voice instead of the lane's"],
                   ["git log -1 --format=%s | lianki chat say -", ""],
                 ],
               ),
@@ -877,10 +955,39 @@ function build(args, deps, box) {
             "listen",
             "Follow the thread live (one JSON line an event with --json)",
             (y) =>
-              examples(y.option("history", { type: "number", default: 0, describe: "First print the last n lines (0–100)" }), [
+              examples(y.option("history", { type: "number", default: 0, describe: "First print the last n lines (0–100; memory only with --deliver)" })
+                .option("deliver", { type: "string", describe: "Optionally bridge to this ay agent target" })
+                .option("cwd", { type: "string", describe: "Agent directory for ay target ." })
+                .option("filter-service", { type: "string", describe: "Optional AI filter URL for --deliver" })
+                .option("ai", { choices: ["cloud", "off"], default: "cloud", describe: "Turn preparation via the existing account's Cloudflare AI service" })
+                .option("dry-run", { type: "boolean", describe: "Print bridge handoffs without delivering" }), [
                 ["lianki chat listen --json | jq -c 'select(.type==\"chat\")'", "every new line"],
               ]),
             act(cmdChatListen),
+          )
+          .command(
+            "prepare [text..]",
+            "Classify, join and polish a turn using the account's cloud AI credits; posts nothing",
+            (y) => y.positional("text", { type: "string" }).option("context", { type: "string", describe: "Optional prior utterance" }),
+            act(cmdChatPrepare),
+          )
+          .command(
+            "bridge",
+            "Compose live chat, optional AI filtering and delivery to a Codex/Claude agent via ay",
+            (y) => y
+              .option("deliver", { type: "string", describe: "ay target (PID, keyword or .); no fixed agent" })
+              .option("cwd", { type: "string", describe: "Agent working directory for ay target ." })
+              .option("stdin", { type: "boolean", describe: "Read listen/eval NDJSON instead of opening a socket" })
+              .option("thread", { type: "string", describe: "Trusted input thread for --stdin (default owner; socket derives it from auth)" })
+              .option("history", { type: "number", describe: "Recent lines used as memory only (0–100)" })
+              .option("polish", { type: "boolean", describe: "Opt in to guarded owner-grant edit/merge via --stdin; retains raw/undo" })
+              .option("grant-repo", { type: "string", describe: "Checkout with the existing owner chat grant and eval.ts" })
+              .option("reply-transport", { choices: ["own", "grant"], default: "own", describe: "Own-account chat send or explicitly authorized grant reply transport" })
+              .option("friends", { type: "boolean", describe: "Multiplex friend threads from trusted grant stdin; excludes owner" })
+              .option("filter-service", { type: "string", describe: "Optional v1 filter service URL; failures forward" })
+              .option("ai", { choices: ["cloud", "off"], default: "cloud", describe: "Cloud turn preparation or bounded raw assembly only" })
+              .option("dry-run", { type: "boolean", describe: "Print handoffs without delivering or replying" }),
+            act(cmdChatBridge),
           )
           .epilogue(
             "Needs a token with the chat permissions (lianki.com/my/preferences → API tokens). An agent lane uses its own token: LIANKI_TOKEN=lk_… lianki chat say …",
@@ -941,13 +1048,13 @@ export async function run(args, deps) {
     return EXIT.usage;
   }
   // yargs drops a bare `-` before any command sees it: `--token -` means
-  // "from stdin", and `say -` (`say --quiet -`) becomes `say --stdin`.
+  // "from stdin", and `say -` (`say --quiet -`, `say --supersede -`, `say --interject -`) becomes `say --stdin`.
   args = args.flatMap((a, i) =>
     a === "-" && args[i - 1] === "--token"
       ? []
       : a === "--token" && args[i + 1] === "-"
         ? ["--token=-"]
-        : a === "-" && (args[i - 1] === "say" || args[i - 1] === "--quiet")
+        : a === "-" && ["say", "send", "--quiet", "--supersede", "--interject"].includes(args[i - 1])
           ? ["--stdin"]
           : [a],
   );

@@ -10,6 +10,7 @@ import {
   MAX_MERGE_PARTS,
   mergeLines,
   mergeVerdict,
+  passageSpeakers,
   splitLine,
   textEnd,
 } from "@lianki/debug-chat/voice-merge";
@@ -278,5 +279,27 @@ describe("what the merge relies on", () => {
 
   it("the flag is registered, default off", () => {
     expect(FLAGS["stt.merge"].default).toBe(false);
+  });
+});
+
+describe("passageSpeakers: a merged passage keeps one speaker (owner, 2026-11-13)", () => {
+  const line = (id: string, decision?: "me" | "other" | "unknown") => ({
+    id,
+    ...(decision ? { speaker: { decision } } : {}),
+  });
+
+  it("his verified lines merge; so do lines none of which is verified", () => {
+    expect(passageSpeakers([line("a", "me"), line("b", "me")])).toBeUndefined();
+    expect(
+      passageSpeakers([line("a", "unknown"), line("b"), line("c", "unknown")]),
+    ).toBeUndefined();
+  });
+
+  it("never someone else's line, and never his ✓ over a line not verified as his", () => {
+    // A final split by speaker: her part, then his. The polish must not join them again.
+    expect(passageSpeakers([line("her", "other"), line("his", "me")])).toContain("message her");
+    expect(passageSpeakers([line("a", "other"), line("b", "other")])).toContain("someone else's");
+    expect(passageSpeakers([line("a", "me"), line("b", "unknown")])).toContain("message b");
+    expect(passageSpeakers([line("a"), line("b", "me")])).toContain("message a");
   });
 });

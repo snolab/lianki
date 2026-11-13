@@ -34,7 +34,7 @@ import type { SttSignals } from "./stt-guard";
 import { reportPageError } from "./page-errors";
 import { type SpeakerTag, cleanSpeaker } from "./wire";
 import { isDesktop, sttMayReopen } from "./voice-bg";
-import { isPublicRoute } from "./public-stt";
+import { STT_AVAILABLE_EVENT, isPublicRoute } from "./public-stt";
 
 /** localStorage: the local STT server's WebSocket URL(s) (owner pages only). */
 export const LOCAL_STT_KEY = "lk:debug-local-stt";
@@ -48,6 +48,11 @@ export const RACE_STAGGER_MS = 150;
 export const BACKOFF_BASE_MS = 1_000;
 /** …up to this. */
 export const BACKOFF_MAX_MS = 30_000;
+/**
+ * An utterance whose route dropped after its end() waits this long for the next route
+ * to replay it on; then the cloud takes it (docs/local-stt.md, "Routes that come and go").
+ */
+export const REPLAY_WAIT_MS = 1_500;
 /** A socket that lived this long before closing was good: the backoff starts over. */
 export const STABLE_MS = 10_000;
 /** The subprotocol the tunnel listener selects (scripts/local-stt/ticket.py). */
@@ -207,7 +212,37 @@ export type LocalFinal = {
   filtered?: FilterVerdict;
   /** The filter is not on; this is what it would have stopped (a count, the line still lands). */
   wouldFilter?: string;
+  /**
+   * Two speakers were heard in it (the speaker "mixed"): the Mac cut it where the
+   * speaker changes and read and checked each part on its own (docs/local-stt.md,
+   * "Two speakers in one final"). `text` is their texts joined; each part becomes
+   * its own line, with its own tag and its own proof over its own words.
+   */
+  parts?: LocalPart[];
 };
+
+/** One speaker's part of a final that held two (LocalFinal.parts). */
+export type LocalPart = { text: string; speaker?: SpeakerTag; proof?: string };
+
+/** At most this many parts in one final (one cut per window hop of a 30 s utterance is far more). */
+export const MAX_PARTS = 8;
+
+/** The server's `parts`: each with text, else none at all (the final stays one line). */
+export function partsOf(raw: unknown): LocalPart[] | undefined {
+  if (!Array.isArray(raw) || raw.length < 2 || raw.length > MAX_PARTS) return undefined;
+  const out: LocalPart[] = [];
+  for (const r of raw as Record<string, unknown>[]) {
+    if (!r || typeof r !== "object" || typeof r.text !== "string" || !r.text.trim()) return undefined;
+    const speaker = cleanSpeaker(r.speaker);
+    const proof = r.speakerProof;
+    out.push({
+      text: r.text,
+      ...(speaker ? { speaker } : {}),
+      ...(speaker && typeof proof === "string" && proof.length <= 6000 ? { proof } : {}),
+    });
+  }
+  return out;
+}
 
 /** Why the Mac's voiceprint filter stopped a final (scripts/local-stt/voiceprint.py filter_reason). */
 export type FilterVerdict = { reason: string; score?: number };
@@ -295,6 +330,8 @@ export type WsLike = {
 };
 
 type Pending = {
+  /** The utterance this socket id carries (replayed on the next socket when this one drops). */
+  rec?: Rec;
   onPartial: (t: string) => void;
   resolve?: (f: LocalFinal) => void;
   reject?: (e: Error) => void;
@@ -303,6 +340,38 @@ type Pending = {
   firstPartialMs?: number;
   timer?: unknown;
 };
+/**
+ * One utterance, whatever socket carries it: its frames (packed, as sent), and its end
+ * once given. A socket that drops while the mic is on does not lose it: it is replayed,
+ * begin to end, on the next route that says ready (docs/local-stt.md, "Routes that come
+ * and go"); only when no route comes back does its end() reject, and the cloud takes it.
+ */
+type Rec = {
+  onPartial: (t: string) => void;
+  began: number;
+  opts?: BeginOpts;
+  /** Every frame so far, packed (TAG_FRAME): sent live, and again on a replay. */
+  frames: Uint8Array[];
+  streamed: number;
+  ending: {
+    audio: Float32Array;
+    eo?: { textFrom?: number };
+    ok: (f: LocalFinal) => void;
+    ko: (e: Error) => void;
+  } | null;
+  /** Its id on the socket in use; null while it waits for one. */
+  id: number | null;
+  /** Settled, cancelled or failed: nothing more is sent or awaited. */
+  over: boolean;
+  lostWhy: string;
+  /** Waiting for a socket: its place in `waiting`. */
+  waiter: { go(): void; fail(why: string): void } | null;
+  /** Was it on a socket before (a replay), or held from its begin. */
+  attached: boolean;
+  firstPartialMs?: number;
+  replayTimer?: unknown;
+};
+
 
 export function createLocalStt(
   url: string | string[],
@@ -314,8 +383,11 @@ export function createLocalStt(
     setTimer?: (f: () => void, ms: number) => unknown;
     clearTimer?: (t: unknown) => void;
     log?: (ev: Record<string, unknown>) => void;
-    /** Subscribe to the page's "visible again" and "online" events; returns an unsubscribe. */
-    watch?: (f: (why: "visible" | "online") => void) => () => void;
+    /**
+     * Subscribe to the page's "visible again" and "online" events, and "available" (a
+     * speech server free again, public-stt.ts's lobby); returns an unsubscribe.
+     */
+    watch?: (f: (why: "visible" | "online" | "available") => void) => () => void;
     /** Whether the page is visible (a hidden page waits for visibilitychange). */
     visible?: () => boolean;
     /** This device's slug ("iphone"), sent as {t:"hello"} so finals are scored against its print. */
@@ -389,14 +461,17 @@ export function createLocalStt(
     for (const f of subs) f(s);
   };
 
-  const failAll = (why: string) => {
-    for (const [id, p] of utts) {
-      clearTimer(p.timer);
-      p.reject?.(new Error(why));
-      utts.delete(id);
-    }
+  const failAll = (why: string, replay = false) => {
+    // Those already waiting fail; those detached below wait for the next route.
     const held = [...waiting];
     waiting.clear();
+    for (const [id, p] of utts) {
+      clearTimer(p.timer);
+      utts.delete(id);
+      // The route dropped while the mic is on: replayed on the next one, not lost.
+      if (replay && kept && p.rec && !p.rec.over) detach(p.rec);
+      else p.reject?.(new Error(why));
+    }
     for (const w of held) w.fail(why);
     // A request sent on this socket has no answer coming.
     for (const [rid, r] of reqs) {
@@ -429,6 +504,7 @@ export function createLocalStt(
     on?: unknown;
     enrol?: unknown;
     signals?: unknown;
+    parts?: unknown;
   };
   const enrolOf = (raw: unknown): EnrolSentence | undefined => {
     if (!raw || typeof raw !== "object") return undefined;
@@ -461,6 +537,7 @@ export function createLocalStt(
     if (!p) return;
     if (m.t === "partial" && typeof m.text === "string" && !p.resolve) {
       p.firstPartialMs ??= Math.round(now() - p.began);
+      if (p.rec) p.rec.firstPartialMs ??= p.firstPartialMs;
       p.onPartial(m.text);
     } else if (m.t === "partial" && typeof m.text === "string") {
       // Already ended: only the final counts now.
@@ -470,6 +547,7 @@ export function createLocalStt(
       const speaker = cleanSpeaker(m.speaker);
       const enrol = enrolOf(m.enrol);
       const filtered = filterOf(m.filtered);
+      const parts = filtered ? undefined : partsOf(m.parts);
       p.resolve({
         text: m.text ?? "",
         model: `local:${m.model ?? "?"}`,
@@ -485,6 +563,7 @@ export function createLocalStt(
         signals: localSignals(m.signals),
         ...(filtered ? { filtered } : {}),
         ...(typeof m.wouldFilter === "string" ? { wouldFilter: m.wouldFilter } : {}),
+        ...(parts ? { parts } : {}),
       });
     } else if (m.t === "error") {
       clearTimer(p.timer);
@@ -505,7 +584,7 @@ export function createLocalStt(
     ready = false;
     speakerModels = undefined;
     setSt("down");
-    failAll(what === "closed" ? "local stt closed" : "local stt unreachable");
+    failAll(what === "closed" ? "local stt closed" : "local stt unreachable", what === "closed");
   };
   /** A failed open, or a socket that dropped soon after ready: the next attempt backs off. */
   const failed = () => {
@@ -673,7 +752,11 @@ export function createLocalStt(
   const keep = (on: boolean) => {
     kept = on;
     if (on) {
-      unwatch ??= watch((why) => reconnect(why));
+      unwatch ??= watch((why) => {
+        // A worker just came up: race now, whatever the backoff says.
+        if (why === "available") fails = 0;
+        reconnect(why);
+      });
       connect();
       return;
     }
@@ -681,68 +764,6 @@ export function createLocalStt(
     unwatch = null;
     if (retry !== null) clearTimer(retry);
     retry = null;
-  };
-  /**
-   * Begun while the socket is down: the frames wait here while it opens
-   * (connect's deadline bounds that), then go out as one burst behind the
-   * begin, and an end() that came first is sent right after. If opening
-   * fails, end() rejects (the cloud takes the utterance).
-   */
-  const hold = (onPartial: (t: string) => void, began: number, opts?: BeginOpts): LocalUtt => {
-    let held: Float32Array[] | null = [];
-    let inner: LocalUtt | null = null;
-    let ending: {
-      audio: Float32Array;
-      eo?: { textFrom?: number };
-      ok: (f: LocalFinal) => void;
-      ko: (e: Error) => void;
-    } | null = null;
-    let lostWhy = "local stt closed";
-    const w: Waiter = {
-      go() {
-        if (!held) return; // cancelled meanwhile
-        const frames = held;
-        held = null;
-        inner = stream(onPartial, began, opts);
-        for (const f of frames) inner.frame(f);
-        d.log?.({
-          ev: "local-stt",
-          state: "held-streamed",
-          heldMs: Math.round(now() - began),
-          frames: frames.length,
-          ended: !!ending,
-        });
-        const e = ending;
-        ending = null;
-        if (e) inner.end(e.audio, e.eo).then(e.ok, e.ko);
-      },
-      fail(why) {
-        held = null;
-        lostWhy = why;
-        const e = ending;
-        ending = null;
-        e?.ko(new Error(why));
-      },
-    };
-    waiting.add(w);
-    connect();
-    return {
-      frame(f) {
-        if (inner) return inner.frame(f);
-        if (held && !ending) held.push(f);
-      },
-      end(audio, eo) {
-        if (inner) return inner.end(audio, eo);
-        if (!held || ending) return Promise.reject(new Error(lostWhy));
-        return new Promise<LocalFinal>((ok, ko) => void (ending = { audio, eo, ok, ko }));
-      },
-      cancel() {
-        if (inner) return inner.cancel();
-        if (!held || ending) return;
-        held = null;
-        waiting.delete(w);
-      },
-    };
   };
   /** What the Mac was last told about the filter on this socket. */
   let filterSent = false;
@@ -758,57 +779,181 @@ export function createLocalStt(
         send(JSON.stringify({ t: "filter", on }));
       });
   };
-  /** An utterance on the open socket (the steady path). */
-  const stream = (onPartial: (t: string) => void, began = now(), opts?: BeginOpts): LocalUtt => {
+  /**
+   * Put an utterance on the socket in use: begin, every frame so far, and its end if
+   * it was given (a held utterance, or a replay after a route dropped).
+   */
+  const attach = (rec: Rec) => {
     const id = nextId++;
-    const p: Pending = { onPartial, began };
+    const p: Pending = {
+      rec,
+      onPartial: rec.onPartial,
+      began: rec.began,
+      firstPartialMs: rec.firstPartialMs,
+    };
     utts.set(id, p);
+    rec.id = id;
     syncFilter();
-    const enrol = opts?.enrol;
+    const enrol = rec.opts?.enrol;
     // A fresh id per utterance when the page says who it is: signed into its speaker proof.
     const uid = d.device ? utteranceId() : undefined;
     send(JSON.stringify({ t: "begin", id, ...(enrol ? { enrol } : {}), ...(uid ? { uid } : {}) }));
-    let streamed = 0;
-    let over = false;
+    for (const f of rec.frames) send(f);
+    if (rec.ending) sendEnd(rec, id, p);
+  };
+  /** The end on the socket: the pre-pad, `end`, and the final's timeout. */
+  const sendEnd = (rec: Rec, id: number, p: Pending) => {
+    const e = rec.ending!;
+    p.resolve = (f) => {
+      rec.over = true;
+      e.ok(f);
+    };
+    p.reject = (err) => {
+      rec.over = true;
+      e.ko(err);
+    };
+    // The VAD's pre-pad: the head of its audio that came before the first frame.
+    const head = e.audio.length - rec.streamed;
+    if (head > 0) send(packPcm(TAG_PRE, e.audio.subarray(0, head)));
+    p.endAt = now();
+    const tf = e.eo?.textFrom;
+    send(
+      JSON.stringify(
+        tf !== undefined && Number.isInteger(tf) && tf > 0
+          ? { t: "end", id, textFrom: tf }
+          : { t: "end", id },
+      ),
+    );
+    p.timer = setTimer(() => {
+      if (!utts.has(id)) return;
+      utts.delete(id);
+      p.reject?.(new Error("local stt timed out"));
+    }, FINAL_TIMEOUT_MS);
+  };
+  /** The utterance waits for a socket: streamed (replayed) on ready, failed if none comes. */
+  const detach = (rec: Rec) => {
+    const replay = rec.attached;
+    rec.id = null;
+    const w: Waiter = {
+      go() {
+        if (rec.over || rec.waiter !== w) return;
+        rec.waiter = null;
+        clearTimer(rec.replayTimer);
+        d.log?.({
+          ev: "local-stt",
+          state: replay ? "replayed" : "held-streamed",
+          heldMs: Math.round(now() - rec.began),
+          frames: rec.frames.length,
+          ended: !!rec.ending,
+        });
+        rec.attached = true;
+        attach(rec);
+      },
+      fail(why) {
+        if (rec.waiter !== w) return;
+        rec.waiter = null;
+        clearTimer(rec.replayTimer);
+        rec.lostWhy = why;
+        if (!rec.ending) return; // its end() rejects at once now
+        rec.over = true;
+        rec.ending.ko(new Error(why));
+      },
+    };
+    rec.waiter = w;
+    waiting.add(w);
+    if (!replay) return;
+    if (rec.ending) waitReplay(rec);
+    // Speech in flight: the next route now, past any backoff (a new utterance does the same).
+    queueMicrotask(connect);
+  };
+  /** An ended utterance waits REPLAY_WAIT_MS for the next route, then goes to the cloud. */
+  const waitReplay = (rec: Rec) => {
+    clearTimer(rec.replayTimer);
+    rec.replayTimer = setTimer(() => {
+      const w = rec.waiter;
+      if (!w) return;
+      waiting.delete(w);
+      d.log?.({ ev: "local-stt", state: "replay-timeout", heldMs: Math.round(now() - rec.began) });
+      w.fail("local stt closed");
+    }, REPLAY_WAIT_MS);
+  };
+  /** An utterance: on the socket now if it is up, else held while it opens. */
+  const utterance = (
+    onPartial: (t: string) => void,
+    began: number,
+    opts?: BeginOpts,
+  ): LocalUtt => {
+    const rec: Rec = {
+      onPartial,
+      began,
+      opts,
+      frames: [],
+      streamed: 0,
+      ending: null,
+      id: null,
+      over: false,
+      lostWhy: "local stt closed",
+      waiter: null,
+      attached: false,
+    };
+    if (live()) {
+      rec.attached = true;
+      attach(rec);
+    } else {
+      detach(rec);
+      connect();
+    }
     return {
       frame(f) {
-        if (over || !live()) return;
-        streamed += f.length;
-        send(packPcm(TAG_FRAME, f));
+        if (rec.over || rec.ending) return;
+        if (!rec.waiter && rec.id === null) return; // failed while held: the cloud has it
+        // Kept packed: sent live, and again on a replay.
+        const x = packPcm(TAG_FRAME, f);
+        rec.frames.push(x);
+        rec.streamed += f.length;
+        if (rec.id !== null && live()) send(x);
       },
       end(audio, eo) {
-        over = true;
-        return new Promise<LocalFinal>((resolve, reject) => {
-          if (!live() || !utts.has(id)) {
-            utts.delete(id);
-            return reject(new Error("local stt not connected"));
+        if (rec.over || rec.ending) return Promise.reject(new Error(rec.lostWhy));
+        if (rec.id === null && !rec.waiter) {
+          rec.over = true;
+          return Promise.reject(new Error(rec.lostWhy));
+        }
+        return new Promise<LocalFinal>((ok, ko) => {
+          rec.ending = { audio, eo, ok, ko };
+          if (rec.waiter) {
+            // Waiting for a socket: a replay waits a little for the next route; a held
+            // one, for its race (whose deadline bounds it).
+            if (rec.attached) {
+              if (!race && !live()) return rec.waiter.fail("local stt closed");
+              waitReplay(rec);
+            }
+            return;
           }
-          p.resolve = resolve;
-          p.reject = reject;
-          // The VAD's pre-pad: the head of its audio that came before the first frame.
-          const head = audio.length - streamed;
-          if (head > 0) send(packPcm(TAG_PRE, audio.subarray(0, head)));
-          p.endAt = now();
-          const tf = eo?.textFrom;
-          send(
-            JSON.stringify(
-              tf !== undefined && Number.isInteger(tf) && tf > 0
-                ? { t: "end", id, textFrom: tf }
-                : { t: "end", id },
-            ),
-          );
-          p.timer = setTimer(() => {
-            if (!utts.has(id)) return;
+          const id = rec.id!;
+          const p = utts.get(id);
+          if (!live() || !p) {
             utts.delete(id);
-            reject(new Error("local stt timed out"));
-          }, FINAL_TIMEOUT_MS);
+            rec.over = true;
+            return ko(new Error("local stt not connected"));
+          }
+          sendEnd(rec, id, p);
         });
       },
       cancel() {
-        if (over) return;
-        over = true;
-        utts.delete(id);
-        if (live()) send(JSON.stringify({ t: "cancel", id }));
+        if (rec.over) return;
+        if (rec.ending && rec.id !== null) return; // ended: its final is on the way
+        rec.over = true;
+        clearTimer(rec.replayTimer);
+        if (rec.waiter) {
+          waiting.delete(rec.waiter);
+          rec.waiter = null;
+          return;
+        }
+        if (rec.id !== null) {
+          utts.delete(rec.id);
+          if (live()) send(JSON.stringify({ t: "cancel", id: rec.id }));
+        }
       },
     };
   };
@@ -878,25 +1023,27 @@ export function createLocalStt(
       failAll("local stt closed");
     },
     begin(onPartial, opts) {
-      if (live()) return stream(onPartial, now(), opts);
       if (!urls.length) return null;
-      // Down: hold this utterance while the socket opens, instead of losing it to the cloud.
-      return hold(onPartial, now(), opts);
+      // Down: held while the socket opens, instead of losing it to the cloud.
+      return utterance(onPartial, now(), opts);
     },
   };
 }
 
-/** The page's "visible again" and "online" events (none outside a browser). */
-function watchPage(f: (why: "visible" | "online") => void): () => void {
+/** The page's "visible again" and "online" events, and a speech server free again (none outside a browser). */
+function watchPage(f: (why: "visible" | "online" | "available") => void): () => void {
   if (typeof window === "undefined" || typeof document === "undefined") return () => {};
   const vis = () => {
     if (document.visibilityState === "visible") f("visible");
   };
   const onl = () => f("online");
+  const avail = () => f("available");
   document.addEventListener("visibilitychange", vis);
   window.addEventListener("online", onl);
+  window.addEventListener(STT_AVAILABLE_EVENT, avail);
   return () => {
     document.removeEventListener("visibilitychange", vis);
     window.removeEventListener("online", onl);
+    window.removeEventListener(STT_AVAILABLE_EVENT, avail);
   };
 }

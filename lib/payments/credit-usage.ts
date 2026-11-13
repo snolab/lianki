@@ -38,6 +38,7 @@ export type UsageGroup =
 /** Each metered feature id: its group and the page it was used on (none: no page to open). */
 export const FEATURES: Readonly<Record<string, { group: UsageGroup; href: string | null }>> = {
   "partner.reply": { group: "partner", href: "/chat/history" },
+  "chat.prepare": { group: "partner", href: "/chat/history" },
   "read.gloss": { group: "gloss", href: "/reader" },
   "read.polish": { group: "polish", href: "/reader" },
   "read.live-polish": { group: "polish", href: "/reader" },
@@ -56,6 +57,8 @@ export const FEATURES: Readonly<Record<string, { group: UsageGroup; href: string
   "blog.translate": { group: "translate", href: "/blog" },
   "words.import-ai": { group: "ai", href: "/words" },
   tts: { group: "voice", href: null },
+  // Li's read-aloud in a Google / Azure voice (lib/cloud-voices.ts): in the chat, no page of its own.
+  "voice.cloud": { group: "voice", href: null },
 };
 
 /** Every group, in the order the filter lists them. */

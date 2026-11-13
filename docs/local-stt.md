@@ -487,6 +487,7 @@ The voiceprint adds these (next section):
 | server | `{"t":"enrol"\|"voiceprint","rid","ok"[,"error"],…}`                                              | the answer to a request                                                  |
 | server | `final` + `"filtered":{reason,score}`, text empty                                                 | the filter stopped it: nothing decoded, no proof                         |
 | server | `final` + `"wouldFilter":reason`                                                                  | the filter is not on; it would have stopped this one                     |
+| server | `final` + `"parts":[{text,lang,startMs,audioMs,speaker,speakerProof},…]`                          | two speakers in it: one line per part ("Split at the speaker change")    |
 
 ## Voiceprint: "only my voice"
 
@@ -626,6 +627,9 @@ touches `~/lianki-voice-clips`.
 
 ### Voiceprint in your account
 
+(His voice-clone reference, his voice as audio for synthesis, is kept in the
+account separately and more strictly: [voice-clone.md](voice-clone.md).)
+
 The owner decided on 2026-11-10 (tap card, 23:31 JST): keep his voiceprint's
 **features** in Cloudflare under his own account as well, so a new Mac can
 get it back; then (23:33, 23:35 JST) the enrolment recordings too, in his My
@@ -730,6 +734,46 @@ devices' prints (`device` in the result says whose). The decision
 | ≥ 3 s               | 0.30            | 0.20          | unknown (`between`)   |
 | SNR < 10 dB (any)   | –               | –             | **unknown** (`noise`) |
 | nothing enrolled    | –               | –             | unknown (`no-print`)  |
+
+**Two speakers in one final.** A whole-final score averages everyone in it:
+half his wife, half him passed as `me` (owner, 2026-11-13). So a `me` final
+long enough for two windows is scored again in 2.5 s windows every 1.25 s
+(`WINDOW_S`, `WINDOW_HOP_S`), each decided alone by the table above; a
+window that is clearly `other` makes the final **unknown** (`mixed`). Windows
+too short or too noisy to decide are skipped. The final's `score` stays the
+whole-final one (the filter below reads it, unchanged); the window scores
+ride along as `windows` in the server's final, never in the signed tag.
+
+**Split at the speaker change** (owner, 2026-11-13 23:1x JST: two lines, each
+with its own tag, not one line marked unknown). The windows that decided form
+runs of one speaker; each cut is halfway through the overlap of the last
+window of one run and the first of the next (`voiceprint.split_points`), and
+only when every part has 1.5 s of speech (`MIN_SPEECH_S`); else the final
+stays one `mixed` line. `server.py` then reads each part on its own audio
+(`decode_final`) and checks each part on its own audio (`verify`), so his half
+gets his ✓ by itself, and sends one final with `parts`:
+
+```
+final {text: the parts joined, speaker: {unknown, mixed}, speakerProof: over that text,   ← a page without parts: one line, as before
+       parts: [{text, lang, startMs, audioMs, speaker, speakerProof}, …]}                ← each proof over that part's own text, uid "<uid>-p<i>"
+```
+
+The page (`local-stt.ts` `partsOf`, `mic.ts` `takeRuns`) uses the parts only
+when the text it kept is the Mac's as sent (no cloud fallback, no cleanup):
+before each part the draft so far goes out as its own line (`onBreak`,
+DebugChat `voiceBreak`; a draft with typed text in it is left alone), then the
+part's tag and proof are noted and its text lands. So the hub sees one line
+per speaker, each verified by its own proof (lib/speaker-proof.ts). Not after
+"Linky" (the cuts are in the whole audio, the text only after it): one `mixed`
+line there. Costs one more decode of the final's audio, only on these finals.
+
+**Merging keeps the speakers apart.** A split part never amends the line
+before it (`continues` is not asked for it). An agent's passage merge
+(`eval.ts edit --merge`, `passageSpeakers` in voice-merge.ts, the hub's
+`mergeRun`) refuses a run with any `other` line, and a run mixing a line
+verified as his with one that is not, so his ✓ never covers someone else's
+words. The live merge (`stt.merge`, `mergeVerdict`) already refuses `other`
+and gives a merged line the weakest tag of its parts.
 
 `me` is #394's threshold for 1 % false accepts over 109 other voices (real
 people, TTS in nine languages, the shop PA, voices in the background) at
@@ -1253,9 +1297,37 @@ sid, audioMs}`) and the hub books it to the ticket's account
   (`DebugSessions.bookStt`: `speech.stt.local`, at most 120 s per report, the
   `stt.local.costPerMinUsd` rate). The page does not book these itself.
 - A session counts until its signed length plus 60 s (checked when the hub
-  next counts; no timer), or until the page's signal socket closes; a worker
-  that goes away ends its pages (`{t:"end", reason:"worker-gone"}`), which go
-  on with the next route.
+  next counts; no timer), or until the page's signal socket closes.
+- **Routes that come and go** (2026-11-11, the owner travelling, servers going
+  down and up):
+  - **Heartbeat**: stt-peer sends `ping` every 15 s; the runtime answers
+    `pong` while the hub hibernates and keeps the time
+    (`setWebSocketAutoResponse`). A worker silent for `WORKER_SILENT_MS`
+    (45 s) is closed (4408) when next seen, never picked; stt-peer redials
+    when nothing came back for 35 s.
+  - **A worker's socket dropping** (a redeploy, a blip, its own redial) no
+    longer ends its pages: the sessions are peer to peer. Its pages hear
+    `{t:"worker-away"}`, then `{t:"worker-back"}` when it registers again;
+    stt-peer keeps its sessions across redials. A worker that is really gone
+    takes its peer connections with it, and the page takes the next route.
+  - **A page's signal socket dropping** (not closed by the page, code other
+    than 1000/1005) leaves the session resumable for `RESUME_GRACE_MS` (20 s;
+    storage `det:<sid>`). `ready` carries a `resume` token; the page reconnects
+    offering `lianki-stt2-resume, <sid>.<resume>` and gets
+    `{t:"ready", sid, resume, resumed:true}` (a fresh token; the old one is
+    spent), the same worker. Not back in time: the next signal sweeps it and
+    tells the worker `close`.
+  - **ICE restart**: a page's second offer on its session passes like the
+    first; stt-peer answers it on the same peer connection (`restart`), so the
+    DataChannel and the speech server's socket go on.
+  - **Lobby**: with `?lobby=1` and no worker free, the page gets a socket and
+    `{t:"wait"}` instead of a 503 (one per account); it is told
+    `{t:"available"}` and closed when a worker registers or a session ends.
+    Without `?lobby=1` (an older page): 503 as before.
+  - **Picking**: the account's own workers first, then a shared one; within
+    each, the one at the page's Cloudflare colo first (`x-lk-colo`, set by
+    lianki-push from `request.cf.colo`, a client's own dropped), then the
+    least loaded (sessions ÷ its limit).
 - **Adding a worker** (after the owner's tap card): `stt-peer keygen` on the
   server prints its public key; `bun scripts/local-stt/stt-worker-add.ts --id
 mac --name "…" --key <public key>` writes the row (wrangler d1, audited as
@@ -1354,6 +1426,64 @@ account id>` writes the `stt_worker` row with `owner_user_id` (the registry
 - **Comparing**: `rtc:lianki` alone vs the tailnet URL alone on the same
   phone, read from the devLog (`local-stt-final {firstPartialMs,
 endToFinalMs}`, `stt-route`).
+
+## Routes that come and go
+
+The owner's ask (2026-11-11 20:15 JST): work smoothly while he travels and
+while speech servers go down and come back. Four parts, each with tests
+(`unit/local-stt.test.ts`, `unit/public-stt.test.ts`,
+`unit/stt-registry.test.ts`, stt-peer's `go test`); the registry's side is
+under "Lianki's speech servers for everyone", "Routes that come and go":
+
+1. **The utterance in flight survives a dropped route** (`local-stt.ts`,
+   `Rec`). Every utterance keeps its frames (packed int16, ~1 MB for 30 s).
+   A socket that drops while the mic is on (`keep`) does not reject it: it
+   waits for the next route (an immediate race, past any backoff, since
+   speech is waiting) and is **replayed** there — begin, every frame, and its
+   pre-pad and end if it had ended — so partials go on and the final is
+   local. An utterance that had already ended waits `REPLAY_WAIT_MS`
+   (1.5 s) for that, then rejects and the cloud takes it (MicButton's
+   fallback sends the whole WAV, so no word is lost either way). Every route
+   failing rejects it at once. devLog: `local-stt {state:"replayed"}`,
+   `{state:"replay-timeout"}`. With the mic off (no `keep`) a drop rejects
+   at once, as before.
+2. **Changing networks** (`public-stt.ts` `rtc`). The WebRTC route stays
+   open through it: on `online` (always: the old path can look connected
+   for a while), on visible when not connected, on ICE `disconnected` for
+   `DISCONNECTED_GRACE_MS` (1 s; it often comes back by itself) and on
+   `failed`, an **ICE restart** — a new offer (`iceRestart`) on the same peer
+   connection, answered by the same worker, so the DataChannel and the
+   speech server's socket go on and the utterance in flight needs no replay.
+   Not connected within `RESTART_TIMEOUT_MS` (5 s), or failing again during
+   it: the route is lost, and part 1 replays the utterance on the next one.
+   The **signal socket** dropping (a network change kills it first) resumes
+   the same session with its `resume` token (`lianki-stt2-resume`), then
+   restarts ICE; a resume refused, or none back within `RESUME_GRACE_MS`
+   (20 s): the route is lost. devLog `stt-rtc {state: restart | restarted |
+resume | resumed | signal-dropped | worker-away | worker-back | lobby}`.
+3. **Workers going down and coming back**: stt-peer pings every 15 s and
+   keeps its sessions through registry blips; the registry skips a silent
+   worker and tells pages `worker-away` / `worker-back` (back while not
+   connected: a restart). **No worker free**: the page asks with `?lobby=1`;
+   the registry answers `wait`, the route fails at once (the cloud for now,
+   no 6 s wait) and that socket stays as the **lobby**; when a worker
+   registers or a session ends, it hears `available`, the page dispatches
+   `lk-stt-available`, and the mic (`watchPage` → `keep`'s reconnect, past
+   the backoff) races again — back on WebRTC with the next utterance, or the
+   one in flight if it is still held.
+4. **Several workers**: the account's own first, then the one at the page's
+   Cloudflare colo, then the least loaded (sessions ÷ its limit).
+5. **A spare session** (`spareSessions`): lianki.com's session answer took
+   1.4–3.5 s on 2026-11-11 (the main Worker's own time to first byte, not the
+   network), and a failover race should not wait for it. After the WebRTC
+   route takes a session, one more is fetched and kept; the next race uses
+   it at once if at least `SPARE_MIN_LEFT_MS` (15 s) of its 60 s ticket is
+   left. Never refreshed on a timer, so an idle page mints no tickets
+   (`stt.worker.ticketsPerMin` is 6).
+
+Live audio out (Li speaking over the same channel) is kept open: server →
+page binary frames would carry their own tag (3), and `ready` would name the
+capability.
 
 ## WebRTC
 
@@ -1454,3 +1584,27 @@ everyone" above), not aiortc.
 - `server.py` logs each connection, each final (length and decode time,
   never the text) and every refused handshake (a wrong Origin) through the
   `websockets` logger.
+
+## On-demand Whisper recheck
+
+Each WebSocket keeps up to 60 seconds of its received 16 kHz PCM in a fixed
+float32 RAM ring (3.84 MB). No audio file or transcript log is created. The
+ring survives utterance end/cancel, evicts its oldest samples as frames arrive,
+and is cleared on disconnect. This is 60 seconds of received audio, excluding
+unstreamed gaps, rather than 60 seconds of wall time. VAD pre-pad is inserted
+before the current utterance's frames. Connections never share cached audio.
+Enrolment audio and audio captured with the voiceprint filter enabled are
+excluded; changing the filter or beginning enrolment clears the ring.
+
+Send `{"t":"recheck","rid":"request-id","engine":"mlx-whisper","seconds":15}`
+to re-read the latest received audio (default 15 seconds; greater than zero,
+at most 60). `rid` correlates the response; it does not select an utterance.
+The response is `{"t":"recheck_result","rid":"request-id","engine":"mlx-whisper",
+"ok":true,"text":"…","lang":"zh","audioMs":15000}` or `ok:false` with an
+`error`. Recheck is unavailable while filtering or enrolling. One recheck per
+socket may run at a time; further requests receive `recheck busy`. Whisper
+uses a dedicated serial worker, leaving audio reception and ping responsive.
+The server prewarms it on startup, except with `--engine fake`; warmup failure
+leaves SenseVoice available and a later recheck retries loading Whisper.
+Tests: `unit/local-stt-recheck.test.ts` runs `scripts/local-stt/test_recheck.py`
+with stub engines, without downloading or running a model.

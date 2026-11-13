@@ -51,7 +51,9 @@ no third-party API key. Non-streaming in v1.
 - **Flag on**: every signed-in non-owner gets the same chat widget on every
   page, without debug mode (the layout checks the flag first and only then the
   session; a guest never opens the socket). Remote eval still needs debug
-  mode on that device. The owner's pages are unchanged.
+  mode on that device. The owner's pages are unchanged. The chat cannot be
+  closed, only folded, and a "Learning Partner" row in the sidebar and the
+  phone drawer opens it (docs/dev-debug-widget.md, "Always findable").
 - **The owner, never.** Three checks: the hub routes only non-owner threads
   (the thread comes from the session the main Worker verified on connect);
   the RPC looks the user up by id and refuses an account holding `dev`;

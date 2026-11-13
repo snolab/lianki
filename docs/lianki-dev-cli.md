@@ -91,6 +91,15 @@ lianki-dev <command> --help
   for a human at the terminal, and a usage error with a lane set. With no
   saved grant a command exits 2 before opening a socket.
 - Never `--quiet` by default; pass it yourself for an FYI line.
+- **Cutting in** (owner, 2026-11-13): `say --supersede` (打断) when your new
+  line makes your earlier ones moot: on his page your line being read stops,
+  your unread lines are dropped and this one is read; other lanes are
+  untouched. `say --interject` (插嘴) when it is urgent but the earlier lines
+  still matter: the line being read (any lane) pauses, this one is read, then
+  the paused one goes on; nothing is dropped. One of the two; both work on
+  the grant path and with `LIANKI_TOKEN` (`lianki chat say --supersede`).
+  Only lines arriving live cut in, never history; every line stays in the
+  log ([dev-debug-widget.md](dev-debug-widget.md), "Supersede and interject").
 
 ## `lianki chat`: a lane's own token (owner decision 2026-11-07)
 

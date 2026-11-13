@@ -1221,6 +1221,17 @@ html[data-embed] .lk-statusbar {
   -webkit-backdrop-filter: blur(12px) saturate(1.4);
   backdrop-filter: blur(12px) saturate(1.4);
 }
+/* The folded rail's floating handle (AppShell RailToggle), shown once the top
+ * bar has scrolled away: at the top start, under what is left of the bar,
+ * and inset from the screen edge so a tap never lands in Android's back
+ * strip (design-principles.md, "Edge gestures"). */
+.lk-rail-handle {
+  top: calc(max(var(--lk-head-vis, 0px), env(safe-area-inset-top)) + 0.5rem);
+  inset-inline-start: var(--lk-edge-l, 1.5rem);
+}
+[dir="rtl"] .lk-rail-handle {
+  inset-inline-start: var(--lk-edge-r, 1.5rem);
+}
 @media (min-width: 48rem) and (max-width: 79.99rem) {
   .lk-rail {
     position: static;
@@ -1291,7 +1302,10 @@ html[data-embed] .lk-statusbar {
   --lk-lang-top: calc(env(safe-area-inset-top) + 3.5rem + 0.5rem);
   --lk-lang-bottom: calc(max(env(safe-area-inset-bottom), var(--lk-bottom-reserve, 0px)) + 0.5rem);
   top: var(--lk-lang-top);
-  inset-inline: calc(0.75rem + env(safe-area-inset-left)) calc(0.75rem + env(safe-area-inset-right));
+  /* Clear of the Li chat docked as a sidebar (--lk-chat-side, full-screen.ts): the sheet
+   * sat under it on a computer (owner, 2026-11-14). */
+  inset-inline: calc(0.75rem + env(safe-area-inset-left))
+    calc(0.75rem + env(safe-area-inset-right) + var(--lk-chat-side, 0px));
   max-height: calc(100vh - var(--lk-lang-top) - var(--lk-lang-bottom));
   max-height: calc(100dvh - var(--lk-lang-top) - var(--lk-lang-bottom));
   box-shadow: 0 12px 40px oklch(0 0 0 / 0.22);

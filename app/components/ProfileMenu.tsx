@@ -116,7 +116,7 @@ export function ProfileMenu({
           onClick={(e) => {
             if ((e.target as Element).closest("a")) setOpen(false);
           }}
-          className={`absolute w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50 ${
+          className={`absolute w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-[var(--lk-z-chat-modal)] ${
             foot ? "bottom-full start-0 mb-2" : "end-0 mt-2"
           }`}
         >

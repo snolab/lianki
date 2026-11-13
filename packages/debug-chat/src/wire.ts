@@ -122,6 +122,15 @@ export type ChatMessage = {
    */
   quiet?: true;
   /**
+   * An agent line sent with `say --supersede` or `--interject`: how its
+   * reading cuts into the one under way when it arrives live (voice.ts).
+   * "supersede": the same lane's line being read stops and that lane's
+   * unread lines go. "interject": the line being read pauses, this one is
+   * read next, then the paused one goes on. Shown as usual; history never
+   * triggers it. The hub refuses any other value.
+   */
+  cut?: "supersede" | "interject";
+  /**
    * The lane an agent line is from (voices.ts LANES: "main", "codex",
    * "agy"; `say --lane`): its avatar, name tag and voice. Absent = a
    * `【lane】` prefix in the text says it, else none (looks as before).
@@ -249,9 +258,11 @@ export type MergedPart = {
 export const MAX_EDITS = 3;
 /**
  * How far back the agent may polish or summarise: any of the owner's last
- * EDITABLE_LINES lines in the owner thread (not only the latest).
+ * EDITABLE_LINES lines in the owner thread (not only the latest). 15, up from
+ * 5 (2026-11-14): with two mics open and room echoes his lines ran past 5
+ * before a lane could answer.
  */
-export const EDITABLE_LINES = 5;
+export const EDITABLE_LINES = 15;
 /**
  * A run of the owner's voice lines the agent summarised (room talk, someone
  * else speaking): on the run's first line, which shows the summary; the others
@@ -454,6 +465,8 @@ export function avatarColors(seed: string): { bg: string; fg: string; hue: numbe
 
 /** What the hub tells pages: the pairing waiting for an answer, and the approved sessions. */
 export type PairInfo = {
+  /** Explicit remembered account/device trust; until remains only a finite execution lease. */
+  persistent?: boolean;
   pair: string;
   code: string;
   label: string;
@@ -462,6 +475,13 @@ export type PairInfo = {
   scope?: Scope;
   /** The page ids an approved pairing reaches; absent = all this audience's pages. */
   pages?: string[];
+  /**
+   * An eval request: how long Allow lasts (the hub's live config,
+   * `debug.evalGrantHours`); absent from an older hub = 8 hours.
+   */
+  grantMs?: number;
+  /** An eval request whose Allow covers every page of the owner (`debug.evalGrantPages` "all"). */
+  allPages?: boolean;
 };
 
 /** An open debug page: its socket's id, current label (path…), and when it connected. */
@@ -533,12 +553,51 @@ export function pageParts(label: string): { path: string; device: string } {
   };
 }
 
-/** What Allow grants, in one sentence (the requester declared its scope when it knocked). */
-export function pairSentence(p: Pick<PairInfo, "label" | "scope">, friend: boolean): string {
+/** The words for an eval grant's sentence (UiStrings pairEval…grantDays; English when absent). */
+export type GrantWords = {
+  pairEval: string;
+  pairEvalAll: string;
+  grantHour: string;
+  grantHours: string;
+  grantDays: string;
+};
+const GRANT_EN: GrantWords = {
+  pairEval: "{label} wants to run code on your pages for {time}.",
+  pairEvalAll: "{label} wants to run code on all your pages, on every device, for {time}.",
+  grantHour: "1 hour",
+  grantHours: "{n} hours",
+  grantDays: "{n} days",
+};
+/** An eval grant from a hub that does not say its length: 8 hours. */
+const DEFAULT_GRANT_MS = 8 * 60 * 60_000;
+
+/**
+ * A grant length for people: whole days from 2 days up ("30 days"), else
+ * hours ("8 hours", "1 hour"), from the localized patterns (`{n}` is the number).
+ */
+export function grantLength(ms: number, w: GrantWords = GRANT_EN): string {
+  const hours = Math.max(1, Math.round(ms / 3_600_000));
+  if (hours === 1) return w.grantHour;
+  if (hours >= 48 && hours % 24 === 0) return w.grantDays.replaceAll("{n}", String(hours / 24));
+  return w.grantHours.replaceAll("{n}", String(hours));
+}
+
+/**
+ * What Allow grants, in one sentence (the requester declared its scope when it
+ * knocked; an eval request carries the grant's length and page scope from the
+ * hub's live config).
+ */
+export function pairSentence(
+  p: Pick<PairInfo, "label" | "scope" | "grantMs" | "allPages">,
+  friend: boolean,
+  w: GrantWords = GRANT_EN,
+): string {
   if (friend) return `${p.label} wants to preview a change on this page for 1 hour.`;
-  return p.scope === "chat"
-    ? `${p.label} wants to chat with you for 30 days.`
-    : `${p.label} wants to run code on your pages for 8 hours.`;
+  if (p.scope === "chat") return `${p.label} wants to chat with you for 30 days.`;
+  const ms = typeof p.grantMs === "number" && p.grantMs > 0 ? p.grantMs : DEFAULT_GRANT_MS;
+  return (p.allPages ? w.pairEvalAll : w.pairEval)
+    .replaceAll("{label}", p.label)
+    .replaceAll("{time}", grantLength(ms, w));
 }
 
 /** The pairing modal's Allow button, for the pages ticked. */
@@ -857,6 +916,10 @@ export type ChatStrings = {
   etaDone: string;
   /** Screen-reader label and tooltip of the progress bar above the chat input (and of the expand button on the task list in the state tree): tapping it opens a full-screen timeline (a Gantt chart) of every task with its own bar and time left. Imperative verb phrase. */
   etaOpen: string;
+  /** Screen-reader label and tooltip of the small ▾ button at the end of the progress bar above the chat input: hides the bar, leaving only a small ▸ with a clock, so more of the chat shows. Imperative verb phrase, short. */
+  etaHide: string;
+  /** Screen-reader label and tooltip of that small ▸ button (with a clock) left where the hidden progress bar above the chat input was: shows the bar again. Imperative verb phrase, short. */
+  etaShow: string;
   /** Screen-reader label and tooltip of the × button at the top of the full-screen task timeline (a Gantt chart of the assistant's tasks): closes the timeline and returns to the chat. Imperative verb phrase, very short. */
   etaGanttClose: string;
   /** Screen-reader label of a small two-button switch in the header of the full-screen task timeline (a Gantt chart of the assistant's tasks): it chooses how the time axis is drawn, evenly (linear) or compressed further from now (logarithmic). Short noun phrase, no full stop. */
@@ -1054,6 +1117,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaReached: "ETA reached",
   etaDone: "done",
   etaOpen: "Show all tasks on a full-screen timeline",
+  etaHide: "Hide the task bar",
+  etaShow: "Show the task bar",
   etaGanttClose: "Close the timeline",
   etaGanttScale: "Time axis",
   etaGanttLinear: "Linear",

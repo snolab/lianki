@@ -15,10 +15,14 @@ import {
 export async function boxServerGetSession(headers: Headers | undefined) {
   const config = boxConfig();
   if (!config || !headers) return null;
-  const account = await boxServerAccount(boxAccessFromCookies(headers.get("cookie")), {
-    provider: config.provider,
-    origin: boxOriginFromEnv(),
-  });
+  const account = await boxServerAccount(
+    headers.get("authorization")?.match(/^Bearer (lkb_[A-Za-z0-9_-]{16,256})$/)?.[1] ??
+      boxAccessFromCookies(headers.get("cookie")),
+    {
+      provider: config.provider,
+      origin: boxOriginFromEnv(),
+    },
+  );
   if (!account) return null;
   // isAdmin()/isDev() answer from a snapshot (lib/permissions.ts). On a box it
   // is lianki.com's answer for this one account (/api/box/me), never the box's

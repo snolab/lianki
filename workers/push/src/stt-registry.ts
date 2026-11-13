@@ -23,6 +23,18 @@
  *                                 ticket goes on to the worker, whose speech
  *                                 server checks it again (ticket.py).
  *
+ * Routes that come and go (docs/local-stt.md): a worker pings ("ping" → "pong",
+ * answered by the runtime while the hub sleeps) and one silent for WORKER_SILENT_MS is
+ * closed when next seen; a worker's own socket dropping (a redeploy, a blip) does not
+ * end its sessions (they are peer to peer), its pages only hear `worker-away` and
+ * `worker-back`. A page's signal socket that drops (not closed by the page) leaves its
+ * session resumable for RESUME_GRACE_MS: the page reconnects with
+ * "lianki-stt2-resume, <sid>.<resume>" and goes on (an ICE restart's offer passes as
+ * any offer). With `?lobby=1` and no worker free, the page waits on a lobby socket
+ * instead of a 503, and is told `available` when a worker registers or room frees.
+ * Workers are picked: the account's own first, then by same Cloudflare colo as the
+ * page, then by load (sessions ÷ capacity).
+ *
  * Both answer 404 while the flag is off (index.ts checks it before the hub).
  * Usage the worker reports ({t:"usage", sid, audioMs}) is booked to the
  * ticket's account as `speech.stt.local` (DebugSessions.bookStt): the page
@@ -50,6 +62,15 @@ const SESSION_GRACE_MS = 60_000;
 const CACHE_MS = 30_000;
 /** The biggest signalling message passed on (an SDP is a few KB). */
 const MAX_MSG = 64 * 1024;
+/** A worker that has not pinged for this long is closed when next seen (stt-peer pings every 15 s). */
+export const WORKER_SILENT_MS = 45_000;
+/** A page's dropped signal socket may resume its session for this long. */
+export const RESUME_GRACE_MS = 20_000;
+export const STT_RESUME_SUBPROTOCOL = "lianki-stt2-resume";
+/** The colo the push Worker saw the request at (index.ts sets it; a client's own is dropped). */
+export const COLO_HEADER = "x-lk-colo";
+const PING = "ping";
+const PONG = "pong";
 
 type Socket = WebSocket & {
   serializeAttachment?(v: unknown): void;
@@ -65,7 +86,10 @@ type State = {
   acceptWebSocket(ws: Socket, tags?: string[]): void;
   getWebSockets(tag?: string): Socket[];
   storage: Storage;
+  setWebSocketAutoResponse?(pair?: unknown): void;
+  getWebSocketAutoResponseTimestamp?(ws: Socket): Date | null;
 };
+type PairCtor = new (req: string, res: string) => unknown;
 declare const WebSocketPair: { new (): { 0: Socket; 1: Socket } };
 
 /** The main Worker's answers (worker.ts DebugSessions). */
@@ -78,7 +102,14 @@ export type SttSessions = {
 export type SttEnv = { SESSIONS?: SttSessions; PARTNER_TICKET_PUB?: string };
 
 type WorkerRow = { id: string; ownerUserId: string | null; capacity: number | null };
-type WorkerTag = { role: "worker"; nonce: string; at: number; w?: WorkerRow; key?: string };
+type WorkerTag = {
+  role: "worker";
+  nonce: string;
+  at: number;
+  w?: WorkerRow;
+  key?: string;
+  colo?: string;
+};
 type PageTag = {
   role: "page";
   sid: string;
@@ -86,8 +117,13 @@ type PageTag = {
   worker: string;
   until: number;
   ticket: string;
+  /** What a dropped signal socket shows to resume this session. */
+  resume?: string;
 };
-type Tag = WorkerTag | PageTag;
+type LobbyTag = { role: "lobby"; sub: string; until: number };
+type Tag = WorkerTag | PageTag | LobbyTag;
+/** A session whose signal socket dropped: resumable until `at` + RESUME_GRACE_MS. */
+type Detached = PageTag & { at: number };
 
 const tagOf = (ws: Socket): Tag | null => {
   try {
@@ -160,7 +196,12 @@ export class SttRegistry {
     private ctx: State,
     private env: SttEnv,
     private now: () => number = Date.now,
-  ) {}
+  ) {
+    // Workers ping; the runtime answers while the hub hibernates, and keeps the time.
+    const Pair = (globalThis as { WebSocketRequestResponsePair?: PairCtor })
+      .WebSocketRequestResponsePair;
+    if (Pair) ctx.setWebSocketAutoResponse?.(new Pair(PING, PONG));
+  }
 
   /** A config value (number), read through the main Worker and kept 30 s; the default on failure. */
   private async num(key: string, dflt: number): Promise<number> {
@@ -179,10 +220,36 @@ export class SttRegistry {
     const out: { ws: Socket; t: WorkerTag & { w: WorkerRow } }[] = [];
     for (const ws of this.ctx.getWebSockets("worker")) {
       const t = tagOf(ws) as WorkerTag | null;
-      if (t?.w) out.push({ ws, t: t as WorkerTag & { w: WorkerRow } });
-      else if (t && this.now() - t.at > AUTH_GRACE_MS) close(ws, 4401, "no auth");
+      if (t?.w) {
+        // Silent too long (a worker that pings, gone without a close): closed, it redials.
+        const last = this.ctx.getWebSocketAutoResponseTimestamp?.(ws)?.getTime();
+        if (last !== undefined && this.now() - last > WORKER_SILENT_MS) {
+          close(ws, 4408, "silent");
+          continue;
+        }
+        out.push({ ws, t: t as WorkerTag & { w: WorkerRow } });
+      } else if (t && this.now() - t.at > AUTH_GRACE_MS) close(ws, 4401, "no auth");
     }
     return out;
+  }
+
+  /** Pages waiting for a worker are told one may be free now (they race again). */
+  private wakeLobby() {
+    for (const ws of this.ctx.getWebSockets("lobby")) {
+      send(ws, { t: "available" });
+      close(ws, 1000, "available");
+    }
+  }
+
+  /** Sessions whose page did not come back in time: their worker is told to close them. */
+  private async sweep() {
+    const old = await this.ctx.storage.list<Detached>({ prefix: "det:", limit: 50 });
+    for (const [k, d] of old) {
+      if (this.now() - d.at <= RESUME_GRACE_MS && d.until > this.now()) continue;
+      await this.ctx.storage.delete(k);
+      const w = this.workerById(d.worker);
+      if (w) send(w, { t: "close", sid: d.sid });
+    }
   }
 
   /** Live page sessions with this tag; one past its signed length is closed now. */
@@ -222,7 +289,13 @@ export class SttRegistry {
       const pair = new WebSocketPair();
       const nonce = rand(24);
       this.ctx.acceptWebSocket(pair[1], ["worker"]);
-      pair[1].serializeAttachment?.({ role: "worker", nonce, at: this.now() } satisfies WorkerTag);
+      const colo = req.headers.get(COLO_HEADER) ?? undefined;
+      pair[1].serializeAttachment?.({
+        role: "worker",
+        nonce,
+        at: this.now(),
+        ...(colo ? { colo } : {}),
+      } satisfies WorkerTag);
       send(pair[1], { t: "challenge", nonce });
       return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
     }
@@ -236,8 +309,13 @@ export class SttRegistry {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+    await this.sweep();
+    if (offered.length === 2 && offered[0] === STT_RESUME_SUBPROTOCOL)
+      return this.resume(offered[1]);
     if (offered.length !== 2 || offered[0] !== STT_V2_SUBPROTOCOL || !this.env.PARTNER_TICKET_PUB)
       return new Response(null, { status: 401 });
+    const lobby = new URL(req.url).searchParams.get("lobby") === "1";
+    const colo = req.headers.get(COLO_HEADER) ?? undefined;
     const ticket = offered[1];
     let payload;
     try {
@@ -258,17 +336,44 @@ export class SttRegistry {
     const cap = await this.num("stt.worker.macCapacity", 3);
     const reserved = await this.num("stt.worker.macReserved", 1);
     const workers = this.workers();
-    const room = (w: WorkerRow, shared: boolean) =>
-      this.pages(`w:${w.id}`).length < Math.max(0, (w.capacity ?? cap) - (shared ? reserved : 0));
-    // The account's own worker first (later: a user's own Mac), then a shared one.
-    const own = workers.find(({ t }) => t.w.ownerUserId === sub && room(t.w, false));
+    const limit = (w: WorkerRow, shared: boolean) =>
+      Math.max(0, (w.capacity ?? cap) - (shared ? reserved : 0));
+    const load = (w: WorkerRow) => this.pages(`w:${w.id}`).length;
+    const room = (w: WorkerRow, shared: boolean) => load(w) < limit(w, shared);
+    // Nearest first (the page and the worker at the same Cloudflare colo), then the least loaded.
+    const order = (shared: boolean) => (a: { t: WorkerTag & { w: WorkerRow } }, b: typeof a) =>
+      Number(!!colo && b.t.colo === colo) - Number(!!colo && a.t.colo === colo) ||
+      load(a.t.w) / Math.max(1, limit(a.t.w, shared)) -
+        load(b.t.w) / Math.max(1, limit(b.t.w, shared));
+    // The account's own workers first (its own Mac), then a shared one.
+    const own = workers
+      .filter(({ t }) => t.w.ownerUserId === sub && room(t.w, false))
+      .sort(order(false))[0];
     const shared = workers
       .filter(({ t }) => t.w.ownerUserId === null && room(t.w, true))
-      .sort((a, b) => this.pages(`w:${a.t.w.id}`).length - this.pages(`w:${b.t.w.id}`).length)[0];
+      .sort(order(true))[0];
     const pick = own ?? shared;
+    if (!pick && lobby) {
+      // No worker free: the page waits here (the cloud meanwhile) and hears when one is.
+      for (const o of this.ctx.getWebSockets(`lobby:${sub}`)) close(o, 4409, "replaced");
+      const pair = new WebSocketPair();
+      this.ctx.acceptWebSocket(pair[1], ["lobby", `lobby:${sub}`]);
+      pair[1].serializeAttachment?.({
+        role: "lobby",
+        sub,
+        until: this.now() + payload.lim.sess * 1000,
+      } satisfies LobbyTag);
+      send(pair[1], { t: "wait" });
+      return new Response(null, {
+        status: 101,
+        webSocket: pair[0],
+        headers: { "sec-websocket-protocol": STT_V2_SUBPROTOCOL },
+      } as ResponseInit);
+    }
     if (!pick) return new Response(null, { status: 503 });
 
     const sid = rand(18);
+    const resume = rand(24);
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1], ["page", `sub:${sub}`, `w:${pick.t.w.id}`, `sid:${sid}`]);
     pair[1].serializeAttachment?.({
@@ -278,12 +383,38 @@ export class SttRegistry {
       worker: pick.t.w.id,
       until: this.now() + payload.lim.sess * 1000 + SESSION_GRACE_MS,
       ticket,
+      resume,
     } satisfies PageTag);
-    send(pair[1], { t: "ready", sid });
+    send(pair[1], { t: "ready", sid, resume });
     return new Response(null, {
       status: 101,
       webSocket: pair[0],
       headers: { "sec-websocket-protocol": STT_V2_SUBPROTOCOL },
+    } as ResponseInit);
+  }
+
+  /**
+   * A page back after its signal socket dropped ("<sid>.<resume>"): the same session,
+   * the same worker, a fresh resume token. Else 401, and the page starts anew.
+   */
+  private async resume(cred: string): Promise<Response> {
+    const [sid, token] = cred.split(".");
+    if (!sid || !token || !SID_RE.test(sid)) return new Response(null, { status: 401 });
+    const k = `det:${sid}`;
+    const d = await this.ctx.storage.get<Detached>(k);
+    if (!d || d.resume !== token || this.now() - d.at > RESUME_GRACE_MS || d.until <= this.now())
+      return new Response(null, { status: 401 });
+    await this.ctx.storage.delete(k);
+    const { at: _at, ...t } = d;
+    const resume = rand(24);
+    const pair = new WebSocketPair();
+    this.ctx.acceptWebSocket(pair[1], ["page", `sub:${t.sub}`, `w:${t.worker}`, `sid:${sid}`]);
+    pair[1].serializeAttachment?.({ ...t, resume } satisfies PageTag);
+    send(pair[1], { t: "ready", sid, resume, resumed: true });
+    return new Response(null, {
+      status: 101,
+      webSocket: pair[0],
+      headers: { "sec-websocket-protocol": STT_RESUME_SUBPROTOCOL },
     } as ResponseInit);
   }
 
@@ -318,7 +449,11 @@ export class SttRegistry {
       // One socket per worker: a reconnect replaces the old one.
       for (const o of this.workers()) if (o.t.w.id === row.id) close(o.ws, 4409, "replaced");
       ws.serializeAttachment?.({ ...t, w: row, key: m.key } satisfies WorkerTag);
-      return send(ws, { t: "registered", id: row.id });
+      send(ws, { t: "registered", id: row.id });
+      // Its sessions go on (peer to peer): their pages hear it is back for signalling.
+      for (const p of this.pages(`w:${row.id}`)) send(p.ws, { t: "worker-back" });
+      this.wakeLobby();
+      return;
     }
     const sid = typeof m.sid === "string" && SID_RE.test(m.sid) ? m.sid : null;
     const p = sid ? this.page(sid) : null;
@@ -346,22 +481,30 @@ export class SttRegistry {
     else if (m.t === "ice") send(w, { t: "ice", sid: t.sid, candidate: m.candidate ?? null });
   }
 
-  webSocketClose(ws: Socket, code: number) {
+  async webSocketClose(ws: Socket, code: number) {
     const t = tagOf(ws);
     if (t?.role === "page") {
-      const w = this.workerById(t.worker);
-      if (w) send(w, { t: "close", sid: t.sid });
-    } else if (t?.role === "worker" && t.w) {
-      // Its pages go on with the next route (the WSS tunnel or the cloud).
-      for (const p of this.pages(`w:${t.w.id}`)) {
-        send(p.ws, { t: "end", reason: "worker-gone" });
-        close(p.ws, 1012, "worker gone");
+      if (code === 1000 || code === 1005 || t.until <= this.now()) {
+        // The page ended it.
+        const w = this.workerById(t.worker);
+        if (w) send(w, { t: "close", sid: t.sid });
+        this.wakeLobby(); // room freed
+      } else {
+        // Dropped (a network change): resumable for a while; the worker keeps the session.
+        await this.ctx.storage.put(`det:${t.sid}`, { ...t, at: this.now() } satisfies Detached);
       }
+    } else if (t?.role === "worker" && t.w) {
+      // Its sessions are peer to peer and go on; if the worker is really gone, they fail
+      // on their own and the page takes the next route. Signalling waits for it. (A
+      // socket replaced by the worker's own redial: it is back already.)
+      const id = t.w.id;
+      if (!this.workers().some((o) => o.ws !== ws && o.t.w.id === id))
+        for (const p of this.pages(`w:${id}`)) send(p.ws, { t: "worker-away" });
     }
     close(ws, code === 1005 ? 1000 : code, "");
   }
 
-  webSocketError(ws: Socket) {
-    this.webSocketClose(ws, 1011);
+  async webSocketError(ws: Socket) {
+    await this.webSocketClose(ws, 1011);
   }
 }

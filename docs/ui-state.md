@@ -97,8 +97,8 @@ target that is not built yet.
 | /reader word review open (what it covers)         | URL `?review=p<line>` · `?review=r<l0>.<t0>-<l1>.<t1>` (lib/read/review-ref.ts)          | done (owner, 2026-11-05): refresh, Back / Forward and a link open it again; the reader's deep-link addresses, stable across reloads                      |
 | /reader word review: card in focus, list scroll   | session `lk:ui:words` `focus` / `anchors`, key `review:<book>:<ref>`                     | done: a refresh lands on the same card while it is still in the review                                                                                   |
 | /reader word review: rows' meanings, translations | memory, per tab (`glossed`, `translated`); the server's caches behind them               | done: asked when near the screen, never stored as UI state (lib/read/review-row-fill.ts)                                                                 |
-| any list's scroll position (VirtualList)         | session `lk:ui:list:<name>`: the id of the row at the viewport centre                    | done (owner, 2026-11-10): restored by scrolling that id back to the centre, loading batches until it shows; never a pixel offset or an index              |
-| sidebar collapsed                                 | local `lk:sidebar`                                                                       | → `lk:pref:sidebar`                                                                                                                                      |
+| any list's scroll position (VirtualList)          | session `lk:ui:list:<name>`: the id of the row at the viewport centre                    | done (owner, 2026-11-10): restored by scrolling that id back to the centre, loading batches until it shows; never a pixel offset or an index             |
+| sidebar collapsed (rail folded away)              | local `lk:pref:sidebar` (`railUi`, lib/nav/rail-store.ts)                                | done (owner, 2026-11-11): per device; folded, the rail is gone and `--nav-w` is 0; the first shell's `lk:sidebar` is carried over once                   |
 | phone drawer open                                 | memory, `navUi` (lib/nav/ui-store.ts)                                                    | done: the bottom island opens it too                                                                                                                     |
 | recent pages (nav)                                | session `lk:ui:nav`                                                                      | done                                                                                                                                                     |
 | pinned pages (nav)                                | local `lk:pref:nav-pins`                                                                 | done                                                                                                                                                     |
@@ -107,21 +107,22 @@ target that is not built yet.
 
 ### Chat widget (packages/debug-chat, another lane)
 
-| State                               | Where                                                          | Status                                                                                                   |
-| ----------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| bar position                        | local `lk:debug-chat-pos`                                      | → session `lk:ui:chat` (per tab)                                                                         |
-| chat open, full-screen log          | local `lk:debug-chat-open`                                     | → session `lk:ui:chat`                                                                                   |
-| tree level / expanded node          | —                                                              | → session `lk:ui:chat`                                                                                   |
-| chat scroll, draft                  | —                                                              | → session `lk:ui:chat` (draft text is UI, not a message)                                                 |
-| mic on                              | local `lk:agent:mic`                                           | → session (a mic should not reopen in a new tab by itself)                                               |
-| voice-clip recording (on, sink)     | the hub, per window session; session `lk:ui:clips` (its id)    | done (dev-debug-widget.md, "Recording")                                                                  |
-| speech rate, voice out, echo cancel | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec`   | → `lk:pref:chat-voice`                                                                                   |
-| voice cues: send, speech start/end  | local `lk:voice-cue-send`, `lk:voice-cue-speech` → account     | done: chat ⋯ menu, on by default (voice-mode.md, "Cues")                                                 |
-| compact mode (last message only)    | local `lk:pref:chat-view` (`chatPrefs`, off by default)        | done: per device, never synced                                                                           |
-| Gantt time axis: log or linear      | local `lk:pref:gantt` (`ganttPrefs`, log by default)           | done: per device, never synced (owner, 2026-11-09 15:27 JST)                                             |
-| Gantt categories open (▸/▾)         | session `lk:ui:gantt-groups` (`ganttGroupsUi`, all folded)     | done: this tab; the Gantt and the task list share it (dev-debug-widget.md, "Categories")                 |
-| full screen                         | local `lk:pref:chat-view` `full` (`chatPrefs`, off by default) | done: per device, never synced; the button, Escape or Back leave it (dev-debug-widget.md, "Full screen") |
-| tucked into the edge, which edge    | local `lk:pref:chat-fold` (`chatFold`, fold.ts)                | done: per device, never synced                                                                           |
+| State                               | Where                                                                 | Status                                                                                                   |
+| ----------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| bar position                        | local `lk:debug-chat-pos`                                             | → session `lk:ui:chat` (per tab)                                                                         |
+| chat open, full-screen log          | local `lk:debug-chat-open`                                            | → session `lk:ui:chat`                                                                                   |
+| tree level / expanded node          | —                                                                     | → session `lk:ui:chat`                                                                                   |
+| chat scroll, draft                  | —                                                                     | → session `lk:ui:chat` (draft text is UI, not a message)                                                 |
+| mic on                              | local `lk:agent:mic`                                                  | → session (a mic should not reopen in a new tab by itself)                                               |
+| voice-clip recording (on, sink)     | the hub, per window session; session `lk:ui:clips` (its id)           | done (dev-debug-widget.md, "Recording")                                                                  |
+| speech rate, voice out, echo cancel | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec`          | → `lk:pref:chat-voice`                                                                                   |
+| voice cues: send, speech start/end  | local `lk:voice-cue-send`, `lk:voice-cue-speech` → account            | done: chat ⋯ menu, on by default (voice-mode.md, "Cues")                                                 |
+| compact mode (last message only)    | local `lk:pref:chat-view` (`chatPrefs`, off by default)               | done: per device, never synced                                                                           |
+| Gantt time axis: log or linear      | local `lk:pref:gantt` (`ganttPrefs`, log by default)                  | done: per device, never synced (owner, 2026-11-09 15:27 JST)                                             |
+| Gantt categories open (▸/▾)         | session `lk:ui:gantt-groups` (`ganttGroupsUi`, all folded)            | done: this tab; the Gantt and the task list share it (dev-debug-widget.md, "Categories")                 |
+| full screen                         | local `lk:pref:chat-view` `full` (`chatPrefs`, off by default)        | done: per device, never synced; the button, Escape or Back leave it (dev-debug-widget.md, "Full screen") |
+| ETA task bar hidden (▸/▾)           | local `lk:pref:chat-view` `etaFolded` (`chatPrefs`, shown by default) | done: per device, never synced (dev-debug-widget.md, "Hiding the bar")                                   |
+| tucked into the edge, which edge    | local `lk:pref:chat-fold` (`chatFold`, fold.ts)                       | done: per device, never synced                                                                           |
 
 ### Cards and the swipe
 
@@ -154,13 +155,13 @@ target that is not built yet.
 
 ### Appearance and language
 
-| State                | Where                                                                 | Status                                                                                        |
-| -------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| theme (light / dark) | the system (`prefers-color-scheme`)                                   | → `lk:pref:theme` if a switch is added                                                        |
-| language             | intlayer, as today                                                    | stays                                                                                         |
-| font size            | account `lk:pref:text-size` (`ui`, `chat`, `cards`; lib/text-size.ts) | done: /my/preferences and /words Settings → Text size; `--lk-fs-*` on `<html>` set before paint  |
-| animations off       | local `lk:pref:motion` (`system` until chosen; lib/motion-pref.ts)    | done: /words Settings → Turn off animations; `<html data-motion="off">` set before paint      |
-| paper texture        | local `lk:paper`                                                      | stays a plain key: app/layout.tsx reads it in an inline script before paint, to avoid a flash |
+| State                | Where                                                                 | Status                                                                                          |
+| -------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| theme (light / dark) | the system (`prefers-color-scheme`)                                   | → `lk:pref:theme` if a switch is added                                                          |
+| language             | intlayer, as today                                                    | stays                                                                                           |
+| font size            | account `lk:pref:text-size` (`ui`, `chat`, `cards`; lib/text-size.ts) | done: /my/preferences and /words Settings → Text size; `--lk-fs-*` on `<html>` set before paint |
+| animations off       | local `lk:pref:motion` (`system` until chosen; lib/motion-pref.ts)    | done: /words Settings → Turn off animations; `<html data-motion="off">` set before paint        |
+| paper texture        | local `lk:paper`                                                      | stays a plain key: app/layout.tsx reads it in an inline script before paint, to avoid a flash   |
 
 ### Your own AI (docs/byok.md)
 
@@ -274,6 +275,24 @@ That check reruns on input, change, focusout, submit, visibilitychange, the
 registry's notify, the chat store and the mic. There are no timers. It still
 reloads at most once per build (`lk:reloaded-for`). Everyone else gets the
 button only, as before.
+
+**Auto-update when clean** (`lib/auto-update.ts`, flag `app.auto-update`, on
+for everyone; the user's own switch is Settings → Updates, `lk:auto-update`,
+following the account). The owner, 2026-11-11: a page with nothing unsaved
+should pick up a new version by itself. Once per build, a clean page reloads
+when it goes to the background, on the next move to another page, or after
+`app.autoUpdateIdleMs` (default 15 s) with no tap, scroll or key. /words and
+/review are a session: there only the first two. It comes back to the same
+route and scroll position (the element at the top, by id or data-testid;
+`lk:auto-update-resume`). The pill says "New version · updates when idle", or
+"New version · unsaved changes" while the page is dirty; a tap reloads at once.
+
+While a version waits, reload mode also counts: a chat draft with words in it
+(although it is kept across a reload), anything read aloud or playing
+(`speechSynthesis`, the chat's voice, an `<audio>`/`<video>`), an open dialog
+(`dialog[open]`, `role="dialog"`, `aria-modal`), and a write request (not
+GET/HEAD/OPTIONS) to lianki.com still in flight (`fetch` is wrapped only while
+a version waits). With the flag or the switch off: the plain Refresh button.
 
 **Leave guard** (`app/components/LeaveGuard.tsx` → `lib/leave-guard.ts`,
 mounted for every page in `OwnerBoots`). While the page is dirty in `"leave"`

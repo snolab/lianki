@@ -197,6 +197,12 @@ export type FriendRecord = {
   blockedAt?: number;
 };
 
+/** How a `say` cuts into the reading under way (wire.ts ChatMessage.cut). */
+export const SAY_CUTS = ["supersede", "interject"] as const;
+export type SayCut = (typeof SAY_CUTS)[number];
+export const isSayCut = (v: unknown): v is SayCut =>
+  typeof v === "string" && (SAY_CUTS as readonly string[]).includes(v);
+
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
   | { type: "eval"; code: string; target?: string }
@@ -216,6 +222,13 @@ export type ControllerMessage =
       agentId?: string;
       /** `say --quiet`: shown, never read aloud. */
       quiet?: true;
+      /**
+       * `say --supersede` / `--interject` (packages/debug-chat voice.ts), on
+       * the line arriving live: "supersede" stops the same lane's line being
+       * read and drops its unread lines; "interject" pauses the line being
+       * read, is read next, and the paused one goes on after.
+       */
+      cut?: SayCut;
       /** `say --lane`: which lane says it (packages/debug-chat/src/voices.ts). */
       lane?: LaneId;
       /**
@@ -273,7 +286,7 @@ export type PageMessage =
    * connects later). Absent (a page from before) = "all". `scope` is the old
    * page's choice; the requester's own scope is what counts now.
    */
-  | { type: "allow"; pair: string; scope?: "chat"; pages?: string[] | "all" }
+  | { type: "allow"; pair: string; scope?: "chat"; pages?: string[] | "all"; remember?: boolean }
   | { type: "deny" | "revoke"; pair: string }
   /** `to`: the state-tree node it is addressed to (absent = the main thread). */
   /** `source: "stt"`: sent from the widget's mic, unchanged (absent = typed). */
@@ -448,6 +461,10 @@ export function parseControllerMessage(
     const agentId = agentIdOf(m.agentId);
     // A boolean only, and only `true` is kept. An old `loud` is dropped: it means nothing now.
     const quiet = m.quiet === true;
+    // One of the two modes or nothing; anything else is refused, never guessed.
+    if (m.cut !== undefined && !isSayCut(m.cut))
+      return { ok: false, error: `cut must be one of ${SAY_CUTS.join(", ")}` };
+    const cut = isSayCut(m.cut) ? m.cut : undefined;
     // Only the table's ids are kept: an unknown lane or voice is refused, not guessed.
     if (m.lane !== undefined && !isLaneId(m.lane))
       return { ok: false, error: `unknown lane: ${String(m.lane)} (${LANE_IDS.join(", ")})` };
@@ -465,6 +482,7 @@ export function parseControllerMessage(
         ...(taskPath && taskPath !== ROOT_NODE ? { taskPath } : {}),
         ...(agentId ? { agentId } : {}),
         ...(quiet ? { quiet: true as const } : {}),
+        ...(cut ? { cut } : {}),
         ...(lane ? { lane } : {}),
         ...(voice ? { voice } : {}),
       },
@@ -583,6 +601,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       type: "allow",
       pair,
       ...(m.scope === "chat" ? { scope: "chat" as const } : {}),
+      ...(m.remember === true ? { remember: true } : {}),
       ...(pages ? { pages } : {}),
     };
   }

@@ -93,7 +93,13 @@ const FAR = T0 + 400 * 24 * 60 * 60_000;
 /** From a fresh grant into its renewal window: less than EVAL_RENEW_BEFORE_MS left. */
 const INTO_WINDOW = EVAL_GRANT_MS - EVAL_RENEW_BEFORE_MS + 1;
 
-type Opts = { device?: string; session?: string; sessionUntil?: number; tab?: string };
+type Opts = {
+  user?: string;
+  device?: string;
+  session?: string;
+  sessionUntil?: number;
+  tab?: string;
+};
 type Stored = {
   until: number;
   renew?: { device: string; session: string; user?: string; start: number; count: number };
@@ -160,7 +166,7 @@ function setup(o: { noMain?: boolean } = {}) {
       ws,
       new URL(`https://lianki.com/api/version/debug?label=/words&tab=${tab}&dev=${device}`),
       {
-        userId: "owner1",
+        userId: o.user ?? "owner1",
         email: "o@x.com",
         owner: true,
         ...(session ? { session, sessionUntil } : {}),
@@ -203,9 +209,9 @@ function setup(o: { noMain?: boolean } = {}) {
     hub.webSocketClose(ws, code);
   };
   /** Pair an eval controller and Allow it on `p` (all pages). */
-  const grant = async (p: FakeSocket) => {
+  const grant = async (p: FakeSocket, remember = false) => {
     const c = controller();
-    await msg(p, { type: "allow", pair: pairOf(p), pages: "all" });
+    await msg(p, { type: "allow", pair: pairOf(p), pages: "all", remember });
     const token = c.last("approved")?.token as string;
     return { c, token, hash: await hashToken(token) };
   };
@@ -987,5 +993,297 @@ describe("session tags", () => {
     expect(await sessionTag("sess-123")).toBe(tag);
     expect(await sessionTag("sess-124")).not.toBe(tag);
     expect(isSessionTag("A".repeat(64))).toBe(false);
+  });
+});
+
+describe("remembered eval trust: opt-in, account and device authority", () => {
+  it("keeps a separate hash-only trust and finite lease, and leaves old approvals unchanged", async () => {
+    const s = setup();
+    const p = await s.ownerPage({ sessionUntil: T0 + 60_000 });
+    const { c, hash } = await s.grant(p, true);
+    expect(s.storage.store.get(`eval-trust:${hash}`)).toEqual({
+      user: "owner1",
+      device: DEVICE,
+      at: T0,
+    });
+    expect(c.last("approved")?.until).toBe(T0 + 60_000);
+    expect(c.last("approved")?.renewsUntil).toBeUndefined();
+    expect(Number.isFinite(s.stored(hash)?.until)).toBe(true);
+    const old = setup();
+    const oldGrant = await old.grant(await old.ownerPage());
+    expect(old.storage.store.has(`eval-trust:${oldGrant.hash}`)).toBe(false);
+    expect(oldGrant.c.last("approved")?.renewsUntil).toBe(T0 + EVAL_CHAIN_MS);
+  });
+
+  it("reaches only this account on this device, including new pages; another developer cannot revoke it", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, hash } = await s.grant(p, true);
+    const same = await s.ownerPage({ tab: "another-tab" });
+    const otherDevice = await s.ownerPage({ device: OTHER_DEVICE, tab: "other-device" });
+    const otherAccount = await s.ownerPage({ user: "other-developer", tab: "other-account" });
+    await s.msg(otherAccount, {
+      type: "revoke",
+      pair: (c.deserializeAttachment() as { pair: string }).pair,
+    });
+    expect(s.storage.store.has(`eval-trust:${hash}`)).toBe(true);
+    await s.msg(c, { type: "eval", code: "1" });
+    expect(evals(p)).toHaveLength(1);
+    expect(evals(same)).toHaveLength(1);
+    expect(evals(otherDevice)).toHaveLength(0);
+    expect(evals(otherAccount)).toHaveLength(0);
+  });
+
+  it("restores after the old lease and 30-day chain cap, only with a fresh signed-in page", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, token, hash } = await s.grant(p, true);
+    s.leave(c);
+    s.leave(p);
+    s.tick(EVAL_CHAIN_MS + 1);
+    const paused = await s.resume(token);
+    expect(paused.last("approved")).toBeUndefined();
+    expect(paused.closed).toBe(4409);
+    expect(s.storage.store.has(`eval-trust:${hash}`)).toBe(true);
+    const page = await s.ownerPage({ sessionUntil: s.now() + 30_000 });
+    const resumed = await s.resume(token);
+    expect(resumed.last("approved")?.until).toBe(s.now() + 30_000);
+    await s.msg(resumed, { type: "eval", code: "1" });
+    expect(evals(page)).toHaveLength(1);
+  });
+
+  it("sign-out pauses immediately, and a new same-account login restores the remembered token", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, token, hash } = await s.grant(p, true);
+    await s.signOut();
+    expect(c.closed).toBe(4408);
+    expect(s.stored(hash)?.until).toBe(0);
+    expect(s.storage.store.has(`eval-trust:${hash}`)).toBe(true);
+    expect((await s.resume(token)).last("approved")).toBeUndefined();
+    const session = "b".repeat(64);
+    s.main.signedIn.add(session);
+    const fresh = await s.ownerPage({ session, tab: "new-login" });
+    const resumed = await s.resume(token);
+    await s.msg(resumed, { type: "eval", code: "1" });
+    expect(evals(p)).toHaveLength(0);
+    expect(evals(fresh)).toHaveLength(1);
+  });
+
+  it("fails closed on missing permission, busy RPC and errors even with an unexpired lease", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c } = await s.grant(p, true);
+    for (const mode of ["busy", "throw", "odd"] as const) {
+      s.main.mode = mode;
+      await s.msg(c, { type: "eval", code: "1" });
+    }
+    s.main.mode = "db";
+    s.main.signedIn.clear();
+    await s.msg(c, { type: "eval", code: "1" });
+    expect(evals(p)).toHaveLength(0);
+  });
+
+  it("End during the auth RPC wins: no lease or trust resurrection and no eval delivery", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, token, hash } = await s.grant(p, true);
+    s.main.mode = "hold";
+    const pending = s.msg(c, { type: "eval", code: "1" });
+    await s.main.whenHeld();
+    await s.msg(p, { type: "revoke", pair: (c.deserializeAttachment() as { pair: string }).pair });
+    s.main.release();
+    await pending;
+    expect(evals(p)).toHaveLength(0);
+    expect(s.storage.store.has(`eval-trust:${hash}`)).toBe(false);
+    expect(s.stored(hash)).toBeUndefined();
+    expect((await s.resume(token)).last("approved")).toBeUndefined();
+  });
+
+  it("logout during the auth RPC cannot restore the lease from a stale live answer", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, hash } = await s.grant(p, true);
+    s.main.mode = "hold";
+    const pending = s.msg(c, { type: "eval", code: "1" });
+    await s.main.whenHeld();
+    await s.signOut();
+    s.main.release();
+    await pending;
+    expect(evals(p)).toHaveLength(0);
+    expect(s.stored(hash)?.until).toBe(0);
+  });
+});
+
+describe("remembered trust review regressions", () => {
+  it("ignores result and chunk injections from another device or unverified session", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c } = await s.grant(p, true);
+    const other = await s.ownerPage({ device: OTHER_DEVICE, tab: "other" });
+    const session = await s.ownerPage({ session: "b".repeat(64), tab: "other-session" });
+    await s.msg(c, { type: "eval", code: "1" });
+    const ev = p.last("eval")!;
+    for (const page of [other, session]) {
+      await s.msg(page, { type: "result", id: ev.id, to: ev.to, ok: true, value: "injected" });
+      await s.msg(page, {
+        type: "chunk",
+        id: ev.id,
+        to: ev.to,
+        part: 0,
+        seq: 0,
+        total: 1,
+        data: "injected",
+      });
+    }
+    expect(c.last("result")).toBeUndefined();
+    expect(c.last("chunk")).toBeUndefined();
+    await s.msg(p, { type: "result", id: ev.id, to: ev.to, ok: true, value: "real" });
+    expect(c.last("result")?.value).toBe("real");
+  });
+
+  it("invalidates page authority before the first logout storage await", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, hash } = await s.grant(p, true);
+    s.main.mode = "hold";
+    const pending = s.msg(c, { type: "eval", code: "1" });
+    await s.main.whenHeld();
+    const original = s.storage.put;
+    let releaseWrite!: () => void;
+    let writing!: () => void;
+    const started = new Promise<void>((r) => {
+      writing = r;
+    });
+    s.storage.put = async (key, value) => {
+      if (key === `grant:${hash}` && (value as Stored).until === 0) {
+        writing();
+        await new Promise<void>((r) => {
+          releaseWrite = r;
+        });
+      }
+      return original(key, value);
+    };
+    const logout = s.signOut();
+    await started;
+    s.main.release();
+    await pending;
+    expect(evals(p)).toHaveLength(0);
+    releaseWrite();
+    await logout;
+    expect(s.stored(hash)?.until).toBe(0);
+  });
+
+  it("requires a live developer session before creating persistent authority", async () => {
+    for (const mode of ["busy", "throw", "odd", "db"] as const) {
+      const s = setup();
+      const p = await s.ownerPage();
+      const c = s.controller();
+      s.main.mode = mode;
+      if (mode === "db") s.main.signedIn.clear();
+      await s.msg(p, { type: "allow", pair: s.pairOf(p), pages: "all", remember: true });
+      expect(c.last("approved")).toBeUndefined();
+      expect(
+        [...s.storage.store.keys()].filter(
+          (k) => k.startsWith("eval-trust:") || k.startsWith("grant:"),
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  it("revoke or logout while the first approval is checking auth cannot leave a remembered grant", async () => {
+    for (const action of ["revoke", "logout"] as const) {
+      const s = setup();
+      const p = await s.ownerPage();
+      const c = s.controller();
+      const pair = s.pairOf(p);
+      s.main.mode = "hold";
+      const pending = s.msg(p, { type: "allow", pair, remember: true });
+      await s.main.whenHeld();
+      if (action === "revoke") await s.msg(p, { type: "revoke", pair });
+      else await s.signOut();
+      s.main.release();
+      await pending;
+      expect(c.last("approved")).toBeUndefined();
+      expect(
+        [...s.storage.store.keys()].filter(
+          (k) => k.startsWith("eval-trust:") || k.startsWith("grant:"),
+        ),
+      ).toEqual([]);
+    }
+  });
+});
+
+describe("remembered trust: idle visibility and multiple login sessions", () => {
+  it("lists an idle expired open controller as dormant with the real lease, and End revokes it", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, token, hash } = await s.grant(p, true);
+    const until = s.stored(hash)!.until;
+    s.tick(EVAL_GRANT_MS + 1);
+    const next = await s.ownerPage({ tab: "after-idle" });
+    const sessions = next.last("state")!.sessions as {
+      pair: string;
+      persistent?: boolean;
+      until?: number;
+    }[];
+    const saved = sessions.find((x) => x.persistent);
+    expect(saved).toBeDefined();
+    expect(saved!.pair).toBe(`g:${hash.slice(0, 40)}`);
+    expect(saved!.until).toBe(until);
+    expect(saved!.until! < s.now()).toBe(true);
+    await s.msg(next, { type: "revoke", pair: saved!.pair });
+    expect(c.closed).toBe(4401);
+    expect(s.storage.store.has(`eval-trust:${hash}`)).toBe(false);
+    expect((await s.resume(token)).closed).toBe(4498);
+  });
+
+  it("restores with a fresh login even while a stale same-device page claims a future expiry", async () => {
+    const s = setup();
+    const stale = await s.ownerPage();
+    const { c, token } = await s.grant(stale, true);
+    s.leave(c);
+    s.main.signedIn.delete(SESSION);
+    const freshSession = "b".repeat(64);
+    s.main.signedIn.add(freshSession);
+    const fresh = await s.ownerPage({ session: freshSession, tab: "fresh-login" });
+    const resumed = await s.resume(token);
+    expect(resumed.last("approved")).toBeDefined();
+    await s.msg(resumed, { type: "eval", code: "1" });
+    expect(evals(fresh)).toHaveLength(1);
+    expect(evals(stale)).toHaveLength(0);
+  });
+
+  it("tries another distinct session after gone, while deduplicating stale tabs", async () => {
+    const s = setup();
+    const live = await s.ownerPage();
+    const { c, token } = await s.grant(live, true);
+    s.leave(c);
+    const gone = "b".repeat(64);
+    await s.ownerPage({ session: gone, tab: "stale-one" });
+    await s.ownerPage({ session: gone, tab: "stale-two" });
+    s.main.calls.length = 0;
+    const resumed = await s.resume(token);
+    expect(resumed.last("approved")).toBeDefined();
+    expect(s.main.calls.map((c) => c.body.session)).toEqual([gone, SESSION]);
+  });
+
+  it("bounds distinct session RPCs and never falls back to another account or device", async () => {
+    const s = setup();
+    const p = await s.ownerPage();
+    const { c, token } = await s.grant(p, true);
+    s.leave(c);
+    s.main.signedIn.clear();
+    for (let i = 1; i <= 12; i++)
+      await s.ownerPage({ session: i.toString(16).padStart(64, "0"), tab: `stale-${i}` });
+    s.main.signedIn.add(SESSION);
+    await s.ownerPage({ user: "other-developer", tab: "other-account" });
+    await s.ownerPage({ device: OTHER_DEVICE, tab: "other-device" });
+    s.main.calls.length = 0;
+    expect((await s.resume(token)).last("approved")).toBeUndefined();
+    expect(s.main.calls).toHaveLength(8);
+    expect(s.main.calls.every((c) => c.body.user === "owner1" && c.body.session !== SESSION)).toBe(
+      true,
+    );
   });
 });

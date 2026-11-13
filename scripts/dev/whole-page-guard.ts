@@ -273,6 +273,11 @@ export function needsIntlayerBuild(changedFiles: string[]): boolean {
   );
 }
 
+/** A publish that changes the lockfile needs `bun install --frozen-lockfile` (e.g. main's new deps). */
+export function needsBunInstall(changedFiles: string[]): boolean {
+  return changedFiles.includes("bun.lock");
+}
+
 /**
  * A wedged Turbopack (owner, 2026-11-03 12:44 JST: "开发服务器经常暴风刷新").
  * After a publish, next dev 16.4.1 could get stuck answering every page's

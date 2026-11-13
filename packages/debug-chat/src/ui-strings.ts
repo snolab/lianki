@@ -103,6 +103,8 @@ export type UiStrings = {
    */
   aec: string;
   aecHint: string;
+  wakeWord: string;
+  wakeWordHint: string;
   /**
    * A chip shown after a reload cut a reply off mid-read, when the browser
    * needs a tap before it may speak (iOS/Android autoplay rules). Tapping
@@ -166,6 +168,74 @@ export type UiStrings = {
   tuckChat: string;
   restoreChat: string;
   untuckChat: string;
+  /**
+   * The remote-code pairing modal (DebugPairModal.tsx), developer only: a
+   * program on the developer's computer (its name is `{label}`) asks to run
+   * code on their open Lianki pages; the modal's first sentence says what
+   * "Allow" grants. `{time}` is how long, from grantHour / grantHours /
+   * grantDays below. Keep `{label}` and `{time}`.
+   * - pairEval: Allow covers the pages ticked in the list below it;
+   * - pairEvalAll: Allow covers all of the developer's pages, on every one of
+   *   their devices, also pages opened later (no list).
+   */
+  pairEval: string;
+  pairEvalAll: string;
+  /**
+   * How long that grant lasts, put into `{time}` above: grantHour = exactly
+   * one hour; grantHours = `{n}` hours (2 or more); grantDays = `{n}` whole
+   * days (2 or more, e.g. 30). A number and a unit only; keep `{n}`.
+   */
+  grantHour: string;
+  grantHours: string;
+  grantDays: string;
+  /**
+   * The connection chip (LinkChip.tsx), developer only: a small chip left of
+   * the chat's progress bar with two readings, each showing all its states
+   * (the current one highlighted). A tap opens details.
+   * - linkChip: the chip's name (screen readers, the details' title): one word;
+   * - linkEval: the first reading's name: whether a program on the developer's
+   *   computer can run code on this page now; linkSel: the second's: whether
+   *   the chat's assistant has got the text the user selected on the page and
+   *   attached to the chat. Short nouns.
+   * - evalOff / evalConnecting / evalConnected / evalDisconnected: that
+   *   reading's states, one or two words each (like a network status); and
+   *   evalOffTip … evalDisconnectedTip: one sentence each, what the state
+   *   means (disconnected also covers "your permission does not cover this
+   *   page").
+   * - selNone / selPending / selSeen / selFailed: the selection's states
+   *   (nothing attached; attached or sent but the assistant has not seen it
+   *   yet; the assistant has seen it; it did not reach the assistant), one or
+   *   two words; selNoneTip … selFailedTip: one sentence each.
+   * - linkLeft: time left on a permission, `{time}` from grantHours /
+   *   grantDays ("30 days left"); keep `{time}`.
+   * - linkReachAll / linkReachHere / linkReachOther: which pages it covers:
+   *   every page; this page; other pages, not this one. Short.
+   * - linkEnd: the button that ends that permission now. One verb.
+   */
+  linkChip: string;
+  linkEval: string;
+  linkSel: string;
+  evalOff: string;
+  evalConnecting: string;
+  evalConnected: string;
+  evalDisconnected: string;
+  evalOffTip: string;
+  evalConnectingTip: string;
+  evalConnectedTip: string;
+  evalDisconnectedTip: string;
+  selNone: string;
+  selPending: string;
+  selSeen: string;
+  selFailed: string;
+  selNoneTip: string;
+  selPendingTip: string;
+  selSeenTip: string;
+  selFailedTip: string;
+  linkLeft: string;
+  linkReachAll: string;
+  linkReachHere: string;
+  linkReachOther: string;
+  linkEnd: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -209,6 +279,7 @@ export const UI_EN: UiStrings = {
   latVoiceStart: "voice start",
   latOther: "other",
   aec: "Echo cancellation",
+  wakeWord: "Wake word (Linky)",
   resumeRead: "Tap to continue reading",
   resumeBlocked: "Tap to turn read-aloud back on",
   askRecommended: "recommended",
@@ -220,6 +291,7 @@ export const UI_EN: UiStrings = {
   fullScreen: "Full screen",
   fullScreenExit: "Exit full screen",
   aecHint: "On: you can talk over replies; on Android the speaker may sound like a call. Off: fuller sound, the mic pauses while anything plays. Takes effect at once.",
+  wakeWordHint: "On: after a few lines that were not for the agent, the mic waits for \"Linky\" (passive). Off: the mic always listens, never passive. Takes effect at once.",
   cueSend: "Sound when a voice message is sent",
   cueSpeech: "Sound when speech starts and ends",
   askWithdrawn: "Withdrawn",
@@ -230,6 +302,36 @@ export const UI_EN: UiStrings = {
   tuckChat: "Tuck the chat into the screen edge",
   restoreChat: "Open the chat",
   untuckChat: "Bring the chat back",
+  pairEval: "{label} wants to run code on your pages for {time}.",
+  pairEvalAll: "{label} wants to run code on all your pages, on every device, for {time}.",
+  grantHour: "1 hour",
+  grantHours: "{n} hours",
+  grantDays: "{n} days",
+  linkChip: "Connection",
+  linkEval: "Remote code",
+  linkSel: "Selection",
+  evalOff: "Off",
+  evalConnecting: "Connecting",
+  evalConnected: "Connected",
+  evalDisconnected: "Disconnected",
+  evalOffTip: "No program may run code on this page now.",
+  evalConnectingTip: "Connecting to Lianki's server…",
+  evalConnectedTip: "A program you allowed can run code on this page.",
+  evalDisconnectedTip:
+    "Code cannot reach this page: the connection dropped, or your permission does not cover this page.",
+  selNone: "None",
+  selPending: "Not seen yet",
+  selSeen: "Seen",
+  selFailed: "Failed",
+  selNoneTip: "No page selection is attached to the chat.",
+  selPendingTip: "The selection is attached or sent; the agent has not seen it yet.",
+  selSeenTip: "The agent has seen the selection.",
+  selFailedTip: "The selection did not reach the agent: it was not sent, or no agent is listening.",
+  linkLeft: "{time} left",
+  linkReachAll: "All pages",
+  linkReachHere: "This page",
+  linkReachOther: "Not this page",
+  linkEnd: "End",
 };
 
 export const UI_ZH: UiStrings = {
@@ -284,6 +386,8 @@ export const UI_ZH: UiStrings = {
   fullScreen: "全屏",
   fullScreenExit: "退出全屏",
   aecHint: "开：回复朗读时也能插话；安卓上扬声器可能变成通话音质。关：音质更好，播放声音时麦克风暂停收音。立即生效。",
+  wakeWord: "唤醒词（Linky）",
+  wakeWordHint: "开：几句不是对 agent 说的话之后，麦克风改为等“Linky”（被动模式）。关：麦克风一直在听，从不进入被动模式。立即生效。",
   cueSend: "语音消息发出时提示音",
   cueSpeech: "开始和结束说话时提示音",
   askWithdrawn: "已撤回",
@@ -294,6 +398,35 @@ export const UI_ZH: UiStrings = {
   tuckChat: "把聊天收进屏幕边",
   restoreChat: "展开聊天",
   untuckChat: "拉出聊天",
+  pairEval: "{label} 想在你的页面上运行代码，为期 {time}。",
+  pairEvalAll: "{label} 想在你所有设备的所有页面上运行代码，为期 {time}。",
+  grantHour: "1 小时",
+  grantHours: "{n} 小时",
+  grantDays: "{n} 天",
+  linkChip: "连接",
+  linkEval: "远程代码",
+  linkSel: "选区",
+  evalOff: "关",
+  evalConnecting: "连接中",
+  evalConnected: "已连接",
+  evalDisconnected: "已断开",
+  evalOffTip: "现在没有程序可以在这个页面上运行代码。",
+  evalConnectingTip: "正在连接 Lianki 的服务器…",
+  evalConnectedTip: "你允许的程序可以在这个页面上运行代码。",
+  evalDisconnectedTip: "代码到不了这个页面：连接断了，或者你的授权不包括这个页面。",
+  selNone: "无",
+  selPending: "还没看到",
+  selSeen: "已看到",
+  selFailed: "失败",
+  selNoneTip: "聊天里没有附上页面选区。",
+  selPendingTip: "选区已附上或已发送，代理还没看到。",
+  selSeenTip: "代理已经看到选区。",
+  selFailedTip: "选区没送到代理：没发出去，或者没有代理在听。",
+  linkLeft: "还剩 {time}",
+  linkReachAll: "所有页面",
+  linkReachHere: "这个页面",
+  linkReachOther: "不含这个页面",
+  linkEnd: "结束",
 };
 
 export const UI_JA: UiStrings = {
@@ -348,6 +481,8 @@ export const UI_JA: UiStrings = {
   fullScreen: "全画面表示",
   fullScreenExit: "全画面表示を終了",
   aecHint: "オン：返事の読み上げ中も話しかけられます。Android ではスピーカーが通話の音質になることがあります。オフ：音質が良く、音声の再生中はマイクが一時停止します。すぐに反映されます。",
+  wakeWord: "ウェイクワード（Linky）",
+  wakeWordHint: "オン：エージェント宛てでない発言が続くと、マイクは「Linky」を待つ受け身モードになります。オフ：マイクは常に聞き取り、受け身モードになりません。すぐに反映されます。",
   cueSend: "音声メッセージ送信時の音",
   cueSpeech: "話し始めと話し終わりの音",
   askWithdrawn: "取り下げ済み",
@@ -358,6 +493,35 @@ export const UI_JA: UiStrings = {
   tuckChat: "チャットを画面の端にしまう",
   restoreChat: "チャットを開く",
   untuckChat: "チャットを戻す",
+  pairEval: "{label} があなたのページでコードを実行しようとしています（期間：{time}）。",
+  pairEvalAll: "{label} があなたのすべての端末のすべてのページでコードを実行しようとしています（期間：{time}）。",
+  grantHour: "1時間",
+  grantHours: "{n}時間",
+  grantDays: "{n}日間",
+  linkChip: "接続",
+  linkEval: "リモートコード",
+  linkSel: "選択範囲",
+  evalOff: "オフ",
+  evalConnecting: "接続中",
+  evalConnected: "接続済み",
+  evalDisconnected: "切断",
+  evalOffTip: "今このページでコードを実行できるプログラムはありません。",
+  evalConnectingTip: "Lianki のサーバーに接続しています…",
+  evalConnectedTip: "許可したプログラムがこのページでコードを実行できます。",
+  evalDisconnectedTip: "コードがこのページに届きません。接続が切れたか、許可がこのページを含んでいません。",
+  selNone: "なし",
+  selPending: "未確認",
+  selSeen: "確認済み",
+  selFailed: "失敗",
+  selNoneTip: "チャットにページの選択範囲は添付されていません。",
+  selPendingTip: "選択範囲は添付済みか送信済みですが、エージェントはまだ確認していません。",
+  selSeenTip: "エージェントは選択範囲を確認しました。",
+  selFailedTip: "選択範囲はエージェントに届いていません。送信できなかったか、聞いているエージェントがいません。",
+  linkLeft: "残り{time}",
+  linkReachAll: "すべてのページ",
+  linkReachHere: "このページ",
+  linkReachOther: "このページは対象外",
+  linkEnd: "終了",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

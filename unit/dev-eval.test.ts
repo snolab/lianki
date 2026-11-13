@@ -55,6 +55,25 @@ describe("parseControllerMessage", () => {
     expect(say({ quiet: false })).toEqual({ type: "say", text: "hi" });
   });
 
+  it("say cut: only supersede or interject; anything else refused", () => {
+    const say = (extra: object) =>
+      parseControllerMessage(JSON.stringify({ type: "say", text: "hi", ...extra }));
+    const ok = (extra: object) => {
+      const r = say(extra);
+      return r.ok ? r.value : null;
+    };
+    expect(ok({ cut: "supersede" })).toEqual({ type: "say", text: "hi", cut: "supersede" });
+    expect(ok({ cut: "interject", quiet: true })).toEqual({
+      type: "say",
+      text: "hi",
+      quiet: true,
+      cut: "interject",
+    });
+    expect(ok({})).toEqual({ type: "say", text: "hi" });
+    for (const cut of [true, false, "true", "Supersede", 1, null, ["supersede"]])
+      expect(say({ cut }).ok).toBe(false);
+  });
+
   it("refuses anything else", () => {
     expect(parseControllerMessage("nope").ok).toBe(false);
     expect(parseControllerMessage('{"type":"allow","pair":"x"}').ok).toBe(false);

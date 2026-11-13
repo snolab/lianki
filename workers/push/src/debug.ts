@@ -108,6 +108,13 @@
  * spoke tells the listeners {type:"polish-due", …}: one polish for the passage,
  * read from the merged raw text, none while it is still being spoken.
  *
+ * Two mics, one line (flag stt.two-mic-merge, on by default; two-mic.ts;
+ * docs/dev-debug-widget.md, "Two mics, one line"). Before an owner's voice
+ * line is posted, twoMicMatch looks for his voice line from ANOTHER page
+ * within config chat.twoMicWindowMs saying the same sentence: then it is not
+ * posted. Its text replaces the stored one in place (the same edit path,
+ * edited.by "two-mic") when twoMicKeep prefers it, else it is dropped.
+ *
  * Resumable grants. The owner's Allow hands the controller a random grant
  * token; only its SHA-256 is stored (`grant:<hash>`), and reconnecting with
  * it (header x-debug-token, or x-liagent-token via index.ts) restores what
@@ -232,6 +239,7 @@ import {
   senderOf,
   shortCode,
 } from "../../../lib/dev-eval";
+import { type EvalGrantConf, readEvalGrantConf } from "../../../lib/eval-grant-config";
 import {
   type Ask,
   type AskAnswer,
@@ -244,6 +252,7 @@ import type {
   PolishDueEvent,
   SpeakerTag,
   SttScene,
+  SttTag,
   WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
@@ -261,8 +270,16 @@ import {
   mergeLines,
   mergeVerdict,
   partTexts,
+  passageSpeakers,
   splitLine,
 } from "../../../packages/debug-chat/src/voice-merge";
+import {
+  TWO_MIC_BY,
+  TWO_MIC_WINDOW_MAX,
+  TWO_MIC_WINDOW_MS,
+  twoMicKeep,
+  twoMicMatch,
+} from "../../../packages/debug-chat/src/two-mic";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
   HISTORY_LINES,
@@ -415,7 +432,14 @@ const SINK_CONFIG = "clipsink";
  * `grant` is the hash of the resumable chat token this socket holds, if any.
  * `forUser`/`forEmail`: the friend this pairing is for; absent = the owner.
  */
+type RememberedTrust = { user: string; device: string; at: number };
+const trustKey = (hash: string) => `eval-trust:${hash}`;
+/** Security work bound: at most eight distinct auth-session RPCs per remembered use. */
+const REMEMBERED_SESSION_CANDIDATES = 8;
+
 type ControllerAtt = {
+  rememberedSession?: string;
+  remembered?: RememberedTrust;
   role: "controller";
   grant?: string;
   /** Approved for these page ids only ("Authorize this page"); absent = all. Eval only. */
@@ -452,12 +476,23 @@ type ControllerAtt = {
  * the owner's eval grant only, what its renewal is bound to ("Renewal" above).
  */
 type Grant = {
+  /** Descriptor only: eval-trust:<controller hash> is the revocable authority. */
+  remembered?: RememberedTrust;
   label: string;
   until: number;
   scope?: Scope;
   pages?: string[];
   at?: number;
   renew?: Renewal;
+  /** An eval grant's length at the tap (`debug.evalGrantHours`); absent = EVAL_GRANT_MS. Renewals extend by it. */
+  ms?: number;
+  /**
+   * The device each of `pages` was open on when it was granted (the page's
+   * `dev=` id), so a page that comes back on that device under a new page id
+   * (the app restarted: a new tab, a new sessionStorage) takes its place —
+   * "Rejoin" in docs/monitoring.md. Absent for a page with no device id.
+   */
+  devices?: Record<string, string>;
 };
 /**
  * The approving page's device id and session tag, when the chain began (the
@@ -478,6 +513,7 @@ const renewDueAt = (until: number, t: number) => until - t <= EVAL_RENEW_BEFORE_
  * SESSIONS service binding: no URL, nothing public): "live" | "gone" | "busy".
  */
 type SessionsRpc = {
+  prepareChatTurn?(req: { userId: string; input: unknown }): Promise<unknown>;
   live(user: string, session: string): Promise<unknown>;
   /** A feature flag's value (lib/flags.ts); an older main Worker has no such method. */
   flag?(key: string): Promise<unknown>;
@@ -506,6 +542,8 @@ type SessionsRpc = {
   boxEval?(clientId: string): Promise<unknown>;
   /** The account's chat history (lib/chat-log.ts); an older main Worker has none: not kept. */
   chatLog?(req: ChatLogRequest): Promise<unknown>;
+  /** A live config value (lib/config.ts registry keys; the default when unset or invalid). */
+  config?(key: string): Promise<unknown>;
 };
 /** POST, from the main Worker over its binding: the owner thread's history into D1, once. */
 export const CHAT_BACKFILL_PATH = "/internal/chat-backfill";
@@ -520,6 +558,12 @@ const aiSiteKey = (day: string) => `ai:${day}:site`;
 export const POLISH_FLAG = "stt.polish";
 /** The owner's switch for continuous speech amending the last line (voice-merge.ts). */
 export const MERGE_FLAG = "stt.merge";
+/** The owner's switch for one line from two mics (two-mic.ts): ON (the default) = active. */
+export const TWO_MIC_FLAG = "stt.two-mic-merge";
+/** The live window between two mics' copies of one sentence (lib/config.ts). */
+export const TWO_MIC_WINDOW_KEY = "chat.twoMicWindowMs";
+/** How many of the newest lines a two-mic look reads: a few seconds hold far fewer. */
+const TWO_MIC_SCAN = 20;
 /** At most one live-session check per grant in this long (a burst of uses asks once). */
 const SESSION_CHECK_MIN_MS = 30_000;
 /** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
@@ -608,10 +652,39 @@ const close = (ws: Socket, code: number, reason: string) => {
   } catch {}
 };
 /** A pairing as pages see it: `scope` is what was granted, or (pending) what is asked for. */
-const info = ({ pair, code, label, at, until, scope, pages }: ControllerAtt): PairInfo =>
+const info = ({
+  pair,
+  code,
+  label,
+  at,
+  until,
+  scope,
+  pages,
+  grantMs,
+  allPages,
+  remembered,
+}: ControllerAtt): PairInfo =>
   until
-    ? { pair, code, label, at, until, scope: scope ?? "eval", ...(pages ? { pages } : {}) }
-    : { pair, code, label, at, scope: scope ?? "eval" };
+    ? {
+        pair,
+        code,
+        label,
+        at,
+        until,
+        scope: scope ?? "eval",
+        ...(remembered ? { persistent: true } : {}),
+        ...(pages ? { pages } : {}),
+      }
+    : {
+        pair,
+        code,
+        label,
+        at,
+        scope: scope ?? "eval",
+        // What Allow will grant (the live config read at the knock): the modal says it.
+        ...(grantMs ? { grantMs } : {}),
+        ...(allPages ? { allPages } : {}),
+      };
 const hex = (b: ArrayBuffer | Uint8Array) =>
   Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
 export const hashToken = async (token: string) =>
@@ -692,6 +765,8 @@ export class DebugHub {
   /** `unsure`: the flag could not be read (an RPC error, "busy"); the AI cannot answer then. */
   private aiFlag?: { at: number; on: boolean; unsure?: true };
   private mergeFlag?: { at: number; on: boolean };
+  /** The last read of TWO_MIC_FLAG and TWO_MIC_WINDOW_KEY (AI_FLAG_CACHE_MS). */
+  private twoMicConf?: { at: number; on: boolean; windowMs: number };
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
   private agentAt = new Map<string, number>();
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
@@ -749,7 +824,16 @@ export class DebugHub {
    */
   private reach(c: ControllerAtt, thread: string) {
     // An embedded page (another site) is never reached by eval.
-    const all = this.pages(thread).filter((p) => !p.a.embed);
+    const all = this.pages(thread).filter(
+      (p) =>
+        !p.a.embed &&
+        (!c.remembered ||
+          (p.a.user === c.remembered.user &&
+            p.a.device === c.remembered.device &&
+            !!p.a.session &&
+            p.a.session === c.rememberedSession &&
+            (p.a.sessionUntil ?? 0) > this.now())),
+    );
     // A chat grant reaches every page (one made before that rule may still carry pages).
     if (!c.pages || c.scope === "chat" || thread !== audience(c)) return all;
     return all.filter((p) => p.a.id && c.pages?.includes(p.a.id));
@@ -764,14 +848,68 @@ export class DebugHub {
     return this.loadingGrants;
   }
 
-  private async putGrant(hash: string, g: Grant) {
+  private async putGrant(hash: string, g0: Grant) {
     await this.loadGrants();
+    const g = this.withDevices(g0);
     await this.ctx.storage.put(`grant:${hash}`, g);
     this.grants?.set(hash, g);
   }
 
+  /** A page-scoped grant with the device of each of its pages that is open now noted (kept for the others). */
+  private withDevices(g: Grant): Grant {
+    if (!g.pages) {
+      const { devices: _drop, ...rest } = g;
+      return rest;
+    }
+    const devices: Record<string, string> = {};
+    const open = new Map(
+      this.pages(OWNER_THREAD).flatMap((p) => (p.a.id && p.a.device ? [[p.a.id, p.a.device]] : [])),
+    );
+    for (const id of g.pages) {
+      const d = open.get(id) ?? g.devices?.[id];
+      if (d) devices[id] = d;
+    }
+    return { ...g, devices };
+  }
+
+  /**
+   * An owner page joined under a page id its device's grants do not list: if a
+   * page-scoped eval grant covered a page on this same device that is gone now,
+   * this page takes its place (the app was restarted, so sessionStorage and the
+   * page id with it are new). Never another device's grant, never a friend's
+   * page, never a chat-only page. The senders holding the grant reach it at once.
+   */
+  private async rejoin(ws: Socket) {
+    const page = att(ws);
+    if (page?.role !== "page" || page.thread !== OWNER_THREAD || page.embed) return;
+    const { id, device } = page;
+    if (!id || !device) return;
+    await this.loadGrants();
+    const t = this.now();
+    const open = new Set(this.pages(OWNER_THREAD, ws).map((p) => p.a.id));
+    let changed = 0;
+    for (const [hash, g] of [...(this.grants ?? [])]) {
+      if (g.remembered || g.scope !== "eval" || g.until <= t || !g.pages || g.pages.includes(id))
+        continue;
+      const gone = g.pages.filter((p) => g.devices?.[p] === device && !open.has(p));
+      if (!gone.length) continue;
+      const pages = [...g.pages.filter((p) => !gone.includes(p)), id];
+      const devices = { ...g.devices };
+      for (const p of gone) delete devices[p];
+      devices[id] = device;
+      await this.putGrant(hash, { ...g, pages, devices });
+      for (const c of this.sockets("controller"))
+        if (c.a.grant === hash)
+          c.ws.serializeAttachment({ ...c.a, pages, goneSince: undefined } satisfies ControllerAtt);
+      console.log(JSON.stringify({ msg: "debug.rejoin", label: g.label, replaced: gone.length }));
+      changed++;
+    }
+    if (changed) this.broadcast();
+  }
+
   private async dropGrant(hash: string) {
     await this.loadGrants();
+    await this.ctx.storage.delete(trustKey(hash));
     await this.ctx.storage.delete(`grant:${hash}`);
     this.grants?.delete(hash);
   }
@@ -785,21 +923,24 @@ export class DebugHub {
     for (const { a } of this.sockets("controller", except)) {
       // A heartbeat socket is not a session: its grant, if eval, lists as asleep.
       if (audience(a) !== who || a.beat) continue;
-      if (a.grant) held.add(a.grant);
       if (a.until) {
-        if (a.until > t) sessions.push(info(a));
-      } else if (t - a.at < PENDING_MS) pending = info(a);
+        if (a.until > t) {
+          sessions.push(info(a));
+          if (a.grant) held.add(a.grant);
+        }
+      } else if (!a.grant && t - a.at < PENDING_MS) pending = info(a);
     }
     // The owner's eval grants that no socket holds now: asleep, but End reaches them.
     if (who === OWNER_THREAD)
       for (const [hash, g] of this.grants ?? [])
-        if (g.scope === "eval" && g.until > t && !held.has(hash))
+        if (g.scope === "eval" && (g.until > t || g.remembered) && !held.has(hash))
           sessions.push({
             pair: dormantPair(hash),
             code: "idle",
             label: g.label,
             at: g.at ?? 0,
             until: g.until,
+            ...(g.remembered ? { persistent: true } : {}),
             scope: "eval",
             ...(g.pages ? { pages: g.pages } : {}),
           });
@@ -1179,6 +1320,9 @@ export class DebugHub {
       if (x.parts && !x.settled && this.now() - lastPartAt(x) < MAX_UTTERANCE_MS)
         return fail(`message ${x.id} is still being spoken: merge it once the passage ends`);
     }
+    // One speaker per passage: someone else's line never joins his, nor rides on his ✓.
+    const why = passageSpeakers(picked.map(([, x]) => x));
+    if (why) return fail(`not merged, the lines stand: ${why}`);
     // Oldest first, in thread order (kept is newest first).
     const at = (k: string) => kept.findIndex(([key]) => key === k);
     picked.sort((a, b) => at(b[0]) - at(a[0]));
@@ -1411,6 +1555,96 @@ export class DebugHub {
         merged: { id: cur.id, text: cur.text },
       },
       prev.to,
+    );
+    return true;
+  }
+
+  /**
+   * TWO_MIC_FLAG and TWO_MIC_WINDOW_KEY from the main Worker, at most once per
+   * AI_FLAG_CACHE_MS. The flag is on by default: only exactly false turns it
+   * off. The window falls back to TWO_MIC_WINDOW_MS when it cannot be read.
+   */
+  private async twoMicOn(): Promise<{ on: boolean; windowMs: number }> {
+    const t = this.now();
+    if (this.twoMicConf && t - this.twoMicConf.at < AI_FLAG_CACHE_MS) return this.twoMicConf;
+    let on = true;
+    try {
+      on = (await this.flagValue(TWO_MIC_FLAG)) !== false;
+    } catch {}
+    let windowMs = TWO_MIC_WINDOW_MS;
+    try {
+      const v = this.sessions?.config ? await this.sessions.config(TWO_MIC_WINDOW_KEY) : undefined;
+      if (typeof v === "number" && Number.isFinite(v) && v >= 0) windowMs = v;
+    } catch {}
+    this.twoMicConf = { at: t, on, windowMs };
+    return this.twoMicConf;
+  }
+
+  /** The owner thread's newest lines, newest first (enough for any two-mic window). */
+  private async newest() {
+    return [
+      ...(await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(OWNER_THREAD).prefix,
+        reverse: true,
+        limit: TWO_MIC_SCAN,
+      })),
+    ];
+  }
+
+  /**
+   * His voice line repeats the one his other mic sent a moment ago (two-mic.ts):
+   * true when it was taken care of here — its better text replaced the stored
+   * line's in place, or it was dropped — so it is not posted. False: post it.
+   * The flag and window are asked only when a line could match at all.
+   */
+  private async twoMic(cur: {
+    id: string;
+    text: string;
+    label: string;
+    at: number;
+    stt?: SttTag;
+    speaker?: SpeakerTag;
+  }): Promise<boolean> {
+    if (!twoMicMatch(await this.newest(), cur, TWO_MIC_WINDOW_MAX)) return false;
+    const conf = await this.twoMicOn();
+    if (!conf.on) return false;
+    // Read again: other lines may have landed while the main Worker answered.
+    const hit = twoMicMatch(await this.newest(), cur, conf.windowMs);
+    if (!hit) return false;
+    const [key, line] = hit;
+    const keep = twoMicKeep(line, cur);
+    console.log(
+      JSON.stringify({
+        msg: "debug.two-mic",
+        id: line.id,
+        dup: cur.id,
+        keep,
+        gap: cur.at - lastPartAt(line),
+        head: head(cur.text),
+      }),
+    );
+    if (keep === "drop") return true;
+    const { speaker: _s, stt: _t, ...rest } = line;
+    const next: ChatMessage = {
+      ...rest,
+      text: cur.text,
+      raw: cur.text,
+      ...(cur.stt ? { stt: cur.stt } : {}),
+      ...(cur.speaker ? { speaker: cur.speaker } : {}),
+      edited: { at: cur.at, by: TWO_MIC_BY, count: line.edited?.count ?? 0 },
+    };
+    await this.ctx.storage.put(key, next);
+    await this.chatLogUpdate(OWNER_THREAD, next);
+    this.tellEdit(
+      {
+        type: "edited",
+        id: line.id,
+        thread: OWNER_THREAD,
+        text: next.text,
+        raw: next.raw as string,
+        edited: next.edited as EditedEvent["edited"],
+      },
+      line.to,
     );
     return true;
   }
@@ -1892,10 +2126,27 @@ export class DebugHub {
    * never vouch for a renewal). How many grants were bound.
    */
   async stopRenewal(session: string, why = "signed-out"): Promise<number> {
+    // Invalidate page authority synchronously, before ANY storage/RPC yield.
+    for (const { ws, a } of this.pages(OWNER_THREAD))
+      if (a.session === session) {
+        const { session: _s, sessionUntil: _u, user: _user, ...rest } = a;
+        ws.serializeAttachment(rest satisfies PageAtt);
+      }
+
     await this.loadGrants();
     let n = 0;
     for (const [hash, g] of this.grants ?? []) {
       if (g.renew?.session !== session) continue;
+      if (g.remembered) {
+        await this.putGrant(hash, { ...g, until: 0, renew: undefined });
+        for (const c of this.sockets("controller"))
+          if (c.a.grant === hash) {
+            send(c.ws, { type: "expired" });
+            close(c.ws, 4408, "signed out; remembered trust paused");
+          }
+        n++;
+        continue;
+      }
       const { renew: r, ...rest } = g;
       await this.putGrant(hash, rest satisfies Grant);
       console.log(
@@ -1903,11 +2154,6 @@ export class DebugHub {
       );
       n++;
     }
-    for (const { ws, a } of this.pages(OWNER_THREAD))
-      if (a.session === session) {
-        const { session: _s, sessionUntil: _u, user: _user, ...rest } = a;
-        ws.serializeAttachment(rest satisfies PageAtt);
-      }
     return n;
   }
 
@@ -1979,9 +2225,10 @@ export class DebugHub {
     const t = this.now();
     const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
     const r = g?.renew;
+    if (g?.remembered) return;
     if (!g || !r || g.scope !== "eval" || g.until <= t || !renewDueAt(g.until, t)) return;
     // The chain is at its cap: the next grant needs a tap.
-    if (Math.min(t + EVAL_GRANT_MS, r.start + EVAL_CHAIN_MS) <= g.until) return;
+    if (Math.min(t + (g.ms ?? EVAL_GRANT_MS), r.start + EVAL_CHAIN_MS) <= g.until) return;
     if (!this.approverHere(r, t)) return;
     // The auth db has the last word: a session it does not know renews nothing.
     const live = await this.sessionLive(hash, r);
@@ -2007,7 +2254,7 @@ export class DebugHub {
         return null;
       const n: Grant = {
         ...now,
-        until: Math.min(t2 + EVAL_GRANT_MS, r2.start + EVAL_CHAIN_MS),
+        until: Math.min(t2 + (now.ms ?? EVAL_GRANT_MS), r2.start + EVAL_CHAIN_MS),
         renew: { ...r2, count: r2.count + 1 },
       };
       if (n.until <= now.until) return null;
@@ -2049,7 +2296,8 @@ export class DebugHub {
 
   /** The one alarm for a renewable grant: when its renewal window opens. */
   private async scheduleRenewal(g: Grant) {
-    if (g.renew && g.scope === "eval") await this.schedule(g.until - EVAL_RENEW_BEFORE_MS);
+    if (!g.remembered && g.renew && g.scope === "eval")
+      await this.schedule(g.until - EVAL_RENEW_BEFORE_MS);
   }
 
   /**
@@ -2062,7 +2310,7 @@ export class DebugHub {
     const t = this.now();
     for (const [hash, g] of this.grants ?? []) {
       const r = g.renew;
-      if (!r || g.scope !== "eval" || g.until <= t) continue;
+      if (g.remembered || !r || g.scope !== "eval" || g.until <= t) continue;
       if (only && (r.device !== only.device || r.session !== only.session)) continue;
       // Not due yet means the window opens strictly later: the alarm always moves forward.
       if (renewDueAt(g.until, t)) await this.renew(hash, via);
@@ -2174,7 +2422,11 @@ export class DebugHub {
     }
     await this.pageBack(thread, label);
     // The owner's window session: recording follows it across URLs and origins.
-    if (thread === OWNER_THREAD && !embed) await this.clipsJoin(ws, url);
+    if (thread === OWNER_THREAD && !embed) {
+      await this.clipsJoin(ws, url);
+      // Now that its device is known: back in the grants its earlier page id had.
+      await this.rejoin(ws);
+    }
     // The device that approved an eval grant is back: renew what is due on it
     // (never from a chat-only page: it carries no session).
     const joined = att(ws);
@@ -2210,7 +2462,22 @@ export class DebugHub {
       return close(ws, 4404, "no debug page");
     }
     const scope = url.searchParams.get("scope") === "chat" ? "chat" : "eval";
-    this.knock(ws, { label, scope, ...whereOf(url) });
+    // The owner's eval grant: its length and page scope are live config, read now
+    // so the modal says what Allow grants and Allow grants exactly that.
+    // (No config to ask, an older main Worker: no wait, the defaults.)
+    const conf = scope === "eval" && this.sessions?.config ? await this.evalGrantConf() : undefined;
+    this.knock(ws, {
+      label,
+      scope,
+      ...(conf ? { grantMs: conf.ms, ...(conf.allPages ? { allPages: true } : {}) } : {}),
+      ...whereOf(url),
+    });
+  }
+
+  /** `debug.evalGrantHours` / `debug.evalGrantPages` from the main Worker; defaults when unreadable. */
+  private evalGrantConf(): Promise<EvalGrantConf> {
+    const rpc = this.sessions;
+    return readEvalGrantConf(rpc?.config ? (key) => rpc.config!(key) : undefined);
   }
 
   /** Make room for one audience's pairing: false (and `ws` closed) if one is still waiting. */
@@ -2238,6 +2505,8 @@ export class DebugHub {
       forEmail?: string;
       node?: string;
       assignee?: string;
+      grantMs?: number;
+      allPages?: boolean;
     },
   ) {
     const a: ControllerAtt = {
@@ -2262,10 +2531,85 @@ export class DebugHub {
     this.broadcast();
   }
 
+  /** Remembered authority is separate from its finite execution lease. No TTL extension. */
+  private async rememberedLease(hash: string): Promise<Grant | null> {
+    const trust = await this.ctx.storage.get<RememberedTrust>(trustKey(hash));
+    if (!trust || !this.sessions) return null;
+    // Newer pages first: stale tabs must not crowd a fresh login out of the
+    // bounded check. Group tabs by session so one old login costs one RPC.
+    const candidates = new Map<string, { ws: Socket; a: PageAtt }[]>();
+    for (const page of this.pages(OWNER_THREAD).reverse()) {
+      const { a } = page;
+      if (
+        a.embed ||
+        a.user !== trust.user ||
+        a.device !== trust.device ||
+        !a.session ||
+        (a.sessionUntil ?? 0) <= this.now()
+      )
+        continue;
+      const group = candidates.get(a.session);
+      if (group) group.push(page);
+      else if (candidates.size < REMEMBERED_SESSION_CANDIDATES) candidates.set(a.session, [page]);
+    }
+    for (const [session, pages] of candidates) {
+      try {
+        if ((await this.sessions.live(trust.user, session)) !== "live") continue;
+      } catch {
+        continue;
+      }
+      const next = await this.exclusive(async () => {
+        const current = await this.ctx.storage.get<RememberedTrust>(trustKey(hash));
+        const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
+        if (
+          !current ||
+          current.user !== trust.user ||
+          current.device !== trust.device ||
+          current.at !== trust.at ||
+          !g?.remembered ||
+          g.remembered.user !== trust.user ||
+          g.remembered.device !== trust.device ||
+          g.remembered.at !== trust.at
+        )
+          return null;
+        // Re-read attachments after auth: logout, navigation or socket closure
+        // while awaiting the RPC wins. Another live tab of this same session is OK.
+        const page = pages.find(({ ws }) => {
+          const a = att(ws);
+          return (
+            a?.role === "page" &&
+            a.thread === OWNER_THREAD &&
+            !a.embed &&
+            a.user === trust.user &&
+            a.device === trust.device &&
+            a.session === session &&
+            (a.sessionUntil ?? 0) > this.now() &&
+            (ws.readyState === undefined || ws.readyState <= 1)
+          );
+        });
+        if (!page) return null;
+        const a = att(page.ws) as PageAtt;
+        const lease: Grant = {
+          ...g,
+          until: Math.min(this.now() + EVAL_GRANT_MS, a.sessionUntil!),
+          renew: { user: trust.user, device: trust.device, session, start: this.now(), count: 0 },
+        };
+        await this.putGrant(hash, lease);
+        return lease;
+      });
+      if (next) return next;
+    }
+    return null;
+  }
+
   /** The owner's live grant behind a token, or null (and a lapsed one deleted). */
   private async liveGrant(token: string) {
     const hash = await hashToken(token.slice(0, 256));
     const g = await this.ctx.storage.get<Grant>(`grant:${hash}`);
+    if (g?.remembered) {
+      const renewed = await this.rememberedLease(hash);
+      return renewed ? { hash, g: renewed } : null;
+    }
     if (g && g.until > this.now()) return { hash, g };
     if (g) await this.dropGrant(hash);
     return null;
@@ -2430,6 +2774,18 @@ export class DebugHub {
   private async resume(ws: Socket, url: URL, token: string) {
     const live = await this.liveGrant(token);
     if (!live) {
+      // Paused authority is not an invalid credential: 4498 would make the
+      // CLI discard it and prompt again. Keep it for the next same-account login.
+      const remembered = await this.ctx.storage.get<RememberedTrust>(
+        trustKey(await hashToken(token.slice(0, 256))),
+      );
+      if (remembered) {
+        send(ws, {
+          type: "error",
+          error: "remembered trust paused: sign in on the approved device",
+        });
+        return close(ws, 4409, "remembered trust paused");
+      }
       send(ws, { type: "error", error: "grant is not valid (expired or ended)" });
       return close(ws, 4498, "grant invalid");
     }
@@ -2447,6 +2803,7 @@ export class DebugHub {
       until: g.until,
       scope,
       grant: hash,
+      ...(g.remembered ? { remembered: g.remembered, rememberedSession: g.renew?.session } : {}),
       ...(scope === "eval" && g.pages ? { pages: g.pages } : {}),
       ...(url.searchParams.get("beat") === "1" ? { beat: true } : {}),
       ...whereOf(url),
@@ -2823,7 +3180,7 @@ export class DebugHub {
       // Its attachment (the page selection) stays on the sender's own thread.
       // Files are the owner's only (the upload is owner-only): a friend's refs are dropped.
       if (page.thread !== OWNER_THREAD)
-        return this.friendChat(ws, page, m.id, m.text, m.context, m.scene);
+        return this.friendChat(ws, page, m.id, m.text, m.context, m.scene, m.source === "stt");
       const line = async (speaker: SpeakerTag | undefined) => {
         // Voice lines only: a typed line never asks the flag, never merges, never waits.
         const merging = m.source === "stt" && (await this.mergeOn());
@@ -2842,6 +3199,19 @@ export class DebugHub {
             ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
             ...(m.context ? { context: m.context } : {}),
             ...(m.attachments ? { attachments: m.attachments } : {}),
+            ...(speaker ? { speaker } : {}),
+          }))
+        )
+          return;
+        // The same sentence from his other mic, a moment ago: one line, not two.
+        if (
+          m.source === "stt" &&
+          (await this.twoMic({
+            id: m.id,
+            text: m.text,
+            label: page.label,
+            at: t,
+            ...(m.stt ? { stt: m.stt } : {}),
             ...(speaker ? { speaker } : {}),
           }))
         )
@@ -2893,10 +3263,16 @@ export class DebugHub {
         : send(ws, this.state(page.thread));
     // Only a pairing made for this page's own audience can be answered or sent results.
     const c = this.controller(m.type === "result" || m.type === "chunk" ? m.to : m.pair);
-    if (!c || audience(c.a) !== page.thread) return send(ws, this.state(page.thread));
+    if (
+      !c ||
+      audience(c.a) !== page.thread ||
+      (c.a.remembered && c.a.remembered.user !== page.user)
+    )
+      return send(ws, this.state(page.thread));
     if (m.type === "allow") {
       const pages = this.grantPages(page, m.pages);
       // Approved already: another page joins its grant ("Authorize this page" later).
+      if (c.a.remembered) return send(ws, this.state(page.thread));
       if (c.a.until && c.a.until > t) return this.widen(c.a, pages);
       if (c.a.until || t - c.a.at >= PENDING_MS) return send(ws, this.state(page.thread));
       // Allow grants what the requester asked for (`scope` from an older page
@@ -2904,12 +3280,13 @@ export class DebugHub {
       // A chat grant is for every page: a phone's page comes and goes with the app.
       return (c.a.scope === "chat" || m.scope === "chat") && !c.a.forUser
         ? this.allowChat(c.ws, c.a)
-        : this.allowEval(c.ws, c.a, pages, page);
+        : this.allowEval(c.ws, c.a, pages, page, m.remember, ws);
     }
     if (m.type === "deny" || m.type === "revoke") return this.end(m.type, c.ws, c.a);
     // A result (or a streamed piece of one) goes back only to an approved
     // controller that is still in time.
     if ((m.type !== "result" && m.type !== "chunk") || !c.a.until || c.a.until <= t) return;
+    if (c.a.remembered && !this.reach(c.a, page.thread).some((p) => p.ws === ws)) return;
     const { to: _to, ...rest } = m;
     send(c.ws, { ...rest, page: page.label });
   }
@@ -2926,6 +3303,7 @@ export class DebugHub {
     text: string,
     context?: ChatContext,
     scene?: SttScene,
+    spoken = false,
   ) {
     const t = this.now();
     const userId = page.thread;
@@ -2968,6 +3346,7 @@ export class DebugHub {
       email,
       ...(page.sender ? { sender: page.sender } : {}),
       ...(context ? { context } : {}),
+      ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
     });
     // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
     const ai = await this.aiState();
@@ -3242,7 +3621,38 @@ export class DebugHub {
    * The owner's is bound for renewal to the answering page's device and
    * session, when that page has both ("Renewal" above).
    */
-  private async allowEval(ws: Socket, a: ControllerAtt, pages?: string[], by?: PageAtt) {
+  private async allowEval(
+    ws: Socket,
+    a: ControllerAtt,
+    pages?: string[],
+    by?: PageAtt,
+    remember = false,
+    approver?: Socket,
+  ) {
+    if (
+      remember &&
+      (a.forUser ||
+        !by?.user ||
+        !by.device ||
+        !by.session ||
+        (by.sessionUntil ?? 0) <= this.now() ||
+        !this.sessions ||
+        !approver)
+    )
+      return send(ws, {
+        type: "error",
+        error: "remember requires a signed-in developer page on this device",
+      });
+    if (remember) {
+      let live = false;
+      try {
+        live = (await this.sessions!.live(by!.user!, by!.session!)) === "live";
+      } catch {
+        /* fail closed */
+      }
+      if (!live)
+        return send(ws, { type: "error", error: "remember requires a live developer session" });
+    }
     const t = this.now();
     if (a.forUser) {
       const until = t + APPROVAL_MS;
@@ -3254,7 +3664,15 @@ export class DebugHub {
       // A pairing for a friend is eval only: it is handed no chat.
       return this.broadcast();
     }
-    const until = t + EVAL_GRANT_MS;
+    // The length and page scope read at the knock (live config); a pairing from
+    // before that rule has neither: 8 hours, the pages ticked.
+    const ms = a.grantMs ?? EVAL_GRANT_MS;
+    if (a.allPages) pages = undefined;
+    const until = remember ? Math.min(t + EVAL_GRANT_MS, by!.sessionUntil!) : t + ms;
+    const remembered: RememberedTrust | undefined = remember
+      ? { user: by!.user!, device: by!.device!, at: t }
+      : undefined;
+    if (remembered) pages = undefined;
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));
     const grant = await hashToken(token);
     // Only an owner page signed in with a session, on a known device, starts a chain.
@@ -3266,18 +3684,53 @@ export class DebugHub {
       label: a.label,
       until,
       scope: "eval",
+      ...(remembered ? { remembered } : {}),
       at: t,
+      ms,
       ...(pages ? { pages } : {}),
       ...(renew ? { renew } : {}),
     };
-    await this.putGrant(grant, g);
-    ws.serializeAttachment({ ...a, until, scope: "eval", pages, grant } satisfies ControllerAtt);
+    const save = async () => {
+      if (remembered) {
+        const current = att(ws);
+        const page = approver && att(approver);
+        if (
+          ws.readyState === 3 ||
+          current?.role !== "controller" ||
+          current.pair !== a.pair ||
+          current.until ||
+          current.scope !== a.scope ||
+          !page ||
+          page.role !== "page" ||
+          page.thread !== OWNER_THREAD ||
+          page.embed ||
+          page.user !== by!.user ||
+          page.device !== by!.device ||
+          page.session !== by!.session ||
+          (page.sessionUntil ?? 0) <= this.now() ||
+          approver?.readyState === 3
+        )
+          return false;
+        await this.ctx.storage.put(trustKey(grant), remembered);
+      }
+      await this.putGrant(grant, g);
+      ws.serializeAttachment({
+        ...a,
+        until,
+        scope: "eval",
+        pages,
+        grant,
+        ...(remembered ? { remembered, rememberedSession: by!.session } : {}),
+      } satisfies ControllerAtt);
+      return true;
+    };
+    if (!(remembered ? await this.exclusive(save) : await save())) return;
     send(ws, {
       type: "approved",
       until,
       scope: "eval",
       token,
-      ...(renew ? { renewsUntil: t + EVAL_CHAIN_MS } : {}),
+      ...(renew && !remembered ? { renewsUntil: t + EVAL_CHAIN_MS } : {}),
     });
     console.log(
       JSON.stringify({
@@ -3307,6 +3760,7 @@ export class DebugHub {
       prefix.length === 40 ? [...(this.grants ?? [])].find(([h]) => h.startsWith(prefix)) : null;
     if (!found || found[1].scope !== "eval") return send(ws, this.state(page.thread));
     const [hash, g] = found;
+    if (g.remembered && g.remembered.user !== page.user) return send(ws, this.state(page.thread));
     if (m.type === "revoke") {
       await this.dropGrant(hash);
       // Nothing should hold it (it was listed as asleep), but close any that does.
@@ -3318,6 +3772,7 @@ export class DebugHub {
       console.log(JSON.stringify({ msg: "debug.revoke", grant: "idle", label: g.label }));
       return this.broadcast();
     }
+    if (g.remembered) return this.broadcast();
     if (g.pages) {
       const more = this.grantPages(page, m.pages);
       const next = more ? [...new Set([...g.pages, ...more])] : undefined;
@@ -3430,6 +3885,22 @@ export class DebugHub {
   }
 
   private fromController(ws: Socket, c: ControllerAtt, raw: unknown): void | Promise<void> {
+    if (c.remembered && c.grant)
+      return this.rememberedLease(c.grant).then((g) => {
+        if (!g)
+          return send(ws, {
+            type: "error",
+            error: "remembered trust paused: sign in on the approved device, or pair again",
+          });
+        const next = { ...c, until: g.until, rememberedSession: g.renew?.session };
+        ws.serializeAttachment(next);
+        if (g.until !== c.until) send(ws, { type: "renewed", until: g.until, count: 0 });
+        return this.fromApprovedController(ws, next, raw);
+      });
+    return this.fromApprovedController(ws, c, raw);
+  }
+
+  private fromApprovedController(ws: Socket, c: ControllerAtt, raw: unknown): void | Promise<void> {
     const t = this.now();
     if (!c.until) return send(ws, { type: "error", error: "not approved yet" });
     if (c.until <= t) {
@@ -3496,7 +3967,7 @@ export class DebugHub {
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
-      const { text, to, node, agentId, quiet, lane, voice } = m.value;
+      const { text, to, node, agentId, quiet, cut, lane, voice } = m.value;
       // The sender's node: what the line says, within the node its socket listens at.
       const home = c.node ?? ROOT_NODE;
       const from = m.value.taskPath ?? home;
@@ -3529,6 +4000,8 @@ export class DebugHub {
           ...(node ? { to: node } : {}),
           // say --quiet (already a boolean): shown, never read aloud.
           ...(quiet ? { quiet } : {}),
+          // say --supersede | --interject (already checked): how it cuts into the reading, live only.
+          ...(cut ? { cut } : {}),
           // Its lane and voice (packages/debug-chat/src/voices.ts), already checked against the table.
           ...(lane ? { lane } : {}),
           ...(voice ? { voice } : {}),
@@ -3542,6 +4015,7 @@ export class DebugHub {
             ...(said.taskPath ? { taskPath: said.taskPath } : {}),
             ...(said.to ? { to: said.to } : {}),
             ...(quiet ? { quiet } : {}),
+            ...(cut ? { cut } : {}),
             ...(lane ? { lane } : {}),
             ...(voice ? { voice } : {}),
             len: text.length,

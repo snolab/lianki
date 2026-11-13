@@ -24,6 +24,8 @@ const dictionary = {
   key: "version-notice",
   content: {
     refresh: tr("refresh"),
+    autoClean: tr("autoClean"),
+    autoDirty: tr("autoDirty"),
   },
 } satisfies DeclarationContent;
 

@@ -19,6 +19,8 @@ export {
   DOQueueHandler,
   DOShardedTagCache,
   DebugSessions,
+  PreviewCore,
+  PreviewAuth,
   worker_default2 as default
 };
 //# sourceMappingURL=worker.js.map`;
@@ -36,6 +38,8 @@ describe("check-worker-exports", () => {
       "DOQueueHandler",
       "DOShardedTagCache",
       "DebugSessions",
+      "PreviewAuth",
+      "PreviewCore",
       "default",
     ]);
     expect([
@@ -43,6 +47,14 @@ describe("check-worker-exports", () => {
         "export class A {}\nexport async function b() {}\nexport const c = 1; export {};",
       ),
     ]).toEqual(["A", "b", "c"]);
+    // A minified bundle: one line, its exports the clause that ends the file.
+    const minified =
+      "var a=`export{nope as x}`;class Q{}var w={};export{b as BucketCachePurge,Q as DebugSessions,w as default};\n//# sourceMappingURL=worker.js.map\n";
+    expect([...exportNames(minified)].sort()).toEqual([
+      "BucketCachePurge",
+      "DebugSessions",
+      "default",
+    ]);
     // Indented text inside an embedded source is not a top-level export.
     expect([
       ...exportNames("var s = `\n  export function middleware() {}\n`;\nexport { x };"),

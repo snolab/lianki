@@ -6,6 +6,7 @@ import {
   FINAL_TIMEOUT_MS,
   RACE_STAGGER_MS,
   REQUEST_TIMEOUT_MS,
+  REPLAY_WAIT_MS,
   STT_TICKET_PATH,
   type WsLike,
   createLocalStt,
@@ -879,7 +880,7 @@ describe("edge paths: requests, hello, page events", () => {
     stt.close();
   });
 
-  it("by default it watches the page's visibilitychange and online events", () => {
+  it("by default it watches the page's visibilitychange and online events, and a worker free again", () => {
     const g = globalThis as Record<string, unknown>;
     const had = { window: g.window, document: g.document };
     const on = new Map<string, () => void>();
@@ -898,11 +899,12 @@ describe("edge paths: requests, hello, page events", () => {
         clearTimer: () => {},
       });
       stt.keep(true);
-      expect([...on.keys()].sort()).toEqual(["online", "visibilitychange"]);
+      expect([...on.keys()].sort()).toEqual(["lk-stt-available", "online", "visibilitychange"]);
       on.get("visibilitychange")!(); // still hidden: nothing
       doc.visibilityState = "visible";
       on.get("visibilitychange")!();
       on.get("online")!();
+      on.get("lk-stt-available")!(); // the lobby heard a worker: race again
       stt.keep(false);
       expect(on.size).toBe(0);
       stt.close();
@@ -940,5 +942,116 @@ describe("localSttRoute (the owner's default)", () => {
     expect(localSttRoute(" OFF ", true)).toEqual({ source: "off" });
     expect(localSttRoute("", true)).toEqual({ source: "off" });
     expect(localSttRoute("ws://evil.example/x", true)).toEqual({ source: "off" });
+  });
+});
+
+describe("createLocalStt: the utterance in flight survives a route that drops (mic on)", () => {
+  const frames = (s: { sent: (string | Uint8Array)[] }) =>
+    s.sent.filter((x) => typeof x !== "string" && x[0] === 1).length;
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("dropped mid-utterance: replayed, begin and every frame, on the next route; partials go on", async () => {
+    const h = page();
+    h.stt.keep(true);
+    const a = h.ready();
+    h.advance(STABLE_MS);
+    const partials: string[] = [];
+    const u = h.stt.begin((x) => partials.push(x))!;
+    u.frame(new Float32Array(512));
+    u.frame(new Float32Array(512));
+    a.say({ t: "partial", id: 1, text: "你" });
+    a.drop({ code: 1006 });
+    u.frame(new Float32Array(512)); // while down: kept for the replay
+    await flush();
+    const b = h.socks.at(-1)!;
+    expect(b).not.toBe(a);
+    h.ready(b);
+    expect(json(b.sent[0])).toMatchObject({ t: "begin", id: 2 });
+    expect(frames(b)).toBe(3);
+    expect(h.logs).toContainEqual(
+      expect.objectContaining({ state: "replayed", frames: 3, ended: false }),
+    );
+    b.say({ t: "partial", id: 2, text: "你好" });
+    expect(partials).toEqual(["你", "你好"]);
+    const f = u.end(new Float32Array(512 * 3));
+    expect(json(b.sent.at(-1)!)).toEqual({ t: "end", id: 2 });
+    b.say({ t: "final", id: 2, text: "你好。", ms: 9 });
+    expect((await f).text).toBe("你好。");
+  });
+
+  it("dropped after its end: replayed with its pre-pad and end when a route is back in time", async () => {
+    const h = page();
+    h.stt.keep(true);
+    const a = h.ready();
+    h.advance(STABLE_MS);
+    const u = h.stt.begin(() => {})!;
+    u.frame(new Float32Array(100));
+    const f = u.end(new Float32Array(100 + 40));
+    a.drop({ code: 1006 });
+    await flush();
+    const b = h.ready(h.socks.at(-1)!);
+    expect(json(b.sent[0])).toMatchObject({ t: "begin", id: 2 });
+    expect((b.sent[1] as Uint8Array)[0]).toBe(1);
+    expect((b.sent[2] as Uint8Array).length).toBe(1 + 40 * 2); // the pre-pad
+    expect(json(b.sent[3])).toEqual({ t: "end", id: 2 });
+    b.say({ t: "final", id: 2, text: "ok", ms: 3 });
+    expect((await f).text).toBe("ok");
+  });
+
+  it("dropped after its end and no route within REPLAY_WAIT_MS: rejects, so the cloud takes it", async () => {
+    const h = page();
+    h.stt.keep(true);
+    const a = h.ready();
+    h.advance(STABLE_MS);
+    const u = h.stt.begin(() => {})!;
+    const f = u.end(new Float32Array(100));
+    a.drop({ code: 1006 });
+    await flush();
+    h.run(REPLAY_WAIT_MS);
+    await expect(f).rejects.toThrow("closed");
+    expect(h.logs).toContainEqual(expect.objectContaining({ state: "replay-timeout" }));
+    // The route that comes back later carries nothing of it.
+    const b = h.ready(h.socks.at(-1)!);
+    expect(b.sent).toHaveLength(0);
+  });
+
+  it("every route fails while it waits: an end() then rejects at once (the cloud)", async () => {
+    const h = page();
+    h.stt.keep(true);
+    const a = h.ready();
+    h.advance(STABLE_MS);
+    const u = h.stt.begin(() => {})!;
+    u.frame(new Float32Array(100));
+    a.drop({ code: 1006 });
+    await flush();
+    h.socks.at(-1)!.drop(); // the next route is unreachable too
+    await expect(u.end(new Float32Array(100))).rejects.toThrow("unreachable");
+  });
+
+  it("cancelled while it waits: nothing of it is replayed", async () => {
+    const h = page();
+    h.stt.keep(true);
+    const a = h.ready();
+    h.advance(STABLE_MS);
+    const u = h.stt.begin(() => {})!;
+    u.frame(new Float32Array(100));
+    a.drop({ code: 1006 });
+    u.cancel();
+    await flush();
+    const b = h.ready(h.socks.at(-1)!);
+    expect(b.sent).toHaveLength(0);
+  });
+
+  it("a drop soon after ready (backoff) still retries at once for the speech in flight", async () => {
+    const h = page();
+    h.stt.keep(true);
+    const a = h.ready(); // no STABLE_MS: this drop counts as a failure
+    const u = h.stt.begin(() => {})!;
+    u.frame(new Float32Array(100));
+    a.drop({ code: 1006 });
+    await flush();
+    expect(h.socks).toHaveLength(2);
+    h.ready(h.socks[1]);
+    expect(frames(h.socks[1])).toBe(1);
   });
 });

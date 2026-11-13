@@ -9,8 +9,14 @@
   "files": [
     "lianki.mjs",
     "cli.mjs",
+    "chat-bridge.mjs",
+    "chat-receiver.mjs",
+    "chat-polish.mjs",
+    "chat-inbox.mjs",
     "auth.mjs",
     "mcp.mjs",
+    "mcp-tools.mjs",
+    "api.mjs",
     "README.md",
     "LICENSE"
   ],

@@ -41,6 +41,7 @@ import {
   GUARD_HEADER,
   HUB_ORIGIN,
   isBridgedPath,
+  needsBunInstall,
   needsIntlayerBuild,
   RestartStorm,
   restartScanner,
@@ -632,15 +633,20 @@ async function serve() {
         return res.end(landingHtml(lab, origin));
       }
       // Filtered first (no cookies, CSP, CORS, HSTS… from the app), then the
-      // guard's own frame-ancestors.
-      return proxy(req, res, url, (h) =>
-        framable(
+      // guard's own frame-ancestors. Never cached: next dev's "no-cache" reaches
+      // the browser through Cloudflare as max-age=14400 (the zone's browser TTL),
+      // and its chunk names do not change with their contents, so a browser kept
+      // hours-old chat code after every publish (2026-11-14). no-store is kept.
+      return proxy(req, res, url, (h) => ({
+        ...framable(
           downstreamHeaders(h as Record<string, string | string[] | undefined>, {
             publicHost,
             origin,
           }) as http.IncomingHttpHeaders,
         ),
-      );
+        "cache-control": "no-store",
+        "cdn-cache-control": "no-store",
+      }));
     } catch (e) {
       console.error("[whole-page] tunnel error:", (e as Error).message);
       if (!res.headersSent) res.writeHead(503, { "cache-control": "no-store" });
@@ -812,6 +818,11 @@ async function serve() {
     // *.content.ts that arrive by a merge, and the page throws until someone
     // runs `intlayer build` (twice on 2026-10-31). Rebuild them here, at once.
     const changed = Bun.spawnSync(["git", "diff", "--name-only", before, "HEAD"]).stdout.toString();
+    // A merge of main (preview-follow) can bring new dependencies.
+    if (needsBunInstall(changed.split("\n"))) {
+      const i = Bun.spawnSync(["bun", "install", "--frozen-lockfile"]);
+      console.error(`[whole-page] bun install ${i.success ? "done" : "FAILED"}`);
+    }
     if (needsIntlayerBuild(changed.split("\n"))) {
       const b = Bun.spawnSync(["bunx", "intlayer", "build"], { env: { ...process.env, ...env } });
       console.error(`[whole-page] intlayer build ${b.success ? "done" : "FAILED"}`);

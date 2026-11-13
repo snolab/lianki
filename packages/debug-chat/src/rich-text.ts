@@ -97,6 +97,13 @@ const makeParser = (tier: RichTier) =>
       // An indented line in a chat is a line, and "a\n---" is not a heading.
       code: () => undefined,
       lheading: () => undefined,
+      // Only ~~double~~ strikes through: GFM's single ~ turned "15~20 分钟 … 0:05~"
+      // into a struck-out span (owner, 2026-11-13). A lone ~ stays a character.
+      del(src: string) {
+        const m = /^~~(?=\S)([\s\S]*?\S)~~(?!~)/.exec(src);
+        if (!m) return undefined;
+        return { type: "del", raw: m[0], text: m[1]!, tokens: this.lexer.inlineTokens(m[1]!) } as never;
+      },
     },
     renderer: {
       // No form controls: a task list's box is a character.

@@ -4,7 +4,7 @@
  * (debug.ts calls in here). docs/lianki-dev-cli.md, "lianki chat".
  *
  *   POST /api/version/chat  Authorization: Bearer lk_…
- *        {op:"say", text, quiet?}                → {ok, id}
+ *        {op:"say", text, quiet?, cut?}          → {ok, id}   cut: "supersede" | "interject"
  *        {op:"ask", question, options | questions, expiresAt?} → {ok, id, askId}
  *        {op:"read", limit?}                     → {ok, thread, lane, messages}
  *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?};
@@ -38,8 +38,8 @@
  */
 import type { ChatMessage, EditedEvent } from "../../../packages/debug-chat/src/wire";
 import { type Ask, parseAsk, askText } from "../../../packages/debug-chat/src/ask";
-import { OWNER_THREAD, chatText, isUserId } from "../../../lib/dev-eval";
-import { laneOf } from "../../../packages/debug-chat/src/voices";
+import { OWNER_THREAD, SAY_CUTS, chatText, isSayCut, isUserId } from "../../../lib/dev-eval";
+import { laneOf, parseLineVoice } from "../../../packages/debug-chat/src/voices";
 
 export const CHAT_PATH = "/api/version/chat";
 export const REVOKED_PATH = "/internal/chat-tokens/revoked";
@@ -78,7 +78,7 @@ export type TokenAtt = {
   checkedAt?: number;
 };
 
-export type ChatTokenOp = "say" | "ask" | "read" | "listen" | "recheck";
+export type ChatTokenOp = "say" | "ask" | "read" | "listen" | "recheck" | "prepare";
 export type ChatTokenAnswer =
   | {
       ok: true;
@@ -91,6 +91,7 @@ export type ChatTokenAnswer =
     }
   | { ok: false; error: string; retryAfterMs?: number };
 export type ChatTokenRpc = {
+  prepareChatTurn?(req: { userId: string; input: unknown }): Promise<unknown>;
   chatToken?(req: {
     op: ChatTokenOp;
     token?: string;
@@ -214,7 +215,18 @@ export class TokenChat {
   private async say(thread: string, lane: string, m: Record<string, unknown>) {
     const text = typeof m.text === "string" ? laneText(lane, m.text.trim()) : undefined;
     if (!text) return { error: "say needs text (at most the chat's limit)" };
-    const line = this.line(thread, lane, text, m.quiet === true ? { quiet: true } : {});
+    // A line's own voice (main = the cat-girl voice…), checked as on the grant path.
+    const voice = m.voice === undefined ? undefined : parseLineVoice(m.voice);
+    if (voice && "error" in voice) return { error: voice.error };
+    // One of the two modes or nothing, like the grant path (lib/dev-eval.ts parseControllerMessage).
+    if (m.cut !== undefined && !isSayCut(m.cut))
+      return { error: `cut must be one of ${SAY_CUTS.join(", ")}` };
+    const line = this.line(thread, lane, text, {
+      ...(m.quiet === true ? { quiet: true as const } : {}),
+      ...(voice ? { voice: m.voice as string } : {}),
+      // How it cuts into the reading when it arrives live (packages/debug-chat voice.ts).
+      ...(isSayCut(m.cut) ? { cut: m.cut } : {}),
+    });
     await this.host.post(line);
     console.log(JSON.stringify({ msg: "debug.token-say", lane, owner: thread === OWNER_THREAD }));
     return { id: line.id };
@@ -253,7 +265,7 @@ export class TokenChat {
       return json({ ok: false, error: "expected a JSON object" }, 400);
     }
     const op = body.op;
-    if (op !== "say" && op !== "ask" && op !== "read")
+    if (op !== "say" && op !== "ask" && op !== "read" && op !== "prepare")
       return json({ ok: false, error: 'op must be "say", "ask" or "read"' }, 400);
     // `lianki mcp` names itself (x-lianki-client) for the audit log; the main
     // Worker keeps it only in its one known shape (lib/api-token-client.ts).
@@ -262,6 +274,16 @@ export class TokenChat {
     if (!v.ok) return refusal(v);
     const thread = await this.threadOf(v);
     if (!thread) return json({ ok: false, error: "blocked" }, 403);
+    if (op === "prepare") {
+      const rpc = this.host.rpc();
+      if (!rpc?.prepareChatTurn) return json({ ok: false, error: "unavailable" }, 503);
+      try {
+        const result = await rpc.prepareChatTurn({ userId: v.userId, input: body.input });
+        return json(result);
+      } catch {
+        return json({ ok: false, error: "unavailable" }, 503);
+      }
+    }
     if (op === "read") {
       const n = typeof body.limit === "number" && Number.isInteger(body.limit) ? body.limit : 30;
       const list = (await this.host.history(thread)).slice(-Math.max(1, Math.min(MAX_READ, n)));
