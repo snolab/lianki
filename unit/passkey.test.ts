@@ -3,6 +3,7 @@ import {
   defaultPasskeyName,
   PRODUCTION_RP_ID,
   passkeyErrorKind,
+  passkeyUsableOn,
   passkeyRelyingParty,
 } from "@/lib/passkey";
 
@@ -104,5 +105,26 @@ describe("passkeyErrorKind", () => {
     expect(passkeyErrorKind({ code: "FAILED_TO_VERIFY_REGISTRATION" })).toBe("failed");
     expect(passkeyErrorKind(null)).toBe("failed");
     expect(passkeyErrorKind({})).toBe("failed");
+  });
+});
+
+describe("passkeyUsableOn", () => {
+  const prod = passkeyRelyingParty(undefined, true);
+  test("production: the apex and www only, never another subdomain", () => {
+    expect(passkeyUsableOn("lianki.com", prod)).toBe(true);
+    expect(passkeyUsableOn("www.lianki.com", prod)).toBe(true);
+    expect(passkeyUsableOn("preview.lianki.com", prod)).toBe(false);
+    expect(passkeyUsableOn("example.com", prod)).toBe(false);
+    expect(passkeyUsableOn(null, prod)).toBe(false);
+  });
+  test("a localhost RP: that host, any port in the Host header", () => {
+    const local = passkeyRelyingParty("http://localhost:3101", false);
+    expect(passkeyUsableOn("localhost:3101", local)).toBe(true);
+    expect(passkeyUsableOn("preview.lianki.com", local)).toBe(false);
+  });
+  test("no origin list (dev fallback): the RP host itself", () => {
+    const dev = passkeyRelyingParty(undefined, false);
+    expect(passkeyUsableOn("localhost:3000", dev)).toBe(true);
+    expect(passkeyUsableOn("preview.lianki.com", dev)).toBe(false);
   });
 });

@@ -13,9 +13,9 @@ type SessionLike = {
 } | null;
 
 /**
- * The raw session dump for diagnosing sign-in. Internals never go in user UI
- * (docs/design-principles.md): it renders only for accounts with dev access,
- * through the same gate the /dev pages use, so it moves with that gate.
+ * The raw session dump for diagnosing sign-in, on /dev/session. Internals never
+ * go in user UI (docs/design-principles.md), so it lives on a /dev page, and it
+ * still renders only for accounts with dev access, through the same gate.
  */
 export function SessionDetailsCard({
   viewerEmail,
@@ -23,7 +23,7 @@ export function SessionDetailsCard({
   session,
 }: {
   viewerEmail: string | null | undefined;
-  title: string;
+  title?: string;
   session: SessionLike;
 }) {
   if (!isDev(viewerEmail)) return null;
@@ -32,7 +32,7 @@ export function SessionDetailsCard({
       data-testid="session-details"
       className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6"
     >
-      <h2 className="text-2xl font-semibold mb-4">{title}</h2>
+      {title && <h2 className="text-2xl font-semibold mb-4">{title}</h2>}
       <pre className="text-sm overflow-x-auto">
         {JSON.stringify(
           {
