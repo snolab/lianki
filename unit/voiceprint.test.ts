@@ -630,6 +630,8 @@ function micWith(o: {
   const tags: (SpeakerTag | undefined)[] = [];
   const verdicts: string[] = [];
   const logs: Record<string, unknown>[] = [];
+  /** onBreak, speaker and onText, in the order they came. */
+  const order: string[] = [];
   let woke = 0;
   const mic = createMic({
     guard: { minFrameRms: 0 }, // the fake audio is zeros; unit/stt-guard.test.ts has the gate
@@ -642,11 +644,12 @@ function micWith(o: {
         uploads.push({ samples: (wav.length - 44) / 2, local: info.local, resolve }),
       ),
     onState: () => {},
-    onText: (t) => texts.push(t),
+    onText: (t) => void (texts.push(t), order.push(`text ${t}`)),
+    onBreak: () => void order.push("break"),
     onPending: () => {},
     stream: o.stream ? () => o.stream : undefined,
     enrol: o.enrol,
-    speaker: (t) => tags.push(t),
+    speaker: (t, p) => void (tags.push(t), order.push(`tag ${t?.decision} ${p}`)),
     log: (e) => logs.push(e),
     wake: o.passive
       ? {
@@ -661,7 +664,7 @@ function micWith(o: {
     ev!.onSpeechStart();
     ev!.onSpeechEnd(new Float32Array(Math.round(sec * RATE)));
   };
-  return { mic, say, uploads, texts, tags, verdicts, logs, woke: () => woke };
+  return { mic, say, uploads, texts, tags, verdicts, logs, order, woke: () => woke };
 }
 
 describe("the mic and enrolment", () => {
@@ -734,6 +737,61 @@ describe("the mic and the speaker check", () => {
     // Active mode passes it on (never dropped there), but it counts towards passive.
     expect(h.texts.join("")).toContain("电视里的声音");
     expect(h.verdicts.at(-1)).toBe("false other");
+  });
+
+  it("a final the Mac split by speaker: one line per part, each with its own tag and proof", async () => {
+    const m = mac();
+    const h = micWith({ stream: m.stt, passive: () => false, spot: async () => ({ hit: false }) });
+    await h.mic.toggle();
+    h.say(2);
+    m.answer({ text: "前面", speaker: me(), proof: "P0" });
+    await tick();
+    h.uploads[0]!.resolve("前面");
+    await tick();
+    await tick();
+    h.say(7);
+    const parts = [
+      { text: "你吃饭了吗", speaker: other(), proof: "P1" },
+      { text: "我吃过了", speaker: me(), proof: "P2" },
+    ];
+    m.answer({
+      text: "你吃饭了吗我吃过了",
+      speaker: { decision: "unknown", reason: "mixed" },
+      parts,
+    });
+    await tick();
+    h.uploads[1]!.resolve("你吃饭了吗我吃过了");
+    await tick();
+    await tick();
+    // The line before goes first; her part is a line of its own, then his, each noted as it lands.
+    expect(h.order).toEqual([
+      "tag me P0",
+      "text 前面",
+      "break",
+      "tag other P1",
+      "text 你吃饭了吗",
+      "break",
+      "tag me P2",
+      "text 我吃过了",
+    ]);
+  });
+
+  it("a split final whose text changed on the way (the cloud, a cleanup): one line, as before", async () => {
+    const m = mac();
+    const h = micWith({ stream: m.stt, passive: () => false, spot: async () => ({ hit: false }) });
+    await h.mic.toggle();
+    h.say(7);
+    m.answer({
+      text: "你吃饭了吗我吃过了",
+      speaker: { decision: "unknown", reason: "mixed" },
+      proof: "W",
+      parts: [{ text: "你吃饭了吗" }, { text: "我吃过了" }],
+    });
+    await tick();
+    h.uploads[0]!.resolve("别的");
+    await tick();
+    await tick();
+    expect(h.order).toEqual(["tag unknown W", "text 别的"]);
   });
 
   it("passive: someone else's 'Linky' is dropped and wakes nothing (logged as a count)", async () => {
@@ -867,6 +925,42 @@ describe("createLocalStt: the voiceprint protocol", () => {
       model: "campp",
       device: "iphone",
     });
+  });
+
+  it("a final split by speaker: its parts, each tag cleaned and its own proof; bad parts: none", async () => {
+    const { s, stt } = setup();
+    const end = () => stt.begin(() => {})!.end(new Float32Array(RATE * 7));
+    const f = end();
+    s.say({
+      t: "final",
+      id: 1,
+      text: "你吃饭了吗我吃过了",
+      speaker: { decision: "unknown", reason: "mixed" },
+      speakerProof: "W.S",
+      parts: [
+        {
+          text: "你吃饭了吗",
+          speaker: { decision: "other", score: 0.01, bogus: 1 },
+          speakerProof: "A.S",
+        },
+        {
+          text: "我吃过了",
+          speaker: { decision: "me", score: 0.9 },
+          speakerProof: "B.S",
+          startMs: 3,
+        },
+      ],
+    });
+    expect((await f).parts).toEqual([
+      { text: "你吃饭了吗", speaker: { decision: "other", score: 0.01 }, proof: "A.S" },
+      { text: "我吃过了", speaker: { decision: "me", score: 0.9 }, proof: "B.S" },
+    ]);
+    // One part, or a part with no text: no parts at all (the final stays one line).
+    for (const [i, parts] of [[{ text: "x" }], [{ text: "x" }, { text: " " }], "x"].entries()) {
+      const g = end();
+      s.say({ t: "final", id: i + 2, text: "x", parts });
+      expect((await g).parts).toBeUndefined();
+    }
   });
 
   it("request: answered by its rid; rejected when the socket drops", async () => {

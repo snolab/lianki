@@ -198,3 +198,22 @@ export const partTexts = (line: ChatMessage): string[] => (line.parts ?? []).map
 
 /** When the line last grew. */
 export const lastPartAt = (line: ChatMessage): number => line.parts?.at(-1)?.at ?? line.at;
+
+/**
+ * Why these lines may not become one passage (an agent's `edit --merge`), by
+ * speaker, or undefined. Never someone else's line (owner, 2026-11-13: a final
+ * split by speaker leaves his part and hers as two lines, and the polish must
+ * not join them again); and a line verified as his never shares a passage with
+ * one that is not, so his ✓ never covers words the Mac did not sign as his.
+ */
+export function passageSpeakers(
+  lines: readonly Pick<ChatMessage, "id" | "speaker">[],
+): string | undefined {
+  const other = lines.find((x) => x.speaker?.decision === "other");
+  if (other) return `message ${other.id} is someone else's voice: only his own lines make a passage`;
+  const me = lines.find((x) => x.speaker?.decision === "me");
+  const not = lines.find((x) => x.speaker?.decision !== "me");
+  if (me && not)
+    return `message ${not.id} is not verified as his voice and message ${me.id} is: a passage keeps one speaker`;
+  return undefined;
+}
