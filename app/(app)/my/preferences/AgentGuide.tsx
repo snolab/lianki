@@ -78,7 +78,7 @@ export function AgentGuide(p: {
 }) {
   return (
     <details className="mt-2 group" data-testid="token-guide">
-      <summary className="cursor-pointer text-sm font-medium text-primary hover:underline w-fit whitespace-nowrap">
+      <summary className="cursor-pointer text-sm font-medium text-primary hover:underline w-fit max-w-full break-words">
         {p.labels.summary}
       </summary>
       <div className="mt-2 space-y-2">
