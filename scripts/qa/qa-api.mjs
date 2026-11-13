@@ -91,6 +91,7 @@ for (const [method, path] of [
   ["POST", "/api/dev/membership"],
   ["GET", "/api/dev/credits?email=x@y.z"],
   ["POST", "/api/dev/credits"],
+  ["POST", "/api/dev/credits/age-bonus"],
   ["GET", "/dev/credits"],
   ["GET", "/api/dev/flags"],
   ["POST", "/api/dev/flags"],
