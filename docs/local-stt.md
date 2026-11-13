@@ -766,6 +766,13 @@ per speaker, each verified by its own proof (lib/speaker-proof.ts). Not after
 "Linky" (the cuts are in the whole audio, the text only after it): one `mixed`
 line there. Costs one more decode of the final's audio, only on these finals.
 
+**Which other voice** (owner, 2026-11-14; [voice-mode.md](voice-mode.md),
+"Speaker avatars"): an `other` final also carries `voice`, a stable id per
+voice heard lately (`Voices`: cosine to a running centroid, `VOICE_SAME`,
+`VOICES_MAX`, `VOICE_FORGET_S`; memory only, never audio), `"me"` on his;
+nothing on an unknown and nothing without a print. Signed with the tag, so
+the chat can draw one avatar per voice.
+
 **Merging keeps the speakers apart.** A split part never amends the line
 before it (`continues` is not asked for it). An agent's passage merge
 (`eval.ts edit --merge`, `passageSpeakers` in voice-merge.ts, the hub's
