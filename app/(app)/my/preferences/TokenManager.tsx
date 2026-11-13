@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { longDate, longDateTime } from "@/lib/dates";
 import { MAX_NAME, type ScopeId } from "@/lib/api-tokens";
@@ -55,6 +55,12 @@ export default function TokenManager() {
     scopes: ScopeId[];
     expiresAt: string | null;
   } | null>(null);
+  const form = useRef<HTMLFormElement>(null);
+  const shareButton = useRef<HTMLButtonElement>(null);
+  const formId = useId();
+  useEffect(() => {
+    if (secret) shareButton.current?.focus();
+  }, [secret]);
   const guide = useAgentGuide();
   const pointer = useAgentGuidePointer();
   const [copied, setCopied] = useState(false);
@@ -81,11 +87,23 @@ export default function TokenManager() {
     setExpiry({ days: p.days });
   }, []);
 
+  function invalid(message: string, selector: string) {
+    setError(message);
+    form.current?.querySelector<HTMLElement>(selector)?.focus();
+  }
+
   async function create() {
+    if (busy) return;
     const exp = expiryBody(expiry);
-    if (!name.trim() || [...name.trim()].length > MAX_NAME) return setError(s("errName"));
-    if (scopes.length === 0) return setError(s("errScopes"));
-    if (!exp) return setError(s("errExpiry"));
+    if (!name.trim() || [...name.trim()].length > MAX_NAME)
+      return invalid(s("errName"), "[data-testid=token-name]");
+    if (scopes.length === 0)
+      return invalid(s("errScopes"), "[data-token-picker=permissions] input");
+    if (!exp)
+      return invalid(
+        s("errExpiry"),
+        "[data-token-picker=expiry] input, [data-token-picker=expiry] button",
+      );
     setError(null);
     setBusy(true);
     try {
@@ -208,10 +226,11 @@ export default function TokenManager() {
 
       {secret && (
         <div
-          role="status"
+          role="region"
+          aria-labelledby={`${formId}-created`}
           className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-md space-y-2"
         >
-          <p className="text-sm font-medium">
+          <p id={`${formId}-created`} className="text-sm font-medium">
             {secret.name}: {s("copyOnce")}
           </p>
           <code
@@ -223,6 +242,7 @@ export default function TokenManager() {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <button
               type="button"
+              ref={shareButton}
               data-testid="token-share-copy"
               onClick={copyWithGuide}
               className="text-sm font-medium bg-primary text-on-primary rounded px-3 py-1.5 hover:opacity-90"
@@ -238,7 +258,10 @@ export default function TokenManager() {
             </button>
             <button
               type="button"
-              onClick={() => setSecret(null)}
+              onClick={() => {
+                setSecret(null);
+                form.current?.querySelector<HTMLElement>("[data-testid=token-name]")?.focus();
+              }}
               className="text-sm hover:underline"
             >
               {s("done")}
@@ -314,11 +337,23 @@ export default function TokenManager() {
         )}
       </ul>
 
-      <div className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+      <form
+        ref={form}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void create();
+        }}
+        aria-describedby={error ? `${formId}-error` : undefined}
+        className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
+      >
         <label className="block text-sm">
           <span className="font-medium">{s("nameLabel")}</span>
           <input
             type="text"
+            name="token-name"
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby={`${formId}-name-hint`}
             value={name}
             maxLength={MAX_NAME}
             onChange={(e) => setName(e.target.value)}
@@ -326,7 +361,9 @@ export default function TokenManager() {
             data-testid="token-name"
             className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-900"
           />
-          <span className="block text-xs opacity-70 mt-1">{s("nameHint")}</span>
+          <span id={`${formId}-name-hint`} className="block text-xs opacity-70 mt-1">
+            {s("nameHint")}
+          </span>
         </label>
         <button
           type="button"
@@ -347,20 +384,20 @@ export default function TokenManager() {
         />
         <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
         {error && (
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          <p id={`${formId}-error`} role="alert" className="text-sm text-red-600 dark:text-red-400">
             {error}
           </p>
         )}
         <button
-          type="button"
-          onClick={create}
+          type="submit"
+          aria-busy={busy}
           disabled={busy}
           data-testid="token-create"
           className="bg-primary text-on-primary text-sm font-medium py-2 px-4 rounded hover:opacity-90 disabled:opacity-50"
         >
           {busy ? s("creating") : s("create")}
         </button>
-      </div>
+      </form>
     </section>
   );
 }

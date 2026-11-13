@@ -2023,3 +2023,10 @@ html[data-read-marks="unknown"] .lk-book [data-pf="n"] {
     display: none;
   }
 }
+
+/* Preferences: every nested control keeps a visible keyboard focus on paper and ink. */
+.preferences-accessible :is(button, input, select, textarea, summary, a):focus-visible {
+  outline: 2px solid var(--lk-primary);
+  outline-offset: 3px;
+  scroll-margin-block: 6rem;
+}
