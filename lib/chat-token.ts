@@ -39,13 +39,15 @@ export const CHAT_OPS = {
   listen: "chat:read",
   recheck: "chat:read",
   prepare: "chat:write",
+  // Its own avatar (token-chat.ts op "avatar"): counted with its lines.
+  avatar: "chat:write",
 } as const satisfies Record<string, ScopeId>;
 export type ChatOp = keyof typeof CHAT_OPS;
 
 /** Per token, per kind of operation (lib/chat-limits.ts). */
 export { CHAT_LIMITS };
 const limitOf = (op: ChatOp) =>
-  op === "say" || op === "ask"
+  op === "say" || op === "ask" || op === "avatar"
     ? "post"
     : op === "read"
       ? "read"

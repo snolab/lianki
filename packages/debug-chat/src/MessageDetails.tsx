@@ -200,8 +200,8 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
               {at.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" })}
             </time>
           )}
-          {voiceWords && typeof selection.message.id === "string" && (
-            <LineVoice lineId={selection.message.id} words={voiceWords} />
+          {voiceWords && m && typeof m.id === "string" && (
+            <LineVoice lineId={m.id} words={voiceWords} />
           )}
           <pre className="m-0 mt-2 whitespace-pre-wrap break-words font-mono fs-10">
             {JSON.stringify(metadata, null, 2)}

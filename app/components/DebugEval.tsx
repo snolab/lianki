@@ -49,6 +49,8 @@ import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { withLane } from "@lianki/debug-chat/voices";
+import { type Present, parsePresent } from "@lianki/debug-chat/presence";
+import { publicCfg } from "@/lib/config-client";
 import { spokenOf } from "@lianki/debug-chat/rich-text";
 import { missedReply } from "@lianki/debug-chat/speak-rules";
 import { voice } from "@lianki/debug-chat/voice";
@@ -217,6 +219,8 @@ export function DebugEval({
   const [phase, setPhase] = useState<SocketPhase>("closed");
   const [toast, setToast] = useState<string | null>(null);
   const [state, setState] = useState<HubState | null>(null);
+  /** Who is here (presence.ts): the hub pushes this page's list on every change. */
+  const [present, setPresent] = useState<Present[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   /** The chat box stays up across reconnects, until debug mode is turned off. */
   const [chat, setChat] = useState(false);
@@ -567,6 +571,11 @@ export function DebugEval({
         if (msg.type === "rate-limited") {
           const min = Math.max(1, Math.ceil(Number(msg.retryIn) / 60_000) || 1);
           setWarning(chatExtra().rateLimited.replace("{n}", String(min)));
+          return;
+        }
+        if (msg.type === "present") {
+          const list = parsePresent((msg as { list?: unknown }).list);
+          if (list) setPresent(list);
           return;
         }
         if (msg.type === "state") {
@@ -1038,6 +1047,31 @@ export function DebugEval({
             evalRan={!!toast}
             friend={isFriend}
             owner={devUi}
+            // Who is here, right of the connection chip (PresenceStack.tsx).
+            presence={
+              devUi
+                ? {
+                    list: present,
+                    shown: publicCfg("chat.presenceShown"),
+                    onChange: (tok, change) => {
+                      const sock = sockRef.current;
+                      if (!sock || sock.readyState !== WebSocket.OPEN) return;
+                      try {
+                        sock.send(JSON.stringify({ type: "participant", tok, ...change }));
+                      } catch {}
+                    },
+                    // The same revoke as /my/preferences (lib/api-token-api.ts): this account's tokens only.
+                    onRemove: async (id) => {
+                      const r = await fetch("/api/token", {
+                        method: "DELETE",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ id }),
+                      }).catch(() => null);
+                      return !!r?.ok;
+                    },
+                  }
+                : undefined
+            }
             // The connection chip (LinkChip.tsx): remote code on this page, and the selection.
             link={
               devUi

@@ -128,6 +128,7 @@ lianki chat say "PR #670 is green"             # → 【codex】PR #670 is green
 lianki chat ask --q "Ship it?" --opt Yes --opt No --recommend 1 --wait   # prints the tapped option
 lianki chat read --limit 20 --json
 lianki chat listen --json                      # one JSON line an event
+lianki chat avatar me.svg                      # its own picture (plain SVG ≤ 4 KB; --clear removes it)
 lianki-dev say "…" / ask … / listen            # the same path while LIANKI_TOKEN is set
 ```
 
@@ -143,6 +144,15 @@ What the server does (`workers/push/src/token-chat.ts`, `lib/chat-token.ts`):
 - A token's line is an **agent line** (`from: "agent"`, `via: "token"`,
   `tokenLane` = the token's name, text `【name】…`; a token named codex, agy or main also gets that lane's `lane`, mark and voice): it never speaks as the owner
   or the user.
+- **Avatars** (`op: "avatar"`, `chat:write`, counted with say/ask): `svg` a
+  plain SVG string, or `null` to clear. Sanitized in lianki-push with a strict
+  allowlist (`packages/debug-chat/src/svg-avatar.ts`, at most 4 KB), kept once
+  by its SHA-256 and served at `GET /api/version/chat-avatar/<sha>`; the
+  token's lines carry only that reference (`avatar`), with `tok` (the token's
+  tag) and `client: "mcp"` when an MCP client sent them. A token with none gets
+  a generated mark from its name. The owner of the token's account may rename
+  it or set its picture from the chat (his choice wins); docs/dev-debug-widget.md,
+  "Agent avatars" and "Who is here".
 - **Ask cards**: only a tap on a page of that thread answers one; a token (or
   controller) never can. The `answered` event goes to the thread's pages and
   to that account's sockets **of the same lane** only, not to other lanes or

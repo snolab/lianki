@@ -66,6 +66,10 @@ export function lineAvatar(
     you?: string;
     /** A lane's own mark (LaneMark.tsx laneAvatar); undefined = the agent's avatar. */
     laneAvatar?: (lane: LaneId) => AvatarSource | undefined;
+    /** Any other token agent's picture (LaneMark.tsx agentAvatar): its own SVG, else the generated mark. */
+    tokenAvatar?: (p: { name: string; avatar?: string }) => AvatarSource | undefined;
+    /** Who is here (presence.ts), by token tag: the owner's name and picture for it win. */
+    participant?: (tok: string) => { name: string; avatar?: string } | undefined;
   },
 ): LineAvatar {
   // A lane with a mark of its own (voices.ts LANES): its mark and name.
@@ -74,6 +78,19 @@ export function lineAvatar(
     // Without the drawn mark (another host): its initial on its own colour, never the agent's logo.
     const src = opts.laneAvatar?.(m.lane!);
     return { src, name: lane.name, initialFrom: lane.name, seed: `lane:${m.lane}`, mine: false };
+  }
+  // Any other API-token agent: its (owner-given) name, its own picture or the generated one.
+  if (m.from === "agent" && m.via === "token" && !lane?.mark) {
+    const p = m.tok ? opts.participant?.(m.tok) : undefined;
+    const name = p?.name || m.tokenLane || m.label || "agent";
+    const avatar = p ? p.avatar : m.avatar;
+    return {
+      src: opts.tokenAvatar?.({ name, ...(avatar ? { avatar } : {}) }),
+      name,
+      initialFrom: name,
+      seed: `tok:${m.tok ?? name}`,
+      mine: false,
+    };
   }
   if (m.from === "agent") {
     // The node's assignee, when the line names one; else the controller's label.

@@ -12,6 +12,7 @@ import {
 } from "@/app/components/TokenPickers";
 import { RevokeConfirm } from "./RevokeConfirm";
 import { AgentGuide, CopyGuideButton, useAgentGuide } from "./AgentGuide";
+import { invitePrefill } from "@lianki/debug-chat/presence";
 
 /**
  * Settings → API tokens (lib/api-tokens.ts, /api/token): like GitHub's
@@ -66,6 +67,15 @@ export default function TokenManager() {
   useEffect(() => {
     load().catch(() => {});
   }, [load]);
+  // The chat's Invite (PresenceStack.tsx): the form filled in for a chat-only
+  // agent. Nothing is made until the user taps Create.
+  useEffect(() => {
+    const p = invitePrefill(location.search);
+    if (!p) return;
+    setName(p.name);
+    setScopes([...p.scopes]);
+    setExpiry({ days: p.days });
+  }, []);
 
   async function create() {
     const exp = expiryBody(expiry);
@@ -150,7 +160,7 @@ export default function TokenManager() {
   };
 
   return (
-    <section className="my-8 space-y-4" data-testid="api-tokens">
+    <section id="api-tokens" className="my-8 space-y-4" data-testid="api-tokens">
       <div>
         <h2 className="text-xl font-semibold mb-2">{s("heading")}</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">{s("intro")}</p>

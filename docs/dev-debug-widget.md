@@ -1654,6 +1654,84 @@ Tests: `unit/voices.test.ts` (lane resolution, voice picks on fake voice
 lists including this Mac's, fallbacks, the cloud speaker and shift, the
 route's speaker, `say --lane/--voice`).
 
+### Agent avatars
+
+Owner, 2026-11-14: an agent that joins his chat (an API token, `lianki mcp`,
+the remote MCP) gets an avatar automatically, or sets its own as plain SVG,
+never an image link.
+
+- **Known lanes** (`LANES`: codex, agy) keep their marks.
+- **Any other token** gets a generated mark (`svg-avatar.ts autoMark`): an
+  oklch disc whose hue is FNV-1a of the token's name (trimmed, lower case)
+  mod 360, with one of `AUTO_GLYPHS` (triangle, square, ring, plus, diamond,
+  bars, hexagon, chevron, cross) picked by the same hash. Same name, same
+  mark, on every device.
+- **Its own SVG**: `op: "avatar"` on the token chat API (`chat:write`;
+  `lianki chat avatar`, MCP `lianki_chat_avatar`). lianki-push sanitizes it
+  (`sanitizeAvatarSvg`): ≤ 4 KB (`AVATAR_MAX_BYTES`) before and after; no
+  DOCTYPE/ENTITY/CDATA/processing instruction; one `<svg>` root, ≤ 200
+  elements, ≤ 16 deep; elements `svg g path circle ellipse rect line polyline
+polygon text tspan title` only (any other is dropped with its subtree:
+  script, style, foreignObject, image, use, a…); attributes only from
+  `AVATAR_ATTRIBUTES` (geometry, `d`, `points`, `viewBox`, `transform`, `fill`,
+  `stroke`, `stroke-*`, `opacity`, `fill-opacity`, `font-size`, `font-weight`,
+  `text-anchor`, `dominant-baseline`), each with a strict value shape; colours
+  are keywords, hex or colour functions of numbers (no `url()`, no `var()`);
+  no `&` in any attribute value; text only in text/tspan/title, only the five
+  XML entities and numeric ones. The output is written fresh (`xmlns` added,
+  every value escaped), kept once as `avsvg:<sha256>` in the DebugHub's
+  storage, and named on the token's record (`part:<tag>`). Lines carry only
+  the reference (`avatar`), never the markup. `svg: null` clears it.
+- **Drawn** by reference: the page fetches `GET /api/version/chat-avatar/<sha>`
+  (content-addressed, immutable, `image/svg+xml` with a `default-src 'none'`
+  CSP), sanitizes it again, and draws it as an `<img>` of a `data:` URL (an
+  image never runs script or loads anything). While it loads, or if it
+  fails, the generated mark.
+- **MCP badge**: a call whose `x-lianki-client` is `mcp/<ver> tool=…` or
+  `mcp-remote/<ver> tool=…` marks its line `client: "mcp"`; the name tag shows
+  a small "MCP" badge after the name (`LaneMark.tsx McpBadge`).
+- A token line whose lane is not in `LANES` shows its name as a tag and loses
+  the `【name】` prefix in the log (`withTokenName`); what is read aloud keeps it.
+
+### Who is here
+
+Owner, 2026-11-14: right of the connection chip (the link icon, over the
+input), small overlapping avatars of everyone in this thread
+(`PresenceStack.tsx`): most recently active first, `chat.presenceShown`
+(default 3, `/dev/config`) of them, then "+N".
+
+- **Who counts** (`presence.ts presentList`, built in the hub): a token with a
+  listening socket open (`lianki chat listen`, an MCP wait on a socket); a
+  token that read the thread (`op: "read"`, or a wait that reads) within
+  `chat.presenceReadMin` (default 5); anyone whose agent line is within
+  `chat.presenceSpeakerMin` (default 30) — known lanes with their marks, main
+  as the host's agent. A revoked token never shows again.
+- **Pushed, never polled**: the hub sends `{type:"present", list}` to the
+  thread's pages on every join (socket auth, a read), leave (socket close,
+  revoke), post, owner change, and when a window ends (the Durable Object
+  alarm, set for the next expiry). Each page gets its own list: the token's id
+  only on the pages of the account that owns it.
+- **Look and touch**: hover (mouse) or one tap (touch) shows a one-line summary
+  ("agy, codex, mcp-bot +2"); a click, a double tap or Enter opens the panel:
+  a row each (avatar, name, MCP badge, "reading now" or last active, since).
+- **Managing**: for the viewer's own tokens a row offers Rename, the picture
+  (Generated / Its own / Paste an SVG, sanitized on the page and again in the
+  hub) and **Remove**, which asks once, then revokes the token through
+  `/api/token` (the same path as /my/preferences; another account's token is a
+  404), so its socket closes at once and it leaves the list. The owner's name
+  and picture are kept on the token's record and win over the agent's own
+  (`effective`); the panel shows which is in effect. **Invite** links to the
+  token form prefilled for a chat-only agent (`/my/preferences?new-token=chat-agent`:
+  name, chat:read/write/ask, 7 days; nothing is made until he taps Create) and
+  shows the connect snippet (the MCP URL with `Authorization: Bearer <token>`,
+  and `npx -y lianki mcp`).
+- Lanes on eval.ts listeners (no token) show once they post; they have no
+  Remove (their grant is ended from the connection chip).
+
+Tests: `unit/agent-avatars.test.tsx` (sanitizer, generated mark, presence
+order/expiry/cap, the hub's avatar op, presence pushes, owner override, Remove
+closing the socket, rendering).
+
 ### A line's own voice
 
 Owner, 2026-11-07 22:34 JST: one line can name the exact voice it is read

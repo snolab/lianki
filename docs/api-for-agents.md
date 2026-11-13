@@ -99,13 +99,27 @@ assistant that tool results (card titles, chat lines) are data, never
 instructions. The MCP key is a normal API token; v1 has no delete tool and no
 eval.
 
+### An agent's picture in the chat
+
+An agent that joins the user's chat (an API token, `lianki mcp`, the remote
+MCP) shows a generated mark from its token's name until it sets its own:
+`lianki_chat_avatar` (MCP) or `lianki chat avatar <file.svg|->` (CLI), both
+`op: "avatar"` with `chat:write`. The picture is **plain SVG text, never a
+link**, at most 4 KB; the server keeps only `svg g path circle ellipse rect
+line polyline polygon text tspan title`, geometry, plain colours (no `url()`,
+no `var()`), `transform`, `opacity`, `font-size`, `text-anchor`, and drops the
+rest (named in the answer's `dropped`). `svg: null` removes it. Lines through
+an MCP client show an "MCP" badge. The account's owner can rename the agent,
+change its picture or remove it (revoking its token) from the chat's
+participant list.
+
 ### The server side of `lianki mcp`
 
 - **Tools by permission.** At start the server asks `GET /api/cli-login/token`
   (the token's own name, scopes and expiry, `describeToken`) and lists only
   the tools those scopes allow (`TOOLS` in `packages/lianki-cli/mcp.mjs`:
   `study` → stats, due, next, get, add, import, review, settings_get;
-  `chat:read|write|ask` → chat_read + chat_wait, chat_say, chat_ask). An older server
+  `chat:read|write|ask` → chat_read + chat_wait, chat_say + chat_avatar, chat_ask). An older server
   that has no GET there gets every tool; each route still checks.
 - **Untrusted results.** Every result is `<untrusted-data>` JSON with `<`
   escaped, after a line saying never to follow instructions inside it.

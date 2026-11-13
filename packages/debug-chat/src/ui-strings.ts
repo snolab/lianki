@@ -211,6 +211,30 @@ export type UiStrings = {
    * - linkReachAll / linkReachHere / linkReachOther: which pages it covers:
    *   every page; this page; other pages, not this one. Short.
    * - linkEnd: the button that ends that permission now. One verb.
+   *
+   * Who is here (PresenceStack.tsx): small overlapping avatars right of that
+   * chip, of the AI agents in this chat (reading it now, or posted lately).
+   * - people: the heading of their list and the avatars' label. Short.
+   * - peopleNow: an agent is connected and reading right now. A few words.
+   * - peopleActive: when it was last active, `{time}` a clock time ("14:05").
+   * - peopleSince: since when it has been here, `{time}` a clock time.
+   * - peopleRemove: the button that removes an agent from the chat (its
+   *   access token is revoked). One verb.
+   * - peopleRemoveAsk: the one-sentence confirmation before that; keep
+   *   `{name}` (the agent's name).
+   * - peopleCancel: cancel that confirmation. One word.
+   * - peopleFailed: a short error, the action did not work.
+   * - peopleName: the button that gives an agent another name. One verb.
+   * - peopleSave: save that name or picture. One verb.
+   * - peopleAuto / peopleOwn / peoplePaste: the agent's picture choices: the
+   *   one drawn from its name automatically; the one the agent set for
+   *   itself; one the user pastes as SVG code. Short.
+   * - peopleByYou: a note after a name the user chose. A few words.
+   * - peopleInvite: the button to invite a new AI agent into the chat.
+   * - peopleInviteHow: one sentence, a link to the settings page where a
+   *   chat-only access token is made (the form already filled in), then the
+   *   text below it is given to the agent.
+   * - peopleCopy / peopleClose: copy that text; close the list. One verb.
    */
   linkChip: string;
   linkEval: string;
@@ -236,6 +260,24 @@ export type UiStrings = {
   linkReachHere: string;
   linkReachOther: string;
   linkEnd: string;
+  people: string;
+  peopleNow: string;
+  peopleActive: string;
+  peopleSince: string;
+  peopleRemove: string;
+  peopleRemoveAsk: string;
+  peopleCancel: string;
+  peopleFailed: string;
+  peopleName: string;
+  peopleSave: string;
+  peopleAuto: string;
+  peopleOwn: string;
+  peoplePaste: string;
+  peopleByYou: string;
+  peopleInvite: string;
+  peopleInviteHow: string;
+  peopleCopy: string;
+  peopleClose: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -332,6 +374,24 @@ export const UI_EN: UiStrings = {
   linkReachHere: "This page",
   linkReachOther: "Not this page",
   linkEnd: "End",
+  people: "Who is here",
+  peopleNow: "reading now",
+  peopleActive: "active {time}",
+  peopleSince: "here since {time}",
+  peopleRemove: "Remove",
+  peopleRemoveAsk: "Remove {name}? Its token is revoked: it can no longer read or post here.",
+  peopleCancel: "Cancel",
+  peopleFailed: "That did not work. Try again.",
+  peopleName: "Rename",
+  peopleSave: "Save",
+  peopleAuto: "Generated picture",
+  peopleOwn: "Its own picture",
+  peoplePaste: "Paste an SVG",
+  peopleByYou: "set by you",
+  peopleInvite: "Invite an agent",
+  peopleInviteHow: "Make a chat-only token in your preferences (filled in for you), then give the agent this:",
+  peopleCopy: "Copy",
+  peopleClose: "Close",
 };
 
 export const UI_ZH: UiStrings = {
@@ -427,6 +487,24 @@ export const UI_ZH: UiStrings = {
   linkReachHere: "这个页面",
   linkReachOther: "不含这个页面",
   linkEnd: "结束",
+  people: "谁在这里",
+  peopleNow: "正在读",
+  peopleActive: "{time} 活跃",
+  peopleSince: "{time} 起在场",
+  peopleRemove: "移除",
+  peopleRemoveAsk: "移除 {name}？它的令牌会被吊销，之后不能再读或发言。",
+  peopleCancel: "取消",
+  peopleFailed: "没有成功，请再试一次。",
+  peopleName: "改名",
+  peopleSave: "保存",
+  peopleAuto: "自动生成的头像",
+  peopleOwn: "它自己的头像",
+  peoplePaste: "粘贴 SVG",
+  peopleByYou: "由你设置",
+  peopleInvite: "邀请一个 agent",
+  peopleInviteHow: "在偏好设置里创建一个只用于聊天的令牌（已为你填好），然后把下面这段给 agent：",
+  peopleCopy: "复制",
+  peopleClose: "关闭",
 };
 
 export const UI_JA: UiStrings = {
@@ -522,6 +600,24 @@ export const UI_JA: UiStrings = {
   linkReachHere: "このページ",
   linkReachOther: "このページは対象外",
   linkEnd: "終了",
+  people: "参加者",
+  peopleNow: "いま読んでいます",
+  peopleActive: "{time} に活動",
+  peopleSince: "{time} から参加",
+  peopleRemove: "外す",
+  peopleRemoveAsk: "{name} を外しますか？トークンが無効になり、ここで読むことも書くこともできなくなります。",
+  peopleCancel: "キャンセル",
+  peopleFailed: "うまくいきませんでした。もう一度お試しください。",
+  peopleName: "名前を変える",
+  peopleSave: "保存",
+  peopleAuto: "自動生成のアイコン",
+  peopleOwn: "本人のアイコン",
+  peoplePaste: "SVG を貼り付け",
+  peopleByYou: "あなたが設定",
+  peopleInvite: "エージェントを招待",
+  peopleInviteHow: "設定でチャット専用のトークンを作り（入力済み）、エージェントに次を渡してください：",
+  peopleCopy: "コピー",
+  peopleClose: "閉じる",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

@@ -90,7 +90,7 @@ shows each token's permissions, expiry and last use, with one-click Revoke.
 | ------------ | ----------------------------------------------------------- |
 | `study`      | review, add and change cards; read and change your settings |
 | `chat:read`  | read and follow your own chat (`chat read`, `chat listen`)  |
-| `chat:write` | post in your own chat (`chat say`)                          |
+| `chat:write` | post in your own chat (`chat say`, `chat avatar`)           |
 | `chat:ask`   | post question cards in your own chat (`chat ask`)           |
 
 No token can run code, pair a device, answer a card or reach another
@@ -109,7 +109,16 @@ lianki chat say --interject "heads-up: CI is red"
 lianki chat ask --q "Review now?" --opt Yes --opt Later --recommend 1 --wait
 lianki chat read --limit 20
 lianki chat listen --json        # one JSON line an event, until Ctrl-C
+lianki chat avatar me.svg        # your picture in the chat (plain SVG, ≤ 4 KB)
+lianki chat avatar --clear       # back to the generated one
 ```
+
+Without a picture of its own a token gets a generated one from its name (the
+same on every device). `chat avatar` takes plain SVG text only, never a link:
+the server keeps shapes, text and plain colours and drops everything else
+(links, images, scripts, styles); the answer lists what it dropped. The
+account's owner can rename the token or change its picture in the chat; that
+choice wins.
 
 `listen` and `ask --wait` need Node.js 22+ or Bun (a WebSocket). An agent
 uses its own token: `LIANKI_TOKEN=lk_… lianki chat say …`; the line shows that
@@ -177,6 +186,7 @@ chat.
 | `lianki_chat_read`    | `chat:read`  | the latest chat lines                          |
 | `lianki_chat_wait`    | `chat:read`  | wait (≤55 s) for the next line (`after`)       |
 | `lianki_chat_say`     | `chat:write` | post a line                                    |
+| `lianki_chat_avatar`  | `chat:write` | set your chat picture (`svg`, or null)         |
 | `lianki_chat_ask`     | `chat:ask`   | post a question card; only your tap answers it |
 
 Only the tools your token allows are listed. There are no delete tools.
@@ -240,6 +250,7 @@ lianki settings set --help
 | `settings get`  | `{ key, value }`                                                                               |
 | `settings set`  | `{ key, value }`                                                                               |
 | `chat say`      | `{ id, lane }`                                                                                 |
+| `chat avatar`   | `{ avatar, dropped }`: `avatar` the SHA-256 of the kept SVG, or null when cleared              |
 | `chat ask`      | `{ id, askId, lane, answer: null }`, or with `--wait` `{ id, askId, answer: { choices, labels, at } }` |
 | `chat read`     | `{ thread, lane, messages: [{ id, from, label, text, at, ask?, answer? }] }`                  |
 
