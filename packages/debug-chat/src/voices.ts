@@ -494,6 +494,9 @@ export const LOCAL_ENGINES: readonly string[] = [
   "neko",
   "neko-moe",
   "neko-soft",
+  // Little-child blends (kokoro-tts-server.py presets; owner, 2026-11-14 "小宝宝的声线").
+  "baby",
+  "baby-soft",
   "xiaoxiao",
   "xiaobei",
   "yunxi",
