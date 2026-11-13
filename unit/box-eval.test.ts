@@ -8,6 +8,7 @@
  * and revoke end it.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import { boxTokenHash } from "@/lib/box-oauth/gate";
@@ -224,18 +225,16 @@ function fakeStorage(store = new Map<string, unknown>()): Storage {
 type Said = "live" | "gone" | "busy" | Error;
 
 describe("DebugHub: a box page with box:eval", () => {
-  const g = globalThis as { WebSocketPair?: unknown };
-  let had: unknown;
+  let restore = () => {};
   beforeEach(() => {
-    had = g.WebSocketPair;
-    g.WebSocketPair = class {
-      0 = new FakeSocket();
-      1 = new FakeSocket();
-    };
+    restore = stubGlobals({
+      WebSocketPair: class {
+        0 = new FakeSocket();
+        1 = new FakeSocket();
+      },
+    });
   });
-  afterEach(() => {
-    g.WebSocketPair = had;
-  });
+  afterEach(() => restore());
   const T = NOW;
   const setup = (o: { chat?: () => Said; evalSaid?: () => Said; rpc?: boolean } = {}) => {
     const sockets: FakeSocket[] = [];

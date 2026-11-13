@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { readFileSync } from "node:fs";
 import { SIGN_OUT_KEEP_CACHES, SIGN_OUT_PATH, setSignOutSession, signOut } from "@/lib/sign-out";
 
@@ -67,13 +68,14 @@ describe("signOut (the menu's Sign out)", () => {
 
   it("in the browser: the page's own fetch, caches and location", async () => {
     const g = globalThis as Record<string, unknown>;
-    const saved = { fetch: g.fetch, caches: g.caches, location: g.location };
     const t = env();
     const replaced: string[] = [];
+    const restore = stubGlobals({
+      fetch: t.e.fetch,
+      caches: t.e.caches,
+      location: { replace: (u: string) => replaced.push(u) },
+    });
     try {
-      g.fetch = t.e.fetch;
-      g.caches = t.e.caches;
-      g.location = { replace: (u: string) => replaced.push(u) };
       expect(await signOut()).toBe(true);
       expect(t.calls[0].url).toBe(SIGN_OUT_PATH);
       expect(t.deleted.sort()).toEqual(["lianki-v1", "lianki-v2"]);
@@ -83,20 +85,20 @@ describe("signOut (the menu's Sign out)", () => {
       expect(await signOut("/en")).toBe(true);
       expect(replaced).toEqual(["/", "/en"]);
     } finally {
-      Object.assign(g, saved);
+      restore();
     }
   });
 
   it("on a box: the session set by BoxApiBridge ends instead of the cookie POST", async () => {
-    const g = globalThis as Record<string, unknown>;
-    const saved = { fetch: g.fetch, caches: g.caches, location: g.location };
     const t = env();
     const replaced: string[] = [];
     let ended = 0;
+    const restore = stubGlobals({
+      fetch: t.e.fetch,
+      caches: t.e.caches,
+      location: { replace: (u: string) => replaced.push(u) },
+    });
     try {
-      g.fetch = t.e.fetch;
-      g.caches = t.e.caches;
-      g.location = { replace: (u: string) => replaced.push(u) };
       setSignOutSession(async () => {
         ended++;
         return true;
@@ -111,7 +113,7 @@ describe("signOut (the menu's Sign out)", () => {
       expect(t.calls[0].url).toBe(SIGN_OUT_PATH);
     } finally {
       setSignOutSession(undefined);
-      Object.assign(g, saved);
+      restore();
     }
   });
 

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { globalDescriptor, restoreGlobal } from "./support/globals";
 import { Window } from "happy-dom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement, type ReactElement, type ReactNode } from "react";
@@ -7,13 +8,13 @@ import { ChatLink, RichBody, RichLine } from "@lianki/debug-chat/RichText";
 import { sentenceRanges } from "@lianki/debug-chat/read-progress";
 
 const g = globalThis as { DOMParser?: unknown; location?: unknown };
-const had = { parser: g.DOMParser, location: g.location };
+const had = { parser: globalDescriptor("DOMParser"), location: globalDescriptor("location") };
 beforeAll(() => {
   g.DOMParser = new Window().DOMParser;
 });
 afterAll(() => {
-  g.DOMParser = had.parser;
-  g.location = had.location;
+  restoreGlobal("DOMParser", had.parser);
+  restoreGlobal("location", had.location);
 });
 
 const html = (rich: Rich, read?: Parameters<typeof RichBody>[0]["read"]) =>
