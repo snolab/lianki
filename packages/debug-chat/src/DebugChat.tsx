@@ -271,6 +271,16 @@ import type { Present } from "./presence";
 import { PUBLIC_ROUTE_LIST, publicSttAvailable, readConsent, writeConsent } from "./public-stt";
 import { SttServersCard } from "./SttServersCard";
 import { MicCaret } from "./MicCaret";
+import {
+  HOLD_MS,
+  LIVE_ID,
+  type SentHold,
+  holdOf,
+  liveHolds,
+  liveSpeech,
+  spokenPending,
+  takesSpoken,
+} from "./live-speech";
 import { type Frontier, treeFrontier } from "./frontier-view";
 import {
   type TreeSource,
@@ -906,6 +916,9 @@ const NONE_ABOVE: ReadonlySet<string> = new Set();
 
 /** The one panel over the log. */
 type Panel = "none" | "menu" | "tree" | "voiceprint";
+
+/** One live line (live-speech.ts): what it shows, and whether it is spoken, sending or failed. */
+type LiveRow = { key: string; text: string; tail: string; state: "speaking" | "sending" | "unsent" };
 
 export function DebugChat({
   live,
@@ -1716,6 +1729,19 @@ export function DebugChat({
   /** Arrival order up to which the agent's lines count as read (see countUnread). */
   const [readSeq, setReadSeq] = useState(0);
   const draftRef = useRef(uiStore.getState().draft);
+  /** What the input box shows (live-speech.ts): the draft, or nothing while it is the live line. */
+  const shownInput = useRef("");
+  /**
+   * He took the spoken draft into the input to edit it (typing started, or a
+   * tap on the live line): from then on it is an ordinary draft. Not kept
+   * across reloads: a restored spoken draft is the live line again.
+   */
+  const [inInput, setInInput] = useState(false);
+  const inInputRef = useRef(false);
+  inInputRef.current = inInput;
+  /** Spoken lines sent from the live line, shown as "sending" until their echo (live-speech.ts). */
+  const [holds, setHolds] = useState<SentHold[]>([]);
+  const holdKey = useRef(0);
   const composing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** The chat's one scroller: the tree (when open) and the log. */
@@ -2060,7 +2086,7 @@ export function DebugChat({
   const inputDrag = {
     onPointerDown: (e: React.PointerEvent<HTMLTextAreaElement>) => {
       tune.current = joystickTune();
-      if (!open || draftRef.current) return;
+      if (!open || shownInput.current) return;
       inputAxis.current.down(e.clientX, e.clientY);
       // Captured from the press: a quick flick leaves the input before the
       // axis locks, and its moves must still come here (touch pointers are
@@ -2219,7 +2245,7 @@ export function DebugChat({
       el.setSelectionRange(end, end);
       el.scrollTop = el.scrollHeight;
     }
-  }, [draft, open]);
+  }, [draft, open, inInput]);
   // The log is click-through, so it can't be swiped: a vertical swipe on the
   // empty input scrolls it instead (inputDrag, by pointer events). Here the
   // swipe only keeps the page from scrolling; it once scrolled the log as
@@ -2425,6 +2451,8 @@ export function DebugChat({
         .slice(0, MAX_CHAT);
     if (!text) return false;
     const source = draftSource(draftRef.current, pureDictation.current);
+    /** It was the live line (spoken, not taken into the input): it stays as "sending" till its echo. */
+    const fromLive = !!source && !inInputRef.current;
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
     // And which recognizer made it (SttTag): an older store (hot swap) has no takeLine.
     const lat = voiceLatency();
@@ -2481,6 +2509,11 @@ export function DebugChat({
       return false;
     }
     setOffline(false);
+    // The live line becomes "sending" in the same paint the draft empties: no blink, no gap.
+    if (fromLive) {
+      const h = holdOf(++holdKey.current, text, messagesNow.current, Date.now(), continues);
+      flushSync(() => setHolds((x) => [...x, h]));
+    }
     if (context) {
       uiStore.setState({ attached: null });
       pageSel.clear();
@@ -2506,6 +2539,8 @@ export function DebugChat({
     draftRef.current = "";
     pureDictation.current = null;
     settledLen.current = 0;
+    inInputRef.current = false;
+    setInInput(false);
     setDraft("");
     return true;
   };
@@ -2740,6 +2775,146 @@ export function DebugChat({
   useEffect(() => setHasMic(!embedded && canCapture()), [embedded]);
   /** Dimmed after the draft: partial transcripts, or "…" for those still out. */
   const [interim, setInterim] = useState("");
+  /** Where the spoken words show: the log's live line, or (typed text in the draft) the input. */
+  const speech = liveSpeech({ draft, pureDictation: pureDictation.current, interim, inInput });
+  shownInput.current = speech.input;
+  // The draft emptied (sent, cleared): the next spoken words are the live line again.
+  useEffect(() => {
+    if (!draft && inInput) setInInput(false);
+  }, [draft, inInput]);
+  /** The held lines still waiting for their echo: the echo removes one in the render it arrives. */
+  const shownHolds = liveHolds(holds, messages, Date.now());
+  useEffect(() => {
+    if (!holds.length) return;
+    const now = Date.now();
+    const next = liveHolds(holds, messages, now);
+    if (next.length !== holds.length) return void setHolds(next);
+    const wait = Math.min(...holds.map((h) => h.at + HOLD_MS - now));
+    const t = setTimeout(
+      () => setHolds((x) => liveHolds(x, messagesNow.current, Date.now())),
+      Math.max(0, wait) + 20,
+    );
+    return () => clearTimeout(t);
+  }, [holds, messages]);
+  /**
+   * Typing starts (a key, a paste, an IME composition) or a tap on the live
+   * line: the spoken draft moves into the input, editable, before the key
+   * lands. The join's pending send is dropped: he is editing it now, and the
+   * typed draft's own rules (the debounce, Enter) send it.
+   */
+  const takeSpoken = (): boolean => {
+    if (inInputRef.current || !spokenPending(draftRef.current, pureDictation.current)) return false;
+    joiner.current?.cancel();
+    caretToEnd.current = true;
+    inInputRef.current = true;
+    flushSync(() => setInInput(true));
+    return true;
+  };
+  /**
+   * The live lines, newest last: spoken lines sent and waiting for their echo
+   * ("sending"), then the words being spoken now ("speaking"; "unsent" when
+   * the send failed). Drawn as his own lines, never ChatMessages: not stored,
+   * not sent, not read aloud, no hub id.
+   */
+  const liveRows: LiveRow[] = [
+    ...shownHolds.map((h) => ({
+      key: `${LIVE_ID}-${h.key}`,
+      text: h.text,
+      tail: "",
+      state: "sending" as const,
+    })),
+    ...(speech.bubble
+      ? [
+          {
+            key: LIVE_ID,
+            text: speech.bubble.text,
+            tail: speech.bubble.tail,
+            state: offline && speech.bubble.text ? ("unsent" as const) : ("speaking" as const),
+          },
+        ]
+      : []),
+  ];
+  const liveWho = lineAvatar(
+    { id: LIVE_ID, from: friend ? "friend" : "owner", label: "", text: "", at: 0 },
+    { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you, ...laneOpts },
+  );
+  /** A tap on the words being spoken: they come into the input to be edited. */
+  const editLive = () => {
+    if (!open) toggle(true);
+    if (takeSpoken()) requestAnimationFrame(() => input.current?.focus());
+  };
+  function liveLine(r: LiveRow, where: "log" | "compact" | "float") {
+    const label =
+      r.state === "sending" ? ux.liveSending : r.state === "unsent" ? ux.liveNotSent : ux.liveSpeaking;
+    const Tag = where === "compact" ? "div" : "li";
+    return (
+      <Tag
+        key={r.key}
+        data-testid="debug-chat-live"
+        data-live={r.state}
+        aria-busy={r.state !== "unsent" || undefined}
+        title={label}
+        onClick={r.state === "sending" ? undefined : editLive}
+        style={where === "float" ? { textShadow: LINE_HALO } : undefined}
+        // His own line's look, outlined dashed and a little faded: not sent yet.
+        className={`pointer-events-auto flex items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 leading-snug opacity-80 ${r.state === "sending" ? "" : "cursor-text"} ${where === "float" ? "py-0.5" : ""}`}
+      >
+        <Avatar
+          src={liveWho.src}
+          name={liveWho.name}
+          initialFrom={liveWho.initialFrom}
+          seed={liveWho.seed}
+          size={AVATAR_PX}
+          hidden
+        />
+        <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+          <span className="sr-only">
+            {liveWho.name} ({label}):{" "}
+          </span>
+          {r.text}
+          {r.tail && (
+            <span data-testid="debug-chat-live-tail" className="text-gray-400">
+              {r.tail}
+            </span>
+          )}
+          {r.state === "speaking" && micActive && <MicCaret />}
+          {r.state === "unsent" ? (
+            <>
+              <span className="ms-1 fs-10" style={{ color: "oklch(0.6 0.17 45)" }}>
+                {ux.liveNotSent}
+              </span>
+              <button
+                type="button"
+                data-testid="debug-chat-live-retry"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  submit();
+                }}
+                className="ms-1 fs-10 underline"
+              >
+                {ux.liveRetry}
+              </button>
+            </>
+          ) : (
+            // Speaking: a soft pulse (none under reduced motion); sending: still.
+            <span
+              aria-hidden
+              data-testid="debug-chat-live-mark"
+              className={`ms-1 inline-block size-1.5 rounded-full bg-current align-middle opacity-50 ${r.state === "speaking" ? "animate-pulse motion-reduce:animate-none" : ""}`}
+            />
+          )}
+        </div>
+      </Tag>
+    );
+  }
+  // At the end, the log follows the live line as it grows.
+  const liveSig = liveRows.map((r) => `${r.key}:${r.text}${r.tail}`).join("|");
+  useLayoutEffect(() => {
+    const el = log.current;
+    if (!open || !liveSig || !el || !atEnd.current) return;
+    el.scrollTo({ top: el.scrollHeight });
+    pinnedAt.current = el.scrollTop;
+  }, [liveSig, open]);
   // A name heard in the live interim flashes its lane at once, once per utterance (addressed.ts).
   useEffect(() => {
     const lanes = addrFlash.current!.heard(interim ? joinText(draft, interim) : "", Date.now());
@@ -3578,7 +3753,8 @@ export function DebugChat({
    * pill in one box, from the pill's side (fold.ts floatSide, anchor.ts),
    * clamped inside the viewport. Tucked, only the newest line peeks (tuckEl).
    */
-  const floatBoxEl = fold === "pill" && (floats.length > 0 || !!shownFrontier || tree) && (
+  const floatBoxEl =
+    fold === "pill" && (floats.length > 0 || liveRows.length > 0 || !!shownFrontier || tree) && (
     <div
       ref={setFloatBox}
       data-testid="debug-chat-float-box"
@@ -3588,6 +3764,15 @@ export function DebugChat({
     >
       {tree && treePanel(true)}
       {floatsEl}
+      {liveRows.length > 0 && (
+        // Minimized: what he is saying floats as his newest line too.
+        <ol
+          data-testid="debug-chat-live-floats"
+          className={`m-0 flex list-none flex-col gap-0.5 p-0 ${ALIGN_ITEMS[place.side]}`}
+        >
+          {liveRows.map((r) => liveLine(r, "float"))}
+        </ol>
+      )}
       {shownFrontier && (
         <FrontierLines frontier={shownFrontier} renderAvatar={renderAvatar} align={place.side} />
       )}
@@ -4352,7 +4537,10 @@ export function DebugChat({
         className="pointer-events-none flex flex-col px-0 pt-1"
       >
         {asks.map((m) => compactRow(m, false))}
-        {last ? compactRow(last, true) : <p className="m-0 py-1 text-gray-500">{t.hint}</p>}
+        {last
+          ? compactRow(last, true)
+          : !liveRows.length && <p className="m-0 py-1 text-gray-500">{t.hint}</p>}
+        {liveRows.map((r) => liveLine(r, "compact"))}
       </div>
     );
   })();
@@ -4652,7 +4840,7 @@ export function DebugChat({
         data-testid="debug-chat-log"
         className="m-0 list-none space-y-0.5 p-0"
       >
-        {messages.length === 0 && (
+        {messages.length === 0 && !liveRows.length && (
           <li className="text-gray-500">{t.hint}</li>
         )}
         {/*
@@ -4846,6 +5034,8 @@ export function DebugChat({
             </li>
           );
         })}
+        {/* What he is saying now, as his newest line (live-speech.ts): not sent yet. */}
+        {liveRows.map((r) => liveLine(r, "log"))}
       </ol>
       </div>
       {compact && compactEl}
@@ -5322,7 +5512,7 @@ export function DebugChat({
               </p>
             ) : (
               <>
-                {(interim || micActive) && (
+                {!speech.bubble && (interim || micActive) && (
                   // A mirror of the draft, invisible, then the interim text dimmed and the
                   // caret that follows the voice (MicCaret): where the transcript will land.
                   <div
@@ -5346,7 +5536,8 @@ export function DebugChat({
                   data-drag-hint={holding || undefined}
                   rows={1}
                   // 16px: iOS zooms the whole page into any input under 16px.
-                  value={draft}
+                  // Spoken words are the log's live line (live-speech.ts): the box stays free for typing.
+                  value={speech.input}
                   maxLength={MAX_CHAT}
                   placeholder={
                     holding
@@ -5364,16 +5555,28 @@ export function DebugChat({
                   }}
                   // A pasted image or file goes up as an attachment (files.ts); text pastes as usual.
                   onPaste={(e) => {
-                    if (!filesRef.current) return;
-                    const got = filesFrom(e.clipboardData);
-                    if (!got.length) return;
+                    const got = filesRef.current ? filesFrom(e.clipboardData) : [];
+                    // Text pasted after the spoken words: they come into the input first.
+                    if (!got.length) return void takeSpoken();
                     e.preventDefault();
                     pending.add(got);
                   }}
                   aria-label={t.message.replace(/…$/, "")}
                   onChange={(e) => {
-                    draftRef.current = e.target.value;
-                    setDraft(e.target.value);
+                    let v = e.target.value;
+                    // Typed while the spoken draft was the live line and no key told us
+                    // (a keyboard that reports none): it goes after the spoken words.
+                    if (
+                      !inInputRef.current &&
+                      spokenPending(draftRef.current, pureDictation.current)
+                    ) {
+                      v = joinText(draftRef.current, v);
+                      caretToEnd.current = true;
+                      inInputRef.current = true;
+                      setInInput(true);
+                    }
+                    draftRef.current = v;
+                    setDraft(v);
                     setOffline(false);
                     // Typing pauses the reading; a send (or, mic on, a blur) reads on.
                     voice().interrupt("typing");
@@ -5398,6 +5601,7 @@ export function DebugChat({
                     else voice().stop();
                   }}
                   onCompositionStart={() => {
+                    takeSpoken();
                     composing.current = true;
                     clearTimeout(timer.current);
                     setArmed(0);
@@ -5418,6 +5622,12 @@ export function DebugChat({
                     submit();
                   }}
                   onKeyDown={(e) => {
+                    // Typing starts: the spoken words come into the input, then the key lands.
+                    if (
+                      !e.nativeEvent.isComposing &&
+                      takesSpoken(e.key, { ctrl: e.ctrlKey, meta: e.metaKey })
+                    )
+                      takeSpoken();
                     shiftEnter.current = e.key === "Enter" && e.shiftKey;
                     // "@/wo" + Tab (or Enter): the first completion becomes the target.
                     if ((e.key === "Tab" || e.key === "Enter") && !e.shiftKey && completions[0]) {
@@ -5437,9 +5647,9 @@ export function DebugChat({
                   // A drag on a long draft scrolls its text, never the page or the box.
                   {...inputDrag}
                   // Empty, a vertical drag scrolls the log (full screen), not the page.
-                  className={`block h-[2.125rem] max-h-32 min-h-[2.125rem] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain ${draft ? "touch-pan-y" : "touch-none"} border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
+                  className={`block h-[2.125rem] max-h-32 min-h-[2.125rem] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain ${speech.input ? "touch-pan-y" : "touch-none"} border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
                 />
-                {holding && draft && (
+                {holding && speech.input && (
                   // The draft hides the placeholder: the hint sits over it instead.
                   <span
                     data-testid="debug-chat-drag-hint"

@@ -111,6 +111,10 @@ export type ChatExtra = {
   sttServersAgree: string;
   sttServersLater: string;
   addressed: string;
+  liveSpeaking: string;
+  liveSending: string;
+  liveNotSent: string;
+  liveRetry: string;
 };
 
 const CHAT = "the Learning Partner chat (Li), a small chat panel on every Lianki page";
@@ -185,6 +189,10 @@ export const EXTRA_CONTEXT: ChatExtra = {
   sttServersAgree: `In ${CHAT}: the card's main button: agree and use Lianki's speech servers from now on, on this device. An imperative phrase.`,
   sttServersLater: `In ${CHAT}: the card's second button: do not use them now (speech recognition stays as it was). The platform's usual 'Not now'.`,
   addressed: `In ${CHAT}: screen-reader label of a small avatar after one of the user's own messages, showing which assistant the message called by name (e.g. it started with 'coco, …'); {name} is that assistant's name, a proper name shown as is (coco, 杰咪, 小克). A short label, a colon, then {name}; keep {name}.`,
+  liveSpeaking: `In ${CHAT}: tooltip and screen-reader label of the newest line in the conversation while the user is speaking into the mic: his words appear there as they are recognised, but the line has not been sent to the partner yet. A short phrase: 'speaking', a dash, 'not sent yet'.`,
+  liveSending: `In ${CHAT}: the same spoken line just after it was sent, until the server confirms it (a second or so). One word with an ellipsis, like a chat app's 'Sending…'.`,
+  liveNotSent: `In ${CHAT}: a small visible tag on the user's spoken line when sending it failed (offline); a 'Retry' button follows it. Two words, like a chat app's 'Not sent'.`,
+  liveRetry: `In ${CHAT}: the button after 'Not sent' that sends the spoken line again. One imperative word, like a chat app's 'Retry'.`,
 };
 
 /** The 13 app locales ui-strings.ts does not carry. */
@@ -591,6 +599,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Use Lianki's speech servers",
     sttServersLater: "Not now",
     addressed: "Addressed: {name}",
+    liveSpeaking: "Speaking — not sent yet",
+    liveSending: "Sending…",
+    liveNotSent: "Not sent",
+    liveRetry: "Retry",
   },
   zh: {
     messageDetails: "消息详情",
@@ -634,6 +646,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "使用 Lianki 的语音服务器",
     sttServersLater: "暂不",
     addressed: "点名：{name}",
+    liveSpeaking: "正在说话——尚未发送",
+    liveSending: "发送中…",
+    liveNotSent: "未发送",
+    liveRetry: "重试",
   },
   hi: {
     messageDetails: "संदेश विवरण",
@@ -677,6 +693,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Lianki के स्पीच सर्वर इस्तेमाल करें",
     sttServersLater: "अभी नहीं",
     addressed: "संबोधित: {name}",
+    liveSpeaking: "बोल रहे हैं — अभी भेजा नहीं गया",
+    liveSending: "भेजा जा रहा है…",
+    liveNotSent: "नहीं भेजा गया",
+    liveRetry: "फिर से कोशिश करें",
   },
   es: {
     messageDetails: "Detalles del mensaje",
@@ -720,6 +740,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Usar los servidores de voz de Lianki",
     sttServersLater: "Ahora no",
     addressed: "Dirigido a: {name}",
+    liveSpeaking: "Hablando: aún no enviado",
+    liveSending: "Enviando…",
+    liveNotSent: "No enviado",
+    liveRetry: "Reintentar",
   },
   fr: {
     messageDetails: "Détails du message",
@@ -763,6 +787,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Utiliser les serveurs vocaux de Lianki",
     sttServersLater: "Pas maintenant",
     addressed: "Adressé à : {name}",
+    liveSpeaking: "En train de parler — pas encore envoyé",
+    liveSending: "Envoi…",
+    liveNotSent: "Non envoyé",
+    liveRetry: "Réessayer",
   },
   ar: {
     messageDetails: "تفاصيل الرسالة",
@@ -806,6 +834,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "استخدام خوادم الكلام في Lianki",
     sttServersLater: "ليس الآن",
     addressed: "موجّه إلى: {name}",
+    liveSpeaking: "تتحدث الآن — لم يُرسل بعد",
+    liveSending: "جارٍ الإرسال…",
+    liveNotSent: "لم يُرسل",
+    liveRetry: "إعادة المحاولة",
   },
   bn: {
     messageDetails: "বার্তার বিবরণ",
@@ -849,6 +881,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Lianki-এর স্পিচ সার্ভার ব্যবহার করুন",
     sttServersLater: "এখন নয়",
     addressed: "সম্বোধিত: {name}",
+    liveSpeaking: "বলছেন — এখনও পাঠানো হয়নি",
+    liveSending: "পাঠানো হচ্ছে…",
+    liveNotSent: "পাঠানো হয়নি",
+    liveRetry: "আবার চেষ্টা করুন",
   },
   pt: {
     messageDetails: "Detalhes da mensagem",
@@ -892,6 +928,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Usar os servidores de voz da Lianki",
     sttServersLater: "Agora não",
     addressed: "Dirigido a: {name}",
+    liveSpeaking: "Falando — ainda não enviado",
+    liveSending: "Enviando…",
+    liveNotSent: "Não enviado",
+    liveRetry: "Tentar de novo",
   },
   ru: {
     messageDetails: "Сведения о сообщении",
@@ -935,6 +975,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Использовать речевые серверы Lianki",
     sttServersLater: "Не сейчас",
     addressed: "Обращение к: {name}",
+    liveSpeaking: "Вы говорите — ещё не отправлено",
+    liveSending: "Отправка…",
+    liveNotSent: "Не отправлено",
+    liveRetry: "Повторить",
   },
   ur: {
     messageDetails: "پیغام کی تفصیلات",
@@ -978,6 +1022,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Lianki کے اسپیچ سرورز استعمال کریں",
     sttServersLater: "ابھی نہیں",
     addressed: "مخاطب: {name}",
+    liveSpeaking: "بول رہے ہیں — ابھی نہیں بھیجا گیا",
+    liveSending: "بھیجا جا رہا ہے…",
+    liveNotSent: "نہیں بھیجا گیا",
+    liveRetry: "دوبارہ کوشش کریں",
   },
   id: {
     messageDetails: "Detail pesan",
@@ -1021,6 +1069,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Pakai server suara Lianki",
     sttServersLater: "Nanti saja",
     addressed: "Ditujukan ke: {name}",
+    liveSpeaking: "Sedang berbicara — belum dikirim",
+    liveSending: "Mengirim…",
+    liveNotSent: "Belum terkirim",
+    liveRetry: "Coba lagi",
   },
   de: {
     messageDetails: "Nachrichtendetails",
@@ -1064,6 +1116,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Sprachserver von Lianki nutzen",
     sttServersLater: "Nicht jetzt",
     addressed: "Angesprochen: {name}",
+    liveSpeaking: "Sie sprechen – noch nicht gesendet",
+    liveSending: "Wird gesendet…",
+    liveNotSent: "Nicht gesendet",
+    liveRetry: "Erneut versuchen",
   },
   ja: {
     messageDetails: "メッセージの詳細",
@@ -1107,6 +1163,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Lianki の音声サーバーを使う",
     sttServersLater: "今はしない",
     addressed: "呼びかけ：{name}",
+    liveSpeaking: "話しています — まだ送信していません",
+    liveSending: "送信中…",
+    liveNotSent: "未送信",
+    liveRetry: "再試行",
   },
   sw: {
     messageDetails: "Maelezo ya ujumbe",
@@ -1150,6 +1210,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Tumia seva za usemi za Lianki",
     sttServersLater: "Si sasa",
     addressed: "Ameitwa: {name}",
+    liveSpeaking: "Unazungumza — bado haijatumwa",
+    liveSending: "Inatuma…",
+    liveNotSent: "Haijatumwa",
+    liveRetry: "Jaribu tena",
   },
   mr: {
     messageDetails: "संदेशाचा तपशील",
@@ -1193,6 +1257,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Lianki चे स्पीच सर्व्हर वापरा",
     sttServersLater: "आता नाही",
     addressed: "उद्देशून: {name}",
+    liveSpeaking: "बोलत आहात — अजून पाठवले नाही",
+    liveSending: "पाठवत आहे…",
+    liveNotSent: "पाठवले नाही",
+    liveRetry: "पुन्हा प्रयत्न करा",
   },
   ko: {
     messageDetails: "메시지 세부 정보",
@@ -1236,6 +1304,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     sttServersAgree: "Lianki 음성 서버 사용",
     sttServersLater: "나중에",
     addressed: "부름: {name}",
+    liveSpeaking: "말하는 중 — 아직 보내지 않음",
+    liveSending: "보내는 중…",
+    liveNotSent: "보내지 않음",
+    liveRetry: "다시 시도",
   },
 };
 

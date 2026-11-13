@@ -723,6 +723,36 @@ by the flag. Restored lines may be merged again.
 
 A passage takes no polish, summary or continuous-speech merge: undo it first.
 
+## The live speech line
+
+The owner, 2026-11-14 04:25 JST: the words being recognised while he speaks are not
+a draft in the input box; they are the newest line of the log, with his avatar,
+growing as he speaks, before anything is sent. Rules: `live-speech.ts`; drawing:
+`DebugChat.tsx` (`liveRows`, `liveLine`).
+
+- **What it shows.** While the draft is exactly the mic's (`pureDictation`) or
+  empty, the spoken draft plus the dimmed interim tail is the live line, last in
+  the log (and in the compact view, and floating over the minimized pill). It has
+  a dashed outline and a small pulsing dot (still under reduced motion). The input
+  stays empty, free for typing. Enter in the empty input still sends the spoken
+  words; so does the join, as before.
+- **Not a message.** It is never a `ChatMessage`: not stored, not sent, not read
+  aloud; its key (`lk-live-speech…`) is never a hub id.
+- **Typing while speaking.** A key, a paste, an IME composition, or a tap on the
+  live line moves the spoken words into the input, caret at the end, and drops the
+  join's pending send: from then on it is an ordinary draft. Sent unchanged it is
+  still `source: "stt"`; edited, a typed line (`draftSource`, unchanged). A draft
+  that already has typed text keeps everything in the input with the interim
+  mirrored after it, as before.
+- **Sent.** The live line becomes "Sending…" in the same paint the draft empties,
+  and goes in the render where its echo arrives: a new owner line (or the line it
+  amends, `continues`) containing its text. At most `HOLD_MS` (6 s) without one.
+  A failed send leaves it as "Not sent" with a Retry.
+- **Reload.** The draft, `pureDictation` and the half-spoken `interim` are kept
+  (ui-store.ts); after a reload the restored spoken words are the live line again.
+- Tests: `unit/chat-live-speech.test.tsx` (the rules, and DebugChat mounted in
+  happy-dom).
+
 ## Continuous speech amends the last line
 
 The owner, 2026-11-06 01:13 JST: "连续的语音输入应该能够有能力编辑已经发出去的消息", and 01:14:
