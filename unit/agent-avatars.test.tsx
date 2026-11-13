@@ -31,7 +31,12 @@ import {
   stackOf,
 } from "@/packages/debug-chat/src/presence";
 import { lineAvatar } from "@/packages/debug-chat/src/avatar-rules";
-import { LineTag, agentAvatar, autoAvatar } from "@/packages/debug-chat/src/LaneMark";
+import {
+  LineTag,
+  agentAvatar,
+  autoAvatar,
+  withTokenName,
+} from "@/packages/debug-chat/src/LaneMark";
 import { PresenceStack } from "@/packages/debug-chat/src/PresenceStack";
 import { UI_EN } from "@/packages/debug-chat/src/ui-strings";
 import type { ChatMessage } from "@/packages/debug-chat/src/wire";
@@ -534,6 +539,24 @@ describe("rendering", () => {
     expect(renderToStaticMarkup(<LineTag m={{ via: "token", tokenLane: "x" }} />)).not.toContain(
       "MCP",
     );
+    // Known lanes keep their tag, with the badge when MCP; main shows the host's name.
+    const codex = renderToStaticMarkup(<LineTag m={{ lane: "codex", client: "mcp" }} />);
+    expect(codex).toContain("codex");
+    expect(codex).toContain("MCP");
+    expect(renderToStaticMarkup(<LineTag m={{ lane: "main" }} agentName="Li" />)).toContain("Li");
+    expect(renderToStaticMarkup(<LineTag m={{ lane: "main" }} />)).toBe("");
+    expect(renderToStaticMarkup(<LineTag m={{ lane: "main", client: "mcp" }} inline />)).toContain(
+      "MCP",
+    );
+    expect(renderToStaticMarkup(<LineTag m={{ via: "token" }} />)).toBe("");
+    expect(renderToStaticMarkup(<LineTag m={{}} />)).toBe("");
+  });
+  it("a token line loses its 【name】 prefix in the log only", () => {
+    const m = { via: "token", tokenLane: "mcp-bot", text: "【mcp-bot】 hello" };
+    expect(withTokenName(m).text).toBe("hello");
+    expect(withTokenName({ ...m, text: "plain" })).toEqual({ ...m, text: "plain" });
+    const other = { text: "【mcp-bot】x" };
+    expect(withTokenName(other)).toBe(other);
   });
   it("the stack: the cap, most recent first, +N", () => {
     const list: Present[] = ["agy", "codex", "mcp-bot", "x", "y"].map((name, i) => ({
