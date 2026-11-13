@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getIntlayer } from "intlayer";
 import { authUserOrNull } from "@/app/signInEmail";
@@ -37,9 +36,8 @@ export default async function DevIndexPage() {
   if (!mine.length) notFound();
   const locale = await appLocale();
   const heading = await devPageText("dashboard");
-  const h = await headers();
-  const host = (h.get("x-forwarded-host") ?? h.get("host") ?? "").toLowerCase();
-  const onPreview = host.startsWith("preview.");
+  // The preview build: next dev under scripts/dev/whole-page.ts (the gate rewrites Host).
+  const onPreview = process.env.LIANKI_DEV_WHOLE_PAGE === "1";
   const loader = onPreview ? await devPageText("previewLoader") : null;
   const rows = mine
     .map(([slug]) => ({ slug, name: pageName(slug, locale) }))
