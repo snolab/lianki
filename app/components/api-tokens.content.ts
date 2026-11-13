@@ -407,6 +407,42 @@ const dictionary = {
       mr: "तुमच्या उघड्या पानांवर कोणताही कोड चालवते, मंजुरीसाठी टॅप न करता. फक्त साइट मालकांसाठी, जास्तीत जास्त 30 दिवस. ज्याच्याकडे टोकन आहे तो त्या पानांवर तुमच्या नावाने काम करतो.",
       ko: "열려 있는 내 페이지에서 승인 탭 없이 어떤 코드든 실행합니다. 사이트 소유자만, 최대 30일. 토큰을 가진 사람은 그 페이지에서 나로서 동작합니다.",
     }),
+    scopeProgress: t({
+      en: "Report progress to your task list",
+      zh: "向你的任务清单汇报进度",
+      hi: "अपनी कार्य सूची में प्रगति बताना",
+      es: "Informar del progreso en tu lista de tareas",
+      fr: "Rapporter l'avancement dans votre liste de tâches",
+      ar: "الإبلاغ عن التقدّم في قائمة مهامك",
+      bn: "আপনার কাজের তালিকায় অগ্রগতি জানানো",
+      pt: "Informar o progresso na sua lista de tarefas",
+      ru: "Сообщать о ходе работы в ваш список задач",
+      ur: "آپ کی کاموں کی فہرست میں پیش رفت بتانا",
+      id: "Melaporkan kemajuan ke daftar tugas Anda",
+      de: "Fortschritt an deine Aufgabenliste melden",
+      ja: "あなたのタスク一覧に進捗を報告",
+      sw: "Kuripoti maendeleo kwenye orodha yako ya kazi",
+      mr: "तुमच्या कामांच्या यादीत प्रगती कळवणे",
+      ko: "내 작업 목록에 진행 상황 보고",
+    }),
+    scopeProgressHint: t({
+      en: "Adds and updates tasks on your live task list (status, estimate, done), always under this token's name. Site owners only. It cannot run code or pair a device.",
+      zh: "在你的实时任务清单上新增和更新任务（状态、预计时间、完成），始终以这个令牌的名字记录。仅限站点所有者。它不能运行代码，也不能配对设备。",
+      hi: "आपकी लाइव कार्य सूची में कार्य जोड़ता और बदलता है (स्थिति, अनुमान, पूरा), हमेशा इस टोकन के नाम से। सिर्फ़ साइट मालिकों के लिए। यह कोड नहीं चला सकता और न ही कोई डिवाइस जोड़ सकता है।",
+      es: "Añade y actualiza tareas en tu lista de tareas en vivo (estado, estimación, hecho), siempre con el nombre de este token. Solo para propietarios del sitio. No puede ejecutar código ni emparejar un dispositivo.",
+      fr: "Ajoute et met à jour des tâches dans votre liste de tâches en direct (état, estimation, terminé), toujours au nom de ce jeton. Réservé aux propriétaires du site. Il ne peut ni exécuter du code ni appairer un appareil.",
+      ar: "يضيف ويحدّث المهام في قائمة مهامك الحيّة (الحالة، التقدير، الإنجاز)، دائمًا باسم هذا الرمز. لمالكي الموقع فقط. لا يمكنه تشغيل شيفرة ولا إقران جهاز.",
+      bn: "আপনার লাইভ কাজের তালিকায় কাজ যোগ করে ও হালনাগাদ করে (অবস্থা, আনুমানিক সময়, সম্পন্ন), সবসময় এই টোকেনের নামে। শুধু সাইটের মালিকদের জন্য। এটি কোড চালাতে বা ডিভাইস যুক্ত করতে পারে না।",
+      pt: "Adiciona e atualiza tarefas na sua lista de tarefas ao vivo (estado, estimativa, concluído), sempre com o nome deste token. Só para proprietários do site. Não pode executar código nem parear um dispositivo.",
+      ru: "Добавляет и обновляет задачи в вашем живом списке задач (статус, оценка, готово), всегда от имени этого токена. Только для владельцев сайта. Не может запускать код или подключать устройство.",
+      ur: "آپ کی لائیو کاموں کی فہرست میں کام شامل اور اپ ڈیٹ کرتا ہے (حالت، تخمینہ، مکمل)، ہمیشہ اس ٹوکن کے نام سے۔ صرف سائٹ کے مالکان کے لیے۔ یہ کوڈ نہیں چلا سکتا اور نہ کوئی ڈیوائس جوڑ سکتا ہے۔",
+      id: "Menambahkan dan memperbarui tugas di daftar tugas langsung Anda (status, perkiraan, selesai), selalu atas nama token ini. Hanya untuk pemilik situs. Tidak bisa menjalankan kode atau memasangkan perangkat.",
+      de: "Trägt Aufgaben in deine Live-Aufgabenliste ein und aktualisiert sie (Status, Schätzung, erledigt), immer unter dem Namen dieses Tokens. Nur für Website-Inhaber. Es kann weder Code ausführen noch ein Gerät koppeln.",
+      ja: "あなたのライブなタスク一覧にタスクを追加・更新します（状態、見積もり、完了）。常にこのトークンの名前で記録されます。サイトのオーナーのみ。コードの実行や端末のペアリングはできません。",
+      sw: "Huongeza na kusasisha kazi kwenye orodha yako ya kazi ya moja kwa moja (hali, makadirio, imekamilika), kila mara kwa jina la tokeni hii. Kwa wamiliki wa tovuti pekee. Haiwezi kuendesha msimbo wala kuoanisha kifaa.",
+      mr: "तुमच्या थेट कामांच्या यादीत कामे जोडते आणि अद्ययावत करते (स्थिती, अंदाज, पूर्ण), नेहमी या टोकनच्या नावाने. फक्त साइट मालकांसाठी. ते कोड चालवू शकत नाही किंवा उपकरण जोडू शकत नाही.",
+      ko: "내 실시간 작업 목록에 작업을 추가하고 갱신합니다(상태, 예상 시간, 완료). 항상 이 토큰의 이름으로 기록됩니다. 사이트 소유자만. 코드를 실행하거나 기기를 페어링할 수는 없습니다.",
+    }),
     neverOwner: t({
       en: "A token can never pair a device, approve anything, or reach another account's chat.",
       zh: "令牌永远不能配对设备、批准任何操作，也不能访问其他账户的聊天。",
@@ -905,6 +941,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Checkbox label, one permission of an API token, shown only to the site owner in Settings → API tokens: the token may run any program code on the owner's open web pages. Short verb phrase; 'pages' means his open browser pages of this site.",
   scopeEvalHint:
     "Small text under the 'Run code on your pages' permission checkbox, shown only to the site owner: the token runs any code on his open pages without him tapping to approve; only site owners get it, it lasts 30 days at most, and whoever holds the token acts as him on those pages. Three short sentences, plain and serious, a warning.",
+  scopeProgress:
+    "Checkbox label, one permission of an API token, shown only to the site owner in Settings → API tokens: the token may report progress (add and update tasks) to the owner's live task list (the state tree / Gantt that his AI agents report to). Short verb phrase.",
+  scopeProgressHint:
+    "Small text under the 'Report progress to your task list' permission checkbox, shown only to the site owner: the token adds and updates tasks on his live task list (their status, time estimate, done), always recorded under the token's own name; only site owners get it; it can neither run code nor pair a device. Three short sentences, plain.",
   neverOwner:
     "Note under the permission checkboxes, shown instead of the usual note to the site owner, who can give the 'run code' permission: no token can ever pair (connect) a device, approve anything, or reach another account's chat. One sentence, factual. Same as the usual note without 'run code'.",
   expiry:

@@ -21,6 +21,7 @@ import {
 } from "@/lib/api-tokens";
 import { EVAL_LIMIT, evalTokenCheck, type EvalTokenDb } from "@/lib/eval-token";
 import { tokenApi } from "@/lib/api-token-api";
+import { chatTokenCheck } from "@/lib/chat-token";
 import { rpcStub } from "./support/rpc-stub";
 
 const SCHEMA = testSchema();
@@ -404,5 +405,57 @@ describe("lianki-push: the eval token's header", () => {
     // Not a token: nothing.
     await push.fetch(ctl({ authorization: "Bearer nope" }), env);
     expect(seen[2].get("x-debug-eval-token")).toBeNull();
+  });
+});
+
+// The `progress` permission (lib/api-tokens.ts): offered to site owners only
+// (OWNER_SCOPES), without eval's 30-day cap, and checked for the hub by
+// chatTokenCheck with op "progress" (lib/chat-token.ts).
+describe("the progress permission", () => {
+  it("is offered to a site owner only and takes a long expiry; eval alone is capped", async () => {
+    const mine = (await (await tokenApi(call("GET"), apiDeps(OWNER, true))).json()) as {
+      scopes: { id: string }[];
+    };
+    expect(mine.scopes.map((s) => s.id)).toContain("progress");
+    const theirs = (await (await tokenApi(call("GET"), apiDeps(ALICE, false))).json()) as {
+      scopes: { id: string }[];
+    };
+    expect(theirs.scopes.map((s) => s.id)).not.toContain("progress");
+    const body = { name: "codex", scopes: ["progress", "chat:write"], expiry: { days: 365 } };
+    expect((await tokenApi(call("POST", body), apiDeps(ALICE, false))).status).toBe(400);
+    const r = await tokenApi(call("POST", body), apiDeps(OWNER, true));
+    expect(r.status).toBe(200);
+    expect(((await r.json()) as { scopes: string[] }).scopes).toEqual(["chat:write", "progress"]);
+    expect(
+      (
+        await tokenApi(
+          call("POST", { ...body, scopes: ["eval", "progress"] }),
+          apiDeps(OWNER, true),
+        )
+      ).status,
+    ).toBe(400);
+    expect(parseScopes(["progress"])).toBeNull();
+    expect(parseScopes(["progress"], { owner: true })).toEqual(["progress"]);
+  });
+
+  it("is what the hub asks for with op progress: the owner flag and the token's name", async () => {
+    const { token, id } = await mint(OWNER, ["progress"], 365);
+    const a = await chatTokenCheck(
+      db() as never,
+      { op: "progress", token, client: "mcp/0.4.0 tool=lianki_progress_report" },
+      t,
+    );
+    expect(a).toMatchObject({ ok: true, owner: true, lane: "lane", userId: OWNER.userId });
+    expect(audits("api-token.use").map((x) => x.detail)).toEqual([
+      "progress lane via mcp/0.4.0 lianki_progress_report",
+    ]);
+    const chat = await mint(OWNER, ["chat:write"], 30);
+    expect(
+      await chatTokenCheck(db() as never, { op: "progress", token: chat.token }, t),
+    ).toMatchObject({
+      ok: false,
+      error: "scope",
+    });
+    expect(id).toHaveLength(64);
   });
 });
