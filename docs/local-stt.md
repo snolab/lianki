@@ -731,6 +731,15 @@ devices' prints (`device` in the result says whose). The decision
 | SNR < 10 dB (any)   | –               | –             | **unknown** (`noise`) |
 | nothing enrolled    | –               | –             | unknown (`no-print`)  |
 
+**Two speakers in one final.** A whole-final score averages everyone in it:
+half his wife, half him passed as `me` (owner, 2026-11-13). So a `me` final
+long enough for two windows is scored again in 2.5 s windows every 1.25 s
+(`WINDOW_S`, `WINDOW_HOP_S`), each decided alone by the table above; a
+window that is clearly `other` makes the final **unknown** (`mixed`). Windows
+too short or too noisy to decide are skipped. The final's `score` stays the
+whole-final one (the filter below reads it, unchanged); the window scores
+ride along as `windows` in the server's final, never in the signed tag.
+
 `me` is #394's threshold for 1 % false accepts over 109 other voices (real
 people, TTS in nine languages, the shop PA, voices in the background) at
 that length: CAM++ 0.278 at 2 s, 0.300 on whole clips. `other` is #380's
@@ -1416,7 +1425,7 @@ under "Lianki's speech servers for everyone", "Routes that come and go":
    the same session with its `resume` token (`lianki-stt2-resume`), then
    restarts ICE; a resume refused, or none back within `RESUME_GRACE_MS`
    (20 s): the route is lost. devLog `stt-rtc {state: restart | restarted |
-   resume | resumed | signal-dropped | worker-away | worker-back | lobby}`.
+resume | resumed | signal-dropped | worker-away | worker-back | lobby}`.
 3. **Workers going down and coming back**: stt-peer pings every 15 s and
    keeps its sessions through registry blips; the registry skips a silent
    worker and tells pages `worker-away` / `worker-back` (back while not

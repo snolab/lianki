@@ -272,6 +272,20 @@ class Scoring(unittest.TestCase):
         for k in ("score", "decision", "model", "device", "speechS", "snrDb"):
             self.assertIn(k, me)
 
+    def test_two_speakers_in_one_final_are_not_me(self):
+        self.enrol("iphone", 300)
+        # His 3.5 s, louder, then 3.5 s of someone else: the whole scores as him.
+        him, other = tone(300, speech_s=3.5, seed=1), tone(900, speech_s=3.5, seed=2)
+        mixed = np.concatenate([him, other * 0.6]).astype(np.float32)
+        r = self.v.verify(mixed, "iphone")
+        self.assertEqual(r["score"], 1.0)
+        self.assertEqual((r["decision"], r["reason"]), ("unknown", "mixed"))
+        self.assertIn(0.0, r["windows"])
+        # Only him, as long: still "me", every window him.
+        alone = self.v.verify(tone(300, speech_s=7.0), "iphone")
+        self.assertEqual(alone["decision"], "me")
+        self.assertTrue(alone["windows"] and all(w == 1.0 for w in alone["windows"]))
+
     def test_own_device_first_then_any(self):
         self.enrol("iphone", 300)
         self.enrol("android", 600)
