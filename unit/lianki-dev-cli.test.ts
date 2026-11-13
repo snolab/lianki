@@ -127,6 +127,19 @@ describe("lianki-dev: --as labelling", () => {
       "fyi",
       "--no-pair",
     ]);
+    expect(evalArgv("say", ["--supersede", "moot"], g())).toEqual([
+      "say",
+      "--supersede",
+      "moot",
+      "--no-pair",
+    ]);
+    expect(evalArgv("say", ["--interject", "urgent"], g())).toEqual([
+      "say",
+      "--interject",
+      "urgent",
+      "--no-pair",
+    ]);
+    expect(evalArgv("say", ["--supersede", "--interject", "x"], g())).toBeInstanceOf(Error);
     expect(evalArgv("say", ["-"], g({ lane: "agy" }), " from stdin\n")).toEqual([
       "say",
       "【agy】from stdin",
@@ -415,6 +428,13 @@ describe("lane token: say/ask/listen through lianki chat", () => {
     );
     expect(chatArgv("say", ["--voice"])).toBeInstanceOf(Error);
     expect(chatArgv("say", ["--to", "bob@x.com", "hi"])).toBeInstanceOf(Error);
+    const s = chatArgv("say", ["--supersede", "moot"]);
+    if (s instanceof Error) throw s;
+    expect([...s]).toEqual(["chat", "say", "--supersede", "-"]);
+    const i = chatArgv("say", ["--interject", "urgent"]);
+    if (i instanceof Error) throw i;
+    expect([...i]).toEqual(["chat", "say", "--interject", "-"]);
+    expect(chatArgv("say", ["--supersede", "--interject", "x"])).toBeInstanceOf(Error);
     expect(chatArgv("say", [])).toBeInstanceOf(Error);
   });
   it("ask: one question, *option is the recommended one, --wait passes", () => {

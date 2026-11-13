@@ -3841,7 +3841,7 @@ export class DebugHub {
     if (m.value.type === "say") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
-      const { text, to, node, agentId, quiet, lane, voice } = m.value;
+      const { text, to, node, agentId, quiet, cut, lane, voice } = m.value;
       // The sender's node: what the line says, within the node its socket listens at.
       const home = c.node ?? ROOT_NODE;
       const from = m.value.taskPath ?? home;
@@ -3874,6 +3874,8 @@ export class DebugHub {
           ...(node ? { to: node } : {}),
           // say --quiet (already a boolean): shown, never read aloud.
           ...(quiet ? { quiet } : {}),
+          // say --supersede | --interject (already checked): how it cuts into the reading, live only.
+          ...(cut ? { cut } : {}),
           // Its lane and voice (packages/debug-chat/src/voices.ts), already checked against the table.
           ...(lane ? { lane } : {}),
           ...(voice ? { voice } : {}),
@@ -3887,6 +3889,7 @@ export class DebugHub {
             ...(said.taskPath ? { taskPath: said.taskPath } : {}),
             ...(said.to ? { to: said.to } : {}),
             ...(quiet ? { quiet } : {}),
+            ...(cut ? { cut } : {}),
             ...(lane ? { lane } : {}),
             ...(voice ? { voice } : {}),
             len: text.length,

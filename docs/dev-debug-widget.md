@@ -1570,6 +1570,35 @@ cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
 `unit/debug-hub.test.ts` ("say --quiet"), `unit/dev-eval.test.ts`,
 `unit/node-args.test.ts`.
 
+### Supersede and interject
+
+Owner, 2026-11-13 23:5x JST: a later line often makes the earlier ones moot,
+or more urgent, so he wants to hear it first. A `say` can cut into what his
+page is reading aloud, in one of two ways (`say --supersede` or
+`--interject`, eval.ts, `lianki-dev say` and `lianki chat say`; one of the
+two, never both). It is stored on the line as `cut: "supersede" |
+"interject"`; both hubs (`parseControllerMessage` in `lib/dev-eval.ts`, the
+token `say` in `workers/push/src/token-chat.ts`) refuse any other value.
+
+| flag                  | use it when                                        | on his page                                                                                                                                  |
+| --------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--supersede` (打断)  | the new line makes your earlier ones moot          | your lane's line being read stops; your lane's unread lines are dropped; the new one is read. Other lanes' lines are untouched.              |
+| `--interject` (插嘴)  | it is urgent, but the earlier lines still matter   | the line being read (any lane) pauses at its sentence; the new one is read next; then the paused one goes on from there. Nothing is dropped. |
+
+Rules (`voice.ts` `reply`, `cut`, `speakerOf`): only a line that arrives
+**live** (DebugEval's chat frame passes `{live: true}`) cuts in; a line from
+history, a missed line read on return, or a reading resumed after a reload
+never does. "Same lane" is the line's `lane` (or its `【lane】` prefix), else
+a lane token's name, else its agent id, else main. A line already read is
+untouched, and every line stays in the log; only the reading changes.
+Interjections in a row are read in arrival order before the paused line. A
+quiet superseding line still cuts its lane's reading but reads nothing; a
+quiet interjection does nothing. The read-progress mirror follows both
+(`onDrop`, `onInterject`; read-progress.ts `drop`, `insert`). Tests:
+`unit/voice-cut.test.ts`, `unit/dev-eval.test.ts`, `unit/debug-hub.test.ts`,
+`unit/token-chat.test.ts`, `unit/lianki-dev-cli.test.ts`,
+`unit/lianki-cli.test.ts`, `unit/node-args.test.ts`.
+
 ## Lanes and voices
 
 Several agents talk in the owner's chat — the chat lane (main), codex and

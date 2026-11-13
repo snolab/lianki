@@ -720,6 +720,17 @@ describe("chat (your own thread, with a chat token)", () => {
     expect(seen[1]!.body.quiet).toBe(true);
   });
 
+  test("say --supersede / --interject send cut; both at once is a usage error, nothing sent", async () => {
+    const seen: Call[] = [];
+    const h = harness({ env, server: chatServer(seen), stdin: "moot\n" });
+    expect((await h.run("chat", "say", "--supersede", "-")).code).toBe(0);
+    expect(seen[0]!.body).toEqual({ op: "say", text: "moot", cut: "supersede" });
+    expect((await h.run("chat", "say", "urgent", "--interject")).code).toBe(0);
+    expect(seen[1]!.body).toEqual({ op: "say", text: "urgent", cut: "interject" });
+    expect((await h.run("chat", "say", "x", "--supersede", "--interject")).code).not.toBe(0);
+    expect(seen).toHaveLength(2);
+  });
+
   test("say - reads the line from stdin (yargs alone drops a bare -)", async () => {
     const seen: Call[] = [];
     const h = harness({ env, server: chatServer(seen), stdin: "  -starts with a dash\n" });
