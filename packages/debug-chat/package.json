@@ -37,7 +37,6 @@
     "./wire": "./src/wire.ts",
     "./scene": "./src/scene.ts",
     "./polish": "./src/polish.ts",
-    "./polish-readback": "./src/polish-readback.ts",
     "./voice": "./src/voice.ts",
     "./voices": "./src/voices.ts",
     "./lexicon": "./src/lexicon.ts",

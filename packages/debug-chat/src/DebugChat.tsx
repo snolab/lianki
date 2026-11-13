@@ -137,7 +137,6 @@ import {
 import { Icon, POLISHED_ICON } from "./icons";
 import { useMessageDetails } from "./MessageDetails";
 import { PolishedMark } from "./PolishedMark";
-import { readbackOf } from "./polish-readback";
 import { LINE_SELECTABLE } from "./copy-line";
 import { type Held, logEngaged, typingLook } from "./log-engage";
 import { wireLogHold } from "./log-hold-dom";
@@ -3995,11 +3994,8 @@ export function DebugChat({
     let left = readP.unmatched;
     if (!left) return;
     for (const m of messages) {
-      // His own line read back in his cloned voice (polish-readback.ts) is in the queue too.
-      const back = m.from === "owner" ? readbackOf(m.id) : undefined;
-      if (claimed.current.has(m.id)) continue;
-      if (!back && (m.from !== "agent" || historyIds.current!.has(m.id))) continue;
-      const n = sentenceCount(back ?? spokenOf(m, { embedded }));
+      if (m.from !== "agent" || historyIds.current!.has(m.id) || claimed.current.has(m.id)) continue;
+      const n = sentenceCount(spokenOf(m, { embedded }));
       if (!n || n > left) continue;
       claimed.current.add(m.id);
       readDispatch({ type: "enqueue", id: m.id, n });

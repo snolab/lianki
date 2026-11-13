@@ -154,11 +154,6 @@ export default async function RootLayout({
   // Provider voices (lib/cloud-voices.ts): audience owner, so the flag and the dev grant.
   // Talking over Li's read-aloud with echo cancellation off (aec.ts talkOver): audience owner.
   const talkOver = dev && flagIn(flags, "voice.talk-over");
-  // His polished voice lines read back in his cloned voice (polish-readback.ts): audience owner.
-  const polishReadback =
-    dev && flagIn(flags, "voice.polish-readback")
-      ? { on: true, timeoutMs: await cfg("voice.cloneTimeoutMs") }
-      : undefined;
   const cloudVoices =
     dev && flagIn(flags, "voice.cloud-voices")
       ? { on: true, map: await cfg("voice.langVoices") }
@@ -176,7 +171,6 @@ export default async function RootLayout({
     lexicon,
     cloudVoices,
     talkOver,
-    polishReadback,
   };
   const box = boxConfig();
   return (
