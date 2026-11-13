@@ -703,6 +703,10 @@ export type ChatStrings = {
   /** Line in the voiceprint panel when no device has enrolled a voiceprint yet. One short sentence. */
   vpNone: string;
   /** One row per enrolled device in the voiceprint panel: {device} is a device name like iphone or android, {n} how many sentences were read for it. Keep both placeholders. */
+  vpProgressive: string;
+  vpCounts: string;
+  vpOn: string;
+  vpOffState: string;
   vpPrint: string;
   /** Note in the voiceprint panel when Lianki's speech server (the service that turns speech into text and checks the voice) is not reachable; the mic button shows a green dot when it is. 'Lianki's speech server' is the company's own server; never name a person's computer. One sentence. */
   vpOff: string;
@@ -1019,6 +1023,10 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpMenu: "Voiceprint",
   vpTitle: "Your voiceprint",
   vpNone: "No voiceprint yet.",
+  vpProgressive: "Learn from my voice as I talk",
+  vpCounts: "{enrolled} enrolled / {learned} learned",
+  vpOn: "On",
+  vpOffState: "Off",
   vpPrint: "{device}: {n} sentences",
   vpOff: "Needs Lianki's speech server (the green dot on the mic).",
   vpEnrol: "Enrol this device",

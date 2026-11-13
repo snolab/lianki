@@ -362,6 +362,7 @@ export function VoiceprintPanel({
               {view.prints.map((p) => (
                 <li key={`${p.device}.${p.model}`}>
                   {t.vpPrint.replaceAll("{device}", p.device).replaceAll("{n}", String(p.n))}
+                  {(p.enrolN !== undefined || p.progN !== undefined) && <span> · {t.vpCounts.replaceAll("{enrolled}", String(p.enrolN ?? p.n)).replaceAll("{learned}", String(p.progN ?? 0))}</span>}
                   <span style={{ opacity: 0.6 }}> · {p.model}</span>
                 </li>
               ))}
@@ -370,6 +371,24 @@ export function VoiceprintPanel({
             note(t.vpNone)
           )}
           {!view.local && note(t.vpOff, "debug-voiceprint-off")}
+          {view.local && view.progressive && (
+            <div style={{ marginTop: 10 }}>
+              <button type="button" role="switch" aria-checked={view.progressive.on}
+                aria-label={t.vpProgressive} disabled={view.progressiveBusy}
+                data-testid="debug-voiceprint-progressive"
+                className="lk-seal-switch pointer-events-auto tap-40"
+                style={{ display: "flex", alignItems: "center", gap: 8, color: "inherit" }}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => { if (e.nativeEvent.isTrusted) void c.progressive(!view.progressive!.on); }}>
+                <span aria-hidden="true" className="lk-sealbox" data-size="sm" data-seal={view.progressive.on ? "on" : "off"}>
+                  <span data-word="on" data-active={view.progressive.on || undefined}>{t.vpOn}</span>
+                  <span data-word="off" data-active={!view.progressive.on || undefined}>{t.vpOffState}</span>
+                </span>
+                {t.vpProgressive}
+              </button>
+              {view.progressiveError && note(view.progressiveError, "debug-voiceprint-progressive-error")}
+            </div>
+          )}
           {view.filter && filterBlock(view.filter)}
           {view.cloud && cloudBlock(view.cloud, view.cloudOp, view.local && view.prints.length > 0, true)}
           {view.cloud && !view.prints.length && view.local && view.cloud.prints.length > 0 &&

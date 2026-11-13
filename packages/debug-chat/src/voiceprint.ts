@@ -261,7 +261,7 @@ export function filterSwitch(ask: () => Promise<boolean> = filterFlag, now: () =
 }
 
 // ---------------------------------------------------------------- the enrolment card
-export type PrintInfo = { device: string; model: string; n: number; updated?: string; audio?: boolean };
+export type PrintInfo = { device: string; model: string; n: number; updated?: string; audio?: boolean; enrolN?: number; progN?: number; lastAdded?: string | null };
 
 export type EnrolView =
   | { step: "closed" }
@@ -272,6 +272,9 @@ export type EnrolView =
       step: "status";
       prints: PrintInfo[];
       local: boolean;
+      progressive?: { on: boolean };
+      progressiveBusy?: boolean;
+      progressiveError?: string;
       filter?: FilterInfo;
       /** The copy in his account (undefined: the feature is off for this account). */
       cloud?: CloudInfo;
@@ -824,6 +827,8 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
           step: "status",
           prints,
           local: r.ok === true,
+          ...(r.progressive && typeof r.progressive === "object" && typeof (r.progressive as { on?: unknown }).on === "boolean"
+            ? { progressive: { on: (r.progressive as { on: boolean }).on } } : {}),
           ...(filter ? { filter } : {}),
           ...(cloud ? { cloud } : {}),
         });
@@ -832,6 +837,21 @@ export function createEnrolment(d: EnrolDeps, onChange: (v: EnrolView) => void) 
         // The Mac unreachable: the account copy still shows (and can be deleted).
         const cloud = (await d.cloud?.list().catch(orNull)) ?? undefined;
         if (my === run) set({ step: "status", prints: [], local: false, ...(cloud ? { cloud } : {}) });
+      }
+    },
+    /** A passkey-approved change for all devices; keep the confirmed state on failure. */
+    async progressive(on: boolean) {
+      if (view.step !== "status" || !view.local || !view.progressive || view.progressiveBusy) return;
+      const base = view;
+      const my = ++run;
+      set({ ...base, progressiveBusy: true, progressiveError: undefined });
+      try {
+        const ticket = await d.ticket("progressive", "*");
+        if (my !== run) return;
+        ok(await d.request({ t: "voiceprint", op: "progressive", on, ticket }));
+        if (my === run) await api.open();
+      } catch (e) {
+        if (my === run) set({ ...base, progressiveError: errText(e) });
       }
     },
     /** "Save to my account" (a tap: the passkey prompt follows). */
