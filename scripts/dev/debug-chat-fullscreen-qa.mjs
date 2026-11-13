@@ -10,7 +10,7 @@
  *     to the bottom edge fills the screen (a phone) or opens the right sidebar
  *     (wider than 35em); dragged to the top edge it stays a panel (18:26 JST);
  *     a drag up from full screen leaves it, the panel following the finger
- *   - the way out: ✕ and its words, 40px, top corner, keyboard-focusable;
+ *   - the way out: ✕ alone with a label and tooltip, 40px, top corner, keyboard-focusable;
  *     the menu's Full screen row is the way in without a drag
  *   - the switch keeps the thread, the draft, the focus, the line being read,
  *     and the very same input and mic elements (nothing remounts)
@@ -389,12 +389,14 @@ async function run(engine, name, scheme, vp) {
       JSON.stringify(exitBtn),
     );
     const exitText = (await page.locator(EXIT).innerText()).trim();
+    const exitLabel = (await page.locator(EXIT).getAttribute("aria-label"))?.trim();
+    const exitTitle = (await page.locator(EXIT).getAttribute("title"))?.trim();
     check(
-      exitText.includes("✕") && exitText.replace("✕", "").trim().length > 0,
-      `${tag} the exit button: ✕ and its words`,
-      exitText,
+      exitText === "✕" && !!exitLabel && /\p{L}/u.test(exitLabel) && exitTitle === exitLabel,
+      `${tag} the exit button: ✕ alone, named and described by its tooltip`,
+      JSON.stringify({ exitText, exitLabel, exitTitle }),
     );
-    // Its words against what is behind them: AA (4.5:1), computed in the page.
+    // The icon against what is behind it: AA (4.5:1), computed in the page.
     const contrast = await page.evaluate((sel) => {
       const el = document.querySelector(sel);
       const c = document.createElement("canvas").getContext("2d");
