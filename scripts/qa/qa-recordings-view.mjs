@@ -158,7 +158,8 @@ try {
             right: el.getBoundingClientRect().right,
           })),
       }));
-      if (overflow.bad.length) throw new Error(`Overflow ${lang}: ${JSON.stringify(overflow)}`);
+      if (overflow.width > 320 || overflow.bad.length)
+        throw new Error(`Overflow ${lang}: ${JSON.stringify(overflow)}`);
       await page.locator('[data-qa="recordings-confirm"] button').last().click();
     }
     console.log(`PASS ${lang} 320px 150% day and clip confirmation`);

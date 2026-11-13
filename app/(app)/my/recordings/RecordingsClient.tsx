@@ -174,8 +174,8 @@ export default function RecordingsClient() {
         {t.back}
       </a>
       <h1 className="flex items-center gap-2 text-2xl font-semibold">
-        <Icon name="microphone" />
-        {t.title}
+        <Icon name="microphone" className="shrink-0" />
+        <span className="min-w-0 break-words">{t.title}</span>
       </h1>
       <p className={`mt-1 text-sm ${muted}`}>{t.intro}</p>
 
