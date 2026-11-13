@@ -50,13 +50,15 @@ describe("registry", () => {
     // card-height pinch, 2026-11-10; /library and My books /books, 2026-11-10; the
     // voiceprint in his account, tap card 2026-11-10 23:31 JST, audience owner + dev;
     // the cracked "↓ back" slips, asked 2026-11-10 22:59 JST, audience owner + dev;
-    // a new version applying itself on a clean page, asked 2026-11-11 19:33 JST).
+    // a new version applying itself on a clean page, asked 2026-11-11 19:33 JST;
+    // mic recordings in his account, tap card 2026-11-14 ~03:35 JST, audience owner + dev).
     const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
     expect(on).toEqual([
       "app.auto-update",
       "today.goal",
       "words.onboarding",
       "stt.voiceprint-cloud",
+      "voice.recordings",
       "stt.polish",
       "stt.two-mic-merge",
       "library.catalogue",

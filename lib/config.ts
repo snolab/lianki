@@ -295,6 +295,18 @@ export const CONFIG = {
   },
   // One passkey approval covers every voiceprint op for this long (owner tap card
   // 2026-11-11 01:28 JST; docs/local-stt.md, "One approval for ten minutes").
+  // Mic recordings in the account (docs/recordings.md; owner tap card 2026-11-14
+  // ~03:35 JST): the daily sweep (worker.ts `scheduled`) deletes clips older than this.
+  "recordings.retentionDays": int({
+    default: 90,
+    min: 1,
+    max: 3650,
+    unit: "days",
+    group: "voice",
+    audience: "server",
+    description:
+      "麦克风录音（/my/recordings）保留多少天：每天一次的清理会删掉比这更早录的片段（音频和文字一起删）。默认 90 天。改短后，下一次每日清理就会删掉超出的部分，删了找不回来；想留的先下载到 Mac。",
+  }),
   "voiceprint.passkeyWindowMs": int({
     default: 600_000,
     min: 0,

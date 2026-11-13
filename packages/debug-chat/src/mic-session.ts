@@ -21,6 +21,7 @@
 import type { MicAdapt } from "./mic";
 import type { UttMarks } from "./latency";
 import {
+  type MicRecord,
   type MicState,
   type StreamStt,
   type UploadInfo,
@@ -58,8 +59,9 @@ export const MIC_SESSION_KEY = "__lkMic";
  * (cues.ts), and the guard over what the VAD hears while one plays. 13: the
  * silence guard (stt-guard.ts) over each final, and the route's signals for it.
  * 14: why it went off (mic-off.ts): `auto`, autoOff(), a lost track reopened.
+ * 15: each finished utterance to the account's recordings (`record`).
  */
-export const MIC_SESSION_V = 14;
+export const MIC_SESSION_V = 15;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -144,6 +146,12 @@ export type MicDeps = {
   speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
   /** A passive utterance the Mac's voiceprint filter stopped (voiceprint.ts noteFiltered). */
   filtered?: (v: FilterVerdict) => void;
+  /**
+   * The account's recordings (recorder.ts; docs/recordings.md): each finished
+   * utterance while the mic is on, with the config in force. `local`: a
+   * passive utterance may go to this config's local STT for its transcript.
+   */
+  record?: { keep(r: MicRecord, cfg: MicConfig): void; local?(cfg: MicConfig): boolean };
   /** A final utterance's timestamps (createMic's `timing`; latency.ts). */
   timing?: (seq: number, marks: UttMarks) => void;
   /**
@@ -417,6 +425,12 @@ export function createMicSession(
     timing: (seq, m) => deps.timing?.(seq, m),
     speaker: (t, p) => deps.speaker?.(t, p),
     filtered: (v) => deps.filtered?.(v),
+    record: deps.record
+      ? {
+          keep: (r) => deps.record!.keep(r, cfg),
+          local: () => deps.record!.local?.(cfg) ?? false,
+        }
+      : undefined,
   });
   const unhold = deps.subscribeHold?.((h) => mic.hold(h));
   // A voice mode turning on wakes the mic: commands need no "Linky".

@@ -106,6 +106,7 @@ export const GUIDE_KEYS = [
   "scopeChatWrite",
   "scopeChatAsk",
   "scopeEval",
+  "scopeRecordingsRead",
   "cannot",
   "cardsHeading",
   "cardsIntro",
@@ -147,6 +148,7 @@ const SCOPE_LINE: Record<ScopeId, GuideKey> = {
   "chat:write": "scopeChatWrite",
   "chat:ask": "scopeChatAsk",
   eval: "scopeEval",
+  "recordings:read": "scopeRecordingsRead",
 };
 
 /** Any API token secret in `s`, replaced by the placeholder. */
