@@ -216,10 +216,13 @@ export function AttachMenu({
       document.removeEventListener("keydown", key);
     };
   }, [onClose]);
+  // Two columns (owner, 2026-11-14: denser, and it scrolls): each item one cell,
+  // the group headings across both.
   const row =
-    "flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-start fs-13 disabled:cursor-default";
+    "flex min-h-10 w-full min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-start fs-13 disabled:cursor-default";
   const badge = "flex size-7 shrink-0 items-center justify-center rounded-full text-sm";
-  const heading = "px-2.5 pb-0.5 pt-1.5 fs-10 font-semibold uppercase tracking-wide opacity-60";
+  const heading =
+    "col-span-2 px-2.5 pb-0.5 pt-1.5 fs-10 font-semibold uppercase tracking-wide opacity-60";
   return (
     <div
       ref={box}
@@ -229,7 +232,7 @@ export function AttachMenu({
       // Sized to the screen, not the (maybe narrow) bar, and scrolls when taller than
       // the room above it (owner, 2026-11-14: it ran off the top and could not scroll).
       style={{ background: "var(--lk-chat-menu-bg, oklch(0.99 0.004 85 / 0.97))" }}
-      className="pointer-events-auto absolute start-0 bottom-full z-10 mb-1 w-[min(17rem,calc(100vw-1rem))] max-h-[min(70dvh,32rem)] overflow-y-auto overscroll-contain rounded-2xl p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100"
+      className="pointer-events-auto absolute start-0 bottom-full z-10 mb-1 grid w-[min(24rem,calc(100vw-1rem))] grid-cols-2 content-start gap-0.5 max-h-[min(70dvh,32rem)] overflow-y-auto overscroll-contain rounded-2xl p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100"
     >
       {attach && items.length > 0 && (
         <>
