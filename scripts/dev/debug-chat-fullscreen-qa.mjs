@@ -34,6 +34,7 @@ import { mkdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { chromium, webkit } from "playwright";
 import { launchSilent, newSilentContext } from "../qa/silent.mjs";
+import { budget } from "../qa/load-budget.mjs";
 
 const shotsAt = process.argv.indexOf("--shots");
 const shots = shotsAt > 0 ? process.argv[shotsAt + 1] : null;
@@ -579,20 +580,52 @@ async function run(engine, name, scheme, vp) {
     await settle();
     check(!(await isFull()), `${tag} the exit button (Enter): back to the panel`);
 
-    // The way in without a drag: the menu's Full screen row (a double tap on the grip).
+    // The way in without a drag: wait for the actual menu, not a fixed
+    // delay followed by count(). Missing the menu used to skip entering full
+    // screen, then report the skipped transition as a reload failure as well.
+    await page.evaluate((sel) => {
+      globalThis.__fullQaMenuClicks = [];
+      document.querySelector(sel).addEventListener("click", (e) => {
+        globalThis.__fullQaMenuClicks.push({ at: e.timeStamp, detail: e.detail });
+      });
+    }, GRIP);
     await page.locator(GRIP).dblclick();
-    await settle();
-    check((await page.locator(MENU_FULL).count()) === 1, `${tag} the menu has a Full screen row`);
-    const histLen = await page.evaluate(() => history.length);
-    if (await page.locator(MENU_FULL).count()) {
-      await page.locator(MENU_FULL).click();
-      await settle();
-      check(await isFull(), `${tag} the menu row: full screen`);
+    const menuFull = page.locator(MENU_FULL);
+    try {
+      await menuFull.waitFor({ state: "visible", timeout: budget(10_000) });
+    } catch (error) {
+      const state = await page.evaluate(
+        (sel) => ({
+          clicks: globalThis.__fullQaMenuClicks,
+          minimized: document.querySelector(sel)?.hasAttribute("data-minimized"),
+          full: document.querySelector(sel)?.hasAttribute("data-fullscreen"),
+        }),
+        SECTION,
+      );
+      throw new Error(`${tag} Full screen menu did not become visible: ${JSON.stringify(state)}`, {
+        cause: error,
+      });
     }
-    // A reload keeps full screen (this device).
+    check((await menuFull.count()) === 1, `${tag} the menu has a Full screen row`);
+    const histLen = await page.evaluate(() => history.length);
+    await menuFull.click();
+    const waitForKeptFull = () =>
+      page.waitForFunction(
+        (sel) => {
+          const full = document.querySelector(sel)?.hasAttribute("data-fullscreen");
+          const saved = JSON.parse(localStorage.getItem("lk:pref:chat-view") ?? "null");
+          return full && saved?.state?.full === true;
+        },
+        SECTION,
+        { timeout: budget(10_000) },
+      );
+    await waitForKeptFull();
+    check(await isFull(), `${tag} the menu row: full screen`);
+    // Only reload after both the DOM transition and device preference are
+    // confirmed. On reload a plain section can mount before full is restored.
     await page.reload();
-    await page.waitForSelector(SECTION, { timeout: 60_000 });
-    await settle();
+    await page.waitForSelector(SECTION, { timeout: budget(60_000) });
+    await waitForKeptFull();
     check(await isFull(), `${tag} a reload keeps full screen`);
     check(
       (await page.evaluate(() => history.length)) <= histLen + 1,
