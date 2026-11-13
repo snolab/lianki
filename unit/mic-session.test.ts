@@ -465,3 +465,46 @@ describe("mic session: voiceprint enrolment", () => {
     expect(s.enrolling()).toBe(false);
   });
 });
+
+describe("mic session: the account's recordings", () => {
+  const speak = async (f: ReturnType<typeof fakes>) => {
+    f.events()!.onSpeechStart();
+    f.events()!.onSpeechEnd(new Float32Array(16_000).fill(0.05));
+    await new Promise((r) => setTimeout(r, 10));
+  };
+  it("hands each kept utterance to `record` with the config in force", async () => {
+    const kept: [string, string][] = [];
+    const f = fakes({ record: { keep: (r, cfg) => void kept.push([r.text, cfg.label]) } });
+    const s = createMicSession(f.deps);
+    s.configure({ label: "phone" });
+    await s.toggle();
+    await speak(f);
+    expect(kept).toEqual([["hello there.", "phone"]]);
+    await s.off();
+  });
+
+  it("asks `local` (with the config) for a passive utterance's transcript", async () => {
+    const asked: string[] = [];
+    const f = fakes({
+      kws: () => ({ load: async () => {}, spot: async () => ({ hit: false }) }),
+      record: { keep: () => {}, local: (cfg) => (asked.push(cfg.label), false) },
+    });
+    const s = createMicSession(f.deps);
+    s.configure({ label: "phone" });
+    await s.toggle();
+    s.wake("passive");
+    await speak(f);
+    expect(asked).toEqual(["phone"]);
+    // A sink without `local` says no.
+    const g = fakes({
+      kws: () => ({ load: async () => {}, spot: async () => ({ hit: false }) }),
+      record: { keep: () => {} },
+    });
+    const t = createMicSession(g.deps);
+    await t.toggle();
+    t.wake("passive");
+    await speak(g);
+    await s.off();
+    await t.off();
+  });
+});

@@ -6,6 +6,7 @@ import importPage from "@/app/(app)/import/page.content";
 import importSections from "@/app/(app)/import/import-sections.content";
 import wordsImportPanel from "@/app/(app)/words/import-panel.content";
 import myFiles from "@/app/(app)/my/files/my-files.content";
+import myRecordings from "@/app/(app)/my/recordings/my-recordings.content";
 import bottomNav from "@/app/components/bottom-nav.content";
 import learningPartner from "@/app/components/learning-partner.content";
 import devSwitch from "@/app/components/dev-switch.content";
@@ -223,6 +224,7 @@ describe.each([
   ["userscript-ui", userscriptUi],
   ["chat-ui", chatUi],
   ["my-files", myFiles],
+  ["my-recordings", myRecordings],
   ["activity-tally", activityTally],
   ["dev-flag-toast", devFlagToast],
   ["dev-config", devConfig],
