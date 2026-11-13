@@ -69,9 +69,12 @@ describe("loading more", () => {
     expect(shouldLoadMore({ ...base, lastIndex: 10, belowPx: 0, viewportPx: 0 })).toBe(false);
   });
   test("space kept below while more may come, none at the end", () => {
-    expect(reserveBelow(true, 800)).toBe(Math.round(800 * RESERVE_SCREENS));
-    expect(reserveBelow(false, 800)).toBe(0);
-    expect(reserveBelow(true, 0)).toBe(0);
+    const at = { hasMore: true, viewport: 800, count: 30, rowPx: 50 };
+    expect(reserveBelow({ ...at, total: 1030 })).toBe(1000 * 50);
+    expect(reserveBelow({ ...at, total: null })).toBe(800 * RESERVE_SCREENS);
+    expect(reserveBelow({ ...at, total: 30 })).toBe(800 * RESERVE_SCREENS);
+    expect(reserveBelow({ ...at, hasMore: false, total: 1030 })).toBe(0);
+    expect(reserveBelow({ ...at, viewport: 0 })).toBe(0);
   });
   test("never while loading, after an error, or with no more", () => {
     expect(shouldLoadMore({ ...base, lastIndex: 29, loading: true })).toBe(false);

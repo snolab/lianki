@@ -207,6 +207,7 @@ export default function CardTable(props: Props) {
           getKey={(row) => row.url}
           name={`data-${store}`}
           scrollRef={scrollBox}
+          total={total}
           hasMore={hasMore}
           loading={loading}
           error={listError}

@@ -392,7 +392,13 @@ export function VirtualList<T>({
     const padTop = rows.length ? first - v.options.scrollMargin : 0;
     const padBottom =
       (last ? Math.max(0, v.getTotalSize() - (last.end - v.options.scrollMargin)) : 0) +
-      reserveBelow(hasMore, viewport());
+      reserveBelow({
+        hasMore,
+        viewport: viewport(),
+        count: items.length,
+        total,
+        rowPx: estimateSize,
+      });
     return (
       <div className={className} data-testid={testId}>
         <table
@@ -438,7 +444,15 @@ export function VirtualList<T>({
         aria-busy={loading || undefined}
         onKeyDown={onKeyDown}
         style={{
-          height: v.getTotalSize() + reserveBelow(hasMore, viewport()),
+          height:
+            v.getTotalSize() +
+            reserveBelow({
+              hasMore,
+              viewport: viewport(),
+              count: items.length,
+              total,
+              rowPx: estimateSize,
+            }),
           position: "relative",
           width: "100%",
         }}

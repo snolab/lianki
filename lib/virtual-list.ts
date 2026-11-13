@@ -32,15 +32,26 @@ export const PREFETCH_ROWS = 5;
 export const PREFETCH_SCREENS = 5;
 
 /**
- * Empty space kept below the last row while more may come, in screens: the
- * scroll never hits a hard end mid-load; once the list is known to be complete
- * it goes and the page settles back (owner: "哪怕滚完了再被弹回来都可以").
+ * Empty space kept below the last row while more may come: the scroll never
+ * hits a hard end mid-load, however fast he flings (owner, 2026-11-14: "每秒钟能
+ * 滚到几十个屏幕 … 非常非常大 … 加载完所有东西之后再弹回来都可以"). With the
+ * total known it is the height the missing rows will take; without it,
+ * RESERVE_SCREENS screens. Once the list is complete it goes, and the page
+ * settles back.
  */
-export const RESERVE_SCREENS = 3;
+export const RESERVE_SCREENS = 50;
 
-/** The empty space (px) to keep below the rows: some while more may load, none at the end. */
-export function reserveBelow(hasMore: boolean, viewport: number): number {
-  return hasMore && viewport > 0 ? Math.round(viewport * RESERVE_SCREENS) : 0;
+/** The empty space (px) to keep below the rows: the rest of the list while more may load, none at the end. */
+export function reserveBelow(s: {
+  hasMore: boolean;
+  viewport: number;
+  count: number;
+  total?: number | null;
+  rowPx: number;
+}): number {
+  if (!s.hasMore) return 0;
+  if (typeof s.total === "number" && s.total > s.count) return (s.total - s.count) * s.rowPx;
+  return s.viewport > 0 ? Math.round(s.viewport * RESERVE_SCREENS) : 0;
 }
 
 /**
