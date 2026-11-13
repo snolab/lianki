@@ -1,5 +1,5 @@
 // The polish of a live doc's text (docs/connections.md, "Polish").
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import {
   draftShown,
   draftSlots,
@@ -12,6 +12,7 @@ import {
   settleSlot,
 } from "@/lib/read/live-polish";
 import { clearPermissionCache, grantAll } from "./support/grants";
+import { useBackend } from "./support/testMocks";
 import { draftOwn, livePolishAi, mayPolishLive } from "@/lib/read/live-polish-server";
 
 describe("livePolishMessages", () => {
@@ -53,6 +54,10 @@ describe("parseLivePolish", () => {
     expect(parseLivePolish(["hello"], '<p n="1">a</p><p n="1">b</p>')[0]?.text).toBe("a");
   });
 });
+
+// The per-user limit counts in memory here: whatever D1 stand-in the file
+// that ran before left behind (unit/support/testMocks.ts) must not decide.
+beforeEach(() => useBackend("mongodb"));
 
 describe("livePolishAi", () => {
   const db = { userId: `u${Math.random()}` };
