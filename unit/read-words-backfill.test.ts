@@ -165,7 +165,13 @@ describe("when the cards cannot be read", () => {
       },
       exec: async () => {},
     });
-    const w = await materialWords(m, "u1");
-    expect(w.stats.tokens).toBe(2);
+    try {
+      const w = await materialWords(m, "u1");
+      expect(w.stats.tokens).toBe(2);
+    } finally {
+      // The broken D1 must not outlive this test: the next file in the same
+      // process (live-polish's rate limit) read it and failed in the merge queue.
+      useD1(d1);
+    }
   });
 });
