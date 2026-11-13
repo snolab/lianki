@@ -226,8 +226,10 @@ export function AttachMenu({
       role="menu"
       aria-label={attach ? t.attachOpen : t.attachGroupView}
       data-testid="debug-chat-attach-menu"
+      // Sized to the screen, not the (maybe narrow) bar, and scrolls when taller than
+      // the room above it (owner, 2026-11-14: it ran off the top and could not scroll).
       style={{ background: "var(--lk-chat-menu-bg, oklch(0.99 0.004 85 / 0.97))" }}
-      className="pointer-events-auto absolute start-0 bottom-full z-10 mb-1 w-[min(17rem,100%)] overflow-hidden rounded-2xl p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100"
+      className="pointer-events-auto absolute start-0 bottom-full z-10 mb-1 w-[min(17rem,calc(100vw-1rem))] max-h-[min(70dvh,32rem)] overflow-y-auto overscroll-contain rounded-2xl p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100"
     >
       {attach && items.length > 0 && (
         <>
