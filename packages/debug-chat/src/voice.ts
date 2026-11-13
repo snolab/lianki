@@ -156,6 +156,42 @@ export const TALK_OVER_SLACK_MS = 600;
  * …and the utterance is her echo when at least this share of its words (as
  * n-grams, echo.ts echoContained) is inside the sentences playing then.
  */
+/**
+ * The backlog speeds the reading up (owner, 2026-11-14: "队列特别长的话…读的快一点"):
+ * with more than BACKLOG_FROM characters still queued, his rate is raised
+ * linearly up to BACKLOG_MAX_BOOST× at BACKLOG_FULL characters; the result
+ * never exceeds RATE_CEILING. A short queue reads at his own rate.
+ */
+export const BACKLOG_FROM = 120;
+export const BACKLOG_FULL = 600;
+export const BACKLOG_MAX_BOOST = 1.5;
+export const RATE_CEILING = 3;
+/**
+ * Past this many queued characters, whole older lines still waiting are
+ * skipped when a new line comes: the sentence being read finishes, then the
+ * newest line ("甚至直接跳过一些段落，开始读最新的消息").
+ */
+export const BACKLOG_SKIP = 1500;
+/** The older lines to skip for a queue (ids in order), keeping `keep`; [] while under BACKLOG_SKIP. */
+export function backlogSkip(
+  queued: readonly { id?: string; text: string }[],
+  keep: ReadonlySet<string>,
+): string[] {
+  const chars = queued.reduce((n, q) => n + q.text.length, 0);
+  if (chars <= BACKLOG_SKIP) return [];
+  const out: string[] = [];
+  for (const q of queued) if (q.id && !keep.has(q.id) && !out.includes(q.id)) out.push(q.id);
+  return out;
+}
+/** The factor the backlog adds to his rate, for `chars` queued characters. */
+export function backlogBoost(chars: number): number {
+  if (!(chars > BACKLOG_FROM)) return 1;
+  const t = Math.min(1, (chars - BACKLOG_FROM) / (BACKLOG_FULL - BACKLOG_FROM));
+  return 1 + t * (BACKLOG_MAX_BOOST - 1);
+}
+/** His rate × the backlog boost, capped. */
+export const effectiveRate = (base: number, queuedChars: number) =>
+  Math.min(RATE_CEILING, base * backlogBoost(queuedChars));
 export const TALK_OVER_ECHO = 0.6;
 /**
  * Talk-over pauses the reading only for speech that is clearly his: at least
@@ -498,6 +534,12 @@ export function createVoice(d: {
   const touch = () => d.touch?.() ?? false;
   let speaking = false;
   const queue: Sentence[] = [];
+  /** His rate, sped up by what is still queued (backlogBoost). */
+  const rateNow = () =>
+    effectiveRate(
+      d.rate?.() ?? 1,
+      queue.reduce((n, q) => n + q.text.length, 0),
+    );
   /** Replies queued lately, so a re-delivered one is not read twice. */
   const recent: { text: string; at: number }[] = [];
   /** Interruptions under way; the reading waits while any is. */
@@ -617,7 +659,7 @@ export function createVoice(d: {
     // iOS cannot change it mid-utterance: a duck applies from the next sentence.
     if (level !== 1) u.volume = level;
     // The speed, as set now: a change applies from the next utterance.
-    u.rate = Math.min(10, (d.rate?.() ?? 1) * (u.rate ?? 1));
+    u.rate = Math.min(10, rateNow() * (u.rate ?? 1));
     u.onboundary = (b) => {
       if (e !== epoch || !current) return;
       if (b.name && b.name !== "word") return;
@@ -802,7 +844,7 @@ export function createVoice(d: {
             lang: head.lang,
             at: head.at,
             volume: level,
-            rate: d.rate?.() ?? 1,
+            rate: rateNow(),
             ...(head.voice ? { voice: head.voice } : {}),
             ...(head.pick && head.pick.kind !== "device" ? { pick: head.pick } : {}),
           },
@@ -855,7 +897,7 @@ export function createVoice(d: {
             current.mark > head.from
               ? current.mark
               : head.from +
-                resumeOffset(rest, heardFraction(rest, now() - current.said.start, d.rate?.() ?? 1));
+                resumeOffset(rest, heardFraction(rest, now() - current.said.start, rateNow()));
           head.at = 0;
         }
       }
@@ -1060,6 +1102,17 @@ export function createVoice(d: {
       }
       if (!queue.length) prepare(add[0]!);
       queue.push(...add);
+      // A very long backlog: skip whole older lines, read on from the newest.
+      const keep = new Set<string>();
+      if (current && queue[0]?.id) keep.add(queue[0].id);
+      if (idOf.id) keep.add(idOf.id);
+      const skip = backlogSkip(queue, keep);
+      if (skip.length) {
+        const before = queue.length;
+        for (let i = queue.length - 1; i >= (current ? 1 : 0); i--)
+          if (queue[i]!.id && skip.includes(queue[i]!.id!)) queue.splice(i, 1);
+        log({ ev: "voice-skip-backlog", lines: skip.length, sentences: before - queue.length });
+      }
       next();
       emit();
       return true;
