@@ -22,6 +22,14 @@ export type ChatUi = {
   caret: number | null;
   /** The draft as dictation left it (wire.ts dictatedDraft): a restored voice line still sends as `stt`. */
   pureDictation: string | null;
+  /**
+   * The words of the utterance still under way (the dimmed interim text), and
+   * the page load that heard them (performance.timeOrigin). A reload mid-sentence
+   * puts them in the draft instead of losing them (owner, 2026-11-14: a refresh
+   * ate half a spoken line); a hot swap in the same page load does not, since
+   * the mic is still hearing that utterance.
+   */
+  interim: { text: string; page: number } | null;
   /** The panel over the log. The menu is never restored, only the tree. */
   panel: "none" | "tree";
   /**
@@ -48,6 +56,7 @@ export const CHAT_UI_INITIAL: ChatUi = {
   draft: "",
   caret: null,
   pureDictation: null,
+  interim: null,
   panel: "none",
   tree: null,
   spoken: {},
@@ -68,6 +77,17 @@ export function migrateChatUi(persisted: unknown, _version: number): ChatUi {
   // Only meaningful while the draft is still exactly the dictation.
   const pureDictation =
     typeof p.pureDictation === "string" && p.pureDictation === draft && draft ? draft : null;
+  const i = p.interim as Record<string, unknown> | null | undefined;
+  const interim =
+    i &&
+    typeof i === "object" &&
+    typeof i.text === "string" &&
+    i.text.trim() &&
+    i.text.length <= MAX_DRAFT &&
+    typeof i.page === "number" &&
+    Number.isFinite(i.page)
+      ? { text: i.text, page: i.page }
+      : null;
   const panel = p.panel === "tree" ? "tree" : "none";
   const spoken: Record<string, number> = {};
   if (p.spoken && typeof p.spoken === "object" && !Array.isArray(p.spoken))
@@ -94,6 +114,7 @@ export function migrateChatUi(persisted: unknown, _version: number): ChatUi {
     draft,
     caret,
     pureDictation,
+    interim,
     panel,
     tree: migrateTree(p.tree),
     spoken,
@@ -134,11 +155,12 @@ function migrateTree(v: unknown): KeptTree | null {
  * The chat's device preferences for how it looks (localStorage
  * `lk:pref:chat-view`, this device only, never synced): compact mode
  * (compact-view.ts), off until he turns it on on this device; full screen
- * (full-screen.ts), on while the chat fills the app. A stored value from
- * before `full` existed keeps its `compact` and reads `full` as off.
+ * (full-screen.ts), on while the chat fills the app; the task bar hidden
+ * (EtaBar.tsx, its ▸/▾; owner, 2026-11-13), shown by default. A stored value
+ * from before a key existed keeps the others and reads that one as off.
  */
-export type ChatView = { compact: boolean; full: boolean };
-export const CHAT_VIEW_INITIAL: ChatView = { compact: false, full: false };
+export type ChatView = { compact: boolean; full: boolean; etaFolded: boolean };
+export const CHAT_VIEW_INITIAL: ChatView = { compact: false, full: false, etaFolded: false };
 export const chatPrefs = () =>
   createUiStore<ChatView>("chat-view", 1, CHAT_VIEW_INITIAL, { storage: "local" });
 

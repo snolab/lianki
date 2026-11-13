@@ -34,7 +34,15 @@ export const CHALLENGE_TTL_S = VOICEPRINT_TICKET_TTL_S;
  * lib/voiceprint-cloud.ts). `restore`: the Mac takes a print the page read
  * from the account. Both need the passkey, as enrol and delete do.
  */
-export type VoiceprintOp = "status" | "enrol" | "delete" | "delete-audio" | "export" | "restore";
+export type VoiceprintOp =
+  | "status"
+  | "enrol"
+  | "delete"
+  | "delete-audio"
+  | "export"
+  | "restore"
+  | "clone-ref-put"
+  | "clone-ref-delete";
 export const VOICEPRINT_OPS: readonly VoiceprintOp[] = [
   "status",
   "enrol",
@@ -42,6 +50,8 @@ export const VOICEPRINT_OPS: readonly VoiceprintOp[] = [
   "delete-audio",
   "export",
   "restore",
+  "clone-ref-put",
+  "clone-ref-delete",
 ];
 /**
  * The ops that need the owner's passkey with user verification (Face ID / Touch ID).
@@ -54,11 +64,24 @@ export const PASSKEY_OPS: readonly VoiceprintOp[] = [
   "delete-audio",
   "export",
   "restore",
+  "clone-ref-put",
+  "clone-ref-delete",
 ];
+/**
+ * The voice-clone reference (lib/voice-clone-ref.ts, docs/voice-clone.md):
+ * audio of his voice, kept in his account. Storing/replacing and deleting it
+ * each take a fresh passkey assertion: the passkey window's grant never mints
+ * them, and their assertion hands out no grant. The ticket is for the whole
+ * account (device "*"), never one device.
+ */
+export const CLONE_REF_OPS: readonly VoiceprintOp[] = ["clone-ref-put", "clone-ref-delete"];
+/** Ops the passkey window does not cover: a Face ID / Touch ID prompt every time. */
+export const FRESH_PASSKEY_OPS: readonly VoiceprintOp[] = CLONE_REF_OPS;
 
 /** A device slug as the Mac's store takes it, or "*" (every device: never for enrol). */
 export function validDevice(d: unknown, op: VoiceprintOp): d is string {
   if (typeof d !== "string") return false;
+  if (CLONE_REF_OPS.includes(op)) return d === "*";
   if (d === "*") return op !== "enrol";
   return /^[a-z0-9][a-z0-9-]{0,31}$/.test(d);
 }

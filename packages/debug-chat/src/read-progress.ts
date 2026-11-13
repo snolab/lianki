@@ -16,7 +16,11 @@
  * - the count dropping to 0 with sentences left ("Stop reading") drops
  *   them: they stay unspoken;
  * - `drop` takes one line's sentences out (a withdrawn ask, voice.ts drop),
- *   sent just before the session's own smaller count, which then matches.
+ *   sent just before the session's own smaller count, which then matches
+ *   (also each line a superseding line cut, voice.ts onDrop);
+ * - `insert` puts an interjecting line's sentences at the session's place
+ *   for them (voice.ts onInterject), not at the end, and counts them as
+ *   queued, so the session's larger count that follows matches.
  */
 import { chunk, sentences } from "./voice";
 
@@ -36,7 +40,8 @@ export type ReadEvent =
   | { type: "queued"; n: number }
   | { type: "start" }
   | { type: "enqueue"; id: string; n: number; from?: number }
-  | { type: "drop"; id: string };
+  | { type: "drop"; id: string }
+  | { type: "insert"; id: string; n: number; at: number };
 
 export const initialRead = (done: Record<string, number> = {}): ReadProgress => ({
   queue: [],
@@ -92,6 +97,16 @@ export function readStep(p: ReadProgress, ev: ReadEvent): ReadProgress {
         queue: left,
         speaking: p.speaking?.id === ev.id ? null : p.speaking,
         queued: Math.max(0, p.queued - k),
+      };
+    }
+    case "insert": {
+      if (ev.n <= 0) return p;
+      const add = Array.from({ length: ev.n }, (_, i) => ({ id: ev.id, idx: i }));
+      const at = Math.max(0, Math.min(ev.at, p.queue.length));
+      return {
+        ...p,
+        queue: [...p.queue.slice(0, at), ...add, ...p.queue.slice(at)],
+        queued: p.queued + ev.n,
       };
     }
     case "enqueue": {

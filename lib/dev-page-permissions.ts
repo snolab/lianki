@@ -26,6 +26,7 @@ export const DEV_PAGE_PERMISSION: Record<string, Permission> = {
   "new-order": "dev",
   preview: "dev",
   roadmap: "dev",
+  session: "dev",
   "swipe-ab": "dev",
   templates: "dev",
   tokens: "dev",

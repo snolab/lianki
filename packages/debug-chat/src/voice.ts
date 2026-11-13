@@ -33,21 +33,36 @@
  *   speech that goes on for BARGE_IN_MS (and sounds like speech: isBargeIn)
  *   is a barge-in and pauses the reading. With `lk:voice-aec` = "0", the old
  *   way: `hold` is true while an utterance plays (and RESUME_TAIL_MS after),
- *   and the mic holds its capture.
+ *   and the mic holds its capture. With "0" and flag `voice.talk-over`
+ *   (`talkOver`, aec.ts): no hold and no ducking; each transcript, partial or
+ *   final, is judged by time and text together (`duplexHeard`): it overlaps a
+ *   sentence Li was playing and its words are inside that sentence = her echo,
+ *   dropped; else, heard while she reads = his, and the reading pauses as for
+ *   a barge-in (resumed by the same rules).
  * - An interruption (a barge-in, a tap on the mic, typing) stops the utterance
  *   and remembers where: the clip's time (cloud), else the last word boundary
  *   the browser reported, else the start of that sentence. Speech or a tap
  *   resumes once the user's line was sent, or after IDLE_RESUME_MS of quiet;
  *   typing waits for a send or (mic on) a blur. `stop()` clears the queue.
+ * - Cutting in (docs/dev-debug-widget.md, "Supersede and interject"), only
+ *   for a line that arrives live (`how.live`; history and resumes never):
+ *   `cut: "supersede"` stops the sentence being read if it is the same
+ *   sender's (speakerOf: its lane, else its token's name or agent id, else
+ *   main), drops that sender's queued sentences, and is read next; other
+ *   senders' sentences and anything already read are untouched.
+ *   `cut: "interject"` pauses the sentence being read (any sender) where it
+ *   got to, is read next, then that sentence goes on from there; nothing is
+ *   dropped, and interjections in a row are read in arrival order first.
  *
  * Everything browser-shaped is injected, so this is tested with fakes
  * (unit/voice-session.test.ts). Event-driven only: utterance and clip
  * events and one-shot timers, never polling.
  */
 import { speechRate } from "./speech-rate";
-import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
+import { ECHO_WINDOW_MS, type EchoScore, echoContained, echoScore, normalizeEcho } from "./echo";
 import { cloudOut, cloudSkip, existingCtx, outMode } from "./voice-out";
-import { micAec } from "./aec";
+import { type HeardVoice, noteHeard } from "./voice-heard";
+import { micAec, talkOver } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { speakForm } from "./lexicon";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
@@ -109,6 +124,39 @@ export const SPEECH_START_MS = 8_000;
  * reading waits for the next tap anywhere (`unblock`), which unlocks speech.
  */
 export const SPEECH_REFUSED_MS = 1_000;
+/**
+ * Who a line is from, for superseding: its lane (voices.ts laneOf: the field,
+ * else a `【lane】` prefix), else a lane token's name, else its agent id,
+ * else main (a line with none of them is the chat lane's, as voices.ts reads it).
+ */
+export function speakerOf(meta: SpeakMeta | undefined, said: string): string {
+  const lane = laneOf({ lane: meta?.lane, text: said }).lane;
+  if (lane) return `lane:${lane}`;
+  if (typeof meta?.tokenLane === "string" && meta.tokenLane) return `token:${meta.tokenLane}`;
+  if (typeof meta?.agentId === "string" && meta.agentId) return `agent:${meta.agentId}`;
+  return "lane:main";
+}
+
+/** How a reply reached the page: `live` = a chat frame just now (not history, not a resume). */
+export type ReplyHow = { live?: boolean };
+
+/** A line's cut-in mode (wire.ts ChatMessage.cut), only when it arrived live. */
+export function cutOf(meta: SpeakMeta | undefined, how?: ReplyHow): "supersede" | "interject" | null {
+  if (how?.live !== true) return null;
+  return meta?.cut === "supersede" || meta?.cut === "interject" ? meta.cut : null;
+}
+
+/**
+ * Talk-over (`duplexHeard`): a sentence counts as playing during an utterance
+ * when their times overlap with this much slack each side (the room's echo,
+ * the VAD's frames, the output's latency).
+ */
+export const TALK_OVER_SLACK_MS = 600;
+/**
+ * …and the utterance is her echo when at least this share of its words (as
+ * n-grams, echo.ts echoContained) is inside the sentences playing then.
+ */
+export const TALK_OVER_ECHO = 0.6;
 /** Sentences are cut to at most this many characters (the TTS route's limit). */
 export const CHUNK_MAX = 200;
 /** localStorage: the speaker toggle ("0" = replies silent). */
@@ -120,7 +168,7 @@ export const REPLY_DEDUPE_MS = 10 * 60_000;
 /** globalThis key of the shared session. */
 const KEY = "__lkVoice";
 /** The session's version: a copy on the page with another one is replaced. */
-const V = 4;
+const V = 7;
 
 const CJK_STOP = "。．！？";
 const LATIN_STOP = ".!?";
@@ -229,6 +277,8 @@ export type UtterLike = {
   /** The browser began speaking it (the latency record's t_audible). */
   onstart?: ((e?: unknown) => void) | null;
   onboundary: ((e: { charIndex: number; name?: string }) => void) | null;
+  /** The device voice it is read in (absent or null: the device's default). */
+  voice?: { name?: string } | null;
 };
 export type SynthLike = {
   speak(u: UtterLike): void;
@@ -253,6 +303,8 @@ export type PlayEvents = {
   onerror(): void;
   /** The cloud could not voice it (fetch, language, length, play refused): read it with speech. */
   onfail?(reason: string): void;
+  /** The concrete voice it is read in, once known (voice-heard.ts: the line's details). */
+  onvoice?(v: HeardVoice): void;
 };
 /** The cloud output (voice-out.ts createCloudOut). */
 export type CloudOut = {
@@ -318,6 +370,10 @@ type Sentence = {
   voice?: VoiceId;
   pick?: LinePick;
   id?: string;
+  /** Its line's sender (speakerOf), for superseding. */
+  who?: string;
+  /** From an interjecting line: read before the line it paused. */
+  jump?: true;
 };
 /** What the agent said, and when (for the echo guard). */
 type Said = { text: string; start: number; end?: number };
@@ -356,6 +412,11 @@ export function createVoice(d: {
   mode?: () => OutMode;
   /** Echo-cancelled barge-in (else capture is held while the agent speaks). */
   aec?: () => boolean;
+  /**
+   * Flag `voice.talk-over` (aec.ts talkOver): with `aec` off, no hold; what is
+   * heard is judged by `duplexHeard` instead. Absent: off.
+   */
+  talkOver?: () => boolean;
   /** The reading speed, read for each utterance (speech-rate.ts; 1 if absent). */
   rate?: () => number;
   /** A silence the owner should hear about (a page-error, page-errors.ts). */
@@ -383,6 +444,8 @@ export function createVoice(d: {
   const cloud = () => d.cloud?.() ?? null;
   const mode = (): OutMode => (d.mode?.() === "cloud" && cloud() ? "cloud" : "speech");
   const aec = () => d.aec?.() ?? true;
+  /** Talk-over is in force: echo cancellation off, and the flag on. */
+  const duplex = () => !aec() && (d.talkOver?.() ?? false);
   let log = d.log ?? (() => {});
   let mic = false;
   let voicedMem = false;
@@ -407,17 +470,24 @@ export function createVoice(d: {
   let level = 1;
   /** Ducked: the barge-in timer, and the speech probabilities heard since it was armed. */
   let duck: { timer: unknown; probs: number[] } | null = null;
+  /** The user's utterance under way (VAD start to end), and when it began (talk-over's window). */
+  let talking = false;
+  let talkFrom = 0;
   const said: Said[] = [];
   const subs = new Set<(s: VoiceState) => void>();
   /** Told each time a sentence starts playing (latency.ts). */
   const starts = new Set<() => void>();
+  /** Told the line ids whose unread sentences a superseding line dropped (the chat's read mirror). */
+  const drops = new Set<(ids: string[]) => void>();
+  /** Told where an interjecting line's sentences went into the queue (the chat's read mirror). */
+  const jumps = new Set<(j: { id: string; n: number; at: number }) => void>();
 
   const state = (): VoiceState => ({
     mic,
     voiced: voiced.get(),
     touch: touch(),
     speaking,
-    hold: speaking && !aec(),
+    hold: speaking && !aec() && !duplex(),
     ducked: !!duck,
     queued: queue.length,
     paused: pauses.size > 0,
@@ -437,14 +507,15 @@ export function createVoice(d: {
    * mode; in speech mode when the device has no voice for it and the cloud
    * can voice that language.
    */
-  const routeFor = (lang: string, pick?: LinePick): CloudOut | null => {
+  const routeFor = (lang: string, pick?: LinePick, voice?: VoiceId): CloudOut | null => {
     // A line's own voice (voices.ts, "A line's own voice") wins over the output mode:
     // a device voice the device has is read with speech even in cloud mode…
     if (pick?.kind === "device" && devicePick(pick)) return null;
     const c = cloud();
     if (!c) return null;
-    // …and a cloud or ElevenLabs one goes to the cloud even in speech mode.
+    // …and a cloud, local (Kokoro neko) or ElevenLabs one goes to the cloud/audio route even in speech mode.
     if (pick && pick.kind !== "device") return c;
+    if (voice === "bright" && getKey("lk:agent-local-tts") !== "off") return c;
     if (mode() === "cloud") return c;
     return noVoice(lang) && cloudSkip("x", lang) === null ? c : null;
   };
@@ -454,7 +525,7 @@ export function createVoice(d: {
   /** Fetch a sentence's clip ahead, when the cloud will read it. */
   const prepare = (s: Sentence) => {
     if (s.pick?.kind === "eleven") return;
-    routeFor(s.lang, s.pick)?.prepare?.(
+    routeFor(s.lang, s.pick, s.voice)?.prepare?.(
       s.text,
       s.lang,
       s.voice,
@@ -549,6 +620,7 @@ export function createVoice(d: {
       ev.onerror();
     };
     u.onstart = () => (settle(), ev.onstart?.());
+    ev.onvoice?.({ name: u.voice?.name ? `device:${u.voice.name}` : "device" });
     s.speak(u);
     return {
       route: "speech",
@@ -605,6 +677,9 @@ export function createVoice(d: {
       },
       onend: done,
       onerror: done,
+      onvoice: (v) => {
+        if (e === epoch) noteHeard(head.id, head.text, v);
+      },
       onfail: (reason) => {
         if (e !== epoch || !current) return;
         if (head.pick?.kind === "eleven") {
@@ -614,7 +689,16 @@ export function createVoice(d: {
           epoch++;
           ended();
           current = null;
-          queue.splice(0, 1, ...toSentences(head.text, head.lang, head.voice));
+          queue.splice(
+            0,
+            1,
+            ...toSentences(head.text, head.lang, head.voice).map((x) => ({
+              ...x,
+              ...(head.id ? { id: head.id } : {}),
+              ...(head.who ? { who: head.who } : {}),
+              ...(head.jump ? { jump: true as const } : {}),
+            })),
+          );
           next();
           emit();
           return;
@@ -651,7 +735,7 @@ export function createVoice(d: {
     const rec: Said = { text: head.text, start: now() };
     // Before a sound of ours: the reader and word read-aloud pause now (never refused: Li ranks first).
     d.owner?.claim();
-    const c = routeFor(head.lang, head.pick);
+    const c = routeFor(head.lang, head.pick, head.voice);
     current = { p: null as unknown as Playback, mark: head.from, said: rec };
     const p = c
       ? c.play(
@@ -723,6 +807,36 @@ export function createVoice(d: {
     speaking = false;
   };
 
+  /**
+   * Superseded: `who`'s sentence being read stops (not kept to resume) and
+   * its queued ones go; nothing else changes. The caller moves the queue on
+   * and emits. Returns how many sentences went.
+   */
+  const cut = (who: string): number => {
+    const before = queue.length;
+    const playing = !!current || preroll !== null;
+    if (playing && queue[0]?.who === who) {
+      halt(false);
+      clearTimer(preroll);
+      preroll = null;
+    }
+    const ids = new Set<string>();
+    for (let i = queue.length - 1; i >= 0; i--) {
+      const q = queue[i]!;
+      // A sentence playing for another sender stays at the head; only `who`'s go.
+      if (q.who !== who || (i === 0 && current)) continue;
+      if (q.id) ids.add(q.id);
+      queue.splice(i, 1);
+    }
+    const n = before - queue.length;
+    if (!n) return 0;
+    log({ ev: "voice-supersede", sentences: n });
+    // Before any emit: the mirror drops these lines, so a fall of more than one is not "Stop reading".
+    const list = [...ids];
+    if (list.length) for (const f of drops) f(list);
+    return n;
+  };
+
   const setLevel = (l: number, ms: number) => {
     level = l;
     current?.p.volume(l, ms);
@@ -772,6 +886,26 @@ export function createVoice(d: {
       starts.add(f);
       return () => void starts.delete(f);
     },
+    /** `f` hears where an interjecting line's sentences were put in the queue (read-progress mirror). */
+    onInterject(f: (j: { id: string; n: number; at: number }) => void) {
+      jumps.add(f);
+      return () => void jumps.delete(f);
+    },
+    /** `f` hears the line ids a superseding line dropped from the queue (read-progress mirror). */
+    onDrop(f: (ids: string[]) => void) {
+      drops.add(f);
+      return () => void drops.delete(f);
+    },
+    /**
+     * A superseding line from `who` (speakerOf) that is not read itself (a
+     * quiet one): `who`'s reading stops and its queued lines go. False: none.
+     */
+    supersede(who: string): boolean {
+      if (!cut(who)) return false;
+      next();
+      emit();
+      return true;
+    },
     /** Where the debug events go (DebugEval passes devLog). */
     setLog(f: (ev: Record<string, unknown>) => void) {
       log = f;
@@ -780,6 +914,8 @@ export function createVoice(d: {
     /** The output in use: "speech" or "cloud". */
     mode,
     aec,
+    /** Talk-over is in force (echo cancellation off, flag `voice.talk-over` on): no hold. */
+    duplex,
     /** Whether a reply arriving now is read: always with the mic on, else by the toggle and (mic used here, or focus). */
     shouldSpeak: () => mic || focusRule(),
     /** The speaker toggle as it applies now (forced on while the mic is on). */
@@ -798,10 +934,24 @@ export function createVoice(d: {
      * behind what is still being read (a reply arriving while the reading is
      * paused waits for it). The same reply delivered again (a reconnect
      * re-sending it) is not read again from its start. `meta` is the line
-     * itself (its id, quiet); voice() gates on it (gateVoice) first.
+     * itself (its id, quiet); voice() gates on it (gateVoice) first. With
+     * `how.live` (a chat frame, never history) a `cut: "supersede"` line
+     * first cuts its sender's reading (`cut`); a `cut: "interject"` one
+     * pauses the sentence being read and goes in before the rest.
      */
-    reply(said: string, meta?: SpeakMeta): boolean {
-      if (!canSpeak() || !api.shouldSpeak()) return false;
+    reply(said: string, meta?: SpeakMeta, how?: ReplyHow): boolean {
+      const who = speakerOf(meta, said);
+      const mode = cutOf(meta, how);
+      const cutN = mode === "supersede" ? cut(who) : 0;
+      /** Nothing queued for this line: still move on from what was cut. */
+      const none = () => {
+        if (cutN) {
+          next();
+          emit();
+        }
+        return false;
+      };
+      if (!canSpeak() || !api.shouldSpeak()) return none();
       // Its lane's voice; a `【lane】` prefix is not read out (voices.ts).
       const text = laneOf({ lane: meta?.lane, text: said }).text;
       const v = voiceIdOf({ voice: meta?.voice, lane: meta?.lane, text: said });
@@ -815,7 +965,7 @@ export function createVoice(d: {
       const key = `${typeof meta?.voice === "string" ? meta.voice : v}\n${text}`;
       if (recent.some((r) => r.text === key && t - r.at < REPLY_DEDUPE_MS)) {
         log({ ev: "voice-reply-dup", chars: text.length });
-        return false;
+        return none();
       }
       recent.push({ text: key, at: t });
       while (recent.length > 20) recent.shift();
@@ -823,13 +973,29 @@ export function createVoice(d: {
       // No voice of its own: the language → voice map's provider voice, if any (config voice.langVoices).
       const pick = named ?? (meta?.voice === undefined ? langVoice(lang) : undefined);
       // An ElevenLabs preview stands for the whole line: one item, its text kept for a fallback.
-      const idOf = typeof meta?.id === "string" ? { id: meta.id } : {};
+      const idOf = { ...(typeof meta?.id === "string" ? { id: meta.id } : {}), who };
       const add = (
         pick?.kind === "eleven" && cloud() && text.trim()
           ? [{ text, lang, from: 0, at: 0, ...(voice ? { voice } : {}), pick }]
           : toSentences(text, lang, voice, pick?.kind === "eleven" ? undefined : pick)
-      ).map((s) => ({ ...s, ...idOf }));
-      if (!add.length) return false;
+      ).map((s) => ({ ...s, ...idOf, ...(mode === "interject" ? { jump: true as const } : {}) }));
+      if (!add.length) return none();
+      if (mode === "interject" && queue.length) {
+        // Interject: the sentence being read pauses where it got to (kept at
+        // the head), unless it is an interjection itself; this line goes in
+        // after any interjections already waiting, before everything else.
+        if (current && !queue[0]!.jump) halt(true);
+        let at = 0;
+        while (at < queue.length && queue[at]!.jump) at++;
+        if (at === 0) prepare(add[0]!);
+        queue.splice(at, 0, ...add);
+        log({ ev: "voice-interject", sentences: add.length, at });
+        // Before any emit: the mirror puts them at the same place (not at the end).
+        if (typeof meta?.id === "string") for (const f of jumps) f({ id: meta.id, n: add.length, at });
+        next();
+        emit();
+        return true;
+      }
       if (!queue.length) prepare(add[0]!);
       queue.push(...add);
       next();
@@ -842,6 +1008,10 @@ export function createVoice(d: {
      * Otherwise as interrupt("speech").
      */
     userSpeech() {
+      talking = true;
+      talkFrom = now();
+      // Talk-over: the VAD fires on her own voice too; the transcript decides (duplexHeard).
+      if (duplex()) return;
       if (current && aec()) {
         if (!duck) {
           duck = { timer: undefined, probs: [] };
@@ -883,6 +1053,7 @@ export function createVoice(d: {
     },
     /** The user's utterance ended (or misfired): unduck, or read on after a short quiet. */
     userIdle() {
+      talking = false;
       if (duck) {
         unduck(DUCK_RELEASE_MS);
         emit();
@@ -911,6 +1082,47 @@ export function createVoice(d: {
       const recent = said.filter((r) => (r.end ?? t) >= from - ECHO_WINDOW_MS).map((r) => r.text);
       const during = said.some((r) => r.start <= t && (r.end ?? t) >= from);
       return { ...echoScore(transcript, recent), during };
+    },
+    /**
+     * Talk-over (`duplex()`): judge a transcript heard from `from` to `to`
+     * (page clock; a partial too) by time AND text. The sentences Li was
+     * playing then (overlap, TALK_OVER_SLACK_MS each side) are the only
+     * candidates: when at least TALK_OVER_ECHO of its words are inside them,
+     * it is her echo (`drop`). The same words at another time are his. Not
+     * her echo, heard while she is reading: his speech, so the reading pauses
+     * as a barge-in does (`paused`), and goes on by the usual rules (his line
+     * sent, or IDLE_RESUME_MS after his speech ends).
+     */
+    duplexHeard(transcript: string, from: number, to: number): EchoCheck & { paused: boolean } {
+      const t = now();
+      const playing = said.filter(
+        (r) => r.start <= to + TALK_OVER_SLACK_MS && (r.end ?? t) + TALK_OVER_SLACK_MS >= from,
+      );
+      const during = playing.length > 0;
+      const words = normalizeEcho(transcript) !== "";
+      const score = during && words ? echoContained(transcript, playing.map((r) => r.text)) : 0;
+      const drop = during && words && score >= TALK_OVER_ECHO;
+      const out = {
+        score: Math.round(score * 1000) / 1000,
+        against: drop ? playing.map((r) => r.text).join(" ") : null,
+        drop,
+        during,
+        paused: false,
+      };
+      if (drop || !words || !duplex() || !current || !during) return out;
+      log({ ev: "voice-talk-over", score: out.score, chars: transcript.length });
+      api.interrupt("speech");
+      // His speech already ended (a final arrives after it): read on after the quiet, as userIdle would.
+      if (!talking) {
+        clearTimer(idle);
+        idle = setTimer(resume, IDLE_RESUME_MS);
+      }
+      return { ...out, paused: true };
+    },
+    /** Talk-over: the interim text of his utterance under way (mic-session `interim`). */
+    heardInterim(text: string) {
+      if (!duplex() || !current || !talking) return;
+      api.duplexHeard(text, talkFrom, now());
     },
     /**
      * A transcript was the agent's own echo (echoCheck): a barge-in it caused
@@ -980,7 +1192,7 @@ export function speakHere() {
 const alive = new Set<unknown>();
 
 /** The gate's version: a session gated by an older copy is gated again by this one. */
-const GATE_V = 2;
+const GATE_V = 3;
 /** How many unread line ids are kept (the note under each). */
 const UNHEARD_MAX = 50;
 
@@ -1046,19 +1258,22 @@ export function gateVoice(v: Voice, why: (m: SpeakMeta) => Silence | null = sile
   s.__rawReply = raw;
   const unheard = (s.__unheard ??= unheardSet());
   s.__missed = null;
-  s.reply = (text: string, meta?: SpeakMeta) => {
+  s.reply = (text: string, meta?: SpeakMeta, how?: ReplyHow) => {
     const m = meta ?? {};
     const silence = why(m);
     const id = typeof m.id === "string" ? m.id : null;
     if (silence) {
       v.log({ ev: "voice-silent", why: silence });
+      // A quiet superseding line still cuts its sender's reading; it reads nothing itself.
+      if (silence === "quiet" && cutOf(m, how) === "supersede")
+        (v as Partial<Voice>).supersede?.(speakerOf(m, text));
       if (silence === "hidden") {
         s.__missed = { text, meta: m };
         if (id) unheard.add(id);
       }
       return false;
     }
-    const read = raw(text, meta);
+    const read = raw(text, meta, how);
     if (read && id) unheard.drop(id);
     return read;
   };
@@ -1143,6 +1358,8 @@ export function voice(): Voice {
     owner: audioOwner({ id: audioOwnerId("li"), prio: AUDIO_PRIO.li }),
     // The open track's mode (aec.ts), so hold and barge-in match what the mic does.
     aec: micAec,
+    // Flag voice.talk-over: with echo cancellation off, no hold (duplexHeard judges instead).
+    talkOver,
     rate: () => speechRate(),
     report: (message) => reportPageError({ kind: "media", message }),
     hasDeviceVoice: (name) => {

@@ -15,6 +15,7 @@ import { readFlags } from "@/lib/flags-store";
 import { cfg } from "@/lib/config-store";
 import { ETA_FLAG } from "@/lib/eta-ping";
 import { isDev } from "@/lib/permissions";
+import { type ChatViewer, chatViewerOf } from "@/lib/partner-entry";
 import { boxConfig } from "@/lib/box-oauth/mode";
 import { BoxApiBridge } from "./components/BoxApiBridge";
 import { ExternalLinkGuard, type ExternalLinkStrings } from "./components/ExternalLinkGuard";
@@ -33,19 +34,21 @@ import { ExternalLinkGuard, type ExternalLinkStrings } from "./components/Extern
  */
 async function chatViewerFor(
   flags: FlagValues,
-): Promise<{ open: boolean; dev: boolean; account: string | null }> {
+): Promise<{ open: boolean; dev: boolean; viewer: ChatViewer; account: string | null }> {
   try {
     const { authSessionOrNull } = await import("./signInEmail");
     const user = (await authSessionOrNull())?.user;
     const dev = !!user?.id && isDev(user.email);
+    const viewer = chatViewerOf(flags, !!user?.id, dev);
     // `account` keys the chat's copy on the device and gates its prefetch (DebugEval).
     return {
-      open: flagIn(flags, "partner.ai-reply") && !!user?.id && !dev,
+      open: viewer === "partner",
       dev,
+      viewer,
       account: user?.id ? String(user.id) : null,
     };
   } catch {
-    return { open: false, dev: false, account: null };
+    return { open: false, dev: false, viewer: null, account: null };
   }
 }
 
@@ -141,8 +144,8 @@ export default async function RootLayout({
   };
   // One read per request, passed to everything that decides (docs/feature-flags.md).
   const flags: FlagValues = partnerFrame ? {} : await readFlags();
-  const { open, dev, account } = partnerFrame
-    ? { open: false, dev: false, account: null }
+  const { open, dev, viewer, account } = partnerFrame
+    ? { open: false, dev: false, viewer: null, account: null }
     : await chatViewerFor(flags);
   // The chat's last lines kept on the device for an instant chat (lib/chat-cache.ts); 0: none.
   const cacheLines = account ? await cfg("chat.cacheLines") : 0;
@@ -157,6 +160,8 @@ export default async function RootLayout({
   // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts): live, no deploy.
   const lexicon = partnerFrame ? undefined : await cfg("voice.lexicon");
   // Provider voices (lib/cloud-voices.ts): audience owner, so the flag and the dev grant.
+  // Talking over Li's read-aloud with echo cancellation off (aec.ts talkOver): audience owner.
+  const talkOver = dev && flagIn(flags, "voice.talk-over");
   const cloudVoices =
     dev && flagIn(flags, "voice.cloud-voices")
       ? { on: true, map: await cfg("voice.langVoices") }
@@ -175,6 +180,7 @@ export default async function RootLayout({
     cloudVoices,
     account,
     cacheLines,
+    talkOver,
   };
   const box = boxConfig();
   return (
@@ -184,6 +190,9 @@ export default async function RootLayout({
       // inlined into client chunks, so a deploy without client changes leaves
       // them identical (smart refresh, docs/shipping.md).
       data-build={process.env.NEXT_PUBLIC_BUILD_ID ?? "dev"}
+      // Who the viewer is to the chat (lib/partner-entry.ts CHAT_VIEWER_ATTR):
+      // the sidebar's "Learning Partner" row reads it. Absent for a guest.
+      data-chat-viewer={viewer ?? undefined}
       suppressHydrationWarning
     >
       <head>

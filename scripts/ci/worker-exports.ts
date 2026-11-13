@@ -1,7 +1,7 @@
 /** The pure half of scripts/ci/check-worker-exports.ts (unit-tested). */
 
 /** What worker.ts adds to the build's exports. */
-export const ADDED = ["DebugSessions"];
+export const ADDED = ["DebugSessions", "PreviewCore", "PreviewAuth"];
 
 /**
  * The names an ES module's source exports (`export {a, b as c}`, `export

@@ -11,6 +11,7 @@ export function boxConfig(): BoxConfig | null {
   if (!clientId) return null;
   return {
     clientId,
+    ...(process.env.PREVIEW_MODE === "1" ? { sameOriginApi: true } : {}),
     provider: process.env.LIANKI_BOX_PROVIDER || "https://lianki.com",
     scope: process.env.LIANKI_BOX_SCOPE || BOX_SCOPES.join(" "),
     // The chat hub, when it is not the provider's /api/version/debug (local QA only).

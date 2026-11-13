@@ -24,6 +24,7 @@
 import { z } from "zod";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
 import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
+import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
 
 export type ConfigAudience = "server" | "public";
 
@@ -225,6 +226,18 @@ export const CONFIG = {
     audience: "server",
     description:
       "任务标成「完成但未验证」时，自动建一个「verify: <名字>」子任务交给同一条线，给它多少分钟的预计时间。",
+  }),
+  // Two mics, one line (flag stt.two-mic-merge; docs/dev-debug-widget.md,
+  // "Two mics, one line"): read by the debug hub over DebugSessions.config.
+  "chat.twoMicWindowMs": int({
+    default: TWO_MIC_WINDOW_MS,
+    min: 0,
+    max: TWO_MIC_WINDOW_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "两个麦克风同时开着（比如 Windows 和 Mac）时，同一句话会各发一条：另一台设备在这么多毫秒内发来几乎一样的语音消息，就当成同一句，只留一条（留声纹分数更高、或更完整的那条文字）。默认 4000 = 4 秒；0 = 不合并。开关在 /dev/flags 的 stt.two-mic-merge。",
   }),
   // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts;
   // docs/li-sound-hub.md, "Pronunciation table"): handed to the chat by the root layout.
@@ -488,6 +501,53 @@ export const CONFIG = {
     audience: "public",
     description:
       "有新版本时（开关 app.auto-update），页面干净且多久没有点、滑、打字就自己刷新（毫秒）。切到后台或换页面时不等这段时间。/words 和 /review 上只在切到后台或换页面时刷新。",
+  }),
+  // Account-age bonus (docs/payments.md, "Account-age bonus"; owner 2026-11-14):
+  // credits given once per account when it reaches each age. USD amounts turn
+  // into credits at CREDITS_PER_USD (lib/payments/credits.ts), rounded.
+  "credits.ageBonus.day1Usd": {
+    default: 1 as number,
+    schema: z.number().min(0).max(100),
+    min: 0,
+    max: 100,
+    unit: "USD",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "账号满第一档年龄（credits.ageBonus.day1Hours）时送的积分，按美元计，按 CREDITS_PER_USD 换成积分（四舍五入）。每个账号只送一次；0 = 不送。",
+  },
+  "credits.ageBonus.day7Usd": {
+    default: 2 as number,
+    schema: z.number().min(0).max(100),
+    min: 0,
+    max: 100,
+    unit: "USD",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "账号满第二档年龄（credits.ageBonus.day7Hours）时再送的积分（在第一档之外另加），按美元计。每个账号只送一次；0 = 不送。",
+  },
+  "credits.ageBonus.day1Hours": int({
+    default: 24,
+    min: 0,
+    max: 24 * 365,
+    unit: "h",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description: "账号注册多少小时后可以领第一档年龄积分（默认 24 小时 = 1 天）。",
+  }),
+  "credits.ageBonus.day7Hours": int({
+    default: 168,
+    min: 0,
+    max: 24 * 365,
+    unit: "h",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description: "账号注册多少小时后可以领第二档年龄积分（默认 168 小时 = 7 天）。",
   }),
 } as const satisfies Record<string, ConfigDef>;
 

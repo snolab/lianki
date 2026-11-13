@@ -16,7 +16,7 @@
  */
 import { chatExtra } from "./chat-ui-locales";
 import type { UttMarks } from "./latency";
-import type { BeginOpts, LocalFinal, LocalUtt } from "./local-stt";
+import type { BeginOpts, LocalFinal, LocalPart, LocalUtt } from "./local-stt";
 import { STT_PROMPTS } from "./stt-hint";
 import { levelOf, publishLevel } from "./voice-level";
 import {
@@ -146,13 +146,41 @@ export class UtteranceQueue {
   private head = 0;
   private done = new Map<number, string | null>();
   private partials = new Map<number, string>();
+  /** A final the Mac split by speaker (LocalFinal.parts): each part goes as its own line. */
+  private split = new Map<number, LocalPart[]>();
   add(): number {
     return this.next++;
   }
-  resolve(seq: number, text: string | null) {
+  resolve(seq: number, text: string | null, parts?: LocalPart[]) {
     if (seq < this.head) return;
     this.done.set(seq, text);
     this.partials.delete(seq);
+    if (text && parts?.length) this.split.set(seq, parts);
+  }
+  /**
+   * As take(), in runs: plain texts joined as one, and a split final on its
+   * own with its parts, so each part can start a line of its own.
+   */
+  takeRuns(): { text: string; parts?: LocalPart[] }[] {
+    const out: { text: string; parts?: LocalPart[] }[] = [];
+    let run = "";
+    while (this.done.has(this.head)) {
+      const seq = this.head++;
+      const t = this.done.get(seq);
+      const parts = this.split.get(seq);
+      this.done.delete(seq);
+      this.split.delete(seq);
+      if (!t) continue;
+      if (!parts) {
+        run = joinText(run, t);
+        continue;
+      }
+      if (run) out.push({ text: run });
+      run = "";
+      out.push({ text: t, parts });
+    }
+    if (run) out.push({ text: run });
+    return out;
   }
   /** Interim text for one not yet resolved (ignored once it is). */
   partial(seq: number, text: string) {
@@ -163,13 +191,7 @@ export class UtteranceQueue {
   }
   /** Text now in order (failed ones are skipped), joined with joinText. */
   take(): string {
-    let out = "";
-    while (this.done.has(this.head)) {
-      const t = this.done.get(this.head);
-      this.done.delete(this.head++);
-      if (t) out = joinText(out, t);
-    }
-    return out;
+    return this.takeRuns().reduce((out, r) => joinText(out, r.text), "");
   }
   /** Utterances still being transcribed. */
   pending(): number {
@@ -809,6 +831,11 @@ export function createMic(d: {
   upload: (wav: Uint8Array, info: UploadInfo) => Promise<string>;
   onState: (s: MicState) => void;
   onText: (text: string) => void;
+  /**
+   * A final the Mac split by speaker: the draft so far goes out as its own line
+   * before the next part lands (the next one, one speaker's, may continue nothing).
+   */
+  onBreak?: () => void;
   onPending: (n: number, interim: string) => void;
   onError?: (e: unknown) => void;
   /** Each frame's speech probability while capturing (the barge-in judge, voice.ts). */
@@ -917,8 +944,19 @@ export function createMic(d: {
   };
   const pending = () => d.onPending(q.pending(), q.interim());
   const report = () => {
-    const t = q.take();
-    if (t) d.onText(t);
+    for (const r of q.takeRuns()) {
+      if (!r.parts) {
+        d.onText(r.text);
+        continue;
+      }
+      // Two speakers in one final: each part starts its own line, with its own tag
+      // and proof, noted only once the line before it went (onBreak sends it).
+      for (const p of r.parts) {
+        d.onBreak?.();
+        d.speaker?.(p.speaker, p.proof);
+        d.onText(p.text);
+      }
+    }
     pending();
   };
   const resetLive = () => {
@@ -1228,10 +1266,14 @@ export function createMic(d: {
     /** The Mac's speaker check on it; "other" in active mode counts towards passive. */
     let spk: SpeakerTag | undefined;
     let proof: string | undefined;
+    let parts: LocalPart[] | undefined;
+    let localText: string | undefined;
     local?.then(
       (f) => {
         spk = f.speaker;
         proof = f.proof;
+        parts = f.parts;
+        localText = f.text;
       },
       () => {},
     );
@@ -1283,14 +1325,17 @@ export function createMic(d: {
           }
           d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
           const other = spk?.decision === "other";
+          // Split by speaker on the Mac, and the text is the Mac's as it came: one line per
+          // part, each noted as it lands (report). Anything changed it: one line, as before.
+          const split = !drop && !!parts && text.trim() === localText?.trim() ? parts : undefined;
           // The line's speaker tag (voiceprint.ts noteSpeaker): only for text that lands.
-          if (!drop && text.trim()) d.speaker?.(spk, proof);
+          if (!drop && text.trim() && !split) d.speaker?.(spk, proof);
           if (!echo)
             d.wake?.verdict(
               !drop && !!text.trim() && !other,
               drop ? "hallucination" : !text.trim() ? "empty" : other ? "other" : "ok",
             );
-          q.resolve(seq, drop ? null : text);
+          q.resolve(seq, drop ? null : text, split);
         },
         (e) => {
           d.timing?.(seq, { t_sttDone: now(), dropped: true });

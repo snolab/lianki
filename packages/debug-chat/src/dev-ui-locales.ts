@@ -54,6 +54,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "इको रद्द करना",
     aecHint:
       "चालू: जवाब पढ़े जाते समय भी आप बोल सकते हैं; Android पर स्पीकर कॉल जैसा सुनाई दे सकता है। बंद: बेहतर आवाज़, कुछ भी चलते समय माइक रुक जाता है। तुरंत लागू होता है।",
+    wakeWord: "वेक वर्ड (Linky)",
+    wakeWordHint:
+      "चालू: एजेंट के लिए न होने वाली कुछ पंक्तियों के बाद माइक \"Linky\" का इंतज़ार करता है (निष्क्रिय)। बंद: माइक हमेशा सुनता है, कभी निष्क्रिय नहीं। तुरंत लागू।",
     pairEval: "{label} आपके पेजों पर {time} के लिए कोड चलाना चाहता है।",
     pairEvalAll: "{label} आपके हर डिवाइस के सभी पेजों पर {time} के लिए कोड चलाना चाहता है।",
     grantHour: "1 घंटा",
@@ -123,6 +126,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Cancelación de eco",
     aecHint:
       "Activada: puedes hablar mientras se leen las respuestas; en Android el altavoz puede sonar como una llamada. Desactivada: mejor sonido, el micrófono se pausa mientras algo suena. Se aplica al instante.",
+    wakeWord: "Palabra de activación (Linky)",
+    wakeWordHint:
+      "Activada: tras unas frases que no eran para el agente, el micrófono espera \"Linky\" (modo pasivo). Desactivada: el micrófono escucha siempre, nunca pasivo. Se aplica al instante.",
     pairEval: "{label} quiere ejecutar código en tus páginas durante {time}.",
     pairEvalAll:
       "{label} quiere ejecutar código en todas tus páginas, en todos tus dispositivos, durante {time}.",
@@ -193,6 +199,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Annulation d'écho",
     aecHint:
       "Activée : vous pouvez parler pendant la lecture des réponses ; sur Android, le haut-parleur peut sonner comme un appel. Désactivée : meilleur son, le micro se met en pause pendant toute lecture. Prend effet immédiatement.",
+    wakeWord: "Mot d’activation (Linky)",
+    wakeWordHint:
+      "Activé : après quelques phrases qui n’étaient pas pour l’agent, le micro attend « Linky » (mode passif). Désactivé : le micro écoute toujours, jamais passif. Effet immédiat.",
     pairEval: "{label} veut exécuter du code sur vos pages pendant {time}.",
     pairEvalAll:
       "{label} veut exécuter du code sur toutes vos pages, sur tous vos appareils, pendant {time}.",
@@ -264,6 +273,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "إلغاء الصدى",
     aecHint:
       "تشغيل: يمكنك التحدث أثناء قراءة الردود؛ على Android قد يبدو مكبر الصوت كمكالمة. إيقاف: صوت أفضل، ويتوقف الميكروفون مؤقتًا أثناء تشغيل أي صوت. يسري فورًا.",
+    wakeWord: "كلمة التنبيه (Linky)",
+    wakeWordHint:
+      "تشغيل: بعد بضع جمل ليست موجّهة إلى الوكيل، ينتظر الميكروفون كلمة «Linky» (وضع خامل). إيقاف: يستمع الميكروفون دائمًا ولا يصبح خاملًا. يُطبَّق فورًا.",
     pairEval: "يريد {label} تشغيل تعليمات برمجية على صفحاتك لمدة {time}.",
     pairEvalAll: "يريد {label} تشغيل تعليمات برمجية على كل صفحاتك، على كل أجهزتك، لمدة {time}.",
     grantHour: "ساعة واحدة",
@@ -333,6 +345,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "প্রতিধ্বনি বাতিল",
     aecHint:
       "চালু: উত্তর পড়ার সময়ও আপনি কথা বলতে পারবেন; Android-এ স্পিকার কলের মতো শোনাতে পারে। বন্ধ: ভালো শব্দ, কিছু বাজার সময় মাইক থেমে থাকে। সঙ্গে সঙ্গে কার্যকর হয়।",
+    wakeWord: "ওয়েক ওয়ার্ড (Linky)",
+    wakeWordHint:
+      "চালু: এজেন্টের জন্য নয় এমন কয়েকটি লাইনের পর মাইক \"Linky\"-র অপেক্ষা করে (নিষ্ক্রিয়)। বন্ধ: মাইক সবসময় শোনে, কখনো নিষ্ক্রিয় নয়। সঙ্গে সঙ্গে কার্যকর।",
     pairEval: "{label} আপনার পেজগুলোতে {time} ধরে কোড চালাতে চায়।",
     pairEvalAll: "{label} আপনার সব ডিভাইসের সব পেজে {time} ধরে কোড চালাতে চায়।",
     grantHour: "১ ঘণ্টা",
@@ -402,6 +417,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Cancelamento de eco",
     aecHint:
       "Ligado: você pode falar enquanto as respostas são lidas; no Android o alto-falante pode soar como uma chamada. Desligado: som melhor, o microfone pausa enquanto algo toca. Vale na hora.",
+    wakeWord: "Palavra de ativação (Linky)",
+    wakeWordHint:
+      "Ligada: depois de algumas frases que não eram para o agente, o microfone espera \"Linky\" (modo passivo). Desligada: o microfone ouve sempre, nunca passivo. Vale na hora.",
     pairEval: "{label} quer executar código nas suas páginas durante {time}.",
     pairEvalAll:
       "{label} quer executar código em todas as suas páginas, em todos os dispositivos, durante {time}.",
@@ -472,6 +490,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Эхоподавление",
     aecHint:
       "Вкл.: можно говорить, пока читаются ответы; на Android динамик может звучать как при звонке. Выкл.: звук лучше, микрофон приостанавливается, пока что-то играет. Применяется сразу.",
+    wakeWord: "Слово активации (Linky)",
+    wakeWordHint:
+      "Вкл.: после нескольких фраз не для агента микрофон ждёт «Linky» (пассивный режим). Выкл.: микрофон слушает всегда, без пассивного режима. Действует сразу.",
     pairEval: "{label} хочет запускать код на ваших страницах в течение {time}.",
     pairEvalAll:
       "{label} хочет запускать код на всех ваших страницах, на всех устройствах, в течение {time}.",
@@ -542,6 +563,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "ایکو ختم کرنا",
     aecHint:
       "آن: جواب پڑھے جانے کے دوران بھی آپ بول سکتے ہیں؛ Android پر اسپیکر کال جیسا لگ سکتا ہے۔ آف: بہتر آواز، کچھ بھی چلتے وقت مائیک رک جاتا ہے۔ فوراً لاگو ہوتا ہے۔",
+    wakeWord: "ویک ورڈ (Linky)",
+    wakeWordHint:
+      "آن: ایجنٹ کے لیے نہ ہونے والی چند باتوں کے بعد مائیک \"Linky\" کا انتظار کرتا ہے (غیر فعال)۔ آف: مائیک ہمیشہ سنتا ہے، کبھی غیر فعال نہیں۔ فوراً لاگو۔",
     pairEval: "{label} آپ کے صفحات پر {time} تک کوڈ چلانا چاہتا ہے۔",
     pairEvalAll: "{label} آپ کے ہر آلے کے تمام صفحات پر {time} تک کوڈ چلانا چاہتا ہے۔",
     grantHour: "1 گھنٹہ",
@@ -611,6 +635,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Peredam gema",
     aecHint:
       "Aktif: Anda bisa bicara saat balasan dibacakan; di Android speaker bisa terdengar seperti panggilan. Nonaktif: suara lebih penuh, mikrofon berhenti sementara saat ada yang diputar. Langsung berlaku.",
+    wakeWord: "Kata pemicu (Linky)",
+    wakeWordHint:
+      "Aktif: setelah beberapa kalimat yang bukan untuk agen, mikrofon menunggu \"Linky\" (mode pasif). Mati: mikrofon selalu mendengar, tidak pernah pasif. Langsung berlaku.",
     pairEval: "{label} ingin menjalankan kode di halaman Anda selama {time}.",
     pairEvalAll:
       "{label} ingin menjalankan kode di semua halaman Anda, di semua perangkat, selama {time}.",
@@ -682,6 +709,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Echounterdrückung",
     aecHint:
       "An: Du kannst sprechen, während Antworten vorgelesen werden; unter Android klingt der Lautsprecher evtl. wie ein Anruf. Aus: vollerer Klang, das Mikrofon pausiert, solange etwas abgespielt wird. Wirkt sofort.",
+    wakeWord: "Aktivierungswort (Linky)",
+    wakeWordHint:
+      "An: Nach einigen Sätzen, die nicht an den Agenten gingen, wartet das Mikrofon auf „Linky“ (passiv). Aus: Das Mikrofon hört immer zu, nie passiv. Wirkt sofort.",
     pairEval: "{label} möchte {time} lang Code auf deinen Seiten ausführen.",
     pairEvalAll:
       "{label} möchte {time} lang Code auf allen deinen Seiten ausführen, auf jedem Gerät.",
@@ -753,6 +783,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "Kuondoa mwangwi",
     aecHint:
       "Imewashwa: unaweza kuongea majibu yakisomwa; kwenye Android spika inaweza kusikika kama simu. Imezimwa: sauti bora, maikrofoni husimama chochote kikicheza. Inaanza mara moja.",
+    wakeWord: "Neno la kuamsha (Linky)",
+    wakeWordHint:
+      "Washa: baada ya sentensi chache zisizo za wakala, maikrofoni inasubiri \"Linky\" (hali tulivu). Zima: maikrofoni inasikiliza kila wakati, haiwi tulivu. Inafanya kazi mara moja.",
     pairEval: "{label} anataka kuendesha msimbo kwenye kurasa zako kwa {time}.",
     pairEvalAll:
       "{label} anataka kuendesha msimbo kwenye kurasa zako zote, kwenye kila kifaa, kwa {time}.",
@@ -823,6 +856,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "प्रतिध्वनी रद्द करणे",
     aecHint:
       "चालू: उत्तरे वाचली जात असतानाही तुम्ही बोलू शकता; Android वर स्पीकर कॉलसारखा वाटू शकतो. बंद: चांगला आवाज, काहीही वाजत असताना माइक थांबतो. लगेच लागू होते.",
+    wakeWord: "वेक वर्ड (Linky)",
+    wakeWordHint:
+      "चालू: एजंटसाठी नसलेल्या काही ओळींनंतर माइक \"Linky\" ची वाट पाहतो (निष्क्रिय). बंद: माइक नेहमी ऐकतो, कधीही निष्क्रिय नाही. लगेच लागू.",
     pairEval: "{label} तुमच्या पानांवर {time} कोड चालवू इच्छितो.",
     pairEvalAll: "{label} तुमच्या प्रत्येक डिव्हाइसवरील सर्व पानांवर {time} कोड चालवू इच्छितो.",
     grantHour: "1 तास",
@@ -892,6 +928,9 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     aec: "에코 제거",
     aecHint:
       "켜짐: 답장을 읽는 중에도 말할 수 있습니다. Android에서는 스피커가 통화 음질처럼 들릴 수 있습니다. 꺼짐: 음질이 더 좋고, 소리가 재생되는 동안 마이크가 일시 중지됩니다. 바로 적용됩니다.",
+    wakeWord: "호출어 (Linky)",
+    wakeWordHint:
+      "켜기: 에이전트에게 한 말이 아닌 문장이 몇 번 이어지면 마이크가 \"Linky\"를 기다립니다(수동 모드). 끄기: 마이크가 항상 듣고, 수동 모드로 바뀌지 않습니다. 바로 적용됩니다.",
     pairEval: "{label}이(가) {time} 동안 내 페이지에서 코드를 실행하려고 합니다.",
     pairEvalAll: "{label}이(가) {time} 동안 모든 기기의 모든 내 페이지에서 코드를 실행하려고 합니다.",
     grantHour: "1시간",

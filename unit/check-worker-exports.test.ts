@@ -19,6 +19,8 @@ export {
   DOQueueHandler,
   DOShardedTagCache,
   DebugSessions,
+  PreviewCore,
+  PreviewAuth,
   worker_default2 as default
 };
 //# sourceMappingURL=worker.js.map`;
@@ -36,6 +38,8 @@ describe("check-worker-exports", () => {
       "DOQueueHandler",
       "DOShardedTagCache",
       "DebugSessions",
+      "PreviewAuth",
+      "PreviewCore",
       "default",
     ]);
     expect([

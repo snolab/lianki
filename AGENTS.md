@@ -70,10 +70,12 @@ build of `app/**` with `DB_BACKEND=d1`. It is attached by a Worker **route**
 `lianki.com/*` on the zone; the DNS record still points at Vercel underneath,
 so the route alone decides. A second route covers `www.lianki.com/*`, so that
 hostname is the **Worker** too — it 308s to the apex with no `x-vercel-id`.
-Two narrower routes go to small Workers first: `lianki.com/api/version/*` to
-`lianki-push` (`workers/push`) and `lianki.com/api/words/tts*` to
+Narrower routes go to small Workers first: `lianki.com/api/version/*` to
+`lianki-push` (`workers/push`), `lianki.com/api/words/tts*` to
 `lianki-voice` (`workers/voice`: recorded word clips at the edge; the rest
-passed on to `lianki`). A recorded clip never shows in `wrangler tail lianki`.
+passed on to `lianki`), and `lianki.com/mcp*` to `lianki-mcp` (`workers/mcp`:
+the remote MCP server, [docs/api-for-agents.md](docs/api-for-agents.md)).
+A recorded clip or an MCP call never shows in `wrangler tail lianki`.
 
 | signal                                        | reading                                                         |
 | --------------------------------------------- | --------------------------------------------------------------- |
@@ -163,6 +165,7 @@ that are expensive to rediscover.
 | Chat history in D1, /chat/history (what is kept, never kept)             | [docs/chat-history.md](docs/chat-history.md)                        |
 | Users' own AI key and backend (BYOK, browser-only, presets)              | [docs/byok.md](docs/byok.md)                                        |
 | The owner's local streaming speech-to-text (mic → his Mac)               | [docs/local-stt.md](docs/local-stt.md)                              |
+| His voice-clone reference in his account (audio, sealed, passkey)        | [docs/voice-clone.md](docs/voice-clone.md)                          |
 | /vibe: a conversation transcribed into a private doc                     | [docs/vibe.md](docs/vibe.md)                                        |
 | Whole-page dev server on prod D1 (owner only, home LAN)                  | [docs/dev-whole-page.md](docs/dev-whole-page.md)                    |
 | A friend's dev container (devbox: agents, local D1, tunnel)              | [devbox/README.md](devbox/README.md)                                |
@@ -194,6 +197,7 @@ that are expensive to rediscover.
 | All sound through Li: `__lkLi` hub, who holds mic / plays                | [docs/li-sound-hub.md](docs/li-sound-hub.md)                        |
 | /words owner spec: tall slips, window, review-first, voice               | [docs/words-session-spec.md](docs/words-session-spec.md)            |
 | PWA cold start: measuring it, per-page dictionaries, lazy chat, SW       | [docs/cold-start.md](docs/cold-start.md)                            |
+| Branch API previews: Core gateway, MyBox auth, sandbox persistence | [docs/api-preview-proxy.md](docs/api-preview-proxy.md) |
 | Sync/offline architecture                                                | [docs/sync-architecture.md](docs/sync-architecture.md)              |
 | Sync conflicts, deletions, tombstones                                    | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
 | Settings that follow the account (`lk:*` key classes)                    | [docs/prefs-sync.md](docs/prefs-sync.md)                            |

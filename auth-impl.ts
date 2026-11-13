@@ -29,6 +29,7 @@ import { notifySignedOut } from "./lib/push-signed-out";
 import { setEmailCanonical } from "./lib/canonical-email-d1";
 import { recordSignupLocale } from "./lib/signup-locale-d1";
 import { claimPregrants, type PregrantDb } from "./lib/referrals/pregrant";
+import { grantAgeBonus } from "./lib/payments/age-bonus-store";
 import { boxBindingHook, boxProviderPlugin } from "./lib/box-oauth/provider";
 import { apiTokenSignOutPlugin } from "./lib/api-token-signout";
 import { notifyTokensRevoked } from "./lib/push-chat-tokens";
@@ -169,6 +170,11 @@ function baseOptions() {
             if (dbBackend() !== "d1") return;
             await claimPregrants(getD1() as unknown as PregrantDb, session.userId).catch((e) =>
               console.error("[pregrant] claim:", e),
+            );
+            // The account-age bonus (docs/payments.md, "Account-age bonus"):
+            // tiers this account has grown into since, once each.
+            await grantAgeBonus(getD1() as unknown as D1WithBatch, session.userId).catch((e) =>
+              console.error("[age-bonus] grant:", e),
             );
           },
         },

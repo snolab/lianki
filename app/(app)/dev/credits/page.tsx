@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
 import { isAdmin } from "@/lib/permissions";
 import CreditsAdmin from "./CreditsAdmin";
+import AgeBonusPanel from "./AgeBonusPanel";
 import { devPageText, devPageMetadata } from "../dev-page-title";
 
 // Owner-only, like /dev/membership: anyone else gets a plain 404.
@@ -28,6 +29,7 @@ export default async function DevCreditsPage({
         在支付商那边退了款的充值可以撤回。每次操作都记日志。
       </p>
       <CreditsAdmin defaultEmail={(await searchParams).email ?? user!.email!} />
+      <AgeBonusPanel />
     </main>
   );
 }

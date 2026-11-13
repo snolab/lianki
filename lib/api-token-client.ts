@@ -13,13 +13,13 @@ import { type AuditDb, audit } from "@/lib/security/audit-log";
 
 export const CLIENT_HEADER = "x-lianki-client";
 const CLIENT_RE =
-  /^mcp\/(\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[0-9a-z.]{1,20})?) tool=(lianki_[a-z_]{1,32})$/;
+  /^(mcp(?:-remote)?)\/(\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[0-9a-z.]{1,20})?) tool=(lianki_[a-z_]{1,32})$/;
 
-/** `mcp/0.4.0 lianki_due` from a well-formed header value, else null. */
+/** `mcp/0.4.0 lianki_due` (or `mcp-remote/1.0.0 lianki_due`) from a well-formed header value, else null. */
 export function clientOf(raw: unknown): string | null {
   if (typeof raw !== "string" || raw.length > 100) return null;
   const m = CLIENT_RE.exec(raw.trim());
-  return m ? `mcp/${m[1]} ${m[2]}` : null;
+  return m ? `${m[1]}/${m[2]} ${m[3]}` : null;
 }
 
 /**

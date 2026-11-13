@@ -12,6 +12,12 @@
  *   better sound), and the mic holds its capture while anything plays (the
  *   chat's read-aloud, voice.ts `hold`; /words' word audio, page-audio.ts)
  *   and RESUME_TAIL_MS after, so what the page plays is not transcribed.
+ * - Off, with flag `voice.talk-over` (the owner's pages; `talkOver` below):
+ *   Li's read-aloud never holds the mic. The VAD and STT keep running; a
+ *   transcript whose audio overlaps a sentence Li was playing AND whose text
+ *   is that sentence's (voice.ts `duplexHeard`) is her echo and dropped;
+ *   anything else heard while she reads is his and pauses the reading, as a
+ *   barge-in does. /words' word audio still holds, as above.
  *
  * A change reopens the mic at once when it is on (mic-session.ts reopen), so
  * the difference is heard right away; otherwise it applies when it next opens.
@@ -119,3 +125,15 @@ export async function applyAec(
     return "next-open";
   }
 }
+
+/**
+ * Flag `voice.talk-over` (lib/flags.ts, audience owner): with echo
+ * cancellation off, Li's read-aloud does not hold the mic; he can talk over
+ * her (voice.ts `duplexHeard`). Set by DebugEval from the root layout; on
+ * globalThis, so the /words bundle and a hot-loaded widget agree.
+ */
+export function setTalkOver(on: boolean) {
+  (globalThis as unknown as Record<string, unknown>).__lkTalkOver = !!on;
+}
+export const talkOver = (): boolean =>
+  (globalThis as unknown as Record<string, unknown>).__lkTalkOver === true;

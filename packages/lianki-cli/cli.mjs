@@ -10,6 +10,7 @@
 //   - The token is never printed, in any mode.
 
 import yargs from "yargs";
+import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call } from "./api.mjs";
 import { DEVICE_RE, randomId, s256, TOKEN_RE } from "./auth.mjs";
 import { createChatBridge, filterDecision, ayDeliver, bridgeConfig } from "./chat-bridge.mjs";
 import { createInterface } from "node:readline";
@@ -18,61 +19,16 @@ import { applyGrantPolish } from "./chat-polish.mjs";
 import { createFriendInbox, INBOX_DEFAULTS } from "./chat-inbox.mjs";
 import { join } from "node:path";
 
+export { CliError, EXIT, PREF_KEYS, call };
+
 export const SCHEMA_VERSION = 1;
 export const DEFAULT_URL = "https://lianki.com";
-export const EXIT = { ok: 0, usage: 1, auth: 2, notFound: 3, server: 4, refused: 5 };
 
-/**
- * The settings that follow the account, as lib/prefs/schema.ts listed them
- * when this version was published. A newer server may know more keys: those
- * still work (the server checks every key and value), and `settings list`
- * shows any the server returns. unit/lianki-cli.test.ts checks that none of
- * these has been removed from the server.
- */
-export const PREF_KEYS = [
-  "words.showAll",
-  "words.readAloud",
-  "words.serverVoice",
-  "words.speakOnSwipe",
-  "words.gradeTones",
-  "words.voiceMode",
-  "words.swipeMirror",
-  "swipe.variant",
-  "swipe-feel.preset",
-  "swipe-feel.tweaks",
-  "motion.animations",
-  "ui.paper",
-  "text-size.ui",
-  "text-size.chat",
-  "text-size.cards",
-  "ui.locale",
-  "nav-pins.pinned",
-  "home.lang",
-  "home.pins",
-  "lab.immersionLangs",
-  "lab.immersionTranspose",
-  "chat-voice.rate",
-  "chat-voice.out",
-  "chat-voice.speak",
-  "chat-voice.cueSend",
-  "chat-voice.cueSpeech",
-];
 
 const RATINGS = { again: 1, hard: 2, good: 3, easy: 4, 1: 1, 2: 2, 3: 3, 4: 4 };
 const RATING_NAME = { 1: "again", 2: "hard", 3: "good", 4: "easy" };
 
-export class CliError extends Error {
-  constructor(code, exit, message, hint) {
-    super(message);
-    this.code = code;
-    this.exit = exit;
-    this.hint = hint;
-  }
-}
 const usage = (msg, hint) => new CliError("usage", EXIT.usage, msg, hint);
-const LOGIN_HINT = "lianki auth login   (agents: set LIANKI_TOKEN=lk_… or pass --token)";
-const SCOPE_HINT =
-  "the token lacks that permission: make one that has it at lianki.com/my/preferences → API tokens, or lianki auth login again";
 
 // ── Context: where, who, how to print ─────────────────────────────────────
 
@@ -134,59 +90,6 @@ async function stdinToken(deps) {
 
 // ── HTTP ──────────────────────────────────────────────────────────────────
 
-export async function call(c, token, { method = "GET", path, query, body, headers: extra }) {
-  const url = new URL(path, c.base + "/");
-  for (const [k, v] of Object.entries(query ?? {}))
-    if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
-  const headers = { accept: "application/json", ...extra };
-  if (token) headers.authorization = `Bearer ${token}`;
-  if (body !== undefined) headers["content-type"] = "application/json";
-  let r;
-  try {
-    r = await c.deps.fetch(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      redirect: "manual",
-    });
-  } catch (e) {
-    throw new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`);
-  }
-  const text = await r.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {}
-  if (r.status >= 200 && r.status < 300 && data !== null) return { status: r.status, data };
-  const said = (data && typeof data.error === "string" && data.error) || text.slice(0, 200);
-  const detail = said.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
-  if (r.status === 401 || r.status === 403)
-    throw new CliError(
-      "auth_refused",
-      EXIT.auth,
-      `${c.site} refused the token (${r.status}${/^(unknown|expired|scope|blocked)$/.test(detail) ? `: ${detail}` : ""})`,
-      detail === "scope" ? SCOPE_HINT : LOGIN_HINT,
-    );
-  // The FSRS router answers a missing card with a 500 "Error: note not found".
-  if (r.status === 404 || /note not found/i.test(detail))
-    throw new CliError("not_found", EXIT.notFound, detail && !/^404$/.test(detail) ? detail : "not found");
-  if (r.status === 429) {
-    // Passed on as is: how long the server asked us to wait (seconds), if it said.
-    const wait = Number(r.headers?.get?.("retry-after"));
-    const e = new CliError(
-      "rate_limited",
-      EXIT.refused,
-      `${c.site} refused it (429: too many requests)${wait > 0 ? `; retry after ${wait} s` : ""}`,
-    );
-    e.retryAfter = wait > 0 ? wait : null;
-    throw e;
-  }
-  if (r.status >= 300 && r.status < 400)
-    throw new CliError("server", EXIT.server, `${c.site} redirected (${r.status}); check --api`);
-  if (r.status >= 500 || data === null)
-    throw new CliError("server", EXIT.server, `${c.site} failed (${r.status})${detail ? `: ${detail}` : ""}`);
-  throw new CliError("refused", EXIT.refused, `${c.site} refused it (${r.status})${detail ? `: ${detail}` : ""}`);
-}
 
 // ── Output ────────────────────────────────────────────────────────────────
 
@@ -614,7 +517,15 @@ async function cmdChatSay(c) {
   const { data } = await call(c, token, {
     method: "POST",
     path: CHAT_PATH,
-    body: { op: "say", text, ...(c.argv.quiet ? { quiet: true } : {}) },
+    body: {
+      op: "say",
+      text,
+      ...(c.argv.quiet ? { quiet: true } : {}),
+      ...(c.argv.voice ? { voice: String(c.argv.voice) } : {}),
+      // How it cuts into the reading when it arrives live: stop yours, or pause and go on.
+      ...(c.argv.supersede ? { cut: "supersede" } : {}),
+      ...(c.argv.interject ? { cut: "interject" } : {}),
+    },
   });
   emit(c, "chat say", { id: data.id, lane: data.lane ?? null }, (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`);
 }
@@ -999,9 +910,20 @@ function build(args, deps, box) {
                 y
                   .positional("text", { type: "string", describe: "The line" })
                   .option("quiet", { type: "boolean", describe: "Shown, never read aloud" })
+                  .option("voice", { type: "string", describe: "Read this line in another voice: main | calm | bright, device:<name>, melo:<lang>" })
+                  .option("supersede", {
+                    type: "boolean",
+                    describe: "Makes your earlier lines moot: stops reading them, reads this one first",
+                    conflicts: "interject",
+                  })
+                  .option("interject", {
+                    type: "boolean",
+                    describe: "Urgent: pauses the line being read, reads this one, then goes on",
+                  })
                   .option("stdin", { type: "boolean", hidden: true }),
                 [
                   ['lianki chat say "PR #12 is green"', "→ 【<token name>】PR #12 is green"],
+                  ['lianki chat say --voice main "hi"', "read in main's voice instead of the lane's"],
                   ["git log -1 --format=%s | lianki chat say -", ""],
                 ],
               ),
@@ -1126,13 +1048,13 @@ export async function run(args, deps) {
     return EXIT.usage;
   }
   // yargs drops a bare `-` before any command sees it: `--token -` means
-  // "from stdin", and `say -` (`say --quiet -`) becomes `say --stdin`.
+  // "from stdin", and `say -` (`say --quiet -`, `say --supersede -`, `say --interject -`) becomes `say --stdin`.
   args = args.flatMap((a, i) =>
     a === "-" && args[i - 1] === "--token"
       ? []
       : a === "--token" && args[i + 1] === "-"
         ? ["--token=-"]
-        : a === "-" && (args[i - 1] === "say" || args[i - 1] === "send" || args[i - 1] === "--quiet")
+        : a === "-" && ["say", "send", "--quiet", "--supersede", "--interject"].includes(args[i - 1])
           ? ["--stdin"]
           : [a],
   );

@@ -515,7 +515,7 @@ to the main thread, as before, but prints agent lines addressed to a node.
 ## Agent edits of voice messages
 
 STT gets words wrong, and it has no context on the conversation. The chat
-lane does: it may **polish any of the owner's last `EDITABLE_LINES` (5) lines**
+lane does: it may **polish any of the owner's last `EDITABLE_LINES` (15) lines**
 when the line came from the widget's own mic, so the log reads what was meant.
 The owner wants this often (2026-11-10): polish whenever the context supports
 it, not only when sure of a homophone.
@@ -598,7 +598,7 @@ in `unit/debug-hub.test.ts`). `{type:"edit", id, text}` is accepted only if:
 
 - the sender holds a live owner grant (chat, or eval, which implies chat); a
   pairing made for a friend never may;
-- the target is among the owner's **last `EDITABLE_LINES` (5)** lines in the
+- the target is among the owner's **last `EDITABLE_LINES` (15)** lines in the
   owner thread (agent replies do not count; a line inside a summary is not one
   of them; anything older is refused);
 - that line has `source: "stt"`, and is not a summary;
@@ -849,6 +849,35 @@ split lines merge no further. It works with the flag off too.
   none leaves the line with none, so an unverified part never rides on a verified one.
 - **Friends.** Their lines never get the stamp, and friends' lines still can never
   be edited (`friendChat` returns before any of this).
+
+## Two mics, one line
+
+Owner, 2026-11-14 02:15 JST: the mic open on his Windows PC and his Mac at once.
+Each runs its own local STT and voiceprint and posts its own line, so every
+sentence showed twice, a second or two apart, nearly the same ("同时发送着两个麦克风"
+/ "同时发送的两个麦克风", an extra comma, a clipped start) with two speaker scores.
+
+Flag **`stt.two-mic-merge`**, on by default (`audience: "owner"`); the window is
+config **`chat.twoMicWindowMs`** (default 4000 ms, 0 = never). Both read by the hub
+over `DebugSessions.flag()` / `.config()`, cached 30 s, and only when a line could
+be a copy at all; unreadable = on, 4 s. Code: `packages/debug-chat/src/two-mic.ts`,
+the hub's `twoMic()`.
+
+- **Same utterance.** Before an owner voice line (`source: "stt"`) is posted, the hub
+  looks at the owner thread's newest lines for his voice line from **another page**
+  (a different `label`) whose latest words came within the window, saying the same
+  sentence: letters and digits only, lower case, then an edit-distance similarity
+  ≥ 0.8 (bigram Dice past 600 characters), or one inside the other while at least
+  half its length. A merged line matches on any of its parts.
+- **Which text stands.** The line the Mac signed as him (`speaker.decision: "me"`)
+  beats one that is not; then the higher score; then the longer text. If the new one
+  wins, the stored line takes its text, `raw`, `stt` and speaker tag in place, marked
+  `edited.by: "two-mic"`, and pages and listeners hear the usual `edited` event;
+  otherwise the new line is dropped. Either way there is no second line. A line that
+  is already merged (`parts`) or polished by an agent is never replaced.
+- **Never merged.** Typed lines; lines from the same page (the continuation merge
+  above handles those); a line the Mac said is someone else's with one it did not;
+  summaries, passages and hidden lines.
 
 ## Voiceprint: enrolment and delete by a tap
 
@@ -1168,6 +1197,35 @@ and the unit tests are in `unit/chat-fold.test.ts` and `unit/anchor.test.ts`.
 Browser checks: `bun scripts/dev/debug-chat-fold-qa.mjs [--shots <dir>]`
 runs them in silent browsers at 390×844, with getUserMedia refused.
 
+## Always findable
+
+Owner, 2026-11-14 (~01:00 JST): for a signed-in user with the Learning
+Partner (`partner.ai-reply` on), the chat can fold but never disappear.
+The rules are in `lib/partner-entry.ts`; the tests are in
+`unit/partner-entry.test.ts`.
+
+- **Nothing closes it.** The chat has no close button. The menu's Minimize,
+  the grip and a drag all fold it to the pill at most, so the pill's Li is
+  always on screen (`foldNext` never steps past the pill; the tucked handle
+  stays dormant, see "Folding"). Should a close or hide control ever be
+  added, it folds the chat instead of removing it.
+- **Debug mode does not decide it.** `chatWanted(debug, partnerOpen)` is
+  DebugEval's `chatOn`: turning debug mode off with the hidden 7/10-tap
+  toggles never takes a partner user's chat away. Those toggles still turn
+  the developer parts on and off, and for a `dev` holder (who gets the chat
+  only in debug mode) they stay his switch.
+- **A row in the sidebar.** "Learning Partner" (the `learning-partner`
+  name, 16 locales) sits at the top of the desktop sidebar and of the phone
+  drawer (Menu on the bottom island), above Pinned and Recent. A tap opens
+  the chat, unfolding it as the pill's Li does (`openChat`, `chat.open`).
+  It shows for every partner user, and for any other signed-in user in
+  debug mode. A guest never sees it, and with `partner.ai-reply` off nothing
+  changes for users.
+- **How the nav knows.** The root layout puts `data-chat-viewer` on
+  `<html>`: `partner` (flag on, signed in, no `dev`), `member` (signed in
+  otherwise), absent for a guest. The `nav.drawer` island reads it
+  (`usePartnerEntry`), so its contract is unchanged.
+
 ## Typing glass: the chat box frosts while typing
 
 Owner, 2026-11-02 on /home: "帮我背景玻璃化，在我在这里打字的时候"; corrected
@@ -1211,6 +1269,9 @@ stays usable while typing. Rules and look in `typing-glass.ts`.
   the old sheet's stronger tint and blur (`SHEET_SCRIM`, `SHEET_FILTER`; the
   contrast checks in `unit/sheet-contrast.test.ts`), and the box goes opaque
   so the blur sees the page. Beside the log the page stays sharp.
+  With the mic on, the bar never steps aside (owner, 2026-11-13): the box
+  ends above it (`fullLogBox barTop`), so the mic button stays in sight to
+  turn it off while he scrolls.
 - **Under the finger** (owner, same evening: "开始拖动之后的输入框/聊天内容老是不在一个位置").
   Under the touch slop (`AXIS_LOCK_PX`) nothing moves, so a tap is still a
   tap. Past it, the switch to the full-screen log runs at once
@@ -1538,6 +1599,35 @@ cleanup), `unit/voice-session.test.ts` (the no-voice fallback),
 `unit/debug-hub.test.ts` ("say --quiet"), `unit/dev-eval.test.ts`,
 `unit/node-args.test.ts`.
 
+### Supersede and interject
+
+Owner, 2026-11-13 23:5x JST: a later line often makes the earlier ones moot,
+or more urgent, so he wants to hear it first. A `say` can cut into what his
+page is reading aloud, in one of two ways (`say --supersede` or
+`--interject`, eval.ts, `lianki-dev say` and `lianki chat say`; one of the
+two, never both). It is stored on the line as `cut: "supersede" |
+"interject"`; both hubs (`parseControllerMessage` in `lib/dev-eval.ts`, the
+token `say` in `workers/push/src/token-chat.ts`) refuse any other value.
+
+| flag                  | use it when                                        | on his page                                                                                                                                  |
+| --------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--supersede` (打断)  | the new line makes your earlier ones moot          | your lane's line being read stops; your lane's unread lines are dropped; the new one is read. Other lanes' lines are untouched.              |
+| `--interject` (插嘴)  | it is urgent, but the earlier lines still matter   | the line being read (any lane) pauses at its sentence; the new one is read next; then the paused one goes on from there. Nothing is dropped. |
+
+Rules (`voice.ts` `reply`, `cut`, `speakerOf`): only a line that arrives
+**live** (DebugEval's chat frame passes `{live: true}`) cuts in; a line from
+history, a missed line read on return, or a reading resumed after a reload
+never does. "Same lane" is the line's `lane` (or its `【lane】` prefix), else
+a lane token's name, else its agent id, else main. A line already read is
+untouched, and every line stays in the log; only the reading changes.
+Interjections in a row are read in arrival order before the paused line. A
+quiet superseding line still cuts its lane's reading but reads nothing; a
+quiet interjection does nothing. The read-progress mirror follows both
+(`onDrop`, `onInterject`; read-progress.ts `drop`, `insert`). Tests:
+`unit/voice-cut.test.ts`, `unit/dev-eval.test.ts`, `unit/debug-hub.test.ts`,
+`unit/token-chat.test.ts`, `unit/lianki-dev-cli.test.ts`,
+`unit/lianki-cli.test.ts`, `unit/node-args.test.ts`.
+
 ## Lanes and voices
 
 Several agents talk in the owner's chat — the chat lane (main), codex and
@@ -1852,6 +1942,16 @@ while the typing glass is the frame, and full screen. While a task is in
 progress the fill shows activity: a soft light sweeps along it
 (`ETA_SHIMMER_CSS`, its own keyframes since the hot widget has no app
 stylesheet); none when all are done, and none under prefers-reduced-motion.
+
+**Hiding the bar** (owner, 2026-11-13): a small ▾ at the bar's end hides it
+(`EtaBar onFold`), leaving only a ▸ with the clock where it was, so more of
+the chat shows; a tap on that brings the bar back. The toggle names what a
+tap does (`etaHide` / `etaShow`) and carries `aria-expanded`. The choice is a
+device preference, `etaFolded` in `lk:pref:chat-view` (`chatPrefs`), shown by
+default, never synced. The mic's note above the bar (the wake word waiting
+for Wi-Fi, a mic error) is lifted by the strip's measured height
+(`DebugMic noteLift={etaH}`), so it sits over the strip (or its ▸), never
+on it.
 
 ### Full-screen Gantt
 

@@ -481,7 +481,9 @@ this order:
    `PUSH` binding is to lianki-push's default `fetch`, which already exists,
    and a route lianki-push adds later is only called with a fallback (the
    sign-out notice goes to the D1 outbox until lianki-push answers).
-4. `lianki-voice` — last and non-blocking.
+4. `lianki-voice` — non-blocking.
+5. `lianki-mcp` (`workers/mcp`, route `lianki.com/mcp*`, the remote MCP
+   server) — last and non-blocking: it binds both `lianki` and `lianki-push`.
 
 Until 2026-11-02 lianki-push went before `lianki`; that was fine while every
 binding between them was a plain one. Adding a new entrypoint or RPC method:

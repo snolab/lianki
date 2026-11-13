@@ -56,6 +56,13 @@ GENERATIONS = "generations.json"
 MIN_SPEECH_S = 1.5
 MIN_SNR_DB = 10.0
 
+#: A "me" final is also scored in windows this long, this far apart: two
+#: speakers in one final (owner, 2026-11-13: half his wife, half him, all ✓)
+#: average to a passing score over the whole. A window that is clearly
+#: someone else turns the final "unknown" ("mixed"); its score is unchanged.
+WINDOW_S = 2.5
+WINDOW_HOP_S = 1.25
+
 #: Enrolment: sentences kept at least / at most, and the check on each one.
 ENROL_MIN = 10
 ENROL_MAX = 20
@@ -678,6 +685,31 @@ class FakeEmbedder:
         return e
 
 
+def split_points(windows: list[dict], audio: np.ndarray) -> list[int]:
+    """
+    Where the speaker changes in a "mixed" final, in samples (owner, 2026-11-13:
+    split half his wife, half him into two lines, each with its own tag). The
+    windows that decided (me or other; the undecided are skipped) form runs of
+    one speaker; each cut is halfway through the overlap between the last
+    window of one run and the first of the next (or the gap between them).
+    None at all unless every part has MIN_SPEECH_S of speech: too short a part
+    could not be told apart again, so the final stays one "mixed" line.
+    """
+    runs: list[list[dict]] = []
+    for w in windows:
+        if w["decision"] not in ("me", "other"):
+            continue
+        if runs and runs[-1][-1]["decision"] == w["decision"]:
+            runs[-1].append(w)
+        else:
+            runs.append([w])
+    cuts = [(a[-1]["end"] + b[0]["start"]) // 2 for a, b in zip(runs, runs[1:])]
+    edges = [0, *cuts, len(audio)]
+    if not cuts or any(speech_stats(audio[x:y])[0] < MIN_SPEECH_S for x, y in zip(edges, edges[1:])):
+        return []
+    return cuts
+
+
 class Verifier:
     """
     The server's side: the embedders (loaded once), the store, and the scoring
@@ -759,8 +791,32 @@ class Verifier:
     def embed(self, model: str, audio: np.ndarray) -> np.ndarray | None:
         return self.embedders[model](audio)
 
+    def windows(self, model: str, device: str, audio: np.ndarray) -> list[dict]:
+        """
+        Each WINDOW_S window of a final long enough for two, scored against that print and
+        decided alone: {score, decision, start, end} (samples into the final).
+        """
+        p = self._print(device, model)
+        win, hop = int(WINDOW_S * RATE), int(WINDOW_HOP_S * RATE)
+        if p is None or len(audio) < win + hop:
+            return []
+        out = []
+        for at in range(0, len(audio) - win + 1, hop):
+            w = audio[at : at + win]
+            speech_s, snr = speech_stats(w)
+            # Too little clear speech in it to say anything: not a vote.
+            if speech_s < MIN_SPEECH_S or snr < MIN_SNR_DB:
+                continue
+            e = self.embed(model, w)
+            if e is None:
+                continue
+            score = float(e @ p["_centroid"])
+            out.append({"score": round(score, 3), "decision": decide(MODELS[model], score, speech_s, snr)[0],
+                        "start": at, "end": at + win})
+        return out
+
     def verify(self, audio: np.ndarray, device: str | None) -> dict:
-        """{score, decision, model, device, speechS, snrDb[, reason]} for one final."""
+        """{score, decision, model, device, speechS, snrDb[, reason, windows, cuts]} for one final."""
         speech_s, snr = speech_stats(audio)
         base = {"speechS": round(speech_s, 2), "snrDb": round(snr, 1)}
         picked = self.pick(device)
@@ -780,7 +836,16 @@ class Verifier:
             if s > best:
                 best, who = s, d
         decision, reason = decide(MODELS[model], best, speech_s, snr)
+        windows = self.windows(model, who, audio) if decision == "me" else []
+        cuts: list[int] = []
+        if any(w["decision"] == "other" for w in windows):
+            decision, reason = "unknown", "mixed"
+            cuts = split_points(windows, audio)
         out = {"score": round(best, 3), "decision": decision, "model": model, "device": who, **base}
+        if cuts:
+            out["cuts"] = cuts  # where the speaker changes (server.py splits the final there)
+        if windows:
+            out["windows"] = [w["score"] for w in windows]
         if reason:
             out["reason"] = reason
         if MODELS[model].provisional:

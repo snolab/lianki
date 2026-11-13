@@ -96,7 +96,9 @@ export function LanguageSwitcher({ variant = "header" }: { variant?: "header" | 
     <div
       lang={scope.lang}
       dir={scope.dir}
-      className="lk-lang-backdrop fixed inset-0 z-[var(--lk-z-overlay-toast)]"
+      // Above the Li chat (--lk-z-chat): on a computer the sheet sits top-right, where the
+      // open chat covered it (owner, 2026-11-14). A picker he opened is a modal over the chat.
+      className="lk-lang-backdrop fixed inset-0 z-[var(--lk-z-chat-modal)]"
       onClick={() => setIsOpen(false)}
     >
       <div

@@ -299,6 +299,50 @@ tested by anything automatic, because it takes a speaker and a mic: how the tone
 sound, and whether a real cue leaks into the real VAD. Its log line `cue-echo-drop`
 counts the leaks the guard caught.
 
+## Talking over Li with echo cancellation off
+
+The owner, 2026-11-13 ~23:59 JST: when he speaks while Li reads a reply aloud,
+the reading pauses and listens to him, "and especially, never disable my
+microphone". With echo cancellation on, the barge-in already does that (ducking,
+then a pause after `BARGE_IN_MS`, docs/monitoring.md "Hands-free voice"). With it
+off (`lk:voice-aec` = "0", raw mic, the better speaker on Android), the mic used to
+**hold** its capture while Li read and `RESUME_TAIL_MS` after (VAD paused, the
+ring gold), so he could not talk over her.
+
+Flag **`voice.talk-over`** (audience owner: the flag and the `dev` grant; set
+through the root layout → `DebugEval` → `aec.ts` `setTalkOver`). On, with echo
+cancellation off:
+
+- **No hold for Li's read-aloud.** `voice.ts` state `hold` stays false, so the VAD
+  and STT keep running and the ring never turns gold for it. /words' word audio
+  and /read's read-aloud still hold as before (`page-audio.ts`, `captureHeld`).
+- **No ducking, no VAD barge-in.** Raw, the mic hears her voice as speech, so the
+  VAD's start alone decides nothing (`userSpeech` only notes when his utterance
+  began). The transcript decides.
+- **Echo = same time AND same words** (`voice.ts` `duplexHeard`). Li keeps a record
+  of each sentence she played (text, start, end). A transcript, partial or final,
+  covers a span on the page clock: a final from its speech start to its end (`at
+  - durationMs`…`at`, taken before the STT await), the interim text of the
+utterance under way from its VAD start to now. The candidates are only the
+sentences whose play time overlaps that span, `TALK_OVER_SLACK_MS`(600 ms) of
+slack each side for the room's echo and the output latency. When at least`TALK_OVER_ECHO` (0.6) of the transcript's n-grams are inside those sentences
+(`echo.ts` `echoContained`: containment, not Dice, so a fragment or a cut-off
+partial still matches), it is her echo: dropped, logged `voice-utt`with`drop`. The same words said at another time are his: kept.
+- **Anything else heard while she reads is his**, and pauses the reading exactly
+  like a barge-in (`interrupt("speech")`, logged `voice-talk-over`): from the
+  interim text as soon as it is not her sentence (mic-session `interim` →
+  `heardInterim`), else from the final. It reads on by the usual rules: his line
+  sent, or `IDLE_RESUME_MS` after his speech ends.
+
+Costs, known: a short reply of his that is entirely inside the sentence she was
+reading at that moment ("OK" while she says "OK, …") is taken for echo; a final
+that mixes his words with hers is kept whole, her words included. No playback
+level gate: the cue guard (`pageCues().guard()`) is a time window that discards
+frames, which here would discard his words; nothing measures the bleed level.
+Off, everything is as before. Echo cancellation on: unchanged.
+Tests: `unit/voice-session.test.ts` ("talk-over"), `unit/echo-guard.test.ts`
+("containment").
+
 ## Keep speaker awake
 
 The owner, 2026-11-05 23:47 JST, after hearing the first sound of each line cut

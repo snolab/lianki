@@ -53,6 +53,7 @@ describe("clientOf: only the one known shape", () => {
     expect(clientOf("mcp/1.2.3-beta.1 tool=lianki_chat_say")).toBe(
       "mcp/1.2.3-beta.1 lianki_chat_say",
     );
+    expect(clientOf("mcp-remote/1.0.0 tool=lianki_due")).toBe("mcp-remote/1.0.0 lianki_due");
   });
   test("anything else is dropped", () => {
     for (const v of [
@@ -65,6 +66,7 @@ describe("clientOf: only the one known shape", () => {
       "mcp/x tool=lianki_due",
       "mcp/0.4.0 tool=lianki_due; drop table",
       "curl/8 tool=lianki_due",
+      "mcp-other/1.0.0 tool=lianki_due",
       `mcp/0.4.0 tool=lianki_${"a".repeat(200)}`,
     ])
       expect(clientOf(v)).toBeNull();

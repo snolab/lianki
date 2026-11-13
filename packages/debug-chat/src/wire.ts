@@ -122,6 +122,15 @@ export type ChatMessage = {
    */
   quiet?: true;
   /**
+   * An agent line sent with `say --supersede` or `--interject`: how its
+   * reading cuts into the one under way when it arrives live (voice.ts).
+   * "supersede": the same lane's line being read stops and that lane's
+   * unread lines go. "interject": the line being read pauses, this one is
+   * read next, then the paused one goes on. Shown as usual; history never
+   * triggers it. The hub refuses any other value.
+   */
+  cut?: "supersede" | "interject";
+  /**
    * The lane an agent line is from (voices.ts LANES: "main", "codex",
    * "agy"; `say --lane`): its avatar, name tag and voice. Absent = a
    * `【lane】` prefix in the text says it, else none (looks as before).
@@ -249,9 +258,11 @@ export type MergedPart = {
 export const MAX_EDITS = 3;
 /**
  * How far back the agent may polish or summarise: any of the owner's last
- * EDITABLE_LINES lines in the owner thread (not only the latest).
+ * EDITABLE_LINES lines in the owner thread (not only the latest). 15, up from
+ * 5 (2026-11-14): with two mics open and room echoes his lines ran past 5
+ * before a lane could answer.
  */
-export const EDITABLE_LINES = 5;
+export const EDITABLE_LINES = 15;
 /**
  * A run of the owner's voice lines the agent summarised (room talk, someone
  * else speaking): on the run's first line, which shows the summary; the others
@@ -905,6 +916,10 @@ export type ChatStrings = {
   etaDone: string;
   /** Screen-reader label and tooltip of the progress bar above the chat input (and of the expand button on the task list in the state tree): tapping it opens a full-screen timeline (a Gantt chart) of every task with its own bar and time left. Imperative verb phrase. */
   etaOpen: string;
+  /** Screen-reader label and tooltip of the small ▾ button at the end of the progress bar above the chat input: hides the bar, leaving only a small ▸ with a clock, so more of the chat shows. Imperative verb phrase, short. */
+  etaHide: string;
+  /** Screen-reader label and tooltip of that small ▸ button (with a clock) left where the hidden progress bar above the chat input was: shows the bar again. Imperative verb phrase, short. */
+  etaShow: string;
   /** Screen-reader label and tooltip of the × button at the top of the full-screen task timeline (a Gantt chart of the assistant's tasks): closes the timeline and returns to the chat. Imperative verb phrase, very short. */
   etaGanttClose: string;
   /** Screen-reader label of a small two-button switch in the header of the full-screen task timeline (a Gantt chart of the assistant's tasks): it chooses how the time axis is drawn, evenly (linear) or compressed further from now (logarithmic). Short noun phrase, no full stop. */
@@ -1102,6 +1117,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaReached: "ETA reached",
   etaDone: "done",
   etaOpen: "Show all tasks on a full-screen timeline",
+  etaHide: "Hide the task bar",
+  etaShow: "Show the task bar",
   etaGanttClose: "Close the timeline",
   etaGanttScale: "Time axis",
   etaGanttLinear: "Linear",

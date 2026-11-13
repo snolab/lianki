@@ -35,7 +35,12 @@ export function mayBeBox(req: Request): boolean {
   if (h.has(BOX_IDENTITY_HEADER)) return true;
   if ((h.get("authorization") ?? "").startsWith(`Bearer ${BOX_TOKEN_PREFIX}`)) return true;
   const origin = h.get("origin");
-  return origin !== null && (origin.startsWith("https://my-") || origin.startsWith("http://"));
+  return (
+    origin !== null &&
+    (origin.startsWith("https://my-") ||
+      origin.endsWith(".lianki.pages.dev") ||
+      origin.startsWith("http://"))
+  );
 }
 
 const json = (status: number, error: string, extra?: HeadersInit) =>

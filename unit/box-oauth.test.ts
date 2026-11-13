@@ -54,6 +54,15 @@ describe("origins", () => {
   test("only my-<hash>.lianki.com or my-<name>.lianki.com, exactly", () => {
     expect(isBoxOrigin(ORIGIN)).toBe(true);
     expect(isBoxOrigin(NAMED)).toBe(true);
+    expect(isBoxOrigin("https://branch.lianki.pages.dev")).toBe(true);
+    for (const origin of [
+      "https://lianki.pages.dev",
+      "http://branch.lianki.pages.dev",
+      "https://branch.lianki.pages.dev.evil.test",
+      "https://branch.lianki.pages.dev/",
+      "https://a.b.lianki.pages.dev",
+    ])
+      expect(isBoxOrigin(origin)).toBe(false);
     for (const o of [
       "https://my-ab.lianki.com",
       "https://my-example.lianki.com.evil.com",

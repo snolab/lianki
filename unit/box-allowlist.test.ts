@@ -4,6 +4,7 @@
  * and at every use (gate, OAuth start, chat ticket, the hub's checks), audited,
  * and removing someone revokes their box.
  */
+import { previewAuthority } from "../lib/preview/authority";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
@@ -313,4 +314,49 @@ describe("taking someone off the list", () => {
       revokedClientId: null,
     });
   });
+});
+
+test("Pages preview origins use the same exact binding and live user allowlist", async () => {
+  const origin = "https://branch.lianki.pages.dev";
+  await insertBinding(
+    box(),
+    { clientId: "c1", origin, userId: "member", scopes: RW },
+    "owner",
+    NOW,
+  );
+  await addToken();
+  const deps: GateDeps = { flagOn: async () => true, allow: async () => true, now: () => NOW };
+  const request = () =>
+    new Request(`${origin}/api/preferences`, {
+      headers: { origin, authorization: `Bearer ${TOKEN}` },
+    });
+  let calls = 0;
+  const next = async () => {
+    calls++;
+    return new Response("allowed");
+  };
+  const env = { DB: box(), AUTH_SECRET: SECRET };
+  expect(
+    (await previewAuthority(new Request(`${origin}/api/preferences`), env, deps, next)).status,
+  ).toBe(403);
+  expect((await previewAuthority(request(), env, deps, next)).status).toBe(401);
+  expect(calls).toBe(0);
+  await allowBoxUser(box(), "member", "owner", NOW);
+  expect((await previewAuthority(request(), env, deps, next)).status).toBe(200);
+  expect(calls).toBe(1);
+  expect(
+    (
+      await previewAuthority(
+        new Request(`${origin}/api/preferences`, {
+          headers: { origin: "https://other.lianki.pages.dev", authorization: `Bearer ${TOKEN}` },
+        }),
+        env,
+        deps,
+        next,
+      )
+    ).status,
+  ).toBe(403);
+  await db.prepare("DELETE FROM live_frontend_allow WHERE user_id='member'").run();
+  expect((await previewAuthority(request(), env, deps, next)).status).toBe(401);
+  expect(calls).toBe(1);
 });

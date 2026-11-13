@@ -68,6 +68,10 @@ coveragePathIgnorePatterns = [
   # Their logic is in attach.ts (held to 90% here); unit/chat-attach-tree.test.ts
   # renders the markup only, and debug-chat-bar-qa.mjs drives them in a browser.
   "packages/debug-chat/src/AttachMenu.tsx",
+  # A message's details popover (React glue: popover, layout effect, events).
+  # Its voice logic is in voice-heard.ts (held to 90% here); the markup is
+  # rendered in unit/voice-heard.test.tsx, the clicks in a browser.
+  "packages/debug-chat/src/MessageDetails.tsx",
   # rgui, the vendored component library (git subtree of snomiao/rgui,
   # docs/rgui.md). Its own suites live upstream (packages/rgui/src/**/*.test.ts,
   # run there with its bunfig); ours only load these files because our gantt
