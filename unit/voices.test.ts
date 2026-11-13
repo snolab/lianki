@@ -370,6 +370,9 @@ describe("cloud voices", () => {
     expect(fetched.at(-1)).toBe("/api/words/tts?lang=en&text=Yo.&store=0&speaker=luna");
     expect(el.playbackRate).toBe(1);
     expect(el.preservesPitch).toBe(true);
+    // A calm lane in zh with the Mac-local voices on: its own Kokoro voice, not the baby one.
+    await play({ text: "好。", lang: "zh-CN", at: 0, volume: 1, rate: 1, voice: "calm" });
+    expect(fetched.at(-1)).toContain("/tts?voice=yunxi&text=");
   });
 });
 

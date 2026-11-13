@@ -4563,8 +4563,6 @@ export function DebugChat({
                 hidden
               />
               <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
-                {/* A lane's name tag (voices.ts), once per run; lines with no lane have none. */}
-                {m0.lane && <LaneTag lane={m0.lane} agentName={t.name} />}
                 {node && (
                   <span
                     aria-hidden
@@ -4574,6 +4572,8 @@ export function DebugChat({
                     {node.subtitle}
                   </span>
                 )}
+                {/* A lane's name, "name：", once per run, then the text; lines with no lane have none. */}
+                {m0.lane && <LaneTag lane={m0.lane} agentName={t.name} />}
                 {/* Screen readers hear the name once per run, from the sr-only span. */}
                 <span className="sr-only">
                   {who.name}
