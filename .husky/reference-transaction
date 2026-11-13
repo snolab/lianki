@@ -1,0 +1,15 @@
+# Git's own "main moved" event for scripts/dev/preview-follow.ts
+# (docs/dev-whole-page.md, "Following main"). Runs on every ref update in every
+# worktree, so it does almost nothing: when a transaction that moved
+# refs/remotes/origin/main is committed, it pokes the watcher's unix socket in
+# the background and returns. It never fails or delays a git command (exit 0
+# always; a non-zero exit in "prepared" would abort the transaction).
+[ "$1" = committed ] || exit 0
+sock="${LIANKI_PREVIEW_FOLLOW_SOCK:-$HOME/.cache/lianki/preview-follow.sock}"
+[ -S "$sock" ] || exit 0
+while read -r _old new ref; do
+  if [ "$ref" = refs/remotes/origin/main ]; then
+    (curl -s -m 2 --unix-socket "$sock" -X POST "http://follow/kick?sha=$new" >/dev/null 2>&1 &) || true
+  fi
+done || true
+exit 0

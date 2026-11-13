@@ -41,6 +41,7 @@ import {
   GUARD_HEADER,
   HUB_ORIGIN,
   isBridgedPath,
+  needsBunInstall,
   needsIntlayerBuild,
   RestartStorm,
   restartScanner,
@@ -812,6 +813,11 @@ async function serve() {
     // *.content.ts that arrive by a merge, and the page throws until someone
     // runs `intlayer build` (twice on 2026-10-31). Rebuild them here, at once.
     const changed = Bun.spawnSync(["git", "diff", "--name-only", before, "HEAD"]).stdout.toString();
+    // A merge of main (preview-follow) can bring new dependencies.
+    if (needsBunInstall(changed.split("\n"))) {
+      const i = Bun.spawnSync(["bun", "install", "--frozen-lockfile"]);
+      console.error(`[whole-page] bun install ${i.success ? "done" : "FAILED"}`);
+    }
     if (needsIntlayerBuild(changed.split("\n"))) {
       const b = Bun.spawnSync(["bunx", "intlayer", "build"], { env: { ...process.env, ...env } });
       console.error(`[whole-page] intlayer build ${b.success ? "done" : "FAILED"}`);
