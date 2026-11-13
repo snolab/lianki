@@ -126,6 +126,17 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
       "aria-haspopup": "dialog" as const,
       "aria-controls": id,
       onClick: open,
+      // Right-click opens the details too (owner, 2026-11-14: "我想用右键就能打开"); the
+      // browser's own menu stays for selected text.
+      onContextMenu: (e: MouseEvent<HTMLElement>) => {
+        if (window.getSelection()?.toString()) return;
+        // Only a link or a field keeps the browser's menu; a line wrapped in a
+        // role=button (tap to read) still opens its details.
+        if (e.target instanceof Element && e.target.closest("a,input,textarea,select,[contenteditable=true]")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setSelection({ message, sender, anchor: e.currentTarget.getBoundingClientRect() });
+      },
       onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
         if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
         e.preventDefault();
