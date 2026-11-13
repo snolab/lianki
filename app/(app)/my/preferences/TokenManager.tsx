@@ -174,10 +174,6 @@ export default function TokenManager() {
     }
   }
 
-  const chatOnly =
-    scopes.length === INVITE_PREFILL.scopes.length &&
-    INVITE_PREFILL.scopes.every((scope) => scopes.includes(scope));
-
   const scopeName: Record<ScopeId, string> = {
     study: s("scopeStudy"),
     "chat:read": s("scopeChatRead"),
@@ -336,9 +332,10 @@ export default function TokenManager() {
           type="button"
           data-testid="token-chat-only"
           disabled={busy}
-          aria-pressed={chatOnly}
+          // A preset that fills the permissions below, not a switch: the
+          // picker shows the result (switch-guard: no lit-up pill).
           onClick={() => setScopes([...INVITE_PREFILL.scopes])}
-          className={`min-h-10 rounded border px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${chatOnly ? "bg-primary border-primary text-on-primary" : "border-current/30 text-primary"}`}
+          className="min-h-10 rounded border border-current/30 px-3 py-1.5 text-sm font-medium text-primary disabled:opacity-50"
         >
           {s("chatOnly")}
         </button>

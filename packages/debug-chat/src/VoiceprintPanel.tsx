@@ -38,6 +38,7 @@ import {
 } from "./voiceprint";
 import { notifyDirty, registerDirtyCheck } from "@lianki/ui-state/dirty";
 import type { ChatStrings } from "./wire";
+import { SealStamp } from "./SealStamp";
 
 const line = (pct: number) => `color-mix(in oklch, currentColor ${pct}%, transparent)`;
 const pill = {
@@ -380,10 +381,7 @@ export function VoiceprintPanel({
                 style={{ display: "flex", alignItems: "center", gap: 8, color: "inherit" }}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => { if (e.nativeEvent.isTrusted) void c.progressive(!view.progressive!.on); }}>
-                <span aria-hidden="true" className="lk-sealbox" data-size="sm" data-seal={view.progressive.on ? "on" : "off"}>
-                  <span data-word="on" data-active={view.progressive.on || undefined}>{t.vpOn}</span>
-                  <span data-word="off" data-active={!view.progressive.on || undefined}>{t.vpOffState}</span>
-                </span>
+                <SealStamp on={view.progressive.on} onWord={t.vpOn} offWord={t.vpOffState} />
                 {t.vpProgressive}
               </button>
               {view.progressiveError && note(view.progressiveError, "debug-voiceprint-progressive-error")}
