@@ -21,6 +21,7 @@
  * any passkey op, single use (a fresh jti), 60 s and never past the grant.
  */
 import {
+  FRESH_PASSKEY_OPS,
   PASSKEY_OPS,
   type VoiceprintOp,
   VOICEPRINT_TICKET_TTL_S,
@@ -98,6 +99,8 @@ export async function voiceprintApproval(body: unknown, d: ApprovalDeps): Promis
   const keys = await d.passkeys();
   if (!keys.length) return bad(409, "no passkey: add one on the profile page first");
   if (b.step === "grant") {
+    // The voice-clone reference: a fresh Face ID / Touch ID every time, never the window.
+    if (FRESH_PASSKEY_OPS.includes(op)) return bad(403, "this op needs a fresh passkey");
     // Inside the passkey window: a ticket with no new prompt, from the grant the
     // last verified assertion gave this page (this account, session and device).
     const client = b.client;
@@ -201,7 +204,13 @@ export async function voiceprintApproval(body: unknown, d: ApprovalDeps): Promis
   // The passkey window: one approval covers the voiceprint ops that follow on this
   // device, in this session, until grantExp. Only with a session and a device to bind it to.
   const client = b.client;
-  if ((d.windowMs ?? 0) > 0 && d.sid && validDevice(client, "enrol")) {
+  // A fresh-only op (the voice-clone reference) opens no window.
+  if (
+    (d.windowMs ?? 0) > 0 &&
+    d.sid &&
+    validDevice(client, "enrol") &&
+    !FRESH_PASSKEY_OPS.includes(op)
+  ) {
     const g = await signGrant(d.key, {
       uid: d.userId,
       sid: d.sid,
