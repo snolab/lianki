@@ -120,6 +120,8 @@ export type MicDeps = {
   /** The voice session's side of a state change (voice.ts: setMic, userSpeech, …). */
   onState?: (s: MicState, prev: MicState) => void;
   onProb?: (p: number) => void;
+  /** The interim text of the utterance under way, each time it changes (voice.ts heardInterim: talk-over). */
+  interim?: (text: string) => void;
   /** Subscribe to "hold capture" (the agent speaking, AEC off); returns an unsubscribe. */
   subscribeHold?: (f: (hold: boolean) => void) => () => void;
   /** sessionStorage, guarded (iOS private mode throws). */
@@ -396,6 +398,7 @@ export function createMicSession(
     },
     onBreak: () => sink?.onBreak?.(),
     onPending: (n, interim) => {
+      if (interim) deps.interim?.(interim);
       emit({ pending: n, interim });
       sink?.onPending(n, interim);
     },

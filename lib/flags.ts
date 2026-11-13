@@ -283,6 +283,13 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  "voice.talk-over": {
+    description:
+      "朗读时插话（不关麦克风）：在你本人的页面上（需要 dev 权限），回声消除关着（lk:voice-aec = 0）时，Li 朗读回复的时候麦克风不再暂停（不会变成金色的「暂停收音」圈），一直在听。你一开口，Li 就停下来听你说，说完照原来的规则接着读（你的话发出去后，或安静 1.5 秒后）。Li 自己的声音不会被当成你的话：识别出来的一句话，如果时间上和 Li 正在读的那一句重叠、内容也基本就是那一句，就当回声丢掉；同样的词在别的时间说就是你的。/words 读单词时照旧暂停收音；回声消除开着时一切照旧。关闭（默认）= 照旧：回声消除关着时，Li 朗读期间麦克风暂停收音。",
+    default: false,
+    group: "stt",
+    audience: "owner",
+  },
   "voice.cloud-voices": {
     description:
       "Li 用谷歌 / Azure 的声音朗读（docs/li-sound-hub.md，「Provider voices」）：打开后，在你本人的页面上（需要 dev 权限），一句话可以用 google:<声音> 或 azure:<声音> 来读（say --voice google:cmn-TW-Wavenet-A），按语言自动选声音的表在 /dev/config 的 voice.langVoices（默认 zh-TW → 谷歌台湾国语，nan → Azure 闽南语）。声音在服务器上生成，手机用云端 <audio> 播放，没有系统语音的手机也能听。按字数从你的积分扣（和别人一样，没有管理员免费）。没有谷歌 / Azure 密钥时什么都不变，照常用原来的声音。关闭（默认）= 完全不用这些声音。",

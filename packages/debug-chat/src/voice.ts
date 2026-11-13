@@ -33,7 +33,12 @@
  *   speech that goes on for BARGE_IN_MS (and sounds like speech: isBargeIn)
  *   is a barge-in and pauses the reading. With `lk:voice-aec` = "0", the old
  *   way: `hold` is true while an utterance plays (and RESUME_TAIL_MS after),
- *   and the mic holds its capture.
+ *   and the mic holds its capture. With "0" and flag `voice.talk-over`
+ *   (`talkOver`, aec.ts): no hold and no ducking; each transcript, partial or
+ *   final, is judged by time and text together (`duplexHeard`): it overlaps a
+ *   sentence Li was playing and its words are inside that sentence = her echo,
+ *   dropped; else, heard while she reads = his, and the reading pauses as for
+ *   a barge-in (resumed by the same rules).
  * - An interruption (a barge-in, a tap on the mic, typing) stops the utterance
  *   and remembers where: the clip's time (cloud), else the last word boundary
  *   the browser reported, else the start of that sentence. Speech or a tap
@@ -54,9 +59,9 @@
  * events and one-shot timers, never polling.
  */
 import { speechRate } from "./speech-rate";
-import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
+import { ECHO_WINDOW_MS, type EchoScore, echoContained, echoScore, normalizeEcho } from "./echo";
 import { cloudOut, cloudSkip, existingCtx, outMode } from "./voice-out";
-import { micAec } from "./aec";
+import { micAec, talkOver } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { speakForm } from "./lexicon";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
@@ -140,6 +145,17 @@ export function cutOf(meta: SpeakMeta | undefined, how?: ReplyHow): "supersede" 
   return meta?.cut === "supersede" || meta?.cut === "interject" ? meta.cut : null;
 }
 
+/**
+ * Talk-over (`duplexHeard`): a sentence counts as playing during an utterance
+ * when their times overlap with this much slack each side (the room's echo,
+ * the VAD's frames, the output's latency).
+ */
+export const TALK_OVER_SLACK_MS = 600;
+/**
+ * …and the utterance is her echo when at least this share of its words (as
+ * n-grams, echo.ts echoContained) is inside the sentences playing then.
+ */
+export const TALK_OVER_ECHO = 0.6;
 /** Sentences are cut to at most this many characters (the TTS route's limit). */
 export const CHUNK_MAX = 200;
 /** localStorage: the speaker toggle ("0" = replies silent). */
@@ -391,6 +407,11 @@ export function createVoice(d: {
   mode?: () => OutMode;
   /** Echo-cancelled barge-in (else capture is held while the agent speaks). */
   aec?: () => boolean;
+  /**
+   * Flag `voice.talk-over` (aec.ts talkOver): with `aec` off, no hold; what is
+   * heard is judged by `duplexHeard` instead. Absent: off.
+   */
+  talkOver?: () => boolean;
   /** The reading speed, read for each utterance (speech-rate.ts; 1 if absent). */
   rate?: () => number;
   /** A silence the owner should hear about (a page-error, page-errors.ts). */
@@ -418,6 +439,8 @@ export function createVoice(d: {
   const cloud = () => d.cloud?.() ?? null;
   const mode = (): OutMode => (d.mode?.() === "cloud" && cloud() ? "cloud" : "speech");
   const aec = () => d.aec?.() ?? true;
+  /** Talk-over is in force: echo cancellation off, and the flag on. */
+  const duplex = () => !aec() && (d.talkOver?.() ?? false);
   let log = d.log ?? (() => {});
   let mic = false;
   let voicedMem = false;
@@ -442,6 +465,9 @@ export function createVoice(d: {
   let level = 1;
   /** Ducked: the barge-in timer, and the speech probabilities heard since it was armed. */
   let duck: { timer: unknown; probs: number[] } | null = null;
+  /** The user's utterance under way (VAD start to end), and when it began (talk-over's window). */
+  let talking = false;
+  let talkFrom = 0;
   const said: Said[] = [];
   const subs = new Set<(s: VoiceState) => void>();
   /** Told each time a sentence starts playing (latency.ts). */
@@ -456,7 +482,7 @@ export function createVoice(d: {
     voiced: voiced.get(),
     touch: touch(),
     speaking,
-    hold: speaking && !aec(),
+    hold: speaking && !aec() && !duplex(),
     ducked: !!duck,
     queued: queue.length,
     paused: pauses.size > 0,
@@ -878,6 +904,8 @@ export function createVoice(d: {
     /** The output in use: "speech" or "cloud". */
     mode,
     aec,
+    /** Talk-over is in force (echo cancellation off, flag `voice.talk-over` on): no hold. */
+    duplex,
     /** Whether a reply arriving now is read: always with the mic on, else by the toggle and (mic used here, or focus). */
     shouldSpeak: () => mic || focusRule(),
     /** The speaker toggle as it applies now (forced on while the mic is on). */
@@ -970,6 +998,10 @@ export function createVoice(d: {
      * Otherwise as interrupt("speech").
      */
     userSpeech() {
+      talking = true;
+      talkFrom = now();
+      // Talk-over: the VAD fires on her own voice too; the transcript decides (duplexHeard).
+      if (duplex()) return;
       if (current && aec()) {
         if (!duck) {
           duck = { timer: undefined, probs: [] };
@@ -1011,6 +1043,7 @@ export function createVoice(d: {
     },
     /** The user's utterance ended (or misfired): unduck, or read on after a short quiet. */
     userIdle() {
+      talking = false;
       if (duck) {
         unduck(DUCK_RELEASE_MS);
         emit();
@@ -1039,6 +1072,47 @@ export function createVoice(d: {
       const recent = said.filter((r) => (r.end ?? t) >= from - ECHO_WINDOW_MS).map((r) => r.text);
       const during = said.some((r) => r.start <= t && (r.end ?? t) >= from);
       return { ...echoScore(transcript, recent), during };
+    },
+    /**
+     * Talk-over (`duplex()`): judge a transcript heard from `from` to `to`
+     * (page clock; a partial too) by time AND text. The sentences Li was
+     * playing then (overlap, TALK_OVER_SLACK_MS each side) are the only
+     * candidates: when at least TALK_OVER_ECHO of its words are inside them,
+     * it is her echo (`drop`). The same words at another time are his. Not
+     * her echo, heard while she is reading: his speech, so the reading pauses
+     * as a barge-in does (`paused`), and goes on by the usual rules (his line
+     * sent, or IDLE_RESUME_MS after his speech ends).
+     */
+    duplexHeard(transcript: string, from: number, to: number): EchoCheck & { paused: boolean } {
+      const t = now();
+      const playing = said.filter(
+        (r) => r.start <= to + TALK_OVER_SLACK_MS && (r.end ?? t) + TALK_OVER_SLACK_MS >= from,
+      );
+      const during = playing.length > 0;
+      const words = normalizeEcho(transcript) !== "";
+      const score = during && words ? echoContained(transcript, playing.map((r) => r.text)) : 0;
+      const drop = during && words && score >= TALK_OVER_ECHO;
+      const out = {
+        score: Math.round(score * 1000) / 1000,
+        against: drop ? playing.map((r) => r.text).join(" ") : null,
+        drop,
+        during,
+        paused: false,
+      };
+      if (drop || !words || !duplex() || !current || !during) return out;
+      log({ ev: "voice-talk-over", score: out.score, chars: transcript.length });
+      api.interrupt("speech");
+      // His speech already ended (a final arrives after it): read on after the quiet, as userIdle would.
+      if (!talking) {
+        clearTimer(idle);
+        idle = setTimer(resume, IDLE_RESUME_MS);
+      }
+      return { ...out, paused: true };
+    },
+    /** Talk-over: the interim text of his utterance under way (mic-session `interim`). */
+    heardInterim(text: string) {
+      if (!duplex() || !current || !talking) return;
+      api.duplexHeard(text, talkFrom, now());
     },
     /**
      * A transcript was the agent's own echo (echoCheck): a barge-in it caused
@@ -1274,6 +1348,8 @@ export function voice(): Voice {
     owner: audioOwner({ id: audioOwnerId("li"), prio: AUDIO_PRIO.li }),
     // The open track's mode (aec.ts), so hold and barge-in match what the mic does.
     aec: micAec,
+    // Flag voice.talk-over: with echo cancellation off, no hold (duplexHeard judges instead).
+    talkOver,
     rate: () => speechRate(),
     report: (message) => reportPageError({ kind: "media", message }),
     hasDeviceVoice: (name) => {

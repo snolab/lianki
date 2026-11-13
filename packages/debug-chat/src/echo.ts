@@ -85,3 +85,28 @@ export function echoScore(transcript: string, spoken: readonly string[]): EchoSc
   }
   return { ...best, score: Math.round(best.score * 1000) / 1000, drop: best.score >= ECHO_SIMILARITY };
 }
+
+/**
+ * How much of `transcript` is inside `spoken` (talk-over, voice.ts
+ * `duplexHeard`): the share of the transcript's n-grams (bigrams for CJK,
+ * trigrams otherwise, after normalizeEcho) found in the spoken texts, in
+ * [0, 1]. Containment, not Dice: a partial or a cut-off final is a fragment
+ * of the sentence it echoes, and Dice would score a fragment low against the
+ * whole. A transcript shorter than an n-gram scores 1 when it is a substring.
+ */
+export function echoContained(transcript: string, spoken: readonly string[]): number {
+  const t = normalizeEcho(transcript);
+  const s = spoken.map(normalizeEcho).join("");
+  if (!t || !s) return 0;
+  const n = CJK.test(t) ? 2 : 3;
+  if ([...t].length < n) return s.includes(t) ? 1 : 0;
+  const tg = grams(t, n);
+  const sg = grams(s, n);
+  let all = 0;
+  let both = 0;
+  for (const [g, c] of tg) {
+    all += c;
+    both += Math.min(c, sg.get(g) ?? 0);
+  }
+  return all ? both / all : 0;
+}

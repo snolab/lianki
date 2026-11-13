@@ -509,8 +509,11 @@ function session(): MicSession {
       if (!active) suspendIdle();
     },
     onProb: (p) => v.userFrame(p),
+    // Talk-over: his words over Li's reading pause it before his utterance ends (voice.ts).
+    interim: (t) => v.heardInterim(t),
     // Only with lk:voice-aec off: else the mic stays open and the user can barge in.
-    // Held while the chat reads (voice.ts) or the page plays word audio (page-audio.ts).
+    // Held while the chat reads (voice.ts; never with flag voice.talk-over) or the page
+    // plays word audio (page-audio.ts).
     subscribeHold: (f) => {
       const page = pageAudio();
       // Push to talk recording holds it too: the hold is one line, not the VAD's.
@@ -594,13 +597,15 @@ function session(): MicSession {
           }
         } else out = await postStt(wav, fetch, "audio/wav", sttHint());
         onSignals?.(out.signals);
+        // From `at` (taken before the transcription await): when the speech began.
+        const spokeAt = at - durationMs;
         // The text guard: the agent's own words that leaked past the AEC are dropped.
-        const chatEcho = v.echoCheck(out.text, durationMs);
+        // Talk-over (AEC off, flag voice.talk-over): by time and text together, and
+        // what is not her echo, heard while she reads, pauses the reading (voice.ts duplexHeard).
+        const chatEcho = v.duplex() ? v.duplexHeard(out.text, spokeAt, at) : v.echoCheck(out.text, durationMs);
         // The page reads aloud too (/read): what it said is the same kind of echo.
         // But first the page may claim the line as the user's own (/read's shadowing).
         const page = pageAudio();
-        // From `at` (taken before the transcription await): when the speech began.
-        const spokeAt = at - durationMs;
         if (!partial && !chatEcho.drop && page.heard(out.text, spokeAt)) {
           v.log({ ev: "voice-utt-page", durationMs, chars: out.text.length });
           return "";

@@ -599,7 +599,11 @@ fakes in `unit/voice-session.test.ts`):
   after the last one ends: the chat's read-aloud (`voice.ts` `hold`) and
   /words' word audio, clips and browser voices alike (`page-audio.ts`,
   signalled by `useSpeech` in `WordsClient.tsx`; a sound whose end never
-  comes lets go after 30 s). Plus the text echo guard. It is the A/B against
+  comes lets go after 30 s). Plus the text echo guard. With flag
+  `voice.talk-over` the chat's read-aloud no longer holds: he can talk over
+  her, and echo is told from his words by time and text together
+  ([voice-mode.md](voice-mode.md), "Talking over Li with echo cancellation
+  off"). It is the A/B against
   Chrome for Android, where an echo-cancelled mic moves playback to the
   call stream (a thinner speaker). A switch flipped while the mic is on
   reopens it at once (`mic-session.ts` `reopen`, a new track with the new

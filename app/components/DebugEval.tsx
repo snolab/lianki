@@ -43,6 +43,7 @@ import {
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
+import { setTalkOver } from "@lianki/debug-chat/aec";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
@@ -163,8 +164,11 @@ export function DebugEval({
   liHub = false,
   lexicon,
   cloudVoices,
+  talkOver = false,
   box = null,
 }: {
+  /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
+  talkOver?: boolean;
   /**
    * Provider voices (google:, azure:): on with flag voice.cloud-voices and the
    * dev grant, and the language → voice map (config voice.langVoices). None: off.
@@ -197,6 +201,7 @@ export function DebugEval({
   // Idempotent and cheap: the live table is in place before the first reply is read.
   if (lexicon !== undefined) setLexicon(lexicon);
   setCloudVoices(cloudVoices);
+  setTalkOver(talkOver);
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
   const devRef = useRef(dev);
