@@ -855,6 +855,8 @@ export type ChatStrings = {
   vpMacRecKept: string;
   /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: Lianki's speech server confirmed the line was spoken in his own voice. Short phrase, no full stop. */
   vpVerified: string;
+  /** Tooltip and screen-reader name of the small coloured avatar on a voice-typed chat line that was spoken by someone other than the account's owner (a family member or guest near the mic; each such person gets their own stable colour and shape). It names that person without knowing who they are. Short noun phrase, no full stop: "Another voice". */
+  vpOtherVoice: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
   notReadHidden: string;
   // The input's + menu (attach.tsx).
@@ -1082,6 +1084,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpMacRecDeleted: "Recordings deleted from the speech servers.",
   vpMacRecKept: "The recordings stay on the speech servers.",
   vpVerified: "Your voice, verified",
+  vpOtherVoice: "Another voice",
   vpFilterOn: "Only my voice: on. Speech that does not match is dropped on Lianki's speech server.",
   vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
   vpFilterWaiting: "Only my voice: needs a voiceprint on this device and the check on Lianki's speech server. Until then all speech is transcribed as usual.",
@@ -1379,6 +1382,13 @@ export type SpeakerTag = {
   speechS?: number;
   snrDb?: number;
   /**
+   * Which voice (docs/voice-mode.md, "Speaker avatars"): "me" on his own,
+   * "s1", "s2"… on another voice heard lately (the same voice, the same id,
+   * scripts/local-stt/voiceprint.py Voices). Only when a voiceprint is
+   * enrolled and the decision is not unknown; the line's avatar reads it.
+   */
+  voice?: string;
+  /**
    * The texts the Mac signed, in order: set only by the hub after it verified
    * the proofs (lib/speaker-proof.ts), never taken from a page (cleanSpeaker
    * drops it). Any decision based on a voice line must use these words, not
@@ -1388,6 +1398,8 @@ export type SpeakerTag = {
 };
 const SPEAKER_DECISIONS: readonly SpeakerDecision[] = ["me", "other", "unknown"];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,31}$/;
+/** A voice id: "me", or "s1".."s999". */
+export const VOICE_ID = /^(me|s[1-9]\d{0,2})$/;
 
 /** A SpeakerTag from the wire, or undefined: known keys only, each checked. */
 export function cleanSpeaker(raw: unknown): SpeakerTag | undefined {
@@ -1408,23 +1420,29 @@ export function cleanSpeaker(raw: unknown): SpeakerTag | undefined {
     const v = r[k];
     if (typeof v === "string" && SLUG.test(v)) out[k] = v;
   }
+  if (typeof r.voice === "string" && VOICE_ID.test(r.voice)) out.voice = r.voice;
   return out;
 }
 
 /**
  * One tag for a line made of several utterances: the weakest decision wins
  * (any "other" → other; else any "unknown" → unknown; all "me" → me), with
- * the lowest score. Undefined when no utterance carried a tag.
+ * the lowest score. The voice stays only when every tagged utterance names
+ * the same one (two voices in one line: none, so no one's avatar is wrong).
+ * Undefined when no utterance carried a tag.
  */
 export function combineSpeaker(tags: readonly (SpeakerTag | undefined)[]): SpeakerTag | undefined {
   const ts = tags.filter((t): t is SpeakerTag => !!t);
   if (!ts.length) return undefined;
   const rank: Record<SpeakerDecision, number> = { other: 0, unknown: 1, me: 2 };
-  return ts.reduce((a, b) => {
+  const { voice: _v, ...out } = ts.reduce((a, b) => {
     const w = rank[b.decision] < rank[a.decision] ? b : a;
     const scores = [a.score, b.score].filter((s): s is number => s !== undefined);
     return scores.length ? { ...w, score: Math.min(...scores) } : w;
   });
+  const voices = new Set(ts.map((t) => t.voice));
+  const [voice] = voices;
+  return voices.size === 1 && voice ? { ...out, voice } : out;
 }
 
 export function cleanTiming(raw: unknown): VoiceTiming | undefined {

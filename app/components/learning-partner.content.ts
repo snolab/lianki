@@ -2153,6 +2153,24 @@ const learningPartnerContent = {
       mr: "तुमचा आवाज, पडताळलेला",
       ko: "내 목소리로 확인됨",
     }),
+    vpOtherVoice: t({
+      en: "Another voice",
+      zh: "另一个声音",
+      hi: "कोई और आवाज़",
+      es: "Otra voz",
+      fr: "Une autre voix",
+      ar: "صوت آخر",
+      bn: "অন্য একটি কণ্ঠ",
+      pt: "Outra voz",
+      ru: "Другой голос",
+      ur: "ایک اور آواز",
+      id: "Suara lain",
+      de: "Eine andere Stimme",
+      ja: "別の声",
+      sw: "Sauti nyingine",
+      mr: "दुसरा आवाज",
+      ko: "다른 목소리",
+    }),
     notReadHidden: t({
       en: "· not read aloud: the page was in the background",
       zh: "· 未朗读：页面当时在后台",
@@ -3703,6 +3721,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Note in the voiceprint panel after the user chose to keep the enrolment recordings: they stay on Lianki's speech servers. One short sentence; never name a person's computer.",
   vpVerified:
     "Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: Lianki's speech server confirmed the line was spoken in his own voice. Short phrase, no full stop.",
+  vpOtherVoice:
+    "Tooltip and screen-reader name of the small coloured avatar on a voice-typed chat line that was spoken by someone other than the account's owner (a family member or guest near the mic; each such person gets their own stable colour and shape). It names that person without knowing who they are. Short noun phrase, no full stop: 'Another voice'.",
   notReadHidden:
     "Small grey note right after an assistant's message in the chat log: this message was shown but not spoken aloud, because the page was hidden (another tab or app in front, or the screen locked) when it arrived; browsers do not let a hidden page speak. Starts with a middle dot like the 'waiting' note; a short status phrase, not a sentence or an error.",
   attachOpen:

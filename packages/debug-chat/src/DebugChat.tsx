@@ -265,6 +265,7 @@ import {
   LineTag,
   agentAvatar as tokenPicture,
   laneAvatar,
+  voiceAvatar,
   withTokenName,
 } from "./LaneMark";
 import { type ParticipantChange, PresenceStack } from "./PresenceStack";
@@ -1002,6 +1003,9 @@ export function DebugChat({
     laneAvatar,
     tokenAvatar: tokenPicture,
     participant: (tok: string) => byTok.get(tok),
+    // Another voice on his voice line (speaker-avatar.ts): its own disc, not his picture.
+    voiceAvatar,
+    otherVoice: t.vpOtherVoice,
   };
   /**
    * Who the owner called (addressed.ts): each owner line's addressed lanes

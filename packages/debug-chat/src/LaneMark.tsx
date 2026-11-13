@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { flashProps } from "./addressed";
 import { LANES, type LaneId, type LaneMark, isLaneId } from "./voices";
 import type { ChatMessage } from "./wire";
+import { speakerAvatar } from "./speaker-avatar";
 import { AVATAR_PATH, autoMark, isAvatarRef, sanitizeAvatarSvg, svgDataUrl } from "./svg-avatar";
 
 /** A mark as an avatar element (fills the Avatar's round box). */
@@ -49,6 +50,11 @@ export function laneAvatar(lane: LaneId) {
 /** The generated mark of an agent with no picture of its own. */
 export function autoAvatar(name: string) {
   return markSvg(autoMark(name), { "data-testid": "debug-chat-auto-mark", "data-name": name });
+}
+
+/** Another voice's avatar on an owner's voice line (speaker-avatar.ts): the same id, the same disc. */
+export function voiceAvatar(voice: string) {
+  return markSvg(speakerAvatar(voice), { "data-testid": "debug-chat-voice-mark", "data-voice": voice });
 }
 
 /** Fetched avatars, by reference: the sanitized SVG's data URL, or null (missing or refused). */
