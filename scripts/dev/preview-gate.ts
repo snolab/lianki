@@ -690,6 +690,11 @@ export function createGate(d: GateDeps) {
     return respond(303, "", {
       location: next,
       "set-cookie": `${SESSION_COOKIE}=${cookie}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.max(1, Math.floor((exp - now()) / 1000))}`,
+      // Entering starts clean: a browser that kept hours-old chunks or a redirect
+      // (Cloudflare's 4 h browser TTL, before no-store) or an old service worker
+      // looped on the way in without ever asking us again (2026-11-14, Windows).
+      // This POST is the one request such a browser still sends, so it carries the reset.
+      "clear-site-data": '"cache", "storage"',
     });
   }
 

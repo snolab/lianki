@@ -183,6 +183,8 @@ describe("the browser handshake", () => {
     if (r.kind !== "respond") return;
     expect(r.headers["cache-control"]).toContain("no-store");
     expect(r.headers["referrer-policy"]).toBe("no-referrer");
+    // Entering starts clean: no stale chunk, redirect or service worker survives it.
+    expect(r.headers["clear-site-data"]).toBe('"cache", "storage"');
     expect(r.body).toContain("history.replaceState");
     expect(r.body).toContain("location.hash");
     expect(handshakeHtml()).toContain('name="referrer" content="no-referrer"');
@@ -204,6 +206,8 @@ describe("the browser handshake", () => {
     expect(r.headers.location).toBe("/words?list=all");
     expect(r.headers["cache-control"]).toContain("no-store");
     expect(r.headers["referrer-policy"]).toBe("no-referrer");
+    // Entering starts clean: no stale chunk, redirect or service worker survives it.
+    expect(r.headers["clear-site-data"]).toBe('"cache", "storage"');
     const c = String(r.headers["set-cookie"]);
     expect(c).toStartWith(`${SESSION_COOKIE}=`);
     for (const flag of ["HttpOnly", "Secure", "SameSite=Lax", "Path=/"]) expect(c).toContain(flag);
