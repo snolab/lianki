@@ -15,6 +15,9 @@
 import { CONFIG } from "@/lib/config";
 import { cfRequestProps } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
+import { flagOn } from "@/lib/flags-store";
+import type { D1WithBatch } from "@/lib/payments/credits-store";
+import { recordLoginStreak } from "@/lib/payments/login-streak-store";
 import { LEVELS, type Level, type LevelId, type LevelTier } from "@/lib/levels";
 
 /**
@@ -70,8 +73,8 @@ export async function recordStudy(
   qualifying: number,
   now: Date,
   tz: string | null | undefined,
-): Promise<void> {
-  if (!email || !(qualifying > 0)) return;
+): Promise<StudyDayWrite | null> {
+  if (!email || !(qualifying > 0)) return null;
   const key = email.toLowerCase();
   // The home zone — the one the first study day was cut in — cuts every later
   // day too, so hopping zones (a VPN, a trip) cannot split one real day into
@@ -88,7 +91,43 @@ export async function recordStudy(
     )
     .bind(key, d.day, d.tz, now.toISOString(), Math.floor(qualifying))
     .run();
+  // Whether this write opened the day: the row's first_at is ours. (Two
+  // concurrent first writes see one of them as first; the other skips — the
+  // streak grant is idempotent anyway.)
+  const row = await d1
+    .prepare("SELECT first_at FROM study_day WHERE email = ? AND day = ?")
+    .bind(key, d.day)
+    .first<{ first_at: string }>();
+  return { day: d.day, tz: d.tz, first: row?.first_at === now.toISOString() };
 }
+
+/** What `recordStudy` wrote: the local day, its zone, and whether this write opened the day. */
+export type StudyDayWrite = { day: string; tz: string; first: boolean };
+
+/**
+ * What follows the first qualifying action of a day (`recordStudySafe`):
+ * the login-streak bonus (lib/payments/login-streak-store.ts; docs/payments.md,
+ * "Login-streak bonus"). Injected in tests; the default reads the flag
+ * `credits.login-streak` and grants over the same D1.
+ */
+export interface StudyDayHooks {
+  /** Whether the streak bonus is on (fail closed, like every flag). */
+  streakOn: () => Promise<boolean>;
+  /** Count `day` for the account behind `email` and pay its step. */
+  streak: (d1: D1Like, email: string, day: string, tz: string, now: Date) => Promise<unknown>;
+}
+
+const defaultHooks: StudyDayHooks = {
+  streakOn: () => flagOn("credits.login-streak"),
+  streak: async (d1, email, day, tz, now) => {
+    const user = await d1
+      .prepare("SELECT id FROM user WHERE lower(email) = lower(?)")
+      .bind(email)
+      .first<{ id: string }>();
+    if (!user) return;
+    await recordLoginStreak(d1 as D1WithBatch, user.id, day, tz, now);
+  },
+};
 
 /**
  * `recordStudy` for a request handler: never fails the review it follows
@@ -99,12 +138,22 @@ export async function recordStudySafe(
   email: string | null | undefined,
   qualifying: number,
   now: Date,
+  hooks: StudyDayHooks = defaultHooks,
 ): Promise<void> {
   if (!email || !(qualifying > 0)) return;
+  let wrote: StudyDayWrite | null = null;
   try {
-    await recordStudy(d1, email, qualifying, now, requestTimeZone());
+    wrote = await recordStudy(d1, email, qualifying, now, requestTimeZone());
   } catch (err) {
     console.error("study-days: record failed", err);
+  }
+  // The day's first real learning action counts for the login streak — only
+  // then, so later reviews of the day cost nothing. Never fails the review.
+  if (!wrote?.first) return;
+  try {
+    if (await hooks.streakOn()) await hooks.streak(d1, email, wrote.day, wrote.tz, now);
+  } catch (err) {
+    console.error("login-streak: grant failed", err);
   }
 }
 
