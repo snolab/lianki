@@ -4784,7 +4784,17 @@ export function DebugChat({
           the log starts under it. Escape, Back, the menu and a drag up
           leave too. Entering without a drag: the menu's Full screen row. */}
       {open && full && (
-        <div className="pointer-events-none flex shrink-0 justify-end">
+        <div className="pointer-events-none flex shrink-0 items-center justify-between">
+          {/* The site's logo, top left (owner, 2026-11-14: "全屏的时候…左上角显示 logo"). */}
+          <img
+            src="/icon.svg?v=5"
+            alt=""
+            aria-hidden
+            width={28}
+            height={28}
+            data-testid="debug-chat-fullscreen-logo"
+            className="ms-1 size-7 select-none opacity-90"
+          />
           <button
             type="button"
             data-testid="debug-chat-fullscreen-exit"
