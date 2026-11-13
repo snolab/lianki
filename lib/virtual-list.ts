@@ -29,7 +29,7 @@ export const PREFETCH_ROWS = 5;
  * for, so it arrives before the reader gets there, even after a long fling (owner, 2026-11-14: "滚到下面
  * 再加载的时候会卡一下").
  */
-export const PREFETCH_SCREENS = 5;
+export const PREFETCH_SCREENS = 2;
 
 /**
  * Empty space kept below the last row while more may come: the scroll never
@@ -39,7 +39,7 @@ export const PREFETCH_SCREENS = 5;
  * RESERVE_SCREENS screens. Once the list is complete it goes, and the page
  * settles back.
  */
-export const RESERVE_SCREENS = 50;
+export const RESERVE_SCREENS = 5;
 
 /** The empty space (px) to keep below the rows: the rest of the list while more may load, none at the end. */
 export function reserveBelow(s: {

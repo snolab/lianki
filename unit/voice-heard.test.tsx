@@ -46,7 +46,7 @@ describe("voice-heard: neko-cycle resolution", () => {
     );
     expect(turns).toEqual([...NEKO_ROTATION, NEKO_ROTATION[0]]);
     // No rotation by default: one baby voice (owner, 2026-11-14).
-    expect(NEKO_ROTATION).toEqual(["baby"]);
+    expect(NEKO_ROTATION).toEqual(["neko-moe"]);
     expect(pickLocalVoice("neko-cycle", 3, null).cycle).toBe(true);
     expect(pickLocalVoice("neko-cycle", 3, "neko-moe")).toEqual({ name: "neko-moe", cycle: true });
     // A name that is not a local engine is no pin.
