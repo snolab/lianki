@@ -425,7 +425,6 @@ export default function DataClient({
         pushResult={pushResult}
         pushLabel={t.pushLabel.value}
         onPush={pushLocalToCloud}
-        scriptHint={t.scriptHint.value}
         dev={dev}
       />
 
