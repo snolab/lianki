@@ -474,6 +474,7 @@ export const CLOUD_PRINT_KEYS = [
   "speechS",
   "centroid",
   "embeddings",
+  "sources",
 ] as const;
 /** Exactly the feature keys of a print, whatever else the Mac or the account sent. */
 export function featuresOnly(p: Record<string, unknown>): Record<string, unknown> {
@@ -519,7 +520,7 @@ export type EnrolDeps = {
    * passkey with Face ID / Touch ID (webauthn.ts). The Mac takes no op without one.
    */
   ticket(
-    op: "status" | "enrol" | "delete" | "delete-audio" | "export" | "restore",
+    op: "status" | "enrol" | "delete" | "delete-audio" | "export" | "restore" | "progressive",
     device: string,
     o?: { keepAudio?: boolean },
   ): Promise<string>;

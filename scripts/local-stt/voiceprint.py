@@ -18,6 +18,9 @@ from docs/stt-ab.md, "Noise and speaker grid", #394).
   print (any device's when this one has none): cosine score, then a decision
   `me | other | unknown` from per-duration bands, with a noise gate (an SNR
   under 10 dB or under 1.5 s of speech is always `unknown`).
+- **Progressive learning** (off until he turns it on with his passkey):
+  a final that is confidently him, long and clean adds its embedding to this
+  device's print (`Verifier.learn`, the PROG_* constants); never its audio.
 
 The CLI (never touches ~/lianki-voice-clips; it only reads files you name):
 
@@ -26,6 +29,7 @@ The CLI (never touches ~/lianki-voice-clips; it only reads files you name):
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete --all            # the prints; recordings stay
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete-audio --all      # only the kept recordings
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py score a.wav b.wav [--device iphone]
+    ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py progressive [on|off]   # learning from his finals
 """
 from __future__ import annotations
 
@@ -69,6 +73,50 @@ ENROL_MAX = 20
 #: A sentence that scores under this against the others kept so far is not
 #: taken (someone else spoke, or the TV): checked once 3 are in.
 ENROL_CONSISTENT = 0.2
+
+
+def _env_num(name: str, default: float) -> float:
+    """A threshold from LIANKI_STT_<name> when set to a number, else its default."""
+    raw = os.environ.get(f"LIANKI_STT_{name}")
+    try:
+        return float(raw) if raw not in (None, "") else default
+    except ValueError:
+        return default
+
+
+#: Progressive voiceprint (docs/local-stt.md, "Progressive voiceprint"; owner,
+#: 2026-11-14 ~04:00 JST: "no need to actively enrol; if a sentence is clean,
+#: just take it"). A final that is confidently him, long and clean adds its
+#: embedding (never audio) to this device's print. Off until he turns it on
+#: with his passkey (`op: progressive`): the enrolment consent covers only the
+#: sentences he reads. Each value can be overridden by LIANKI_STT_<NAME>.
+#:
+#: The whole-final score must clear the "me" line of its band by this much
+#: (CAM++ >= 0.40 on 3 s and more): far over the 1 % false-accept point.
+PROG_MARGIN = _env_num("PROG_MARGIN", 0.10)
+#: Speech seconds at least: the long band, where the embedding is steadiest.
+PROG_MIN_SPEECH_S = _env_num("PROG_MIN_SPEECH_S", 3.0)
+#: Read SNR at least (a true SNR of about 20 dB; the gate is 10). Higher than
+#: the gate also because the Mac cannot know when Li is reading aloud: the
+#: mic stays open with echo cancellation, so her voice under his would lower
+#: the SNR (and the windows below would see it).
+PROG_MIN_SNR_DB = _env_num("PROG_MIN_SNR_DB", 20.0)
+#: A sample is also checked against THIS device's own print (or its pending
+#: samples, from 3 on): at least its band's "me" line plus this. Matters when
+#: another device's print vouched for it; a far sample there is an outlier.
+PROG_OUTLIER_MARGIN = _env_num("PROG_OUTLIER_MARGIN", 0.05)
+#: One sample per device per this many seconds at most: a long chat in one
+#: room cannot fill the print with that room.
+PROG_EVERY_S = _env_num("PROG_EVERY_S", 60.0)
+#: Samples a device's print holds at most (per model), enrolment included.
+#: Full: the oldest progressive sample goes (enrolment samples never do).
+PRINT_MAX = int(_env_num("PRINT_MAX", 200))
+#: Samples before a print grown from nothing is used: the enrolment minimum.
+PROG_CREATE_MIN = int(_env_num("PROG_CREATE_MIN", ENROL_MIN))
+#: The Mac's progressive switch (0600 in the store): {"on": bool, "updated"}.
+PROGRESSIVE = "progressive.json"
+#: Where a device's samples wait until there are PROG_CREATE_MIN of them.
+PENDING = "pending"
 
 
 @dataclass(frozen=True)
@@ -306,7 +354,29 @@ class Store:
                 print(f"voiceprint skipped: {name} {e}", file=sys.stderr, flush=True)
                 continue
             if p:
-                out.append({k: p[k] for k in ("device", "model", "n", "created", "updated", "audio", "self")})
+                src = p["sources"]
+                prog = [t for t, s in zip(p["added"], src) if s == "prog"]
+                out.append({**{k: p[k] for k in ("device", "model", "n", "created", "updated", "audio", "self")},
+                            "enrolN": src.count("enrol"), "progN": src.count("prog"),
+                            "lastAdded": iso(max(prog)) if prog and max(prog) > 0 else None})
+        return out
+
+    def pending(self) -> list[dict]:
+        """The progressive samples still waiting for PROG_CREATE_MIN (no print yet): counts only."""
+        out = []
+        if not self._ready(create=False):
+            return out
+        for name in sorted(os.listdir(self.root)):
+            m = re.match(rf"^([a-z0-9][a-z0-9-]{{0,31}})\.([a-z0-9]+)\.{PENDING}\.json$", name)
+            if not m or m.group(2) not in MODELS:
+                continue
+            try:
+                q = self.load_pending(m.group(1), m.group(2))
+            except StoreError:
+                continue
+            if q:
+                out.append({"device": q["device"], "model": q["model"], "n": len(q["embeddings"]),
+                            "need": PROG_CREATE_MIN, "lastAdded": iso(max(q["added"])) if q["added"] else None})
         return out
 
     def load(self, device: str, model: str) -> dict | None:
@@ -327,13 +397,93 @@ class Store:
         except (OSError, ValueError, KeyError, TypeError) as e:
             raise StoreError(f"unreadable ({type(e).__name__})") from e
         p["_centroid"] = c
+        # Where each sample came from, and when it was added (epoch s; 0 = unknown):
+        # a print from before progressive learning is all enrolment.
+        n = len(p.get("embeddings") or [])
+        src, added = p.get("sources"), p.get("added")
+        p["sources"] = src if isinstance(src, list) and len(src) == n and set(src) <= set(SOURCES) else ["enrol"] * n
+        p["added"] = (added if isinstance(added, list) and len(added) == n
+                      and all(isinstance(t, int) and not isinstance(t, bool) for t in added) else [0] * n)
         return p
+
+    # -- progressive learning (docs/local-stt.md, "Progressive voiceprint")
+    def _pending_file(self, device: str, model: str) -> str:
+        if not valid_device(device) or model not in MODELS:
+            raise StoreError("bad device or model")
+        return os.path.join(self.root, f"{device}.{model}.{PENDING}.json")
+
+    def load_pending(self, device: str, model: str) -> dict | None:
+        """This device's samples waiting to become a print: {device, model, embeddings, speechS, added}."""
+        if not self._ready(create=False):
+            return None
+        f = self._pending_file(device, model)
+        if not os.path.lexists(f):
+            return None
+        why = path_problem(f, want_dir=False)
+        if why:
+            raise StoreError(why)
+        try:
+            with open(f, encoding="utf-8") as fh:
+                q = json.load(fh)
+            E = [unit(np.array(e, dtype=np.float32)) for e in q["embeddings"]]
+            if (q.get("v") != FORMAT or q.get("device") != device or q.get("model") != model
+                    or len(q["speechS"]) != len(E) or len(q["added"]) != len(E)):
+                raise ValueError("wrong format")
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            raise StoreError(f"unreadable ({type(e).__name__})") from e
+        q["_embeddings"] = E
+        return q
+
+    def save_pending(self, device: str, model: str, embeddings: list[np.ndarray], speech_s: list[float],
+                     added: list[int]) -> None:
+        self._ready(create=True)
+        q = {"v": FORMAT, "device": device, "model": model,
+             "embeddings": [[round(float(v), 6) for v in unit(e)] for e in embeddings],
+             "speechS": [round(float(s), 2) for s in speech_s], "added": [int(t) for t in added]}
+        write_private(self._pending_file(device, model), json.dumps(q).encode())
+
+    def drop_pending(self, device: str, model: str) -> None:
+        f = self._pending_file(device, model)
+        if os.path.lexists(f):
+            os.unlink(f)
+
+    def progressive(self) -> dict:
+        """The Mac's progressive switch: {"on": bool, "updated": str|None}. Off unless he turned it on."""
+        off = {"on": False, "updated": None}
+        if not self._ready(create=False):
+            return off
+        f = os.path.join(self.root, PROGRESSIVE)
+        if not os.path.lexists(f):
+            return off
+        if path_problem(f, want_dir=False):
+            return off  # a file we cannot trust: off
+        try:
+            with open(f, encoding="utf-8") as fh:
+                s = json.load(fh)
+        except (OSError, ValueError):
+            return off
+        if not isinstance(s, dict) or s.get("on") is not True:
+            return {**off, "updated": s.get("updated") if isinstance(s, dict) else None}
+        return {"on": True, "updated": s.get("updated")}
+
+    def set_progressive(self, on: bool) -> dict:
+        self._ready(create=True)
+        s = {"on": bool(on), "updated": iso(time.time())}
+        write_private(os.path.join(self.root, PROGRESSIVE), json.dumps(s).encode())
+        return s
 
     # -- writing
     def save(self, device: str, model: str, embeddings: list[np.ndarray], speech_s: list[float],
-             audio: bool, created: str | None = None) -> dict:
+             audio: bool, created: str | None = None, sources: list[str] | None = None,
+             added: list[int] | None = None) -> dict:
+        """
+        `sources`: "enrol" (read at enrolment, or restored as such) or "prog" (taken by
+        progressive learning) per sample, default all "enrol"; `added`: when (epoch s), default now.
+        """
         self._ready(create=True)
         f = self._file(device, model)
+        if len(embeddings) > PRINT_MAX:
+            raise StoreError(f"at most {PRINT_MAX} samples")
         E = np.array([unit(e) for e in embeddings], dtype=np.float32)
         c = unit(E.mean(axis=0))
         # Leave-one-out: how each sentence scores against the others (the
@@ -358,8 +508,14 @@ class Store:
             "speechS": [round(float(s), 2) for s in speech_s],
             "centroid": [round(float(v), 6) for v in c],
             "embeddings": [[round(float(v), 6) for v in e] for e in E],
+            "sources": list(sources) if sources is not None else ["enrol"] * len(E),
+            "added": [int(t) for t in added] if added is not None else [int(time.time())] * len(E),
         }
+        if len(p["sources"]) != len(E) or len(p["added"]) != len(E) or not set(p["sources"]) <= set(SOURCES):
+            raise StoreError("bad sources")
         write_private(f, json.dumps(p).encode())
+        # A print now: samples still waiting for one have no use any more.
+        self.drop_pending(device, model)
         p["_centroid"] = c
         return p
 
@@ -433,8 +589,9 @@ class Store:
             except StoreError:
                 pass
             E = [np.array(e, dtype=np.float32) for e in q["embeddings"]]
+            # Where each sample came from travels with the features; when it was added does not.
             saved = self.save(q["device"], q["model"], E, q["speechS"], bool((old or {}).get("audio")),
-                              created=q.get("created"))
+                              created=q.get("created"), sources=q.get("sources"), added=[0] * len(E))
         return {k: saved[k] for k in ("device", "model", "n")}
 
     # -- the lock
@@ -497,7 +654,9 @@ class Store:
         bump the generation so a pending enrolment cannot save over the delete.
         The kept enrolment recordings stay unless `audio` is True: deleting the
         print never deletes them implicitly (owner, 2026-11-11; the panel asks
-        separately, `delete_audio`). Count of files.
+        separately, `delete_audio`). Count of files. Progressive learning is turned
+        off too (its pending samples go with the print): left on, another device's
+        print would grow a deleted one back. He turns it on again with his passkey.
         """
         if device is not None and not valid_device(device):
             raise StoreError("bad device")
@@ -505,6 +664,8 @@ class Store:
         with self.lock():
             n = self._delete(device, prints=True, audio=audio)
             self.bump(device)
+            if self.progressive()["on"]:
+                self.set_progressive(False)
         return n
 
     def delete_audio(self, device: str | None) -> int:
@@ -535,7 +696,7 @@ class Store:
         n = 0
         for name in sorted(os.listdir(self.root)):
             full = os.path.join(self.root, name)
-            m = re.match(r"^([a-z0-9][a-z0-9-]{0,31})\.(?:[a-z0-9]+\.json|audio)$", name)
+            m = re.match(r"^([a-z0-9][a-z0-9-]{0,31})\.(?:[a-z0-9]+(?:\.pending)?\.json|audio)$", name)
             if not m or (device is not None and m.group(1) != device):
                 continue
             if name.endswith(".audio"):
@@ -572,7 +733,10 @@ RECORDINGS_MAX = 40
 RECORDING_MAX_BYTES = 2 * 1024 * 1024
 
 #: What leaves the Mac for the owner's account (lib/voiceprint-cloud.ts PRINT_KEYS): features only.
-EXPORT_KEYS = ("device", "model", "dim", "n", "created", "updated", "self", "speechS", "centroid", "embeddings")
+EXPORT_KEYS = ("device", "model", "dim", "n", "created", "updated", "self", "speechS", "centroid", "embeddings",
+               "sources")
+#: Where a print's sample came from: read at enrolment, or taken by progressive learning.
+SOURCES = ("enrol", "prog")
 _REQUIRED = ("device", "model", "dim", "n", "speechS", "centroid", "embeddings")
 
 
@@ -593,7 +757,7 @@ def check_export(p: object) -> dict:
     dim, n = p["dim"], p["n"]
     if not isinstance(dim, int) or isinstance(dim, bool) or not 1 <= dim <= 1024:
         raise StoreError("bad dim")
-    if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= ENROL_MAX:
+    if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= PRINT_MAX:
         raise StoreError("bad n")
 
     def num(x, lim) -> bool:
@@ -610,10 +774,17 @@ def check_export(p: object) -> dict:
     S = p["speechS"]
     if not isinstance(S, list) or len(S) != n or not all(num(x, 600) and x >= 0 for x in S):
         raise StoreError("bad speechS")
+    src = p.get("sources")
+    if src is not None and not (isinstance(src, list) and len(src) == n and all(x in SOURCES for x in src)):
+        raise StoreError("bad sources")
     for k in ("created", "updated"):
         if p.get(k) is not None and not (isinstance(p[k], str) and len(p[k]) <= 40):
             raise StoreError(f"bad {k}")
     return p
+
+
+def iso(t: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(t))
 
 
 def write_private(path: str, data: bytes) -> None:
@@ -856,6 +1027,123 @@ class Verifier:
             out["provisional"] = True
         return out
 
+    # -- progressive learning (docs/local-stt.md, "Progressive voiceprint")
+    def learn_gate(self, spk: dict | None, device: str | None) -> str | None:
+        """
+        Why this verified final may not join the print, or None: the checks that need
+        no embedding, read from verify's result. Only an unambiguous "me": no reason,
+        a model with measured bands, long, clean, every window his, well over the line.
+        """
+        if not device or not valid_device(device):
+            return "no-device"
+        if not spk or spk.get("decision") != "me" or spk.get("reason") or spk.get("score") is None:
+            return "not-me"
+        m = MODELS.get(spk.get("model") or "")
+        if m is None or m.provisional:
+            return "provisional"
+        if spk.get("speechS", 0) < PROG_MIN_SPEECH_S:
+            return "short"
+        if spk.get("snrDb", -99) < PROG_MIN_SNR_DB:
+            return "noise"
+        # Every window decided alone must be him too: none undecided-low, none someone else.
+        wins = spk.get("windows") or []
+        line = band_for(m, WINDOW_S)
+        if not wins or line is None or any(w < line.accept for w in wins):
+            return "mixed"
+        b = band_for(m, spk["speechS"])
+        if b is None or spk["score"] < b.accept + PROG_MARGIN:
+            return "margin"
+        return None
+
+    def _last_added(self, device: str) -> int:
+        last = 0
+        for m in self.order:
+            p = self.store.load(device, m)
+            if p:
+                last = max([last, *[t for t, s in zip(p["added"], p["sources"]) if s == "prog"]])
+            q = self.store.load_pending(device, m)
+            if q and q["added"]:
+                last = max(last, *q["added"])
+        return last
+
+    def learn(self, audio: np.ndarray, device: str | None, spk: dict | None, now: float | None = None) -> dict:
+        """
+        Offer one verified final to this device's print: {"ok": True, "n", "active"} when its
+        embedding was added (to the print, or to the pending samples until PROG_CREATE_MIN),
+        else {"ok": False, "reason"}. Only embeddings are kept; the audio goes with the call.
+        """
+        now = time.time() if now is None else now
+        if not self.store.progressive()["on"]:
+            return {"ok": False, "reason": "off"}
+        why = self.learn_gate(spk, device)
+        if why:
+            return {"ok": False, "reason": why}
+        speech_s = float(spk["speechS"])
+        with self.store.lock():
+            # Under the lock: a delete since (it turns learning off) wins.
+            if not self.store.progressive()["on"]:
+                return {"ok": False, "reason": "off"}
+            if now - self._last_added(device) < PROG_EVERY_S:
+                return {"ok": False, "reason": "rate"}
+            embs: dict[str, np.ndarray] = {}
+            for m in self.order:
+                e = self.embed(m, audio)
+                if e is None:
+                    return {"ok": False, "reason": "short"}
+                # Against this device's own samples: far from them, it is not taken, even
+                # when another device's print vouched for it.
+                p = self.store.load(device, m)
+                ref = p["_centroid"] if p else None
+                if ref is None:
+                    q = self.store.load_pending(device, m)
+                    if q and len(q["_embeddings"]) >= 3:
+                        ref = unit(np.mean(q["_embeddings"], axis=0))
+                b = band_for(MODELS[m], speech_s)
+                if ref is not None and (b is None or float(e @ ref) < b.accept + PROG_OUTLIER_MARGIN):
+                    return {"ok": False, "reason": "outlier", "model": m, "score": round(float(e @ ref), 3)}
+                embs[m] = e
+            res: dict = {"ok": True}
+            for m, e in embs.items():
+                r = self._add(device, m, e, speech_s, int(now))
+                if r.pop("full", False):
+                    res = {"ok": False, "reason": "full"}
+                    break
+                res.update(r)
+        self.refresh()
+        return res
+
+    def _add(self, device: str, model: str, e: np.ndarray, speech_s: float, at: int) -> dict:
+        """One sample into the print (bounded: the oldest progressive one goes when full), or pending."""
+        p = self.store.load(device, model)
+        if p is None:
+            q = self.store.load_pending(device, model)
+            E = [*(q["_embeddings"] if q else []), e]
+            S = [*(q["speechS"] if q else []), speech_s]
+            A = [*(q["added"] if q else []), at]
+            if len(E) < PROG_CREATE_MIN:
+                self.store.save_pending(device, model, E, S, A)
+                return {"n": len(E), "active": False}
+            self.store.save(device, model, E, S, audio=False, sources=["prog"] * len(E), added=A)
+            return {"n": len(E), "active": True, "created": True}
+        E = [np.array(x, dtype=np.float32) for x in p["embeddings"]]
+        S, src, A = list(p["speechS"]), list(p["sources"]), list(p["added"])
+        evicted = 0
+        while len(E) >= PRINT_MAX:
+            # The oldest progressive sample (enrolment samples are the anchor and stay).
+            prog = [i for i, s in enumerate(src) if s == "prog"]
+            if not prog:
+                return {"n": len(E), "active": True, "full": True}
+            i = min(prog, key=lambda k: A[k])
+            for lst in (E, S, src, A):
+                del lst[i]
+            evicted += 1
+        E.append(e)
+        S.append(speech_s)
+        src.append("prog")
+        A.append(at)
+        self.store.save(device, model, E, S, bool(p.get("audio")), created=p.get("created"), sources=src, added=A)
+        return {"n": len(E), "active": True, **({"evicted": evicted} if evicted else {})}
+
 
 class Enrolment:
     """
@@ -1036,6 +1324,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--device", default=None)
     s.add_argument("--models", default="campp")
     sub.add_parser("attest-key", help="print the public key the hub needs (STT_SPEAKER_PUB); makes the key if missing")
+    pr = sub.add_parser("progressive", help="progressive learning on this Mac: on, off, or show it")
+    pr.add_argument("state", nargs="?", choices=["on", "off"])
     a = ap.parse_args(argv)
     store = Store(a.store)
     try:
@@ -1044,7 +1334,8 @@ def main(argv: list[str] | None = None) -> int:
             if not ps:
                 print(f"no voiceprint in {a.store}")
             for p in ps:
-                print(f"{p['device']}\t{p['model']}\t{p['n']} sentences\tupdated {p['updated']}"
+                print(f"{p['device']}\t{p['model']}\t{p['n']} samples ({p['enrolN']} enrolled, {p['progN']} learned,"
+                      f" last {p['lastAdded'] or '-'})\tupdated {p['updated']}"
                       f"\taudio kept: {'yes' if p['audio'] else 'no'}\tself {p['self']}")
             return 0
         if a.cmd == "delete":
@@ -1063,6 +1354,15 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             n = store.delete_audio(None if a.all else a.device)
             print(f"deleted {n} recording(s) from {a.store}")
+            return 0
+        if a.cmd == "progressive":
+            if a.state:
+                with store.lock():
+                    store.set_progressive(a.state == "on")
+            st = store.progressive()
+            print(f"progressive learning {'on' if st['on'] else 'off'} (since {st['updated'] or '-'})")
+            for q in store.pending():
+                print(f"{q['device']}\t{q['model']}\t{q['n']} of {q['need']} samples pending")
             return 0
         if a.cmd == "attest-key":
             print(Attestor().public())

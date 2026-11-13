@@ -34,7 +34,14 @@ export const CHALLENGE_TTL_S = VOICEPRINT_TICKET_TTL_S;
  * lib/voiceprint-cloud.ts). `restore`: the Mac takes a print the page read
  * from the account. Both need the passkey, as enrol and delete do.
  */
-export type VoiceprintOp = "status" | "enrol" | "delete" | "delete-audio" | "export" | "restore";
+export type VoiceprintOp =
+  | "status"
+  | "enrol"
+  | "delete"
+  | "delete-audio"
+  | "export"
+  | "restore"
+  | "progressive";
 export const VOICEPRINT_OPS: readonly VoiceprintOp[] = [
   "status",
   "enrol",
@@ -42,11 +49,15 @@ export const VOICEPRINT_OPS: readonly VoiceprintOp[] = [
   "delete-audio",
   "export",
   "restore",
+  "progressive",
 ];
 /**
  * The ops that need the owner's passkey with user verification (Face ID / Touch ID).
  * `delete-audio`: the enrolment recordings kept on the Mac, a separate question
  * from deleting the print (owner, 2026-11-11), with its own ticket.
+ * `progressive`: learning from his own clean finals on or off (device "*";
+ * docs/local-stt.md, "Progressive voiceprint"): it keeps features of what he
+ * says without a sentence to read, so it is approved like an enrolment.
  */
 export const PASSKEY_OPS: readonly VoiceprintOp[] = [
   "enrol",
@@ -54,6 +65,7 @@ export const PASSKEY_OPS: readonly VoiceprintOp[] = [
   "delete-audio",
   "export",
   "restore",
+  "progressive",
 ];
 
 /** A device slug as the Mac's store takes it, or "*" (every device: never for enrol). */

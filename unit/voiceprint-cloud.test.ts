@@ -151,6 +151,25 @@ describe("features only", () => {
     expect(typeof parsePrint(print())).toBe("object");
     expect(typeof parsePrint(print({ self: null, created: undefined }))).toBe("object");
   });
+  it("keeps where each sample came from (progressive learning), sealed with the rest", async () => {
+    const sources = [...Array(10).fill("enrol"), ...Array(190).fill("prog")];
+    const n = sources.length;
+    const p = parsePrint(
+      print({
+        n,
+        sources,
+        speechS: Array(n).fill(3.2),
+        embeddings: Array.from({ length: n }, (_, i) => vec(192, i)),
+      }),
+    );
+    if (typeof p === "string") throw new Error(p);
+    expect(p.sources).toEqual(sources);
+    const key = await voiceprintKey(SECRET);
+    const payload = await sealPrint(key, "owner-1", p);
+    expect(payload.length).toBeLessThan(1_500_000);
+    const f = await openPrint(key, "owner-1", { device: "iphone", model: "campp", payload });
+    expect(f?.sources).toEqual(sources);
+  });
   it("refuses any extra key, audio above all", () => {
     for (const extra of [
       { audio: true },
@@ -164,7 +183,9 @@ describe("features only", () => {
   it("refuses bad shapes", () => {
     expect(parsePrint(print({ dim: 3 }))).toBe("bad centroid");
     expect(parsePrint(print({ n: 11 }))).toBe("bad embeddings");
-    expect(parsePrint(print({ n: 21 }))).toBe("bad n");
+    expect(parsePrint(print({ n: 201 }))).toBe("bad n");
+    expect(parsePrint(print({ sources: ["enrol"] }))).toBe("bad sources");
+    expect(parsePrint(print({ sources: Array(10).fill("audio") }))).toBe("bad sources");
     expect(parsePrint(print({ device: "../x" }))).toBe("bad device");
     expect(parsePrint(print({ model: "x" }))).toBe("bad model");
     expect(parsePrint(print({ centroid: vec(192, 0).map(() => Number.NaN) }))).toBe("bad centroid");
