@@ -168,8 +168,8 @@ describe("the box follows the visible area (the keyboard)", () => {
   it("is a right sidebar from the owner's 35em up, the page beside it kept clear", () => {
     expect(SIDEBAR_QUERY).toBe("(min-width: 35em)");
     expect(FULL_SIDEBAR_STYLE.left).toBe("auto");
-    expect(FULL_SIDEBAR_STYLE.right).toBe(0);
-    expect(FULL_SIDEBAR_STYLE.width).toBe(SIDEBAR_W);
+    expect(FULL_SIDEBAR_STYLE.right).toBe("var(--lk-chat-dock-right, 0px)");
+    expect(FULL_SIDEBAR_STYLE.width).toBe(`var(--lk-chat-dock-width, ${SIDEBAR_W})`);
     expect(FULL_SIDEBAR_STYLE.borderLeft).toContain("oklch");
     const style = new Map<string, string>([["padding-right", "3px"]]);
     const root = {

@@ -1126,12 +1126,30 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
 - **Phone or sidebar** (owner, 2026-11-07 20:31–20:34 JST). Narrower than
   `SIDEBAR_QUERY`, `(min-width: 35em)` (his number, in em), full screen is the
   whole screen. Wider, it is a full-height sidebar docked to the right edge,
-  `SIDEBAR_W` = `clamp(20rem, 32vw, 28rem)` wide (no drag-to-resize pattern
-  exists in the app, so a fixed width: 409.6 px at 1280), with a 1 px oklch
+  `SIDEBAR_W` = `clamp(20rem, 32vw, 28rem)` wide by default (409.6 px at
+  1280 before resizing), with a 1 px oklch
   left border. The page beside it stays usable: while it is up the page's root
   is padded on the right by its width (`--lk-chat-side`, `sidebarReserve`), so
   the page reflows clear of it and scrolls as ever. A host's own fixed bars do
   not reflow by themselves; they can read `--lk-chat-side`.
+- **Resize the docked sidebar** (owner, 2026-11-14). Only `full && sidebar`
+  exposes a vertical resize separator on the inner/left border; narrow phone
+  full screen and floating panels do not resize. Dragging horizontally keeps
+  the right edge fixed and clamps the width between the established 20rem
+  composer minimum and the current visual viewport (the viewport wins if it
+  is smaller). The border uses Pointer Capture, prevents focus transfer, and
+  does not reach the grip's move/fold handlers. Pointer cancel, lost capture,
+  blur, hiding the page or leaving the sidebar discard the preview; a tap
+  alone does not save a fixed width. The release saves only the desired width
+  in `ui-store.ts` `chatDock`, device-local `lk:pref:chat-dock`, never synced.
+  Shrinking the viewport temporarily clamps its display without overwriting
+  that preference; the page's right reserve follows the displayed width.
+  Keyboard: focus the separator, Left widens, Right narrows, Shift uses a
+  larger step, Home/End choose the bounds. The 40px hit area stays away from
+  the composer, and is inset beyond the system back strip when the sidebar
+  reaches the viewport's left edge. Existing grip move/fold behavior remains.
+  Pure rules: `dock-resize.ts`; tests: `unit/chat-dock-resize.test.ts`;
+  silent actual-widget check: `bun scripts/dev/debug-chat-dock-resize-qa.mjs`.
 - **The bar spans it** (owner, 2026-11-07 20:30 JST: the input across the full
   width). On a phone the bar is the screen's width less the safe areas and the
   panel's own 0.5rem gutter (`fullBarSpan`); in the sidebar it is the

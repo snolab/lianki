@@ -803,6 +803,24 @@ const learningPartnerContent = {
       mr: "बंद",
       ko: "끔",
     }),
+    dockResize: t({
+      en: "Resize chat sidebar",
+      zh: "调整聊天侧栏宽度",
+      hi: "चैट साइडबार की चौड़ाई बदलें",
+      es: "Cambiar el ancho del chat",
+      fr: "Redimensionner le volet de discussion",
+      ar: "تغيير عرض الشريط الجانبي للدردشة",
+      bn: "চ্যাট সাইডবারের প্রস্থ বদলান",
+      pt: "Redimensionar a barra do chat",
+      ru: "Изменить ширину панели чата",
+      ur: "چیٹ سائیڈبار کی چوڑائی بدلیں",
+      id: "Ubah lebar bilah chat",
+      de: "Breite der Chat-Seitenleiste ändern",
+      ja: "チャットサイドバーの幅を変更",
+      sw: "Badilisha upana wa paneli ya gumzo",
+      mr: "चॅट साइडबारची रुंदी बदला",
+      ko: "채팅 사이드바 너비 조절",
+    }),
     vpPrint: t({
       en: "{device}: {n} sentences",
       zh: "{device}：{n} 句",
@@ -3571,6 +3589,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
   vpOn: "The active state word in the two-part voiceprint learning seal switch; both On and Off are always visible.",
   vpOffState:
     "The inactive state word in the two-part voiceprint learning seal switch; both On and Off are always visible.",
+  dockResize:
+    "Accessible label and tooltip for the vertical resize separator on the inner edge of the wide docked chat sidebar. Drag horizontally, or use Left/Right arrows and Home/End, to change only its width. Never shown on a floating chat or narrow full-screen phone view.",
   vpPrint:
     "One row per enrolled device in the voiceprint panel: {device} is a device name like iphone or android, {n} how many sentences were read for it. Keep both placeholders.",
   vpOff:

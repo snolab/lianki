@@ -15,7 +15,7 @@ import {
 } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { useUi } from "@lianki/ui-state";
-import { chatFold, chatPrefs, chatUi } from "./ui-store";
+import { chatDock, chatFold, chatPrefs, chatUi } from "./ui-store";
 import { lineTier, richOf, spokenOf } from "./rich-text";
 import { RichBody, RichLine } from "./RichText";
 import {
@@ -228,6 +228,14 @@ import {
   nearestEdge,
   pushedAgainst,
 } from "./fold";
+import { DockResize } from "./DockResize";
+import {
+  DOCK_WIDTH_VAR,
+  DOCK_RIGHT_VAR,
+  clampDockWidth,
+  dockBounds,
+  dockViewport,
+} from "./dock-resize";
 import { keyboardLift } from "./keyboard-lift";
 import {
   FULL_H_VAR,
@@ -237,6 +245,9 @@ import {
   FULL_SIDEBAR_STYLE,
   FULL_TOP_VAR,
   SIDEBAR_QUERY,
+  SIDEBAR_MIN_REM,
+  SIDEBAR_W,
+  SIDEBAR_RESERVE_VAR,
   escapeLeaves,
   fullBarSpan,
   sidebarReserve,
@@ -1092,10 +1103,22 @@ export function DebugChat({
     return () => mq.removeEventListener("change", on);
   }, []);
   const asSidebar = full && sidebar;
+  const dockSavedWidth = useUi(chatDock(), (s) => s.width);
+  const dockSaved = useRef(dockSavedWidth);
+  dockSaved.current = dockSavedWidth;
+  const dockPreview = useRef<number | null>(null);
+  const asSidebarNow = useRef(asSidebar);
+  asSidebarNow.current = asSidebar;
   // The sidebar leaves the page usable beside it: the page reflows clear of it.
   useEffect(() => {
     if (!asSidebar || typeof document === "undefined") return;
-    return sidebarReserve(document.documentElement);
+    const restore = sidebarReserve(document.documentElement);
+    liftRef.current();
+    return () => {
+      restore();
+      root.current?.style.removeProperty(DOCK_WIDTH_VAR);
+      root.current?.style.removeProperty(DOCK_RIGHT_VAR);
+    };
   }, [asSidebar]);
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
@@ -1316,6 +1339,20 @@ export function DebugChat({
     // Full screen: the box is the visible area (full-screen.ts), so the bar
     // already sits above the keyboard; no lift.
     if (fullOn.current) {
+      if (asSidebarNow.current) {
+        const viewport = dockViewport(innerWidth, vv);
+        const bounds = dockBounds(
+          viewport.width,
+          SIDEBAR_MIN_REM * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16),
+        );
+        const desired = dockPreview.current ?? dockSaved.current;
+        const width = desired === null
+          ? `min(${SIDEBAR_W}, ${viewport.width}px)`
+          : `${clampDockWidth(desired, bounds)}px`;
+        box.style.setProperty(DOCK_WIDTH_VAR, width);
+        box.style.setProperty(DOCK_RIGHT_VAR, `${viewport.right}px`);
+        document.documentElement.style.setProperty(SIDEBAR_RESERVE_VAR, width);
+      }
       const b = fullScreenBox({ innerHeight, vv });
       box.style.setProperty(FULL_TOP_VAR, `${b.top}px`);
       box.style.setProperty(FULL_H_VAR, `${b.height}px`);
@@ -4739,6 +4776,21 @@ export function DebugChat({
       }}
       className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing: typingNow, plusMenu, micActive, fullLog: fullLog !== "off" || full }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} ${full ? "pointer-events-auto" : "pointer-events-none"} lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
+      {asSidebar && (
+        <DockResize
+          box={() => root.current}
+          label={t.dockResize}
+          preview={(width) => {
+            dockPreview.current = width;
+            liftRef.current();
+          }}
+          commit={(width) => {
+            dockSaved.current = width;
+            chatDock().setState({ width });
+            liftRef.current();
+          }}
+        />
+      )}
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
         !embedded &&
