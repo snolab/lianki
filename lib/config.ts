@@ -477,6 +477,53 @@ export const CONFIG = {
     description:
       "有新版本时（开关 app.auto-update），页面干净且多久没有点、滑、打字就自己刷新（毫秒）。切到后台或换页面时不等这段时间。/words 和 /review 上只在切到后台或换页面时刷新。",
   }),
+  // Account-age bonus (docs/payments.md, "Account-age bonus"; owner 2026-11-14):
+  // credits given once per account when it reaches each age. USD amounts turn
+  // into credits at CREDITS_PER_USD (lib/payments/credits.ts), rounded.
+  "credits.ageBonus.day1Usd": {
+    default: 1 as number,
+    schema: z.number().min(0).max(100),
+    min: 0,
+    max: 100,
+    unit: "USD",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "账号满第一档年龄（credits.ageBonus.day1Hours）时送的积分，按美元计，按 CREDITS_PER_USD 换成积分（四舍五入）。每个账号只送一次；0 = 不送。",
+  },
+  "credits.ageBonus.day7Usd": {
+    default: 2 as number,
+    schema: z.number().min(0).max(100),
+    min: 0,
+    max: 100,
+    unit: "USD",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "账号满第二档年龄（credits.ageBonus.day7Hours）时再送的积分（在第一档之外另加），按美元计。每个账号只送一次；0 = 不送。",
+  },
+  "credits.ageBonus.day1Hours": int({
+    default: 24,
+    min: 0,
+    max: 24 * 365,
+    unit: "h",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description: "账号注册多少小时后可以领第一档年龄积分（默认 24 小时 = 1 天）。",
+  }),
+  "credits.ageBonus.day7Hours": int({
+    default: 168,
+    min: 0,
+    max: 24 * 365,
+    unit: "h",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description: "账号注册多少小时后可以领第二档年龄积分（默认 168 小时 = 7 天）。",
+  }),
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;
