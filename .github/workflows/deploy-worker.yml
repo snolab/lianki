@@ -165,6 +165,17 @@ jobs:
         id: voice
         continue-on-error: true
         run: bunx wrangler deploy -c workers/voice/wrangler.jsonc
+      # lianki-mcp owns the zone route lianki.com/mcp* (the remote MCP server,
+      # workers/mcp) and calls the main Worker and lianki-push over service
+      # bindings, so it goes after both. Non-blocking like the voice service:
+      # a failure leaves the previous lianki-mcp serving and only warns.
+      - name: Deploy the MCP service
+        id: mcp
+        continue-on-error: true
+        run: bunx wrangler deploy -c workers/mcp/wrangler.jsonc
+      - name: MCP service deployed?
+        if: steps.mcp.outcome == 'failure'
+        run: echo "::warning title=lianki-mcp not deployed::The app deployed, but lianki-mcp did not (see 'Deploy the MCP service'); lianki.com/mcp still runs its previous version."
       # Differential check against lianki.com. Advisory until cutover: Vercel
       # deploys the same commit on its own schedule, so the asset comparison can
       # race it.
