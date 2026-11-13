@@ -340,7 +340,16 @@ describe("cloud voices", () => {
     expect(el.preservesPitch).toBe(true);
     // zh: the one MeloTTS voice at the lane's speed, pitch kept (a pitch-free clip stalls on iOS).
     voiceHeader = "melotts";
-    await play({ text: "好。", lang: "zh-CN", at: 0, volume: 1, rate: 1, voice: "bright" });
+    // The Mac-local Kokoro voices (lk:agent-local-tts) off: bright goes to the cloud route.
+    const g = globalThis as Record<string, unknown>;
+    const savedStorage = g.localStorage;
+    g.localStorage = { getItem: (k: string) => (k === "lk:agent-local-tts" ? "off" : null) };
+    try {
+      await play({ text: "好。", lang: "zh-CN", at: 0, volume: 1, rate: 1, voice: "bright" });
+    } finally {
+      if (savedStorage === undefined) delete g.localStorage;
+      else g.localStorage = savedStorage;
+    }
     expect(fetched.at(-1)).toBe(
       `/api/words/tts?lang=zh&text=${encodeURIComponent("好。")}&store=0`,
     );
@@ -475,7 +484,10 @@ describe("parseLineVoice: one strict parser for a line's voice", () => {
       null,
     ])
       expect(parseLineVoice(bad)).toHaveProperty("error");
-    expect((parseLineVoice("local:kokoro") as { error: string }).error).toContain("reserved");
+    expect((parseLineVoice("local:kokoro") as { error: string }).error).toContain(
+      "unknown local voice kokoro",
+    );
+    expect(parseLineVoice("local:neko-moe")).toEqual({ kind: "local", name: "neko-moe" });
   });
 
   it("finds a device voice by exact name, any case, or its model at the best grade", () => {

@@ -47,6 +47,7 @@
 import { speechRate } from "./speech-rate";
 import { ECHO_WINDOW_MS, type EchoScore, echoScore } from "./echo";
 import { cloudOut, cloudSkip, existingCtx, outMode } from "./voice-out";
+import { type HeardVoice, noteHeard } from "./voice-heard";
 import { micAec } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { speakForm } from "./lexicon";
@@ -120,7 +121,7 @@ export const REPLY_DEDUPE_MS = 10 * 60_000;
 /** globalThis key of the shared session. */
 const KEY = "__lkVoice";
 /** The session's version: a copy on the page with another one is replaced. */
-const V = 5;
+const V = 6;
 
 const CJK_STOP = "。．！？";
 const LATIN_STOP = ".!?";
@@ -229,6 +230,8 @@ export type UtterLike = {
   /** The browser began speaking it (the latency record's t_audible). */
   onstart?: ((e?: unknown) => void) | null;
   onboundary: ((e: { charIndex: number; name?: string }) => void) | null;
+  /** The device voice it is read in (absent or null: the device's default). */
+  voice?: { name?: string } | null;
 };
 export type SynthLike = {
   speak(u: UtterLike): void;
@@ -253,6 +256,8 @@ export type PlayEvents = {
   onerror(): void;
   /** The cloud could not voice it (fetch, language, length, play refused): read it with speech. */
   onfail?(reason: string): void;
+  /** The concrete voice it is read in, once known (voice-heard.ts: the line's details). */
+  onvoice?(v: HeardVoice): void;
 };
 /** The cloud output (voice-out.ts createCloudOut). */
 export type CloudOut = {
@@ -550,6 +555,7 @@ export function createVoice(d: {
       ev.onerror();
     };
     u.onstart = () => (settle(), ev.onstart?.());
+    ev.onvoice?.({ name: u.voice?.name ? `device:${u.voice.name}` : "device" });
     s.speak(u);
     return {
       route: "speech",
@@ -606,6 +612,9 @@ export function createVoice(d: {
       },
       onend: done,
       onerror: done,
+      onvoice: (v) => {
+        if (e === epoch) noteHeard(head.id, head.text, v);
+      },
       onfail: (reason) => {
         if (e !== epoch || !current) return;
         if (head.pick?.kind === "eleven") {
