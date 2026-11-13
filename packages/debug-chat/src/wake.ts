@@ -99,7 +99,15 @@ export function keywordEnd(d: Detection): number {
  * The spotter's verdict on one utterance: no wake word, or the wake word and
  * what was said after it (`rest`: empty for a bare "Linky").
  */
-export type WakeSpot = { hit: false } | { hit: true; rest: Float32Array; tokens: string[] };
+export type WakeSpot =
+  | { hit: false }
+  | {
+      hit: true;
+      rest: Float32Array;
+      tokens: string[];
+      /** Which keyword: "LINKY", or a name's label (wake-names.ts: "agent:coco", "owner:…"). */
+      label?: string;
+    };
 
 /**
  * A check as the gate gets it: `unchecked` when the spotter never heard it
@@ -119,7 +127,12 @@ export function afterKeyword(
   const from = Math.max(0, Math.round(keywordEnd(first) * rate) - pad);
   const rest = audio.subarray(Math.min(from, audio.length));
   const ms = (rest.length / rate) * 1000;
-  return { hit: true, rest: ms < MIN_REQUEST_MS ? new Float32Array(0) : rest, tokens: first.tokens };
+  return {
+    hit: true,
+    rest: ms < MIN_REQUEST_MS ? new Float32Array(0) : rest,
+    tokens: first.tokens,
+    label: first.label,
+  };
 }
 
 /** `reason`: why the mode is what it is (the last `set`, "mic-on" before any). */

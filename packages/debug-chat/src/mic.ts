@@ -786,8 +786,12 @@ export type UploadInfo = {
 export type WakeGate = {
   passive(): boolean;
   spot(audio: Float32Array): Promise<SpotResult>;
-  /** "Linky" was heard: the mic becomes active. */
-  onWake(): void;
+  /**
+   * A wake word was heard (`label`: which, wake-names.ts): the mic becomes
+   * active. Returns what goes before the words after it ("coco, " when a
+   * name was heard, so the line is addressed), or nothing.
+   */
+  onWake(label?: string): string | void;
   /** "other": the Mac's speaker check said it was not his voice (docs/local-stt.md, "Voiceprint"). */
   verdict(ok: boolean, why: "ok" | "empty" | "hallucination" | "other"): void;
 };
@@ -1200,7 +1204,13 @@ export function createMic(d: {
               audioMs: toMs(audio.length),
               ...(r.ms !== undefined ? { ms: r.ms } : {}),
               ...(r.error ? { error: r.error } : {}),
-              ...(r.hit ? { tokens: r.tokens.join(" "), restMs: toMs(r.rest.length) } : {}),
+              ...(r.hit
+                ? {
+                    tokens: r.tokens.join(" "),
+                    restMs: toMs(r.rest.length),
+                    ...(r.label ? { label: r.label } : {}),
+                  }
+                : {}),
             });
             // Never deaf: the spotter could not check it (it failed to load, say) and
             // the mic is active again by now, so it goes up as an active utterance would.
@@ -1212,9 +1222,10 @@ export function createMic(d: {
             };
             if (!r.hit) return drop();
             const wake = (f?: LocalFinal) => {
-              w.onWake();
+              // A name heard ("coco, …"): the line is addressed to it (wake-names.ts addressLead).
+              const lead = w.onWake(r.label) || undefined;
               if (!r.rest.length) return drop();
-              send(seq, r.rest, toMs(r.rest.length), prob, f ? Promise.resolve(f) : undefined);
+              send(seq, r.rest, toMs(r.rest.length), prob, f ? Promise.resolve(f) : undefined, lead);
             };
             // The Mac's speaker check first, when it is reachable: the whole utterance
             // ("Linky" included) is scored, the text read from after it. Someone
@@ -1259,6 +1270,8 @@ export function createMic(d: {
     ms: number,
     prob: number | undefined,
     local?: Promise<LocalFinal>,
+    /** Put before the transcript (the name a wake word addressed); not for dropped lines. */
+    lead?: string,
   ) => {
     const wav = encodeWav(audio);
     let signals: SttSignals | undefined;
@@ -1327,7 +1340,9 @@ export function createMic(d: {
           const other = spk?.decision === "other";
           // Split by speaker on the Mac, and the text is the Mac's as it came: one line per
           // part, each noted as it lands (report). Anything changed it: one line, as before.
-          const split = !drop && !!parts && text.trim() === localText?.trim() ? parts : undefined;
+          // A wake name in front ("coco, …") makes it one line, addressed.
+          const split =
+            !drop && !lead && !!parts && text.trim() === localText?.trim() ? parts : undefined;
           // The line's speaker tag (voiceprint.ts noteSpeaker): only for text that lands.
           if (!drop && text.trim() && !split) d.speaker?.(spk, proof);
           if (!echo)
@@ -1335,7 +1350,7 @@ export function createMic(d: {
               !drop && !!text.trim() && !other,
               drop ? "hallucination" : !text.trim() ? "empty" : other ? "other" : "ok",
             );
-          q.resolve(seq, drop ? null : text, split);
+          q.resolve(seq, drop ? null : lead && text.trim() ? lead + text.trimStart() : text, split);
         },
         (e) => {
           d.timing?.(seq, { t_sttDone: now(), dropped: true });

@@ -46,6 +46,8 @@
     "./speak-rules": "./src/speak-rules.ts",
     "./wake": "./src/wake.ts",
     "./wake-kws": "./src/wake-kws.ts",
+    "./wake-names": "./src/wake-names.ts",
+    "./wake-tokens": "./src/wake-tokens.ts",
     "./voice-out": "./src/voice-out.ts",
     "./voice-heard": "./src/voice-heard.ts",
     "./echo": "./src/echo.ts",

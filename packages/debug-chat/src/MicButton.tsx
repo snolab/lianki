@@ -45,6 +45,7 @@ import type { SttSignals } from "./stt-guard";
 import { VOICE_DEVICE_KEY, deviceSlug, filterSwitch, filterVerdict, noteFiltered, noteSpeaker, subscribeFiltered } from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
+import { wakeNames } from "./wake-names";
 import { MIC_BOX, MIC_RING, NO_SELECT } from "./bar-geometry";
 import { type LifeEvent, MIC_BLOCKED_NOTE, type MicSession, type MicView, micSession } from "./mic-session";
 import { autoOffNote, micLook } from "./mic-off";
@@ -557,7 +558,10 @@ function session(): MicSession {
     filtered: (r) => void v.log({ ev: "voice-filtered", mode: "passive", n: noteFiltered("filtered", r).n, ...r }),
     // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
     // Only with the wake word switched on (lk:agent-wake = "1"); off by default, never passive.
-    kws: wakeOff() ? undefined : (onState) => createKws({ log: (ev) => v.log(ev), onState }),
+    // Its keywords: "Linky" and everyone's names (wake-names.ts), swapped in place on each change.
+    kws: wakeOff()
+      ? undefined
+      : (onState) => createKws({ log: (ev) => v.log(ev), onState, keywords: wakeNames() }),
     wakeAllowed: () => !wakeOff(),
     upload: async (wav, { seq, durationMs, partial, local, onEcho, onSignals }, cfg) => {
       const at = Date.now();

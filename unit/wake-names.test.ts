@@ -1,0 +1,392 @@
+import { describe, expect, it } from "bun:test";
+import {
+  KWS_TOKENS,
+  cmuOf,
+  lettersToPhones,
+  nameTokens,
+  pinyinOf,
+  plainToken,
+  spellOut,
+  syllableTokens,
+  wordPhones,
+} from "@lianki/debug-chat/wake-tokens";
+import {
+  NAME_SCORE,
+  NAME_THRESHOLD,
+  addressLead,
+  buildWakeKeywords,
+  clashes,
+  createWakeNames,
+  editDistance,
+  heardName,
+  wakeNames,
+  wakeParticipants,
+} from "@lianki/debug-chat/wake-names";
+import { LINKY, afterKeyword } from "@lianki/debug-chat/wake";
+import { type WorkerLike, createKws, workerSource } from "@lianki/debug-chat/wake-kws";
+import { type VadEvents, createMic } from "@lianki/debug-chat/mic";
+import { type MicDeps, createMicSession } from "@lianki/debug-chat/mic-session";
+import { routeLine } from "@lianki/debug-chat/lane-route";
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+const RATE = 16_000;
+
+describe("names → model tokens", () => {
+  it("Chinese: a pinyin initial and its toned final per character", () => {
+    expect(pinyinOf("杰")).toBe("jié");
+    expect(nameTokens("杰咪")).toEqual(["j", "ié", "m", "ī"]);
+    expect(nameTokens("小克")).toEqual(["x", "iǎo", "k", "è"]);
+    expect(nameTokens("林琪")).toEqual(["l", "ín", "q", "í"]);
+    // No initial; ü finals; y and w are initials, as in the model's keywords.txt.
+    expect(syllableTokens("ér")).toEqual(["ér"]);
+    expect(syllableTokens("nǚ")).toEqual(["n", "ǚ"]);
+    expect(syllableTokens("yǒu")).toEqual(["y", "ǒu"]);
+    expect(syllableTokens("zhōu")).toEqual(["zh", "ōu"]);
+    expect(syllableTokens("")).toBeNull();
+    expect(syllableTokens("zhqq")).toBeNull();
+  });
+
+  it("English: the CMU entry for a known name", () => {
+    expect(cmuOf("Coco")).toEqual(["K", "OW1", "K", "OW2"]);
+    expect(nameTokens("coco")).toEqual(["K", "OW1", "K", "OW2"]);
+    expect(nameTokens("Claude")).toEqual(["K", "L", "AO1", "D"]);
+    expect(nameTokens("codex")).toEqual(["K", "OW1", "D", "EH0", "K", "S"]);
+    expect(cmuOf("zzzz")).toBeUndefined();
+  });
+
+  it("English: letter-to-sound for other names, the first vowel stressed", () => {
+    expect(lettersToPhones("momo")).toEqual(["M", "OW1", "M", "OW0"]);
+    expect(lettersToPhones("yuki")).toEqual(["Y", "UW1", "K", "IY0"]);
+    expect(lettersToPhones("mike")).toEqual(["M", "AY1", "K"]);
+    expect(lettersToPhones("knox")).toEqual(["N", "AA1", "K", "S"]);
+    expect(lettersToPhones("cecil")).toEqual(["S", "EY1", "S", "IH0", "L"]);
+    expect(lettersToPhones("gage")).toEqual(["G", "EY1", "JH"]);
+    expect(lettersToPhones("sherlock")).toEqual(["SH", "ER1", "L", "AA0", "K"]);
+    expect(lettersToPhones("benn")).toEqual(["B", "EH1", "N"]);
+    expect(lettersToPhones("")).toBeNull();
+    for (const w of ["quinn", "thatch", "phoebe", "starr", "boyd", "lightning"])
+      expect(lettersToPhones(w)!.every((t) => KWS_TOKENS.has(t))).toBe(true);
+  });
+
+  it("initialisms are spelled out", () => {
+    expect(spellOut("GPT")).toEqual(["JH", "IY1", "P", "IY1", "T", "IY1"]);
+    expect(wordPhones("mcp")).toEqual(["EH1", "M", "S", "IY1", "P", "IY1"]);
+    expect(wordPhones("AJ")).toEqual(["EY1", "JH", "EY1"]);
+    expect(nameTokens("mcp-bot")).toEqual(["EH1", "M", "S", "IY1", "P", "IY1", "B", "AA1", "T"]);
+  });
+
+  it("mixes scripts and words; anything unsayable is null", () => {
+    expect(nameTokens("Lin琪")).toEqual(["L", "IH1", "N", "q", "í"]);
+    expect(nameTokens("Coco Claude")).toEqual(["K", "OW1", "K", "OW2", "K", "L", "AO1", "D"]);
+    expect(nameTokens("リンキー")).toBeNull();
+    expect(nameTokens("R2D2")).toBeNull();
+    expect(nameTokens("🐱")).toBeNull();
+    expect(nameTokens("龘")).toBeNull(); // not in the table
+    expect(nameTokens("coco 龘")).toBeNull();
+    expect(nameTokens("   ")).toBeNull();
+    expect(nameTokens("-")).toBeNull();
+  });
+
+  it("every token made is one the model has", () => {
+    for (const n of ["杰咪", "小克", "学习伙伴", "coco", "snomiao", "Learning Partner"])
+      expect(nameTokens(n)!.every((t) => KWS_TOKENS.has(t))).toBe(true);
+    expect(plainToken("OW1")).toBe("OW");
+    expect(plainToken("iǎo")).toBe("iao");
+    expect(plainToken("ǚ")).toBe("u");
+  });
+});
+
+describe("the wake keyword set", () => {
+  it("LINKY first, then the lanes, the main agent, agents present, and him", () => {
+    const people = wakeParticipants({ mainName: "Li", agents: ["bot"], owner: "Sno" });
+    expect(people.slice(0, 3).map((p) => p.name)).toEqual(["coco", "codex", "coco"]);
+    expect(people.map((p) => p.name)).not.toContain("main");
+    expect(people.map((p) => p.name)).not.toContain("chat");
+    expect(people.at(-1)).toEqual({ name: "Sno", kind: "owner" });
+    const s = buildWakeKeywords(people);
+    expect(s.entries[0]).toBe(LINKY);
+    expect(s.names.map((n) => n.name)).toEqual([
+      "coco",
+      "codex",
+      "杰咪",
+      "agy",
+      "antigravity",
+      "小克",
+      "claude",
+      "Li",
+      "bot",
+      "Sno",
+    ]);
+    // 小可 sounds like 小克: the earlier keeps it.
+    expect(s.clash).toEqual([{ name: "小可", with: "小克" }]);
+    const coco = s.entries.find((e) => e.label === "agent:coco")!;
+    expect(coco).toEqual({
+      label: "agent:coco",
+      score: NAME_SCORE,
+      threshold: NAME_THRESHOLD,
+      matches: [{ tokens: ["K", "OW1", "K", "OW2"] }],
+    });
+    expect(s.entries.at(-1)!.label).toBe("owner:Sno");
+    // Every token sequence is unique (the spotter refuses duplicates).
+    const seqs = s.entries.flatMap((e) => e.matches.map((m) => m.tokens.join(" ")));
+    expect(new Set(seqs).size).toBe(seqs.length);
+  });
+
+  it("clash: the same sound, one a prefix of the other, or one token apart when short", () => {
+    expect(clashes(["K", "OW1", "K", "OW2"], ["K", "OW1", "K", "OW0"])).toBe(true);
+    expect(clashes(["AE1", "N"], ["AE1", "N", "AH0"])).toBe(true); // Ann / Anna
+    expect(clashes(["K", "OW1", "K", "OW2"], ["K", "OW1", "K", "IY0"])).toBe(true);
+    expect(clashes(["K", "OW1", "K", "OW2"], ["JH", "IH1", "M", "IY0"])).toBe(false);
+    // Long names may differ in one token.
+    const long = ["L", "ER1", "N", "IH0", "NG", "P", "AA1", "R"];
+    expect(clashes(long, [...long.slice(0, 7), "T"])).toBe(false);
+    expect(editDistance(["a", "b"], ["a", "c", "b"])).toBe(1);
+    expect(editDistance([], ["a"])).toBe(1);
+  });
+
+  it("a name that sounds like Linky, one said twice, or one with no tokens is left out", () => {
+    const s = buildWakeKeywords([
+      { name: "Linky", kind: "agent" },
+      { name: "Bob", kind: "agent" },
+      { name: "BOB", kind: "agent" },
+      { name: "リンキー", kind: "agent" },
+    ]);
+    expect(s.names.map((n) => n.name)).toEqual(["Bob"]);
+    expect(s.clash).toEqual([{ name: "Linky", with: "Linky" }]);
+    expect(s.skipped).toEqual(["リンキー"]);
+  });
+
+  it("which name was heard, and the address it puts before the line", () => {
+    expect(heardName("agent:coco")).toEqual({ name: "coco", kind: "agent" });
+    expect(heardName("owner:Sno")).toEqual({ name: "Sno", kind: "owner" });
+    expect(heardName("LINKY")).toBeNull();
+    expect(heardName(undefined)).toBeNull();
+    expect(addressLead("agent:coco")).toBe("coco, ");
+    expect(addressLead("agent:杰咪")).toBe("杰咪，");
+    expect(addressLead("owner:Sno")).toBe("");
+    expect(addressLead("LINKY")).toBe("");
+    // The lane router takes the addressed line to that lane.
+    expect(routeLine(`${addressLead("agent:coco")}what's next`).lanes).toEqual(["codex"]);
+    expect(routeLine(`${addressLead("agent:杰咪")}看一下`).lanes).toEqual(["agy"]);
+  });
+
+  it("the detection's label is kept with the hit", () => {
+    const r = afterKeyword(
+      new Float32Array(RATE),
+      [{ label: "agent:coco", startTime: 0, timestamps: [0.1], tokens: ["K"] }],
+      RATE,
+    );
+    expect(r.hit && r.label).toBe("agent:coco");
+  });
+});
+
+describe("the page's wake-name store", () => {
+  it("rebuilds on a rename and tells listeners only when the words change", () => {
+    const store = createWakeNames();
+    const heard: string[][] = [];
+    const off = store.subscribe((s) => heard.push(s.names.map((n) => n.name)));
+    expect(store.set({ agents: ["bot"] })).toBe(true);
+    expect(store.set({ agents: ["bot"] })).toBe(false); // same set: nothing
+    // The owner renames bot to Momo.
+    expect(store.set({ agents: ["Momo"] })).toBe(true);
+    expect(heard.at(-1)).toContain("Momo");
+    expect(heard.at(-1)).not.toContain("bot");
+    off();
+    store.set({ agents: ["Kiki"] });
+    expect(heard).toHaveLength(2);
+    expect(store.get().names.map((n) => n.name)).toContain("Kiki");
+  });
+
+  it("a name seen first keeps its sound: a newcomer's clashing name is left out, the rename stands", () => {
+    const store = createWakeNames();
+    store.set({ agents: ["Momo"] });
+    // A second agent is renamed "Momo" too, and listed first by activity.
+    store.set({ agents: ["MOMO2", "Momo"], owner: "Momu" });
+    const s = store.get();
+    expect(s.names.map((n) => n.name)).toContain("Momo");
+    expect(s.clash).toContainEqual({ name: "Momu", with: "Momo" });
+  });
+
+  it("one store per page", () => {
+    expect(wakeNames()).toBe(wakeNames());
+  });
+});
+
+/** A Worker that answers like the real one. */
+function fakeWorker() {
+  const posted: { type: string; keywords?: { label: string }[]; id?: number }[] = [];
+  const w: WorkerLike = {
+    onmessage: null,
+    onerror: null,
+    postMessage(m) {
+      const x = m as (typeof posted)[number];
+      posted.push(x);
+      const a =
+        x.type === "init"
+          ? { type: "ready", ms: 1 }
+          : x.type === "keywords"
+            ? { type: "keywords-set", id: x.id, ...(posted.length > 3 ? { error: "bad" } : {}) }
+            : null;
+      if (a) queueMicrotask(() => w.onmessage?.({ data: a }));
+    },
+    terminate() {},
+  };
+  return { w, posted };
+}
+
+describe("the spotter follows the names", () => {
+  it("starts with the set as it is, then swaps it in place once per change", async () => {
+    const store = createWakeNames();
+    store.set({ agents: ["bot"] });
+    const f = fakeWorker();
+    const logs: Record<string, unknown>[] = [];
+    const k = createKws({
+      worker: () => f.w,
+      allowed: async () => true,
+      keywords: store,
+      log: (e) => void logs.push(e),
+    });
+    // Before it loads, a change is only remembered.
+    store.set({ agents: ["bot", "Momo"] });
+    expect(f.posted).toEqual([]);
+    await k.load();
+    expect(f.posted.map((m) => m.type)).toEqual(["init"]);
+    expect(f.posted[0]!.keywords!.map((e) => e.label)).toContain("agent:Momo");
+    // A rename: one swap. The same set again: none.
+    store.set({ agents: ["bot", "Mimi"] });
+    store.set({ agents: ["bot", "Mimi"] });
+    expect(f.posted.map((m) => m.type)).toEqual(["init", "keywords"]);
+    expect(f.posted[1]!.keywords!.map((e) => e.label)).toContain("agent:Mimi");
+    await tick();
+    expect(logs).toContainEqual({ ev: "wake-keywords", ok: true });
+    // A refused list is logged; the Worker keeps the old one.
+    store.set({ agents: ["bot", "Mimi", "Kiki"] });
+    store.set({ agents: ["bot", "Mimi", "Kiki"], owner: "Sno" });
+    await tick();
+    expect(logs).toContainEqual({ ev: "wake-keywords", ok: false, error: "bad" });
+    expect(logs.filter((e) => e.ev === "wake-names").length).toBe(4);
+    k.dispose();
+    store.set({ agents: ["gone"] });
+    expect(f.posted.filter((m) => m.type === "keywords")).toHaveLength(3);
+  });
+
+  it("logs the names left out; without a store it is Linky alone", async () => {
+    const store = createWakeNames();
+    store.set({ agents: ["リンキー"], owner: "小可" });
+    const logs: Record<string, unknown>[] = [];
+    const f = fakeWorker();
+    await createKws({
+      worker: () => f.w,
+      allowed: async () => true,
+      keywords: store,
+      log: (e) => void logs.push(e),
+    }).load();
+    expect(logs[0]).toMatchObject({
+      ev: "wake-names",
+      skipped: ["リンキー"],
+      clash: [{ name: "小可", with: "小克" }],
+    });
+    const g = fakeWorker();
+    await createKws({ worker: () => g.w, allowed: async () => true }).load();
+    expect(g.posted[0]!.keywords).toEqual([LINKY]);
+  });
+
+  it("the Worker swaps keywords with the spotter's setKeywords", () => {
+    const src = workerSource({ base: "B/", glue: "g.js", model: "M/", sha: {}, cache: "c" });
+    expect(src).toContain("spotter.setKeywords(m.keywords)");
+    expect(src).toContain('type: "keywords-set"');
+  });
+});
+
+describe("a name wakes the mic and addresses the line", () => {
+  function gated(label: string | undefined, lead: (l?: string) => string | void) {
+    let ev: VadEvents | null = null;
+    const texts: string[] = [];
+    const logs: Record<string, unknown>[] = [];
+    let passive = true;
+    const mic = createMic({
+      guard: { minFrameRms: 0 },
+      load: async (e) => {
+        ev = e;
+        return { start() {}, pause() {}, flush() {}, destroy() {} };
+      },
+      upload: async () => "what's next",
+      onState: () => {},
+      onText: (t) => texts.push(t),
+      onPending: () => {},
+      log: (e) => void logs.push(e),
+      wake: {
+        passive: () => passive,
+        spot: async (a) => ({ hit: true, rest: a.subarray(RATE), tokens: ["K"], label }),
+        onWake: (l) => {
+          passive = false;
+          return lead(l);
+        },
+        verdict: () => {},
+      },
+    });
+    return {
+      mic,
+      texts,
+      logs,
+      say(sec: number) {
+        ev!.onSpeechStart();
+        ev!.onSpeechEnd(new Float32Array(Math.round(sec * RATE)));
+      },
+    };
+  }
+
+  it("'coco, …': the words after the name go up addressed to coco", async () => {
+    const g = gated("agent:coco", addressLead);
+    await g.mic.toggle();
+    g.say(3);
+    for (let i = 0; i < 4; i++) await tick();
+    expect(g.texts).toEqual(["coco, what's next"]);
+    expect(g.logs.find((e) => e.ev === "wake-spot")).toMatchObject({ label: "agent:coco" });
+  });
+
+  it("'Linky, …' stays as before: no name in front", async () => {
+    const g = gated("LINKY", addressLead);
+    await g.mic.toggle();
+    g.say(3);
+    for (let i = 0; i < 4; i++) await tick();
+    expect(g.texts).toEqual(["what's next"]);
+  });
+
+  it("the session records which name woke it", async () => {
+    let events: VadEvents | null = null;
+    const logs: Record<string, unknown>[] = [];
+    const texts: string[] = [];
+    const deps: MicDeps = {
+      guard: { minFrameRms: 0 },
+      getStream: async () => ({ id: "s", getTracks: () => [{ readyState: "live", stop() {} }] }),
+      load: async (ev) => {
+        events = ev;
+        return { start() {}, pause() {}, flush() {}, destroy() {} };
+      },
+      upload: async () => "看一下",
+      log: (ev) => void logs.push(ev),
+      kws: (f) => ({
+        load: async () => f("ready"),
+        spot: async (a) => ({
+          hit: true,
+          rest: a.subarray(RATE),
+          tokens: ["j"],
+          label: "agent:杰咪",
+        }),
+      }),
+    };
+    const s = createMicSession(deps);
+    s.attach({ onText: (t) => texts.push(t), onPending: () => {} });
+    await s.toggle();
+    s.wake("passive");
+    expect(s.view().wake).toBe("passive");
+    events!.onSpeechStart();
+    events!.onSpeechEnd(new Float32Array(RATE * 3));
+    for (let i = 0; i < 6; i++) await tick();
+    expect(s.view()).toMatchObject({ wake: "active", wakeName: "杰咪" });
+    expect(logs).toContainEqual({ ev: "wake-name", label: "agent:杰咪", kind: "agent" });
+    expect(texts).toEqual(["杰咪，看一下"]);
+    expect(routeLine(texts[0]!).lanes).toEqual(["agy"]);
+  });
+});

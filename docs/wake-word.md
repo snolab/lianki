@@ -186,6 +186,7 @@ on the Mac now, behind the KWS hit: [local-stt.md](local-stt.md), "Voiceprint".
 | State machine, the `LINKY` keyword (7 pronunciations), the cut after it | `packages/debug-chat/src/wake.ts` |
 | The spotter: a Blob Worker running `@sherpaw/kws@0.3.0` (sherpa-onnx WASM, Apache-2.0) with the zh-en 3M model (fp32, 13 MB, pinned Hugging Face commit) | `packages/debug-chat/src/wake-kws.ts` |
 | The gate on each VAD segment, before upload, only in passive mode | `createMic` `wake` (`mic.ts`) |
+| Everyone's name as a wake word, names → tokens, clashes, the in-place reload (2026-11-14) | `wake-names.ts`, `wake-tokens.ts`, `wake-lexicon.ts`; see "Names as wake words" |
 | Mode, rejections, lazy load, never-deaf fallback, `__lkMic.wake(mode)` | `mic-session.ts` |
 | The button: dashed violet ring (no text), zh/ja/en strings with translator context | `MicButton.tsx`, `ui-strings.ts` (`wakeStrings`) |
 | The chat lane: `{type: "wake", mode: "active" \| "passive" \| "ignored"}`, relayed to the thread's pages, not stored; each owner line carries `wake` (its mode) | `lib/dev-eval.ts`, `workers/push/src/debug.ts`, `app/components/DebugEval.tsx`, `bun scripts/dev/eval.ts wake <mode>` |
@@ -263,6 +264,81 @@ silence, as `padForSpot` does. It ran on files only, with nothing played.
   (evaluation plan, step 2). Then rerun the sweep
   (`scripts/local-stt/wake-eval.py`) with an equal number of his
   non-Linky clips, and set the threshold from that.
+
+## Names as wake words (2026-11-14)
+
+Owner request (2026-11-14, about 05:20 JST): "Linky" should not be the only
+wake word. Everyone taking part is one: the agents' names and his own. The
+set follows renames during the chat, whether he renames an agent or the
+agent renames itself. Two names may not sound the same, but a rename is
+never refused.
+
+**The set** (`wake-names.ts`): LINKY first, then
+
+1. the lanes' names and aliases (`voices.ts` LANES): coco, codex, 杰咪, agy,
+   antigravity, 小克, claude (小可 clashes with 小克; "main" and "chat" are
+   words, not names, and are left out);
+2. the main agent's name (the chat's `t.name`, "Learning Partner" by default,
+   or the localized name);
+3. the agents in the chat now (the presence list, `presence.ts`): the owner's
+   name for each, otherwise the token's own name;
+4. his own display name (the chat's `viewer.name`).
+
+`DebugChat` passes 2–4 to the page's one store (`wakeNames()`, on
+`globalThis`) whenever one of them changes. The store rebuilds the set and
+tells its listeners only when the keywords changed.
+
+**Names to tokens** (`wake-tokens.ts`, data in `wake-lexicon.ts`). The model
+takes keywords as its own tokens, never as text:
+
+- Chinese characters are written as a pinyin initial plus a toned final per
+  syllable (杰咪 → `j ié m ī`, 小克 → `x iǎo k è`), the same scheme as the
+  model's `keywords.txt`. The table has the most common reading of the 3,755
+  GB2312 level-1 characters plus a few that are common in given names. It
+  was made once with pinyin-pro, which is not a dependency. A polyphone gets
+  its most common reading.
+- Latin words: if the word is in the model's `en.phone` (CMU dict) entry for
+  our lanes or about 200 common given and agent names, that entry is used
+  (coco → `K OW1 K OW2`). An initialism (no vowel letter, or 2–4 capitals:
+  "mcp", "GPT") is spelled out letter by letter. Anything else goes through
+  small letter-to-sound rules (snomiao → `S N OW1 M IH0 AE0 OW0`). A wrong
+  guess only makes that name harder to wake on.
+- A name with any other character (kana, digits, emoji, a character missing
+  from the table) is skipped. Every token is checked against the model's
+  `tokens.txt`, because the spotter refuses an unknown one.
+
+**Clash rule.** Two names clash when their tokens, ignoring stress and tone,
+are equal, when one is a prefix of the other ("Ann" / "Anna"), or, for names
+of at most 5 tokens, when they are one token apart ("coco" / "koko"). The
+name seen first keeps the sound, so a newcomer or a new name never takes it
+from one already there. Lanes come first, and LINKY's pronunciations come
+before everything. The clashing name stays the participant's name; it just
+is not a wake word. Skips and clashes are logged as
+`{ev: "wake-names", labels, skipped, clash}`.
+
+**Reload in place.** `createKws({keywords: wakeNames()})` starts the Worker
+with the set as it is at that moment. After that, each change is one
+`{type: "keywords"}` message, and the Worker calls the spotter's
+`setKeywords` (`@sherpaw/kws`). That call swaps the keywords atomically
+while the model stays loaded. The mic, the VAD and the Worker keep running.
+An unchanged set sends nothing. If a list is refused, the old one stays and
+`{ev: "wake-keywords", ok: false}` is logged.
+
+**Which name woke it.** Each detection carries its keyword's label (`LINKY`,
+`agent:<name>`, `owner:<name>`). It goes into the `wake-spot` log, into a
+`{ev: "wake-name"}` line and into the session's `wakeName`. When an
+agent's name wakes the mic, the words after it go up as "coco, …" or
+"杰咪，…", so `lane-route.ts` sends the line to that lane and a token agent
+sees itself addressed. "Linky" and his own name only wake the mic, as
+before.
+
+**Thresholds.** Names use the spotter's defaults (score 1.0, threshold 0.25).
+These are stricter than LINKY's tuned 1.5 / 0.15, because short names like
+"coco" have not been measured on his voice yet.
+
+A page that hot-swaps the widget keeps its old spotter (and Linky alone)
+until the next reload. The mic session version was not bumped, because the
+session's shape only gained the optional `wakeName`.
 
 ## Sources
 

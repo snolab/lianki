@@ -268,6 +268,7 @@ import {
 } from "./LaneMark";
 import { type ParticipantChange, PresenceStack } from "./PresenceStack";
 import type { Present } from "./presence";
+import { wakeNames } from "./wake-names";
 import { PUBLIC_ROUTE_LIST, publicSttAvailable, readConsent, writeConsent } from "./public-stt";
 import { SttServersCard } from "./SttServersCard";
 import { MicCaret } from "./MicCaret";
@@ -987,6 +988,16 @@ export function DebugChat({
     () => new Map((presence?.list ?? []).filter((p) => p.tok).map((p) => [p.tok!, p])),
     [presence?.list],
   );
+  // Everyone's name is a wake word (wake-names.ts): the agents here, the main agent, and him.
+  // A rename or a newcomer changes the set; the spotter swaps its keywords in place.
+  const presentNames = (presence?.list ?? []).map((p) => p.name).join("\n");
+  useEffect(() => {
+    wakeNames().set({
+      mainName: t.name,
+      agents: presentNames ? presentNames.split("\n") : [],
+      owner: viewer?.name,
+    });
+  }, [t.name, presentNames, viewer?.name]);
   const laneOpts = {
     laneAvatar,
     tokenAvatar: tokenPicture,
