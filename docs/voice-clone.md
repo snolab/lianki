@@ -69,6 +69,7 @@ says `unreadable: true`); upload it again from the Mac.
 - `GET` → `{ref: null}` or `{ref: {durationMs, sampleRate, bytes, createdAt, updatedAt}}`: metadata, no audio.
 - `GET ?audio=1` → the same with `text` and `wav` (standard base64), decrypted, for the session's own account.
 - `PUT {ticket, text, wav}` → store or replace; `wav` is the file in standard base64. A body over `MAX_PUT_BODY` is refused (413) before it is parsed.
+- Errors are kebab-case codes: `not-found`, `voice-clone-off` (503), `too-large` (413), `bad-body`, `not-mono`, `too-long`, `bad-sample-rate`… (400), `wrong-op`, `no-passkey`, `not-your-ticket`, `expired`, `approval-already-used` (401).
 - `DELETE {ticket}` → delete the row and the object (`deleted: 1`, or `0` when there was none).
 
 The ticket is a voiceprint ticket (`lib/voiceprint-ticket.ts`: Ed25519

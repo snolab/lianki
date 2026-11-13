@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
  */
 const NO_STORE = { "cache-control": "no-store" };
 const notFound = () =>
-  NextResponse.json({ error: "Not found" }, { status: 404, headers: NO_STORE });
+  NextResponse.json({ error: "not-found" }, { status: 404, headers: NO_STORE });
 
 async function deps(): Promise<CloneRefDeps | NextResponse> {
   const user = await authUserOrNull();
@@ -35,10 +35,7 @@ async function deps(): Promise<CloneRefDeps | NextResponse> {
   if (!flagIn(await readFlags(), "voice.clone")) return notFound();
   const raw = process.env.STT_TICKET_KEY;
   if (!raw || dbBackend() !== "d1")
-    return NextResponse.json(
-      { error: "voice-clone storage is off" },
-      { status: 503, headers: NO_STORE },
-    );
+    return NextResponse.json({ error: "voice-clone-off" }, { status: 503, headers: NO_STORE });
   return {
     uid: user.id as string,
     db: d1CloneRefDb(getD1()),
@@ -69,9 +66,9 @@ export const PUT = async (req: Request) => {
   if (d instanceof NextResponse) return d;
   // Refuse an oversized body before reading it (a missing length is read, then checked whole).
   const len = Number(req.headers.get("content-length") ?? 0);
-  if (len > MAX_PUT_BODY) return answer({ status: 413, json: { error: "too large" } });
+  if (len > MAX_PUT_BODY) return answer({ status: 413, json: { error: "too-large" } });
   const text = await req.text();
-  if (text.length > MAX_PUT_BODY) return answer({ status: 413, json: { error: "too large" } });
+  if (text.length > MAX_PUT_BODY) return answer({ status: 413, json: { error: "too-large" } });
   let parsed: unknown = null;
   try {
     parsed = JSON.parse(text);

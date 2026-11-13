@@ -312,7 +312,7 @@ describe("tickets", () => {
     const { deps, ticket } = await setup();
     const d = deps("owner-1");
     const refuse = async (t: string, why: string) =>
-      expect((await putCloneRef(d, body(t))).json.error).toBe(why);
+      expect((await putCloneRef(d, body(t))).json.error).toBe(why.replace(/ /g, "-"));
     await refuse(await ticket({ op: "export" }), "wrong op");
     await refuse(await ticket({ op: "clone-ref-delete" }), "wrong op");
     await refuse(await ticket({ uv: false }), "no passkey");
@@ -424,7 +424,7 @@ describe("the account's own row", () => {
     const other = deps("intruder");
     expect(await getCloneRef(other, true)).toEqual({ status: 200, json: { ref: null } });
     const theirs = await ticket({ op: "clone-ref-delete" });
-    expect((await deleteCloneRef(other, { ticket: theirs })).json.error).toBe("not your ticket");
+    expect((await deleteCloneRef(other, { ticket: theirs })).json.error).toBe("not-your-ticket");
     expect(db.rows.size).toBe(1);
     // Replace: a new revision; the old object goes; created stays.
     const later = { ...me, now: NOW + 60_000 };
@@ -442,10 +442,10 @@ describe("the account's own row", () => {
     expect((await getCloneRef(rot, true)).json.ref).toMatchObject({ unreadable: true });
     expect((await getCloneRef(rot, true)).json.ref).not.toHaveProperty("wav");
     // Delete: exactly {ticket}, a delete ticket, once.
-    expect((await deleteCloneRef(me, null)).json.error).toBe("bad body");
-    expect((await deleteCloneRef(me, { ticket: "t", device: "*" })).json.error).toBe("bad body");
-    expect((await deleteCloneRef(me, { ticket: 1 })).json.error).toBe("no ticket");
-    expect((await deleteCloneRef(me, { ticket: await ticket() })).json.error).toBe("wrong op");
+    expect((await deleteCloneRef(me, null)).json.error).toBe("bad-body");
+    expect((await deleteCloneRef(me, { ticket: "t", device: "*" })).json.error).toBe("bad-body");
+    expect((await deleteCloneRef(me, { ticket: 1 })).json.error).toBe("no-ticket");
+    expect((await deleteCloneRef(me, { ticket: await ticket() })).json.error).toBe("wrong-op");
     const del = await ticket({ op: "clone-ref-delete" });
     expect(await deleteCloneRef(me, { ticket: del })).toEqual({
       status: 200,
@@ -453,7 +453,7 @@ describe("the account's own row", () => {
     });
     expect(db.rows.size).toBe(0);
     expect(blobs.objects.size).toBe(0);
-    expect((await deleteCloneRef(me, { ticket: del })).json.error).toBe("approval already used");
+    expect((await deleteCloneRef(me, { ticket: del })).json.error).toBe("approval-already-used");
     expect(
       await deleteCloneRef(me, { ticket: await ticket({ op: "clone-ref-delete" }) }),
     ).toMatchObject({ json: { deleted: 0 } });
@@ -465,7 +465,7 @@ describe("the account's own row", () => {
     const t = await ticket();
     expect(await putCloneRef(me, body(t, { channels: 2 }))).toEqual({
       status: 400,
-      json: { error: "not mono" },
+      json: { error: "not-mono" },
     });
     expect((await putCloneRef(me, body(t, { seconds: 32 }))).status).toBe(413);
     expect(db.spent.size).toBe(0);

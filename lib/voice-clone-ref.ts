@@ -293,7 +293,11 @@ export type CloneRefDeps = {
   now?: number;
 };
 type Out = { status: number; json: Record<string, unknown> };
-const bad = (status: number, error: string): Out => ({ status, json: { error } });
+/** Errors as kebab-case codes ("not-mono", "wrong-op"), as every API route answers. */
+const bad = (status: number, error: string): Out => ({
+  status,
+  json: { error: error.trim().replace(/\s+/g, "-") },
+});
 const metaOf = (r: RefRow): RefMeta => ({
   durationMs: r.durationMs,
   sampleRate: r.sampleRate,
