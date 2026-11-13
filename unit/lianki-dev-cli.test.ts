@@ -407,6 +407,13 @@ describe("lane token: say/ask/listen through lianki chat", () => {
     if (a instanceof Error) throw a;
     expect([...a]).toEqual(["chat", "say", "--quiet", "-"]);
     expect(a.stdin).toBe("-x looks like a flag");
+    expect(chatArgv("say", ["--voice", "main", "hi"])).toEqual(
+      expect.arrayContaining(["--voice", "main"]),
+    );
+    expect(chatArgv("say", ["--voice=calm", "hi"])).toEqual(
+      expect.arrayContaining(["--voice", "calm"]),
+    );
+    expect(chatArgv("say", ["--voice"])).toBeInstanceOf(Error);
     expect(chatArgv("say", ["--to", "bob@x.com", "hi"])).toBeInstanceOf(Error);
     expect(chatArgv("say", [])).toBeInstanceOf(Error);
   });

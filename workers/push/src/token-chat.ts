@@ -39,7 +39,7 @@
 import type { ChatMessage, EditedEvent } from "../../../packages/debug-chat/src/wire";
 import { type Ask, parseAsk, askText } from "../../../packages/debug-chat/src/ask";
 import { OWNER_THREAD, chatText, isUserId } from "../../../lib/dev-eval";
-import { laneOf } from "../../../packages/debug-chat/src/voices";
+import { laneOf, parseLineVoice } from "../../../packages/debug-chat/src/voices";
 
 export const CHAT_PATH = "/api/version/chat";
 export const REVOKED_PATH = "/internal/chat-tokens/revoked";
@@ -215,7 +215,13 @@ export class TokenChat {
   private async say(thread: string, lane: string, m: Record<string, unknown>) {
     const text = typeof m.text === "string" ? laneText(lane, m.text.trim()) : undefined;
     if (!text) return { error: "say needs text (at most the chat's limit)" };
-    const line = this.line(thread, lane, text, m.quiet === true ? { quiet: true } : {});
+    // A line's own voice (main = the cat-girl voice…), checked as on the grant path.
+    const voice = m.voice === undefined ? undefined : parseLineVoice(m.voice);
+    if (voice && "error" in voice) return { error: voice.error };
+    const line = this.line(thread, lane, text, {
+      ...(m.quiet === true ? { quiet: true } : {}),
+      ...(voice ? { voice: m.voice as string } : {}),
+    });
     await this.host.post(line);
     console.log(JSON.stringify({ msg: "debug.token-say", lane, owner: thread === OWNER_THREAD }));
     return { id: line.id };
