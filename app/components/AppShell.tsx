@@ -265,7 +265,8 @@ export function AppShell({
         </Link>
 
         <div className="ms-auto flex items-center gap-3">
-          <LanguageSwitcher />
+          {/* Guests only: signed in, the language is in the profile menu (owner, 2026-11-14). */}
+          {!user && <LanguageSwitcher />}
           {user && levels && <LevelChip />}
           {user ? (
             <ProfileMenu
