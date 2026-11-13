@@ -930,7 +930,6 @@ export function DebugChat({
   onPassageEnd,
   sessions = [],
   onEnd,
-  evalRan = false,
   friend = false,
   owner = false,
   notice,
@@ -1863,9 +1862,6 @@ export function DebugChat({
    * re-armed when it fires: no polling, and no render per scroll.
    */
   const compactPref = useUi(chatPrefs(), (s) => s.compact);
-  /** The task bar hidden by its ▸/▾ (ui-store.ts chatPrefs `etaFolded`, this device). */
-  const etaFolded = useUi(chatPrefs(), (s) => s.etaFolded);
-  const foldEta = (v: boolean) => chatPrefs().setState({ etaFolded: v });
   const [expanded, setExpanded] = useState(false);
   const holdUntil = useRef(0);
   const hold = (ms: number) => {
@@ -5182,8 +5178,6 @@ export function DebugChat({
                     glass={strip}
                     onOpen={() => setGanttOpen(true)}
                     compact={!open || compact}
-                    folded={etaFolded}
-                    onFold={foldEta}
                   />
                 </div>
               )}
@@ -5196,8 +5190,6 @@ export function DebugChat({
               glass={strip}
               onOpen={() => setGanttOpen(true)}
               compact={!open || compact}
-              folded={etaFolded}
-              onFold={foldEta}
             />
           )}
         </div>
@@ -5486,8 +5478,6 @@ export function DebugChat({
               t={t}
               open={attachMenu}
               announce={attach && !notice}
-              sessions={evalSessions.length}
-              ran={evalRan}
               attached={!!attached}
               selectable={!!pageSel.sel}
               onToggle={() => setAttachMenu((v) => !v)}

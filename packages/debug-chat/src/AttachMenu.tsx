@@ -84,18 +84,14 @@ const iconOf = (name: string | undefined): IconName =>
 
 /**
  * The + at the start of the input. With `announce` (its Add and Attach groups
- * shown) it announces itself, and the bottom island drops its ＋. `sessions`:
- * the eval/preview sessions (the tree row's count) — a small code mark on the
- * +, dim while code is allowed, lit and pulsing when code just ran (`ran`).
- * A dot top right: dim when a page selection could be attached, lit when
+ * shown) it announces itself, and the bottom island drops its ＋. No code
+ * mark on it (owner, 2026-11-14: "完全不用显示这个icon"). A dot top right: dim when a page selection could be attached, lit when
  * something is attached (owner, 2026-11-14: allowed ≠ active; one + only).
  */
 export function AttachButton({
   t,
   open,
   announce = true,
-  sessions = 0,
-  ran = false,
   attached = false,
   selectable = false,
   onToggle,
@@ -103,8 +99,6 @@ export function AttachButton({
   t: ChatStrings;
   open: boolean;
   announce?: boolean;
-  sessions?: number;
-  ran?: boolean;
   /** Something rides with the next line (a page selection, files): the dot lit. */
   attached?: boolean;
   /** A page selection could be attached (allowed, not attached yet): the dot dim. */
@@ -131,19 +125,6 @@ export function AttachButton({
       className="tap-40 relative flex shrink-0 items-center justify-center self-end rounded-full text-base text-gray-500 dark:text-gray-400"
     >
       <Icon name="plus" />
-      {/* Remote code can reach this page: a small code mark, bottom right
-          (owner, 2026-11-14: one + is enough; the link chip is gone). */}
-      {sessions > 0 && (
-        <span
-          aria-hidden
-          data-testid="debug-chat-evals"
-          data-active={ran || undefined}
-          className={`absolute -end-0.5 bottom-0 inline-flex fs-10 leading-none ${ran ? "animate-pulse motion-reduce:animate-none" : "opacity-40"}`}
-          style={{ color: "oklch(0.55 0.15 30)" }}
-        >
-          <Icon name="code" />
-        </span>
-      )}
       {/* Something is attached to the next line (a page selection, files): a dot, top right. */}
       {(attached || selectable) && (
         <span
@@ -163,6 +144,9 @@ export function AttachButton({
  * then "View" (the state tree). Without `attach` (the cross-site iframe, or
  * the chat unavailable) only View is shown.
  */
+/** Below this much room above the + button the menu opens downward instead. */
+export const MIN_ROOM_ABOVE = 160;
+
 export function AttachMenu({
   t,
   attach = true,
@@ -216,9 +200,9 @@ export function AttachMenu({
       const a = anchor.getBoundingClientRect();
       const above = Math.floor(a.top - 8);
       const below = Math.floor((visualViewport?.height ?? innerHeight) - a.bottom - 8);
-      // Upward as before; downward only when it does not fit above and there is
-      // more room below ("如果屏幕上还有空间的话，也可以往下挪").
-      const down = el.scrollHeight > above && below > above;
+      // Upward by default, scrolling inside ("加号菜单应该默认出现在上面", owner,
+      // 2026-11-14); downward only when there is next to no room above at all.
+      const down = above < MIN_ROOM_ABOVE && below > above;
       setRoom({ px: Math.max(120, down ? below : above), down });
     };
     fit();

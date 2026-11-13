@@ -74,11 +74,9 @@ describe("the + menu's View group", () => {
 describe("the + button", () => {
   const button = (p: Partial<Parameters<typeof AttachButton>[0]> = {}) =>
     renderToStaticMarkup(createElement(AttachButton, { t, open: false, onToggle: noop, ...p }));
-  it("has a dot while there are sessions, pulsing when code just ran", () => {
+  it("shows no code mark (owner, 2026-11-14)", () => {
     expect(button()).not.toContain("debug-chat-evals");
-    expect(button({ sessions: 1 })).toMatch(/data-testid="debug-chat-evals"/);
-    expect(button({ sessions: 1 })).not.toContain("animate-pulse");
-    expect(button({ sessions: 1, ran: true })).toContain("animate-pulse");
+    expect(button({ attached: true })).toContain("debug-chat-attached-dot");
   });
 });
 
