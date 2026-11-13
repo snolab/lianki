@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { displayTitle } from "@/lib/titles/client";
 import { VirtualList } from "@/app/components/VirtualList";
 import { SealSwitch } from "@/app/components/SealSwitch";
 import { useIntlayer } from "next-intlayer";
 import { fill } from "@/lib/roadmap/labels";
 import { CARD_STATES, dueLabel, type DataRow, type StoreId } from "./types";
+
+/** How tall a card table's own scroll box may grow before it scrolls inside. */
+export const TABLE_BOX_MAX_HEIGHT = "min(60vh, 36rem)";
 
 type Props = {
   heading: string;
@@ -87,6 +90,7 @@ export default function CardTable(props: Props) {
     deleteSelectedLabel,
   } = props;
 
+  const scrollBox = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
 
@@ -190,138 +194,149 @@ export default function CardTable(props: Props) {
         </p>
       )}
 
-      <VirtualList
-        items={rows}
-        getKey={(row) => row.url}
-        name={`data-${store}`}
-        hasMore={hasMore}
-        loading={loading}
-        error={listError}
-        onReachEnd={onReachEnd}
-        estimateSize={52}
-        className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700"
-        rowClassName="border-t border-gray-100 dark:border-gray-800 align-top"
-        empty={
-          <p className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-8 text-center text-sm text-gray-500">
-            {tt.empty}
-          </p>
-        }
-        table={{
-          className: "w-full text-sm",
-          label: heading,
-          head: (
-            <thead className="bg-gray-50 dark:bg-gray-800/50">
-              <tr>
-                <th scope="col" className="w-8 px-3 py-2">
-                  <input
-                    type="checkbox"
-                    checked={allOnPageSelected}
-                    onChange={toggleAll}
-                    aria-label={tt.selectAll.value}
-                  />
-                </th>
-                {COLUMNS.map((col) => (
-                  <th key={col.key} scope="col" className="px-3 py-2 text-start font-semibold">
-                    {col.sortable ? (
-                      <button
-                        type="button"
-                        onClick={() => onSortChange(col.key)}
-                        className="inline-flex items-center gap-1 hover:underline"
-                        aria-label={fill(tt.sortBy.value, { column: colName(col.label) })}
-                      >
-                        {colName(col.label)}
-                        {sort === col.key && <span aria-hidden>{order === "asc" ? "▲" : "▼"}</span>}
-                      </button>
-                    ) : (
-                      colName(col.label)
-                    )}
+      {/* Each table scrolls in its own box, its header pinned on top (owner,
+          2026-11-14: "每个表格太长了…做成虚拟列表，在一个比较小一点的空间里面滚动"). */}
+      <div
+        ref={scrollBox}
+        data-testid={`data-scroll-${store}`}
+        className="overflow-auto rounded-lg border border-gray-200 dark:border-gray-700"
+        style={{ maxHeight: TABLE_BOX_MAX_HEIGHT }}
+      >
+        <VirtualList
+          items={rows}
+          getKey={(row) => row.url}
+          name={`data-${store}`}
+          scrollRef={scrollBox}
+          hasMore={hasMore}
+          loading={loading}
+          error={listError}
+          onReachEnd={onReachEnd}
+          estimateSize={52}
+          rowClassName="border-t border-gray-100 dark:border-gray-800 align-top"
+          empty={
+            <p className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-8 text-center text-sm text-gray-500">
+              {tt.empty}
+            </p>
+          }
+          table={{
+            className: "w-full text-sm",
+            label: heading,
+            head: (
+              <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800">
+                <tr>
+                  <th scope="col" className="w-8 px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      onChange={toggleAll}
+                      aria-label={tt.selectAll.value}
+                    />
                   </th>
-                ))}
-                {editable && <th scope="col" className="px-3 py-2" />}
-              </tr>
-            </thead>
-          ),
-        }}
-        renderItem={(row) => (
-          <>
-            <td className="px-3 py-2">
-              <input
-                type="checkbox"
-                checked={selected.has(row.url)}
-                onChange={() => toggle(row.url)}
-                aria-label={fill(tt.select.value, { title: row.title })}
-              />
-            </td>
-            <td className="px-3 py-2 max-w-md">
-              {editing === row.url ? (
-                <form
-                  className="flex gap-2"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    await onRename(row.url, draftTitle);
-                    setEditing(null);
-                  }}
-                >
-                  <input
-                    value={draftTitle}
-                    onChange={(e) => setDraftTitle(e.target.value)}
-                    aria-label={tt.cardTitle.value}
-                    className="flex-1 rounded-md border border-gray-300 dark:border-gray-600 bg-transparent px-2 py-1"
-                  />
-                  <button type="submit" className="text-blue-600 hover:underline">
-                    {tt.save}
-                  </button>
+                  {COLUMNS.map((col) => (
+                    <th key={col.key} scope="col" className="px-3 py-2 text-start font-semibold">
+                      {col.sortable ? (
+                        <button
+                          type="button"
+                          onClick={() => onSortChange(col.key)}
+                          className="inline-flex items-center gap-1 hover:underline"
+                          aria-label={fill(tt.sortBy.value, { column: colName(col.label) })}
+                        >
+                          {colName(col.label)}
+                          {sort === col.key && (
+                            <span aria-hidden>{order === "asc" ? "▲" : "▼"}</span>
+                          )}
+                        </button>
+                      ) : (
+                        colName(col.label)
+                      )}
+                    </th>
+                  ))}
+                  {editable && <th scope="col" className="px-3 py-2" />}
+                </tr>
+              </thead>
+            ),
+          }}
+          renderItem={(row) => (
+            <>
+              <td className="px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={selected.has(row.url)}
+                  onChange={() => toggle(row.url)}
+                  aria-label={fill(tt.select.value, { title: row.title })}
+                />
+              </td>
+              <td className="px-3 py-2 max-w-md">
+                {editing === row.url ? (
+                  <form
+                    className="flex gap-2"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      await onRename(row.url, draftTitle);
+                      setEditing(null);
+                    }}
+                  >
+                    <input
+                      value={draftTitle}
+                      onChange={(e) => setDraftTitle(e.target.value)}
+                      aria-label={tt.cardTitle.value}
+                      className="flex-1 rounded-md border border-gray-300 dark:border-gray-600 bg-transparent px-2 py-1"
+                    />
+                    <button type="submit" className="text-blue-600 hover:underline">
+                      {tt.save}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(null)}
+                      className="text-gray-500 hover:underline"
+                    >
+                      {tt.cancel}
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <div className="truncate font-medium">{displayTitle(row.title, row.url)}</div>
+                    <a
+                      href={row.url}
+                      className="block truncate text-xs text-gray-500 dark:text-gray-400 hover:underline"
+                    >
+                      {row.url}
+                    </a>
+                  </>
+                )}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap">{stateName(row.state)}</td>
+              <td className="px-3 py-2 whitespace-nowrap font-mono">{dueLabel(row.due)}</td>
+              <td className="px-3 py-2 font-mono">{row.reps}</td>
+              <td className="px-3 py-2 font-mono">{row.lapses}</td>
+              <td className="px-3 py-2 font-mono whitespace-nowrap">
+                <span title={tt.inLocal.value} aria-label={tt.inLocal.value} hidden={!row.inLocal}>
+                  💻
+                </span>
+                {!row.inLocal && <span aria-hidden>·</span>}
+                <span title={tt.inCloud.value} aria-label={tt.inCloud.value} hidden={!row.inCloud}>
+                  ☁️
+                </span>
+                {!row.inCloud && <span aria-hidden>·</span>}
+              </td>
+              {editable && (
+                <td className="px-3 py-2 whitespace-nowrap">
                   <button
                     type="button"
-                    onClick={() => setEditing(null)}
-                    className="text-gray-500 hover:underline"
+                    onClick={() => {
+                      setEditing(row.url);
+                      setDraftTitle(row.title);
+                    }}
+                    className="text-xs text-blue-600 hover:underline"
                   >
-                    {tt.cancel}
+                    {tt.rename}
                   </button>
-                </form>
-              ) : (
-                <>
-                  <div className="truncate font-medium">{displayTitle(row.title, row.url)}</div>
-                  <a
-                    href={row.url}
-                    className="block truncate text-xs text-gray-500 dark:text-gray-400 hover:underline"
-                  >
-                    {row.url}
-                  </a>
-                </>
+                </td>
               )}
-            </td>
-            <td className="px-3 py-2 whitespace-nowrap">{stateName(row.state)}</td>
-            <td className="px-3 py-2 whitespace-nowrap font-mono">{dueLabel(row.due)}</td>
-            <td className="px-3 py-2 font-mono">{row.reps}</td>
-            <td className="px-3 py-2 font-mono">{row.lapses}</td>
-            <td className="px-3 py-2 font-mono whitespace-nowrap">
-              <span title={tt.inLocal.value} aria-label={tt.inLocal.value} hidden={!row.inLocal}>
-                💻
-              </span>
-              {!row.inLocal && <span aria-hidden>·</span>}
-              <span title={tt.inCloud.value} aria-label={tt.inCloud.value} hidden={!row.inCloud}>
-                ☁️
-              </span>
-              {!row.inCloud && <span aria-hidden>·</span>}
-            </td>
-            {editable && (
-              <td className="px-3 py-2 whitespace-nowrap">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditing(row.url);
-                    setDraftTitle(row.title);
-                  }}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  {tt.rename}
-                </button>
-              </td>
-            )}
-          </>
-        )}
-      />
+            </>
+          )}
+        />
+      </div>
     </section>
   );
 }
