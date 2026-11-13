@@ -44,6 +44,7 @@ everything that is theirs:
 | `/my`             | the index: one card per kind of data (profile, preferences, files, cards and sync)    |
 | `/my/profile`     | name, picture, email, passkeys, level (was `/profile`)                                 |
 | `/my/preferences` | preferences and settings, API tokens (was `/preferences`)                              |
+| `/my/boxes`       | the account current bound box: inspect and disconnect its Lianki authorization |
 | `/my/files`       | every stored file in folders by origin (inbox_item `source`): Open, delete (docs/import-material.md, "My Files") |
 
 Signed-in only: a guest is sent to sign in (except the guest level card on

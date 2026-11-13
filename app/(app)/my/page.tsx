@@ -28,11 +28,19 @@ export default async function MyPage() {
   if (!(await authUserOrNull())) return signInRedirect();
   const locale = await appLocale();
   const { heading, intro, cards } = getIntlayer("my-page", locale);
+  const boxes = getIntlayer("my-boxes", locale);
 
   const items: { key: string; href: string; icon: IconName; title: string; blurb: string }[] = [
     { key: "profile", href: "/my/profile", icon: "user", ...strs(cards.profile) },
     { key: "preferences", href: "/my/preferences", icon: "gearSix", ...strs(cards.preferences) },
     { key: "files", href: "/my/files", icon: "folderSimple", ...strs(cards.files) },
+    {
+      key: "boxes",
+      href: "/my/boxes",
+      icon: "database",
+      title: String(boxes.title),
+      blurb: String(boxes.intro),
+    },
     { key: "data", href: "/data", icon: "database", ...strs(cards.data) },
   ];
 
