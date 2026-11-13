@@ -1861,7 +1861,10 @@ stylesheet); none when all are done, and none under prefers-reduced-motion.
 the chat shows; a tap on that brings the bar back. The toggle names what a
 tap does (`etaHide` / `etaShow`) and carries `aria-expanded`. The choice is a
 device preference, `etaFolded` in `lk:pref:chat-view` (`chatPrefs`), shown by
-default, never synced.
+default, never synced. The mic's note above the bar (the wake word waiting
+for Wi-Fi, a mic error) is lifted by the strip's measured height
+(`DebugMic noteLift={etaH}`), so it sits over the strip (or its ▸), never
+on it.
 
 ### Full-screen Gantt
 

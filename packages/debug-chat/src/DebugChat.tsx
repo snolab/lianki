@@ -3239,6 +3239,8 @@ export function DebugChat({
           localStt={micRoute}
           label={pages.find((p) => p.id === selfPage)?.label ?? location.pathname}
           gesture={micGesture}
+          // Its note goes over the task strip, not on it.
+          noteLift={etaH}
         />
       )}
     </>

@@ -733,6 +733,9 @@ export const canCapture = () =>
  * transcript goes through the echo guard first. With it off, capture is held
  * while the agent speaks, as before.
  */
+/** The note's gap over the bar (or over the strip above it), px. */
+export const MIC_NOTE_GAP_PX = 8;
+
 export function DebugMic({
   onText,
   onPending,
@@ -741,6 +744,7 @@ export function DebugMic({
   localStt,
   label,
   gesture,
+  noteLift = 0,
 }: {
   onText: (text: string) => void;
   onPending: (n: number, interim: string) => void;
@@ -749,6 +753,12 @@ export function DebugMic({
   /** The owner's local streaming STT (local-stt.ts): utterances stream there first. */
   localStt?: string;
   label: string;
+  /**
+   * The height (px) of what sits right over the bar (the ETA task strip, or
+   * its ▸ when hidden): the note (Wi-Fi, errors) goes above it, never on it
+   * (owner, 2026-11-13: the Wi-Fi note covered the task strip).
+   */
+  noteLift?: number;
   /**
    * The chat bar's own press handling (DebugChat): a vertical drag scrubs the
    * history, a horizontal one moves the bar; `wasDrag` swallows the click that
@@ -915,8 +925,8 @@ export function DebugMic({
           role="alert"
           data-testid="debug-chat-mic-note"
           // From the mic's start, over the bar: the mic is near the box's inner edge.
-          className="pointer-events-none absolute start-0 bottom-full mb-2 whitespace-nowrap fs-10"
-          style={{ color: "oklch(0.6 0.17 45)" }}
+          className="pointer-events-none absolute start-0 bottom-full whitespace-nowrap fs-10"
+          style={{ color: "oklch(0.6 0.17 45)", marginBottom: MIC_NOTE_GAP_PX + noteLift }}
         >
           {note}
         </span>
