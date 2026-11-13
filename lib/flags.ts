@@ -347,6 +347,14 @@ export const FLAGS = {
     default: false,
     requires: ["auth-secret"],
   },
+  // No `audience`: every account; ON is the shipped state. Grants credits,
+  // never charges, so default-on (docs/payments.md, "Login-streak bonus").
+  "credits.login-streak": {
+    description:
+      "连续学习奖励：每天服务器记到一次真实学习（复习了卡片、阅读打分）就送当天的积分，连续天数越多送得越多（7 天一轮，金额在 /dev/config 的 credits.loginStreak.*）；漏一天只扣几天，不清零。每个自然日（按账号时区）只送一次，重试不会重复。钱包卡片上有一行「连续 N 天 · +X」，流水里显示为「连续学习 · 第 N 天」。关闭 = 不再送（已送的积分不动），钱包上没有这一行。",
+    default: true,
+    group: "credits",
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;

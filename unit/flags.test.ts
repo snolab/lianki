@@ -50,7 +50,8 @@ describe("registry", () => {
     // card-height pinch, 2026-11-10; /library and My books /books, 2026-11-10; the
     // voiceprint in his account, tap card 2026-11-10 23:31 JST, audience owner + dev;
     // the cracked "↓ back" slips, asked 2026-11-10 22:59 JST, audience owner + dev;
-    // a new version applying itself on a clean page, asked 2026-11-11 19:33 JST).
+    // a new version applying itself on a clean page, asked 2026-11-11 19:33 JST;
+    // the login-streak credits, which grant and never charge, 2026-11-14).
     const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
     expect(on).toEqual([
       "app.auto-update",
@@ -64,6 +65,7 @@ describe("registry", () => {
       "voice.polish-readback",
       "words.pinch-card-height",
       "words.shatter",
+      "credits.login-streak",
     ]);
     for (const k of FLAG_KEYS) expect(FLAGS[k].description.length).toBeGreaterThan(0);
     expect(FLAGS["payments.stripe.live"].default).toBe(false);

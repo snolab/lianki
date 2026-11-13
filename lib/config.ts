@@ -625,6 +625,36 @@ export const CONFIG = {
     money: true,
     description: "账号注册多少小时后可以领第二档年龄积分（默认 168 小时 = 7 天）。",
   }),
+  // Login-streak bonus (docs/payments.md, "Login-streak bonus"; owner 2026-11-14):
+  // credits for consecutive days of real learning, once per local day. The
+  // amounts become credits at CREDITS_PER_USD (lib/payments/credits.ts), rounded.
+  "credits.loginStreak.usdByDay": {
+    default: "0.02,0.02,0.05,0.05,0.06,0.10,0.20" as string,
+    schema: z
+      .string()
+      .regex(
+        /^\s*\d+(\.\d+)?(\s*,\s*\d+(\.\d+)?){0,29}\s*$/,
+        "USD per day, comma-separated: 0.02,0.02,0.05,…",
+      )
+      .refine((s) => s.split(",").every((d) => Number(d) >= 0 && Number(d) <= 10), "0–10 USD each"),
+    unit: "USD/day",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "连续学习奖励：每个周期里第 1、2、3…天各送多少美元，逗号分隔（个数 = 周期长度，默认 7 天一轮，共 0.50 美元/轮，第 8 天回到第 1 档）。按 CREDITS_PER_USD 换成积分（四舍五入）。一天只有在服务器记到一次真实学习（复习了卡片、阅读打分）时才算，每个自然日（按账号所在时区）只送一次。某一档填 0 = 那天不送。",
+  },
+  "credits.loginStreak.missCostDays": int({
+    default: 2,
+    min: 0,
+    max: 1000,
+    unit: "days",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "连续学习奖励的断签规则：每漏一天，连续天数扣多少天（不清零）。默认 2：连续 7 天后漏 1 天，再学时按第 6 天算（7−2+1）。0 = 漏天不扣；填很大（如 1000）= 漏一天就从头开始。",
+  }),
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;
