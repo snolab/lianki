@@ -82,13 +82,21 @@ describe("the per-device view state (lk:pref:chat-view)", () => {
     expect(JSON.parse(data.get("lk:pref:chat-view")!).state).toEqual({
       compact: false,
       full: true,
+      etaFolded: false,
     });
     resetUiStores();
     expect(chatPrefs().getState().full).toBe(true);
   });
   it("a value stored before `full` existed keeps compact and reads full as off", () => {
     data.set("lk:pref:chat-view", JSON.stringify({ state: { compact: true }, version: 1 }));
-    expect(chatPrefs().getState()).toEqual({ compact: true, full: false });
+    expect(chatPrefs().getState()).toEqual({ compact: true, full: false, etaFolded: false });
+  });
+  it("the task bar's ▸/▾ (etaFolded): shown by default, kept next to them across a reload", () => {
+    expect(CHAT_VIEW_INITIAL.etaFolded).toBe(false);
+    chatPrefs().setState({ etaFolded: true });
+    expect(JSON.parse(data.get("lk:pref:chat-view")!).state.etaFolded).toBe(true);
+    resetUiStores();
+    expect(chatPrefs().getState().etaFolded).toBe(true);
   });
   it("a damaged value falls back to off", () => {
     data.set("lk:pref:chat-view", JSON.stringify({ state: { full: "yes" }, version: 1 }));
