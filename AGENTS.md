@@ -70,10 +70,12 @@ build of `app/**` with `DB_BACKEND=d1`. It is attached by a Worker **route**
 `lianki.com/*` on the zone; the DNS record still points at Vercel underneath,
 so the route alone decides. A second route covers `www.lianki.com/*`, so that
 hostname is the **Worker** too — it 308s to the apex with no `x-vercel-id`.
-Two narrower routes go to small Workers first: `lianki.com/api/version/*` to
-`lianki-push` (`workers/push`) and `lianki.com/api/words/tts*` to
+Narrower routes go to small Workers first: `lianki.com/api/version/*` to
+`lianki-push` (`workers/push`), `lianki.com/api/words/tts*` to
 `lianki-voice` (`workers/voice`: recorded word clips at the edge; the rest
-passed on to `lianki`). A recorded clip never shows in `wrangler tail lianki`.
+passed on to `lianki`), and `lianki.com/mcp*` to `lianki-mcp` (`workers/mcp`:
+the remote MCP server, [docs/api-for-agents.md](docs/api-for-agents.md)).
+A recorded clip or an MCP call never shows in `wrangler tail lianki`.
 
 | signal                                        | reading                                                         |
 | --------------------------------------------- | --------------------------------------------------------------- |
