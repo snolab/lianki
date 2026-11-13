@@ -1031,6 +1031,7 @@ export function DebugMic({
           // The agent speaks: a slow blue ring, so it is never mistaken for capture.
           <span
             aria-hidden
+            key="speaking"
             data-testid="debug-chat-mic-speaking"
             className="pointer-events-none absolute rounded-full animate-pulse motion-reduce:animate-none"
             style={{ ...MIC_RING, boxShadow: `0 0 0 2px ${TALK}`, animationDuration: "2.4s" }}
@@ -1039,6 +1040,7 @@ export function DebugMic({
           // Passive: a dashed ring, pulsing slowly while the spotter downloads.
           <span
             aria-hidden
+            key="passive"
             data-testid="debug-chat-mic-passive"
             className={`pointer-events-none absolute rounded-full border-2 border-dashed ${view.kws === "loading" ? "animate-pulse motion-reduce:animate-none" : ""}`}
             style={{ ...MIC_RING, borderColor: WAIT }}
@@ -1047,6 +1049,7 @@ export function DebugMic({
           // Off by itself (a reload, a lost track, another tab; mic-off.ts): one tap resumes.
           <span
             aria-hidden
+            key="resume"
             data-testid="debug-chat-mic-resume"
             className={`pointer-events-none absolute rounded-full border-2 border-dashed`}
             style={{ ...MIC_RING, borderColor: REC }}
@@ -1056,6 +1059,7 @@ export function DebugMic({
           // is captured. The ring alone shows it: no text on the button (owner, 2026-11-03).
           <span
             aria-hidden
+            key="ring"
             data-testid="debug-chat-mic-ring"
             data-rec={rec || undefined}
             className="pointer-events-none absolute rounded-full"
