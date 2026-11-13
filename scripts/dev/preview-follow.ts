@@ -72,7 +72,11 @@ function log(event: Record<string, unknown>) {
 
 function exec(cmd: string[], dir: string, timeoutMs = 5 * 60_000): Promise<Ran> {
   return new Promise((resolve) => {
-    const p = spawn(cmd[0], cmd.slice(1), { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+    // cwd alone says which repo: never a GIT_DIR inherited from a hook.
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
+    ) as NodeJS.ProcessEnv;
+    const p = spawn(cmd[0], cmd.slice(1), { cwd: dir, env, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     p.stdout.on("data", (b) => (stdout += b));

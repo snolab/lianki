@@ -64,8 +64,12 @@ describe("preview-follow: parsing", () => {
 
 // A real repo: "origin" (bare) with main, and a clone on preview/live2.
 let root = "";
+// Without GIT_* from the caller: under the pre-push hook GIT_DIR points at
+// the real repo, and these temp-repo commands would land there.
 const env = {
-  ...process.env,
+  ...(Object.fromEntries(
+    Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
+  ) as NodeJS.ProcessEnv),
   GIT_AUTHOR_NAME: "t",
   GIT_AUTHOR_EMAIL: "t@example.invalid",
   GIT_COMMITTER_NAME: "t",
