@@ -18,13 +18,9 @@ import {
   subscribeHeard,
 } from "./voice-heard";
 import type { ChatMessage } from "./wire";
-import { CLONE_VOICE_NAME } from "./polish-readback";
 
 /** The details' voice rows' words (chat-ui-locales.ts). */
-export type VoiceWords = Pick<
-  ChatExtra,
-  "voiceUsed" | "voiceUseThis" | "voicePinned" | "voiceUnpin" | "voiceClone"
->;
+export type VoiceWords = Pick<ChatExtra, "voiceUsed" | "voiceUseThis" | "voicePinned" | "voiceUnpin">;
 
 const SEAL = "oklch(0.6 0.11 22.3)";
 
@@ -52,12 +48,7 @@ export function HeardVoiceRows({
     <div data-testid="debug-chat-message-voice" className="mt-1 flex flex-col gap-1">
       {heard.map((v) => (
         <div key={v.name} className="flex flex-wrap items-center gap-2">
-          <span data-voice={v.name}>
-            {/* His own cloned voice (polish-readback.ts) in words, not its id. */}
-            {v.name === CLONE_VOICE_NAME && words.voiceClone
-              ? words.voiceClone
-              : words.voiceUsed.replace("{name}", v.name)}
-          </span>
+          <span data-voice={v.name}>{words.voiceUsed.replace("{name}", v.name)}</span>
           {v.cycle && v.name !== pinned && (
             <button
               type="button"
