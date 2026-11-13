@@ -312,6 +312,39 @@ async function unzip(stream: ReadableStream<Uint8Array>) {
   return JSZip.loadAsync(buf);
 }
 
+describe("retryable deletion", () => {
+  for (const wholeDay of [false, true])
+    it(`keeps rows after an R2 failure and retries (${wholeDay ? "day" : "clip"})`, async () => {
+      const s = setup();
+      await postRecording(s.deps(), body());
+      const remove = () =>
+        wholeDay ? deleteDay(s.deps(), DAY) : deleteClip(s.deps(), "abcdefghijklmnop");
+      const original = s.blobs.delete;
+      s.blobs.delete = async () => {
+        throw new Error("R2 unavailable");
+      };
+      await expect(remove()).rejects.toThrow("R2 unavailable");
+      expect(await s.db.get("u1", "abcdefghijklmnop")).not.toBeNull();
+      expect(s.objects.size).toBe(1);
+      s.blobs.delete = original;
+      expect((await remove()).json.deleted).toBe(1);
+      expect(s.objects.size).toBe(0);
+      expect(await s.db.get("u1", "abcdefghijklmnop")).toBeNull();
+    });
+  it("preserves uploads arriving after the day's snapshot", async () => {
+    const s = setup();
+    await postRecording(s.deps(), body());
+    const original = s.blobs.delete;
+    s.blobs.delete = async (key) => {
+      await postRecording(s.deps(), body({ id: "abcdefghijklmnop2" }));
+      await original(key);
+    };
+    expect((await deleteDay(s.deps(), DAY)).json.deleted).toBe(1);
+    expect(await s.db.get("u1", "abcdefghijklmnop2")).not.toBeNull();
+    expect(s.objects.size).toBe(1);
+  });
+});
+
 describe("the day archive", () => {
   it("streams transcripts first, then each clip's WAV", async () => {
     const s = setup();

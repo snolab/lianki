@@ -272,8 +272,6 @@ export type RecDb = {
   /** Days with clips, newest first, those before `before` when given. */
   days(uid: string, limit: number, before?: string): Promise<DaySummary[]>;
   deleteClip(uid: string, id: string): Promise<boolean>;
-  /** Delete a day's rows; the ids deleted. */
-  deleteDay(uid: string, day: string): Promise<string[]>;
 };
 export type RecBlobs = {
   put(key: string, bytes: Uint8Array): Promise<void>;
@@ -440,16 +438,21 @@ export async function deleteClip(d: RecDeps, id: string): Promise<Out> {
   if (!ID_RE.test(id)) return bad(400, "bad id");
   const row = await d.db.get(d.uid, id);
   if (!row) return { status: 200, json: { ok: true, deleted: 0 } };
-  await d.db.deleteClip(d.uid, id);
   await d.blobs.delete(objectKey(d.uid, row.day, id));
+  await d.db.deleteClip(d.uid, id);
   return { status: 200, json: { ok: true, deleted: 1 } };
 }
 
 export async function deleteDay(d: RecDeps, day: string): Promise<Out> {
   if (!isDay(day)) return bad(400, "bad day");
-  const ids = await d.db.deleteDay(d.uid, day);
-  for (const id of ids) await d.blobs.delete(objectKey(d.uid, day, id));
-  return { status: 200, json: { ok: true, deleted: ids.length } };
+  const rows = await d.db.day(d.uid, day);
+  let deleted = 0;
+  // Delete only this snapshot: uploads arriving meanwhile keep both row and audio.
+  for (const row of rows) {
+    await d.blobs.delete(objectKey(d.uid, day, row.id));
+    if (await d.db.deleteClip(d.uid, row.id)) deleted++;
+  }
+  return { status: 200, json: { ok: true, deleted } };
 }
 
 // ---------------------------------------------------------------- D1 and R2
@@ -521,14 +524,6 @@ export function d1RecDb(db: D1Database): RecDb {
         .bind(uid, id)
         .run();
       return (r.meta?.changes ?? 0) === 1;
-    },
-    async deleteDay(uid, day) {
-      const r = await db
-        .prepare("SELECT id FROM recording WHERE user_id = ? AND day = ?")
-        .bind(uid, day)
-        .all<{ id: string }>();
-      await db.prepare("DELETE FROM recording WHERE user_id = ? AND day = ?").bind(uid, day).run();
-      return (r.results ?? []).map((x) => x.id);
     },
   };
 }
