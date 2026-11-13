@@ -88,6 +88,7 @@ export const SPEECH_SEC_PER_CHAR = 1 / 6;
 export const FEATURES = [
   "partner.reply",
   "chat.prepare",
+  "voice.auto-polish",
   "read.gloss",
   "read.polish",
   "read.live-polish",

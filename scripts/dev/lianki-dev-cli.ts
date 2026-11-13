@@ -136,7 +136,8 @@ ${EXITS}`,
        lianki-dev edit --unmerge <id>
        lianki-dev edit --summary (<msgId>… | --last N) "summary" | -
   Edits of the owner's voice lines (eval.ts edit; docs/dev-debug-widget.md,
-  "Agent edits of voice messages"). --merge rewrites a RUN of his consecutive
+  "Agent edits of voice messages"). Polish is unrestricted (owner, 2026-11-14):
+  any of his lines, any words. --merge rewrites a RUN of his consecutive
   voice lines (nothing between them, one topic) as ONE fluent passage; the
   lines stay kept, a tap shows them, his ↩ (or --unmerge) restores them.
   stdout: the hub's {"type":"edited",…} (with --json, as "data").

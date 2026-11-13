@@ -144,8 +144,8 @@ function partOf(m: {
 /**
  * The line after `cur` joined it. The text falls back to the merged raw text:
  * an earlier polish is dropped, so the next one reads what was heard and its
- * errors do not compound. `edited.count` stays the number of polishes, so
- * MAX_EDITS still caps them across the passage; a merge spends none of it.
+ * errors do not compound. `edited.count` stays the number of polishes (no
+ * cap: polish is unrestricted, owner 2026-11-14); a merge spends none of it.
  *
  * The speaker tag is the weakest of the parts, with all their signed words, and
  * a part with none leaves the line with none: an unverified part must not ride

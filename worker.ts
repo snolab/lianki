@@ -29,6 +29,7 @@ import {
 } from "./lib/debug-session";
 import { partnerReply, type PartnerEnv } from "./lib/partner-ai";
 import { prepareChatTurn } from "./lib/chat-prepare";
+import { polishLines } from "./lib/chat-polish";
 import type { PartnerResult } from "./lib/partner-ai-config";
 import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
 import { type ChatTokenAnswer, type ChatTokenDb, chatTokenCheck } from "./lib/chat-token";
@@ -236,6 +237,16 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async prepareChatTurn(req: unknown) {
     if (!allowPartner()) return { ok: false, error: "busy" };
     return prepareChatTurn(this.env as PartnerEnv, req);
+  }
+
+  /**
+   * Automatic polish of a run of the owner's spoken lines (lib/chat-polish.ts;
+   * docs/dev-debug-widget.md, "Automatic polish"): the hub sends his user id,
+   * the raw lines and a little context; paid from his credits like any AI call.
+   */
+  async polishLines(req: unknown) {
+    if (!allowPartner()) return { ok: false, error: "busy" };
+    return polishLines(this.env as PartnerEnv, req);
   }
 
   /**
