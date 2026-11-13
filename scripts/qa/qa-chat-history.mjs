@@ -101,8 +101,8 @@ try {
     check(
       (
         await page.locator("[data-testid=chat-history-line][data-lane=agy]").textContent()
-      )?.includes("agy"),
-      `${name}: agy line has its lane name`,
+      )?.includes("杰咪"),
+      `${name}: agy line has its lane name (杰咪)`,
     );
     check(
       (await page.getByText("Answered: Yes").count()) === 1,
