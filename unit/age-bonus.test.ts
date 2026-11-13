@@ -226,6 +226,22 @@ describe("POST /api/dev/credits/age-bonus", () => {
     });
     expect(r.status).toBe(404);
   });
+  test("admin: a body that is not JSON is a 400, nothing written", async () => {
+    const { db, addUser, rows } = setup();
+    addUser("u", ago(200));
+    const bad = new Request("https://lianki.test/api/dev/credits/age-bonus", {
+      method: "POST",
+      body: "{",
+    });
+    const r = await handleAgeBonus(bad, {
+      admin: async () => "admin@example.test",
+      db: () => db,
+      conf: C,
+      now: () => NOW,
+    });
+    expect(r.status).toBe(400);
+    expect(rows()).toBe(0);
+  });
   test("admin: preview writes nothing, apply grants, bad action 400", async () => {
     const { db, addUser, rows } = setup();
     addUser("u", ago(200));

@@ -354,6 +354,31 @@ describe("lianki mcp: calls", () => {
     await h.close();
   });
 
+  test("lianki_chat_wait: a socket that cannot open, or closes first, is a network error", async () => {
+    for (const mode of ["throws", "closes"] as const) {
+      const h = setup({ scopes: ["chat:read"] });
+      class BadWS {
+        private fns: Record<string, ((ev: any) => void)[]> = {};
+        constructor() {
+          if (mode === "throws") throw new Error("refused");
+          setTimeout(() => (this.fns.close ?? []).forEach((f) => f({})), 1);
+        }
+        addEventListener(t: string, fn: (ev: any) => void) {
+          (this.fns[t] ??= []).push(fn);
+        }
+        removeEventListener() {}
+        send() {}
+        close() {}
+      }
+      (h.deps as any).WebSocket = BadWS;
+      const c = await h.connect();
+      const r: any = await c.callTool({ name: "lianki_chat_wait", arguments: { timeoutSec: 5 } });
+      expect(r.isError).toBe(true);
+      expect(text(r)).toContain("cannot reach");
+      await h.close();
+    }
+  });
+
   test("the token never reaches the model", async () => {
     const h = setup({ scopes: ["study", "chat:read"] });
     const c = await h.connect();
