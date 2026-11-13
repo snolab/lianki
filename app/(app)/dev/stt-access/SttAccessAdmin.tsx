@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
-import { accountLabel, shortId, txt, workerMeta } from "./lines";
+import { accountLabel, fill, shortId, txt, workerMeta } from "./lines";
 
-type Allowed = { userId: string; name: string | null; addedAt: number };
+type Allowed = { userId: string; name: string | null; addedAt: number; lastUsedAt: number | null };
 type Worker = {
   id: string;
   name: string;
@@ -169,7 +169,13 @@ export default function SttAccessAdmin() {
                     {shortId(a.userId)}
                   </code>
                 ) : null}
-                <span className="block text-xs opacity-70">{when(a.addedAt)}</span>
+                <span className="block text-xs opacity-70">
+                  {fill(txt(c.addedAt), { time: when(a.addedAt) })}
+                  {" · "}
+                  {a.lastUsedAt
+                    ? fill(txt(c.lastUsed), { time: when(a.lastUsedAt) })
+                    : txt(c.neverUsed)}
+                </span>
               </span>
               {confirm === `u:${a.userId}` ? (
                 <span className="flex flex-wrap items-center gap-2 text-sm">

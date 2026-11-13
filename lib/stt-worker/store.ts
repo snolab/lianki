@@ -68,6 +68,8 @@ export type SttAccessRow = {
   name: string | null;
   addedBy: string;
   addedAt: number;
+  /** When this account last opened a speech session (its newest stt_ticket), or null: never. */
+  lastUsedAt: number | null;
 };
 
 /**
@@ -78,7 +80,8 @@ export async function listSttAccess(db: SttDb): Promise<SttAccessRow[]> {
   const { results } = await db
     .prepare(
       `SELECT a.user_id AS userId, u.name AS name, a.added_by AS addedBy,
-              a.added_at AS addedAt
+              a.added_at AS addedAt,
+              (SELECT MAX(t.at) FROM stt_ticket t WHERE t.user_id = a.user_id) AS lastUsedAt
        FROM stt_access a LEFT JOIN user u ON u.id = a.user_id ORDER BY a.added_at DESC`,
     )
     .bind()

@@ -56,7 +56,7 @@ describe("the allowlist", () => {
     expect(await sttAllowed(d, "u1")).toBe(true);
     expect(await sttAllowed(d, "u2")).toBe(false);
     expect(await listSttAccess(d)).toEqual([
-      { userId: "u1", name: "Ann", addedBy: "admin", addedAt: 1000 },
+      { userId: "u1", name: "Ann", addedBy: "admin", addedAt: 1000, lastUsedAt: null },
     ]);
     expect(JSON.stringify(await listSttAccess(d))).not.toContain("@");
     expect(await disallowSttUser(d, "u1", "admin")).toBe(true);
