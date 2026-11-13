@@ -105,8 +105,11 @@ function SectionHeading({
 }) {
   const headingId = useId();
   return (
-    <div className="mb-4 flex items-center gap-2">
-      <h2 id={headingId} className="text-2xl font-semibold text-gray-900 dark:text-white">
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      <h2
+        id={headingId}
+        className="min-w-0 flex-[1_1_12rem] break-words text-2xl font-semibold text-gray-900 dark:text-white"
+      >
         {children}
       </h2>
       <button
