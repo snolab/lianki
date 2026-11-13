@@ -19,7 +19,7 @@ export type HeardVoice = { name: string; cycle?: boolean };
 
 export const LOCAL_VOICE_PIN_KEY = "lk:agent-local-tts-voice";
 /** The Kokoro voices `local:neko-cycle` takes turns through, one per clip. */
-export const NEKO_ROTATION = ["neko", "neko-moe", "neko-soft", "xiaobei", "xiaoxiao", "alpha"] as const;
+export const NEKO_ROTATION = ["neko", "neko-moe", "neko-soft", "baby", "baby-soft", "xiaobei", "xiaoxiao", "alpha"] as const;
 /** Lines remembered (oldest dropped first). */
 export const HEARD_LINES = 200;
 

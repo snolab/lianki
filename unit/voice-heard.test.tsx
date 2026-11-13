@@ -41,7 +41,9 @@ afterEach(() => {
 
 describe("voice-heard: neko-cycle resolution", () => {
   it("rotates per turn when nothing is pinned; a pin replaces the rotation", () => {
-    const turns = [0, 1, 2, 3, 4, 5, 6].map((t) => pickLocalVoice("neko-cycle", t, null).name);
+    const turns = [...NEKO_ROTATION.keys(), NEKO_ROTATION.length].map(
+      (t) => pickLocalVoice("neko-cycle", t, null).name,
+    );
     expect(turns).toEqual([...NEKO_ROTATION, NEKO_ROTATION[0]]);
     expect(pickLocalVoice("neko-cycle", 3, null).cycle).toBe(true);
     expect(pickLocalVoice("neko-cycle", 3, "neko-moe")).toEqual({ name: "neko-moe", cycle: true });
