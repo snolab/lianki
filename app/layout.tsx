@@ -146,6 +146,8 @@ export default async function RootLayout({
   // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts): live, no deploy.
   const lexicon = partnerFrame ? undefined : await cfg("voice.lexicon");
   // Provider voices (lib/cloud-voices.ts): audience owner, so the flag and the dev grant.
+  // Talking over Li's read-aloud with echo cancellation off (aec.ts talkOver): audience owner.
+  const talkOver = dev && flagIn(flags, "voice.talk-over");
   const cloudVoices =
     dev && flagIn(flags, "voice.cloud-voices")
       ? { on: true, map: await cfg("voice.langVoices") }
@@ -162,6 +164,7 @@ export default async function RootLayout({
     autoUpdate,
     lexicon,
     cloudVoices,
+    talkOver,
   };
   const box = boxConfig();
   return (
