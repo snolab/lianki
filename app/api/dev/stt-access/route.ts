@@ -10,6 +10,7 @@ import {
   listSttAccess,
   listSttWorkers,
   revokeSttWorker,
+  searchUsers,
   type SttDb,
 } from "@/lib/stt-worker/store";
 
@@ -18,6 +19,7 @@ import {
  * allowed to register (lib/stt-worker/store.ts; docs/local-stt.md, "Lianki's
  * speech servers for everyone"). 404 for anyone else.
  * - GET → { flag, allowed: [...], workers: [...] } (a worker's key is never sent);
+ *   GET ?q=… → { users: [{id, name, email}] }, accounts whose name or email has it;
  * - POST (same-origin JSON) `{ op: "add", email }` | `{ op: "remove", userId }`
  *   | `{ op: "revoke-worker", id }`. Audited.
  * Adding a worker is the CLI's (scripts/local-stt/stt-worker-add.ts), never this page.
@@ -40,8 +42,11 @@ async function state() {
   };
 }
 
-export const GET = async () => {
+export const GET = async (req: Request) => {
   if (!(await admin()) || dbBackend() !== "d1") return notFound();
+  const q = new URL(req.url).searchParams.get("q");
+  if (q !== null)
+    return NextResponse.json({ users: await searchUsers(db(), q) }, { headers: NO_STORE });
   return NextResponse.json(await state(), { headers: NO_STORE });
 };
 
@@ -53,9 +58,15 @@ export const POST = async (req: Request) => {
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const bad = (error: string) => NextResponse.json({ error }, { status: 400, headers: NO_STORE });
   if (b.op === "add") {
-    if (typeof b.email !== "string" || !b.email.includes("@") || b.email.length > 200)
-      return bad("email-required");
-    if (!(await allowSttUser(db(), b.email, by.id))) return bad("no-such-user");
+    // By the picked account's id (the search), or a typed email.
+    const who =
+      typeof b.userId === "string" && b.userId && b.userId.length <= 100
+        ? b.userId
+        : typeof b.email === "string" && b.email.includes("@") && b.email.length <= 200
+          ? b.email
+          : null;
+    if (!who) return bad("email-required");
+    if (!(await allowSttUser(db(), who, by.id))) return bad("no-such-user");
   } else if (b.op === "remove") {
     if (typeof b.userId !== "string" || !b.userId) return bad("user-id-required");
     await disallowSttUser(db(), b.userId, by.id);

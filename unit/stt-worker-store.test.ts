@@ -14,6 +14,7 @@ import {
   listSttAccess,
   listSttWorkers,
   revokeSttWorker,
+  searchUsers,
   sttAllowed,
   sttWorkerByKey,
   type SttDb,
@@ -123,5 +124,23 @@ describe("speech servers", () => {
 describe("the admin page", () => {
   test("is an admin page", () => {
     expect(DEV_PAGE_PERMISSION["stt-access"]).toBe("admin");
+  });
+});
+
+describe("searchUsers: the admin's picker", () => {
+  test("by part of a name or email, case-insensitive; too short or wildcards find nothing extra", async () => {
+    const d = await db();
+    expect((await searchUsers(d, "ann")).map((u) => u.id)).toEqual(["u1"]);
+    expect((await searchUsers(d, "BOB@")).map((u) => u.email)).toEqual(["bob@x.com"]);
+    expect((await searchUsers(d, "x.com")).length).toBe(2);
+    expect(await searchUsers(d, "a")).toEqual([]);
+    expect(await searchUsers(d, "%%")).toEqual([]);
+    expect(await searchUsers(d, "__")).toEqual([]);
+  });
+  test("an id from the search adds the account, as an email does", async () => {
+    const d = await db();
+    const [u] = await searchUsers(d, "bob");
+    expect(await allowSttUser(d, u!.id, "u1")).toBeTruthy();
+    expect(await sttAllowed(d, "u2")).toBe(true);
   });
 });

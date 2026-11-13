@@ -29,6 +29,23 @@ export default function SttAccessAdmin() {
   const [err, setErr] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Accounts matching what is typed (name or email), for a one-tap add. */
+  const [found, setFound] = useState<{ id: string; name: string | null; email: string }[]>([]);
+  useEffect(() => {
+    const q = email.trim();
+    if (q.length < 2) return setFound([]);
+    const ctl = new AbortController();
+    const t = setTimeout(() => {
+      fetch(`${API}?q=${encodeURIComponent(q)}`, { cache: "no-store", signal: ctl.signal })
+        .then((r) => (r.ok ? r.json() : { users: [] }))
+        .then((d: { users?: typeof found }) => setFound(d.users ?? []))
+        .catch(() => {});
+    }, 250);
+    return () => {
+      clearTimeout(t);
+      ctl.abort();
+    };
+  }, [email]);
   /** The row waiting for its confirming tap: "u:<userId>" or "w:<workerId>". */
   const [confirm, setConfirm] = useState<string | null>(null);
 
@@ -55,7 +72,10 @@ export default function SttAccessAdmin() {
       if (r.ok) {
         setState(data);
         setConfirm(null);
-        if (body.op === "add") setEmail("");
+        if (body.op === "add") {
+          setEmail("");
+          setFound([]);
+        }
       } else setErr(txt(data.error === "no-such-user" ? c.noSuchUser : c.failed));
     } catch {
       setErr(txt(c.failed));
@@ -93,7 +113,7 @@ export default function SttAccessAdmin() {
           }}
         >
           <input
-            type="email"
+            type="search"
             aria-label={txt(c.email)}
             placeholder={txt(c.email)}
             value={email}
@@ -108,6 +128,32 @@ export default function SttAccessAdmin() {
             {c.add}
           </button>
         </form>
+        {found.length > 0 && (
+          <ul data-testid="stt-access-found" className={`rounded-md border ${LINE}`}>
+            {found.map((u) => {
+              const on = state?.allowed.some((a) => a.userId === u.id);
+              return (
+                <li
+                  key={u.id}
+                  className={`px-2 py-1.5 border-b last:border-b-0 ${LINE} flex items-center gap-2`}
+                >
+                  <span className="min-w-0 flex-1 break-all text-sm">
+                    {u.name ? `${u.name} · ` : ""}
+                    <span className="opacity-70">{u.email}</span>
+                  </span>
+                  <button
+                    type="button"
+                    disabled={busy || on}
+                    onClick={() => void op({ op: "add", userId: u.id })}
+                    className={`${BTN} bg-seal text-white border-transparent`}
+                  >
+                    {c.add}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
         {state && state.allowed.length === 0 && <p className="text-sm opacity-70">{c.nobody}</p>}
         <ul>
           {state?.allowed.map((a) => (

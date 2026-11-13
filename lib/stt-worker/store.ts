@@ -23,6 +23,32 @@ const changes = (r: unknown) => Number((r as { meta?: { changes?: number } })?.m
 
 /* ------------------------------------------------------------ the allowlist */
 
+/** Most accounts one search returns. */
+export const USER_SEARCH_LIMIT = 10;
+
+/**
+ * Accounts whose name or email contains `q` (case-insensitive, LIKE with its
+ * wildcards escaped), for the admin's picker on /dev/stt-access. Two
+ * characters at least; nothing else about the account.
+ */
+export async function searchUsers(
+  db: SttDb,
+  q: string,
+): Promise<{ id: string; name: string | null; email: string }[]> {
+  const t = q.trim().slice(0, 100);
+  if (t.length < 2) return [];
+  const like = `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const r = await db
+    .prepare(
+      `SELECT id, name, email FROM user
+       WHERE name LIKE ?1 ESCAPE '\\' OR email LIKE ?1 ESCAPE '\\'
+       ORDER BY name LIMIT ${USER_SEARCH_LIMIT}`,
+    )
+    .bind(like)
+    .all<{ id: string; name: string | null; email: string }>();
+  return r.results ?? [];
+}
+
 /** Whether this account may use Lianki's speech servers. A failed read is "no". */
 export async function sttAllowed(db: SttDb, userId: string): Promise<boolean> {
   if (!userId) return false;
