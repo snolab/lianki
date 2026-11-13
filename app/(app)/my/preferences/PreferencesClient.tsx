@@ -448,24 +448,27 @@ export default function PreferencesClient({
               {patterns.map((pattern) => (
                 <li
                   key={pattern.id}
-                  className={`flex items-center justify-between gap-4 bg-gray-800/50 border rounded px-4 py-3 ${
+                  className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-gray-800/50 border rounded px-4 py-3 ${
                     pattern.enabled ? "border-gray-700" : "border-gray-800 opacity-50"
                   }`}
                 >
-                  <div className="flex items-center gap-3 flex-1">
+                  <div className="flex min-w-0 flex-[1_1_10rem] items-center gap-3">
                     <SealSwitch
                       size="sm"
                       checked={pattern.enabled}
                       aria-labelledby={`pattern-${pattern.id}`}
                       onClick={() => togglePattern(pattern.id)}
                     />
-                    <div className="flex-1">
-                      <div id={`pattern-${pattern.id}`} className="font-mono text-sm text-gray-200">
+                    <div className="min-w-0 flex-1">
+                      <div
+                        id={`pattern-${pattern.id}`}
+                        className="break-all font-mono text-sm text-gray-200"
+                      >
                         {pattern.pattern}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
                         <span
-                          className={`inline-block px-2 py-0.5 rounded ${
+                          className={`inline-block max-w-full break-all px-2 py-0.5 rounded ${
                             pattern.type === "domain"
                               ? "bg-blue-900/30 text-blue-400"
                               : pattern.type === "title"
