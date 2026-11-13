@@ -87,7 +87,8 @@ import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, voiceDevice } fro
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
 import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
-import { VoiceMark, VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
+import { VoiceMark } from "./VoiceMark";
+import { VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
 import { SPEAK_KEY, type VoiceState, speechEnabled, unheard, voice } from "./voice";
 import { hideStops, isDesktop } from "./voice-bg";

@@ -39,6 +39,9 @@ import {
 import { notifyDirty, registerDirtyCheck } from "@lianki/ui-state/dirty";
 import type { ChatStrings } from "./wire";
 
+/** The verified-voice mark lives in its own module; kept here as a re-export for its callers. */
+export { VoiceMark } from "./VoiceMark";
+
 const line = (pct: number) => `color-mix(in oklch, currentColor ${pct}%, transparent)`;
 const pill = {
   borderRadius: 9999,
@@ -663,54 +666,3 @@ export function VoiceprintPanel({
     </section>
   );
 }
-
-/**
- * The tiny mark after a voice line the Mac verified as his voice (SpeakerTag
- * decision "me"). Its own glyph, a sound wave, not a ✓: a tick reads as
- * "read" or "done" (owner, 2026-11-11: "是已读还是已经处理？"), and the chat
- * keeps ✓ for done and answered. Its words (`label`) are the tooltip on
- * hover and a bubble on a tap or long press, so a phone can read them too.
- */
-export function VoiceMark({ label }: { label: string }) {
-  const [tip, setTip] = useState(false);
-  const hide = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(hide.current), []);
-  const show = () => {
-    setTip(true);
-    clearTimeout(hide.current);
-    hide.current = setTimeout(() => setTip(false), VOICE_TIP_MS);
-  };
-  return (
-    <button
-      type="button"
-      data-testid="debug-chat-voice-verified"
-      title={label}
-      aria-label={label}
-      className="pointer-events-auto relative ms-1 inline-flex select-none items-center align-baseline leading-none [-webkit-touch-callout:none]"
-      style={{ fontSize: "0.8em", color: "oklch(0.62 0.15 150)", opacity: 0.85, background: "transparent", border: 0, padding: 0 }}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        show();
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        show();
-      }}
-    >
-      <svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
-        <path d="M3 6.5v3M6 4.5v7M9 3v10M12 5.5v5" />
-      </svg>
-      {tip && (
-        <span
-          role="tooltip"
-          className="pointer-events-none absolute start-1/2 bottom-full mb-1 -translate-x-1/2 whitespace-nowrap rounded px-1 fs-10 lk-halo"
-        >
-          {label}
-        </span>
-      )}
-    </button>
-  );
-}
-
-/** How long the voice mark's bubble stays up after a tap or long press. */
-export const VOICE_TIP_MS = 1_500;
