@@ -161,6 +161,18 @@ export const CONFIG = {
     description:
       "等你处理的事（状态 waiting-owner 或写了 needs）到时间后先提醒你一次，之后隔多少天再提醒：逗号分隔的天数，用完后一直按最后一个间隔（默认 1,3,7 = 一天、三天、七天，之后每周）。",
   },
+  // The chat's last lines kept on the device for an instant first paint
+  // (lib/chat-cache.ts; docs/cold-start.md, "The chat at once"). Read by the root layout.
+  "chat.cacheLines": int({
+    default: 40,
+    min: 0,
+    max: 200,
+    unit: "lines",
+    group: "chat",
+    audience: "server",
+    description:
+      "打开页面时聊天立刻显示的最近几条（存在这台设备上，只给当前登录的账号看，退出登录就清掉；之后用服务器上的记录替换）。0 = 不在设备上保存，聊天等连上后才出现。",
+  }),
   // Read by the progress hub too; docs/state-tree.md, "Receipts".
   "chat.etaAckMin": int({
     default: 5,

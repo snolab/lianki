@@ -31,14 +31,21 @@ import { ExternalLinkGuard, type ExternalLinkStrings } from "./components/Extern
  * the `dev` grant (lib/permissions.ts), so the chat may show its developer
  * parts (remote eval, pairings, full page paths).
  */
-async function chatViewerFor(flags: FlagValues): Promise<{ open: boolean; dev: boolean }> {
+async function chatViewerFor(
+  flags: FlagValues,
+): Promise<{ open: boolean; dev: boolean; account: string | null }> {
   try {
     const { authSessionOrNull } = await import("./signInEmail");
     const user = (await authSessionOrNull())?.user;
     const dev = !!user?.id && isDev(user.email);
-    return { open: flagIn(flags, "partner.ai-reply") && !!user?.id && !dev, dev };
+    // `account` keys the chat's copy on the device and gates its prefetch (DebugEval).
+    return {
+      open: flagIn(flags, "partner.ai-reply") && !!user?.id && !dev,
+      dev,
+      account: user?.id ? String(user.id) : null,
+    };
   } catch {
-    return { open: false, dev: false };
+    return { open: false, dev: false, account: null };
   }
 }
 
@@ -134,7 +141,11 @@ export default async function RootLayout({
   };
   // One read per request, passed to everything that decides (docs/feature-flags.md).
   const flags: FlagValues = partnerFrame ? {} : await readFlags();
-  const { open, dev } = partnerFrame ? { open: false, dev: false } : await chatViewerFor(flags);
+  const { open, dev, account } = partnerFrame
+    ? { open: false, dev: false, account: null }
+    : await chatViewerFor(flags);
+  // The chat's last lines kept on the device for an instant chat (lib/chat-cache.ts); 0: none.
+  const cacheLines = account ? await cfg("chat.cacheLines") : 0;
   // The chat's full screen for every chat user (off: the owner's pages only; full-screen.ts).
   const chatFull = flagIn(flags, "partner.fullscreen");
   // Li's sound hub, observing only (docs/li-sound-hub.md); the owner's pages only.
@@ -162,6 +173,8 @@ export default async function RootLayout({
     autoUpdate,
     lexicon,
     cloudVoices,
+    account,
+    cacheLines,
   };
   const box = boxConfig();
   return (

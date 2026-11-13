@@ -9,7 +9,8 @@
  * 0. Forget the user's own AI key on this device (`lk:byok`, docs/byok.md),
  *    first and whatever happens next: on a shared browser the next person must
  *    not find it, and an offline sign-out must not keep it. Owner's card,
- *    2026-11-06. Settings tells the user it will need entering again.
+ *    2026-11-06. Settings tells the user it will need entering again. The
+ *    chat's last lines kept for an instant chat go too (lib/chat-cache.ts).
  * 1. POST better-auth's own /api/auth/sign-out, which deletes the session and
  *    answers with the session cookies expired (same-origin, so the Origin
  *    check passes; nothing about how sign-in works changes).
@@ -24,6 +25,7 @@ import { removeDevice } from "@/lib/byok/config";
 import { exitOutputBed } from "@lianki/debug-chat/output-bed";
 import { type BadgeNav, setBadge } from "@/lib/app-badge";
 import { CLEAR_MARKER_LINE } from "@/lib/account-locale";
+import { clearChatCache } from "@/lib/chat-cache";
 
 export const SIGN_OUT_PATH = "/api/auth/sign-out";
 /** public/sw.js KEEP_CACHES: the only cache that is not per-account. */
@@ -40,6 +42,8 @@ type SignOutEnv = {
   endSession?: () => Promise<boolean>;
   /** Drops the `lang_src` marker: the next account's language is read afresh (lib/account-locale.ts). */
   forgetLocale?: () => void;
+  /** Drops the chat's lines kept on the device (lib/chat-cache.ts). */
+  forgetChat?: () => void;
 };
 
 let endSession: (() => Promise<boolean>) | undefined;
@@ -63,8 +67,12 @@ export async function signOut(to = "/", env?: SignOutEnv): Promise<boolean> {
     forgetLocale: () => {
       document.cookie = CLEAR_MARKER_LINE;
     },
+    forgetChat: () => clearChatCache(),
   };
   e.forgetByok?.();
+  try {
+    e.forgetChat?.();
+  } catch {}
   try {
     e.forgetLocale?.();
   } catch {}

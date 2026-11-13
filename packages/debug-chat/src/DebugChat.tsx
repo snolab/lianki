@@ -653,6 +653,12 @@ export type DebugChatProps = {
   listeners: number;
   messages: ChatMessage[];
   /**
+   * `messages` are the host's copy kept on this device, shown while the hub's
+   * history is on its way (docs/cold-start.md, "The chat at once"): marked
+   * `data-cached` on the chat, and the status still says it is not connected.
+   */
+  cached?: boolean;
+  /**
    * Send a line; `to` is the state-tree node it is addressed to (absent = the
    * main thread). `opts.source` is "stt" when the line is the mic's text, unchanged;
    * then `opts.timing` carries its timestamps (latency.ts), when the mic left any.
@@ -872,6 +878,7 @@ export function DebugChat({
   live,
   listeners,
   messages: rawMessages,
+  cached = false,
   onSend,
   onAnswer,
   onPassageEnd,
@@ -4256,6 +4263,7 @@ export function DebugChat({
       // Minimized keeps its old test id: the bar alone, plus floating lines.
       data-testid={open ? "debug-chat" : "debug-chat-minimized"}
       data-minimized={!open || undefined}
+      data-cached={cached || undefined}
       data-fold={fold}
       data-edge={edge}
       // Tucked: slid past its edge, out of reach (the handle stands in for it).

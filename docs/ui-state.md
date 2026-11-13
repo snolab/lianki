@@ -107,21 +107,22 @@ target that is not built yet.
 
 ### Chat widget (packages/debug-chat, another lane)
 
-| State                               | Where                                                          | Status                                                                                                   |
-| ----------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| bar position                        | local `lk:debug-chat-pos`                                      | → session `lk:ui:chat` (per tab)                                                                         |
-| chat open, full-screen log          | local `lk:debug-chat-open`                                     | → session `lk:ui:chat`                                                                                   |
-| tree level / expanded node          | —                                                              | → session `lk:ui:chat`                                                                                   |
-| chat scroll, draft                  | —                                                              | → session `lk:ui:chat` (draft text is UI, not a message)                                                 |
-| mic on                              | local `lk:agent:mic`                                           | → session (a mic should not reopen in a new tab by itself)                                               |
-| voice-clip recording (on, sink)     | the hub, per window session; session `lk:ui:clips` (its id)    | done (dev-debug-widget.md, "Recording")                                                                  |
-| speech rate, voice out, echo cancel | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec`   | → `lk:pref:chat-voice`                                                                                   |
-| voice cues: send, speech start/end  | local `lk:voice-cue-send`, `lk:voice-cue-speech` → account     | done: chat ⋯ menu, on by default (voice-mode.md, "Cues")                                                 |
-| compact mode (last message only)    | local `lk:pref:chat-view` (`chatPrefs`, off by default)        | done: per device, never synced                                                                           |
-| Gantt time axis: log or linear      | local `lk:pref:gantt` (`ganttPrefs`, log by default)           | done: per device, never synced (owner, 2026-11-09 15:27 JST)                                             |
-| Gantt categories open (▸/▾)         | session `lk:ui:gantt-groups` (`ganttGroupsUi`, all folded)     | done: this tab; the Gantt and the task list share it (dev-debug-widget.md, "Categories")                 |
-| full screen                         | local `lk:pref:chat-view` `full` (`chatPrefs`, off by default) | done: per device, never synced; the button, Escape or Back leave it (dev-debug-widget.md, "Full screen") |
-| tucked into the edge, which edge    | local `lk:pref:chat-fold` (`chatFold`, fold.ts)                | done: per device, never synced                                                                           |
+| State                               | Where                                                          | Status                                                                                                                                    |
+| ----------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| bar position                        | local `lk:debug-chat-pos`                                      | → session `lk:ui:chat` (per tab)                                                                                                          |
+| chat open, full-screen log          | local `lk:debug-chat-open`                                     | → session `lk:ui:chat`                                                                                                                    |
+| tree level / expanded node          | —                                                              | → session `lk:ui:chat`                                                                                                                    |
+| chat scroll, draft                  | —                                                              | → session `lk:ui:chat` (draft text is UI, not a message)                                                                                  |
+| mic on                              | local `lk:agent:mic`                                           | → session (a mic should not reopen in a new tab by itself)                                                                                |
+| voice-clip recording (on, sink)     | the hub, per window session; session `lk:ui:clips` (its id)    | done (dev-debug-widget.md, "Recording")                                                                                                   |
+| speech rate, voice out, echo cancel | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec`   | → `lk:pref:chat-voice`                                                                                                                    |
+| voice cues: send, speech start/end  | local `lk:voice-cue-send`, `lk:voice-cue-speech` → account     | done: chat ⋯ menu, on by default (voice-mode.md, "Cues")                                                                                  |
+| compact mode (last message only)    | local `lk:pref:chat-view` (`chatPrefs`, off by default)        | done: per device, never synced                                                                                                            |
+| Gantt time axis: log or linear      | local `lk:pref:gantt` (`ganttPrefs`, log by default)           | done: per device, never synced (owner, 2026-11-09 15:27 JST)                                                                              |
+| Gantt categories open (▸/▾)         | session `lk:ui:gantt-groups` (`ganttGroupsUi`, all folded)     | done: this tab; the Gantt and the task list share it (dev-debug-widget.md, "Categories")                                                  |
+| full screen                         | local `lk:pref:chat-view` `full` (`chatPrefs`, off by default) | done: per device, never synced; the button, Escape or Back leave it (dev-debug-widget.md, "Full screen")                                  |
+| tucked into the edge, which edge    | local `lk:pref:chat-fold` (`chatFold`, fold.ts)                | done: per device, never synced                                                                                                            |
+| the last lines, for an instant chat | local `lk:chat-cache` (lib/chat-cache.ts, one account)         | done: a device cache, never synced; another account's or a signed-out page drops it, so does sign-out (cold-start.md, "The chat at once") |
 
 ### Cards and the swipe
 

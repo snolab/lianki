@@ -24,7 +24,13 @@ export function OwnerBoots({
   cloudVoices,
   box = null,
   autoUpdate = false,
+  account = null,
+  cacheLines = 0,
 }: {
+  /** The signed-in account's id (null: a guest): keys the chat's device copy (lib/chat-cache.ts). */
+  account?: string | null;
+  /** Config `chat.cacheLines`: the chat's last lines kept on the device; 0 = none. */
+  cacheLines?: number;
   /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
   autoUpdate?: boolean;
   /** Provider voices on (flag voice.cloud-voices + dev) and the language → voice map. */
@@ -64,6 +70,8 @@ export function OwnerBoots({
         lexicon={lexicon}
         cloudVoices={cloudVoices}
         box={box}
+        account={account}
+        cacheLines={cacheLines}
       />
     </>
   );
