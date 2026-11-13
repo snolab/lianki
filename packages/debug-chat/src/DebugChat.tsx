@@ -2411,6 +2411,26 @@ export function DebugChat({
    * a line sent while the draft still equals it is the mic's, `source: "stt"`.
    */
   const pureDictation = useRef<string | null>(uiStore.getState().pureDictation);
+  /**
+   * Half a spoken line when the page reloaded (ui-store.ts `interim`): read
+   * once, before the mic reports its own (empty) interim, and put in the draft
+   * as dictation, unsent, so he can go on. Not after a hot swap: the same page
+   * load's mic is still hearing that utterance and will send its final.
+   */
+  const keptInterim = useRef(uiStore.getState().interim);
+  useEffect(() => {
+    const kept = keptInterim.current;
+    keptInterim.current = null;
+    if (!kept || kept.page === performance.timeOrigin) return;
+    const next = joinText(draftRef.current, kept.text);
+    pureDictation.current = dictatedDraft(draftRef.current, pureDictation.current, next);
+    caretToEnd.current = true;
+    draftRef.current = next;
+    setDraft(next);
+    uiStore.setState({ interim: null });
+    // Runs once on mount; the refs are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   /** The next line sent is one speaker's part of a final the Mac split (voiceBreak). */
   const splitPart = useRef(false);
   /** The draft's length when it last changed outside an IME composition. */
@@ -3245,6 +3265,11 @@ export function DebugChat({
           onPending={(n, text) => {
             micPending.current = n;
             setInterim(text);
+            // Kept for a reload mid-sentence (keptInterim above); "" clears it.
+            if ((uiStore.getState().interim?.text ?? "") !== text)
+              uiStore.setState({
+                interim: text.trim() ? { text, page: performance.timeOrigin } : null,
+              });
             // The speech after a held line came to nothing: hold it again.
             if (!n && !text) {
               joiner.current?.idle();
