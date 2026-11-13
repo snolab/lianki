@@ -124,6 +124,14 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
       );
       if (control && control !== e.currentTarget) return;
       if (selectingIn(e.currentTarget)) return;
+      // On a touch screen a single tap is for reading the line; the details
+      // (JSON) open on a double tap (owner, 2026-11-14 "双击才显示这种 JSON 的消息详情").
+      // A mouse click still opens them (a double click there selects a word).
+      const kind = "nativeEvent" in e ? (e.nativeEvent as PointerEvent).pointerType : undefined;
+      const touch =
+        kind === "touch" ||
+        (!kind && typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
+      if (touch && e.type === "click" && (e as MouseEvent<HTMLElement>).detail < 2) return;
       e.stopPropagation();
       setSelection({ message, sender, anchor: e.currentTarget.getBoundingClientRect() });
     };
