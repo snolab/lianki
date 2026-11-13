@@ -83,17 +83,17 @@
  *
  * Voice edits. A page marks an owner line sent from the widget's mic,
  * unchanged, `source: "stt"`. The agent may polish it ({type:"edit", id,
- * text}) — STT gets words wrong and has no context — only if all hold: the
- * sender holds a live owner grant (chat or eval; never a friend's pairing),
- * the line is among the owner's last EDITABLE_LINES in the owner thread, it
- * is `stt`, and it was polished fewer than MAX_EDITS times. The first STT
- * text stays as `raw`; `edited: {at, by, count}` marks it. Pages and
+ * text}). Polish is unrestricted (owner, 2026-11-14): any of the owner's own
+ * lines in the owner thread, typed or spoken, any words, any number of times.
+ * What stays: the sender holds a live owner grant (chat or eval; never a
+ * friend's pairing), and flag stt.polish is on. The first text stays as
+ * `raw`; `edited: {at, by, count}` marks it. Pages and
  * listeners hear {type:"edited", id, thread, text, raw, edited}. Friends'
  * lines never. {type:"summary", ids|last, text} collapses a consecutive run
  * of those voice lines (room talk) into one line saying what was said; the
  * others stay stored with `collapsedInto`. {type:"merge", ids, text} rewrites
- * a run of his consecutive voice lines as ONE fluent passage (mergeCheck: a
- * length cap, not the word rules); the first line keeps what it read in
+ * a run of his consecutive voice lines as ONE fluent passage (mergeCheck:
+ * two lines and a text, nothing more); the first line keeps what it read in
  * `premerge` and {type:"unmerge", id} (his page, or the lane) restores the
  * run. All need flag stt.polish (on by default).
  *
@@ -204,7 +204,6 @@ import {
   FRIEND_CHAT_WINDOW_MS,
   type EditedEvent,
   type FriendRecord,
-  MAX_EDITS,
   EDITABLE_LINES,
   MERGE_LINES,
   type SummaryMark,
@@ -256,12 +255,7 @@ import type {
   WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
-import {
-  mergeCheck,
-  polishCheck,
-  polishContext,
-  summaryCheck,
-} from "../../../packages/debug-chat/src/polish";
+import { mergeCheck, polishCheck, summaryCheck } from "../../../packages/debug-chat/src/polish";
 import { MAX_UTTERANCE_MS } from "../../../packages/debug-chat/src/mic";
 import {
   type MergeCandidate,
@@ -269,7 +263,6 @@ import {
   lastPartAt,
   mergeLines,
   mergeVerdict,
-  partTexts,
   passageSpeakers,
   splitLine,
 } from "../../../packages/debug-chat/src/voice-merge";
@@ -1078,7 +1071,8 @@ export class DebugHub {
 
   /**
    * The owner thread's kept lines, newest first, and the owner's own last
-   * EDITABLE_LINES among them: the lines an agent may polish or summarise.
+   * `depth` among them: the lines an agent may summarise or merge (a polish
+   * may take any of his kept lines).
    */
   private async editable(depth: number = EDITABLE_LINES) {
     const kept = [
@@ -1102,50 +1096,29 @@ export class DebugHub {
   }
 
   /**
-   * The agent polishes one of the owner's last EDITABLE_LINES voice lines (see
-   * "Voice edits" above). Every refusal is an {type:"error"} naming the rule it broke.
+   * The agent polishes one of the owner's lines (see "Voice edits" above):
+   * unrestricted (owner, 2026-11-14), any of his lines in the thread, any
+   * words. Every refusal is an {type:"error"} naming the rule it broke.
    */
   private async edit(ws: Socket, c: ControllerAtt, m: { id: string; text: string }) {
     const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
     const no = await this.mayEdit(c);
     if (no) return fail(no);
-    const { kept, recent: mine } = await this.editable();
-    const target = mine.find(([, x]) => x.id === m.id);
-    if (!target) {
-      const known = kept.some(([, x]) => x.id === m.id);
+    const { kept } = await this.editable();
+    const target = kept.find(([, x]) => x.id === m.id && x.from === "owner");
+    if (!target)
       return fail(
-        known
-          ? `message ${m.id} is not among the owner's last ${EDITABLE_LINES} lines: only those may be polished`
-          : `no message ${m.id} in the owner's thread (friends' lines can never be edited)`,
+        `no message ${m.id} of the owner's in his thread (agents' and friends' lines can never be edited)`,
       );
-    }
     const [key, line] = target;
-    if (line.source !== "stt")
-      return fail(`message ${m.id} was typed, not spoken: only voice (stt) lines may be polished`);
-    if (line.summary)
-      return fail(`message ${m.id} is a summary: its lines are kept as heard, nothing to polish`);
-    if (line.passage)
-      return fail(
-        `message ${m.id} is a merged passage: undo it (unmerge) or merge the run again, not a polish`,
-      );
     const count = line.edited?.count ?? 0;
-    if (count >= MAX_EDITS) return fail(`message ${m.id} was already polished ${MAX_EDITS} times`);
     if (m.text === line.text) return fail(`message ${m.id} already reads that way`);
-    // A merged passage is polished once, when it ended: the raw text is still growing.
+    // Not a polish rule: a line still being spoken is still growing, and would mix with it.
     if (line.parts && !line.settled && this.now() - lastPartAt(line) < MAX_UTTERANCE_MS)
       return fail(`message ${m.id} is still being spoken: polish it on polish-due`);
-    // Held to the context (polish.ts): the raw STT text against the thread's
-    // other lines, the page it was spoken on, and the words on its screen.
     const raw = line.raw ?? line.text;
-    // The thread's other lines, before and after it (the agent's replies too).
-    const recent = kept.filter(([k]) => k !== key).map(([, x]) => x.text);
-    // A merged line's parts are context too: later words correct what earlier ones really were.
-    recent.push(...partTexts(line));
-    const v = polishCheck(raw, m.text, polishContext(line, recent));
-    if (!v.ok) {
-      console.log(JSON.stringify({ msg: "debug.polish-refused", id: line.id, reason: v.reason }));
-      return fail(`not polished, the raw line stands: ${v.reason}`);
-    }
+    const v = polishCheck(raw, m.text);
+    if (!v.ok) return fail(`not polished, the raw line stands: ${v.reason}`);
     if (!(await this.polishOn()))
       return fail(`polish is off (${POLISH_FLAG} at /dev/flags): the raw line stands`);
     const t = this.now();
@@ -1719,7 +1692,7 @@ export class DebugHub {
     if (!line.parts || line.settled || line.label !== page.label) return;
     if (line.collapsedInto || line.passage) return;
     await this.ctx.storage.put(key, { ...line, settled: true } satisfies ChatMessage);
-    if ((line.edited?.count ?? 0) >= MAX_EDITS || !(await this.polishOn())) return;
+    if (!(await this.polishOn())) return;
     const out: PolishDueEvent = {
       type: "polish-due",
       id: line.id,
