@@ -214,7 +214,7 @@ export function AppShell({
         title={labels.signIn}
         className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800"
       >
-        <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+        <span className="lk-nav-icon text-lg leading-none">
           <Icon name="signIn" />
         </span>
         <span>{labels.signIn}</span>
@@ -357,7 +357,7 @@ export function AppShell({
                   onClick={() => setDrawerOpen(false)}
                   className="flex w-full min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
                 >
-                  <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+                  <span className="lk-nav-icon text-lg leading-none">
                     <Icon name="caretDoubleRight" className="-scale-x-100 rtl:scale-x-100" />
                   </span>
                   <span aria-hidden className="min-w-0 flex-1 truncate text-start">
@@ -417,7 +417,7 @@ function NavLink({ item, label, active }: { item: NavItem; label: string; active
       }`}
     >
       {/* Style C: an ink line icon; the current page's is stamped in seal red. */}
-      <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+      <span className="lk-nav-icon text-lg leading-none">
         {active ? <SealIcon name={item.icon} /> : <Icon name={item.icon} />}
       </span>
       {/* One line, always: a long label (fr "Listes de mots") wrapped and
@@ -479,7 +479,7 @@ function MoreMenu({
             : "font-medium text-gray-700 dark:text-gray-300"
         }`}
       >
-        <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+        <span className="lk-nav-icon text-lg leading-none">
           <Icon name="dotsThree" />
         </span>
         <span className="min-w-0 truncate">{labels.ui.more}</span>
@@ -534,7 +534,7 @@ function RailToggle({
       {...data}
       className={`lk-rail-toggle items-center justify-center rounded-lg min-h-10 min-w-10 hover:bg-gray-100 dark:hover:bg-gray-800 ${collapsed ? "" : "flex"} ${className ?? ""}`}
     >
-      <span className="flex w-5 shrink-0 justify-center text-lg leading-none">
+      <span className="lk-nav-icon text-lg leading-none">
         <Icon
           name="caretDoubleRight"
           className={collapsed ? "rtl:-scale-x-100" : "-scale-x-100 rtl:scale-x-100"}

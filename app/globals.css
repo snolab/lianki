@@ -1176,6 +1176,18 @@ html[data-embed] .lk-statusbar {
   }
 }
 
+/* Reserve the selected stamp's 1.5em footprint at every UI text scale.
+ * A fixed w-5 slot let its scale(1.6) arrival cross the scroller edge at 150%.
+ * Shared by rail, overflow menu, phone drawer and pinned/recent rows. */
+.lk-nav-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+}
+
 /* The app rail (AppShell): links, then "⋯" for the ones that did not fit
  * (useRailFit), then the account menu at the foot. Never taller than the
  * screen (owner, 2026-11-09: "left side panel 太高了"). On a desktop it is

@@ -47,7 +47,7 @@ export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
           aria-current={p === pathname ? "page" : undefined}
           className="flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-[oklch(from_var(--foreground)_l_c_h/0.06)]"
         >
-          <span className="flex w-5 shrink-0 justify-center text-lg leading-none opacity-80">
+          <span className="lk-nav-icon text-lg leading-none opacity-80">
             <Icon name={navIcon ?? icon} />
           </span>
           <span className="min-w-0 truncate">{title(p)}</span>
@@ -138,7 +138,7 @@ export function NavRows({ place, collapsed }: IslandProps["nav.drawer"]) {
               }}
               className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-start text-sm hover:bg-[oklch(from_var(--foreground)_l_c_h/0.06)]"
             >
-              <span className="flex w-5 shrink-0 justify-center text-lg leading-none text-[var(--brand)]">
+              <span className="lk-nav-icon text-lg leading-none text-[var(--brand)]">
                 <Icon name="chatCircleDots" />
               </span>
               <span className="min-w-0 truncate">{t.partner}</span>
