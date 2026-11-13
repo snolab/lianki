@@ -3950,9 +3950,8 @@ export function DebugChat({
         </span>
         {ui.wakeWord}
       </button>
-      {/* Dev (DevMenuGroup.tsx): internal diagnostics, on the owner's pages only, collapsed. */}
-      <DevMenuGroup owner={owner} label={t.devGroup}>
-      {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}
+      {/* Echo cancellation (aec.ts lk:voice-aec): a real setting, in the main menu, not the Dev group
+          (owner, 2026-11-14: he could not find it). An open mic reopens with it at once. */}
       <button
         type="button"
         role="menuitemcheckbox"
@@ -3970,6 +3969,8 @@ export function DebugChat({
         </span>
         {ui.aec}
       </button>
+      {/* Dev (DevMenuGroup.tsx): internal diagnostics, on the owner's pages only, collapsed. */}
+      <DevMenuGroup owner={owner} label={t.devGroup}>
       {/* The last voice line's path to its reply (latency.ts), when there is one or the mic is on. */}
       {(lastLatency || vs.mic) && (
         <div data-testid="debug-menu-latency" className="px-3 py-1 text-gray-500">

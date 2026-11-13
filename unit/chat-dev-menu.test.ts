@@ -32,13 +32,17 @@ describe("the chat menu's Dev group", () => {
     expect(html).toContain('data-testid="inside"');
   });
 
-  it("holds the three internals, and none of them sits outside it", () => {
+  it("holds the two internals, and none of them sits outside it; echo cancellation is a main-menu setting", () => {
     const src = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
     const open = src.indexOf("<DevMenuGroup owner={owner}");
     const close = src.indexOf("</DevMenuGroup>");
     expect(open).toBeGreaterThan(0);
     expect(close).toBeGreaterThan(open);
-    for (const id of ["debug-menu-aec", "debug-menu-latency", "debug-menu-adapt"]) {
+    // Echo cancellation moved out (owner, 2026-11-14: he could not find it in Dev).
+    const aec = src.indexOf('data-testid="debug-menu-aec"');
+    expect(aec).toBeGreaterThan(0);
+    expect(aec).toBeLessThan(open);
+    for (const id of ["debug-menu-latency", "debug-menu-adapt"]) {
       const at = src.indexOf(`data-testid="${id}"`);
       expect(at).toBeGreaterThan(open);
       expect(at).toBeLessThan(close);
