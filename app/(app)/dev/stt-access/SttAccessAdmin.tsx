@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
-import { accountLabel, txt, workerMeta } from "./lines";
+import { accountLabel, shortId, txt, workerMeta } from "./lines";
 
 type Allowed = { userId: string; name: string | null; addedAt: number };
 type Worker = {
@@ -163,7 +163,12 @@ export default function SttAccessAdmin() {
             >
               <span className="min-w-0 flex-1 break-all text-sm">
                 {accountLabel(a)}
-                {a.name ? <code className="ml-2 text-xs opacity-70">{a.userId}</code> : null}
+                {a.name ? (
+                  // The id only as a short tag (owner, 2026-11-14: the full id is too long); all of it on hover.
+                  <code className="ml-2 text-xs opacity-70" title={a.userId}>
+                    {shortId(a.userId)}
+                  </code>
+                ) : null}
                 <span className="block text-xs opacity-70">{when(a.addedAt)}</span>
               </span>
               {confirm === `u:${a.userId}` ? (

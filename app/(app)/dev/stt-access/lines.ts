@@ -19,6 +19,10 @@ export const txt = (leaf: unknown): string =>
 export const fill = (s: string, vars: Record<string, string | number>) =>
   s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 
+/** An id's first characters, enough to tell rows apart at a glance (the full id is the title). */
+export const shortId = (id: string, n = 6): string =>
+  id.length > n + 1 ? `${id.slice(0, n)}…` : id;
+
 /** An allowed account as its display name, or its id when it has none. Never its email. */
 export const accountLabel = (a: { userId: string; name?: unknown }): string =>
   typeof a.name === "string" && a.name.trim() ? a.name.trim() : a.userId;
