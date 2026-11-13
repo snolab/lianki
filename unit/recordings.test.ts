@@ -42,7 +42,7 @@ import {
 } from "@/lib/recordings";
 import { type SweepDb, retentionDays, sweepRecordings, SWEEP_PAGE } from "@/lib/recordings-sweep";
 import { crc32, zipStream, ZIP_LIMITS } from "@/lib/zip-stream";
-import { clock, recordingRows, withoutClip } from "@/lib/recordings-view";
+import { clock, recordingRows, withoutClip, requestRecordings } from "@/lib/recordings-view";
 import { toBase64 } from "@/lib/voice-clone-ref";
 import { seal } from "@/lib/connections/crypto";
 import { OWNER_SCOPES, parseScopes } from "@/lib/api-tokens";
@@ -566,5 +566,45 @@ describe("the page's rows", () => {
     expect(clock(0)).toBe("0:00");
     expect(clock(61_000)).toBe("1:01");
     expect(clock(3_723_000)).toBe("1:02:03");
+  });
+});
+
+describe("viewer request failures", () => {
+  it("renders an error after a failed day request and loads clips on retry", async () => {
+    const days = [{ day: DAY, clips: 1, ms: 1000, bytes: 100 }];
+    const clips = new Map();
+    const errors = new Set<string>();
+    let attempt = 0;
+    const fetcher = (async () =>
+      ++attempt === 1
+        ? new Response("{}", { status: 503 })
+        : Response.json({ clips: [{ id: "test", day: DAY }] })) as unknown as typeof fetch;
+    const load = async () => {
+      errors.delete(DAY);
+      try {
+        const b = await requestRecordings<{ clips: never[] }>(fetcher, `?day=${DAY}`);
+        clips.set(DAY, b.clips);
+      } catch {
+        errors.add(DAY);
+      }
+    };
+    await load();
+    expect(clips.has(DAY)).toBe(false);
+    expect(recordingRows(days, new Set([DAY]), clips, errors)[1]?.kind).toBe("error");
+    await load();
+    expect(errors.size).toBe(0);
+    expect(recordingRows(days, new Set([DAY]), clips, errors)[1]?.kind).toBe("clip");
+  });
+  it("rejects HTTP and network delete failures so the viewer can report them", async () => {
+    for (const query of ["?day=2026-11-14", "?clip=abcdefghijklmnop"]) {
+      for (const offline of [false, true]) {
+        const fetcher = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+          expect(init?.method).toBe("DELETE");
+          if (offline) throw new Error("offline");
+          return new Response("{}", { status: 500 });
+        }) as unknown as typeof fetch;
+        await expect(requestRecordings(fetcher, query, "DELETE")).rejects.toThrow();
+      }
+    }
   });
 });

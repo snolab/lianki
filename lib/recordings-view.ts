@@ -16,6 +16,7 @@ export type ClipView = {
 };
 export type Row =
   | { kind: "day"; key: string; s: DaySummary; open: boolean }
+  | { kind: "error"; key: string; day: string }
   | { kind: "loading"; key: string; day: string }
   | { kind: "clip"; key: string; c: ClipView };
 
@@ -24,6 +25,7 @@ export function recordingRows(
   days: readonly DaySummary[],
   open: ReadonlySet<string>,
   clips: ReadonlyMap<string, readonly ClipView[]>,
+  errors: ReadonlySet<string> = new Set(),
 ): Row[] {
   const out: Row[] = [];
   for (const s of days) {
@@ -31,7 +33,8 @@ export function recordingRows(
     out.push({ kind: "day", key: `d:${s.day}`, s, open: isOpen });
     if (!isOpen) continue;
     const cs = clips.get(s.day);
-    if (!cs) out.push({ kind: "loading", key: `l:${s.day}`, day: s.day });
+    if (errors.has(s.day)) out.push({ kind: "error", key: `e:${s.day}`, day: s.day });
+    else if (!cs) out.push({ kind: "loading", key: `l:${s.day}`, day: s.day });
     else for (const c of cs) out.push({ kind: "clip", key: `c:${c.id}`, c });
   }
   return out;
@@ -62,4 +65,15 @@ export function withoutClip(
   }
   if (!out.some((s) => s.day === c.day)) next.delete(c.day);
   return { days: out, clips: next };
+}
+
+/** Failed requests reject so callers keep existing data and offer a retry. */
+export async function requestRecordings<T>(
+  fetcher: typeof fetch,
+  query: string,
+  method = "GET",
+): Promise<T> {
+  const response = await fetcher(`/api/my/recordings${query}`, { method, cache: "no-store" });
+  if (!response.ok) throw new Error(`recordings: ${response.status}`);
+  return response.json() as Promise<T>;
 }

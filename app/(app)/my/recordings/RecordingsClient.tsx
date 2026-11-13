@@ -16,6 +16,7 @@ import {
   clock,
   recordingRows,
   withoutClip,
+  requestRecordings,
 } from "@/lib/recordings-view";
 
 const API = "/api/my/recordings";
@@ -31,6 +32,9 @@ export default function RecordingsClient() {
   const [error, setError] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [clips, setClips] = useState<Map<string, ClipView[]>>(new Map());
+  const [dayErrors, setDayErrors] = useState<Set<string>>(new Set());
+  const [deleteError, setDeleteError] = useState(false);
+  const loadingDays = useRef(new Set<string>());
   const [confirm, setConfirm] = useState<string | null>(null);
   const busy = useRef(false);
 
@@ -59,24 +63,38 @@ export default function RecordingsClient() {
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const loadDay = (day: string) => {
+    if (loadingDays.current.has(day)) return;
+    loadingDays.current.add(day);
+    setDayErrors((errors) => {
+      const next = new Set(errors);
+      next.delete(day);
+      return next;
+    });
+    requestRecordings<{ clips: ClipView[] }>(fetch, `?day=${day}`)
+      .then((b) => setClips((m) => new Map(m).set(day, b.clips)))
+      .catch(() => setDayErrors((errors) => new Set(errors).add(day)))
+      .finally(() => loadingDays.current.delete(day));
+  };
   const toggle = (day: string) => {
     const next = new Set(open);
     if (next.has(day)) next.delete(day);
     else {
       next.add(day);
-      if (!clips.has(day))
-        fetch(`${API}?day=${day}`, { cache: "no-store" })
-          .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-          .then((b: { clips: ClipView[] }) => setClips((m) => new Map(m).set(day, b.clips)))
-          .catch(() => setClips((m) => new Map(m).set(day, [])));
+      if (!clips.has(day)) loadDay(day);
     }
     setOpen(next);
   };
 
   const delDay = async (day: string) => {
     setConfirm(null);
-    const r = await fetch(`${API}?day=${day}`, { method: "DELETE" });
-    if (!r.ok) return;
+    setDeleteError(false);
+    try {
+      await requestRecordings(fetch, `?day=${day}`, "DELETE");
+    } catch {
+      setDeleteError(true);
+      return;
+    }
     setDays((d) => d.filter((x) => x.day !== day));
     setClips((m) => {
       const n = new Map(m);
@@ -86,8 +104,13 @@ export default function RecordingsClient() {
   };
   const delClip = async (c: ClipView) => {
     setConfirm(null);
-    const r = await fetch(`${API}?clip=${c.id}`, { method: "DELETE" });
-    if (!r.ok) return;
+    setDeleteError(false);
+    try {
+      await requestRecordings(fetch, `?clip=${c.id}`, "DELETE");
+    } catch {
+      setDeleteError(true);
+      return;
+    }
     const n = withoutClip(days, clips, c);
     setDays(n.days);
     setClips(n.clips);
@@ -141,8 +164,14 @@ export default function RecordingsClient() {
       </h1>
       <p className={`mt-1 text-sm ${muted}`}>{t.intro}</p>
 
+      {deleteError && (
+        <p role="alert" className={seal}>
+          {t.deleteFailed}
+        </p>
+      )}
+
       <VirtualList
-        items={recordingRows(days, open, clips)}
+        items={recordingRows(days, open, clips, dayErrors)}
         getKey={(r) => r.key}
         name="my-recordings"
         hasMore={more}
@@ -212,6 +241,19 @@ export default function RecordingsClient() {
               </div>
             );
           }
+          if (r.kind === "error")
+            return (
+              <div role="alert" className={`py-3 pl-6 text-sm ${seal}`}>
+                <span>{t.loadFailed}</span>{" "}
+                <button
+                  type="button"
+                  className="min-h-11 px-2 underline"
+                  onClick={() => loadDay(r.day)}
+                >
+                  {t.retry}
+                </button>
+              </div>
+            );
           if (r.kind === "loading")
             return <p className={`py-3 pl-6 text-sm ${muted}`}>{t.loading}</p>;
           const c = r.c;

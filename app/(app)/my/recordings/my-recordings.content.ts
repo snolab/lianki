@@ -8,6 +8,60 @@ import { describeKeys } from "@/lib/i18n-context";
 const dictionary = {
   key: "my-recordings",
   content: {
+    retry: t({
+      en: "Try again",
+      zh: "重试",
+      hi: "फिर कोशिश करें",
+      es: "Reintentar",
+      fr: "Réessayer",
+      ar: "حاول مرة أخرى",
+      bn: "আবার চেষ্টা করুন",
+      pt: "Tentar novamente",
+      ru: "Повторить",
+      ur: "دوبارہ کوشش کریں",
+      id: "Coba lagi",
+      de: "Erneut versuchen",
+      ja: "再試行",
+      sw: "Jaribu tena",
+      mr: "पुन्हा प्रयत्न करा",
+      ko: "다시 시도",
+    }),
+    deleteFailed: t({
+      en: "Could not delete recordings. Please try again.",
+      zh: "无法删除录音，请重试。",
+      hi: "रिकॉर्डिंग मिटाई नहीं जा सकीं। फिर कोशिश करें।",
+      es: "No se pudieron borrar las grabaciones. Inténtalo de nuevo.",
+      fr: "Impossible de supprimer les enregistrements. Réessayez.",
+      ar: "تعذر حذف التسجيلات. حاول مرة أخرى.",
+      bn: "রেকর্ডিং মুছে ফেলা যায়নি। আবার চেষ্টা করুন।",
+      pt: "Não foi possível excluir as gravações. Tente novamente.",
+      ru: "Не удалось удалить записи. Попробуйте ещё раз.",
+      ur: "ریکارڈنگز حذف نہیں ہو سکیں۔ دوبارہ کوشش کریں۔",
+      id: "Rekaman tidak dapat dihapus. Coba lagi.",
+      de: "Aufnahmen konnten nicht gelöscht werden. Bitte erneut versuchen.",
+      ja: "録音を削除できませんでした。もう一度お試しください。",
+      sw: "Imeshindwa kufuta rekodi. Jaribu tena.",
+      mr: "रेकॉर्डिंग हटवता आल्या नाहीत. पुन्हा प्रयत्न करा.",
+      ko: "녹음을 삭제하지 못했습니다. 다시 시도해 주세요.",
+    }),
+    loadFailed: t({
+      en: "Could not load recordings.",
+      zh: "无法加载录音。",
+      hi: "रिकॉर्डिंग लोड नहीं हो सकीं।",
+      es: "No se pudieron cargar las grabaciones.",
+      fr: "Impossible de charger les enregistrements.",
+      ar: "تعذر تحميل التسجيلات.",
+      bn: "রেকর্ডিং লোড করা যায়নি।",
+      pt: "Não foi possível carregar as gravações.",
+      ru: "Не удалось загрузить записи.",
+      ur: "ریکارڈنگز لوڈ نہیں ہو سکیں۔",
+      id: "Rekaman tidak dapat dimuat.",
+      de: "Aufnahmen konnten nicht geladen werden.",
+      ja: "録音を読み込めませんでした。",
+      sw: "Imeshindwa kupakia rekodi.",
+      mr: "रेकॉर्डिंग लोड करता आल्या नाहीत.",
+      ko: "녹음을 불러오지 못했습니다.",
+    }),
     title: t({
       en: "Mic recordings",
       zh: "麦克风录音",
@@ -318,6 +372,12 @@ const dictionary = {
 };
 
 const context: Record<keyof typeof dictionary.content, string> = {
+  retry:
+    "Button beside a failed day load on /my/recordings; fetches that day again. Short imperative.",
+  deleteFailed:
+    "Alert on /my/recordings when deleting a day or clip fails; user can use the delete button again.",
+  loadFailed:
+    "Inline error on /my/recordings when fetching one day fails; retry is offered beside it.",
   title:
     "Main heading (h1) of /my/recordings and its browser tab title: the page listing what the user's microphone recorded in Lianki, kept in their account. Short noun phrase; 'mic' is the microphone.",
   intro:
