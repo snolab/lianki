@@ -18,6 +18,7 @@ import {
   busyLeft,
 } from "@/lib/dev-eval";
 import { DEBUG_EVENT, debugOn, devLog } from "@/lib/debug-client";
+import { chatWanted } from "@/lib/partner-entry";
 import { noteBadgeSeen } from "@/lib/app-badge";
 import { type BoxConfig, boxChatHub } from "@/lib/box-oauth/client";
 import { useBoxAccount } from "./BoxApiBridge";
@@ -341,7 +342,8 @@ export function DebugEval({
     if (typeof WebSocket === "undefined") return;
     let ws: WebSocket | null = null;
     /** The chat is wanted: debug mode, or the Learning Partner opened to users (partnerOpen). */
-    const chatOn = () => debugOn() || openRef.current;
+    // Never false for a partner user (lib/partner-entry.ts): the chat folds, it never goes away.
+    const chatOn = () => chatWanted(debugOn(), openRef.current);
     let idle: ReturnType<typeof setTimeout> | undefined;
     let hideToast: ReturnType<typeof setTimeout> | undefined;
     const opened = new WeakSet<WebSocket>();

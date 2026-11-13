@@ -15,6 +15,7 @@ import { readFlags } from "@/lib/flags-store";
 import { cfg } from "@/lib/config-store";
 import { ETA_FLAG } from "@/lib/eta-ping";
 import { isDev } from "@/lib/permissions";
+import { type ChatViewer, chatViewerOf } from "@/lib/partner-entry";
 import { boxConfig } from "@/lib/box-oauth/mode";
 import { BoxApiBridge } from "./components/BoxApiBridge";
 import { ExternalLinkGuard, type ExternalLinkStrings } from "./components/ExternalLinkGuard";
@@ -31,14 +32,17 @@ import { ExternalLinkGuard, type ExternalLinkStrings } from "./components/Extern
  * the `dev` grant (lib/permissions.ts), so the chat may show its developer
  * parts (remote eval, pairings, full page paths).
  */
-async function chatViewerFor(flags: FlagValues): Promise<{ open: boolean; dev: boolean }> {
+async function chatViewerFor(
+  flags: FlagValues,
+): Promise<{ open: boolean; dev: boolean; viewer: ChatViewer }> {
   try {
     const { authSessionOrNull } = await import("./signInEmail");
     const user = (await authSessionOrNull())?.user;
     const dev = !!user?.id && isDev(user.email);
-    return { open: flagIn(flags, "partner.ai-reply") && !!user?.id && !dev, dev };
+    const viewer = chatViewerOf(flags, !!user?.id, dev);
+    return { open: viewer === "partner", dev, viewer };
   } catch {
-    return { open: false, dev: false };
+    return { open: false, dev: false, viewer: null };
   }
 }
 
@@ -134,7 +138,9 @@ export default async function RootLayout({
   };
   // One read per request, passed to everything that decides (docs/feature-flags.md).
   const flags: FlagValues = partnerFrame ? {} : await readFlags();
-  const { open, dev } = partnerFrame ? { open: false, dev: false } : await chatViewerFor(flags);
+  const { open, dev, viewer } = partnerFrame
+    ? { open: false, dev: false, viewer: null }
+    : await chatViewerFor(flags);
   // The chat's full screen for every chat user (off: the owner's pages only; full-screen.ts).
   const chatFull = flagIn(flags, "partner.fullscreen");
   // Li's sound hub, observing only (docs/li-sound-hub.md); the owner's pages only.
@@ -171,6 +177,9 @@ export default async function RootLayout({
       // inlined into client chunks, so a deploy without client changes leaves
       // them identical (smart refresh, docs/shipping.md).
       data-build={process.env.NEXT_PUBLIC_BUILD_ID ?? "dev"}
+      // Who the viewer is to the chat (lib/partner-entry.ts CHAT_VIEWER_ATTR):
+      // the sidebar's "Learning Partner" row reads it. Absent for a guest.
+      data-chat-viewer={viewer ?? undefined}
       suppressHydrationWarning
     >
       <head>
