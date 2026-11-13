@@ -414,6 +414,7 @@ describe("the hub: presence pushed to the page", () => {
     ]);
     // A read only (no socket): present for the read window.
     const b = await mint(OWNER, "reader");
+    t += MIN;
     await h.http(b.token, { op: "read" });
     await flush();
     expect(page.lastPresent().map((p) => p.name)).toEqual(["reader", "mcp-bot"]);

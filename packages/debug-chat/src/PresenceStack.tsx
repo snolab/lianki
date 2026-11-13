@@ -56,6 +56,8 @@ const PAPER = "var(--lk-on-primary, oklch(0.985 0.01 85))";
 const keep = (e: { preventDefault(): void }) => e.preventDefault();
 const AV = 18;
 const DOUBLE_TAP_MS = 350;
+/** The paste box's sample: code, the same in every language. */
+const SVG_SAMPLE = '<svg viewBox="0 0 24 24">…</svg>';
 
 const clock = (at: number) =>
   new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
@@ -312,6 +314,10 @@ function Row({
   else activity.push(t.peopleActive.replaceAll("{time}", clock(p.active)));
   if (p.since) activity.push(t.peopleSince.replaceAll("{time}", clock(p.since)));
   const btn = "tap-40 rounded px-1.5 leading-6 underline";
+  /** The picture in effect: one of three, all shown; the one in effect in seal red. */
+  const pic = !p.avatar ? "auto" : p.avatarBy === "agent" ? "own" : "pasted";
+  const choice = (on: boolean) =>
+    `tap-40 rounded-full border px-2 leading-6 ${on ? "border-transparent font-semibold text-[var(--lk-on-primary,oklch(0.985_0.01_85))] bg-[var(--lk-primary,oklch(0.53_0.207_22.3))]" : "border-current/30 text-gray-500"}`;
   return (
     <li data-testid="debug-chat-presence-row" data-key={p.key} className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
@@ -402,28 +408,28 @@ function Row({
           <button
             type="button"
             data-testid="debug-chat-presence-auto"
-            aria-pressed={!p.avatar}
+            aria-pressed={pic === "auto"}
             onPointerDown={keep}
             onClick={() => onChange(p.tok!, { avatar: "auto" })}
-            className={`${btn} ${!p.avatar ? "font-semibold" : "opacity-70"}`}
+            className={choice(pic === "auto")}
           >
             {t.peopleAuto}
           </button>
           <button
             type="button"
-            aria-pressed={p.avatarBy === "agent"}
+            aria-pressed={pic === "own"}
             onPointerDown={keep}
             onClick={() => onChange(p.tok!, { avatar: null })}
-            className={`${btn} ${p.avatarBy === "agent" ? "font-semibold" : "opacity-70"}`}
+            className={choice(pic === "own")}
           >
             {t.peopleOwn}
           </button>
           <button
             type="button"
-            aria-pressed={p.avatarBy === "owner" && !!p.avatar}
+            aria-pressed={pic === "pasted"}
             onPointerDown={keep}
             onClick={() => setSvg((x) => (x === null ? "" : null))}
-            className={`${btn} ${p.avatarBy === "owner" && p.avatar ? "font-semibold" : "opacity-70"}`}
+            className={choice(pic === "pasted")}
           >
             {t.peoplePaste}
           </button>
@@ -445,7 +451,7 @@ function Row({
                 rows={3}
                 aria-label={t.peoplePaste}
                 aria-invalid={svgBad || undefined}
-                placeholder="<svg viewBox=&quot;0 0 24 24&quot;>…</svg>"
+                placeholder={SVG_SAMPLE}
                 onChange={(e) => {
                   setSvg(e.target.value);
                   setSvgBad(false);

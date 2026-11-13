@@ -4030,13 +4030,16 @@ export class DebugHub {
 
   /** The thread's list for one page: token ids only for the tokens of the page's own account. */
   private async presenceFor(thread: string, pages: { ws: Socket; a: PageAtt }[]) {
-    const { readMs, speakerMs } = await this.presenceWindows();
     const t = this.now();
     const records = [
       ...(await this.ctx.storage.list<PartRecord>({ prefix: partKey("") })).values(),
     ].filter((r) => r.thread === thread);
     const lines = await this.history(thread);
     const live = this.tokens.live(thread);
+    // No one to list: no config read either.
+    if (!records.length && !live.length && !lines.some((m) => m.from === "agent"))
+      return pages.map(({ ws }) => ({ ws, list: [] }));
+    const { readMs, speakerMs } = await this.presenceWindows();
     const next = nextExpiry({ now: t, readMs, speakerMs, records, lines });
     if (next !== null) await this.schedule(next + 1);
     return pages.map(({ ws, a }) => {
