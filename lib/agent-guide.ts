@@ -106,6 +106,7 @@ export const GUIDE_KEYS = [
   "scopeChatWrite",
   "scopeChatAsk",
   "scopeEval",
+  "scopeProgress",
   "cannot",
   "cardsHeading",
   "cardsIntro",
@@ -121,6 +122,10 @@ export const GUIDE_KEYS = [
   "epSay",
   "epAsk",
   "chatAnswer",
+  "progressHeading",
+  "progressIntro",
+  "progressFields",
+  "progressRules",
   "examplesHeading",
   "answers",
   "limitsHeading",
@@ -147,7 +152,11 @@ const SCOPE_LINE: Record<ScopeId, GuideKey> = {
   "chat:write": "scopeChatWrite",
   "chat:ask": "scopeChatAsk",
   eval: "scopeEval",
+  progress: "scopeProgress",
 };
+
+/** The state tree's write endpoint (lianki-push ProgressHub; docs/state-tree.md). */
+export const PROGRESS_PATH = "/api/version/progress";
 
 /** Any API token secret in `s`, replaced by the placeholder. */
 const SECRET_RE = /lk_[0-9a-f]{64}/gi;
@@ -180,6 +189,7 @@ export function agentGuide({ scopes, t, name, expires }: GuideInput): string {
   const has = (s: ScopeId) => scopes.includes(s);
   const study = has("study");
   const chat = has("chat:read") || has("chat:write") || has("chat:ask");
+  const progress = has("progress");
   const H = `Authorization: Bearer ${TOKEN_PLACEHOLDER}`;
   const out: string[] = [];
   const p = (...lines: string[]) => out.push(...lines, "");
@@ -245,6 +255,26 @@ export function agentGuide({ scopes, t, name, expires }: GuideInput): string {
         `- \`{"op": "ask", "question": "…", "options": [{"label": "…"}, {"label": "…"}]}\` → \`{"ok", "id", "askId"}\` (\`chat:ask\`): ${t.epAsk}`,
     ].filter((x): x is string => !!x);
     p(`## ${t.chatHeading}`, t.chatIntro, "", ...ops, "", t.chatAnswer);
+  }
+
+  if (progress) {
+    p(
+      `## ${t.progressHeading}`,
+      t.progressIntro,
+      "",
+      "```sh",
+      `lianki progress --path /words/swipe --task "Swipe fix: the card snaps back" --status doing --pct 40 --eta 30m`,
+      `lianki progress --path /words/swipe --task "Swipe fix: the card snaps back" --done --pr 310`,
+      "lianki progress ack k3x9qa",
+      "lianki progress show",
+      "```",
+      "",
+      `\`POST ${PROGRESS_PATH}\` \`{"path", "task", "status", "pct"?, "eta"?, "late"?, "note"?, "pr"?, "needs"?, "who"?, "verified"?, "unverified"?}\` → \`{"entry": {"id", "status", "rev", "etaAt"?}}\`; \`POST ${PROGRESS_PATH}/ack\` \`{"code"}\`; \`GET ${PROGRESS_PATH}\` → the tree; \`GET ${PROGRESS_PATH}/stats\`.`,
+      "",
+      t.progressFields,
+      "",
+      t.progressRules,
+    );
   }
 
   if (study || chat) {
