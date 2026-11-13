@@ -51,6 +51,15 @@ describe("markdown", () => {
     expect(html(r)).toContain("c&lt;d&gt;");
   });
 
+  it('a single ~ is a character, never a strike ("15~20 分钟 … 0:05~")', () => {
+    for (const t of ["只需要 15~20 分钟，凌晨 0:05~0:10 完成", "主人喵~ 好的~", "a ~b~ c"]) {
+      const r = md(t);
+      expect(tags(r.nodes)).not.toContain("del");
+      expect(r.shown).toBe(t);
+    }
+    expect(tags(md("~~gone~~ and 1~2").nodes)).toEqual(["del"]);
+  });
+
   it("lists, a heading as a bold line, a quote, a rule, a task box as a character", () => {
     expect(tags(md("- a\n- b").nodes)).toEqual(["ul", "li", "li"]);
     expect(md("- a\n- b").spoken).toBe("a\nb");
