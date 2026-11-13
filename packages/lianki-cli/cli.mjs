@@ -614,7 +614,14 @@ async function cmdChatSay(c) {
   const { data } = await call(c, token, {
     method: "POST",
     path: CHAT_PATH,
-    body: { op: "say", text, ...(c.argv.quiet ? { quiet: true } : {}) },
+    body: {
+      op: "say",
+      text,
+      ...(c.argv.quiet ? { quiet: true } : {}),
+      // How it cuts into the reading when it arrives live: stop yours, or pause and go on.
+      ...(c.argv.supersede ? { cut: "supersede" } : {}),
+      ...(c.argv.interject ? { cut: "interject" } : {}),
+    },
   });
   emit(c, "chat say", { id: data.id, lane: data.lane ?? null }, (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`);
 }
@@ -999,6 +1006,15 @@ function build(args, deps, box) {
                 y
                   .positional("text", { type: "string", describe: "The line" })
                   .option("quiet", { type: "boolean", describe: "Shown, never read aloud" })
+                  .option("supersede", {
+                    type: "boolean",
+                    describe: "Makes your earlier lines moot: stops reading them, reads this one first",
+                    conflicts: "interject",
+                  })
+                  .option("interject", {
+                    type: "boolean",
+                    describe: "Urgent: pauses the line being read, reads this one, then goes on",
+                  })
                   .option("stdin", { type: "boolean", hidden: true }),
                 [
                   ['lianki chat say "PR #12 is green"', "→ 【<token name>】PR #12 is green"],
@@ -1126,13 +1142,13 @@ export async function run(args, deps) {
     return EXIT.usage;
   }
   // yargs drops a bare `-` before any command sees it: `--token -` means
-  // "from stdin", and `say -` (`say --quiet -`) becomes `say --stdin`.
+  // "from stdin", and `say -` (`say --quiet -`, `say --supersede -`, `say --interject -`) becomes `say --stdin`.
   args = args.flatMap((a, i) =>
     a === "-" && args[i - 1] === "--token"
       ? []
       : a === "--token" && args[i + 1] === "-"
         ? ["--token=-"]
-        : a === "-" && (args[i - 1] === "say" || args[i - 1] === "send" || args[i - 1] === "--quiet")
+        : a === "-" && ["say", "send", "--quiet", "--supersede", "--interject"].includes(args[i - 1])
           ? ["--stdin"]
           : [a],
   );

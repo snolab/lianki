@@ -122,6 +122,15 @@ export type ChatMessage = {
    */
   quiet?: true;
   /**
+   * An agent line sent with `say --supersede` or `--interject`: how its
+   * reading cuts into the one under way when it arrives live (voice.ts).
+   * "supersede": the same lane's line being read stops and that lane's
+   * unread lines go. "interject": the line being read pauses, this one is
+   * read next, then the paused one goes on. Shown as usual; history never
+   * triggers it. The hub refuses any other value.
+   */
+  cut?: "supersede" | "interject";
+  /**
    * The lane an agent line is from (voices.ts LANES: "main", "codex",
    * "agy"; `say --lane`): its avatar, name tag and voice. Absent = a
    * `【lane】` prefix in the text says it, else none (looks as before).

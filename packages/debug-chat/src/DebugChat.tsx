@@ -3858,13 +3858,27 @@ export function DebugChat({
     initialRead(uiStore.getState().spoken),
   );
   useEffect(() => {
-    const v = voice() as ReturnType<typeof voice> & { onStart?: (f: () => void) => () => void };
+    const v = voice() as ReturnType<typeof voice> & {
+      onStart?: (f: () => void) => () => void;
+      onDrop?: (f: (ids: string[]) => void) => () => void;
+      onInterject?: (f: (j: { id: string; n: number; at: number }) => void) => () => void;
+    };
     readDispatch({ type: "queued", n: v.state().queued });
     const off1 = v.subscribe((s) => readDispatch({ type: "queued", n: s.queued }));
     const off2 = v.onStart?.(() => readDispatch({ type: "start" }));
+    // say --supersede / --interject (voice.ts): lines cut, or put in ahead of the rest.
+    const off3 = v.onDrop?.((ids) => {
+      for (const id of ids) readDispatch({ type: "drop", id });
+    });
+    const off4 = v.onInterject?.((j) => {
+      claimed.current.add(j.id);
+      readDispatch({ type: "insert", ...j });
+    });
     return () => {
       off1();
       off2?.();
+      off3?.();
+      off4?.();
     };
   }, []);
   /** Agent lines there before this widget came up: history, never claimed. */

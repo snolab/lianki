@@ -651,7 +651,11 @@ export function DebugEval({
             // Its words, not its markup (rich-text.ts): a line of only code says nothing.
             const said = spokenOf(m);
             const spoken =
-              fresh && !!said && (tabsRef.current?.isSpeaker() ?? true) && voice().reply(said, m);
+              fresh &&
+              !!said &&
+              (tabsRef.current?.isSpeaker() ?? true) &&
+              // live: a superseding or interjecting line cuts in (voice.ts); history never does.
+              voice().reply(said, m, { live: true });
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);

@@ -4,7 +4,7 @@
  * (debug.ts calls in here). docs/lianki-dev-cli.md, "lianki chat".
  *
  *   POST /api/version/chat  Authorization: Bearer lk_…
- *        {op:"say", text, quiet?}                → {ok, id}
+ *        {op:"say", text, quiet?, cut?}          → {ok, id}   cut: "supersede" | "interject"
  *        {op:"ask", question, options | questions, expiresAt?} → {ok, id, askId}
  *        {op:"read", limit?}                     → {ok, thread, lane, messages}
  *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?};
@@ -38,7 +38,7 @@
  */
 import type { ChatMessage, EditedEvent } from "../../../packages/debug-chat/src/wire";
 import { type Ask, parseAsk, askText } from "../../../packages/debug-chat/src/ask";
-import { OWNER_THREAD, chatText, isUserId } from "../../../lib/dev-eval";
+import { OWNER_THREAD, SAY_CUTS, chatText, isSayCut, isUserId } from "../../../lib/dev-eval";
 import { laneOf } from "../../../packages/debug-chat/src/voices";
 
 export const CHAT_PATH = "/api/version/chat";
@@ -215,7 +215,14 @@ export class TokenChat {
   private async say(thread: string, lane: string, m: Record<string, unknown>) {
     const text = typeof m.text === "string" ? laneText(lane, m.text.trim()) : undefined;
     if (!text) return { error: "say needs text (at most the chat's limit)" };
-    const line = this.line(thread, lane, text, m.quiet === true ? { quiet: true } : {});
+    // One of the two modes or nothing, like the grant path (lib/dev-eval.ts parseControllerMessage).
+    if (m.cut !== undefined && !isSayCut(m.cut))
+      return { error: `cut must be one of ${SAY_CUTS.join(", ")}` };
+    const line = this.line(thread, lane, text, {
+      ...(m.quiet === true ? { quiet: true as const } : {}),
+      // How it cuts into the reading when it arrives live (packages/debug-chat voice.ts).
+      ...(isSayCut(m.cut) ? { cut: m.cut } : {}),
+    });
     await this.host.post(line);
     console.log(JSON.stringify({ msg: "debug.token-say", lane, owner: thread === OWNER_THREAD }));
     return { id: line.id };

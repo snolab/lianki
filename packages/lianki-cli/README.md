@@ -104,6 +104,8 @@ name as 【name】. Only your own tap on lianki.com answers a question card.
 ```bash
 lianki chat say "finished chapter 3"
 echo "from a script" | lianki chat say -
+lianki chat say --supersede "actually: skip that, read this first"
+lianki chat say --interject "heads-up: CI is red"
 lianki chat ask --q "Review now?" --opt Yes --opt Later --recommend 1 --wait
 lianki chat read --limit 20
 lianki chat listen --json        # one JSON line an event, until Ctrl-C
@@ -111,7 +113,11 @@ lianki chat listen --json        # one JSON line an event, until Ctrl-C
 
 `listen` and `ask --wait` need Node.js 22+ or Bun (a WebSocket). An agent
 uses its own token: `LIANKI_TOKEN=lk_… lianki chat say …`; the line shows that
-token's name.
+token's name. Two flags cut into what a page is reading aloud (every line
+stays in the chat): `--supersede` when the line makes your earlier ones moot
+(the one being read stops, your unread ones go, this one is read);
+`--interject` when it is urgent but the earlier ones still matter (the line
+being read pauses, this one is read, then it goes on).
 
 ## Settings
 

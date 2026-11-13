@@ -395,6 +395,25 @@ describe("the hub: own thread only", () => {
     expect(ownerPage.of("chat")).toEqual([]);
   });
 
+  it("say cut: supersede / interject kept on the line; anything else refused, nothing posted", async () => {
+    const s = hubSetup();
+    const o = await mint(OWNER, "codex");
+    const page = await s.page({ userId: OWNER.userId, email: OWNER.email, owner: true });
+    expect((await s.http(o.token, { op: "say", text: "moot", cut: "supersede" })).status).toBe(200);
+    expect(page.of("chat").at(-1)?.message).toMatchObject({ cut: "supersede", lane: "codex" });
+    expect((await s.http(o.token, { op: "say", text: "urgent", cut: "interject" })).status).toBe(
+      200,
+    );
+    expect(page.of("chat").at(-1)?.message).toMatchObject({ cut: "interject" });
+    expect((await s.http(o.token, { op: "say", text: "plain" })).status).toBe(200);
+    expect((page.of("chat").at(-1)?.message as Record<string, unknown>).cut).toBeUndefined();
+    for (const cut of [true, "true", "SUPERSEDE", 1, null]) {
+      const r = await s.http(o.token, { op: "say", text: "bad", cut });
+      expect(r.status).toBe(400);
+    }
+    expect(page.of("chat").length).toBe(3);
+  });
+
   it("the owner's lane token posts into the owner thread; a read sees only its own thread", async () => {
     const s = hubSetup();
     const o = await mint(OWNER, "codex");
