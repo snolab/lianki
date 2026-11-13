@@ -58,6 +58,7 @@ describe("registry", () => {
       "words.onboarding",
       "stt.voiceprint-cloud",
       "stt.polish",
+      "voice.auto-polish",
       "library.catalogue",
       "books.mine",
       "voice.polish-readback",
