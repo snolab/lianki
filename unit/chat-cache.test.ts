@@ -314,6 +314,73 @@ describe("chat prefetch gate", () => {
     cancel();
     expect(cleared).toBe(1);
     expect(loads).toBe(0);
+    // The timeout firing after all still loads, once.
+    timers[0].cb();
+    timers[0].cb();
+    expect(loads).toBe(1);
+  });
+
+  it("an unmount before idle cancels the idle callback by its id", () => {
+    let cancelled: number | null = null;
+    let loads = 0;
+    const cancel = prefetchWhenIdle(async () => void loads++, {
+      requestIdleCallback: () => 42,
+      cancelIdleCallback: (id: number) => void (cancelled = id),
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+    });
+    cancel();
+    expect(cancelled as number | null).toBe(42);
+    expect(loads).toBe(0);
+    // A browser without cancelIdleCallback: the cancel is harmless.
+    prefetchWhenIdle(async () => void loads++, {
+      requestIdleCallback: () => 7,
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+    })();
+  });
+
+  it("once it ran, a later mount schedules nothing and its cancel is a no-op", () => {
+    let scheduled = 0;
+    let loads = 0;
+    const win = {
+      requestIdleCallback: (cb: () => void) => {
+        scheduled++;
+        cb();
+        return 1;
+      },
+      cancelIdleCallback: () => {
+        throw new Error("nothing to cancel");
+      },
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+    };
+    prefetchWhenIdle(async () => void loads++, win);
+    expect(loads).toBe(1);
+    const cancel = prefetchWhenIdle(async () => void loads++, win);
+    expect(scheduled).toBe(1);
+    expect(() => cancel()).not.toThrow();
+    expect(loads).toBe(1);
+  });
+
+  it("a failed load is forgotten, so the next mount tries again", async () => {
+    let attempts = 0;
+    const win = {
+      requestIdleCallback: (cb: () => void) => {
+        cb();
+        return 1;
+      },
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+    };
+    prefetchWhenIdle(async () => {
+      attempts++;
+      throw new Error("offline");
+    }, win);
+    await Promise.resolve();
+    await Promise.resolve();
+    prefetchWhenIdle(async () => void attempts++, win);
+    expect(attempts).toBe(2);
   });
 
   it("the prefetch warms the very module React.lazy loads, behind the gate", () => {
