@@ -109,6 +109,12 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
     el.style.left = `${Math.max(8, Math.min(selection.anchor.left, innerWidth - box.width - 8))}px`;
     el.style.top = `${Math.max(8, Math.min(selection.anchor.bottom + 8, innerHeight - box.height - 8))}px`;
   }, [selection]);
+  /** A text selection inside this line (a selection elsewhere on the page must not block it). */
+  const selectingIn = (el: Element) => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.toString()) return false;
+    return el.contains(sel.anchorNode) || el.contains(sel.focusNode);
+  };
   const forMessage = (message: ChatMessage, sender: string) => {
     const open = (e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
       const target = e.target;
@@ -117,7 +123,7 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
         "button,a,input,textarea,select,[contenteditable=true],[role=button]",
       );
       if (control && control !== e.currentTarget) return;
-      if (window.getSelection()?.toString()) return;
+      if (selectingIn(e.currentTarget)) return;
       e.stopPropagation();
       setSelection({ message, sender, anchor: e.currentTarget.getBoundingClientRect() });
     };
@@ -129,7 +135,7 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
       // Right-click opens the details too (owner, 2026-11-14: "我想用右键就能打开"); the
       // browser's own menu stays for selected text.
       onContextMenu: (e: MouseEvent<HTMLElement>) => {
-        if (window.getSelection()?.toString()) return;
+        if (selectingIn(e.currentTarget)) return;
         // Only a link or a field keeps the browser's menu; a line wrapped in a
         // role=button (tap to read) still opens its details.
         if (e.target instanceof Element && e.target.closest("a,input,textarea,select,[contenteditable=true]")) return;
