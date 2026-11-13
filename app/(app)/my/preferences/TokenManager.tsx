@@ -11,7 +11,7 @@ import {
   type Expiry,
 } from "@/app/components/TokenPickers";
 import { RevokeConfirm } from "./RevokeConfirm";
-import { AgentGuide, CopyGuideButton, useAgentGuide } from "./AgentGuide";
+import { AgentGuide, CopyGuideButton, useAgentGuide, useAgentGuidePointer } from "./AgentGuide";
 import { invitePrefill } from "@lianki/debug-chat/presence";
 
 /**
@@ -54,6 +54,7 @@ export default function TokenManager() {
     expiresAt: string | null;
   } | null>(null);
   const guide = useAgentGuide();
+  const pointer = useAgentGuidePointer();
   const [copied, setCopied] = useState(false);
   /** The row asking "Revoke …?", the one being revoked, and the one Cancel returned focus to. */
   const [asking, setAsking] = useState<string | null>(null);
@@ -215,7 +216,7 @@ export default function TokenManager() {
           </div>
           <div className="space-y-1 pt-1">
             <CopyGuideButton
-              text={guide(secret)}
+              text={pointer(secret)}
               copy={guideLabels.copy}
               copied={guideLabels.copied}
             />
@@ -273,7 +274,7 @@ export default function TokenManager() {
             />
             {!t.expired && (
               <div className="basis-full min-w-0">
-                <AgentGuide text={guide(t)} labels={guideLabels} />
+                <AgentGuide text={guide(t)} copyText={pointer(t)} labels={guideLabels} />
               </div>
             )}
           </li>

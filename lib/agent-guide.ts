@@ -137,6 +137,7 @@ export const GUIDE_KEYS = [
   "safetyAsk",
   "safetyRevoke",
   "latest",
+  "pointer",
 ] as const;
 export type GuideKey = (typeof GUIDE_KEYS)[number];
 export type GuideStrings = Record<GuideKey, string>;
@@ -330,4 +331,29 @@ export function guideText(v: unknown, locale = "en"): string {
 export function guideStrings(content: unknown, locale = "en"): GuideStrings {
   const c = (content ?? {}) as Record<string, unknown>;
   return Object.fromEntries(GUIDE_KEYS.map((k) => [k, guideText(c[k], locale)])) as GuideStrings;
+}
+
+/**
+ * The short message copied for the assistant (owner, 2026-11-14: the full text
+ * was too long to copy): where the full instructions are, as a public file in
+ * the user's language with this token's permissions, and where the token is
+ * kept. Never the token.
+ */
+export function agentGuideUrl(scopes: readonly ScopeId[], lang: string): string {
+  const base = `${GUIDE_BASE}/agent-guide.${encodeURIComponent(lang)}.md`;
+  return scopes.length ? `${base}?scopes=${scopes.map(encodeURIComponent).join(",")}` : base;
+}
+
+export function agentGuidePointer({
+  scopes,
+  t,
+  name,
+  lang,
+}: {
+  scopes: readonly ScopeId[];
+  t: GuideStrings;
+  name: string;
+  lang: string;
+}): string {
+  return fill(t.pointer, { url: agentGuideUrl(scopes, lang), name: plain(name) || "—" });
 }

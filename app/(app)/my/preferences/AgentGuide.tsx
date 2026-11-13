@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import type { ScopeId } from "@/lib/api-tokens";
-import { agentGuide, guideStrings } from "@/lib/agent-guide";
+import { agentGuide, agentGuidePointer, guideStrings } from "@/lib/agent-guide";
 import { longDate } from "@/lib/dates";
 import { textOf } from "@/app/components/TokenPickers";
 
@@ -31,6 +31,23 @@ export function useAgentGuide() {
     });
 }
 
+/**
+ * What the copy button copies: two or three lines pointing the assistant at
+ * the full instructions as a public file in the page's language, with this
+ * token's permissions (owner, 2026-11-14: the full text was too long to copy).
+ */
+export function useAgentGuidePointer() {
+  const g = useIntlayer("agent-guide");
+  const { locale } = useLocale();
+  const t = guideStrings(
+    Object.fromEntries(
+      Object.entries(g as Record<string, unknown>).map(([k, v]) => [k, textOf(v)]),
+    ),
+  );
+  return (tok: { scopes: readonly ScopeId[]; name: string }) =>
+    agentGuidePointer({ scopes: tok.scopes, t, name: tok.name, lang: String(locale) });
+}
+
 /** "Copy instructions for your AI assistant", then "Instructions copied". */
 export function CopyGuideButton(p: { text: string; copy: string; copied: string }) {
   const [done, setDone] = useState(false);
@@ -53,17 +70,20 @@ export function CopyGuideButton(p: { text: string; copy: string; copied: string 
 
 /** A token row's disclosure: the instructions, readable before they are copied. */
 export function AgentGuide(p: {
+  /** The full instructions, shown here. */
   text: string;
+  /** What the button copies: the short pointer to the public file. */
+  copyText: string;
   labels: { summary: string; copy: string; copied: string; noToken: string };
 }) {
   return (
     <details className="mt-2 group" data-testid="token-guide">
-      <summary className="cursor-pointer text-sm font-medium text-primary hover:underline w-fit">
+      <summary className="cursor-pointer text-sm font-medium text-primary hover:underline w-fit whitespace-nowrap">
         {p.labels.summary}
       </summary>
       <div className="mt-2 space-y-2">
         <p className="text-xs opacity-80">{p.labels.noToken}</p>
-        <CopyGuideButton text={p.text} copy={p.labels.copy} copied={p.labels.copied} />
+        <CopyGuideButton text={p.copyText} copy={p.labels.copy} copied={p.labels.copied} />
         <pre
           data-testid="token-guide-text"
           className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs font-mono p-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"

@@ -911,6 +911,24 @@ const dictionary = {
       mr: "वापरकर्ता हे टोकन Lianki मध्ये कधीही रद्द करू शकतो: सेटिंग्ज → API टोकन ({url}).",
       ko: "사용자는 Lianki의 설정 → API 토큰({url})에서 언제든지 이 토큰을 폐기할 수 있습니다.",
     }),
+    pointer: t({
+      en: 'Read the instructions at {url} and follow them: they show you how to use Lianki\'s API with my API token "{name}". The token is not in this message. Read it from where it is kept (the environment variable LIANKI_TOKEN, the keychain via npx lianki auth login, or your MCP settings) and never ask me to paste it into the chat.',
+      zh: "请阅读并遵守这份说明：{url} ——它教你用我的 API 令牌“{name}”使用炼记（Lianki）的 API。令牌不在这段话里：从它存放的地方读取（环境变量 LIANKI_TOKEN、通过 npx lianki auth login 存进的钥匙串，或你的 MCP 设置），绝不要让我把它贴进聊天。",
+      hi: '{url} पर दिए निर्देश पढ़ें और उनका पालन करें: वे बताते हैं कि मेरे API टोकन "{name}" से Lianki का API कैसे इस्तेमाल करें। टोकन इस संदेश में नहीं है। उसे वहीं से पढ़ें जहाँ वह रखा है (एनवायरनमेंट वेरिएबल LIANKI_TOKEN, npx lianki auth login से कीचेन, या आपकी MCP सेटिंग्स), और मुझसे उसे चैट में चिपकाने को कभी न कहें।',
+      es: 'Lee las instrucciones en {url} y síguelas: explican cómo usar la API de Lianki con mi token de API "{name}". El token no está en este mensaje. Léelo de donde está guardado (la variable de entorno LIANKI_TOKEN, el llavero con npx lianki auth login o tu configuración de MCP) y nunca me pidas que lo pegue en el chat.',
+      fr: "Lis les instructions à {url} et suis-les : elles expliquent comment utiliser l'API de Lianki avec mon jeton d'API « {name} ». Le jeton n'est pas dans ce message. Lis-le là où il est conservé (la variable d'environnement LIANKI_TOKEN, le trousseau via npx lianki auth login, ou tes réglages MCP) et ne me demande jamais de le coller dans le chat.",
+      ar: 'اقرأ التعليمات في {url} واتبعها: فهي تشرح كيفية استخدام واجهة Lianki البرمجية برمز API الخاص بي "{name}". الرمز ليس في هذه الرسالة. اقرأه من مكان حفظه (متغير البيئة LIANKI_TOKEN، أو سلسلة المفاتيح عبر npx lianki auth login، أو إعدادات MCP لديك)، ولا تطلب مني أبدًا لصقه في المحادثة.',
+      bn: '{url}-এর নির্দেশনা পড়ুন ও মেনে চলুন: এতে আমার API টোকেন "{name}" দিয়ে Lianki-র API কীভাবে ব্যবহার করবেন তা বলা আছে। টোকেনটি এই বার্তায় নেই। যেখানে রাখা আছে সেখান থেকে পড়ুন (এনভায়রনমেন্ট ভেরিয়েবল LIANKI_TOKEN, npx lianki auth login দিয়ে কিচেইন, বা আপনার MCP সেটিংস), আর কখনো আমাকে চ্যাটে পেস্ট করতে বলবেন না।',
+      pt: 'Leia as instruções em {url} e siga-as: elas mostram como usar a API do Lianki com o meu token de API "{name}". O token não está nesta mensagem. Leia-o de onde está guardado (a variável de ambiente LIANKI_TOKEN, o chaveiro via npx lianki auth login ou suas configurações de MCP) e nunca me peça para colá-lo no chat.',
+      ru: "Прочитай инструкции по адресу {url} и следуй им: там сказано, как пользоваться API Lianki с моим API-токеном «{name}». Токена в этом сообщении нет. Бери его оттуда, где он хранится (переменная окружения LIANKI_TOKEN, связка ключей через npx lianki auth login или твои настройки MCP), и никогда не проси меня вставить его в чат.",
+      ur: '{url} پر دی گئی ہدایات پڑھیں اور ان پر عمل کریں: ان میں بتایا گیا ہے کہ میرے API ٹوکن "{name}" سے Lianki کا API کیسے استعمال کریں۔ ٹوکن اس پیغام میں نہیں ہے۔ اسے وہیں سے پڑھیں جہاں وہ رکھا ہے (انوائرنمنٹ ویری ایبل LIANKI_TOKEN، npx lianki auth login کے ذریعے کی چین، یا آپ کی MCP سیٹنگز)، اور مجھ سے اسے چیٹ میں چسپاں کرنے کو کبھی نہ کہیں۔',
+      id: 'Baca petunjuk di {url} dan ikuti: di sana dijelaskan cara memakai API Lianki dengan token API saya "{name}". Token tidak ada di pesan ini. Baca dari tempat penyimpanannya (variabel lingkungan LIANKI_TOKEN, keychain lewat npx lianki auth login, atau pengaturan MCP Anda), dan jangan pernah meminta saya menempelkannya ke chat.',
+      de: "Lies die Anleitung unter {url} und folge ihr: Sie zeigt, wie du die API von Lianki mit meinem API-Token „{name}“ nutzt. Das Token steht nicht in dieser Nachricht. Lies es dort, wo es liegt (die Umgebungsvariable LIANKI_TOKEN, der Schlüsselbund über npx lianki auth login oder deine MCP-Einstellungen), und bitte mich nie, es in den Chat einzufügen.",
+      ja: "{url} の説明を読んで、そのとおりに従ってください。私の API トークン「{name}」で Lianki の API を使う方法が書いてあります。トークンはこのメッセージには入っていません。保存されている場所（環境変数 LIANKI_TOKEN、npx lianki auth login で保存したキーチェーン、または MCP の設定）から読み、チャットに貼るよう私に頼まないでください。",
+      sw: 'Soma maelekezo yaliyo {url} na uyafuate: yanaonyesha jinsi ya kutumia API ya Lianki kwa tokeni yangu ya API "{name}". Tokeni haimo katika ujumbe huu. Isome mahali ilipohifadhiwa (kigeu cha mazingira LIANKI_TOKEN, keychain kupitia npx lianki auth login, au mipangilio yako ya MCP), na usiniombe kamwe niibandike kwenye gumzo.',
+      mr: '{url} वरील सूचना वाचा आणि पाळा: माझ्या API टोकन "{name}" ने Lianki चा API कसा वापरायचा ते त्यात आहे. टोकन या संदेशात नाही. ते जिथे ठेवले आहे तिथून वाचा (एन्व्हायरनमेंट व्हेरिएबल LIANKI_TOKEN, npx lianki auth login ने कीचेन, किंवा तुमची MCP सेटिंग्ज), आणि मला ते चॅटमध्ये पेस्ट करायला कधीही सांगू नका.',
+      ko: '{url}의 안내를 읽고 따르세요. 제 API 토큰 "{name}"으로 Lianki API를 쓰는 방법이 나와 있습니다. 토큰은 이 메시지에 없습니다. 보관된 곳(환경 변수 LIANKI_TOKEN, npx lianki auth login으로 저장한 키체인, 또는 MCP 설정)에서 읽고, 채팅에 붙여 넣으라고 절대 요청하지 마세요.',
+    }),
     latest: t({
       en: "The current version of these instructions: {url}",
       zh: "这份说明的最新版本：{url}",
@@ -1033,6 +1051,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "List item under 'Safety' in the AI-assistant instructions: do only what the user asked; ask the user before changing many cards or settings at once. Two short sentences, addressed to the assistant.",
   safetyRevoke:
     "List item under 'Safety' in the AI-assistant instructions: the user can revoke (cancel) this token at any time in Lianki under Settings → API tokens; {url} is the settings page address. Use the same words as the app's Settings menu and API tokens heading in that language; keep {url} and the arrow.",
+  pointer:
+    "The SHORT message a user copies for their own AI assistant instead of the full instructions: addressed to the assistant ('you'), in the first person for the user ('my token'). It points to the full instructions at {url} (a web address, keep as is), names the user's API token {name} (keep the placeholders), says the token is not in the message, where the assistant reads it from (keep LIANKI_TOKEN and 'npx lianki auth login' exactly), and never to ask the user to paste it into the chat. One paragraph.",
   latest:
     "Last line of the AI-assistant instructions: where the always-current version of these instructions is published. {url} is that web address; keep {url}. Short phrase ending with a colon before the address.",
 };
