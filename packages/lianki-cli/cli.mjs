@@ -17,6 +17,7 @@ import { createChatReceiver, turnConfig } from "./chat-receiver.mjs";
 import { applyGrantPolish } from "./chat-polish.mjs";
 import { createFriendInbox, INBOX_DEFAULTS } from "./chat-inbox.mjs";
 import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 
 export const SCHEMA_VERSION = 1;
 export const DEFAULT_URL = "https://lianki.com";
@@ -619,6 +620,27 @@ async function cmdChatSay(c) {
   emit(c, "chat say", { id: data.id, lane: data.lane ?? null }, (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`);
 }
 
+/**
+ * `lianki chat avatar <file.svg|->` / `--clear`: the token's own picture in the
+ * chat. Plain SVG text only (never a link); the hub sanitizes it (an
+ * allowlist of shapes, text and plain colours; at most 4 KB) and says what it
+ * dropped. docs/lianki-dev-cli.md, "lianki chat".
+ */
+async function cmdChatAvatar(c) {
+  const token = await needToken(c);
+  let svg = null;
+  if (!c.argv.clear) {
+    const file = c.argv.file;
+    if (!file && !c.argv.stdin) throw usage("avatar needs an SVG file, - (stdin) or --clear", "lianki chat avatar me.svg");
+    svg = c.argv.stdin ? await c.deps.readStdin() : await (c.deps.readFile ?? ((f) => readFile(f, "utf8")))(String(file));
+  }
+  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "avatar", svg } });
+  const dropped = Array.isArray(data.dropped) ? data.dropped : [];
+  emit(c, "chat avatar", { avatar: data.avatar ?? null, dropped }, (d) =>
+    d.avatar ? `avatar set (${String(d.avatar).slice(0, 12)})${d.dropped.length ? `; dropped: ${d.dropped.join(", ")}` : ""}` : "avatar cleared",
+  );
+}
+
 async function cmdChatAsk(c) {
   const body = askBody(c.argv);
   const token = await needToken(c);
@@ -987,7 +1009,7 @@ function build(args, deps, box) {
         [["lianki settings list", ""]],
       ),
     )
-    .command("chat", "Your own chat thread: send, say, ask, read, listen, bridge", (y) =>
+    .command("chat", "Your own chat thread: send, say, ask, avatar, read, listen, bridge", (y) =>
       examples(
         sub(y)
           .usage("lianki chat <send|say|ask|read|listen|bridge> — your own chat thread only; lines show the token's name")
@@ -1022,6 +1044,22 @@ function build(args, deps, box) {
                 [['lianki chat ask --q "Ship it?" --opt Yes --opt No --recommend 1 --wait', "prints the option tapped"]],
               ),
             act(cmdChatAsk),
+          )
+          .command(
+            "avatar [file]",
+            "Set your picture in the chat from an SVG file (- reads stdin); --clear removes it",
+            (y) =>
+              examples(
+                y
+                  .positional("file", { type: "string", describe: "An SVG file (plain shapes, text and colours; at most 4 KB)" })
+                  .option("clear", { type: "boolean", describe: "Remove it (back to the generated mark)" })
+                  .option("stdin", { type: "boolean", hidden: true }),
+                [
+                  ["lianki chat avatar me.svg", "lines from this token show it"],
+                  ["lianki chat avatar --clear", ""],
+                ],
+              ),
+            act(cmdChatAvatar),
           )
           .command(
             "read",
@@ -1132,7 +1170,7 @@ export async function run(args, deps) {
       ? []
       : a === "--token" && args[i + 1] === "-"
         ? ["--token=-"]
-        : a === "-" && (args[i - 1] === "say" || args[i - 1] === "send" || args[i - 1] === "--quiet")
+        : a === "-" && (args[i - 1] === "say" || args[i - 1] === "send" || args[i - 1] === "--quiet" || args[i - 1] === "avatar")
           ? ["--stdin"]
           : [a],
   );

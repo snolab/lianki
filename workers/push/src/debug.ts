@@ -279,7 +279,13 @@ import {
   jstDay,
   reserveInTokens,
 } from "../../../lib/partner-ai-config";
-import { CHAT_PATH, REVOKED_PATH, TokenChat, tokenAtt } from "./token-chat";
+import { CHAT_PATH, REVOKED_PATH, TokenChat, partKey, tokenAtt } from "./token-chat";
+import {
+  type PartRecord,
+  nextExpiry,
+  presentList,
+} from "../../../packages/debug-chat/src/presence";
+import { AVATAR_PATH } from "../../../packages/debug-chat/src/svg-avatar";
 import { BOX_HEADER, EMBED_HEADER } from "./auth";
 import { type ChatLogRequest, chatLogLine, passageLogId } from "../../../lib/chat-log-line";
 import {
@@ -769,6 +775,11 @@ export class DebugHub {
       history: (thread) => this.history(thread),
       blocked: async (userId) =>
         (await this.ctx.storage.get<FriendRecord>(friendKey(userId)))?.blocked === true,
+      kv: {
+        get: (k) => this.ctx.storage.get(k),
+        put: (k, v) => this.ctx.storage.put(k, v),
+      },
+      presence: (thread) => this.presenceSoon(thread),
     });
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
@@ -1001,6 +1012,8 @@ export class DebugHub {
     }
     // API-token listeners: their own thread only (token-chat.ts).
     await this.tokens.chat(m);
+    // An agent's line puts it among the thread's recent speakers.
+    if (m.from === "agent") this.presenceSoon(m.thread);
     // Sent first: the account's history never holds the chat up.
     const line = chatLogLine(m);
     if (line) await this.chatLog({ op: "put", thread: m.thread, lines: [line] });
@@ -1793,11 +1806,12 @@ export class DebugHub {
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     if (url.pathname === ETA_PATH) return this.etaApi(req);
     if (url.pathname === REVOKED_PATH) return this.tokensRevoked(req);
+    if (url.pathname.startsWith(AVATAR_PATH)) return this.avatarApi(req, url);
     if (url.pathname === CHAT_PATH) {
       if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return this.tokens.http(req);
       const pair = new WebSocketPair();
       this.ctx.acceptWebSocket(pair[1]);
-      this.tokens.opened(pair[1]);
+      this.tokens.opened(pair[1], req.headers.get("x-lianki-client"));
       return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
     }
     if (url.pathname === BOX_CLOSED_PATH) return this.boxClosedApi(req);
@@ -2297,6 +2311,8 @@ export class DebugHub {
     // Everyone sees the new page in their list; this one gets its state first.
     send(ws, pageState(att(ws) as PageAtt, this.state(thread)));
     send(ws, { type: "history", messages: await this.history(thread) });
+    // Who is here (presence.ts): this page gets the list now.
+    await this.presenceTo(thread, ws);
     this.broadcast(ws);
     // First page since the hub woke: list the sleeping eval grants too.
     if (!this.grants && thread === OWNER_THREAD) {
@@ -2829,6 +2845,9 @@ export class DebugHub {
     await this.clipsSweep();
     await this.proofSweep();
     await this.renewDue("alarm");
+    // A read or a line left its presence window: the pages hear who is left.
+    for (const thread of new Set(this.sockets("page").map((p) => p.a.thread)))
+      await this.pushPresence(thread);
   }
 
   webSocketMessage(ws: Socket, raw: string | ArrayBuffer): void | Promise<void> {
@@ -2994,6 +3013,8 @@ export class DebugHub {
   }
 
   private fromPageChecked(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
+    const pm = participantMessage(raw);
+    if (pm) return this.participantFromPage(ws, page, pm);
     const cm = clipsParse(raw, parseClipsPageMessage);
     if (cm) return page.thread === OWNER_THREAD ? this.clipsFromPage(ws, page, cm) : undefined;
     const m = parsePageMessage(raw);
@@ -3975,9 +3996,121 @@ export class DebugHub {
    * empty its thread); a controller, the sessions and the listener count —
    * so every page gets a fresh state either way.
    */
+  // --- Who is here (packages/debug-chat/src/presence.ts) ---
+
+  /** The presence windows (live config), read at most once a minute. */
+  private presenceConf?: { at: number; readMs: number; speakerMs: number };
+  private async presenceWindows() {
+    const t = this.now();
+    if (this.presenceConf && t - this.presenceConf.at < 60_000) return this.presenceConf;
+    const min = async (key: string, dflt: number) => {
+      try {
+        const v = await this.sessions?.config?.(key);
+        return typeof v === "number" && v > 0 ? v : dflt;
+      } catch {
+        return dflt;
+      }
+    };
+    const readMs = (await min("chat.presenceReadMin", 5)) * 60_000;
+    const speakerMs = (await min("chat.presenceSpeakerMin", 30)) * 60_000;
+    this.tokens.readMs = readMs;
+    return (this.presenceConf = { at: t, readMs, speakerMs });
+  }
+
+  /** Threads whose list is pushed on the next turn (one push for a burst of changes). */
+  private presenceDue = new Set<string>();
+  presenceSoon(thread: string) {
+    if (this.presenceDue.has(thread)) return;
+    this.presenceDue.add(thread);
+    queueMicrotask(() => {
+      this.presenceDue.delete(thread);
+      this.pushPresence(thread).catch((e) => rpcFailed("presence", e));
+    });
+  }
+
+  /** The thread's list for one page: token ids only for the tokens of the page's own account. */
+  private async presenceFor(thread: string, pages: { ws: Socket; a: PageAtt }[]) {
+    const { readMs, speakerMs } = await this.presenceWindows();
+    const t = this.now();
+    const records = [
+      ...(await this.ctx.storage.list<PartRecord>({ prefix: partKey("") })).values(),
+    ].filter((r) => r.thread === thread);
+    const lines = await this.history(thread);
+    const live = this.tokens.live(thread);
+    const next = nextExpiry({ now: t, readMs, speakerMs, records, lines });
+    if (next !== null) await this.schedule(next + 1);
+    return pages.map(({ ws, a }) => {
+      // The account a page is signed in as: the owner's (`user`), or the friend's thread.
+      const viewer =
+        a.embed || a.box ? undefined : (a.user ?? (thread !== OWNER_THREAD ? thread : undefined));
+      return {
+        ws,
+        list: presentList({ now: t, readMs, speakerMs, live, records, lines, viewer }),
+      };
+    });
+  }
+
+  /** Push the thread's list to its pages (each its own), when it changed. */
+  private presenceSent = new WeakMap<object, string>();
+  async pushPresence(thread: string) {
+    const pages = this.pages(thread);
+    if (!pages.length) return;
+    for (const { ws, list } of await this.presenceFor(thread, pages)) {
+      const body = JSON.stringify({ type: "present", list });
+      if (this.presenceSent.get(ws) === body) continue;
+      this.presenceSent.set(ws, body);
+      try {
+        ws.send(body);
+      } catch {}
+    }
+  }
+
+  /** One page's list (on connect). */
+  private async presenceTo(thread: string, ws: Socket) {
+    const page = this.pages(thread).find((p) => p.ws === ws);
+    if (!page) return;
+    await this.pushPresence(thread);
+  }
+
+  /**
+   * GET /api/version/chat-avatar/<sha256>: a kept avatar (token-chat.ts), the
+   * sanitized SVG only, content-addressed: public, immutable, never scripted.
+   */
+  private async avatarApi(req: Request, url: URL): Promise<Response> {
+    if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+    const svg = await this.tokens.avatarSvg(url.pathname.slice(AVATAR_PATH.length));
+    if (!svg) return new Response("not found", { status: 404 });
+    return new Response(svg, {
+      headers: {
+        "content-type": "image/svg+xml; charset=utf-8",
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-security-policy": "default-src 'none'; style-src 'none'; script-src 'none'",
+        "x-content-type-options": "nosniff",
+        "access-control-allow-origin": "*",
+      },
+    });
+  }
+
+  /**
+   * A page names a participant or sets its picture (PresenceStack.tsx): only
+   * a full page (not embedded, not a box) of the account that owns the token
+   * (token-chat.ts override). The page hears the result as {type:"participant-result"}.
+   */
+  private async participantFromPage(ws: Socket, page: PageAtt, m: ParticipantMessage) {
+    const viewer =
+      page.embed || page.box
+        ? undefined
+        : (page.user ?? (page.thread !== OWNER_THREAD ? page.thread : undefined));
+    const r = await this.tokens.override(viewer, m.tok, m);
+    send(ws, { type: "participant-result", tok: m.tok, ...r });
+  }
+
   webSocketClose(ws: Socket, code: number): void | Promise<void> {
     const a = att(ws);
+    const ta = tokenAtt(ws);
     close(ws, code === 1005 ? 1000 : code, "");
+    // A token's listening socket closed: it may have left the thread.
+    if (ta?.thread) this.presenceSoon(ta.thread);
     this.sweep(ws);
     this.broadcast(ws);
     const gone = a?.role === "page" && a.sid ? this.clipsLeft(a.sid, ws) : undefined;
@@ -4330,6 +4463,23 @@ function rpcFailed(method: string, e: unknown, what?: string) {
       error: String(e).slice(0, 200),
     }),
   );
+}
+
+/** A page's {type:"participant", tok, name?, avatar?} (PresenceStack.tsx), or null. */
+type ParticipantMessage = { tok: string; name?: unknown; avatar?: unknown };
+function participantMessage(raw: unknown): ParticipantMessage | null {
+  if (typeof raw !== "string" || raw.length > 8192 || !raw.includes('"participant"')) return null;
+  try {
+    const j = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!j || j.type !== "participant" || typeof j.tok !== "string") return null;
+    return {
+      tok: j.tok,
+      ...("name" in j ? { name: j.name } : {}),
+      ...("avatar" in j ? { avatar: j.avatar } : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** A controller's {type:"inbox", op, id?}, or null (any other message). Bounded before the RPC. */

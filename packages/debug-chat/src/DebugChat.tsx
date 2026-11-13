@@ -237,7 +237,9 @@ import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tu
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import { withLane } from "./voices";
-import { LaneTag, laneAvatar } from "./LaneMark";
+import { LineTag, agentAvatar as tokenPicture, laneAvatar, withTokenName } from "./LaneMark";
+import { type ParticipantChange, PresenceStack } from "./PresenceStack";
+import type { Present } from "./presence";
 import { PUBLIC_ROUTE_LIST, publicSttAvailable, readConsent, writeConsent } from "./public-stt";
 import { SttServersCard } from "./SttServersCard";
 import { MicCaret } from "./MicCaret";
@@ -720,6 +722,18 @@ export type DebugChatProps = {
    * code on this page; `sessions`: the eval grants in time; `beatAt`: the
    * agent's latest heartbeat (it saw what came before); `onEnd` revokes one.
    */
+  /**
+   * Who is here (presence.ts, PresenceStack.tsx): the hub's list for this
+   * page, how many avatars the stack shows (chat.presenceShown), and the
+   * viewer's own token actions (rename / picture over the hub socket; Remove
+   * revokes the token). Shown right of the connection chip.
+   */
+  presence?: {
+    list: Present[];
+    shown: number;
+    onChange?: (tok: string, change: ParticipantChange) => void;
+    onRemove?: (id: string) => Promise<boolean>;
+  };
   link?: {
     state: EvalLink;
     sessions: (EvalSession & { here: boolean })[];
@@ -912,6 +926,7 @@ export function DebugChat({
   onEtaDue,
   etaSource,
   link,
+  presence,
   fullScreen: fullScreenFlag = false,
   backToClose,
 }: DebugChatProps) {
@@ -921,7 +936,7 @@ export function DebugChat({
    * A line inside a summary (`collapsedInto`) is not shown: the summary's tap shows it as heard.
    */
   const messages = useMemo(
-    () => rawMessages.filter((m) => !m.collapsedInto).map(withLane),
+    () => rawMessages.filter((m) => !m.collapsedInto).map((m) => withTokenName(withLane(m))),
     [rawMessages],
   );
   /** Which lines arrived live: they shimmer while read (shimmer.ts). Seen at render, idempotent. */
@@ -929,7 +944,16 @@ export function DebugChat({
   newLines.current ??= createNewLines();
   newLines.current.see(messages, Date.now());
   const shimmerOf = (m: ChatMessage) => newLines.current!.shimmer(m, Date.now());
-  const laneOpts = { laneAvatar };
+  /** Who is here (presence.ts), by token tag: a line's name and picture follow the owner's choice. */
+  const byTok = useMemo(
+    () => new Map((presence?.list ?? []).filter((p) => p.tok).map((p) => [p.tok!, p])),
+    [presence?.list],
+  );
+  const laneOpts = {
+    laneAvatar,
+    tokenAvatar: tokenPicture,
+    participant: (tok: string) => byTok.get(tok),
+  };
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
   const clipsHub = useUi(clipsLive(), (s) => s.hub);
   const clipsAuto = useUi(clipsDevice(), (s) => s.autoStop);
@@ -4081,7 +4105,7 @@ export function DebugChat({
           {...shimmerOf(m)}
         >
           <span className="sr-only">{who.name}: </span>
-          {m.lane && <LaneTag lane={m.lane} inline />}
+          <LineTag m={m} name={who.name} inline />
           {m.ask
             ? m.ask.questions.length === 1
               ? lineText(m, m.ask.questions[0]!.question)
@@ -4466,7 +4490,7 @@ export function DebugChat({
               />
               <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
                 {/* A lane's name tag (voices.ts), once per run; lines with no lane have none. */}
-                {m0.lane && <LaneTag lane={m0.lane} agentName={t.name} />}
+                <LineTag m={m0} name={who.name} agentName={t.name} />
                 {node && (
                   <span
                     aria-hidden
@@ -4703,6 +4727,17 @@ export function DebugChat({
                 now={link.now}
                 onEnd={link.onEnd}
               />
+              {presence && (
+                <PresenceStack
+                  glass={strip}
+                  list={presence.list}
+                  shown={presence.shown}
+                  t={ui}
+                  mainName={t.name}
+                  onChange={presence.onChange}
+                  onRemove={presence.onRemove}
+                />
+              )}
               {etaShown && (
                 <div className="min-w-0 flex-1">
                   <EtaBar
@@ -5357,7 +5392,7 @@ function FloatLine({
         />
       </span>
       <span className="sr-only">{who.name}: </span>
-      {m.lane && <LaneTag lane={m.lane} inline />}
+      <LineTag m={m} name={who.name} inline />
       {text}
       {mark}
     </li>

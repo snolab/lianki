@@ -62,6 +62,16 @@ export type ChatMessage = {
    */
   via?: "token";
   tokenLane?: string;
+  /** A token line: the token's short tag (lib/api-tokens.ts tagOf), what presence entries are keyed by. */
+  tok?: string;
+  /**
+   * A token line's own avatar when it set one (svg-avatar.ts): the SHA-256 of
+   * its sanitized SVG, fetched by reference (AVATAR_PATH), never inline.
+   * Absent: the generated mark (autoMark) from its name.
+   */
+  avatar?: string;
+  /** "mcp": posted through an MCP client (`lianki mcp`, the remote MCP): the "MCP" badge. */
+  client?: "mcp";
   /**
    * The state-tree node an agent line comes from ("/words/prefetch"; absent =
    * the main thread). Shown as a muted subtitle under the agent's avatar.

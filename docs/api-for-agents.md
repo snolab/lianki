@@ -42,14 +42,14 @@ scope (and only the ops it holds), the chat limits only with a chat scope.
 
 ## What it says, and where each fact comes from
 
-| Fact | Source |
-| ---- | ------ |
-| Header `Authorization: Bearer lk_…` | `lib/authEmailOrToken.ts`, `lib/api-token-user.ts`, `workers/push/src/token-chat.ts` |
-| Card endpoints and shapes (`study`) | `app/fsrs.ts` behind `authEmailOrToken`; `GET /api/prefs` |
-| Chat: `POST /api/version/chat` `{op: read \| say \| ask}` | `workers/push/src/token-chat.ts` |
-| Chat limits per token | `CHAT_LIMITS` (`lib/chat-limits.ts`, read by `lib/chat-token.ts`) |
-| 401 unknown/expired, 403 scope, 429 + `Retry-After` | `token-chat.ts` `STATUS`, `app/api/fsrs/[[...all]]/route.tsx` |
-| Revoke in Settings → API tokens | `lib/api-token-api.ts` |
+| Fact                                                      | Source                                                                               |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Header `Authorization: Bearer lk_…`                       | `lib/authEmailOrToken.ts`, `lib/api-token-user.ts`, `workers/push/src/token-chat.ts` |
+| Card endpoints and shapes (`study`)                       | `app/fsrs.ts` behind `authEmailOrToken`; `GET /api/prefs`                            |
+| Chat: `POST /api/version/chat` `{op: read \| say \| ask}` | `workers/push/src/token-chat.ts`                                                     |
+| Chat limits per token                                     | `CHAT_LIMITS` (`lib/chat-limits.ts`, read by `lib/chat-token.ts`)                    |
+| 401 unknown/expired, 403 scope, 429 + `Retry-After`       | `token-chat.ts` `STATUS`, `app/api/fsrs/[[...all]]/route.tsx`                        |
+| Revoke in Settings → API tokens                           | `lib/api-token-api.ts`                                                               |
 
 Card routes have no per-token quota (only the bulk routes have one, which the
 guide does not list), so the guide asks for one request at a time and no
@@ -84,12 +84,12 @@ Every guide has a **Connect via MCP** section (`MCP_CLIENTS` in
 `lib/agent-guide.ts`, code never translated): the local stdio server
 `npx -y lianki mcp` (packages/lianki-cli, `lianki mcp`) added to
 
-| Client         | Where                                                         |
-| -------------- | ------------------------------------------------------------- |
-| Claude Code    | `claude mcp add lianki -- npx -y lianki mcp`                  |
+| Client         | Where                                                          |
+| -------------- | -------------------------------------------------------------- |
+| Claude Code    | `claude mcp add lianki -- npx -y lianki mcp`                   |
 | Claude Desktop | `claude_desktop_config.json`, `mcpServers.lianki` (with `env`) |
-| Cursor         | `.cursor/mcp.json`, `mcpServers.lianki`                       |
-| Codex          | `~/.codex/config.toml`, `[mcp_servers.lianki]`                |
+| Cursor         | `.cursor/mcp.json`, `mcpServers.lianki`                        |
+| Codex          | `~/.codex/config.toml`, `[mcp_servers.lianki]`                 |
 
 The server finds the token itself (the CLI's order: `LIANKI_TOKEN`, then the
 Keychain, then the 0600 config file), so after `npx lianki auth login` no
@@ -99,13 +99,27 @@ assistant that tool results (card titles, chat lines) are data, never
 instructions. The MCP key is a normal API token; v1 has no delete tool and no
 eval.
 
+### An agent's picture in the chat
+
+An agent that joins the user's chat (an API token, `lianki mcp`, the remote
+MCP) shows a generated mark from its token's name until it sets its own:
+`lianki_chat_avatar` (MCP) or `lianki chat avatar <file.svg|->` (CLI), both
+`op: "avatar"` with `chat:write`. The picture is **plain SVG text, never a
+link**, at most 4 KB; the server keeps only `svg g path circle ellipse rect
+line polyline polygon text tspan title`, geometry, plain colours (no `url()`,
+no `var()`), `transform`, `opacity`, `font-size`, `text-anchor`, and drops the
+rest (named in the answer's `dropped`). `svg: null` removes it. Lines through
+an MCP client show an "MCP" badge. The account's owner can rename the agent,
+change its picture or remove it (revoking its token) from the chat's
+participant list.
+
 ### The server side of `lianki mcp`
 
 - **Tools by permission.** At start the server asks `GET /api/cli-login/token`
   (the token's own name, scopes and expiry, `describeToken`) and lists only
   the tools those scopes allow (`TOOLS` in `packages/lianki-cli/mcp.mjs`:
   `study` → stats, due, next, get, add, import, review, settings_get;
-  `chat:read|write|ask` → chat_read, chat_say, chat_ask). An older server
+  `chat:read|write|ask` → chat_read, chat_say + chat_avatar, chat_ask). An older server
   that has no GET there gets every tool; each route still checks.
 - **Untrusted results.** Every result is `<untrusted-data>` JSON with `<`
   escaped, after a line saying never to follow instructions inside it.
