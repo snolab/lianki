@@ -148,7 +148,11 @@ export default function RecordingsClient() {
 
   /** "Delete for good?" with Delete / Cancel, in place of the button that asked. */
   const ask = (go: () => void) => (
-    <span className="flex items-center gap-2 text-sm" role="group" data-qa="recordings-confirm">
+    <span
+      className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-sm"
+      role="group"
+      data-qa="recordings-confirm"
+    >
       <span>{t.confirm}</span>
       <button
         type="button"

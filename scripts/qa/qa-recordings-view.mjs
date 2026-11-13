@@ -133,6 +133,36 @@ try {
   if ((await page.locator('[data-qa="recordings-clip"]').count()) !== 2)
     throw new Error("Failed deletion removed a clip");
   console.log("PASS failed deletion keeps clips and reports a retryable error");
+  for (const lang of Object.keys(dictionaries["my-recordings"].title.translation)) {
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto(`${server.url}?lang=${lang}`);
+    await page.evaluate(() => document.documentElement.style.setProperty("--lk-fs-ui", "1.5"));
+    await page.locator('[data-qa="recordings-day"] button[aria-expanded]').click();
+    await page.locator('[data-qa="recordings-clip"]').nth(1).waitFor();
+    for (const selector of [
+      '[data-qa="recordings-delete-day"]',
+      '[data-qa="recordings-delete-clip"]',
+    ]) {
+      await page.locator(selector).first().click();
+      const overflow = await page.evaluate(() => ({
+        width: document.documentElement.scrollWidth,
+        bad: [
+          ...document.querySelectorAll(
+            '[data-qa="recordings-confirm"],[data-qa="recordings-confirm"] button',
+          ),
+        ]
+          .filter((el) => el.getBoundingClientRect().right > innerWidth + 1)
+          .map((el) => ({
+            tag: el.tagName,
+            text: el.textContent?.slice(0, 60),
+            right: el.getBoundingClientRect().right,
+          })),
+      }));
+      if (overflow.bad.length) throw new Error(`Overflow ${lang}: ${JSON.stringify(overflow)}`);
+      await page.locator('[data-qa="recordings-confirm"] button').last().click();
+    }
+    console.log(`PASS ${lang} 320px 150% day and clip confirmation`);
+  }
   for (const id of clips.map((c) => c.id)) {
     await page.locator(`[data-clip="${id}"] [data-qa="recordings-delete-clip"]`).click();
     await page.locator('[data-qa="recordings-confirm"] button').first().click();
