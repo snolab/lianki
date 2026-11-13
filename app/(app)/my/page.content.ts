@@ -198,6 +198,44 @@ const dictionary = {
           ko: "Lianki에 올린 것들을 출처별 폴더로.",
         }),
       },
+      recordings: {
+        title: t({
+          en: "Mic recordings",
+          zh: "麦克风录音",
+          hi: "माइक रिकॉर्डिंग",
+          es: "Grabaciones del micrófono",
+          fr: "Enregistrements du micro",
+          ar: "تسجيلات الميكروفون",
+          bn: "মাইকের রেকর্ডিং",
+          pt: "Gravações do microfone",
+          ru: "Записи с микрофона",
+          ur: "مائیک ریکارڈنگز",
+          id: "Rekaman mikrofon",
+          de: "Mikrofonaufnahmen",
+          ja: "マイクの録音",
+          sw: "Rekodi za maikrofoni",
+          mr: "माइक रेकॉर्डिंग",
+          ko: "마이크 녹음",
+        }),
+        blurb: t({
+          en: "What was said while your mic was on, by day: listen, download, delete.",
+          zh: "麦克风开着时说过的话，按天排列：回听、下载、删除。",
+          hi: "माइक चालू रहते जो कहा गया, दिन के अनुसार: सुनें, डाउनलोड करें, मिटाएँ।",
+          es: "Lo que se dijo con el micrófono encendido, por días: escuchar, descargar, borrar.",
+          fr: "Ce qui a été dit micro allumé, jour par jour : écouter, télécharger, supprimer.",
+          ar: "ما قيل والميكروفون مفعّل، حسب اليوم: استمع ونزّل واحذف.",
+          bn: "মাইক চালু থাকার সময় যা বলা হয়েছে, দিন অনুযায়ী: শুনুন, ডাউনলোড করুন, মুছুন।",
+          pt: "O que foi dito com o microfone ligado, por dia: ouvir, baixar, apagar.",
+          ru: "Сказанное при включённом микрофоне, по дням: прослушать, скачать, удалить.",
+          ur: "مائیک آن ہونے پر جو کہا گیا، دن کے حساب سے: سنیں، ڈاؤن لوڈ کریں، حذف کریں۔",
+          id: "Yang diucapkan saat mikrofon menyala, per hari: dengarkan, unduh, hapus.",
+          de: "Was bei eingeschaltetem Mikrofon gesagt wurde, nach Tagen: anhören, herunterladen, löschen.",
+          ja: "マイクがオンの間に話されたこと、日ごとに：聞く、ダウンロード、削除。",
+          sw: "Kilichosemwa maikrofoni ikiwa imewashwa, kwa siku: sikiliza, pakua, futa.",
+          mr: "माइक चालू असताना बोललेले, दिवसानुसार: ऐका, डाउनलोड करा, हटवा.",
+          ko: "마이크가 켜져 있을 때 말한 것, 날짜별로: 듣기, 내려받기, 삭제.",
+        }),
+      },
       data: {
         title: t({
           en: "Cards and sync",
@@ -307,6 +345,12 @@ const context: KeyContext<typeof dictionary.content> = {
         "Title of the card on /my that opens /my/files, the user's uploaded files (documents, word lists, recordings…). One plural noun.",
       blurb:
         "One line under the Files card's title on /my: the files the user uploaded, grouped in folders by origin (where each came from: an import, a chat, a recording). Short.",
+    },
+    recordings: {
+      title:
+        "Title of the card on /my that opens /my/recordings, what the user's microphone recorded in Lianki, kept in their account (shown only when that feature is on for the account). Short noun phrase; 'mic' is the microphone.",
+      blurb:
+        "One line under the Mic recordings card's title on /my: what was said while the mic was on, listed by day, and what one can do there (listen, download, delete). Short.",
     },
     data: {
       title:

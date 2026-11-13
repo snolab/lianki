@@ -156,17 +156,13 @@
  *       (docs/dev-debug-widget.md, "Continuous speech amends the last line".)
  *
  *   bun scripts/dev/eval.ts edit [<msgId>|--last] [--no-pair] "polished text"   (or - for stdin)
- *       Polish one of the owner's last 5 lines when it came from the mic (STT
- *       gets words wrong, and has no context): the hub keeps the first STT text
- *       as `raw`, marks the line edited, and updates it in place on every page
- *       (never read aloud again). Only "source":"stt", at most 3 times;
- *       friends' lines never. --last targets the owner's latest line. Uses the
- *       saved grant; never pairs. The hub refuses a polish its context does not
- *       support (polish.ts): punctuation, homophones the line's `scene`,
- *       selection or thread (your replies too) disambiguate, a truncated word
- *       the context completes (fl -> flag), up to 2 function words (的 了 在 里,
- *       the, of), stutters, and an unclear word as "（没听清，票？，条？）";
- *       never invent words. (docs/dev-debug-widget.md, "Agent edits".)
+ *       Polish any of the owner's own lines in his thread: the hub keeps the
+ *       first text as `raw`, marks the line edited, and updates it in place on
+ *       every page (never read aloud again). Polish is unrestricted (owner,
+ *       2026-11-14): substitute, add, drop, reorder or rewrite words, any
+ *       number of times; friends' lines never. --last targets the owner's
+ *       latest line. Uses the saved grant; never pairs.
+ *       (docs/dev-debug-widget.md, "Agent edits".)
  *
  *   bun scripts/dev/eval.ts edit --summary (<msgId>… | --last N) [--no-pair] "summary"
  *       Collapse a run of the owner's consecutive voice lines that were not
@@ -183,8 +179,8 @@
  *       the meaning unchanged. A run ends at ANY other message (your reply,
  *       an ask card, anyone else's line) or at a change of topic; unsure about
  *       the topic: do not merge. The hub refuses lines with anything between
- *       them, typed lines, and a passage longer than 1.3x the lines + 8
- *       characters. The lines stay kept (a tap shows them as heard) and the
+ *       them and typed lines; the passage itself has no length or word rule
+ *       (polish is unrestricted, owner 2026-11-14). The lines stay kept (a tap shows them as heard) and the
  *       owner's ↩ restores them. Prints {"type":"edited",…,"passage":{ids}}.
  *       (docs/dev-debug-widget.md, "Merged passages".)
  *

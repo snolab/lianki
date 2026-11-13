@@ -254,13 +254,12 @@ export type MergedPart = {
   wake?: "active" | "passive";
   wakeReason?: ChatMessage["wakeReason"];
 };
-/** How many times the agent may polish one voice line. */
-export const MAX_EDITS = 3;
 /**
- * How far back the agent may polish or summarise: any of the owner's last
- * EDITABLE_LINES lines in the owner thread (not only the latest). 15, up from
- * 5 (2026-11-14): with two mics open and room echoes his lines ran past 5
- * before a lane could answer.
+ * How far back the agent may summarise: any of the owner's last
+ * EDITABLE_LINES lines in the owner thread. 15, up from 5 (2026-11-14): with
+ * two mics open and room echoes his lines ran past 5 before a lane could
+ * answer. A polish has no such window: unrestricted, any number of times
+ * (owner, 2026-11-14).
  */
 export const EDITABLE_LINES = 15;
 /**

@@ -5,6 +5,9 @@ import { Icon, type IconName } from "@/app/components/icons";
 import { authUserOrNull, signInRedirect } from "@/app/signInEmail";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import { appLocale } from "@/lib/app-locale.server";
+import { flagIn } from "@/lib/flags";
+import { readFlags } from "@/lib/flags-store";
+import { isDev } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +28,8 @@ export async function generateMetadata(): Promise<Metadata> {
  * Signed-in only; a guest goes to sign in.
  */
 export default async function MyPage() {
-  if (!(await authUserOrNull())) return signInRedirect();
+  const user = await authUserOrNull();
+  if (!user) return signInRedirect();
   const locale = await appLocale();
   const { heading, intro, cards } = getIntlayer("my-page", locale);
 
@@ -35,6 +39,14 @@ export default async function MyPage() {
     { key: "files", href: "/my/files", icon: "folderSimple", ...strs(cards.files) },
     { key: "data", href: "/data", icon: "database", ...strs(cards.data) },
   ];
+  // Mic recordings (docs/recordings.md): only where the page exists — flag voice.recordings and `dev`.
+  if (isDev(user.email) && flagIn(await readFlags(), "voice.recordings"))
+    items.push({
+      key: "recordings",
+      href: "/my/recordings",
+      icon: "microphone",
+      ...strs(cards.recordings),
+    });
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-8">

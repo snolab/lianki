@@ -163,10 +163,24 @@ export const FLAGS = {
     audience: "owner",
     group: "stt",
   },
+  "voice.recordings": {
+    description:
+      "麦克风录音存到你的账号（/my/recordings，docs/recordings.md）：在 Lianki 里开着麦克风时，每一句话（主动和被动模式都算，发不发到聊天都算）的录音和它已有的文字（Mac 本机识别的；Mac 不在时是聊天用的云端结果）加密存进你的账号，第二天也能回听、按天下载到 Mac 上重新识别。会议里别人的声音也会被录下；只有你的账号能读。服务器从不替录音做识别。默认保留 90 天（/dev/config 的 recordings.retentionDays），可以按句或按天删除。只对有 dev 权限的账号开放。关闭 = 不再上传新的录音，/api/my/recordings 和 /my/recordings 都不存在（404）；已存的录音留着但读不到，到期照样清理。",
+    default: true,
+    audience: "owner",
+    group: "stt",
+  },
   "stt.polish": {
     description:
       "语音消息的自动润色：打开（默认）时，助手可以按上下文（最近的消息和助手的回复、当前页面、屏幕上的词、选中的文字）改你语音消息里的错字、标点、被截断的词和漏掉的小词（的、了、在、里这类），不改原意，最近 15 条语音都能改；原文一直保留，点 ✨ 可看。关闭 = 助手不能再改你的语音消息，聊天里只留识别原文。",
     default: true,
+    audience: "owner",
+  },
+  "voice.auto-polish": {
+    description:
+      "语音自动润色：你用麦克风说的每一句话识别完以后，不用等助手，系统自己（标记为 auto）立刻用便宜的快模型按上下文改错字、去口头禅、补标点，原意和你的说法不变；短短几秒内接着说的几句如果明显是一句话的碎片，会合并成一条。只改你自己说的话，打字的、别人的、已经润色过的都不动；原文一直保留，点 ✨ 可看，助手之后还能再润色。按字数从你的积分扣（和别人一样，没有管理员免费）；等多久、最短几个字在 /dev/config 的 voice.autoPolish* 里。总开关 stt.polish 关了它也不润色。关闭 = 只有助手主动润色时才改。",
+    default: true,
+    group: "stt",
     audience: "owner",
   },
   "stt.merge": {

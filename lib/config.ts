@@ -287,6 +287,67 @@ export const CONFIG = {
     description:
       'Li 朗读时哪种语言用哪个谷歌 / Azure 声音（JSON 对象：语言 → 声音），只在开关 voice.cloud-voices 打开时生效。语言先找完整的（zh-TW），再找主语言（zh）。台语和台湾国语从文字认不出来，所以只有标了语言的句子会用到 zh-TW / nan；想让所有中文都用台湾腔，就加 "zh"。声音写法：google:cmn-TW-Wavenet-A、azure:zh-TW-HsiaoChenNeural、azure:zh-CN-XiaoxiaoDialectsNeural/nan-CN（斜线后是它改用的口音）。按字数扣积分；没有密钥时照常用原来的声音。',
   },
+  // Automatic polish of the owner's spoken lines (lib/chat-polish.ts; the hub,
+  // workers/push/src/debug.ts, "Automatic polish"; flag voice.auto-polish).
+  "voice.autoPolishMinChars": int({
+    default: 2,
+    min: 1,
+    max: 50,
+    unit: "chars",
+    group: "voice",
+    audience: "server",
+    description:
+      "语音自动润色（开关 voice.auto-polish）：你说的一句话至少有几个字才送去润色；更短的（一个「嗯」）原样保留。",
+  }),
+  "voice.autoPolishTailMs": int({
+    default: 1500,
+    min: 200,
+    max: 10_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "语音自动润色：一句话识别完以后等多久（毫秒）再送去润色。这段时间里你接着说的下一句会和它一起送，明显是一句话的碎片就合并成一条；等得越短，润色出来越快，但碎片更可能各润各的。",
+  }),
+  "voice.autoPolishTimeoutMs": int({
+    default: 6000,
+    min: 500,
+    max: 15_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description: "语音自动润色的云端模型超时（毫秒）；超时就保留识别原文，助手之后仍可以润色。",
+  }),
+  "voice.autoPolishOutputTokens": int({
+    default: 600,
+    min: 100,
+    max: 3000,
+    unit: "tokens",
+    group: "voice",
+    audience: "server",
+    money: true,
+    description: "语音自动润色每次最多输出多少 token；按同一 DeepSeek 价格从你的积分预扣后结算。",
+  }),
+  "voice.autoPolishUserCalls": int({
+    default: 300,
+    min: 1,
+    max: 3000,
+    unit: "calls/10min",
+    group: "voice",
+    audience: "server",
+    money: true,
+    description: "每个账号十分钟内最多自动润色几次（每次一句或一段连续的话）；D1 限流。",
+  }),
+  "voice.autoPolishSiteCalls": int({
+    default: 5000,
+    min: 1,
+    max: 100_000,
+    unit: "calls/day",
+    group: "voice",
+    audience: "server",
+    money: true,
+    description: "全站每天最多自动润色几次；独立于学习伙伴回复和聊天 CLI 整理的额外支出上限。",
+  }),
   "voice.azureRegion": {
     default: "eastasia" as string,
     schema: z.string().regex(/^[a-z0-9]{2,30}$/, "an Azure region: eastasia, japaneast…"),
@@ -307,6 +368,18 @@ export const CONFIG = {
   },
   // One passkey approval covers every voiceprint op for this long (owner tap card
   // 2026-11-11 01:28 JST; docs/local-stt.md, "One approval for ten minutes").
+  // Mic recordings in the account (docs/recordings.md; owner tap card 2026-11-14
+  // ~03:35 JST): the daily sweep (worker.ts `scheduled`) deletes clips older than this.
+  "recordings.retentionDays": int({
+    default: 90,
+    min: 1,
+    max: 3650,
+    unit: "days",
+    group: "voice",
+    audience: "server",
+    description:
+      "麦克风录音（/my/recordings）保留多少天：每天一次的清理会删掉比这更早录的片段（音频和文字一起删）。默认 90 天。改短后，下一次每日清理就会删掉超出的部分，删了找不回来；想留的先下载到 Mac。",
+  }),
   "voiceprint.passkeyWindowMs": int({
     default: 600_000,
     min: 0,

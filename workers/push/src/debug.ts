@@ -83,17 +83,17 @@
  *
  * Voice edits. A page marks an owner line sent from the widget's mic,
  * unchanged, `source: "stt"`. The agent may polish it ({type:"edit", id,
- * text}) — STT gets words wrong and has no context — only if all hold: the
- * sender holds a live owner grant (chat or eval; never a friend's pairing),
- * the line is among the owner's last EDITABLE_LINES in the owner thread, it
- * is `stt`, and it was polished fewer than MAX_EDITS times. The first STT
- * text stays as `raw`; `edited: {at, by, count}` marks it. Pages and
+ * text}). Polish is unrestricted (owner, 2026-11-14): any of the owner's own
+ * lines in the owner thread, typed or spoken, any words, any number of times.
+ * What stays: the sender holds a live owner grant (chat or eval; never a
+ * friend's pairing), and flag stt.polish is on. The first text stays as
+ * `raw`; `edited: {at, by, count}` marks it. Pages and
  * listeners hear {type:"edited", id, thread, text, raw, edited}. Friends'
  * lines never. {type:"summary", ids|last, text} collapses a consecutive run
  * of those voice lines (room talk) into one line saying what was said; the
  * others stay stored with `collapsedInto`. {type:"merge", ids, text} rewrites
- * a run of his consecutive voice lines as ONE fluent passage (mergeCheck: a
- * length cap, not the word rules); the first line keeps what it read in
+ * a run of his consecutive voice lines as ONE fluent passage (mergeCheck:
+ * two lines and a text, nothing more); the first line keeps what it read in
  * `premerge` and {type:"unmerge", id} (his page, or the lane) restores the
  * run. All need flag stt.polish (on by default).
  *
@@ -204,7 +204,6 @@ import {
   FRIEND_CHAT_WINDOW_MS,
   type EditedEvent,
   type FriendRecord,
-  MAX_EDITS,
   EDITABLE_LINES,
   MERGE_LINES,
   type SummaryMark,
@@ -256,12 +255,7 @@ import type {
   WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
-import {
-  mergeCheck,
-  polishCheck,
-  polishContext,
-  summaryCheck,
-} from "../../../packages/debug-chat/src/polish";
+import { mergeCheck, polishCheck, summaryCheck } from "../../../packages/debug-chat/src/polish";
 import { MAX_UTTERANCE_MS } from "../../../packages/debug-chat/src/mic";
 import {
   type MergeCandidate,
@@ -269,7 +263,6 @@ import {
   lastPartAt,
   mergeLines,
   mergeVerdict,
-  partTexts,
   passageSpeakers,
   splitLine,
 } from "../../../packages/debug-chat/src/voice-merge";
@@ -514,6 +507,8 @@ const renewDueAt = (until: number, t: number) => until - t <= EVAL_RENEW_BEFORE_
  */
 type SessionsRpc = {
   prepareChatTurn?(req: { userId: string; input: unknown }): Promise<unknown>;
+  /** Automatic polish of the owner's spoken lines (lib/chat-polish.ts); an older main Worker has none: no auto polish. */
+  polishLines?(req: { userId: string; input: unknown }): Promise<unknown>;
   live(user: string, session: string): Promise<unknown>;
   /** A feature flag's value (lib/flags.ts); an older main Worker has no such method. */
   flag?(key: string): Promise<unknown>;
@@ -564,6 +559,30 @@ export const TWO_MIC_FLAG = "stt.two-mic-merge";
 export const TWO_MIC_WINDOW_KEY = "chat.twoMicWindowMs";
 /** How many of the newest lines a two-mic look reads: a few seconds hold far fewer. */
 const TWO_MIC_SCAN = 20;
+/** Automatic polish of the owner's spoken lines (lib/flags.ts, on by default; "Automatic polish" below). */
+export const AUTO_POLISH_FLAG = "voice.auto-polish";
+/** The `by` an automatic polish or merge is stamped with (an agent's carries its label). */
+export const AUTO_POLISH_BY = "auto";
+/** Lines further apart than this are never one automatic run (an old unpolished line is left alone). */
+export const AUTO_POLISH_RUN_MS = 60_000;
+/** Kept lines before the run sent as context (lines, each cut to AUTO_POLISH_CONTEXT_CHARS). */
+export const AUTO_POLISH_CONTEXT = 6;
+export const AUTO_POLISH_CONTEXT_CHARS = 300;
+/** Defaults for the live config the hub reads (lib/config.ts: voice.autoPolish*). */
+export const AUTO_POLISH_TAIL_MS = 1500;
+export const AUTO_POLISH_MIN_CHARS = 2;
+/** How long the hub trusts its read of the auto-polish config. */
+const AUTO_POLISH_CONF_MS = 60_000;
+
+/** A timer the hub can set and clear (injectable, so the suites fire it by hand). */
+export type HubTimer = {
+  set(f: () => void, ms: number): unknown;
+  clear(handle: unknown): void;
+};
+const realTimer: HubTimer = {
+  set: (f, ms) => setTimeout(f, ms),
+  clear: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+};
 /** At most one live-session check per grant in this long (a burst of uses asks once). */
 const SESSION_CHECK_MIN_MS = 30_000;
 /** A sleeping eval grant's pair id in the pages' state: "g:" + the start of its hash. */
@@ -780,6 +799,7 @@ export class DebugHub {
     private ctx: DebugState,
     env?: unknown,
     private now: () => number = Date.now,
+    private timer: HubTimer = realTimer,
   ) {
     // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
     this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
@@ -1078,7 +1098,8 @@ export class DebugHub {
 
   /**
    * The owner thread's kept lines, newest first, and the owner's own last
-   * EDITABLE_LINES among them: the lines an agent may polish or summarise.
+   * `depth` among them: the lines an agent may summarise or merge (a polish
+   * may take any of his kept lines).
    */
   private async editable(depth: number = EDITABLE_LINES) {
     const kept = [
@@ -1102,54 +1123,44 @@ export class DebugHub {
   }
 
   /**
-   * The agent polishes one of the owner's last EDITABLE_LINES voice lines (see
-   * "Voice edits" above). Every refusal is an {type:"error"} naming the rule it broke.
+   * The agent polishes one of the owner's lines (see "Voice edits" above):
+   * unrestricted (owner, 2026-11-14), any of his lines in the thread, any
+   * words. Every refusal is an {type:"error"} naming the rule it broke.
    */
   private async edit(ws: Socket, c: ControllerAtt, m: { id: string; text: string }) {
-    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
     const no = await this.mayEdit(c);
-    if (no) return fail(no);
-    const { kept, recent: mine } = await this.editable();
-    const target = mine.find(([, x]) => x.id === m.id);
-    if (!target) {
-      const known = kept.some(([, x]) => x.id === m.id);
-      return fail(
-        known
-          ? `message ${m.id} is not among the owner's last ${EDITABLE_LINES} lines: only those may be polished`
-          : `no message ${m.id} in the owner's thread (friends' lines can never be edited)`,
-      );
-    }
-    const [key, line] = target;
-    if (line.source !== "stt")
-      return fail(`message ${m.id} was typed, not spoken: only voice (stt) lines may be polished`);
-    if (line.summary)
-      return fail(`message ${m.id} is a summary: its lines are kept as heard, nothing to polish`);
-    if (line.passage)
-      return fail(
-        `message ${m.id} is a merged passage: undo it (unmerge) or merge the run again, not a polish`,
-      );
-    const count = line.edited?.count ?? 0;
-    if (count >= MAX_EDITS) return fail(`message ${m.id} was already polished ${MAX_EDITS} times`);
-    if (m.text === line.text) return fail(`message ${m.id} already reads that way`);
-    // A merged passage is polished once, when it ended: the raw text is still growing.
-    if (line.parts && !line.settled && this.now() - lastPartAt(line) < MAX_UTTERANCE_MS)
-      return fail(`message ${m.id} is still being spoken: polish it on polish-due`);
-    // Held to the context (polish.ts): the raw STT text against the thread's
-    // other lines, the page it was spoken on, and the words on its screen.
-    const raw = line.raw ?? line.text;
-    // The thread's other lines, before and after it (the agent's replies too).
-    const recent = kept.filter(([k]) => k !== key).map(([, x]) => x.text);
-    // A merged line's parts are context too: later words correct what earlier ones really were.
-    recent.push(...partTexts(line));
-    const v = polishCheck(raw, m.text, polishContext(line, recent));
-    if (!v.ok) {
-      console.log(JSON.stringify({ msg: "debug.polish-refused", id: line.id, reason: v.reason }));
-      return fail(`not polished, the raw line stands: ${v.reason}`);
-    }
-    if (!(await this.polishOn()))
-      return fail(`polish is off (${POLISH_FLAG} at /dev/flags): the raw line stands`);
-    const t = this.now();
+    if (no) return send(ws, { type: "error", error: no, reason: no });
     const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
+    const refused = await this.polishLine(m, by, { pair: c.pair, sender: ws });
+    if (refused) send(ws, { type: "error", error: refused, reason: refused });
+  }
+
+  /**
+   * The polish itself, once the sender may edit: an agent's (`edit`) or the
+   * hub's own (automatic polish, `by` AUTO_POLISH_BY). The refusal's reason,
+   * else null once the line is stored and told.
+   */
+  private async polishLine(
+    m: { id: string; text: string },
+    by: string,
+    opts: { pair?: string; sender?: Socket } = {},
+  ): Promise<string | null> {
+    const { kept } = await this.editable();
+    const target = kept.find(([, x]) => x.id === m.id && x.from === "owner");
+    if (!target)
+      return `no message ${m.id} of the owner's in his thread (agents' and friends' lines can never be edited)`;
+    const [key, line] = target;
+    const count = line.edited?.count ?? 0;
+    if (m.text === line.text) return `message ${m.id} already reads that way`;
+    // Not a polish rule: a line still being spoken is still growing, and would mix with it.
+    if (line.parts && !line.settled && this.now() - lastPartAt(line) < MAX_UTTERANCE_MS)
+      return `message ${m.id} is still being spoken: polish it on polish-due`;
+    const raw = line.raw ?? line.text;
+    const v = polishCheck(raw, m.text);
+    if (!v.ok) return `not polished, the raw line stands: ${v.reason}`;
+    if (!(await this.polishOn()))
+      return `polish is off (${POLISH_FLAG} at /dev/flags): the raw line stands`;
+    const t = this.now();
     const next: ChatMessage = {
       ...line,
       text: m.text,
@@ -1169,7 +1180,7 @@ export class DebugHub {
     console.log(
       JSON.stringify({
         msg: "debug.edit",
-        pair: c.pair,
+        ...(opts.pair ? { pair: opts.pair } : {}),
         id: line.id,
         by,
         count: count + 1,
@@ -1177,7 +1188,8 @@ export class DebugHub {
         head: head(m.text),
       }),
     );
-    this.tellEdit(out, line.to, ws);
+    this.tellEdit(out, line.to, opts.sender);
+    return null;
   }
 
   /**
@@ -1294,9 +1306,24 @@ export class DebugHub {
    * passage; the others stay stored with `collapsedInto`; undo restores them.
    */
   private async mergeRun(ws: Socket, c: ControllerAtt, m: { ids: string[]; text: string }) {
-    const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
     const no = await this.mayEdit(c);
-    if (no) return fail(no);
+    if (no) return send(ws, { type: "error", error: no, reason: no });
+    const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
+    const refused = await this.mergeLines(m, by, { pair: c.pair, sender: ws });
+    if (refused) send(ws, { type: "error", error: refused, reason: refused });
+  }
+
+  /**
+   * The merge itself, once the sender may edit: an agent's (`mergeRun`) or the
+   * hub's own (automatic polish, `by` AUTO_POLISH_BY). The refusal's reason,
+   * else null once the passage is stored and told.
+   */
+  private async mergeLines(
+    m: { ids: string[]; text: string },
+    by: string,
+    opts: { pair?: string; sender?: Socket } = {},
+  ): Promise<string | null> {
+    const fail = (reason: string) => reason;
     const { kept, recent: mine } = await this.editable(MERGE_LINES);
     const picked: [string, ChatMessage][] = [];
     for (const id of new Set(m.ids)) {
@@ -1344,7 +1371,6 @@ export class DebugHub {
     if (!(await this.polishOn()))
       return fail(`polish is off (${POLISH_FLAG} at /dev/flags): the lines stand`);
     const t = this.now();
-    const by = cleanLabel(c.assignee ?? c.label, 80) || "agent";
     const [[firstKey, first], ...rest] = picked as [
       [string, ChatMessage],
       ...[string, ChatMessage][],
@@ -1387,7 +1413,7 @@ export class DebugHub {
     console.log(
       JSON.stringify({
         msg: "debug.passage",
-        pair: c.pair,
+        ...(opts.pair ? { pair: opts.pair } : {}),
         id: first.id,
         lines: passage.ids.length,
         by,
@@ -1395,7 +1421,8 @@ export class DebugHub {
         heard: heard.reduce((n, h) => n + h.length, 0),
       }),
     );
-    this.tellEdit(out, first.to, ws);
+    this.tellEdit(out, first.to, opts.sender);
+    return null;
   }
 
   /** The lane takes back its own merged passage (eval.ts edit --unmerge). */
@@ -1719,7 +1746,7 @@ export class DebugHub {
     if (!line.parts || line.settled || line.label !== page.label) return;
     if (line.collapsedInto || line.passage) return;
     await this.ctx.storage.put(key, { ...line, settled: true } satisfies ChatMessage);
-    if ((line.edited?.count ?? 0) >= MAX_EDITS || !(await this.polishOn())) return;
+    if (!(await this.polishOn())) return;
     const out: PolishDueEvent = {
       type: "polish-due",
       id: line.id,
@@ -1733,6 +1760,8 @@ export class DebugHub {
       const route = routeTo(a.node, line.to);
       if (route) send(l, route === "observed" ? { ...out, observed: true } : out);
     }
+    // The passage is settled: the hub's own polish goes at once, no tail to wait for.
+    this.autoPolishNow(page);
   }
 
   /**
@@ -2176,6 +2205,191 @@ export class DebugHub {
     } catch {
       return "unsure";
     }
+  }
+
+  // --- Automatic polish (docs/dev-debug-widget.md, "Automatic polish") ---
+
+  /** The pending tail timer, and the page whose voice line set it (its user pays). */
+  private autoTimer?: unknown;
+  private autoPage?: PageAtt;
+  /** One automatic polish at a time; a line that lands meanwhile runs it again after. */
+  private autoBusy = false;
+  private autoAgain = false;
+  private autoConf?: { at: number; tailMs: number; minChars: number };
+
+  /**
+   * One of the owner's voice lines was kept: the hub's own polish is due once
+   * he has paused for the tail window (config voice.autoPolishTailMs). Another
+   * voice line inside the window restarts it, so the fragments of one thought
+   * go to the model together and may come back as one passage.
+   */
+  private autoPolishSoon(page: PageAtt) {
+    if (page.thread !== OWNER_THREAD || !this.sessions?.polishLines) return;
+    if (this.autoTimer !== undefined) this.timer.clear(this.autoTimer);
+    this.autoPage = page;
+    const tailMs = this.autoConf?.tailMs ?? AUTO_POLISH_TAIL_MS;
+    // The config is refreshed in the background: this line uses the last read.
+    void this.autoPolishConf();
+    this.autoTimer = this.timer.set(() => {
+      this.autoTimer = undefined;
+      this.autoPolishNow(page);
+    }, tailMs);
+  }
+
+  /** The polish goes now (a settled passage, or the tail timer fired). */
+  private autoPolishNow(page: PageAtt) {
+    if (page.thread !== OWNER_THREAD || !this.sessions?.polishLines) return;
+    if (this.autoBusy) {
+      this.autoAgain = true;
+      this.autoPage = page;
+      return;
+    }
+    this.autoBusy = true;
+    this.autoPolishRun(page)
+      .catch((e) =>
+        console.log(
+          JSON.stringify({ msg: "debug.auto-polish-failed", error: String(e).slice(0, 200) }),
+        ),
+      )
+      .finally(() => {
+        this.autoBusy = false;
+        if (this.autoAgain) {
+          this.autoAgain = false;
+          this.autoPolishNow(this.autoPage ?? page);
+        }
+      });
+  }
+
+  private async autoPolishConf() {
+    const t = this.now();
+    if (this.autoConf && t - this.autoConf.at < AUTO_POLISH_CONF_MS) return this.autoConf;
+    const num = async (key: string, dflt: number) => {
+      try {
+        const v = await this.sessions?.config?.(key);
+        return typeof v === "number" && v > 0 ? v : dflt;
+      } catch {
+        return dflt;
+      }
+    };
+    const tailMs = await num("voice.autoPolishTailMs", AUTO_POLISH_TAIL_MS);
+    const minChars = await num("voice.autoPolishMinChars", AUTO_POLISH_MIN_CHARS);
+    return (this.autoConf = { at: t, tailMs, minChars });
+  }
+
+  /**
+   * The run: his newest consecutive voice lines that nobody (an agent, the
+   * hub's merge, a summary) has touched yet, newest first — ended by any
+   * other line, a polished one, one still being spoken, one shorter than
+   * voice.autoPolishMinChars, or one more than AUTO_POLISH_RUN_MS older than
+   * the newest. Then the kept lines before it, as context.
+   */
+  private autoPolishPick(kept: [string, ChatMessage][], minChars: number) {
+    const run: [string, ChatMessage][] = [];
+    let i = 0;
+    for (; i < kept.length && run.length < MERGE_LINES; i++) {
+      const [, x] = kept[i]!;
+      if (x.collapsedInto) continue;
+      if (x.from !== "owner" || x.source !== "stt") break;
+      if (x.summary || x.passage || (x.edited?.count ?? 0) > 0) break;
+      if (x.parts && !x.settled && this.now() - lastPartAt(x) < MAX_UTTERANCE_MS) break;
+      if (x.text.trim().length < minChars) break;
+      if (run.length && run[0]![1].at - x.at > AUTO_POLISH_RUN_MS) break;
+      run.push(kept[i]!);
+    }
+    const context: { from: string; text: string }[] = [];
+    for (; i < kept.length && context.length < AUTO_POLISH_CONTEXT; i++) {
+      const [, x] = kept[i]!;
+      if (x.collapsedInto || !x.text.trim()) continue;
+      context.push({
+        from: x.from === "owner" ? "owner" : x.from === "agent" ? "agent" : "friend",
+        text: x.text.slice(0, AUTO_POLISH_CONTEXT_CHARS),
+      });
+    }
+    // Oldest first, as spoken.
+    run.reverse();
+    context.reverse();
+    return { run, context };
+  }
+
+  /**
+   * The hub polishes his latest spoken run itself (owner, 2026-11-14: nearly
+   * every line he speaks is to be polished, without waiting for a lane). Off
+   * when AUTO_POLISH_FLAG is exactly false (unsure: skipped, logged). The main
+   * Worker's `polishLines` (lib/chat-polish.ts) is paid from the page's user's
+   * credits, so a page with no user id never asks. The answer goes through the
+   * same path as an agent's: `mergeLines` when the model joined the fragments
+   * into one passage, else `polishLine` per line, stamped `by: "auto"`, raw
+   * kept, the polished mark shown, the read-back fired. A line an agent
+   * polished meanwhile, or whose text changed, is left as it is.
+   */
+  private async autoPolishRun(page: PageAtt) {
+    const rpc = this.sessions;
+    if (!rpc?.polishLines) return;
+    const skip = (why: string, more: Record<string, unknown> = {}) =>
+      console.log(JSON.stringify({ msg: "debug.auto-polish-skip", why, ...more }));
+    let flag: unknown;
+    try {
+      flag = await this.flagValue(AUTO_POLISH_FLAG);
+    } catch {
+      return skip("flag-unread");
+    }
+    if (flag === false) return;
+    if (flag === "busy") return skip("flag-busy");
+    const conf = await this.autoPolishConf();
+    const { kept } = await this.editable();
+    const { run, context } = this.autoPolishPick(kept, conf.minChars);
+    if (!run.length) return;
+    if (!page.user) return skip("no-user", { lines: run.length });
+    const newest = run.at(-1)![0];
+    const sent = run.map(([, x]) => ({ id: x.id, text: x.text }));
+    const requestId = `auto:${newest.replace(/[^\w.-]/g, "-")}:${run.length}`.slice(0, 120);
+    const t0 = this.now();
+    let res: { ok?: boolean; error?: string; verdict?: unknown } | undefined;
+    try {
+      res = (await rpc.polishLines({
+        userId: page.user,
+        input: { v: 1, requestId, lines: sent, context },
+      })) as typeof res;
+    } catch (e) {
+      rpcFailed("polishLines", e);
+      return skip("rpc-failed", { lines: run.length });
+    }
+    if (!res?.ok) return skip(res?.error ?? "no-answer", { lines: run.length });
+    const v = res.verdict as { lines?: { id: string; text: string }[]; merged?: string };
+    // The thread moved on while the model worked: polish only what still stands as sent.
+    const now = new Map((await this.editable()).kept.map(([, x]) => [x.id, x]));
+    const fresh = sent.filter((l) => {
+      const x = now.get(l.id);
+      return !!x && x.text === l.text && !(x.edited?.count ?? 0) && !x.collapsedInto && !x.passage;
+    });
+    if (!fresh.length) return skip("stale", { lines: run.length });
+    let merged = false;
+    let polished = 0;
+    if (v?.merged && fresh.length === sent.length && sent.length >= 2) {
+      const no = await this.mergeLines(
+        { ids: sent.map((l) => l.id), text: v.merged },
+        AUTO_POLISH_BY,
+      );
+      if (no) console.log(JSON.stringify({ msg: "debug.auto-polish-refused", reason: no }));
+      else merged = true;
+    }
+    if (!merged)
+      for (const l of fresh) {
+        const text = v?.lines?.find((x) => x.id === l.id)?.text?.trim();
+        if (!text || text === l.text) continue;
+        const no = await this.polishLine({ id: l.id, text }, AUTO_POLISH_BY);
+        if (no) console.log(JSON.stringify({ msg: "debug.auto-polish-refused", reason: no }));
+        else polished++;
+      }
+    console.log(
+      JSON.stringify({
+        msg: "debug.auto-polish",
+        lines: sent.length,
+        merged,
+        polished,
+        ms: this.now() - t0,
+      }),
+    );
   }
 
   /**
@@ -3240,6 +3454,11 @@ export class DebugHub {
           ...(merging ? { mergeable: true as const } : {}),
         });
       };
+      // Kept, then (a voice line) the hub's own polish is due after the tail window.
+      const spoken = async (speaker: SpeakerTag | undefined) => {
+        await line(speaker);
+        if (m.source === "stt") this.autoPolishSoon(page);
+      };
       // A voice line with the Mac's signed attestations: verified first, then stored.
       if (m.source === "stt" && m.speakerProof?.length)
         return verifySpeakerProofs(
@@ -3249,8 +3468,8 @@ export class DebugHub {
           this.speakerPub,
           (uids, until) => this.burnProofs(uids, until),
           this.now(),
-        ).then(line);
-      return line(undefined);
+        ).then(spoken);
+      return spoken(undefined);
     }
     if (m.type === "passage-end") return this.passageEnd(page);
     if (m.type === "unmerge") return this.unmerge(ws, page, m.id);

@@ -118,7 +118,12 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
   if (!expiresAt)
     return json({ error: `expiry: pick a duration or a date up to ${MAX_EXPIRY_DAYS} days` }, 400);
   if (wantsOwner && expiresAt.getTime() > now + EVAL_MAX_DAYS * 86_400_000)
-    return json({ error: `expiry: a token with eval lasts at most ${EVAL_MAX_DAYS} days` }, 400);
+    return json(
+      {
+        error: `expiry: a token with an owner permission (eval, recordings:read) lasts at most ${EVAL_MAX_DAYS} days`,
+      },
+      400,
+    );
   const live = (await listTokens(db, owner, now)).filter((t) => !t.expired).length;
   if (live >= (deps.maxTokens ?? MAX_TOKENS))
     return json({ error: "Too many tokens: revoke one first" }, 409);
