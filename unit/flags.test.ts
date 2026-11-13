@@ -60,6 +60,7 @@ describe("registry", () => {
       "stt.polish",
       "library.catalogue",
       "books.mine",
+      "voice.polish-readback",
       "words.pinch-card-height",
       "words.shatter",
     ]);
