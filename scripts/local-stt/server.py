@@ -726,10 +726,12 @@ class Server:
                     msg["wouldFilter"] = would
                 sc = "-" if spk.get("score") is None else f"{spk['score']:.3f}"
                 why = f" {spk['reason']}" if spk.get("reason") else ""
+                # Which other voice (voiceprint.Voices): an id, never anything of theirs.
+                who = f" {spk['voice']}" if spk.get("voice") not in (None, "me") else ""
                 c = self.counts
-                tag = f", spk {d} {sc}{why} (me {c['me']} other {c['other']} unknown {c['unknown']})"
+                tag = f", spk {d} {sc}{why}{who} (me {c['me']} other {c['other']} unknown {c['unknown']})"
                 if parts:
-                    tag += ", split " + "+".join(p["speaker"]["decision"] for p in parts)
+                    tag += ", split " + "+".join(p["speaker"].get("voice") or p["speaker"]["decision"] for p in parts)
                 if would:
                     tag += f", would filter ({self.would_filter})"
             await send(msg)

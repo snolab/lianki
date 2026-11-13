@@ -21,6 +21,10 @@ from docs/stt-ab.md, "Noise and speaker grid", #394).
 - **Progressive learning** (off until he turns it on with his passkey):
   a final that is confidently him, long and clean adds its embedding to this
   device's print (`Verifier.learn`, the PROG_* constants); never its audio.
+- **Other voices** (docs/voice-mode.md, "Speaker avatars"): a final that is
+  `other` is matched against the voices heard lately (`Voices`, in memory
+  only), so each gets a stable id `s1`, `s2`… next to the score (`voice`),
+  and his own finals `me`. Nothing of theirs is stored.
 
 The CLI (never touches ~/lianki-voice-clips; it only reads files you name):
 
@@ -117,6 +121,18 @@ PROG_CREATE_MIN = int(_env_num("PROG_CREATE_MIN", ENROL_MIN))
 PROGRESSIVE = "progressive.json"
 #: Where a device's samples wait until there are PROG_CREATE_MIN of them.
 PENDING = "pending"
+
+#: Other voices (Voices): a final that is "other" whose cosine to a voice heard
+#: lately is at least VOICE_SAME is that voice again (the whole-clip "me" line
+#: of CAM++: a merge of two strangers costs only an avatar). At most VOICES_MAX
+#: voices are kept, the one heard longest ago making room; a voice not heard
+#: for VOICE_FORGET_S is forgotten and would get a new id. All in memory: a
+#: restart starts again at s1.
+VOICE_SAME = _env_num("VOICE_SAME", 0.30)
+VOICES_MAX = int(_env_num("VOICES_MAX", 8))
+VOICE_FORGET_S = _env_num("VOICE_FORGET_S", 2 * 3600)
+#: A voice's centroid is the running mean of its embeddings, the last this many counting.
+VOICE_MEAN_N = int(_env_num("VOICE_MEAN_N", 20))
 
 
 @dataclass(frozen=True)
@@ -881,6 +897,52 @@ def split_points(windows: list[dict], audio: np.ndarray) -> list[int]:
     return cuts
 
 
+class Voices:
+    """
+    The other voices heard lately, each a running centroid of the embeddings
+    that were not him (docs/voice-mode.md, "Speaker avatars"): the same voice
+    gets the same id ("s1", "s2"…) while it is remembered, so the page can draw
+    one stable avatar per voice and split two people's lines between them. Only
+    embeddings in memory, never audio, never a file; a restart forgets them.
+    Thread-safe: finals (and the parts of a split one) are checked in a pool.
+    """
+
+    def __init__(self, same: float = VOICE_SAME, max_n: int = VOICES_MAX, forget_s: float = VOICE_FORGET_S,
+                 mean_n: int = VOICE_MEAN_N):
+        import threading
+
+        self.same, self.max_n, self.forget_s, self.mean_n = same, max_n, forget_s, mean_n
+        #: {id, c (unit centroid), n, at (last heard)}, in order of first hearing.
+        self.items: list[dict] = []
+        self.next = 1
+        self._lock = threading.Lock()
+
+    def tag(self, e: np.ndarray, now: float | None = None) -> str:
+        """The id of the voice `e` (a unit embedding) is: a known one, moved towards it, or a new one."""
+        t = time.time() if now is None else now
+        e = unit(e)
+        with self._lock:
+            self.items = [v for v in self.items if t - v["at"] <= self.forget_s]
+            best = max(self.items, key=lambda v: float(e @ v["c"]), default=None)
+            if best is not None and float(e @ best["c"]) >= self.same:
+                n = min(best["n"], self.mean_n)
+                best["c"] = unit(best["c"] * n + e)
+                best["n"] = best["n"] + 1
+                best["at"] = t
+                return best["id"]
+            if len(self.items) >= self.max_n:
+                self.items.remove(min(self.items, key=lambda v: v["at"]))
+            v = {"id": f"s{self.next}", "c": e, "n": 1, "at": t}
+            self.next += 1
+            self.items.append(v)
+            return v["id"]
+
+    def known(self) -> list[str]:
+        """The ids remembered now, oldest first (the tests, the log)."""
+        with self._lock:
+            return [v["id"] for v in self.items]
+
+
 class Verifier:
     """
     The server's side: the embedders (loaded once), the store, and the scoring
@@ -903,6 +965,8 @@ class Verifier:
         #: The folder's mtime when the cache was filled: a print saved, or deleted
         #: by the CLI while the server runs, changes it, so the next final sees it.
         self._stamp: int | None = -1
+        #: The other voices heard lately (Voices): one table for the Mac, whoever's device heard them.
+        self.voices = Voices()
 
     def refresh(self) -> None:
         self._cache.clear()
@@ -991,7 +1055,12 @@ class Verifier:
         return out
 
     def verify(self, audio: np.ndarray, device: str | None) -> dict:
-        """{score, decision, model, device, speechS, snrDb[, reason, windows, cuts]} for one final."""
+        """
+        {score, decision, model, device, speechS, snrDb[, reason, windows, cuts, voice]} for one final.
+        `voice` (docs/voice-mode.md, "Speaker avatars"): "me" on his, "s1", "s2"… on an
+        `other` (the same voice, the same id: Voices); none on an unknown, and none at
+        all without a print, so an account that enrolled nothing never sees one.
+        """
         speech_s, snr = speech_stats(audio)
         base = {"speechS": round(speech_s, 2), "snrDb": round(snr, 1)}
         picked = self.pick(device)
@@ -1017,6 +1086,10 @@ class Verifier:
             decision, reason = "unknown", "mixed"
             cuts = split_points(windows, audio)
         out = {"score": round(best, 3), "decision": decision, "model": model, "device": who, **base}
+        if decision == "me":
+            out["voice"] = "me"
+        elif decision == "other":
+            out["voice"] = self.voices.tag(e)
         if cuts:
             out["cuts"] = cuts  # where the speaker changes (server.py splits the final there)
         if windows:
@@ -1243,7 +1316,7 @@ class Attestor:
     tag only when this signature verifies and the signed text matches the line
     (lib/speaker-proof.ts). Wire form: `<payload b64url>.<signature b64url>`,
     the signature over the ASCII of the first part; payload
-    `{v:1, uid, at, text, decision, score, model, device, speechS, snrDb[, reason]}`.
+    `{v:1, uid, at, text, decision, score, model, device, speechS, snrDb[, reason, voice]}`.
     """
 
     def __init__(self, path: str = ATTEST_KEY, create: bool = True):
@@ -1287,7 +1360,8 @@ class Attestor:
             **({"thread": thread} if thread else {}),
             "at": int(at_ms if at_ms is not None else time.time() * 1000),
             "text": text[:2000],
-            **{k: tag[k] for k in ("decision", "score", "model", "device", "speechS", "snrDb", "reason") if k in tag},
+            **{k: tag[k] for k in ("decision", "score", "model", "device", "speechS", "snrDb", "reason", "voice")
+               if k in tag},
         }
         body = _b64url(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
         return f"{body}.{_b64url(self.key.sign(body.encode('ascii')))}"

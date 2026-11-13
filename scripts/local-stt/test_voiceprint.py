@@ -310,6 +310,28 @@ class Scoring(unittest.TestCase):
         # Only him: no cuts.
         self.assertNotIn("cuts", self.v.verify(tone(350, speech_s=7.0), "iphone"))
 
+    def test_other_voices_get_stable_ids(self):
+        # No print: no voice id at all (an account that enrolled nothing keeps its own avatar).
+        self.assertNotIn("voice", self.v.verify(tone(900), "iphone"))
+        self.enrol("iphone", 300)
+        self.assertEqual(self.v.verify(tone(310), "iphone")["voice"], "me")
+        a = self.v.verify(tone(900), "iphone")
+        self.assertEqual((a["decision"], a["voice"]), ("other", "s1"))
+        self.assertEqual(self.v.verify(tone(920, seed=3), "iphone")["voice"], "s1")  # the same voice again
+        self.assertEqual(self.v.verify(tone(1200), "iphone")["voice"], "s2")  # someone else
+        self.assertEqual(self.v.verify(tone(900, seed=4), "iphone")["voice"], "s1")  # still s1 after s2
+        self.assertEqual(self.v.verify(tone(300, seed=5), "iphone")["voice"], "me")
+        # Unknown (too short, too noisy): no id, never a guess.
+        self.assertNotIn("voice", self.v.verify(tone(900, speech_s=1.0), "iphone"))
+        self.assertNotIn("voice", self.v.verify(tone(900, snr_db=7), "iphone"))
+        # A split final: each part on its own, the stranger's half keeps its id.
+        him, other = tone(350, speech_s=3.5, seed=1), tone(950, speech_s=3.5, seed=2)  # 950: mid-bin, as 900
+        self.enrol("android", 350)
+        mixed = np.concatenate([him, other * 0.6]).astype(np.float32)
+        [cut] = self.v.verify(mixed, "android")["cuts"]
+        self.assertEqual(self.v.verify(mixed[:cut], "android")["voice"], "me")
+        self.assertEqual(self.v.verify(mixed[cut:], "android")["voice"], "s1")
+
     def test_split_points(self):
         hop = int(V.WINDOW_HOP_S * RATE)
         win = int(V.WINDOW_S * RATE)
@@ -352,6 +374,47 @@ class Scoring(unittest.TestCase):
         time.sleep(0.01)
         V.Store(self.root).delete("iphone")  # the CLI, while the server runs
         self.assertEqual(self.v.verify(tone(300), "iphone")["reason"], "no-print")
+
+
+class OtherVoices(unittest.TestCase):
+    """Voices: stable ids per voice, the cap, forgetting (docs/voice-mode.md, "Speaker avatars")."""
+
+    def e(self, i: int, dim: int = 16):
+        v = np.zeros(dim, dtype=np.float32)
+        v[i] = 1.0
+        return v
+
+    def test_same_voice_same_id(self):
+        vs = V.Voices(same=0.5)
+        self.assertEqual(vs.tag(self.e(0), now=0), "s1")
+        self.assertEqual(vs.tag(self.e(1), now=1), "s2")
+        near = V.unit(self.e(0) + 0.3 * self.e(2))  # the first voice, a little off
+        self.assertEqual(vs.tag(near, now=2), "s1")
+        self.assertEqual(vs.tag(self.e(1), now=3), "s2")
+        self.assertEqual(vs.known(), ["s1", "s2"])
+        # The centroid moved towards what it heard, but stays a unit vector.
+        self.assertAlmostEqual(float(np.linalg.norm(vs.items[0]["c"])), 1.0, places=5)
+        self.assertEqual(vs.items[0]["n"], 2)
+
+    def test_cap_drops_the_voice_heard_longest_ago(self):
+        vs = V.Voices(same=0.5, max_n=2)
+        self.assertEqual([vs.tag(self.e(i), now=i) for i in range(3)], ["s1", "s2", "s3"])
+        self.assertEqual(vs.known(), ["s2", "s3"])  # s1, heard longest ago, made room
+        self.assertEqual(vs.tag(self.e(1), now=10), "s2")
+        self.assertEqual(vs.tag(self.e(0), now=11), "s4")  # the first voice again: a new id, s3 dropped
+        self.assertEqual(vs.known(), ["s2", "s4"])
+
+    def test_forgotten_after_a_while(self):
+        vs = V.Voices(same=0.5, forget_s=100)
+        self.assertEqual(vs.tag(self.e(0), now=0), "s1")
+        self.assertEqual(vs.tag(self.e(0), now=99), "s1")
+        self.assertEqual(vs.tag(self.e(0), now=250), "s2")  # 151 s since: forgotten, a new id
+        self.assertEqual(vs.known(), ["s2"])
+
+    def test_an_id_is_short_and_plain(self):
+        vs = V.Voices()
+        for i in range(5):
+            self.assertRegex(vs.tag(self.e(i), now=i), r"^s[1-9][0-9]{0,2}$")
 
 
 class Enrolling(unittest.TestCase):
@@ -530,7 +593,8 @@ class Attesting(unittest.TestCase):
             self.assertEqual(mode(path), 0o600)
             self.assertEqual(mode(os.path.dirname(path)), 0o700)
             self.assertEqual(V.Attestor(path).public(), a.public())  # kept, not remade
-            tok = a.sign({"decision": "me", "score": 0.5, "model": "campp", "device": "iphone"}, "下一个")
+            tok = a.sign({"decision": "me", "score": 0.5, "model": "campp", "device": "iphone", "voice": "me"},
+                         "下一个")
             body, sig = tok.split(".")
             pad = lambda x: x + "=" * (-len(x) % 4)  # noqa: E731
             import base64
@@ -539,6 +603,7 @@ class Attesting(unittest.TestCase):
             pub.verify(base64.urlsafe_b64decode(pad(sig)), body.encode())
             p = json.loads(base64.urlsafe_b64decode(pad(body)))
             self.assertEqual((p["v"], p["decision"], p["text"], p["device"]), (1, "me", "下一个", "iphone"))
+            self.assertEqual(p["voice"], "me")  # signed too: the hub keeps it only from the proof
             self.assertIn("uid", p)
 
 
