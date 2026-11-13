@@ -51,7 +51,7 @@ export function devPageMetadata(name: DevPageName, extra: Metadata = {}) {
 
 /** One of the dictionary's strings (a page heading, or a small page's text) and its language tag, in the viewer's locale. */
 export async function devPageText(
-  name: DevPageName | "myLevel" | "lianIntro",
+  name: DevPageName | "myLevel" | "lianIntro" | "dashboard" | "previewLoader",
 ): Promise<{ text: string; lang: string }> {
   const locale = await appLocale();
   const d = getIntlayer("dev-pages", locale as never) as unknown as Record<string, unknown>;

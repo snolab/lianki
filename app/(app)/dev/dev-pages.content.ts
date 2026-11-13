@@ -245,6 +245,42 @@ const dictionary = {
       mr: "स्वतःचे फ्रंटएंड",
       ko: "사용자 프런트엔드",
     }),
+    dashboard: t({
+      en: "Developer pages",
+      zh: "开发页面",
+      hi: "डेवलपर पेज",
+      es: "Páginas de desarrollo",
+      fr: "Pages de développement",
+      ar: "صفحات المطوّر",
+      bn: "ডেভেলপার পেজ",
+      pt: "Páginas de desenvolvimento",
+      ru: "Страницы разработчика",
+      ur: "ڈیولپر صفحات",
+      id: "Halaman pengembang",
+      de: "Entwicklerseiten",
+      ja: "開発者ページ",
+      sw: "Kurasa za msanidi",
+      mr: "डेव्हलपर पृष्ठे",
+      ko: "개발자 페이지",
+    }),
+    previewLoader: t({
+      en: "Install the preview userscript",
+      zh: "安装预览版用户脚本",
+      hi: "प्रीव्यू यूज़रस्क्रिप्ट इंस्टॉल करें",
+      es: "Instalar el userscript de vista previa",
+      fr: "Installer le userscript de prévisualisation",
+      ar: "تثبيت سكربت المستخدم للمعاينة",
+      bn: "প্রিভিউ ইউজারস্ক্রিপ্ট ইনস্টল করুন",
+      pt: "Instalar o userscript de pré-visualização",
+      ru: "Установить пользовательский скрипт предпросмотра",
+      ur: "پری ویو یوزر اسکرپٹ انسٹال کریں",
+      id: "Pasang userscript pratinjau",
+      de: "Vorschau-Userscript installieren",
+      ja: "プレビュー版ユーザースクリプトをインストール",
+      sw: "Sakinisha userscript ya hakikisho",
+      mr: "प्रीव्ह्यू युजरस्क्रिप्ट इन्स्टॉल करा",
+      ko: "미리보기 유저스크립트 설치",
+    }),
     session: t({
       en: "Session details",
       zh: "会话详情",
@@ -472,6 +508,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Paragraph under the study ledger page heading explaining what each row is. Keep Merkle and cron as is; anchor = one daily checkpoint record; salted = mixed with a secret random value.",
   liveFrontends:
     "Name of the internal page (tab title and main heading) with the allowlist of users who may run their own frontend (their own dev server) on lianki.com. A plural noun phrase.",
+  dashboard:
+    "Name of the internal index page at /dev (tab title and main heading): the list of all the developer's internal pages. A plural noun phrase.",
+  previewLoader:
+    "Link on the /dev index, shown only on the preview build: installs the developer's own test copy of the browser userscript that runs the preview's code. Imperative phrase; 'userscript' is the browser extension script the app ships.",
   session:
     "Name of the internal page (tab title and main heading) showing the raw data of the developer's own sign-in session (expiry, account id), for diagnosing sign-in problems. A noun phrase; 'session' is the sign-in session, not a study session.",
   sttAccess:
