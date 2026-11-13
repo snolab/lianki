@@ -701,6 +701,88 @@ by the flag. Restored lines may be merged again.
 
 A passage takes no polish, summary or continuous-speech merge: undo it first.
 
+### Automatic polish
+
+The owner, 2026-11-14 05:45 JST: "你们 polish 我的线的频率还是很低，很少 polish
+出来", and: "我希望几乎我的每一句话都要 polish 一下，因为我经常说话断断续续的".
+A polish that depends on a lane choosing to make one rarely comes. So the hub
+polishes **every spoken line itself**, at once, and the lanes may still
+re-polish later. Flag **`voice.auto-polish`** (`/dev/flags#voice.auto-polish`,
+on by default, audience owner: the hub only ever edits the owner thread, so
+there is no one else to reach). `stt.polish` off still refuses every edit.
+
+**Where it runs: the hub** (`DebugHub` in `workers/push/src/debug.ts`,
+"Automatic polish"), not the page. The hub already reaches the main Worker
+over the `SESSIONS` binding, and an owner page's attestation carries his user
+id (`PageAtt.user`), so the polish works on every device, with the page gone
+too, and is billed to his account like any AI call. The page (DebugEval)
+would only have worked on the device that spoke. The model is the chat CLI's
+cheap prepare model (DeepSeek on Workers AI, `PARTNER_AI_MODEL`), called by
+`DebugSessions.polishLines` → `lib/chat-polish.ts`: metered as
+`voice.auto-polish` (held from his credits before the call, settled after, no
+admin bypass), rate-limited in D1 (`voice.autoPolishUserCalls` per 10 min,
+`voice.autoPolishSiteCalls` per day), `voice.autoPolishTimeoutMs` (6 s),
+`voice.autoPolishOutputTokens`. The prompt fixes mis-heard words, fillers and
+punctuation from a little context, keeps his meaning and wording, never
+answers or summarises, and treats the input as data.
+
+**When.** A kept `source: "stt"` line of his arms a tail timer,
+`voice.autoPolishTailMs` (1.5 s); another voice line inside the window restarts
+it, so the fragments of one thought go together. A line shorter than
+`voice.autoPolishMinChars` (2) is left alone. A settled passage
+(`polish-due`) goes at once, no tail. The **run** is his newest consecutive
+voice lines nobody touched: it ends at any other line (typed, a lane's, a
+friend's), a line already polished (an agent got there first), a summary or
+passage, a line still being spoken, or a gap over `AUTO_POLISH_RUN_MS`
+(60 s); at most `MERGE_LINES`. Up to `AUTO_POLISH_CONTEXT` (6) kept lines
+before it go along as context, each cut to 300 characters.
+
+**How it lands: the same path as an agent's.** `merged` back for two or more
+lines → `mergeLines` (the merge rules above: consecutive, one speaker,
+`mergeCheck`, `stt.polish`), the raw lines kept for undo, "Merged N" shown.
+Otherwise `polishLine` per changed line (raw kept, the polished sparkle, the
+read-back in his voice fires). Both stamped `edited.by: "auto"` (`AUTO_POLISH_BY`).
+A line that changed, or was polished by an agent, while the model worked is
+skipped (`debug.auto-polish-skip`, `stale`); an answer that changes nothing
+stores nothing. One automatic polish at a time per hub; a line landing meanwhile
+runs it again after. Logged `debug.auto-polish` (lines, merged, polished, ms),
+`debug.auto-polish-skip` (why: `flag-unread`, `flag-busy`, `no-user`,
+`rpc-failed`, `stale`, or the main Worker's error such as `no-credits`),
+`debug.auto-polish-refused` (the edit path's reason). A page with no user id
+(an embed, a box) never asks. Tests: `unit/debug-hub-auto-polish.test.ts`
+(the hub, with its timer fired by hand), `unit/auto-polish-model.test.ts`
+(the contract and the metering).
+
+## The live speech line
+
+The owner, 2026-11-14 04:25 JST: the words being recognised while he speaks are not
+a draft in the input box; they are the newest line of the log, with his avatar,
+growing as he speaks, before anything is sent. Rules: `live-speech.ts`; drawing:
+`DebugChat.tsx` (`liveRows`, `liveLine`).
+
+- **What it shows.** While the draft is exactly the mic's (`pureDictation`) or
+  empty, the spoken draft plus the dimmed interim tail is the live line, last in
+  the log (and in the compact view, and floating over the minimized pill). It has
+  a dashed outline and a small pulsing dot (still under reduced motion). The input
+  stays empty, free for typing. Enter in the empty input still sends the spoken
+  words; so does the join, as before.
+- **Not a message.** It is never a `ChatMessage`: not stored, not sent, not read
+  aloud; its key (`lk-live-speech…`) is never a hub id.
+- **Typing while speaking.** A key, a paste, an IME composition, or a tap on the
+  live line moves the spoken words into the input, caret at the end, and drops the
+  join's pending send: from then on it is an ordinary draft. Sent unchanged it is
+  still `source: "stt"`; edited, a typed line (`draftSource`, unchanged). A draft
+  that already has typed text keeps everything in the input with the interim
+  mirrored after it, as before.
+- **Sent.** The live line becomes "Sending…" in the same paint the draft empties,
+  and goes in the render where its echo arrives: a new owner line (or the line it
+  amends, `continues`) containing its text. At most `HOLD_MS` (6 s) without one.
+  A failed send leaves it as "Not sent" with a Retry.
+- **Reload.** The draft, `pureDictation` and the half-spoken `interim` are kept
+  (ui-store.ts); after a reload the restored spoken words are the live line again.
+- Tests: `unit/chat-live-speech.test.tsx` (the rules, and DebugChat mounted in
+  happy-dom).
+
 ## Continuous speech amends the last line
 
 The owner, 2026-11-06 01:13 JST: "连续的语音输入应该能够有能力编辑已经发出去的消息", and 01:14:
@@ -796,8 +878,8 @@ An undo: `{type:"edited", …, split:[{id, text, at}…]}`.
 - `stt.polish` off: merges happen, no polish-due goes out, every edit stays refused.
 - A single voice line polishes as before, at once. No polish-due, so no extra wake.
 
-**Cost.** Polish is the lane's Claude turn; the hub calls no model, so nothing new
-is billed per call. Today N fragments are N lines and up to N polishes. Merged, they
+**Cost.** A lane's polish is its Claude turn; the hub's own ("Automatic polish"
+below) is one cheap metered call per run. Today N fragments are N lines and up to N polishes. Merged, they
 are N wakes (each `edited` is a wake, as the chat line was) plus one for `polish-due`,
 and exactly one polish, however long the passage; flag off, nothing. A line's
 polishes are not capped (2026-11-14), and a settled line takes no more parts. Hub: one flag
