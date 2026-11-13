@@ -772,13 +772,17 @@ class Verifier:
         return list(self._all())
 
     def pick(self, device: str | None) -> tuple[str, list[str]] | None:
-        """(model, the devices whose prints to score against), or None when nothing is enrolled."""
+        """(model, the devices whose prints to score against, this one first), or None when nothing is enrolled."""
         self._check()
         listed = self._all()
         for model in self.order:
-            if device and valid_device(device) and self._print(device, model):
-                return model, [device]
             others = sorted({p["device"] for p in listed if p["model"] == model})
+            # This device's own print first, then every other device's: the best
+            # match counts (owner, 2026-11-14: each device was enrolled in another
+            # room and mood; scoring only against this one threw that away). The
+            # filter still asks for this device's own print (filter_reason).
+            if device and valid_device(device) and self._print(device, model):
+                return model, [device, *[d for d in others if d != device]]
             if others:
                 return model, others
         return None

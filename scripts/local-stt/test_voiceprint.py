@@ -324,10 +324,13 @@ class Scoring(unittest.TestCase):
         quiet = np.concatenate([np.full(int(2.5 * RATE), 0.003, dtype=np.float32), audio])
         self.assertEqual(V.split_points(ws("other", "me", "me", "me"), quiet), [])
 
-    def test_own_device_first_then_any(self):
+    def test_own_device_first_then_every_other(self):
         self.enrol("iphone", 300)
         self.enrol("android", 600)
-        self.assertEqual(self.v.verify(tone(600), "iphone")["decision"], "other")  # only its own print
+        # Its own print first, then the others: the best match counts.
+        r = self.v.verify(tone(600), "iphone")
+        self.assertEqual((r["decision"], r["device"]), ("me", "android"))
+        self.assertEqual(self.v.verify(tone(300), "iphone")["device"], "iphone")
         self.assertEqual(self.v.verify(tone(600), "android")["decision"], "me")
         r = self.v.verify(tone(600), "ipad")  # not enrolled: the best of the others
         self.assertEqual((r["decision"], r["device"]), ("me", "android"))
