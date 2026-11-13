@@ -80,7 +80,7 @@ code{font-family:ui-monospace,monospace}
 <h1>${esc(c.title)}</h1>
 <p>${esc(c.lead)}</p>
 <ol>${c.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
-<a class="btn" href="${origin}/my/preferences">${esc(c.tokenLink)}</a>
+<a class="btn" href="${origin}/my/preferences#tokens">${esc(c.tokenLink)}</a>
 <p><strong>URL</strong></p><pre><code>${esc(url)}</code></pre>
 <p><strong>${esc(c.codeTitle)}</strong></p><pre><code>${esc(cli)}</code></pre>
 <p><strong>${esc(c.jsonTitle)}</strong></p><pre><code>${esc(json)}</code></pre>
