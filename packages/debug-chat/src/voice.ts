@@ -157,6 +157,16 @@ export const TALK_OVER_SLACK_MS = 600;
  * n-grams, echo.ts echoContained) is inside the sentences playing then.
  */
 export const TALK_OVER_ECHO = 0.6;
+/**
+ * Talk-over pauses the reading only for speech that is clearly his: at least
+ * TALK_OVER_MIN_CHARS characters heard, and under TALK_OVER_PAUSE_BELOW of its
+ * words inside what Li is playing. Between that and TALK_OVER_ECHO it is
+ * neither dropped nor a barge-in: she reads on (owner, 2026-11-14: with echo
+ * cancellation off she heard herself, paused, heard silence, read on, heard
+ * herself again — early partials of her own echo rarely match it well).
+ */
+export const TALK_OVER_PAUSE_BELOW = 0.35;
+export const TALK_OVER_MIN_CHARS = 6;
 /** Sentences are cut to at most this many characters (the TTS route's limit). */
 export const CHUNK_MAX = 200;
 /** localStorage: the speaker toggle ("0" = replies silent). */
@@ -1162,6 +1172,11 @@ export function createVoice(d: {
         paused: false,
       };
       if (drop || !words || !duplex() || !current || !during) return out;
+      // Not clearly his yet (short, or half like what she is reading): no pause.
+      if (score >= TALK_OVER_PAUSE_BELOW || normalizeEcho(transcript).length < TALK_OVER_MIN_CHARS) {
+        log({ ev: "voice-talk-over-unsure", score: out.score, chars: transcript.length });
+        return out;
+      }
       log({ ev: "voice-talk-over", score: out.score, chars: transcript.length });
       api.interrupt("speech");
       // His speech already ended (a final arrives after it): read on after the quiet, as userIdle would.
