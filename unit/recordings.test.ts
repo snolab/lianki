@@ -558,7 +558,10 @@ describe("the page's rows", () => {
     const n = withoutClip(days, clips, c("a", "2026-11-14", 2_000));
     expect(n.days[0]).toEqual({ day: "2026-11-14", clips: 1, ms: 1_000, bytes: 10 });
     expect(n.clips.get("2026-11-14")!.map((x) => x.id)).toEqual(["b"]);
-    const m = withoutClip(n.days, n.clips, c("z", "2026-11-13"));
+    // Two confirmations can both finish successfully (the API is idempotent).
+    const repeated = withoutClip(n.days, n.clips, c("a", "2026-11-14", 2_000));
+    expect(repeated).toEqual(n);
+    const m = withoutClip(repeated.days, repeated.clips, c("z", "2026-11-13"));
     expect(m.days.map((d) => d.day)).toEqual(["2026-11-14"]);
     expect(m.clips.has("2026-11-13")).toBe(false);
   });

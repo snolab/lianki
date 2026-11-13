@@ -55,6 +55,10 @@ export function withoutClip(
   clips: ReadonlyMap<string, readonly ClipView[]>,
   c: Pick<ClipView, "id" | "day" | "durationMs">,
 ): { days: DaySummary[]; clips: Map<string, ClipView[]> } {
+  // A repeated successful DELETE must not decrement the day a second time.
+  const present = clips.get(c.day)?.some((x) => x.id === c.id);
+  if (!present)
+    return { days: [...days], clips: new Map([...clips].map(([d, cs]) => [d, [...cs]])) };
   const next = new Map<string, ClipView[]>();
   for (const [d, cs] of clips) next.set(d, d === c.day ? cs.filter((x) => x.id !== c.id) : [...cs]);
   const out: DaySummary[] = [];
