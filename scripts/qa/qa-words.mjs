@@ -1110,6 +1110,14 @@ try {
   await page.routeWebSocket(/\/api\/version\/ws(\?|$)/, (ws) =>
     ws.send(JSON.stringify({ build: "some-newer-build" })),
   );
+  // An automatic refresh first confirms this origin serves the announced
+  // build (lib/version-probe.ts); here the edge already has it. On the
+  // context: the service worker (public/sw.js) makes that fetch, and a
+  // page route never sees it.
+  const probeUrl = "**/_lk/route-fp.json?*";
+  const probe = (route) =>
+    route.fulfill({ json: { build: "some-newer-build", shell: "qa-shell", routes: {} } });
+  await ctx.route(probeUrl, probe);
   // A Learning Partner device reloads by itself instead of showing the
   // button: this check is about a user's device, so the flag must be off.
   const partnerFlags = () =>
@@ -1159,6 +1167,7 @@ try {
     for (const k of ["lk:agent", "lk:debug"]) localStorage.setItem(k, "0");
   });
   await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
+  await ctx.unroute(probeUrl, probe).catch(() => {});
   await page.reload({ waitUntil: "load" });
   await rows.first().waitFor({ timeout: budget(15000) });
 
