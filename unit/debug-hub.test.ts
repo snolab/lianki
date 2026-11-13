@@ -2937,20 +2937,20 @@ describe("DebugHub agent edits of voice messages", () => {
   });
 
   it("edits any of the owner's last EDITABLE_LINES lines; agent replies do not count; older ones are refused", async () => {
-    expect(EDITABLE_LINES).toBe(5);
+    expect(EDITABLE_LINES).toBe(15);
     const s = setup();
     const owner = s.page();
     const { c } = await agent(s, owner);
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= EDITABLE_LINES + 1; i++) {
       await s.msg(owner, voice(`v${i}`, `line ${i}`));
       await s.msg(c, { type: "say", text: `reply ${i}` });
     }
     await s.msg(c, { type: "edit", id: "v1", text: "Line 1." });
-    expect(c.last("error")?.error).toContain("not among the owner's last 5 lines");
+    expect(c.last("error")?.error).toContain("not among the owner's last 15 lines");
     await s.msg(c, { type: "edit", id: "v2", text: "Line 2." });
     expect(owner.last("edited")).toMatchObject({ id: "v2", text: "Line 2." });
-    await s.msg(c, { type: "edit", id: "v6", text: "Line 6." });
-    expect(owner.last("edited")).toMatchObject({ id: "v6", text: "Line 6." });
+    await s.msg(c, { type: "edit", id: "v16", text: "Line 16." });
+    expect(owner.last("edited")).toMatchObject({ id: "v16", text: "Line 16." });
     // The agent's own line is never the target.
     const said = c.last("said")?.id as string;
     await s.msg(c, { type: "edit", id: said, text: "x" });
@@ -3073,9 +3073,9 @@ describe("DebugHub agent edits of voice messages", () => {
       expect(c.last("error")?.error).toContain("not consecutive");
       await s.msg(c, { type: "summary", ids: ["r2"], text: "（杂音）" });
       expect(c.last("error")?.error).toContain("not summarised");
-      for (let i = 0; i < 5; i++) await s.msg(owner, voice(`x${i}`, `line ${i}`));
+      for (let i = 0; i < EDITABLE_LINES; i++) await s.msg(owner, voice(`x${i}`, `line ${i}`));
       await s.msg(c, { type: "summary", ids: ["r2"], text: "（旁人在聊）" });
-      expect(c.last("error")?.error).toContain("not among the owner's last 5 lines");
+      expect(c.last("error")?.error).toContain("not among the owner's last 15 lines");
       expect(owner.last("edited")).toBeUndefined();
     });
 
@@ -4402,5 +4402,151 @@ describe("DebugHub chat history (lib/chat-log.ts over SESSIONS.chatLog)", () => 
       new Request("https://lianki-push/internal/chat-backfill", { method: "POST" }),
     );
     expect(r2.status).toBe(503);
+  });
+});
+
+describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
+  const say = (id: string, text: string, more = {}) => ({
+    type: "chat",
+    id,
+    text,
+    source: "stt",
+    ...more,
+  });
+  const rig = (env?: unknown) => {
+    const s = setup(env);
+    const win = s.page("/words Windows");
+    const mac = s.page("/words Macintosh");
+    const c = s.controller("main lane");
+    const lines = () =>
+      [...s.storage.store.entries()]
+        .filter(([k]) => k.startsWith("msg:"))
+        .sort(([x], [y]) => x.localeCompare(y))
+        .map(([, v]) => v as Record<string, unknown>);
+    return { s, win, mac, c, lines };
+  };
+
+  it("the same sentence from two pages within the window: one line", async () => {
+    const { s, win, mac, lines } = rig();
+    await s.msg(win, say("w1", "同时发送着两个麦克风"));
+    s.tick(1500);
+    await s.msg(mac, say("m1", "同时发送的两个麦克风"));
+    expect(lines().map((l) => [l.id, l.text])).toEqual([["w1", "同时发送着两个麦克风"]]);
+    expect(chats(mac).map((m) => m.id)).toEqual(["w1"]);
+  });
+
+  it("the longer text replaces the first line's in place, through the edit path", async () => {
+    const { s, win, mac, lines } = rig();
+    await s.msg(mac, say("m1", "送着两个麦克风"));
+    s.tick(1200);
+    await s.msg(win, say("w1", "同时发送着两个麦克风。"));
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).toMatchObject({
+      id: "m1",
+      text: "同时发送着两个麦克风。",
+      raw: "同时发送着两个麦克风。",
+      edited: { by: "two-mic", count: 0 },
+    });
+    for (const ws of [win, mac]) {
+      expect(ws.last("edited")).toMatchObject({ id: "m1", text: "同时发送着两个麦克风。" });
+      expect(chats(ws).map((m) => m.id)).toEqual(["m1"]);
+    }
+  });
+
+  it("outside the window: two lines", async () => {
+    const { s, win, mac, lines } = rig();
+    await s.msg(win, say("w1", "同时发送着两个麦克风"));
+    s.tick(4001);
+    await s.msg(mac, say("m1", "同时发送的两个麦克风"));
+    expect(lines().map((l) => l.id)).toEqual(["w1", "m1"]);
+  });
+
+  it("the same page twice, a typed line, or different words: separate lines", async () => {
+    const { s, win, mac, lines } = rig();
+    await s.msg(win, say("w1", "再说一遍"));
+    await s.msg(win, say("w2", "再说一遍"));
+    await s.msg(mac, { type: "chat", id: "t1", text: "再说一遍" });
+    await s.msg(mac, say("m1", "那你能不能给我显示一个按钮"));
+    expect(lines().map((l) => l.id)).toEqual(["w1", "w2", "t1", "m1"]);
+  });
+
+  it("flag off, or the window 0: two lines; flag and window are asked only for a likely copy", async () => {
+    for (const [on, ms] of [
+      [false, 4000],
+      [true, 0],
+    ] as const) {
+      const asked: string[] = [];
+      const { s, win, mac, lines } = rig({
+        SESSIONS: {
+          live: async () => "live",
+          flag: async (k: string) => (asked.push(k), k === "stt.two-mic-merge" ? on : false),
+          config: async (k: string) => (asked.push(k), ms),
+        },
+      });
+      await s.msg(win, say("w1", "第一句话"));
+      const mine = () => asked.filter((k) => /^(stt\.two|chat\.)/.test(k));
+      expect(mine()).toEqual([]);
+      await s.msg(mac, say("m1", "第一句话"));
+      expect(lines().map((l) => l.id)).toEqual(["w1", "m1"]);
+      expect(mine()).toEqual(["stt.two-mic-merge", "chat.twoMicWindowMs"]);
+    }
+  });
+
+  it("an unreadable flag and window count as on with 4 s; a configured window is used", async () => {
+    const down = rig({
+      SESSIONS: {
+        live: async () => "live",
+        flag: async () => Promise.reject(new Error("d1")),
+        config: async () => Promise.reject(new Error("d1")),
+      },
+    });
+    await down.s.msg(down.win, say("w1", "第一句话"));
+    down.s.tick(3000);
+    await down.s.msg(down.mac, say("m1", "第一句话。"));
+    expect(down.lines().map((l) => l.id)).toEqual(["w1"]);
+    const long = rig({
+      SESSIONS: {
+        live: async () => "live",
+        flag: async () => true,
+        config: async () => 10_000,
+      },
+    });
+    await long.s.msg(long.win, say("w1", "第一句话"));
+    long.s.tick(8000);
+    await long.s.msg(long.mac, say("m1", "第一句话"));
+    expect(long.lines().map((l) => l.id)).toEqual(["w1"]);
+  });
+
+  it("the line the Mac signed as him stands over an unsigned copy, and replaces one", async () => {
+    const key = await speakerKey();
+    const proof = (text: string, uid: string, score: number) =>
+      key.sign({
+        decision: "me",
+        score,
+        text,
+        uid: uid.padEnd(16, "x"),
+        thread: "owner",
+        at: 1_000_000,
+      });
+    const { s, win, mac, lines } = rig({ STT_SPEAKER_PUB: key.pub });
+    // Signed first: the unsigned, longer copy is dropped.
+    await s.msg(
+      win,
+      say("w1", "两个麦克风", { speakerProof: [await proof("两个麦克风", "u1", 0.61)] }),
+    );
+    await s.msg(mac, say("m1", "同时两个麦克风"));
+    expect(lines().map((l) => [l.id, l.text])).toEqual([["w1", "两个麦克风"]]);
+    // Unsigned first: the signed copy replaces it, its tag with it.
+    s.tick(10_000);
+    await s.msg(mac, say("m2", "第二句话说完了"));
+    await s.msg(
+      win,
+      say("w2", "第二句话说完", { speakerProof: [await proof("第二句话说完", "u2", 0.65)] }),
+    );
+    expect(lines().map((l) => [l.id, l.text])).toEqual([
+      ["w1", "两个麦克风"],
+      ["m2", "第二句话说完"],
+    ]);
+    expect((lines()[1].speaker as { decision: string; score: number }).score).toBe(0.65);
   });
 });

@@ -35,6 +35,7 @@
     "./page-errors": "./src/page-errors.ts",
     "./tap-gesture": "./src/tap-gesture.ts",
     "./wire": "./src/wire.ts",
+    "./two-mic": "./src/two-mic.ts",
     "./scene": "./src/scene.ts",
     "./polish": "./src/polish.ts",
     "./voice": "./src/voice.ts",

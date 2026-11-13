@@ -24,6 +24,7 @@
 import { z } from "zod";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
 import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
+import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
 
 export type ConfigAudience = "server" | "public";
 
@@ -213,6 +214,18 @@ export const CONFIG = {
     audience: "server",
     description:
       "任务标成「完成但未验证」时，自动建一个「verify: <名字>」子任务交给同一条线，给它多少分钟的预计时间。",
+  }),
+  // Two mics, one line (flag stt.two-mic-merge; docs/dev-debug-widget.md,
+  // "Two mics, one line"): read by the debug hub over DebugSessions.config.
+  "chat.twoMicWindowMs": int({
+    default: TWO_MIC_WINDOW_MS,
+    min: 0,
+    max: TWO_MIC_WINDOW_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "两个麦克风同时开着（比如 Windows 和 Mac）时，同一句话会各发一条：另一台设备在这么多毫秒内发来几乎一样的语音消息，就当成同一句，只留一条（留声纹分数更高、或更完整的那条文字）。默认 4000 = 4 秒；0 = 不合并。开关在 /dev/flags 的 stt.two-mic-merge。",
   }),
   // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts;
   // docs/li-sound-hub.md, "Pronunciation table"): handed to the chat by the root layout.

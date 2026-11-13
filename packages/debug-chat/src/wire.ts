@@ -249,9 +249,11 @@ export type MergedPart = {
 export const MAX_EDITS = 3;
 /**
  * How far back the agent may polish or summarise: any of the owner's last
- * EDITABLE_LINES lines in the owner thread (not only the latest).
+ * EDITABLE_LINES lines in the owner thread (not only the latest). 15, up from
+ * 5 (2026-11-14): with two mics open and room echoes his lines ran past 5
+ * before a lane could answer.
  */
-export const EDITABLE_LINES = 5;
+export const EDITABLE_LINES = 15;
 /**
  * A run of the owner's voice lines the agent summarised (room talk, someone
  * else speaking): on the run's first line, which shows the summary; the others
