@@ -793,6 +793,24 @@ describe("the bar and the list, rendered", () => {
   const html = (el: Parameters<typeof renderToString>[0]) =>
     renderToString(el).replace(/<!-- -->/g, "");
 
+  it("folded chat keeps the progress bar with only the nearest time visible", () => {
+    const out = renderToString(
+      createElement(EtaBar, {
+        tasks: two,
+        now: 5 * MIN,
+        strings: CHAT_STRINGS_EN,
+        onOpen: () => {},
+        compact: true,
+        folded: true,
+        onFold: () => {},
+      }),
+    );
+    expect(out).toContain('data-testid="debug-chat-eta-bar"');
+    expect(out).toContain('aria-label="2 tasks · 25M · next in 5M');
+    expect(out).toContain(">5M</span>");
+    expect(out).not.toContain(">25M</span>");
+    expect(out).not.toContain("debug-chat-eta-fold");
+  });
   it("the bar: summary, percent, a label naming what a tap does; nothing without tasks", () => {
     const out = html(
       createElement(EtaBar, {

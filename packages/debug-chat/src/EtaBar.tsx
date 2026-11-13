@@ -299,6 +299,7 @@ export function EtaBar({
   onOpen,
   glass = false,
   folded = false,
+  compact = false,
   onFold,
 }: {
   tasks: readonly EtaTask[];
@@ -309,15 +310,17 @@ export function EtaBar({
   glass?: boolean;
   /** Hidden by the viewer: only the ▸ to show it again (EtaFold). */
   folded?: boolean;
+  /** Folded chat: show only the nearest remaining time, with the full accessible label. */
+  compact?: boolean;
   /** Given: the bar carries its own hide/show toggle. */
   onFold?: (folded: boolean) => void;
 }) {
   const p = summaryParts(tasks, now, strings);
   if (!p) return null;
   const line = (
-    <EtaLine p={p} tasks={tasks} now={now} strings={strings} onOpen={onOpen} glass={glass} />
+    <EtaLine p={p} tasks={tasks} now={now} strings={strings} onOpen={onOpen} glass={glass} compact={compact} />
   );
-  if (!onFold) return line;
+  if (!onFold || compact) return line;
   if (folded)
     return (
       <div className={`flex ${glass ? "" : "mb-1"}`}>
@@ -342,6 +345,7 @@ function EtaLine({
   strings,
   onOpen,
   glass,
+  compact,
 }: {
   p: NonNullable<ReturnType<typeof summaryParts>>;
   tasks: readonly EtaTask[];
@@ -349,6 +353,7 @@ function EtaLine({
   strings: EtaText;
   onOpen: () => void;
   glass: boolean;
+  compact: boolean;
 }) {
   const { sum } = p;
   const past = sum.leftMs !== null && sum.leftMs <= 0;
@@ -375,6 +380,7 @@ function EtaLine({
       >
         <EtaClockIcon />
         <span data-testid="debug-chat-eta-text" className="flex min-w-0 flex-1 items-baseline gap-1">
+          {compact ? (p.leftMs === null ? <span>{strings.etaDone}</span> : <TimeLabel ms={sum.next ? sum.next.at - now : p.leftMs} />) : <>
           <span className="min-w-0 truncate">{p.lead}</span>
           <span aria-hidden className="shrink-0">
             ·
@@ -385,8 +391,9 @@ function EtaLine({
             <TimeLabel ms={p.leftMs} />
           )}
           {p.next && <span className="min-w-0 truncate">· {p.next}</span>}
+          </>}
         </span>
-        <span className="shrink-0 tabular-nums">{sum.pct}%</span>
+        {!compact && <span className="shrink-0 tabular-nums">{sum.pct}%</span>}
       </FillLine>
     </button>
   );

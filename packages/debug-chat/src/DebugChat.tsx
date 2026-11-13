@@ -4654,14 +4654,14 @@ export function DebugChat({
     fullLog: fullLog !== "off" || full,
   });
   /** The progress bar (EtaBar) shows over the input. */
-  const etaShown = open && !tree && etaBar && etaList.length > 0;
+  const etaShown = !tree && etaBar && etaList.length > 0;
   /** The connection chip: a developer's page, the chat open, not over the tree. */
-  const linkShown = open && !tree && !notice && owner && !!link;
+  const linkShown = !tree && !notice && owner && !!link;
   /**
    * The bar and the progress bar as one glass strip (owner, 2026-11-10); not
    * while the typing glass is the frame, nor full screen (the screen is the glass).
    */
-  const strip = etaShown && !full && !typingGlassShown;
+  const strip = open && etaShown && !full && !typingGlassShown;
   const typingGlassLookNow = (() => {
     const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
     const look = typingGlassLook({
@@ -5182,6 +5182,7 @@ export function DebugChat({
                     strings={t}
                     glass={strip}
                     onOpen={() => setGanttOpen(true)}
+                    compact={!open || compact}
                     folded={etaFolded}
                     onFold={foldEta}
                   />
@@ -5195,6 +5196,7 @@ export function DebugChat({
               strings={t}
               glass={strip}
               onOpen={() => setGanttOpen(true)}
+              compact={!open || compact}
               folded={etaFolded}
               onFold={foldEta}
             />
