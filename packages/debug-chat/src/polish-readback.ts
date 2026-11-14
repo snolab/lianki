@@ -73,12 +73,19 @@ const readLocal = (k: string): string | null => {
 export function cloneTtsBase(read: (k: string) => string | null = readLocal): string | null {
   const v = read(CLONE_TTS_KEY)?.trim();
   if (v === "off") return null;
-  return (v || DEFAULT_CLONE_TTS_BASE).replace(/\/+$/, "");
+  return trimSlashes(v || DEFAULT_CLONE_TTS_BASE);
+}
+
+/** `s` without its trailing slashes: a scan from the end, linear however many there are. */
+export function trimSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s[end - 1] === "/") end--;
+  return s.slice(0, end);
 }
 
 /** One sentence's clip from the clone server (GET …/tts?text= → audio/wav). */
 export const cloneTtsUrl = (base: string, text: string) =>
-  `${base.replace(/\/+$/, "")}/tts?text=${encodeURIComponent(text)}`;
+  `${trimSlashes(base)}/tts?text=${encodeURIComponent(text)}`;
 
 /** An agent's polish (not a merge's or an undo's mark). */
 export const isAgentPolish = (e: EditMark | undefined): boolean =>
