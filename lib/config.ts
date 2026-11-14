@@ -26,6 +26,7 @@ import { z } from "zod";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
 import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
+import { LANE_NAMES, type LaneNamesTable, ROUTE_LANES } from "@lianki/debug-chat/lane-route";
 
 export type ConfigAudience = "server" | "public";
 
@@ -240,6 +241,27 @@ export const CONFIG = {
     description:
       "两个麦克风同时开着（比如 Windows 和 Mac）时，同一句话会各发一条：另一台设备在这么多毫秒内发来几乎一样的语音消息，就当成同一句，只留一条（留声纹分数更高、或更完整的那条文字）。默认 4000 = 4 秒；0 = 不合并。开关在 /dev/flags 的 stt.two-mic-merge。",
   }),
+  "chat.laneNames": {
+    default: LANE_NAMES as LaneNamesTable,
+    schema: z
+      .record(
+        z.enum(ROUTE_LANES),
+        z
+          .object({
+            exact: z.array(z.string().min(1).max(50)).max(100),
+            heard: z.array(z.string().min(1).max(50)).max(200),
+          })
+          .strict(),
+      )
+      .refine(
+        (table) => ROUTE_LANES.every((lane) => lane in table),
+        "table must cover all route lanes (chat, codex, agy)",
+      ) as z.ZodType<LaneNamesTable>,
+    group: "chat",
+    audience: "public",
+    description:
+      "唤醒名与别名到车道（chat/codex/agy）的映射表（JSON 对象）。exact 为本名/明确呼叫名，heard 为语音识别可能听成的别名/谐音；项目/分支名（如 lianki, liagent, agent-yes, otoji）归在 chat 车道下。此表热生效并同步作为语音识别（STT）的热词与唤醒分发参考。",
+  },
   // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts;
   // docs/li-sound-hub.md, "Pronunciation table"): handed to the chat by the root layout.
   "voice.lexicon": {

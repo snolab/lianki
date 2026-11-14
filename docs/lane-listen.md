@@ -29,6 +29,13 @@ lane answers it. Every listener uses it, so a line gets exactly one answer
 - `codex的…` is talk about codex, not to it: the chat lane takes it.
 - Agent lines, friend lines and other threads are never routed.
 - New spellings go in `LANE_NAMES` with a test in `unit/lane-route.test.ts`.
+- The mapping can also be reconfigured live without deploys at `/dev/config`
+  via `chat.laneNames`. Dynamic table overrides can be applied with
+  `setCustomLaneNames(table)`.
+- Project and branch names (`lianki`, `liagent`, `agent-yes`, `otoji`) default
+  to routing under the `chat` lane.
+- All unique names in the table can be extracted via `laneHotwords(table?)`
+  and fed to STT models (e.g. Whisper `initial_prompt`) to improve recognition.
 - The matcher itself lives in `packages/debug-chat/src/lane-route.ts`
   (`lib/lane-route.ts` re-exports it), so the chat uses the same rule: a name
   heard in his live speech, or in a line he sends, flashes that lane's avatar
