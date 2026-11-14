@@ -119,7 +119,16 @@ jobs:
         env:
           CF_BUILD: "1"
           DB_BACKEND: d1
+          # The page's data-build is this value: under workflow_run github.sha is the
+          # default branch's head, not the prod commit that was checked out above.
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+          # The owner's own hosts (repo variables, never in the tree): live-view origins,
+          # local TTS/clone-TTS bases and his local STT. Empty = the code's defaults.
+          NEXT_PUBLIC_LIANKI_LIVE_VIEW_ORIGINS: ${{ vars.NEXT_PUBLIC_LIANKI_LIVE_VIEW_ORIGINS }}
+          NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE: ${{ vars.NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE }}
+          NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE: ${{ vars.NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE }}
+          NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT: ${{ vars.NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT }}
       # Smart refresh (docs/shipping.md): per-route hashes of the client chunks,
       # served as /_lk/route-fp.json and handed to lianki-push on the first
       # request, so only pages whose code changed offer "New version · Refresh".
