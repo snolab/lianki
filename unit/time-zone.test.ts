@@ -6,6 +6,7 @@ import {
   endOfDayIso,
   formatZoned,
   zoneTag,
+  zonedStamp,
   deviceZone,
   localDay,
   localHour,
@@ -158,5 +159,33 @@ describe("zoneTag / formatZoned", () => {
       }),
     ).toBe("2026-01-15 12:00 UTC");
     expect(formatZoned(new Date(winter), "UTC", "en-US")).toContain("UTC");
+  });
+});
+
+describe("zonedStamp and the scripts' owner time", () => {
+  it("the wall clock of a zone, with or without seconds", () => {
+    const t = Date.parse("2026-11-07T01:02:03Z");
+    expect(zonedStamp(t, "Asia/Tokyo")).toBe("2026-11-07 10:02");
+    expect(zonedStamp(new Date(t), "UTC", true)).toBe("2026-11-07 01:02:03");
+    expect(zonedStamp(t, "America/New_York", true)).toBe("2026-11-06 20:02:03");
+  });
+  it("owner-time follows LIANKI_OWNER_TZ", async () => {
+    const o = await import("@/scripts/dev/owner-time");
+    const prev = process.env.LIANKI_OWNER_TZ;
+    const t = Date.parse("2026-11-07T01:02:03Z");
+    try {
+      process.env.LIANKI_OWNER_TZ = "Europe/Berlin";
+      expect(o.ownerStamp(t)).toBe("2026-11-07 02:02 CET");
+      expect(o.ownerStamp(t, true)).toBe("2026-11-07 02:02:03 CET");
+      expect(o.ownerStampBare(t)).toBe("2026-11-07 02:02");
+      expect(o.ownerClock(t)).toBe("02:02");
+      expect(o.ownerTag(t)).toBe("CET");
+      expect(typeof o.ownerTag()).toBe("string");
+      process.env.LIANKI_OWNER_TZ = "Asia/Tokyo";
+      expect(o.ownerStamp(t)).toBe("2026-11-07 10:02 JST");
+    } finally {
+      if (prev === undefined) delete process.env.LIANKI_OWNER_TZ;
+      else process.env.LIANKI_OWNER_TZ = prev;
+    }
   });
 });
