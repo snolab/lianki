@@ -175,8 +175,10 @@ ${EXITS}`,
   The lanes manager (scripts/dev/lanes-manager.ts, docs/lane-listen.md "Every
   agent joins"): each agent of \`ay ls --local\` under a repo in lanes.repos
   (LIANKI_LANES_REPOS) joins the owner's chat as its own lane (its registered
-  name, lanes.agents / LIANKI_LANES_AGENTS, else <repo>-<cli>-<pid>). Resident
-  lanes get a lane-listen --all; the others are readers, woken by name. Each
+  name, lanes.agents / LIANKI_LANES_AGENTS, else <repo>-<leaf>, e.g.
+  lianki-codex for lianki/tree/codex; -<cli>, -<pid> only to break a tie).
+  Resident lanes get a lane-listen --all; the others are readers, woken by
+  name (not a wake:false row). Each
   new lane greets once with its own token (~/.config/lianki/lanes/<lane>.token);
   the names still waiting for one are said once in the chat (never minted here).
   --once: one look, then exit. --dry-run: log the actions, do none.

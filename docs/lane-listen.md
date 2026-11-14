@@ -223,7 +223,12 @@ decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
    `lanes.repos` whitelist (lianki, agent-yes, liagent, rechrome, otoji, rgui).
 3. Names it: the lane a running `lane-listen --deliver <pid>` already serves
    (coco, 杰咪 today), else `lanes.agents` (the end of its cwd + its cli),
-   else `<repo>-<cli>-<pid>`.
+   else `<repo>-<leaf>`, stable across restarts so one token keeps serving
+   it: the leaf is `<x>` for `…/<repo>/tree/<x>`, `agent` for a Claude
+   worktree (`.claude/worktrees/agent-<id>`), `main` for a bare checkout,
+   else the directory's name (`lianki-codex`, `lianki-agent`,
+   `liagent-main`); lowercase, 40 characters at most. Only when two alive
+   agents would share it does `-<cli>` follow, then `-<pid>` if they still do.
 4. Tokens: `~/.config/lianki/lanes/<lane>.token`, minted by him at
    /my/preferences#tokens (name = the lane, chat:read chat:write chat:ask).
    The manager never mints one; the names still missing are said once in
@@ -235,6 +240,9 @@ decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
 listen --json --reader`) hears his lines, and a line that names a reader
    (its lane name, a `chat.lanes` alias, `#<repo>`, or 全体) goes to that
    agent with `ay send <pid> --force --no-wait --code alt-m`.
+   A `lanes.agents` row with `wake: false` joins (greets, reader, marked
+   left) but is never woken: 小克 (`lianki/tree/agy`, cli `claude`, lane
+   `claude`) keeps its own live feed of his lines.
 6. Each new lane greets once with its own token (`lanes.greeting`;
    `manager-state.json` beside the tokens remembers who did); an agent that
    exits is marked left (op `lane`).
