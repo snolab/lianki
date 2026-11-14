@@ -298,6 +298,53 @@ zone its first study day was cut in, as for study days).
   every amount to 0 stops new grants at once (the flag off stops the counting
   and hides the line; credits already granted stay).
 
+### Sign-up bonus
+
+Owner decision 2026-11-15 (12:4x JST): every **new account** gets **US$1**
+of credits once — but only the **first 10 new accounts of each UTC day**
+(the day turns at 09:00 JST). Shipped on; no switch to flip. Added 13:0x JST:
+accounts that **already existed** when it launched get the same US$1 once,
+outside the cap.
+
+| piece                                      | where                                                                                              |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| rules (pure): refId, UTC day, credits      | `lib/payments/signup-bonus.ts`                                                                     |
+| claim + grant over D1, the hook entry      | `lib/payments/signup-bonus-store.ts`; tables `signup_bonus_day`, `signup_bonus_launch` (migration 0079) |
+| hooks                                      | better-auth `user.create.after` (new) and `session.create.after` (backfill) in `auth-impl.ts`; the wallet read `GET /api/payments/credits` (backfill) |
+| shown                                      | the wallet history row label only: 「注册礼」 (`wallet-card.content.ts` `signupBonus`, 16 locales)     |
+| flag                                       | `credits.signup-bonus`, **default ON** for everyone — the off switch for both paths                |
+| config                                     | `credits.signupBonusUsd` (default **1**), `credits.signupBonusDaily` (default **10**), group `credits`, both `money` |
+| audit                                      | one `security_audit` row per grant, kind `credits.signup-bonus` (path, UTC day, slot, credits)     |
+| tests                                      | `unit/signup-bonus.test.ts`                                                                        |
+
+- **Ledger**: reason `gift` (no new reason, so no CHECK migration), refId
+  `signup:<userId>` for both paths — UNIQUE (reason, refId) makes it once per
+  account, whichever path runs first, however often it is retried. Note
+  `signup bonus <UTC day> #<slot>` (new) or `signup bonus (existing account)`
+  (backfill).
+- **The daily cap, atomically**: one D1 batch (one transaction) per claim —
+  open the day's `signup_bonus_day` row at 0; `INSERT OR IGNORE` the ledger
+  row only WHERE the user exists AND that day's `granted` < the cap (its note
+  takes slot `granted + 1`); add 1 to `granted` and move the balance only
+  WHERE EXISTS that very ledger row. D1 runs batches one at a time, so no two
+  accounts can both be number 10, and a repeat of the same account takes no
+  slot. Account 11 gets nothing and sees nothing — no error, no line.
+- **The backfill, lazily**: no batch job over production rows. An account
+  whose `user.createdAt` is before `signup_bonus_launch.at` (the moment
+  migration 0079 ran in production) gets the bonus on its next sign-in or its
+  next wallet read, outside the cap. After one cheap read (it already has the
+  row) every later sign-in stops. Accounts created after launch never qualify
+  here, so missing the cap stays missed. Accounts created in the short gap
+  between the migration and the new Worker going live get neither.
+- **Never blocks**: the hook entry (`runSignupBonus`) never throws; a failure
+  is logged as `signup-bonus: grant failed` and the sign-up, sign-in or wallet
+  read goes on.
+- **Admins are metered the same**: no admin or dev branch anywhere.
+- **Abuse**: one bonus per account; the cap bounds new-account farming to 10
+  × US$1 a day site-wide. Setting `credits.signupBonusUsd` to 0 (or the
+  daily cap to 0 for new accounts) stops new grants at once; the flag off
+  stops both paths. Credits already granted stay.
+
 #### Retired: the account-age bonus (2026-11-14)
 
 The earlier bonus ($1 at 1 day, $2 more at 7 days per account, 2026-11-14
