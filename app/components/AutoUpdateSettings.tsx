@@ -9,7 +9,7 @@ import { PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
 import { AUTO_UPDATE_KEY, autoUpdatePref, setAutoUpdatePref } from "@/lib/auto-update";
 import { SealSwitch } from "@/app/components/SealSwitch";
 
-export function AutoUpdateSettings() {
+export function AutoUpdateSettings({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const c = useIntlayer("auto-update-pref");
   const [on, setOn] = useState(true);
   useEffect(() => {
@@ -30,7 +30,9 @@ export function AutoUpdateSettings() {
   }, []);
   return (
     <section id="auto-update" className="mb-10 max-w-md scroll-mt-6" data-section="auto-update">
-      <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">{c.heading}</h2>
+      {!hideHeading && (
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">{c.heading}</h2>
+      )}
       <div className="flex items-center gap-3">
         <span id="pref-auto-update-label" className="flex-1">
           {c.label}

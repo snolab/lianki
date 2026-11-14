@@ -801,6 +801,128 @@ export const CONFIG = {
     audience: "server",
     description: "学习伙伴模型 HTTP 请求超时；总 hub 等待上限仍由 partnerRpcTimeoutMs 控制。",
   }),
+  // Mini apps (docs/mini-apps.md): /m/<slug>, one sandboxed HTML file per app.
+  "miniApps.maxBytes": int({
+    default: 2 * 1024 * 1024,
+    min: 1024,
+    max: 16 * 1024 * 1024,
+    unit: "bytes",
+    group: "miniApps",
+    audience: "public",
+    description:
+      "小应用（/m/<名字>）：一个应用的 HTML 文件最大多少字节（默认 2 MB，最多 16 MB，与 Claude Artifacts 相同）。",
+  }),
+  "miniApps.storageBytes": int({
+    default: 256 * 1024,
+    min: 1024,
+    max: 16 * 1024 * 1024,
+    unit: "bytes",
+    group: "miniApps",
+    audience: "public",
+    description: "小应用：每个应用自己的存储（lianki.storage）最多存多少字节（键和值合计）。",
+  }),
+  "miniApps.perAccount": int({
+    default: 20,
+    min: 1,
+    max: 500,
+    unit: "apps",
+    group: "miniApps",
+    audience: "server",
+    description: "小应用：一个账号最多发布几个应用（同名重新发布不算新的）。",
+  }),
+  "miniApps.callsPerMinute": int({
+    default: 120,
+    min: 1,
+    max: 1200,
+    unit: "calls/min",
+    group: "miniApps",
+    audience: "server",
+    description: "小应用：每个账号每分钟最多调用几次能力（存储、设置、聊天），超过就暂时拒绝。",
+  }),
+  "miniApps.cardWaitMs": int({
+    default: 120_000,
+    min: 10_000,
+    max: 600_000,
+    unit: "ms",
+    group: "miniApps",
+    audience: "server",
+    description:
+      "小应用的 lianki.ui.card：在聊天里发出选择卡片后，最多等你点多久（毫秒）；超时应用收到「没有回答」。",
+  }),
+  "miniApps.origin": {
+    default: "" as string,
+    schema: z.union([
+      z.literal(""),
+      z
+        .string()
+        .max(120)
+        .regex(
+          /^https:\/\/(?:\{app\}\.)?[a-z0-9.-]+\.[a-z]{2,}$|^http:\/\/(?:\{app\}\.)?m\.localhost:\d{2,5}$/,
+          "https://m.lianki.com, or https://{app}.<another domain>",
+        ),
+    ]),
+    group: "miniApps",
+    audience: "server",
+    description:
+      "小应用从哪个独立的网址运行（不是 lianki.com 本身）：例如 https://m.lianki.com，或者每个应用一个子域名 https://{app}.另一个域名。要先加 DNS 记录和 Worker 路由（需要你批准）。空（默认）= 用 srcdoc 沙盒（没有自己的网址，应用不能用浏览器存储）。",
+  },
+  "miniApps.scriptOrigins": {
+    default:
+      "https://cdnjs.cloudflare.com,https://cdn.jsdelivr.net/npm/,https://unpkg.com,https://cdn.tailwindcss.com,https://code.jquery.com" as string,
+    schema: z
+      .string()
+      .max(1000)
+      .regex(
+        /^\s*https:\/\/[A-Za-z0-9./_-]+(\s*,\s*https:\/\/[A-Za-z0-9./_-]+)*\s*$/,
+        "https:// sources, comma-separated",
+      ),
+    group: "miniApps",
+    audience: "public",
+    description:
+      "小应用可以从哪些 CDN 加载脚本（逗号分隔；和 Claude Artifacts 同一份名单）。脚本地址必须带确切版本号（例如 react@18.3.1），发布时检查。其他一切都要写在 HTML 里。",
+  },
+  "miniApps.styleOrigins": {
+    default: "https://fonts.googleapis.com" as string,
+    schema: z
+      .string()
+      .max(500)
+      .regex(
+        /^\s*https:\/\/[A-Za-z0-9./_-]+(\s*,\s*https:\/\/[A-Za-z0-9./_-]+)*\s*$/,
+        "https:// sources, comma-separated",
+      ),
+    group: "miniApps",
+    audience: "public",
+    description:
+      "小应用可以从哪里加载样式表（逗号分隔，默认只有 Google Fonts）；Lianki 自己的样式包总是可以用。",
+  },
+  "miniApps.fontOrigins": {
+    default: "https://fonts.gstatic.com" as string,
+    schema: z
+      .string()
+      .max(500)
+      .regex(
+        /^\s*https:\/\/[A-Za-z0-9./_-]+(\s*,\s*https:\/\/[A-Za-z0-9./_-]+)*\s*$/,
+        "https:// sources, comma-separated",
+      ),
+    group: "miniApps",
+    audience: "public",
+    description: "小应用可以从哪里加载字体文件（逗号分隔，默认 Google Fonts 的字体服务器）。",
+  },
+  "miniApps.prefKeys": {
+    default:
+      "ui.locale,ui.paper,motion.animations,text-size.ui,lang.preferred,words.readAloud,chat-voice.rate" as string,
+    schema: z
+      .string()
+      .max(1000)
+      .regex(
+        /^\s*[a-z][A-Za-z0-9.-]*(\s*,\s*[a-z][A-Za-z0-9.-]*)*\s*$/,
+        "preference keys, comma-separated",
+      ),
+    group: "miniApps",
+    audience: "public",
+    description:
+      "小应用经你同意后可以读、改哪些账号设置（逗号分隔的设置键；不在 lib/prefs/schema.ts 里的会被忽略）。默认只有界面语言、纸张、动画、字号、偏好语言、朗读和语速。",
+  },
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

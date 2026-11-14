@@ -397,6 +397,13 @@ export const FLAGS = {
     default: true,
     group: "credits",
   },
+  // Owner, 2026-11-15 05:2x JST: an agent publishes a one-file app; each capability is a per-app grant.
+  "mini-apps": {
+    description:
+      "小应用（/m/<名字>，docs/mini-apps.md）：你的助手可以发布一个单文件 HTML 小应用，它在独立的沙盒里运行（不和 lianki.com 同源，不能读你的登录状态），通过 lianki.* 接口使用存储、设置和聊天；每一种能力第一次用时都会弹出卡片问你：仅这一次 / 这个应用一直允许 / 拒绝，之后可以在 /my/preferences 撤销。第一阶段只有有 dev 权限的账号能发布。关闭 = /m/ 和 /api/my/mini-apps 都不存在（404），已发布的应用留着但打不开。",
+    default: true,
+    audience: "owner",
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;

@@ -8,7 +8,7 @@
 import { useIntlayer } from "next-intlayer";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
-export function LanguageSettings() {
+export function LanguageSettings({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const c = useIntlayer("language-settings");
   return (
     <section
@@ -17,7 +17,7 @@ export function LanguageSettings() {
       data-section="language"
       data-testid="language-settings"
     >
-      <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>
+      {!hideHeading && <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>}
       <div className="overflow-hidden rounded-lg border border-[oklch(0.5_0.02_250/0.35)]">
         <LanguageSwitcher variant="menu" />
       </div>
