@@ -63,6 +63,18 @@ import {
   wheelFactor,
 } from "./gantt-view";
 import {
+  DBLTAP,
+  DBLTAP_IDLE,
+  type DbltapPointer,
+  type DbltapState,
+  type DbltapStep,
+  dbltapCancel,
+  dbltapDown,
+  dbltapHolds,
+  dbltapMove,
+  dbltapUp,
+} from "./gantt-dbltap";
+import {
   GANTT_GROUPS,
   type GanttGroupDef,
   type GanttLine,
@@ -92,7 +104,9 @@ import type { ChatStrings } from "./wire";
  * leaves the scroller room to bounce. Pinch (touch) or ctrl+wheel
  * (trackpad) zooms about the fingers' midpoint, batched to one step a frame;
  * on iPhone the touch pinch alone zooms (Safari's gesture events, which
- * fire alongside it, only stop the page zoom). ✕ or Escape closes.
+ * fire alongside it, only stop the page zoom). Touch or pen only, a tap
+ * and then a drag zooms like a map (gantt-dbltap.ts): down = in, the time
+ * under the finger stays under it. ✕ or Escape closes.
  *
  * The axis is logarithmic by default (owner, 2026-11-09 15:27 JST): distance
  * from Now compressed symmetrically (gantt-view.ts symlog), so minute and day
@@ -207,6 +221,9 @@ const charPxOf = (el: HTMLElement) => {
 
 /** A child row's name is indented past its parent's ▸/▾. */
 const CHILD_INDENT = "2.75rem";
+/** The scroller's own touch-action: native pan, no page zoom (the double-tap drag sets none while armed). */
+const PAN = "pan-x pan-y";
+
 /** The ▸/▾ button's width (its height takes the row; .tap-40 makes it 40 px tall to the touch). */
 const TOGGLE_W = 28;
 /** A slice's tap area is at least this wide (px), however short its bar. */
@@ -633,10 +650,21 @@ export function GanttFull({
     // One zoom step a frame: the steps between frames multiply, the pans add.
     let step: { cx: number; factor: number; dx: number; dy: number } | null = null;
     let frame = 0;
+    /** Double-tap-and-drag (touch/pen): the machine, its zoom's start and where the pointer is now. */
+    let tap: DbltapState = DBLTAP_IDLE;
+    let drag: { from: ReturnType<typeof pinchStart>; factor: number; x: number } | null = null;
+    /** The release after a drag zoom: its click (if the browser sends one) is not a tap. */
+    let eatClick = false;
+    let disarm = 0;
     /** A client x as px from the view's left edge (the scroller's own box). */
     const viewX = (clientX: number) => clientX - el.getBoundingClientRect().left - el.clientLeft;
     const flush = () => {
       frame = 0;
+      if (drag) {
+        const v = view.current;
+        if (v) commit(pinchView(drag.from, drag.factor, viewX(drag.x), v.w, nowRef.current));
+        return;
+      }
       if (pinch) {
         // Absolute from the pinch's start: t0 back under the midpoint, exactly.
         const p = pinch.now;
@@ -702,6 +730,68 @@ export function GanttFull({
         touching = false;
       }
     };
+    // Double-tap, then drag: the browser must not pan that second pointer, so
+    // touch-action goes to none only while a second down would arm it (no
+    // delay for a single tap, a single drag still pans natively).
+    const hold = () => {
+      el.style.touchAction = dbltapHolds(tap, performance.now()) ? "none" : PAN;
+    };
+    const apply = (r: DbltapStep) => {
+      tap = r.state;
+      const o = r.out;
+      if (o?.type === "start") {
+        const v = view.current;
+        if (v)
+          drag = {
+            from: pinchStart(v.axis, pending.current ?? el.scrollLeft, viewX(o.x), nowRef.current),
+            factor: 1,
+            x: o.x,
+          };
+      } else if (o?.type === "zoom" && drag) {
+        drag.factor = o.factor;
+        drag.x = o.x;
+        frame ||= requestAnimationFrame(flush);
+      } else if (o?.type === "end") {
+        // The last move waiting for its frame lands first.
+        if (frame && drag) {
+          cancelAnimationFrame(frame);
+          flush();
+        }
+        drag = null;
+        eatClick = true;
+      }
+      hold();
+      clearTimeout(disarm);
+      // Armed but no second down in time: give the browser its pan back.
+      if (tap.kind === "armed") disarm = window.setTimeout(hold, DBLTAP.gapMs + 1);
+    };
+    const pt = (e: PointerEvent): DbltapPointer => ({
+      id: e.pointerId,
+      type: e.pointerType,
+      x: e.clientX,
+      y: e.clientY,
+      t: e.timeStamp,
+    });
+    const pDown = (e: PointerEvent) => {
+      eatClick = false;
+      apply(dbltapDown(tap, pt(e)));
+    };
+    const pMove = (e: PointerEvent) => {
+      if (tap.kind === "idle" || tap.kind === "armed") return;
+      apply(dbltapMove(tap, pt(e)));
+    };
+    const pUp = (e: PointerEvent) => apply(dbltapUp(tap, pt(e)));
+    const pCancel = () => apply(dbltapCancel(tap));
+    const click = (e: MouseEvent) => {
+      if (!eatClick) return;
+      eatClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    // iOS before touch-action took hold: a live drag zoom never scrolls.
+    const tMove = (e: TouchEvent) => {
+      if (tap.kind === "zoom" && e.touches.length === 1) e.preventDefault();
+    };
     // Safari's own pinch: a Mac trackpad's zoom; on iPhone it fires with the
     // touches above, so it only keeps the page from zooming.
     const gStart = (e: Event) => {
@@ -721,7 +811,21 @@ export function GanttFull({
     el.addEventListener("touchcancel", end);
     el.addEventListener("gesturestart", gStart);
     el.addEventListener("gesturechange", gChange);
+    el.addEventListener("pointerdown", pDown);
+    el.addEventListener("pointermove", pMove);
+    el.addEventListener("pointerup", pUp);
+    el.addEventListener("pointercancel", pCancel);
+    el.addEventListener("click", click, true);
+    el.addEventListener("touchmove", tMove, { passive: false });
     return () => {
+      el.removeEventListener("pointerdown", pDown);
+      el.removeEventListener("pointermove", pMove);
+      el.removeEventListener("pointerup", pUp);
+      el.removeEventListener("pointercancel", pCancel);
+      el.removeEventListener("click", click, true);
+      el.removeEventListener("touchmove", tMove);
+      clearTimeout(disarm);
+      el.style.touchAction = PAN;
       el.removeEventListener("wheel", wheel);
       el.removeEventListener("touchstart", start);
       el.removeEventListener("touchmove", move);
@@ -926,7 +1030,7 @@ export function GanttFull({
         dir="ltr"
         onScroll={onScroll}
         className="min-h-0 flex-1"
-        style={{ overflow: "auto", overscrollBehavior: "contain", touchAction: "pan-x pan-y" }}
+        style={{ overflow: "auto", overscrollBehavior: "contain", touchAction: PAN }}
       >
         <div
           data-testid="debug-chat-gantt-content"
