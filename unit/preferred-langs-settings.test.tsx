@@ -26,7 +26,8 @@ const restore = stubGlobals({
 afterAll(() => restore());
 
 const { createRoot } = await import("react-dom/client");
-const { PreferredLangsSettings } = await import("@/app/components/PreferredLangsSettings");
+const { PreferredLangsSettings, keepInView } =
+  await import("@/app/components/PreferredLangsSettings");
 
 const stored = () => JSON.parse(win.localStorage.getItem(PREFERRED_LANGS_KEY) ?? "null");
 const q = <T extends Element = HTMLElement>(sel: string) =>
@@ -102,6 +103,56 @@ describe("PreferredLangsSettings: levels", () => {
     await click(q('[data-pref-lang-levels="ja"] [data-level="unset"]'));
     expect(stored()).toEqual(["ja", "en"]);
     await m.unmount();
+  });
+
+  it("one segmented control: one tab stop, arrows / Home / End move the choice", async () => {
+    win.localStorage.setItem(PREFERRED_LANGS_KEY, JSON.stringify(["ja"]));
+    const m = await mount();
+    const group = q('[data-pref-lang-levels="ja"]')!;
+    const tabbable = () =>
+      ([...group.querySelectorAll("[data-level]")] as unknown as HTMLElement[])
+        .filter((o) => o.getAttribute("tabindex") === "0")
+        .map((o) => o.dataset.level);
+    expect(tabbable()).toEqual(["unset"]);
+    const key = async (k: string) =>
+      act(async () => {
+        group.dispatchEvent(
+          new win.KeyboardEvent("keydown", { key: k, bubbles: true }) as unknown as Event,
+        );
+      });
+    await key("Home");
+    expect(stored()).toEqual([{ lang: "ja", level: "native" }]);
+    expect(tabbable()).toEqual(["native"]);
+    await key("ArrowRight");
+    expect(stored()).toEqual([{ lang: "ja", level: "fluent" }]);
+    await key("ArrowDown");
+    await key("ArrowLeft");
+    await key("ArrowUp");
+    expect(stored()).toEqual([{ lang: "ja", level: "native" }]);
+    await key("ArrowUp");
+    expect(stored()).toEqual(["ja"]);
+    await key("End");
+    expect(stored()).toEqual(["ja"]);
+    await key("x");
+    expect(stored()).toEqual(["ja"]);
+    group.setAttribute("dir", "rtl");
+    await key("ArrowLeft");
+    expect(stored()).toEqual([{ lang: "ja", level: "native" }]);
+    await key("ArrowRight");
+    expect(stored()).toEqual(["ja"]);
+    await m.unmount();
+  });
+
+  it("keepInView scrolls the strip only as far as the active segment needs", () => {
+    const strip = { offsetLeft: 10, scrollLeft: 0, clientWidth: 100 } as unknown as HTMLElement;
+    const at = (left: number, width = 40) =>
+      ({ offsetLeft: left + 10, offsetWidth: width }) as unknown as HTMLElement;
+    keepInView(strip, at(20));
+    expect(strip.scrollLeft).toBe(0);
+    keepInView(strip, at(200));
+    expect(strip.scrollLeft).toBe(140);
+    keepInView(strip, at(50));
+    expect(strip.scrollLeft).toBe(50);
   });
 
   it("reorder and remove keep the levels; adding appends with no level", async () => {

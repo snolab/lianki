@@ -9,7 +9,7 @@
 // (lib/lang-levels.ts): every level shown at once, the active one in the
 // theme red (owner rule: a switch shows all its states).
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import {
   closestCenter,
@@ -44,7 +44,21 @@ function nameIn(tag: string, locale: string) {
   }
 }
 
-/** The level picker of one row: every level visible, the active one filled in seal red. */
+/** The active segment's offset so it sits inside the strip (no vertical page scroll). */
+export function keepInView(strip: HTMLElement, el: HTMLElement) {
+  const left = el.offsetLeft - strip.offsetLeft;
+  const right = left + el.offsetWidth;
+  if (left < strip.scrollLeft) strip.scrollLeft = left;
+  else if (right > strip.scrollLeft + strip.clientWidth)
+    strip.scrollLeft = right - strip.clientWidth;
+}
+
+/**
+ * The level picker of one row (owner, 2026-11-15: "一个大药丸，中间可以切换"):
+ * one rounded control, every level a segment inside it, the active one filled
+ * in seal red. Scrolls sideways on a narrow screen, keeping the active one in
+ * view. A radiogroup: one tab stop, arrows / Home / End move the choice.
+ */
 function LevelPicker({
   tag,
   name,
@@ -57,34 +71,66 @@ function LevelPicker({
   onLevel: (level: LangLevel) => void;
 }) {
   const c = useIntlayer("preferred-langs");
+  const strip = useRef<HTMLDivElement>(null);
+  const idx = Math.max(
+    0,
+    LANG_LEVELS.findIndex((l) => l.id === level),
+  );
+  useEffect(() => {
+    const el = strip.current?.querySelector<HTMLElement>('[aria-checked="true"]');
+    if (strip.current && el) keepInView(strip.current, el);
+  }, [level]);
+  const pick = (i: number) => {
+    const n = LANG_LEVELS.length;
+    const l = LANG_LEVELS[(i + n) % n];
+    if (l.id !== level) onLevel(l.id);
+    strip.current?.querySelector<HTMLElement>(`[data-level="${l.id}"]`)?.focus();
+  };
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const rtl = strip.current?.closest("[dir=rtl]") != null;
+    const step: Record<string, number> = {
+      ArrowRight: rtl ? -1 : 1,
+      ArrowDown: 1,
+      ArrowLeft: rtl ? 1 : -1,
+      ArrowUp: -1,
+    };
+    if (e.key in step) pick(idx + step[e.key]);
+    else if (e.key === "Home") pick(0);
+    else if (e.key === "End") pick(LANG_LEVELS.length - 1);
+    else return;
+    e.preventDefault();
+  };
   return (
-    <div
-      role="radiogroup"
-      aria-label={put(c.levelPick.value, name)}
-      data-pref-lang-levels={tag}
-      className="flex flex-wrap gap-1 ps-3 pe-1 pb-2 sm:ps-16"
-    >
-      {LANG_LEVELS.map((l) => {
-        const on = l.id === level;
-        const label = l.label ? c[l.label].value : levelCode(l.id);
-        return (
-          <button
-            key={l.id}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            data-level={l.id}
-            onClick={() => !on && onLevel(l.id)}
-            className={`h-8 min-w-9 rounded-full border px-2.5 text-xs font-medium ${
-              on
-                ? "border-seal bg-seal text-[oklch(0.99_0_0)] dark:border-[oklch(0.75_0.15_22.3)] dark:bg-[oklch(0.75_0.15_22.3)] dark:text-[oklch(0.2_0.02_22.3)]"
-                : "border-[oklch(0.5_0.02_250/0.4)] opacity-80 hover:bg-[oklch(0.5_0_0/0.1)] hover:opacity-100"
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
+    <div className="ps-3 pe-2 pb-2 sm:ps-16">
+      <div
+        ref={strip}
+        role="radiogroup"
+        aria-label={put(c.levelPick.value, name)}
+        data-pref-lang-levels={tag}
+        onKeyDown={onKey}
+        className="flex max-w-full overflow-x-auto overscroll-x-contain rounded-full bg-[oklch(0.5_0_0/0.1)] p-0.5 [scrollbar-width:none] dark:bg-[oklch(0.8_0_0/0.1)] [&::-webkit-scrollbar]:hidden"
+      >
+        {LANG_LEVELS.map((l, i) => {
+          const on = i === idx;
+          const label = l.label ? c[l.label].value : levelCode(l.id);
+          return (
+            <button
+              key={l.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              tabIndex={on ? 0 : -1}
+              data-level={l.id}
+              onClick={() => !on && onLevel(l.id)}
+              className={`h-8 shrink-0 rounded-full px-3 text-xs font-medium whitespace-nowrap ${
+                on ? "bg-seal text-[oklch(0.99_0_0)] shadow-sm" : "opacity-75 hover:opacity-100"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
