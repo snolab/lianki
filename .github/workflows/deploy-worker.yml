@@ -122,9 +122,10 @@ jobs:
         env:
           CF_BUILD: "1"
           DB_BACKEND: d1
-          # The page's data-build is this value: under workflow_run github.sha is the
-          # default branch's head, not the prod commit that was checked out above.
-          GITHUB_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # The page's data-build: under workflow_run github.sha is the default
+          # branch's head, not the prod commit checked out above, and the runner
+          # refuses an env override of GITHUB_SHA, so the build reads this instead.
+          LIANKI_BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
           # The owner's own hosts (repo variables, never in the tree): live-view origins,
           # local TTS/clone-TTS bases and his local STT. Empty = the code's defaults.
@@ -138,6 +139,8 @@ jobs:
       # A `Force-Refresh: yes` trailer on the commit makes every page offer it.
       - name: Route fingerprints
         run: bun scripts/build/route-fingerprints.ts --out .open-next/assets/_lk/route-fp.json
+        env:
+          LIANKI_BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       # The exact files the Worker will serve as static assets: no secrets, env
       # files, keys or server source maps (docs/security-measures.md).
       - name: Static asset hygiene
