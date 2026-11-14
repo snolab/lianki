@@ -697,7 +697,7 @@ export const CONFIG = {
     group: "chat",
     audience: "public",
     description:
-      '聊天里的「线」（每个 agent 一条，名字 = 它的 API token 名）：JSON 数组，每条 {id token 名, name 显示名, aliases 叫它的名字, heard 语音识别常写成的样子, voice main/calm/bright/sweet, color oklch 颜色}。内置的 coco（codex）、杰咪（agy）、小克（claude）写同一个 id 就是给它们加名字。例：{"id":"agy","aliases":["咪宝"]}、{"id":"rechrome","name":"小镀","heard":["瑞克罗姆"]}。点名、唤醒词、头像闪烁都按这张表。',
+      '聊天里的「线」和它们的唤醒名（唯一的一张表，原 chat.laneNames 已并入；aliases 就是唤醒名，也进语音识别热词）：每个 agent 一条，名字 = 它的 API token 名。JSON 数组，每条 {id token 名, name 显示名, aliases 叫它的名字, heard 语音识别常写成的样子, voice main/calm/bright/sweet, color oklch 颜色}。内置的 coco（codex）、杰咪（agy）、小克（claude）写同一个 id 就是给它们加名字。例：{"id":"agy","aliases":["咪宝"]}、{"id":"rechrome","name":"小镀","heard":["瑞克罗姆"]}。点名、唤醒词、头像闪烁都按这张表。',
   },
   // The lanes manager on the Mac (scripts/dev/lanes-manager.ts): it runs there,
   // not in the Worker, so its live value is the env var named in lib/lanes-config.ts.

@@ -76,6 +76,7 @@ describe("STT language hint", () => {
     expect(sttPrompt("ja")).toBe(STT_PROMPT);
     expect(sttPrompt("en")).toBe(STT_PROMPT);
     expect(sttPrompt()).toBe(STT_PROMPT);
+    expect(sttPrompt("zh", ["lianki", "小克"])).toContain("热词: lianki, 小克");
   });
 });
 

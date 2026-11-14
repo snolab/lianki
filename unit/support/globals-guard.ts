@@ -1,3 +1,10 @@
+// The owner's own hosts never live in the repository (public): tests get a
+// fake tailnet host through the same environment the builds use.
+process.env.NEXT_PUBLIC_LIANKI_LIVE_VIEW_ORIGINS ??= "https://owner.example.ts.net";
+process.env.NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE ??= "https://owner.example.ts.net/lianki-tts";
+process.env.NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE ??= "https://owner.example.ts.net/lianki-clone-tts";
+process.env.NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT ??=
+  "wss://owner.example.ts.net/lianki-stt wss://stt.lianki.com";
 // Preloaded before every `bun test` run (bunfig.toml, [test] preload): no test
 // file may leave a global behind.
 //

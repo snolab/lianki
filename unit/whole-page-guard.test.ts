@@ -129,7 +129,7 @@ describe("whole-page guard: owner session", () => {
 
 describe("whole-page guard: bind address", () => {
   test("private LAN IPv4 only", () => {
-    for (const h of ["192.168.31.96", "10.0.0.2", "172.16.0.1", "172.31.255.1"])
+    for (const h of ["192.168.1.10", "10.0.0.2", "172.16.0.1", "172.31.255.1"])
       expect(isPrivateLanHost(h)).toBe(true);
     for (const h of ["0.0.0.0", "127.0.0.1", "8.8.8.8", "172.32.0.1", "lianki.com", "::"])
       expect(isPrivateLanHost(h)).toBe(false);
@@ -162,7 +162,7 @@ describe("dev-whole-page switches (app side)", () => {
   });
 
   test("the LAN origin is trusted only while the launcher runs", () => {
-    const base = "http://192.168.31.96:3100";
+    const base = "http://192.168.1.10:3100";
     expect(devWholePageOrigin({ ...ON, BETTER_AUTH_BASE_URL: base })).toEqual([base]);
     expect(devWholePageOrigin({ BETTER_AUTH_BASE_URL: base })).toEqual([]);
     expect(devWholePageOrigin({ ...ON, BETTER_AUTH_BASE_URL: "https://evil.example" })).toEqual([]);
@@ -180,7 +180,7 @@ describe("dev-whole-page switches (app side)", () => {
   });
 
   test("production's trusted origins are unchanged", () => {
-    expect(trustedOrigins("https://lianki.com")).not.toContain("http://192.168.31.96:3100");
+    expect(trustedOrigins("https://lianki.com")).not.toContain("http://192.168.1.10:3100");
   });
 });
 

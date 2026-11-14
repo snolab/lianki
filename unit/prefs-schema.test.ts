@@ -14,15 +14,15 @@ import { prefBindings } from "@/lib/prefs/bindings";
  * take, alone, in an array and in an object.
  */
 const DEVICE = [
-  "https://taku.onca-tint.ts.net/lianki-stt",
+  "https://owner.example.ts.net/lianki-stt",
   "http://localhost:3000/debug-chat.js",
   "http://127.0.0.1:8787",
-  "http://192.168.31.96:3100/",
+  "http://192.168.1.10:3100/",
   "wss://mac.tail1234.ts.net:8443/stt",
-  "taku.onca-tint.ts.net",
+  "owner.example.ts.net",
   "/lianki-debug.ts.net",
   "//evil.example/x",
-  "file:///Users/taku/clip",
+  "file:///Users/owner/clip",
 ];
 
 describe("prefs schema: nothing device-specific is accepted", () => {

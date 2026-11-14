@@ -12,7 +12,7 @@
  * Pure, tested in unit/lane-route.test.ts.
  */
 
-import { type LaneId, laneTable } from "./voices";
+import { type LaneId, laneTable, setLaneTable } from "./voices";
 
 /**
  * The built-in route lanes. More come from config `chat.lanes` (voices.ts
@@ -58,12 +58,19 @@ export const DEFAULT_LANE: RouteLane = "chat";
  * Latin names are matched case-insensitively with spaces, dots and hyphens
  * inside them ignored ("A. G. Y.", "Anti-gravity", "Xiao Ke").
  */
-export type LaneNames = { exact: readonly string[]; heard: readonly string[] };
+export type LaneNames = { readonly exact: readonly string[]; readonly heard: readonly string[] };
+/** One lane's names (杰咪's wake-name table, 2026-11-15): the same shape as LaneNames. */
+export type LaneNameEntry = LaneNames;
+/** Route lane → its names: the built-ins' (LANE_NAMES) and the configured lanes'. */
+export type LaneNamesTable = Readonly<
+  Record<DefaultRouteLane, LaneNameEntry> & Partial<Record<string, LaneNameEntry>>
+>;
 export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
   codex: {
     // coco: the owner's name for codex (2026-11-14), written coco, never 可可.
     exact: ["codex", "coco"],
     heard: [
+      "Q扣",
       "可可",
       "cocoa",
       "koko",
@@ -92,6 +99,7 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
       "杰米",
       "洁咪",
       "解密",
+      "杰明",
       "ajy",
       "aji",
       "反重力",
@@ -105,7 +113,8 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
   },
   chat: {
     // 小克: the lane's name (2026-11-14), also its @mention (polish.ts wakeMention).
-    exact: ["xiaoke", "小可", "小克"],
+    // Project/branch names also route to chat lane (lianki, liagent, agent-yes, otoji).
+    exact: ["xiaoke", "小可", "小克", "lianki", "liagent", "agent-yes", "otoji"],
     // 小客, 小课: how STT wrote 小克 for him (owner, 2026-11-14).
     heard: ["xiaoko", "shiaoke", "小客", "小课", "小科", "小柯", "晓可", "晓科", "小珂", "肖可"],
   },
@@ -126,6 +135,60 @@ export function laneNames(lane: RouteLane): LaneNames {
   );
   const exact = [...new Set([...base.exact, ...own])].filter((n) => n !== "main");
   return { exact, heard: [...new Set([...base.heard, ...(row.heard ?? [])])] };
+}
+
+/**
+ * The whole effective table: every route lane (routeLanes) with its names
+ * (laneNames). ONE source (owner, 2026-11-15): config `chat.lanes` rows on
+ * top of LANE_NAMES; the wake names are the rows' `aliases` (and `heard`).
+ */
+export function getEffectiveLaneNames(): LaneNamesTable {
+  return Object.fromEntries(routeLanes().map((l) => [l, laneNames(l)])) as LaneNamesTable;
+}
+
+/**
+ * Wake names from a name → lane-names object (the shape `chat.laneNames`
+ * had): an alias of the same data, written into the one lane table as
+ * `chat.lanes` rows (exact → aliases, heard → heard, replacing that row's
+ * wake names; the built-in names stay). `null` clears the table (the built-in names alone).
+ */
+export function setCustomLaneNames(
+  table: Partial<Record<RouteLane, Partial<LaneNameEntry>>> | null,
+): void {
+  if (!table) {
+    setLaneTable([]);
+    return;
+  }
+  const rows = [...laneTable()];
+  for (const [lane, names] of Object.entries(table)) {
+    if (!names) continue;
+    const id = laneOfRoute(lane);
+    const i = rows.findIndex((r) => r.id === id);
+    // Its wake names replace the row's; its name, voice and colour stay.
+    const row = {
+      ...(i >= 0 ? rows[i] : {}),
+      id,
+      aliases: [...(names.exact ?? [])],
+      heard: [...(names.heard ?? [])],
+    };
+    if (i >= 0) rows[i] = row;
+    else rows.push(row);
+  }
+  setLaneTable(rows);
+}
+
+/**
+ * All wake words and aliases across all lanes, for STT hotword lists or
+ * prompts (stt-hint.ts formatSttPrompt): from the one effective table.
+ */
+export function laneHotwords(table: LaneNamesTable = getEffectiveLaneNames()): string[] {
+  const words = new Set<string>();
+  for (const names of Object.values(table)) {
+    if (!names) continue;
+    for (const name of names.exact) words.add(name);
+    for (const name of names.heard) words.add(name);
+  }
+  return [...words];
 }
 
 /** What may come before the name: a wake word, a greeting, an @. */

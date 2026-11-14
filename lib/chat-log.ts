@@ -11,7 +11,7 @@
  * request can name another account.
  */
 import { holderIds } from "./account-permission";
-import { OWNER_THREAD, isUserId } from "./dev-eval";
+import { isDispatchThread, isUserId } from "./dev-eval";
 import {
   CHAT_LOG_MAX_LINES,
   type ChatLogAnswer,
@@ -66,12 +66,12 @@ const lineOf = (r: Row): ChatHistoryLine => ({
   answer: r.answer,
 });
 
-/** The owner thread's accounts: those holding `dev` (the owner chat thread, lib/permissions.ts). */
+/** The dispatch thread's accounts: those holding `dev` (lib/permissions.ts). */
 export const ownerIds = (db: ChatLogDb): Promise<string[]> => holderIds(db, "dev");
 
-/** The accounts a thread's lines belong to: the owners for "owner", else that user. */
+/** The accounts a thread's lines belong to: the `dev` holders for the dispatch thread, else that user. */
 export async function accountsOf(db: ChatLogDb, thread: string): Promise<string[]> {
-  if (thread === OWNER_THREAD) return ownerIds(db);
+  if (isDispatchThread(thread)) return ownerIds(db);
   if (!isUserId(thread)) return [];
   // A user's own thread is theirs alone; an owner's pages always use "owner".
   const u = await db
@@ -127,7 +127,7 @@ export async function chatLogOp(
   if (!Array.isArray(given) || given.length > CHAT_LOG_MAX_LINES)
     return { ok: false, error: "bad lines" };
   const lines = given.map(parseChatLogLine).filter((l): l is ChatLogLine => !!l);
-  if (req.op === "backfill" && req.thread !== OWNER_THREAD)
+  if (req.op === "backfill" && !isDispatchThread(req.thread))
     return { ok: false, error: "backfill is for the owner's thread" };
   const users = await accountsOf(db, req.thread);
   if (!users.length) return { ok: true, written: 0 };

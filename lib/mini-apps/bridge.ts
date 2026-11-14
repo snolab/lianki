@@ -137,3 +137,6 @@ export function createBridge(d: BridgeDeps) {
 
   return { handle, grants: () => grants };
 }
+
+/** host → app: the site's theme now (the SDK sets <html data-theme>). */
+export const themeEvent = (theme: "light" | "dark") => ({ lk: PROTOCOL, event: "theme", theme });

@@ -214,6 +214,7 @@ import {
   type Identity,
   MAX_LABEL,
   type NodeGrant,
+  // The dispatch thread (lib/dev-eval.ts DISPATCH_THREAD): every `dev` holder's pages.
   OWNER_THREAD,
   ROOT_NODE,
   PAGE_ENDED,

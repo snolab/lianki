@@ -4,7 +4,7 @@
  * refresh, against PRODUCTION D1 — for the owner's phone on the home LAN.
  * docs/dev-whole-page.md has the why, the security model and the runbook.
  *
- *   bun scripts/dev/whole-page.ts serve [--host 192.168.31.96] [--port 3100] [--origin https://<mac>.ts.net:8443]
+ *   bun scripts/dev/whole-page.ts serve [--host 192.168.1.10] [--port 3100] [--origin https://<mac>.ts.net:8443]
  *       --origin: the address the phone opens, when it is not http://<host>:<port>
  *       — the `tailscale serve` HTTPS front (docs/dev-whole-page.md, "HTTPS").
  *       Starts `next dev` on 127.0.0.1:<port+1> (remote D1/R2 via
@@ -147,7 +147,7 @@ async function portFree(port: number, ms: number): Promise<boolean> {
 const OWNERS_CACHE_MS = 30_000;
 
 async function serve() {
-  const host = arg("host", "192.168.31.96");
+  const host = arg("host", "192.168.1.10");
   const port = Number(arg("port", "3100"));
   const inner = port + 1;
   const control = port + 2;
@@ -211,6 +211,13 @@ async function serve() {
     LIANKI_DEV_WHOLE_PAGE: "1",
     LIANKI_DEV_PUBLIC_HOST: publicHost,
     LIANKI_DEV_GUARD_SECRET: state.guardSecret,
+    // The owner's own hosts for the bundle's defaults (never in the repository):
+    // public, non-secret values from the environment `serve` was started with.
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([k, v]) => k.startsWith("NEXT_PUBLIC_LIANKI_") && typeof v === "string",
+      ),
+    ),
     // Outgoing only: /api/my/recordings forwards to lianki.com with it
     // (lib/recordings-bridge.ts). Not DEV_BRIDGE_SECRET, so nothing here accepts it.
     LIANKI_DEV_BRIDGE_SECRET: state.bridgeSecret,
