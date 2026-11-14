@@ -284,9 +284,38 @@ export const CLOSED_PAGE_CSP = `default-src 'none'; style-src 'sha256-${PAGE_CSS
 const escAttr = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+/**
+ * The page's language from the visitor's Accept-Language: Chinese when their
+ * most preferred language is, English otherwise and when none is sent (owner,
+ * 2026-11-15: English is the default language).
+ */
+export function closedPageLang(acceptLanguage?: string | null): "zh" | "en" {
+  const first = (acceptLanguage ?? "")
+    .split(",")
+    .map((part, i) => {
+      const [tag = "", ...params] = part.trim().split(";");
+      const q = Number(
+        params
+          .find((x) => x.trim().startsWith("q="))
+          ?.trim()
+          .slice(2) ?? 1,
+      );
+      return { tag: tag.trim().toLowerCase(), q: Number.isFinite(q) ? q : 0, i };
+    })
+    .filter((x) => x.tag && x.tag !== "*" && x.q > 0)
+    .sort((a, b) => b.q - a.q || a.i - b.i)[0];
+  return first && /^zh(-|$)/.test(first.tag) ? "zh" : "en";
+}
+
 /** The 503 page for a navigation without a session: the way in is lianki.com, for the owner. */
-export function closedPageHtml(pathAndQuery: string): string {
+export function closedPageHtml(pathAndQuery: string, acceptLanguage?: string | null): string {
   const href = escAttr(previewEntryUrl(pathAndQuery));
+  if (closedPageLang(acceptLanguage) === "en")
+    return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex"><title>Lianki preview build</title><style>${PAGE_CSS}</style>
+<main><h1>Lianki preview build · <span lang="zh">预览版</span></h1>
+<p>This is the owner's preview build. Enter it from lianki.com.</p>
+<p lang="zh">这是开发者自用的预览版，需要从 lianki.com 进入。</p>
+<a href="${href}" rel="noreferrer">Enter via lianki.com / <span lang="zh">从 lianki.com 进入预览版</span></a></main>`;
   return `<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex"><title>Lianki 预览版</title><style>${PAGE_CSS}</style>
 <main><h1>Lianki 预览版 · Preview build</h1>
 <p>这是开发者自用的预览版，需要从 lianki.com 进入。</p>
@@ -636,11 +665,15 @@ export function createGate(d: GateDeps) {
     if (!isNavigation(req)) return closed(why);
     log(`gate: 503 page (${why})`);
     const u = new URL(req.url, "http://x");
-    return respond(503, closedPageHtml(`${u.pathname}${u.search}`), {
-      "content-type": "text/html; charset=utf-8",
-      "content-security-policy": CLOSED_PAGE_CSP,
-      "x-frame-options": "DENY",
-    });
+    return respond(
+      503,
+      closedPageHtml(`${u.pathname}${u.search}`, one(req.headers["accept-language"])),
+      {
+        "content-type": "text/html; charset=utf-8",
+        "content-security-policy": CLOSED_PAGE_CSP,
+        "x-frame-options": "DENY",
+      },
+    );
   };
 
   async function stillActive(tid: string): Promise<boolean> {
