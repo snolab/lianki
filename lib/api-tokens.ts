@@ -53,6 +53,10 @@ export const SCOPES = [
   // tools; docs/state-tree.md): a site owner's token only (OWNER_SCOPES). The
   // hub takes it as the root grant acting as the token's name (the lane).
   { id: "progress", group: "owner" },
+  // Read the account's own mic recordings (docs/recordings.md): list, transcripts,
+  // audio, a day's archive (scripts/dev/recordings-pull.ts). Never write or delete.
+  // A `dev` account's token only (OWNER_SCOPES), at most EVAL_MAX_DAYS.
+  { id: "recordings:read", group: "owner" },
 ] as const;
 
 export type ScopeId = (typeof SCOPES)[number]["id"];
@@ -66,8 +70,8 @@ export const FORBIDDEN_SCOPES = ["pair", "grant", "admin", "answer", "owner"] as
  * creation and at every use). Anyone else is never offered them, and a
  * request naming one is refused as if it did not exist.
  */
-export const OWNER_SCOPES: readonly ScopeId[] = ["eval", "progress"];
-/** A token holding `eval` lives at most this long (owner's decision, 2026-11-07); `progress` alone is not capped. */
+export const OWNER_SCOPES: readonly ScopeId[] = ["eval", "recordings:read", "progress"];
+/** A token holding `eval` or `recordings:read` lives at most this long (owner's decision, 2026-11-07); `progress` alone is not capped. */
 export const EVAL_MAX_DAYS = 30;
 
 /** What a row from before scopes may do. */

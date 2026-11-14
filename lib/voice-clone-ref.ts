@@ -60,6 +60,13 @@ const MAX_B64 = Math.ceil(CLONE_REF_LIMITS.maxBytes / 3) * 4;
 export const MAX_PUT_BODY = MAX_B64 + CLONE_REF_LIMITS.maxTextChars * 6 + 4_096;
 
 export type WavInfo = { sampleRate: number; durationMs: number; bytes: number };
+/** What parseWav holds a file to (lib/recordings.ts passes its own). */
+export type WavLimits = {
+  maxBytes: number;
+  minMs: number;
+  maxMs: number;
+  sampleRates: readonly number[];
+};
 
 const u32 = (b: Uint8Array, o: number) =>
   (b[o]! | (b[o + 1]! << 8) | (b[o + 2]! << 16) | (b[o + 3]! << 24)) >>> 0;
@@ -69,8 +76,7 @@ const tag = (b: Uint8Array, o: number) =>
 const ALLOWED_CHUNKS = ["fmt ", "LIST", "data"];
 
 /** A WAV exactly as accepted, or why not. Reads only the header and chunk table. */
-export function parseWav(b: Uint8Array): WavInfo | string {
-  const L = CLONE_REF_LIMITS;
+export function parseWav(b: Uint8Array, L: WavLimits = CLONE_REF_LIMITS): WavInfo | string {
   if (b.length > L.maxBytes) return "too large";
   if (b.length < 44) return "not a wav";
   if (tag(b, 0) !== "RIFF" || tag(b, 8) !== "WAVE") return "not a wav";

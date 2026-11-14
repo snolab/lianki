@@ -313,8 +313,8 @@ and URLs cannot choose the payer or provider. The model sees only bounded text
 and recent context, never grants, paths, audio, attachments or account tokens.
 
 One fixed model call classifies household/background speech, identifies turn
-boundaries and suggests punctuation/stutter cleanup. `polishCheck` rejects
-semantic drift, including removed negations. Only a high-confidence unrelated
+boundaries and suggests a polish. The polish is unrestricted (owner,
+2026-11-14): any non-empty text is kept as the suggestion. Only a high-confidence unrelated
 verdict suppresses a turn. Unavailable RPC, no credits, invalid results, limits
 and timeouts report `prepare-unavailable` and forward the assembled raw turn.
 `--ai off` disables cloud calls and keeps bounded raw assembly. `chat prepare`
@@ -351,10 +351,11 @@ bun scripts/dev/eval.ts chat --no-pair |
 
 Only this explicit owner-grant path writes messages. It calls existing
 `eval.ts edit --no-pair` or `edit --merge` with ordered IDs, verifies the returned
-ID/text/run, and preserves the existing identity, recent-message, settled
-speech, consecutive-run, raw and undo guards. Rejected writes emit
-`polish-refused`; raw remains the task authority. There is no summary fallback
-or relaxed word guard. Ordinary account tokens get suggestions only, never a
+ID/text/run, and keeps the identity (owner grant), settled-speech,
+consecutive-run, raw and undo rules. There are no word or recent-message
+limits on a polish (owner, 2026-11-14). Rejected writes emit
+`polish-refused`; raw remains the task authority. There is no summary
+fallback. Ordinary account tokens get suggestions only, never a
 new edit capability. Expected self-edits are registered before the request,
 so a broadcast before its acknowledgement cannot cause another task. The echo
 cache is bounded to 64 fingerprints/60 seconds. UI writes run in parallel;

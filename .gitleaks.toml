@@ -18,6 +18,11 @@ paths = [
 # handshake test in 987e0972. CI's checkout fetches every branch, so one pushed
 # copy fails the scan on every PR; it is public and never a secret.
 regexes = [
+  # The HKDF salt and info labels of the recordings' at-rest key
+  # (lib/recordings.ts, a5d76125, #946): `RECORDINGS_KEY_SALT = "lianki/recordings"`
+  # is read as a generic API key because of the name. Labels, not secrets;
+  # pushed history, so they stay allowed.
+  '''^lianki/recordings(/at-rest/v\d+)?$''',
   '''sk_live_abcdefghijklmnop1234''',
   '''dGhlIHNhbXBsZSBub25jZQ==''',
   # A fake cloudflared run token ({"a":"RUN-TOKEN-SECRET"} in base64), the

@@ -69,7 +69,6 @@ export {
   type MessageSource,
   type EditMark,
   type EditedEvent,
-  MAX_EDITS,
   EDITABLE_LINES,
   type SummaryMark,
   type PassageMark,

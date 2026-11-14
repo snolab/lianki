@@ -389,6 +389,24 @@ const dictionary = {
       mr: "प्रगती कळवणे: वापरकर्त्याच्या थेट कामांच्या यादीत कामे जोडणे आणि अद्ययावत करणे, नेहमी या टोकनच्या नावाने. वापरकर्त्याने तिथे काम नोंदवायला सांगितले असेल तेव्हाच.",
       ko: "진행 상황 보고: 사용자의 실시간 작업 목록에 작업을 추가하고 갱신합니다. 항상 이 토큰의 이름으로 기록됩니다. 사용자가 거기에 작업을 기록하라고 했을 때만 사용하세요.",
     }),
+    scopeRecordingsRead: t({
+      en: "Read mic recordings: download the user's own kept microphone recordings and transcripts (GET /api/my/recordings) for processing on their own computer. Read only; recordings may contain other people's voices, so keep them private and never upload them anywhere.",
+      zh: "读取麦克风录音：下载用户自己保存的麦克风录音和文字（GET /api/my/recordings），在用户自己的电脑上处理。只读；录音里可能有别人的声音，所以要保密，绝不上传到任何地方。",
+      hi: "माइक रिकॉर्डिंग पढ़ना: उपयोगकर्ता की अपनी सहेजी गई माइक रिकॉर्डिंग और लिखित पाठ (GET /api/my/recordings) डाउनलोड करें, ताकि उनके अपने कंप्यूटर पर काम हो सके। सिर्फ़ पढ़ना; रिकॉर्डिंग में दूसरे लोगों की आवाज़ हो सकती है, इसलिए उन्हें निजी रखें और कहीं भी अपलोड न करें।",
+      es: "Leer grabaciones del micrófono: descargar las grabaciones guardadas del propio usuario y sus transcripciones (GET /api/my/recordings) para procesarlas en su propio ordenador. Solo lectura; pueden contener voces de otras personas, así que mantenlas privadas y no las subas nunca a ningún sitio.",
+      fr: "Lire les enregistrements du micro : télécharger les enregistrements conservés de l'utilisateur et leurs transcriptions (GET /api/my/recordings) pour les traiter sur son propre ordinateur. Lecture seule ; ils peuvent contenir la voix d'autres personnes, gardez-les privés et ne les téléversez jamais nulle part.",
+      ar: "قراءة تسجيلات الميكروفون: تنزيل تسجيلات المستخدم المحفوظة ونصوصها (GET /api/my/recordings) لمعالجتها على حاسوبه. للقراءة فقط؛ قد تحتوي على أصوات أشخاص آخرين، لذا أبقِها خاصة ولا ترفعها إلى أي مكان أبدًا.",
+      bn: "মাইকের রেকর্ডিং পড়া: ব্যবহারকারীর নিজের রাখা মাইকের রেকর্ডিং আর লেখা (GET /api/my/recordings) নামানো, তাঁর নিজের কম্পিউটারে কাজের জন্য। শুধু পড়া; রেকর্ডিংয়ে অন্যদের কণ্ঠ থাকতে পারে, তাই গোপন রাখুন এবং কোথাও আপলোড করবেন না।",
+      pt: "Ler gravações do microfone: baixar as gravações guardadas do próprio usuário e suas transcrições (GET /api/my/recordings) para processar no computador dele. Só leitura; podem conter vozes de outras pessoas, então mantenha-as privadas e nunca as envie para lugar nenhum.",
+      ru: "Чтение записей с микрофона: скачивать сохранённые записи пользователя и их расшифровки (GET /api/my/recordings) для обработки на его компьютере. Только чтение; в записях могут быть голоса других людей, поэтому храните их приватно и никуда не загружайте.",
+      ur: "مائیک ریکارڈنگز پڑھنا: صارف کی اپنی محفوظ مائیک ریکارڈنگز اور تحریر (GET /api/my/recordings) ڈاؤن لوڈ کریں تاکہ ان کے اپنے کمپیوٹر پر کام ہو۔ صرف پڑھنا؛ ان میں دوسرے لوگوں کی آوازیں ہو سکتی ہیں، اس لیے انہیں نجی رکھیں اور کبھی کہیں اپلوڈ نہ کریں۔",
+      id: "Membaca rekaman mikrofon: mengunduh rekaman mikrofon milik pengguna beserta transkripnya (GET /api/my/recordings) untuk diolah di komputernya sendiri. Hanya baca; rekaman bisa berisi suara orang lain, jadi jaga kerahasiaannya dan jangan pernah mengunggahnya ke mana pun.",
+      de: "Mikrofonaufnahmen lesen: die gespeicherten Aufnahmen der Person und ihre Transkripte herunterladen (GET /api/my/recordings), um sie auf ihrem eigenen Computer zu verarbeiten. Nur lesen; sie können Stimmen anderer enthalten, also privat halten und nie irgendwohin hochladen.",
+      ja: "マイクの録音を読む：ユーザー本人が保存したマイク録音と文字起こし（GET /api/my/recordings）を、本人のパソコンで処理するためにダウンロードする。読み取りのみ。他の人の声が入っていることがあるので、非公開のままにし、どこにもアップロードしないでください。",
+      sw: "Kusoma rekodi za maikrofoni: kupakua rekodi za maikrofoni za mtumiaji mwenyewe na maandishi yake (GET /api/my/recordings) ili zichakatwe kwenye kompyuta yake. Kusoma tu; zinaweza kuwa na sauti za watu wengine, kwa hivyo zihifadhi kwa siri na usizipakie popote kamwe.",
+      mr: "माइक रेकॉर्डिंग वाचणे: वापरकर्त्याची स्वतःची जतन केलेली माइक रेकॉर्डिंग आणि मजकूर (GET /api/my/recordings) त्यांच्या स्वतःच्या संगणकावर प्रक्रियेसाठी डाउनलोड करणे. फक्त वाचणे; त्यात इतरांचे आवाज असू शकतात, म्हणून ते खाजगी ठेवा आणि कधीही कुठेही अपलोड करू नका.",
+      ko: "마이크 녹음 읽기: 사용자 본인이 보관한 마이크 녹음과 받아쓴 글(GET /api/my/recordings)을 본인 컴퓨터에서 처리하려고 내려받습니다. 읽기 전용이며, 다른 사람의 목소리가 들어 있을 수 있으니 비공개로 두고 어디에도 올리지 마세요.",
+    }),
     cannot: t({
       en: "No token can make or revoke tokens, change the account, approve anything, or reach anyone else's data. A request outside these permissions is refused.",
       zh: "任何令牌都不能创建或撤销令牌、修改账户、批准任何事情，也不能访问别人的数据。超出这些权限的请求会被拒绝。",
@@ -1065,6 +1083,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "List item under 'What this token may do', only for the site owner's tokens with the 'Run code on your pages' permission: it is for Lianki's own developer tools, not this API, and the assistant must never use it unless asked for exactly that. Serious, a warning.",
   scopeProgress:
     "List item under 'What this token may do' in the AI-assistant instructions, only for the site owner's tokens with the 'Report progress to your task list' permission: the assistant may add and update tasks on the user's live task list (a tree of tasks with time estimates that his AI agents report to), always under the token's name, and only when the user asked it to track work there. Starts with the permission's name and a colon.",
+  scopeRecordingsRead:
+    "List item under 'What this token may do', only for the site owner's tokens with the 'Read your mic recordings' permission: download the user's own kept microphone recordings and transcripts from GET /api/my/recordings, to process them on their own computer; read only; they can hold other people's voices, so keep them private and never upload them. Starts with the permission's name and a colon; keep the API path as is.",
   cannot:
     "Paragraph after the permission list in the AI-assistant instructions: things no token can ever do (make or revoke tokens, change the account, approve anything, reach other people's data), and that requests outside the permissions are refused. Factual.",
   cardsHeading:

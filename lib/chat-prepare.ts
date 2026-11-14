@@ -8,7 +8,6 @@ import { metered } from "./payments/metered";
 import { textUsd, HOLD_TOKENS_PER_CHAR } from "./payments/prices";
 import { loadConfig } from "./config-store";
 import { defaultConfig } from "./config";
-import { polishCheck } from "../packages/debug-chat/src/polish";
 import { hit } from "./security/throttle";
 
 export const PREPARE_PROMPT = `Prepare one turn for a personal assistant from a live transcript. Never answer it.
@@ -73,21 +72,16 @@ export function parsePrepare(raw: unknown): PrepareInput | null {
   };
 }
 
-export function prepareVerdict(raw: unknown, input: PrepareInput): PrepareVerdict {
+export function prepareVerdict(raw: unknown, _input: PrepareInput): PrepareVerdict {
   if (!raw || typeof raw !== "object") return { ...PREPARE_FORWARD };
   const r = raw as Record<string, unknown>;
   const ignored =
     r.action === "ignore" &&
     r.confidence === "high" &&
     ["household", "background", "unrelated"].includes(String(r.reason));
+  // Polish is unrestricted (owner, 2026-11-14): any non-empty text within the size cap.
   const polished =
-    typeof r.polished === "string" &&
-    r.polished.length <= 6000 &&
-    polishCheck(
-      input.text,
-      r.polished,
-      input.context.map((h) => h.text),
-    ).ok
+    typeof r.polished === "string" && r.polished.trim() && r.polished.length <= 6000
       ? r.polished
       : undefined;
   return {

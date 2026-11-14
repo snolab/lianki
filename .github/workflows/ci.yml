@@ -77,7 +77,7 @@ jobs:
           mkdir -p ~/.cache/gitleaks-bin
           tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C ~/.cache/gitleaks-bin gitleaks
       - name: Secret scan (gitleaks)
-        run: ~/.cache/gitleaks-bin/gitleaks git . --no-banner --redact
+        run: ~/.cache/gitleaks-bin/gitleaks git . --no-banner --redact -v
       # No Node toolchain here: the unit suites run on `bun test`, and bun
       # implements node:sqlite natively (no --experimental-sqlite flag). The
       # integration job still needs Node, because wrangler requires it.

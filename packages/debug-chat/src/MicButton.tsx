@@ -33,6 +33,7 @@ import { silenceHere } from "./speak-rules";
 import { voiceLatency, noteSttVia } from "./latency";
 import { type SttTag, sttTagOf } from "./wire";
 import { postSessionClip } from "./clips-store";
+import { createRecorder, pageRecorder } from "./recorder";
 import { createLocalStt } from "./local-stt";
 import {
   PUBLIC_CONNECT_TIMEOUT_MS,
@@ -475,6 +476,10 @@ const wakeOff = () => {
   }
 };
 
+/** The page's recorder (recorder.ts): one per page, shared by every mic session. */
+const recorder = (v: { log(ev: Record<string, unknown>): void }) =>
+  pageRecorder(() => createRecorder({ fetch: globalThis.fetch.bind(globalThis), log: (ev) => v.log(ev) }));
+
 /** The page's mic session, built with this module's browser pieces (mic-session.ts). */
 function session(): MicSession {
   const v = voice();
@@ -555,6 +560,17 @@ function session(): MicSession {
         : createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner", filter: filterSwitch() }),
     speaker: noteSpeaker,
     filtered: (r) => void v.log({ ev: "voice-filtered", mode: "passive", n: noteFiltered("filtered", r).n, ...r }),
+    // The account's recordings (recorder.ts, docs/recordings.md): every finished utterance
+    // while the mic is on, queued and sent in the background when the account has them on.
+    // A passive one goes for its text only to his own local STT, never a public speech
+    // server, and only once the account is known to have recordings on.
+    record: {
+      keep: (r) => recorder(v).add({ ...r, device: voiceDevice() }),
+      local: (cfg) =>
+        !!cfg.localStt &&
+        (isMixedRoutes(cfg.localStt) || !isPublicRoutes(cfg.localStt)) &&
+        recorder(v).enabled(),
+    },
     // The "Linky" spotter: made (and downloaded) the first time the mic goes passive.
     // Only with the wake word switched on (lk:agent-wake = "1"); off by default, never passive.
     kws: wakeOff() ? undefined : (onState) => createKws({ log: (ev) => v.log(ev), onState }),

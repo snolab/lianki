@@ -83,7 +83,14 @@ describe("signOut (the menu's Sign out)", () => {
       expect(await signOut("/en")).toBe(true);
       expect(replaced).toEqual(["/", "/en"]);
     } finally {
-      Object.assign(g, saved);
+      // One at a time: a global another file made read-only must not fail the restore.
+      for (const [k, v] of Object.entries(saved)) {
+        try {
+          g[k] = v;
+        } catch {
+          /* read-only here: left as is */
+        }
+      }
     }
   });
 
@@ -111,7 +118,14 @@ describe("signOut (the menu's Sign out)", () => {
       expect(t.calls[0].url).toBe(SIGN_OUT_PATH);
     } finally {
       setSignOutSession(undefined);
-      Object.assign(g, saved);
+      // One at a time: a global another file made read-only must not fail the restore.
+      for (const [k, v] of Object.entries(saved)) {
+        try {
+          g[k] = v;
+        } catch {
+          /* read-only here: left as is */
+        }
+      }
     }
   });
 

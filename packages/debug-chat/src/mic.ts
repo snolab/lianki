@@ -777,6 +777,32 @@ export type UploadInfo = {
   onSignals?: (s: SttSignals | undefined) => void;
 };
 /**
+ * One finished utterance for the account's recordings (recorder.ts;
+ * docs/recordings.md): its audio, as encoded for STT, and the transcript the
+ * mic already had for it. `source`: whose text it is — the local STT's
+ * ("local"), the chat's cloud route ("cloud"), or none ("none": the Mac was not
+ * reachable, or its filter decoded nothing). Nothing is transcribed for it.
+ */
+export type MicRecord = {
+  wav: Uint8Array;
+  durationMs: number;
+  /** When the utterance ended (ms since the epoch). */
+  at: number;
+  text: string;
+  source: "local" | "cloud" | "none";
+  mode: "active" | "passive";
+  speaker?: SpeakerTag["decision"];
+};
+/** A clip with no transcript is kept only from this long on (shorter: a click or a cough). */
+export const RECORD_BARE_MIN_MS = 500;
+/**
+ * Where finished utterances go to be kept (recorder.ts). `local()`: a passive
+ * utterance (not for the chat) may go to the local STT for its transcript —
+ * only the owner's own Mac, never a speech server of someone else's.
+ */
+export type MicRecordSink = { keep(r: MicRecord): void; local?(): boolean };
+
+/**
  * The wake-word gate (wake.ts, docs/wake-word.md). While `passive()` is true
  * when an utterance starts, it is neither streamed nor sent in partials; at
  * its end `spot` checks it on-device, and only the words after "Linky" are
@@ -862,6 +888,13 @@ export function createMic(d: {
   speaker?: (tag: SpeakerTag | undefined, proof?: string) => void;
   /** A passive utterance the Mac's voiceprint filter stopped (the active ones: MicButton's upload). */
   filtered?: (v: FilterVerdict) => void;
+  /**
+   * The account's recordings (docs/recordings.md): every finished utterance
+   * while the mic is on — active or passive, for the chat or not — goes here
+   * with its transcript. Never an echo of the agent, a cue, a misfire, an
+   * enrolment sentence, or a blip the silence guard or the cleaner dropped.
+   */
+  record?: MicRecordSink;
   /** The adaptive estimator (adaptive.ts); without it the endpoint is the fixed one. */
   adapt?: MicAdapt;
   /**
@@ -943,6 +976,54 @@ export function createMic(d: {
     d.onState(s);
   };
   const pending = () => d.onPending(q.pending(), q.interim());
+  /** Hand one utterance to the recordings; never throws into the mic. */
+  const keep = (r: MicRecord) => {
+    try {
+      d.record?.keep(r);
+    } catch (e) {
+      d.log?.({ ev: "record-keep-failed", error: String((e as Error)?.message ?? e) });
+    }
+  };
+  /** A clip without a transcript: kept when long enough to be speech. */
+  const keepBare = (wav: Uint8Array, durationMs: number, at: number, mode: MicRecord["mode"]) => {
+    if (durationMs >= RECORD_BARE_MIN_MS)
+      keep({ wav, durationMs, at, text: "", source: "none", mode });
+  };
+  /**
+   * A passive utterance (not for the chat): kept with the local STT's text
+   * for it, asked for here when `final` is not given and the sink allows it.
+   * Its own voice or another's; a filtered one (the Mac decoded nothing) is
+   * kept without text.
+   */
+  const keepPassive = (audio: Float32Array, final?: Promise<LocalFinal>) => {
+    if (!d.record) return;
+    const wav = encodeWav(audio);
+    const at = now();
+    const durationMs = toMs(audio.length);
+    const s = d.record.local?.() ? d.stream?.() : undefined;
+    const f = final ?? (s?.connected?.() ? s.begin(() => {})?.end(audio) : undefined);
+    if (!f) return keepBare(wav, durationMs, at, "passive");
+    f.then(
+      (x) => {
+        if (x.filtered || !x.text.trim()) {
+          if (x.filtered) keepBare(wav, durationMs, at, "passive");
+          return;
+        }
+        const c = cleanTranscript(x.text, STT_PROMPTS, x.signals?.decoder !== "ctc");
+        if (c.drop || !c.text.trim() || isHallucinationPhrase(c.text)) return;
+        keep({
+          wav,
+          durationMs,
+          at,
+          text: c.text,
+          source: "local",
+          mode: "passive",
+          speaker: x.speaker?.decision,
+        });
+      },
+      () => keepBare(wav, durationMs, at, "passive"),
+    );
+  };
   const report = () => {
     for (const r of q.takeRuns()) {
       if (!r.parts) {
@@ -1210,7 +1291,10 @@ export function createMic(d: {
               q.resolve(seq, null);
               report();
             };
-            if (!r.hit) return drop();
+            if (!r.hit) {
+              keepPassive(audio);
+              return drop();
+            }
             const wake = (f?: LocalFinal) => {
               w.onWake();
               if (!r.rest.length) return drop();
@@ -1228,6 +1312,7 @@ export function createMic(d: {
             local.then(
               (f) => {
                 if (f.speaker?.decision !== "other" && !f.filtered) return wake(f);
+                keepPassive(audio, Promise.resolve(f));
                 if (f.filtered) d.filtered?.(f.filtered);
                 otherDrops++;
                 d.log?.({
@@ -1243,6 +1328,7 @@ export function createMic(d: {
             );
           },
           () => {
+            keepPassive(audio);
             q.resolve(seq, null);
             report();
           },
@@ -1266,12 +1352,16 @@ export function createMic(d: {
     /** The Mac's speaker check on it; "other" in active mode counts towards passive. */
     let spk: SpeakerTag | undefined;
     let proof: string | undefined;
+    /** The local final, once it came (the recordings' source and its filter). */
+    let localF: LocalFinal | undefined;
+    const endAt = now();
     let parts: LocalPart[] | undefined;
     let localText: string | undefined;
     local?.then(
       (f) => {
         spk = f.speaker;
         proof = f.proof;
+        localF = f;
         parts = f.parts;
         localText = f.text;
       },
@@ -1336,11 +1426,42 @@ export function createMic(d: {
               drop ? "hallucination" : !text.trim() ? "empty" : other ? "other" : "ok",
             );
           q.resolve(seq, drop ? null : text, split);
+          // The recordings: the text the chat got, or none when the Mac's filter
+          // stopped it (someone else's voice: kept, untranscribed). Not the
+          // agent's echo, not a blip or a hallucination the guards dropped.
+          if (!d.record || echo) return;
+          const durationMs = toMs(audio.length);
+          if (localF?.filtered) return keepBare(wav, durationMs, endAt, "active");
+          if (drop || !text.trim()) return;
+          keep({
+            wav,
+            durationMs,
+            at: endAt,
+            text,
+            source: localF ? "local" : "cloud",
+            mode: "active",
+            speaker: spk?.decision,
+          });
         },
         (e) => {
           d.timing?.(seq, { t_sttDone: now(), dropped: true });
           q.resolve(seq, null);
           fail(e);
+          // Not transcribed: kept with the local text if it came, else bare.
+          if (!d.record) return;
+          const durationMs = toMs(audio.length);
+          const t = localF && !localF.filtered ? localF.text.trim() : "";
+          if (t)
+            keep({
+              wav,
+              durationMs,
+              at: endAt,
+              text: t,
+              source: "local",
+              mode: "active",
+              speaker: spk?.decision,
+            });
+          else keepBare(wav, durationMs, endAt, "active");
         },
       )
       .finally(report);
