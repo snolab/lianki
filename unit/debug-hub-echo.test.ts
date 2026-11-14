@@ -147,6 +147,11 @@ describe("echoes", () => {
       edited: { by: AUTO_POLISH_BY, count: 0 },
       echo: { reason: "echo", kind: "other-device", of: "v1", by: AUTO_POLISH_BY },
     });
+    const ack = b.last("chat-ack");
+    expect(ack).toEqual({ type: "chat-ack", id: "v2", seq: 2 });
+    await s.msg(b, s.voice("v2", "我们明天去公园散布吧。"));
+    expect(b.last("chat-ack")).toEqual(ack);
+    expect(s.posted().map((x) => x.id)).toEqual(["v1"]);
     // Undo (the page's unmerge with the echo's id): posted as heard.
     await s.msg(a, { type: "unmerge", id: "v2" });
     expect(s.posted().map((x) => x.id)).toEqual(["v1", "v2"]);
