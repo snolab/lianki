@@ -123,3 +123,41 @@ export function handoff(lane: RouteLane, l: Line, repo: string): string {
     "It posts as your lane (your name, mark and voice) with your own lane token; never read or print the token. Do not hand this to another lane.",
   ].join("\n");
 }
+
+/** The skill every lane's agent reads once; after that the hand-offs stay short. */
+export const HANDOFF_SKILL = ".agents/skills/lane-listen/SKILL.md";
+
+/**
+ * One owner line as a bullet of a brief hand-off: the id to answer with, "@你"
+ * when he said this lane's name (lane-route.ts), then his words (owner,
+ * 2026-11-14: every short line used to arrive as its own long message with the
+ * whole instruction block; the instructions now live in HANDOFF_SKILL).
+ */
+export function briefBullet(lane: RouteLane, l: Line): string {
+  if (l.etaLane === lane) return `- (state tree) ${l.text}`;
+  const test = testText(l);
+  if (test !== null) return `- (id:${l.id}) [lane-test] ${test}`;
+  const mine = routeLine(l.text).lanes.includes(lane);
+  return `- (id:${l.id})${mine ? " @你" : ""} ${l.text}`;
+}
+
+/**
+ * A brief hand-off for one or more lines (several when the agent was busy and
+ * they waited): a header with the lane and the newest line's time, one bullet
+ * per line, and — only the first time in this listener's life — where the
+ * rules are. ~2 lines per message instead of ~8.
+ */
+export function handoffBrief(
+  lane: RouteLane,
+  lines: readonly Line[],
+  repo: string,
+  first: boolean,
+): string {
+  const at = jst(lines.at(-1)?.at);
+  const out = [`【owner → ${lane}】${at} JST`, ...lines.map((l) => briefBullet(lane, l))];
+  if (first)
+    out.push(
+      `规则只读这一次：${join(repo, HANDOFF_SKILL)}（回复：bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} reply --as ${lane} --id <id> "…"）`,
+    );
+  return out.join("\n");
+}
