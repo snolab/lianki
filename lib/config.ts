@@ -307,6 +307,39 @@ export const CONFIG = {
     description:
       "润色后用你的克隆声音读一遍（开关 voice.polish-readback）：每一句等 Mac 上的克隆声音服务器最多多久（毫秒）。一句通常要 5–10 秒生成；超过这个时间就安静跳过这一句，不换别的声音读。",
   }),
+  // Whisper re-reads a whole continuous-speech run (packages/debug-chat/src/whisper-recheck.ts;
+  // flag stt.whisper-recheck; docs/dev-debug-widget.md, "Whisper re-listens to the whole run").
+  "stt.recheckMinSec": {
+    default: 1.5 as number,
+    schema: z.number().min(0).max(60),
+    min: 0,
+    max: 60,
+    unit: "s",
+    group: "voice",
+    audience: "server",
+    description:
+      "Whisper 整段重听（开关 stt.whisper-recheck）：合并后的一段话从开口到说完短于这么多秒就不重听（太短，重听没多大用）。",
+  },
+  "stt.recheckMaxSec": int({
+    default: 60,
+    min: 5,
+    max: 600,
+    unit: "s",
+    group: "voice",
+    audience: "server",
+    description:
+      "Whisper 整段重听：一段话从开口到说完长于这么多秒就不重听。Mac 的语音服务器每个连接在内存里最多留这么多秒的录音（启动参数 --recheck-max-sec 或环境变量 LIANKI_STT_RECHECK_MAX_SEC，默认 60）；这里调大时那边也要一起调大，否则长的一段 Mac 会回答听不全，照旧用流式识别的文字。",
+  }),
+  "stt.recheckTimeoutMs": int({
+    default: 8000,
+    min: 1000,
+    max: 60_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "Whisper 整段重听：一段话说完以后最多等 Mac 多久（毫秒）。这段时间里润色也在等；超时就不等了，照旧润色流式识别的文字。",
+  }),
   // Synchronized read-aloud across his devices (packages/debug-chat/src/sync-speak.ts;
   // docs/li-sound-hub.md, "Synchronized read-aloud"; flag voice.sync-speak).
   "voice.syncLeadMs": int({

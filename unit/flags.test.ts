@@ -68,6 +68,8 @@ describe("registry", () => {
       "voice.auto-polish",
       "voice.fold-others",
       "voice.echo-dedupe",
+      // His Mac's Whisper re-reads each run before its polish, asked 2026-11-15 03:17 JST, audience owner.
+      "stt.whisper-recheck",
       "stt.two-mic-merge",
       "chat.lane-events",
       "library.catalogue",

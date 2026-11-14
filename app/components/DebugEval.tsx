@@ -54,6 +54,7 @@ import { setLaneTable } from "@lianki/debug-chat/voices";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
+import type { RecheckAmend, RecheckConf } from "@lianki/debug-chat/whisper-recheck";
 import { hubClock, syncWait } from "@lianki/debug-chat/sync-speak";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
@@ -183,12 +184,18 @@ export function DebugEval({
   talkOver = false,
   polishReadback: readback,
   foldOthers = true,
+  whisperRecheck,
   box = null,
   account = null,
   cacheLines = 0,
 }: {
   /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
   foldOthers?: boolean;
+  /**
+   * Flag `stt.whisper-recheck` + dev: at a run's passage end his Mac's Whisper re-reads
+   * the run whole, and the line takes it before its polish (whisper-recheck.ts). None: off.
+   */
+  whisperRecheck?: RecheckConf;
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
   talkOver?: boolean;
   /**
@@ -1135,7 +1142,9 @@ export function DebugEval({
   };
 
   /** A plain message to the hub, on this page's socket. */
-  const sendHub = (m: { type: "passage-end" } | { type: "unmerge"; id: string }) => {
+  const sendHub = (
+    m: { type: "passage-end"; recheck?: RecheckAmend } | { type: "unmerge"; id: string },
+  ) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return;
     try {
@@ -1231,7 +1240,9 @@ export function DebugEval({
             cached={!fromHub && cachedLines.length > 0}
             onSend={sendChat}
             onAnswer={sendAnswer}
-            onPassageEnd={() => sendHub({ type: "passage-end" })}
+            onPassageEnd={(recheck) =>
+              sendHub({ type: "passage-end", ...(recheck ? { recheck } : {}) })
+            }
             onUnmerge={(id) => sendHub({ type: "unmerge", id })}
             nodes={state?.nodes}
             notice={
@@ -1311,6 +1322,7 @@ export function DebugEval({
             viewer={boxViewer(!!box, boxAccount, viewer)}
             fullScreen={fullScreen}
             foldOthers={foldOthers}
+            whisperRecheck={whisperRecheck}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
             backToClose={backToCloseChat}
           />
