@@ -46,6 +46,7 @@ import {
   type LiveEnv,
 } from "./lib/live-view/page-proxy";
 import { siblingRequestRefused } from "./lib/security/same-site-guard";
+import { isMiniHost, miniHostPath } from "./lib/mini-apps/origin";
 import { clearLegacyCookies, legacyCookieNames } from "./lib/security/legacy-session-cookies";
 import { anchorDue, type LianDb } from "./lib/lian/anchor";
 import { boxGate, type BoxEnv } from "./lib/box-oauth/gate";
@@ -84,6 +85,9 @@ const boxDeps = {
 export default {
   ...handler,
   fetch(req: Request, env: LiveEnv, ctx: Ctx): Promise<Response> {
+    // The mini apps' own host (docs/mini-apps.md): an app's file and /m/ files only.
+    if (isMiniHost(new URL(req.url).host) && !miniHostPath(new URL(req.url).pathname))
+      return Promise.resolve(new Response("Not found", { status: 404 }));
     if (siblingRequestRefused(req))
       return Promise.resolve(
         Response.json(

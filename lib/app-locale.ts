@@ -46,6 +46,8 @@ export const APP_ROUTES = [
   // /library: the catalogue; /books is the user's own shelf (docs/books-plan.md).
   "library",
   "list",
+  // /m/<slug>: the account's own mini apps (docs/mini-apps.md).
+  "m",
   // /mail/unsubscribe: a mail's one-click Unsubscribe page (docs/mail-templates.md).
   "mail",
   "membership",
