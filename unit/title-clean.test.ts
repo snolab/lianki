@@ -296,8 +296,8 @@ describe("the preference", () => {
     for (const bad of [
       "",
       "localhost",
-      "taku.onca-tint.ts.net",
-      "192.168.31.96",
+      "owner.example.ts.net",
+      "192.168.1.10",
       "127.0.0.1",
       "foo",
       "printer.local",

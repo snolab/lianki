@@ -1,0 +1,7 @@
+{
+  "slug": "calc",
+  "name": "Calculator",
+  "icon": "🧮",
+  "version": "0.1.0",
+  "permissions": ["storage", "chat:write", "chat:ask"]
+}

@@ -1,5 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { withIntlayer } from "next-intlayer/server";
+import { devOrigins } from "./lib/build/dev-origins.mjs";
+import { devSiteRewrites } from "./lib/build/dev-site-rewrites.mjs";
 
 /**
  * Code calling useIntlayer("key") or getIntlayer("key") imports that one
@@ -16,10 +18,7 @@ const nextConfig = {
   // The whole-page dev server (docs/dev-whole-page.md) is opened on its LAN
   // address, and a friend's dev box (devbox/README.md) on its tunnel host;
   // next dev refuses dev assets to other origins unless listed.
-  ...((process.env.LIANKI_DEV_WHOLE_PAGE === "1" || process.env.LIANKI_DEVBOX === "1") &&
-  process.env.BETTER_AUTH_BASE_URL
-    ? { allowedDevOrigins: [new URL(process.env.BETTER_AUTH_BASE_URL).hostname] }
-    : {}),
+  ...(devOrigins(process.env).length ? { allowedDevOrigins: devOrigins(process.env) } : {}),
   // Which build this is, inlined into server and client alike: a page whose
   // id differs from the one lianki-push announces is out of date (workers/push;
   // CI publishes this same value after each deploy).
@@ -28,6 +27,11 @@ const nextConfig = {
   },
   // Internal workspace package shipping TypeScript source (@lianki/core).
   transpilePackages: ["@lianki/core", "@lianki/debug-chat", "@lianki/ui-state", "@snomiao/rgui"],
+  // The whole-page dev server is its own app, 开发站 (lib/dev-site/pwa.ts):
+  // its manifest and service worker. None outside that server.
+  ...(devSiteRewrites(process.env).length
+    ? { rewrites: async () => ({ beforeFiles: devSiteRewrites(process.env) }) }
+    : {}),
   async headers() {
     return [
       {

@@ -1,3 +1,5 @@
+import { HUB_RPC_LIMITS } from "./hub-rpc-config";
+import { OWNER_REPLY_DELAY_MAX, OWNER_REPLY_DELAY_MS } from "./partner-ai-config";
 /**
  * The config registry: every user-meaningful number, text and icon whose live
  * value comes from the config store (lib/config-store.ts, D1 `config_values`)
@@ -23,7 +25,13 @@
  */
 import { z } from "zod";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
-import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
+import {
+  isProviderVoice,
+  lineVoiceOf,
+  parseLaneDef,
+  type ChatLaneDef,
+} from "@lianki/debug-chat/voices";
+import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
 
 export type ConfigAudience = "server" | "public";
@@ -298,6 +306,39 @@ export const CONFIG = {
     audience: "public",
     description:
       "润色后用你的克隆声音读一遍（开关 voice.polish-readback）：每一句等 Mac 上的克隆声音服务器最多多久（毫秒）。一句通常要 5–10 秒生成；超过这个时间就安静跳过这一句，不换别的声音读。",
+  }),
+  // Whisper re-reads a whole continuous-speech run (packages/debug-chat/src/whisper-recheck.ts;
+  // flag stt.whisper-recheck; docs/dev-debug-widget.md, "Whisper re-listens to the whole run").
+  "stt.recheckMinSec": {
+    default: 1.5 as number,
+    schema: z.number().min(0).max(60),
+    min: 0,
+    max: 60,
+    unit: "s",
+    group: "voice",
+    audience: "server",
+    description:
+      "Whisper 整段重听（开关 stt.whisper-recheck）：合并后的一段话从开口到说完短于这么多秒就不重听（太短，重听没多大用）。",
+  },
+  "stt.recheckMaxSec": int({
+    default: 60,
+    min: 5,
+    max: 600,
+    unit: "s",
+    group: "voice",
+    audience: "server",
+    description:
+      "Whisper 整段重听：一段话从开口到说完长于这么多秒就不重听。Mac 的语音服务器每个连接在内存里最多留这么多秒的录音（启动参数 --recheck-max-sec 或环境变量 LIANKI_STT_RECHECK_MAX_SEC，默认 60）；这里调大时那边也要一起调大，否则长的一段 Mac 会回答听不全，照旧用流式识别的文字。",
+  }),
+  "stt.recheckTimeoutMs": int({
+    default: 8000,
+    min: 1000,
+    max: 60_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "Whisper 整段重听：一段话说完以后最多等 Mac 多久（毫秒）。这段时间里润色也在等；超时就不等了，照旧润色流式识别的文字。",
   }),
   // Synchronized read-aloud across his devices (packages/debug-chat/src/sync-speak.ts;
   // docs/li-sound-hub.md, "Synchronized read-aloud"; flag voice.sync-speak).
@@ -675,6 +716,77 @@ export const CONFIG = {
     audience: "server",
     description: "聊天头像栏：最近发过言的 agent / lane 在发言后多少分钟内仍显示在头像栏里。",
   }),
+  // 全员入群 (owner, 2026-11-15; docs/lane-listen.md, "Every agent joins"): the
+  // lanes beyond the built-in four, and more names for those four. The chat
+  // (voices.ts setLaneTable), the router (lane-route.ts) and the wake words read it.
+  "chat.lanes": {
+    default: [] as ChatLaneDef[],
+    schema: z
+      .array(z.unknown())
+      .max(64)
+      .refine(
+        (rows) => rows.every((r) => parseLaneDef(r) !== null),
+        "each row: {id, name?, aliases?, heard?, voice?, color?}",
+      ) as unknown as z.ZodType<ChatLaneDef[]>,
+    group: "chat",
+    audience: "public",
+    description:
+      '聊天里的「线」和它们的唤醒名（唯一的一张表，原 chat.laneNames 已并入；aliases 就是唤醒名，也进语音识别热词）：每个 agent 一条，名字 = 它的 API token 名。JSON 数组，每条 {id token 名, name 显示名, aliases 叫它的名字, heard 语音识别常写成的样子, voice main/calm/bright/sweet, color oklch 颜色}。内置的 coco（codex）、杰咪（agy）、小克（claude）写同一个 id 就是给它们加名字。例：{"id":"agy","aliases":["咪宝"]}、{"id":"rechrome","name":"小镀","heard":["瑞克罗姆"]}。点名、唤醒词、头像闪烁都按这张表。',
+  },
+  // The lanes manager on the Mac (scripts/dev/lanes-manager.ts): it runs there,
+  // not in the Worker, so its live value is the env var named in lib/lanes-config.ts.
+  "lanes.repos": {
+    default: [...LANES_CONFIG_DEFAULTS["lanes.repos"]] as string[],
+    schema: z.array(z.string().regex(/^[A-Za-z0-9._-]{1,40}$/, "a repo folder name")).max(64),
+    group: "lanes",
+    audience: "server",
+    description:
+      "哪些仓库里的 agent 自动入群（Lianki 和它依赖的仓库）：仓库文件夹名的 JSON 数组。agent 的工作目录里有这个名字的一段就算（…/lianki/tree/main、…/agent-yes/tree/x）。Mac 上的值是环境变量 LIANKI_LANES_REPOS（逗号分隔）。",
+  },
+  "lanes.agents": {
+    default: [...LANES_CONFIG_DEFAULTS["lanes.agents"]] as LaneAgentDef[],
+    schema: z.array(laneAgentSchema).max(64) as z.ZodType<LaneAgentDef[]>,
+    group: "lanes",
+    audience: "server",
+    description:
+      '登记过名字的 agent：JSON 数组，每条 {cwd 工作目录结尾, cli 可选 codex/claude/agy…, lane 线名 = token 名, resident 是否常驻实时监听}。没登记的 agent 叫 <仓库>-<cli>-<pid>，默认只读，被点名才叫醒。例：{"cwd":"lianki/tree/codex","cli":"codex","lane":"codex","resident":true}。Mac 上的值是环境变量 LIANKI_LANES_AGENTS（JSON）。',
+  },
+  "lanes.relistSec": int({
+    default: LANES_CONFIG_DEFAULTS["lanes.relistSec"],
+    min: 10,
+    max: 3600,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "入群管理器在 ay 没有报告变化时，最多隔多久重新列一次 agent（秒）；平时靠 ay 自己的变化推送。Mac 上的值是环境变量 LIANKI_LANES_RELIST_SEC。",
+  }),
+  "lanes.modeGraceSec": int({
+    default: 30,
+    min: 0,
+    max: 600,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "一条线的实时监听断开后，等几秒还没重连才算「转为只读」并在聊天里说一声；重连得快的不打扰你。0 = 立刻。",
+  }),
+  "lanes.eventLocale": {
+    default: "zh" as string,
+    schema: z.string().regex(/^[a-z]{2}$/, "a language code: zh, en, ja…"),
+    group: "lanes",
+    audience: "server",
+    description:
+      "「coco 开始实时监听」「杰咪 下线」这类系统消息存进聊天时用哪种语言写（新页面会按你的界面语言显示，旧页面显示这份）。",
+  },
+  "lanes.greeting": {
+    default: LANES_CONFIG_DEFAULTS["lanes.greeting"] as string,
+    schema: z.string().min(1).max(200),
+    group: "lanes",
+    audience: "server",
+    description:
+      "新 agent 入群时用它自己的 token 发的第一句问候。{name} = 线名，{repo} = 仓库，{cli} = 它是哪种 agent，{mode} = 只读 / 实时监听。Mac 上的值是环境变量 LIANKI_LANES_GREETING。",
+  },
   "chat.presenceShown": int({
     default: 3,
     min: 1,
@@ -736,6 +848,31 @@ export const CONFIG = {
     description:
       "连续学习奖励的断签规则：每漏一天，连续天数扣多少天（不清零）。默认 2：连续 7 天后漏 1 天，再学时按第 6 天算（7−2+1）。0 = 漏天不扣；填很大（如 1000）= 漏一天就从头开始。",
   }),
+  // Sign-up bonus (docs/payments.md, "Sign-up bonus"; owner 2026-11-15): a new
+  // account's one-time credits, for the first N new accounts per UTC day.
+  "credits.signupBonusUsd": {
+    default: 1 as number,
+    schema: z.number().min(0).max(10),
+    min: 0,
+    max: 10,
+    unit: "USD",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "注册礼：每个新注册的账号一次性送多少美元的积分（按 CREDITS_PER_USD 换成积分，四舍五入），只发给每个 UTC 日的前几个新账号（credits.signupBonusDaily）。功能上线前就有的老账号下次登录或打开钱包时也补发同样金额，一次，不占每日名额。0 = 不送。",
+  },
+  "credits.signupBonusDaily": int({
+    default: 10,
+    min: 0,
+    max: 10_000,
+    unit: "accounts/day",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "注册礼：每个 UTC 日（日本时间早上 9 点换日）最多前几个新注册的账号能拿到（每个账号只一次）。超出的人什么也拿不到，也不会看到报错。0 = 新账号都不送（老账号补发不受影响）。",
+  }),
   "inbox.maxFileBytes": int({
     default: 20 * 1024 * 1024,
     min: 1024,
@@ -772,6 +909,168 @@ export const CONFIG = {
     audience: "server",
     description: "每个账号每个Worker实例一分钟允许的上传次数，账号之间独立。",
   }),
+  "chat.hubRpcTimeoutMs": int({
+    ...HUB_RPC_LIMITS["chat.hubRpcTimeoutMs"],
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description: "聊天 hub 普通外呼的总等待上限；超时按失败处理，避免悬挂请求阻止休眠。",
+  }),
+  "chat.polishRpcTimeoutMs": int({
+    ...HUB_RPC_LIMITS["chat.polishRpcTimeoutMs"],
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description: "聊天 hub 润色外呼的总等待上限，包含配置、额度与模型调用；超时保留原文。",
+  }),
+  "chat.partnerRpcTimeoutMs": int({
+    ...HUB_RPC_LIMITS["chat.partnerRpcTimeoutMs"],
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description: "聊天 hub 学习伙伴回复外呼的总等待上限；超时明确失败并结束忙碌状态。",
+  }),
+  // Li in the owner's own thread (flag partner.owner-thread, docs/partner-ai.md):
+  // read by the debug hub over DebugSessions.config.
+  "partner.ownerReplyDelayMs": int({
+    default: OWNER_REPLY_DELAY_MS,
+    min: 0,
+    max: OWNER_REPLY_DELAY_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 8000 = 8 秒。开关在 /dev/flags 的 partner.owner-thread。",
+  }),
+  "chat.partnerModelTimeoutMs": int({
+    ...HUB_RPC_LIMITS["chat.partnerModelTimeoutMs"],
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description: "学习伙伴模型 HTTP 请求超时；总 hub 等待上限仍由 partnerRpcTimeoutMs 控制。",
+  }),
+  // Mini apps (docs/mini-apps.md): /m/<slug>, one sandboxed HTML file per app.
+  "miniApps.maxBytes": int({
+    default: 2 * 1024 * 1024,
+    min: 1024,
+    max: 16 * 1024 * 1024,
+    unit: "bytes",
+    group: "miniApps",
+    audience: "public",
+    description:
+      "小应用（/m/<名字>）：一个应用的 HTML 文件最大多少字节（默认 2 MB，最多 16 MB，与 Claude Artifacts 相同）。",
+  }),
+  "miniApps.storageBytes": int({
+    default: 256 * 1024,
+    min: 1024,
+    max: 16 * 1024 * 1024,
+    unit: "bytes",
+    group: "miniApps",
+    audience: "public",
+    description: "小应用：每个应用自己的存储（lianki.storage）最多存多少字节（键和值合计）。",
+  }),
+  "miniApps.perAccount": int({
+    default: 20,
+    min: 1,
+    max: 500,
+    unit: "apps",
+    group: "miniApps",
+    audience: "server",
+    description: "小应用：一个账号最多发布几个应用（同名重新发布不算新的）。",
+  }),
+  "miniApps.callsPerMinute": int({
+    default: 120,
+    min: 1,
+    max: 1200,
+    unit: "calls/min",
+    group: "miniApps",
+    audience: "server",
+    description: "小应用：每个账号每分钟最多调用几次能力（存储、设置、聊天），超过就暂时拒绝。",
+  }),
+  "miniApps.cardWaitMs": int({
+    default: 120_000,
+    min: 10_000,
+    max: 600_000,
+    unit: "ms",
+    group: "miniApps",
+    audience: "server",
+    description:
+      "小应用的 lianki.ui.card：在聊天里发出选择卡片后，最多等你点多久（毫秒）；超时应用收到「没有回答」。",
+  }),
+  "miniApps.origin": {
+    default: "" as string,
+    schema: z.union([
+      z.literal(""),
+      z
+        .string()
+        .max(120)
+        .regex(
+          /^https:\/\/(?:\{app\}\.)?[a-z0-9.-]+\.[a-z]{2,}$|^http:\/\/(?:\{app\}\.)?m\.localhost:\d{2,5}$/,
+          "https://m.lianki.com, or https://{app}.<another domain>",
+        ),
+    ]),
+    group: "miniApps",
+    audience: "server",
+    description:
+      "小应用从哪个独立的网址运行（不是 lianki.com 本身）：例如 https://m.lianki.com，或者每个应用一个子域名 https://{app}.另一个域名。要先加 DNS 记录和 Worker 路由（需要你批准）。空（默认）= 用 srcdoc 沙盒（没有自己的网址，应用不能用浏览器存储）。",
+  },
+  "miniApps.scriptOrigins": {
+    default:
+      "https://cdnjs.cloudflare.com,https://cdn.jsdelivr.net/npm/,https://unpkg.com,https://cdn.tailwindcss.com,https://code.jquery.com" as string,
+    schema: z
+      .string()
+      .max(1000)
+      .regex(
+        /^\s*https:\/\/[A-Za-z0-9./_-]+(\s*,\s*https:\/\/[A-Za-z0-9./_-]+)*\s*$/,
+        "https:// sources, comma-separated",
+      ),
+    group: "miniApps",
+    audience: "public",
+    description:
+      "小应用可以从哪些 CDN 加载脚本（逗号分隔；和 Claude Artifacts 同一份名单）。脚本地址必须带确切版本号（例如 react@18.3.1），发布时检查。其他一切都要写在 HTML 里。",
+  },
+  "miniApps.styleOrigins": {
+    default: "https://fonts.googleapis.com" as string,
+    schema: z
+      .string()
+      .max(500)
+      .regex(
+        /^\s*https:\/\/[A-Za-z0-9./_-]+(\s*,\s*https:\/\/[A-Za-z0-9./_-]+)*\s*$/,
+        "https:// sources, comma-separated",
+      ),
+    group: "miniApps",
+    audience: "public",
+    description:
+      "小应用可以从哪里加载样式表（逗号分隔，默认只有 Google Fonts）；Lianki 自己的样式包总是可以用。",
+  },
+  "miniApps.fontOrigins": {
+    default: "https://fonts.gstatic.com" as string,
+    schema: z
+      .string()
+      .max(500)
+      .regex(
+        /^\s*https:\/\/[A-Za-z0-9./_-]+(\s*,\s*https:\/\/[A-Za-z0-9./_-]+)*\s*$/,
+        "https:// sources, comma-separated",
+      ),
+    group: "miniApps",
+    audience: "public",
+    description: "小应用可以从哪里加载字体文件（逗号分隔，默认 Google Fonts 的字体服务器）。",
+  },
+  "miniApps.prefKeys": {
+    default:
+      "ui.locale,ui.paper,motion.animations,text-size.ui,lang.preferred,words.readAloud,chat-voice.rate" as string,
+    schema: z
+      .string()
+      .max(1000)
+      .regex(
+        /^\s*[a-z][A-Za-z0-9.-]*(\s*,\s*[a-z][A-Za-z0-9.-]*)*\s*$/,
+        "preference keys, comma-separated",
+      ),
+    group: "miniApps",
+    audience: "public",
+    description:
+      "小应用经你同意后可以读、改哪些账号设置（逗号分隔的设置键；不在 lib/prefs/schema.ts 里的会被忽略）。默认只有界面语言、纸张、动画、字号、偏好语言、朗读和语速。",
+  },
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

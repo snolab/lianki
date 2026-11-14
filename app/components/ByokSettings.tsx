@@ -73,8 +73,10 @@ const blankForm = (): ByokDevice => {
 export function ByokSettings({
   showKeySync = false,
   signedIn = true,
+  hideHeading = false,
 }: {
   showKeySync?: boolean;
+  hideHeading?: boolean;
   /** Syncing needs a (free) account; browser-only mode needs none. */
   signedIn?: boolean;
 }) {
@@ -362,8 +364,13 @@ export function ByokSettings({
   ) : null;
 
   return (
-    <section className="mb-10 max-w-xl" data-section="byok" data-testid="byok-settings">
-      <h2 className="mb-2 text-2xl font-semibold">{c.heading}</h2>
+    <section
+      id="byok"
+      className="mb-10 max-w-xl scroll-mt-6"
+      data-section="byok"
+      data-testid="byok-settings"
+    >
+      {!hideHeading && <h2 className="mb-2 text-2xl font-semibold">{c.heading}</h2>}
       <p className="mb-1 opacity-80">{c.intro}</p>
       <p className="mb-4 text-sm opacity-70">{c.serverSide}</p>
 

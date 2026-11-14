@@ -5,7 +5,7 @@
   // entrypoint for lianki-push's debug hub — see worker.ts.
   "main": "worker.ts",
   "compatibility_date": "2025-05-05",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
   // Minified: the Worker's isolate holds its whole source, and unminified it
   // passed Workers' 128 MB before serving a request — so no isolate was kept,
   // and every request paid a fresh start (~1.4 s before the first byte,

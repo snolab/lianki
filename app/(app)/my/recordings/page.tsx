@@ -23,6 +23,8 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RecordingsPage() {
   const user = await authUserOrNull();
   if (!user) return signInRedirect();
-  if (!isDev(user.email) || !flagIn(await readFlags(), "voice.recordings")) notFound();
-  return <RecordingsClient />;
+  const flags = await readFlags();
+  if (!isDev(user.email) || !flagIn(flags, "voice.recordings")) notFound();
+  const foldOthers = flagIn(flags, "voice.fold-others");
+  return <RecordingsClient foldOthers={foldOthers} />;
 }

@@ -2,8 +2,9 @@
 
 Owner decision, 2026-11-03 22:30 JST: "做 DEEPSEEK". For every signed-in user
 **other than the owner**, the Learning Partner chat is answered server-side by
-DeepSeek on Cloudflare Workers AI. The owner's thread never goes to the model:
-it stays his Claude lanes. Media upload, the + menu and every other part of
+DeepSeek on Cloudflare Workers AI. The owner's thread stays his Claude lanes;
+since 2026-11-15 the model fills the silence there too, behind its own flag
+(see "The owner's thread"). Media upload, the + menu and every other part of
 the chat are unchanged.
 
 Ships dark behind the flag **`partner.ai-reply`** (default off, `/dev/flags`).
@@ -54,11 +55,39 @@ no third-party API key. Non-streaming in v1.
   mode on that device. The owner's pages are unchanged. The chat cannot be
   closed, only folded, and a "Learning Partner" row in the sidebar and the
   phone drawer opens it (docs/dev-debug-widget.md, "Always findable").
-- **The owner, never.** Three checks: the hub routes only non-owner threads
+- **The owner, only through `partner.owner-thread`** (next section). Otherwise three checks: the hub routes only non-owner threads
   (the thread comes from the session the main Worker verified on connect);
   the RPC looks the user up by id and refuses an account holding `dev`;
   and with no owner readable (none, or D1 failing) it refuses everyone (fail
   closed).
+
+## The owner's thread
+
+Owner, 2026-11-15: "你把 Li 也叫上来，但是不要中断你自己的监听". With
+**`partner.owner-thread`** on (default on, `audience: "owner"`; it needs
+`partner.ai-reply` on too), the hub (`workers/push/src/owner-ai.ts`, called from
+the owner's chat in `debug.ts`) lets the model answer a line of his when:
+
+- it is his (`from: "owner"`), newly posted (not an echo, merge or two-mic duplicate);
+- it names no lane (`routeLine(text).addressed` false, packages/debug-chat/src/lane-route.ts)
+  and carries no node address (`to`);
+- its voiceprint did not decide another voice (`speaker.decision !== "other"`);
+- **no lane answered first**: the reply waits config `partner.ownerReplyDelayMs`
+  (default 8,000 ms, /dev/config) and is skipped when any agent line reached his
+  thread meanwhile. A newer line of his replaces the pending one (one reply, for
+  the newest); a line to a lane cancels it. The usual takeover rule still holds
+  while the model works.
+
+History: his lines as `user`, every agent line (lanes and Li) as `assistant`,
+the same `HISTORY_LINES` / `HISTORY_MAX_CHARS`. **Metering is his account's**:
+the hub sends his page's verified user id (`page.user`; a chat-only page of his
+uses his other open page's) with `owner: true`, the caps count it as
+`ai:<day>:u:<his id>`, and the main Worker reserves and settles his credits —
+no bypass. The main Worker serves `owner: true` only for an account holding
+`dev`, only with the flag on (D1 row, else the registry default), and still
+refuses his account without the mark. The reply is posted as the main lane
+(`lane: "main"`, label "Learning Partner AI"): Li's avatar and voice, read aloud
+by the usual path. Flag off: exactly as before — his thread never reaches the model.
 
 ## Memory and takeover
 
@@ -80,6 +109,9 @@ row — never by anything in the messages or the model's output:
 - word lists (name, language, cards, due now, next due),
 - page cards (total, due now, next due),
 - study plan goals (`roadmap_goals`: topic and up to 8 steps),
+- preferred languages and levels (`user_prefs` `lang.preferred` by the verified user id,
+  one line such as `zh native; en C1; ja A2`, lib/lang-levels.ts `levelsLine`): replies
+  are pitched to the level of the language being learnt (owner, 2026-11-15),
 - the current page: path (from the page's label), and the line's attached
   selection (`context`) or voice scene (`scene`).
 
@@ -125,9 +157,9 @@ when user have no credits" + "扣 first and return when fail". Each reply is
 paid from the user's credit wallet (docs/payments.md, "Credits"), in the main
 Worker (`lib/partner-ai.ts` → `lib/payments/ai-credits.ts`), after the hub's
 caps and before the model. No account is exempt by its permissions (owner,
-2026-11-10): the `dev` holders' threads are not answered by the model at all
-(the lanes answer them), so there is nothing to make free; every reply that is
-made is paid like this:
+2026-11-10): the owner's replies in his own thread (`partner.owner-thread`)
+are paid from his wallet exactly like anyone's; every reply that is made is
+paid like this:
 
 1. **Sweep.** Reservations still `pending` `CHARGE_STALE_MS` (10 min) after
    they were taken belong to a reply that crashed between reserve and settle:

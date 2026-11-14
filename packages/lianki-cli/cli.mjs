@@ -463,7 +463,7 @@ const wsUrl = (c) => {
  * the URL). `onEvent` gets each event; resolves when it returns true, or
  * rejects on a refusal, a close or the timeout.
  */
-function chatSocket(c, token, { history = 0, onReady, onEvent, timeoutMs }) {
+function chatSocket(c, token, { history = 0, mode, onReady, onEvent, timeoutMs }) {
   const WS = c.deps.WebSocket ?? globalThis.WebSocket;
   if (!WS)
     throw new CliError("usage", EXIT.usage, "this needs a WebSocket: Node.js 22 or newer, or Bun", "bunx lianki …");
@@ -486,7 +486,9 @@ function chatSocket(c, token, { history = 0, onReady, onEvent, timeoutMs }) {
     } catch (e) {
       return finish(new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`));
     }
-    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, ...(history ? { history } : {}) }));
+    // mode: "listener" (resident: hears every line live) or "reader" (a wait, the lanes
+    // manager): the lane's mode in the hub's lane registry; an older hub ignores it.
+    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, ...(history ? { history } : {}), ...(mode ? { mode } : {}) }));
     ws.onmessage = async (ev) => {
       let m;
       try {
@@ -579,6 +581,7 @@ async function cmdChatAsk(c) {
   if (!wait) throw usage("--timeout is like 90s, 10m or 2h");
   let asked = null;
   const answered = await chatSocket(c, token, {
+    mode: "reader",
     timeoutMs: wait,
     onReady: (ws) => ws.send(JSON.stringify({ type: "ask", ...body })),
     onEvent: (m) => {
@@ -626,6 +629,7 @@ async function cmdChatListen(c) {
   // One JSON line an event, as it comes; stops on Ctrl-C, a revoke or an expiry.
   await chatSocket(c, token, {
     history,
+    mode: c.argv.reader ? "reader" : "listener",
     onEvent: (m) => {
       if (m.type === "history") for (const x of m.messages ?? []) c.deps.out(c.json ? JSON.stringify({ type: "chat", message: x, history: true }) : chatLine(x));
       else if (m.type === "chat") c.deps.out(c.json ? JSON.stringify(m) : chatLine(m.message));
@@ -759,7 +763,7 @@ async function cmdChatBridge(c) {
       }
     } else {
       const token = await needToken(c);
-      await chatSocket(c, token, { history, onEvent: async (m) => {
+      await chatSocket(c, token, { history, mode: "listener", onEvent: async (m) => {
         if (failed) throw failed;
         await accept(m);
         return false;
@@ -1072,6 +1076,7 @@ function build(args, deps, box) {
             "Follow the thread live (one JSON line an event with --json)",
             (y) =>
               examples(y.option("history", { type: "number", default: 0, describe: "First print the last n lines (0–100; memory only with --deliver)" })
+                .option("reader", { type: "boolean", describe: "Listen as a reader, not a resident listener (the lane's mode in the chat)" })
                 .option("deliver", { type: "string", describe: "Optionally bridge to this ay agent target" })
                 .option("cwd", { type: "string", describe: "Agent directory for ay target ." })
                 .option("filter-service", { type: "string", describe: "Optional AI filter URL for --deliver" })

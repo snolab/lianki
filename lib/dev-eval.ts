@@ -37,6 +37,7 @@ import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
 import { LANE_IDS, type LaneId, isLaneId, parseLineVoice } from "../packages/debug-chat/src/voices";
 import { cleanProofs } from "./speaker-proof";
 import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
+import { type RecheckAmend, cleanRecheckAmend } from "../packages/debug-chat/src/whisper-recheck";
 
 export {
   MAX_AGENT_ID,
@@ -137,8 +138,31 @@ export const CHAT_HISTORY = 200;
 /** A friend may send at most FRIEND_CHAT_MAX messages per FRIEND_CHAT_WINDOW_MS. */
 export const FRIEND_CHAT_MAX = 30;
 export const FRIEND_CHAT_WINDOW_MS = 10 * 60_000;
-/** The owner's chat thread; every other thread is a friend's user id. */
-export const OWNER_THREAD = "owner";
+/**
+ * The dispatch thread (docs/owner-paths-audit-2026-11-15.md): the one thread
+ * every `dev` grant holder's page joins (Identity.owner is `isDev`, never an
+ * address in code). Lanes listen there, ETA and receipt lines go there, the
+ * Learning Partner AI does not answer there. Every other thread is one
+ * account's own (its user id). The id is a storage key (hub storage
+ * prefixes, D1 chat_log rows, packages/debug-chat's default), so it stays a
+ * constant: a configurable id would orphan the history.
+ */
+export const DISPATCH_THREAD = "owner";
+/** @deprecated The old name of DISPATCH_THREAD, kept so the hub's many uses need no rename. */
+export const OWNER_THREAD = DISPATCH_THREAD;
+/** Is this the dispatch thread? */
+export const isDispatchThread = (thread: string | null | undefined): boolean =>
+  thread === DISPATCH_THREAD;
+/**
+ * The thread an account's page or chat token joins: the dispatch thread for a
+ * `dev` holder (`dispatch`: Identity.owner / Verified.owner, both read from
+ * account_permission), else the account's own thread; null for an id that
+ * cannot be a thread.
+ */
+export function threadFor(who: { userId: string; dispatch: boolean }): string | null {
+  if (who.dispatch) return DISPATCH_THREAD;
+  return isUserId(who.userId) ? who.userId : null;
+}
 /** The "agent is working" spinner stops this long after the last heartbeat. */
 export const BUSY_MS = 12_000;
 /**
@@ -182,7 +206,7 @@ export const isSessionTag = (v: unknown): v is string =>
 
 /** A user id usable as a thread and a storage key: no separators, bounded. */
 export const isUserId = (v: unknown): v is string =>
-  typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) && v !== OWNER_THREAD;
+  typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) && v !== DISPATCH_THREAD;
 
 /** A friend who has used the chat, as the hub keeps it (`friend:<userId>`). */
 export type FriendRecord = {
@@ -317,8 +341,12 @@ export type PageMessage =
       /** A voice line asks to amend this line, the page's last (voice-merge.ts); the hub decides. */
       continues?: string;
     }
-  /** The page's speech went quiet after a merged line: the passage is over. */
-  | { type: "passage-end" }
+  /**
+   * The page's speech went quiet after a merged line: the passage is over. `recheck`:
+   * the Mac's Whisper re-read the whole run (whisper-recheck.ts); the hub amends the
+   * line with it first, so the polish reads it.
+   */
+  | { type: "passage-end"; recheck?: RecheckAmend }
   /** The owner's undo on a merged line: split it back into its lines. */
   | { type: "unmerge"; id: string }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
@@ -622,7 +650,10 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       return null;
     return { type: "answer", askId, choices: m.choices as Record<string, unknown> };
   }
-  if (m.type === "passage-end") return { type: "passage-end" };
+  if (m.type === "passage-end") {
+    const recheck = cleanRecheckAmend(m.recheck);
+    return recheck ? { type: "passage-end", recheck } : { type: "passage-end" };
+  }
   if (m.type === "unmerge") {
     const id = str(m.id, 64);
     return id ? { type: "unmerge", id } : null;

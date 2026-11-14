@@ -136,3 +136,21 @@ test("no credits never calls inference; a provider failure refunds; bad identity
   ).toMatchObject({ ok: false, error: "provider-network" });
   expect(await getBalance(env().DB, "u_test")).toBe(100);
 });
+
+test("hub request cancellation reaches provider and settles failure", async () => {
+  const c = new AbortController();
+  c.abort(Error("hub deadline"));
+  let seen = false;
+  const request = (async (_url: unknown, init: RequestInit) => {
+    seen = init.signal?.aborted === true;
+    throw init.signal!.reason;
+  }) as unknown as typeof fetch;
+  const result = await polishLines(
+    env(),
+    { userId: "u_test", input },
+    { fetch: request, signal: c.signal },
+  );
+  expect(seen).toBe(true);
+  expect(result).toMatchObject({ ok: false, error: "provider-timeout" });
+  expect(await getBalance(env().DB, "u_test")).toBe(100);
+});

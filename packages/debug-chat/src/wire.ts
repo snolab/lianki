@@ -7,6 +7,7 @@
 
 import type { Ask, AskAnswer } from "./ask";
 import type { LaneId, VoiceId } from "./voices";
+import type { LaneEvent } from "./lane-events";
 
 export * from "./node-path";
 
@@ -125,6 +126,12 @@ export type ChatMessage = {
    */
   parts?: MergedPart[];
   /**
+   * A merged line re-heard whole by the Mac's Whisper when the run ended (RecheckMark;
+   * flag stt.whisper-recheck, whisper-recheck.ts): `text` and `raw` became its
+   * reading, and the streaming text is kept here. Stamped by the hub only.
+   */
+  recheck?: RecheckMark;
+  /**
    * A voice line's timestamps on the sender's clock (VoiceTiming; the page's
    * latency record, packages/debug-chat/src/latency.ts). Optional: older pages
    * send none, and an older hub drops it.
@@ -212,6 +219,12 @@ export type ChatMessage = {
     /** "main" / "blocked": the lane (or "owner") it is for. */
     lane?: string;
   };
+  /**
+   * Stamped by the hub only (workers/push/src/lane-registry.ts): a system line
+   * about a lane (joined, listening live, read-only, left, muted; lane-events.ts).
+   * Its text is in the thread's language; a page shows it in its own.
+   */
+  laneEvent?: LaneEvent;
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
@@ -268,6 +281,13 @@ export type EchoMark = {
   of: string;
   sim: number;
 };
+/**
+ * The second of three readings of his speech (docs/dev-debug-widget.md, "Whisper
+ * re-listens to the whole run"): `heard` the streaming STT's text (level 1), `text`
+ * what Whisper read from the run's whole audio (level 2), its `engine` and `lang`.
+ * A polish after it (level 3) is the line's `text` once `edited.by` is not "merge".
+ */
+export type RecheckMark = { at: number; engine: string; lang?: string; heard: string; text: string };
 /** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
 export type MergedPart = {
   id: string;
@@ -322,6 +342,8 @@ export type EditedEvent = {
   parts?: MergedPart[];
   /** A merge: the utterance that just joined (the hub's answer to its `id`). */
   merged?: { id: string; text: string };
+  /** A merged line re-heard by Whisper at its run's end: `text` and `raw` are its reading. */
+  recheck?: RecheckMark;
   /** An undo: the lines this one goes back to, in order; the first keeps this id. */
   split?: ChatMessage[];
   /** A summary of a run of lines starting at `id` (its other lines are hidden). */
@@ -351,6 +373,7 @@ export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "typ
     raw: e.raw,
     edited: e.edited,
     ...(e.parts ? { parts: e.parts } : {}),
+    ...(e.recheck ? { recheck: e.recheck } : {}),
     ...(e.summary ? { summary: e.summary } : {}),
     ...(e.passage ? { passage: e.passage } : {}),
   };
@@ -511,15 +534,24 @@ export type PairInfo = {
 /** An open debug page: its socket's id, current label (path…), and when it connected. */
 export type PageInfo = { id: string; label: string; at: number };
 
+/** Hiragana must be at least this share of a line's CJK characters before a line with kanji reads as Japanese. */
+export const HIRAGANA_SHARE = 0.25;
 /**
- * The language to read a reply in, from its script alone: any kana is
- * Japanese, Hangul Korean, other Han Chinese (zh-CN), and everything else
- * English.
+ * The language to read a reply in, from its script alone. Japanese is told
+ * by hiragana — the particles and endings every Japanese sentence has — as a
+ * real share of the CJK characters (HIRAGANA_SHARE), or any kana with no
+ * kanji at all; a Chinese line that quotes a katakana shop name or a short
+ * Japanese UI label stays Chinese (owner, 2026-11-15 03:1x: "不要用日语读").
+ * Hangul is Korean, other Han Chinese (zh-CN), and everything else English.
  */
 export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "en-US" {
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja-JP";
+  const hira = (text.match(/\p{Script=Hiragana}/gu) ?? []).length;
+  const kata = (text.match(/\p{Script=Katakana}/gu) ?? []).length;
+  const han = (text.match(/\p{Script=Han}/gu) ?? []).length;
+  if ((hira || kata) && han === 0) return "ja-JP";
+  if (hira && hira / (hira + kata + han) >= HIRAGANA_SHARE) return "ja-JP";
   if (/\p{Script=Hangul}/u.test(text)) return "ko-KR";
-  if (/\p{Script=Han}/u.test(text)) return "zh-CN";
+  if (han) return "zh-CN";
   return "en-US";
 }
 
@@ -875,6 +907,8 @@ export type ChatStrings = {
   vpVerified: string;
   /** Tooltip and screen-reader name of the small coloured avatar on a voice-typed chat line that was spoken by someone other than the account's owner (a family member or guest near the mic; each such person gets their own stable colour and shape). It names that person without knowing who they are. Short noun phrase, no full stop: "Another voice". */
   vpOtherVoice: string;
+  /** Label of the folded one-line button for another person's voice in the chat log: "Another voice · tap to expand". */
+  vpOtherVoiceFolded: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
   notReadHidden: string;
   // The input's + menu (attach.tsx).
@@ -1104,6 +1138,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpMacRecKept: "The recordings stay on the speech servers.",
   vpVerified: "Your voice, verified",
   vpOtherVoice: "Another voice",
+  vpOtherVoiceFolded: "Another voice · tap to expand",
   vpFilterOn: "Only my voice: on. Speech that does not match is dropped on Lianki's speech server.",
   vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
   vpFilterWaiting: "Only my voice: needs a voiceprint on this device and the check on Lianki's speech server. Until then all speech is transcribed as usual.",

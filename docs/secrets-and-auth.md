@@ -254,6 +254,10 @@ these rows newest first, 50 a page, with the time in JST, the actor's address
   debug-session renewal), the pill chat and partner ticket, the my-box allowlist,
   and features shipped dark (`libraryOn(flags, isDev(…))`, YouTube songs). The
   Learning Partner AI refuses a `dev` holder (his thread is the dev lanes').
+- The "owner chat thread" is the **dispatch thread** (`DISPATCH_THREAD` in
+  `lib/dev-eval.ts`): every `dev` holder's pages and chat tokens join it
+  (`threadFor`). No path checks the owner's address; the inventory is
+  [owner-paths-audit-2026-11-15.md](owner-paths-audit-2026-11-15.md).
 - Neither implies the other; each is its own grant. Which permission a `/dev`
   page checks is listed in `lib/dev-page-permissions.ts` (a unit test keeps it
   in step with the pages), and the `/dev` layout prints a small "who can see

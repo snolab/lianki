@@ -3820,8 +3820,12 @@ describe("DebugHub continuous speech (stt.merge)", () => {
   };
 
   it("merges a continuation: one line, complete text, every part's raw kept, marked edited", async () => {
-    const { owner, c, two, lines } = await rig();
+    const { s, owner, c, two, lines } = await rig();
     await two();
+    const ack = owner.last("chat-ack");
+    expect(ack).toEqual({ type: "chat-ack", id: "b", seq: 2 });
+    await s.msg(owner, say("b", "给我显示一个按钮。", 1700, 3000, { continues: "a" }));
+    expect(owner.last("chat-ack")).toEqual(ack);
     expect(lines()).toHaveLength(1);
     expect(lines()[0]).toMatchObject({
       id: "a",
@@ -4117,6 +4121,51 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     await s.msg(owner, { type: "passage-end" });
     await s.msg(c, { type: "edit", id: "a", text: "我们用流式传输，流式传输比较快。" });
     expect(lines()[0].text).toBe("我们用流式传输，流式传输比较快。");
+  });
+
+  it("Whisper's reading of the whole run lands before the polish-due (whisper-recheck.ts)", async () => {
+    const { s, owner, c, two, lines } = await rig();
+    await two();
+    const whisper = "那你能不能给我显示一个按钮。";
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 2, text: whisper, engine: "mlx-whisper", lang: "zh" },
+    });
+    expect(lines()[0]).toMatchObject({
+      text: whisper,
+      raw: whisper,
+      settled: true,
+      edited: { by: "merge", count: 0 },
+      recheck: {
+        engine: "mlx-whisper",
+        lang: "zh",
+        heard: "那你能不能给，给我显示一个按钮。",
+        text: whisper,
+      },
+    });
+    expect(owner.last("edited")).toMatchObject({
+      id: "a",
+      text: whisper,
+      recheck: { text: whisper },
+    });
+    // Level 3 reads level 2: the lane's cue carries the Whisper text.
+    expect(c.last("polish-due")).toMatchObject({ id: "a", text: whisper, raw: whisper, parts: 2 });
+    // The undo still gives back the parts as heard.
+    await s.msg(owner, { type: "unmerge", id: "a" });
+    expect(lines().map((l) => l.text)).toEqual(["那你能不能给，", "给我显示一个按钮。"]);
+    expect(lines().some((l) => "recheck" in l)).toBe(false);
+  });
+
+  it("a stale Whisper reading is refused, and the passage still ends on level 1", async () => {
+    const { s, owner, c, two, lines } = await rig();
+    await two();
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 3, text: "旧的", engine: "mlx-whisper" },
+    });
+    expect(lines()[0]).toMatchObject({ text: "那你能不能给，给我显示一个按钮。", settled: true });
+    expect(lines()[0].recheck).toBeUndefined();
+    expect(c.last("polish-due")).toMatchObject({ raw: "那你能不能给，给我显示一个按钮。" });
   });
 
   it("a polish of the first fragment is dropped by the merge; a later one lands (unrestricted)", async () => {
@@ -4483,6 +4532,11 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
     await s.msg(mac, say("m1", "同时发送的两个麦克风"));
     expect(lines().map((l) => [l.id, l.text])).toEqual([["w1", "同时发送着两个麦克风"]]);
     expect(chats(mac).map((m) => m.id)).toEqual(["w1"]);
+    const ack = mac.last("chat-ack");
+    expect(ack).toEqual({ type: "chat-ack", id: "m1", seq: 2 });
+    await s.msg(mac, say("m1", "同时发送的两个麦克风"));
+    expect(mac.last("chat-ack")).toEqual(ack);
+    expect(lines()).toHaveLength(1);
   });
 
   it("the longer text replaces the first line's in place, through the edit path", async () => {
@@ -4598,5 +4652,81 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
       ["m2", "第二句话说完"],
     ]);
     expect((lines()[1].speaker as { decision: string; score: number }).score).toBe(0.65);
+  });
+});
+
+describe("durable incoming chat acceptance", () => {
+  it("acks concurrent retries once, reuses the receipt sequence after eviction, and scopes ids by thread", async () => {
+    const s = setup();
+    const p = s.page();
+    const input = { type: "chat", id: "stable-input", text: "One durable line." };
+    await Promise.all([s.msg(p, input), s.msg(p, input)]);
+    expect((await s.hub.history()).filter((m) => m.id === input.id)).toHaveLength(1);
+    const acks = p.sent.filter((m) => m.type === "chat-ack");
+    expect(acks).toHaveLength(2);
+    expect(acks[0]).toEqual({ type: "chat-ack", id: input.id, seq: 1 });
+    expect(acks[1]).toEqual(acks[0]);
+    const revived = setup(undefined, s.storage);
+    const again = revived.page();
+    await revived.msg(again, input);
+    expect(again.last("chat-ack")).toEqual(acks[0]);
+    expect(await revived.hub.history()).toHaveLength(1);
+    const friend = await revived.friend();
+    await revived.msg(friend, input);
+    expect(friend.last("chat-ack")).toEqual(acks[0]);
+    expect(await revived.hub.history("f1")).toHaveLength(1);
+    await revived.msg(again, { ...input, id: "next", text: "Next line." });
+    expect(again.last("chat-ack")).toMatchObject({ id: "next", seq: 2 });
+  });
+
+  it("never acknowledges a failed receipt write; a retry recovers the durable primary line", async () => {
+    const storage = fakeStorage();
+    const put = storage.put;
+    let failed = false;
+    storage.put = async (key, value) => {
+      if (key.startsWith("chat-receipt:") && !failed) {
+        failed = true;
+        throw Error("fixture receipt unavailable");
+      }
+      return put(key, value);
+    };
+    const s = setup(undefined, storage);
+    const p = s.page();
+    const input = { type: "chat", id: "receipt-gap", text: "Already durable." };
+    await expect(s.msg(p, input)).rejects.toThrow("fixture receipt unavailable");
+    expect(p.last("chat-ack")).toBeUndefined();
+    await s.msg(p, input);
+    expect(p.last("chat-ack")).toEqual({ type: "chat-ack", id: input.id, seq: 1 });
+    expect(await s.hub.history()).toHaveLength(1);
+  });
+
+  it("rejects only the specific rate-limited chat and does not advance its acceptance cursor", async () => {
+    const s = setup();
+    const p = await s.friend();
+    for (let i = 0; i < FRIEND_CHAT_MAX; i++)
+      await s.msg(p, { type: "chat", id: `accepted-${i}`, text: "Accepted." });
+    const last = p.last("chat-ack")!;
+    await s.msg(p, { type: "chat", id: "refused", text: "Over limit." });
+    expect(p.last("chat-rejected")).toEqual({
+      type: "chat-rejected",
+      id: "refused",
+      reason: "rate-limited",
+    });
+    expect(p.last("chat-ack")).toEqual(last);
+    expect(s.storage.store.get("t:f1:seq")).toBe(FRIEND_CHAT_MAX);
+    await s.msg(p, { type: "chat", id: "accepted-0", text: "Accepted." });
+    expect(p.last("chat-ack")).toEqual({ type: "chat-ack", id: "accepted-0", seq: 1 });
+    expect(await s.hub.history("f1")).toHaveLength(FRIEND_CHAT_MAX);
+    s.tick(FRIEND_CHAT_WINDOW_MS);
+    const revived = setup(undefined, s.storage);
+    const again = await revived.friend();
+    await revived.msg(again, { type: "chat", id: "refused", text: "Over limit." });
+    expect(again.last("chat-rejected")).toEqual({
+      type: "chat-rejected",
+      id: "refused",
+      reason: "rate-limited",
+    });
+    expect(again.last("chat-ack")).toBeUndefined();
+    expect(s.storage.store.get("t:f1:seq")).toBe(FRIEND_CHAT_MAX);
   });
 });

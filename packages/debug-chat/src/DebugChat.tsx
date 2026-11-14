@@ -49,12 +49,14 @@ import {
   sttTagText,
   type AttachmentRef,
   type ChatContext,
+  cleanContext,
+  cleanAttachments,
 } from "./wire";
 import { latencyLines, viaAt, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
-import { type AvatarSource, lineAvatar, runStarts, runsOf } from "./avatar-rules";
+import { type AvatarSource, isLineFolded, isOtherVoice, isOwnVoice, lineAvatar, passageStarts, runsOf } from "./avatar-rules";
 import {
   VOICE_SENT_EVENT,
   appendDictation,
@@ -67,13 +69,14 @@ import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { DevMenuGroup } from "./DevMenuGroup";
-import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
+import { AttachButton, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
 import { type EvalLink, type EvalSession } from "./link-state";
 import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
-import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
+import { InboxPanel, PendingFilesRow, SentFiles, usePending } from "./FileChips";
+import { pendingBubble, planPendingSend } from "./pending-bubble";
 import {
   BAR_CONTROL,
   INPUT_START,
@@ -88,6 +91,12 @@ import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, setWakeWord, voic
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
 import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
+import {
+  type RecheckAmend,
+  type RecheckCall,
+  type RecheckConf,
+  createPassageRecheck,
+} from "./whisper-recheck";
 import { VoiceMark } from "./VoiceMark";
 import { VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
@@ -117,6 +126,7 @@ import {
   sentenceCount,
   sentenceRanges,
   sentenceState,
+  showsReading,
 } from "./read-progress";
 import { cloudOut, existingCtx, noSpeechVoices, outMode } from "./voice-out";
 import { UNLOCK_EVENTS, activationNow, unlockOnGesture } from "./speech-unlock";
@@ -188,8 +198,8 @@ import {
   stillAtEnd,
   sheetScrim,
 } from "./log-surface";
-import { treeDefaults, uiStrings } from "./ui-strings";
-import { chatExtra } from "./chat-ui-locales";
+import { EMBED_NAME, embedLang, treeDefaults, uiStrings } from "./ui-strings";
+import { chatExtra, chatLocale } from "./chat-ui-locales";
 import {
   ADDRESSED_CSS,
   FLASH_MS,
@@ -280,6 +290,7 @@ import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tu
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import { type LaneId, withLane } from "./voices";
+import { withLaneEvent } from "./lane-events";
 import {
   AddressedMarks,
   LineTag,
@@ -709,6 +720,11 @@ export function setTarget(path: string) {
  * re-mounts on every rebuild (and may mount after a setTarget call).
  */
 type TargetHolder = { __lkDebugChatTarget?: string };
+/** What the passage end uses of the mic session (`__lkMic`, mic-session.ts); recheck from v16. */
+type MicRecheckSlice = {
+  view?: () => { state: string };
+  recheck?: RecheckCall;
+};
 const keptTarget = () =>
   typeof window === "undefined"
     ? ROOT_NODE
@@ -783,6 +799,10 @@ export type DebugChatProps = {
    * `data-cached` on the chat, and the status still says it is not connected.
    */
   cached?: boolean;
+  /** Account-bound draft storage; unscoped only for standalone hosts. */
+  draftScope?: string;
+  /** Accepted locally, awaiting the hub acknowledgement. */
+  outgoing?: readonly { id: string; text: string; rejected?: string; attachments?: AttachmentRef[]; context?: ChatContext }[];
   /**
    * Send a line; `to` is the state-tree node it is addressed to (absent = the
    * main thread). `opts.source` is "stt" when the line is the mic's text, unchanged;
@@ -805,8 +825,11 @@ export type DebugChatProps = {
       continues?: string;
     },
   ) => boolean;
-  /** The speech after a merged line went quiet: the passage is over (hub: polish-due). */
-  onPassageEnd?: () => void;
+  /**
+   * The speech after a merged line went quiet: the passage is over (hub: polish-due).
+   * `recheck`: his Mac's Whisper re-read the run, for the hub to amend the line with first.
+   */
+  onPassageEnd?: (recheck?: RecheckAmend) => void;
   /** The undo on a merged line: split it back into the lines it was made from. */
   onUnmerge?: (id: string) => void;
   /**
@@ -963,6 +986,16 @@ export type DebugChatProps = {
    */
   fullScreen?: boolean;
   /**
+   * Flag voice.fold-others (default true): fold voice lines recognized as someone
+   * other than the owner into a compact avatar button by default. Off: lines show expanded.
+   */
+  foldOthers?: boolean;
+  /**
+   * Flag stt.whisper-recheck and its config (whisper-recheck.ts): at a run's passage
+   * end the local STT's Whisper re-reads the run whole first. None: the passage end at once.
+   */
+  whisperRecheck?: RecheckConf;
+  /**
    * The host's "Back closes an overlay" (Lianki: lib/back-to-close.ts
    * openBackToClose, docs/ui-state.md): opening full screen by a tap pushes
    * one history entry, Back runs `onBack`, and the returned close consumes the
@@ -1012,13 +1045,15 @@ const NONE_ABOVE: ReadonlySet<string> = new Set();
 type Panel = "none" | "menu" | "tree" | "voiceprint";
 
 /** One live line (live-speech.ts): what it shows, and whether it is spoken, sending or failed. */
-type LiveRow = { key: string; text: string; tail: string; state: "speaking" | "sending" | "unsent" };
+type LiveRow = { key: string; text: string; tail: string; state: "speaking" | "sending" | "unsent"; reason?: string; attachments?: AttachmentRef[]; context?: ChatContext };
 
 export function DebugChat({
   live,
   listeners,
   messages: rawMessages,
   cached = false,
+  draftScope,
+  outgoing,
   onSend,
   onAnswer,
   onPassageEnd,
@@ -1060,6 +1095,8 @@ export function DebugChat({
   link,
   presence,
   fullScreen: fullScreenFlag = false,
+  foldOthers = true,
+  whisperRecheck,
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
@@ -1068,7 +1105,11 @@ export function DebugChat({
    * A line inside a summary (`collapsedInto`) is not shown: the summary's tap shows it as heard.
    */
   const messages = useMemo(
-    () => rawMessages.filter((m) => !m.collapsedInto).map((m) => withTokenName(withLane(m))),
+    () =>
+      rawMessages
+        .filter((m) => !m.collapsedInto)
+        // A lane's system line (lane-events.ts) in this page's language.
+        .map((m) => withTokenName(withLane(withLaneEvent(m, chatLocale())))),
     [rawMessages],
   );
   /** Which lines arrived live: they shimmer while read (shimmer.ts). Seen at render, idempotent. */
@@ -1281,7 +1322,7 @@ export function DebugChat({
     moved();
   };
   /** Session UI state (draft, panel, tree): survives a refresh and a hot swap. */
-  const uiStore = chatUi();
+  const uiStore = chatUi(draftScope);
   /** The box: its bar is kept on screen, expanded or minimized. */
   const root = useRef<HTMLElement | null>(null);
   // Only expanding or minimizing refits (fit itself is fresh each render).
@@ -1547,6 +1588,8 @@ export function DebugChat({
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
   const ui = uiStrings();
+  /** The Learning Partner's name in the page's language: the tag on Li's replies in his thread. */
+  const partnerName = EMBED_NAME[embedLang()];
   // The strings that were inline here, in the page's language (chat-ui-locales.ts).
   const ux = chatExtra();
   const details = useMessageDetails(ux.messageDetails, ux);
@@ -1768,9 +1811,31 @@ export function DebugChat({
       ...(v ? {} : { caret: null }),
     });
   /** The + menu (AttachMenu.tsx): the page selection kept outside the chat, and what goes with the next line. */
-  const pageSel = usePageSelection(embedded);
+  const pageSel = usePageSelection(embedded, draftScope ?? files?.scope);
   const appAddItems = useAddItems();
   const attached = useUi(uiStore, (s) => s.attached);
+  useEffect(() => {
+    // A page selection is a candidate, never a send request on its own.
+    if (!attach || notice || !pageSel.sel) return;
+    const { at: _at, ...context } = pageSel.sel;
+    uiStore.setState({ attached: context });
+  }, [pageSel.sel, attach, notice, uiStore]);
+  const expandedOthersList = useUi(uiStore, (s) => s.expandedOthers);
+  const expandedOthers = useMemo(() => new Set(expandedOthersList), [expandedOthersList]);
+  const toggleExpandOther = useCallback(
+    (id: string) => {
+      uiStore.setState((s) => {
+        const has = s.expandedOthers.includes(id);
+        return {
+          expandedOthers: has
+            ? s.expandedOthers.filter((x) => x !== id)
+            : [...s.expandedOthers, id],
+        };
+      });
+    },
+    [uiStore],
+  );
+
   const [attachMenu, setAttachMenu] = useState(false);
   const closeAttachMenu = useCallback(() => setAttachMenu(false), []);
   /** Files for the next line (files.ts): uploading or stored, removable until sent. */
@@ -1785,11 +1850,19 @@ export function DebugChat({
           : undefined,
     }),
   );
+  const pendingFiles = usePending(pending);
+  const pendingView = pendingBubble(pendingFiles);
   /** A send waited for uploads (submit): it goes when they are done. */
   const waitFiles = useRef(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const fileScope = attach ? (files?.scope ?? null) : null;
+  const previousFileScope = useRef(fileScope);
   useEffect(() => {
+    if (previousFileScope.current !== fileScope) {
+      uiStore.setState({ attached: null });
+      pageSel.clear();
+      previousFileScope.current = fileScope;
+    }
     // No private file names, thumbnails or in-flight callbacks cross accounts.
     pending.take();
     waitFiles.current = false;
@@ -2556,8 +2629,14 @@ export function DebugChat({
   messagesNow.current = messages;
   /** How many commands the mic's taps had kept at the last spoken line. */
   const tapsAtVoice = useRef(0);
+  // A quota/transport refusal leaves the draft intact, including its consumed mic metadata.
+  const preparedVoice = useRef<{
+    draft: string;
+    taken: { timing?: VoiceTiming; stt?: SttTag };
+    heardFrom: ReturnType<typeof takeSpeaker>;
+  } | null>(null);
   /** Send the draft; true when it went out. */
-  const submit = (): boolean => {
+  const submit = (candidateTapped = false): boolean => {
     clearTimeout(timer.current);
     // Sent another way (Enter, the send button): nothing is held any more.
     joiner.current?.cancel();
@@ -2577,37 +2656,40 @@ export function DebugChat({
         return false;
       }
     }
-    // Files still uploading: the line waits for them, and goes once they are stored.
-    if (pending.busy()) {
+    // The batch is one message: a failed upload stays beside its successful siblings.
+    if (pending.get().length && !pending.ready()) {
       waitFiles.current = true;
       return false;
     }
-    const hasFiles = pending.get().some((p) => p.state === "done");
-    // Files alone: the line's text is their names (a line always has text).
-    if (!text && hasFiles)
-      text = pending
-        .get()
-        .flatMap((p) => (p.state === "done" ? [p.name] : []))
-        .join(", ")
-        .slice(0, MAX_CHAT);
-    if (!text) return false;
+    const plan = planPendingSend({
+      text,
+      files: pending.get(),
+      attached: uiStore.getState().attached,
+      candidate: attach ? pageSel.sel : null,
+      candidateTapped,
+    });
+    if (!plan) return false;
+    text = plan.text;
     const source = draftSource(draftRef.current, pureDictation.current);
     /** It was the live line (spoken, not taken into the input): it stays as "sending" till its echo. */
     const fromLive = !!source && !inInputRef.current;
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
     // And which recognizer made it (SttTag): an older store (hot swap) has no takeLine.
     const lat = voiceLatency();
+    const prepared = source && preparedVoice.current?.draft === draftRef.current
+      ? preparedVoice.current : null;
     const taken: { timing?: VoiceTiming; stt?: SttTag } = source
-      ? (lat.takeLine?.() ?? { timing: lat.take() }) : {};
+      ? (prepared?.taken ?? lat.takeLine?.() ?? { timing: lat.take() }) : {};
     const timing = taken.timing;
     const stt = taken.stt;
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
     // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
-    const heardFrom = source ? takeSpeaker() : (clearSpeaker(), undefined);
+    const heardFrom = source ? (prepared?.heardFrom ?? takeSpeaker()) : (clearSpeaker(), undefined);
+    preparedVoice.current = source ? { draft: draftRef.current, taken, heardFrom: heardFrom! } : null;
     const speakerProof = heardFrom?.proofs;
     // What was attached with the + menu rides along, this line only.
-    const context = uiStore.getState().attached ?? undefined;
-    const attachments = hasFiles ? pending.get().flatMap((p) => (p.ref ? [p.ref] : [])) : [];
+    const context = plan.context;
+    const attachments = plan.attachments;
     // Continuous speech (voice-merge.ts): asks to amend the line before, if it is
     // stamped mergeable (the flag is on) and no command ran since. The hub decides.
     const tapsNow = micTaps().kept?.() ?? 0;
@@ -2650,8 +2732,9 @@ export function DebugChat({
       return false;
     }
     setOffline(false);
+    preparedVoice.current = null;
     // The live line becomes "sending" in the same paint the draft empties: no blink, no gap.
-    if (fromLive) {
+    if (fromLive && outgoing === undefined) {
       const h = holdOf(++holdKey.current, text, messagesNow.current, Date.now(), continues);
       flushSync(() => setHolds((x) => [...x, h]));
     }
@@ -2959,11 +3042,14 @@ export function DebugChat({
    * not sent, not read aloud, no hub id.
    */
   const liveRows: LiveRow[] = [
-    ...shownHolds.map((h) => ({
-      key: `${LIVE_ID}-${h.key}`,
+    ...(outgoing ?? shownHolds.map((h) => ({ id: `${LIVE_ID}-${h.key}`, text: h.text, rejected: undefined, attachments: undefined, context: undefined }))).map((h) => ({
+      key: h.id,
       text: h.text,
       tail: "",
-      state: "sending" as const,
+      state: h.rejected ? "unsent" as const : "sending" as const,
+      reason: h.rejected,
+      attachments: cleanAttachments(h.attachments),
+      context: cleanContext(h.context),
     })),
     ...(speech.bubble
       ? [
@@ -2987,16 +3073,16 @@ export function DebugChat({
   };
   function liveLine(r: LiveRow, where: "log" | "compact" | "float") {
     const label =
-      r.state === "sending" ? ux.liveSending : r.state === "unsent" ? ux.liveNotSent : ux.liveSpeaking;
+      r.reason ? ux.liveNotSent : r.state === "speaking" ? ux.liveSpeaking : ux.liveSending;
     const Tag = where === "compact" ? "div" : "li";
     return (
       <Tag
         key={r.key}
         data-testid="debug-chat-live"
         data-live={r.state}
-        aria-busy={r.state !== "unsent" || undefined}
-        title={label}
-        onClick={r.state === "sending" ? undefined : editLive}
+        aria-busy={!r.reason || undefined}
+        title={r.reason ?? label}
+        onClick={r.key === LIVE_ID && r.state !== "sending" ? editLive : undefined}
         style={where === "float" ? { textShadow: LINE_HALO } : undefined}
         // His own line's look, outlined dashed and a little faded: not sent yet.
         className={`pointer-events-auto flex items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 leading-snug opacity-80 ${r.state === "sending" ? "" : "cursor-text"} ${where === "float" ? "py-0.5" : ""}`}
@@ -3013,29 +3099,20 @@ export function DebugChat({
           <span className="sr-only">
             {liveWho.name} ({label}):{" "}
           </span>
-          {r.text}
+          {r.context && <QuoteBlock t={t} ctx={r.context} />}
+          {r.attachments?.length ? <SentFiles refs={r.attachments} files={files} /> : null}
+          {r.text !== r.context?.selection || r.attachments?.length ? r.text : null}
           {r.tail && (
             <span data-testid="debug-chat-live-tail" className="text-gray-400">
               {r.tail}
             </span>
           )}
           {r.state === "speaking" && micActive && <MicCaret />}
-          {r.state === "unsent" ? (
+          {r.reason ? (
             <>
               <span className="ms-1 fs-10" style={{ color: "oklch(0.6 0.17 45)" }}>
                 {ux.liveNotSent}
               </span>
-              <button
-                type="button"
-                data-testid="debug-chat-live-retry"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  submit();
-                }}
-                className="ms-1 fs-10 underline"
-              >
-                {ux.liveRetry}
-              </button>
             </>
           ) : (
             // Speaking: a soft pulse (none under reduced motion); sending: still.
@@ -3049,8 +3126,39 @@ export function DebugChat({
       </Tag>
     );
   }
+  function pendingLine(where: "log" | "compact" | "float") {
+    if (!attach || notice || (!pendingFiles.length && !attached)) return null;
+    const Tag = where === "compact" ? "div" : "li";
+    return (
+      <Tag data-testid="debug-chat-pending" data-state={pendingView.state}
+        aria-busy={pendingFiles.some((file) => file.state === "uploading") || undefined}
+        className="pointer-events-auto flex min-w-0 items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 py-0.5 leading-snug opacity-80">
+        <Avatar src={liveWho.src} name={liveWho.name} initialFrom={liveWho.initialFrom}
+          seed={liveWho.seed} size={AVATAR_PX} hidden />
+        <div className="min-w-0 flex-1 pt-px">
+          <span className="sr-only">{liveWho.name}: </span>
+          {attached && <div className="mb-0.5 flex min-w-0 items-start gap-1 border-s-2 ps-1.5" style={{ borderInlineStartColor: "oklch(0.6 0.11 22.3 / 0.75)" }}>
+            <button type="button" data-testid="debug-chat-candidate" title={t.attachSelection}
+              onPointerDown={(e) => e.preventDefault()} onClick={() => submit(true)}
+              className="min-w-0 flex-1 whitespace-pre-wrap break-words text-start fs-11 text-gray-600 dark:text-gray-300">
+              {attached.selection}
+            </button>
+            <button type="button" data-testid="debug-chat-attached-remove" aria-label={t.attachRemove}
+              onPointerDown={(e) => e.preventDefault()} onClick={() => { uiStore.setState({ attached: null }); pageSel.clear(); }}
+              className="tap-40 shrink-0 px-1.5 text-sm text-gray-500">×</button>
+          </div>}
+          {pendingFiles.length > 0 && <PendingFilesRow t={t} list={pendingFiles} onRemove={(key) => pending.remove(key)} />}
+          {pendingFiles.some((file) => file.state === "failed") && <button type="button"
+            data-testid="debug-chat-file-retry" onPointerDown={(e) => e.preventDefault()}
+            onClick={() => { for (const file of pending.get()) if (file.state === "failed") pending.retry(file.key); }}
+            className="tap-40 fs-11 underline">{ux.liveRetry}</button>}
+        </div>
+      </Tag>
+    );
+  }
   // At the end, the log follows the live line as it grows.
-  const liveSig = liveRows.map((r) => `${r.key}:${r.text}${r.tail}`).join("|");
+  const liveSig = liveRows.map((r) => `${r.key}:${r.text}${r.tail}`).join("|") +
+    (attached || pendingFiles.length ? `${attached?.selection ?? ""}:${pendingFiles.map((file) => `${file.key}:${file.state}:${file.sent}`).join("|")}` : "");
   useLayoutEffect(() => {
     const el = log.current;
     if (!open || !liveSig || !el || !atEnd.current) return;
@@ -3086,10 +3194,21 @@ export function DebugChat({
    * if that line is a merged one the hub is told (one polish for all of it).
    */
   const passage = useRef<ReturnType<typeof createJoiner> | null>(null);
+  const whisperRef = useRef(whisperRecheck);
+  whisperRef.current = whisperRecheck;
+  /** Level 2 first (whisper-recheck.ts): the passage end carries Whisper's reading of the run. */
+  const recheckEnd = useRef<ReturnType<typeof createPassageRecheck> | null>(null);
+  recheckEnd.current ??= createPassageRecheck({
+    conf: () => whisperRef.current,
+    recheck: () => (globalThis as { __lkMic?: MicRecheckSlice }).__lkMic?.recheck,
+    line: (id) => messagesNow.current.find((m) => m.id === id),
+    send: (recheck) => onPassageEndRef.current?.(recheck),
+  });
   const passageEnd = () => {
-    const mic = (globalThis as { __lkMic?: { view?: () => { state: string } } }).__lkMic?.view?.();
+    const mic = (globalThis as { __lkMic?: MicRecheckSlice }).__lkMic?.view?.();
     if (micPending.current || mic?.state === "capturing") return passage.current?.final();
-    if (messagesNow.current.findLast((m) => m.from === "owner")?.parts) onPassageEndRef.current?.();
+    const line = messagesNow.current.findLast((m) => m.from === "owner");
+    if (line?.parts) void recheckEnd.current?.(line);
   };
   const passageEndRef = useRef(passageEnd);
   passageEndRef.current = passageEnd;
@@ -3106,11 +3225,11 @@ export function DebugChat({
   /** Uploads finished: a held send goes now; files alone send after the usual pause. */
   const afterUpload = useRef(() => {});
   afterUpload.current = () => {
-    if (pending.busy()) return;
+    if (!pending.ready()) return;
     if (waitFiles.current) {
       waitFiles.current = false;
       submit();
-    } else if (pending.get().some((p) => p.state === "done")) arm();
+    } else arm();
   };
   useEffect(() => pending.subscribe(() => afterUpload.current()), [pending]);
   useEffect(() => {
@@ -3182,6 +3301,30 @@ export function DebugChat({
     setArmed((n) => n + 1);
     timer.current = setTimeout(submit, DEBOUNCE_MS);
   };
+  const armRef = useRef(arm);
+  armRef.current = arm;
+  useEffect(() => {
+    // Legacy unscoped text needs the verified owner's migration before any auto-resume.
+    if (!draftScope || draftScope === "guest") return;
+    const resume = () => {
+      if (!draftRef.current.trim()) return;
+      const mic = (globalThis as { __lkMic?: { view?: () => { state: string } } }).__lkMic?.view?.();
+      if (micPending.current || mic?.state === "capturing") return;
+      if (draftSource(draftRef.current, pureDictation.current)) joiner.current?.final();
+      else armRef.current();
+    };
+    let mounted = true;
+    queueMicrotask(() => { if (mounted) resume(); });
+    window.addEventListener("online", resume);
+    return () => {
+      mounted = false;
+      window.removeEventListener("online", resume);
+      clearTimeout(timer.current);
+    };
+  }, [uiStore, draftScope]);
+  useEffect(() => {
+    if (draftScope && draftScope !== "guest" && live && offline && draftRef.current.trim()) armRef.current();
+  }, [live, offline, draftScope]);
   const toggle = (v: boolean) => {
     if (v) atEnd.current = true;
     // Opened from anywhere (the island, a voice command, the menu): no longer tucked.
@@ -3853,7 +3996,11 @@ export function DebugChat({
                 you: t.you,
                 ...laneOpts,
               })}
-              text={lineText(m, p.text)}
+              text={m.attachments?.length || m.context ? <>
+                {m.context && <QuoteBlock t={t} ctx={m.context} />}
+                {m.attachments?.length ? <SentFiles refs={m.attachments} files={files} /> : null}
+                {m.context?.selection === p.text && !m.attachments?.length ? null : lineText(m, p.text)}
+              </> : lineText(m, p.text)}
               mark={
                 <>
                   {p.mark}
@@ -3896,7 +4043,7 @@ export function DebugChat({
    * clamped inside the viewport. Tucked, only the newest line peeks (tuckEl).
    */
   const floatBoxEl =
-    fold === "pill" && (floats.length > 0 || liveRows.length > 0 || !!shownFrontier || tree) && (
+    fold === "pill" && (floats.length > 0 || liveRows.length > 0 || pendingFiles.length > 0 || !!attached || !!shownFrontier || tree) && (
     <div
       ref={setFloatBox}
       data-testid="debug-chat-float-box"
@@ -3906,13 +4053,14 @@ export function DebugChat({
     >
       {tree && treePanel(true)}
       {floatsEl}
-      {liveRows.length > 0 && (
+      {(liveRows.length > 0 || pendingFiles.length > 0 || !!attached) && (
         // Minimized: what he is saying floats as his newest line too.
         <ol
           data-testid="debug-chat-live-floats"
           className={`m-0 flex list-none flex-col gap-0.5 p-0 ${ALIGN_ITEMS[place.side]}`}
         >
           {liveRows.map((r) => liveLine(r, "float"))}
+          {pendingLine("float")}
         </ol>
       )}
       {shownFrontier && (
@@ -3936,7 +4084,7 @@ export function DebugChat({
       role="menu"
       data-testid="debug-menu"
       style={{ background: INPUT_BG }}
-      className="pointer-events-auto absolute bottom-full start-0 mb-1 flex max-h-[60vh] min-w-48 flex-col overflow-y-auto rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
+      className="pointer-events-auto absolute bottom-full start-0 mb-1 flex max-h-[60vh] min-w-48 flex-col overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
     >
       <span data-testid="debug-menu-status" className="px-3 py-1 text-gray-500" aria-live="polite">
         {status}
@@ -4526,13 +4674,15 @@ export function DebugChat({
     if (voice().state().mic || activated) resumeNow();
   }, [resumeItems.length]);
   /**
-   * A line's text in full: markdown by its tier (rich-text.ts), and an agent
-   * line in its sentences, each coloured by how far the reading got.
+   * A line's text in full: markdown by its tier (rich-text.ts), and a line
+   * read aloud (an agent's, or his own read back: showsReading) in its
+   * sentences, each coloured by how far the reading got.
    */
   const readText = (m: ChatMessage, text: ReactNode) => {
     if (typeof text !== "string") return text;
     const rich = richOf(text, lineTier(m, { embedded }));
-    if (m.from !== "agent") return <RichBody rich={rich} onOpenPage={onOpenPage} />;
+    // An agent line, or his own read back in his cloned voice: in its sentences.
+    if (!showsReading(m, readbackOf)) return <RichBody rich={rich} onOpenPage={onOpenPage} />;
     return (
       <RichBody
         rich={rich}
@@ -4596,7 +4746,8 @@ export function DebugChat({
       ...laneOpts,
     }),
   );
-  const starts = runStarts(
+  const starts = passageStarts(
+    messages,
     messages.map((m, i) => ({
       seed: `${whos[i]!.seed}|${whos[i]!.mine ? "me" : ""}`,
       node: lineNode(m)?.node,
@@ -4631,7 +4782,11 @@ export function DebugChat({
         // A 40px tap target over the page; the text keeps the box's halo.
         className={`pointer-events-auto flex min-h-10 items-start gap-1.5 py-1 leading-snug ${asLine ? "cursor-pointer" : ""}`}
       >
-        <span className="inline-flex shrink-0 rounded-full" {...laneFlash(m)}>
+        <span
+          className={`relative inline-flex shrink-0 rounded-full ${who.unsure ? "opacity-60" : ""}`}
+          data-unsure={who.unsure ? "1" : undefined}
+          {...laneFlash(m)}
+        >
           <Avatar
             src={who.src}
             name={who.name}
@@ -4640,14 +4795,24 @@ export function DebugChat({
             size={AVATAR_PX}
             hidden
           />
+          {who.unsure && (
+            <span
+              aria-hidden
+              className="absolute -right-1 -bottom-1 rounded-full bg-[oklch(0.5_0.18_25)] px-1 text-[9px] leading-3 text-[oklch(0.99_0_0)]"
+            >
+              ?
+            </span>
+          )}
         </span>
         <div
-          className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-3" : "whitespace-pre-wrap"}`}
+          className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine && !m.attachments?.length ? "line-clamp-3" : "whitespace-pre-wrap"}`}
           {...shimmerOf(m)}
         >
           <span className="sr-only">{who.name}: </span>
-          <LineTag m={m} name={who.name} inline />
-          {m.ask
+          <LineTag m={m} name={who.name} partnerName={partnerName} inline />
+          {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
+          {m.attachments?.length && m.from !== "agent" ? <SentFiles refs={m.attachments} files={files} /> : null}
+          {m.context?.selection === p.text && !m.attachments?.length ? null : m.ask
             ? m.ask.questions.length === 1
               ? lineText(m, m.ask.questions[0]!.question)
               : ""
@@ -4685,8 +4850,9 @@ export function DebugChat({
         {asks.map((m) => compactRow(m, false))}
         {last
           ? compactRow(last, true)
-          : !liveRows.length && <p className="m-0 py-1 text-gray-500">{t.hint}</p>}
+          : !liveRows.length && !pendingFiles.length && !attached && <p className="m-0 py-1 text-gray-500">{t.hint}</p>}
         {liveRows.map((r) => liveLine(r, "compact"))}
+        {pendingLine("compact")}
       </div>
     );
   })();
@@ -5012,14 +5178,15 @@ export function DebugChat({
         data-testid="debug-chat-log"
         className="m-0 list-none space-y-0.5 p-0"
       >
-        {messages.length === 0 && !liveRows.length && (
+        {messages.length === 0 && !liveRows.length && !pendingFiles.length && !attached && (
           <li className="text-gray-500">{t.hint}</li>
         )}
         {/*
           A game-style log, avatar then text, no bubbles. A run of one
           sender's messages (same sender and node, no long pause: runStarts)
           is ONE paragraph: the avatar once, the messages flowing inline one
-          after another, a faint dot between them. Merged at render time
+          after another. Own speech adjoins without separators; other runs
+          keep the faint dots between messages. Merged at render time
           only: every message stays its own span, with its own id, title
           (time), polish mark, waiting tag, so the hub's history, the polish
           edit (one line id), read-aloud and the anchoring are unchanged.
@@ -5028,6 +5195,7 @@ export function DebugChat({
           const i0 = run[0]!;
           const m0 = messages[i0]!;
           const who = whos[i0]!;
+          const ownPassage = isOwnVoice(m0);
           // The state-tree node the run belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m0);
           // The up-arrow floats at the log's end: the newest run keeps room
@@ -5037,6 +5205,7 @@ export function DebugChat({
             <li
               key={m0.id}
               data-testid="debug-chat-run"
+              data-own-passage={ownPassage || undefined}
               data-from={m0.from}
               data-node={node?.node}
               data-jump-room={room ? room.end : undefined}
@@ -5093,17 +5262,50 @@ export function DebugChat({
                   </span>
                 )}
                 {/* A lane's name, "name：", once per run, then the text; lines with no lane have none. */}
-                <LineTag m={m0} name={who.name} agentName={t.name} />
+                <LineTag m={m0} name={who.name} agentName={t.name} partnerName={partnerName} />
                 {/* Screen readers hear the name once per run, from the sr-only span. */}
                 <span className="sr-only">
                   {who.name}
                   {node ? ` (${node.subtitle})` : ""}:{" "}
                 </span>
+                {ownPassage && run.some((i) => messages[i]!.speaker?.decision === "me") && (
+                  <VoiceMark label={t.vpVerified} />
+                )}
                 {run.map((i, k) => {
                   const m = messages[i]!;
+                  const text = polish(m).text;
+                  const previousText = k > 0 ? polish(messages[run[k - 1]!]!).text : "";
+                  // Keep each message untouched; only add the joiner's natural gap between spans.
+                  const passageSpace = ownPassage && k > 0 &&
+                    typeof text === "string" && typeof previousText === "string" && !/^\s/.test(text) &&
+                    joinText(previousText, text) !== previousText + text.trim() ? " " : "";
+                  const otherVoiceLine = isOtherVoice(m);
+                  const foldedOther = isLineFolded(m, expandedOthers, m.id, foldOthers);
+                  if (foldedOther) {
+                    return (
+                      <span key={m.id}>
+                        {k > 0 && !ownPassage && (
+                          <span aria-hidden className="mx-1 opacity-40">
+                            ·
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          data-testid="debug-chat-line-folded-other"
+                          data-msg={m.id}
+                          onClick={() => toggleExpandOther(m.id)}
+                          className="inline-flex items-center gap-1 cursor-pointer py-0.5 px-1.5 rounded text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 bg-[oklch(0.5_0_0/0.05)] hover:bg-[oklch(0.5_0_0/0.1)] transition-colors"
+                          title={t.vpOtherVoiceFolded}
+                        >
+                          <span className="font-medium">{t.vpOtherVoiceFolded}</span>
+                        </button>
+                      </span>
+                    );
+                  }
                   return (
                     <span key={m.id}>
-                      {k > 0 && (
+                      {passageSpace}
+                      {k > 0 && !ownPassage && (
                         <span aria-hidden className="mx-1 opacity-40">
                           ·
                         </span>
@@ -5113,6 +5315,11 @@ export function DebugChat({
                         {...details.forMessage(m, who.name)}
                         data-testid="debug-chat-line"
                         data-msg={m.id}
+                        data-other-voice={otherVoiceLine ? "other" : undefined}
+                        {...(otherVoiceLine ? { onClick: () => {
+                          if (String(window.getSelection?.() ?? "")) return;
+                          toggleExpandOther(m.id);
+                        } } : {})}
                         data-from={m.from}
                         data-node={node?.node}
                         data-run-start={k === 0 || undefined}
@@ -5134,7 +5341,7 @@ export function DebugChat({
                           ? m.ask.questions.length === 1
                             ? lineText(m, m.ask.questions[0]!.question)
                             : ""
-                          : readText(m, polish(m).text)}
+                          : (m.context?.selection === text && !m.attachments?.length) ? null : readText(m, text)}
                         {m.ask && (
                           <AskCard
                             ask={m.ask}
@@ -5151,10 +5358,10 @@ export function DebugChat({
                             pulse={flashOn.has(`line:${m.id}`)}
                           />
                         )}
-                        {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                        {!ownPassage && m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
                         {(() => {
                           // Which recognizer made a voice line: dev holders only (`owner` needs dev).
-                          const tag = m.from === "owner" ? sttTagText(m.stt, owner, ui) : undefined;
+                          const tag = m.from === "owner" && !ownPassage ? sttTagText(m.stt, owner, ui) : undefined;
                           return tag ? (
                             <span
                               data-testid="debug-chat-stt"
@@ -5208,6 +5415,7 @@ export function DebugChat({
         })}
         {/* What he is saying now, as his newest line (live-speech.ts): not sent yet. */}
         {liveRows.map((r) => liveLine(r, "log"))}
+        {pendingLine("log")}
       </ol>
       </div>
       {compact && compactEl}
@@ -5292,18 +5500,6 @@ export function DebugChat({
             setPublicStt("on");
           }}
           onLater={() => setPublicStt("no")}
-        />
-      )}
-      {open && !notice && filesRef.current && <PendingChips t={t} pending={pending} />}
-      {open && attached && !notice && (
-        <AttachChip
-          t={t}
-          flat={typingGlassShown}
-          ctx={attached}
-          onRemove={() => {
-            uiStore.setState({ attached: null });
-            pageSel.clear();
-          }}
         />
       )}
       {(etaShown || linkShown) && (
@@ -6003,7 +6199,7 @@ function FloatLine({
       {...(shim ? { [NEW_ATTR]: true } : {})}
       // The fade runs FADE_MS (ease-out, opacity only); held (touched), the line
       // snaps back to full at once. Reduced motion: no fade, it just goes.
-      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
+      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto ${m.attachments?.length ? "" : "line-clamp-3"} max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
     >
       <span className="me-1 inline-block rounded-full align-[-0.25em]" {...flash}>
         <Avatar
@@ -6016,7 +6212,7 @@ function FloatLine({
         />
       </span>
       <span className="sr-only">{who.name}: </span>
-      <LineTag m={m} name={who.name} inline />
+      <LineTag m={m} name={who.name} partnerName={EMBED_NAME[embedLang()]} inline />
       {text}
       {mark}
     </li>

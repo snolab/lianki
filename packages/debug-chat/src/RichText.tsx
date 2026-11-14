@@ -3,9 +3,11 @@
  * tags and attributes that passed the allowlist get here; text is always a
  * text node. Colours in oklch(), through light-dark() for both themes.
  */
-import { type CSSProperties, createElement, type ReactNode, useRef } from "react";
+import { type CSSProperties, createElement, type ReactNode, useRef, useState } from "react";
 import { linkClick, parseLinks, sameTab } from "./chat-links";
 import type { Rich, RichNode, RichString } from "./rich-text";
+import { ChatLinkMenu } from "./ChatLinkMenu";
+import { linkDestinations } from "./link-destination";
 
 const LINK_INK = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))";
 const CODE_BG = "light-dark(oklch(0.5 0.01 260 / 0.13), oklch(0.85 0.01 260 / 0.16))";
@@ -23,10 +25,9 @@ const here = () => (typeof location === "undefined" ? undefined : location.hostn
 
 /**
  * One link. At rest the history is click-through (log-engage.ts), so a link
- * takes the pointer itself. Its press and long-press stay the platform's
- * (iOS and Android offer Copy link); a mouse drag selects text rather than
- * dragging the link, and does not follow it. The click stops here: it is
- * never a tap on the line around it.
+ * takes the pointer itself. A tap or context menu opens the chat's actions;
+ * a mouse drag selects text and opens nothing. The click stops here so it
+ * never becomes a tap on the message around it.
  */
 export function ChatLink({
   href,
@@ -38,40 +39,58 @@ export function ChatLink({
   onOpenPage?: OpenPage;
 }) {
   const down = useRef<{ x: number; y: number } | null>(null);
-  const stay = sameTab(href, here());
+  const [menu, setMenu] = useState(false);
+  const anchor = useRef<HTMLAnchorElement>(null);
+  const destinations =
+    typeof location === "undefined"
+      ? { href, prod: null, forceProd: false }
+      : linkDestinations(href, location);
+  const stay = sameTab(destinations.href, here());
+  const close = () => {
+    setMenu(false);
+    anchor.current?.focus({ preventScroll: true });
+  };
   return (
-    <a
-      href={href}
-      {...(stay ? {} : { target: "_blank", rel: "noopener noreferrer" })}
-      draggable={false}
-      data-testid="debug-chat-link"
-      className="pointer-events-auto underline decoration-1 underline-offset-2 [overflow-wrap:anywhere]"
-      style={{ color: LINK_INK }}
-      onPointerDown={(e) => {
-        down.current = { x: e.clientX, y: e.clientY };
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        const from = down.current;
-        down.current = null;
-        const did = linkClick({
-          href,
-          hereHost: here(),
-          movedPx: from ? Math.hypot(e.clientX - from.x, e.clientY - from.y) : 0,
-          modified: e.metaKey || e.ctrlKey || e.shiftKey || e.altKey,
-          hasRouter: !!onOpenPage,
-        });
-        if (did.to === "native") return;
-        e.preventDefault();
-        if (did.to === "app") onOpenPage?.(did.path);
-      }}
-      // Enter on a link is the link's, not the compact line's "show all".
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") e.stopPropagation();
-      }}
-    >
-      {children}
-    </a>
+    <>
+      <a
+        ref={anchor}
+        href={destinations.href}
+        {...(stay ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+        draggable={false}
+        data-testid="debug-chat-link"
+        className="pointer-events-auto underline decoration-1 underline-offset-2 [overflow-wrap:anywhere]"
+        style={{ color: LINK_INK }}
+        onPointerDown={(e) => {
+          down.current = { x: e.clientX, y: e.clientY };
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          const from = down.current;
+          down.current = null;
+          const did = linkClick({
+            href,
+            hereHost: here(),
+            movedPx: from ? Math.hypot(e.clientX - from.x, e.clientY - from.y) : 0,
+            modified: e.metaKey || e.ctrlKey || e.shiftKey || e.altKey,
+            hasRouter: !!onOpenPage,
+          });
+          e.preventDefault();
+          if (did.to !== "drag") setMenu(true);
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setMenu(true);
+        }}
+        // Enter on a link is the link's, not the compact line's "show all".
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+        }}
+      >
+        {children}
+      </a>
+      {menu && <ChatLinkMenu {...destinations} onOpenPage={onOpenPage} onClose={close} />}
+    </>
   );
 }
 

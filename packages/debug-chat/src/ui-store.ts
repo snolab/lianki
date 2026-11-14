@@ -19,6 +19,8 @@ import { type ChatContext, cleanContext } from "./wire";
 export type ChatUi = {
   /** The input's draft, and the caret in it (null: the end). */
   draft: string;
+  /** Durable receipt for the owner's one-time pre-account draft adoption. */
+  legacyOwnerMigrated: boolean;
   caret: number | null;
   /** The draft as dictation left it (wire.ts dictatedDraft): a restored voice line still sends as `stt`. */
   pureDictation: string | null;
@@ -45,6 +47,8 @@ export type ChatUi = {
   reading: { id: string; from: number; at: number }[];
   /** Attached to the next line with the + menu (attach.ts): kept with the draft. */
   attached: ChatContext | null;
+  /** Message IDs of other voices manually expanded in Li chat (session storage). */
+  expandedOthers: string[];
   // Not kept: the log's scroll (at rest the compact log always shows the
   // newest lines), the bar's position (localStorage, remembered across
   // sessions), the full-screen log (only during a drag) and the mic (it
@@ -54,6 +58,7 @@ export const CHAT_UI_NAME = "chat";
 export const CHAT_UI_VERSION = 1;
 export const CHAT_UI_INITIAL: ChatUi = {
   draft: "",
+  legacyOwnerMigrated: false,
   caret: null,
   pureDictation: null,
   interim: null,
@@ -62,6 +67,7 @@ export const CHAT_UI_INITIAL: ChatUi = {
   spoken: {},
   reading: [],
   attached: null,
+  expandedOthers: [],
 };
 /** A draft longer than this is not restored (the input's own cap is lower). */
 const MAX_DRAFT = 20_000;
@@ -110,8 +116,13 @@ export function migrateChatUi(persisted: unknown, _version: number): ChatUi {
         reading.push({ id: x.id, from: x.from as number, at: x.at });
     }
   const attached = cleanContext(p.attached) ?? null;
+  const expandedOthers: string[] = [];
+  if (Array.isArray(p.expandedOthers))
+    for (const id of p.expandedOthers.slice(0, 500))
+      if (typeof id === "string" && id.length <= 100) expandedOthers.push(id);
   return {
     draft,
+    legacyOwnerMigrated: p.legacyOwnerMigrated === true,
     caret,
     pureDictation,
     interim,
@@ -120,6 +131,7 @@ export function migrateChatUi(persisted: unknown, _version: number): ChatUi {
     spoken,
     reading,
     attached,
+    expandedOthers,
   };
 }
 
@@ -234,8 +246,8 @@ export const ganttGroupsUi = () =>
   });
 
 /** The chat's UI store (one per page, shared by hot-swapped widget copies). */
-export const chatUi = () =>
-  createUiStore<ChatUi>(CHAT_UI_NAME, CHAT_UI_VERSION, CHAT_UI_INITIAL, {
+export const chatUi = (scope?: string) =>
+  createUiStore<ChatUi>(scope ? `${CHAT_UI_NAME}:${encodeURIComponent(scope)}` : CHAT_UI_NAME, CHAT_UI_VERSION, CHAT_UI_INITIAL, {
     storage: "session",
     // Every stored value goes through the same checks, whatever its version.
     clean: (v) => migrateChatUi(v, CHAT_UI_VERSION),

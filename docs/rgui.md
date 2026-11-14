@@ -44,6 +44,25 @@ category's overlapping bars in lanes. Wiring the LOD clusters needs a cluster
 row in GanttFull (sticky label, union bar, a tap that unfolds it) and new QA
 checks for it in `scripts/dev/debug-chat-gantt-qa.mjs`.
 
+Double-tap, then drag zooms GanttFull's time scale like a map (owner,
+2026-11-15). It starts with a tap. Within `gapMs`, a second pointer goes
+down within `slopPx` of it. Once that pointer moves past `dragPx`, its
+vertical travel sets the factor `exp(dy · zoomPerPx)` (down = in, up = out),
+measured from where it went down. The time under the finger at that moment
+is the anchor. Each frame zooms the start axis by the whole factor, then
+solves the scroll so that time sits under the finger's current x. This
+reuses the pinch's `pinchStart` and `pinchView`. A second tap that does not
+move stays a plain tap. Only pointers whose `PointerEvent.pointerType` is
+`touch` or `pen` take part: a mouse never arms it, so double-click is
+unchanged. A second pointer (a pinch) cancels it, and the pinch takes over.
+The scroller's `touch-action` is `none` only while a second down would arm
+the gesture or the gesture holds a pointer. The rest of the time it is
+`pan-x pan-y`, so a single drag still pans natively and a single tap gets
+no delay. The pure state machine is `packages/debug-chat/src/gantt-dbltap.ts`,
+with its thresholds as data at the top (`DBLTAP`). It is tested in
+`unit/gantt-dbltap.test.ts` and, in a browser, by the iPhone touch sequence
+in `debug-chat-gantt-qa.mjs`.
+
 Upstream writes relative imports TypeScript-ESM style (`"./rule.js"` for
 `rule.ts`). bun and tsc map that; Turbopack does not ("Can't resolve
 './rule.js'"). `lib/build/strip-js-ext-loader.cjs`, a Turbopack loader

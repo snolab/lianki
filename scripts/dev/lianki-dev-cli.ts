@@ -43,6 +43,7 @@ export const errorLine = (exit: number, message: string) =>
 
 export const SUBCOMMANDS = [
   "say",
+  "reply",
   "voices",
   "ask",
   "withdraw",
@@ -50,6 +51,7 @@ export const SUBCOMMANDS = [
   "inbox",
   "listen",
   "lane-listen",
+  "lanes",
   "serve",
   "progress",
   "whoami",
@@ -67,6 +69,7 @@ export const USAGE: Record<Sub | "main", string> = {
   main: `usage: lianki-dev <command> [options]
 
   say       a chat line to the owner (or --to a thread)
+  reply     answer one of his lines: [--id <id>] [--polish "<his line, tidied>"] "<reply>" (polish = edit, then say)
   voices    the voice ids say --voice takes: the phone's own, and the cloud's
   ask      an ask card with tappable options
   withdraw  withdraw an open ask card he no longer needs to answer
@@ -74,6 +77,7 @@ export const USAGE: Record<Sub | "main", string> = {
   inbox     the chat inbox: list | get <id> [--out <dir>] | done <id>
   listen    listen to the chat (eval.ts chat), one JSON line per event
   lane-listen  a lane's own listener: the owner lines addressed to it, handed to its agent
+  lanes     the lanes manager: every agent on Lianki and its repos joins the chat (全员入群)
   serve     hold an eval session (eval.ts serve)
   progress  report to the state tree (progress.ts)
   whoami    lane, checkout, hub, which grant and token are present
@@ -108,6 +112,11 @@ ${EXITS}
   stdout: the hub's {"type":"said",…} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
+  reply: `usage: lianki-dev reply [--id <msgId>] [--polish "<his line, tidied>"] "<reply text>" | -
+  Answer one of his lines: with --polish, his line is edited first (eval.ts edit), then the reply is said.
+${GLOBAL}
+${EXITS}
+`,
   voices: `usage: lianki-dev voices [--cloud] [--target <text>]
   The ids say --voice takes, as one JSON line (eval.ts voices): each open
   debug page's device voices, read once over the eval channel (needs the
@@ -160,6 +169,17 @@ ${EXITS}`,
   with \`ay send\` (from --cwd: \`ay send .\`). The lane answers with
   \`lianki-dev say --as <lane>\`. --tests: also "[lane-test] …" agent lines.
   Token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (exit 2 without).
+${GLOBAL}
+${EXITS}`,
+  lanes: `usage: lianki-dev lanes [--once] [--dry-run]
+  The lanes manager (scripts/dev/lanes-manager.ts, docs/lane-listen.md "Every
+  agent joins"): each agent of \`ay ls --local\` under a repo in lanes.repos
+  (LIANKI_LANES_REPOS) joins the owner's chat as its own lane (its registered
+  name, lanes.agents / LIANKI_LANES_AGENTS, else <repo>-<cli>-<pid>). Resident
+  lanes get a lane-listen --all; the others are readers, woken by name. Each
+  new lane greets once with its own token (~/.config/lianki/lanes/<lane>.token);
+  the names still waiting for one are said once in the chat (never minted here).
+  --once: one look, then exit. --dry-run: log the actions, do none.
 ${GLOBAL}
 ${EXITS}`,
   serve: `usage: lianki-dev serve [--label "…"]

@@ -9,6 +9,7 @@ import { longDate } from "@/lib/dates";
 import { PASSES, type PassId } from "@/lib/payments/passes";
 import type { LedgerEntry } from "@/lib/payments/credits-store";
 import { streakDayOf, streakNoteOf } from "@/lib/payments/login-streak";
+import { isSignupBonus } from "@/lib/payments/signup-bonus";
 import type { StreakView } from "@/lib/payments/login-streak-store";
 import { useCredits, yen } from "./use-credits";
 
@@ -423,7 +424,10 @@ export function WalletCard({
               <li key={e.id} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
                   <div>
-                    {streakLabel(e) ?? ageLabel(e.refId) ?? reasonLabel(e.reason)}
+                    {streakLabel(e) ??
+                      ageLabel(e.refId) ??
+                      (isSignupBonus(e.refId) ? s.signupBonus.value : null) ??
+                      reasonLabel(e.reason)}
                     {e.passId === "pro-1m" && ` · ${s.oneMonth.value}`}
                     {e.passId === "pro-12m" && ` · ${s.twelveMonths.value}`}
                   </div>

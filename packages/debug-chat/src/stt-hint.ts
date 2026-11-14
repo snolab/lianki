@@ -21,6 +21,16 @@ export const STT_PROMPT_ZH = "我说中文，有时夹杂日本語和English。"
 /** Every prompt the route may send: what cloud Whisper can read back as speech. */
 export const STT_PROMPTS: readonly string[] = [STT_PROMPT_ZH, STT_PROMPT];
 
+/**
+ * Format STT prompt with optional hotword list appended for Whisper initial_prompt.
+ */
+export function formatSttPrompt(basePrompt: string, hotwords?: readonly string[]): string {
+  if (!hotwords || hotwords.length === 0) return basePrompt;
+  const filtered = hotwords.filter((w) => w.trim().length > 0);
+  if (filtered.length === 0) return basePrompt;
+  return `${basePrompt} 热词: ${filtered.join(", ")}。`;
+}
+
 /** A line's language by its script: any kana is Japanese, else Han is Chinese, else Latin is English. */
 export function scriptLang(text: string): SttHint | undefined {
   if (/[\p{sc=Hiragana}\p{sc=Katakana}]/u.test(text)) return "ja";

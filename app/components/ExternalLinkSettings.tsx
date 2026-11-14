@@ -22,7 +22,7 @@ import { SealSwitch } from "@/app/components/SealSwitch";
 const QUIET =
   "min-h-11 shrink-0 rounded-full bg-[oklch(0.5_0.02_250/0.12)] px-4 text-sm font-medium hover:bg-[oklch(0.5_0.02_250/0.2)] pointer-fine:min-h-9";
 
-export function ExternalLinkSettings() {
+export function ExternalLinkSettings({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const c = useIntlayer("external-link");
   const [policy, setPolicy] = useState<LinkPolicy>({ confirm: true, hosts: [] });
 
@@ -50,8 +50,13 @@ export function ExternalLinkSettings() {
   }, [reload]);
 
   return (
-    <section className="mb-10 max-w-xl" data-section="external-links" data-testid="external-links">
-      <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>
+    <section
+      id="external-links"
+      className="mb-10 max-w-xl scroll-mt-6"
+      data-section="external-links"
+      data-testid="external-links"
+    >
+      {!hideHeading && <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>}
       <div className="mb-4 flex min-h-11 items-center gap-3">
         <span id="external-links-ask-label" className="flex-1">
           {c.ask}

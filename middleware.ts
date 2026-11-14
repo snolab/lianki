@@ -14,6 +14,7 @@ import {
 } from "@/lib/app-locale";
 import { movedPath } from "@/lib/moved-routes";
 import { LOCALE_SRC_COOKIE, LOCALE_SRC_HEADER, requestLocale } from "@/lib/account-locale";
+import { isMiniHost, miniHostPath } from "@/lib/mini-apps/origin";
 
 const YEAR_S = 365 * 24 * 60 * 60;
 /** intlayer's locale header, which the root layout reads (app/layout.tsx, getRootLocale). */
@@ -41,6 +42,12 @@ export function agentGuideFile(pathname: string): { lang: string | null } | null
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   const host = request.headers.get("host");
+
+  // The mini apps' own host (docs/mini-apps.md, "Isolation"): only an app's
+  // file and the public /m/ files there, never a Lianki page.
+  if (isMiniHost(host) && !miniHostPath(pathname)) {
+    return new NextResponse("Not found", { status: 404 });
+  }
 
   // Redirect www.lianki.com → lianki.com (canonical domain)
   if (host === "www.lianki.com") {

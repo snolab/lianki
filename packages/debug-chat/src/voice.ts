@@ -1019,7 +1019,7 @@ export function createVoice(d: {
       jumps.add(f);
       return () => void jumps.delete(f);
     },
-    /** `f` hears the line ids a superseding line dropped from the queue (read-progress mirror). */
+    /** `f` hears line ids dropped by superseding or backlog trimming (read-progress mirror). */
     onDrop(f: (ids: string[]) => void) {
       drops.add(f);
       return () => void drops.delete(f);
@@ -1140,9 +1140,18 @@ export function createVoice(d: {
       const skip = backlogSkip(queue, keep);
       if (skip.length) {
         const before = queue.length;
-        for (let i = queue.length - 1; i >= (current ? 1 : 0); i--)
-          if (queue[i]!.id && skip.includes(queue[i]!.id!)) queue.splice(i, 1);
-        log({ ev: "voice-skip-backlog", lines: skip.length, sentences: before - queue.length });
+        const removed = new Set<string>();
+        for (let i = queue.length - 1; i >= (current ? 1 : 0); i--) {
+          const id = queue[i]!.id;
+          if (id && skip.includes(id)) {
+            queue.splice(i, 1);
+            removed.add(id);
+          }
+        }
+        // Before next/emit: keep the highlight mirror aligned with the trimmed queue.
+        const dropped = skip.filter((id) => removed.has(id));
+        if (dropped.length) for (const f of drops) f(dropped);
+        log({ ev: "voice-skip-backlog", lines: dropped.length, sentences: before - queue.length });
       }
       next();
       emit();

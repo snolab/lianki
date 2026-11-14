@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import { flashProps } from "./addressed";
-import { LANES, type LaneId, type LaneMark, isLaneId } from "./voices";
+import { laneSpec, type LaneId, type LaneMark, isLaneId } from "./voices";
 import type { ChatMessage } from "./wire";
 import { speakerAvatar } from "./speaker-avatar";
 import { AVATAR_PATH, autoMark, isAvatarRef, sanitizeAvatarSvg, svgDataUrl } from "./svg-avatar";
@@ -42,7 +42,7 @@ export function markSvg(mark: LaneMark, data: Record<string, string>) {
 
 /** The lane's mark as an avatar element (fills the Avatar's round box), or undefined (no mark: as today). */
 export function laneAvatar(lane: LaneId) {
-  const mark = LANES[lane].mark;
+  const mark = laneSpec(lane).mark;
   if (!mark) return undefined;
   return markSvg(mark, { "data-testid": "debug-chat-lane-mark", "data-lane": lane });
 }
@@ -142,28 +142,39 @@ export function LaneTag({
   inline?: boolean;
   mcp?: boolean;
 }) {
-  const name = LANES[lane].name || agentName;
+  const name = laneSpec(lane).name || agentName;
   if (!name) return mcp ? <McpBadge inline={inline} /> : null;
   return <NameTag name={name} lane={lane} inline={inline} mcp={mcp} />;
 }
 
+/** The hub's label on a Learning Partner reply (lib/partner-ai-config.ts PARTNER_AI_LABEL). */
+export const PARTNER_LINE_LABEL = "Learning Partner AI";
+
 /**
  * A line's tag: its lane's name tag, or a token agent's name (`name`: the
  * one its avatar is drawn with, the owner's choice first), with the MCP
- * badge when it came through MCP. Nothing for other lines.
+ * badge when it came through MCP. Nothing for other lines. A Learning
+ * Partner reply on the main lane (his thread, workers/push/src/owner-ai.ts)
+ * is tagged `partnerName` (the feature's name in the page's language), not
+ * the host's agent name: the owner saw Li's replies labelled "Claude"
+ * (2026-11-15 04:2x JST).
  */
 export function LineTag({
   m,
   name,
   agentName,
+  partnerName,
   inline = false,
 }: {
-  m: Pick<ChatMessage, "lane" | "via" | "client" | "tokenLane">;
+  m: Pick<ChatMessage, "lane" | "via" | "client" | "tokenLane"> & { label?: string };
   name?: string;
   agentName?: string;
+  partnerName?: string;
   inline?: boolean;
 }) {
   const mcp = m.client === "mcp";
+  if (m.lane === "main" && m.label === PARTNER_LINE_LABEL)
+    return <NameTag name={partnerName || m.label} lane="main" inline={inline} mcp={mcp} />;
   if (isLaneId(m.lane))
     return <LaneTag lane={m.lane} agentName={agentName} inline={inline} mcp={mcp} />;
   if (m.via === "token") {
@@ -239,8 +250,8 @@ export function AddressedMarks({
           key={lane}
           role="img"
           data-testid="debug-chat-addressed"
-          aria-label={label.replace("{name}", LANES[lane].name || lane)}
-          title={LANES[lane].name || lane}
+          aria-label={label.replace("{name}", laneSpec(lane).name || lane)}
+          title={laneSpec(lane).name || lane}
           className="ms-1 inline-block size-3 rounded-full align-middle"
           {...(pulse ? flashProps(lane) : {})}
         >

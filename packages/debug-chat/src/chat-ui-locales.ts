@@ -70,6 +70,17 @@ export type LegacyKey = (typeof LEGACY_KEYS)[number];
 export type LegacyStrings = Record<LegacyKey, string>;
 
 export type ChatExtra = {
+  linkMenuTitle: string;
+  linkOpen: string;
+  linkOpenHere: string;
+  linkOpenProd: string;
+  linkCopy: string;
+  linkCopied: string;
+  linkCopyFailed: string;
+  linkSystem: string;
+  linkSystemHint: string;
+  linkClose: string;
+
   polishedBy: string;
   polishedAuto: string;
   messageDetails: string;
@@ -78,6 +89,9 @@ export type ChatExtra = {
   voicePinned: string;
   voiceUnpin: string;
   voiceClone: string;
+  levelHeard: string;
+  levelWhisper: string;
+  levelPolished: string;
   speakMicTitle: string;
   speakTouchTitle: string;
   speakVoicedTitle: string;
@@ -151,6 +165,17 @@ export const LEGACY_CONTEXT: LegacyStrings = {
 };
 
 export const EXTRA_CONTEXT: ChatExtra = {
+  linkMenuTitle: `In ${CHAT}: Heading and accessible name of the action menu opened by tapping a URL in a chat message. This menu is only for chat links, not links elsewhere on the page.`,
+  linkOpen: `In ${CHAT}: Action in that menu: follow the selected URL, using the existing external-site confirmation when needed. On the production site or for an external URL. Short imperative.`,
+  linkOpenHere: `In ${CHAT}: Action for a Lianki URL while the chat is on preview.lianki.com: open the same path/query/hash on the CURRENT preview site rather than lianki.com. Parenthetical this site clarifies the destination.`,
+  linkOpenProd: `In ${CHAT}: Action: open this Lianki URL on the public production site lianki.com rather than the preview. Also the default open label when site=prod or #prod explicitly requests production. Production means the normal public website, not a product or factory.`,
+  linkCopy: `In ${CHAT}: Action: copy the effective full URL, including its query/hash, to the clipboard. Imperative.`,
+  linkCopied: `In ${CHAT}: Brief success status after that copy action.`,
+  linkCopyFailed: `In ${CHAT}: Brief failure status when the browser cannot write the link to the clipboard. No technical error details.`,
+  linkSystem: `In ${CHAT}: Action: show the device/browser system options for the effective link. Uses native sharing when supported; otherwise offers a normal anchor that can be pressed and held.`,
+  linkSystemHint: `In ${CHAT}: Hint under the native-link fallback of System menu: press and hold the link to get the browser/system actions. It does not promise a custom popup.`,
+  linkClose: `In ${CHAT}: Accessible label of the close button of the chat link action menu.`,
+
   polishedBy: `In ${CHAT}: accessible label and tooltip heading on the small sparkle after a polished voice message. Names WHO polished the wording, not who spoke or transcribed it. {name} is the assistant lane display name or the localized automatic-system name; keep {name}. Also shown above the original transcript in the tap-open popover.`,
   polishedAuto: `In ${CHAT}: the actor name substituted into polishedBy when edited.by is auto. This is automatic wording cleanup, not a human or a named assistant lane. A short localized name for the automatic system; the tiny badge itself uses a symbol.`,
   messageDetails: `In ${CHAT}: heading and accessible label of a popover opened by clicking a message. It shows only metadata already carried by that message: sender, timestamp, recognition and voiceprint fields when present. Short noun phrase.`,
@@ -159,6 +184,9 @@ export const EXTRA_CONTEXT: ChatExtra = {
   voicePinned: `In ${CHAT}, the message details popover: the state shown once a voice was kept that way (pinned) on this device; the rotation is off and every such line uses {name}. A short state phrase; keep {name}.`,
   voiceUnpin: `In ${CHAT}, the message details popover: a button that undoes that pin, so such lines take turns through the voices again (the rotation). An imperative verb, with 'rotate' or 'take turns' in brackets.`,
   voiceClone: `In ${CHAT}, the message details popover, on the user's own spoken message: the row shown instead of a voice id when the message, after the assistant polished its wording, was read back to the user in a copy (clone) of the user's OWN voice made on their computer. The same 'Voice:' label as the voice row, then 'yours' and '(cloned)' in brackets. Addressed to the user.`,
+  levelHeard: `In ${CHAT}, the message details popover, on the user's own spoken message that was joined from several short utterances: the label above the text exactly as the live speech recognition first heard it, while the user was still speaking (the first of up to three readings of the same speech, shown one under another). A short label, no colon.`,
+  levelWhisper: `In ${CHAT}, the message details popover, on that same spoken message: the label above the second reading, made after the user stopped speaking, when the user's own computer listened to the recording of the whole passage again with a slower, more accurate speech recognizer; {engine} is that recognizer's technical name (e.g. mlx-whisper), kept as is. A short label, no colon; keep {engine}.`,
+  levelPolished: `In ${CHAT}, the message details popover, on that same spoken message: the label above the third reading, the text after the assistant fixed mis-heard words, fillers and punctuation (its meaning unchanged). Past participle or a short label, no colon.`,
   speakMicTitle: `In ${CHAT}, the menu's read-aloud row: tooltip while the mic is on; replies are always read aloud then, and the user's own setting comes back when the mic stops.`,
   speakTouchTitle: `In ${CHAT}, the menu's read-aloud row: tooltip when replies are read aloud whether typing or not, until the user turns it off.`,
   speakVoicedTitle: `In ${CHAT}, the menu's read-aloud row: tooltip after the user spoke with the mic on this device: replies are read aloud, typed or spoken, until turned off.`,
@@ -563,6 +591,17 @@ export const OTHER_LEGACY: Record<Other, LegacyStrings> = {
 /** The strings that were inline in the chat's code, in all 16 locales. */
 export const EXTRA: Record<ChatLocale, ChatExtra> = {
   en: {
+    linkMenuTitle: "Link actions",
+    linkOpen: "Open",
+    linkOpenHere: "Open (this site)",
+    linkOpenProd: "Open on production",
+    linkCopy: "Copy link",
+    linkCopied: "Link copied",
+    linkCopyFailed: "Could not copy the link.",
+    linkSystem: "System menu",
+    linkSystemHint: "Press and hold for browser options.",
+    linkClose: "Close link actions",
+
     polishedBy: "Polished by {name}",
     polishedAuto: "Auto",
     messageDetails: "Message details",
@@ -571,6 +610,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "Pinned on this device: {name}",
     voiceUnpin: "Unpin (rotate)",
     voiceClone: "Voice: yours (cloned)",
+    levelHeard: "Heard while speaking",
+    levelWhisper: "Re-listened whole ({engine})",
+    levelPolished: "Polished",
     speakMicTitle: "The mic is on: replies are always read aloud (your setting is back when it stops)",
     speakTouchTitle: "Replies are read aloud, typing or not, until you turn this off",
     speakVoicedTitle:
@@ -614,6 +656,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Retry",
   },
   zh: {
+    linkMenuTitle: "链接操作",
+    linkOpen: "打开",
+    linkOpenHere: "打开（当前站点）",
+    linkOpenProd: "在正式站打开",
+    linkCopy: "复制链接",
+    linkCopied: "链接已复制",
+    linkCopyFailed: "无法复制链接。",
+    linkSystem: "系统菜单",
+    linkSystemHint: "长按以显示浏览器选项。",
+    linkClose: "关闭链接操作",
+
     polishedBy: "由{name}润色",
     polishedAuto: "自动",
     messageDetails: "消息详情",
@@ -622,6 +675,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "本设备已固定：{name}",
     voiceUnpin: "取消固定（轮换）",
     voiceClone: "声音：你的声音（克隆）",
+    levelHeard: "说话时听到的",
+    levelWhisper: "整段重听（{engine}）",
+    levelPolished: "润色后",
     speakMicTitle: "麦克风开着：回复总会朗读（关掉麦克风后恢复你的设置）",
     speakTouchTitle: "不论是否在输入，回复都会朗读，直到你关掉",
     speakVoicedTitle: "你在这台设备上用过麦克风：无论打字还是说话，回复都会朗读，直到你关掉",
@@ -664,6 +720,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "重试",
   },
   hi: {
+    linkMenuTitle: "लिंक के विकल्प",
+    linkOpen: "खोलें",
+    linkOpenHere: "खोलें (यह साइट)",
+    linkOpenProd: "मुख्य साइट पर खोलें",
+    linkCopy: "लिंक कॉपी करें",
+    linkCopied: "लिंक कॉपी हो गया",
+    linkCopyFailed: "लिंक कॉपी नहीं हो सका।",
+    linkSystem: "सिस्टम मेन्यू",
+    linkSystemHint: "ब्राउज़र के विकल्पों के लिए दबाकर रखें।",
+    linkClose: "लिंक के विकल्प बंद करें",
+
     polishedBy: "{name} द्वारा सुधारा गया",
     polishedAuto: "स्वचालित प्रणाली",
     messageDetails: "संदेश विवरण",
@@ -672,6 +739,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "इस डिवाइस पर पिन: {name}",
     voiceUnpin: "पिन हटाएँ (बारी-बारी)",
     voiceClone: "आवाज़: आपकी अपनी (क्लोन की गई)",
+    levelHeard: "बोलते समय सुना गया",
+    levelWhisper: "पूरा दोबारा सुना गया ({engine})",
+    levelPolished: "सुधारा गया",
     speakMicTitle: "माइक चालू है: जवाब हमेशा बोलकर पढ़े जाते हैं (माइक बंद होने पर आपकी सेटिंग लौट आती है)",
     speakTouchTitle: "जवाब बोलकर पढ़े जाते हैं, टाइप करें या न करें, जब तक आप इसे बंद न करें",
     speakVoicedTitle: "आपने इस डिवाइस पर माइक इस्तेमाल किया: जवाब बोलकर पढ़े जाते हैं, टाइप करें या बोलें, जब तक आप बंद न करें",
@@ -714,6 +784,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "फिर से कोशिश करें",
   },
   es: {
+    linkMenuTitle: "Opciones del enlace",
+    linkOpen: "Abrir",
+    linkOpenHere: "Abrir (este sitio)",
+    linkOpenProd: "Abrir en el sitio principal",
+    linkCopy: "Copiar enlace",
+    linkCopied: "Enlace copiado",
+    linkCopyFailed: "No se pudo copiar el enlace.",
+    linkSystem: "Menú del sistema",
+    linkSystemHint: "Mantén pulsado para ver las opciones del navegador.",
+    linkClose: "Cerrar opciones del enlace",
+
     polishedBy: "Revisado por {name}",
     polishedAuto: "el sistema automático",
     messageDetails: "Detalles del mensaje",
@@ -722,6 +803,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "Fijada en este dispositivo: {name}",
     voiceUnpin: "Desfijar (alternar)",
     voiceClone: "Voz: la tuya (clonada)",
+    levelHeard: "Oído mientras hablabas",
+    levelWhisper: "Reescuchado entero ({engine})",
+    levelPolished: "Pulido",
     speakMicTitle: "El micrófono está activado: las respuestas siempre se leen en voz alta (tu ajuste vuelve al apagarlo)",
     speakTouchTitle: "Las respuestas se leen en voz alta, escribas o no, hasta que lo desactives",
     speakVoicedTitle: "Usaste el micrófono en este dispositivo: las respuestas se leen en voz alta, escritas o habladas, hasta que lo desactives",
@@ -764,6 +848,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Reintentar",
   },
   fr: {
+    linkMenuTitle: "Actions du lien",
+    linkOpen: "Ouvrir",
+    linkOpenHere: "Ouvrir (ce site)",
+    linkOpenProd: "Ouvrir sur le site principal",
+    linkCopy: "Copier le lien",
+    linkCopied: "Lien copié",
+    linkCopyFailed: "Impossible de copier le lien.",
+    linkSystem: "Menu du système",
+    linkSystemHint: "Appuyez longuement pour les options du navigateur.",
+    linkClose: "Fermer les actions du lien",
+
     polishedBy: "Retouché par {name}",
     polishedAuto: "le système automatique",
     messageDetails: "Détails du message",
@@ -772,6 +867,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "Épinglée sur cet appareil : {name}",
     voiceUnpin: "Désépingler (alterner)",
     voiceClone: "Voix : la vôtre (clonée)",
+    levelHeard: "Entendu pendant que vous parliez",
+    levelWhisper: "Réécouté en entier ({engine})",
+    levelPolished: "Retouché",
     speakMicTitle: "Le micro est activé : les réponses sont toujours lues à voix haute (votre réglage revient à l'arrêt)",
     speakTouchTitle: "Les réponses sont lues à voix haute, que vous tapiez ou non, jusqu'à ce que vous désactiviez",
     speakVoicedTitle: "Vous avez utilisé le micro sur cet appareil : les réponses sont lues à voix haute, tapées ou dites, jusqu'à ce que vous désactiviez",
@@ -814,6 +912,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Réessayer",
   },
   ar: {
+    linkMenuTitle: "خيارات الرابط",
+    linkOpen: "فتح",
+    linkOpenHere: "فتح (هذا الموقع)",
+    linkOpenProd: "فتح في الموقع الرئيسي",
+    linkCopy: "نسخ الرابط",
+    linkCopied: "تم نسخ الرابط",
+    linkCopyFailed: "تعذر نسخ الرابط.",
+    linkSystem: "قائمة النظام",
+    linkSystemHint: "اضغط مطولًا لعرض خيارات المتصفح.",
+    linkClose: "إغلاق خيارات الرابط",
+
     polishedBy: "نقّحه {name}",
     polishedAuto: "النظام الآلي",
     messageDetails: "تفاصيل الرسالة",
@@ -822,6 +931,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "مثبّت على هذا الجهاز: {name}",
     voiceUnpin: "إلغاء التثبيت (تناوب)",
     voiceClone: "الصوت: صوتك (مستنسخ)",
+    levelHeard: "ما سُمع أثناء الكلام",
+    levelWhisper: "أُعيد الاستماع كاملًا ({engine})",
+    levelPolished: "بعد التنقيح",
     speakMicTitle: "الميكروفون يعمل: تُقرأ الردود دائمًا بصوت عالٍ (يعود إعدادك عند إيقافه)",
     speakTouchTitle: "تُقرأ الردود بصوت عالٍ سواء كتبت أم لا، حتى توقف ذلك",
     speakVoicedTitle: "استخدمت الميكروفون على هذا الجهاز: تُقرأ الردود بصوت عالٍ، كتابةً أو كلامًا، حتى توقف ذلك",
@@ -864,6 +976,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "إعادة المحاولة",
   },
   bn: {
+    linkMenuTitle: "লিংকের বিকল্প",
+    linkOpen: "খুলুন",
+    linkOpenHere: "খুলুন (এই সাইটে)",
+    linkOpenProd: "মূল সাইটে খুলুন",
+    linkCopy: "লিংক কপি করুন",
+    linkCopied: "লিংক কপি হয়েছে",
+    linkCopyFailed: "লিংক কপি করা যায়নি।",
+    linkSystem: "সিস্টেম মেনু",
+    linkSystemHint: "ব্রাউজারের বিকল্প দেখতে চেপে ধরে রাখুন।",
+    linkClose: "লিংকের বিকল্প বন্ধ করুন",
+
     polishedBy: "{name} পরিমার্জন করেছে",
     polishedAuto: "স্বয়ংক্রিয় ব্যবস্থা",
     messageDetails: "বার্তার বিবরণ",
@@ -872,6 +995,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "এই ডিভাইসে পিন করা: {name}",
     voiceUnpin: "পিন সরান (পালাক্রমে)",
     voiceClone: "কণ্ঠ: আপনার নিজের (ক্লোন করা)",
+    levelHeard: "বলার সময় যা শোনা গেছে",
+    levelWhisper: "পুরোটা আবার শোনা হয়েছে ({engine})",
+    levelPolished: "মার্জিত করা",
     speakMicTitle: "মাইক চালু: উত্তর সবসময় জোরে পড়া হয় (মাইক বন্ধ হলে আপনার সেটিং ফিরে আসে)",
     speakTouchTitle: "টাইপ করুন বা না করুন, উত্তর জোরে পড়া হয়, যতক্ষণ না আপনি বন্ধ করেন",
     speakVoicedTitle: "আপনি এই ডিভাইসে মাইক ব্যবহার করেছেন: টাইপ বা কথা, উত্তর জোরে পড়া হয়, যতক্ষণ না বন্ধ করেন",
@@ -914,6 +1040,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "আবার চেষ্টা করুন",
   },
   pt: {
+    linkMenuTitle: "Ações do link",
+    linkOpen: "Abrir",
+    linkOpenHere: "Abrir (este site)",
+    linkOpenProd: "Abrir no site principal",
+    linkCopy: "Copiar link",
+    linkCopied: "Link copiado",
+    linkCopyFailed: "Não foi possível copiar o link.",
+    linkSystem: "Menu do sistema",
+    linkSystemHint: "Mantenha pressionado para ver as opções do navegador.",
+    linkClose: "Fechar ações do link",
+
     polishedBy: "Revisado por {name}",
     polishedAuto: "o sistema automático",
     messageDetails: "Detalhes da mensagem",
@@ -922,6 +1059,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "Fixada neste dispositivo: {name}",
     voiceUnpin: "Desafixar (alternar)",
     voiceClone: "Voz: a sua (clonada)",
+    levelHeard: "Ouvido enquanto falava",
+    levelWhisper: "Reouvido inteiro ({engine})",
+    levelPolished: "Polido",
     speakMicTitle: "O microfone está ligado: as respostas são sempre lidas em voz alta (sua configuração volta quando ele parar)",
     speakTouchTitle: "As respostas são lidas em voz alta, digitando ou não, até você desligar",
     speakVoicedTitle: "Você usou o microfone neste dispositivo: as respostas são lidas em voz alta, digitadas ou faladas, até você desligar",
@@ -964,6 +1104,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Tentar de novo",
   },
   ru: {
+    linkMenuTitle: "Действия со ссылкой",
+    linkOpen: "Открыть",
+    linkOpenHere: "Открыть (этот сайт)",
+    linkOpenProd: "Открыть на основном сайте",
+    linkCopy: "Копировать ссылку",
+    linkCopied: "Ссылка скопирована",
+    linkCopyFailed: "Не удалось скопировать ссылку.",
+    linkSystem: "Системное меню",
+    linkSystemHint: "Нажмите и удерживайте для настроек браузера.",
+    linkClose: "Закрыть действия со ссылкой",
+
     polishedBy: "Исправлено: {name}",
     polishedAuto: "автоматика",
     messageDetails: "Сведения о сообщении",
@@ -972,6 +1123,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "Закреплён на этом устройстве: {name}",
     voiceUnpin: "Открепить (по очереди)",
     voiceClone: "Голос: ваш (клон)",
+    levelHeard: "Услышано во время речи",
+    levelWhisper: "Переслушано целиком ({engine})",
+    levelPolished: "После правки",
     speakMicTitle: "Микрофон включён: ответы всегда читаются вслух (ваша настройка вернётся, когда он выключится)",
     speakTouchTitle: "Ответы читаются вслух, печатаете вы или нет, пока вы это не выключите",
     speakVoicedTitle: "Вы пользовались микрофоном на этом устройстве: ответы читаются вслух, напечатанные или сказанные, пока вы это не выключите",
@@ -1014,6 +1168,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Повторить",
   },
   ur: {
+    linkMenuTitle: "لنک کے اختیارات",
+    linkOpen: "کھولیں",
+    linkOpenHere: "کھولیں (یہ سائٹ)",
+    linkOpenProd: "مرکزی سائٹ پر کھولیں",
+    linkCopy: "لنک کاپی کریں",
+    linkCopied: "لنک کاپی ہو گیا",
+    linkCopyFailed: "لنک کاپی نہیں ہو سکا۔",
+    linkSystem: "سسٹم مینیو",
+    linkSystemHint: "براؤزر کے اختیارات کے لیے دبا کر رکھیں۔",
+    linkClose: "لنک کے اختیارات بند کریں",
+
     polishedBy: "{name} نے سنوارا",
     polishedAuto: "خودکار نظام",
     messageDetails: "پیغام کی تفصیلات",
@@ -1022,6 +1187,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "اس ڈیوائس پر پن: {name}",
     voiceUnpin: "پن ہٹائیں (باری باری)",
     voiceClone: "آواز: آپ کی اپنی (کلون شدہ)",
+    levelHeard: "بولتے وقت سنا گیا",
+    levelWhisper: "پورا دوبارہ سنا گیا ({engine})",
+    levelPolished: "سنوارا گیا",
     speakMicTitle: "مائیک آن ہے: جوابات ہمیشہ بلند آواز میں پڑھے جاتے ہیں (مائیک بند ہونے پر آپ کی ترتیب واپس آ جاتی ہے)",
     speakTouchTitle: "جوابات بلند آواز میں پڑھے جاتے ہیں، ٹائپ کریں یا نہیں، جب تک آپ بند نہ کریں",
     speakVoicedTitle: "آپ نے اس ڈیوائس پر مائیک استعمال کیا: جوابات بلند آواز میں پڑھے جاتے ہیں، لکھیں یا بولیں، جب تک آپ بند نہ کریں",
@@ -1064,6 +1232,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "دوبارہ کوشش کریں",
   },
   id: {
+    linkMenuTitle: "Tindakan tautan",
+    linkOpen: "Buka",
+    linkOpenHere: "Buka (situs ini)",
+    linkOpenProd: "Buka di situs utama",
+    linkCopy: "Salin tautan",
+    linkCopied: "Tautan disalin",
+    linkCopyFailed: "Tautan tidak dapat disalin.",
+    linkSystem: "Menu sistem",
+    linkSystemHint: "Tekan dan tahan untuk opsi peramban.",
+    linkClose: "Tutup tindakan tautan",
+
     polishedBy: "Dirapikan oleh {name}",
     polishedAuto: "sistem otomatis",
     messageDetails: "Detail pesan",
@@ -1072,6 +1251,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "Disematkan di perangkat ini: {name}",
     voiceUnpin: "Lepas sematan (bergiliran)",
     voiceClone: "Suara: suara Anda (kloning)",
+    levelHeard: "Terdengar saat berbicara",
+    levelWhisper: "Didengar ulang utuh ({engine})",
+    levelPolished: "Dirapikan",
     speakMicTitle: "Mikrofon menyala: balasan selalu dibacakan (pengaturan Anda kembali saat mikrofon berhenti)",
     speakTouchTitle: "Balasan dibacakan, mengetik atau tidak, sampai Anda mematikannya",
     speakVoicedTitle: "Anda memakai mikrofon di perangkat ini: balasan dibacakan, diketik atau diucapkan, sampai Anda mematikannya",
@@ -1114,6 +1296,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Coba lagi",
   },
   de: {
+    linkMenuTitle: "Linkaktionen",
+    linkOpen: "Öffnen",
+    linkOpenHere: "Öffnen (diese Website)",
+    linkOpenProd: "Auf der Hauptseite öffnen",
+    linkCopy: "Link kopieren",
+    linkCopied: "Link kopiert",
+    linkCopyFailed: "Link konnte nicht kopiert werden.",
+    linkSystem: "Systemmenü",
+    linkSystemHint: "Für Browseroptionen gedrückt halten.",
+    linkClose: "Linkaktionen schließen",
+
     polishedBy: "Überarbeitet von {name}",
     polishedAuto: "Automatik",
     messageDetails: "Nachrichtendetails",
@@ -1122,6 +1315,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "Auf diesem Gerät angeheftet: {name}",
     voiceUnpin: "Lösen (abwechseln)",
     voiceClone: "Stimme: Ihre eigene (geklont)",
+    levelHeard: "Beim Sprechen gehört",
+    levelWhisper: "Ganz neu angehört ({engine})",
+    levelPolished: "Geglättet",
     speakMicTitle: "Das Mikrofon ist an: Antworten werden immer vorgelesen (deine Einstellung kommt zurück, wenn es aus ist)",
     speakTouchTitle: "Antworten werden vorgelesen, ob du tippst oder nicht, bis du es ausschaltest",
     speakVoicedTitle: "Du hast auf diesem Gerät das Mikrofon benutzt: Antworten werden vorgelesen, getippt oder gesprochen, bis du es ausschaltest",
@@ -1164,6 +1360,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Erneut versuchen",
   },
   ja: {
+    linkMenuTitle: "リンクの操作",
+    linkOpen: "開く",
+    linkOpenHere: "開く（現在のサイト）",
+    linkOpenProd: "本番サイトで開く",
+    linkCopy: "リンクをコピー",
+    linkCopied: "リンクをコピーしました",
+    linkCopyFailed: "リンクをコピーできませんでした。",
+    linkSystem: "システムメニュー",
+    linkSystemHint: "長押しでブラウザのメニューを表示します。",
+    linkClose: "リンクの操作を閉じる",
+
     polishedBy: "{name}による推敲",
     polishedAuto: "自動処理",
     messageDetails: "メッセージの詳細",
@@ -1172,6 +1379,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "この端末で固定中：{name}",
     voiceUnpin: "固定を解除（ローテーション）",
     voiceClone: "声：あなたの声（クローン）",
+    levelHeard: "話している間に聞き取った文",
+    levelWhisper: "まとめて聞き直し（{engine}）",
+    levelPolished: "整えた文",
     speakMicTitle: "マイクがオンです：返信は常に読み上げます（マイクを止めると設定が戻ります）",
     speakTouchTitle: "入力中かどうかに関係なく、オフにするまで返信を読み上げます",
     speakVoicedTitle: "この端末でマイクを使いました：入力でも音声でも、オフにするまで返信を読み上げます",
@@ -1214,6 +1424,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "再試行",
   },
   sw: {
+    linkMenuTitle: "Vitendo vya kiungo",
+    linkOpen: "Fungua",
+    linkOpenHere: "Fungua (tovuti hii)",
+    linkOpenProd: "Fungua kwenye tovuti kuu",
+    linkCopy: "Nakili kiungo",
+    linkCopied: "Kiungo kimenakiliwa",
+    linkCopyFailed: "Imeshindwa kunakili kiungo.",
+    linkSystem: "Menyu ya mfumo",
+    linkSystemHint: "Bonyeza na ushikilie kwa chaguo za kivinjari.",
+    linkClose: "Funga vitendo vya kiungo",
+
     polishedBy: "Imeboreshwa na {name}",
     polishedAuto: "mfumo otomatiki",
     messageDetails: "Maelezo ya ujumbe",
@@ -1222,6 +1443,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "Imebandikwa kwenye kifaa hiki: {name}",
     voiceUnpin: "Ondoa kibandiko (kwa zamu)",
     voiceClone: "Sauti: yako mwenyewe (iliyonakiliwa)",
+    levelHeard: "Kilichosikika ukiongea",
+    levelWhisper: "Kimesikilizwa upya chote ({engine})",
+    levelPolished: "Kilichoboreshwa",
     speakMicTitle: "Maikrofoni imewashwa: majibu husomwa kwa sauti kila wakati (mpangilio wako unarudi ikizimwa)",
     speakTouchTitle: "Majibu husomwa kwa sauti, ukiandika au la, hadi utakapozima",
     speakVoicedTitle: "Ulitumia maikrofoni kwenye kifaa hiki: majibu husomwa kwa sauti, yawe yameandikwa au kusemwa, hadi utakapozima",
@@ -1264,6 +1488,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Jaribu tena",
   },
   mr: {
+    linkMenuTitle: "दुव्याचे पर्याय",
+    linkOpen: "उघडा",
+    linkOpenHere: "उघडा (या साइटवर)",
+    linkOpenProd: "मुख्य साइटवर उघडा",
+    linkCopy: "दुवा कॉपी करा",
+    linkCopied: "दुवा कॉपी झाला",
+    linkCopyFailed: "दुवा कॉपी करता आला नाही.",
+    linkSystem: "सिस्टम मेनू",
+    linkSystemHint: "ब्राउझरच्या पर्यायांसाठी दाबून ठेवा.",
+    linkClose: "दुव्याचे पर्याय बंद करा",
+
     polishedBy: "{name} यांनी सुधारले",
     polishedAuto: "स्वयंचलित प्रणाली",
     messageDetails: "संदेशाचा तपशील",
@@ -1272,6 +1507,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "या डिव्हाइसवर पिन केला: {name}",
     voiceUnpin: "पिन काढा (आलटून पालटून)",
     voiceClone: "आवाज: तुमचाच (क्लोन केलेला)",
+    levelHeard: "बोलताना ऐकलेले",
+    levelWhisper: "संपूर्ण पुन्हा ऐकले ({engine})",
+    levelPolished: "सुधारलेले",
     speakMicTitle: "माइक चालू आहे: उत्तरे नेहमी मोठ्याने वाचली जातात (माइक थांबल्यावर तुमची सेटिंग परत येते)",
     speakTouchTitle: "टाइप करा किंवा नका, तुम्ही बंद करेपर्यंत उत्तरे मोठ्याने वाचली जातात",
     speakVoicedTitle: "तुम्ही या डिव्हाइसवर माइक वापरला: टाइप किंवा बोलून, बंद करेपर्यंत उत्तरे मोठ्याने वाचली जातात",
@@ -1314,6 +1552,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "पुन्हा प्रयत्न करा",
   },
   ko: {
+    linkMenuTitle: "링크 작업",
+    linkOpen: "열기",
+    linkOpenHere: "열기 (현재 사이트)",
+    linkOpenProd: "정식 사이트에서 열기",
+    linkCopy: "링크 복사",
+    linkCopied: "링크를 복사했습니다",
+    linkCopyFailed: "링크를 복사할 수 없습니다.",
+    linkSystem: "시스템 메뉴",
+    linkSystemHint: "길게 눌러 브라우저 옵션을 여세요.",
+    linkClose: "링크 작업 닫기",
+
     polishedBy: "다듬은 주체: {name}",
     polishedAuto: "자동 처리",
     messageDetails: "메시지 세부 정보",
@@ -1322,6 +1571,9 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     voicePinned: "이 기기에 고정됨: {name}",
     voiceUnpin: "고정 해제(번갈아)",
     voiceClone: "음성: 내 목소리(복제)",
+    levelHeard: "말하는 동안 들은 내용",
+    levelWhisper: "전체 다시 듣기 ({engine})",
+    levelPolished: "다듬은 문장",
     speakMicTitle: "마이크가 켜져 있습니다: 답장을 항상 소리 내어 읽습니다(마이크가 꺼지면 설정이 돌아옵니다)",
     speakTouchTitle: "입력 여부와 관계없이 끌 때까지 답장을 소리 내어 읽습니다",
     speakVoicedTitle: "이 기기에서 마이크를 사용했습니다: 입력하든 말하든 끌 때까지 답장을 소리 내어 읽습니다",

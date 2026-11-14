@@ -1,3 +1,5 @@
+import { HubWork } from "../../../lib/hub-work";
+import { boundedSessions } from "../../../lib/bounded-sessions";
 /**
  * The remote-eval and chat hub (docs/monitoring.md, "Remote eval (owner
  * debug)", "Chat with the agent" and "Friends").
@@ -212,6 +214,7 @@ import {
   type Identity,
   MAX_LABEL,
   type NodeGrant,
+  // The dispatch thread (lib/dev-eval.ts DISPATCH_THREAD): every `dev` holder's pages.
   OWNER_THREAD,
   ROOT_NODE,
   PAGE_ENDED,
@@ -284,6 +287,7 @@ import {
   passageSpeakers,
   splitLine,
 } from "../../../packages/debug-chat/src/voice-merge";
+import { type RecheckAmend, applyRecheck } from "../../../packages/debug-chat/src/whisper-recheck";
 import {
   TWO_MIC_BY,
   TWO_MIC_WINDOW_MAX,
@@ -291,6 +295,7 @@ import {
   twoMicKeep,
   twoMicMatch,
 } from "../../../packages/debug-chat/src/two-mic";
+import { OwnerAi, ROLL_CALL_REPLY } from "./owner-ai";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
   HISTORY_LINES,
@@ -307,6 +312,7 @@ import {
   reserveInTokens,
 } from "../../../lib/partner-ai-config";
 import { CHAT_PATH, REVOKED_PATH, TokenChat, partKey, tokenAtt } from "./token-chat";
+import { LANE_EVENTS_FLAG, LANE_REG_PREFIX, type LaneReg, LaneRegistry } from "./lane-registry";
 import {
   type PartRecord,
   nextExpiry,
@@ -775,6 +781,9 @@ const threadKeys = (thread: string) =>
     : { seq: `t:${thread}:seq`, prefix: `t:${thread}:msg:` };
 const msgKey = (thread: string, seq: number) =>
   `${threadKeys(thread).prefix}${String(seq).padStart(12, "0")}`;
+const chatReceiptKey = (thread: string, id: string) =>
+  `chat-receipt:${encodeURIComponent(thread)}:${encodeURIComponent(id)}`;
+type ChatReceipt = { seq: number } | { reason: string };
 const friendKey = (userId: string) => `friend:${userId}`;
 const nodeGrantKey = (from: string, to: string) => `ngrant:${from}>${to}`;
 /** Where a controller listens, from its knock: `?node=` (a node path) and `?agent=`. */
@@ -797,6 +806,9 @@ type ProgressNs = {
 };
 
 export class DebugHub {
+  /** Same incoming id cannot be accepted concurrently; durable receipts survive eviction. */
+  private deliveringChat = new Map<string, Promise<void>>();
+  private chatSequenceWrites = new Map<string, Promise<number>>();
   /**
    * Every stored grant by hash: read once per instance (an evicted hub reads
    * it again), then kept in step with each write. Only the pages' listing of
@@ -810,6 +822,7 @@ export class DebugHub {
   private renewing = new Map<string, Promise<void>>();
   /** The main Worker (service binding): asked whether a renewal's session is still live. */
   private sessions?: SessionsRpc;
+  private work: HubWork;
   /** When each grant's session was last checked (the per-grant rate limit). */
   private checkedAt = new Map<string, number>();
   /** The last read of PARTNER_AI_FLAG (AI_FLAG_CACHE_MS). */
@@ -827,6 +840,29 @@ export class DebugHub {
   private agentAt = new Map<string, number>();
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
   private aiTurn = new Map<string, number>();
+  /** Li in the owner's thread (owner-ai.ts): his unaddressed lines no lane answered. */
+  private ownerAi = new OwnerAi<{ page: PageAtt; context?: ChatContext; scene?: SttScene }>({
+    now: () => this.now(),
+    timer: { set: (f, ms) => this.timer.set(f, ms), clear: (h) => this.timer.clear(h) },
+    // No model to call (an older main Worker): no flag read either.
+    flag: async (key) => (this.sessions?.partnerReply ? this.flagValue(key) : false),
+    config: async (key) => (this.sessions?.config ? this.sessions.config(key) : undefined),
+    aiOn: () => this.aiOn(),
+    agentAt: () => this.agentAt.get(OWNER_THREAD) ?? 0,
+    reply: (l, { page, context, scene }) =>
+      this.aiReply(page, page.email ?? "", l.at, context, scene, l.id),
+    present: async (_l, { page }) =>
+      void (await this.post({
+        id: crypto.randomUUID().slice(0, 8),
+        from: "agent",
+        label: PARTNER_AI_LABEL,
+        text: ROLL_CALL_REPLY,
+        at: this.now(),
+        thread: page.thread,
+        email: page.email ?? "",
+        lane: "main" as const,
+      })),
+  });
   /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
   private tokens: TokenChat;
   /** The progress hub (same Worker): told when a listener connects, so queued ETA lines go out. */
@@ -838,15 +874,19 @@ export class DebugHub {
     private now: () => number = Date.now,
     private timer: HubTimer = realTimer,
   ) {
+    this.work = new HubWork(this.now);
     // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
     this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
-    this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
+    const sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
+    this.sessions = sessions ? boundedSessions(sessions, this.work, this.now) : undefined;
     this.progress = (env as { PROGRESS?: ProgressNs } | undefined)?.PROGRESS;
     this.tokens = new TokenChat({
       now: () => this.now(),
       rpc: () => this.sessions,
       sockets: () => this.ctx.getWebSockets(),
-      post: (m) => this.post(m),
+      post: async (m) => {
+        await this.post(m);
+      },
       history: (thread) => this.history(thread),
       blocked: async (userId) =>
         (await this.ctx.storage.get<FriendRecord>(friendKey(userId)))?.blocked === true,
@@ -855,6 +895,25 @@ export class DebugHub {
         put: (k, v) => this.ctx.storage.put(k, v),
       },
       presence: (thread) => this.presenceSoon(thread),
+      // 全员入群: each lane's mode and mute, and the system lines (lane-registry.ts).
+      lanes: new LaneRegistry({
+        now: () => this.now(),
+        kv: {
+          get: (k) => this.ctx.storage.get(k),
+          put: (k, v) => this.ctx.storage.put(k, v),
+          list: async <T>(prefix: string) => [
+            ...(await this.ctx.storage.list<T>({ prefix })).values(),
+          ],
+        },
+        post: async (m) => {
+          await this.post(m);
+        },
+        enabled: () => this.laneEventsOn(),
+        graceMs: async () => (await this.laneConf()).graceMs,
+        locale: async () => (await this.laneConf()).locale,
+        schedule: (at) => this.schedule(at),
+        presence: (thread) => this.presenceSoon(thread),
+      }),
     });
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
@@ -1069,13 +1128,97 @@ export class DebugHub {
     return [...m.values()].reverse().map((x) => ({ thread, ...x }));
   }
 
+  /** An acceptance receipt contains no message text and is scoped to its authenticated thread. */
+  private async deliverChat(
+    ws: Socket,
+    thread: string,
+    id: string,
+    run: (accepted: (seq?: number) => Promise<void>) => Promise<void>,
+  ): Promise<void> {
+    const key = chatReceiptKey(thread, id);
+    const previous = this.deliveringChat.get(key);
+    if (previous) {
+      await previous;
+      return this.deliverChat(ws, thread, id, run);
+    }
+    const task = (async () => {
+      const accepted = async (existingSeq?: number) => {
+        const seq = existingSeq ?? (await this.nextChatSeq(thread));
+        await this.ctx.storage.put(key, { seq } satisfies ChatReceipt);
+        send(ws, { type: "chat-ack", id, seq });
+      };
+      const receipt = await this.ctx.storage.get<ChatReceipt>(key);
+      if (receipt) {
+        send(
+          ws,
+          "seq" in receipt
+            ? { type: "chat-ack", id, seq: receipt.seq }
+            : { type: "chat-rejected", id, reason: receipt.reason },
+        );
+        return;
+      }
+      // Recover the gap between an existing durable line and its receipt, and
+      // reconcile clients that sent before receipt support was deployed.
+      const history = await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(thread).prefix,
+        reverse: true,
+        limit: CHAT_HISTORY,
+      });
+      const existing = [...history].find(([, m]) => m.id === id);
+      if (existing) {
+        await accepted(Number(existing[0].slice(threadKeys(thread).prefix.length)));
+        return;
+      }
+      if (
+        [...history.values()].some((m) => m.parts?.some((p) => p.id === id)) ||
+        (thread === OWNER_THREAD && (await this.ctx.storage.get(echoKey(id))))
+      ) {
+        await accepted();
+        return;
+      }
+      await run(accepted);
+    })();
+    this.deliveringChat.set(key, task);
+    try {
+      await task;
+    } finally {
+      if (this.deliveringChat.get(key) === task) this.deliveringChat.delete(key);
+    }
+  }
+
+  private async rejectChat(ws: Socket, thread: string, id: string, reason: string) {
+    await this.ctx.storage.put(chatReceiptKey(thread, id), { reason } satisfies ChatReceipt);
+    send(ws, { type: "chat-rejected", id, reason });
+  }
+
+  /**
+   * One thread cursor for visible lines and accepted merged/suppressed inputs.
+   * An ack proves durable acceptance, not visibility, delivery or reading.
+   * Nonvisible inputs consume this same sequence; their receipts explain gaps
+   * to future recovery/read cursors. A duplicate reuses its immutable receipt.
+   */
+  private async nextChatSeq(thread: string): Promise<number> {
+    const previous = this.chatSequenceWrites.get(thread);
+    const pending = (async () => {
+      if (previous) await previous.catch(() => {});
+      const { seq: seqKey } = threadKeys(thread);
+      const seq = ((await this.ctx.storage.get<number>(seqKey)) ?? 0) + 1;
+      await this.ctx.storage.put(seqKey, seq);
+      if (seq > CHAT_HISTORY) await this.ctx.storage.delete(msgKey(thread, seq - CHAT_HISTORY));
+      return seq;
+    })();
+    this.chatSequenceWrites.set(thread, pending);
+    try {
+      return await pending;
+    } finally {
+      if (this.chatSequenceWrites.get(thread) === pending) this.chatSequenceWrites.delete(thread);
+    }
+  }
+
   /** Keep one chat message (dropping its thread's oldest past CHAT_HISTORY) and send it on. */
   private async post(m: ChatMessage & { thread: string }, only?: string[]) {
-    const { seq: seqKey } = threadKeys(m.thread);
-    const seq = ((await this.ctx.storage.get<number>(seqKey)) ?? 0) + 1;
-    await this.ctx.storage.put(seqKey, seq);
+    const seq = await this.nextChatSeq(m.thread);
     await this.ctx.storage.put(msgKey(m.thread, seq), m);
-    if (seq > CHAT_HISTORY) await this.ctx.storage.delete(msgKey(m.thread, seq - CHAT_HISTORY));
     if (m.from === "agent") this.agentAt.set(m.thread, Math.max(m.at, this.now()));
     const out = { type: "chat", message: m };
     // His devices read an agent line together (sync-speak.ts): pages only, never stored.
@@ -1095,6 +1238,7 @@ export class DebugHub {
     // Sent first: the account's history never holds the chat up.
     const line = chatLogLine(m);
     if (line) await this.chatLog({ op: "put", thread: m.thread, lines: [line] });
+    return seq;
   }
 
   /**
@@ -1859,7 +2003,7 @@ export class DebugHub {
     const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
     if (page.thread !== OWNER_THREAD) return fail("only the owner's lines are merged");
     if (await this.restoreEcho(id, page.label)) return;
-    const { prefix, seq: seqKey } = threadKeys(OWNER_THREAD);
+    const { prefix } = threadKeys(OWNER_THREAD);
     const kept = [
       ...(await this.ctx.storage.list<ChatMessage>({ prefix, reverse: true, limit: CHAT_HISTORY })),
     ];
@@ -1873,12 +2017,16 @@ export class DebugHub {
     const seqOf = (k: string) => Number(k.slice(prefix.length));
     const seq = seqOf(kept[at][0]);
     // Newest first: each line moves up by what the split adds, onto a key already moved.
-    for (const [k, x] of kept.slice(0, at))
+    for (const [k, x] of kept.slice(0, at)) {
       await this.ctx.storage.put(msgKey(OWNER_THREAD, seqOf(k) + grow), x);
+      // Accepted nonvisible inputs leave gaps: the old slot may not be
+      // overwritten by the next moved line, so remove it explicitly.
+      await this.ctx.storage.delete(k);
+    }
     for (const [i, x] of lines.entries())
       await this.ctx.storage.put(msgKey(OWNER_THREAD, seq + i), x);
-    const top = ((await this.ctx.storage.get<number>(seqKey)) ?? seq) + grow;
-    await this.ctx.storage.put(seqKey, top);
+    let top = seq;
+    for (let n = 0; n < grow; n++) top = await this.nextChatSeq(OWNER_THREAD);
     for (let s = top - CHAT_HISTORY; s > top - CHAT_HISTORY - grow && s > 0; s--)
       await this.ctx.storage.delete(msgKey(OWNER_THREAD, s));
     console.log(JSON.stringify({ msg: "debug.unmerge", id, lines: lines.length }));
@@ -1907,7 +2055,7 @@ export class DebugHub {
    * and the listeners hear it is time for its one polish. With stt.polish off
    * (or unsure) they hear nothing, so no lane wakes for it: the raw line stands.
    */
-  private async passageEnd(page: PageAtt) {
+  private async passageEnd(page: PageAtt, recheck?: RecheckAmend) {
     if (page.thread !== OWNER_THREAD) return;
     const kept = await this.ctx.storage.list<ChatMessage>({
       prefix: threadKeys(OWNER_THREAD).prefix,
@@ -1916,10 +2064,42 @@ export class DebugHub {
     });
     const latest = [...kept].find(([, x]) => x.from === "owner");
     if (!latest) return;
-    const [key, line] = latest;
-    if (!line.parts || line.settled || line.label !== page.label) return;
-    if (line.collapsedInto || line.passage) return;
+    const [key, found] = latest;
+    if (!found.parts || found.settled || found.label !== page.label) return;
+    if (found.collapsedInto || found.passage) return;
+    // Whisper re-read the whole run on his Mac (whisper-recheck.ts): the line takes that
+    // reading as it settles, so the one polish below reads level 2, never level 1.
+    const next = recheck ? applyRecheck(found, recheck, this.now()) : found;
+    if (typeof next === "string")
+      console.log(JSON.stringify({ msg: "debug.recheck-refused", id: recheck?.id, reason: next }));
+    const line = typeof next === "string" ? found : next;
     await this.ctx.storage.put(key, { ...line, settled: true } satisfies ChatMessage);
+    if (line !== found) {
+      console.log(
+        JSON.stringify({
+          msg: "debug.recheck",
+          id: line.id,
+          parts: line.parts?.length,
+          engine: recheck?.engine,
+          len: line.text.length,
+          heard: found.text.length,
+        }),
+      );
+      this.tellEdit(
+        {
+          type: "edited",
+          id: line.id,
+          thread: OWNER_THREAD,
+          text: line.text,
+          raw: line.raw as string,
+          edited: line.edited as EditedEvent["edited"],
+          parts: line.parts,
+          recheck: line.recheck,
+        },
+        line.to,
+      );
+      await this.chatLogUpdate(OWNER_THREAD, line);
+    }
     if (!(await this.polishOn())) return;
     const out: PolishDueEvent = {
       type: "polish-due",
@@ -1927,7 +2107,7 @@ export class DebugHub {
       thread: OWNER_THREAD,
       text: line.text,
       raw: line.raw ?? line.text,
-      parts: line.parts.length,
+      parts: found.parts.length,
     };
     console.log(JSON.stringify({ msg: "debug.polish-due", id: line.id, parts: out.parts }));
     for (const { ws: l, a } of this.agents()) {
@@ -2109,6 +2289,16 @@ export class DebugHub {
 
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
+    if (url.pathname === "/internal/hub-diagnostics")
+      return Response.json(
+        {
+          ...this.work.snapshot(),
+          pendingPolishTimer: this.autoTimer !== undefined,
+          polishBusy: this.autoBusy,
+        },
+        { headers: { "cache-control": "no-store" } },
+      );
+    this.work.touch();
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     if (url.pathname === ETA_PATH) return this.etaApi(req);
@@ -3376,17 +3566,21 @@ export class DebugHub {
 
   /** The Durable Object alarm (set by markEmpty). */
   async alarm() {
+    this.work.touch();
     this.sweep();
     await this.checkIdle();
     await this.clipsSweep();
     await this.proofSweep();
     await this.renewDue("alarm");
+    // A listener whose grace ran out turns reader (lane-registry.ts).
+    await this.tokens.laneSweep().catch((e) => rpcFailed("lanes", e));
     // A read or a line left its presence window: the pages hear who is left.
     for (const thread of new Set(this.sockets("page").map((p) => p.a.thread)))
       await this.pushPresence(thread);
   }
 
   webSocketMessage(ws: Socket, raw: string | ArrayBuffer): void | Promise<void> {
+    if (raw !== KEEPALIVE.ping) this.work.touch();
     // The alarm is what normally announces an idle thread; any message checks too.
     this.checkIdle().catch(() => {});
     this.sweep();
@@ -3622,105 +3816,133 @@ export class DebugHub {
       // A friend's line is always their own thread's: no node addressing there.
       // Its attachment (the page selection) stays on the sender's own thread.
       // Files are the owner's only (the upload is owner-only): a friend's refs are dropped.
-      if (page.thread !== OWNER_THREAD)
-        return this.friendChat(ws, page, m.id, m.text, m.context, m.scene, m.source === "stt");
-      const line = async (speaker: SpeakerTag | undefined) => {
-        // An echo (his other phone, or Li read aloud and heard back): kept aside, not posted.
-        if (
-          m.source === "stt" &&
-          (await this.echo({
+      return this.deliverChat(ws, page.thread, m.id, async (accepted) => {
+        if (page.thread !== OWNER_THREAD)
+          return this.friendChat(
+            ws,
+            page,
+            m.id,
+            m.text,
+            m.context,
+            m.scene,
+            m.source === "stt",
+            accepted,
+          );
+        const line = async (speaker: SpeakerTag | undefined) => {
+          // An echo (his other phone, or Li read aloud and heard back): kept aside, not posted.
+          if (
+            m.source === "stt" &&
+            (await this.echo({
+              id: m.id,
+              from: "owner",
+              label: page.label,
+              text: m.text,
+              at: t,
+              thread: OWNER_THREAD,
+              source: "stt",
+              ...(page.sender ? { sender: page.sender } : {}),
+              ...(m.to ? { to: m.to } : {}),
+              ...(m.timing ? { timing: m.timing } : {}),
+              ...(m.stt ? { stt: m.stt } : {}),
+              ...(speaker ? { speaker } : {}),
+            }))
+          )
+            return false;
+          // Voice lines only: a typed line never asks the flag, never merges, never waits.
+          const merging = m.source === "stt" && (await this.mergeOn());
+          if (
+            merging &&
+            m.continues &&
+            (await this.merge(page, {
+              id: m.id,
+              at: t,
+              continues: m.continues,
+              text: m.text,
+              ...(m.timing ? { timing: m.timing } : {}),
+              ...(m.stt ? { stt: m.stt } : {}),
+              ...(m.to ? { to: m.to } : {}),
+              ...(m.wake ? { wake: m.wake } : {}),
+              ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
+              ...(m.context ? { context: m.context } : {}),
+              ...(m.attachments ? { attachments: m.attachments } : {}),
+              ...(speaker ? { speaker } : {}),
+            }))
+          )
+            return;
+          // The same sentence from his other mic, a moment ago: one line, not two.
+          if (
+            m.source === "stt" &&
+            (await this.twoMic({
+              id: m.id,
+              text: m.text,
+              label: page.label,
+              at: t,
+              ...(m.stt ? { stt: m.stt } : {}),
+              ...(speaker ? { speaker } : {}),
+            }))
+          )
+            return;
+          return this.post({
             id: m.id,
             from: "owner",
             label: page.label,
             text: m.text,
             at: t,
             thread: OWNER_THREAD,
-            source: "stt",
             ...(page.sender ? { sender: page.sender } : {}),
             ...(m.to ? { to: m.to } : {}),
+            ...(m.source ? { source: m.source } : {}),
             ...(m.timing ? { timing: m.timing } : {}),
+            // Which recognizer made the text (SttTag): route and engine, never text.
             ...(m.stt ? { stt: m.stt } : {}),
-            ...(speaker ? { speaker } : {}),
-          }))
-        )
-          return false;
-        // Voice lines only: a typed line never asks the flag, never merges, never waits.
-        const merging = m.source === "stt" && (await this.mergeOn());
-        if (
-          merging &&
-          m.continues &&
-          (await this.merge(page, {
-            id: m.id,
-            at: t,
-            continues: m.continues,
-            text: m.text,
-            ...(m.timing ? { timing: m.timing } : {}),
-            ...(m.stt ? { stt: m.stt } : {}),
-            ...(m.to ? { to: m.to } : {}),
             ...(m.wake ? { wake: m.wake } : {}),
             ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
             ...(m.context ? { context: m.context } : {}),
             ...(m.attachments ? { attachments: m.attachments } : {}),
+            ...(m.scene ? { scene: m.scene } : {}),
+            // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
+            // approvals later must rely on this, never on what a page says.
             ...(speaker ? { speaker } : {}),
-          }))
-        )
-          return;
-        // The same sentence from his other mic, a moment ago: one line, not two.
-        if (
-          m.source === "stt" &&
-          (await this.twoMic({
-            id: m.id,
-            text: m.text,
-            label: page.label,
-            at: t,
-            ...(m.stt ? { stt: m.stt } : {}),
-            ...(speaker ? { speaker } : {}),
-          }))
-        )
-          return;
-        return this.post({
-          id: m.id,
-          from: "owner",
-          label: page.label,
-          text: m.text,
-          at: t,
-          thread: OWNER_THREAD,
-          ...(page.sender ? { sender: page.sender } : {}),
-          ...(m.to ? { to: m.to } : {}),
-          ...(m.source ? { source: m.source } : {}),
-          ...(m.timing ? { timing: m.timing } : {}),
-          // Which recognizer made the text (SttTag): route and engine, never text.
-          ...(m.stt ? { stt: m.stt } : {}),
-          ...(m.wake ? { wake: m.wake } : {}),
-          ...(m.wakeReason ? { wakeReason: m.wakeReason } : {}),
-          ...(m.context ? { context: m.context } : {}),
-          ...(m.attachments ? { attachments: m.attachments } : {}),
-          ...(m.scene ? { scene: m.scene } : {}),
-          // Only a tag the Mac signed over these words (lib/speaker-proof.ts); voice
-          // approvals later must rely on this, never on what a page says.
-          ...(speaker ? { speaker } : {}),
-          ...(merging ? { mergeable: true as const } : {}),
-        });
-      };
-      // Kept, then (a voice line) the hub's own polish is due after the tail window.
-      const spoken = async (speaker: SpeakerTag | undefined) => {
-        // An echo is never polished (nor read back): it was not posted.
-        if ((await line(speaker)) === false) return;
-        if (m.source === "stt") this.autoPolishSoon(page);
-      };
-      // A voice line with the Mac's signed attestations: verified first, then stored.
-      if (m.source === "stt" && m.speakerProof?.length)
-        return verifySpeakerProofs(
-          m.speakerProof,
-          m.text,
-          page.thread,
-          this.speakerPub,
-          (uids, until) => this.burnProofs(uids, until),
-          this.now(),
-        ).then(spoken);
-      return spoken(undefined);
+            ...(merging ? { mergeable: true as const } : {}),
+          });
+        };
+        // Kept, then (a voice line) the hub's own polish is due after the tail window.
+        const spoken = async (speaker: SpeakerTag | undefined) => {
+          // An echo is never polished (nor read back): it was not posted.
+          const posted = await line(speaker);
+          await accepted(typeof posted === "number" ? posted : undefined);
+          if (posted !== false && m.source === "stt") this.autoPolishSoon(page);
+          // A new line of his: Li may answer it if no lane does (owner-ai.ts).
+          if (typeof posted === "number")
+            await this.ownerAi.line(
+              {
+                id: m.id,
+                text: m.text,
+                at: t,
+                ...(m.to ? { to: m.to } : {}),
+                ...(speaker ? { speaker } : {}),
+              },
+              {
+                page,
+                ...(m.context ? { context: m.context } : {}),
+                ...(m.scene ? { scene: m.scene } : {}),
+              },
+            );
+        };
+        // A voice line with the Mac's signed attestations: verified first, then stored.
+        if (m.source === "stt" && m.speakerProof?.length)
+          return verifySpeakerProofs(
+            m.speakerProof,
+            m.text,
+            page.thread,
+            this.speakerPub,
+            (uids, until) => this.burnProofs(uids, until),
+            this.now(),
+          ).then(spoken);
+        return spoken(undefined);
+      });
     }
-    if (m.type === "passage-end") return this.passageEnd(page);
+    if (m.type === "passage-end") return this.passageEnd(page, m.recheck);
     if (m.type === "unmerge") return this.unmerge(ws, page, m.id);
     // A tap on an ask card: stamped here, never by the page or an agent.
     if (m.type === "answer") return this.answer(ws, page, m.askId, m.choices);
@@ -3772,23 +3994,27 @@ export class DebugHub {
     context?: ChatContext,
     scene?: SttScene,
     spoken = false,
+    accepted?: (seq?: number) => Promise<void>,
   ) {
     const t = this.now();
     const userId = page.thread;
     const rec = await this.ctx.storage.get<FriendRecord>(friendKey(userId));
     if (rec?.blocked) {
+      await this.rejectChat(ws, page.thread, id, "blocked");
       send(ws, { type: "friend-status", status: "blocked" });
       return close(ws, 4403, "blocked");
     }
     const rateKey = `rate:${userId}`;
     let rate = (await this.ctx.storage.get<Rate>(rateKey)) ?? { start: t, count: 0 };
     if (t - rate.start >= FRIEND_CHAT_WINDOW_MS) rate = { start: t, count: 0 };
-    if (rate.count >= FRIEND_CHAT_MAX)
+    if (rate.count >= FRIEND_CHAT_MAX) {
+      await this.rejectChat(ws, page.thread, id, "rate-limited");
       return send(ws, {
         type: "rate-limited",
         id,
         retryIn: rate.start + FRIEND_CHAT_WINDOW_MS - t,
       });
+    }
     await this.ctx.storage.put(rateKey, {
       start: rate.start,
       count: rate.count + 1,
@@ -3804,7 +4030,7 @@ export class DebugHub {
       console.log(JSON.stringify({ msg: "debug.friend-new", userId, email }));
       for (const l of this.listeners()) send(l.ws, { type: "friend-new", userId, email, at: t });
     }
-    await this.post({
+    const seq = await this.post({
       id,
       from: "friend",
       label: page.label,
@@ -3816,6 +4042,7 @@ export class DebugHub {
       ...(context ? { context } : {}),
       ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
     });
+    await accepted?.(seq);
     // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
     const ai = await this.aiState();
     if (ai === "on") await this.aiReply(page, email, t, context, scene, id);
@@ -3887,7 +4114,8 @@ export class DebugHub {
 
   /**
    * Answer a friend's line with the model (docs/partner-ai.md). The thread is
-   * the hub-verified user's own; the owner's is never passed here. Within the
+   * the hub-verified user's own; the owner's only through owner-ai.ts (flag
+   * partner.owner-thread), with his page's verified user id. Within the
    * daily caps, a reservation is taken before the call (so concurrent calls
    * cannot all pass a nearly spent cap) and settled with the real counts after.
    * The reply is dropped when an agent (a lane) posted in this thread after
@@ -3903,18 +4131,24 @@ export class DebugHub {
   ) {
     const thread = page.thread;
     const rpc = this.sessions;
-    if (thread === OWNER_THREAD || !isUserId(thread) || !rpc?.partnerReply) return;
+    // The owner's thread (owner-ai.ts schedules it): his account is the user, metered like any.
+    const owner = thread === OWNER_THREAD;
+    // A chat-only page of his (embed, box) carries no session: his other page's id.
+    const userId = owner
+      ? (page.user ?? this.pages(OWNER_THREAD).find((p) => p.a.user)?.a.user)
+      : thread;
+    if (!isUserId(userId) || !rpc?.partnerReply) return;
     const t = this.now();
     const day = jstDay(t);
-    const userKey = aiUserKey(day, thread);
+    const userKey = aiUserKey(day, userId);
     const siteKey = aiSiteKey(day);
     const used = (await this.ctx.storage.get<number>(userKey)) ?? 0;
     const site = await this.ctx.storage.get<number>(siteKey);
     if (site === undefined) await this.aiDropOldDays(day);
     const lines = (await this.history(thread))
-      .filter((m) => m.from === "friend" || m.from === "agent")
+      .filter((m) => m.from === (owner ? "owner" : "friend") || m.from === "agent")
       .slice(-HISTORY_LINES)
-      .map((m) => ({ role: m.from === "friend" ? "user" : "assistant", text: m.text }) as const);
+      .map((m) => ({ role: m.from === "agent" ? "assistant" : "user", text: m.text }) as const);
     // The newest lines within HISTORY_MAX_CHARS (the latest one always).
     const history: typeof lines = [];
     let chars = 0;
@@ -3962,8 +4196,9 @@ export class DebugHub {
     beat();
     const timer = setInterval(beat, AI_BEAT_MS);
     const req: PartnerRequest = {
-      userId: thread,
+      userId,
       ...(msgId ? { msgId } : {}),
+      ...(owner ? { owner: true as const } : {}),
       history,
       page: pageInfo,
     };
@@ -4040,6 +4275,8 @@ export class DebugHub {
       at: this.now(),
       thread,
       email,
+      // In his thread: the main lane's (Li's) avatar and voice.
+      ...(owner ? { lane: "main" as const } : {}),
     });
   }
 
@@ -4597,6 +4834,40 @@ export class DebugHub {
     return (this.presenceConf = { at: t, readMs, speakerMs });
   }
 
+  /** Flag chat.lane-events (lane-registry.ts), read at most once a minute; unreadable: off. */
+  private laneFlag?: { at: number; on: boolean };
+  private async laneEventsOn(): Promise<boolean> {
+    const t = this.now();
+    if (this.laneFlag && t - this.laneFlag.at < 60_000) return this.laneFlag.on;
+    let on = false;
+    try {
+      on = (await this.flagValue(LANE_EVENTS_FLAG)) === true;
+    } catch {}
+    this.laneFlag = { at: t, on };
+    return on;
+  }
+
+  /** The lanes' config (lanes.modeGraceSec, lanes.eventLocale), read at most once a minute. */
+  private laneConfCache?: { at: number; graceMs: number; locale: string };
+  private async laneConf() {
+    const t = this.now();
+    if (this.laneConfCache && t - this.laneConfCache.at < 60_000) return this.laneConfCache;
+    const read = async (key: string) => {
+      try {
+        return await this.sessions?.config?.(key);
+      } catch {
+        return undefined;
+      }
+    };
+    const g = await read("lanes.modeGraceSec");
+    const l = await read("lanes.eventLocale");
+    return (this.laneConfCache = {
+      at: t,
+      graceMs: (typeof g === "number" && g >= 0 ? g : 30) * 1000,
+      locale: typeof l === "string" && /^[a-z]{2}$/.test(l) ? l : "zh",
+    });
+  }
+
   /** Threads whose list is pushed on the next turn (one push for a burst of changes). */
   private presenceDue = new Set<string>();
   presenceSoon(thread: string) {
@@ -4616,6 +4887,10 @@ export class DebugHub {
     ].filter((r) => r.thread === thread);
     const lines = await this.history(thread);
     const live = this.tokens.live(thread);
+    // Each lane's mode and mute (lane-registry.ts): only rows exist with flag chat.lane-events on.
+    const lanes = [
+      ...(await this.ctx.storage.list<LaneReg>({ prefix: LANE_REG_PREFIX })).values(),
+    ].filter((r) => r.thread === thread);
     // No one to list: no config read either.
     if (!records.length && !live.length && !lines.some((m) => m.from === "agent"))
       return pages.map(({ ws }) => ({ ws, list: [] }));
@@ -4628,7 +4903,7 @@ export class DebugHub {
         a.embed || a.box ? undefined : (a.user ?? (thread !== OWNER_THREAD ? thread : undefined));
       return {
         ws,
-        list: presentList({ now: t, readMs, speakerMs, live, records, lines, viewer }),
+        list: presentList({ now: t, readMs, speakerMs, live, records, lines, viewer, lanes }),
       };
     });
   }
@@ -4692,8 +4967,11 @@ export class DebugHub {
     const a = att(ws);
     const ta = tokenAtt(ws);
     close(ws, code === 1005 ? 1000 : code, "");
-    // A token's listening socket closed: it may have left the thread.
-    if (ta?.thread) this.presenceSoon(ta.thread);
+    // A token's listening socket closed: it may have left the thread, and its lane may turn reader.
+    if (ta?.thread) {
+      this.presenceSoon(ta.thread);
+      this.tokens.closed(ws, ta).catch((e) => rpcFailed("lanes", e));
+    }
     this.sweep(ws);
     this.broadcast(ws);
     const gone = a?.role === "page" && a.sid ? this.clipsLeft(a.sid, ws) : undefined;
@@ -5049,7 +5327,7 @@ function rpcFailed(method: string, e: unknown, what?: string) {
 }
 
 /** A page's {type:"participant", tok, name?, avatar?} (PresenceStack.tsx), or null. */
-type ParticipantMessage = { tok: string; name?: unknown; avatar?: unknown };
+type ParticipantMessage = { tok: string; name?: unknown; avatar?: unknown; muted?: unknown };
 function participantMessage(raw: unknown): ParticipantMessage | null {
   if (typeof raw !== "string" || raw.length > 8192 || !raw.includes('"participant"')) return null;
   try {
@@ -5059,6 +5337,7 @@ function participantMessage(raw: unknown): ParticipantMessage | null {
       tok: j.tok,
       ...("name" in j ? { name: j.name } : {}),
       ...("avatar" in j ? { avatar: j.avatar } : {}),
+      ...("muted" in j ? { muted: j.muted } : {}),
     };
   } catch {
     return null;

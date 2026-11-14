@@ -56,7 +56,7 @@ function TranslateShare() {
   );
 }
 
-export function VibeRetention() {
+export function VibeRetention({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const t = useIntlayer("vibe-page");
   const [days, setDays] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -92,11 +92,12 @@ export function VibeRetention() {
   };
   return (
     <section
-      className="mx-auto mb-10 max-w-4xl px-8"
+      id="vibe"
+      className="mx-auto mb-10 max-w-4xl px-8 scroll-mt-6"
       data-section="vibe"
       data-testid="vibe-settings"
     >
-      <h2 className="mb-4 text-2xl font-semibold">{t.settingsHeading}</h2>
+      {!hideHeading && <h2 className="mb-4 text-2xl font-semibold">{t.settingsHeading}</h2>}
       <label className="flex flex-wrap items-center gap-2">
         <span>{t.retention}</span>
         <input

@@ -152,7 +152,7 @@ describe("redact", () => {
 describe("reportFor", () => {
   it("a blocked node for main, named within 20 columns, needs redacted and ≤ 120", () => {
     const r = reportFor(
-      { pid: 52435, cwd: "/Users/taku/ws/snolab/lianki/tree/codex", cli: "codex" },
+      { pid: 52435, cwd: "/Users/owner/ws/snolab/lianki/tree/codex", cli: "codex" },
       {
         kind: "prompt",
         pattern: "sudo",
@@ -177,8 +177,8 @@ describe("reportFor", () => {
     expect(name.length + 2).toBeLessThanOrEqual(20); // 等确认 is 6 columns for 3 chars
   });
   it("laneOf", () => {
-    expect(laneOf("/Users/taku/ws/snolab/lianki/tree/chat-fast")).toBe("chat-fast");
-    expect(laneOf("/Users/taku/ws/snolab/liagent")).toBe("liagent");
+    expect(laneOf("/Users/owner/ws/snolab/lianki/tree/chat-fast")).toBe("chat-fast");
+    expect(laneOf("/Users/owner/ws/snolab/liagent")).toBe("liagent");
   });
 });
 

@@ -277,3 +277,21 @@ for (const phase of ["fetch", "body"] as const) {
     expect(await getBalance(env().DB, "u_test")).toBe(100);
   });
 }
+
+test("hub request cancellation reaches provider and settles failure", async () => {
+  const c = new AbortController();
+  c.abort(Error("hub deadline"));
+  let seen = false;
+  const request = (async (_url: unknown, init: RequestInit) => {
+    seen = init.signal?.aborted === true;
+    throw init.signal!.reason;
+  }) as unknown as typeof fetch;
+  const result = await prepareChatTurn(
+    env(),
+    { userId: "u_test", input },
+    { fetch: request, signal: c.signal },
+  );
+  expect(seen).toBe(true);
+  expect(result).toMatchObject({ ok: false, error: "provider-timeout" });
+  expect(await getBalance(env().DB, "u_test")).toBe(100);
+});

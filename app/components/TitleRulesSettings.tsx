@@ -52,7 +52,7 @@ function Row({
   );
 }
 
-export function TitleRulesSettings() {
+export function TitleRulesSettings({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const c = useIntlayer("title-rules");
   const [pref, setPref] = useState<TitleRulesPref>({ off: [], add: [] });
   const [host, setHost] = useState("");
@@ -108,8 +108,13 @@ export function TitleRulesSettings() {
   });
 
   return (
-    <section className="mb-10 max-w-xl" data-section="title-rules" data-testid="title-rules">
-      <h2 className="mb-2 text-2xl font-semibold">{c.heading}</h2>
+    <section
+      id="title-rules"
+      className="mb-10 max-w-xl scroll-mt-6"
+      data-section="title-rules"
+      data-testid="title-rules"
+    >
+      {!hideHeading && <h2 className="mb-2 text-2xl font-semibold">{c.heading}</h2>}
       <p className="mb-2 opacity-80">{c.intro}</p>
       <p className="mb-4 text-sm opacity-70">{c.syntax}</p>
 

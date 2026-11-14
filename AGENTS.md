@@ -145,78 +145,79 @@ then again with backoff.
 Read the relevant file before working in that area — each one carries decisions
 that are expensive to rediscover.
 
-| Working on                                                               | Read                                                                |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| Running or setting up the app locally, QA suites                         | [DEVELOPMENT.md](DEVELOPMENT.md)                                    |
-| What's in flight / waiting on the owner                                  | [docs/state-tree.md](docs/state-tree.md)                            |
-| Planning tools: which one to use, consolidation plan                     | [docs/planning-tools.md](docs/planning-tools.md)                    |
-| Landing changes, CI, branch protection, post-deploy QA                   | [docs/shipping.md](docs/shipping.md)                                |
-| Finding your way around the code                                         | [docs/repo-map.md](docs/repo-map.md)                                |
-| Adding or renaming a route: nouns, /lab, /dev, 308 redirects             | [docs/url-principles.md](docs/url-principles.md)                    |
-| /my: the user's own data (profile, preferences, files)                   | [docs/url-principles.md](docs/url-principles.md), "/my"             |
-| Secrets, auth, OAuth config                                              | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
-| Transactional mail: templates, /dev/templates, locked variables          | [docs/mail-templates.md](docs/mail-templates.md)                    |
-| Every sent mail: the send log at /dev/mails, statuses, Resend rules      | [docs/mail-templates.md](docs/mail-templates.md), "Send log"        |
-| Permissions: `isAdmin`/`isDev`, /dev/permissions, break-glass CLI        | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
-| Who may do what: isAdmin/isDev grants, /dev/permissions, break-glass CLI | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
-| Google Drive connection (/connections), private Docs import              | [docs/connections.md](docs/connections.md)                          |
-| Anything calling an LLM or TTS                                           | [docs/workers-ai.md](docs/workers-ai.md)                            |
-| Learning Partner AI replies for users (DeepSeek, caps)                   | [docs/partner-ai.md](docs/partner-ai.md)                            |
-| Chat history in D1, /chat/history (what is kept, never kept)             | [docs/chat-history.md](docs/chat-history.md)                        |
-| Users' own AI key and backend (BYOK, browser-only, presets)              | [docs/byok.md](docs/byok.md)                                        |
-| The owner's local streaming speech-to-text (mic → his Mac)               | [docs/local-stt.md](docs/local-stt.md)                              |
-| His voice-clone reference in his account (audio, sealed, passkey)        | [docs/voice-clone.md](docs/voice-clone.md)                          |
+| Working on                                                                 | Read                                                                |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Running or setting up the app locally, QA suites                           | [DEVELOPMENT.md](DEVELOPMENT.md)                                    |
+| What's in flight / waiting on the owner                                    | [docs/state-tree.md](docs/state-tree.md)                            |
+| Planning tools: which one to use, consolidation plan                       | [docs/planning-tools.md](docs/planning-tools.md)                    |
+| Landing changes, CI, branch protection, post-deploy QA                     | [docs/shipping.md](docs/shipping.md)                                |
+| Finding your way around the code                                           | [docs/repo-map.md](docs/repo-map.md)                                |
+| Adding or renaming a route: nouns, /lab, /dev, 308 redirects               | [docs/url-principles.md](docs/url-principles.md)                    |
+| /my: the user's own data (profile, preferences, files)                     | [docs/url-principles.md](docs/url-principles.md), "/my"             |
+| Secrets, auth, OAuth config                                                | [docs/secrets-and-auth.md](docs/secrets-and-auth.md)                |
+| Transactional mail: templates, /dev/templates, locked variables            | [docs/mail-templates.md](docs/mail-templates.md)                    |
+| Every sent mail: the send log at /dev/mails, statuses, Resend rules        | [docs/mail-templates.md](docs/mail-templates.md), "Send log"        |
+| Permissions: `isAdmin`/`isDev`, /dev/permissions, break-glass CLI          | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
+| Who may do what: isAdmin/isDev grants, /dev/permissions, break-glass CLI   | [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions" |
+| Google Drive connection (/connections), private Docs import                | [docs/connections.md](docs/connections.md)                          |
+| Anything calling an LLM or TTS                                             | [docs/workers-ai.md](docs/workers-ai.md)                            |
+| Learning Partner AI replies for users (DeepSeek, caps)                     | [docs/partner-ai.md](docs/partner-ai.md)                            |
+| Chat history in D1, /chat/history (what is kept, never kept)               | [docs/chat-history.md](docs/chat-history.md)                        |
+| Users' own AI key and backend (BYOK, browser-only, presets)                | [docs/byok.md](docs/byok.md)                                        |
+| The owner's local streaming speech-to-text (mic → his Mac)                 | [docs/local-stt.md](docs/local-stt.md)                              |
+| His voice-clone reference in his account (audio, sealed, passkey)          | [docs/voice-clone.md](docs/voice-clone.md)                          |
 | Mic recordings in his account: what is kept, sealing, /my/recordings, pull | [docs/recordings.md](docs/recordings.md)                            |
-| /vibe: a conversation transcribed into a private doc                     | [docs/vibe.md](docs/vibe.md)                                        |
-| Whole-page dev server on prod D1 (owner only, home LAN)                  | [docs/dev-whole-page.md](docs/dev-whole-page.md)                    |
-| A friend's dev container (devbox: agents, local D1, tunnel)              | [devbox/README.md](devbox/README.md)                                |
-| A box signing in through lianki.com (OAuth, token gate)                  | [docs/box-oauth.md](docs/box-oauth.md)                              |
-| The userscript's dev loader (hot reload over a CF tunnel)                | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
-| Hosting the dev loader on lianki.com (design stub)                       | [docs/loader-hosting.md](docs/loader-hosting.md)                    |
-| Li chat from the userscript pill: security gate (stub)                   | [docs/userscript-li-chat.md](docs/userscript-li-chat.md)            |
-| Hot-swapping headless core modules (kernel, swap, leak tests)            | [docs/hot-core.md](docs/hot-core.md)                                |
-| The debug chat widget (packages/debug-chat), hot-loading                 | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
-| Users' own AI assistants: the token prompt, /api/agent-guide             | [docs/api-for-agents.md](docs/api-for-agents.md)                    |
-| `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor           | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                    |
-| Which lane answers him ("codex, …"), codex/agy listeners                 | [docs/lane-listen.md](docs/lane-listen.md)                          |
-| Hot islands: swappable components, shared state                          | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
-| Live view: dev JS or whole dev pages (?live=) on lianki.com              | [docs/live-view.md](docs/live-view.md)                              |
-| Custom frontends: a user's own dev server at ?live, the /api contract    | [docs/custom-frontend.md](docs/custom-frontend.md)                  |
-| The /words swipe: headless core, UI islands, feel presets                | [docs/swipe-core.md](docs/swipe-core.md)                            |
-| UI state: what is kept where (session, local, URL, server)               | [docs/ui-state.md](docs/ui-state.md)                                |
-| Screenshots of the owner's phone page (`scripts/dev/shot.ts`)            | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |
-| UI strings, translations: every key carries context                      | [docs/i18n.md](docs/i18n.md)                                        |
-| Blog posts                                                               | [blog/AGENTS.md](blog/AGENTS.md)                                    |
-| The Chrome extension, and publishing it                                  | [packages/ext/README.md](packages/ext/README.md)                    |
-| /words new-word order: in order + pass, take turns, simulator            | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
-| Exam word decks (CET, TOEFL, GRE…): sources, licences, gaps              | [docs/word-deck-sources.md](docs/word-deck-sources.md)              |
-| /self-intro import: files/text → facts → review; privacy                 | [docs/self-intro-import.md](docs/self-intro-import.md)              |
-| Import any material: upload → job → /words or /reader (stub)             | [docs/import-material.md](docs/import-material.md)                  |
-| YouTube songs: timed lyric lines as example clips (stub)                 | [docs/youtube-song-examples.md](docs/youtube-song-examples.md)      |
-| /books public-domain library: catalogue rule, slugs, R2 cache            | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"   |
-| Voice mode: spoken commands per screen, grammar, mic taps                | [docs/voice-mode.md](docs/voice-mode.md)                            |
-| All sound through Li: `__lkLi` hub, who holds mic / plays                | [docs/li-sound-hub.md](docs/li-sound-hub.md)                        |
-| /words owner spec: tall slips, window, review-first, voice               | [docs/words-session-spec.md](docs/words-session-spec.md)            |
-| PWA cold start: measuring it, per-page dictionaries, lazy chat, SW       | [docs/cold-start.md](docs/cold-start.md)                            |
-| Branch API previews: Core gateway, MyBox auth, sandbox persistence | [docs/api-preview-proxy.md](docs/api-preview-proxy.md) |
-| Sync/offline architecture                                                | [docs/sync-architecture.md](docs/sync-architecture.md)              |
-| Sync conflicts, deletions, tombstones                                    | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
-| Settings that follow the account (`lk:*` key classes)                    | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
-| Notification prefixes in page titles: rules, safe matcher                | [docs/title-clean.md](docs/title-clean.md)                          |
-| App-icon badge (PWA): what it counts, /api/badge, the SW push            | [docs/app-badge.md](docs/app-badge.md)                              |
-| Links to other sites: the disclaimer dialog, its bypasses                | [docs/external-links.md](docs/external-links.md)                    |
-| Metrics, slowness and error alerts (Slack #lianki)                       | [docs/monitoring.md](docs/monitoring.md)                            |
-| Payments, Pro passes, Stripe, invites, gift codes                        | [docs/payments.md](docs/payments.md)                                |
-| Study ledger: daily Merkle anchors, proofs, OpenTimestamps               | [docs/lian.md](docs/lian.md)                                        |
-| Learner levels: ladder, names per locale, SVG badges                     | [docs/levels.md](docs/levels.md)                                    |
-| Feature flags: owner on/off at /dev/flags, ship dark, remove             | [docs/feature-flags.md](docs/feature-flags.md)                      |
-| Live config values (numbers, texts): registry, `cfg()`, /dev/config      | [docs/config-store.md](docs/config-store.md)                        |
-| Security measures: admin gate, lockout, scans, card testing              | [docs/security-measures.md](docs/security-measures.md)              |
-| UI layout: content fills the screen, glass overlays                      | [docs/design-principles.md](docs/design-principles.md)              |
-| rgui component library (subtree), its gantt module, upstream sync        | [docs/rgui.md](docs/rgui.md)                                        |
-| Leaving Next.js: Vite + RR7 + Hono strangler plan                        | [docs/framework-migration.md](docs/framework-migration.md)          |
-| Node tree, study plan, calendar, Google Calendar (design)                | [docs/calendar-plan.md](docs/calendar-plan.md)                      |
-| /roadmap: progress from cards, what to build next                        | [docs/roadmap-next.md](docs/roadmap-next.md)                        |
+| /vibe: a conversation transcribed into a private doc                       | [docs/vibe.md](docs/vibe.md)                                        |
+| Whole-page dev server on prod D1 (owner only, home LAN)                    | [docs/dev-whole-page.md](docs/dev-whole-page.md)                    |
+| A friend's dev container (devbox: agents, local D1, tunnel)                | [devbox/README.md](devbox/README.md)                                |
+| A box signing in through lianki.com (OAuth, token gate)                    | [docs/box-oauth.md](docs/box-oauth.md)                              |
+| The userscript's dev loader (hot reload over a CF tunnel)                  | [docs/dev-userscript-loader.md](docs/dev-userscript-loader.md)      |
+| Hosting the dev loader on lianki.com (design stub)                         | [docs/loader-hosting.md](docs/loader-hosting.md)                    |
+| Li chat from the userscript pill: security gate (stub)                     | [docs/userscript-li-chat.md](docs/userscript-li-chat.md)            |
+| Hot-swapping headless core modules (kernel, swap, leak tests)              | [docs/hot-core.md](docs/hot-core.md)                                |
+| The debug chat widget (packages/debug-chat), hot-loading                   | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
+| Mini apps: /m/<slug>, sandboxed one-file apps, `window.lianki` SDK         | [docs/mini-apps.md](docs/mini-apps.md)                              |
+| Users' own AI assistants: the token prompt, /api/agent-guide               | [docs/api-for-agents.md](docs/api-for-agents.md)                    |
+| `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor             | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                    |
+| Which lane answers him ("codex, …"), codex/agy listeners                   | [docs/lane-listen.md](docs/lane-listen.md)                          |
+| Hot islands: swappable components, shared state                            | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |
+| Live view: dev JS or whole dev pages (?live=) on lianki.com                | [docs/live-view.md](docs/live-view.md)                              |
+| Custom frontends: a user's own dev server at ?live, the /api contract      | [docs/custom-frontend.md](docs/custom-frontend.md)                  |
+| The /words swipe: headless core, UI islands, feel presets                  | [docs/swipe-core.md](docs/swipe-core.md)                            |
+| UI state: what is kept where (session, local, URL, server)                 | [docs/ui-state.md](docs/ui-state.md)                                |
+| Screenshots of the owner's phone page (`scripts/dev/shot.ts`)              | [docs/dev-debug-widget.md](docs/dev-debug-widget.md), "Screenshots" |
+| UI strings, translations: every key carries context                        | [docs/i18n.md](docs/i18n.md)                                        |
+| Blog posts                                                                 | [blog/AGENTS.md](blog/AGENTS.md)                                    |
+| The Chrome extension, and publishing it                                    | [packages/ext/README.md](packages/ext/README.md)                    |
+| /words new-word order: in order + pass, take turns, simulator              | [docs/new-word-scheduler.md](docs/new-word-scheduler.md)            |
+| Exam word decks (CET, TOEFL, GRE…): sources, licences, gaps                | [docs/word-deck-sources.md](docs/word-deck-sources.md)              |
+| /self-intro import: files/text → facts → review; privacy                   | [docs/self-intro-import.md](docs/self-intro-import.md)              |
+| Import any material: upload → job → /words or /reader (stub)               | [docs/import-material.md](docs/import-material.md)                  |
+| YouTube songs: timed lyric lines as example clips (stub)                   | [docs/youtube-song-examples.md](docs/youtube-song-examples.md)      |
+| /books public-domain library: catalogue rule, slugs, R2 cache              | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"   |
+| Voice mode: spoken commands per screen, grammar, mic taps                  | [docs/voice-mode.md](docs/voice-mode.md)                            |
+| All sound through Li: `__lkLi` hub, who holds mic / plays                  | [docs/li-sound-hub.md](docs/li-sound-hub.md)                        |
+| /words owner spec: tall slips, window, review-first, voice                 | [docs/words-session-spec.md](docs/words-session-spec.md)            |
+| PWA cold start: measuring it, per-page dictionaries, lazy chat, SW         | [docs/cold-start.md](docs/cold-start.md)                            |
+| Branch API previews: Core gateway, MyBox auth, sandbox persistence         | [docs/api-preview-proxy.md](docs/api-preview-proxy.md)              |
+| Sync/offline architecture                                                  | [docs/sync-architecture.md](docs/sync-architecture.md)              |
+| Sync conflicts, deletions, tombstones                                      | [docs/sync-merge-rules.md](docs/sync-merge-rules.md)                |
+| Settings that follow the account (`lk:*` key classes)                      | [docs/prefs-sync.md](docs/prefs-sync.md)                            |
+| Notification prefixes in page titles: rules, safe matcher                  | [docs/title-clean.md](docs/title-clean.md)                          |
+| App-icon badge (PWA): what it counts, /api/badge, the SW push              | [docs/app-badge.md](docs/app-badge.md)                              |
+| Links to other sites: the disclaimer dialog, its bypasses                  | [docs/external-links.md](docs/external-links.md)                    |
+| Metrics, slowness and error alerts (Slack #lianki)                         | [docs/monitoring.md](docs/monitoring.md)                            |
+| Payments, Pro passes, Stripe, invites, gift codes                          | [docs/payments.md](docs/payments.md)                                |
+| Study ledger: daily Merkle anchors, proofs, OpenTimestamps                 | [docs/lian.md](docs/lian.md)                                        |
+| Learner levels: ladder, names per locale, SVG badges                       | [docs/levels.md](docs/levels.md)                                    |
+| Feature flags: owner on/off at /dev/flags, ship dark, remove               | [docs/feature-flags.md](docs/feature-flags.md)                      |
+| Live config values (numbers, texts): registry, `cfg()`, /dev/config        | [docs/config-store.md](docs/config-store.md)                        |
+| Security measures: admin gate, lockout, scans, card testing                | [docs/security-measures.md](docs/security-measures.md)              |
+| UI layout: content fills the screen, glass overlays                        | [docs/design-principles.md](docs/design-principles.md)              |
+| rgui component library (subtree), its gantt module, upstream sync          | [docs/rgui.md](docs/rgui.md)                                        |
+| Leaving Next.js: Vite + RR7 + Hono strangler plan                          | [docs/framework-migration.md](docs/framework-migration.md)          |
+| Node tree, study plan, calendar, Google Calendar (design)                  | [docs/calendar-plan.md](docs/calendar-plan.md)                      |
+| /roadmap: progress from cards, what to build next                          | [docs/roadmap-next.md](docs/roadmap-next.md)                        |
 
 <!-- BEGIN:nextjs-agent-rules -->
 

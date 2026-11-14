@@ -9,7 +9,7 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { chatExtra } from "./chat-ui-locales";
 import { agentAvatar } from "./LaneMark";
-import { LANES, laneOf } from "./voices";
+import { laneSpec, laneOf } from "./voices";
 
 /** Old messages without an editor keep their original mark and label. */
 export function polishedEditor(by: string | undefined, autoName: string) {
@@ -17,7 +17,7 @@ export function polishedEditor(by: string | undefined, autoName: string) {
   if (!name) return null;
   if (name === "auto") return { name: autoName, auto: true, lane: null };
   const lane = laneOf({ text: name }).lane ?? laneOf({ text: `【${name}】` }).lane;
-  return { name: (lane && LANES[lane].name) || name, auto: false, lane };
+  return { name: (lane && laneSpec(lane).name) || name, auto: false, lane };
 }
 
 /** A press this long on touch shows the tooltip instead of toggling. */

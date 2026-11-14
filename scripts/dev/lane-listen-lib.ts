@@ -60,7 +60,25 @@ export type Line = {
   at?: string;
   /** An automatic state-tree line (source "eta") addressed to this lane: a blocked nudge, or "main". */
   etaLane?: string;
+  /** The Mac's voiceprint decision on a spoken owner line: "me" | "other" | "unknown" (absent: typed, or no print). */
+  voice?: string;
 };
+/**
+ * Whether a lane may hear this owner line (owner, 2026-11-14 23:2x: "只有我自己的
+ *语音才广播给所有 agent"): a line the voiceprint decided was someone else never
+ * goes out; an "unknown" one (his own short or soft sentence) does, marked, unless
+ * LANE_LISTEN_VOICES=me asks for his decided voice only. The chat lane still
+ * sees every line (it polishes and answers in the thread).
+ */
+export function voiceAllowed(
+  l: Pick<Line, "from" | "voice">,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (l.from !== "owner" || !l.voice) return true;
+  if (l.voice === "other") return false;
+  if (l.voice === "unknown") return env.LANE_LISTEN_VOICES !== "me";
+  return true;
+}
 export function lineOf(raw: string): (Line & { history: boolean }) | null {
   let v: Record<string, unknown>;
   try {
@@ -84,6 +102,11 @@ export function lineOf(raw: string): (Line & { history: boolean }) | null {
       : {}),
     ...(m.at !== undefined
       ? { at: String(typeof m.at === "number" ? new Date(m.at).toISOString() : m.at) }
+      : {}),
+    ...(m.speaker &&
+    typeof m.speaker === "object" &&
+    typeof (m.speaker as { decision?: unknown }).decision === "string"
+      ? { voice: (m.speaker as { decision: string }).decision }
       : {}),
     history: v.history === true,
   };
@@ -138,7 +161,8 @@ export function briefBullet(lane: RouteLane, l: Line): string {
   const test = testText(l);
   if (test !== null) return `- (id:${l.id}) [lane-test] ${test}`;
   const mine = routeLine(l.text).lanes.includes(lane);
-  return `- (id:${l.id})${mine ? " @你" : ""} ${l.text}`;
+  const unsure = l.voice === "unknown" ? "（声纹未定）" : "";
+  return `- (id:${l.id})${mine ? " @你" : ""}${unsure} ${l.text}`;
 }
 
 /**
@@ -170,9 +194,50 @@ export const BUSY_RECHECK_MS = 5_000;
  * message (handoffBrief), in order. The first message of the listener's life
  * also names the skill with the rules.
  */
+/**
+ * A line that must reach the lane now, even mid-turn: he said this lane's name
+ * or "全体" (lane-route.ts), or a state-tree nudge is addressed to it (owner,
+ * 2026-11-14 22:5x: "coco和杰米好像干活的时候都不理我"). Everything else waits
+ * for the batch.
+ */
+export const urgentLine = (lane: RouteLane, l: Line) => {
+  if (l.etaLane === lane) return true;
+  const r = routeLine(l.text);
+  return r.addressed && r.lanes.includes(lane);
+};
+/** The body `ay send` still accepts: its own 1024 limit minus its ~150-char wrapper, with room for the header and the skill line. */
+export const SEND_MAX_CHARS = 800;
+/** A batch cut into parts whose bullets stay under SEND_MAX_CHARS; one bullet too long on its own is cut with "…". */
+export function chunkLines(
+  lane: RouteLane,
+  lines: readonly Line[],
+  max = SEND_MAX_CHARS,
+): Line[][] {
+  const parts: Line[][] = [];
+  let cur: Line[] = [];
+  let size = 0;
+  for (const l of lines) {
+    let line = l;
+    let len = briefBullet(lane, line).length + 1;
+    if (len > max) {
+      const over = len - max + 1;
+      line = { ...l, text: `${l.text.slice(0, Math.max(0, l.text.length - over))}…` };
+      len = briefBullet(lane, line).length + 1;
+    }
+    if (cur.length && size + len > max) {
+      parts.push(cur);
+      cur = [];
+      size = 0;
+    }
+    cur.push(line);
+    size += len;
+  }
+  if (cur.length) parts.push(cur);
+  return parts;
+}
 export function makeDeliverer(
   o: { lane: RouteLane; repo: string },
-  send: (body: string) => Promise<number>,
+  send: (body: string, interrupt: boolean) => Promise<number>,
   busy: () => Promise<boolean>,
   log: (v: Record<string, unknown>) => void = () => {},
   recheckMs = BUSY_RECHECK_MS,
@@ -180,9 +245,9 @@ export function makeDeliverer(
   const pending: Line[] = [];
   let first = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const flush = async (): Promise<number | undefined> => {
+  const flush = async (interrupt = false): Promise<number | undefined> => {
     if (!pending.length) return undefined;
-    if (await busy()) {
+    if (!interrupt && (await busy())) {
       if (process.env.LANE_LISTEN_DEBUG)
         log({ type: "held", lane: o.lane, pending: pending.length });
       timer ??= setTimeout(() => {
@@ -192,15 +257,23 @@ export function makeDeliverer(
       return undefined;
     }
     const batch = pending.splice(0, pending.length);
-    const code = await send(handoffBrief(o.lane, batch, o.repo, first));
-    first = false;
-    log({ type: "delivered", lane: o.lane, ids: batch.map((l) => l.id), ay: code });
+    // `ay send` refuses a message over 1024 characters (its wrapper takes ~150),
+    // and a refused batch was simply lost (2026-11-14 23:xx, four of coco's).
+    // So a long batch goes as several messages, each under SEND_MAX_CHARS.
+    let code: number | undefined;
+    for (const part of chunkLines(o.lane, batch)) {
+      code = await send(handoffBrief(o.lane, part, o.repo, first), interrupt);
+      first = false;
+      log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
+      if (code !== 0 && code !== 4)
+        log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
+    }
     return code;
   };
   return {
     add: async (l: Line) => {
       pending.push(l);
-      return flush();
+      return flush(urgentLine(o.lane, l));
     },
     pending: () => pending.length,
   };

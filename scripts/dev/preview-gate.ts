@@ -5,7 +5,9 @@
  * request there passes this first. Pure decisions plus two injected calls
  * (verify, active), so unit/preview-gate.test.ts pins every rule.
  *
- * - No valid token, no entry: 503 for everything, static files included.
+ * - No valid token, no entry: 503 for everything, static files included —
+ *   except the dev site's own app files (GateDeps.pwa: manifest, service
+ *   worker, badged icons), which hold no data and must load without cookies.
  * - A token is a dev access token the owner minted on lianki.com
  *   (lib/dev-access.ts), checked by lianki.com over the dev bridge. Browsers
  *   trade it once at /_lk/dev-auth (a form POST; from a link, the token rides
@@ -87,6 +89,13 @@ export type GateDeps = {
   liveSecret?: string;
   verify(token: string): Promise<Verified | null>;
   active(ids: string[]): Promise<string[]>;
+  /**
+   * The dev site's own app (lib/dev-site/pwa.ts): a path → its manifest,
+   * service worker or badged icon, or null. Served without a session: Chrome
+   * fetches a manifest and its icons without cookies, so behind the gate the
+   * app could not be installed ("无法安装应用", 2026-11-15). They hold no data.
+   */
+  pwa?: (pathname: string) => { type: string; body: string | Uint8Array } | null;
   now?: () => number;
   log?: (msg: string) => void;
 };
@@ -103,7 +112,12 @@ export type GateRequest = {
   signal?: AbortSignal;
 };
 export type GateResult =
-  | { kind: "respond"; status: number; headers: Record<string, string | string[]>; body: string }
+  | {
+      kind: "respond";
+      status: number;
+      headers: Record<string, string | string[]>;
+      body: string | Uint8Array;
+    }
   | { kind: "forward"; tokenId: string; untilMs: number; via?: "worker" };
 
 /** The Worker entry's pseudo token id (never a dev_access_token id: those are random base64url). */
@@ -605,7 +619,7 @@ export function createGate(d: GateDeps) {
 
   const respond = (
     status: number,
-    body: string,
+    body: string | Uint8Array,
     headers: Record<string, string | string[]> = {},
   ): GateResult => ({
     kind: "respond",
@@ -706,7 +720,11 @@ export function createGate(d: GateDeps) {
       if (host !== d.publicHost) return closed("wrong host");
       const ip = (one(req.headers["cf-connecting-ip"]) ?? "?").trim();
       const path = new URL(req.url, "http://x").pathname;
-      // A service worker from dev code would outlive the preview and control
+      // The dev site's manifest, service worker and icons: public, no session.
+      const app = req.method === "GET" || req.method === "HEAD" ? d.pwa?.(path) : null;
+      if (app)
+        return respond(200, req.method === "HEAD" ? "" : app.body, { "content-type": app.type });
+      // Any other service worker from dev code would outlive the preview and control
       // every later page of the origin: never served here, signed in or not.
       // In its place, a worker that removes itself and its caches: a 403
       // leaves one registered earlier in place for good, serving stale chunks.
@@ -787,20 +805,19 @@ export function createGate(d: GateDeps) {
 /**
  * What goes upstream from the tunnel: no token, no gate cookie, no browser
  * better-auth cookie (the guard adds the owner's session itself), no
- * Tailscale identity, and the dev server's own origin as Host/Origin.
+ * Tailscale identity. Preserve the authenticated public Host/Origin so the
+ * app's same-origin checks see the origin the browser actually opened.
  */
 export function upstreamHeaders(
   h: Headers,
   o: { publicHost: string; origin: string; drop: string[] },
 ): Headers {
   const out: Headers = {};
-  const originHost = new URL(o.origin).host;
   for (const [k, v] of Object.entries(h)) {
     const key = k.toLowerCase();
     if (key === "authorization" || key.startsWith("tailscale-") || key.startsWith("cf-")) continue;
     if (key === LIVE_GATE_HEADER) continue; // the Worker's secret never goes past the gate
-    if (key === "x-forwarded-host" || key === "x-forwarded-proto" || key === "x-forwarded-for")
-      continue;
+    if (key === "forwarded" || key.startsWith("x-forwarded-")) continue;
     if (o.drop.includes(key)) continue;
     out[key] = v;
   }
@@ -813,13 +830,13 @@ export function upstreamHeaders(
     );
   if (cookies.length) out.cookie = cookies.join("; ");
   else delete out.cookie;
-  out.host = originHost;
+  out.host = o.publicHost;
   const pub = `https://${o.publicHost}`;
   const org = one(h.origin);
-  if (org === pub) out.origin = o.origin;
-  else if (org) delete out.origin; // another site's Origin never reaches the app
+  if (org === pub) out.origin = pub;
+  else if (org) out.origin = "null"; // retain invalid-origin evidence; never fall back to Referer
   const ref = one(h.referer);
-  if (ref?.startsWith(`${pub}/`)) out.referer = o.origin + ref.slice(pub.length);
+  if (ref?.startsWith(`${pub}/`)) out.referer = ref;
   else delete out.referer;
   return out;
 }

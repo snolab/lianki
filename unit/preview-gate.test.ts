@@ -332,7 +332,7 @@ describe("tools: Authorization: Bearer", () => {
 });
 
 describe("what reaches the app, and what comes back", () => {
-  test("upstream: his origin as Host/Origin, no gate cookie, no browser owner cookie", () => {
+  test("upstream: public origin as Host/Origin, no gate cookie, no browser owner cookie", () => {
     const up = upstreamHeaders(
       {
         host: HOST,
@@ -344,20 +344,20 @@ describe("what reaches the app, and what comes back", () => {
       },
       { publicHost: HOST, origin: ORIGIN, drop: [] },
     );
-    expect(up.host).toBe("mac.example.ts.net:8443");
-    expect(up.origin).toBe(ORIGIN);
-    expect(up.referer).toBe(`${ORIGIN}/words?x=1`);
+    expect(up.host).toBe(HOST);
+    expect(up.origin).toBe(`https://${HOST}`);
+    expect(up.referer).toBe(`https://${HOST}/words?x=1`);
     expect(up.cookie).toBe("lk_pref=1");
     expect(up).not.toHaveProperty("cf-connecting-ip");
     expect(up).not.toHaveProperty("x-forwarded-host");
   });
 
-  test("another site's Origin is dropped, not passed on", () => {
+  test("another site's Origin stays invalid, without a Referer fallback", () => {
     const up = upstreamHeaders(
       { host: HOST, origin: "https://evil.example" },
       { publicHost: HOST, origin: ORIGIN, drop: [] },
     );
-    expect(up).not.toHaveProperty("origin");
+    expect(up.origin).toBe("null");
   });
 
   test("downstream: no better-auth cookie for the browser; redirects point at the tunnel", () => {
@@ -430,10 +430,10 @@ describe("a browser opening a preview link directly", () => {
     const h = setup();
     const r = await h.req("/", NAV);
     if (r.kind !== "respond") throw new Error("no response");
-    const css = /<style>([^<]*)<\/style>/.exec(r.body)?.[1] ?? "";
+    const css = /<style>([^<]*)<\/style>/.exec(String(r.body))?.[1] ?? "";
     const hash = new Bun.CryptoHasher("sha256").update(css).digest("base64");
     expect(String(r.headers["content-security-policy"])).toContain(`'sha256-${hash}'`);
-    expect(r.body.match(/<style>/g)?.length).toBe(1);
+    expect(String(r.body).match(/<style>/g)?.length).toBe(1);
   });
 
   test("assets, APIs and sockets keep the plain 503", async () => {
@@ -468,7 +468,7 @@ describe("a browser opening a preview link directly", () => {
       const r = await h.req(u, NAV);
       expect(status(r)).toBe(503);
       if (r.kind !== "respond") continue;
-      expect([u, /lk(dev|hand)_/i.test(decodeURIComponent(r.body))]).toEqual([u, false]);
+      expect([u, /lk(dev|hand)_/i.test(decodeURIComponent(String(r.body)))]).toEqual([u, false]);
       expect(r.body).not.toContain("gggggggg");
     }
   });

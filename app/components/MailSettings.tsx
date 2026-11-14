@@ -21,7 +21,7 @@ import {
 const BTN =
   "min-h-11 rounded-full px-4 text-sm font-medium pointer-fine:min-h-9 focus-visible:outline-2 focus-visible:outline-offset-2";
 
-export function MailSettings() {
+export function MailSettings({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const c = useIntlayer("mail-settings");
   const [on, setOn] = useState(true);
   const [asking, setAsking] = useState(false);
@@ -58,7 +58,7 @@ export function MailSettings() {
       data-section="mail"
       data-testid="mail-settings"
     >
-      <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>
+      {!hideHeading && <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>}
       <p className="mb-4 text-sm opacity-80">{c.alwaysSent}</p>
       <div className="flex min-h-11 items-center gap-3">
         <span className="flex-1">

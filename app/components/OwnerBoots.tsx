@@ -5,6 +5,7 @@ import { DebugEvalLazy } from "./DebugEvalLazy";
 import { LeaveGuard } from "./LeaveGuard";
 import { NoCreditsNotice, type NoCreditsStrings } from "./NoCreditsNotice";
 import type { BoxConfig } from "@/lib/box-oauth/client";
+import type { RecheckConf } from "@lianki/debug-chat/whisper-recheck";
 
 /**
  * What every page but the partner frame mounts: the service worker, the
@@ -24,6 +25,8 @@ export function OwnerBoots({
   cloudVoices,
   talkOver = false,
   polishReadback,
+  foldOthers = true,
+  whisperRecheck,
   box = null,
   autoUpdate = false,
   account = null,
@@ -37,6 +40,10 @@ export function OwnerBoots({
   talkOver?: boolean;
   /** Flag `voice.polish-readback` + dev: his polished voice lines read back in his cloned voice. */
   polishReadback?: { on: boolean; timeoutMs?: number };
+  /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
+  foldOthers?: boolean;
+  /** Flag `stt.whisper-recheck` + dev: his Mac's Whisper re-reads each run (whisper-recheck.ts). */
+  whisperRecheck?: RecheckConf;
   /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
   autoUpdate?: boolean;
   /** Provider voices on (flag voice.cloud-voices + dev) and the language → voice map. */
@@ -77,6 +84,8 @@ export function OwnerBoots({
         cloudVoices={cloudVoices}
         talkOver={talkOver}
         polishReadback={polishReadback}
+        foldOthers={foldOthers}
+        whisperRecheck={whisperRecheck}
         box={box}
         account={account}
         cacheLines={cacheLines}
