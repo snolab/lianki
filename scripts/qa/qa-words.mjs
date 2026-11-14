@@ -1170,17 +1170,18 @@ try {
       sessionStorage.removeItem("lk:reloaded-for");
     });
     // A confirmed build may reload before the first document's load event.
-    // Count committed main-frame navigations so that fast reload is observed.
+    // Count main-frame document requests so that fast reload is observed; a
+    // same-document navigation (the chat's history.replaceState) is not a load.
     let loads = 0;
-    const onLoad = (frame) => {
-      if (frame === page.mainFrame()) loads++;
+    const onLoad = (rq) => {
+      if (rq.isNavigationRequest() && rq.frame() === page.mainFrame()) loads++;
     };
-    page.on("framenavigated", onLoad);
+    page.on("request", onLoad);
     await page.reload({ waitUntil: "load" });
     await notice.waitFor({ timeout: budget(20000) }).catch(() => {});
     const shown = await notice.isVisible().catch(() => false);
     await page.waitForTimeout(3000); // a second auto-reload would land in here
-    page.off("framenavigated", onLoad);
+    page.off("request", onLoad);
     const reloadState = await page.evaluate(() => ({
       agent: localStorage.getItem("lk:agent"),
       debug: localStorage.getItem("lk:debug"),
