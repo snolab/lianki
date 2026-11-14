@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** A browser session approves one additional scope on its own live token. Never bearer-authenticated. */
 async function handle(req: Request) {
-  if (dbBackend() !== "d1") return Response.json({ error: "Not available" }, { status: 503 });
+  if (dbBackend() !== "d1") return Response.json({ error: "not-available" }, { status: 503 });
   return tokenScopeApi(req, {
     who: async () => {
       const user = await authUserOrNull();
