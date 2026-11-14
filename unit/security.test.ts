@@ -539,6 +539,21 @@ describe("admin surfaces are owner-gated", () => {
     expect(surfaces.length).toBeGreaterThan(8);
     for (const f of surfaces) {
       const src = readFileSync(f, "utf8");
+      // Only these two legacy inbox URLs moved to private per-account /my APIs.
+      // They must remain exact thin forwards, never become an unguarded handler.
+      const inboxAliases: Record<string, string> = {
+        "app/api/dev/inbox/route.ts": 'export{GET,POST,PATCH}from"@/app/api/my/inbox/route";',
+        "app/api/dev/inbox/[id]/route.ts": 'export{GET,DELETE}from"@/app/api/my/inbox/[id]/route";',
+      };
+      if (inboxAliases[f]) {
+        expect(
+          src
+            .replace(/\/\*[\s\S]*?\*\//g, "")
+            .replace(/\s+/g, "")
+            .replace(/'/g, '"'),
+        ).toBe(inboxAliases[f]);
+        continue;
+      }
       expect({ f, gated: /\b(isAdmin|isDev)\(/.test(src) }).toEqual({ f, gated: true });
     }
   });

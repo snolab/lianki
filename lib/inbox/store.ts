@@ -136,27 +136,36 @@ export async function usageOf(db: InboxDb, userId: string): Promise<InboxUsage> 
   };
 }
 
-/** Bytes a user uploaded since `since` (the rolling-day cap; deleted files no longer count). */
+/** Upload bytes in a rolling window, including deleted files and pre-ledger rows. */
+const UPLOADED_SUM = `SELECT COALESCE(SUM(size), 0) FROM (
+  SELECT size FROM inbox_upload_log WHERE user_id = ? AND created_ms > ?
+  UNION ALL
+  SELECT size FROM inbox_item WHERE owner_id = ? AND created_ms > ?
+    AND NOT EXISTS (SELECT 1 FROM inbox_upload_log u WHERE u.id = inbox_item.id)
+)`;
 export async function uploadedSince(db: InboxDb, ownerId: string, since: number): Promise<number> {
   const r = await db
-    .prepare(
-      "SELECT COALESCE(SUM(size), 0) AS n FROM inbox_item WHERE owner_id = ? AND created_ms > ?",
-    )
-    .bind(ownerId, since)
+    .prepare(`SELECT (${UPLOADED_SUM}) AS n`)
+    .bind(ownerId, since, ownerId, since)
     .first<{ n: number }>();
   return Number(r?.n ?? 0);
 }
 
-/** A stored file's row and its usage, in one batch (one transaction). */
+/** Atomic quota check, metadata, usage and rolling upload ledger. */
 export async function insertItem(
   db: InboxDb,
   it: Omit<InboxItem, "processedMs" | "lineId" | "source"> & { source?: InboxSource },
-) {
-  await db.batch([
+  limits?: { maxStoredBytes: number; maxDayBytes: number },
+): Promise<boolean> {
+  const since = it.createdMs - 24 * 3600_000;
+  const stored = limits?.maxStoredBytes ?? null;
+  const day = limits?.maxDayBytes ?? null;
+  const result = await db.batch([
     db
-      .prepare(
-        "INSERT INTO inbox_item (id, owner_id, name, type, size, sha256, r2_key, created_ms, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
+      .prepare(`INSERT INTO inbox_item (id, owner_id, name, type, size, sha256, r2_key, created_ms, source)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE (? IS NULL OR COALESCE((SELECT bytes_stored FROM inbox_usage WHERE user_id = ?), 0) + ? <= ?)
+        AND (? IS NULL OR (${UPLOADED_SUM}) + ? <= ?)`)
       .bind(
         it.id,
         it.ownerId,
@@ -167,27 +176,48 @@ export async function insertItem(
         it.r2Key,
         it.createdMs,
         it.source ?? "chat",
+        stored,
+        it.ownerId,
+        it.size,
+        stored,
+        day,
+        it.ownerId,
+        since,
+        it.ownerId,
+        since,
+        it.size,
+        day,
       ),
     db
-      .prepare(
-        `INSERT INTO inbox_usage (user_id, bytes_stored, bytes_uploaded, items, settled_ms, updated_ms) VALUES (?, ?, ?, 1, ?, ?)
-         ON CONFLICT (user_id) DO UPDATE SET bytes_stored = bytes_stored + excluded.bytes_stored,
-           bytes_uploaded = bytes_uploaded + excluded.bytes_uploaded, items = items + 1,
-           settled_ms = excluded.settled_ms, updated_ms = excluded.updated_ms`,
-      )
-      .bind(it.ownerId, it.size, it.size, it.createdMs, it.createdMs),
+      .prepare(`INSERT INTO inbox_usage (user_id, bytes_stored, bytes_uploaded, items, settled_ms, updated_ms)
+      SELECT owner_id, size, size, 1, created_ms, created_ms FROM inbox_item WHERE id = ? AND owner_id = ?
+      ON CONFLICT (user_id) DO UPDATE SET bytes_stored = bytes_stored + excluded.bytes_stored,
+        bytes_uploaded = bytes_uploaded + excluded.bytes_uploaded, items = items + 1,
+        settled_ms = excluded.settled_ms, updated_ms = excluded.updated_ms`)
+      .bind(it.id, it.ownerId),
+    db
+      .prepare(`INSERT INTO inbox_upload_log (id,user_id,size,created_ms)
+      SELECT id,owner_id,size,created_ms FROM inbox_item WHERE id = ? AND owner_id = ?`)
+      .bind(it.id, it.ownerId),
+    db
+      .prepare("DELETE FROM inbox_upload_log WHERE user_id = ? AND created_ms <= ?")
+      .bind(it.ownerId, since),
   ]);
+  const first = (result as { meta?: { changes?: number } }[] | undefined)?.[0];
+  return first?.meta?.changes !== undefined
+    ? first.meta.changes === 1
+    : !!(await getItem(db, it.id));
 }
 
 /** Delete a row and lower its owner's usage, in one batch. */
 export async function deleteItem(db: InboxDb, it: InboxItem, now: number) {
   await db.batch([
-    db.prepare("DELETE FROM inbox_item WHERE id = ?").bind(it.id),
     db
       .prepare(
-        "UPDATE inbox_usage SET bytes_stored = MAX(0, bytes_stored - ?), items = MAX(0, items - 1), settled_ms = ?, updated_ms = ? WHERE user_id = ?",
+        "UPDATE inbox_usage SET bytes_stored = MAX(0, bytes_stored - ?), items = MAX(0, items - 1), settled_ms = ?, updated_ms = ? WHERE user_id = ? AND EXISTS (SELECT 1 FROM inbox_item WHERE id = ? AND owner_id = ?)",
       )
-      .bind(it.size, now, now, it.ownerId),
+      .bind(it.size, now, now, it.ownerId, it.id, it.ownerId),
+    db.prepare("DELETE FROM inbox_item WHERE id = ? AND owner_id = ?").bind(it.id, it.ownerId),
   ]);
 }
 

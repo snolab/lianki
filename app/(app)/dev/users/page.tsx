@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
 import { isAdmin } from "@/lib/permissions";
 import { dbBackend, getBlobs, getD1 } from "@/lib/d1";
-import { INBOX } from "@/lib/inbox/config";
+import { cfg } from "@/lib/config-store";
 import { cachedReadBlobSizes, type ListBucket } from "@/lib/repos/devUserFiles";
 import { listDevUsers, monthlySignups } from "@/lib/repos/devUsersD1";
 import { monthSeries } from "@/lib/signups-chart";
@@ -47,7 +47,7 @@ export default async function DevUsersPage() {
       <UsersTable
         rows={rows}
         now={now.getTime()}
-        inboxCap={INBOX.maxStoredBytes}
+        inboxCap={await cfg("inbox.maxStoredBytes")}
         filesComplete={read.complete}
         pending={pending}
       />

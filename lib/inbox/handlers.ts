@@ -1,17 +1,18 @@
 /**
  * The inbox's HTTP side (app/api/dev/inbox/**), as plain functions over
  * their dependencies so the gate, the caps and the sniffing are unit-tested
- * (unit/inbox.test.ts). Owner session only: anyone else gets 404, as every
- * /api/dev route. A file is streamed to R2 as it arrives (hashed on the
+ * (unit/inbox.test.ts). Every signed-in account sees only its own files. A file is streamed to R2 as it arrives (hashed on the
  * way); its row and the user's usage are written together after.
  */
 import { createHash } from "node:crypto";
 import { cleanFileName } from "@lianki/debug-chat/wire";
-import { INBOX } from "./config";
+import { INBOX, type InboxLimits } from "./config";
+import { holderIds } from "@/lib/account-permission";
 import { chargeInbox, monthlyUsd, readUsd, storageUsd, uploadUsd } from "./charge";
 import type { InboxSource, InboxUsage } from "./store";
 import { fileHeaders, inboxKey, isInboxId, newInboxId } from "./keys";
 import { SNIFF_BYTES, sniff } from "./sniff";
+import { knownLengthBody, inboxResponseBody } from "./body";
 import {
   type InboxDb,
   deleteItem,
@@ -29,10 +30,10 @@ import {
 export type InboxBucket = {
   put(
     key: string,
-    body: ReadableStream<Uint8Array>,
+    body: ReadableStream<Uint8Array> | ArrayBuffer,
     opts?: { httpMetadata?: { contentType?: string } },
   ): Promise<unknown>;
-  get(key: string): Promise<{ body: ReadableStream<Uint8Array> } | null>;
+  get(key: string): Promise<import("./body").InboxObject | null>;
   delete(key: string): Promise<unknown>;
 };
 
@@ -44,7 +45,8 @@ export type InboxDeps = {
   bucket: () => InboxBucket;
   now?: () => number;
   /** The upload rate limit (lib/debug-session.ts rateLimiter). */
-  allow?: () => boolean;
+  allow?: (account: string, max: number) => boolean;
+  limits?: () => Promise<InboxLimits>;
 };
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -56,14 +58,15 @@ const json = (body: unknown, status = 200) =>
 const notFound = () => json({ error: "Not found" }, 404);
 const DAY_MS = 24 * 3600_000;
 
-/** The gate: the owner's own session, else null (→ 404). Friends and other users are refused for now. */
-async function owner(d: InboxDeps) {
+/** A signed-in account, never an account id supplied by the request. */
+async function account(d: InboxDeps) {
   const w = await d.who();
-  return w?.owner && w.id ? w : null;
+  return w?.id ? w : null;
 }
 
 /** Over the safety cap on what one user keeps stored (INBOX.maxStoredBytes)? Applies to everyone. */
-export const overCap = (stored: number, adding: number) => stored + adding > INBOX.maxStoredBytes;
+export const overCap = (stored: number, adding: number, max = INBOX.maxStoredBytes) =>
+  stored + adding > max;
 
 /**
  * The storage cost accrued since the last settlement (bytes stored × time),
@@ -130,16 +133,9 @@ async function peeked(body: ReadableStream<Uint8Array>, max: number) {
   };
 }
 
-/** R2 needs a body of known length: workerd's FixedLengthStream (absent in tests). */
-function fixedLength(s: ReadableStream<Uint8Array>, len: number) {
-  const F = (globalThis as { FixedLengthStream?: new (n: number) => TransformStream })
-    .FixedLengthStream;
-  return F ? s.pipeThrough(new F(len)) : s;
-}
-
-/** POST /api/dev/inbox — the raw bytes as the body; `x-file-name` (URI-encoded) and content-type as declared. */
+/** POST /api/my/inbox — the raw bytes as the body; `x-file-name` (URI-encoded) and content-type as declared. */
 export async function upload(req: Request, d: InboxDeps): Promise<Response> {
-  const who = await owner(d);
+  const who = await account(d);
   if (!who) return notFound();
   return storeUpload(req, who, d, "chat");
 }
@@ -155,20 +151,23 @@ export async function storeUpload(
   d: InboxDeps,
   source: InboxSource,
 ): Promise<Response> {
-  if (d.allow && !d.allow()) return json({ error: "rate-limited" }, 429);
+  const limits = d.limits ? await d.limits() : INBOX;
+  if (d.allow && !d.allow(who.id, limits.uploadsPerMinute))
+    return json({ error: "rate-limited" }, 429);
   const len = Number(req.headers.get("content-length"));
   if (!Number.isSafeInteger(len) || len <= 0 || !req.body)
     return json({ error: "length-required" }, 411);
-  if (len > INBOX.maxFileBytes) return json({ error: "too-big", max: INBOX.maxFileBytes }, 413);
+  if (len > limits.maxFileBytes) return json({ error: "too-big", max: limits.maxFileBytes }, 413);
   const now = (d.now ?? Date.now)();
   const db = d.db();
   const [day, usage] = await Promise.all([
     uploadedSince(db, who.id, now - DAY_MS),
     usageOf(db, who.id),
   ]);
-  if (day + len > INBOX.maxDayBytes) return json({ error: "day-cap", max: INBOX.maxDayBytes }, 413);
-  if (overCap(usage.bytesStored, len))
-    return json({ error: "storage-cap", max: INBOX.maxStoredBytes }, 413);
+  if (day + len > limits.maxDayBytes)
+    return json({ error: "day-cap", max: limits.maxDayBytes }, 413);
+  if (overCap(usage.bytesStored, len, limits.maxStoredBytes))
+    return json({ error: "storage-cap", max: limits.maxStoredBytes }, 413);
   let name = "file";
   try {
     name = cleanFileName(decodeURIComponent(req.headers.get("x-file-name") ?? ""));
@@ -180,7 +179,7 @@ export async function storeUpload(
   try {
     await d
       .bucket()
-      .put(key, fixedLength(body.stream, len), { httpMetadata: { contentType: type } });
+      .put(key, await knownLengthBody(body.stream, len), { httpMetadata: { contentType: type } });
   } catch {
     await d
       .bucket()
@@ -197,26 +196,45 @@ export async function storeUpload(
   }
   // What was stored until now is settled first; the insert moves settled_ms to now.
   await settleStorage(who.id, usage, now);
-  await insertItem(db, {
-    id,
-    ownerId: who.id,
-    name,
-    type,
-    size: len,
-    sha256: body.sha256(),
-    r2Key: key,
-    createdMs: now,
-    source,
-  });
+  try {
+    const inserted = await insertItem(
+      db,
+      {
+        id,
+        ownerId: who.id,
+        name,
+        type,
+        size: len,
+        sha256: body.sha256(),
+        r2Key: key,
+        createdMs: now,
+        source,
+      },
+      limits,
+    );
+    if (!inserted) {
+      await d.bucket().delete(key);
+      const usage = await usageOf(db, who.id);
+      return overCap(usage.bytesStored, len, limits.maxStoredBytes)
+        ? json({ error: "storage-cap", max: limits.maxStoredBytes }, 413)
+        : json({ error: "day-cap", max: limits.maxDayBytes }, 413);
+    }
+  } catch {
+    await d
+      .bucket()
+      .delete(key)
+      .catch(() => {});
+    return json({ error: "upload-failed" }, 503);
+  }
   await chargeInbox(who.id, { kind: "upload", usd: uploadUsd(), bytes: len });
   // Never the name in a log: a user's text.
   console.log(JSON.stringify({ event: "inbox.upload", id, type, size: len, source }));
   return json({ id, name, type, size: len, at: now }, 201);
 }
 
-/** GET /api/dev/inbox — the owner's files, newest first, and his usage. */
+/** GET /api/my/inbox — the account's own files, newest first, and its usage. */
 export async function list(d: InboxDeps): Promise<Response> {
-  const who = await owner(d);
+  const who = await account(d);
   if (!who) return notFound();
   return listFor(who, d, "chat");
 }
@@ -236,6 +254,7 @@ export async function listFor(
   const now = (d.now ?? Date.now)();
   await settleStorage(who.id, usage, now);
   await settleTo(db, who.id, now);
+  const limits = d.limits ? await d.limits() : INBOX;
   return json({
     items: items.map((i) => ({
       id: i.id,
@@ -249,15 +268,15 @@ export async function listFor(
       bytesStored: usage.bytesStored,
       bytesUploaded: usage.bytesUploaded,
       items: usage.items,
-      capBytes: INBOX.maxStoredBytes,
+      capBytes: limits.maxStoredBytes,
       monthlyUsd: monthlyUsd(usage.bytesStored),
     },
   });
 }
 
-/** PATCH /api/dev/inbox — {ids, line}: the chat line these files were sent with. */
+/** PATCH /api/my/inbox — {ids, line}: the chat line these files were sent with. */
 export async function link(req: Request, d: InboxDeps): Promise<Response> {
-  const who = await owner(d);
+  const who = await account(d);
   if (!who) return notFound();
   const b = (await req.json().catch(() => null)) as { ids?: unknown; line?: unknown } | null;
   const ids = Array.isArray(b?.ids) ? b.ids.filter(isInboxId).slice(0, 10) : [];
@@ -271,7 +290,7 @@ export async function link(req: Request, d: InboxDeps): Promise<Response> {
 export const TICKET_HEADER = "x-inbox-ticket";
 
 /**
- * GET /api/dev/inbox/<id> — the file: with the owner's session (his own
+ * GET /api/my/inbox/<id> — the file: with the owner's session (his own
  * files), or a ticket an agent got through the hub (single use, 60 s).
  */
 export async function download(req: Request, id: string, d: InboxDeps): Promise<Response> {
@@ -279,15 +298,24 @@ export async function download(req: Request, id: string, d: InboxDeps): Promise<
   const db = d.db();
   const it = await getItem(db, id);
   if (!it) return notFound();
-  const who = await owner(d);
+  const who = await account(d);
   const ticket = req.headers.get(TICKET_HEADER);
   const mine = !!who && who.id === it.ownerId;
-  if (!mine && !(ticket && (await spendTicket(db, id, ticket, (d.now ?? Date.now)()))))
+  // Tickets remain restricted to the dev accounts the agent can read.
+  if (
+    !mine &&
+    !(
+      ticket &&
+      it.source === "chat" &&
+      (await holderIds(db, "dev")).includes(it.ownerId) &&
+      (await spendTicket(db, id, ticket, (d.now ?? Date.now)()))
+    )
+  )
     return notFound();
   const obj = await d.bucket().get(it.r2Key);
   if (!obj) return notFound();
   await chargeInbox(it.ownerId, { kind: "read", usd: readUsd(), bytes: it.size });
-  return new Response(obj.body, { headers: fileHeaders(it) });
+  return new Response(await inboxResponseBody(obj), { headers: fileHeaders(it) });
 }
 
 /**
@@ -302,12 +330,12 @@ export async function serveOwn(id: string, who: { id: string }, d: InboxDeps): P
   const obj = await d.bucket().get(it.r2Key);
   if (!obj) return notFound();
   await chargeInbox(it.ownerId, { kind: "read", usd: readUsd(), bytes: it.size });
-  return new Response(obj.body, { headers: fileHeaders(it) });
+  return new Response(await inboxResponseBody(obj), { headers: fileHeaders(it) });
 }
 
-/** DELETE /api/dev/inbox/<id> — the owner's own session only; the file and its row go for good. */
+/** DELETE /api/my/inbox/<id> — the account's own session only; the file and its row go for good. */
 export async function remove(id: string, d: InboxDeps): Promise<Response> {
-  const who = await owner(d);
+  const who = await account(d);
   if (!who) return notFound();
   return removeFor(id, who, d, "chat");
 }

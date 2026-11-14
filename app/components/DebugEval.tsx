@@ -1095,9 +1095,10 @@ export function DebugEval({
   }, [treeOn]);
   // The chat inbox's host side (lib/inbox/client.ts): an Anki package imports in one tap.
   const importDeck = strings?.importDeck ?? "Import as a deck";
-  const ownerFiles = useMemo(
-    () => inboxFiles({ importDeck, go: (path) => router.push(path) }),
-    [importDeck, router],
+  const accountFiles = useMemo(
+    () =>
+      inboxFiles({ importDeck, go: (path) => router.push(path), account: account ?? undefined }),
+    [importDeck, router, account],
   );
   if (!live && !toast && !chat) return null;
   return (
@@ -1192,8 +1193,8 @@ export function DebugEval({
             // This page's ETA timer went off: the hub pings the agent at most once per estimate.
             onEtaDue={(id) => ownerTree?.send({ type: "eta", id })}
             treeRepo="snolab/lianki"
-            // The chat inbox: the owner's own pages only (owner-only upload, lib/inbox/).
-            files={owner && !isFriend ? ownerFiles : undefined}
+            // Every signed-in account's own inbox; guests keep coming-soon file actions.
+            files={account ? accountFiles : undefined}
             // The account's chat history (docs/chat-history.md): every signed-in user's own.
             onHistory={() => router.push("/chat/history")}
             agentAvatar={AGENT_AVATAR}

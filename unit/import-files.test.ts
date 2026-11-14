@@ -18,7 +18,7 @@ import {
   uploadImportFile,
 } from "../lib/import/files";
 
-const SCHEMA = ["0035_inbox.sql", "0068_import_files.sql"]
+const SCHEMA = ["0035_inbox.sql", "0068_import_files.sql", "0077_inbox_upload_log.sql"]
   .map((f) => readFileSync(new URL(`../db/migrations/${f}`, import.meta.url), "utf8"))
   .join("\n");
 

@@ -36,7 +36,7 @@ import {
 } from "../lib/self-intro/import-handler";
 import { reserveCredits } from "../lib/payments/ai-credits";
 
-const SCHEMA = ["0035_inbox.sql", "0068_import_files.sql"]
+const SCHEMA = ["0035_inbox.sql", "0068_import_files.sql", "0077_inbox_upload_log.sql"]
   .map((f) => readFileSync(new URL(`../db/migrations/${f}`, import.meta.url), "utf8"))
   .join("\n");
 
