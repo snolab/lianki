@@ -130,6 +130,10 @@ type Strings = Pick<
   | "etaGanttScale"
   | "etaGanttLinear"
   | "etaGanttLog"
+  | "etaGanttSettings"
+  | "etaGanttHideDone"
+  | "etaGanttHide"
+  | "etaGanttShow"
   | "etaWaitingYou"
   | "etaReminder"
   | "etaGanttLegend"
@@ -1013,8 +1017,8 @@ export function GanttFull({
         <button
           type="button"
           data-testid="debug-chat-gantt-settings-btn"
-          aria-label="设置"
-          title="设置"
+          aria-label={strings.etaGanttSettings}
+          title={strings.etaGanttSettings}
           aria-expanded={settingsOpen}
           onClick={() => setSettingsOpen((o) => !o)}
           className="tap-40 rounded px-2 py-1"
@@ -1042,7 +1046,7 @@ export function GanttFull({
       {settingsOpen && (
         <section
           role="region"
-          aria-label="甘特图设置"
+          aria-label={strings.etaGanttSettings}
           data-testid="debug-chat-gantt-settings-panel"
           className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-2 fs-11"
           style={{
@@ -1050,18 +1054,18 @@ export function GanttFull({
             borderBottom: `1px solid ${c("grid")}`,
           }}
         >
-          <span className="font-medium">已完成任务</span>
+          <span className="font-medium">{strings.etaGanttHideDone}</span>
           <div
             role="group"
-            aria-label="已完成任务显示"
+            aria-label={strings.etaGanttHideDone}
             data-testid="debug-chat-gantt-hide-done-toggle"
             className="flex shrink-0 overflow-hidden rounded"
             style={{ border: `1px solid ${c("grid")}` }}
           >
             {(
               [
-                [true, "隐藏"],
-                [false, "显示"],
+                [true, strings.etaGanttHide],
+                [false, strings.etaGanttShow],
               ] as const
             ).map(([val, label]) => (
               <button

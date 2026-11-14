@@ -994,6 +994,14 @@ export type ChatStrings = {
   etaGanttLinear: string;
   /** The other of the two buttons of that switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis logarithmically, near times wide and far times compressed, so minutes and days fit one screen. A single short word for 'logarithmic' as on a chart's axis, abbreviated if usual (对数 in Chinese, 'Log' in English); the button is narrow. */
   etaGanttLog: string;
+  /** Screen-reader label and tooltip of the gear button in the header of the full-screen timeline (Gantt): toggles the view settings panel. */
+  etaGanttSettings: string;
+  /** Section heading in the timeline settings panel for completed tasks visibility control. */
+  etaGanttHideDone: string;
+  /** Button in the timeline settings panel to hide completed tasks. */
+  etaGanttHide: string;
+  /** Button in the timeline settings panel to show completed tasks. */
+  etaGanttShow: string;
   /** A task waiting for the owner (Gantt and list): the red mark's label, and before its reminder time. */
   etaWaitingYou: string;
   /** The full-screen Gantt's one-line legend: the underline is the reported progress, the red line now. */
@@ -1200,6 +1208,10 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaGanttScale: "Time axis",
   etaGanttLinear: "Linear",
   etaGanttLog: "Log",
+  etaGanttSettings: "Timeline settings",
+  etaGanttHideDone: "Completed tasks",
+  etaGanttHide: "Hide",
+  etaGanttShow: "Show",
   etaWaitingYou: "Waiting for you",
   etaGanttLegend: "Underline = reported progress · red line = now",
   etaReminder: "reminder in {t}",
