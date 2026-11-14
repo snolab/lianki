@@ -10,6 +10,7 @@ import {
   testLedger,
   type D1WithBatch,
 } from "@/lib/payments/credits-store";
+import { runSignupBonus, type SignupBonusDb } from "@/lib/payments/signup-bonus-store";
 import { loginStreakView, type StreakView } from "@/lib/payments/login-streak-store";
 import { homeDay, requestTimeZone } from "@/lib/study-days";
 import { pendingHolds, sweepStaleAi } from "@/lib/payments/ai-credits";
@@ -38,6 +39,11 @@ export async function GET() {
     );
   } catch {}
   const flags = await readFlags();
+  // The sign-up bonus backfill (docs/payments.md, "Sign-up bonus"): an account
+  // older than the feature gets it once, before the balance is read. Never throws.
+  await runSignupBonus(d1 as unknown as SignupBonusDb, session.user.id, "backfill", {
+    enabled: async () => flags["credits.signup-bonus"] === true,
+  });
   // The login streak (docs/payments.md, "Login-streak bonus"): read only —
   // a day counts on a real learning action, never on a wallet read.
   let streak: StreakView | null = null;
