@@ -105,7 +105,15 @@ export type TokenAtt = {
   checkedAt?: number;
 };
 
-export type ChatTokenOp = "say" | "ask" | "read" | "listen" | "recheck" | "prepare" | "avatar";
+export type ChatTokenOp =
+  | "say"
+  | "ask"
+  | "read"
+  | "listen"
+  | "recheck"
+  | "prepare"
+  | "avatar"
+  | "progress";
 export type ChatTokenAnswer =
   | {
       ok: true;

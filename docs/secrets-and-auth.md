@@ -477,7 +477,9 @@ login`'s and the agent lanes' tokens.
   every token of the account (`lib/api-token-signout.ts`).
 - **Permissions as data** (`SCOPES`): `study` (cards, reviews, settings: what
   every token could do before), `chat:read`, `chat:write`, `chat:ask`, and
-  `eval` for a site owner only ("Eval tokens", below). Chosen at creation; a
+  for a site owner only `eval` ("Eval tokens", below) and `progress` (report
+  to the state tree as the token's name; docs/api-for-agents.md, "Report
+  progress"; no 30-day cap). Chosen at creation; a
   route asks for one. `pair`, `grant`, `admin`, `answer` are not permissions
   at all (`FORBIDDEN_SCOPES`): a request naming one is refused. Card and settings routes (`authEmailOrToken`,
   `apiTokenUser`) need `study`, so a chat-only lane token reaches none of them.

@@ -302,4 +302,31 @@ describe("PreferencesToc and collapsible behavior", () => {
     expect(observeSectionVisibility([], () => {})).toBeFunction();
     unbind();
   });
+
+  it("jumps with the URL hash, and works without onSelect or activeId", () => {
+    const calls: string[] = [];
+    const restoreHistory = stubGlobals({
+      history: { replaceState: (_s: unknown, _t: string, url: string) => calls.push(url) },
+    });
+    const el = win.document.createElement("div");
+    el.id = "mail";
+    (el as any).scrollIntoView = () => {};
+    win.document.body.appendChild(el);
+    jumpToSection("mail");
+    expect(calls).toEqual(["#mail"]);
+
+    const host = win.document.createElement("div");
+    win.document.body.appendChild(host);
+    const root = createRoot(host as unknown as Element);
+    const sections: TocSection[] = [{ id: "mail", title: "Mail" }];
+    act(() => root.render(<PreferencesToc label="TOC" sections={sections} />));
+    (host.querySelector('[data-testid="toc-chip-mail"]') as HTMLElement).click();
+    (host.querySelector('[data-testid="toc-link-mail"]') as HTMLElement).click();
+    expect(calls).toEqual(["#mail", "#mail", "#mail"]);
+    act(() => root.render(<PreferencesToc label="TOC" sections={[]} />));
+    act(() => root.unmount());
+    host.remove();
+    el.remove();
+    restoreHistory();
+  });
 });

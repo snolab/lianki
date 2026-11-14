@@ -5,13 +5,14 @@
 
 import { z } from "zod";
 import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call } from "./api.mjs";
+import { PROGRESS_KINDS, PROGRESS_PATH, PROGRESS_STATUSES, ackBody, reportBody } from "./progress.mjs";
 
 export const CLIENT_HEADER = "x-lianki-client";
 /** Most pages one lianki_import call sends (the server's own cap is higher). */
 export const IMPORT_MAX = 100;
 export const CHAT_PATH = "/api/version/chat";
 /** When the server cannot say what the token may do (an older server): offer all, it still checks. */
-const ALL_SCOPES = ["study", "chat:read", "chat:write", "chat:ask"];
+const ALL_SCOPES = ["study", "chat:read", "chat:write", "chat:ask", "progress"];
 /** lianki_chat_wait: how long it waits by default, and at most (under a client's usual 60 s request timeout). */
 export const WAIT_DEFAULT_SEC = 50;
 export const WAIT_MAX_SEC = 55;
@@ -266,6 +267,84 @@ export const TOOLS = [
         },
       });
       return { id: d.id ?? null, askId: d.askId ?? null };
+    },
+  },
+  {
+    name: "lianki_progress_report",
+    scope: "progress",
+    title: "Report progress",
+    description:
+      "Report one task of your own work to the user's live task list (the state tree), under this token's name: " +
+      "when you start (with eta), at milestones, when blocked, and when done. " +
+      "Past your eta and not done, report again within 5 minutes with a new eta and late (why); without late it is refused. " +
+      "Returns the node: id, status, rev, etaAt; doneKind 'unverified' means a 'verify' child was added for you.",
+    input: {
+      path: z
+        .string()
+        .min(1)
+        .max(200)
+        .regex(/^\/[A-Za-z0-9._:@-]+(?:\/[A-Za-z0-9._:@-]+)*$/)
+        .describe("The task's place in the tree, e.g. /words/swipe"),
+      task: z
+        .string()
+        .min(1)
+        .max(500)
+        .describe('"name: description": a short name (at most 20 columns; the user\'s bar shows only it), then what it is'),
+      status: z.enum(PROGRESS_STATUSES).describe("Where it stands"),
+      pct: z.number().min(0).max(100).optional().describe("How far along"),
+      eta: z
+        .string()
+        .max(60)
+        .optional()
+        .describe("Your own estimate: a duration from now (30m, 1h30m), a range 12m-63m, or an ISO time"),
+      late: z.string().max(500).optional().describe("Past the estimate: why, always with a new eta"),
+      confirm: z.boolean().optional().describe("The estimate still holds (before it runs out)"),
+      note: z.string().max(2000).optional().describe("Free text on the node"),
+      pr: z.string().max(100).optional().describe("A pull request number, or several: 703,707"),
+      needs: z.string().max(500).optional().describe("What someone must do (with who when blocked)"),
+      who: z.string().max(60).optional().describe("Who can act now: owner, or a name"),
+      verified: z.string().max(500).optional().describe("With status done: the evidence (a merged PR, a test, a link)"),
+      kind: z.enum(PROGRESS_KINDS).optional().describe("The node's kind (default task)"),
+      link: z.string().max(2048).optional().describe("A link to show on the node"),
+      changeId: z.string().max(40).optional().describe("One change across several reports"),
+    },
+    annotations: { ...WRITE, idempotentHint: true },
+    run: async (api, a) => {
+      const d = await api({ method: "POST", path: PROGRESS_PATH, body: reportBody(a) });
+      const e = d.entry ?? {};
+      return {
+        id: e.id ?? null,
+        status: e.status ?? null,
+        rev: e.rev ?? null,
+        etaAt: e.etaAt ?? null,
+        doneKind: e.doneKind ?? null,
+        told: d.told ?? null,
+      };
+    },
+  },
+  {
+    name: "lianki_progress_show",
+    scope: "progress",
+    title: "Show the task list",
+    description:
+      "The user's live task list as a tree: every open task with its agent, status, pct, eta and notes (done ones for a day). Read it before reporting, to find or place your node.",
+    annotations: READ,
+    run: async (api) => {
+      const d = await api({ path: PROGRESS_PATH });
+      return { entries: Array.isArray(d.entries) ? d.entries : [] };
+    },
+  },
+  {
+    name: "lianki_progress_ack",
+    scope: "progress",
+    title: "Acknowledge an ETA line",
+    description:
+      'Acknowledge an "ETA reached" line by the 6-character receipt code it carries, at once; then report the task again with a new eta and late (why), or done.',
+    input: { code: z.string().min(6).max(6).describe("The receipt code on the ETA line") },
+    annotations: { ...WRITE, idempotentHint: true },
+    run: async (api, a) => {
+      const d = await api({ method: "POST", path: `${PROGRESS_PATH}/ack`, body: ackBody(a.code) });
+      return { id: d.id ?? null, task: d.task ?? null, etaAt: d.etaAt ?? null };
     },
   },
 ];
