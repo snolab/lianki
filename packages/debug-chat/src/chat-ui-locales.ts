@@ -70,6 +70,8 @@ export type LegacyKey = (typeof LEGACY_KEYS)[number];
 export type LegacyStrings = Record<LegacyKey, string>;
 
 export type ChatExtra = {
+  polishedBy: string;
+  polishedAuto: string;
   messageDetails: string;
   voiceUsed: string;
   voiceUseThis: string;
@@ -149,6 +151,8 @@ export const LEGACY_CONTEXT: LegacyStrings = {
 };
 
 export const EXTRA_CONTEXT: ChatExtra = {
+  polishedBy: `In ${CHAT}: accessible label and tooltip heading on the small sparkle after a polished voice message. Names WHO polished the wording, not who spoke or transcribed it. {name} is the assistant lane display name or the localized automatic-system name; keep {name}. Also shown above the original transcript in the tap-open popover.`,
+  polishedAuto: `In ${CHAT}: the actor name substituted into polishedBy when edited.by is auto. This is automatic wording cleanup, not a human or a named assistant lane. A short localized name for the automatic system; the tiny badge itself uses a symbol.`,
   messageDetails: `In ${CHAT}: heading and accessible label of a popover opened by clicking a message. It shows only metadata already carried by that message: sender, timestamp, recognition and voiceprint fields when present. Short noun phrase.`,
   voiceUsed: `In ${CHAT}, the message details popover: a row naming the voice that actually read this message aloud on this device; {name} is a technical voice id shown as is (e.g. neko-moe, device:Samantha, aura:luna). A label, a colon, then {name}; keep {name}.`,
   voiceUseThis: `In ${CHAT}, the message details popover: a button beside that voice row, shown when the voice was picked by a rotation that takes turns through several voices: tapping keeps this voice for such lines on this device instead of taking turns. An imperative phrase.`,
@@ -559,6 +563,8 @@ export const OTHER_LEGACY: Record<Other, LegacyStrings> = {
 /** The strings that were inline in the chat's code, in all 16 locales. */
 export const EXTRA: Record<ChatLocale, ChatExtra> = {
   en: {
+    polishedBy: "Polished by {name}",
+    polishedAuto: "Auto",
     messageDetails: "Message details",
     voiceUsed: "Voice: {name}",
     voiceUseThis: "Use this voice",
@@ -608,6 +614,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Retry",
   },
   zh: {
+    polishedBy: "由{name}润色",
+    polishedAuto: "自动",
     messageDetails: "消息详情",
     voiceUsed: "声音：{name}",
     voiceUseThis: "就用这个声音",
@@ -656,6 +664,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "重试",
   },
   hi: {
+    polishedBy: "{name} द्वारा सुधारा गया",
+    polishedAuto: "स्वचालित प्रणाली",
     messageDetails: "संदेश विवरण",
     voiceUsed: "आवाज़: {name}",
     voiceUseThis: "यही आवाज़ इस्तेमाल करें",
@@ -704,6 +714,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "फिर से कोशिश करें",
   },
   es: {
+    polishedBy: "Revisado por {name}",
+    polishedAuto: "el sistema automático",
     messageDetails: "Detalles del mensaje",
     voiceUsed: "Voz: {name}",
     voiceUseThis: "Usar esta voz",
@@ -752,6 +764,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Reintentar",
   },
   fr: {
+    polishedBy: "Retouché par {name}",
+    polishedAuto: "le système automatique",
     messageDetails: "Détails du message",
     voiceUsed: "Voix : {name}",
     voiceUseThis: "Utiliser cette voix",
@@ -800,6 +814,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Réessayer",
   },
   ar: {
+    polishedBy: "نقّحه {name}",
+    polishedAuto: "النظام الآلي",
     messageDetails: "تفاصيل الرسالة",
     voiceUsed: "الصوت: {name}",
     voiceUseThis: "استخدم هذا الصوت",
@@ -848,6 +864,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "إعادة المحاولة",
   },
   bn: {
+    polishedBy: "{name} পরিমার্জন করেছে",
+    polishedAuto: "স্বয়ংক্রিয় ব্যবস্থা",
     messageDetails: "বার্তার বিবরণ",
     voiceUsed: "কণ্ঠ: {name}",
     voiceUseThis: "এই কণ্ঠটি ব্যবহার করুন",
@@ -896,6 +914,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "আবার চেষ্টা করুন",
   },
   pt: {
+    polishedBy: "Revisado por {name}",
+    polishedAuto: "o sistema automático",
     messageDetails: "Detalhes da mensagem",
     voiceUsed: "Voz: {name}",
     voiceUseThis: "Usar esta voz",
@@ -944,6 +964,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Tentar de novo",
   },
   ru: {
+    polishedBy: "Исправлено: {name}",
+    polishedAuto: "автоматика",
     messageDetails: "Сведения о сообщении",
     voiceUsed: "Голос: {name}",
     voiceUseThis: "Использовать этот голос",
@@ -992,6 +1014,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Повторить",
   },
   ur: {
+    polishedBy: "{name} نے سنوارا",
+    polishedAuto: "خودکار نظام",
     messageDetails: "پیغام کی تفصیلات",
     voiceUsed: "آواز: {name}",
     voiceUseThis: "یہی آواز استعمال کریں",
@@ -1040,6 +1064,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "دوبارہ کوشش کریں",
   },
   id: {
+    polishedBy: "Dirapikan oleh {name}",
+    polishedAuto: "sistem otomatis",
     messageDetails: "Detail pesan",
     voiceUsed: "Suara: {name}",
     voiceUseThis: "Pakai suara ini",
@@ -1088,6 +1114,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Coba lagi",
   },
   de: {
+    polishedBy: "Überarbeitet von {name}",
+    polishedAuto: "Automatik",
     messageDetails: "Nachrichtendetails",
     voiceUsed: "Stimme: {name}",
     voiceUseThis: "Diese Stimme verwenden",
@@ -1136,6 +1164,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Erneut versuchen",
   },
   ja: {
+    polishedBy: "{name}による推敲",
+    polishedAuto: "自動処理",
     messageDetails: "メッセージの詳細",
     voiceUsed: "声：{name}",
     voiceUseThis: "この声を使う",
@@ -1184,6 +1214,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "再試行",
   },
   sw: {
+    polishedBy: "Imeboreshwa na {name}",
+    polishedAuto: "mfumo otomatiki",
     messageDetails: "Maelezo ya ujumbe",
     voiceUsed: "Sauti: {name}",
     voiceUseThis: "Tumia sauti hii",
@@ -1232,6 +1264,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Jaribu tena",
   },
   mr: {
+    polishedBy: "{name} यांनी सुधारले",
+    polishedAuto: "स्वयंचलित प्रणाली",
     messageDetails: "संदेशाचा तपशील",
     voiceUsed: "आवाज: {name}",
     voiceUseThis: "हाच आवाज वापरा",
@@ -1280,6 +1314,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "पुन्हा प्रयत्न करा",
   },
   ko: {
+    polishedBy: "다듬은 주체: {name}",
+    polishedAuto: "자동 처리",
     messageDetails: "메시지 세부 정보",
     voiceUsed: "음성: {name}",
     voiceUseThis: "이 음성 사용",

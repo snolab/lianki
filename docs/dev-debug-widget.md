@@ -531,6 +531,13 @@ to the main thread, as before, but prints agent lines addressed to a node.
 
 ## Agent edits of voice messages
 
+The polished sparkle identifies `edited.by`: its bottom-right badge is the
+existing lane avatar (aliases resolve to the lane's display name), or an
+automatic-system symbol for `auto`. Its accessible label and original-text
+popover say "Polished by {name}" (`chat-ui`'s `polishedBy` / `polishedAuto`,
+16 locales, with context). Messages without `by` keep the plain mark. An
+unknown assistant label keeps its name and uses the existing generated avatar.
+
 STT gets words wrong, and it has no context on the conversation. The chat
 lane does: it may **polish any of the owner's own lines** in his thread, so the
 log reads what was meant.

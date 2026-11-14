@@ -3315,6 +3315,7 @@ export function DebugChat({
       mark: (
         <>
           <PolishedMark
+            by={m.edited?.by}
             icon={
               m.summary ? (
                 <span data-testid="debug-chat-summary" className="rounded border border-current px-1 text-[0.8em]">
