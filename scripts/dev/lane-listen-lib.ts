@@ -60,7 +60,22 @@ export type Line = {
   at?: string;
   /** An automatic state-tree line (source "eta") addressed to this lane: a blocked nudge, or "main". */
   etaLane?: string;
+  /** The Mac's voiceprint decision on a spoken owner line: "me" | "other" | "unknown" (absent: typed, or no print). */
+  voice?: string;
 };
+/**
+ * Whether a lane may hear this owner line (owner, 2026-11-14 23:2x: "只有我自己的
+ *语音才广播给所有 agent"): a line the voiceprint decided was someone else never
+ * goes out; an "unknown" one (his own short or soft sentence) does, marked, unless
+ * LANE_LISTEN_VOICES=me asks for his decided voice only. The chat lane still
+ * sees every line (it polishes and answers in the thread).
+ */
+export function voiceAllowed(l: Pick<Line, "from" | "voice">, env = process.env): boolean {
+  if (l.from !== "owner" || !l.voice) return true;
+  if (l.voice === "other") return false;
+  if (l.voice === "unknown") return env.LANE_LISTEN_VOICES !== "me";
+  return true;
+}
 export function lineOf(raw: string): (Line & { history: boolean }) | null {
   let v: Record<string, unknown>;
   try {
@@ -84,6 +99,11 @@ export function lineOf(raw: string): (Line & { history: boolean }) | null {
       : {}),
     ...(m.at !== undefined
       ? { at: String(typeof m.at === "number" ? new Date(m.at).toISOString() : m.at) }
+      : {}),
+    ...(m.speaker &&
+    typeof m.speaker === "object" &&
+    typeof (m.speaker as { decision?: unknown }).decision === "string"
+      ? { voice: (m.speaker as { decision: string }).decision }
       : {}),
     history: v.history === true,
   };
@@ -138,7 +158,8 @@ export function briefBullet(lane: RouteLane, l: Line): string {
   const test = testText(l);
   if (test !== null) return `- (id:${l.id}) [lane-test] ${test}`;
   const mine = routeLine(l.text).lanes.includes(lane);
-  return `- (id:${l.id})${mine ? " @你" : ""} ${l.text}`;
+  const unsure = l.voice === "unknown" ? "（声纹未定）" : "";
+  return `- (id:${l.id})${mine ? " @你" : ""}${unsure} ${l.text}`;
 }
 
 /**

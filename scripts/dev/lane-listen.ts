@@ -22,7 +22,7 @@
  */
 import { join } from "node:path";
 import { type RouteLane, isRouteLane, laneTakes } from "../../lib/lane-route";
-import { laneToken, lineOf, makeDeliverer, tokenNeeded } from "./lane-listen-lib";
+import { laneToken, lineOf, makeDeliverer, tokenNeeded, voiceAllowed } from "./lane-listen-lib";
 
 type Opts = {
   lane: RouteLane;
@@ -214,6 +214,10 @@ async function main(): Promise<number> {
         if (!l || l.history || seen.has(l.id)) continue;
         seen.add(l.id);
         if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests, all: o.all })) continue;
+        if (!voiceAllowed(l)) {
+          log({ type: "other-voice", lane: o.lane, id: l.id });
+          continue;
+        }
         backoff = 1_000;
         await out.add(l);
       }

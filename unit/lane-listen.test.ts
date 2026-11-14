@@ -12,8 +12,10 @@ import {
   jst,
   laneToken,
   lineOf,
+  briefBullet,
   makeDeliverer,
   urgentLine,
+  voiceAllowed,
   tokenNeeded,
 } from "../scripts/dev/lane-listen-lib";
 
@@ -258,5 +260,23 @@ describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
     expect(sent).toHaveLength(2);
     expect(d.pending()).toBe(2);
     expect(urgentLine("codex", { ...line("c5", "x"), etaLane: "codex" })).toBe(true);
+  });
+  it("only his own voice goes to the lanes: other never, unknown marked (or dropped with LANE_LISTEN_VOICES=me)", () => {
+    const raw = (decision: string) =>
+      JSON.stringify({
+        type: "chat",
+        message: { id: "v1", from: "owner", text: "你们好", speaker: { decision } },
+      });
+    expect(lineOf(raw("other"))?.voice).toBe("other");
+    expect(voiceAllowed({ from: "owner", voice: "other" })).toBe(false);
+    expect(voiceAllowed({ from: "owner", voice: "me" })).toBe(true);
+    expect(voiceAllowed({ from: "owner" })).toBe(true);
+    expect(voiceAllowed({ from: "owner", voice: "unknown" }, {})).toBe(true);
+    expect(voiceAllowed({ from: "owner", voice: "unknown" }, { LANE_LISTEN_VOICES: "me" })).toBe(
+      false,
+    );
+    expect(briefBullet("codex", { ...line("v2", "短句"), voice: "unknown" })).toBe(
+      "- (id:v2)（声纹未定） 短句",
+    );
   });
 });
