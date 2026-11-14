@@ -247,6 +247,16 @@ import type {
   WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
 import { verifySpeakerProofs } from "../../../lib/speaker-proof";
+import {
+  ECHO_MIN_CHARS,
+  ECHO_READ_WINDOW_MAX,
+  ECHO_READ_WINDOW_MS,
+  ECHO_SIMILARITY,
+  ECHO_WINDOW_MAX,
+  ECHO_WINDOW_MS,
+  type EchoConf,
+  echoMatch,
+} from "../../../lib/echo-match";
 import { mergeCheck, polishCheck, summaryCheck } from "../../../packages/debug-chat/src/polish";
 import { MAX_UTTERANCE_MS } from "../../../packages/debug-chat/src/mic";
 import {
@@ -546,6 +556,14 @@ export const POLISH_FLAG = "stt.polish";
 export const MERGE_FLAG = "stt.merge";
 /** Automatic polish of the owner's spoken lines (lib/flags.ts, on by default; "Automatic polish" below). */
 export const AUTO_POLISH_FLAG = "voice.auto-polish";
+/** Echoes of his voice lines kept aside, never posted (lib/echo-match.ts; on by default). */
+export const ECHO_FLAG = "voice.echo-dedupe";
+/** How many of the newest lines an echo look reads (a minute of chat holds far fewer). */
+const ECHO_SCAN = 40;
+/** Echoes kept for undo (`echo:<id>`, the oldest dropped past this many). */
+const ECHO_KEEP = 50;
+const ECHO_INDEX = "echo:index";
+const echoKey = (id: string) => `echo:${id}`;
 /** The `by` an automatic polish or merge is stamped with (an agent's carries its label). */
 export const AUTO_POLISH_BY = "auto";
 /** Lines further apart than this are never one automatic run (an old unpolished line is left alone). */
@@ -769,6 +787,8 @@ export class DebugHub {
   /** `unsure`: the flag could not be read (an RPC error, "busy"); the AI cannot answer then. */
   private aiFlag?: { at: number; on: boolean; unsure?: true };
   private mergeFlag?: { at: number; on: boolean };
+  /** The last read of ECHO_FLAG and the voice.echo* config (AI_FLAG_CACHE_MS). */
+  private echoConf?: { at: number; on: boolean; conf: EchoConf };
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
   private agentAt = new Map<string, number>();
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
@@ -1415,6 +1435,127 @@ export class DebugHub {
     return null;
   }
 
+  // --- Echoes (docs/dev-debug-widget.md, "Echoes"; lib/echo-match.ts) ---
+
+  /**
+   * ECHO_FLAG and the voice.echo* config from the main Worker, at most once per
+   * AI_FLAG_CACHE_MS. On by default: only exactly false turns it off. A value
+   * that cannot be read falls back to its default.
+   */
+  private async echoOn(): Promise<{ on: boolean; conf: EchoConf }> {
+    const t = this.now();
+    if (this.echoConf && t - this.echoConf.at < AI_FLAG_CACHE_MS) return this.echoConf;
+    let on = true;
+    try {
+      on = (await this.flagValue(ECHO_FLAG)) !== false;
+    } catch {}
+    const num = async (key: string, dflt: number) => {
+      try {
+        const v = await this.sessions?.config?.(key);
+        return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : dflt;
+      } catch {
+        return dflt;
+      }
+    };
+    const conf: EchoConf = {
+      windowMs: await num("voice.echoWindowMs", ECHO_WINDOW_MS),
+      readWindowMs: await num("voice.echoReadWindowMs", ECHO_READ_WINDOW_MS),
+      similarity: await num("voice.echoSimilarity", ECHO_SIMILARITY),
+      minChars: await num("voice.echoMinChars", ECHO_MIN_CHARS),
+    };
+    this.echoConf = { at: t, on, conf };
+    return this.echoConf;
+  }
+
+  /** The owner thread's newest lines, newest first. */
+  private async newestLines(limit: number) {
+    return [
+      ...(await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(OWNER_THREAD).prefix,
+        reverse: true,
+        limit,
+      })),
+    ];
+  }
+
+  /**
+   * His voice line echoes one already in the thread (echoMatch): true when it
+   * was kept aside here (`echo:<id>`, with `edited.by` "auto" and its EchoMark)
+   * and so is not posted — never shown, read back, polished or sent to a lane.
+   * The flag and config are asked only when a line could match at all (the
+   * widest windows, the default similarity).
+   */
+  private async echo(line: ChatMessage & { thread: string }): Promise<boolean> {
+    const cur = { text: line.text, label: line.label, at: line.at };
+    const widest: EchoConf = {
+      windowMs: ECHO_WINDOW_MAX,
+      readWindowMs: ECHO_READ_WINDOW_MAX,
+      similarity: 0.5,
+      minChars: 1,
+    };
+    if (!echoMatch(await this.newestLines(ECHO_SCAN), cur, widest)) return false;
+    const { on, conf } = await this.echoOn();
+    if (!on) return false;
+    // Read again: other lines may have landed while the main Worker answered.
+    const hit = echoMatch(await this.newestLines(ECHO_SCAN), cur, conf);
+    if (!hit) return false;
+    const of = hit.entry[1];
+    const t = this.now();
+    const kept: ChatMessage = {
+      ...line,
+      raw: line.text,
+      edited: { at: t, by: AUTO_POLISH_BY, count: 0 },
+      echo: {
+        at: t,
+        by: AUTO_POLISH_BY,
+        reason: "echo",
+        kind: hit.kind,
+        of: of.id,
+        sim: Math.round(hit.sim * 1000) / 1000,
+      },
+    };
+    await this.ctx.storage.put(echoKey(line.id), kept);
+    const index = [
+      ...((await this.ctx.storage.get<string[]>(ECHO_INDEX)) ?? []).filter((x) => x !== line.id),
+      line.id,
+    ];
+    for (const old of index.splice(0, Math.max(0, index.length - ECHO_KEEP)))
+      await this.ctx.storage.delete(echoKey(old));
+    await this.ctx.storage.put(ECHO_INDEX, index);
+    console.log(
+      JSON.stringify({
+        msg: "debug.echo",
+        id: line.id,
+        of: of.id,
+        ofFrom: of.from,
+        kind: hit.kind,
+        sim: kept.echo?.sim,
+        gap: line.at - of.at,
+        head: head(line.text),
+      }),
+    );
+    return true;
+  }
+
+  /**
+   * Undo an echo: the line kept aside is posted after all, as it was heard
+   * (its echo and edit marks dropped). False when `id` is no kept echo.
+   */
+  private async restoreEcho(id: string, by: string): Promise<boolean> {
+    const kept = await this.ctx.storage.get<ChatMessage & { thread?: string }>(echoKey(id));
+    if (!kept) return false;
+    await this.ctx.storage.delete(echoKey(id));
+    const index = (await this.ctx.storage.get<string[]>(ECHO_INDEX)) ?? [];
+    await this.ctx.storage.put(
+      ECHO_INDEX,
+      index.filter((x) => x !== id),
+    );
+    const { echo: _e, edited: _d, raw: _r, ...line } = kept;
+    console.log(JSON.stringify({ msg: "debug.echo-undo", id, by }));
+    await this.post({ ...line, thread: OWNER_THREAD });
+    return true;
+  }
+
   /** The lane takes back its own merged passage (eval.ts edit --unmerge). */
   private async unmergeByAgent(ws: Socket, c: ControllerAtt, id: string) {
     const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
@@ -1428,6 +1569,8 @@ export class DebugHub {
       })),
     ];
     const at = kept.findIndex(([, x]) => x.id === id);
+    if (at < 0 && (await this.restoreEcho(id, cleanLabel(c.assignee ?? c.label, 80) || "agent")))
+      return;
     if (at < 0 || !kept[at][1].passage) return fail(`message ${id} is not a merged passage`);
     return this.restorePassage(kept, at, cleanLabel(c.assignee ?? c.label, 80) || "agent", ws);
   }
@@ -1585,6 +1728,7 @@ export class DebugHub {
   private async unmerge(ws: Socket, page: PageAtt, id: string) {
     const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
     if (page.thread !== OWNER_THREAD) return fail("only the owner's lines are merged");
+    if (await this.restoreEcho(id, page.label)) return;
     const { prefix, seq: seqKey } = threadKeys(OWNER_THREAD);
     const kept = [
       ...(await this.ctx.storage.list<ChatMessage>({ prefix, reverse: true, limit: CHAT_HISTORY })),
@@ -3304,6 +3448,25 @@ export class DebugHub {
       if (page.thread !== OWNER_THREAD)
         return this.friendChat(ws, page, m.id, m.text, m.context, m.scene, m.source === "stt");
       const line = async (speaker: SpeakerTag | undefined) => {
+        // An echo (his other phone, or Li read aloud and heard back): kept aside, not posted.
+        if (
+          m.source === "stt" &&
+          (await this.echo({
+            id: m.id,
+            from: "owner",
+            label: page.label,
+            text: m.text,
+            at: t,
+            thread: OWNER_THREAD,
+            source: "stt",
+            ...(page.sender ? { sender: page.sender } : {}),
+            ...(m.to ? { to: m.to } : {}),
+            ...(m.timing ? { timing: m.timing } : {}),
+            ...(m.stt ? { stt: m.stt } : {}),
+            ...(speaker ? { speaker } : {}),
+          }))
+        )
+          return false;
         // Voice lines only: a typed line never asks the flag, never merges, never waits.
         const merging = m.source === "stt" && (await this.mergeOn());
         if (
@@ -3351,7 +3514,8 @@ export class DebugHub {
       };
       // Kept, then (a voice line) the hub's own polish is due after the tail window.
       const spoken = async (speaker: SpeakerTag | undefined) => {
-        await line(speaker);
+        // An echo is never polished (nor read back): it was not posted.
+        if ((await line(speaker)) === false) return;
         if (m.source === "stt") this.autoPolishSoon(page);
       };
       // A voice line with the Mac's signed attestations: verified first, then stored.

@@ -770,6 +770,45 @@ runs it again after. Logged `debug.auto-polish` (lines, merged, polished, ms),
 (the hub, with its timer fired by hand), `unit/auto-polish-model.test.ts`
 (the contract and the metering).
 
+### Echoes
+
+The owner, 2026-11-14 20:2x JST: two phones with their mics open in one room.
+Two kinds of copy still landed as his own lines: **(a)** the same sentence from
+the other phone, later than the two-mic window or transcribed a little
+differently; **(b)** Li reading a line aloud — an agent's reply, or his own
+polished line read back — heard by the other phone and transcribed back as if
+he said it (seen 20:3x JST: "表里机费，只表示进程活着，忙不忙要看 state", an
+agent line re-entering as his). Flag **`voice.echo-dedupe`**
+(`/dev/flags#voice.echo-dedupe`, on by default, audience owner).
+
+**Where: the hub**, before an owner voice line (`source: "stt"`) is posted —
+before the continuous-speech merge, so an echo never amends his line either.
+`echoMatch` (`lib/echo-match.ts`, pure, no language rules: letters and digits
+only, lower case) reads the thread's newest 40 lines:
+
+- **other-device**: his voice line from another page (`label`) whose latest
+  words are within `voice.echoWindowMs` (8 s), the same sentence (whole-line
+  edit-distance similarity) or a stretch of it (best-matching substring), at
+  least `voice.echoSimilarity` (0.8). His own page repeating itself is never
+  an echo.
+- **read-aloud**: an agent line that is read (not `quiet`) within
+  `voice.echoReadWindowMs` (60 s) of landing, or his line polished (and so read
+  back) within that window of the polish, with the new line a stretch of its
+  text at the same similarity. The pages do not report what was read when to
+  the hub (read progress stays on the page), so the window runs from the
+  line's arrival / the polish: wide enough for a queued or long reading.
+
+A line shorter than `voice.echoMinChars` (4) is never an echo. The flag and
+config are read only when a line could match at all (cached 30 s).
+
+**What happens to it.** Not posted: not shown, not read back, not polished,
+never sent to a lane or a token listener, not in the account's history. It is
+kept aside as `echo:<id>` (the newest 50) with `raw` = the text as heard,
+`edited: {by: "auto", count: 0}` and `echo: {reason: "echo", kind, of, sim}`
+(`EchoMark`, hub-side only), and logged `debug.echo` (`of`, `kind`, `sim`,
+`gap`). **Undo**: `unmerge` with the echo's id (the page's, or a lane's
+`edit --unmerge`) posts it after all, as heard (`debug.echo-undo`).
+
 ## The live speech line
 
 The owner, 2026-11-14 04:25 JST: the words being recognised while he speaks are not

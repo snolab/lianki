@@ -296,6 +296,48 @@ export const CONFIG = {
     description:
       "语音自动润色：一句话识别完以后等多久（毫秒）再送去润色。这段时间里你接着说的下一句会和它一起送，明显是一句话的碎片就合并成一条；等得越短，润色出来越快，但碎片更可能各润各的。",
   }),
+  // Echoes of the owner's voice lines (lib/echo-match.ts; the hub, "Echoes";
+  // flag voice.echo-dedupe).
+  "voice.echoWindowMs": int({
+    default: 8000,
+    min: 0,
+    max: 60_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "回声去重（开关 voice.echo-dedupe）：你在一台设备上说的话，另一台设备在这么多毫秒内识别出几乎同样的一句，就当作回声不再发出。0 = 不查另一台设备的重复。",
+  }),
+  "voice.echoReadWindowMs": int({
+    default: 60_000,
+    min: 0,
+    max: 300_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "回声去重：助手的回复到达后（或你的话润色读回后）这么多毫秒内，另一台手机把朗读的内容听成你说的话，就当作回声丢掉。朗读排队或很长时要更久；0 = 不查朗读回声。",
+  }),
+  "voice.echoSimilarity": {
+    default: 0.8 as number,
+    schema: z.number().min(0.5).max(1),
+    min: 0.5,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "server",
+    description:
+      "回声去重：两句话（去掉标点和空格、按字比较）相似到多少才算同一句；1 = 一字不差，越低越容易把你真正重复的话也当成回声。",
+  },
+  "voice.echoMinChars": int({
+    default: 4,
+    min: 1,
+    max: 50,
+    unit: "chars",
+    group: "voice",
+    audience: "server",
+    description: "回声去重：一句话至少几个字才可能被当作回声；更短的（「好」「嗯」）永远照常发出。",
+  }),
   "voice.autoPolishTimeoutMs": int({
     default: 6000,
     min: 500,

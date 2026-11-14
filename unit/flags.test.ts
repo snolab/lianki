@@ -60,6 +60,7 @@ describe("registry", () => {
       "stt.voiceprint-cloud",
       "stt.polish",
       "voice.auto-polish",
+      "voice.echo-dedupe",
       "library.catalogue",
       "books.mine",
       "voice.polish-readback",
