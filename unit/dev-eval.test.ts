@@ -274,6 +274,16 @@ describe("reading replies aloud", () => {
     expect(pickLang("已经修好了")).toBe("zh-CN");
     expect(pickLang("漢字")).toBe("zh-CN");
     expect(pickLang("고쳤어요")).toBe("ko-KR");
+    // A Chinese line quoting a katakana shop name or a Japanese UI label stays Chinese (owner, 2026-11-15).
+    expect(pickLang("我这就在你的 Chrome 里翻ライフ的订单配车，付款前给你一张卡片确认。")).toBe(
+      "zh-CN",
+    );
+    expect(pickLang("首页显示「こんにちは, ログイン」，所以读不到订单，购物车没动。")).toBe(
+      "zh-CN",
+    );
+    // A real Japanese sentence with kanji is still Japanese.
+    expect(pickLang("注文履歴を確認しました。")).toBe("ja-JP");
+    expect(pickLang("カートに入れました")).toBe("ja-JP");
     expect(pickLang("")).toBe("en-US");
   });
 

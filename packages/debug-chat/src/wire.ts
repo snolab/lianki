@@ -511,15 +511,21 @@ export type PairInfo = {
 /** An open debug page: its socket's id, current label (path…), and when it connected. */
 export type PageInfo = { id: string; label: string; at: number };
 
+/** Kana must be at least this share of a line's CJK characters before the line reads as Japanese. */
+export const KANA_SHARE = 0.25;
 /**
- * The language to read a reply in, from its script alone: any kana is
- * Japanese, Hangul Korean, other Han Chinese (zh-CN), and everything else
- * English.
+ * The language to read a reply in, from its script alone: kana is Japanese
+ * only when it is a real share of the line's CJK characters (KANA_SHARE) — a
+ * Chinese line that quotes a katakana shop name or a Japanese UI label stays
+ * Chinese (owner, 2026-11-15 03:1x: "不要用日语读"); Hangul is Korean, other
+ * Han Chinese (zh-CN), and everything else English.
  */
 export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "en-US" {
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja-JP";
+  const kana = (text.match(/[\p{Script=Hiragana}\p{Script=Katakana}]/gu) ?? []).length;
+  const han = (text.match(/\p{Script=Han}/gu) ?? []).length;
+  if (kana && (han === 0 || kana / (kana + han) >= KANA_SHARE)) return "ja-JP";
   if (/\p{Script=Hangul}/u.test(text)) return "ko-KR";
-  if (/\p{Script=Han}/u.test(text)) return "zh-CN";
+  if (han) return "zh-CN";
   return "en-US";
 }
 
