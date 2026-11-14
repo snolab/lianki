@@ -183,7 +183,7 @@ describe("protocol", () => {
 
 describe("tools", () => {
   test("tools/list with every permission: exactly the local server's tool names", async () => {
-    const { env } = setup({ scopes: ["study", "chat:read", "chat:write", "chat:ask"] });
+    const { env } = setup({ scopes: ["study", "chat:read", "chat:write", "chat:ask", "progress"] });
     const { result } = await (await handle(rpc("tools/list"), env)).json();
     expect(result.tools.map((t: { name: string }) => t.name)).toEqual(TOOLS.map((t) => t.name));
     const review = result.tools.find((t: { name: string }) => t.name === "lianki_review");

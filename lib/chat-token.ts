@@ -41,6 +41,8 @@ export const CHAT_OPS = {
   prepare: "chat:write",
   // Its own avatar (token-chat.ts op "avatar"): counted with its lines.
   avatar: "chat:write",
+  /** A report to the state tree (lianki-push ProgressHub): the token's name is the agent. */
+  progress: "progress",
 } as const satisfies Record<string, ScopeId>;
 export type ChatOp = keyof typeof CHAT_OPS;
 
@@ -138,7 +140,7 @@ export async function chatTokenCheck(
         kind: "api-token.use",
         actor: c.user.id,
         subject: tagOf(c.id),
-        detail: `chat ${op} ${c.name}${client ? ` via ${client}` : ""}`,
+        detail: `${op === "progress" ? "progress" : `chat ${op}`} ${c.name}${client ? ` via ${client}` : ""}`,
       },
       now,
     );

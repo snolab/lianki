@@ -1,6 +1,6 @@
 {
   "name": "lianki",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Command-line client for Lianki (FSRS spaced repetition), made for agents: progressive help, --json, stable exit codes.",
   "type": "module",
   "bin": {
@@ -16,6 +16,7 @@
     "auth.mjs",
     "mcp.mjs",
     "mcp-tools.mjs",
+    "progress.mjs",
     "api.mjs",
     "README.md",
     "LICENSE"

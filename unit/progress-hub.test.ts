@@ -781,3 +781,143 @@ describe("task timing (agents' ETA calibration)", () => {
     expect([...h.storage.store.keys()].filter((k) => k.startsWith("d:"))).toHaveLength(1);
   });
 });
+
+// An API token holding `progress` (lib/api-tokens.ts): the main Worker checks
+// it (SESSIONS.chatToken, op "progress"); the hub then writes as the root
+// grant acting as the token's name, across the whole tree.
+describe("progress: API tokens", () => {
+  const LK = `lk_${"7a".repeat(32)}`;
+  const OTHER = `lk_${"0e".repeat(32)}`;
+  function setupApi(answer: (req: Record<string, unknown>) => unknown) {
+    let t = 1_000_000;
+    const sockets: FakeSocket[] = [];
+    const storage = fakeStorage();
+    const asked: Record<string, unknown>[] = [];
+    const hub = new ProgressHub(
+      {
+        acceptWebSocket: (ws) => sockets.push(ws as FakeSocket),
+        getWebSockets: () => sockets,
+        storage,
+      },
+      {
+        PROGRESS_TOKEN: ROOT,
+        SESSIONS: {
+          chatToken: async (req: Record<string, unknown>) => (asked.push(req), answer(req)),
+        } as never,
+      },
+      () => t,
+    );
+    const call = async (
+      path: string,
+      token: string,
+      body?: unknown,
+      extra: Record<string, string> = {},
+    ) => {
+      const res = await hub.fetch(
+        new Request(`https://lianki.com/api/version/progress${path}`, {
+          method: body === undefined ? "GET" : "POST",
+          headers: { authorization: `Bearer ${token}`, ...extra },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        }),
+      );
+      return { status: res.status, body: (await res.json()) as Record<string, any> };
+    };
+    return { call, asked, storage, tick: (ms: number) => (t += ms) };
+  }
+  const owner =
+    (lane = "codex") =>
+    (req: Record<string, unknown>) =>
+      req.token === LK
+        ? { ok: true, owner: true, lane, userId: "u1" }
+        : { ok: false, error: "unknown" };
+
+  it("asks the main Worker with op progress and the client header, never logging the token", async () => {
+    const h = setupApi(owner());
+    const r = await h.call(
+      "",
+      LK,
+      { id: "/dev/cli", task: "CLI: progress", status: "doing", eta: "30m" },
+      { "x-lianki-client": "mcp/0.4.0 tool=lianki_progress_report" },
+    );
+    expect(r.status).toBe(200);
+    expect(h.asked).toEqual([
+      { op: "progress", token: LK, client: "mcp/0.4.0 tool=lianki_progress_report" },
+    ]);
+    expect(r.body.entry).toMatchObject({ id: "/dev/cli", status: "doing", creator: "codex" });
+    expect(r.body.entry.assignee).toEqual({ type: "agent", name: "codex" });
+  });
+
+  it("writes as the token's name only, anywhere in the tree, and never back-dates", async () => {
+    const h = setupApi(owner());
+    expect(
+      (await h.call("", LK, { agent: "codex", id: "/words/x", task: "X: a", status: "doing" }))
+        .status,
+    ).toBe(200);
+    const other = await h.call("", LK, {
+      agent: "main",
+      id: "/words/y",
+      task: "Y: b",
+      status: "doing",
+    });
+    expect(other.status).toBe(403);
+    expect(other.body.error).toContain("this token is for codex");
+    const dated = await h.call("", LK, {
+      id: "/words/x",
+      task: "X: a",
+      status: "done",
+      endedAt: 5,
+      unverified: true,
+    });
+    expect(dated.status).toBe(403);
+    // A batch: every item is the token's.
+    const b = await h.call("/batch", LK, {
+      reports: [
+        { id: "/words/a", task: "A: one", status: "doing", eta: "20m" },
+        { id: "/words/b", task: "B: two", status: "doing", agent: "main" },
+      ],
+    });
+    expect(b.status).toBe(207);
+    expect(b.body.results[0].entry.creator).toBe("codex");
+    expect(b.body.results[1].status).toBe(403);
+  });
+
+  it("acks a receipt and grants a sub-scope via the token", async () => {
+    const h = setupApi(owner("agy"));
+    const g = await h.call("/grant", LK, { node: "/words", agent: "helper", ttl: "1h" });
+    expect(g.status).toBe(200);
+    expect(g.body.via).toBe("token:agy");
+    expect(await verifyProgressToken(ROOT, g.body.token, 1_000_001)).toMatchObject({
+      node: "/words",
+      agent: "helper",
+    });
+    expect((await h.call("/ack", LK, { code: "zzzzzz" })).status).toBe(404);
+  });
+
+  it("refuses what the main Worker refuses: unknown 401, scope 403, another account 403, no RPC 503", async () => {
+    const h = setupApi((req) =>
+      req.token === OTHER
+        ? { ok: true, owner: false, lane: "alice", userId: "u2" }
+        : { ok: false, error: "scope" },
+    );
+    const body = { id: "/x", task: "X: a", status: "doing" };
+    expect((await h.call("", LK, body)).status).toBe(403);
+    expect((await h.call("", OTHER, body)).status).toBe(403);
+    const unknown = setupApi(() => ({ ok: false, error: "unknown" }));
+    expect((await unknown.call("", LK, body)).status).toBe(401);
+    expect((await unknown.call("", LK)).status).toBe(401);
+    const none = new ProgressHub(
+      { acceptWebSocket: () => {}, getWebSockets: () => [], storage: fakeStorage() },
+      { PROGRESS_TOKEN: ROOT },
+      () => 1,
+    );
+    const res = await none.fetch(
+      new Request("https://lianki.com/api/version/progress", {
+        headers: { authorization: `Bearer ${LK}` },
+      }),
+    );
+    expect(res.status).toBe(503);
+    // The root secret and scoped grants are untouched by the token path.
+    const r = setupApi(() => ({ ok: false, error: "unknown" }));
+    expect((await r.call("", ROOT, { agent: "main", ...body })).status).toBe(200);
+  });
+});

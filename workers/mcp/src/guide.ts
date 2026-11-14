@@ -19,9 +19,9 @@ type Copy = {
 const EN: Copy = {
   lang: "en",
   title: "Lianki MCP server",
-  lead: "This address is for AI apps (Claude, Cursor, Codex…). Connect one to your Lianki cards and chat in three steps.",
+  lead: "This address is for AI apps (Claude, Cursor, Codex…). Connect one to your Lianki cards, chat and task list in three steps.",
   steps: [
-    "Make an API token: open Preferences → API tokens, give it a name, tick what the AI may do (cards, chat), set an expiry.",
+    "Make an API token: open Preferences → API tokens, give it a name, tick what the AI may do (cards, chat, progress reports), set an expiry.",
     "Copy the token (it is shown once).",
     "Add a remote MCP server in your AI app with the address below and the header Authorization: Bearer <your token>.",
   ],
@@ -36,7 +36,7 @@ const ZH: Copy = {
   title: "Lianki MCP 服务",
   lead: "这个地址是给 AI 应用（Claude、Cursor、Codex 等）连接用的。三步把它接到你的 Lianki 卡片和聊天：",
   steps: [
-    "建一个 API token：打开 偏好设置 → API tokens，起个名字，勾上允许 AI 做的事（卡片、聊天），设一个有效期。",
+    "建一个 API token：打开 偏好设置 → API tokens，起个名字，勾上允许 AI 做的事（卡片、聊天、汇报进度），设一个有效期。",
     "复制这个 token（只显示一次）。",
     "在 AI 应用里添加远程 MCP 服务器：地址填下面这个，请求头填 Authorization: Bearer <你的 token>。",
   ],

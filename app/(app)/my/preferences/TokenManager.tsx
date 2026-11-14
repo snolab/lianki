@@ -198,6 +198,7 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
     "chat:write": s("scopeChatWrite"),
     "chat:ask": s("scopeChatAsk"),
     eval: s("scopeEval"),
+    progress: s("scopeProgress"),
     "recordings:read": s("scopeRecordingsRead"),
   };
 

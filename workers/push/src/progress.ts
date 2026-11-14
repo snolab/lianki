@@ -135,6 +135,12 @@ export const BOX_RECHECK_MS = 30_000;
 /** The main Worker's box check (worker.ts DebugSessions): "live" | "gone" | "busy". */
 type BoxRpc = {
   boxChat?(clientId: string): Promise<unknown>;
+  /**
+   * An API token's check (lib/chat-token.ts chatTokenCheck, op "progress"):
+   * the `progress` permission, expiry, account, and whether that account is
+   * the site owner's (holds `dev`). The hub never sees the token's row.
+   */
+  chatToken?(req: { op: string; token?: string; client?: string }): Promise<unknown>;
   /** A config value (lib/config.ts key); the reminder spacing for nodes waiting on the owner. */
   config?(key: string): Promise<unknown>;
 };
@@ -212,6 +218,23 @@ export function progressGate(req: Request, secret: string | undefined): Response
   if (!/^Bearer \S+$/.test(req.headers.get("authorization") ?? ""))
     return new Response("unauthorized", { status: 401 });
   return null;
+}
+
+/** An API token (lib/api-tokens.ts TOKEN_RE): checked by the main Worker, not by the root secret. */
+const API_TOKEN_RE = /^lk_[0-9a-f]{64}$/;
+
+/** Whose writes a token's are, for the rate window: the owner's, or the agent it acts as. */
+const who = (auth: ProgressAuth) => (auth.root ? (auth.agent ?? OWNER_NAME) : auth.agent);
+
+/**
+ * A report as an API token sends it: without an agent, it is the token's
+ * (the hub fills it in); naming another one is refused in `refuse`.
+ */
+function asAgent(auth: ProgressAuth, raw: unknown): unknown {
+  if (!auth.root || !auth.agent || !raw || typeof raw !== "object" || Array.isArray(raw))
+    return raw;
+  const b = raw as Record<string, unknown>;
+  return b.agent === undefined && b.assignee === undefined ? { ...b, agent: auth.agent } : raw;
 }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
@@ -401,7 +424,12 @@ export class ProgressHub {
     if (path === BOX_CLOSED_PATH && req.method === "POST") return this.boxClosed(req);
     if (path === ETA_HEARD_PATH && req.method === "POST") return this.heard();
     const token = /^Bearer (\S+)$/.exec(req.headers.get("authorization") ?? "")?.[1] ?? "";
-    const auth = this.secret ? await verifyProgressToken(this.secret, token, this.now()) : null;
+    const auth = API_TOKEN_RE.test(token)
+      ? await this.apiTokenAuth(token, req.headers.get("x-lianki-client"))
+      : this.secret
+        ? await verifyProgressToken(this.secret, token, this.now())
+        : null;
+    if (auth instanceof Response) return auth;
     if (!auth) return fail(401, "unauthorized (wrong, forged or expired token)");
     if (req.method === "GET") {
       if (path.endsWith("/stats")) return json({ done: await this.doneLog() });
@@ -422,9 +450,50 @@ export class ProgressHub {
       const note = typeof b.note === "string" && b.note.trim() ? b.note.trim() : RESOLVED_NOTE;
       return this.resolve(b.id, note.slice(0, PROGRESS_LIMITS.note));
     }
-    const report = parseProgressReport(body);
+    const report = parseProgressReport(asAgent(auth, body));
     if (report instanceof Error) return fail(400, report.message);
     return this.write(auth, report);
+  }
+
+  /**
+   * An API token (`lk_…`) holding the `progress` permission (lib/api-tokens.ts;
+   * `lianki progress`, the progress_* MCP tools): the main Worker checks it
+   * (DebugSessions.chatToken, op "progress") — the permission, its expiry, its
+   * account, and that the account is the site owner's. It is then the root
+   * grant acting as the token's name (ProgressAuth, `agent`): every report is
+   * that agent's, across the whole tree. The token is never logged; a refusal
+   * names only why. 503 when the main Worker cannot be asked.
+   */
+  private async apiTokenAuth(
+    token: string,
+    client: string | null,
+  ): Promise<ProgressAuth | Response> {
+    const rpc = this.sessions;
+    if (!rpc?.chatToken) return fail(503, "API tokens are not accepted here yet");
+    let a: { ok?: unknown; error?: unknown; owner?: unknown; lane?: unknown } | null;
+    try {
+      a = (await rpc.chatToken({
+        op: "progress",
+        token,
+        ...(client ? { client: client.slice(0, 100) } : {}),
+      })) as typeof a;
+    } catch (e) {
+      console.error(
+        JSON.stringify({ msg: "progress.token-check-failed", error: String(e).slice(0, 200) }),
+      );
+      return fail(503, "the token could not be checked");
+    }
+    if (!a || typeof a !== "object") return fail(503, "the token could not be checked");
+    if (a.ok !== true) {
+      const why = typeof a.error === "string" ? a.error : "refused";
+      if (why === "scope") return fail(403, "scope");
+      return fail(401, why === "expired" ? "expired" : "unknown");
+    }
+    // The state tree is the site owner's: another account's token, even with
+    // the permission, writes nothing (the permission is only offered to owners).
+    if (a.owner !== true) return fail(403, "scope");
+    if (typeof a.lane !== "string" || !a.lane.trim()) return fail(503, "the token has no name");
+    return { root: true, agent: a.lane.trim() };
   }
 
   private async body(req: Request): Promise<unknown> {
@@ -525,8 +594,14 @@ export class ProgressHub {
     r: ProgressReport,
     prev: ProgressEntry | undefined,
   ): string | null {
-    if (auth.root) return null;
+    if (auth.root && auth.agent === undefined) return null;
     if (r.endedAt !== undefined) return "only the root token back-dates a done node (endedAt)";
+    if (auth.root) {
+      // An API token: the whole tree, as itself only.
+      if (r.assignee.name !== auth.agent)
+        return `this token is for ${auth.agent}; it cannot write as ${r.assignee.name}`;
+      return null;
+    }
     if (r.assignee.name !== auth.agent)
       return `this token is for ${auth.agent}; it cannot write as ${r.assignee.name}`;
     const newParent = r.parent ?? prev?.parent;
@@ -580,7 +655,10 @@ export class ProgressHub {
     const reports: ProgressReport[] = [];
     for (const [i, raw] of b.reports.entries()) {
       const r = parseProgressReport(
-        b.changeId === undefined ? raw : { ...(raw as object), changeId: b.changeId },
+        asAgent(
+          auth,
+          b.changeId === undefined ? raw : { ...(raw as object), changeId: b.changeId },
+        ),
       );
       if (r instanceof Error) return fail(400, `reports[${i}]: ${r.message}`);
       reports.push(r);
@@ -823,7 +901,7 @@ export class ProgressHub {
     if (!e) return fail(404, `no ETA line with receipt ${code} is open`);
     if (!auth.root && !this.covers(all, auth.node, e.id))
       return fail(403, `${e.id} is outside your scope (${auth.node})`);
-    if (!this.allow(auth.root ? OWNER_NAME : auth.agent)) return this.tooMany();
+    if (!this.allow(who(auth))) return this.tooMany();
     if (e.status !== "done" && e.etaAcked !== e.etaAt)
       await this.ctx.storage.put(progressKey(e), { ...e, etaAcked: e.etaAt });
     return json({ ok: true, id: e.id, task: e.task, etaAt: e.etaAt });
@@ -1000,7 +1078,8 @@ export class ProgressHub {
       return fail(403, `${b.node} is outside your scope (${auth.node})`);
     const t = this.now();
     const exp = Math.min(t + Math.min(ttl, GRANT_MAX_MS), auth.root ? Infinity : auth.exp);
-    const grant = { node: b.node, agent: b.agent.trim(), exp, via: auth.root ? "root" : auth.node };
+    const via = auth.root ? (auth.agent ? `token:${auth.agent}` : "root") : auth.node;
+    const grant = { node: b.node, agent: b.agent.trim(), exp, via };
     return json({ token: await mintProgressToken(this.secret!, grant), ...grant });
   }
 

@@ -117,7 +117,9 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
   const expiresAt = parseExpiry(body.expiry, now);
   if (!expiresAt)
     return json({ error: `expiry: pick a duration or a date up to ${MAX_EXPIRY_DAYS} days` }, 400);
-  if (wantsOwner && expiresAt.getTime() > now + EVAL_MAX_DAYS * 86_400_000)
+  const capped =
+    Array.isArray(body.scopes) && body.scopes.some((x) => x === "eval" || x === "recordings:read");
+  if (capped && expiresAt.getTime() > now + EVAL_MAX_DAYS * 86_400_000)
     return json(
       {
         error: `expiry: a token with an owner permission (eval, recordings:read) lasts at most ${EVAL_MAX_DAYS} days`,

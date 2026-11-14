@@ -207,7 +207,7 @@ function Row({
             : "bg-[oklch(0.5_0_0/0.06)] dark:bg-[oklch(0.8_0_0/0.06)]"
       }`}
     >
-      <div className="flex min-h-12 items-center gap-1 pe-1">
+      <div className="flex min-h-12 flex-wrap items-center gap-1 pe-1 sm:flex-nowrap">
         <span
           ref={setActivatorNodeRef}
           {...attributes}
@@ -220,15 +220,15 @@ function Row({
         <span className="w-6 shrink-0 text-center text-sm font-semibold tabular-nums text-seal dark:text-[oklch(0.75_0.15_22.3)]">
           {index + 1}
         </span>
-        <span className="min-w-0 flex-1 py-1 leading-tight">
-          <span className="block truncate">{name}</span>
-          <span className="block truncate text-xs opacity-70">
+        <span className="min-w-0 flex-1 basis-[calc(100%_-_4.25rem)] py-1 leading-tight sm:basis-auto">
+          <span className="block break-words">{name}</span>
+          <span className="block break-words text-xs opacity-70">
             {own !== name && own !== tag && (
               <span lang={tag} className="me-2">
                 {own}
               </span>
             )}
-            <span className="font-mono">{tag}</span>
+            <span className="break-all font-mono">{tag}</span>
           </span>
         </span>
         <button

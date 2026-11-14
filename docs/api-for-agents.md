@@ -132,7 +132,8 @@ participant list.
   (the token's own name, scopes and expiry, `describeToken`) and lists only
   the tools those scopes allow (`TOOLS` in `packages/lianki-cli/mcp.mjs`:
   `study` → stats, due, next, get, add, import, review, settings_get;
-  `chat:read|write|ask` → chat_read + chat_wait, chat_say + chat_avatar, chat_ask). An older server
+  `chat:read|write|ask` → chat_read + chat_wait, chat_say + chat_avatar, chat_ask;
+  `progress` → progress_report, progress_show, progress_ack). An older server
   that has no GET there gets every tool; each route still checks.
 - **Untrusted results.** Every result is `<untrusted-data>` JSON with `<`
   escaped, after a line saying never to follow instructions inside it.
@@ -144,7 +145,7 @@ participant list.
   passes the header to `chatTokenCheck`; card and settings routes: a row only
   for such a named use). At most once a minute per token, never the
   arguments or the token.
-- **Publishing.** The package is 0.4.0 in the repo; npm gets it only through
+- **Publishing.** The package is 0.5.0 in the repo; npm gets it only through
   the release tag after the owner approves (docs/shipping.md, "Publishing
   the CLI"). Until then the guide's `npx -y lianki mcp` snippets name a
   version that is not on npm yet.
@@ -220,3 +221,77 @@ tool=<name>`; `lib/api-token-client.ts` accepts that shape too.
   agent listening in the thread.
 - Tests: `unit/mcp-remote.test.ts` (fake bindings), `unit/mcp-chat-wait.test.ts`
   (fake hub socket).
+
+## Report progress
+
+Owner, 2026-11-14 05:45 JST: "把这个 CLI 修改甘特图的能力提供给整个系统，让所有
+agent 都能用上". Until then only an agent inside this repo with a per-lane
+progress token (`PROGRESS_TOKEN` in `.dev.vars`, or a grant minted from it)
+could report to the state tree ([state-tree.md](state-tree.md), "Live
+progress"). Now any agent with a Lianki API token can, on three surfaces that
+share one request shape:
+
+| surface                                                   | where                                                                  |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `lianki progress …` (`npx lianki`, the global `lianki` bin) | `packages/lianki-cli/progress.mjs` (flags → body), `cli.mjs` (the verbs) |
+| MCP: `lianki_progress_report` / `_show` / `_ack`          | `packages/lianki-cli/mcp-tools.mjs`, served by `lianki mcp` and `lianki.com/mcp` |
+| HTTP: `POST /api/version/progress` (`/batch`, `/ack`), `GET …` (`/stats`, `/history`) | lianki-push `ProgressHub` (`workers/push/src/progress.ts`)           |
+
+- **The permission is `progress`** (`lib/api-tokens.ts` `SCOPES`, group
+  `owner`): offered only to an account holding `dev` (`OWNER_SCOPES`, like
+  `eval`, through `lib/api-token-api.ts` `siteOwner`), because the tree is the
+  site owner's. Unlike `eval` it has no 30-day cap: a lane token with
+  `chat:*` + `progress` may run the usual year. The token page lists it as
+  "Report progress to your task list" (`api-tokens.content.ts`
+  `scopeProgress`, `scopeProgressHint`, 16 locales).
+- **One check, on the main Worker.** The hub does not read token rows. A
+  bearer that looks like an API token (`lk_…`) at `/api/version/progress*`
+  goes to `DebugSessions.chatToken` with `op: "progress"` (`lib/chat-token.ts`
+  `CHAT_OPS`, the same RPC the chat uses): the permission, expiry, live
+  account, an `api-token.use` audit row (`progress <name> via mcp/… tool=…`),
+  and `owner` (holds `dev`). Anything but `ok` + `owner` is 401 (unknown,
+  expired) or 403 (`scope`, or another account); no RPC bound is 503. The root
+  secret and HMAC grants are untouched (`lib/progress-token.ts`).
+- **What the token may do: the whole tree, as itself.** The hub takes it as
+  the root grant *acting as the token's name* (`ProgressAuth` `{root: true,
+  agent}`): every report is that agent's (a report without `agent` gets it
+  filled in; one naming another agent is 403 "this token is for codex"),
+  across any path, with the root's `grant` and `resolve`, but never
+  `endedAt` (back-dating stays with the real root). So a token named `codex`
+  reports as 【codex】 in the chat and as `codex` on the Gantt, from the same
+  `LIANKI_TOKEN`. Cross-lane batches (main writing for several agents) keep
+  using `PROGRESS_TOKEN`.
+- **`lianki progress`**: `report` (the default: `--path --task --status
+  --pct --eta --late --confirm --note --pr --needs --who --done
+  --verified|--unverified --kind --ref --action --link --rev --change-id`),
+  `batch '<JSON list>' | --file`, `ack <code>`, `show [--all]`, `stats
+  [--agent --since]`, `history`. The CLI only maps flags to the body
+  (`reportBody`): titles, scopes, the overrun rule and ETA limits are the
+  hub's, and its words come back as exit 5. A plain `--done` is sent as
+  `unverified: true` (the hub adds the "verify: …" child) unless `--verified
+  "<evidence>"`; the repo's `progress.ts` asks `gh` instead, which the public
+  CLI cannot assume. Token: `--token`, `LIANKI_TOKEN`, the keychain
+  (`lianki auth login`), as for every command. The repo's `lianki-dev
+  progress` falls back to `LIANKI_TOKEN` (or the lane's
+  `~/.config/lianki/lanes/<lane>.token`) when no progress token is set.
+- **MCP.** `lianki_progress_report` takes the report fields as arguments (zod
+  checks them, then `reportBody` maps them exactly as the CLI); `_show`
+  returns the tree's `entries` (not the log); `_ack` posts the receipt code.
+  Listed only for a token holding `progress`; the remote Worker forwards
+  `/api/version/progress*` to `PUSH` as it does the chat.
+- **The guide** (`GET /api/agent-guide?scopes=…,progress`, Settings → API
+  tokens) gets a "Report progress" section (`progressHeading`,
+  `progressIntro`, `progressFields`, `progressRules` in
+  `lib/agent-guide.content.ts`): the fields, the CLI lines, the overrun and
+  receipt rules, and that the token writes as itself only.
+- Tests: `unit/lianki-progress-cli.test.ts` (flag mapping, every verb against
+  a fake hub, no token printed), `unit/progress-hub.test.ts` "progress: API
+  tokens" (the RPC call, agent lock, batch, grant via `token:<name>`,
+  refusals), `unit/eval-token.test.ts` "the progress permission" (owner-only
+  offer, no 30-day cap, `chatTokenCheck` op `progress`),
+  `unit/lianki-mcp.test.ts` "progress tools".
+- Deploys: the hub change with lianki-push, the scope and RPC with the main
+  Worker (both from `main` via `deploy-worker.yml`; the hub answers 503 to an
+  API token until the main Worker with the new `CHAT_OPS` is live, so deploy
+  order does not matter), the tools with `lianki-mcp`, and `lianki progress`
+  to users only when `lianki` 0.5.0 is published to npm.

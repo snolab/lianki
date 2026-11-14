@@ -112,7 +112,15 @@ export type TokenAtt = {
   checkedAt?: number;
 };
 
-export type ChatTokenOp = "say" | "ask" | "read" | "listen" | "recheck" | "prepare" | "avatar";
+export type ChatTokenOp =
+  | "say"
+  | "ask"
+  | "read"
+  | "listen"
+  | "recheck"
+  | "prepare"
+  | "avatar"
+  | "progress";
 /** What {type:"lane"} on a socket may set (op "lane" over HTTP: reader or left only). */
 export const LANE_STATES = ["reader", "listener", "left"] as const;
 export type ChatTokenAnswer =

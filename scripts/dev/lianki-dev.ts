@@ -82,10 +82,17 @@ const mainRootOf = (repo: string) => {
 const grantFile = (repo: string, name: string, env: string) =>
   process.env[env] ? resolve(process.env[env]!) : join(mainRootOf(repo), name);
 
+/** LIANKI_TOKEN when it is an API token (lk_…): the hub takes one holding `progress` on the same route. */
+const apiTokenEnv = () => {
+  const t = process.env.LIANKI_TOKEN?.trim() ?? "";
+  return /^lk_[0-9a-f]{64}$/.test(t) ? t : undefined;
+};
+
 function progressSource(repo: string | undefined, rest: string[]): Facts["progressToken"] {
   if (rest.includes("--token") || rest.some((a) => a.startsWith("--token="))) return "flag";
   if (process.env.LIANKI_PROGRESS_TOKEN || process.env.PROGRESS_TOKEN) return "env";
-  return repo && progressToken(undefined, repo) ? "dev.vars" : "none";
+  if (repo && progressToken(undefined, repo)) return "dev.vars";
+  return apiTokenEnv() ? "env" : "none";
 }
 
 async function reach(hub: string): Promise<Facts["network"]> {
@@ -235,11 +242,17 @@ async function progress(g: Global, rest: string[], repo: string | undefined): Pr
   const cmd = parseProgressArgs(progressArgv(rest, g));
   if (cmd instanceof Error) fail(EXIT.usage, `progress: ${cmd.message}\n${PROGRESS_USAGE}`);
   if (cmd.cmd === "report" && cmd.warning) console.error(`progress: warning: ${cmd.warning}`);
-  const token = progressToken(cmd.token, repo);
+  // A progress token first; else the lane's API token (LIANKI_TOKEN, or its
+  // ~/.config/lianki/lanes/<lane>.token) when it holds `progress`: the hub
+  // then records every report as the token's name (docs/lianki-dev-cli.md).
+  const token =
+    progressToken(cmd.token, repo) ??
+    apiTokenEnv() ??
+    (g.lane ? laneToken(g.lane).token : undefined);
   if (!token)
     fail(
       EXIT.notReady,
-      "progress: no token (--token, LIANKI_PROGRESS_TOKEN, or PROGRESS_TOKEN in .dev.vars)",
+      "progress: no token (--token, LIANKI_PROGRESS_TOKEN, PROGRESS_TOKEN in .dev.vars, or LIANKI_TOKEN with the progress permission)",
     );
   const [path, body] =
     cmd.cmd === "report"
