@@ -1,7 +1,8 @@
 /**
  * /my/recordings as an article (owner, 2026-11-14 22:4x JST; docs/recordings.md,
  * "The page"): a day's clips read as one text, one paragraph per clip, with a
- * mark (speaker, device) only where it changes, and one continuous timeline
+ * mark (speaker, device) only where it changes, a time only at the start and
+ * after a pause (owner, 2026-11-15), and one continuous timeline
  * for the whole day — the clips end to end in recording order, the silence
  * between them not drawn. Pure, so it is unit-tested; RecordingsClient.tsx is
  * the glue (one shared <audio>).
@@ -17,6 +18,12 @@ export type Paragraph = {
   startMs: number;
   /** The mark to show at this paragraph's start, or null when it is the same as before. */
   mark: Mark | null;
+  /**
+   * Whether a time is shown at this paragraph: the first of its group, or after
+   * a pause longer than `gapMs` since the clip before ended (owner, 2026-11-15:
+   * a journal, not a timestamp per clip).
+   */
+  time: boolean;
 };
 
 const markOf = (c: ClipView): Mark => ({
@@ -26,17 +33,29 @@ const markOf = (c: ClipView): Mark => ({
 const sameMark = (a: Mark, b: Mark) => a.speaker === b.speaker && a.device === b.device;
 const emptyMark = (m: Mark) => m.speaker === null && m.device === null;
 
-/** A day's clips (any order) as its paragraphs, in recording order, on one timeline. */
-export function paragraphs(clips: readonly ClipView[]): Paragraph[] {
+/**
+ * A group's clips (any order) as its paragraphs, in recording order, on one
+ * timeline. `gapMs`: a pause longer than this brings a time mark back
+ * (config `recordings.timeMarkGapMin`); by default only the first has one.
+ */
+export function paragraphs(
+  clips: readonly ClipView[],
+  gapMs: number = Number.POSITIVE_INFINITY,
+): Paragraph[] {
   const sorted = [...clips].sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const out: Paragraph[] = [];
   let at = 0;
   let prev: Mark | null = null;
+  let prevEnd: number | null = null;
   for (const c of sorted) {
     const m = markOf(c);
     const changed = prev === null ? !emptyMark(m) : !sameMark(prev, m);
-    out.push({ c, startMs: at, mark: changed ? m : null });
+    // `at` is when the utterance ended; it began its duration earlier.
+    const began = c.at - Math.max(0, c.durationMs);
+    const time = prevEnd === null || began - prevEnd > gapMs;
+    out.push({ c, startMs: at, mark: changed ? m : null, time });
     prev = m;
+    prevEnd = c.at;
     at += Math.max(0, c.durationMs);
   }
   return out;

@@ -1,15 +1,19 @@
 "use client";
 
 /**
- * /my/recordings (docs/recordings.md): days newest first, more as the reader
- * nears the end (VirtualList, no pages); a day opens to its clips as ONE
- * article — a paragraph per clip, a faint time at each, the speaker/device
- * only where it changes (owner, 2026-11-14 22:4x JST). One shared player:
- * a tap on a paragraph plays its clip (a tap on the playing one pauses), the
- * day plays on clip after clip, and a floating glass bar shows the whole day
- * as one continuous timeline to drag. Nothing plays until tapped. Each
- * paragraph's ⋯ menu: play from here, speed (a device preference), download,
- * copy, delete (asks once, inline). Download day and Delete day stay on the day.
+ * /my/recordings (docs/recordings.md, "The page"): ONE continuous journal
+ * (owner, 2026-11-15 JST). The API pages the clips by time, newest first
+ * (`?before=<at>`), and VirtualList asks for more as the reader nears the end
+ * (no pages). Here they are grouped into dates in the device's own time zone
+ * (never JST, never a fixed zone): a date heading, then that date's clips as
+ * flowing paragraphs in recording order, with a faint time only at the start
+ * and after a pause (config `recordings.timeMarkGapMin`), the speaker/device
+ * only where it changes. One shared player: a tap on a paragraph plays its
+ * clip (a tap on the playing one pauses), the date plays on clip after clip,
+ * and a floating glass bar shows the whole date as one timeline to drag.
+ * Nothing plays until tapped. Each paragraph's ⋯ menu: play from here, speed
+ * (a device preference), download, copy, delete (asks once, inline). No
+ * per-day download or delete (owner, 2026-11-15).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
@@ -23,7 +27,6 @@ import {
   SPEED_KEY,
   locate,
   nextId,
-  paragraphs,
   parseSpeeds,
   playTarget,
   positionMs,
@@ -36,9 +39,12 @@ import {
 } from "@/lib/recordings-article";
 import {
   type ClipView,
-  type DaySummary,
   clock,
-  recordingRows,
+  cursor,
+  deviceZone,
+  journal,
+  keepLoading,
+  mergeClips,
   withoutClip,
   requestRecordings,
 } from "@/lib/recordings-view";
@@ -53,6 +59,8 @@ const local = safeStorage("local");
 const clipUrl = (id: string) => `${API}?clip=${id}`;
 /** A drag across clips loads the clip it rests on, not every clip it passes. */
 const SCRUB_SETTLE_MS = 120;
+/** Clips asked for per page (the API's own cap is higher). */
+const PAGE = 100;
 
 type Menu = { day: string; id: string; x: number; y: number };
 
@@ -77,19 +85,17 @@ export default function RecordingsClient({
 } = {}) {
   const t = useIntlayer("my-recordings");
   const { locale } = useLocale();
-  const [{ days, clips }, setRecordings] = useState({
-    days: [] as DaySummary[],
-    clips: new Map<string, ClipView[]>(),
-  });
+  const [clips, setClips] = useState<ClipView[]>([]);
   const [more, setMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  const [open, setOpen] = useState<Set<string>>(new Set());
-  const [dayErrors, setDayErrors] = useState<Set<string>>(new Set());
   const [deleteError, setDeleteError] = useState(false);
-  const loadingDays = useRef(new Set<string>());
   const [confirm, setConfirm] = useState<string | null>(null);
   const busy = useRef(false);
+  // The device's own zone (owner, 2026-11-15: display = device zone). Clips
+  // arrive only after mount, so the server's render never groups anything.
+  const timeZone = useMemo(deviceZone, []);
+  const gapMs = Number(publicCfg("recordings.timeMarkGapMin")) * 60_000;
 
   // The one player.
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -97,7 +103,6 @@ export default function RecordingsClient({
   const scrub = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [player, setPlayer] = useState<PlayerState>(null);
   const [pos, setPos] = useState<{ day: string; ms: number } | null>(null);
-  const [lastOpened, setLastOpened] = useState<string | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   // Folded "another voice" paragraphs: kept in sessionStorage (docs/ui-state.md).
@@ -127,39 +132,45 @@ export default function RecordingsClient({
     [speeds],
   );
 
-  const dayParas = useMemo(() => {
-    const m = new Map<string, Paragraph[]>();
-    for (const [d, cs] of clips) m.set(d, paragraphs(cs));
-    return m;
-  }, [clips]);
+  const view = useMemo(
+    () => journal(clips, { timeZone, gapMs, more }),
+    [clips, timeZone, gapMs, more],
+  );
+  const dayParas = view.groups;
   // Audio events read the latest values, not the render they were bound in.
   const live = useRef({ player, dayParas, speed });
   live.current = { player, dayParas, speed };
 
+  // The fetch reads the latest feed, not the render it was made in.
+  const feed = useRef({ clips, more });
+  feed.current = { clips, more };
   const loadMore = useCallback(() => {
-    if (busy.current || !more) return;
+    if (busy.current || !feed.current.more) return;
     busy.current = true;
     setLoading(true);
     setError(false);
-    const before = days.at(-1)?.day;
-    fetch(`${API}${before ? `?before=${before}` : ""}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((b: { days: DaySummary[]; more: boolean }) => {
-        setRecordings((current) => ({
-          ...current,
-          days: [
-            ...current.days,
-            ...b.days.filter((x) => !current.days.some((y) => y.day === x.day)),
-          ],
-        }));
+    const loaded = feed.current.clips;
+    const before = cursor(loaded);
+    let again = false;
+    requestRecordings<{ clips: ClipView[]; more: boolean }>(
+      fetch,
+      `?limit=${PAGE}${before === undefined ? "" : `&before=${before}`}`,
+    )
+      .then((b) => {
+        // Merge into the latest feed: a delete may have finished meanwhile.
+        setClips((current) => mergeClips(current, b.clips));
         setMore(b.more);
+        feed.current = { clips: mergeClips(loaded, b.clips), more: b.more };
+        again = keepLoading(loaded, b.clips, b.more, timeZone);
       })
       .catch(() => setError(true))
       .finally(() => {
         busy.current = false;
         setLoading(false);
+        // Only the held-back date grew: nothing opened, so the list would not ask.
+        if (again) loadMore();
       });
-  }, [days, more]);
+  }, [timeZone]);
 
   useEffect(() => {
     loadMore();
@@ -167,36 +178,7 @@ export default function RecordingsClient({
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadDay = (day: string) => {
-    if (loadingDays.current.has(day)) return;
-    loadingDays.current.add(day);
-    setDayErrors((errors) => {
-      const next = new Set(errors);
-      next.delete(day);
-      return next;
-    });
-    requestRecordings<{ clips: ClipView[] }>(fetch, `?day=${day}`)
-      .then((b) =>
-        setRecordings((current) => ({
-          ...current,
-          clips: new Map(current.clips).set(day, b.clips),
-        })),
-      )
-      .catch(() => setDayErrors((errors) => new Set(errors).add(day)))
-      .finally(() => loadingDays.current.delete(day));
-  };
-  const toggle = (day: string) => {
-    const next = new Set(open);
-    if (next.has(day)) next.delete(day);
-    else {
-      next.add(day);
-      setLastOpened(day);
-      if (!clips.has(day)) loadDay(day);
-    }
-    setOpen(next);
-  };
-
-  /** Stops the player when what it holds is gone (a deleted clip or day). */
+  /** Stops the player when what it holds is gone (a deleted clip). */
   const stopIf = (gone: (p: NonNullable<PlayerState>) => boolean) => {
     const p = live.current.player;
     if (!p || !gone(p)) return;
@@ -210,22 +192,6 @@ export default function RecordingsClient({
     setPos(null);
   };
 
-  const delDay = async (day: string) => {
-    setConfirm(null);
-    setDeleteError(false);
-    try {
-      await requestRecordings(fetch, `?day=${day}`, "DELETE");
-    } catch {
-      setDeleteError(true);
-      return;
-    }
-    stopIf((p) => p.day === day);
-    setRecordings((current) => {
-      const next = new Map(current.clips);
-      next.delete(day);
-      return { days: current.days.filter((x) => x.day !== day), clips: next };
-    });
-  };
   const delClip = async (c: ClipView) => {
     setConfirm(null);
     setDeleteError(false);
@@ -237,7 +203,7 @@ export default function RecordingsClient({
     }
     stopIf((p) => p.id === c.id);
     // Requests can finish in either order: remove from the latest snapshot.
-    setRecordings((current) => withoutClip(current.days, current.clips, c));
+    setClips((current) => withoutClip(current, c.id));
   };
 
   /** Puts a clip in the one player at `fromMs`, and plays it or holds it paused. */
@@ -375,12 +341,11 @@ export default function RecordingsClient({
   };
   const time = (ms: number) => {
     try {
-      return new Intl.DateTimeFormat(locale, { timeStyle: "short" }).format(ms);
+      return new Intl.DateTimeFormat(locale, { timeStyle: "short", timeZone }).format(ms);
     } catch {
       return new Date(ms).toISOString().slice(11, 16);
     }
   };
-  const tz = typeof window === "undefined" ? 0 : new Date().getTimezoneOffset();
 
   /** "Delete for good?" with Delete / Cancel, in place of the button that asked. */
   const ask = (go: () => void) => (
@@ -411,10 +376,8 @@ export default function RecordingsClient({
       .filter(Boolean)
       .join(" · ");
 
-  // The bar follows the playing day, else the day last opened.
-  const barDay =
-    player?.day ??
-    (lastOpened && open.has(lastOpened) && dayParas.get(lastOpened)?.length ? lastOpened : null);
+  // The bar follows the date in the player (playing or paused), from the first tap on.
+  const barDay = player?.day ?? null;
   const barParas = barDay ? (dayParas.get(barDay) ?? []) : [];
   const barTotal = totalMs(barParas);
   const barPos = pos && pos.day === barDay ? Math.min(pos.ms, barTotal) : 0;
@@ -455,7 +418,7 @@ export default function RecordingsClient({
       />
 
       <VirtualList
-        items={recordingRows(days, open, clips, dayErrors)}
+        items={view.rows}
         getKey={(r) => r.key}
         name="my-recordings"
         hasMore={more}
@@ -472,76 +435,23 @@ export default function RecordingsClient({
           </p>
         }
         renderItem={(r) => {
-          if (r.kind === "day") {
-            const { day, clips: n, ms } = r.s;
+          if (r.kind === "date") {
+            const ps = dayParas.get(r.day) ?? [];
             return (
-              <div
-                className="mt-4 flex flex-wrap items-center gap-2 border-b border-[oklch(0.5_0_0/0.2)] pb-2"
+              <h2
+                className="mt-6 border-b border-[oklch(0.5_0_0/0.2)] pb-2"
                 data-qa="recordings-day"
-                data-day={day}
+                data-day={r.day}
               >
-                <button
-                  type="button"
-                  aria-expanded={r.open}
-                  onClick={() => toggle(day)}
-                  className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left"
-                >
-                  <span
-                    aria-hidden
-                    className={`inline-block transition-transform ${r.open ? "rotate-90" : ""}`}
-                  >
-                    ▸
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block font-semibold">{dayName(day)}</span>
-                    <span className={`block text-xs ${muted}`}>
-                      {t.clips.value.replace("{n}", n.toLocaleString(locale))} · {clock(ms)}
-                    </span>
-                  </span>
-                </button>
-                {confirm === `d:${day}` ? (
-                  ask(() => void delDay(day))
-                ) : (
-                  <>
-                    <a
-                      href={`${API}?day=${day}&archive=zip&tz=${tz}`}
-                      download
-                      data-qa="recordings-download"
-                      className="flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 text-sm underline"
-                    >
-                      <Icon name="downloadSimple" />
-                      {t.download}
-                    </a>
-                    <button
-                      type="button"
-                      data-qa="recordings-delete-day"
-                      onClick={() => setConfirm(`d:${day}`)}
-                      className={`flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 text-sm ${seal}`}
-                    >
-                      <Icon name="trash" />
-                      {t.deleteDay}
-                    </button>
-                  </>
-                )}
-              </div>
+                <span className="block font-semibold">{dayName(r.day)}</span>
+                <span className={`block text-xs font-normal ${muted}`}>
+                  {t.clips.value.replace("{n}", ps.length.toLocaleString(locale))} ·{" "}
+                  {clock(totalMs(ps))}
+                </span>
+              </h2>
             );
           }
-          if (r.kind === "error")
-            return (
-              <div role="alert" className={`py-3 pl-6 text-sm ${seal}`}>
-                <span>{t.loadFailed}</span>{" "}
-                <button
-                  type="button"
-                  className="min-h-11 px-2 underline"
-                  onClick={() => loadDay(r.day)}
-                >
-                  {t.retry}
-                </button>
-              </div>
-            );
-          if (r.kind === "loading")
-            return <p className={`py-3 pl-6 text-sm ${muted}`}>{t.loading}</p>;
-          const { c, p } = r;
+          const { c, p, day } = r;
           const current = player?.id === c.id;
           const mark = p.mark ? markText(p.mark) : "";
           const isOther = isOtherSpeaker(c.speaker);
@@ -569,8 +479,12 @@ export default function RecordingsClient({
                     title={t.otherVoiceFolded.value}
                     data-qa="recordings-folded-other"
                   >
-                    <span>{time(c.at)}</span>
-                    <span>·</span>
+                    {p.time && (
+                      <>
+                        <span data-qa="recordings-time">{time(c.at)}</span>
+                        <span>·</span>
+                      </>
+                    )}
                     <span>{t.otherVoiceFolded.value}</span>
                   </button>
                   <button
@@ -585,7 +499,7 @@ export default function RecordingsClient({
                       if (menu?.id === c.id) return setMenu(null);
                       const b = e.currentTarget.getBoundingClientRect();
                       setCopied(null);
-                      setMenu({ day: c.day, id: c.id, x: b.right, y: b.bottom });
+                      setMenu({ day, id: c.id, x: b.right, y: b.bottom });
                     }}
                     className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${faint}`}
                   >
@@ -621,19 +535,24 @@ export default function RecordingsClient({
                       toggleExpandClip(c.id);
                       return;
                     }
-                    act(c.day, c.id);
+                    act(day, c.id);
                   }}
                   onKeyDown={(e) => {
                     if (e.key !== "Enter" && e.key !== " ") return;
                     e.preventDefault();
-                    act(c.day, c.id);
+                    act(day, c.id);
                   }}
                   className="min-w-0 flex-1 cursor-pointer whitespace-pre-wrap break-words px-2 py-1.5 text-base leading-relaxed"
                   data-qa="recordings-text"
                 >
-                  <span className={`mr-2 select-none text-xs tabular-nums ${faint}`}>
-                    {time(c.at)}
-                  </span>
+                  {p.time && (
+                    <span
+                      className={`mr-2 select-none text-xs tabular-nums ${faint}`}
+                      data-qa="recordings-time"
+                    >
+                      {time(c.at)}
+                    </span>
+                  )}
                   {c.mode === "passive" && (
                     <span
                       className={`mr-2 select-none rounded border border-current px-1 text-xs ${faint}`}
@@ -661,7 +580,7 @@ export default function RecordingsClient({
                     if (menu?.id === c.id) return setMenu(null);
                     const b = e.currentTarget.getBoundingClientRect();
                     setCopied(null);
-                    setMenu({ day: c.day, id: c.id, x: b.right, y: b.bottom });
+                    setMenu({ day, id: c.id, x: b.right, y: b.bottom });
                   }}
                   className={`flex size-11 shrink-0 items-center justify-center rounded-lg ${faint}`}
                 >

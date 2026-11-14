@@ -1,4 +1,4 @@
-// /my/recordings as one article per day (lib/recordings-article.ts): pure parts only, no audio.
+// /my/recordings as one article per date (lib/recordings-article.ts): pure parts only, no audio.
 import { describe, expect, it } from "bun:test";
 import { CONFIG } from "@/lib/config";
 import {
@@ -11,7 +11,7 @@ import {
   speedFrom,
   totalMs,
 } from "@/lib/recordings-article";
-import { recordingRows, type ClipView } from "@/lib/recordings-view";
+import type { ClipView } from "@/lib/recordings-view";
 
 const DAY = "2026-11-14";
 const c = (id: string, at: number, durationMs: number, more: Partial<ClipView> = {}): ClipView => ({
@@ -59,16 +59,28 @@ describe("paragraphs: a day's clips as one article", () => {
     const ps = paragraphs([c("a", 1, 1), c("b", 2, 1, { device: " " })]);
     expect(ps.map((p) => p.mark)).toEqual([null, null]);
   });
-  it("rows carry the paragraphs for an open day", () => {
-    const days = [{ day: DAY, clips: 2, ms: 3_000, bytes: 1 }];
-    const rows = recordingRows(
-      days,
-      new Set([DAY]),
-      new Map([[DAY, [c("b", 9, 1_000), c("a", 1, 2_000)]]]),
+  it("a time only at the start and after a pause longer than the gap (owner, 2026-11-15)", () => {
+    const MIN = 60_000;
+    // at = when each ended; b starts 5 min after a ended, c 10 min + 1 s after b, d exactly 10 min after c.
+    const ps = paragraphs(
+      [
+        c("a", 10 * MIN, 2_000),
+        c("b", 15 * MIN + 3_000, 3_000),
+        c("c", 25 * MIN + 3_000 + 1_000 + 4_000, 4_000),
+        c("d", 25 * MIN + 3_000 + 1_000 + 4_000 + 10 * MIN + 1_000, 1_000),
+      ],
+      10 * MIN,
     );
-    expect(rows.map((r) => r.key)).toEqual([`d:${DAY}`, "c:a", "c:b"]);
-    const last = rows[2];
-    expect(last.kind === "clip" && last.p.startMs).toBe(2_000);
+    expect(ps.map((p) => p.time)).toEqual([true, false, true, false]);
+    // No gap given: only the first; a negative duration counts as none.
+    expect(paragraphs([c("x", 0, 1), c("y", 10 ** 9, -5)]).map((p) => p.time)).toEqual([
+      true,
+      false,
+    ]);
+    expect(paragraphs([c("x", 0, 1), c("y", 5 * MIN, -5)], MIN).map((p) => p.time)).toEqual([
+      true,
+      true,
+    ]);
   });
 });
 

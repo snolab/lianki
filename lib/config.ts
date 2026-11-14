@@ -521,6 +521,18 @@ export const CONFIG = {
     description:
       "/my/recordings 每段录音的「⋯」菜单里可选的播放速度：逗号分隔的倍数（默认 0.75,1,1.25,1.5,2）。1 倍总会在里面。选中的速度记在这台设备上。",
   },
+  // /my/recordings reads as a journal (owner, 2026-11-15 JST: not a timestamp per
+  // clip): a time shows at the start of each date and after a pause longer than this.
+  "recordings.timeMarkGapMin": int({
+    default: 10,
+    min: 1,
+    max: 1440,
+    unit: "min",
+    group: "voice",
+    audience: "public",
+    description:
+      "/my/recordings 像日记一样连着读：每一天开头写一个时间，之后只有两段录音之间停了超过这么多分钟，才在下一段前面再写一个时间。默认 10 分钟。改小 = 时间更多，改大 = 更少。",
+  }),
   "voiceprint.passkeyWindowMs": int({
     default: 600_000,
     min: 0,
