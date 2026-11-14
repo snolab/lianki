@@ -139,6 +139,46 @@ describe("aec: applyAec", () => {
       expect(await applyAec(true, failing)).toBe("next-open");
     });
   });
+
+  it("a page whose event dispatch throws still gets the switch written", async () => {
+    const store: Record<string, string> = {};
+    const g = globalThis as Record<string, unknown>;
+    const saved = g.dispatchEvent;
+    g.dispatchEvent = () => {
+      throw new Error("no window");
+    };
+    try {
+      await withStorage(store, async () => {
+        expect(await applyAec(false, {})).toBe("next-open");
+        expect(store[VOICE_AEC_KEY]).toBe("0");
+      });
+    } finally {
+      if (saved === undefined) delete g.dispatchEvent;
+      else g.dispatchEvent = saved;
+    }
+  });
+});
+
+describe("aec: talk-over (flag voice.talk-over)", () => {
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).__lkTalkOver;
+  });
+
+  it("off until set; on globalThis so every bundle on the page agrees", () => {
+    expect(talkOver()).toBe(false);
+    setTalkOver(true);
+    expect(talkOver()).toBe(true);
+    expect((globalThis as Record<string, unknown>).__lkTalkOver).toBe(true);
+    setTalkOver(false);
+    expect(talkOver()).toBe(false);
+  });
+
+  it("only a real true counts", () => {
+    (globalThis as Record<string, unknown>).__lkTalkOver = "1";
+    expect(talkOver()).toBe(false);
+    setTalkOver(1 as unknown as boolean);
+    expect(talkOver()).toBe(true);
+  });
 });
 
 describe("page audio: the half-duplex hold for word read-aloud", () => {

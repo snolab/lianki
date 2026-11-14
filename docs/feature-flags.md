@@ -3,14 +3,14 @@
 Switches the owner turns on and off himself at **`https://lianki.com/dev/flags`**,
 with no deploy and no secret change.
 
-| piece                      | where                                         |
-| -------------------------- | --------------------------------------------- |
-| registry (key, description, default, `requires`) | `lib/flags.ts`        |
-| prerequisite checks        | `lib/flag-prereqs.ts`                         |
-| read / write, cache        | `lib/flags-store.ts`                          |
-| tables                     | `db/migrations/0027_feature_flags.sql`: `feature_flags` (key, enabled, updated_at, updated_by) and `feature_flag_log` (every change) |
-| toggle page / API          | `app/(app)/dev/flags/` (`FlagCard.tsx`: one row, its switch and reasons; `flag-view.ts`: sections, search, filters, links), `app/api/dev/flags/route.ts` |
-| tests                      | `unit/flags.test.ts`, `unit/flag-prereqs.test.ts`, `unit/flag-view.test.ts`, `unit/flag-anchor.test.ts`; browser, local D1 only: `scripts/qa/qa-flags.mjs` |
+| piece                                            | where                                                                                                                                                      |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| registry (key, description, default, `requires`) | `lib/flags.ts`                                                                                                                                             |
+| prerequisite checks                              | `lib/flag-prereqs.ts`                                                                                                                                      |
+| read / write, cache                              | `lib/flags-store.ts`                                                                                                                                       |
+| tables                                           | `db/migrations/0027_feature_flags.sql`: `feature_flags` (key, enabled, updated_at, updated_by) and `feature_flag_log` (every change)                       |
+| toggle page / API                                | `app/(app)/dev/flags/` (`FlagCard.tsx`: one row, its switch and reasons; `flag-view.ts`: sections, search, filters, links), `app/api/dev/flags/route.ts`   |
+| tests                                            | `unit/flags.test.ts`, `unit/flag-prereqs.test.ts`, `unit/flag-view.test.ts`, `unit/flag-anchor.test.ts`; browser, local D1 only: `scripts/qa/qa-flags.mjs` |
 
 ## The page
 
@@ -97,6 +97,7 @@ stay on the folded row, because they say why the switch does nothing.
 | `words.pinch-card-height` | **on by default, everyone.** A two-finger vertical pinch on the /words list sets every card's height, from the word alone to everything on screen shown; synced as `words.cardHeight` (off: the default height, the stored choice unused) — `lib/words/row-pinch.ts` |
 | `today.goal`           | **on by default.** /today: today's goal full screen — one number (cards due now, /words's own count), a progress bar (cards done since local midnight), Start to /words; gold ground and seal ink in light, seal ground and gold ink in dark; in the rail and on /home (off: 404, no links) — `lib/today/goal.ts` |
 | `words.onboarding`     | **on by default.** /words plays a short animated walkthrough (tap, rate by feel, handled cards fade and can be undone, cards come back, pinch for height) once per account, then folds it into a circled "?" by the title that replays it (off: no walkthrough, no "?") — `lib/words/onboarding.ts` |
+| `voice.auto-polish`     | **on by default**, audience owner. The hub polishes every spoken line of the owner's itself (a cheap metered model call, `by: "auto"`) once he pauses for `voice.autoPolishTailMs`; fragments inside the window may merge into one passage. `stt.polish` off still refuses every edit — [dev-debug-widget.md](dev-debug-widget.md), "Automatic polish"                                                                                                                                                                                               |
 | `stt.polish`           | **on by default.** The agent may polish the owner's voice lines from their context and summarise room talk (off: the chat keeps only what STT heard, no edits or summaries) — [dev-debug-widget.md](dev-debug-widget.md), "Agent edits of voice messages". Read by lianki-push's hub over the `DebugSessions.flag()` RPC, uncached; only exactly `false` turns it off there, an unreadable answer holds edits back (logged `debug.polish-flag-unread`). Replaced the inverted `stt.polish-off` (migration 0067 carried a stored value over inverted) |
 | `stt.merge`            | a spoken line that continues the last one amends it instead of adding a bubble; the agent hears the complete line, and the passage is polished once at its end; undo splits it back (off: one line per utterance) — [dev-debug-widget.md](dev-debug-widget.md), "Continuous speech amends the last line". Read by the hub over `DebugSessions.flag()`, cached 30 s there |
 | `stt.two-mic-merge`    | **on by default** (`audience: "owner"`). The same sentence from his mic on two devices within config `chat.twoMicWindowMs` (4 s) is one line: the verified, higher-scoring or longer text stands, replacing the first in place (off: one line per device) — [dev-debug-widget.md](dev-debug-widget.md), "Two mics, one line". Read by the hub over `DebugSessions.flag()`, cached 30 s; only exactly `false` turns it off |
@@ -149,12 +150,12 @@ page is owner-only and Chinese only) and a context line, as docs/i18n.md asks.
 - Payment flags (`money: true`) also show 「打开正式收款前请在 Slack 打字确认」:
   real charging still needs the owner's typed Slack confirmation.
 
-| flag                   | requires                                                                                   |
-| ---------------------- | ------------------------------------------------------------------------------------------ |
-| `payments.stripe.live` | `stripe.live-key`: `STRIPE_SECRET_KEY` starts `sk_live_` and `STRIPE_WEBHOOK_SECRET` is set |
-| `payments.komoju.live` | `komoju.live-key`: `KOMOJU_SECRET_KEY` starts `sk_live_` and `KOMOJU_WEBHOOK_SECRET` is set |
+| flag                   | requires                                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `payments.stripe.live` | `stripe.live-key`: `STRIPE_SECRET_KEY` starts `sk_live_` and `STRIPE_WEBHOOK_SECRET` is set                                                                                                      |
+| `payments.komoju.live` | `komoju.live-key`: `KOMOJU_SECRET_KEY` starts `sk_live_` and `KOMOJU_WEBHOOK_SECRET` is set                                                                                                      |
 | `partner.ai-reply`     | `workers-ai.credentials` (`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AI_TOKEN` or `CLOUDFLARE_API_TOKEN`); `ai-credits.migration` (0041: `credit_ai_charge` exists, `credit_ledger` accepts `'ai'`) |
-| `connections.google`   | `google.oauth-client` (`AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`); `google.picker-key` (`pickerConfig`); `auth-secret` (`AUTH_SECRET` ≥ 32 chars, seals tokens) |
+| `connections.google`   | `google.oauth-client` (`AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`); `google.picker-key` (`pickerConfig`); `auth-secret` (`AUTH_SECRET` ≥ 32 chars, seals tokens)                                     |
 
 The others need nothing a check could see: `library.catalogue` works without R2
 (no cache) and its tables came with the reader migrations; the rest are UI
@@ -185,6 +186,7 @@ Turning a payment flag off is the kill switch: no new payment starts within
    one request never sees the flag both ways. Pure helpers take a `FlagValues`
    argument (missing = off) instead of reading the store themselves, which
    keeps them unit-testable — see `stripeMode(env, flags)`.
+
 3. A client component learns the value from the server (a prop from a server
    component, or a field in an API answer); never trust a client-sent flag.
 4. Merge and deploy with the flag off: the feature ships dark. Turn it on at

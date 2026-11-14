@@ -31,6 +31,20 @@ inbox); timings, speaker tags, wake modes. No audio and no clip ids are ever on
 a line. Tested in `unit/chat-log.test.ts` and `unit/debug-hub.test.ts`
 ("chat history").
 
+**On the device.** The last `chat.cacheLines` (default 40) lines of the
+signed-in account's thread are also kept in the browser (`lk:chat-cache`,
+`lib/chat-cache.ts`), so the chat paints at once on the next page load; the
+hub's history replaces them when it arrives. The same never-kept list
+applies there (`cacheLine`, an allowlist, tested in `unit/chat-cache.test.ts`),
+and it also drops page labels and an answer's page label. One account per
+device: another account's page, a page with no session, and sign-out drop it.
+Sign-out also freezes the cache for the rest of the page (`freezeChatCache`):
+the chat stays mounted through the sign-out request with a write timer
+pending and the hub still sending, and none of that is written back; a
+mounted chat whose account changes under it (the root layout's session
+refresh) starts over for the new account (`lib/use-chat-cache.ts`, tested in
+`unit/use-chat-cache.test.tsx`). docs/cold-start.md, "The chat at once".
+
 ## How it is written
 
 ```
