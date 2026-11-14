@@ -275,8 +275,10 @@ describe("local reader data", () => {
 
 describe("reader position: storage edges", () => {
   it("has no store without localStorage, and never throws", async () => {
-    expect(loadAnchor("x")).toBeNull();
-    saveAnchor("x", { line: 1, off: 0, at: 1 });
+    // No store at all: said explicitly, so a localStorage another test file left
+    // on globalThis (Linux file order in the merge queue) cannot receive the write.
+    expect(loadAnchor("x", null)).toBeNull();
+    saveAnchor("x", { line: 1, off: 0, at: 1 }, null);
     const bad = {
       getItem: () => {
         throw new Error("denied");
