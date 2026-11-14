@@ -58,13 +58,13 @@ export const FULL_PB_VAR = "--lk-full-pb";
 
 /**
  * The bottom padding: the home indicator's safe area, unless the keyboard
- * covers it, and the host's bottom island's reserve, as the panel rests above
- * it: so the bar, and the mic in it, stay where the panel had them.
+ * covers it. Full screen covers the host's bottom island, so its reserve is
+ * not kept any more (owner, 2026-11-15 01:1x JST: "输入框下面还有一个空的地方，
+ * 为什么没有贴到屏幕底边"); the panel, which rests above the island, keeps it
+ * through its own `bottom` (DebugChat.tsx).
  */
 export const fullBottomPad = (keyboard: boolean) =>
-  keyboard ? "8px" : `calc(env(safe-area-inset-bottom) + 8px + ${RESERVE})`;
-
-const RESERVE = "var(--lk-bottom-reserve, 0px)";
+  keyboard ? "8px" : "calc(env(safe-area-inset-bottom) + 8px)";
 /** The panel's width and its inset from the right edge (DebugChat.tsx, the section's classes). */
 export const PANEL_W = "min(20rem, calc(100vw - 1rem))";
 export const PANEL_RIGHT = "calc(0.5rem + env(safe-area-inset-right))";

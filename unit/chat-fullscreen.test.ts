@@ -149,7 +149,8 @@ describe("the box follows the visible area (the keyboard)", () => {
     expect(fullBottomPad(true)).not.toContain("safe-area-inset-bottom");
   });
   it("rests the bar above the bottom island's reserve, as the panel does", () => {
-    expect(fullBottomPad(false)).toContain("--lk-bottom-reserve");
+    // Full screen covers the bottom island: its reserve is no longer kept (owner, 2026-11-15).
+    expect(fullBottomPad(false)).not.toContain("--lk-bottom-reserve");
     expect(FULL_SCREEN_STYLE.paddingBottom).toContain("--lk-bottom-reserve");
   });
   it("on a phone the bar spans the screen inside the safe areas, at the panel's 0.5rem gutter", () => {
