@@ -172,18 +172,39 @@ function Row({
   const name = nameIn(tag, locale);
   const own = nameIn(tag, tag);
   const [open, setOpen] = useState(false);
+  const rowRef = useRef<HTMLLIElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => {
+      if (!rowRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
   const btn =
     "grid h-11 w-10 shrink-0 place-items-center rounded-full opacity-70 hover:bg-[oklch(0.5_0_0/0.12)] hover:opacity-100 disabled:opacity-20 disabled:hover:bg-transparent";
   return (
     <li
-      ref={setNodeRef}
+      ref={(el) => {
+        setNodeRef(el);
+        rowRef.current = el;
+      }}
       style={{ transform: CSS.Translate.toString(transform && { ...transform, x: 0 }), transition }}
       data-pref-lang={tag}
       data-pref-lang-level={level}
-      className={`rounded-lg ${
+      className={`relative rounded-lg ${
         isDragging
-          ? "relative z-10 bg-[oklch(0.5_0_0/0.14)] shadow-lg ring-1 ring-[oklch(0.5_0_0/0.35)]"
-          : "bg-[oklch(0.5_0_0/0.06)] dark:bg-[oklch(0.8_0_0/0.06)]"
+          ? "z-10 bg-[oklch(0.5_0_0/0.14)] shadow-lg ring-1 ring-[oklch(0.5_0_0/0.35)]"
+          : open
+            ? "z-20 bg-[oklch(0.5_0_0/0.06)] dark:bg-[oklch(0.8_0_0/0.06)]"
+            : "bg-[oklch(0.5_0_0/0.06)] dark:bg-[oklch(0.8_0_0/0.06)]"
       }`}
     >
       <div className="flex min-h-12 items-center gap-1 pe-1">
@@ -237,7 +258,11 @@ function Row({
         </button>
       </div>
       {open && (
-        <div id={`pref-lang-levels-${tag}`}>
+        // A drop-down under the row, not in the flow (owner, 2026-11-15: the list must not jump).
+        <div
+          id={`pref-lang-levels-${tag}`}
+          className="lk-glass absolute inset-x-1 top-full z-20 mt-1 rounded-xl border border-[oklch(0.5_0_0/0.2)] p-1 shadow-lg"
+        >
           <LevelPicker tag={tag} name={name} level={level} onLevel={onLevel} />
         </div>
       )}
