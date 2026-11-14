@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { CONFIG, type ConfigDef } from "@/lib/config";
 import type { ConfigLogEntry, ConfigRow } from "@/lib/config-store";
-import { card, Chevron, jst } from "../flags/FlagCard";
+import { card, Chevron, When } from "../flags/FlagCard";
 import { DevToast, type DevToastMsg } from "../DevToast";
 import { Icon } from "@/app/components/icons";
 import {
@@ -259,7 +259,7 @@ function ConfigCard({
             <ul className="space-y-1 font-mono text-xs">
               {log.map((e, i) => (
                 <li key={i}>
-                  {jst(e.at)} · {formatValue(e.old, def.unit, t.defaultWord.value)} →{" "}
+                  <When at={e.at} /> · {formatValue(e.old, def.unit, t.defaultWord.value)} →{" "}
                   {formatValue(e.new, def.unit, t.defaultWord.value)} · {e.by}
                   {e.note && <span className="opacity-70"> · {e.note}</span>}
                 </li>

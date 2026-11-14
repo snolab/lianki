@@ -1,5 +1,14 @@
 import { HUB_RPC_LIMITS } from "./hub-rpc-config";
-import { OWNER_REPLY_DELAY_MAX, OWNER_REPLY_DELAY_MS } from "./partner-ai-config";
+import {
+  CAP_WINDOW_HOURS,
+  CAP_WINDOW_MAX,
+  OWNER_REPLY_DELAY_MAX,
+  OWNER_REPLY_DELAY_MS,
+  SITE_DAILY_USD,
+  SITE_WINDOW_USD_MAX,
+  USER_DAILY_TOKENS,
+  USER_WINDOW_TOKENS_MAX,
+} from "./partner-ai-config";
 /**
  * The config registry: every user-meaningful number, text and icon whose live
  * value comes from the config store (lib/config-store.ts, D1 `config_values`)
@@ -595,7 +604,17 @@ export const CONFIG = {
     group: "stt-worker",
     audience: "server",
     description:
-      "语音服务器：每个账号每天（日本时间）最多识别多少分钟音频，按成本账里记的 speech.stt.local 累计。用完当天就走云端识别。0 = 不给语音服务器。",
+      "语音服务器：每个账号在滚动窗口里（最近 stt.capWindowHours 小时，默认 24）最多识别多少分钟音频，按成本账里记的 speech.stt.local 累计。用完就走云端识别，旧的用量随时间逐渐释放，不在某个日历日一起清零。0 = 不给语音服务器。",
+  }),
+  "stt.capWindowHours": int({
+    default: 24,
+    min: 1,
+    max: 168,
+    unit: "h",
+    group: "stt-worker",
+    audience: "server",
+    description:
+      "语音服务器的分钟上限（stt.worker.minutesPerDay）按多少小时的滚动窗口算：默认 24 = 最近 24 小时里用掉的分钟数。",
   }),
   "stt.worker.maxUtteranceS": int({
     default: 40,
@@ -871,7 +890,7 @@ export const CONFIG = {
     audience: "server",
     money: true,
     description:
-      "注册礼：每个 UTC 日（日本时间早上 9 点换日）最多前几个新注册的账号能拿到（每个账号只一次）。超出的人什么也拿不到，也不会看到报错。0 = 新账号都不送（老账号补发不受影响）。",
+      "注册礼：每个 UTC 日（UTC 零点换日）最多前几个新注册的账号能拿到（每个账号只一次）。超出的人什么也拿不到，也不会看到报错。0 = 新账号都不送（老账号补发不受影响）。",
   }),
   "inbox.maxFileBytes": int({
     default: 20 * 1024 * 1024,
@@ -942,6 +961,40 @@ export const CONFIG = {
     description:
       "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 8000 = 8 秒。开关在 /dev/flags 的 partner.owner-thread。",
   }),
+  // The Learning Partner AI's caps (docs/partner-ai.md, "Caps"): read by the
+  // debug hub over DebugSessions.config.
+  "partner.capWindowHours": int({
+    default: CAP_WINDOW_HOURS,
+    min: 1,
+    max: CAP_WINDOW_MAX,
+    unit: "h",
+    group: "chat",
+    audience: "server",
+    description:
+      "学习伙伴 AI 的用量上限按滚动窗口算：每个账号和全站在最近多少小时里的用量（按 UTC 整点分桶）。默认 24 = 最近 24 小时，旧的用量随时间逐渐释放，不在某个日历日一起清零。",
+  }),
+  "partner.userWindowTokens": int({
+    default: USER_DAILY_TOKENS,
+    min: 0,
+    max: USER_WINDOW_TOKENS_MAX,
+    unit: "tokens",
+    group: "chat",
+    audience: "server",
+    description:
+      "学习伙伴 AI：每个账号在滚动窗口（partner.capWindowHours，默认最近 24 小时）里最多用多少 token（输入 + 输出，约 40–80 条普通消息 = 60000）。用满后提示大约多少分钟后能再回复。0 = 不回复。",
+  }),
+  "partner.siteWindowUsd": {
+    default: SITE_DAILY_USD as number,
+    schema: z.number().min(0).max(SITE_WINDOW_USD_MAX),
+    min: 0,
+    max: SITE_WINDOW_USD_MAX,
+    unit: "USD",
+    group: "chat",
+    audience: "server",
+    money: true,
+    description:
+      "学习伙伴 AI：全站在滚动窗口（partner.capWindowHours）里最多花多少美元（按模型标价算）。用满后所有人都暂停，旧的用量随时间释放。0 = 全站不回复。",
+  },
   "chat.partnerModelTimeoutMs": int({
     ...HUB_RPC_LIMITS["chat.partnerModelTimeoutMs"],
     unit: "ms",

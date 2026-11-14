@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { When } from "../flags/FlagCard";
 
 type Allowed = {
   userId: string;
@@ -17,14 +18,6 @@ type Preview = {
   expiresAt: number;
 };
 type State = { allowed: Allowed[]; previews: Preview[] };
-
-/** Written out, in JST, labelled — the owner reads every time in JST. */
-const jst = (ms: number) =>
-  `${new Date(ms).toLocaleString("zh-CN", {
-    timeZone: "Asia/Tokyo",
-    dateStyle: "long",
-    timeStyle: "short",
-  })} JST`;
 
 const card =
   "rounded-lg border border-[oklch(0_0_0/0.1)] dark:border-[oklch(1_0_0/0.1)] p-4 space-y-2";
@@ -98,7 +91,10 @@ export default function LiveFrontendsAdmin() {
                 <span className="break-all">
                   {a.email ?? a.userId}
                   {a.name ? ` (${a.name})` : ""}
-                  <span className="text-xs opacity-60"> · {jst(a.addedAt)}</span>
+                  <span className="text-xs opacity-60">
+                    {" "}
+                    · <When at={a.addedAt} />
+                  </span>
                 </span>
                 <button
                   type="button"
@@ -133,7 +129,10 @@ export default function LiveFrontendsAdmin() {
               <li key={p.id} className="flex items-center justify-between gap-2">
                 <span className="break-all">
                   {p.email ?? p.userId} · <code className="text-xs">{p.target}</code>
-                  <span className="text-xs opacity-60"> · 到 {jst(p.expiresAt)}</span>
+                  <span className="text-xs opacity-60">
+                    {" "}
+                    · 到 <When at={p.expiresAt} />
+                  </span>
                 </span>
                 <button
                   type="button"

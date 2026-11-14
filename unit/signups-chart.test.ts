@@ -6,18 +6,22 @@ import {
   chartModel,
   daysInMonth,
   forecastMonth,
-  jstMonth,
+  zoneMonth,
   monthSeries,
   niceMax,
 } from "@/lib/signups-chart";
 
-describe("JST month bucketing", () => {
-  test("an instant belongs to its Japan-time month", () => {
-    // 2026-10-31 15:00 UTC is 2026-11-01 00:00 JST.
-    expect(jstMonth("2026-10-31T14:59:59Z")).toBe("2026-10");
-    expect(jstMonth("2026-10-31T15:00:00Z")).toBe("2026-11");
-    expect(jstMonth(Date.UTC(2026, 11, 31, 15))).toBe("2027-01");
-    expect(jstMonth(new Date("2026-03-01"))).toBe("2026-03");
+const P9 = 540; // a viewer at UTC+9
+
+describe("month bucketing at the viewer's offset", () => {
+  test("an instant belongs to its month in the zone; UTC by default", () => {
+    // 2026-10-31 15:00 UTC is 2026-11-01 00:00 at UTC+9.
+    expect(zoneMonth("2026-10-31T14:59:59Z", P9)).toBe("2026-10");
+    expect(zoneMonth("2026-10-31T15:00:00Z", P9)).toBe("2026-11");
+    expect(zoneMonth(Date.UTC(2026, 11, 31, 15), P9)).toBe("2027-01");
+    expect(zoneMonth(new Date("2026-03-01"), P9)).toBe("2026-03");
+    expect(zoneMonth("2026-10-31T15:00:00Z")).toBe("2026-10");
+    expect(zoneMonth("2026-11-01T02:00:00Z", -300)).toBe("2026-10");
   });
 
   test("days in month, leap Februaries", () => {
@@ -38,13 +42,13 @@ describe("JST month bucketing", () => {
 
 describe("forecast", () => {
   test("first day of the month: so far × days in month", () => {
-    // 2026-11-01 00:30 JST.
-    const f = forecastMonth(3, Date.parse("2026-10-31T15:30:00Z"));
+    // 2026-11-01 00:30 at UTC+9.
+    const f = forecastMonth(3, Date.parse("2026-10-31T15:30:00Z"), P9);
     expect(f).toEqual({ month: "2026-11", elapsed: 1, days: 30, forecast: 90 });
   });
 
   test("last day: the count so far", () => {
-    const f = forecastMonth(41, Date.parse("2026-11-30T14:00:00Z"));
+    const f = forecastMonth(41, Date.parse("2026-11-30T14:00:00Z"), P9);
     expect(f).toEqual({ month: "2026-11", elapsed: 30, days: 30, forecast: 41 });
   });
 
@@ -54,13 +58,22 @@ describe("forecast", () => {
     expect(forecastMonth(10, Date.parse("2026-02-07T03:00:00Z")).forecast).toBe(40);
   });
 
+  test("UTC by default: the same instant is still the last of October", () => {
+    expect(forecastMonth(3, Date.parse("2026-10-31T15:30:00Z"))).toEqual({
+      month: "2026-10",
+      elapsed: 31,
+      days: 31,
+      forecast: 3,
+    });
+  });
+
   test("zero so far forecasts zero", () => {
     expect(forecastMonth(0, Date.parse("2026-11-09T06:00:00Z")).forecast).toBe(0);
   });
 });
 
 describe("monthSeries", () => {
-  const now = Date.parse("2026-11-09T06:00:00Z"); // 2026-11-09 15:00 JST
+  const now = Date.parse("2026-11-09T06:00:00Z"); // 2026-11-09 15:00 at UTC+9, 06:00 UTC
 
   test("fills empty months from the first sign-up to now, forecast on the last", () => {
     const s = monthSeries(

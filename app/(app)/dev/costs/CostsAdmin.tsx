@@ -6,12 +6,15 @@ import { VirtualList } from "@/app/components/VirtualList";
 import { useInfiniteList } from "@/app/components/useInfiniteList";
 import { CREDITS_PER_USD } from "@/lib/payments/credits";
 import { MARGIN } from "@/lib/payments/prices";
+import { useDeviceZone } from "@/app/components/useDeviceZone";
+import { localDay, zoneLabel, zoneOffsetMin } from "@/lib/time-zone";
 import { CostMatrix, HEAT_CSS, HeatLegend, type Matrix } from "./CostMatrix";
 import { freePaidSeries, featureSeries, StackedBars, TopAccounts } from "./CostCharts";
 
 /**
  * /dev/costs: the cost ledger (docs/payments.md, "Cost ledger") through
- * /api/dev/costs. A date range (JST days), totals, then by day, by feature
+ * /api/dev/costs. A date range (days in the viewer's device zone, sent as
+ * `tz` = minutes east of UTC; nothing loads until the zone is known), totals, then by day, by feature
  * and by account — free and paid side by side. The day and account tables are
  * VirtualLists; accounts load in batches as the list scrolls (no pages).
  * Charts (cost per day and per hour, stacked by service or free/paid; the top
@@ -37,8 +40,6 @@ type UserRow = { userId: string; name: string | null } & Totals;
 const HOUR_CHOICES = [24, 48, 72, 168] as const;
 const MAX_HOURS = 168;
 
-const JST = 9 * 3600_000;
-const day = (ms: number) => new Date(ms + JST).toISOString().slice(0, 10);
 const fill = (s: string, vars: Record<string, string | number>) =>
   s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 
@@ -49,9 +50,17 @@ const GRID =
 export default function CostsAdmin() {
   const c = useIntlayer("dev-costs");
   const { locale } = useLocale();
-  const today = useMemo(() => day(Date.now()), []);
-  const [from, setFrom] = useState(() => day(Date.now() - 29 * 86400_000));
-  const [to, setTo] = useState(today);
+  const zone = useDeviceZone();
+  // The offset of the viewer's zone now: the server buckets days and hours by it.
+  const off = useMemo(() => (zone ? zoneOffsetMin(zone) : null), [zone]);
+  const today = useMemo(() => (off === null ? "" : localDay(Date.now(), off)), [off]);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  useEffect(() => {
+    if (off === null || to) return;
+    setFrom(localDay(Date.now() - 29 * 86400_000, off));
+    setTo(localDay(Date.now(), off));
+  }, [off, to]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -69,7 +78,8 @@ export default function CostsAdmin() {
     return (n: number) => f.format(n);
   }, [locale]);
 
-  const range = from && to && from <= to ? `from=${from}&to=${to}` : null;
+  const range = off !== null && from && to && from <= to ? `from=${from}&to=${to}&tz=${off}` : null;
+  const zoneText = zone ? zoneLabel(zone) : "";
 
   useEffect(() => {
     if (!range) return;
@@ -229,7 +239,7 @@ export default function CostsAdmin() {
             ))}
           </div>
           <p className="text-xs opacity-70">
-            {fill(c.note.value, { perUsd: CREDITS_PER_USD, margin: MARGIN })}
+            {fill(c.note.value, { perUsd: CREDITS_PER_USD, margin: MARGIN, zone: zoneText })}
           </p>
           {summary && summary.byDay.length === 0 ? (
             <p className="text-sm" data-testid="costs-empty">
@@ -298,7 +308,7 @@ export default function CostsAdmin() {
               title={c.chartHours.value}
               buckets={hourly.rows.map((r) => r.bucket)}
               series={series(hourly)}
-              bucketLabel={(b) => `${hourLabel(b)} JST`}
+              bucketLabel={(b) => `${hourLabel(b)} (${zoneText})`}
               tick={hourTick}
               usd={usdShort}
               totalLabel={c.totalCost.value}
@@ -374,7 +384,9 @@ export default function CostsAdmin() {
             name="dev-costs-hours-matrix"
             describe={describe(hourLabel)}
           />
-          <p className="text-xs opacity-70">{fill(c.hourNote.value, { max: MAX_HOURS })}</p>
+          <p className="text-xs opacity-70">
+            {fill(c.hourNote.value, { max: MAX_HOURS, zone: zoneText })}
+          </p>
         </section>
       ) : null}
 

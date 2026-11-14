@@ -27,6 +27,9 @@ import {
 } from "@/lib/progress";
 import { formatHistory, parseProgressArgs } from "@/scripts/dev/progress-args";
 
+// The times these print are in the machine's zone; pin it so the JST labels below hold anywhere.
+process.env.LIANKI_OWNER_TZ = "Asia/Tokyo";
+
 const ROOT = "root-secret";
 
 class FakeSocket implements Socket {

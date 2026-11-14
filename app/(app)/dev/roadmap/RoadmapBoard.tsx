@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useZonedTime } from "@/app/components/useZonedTime";
 import { compactTime, isLate } from "@lianki/debug-chat/eta";
 import { progressSocketUrl } from "@/lib/progress-tree";
 import {
@@ -31,9 +32,6 @@ const ACCENT: Record<RoadmapSection, string> = {
 };
 const LINK = "text-blue-700 dark:text-blue-300 hover:underline";
 
-/** A done item's day, in JST and unambiguous (ISO). */
-const dayJst = (at: number) => new Date(at + 9 * 3_600_000).toISOString().slice(0, 10);
-
 /**
  * The board: open nodes of the state tree by section and top-level path, and
  * the done history (folded). Titles are the nodes' own, shown as written.
@@ -49,6 +47,8 @@ export function RoadmapBoard({
   header: ReactNode;
   tree: ReactNode;
 }) {
+  // A done item's day: ISO (unambiguous), in the viewer's device zone.
+  const { day } = useZonedTime();
   const [state, setState] = useState<RoadmapState>({
     rows: [],
     history: [],
@@ -93,7 +93,7 @@ export function RoadmapBoard({
       </p>
       <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums">
         <span className="opacity-60 break-all">{it.id}</span>
-        {s === "done" && <span className="opacity-60">{dayJst(it.at)}</span>}
+        {s === "done" && <span className="opacity-60">{day(it.at)}</span>}
         {s === "done" && it.doneKind && (
           <span
             className="rounded border border-current px-1 text-xs opacity-70"

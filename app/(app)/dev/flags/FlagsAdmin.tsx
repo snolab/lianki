@@ -6,7 +6,7 @@ import { useUi } from "@lianki/ui-state";
 import { FLAGS, type FlagDef, type FlagKey } from "@/lib/flags";
 import type { FlagLogEntry, FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
-import { card, Chevron, FlagCard, jst } from "./FlagCard";
+import { card, Chevron, FlagCard, When } from "./FlagCard";
 import { FLAG_HIGHLIGHT_MS, scrollToFlag } from "./flag-anchor";
 import {
   buildFlagView,
@@ -341,7 +341,7 @@ export default function FlagsAdmin() {
           <ul className="text-xs font-mono space-y-1">
             {state.log.map((e, i) => (
               <li key={i}>
-                {jst(e.at)} · {e.key} → {e.enabled ? "开" : "关"} · {e.by}
+                <When at={e.at} /> · {e.key} → {e.enabled ? "开" : "关"} · {e.by}
               </li>
             ))}
           </ul>

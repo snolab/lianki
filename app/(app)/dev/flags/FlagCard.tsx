@@ -2,17 +2,16 @@ import { FLAGS, type FlagDef } from "@/lib/flags";
 import type { FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
 import { SealSwitch } from "@/app/components/SealSwitch";
+import { useZonedTime } from "@/app/components/useZonedTime";
 
 /** Shown under every flag that moves real money (policy: typed Slack confirmation). */
 export const MONEY_NOTE = "打开正式收款前请在 Slack 打字确认";
 
-/** Written out, in JST, labelled — the owner reads every time in JST. */
-export const jst = (iso: string) =>
-  `${new Date(iso).toLocaleString("zh-CN", {
-    timeZone: "Asia/Tokyo",
-    dateStyle: "long",
-    timeStyle: "short",
-  })} JST`;
+/** A time written out in the viewer's device zone, labelled with it (these pages are Chinese). */
+export function When({ at }: { at: string | number }) {
+  const { time } = useZonedTime();
+  return <>{time(at, "zh-CN")}</>;
+}
 
 export const card =
   "rounded-lg border border-[oklch(0_0_0/0.1)] dark:border-[oklch(1_0_0/0.1)] p-4 space-y-2";
@@ -119,11 +118,15 @@ export function FlagCard({
         <div id={`details-${f.key}`} className="space-y-1 pb-1.5">
           <p className="text-sm">{f.description}</p>
           <p className="text-xs opacity-60">
-            {f.updatedAt
-              ? `${f.updatedBy} · ${jst(f.updatedAt)}`
-              : FLAGS[f.key].default
-                ? "从未改过（默认开）"
-                : "从未改过（默认关）"}
+            {f.updatedAt ? (
+              <>
+                {f.updatedBy} · <When at={f.updatedAt} />
+              </>
+            ) : FLAGS[f.key].default ? (
+              "从未改过（默认开）"
+            ) : (
+              "从未改过（默认关）"
+            )}
           </p>
         </div>
       )}

@@ -42,6 +42,7 @@ import {
 } from "../../lib/live-view/rules";
 import { LIVE_PAGE_ORIGINS } from "../../lib/live-view/origins";
 import { tailnetHost } from "./tailnet";
+import { ownerStamp } from "./owner-time";
 
 const args = process.argv.slice(2);
 const cmd = args[0] ?? "status";
@@ -205,8 +206,8 @@ async function on() {
   const exp = Math.floor(Date.now() / 1000) + Math.round(hours * 3600);
   const { serial, token } = await signed({ op: "on", exp, widget, islands, page, branch, sha });
   await send(token);
-  const until = new Date(exp * 1000).toLocaleString("sv-SE", { timeZone: "Asia/Tokyo" });
-  console.log(`live view on: ${liveLabel({ branch, sha })} until ${until} JST`);
+  const until = ownerStamp(exp * 1000, true);
+  console.log(`live view on: ${liveLabel({ branch, sha })} until ${until}`);
   if (widget) console.log(`  widget  ${widget}`);
   if (islands) console.log(`  islands ${islands}`);
   if (page) {
@@ -241,10 +242,8 @@ switch (cmd) {
     const s = (await req("status")) as { on?: boolean; claim?: LiveViewClaim };
     if (!s.on || !s.claim) console.log("live view: off");
     else {
-      const until = new Date(s.claim.exp * 1000).toLocaleString("sv-SE", {
-        timeZone: "Asia/Tokyo",
-      });
-      console.log(`live view: on · ${liveLabel(s.claim)} until ${until} JST`);
+      const until = ownerStamp(s.claim.exp * 1000, true);
+      console.log(`live view: on · ${liveLabel(s.claim)} until ${until}`);
       if (s.claim.widget) console.log(`  widget  ${s.claim.widget}`);
       if (s.claim.islands) console.log(`  islands ${s.claim.islands}`);
       if (s.claim.page)

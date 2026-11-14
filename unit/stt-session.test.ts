@@ -137,23 +137,42 @@ describe("/api/stt/session", () => {
     expect((await handleSttSession(req(), other)).status).toBe(200);
   });
 
-  test("minutes per JST day, from the cost ledger's speech.stt.local rows", async () => {
+  test("minutes over a rolling window, from the cost ledger's speech.stt.local rows", async () => {
     const k = await keys();
     const d = deps({ priv: k.priv, cfg: { "stt.worker.minutesPerDay": 1 } });
-    const ins = (feature: string, units: number, day: string) =>
-      d
+    const ins = (feature: string, units: number, agoMs: number) => {
+      const at = new Date(NOW - agoMs);
+      return d
         .db!.prepare(
-          "INSERT INTO cost_ledger (user_id, feature, usd_micro, units, day, at) VALUES ('u1', ?1, 1, ?2, ?3, 'x')",
+          "INSERT INTO cost_ledger (user_id, feature, usd_micro, units, day, at) VALUES ('u1', ?1, 1, ?2, ?3, ?4)",
         )
-        .bind(feature, units, day)
+        .bind(feature, units, at.toISOString().slice(0, 10), at.toISOString())
         .run();
-    await ins("speech.stt.local", 50, "2026-11-11");
-    await ins("speech.stt", 500, "2026-11-11"); // the cloud route: not this quota
-    await ins("speech.stt.local", 500, "2026-11-10"); // yesterday
+    };
+    await ins("speech.stt.local", 30, 23 * 3600_000); // 23 h ago: inside the 24-hour window
+    await ins("speech.stt.local", 20, 60_000);
+    await ins("speech.stt", 500, 60_000); // the cloud route: not this quota
+    await ins("speech.stt.local", 500, 24 * 3600_000 + 1000); // just outside the window
+    // A row of the older JST `day` (the next UTC date) still counts by its time.
+    await d
+      .db!.prepare(
+        "INSERT INTO cost_ledger (user_id, feature, usd_micro, units, day, at) VALUES ('u1', 'speech.stt.local', 1, 5, '2026-11-11', ?1)",
+      )
+      .bind(new Date(NOW - 20 * 3600_000).toISOString())
+      .run();
     expect((await handleSttSession(req(), d)).status).toBe(200);
-    await ins("speech.stt.local", 10, "2026-11-11");
+    await ins("speech.stt.local", 5, 1000);
     const r = await handleSttSession(req(), d);
     expect([r.status, ((await r.json()) as { error: string }).error]).toEqual([429, "daily-limit"]);
+    // Later, as the oldest use leaves the window, the account is under the cap again.
+    expect((await handleSttSession(req(), { ...d, now: () => NOW + 3600_000 })).status).toBe(200);
+    // A shorter configured window counts less.
+    const short = deps({
+      priv: k.priv,
+      db: d.db,
+      cfg: { "stt.worker.minutesPerDay": 1, "stt.capWindowHours": 1 },
+    });
+    expect((await handleSttSession(req(), short)).status).toBe(200);
   });
 
   test("the WSS fallback and TURN only when configured", async () => {

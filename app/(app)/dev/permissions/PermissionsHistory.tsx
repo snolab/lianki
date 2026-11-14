@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useZonedTime } from "@/app/components/useZonedTime";
 import { useIntlayer } from "next-intlayer";
 
 type Row = {
@@ -14,12 +15,8 @@ type Row = {
 };
 type Page = { rows?: Row[]; next?: number | null };
 
-// ISO-like date and time in Tokyo, the owner's clock: "2026-11-09 17:42 JST".
-const jst = new Intl.DateTimeFormat("sv-SE", {
-  timeZone: "Asia/Tokyo",
-  dateStyle: "short",
-  timeStyle: "short",
-});
+// ISO-like date and time in the viewer's device zone, labelled: "2026-11-09 17:42 UTC+9".
+const ISO_LIKE = { dateStyle: "short", timeStyle: "short" } as const;
 const fill = (s: string, vars: Record<string, string>) =>
   s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? vars[k] : m));
 
@@ -30,6 +27,7 @@ const fill = (s: string, vars: Record<string, string>) =>
  */
 export default function PermissionsHistory({ version }: { version: number }) {
   const c = useIntlayer("dev-permissions");
+  const { time } = useZonedTime();
   const [rows, setRows] = useState<Row[]>([]);
   const [next, setNext] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,7 +65,7 @@ export default function PermissionsHistory({ version }: { version: number }) {
               <span className="font-medium">
                 {action(r.action)} · {perm(r.permission)}
               </span>
-              <span className="opacity-70 tabular-nums">{jst.format(r.at)} JST</span>
+              <span className="opacity-70 tabular-nums">{time(r.at, "sv-SE", ISO_LIKE)}</span>
             </div>
             <div className="font-mono break-all">{r.email}</div>
             <div className="opacity-70 break-all">

@@ -159,6 +159,8 @@ export type PartnerStrings = ChatStrings & {
   aiHint: string;
   aiStatus: string;
   aiLimit: string;
+  /** aiLimit with "again in about {n} min", when the hub said when the window frees up. */
+  aiLimitIn?: string;
   aiFailed: string;
   /** Out of credits: the model was not asked; the line links to where credits are bought. */
   aiCredits: string;
@@ -745,9 +747,16 @@ export function DebugEval({
         }
         if (msg.type === "ai-limit" || msg.type === "ai-failed") {
           const s = stringsRef.current;
+          // The usage window is full (not credits): when the hub knows, say when it frees up.
+          const retryMin = Number((msg as { retryMin?: unknown }).retryMin);
           const line =
             msg.type === "ai-limit"
-              ? (s?.aiLimit ?? "Your {name} is resting for today. Try again tomorrow.")
+              ? Number.isFinite(retryMin) && retryMin > 0
+                ? (
+                    s?.aiLimitIn ??
+                    "Your {name} is taking a short break. It can reply again in about {n} min."
+                  ).replaceAll("{n}", String(Math.ceil(retryMin)))
+                : (s?.aiLimit ?? "Your {name} is taking a short break. Try again in a while.")
               : (s?.aiFailed ?? "No reply this time. Please try again in a moment.");
           setWarning(line.replaceAll("{name}", s?.name || "Learning Partner"));
           return;

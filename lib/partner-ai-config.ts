@@ -61,10 +61,26 @@ export const MAX_REPLY_CHARS = 2000;
  */
 export const CHARGE_STALE_MS = 10 * 60_000;
 
-/** Per user, per JST day: input + output tokens (≈ 40–80 typical messages). */
+/**
+ * Defaults of the caps' live values (lib/config.ts, read by the hub):
+ * per user, over the rolling cap window (CAP_WINDOW_HOURS, by default the last
+ * 24 hours), input + output tokens (≈ 40–80 typical messages). The name keeps
+ * "DAILY" from when the caps reset on a calendar day; no day boundary remains.
+ */
 export const USER_DAILY_TOKENS = 60_000;
-/** Whole site, per JST day, in USD at the list prices above. */
+/** The live value's key for the per-user tokens over the window. */
+export const USER_WINDOW_TOKENS_KEY = "partner.userWindowTokens";
+export const USER_WINDOW_TOKENS_MAX = 10_000_000;
+/** Whole site, over the same rolling window, in USD at the list prices above (default). */
 export const SITE_DAILY_USD = 2;
+/** The live value's key for the site's USD over the window. */
+export const SITE_WINDOW_USD_KEY = "partner.siteWindowUsd";
+export const SITE_WINDOW_USD_MAX = 1000;
+/** The live value's key (lib/config.ts): how many hours the caps' rolling window spans. */
+export const CAP_WINDOW_KEY = "partner.capWindowHours";
+/** Its default: the last 24 hours (hourly UTC buckets, lib/rolling-window.ts). */
+export const CAP_WINDOW_HOURS = 24;
+export const CAP_WINDOW_MAX = 168;
 
 /** The label on the AI's lines (the agent's name on them is the chat's own, "Learning Partner"). */
 export const PARTNER_AI_LABEL = "Learning Partner AI";
@@ -72,9 +88,6 @@ export const PARTNER_AI_LABEL = "Learning Partner AI";
 /** USD for one call's tokens. */
 export const costUsd = (tokensIn: number, tokensOut: number) =>
   (tokensIn * PRICE_IN_PER_M + tokensOut * PRICE_OUT_PER_M) / 1_000_000;
-
-/** The JST calendar day (YYYY-MM-DD) of an epoch-ms time: when the daily caps reset (00:00 JST). */
-export const jstDay = (t: number) => new Date(t + 9 * 3600_000).toISOString().slice(0, 10);
 
 /** What the hub sends the main Worker (DebugSessions.partnerReply). */
 export type PartnerRequest = {

@@ -168,15 +168,77 @@ export function sinceMs(raw, fallback = STATS_SINCE_DEFAULT) {
   return ms;
 }
 
-/** "2026-11-07 20:30 JST": when an estimate runs out, as the owner reads times. */
-export const etaJst = (at) =>
-  `${new Date(at + 9 * 3_600_000).toISOString().slice(0, 16).replace("T", " ")} JST`;
+/** The zone times are printed in: LIANKI_OWNER_TZ when valid, else this machine's (UTC if unknown). */
+export function localZone(env = process.env) {
+  const valid = (z) => {
+    if (typeof z !== "string" || !z) return false;
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: z });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (valid(env.LIANKI_OWNER_TZ)) return env.LIANKI_OWNER_TZ;
+  const sys = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return valid(sys) ? sys : "UTC";
+}
+
+const NUMERIC_TZ = /^(GMT|UTC)([+\-−]|$)/;
+const tagCache = new Map();
+/** A short label for `tz` at `at` ("JST", "EST", "CET", else "UTC+8"), as lib/time-zone.ts zoneAbbr. */
+export function zoneTag(tz, at) {
+  const when = new Date(at);
+  const name = (loc) => {
+    try {
+      return (
+        new Intl.DateTimeFormat(loc, { timeZone: tz, timeZoneName: "short" })
+          .formatToParts(when)
+          .find((p) => p.type === "timeZoneName")?.value ?? ""
+      );
+    } catch {
+      return "";
+    }
+  };
+  const first = name("en-US");
+  if (!NUMERIC_TZ.test(first) || tz === "UTC") return first || "UTC";
+  const key = `${tz}|${first}`;
+  if (tagCache.has(key)) return tagCache.get(key);
+  const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let out = first.replace(/^GMT/, "UTC");
+  search: for (const a of L)
+    for (const b of L) {
+      const v = name(`en-${a}${b}`);
+      if (v && !NUMERIC_TZ.test(v)) {
+        out = v;
+        break search;
+      }
+    }
+  tagCache.set(key, out);
+  return out;
+}
+
+/** "2026-11-07 20:30 JST": a time in the machine's zone (or LIANKI_OWNER_TZ), labelled. */
+export const etaStamp = (at) => {
+  const tz = localZone();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(new Date(at));
+  const v = (t) => parts.find((p) => p.type === t)?.value;
+  return `${v("year")}-${v("month")}-${v("day")} ${v("hour")}:${v("minute")} ${zoneTag(tz, at)}`;
+};
 
 /** The hub's answer to a report, as one line for a terminal. */
 export function entryLine(res) {
   const e = res?.entry ?? {};
   const eta = e.etaAt
-    ? `, ETA ${e.etaMinAt ? `${etaJst(e.etaMinAt).slice(11, 16)}–` : ""}${etaJst(e.etaAt)}`
+    ? `, ETA ${e.etaMinAt ? `${etaStamp(e.etaMinAt).slice(11, 16)}–` : ""}${etaStamp(e.etaAt)}`
     : "";
   const kind = e.doneKind ? ` ${e.doneKind}${e.evidence ? `: ${e.evidence}` : ""}` : "";
   const lines = [`progress: ${e.id} ${e.status}${kind} (rev ${e.rev}${eta}, ${res?.readers ?? 0} watching)`];
@@ -238,7 +300,7 @@ export function formatStats(stats) {
     .join("\n");
 }
 
-/** `history`: one line per done node (JST end time, id, PRs, title), newest first. */
+/** `history`: one line per done node (end time in the machine's zone, labelled; id, PRs, title), newest first. */
 export function formatHistory(items, { agent, since, now = Date.now() } = {}) {
   const rows = (Array.isArray(items) ? items : []).filter(
     (h) => (!agent || h.agent === agent) && (since === undefined || Number(h.endedAt) >= now - since),
@@ -248,7 +310,7 @@ export function formatHistory(items, { agent, since, now = Date.now() } = {}) {
     .map((h) => {
       const prs = h.prs?.length ? `  ${h.prs.map((n) => `#${n}`).join(" ")}` : "";
       const kind = h.doneKind ? `  [${h.doneKind}${h.evidence ? `: ${h.evidence}` : ""}]` : "";
-      return `${etaJst(h.endedAt).slice(0, 16)} JST  ${h.id}${prs}  ${h.title}  (${h.agent})${kind}`;
+      return `${etaStamp(h.endedAt)}  ${h.id}${prs}  ${h.title}  (${h.agent})${kind}`;
     })
     .join("\n");
 }
@@ -259,7 +321,7 @@ export function batchLines(res) {
   const lines = results.map((r) => {
     const e = r?.entry;
     return e
-      ? `progress: ${e.id} ${e.status}${e.etaAt ? `, ETA ${etaJst(e.etaAt)}` : ""}`
+      ? `progress: ${e.id} ${e.status}${e.etaAt ? `, ETA ${etaStamp(e.etaAt)}` : ""}`
       : `progress: ${r?.status ?? "?"} ${String(r?.error ?? "failed")}`;
   });
   lines.push(`progress: change ${String(res?.changeId)} (${results.length} nodes)`);

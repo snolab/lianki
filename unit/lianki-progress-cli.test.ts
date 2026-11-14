@@ -10,6 +10,9 @@ import * as authMod from "../packages/lianki-cli/auth.mjs";
 import * as progressMod from "../packages/lianki-cli/progress.mjs";
 import { PROGRESS_KINDS, PROGRESS_STATUSES, RECEIPT_RE, CHANGE_ID_RE } from "@/lib/progress";
 
+// The times these print are in the machine's zone; pin it so the JST labels below hold anywhere.
+process.env.LIANKI_OWNER_TZ = "Asia/Tokyo";
+
 const cli: any = cliMod;
 const auth: any = authMod;
 const p: any = progressMod;
@@ -227,6 +230,27 @@ describe("progress.mjs: flags → request bodies", () => {
         },
       ]),
     ).toBe("2026-11-07 20:30 JST  /a  #3  A  (codex)  [verified: pr #3 merged]");
+  });
+
+  test("times follow the machine's zone (LIANKI_OWNER_TZ overrides); never a fixed JST", () => {
+    const at = Date.UTC(2026, 10, 7, 11, 30);
+    expect(p.localZone({ LIANKI_OWNER_TZ: "Europe/Berlin" })).toBe("Europe/Berlin");
+    expect(p.localZone({ LIANKI_OWNER_TZ: "Nowhere/Land" })).toBe(
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    );
+    try {
+      process.env.LIANKI_OWNER_TZ = "UTC";
+      expect(p.etaStamp(at)).toBe("2026-11-07 11:30 UTC");
+      process.env.LIANKI_OWNER_TZ = "America/New_York";
+      expect(p.etaStamp(at)).toBe("2026-11-07 06:30 EST");
+      process.env.LIANKI_OWNER_TZ = "Europe/Berlin";
+      expect(p.etaStamp(at)).toBe("2026-11-07 12:30 CET");
+      expect(p.zoneTag("Asia/Shanghai", at)).toMatch(/^(UTC\+8|CST)$/);
+      expect(p.zoneTag("Asia/Shanghai", at)).toBe(p.zoneTag("Asia/Shanghai", at));
+      expect(p.zoneTag("Nowhere/Land", at)).toBe("UTC");
+    } finally {
+      process.env.LIANKI_OWNER_TZ = "Asia/Tokyo";
+    }
   });
 });
 
