@@ -302,7 +302,7 @@ zone its first study day was cut in, as for study days).
 
 Owner decision 2026-11-15 (12:4x JST): every **new account** gets **US$1**
 of credits once — but only the **first 10 new accounts of each UTC day**
-(the day turns at 09:00 JST). Shipped on; no switch to flip. Added 13:0x JST:
+(the day turns at 00:00 UTC). Shipped on; no switch to flip. Added 13:0x JST:
 accounts that **already existed** when it launched get the same US$1 once,
 outside the cap.
 

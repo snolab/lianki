@@ -4,6 +4,8 @@ import {
   MIN_OFFSET_MIN,
   dayStartMs,
   endOfDayIso,
+  formatZoned,
+  zoneTag,
   deviceZone,
   localDay,
   localHour,
@@ -131,5 +133,30 @@ describe("endOfDayIso", () => {
     expect(endOfDayIso("2026-11-20", "UTC")).toBe("2026-11-20T23:59:59.000Z");
     expect(endOfDayIso("2026-07-01", "Europe/Berlin")).toBe("2026-07-01T21:59:59.000Z");
     expect(endOfDayIso("2026-01-01", "America/New_York")).toBe("2026-01-02T04:59:59.000Z");
+  });
+});
+
+describe("zoneTag / formatZoned", () => {
+  const winter = Date.parse("2026-01-15T12:00:00Z");
+  it("an English abbreviation where en-US has one, else the offset", () => {
+    expect(zoneTag("America/New_York", winter)).toBe("EST");
+    expect(zoneTag("Asia/Tokyo", winter)).toBe("UTC+9");
+    expect(zoneTag("Asia/Kolkata", winter)).toBe("UTC+5:30");
+    expect(zoneTag("UTC", winter)).toBe("UTC");
+    expect(zoneTag("Etc/UTC", winter)).toBe("UTC");
+    expect(zoneTag("Nowhere/Land", winter)).toBe("UTC");
+    expect(typeof zoneTag("Europe/Berlin")).toBe("string");
+  });
+  it("formats in the zone and labels it", () => {
+    expect(formatZoned(winter, "Asia/Tokyo", "en-US", { timeStyle: "short" })).toBe(
+      "9:00 PM UTC+9",
+    );
+    expect(
+      formatZoned("2026-01-15T12:00:00Z", "Nowhere/Land", "sv-SE", {
+        dateStyle: "short",
+        timeStyle: "short",
+      }),
+    ).toBe("2026-01-15 12:00 UTC");
+    expect(formatZoned(new Date(winter), "UTC", "en-US")).toContain("UTC");
   });
 });

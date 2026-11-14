@@ -152,3 +152,29 @@ export function endOfDayIso(day: string, tz: string): string {
   const off = zoneOffsetMin(tz, Date.parse(`${day}T12:00:00Z`));
   return new Date(Date.parse(`${day}T23:59:59Z`) - off * 60_000).toISOString();
 }
+
+/**
+ * A short tag for `tz` at `at` that needs no locale scan: the en-US name when
+ * it is a real abbreviation ("EST", "UTC"), else the offset ("UTC+9").
+ */
+export function zoneTag(tz: string, at: number | Date = Date.now()): string {
+  const zone = validZone(tz) ? tz : "UTC";
+  if (zone === "UTC" || zone === "Etc/UTC") return "UTC";
+  const v =
+    new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "short" })
+      .formatToParts(new Date(at))
+      .find((p) => p.type === "timeZoneName")?.value ?? "";
+  return v && !NUMERIC.test(v) ? v : offsetLabel(zoneOffsetMin(zone, at));
+}
+
+/** `at` written in zone `tz` with Intl `opts` in `locale`, followed by the zone's tag. */
+export function formatZoned(
+  at: number | string | Date,
+  tz: string,
+  locale?: string,
+  opts: Intl.DateTimeFormatOptions = { dateStyle: "long", timeStyle: "short" },
+): string {
+  const zone = validZone(tz) ? tz : "UTC";
+  const when = new Date(at);
+  return `${when.toLocaleString(locale, { ...opts, timeZone: zone })} ${zoneTag(zone, when)}`;
+}
