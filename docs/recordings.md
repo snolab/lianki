@@ -154,6 +154,24 @@ clip. File names are `HHMMSS-<clip id>.wav` in the viewer's zone (`tz`, the
 browser's `getTimezoneOffset()`); `transcript.txt` is one line per clip,
 `HH:MM:SS [speaker] text`.
 
+### On the preview (dev bridge)
+
+His whole-page preview server (docs/dev-whole-page.md) signs with its own
+`AUTH_SECRET`, so its copy of this route would get text `null` and audio 410
+from production's sealed rows. Owner decision 2026-11-14 21:48 JST ("走 A"):
+the key is **not** copied. Instead, on the preview (`LIANKI_DEV_WHOLE_PAGE=1`
+and `LIANKI_DEV_BRIDGE_SECRET`, which `serve` sets from `.dev-whole-page.json`
+`bridgeSecret`), the route first checks his preview session, `dev` and the
+flag as usual, then forwards the request — same method, query and body, no
+cookie, no token — to `https://lianki.com/api/my/recordings` with
+`x-lianki-dev-bridge` (`lib/recordings-bridge.ts`), and streams back the
+status, content type, content disposition and body. lianki.com accepts that
+header as the owner on this route, every method (`lib/dev-bridge-user.ts`;
+docs/secrets-and-auth.md, "Dev bridge"); a wrong value is 401. Clips recorded
+on the preview are therefore sealed by lianki.com too. Without the secret the
+route serves itself as before. lianki.com unreachable: 502
+`bridge-unreachable`.
+
 ## The page: /my/recordings
 
 `app/(app)/my/recordings/` — days newest first in the one `VirtualList`

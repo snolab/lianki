@@ -199,6 +199,9 @@ async function serve() {
     NEXT_TELEMETRY_DISABLED: "1",
     LIANKI_DEV_WHOLE_PAGE: "1",
     LIANKI_DEV_GUARD_SECRET: state.guardSecret,
+    // Outgoing only: /api/my/recordings forwards to lianki.com with it
+    // (lib/recordings-bridge.ts). Not DEV_BRIDGE_SECRET, so nothing here accepts it.
+    LIANKI_DEV_BRIDGE_SECRET: state.bridgeSecret,
     DB_BACKEND: "d1",
     // Alias `mongodb` to its throwing stub, as the deployed Worker does: the
     // dev server can never reach MongoDB (and next dev under bun cannot load
