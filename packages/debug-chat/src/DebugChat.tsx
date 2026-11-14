@@ -2777,6 +2777,7 @@ export function DebugChat({
   }, [full]);
   /** The + menu or the inbox is up: their own Escape closes them first. */
   const attachMenuNow = useRef(false);
+  const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   attachMenuNow.current = attachMenu || inboxOpen;
   // Escape leaves full screen, after the tree's and the + menu's own Escape.
   // Caught before the mic's Escape (which turns it off): leaving full screen
@@ -5375,6 +5376,7 @@ export function DebugChat({
         )}
         {open && attachMenu && (
           <AttachMenu
+            anchorRef={attachButtonRef}
             t={t}
             attach={attach && !notice}
             sel={pageSel.sel}
@@ -5545,6 +5547,7 @@ export function DebugChat({
           holds only the View group. */}
           {open && (
             <AttachButton
+              buttonRef={attachButtonRef}
               t={t}
               open={attachMenu}
               announce={attach && !notice}
