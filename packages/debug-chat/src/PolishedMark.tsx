@@ -3,9 +3,22 @@
  * (docs/dev-debug-widget.md, "Agent edits of voice messages"). Its tooltip
  * is `label` ("Polished"). With `rawText`, a tap or keyboard activation
  * opens the original in a popover without changing the message body.
+ * With `by`, the lower-right badge and the label identify the editor.
  * Legacy summary marks can still toggle their expanded raw view.
  */
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { chatExtra } from "./chat-ui-locales";
+import { agentAvatar } from "./LaneMark";
+import { LANES, laneOf } from "./voices";
+
+/** Old messages without an editor keep their original mark and label. */
+export function polishedEditor(by: string | undefined, autoName: string) {
+  const name = by?.trim();
+  if (!name) return null;
+  if (name === "auto") return { name: autoName, auto: true, lane: null };
+  const lane = laneOf({ text: name }).lane ?? laneOf({ text: `【${name}】` }).lane;
+  return { name: (lane && LANES[lane].name) || name, auto: false, lane };
+}
 
 /** A press this long on touch shows the tooltip instead of toggling. */
 export const LONG_PRESS_MS = 500;
@@ -18,13 +31,18 @@ export function PolishedMark({
   showRaw,
   onToggle,
   rawText,
+  by,
 }: {
   icon: ReactNode;
   label: string;
   showRaw: boolean;
   onToggle: () => void;
   rawText?: string;
+  by?: string;
 }) {
+  const words = chatExtra();
+  const editor = polishedEditor(by, words.polishedAuto);
+  const editorLabel = editor ? words.polishedBy.replace("{name}", editor.name) : label;
   const rawTipId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const [rawTipOpen, setRawTipOpen] = useState(false);
@@ -49,8 +67,8 @@ export function PolishedMark({
         type="button"
         data-testid="debug-chat-polished"
         data-raw={(!rawPreview && showRaw) || undefined}
-        title={label}
-        aria-label={label}
+        title={editorLabel}
+        aria-label={editorLabel}
         aria-pressed={rawPreview ? undefined : showRaw}
         aria-expanded={rawPreview ? rawTipOpen : undefined}
         aria-controls={rawPreview ? rawTipId : undefined}
@@ -88,12 +106,27 @@ export function PolishedMark({
         }}
       >
         {icon}
+        {editor && (
+          <span
+            aria-hidden
+            data-testid="debug-chat-polished-by"
+            data-editor={editor.auto ? "auto" : editor.lane ?? "agent"}
+            className="pointer-events-none absolute -right-1 -bottom-1 inline-flex size-3 items-center justify-center overflow-hidden rounded-full bg-[oklch(0.95_0.01_85)] text-[oklch(0.4_0.04_250)] ring-1 ring-[oklch(0.95_0.01_85)] dark:bg-[oklch(0.25_0.01_250)] dark:text-[oklch(0.86_0.02_250)] dark:ring-[oklch(0.25_0.01_250)]"
+          >
+            {editor.auto ? (
+              <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M19 8a8 8 0 1 0 1 7M19 3v5h-5" />
+                <path d="M10 12h4M12 10v4" />
+              </svg>
+            ) : agentAvatar({ name: editor.name, lane: editor.lane ?? undefined })}
+          </span>
+        )}
         {tip && (
           <span
             role="tooltip"
             className="pointer-events-none absolute start-1/2 bottom-full mb-1 -translate-x-1/2 whitespace-nowrap rounded px-1 fs-10 lk-halo"
           >
-            {label}
+            {editorLabel}
           </span>
         )}
       </button>
@@ -127,6 +160,7 @@ export function PolishedMark({
             color: "var(--foreground)",
           }}
         >
+          {editor && <span className="mb-1 block font-medium">{editorLabel}</span>}
           {rawText}
         </span>
       )}

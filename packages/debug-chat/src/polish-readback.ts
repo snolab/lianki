@@ -121,11 +121,17 @@ export function polishReadback(
   prev: ChatMessage | undefined,
   e: Omit<EditedEvent, "type">,
   d: {
-    reply: (text: string, meta: { id: string }, how: { pick: { kind: "clone" } }) => boolean;
+    reply: (
+      text: string,
+      meta: { id: string },
+      how: { pick: { kind: "clone" }; startAt?: number },
+    ) => boolean;
     speaker?: () => boolean;
     on?: () => boolean;
     base?: () => string | null;
     log?: (ev: Record<string, unknown>) => void;
+    /** Local time to start no earlier than, in step with his other devices (sync-speak.ts). */
+    startAt?: number;
   },
 ): boolean {
   if (!(d.on ?? polishReadbackOn)()) return false;
@@ -145,7 +151,11 @@ export function polishReadback(
     log({ ev: "polish-readback", skip: "other-tab" });
     return false;
   }
-  const queued = d.reply(text, { id: e.id }, { pick: { kind: "clone" } });
+  const queued = d.reply(
+    text,
+    { id: e.id },
+    { pick: { kind: "clone" }, ...(d.startAt !== undefined ? { startAt: d.startAt } : {}) },
+  );
   if (queued) s.read.set(e.id, text);
   log({ ev: "polish-readback", chars: text.length, queued });
   return queued;

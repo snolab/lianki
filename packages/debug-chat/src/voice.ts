@@ -146,9 +146,11 @@ export function speakerOf(meta: SpeakMeta | undefined, said: string): string {
 /**
  * How a reply reached the page: `live` = a chat frame just now (not history,
  * not a resume). `pick`: the page's own choice of voice (a polish read-back
- * in the owner's clone), over anything the line says.
+ * in the owner's clone), over anything the line says. `startAt`: the local
+ * time (ms, `now()`) its first sentence starts no earlier than, so his devices
+ * read it together (sync-speak.ts); already past, or absent: at once.
  */
-export type ReplyHow = { live?: boolean; pick?: ClonePick };
+export type ReplyHow = { live?: boolean; pick?: ClonePick; startAt?: number };
 /** Who a read-back in the owner's clone is from, for superseding: no lane cuts it. */
 export const CLONE_SPEAKER = "clone:owner";
 
@@ -464,6 +466,8 @@ type Sentence = {
   who?: string;
   /** From an interjecting line: read before the line it paused. */
   jump?: true;
+  /** Its line's first sentence: not started before this local time (ReplyHow.startAt). */
+  startAt?: number;
 };
 /** What the agent said, and when (for the echo guard). */
 type Said = { text: string; start: number; end?: number };
@@ -747,7 +751,10 @@ export function createVoice(d: {
     if (current || preroll !== null || pauses.size || !canSpeak()) return;
     const head = queue[0];
     if (!head) return;
-    const wait = d.preroll?.() ?? 0;
+    // In step with his other devices (sync-speak.ts): the pre-roll runs inside that wait.
+    const sync = head.startAt !== undefined ? head.startAt - now() : 0;
+    const wait = Math.max(d.preroll?.() ?? 0, sync);
+    if (sync > 0) log({ ev: "voice-sync", wait: Math.round(sync) });
     if (wait > 0) {
       // A stop or an interruption meanwhile: this finds nothing to say, or a pause.
       preroll = setTimer(() => {
@@ -1105,6 +1112,9 @@ export function createVoice(d: {
           : toSentences(text, lang, voice, pick?.kind === "eleven" ? undefined : pick)
       ).map((s) => ({ ...s, ...idOf, ...(mode === "interject" ? { jump: true as const } : {}) }));
       if (!add.length) return none();
+      const startAt = how?.startAt;
+      if (typeof startAt === "number" && Number.isFinite(startAt) && startAt > t)
+        add[0] = { ...add[0]!, startAt };
       if (mode === "interject" && queue.length) {
         // Interject: the sentence being read pauses where it got to (kept at
         // the head), unless it is an interjection itself; this line goes in

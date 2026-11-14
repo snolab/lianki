@@ -268,6 +268,14 @@ import {
 import { mergeCheck, polishCheck, summaryCheck } from "../../../packages/debug-chat/src/polish";
 import { MAX_UTTERANCE_MS } from "../../../packages/debug-chat/src/mic";
 import {
+  SYNC_LEAD_MS,
+  SYNC_SPEAK_FLAG,
+  clockPong,
+  speakAtFor,
+  syncDevices,
+  syncWanted,
+} from "../../../packages/debug-chat/src/sync-speak";
+import {
   type MergeCandidate,
   UNMERGE_BY,
   lastPartAt,
@@ -810,6 +818,9 @@ export class DebugHub {
   private mergeFlag?: { at: number; on: boolean };
   /** The last read of TWO_MIC_FLAG and TWO_MIC_WINDOW_KEY (AI_FLAG_CACHE_MS). */
   private twoMicConf?: { at: number; on: boolean; windowMs: number };
+  /** The last read of SYNC_SPEAK_FLAG and voice.syncLeadMs (AUTO_POLISH_CONF_MS); see speakAt. */
+  private syncConf?: { at: number; on: boolean; leadMs: number };
+  private syncReading?: Promise<void>;
   /** The last read of ECHO_FLAG and the voice.echo* config (AI_FLAG_CACHE_MS). */
   private echoConf?: { at: number; on: boolean; conf: EchoConf };
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
@@ -1067,8 +1078,11 @@ export class DebugHub {
     if (seq > CHAT_HISTORY) await this.ctx.storage.delete(msgKey(m.thread, seq - CHAT_HISTORY));
     if (m.from === "agent") this.agentAt.set(m.thread, Math.max(m.at, this.now()));
     const out = { type: "chat", message: m };
+    // His devices read an agent line together (sync-speak.ts): pages only, never stored.
+    const speakAt = m.from === "agent" ? this.speakAt(m.thread) : undefined;
+    const toPage = speakAt === undefined ? out : { ...out, speakAt };
     for (const { ws, a } of this.pages(m.thread))
-      if (!only || (a.id && only.includes(a.id))) send(ws, out);
+      if (!only || (a.id && only.includes(a.id))) send(ws, toPage);
     // Listeners by node: that node's, and its ancestors' as observers (the root's sees all).
     for (const { ws, a } of this.listeners()) {
       const route = routeTo(a.node, m.to);
@@ -1651,7 +1665,10 @@ export class DebugHub {
 
   /** An edit of an owner's line: its pages, and the listeners by the line's node. */
   private tellEdit(out: EditedEvent, to: string | undefined, sender?: Socket) {
-    for (const { ws: p } of this.pages(OWNER_THREAD)) send(p, out);
+    // A polish may be read back on his devices: together (sync-speak.ts), pages only.
+    const speakAt = this.speakAt(OWNER_THREAD);
+    const toPage = speakAt === undefined ? out : { ...out, speakAt };
+    for (const { ws: p } of this.pages(OWNER_THREAD)) send(p, toPage);
     let told = false;
     for (const { ws: l, a } of this.listeners()) {
       const route = routeTo(a.node, to);
@@ -2576,6 +2593,43 @@ export class DebugHub {
     return v !== false;
   }
 
+  /**
+   * Synchronized read-aloud (packages/debug-chat/src/sync-speak.ts): the hub
+   * time his pages start reading a line going out now, or undefined — another
+   * thread, fewer than two of his devices connected, flag voice.sync-speak not
+   * exactly true, or not read yet. Synchronous: it uses the last read of the
+   * flag and voice.syncLeadMs and refreshes them in the background, so no line
+   * waits for the main Worker.
+   */
+  private speakAt(thread: string): number | undefined {
+    if (thread !== OWNER_THREAD) return undefined;
+    const devices = syncDevices(this.pages(OWNER_THREAD).map((p) => p.a));
+    if (devices < 2) return undefined;
+    const t = this.now();
+    const conf = this.syncConf;
+    if (!conf || t - conf.at >= AUTO_POLISH_CONF_MS) void this.syncRead();
+    if (!conf) return undefined;
+    return speakAtFor({ on: conf.on, devices, hubNow: t, leadMs: conf.leadMs });
+  }
+
+  /** Read SYNC_SPEAK_FLAG and voice.syncLeadMs once (one read at a time). Never throws. */
+  private syncRead(): Promise<void> {
+    if (!this.sessions?.flag) return Promise.resolve();
+    this.syncReading ??= (async () => {
+      let on = false;
+      try {
+        on = (await this.flagValue(SYNC_SPEAK_FLAG)) === true;
+      } catch {}
+      let leadMs = SYNC_LEAD_MS;
+      try {
+        const v = await this.sessions?.config?.("voice.syncLeadMs");
+        if (typeof v === "number" && v >= 0) leadMs = v;
+      } catch {}
+      this.syncConf = { at: this.now(), on, leadMs };
+    })().finally(() => (this.syncReading = undefined));
+    return this.syncReading;
+  }
+
   /** Run read-check-write with no other event in between (the DO's own gate, where there is one). */
   private exclusive<T>(f: () => Promise<T>): Promise<T> {
     return this.ctx.blockConcurrencyWhile ? this.ctx.blockConcurrencyWhile(f) : f();
@@ -2801,6 +2855,13 @@ export class DebugHub {
       // Now that its device is known: back in the grants its earlier page id had.
       await this.rejoin(ws);
     }
+    // A second device is here: the read-aloud sync settings, read before its first line.
+    if (
+      thread === OWNER_THREAD &&
+      !this.syncConf &&
+      syncWanted(syncDevices(this.pages(OWNER_THREAD).map((p) => p.a)))
+    )
+      void this.syncRead();
     // The device that approved an eval grant is back: renew what is due on it
     // (never from a chat-only page: it carries no session).
     const joined = att(ws);
@@ -3350,6 +3411,9 @@ export class DebugHub {
   }
 
   private fromPage(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
+    // A clock ping (sync-speak.ts): the hub's time, to any page; nothing else changes.
+    const pong = clockPong(raw, this.now());
+    if (pong) return send(ws, pong);
     // An embedded page (another site) may only chat and say where it is:
     // no answers, no pairings, no results, no clips, no page errors.
     // The owner's box may also amend voice lines and tap ask cards, and only

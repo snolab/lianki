@@ -299,6 +299,38 @@ export const CONFIG = {
     description:
       "润色后用你的克隆声音读一遍（开关 voice.polish-readback）：每一句等 Mac 上的克隆声音服务器最多多久（毫秒）。一句通常要 5–10 秒生成；超过这个时间就安静跳过这一句，不换别的声音读。",
   }),
+  // Synchronized read-aloud across his devices (packages/debug-chat/src/sync-speak.ts;
+  // docs/li-sound-hub.md, "Synchronized read-aloud"; flag voice.sync-speak).
+  "voice.syncLeadMs": int({
+    default: 300,
+    min: 0,
+    max: 3_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "多台设备同时朗读（开关 voice.sync-speak）：Li 的一句话发出时，约定在多少毫秒之后各台设备一起开始读。要比慢的那台设备收到消息所需的时间长；越长越齐，但每句开读也晚这么多。",
+  }),
+  "voice.syncMaxWaitMs": int({
+    default: 1_500,
+    min: 0,
+    max: 10_000,
+    unit: "ms",
+    group: "voice",
+    audience: "public",
+    description:
+      "多台设备同时朗读（开关 voice.sync-speak）：一台设备为了和别的设备对齐，最多等多少毫秒才开始读。时钟估计出错时也不会等得比这更久。",
+  }),
+  "voice.syncSkewMs": int({
+    default: 200,
+    min: 0,
+    max: 2_000,
+    unit: "ms",
+    group: "voice",
+    audience: "public",
+    description:
+      "多台设备同时朗读（开关 voice.sync-speak）：可以接受的开读时间差（毫秒）。某台设备比约定时刻晚了超过这么多才开读，就记一条日志（voice-sync late），方便调大 voice.syncLeadMs。",
+  }),
   // Automatic polish of the owner's spoken lines (lib/chat-polish.ts; the hub,
   // workers/push/src/debug.ts, "Automatic polish"; flag voice.auto-polish).
   "voice.autoPolishMinChars": int({
