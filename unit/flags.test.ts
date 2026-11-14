@@ -51,6 +51,7 @@ describe("registry", () => {
     // voiceprint in his account, tap card 2026-11-10 23:31 JST, audience owner + dev;
     // the cracked "↓ back" slips, asked 2026-11-10 22:59 JST, audience owner + dev;
     // a new version applying itself on a clean page, asked 2026-11-11 19:33 JST;
+    // mic recordings in his account, tap card 2026-11-14 ~03:35 JST, audience owner + dev;
     // the login-streak credits, which grant and never charge, 2026-11-14).
     const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
     expect(on).toEqual([
@@ -58,8 +59,10 @@ describe("registry", () => {
       "today.goal",
       "words.onboarding",
       "stt.voiceprint-cloud",
+      "voice.recordings",
       "stt.polish",
       "voice.auto-polish",
+      "stt.two-mic-merge",
       "library.catalogue",
       "books.mine",
       "voice.polish-readback",

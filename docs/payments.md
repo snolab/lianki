@@ -254,7 +254,7 @@ zone its first study day was cut in, as for study days).
 | piece                                            | where                                                                                              |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
 | rules (pure): the cycle, the miss rule, refIds   | `lib/payments/login-streak.ts`                                                                     |
-| state + grant over D1, the wallet's view         | `lib/payments/login-streak-store.ts`; table `login_streak` (migration 0074)                        |
+| state + grant over D1, the wallet's view         | `lib/payments/login-streak-store.ts`; table `login_streak` (migration 0076)                        |
 | hook: the day's first qualifying action          | `recordStudySafe` in `lib/study-days.ts` (both the /words review and /read grade routes call it)   |
 | shown                                            | the wallet card on /membership: one quiet line under the balance, and the history row label         |
 | strings                                          | `wallet-card.content.ts` `streakToday` / `streakAhead` / `streakDay` (16 locales, context lines)    |

@@ -45,6 +45,82 @@ non-components import (`lib/*`, content dictionaries, intlayer rebuilds, route
 handlers, `next.config.mjs`) is a full page reload. A `next.config.mjs` change
 or a guard (`scripts/dev/whole-page*.ts`) change needs a restart.
 
+### Following main
+
+Owner request, 2026-11-14 01:10 JST: the preview must catch up with `main`
+by itself whenever main moves, and resolve a conflicting merge by itself.
+`scripts/dev/preview-follow.ts` does it, as a watcher under oxmgr:
+
+```bash
+oxmgr start "bun ~/ws/snolab/lianki/tree/main/scripts/dev/preview-follow.ts --cwd ~/ws/snolab/lianki/tree/preview --branch preview/live2 --port 3100" --name lianki-preview-follow --max-restarts 3
+bun scripts/dev/preview-follow.ts once --branch preview/live2   # one catch-up by hand (same lock)
+```
+
+`--branch` is the branch tree/preview is on and `serve --follow` takes
+(`preview/live2` today); `--port` is serve's `--port`, for `publish`.
+
+**Events, no polling.** Two sources, each only a hint: a run always asks git
+itself (`git fetch origin main`), so a wrong or forged hint can cause at most
+a no-op run.
+
+1. **Git**: `.husky/reference-transaction`. Every worktree shares tree/main's
+   `core.hooksPath` (`.husky/_`), so whenever any fetch on the Mac moves
+   `refs/remotes/origin/main`, the hook POSTs `/kick?sha=…` to the watcher's
+   unix socket (`~/.cache/lianki/preview-follow.sock`, the owner's own file)
+   in the background and returns; exit 0 always, so it never blocks or
+   aborts a git command. husky 9 writes wrappers in `.husky/_` only for its
+   fixed list, which lacks reference-transaction; the watcher adds that
+   one-line wrapper when it starts. The hook body itself is read from
+   tree/main, so it works once tree/main has this commit.
+2. **GitHub merges nobody fetched here**: lianki-push's `/api/version/ws`,
+   the same public socket the pages' auto-update pill holds. Each new build
+   serving on lianki.com (`{"build": …}`) means main moved, so it kicks a
+   run. No secret, nothing new on the Worker; the first message after a
+   (re)connect kicks once too, which catches up after the watcher was down.
+   A closed socket reconnects with backoff (1 s doubling to 5 min). It lags
+   main by CI + deploy and is silent while the Full QA hold stops deploys;
+   the git source covers those whenever anyone on the Mac fetches. Rejected:
+   a new workflow step POSTing "main moved" to the hub (a new secret and a
+   new owner-only channel, for a few minutes less lag).
+
+**A run** (`followOnce`, `scripts/dev/preview-follow-lib.ts`), one at a time
+(an in-process queue: events during a run make exactly one more run; and a
+lock file, `~/.cache/lianki/preview-follow.lock`, shared with `once`):
+
+1. Skip, logged, unless tree/preview is on `--branch`, has no merge, rebase
+   or cherry-pick in progress and no uncommitted tracked change.
+2. `git fetch origin main`; up to date if origin/main is already in the branch.
+3. `git merge-tree --write-tree` predicts conflicts without touching files.
+   Clean: `git merge --no-ff` with a "Merge origin/main (sha) into …" message,
+   `bun install --frozen-lockfile` if `bun.lock`/`package.json` changed, then
+   `whole-page.ts publish`.
+4. Conflicts: type errors the branch already has are recorded first (`bun
+run typecheck`, positions stripped, `.next/` ignored). Then the merge, and
+   a headless `claude -p` in tree/preview with `--permission-mode acceptEdits`
+   and only Read/Edit/Write/Grep/Glob, `bun run typecheck` and read-only git
+   allowed (no add, commit, reset, checkout). Its instructions
+   (`resolverPrompt`): edit only the conflicted files and regions, keep both
+   sides' intent, never drop a feature, stop if unsure. 20 min at most.
+5. The checks after it: still on the branch, HEAD not moved, the merge still
+   open; no file edited outside the conflicted ones and no new untracked file;
+   no conflict marker left (`git grep`); `git add` of those files; no type
+   error that was not there before. Then `git commit` (hooks run, never
+   `--no-verify`) and `publish`.
+6. Any check failing: `git merge --abort` (or `reset --keep` back, if the
+   merge was concluded behind its back), edits the resolver left outside the
+   merge are restored (the tree was clean at the start), and one line goes to
+   the owner's chat with `lianki-dev say "【小可】…"`, once per main commit:
+   「【小可】预览版跟进 main（abc1234）合并冲突，自动解决失败，已撤销合并：files（reason）」.
+   The branch is exactly where it was; the next main move tries again.
+
+Never `push`, never `--force`, never `reset --hard`, never another branch.
+`serve`'s publish now also runs `bun install --frozen-lockfile` in
+tree/preview-serve when the fast-forward changes `bun.lock`
+(`needsBunInstall`; restart `serve` once to pick that up). Log: one JSON line
+per event and outcome in `~/.cache/lianki/preview-follow.log` (and oxmgr's
+log). Tests: `unit/preview-follow.test.ts` (events, the hook, the flow on a
+real temp repo with a fake resolver, the queue).
+
 ### Reload storms (Turbopack restart loop)
 
 Owner, 2026-11-03 12:44 JST: "开发服务器经常暴风刷新". After a publish

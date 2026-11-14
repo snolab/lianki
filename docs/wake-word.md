@@ -51,6 +51,12 @@ mic → Silero VAD (already on, 32 ms frames) → utterance Float32Array (onSpee
                                     └ hit ─▶ [speaker ok?] ─▶ cut audio after the keyword ─▶ upload rest; → active
 ```
 
+**With mic recordings on** (flag `voice.recordings`, owner 2026-11-14 03:38 JST,
+"包括被动模式"; [recordings.md](recordings.md)) a "no hit" utterance is no
+longer dropped on the phone: it goes to his own Mac's local STT for its text
+(never the cloud, never a public speech server) and, sealed, to his own
+account. It still never reaches the chat.
+
 - **Hook:** `createMic` gets an optional `gate(audio) → {pass, from?}`, called
   in `onSpeechEnd` before `d.upload`. In passive mode `d.stream()` returns
   undefined and partials are off, so nothing is streamed or uploaded while

@@ -24,6 +24,7 @@
 import { z } from "zod";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
 import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
+import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
 
 export type ConfigAudience = "server" | "public";
 
@@ -161,6 +162,18 @@ export const CONFIG = {
     description:
       "等你处理的事（状态 waiting-owner 或写了 needs）到时间后先提醒你一次，之后隔多少天再提醒：逗号分隔的天数，用完后一直按最后一个间隔（默认 1,3,7 = 一天、三天、七天，之后每周）。",
   },
+  // The chat's last lines kept on the device for an instant first paint
+  // (lib/chat-cache.ts; docs/cold-start.md, "The chat at once"). Read by the root layout.
+  "chat.cacheLines": int({
+    default: 40,
+    min: 0,
+    max: 200,
+    unit: "lines",
+    group: "chat",
+    audience: "server",
+    description:
+      "打开页面时聊天立刻显示的最近几条（存在这台设备上，只给当前登录的账号看，退出登录就清掉；之后用服务器上的记录替换）。0 = 不在设备上保存，聊天等连上后才出现。",
+  }),
   // Read by the progress hub too; docs/state-tree.md, "Receipts".
   "chat.etaAckMin": int({
     default: 5,
@@ -213,6 +226,18 @@ export const CONFIG = {
     audience: "server",
     description:
       "任务标成「完成但未验证」时，自动建一个「verify: <名字>」子任务交给同一条线，给它多少分钟的预计时间。",
+  }),
+  // Two mics, one line (flag stt.two-mic-merge; docs/dev-debug-widget.md,
+  // "Two mics, one line"): read by the debug hub over DebugSessions.config.
+  "chat.twoMicWindowMs": int({
+    default: TWO_MIC_WINDOW_MS,
+    min: 0,
+    max: TWO_MIC_WINDOW_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "两个麦克风同时开着（比如 Windows 和 Mac）时，同一句话会各发一条：另一台设备在这么多毫秒内发来几乎一样的语音消息，就当成同一句，只留一条（留声纹分数更高、或更完整的那条文字）。默认 4000 = 4 秒；0 = 不合并。开关在 /dev/flags 的 stt.two-mic-merge。",
   }),
   // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts;
   // docs/li-sound-hub.md, "Pronunciation table"): handed to the chat by the root layout.
@@ -355,6 +380,18 @@ export const CONFIG = {
   },
   // One passkey approval covers every voiceprint op for this long (owner tap card
   // 2026-11-11 01:28 JST; docs/local-stt.md, "One approval for ten minutes").
+  // Mic recordings in the account (docs/recordings.md; owner tap card 2026-11-14
+  // ~03:35 JST): the daily sweep (worker.ts `scheduled`) deletes clips older than this.
+  "recordings.retentionDays": int({
+    default: 90,
+    min: 1,
+    max: 3650,
+    unit: "days",
+    group: "voice",
+    audience: "server",
+    description:
+      "麦克风录音（/my/recordings）保留多少天：每天一次的清理会删掉比这更早录的片段（音频和文字一起删）。默认 90 天。改短后，下一次每日清理就会删掉超出的部分，删了找不回来；想留的先下载到 Mac。",
+  }),
   "voiceprint.passkeyWindowMs": int({
     default: 600_000,
     min: 0,

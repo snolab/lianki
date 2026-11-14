@@ -26,7 +26,13 @@ export function OwnerBoots({
   polishReadback,
   box = null,
   autoUpdate = false,
+  account = null,
+  cacheLines = 0,
 }: {
+  /** The signed-in account's id (null: a guest): keys the chat's device copy (lib/chat-cache.ts). */
+  account?: string | null;
+  /** Config `chat.cacheLines`: the chat's last lines kept on the device; 0 = none. */
+  cacheLines?: number;
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic. */
   talkOver?: boolean;
   /** Flag `voice.polish-readback` + dev: his polished voice lines read back in his cloned voice. */
@@ -72,6 +78,8 @@ export function OwnerBoots({
         talkOver={talkOver}
         polishReadback={polishReadback}
         box={box}
+        account={account}
+        cacheLines={cacheLines}
       />
     </>
   );

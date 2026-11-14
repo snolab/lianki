@@ -111,6 +111,61 @@ Measuring production TTFB: `curl` from Tokyo, one fresh connection per
 request, 10 rounds of `/robots.txt` (a middleware redirect), `/en`,
 `/home`, `/sign-in` and the refused `POST /api/x`.
 
+## The chat at once (2026-11-14)
+
+Owner, 2026-11-14 ~01:00 JST: the page paints fast, but the Learning Partner
+appears about 3 s later. The chat rendered only once the hub's socket had
+opened (`setChat(true)` in `onopen`), and only then fetched its code
+(`React.lazy`): page → hydrate → DebugEval's chunk → socket open → the chat's
+chunk → render → history.
+
+What changed:
+
+- **The last lines on the device.** `lib/chat-cache.ts`: the newest
+  `chat.cacheLines` (config, default 40; 0 = off) lines of the signed-in
+  account's thread in localStorage (`lk:chat-cache`), written once the hub's
+  history is in. On a page load DebugEval reads them in its first render and
+  shows the chat at once, marked `data-cached` (status still "reconnecting…")
+  until the hub's history replaces them: the hub wins, deduped by id
+  (`reconcileHistory`). Isolation: one entry per device, keyed by the account
+  id the server rendered the page for (`account`, root layout); a page for
+  another account, or with no session, never shows it and drops it; sign-out
+  drops it and freezes writes until the page is replaced (`lib/sign-out.ts`,
+  `freezeChatCache`); an account change under a mounted chat starts it over
+  (`lib/use-chat-cache.ts`). Each line passes an allowlist (`cacheLine`)
+  that keeps nothing docs/chat-history.md says is never kept (page context,
+  screen text, raw STT, parts, timings, speaker tags, page labels, avatars,
+  emails, attachment ids). Not on a box (no session there).
+- **The chat's chunk prefetched.** `DebugEvalLazy.tsx` schedules a one-shot
+  `import()` of the module React.lazy loads (`lib/chat-host-loader.ts`) in
+  idle time right after hydration (`requestIdleCallback`, else 200 ms), beside
+  DebugEval's own chunk, only for a signed-in viewer whose chat is wanted
+  (partner open, or debug mode: `lib/chat-prefetch.ts`), never a guest.
+
+**Measured** with `scripts/qa/measure-chat-visible.mjs`: the local OpenNext
+build under `wrangler dev` (`qa:all --prepare`), a throwaway account in debug
+mode, iPhone viewport, 4× CPU, and a stand-in hub in the page that opens
+600 ms after it is made and sends the history 300 ms later (lianki-push does
+not run locally). The first load fills the device's copy; the next is
+measured. 10–15 runs each, P5/P50/P95 ms from navigation; the Mac was busy
+(load 8–15), so compare before/after only.
+
+| case                          | before: FCP → chat | after: FCP → chat | after: chat / hub's lines |
+| ----------------------------- | ------------------ | ----------------- | ------------------------- |
+| warm HTTP cache, no throttle  | 1135/1152/1161     | **251/527/545**   | 624 / 1216                |
+| fast 4G (warm)                | 1101/1138/1157     | **491/522/540**   | 708 / 1292                |
+| fast 4G, cold HTTP cache      | 1100/1110/1119     | **481/489/512**   | 837 / 1419                |
+| fast 4G, cold, no device copy | 1100/1110/1119     | 1060/1097/1155    | 1442 / 1443               |
+
+- The device copy takes **~600 ms** off "chat visible" here; on production the
+  saving is the whole socket open plus the history (the 3 s he saw), since the
+  copy no longer waits for either.
+- The prefetch alone (no copy yet: first visit on a device) saved ≈ 15 ms in
+  these runs: locally the chat's chunk arrives well within the socket's
+  600 ms. It matters when the network is slower than the hub.
+- What is left before the chat paints: DebugEval's own chunk after hydration
+  and the first render of DebugChat (≈ 250–300 ms at 4× CPU).
+
 ## What is left
 
 - **App shell from the cache** (design note below).

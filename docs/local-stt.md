@@ -629,6 +629,9 @@ touches `~/lianki-voice-clips`.
 
 ### Voiceprint in your account
 
+(His voice-clone reference, his voice as audio for synthesis, is kept in the
+account separately and more strictly: [voice-clone.md](voice-clone.md).)
+
 The owner decided on 2026-11-10 (tap card, 23:31 JST): keep his voiceprint's
 **features** in Cloudflare under his own account as well, so a new Mac can
 get it back; then (23:33, 23:35 JST) the enrolment recordings too, in his My

@@ -479,6 +479,42 @@ const dictionary = {
       mr: "तुमच्या उघड्या पानांवर कोणताही कोड चालवते, मंजुरीसाठी टॅप न करता. फक्त साइट मालकांसाठी, जास्तीत जास्त 30 दिवस. ज्याच्याकडे टोकन आहे तो त्या पानांवर तुमच्या नावाने काम करतो.",
       ko: "열려 있는 내 페이지에서 승인 탭 없이 어떤 코드든 실행합니다. 사이트 소유자만, 최대 30일. 토큰을 가진 사람은 그 페이지에서 나로서 동작합니다.",
     }),
+    scopeRecordingsRead: t({
+      en: "Read your mic recordings",
+      zh: "读取你的麦克风录音",
+      hi: "आपकी माइक रिकॉर्डिंग पढ़ना",
+      es: "Leer tus grabaciones del micrófono",
+      fr: "Lire vos enregistrements du micro",
+      ar: "قراءة تسجيلات الميكروفون الخاصة بك",
+      bn: "আপনার মাইকের রেকর্ডিং পড়া",
+      pt: "Ler suas gravações do microfone",
+      ru: "Читать ваши записи с микрофона",
+      ur: "آپ کی مائیک ریکارڈنگز پڑھنا",
+      id: "Membaca rekaman mikrofon Anda",
+      de: "Deine Mikrofonaufnahmen lesen",
+      ja: "マイクの録音を読み取る",
+      sw: "Kusoma rekodi za maikrofoni yako",
+      mr: "तुमची माइक रेकॉर्डिंग वाचणे",
+      ko: "내 마이크 녹음 읽기",
+    }),
+    scopeRecordingsReadHint: t({
+      en: "Download your kept mic recordings and their transcripts, for example to your computer. It can never record, change or delete anything. Site owners only, 30 days at most.",
+      zh: "下载你保存的麦克风录音和文字，例如下载到你的电脑。它永远不能录音、修改或删除任何内容。仅限站点所有者，最长 30 天。",
+      hi: "अपनी सहेजी गई माइक रिकॉर्डिंग और उनके लिखित पाठ डाउनलोड करना, जैसे अपने कंप्यूटर पर। यह कभी कुछ रिकॉर्ड, बदल या मिटा नहीं सकता। सिर्फ़ साइट मालिकों के लिए, ज़्यादा से ज़्यादा 30 दिन।",
+      es: "Descargar tus grabaciones del micrófono guardadas y sus transcripciones, por ejemplo a tu ordenador. Nunca puede grabar, cambiar ni borrar nada. Solo para propietarios del sitio, 30 días como máximo.",
+      fr: "Télécharger vos enregistrements du micro conservés et leurs transcriptions, par exemple sur votre ordinateur. Il ne peut jamais enregistrer, modifier ni supprimer quoi que ce soit. Réservé aux propriétaires du site, 30 jours au plus.",
+      ar: "تنزيل تسجيلات الميكروفون المحفوظة ونصوصها، مثلًا إلى حاسوبك. لا يمكنه أبدًا أن يسجّل أو يغيّر أو يحذف أي شيء. لمالكي الموقع فقط، 30 يومًا على الأكثر.",
+      bn: "আপনার রাখা মাইকের রেকর্ডিং আর তাদের লেখা নামানো, যেমন আপনার কম্পিউটারে। এটি কখনো কিছু রেকর্ড, বদল বা মুছতে পারে না। শুধু সাইটের মালিকদের জন্য, সর্বোচ্চ ৩০ দিন।",
+      pt: "Baixar suas gravações do microfone guardadas e suas transcrições, por exemplo para o seu computador. Nunca pode gravar, alterar nem apagar nada. Só para proprietários do site, no máximo 30 dias.",
+      ru: "Скачивать сохранённые записи с микрофона и их расшифровки, например на компьютер. Он никогда не может ничего записывать, менять или удалять. Только для владельцев сайта, не больше 30 дней.",
+      ur: "اپنی محفوظ مائیک ریکارڈنگز اور ان کی تحریر ڈاؤن لوڈ کرنا، مثلاً اپنے کمپیوٹر پر۔ یہ کبھی کچھ ریکارڈ، تبدیل یا حذف نہیں کر سکتا۔ صرف سائٹ کے مالکان کے لیے، زیادہ سے زیادہ 30 دن۔",
+      id: "Mengunduh rekaman mikrofon yang disimpan beserta transkripnya, misalnya ke komputer Anda. Token ini tidak pernah bisa merekam, mengubah, atau menghapus apa pun. Hanya untuk pemilik situs, paling lama 30 hari.",
+      de: "Deine gespeicherten Mikrofonaufnahmen und ihre Transkripte herunterladen, etwa auf deinen Computer. Es kann nie etwas aufnehmen, ändern oder löschen. Nur für Website-Inhaber, höchstens 30 Tage.",
+      ja: "保存したマイクの録音と文字起こしを、たとえばパソコンにダウンロードします。録音・変更・削除は決してできません。サイトのオーナーのみ、最長 30 日。",
+      sw: "Kupakua rekodi za maikrofoni ulizohifadhi na maandishi yake, kwa mfano kwenye kompyuta yako. Haiwezi kamwe kurekodi, kubadilisha au kufuta chochote. Kwa wamiliki wa tovuti pekee, siku 30 zaidi.",
+      mr: "तुमची जतन केलेली माइक रेकॉर्डिंग आणि त्यांचा मजकूर डाउनलोड करणे, उदा. तुमच्या संगणकावर. ते कधीही काहीही रेकॉर्ड, बदल किंवा हटवू शकत नाही. फक्त साइट मालकांसाठी, जास्तीत जास्त 30 दिवस.",
+      ko: "보관된 내 마이크 녹음과 받아쓴 글을 예를 들어 내 컴퓨터로 내려받습니다. 녹음하거나 바꾸거나 지우는 일은 절대 할 수 없습니다. 사이트 소유자만, 최대 30일.",
+    }),
     neverOwner: t({
       en: "A token can never pair a device, approve anything, or reach another account's chat.",
       zh: "令牌永远不能配对设备、批准任何操作，也不能访问其他账户的聊天。",
@@ -985,6 +1021,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Checkbox label, one permission of an API token, shown only to the site owner in Settings → API tokens: the token may run any program code on the owner's open web pages. Short verb phrase; 'pages' means his open browser pages of this site.",
   scopeEvalHint:
     "Small text under the 'Run code on your pages' permission checkbox, shown only to the site owner: the token runs any code on his open pages without him tapping to approve; only site owners get it, it lasts 30 days at most, and whoever holds the token acts as him on those pages. Three short sentences, plain and serious, a warning.",
+  scopeRecordingsRead:
+    "Checkbox label, one permission of an API token, shown only to the site owner in Settings → API tokens: the token may read (download) the user's own kept microphone recordings, the audio and its transcripts. Short verb phrase; 'mic' is the microphone.",
+  scopeRecordingsReadHint:
+    "Small text under the 'Read your mic recordings' permission checkbox, shown only to the site owner: the token downloads his kept microphone recordings and their transcripts (for example to his computer); it can never record, change or delete anything; only site owners get it, and it lasts 30 days at most. Three short sentences, plain and factual.",
   neverOwner:
     "Note under the permission checkboxes, shown instead of the usual note to the site owner, who can give the 'run code' permission: no token can ever pair (connect) a device, approve anything, or reach another account's chat. One sentence, factual. Same as the usual note without 'run code'.",
   expiry:

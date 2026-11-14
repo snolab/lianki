@@ -156,9 +156,23 @@ export const FLAGS = {
     default: true,
     audience: "owner",
   },
+  "voice.clone": {
+    description:
+      "用你自己的声音朗读：把一段你的声音样本（一段不超过 30 秒的录音和它的文字）加密存进你的 Lianki 账号，换一台 Mac 也能用你的声音合成语音。存入、替换、删除每次都要过一次 Face ID / Touch ID（不走十分钟免验证窗口）；只有你的账号能读，随时可删。只对有 dev 权限的账号开放。关闭（默认）= 账号里不存声音样本，/api/my/voice-clone-ref 不存在（404），已存的样本留着但读不到。",
+    default: false,
+    audience: "owner",
+    group: "stt",
+  },
+  "voice.recordings": {
+    description:
+      "麦克风录音存到你的账号（/my/recordings，docs/recordings.md）：在 Lianki 里开着麦克风时，每一句话（主动和被动模式都算，发不发到聊天都算）的录音和它已有的文字（Mac 本机识别的；Mac 不在时是聊天用的云端结果）加密存进你的账号，第二天也能回听、按天下载到 Mac 上重新识别。会议里别人的声音也会被录下；只有你的账号能读。服务器从不替录音做识别。默认保留 90 天（/dev/config 的 recordings.retentionDays），可以按句或按天删除。只对有 dev 权限的账号开放。关闭 = 不再上传新的录音，/api/my/recordings 和 /my/recordings 都不存在（404）；已存的录音留着但读不到，到期照样清理。",
+    default: true,
+    audience: "owner",
+    group: "stt",
+  },
   "stt.polish": {
     description:
-      "语音消息的自动润色：打开（默认）时，助手可以按上下文（最近的消息和助手的回复、当前页面、屏幕上的词、选中的文字）改你语音消息里的错字、标点、被截断的词和漏掉的小词（的、了、在、里这类），不改原意，最近 5 条语音都能改；原文一直保留，点 ✨ 可看。关闭 = 助手不能再改你的语音消息，聊天里只留识别原文。",
+      "语音消息的自动润色：打开（默认）时，助手可以按上下文（最近的消息和助手的回复、当前页面、屏幕上的词、选中的文字）改你语音消息里的错字、标点、被截断的词和漏掉的小词（的、了、在、里这类），不改原意，最近 15 条语音都能改；原文一直保留，点 ✨ 可看。关闭 = 助手不能再改你的语音消息，聊天里只留识别原文。",
     default: true,
     audience: "owner",
   },
@@ -173,6 +187,13 @@ export const FLAGS = {
     description:
       "连续语音合并：打开后，你接着说的话如果明显是上一句的延续，会并入你刚发的那条语音消息，而不是多出一个气泡；助手收到的是完整的一句，等你说完后再按上下文润色一次整段。只并你自己刚发的语音、中间没有任何人说话、没有问答卡片；语音口令不会被合并。合并后的消息有 ✨ 和撤销按钮，撤销可拆回原来的几条。关闭（默认）= 照旧：每段语音各发一条。",
     default: false,
+    audience: "owner",
+  },
+  // Owner, 2026-11-14 02:15 JST: the mic open on two devices doubled every sentence.
+  "stt.two-mic-merge": {
+    description:
+      "两个麦克风合成一条：你在两台设备（比如 Windows 和 Mac）上同时开着麦克风时，同一句话两边各识别一次。打开（默认）时，另一台设备几秒内（/dev/config 的 chat.twoMicWindowMs，默认 4 秒）发来几乎一样的语音消息，就当成同一句，只留一条：声纹认出是你的那条优先，其次声纹分数高的，再其次更完整的那条文字；声纹说是别人的话不会和你的合并，打字的消息从不合并。关闭 = 照旧：每台设备各发一条。",
+    default: true,
     audience: "owner",
   },
   // Lianki's speech servers for other accounts (docs/local-stt.md, "Lianki's speech

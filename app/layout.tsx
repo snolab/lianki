@@ -34,15 +34,21 @@ import { ExternalLinkGuard, type ExternalLinkStrings } from "./components/Extern
  */
 async function chatViewerFor(
   flags: FlagValues,
-): Promise<{ open: boolean; dev: boolean; viewer: ChatViewer }> {
+): Promise<{ open: boolean; dev: boolean; viewer: ChatViewer; account: string | null }> {
   try {
     const { authSessionOrNull } = await import("./signInEmail");
     const user = (await authSessionOrNull())?.user;
     const dev = !!user?.id && isDev(user.email);
     const viewer = chatViewerOf(flags, !!user?.id, dev);
-    return { open: viewer === "partner", dev, viewer };
+    // `account` keys the chat's copy on the device and gates its prefetch (DebugEval).
+    return {
+      open: viewer === "partner",
+      dev,
+      viewer,
+      account: user?.id ? String(user.id) : null,
+    };
   } catch {
-    return { open: false, dev: false, viewer: null };
+    return { open: false, dev: false, viewer: null, account: null };
   }
 }
 
@@ -138,9 +144,11 @@ export default async function RootLayout({
   };
   // One read per request, passed to everything that decides (docs/feature-flags.md).
   const flags: FlagValues = partnerFrame ? {} : await readFlags();
-  const { open, dev, viewer } = partnerFrame
-    ? { open: false, dev: false, viewer: null }
+  const { open, dev, viewer, account } = partnerFrame
+    ? { open: false, dev: false, viewer: null, account: null }
     : await chatViewerFor(flags);
+  // The chat's last lines kept on the device for an instant chat (lib/chat-cache.ts); 0: none.
+  const cacheLines = account ? await cfg("chat.cacheLines") : 0;
   // The chat's full screen for every chat user (off: the owner's pages only; full-screen.ts).
   const chatFull = flagIn(flags, "partner.fullscreen");
   // Li's sound hub, observing only (docs/li-sound-hub.md); the owner's pages only.
@@ -175,6 +183,8 @@ export default async function RootLayout({
     autoUpdate,
     lexicon,
     cloudVoices,
+    account,
+    cacheLines,
     talkOver,
     polishReadback,
   };

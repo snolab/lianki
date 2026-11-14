@@ -40,6 +40,9 @@ import { notifyDirty, registerDirtyCheck } from "@lianki/ui-state/dirty";
 import type { ChatStrings } from "./wire";
 import { SealStamp } from "./SealStamp";
 
+/** The verified-voice mark lives in its own module; kept here as a re-export for its callers. */
+export { VoiceMark } from "./VoiceMark";
+
 const line = (pct: number) => `color-mix(in oklch, currentColor ${pct}%, transparent)`;
 const pill = {
   borderRadius: 9999,
@@ -678,23 +681,5 @@ export function VoiceprintPanel({
       </div>
       {body}
     </section>
-  );
-}
-
-/** The tiny mark after a voice line the Mac verified as his voice (SpeakerTag decision "me"). */
-export function VoiceMark({ label }: { label: string }) {
-  return (
-    <span
-      data-testid="debug-chat-voice-verified"
-      role="img"
-      title={label}
-      aria-label={label}
-      className="ms-1 inline-flex select-none items-center align-baseline leading-none"
-      style={{ fontSize: "0.8em", color: "oklch(0.62 0.15 150)", opacity: 0.85 }}
-    >
-      <svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-        <path d="M3.5 8.5l3 3 6-7" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </span>
   );
 }

@@ -2,7 +2,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "b
 
 const OWNER = { id: "owner-1", email: "owner@example.com", name: "O", image: null };
 const lookups: string[] = [];
+// mock.module patches @/auth for the whole bun process: keep its other exports
+// (auth, hasSessionCookie, …), or every file that runs after this one and
+// imports them fails to link ("Export named 'auth' not found").
+const realAuth = await import("@/auth");
 mock.module("@/auth", () => ({
+  ...realAuth,
   getAuth: async () => ({
     $context: Promise.resolve({
       internalAdapter: {

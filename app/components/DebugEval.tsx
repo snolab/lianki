@@ -77,6 +77,9 @@ import { useIslands } from "@/lib/islands/useIslands";
 import { useLiveView, widgetSource } from "@/lib/live-view/client";
 import { inboxFiles, linkInboxLine } from "@/lib/inbox/client";
 import { pageBuildId } from "@/lib/build-id";
+import { reconcileHistory } from "@/lib/chat-cache";
+import { useChatCache } from "@/lib/use-chat-cache";
+import { loadChatHost } from "@/lib/chat-host-loader";
 
 /** Hidden this long before the socket is dropped. */
 const IDLE_MS = 30_000;
@@ -92,11 +95,11 @@ const backToCloseChat = (onBack: () => void) => openBackToClose(window, onBack);
  * The chat and the pairing modal load only when shown: most pages (a guest's,
  * a learner without the Learning Partner) never show them, and the owner's
  * pages paint and hydrate before the chat's code arrives (docs/cold-start.md).
- * Replies are read aloud through voice() itself, which needs neither.
+ * Replies are read aloud through voice() itself, which needs neither. The
+ * chat's chunk is prefetched in idle time for a viewer who will see it
+ * (DebugEvalLazy.tsx), through the same loadChatHost.
  */
-const DebugChatHost = lazy(() =>
-  import("@lianki/debug-chat/DebugChatHost").then((m) => ({ default: m.DebugChatHost })),
-);
+const DebugChatHost = lazy(() => loadChatHost().then((m) => ({ default: m.DebugChatHost })));
 const DebugPairModal = lazy(() =>
   import("@lianki/debug-chat/DebugPairModal").then((m) => ({ default: m.DebugPairModal })),
 );
@@ -170,6 +173,8 @@ export function DebugEval({
   talkOver = false,
   polishReadback: readback,
   box = null,
+  account = null,
+  cacheLines = 0,
 }: {
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
   talkOver?: boolean;
@@ -178,6 +183,14 @@ export function DebugEval({
    * back once in his cloned voice (polish-readback.ts); config voice.cloneTimeoutMs. None: off.
    */
   polishReadback?: { on: boolean; timeoutMs?: number };
+  /**
+   * The signed-in account's id, from the server's session (null: a guest). It
+   * keys the device's copy of the chat (lib/chat-cache.ts) and gates the
+   * prefetch of the chat's code (lib/chat-prefetch.ts).
+   */
+  account?: string | null;
+  /** Config `chat.cacheLines`: the last lines kept on the device for an instant chat; 0 = none. */
+  cacheLines?: number;
   /**
    * Provider voices (google:, azure:): on with flag voice.cloud-voices and the
    * dev grant, and the language → voice map (config voice.langVoices). None: off.
@@ -229,9 +242,21 @@ export function DebugEval({
   const [state, setState] = useState<HubState | null>(null);
   /** Who is here (presence.ts): the hub pushes this page's list on every change. */
   const [present, setPresent] = useState<Present[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  /**
+   * The chat's last lines from this device (lib/chat-cache.ts), shown at once
+   * while the socket opens: only this account's, only when the chat is wanted;
+   * reset when the page's account changes under this instance, written back
+   * once the hub's are in (lib/use-chat-cache.ts). DebugEval renders in the
+   * browser only, so reading storage in the first render is safe.
+   */
+  const { cachedLines, messages, setMessages, fromHub, setFromHub } = useChatCache({
+    account,
+    box: !!box,
+    cacheLines,
+    wanted: debugOn() || partnerOpen,
+  });
   /** The chat box stays up across reconnects, until debug mode is turned off. */
-  const [chat, setChat] = useState(false);
+  const [chat, setChat] = useState(cachedLines.length > 0);
   /** null on the owner's pages; a friend's chat status otherwise. */
   const [friend, setFriend] = useState<"open" | "blocked" | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -247,7 +272,7 @@ export function DebugEval({
    */
   const hubOwnerRef = useRef(false);
   /** The chat's lines, for page-errors to cut out (never sent with an error). */
-  const messagesRef = useRef<ChatMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>(cachedLines);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -635,7 +660,9 @@ export function DebugEval({
           for (const id of missed.gap) spokenIds.current.add(id);
           for (const m of list)
             if (m.from === "agent") agentAtRef.current = Math.max(agentAtRef.current, m.at);
-          setMessages(list);
+          // The hub wins over the device's copy (lib/chat-cache.ts).
+          setMessages((shown) => reconcileHistory(shown, list));
+          setFromHub(true);
           reBeat();
           const said = missed.line && spokenOf(missed.line);
           if (missed.line && said && (tabsRef.current?.isSpeaker() ?? true))
@@ -1044,6 +1071,8 @@ export function DebugEval({
             live={live}
             listeners={state?.listeners ?? sessions.length}
             messages={messages}
+            // The device's copy until the hub's history arrives (lib/chat-cache.ts).
+            cached={!fromHub && cachedLines.length > 0}
             onSend={sendChat}
             onAnswer={sendAnswer}
             onPassageEnd={() => sendHub({ type: "passage-end" })}

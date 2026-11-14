@@ -524,8 +524,8 @@ log reads what was meant.
 (认色 → 润色), on any of his kept lines, typed or spoken, a summary or a merged
 passage too, any number of times. The old rules are gone: the deletion-only
 word check (`polishCheck`'s homophone/context, function-word, stutter and
-unclear-bracket rules), the window of his last 5 lines (`EDITABLE_LINES`
-now bounds summaries only), the `stt`-only rule and the cap of 3 polishes
+unclear-bracket rules), the window of his last `EDITABLE_LINES` lines
+(which now bounds summaries only), the `stt`-only rule and the cap of 3 polishes
 (`MAX_EDITS`). If a polish turns out wrong, measures come then, from what went
 wrong. What stays is not a rule on the words: who may edit (a live owner
 grant), the raw text kept for undo, the polished mark, and the `stt.polish`
@@ -926,6 +926,35 @@ split lines merge no further. It works with the flag off too.
   none leaves the line with none, so an unverified part never rides on a verified one.
 - **Friends.** Their lines never get the stamp, and friends' lines still can never
   be edited (`friendChat` returns before any of this).
+
+## Two mics, one line
+
+Owner, 2026-11-14 02:15 JST: the mic open on his Windows PC and his Mac at once.
+Each runs its own local STT and voiceprint and posts its own line, so every
+sentence showed twice, a second or two apart, nearly the same ("同时发送着两个麦克风"
+/ "同时发送的两个麦克风", an extra comma, a clipped start) with two speaker scores.
+
+Flag **`stt.two-mic-merge`**, on by default (`audience: "owner"`); the window is
+config **`chat.twoMicWindowMs`** (default 4000 ms, 0 = never). Both read by the hub
+over `DebugSessions.flag()` / `.config()`, cached 30 s, and only when a line could
+be a copy at all; unreadable = on, 4 s. Code: `packages/debug-chat/src/two-mic.ts`,
+the hub's `twoMic()`.
+
+- **Same utterance.** Before an owner voice line (`source: "stt"`) is posted, the hub
+  looks at the owner thread's newest lines for his voice line from **another page**
+  (a different `label`) whose latest words came within the window, saying the same
+  sentence: letters and digits only, lower case, then an edit-distance similarity
+  ≥ 0.8 (bigram Dice past 600 characters), or one inside the other while at least
+  half its length. A merged line matches on any of its parts.
+- **Which text stands.** The line the Mac signed as him (`speaker.decision: "me"`)
+  beats one that is not; then the higher score; then the longer text. If the new one
+  wins, the stored line takes its text, `raw`, `stt` and speaker tag in place, marked
+  `edited.by: "two-mic"`, and pages and listeners hear the usual `edited` event;
+  otherwise the new line is dropped. Either way there is no second line. A line that
+  is already merged (`parts`) or polished by an agent is never replaced.
+- **Never merged.** Typed lines; lines from the same page (the continuation merge
+  above handles those); a line the Mac said is someone else's with one it did not;
+  summaries, passages and hidden lines.
 
 ## Voiceprint: enrolment and delete by a tap
 

@@ -198,6 +198,7 @@ export default function TokenManager() {
     "chat:write": s("scopeChatWrite"),
     "chat:ask": s("scopeChatAsk"),
     eval: s("scopeEval"),
+    "recordings:read": s("scopeRecordingsRead"),
   };
 
   return (

@@ -124,6 +124,7 @@ target that is not built yet.
 | full screen                         | local `lk:pref:chat-view` `full` (`chatPrefs`, off by default)        | done: per device, never synced; the button, Escape or Back leave it (dev-debug-widget.md, "Full screen") |
 | ETA task bar hidden (▸/▾)           | local `lk:pref:chat-view` `etaFolded` (`chatPrefs`, shown by default) | done: per device, never synced (dev-debug-widget.md, "Hiding the bar")                                   |
 | tucked into the edge, which edge    | local `lk:pref:chat-fold` (`chatFold`, fold.ts)                       | done: per device, never synced                                                                           |
+| the last lines, for an instant chat | local `lk:chat-cache` (lib/chat-cache.ts, one account)                | done: a device cache, never synced; another account's or a signed-out page drops it, so does sign-out, which also freezes writes until the page is gone; an account change under a mounted chat resets it (lib/use-chat-cache.ts) (cold-start.md, "The chat at once") |
 
 ### Cards and the swipe
 

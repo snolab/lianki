@@ -10,6 +10,7 @@ import {
   Debouncer,
   FRAME_ANCESTORS,
   isBridgedPath,
+  needsBunInstall,
   needsIntlayerBuild,
   isHubPath,
   isLabPath,
@@ -286,6 +287,10 @@ describe("whole-page guard: intlayer on publish", () => {
     expect(needsIntlayerBuild(["intlayer.config.ts"])).toBe(true);
     expect(needsIntlayerBuild(["app/(app)/words/page.tsx", "lib/x.ts", ""])).toBe(false);
     expect(needsIntlayerBuild([])).toBe(false);
+  });
+  test("a lockfile change in a publish needs bun install", () => {
+    expect(needsBunInstall(["lib/x.ts", "bun.lock"])).toBe(true);
+    expect(needsBunInstall(["lib/x.ts", "packages/a/bun.lock.md"])).toBe(false);
   });
 });
 

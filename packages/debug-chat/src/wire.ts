@@ -266,10 +266,12 @@ export type MergedPart = {
 };
 /**
  * How far back the agent may summarise: any of the owner's last
- * EDITABLE_LINES lines in the owner thread. A polish has no such window:
- * unrestricted, any number of times (owner, 2026-11-14).
+ * EDITABLE_LINES lines in the owner thread. 15, up from 5 (2026-11-14): with
+ * two mics open and room echoes his lines ran past 5 before a lane could
+ * answer. A polish has no such window: unrestricted, any number of times
+ * (owner, 2026-11-14).
  */
-export const EDITABLE_LINES = 5;
+export const EDITABLE_LINES = 15;
 /**
  * A run of the owner's voice lines the agent summarised (room talk, someone
  * else speaking): on the run's first line, which shows the summary; the others

@@ -211,16 +211,17 @@ describe("server", () => {
     (s.us as unknown as { o: { build: () => Promise<string> } }).o.build = async () => code;
     await s.us.rebuild();
     try {
-      const loader = await fetch(`${s.base}${LOADER_PATH}`);
+      // Bun.fetch: another suite may leave globalThis.fetch patched in the full run.
+      const loader = await Bun.fetch(`${s.base}${LOADER_PATH}`);
       expect(loader.headers.get("cache-control")).toBe("no-store");
       expect(loader.headers.get("content-type")).toContain("javascript");
       expect(await loader.text()).toContain("Lianki (preview dev)");
-      const bundle = await fetch(`${s.base}${BUNDLE_PATH}`);
+      const bundle = await Bun.fetch(`${s.base}${BUNDLE_PATH}`);
       expect(bundle.headers.get("x-lianki-rev")).toBe(revOf("one"));
       expect(await bundle.text()).toBe("one");
-      const rev = (await (await fetch(`${s.base}${REV_PATH}`)).json()) as { rev: string };
+      const rev = (await (await Bun.fetch(`${s.base}${REV_PATH}`)).json()) as { rev: string };
       expect(rev.rev).toBe(revOf("one"));
-      const parked = fetch(`${s.base}${REV_PATH}?wait=${rev.rev}`).then((r) => r.json());
+      const parked = Bun.fetch(`${s.base}${REV_PATH}?wait=${rev.rev}`).then((r) => r.json());
       await Bun.sleep(30);
       code = "two";
       await s.us.rebuild();
