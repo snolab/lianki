@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Calculator</title>
+    <!-- The Lianki style pack: colours, fonts, light/dark (docs/mini-apps.md, "Style pack"). -->
+    <link rel="stylesheet" href="/m/presets/lianki.css" />
+    <style>
+      .display {
+        font-size: 2.25rem;
+        text-align: right;
+        min-height: 3.5rem;
+        overflow-wrap: anywhere;
+      }
+      .keys {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+      .keys .lk-btn {
+        font-size: 1.25rem;
+        min-height: 3.25rem;
+      }
+      .wide {
+        grid-column: span 2;
+      }
+      ul {
+        list-style: none;
+        padding: 0;
+        margin: 0.5rem 0 0;
+      }
+      li {
+        padding: 0.25rem 0;
+        border-top: 1px solid var(--lk-line);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="lk-app">
+      <div class="lk-card">
+        <div class="lk-muted lk-mono" id="expr">&nbsp;</div>
+        <div class="display lk-mono" id="out" aria-live="polite">0</div>
+        <div class="keys" id="keys"></div>
+      </div>
+      <div class="lk-row" style="margin-top: 0.75rem">
+        <button class="lk-btn lk-btn-secondary" id="share">Send to chat</button>
+        <button class="lk-btn" id="clear-history">Clear history</button>
+      </div>
+      <section class="lk-card" style="margin-top: 0.75rem">
+        <h2 style="font-size: 1rem">History <span class="lk-muted" id="note"></span></h2>
+        <ul id="history"></ul>
+      </section>
+    </main>
+    <script>
+      "use strict";
+      // A tiny, safe evaluator: numbers, + − × ÷ and parentheses; no eval.
+      function calc(src) {
+        const t = src.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-").match(/\d+(?:\.\d+)?|[()+\-*/]/g) || [];
+        let i = 0;
+        const peek = () => t[i];
+        const take = () => t[i++];
+        function num() {
+          const x = take();
+          if (x === "(") {
+            const v = sum();
+            take();
+            return v;
+          }
+          if (x === "-") return -num();
+          const n = Number(x);
+          if (!Number.isFinite(n)) throw new Error("syntax");
+          return n;
+        }
+        function prod() {
+          let v = num();
+          while (peek() === "*" || peek() === "/") v = take() === "*" ? v * num() : v / num();
+          return v;
+        }
+        function sum() {
+          let v = prod();
+          while (peek() === "+" || peek() === "-") v = take() === "+" ? v + prod() : v - prod();
+          return v;
+        }
+        const v = sum();
+        if (i !== t.length || !Number.isFinite(v)) throw new Error("syntax");
+        return Math.round(v * 1e10) / 1e10;
+      }
+
+      const KEYS = ["C", "(", ")", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "0", ".", "⌫", "="];
+      const $ = (id) => document.getElementById(id);
+      let expr = "";
+      let last = null;
+      let history = [];
+
+      function show() {
+        $("expr").textContent = expr || " ";
+        $("history").replaceChildren(
+          ...history.slice(0, 20).map((h) => {
+            const li = document.createElement("li");
+            li.className = "lk-mono";
+            li.textContent = `${h.expr} = ${h.value}`;
+            return li;
+          }),
+        );
+      }
+      async function save() {
+        try {
+          await lianki.storage.set("history", history.slice(0, 50));
+          $("note").textContent = "";
+        } catch (e) {
+          $("note").textContent = e.code === "permission-denied" ? "(not saved: storage not allowed)" : "";
+        }
+      }
+      function press(k) {
+        if (k === "C") {
+          expr = "";
+          $("out").textContent = "0";
+        } else if (k === "⌫") expr = expr.slice(0, -1);
+        else if (k === "=") {
+          try {
+            last = { expr, value: calc(expr) };
+            $("out").textContent = String(last.value);
+            history.unshift(last);
+            expr = "";
+            void save();
+          } catch {
+            $("out").textContent = "…";
+          }
+        } else expr += k;
+        show();
+      }
+      for (const k of KEYS) {
+        const b = document.createElement("button");
+        b.className = "lk-btn" + (k === "=" ? " lk-btn-primary" : "");
+        b.textContent = k;
+        b.addEventListener("click", () => press(k));
+        $("keys").appendChild(b);
+      }
+      document.addEventListener("keydown", (e) => {
+        const map = { "*": "×", "/": "÷", "-": "−", Enter: "=", Backspace: "⌫", Escape: "C" };
+        const k = map[e.key] || e.key;
+        if (KEYS.includes(k)) press(k);
+      });
+      $("share").addEventListener("click", async () => {
+        if (!last) return;
+        try {
+          await lianki.chat.say(`${last.expr} = ${last.value}`);
+        } catch (e) {
+          $("note").textContent = `(${e.code})`;
+        }
+      });
+      $("clear-history").addEventListener("click", async () => {
+        try {
+          const choice = await lianki.ui.card({ title: "Clear the calculator's history?", options: ["Clear", "Keep"] });
+          if (choice !== "Clear") return;
+        } catch (e) {
+          // No answer from the chat card (not allowed, or not reachable): keep the history.
+          $("note").textContent = `(${e.code})`;
+          return;
+        }
+        history = [];
+        show();
+        void save();
+      });
+      lianki.storage
+        .get("history")
+        .then((h) => {
+          if (Array.isArray(h)) history = h;
+          show();
+        })
+        .catch(show);
+    </script>
+  </body>
+</html>
