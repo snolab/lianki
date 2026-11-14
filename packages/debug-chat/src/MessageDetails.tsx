@@ -19,12 +19,15 @@ import {
 } from "./voice-heard";
 import type { ChatMessage } from "./wire";
 import { CLONE_VOICE_NAME } from "./polish-readback";
+import { readingsOf } from "./whisper-recheck";
 
 /** The details' voice rows' words (chat-ui-locales.ts). */
 export type VoiceWords = Pick<
   ChatExtra,
   "voiceUsed" | "voiceUseThis" | "voicePinned" | "voiceUnpin" | "voiceClone"
 >;
+/** The words of a spoken line's three readings (chat-ui-locales.ts). */
+export type ReadingWords = Pick<ChatExtra, "levelHeard" | "levelWhisper" | "levelPolished">;
 
 const SEAL = "oklch(0.6 0.11 22.3)";
 
@@ -88,6 +91,39 @@ export function HeardVoiceRows({
   );
 }
 
+/**
+ * A spoken line's readings, one under another (whisper-recheck.ts readingsOf): what
+ * the streaming STT heard, what Whisper heard re-reading the whole run, and the
+ * polish after it. Nothing for a line Whisper never re-read.
+ */
+export function LineReadings({
+  line,
+  words,
+}: {
+  line: Pick<ChatMessage, "text" | "raw" | "edited" | "recheck">;
+  words: ReadingWords;
+}) {
+  const r = readingsOf(line);
+  if (!r) return null;
+  const rows: [string, string, string][] = [
+    ["heard", words.levelHeard, r.heard],
+    ["whisper", words.levelWhisper.replace("{engine}", r.whisper.engine), r.whisper.text],
+    ...(r.polished !== undefined
+      ? ([["polished", words.levelPolished, r.polished]] as [string, string, string][])
+      : []),
+  ];
+  return (
+    <ol data-testid="debug-chat-message-readings" className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
+      {rows.map(([level, label, text]) => (
+        <li key={level} data-level={level}>
+          <div className="fs-11 opacity-70">{label}</div>
+          <div className="whitespace-pre-wrap break-words">{text}</div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 /** HeardVoiceRows for a line, kept in step with new reads and the pin. */
 function LineVoice({ lineId, words }: { lineId: string; words: VoiceWords }) {
   useSyncExternalStore(subscribeHeard, heardVersion, heardVersion);
@@ -102,7 +138,7 @@ function LineVoice({ lineId, words }: { lineId: string; words: VoiceWords }) {
 }
 
 /** Message inspection never fetches or infers identity or recognition data. */
-export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
+export function useMessageDetails(label: string, voiceWords?: VoiceWords & Partial<ReadingWords>) {
   const id = useId();
   const popup = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<{
@@ -188,6 +224,7 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
           edited: m.edited,
           summary: m.summary,
           passage: m.passage,
+          recheck: m.recheck,
         }).filter(([, value]) => value !== undefined),
       )
     : {};
@@ -222,6 +259,16 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
           )}
           {voiceWords && m && typeof m.id === "string" && (
             <LineVoice lineId={m.id} words={voiceWords} />
+          )}
+          {m && voiceWords?.levelHeard && voiceWords.levelWhisper && voiceWords.levelPolished && (
+            <LineReadings
+              line={m}
+              words={{
+                levelHeard: voiceWords.levelHeard,
+                levelWhisper: voiceWords.levelWhisper,
+                levelPolished: voiceWords.levelPolished,
+              }}
+            />
           )}
           <pre className="m-0 mt-2 whitespace-pre-wrap break-words font-mono fs-10">
             {JSON.stringify(metadata, null, 2)}
