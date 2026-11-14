@@ -348,7 +348,7 @@ describe("lianki mcp: calls", () => {
     expect(dataOf(r)).toEqual({ lines: [{ id: "b", text: "new" }], answered: [], after: "b" });
     expect(opened).toHaveLength(1);
     expect(opened[0].url).toBe("wss://lianki.com/api/version/chat");
-    expect(opened[0].sent[0]).toEqual({ type: "auth", token: TOKEN, history: 1 });
+    expect(opened[0].sent[0]).toEqual({ type: "auth", token: TOKEN, history: 1, mode: "reader" });
     expect(opened[0].closed).toBe(true);
     expect(text(r)).not.toContain(TOKEN.slice(3));
     await h.close();

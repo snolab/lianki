@@ -309,6 +309,7 @@ import {
   reserveInTokens,
 } from "../../../lib/partner-ai-config";
 import { CHAT_PATH, REVOKED_PATH, TokenChat, partKey, tokenAtt } from "./token-chat";
+import { LANE_EVENTS_FLAG, LANE_REG_PREFIX, type LaneReg, LaneRegistry } from "./lane-registry";
 import {
   type PartRecord,
   nextExpiry,
@@ -868,6 +869,25 @@ export class DebugHub {
         put: (k, v) => this.ctx.storage.put(k, v),
       },
       presence: (thread) => this.presenceSoon(thread),
+      // 全员入群: each lane's mode and mute, and the system lines (lane-registry.ts).
+      lanes: new LaneRegistry({
+        now: () => this.now(),
+        kv: {
+          get: (k) => this.ctx.storage.get(k),
+          put: (k, v) => this.ctx.storage.put(k, v),
+          list: async <T>(prefix: string) => [
+            ...(await this.ctx.storage.list<T>({ prefix })).values(),
+          ],
+        },
+        post: async (m) => {
+          await this.post(m);
+        },
+        enabled: () => this.laneEventsOn(),
+        graceMs: async () => (await this.laneConf()).graceMs,
+        locale: async () => (await this.laneConf()).locale,
+        schedule: (at) => this.schedule(at),
+        presence: (thread) => this.presenceSoon(thread),
+      }),
     });
     // The listener pings to find a socket that died without a close (a
     // redeploy, a dropped connection); the runtime answers it while the hub
@@ -3494,6 +3514,8 @@ export class DebugHub {
     await this.clipsSweep();
     await this.proofSweep();
     await this.renewDue("alarm");
+    // A listener whose grace ran out turns reader (lane-registry.ts).
+    await this.tokens.laneSweep().catch((e) => rpcFailed("lanes", e));
     // A read or a line left its presence window: the pages hear who is left.
     for (const thread of new Set(this.sockets("page").map((p) => p.a.thread)))
       await this.pushPresence(thread);
@@ -4728,6 +4750,40 @@ export class DebugHub {
     return (this.presenceConf = { at: t, readMs, speakerMs });
   }
 
+  /** Flag chat.lane-events (lane-registry.ts), read at most once a minute; unreadable: off. */
+  private laneFlag?: { at: number; on: boolean };
+  private async laneEventsOn(): Promise<boolean> {
+    const t = this.now();
+    if (this.laneFlag && t - this.laneFlag.at < 60_000) return this.laneFlag.on;
+    let on = false;
+    try {
+      on = (await this.flagValue(LANE_EVENTS_FLAG)) === true;
+    } catch {}
+    this.laneFlag = { at: t, on };
+    return on;
+  }
+
+  /** The lanes' config (lanes.modeGraceSec, lanes.eventLocale), read at most once a minute. */
+  private laneConfCache?: { at: number; graceMs: number; locale: string };
+  private async laneConf() {
+    const t = this.now();
+    if (this.laneConfCache && t - this.laneConfCache.at < 60_000) return this.laneConfCache;
+    const read = async (key: string) => {
+      try {
+        return await this.sessions?.config?.(key);
+      } catch {
+        return undefined;
+      }
+    };
+    const g = await read("lanes.modeGraceSec");
+    const l = await read("lanes.eventLocale");
+    return (this.laneConfCache = {
+      at: t,
+      graceMs: (typeof g === "number" && g >= 0 ? g : 30) * 1000,
+      locale: typeof l === "string" && /^[a-z]{2}$/.test(l) ? l : "zh",
+    });
+  }
+
   /** Threads whose list is pushed on the next turn (one push for a burst of changes). */
   private presenceDue = new Set<string>();
   presenceSoon(thread: string) {
@@ -4747,6 +4803,10 @@ export class DebugHub {
     ].filter((r) => r.thread === thread);
     const lines = await this.history(thread);
     const live = this.tokens.live(thread);
+    // Each lane's mode and mute (lane-registry.ts): only rows exist with flag chat.lane-events on.
+    const lanes = [
+      ...(await this.ctx.storage.list<LaneReg>({ prefix: LANE_REG_PREFIX })).values(),
+    ].filter((r) => r.thread === thread);
     // No one to list: no config read either.
     if (!records.length && !live.length && !lines.some((m) => m.from === "agent"))
       return pages.map(({ ws }) => ({ ws, list: [] }));
@@ -4759,7 +4819,7 @@ export class DebugHub {
         a.embed || a.box ? undefined : (a.user ?? (thread !== OWNER_THREAD ? thread : undefined));
       return {
         ws,
-        list: presentList({ now: t, readMs, speakerMs, live, records, lines, viewer }),
+        list: presentList({ now: t, readMs, speakerMs, live, records, lines, viewer, lanes }),
       };
     });
   }
@@ -4823,8 +4883,11 @@ export class DebugHub {
     const a = att(ws);
     const ta = tokenAtt(ws);
     close(ws, code === 1005 ? 1000 : code, "");
-    // A token's listening socket closed: it may have left the thread.
-    if (ta?.thread) this.presenceSoon(ta.thread);
+    // A token's listening socket closed: it may have left the thread, and its lane may turn reader.
+    if (ta?.thread) {
+      this.presenceSoon(ta.thread);
+      this.tokens.closed(ws, ta).catch((e) => rpcFailed("lanes", e));
+    }
     this.sweep(ws);
     this.broadcast(ws);
     const gone = a?.role === "page" && a.sid ? this.clipsLeft(a.sid, ws) : undefined;
@@ -5180,7 +5243,7 @@ function rpcFailed(method: string, e: unknown, what?: string) {
 }
 
 /** A page's {type:"participant", tok, name?, avatar?} (PresenceStack.tsx), or null. */
-type ParticipantMessage = { tok: string; name?: unknown; avatar?: unknown };
+type ParticipantMessage = { tok: string; name?: unknown; avatar?: unknown; muted?: unknown };
 function participantMessage(raw: unknown): ParticipantMessage | null {
   if (typeof raw !== "string" || raw.length > 8192 || !raw.includes('"participant"')) return null;
   try {
@@ -5190,6 +5253,7 @@ function participantMessage(raw: unknown): ParticipantMessage | null {
       tok: j.tok,
       ...("name" in j ? { name: j.name } : {}),
       ...("avatar" in j ? { avatar: j.avatar } : {}),
+      ...("muted" in j ? { muted: j.muted } : {}),
     };
   } catch {
     return null;
