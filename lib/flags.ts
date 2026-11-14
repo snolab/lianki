@@ -223,6 +223,8 @@ export const FLAGS = {
       "全员入群：聊天里每个 agent（API token）一条线，记下它是「实时监听」还是「只读」、有没有被禁言。线入群、开始实时监听、转为只读、下线、被禁言时，聊天里出现一行系统消息（静音，不朗读），头像栏显示每个 agent 的状态；被禁言的线发言会被拒绝（403）。关闭 = 不记状态、不发系统消息、不禁言，聊天和以前一样。",
     default: true,
     audience: "owner",
+    // With the other agent switches (the groups stay few, flag-view.ts).
+    group: "ai",
   },
   "chat.eta-bar": {
     description:
