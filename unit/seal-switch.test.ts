@@ -3,6 +3,7 @@
 // states): markup and roles, both sides' colours and outline from
 // app/globals.css, their contrast in light and dark, the words in 16 locales.
 import { describe, expect, test } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
@@ -74,9 +75,11 @@ describe("the stamp, in a DOM", () => {
   test("plays once on each change of state (not on mount), then clears", async () => {
     const { Window } = await import("happy-dom");
     const win = new Window();
-    const g = globalThis as Record<string, unknown>;
-    const saved = { window: g.window, document: g.document, act: g.IS_REACT_ACT_ENVIRONMENT };
-    Object.assign(g, { window: win, document: win.document, IS_REACT_ACT_ENVIRONMENT: true });
+    const restore = stubGlobals({
+      window: win,
+      document: win.document,
+      IS_REACT_ACT_ENVIRONMENT: true,
+    });
     try {
       const { act } = await import("react");
       const { createRoot } = await import("react-dom/client");
@@ -106,11 +109,7 @@ describe("the stamp, in a DOM", () => {
       expect(seal().hasAttribute("data-stamping")).toBe(false);
       await act(() => root.unmount());
     } finally {
-      Object.assign(g, {
-        window: saved.window,
-        document: saved.document,
-        IS_REACT_ACT_ENVIRONMENT: saved.act,
-      });
+      restore();
       await win.happyDOM.close();
     }
   });

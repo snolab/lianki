@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { advanceTop, keyGradeMove, shouldAdvance } from "@/lib/words/advance";
 import {
   applyMotionAttr,
@@ -117,15 +118,16 @@ describe("motion-pref in a browser", () => {
   });
   test("the system's reduced motion, and its changes, reach subscribers", () => {
     const g = globalThis as { matchMedia?: unknown };
-    const saved = g.matchMedia;
     let reduce = true;
     const listeners = new Set<() => void>();
-    g.matchMedia = () => ({
-      get matches() {
-        return reduce;
-      },
-      addEventListener: (_: string, l: () => void) => listeners.add(l),
-      removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+    const restore = stubGlobals({
+      matchMedia: () => ({
+        get matches() {
+          return reduce;
+        },
+        addEventListener: (_: string, l: () => void) => listeners.add(l),
+        removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+      }),
     });
     try {
       expect(systemReducedMotion()).toBe(true);
@@ -144,7 +146,7 @@ describe("motion-pref in a browser", () => {
       expect(systemReducedMotion()).toBe(false);
       subscribeMotion(() => {})();
     } finally {
-      g.matchMedia = saved;
+      restore();
       motionStore.setState({ animations: "system" });
     }
   });

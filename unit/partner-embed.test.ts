@@ -5,6 +5,7 @@
  * hostile page is scripts/qa/qa-partner-embed.mjs.
  */
 import { describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import {
   FONT_STACK,
   GUARDED_KEYS,
@@ -207,9 +208,7 @@ describe("style isolation helpers", () => {
     const old = new FakeDoc(false);
     const r2 = new FakeRoot(old);
     delete (r2 as { adoptedStyleSheets?: unknown }).adoptedStyleSheets;
-    const g = globalThis as { CSSStyleSheet?: unknown };
-    const had = g.CSSStyleSheet;
-    g.CSSStyleSheet = undefined;
+    const restore = stubGlobals({ CSSStyleSheet: undefined });
     try {
       expect(attachStyles(asRoot(r2), ["a{}"])).toBe("style");
       expect(r2.children.map((c) => [c.tag, c.textContent])).toEqual([["style", "a{}"]]);
@@ -223,7 +222,7 @@ describe("style isolation helpers", () => {
       };
       expect(attachStyles(asRoot(r3), ["a{}"])).toBe("blocked");
     } finally {
-      g.CSSStyleSheet = had;
+      restore();
     }
   });
 
@@ -1003,12 +1002,12 @@ describe("build-partner-embed: shadowed globals", () => {
 
   it("the prologue keeps storage off the site, and refuses the network", async () => {
     const real = { ls: 0 };
-    const g = globalThis as { localStorage?: unknown };
-    const had = g.localStorage;
-    g.localStorage = {
-      setItem: () => real.ls++,
-      getItem: () => null,
-    };
+    const restore = stubGlobals({
+      localStorage: {
+        setItem: () => real.ls++,
+        getItem: () => null,
+      },
+    });
     const gm = new Map<string, string>();
     try {
       const run = (0, eval)(`(function (gm) {${PROLOGUE}
@@ -1057,7 +1056,7 @@ describe("build-partner-embed: shadowed globals", () => {
       expect(mem).toEqual(["1", 1, 0]);
       expect(real.ls).toBe(0);
     } finally {
-      g.localStorage = had;
+      restore();
     }
   });
 

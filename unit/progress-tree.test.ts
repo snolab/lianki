@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { parseTreeDoc } from "@lianki/debug-chat/state-tree";
 import type { TreeNode } from "@lianki/debug-chat/state-tree";
 import {
@@ -229,10 +230,10 @@ describe("browserWake", () => {
       addEventListener: (k: string, f: () => void) => on.set(k, f),
       removeEventListener: (k: string) => on.delete(k),
     };
-    const g = globalThis as Record<string, unknown>;
-    const saved = [g.window, g.document];
-    g.window = target;
-    g.document = { ...target, visibilityState: "visible" };
+    const restore = stubGlobals({
+      window: target,
+      document: { ...target, visibilityState: "visible" },
+    });
     let n = 0;
     const off = browserWake(() => n++);
     on.get("online")!();
@@ -240,6 +241,6 @@ describe("browserWake", () => {
     expect(n).toBe(2);
     off();
     expect(on.size).toBe(0);
-    [g.window, g.document] = saved;
+    restore();
   });
 });

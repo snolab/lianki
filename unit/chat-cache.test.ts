@@ -41,6 +41,9 @@ const line = (id: string, text = `t-${id}`, extra: Partial<ChatMessage> = {}): C
   ...extra,
 });
 
+// A file run earlier may have signed out (signOut freezes the cache module-wide).
+beforeEach(() => thawChatCache());
+
 describe("chat cache: write and read", () => {
   it("reads back what was written for the same account", () => {
     const s = memStore();

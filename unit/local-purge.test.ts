@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { clearPurge, PURGE_KEY, queuePurge, readPurge } from "../lib/local-purge";
 
 /** Minimal localStorage stand-in; bun's test env has no DOM. */
@@ -9,14 +10,11 @@ class MemStorage {
   removeItem = (k: string) => void this.map.delete(k);
 }
 
-const original = (globalThis as { localStorage?: unknown }).localStorage;
-
+let restore = () => {};
 beforeEach(() => {
-  (globalThis as { localStorage?: unknown }).localStorage = new MemStorage();
+  restore = stubGlobals({ localStorage: new MemStorage() });
 });
-afterEach(() => {
-  (globalThis as { localStorage?: unknown }).localStorage = original;
-});
+afterEach(() => restore());
 
 describe("purge queue", () => {
   it("queues urls for the userscript to forget", () => {

@@ -1,5 +1,6 @@
 // The Docs page's side of the live stream (docs/connections.md, "Live stream").
 import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
+import { globalDescriptor, restoreGlobal, setGlobal } from "./support/globals";
 import { docIdOfPath, looksTruncated, startGdocStream, stripImages } from "../src/gdoc-stream";
 
 const ID = "fake_doc_id_for_tests_0123456789abcdefABCD";
@@ -48,14 +49,13 @@ describe("startGdocStream", () => {
   };
   const timing = { quietMs: 5, maxWaitMs: 20, exportLagMs: 8, retryShortMs: 5 };
   const g = globalThis as unknown as Record<string, unknown>;
-  const saved = new Map<string, unknown>();
+  const saved = new Map<string, PropertyDescriptor | undefined>();
   const stub = (name: string, value: unknown) => {
-    if (!saved.has(name)) saved.set(name, g[name]);
-    Object.defineProperty(g, name, { value, configurable: true, writable: true });
+    if (!saved.has(name)) saved.set(name, globalDescriptor(name));
+    setGlobal(name, value);
   };
   afterEach(() => {
-    for (const [name, value] of saved)
-      Object.defineProperty(g, name, { value, configurable: true, writable: true });
+    for (const [name, desc] of saved) restoreGlobal(name, desc);
     saved.clear();
   });
 
