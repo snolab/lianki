@@ -133,6 +133,9 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
       );
       if (control && control !== e.currentTarget) return;
       if (selectingIn(e.currentTarget)) return;
+      // A tap on a link (or a field) is the link's: the browser follows it, the
+      // details stay closed (owner, 2026-11-14 21:0x: "手机点不开这个链接，它显示的是消息详情").
+      if (e.target instanceof Element && e.target.closest("a,input,textarea,select,button")) return;
       // On a touch screen a single tap is for reading the line; the details
       // (JSON) open on a double tap (owner, 2026-11-14 "双击才显示这种 JSON 的消息详情").
       // A mouse click still opens them (a double click there selects a word).

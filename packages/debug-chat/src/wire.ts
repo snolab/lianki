@@ -104,6 +104,12 @@ export type ChatMessage = {
    * The other lines carry `collapsedInto`. Undo restores them all.
    */
   passage?: PassageMark;
+  /**
+   * Hub-side only, never sent: an owner voice line kept aside as an echo
+   * (lib/echo-match.ts; flag voice.echo-dedupe) — the copy of `of` heard from
+   * his other device, or of a line read aloud. Undo (unmerge with its id) posts it.
+   */
+  echo?: EchoMark;
   /** On a passage's first line, hub-side: what it read before the merge, for the undo. */
   premerge?: { text: string; raw?: string; edited?: EditMark };
   /**
@@ -253,6 +259,15 @@ export type MessageSource = "stt";
 export type LineSource = MessageSource | "eta";
 /** An agent's polish of a voice line (ChatMessage.edited). */
 export type EditMark = { at: number; by: string; count: number };
+/** Why a voice line was kept aside as an echo (ChatMessage.echo): of which line, how alike. */
+export type EchoMark = {
+  at: number;
+  by: string;
+  reason: "echo";
+  kind: "other-device" | "read-aloud";
+  of: string;
+  sim: number;
+};
 /** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
 export type MergedPart = {
   id: string;

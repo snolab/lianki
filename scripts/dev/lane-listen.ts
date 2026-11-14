@@ -22,7 +22,7 @@
  */
 import { join } from "node:path";
 import { type RouteLane, isRouteLane, laneTakes } from "../../lib/lane-route";
-import { type Line, handoffBrief, laneToken, lineOf, tokenNeeded } from "./lane-listen-lib";
+import { laneToken, lineOf, makeDeliverer, tokenNeeded } from "./lane-listen-lib";
 
 type Opts = {
   lane: RouteLane;
@@ -98,8 +98,6 @@ async function deliver(o: Opts, body: string): Promise<number> {
   return code;
 }
 
-/** How often a busy agent is looked at while lines wait for it. */
-export const BUSY_RECHECK_MS = 5_000;
 /** How long one delivery may take before the loop moves on (ay keeps the hand-over going). */
 export const SEND_WAIT_MS = 20_000;
 /** How long the busy check may take before the line goes out anyway. */
@@ -138,46 +136,6 @@ export async function targetBusy(o: Opts): Promise<boolean> {
   }
 }
 
-/**
- * Lines wait here while the agent is busy; when it is free they go as ONE
- * message (handoffBrief), in order. The first message of the listener's life
- * also names the skill with the rules.
- */
-export function makeDeliverer(
-  o: Opts,
-  send: (body: string) => Promise<number>,
-  busy: () => Promise<boolean> = () => targetBusy(o),
-  recheckMs = BUSY_RECHECK_MS,
-) {
-  const pending: Line[] = [];
-  let first = true;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const flush = async (): Promise<number | undefined> => {
-    if (!pending.length) return undefined;
-    if (await busy()) {
-      if (process.env.LANE_LISTEN_DEBUG)
-        log({ type: "held", lane: o.lane, pending: pending.length });
-      timer ??= setTimeout(() => {
-        timer = undefined;
-        void flush();
-      }, recheckMs);
-      return undefined;
-    }
-    const batch = pending.splice(0, pending.length);
-    const code = await send(handoffBrief(o.lane, batch, o.repo, first));
-    first = false;
-    log({ type: "delivered", lane: o.lane, ids: batch.map((l) => l.id), ay: code });
-    return code;
-  };
-  return {
-    add: async (l: Line) => {
-      pending.push(l);
-      return flush();
-    },
-    pending: () => pending.length,
-  };
-}
-
 async function main(): Promise<number> {
   const o = parse(process.argv.slice(2));
   if (o instanceof Error) {
@@ -185,7 +143,12 @@ async function main(): Promise<number> {
     return 1;
   }
   const t = laneToken(o.lane);
-  const out = makeDeliverer(o, (body) => deliver(o, body));
+  const out = makeDeliverer(
+    o,
+    (body) => deliver(o, body),
+    () => targetBusy(o),
+    log,
+  );
   if (t.from === "none") {
     console.error(`lane-listen: ${t.why}. Needed: ${tokenNeeded(o.lane)}`);
     return 2;

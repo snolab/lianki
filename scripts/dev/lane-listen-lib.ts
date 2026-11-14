@@ -161,3 +161,47 @@ export function handoffBrief(
     );
   return out.join("\n");
 }
+
+/** How often a busy agent is looked at while lines wait for it. */
+export const BUSY_RECHECK_MS = 5_000;
+
+/**
+ * Lines wait here while the agent is busy; when it is free they go as ONE
+ * message (handoffBrief), in order. The first message of the listener's life
+ * also names the skill with the rules.
+ */
+export function makeDeliverer(
+  o: { lane: RouteLane; repo: string },
+  send: (body: string) => Promise<number>,
+  busy: () => Promise<boolean>,
+  log: (v: Record<string, unknown>) => void = () => {},
+  recheckMs = BUSY_RECHECK_MS,
+) {
+  const pending: Line[] = [];
+  let first = true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const flush = async (): Promise<number | undefined> => {
+    if (!pending.length) return undefined;
+    if (await busy()) {
+      if (process.env.LANE_LISTEN_DEBUG)
+        log({ type: "held", lane: o.lane, pending: pending.length });
+      timer ??= setTimeout(() => {
+        timer = undefined;
+        void flush();
+      }, recheckMs);
+      return undefined;
+    }
+    const batch = pending.splice(0, pending.length);
+    const code = await send(handoffBrief(o.lane, batch, o.repo, first));
+    first = false;
+    log({ type: "delivered", lane: o.lane, ids: batch.map((l) => l.id), ay: code });
+    return code;
+  };
+  return {
+    add: async (l: Line) => {
+      pending.push(l);
+      return flush();
+    },
+    pending: () => pending.length,
+  };
+}

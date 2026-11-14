@@ -12,9 +12,9 @@ import {
   jst,
   laneToken,
   lineOf,
+  makeDeliverer,
   tokenNeeded,
 } from "../scripts/dev/lane-listen-lib";
-import { makeDeliverer } from "../scripts/dev/lane-listen";
 
 const dir = mkdtempSync(join(tmpdir(), "lane-token-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -209,6 +209,7 @@ describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
         return 0;
       },
       async () => busy,
+      () => {},
       5,
     );
     await d.add(line("b1", "第一句"));

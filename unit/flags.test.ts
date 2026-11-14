@@ -62,6 +62,7 @@ describe("registry", () => {
       "voice.recordings",
       "stt.polish",
       "voice.auto-polish",
+      "voice.echo-dedupe",
       "stt.two-mic-merge",
       "library.catalogue",
       "books.mine",

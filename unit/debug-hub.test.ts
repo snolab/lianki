@@ -4460,6 +4460,16 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
         .map(([, v]) => v as Record<string, unknown>);
     return { s, win, mac, c, lines };
   };
+  /**
+   * The echo filter (voice.echo-dedupe) runs first and would take a copy from
+   * his other mic itself; off here, so these cases reach the two-mic merge.
+   */
+  const noEcho = {
+    live: async () => "live",
+    flag: async (k: string) =>
+      k === "voice.echo-dedupe" ? false : Promise.reject(new Error("d1")),
+    config: async () => Promise.reject(new Error("d1")),
+  };
 
   it("the same sentence from two pages within the window: one line", async () => {
     const { s, win, mac, lines } = rig();
@@ -4489,7 +4499,7 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
   });
 
   it("outside the window: two lines", async () => {
-    const { s, win, mac, lines } = rig();
+    const { s, win, mac, lines } = rig({ SESSIONS: noEcho });
     await s.msg(win, say("w1", "同时发送着两个麦克风"));
     s.tick(4001);
     await s.msg(mac, say("m1", "同时发送的两个麦克风"));
@@ -4563,7 +4573,7 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
         thread: "owner",
         at: 1_000_000,
       });
-    const { s, win, mac, lines } = rig({ STT_SPEAKER_PUB: key.pub });
+    const { s, win, mac, lines } = rig({ STT_SPEAKER_PUB: key.pub, SESSIONS: noEcho });
     // Signed first: the unsigned, longer copy is dropped.
     await s.msg(
       win,

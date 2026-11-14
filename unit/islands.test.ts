@@ -651,6 +651,52 @@ describe("the islands build", () => {
 
 // devLog is how islands report; loading it here means covering it here.
 describe("debug-client (the devLog islands report to)", () => {
+  it("uses the server's dev-account default only without a device override", async () => {
+    const { debugOn, setDebug } = await import("@/lib/debug-client");
+    const oldDocument = g.document;
+    const oldLocation = g.location;
+    const oldStorage = new Map(storage.m);
+    let accountOn = true;
+    g.document = {
+      documentElement: {
+        getAttribute: (key: string) => (key === "data-chat-default" && accountOn ? "on" : null),
+      },
+    };
+    g.location = { search: "" };
+    storage.m.clear();
+    try {
+      expect(debugOn()).toBe(true); // new device/origin, dev account
+      expect(storage.m.has("lk:debug")).toBe(false); // no account default cached on device
+      expect(storage.m.has("lk:agent")).toBe(false);
+      storage.m.set("lk:debug", "0"); // legacy override on an existing device
+      expect(debugOn()).toBe(false);
+      storage.m.clear();
+      setDebug(false);
+      expect(debugOn()).toBe(false); // local 0 wins over account on
+      setDebug(true);
+      expect(debugOn()).toBe(true); // hidden manual toggle still works
+      storage.m.clear();
+      g.location = { search: "?agent=0" };
+      expect(debugOn()).toBe(false); // explicit URL opt-out still wins
+      g.location = { search: "" };
+      expect(debugOn()).toBe(false); // device override survives navigation
+      storage.m.clear();
+      expect(debugOn()).toBe(true);
+      accountOn = false; // next account/page has no dev permission
+      expect(debugOn()).toBe(false); // no inherited default after switching account
+      setDebug(true);
+      expect(debugOn()).toBe(true); // existing non-dev manual behavior unchanged
+      setDebug(false);
+      expect(debugOn()).toBe(false);
+    } finally {
+      if (oldDocument === undefined) delete g.document;
+      else g.document = oldDocument;
+      if (oldLocation === undefined) delete g.location;
+      else g.location = oldLocation;
+      storage.m = oldStorage;
+    }
+  });
+
   it("debug mode from ?debug= or localStorage; devLog posts only in debug mode", async () => {
     const { DEBUG_EVENT, debugOn, devLog, setDebug } = await import("@/lib/debug-client");
     const posts: string[] = [];

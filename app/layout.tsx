@@ -199,6 +199,9 @@ export default async function RootLayout({
       // Who the viewer is to the chat (lib/partner-entry.ts CHAT_VIEWER_ATTR):
       // the sidebar's "Learning Partner" row reads it. Absent for a guest.
       data-chat-viewer={viewer ?? undefined}
+      // Dev accounts find their chat on a new device/origin without a hidden
+      // gesture. debugOn() still honors this device's explicit local off.
+      data-chat-default={dev ? "on" : undefined}
       suppressHydrationWarning
     >
       <head>

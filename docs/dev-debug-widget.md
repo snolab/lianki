@@ -37,6 +37,23 @@ migration (marker `lk:agent-migrated`) copies `lk:debug*` to `lk:agent*`. Drop
 the `lk:debug*` writes one release later. `?agent=1` / `?agent=0` work as
 aliases of `?debug=1` / `?debug=0` (`?agent=` wins when both are given).
 
+### Account default and device override
+
+A signed-in account holding `dev` finds the chat on by default, including a
+new device or the preview origin. The root layout reads the account's grant
+and sends `<html data-chat-default="on">`; `debugOn()` uses it only when
+neither local key has a value. It never writes this default to storage, so it
+cannot stick after signing out or switching to a non-dev account. No new
+synced preference or extra session request is needed.
+
+`lk:agent` / `lk:debug` remain device/origin overrides: `0` temporarily turns
+this device's chat off until toggled on again; `1` explicitly turns it on.
+The existing hidden tap switches (seven on /words settings, ten on the
+profile name/email), as well as `?agent=0` / `?debug=0`, keep working. Accounts without `dev` keep their
+existing manual/partner-flag behavior. The marker is a UI default, never an
+authorization grant: remote eval still checks the server's dev grant and the
+hub's owner/session checks.
+
 The widget lives in its own workspace package, `packages/debug-chat`
 (`@lianki/debug-chat`), which imports nothing from the app, so it can move to
 its own repo as is. Lianki passes what it needs as `DebugChatProps`; the wire
@@ -769,6 +786,45 @@ runs it again after. Logged `debug.auto-polish` (lines, merged, polished, ms),
 (an embed, a box) never asks. Tests: `unit/debug-hub-auto-polish.test.ts`
 (the hub, with its timer fired by hand), `unit/auto-polish-model.test.ts`
 (the contract and the metering).
+
+### Echoes
+
+The owner, 2026-11-14 20:2x JST: two phones with their mics open in one room.
+Two kinds of copy still landed as his own lines: **(a)** the same sentence from
+the other phone, later than the two-mic window or transcribed a little
+differently; **(b)** Li reading a line aloud — an agent's reply, or his own
+polished line read back — heard by the other phone and transcribed back as if
+he said it (seen 20:3x JST: "表里机费，只表示进程活着，忙不忙要看 state", an
+agent line re-entering as his). Flag **`voice.echo-dedupe`**
+(`/dev/flags#voice.echo-dedupe`, on by default, audience owner).
+
+**Where: the hub**, before an owner voice line (`source: "stt"`) is posted —
+before the continuous-speech merge, so an echo never amends his line either.
+`echoMatch` (`lib/echo-match.ts`, pure, no language rules: letters and digits
+only, lower case) reads the thread's newest 40 lines:
+
+- **other-device**: his voice line from another page (`label`) whose latest
+  words are within `voice.echoWindowMs` (8 s), the same sentence (whole-line
+  edit-distance similarity) or a stretch of it (best-matching substring), at
+  least `voice.echoSimilarity` (0.8). His own page repeating itself is never
+  an echo.
+- **read-aloud**: an agent line that is read (not `quiet`) within
+  `voice.echoReadWindowMs` (60 s) of landing, or his line polished (and so read
+  back) within that window of the polish, with the new line a stretch of its
+  text at the same similarity. The pages do not report what was read when to
+  the hub (read progress stays on the page), so the window runs from the
+  line's arrival / the polish: wide enough for a queued or long reading.
+
+A line shorter than `voice.echoMinChars` (4) is never an echo. The flag and
+config are read only when a line could match at all (cached 30 s).
+
+**What happens to it.** Not posted: not shown, not read back, not polished,
+never sent to a lane or a token listener, not in the account's history. It is
+kept aside as `echo:<id>` (the newest 50) with `raw` = the text as heard,
+`edited: {by: "auto", count: 0}` and `echo: {reason: "echo", kind, of, sim}`
+(`EchoMark`, hub-side only), and logged `debug.echo` (`of`, `kind`, `sim`,
+`gap`). **Undo**: `unmerge` with the echo's id (the page's, or a lane's
+`edit --unmerge`) posts it after all, as heard (`debug.echo-undo`).
 
 ## The live speech line
 
