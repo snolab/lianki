@@ -1756,3 +1756,5 @@ activation, or production service restart is performed by this change.
 PCM, temporary private directories, and a fake clock: WAV ordering, modes,
 restart and idle cleanup, failure recovery, bounded admission, and exclusion
 of guests, enrolment, cancelled and incomplete utterances.
+
+- **The "me" lines are live-adjustable (2026-11-14).** `LIANKI_STT_ME_ACCEPT` (3 s and more, default 0.30) and `LIANKI_STT_ME_ACCEPT_SHORT` (under 3 s, default 0.28) override the CAM++ bands; the code keeps #394's measured defaults. The owner set the live values to 0.50 / 0.48 that evening after another voice in the room scored 0.33-0.47 and was taken for him; a softer or farther sentence of his own may now land in "unknown" (his clear ones score 0.59-0.64). They are set on the `lianki-stt` oxmgr registration (`--env`).

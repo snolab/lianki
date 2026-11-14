@@ -20,7 +20,7 @@ JSON envelope, so an agent reads both the same way.
 | `listen`      | `eval.ts chat` (one JSON line an event)                                                                                                                        | saved grant, network         |
 | `lane-listen` | `lane-listen.ts`: the owner lines addressed to this lane, to its agent ([lane-listen.md](lane-listen.md))                                                      | the lane's token, network    |
 | `serve`       | `eval.ts serve`                                                                                                                                                | saved eval grant, network    |
-| `progress`    | progress.ts's modules (with `--eta`)                                                                                                                           | progress token, network      |
+| `progress`    | progress.ts's modules (with `--eta`); a lane token holding `progress` stands in for a progress token                                                           | progress token, network      |
 | `whoami`      | lane, checkout, hub, grant/token found                                                                                                                         | nothing                      |
 | `doctor`      | one line per missing piece                                                                                                                                     | nothing (checks the network) |
 
@@ -177,7 +177,11 @@ through `git --git-common-dir`, so every worktree shares them
 `~/.config/lianki` holds only `serve`'s session file. The hub is
 `LIANKI_URL`, default `https://lianki.com`. `progress` also needs a token:
 `--token`, `LIANKI_PROGRESS_TOKEN`, or `PROGRESS_TOKEN` in the main
-checkout's `.dev.vars`.
+checkout's `.dev.vars`; failing those, `LIANKI_TOKEN` (or the lane's
+`~/.config/lianki/lanes/<lane>.token`) when that API token holds the
+`progress` permission — the hub then records every report as the token's
+name ([api-for-agents.md](api-for-agents.md), "Report progress"). Agents
+outside this repo use `lianki progress …` from the npm CLI, same flags.
 
 Which checkout's scripts run: `--repo <path>` (or `LIANKI_REPO`), else the
 git worktree of the current directory, else the CLI's own checkout. So it
@@ -214,17 +218,20 @@ way.
 
 ## Install
 
-The repo's `package.json` has `"bin": {"lianki-dev": "scripts/dev/lianki-dev.ts"}`.
-From the main checkout, either:
+So every local agent (any terminal, any worktree, a box's shell) has
+`lianki-dev` on PATH, from the main checkout:
 
 ```bash
-bun link        # puts `lianki-dev` in ~/.bun/bin, pointing at this checkout
-# or a one-line shim on your PATH:
-printf '#!/bin/sh\nexec bun ~/ws/snolab/lianki/tree/main/scripts/dev/lianki-dev.ts "$@"\n' > ~/.local/bin/lianki-dev && chmod +x ~/.local/bin/lianki-dev
+bun scripts/dev/install-lianki-dev.ts            # → ~/.bun/bin/lianki-dev (else ~/.local/bin); --dir DIR for another
+bun scripts/dev/install-lianki-dev.ts --print    # only show the shim
 ```
 
-Either way, run from inside a worktree it uses that worktree's scripts.
-Without installing: `bun scripts/dev/lianki-dev.ts …`.
+It writes a two-line `sh` shim that runs this checkout's
+`scripts/dev/lianki-dev.ts` with `bun` (no copy of the code: a `git pull` is
+picked up at once) and says if the directory is not on PATH. `bun link` (the
+repo's `package.json` has `"bin": {"lianki-dev": …}`) does the same through
+bun's own link table. Either way, run from inside a worktree it uses that
+worktree's scripts. Without installing: `bun scripts/dev/lianki-dev.ts …`.
 
 Tests: `unit/lianki-dev-cli.test.ts` (parsing, labels, doctor, exit codes,
 and `say` against a stub hub on 127.0.0.1).
