@@ -22,7 +22,13 @@ const nextConfig = {
   // id differs from the one lianki-push announces is out of date (workers/push;
   // CI publishes this same value after each deploy).
   env: {
-    NEXT_PUBLIC_BUILD_ID: (process.env.GITHUB_SHA ?? `local-${Date.now()}`).slice(0, 20),
+    // LIANKI_BUILD_SHA: the commit CI checked out (GitHub's runner refuses to
+    // override GITHUB_SHA via env, and under workflow_run it is main's head).
+    NEXT_PUBLIC_BUILD_ID: (
+      process.env.LIANKI_BUILD_SHA ??
+      process.env.GITHUB_SHA ??
+      `local-${Date.now()}`
+    ).slice(0, 20),
   },
   // Internal workspace package shipping TypeScript source (@lianki/core).
   transpilePackages: ["@lianki/core", "@lianki/debug-chat", "@lianki/ui-state", "@snomiao/rgui"],
