@@ -280,10 +280,14 @@ for (const [name, device] of [
   check(more.ok(), `${name}: /data: ${MORE} more cards pushed (${more.status()})`);
   /** Pages the table asked for (its requests carry `sort`; the stats diff does not). */
   const asked = [];
+  /** The page size the table asks with (`size`): rendered rows are fewer, being virtual. */
+  let askedSize = 0;
   page.on("request", (rq) => {
     const u = new URL(rq.url());
-    if (u.pathname === "/api/fsrs/list" && u.searchParams.has("sort"))
+    if (u.pathname === "/api/fsrs/list" && u.searchParams.has("sort")) {
       asked.push(Number(u.searchParams.get("page")));
+      askedSize = Number(u.searchParams.get("size")) || askedSize;
+    }
   });
   await page.goto("/data?store=cloud", { waitUntil: "networkidle" });
   await page.locator('[data-testid="cards-total"]').waitFor();
@@ -295,7 +299,7 @@ for (const [name, device] of [
       String(dataTotal + 1),
     `${name}: /data aria-rowcount = total + header`,
   );
-  const pageSize = await page.locator("tbody tr[data-key]").count();
+  const pageSize = askedSize || (await page.locator("tbody tr[data-key]").count());
   const firstAsked = [...new Set(asked)];
   check(
     firstAsked.length > 0 && Math.max(...firstAsked) <= 2,
