@@ -21,6 +21,7 @@ JSON envelope, so an agent reads both the same way.
 | `lane-listen` | `lane-listen.ts`: the owner lines addressed to this lane, to its agent ([lane-listen.md](lane-listen.md))                                                      | the lane's token, network    |
 | `lanes`       | `lanes-manager.ts`: every agent on Lianki and its repos joins the chat as its own lane (全员入群, [lane-listen.md](lane-listen.md), "Every agent joins")       | `ay`, lane tokens, network   |
 | `serve`       | `eval.ts serve`                                                                                                                                                | saved eval grant, network    |
+| `ui`          | `eval.ts ui fullscreen on\|off`: `ui fullscreen --on\|--off` opens his chat's menu, pulses the Full screen row (0.6 s), then flips it and closes the menu      | saved grant, network         |
 | `progress`    | progress.ts's modules (with `--eta`); a lane token holding `progress` stands in for a progress token                                                           | progress token, network      |
 | `whoami`      | lane, checkout, hub, grant/token found                                                                                                                         | nothing                      |
 | `doctor`      | one line per missing piece                                                                                                                                     | nothing (checks the network) |

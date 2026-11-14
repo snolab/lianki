@@ -262,7 +262,8 @@ describe("by a drag: the bottom edge enters, a drag up leaves (owner, 2026-11-09
     const src = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
     expect(src).not.toContain('data-testid="debug-chat-fullscreen"');
     expect(src).toContain('data-testid="debug-chat-fullscreen-exit"');
-    expect(src).toContain('data-testid="debug-menu-fullscreen"');
+    // The menu's row is its own component (FullScreenMenuItem.tsx, unit/chat-fullscreen-menu.test.tsx).
+    expect(src).toContain("<FullScreenMenuItem");
     expect(src).toContain("dropEntersFull(");
     expect(src).toContain("dragLeavesFull(");
   });

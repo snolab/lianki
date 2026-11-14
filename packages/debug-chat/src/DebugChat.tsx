@@ -287,6 +287,8 @@ import {
   FULL_HINT_STYLE,
   fullHintStep,
 } from "./full-screen";
+import { FullScreenMenuItem } from "./FullScreenMenuItem";
+import { CHAT_UI_EVENT, chatUiOf, runMenuCue } from "./ui-cue";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
 import { type ScrollBox, forwardWheel } from "./wheel-forward";
@@ -3479,6 +3481,42 @@ export function DebugChat({
     foldStore.setState({ tucked: tuckNow, edge: next.edge });
     if ((next.fold === "open") !== open) toggle(next.fold === "open");
   };
+  /**
+   * The agent's view change (ui-cue.ts; `lianki-dev ui fullscreen --on|--off`):
+   * the menu opens, the Full screen row pulses, then it flips as his own tap
+   * would and the menu closes. Off another site's chat (no full screen), ignored.
+   * A newer one cancels the one under way.
+   */
+  const [fullCue, setFullCue] = useState(false);
+  const cueRun = useRef<(on: boolean) => void>(() => {});
+  cueRun.current = (on) => {
+    if (!fullAllowed) return;
+    cueStop.current?.();
+    cueStop.current = runMenuCue({
+      openMenu: () => {
+        if (on && !openRef.current) foldBy({ type: "restore" });
+        setMenu(true);
+      },
+      cue: setFullCue,
+      apply: () => {
+        setFull(on);
+        chatPrefs().setState({ full: on });
+      },
+      closeMenu: () => setMenu(false),
+    });
+  };
+  const cueStop = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const heard = (e: Event) => {
+      const ui = chatUiOf((e as CustomEvent).detail);
+      if (ui) cueRun.current(ui.on);
+    };
+    window.addEventListener(CHAT_UI_EVENT, heard);
+    return () => {
+      window.removeEventListener(CHAT_UI_EVENT, heard);
+      cueStop.current?.();
+    };
+  }, []);
   // While dragging: the moment letting go would enter full screen, preview it.
   onDragMove.current = (bar) => {
     const on =
@@ -4311,22 +4349,17 @@ export function DebugChat({
       {/* Full screen without a drag (the keyboard's and a screen reader's way
           in; a drop on the bottom edge is the other, full-screen.ts). */}
       {fullAllowed && !tucked && (
-        <button
-          type="button"
-          role="menuitemcheckbox"
-          data-testid="debug-menu-fullscreen"
-          aria-checked={full}
-          onClick={() => {
+        <FullScreenMenuItem
+          on={full}
+          cue={fullCue}
+          label={t.fullScreen}
+          onWord={ux.menuSwitchOn}
+          offWord={ux.menuSwitchOff}
+          onToggle={() => {
             setMenu(false);
             setFull(!full, true);
           }}
-          className="flex items-center gap-2 px-3 py-1.5 text-start"
-        >
-          <span aria-hidden className="w-[1em] text-center">
-            {full ? "◉" : "○"}
-          </span>
-          {t.fullScreen}
-        </button>
+        />
       )}
       {/* Reading speed, per device: from the next sentence on. */}
       <div

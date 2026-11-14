@@ -4943,6 +4943,21 @@ export class DebugHub {
         send(ws, { type: "woke", thread: dest.thread, mode, delivered: pages.length, at: t });
       });
     }
+    if (m.value.type === "ui") {
+      if (c.forUser)
+        return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });
+      const { to, op, on } = m.value;
+      return this.sayTarget(to).then((dest) => {
+        if ("error" in dest) return send(ws, { type: "error", error: dest.error });
+        // That thread's pages show the change, then make it (ui-cue.ts); not stored.
+        const pages = this.reach(c, dest.thread);
+        for (const { ws: p } of pages) send(p, { type: "ui", op, on, at: t });
+        console.log(
+          JSON.stringify({ msg: "debug.ui", thread: dest.thread, op, on, delivered: pages.length }),
+        );
+        send(ws, { type: "ui-done", thread: dest.thread, op, on, delivered: pages.length, at: t });
+      });
+    }
     if (m.value.type === "grant" || m.value.type === "ungrant") {
       if (c.forUser)
         return send(ws, { type: "error", error: "a pairing for a friend cannot chat" });

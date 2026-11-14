@@ -75,6 +75,8 @@ export type ChatExtra = {
   miniAppResize: string;
 
   readReceipts: string;
+  menuSwitchOn: string;
+  menuSwitchOff: string;
   linkMenuTitle: string;
   linkOpen: string;
   linkOpenHere: string;
@@ -207,6 +209,8 @@ export const EXTRA_CONTEXT: ChatExtra = {
   miniAppLoading: "In a chat message mini-app card/panel, status while fetching the signed-in account's own app. The HTML is not executed until Open is chosen.",
   miniAppUnavailable: "In a chat message mini-app card/panel: the requested app cannot be loaded, including deleted apps, unavailable feature or another account's app. Do not disclose ownership details.",
   miniAppResize: "Accessible label for the chat mini-app panel height separator: drag vertically or use arrow keys to resize the embedded sandbox; this does not change the app's own HTML.",
+  menuSwitchOn: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the ON word: the setting is active. The shortest word this language's own on/off switches show for 'on' (English 'On', Chinese 开), the same as the app's other switches.`,
+  menuSwitchOff: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the OFF word: the setting is inactive. The shortest word this language's own on/off switches show for 'off' (English 'Off', Chinese 关), the pair to the ON word.`,
   readReceipts: "Accessible label for tiny participant avatars below the latest own chat message in the viewer’s own authenticated thread. These participants have actually read through this message; not merely connected or received it. No counts or technical sequence values are shown.",
   pttTooLong: "Shown in the pending push-to-talk speech bubble when a held recording reaches the configured memory/duration limit. Recording stops with an explicit failure; already recognized text remains available and is not silently sent as a complete recording.",
   voiceDetails: "Accessible label and heading of the small voice-information icon and its tap-open popover beside a spoken chat message. Shows recorded recognition, voiceprint and polishing metadata; not a playback action.",
@@ -645,6 +649,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "Resize mini app",
 
     readReceipts: "Read by",
+    menuSwitchOn: "On",
+    menuSwitchOff: "Off",
     pttTooLong: "Recording limit reached. Recognized text is kept.",
     linkMenuTitle: "Link actions",
     linkOpen: "Open",
@@ -735,6 +741,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "调整迷你应用高度",
 
     readReceipts: "已读者",
+    menuSwitchOn: "开",
+    menuSwitchOff: "关",
     pttTooLong: "已达到录音时长上限，已识别的文字会保留。",
     linkMenuTitle: "链接操作",
     linkOpen: "打开",
@@ -824,6 +832,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "मिनी ऐप का आकार बदलें",
 
     readReceipts: "इन लोगों ने पढ़ा",
+    menuSwitchOn: "चालू",
+    menuSwitchOff: "बंद",
     pttTooLong: "रिकॉर्डिंग की सीमा पूरी हो गई। पहचाना गया पाठ सुरक्षित है।",
     linkMenuTitle: "लिंक के विकल्प",
     linkOpen: "खोलें",
@@ -913,6 +923,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "Cambiar tamaño de la miniaplicación",
 
     readReceipts: "Leído por",
+    menuSwitchOn: "Sí",
+    menuSwitchOff: "No",
     pttTooLong: "Se alcanzó el límite de grabación. Se conserva el texto reconocido.",
     linkMenuTitle: "Opciones del enlace",
     linkOpen: "Abrir",
@@ -1002,6 +1014,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "Redimensionner la mini-app",
 
     readReceipts: "Lu par",
+    menuSwitchOn: "Oui",
+    menuSwitchOff: "Non",
     pttTooLong: "Limite d’enregistrement atteinte. Le texte reconnu est conservé.",
     linkMenuTitle: "Actions du lien",
     linkOpen: "Ouvrir",
@@ -1091,6 +1105,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "تغيير حجم التطبيق المصغر",
 
     readReceipts: "قرأها",
+    menuSwitchOn: "تشغيل",
+    menuSwitchOff: "إيقاف",
     pttTooLong: "تم بلوغ حد التسجيل. تم الاحتفاظ بالنص الذي تم التعرف عليه.",
     linkMenuTitle: "خيارات الرابط",
     linkOpen: "فتح",
@@ -1180,6 +1196,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "মিনি অ্যাপের আকার পরিবর্তন করুন",
 
     readReceipts: "যারা পড়েছেন",
+    menuSwitchOn: "চালু",
+    menuSwitchOff: "বন্ধ",
     pttTooLong: "রেকর্ডিংয়ের সীমা পূর্ণ হয়েছে। শনাক্ত করা লেখা রাখা হয়েছে।",
     linkMenuTitle: "লিংকের বিকল্প",
     linkOpen: "খুলুন",
@@ -1269,6 +1287,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "Redimensionar miniaplicativo",
 
     readReceipts: "Lido por",
+    menuSwitchOn: "Sim",
+    menuSwitchOff: "Não",
     pttTooLong: "Limite de gravação atingido. O texto reconhecido foi mantido.",
     linkMenuTitle: "Ações do link",
     linkOpen: "Abrir",
@@ -1358,6 +1378,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "Изменить размер мини-приложения",
 
     readReceipts: "Прочитали",
+    menuSwitchOn: "Вкл",
+    menuSwitchOff: "Выкл",
     pttTooLong: "Достигнут предел записи. Распознанный текст сохранён.",
     linkMenuTitle: "Действия со ссылкой",
     linkOpen: "Открыть",
@@ -1447,6 +1469,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "منی ایپ کا سائز بدلیں",
 
     readReceipts: "پڑھنے والے",
+    menuSwitchOn: "آن",
+    menuSwitchOff: "آف",
     pttTooLong: "ریکارڈنگ کی حد پوری ہو گئی۔ پہچانا گیا متن محفوظ ہے۔",
     linkMenuTitle: "لنک کے اختیارات",
     linkOpen: "کھولیں",
@@ -1536,6 +1560,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "Ubah ukuran aplikasi mini",
 
     readReceipts: "Dibaca oleh",
+    menuSwitchOn: "Nyala",
+    menuSwitchOff: "Mati",
     pttTooLong: "Batas rekaman tercapai. Teks yang dikenali tetap disimpan.",
     linkMenuTitle: "Tindakan tautan",
     linkOpen: "Buka",
@@ -1625,6 +1651,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "Größe der Mini-App ändern",
 
     readReceipts: "Gelesen von",
+    menuSwitchOn: "An",
+    menuSwitchOff: "Aus",
     pttTooLong: "Aufnahmelimit erreicht. Der erkannte Text bleibt erhalten.",
     linkMenuTitle: "Linkaktionen",
     linkOpen: "Öffnen",
@@ -1714,6 +1742,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "ミニアプリの高さを変更",
 
     readReceipts: "既読の参加者",
+    menuSwitchOn: "開",
+    menuSwitchOff: "閉",
     pttTooLong: "録音時間の上限に達しました。認識済みのテキストは保持されます。",
     linkMenuTitle: "リンクの操作",
     linkOpen: "開く",
@@ -1803,6 +1833,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "Badilisha ukubwa wa programu ndogo",
 
     readReceipts: "Imesomwa na",
+    menuSwitchOn: "Washa",
+    menuSwitchOff: "Zima",
     pttTooLong: "Kikomo cha kurekodi kimefikiwa. Maandishi yaliyotambuliwa yamehifadhiwa.",
     linkMenuTitle: "Vitendo vya kiungo",
     linkOpen: "Fungua",
@@ -1892,6 +1924,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "मिनी ॲपचा आकार बदला",
 
     readReceipts: "यांनी वाचले",
+    menuSwitchOn: "चालू",
+    menuSwitchOff: "बंद",
     pttTooLong: "रेकॉर्डिंगची मर्यादा गाठली. ओळखलेला मजकूर जतन केला आहे.",
     linkMenuTitle: "दुव्याचे पर्याय",
     linkOpen: "उघडा",
@@ -1981,6 +2015,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppResize: "미니 앱 크기 조절",
 
     readReceipts: "읽은 참여자",
+    menuSwitchOn: "켬",
+    menuSwitchOff: "끔",
     pttTooLong: "녹음 한도에 도달했습니다. 인식된 텍스트는 유지됩니다.",
     linkMenuTitle: "링크 작업",
     linkOpen: "열기",

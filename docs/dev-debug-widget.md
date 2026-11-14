@@ -1294,7 +1294,19 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
   (`dragLeavesFull`): the panel comes back, its own size, and follows the finger
   from there; a smaller wobble, sideways or down, stays. Without a drag (the
   keyboard, a screen reader): the menu's **Full screen** row (a double tap on the
-  grip), `fullScreen` in 16 locales. The old ⤢ toggle over the panel's top
+  grip), `fullScreen` in 16 locales. The row is a switch showing both states,
+  `[ On | Off ]` (`SealStamp`, the current half filled seal red; words
+  `menuSwitchOn`/`menuSwitchOff` in chat-ui-locales.ts), `FullScreenMenuItem.tsx`.
+- **The agent can flip it, visibly** (owner, 2026-11-15: "全屏时你帮我把菜单点开…
+  高亮全屏按钮区域"): `lianki-dev ui fullscreen --on|--off` (eval.ts `ui`) sends
+  `{type: "ui", op: "fullscreen", on}`; the hub relays it to that thread's pages
+  like a wake (not stored) and answers `ui-done` with the delivered count.
+  DebugEval passes it on as the window event `lk:chat-ui`; the chat restores
+  itself if minimized (for `--on`), opens the menu, outlines the row in seal red
+  and pulses it once (`CUE_MS`, 0.6 s; the outline alone under reduced motion),
+  then flips it as a tap would (same `full` choice) and closes the menu
+  (`ui-cue.ts`; unit/chat-fullscreen-menu.test.tsx). Ignored where full screen
+  is not offered. The old ⤢ toggle over the panel's top
   corner is gone; the Gantt's own ⤢ is unrelated.
 - **The way out** (owner, 18:25 JST: "an exit button is still needed"): a pill,
   ✕ and the words `fullScreenExit`, at the top corner under the notch, 40 px tall
