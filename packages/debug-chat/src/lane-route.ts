@@ -160,10 +160,16 @@ export type Route = {
  * Which lanes answer `text`. A name (or several joined by 和 / and / & / 、)
  * at the start addresses those lanes; anything else goes to the chat lane.
  */
+/** The all-hands word, with the separator that may follow it. */
+const ALL = /^全体[，,、:：!！ ]*/;
 export function routeLine(text: string): Route {
   const raw = typeof text === "string" ? text : "";
   const none: Route = { lanes: [DEFAULT_LANE], addressed: false, text: raw.trim() };
   let s = raw.replace(LEAD, "");
+  // "全体…" at the start addresses every lane at once (owner, 2026-11-14:
+  // "点名应该监听全体这两个字").
+  const all = ALL.exec(s);
+  if (all) return { lanes: [...ROUTE_LANES], addressed: true, text: s.slice(all[0].length).trim() };
   const lanes: RouteLane[] = [];
   for (;;) {
     const hit = nameAt(s);

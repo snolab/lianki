@@ -13,6 +13,7 @@ import {
   laneToken,
   lineOf,
   makeDeliverer,
+  urgentLine,
   tokenNeeded,
 } from "../scripts/dev/lane-listen-lib";
 
@@ -225,5 +226,37 @@ describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
     await d.add(line("b3", "第三句"));
     expect(sent).toHaveLength(2);
     expect(sent[1]).not.toContain(HANDOFF_SKILL);
+  });
+  it("makeDeliverer: his name or a roll call breaks in at once, with what was waiting", async () => {
+    const sent: [string, boolean][] = [];
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/repo", tests: false, dryRun: true, all: true } as Parameters<
+        typeof makeDeliverer
+      >[0],
+      async (body, interrupt) => {
+        sent.push([body, interrupt]);
+        return 0;
+      },
+      async () => true,
+      () => {},
+      5,
+    );
+    await d.add(line("c1", "先攒着"));
+    expect(sent).toEqual([]);
+    await d.add(line("c2", "coco，你在吗"));
+    expect(sent).toHaveLength(1);
+    expect(sent[0][1]).toBe(true);
+    expect(sent[0][0]).toContain("(id:c1) 先攒着");
+    expect(sent[0][0]).toContain("(id:c2) @你 coco，你在吗");
+    await d.add(line("c3", "全体报数"));
+    expect(sent).toHaveLength(2);
+    expect(sent[1][1]).toBe(true);
+    expect(sent[1][0]).toContain("@你 全体报数");
+    await d.add(line("c3b", "报数"));
+    expect(sent).toHaveLength(2);
+    await d.add(line("c4", "随便一句"));
+    expect(sent).toHaveLength(2);
+    expect(d.pending()).toBe(2);
+    expect(urgentLine("codex", { ...line("c5", "x"), etaLane: "codex" })).toBe(true);
   });
 });

@@ -170,9 +170,20 @@ export const BUSY_RECHECK_MS = 5_000;
  * message (handoffBrief), in order. The first message of the listener's life
  * also names the skill with the rules.
  */
+/**
+ * A line that must reach the lane now, even mid-turn: he said this lane's name
+ * or "全体" (lane-route.ts), or a state-tree nudge is addressed to it (owner,
+ * 2026-11-14 22:5x: "coco和杰米好像干活的时候都不理我"). Everything else waits
+ * for the batch.
+ */
+export const urgentLine = (lane: RouteLane, l: Line) => {
+  if (l.etaLane === lane) return true;
+  const r = routeLine(l.text);
+  return r.addressed && r.lanes.includes(lane);
+};
 export function makeDeliverer(
   o: { lane: RouteLane; repo: string },
-  send: (body: string) => Promise<number>,
+  send: (body: string, interrupt: boolean) => Promise<number>,
   busy: () => Promise<boolean>,
   log: (v: Record<string, unknown>) => void = () => {},
   recheckMs = BUSY_RECHECK_MS,
@@ -180,9 +191,9 @@ export function makeDeliverer(
   const pending: Line[] = [];
   let first = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const flush = async (): Promise<number | undefined> => {
+  const flush = async (interrupt = false): Promise<number | undefined> => {
     if (!pending.length) return undefined;
-    if (await busy()) {
+    if (!interrupt && (await busy())) {
       if (process.env.LANE_LISTEN_DEBUG)
         log({ type: "held", lane: o.lane, pending: pending.length });
       timer ??= setTimeout(() => {
@@ -192,15 +203,15 @@ export function makeDeliverer(
       return undefined;
     }
     const batch = pending.splice(0, pending.length);
-    const code = await send(handoffBrief(o.lane, batch, o.repo, first));
+    const code = await send(handoffBrief(o.lane, batch, o.repo, first), interrupt);
     first = false;
-    log({ type: "delivered", lane: o.lane, ids: batch.map((l) => l.id), ay: code });
+    log({ type: "delivered", lane: o.lane, ids: batch.map((l) => l.id), interrupt, ay: code });
     return code;
   };
   return {
     add: async (l: Line) => {
       pending.push(l);
-      return flush();
+      return flush(urgentLine(o.lane, l));
     },
     pending: () => pending.length,
   };
