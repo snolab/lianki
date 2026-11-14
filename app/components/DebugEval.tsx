@@ -35,6 +35,7 @@ import { ETA_FLAG } from "@/lib/eta-ping";
 import { boxViewer, ownerFlagOn } from "@/lib/box-oauth/session";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
+import { dispatchChatUi } from "@lianki/debug-chat/ui-cue";
 import { getKey, isKey, setKey } from "@lianki/debug-chat/storage-keys";
 import { WAS_OWNER_KEY, devParts, mayRunEval, rejoinDelay } from "@/lib/debug-rejoin";
 import { type SocketPhase, evalLink, evalSessions } from "@lianki/debug-chat/link-state";
@@ -886,6 +887,11 @@ export function DebugEval({
           const mode = (msg as { mode?: unknown }).mode;
           const mic = (globalThis as { __lkMic?: { wake?: (m: string) => void } }).__lkMic;
           if (mode === "active" || mode === "passive" || mode === "ignored") mic?.wake?.(mode);
+          return;
+        }
+        if (msg.type === "ui") {
+          // The agent changes the chat's view, shown as it happens (ui-cue.ts).
+          dispatchChatUi(window, msg);
           return;
         }
         if (msg.type === "history" && Array.isArray(msg.messages)) {
