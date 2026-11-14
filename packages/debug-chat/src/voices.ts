@@ -44,7 +44,7 @@ export const LANE_IDS = ["main", "codex", "agy", "claude"] as const;
 export type LaneId = (typeof LANE_IDS)[number];
 
 /** A voice a line is read in. */
-export const VOICE_IDS = ["main", "calm", "bright"] as const;
+export const VOICE_IDS = ["main", "calm", "bright", "sweet"] as const;
 export type VoiceId = (typeof VOICE_IDS)[number];
 
 export type VoiceSpec = {
@@ -168,6 +168,37 @@ export const VOICES: Readonly<Record<VoiceId, VoiceSpec>> = {
     cloud: { aura: { en: "thalia", es: "carina" } },
     shift: 1.2,
   },
+  // A young girl's voice (owner, 2026-11-15 02:0x: "小克你把你的声线换成小姑娘吧"):
+  // light, young female voices first, a touch higher and quicker than main.
+  sweet: {
+    prefer: [
+      "Lili",
+      "Shasha",
+      "Meijia",
+      "Xiaoyi",
+      "Tingting",
+      "Yu-shu",
+      "Xiaoxiao",
+      "Zoe",
+      "Nicky",
+      "Ava",
+      "Samantha",
+      "Karen",
+      "O-ren",
+      "Kyoko",
+      "Nanami",
+      "Sora",
+      "Yuna",
+      "SunHi",
+      "Amelie",
+      "Monica",
+      "Paulina",
+    ],
+    pitch: 1.2,
+    rate: 1.04,
+    cloud: { aura: { en: "luna", es: "celeste" } },
+    shift: 1.06,
+  },
 };
 
 /** How a lane's lines look: a small own-drawn mark on an oklch disc (24×24 viewBox). */
@@ -215,12 +246,13 @@ export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
       paths: [{ d: "M12 4l1.9 6.1L20 12l-6.1 1.9L12 20l-1.9-6.1L4 12l6.1-1.9Z", fill: true }],
     },
   },
-  // Claude Code helping agy (owner, 2026-11-13: named 小可). Low and calm, like codex,
-  // told apart by its mark: three dots in a row, a thought being finished.
+  // Claude Code helping agy (owner, 2026-11-13: named 小可); its mark: three dots in a
+  // row, a thought being finished.
   claude: {
     // 小克: the 克 of 克劳德 (owner's wife's choice, 2026-11-14); 小可 still reads as this lane.
     name: "小克",
-    voice: "calm",
+    // A young girl's voice (owner, 2026-11-15); was calm (low) like coco.
+    voice: "sweet",
     aliases: ["claude", "小克", "小可"],
     mark: {
       bg: "oklch(0.55 0.1 250)",
