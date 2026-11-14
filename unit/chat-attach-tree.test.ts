@@ -14,6 +14,7 @@ const noop = () => {};
 const menu = (p: Partial<Parameters<typeof AttachMenu>[0]> = {}) =>
   renderToStaticMarkup(
     createElement(AttachMenu, {
+      anchorRef: { current: null },
       t,
       sel: null,
       items: [{ id: "create:link", title: "Add a link", onPick: noop }],
