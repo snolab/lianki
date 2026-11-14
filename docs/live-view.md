@@ -179,7 +179,7 @@ Rules (`lib/live-view/rules.ts`, shared by the route, the page and the script):
   at most 60 s in the future;
 - sources: only the exact origins in `lib/live-view/origins.ts` (scheme,
   host and port), over https. Today that is the owner's Mac on the tailnet,
-  `https://taku.onca-tint.ts.net`. Any other `*.ts.net` host, another port,
+  `https://<your-mac>.ts.net`. Any other `*.ts.net` host, another port,
   or a tunnel not on the list is refused, signed or not. Credentials, a
   fragment, or more than 300 characters are refused too. `http://localhost`
   is allowed only in dev builds;

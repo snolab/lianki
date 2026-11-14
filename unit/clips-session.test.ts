@@ -300,7 +300,7 @@ describe("the hub holds the window session (debug.ts)", () => {
     const dev = await s.page(
       { ws: SID_B, dev: DEV_MAC, hand: token },
       "/words Android",
-      "https://taku.onca-tint.ts.net:8443",
+      "https://owner.example.ts.net:8443",
     );
     expect(dev.clips()).toMatchObject({
       on: true,
@@ -792,20 +792,20 @@ describe("the sink takes the owner's origins (clip-sink.ts)", () => {
   it("lianki.com by default; listed exact https origins too; nothing else", async () => {
     expect(clipsOrigins({})).toEqual([CLIPS_ORIGIN]);
     const allowed = clipsOrigins({
-      LIANKI_DEV_ORIGINS: "https://taku.onca-tint.ts.net:8443",
+      LIANKI_DEV_ORIGINS: "https://owner.example.ts.net:8443",
       LIANKI_CLIPS_ORIGINS:
-        "https://taku.onca-tint.ts.net, http://plain.example, https://x.ts.net/path, *",
+        "https://owner.example.ts.net, http://plain.example, https://x.ts.net/path, *",
     });
     expect(allowed).toEqual([
       CLIPS_ORIGIN,
-      "https://taku.onca-tint.ts.net:8443",
-      "https://taku.onca-tint.ts.net",
+      "https://owner.example.ts.net:8443",
+      "https://owner.example.ts.net",
     ]);
     const dir = mkdtempSync(join(tmpdir(), "clips-"));
     dirs.push(dir);
-    const r = (await post(dir, "https://taku.onca-tint.ts.net:8443", allowed))!;
+    const r = (await post(dir, "https://owner.example.ts.net:8443", allowed))!;
     expect(r.status).toBe(200);
-    expect(r.headers.get("access-control-allow-origin")).toBe("https://taku.onca-tint.ts.net:8443");
+    expect(r.headers.get("access-control-allow-origin")).toBe("https://owner.example.ts.net:8443");
     expect((await post(dir, "https://evil.ts.net", allowed))!.status).toBe(403);
   });
 

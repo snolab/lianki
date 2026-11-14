@@ -87,7 +87,7 @@ describe("the service worker on a box", () => {
   });
 
   test("the preview build's hosts (next dev) are treated like a box; production is not", async () => {
-    for (const host of ["preview.lianki.com", "dev.lianki.com", "taku.onca-tint.ts.net"]) {
+    for (const host of ["preview.lianki.com", "dev.lianki.com", "owner.example.ts.net"]) {
       const sw = await load(host, ["lianki-v2"]);
       await sw.settle("install");
       expect(sw.opened).toEqual([]);

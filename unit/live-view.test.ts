@@ -202,14 +202,14 @@ describe("verifyLiveView", () => {
   });
 
   test("sources: exactly the owner's origins, over https; localhost only when allowed", () => {
-    expect(LIVE_VIEW_ORIGINS).toContain("https://taku.onca-tint.ts.net");
+    expect(LIVE_VIEW_ORIGINS).toContain("https://owner.example.ts.net");
     expect(liveSourceOk(W)).toBe(true);
     expect(liveSourceOk(`${MAC}/lianki-widget-compact/debug-chat.js`)).toBe(true);
     for (const u of [
       "https://lianki.com/x.js",
       "https://evil.com/x.js",
       // Signed or not, another tailnet host, another port, a tunnel not listed:
-      "https://someone-else.onca-tint.ts.net/x.js",
+      "https://someone-else.example.ts.net/x.js",
       "https://mac.example-tailnet.ts.net/x.js",
       `${MAC}:8443/x.js`,
       "https://dev-mac.lianki.com/debug-chat.js",
@@ -233,7 +233,7 @@ describe("verifyLiveView", () => {
 
   test("a signed pointer to an origin not on the list is refused", async () => {
     const v = await verifyLiveView(
-      await on(1, { widget: "https://other.onca-tint.ts.net/x.js" }),
+      await on(1, { widget: "https://other.example.ts.net/x.js" }),
       KEYS,
       {
         now: NOW,
@@ -728,7 +728,7 @@ describe("the host's widget-source decision (TreeFragment, every package copy)",
     const t: Record<string, unknown> = {};
     Object.defineProperty(t, "__lkWidgetHostSrc", { value: { v: "https://evil.example" } });
     const g = hostGate(t);
-    expect(g.set("https://taku.onca-tint.ts.net/w.js")).toBe(false);
+    expect(g.set("https://owner.example.ts.net/w.js")).toBe(false);
     expect(g.get(() => "key")).toBeNull();
     expect(g.set(undefined)).toBe(false);
     expect(g.get(() => "key")).toBeNull();
