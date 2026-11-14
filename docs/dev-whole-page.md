@@ -592,6 +592,12 @@ with the owner and nobody else (`lib/dev-bridge.ts`, docs/secrets-and-auth.md,
 `.dev-whole-page.json`. Chat history comes from the hub as on lianki.com, and
 eval reaches the page like any other debug page of his.
 
+His mic recordings work the same way: `serve` gives next dev the secret as
+`LIANKI_DEV_BRIDGE_SECRET` (outgoing only), and `/api/my/recordings`, after
+the owner check, is answered by lianki.com, which alone can unseal the clips
+(docs/recordings.md, "On the preview"). Picking that up needs a `serve`
+restart once.
+
 ## Build announcements and speech-to-text
 
 - **No "New version" banner.** `/api/version/ws` carries lianki.com's build

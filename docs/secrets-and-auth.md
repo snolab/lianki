@@ -321,7 +321,11 @@ works on `/api/words/tts` and `/api/debug/stt`, as the owner, so the dev page
 can read words aloud and transcribe without Workers AI credentials on the
 Mac. Since 2026-10-31 (owner, decision D in docs/prefs-sync.md) it also
 works on `/api/prefs`, read and write, so the dev page and lianki.com share
-his settings. These are the only routes that accept it as the owner
+his settings. Since 2026-11-14 21:48 JST (owner, "走 A") it also works on
+`/api/my/recordings` (list, clip, day archive, upload, delete), so his preview
+server shows his recordings without a copy of `AUTH_SECRET`: the preview
+forwards that route here and lianki.com decrypts (docs/recordings.md, "On the
+preview"). These are the only routes that accept it as the owner
 (`lib/dev-bridge-user.ts`). Separately, since 2026-11-01 it is what the dev
 server's tunnel gate proves itself with on `POST /api/dev-access/verify`,
 which checks a dev access token and answers nothing else (no owner session
