@@ -737,6 +737,31 @@ export const CONFIG = {
     description:
       "连续学习奖励的断签规则：每漏一天，连续天数扣多少天（不清零）。默认 2：连续 7 天后漏 1 天，再学时按第 6 天算（7−2+1）。0 = 漏天不扣；填很大（如 1000）= 漏一天就从头开始。",
   }),
+  // Sign-up bonus (docs/payments.md, "Sign-up bonus"; owner 2026-11-15): a new
+  // account's one-time credits, for the first N new accounts per UTC day.
+  "credits.signupBonusUsd": {
+    default: 1 as number,
+    schema: z.number().min(0).max(10),
+    min: 0,
+    max: 10,
+    unit: "USD",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "注册礼：每个新注册的账号一次性送多少美元的积分（按 CREDITS_PER_USD 换成积分，四舍五入），只发给每个 UTC 日的前几个新账号（credits.signupBonusDaily）。功能上线前就有的老账号下次登录或打开钱包时也补发同样金额，一次，不占每日名额。0 = 不送。",
+  },
+  "credits.signupBonusDaily": int({
+    default: 10,
+    min: 0,
+    max: 10_000,
+    unit: "accounts/day",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "注册礼：每个 UTC 日（日本时间早上 9 点换日）最多前几个新注册的账号能拿到（每个账号只一次）。超出的人什么也拿不到，也不会看到报错。0 = 新账号都不送（老账号补发不受影响）。",
+  }),
   "inbox.maxFileBytes": int({
     default: 20 * 1024 * 1024,
     min: 1024,
