@@ -67,13 +67,16 @@ class RunTest(unittest.TestCase):
         self.assertIsNone(why)
         np.testing.assert_array_equal(audio, [2] * 200 + [3] * 300)
         self.assertEqual(run_audio(ring, segs, 10, 12), (None, "no audio"))
+        # Its first utterance is not in this socket's ring (a replay on a new socket).
+        self.assertEqual(run_audio(ring, segs[2:], 1, 2.2), (None, "run incomplete"))
+        self.assertEqual(run_audio(ring, segs[:2], 1, 3.2), (None, "run incomplete"))
         segs[2].t1 = None
         self.assertEqual(run_audio(ring, segs, 1, 2.2), (None, "still speaking"))
 
     def test_a_run_longer_than_the_ring_is_refused(self):
         ring, segs = self.ring_of(RATE // 2, RATE // 2, RATE // 2)
-        self.assertEqual(run_audio(ring, segs, 0, 3), (None, "run too long"))
-        audio, _ = run_audio(ring, segs, 1, 3)
+        self.assertEqual(run_audio(ring, segs, 0, 2.2), (None, "run too long"))
+        audio, _ = run_audio(ring, segs, 1, 2.2)
         self.assertEqual(len(audio), RATE)
 
     def test_window(self):

@@ -289,12 +289,17 @@ def run_audio(ring: AudioRingBuffer, segs: list[Segment], start_t: float, end_t:
     (with `slack` either side), from the first one's start to the last one's end, as one
     stretch of the ring (the gaps between them were never streamed). None and why when
     there is none, one is still being spoken, or the ring no longer holds all of it.
+    A run whose first or last utterance is not here (a socket that dropped and came
+    back holds only what was replayed on it) is refused: half a run read as the whole
+    would replace words he said.
     """
     picked = [s for s in segs if start_t - slack <= s.t0 <= end_t + slack and s.stop > s.start]
     if not picked:
         return None, "no audio"
     if any(s.t1 is None for s in picked):
         return None, "still speaking"
+    if picked[0].t0 > start_t + slack or picked[-1].t1 < end_t - slack:
+        return None, "run incomplete"
     audio = ring.span(picked[0].start, picked[-1].stop)
     if audio is None:
         return None, "run too long"

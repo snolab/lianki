@@ -1709,10 +1709,13 @@ end, as one stretch: the ring holds only streamed utterances, so the silences
 between them are not in it. The server keeps each utterance's place in the ring
 (`Segment`) and its begin time on its own clock; the page sends durations, so the
 two clocks never need to agree. The answer adds `"auto":true,"run":"<line id>"`;
-`ok:false` with `no audio`, `still speaking` (one of them has not ended), `run too
-long` (the ring no longer holds its start), `bad run` or `bad window`. One recheck per
-socket may run at a time; further requests receive `recheck busy`. Whisper
-uses a dedicated serial worker, leaving audio reception and ping responsive.
+`ok:false` with `no audio`, `still speaking` (one of them has not ended), `run
+incomplete` (its first or last utterance is not in this socket's ring, e.g. after a
+reconnect: half a run is never read as the whole), `run too
+long` (the ring no longer holds its start), `bad run` or `bad window`.
+
+One recheck per socket may run at a time, a whole run's or not; further requests
+receive `recheck busy`. Whisper uses a dedicated serial worker, leaving audio reception and ping responsive.
 The server prewarms it on startup, except with `--engine fake`; warmup failure
 leaves SenseVoice available and a later recheck retries loading Whisper.
 Tests: `unit/local-stt-recheck.test.ts` runs `scripts/local-stt/test_recheck.py`
