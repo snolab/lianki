@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { useVisibleReads } from "../packages/debug-chat/src/use-visible-reads";
 
+// IntersectionObserver and time advance only through fire()/advance(); no sleeps or async act.
 test("mounted viewport reads respect visibility, scope, teardown and controlled throttling", async () => {
   const win = new Window({ url: "https://example.test" });
   const g = globalThis as Record<string, unknown>;
@@ -39,7 +39,7 @@ test("mounted viewport reads respect visibility, scope, teardown and controlled 
       this.disconnected = true;
     }
     fire(target: Element, isIntersecting = true) {
-      this.callback([{ target, isIntersecting }]);
+      act(() => this.callback([{ target, isIntersecting }]));
     }
   }
   const define = (key: string, value: unknown) =>
@@ -50,6 +50,7 @@ test("mounted viewport reads respect visibility, scope, teardown and controlled 
   define("IntersectionObserver", FakeObserver);
   const container = document.createElement("div");
   document.body.append(container);
+  const { createRoot } = await import("react-dom/client");
   const root = createRoot(container);
   let unmounted = false;
   const scroller = document.createElement("div");
@@ -78,9 +79,11 @@ test("mounted viewport reads respect visibility, scope, teardown and controlled 
     useVisibleReads(props);
     return null;
   }
-  const render = async (change: Partial<typeof props> = {}) => {
+  // The fixture has no async work: synchronous act flushes effects without React's
+  // async-act scheduling timers being mistaken for the hook's throttle timer.
+  const render = (change: Partial<typeof props> = {}) => {
     props = { ...props, ...change };
-    await act(async () => root.render(<Fixture />));
+    act(() => root.render(<Fixture />));
   };
   const latest = () => observers.at(-1)!;
   const setSeq = (seq: number) => {
@@ -93,20 +96,10 @@ test("mounted viewport reads respect visibility, scope, teardown and controlled 
     for (const [id, t] of [...timers])
       if (t.at <= now) {
         timers.delete(id);
-        t.callback();
+        act(() => t.callback());
       }
   };
   try {
-    // Early-return branches never start observation.
-    await render({ enabled: false });
-    await render({ enabled: true, onReadSeq: undefined });
-    await render({ onReadSeq: (seq) => sent.push(seq), root: { current: null } });
-    define("IntersectionObserver", undefined);
-    await render({ root: { current: scroller } });
-    expect(observers).toHaveLength(0);
-    define("IntersectionObserver", FakeObserver);
-    await render({ messages: 1 });
-    expect(latest().nodes).toEqual([line]);
     Date.now = () => now;
     define("setTimeout", (callback: () => void, delay: number) => {
       const id = ++timerId;
@@ -116,6 +109,16 @@ test("mounted viewport reads respect visibility, scope, teardown and controlled 
     define("clearTimeout", (id: number) => {
       timers.delete(id);
     });
+    // Early-return branches never start observation.
+    render({ enabled: false });
+    render({ enabled: true, onReadSeq: undefined });
+    render({ onReadSeq: (seq) => sent.push(seq), root: { current: null } });
+    define("IntersectionObserver", undefined);
+    render({ root: { current: scroller } });
+    expect(observers).toHaveLength(0);
+    define("IntersectionObserver", FakeObserver);
+    render({ messages: 1 });
+    expect(latest().nodes).toEqual([line]);
     latest().fire(line, false);
     lineRect = rect(110, 120);
     latest().fire(line);
@@ -158,18 +161,18 @@ test("mounted viewport reads respect visibility, scope, teardown and controlled 
     advance(2000);
     expect(sent).toEqual([1, 3, 4]);
     lineRect = rect(40, 50, 40, 50);
-    await render({ messages: 2 });
+    render({ messages: 2 });
     viewport.dispatchEvent(new win.Event("resize"));
     viewport.dispatchEvent(new win.Event("scroll"));
     advance(2000);
     expect(sent).toEqual([1, 3, 4, 5]);
     // Listener cleanup on a viewport-equipped effect and timer cleanup on unmount.
-    await render({ messages: 3 });
+    render({ messages: 3 });
     setSeq(6);
     latest().fire(line);
     const old = latest();
     const lateTimer = [...timers.values()][0]!.callback;
-    await render({ scope: "B" });
+    render({ scope: "B" });
     expect(old.disconnected).toBe(true);
     old.fire(line);
     lateTimer();
@@ -178,22 +181,24 @@ test("mounted viewport reads respect visibility, scope, teardown and controlled 
     latest().fire(line);
     expect(sent).toEqual([1, 3, 4, 5, 1]);
     const disabled = latest();
-    await render({ enabled: false });
+    render({ enabled: false });
     setSeq(9);
     disabled.fire(line);
     expect(sent.at(-1)).toBe(1);
-    await render({ enabled: true });
+    render({ enabled: true });
     setSeq(2);
     latest().fire(line);
     const lastObserver = latest();
-    await act(async () => root.unmount());
+    expect(timers.size).toBe(1); // A real pending read notification must be cancelled.
+    act(() => root.unmount());
     unmounted = true;
     lastObserver.fire(line);
     viewport.dispatchEvent(new win.Event("resize"));
     expect(timers.size).toBe(0);
+    advance(10_000); // No notification can escape teardown, even after its old deadline.
     expect(sent).toEqual([1, 3, 4, 5, 1]);
   } finally {
-    if (!unmounted) await act(async () => root.unmount());
+    if (!unmounted) act(() => root.unmount());
     Date.now = oldNow;
     for (const [k, descriptor] of saved)
       if (descriptor) Object.defineProperty(g, k, descriptor);
