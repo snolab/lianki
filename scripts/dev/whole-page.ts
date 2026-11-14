@@ -211,6 +211,13 @@ async function serve() {
     LIANKI_DEV_WHOLE_PAGE: "1",
     LIANKI_DEV_PUBLIC_HOST: publicHost,
     LIANKI_DEV_GUARD_SECRET: state.guardSecret,
+    // The owner's own hosts for the bundle's defaults (never in the repository):
+    // public, non-secret values from the environment `serve` was started with.
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([k, v]) => k.startsWith("NEXT_PUBLIC_LIANKI_") && typeof v === "string",
+      ),
+    ),
     // Outgoing only: /api/my/recordings forwards to lianki.com with it
     // (lib/recordings-bridge.ts). Not DEV_BRIDGE_SECRET, so nothing here accepts it.
     LIANKI_DEV_BRIDGE_SECRET: state.bridgeSecret,
