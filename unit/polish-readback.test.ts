@@ -9,6 +9,7 @@ import {
   cloneTimeoutMs,
   cloneTtsBase,
   cloneTtsUrl,
+  trimSlashes,
   isAgentPolish,
   polishReadback,
   polishReadbackOn,
@@ -198,6 +199,14 @@ describe("polish read-back: the clone server's URL and settings", () => {
       `https://h/c/tts?text=${encodeURIComponent("你好 a&b?")}`,
     );
     expect(cloneTtsUrl("https://h/c//", "x")).toBe("https://h/c/tts?text=x");
+    expect(trimSlashes("/")).toBe("");
+    expect(trimSlashes("a/b")).toBe("a/b");
+    // Linear: ten thousand slashes (and slashes not at the end) take no time.
+    const many = "/".repeat(10_000);
+    const t0 = performance.now();
+    expect(cloneTtsUrl(`${many}x${many}`, "y")).toBe(`${many}x/tts?text=y`);
+    expect(trimSlashes(`h${many}`)).toBe("h");
+    expect(performance.now() - t0).toBeLessThan(200);
   });
 
   it("the device key: absent or blank = the default, 'off' = none, else its URL", () => {

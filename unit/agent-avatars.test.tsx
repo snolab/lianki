@@ -110,6 +110,29 @@ describe("sanitizeAvatarSvg", () => {
     expect(ok('<svg width="48" height="32"/>').svg).toContain('viewBox="0 0 48 32"');
     expect(ok("<svg/>").svg).toContain('viewBox="0 0 24 24"');
   });
+  it("transform lists: number functions only, parsed in linear time", () => {
+    const g = (t: string) => ok(`<svg><g transform="${t}"/></svg>`).svg;
+    expect(g("translate(1 2) scale(2), rotate(45)")).toContain(
+      'transform="translate(1 2) scale(2), rotate(45)"',
+    );
+    expect(g("  ")).toContain("<g");
+    expect(g("scale(url(x))")).not.toContain("transform");
+    expect(g("scale(1) evil")).not.toContain("transform");
+    // An adversarial "scale(scale(scale(…" must fail fast, not backtrack.
+    const t0 = performance.now();
+    const bad = `${"scale( ".repeat(70)}`;
+    expect(g(bad)).not.toContain("transform");
+    expect(g(`${"scale(1)".repeat(60)}x`)).not.toContain("transform");
+    expect(performance.now() - t0).toBeLessThan(200);
+  });
+  it("comments go until none is left: one pass cannot leave a new one", () => {
+    expect(sanitizeAvatarSvg('<svg viewBox="0 0 1 1"><<!--!-->!-- x --></svg>')).toMatchObject({
+      ok: true,
+    });
+    const r = sanitizeAvatarSvg('<svg viewBox="0 0 1 1"><!<!-- a -->-- b --><g/></svg>');
+    expect(r).toMatchObject({ ok: true });
+    if (r.ok) expect(r.svg).not.toContain("<!--");
+  });
 });
 
 describe("autoMark: the same name, the same mark", () => {

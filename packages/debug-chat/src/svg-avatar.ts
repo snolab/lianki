@@ -41,8 +41,23 @@ const TEXT_ELEMENTS = new Set(["text", "tspan", "title"]);
 const NUM = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?(px|%)?$/;
 const NUMS = /^[0-9eE.,+\-\s]*$/;
 const PATH = /^[MmLlHhVvCcSsQqTtAaZz0-9eE.,+\-\s]*$/;
-const TRANSFORM =
-  /^\s*((matrix|translate|scale|rotate|skewX|skewY)\s*\(\s*[0-9eE.,+\-\s]*\)[\s,]*)*$/;
+/** One transform function, matched in place (sticky): name, numbers, separators after it. */
+const TRANSFORM_STEP = /(matrix|translate|scale|rotate|skewX|skewY)\s*\([0-9eE.,+\-\s]*\)[\s,]*/y;
+/**
+ * A transform list of plain number functions. Parsed one function at a time,
+ * so the time is linear in its length (a single nested pattern can backtrack
+ * exponentially on "scale(scale(…").
+ */
+function transformList(v: string): boolean {
+  let i = 0;
+  while (i < v.length && /\s/.test(v[i]!)) i++;
+  while (i < v.length) {
+    TRANSFORM_STEP.lastIndex = i;
+    if (!TRANSFORM_STEP.test(v)) return false;
+    i = TRANSFORM_STEP.lastIndex;
+  }
+  return true;
+}
 /** A plain colour: a keyword, a hex, or a colour function of numbers. Never url() or var(). */
 const COLOR =
   /^(none|currentColor|transparent|[a-zA-Z]{3,20}|#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\(\s*[0-9eE.,%+\-\s/]*(deg|turn|rad)?[0-9eE.,%+\-\s/]*\))$/;
@@ -78,7 +93,7 @@ export const AVATAR_ATTRIBUTES: Readonly<Record<string, Check>> = {
   y2: num,
   d: (v) => v.length <= AVATAR_MAX_BYTES && PATH.test(v),
   points: nums,
-  transform: (v) => v.length <= 512 && TRANSFORM.test(v),
+  transform: (v) => v.length <= 512 && transformList(v),
   fill: color,
   stroke: color,
   "stroke-width": num,
@@ -135,8 +150,12 @@ export function sanitizeAvatarSvg(raw: unknown): SanitizeResult {
     return { ok: false, error: `svg over ${AVATAR_MAX_BYTES} bytes` };
   let s = raw.replace(/^﻿/, "").trim();
   s = s.replace(/^<\?xml[^?]{0,200}\?>\s*/, "");
-  // Comments go; anything else that starts with <! or <? is refused.
-  s = s.replace(/<!--[\s\S]*?-->/g, "");
+  // Comments go, again until none is left ("<<!--!-->!--…-->" leaves a new one
+  // after one pass); anything else that starts with <! or <? is refused.
+  for (let prev = ""; prev !== s; ) {
+    prev = s;
+    s = s.replace(/<!--[\s\S]*?-->/g, "");
+  }
   if (/<!|<\?/.test(s)) return { ok: false, error: "no DOCTYPE, ENTITY, CDATA or <? … ?>" };
   const dropped = new Set<string>();
   const root: Node = { name: "#root", attrs: [], kids: [] };
