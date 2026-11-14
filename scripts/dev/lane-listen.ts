@@ -75,13 +75,22 @@ async function deliver(o: Opts, body: string): Promise<number> {
     return 0;
   }
   // `ay send . …` from the lane's dir finds the lane however often it restarted.
-  const p = Bun.spawn(["ay", "send", o.deliver ?? ".", "--force", "-"], {
+  // --no-wait: hand the text over and return; ay's own settle/idle waits used
+  // to hold this loop for minutes, and every later line with it (2026-11-14).
+  const p = Bun.spawn(["ay", "send", o.deliver ?? ".", "--force", "--no-wait", "-"], {
     cwd: o.cwd ?? process.cwd(),
     stdin: new TextEncoder().encode(body),
     stdout: "ignore",
     stderr: "pipe",
   });
-  const code = await p.exited;
+  const code = await Promise.race([
+    p.exited,
+    new Promise<number>((r) => setTimeout(() => r(-1), SEND_WAIT_MS)),
+  ]);
+  if (code === -1) {
+    console.error(`lane-listen: ay send still running after ${SEND_WAIT_MS} ms; not waiting`);
+    return 4;
+  }
   if (code !== 0 && code !== 4)
     console.error(
       `lane-listen: ay send exited ${code}: ${(await new Response(p.stderr).text()).trim().split("\n").at(-1)}`,
@@ -91,6 +100,8 @@ async function deliver(o: Opts, body: string): Promise<number> {
 
 /** How often a busy agent is looked at while lines wait for it. */
 export const BUSY_RECHECK_MS = 5_000;
+/** How long one delivery may take before the loop moves on (ay keeps the hand-over going). */
+export const SEND_WAIT_MS = 20_000;
 /** How long the busy check may take before the line goes out anyway. */
 export const BUSY_CHECK_MS = 3_000;
 
