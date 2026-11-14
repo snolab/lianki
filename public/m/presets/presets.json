@@ -1,0 +1,12 @@
+{
+  "about": "Starter presets for Lianki mini apps (docs/mini-apps.md, \"Presets\"). Every external URL is on the CDN allowlist (config miniApps.scriptOrigins) and pinned to an exact version.",
+  "style": { "lianki": "/m/presets/lianki.css" },
+  "scripts": {
+    "chart": "/m/presets/chart.js",
+    "react": "https://unpkg.com/react@18.3.1/umd/react.production.min.js",
+    "react-dom": "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js",
+    "babel": "https://unpkg.com/@babel/standalone@7.24.7/babel.min.js",
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three-addons": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}

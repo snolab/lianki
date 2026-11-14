@@ -5,6 +5,7 @@ import { asReviewOrder, DEFAULT_REVIEW_ORDER, type ReviewOrder } from "@lianki/c
 import { useEffect, useMemo, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import TokenManager from "./TokenManager";
+import { MiniAppsSettings } from "@/app/components/MiniAppsSettings";
 import { PreferencesToc, type TocSection } from "./PreferencesToc";
 import { PaperSkinPicker } from "@/app/components/PaperSkinPicker";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
@@ -130,12 +131,15 @@ export default function PreferencesClient({
   showKeySync = false,
   appBadge = false,
   hasVibe = false,
+  miniApps = false,
   children,
 }: {
   showKeySync?: boolean;
   /** `pwa.app-badge` is on: the Notifications section (docs/app-badge.md). */
   appBadge?: boolean;
   hasVibe?: boolean;
+  /** `mini-apps` is on and the account has an app: the Mini apps section (docs/mini-apps.md). */
+  miniApps?: boolean;
   children?: React.ReactNode;
 }) {
   const {
@@ -166,6 +170,7 @@ export default function PreferencesClient({
   const tokens = useIntlayer("api-tokens");
   const badge = useIntlayer("app-badge");
   const vibe = useIntlayer("vibe-page");
+  const miniApp = useIntlayer("mini-app");
   const textSizes = useTextSizes();
 
   const tocSections: TocSection[] = useMemo(() => {
@@ -192,6 +197,9 @@ export default function PreferencesClient({
       { id: "watch-time", title: watchTime.heading.value },
       { id: "mobile-filters", title: mobileFilters.heading.value },
     );
+    if (miniApps) {
+      list.push({ id: "mini-apps", title: miniApp.prefsHeading.value });
+    }
     if (hasVibe) {
       list.push({ id: "vibe", title: vibe.settingsHeading.value });
     }
@@ -199,6 +207,8 @@ export default function PreferencesClient({
   }, [
     appBadge,
     hasVibe,
+    miniApps,
+    miniApp.prefsHeading.value,
     lang.heading.value,
     prefLangs.heading.value,
     paperHeading.value,
@@ -437,6 +447,9 @@ export default function PreferencesClient({
 
         {/* API Tokens */}
         <TokenManager />
+
+        {/* Mini apps: what each may use, and removing an answer (docs/mini-apps.md) */}
+        {miniApps && <MiniAppsSettings />}
 
         {/* Used only by the userscript or extension on other sites: watch time, review filters */}
         <div

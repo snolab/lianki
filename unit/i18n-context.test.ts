@@ -48,6 +48,7 @@ import creditUnits from "@/app/(app)/membership/credit-units.content";
 import readEpub from "@/app/(app)/reader/read-epub.content";
 import readGdoc from "@/app/(app)/reader/read-gdoc.content";
 import vibePage from "@/app/(app)/vibe/page.content";
+import miniApp from "@/app/(app)/m/mini-app.content";
 import readPolish from "@/app/(app)/reader/read-polish.content";
 import readPlayer from "@/app/(app)/reader/read-player.content";
 import readWords from "@/app/(app)/reader/read-words.content";
@@ -182,6 +183,7 @@ describe.each([
   ["read-epub", readEpub],
   ["read-gdoc", readGdoc],
   ["vibe-page", vibePage],
+  ["mini-app", miniApp],
   ["read-polish", readPolish],
   ["read-player", readPlayer],
   ["read-words", readWords],
