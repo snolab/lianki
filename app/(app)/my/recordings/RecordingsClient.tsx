@@ -303,9 +303,18 @@ export default function RecordingsClient() {
     }
   };
 
-  // The ⋯ menu closes on Escape, a tap elsewhere, or a scroll.
+  // The ⋯ menu closes on Escape or a tap elsewhere; on a scroll it follows its
+  // button, and closes once the button has left the window (virtualized away).
+  const menuOpen = menu ? `${menu.day}|${menu.id}` : null;
   useEffect(() => {
     if (!menu) return;
+    const follow = () => {
+      const b = document
+        .querySelector(`[data-clip="${menu.id}"] [data-qa="recordings-more"]`)
+        ?.getBoundingClientRect();
+      if (!b || b.bottom < 0 || b.top > innerHeight) return setMenu(null);
+      setMenu((m) => (m && m.id === menu.id ? { ...m, x: b.right, y: b.bottom } : m));
+    };
     const close = (e: Event) => {
       if (e instanceof KeyboardEvent && e.key !== "Escape") return;
       if (e.type === "pointerdown" && (e.target as Element | null)?.closest?.("[data-rec-menu]"))
@@ -315,13 +324,15 @@ export default function RecordingsClient() {
     };
     document.addEventListener("pointerdown", close);
     document.addEventListener("keydown", close);
-    window.addEventListener("scroll", close, { passive: true });
+    window.addEventListener("scroll", follow, { passive: true });
     return () => {
       document.removeEventListener("pointerdown", close);
       document.removeEventListener("keydown", close);
-      window.removeEventListener("scroll", close);
+      window.removeEventListener("scroll", follow);
     };
-  }, [menu]);
+    // Bound per open menu, not per position.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuOpen]);
 
   const dayName = (day: string) => {
     try {

@@ -104,7 +104,7 @@ describe("the day's timeline: seeking across clips", () => {
 describe("play-target: what a tap does", () => {
   const tapped = { day: DAY, id: "a" };
   it("nothing playing, or another clip: play this one from its beginning", () => {
-    const play = { do: "play", day: DAY, id: "a", fromMs: 0 };
+    const play = { do: "play", day: DAY, id: "a", fromMs: 0 } as const;
     expect(playTarget(null, tapped)).toEqual(play);
     expect(playTarget({ day: DAY, id: "b", playing: true }, tapped)).toEqual(play);
     expect(playTarget({ day: "2026-11-13", id: "a", playing: true }, tapped)).toEqual(play);
