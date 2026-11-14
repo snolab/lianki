@@ -18,6 +18,8 @@ export type LaneAgentDef = {
   lane: string;
   /** A resident listener: hears every line live (lane-listen --all). Else a reader, woken by name. */
   resident?: boolean;
+  /** Woken by name (`ay send`) when a line names it; false = it joins (greets, reader) but is never woken. Default true. */
+  wake?: boolean;
 };
 
 export const LANE_NAME_RE = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,39}$/u;
@@ -31,6 +33,7 @@ export const laneAgentSchema = z
       .optional(),
     lane: z.string().regex(LANE_NAME_RE, "a lane name: the token's name"),
     resident: z.boolean().optional(),
+    wake: z.boolean().optional(),
   })
   .strict();
 
@@ -41,6 +44,9 @@ export const LANES_CONFIG_DEFAULTS = {
   "lanes.agents": [
     { cwd: "lianki/tree/codex", cli: "codex", lane: "codex", resident: true },
     { cwd: "lianki/tree/agy", cli: "agy", lane: "agy", resident: true },
+    // 小克 (the Claude Code chat lane) keeps its own live feed of the owner's
+    // lines: it joins as `claude`, but the manager never wakes it.
+    { cwd: "lianki/tree/agy", cli: "claude", lane: "claude", resident: false, wake: false },
   ] as LaneAgentDef[],
   "lanes.relistSec": 60,
   "lanes.greeting": "大家好，我是 {name}（{repo} · {cli}），{mode}入群。",

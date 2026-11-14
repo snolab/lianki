@@ -7,7 +7,8 @@
  * An agent (a row of `ay ls --json --local`) joins when its working
  * directory is under a whitelisted repo (config lanes.repos: Lianki and the
  * repos it depends on). Its lane is its registered name (lanes.agents: the
- * end of its cwd, its cli), else `<repo>-<cli>-<pid>`. One API token = one
+ * end of its cwd, its cli), else `<repo>-<leaf>` (generatedLane: stable
+ * across restarts; `-<cli>`, `-<pid>` only to break a tie). One API token = one
  * name = one lane: the owner makes each at /my/preferences#tokens and it sits
  * at ~/.config/lianki/lanes/<lane>.token; the manager never mints one, it
  * says once in the chat which names still wait for theirs.
@@ -81,12 +82,43 @@ export function registeredOf(a: AyAgent, agents: readonly LaneAgentDef[]): LaneA
   return null;
 }
 
-/** `<repo>-<cli>-<pid>`, cut to a token name's 40 characters (the repo part gives way). */
-export function generatedLane(repo: string, cli: string, pid: number): string {
+/**
+ * The part of an agent's cwd that names it: `<x>` for `…/<repo>/tree/<x>`,
+ * `agent` for a Claude worktree (`…/.claude/worktrees/agent-<id>`), `main`
+ * for a bare checkout (`~/ws/<org>/<repo>`), else the directory's name.
+ */
+export function laneLeaf(cwd: string, repo: string): string {
+  const ps = parts(cwd);
+  const wt = ps.lastIndexOf("worktrees");
+  if (wt > 0 && ps[wt - 1] === ".claude" && ps[wt + 1])
+    return ps[wt + 1]!.startsWith("agent-") ? "agent" : ps[wt + 1]!;
+  const r = ps.indexOf(repo);
+  if (r < 0) return ps.at(-1) ?? "";
+  if (ps[r + 1] === "tree" && ps[r + 2]) return ps[r + 2]!;
+  return "main";
+}
+
+/**
+ * `<repo>-<leaf>` (laneLeaf), plus `-<cli>` and then `-<pid>` only when
+ * another agent would share the name (planLanes): stable across restarts, so
+ * one token keeps serving it. Lowercase, a token name's characters, cut to
+ * its 40 (the head gives way to the suffixes).
+ */
+export function generatedLane(
+  repo: string,
+  cwd: string,
+  suffix: readonly (string | number)[] = [],
+): string {
   const clean = (s: string) =>
-    s.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^[^\p{L}\p{N}]+/u, "");
-  const tail = `-${clean(cli) || "agent"}-${pid}`;
-  const head = (clean(repo) || "repo").slice(0, Math.max(1, 40 - tail.length));
+    s
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+      .replace(/^[^\p{L}\p{N}]+/u, "")
+      .replace(/-+$/, "");
+  const tail = suffix.map((x) => `-${clean(String(x)) || "agent"}`).join("");
+  const r = clean(repo) || "repo";
+  const leaf = clean(laneLeaf(cwd, repo));
+  const head = (leaf ? `${r}-${leaf}` : r).slice(0, Math.max(1, 40 - tail.length));
   return `${head}${tail}`.slice(0, 40);
 }
 
@@ -98,6 +130,8 @@ export type Planned = {
   repo: string;
   lane: string;
   resident: boolean;
+  /** Woken by name when a line names it (lanes.agents wake, default true). */
+  wake: boolean;
   /** Mid-turn now (ay's `state`). */
   busy: boolean;
 };
@@ -106,36 +140,55 @@ export type Planned = {
  * The agents that join, in `ay` order: alive, under a whitelisted repo. Its
  * name: the lane a running lane-listen already delivers to it (`--deliver
  * <pid>`: its registered name today, a resident lane), else its registered
- * name (lanes.agents; the first agent that matches it), else generated.
+ * name (lanes.agents; the first agent that matches it), else generated
+ * (`<repo>-<leaf>`, with `-<cli>`, then `-<pid>`, only to break a tie).
  */
 export function planLanes(
   agents: readonly AyAgent[],
   cfg: Pick<LanesConfig, "repos" | "agents">,
   bound: ReadonlyMap<number, string> = new Map(),
 ): Planned[] {
-  const out: Planned[] = [];
   const live = agents.filter((a) => a.status === undefined || a.status === "active");
   const taken = new Set(live.map((a) => bound.get(a.pid)).filter((l): l is string => !!l));
+  type Row = { a: AyAgent; repo: string; lane?: string; reg: LaneAgentDef | null; held: boolean };
+  const rows: Row[] = [];
   for (const a of live) {
     const repo = repoOf(a.cwd, cfg.repos);
     if (!repo) continue;
     const held = bound.get(a.pid);
-    const reg = held ? null : registeredOf(a, cfg.agents);
-    let lane = held ?? (reg && !taken.has(reg.lane) ? reg.lane : generatedLane(repo, a.cli, a.pid));
-    if (!LANE_NAME_RE.test(lane) || (!held && taken.has(lane) && lane !== reg?.lane))
-      lane = generatedLane(repo, a.cli, a.pid);
-    taken.add(lane);
-    out.push({
-      pid: a.pid,
-      cli: a.cli,
-      cwd: a.cwd,
-      repo,
-      lane,
-      resident: !!held || !!(reg && reg.lane === lane && reg.resident),
-      busy: a.state === "active",
+    if (held) {
+      rows.push({ a, repo, lane: held, reg: null, held: true });
+      continue;
+    }
+    const reg = registeredOf(a, cfg.agents);
+    if (reg && LANE_NAME_RE.test(reg.lane) && !taken.has(reg.lane)) {
+      taken.add(reg.lane);
+      rows.push({ a, repo, lane: reg.lane, reg, held: false });
+    } else rows.push({ a, repo, reg: null, held: false });
+  }
+  // Generated names: the plain one, then -<cli>, then -<pid>, while two agents share one.
+  const gen = rows.filter((r) => !r.lane);
+  const names = gen.map((r) => generatedLane(r.repo, r.a.cwd));
+  for (const level of [1, 2]) {
+    const all = [...taken, ...names];
+    const count = (n: string) => all.filter((x) => x === n).length;
+    const clash = names.map((n) => count(n) > 1);
+    gen.forEach((r, i) => {
+      if (clash[i])
+        names[i] = generatedLane(r.repo, r.a.cwd, level === 1 ? [r.a.cli] : [r.a.cli, r.a.pid]);
     });
   }
-  return out;
+  gen.forEach((r, i) => (r.lane = names[i]!));
+  return rows.map(({ a, repo, lane, reg, held }) => ({
+    pid: a.pid,
+    cli: a.cli,
+    cwd: a.cwd,
+    repo,
+    lane: lane!,
+    resident: held || !!reg?.resident,
+    wake: reg?.wake !== false,
+    busy: a.state === "active",
+  }));
 }
 
 /** The lane table rows for the joined lanes the built-in table does not know (so the router addresses them). */
@@ -272,14 +325,15 @@ export function decide(
 /**
  * The readers a line wakes: an owner line in the owner thread that names
  * them (lane-route.ts, with laneTableFor's rows in force), or `#<repo>` for
- * every reader of that repo. Listeners hear it themselves; they are left out.
+ * every reader of that repo. Listeners hear it themselves, and a lane with
+ * lanes.agents `wake: false` (小克: its own feed) is never woken; both are left out.
  */
 export function wakeTargets(
   l: { from: string; thread?: string; text: string },
   planned: readonly Planned[],
 ): Planned[] {
   if (l.from !== "owner" || (l.thread ?? "owner") !== "owner") return [];
-  const readers = planned.filter((p) => !p.resident);
+  const readers = planned.filter((p) => !p.resident && p.wake);
   if (!readers.length) return [];
   const r = routeLine(l.text);
   const named = new Set(r.addressed ? r.lanes : []);

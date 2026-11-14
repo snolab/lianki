@@ -2,7 +2,7 @@
 // which agents join under which name, the manager's decisions, and its loop
 // with every effect mocked (no ay, no network, no processes).
 import { afterEach, describe, expect, it } from "bun:test";
-import { LANES_CONFIG_DEFAULTS, lanesConfig } from "@/lib/lanes-config";
+import { LANES_CONFIG_DEFAULTS, laneAgentSchema, lanesConfig } from "@/lib/lanes-config";
 import {
   type AyAgent,
   type Planned,
@@ -11,6 +11,7 @@ import {
   externalListeners,
   generatedLane,
   greeting,
+  laneLeaf,
   laneTableFor,
   parseAyList,
   planLanes,
@@ -90,6 +91,16 @@ describe("config", () => {
       lanesConfig({ LIANKI_LANES_AGENTS: JSON.stringify([{ cwd: "a", lane: "has space" }]) })
         .agents,
     ).toEqual(CFG.agents);
+    const quiet = [{ cwd: "x/tree/y", cli: "claude", lane: "y", wake: false }];
+    expect(lanesConfig({ LIANKI_LANES_AGENTS: JSON.stringify(quiet) }).agents).toEqual(quiet);
+    expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", wake: "no" }).success).toBe(false);
+    expect(CFG.agents).toContainEqual({
+      cwd: "lianki/tree/agy",
+      cli: "claude",
+      lane: "claude",
+      resident: false,
+      wake: false,
+    });
   });
 });
 
@@ -122,12 +133,35 @@ describe("agent → lane", () => {
     expect(registeredOf(a, [{ cwd: "", lane: "x" }])).toBeNull();
     expect(registeredOf({ ...a, cwd: "/codex" }, CFG.agents)).toBeNull();
   });
-  it("generated names fit a token name", () => {
-    expect(generatedLane("rechrome", "codex", 71565)).toBe("rechrome-codex-71565");
-    const long = generatedLane("a-very-long-repository-name-indeed-yes", "claude", 1234567);
+  it("the leaf: tree/<x>, a Claude worktree, a bare checkout, else the directory", () => {
+    expect(laneLeaf(`${W}/snolab/lianki/tree/codex`, "lianki")).toBe("codex");
+    expect(laneLeaf(`${W}/snolab/lianki/tree/main/.claude/worktrees/agent-a6`, "lianki")).toBe(
+      "agent",
+    );
+    expect(laneLeaf(`${W}/snolab/lianki/.claude/worktrees/fix-x`, "lianki")).toBe("fix-x");
+    expect(laneLeaf(`${W}/snolab/liagent`, "liagent")).toBe("main");
+    expect(laneLeaf(`${W}/snolab/liagent/src`, "liagent")).toBe("main");
+    expect(laneLeaf(`${W}/snolab/lianki/tree`, "lianki")).toBe("main");
+    expect(laneLeaf("/private/tmp/coco-upload-bubble", "lianki")).toBe("coco-upload-bubble");
+    expect(laneLeaf("/", "lianki")).toBe("");
+  });
+  it("generated names: <repo>-<leaf>, lowercase, token characters, 40 at most", () => {
+    expect(generatedLane("rechrome", `${W}/snomiao/rechrome/tree/main`)).toBe("rechrome-main");
+    expect(generatedLane("lianki", "/private/tmp/coco-upload-bubble")).toBe(
+      "lianki-coco-upload-bubble",
+    );
+    expect(generatedLane("lianki", `${W}/snolab/lianki/tree/Coco UI!`)).toBe("lianki-coco-ui");
+    expect(generatedLane("rechrome", `${W}/r/tree/x`, ["codex", 71565])).toBe(
+      "rechrome-x-codex-71565",
+    );
+    const long = generatedLane(
+      "a-very-long-repository-name-indeed-yes",
+      "/w/a-very-long-repository-name-indeed-yes/tree/branch",
+      ["claude", 1234567],
+    );
     expect(long.length).toBeLessThanOrEqual(40);
     expect(long.endsWith("-claude-1234567")).toBe(true);
-    expect(generatedLane("..", "", 3)).toBe("repo-agent-3");
+    expect(generatedLane("..", "/", ["", 3])).toBe("repo-agent-3");
   });
   it("plans: whitelisted and alive only; a lane a listener delivers to wins; registered next", () => {
     const bound = new Map([
@@ -139,34 +173,75 @@ describe("agent → lane", () => {
       [5468, "agy", true],
       [64893, "codex", true],
       // Registered as codex, but codex is bound to 64893: a name of its own.
-      [52435, "lianki-codex-52435", false],
-      [38876, "lianki-codex-38876", false],
-      [71565, "rechrome-codex-71565", false],
-      [54765, "liagent-codex-54765", false],
+      [52435, "lianki-codex", false],
+      [38876, "lianki-agent", false],
+      [71565, "rechrome-main", false],
+      [54765, "liagent-main", false],
     ]);
     expect(p[0]!.busy).toBe(true);
+    expect(p.every((x) => x.wake)).toBe(true);
     // Without listeners: the registered names (resident), the first agent that matches.
     const q = planLanes(AGENTS, CFG);
     expect(q.find((x) => x.pid === 52435)).toMatchObject({ lane: "codex", resident: true });
     expect(q.find((x) => x.pid === 64893)).toMatchObject({
-      lane: "lianki-codex-64893",
+      lane: "lianki-coco-ui",
       resident: false,
     });
     // Two agents registered under one name: the second is generated.
     const twice = planLanes([AGENTS[2]!, { ...AGENTS[2]!, pid: 7 }], CFG);
-    expect(twice.map((x) => x.lane)).toEqual(["codex", "lianki-codex-7"]);
+    expect(twice.map((x) => x.lane)).toEqual(["codex", "lianki-codex"]);
     // A registered name that is not a token name falls back.
     expect(
       planLanes([AGENTS[2]!], { ...CFG, agents: [{ cwd: "codex", lane: "bad name" }] })[0]!.lane,
-    ).toBe("lianki-codex-52435");
+    ).toBe("lianki-codex");
+  });
+  it("小克 (claude in tree/agy) joins as claude, a reader never woken", () => {
+    const k = { pid: 77, cli: "claude", cwd: `${W}/snolab/lianki/tree/agy`, status: "active" };
+    const p = planLanes([AGENTS[0]!, k], CFG);
+    expect(p.map((x) => [x.lane, x.resident, x.wake])).toEqual([
+      ["agy", true, true],
+      ["claude", false, false],
+    ]);
+    setLaneTable(laneTableFor(p));
+    expect(wakeTargets({ from: "owner", text: "全体，集合" }, p)).toEqual([]);
+    expect(wakeTargets({ from: "owner", text: "#lianki 看一下" }, p)).toEqual([]);
+  });
+  it("a tie: -<cli> first, -<pid> only if still tied", () => {
+    const at = (pid: number, cli: string, cwd: string): AyAgent => ({ pid, cli, cwd });
+    const two = planLanes(
+      [at(1, "codex", `${W}/l/lianki/tree/x`), at(2, "claude", `${W}/l/lianki/tree/x`)],
+      CFG,
+    );
+    expect(two.map((x) => x.lane)).toEqual(["lianki-x-codex", "lianki-x-claude"]);
+    const same = planLanes(
+      [
+        at(1, "codex", `${W}/l/lianki/tree/x`),
+        at(2, "codex", `${W}/l/lianki/tree/x`),
+        at(3, "claude", `${W}/l/lianki/tree/x`),
+        at(4, "codex", `${W}/l/lianki/tree/y`),
+      ],
+      CFG,
+    );
+    expect(same.map((x) => x.lane)).toEqual([
+      "lianki-x-codex-1",
+      "lianki-x-codex-2",
+      "lianki-x-claude",
+      "lianki-y",
+    ]);
+    // A generated name that a registered lane already holds gives way too.
+    const held = planLanes(
+      [at(9, "agy", `${W}/l/lianki/tree/z`), at(1, "codex", `${W}/l/lianki/tree/x`)],
+      { ...CFG, agents: [{ cwd: "tree/z", lane: "lianki-x" }] },
+    );
+    expect(held.map((x) => x.lane)).toEqual(["lianki-x", "lianki-x-codex"]);
   });
   it("the lane table: the joined lanes the built-ins do not know", () => {
     const p = planLanes(AGENTS, CFG, new Map([[64893, "codex"]]));
-    const t = laneTableFor(p, [{ id: "rechrome-codex-71565", name: "小镀" }]);
-    expect(t[0]).toEqual({ id: "rechrome-codex-71565", name: "小镀" });
+    const t = laneTableFor(p, [{ id: "rechrome-main", name: "小镀" }]);
+    expect(t[0]).toEqual({ id: "rechrome-main", name: "小镀" });
     expect(t.map((r) => r.id)).not.toContain("codex");
-    expect(t.map((r) => r.id)).toContain("lianki-codex-38876");
-    expect(t.filter((r) => r.id === "rechrome-codex-71565")).toHaveLength(1);
+    expect(t.map((r) => r.id)).toContain("lianki-agent");
+    expect(t.filter((r) => r.id === "rechrome-main")).toHaveLength(1);
   });
   it("finds running lane-listens and whom they deliver to", () => {
     const ps = [
@@ -201,6 +276,7 @@ const plan = (lane: string, extra: Partial<Planned> = {}): Planned => ({
   repo: "lianki",
   lane,
   resident: false,
+  wake: true,
   busy: false,
   ...extra,
 });
@@ -340,7 +416,7 @@ describe("the loop (createManager), every effect mocked", () => {
       saved: [],
       logs: [],
     };
-    const tokens = new Set(o.tokens ?? ["agy", "codex", "rechrome-codex-71565", "lanes"]);
+    const tokens = new Set(o.tokens ?? ["agy", "codex", "rechrome-main", "lanes"]);
     const exits: ((c: number) => void)[] = [];
     let ay = o.ayRaw ?? JSON.stringify(o.ay ?? AGENTS);
     let pid = 100;
@@ -388,15 +464,15 @@ describe("the loop (createManager), every effect mocked", () => {
         quiet: true,
       },
       {
-        token: "lk_rechrome-codex-71565",
+        token: "lk_rechrome-main",
         op: "say",
-        text: "大家好，我是 rechrome-codex-71565（rechrome · codex），只读入群。",
+        text: "大家好，我是 rechrome-main（rechrome · codex），只读入群。",
         quiet: true,
       },
       {
         token: "lk_lanes",
         op: "say",
-        text: "还在等 token 才能入群：liagent-codex-54765, lianki-codex-38876, lianki-codex-64893（偏好设置 → API tokens）",
+        text: "还在等 token 才能入群：liagent-main, lianki-agent, lianki-coco-ui（偏好设置 → API tokens）",
         quiet: true,
       },
     ]);
@@ -418,12 +494,12 @@ describe("the loop (createManager), every effect mocked", () => {
     expect(acts).toEqual([
       { type: "stop-listener", lane: "codex" },
       { type: "left", lane: "codex" },
-      { type: "left", lane: "rechrome-codex-71565" },
+      { type: "left", lane: "rechrome-main" },
     ]);
     expect(s.calls.killed).toEqual(["codex"]);
     expect(s.calls.chat.slice(-2)).toEqual([
       { token: "lk_codex", op: "lane", state: "left" },
-      { token: "lk_rechrome-codex-71565", op: "lane", state: "left" },
+      { token: "lk_rechrome-main", op: "lane", state: "left" },
     ]);
     const quiet = setup({ ayRaw: "  " });
     expect(await quiet.m.relist()).toEqual([]);
@@ -444,7 +520,7 @@ describe("the loop (createManager), every effect mocked", () => {
     expect(s.calls.saved).toEqual([]);
     const l = JSON.stringify({
       type: "chat",
-      message: { id: "a1", from: "owner", text: "rechrome-codex-71565，看看", thread: "owner" },
+      message: { id: "a1", from: "owner", text: "rechrome-main，看看", thread: "owner" },
     });
     expect(await s.m.line(l)).toEqual([71565]);
     expect(s.calls.wake).toEqual([]);
@@ -458,8 +534,8 @@ describe("the loop (createManager), every effect mocked", () => {
         message: { id, from: "owner", text, thread: "owner", at: 0 },
         ...extra,
       });
-    expect(await s.m.line(l("a1", "rechrome-codex-71565，看看 #946"))).toEqual([71565]);
-    expect(await s.m.line(l("a1", "rechrome-codex-71565，看看 #946"))).toEqual([]);
+    expect(await s.m.line(l("a1", "rechrome-main，看看 #946"))).toEqual([71565]);
+    expect(await s.m.line(l("a1", "rechrome-main，看看 #946"))).toEqual([]);
     expect(await s.m.line(l("a2", "#rechrome 再看一下"))).toEqual([71565]);
     expect(s.calls.wake[0]![1]).toContain("规则只读这一次");
     expect(s.calls.wake[1]![1]).not.toContain("规则只读这一次");
@@ -467,7 +543,7 @@ describe("the loop (createManager), every effect mocked", () => {
     // History, junk, a reader without a token: nothing.
     expect(await s.m.line(l("a3", "#rechrome x", { history: true }))).toEqual([]);
     expect(await s.m.line("not json")).toEqual([]);
-    expect(await s.m.line(l("a4", "lianki-codex-38876，在吗"))).toEqual([]);
+    expect(await s.m.line(l("a4", "lianki-agent，在吗"))).toEqual([]);
     expect(s.m.planned().length).toBe(6);
     expect(s.m.state().greeted).toContain("codex");
   });

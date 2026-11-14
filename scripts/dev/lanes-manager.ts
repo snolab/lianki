@@ -134,7 +134,15 @@ async function main(): Promise<number> {
     locale: process.env.LIANKI_LANES_LOCALE || "zh",
   });
   await m.relist();
-  log({ type: "planned", lanes: m.planned().map((p) => p.lane), running: m.running() });
+  log({
+    type: "planned",
+    lanes: m.planned().map((p) => p.lane),
+    unwoken: m
+      .planned()
+      .filter((p) => !p.wake)
+      .map((p) => p.lane),
+    running: m.running(),
+  });
   if (o.once) return 0;
   for (const sig of ["SIGINT", "SIGTERM"] as const)
     process.on(sig, () => {
