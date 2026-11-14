@@ -205,6 +205,36 @@ export const urgentLine = (lane: RouteLane, l: Line) => {
   const r = routeLine(l.text);
   return r.addressed && r.lanes.includes(lane);
 };
+/** The body `ay send` still accepts: its own 1024 limit minus its ~150-char wrapper, with room for the header and the skill line. */
+export const SEND_MAX_CHARS = 800;
+/** A batch cut into parts whose bullets stay under SEND_MAX_CHARS; one bullet too long on its own is cut with "…". */
+export function chunkLines(
+  lane: RouteLane,
+  lines: readonly Line[],
+  max = SEND_MAX_CHARS,
+): Line[][] {
+  const parts: Line[][] = [];
+  let cur: Line[] = [];
+  let size = 0;
+  for (const l of lines) {
+    let line = l;
+    let len = briefBullet(lane, line).length + 1;
+    if (len > max) {
+      const over = len - max + 1;
+      line = { ...l, text: `${l.text.slice(0, Math.max(0, l.text.length - over))}…` };
+      len = briefBullet(lane, line).length + 1;
+    }
+    if (cur.length && size + len > max) {
+      parts.push(cur);
+      cur = [];
+      size = 0;
+    }
+    cur.push(line);
+    size += len;
+  }
+  if (cur.length) parts.push(cur);
+  return parts;
+}
 export function makeDeliverer(
   o: { lane: RouteLane; repo: string },
   send: (body: string, interrupt: boolean) => Promise<number>,
@@ -227,9 +257,17 @@ export function makeDeliverer(
       return undefined;
     }
     const batch = pending.splice(0, pending.length);
-    const code = await send(handoffBrief(o.lane, batch, o.repo, first), interrupt);
-    first = false;
-    log({ type: "delivered", lane: o.lane, ids: batch.map((l) => l.id), interrupt, ay: code });
+    // `ay send` refuses a message over 1024 characters (its wrapper takes ~150),
+    // and a refused batch was simply lost (2026-11-14 23:xx, four of coco's).
+    // So a long batch goes as several messages, each under SEND_MAX_CHARS.
+    let code: number | undefined;
+    for (const part of chunkLines(o.lane, batch)) {
+      code = await send(handoffBrief(o.lane, part, o.repo, first), interrupt);
+      first = false;
+      log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
+      if (code !== 0 && code !== 4)
+        log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
+    }
     return code;
   };
   return {

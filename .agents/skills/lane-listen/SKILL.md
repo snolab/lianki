@@ -33,3 +33,7 @@ order, and answer once.
 - A `【lane-test → <lane>】` line is a routing test: answer once, starting
   `[lane-test] `, one short line.
 - Late is worse than silent: if the moment has passed, don't post a stale reply.
+
+## 并行：用你自己的子代理
+
+大块的活（一个功能、一轮 QA、一份调研）派给你自己的子代理并行做，你只做拆分、协调和验收；小改动自己动手。主人 2026-11-14：「coco 和杰咪都有子代理的能力，都要用上」。子代理同样遵守本文件和 AGENTS.md（不碰正式数据、不出声音、不 --no-verify），结果由你核实后再报。
