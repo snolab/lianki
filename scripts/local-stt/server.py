@@ -96,7 +96,6 @@ import voiceprint as VP  # noqa: E402
 from engines import simplified, tidy  # noqa: E402
 from rolling import CTX_S, Rolling, join_spans  # noqa: E402
 from switch import plan, runs_of  # noqa: E402
-from recordings import RecordingStore, RecordingWorker, TTL_S  # noqa: E402
 
 #: A partial every this much new audio (--partial-step)… The owner's bar: the next feedback
 #: within 0.2 s of speech, a wrong word being better than none, so the step is well under it.
@@ -156,7 +155,6 @@ class Utterance:
         self.last_text = ""
         self.done = False
         self.began = time.perf_counter()
-        self.captured_at = time.time()
         self.first_partial_ms: int | None = None
         #: An enrolment sentence (the enrolment's id): its embedding joins it, nothing is scored.
         self.enrol: str | None = None
@@ -221,9 +219,7 @@ class AudioRingBuffer:
 
 class Server:
     def __init__(self, engine, workers: int = 2, verifier: "VP.Verifier | None" = None,
-                 vp_tickets: "Tickets | None" = None, attestor: "VP.Attestor | None" = None,
-                 recorder: "RecordingWorker | None" = None):
-        self.recorder = recorder
+                 vp_tickets: "Tickets | None" = None, attestor: "VP.Attestor | None" = None):
         self.engine = engine
         self.recheck_engine = None
         self.recheck_pool = ThreadPoolExecutor(max_workers=1)
@@ -699,8 +695,6 @@ class Server:
         ready = {"t": "ready", "engine": self.engine.name, "model": self.engine.model}
         if self.verifier and not guest:
             ready["speaker"] = {"models": self.verifier.order}
-        if self.recorder is not None and not guest:
-            ready["recording"] = {"enabled": True, "retentionS": self.recorder.store.ttl}
         await send(ready)
         try:
             async for msg in ws:
@@ -709,12 +703,11 @@ class Server:
                         continue
                     tag, body = msg[0], msg[1:]
                     if tag == 1:
-                        remaining = max_samples - cur.n - (len(cur.pre) if cur.pre is not None else 0)
-                        if remaining <= 0:
+                        if cur.n >= max_samples:
                             continue
                         if len(body) % 2:
                             continue
-                        x = pcm(body)[:remaining]
+                        x = pcm(body)[:max_samples - cur.n]
                         if not cur.enrol and not conn["filter"]:
                             ring.append(x)
                         cur.chunks.append(x)
@@ -761,8 +754,6 @@ class Server:
                     tf = m.get("textFrom")
                     if isinstance(tf, int) and not isinstance(tf, bool) and tf > 0:
                         cur.text_from = tf
-                    if self.recorder is not None and not guest and not cur.enrol:
-                        self.recorder.submit(cur.audio(), cur.captured_at - (len(cur.pre) / RATE if cur.pre is not None else 0))
                     asyncio.create_task(final(cur))
                 elif t == "hello" and guest:
                     pass  # no device, no thread: nothing of the owner's applies to this socket
@@ -1065,10 +1056,6 @@ async def main() -> None:
     ap.add_argument("--partial-min", type=float, default=PARTIAL_MIN_S,
                     help="seconds of audio before the first partial")
     ap.add_argument("--attest-key", default=VP.ATTEST_KEY, help='signs speaker tags for the hub; "" = no proofs')
-    ap.add_argument("--recordings-dir", default=os.environ.get("LIANKI_STT_RECORDINGS_DIR", ""),
-                    help="opt in to private 24h VAD recordings in this directory; empty disables")
-    ap.add_argument("--recordings-ttl", type=int, default=TTL_S,
-                    help="capture-time retention in seconds, at most 86400")
     a = ap.parse_args()
 
     port, pubkey = public_settings(a.public_port, a.ticket_pubkey, a.public_config)
@@ -1123,12 +1110,7 @@ async def main() -> None:
                 log(f"speaker tags signed (STT_SPEAKER_PUB {attestor.public()})")
             except Exception as e:
                 log(f"speaker tags unsigned: {type(e).__name__}: {e}")
-    recorder = None
-    if a.recordings_dir:
-        recorder = RecordingWorker(RecordingStore(a.recordings_dir, ttl=a.recordings_ttl), log)
-        await recorder.start()
-        log("VAD recording on (local, private, capture-time TTL)")
-    srv = Server(engine, verifier=verifier, vp_tickets=vp_tickets, attestor=attestor, recorder=recorder)
+    srv = Server(engine, verifier=verifier, vp_tickets=vp_tickets, attestor=attestor)
     if a.engine != "fake":
         try:
             await asyncio.get_running_loop().run_in_executor(srv.recheck_pool, srv.warm_recheck)
@@ -1156,8 +1138,6 @@ async def main() -> None:
         try:
             await asyncio.Future()
         finally:
-            if recorder is not None:
-                await recorder.close()
             if public:
                 public.close()
             if peer:
