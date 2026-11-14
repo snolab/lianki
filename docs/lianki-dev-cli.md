@@ -19,6 +19,7 @@ JSON envelope, so an agent reads both the same way.
 | `inbox`       | `eval.ts inbox list\|get\|done`                                                                                                                                | saved grant, network         |
 | `listen`      | `eval.ts chat` (one JSON line an event)                                                                                                                        | saved grant, network         |
 | `lane-listen` | `lane-listen.ts`: the owner lines addressed to this lane, to its agent ([lane-listen.md](lane-listen.md))                                                      | the lane's token, network    |
+| `lanes`       | `lanes-manager.ts`: every agent on Lianki and its repos joins the chat as its own lane (全员入群, [lane-listen.md](lane-listen.md), "Every agent joins")       | `ay`, lane tokens, network   |
 | `serve`       | `eval.ts serve`                                                                                                                                                | saved eval grant, network    |
 | `progress`    | progress.ts's modules (with `--eta`)                                                                                                                           | progress token, network      |
 | `whoami`      | lane, checkout, hub, grant/token found                                                                                                                         | nothing                      |
@@ -87,6 +88,12 @@ lianki-dev <command> --help
   or `progress.ts resolve --id /@owner/<slug> --note "…"` when the ask was an
   owner to-do. A Slack decision with no node line is still answered, but the
   main lane first puts it on a node.
+- **Every agent joins (全员入群, 2026-11-15).** `lianki-dev lanes` (oxmgr)
+  joins each `ay` agent under Lianki or a repo in `lanes.repos` as its own
+  lane: a resident one (`lanes.agents`) gets `lane-listen --all`, the rest
+  are readers woken by name; each greets once; names without a token are
+  said once in the chat. `lianki-dev lanes --once --dry-run` shows what it
+  would do. [lane-listen.md](lane-listen.md), "Every agent joins".
 - **Lanes never pair.** `--no-pair` is always passed to eval.ts; `--pair` is
   for a human at the terminal, and a usage error with a lane set. With no
   saved grant a command exits 2 before opening a socket.

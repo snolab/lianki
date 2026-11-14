@@ -18,8 +18,8 @@
  * hot-swapped widget and the mic session share it). Tested in
  * unit/wake-names.test.ts.
  */
-import { LANE_NAMES, type RouteLane } from "./lane-route";
-import { LANES, LANE_IDS, type LaneId } from "./voices";
+import { laneNames, routeOfLane } from "./lane-route";
+import { type LaneId, laneIds, laneSpec } from "./voices";
 import { type KeywordEntry, LINKY } from "./wake";
 import { nameTokens, plainToken, toneVariants } from "./wake-tokens";
 
@@ -33,8 +33,6 @@ export type WakeParticipant = {
   spellings?: readonly string[];
 };
 
-/** The route lane each chat lane answers as (addressed.ts ROUTE_TO_LANE, inverted). */
-const LANE_ROUTE: Partial<Record<LaneId, RouteLane>> = { codex: "codex", agy: "agy", claude: "chat" };
 
 /**
  * Every way a lane's name is said: its aliases, and lane-route's names and
@@ -44,11 +42,12 @@ const LANE_ROUTE: Partial<Record<LaneId, RouteLane>> = { codex: "codex", agy: "a
  * codecs…) are words of their own and stay out.
  */
 export function laneSpellings(id: LaneId): string[] {
-  const route = LANE_ROUTE[id];
-  const r = route ? LANE_NAMES[route] : { exact: [], heard: [] };
+  const route = routeOfLane(id);
+  const r = route ? laneNames(route) : { exact: [], heard: [] };
   const han = r.heard.filter((h) => /^\p{Script=Han}+$/u.test(h));
-  return [...new Set([...LANES[id].aliases, ...r.exact, ...han])].filter(
-    (n) => n !== LANES[id].name && !NOT_NAMES.has(n.toLowerCase()),
+  const spec = laneSpec(id);
+  return [...new Set([...spec.aliases, ...r.exact, ...han])].filter(
+    (n) => n !== spec.name && !NOT_NAMES.has(n.toLowerCase()),
   );
 }
 
@@ -119,8 +118,8 @@ export function wakeParticipants(src: WakeNameSources): WakeParticipant[] {
     if (n && !NOT_NAMES.has(n.toLowerCase())) out.push({ name: n, kind });
   };
   // One participant per lane, its name first and every other way it is said with it.
-  for (const id of LANE_IDS) {
-    const name = LANES[id].name;
+  for (const id of laneIds()) {
+    const name = laneSpec(id).name;
     if (name) out.push({ name, kind: "agent", spellings: laneSpellings(id) });
   }
   add(src.mainName, "agent");

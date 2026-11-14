@@ -55,7 +55,8 @@ describe("registry", () => {
     // the login-streak credits, which grant and never charge, 2026-11-14;
     // his devices reading a line together, asked 2026-11-14 20:2x JST, audience owner;
     // mini apps at /m, asked 2026-11-15 05:2x JST, audience owner, publishing needs dev;
-    // the sign-up bonus, which grants and never charges, asked 2026-11-15 12:4x JST).
+    // the sign-up bonus, which grants and never charges, asked 2026-11-15 12:4x JST;
+    // every agent's lane state and its system lines, 全员入群 2026-11-15, audience owner).
     const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
     expect(on).toEqual([
       "app.auto-update",
@@ -68,6 +69,7 @@ describe("registry", () => {
       "voice.fold-others",
       "voice.echo-dedupe",
       "stt.two-mic-merge",
+      "chat.lane-events",
       "library.catalogue",
       "books.mine",
       "voice.sync-speak",

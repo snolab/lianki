@@ -1,0 +1,290 @@
+/**
+ * The pure half of ./lanes-manager.ts (docs/lane-listen.md, "Every agent
+ * joins"; owner, 2026-11-15 "全员入群"): which agents on this Mac join the
+ * owner's chat, under which lane name, and what the manager does about each.
+ * No spawning and no network here; tested in unit/lanes-manager.test.ts.
+ *
+ * An agent (a row of `ay ls --json --local`) joins when its working
+ * directory is under a whitelisted repo (config lanes.repos: Lianki and the
+ * repos it depends on). Its lane is its registered name (lanes.agents: the
+ * end of its cwd, its cli), else `<repo>-<cli>-<pid>`. One API token = one
+ * name = one lane: the owner makes each at /my/preferences#tokens and it sits
+ * at ~/.config/lianki/lanes/<lane>.token; the manager never mints one, it
+ * says once in the chat which names still wait for theirs.
+ *
+ * A resident lane (lanes.agents resident) gets a `lane-listen --all` of its
+ * own: it hears every line live. Any other lane is a reader: no listener
+ * process; when a line names it (lane-route.ts, with the joined lanes in the
+ * table, or `#<repo>`), the manager hands that line to its agent with
+ * `ay send <pid> --code alt-m`. Each new lane greets once, with its own token.
+ */
+import type { LaneAgentDef, LanesConfig } from "../../lib/lanes-config";
+import { LANE_NAME_RE } from "../../lib/lanes-config";
+import { laneModeWord, tokensNeededText } from "../../packages/debug-chat/src/lane-events";
+import { type ChatLaneDef, isLaneId } from "../../packages/debug-chat/src/voices";
+import { routeLine } from "../../lib/lane-route";
+
+/** One row of `ay ls --json --local`, as far as the manager reads it. */
+export type AyAgent = {
+  pid: number;
+  cli: string;
+  cwd: string;
+  /** The process: "active" = alive. */
+  status?: string;
+  /** The turn: "active" (mid-turn), "idle", "needs_input"… */
+  state?: string;
+};
+
+/** `ay ls --json --local`'s rows (a list, or {local: [...]}); anything unreadable: none. */
+export function parseAyList(raw: string): AyAgent[] {
+  let v: unknown;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  const list = Array.isArray(v) ? v : (v as { local?: unknown } | null)?.local;
+  if (!Array.isArray(list)) return [];
+  const out: AyAgent[] = [];
+  for (const x of list) {
+    if (!x || typeof x !== "object") continue;
+    const r = x as Record<string, unknown>;
+    if (typeof r.pid !== "number" || typeof r.cli !== "string" || typeof r.cwd !== "string")
+      continue;
+    out.push({
+      pid: r.pid,
+      cli: r.cli,
+      cwd: r.cwd,
+      ...(typeof r.status === "string" ? { status: r.status } : {}),
+      ...(typeof r.state === "string" ? { state: r.state } : {}),
+    });
+  }
+  return out;
+}
+
+const parts = (p: string) => p.split("/").filter(Boolean);
+
+/** The whitelisted repo a working directory is under: its first path part that is one, or null. */
+export function repoOf(cwd: string, repos: readonly string[]): string | null {
+  return parts(cwd).find((p) => repos.includes(p)) ?? null;
+}
+
+/** The registered agent this one is: its cwd ends with the row's cwd (whole parts), and its cli matches. */
+export function registeredOf(a: AyAgent, agents: readonly LaneAgentDef[]): LaneAgentDef | null {
+  const have = parts(a.cwd);
+  for (const d of agents) {
+    const want = parts(d.cwd);
+    if (!want.length || want.length > have.length) continue;
+    if (d.cli && d.cli !== a.cli) continue;
+    if (want.every((w, i) => have[have.length - want.length + i] === w)) return d;
+  }
+  return null;
+}
+
+/** `<repo>-<cli>-<pid>`, cut to a token name's 40 characters (the repo part gives way). */
+export function generatedLane(repo: string, cli: string, pid: number): string {
+  const clean = (s: string) =>
+    s.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^[^\p{L}\p{N}]+/u, "");
+  const tail = `-${clean(cli) || "agent"}-${pid}`;
+  const head = (clean(repo) || "repo").slice(0, Math.max(1, 40 - tail.length));
+  return `${head}${tail}`.slice(0, 40);
+}
+
+/** An agent that joins: its lane, repo and mode. */
+export type Planned = {
+  pid: number;
+  cli: string;
+  cwd: string;
+  repo: string;
+  lane: string;
+  resident: boolean;
+  /** Mid-turn now (ay's `state`). */
+  busy: boolean;
+};
+
+/**
+ * The agents that join, in `ay` order: alive, under a whitelisted repo. Its
+ * name: the lane a running lane-listen already delivers to it (`--deliver
+ * <pid>`: its registered name today, a resident lane), else its registered
+ * name (lanes.agents; the first agent that matches it), else generated.
+ */
+export function planLanes(
+  agents: readonly AyAgent[],
+  cfg: Pick<LanesConfig, "repos" | "agents">,
+  bound: ReadonlyMap<number, string> = new Map(),
+): Planned[] {
+  const out: Planned[] = [];
+  const live = agents.filter((a) => a.status === undefined || a.status === "active");
+  const taken = new Set(live.map((a) => bound.get(a.pid)).filter((l): l is string => !!l));
+  for (const a of live) {
+    const repo = repoOf(a.cwd, cfg.repos);
+    if (!repo) continue;
+    const held = bound.get(a.pid);
+    const reg = held ? null : registeredOf(a, cfg.agents);
+    let lane = held ?? (reg && !taken.has(reg.lane) ? reg.lane : generatedLane(repo, a.cli, a.pid));
+    if (!LANE_NAME_RE.test(lane) || (!held && taken.has(lane) && lane !== reg?.lane))
+      lane = generatedLane(repo, a.cli, a.pid);
+    taken.add(lane);
+    out.push({
+      pid: a.pid,
+      cli: a.cli,
+      cwd: a.cwd,
+      repo,
+      lane,
+      resident: !!held || !!(reg && reg.lane === lane && reg.resident),
+      busy: a.state === "active",
+    });
+  }
+  return out;
+}
+
+/** The lane table rows for the joined lanes the built-in table does not know (so the router addresses them). */
+export function laneTableFor(
+  planned: readonly Planned[],
+  extra: readonly ChatLaneDef[] = [],
+): ChatLaneDef[] {
+  const rows: ChatLaneDef[] = [...extra];
+  for (const p of planned)
+    if (!isLaneId(p.lane) && !rows.some((r) => r.id === p.lane)) rows.push({ id: p.lane });
+  return rows;
+}
+
+/**
+ * `lane-listen` processes already running on this Mac (oxmgr's, a human's)
+ * that this manager did not start, from `ps -axo pid=,command=`: each lane
+ * and the agent pid it delivers to (`--deliver <pid>`), or null.
+ */
+export function externalListeners(
+  ps: string,
+  own: ReadonlySet<number> = new Set(),
+): Map<string, number | null> {
+  const out = new Map<string, number | null>();
+  for (const line of ps.split("\n")) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (!m || own.has(Number(m[1]))) continue;
+    const cmd = m[2]!;
+    if (!/lane-listen(?:\.ts)?(?:\s|$)/.test(cmd)) continue;
+    const as = /(?:--as|--lane)[ =](\S+)/.exec(cmd);
+    if (!as) continue;
+    const to = /--deliver[ =](\d+)(?:\s|$)/.exec(cmd);
+    out.set(as[1]!, to ? Number(to[1]) : null);
+  }
+  return out;
+}
+
+/** The agents those listeners deliver to, by pid: their lane is taken as the agent's registered name. */
+export function boundLanes(external: ReadonlyMap<string, number | null>): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const [lane, pid] of external) if (pid !== null && !out.has(pid)) out.set(pid, lane);
+  return out;
+}
+
+/** What the manager keeps between runs (~/.config/lianki/lanes/manager-state.json). */
+export type ManagerState = {
+  /** Lanes that have said their greeting. */
+  greeted: string[];
+  /** The last "waiting for a token" list said in the chat (sorted, comma-joined). */
+  missing?: string;
+};
+
+export type Action =
+  | { type: "start-listener"; lane: string; cwd: string; pid: number }
+  | { type: "stop-listener"; lane: string }
+  | { type: "greet"; lane: string; text: string }
+  | { type: "left"; lane: string }
+  | { type: "tokens-needed"; names: string[]; text: string };
+
+/** What the decision sees of the world now. */
+export type World = {
+  planned: readonly Planned[];
+  /** Lanes with a token file (or LIANKI_TOKEN set for them). */
+  tokens: ReadonlySet<string>;
+  /** Lanes whose listener this manager runs. */
+  running: ReadonlySet<string>;
+  /** Lanes a listener already serves that this manager did not start. */
+  external: { has(lane: string): boolean };
+};
+
+/** The greeting, from config lanes.greeting. */
+export function greeting(p: Planned, template: string, locale = "zh"): string {
+  const mode = laneModeWord({ mode: p.resident ? "listener" : "reader" }, locale) ?? "";
+  return template
+    .replaceAll("{name}", p.lane)
+    .replaceAll("{repo}", p.repo)
+    .replaceAll("{cli}", p.cli)
+    .replaceAll("{mode}", mode);
+}
+
+/**
+ * One pass: from what joined before (`prev`) and the world now, the actions
+ * and the state after them. Idempotent: the same world twice gives no
+ * actions the second time.
+ */
+export function decide(
+  prev: readonly Planned[],
+  w: World,
+  state: ManagerState,
+  cfg: Pick<LanesConfig, "greeting">,
+  locale = "zh",
+): { actions: Action[]; state: ManagerState } {
+  const actions: Action[] = [];
+  const now = new Set(w.planned.map((p) => p.lane));
+  const greeted = new Set(state.greeted);
+  // Gone: its listener stops, and the chat hears it left.
+  for (const p of prev) {
+    if (now.has(p.lane)) continue;
+    if (w.running.has(p.lane)) actions.push({ type: "stop-listener", lane: p.lane });
+    if (w.tokens.has(p.lane)) actions.push({ type: "left", lane: p.lane });
+  }
+  // A listener of ours whose lane is no longer resident or present.
+  for (const lane of w.running)
+    if (
+      !w.planned.some((p) => p.lane === lane && p.resident) &&
+      !actions.some((a) => a.type === "stop-listener" && a.lane === lane)
+    )
+      actions.push({ type: "stop-listener", lane });
+  const missing: string[] = [];
+  for (const p of w.planned) {
+    if (!w.tokens.has(p.lane)) {
+      missing.push(p.lane);
+      continue;
+    }
+    if (p.resident && !w.running.has(p.lane) && !w.external.has(p.lane))
+      actions.push({ type: "start-listener", lane: p.lane, cwd: p.cwd, pid: p.pid });
+    if (!greeted.has(p.lane)) {
+      actions.push({ type: "greet", lane: p.lane, text: greeting(p, cfg.greeting, locale) });
+      greeted.add(p.lane);
+    }
+  }
+  const key = [...missing].sort().join(",");
+  if (missing.length && key !== state.missing)
+    actions.push({
+      type: "tokens-needed",
+      names: [...missing].sort(),
+      text: tokensNeededText([...missing].sort(), locale),
+    });
+  return {
+    actions,
+    state: { greeted: [...greeted], ...(key ? { missing: key } : {}) },
+  };
+}
+
+/**
+ * The readers a line wakes: an owner line in the owner thread that names
+ * them (lane-route.ts, with laneTableFor's rows in force), or `#<repo>` for
+ * every reader of that repo. Listeners hear it themselves; they are left out.
+ */
+export function wakeTargets(
+  l: { from: string; thread?: string; text: string },
+  planned: readonly Planned[],
+): Planned[] {
+  if (l.from !== "owner" || (l.thread ?? "owner") !== "owner") return [];
+  const readers = planned.filter((p) => !p.resident);
+  if (!readers.length) return [];
+  const r = routeLine(l.text);
+  const named = new Set(r.addressed ? r.lanes : []);
+  const tags = new Set(
+    [...l.text.matchAll(/#([A-Za-z0-9._-]{1,40})/g)].map((m) => m[1]!.toLowerCase()),
+  );
+  return readers.filter((p) => named.has(p.lane) || tags.has(p.repo.toLowerCase()));
+}

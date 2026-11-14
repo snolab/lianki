@@ -377,6 +377,15 @@ async function main(): Promise<number> {
     sub = "say";
     rest = sayRest;
   }
+  if (sub === "lanes") {
+    // The lanes manager (docs/lane-listen.md, "Every agent joins"): its own script.
+    const child = Bun.spawn(
+      [process.execPath, join(repo, "scripts", "dev", "lanes-manager.ts"), "--repo", repo, ...rest],
+      { cwd: repo, stdin: "inherit", stdout: "inherit", stderr: "inherit" },
+    );
+    for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => child.kill(sig));
+    return await child.exited;
+  }
   if (sub === "lane-listen") {
     // The lane's own listener (docs/lane-listen.md): its own script, its own token.
     const child = Bun.spawn(

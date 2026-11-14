@@ -61,7 +61,7 @@ describe("waitChat", () => {
     const r = await p;
     expect(r.lines.map((x: Line) => x.id)).toEqual(["n1"]);
     expect(r.after).toBe("n1");
-    expect(ws.sent[0]).toEqual({ type: "auth", token: TOKEN, history: 1 });
+    expect(ws.sent[0]).toEqual({ type: "auth", token: TOKEN, history: 1, mode: "reader" });
     expect(ws.closed).toEqual({ code: 1000 });
   });
 

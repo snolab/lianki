@@ -7,6 +7,7 @@
 
 import type { Ask, AskAnswer } from "./ask";
 import type { LaneId, VoiceId } from "./voices";
+import type { LaneEvent } from "./lane-events";
 
 export * from "./node-path";
 
@@ -212,6 +213,12 @@ export type ChatMessage = {
     /** "main" / "blocked": the lane (or "owner") it is for. */
     lane?: string;
   };
+  /**
+   * Stamped by the hub only (workers/push/src/lane-registry.ts): a system line
+   * about a lane (joined, listening live, read-only, left, muted; lane-events.ts).
+   * Its text is in the thread's language; a page shows it in its own.
+   */
+  laneEvent?: LaneEvent;
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */

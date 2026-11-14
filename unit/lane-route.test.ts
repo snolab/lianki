@@ -151,12 +151,17 @@ describe("customLaneNames and laneHotwords", () => {
       agy: { exact: ["jamie", "agy"] },
       codex: { heard: ["koko"] },
     });
+    // One table (chat.lanes): the names are added to the built-in ones, which stay.
     const eff = getEffectiveLaneNames();
-    expect(eff.agy.exact).toEqual(["jamie", "agy"]);
+    expect(eff.agy.exact).toEqual([...LANE_NAMES.agy.exact, "jamie"]);
     expect(eff.agy.heard).toEqual(LANE_NAMES.agy.heard);
-    expect(eff.codex.heard).toEqual(["koko"]);
+    expect(eff.codex.heard).toEqual(LANE_NAMES.codex.heard);
+    expect(eff.codex.exact).toEqual(LANE_NAMES.codex.exact);
 
     expect(routeLine("jamie, 在吗").lanes).toEqual(["agy"]);
+    // Set again: that lane's wake names are replaced, not piled up.
+    setCustomLaneNames({ agy: { exact: ["jay"] } });
+    expect(getEffectiveLaneNames().agy.exact).toEqual([...LANE_NAMES.agy.exact, "jay"]);
 
     setCustomLaneNames(null);
     expect(getEffectiveLaneNames()).toEqual(LANE_NAMES);

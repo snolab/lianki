@@ -218,6 +218,14 @@ export const FLAGS = {
     default: false,
     audience: "allowlist",
   },
+  "chat.lane-events": {
+    description:
+      "全员入群：聊天里每个 agent（API token）一条线，记下它是「实时监听」还是「只读」、有没有被禁言。线入群、开始实时监听、转为只读、下线、被禁言时，聊天里出现一行系统消息（静音，不朗读），头像栏显示每个 agent 的状态；被禁言的线发言会被拒绝（403）。关闭 = 不记状态、不发系统消息、不禁言，聊天和以前一样。",
+    default: true,
+    audience: "owner",
+    // With the other agent switches (the groups stay few, flag-view.ts).
+    group: "ai",
+  },
   "chat.eta-bar": {
     description:
       "学习伙伴聊天里的任务进度条：助手给每个任务报的预计时间（progress.ts --eta）在聊天输入框上方汇总成一条进度条（总进度按预计时长加权、总剩余时间、下一个到期），点一下打开状态树，每个任务有自己的进度条和剩余时间。预计时间一到，自动在你的线程里发一条「ETA reached for …: report to the owner」给助手（静音，不朗读；不是你说的话，永远不算批准）。没有页面开着也会发（服务器定时）。只给你本人。关闭（默认）= 不显示进度条，也不发到期消息。",

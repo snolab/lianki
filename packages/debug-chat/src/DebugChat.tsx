@@ -193,7 +193,7 @@ import {
   sheetScrim,
 } from "./log-surface";
 import { treeDefaults, uiStrings } from "./ui-strings";
-import { chatExtra } from "./chat-ui-locales";
+import { chatExtra, chatLocale } from "./chat-ui-locales";
 import {
   ADDRESSED_CSS,
   FLASH_MS,
@@ -284,6 +284,7 @@ import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tu
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import { type LaneId, withLane } from "./voices";
+import { withLaneEvent } from "./lane-events";
 import {
   AddressedMarks,
   LineTag,
@@ -1084,7 +1085,11 @@ export function DebugChat({
    * A line inside a summary (`collapsedInto`) is not shown: the summary's tap shows it as heard.
    */
   const messages = useMemo(
-    () => rawMessages.filter((m) => !m.collapsedInto).map((m) => withTokenName(withLane(m))),
+    () =>
+      rawMessages
+        .filter((m) => !m.collapsedInto)
+        // A lane's system line (lane-events.ts) in this page's language.
+        .map((m) => withTokenName(withLane(withLaneEvent(m, chatLocale())))),
     [rawMessages],
   );
   /** Which lines arrived live: they shimmer while read (shimmer.ts). Seen at render, idempotent. */

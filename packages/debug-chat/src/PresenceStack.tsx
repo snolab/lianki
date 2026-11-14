@@ -24,6 +24,8 @@ import {
   stackOf,
 } from "./presence";
 import { sanitizeAvatarSvg } from "./svg-avatar";
+import { laneModeWord } from "./lane-events";
+import { chatLocale } from "./chat-ui-locales";
 import type { UiStrings } from "./ui-strings";
 
 export type PresenceWords = Pick<
@@ -310,6 +312,9 @@ function Row({
   const [svgBad, setSvgBad] = useState(false);
   const mine = !!p.id && !!p.tok;
   const activity: ReactNode[] = [];
+  // Its lane's mode (lane-registry.ts): listening live, read-only, or muted by him.
+  const mode = laneModeWord(p, chatLocale());
+  if (mode) activity.push(mode);
   if (p.live) activity.push(t.peopleNow);
   else activity.push(t.peopleActive.replaceAll("{time}", clock(p.active)));
   if (p.since) activity.push(t.peopleSince.replaceAll("{time}", clock(p.since)));

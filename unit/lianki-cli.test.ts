@@ -790,7 +790,8 @@ describe("chat (your own thread, with a chat token)", () => {
     );
     expect(r.code).toBe(0);
     expect(r.out).toBe("Yes");
-    expect(sent[0]).toEqual({ type: "auth", token: TOKEN });
+    // An ask's wait is a reader in the hub's lane registry, never a resident listener.
+    expect(sent[0]).toEqual({ type: "auth", token: TOKEN, mode: "reader" });
     expect(sent[1]).toMatchObject({ type: "ask", question: "Ship it?" });
   });
 
@@ -893,7 +894,8 @@ describe("chat (your own thread, with a chat token)", () => {
       const r = await h.run("chat", "listen", "--history", "2", ...(machine ? ["--json"] : []));
       expect(r.code).toBe(2);
       expect(closed).toBe(true);
-      expect(sent).toEqual([{ type: "auth", token: TOKEN, history: 2 }]);
+      // `chat listen` is a resident listener (lane-registry.ts).
+      expect(sent).toEqual([{ type: "auth", token: TOKEN, history: 2, mode: "listener" }]);
       if (machine) {
         const events = r.out.split("\n").map((x) => JSON.parse(x));
         expect(events).toContainEqual({ type: "chat", message: old, history: true });

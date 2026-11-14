@@ -12,20 +12,43 @@
  * Pure, tested in unit/lane-route.test.ts.
  */
 
+import { type LaneId, laneTable, setLaneTable } from "./voices";
+
+/**
+ * The built-in route lanes. More come from config `chat.lanes` (voices.ts
+ * setLaneTable): each configured lane routes under its own id (its token
+ * name), so a route lane is any string routeLanes() lists.
+ */
 export const ROUTE_LANES = ["chat", "codex", "agy"] as const;
-export type RouteLane = (typeof ROUTE_LANES)[number];
+export type DefaultRouteLane = (typeof ROUTE_LANES)[number];
+export type RouteLane = DefaultRouteLane | (string & {});
+
+/** The chat lane each built-in route lane is (addressed.ts): "chat" is 小克's. */
+const BUILTIN_ROUTE: Readonly<Record<string, DefaultRouteLane>> = {
+  claude: "chat",
+  codex: "codex",
+  agy: "agy",
+};
+/** The route lane a chat lane (voices.ts LaneId) answers as: "claude" → "chat", "main" none, a configured one itself. */
+export const routeOfLane = (id: LaneId): RouteLane | null =>
+  id === "main" ? null : (BUILTIN_ROUTE[id] ?? id);
+/** The chat lane a route lane is (the inverse): "chat" → "claude", the others themselves. */
+export const laneOfRoute = (r: RouteLane): LaneId => (r === "chat" ? "claude" : r);
+
+/** Every route lane: the built-ins, then the configured lanes (in their order). */
+export function routeLanes(): RouteLane[] {
+  const out: RouteLane[] = [...ROUTE_LANES];
+  for (const d of laneTable()) {
+    const r = routeOfLane(d.id);
+    if (r && !out.includes(r)) out.push(r);
+  }
+  return out;
+}
 export const isRouteLane = (v: unknown): v is RouteLane =>
-  typeof v === "string" && (ROUTE_LANES as readonly string[]).includes(v);
+  typeof v === "string" && routeLanes().includes(v);
 
 /** The lane a line with no name goes to. */
 export const DEFAULT_LANE: RouteLane = "chat";
-
-export type LaneNameEntry = {
-  readonly exact: readonly string[];
-  readonly heard: readonly string[];
-};
-
-export type LaneNamesTable = Record<RouteLane, LaneNameEntry>;
 
 /**
  * Each lane's names. `exact`: its own name, taken with any separator after it,
@@ -35,7 +58,14 @@ export type LaneNamesTable = Record<RouteLane, LaneNameEntry>;
  * Latin names are matched case-insensitively with spaces, dots and hyphens
  * inside them ignored ("A. G. Y.", "Anti-gravity", "Xiao Ke").
  */
-export const LANE_NAMES: Readonly<LaneNamesTable> = {
+export type LaneNames = { readonly exact: readonly string[]; readonly heard: readonly string[] };
+/** One lane's names (杰咪's wake-name table, 2026-11-15): the same shape as LaneNames. */
+export type LaneNameEntry = LaneNames;
+/** Route lane → its names: the built-ins' (LANE_NAMES) and the configured lanes'. */
+export type LaneNamesTable = Readonly<
+  Record<DefaultRouteLane, LaneNameEntry> & Partial<Record<string, LaneNameEntry>>
+>;
+export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
   codex: {
     // coco: the owner's name for codex (2026-11-14), written coco, never 可可.
     exact: ["codex", "coco"],
@@ -90,50 +120,73 @@ export const LANE_NAMES: Readonly<LaneNamesTable> = {
   },
 };
 
-/** Dynamic custom lane names configured live (e.g. from cfg("chat.laneNames")). */
-let customLaneNames: LaneNamesTable | null = null;
-
 /**
- * Configure dynamic custom lane names.
- * Setting `null` reverts to default LANE_NAMES.
+ * A route lane's names: the built-in ones with its config row's added (the
+ * row's id, name and aliases are its own names; `heard` its STT spellings),
+ * or, for a configured lane, the row's alone. One table for the routing, the
+ * wake words (wake-names.ts) and the avatar flash (addressed.ts).
  */
-export function setCustomLaneNames(table: Partial<Record<RouteLane, Partial<LaneNameEntry>>> | null): void {
-  if (!table) {
-    customLaneNames = null;
-    return;
-  }
-  const merged: LaneNamesTable = {
-    codex: {
-      exact: [...(table.codex?.exact ?? LANE_NAMES.codex.exact)],
-      heard: [...(table.codex?.heard ?? LANE_NAMES.codex.heard)],
-    },
-    agy: {
-      exact: [...(table.agy?.exact ?? LANE_NAMES.agy.exact)],
-      heard: [...(table.agy?.heard ?? LANE_NAMES.agy.heard)],
-    },
-    chat: {
-      exact: [...(table.chat?.exact ?? LANE_NAMES.chat.exact)],
-      heard: [...(table.chat?.heard ?? LANE_NAMES.chat.heard)],
-    },
-  };
-  customLaneNames = merged;
+export function laneNames(lane: RouteLane): LaneNames {
+  const base: LaneNames = (LANE_NAMES as Record<string, LaneNames>)[lane] ?? { exact: [], heard: [] };
+  const row = laneTable().find((d) => routeOfLane(d.id) === lane);
+  if (!row) return base;
+  const own = [row.id, ...(row.name ? [row.name] : []), ...(row.aliases ?? [])].map((n) =>
+    n.toLowerCase(),
+  );
+  const exact = [...new Set([...base.exact, ...own])].filter((n) => n !== "main");
+  return { exact, heard: [...new Set([...base.heard, ...(row.heard ?? [])])] };
 }
 
 /**
- * The effective lane names table currently in use (custom overrides or LANE_NAMES defaults).
+ * The whole effective table: every route lane (routeLanes) with its names
+ * (laneNames). ONE source (owner, 2026-11-15): config `chat.lanes` rows on
+ * top of LANE_NAMES; the wake names are the rows' `aliases` (and `heard`).
  */
 export function getEffectiveLaneNames(): LaneNamesTable {
-  return customLaneNames ?? LANE_NAMES;
+  return Object.fromEntries(routeLanes().map((l) => [l, laneNames(l)])) as LaneNamesTable;
 }
 
 /**
- * All wake words and aliases across all lanes, useful for STT hotword lists or prompts.
+ * Wake names from a name → lane-names object (the shape `chat.laneNames`
+ * had): an alias of the same data, written into the one lane table as
+ * `chat.lanes` rows (exact → aliases, heard → heard, replacing that row's
+ * wake names; the built-in names stay). `null` clears the table (the built-in names alone).
+ */
+export function setCustomLaneNames(
+  table: Partial<Record<RouteLane, Partial<LaneNameEntry>>> | null,
+): void {
+  if (!table) {
+    setLaneTable([]);
+    return;
+  }
+  const rows = [...laneTable()];
+  for (const [lane, names] of Object.entries(table)) {
+    if (!names) continue;
+    const id = laneOfRoute(lane);
+    const i = rows.findIndex((r) => r.id === id);
+    // Its wake names replace the row's; its name, voice and colour stay.
+    const row = {
+      ...(i >= 0 ? rows[i] : {}),
+      id,
+      aliases: [...(names.exact ?? [])],
+      heard: [...(names.heard ?? [])],
+    };
+    if (i >= 0) rows[i] = row;
+    else rows.push(row);
+  }
+  setLaneTable(rows);
+}
+
+/**
+ * All wake words and aliases across all lanes, for STT hotword lists or
+ * prompts (stt-hint.ts formatSttPrompt): from the one effective table.
  */
 export function laneHotwords(table: LaneNamesTable = getEffectiveLaneNames()): string[] {
   const words = new Set<string>();
-  for (const lane of ROUTE_LANES) {
-    for (const name of table[lane].exact) words.add(name);
-    for (const name of table[lane].heard) words.add(name);
+  for (const names of Object.values(table)) {
+    if (!names) continue;
+    for (const name of names.exact) words.add(name);
+    for (const name of names.heard) words.add(name);
   }
   return [...words];
 }
@@ -156,11 +209,11 @@ type Hit = { lane: RouteLane; end: number; exact: boolean };
 
 /** The longest lane name at the start of `s` (after nothing), or null. */
 function nameAt(s: string): Hit | null {
-  const table = getEffectiveLaneNames();
   let best: Hit | null = null;
-  for (const lane of ROUTE_LANES) {
+  for (const lane of routeLanes()) {
+    const names = laneNames(lane);
     for (const kind of ["exact", "heard"] as const) {
-      for (const name of table[lane][kind]) {
+      for (const name of names[kind]) {
         let end = -1;
         if (isLatin(name)) {
           // Walk the input, skipping spaces/dots/hyphens between letters, until the name is spelled.
@@ -179,7 +232,7 @@ function nameAt(s: string): Hit | null {
             // Not inside a longer latin word ("codexes", "agyle").
             if (!/^[a-z0-9]/i.test(s.slice(i))) end = i;
           }
-        } else if (s.startsWith(name)) end = name.length;
+        } else if (s.slice(0, name.length).toLowerCase() === name.toLowerCase()) end = name.length;
         if (end > 0 && (!best || end > best.end)) best = { lane, end, exact: kind === "exact" };
       }
     }
@@ -226,7 +279,7 @@ export function routeLine(text: string): Route {
   // "全体…" at the start addresses every lane at once (owner, 2026-11-14:
   // "点名应该监听全体这两个字").
   const all = ALL.exec(s);
-  if (all) return { lanes: [...ROUTE_LANES], addressed: true, text: s.slice(all[0].length).trim() };
+  if (all) return { lanes: routeLanes(), addressed: true, text: s.slice(all[0].length).trim() };
   const lanes: RouteLane[] = [];
   for (;;) {
     const hit = nameAt(s);

@@ -22,6 +22,7 @@
  */
 import { join } from "node:path";
 import { type RouteLane, isRouteLane, laneTakes } from "../../lib/lane-route";
+import { setLaneTable } from "../../packages/debug-chat/src/voices";
 import { laneToken, lineOf, makeDeliverer, tokenNeeded, voiceAllowed } from "./lane-listen-lib";
 
 type Opts = {
@@ -54,9 +55,15 @@ function parse(argv: string[]): Opts | Error {
     else return new Error(`lane-listen: unknown argument ${a}`);
   }
   o.lane ??= (process.env.LIANKI_LANE || undefined) as RouteLane | undefined;
+  // The joined lanes (the lanes manager hands them over, docs/lane-listen.md "Every agent
+  // joins"): a lane beyond codex and agy listens under its own name, and the router knows it.
+  if (process.env.LIANKI_LANE_TABLE)
+    try {
+      setLaneTable(JSON.parse(process.env.LIANKI_LANE_TABLE));
+    } catch {}
   if (!isRouteLane(o.lane) || o.lane === "chat")
     return new Error(
-      "lane-listen: --as codex | agy (the chat lane listens with `eval.ts chat --route chat`)",
+      "lane-listen: --as codex | agy | a lane in LIANKI_LANE_TABLE (the chat lane listens with `eval.ts chat --route chat`)",
     );
   if (!o.repo) return new Error("lane-listen: --repo <checkout> missing");
   if (!o.dryRun && !o.deliver && !o.cwd)
