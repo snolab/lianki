@@ -165,7 +165,7 @@ export const FLAGS = {
   },
   "voice.recordings": {
     description:
-      "麦克风录音存到你的账号（/my/recordings，docs/recordings.md）：在 Lianki 里开着麦克风时，每一句话（主动和被动模式都算，发不发到聊天都算）的录音和它已有的文字（Mac 本机识别的；Mac 不在时是聊天用的云端结果）加密存进你的账号，第二天也能回听、按天下载到 Mac 上重新识别。会议里别人的声音也会被录下；只有你的账号能读。服务器从不替录音做识别。默认保留 90 天（/dev/config 的 recordings.retentionDays），可以按句或按天删除。只对有 dev 权限的账号开放。关闭 = 不再上传新的录音，/api/my/recordings 和 /my/recordings 都不存在（404）；已存的录音留着但读不到，到期照样清理。",
+      "麦克风录音存到你的账号（/my/recordings，docs/recordings.md）：在 Lianki 里开着麦克风时，每一句话（主动和被动模式都算，发不发到聊天都算）的录音和它已有的文字（Mac 本机识别的；Mac 不在时是聊天用的云端结果）加密存进你的账号，第二天也能回听、按天下载到 Mac 上重新识别。会议里别人的声音也会被录下；只有你的账号能读。服务器从不替录音做识别。默认保留 90 天（/dev/config 的 recordings.retentionDays），可以在页面上按句删除。只对有 dev 权限的账号开放。关闭 = 不再上传新的录音，/api/my/recordings 和 /my/recordings 都不存在（404）；已存的录音留着但读不到，到期照样清理。",
     default: true,
     audience: "owner",
     group: "stt",

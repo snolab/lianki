@@ -2,30 +2,13 @@ import { t, type DeclarationContent } from "intlayer";
 import { describeKeys } from "@/lib/i18n-context";
 
 /**
- * /my/recordings (docs/recordings.md): the account's kept mic recordings by
- * day — listen, download a day, delete a clip or a day.
+ * /my/recordings (docs/recordings.md): the account's kept mic recordings as
+ * one continuous journal, dated in the viewer's own zone — listen, download
+ * or delete a clip.
  */
 const dictionary = {
   key: "my-recordings",
   content: {
-    retry: t({
-      en: "Try again",
-      zh: "重试",
-      hi: "फिर कोशिश करें",
-      es: "Reintentar",
-      fr: "Réessayer",
-      ar: "حاول مرة أخرى",
-      bn: "আবার চেষ্টা করুন",
-      pt: "Tentar novamente",
-      ru: "Повторить",
-      ur: "دوبارہ کوشش کریں",
-      id: "Coba lagi",
-      de: "Erneut versuchen",
-      ja: "再試行",
-      sw: "Jaribu tena",
-      mr: "पुन्हा प्रयत्न करा",
-      ko: "다시 시도",
-    }),
     deleteFailed: t({
       en: "Could not delete recordings. Please try again.",
       zh: "无法删除录音，请重试。",
@@ -43,24 +26,6 @@ const dictionary = {
       sw: "Imeshindwa kufuta rekodi. Jaribu tena.",
       mr: "रेकॉर्डिंग हटवता आल्या नाहीत. पुन्हा प्रयत्न करा.",
       ko: "녹음을 삭제하지 못했습니다. 다시 시도해 주세요.",
-    }),
-    loadFailed: t({
-      en: "Could not load recordings.",
-      zh: "无法加载录音。",
-      hi: "रिकॉर्डिंग लोड नहीं हो सकीं।",
-      es: "No se pudieron cargar las grabaciones.",
-      fr: "Impossible de charger les enregistrements.",
-      ar: "تعذر تحميل التسجيلات.",
-      bn: "রেকর্ডিং লোড করা যায়নি।",
-      pt: "Não foi possível carregar as gravações.",
-      ru: "Не удалось загрузить записи.",
-      ur: "ریکارڈنگز لوڈ نہیں ہو سکیں۔",
-      id: "Rekaman tidak dapat dimuat.",
-      de: "Aufnahmen konnten nicht geladen werden.",
-      ja: "録音を読み込めませんでした。",
-      sw: "Imeshindwa kupakia rekodi.",
-      mr: "रेकॉर्डिंग लोड करता आल्या नाहीत.",
-      ko: "녹음을 불러오지 못했습니다.",
     }),
     title: t({
       en: "Mic recordings",
@@ -151,42 +116,6 @@ const dictionary = {
       sw: "Vipande {n}",
       mr: "{n} क्लिप",
       ko: "{n}개",
-    }),
-    download: t({
-      en: "Download day",
-      zh: "下载这一天",
-      hi: "दिन डाउनलोड करें",
-      es: "Descargar el día",
-      fr: "Télécharger la journée",
-      ar: "تنزيل اليوم",
-      bn: "দিনটি ডাউনলোড করুন",
-      pt: "Baixar o dia",
-      ru: "Скачать день",
-      ur: "دن ڈاؤن لوڈ کریں",
-      id: "Unduh hari ini",
-      de: "Tag herunterladen",
-      ja: "この日をダウンロード",
-      sw: "Pakua siku",
-      mr: "दिवस डाउनलोड करा",
-      ko: "이날 내려받기",
-    }),
-    deleteDay: t({
-      en: "Delete day",
-      zh: "删除这一天",
-      hi: "दिन मिटाएँ",
-      es: "Borrar el día",
-      fr: "Supprimer la journée",
-      ar: "حذف اليوم",
-      bn: "দিনটি মুছুন",
-      pt: "Apagar o dia",
-      ru: "Удалить день",
-      ur: "دن حذف کریں",
-      id: "Hapus hari ini",
-      de: "Tag löschen",
-      ja: "この日を削除",
-      sw: "Futa siku",
-      mr: "दिवस हटवा",
-      ko: "이날 삭제",
     }),
     deleteClip: t({
       en: "Delete clip",
@@ -295,24 +224,6 @@ const dictionary = {
       sw: "(haiwezi kufunguliwa)",
       mr: "(उघडता येत नाही)",
       ko: "(열 수 없음)",
-    }),
-    loading: t({
-      en: "Loading…",
-      zh: "加载中…",
-      hi: "लोड हो रहा है…",
-      es: "Cargando…",
-      fr: "Chargement…",
-      ar: "جارٍ التحميل…",
-      bn: "লোড হচ্ছে…",
-      pt: "Carregando…",
-      ru: "Загрузка…",
-      ur: "لوڈ ہو رہا ہے…",
-      id: "Memuat…",
-      de: "Wird geladen…",
-      ja: "読み込み中…",
-      sw: "Inapakia…",
-      mr: "लोड होत आहे…",
-      ko: "불러오는 중…",
     }),
     passive: t({
       en: "Not for the chat",
@@ -570,12 +481,8 @@ const dictionary = {
 };
 
 const context: Record<keyof typeof dictionary.content, string> = {
-  retry:
-    "Button beside a failed day load on /my/recordings; fetches that day again. Short imperative.",
   deleteFailed:
-    "Alert on /my/recordings when deleting a day or clip fails; user can use the delete button again.",
-  loadFailed:
-    "Inline error on /my/recordings when fetching one day fails; retry is offered beside it.",
+    "Alert on /my/recordings when deleting a recorded clip fails; user can use the delete button again.",
   title:
     "Main heading (h1) of /my/recordings and its browser tab title: the page listing what the user's microphone recorded in Lianki, kept in their account. Short noun phrase; 'mic' is the microphone.",
   intro:
@@ -584,11 +491,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   empty:
     "Placeholder on /my/recordings when nothing is recorded yet: turning on the mic in Lianki makes what is said appear here, grouped by day. One or two friendly sentences.",
   clips:
-    "Count shown beside a day on /my/recordings: how many recorded clips (utterances) that day has. {n} is the number; keep {n}. A plural count noun.",
-  download:
-    "Button on a day row of /my/recordings that downloads that whole day (audio files and transcript) as one zip file to the device. Short imperative.",
-  deleteDay:
-    "Button on a day row of /my/recordings that deletes every recording of that day for good (asks to confirm first). Short imperative.",
+    "Count shown under a date heading on /my/recordings: how many recorded clips (utterances) that date has. {n} is the number; keep {n}. A plural count noun.",
   deleteClip:
     "Small button (and its screen-reader label) beside one recorded clip on /my/recordings: deletes that single recording for good (asks to confirm first). Short imperative.",
   confirm:
@@ -601,8 +504,6 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Shown in place of a clip's transcript on /my/recordings when it has none (the speech was not transcribed, for example another person's voice). In parentheses, short.",
   unreadable:
     "Shown in place of a clip's transcript on /my/recordings when the stored text can no longer be decrypted. In parentheses, short, factual.",
-  loading:
-    "Shown on /my/recordings while a day's clips are being fetched. One word with an ellipsis.",
   passive:
     "Small tag on a clip of /my/recordings: this was heard while the mic was in passive (wake-word) mode, so it was recorded but not sent to the chat. Very short phrase.",
   otherVoiceFolded:
@@ -610,9 +511,9 @@ const context: Record<keyof typeof dictionary.content, string> = {
   otherVoice:
     "Small tag on a clip of /my/recordings: the voice check says the speaker was not the account holder but someone else. Very short noun phrase.",
   listLabel:
-    "Screen-reader name of the list of days on /my/recordings (each item is a day with its recordings). Short noun phrase.",
+    "Screen-reader name of the one continuous list on /my/recordings: date headings, each followed by that date's recorded paragraphs. Short noun phrase.",
   myVoice:
-    "Small faint mark at the start of a paragraph in a day's recordings on /my/recordings, shown only where the speaker changes: the voice check says this is the account holder speaking. Very short noun phrase.",
+    "Small faint mark at the start of a paragraph in a date's recordings on /my/recordings, shown only where the speaker changes: the voice check says this is the account holder speaking. Very short noun phrase.",
   more: "Screen-reader name of the small ⋯ button at a paragraph (one recorded clip) on /my/recordings; it opens a menu: play from here, speed, download, copy text, delete. Short phrase.",
   playFromHere:
     "Item in a recorded clip's ⋯ menu on /my/recordings: plays this clip from its beginning, then the day's later clips one after another. Short imperative.",
@@ -633,9 +534,9 @@ const context: Record<keyof typeof dictionary.content, string> = {
 
 export default {
   ...dictionary,
-  title: "/my/recordings — the account's kept mic recordings, by day",
+  title: "/my/recordings — the account's kept mic recordings, as a journal",
   description: describeKeys(
-    "The /my/recordings page: what the user's microphone recorded in Lianki, kept encrypted in their own account, each day reads as one article (a paragraph per clip) with one shared player and a day-long progress bar; play, set the speed, download, copy, delete. Lianki is a product name, never translated.",
+    "The /my/recordings page: what the user's microphone recorded in Lianki, kept encrypted in their own account, one continuous journal: a date heading (in the viewer's own time zone), then that date's clips as flowing paragraphs with a time only now and then, one shared player and a day-long progress bar; play, set the speed, download, copy, delete a clip. Lianki is a product name, never translated.",
     context,
   ),
 } satisfies DeclarationContent;

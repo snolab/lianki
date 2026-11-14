@@ -37,16 +37,18 @@ export type RecorderDeps = {
   setTimer?: (f: () => void, ms: number) => unknown;
   /** A fresh clip id (16 random bytes, base64url). */
   id?: () => string;
-  /** The device's own date of a time, YYYY-MM-DD. */
+  /** The UTC date of a time, YYYY-MM-DD (the clip's internal day). */
   day?: (at: number) => string;
   log?: (ev: Record<string, unknown>) => void;
 };
 
-/** The device's local calendar day of `at`. */
-export function localDay(at: number): string {
-  const d = new Date(at);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+/**
+ * The UTC calendar date of `at`, YYYY-MM-DD: the internal day a clip is filed
+ * under (owner, 2026-11-15: a fixed zone is UTC, never the device's or JST's;
+ * /my/recordings groups by the viewer's own zone).
+ */
+export function utcDay(at: number): string {
+  return new Date(at).toISOString().slice(0, 10);
 }
 
 export function randomClipId(): string {
@@ -70,7 +72,7 @@ export function createRecorder(deps: RecorderDeps) {
   const now = deps.now ?? Date.now;
   const setTimer = deps.setTimer ?? ((f, ms) => setTimeout(f, ms));
   const newId = deps.id ?? randomClipId;
-  const dayOf = deps.day ?? localDay;
+  const dayOf = deps.day ?? utcDay;
   const log = deps.log ?? (() => {});
   const queue: Item[] = [];
   let bytes = 0;
