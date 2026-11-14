@@ -106,6 +106,8 @@ try {
       pending.push(route);
       return;
     }
+    // No audio in QA: a clip answers 404, so the player only marks the paragraph.
+    if (u.searchParams.has("clip")) return route.fulfill({ status: 404, json: {} });
     if (u.searchParams.has("day")) {
       if (failDay) {
         failDay = false;
@@ -124,7 +126,25 @@ try {
   await page.getByRole("button", { name: "Erneut versuchen", exact: true }).click();
   await page.locator('[data-qa="recordings-clip"]').nth(1).waitFor();
   console.log("PASS failed load -> explicit retry -> two clips");
-  await page.locator('[data-qa="recordings-delete-clip"]').first().click();
+  await page.locator('[data-qa="recordings-bar"]').waitFor();
+  await page.locator('[data-qa="recordings-text"]').nth(1).click();
+  await page.locator(`[data-clip="${clips[1].id}"][data-current]`).waitFor();
+  console.log("PASS a tap on a paragraph makes it the player's current clip; the day bar shows");
+  // QA_SHOT_DIR=… saves phone-size shots, light and dark, for a look by eye.
+  if (process.env.QA_SHOT_DIR)
+    for (const scheme of ["light", "dark"]) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.screenshot({ path: `${process.env.QA_SHOT_DIR}/recordings-${scheme}.png` });
+    }
+  await page.locator('[data-qa="recordings-more"]').first().click();
+  await page.locator('[data-qa="recordings-speed"]').last().click();
+  const speed = await page.evaluate(() => localStorage.getItem("lk:pref:recordings-speed"));
+  if (speed !== "2") throw new Error(`Speed not kept on the device: ${speed}`);
+  await page.keyboard.press("Escape");
+  await page.locator('[data-qa="recordings-menu"]').waitFor({ state: "detached" });
+  console.log("PASS the speed is a device preference; Escape closes the menu");
+  await page.locator('[data-qa="recordings-more"]').first().click();
+  await page.locator('[data-qa="recordings-delete-clip"]').click();
   await page.locator('[data-qa="recordings-confirm"] button').first().click();
   await page
     .getByRole("alert")
@@ -139,16 +159,16 @@ try {
     await page.evaluate(() => document.documentElement.style.setProperty("--lk-fs-ui", "1.5"));
     await page.locator('[data-qa="recordings-day"] button[aria-expanded]').click();
     await page.locator('[data-qa="recordings-clip"]').nth(1).waitFor();
-    for (const selector of [
-      '[data-qa="recordings-delete-day"]',
-      '[data-qa="recordings-delete-clip"]',
+    for (const steps of [
+      ['[data-qa="recordings-delete-day"]'],
+      ['[data-qa="recordings-more"]', '[data-qa="recordings-delete-clip"]'],
     ]) {
-      await page.locator(selector).first().click();
+      for (const selector of steps) await page.locator(selector).first().click();
       const overflow = await page.evaluate(() => ({
         width: document.documentElement.scrollWidth,
         bad: [
           ...document.querySelectorAll(
-            '[data-qa="recordings-confirm"],[data-qa="recordings-confirm"] button',
+            '[data-qa="recordings-confirm"],[data-qa="recordings-confirm"] button,[data-qa="recordings-bar"] *',
           ),
         ]
           .filter((el) => el.getBoundingClientRect().right > innerWidth + 1)
@@ -162,10 +182,22 @@ try {
         throw new Error(`Overflow ${lang}: ${JSON.stringify(overflow)}`);
       await page.locator('[data-qa="recordings-confirm"] button').last().click();
     }
-    console.log(`PASS ${lang} 320px 150% day and clip confirmation`);
+    await page.locator('[data-qa="recordings-more"]').first().click();
+    const menuOut = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-qa="recordings-menu"], [data-qa="recordings-menu"] *')]
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.right > innerWidth + 1 || r.left < -1;
+        })
+        .map((el) => el.textContent?.slice(0, 40)),
+    );
+    if (menuOut.length) throw new Error(`Menu overflow ${lang}: ${JSON.stringify(menuOut)}`);
+    await page.keyboard.press("Escape");
+    console.log(`PASS ${lang} 320px 150% day and clip confirmation, menu, bar`);
   }
   for (const id of clips.map((c) => c.id)) {
-    await page.locator(`[data-clip="${id}"] [data-qa="recordings-delete-clip"]`).click();
+    await page.locator(`[data-clip="${id}"] [data-qa="recordings-more"]`).click();
+    await page.locator('[data-qa="recordings-delete-clip"]').click();
     await page.locator('[data-qa="recordings-confirm"] button').first().click();
   }
   await page.waitForFunction(() => true);

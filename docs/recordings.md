@@ -154,16 +154,70 @@ clip. File names are `HHMMSS-<clip id>.wav` in the viewer's zone (`tz`, the
 browser's `getTimezoneOffset()`); `transcript.txt` is one line per clip,
 `HH:MM:SS [speaker] text`.
 
+### On the preview (dev bridge)
+
+His whole-page preview server (docs/dev-whole-page.md) signs with its own
+`AUTH_SECRET`, so its copy of this route would get text `null` and audio 410
+from production's sealed rows. Owner decision 2026-11-14 21:48 JST ("走 A"):
+the key is **not** copied. Instead, on the preview (`LIANKI_DEV_WHOLE_PAGE=1`
+and `LIANKI_DEV_BRIDGE_SECRET`, which `serve` sets from `.dev-whole-page.json`
+`bridgeSecret`), the route first checks his preview session, `dev` and the
+flag as usual, then forwards the request — same method, query and body, no
+cookie, no token — to `https://lianki.com/api/my/recordings` with
+`x-lianki-dev-bridge` (`lib/recordings-bridge.ts`), and streams back the
+status, content type, content disposition and body. lianki.com accepts that
+header as the owner on this route, every method (`lib/dev-bridge-user.ts`;
+docs/secrets-and-auth.md, "Dev bridge"); a wrong value is 401. Clips recorded
+on the preview are therefore sealed by lianki.com too. Without the secret the
+route serves itself as before. lianki.com unreachable: 502
+`bridge-unreachable`.
+
 ## The page: /my/recordings
 
 `app/(app)/my/recordings/` — days newest first in the one `VirtualList`
-(continuous scroll, more as the reader nears the end; no pages). A day opens to
-its clips: time, duration, a "Not for the chat" tag on passive ones, "Another
-voice" when the Mac said so, the transcript, and a player (`preload="none"`:
-nothing plays until tapped). Download day (the zip), Delete day, Delete clip —
-each asks "Delete for good?" inline first. Strings: `my-recordings.content.ts`,
-16 locales, a context line each. The /my card shows only where the page exists
-(flag and `dev`).
+(continuous scroll, more as the reader nears the end; no pages). Download day
+(the zip) and Delete day sit on the day's row.
+
+**A day reads as one article** (owner, 2026-11-14 22:4x JST). Opened, its clips
+flow as continuous text, one paragraph per clip in recording order, each a row
+of the same `VirtualList` (long days stay windowed): a faint time at the
+paragraph's start, a "Not for the chat" tag on passive ones, and a faint mark
+above it — "My voice" / "Another voice" from the Mac's check, and the device
+label — only where that changes from the paragraph before. The model is pure,
+in `lib/recordings-article.ts` (`paragraphs`, unit-tested in
+`unit/recordings-article.test.ts`).
+
+**One shared player** (a single hidden `<audio preload="none">`; nothing plays
+until tapped):
+
+- A tap anywhere in a paragraph plays that clip from its beginning; a tap on
+  the playing one pauses, on the paused current one resumes (`playTarget`).
+  Selecting words is not a tap. The current paragraph is highlighted
+  (seal-red tint).
+- The day plays on: when a clip ends the next one starts and is scrolled into
+  view (`VirtualList` handle `scrollToKey`), until the day's last clip.
+- **One continuous progress bar for the day** (owner, 22:5x JST): a glass bar
+  floating at the bottom, for the playing day (or the day last opened). The
+  day's clips lie end to end on it — durations summed, the silence between
+  them not drawn — with a faint tick at each boundary. It shows the position
+  while playing; tapping or dragging it seeks across the whole day
+  (`locate`): within the current clip at once, to another clip once the drag
+  rests (120 ms), switching the audio source. A play/pause button sits beside it.
+- Each paragraph's **⋯ menu** (a glass panel that follows its button on a
+  scroll): Play from here (always from the clip's beginning), Speed, Download
+  this recording (the clip's WAV, `GET ?clip=`), Copy text, Delete (the same
+  inline "Delete for good?" as before).
+- **Speed** is a device preference, localStorage `lk:pref:recordings-speed`
+  (never synced); the choices are config
+  [`recordings.speeds`](https://lianki.com/dev/config) (default
+  `0.75,1,1.25,1.5,2`; 1 is always offered; an unknown stored value plays at 1).
+
+Storage and the API are unchanged by the article view: it uses `GET ?day=`
+(which already carries `device`) and `GET ?clip=`. Strings:
+`my-recordings.content.ts`, 16 locales, a context line each. The /my card
+shows only where the page exists (flag and `dev`). Browser check, silent and
+with fixture APIs: `bun scripts/qa/qa-recordings-view.mjs` (`QA_SHOT_DIR=…`
+saves light and dark phone shots).
 
 ## Retention
 

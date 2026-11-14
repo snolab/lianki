@@ -1,8 +1,10 @@
 /**
  * /my/recordings' rows (docs/recordings.md): the days, newest first, each
- * followed by its clips when it is open — one flat list for the one
- * VirtualList (no pages, owner 2026-11-10). Pure, so it is unit-tested.
+ * followed by its clips when it is open, as an article's paragraphs
+ * (lib/recordings-article.ts): one flat list for the one VirtualList (no pages, owner 2026-11-10). Pure, so it is unit-tested.
  */
+import { type Paragraph, paragraphs } from "@/lib/recordings-article";
+
 export type DaySummary = { day: string; clips: number; ms: number; bytes: number };
 export type ClipView = {
   id: string;
@@ -12,13 +14,15 @@ export type ClipView = {
   mode: "active" | "passive";
   source: "local" | "cloud" | "none";
   speaker: "me" | "other" | "unknown" | null;
+  /** The recorder's device label (`iphone`, `mac`…), as the API sends it. */
+  device?: string | null;
   text: string | null;
 };
 export type Row =
   | { kind: "day"; key: string; s: DaySummary; open: boolean }
   | { kind: "error"; key: string; day: string }
   | { kind: "loading"; key: string; day: string }
-  | { kind: "clip"; key: string; c: ClipView };
+  | { kind: "clip"; key: string; c: ClipView; p: Paragraph };
 
 /** The rows for these days, with the open ones' clips (or a loading row until they come). */
 export function recordingRows(
@@ -35,7 +39,7 @@ export function recordingRows(
     const cs = clips.get(s.day);
     if (errors.has(s.day)) out.push({ kind: "error", key: `e:${s.day}`, day: s.day });
     else if (!cs) out.push({ kind: "loading", key: `l:${s.day}`, day: s.day });
-    else for (const c of cs) out.push({ kind: "clip", key: `c:${c.id}`, c });
+    else for (const p of paragraphs(cs)) out.push({ kind: "clip", key: `c:${p.c.id}`, c: p.c, p });
   }
   return out;
 }

@@ -92,6 +92,7 @@ shows each token's permissions, expiry and last use, with one-click Revoke.
 | `chat:read`  | read and follow your own chat (`chat read`, `chat listen`)  |
 | `chat:write` | post in your own chat (`chat say`)                          |
 | `chat:ask`   | post question cards in your own chat (`chat ask`)           |
+| `progress`   | report your work to the task list (`progress`); site owners' tokens only |
 
 No token can run code, pair a device, answer a card or reach another
 account's chat.
@@ -118,6 +119,29 @@ stays in the chat): `--supersede` when the line makes your earlier ones moot
 (the one being read stops, your unread ones go, this one is read);
 `--interject` when it is urgent but the earlier ones still matter (the line
 being read pauses, this one is read, then it goes on).
+
+## Progress
+
+Your work on the account's live task list (the state tree the owner's agents
+report to), with a token holding `progress`. Every report is recorded under
+the token's name, so a token named `codex` reports as codex.
+
+```sh
+lianki progress --path /words/swipe --task "Swipe fix: the card snaps back" --status doing --pct 40 --eta 30m
+lianki progress --path /words/swipe --task "Swipe fix: the card snaps back" --status doing --eta 20m --late "CI queue was slow"
+lianki progress --path /words/swipe --task "Swipe fix: the card snaps back" --done --verified "pr #310 merged"
+lianki progress batch '[{"path":"/x/a","task":"A: one","status":"doing","eta":"20m"},{"path":"/x/b","task":"B: two","done":true}]'
+lianki progress ack k3x9qa         # the receipt code on an "ETA reached" line
+lianki progress show --all --json  # the tree, with the done history
+lianki progress stats --since 30d  # your done tasks: estimate vs actual
+```
+
+`--task` is "name: description" with a name of at most 20 columns (the bar
+shows only the name). `--status` is doing, blocked (`--who owner|<name>
+--needs "…"`), waiting, waiting-owner, review or done (`--done`; with
+`--verified "<evidence>"`, else "done, not confirmed"). Past your `--eta` and
+not done, report again within 5 minutes with a new `--eta` and `--late "why"`.
+The hub judges titles, scopes and the ETA rule; its reason comes back as exit 5.
 
 ## Settings
 
@@ -242,6 +266,12 @@ lianki settings set --help
 | `chat say`      | `{ id, lane }`                                                                                 |
 | `chat ask`      | `{ id, askId, lane, answer: null }`, or with `--wait` `{ id, askId, answer: { choices, labels, at } }` |
 | `chat read`     | `{ thread, lane, messages: [{ id, from, label, text, at, ask?, answer? }] }`                  |
+| `progress`      | the hub's answer: `{ entry: { id, status, rev, etaAt?, doneKind? }, readers, told? }`          |
+| `progress batch`| `{ ok, changeId, at, results: [{ entry } \| { status, error }] }`                             |
+| `progress ack`  | `{ ok, id, task, etaAt }`                                                                      |
+| `progress show` | `{ entries, log, history? }`                                                                   |
+| `progress stats`| `{ since, agents: [{ agent, done, estimated, medianRatio?, tasks }] }`                          |
+| `progress history` | `{ items: [{ id, title, agent, endedAt, prs?, doneKind?, evidence? }] }`                    |
 
 Within `v: 1` fields are only ever added; removing or renaming one bumps `v`.
 
@@ -407,6 +437,12 @@ explicitly rather than silently merging users or dropping a pending turn.
 defaults. Cloud preparation uses the relay's existing authenticated account
 and credits; the friend thread ID cannot select a different payer. Ordinary
 token owners still cannot read or write a different person's thread.
+
+## Changes in 0.5.0
+
+- New: `lianki progress` (report, batch, ack, show, stats, history) and the
+  MCP tools `lianki_progress_report`, `lianki_progress_show`,
+  `lianki_progress_ack`, for a token with the `progress` permission.
 
 ## Changes in 0.4.0
 
