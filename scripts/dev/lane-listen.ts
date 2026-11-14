@@ -127,10 +127,12 @@ export async function targetBusy(o: Opts): Promise<boolean> {
     }
     const v = JSON.parse(txt) as unknown;
     const list = (Array.isArray(v) ? v : (v as { local?: unknown[] }).local) ?? [];
-    const me = (list as { pid?: number; cwd?: string; status?: string }[]).find((e) =>
+    // ay's rows: `status` is the process ("active" = alive), `state` the turn
+    // ("active" = mid-turn, "idle", "needs_input", …). Busy means mid-turn.
+    const me = (list as { pid?: number; cwd?: string; state?: string }[]).find((e) =>
       o.deliver ? String(e.pid) === String(o.deliver) : e.cwd === o.cwd,
     );
-    return me?.status === "active";
+    return me?.state === "active";
   } catch {
     return false;
   }
@@ -153,6 +155,8 @@ export function makeDeliverer(
   const flush = async (): Promise<number | undefined> => {
     if (!pending.length) return undefined;
     if (await busy()) {
+      if (process.env.LANE_LISTEN_DEBUG)
+        log({ type: "held", lane: o.lane, pending: pending.length });
       timer ??= setTimeout(() => {
         timer = undefined;
         void flush();
@@ -222,6 +226,15 @@ async function main(): Promise<number> {
         const raw = buf.slice(0, nl);
         buf = buf.slice(nl + 1);
         const l = lineOf(raw);
+        if (process.env.LANE_LISTEN_DEBUG)
+          log({
+            type: "raw",
+            lane: o.lane,
+            parsed: !!l,
+            history: l?.history,
+            id: l?.id,
+            head: raw.slice(0, 80),
+          });
         if (!l || l.history || seen.has(l.id)) continue;
         seen.add(l.id);
         if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests, all: o.all })) continue;
