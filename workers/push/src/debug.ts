@@ -294,7 +294,7 @@ import {
   twoMicKeep,
   twoMicMatch,
 } from "../../../packages/debug-chat/src/two-mic";
-import { OwnerAi } from "./owner-ai";
+import { OwnerAi, ROLL_CALL_REPLY } from "./owner-ai";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
   HISTORY_LINES,
@@ -850,6 +850,17 @@ export class DebugHub {
     agentAt: () => this.agentAt.get(OWNER_THREAD) ?? 0,
     reply: (l, { page, context, scene }) =>
       this.aiReply(page, page.email ?? "", l.at, context, scene, l.id),
+    present: async (_l, { page }) =>
+      void (await this.post({
+        id: crypto.randomUUID().slice(0, 8),
+        from: "agent",
+        label: PARTNER_AI_LABEL,
+        text: ROLL_CALL_REPLY,
+        at: this.now(),
+        thread: page.thread,
+        email: page.email ?? "",
+        lane: "main" as const,
+      })),
   });
   /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
   private tokens: TokenChat;

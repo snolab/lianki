@@ -55,7 +55,17 @@ export type OwnerAiDeps<P> = {
   agentAt(): number;
   /** Answer this line now, for the page it came from (DebugHub.aiReply for his thread). */
   reply(l: OwnerLine, page: P): Promise<void>;
+  /** Post Li's roll-call answer at once (no model): "Li 在". */
+  present(l: OwnerLine, page: P): Promise<void>;
 };
+
+/** A roll call (owner, 2026-11-15 04:51 JST "报数也应该包括 Li"): 报数 / 点名 anywhere in his line. */
+export const ROLL_CALL = /报数|点名/;
+export function isRollCall(text: string): boolean {
+  return ROLL_CALL.test(text);
+}
+/** What Li answers a roll call with (the line's own clock says when). */
+export const ROLL_CALL_REPLY = "Li 在";
 
 export class OwnerAi<P> {
   private pending?: { timer: unknown };
@@ -87,6 +97,22 @@ export class OwnerAi<P> {
   async line(l: OwnerLine, page: P): Promise<void> {
     this.cancel();
     const seq = ++this.seq;
+    // A roll call names the lanes, so it is never "wanted"; Li still answers it, at once,
+    // with the flag on (partner.ai-reply is not needed: no model is called).
+    if (isRollCall(l.text) && !l.to && l.speaker?.decision !== "other") {
+      if ((await this.state()).on && seq === this.seq)
+        await this.d
+          .present(l, page)
+          .catch((e) =>
+            console.log(
+              JSON.stringify({
+                msg: "partner.owner-rollcall-failed",
+                error: String(e).slice(0, 200),
+              }),
+            ),
+          );
+      return;
+    }
     if (!ownerLineWanted(l)) return;
     const conf = await this.state();
     if (!conf.on || !(await this.d.aiOn())) return;

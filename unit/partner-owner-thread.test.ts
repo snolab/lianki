@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { DebugHub, type HubTimer, type Socket, type Storage } from "@/workers/push/src/debug";
-import { OwnerAi, ownerLineWanted } from "@/workers/push/src/owner-ai";
+import { OwnerAi, isRollCall, ownerLineWanted } from "@/workers/push/src/owner-ai";
 import {
   OWNER_REPLY_DELAY_KEY,
   OWNER_REPLY_DELAY_MAX,
@@ -313,6 +313,69 @@ describe("Li in the owner's thread: the hub", () => {
 });
 
 describe("Li in the owner's thread: which lines", () => {
+  it("a roll call (报数/点名) gets Li's presence line at once, flag on, no model; off: nothing", async () => {
+    expect(isRollCall("@小克 @coco @杰咪 报数")).toBe(true);
+    expect(isRollCall("全体点名")).toBe(true);
+    expect(isRollCall("今天学什么")).toBe(false);
+    const timers = fakeTimer();
+    let on = true;
+    const present: string[] = [];
+    const replies: string[] = [];
+    const ai = new OwnerAi<null>({
+      now: () => 0,
+      timer: timers.timer,
+      flag: async () => on,
+      config: async () => undefined,
+      aiOn: async () => false,
+      agentAt: () => 0,
+      reply: async (l) => void replies.push(l.id),
+      present: async (l) => void present.push(l.id),
+    });
+    await ai.line({ id: "r1", text: "@小克 @coco 报数", at: 1 }, null);
+    expect(present).toEqual(["r1"]);
+    expect(replies).toEqual([]);
+    // Another voice's roll call, or one for a node: nothing.
+    await ai.line({ id: "r2", text: "报数", at: 2, speaker: { decision: "other" } }, null);
+    await ai.line({ id: "r3", text: "报数", at: 3, to: "/x" }, null);
+    expect(present).toEqual(["r1"]);
+    // Flag off: nothing (the conf is cached; a fresh instance reads it).
+    on = false;
+    const off = new OwnerAi<null>({
+      now: () => 0,
+      timer: timers.timer,
+      flag: async () => on,
+      config: async () => undefined,
+      aiOn: async () => true,
+      agentAt: () => 0,
+      reply: async () => {},
+      present: async (l) => void present.push(l.id),
+    });
+    await off.line({ id: "r4", text: "报数", at: 4 }, null);
+    expect(present).toEqual(["r1"]);
+    // A failing post is logged, not thrown.
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (s: string) => void logs.push(String(s));
+    try {
+      const bad = new OwnerAi<null>({
+        now: () => 0,
+        timer: timers.timer,
+        flag: async () => true,
+        config: async () => undefined,
+        aiOn: async () => true,
+        agentAt: () => 0,
+        reply: async () => {},
+        present: async () => {
+          throw new Error("hub down");
+        },
+      });
+      await bad.line({ id: "r5", text: "报数", at: 5 }, null);
+    } finally {
+      console.log = orig;
+    }
+    expect(logs.some((s) => s.includes("partner.owner-rollcall-failed"))).toBe(true);
+  });
+
   const line = { id: "x", text: "今天学什么", at: 1 };
   it("unaddressed, not another voice: wanted", () => {
     expect(ownerLineWanted(line)).toBe(true);
@@ -348,6 +411,7 @@ describe("Li in the owner's thread: which lines", () => {
         replies.push(l.id);
         throw new Error("model down");
       },
+      present: async () => {},
     });
     await ai.line({ ...line, speaker: { decision: "other" } }, null);
     expect(flagReads).toBe(0);
@@ -389,6 +453,7 @@ describe("Li in the owner's thread: which lines", () => {
       },
       agentAt: () => 0,
       reply: async () => {},
+      present: async () => {},
     });
     const one = ai.line({ ...line, id: "one" }, null);
     await new Promise((r) => setTimeout(r, 0));
