@@ -5,7 +5,10 @@
  *
  * A line qualifies when it is his (the caller passes only `from: "owner"`
  * lines), names no lane (`routeLine(text).addressed` false, no `to` node),
- * and its voiceprint did not decide it was another voice. The reply waits
+ * and, when it came through a microphone, its voiceprint decided it was his
+ * ("me"); an "other" or "unknown" voice gets no reply (2026-11-15 04:05 JST:
+ * Li answered ambient speech marked unknown). A typed line has no speaker tag
+ * and qualifies. The reply waits
  * `partner.ownerReplyDelayMs` (default 8 s) and is skipped when an agent line
  * arrived in his thread meanwhile: the lanes keep priority, Li fills the
  * silence. One pending reply at a time; any newer line of his replaces it.
@@ -35,7 +38,7 @@ export type OwnerLine = {
 /** Could Li answer this line of his at all (before the flags and the delay)? */
 export function ownerLineWanted(l: OwnerLine): boolean {
   if (l.to) return false;
-  if (l.speaker?.decision === "other") return false;
+  if (l.speaker && l.speaker.decision !== "me") return false;
   return !routeLine(l.text).addressed;
 }
 

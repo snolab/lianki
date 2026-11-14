@@ -317,7 +317,7 @@ describe("Li in the owner's thread: which lines", () => {
   it("unaddressed, not another voice: wanted", () => {
     expect(ownerLineWanted(line)).toBe(true);
     expect(ownerLineWanted({ ...line, speaker: { decision: "me" } })).toBe(true);
-    expect(ownerLineWanted({ ...line, speaker: { decision: "unknown" } })).toBe(true);
+    expect(ownerLineWanted({ ...line, speaker: { decision: "unknown" } })).toBe(false);
   });
   it("another voice, a lane named, or a node address: never", () => {
     expect(ownerLineWanted({ ...line, speaker: { decision: "other" } })).toBe(false);
