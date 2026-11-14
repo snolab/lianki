@@ -20,7 +20,7 @@ import {
   deleteClip,
   deleteDay,
   getDay,
-  listDays,
+  listClips,
   postRecording,
   r2RecBlobs,
   recordingsKey,
@@ -121,7 +121,7 @@ export const GET = async (req: Request) => {
     });
   }
   if (day !== null) return answer(await getDay(d, day));
-  return answer(await listDays(d, q));
+  return answer(await listClips(d, q));
 };
 
 export const POST = async (req: Request) => {
