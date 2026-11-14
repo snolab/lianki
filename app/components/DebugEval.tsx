@@ -50,6 +50,7 @@ import {
 } from "@lianki/debug-chat/wire";
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
+import { setLaneTable } from "@lianki/debug-chat/voices";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
@@ -234,6 +235,8 @@ export function DebugEval({
 } = {}) {
   // Idempotent and cheap: the live table is in place before the first reply is read.
   if (lexicon !== undefined) setLexicon(lexicon);
+  // The lanes beyond the built-in four, and more names for them (config chat.lanes): live, no deploy.
+  setLaneTable(publicCfg("chat.lanes"));
   setCloudVoices(cloudVoices);
   setTalkOver(talkOver);
   setPolishReadback(readback);

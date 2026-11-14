@@ -13,11 +13,11 @@
  *
  * Pure, tested in unit/chat-addressed.test.ts; DebugChat.tsx draws it.
  */
-import { routeLine, type RouteLane } from "./lane-route";
-import { LANES, type LaneId } from "./voices";
+import { type DefaultRouteLane, laneOfRoute, routeLine } from "./lane-route";
+import { type LaneId, isLaneId, laneSpec } from "./voices";
 
-/** The chat lane that answers for each route lane: "chat" is 小克's (xiaoke / 小可 / 小克). */
-export const ROUTE_TO_LANE: Readonly<Record<RouteLane, LaneId>> = {
+/** The chat lane that answers for each built-in route lane: "chat" is 小克's (xiaoke / 小可 / 小克). A configured lane is its own (lane-route.ts laneOfRoute). */
+export const ROUTE_TO_LANE: Readonly<Record<DefaultRouteLane, LaneId>> = {
   chat: "claude",
   codex: "codex",
   agy: "agy",
@@ -27,7 +27,7 @@ export const ROUTE_TO_LANE: Readonly<Record<RouteLane, LaneId>> = {
 export function addressedLanes(text: unknown): LaneId[] {
   if (typeof text !== "string" || !text.trim()) return [];
   const r = routeLine(text);
-  return r.addressed ? r.lanes.map((l) => ROUTE_TO_LANE[l]) : [];
+  return r.addressed ? r.lanes.map(laneOfRoute) : [];
 }
 
 /** How long a flash lasts: the pulse runs twice in it; reduced motion holds a still ring as long. */
@@ -36,7 +36,7 @@ export const FLASH_MS = 1200;
 export const UTTERANCE_GAP_MS = 4000;
 
 /** The ring's colour for a lane: its mark's disc, or the current text colour without a mark. */
-export const ringOf = (lane: LaneId): string => LANES[lane].mark?.bg ?? "currentColor";
+export const ringOf = (lane: LaneId): string => laneSpec(lane).mark?.bg ?? "currentColor";
 
 /** Set on an element while it flashes; `--lk-ring` carries the lane's colour. */
 export const FLASH_ATTR = "data-lk-flash";
@@ -129,6 +129,6 @@ export function latestOfLane(
   messages: readonly { id: string; lane?: unknown }[],
 ): Partial<Record<LaneId, string>> {
   const out: Partial<Record<LaneId, string>> = {};
-  for (const m of messages) if (typeof m.lane === "string" && m.lane in LANES) out[m.lane as LaneId] = m.id;
+  for (const m of messages) if (isLaneId(m.lane)) out[m.lane] = m.id;
   return out;
 }

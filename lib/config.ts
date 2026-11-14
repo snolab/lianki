@@ -24,7 +24,13 @@ import { HUB_RPC_LIMITS } from "./hub-rpc-config";
  */
 import { z } from "zod";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
-import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
+import {
+  isProviderVoice,
+  lineVoiceOf,
+  parseLaneDef,
+  type ChatLaneDef,
+} from "@lianki/debug-chat/voices";
+import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
 
 export type ConfigAudience = "server" | "public";
@@ -676,6 +682,77 @@ export const CONFIG = {
     audience: "server",
     description: "聊天头像栏：最近发过言的 agent / lane 在发言后多少分钟内仍显示在头像栏里。",
   }),
+  // 全员入群 (owner, 2026-11-15; docs/lane-listen.md, "Every agent joins"): the
+  // lanes beyond the built-in four, and more names for those four. The chat
+  // (voices.ts setLaneTable), the router (lane-route.ts) and the wake words read it.
+  "chat.lanes": {
+    default: [] as ChatLaneDef[],
+    schema: z
+      .array(z.unknown())
+      .max(64)
+      .refine(
+        (rows) => rows.every((r) => parseLaneDef(r) !== null),
+        "each row: {id, name?, aliases?, heard?, voice?, color?}",
+      ) as unknown as z.ZodType<ChatLaneDef[]>,
+    group: "chat",
+    audience: "public",
+    description:
+      '聊天里的「线」（每个 agent 一条，名字 = 它的 API token 名）：JSON 数组，每条 {id token 名, name 显示名, aliases 叫它的名字, heard 语音识别常写成的样子, voice main/calm/bright/sweet, color oklch 颜色}。内置的 coco（codex）、杰咪（agy）、小克（claude）写同一个 id 就是给它们加名字。例：{"id":"agy","aliases":["咪宝"]}、{"id":"rechrome","name":"小镀","heard":["瑞克罗姆"]}。点名、唤醒词、头像闪烁都按这张表。',
+  },
+  // The lanes manager on the Mac (scripts/dev/lanes-manager.ts): it runs there,
+  // not in the Worker, so its live value is the env var named in lib/lanes-config.ts.
+  "lanes.repos": {
+    default: [...LANES_CONFIG_DEFAULTS["lanes.repos"]] as string[],
+    schema: z.array(z.string().regex(/^[A-Za-z0-9._-]{1,40}$/, "a repo folder name")).max(64),
+    group: "lanes",
+    audience: "server",
+    description:
+      "哪些仓库里的 agent 自动入群（Lianki 和它依赖的仓库）：仓库文件夹名的 JSON 数组。agent 的工作目录里有这个名字的一段就算（…/lianki/tree/main、…/agent-yes/tree/x）。Mac 上的值是环境变量 LIANKI_LANES_REPOS（逗号分隔）。",
+  },
+  "lanes.agents": {
+    default: [...LANES_CONFIG_DEFAULTS["lanes.agents"]] as LaneAgentDef[],
+    schema: z.array(laneAgentSchema).max(64) as z.ZodType<LaneAgentDef[]>,
+    group: "lanes",
+    audience: "server",
+    description:
+      '登记过名字的 agent：JSON 数组，每条 {cwd 工作目录结尾, cli 可选 codex/claude/agy…, lane 线名 = token 名, resident 是否常驻实时监听}。没登记的 agent 叫 <仓库>-<cli>-<pid>，默认只读，被点名才叫醒。例：{"cwd":"lianki/tree/codex","cli":"codex","lane":"codex","resident":true}。Mac 上的值是环境变量 LIANKI_LANES_AGENTS（JSON）。',
+  },
+  "lanes.relistSec": int({
+    default: LANES_CONFIG_DEFAULTS["lanes.relistSec"],
+    min: 10,
+    max: 3600,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "入群管理器在 ay 没有报告变化时，最多隔多久重新列一次 agent（秒）；平时靠 ay 自己的变化推送。Mac 上的值是环境变量 LIANKI_LANES_RELIST_SEC。",
+  }),
+  "lanes.modeGraceSec": int({
+    default: 30,
+    min: 0,
+    max: 600,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "一条线的实时监听断开后，等几秒还没重连才算「转为只读」并在聊天里说一声；重连得快的不打扰你。0 = 立刻。",
+  }),
+  "lanes.eventLocale": {
+    default: "zh" as string,
+    schema: z.string().regex(/^[a-z]{2}$/, "a language code: zh, en, ja…"),
+    group: "lanes",
+    audience: "server",
+    description:
+      "「coco 开始实时监听」「杰咪 下线」这类系统消息存进聊天时用哪种语言写（新页面会按你的界面语言显示，旧页面显示这份）。",
+  },
+  "lanes.greeting": {
+    default: LANES_CONFIG_DEFAULTS["lanes.greeting"] as string,
+    schema: z.string().min(1).max(200),
+    group: "lanes",
+    audience: "server",
+    description:
+      "新 agent 入群时用它自己的 token 发的第一句问候。{name} = 线名，{repo} = 仓库，{cli} = 它是哪种 agent，{mode} = 只读 / 实时监听。Mac 上的值是环境变量 LIANKI_LANES_GREETING。",
+  },
   "chat.presenceShown": int({
     default: 3,
     min: 1,

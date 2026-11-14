@@ -5,7 +5,7 @@
  */
 import type { ReactNode } from "react";
 import type { ChatMessage, Sender } from "./wire";
-import { LANES, type LaneId, isLaneId } from "./voices";
+import { laneSpec, type LaneId, isLaneId } from "./voices";
 
 /**
  * What an avatar shows: picture URLs in fallback order (each that fails to
@@ -80,7 +80,7 @@ export function lineAvatar(
   },
 ): LineAvatar {
   // A lane with a mark of its own (voices.ts LANES): its mark and name.
-  const lane = m.from === "agent" && isLaneId(m.lane) ? LANES[m.lane] : null;
+  const lane = m.from === "agent" && isLaneId(m.lane) ? laneSpec(m.lane) : null;
   if (lane?.mark && lane.name) {
     // Without the drawn mark (another host): its initial on its own colour, never the agent's logo.
     const src = opts.laneAvatar?.(m.lane!);

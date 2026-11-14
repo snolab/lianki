@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import { flashProps } from "./addressed";
-import { LANES, type LaneId, type LaneMark, isLaneId } from "./voices";
+import { laneSpec, type LaneId, type LaneMark, isLaneId } from "./voices";
 import type { ChatMessage } from "./wire";
 import { speakerAvatar } from "./speaker-avatar";
 import { AVATAR_PATH, autoMark, isAvatarRef, sanitizeAvatarSvg, svgDataUrl } from "./svg-avatar";
@@ -42,7 +42,7 @@ export function markSvg(mark: LaneMark, data: Record<string, string>) {
 
 /** The lane's mark as an avatar element (fills the Avatar's round box), or undefined (no mark: as today). */
 export function laneAvatar(lane: LaneId) {
-  const mark = LANES[lane].mark;
+  const mark = laneSpec(lane).mark;
   if (!mark) return undefined;
   return markSvg(mark, { "data-testid": "debug-chat-lane-mark", "data-lane": lane });
 }
@@ -142,7 +142,7 @@ export function LaneTag({
   inline?: boolean;
   mcp?: boolean;
 }) {
-  const name = LANES[lane].name || agentName;
+  const name = laneSpec(lane).name || agentName;
   if (!name) return mcp ? <McpBadge inline={inline} /> : null;
   return <NameTag name={name} lane={lane} inline={inline} mcp={mcp} />;
 }
@@ -239,8 +239,8 @@ export function AddressedMarks({
           key={lane}
           role="img"
           data-testid="debug-chat-addressed"
-          aria-label={label.replace("{name}", LANES[lane].name || lane)}
-          title={LANES[lane].name || lane}
+          aria-label={label.replace("{name}", laneSpec(lane).name || lane)}
+          title={laneSpec(lane).name || lane}
           className="ms-1 inline-block size-3 rounded-full align-middle"
           {...(pulse ? flashProps(lane) : {})}
         >

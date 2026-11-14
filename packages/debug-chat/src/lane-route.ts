@@ -12,10 +12,40 @@
  * Pure, tested in unit/lane-route.test.ts.
  */
 
+import { type LaneId, laneTable } from "./voices";
+
+/**
+ * The built-in route lanes. More come from config `chat.lanes` (voices.ts
+ * setLaneTable): each configured lane routes under its own id (its token
+ * name), so a route lane is any string routeLanes() lists.
+ */
 export const ROUTE_LANES = ["chat", "codex", "agy"] as const;
-export type RouteLane = (typeof ROUTE_LANES)[number];
+export type DefaultRouteLane = (typeof ROUTE_LANES)[number];
+export type RouteLane = DefaultRouteLane | (string & {});
+
+/** The chat lane each built-in route lane is (addressed.ts): "chat" is 小克's. */
+const BUILTIN_ROUTE: Readonly<Record<string, DefaultRouteLane>> = {
+  claude: "chat",
+  codex: "codex",
+  agy: "agy",
+};
+/** The route lane a chat lane (voices.ts LaneId) answers as: "claude" → "chat", "main" none, a configured one itself. */
+export const routeOfLane = (id: LaneId): RouteLane | null =>
+  id === "main" ? null : (BUILTIN_ROUTE[id] ?? id);
+/** The chat lane a route lane is (the inverse): "chat" → "claude", the others themselves. */
+export const laneOfRoute = (r: RouteLane): LaneId => (r === "chat" ? "claude" : r);
+
+/** Every route lane: the built-ins, then the configured lanes (in their order). */
+export function routeLanes(): RouteLane[] {
+  const out: RouteLane[] = [...ROUTE_LANES];
+  for (const d of laneTable()) {
+    const r = routeOfLane(d.id);
+    if (r && !out.includes(r)) out.push(r);
+  }
+  return out;
+}
 export const isRouteLane = (v: unknown): v is RouteLane =>
-  typeof v === "string" && (ROUTE_LANES as readonly string[]).includes(v);
+  typeof v === "string" && routeLanes().includes(v);
 
 /** The lane a line with no name goes to. */
 export const DEFAULT_LANE: RouteLane = "chat";
@@ -28,9 +58,8 @@ export const DEFAULT_LANE: RouteLane = "chat";
  * Latin names are matched case-insensitively with spaces, dots and hyphens
  * inside them ignored ("A. G. Y.", "Anti-gravity", "Xiao Ke").
  */
-export const LANE_NAMES: Readonly<
-  Record<RouteLane, { exact: readonly string[]; heard: readonly string[] }>
-> = {
+export type LaneNames = { exact: readonly string[]; heard: readonly string[] };
+export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
   codex: {
     // coco: the owner's name for codex (2026-11-14), written coco, never 可可.
     exact: ["codex", "coco"],
@@ -82,6 +111,23 @@ export const LANE_NAMES: Readonly<
   },
 };
 
+/**
+ * A route lane's names: the built-in ones with its config row's added (the
+ * row's id, name and aliases are its own names; `heard` its STT spellings),
+ * or, for a configured lane, the row's alone. One table for the routing, the
+ * wake words (wake-names.ts) and the avatar flash (addressed.ts).
+ */
+export function laneNames(lane: RouteLane): LaneNames {
+  const base: LaneNames = (LANE_NAMES as Record<string, LaneNames>)[lane] ?? { exact: [], heard: [] };
+  const row = laneTable().find((d) => routeOfLane(d.id) === lane);
+  if (!row) return base;
+  const own = [row.id, ...(row.name ? [row.name] : []), ...(row.aliases ?? [])].map((n) =>
+    n.toLowerCase(),
+  );
+  const exact = [...new Set([...base.exact, ...own])].filter((n) => n !== "main");
+  return { exact, heard: [...new Set([...base.heard, ...(row.heard ?? [])])] };
+}
+
 /** What may come before the name: a wake word, a greeting, an @. */
 const LEAD =
   /^(?:\s|@|[,，、:：.。!！~～-])*(?:(?:hey|hi|hello|ok|okay|yo|linky|lenky|林琪|嘿|喂|哎|诶|欸|那个)(?:\s|[,，、:：.。!！~～-])+)*/iu;
@@ -101,9 +147,10 @@ type Hit = { lane: RouteLane; end: number; exact: boolean };
 /** The longest lane name at the start of `s` (after nothing), or null. */
 function nameAt(s: string): Hit | null {
   let best: Hit | null = null;
-  for (const lane of ROUTE_LANES) {
+  for (const lane of routeLanes()) {
+    const names = laneNames(lane);
     for (const kind of ["exact", "heard"] as const) {
-      for (const name of LANE_NAMES[lane][kind]) {
+      for (const name of names[kind]) {
         let end = -1;
         if (isLatin(name)) {
           // Walk the input, skipping spaces/dots/hyphens between letters, until the name is spelled.
@@ -122,7 +169,7 @@ function nameAt(s: string): Hit | null {
             // Not inside a longer latin word ("codexes", "agyle").
             if (!/^[a-z0-9]/i.test(s.slice(i))) end = i;
           }
-        } else if (s.startsWith(name)) end = name.length;
+        } else if (s.slice(0, name.length).toLowerCase() === name.toLowerCase()) end = name.length;
         if (end > 0 && (!best || end > best.end)) best = { lane, end, exact: kind === "exact" };
       }
     }
@@ -169,7 +216,7 @@ export function routeLine(text: string): Route {
   // "全体…" at the start addresses every lane at once (owner, 2026-11-14:
   // "点名应该监听全体这两个字").
   const all = ALL.exec(s);
-  if (all) return { lanes: [...ROUTE_LANES], addressed: true, text: s.slice(all[0].length).trim() };
+  if (all) return { lanes: routeLanes(), addressed: true, text: s.slice(all[0].length).trim() };
   const lanes: RouteLane[] = [];
   for (;;) {
     const hit = nameAt(s);
