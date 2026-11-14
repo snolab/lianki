@@ -1788,6 +1788,17 @@ export function DebugChat({
   /** A send waited for uploads (submit): it goes when they are done. */
   const waitFiles = useRef(false);
   const [inboxOpen, setInboxOpen] = useState(false);
+  const fileScope = attach ? (files?.scope ?? null) : null;
+  useEffect(() => {
+    // No private file names, thumbnails or in-flight callbacks cross accounts.
+    pending.take();
+    waitFiles.current = false;
+    setInboxOpen(false);
+    return () => {
+      pending.take();
+      waitFiles.current = false;
+    };
+  }, [fileScope, pending, attach]);
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   // Files dragged into the window: the whole chat box takes the drop (its log

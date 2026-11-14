@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createTestD1 } from "../lib/d1/testDb";
+import { stubGlobals } from "./support/globals";
 import { INBOX, INBOX_PREFIX } from "../lib/inbox/config";
 import { MONTH_MS, storageUsd } from "../lib/inbox/charge";
 import { fileHeaders, inboxKey, isInboxId, newInboxId } from "../lib/inbox/keys";
@@ -35,7 +36,8 @@ import {
 const SCHEMA =
   "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT);\n" +
   readFileSync(new URL("../db/migrations/0035_inbox.sql", import.meta.url), "utf8") +
-  readFileSync(new URL("../db/migrations/0068_import_files.sql", import.meta.url), "utf8");
+  readFileSync(new URL("../db/migrations/0068_import_files.sql", import.meta.url), "utf8") +
+  readFileSync(new URL("../db/migrations/0077_inbox_upload_log.sql", import.meta.url), "utf8");
 const OWNER = { id: "u1", email: "owner@example.com", owner: true };
 const FRIEND = { id: "u2", email: "friend@example.com", owner: false };
 const T0 = 1_800_000_000_000;
@@ -94,9 +96,9 @@ const post = (body: Uint8Array, name = "a.png", len = body.length) =>
     body: body as Uint8Array<ArrayBuffer>,
   });
 
-describe("the owner gate", () => {
-  test("nobody but the owner uploads, lists, downloads or deletes: 404", async () => {
-    for (const w of [null, FRIEND]) {
+describe("the account gate", () => {
+  test("guests get 404 and another account cannot read or delete your file", async () => {
+    for (const w of [null]) {
       who = w;
       expect((await upload(post(PNG), deps)).status).toBe(404);
       expect((await list(deps)).status).toBe(404);
@@ -201,6 +203,7 @@ describe("keys and serving", () => {
       expect(h.get("content-disposition")).not.toContain("\n");
       expect(h.get("x-content-type-options")).toBe("nosniff");
       expect(h.get("content-security-policy")).toContain("sandbox");
+      expect(h.get("cache-control")).toContain("no-store");
     }
   });
 });
@@ -255,7 +258,10 @@ describe("edges", () => {
     };
     expect(agent.items[0]?.line).toBe("line_1");
     who = FRIEND;
-    expect((await patch({ ids: [id], line: "x" })).status).toBe(404);
+    expect((await patch({ ids: [id], line: "x" })).status).toBe(200);
+    expect(rawDb.prepare("SELECT line_id FROM inbox_item WHERE id = ?").get(id)).toMatchObject({
+      line_id: "line_1",
+    });
   });
 
   test("a body in many chunks is streamed whole; no length is a 411; a bad name is 'file'", async () => {
@@ -300,7 +306,39 @@ describe("edges", () => {
       },
     };
     const big = new Uint8Array(4096).fill(65);
-    expect((await upload(post(big, "a.txt"), { ...deps, bucket: () => lazy })).status).toBe(400);
+    const restore = stubGlobals({
+      FixedLengthStream: class extends TransformStream {
+        constructor(_n: number) {
+          super();
+        }
+      },
+    });
+    let at = 0;
+    let cancelled = false;
+    const chunks = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (at >= big.length) controller.close();
+        else {
+          controller.enqueue(big.slice(at, at + 256));
+          at += 256;
+        }
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const request = new Request("https://x", {
+      method: "POST",
+      headers: { "content-length": String(big.length) },
+      body: chunks,
+      duplex: "half",
+    } as RequestInit);
+    try {
+      expect((await upload(request, { ...deps, bucket: () => lazy })).status).toBe(400);
+      expect(cancelled).toBe(true);
+    } finally {
+      restore();
+    }
   });
 });
 
@@ -431,5 +469,157 @@ describe("the widget's side", () => {
     expect(formatSize(512)).toBe("512 B");
     expect(formatSize(1536)).toBe("1.5 KB");
     expect(formatSize(20 * 1024 * 1024)).toBe("20 MB");
+  });
+});
+
+describe("private inboxes for ordinary accounts", () => {
+  test("ordinary accounts upload/list/read/delete their own; nobody else can cross the prefix", async () => {
+    const ownerRef = (await (await upload(post(PNG, "owner.png"), deps)).json()) as { id: string };
+    who = FRIEND;
+    const friendRef = (await (await upload(post(PNG, "friend.png"), deps)).json()) as {
+      id: string;
+    };
+    expect((await list(deps)).status).toBe(200);
+    const listing = (await (await list(deps)).json()) as { items: { id: string }[] };
+    expect(listing.items.map((x) => x.id)).toEqual([friendRef.id]);
+    expect((await download(new Request("https://x"), friendRef.id, deps)).status).toBe(200);
+    expect((await download(new Request("https://x"), ownerRef.id, deps)).status).toBe(404);
+    expect((await remove(ownerRef.id, deps)).status).toBe(404);
+    expect(
+      [...bucket.store.keys()].some((k) => k.startsWith("inbox/u2/") && k.endsWith(friendRef.id)),
+    ).toBe(true);
+    expect(await inboxOp(db, { op: "get", id: friendRef.id })).toEqual({
+      ok: false,
+      error: "no such item",
+    });
+    expect(await inboxOp(db, { op: "done", id: friendRef.id })).toEqual({
+      ok: false,
+      error: "no such item",
+    });
+    const agent = (await inboxOp(db, { op: "list" })) as { items: { id: string }[] };
+    expect(agent.items.map((x) => x.id)).toEqual([ownerRef.id]);
+    const linked = await link(
+      new Request("https://x", {
+        method: "PATCH",
+        body: JSON.stringify({ ids: [friendRef.id, ownerRef.id], line: "friend_line" }),
+      }),
+      deps,
+    );
+    expect(linked.status).toBe(200);
+    expect(
+      rawDb.prepare("SELECT line_id FROM inbox_item WHERE id = ?").get(ownerRef.id),
+    ).toMatchObject({ line_id: null });
+    expect(
+      rawDb.prepare("SELECT line_id FROM inbox_item WHERE id = ?").get(friendRef.id),
+    ).toMatchObject({ line_id: "friend_line" });
+    expect((await remove(friendRef.id, deps)).status).toBe(200);
+    who = OWNER;
+    expect((await download(new Request("https://x"), ownerRef.id, deps)).status).toBe(200);
+    who = null;
+    expect(
+      (await link(new Request("https://x", { method: "PATCH", body: "{}" }), deps)).status,
+    ).toBe(404);
+  });
+  test("tickets no longer authorize files after the owner dev grant was revoked", async () => {
+    const { id } = (await (await upload(post(PNG), deps)).json()) as { id: string };
+    const answer = (await inboxOp(db, { op: "get", id }, { now: () => now })) as { ticket: string };
+    rawDb.exec("UPDATE account_permission SET revoked_at = 1");
+    who = null;
+    expect(
+      (
+        await download(
+          new Request("https://x", { headers: { "x-inbox-ticket": answer.ticket } }),
+          id,
+          deps,
+        )
+      ).status,
+    ).toBe(404);
+  });
+  test("live limits control both acceptance and the quota reported to clients", async () => {
+    const limits = {
+      ...INBOX,
+      maxFileBytes: 10,
+      maxDayBytes: 20,
+      maxStoredBytes: 40,
+      uploadsPerMinute: 2,
+    };
+    const custom = { ...deps, limits: async () => limits };
+    expect((await upload(post(PNG), custom)).status).toBe(413);
+    limits.maxFileBytes = 20;
+    expect((await upload(post(PNG), custom)).status).toBe(201);
+    const listing = (await (await list(custom)).json()) as { usage: { capBytes: number } };
+    expect(listing.usage.capBytes).toBe(40);
+    expect((await upload(post(PNG), custom)).status).toBe(413);
+  });
+  test("deleting does not refund the rolling-day upload cap", async () => {
+    who = FRIEND;
+    const custom = { ...deps, limits: async () => ({ ...INBOX, maxDayBytes: PNG.length }) };
+    const { id } = (await (await upload(post(PNG), custom)).json()) as { id: string };
+    await remove(id, custom);
+    expect((await upload(post(PNG), custom)).status).toBe(413);
+    expect((await usageOf(db, FRIEND.id)).bytesStored).toBe(0);
+    now += 24 * 3600_000 + 1;
+    expect((await upload(post(PNG), custom)).status).toBe(201);
+    expect(
+      (rawDb.prepare("SELECT COUNT(*) AS n FROM inbox_upload_log").get() as { n: number }).n,
+    ).toBe(1);
+  });
+  for (const cap of ["storage", "day"])
+    test(`concurrent uploads cannot pass the ${cap} cap and leave no losing object`, async () => {
+      let arrived = 0;
+      let release!: () => void;
+      const barrier = new Promise<void>((r) => (release = r));
+      const original = bucket.put;
+      bucket.put = async (...args) => {
+        await original(...args);
+        if (++arrived === 2) release();
+        await barrier;
+      };
+      const custom = {
+        ...deps,
+        limits: async () => ({
+          ...INBOX,
+          maxDayBytes: cap === "day" ? PNG.length : 1000,
+          maxStoredBytes: cap === "storage" ? PNG.length : 1000,
+        }),
+      };
+      const results = await Promise.all([upload(post(PNG), custom), upload(post(PNG), custom)]);
+      expect(results.map((r) => r.status).sort()).toEqual([201, 413]);
+      expect(bucket.store.size).toBe(1);
+      expect(await usageOf(db, OWNER.id)).toMatchObject({
+        bytesStored: PNG.length,
+        bytesUploaded: PNG.length,
+        items: 1,
+      });
+    });
+  test("concurrent deletion of one file decrements usage only once", async () => {
+    const { id } = (await (await upload(post(PNG), deps)).json()) as { id: string };
+    await upload(post(PNG), deps);
+    let arrived = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((r) => (release = r));
+    const original = bucket.delete;
+    bucket.delete = async (key) => {
+      await original(key);
+      if (++arrived === 2) release();
+      await barrier;
+    };
+    const responses = await Promise.all([remove(id, deps), remove(id, deps)]);
+    expect(responses.map((r) => r.status)).toEqual([200, 200]);
+    expect(await usageOf(db, OWNER.id)).toMatchObject({ bytesStored: PNG.length, items: 1 });
+  });
+  test("a failed metadata transaction removes its newly stored object", async () => {
+    const broken = {
+      ...deps,
+      db: () => ({
+        ...db,
+        prepare: db.prepare.bind(db),
+        batch: async () => {
+          throw Error("D1 unavailable");
+        },
+      }),
+    };
+    expect((await upload(post(PNG), broken)).status).toBe(503);
+    expect(bucket.store.size).toBe(0);
   });
 });

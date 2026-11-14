@@ -31,7 +31,8 @@ export function inboxKey(userId: string, id: string, at: number): string {
 
 /**
  * The response headers for a stored file: its sniffed type, never sniffed
- * again by the browser, a sandbox CSP, private caching; inline only for a
+ * again by the browser, a sandbox CSP, no browser HTTP cache across accounts;
+ * inline only for a
  * safe image type, otherwise an attachment (so nothing executes or renders).
  */
 export function fileHeaders(item: { name: string; type: string; size: number }): Headers {
@@ -45,7 +46,7 @@ export function fileHeaders(item: { name: string; type: string; size: number }):
     "content-security-policy": "default-src 'none'; sandbox",
     "cross-origin-resource-policy": "same-origin",
     "referrer-policy": "no-referrer",
-    "cache-control": "private, max-age=300",
+    "cache-control": "private, no-store",
   });
   return h;
 }

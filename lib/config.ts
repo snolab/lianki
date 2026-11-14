@@ -736,6 +736,42 @@ export const CONFIG = {
     description:
       "连续学习奖励的断签规则：每漏一天，连续天数扣多少天（不清零）。默认 2：连续 7 天后漏 1 天，再学时按第 6 天算（7−2+1）。0 = 漏天不扣；填很大（如 1000）= 漏一天就从头开始。",
   }),
+  "inbox.maxFileBytes": int({
+    default: 20 * 1024 * 1024,
+    min: 1024,
+    max: 100 * 1024 * 1024,
+    unit: "bytes",
+    group: "inbox",
+    audience: "public",
+    description: "每个登录账号的收件箱与共享文件存储：单个上传文件的安全大小上限。",
+  }),
+  "inbox.maxDayBytes": int({
+    default: 200 * 1024 * 1024,
+    min: 1024 * 1024,
+    max: 20 * 1024 ** 3,
+    unit: "bytes",
+    group: "inbox",
+    audience: "server",
+    description: "每个账号滚动24小时上传的安全字节上限。",
+  }),
+  "inbox.maxStoredBytes": int({
+    default: 2 * 1024 ** 3,
+    min: 1024 * 1024,
+    max: 100 * 1024 ** 3,
+    unit: "bytes",
+    group: "inbox",
+    audience: "server",
+    description: "每个账号存储文件的安全总字节上限（所有文件来源共享）。",
+  }),
+  "inbox.uploadsPerMinute": int({
+    default: 30,
+    min: 1,
+    max: 120,
+    unit: "uploads/min",
+    group: "inbox",
+    audience: "server",
+    description: "每个账号每个Worker实例一分钟允许的上传次数，账号之间独立。",
+  }),
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

@@ -2025,8 +2025,8 @@ logs only its length. The log shows it as a small quote above the line;
 
 ## Attachments and the inbox
 
-The owner can paste, drop or pick files of any kind into the chat (owner,
-2026-11-04). They are uploaded at once, kept in an **inbox** in R2
+Every signed-in account can paste, drop or pick files of any kind into the
+chat. They are uploaded at once, kept in that account's private **inbox** in R2
 `lianki-blobs` (no other bucket), and the agent reads them from there.
 
 **In the widget** (generic: `packages/debug-chat/src/files.ts`,
@@ -2058,17 +2058,21 @@ soon" and paste/drop do nothing.
   owner's session and opens it as if dropped (the usual import into his own
   word list). The same action shows under the line that carried the file.
 
-**On lianki.com** (`lib/inbox/`, `app/api/dev/inbox/**`). Owner session only
-(`isOwner`, 404 for anyone else, friends included, as every `/api/dev`
-route); the chat passes `files` only on the owner's own pages.
+**On lianki.com** (`lib/inbox/`, `app/api/my/inbox/**`). Every signed-in
+account has its own inbox; guests get 404 and keep coming-soon file actions.
+The chat passes `files` for every authenticated `account`, not only `dev`.
+Changing accounts aborts pending uploads, removes their names/thumbnails,
+closes the old inbox and ignores late callbacks. No other `/api/dev` gate changes.
+The old `/api/dev/inbox/**` URLs are exact thin forwards, preserving existing
+widgets and the agent's single-use ticket downloads.
 
 | route                        | what                                                                                                 |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `POST /api/dev/inbox`        | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
-| `GET /api/dev/inbox`         | his files and usage (settles accrued storage cost)                                                   |
-| `PATCH /api/dev/inbox`       | `{ids, line}`: the chat line they were sent with                                                     |
-| `GET /api/dev/inbox/<id>`    | the file: his session, or an agent's ticket in `x-inbox-ticket`                                      |
-| `DELETE /api/dev/inbox/<id>` | his own session only; the object and the row go                                                      |
+| `POST /api/my/inbox`        | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
+| `GET /api/my/inbox`         | his files and usage (settles accrued storage cost)                                                   |
+| `PATCH /api/my/inbox`       | `{ids, line}`: the chat line they were sent with                                                     |
+| `GET /api/my/inbox/<id>`    | the file: his session, or an agent's ticket in `x-inbox-ticket`                                      |
+| `DELETE /api/my/inbox/<id>` | his own session only; the object and the row go                                                      |
 
 - **Keys**: `inbox/<user id>/<yyyy>/<mm>/<id>` (`lib/inbox/keys.ts`); the name
   never goes into a key. D1 `inbox_item` (id, owner, name, type, size,
@@ -2078,12 +2082,22 @@ route); the chat passes `files` only on the owner's own pages.
   512 bytes, never the browser's claim; HTML/SVG/XML are stored as
   `text/plain`; PE/ELF/Mach-O/`#!` are flagged. An `.apkg` is a zip.
 - **Serving**: `Content-Disposition: attachment` for everything but the safe
-  image types, `nosniff`, `CSP: default-src 'none'; sandbox`, private cache.
+  image types, `nosniff`, `CSP: default-src 'none'; sandbox`, private `no-store` responses (including account switches).
   No public URL: his session, or a single-use 60 s ticket.
-- **Caps** — one object, `INBOX` in `lib/inbox/config.ts`, **the owner may
-  change any of them**; first values (conservative, the agent's pick):
-  20 MB per file, 200 MB per rolling 24 h per user, 2 GB stored per user (a
-  safety cap, not a plan limit), 30 uploads a minute per isolate.
+- **Caps** — live `cfg()` keys in `lib/config.ts`: `inbox.maxFileBytes`
+  (public, also `publicCfg()` in the picker), `inbox.maxDayBytes`,
+  `inbox.maxStoredBytes`, `inbox.uploadsPerMinute`. Defaults: 20 MB per file,
+  200 MB per rolling 24 h per account, 2 GB stored per account (a safety cap,
+  not a plan limit), 30 uploads/min per account per isolate. Accounts do not
+  spend each other's rate window. D1 checks stored/day caps atomically with
+  the item/usage write, so concurrent uploads cannot bypass either cap.
+  `0077_inbox_upload_log.sql` keeps only id/account/size/time: deleting a file
+  does not refund the rolling upload cap. Expired entries are pruned on that
+  account's next upload; pre-ledger items still count without double-counting.
+  Concurrent deletion only decrements storage usage once.
+- **Writes** are same-origin (the existing sameOriginWrite guard), and all
+  list/read/link/remove operations get the account from the session, never
+  a request-supplied user id. R2 keys stay under that account's prefix.
 - **Cost, by usage** (owner, 2026-11-04: "按用量扣莲（上传和存储）"):
   `lib/inbox/charge.ts` `chargeInbox`, the same seam as the AI gloss's
   `chargeAi` — it records the real R2 cost in USD (list prices in the
@@ -2093,7 +2107,19 @@ route); the chat passes `files` only on the owner's own pages.
   delete and when he opens the Inbox view — nothing polls.
 - **Retention**: none automatic. A file stays until he deletes it.
 
-**The agent** (`bun scripts/dev/eval.ts inbox …`, with the saved grant):
+**Next dev / R2** (`lib/inbox/body.ts`). Workers retain streaming via
+FixedLengthStream. Bun Next dev lacks that upload primitive and cannot transfer
+Miniflare's workerd response stream (`DataCloneError: invalid transferList`;
+Next's error formatting obscures it with a readonly-property rejection).
+Only there, bounded uploads become ArrayBuffer and downloads call the R2
+object's own `arrayBuffer()` method, executing in workerd rather than reading
+the proxy stream. A 1.6 MB local R2 regression reads the complete bytes repeatedly
+without that rejection; production does not buffer downloads.
+
+**The agent** remains restricted to chat files of accounts holding `dev`,
+including when spending a ticket after a grant was revoked. A normal account's
+private files cannot be listed, downloaded or marked processed by the agent.
+`bun scripts/dev/eval.ts inbox …`, with the saved grant:
 `inbox` lists `{id,name,type,size,sha256,at,processedAt?,line?}`; `inbox get
 <id> [--out dir]` asks the hub, which calls the main Worker's
 `DebugSessions.inbox` over its service binding for a single-use ticket, then

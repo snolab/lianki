@@ -1,9 +1,10 @@
+import { CONFIG } from "@/lib/config";
+
 /**
  * The chat inbox's limits and prices, in one object (docs/dev-debug-widget.md,
  * "Attachments and the inbox"). THE OWNER MAY CHANGE ANY OF THEM: the caps
  * below are conservative first values the agent picked on 2026-11-04 (he
- * decides the final numbers). Changing a value here and deploying is all it
- * takes.
+ * decides the final numbers). These are defaults from lib/config.ts; the routes read live cfg() values.
  *
  * Cost (owner, 2026-11-04 17:45 JST, tap: "按用量扣莲（上传和存储）"): users
  * bear the real R2 cost of what they upload and store, charged by usage
@@ -12,13 +13,13 @@
  */
 export const INBOX = {
   /** Largest single file, in bytes (20 MB: a phone photo or a short clip; not a long video). */
-  maxFileBytes: 20 * 1024 * 1024,
+  maxFileBytes: CONFIG["inbox.maxFileBytes"].default,
   /** Most bytes one user uploads in any rolling 24 hours, all files together (200 MB). */
-  maxDayBytes: 200 * 1024 * 1024,
+  maxDayBytes: CONFIG["inbox.maxDayBytes"].default,
   /** Safety cap: most bytes one user keeps stored at once (2 GB). Not a plan limit. */
-  maxStoredBytes: 2 * 1024 * 1024 * 1024,
+  maxStoredBytes: CONFIG["inbox.maxStoredBytes"].default,
   /** Most uploads per minute (per Worker isolate), whatever their size. */
-  uploadsPerMinute: 30,
+  uploadsPerMinute: CONFIG["inbox.uploadsPerMinute"].default,
   /** How long an agent's download ticket (`eval.ts inbox get`) stays good; single use. */
   ticketMs: 60_000,
   /**
@@ -46,3 +47,8 @@ export const INBOX_PREFIX = "inbox/";
  * the owner deletes it (the chat's + menu → Inbox → Delete, his own session).
  */
 export const INBOX_AUTO_DELETE = false;
+
+export type InboxLimits = Pick<
+  typeof INBOX,
+  "maxFileBytes" | "maxDayBytes" | "maxStoredBytes" | "uploadsPerMinute"
+>;

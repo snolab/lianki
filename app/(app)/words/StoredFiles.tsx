@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import { formatSize } from "@lianki/debug-chat/files";
-import { INBOX } from "@/lib/inbox/config";
+import { publicCfg } from "@/lib/config-client";
 import dynamic from "next/dynamic";
 
 // Loaded on the first "Words with AI" tap.
@@ -70,7 +70,7 @@ export default function StoredFiles({
   const upload = async (list: File[]) => {
     setError(null);
     for (const f of list) {
-      if (f.size > INBOX.maxFileBytes) {
+      if (f.size > publicCfg("inbox.maxFileBytes")) {
         setError({ key: "anyErrTooBig", name: f.name });
         continue;
       }
@@ -166,7 +166,7 @@ export default function StoredFiles({
             : t.anyDrop}
         </p>
         <p className="mt-1 text-xs text-[oklch(0.42_0_0)] dark:text-[oklch(0.8_0_0)]">
-          {fill(t.anyLimit, { mb: Math.round(INBOX.maxFileBytes / (1024 * 1024)) })}
+          {fill(t.anyLimit, { mb: Math.round(publicCfg("inbox.maxFileBytes") / (1024 * 1024)) })}
         </p>
       </div>
 
