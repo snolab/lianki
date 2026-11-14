@@ -1,7 +1,7 @@
 import { defaultConfig } from "./config";
 import { loadConfig } from "./config-store";
 import { isUserId } from "@/lib/dev-eval";
-import { isFlagKey } from "@/lib/flags";
+import { FLAGS, isFlagKey } from "@/lib/flags";
 import { readHolders } from "@/lib/account-permission";
 import { normalizeEmail } from "@/lib/permissions";
 import { levelsLine, parseStoredItems } from "@/lib/lang-levels";
@@ -25,6 +25,7 @@ import {
   MAX_REPLY_CHARS,
   PROMPT_OVERHEAD_CHARS,
   PARTNER_AI_FLAG,
+  PARTNER_OWNER_FLAG,
   PARTNER_AI_MODEL,
   PARTNER_AI_REASONING,
   type PartnerRequest,
@@ -99,7 +100,13 @@ export function parsePartnerRequest(raw: unknown): PartnerRequest | null {
   }
   const msgId =
     typeof r.msgId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(r.msgId) ? r.msgId : undefined;
-  return { userId: r.userId, ...(msgId ? { msgId } : {}), history, ...(page ? { page } : {}) };
+  return {
+    userId: r.userId,
+    ...(msgId ? { msgId } : {}),
+    ...(r.owner === true ? { owner: true as const } : {}),
+    history,
+    ...(page ? { page } : {}),
+  };
 }
 
 /** The user's own study data, read by their verified email only. */
@@ -255,14 +262,18 @@ export function cleanReply(raw: unknown): string {
     .slice(0, MAX_REPLY_CHARS);
 }
 
-/** Is the flag on, straight from D1 (registry key only; exactly 1 is on). */
-async function flagOn(db: PartnerDb) {
-  if (!isFlagKey(PARTNER_AI_FLAG)) return false;
+/**
+ * Is the flag on, straight from D1 (registry key only)? A stored row decides
+ * (exactly 1 is on); with none, the registry default (lib/flags.ts).
+ */
+async function flagOn(db: PartnerDb, key: string = PARTNER_AI_FLAG) {
+  if (!isFlagKey(key)) return false;
   const { results } = await db
     .prepare("SELECT enabled FROM feature_flags WHERE key = ?")
-    .bind(PARTNER_AI_FLAG)
+    .bind(key)
     .all<{ enabled: number }>();
-  return results[0]?.enabled === 1;
+  const row = results[0];
+  return row ? row.enabled === 1 : FLAGS[key].default;
 }
 
 export async function partnerReply(
@@ -285,7 +296,13 @@ export async function partnerReply(
     .all<{ email: string | null }>();
   const email = results[0]?.email;
   if (!email) return { ok: false, error: "no-user" };
-  if (owners.includes(normalizeEmail(email))) return { ok: false, error: "owner" };
+  // The owner's thread (PARTNER_OWNER_FLAG): served only for an account holding
+  // `dev`, and only with that flag on too; any other thread of his is refused.
+  const isOwner = owners.includes(normalizeEmail(email));
+  if (req.owner) {
+    if (!isOwner) return { ok: false, error: "bad-input" };
+    if (!(await flagOn(db, PARTNER_OWNER_FLAG))) return { ok: false, error: "off" };
+  } else if (isOwner) return { ok: false, error: "owner" };
   const account = env.CLOUDFLARE_ACCOUNT_ID?.trim();
   const token = (env.CLOUDFLARE_AI_TOKEN || env.CLOUDFLARE_API_TOKEN)?.trim();
   if (!account || !token) return { ok: false, error: "not-configured" };

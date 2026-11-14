@@ -10,6 +10,18 @@
 export const PARTNER_AI_FLAG = "partner.ai-reply";
 
 /**
+ * The owner's own thread answered by the model too (docs/partner-ai.md,
+ * "The owner's thread"), on top of PARTNER_AI_FLAG: only his unaddressed
+ * lines that no lane answered within OWNER_REPLY_DELAY_MS.
+ */
+export const PARTNER_OWNER_FLAG = "partner.owner-thread";
+/** The live value's key (lib/config.ts) for how long the lanes have before the model answers. */
+export const OWNER_REPLY_DELAY_KEY = "partner.ownerReplyDelayMs";
+/** Its default: 8 s for a lane to answer first. */
+export const OWNER_REPLY_DELAY_MS = 8000;
+export const OWNER_REPLY_DELAY_MAX = 120_000;
+
+/**
  * DeepSeek on Cloudflare Workers AI (verified listed by `wrangler ai models`,
  * 2026-11-03). Called over the OpenAI-compatible REST endpoint with the
  * existing CLOUDFLARE_AI_TOKEN: no new secret, no third-party API.
@@ -73,6 +85,11 @@ export type PartnerRequest = {
    * retried request is charged once. An older hub sends none (a fresh key).
    */
   msgId?: string;
+  /**
+   * The owner's own thread (PARTNER_OWNER_FLAG): the hub sets it only there,
+   * and the main Worker then serves the account only if it is the owner's.
+   */
+  owner?: true;
   /** The thread's latest lines, oldest first: the user's and the agent's. */
   history: { role: "user" | "assistant"; text: string }[];
   /** Where the user is: the page's path (from its label) and what the line carried. */

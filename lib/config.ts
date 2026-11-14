@@ -1,4 +1,5 @@
 import { HUB_RPC_LIMITS } from "./hub-rpc-config";
+import { OWNER_REPLY_DELAY_MAX, OWNER_REPLY_DELAY_MS } from "./partner-ai-config";
 /**
  * The config registry: every user-meaningful number, text and icon whose live
  * value comes from the config store (lib/config-store.ts, D1 `config_values`)
@@ -895,6 +896,18 @@ export const CONFIG = {
     group: "chat",
     audience: "server",
     description: "聊天 hub 学习伙伴回复外呼的总等待上限；超时明确失败并结束忙碌状态。",
+  }),
+  // Li in the owner's own thread (flag partner.owner-thread, docs/partner-ai.md):
+  // read by the debug hub over DebugSessions.config.
+  "partner.ownerReplyDelayMs": int({
+    default: OWNER_REPLY_DELAY_MS,
+    min: 0,
+    max: OWNER_REPLY_DELAY_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 8000 = 8 秒。开关在 /dev/flags 的 partner.owner-thread。",
   }),
   "chat.partnerModelTimeoutMs": int({
     ...HUB_RPC_LIMITS["chat.partnerModelTimeoutMs"],
