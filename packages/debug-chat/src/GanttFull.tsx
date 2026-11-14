@@ -87,6 +87,14 @@ import {
 } from "./gantt-groups";
 import { ganttGroupsUi, ganttPrefs } from "./ui-store";
 import { readGanttHideDone, writeGanttHideDone } from "./gantt-settings";
+import {
+  GANTT_STATUS_COLORS,
+  GANTT_STATUS_FALLBACK_LABELS,
+  GANTT_STATUS_KEYS,
+  type GanttStatusKey,
+  type TaskStateSegment,
+  computeStateSegments,
+} from "./gantt-states";
 import type { ChatStrings } from "./wire";
 
 /**
@@ -330,9 +338,11 @@ function barMarks(
   top: number,
   h: number,
   mode: "row" | "slice",
+  onSelectSegment?: (info: { task: EtaTask; seg: TaskStateSegment } | null) => void,
 ) {
   const b = ganttBar(t, axis, now);
   const parked = isParked(t);
+  const segments = useMemo(() => computeStateSegments(t, axis, now), [t, axis, now]);
   // A range's tail (P5 → P95) on a running bar; queued, parked and done draw whole.
   const tail = !t.done && !t.queued && !parked ? b.w - b.solid : 0;
   // The original plan as a ghost; a done task's bar is how it really ran, so with no
@@ -386,7 +396,35 @@ function barMarks(
           ...(t.queued ? { outline: `1px dashed ${c("muted")}`, outlineOffset: -1 } : {}),
           ...(parked ? parkedBar(c("bar"), c("muted")) : {}),
         }}
-      />
+      >
+        {!parked &&
+          !t.queued &&
+          segments.length > 0 &&
+          segments.map((seg, i) => {
+            const segLeft = Math.max(0, seg.x - b.x);
+            const segW = Math.max(1, Math.min(seg.w, (tail > 0 ? b.solid : b.w) - segLeft));
+            const tooltip = `${seg.label} · ${seg.durationLabel}`;
+            return (
+              <span
+                key={`${seg.status}:${seg.from}:${i}`}
+                data-testid="debug-chat-gantt-state-segment"
+                data-status={seg.status}
+                title={tooltip}
+                aria-label={tooltip}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectSegment?.({ task: t, seg });
+                }}
+                className="absolute inset-y-0 transition-opacity hover:opacity-80 active:opacity-60 cursor-pointer"
+                style={{
+                  left: segLeft,
+                  width: segW,
+                  background: seg.color,
+                }}
+              />
+            );
+          })}
+      </span>
       {!parked &&
         !t.queued &&
         b.fill > 0 &&
@@ -1087,6 +1125,31 @@ export function GanttFull({
               >
                 {label}
               </button>
+            ))}
+          </div>
+          <div
+            data-testid="debug-chat-gantt-state-legend"
+            className="flex w-full flex-wrap items-center gap-2 pt-1 border-t"
+            style={{ borderColor: c("grid") }}
+          >
+            {GANTT_STATUS_KEYS.map((k) => (
+              <span
+                key={k}
+                data-testid={`debug-chat-gantt-legend-${k}`}
+                className="inline-flex items-center gap-1.5 fs-10"
+                style={{ color: c("muted") }}
+              >
+                <span
+                  aria-hidden
+                  className="inline-block rounded-xs"
+                  style={{
+                    width: 10,
+                    height: 10,
+                    background: `light-dark(${GANTT_STATUS_COLORS[k].light}, ${GANTT_STATUS_COLORS[k].dark})`,
+                  }}
+                />
+                {GANTT_STATUS_FALLBACK_LABELS[k]}
+              </span>
             ))}
           </div>
         </section>
