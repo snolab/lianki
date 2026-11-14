@@ -290,9 +290,25 @@ describe("reader position: storage edges", () => {
     expect(loadAnchor("x", bad)).toBeNull();
     expect(() => saveAnchor("x", { line: 1, off: 0, at: 1 }, bad)).not.toThrow();
     expect(parseAnchor(null)).toBeNull();
+    // The adapter reads the page's own storage: for this test there is none,
+    // whatever another test file left on globalThis (Linux file order in CI).
+    const g = globalThis as Record<string, unknown>;
+    const had = Object.getOwnPropertyDescriptor(g, "localStorage");
+    Object.defineProperty(g, "localStorage", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+    try {
+      const d = localReaderData();
+      expect(await d.anchor("x")).toBeNull();
+      d.saveAnchor("x", { line: 2, off: 0, at: 2 });
+      expect(await d.anchor("x")).toBeNull();
+    } finally {
+      if (had) Object.defineProperty(g, "localStorage", had);
+      else delete g.localStorage;
+    }
     const d = localReaderData();
-    expect(await d.anchor("x")).toBeNull();
-    d.saveAnchor("x", { line: 2, off: 0, at: 2 });
     expect(d.lastGrade("none")).toBeNull();
     await d.undo(
       { id: "x", lines: [], headings: new Set(), chapterStarts: new Set(), lang: "en" },
