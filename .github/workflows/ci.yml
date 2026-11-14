@@ -23,12 +23,13 @@ name: CI
 # "false" while WORDS' Settings-sheet check failed in CI (2026-11-08,
 # /infra/words-ci-fix); keep it "true" unless a CI-only failure needs the same.
 #
-# deploy-worker.yml runs on this workflow's success on main.
+# deploy-worker.yml runs on this workflow's success on prod (the release
+# branch, docs/shipping.md "Daily release"); main is the integration branch.
 on:
   push:
-    branches: [main]
+    branches: [main, prod]
   pull_request:
-    branches: [main]
+    branches: [main, prod]
   # The merge queue (docs/shipping.md): each queued PR is tested on top of
   # main plus the PRs ahead of it, so two green PRs cannot merge red together.
   merge_group:
@@ -105,16 +106,16 @@ jobs:
       - name: Unit tests + coverage
         if: github.event_name != 'pull_request'
         run: bun run test:unit -- --coverage
-      # main is red after a merge (e.g. two PRs green on their own, broken
+      # main or prod is red after a merge (e.g. two PRs green on their own, broken
       # together): say so in #lianki. Needs SLACK_WEBHOOK_URL (an incoming
       # webhook for #lianki) as a repo secret; without it this only warns.
-      - name: "Alert #lianki when main is red"
+      - name: "Alert #lianki when main or prod is red"
         if: failure() && github.event_name == 'push'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          bash scripts/ci/slack-alert.sh ":red_circle: main is red at ${GITHUB_SHA::7} — Lint + typecheck + unit failed, so the deploy is held: ${RUN_URL}"
+          bash scripts/ci/slack-alert.sh ":red_circle: ${GITHUB_REF_NAME} is red at ${GITHUB_SHA::7} — Lint + typecheck + unit failed (a red main does not release, a red prod does not deploy): ${RUN_URL}"
 
   # Which qa suites the merge group needs (docs/shipping.md, "Affected-only in
   # the merge queue"): the ones its changes reach since merge_group.base_sha,
