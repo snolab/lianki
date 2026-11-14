@@ -231,6 +231,33 @@ describe("server", () => {
     }
   });
 
+  test("no build yet: 503; a rebuild during a build runs once more; the same code is no new rev", async () => {
+    let release = () => {};
+    let builds = 0;
+    const s = await serveWith("");
+    const us = s.us as unknown as { o: { build: () => Promise<string> }; rev?: string };
+    us.rev = undefined;
+    try {
+      const none = await Bun.fetch(`${s.base}${BUNDLE_PATH}`);
+      expect(none.status).toBe(503);
+      us.o.build = () => {
+        builds++;
+        return new Promise<string>((ok) => (release = () => ok("same")));
+      };
+      const first = s.us.rebuild();
+      const again = s.us.rebuild();
+      release();
+      await Bun.sleep(5);
+      release();
+      await first;
+      await again;
+      expect(builds).toBe(2);
+      expect(s.us.rev).toBe(revOf("same"));
+    } finally {
+      s.srv.close();
+    }
+  });
+
   test("a failed build keeps the last good one", async () => {
     const s = await serveWith("good");
     (s.us as unknown as { o: { build: () => Promise<string> } }).o.build = async () => {

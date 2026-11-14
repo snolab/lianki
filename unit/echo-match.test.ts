@@ -46,9 +46,32 @@ describe("echo similarity", () => {
     // A line longer than the text is never inside it.
     expect(containedSimilarity(`${reply}还有我自己的话很多很多`, "忙不忙要看state")).toBe(0);
   });
+
+  it("texts past the edit-distance size compare by character bigrams", () => {
+    const long = "今天我们学习了很多新的单词和句子".repeat(50); // > 600 characters
+    expect(lineSimilarity(long, `${long}嗯`)).toBeGreaterThan(0.95);
+    expect(lineSimilarity(long, "完全不同的内容".repeat(100))).toBeLessThan(0.2);
+    expect(containedSimilarity(long.replace(/单词/g, "词语"), long + long)).toBeGreaterThan(0.3);
+    expect(containedSimilarity("完全不同的内容".repeat(100), long + long)).toBeLessThan(0.2);
+  });
 });
 
 describe("echoMatch", () => {
+  it("a merged line's parts count, and its latest part's time keeps the window open", () => {
+    const merged: EchoLine = {
+      ...owner("m", "我们明天去公园散步吧，顺便买点菜", 1000),
+      parts: [
+        { text: "我们明天去公园散步吧", at: 1000 },
+        { text: "顺便买点菜", at: 9000 },
+      ],
+    };
+    const hit = echoMatch(
+      kept(merged),
+      { text: "我们明天去公园散步吧", label: "phone-b", at: 12_000 },
+      conf,
+    );
+    expect(hit?.entry[1].id).toBe("m");
+  });
   it("his line from another device within the window; never from the same device", () => {
     const k = kept(owner("a", "我们明天去公园散步吧", 1000));
     const hit = echoMatch(k, { text: "我们明天去公园散布吧。", label: "phone-b", at: 6000 }, conf);
