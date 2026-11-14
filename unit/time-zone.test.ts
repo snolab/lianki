@@ -15,6 +15,7 @@ import {
   parseOffsetMin,
   validZone,
   zoneAbbr,
+  abbrFallback,
   zoneLabel,
   zoneOffsetMin,
 } from "@/lib/time-zone";
@@ -97,6 +98,13 @@ describe("time zones: no fixed default", () => {
     expect(dayStartMs("2026-11-11")).toBe(Date.parse("2026-11-11T00:00:00Z"));
   });
 
+  it("abbrFallback: the conventional letters when ICU has none (small-ICU runtimes), by offset", () => {
+    expect(abbrFallback("Asia/Tokyo", 540)).toBe("JST");
+    expect(abbrFallback("America/New_York", -240)).toBe("EDT");
+    expect(abbrFallback("Europe/Berlin", 120)).toBe("CEST");
+    expect(abbrFallback("Asia/Tokyo", 480)).toBeNull();
+    expect(abbrFallback("Pacific/Chatham", 765)).toBeNull();
+  });
   it("zoneAbbr: an English short name where one exists, else numeric; cached", () => {
     const winter = Date.parse("2026-01-15T12:00:00Z");
     expect(zoneAbbr("Asia/Tokyo", winter)).toBe("JST");
@@ -120,7 +128,12 @@ describe("time zones: no fixed default", () => {
     } as unknown as typeof Intl.DateTimeFormat;
     Intl.DateTimeFormat = Fake;
     try {
-      expect(zoneAbbr("Asia/Seoul", Date.parse("2026-01-15T12:00:00Z"))).toBe("GMT+9");
+      // Every English locale refused: the conventional letters from the fallback table.
+      expect(zoneAbbr("Asia/Seoul", Date.parse("2026-01-15T12:00:00Z"))).toBe("KST");
+      // A zone the table does not know stays numeric.
+      expect(zoneAbbr("Pacific/Chatham", Date.parse("2026-01-15T12:00:00Z"))).toMatch(
+        /^GMT\+1[23]/,
+      );
       expect(calls).toBeGreaterThan(2);
     } finally {
       Intl.DateTimeFormat = Orig;

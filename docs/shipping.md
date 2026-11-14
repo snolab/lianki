@@ -680,3 +680,12 @@ and `.open-next/assets/_lk/route-fp.json` as the URI-encoded
 build IDs and other remote hosts fail before sending. Redirects are refused.
 The default command still uses the production service binding; preview
 pipelines must always specify their isolated publish URL.
+
+## What the pre-push hook runs
+
+Lint and typecheck on the whole repo, then the unit tests the pushed change
+reaches (`scripts/gate/affected.ts unit`). The qa suites it reaches
+(`affected.ts qa`) run only when the push goes to `main` or `prod`: the owner
+decided on 2026-11-15 that QA is for the release path ("只有上主线才需要 QA");
+a preview or feature branch gets `qa:all` in CI once its PR is in the merge
+queue. `LIANKI_QA_ALWAYS=1` runs the qa step for any push.
