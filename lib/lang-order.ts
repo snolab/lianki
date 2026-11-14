@@ -57,15 +57,25 @@ export function langMatch(pref: string, lang: string): 0 | 1 | 2 {
   return a.split("-")[0].toLowerCase() === b.split("-")[0].toLowerCase() ? 1 : 0;
 }
 
+/** The tag of a stored item: a plain tag, or `{ lang, level }` (lib/lang-levels.ts). */
+function itemTag(t: unknown): string | null {
+  if (typeof t === "string") return t;
+  const lang = t && typeof t === "object" ? (t as { lang?: unknown }).lang : null;
+  return typeof lang === "string" ? lang : null;
+}
+
 /**
  * A clean preference list: canonical tags, no duplicates (a tag repeated, or
  * a base language already covered exactly), at most PREFERRED_LANGS_MAX.
+ * Items may be plain tags or `{ lang, level }` (lib/lang-levels.ts); only the
+ * tags come out.
  */
 export function normalizePreferred(tags: readonly unknown[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const t of tags) {
-    if (typeof t !== "string") continue;
+  for (const item of tags) {
+    const t = itemTag(item);
+    if (t === null) continue;
     const c = canonicalLang(t);
     if (!c || c.length > LANG_TAG_MAX || !LANG_TAG_RE.test(c)) continue;
     const k = c.toLowerCase();
