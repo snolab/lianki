@@ -6,6 +6,7 @@
  * a box socket is chat-only in the owner's thread; revoke or removal ends it.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import { boxGate, boxTokenHash, type GateDeps } from "@/lib/box-oauth/gate";
@@ -604,18 +605,16 @@ function fakeStorage(store = new Map<string, unknown>()): Storage {
 }
 
 describe("DebugHub: a box socket", () => {
-  const g = globalThis as { WebSocketPair?: unknown };
-  let had: unknown;
+  let restore = () => {};
   beforeEach(() => {
-    had = g.WebSocketPair;
-    g.WebSocketPair = class {
-      0 = new FakeSocket();
-      1 = new FakeSocket();
-    };
+    restore = stubGlobals({
+      WebSocketPair: class {
+        0 = new FakeSocket();
+        1 = new FakeSocket();
+      },
+    });
   });
-  afterEach(() => {
-    g.WebSocketPair = had;
-  });
+  afterEach(() => restore());
   const T = NOW;
   const setup = (said: () => unknown = () => "live", rpc = true) => {
     const sockets: FakeSocket[] = [];

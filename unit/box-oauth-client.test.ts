@@ -5,6 +5,7 @@
  * refreshes once and a refused one is not retried for ever.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { globalDescriptor, restoreGlobal } from "./support/globals";
 import {
   boxChatHub,
   boxSignInBack,
@@ -28,9 +29,9 @@ let assigned: string[];
 const store = new Map<string, string>();
 const real = {
   fetch: globalThis.fetch,
-  location: (globalThis as { location?: unknown }).location,
-  sessionStorage: (globalThis as { sessionStorage?: unknown }).sessionStorage,
-  document: (globalThis as { document?: unknown }).document,
+  location: globalDescriptor("location"),
+  sessionStorage: globalDescriptor("sessionStorage"),
+  document: globalDescriptor("document"),
 };
 /** Every `document.cookie = …` line the page wrote. */
 let cookieLines: string[] = [];
@@ -69,9 +70,9 @@ beforeAll(() => {
 afterAll(() => {
   const g = globalThis as unknown as Record<string, unknown>;
   globalThis.fetch = real.fetch;
-  g.location = real.location;
-  g.sessionStorage = real.sessionStorage;
-  g.document = real.document;
+  restoreGlobal("location", real.location);
+  restoreGlobal("sessionStorage", real.sessionStorage);
+  restoreGlobal("document", real.document);
 });
 
 beforeEach(() => {

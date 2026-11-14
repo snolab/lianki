@@ -1,4 +1,5 @@
 import { expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DebugPairModal } from "../packages/debug-chat/src/DebugPairModal";
 import { CHAT_LOCALES } from "../packages/debug-chat/src/chat-ui-locales";
@@ -50,9 +51,11 @@ it("only exact true opts into remembered authority; old pages keep the old wire 
 it("sends explicit remembered approval, resets on the next request and preserves finite page selection", async () => {
   const { Window } = await import("happy-dom");
   const win = new Window();
-  const g = globalThis as Record<string, unknown>;
-  const saved = { window: g.window, document: g.document, act: g.IS_REACT_ACT_ENVIRONMENT };
-  Object.assign(g, { window: win, document: win.document, IS_REACT_ACT_ENVIRONMENT: true });
+  const restore = stubGlobals({
+    window: win,
+    document: win.document,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
   const { act } = await import("react");
   const { createRoot } = await import("react-dom/client");
   const host = win.document.createElement("div");
@@ -103,11 +106,7 @@ it("sends explicit remembered approval, resets on the next request and preserves
     expect(denied).toBe(1);
   } finally {
     await act(() => root.unmount());
-    Object.assign(g, {
-      window: saved.window,
-      document: saved.document,
-      IS_REACT_ACT_ENVIRONMENT: saved.act,
-    });
+    restore();
     await win.happyDOM.close();
   }
 });

@@ -2,7 +2,8 @@
  * The ETA history (docs/state-tree.md, "ETA history"): events per node,
  * confirms, one change id per action, P5–P95 ranges with overdue at the P95.
  */
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import {
   CHANGE_ID_WINDOW_MS,
   PROGRESS_OWNER_HEADER,
@@ -32,10 +33,14 @@ class FakeSocket implements Socket {
     return null;
   }
 }
-(globalThis as unknown as { WebSocketPair: unknown }).WebSocketPair = class {
-  0 = new FakeSocket();
-  1 = new FakeSocket();
-};
+afterAll(
+  stubGlobals({
+    WebSocketPair: class {
+      0 = new FakeSocket();
+      1 = new FakeSocket();
+    },
+  }),
+);
 
 function fakeStorage(): Storage & { store: Map<string, unknown>; alarm: number | null } {
   const store = new Map<string, unknown>();

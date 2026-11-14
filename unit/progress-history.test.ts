@@ -4,7 +4,8 @@
  * keeps every PR it named; GET /history and a reader's {type:"history"}
  * serve it; the stats log is copied in once.
  */
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { HISTORY_MIGRATED, PROGRESS_OWNER_HEADER, ProgressHub } from "@/workers/push/src/progress";
 import type { Socket, Storage } from "@/workers/push/src/debug";
 import {
@@ -42,10 +43,14 @@ class FakeSocket implements Socket {
     return this.att;
   }
 }
-(globalThis as unknown as { WebSocketPair: unknown }).WebSocketPair = class {
-  0 = new FakeSocket();
-  1 = new FakeSocket();
-};
+afterAll(
+  stubGlobals({
+    WebSocketPair: class {
+      0 = new FakeSocket();
+      1 = new FakeSocket();
+    },
+  }),
+);
 
 function setup(boxSaid = "live") {
   let t = 1_700_000_000_000;

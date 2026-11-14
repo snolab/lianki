@@ -6,6 +6,7 @@
  * availability check never leaves lianki.com.
  */
 import { describe, expect, test } from "bun:test";
+import { globalDescriptor, restoreGlobal, setGlobal, stubGlobals } from "./support/globals";
 import { createLocalStt } from "../packages/debug-chat/src/local-stt";
 import {
   SPARE_MIN_LEFT_MS,
@@ -413,10 +414,10 @@ describe("the browser's own pieces by default", () => {
   test("fetch, WebSocket, RTCPeerConnection and the page's origin from the globals", async () => {
     const g = globalThis as unknown as Record<string, unknown>;
     const saved = {
-      fetch: g.fetch,
-      WebSocket: g.WebSocket,
-      RTC: g.RTCPeerConnection,
-      location: g.location,
+      fetch: globalDescriptor("fetch"),
+      WebSocket: globalDescriptor("WebSocket"),
+      RTC: globalDescriptor("RTCPeerConnection"),
+      location: globalDescriptor("location"),
     };
     const socks: FakeSock[] = [];
     const peers: FakePeer[] = [];
@@ -431,10 +432,7 @@ describe("the browser's own pieces by default", () => {
       peers.push(p);
       return p;
     };
-    Object.defineProperty(globalThis, "location", {
-      value: { origin: "https://lianki.com" },
-      configurable: true,
-    });
+    setGlobal("location", { origin: "https://lianki.com" });
     try {
       const ws = publicOpen()(PUBLIC_RTC_URL);
       await tick();
@@ -446,10 +444,10 @@ describe("the browser's own pieces by default", () => {
       expect(peers[0].closed).toBe(true);
       expect(socks[0].closed).toBe(true);
     } finally {
-      g.fetch = saved.fetch;
-      g.WebSocket = saved.WebSocket;
-      g.RTCPeerConnection = saved.RTC;
-      Object.defineProperty(globalThis, "location", { value: saved.location, configurable: true });
+      restoreGlobal("fetch", saved.fetch);
+      restoreGlobal("WebSocket", saved.WebSocket);
+      restoreGlobal("RTCPeerConnection", saved.RTC);
+      restoreGlobal("location", saved.location);
     }
   });
 });
@@ -700,8 +698,6 @@ describe("rtc:lianki: routes that come and go (docs/local-stt.md)", () => {
 
 describe("rtc:lianki: the page's own events and the lobby's edges", () => {
   test("by default: online and visible from the page; available as a window event", async () => {
-    const g = globalThis as Record<string, unknown>;
-    const had = { window: g.window, document: g.document };
     const on = new Map<string, () => void>();
     const fired: string[] = [];
     const target = () => ({
@@ -710,8 +706,7 @@ describe("rtc:lianki: the page's own events and the lobby's edges", () => {
       dispatchEvent: (e: Event) => void fired.push(e.type),
     });
     const doc = { ...target(), visibilityState: "hidden" };
-    g.window = target();
-    g.document = doc;
+    const restore = stubGlobals({ window: target(), document: doc });
     try {
       const socks: FakeSock[] = [];
       const peers: FakePeer[] = [];
@@ -754,8 +749,7 @@ describe("rtc:lianki: the page's own events and the lobby's edges", () => {
       socks.at(-1)!.push({ t: "available" });
       expect(fired).toEqual(["lk-stt-available"]);
     } finally {
-      g.window = had.window;
-      g.document = had.document;
+      restore();
     }
   });
 

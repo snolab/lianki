@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { useBackend, useD1 } from "./support/testMocks";
 import { clearPermissionCache, grantAll } from "./support/grants";
 import { createTestD1 } from "@/lib/d1/testDb";
@@ -455,10 +456,8 @@ describe("the page's live-view store", () => {
 
   test("setLiveWanted writes and clears the cookie (secure on https)", () => {
     const g = globalThis as Record<string, unknown>;
-    const saved = { d: g.document, l: g.location };
     const doc = { cookie: "" };
-    g.document = doc;
-    g.location = { protocol: "https:" };
+    const restore = stubGlobals({ document: doc, location: { protocol: "https:" } });
     try {
       setLiveWanted(true);
       expect(doc.cookie).toBe(
@@ -468,8 +467,7 @@ describe("the page's live-view store", () => {
       setLiveWanted(false);
       expect(doc.cookie).toBe(`${LIVE_VIEW_COOKIE}=; path=/; max-age=0; samesite=lax`);
     } finally {
-      g.document = saved.d;
-      g.location = saved.l;
+      restore();
     }
   });
 
