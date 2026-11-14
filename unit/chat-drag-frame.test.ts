@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
   createFrameWriter,
   createGapMeter,
@@ -112,5 +113,31 @@ describe("the debug perf log: frame gaps", () => {
     let t = 0;
     for (let i = 0; i < 40; i++) m.frame((t += i === 10 ? 50 : 16));
     expect(m.report()).toEqual({ frames: 40, max: 50, p95: 16 });
+  });
+});
+
+describe("the chat's drag commits once (DebugChat.tsx useDrag)", () => {
+  const src = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
+  const body = (name: string) => {
+    const at = src.indexOf(`  const ${name} = (`);
+    expect(at).toBeGreaterThan(-1);
+    return src.slice(at, src.indexOf("\n  };\n", at));
+  };
+  it("a move only queues the point: no state, no layout read", () => {
+    const move = body("moveTo");
+    expect(move).toContain("frame.current!.push(");
+    expect(move).not.toContain("setPos");
+    expect(move).not.toContain("getBoundingClientRect");
+    expect(move).not.toContain("safeTop(");
+  });
+  it("the release flushes the last frame and sets the position once", () => {
+    const settle = body("settle");
+    expect(settle).toContain("frame.current!.flush()");
+    expect(settle.match(/setPos\(/g)?.length).toBe(1);
+    expect(body("end")).toContain("settle(d, true)");
+  });
+  it("will-change only while dragging", () => {
+    expect(src).toContain('box.style.willChange = "transform"');
+    expect(body("settle")).toContain('d.box.style.willChange = ""');
   });
 });

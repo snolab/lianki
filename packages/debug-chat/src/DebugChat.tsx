@@ -123,6 +123,14 @@ import { AEC_EVENT, aecOn, applyAec } from "./aec";
 import { type SpeakMeta, isWithdrawn } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
+  DRAG_PERF_KEY,
+  type DragGeom,
+  createFrameWriter,
+  createGapMeter,
+  dragStep,
+  dragTransform,
+} from "./drag-frame";
+import {
   FADE_MS,
   FLOAT_MAX,
   type FloatPhase,
@@ -376,14 +384,22 @@ function useDrag(
       return { x: 0, y: 0 };
     }
   });
+  /** The offset as rendered (a press that begins after a flushSync reads the new one). */
+  const posRef = useRef(pos);
+  posRef.current = pos;
   const drag = useRef<{
     px: number;
     py: number;
     x: number;
     y: number;
     moved: boolean;
-    /** The bar's span after the last move, and its box: the drop's edge (fold.ts). */
+    /** The bar and box, measured once on the drag's first frame (drag-frame.ts). */
+    geom?: DragGeom;
+    /** The offset written after the last frame, and the bar's span: the drop's edge (fold.ts). */
+    at?: { x: number; y: number };
     last?: DropSpan;
+    box?: HTMLElement;
+    gaps?: ReturnType<typeof createGapMeter>;
   } | null>(null);
   const dropRef = useRef(onDrop);
   dropRef.current = onDrop;
@@ -394,9 +410,46 @@ function useDrag(
   /** The pill is held down: the input shows how to use it. */
   const [holding, setHolding] = useState(false);
   /**
-   * Move the box to follow the pointer. Keep the chat bar on screen, up to
-   * the very top under the notch: its rect at the start, moved by the delta.
-   * The click-through log above it may go off-screen.
+   * One frame of a drag (drag-frame.ts): the box follows the latest pointer,
+   * written straight to its style; React hears of it once, when the press ends.
+   * Its first frame measures the bar and box (the only layout reads of a drag).
+   */
+  const frame = useRef<ReturnType<typeof createFrameWriter<{ cx: number; cy: number }>> | null>(null);
+  frame.current ??= createFrameWriter<{ cx: number; cy: number }>(({ cx, cy }, t) => {
+    const d = drag.current;
+    const box = d?.box;
+    if (!d || !box) return;
+    if (!d.geom) {
+      const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
+      const b = box.getBoundingClientRect();
+      // The rect is where the box is rendered now; the drag starts from (d.x, d.y).
+      const rx = posRef.current.x - d.x;
+      const ry = posRef.current.y - d.y;
+      d.geom = {
+        left: row.left - rx,
+        top: row.top + liftOf(box) - ry,
+        width: row.width,
+        height: row.height,
+        boxLeft: b.left - rx,
+        boxRight: b.right - rx,
+        vw: innerWidth,
+        vh: innerHeight,
+        safeTop: safeTop(),
+      };
+      box.style.willChange = "transform";
+      if (dragPerfOn()) d.gaps = createGapMeter();
+    }
+    const s = dragStep(d.geom, d, cx - d.px, cy - d.py);
+    d.at = { x: s.x, y: s.y };
+    d.last = s.span;
+    box.style.transform = dragTransform(s.x, s.y, KB_LIFT_VAR);
+    d.gaps?.frame(t);
+    moveRef.current?.(d.last);
+  });
+  useEffect(() => () => frame.current?.cancel(), []);
+  /**
+   * Move the box to follow the pointer: only the latest point is kept, and the
+   * next animation frame moves the box (no React render, no layout read here).
    */
   const moveTo = (box: HTMLElement | null, cx: number, cy: number) => {
     const d = drag.current;
@@ -407,28 +460,16 @@ function useDrag(
     d.moved = true;
     // Full screen does not move: a drag up past FULL_LEAVE_PX leaves it, and
     // the panel, back where it was, follows the finger from the next move on
-    // (this frame's rect is still the full-screen bar's).
+    // (measured afresh then: this frame's rect is still the full-screen bar's).
     if (fullDrag?.now()) {
-      if (dragLeavesFull({ full: true, dy })) fullDrag.leave();
+      if (dragLeavesFull({ full: true, dy })) {
+        fullDrag.leave();
+        d.geom = undefined;
+      }
       return;
     }
-    const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
-    const left = row.left - (pos.x - d.x);
-    const top = row.top + liftOf(box) - (pos.y - d.y);
-    const x = d.x + Math.max(-left, Math.min(innerWidth - row.width - left, dx));
-    const y = d.y + Math.max(safeTop() - top, Math.min(innerHeight - row.height - top, dy));
-    // The box as it will be once this move renders.
-    const by = x - pos.x;
-    const b = box.getBoundingClientRect();
-    d.last = {
-      left: left + x - d.x,
-      right: left + x - d.x + row.width,
-      boxLeft: b.left + by,
-      boxRight: b.right + by,
-      bottom: top + y - d.y + row.height,
-    };
-    moveRef.current?.(d.last);
-    setPos({ x, y });
+    d.box = box;
+    frame.current!.push({ cx, cy });
   };
   /**
    * The host's bottom island may dock above (or leave) the bar now, and only
@@ -436,18 +477,30 @@ function useDrag(
    */
   const moved = () =>
     requestAnimationFrame(() => dispatchEvent(new CustomEvent("lk:chat-moved")));
+  /**
+   * The drag's frames are over: the last point is written, and React takes the
+   * offset back (one render). `save` remembers it (a drop, not a cancel).
+   */
+  const settle = (d: NonNullable<typeof drag.current>, save: boolean) => {
+    frame.current!.flush();
+    if (d.box) d.box.style.willChange = "";
+    if (d.gaps) logDragPerf(d.gaps.report());
+    const at = d.at;
+    if (!at) return;
+    posRef.current = at;
+    setPos(at);
+    if (save) write(POS_KEY, JSON.stringify(at));
+  };
   /** The press is over: a drag is saved, and its drop told (the fold's edge, fold.ts). */
   const end = () => {
     setHolding(false);
     const d = drag.current;
+    if (d?.moved) settle(d, true);
+    else frame.current!.cancel();
     drag.current = null;
     moveRef.current?.(null);
     if (!d?.moved) return;
     dragged.current.dragEnded();
-    setPos((p) => {
-      write(POS_KEY, JSON.stringify(p));
-      return p;
-    });
     if (d.last) dropRef.current?.(d.last);
     moved();
   };
@@ -464,7 +517,8 @@ function useDrag(
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
       if ((e.target as HTMLElement).closest("button:not([data-drag-handle]), textarea")) return;
       setHolding(true);
-      drag.current = { px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, moved: false };
+      const p = posRef.current;
+      drag.current = { px: e.clientX, py: e.clientY, x: p.x, y: p.y, moved: false };
       dragged.current.down();
       e.currentTarget.setPointerCapture(e.pointerId);
     },
@@ -473,6 +527,10 @@ function useDrag(
     onPointerUp: () => end(),
     onPointerCancel: () => {
       setHolding(false);
+      const d = drag.current;
+      // Where the finger left it stays (not remembered), as before.
+      if (d?.moved) settle(d, false);
+      else frame.current!.cancel();
       drag.current = null;
       moveRef.current?.(null);
     },
@@ -484,7 +542,8 @@ function useDrag(
    */
   const begin = (px: number, py: number) => {
     setHolding(true);
-    drag.current = { px, py, x: pos.x, y: pos.y, moved: false };
+    const p = posRef.current;
+    drag.current = { px, py, x: p.x, y: p.y, moved: false };
   };
   /**
    * Bring the chat bar back on screen, e.g. after restoring the box where the
@@ -571,6 +630,20 @@ const sheetLook = () => {
 const KB_LIFT_VAR = "--lk-kb-lift";
 const liftOf = (box: HTMLElement) =>
   Number.parseFloat(box.style.getPropertyValue(KB_LIFT_VAR)) || 0;
+/** The drag perf log (drag-frame.ts) is switched on: a dev's localStorage key, never in the UI. */
+const dragPerfOn = () => {
+  try {
+    return localStorage.getItem(DRAG_PERF_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+/** One drag's frame gaps, ms: logged, and kept on `__lkDragPerf` for a scripted check. */
+function logDragPerf(r: { frames: number; max: number; p95: number }) {
+  (globalThis as { __lkDragPerf?: unknown[] }).__lkDragPerf ??= [];
+  (globalThis as unknown as { __lkDragPerf: unknown[] }).__lkDragPerf.push(r);
+  console.debug(`[drag-perf] ${r.frames} frames, gap p95 ${r.p95.toFixed(1)} ms, max ${r.max.toFixed(1)} ms`);
+}
 
 /** env(safe-area-inset-left/right) in px (a landscape notch). */
 function safeSides() {
