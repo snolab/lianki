@@ -192,7 +192,7 @@ import {
   stillAtEnd,
   sheetScrim,
 } from "./log-surface";
-import { treeDefaults, uiStrings } from "./ui-strings";
+import { EMBED_NAME, embedLang, treeDefaults, uiStrings } from "./ui-strings";
 import { chatExtra, chatLocale } from "./chat-ui-locales";
 import {
   ADDRESSED_CSS,
@@ -1568,6 +1568,8 @@ export function DebugChat({
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
   const ui = uiStrings();
+  /** The Learning Partner's name in the page's language: the tag on Li's replies in his thread. */
+  const partnerName = EMBED_NAME[embedLang()];
   // The strings that were inline here, in the page's language (chat-ui-locales.ts).
   const ux = chatExtra();
   const details = useMessageDetails(ux.messageDetails, ux);
@@ -4051,7 +4053,7 @@ export function DebugChat({
       role="menu"
       data-testid="debug-menu"
       style={{ background: INPUT_BG }}
-      className="pointer-events-auto absolute bottom-full start-0 mb-1 flex max-h-[60vh] min-w-48 flex-col overflow-y-auto rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
+      className="pointer-events-auto absolute bottom-full start-0 mb-1 flex max-h-[60vh] min-w-48 flex-col overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
     >
       <span data-testid="debug-menu-status" className="px-3 py-1 text-gray-500" aria-live="polite">
         {status}
@@ -4776,7 +4778,7 @@ export function DebugChat({
           {...shimmerOf(m)}
         >
           <span className="sr-only">{who.name}: </span>
-          <LineTag m={m} name={who.name} inline />
+          <LineTag m={m} name={who.name} partnerName={partnerName} inline />
           {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
           {m.attachments?.length && m.from !== "agent" ? <SentFiles refs={m.attachments} files={files} /> : null}
           {m.context?.selection === p.text && !m.attachments?.length ? null : m.ask
@@ -5229,7 +5231,7 @@ export function DebugChat({
                   </span>
                 )}
                 {/* A lane's name, "name：", once per run, then the text; lines with no lane have none. */}
-                <LineTag m={m0} name={who.name} agentName={t.name} />
+                <LineTag m={m0} name={who.name} agentName={t.name} partnerName={partnerName} />
                 {/* Screen readers hear the name once per run, from the sr-only span. */}
                 <span className="sr-only">
                   {who.name}
@@ -6179,7 +6181,7 @@ function FloatLine({
         />
       </span>
       <span className="sr-only">{who.name}: </span>
-      <LineTag m={m} name={who.name} inline />
+      <LineTag m={m} name={who.name} partnerName={EMBED_NAME[embedLang()]} inline />
       {text}
       {mark}
     </li>

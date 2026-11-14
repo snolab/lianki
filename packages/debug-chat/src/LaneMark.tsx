@@ -147,23 +147,34 @@ export function LaneTag({
   return <NameTag name={name} lane={lane} inline={inline} mcp={mcp} />;
 }
 
+/** The hub's label on a Learning Partner reply (lib/partner-ai-config.ts PARTNER_AI_LABEL). */
+export const PARTNER_LINE_LABEL = "Learning Partner AI";
+
 /**
  * A line's tag: its lane's name tag, or a token agent's name (`name`: the
  * one its avatar is drawn with, the owner's choice first), with the MCP
- * badge when it came through MCP. Nothing for other lines.
+ * badge when it came through MCP. Nothing for other lines. A Learning
+ * Partner reply on the main lane (his thread, workers/push/src/owner-ai.ts)
+ * is tagged `partnerName` (the feature's name in the page's language), not
+ * the host's agent name: the owner saw Li's replies labelled "Claude"
+ * (2026-11-15 04:2x JST).
  */
 export function LineTag({
   m,
   name,
   agentName,
+  partnerName,
   inline = false,
 }: {
-  m: Pick<ChatMessage, "lane" | "via" | "client" | "tokenLane">;
+  m: Pick<ChatMessage, "lane" | "via" | "client" | "tokenLane"> & { label?: string };
   name?: string;
   agentName?: string;
+  partnerName?: string;
   inline?: boolean;
 }) {
   const mcp = m.client === "mcp";
+  if (m.lane === "main" && m.label === PARTNER_LINE_LABEL)
+    return <NameTag name={partnerName || m.label} lane="main" inline={inline} mcp={mcp} />;
   if (isLaneId(m.lane))
     return <LaneTag lane={m.lane} agentName={agentName} inline={inline} mcp={mcp} />;
   if (m.via === "token") {
