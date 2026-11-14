@@ -19,7 +19,7 @@ import { isoDay } from "@/lib/dates";
  */
 export type Expiry = { days: number } | { date: string } | null;
 
-const SCOPE_TEXT: Record<ScopeId, { label: string; hint: string }> = {
+export const SCOPE_TEXT: Record<ScopeId, { label: string; hint: string }> = {
   study: { label: "scopeStudy", hint: "scopeStudyHint" },
   "chat:read": { label: "scopeChatRead", hint: "scopeChatReadHint" },
   "chat:write": { label: "scopeChatWrite", hint: "scopeChatWriteHint" },

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { longDate, longDateTime } from "@/lib/dates";
-import { MAX_NAME, type ScopeId } from "@/lib/api-tokens";
+import { DEFAULT_TOKEN_SCOPES, MAX_NAME, type ScopeId } from "@/lib/api-tokens";
 import {
   ExpiryPicker,
   PermissionPicker,
@@ -45,7 +45,7 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
   const { locale } = useLocale();
   const [list, setList] = useState<Listing | null>(null);
   const [name, setName] = useState("");
-  const [scopes, setScopes] = useState<ScopeId[]>([]);
+  const [scopes, setScopes] = useState<ScopeId[]>([...DEFAULT_TOKEN_SCOPES]);
   const [expiry, setExpiry] = useState<Expiry>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -132,7 +132,7 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
       setCopied(false);
       setShared(false);
       setName("");
-      setScopes([]);
+      setScopes([...DEFAULT_TOKEN_SCOPES]);
       setExpiry(null);
       await load();
     } catch {

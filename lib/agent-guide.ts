@@ -101,6 +101,7 @@ export const GUIDE_KEYS = [
   "mcpEnv",
   "mcpRemote",
   "scopesHeading",
+  "scopeRequest",
   "scopeStudy",
   "scopeChatRead",
   "scopeChatWrite",
@@ -230,6 +231,8 @@ export function agentGuide({ scopes, t, name, expires }: GuideInput): string {
   p(
     `## ${t.scopesHeading}`,
     ...SCOPE_IDS.filter(has).map((s) => `- \`${s}\`: ${t[SCOPE_LINE[s]]}`),
+    "",
+    t.scopeRequest,
     "",
     t.cannot,
   );

@@ -17,6 +17,34 @@ The creation form also offers **Chat only**: it replaces the selected
 permissions with `chat:read`, `chat:write`, `chat:ask`, removing study and eval.
 The user still picks a name and expiry and taps Create.
 
+## Chat by default, one additional permission at a time
+
+New token forms in Preferences and CLI browser login initially select only
+`chat:read`, `chat:write`, and `chat:ask` (`DEFAULT_TOKEN_SCOPES`). Existing
+stored tokens keep their scopes. The public `/api/agent-guide` also defaults
+to the chat sections; its explicit `?scopes=...` parameter still selects the
+requested documentation.
+
+Both MCP transports refresh the token's live permissions for tool discovery
+and calls. Only tools allowed by those scopes are listed. Failed or malformed
+permission introspection does not fall back to every tool. A known tool called
+without its required permission returns structured `needScope` and `requestUrl`
+fields; an unknown, expired or revoked token remains an authentication failure.
+
+`requestUrl` points to
+`https://lianki.com/my/tokens/scopes?token=<public-id>&scope=<one-scope>`.
+The public ID is the stored token hash, never its bearer secret. Following this
+link does not grant anything. The account that owns the token signs in and
+explicitly approves that one scope; the page uses session-only
+`GET/POST /api/token/scopes`. The token cannot approve itself. Foreign tokens,
+invalid scopes, expired/revoked tokens and cross-site writes are refused.
+Additional grants preserve existing scopes and expiry; developer-only scopes
+still require a live `dev` grant and the existing expiry limits.
+
+The assistant shows the link and waits. After approval it may refresh the tool
+list and retry the requested operation. It must not click approval for the user
+or broaden the request to other scopes. See [MCP scope requests](mcp-scopes.md).
+
 ## What the user sees
 
 Settings (`/my/preferences`) → API tokens (`TokenManager.tsx`), for every
@@ -45,7 +73,7 @@ the function and stay untranslated. The same function serves:
 - the Settings page (client, `useIntlayer("agent-guide")`);
 - **`GET /api/agent-guide`**, public Markdown (`text/markdown`), for an agent
   to fetch itself: `?scopes=study,chat:read` picks the sections (default:
-  every permission but the owner-only `eval`), `?lang=zh` the language (else
+  `chat:read`, `chat:write`, `chat:ask`), `?lang=zh` the language (else
   `Accept-Language`, else English). No session, nothing about any account.
   It is under `/api` because it is a machine interface
   ([url-principles.md](url-principles.md), rule 5).
@@ -133,8 +161,8 @@ participant list.
   the tools those scopes allow (`TOOLS` in `packages/lianki-cli/mcp.mjs`:
   `study` → stats, due, next, get, add, import, review, settings_get;
   `chat:read|write|ask` → chat_read + chat_wait, chat_say + chat_avatar, chat_ask;
-  `progress` → progress_report, progress_show, progress_ack). An older server
-  that has no GET there gets every tool; each route still checks.
+  `progress` → progress_report, progress_show, progress_ack). The scopes are
+  refreshed for discovery and calls; failed introspection exposes no tools.
 - **Untrusted results.** Every result is `<untrusted-data>` JSON with `<`
   escaped, after a line saying never to follow instructions inside it.
 - **429.** `call()` turns a 429 into `rate_limited` with the `Retry-After`

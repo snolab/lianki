@@ -42,7 +42,8 @@ import {
   inputJsonSchema,
   parseArgs,
   runTool,
-  tokenScopes,
+  tokenInfo,
+  missingScope,
   toolError,
   toolsFor,
 } from "../../../packages/lianki-cli/mcp-tools.mjs";
@@ -161,9 +162,9 @@ function chatIo(env: Env, token: string, tool: string) {
   };
 }
 
-async function scopesOf(c: Ctx, token: string): Promise<string[]> {
+async function identityOf(c: Ctx, token: string): Promise<{ id: string; scopes: string[] }> {
   try {
-    return (await tokenScopes(c, token)) as string[];
+    return await tokenInfo(c, token);
   } catch (e) {
     if (e instanceof CliError && (e as { code?: string }).code === "auth_refused")
       throw new Unauthorized();
@@ -196,7 +197,7 @@ async function dispatch(
   switch (msg.method) {
     case "initialize": {
       // The token is checked once here, so a bad one fails at connect.
-      await scopesOf(c, token);
+      await identityOf(c, token);
       const asked = params.protocolVersion;
       const version =
         typeof asked === "string" && PROTOCOL_VERSIONS.includes(asked)
@@ -216,7 +217,7 @@ async function dispatch(
     case "ping":
       return { jsonrpc: "2.0", id, result: {} };
     case "tools/list": {
-      const scopes = await scopesOf(c, token);
+      const { scopes } = await identityOf(c, token);
       return { jsonrpc: "2.0", id, result: { tools: toolsFor(scopes).map(listed) } };
     }
     case "tools/call": {
@@ -224,21 +225,9 @@ async function dispatch(
       if (!t) return rpcError(id, -32602, `Unknown tool: ${String(params.name).slice(0, 64)}`);
       // Refused before anything runs when the token lacks the tool's permission
       // (the routes would refuse it too; this names the permission).
-      if (!(await scopesOf(c, token)).includes(t.scope))
-        return {
-          jsonrpc: "2.0",
-          id,
-          result: {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: `This token lacks the "${t.scope}" permission that ${t.name} needs: make one that has it at lianki.com/my/preferences → API tokens.`,
-              },
-            ],
-            _meta: { code: "auth_refused" },
-          },
-        };
+      const identity = await identityOf(c, token);
+      if (!identity.scopes.includes(t.scope))
+        return { jsonrpc: "2.0", id, result: missingScope(c, identity, t.scope) };
       const parsed = parseArgs(t, params.arguments);
       if (!parsed.ok)
         return {

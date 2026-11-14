@@ -17,6 +17,11 @@
 // - stdout is the protocol: nothing else is ever written there.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  McpError,
+} from "@modelcontextprotocol/sdk/types.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CliError, EXIT, call, currentToken } from "./cli.mjs";
 import {
@@ -26,27 +31,42 @@ import {
   UNTRUSTED_NOTE,
   runTool,
   tokenScopes,
+  tokenInfo,
+  missingScope,
+  TOOLS,
+  inputJsonSchema,
+  parseArgs,
+  toolError,
   toolsFor,
 } from "./mcp-tools.mjs";
 
 export * from "./mcp-tools.mjs";
 
 /** The MCP server for this token: only the tools its permissions allow. */
-export function buildServer(c, token, scopes) {
+export function buildServer(c, token, _initialScopes) {
   // lianki_chat_wait: the socket `lianki chat listen` opens, open before it is handed over.
   const io = {
     token,
     openChat: () =>
       new Promise((resolve, reject) => {
         const WS = c.deps.WebSocket ?? globalThis.WebSocket;
-        if (!WS) return reject(new CliError("usage", EXIT.usage, "waiting for the chat needs a WebSocket: Node.js 22 or newer, or Bun"));
+        if (!WS)
+          return reject(
+            new CliError(
+              "usage",
+              EXIT.usage,
+              "waiting for the chat needs a WebSocket: Node.js 22 or newer, or Bun",
+            ),
+          );
         const u = new URL(CHAT_PATH, c.base + "/");
         u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
         let ws;
         try {
           ws = new WS(u.toString());
         } catch (e) {
-          return reject(new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`));
+          return reject(
+            new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`),
+          );
         }
         const failed = () => reject(new CliError("network", EXIT.server, `cannot reach ${c.site}`));
         ws.addEventListener("open", () => {
@@ -60,22 +80,49 @@ export function buildServer(c, token, scopes) {
     { name: "lianki", version: c.deps.version },
     { instructions: INSTRUCTIONS },
   );
-  for (const t of toolsFor(scopes)) {
-    const api = async (req) => {
-      const headers = { [CLIENT_HEADER]: `mcp/${c.deps.version} tool=${t.name}` };
-      return (await call(c, token, { ...req, headers })).data;
-    };
-    server.registerTool(
-      t.name,
-      {
-        title: t.title,
-        description: `${t.description} ${UNTRUSTED_NOTE}`,
-        ...(t.input ? { inputSchema: t.input } : {}),
-        annotations: t.annotations,
-      },
-      (args) => runTool(t, api, args, io),
-    );
-  }
+  // Handle the protocol directly so an unlisted but known tool can return a
+  // scope-approval result, while every list and call uses current server grants.
+  server.server.registerCapabilities({ tools: { listChanged: false } });
+  server.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    try {
+      const identity = await tokenInfo(c, token);
+      return {
+        tools: toolsFor(identity.scopes).map((t) => ({
+          name: t.name,
+          title: t.title,
+          description: `${t.description} ${UNTRUSTED_NOTE}`,
+          inputSchema: inputJsonSchema(t),
+          annotations: t.annotations,
+        })),
+      };
+    } catch (error) {
+      throw new McpError(
+        -32001,
+        error instanceof CliError ? error.message : "Token permissions unavailable",
+      );
+    }
+  });
+  server.server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+    const t = TOOLS.find((tool) => tool.name === params.name);
+    if (!t) throw new McpError(-32602, "Unknown tool");
+    try {
+      const identity = await tokenInfo(c, token);
+      if (!identity.scopes.includes(t.scope)) return missingScope(c, identity, t.scope);
+      const parsed = parseArgs(t, params.arguments);
+      if (!parsed.ok)
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+        };
+      const api = async (req) => {
+        const headers = { [CLIENT_HEADER]: `mcp/${c.deps.version} tool=${t.name}` };
+        return (await call(c, token, { ...req, headers })).data;
+      };
+      return await runTool(t, api, parsed.args, io);
+    } catch (error) {
+      return toolError(error);
+    }
+  });
   return server;
 }
 

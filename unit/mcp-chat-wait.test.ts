@@ -166,7 +166,7 @@ describe("lianki_chat_wait over the remote server", () => {
         if (req.headers.get("authorization") !== `Bearer ${TOKEN}`)
           return Response.json({ error: "unknown" }, { status: 401 });
         if (u.pathname === "/api/cli-login/token")
-          return Response.json({ name: "t", scopes, expiresAt: null });
+          return Response.json({ id: "b".repeat(64), name: "t", scopes, expiresAt: null });
         return new Response("not found", { status: 404 });
       },
     });

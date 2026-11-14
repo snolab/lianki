@@ -34,6 +34,7 @@ function setup(opts: { scopes?: string[]; refuse?: boolean } = {}) {
         return Response.json({ error: "unknown" }, { status: 401 });
       if (u.pathname === "/api/cli-login/token")
         return Response.json({
+          id: "b".repeat(64),
           name: "t",
           scopes: opts.scopes ?? ["study", "chat:read"],
           expiresAt: null,
@@ -95,8 +96,21 @@ describe("auth: refused, nothing done", () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.result.isError).toBe(true);
-    expect(body.result.content[0].text).toContain('"study"');
+    expect(body.result.structuredContent).toEqual({
+      needScope: "study",
+      requestUrl: `https://lianki.com/my/tokens/scopes?token=${"b".repeat(64)}&scope=study`,
+    });
+    expect(JSON.parse(body.result.content[0].text)).toEqual(body.result.structuredContent);
+    expect(JSON.stringify(body)).not.toContain(TOKEN);
     expect(seen.map((s) => s.path)).toEqual(["main:/api/cli-login/token"]);
+    const guessed = await (
+      await handle(rpc("tools/call", { name: "lianki_add", arguments: { url: false } }), env)
+    ).json();
+    expect(guessed.result.structuredContent.needScope).toBe("study");
+    expect(seen.map((s) => s.path)).toEqual([
+      "main:/api/cli-login/token",
+      "main:/api/cli-login/token",
+    ]);
   });
 });
 
@@ -240,4 +254,27 @@ describe("tools", () => {
     const body = await (await handle(rpc("tools/call", { name: "rm_rf" }), env)).json();
     expect(body.error.code).toBe(-32602);
   });
+});
+
+test("remote scope lists refresh after approval and revocation never creates an approval link", async () => {
+  const opts = { scopes: ["chat:read"], refuse: false };
+  const h = setup(opts);
+  expect(
+    (await (await handle(rpc("tools/list"), h.env)).json()).result.tools.some(
+      (t: any) => t.name === "lianki_stats",
+    ),
+  ).toBe(false);
+  opts.scopes = ["study"];
+  expect(
+    (await (await handle(rpc("tools/list"), h.env)).json()).result.tools.some(
+      (t: any) => t.name === "lianki_stats",
+    ),
+  ).toBe(true);
+  opts.refuse = true;
+  const response = await handle(
+    rpc("tools/call", { name: "lianki_chat_read", arguments: {} }),
+    h.env,
+  );
+  expect(response.status).toBe(401);
+  expect(await response.text()).not.toContain("requestUrl");
 });

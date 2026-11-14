@@ -76,6 +76,26 @@ export const EVAL_MAX_DAYS = 30;
 
 /** What a row from before scopes may do. */
 export const LEGACY_SCOPES: readonly ScopeId[] = ["study"];
+/** New interactive token forms start with chat only; study and owner powers are explicit. */
+export const DEFAULT_TOKEN_SCOPES: readonly ScopeId[] = ["chat:read", "chat:write", "chat:ask"];
+
+/** A public approval link contains only the token's hash/id, never its bearer secret. */
+export function tokenScopeRequest(
+  id: unknown,
+  scope: unknown,
+): { needScope: ScopeId; requestUrl: string } | null {
+  if (
+    typeof id !== "string" ||
+    !/^[0-9a-f]{64}$/.test(id) ||
+    typeof scope !== "string" ||
+    !(SCOPE_IDS as readonly string[]).includes(scope)
+  )
+    return null;
+  return {
+    needScope: scope as ScopeId,
+    requestUrl: `https://lianki.com/my/tokens/scopes?token=${id}&scope=${encodeURIComponent(scope)}`,
+  };
+}
 
 /** Expiry choices on the token page, in days; the page also takes a date. */
 export const EXPIRY_DAYS = [7, 30, 90, 365] as const;
@@ -273,18 +293,19 @@ export async function describeToken(
   db: D1Like,
   token: unknown,
   now = Date.now(),
-): Promise<{ name: string; scopes: ScopeId[]; expiresAt: string | null } | null> {
+): Promise<{ id: string; name: string; scopes: ScopeId[]; expiresAt: string | null } | null> {
   if (typeof token !== "string" || !TOKEN_RE.test(token)) return null;
+  const id = await sha256Hex(token);
   const r = await db
     .prepare(
       `SELECT t.name, t.scopes, t.expires_at FROM api_tokens t JOIN user u ON u.email = t.email
          AND (t.user_id IS NULL OR u.id = t.user_id)
        WHERE t.token_hash = ?`,
     )
-    .bind(await sha256Hex(token))
+    .bind(id)
     .first<Pick<Row, "name" | "scopes" | "expires_at">>();
   if (!r || isExpired(r.expires_at, now)) return null;
-  return { name: r.name, scopes: rowScopes(r.scopes), expiresAt: r.expires_at };
+  return { id, name: r.name, scopes: rowScopes(r.scopes), expiresAt: r.expires_at };
 }
 
 export type TokenUser = { id: string; email: string; name: string | null; image: string | null };
@@ -305,6 +326,8 @@ export type CheckResult =
       reason: "malformed" | "unknown" | "expired" | "scope";
       id?: string;
       userId?: string;
+      needScope?: ScopeId;
+      requestUrl?: string;
     };
 
 /**
@@ -349,7 +372,8 @@ export async function checkToken(
   if (!r) return { ok: false, reason: "unknown" };
   if (isExpired(r.expires_at, now)) return { ok: false, reason: "expired", id, userId: r.uid };
   const scopes = rowScopes(r.scopes);
-  if (!scopes.includes(need)) return { ok: false, reason: "scope", id, userId: r.uid };
+  if (!scopes.includes(need))
+    return { ok: false, reason: "scope", id, userId: r.uid, ...tokenScopeRequest(id, need)! };
   let touched = false;
   const last = r.last_used_at ? Date.parse(r.last_used_at) : NaN;
   if (!(now - last < LAST_USED_EVERY_MS)) {
