@@ -70,7 +70,10 @@ export type Line = {
  * LANE_LISTEN_VOICES=me asks for his decided voice only. The chat lane still
  * sees every line (it polishes and answers in the thread).
  */
-export function voiceAllowed(l: Pick<Line, "from" | "voice">, env = process.env): boolean {
+export function voiceAllowed(
+  l: Pick<Line, "from" | "voice">,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
   if (l.from !== "owner" || !l.voice) return true;
   if (l.voice === "other") return false;
   if (l.voice === "unknown") return env.LANE_LISTEN_VOICES !== "me";
