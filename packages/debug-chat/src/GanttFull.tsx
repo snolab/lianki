@@ -1,7 +1,7 @@
 "use client";
 
 import { useUi } from "@lianki/ui-state";
-import { Disclosure } from "./icons";
+import { Disclosure, Icon } from "./icons";
 import {
   type CSSProperties,
   Fragment,
@@ -86,6 +86,7 @@ import {
   toggleOpen,
 } from "./gantt-groups";
 import { ganttGroupsUi, ganttPrefs } from "./ui-store";
+import { readGanttHideDone, writeGanttHideDone } from "./gantt-settings";
 import type { ChatStrings } from "./wire";
 
 /**
@@ -469,7 +470,13 @@ export function GanttFull({
   /** The categories (gantt-groups.ts): the default table, or a config-store value. */
   groups?: readonly GanttGroupDef[];
 }) {
-  const rows = useMemo(() => ganttRowsByEnd(ganttPlan(tasks, now)), [tasks, now]);
+  const [hideDone, setHideDone] = useState(readGanttHideDone);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const plannedTasks = useMemo(
+    () => (hideDone ? tasks.filter((t) => !t.done) : tasks),
+    [tasks, hideDone],
+  );
+  const rows = useMemo(() => ganttRowsByEnd(ganttPlan(plannedTasks, now)), [plannedTasks, now]);
   /** The categories this tab has open (session UI state); folded is the default. */
   const groupsOpen = useUi(ganttGroupsUi(), (s) => s.open);
   const lines = useMemo(
@@ -1004,6 +1011,22 @@ export function GanttFull({
           Now
         </button>
         <button
+          type="button"
+          data-testid="debug-chat-gantt-settings-btn"
+          aria-label="设置"
+          title="设置"
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen((o) => !o)}
+          className="tap-40 rounded px-2 py-1"
+          style={{
+            color: c("text"),
+            background: settingsOpen ? c("bar") : "transparent",
+            border: 0,
+          }}
+        >
+          <Icon name="gearSix" />
+        </button>
+        <button
           ref={closeBtn}
           type="button"
           data-testid="debug-chat-gantt-close"
@@ -1016,6 +1039,54 @@ export function GanttFull({
           ✕
         </button>
       </header>
+      {settingsOpen && (
+        <section
+          role="region"
+          aria-label="甘特图设置"
+          data-testid="debug-chat-gantt-settings-panel"
+          className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-2 fs-11"
+          style={{
+            background: c("bar"),
+            borderBottom: `1px solid ${c("grid")}`,
+          }}
+        >
+          <span className="font-medium">已完成任务</span>
+          <div
+            role="group"
+            aria-label="已完成任务显示"
+            data-testid="debug-chat-gantt-hide-done-toggle"
+            className="flex shrink-0 overflow-hidden rounded"
+            style={{ border: `1px solid ${c("grid")}` }}
+          >
+            {(
+              [
+                [true, "隐藏"],
+                [false, "显示"],
+              ] as const
+            ).map(([val, label]) => (
+              <button
+                key={String(val)}
+                type="button"
+                data-testid={`debug-chat-gantt-hide-done-${val ? "true" : "false"}`}
+                aria-pressed={hideDone === val}
+                onClick={() => {
+                  setHideDone(val);
+                  writeGanttHideDone(val);
+                }}
+                className="tap-40 px-2.5 py-1"
+                style={{
+                  border: 0,
+                  color: c("text"),
+                  fontWeight: hideDone === val ? 600 : 400,
+                  background: hideDone === val ? c("track") : "transparent",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {/* What the marks mean: the underline is the reported progress, the red line now. */}
       <p
         data-testid="debug-chat-gantt-legend"
