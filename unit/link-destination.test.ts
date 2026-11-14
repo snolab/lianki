@@ -59,3 +59,11 @@ describe("chat link destinations", () => {
     });
   });
 });
+
+describe("chat link destinations: an unparsable base", () => {
+  it("keeps the link as written", () => {
+    const bad = { origin: "https://preview.lianki.com", href: "::" };
+    expect(sameOriginHref("x", bad)).toBe("x");
+    expect(linkDestinations("x", bad)).toEqual({ href: "x", prod: null, forceProd: false });
+  });
+});
