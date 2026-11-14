@@ -5,8 +5,8 @@ it runs in a plain sandboxed iframe; through a frontend SDK it uses Lianki's
 capabilities, each one a per-app permission the user grants in a prompt, "like
 a browser opens each permission per site" (对每个页面分别开放各种权限一样).
 Later notes the same morning: follow how Claude Artifacts are built, and give
-real interactivity, not Artifacts' caution (我们要的是足够的可交互性). Phase 1
-is shipped behind the flag `mini-apps`; publishing needs `dev`.
+real interactivity, not Artifacts' caution (我们要的是足够的可交互性). Mini apps are shipped behind the flag `mini-apps`. Browser publication needs
+`dev`; an explicitly authorized agent can publish privately with its account token.
 
 ## What a mini app is
 
@@ -16,7 +16,8 @@ is shipped behind the flag `mini-apps`; publishing needs `dev`.
 - **A manifest**: `slug` (lowercase ASCII and hyphens, 1–40; `sdk`,
   `presets`, `new`, `api`, `edit`, `settings` reserved), `name` (≤ 60),
   `icon` (one short glyph), `version` (`x.y.z`, shown, never compared) and
-  `permissions`: the capabilities it may ask for (`lib/mini-apps/manifest.ts`).
+  `style`: `"lianki"` (default) or `"none"`, and `permissions`: the capabilities
+  it may ask for (`lib/mini-apps/manifest.ts`).
   A method whose capability is not declared is refused without a prompt.
 - **Stored**: R2 `lianki-blobs`, `mini-apps/<uid>/<slug>/index.html` and
   `manifest.json`; a D1 row per app in `mini_app` (migration
@@ -152,13 +153,78 @@ again. Prompts are queued one at a time.
 
 ## Who can publish
 
-- **Phase 1 (now)**: accounts holding `dev`, `POST /api/my/mini-apps`
-  `{manifest, html}` (session, same-origin JSON), or locally
-  `bun scripts/dev/mini-app-publish.ts` into local D1/R2.
-- **Phase 2**: any account, with per-account quotas, sharing links, delete in
-  the UI, and rgui components as presets.
-- **Phase 3**: the MCP tool `lianki_mini_app_publish`, so a user's own agent
-  publishes with its token (a new token scope).
+- **Browser session**: accounts holding `dev`, same-origin JSON POST to
+  `/api/my/mini-apps` with `{manifest, html}`. Local development can also use
+  `bun scripts/dev/mini-app-publish.ts` with local D1/R2.
+- **Account token / MCP**: the same POST accepts Bearer authentication with
+  **both `apps:publish` and `chat:write` on that token**. `apps:publish` is
+  absent from the default chat-only preset. If missing, request it through
+  the existing individual token-scope approval page; only the signed-in token
+  owner can approve. Publication never grants the mini app any runtime capability.
+  Expiry, revocation, account ownership, feature gate, quotas, body-size limits,
+  HTML checks and R2 account prefixes still apply. Invalid Bearer authentication
+  never falls back to a browser session.
+
+```bash
+lianki app publish --manifest ./manifest.json --html ./index.html --json
+# MCP: lianki_app_publish {manifest: {...}, html: "<!doctype html>..."}
+```
+
+Publishing returns the private app URL `/m/<slug>`; it does not automatically
+post a message or expose an app publicly. Installed CLI versions need a release
+before the new command is available.
+
+## Referencing an app in chat
+
+A participant can include a relative `/m/<slug>` link (or its canonical/dev-site
+absolute URL) in a message. Alternatively, an agent can send
+`{op:"say",text:"Try this",attachments:[{type:"app",slug:"calculator"}]}`.
+The CLI supports `lianki chat say "Try this" --app calculator`; MCP
+`lianki_chat_say` accepts the same app attachments. References carry only a
+validated slug, never HTML; a normal link is also preserved in the text so
+minimal long-term chat history retains it. Arbitrary external links are never
+turned into executable cards.
+
+The bubble shows the app's title, icon and **Open** button. Metadata is loaded
+from the signed-in account's own app; another account's same slug is never
+looked up. Open presents a panel over the chat with a pointer/keyboard height
+handle, fullscreen panel toggle and close button. The panel always uses opaque
+`srcdoc` with `sandbox="allow-scripts allow-forms"`, including when standalone
+apps use an independent origin. No `allow-same-origin`, parent HTML injection or
+automatic browser fullscreen call is introduced. The existing capability bridge
+and **Allow this time / Allow for this app / Don't allow** prompts remain in use.
+The host is lazy-loaded only when the card is opened.
+
+Chat panel sizes follow public config `miniApps.chatHeightPx`,
+`miniApps.chatMinHeightPx`, and `miniApps.chatResizeStepPx`; actual bounds follow
+the visual viewport. The view endpoint is session-only
+`GET /api/my/mini-apps/<slug>?embed=1`; Bearer publishing does not grant access to
+browser-session capability prompts or another account's app.
+
+## Recommended styling, optional per app
+
+The manifest accepts `style: "lianki" | "none"`. Omitting it keeps the
+recommended Lianki style pack, including for apps published before this option
+existed. Publishing through `POST /api/my/mini-apps` validates the field:
+other values are rejected, and the selected value remains in the stored manifest.
+Migration `0081_mini_app_style.sql` adds the D1 column with a `lianki` default;
+apply it before serving code that reads the new column. It does not rewrite app
+HTML or remove any existing app styles.
+
+Set `"style": "none"` to use browser defaults or the app's own styles. Lianki
+then skips automatic inline style-pack injection; the sandbox, CSP, SDK and
+capability prompts are unchanged. An app may still explicitly include its own
+CSS or opt into an allowed stylesheet. Theme information remains available for
+apps that choose to follow it. The SDK exposes the current choice as
+`lianki.style`, as well as the manifest's `style` field.
+
+A minimal native-styled example is `/m/presets/unstyled.html`, paired with
+`/m/presets/unstyled.manifest.json`; it is listed under `examples.none` in
+`/m/presets/presets.json`. To publish it locally:
+
+```bash
+bun scripts/dev/mini-app-publish.ts public/m/presets/unstyled.html public/m/presets/unstyled.manifest.json
+```
 
 ## Style pack and presets
 
@@ -172,7 +238,7 @@ Google Fonts), light and dark, base typography, and plain `button`, `input`,
 `.lk-app .lk-card .lk-btn .lk-btn-primary .lk-input .lk-row .lk-stack .lk-mono
 .lk-seal` helpers. No hex or rgb: oklch only (checked in a unit test).
 
-**In srcdoc mode the pack is inlined** (`lib/mini-apps/style-pack.ts`, kept
+**With `style: "lianki"` (the default), the pack is inlined** (`lib/mini-apps/style-pack.ts`, kept
 equal to the public file by a test) as a `<style>` before the app, and the
 app's own `<link>` to it is dropped: a srcdoc app has no origin, and a link
 would depend on the page's host matching the CSP's (it did not on the preview,
@@ -185,8 +251,8 @@ as `<html data-theme="light|dark">` before the app loads, and when the system
 theme changes it posts `{lk: "mini/1", event: "theme"}`, which the SDK applies.
 With no `data-theme`, the pack falls back to `prefers-color-scheme`.
 
-Use the variables, not colours of your
-own. `/m/presets/presets.json` lists the pinned presets:
+The recommended pack exposes variables for apps that want to match the site;
+apps may instead use their own styling. `/m/presets/presets.json` lists the pinned presets:
 
 ```html
 <script src="/m/presets/chart.js"></script>

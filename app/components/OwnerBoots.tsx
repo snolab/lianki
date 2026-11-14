@@ -27,6 +27,7 @@ export function OwnerBoots({
   polishReadback,
   foldOthers = true,
   whisperRecheck,
+  pttMaxCaptureMs,
   box = null,
   autoUpdate = false,
   account = null,
@@ -44,6 +45,8 @@ export function OwnerBoots({
   foldOthers?: boolean;
   /** Flag `stt.whisper-recheck` + dev: his Mac's Whisper re-reads each run (whisper-recheck.ts). */
   whisperRecheck?: RecheckConf;
+  /** Config voice.pttMaxCaptureMs: bounded held-audio memory. */
+  pttMaxCaptureMs?: number;
   /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
   autoUpdate?: boolean;
   /** Provider voices on (flag voice.cloud-voices + dev) and the language → voice map. */
@@ -86,6 +89,7 @@ export function OwnerBoots({
         polishReadback={polishReadback}
         foldOthers={foldOthers}
         whisperRecheck={whisperRecheck}
+        pttMaxCaptureMs={pttMaxCaptureMs}
         box={box}
         account={account}
         cacheLines={cacheLines}

@@ -36,6 +36,7 @@ export const CHAT_OPS = {
   say: "chat:write",
   ask: "chat:ask",
   read: "chat:read",
+  "read-ack": "chat:read",
   listen: "chat:read",
   recheck: "chat:read",
   prepare: "chat:write",
@@ -51,7 +52,7 @@ export { CHAT_LIMITS };
 const limitOf = (op: ChatOp) =>
   op === "say" || op === "ask" || op === "avatar"
     ? "post"
-    : op === "read"
+    : op === "read" || op === "read-ack"
       ? "read"
       : op === "listen"
         ? "listen"

@@ -272,6 +272,10 @@ class FakeSocket implements Socket {
   of(type: string) {
     return this.sent.filter((m) => m.type === type);
   }
+  /** Token roster assertions exclude the connected page's own read-watermark participant. */
+  presentTokens() {
+    return this.lastPresent().filter((p) => p.tok);
+  }
   lastPresent() {
     return (this.of("present").at(-1)?.list ?? []) as Present[];
   }
@@ -437,25 +441,29 @@ describe("the hub: presence pushed to the page", () => {
     const page = await h.ownerPage();
     const a = await mint(OWNER, "mcp-bot");
     const ws = await h.listen(a.token, "mcp-remote/1.0.0 tool=lianki_chat_wait");
-    expect(page.lastPresent()).toMatchObject([
-      { name: "mcp-bot", live: true, mcp: true, id: a.id },
+    expect(page.lastPresent().filter((p) => p.self)).toMatchObject([
+      { self: true, live: true, lastReadSeq: 0 },
+    ]);
+    expect(page.presentTokens()).toMatchObject([
+      { name: "mcp-bot", live: true, mcp: true, id: a.id, lastReadSeq: 0 },
     ]);
     // A read only (no socket): present for the read window.
     const b = await mint(OWNER, "reader");
     t += MIN;
     await h.http(b.token, { op: "read" });
     await flush();
-    expect(page.lastPresent().map((p) => p.name)).toEqual(["reader", "mcp-bot"]);
+    expect(page.presentTokens().map((p) => p.name)).toEqual(["reader", "mcp-bot"]);
     // The socket closes: gone at once.
     ws.close(1000);
     await h.hub.webSocketClose(ws, 1000);
     await flush();
-    expect(page.lastPresent().map((p) => p.name)).toEqual(["reader"]);
+    expect(page.presentTokens().map((p) => p.name)).toEqual(["reader"]);
     // The read window passes: the alarm pushes the leave.
     t += 6 * MIN;
     await h.hub.alarm();
     await flush();
-    expect(page.lastPresent()).toEqual([]);
+    expect(page.presentTokens()).toEqual([]);
+    expect(page.lastPresent().filter((p) => p.self)).toHaveLength(1);
   });
 
   it("the owner renames a token of his and sets its picture; not another account's", async () => {
@@ -472,7 +480,7 @@ describe("the hub: presence pushed to the page", () => {
     );
     await flush();
     expect(page.of("participant-result").at(-1)).toMatchObject({ ok: true });
-    expect(page.lastPresent()[0]).toMatchObject({
+    expect(page.presentTokens()[0]).toMatchObject({
       name: "Helper",
       nameBy: "owner",
       avatarBy: "owner",
@@ -495,7 +503,7 @@ describe("the hub: presence pushed to the page", () => {
     const page = await h.ownerPage();
     const a = await mint(OWNER, "mcp-bot");
     const ws = await h.listen(a.token);
-    expect(page.lastPresent()).toHaveLength(1);
+    expect(page.presentTokens()).toHaveLength(1);
     const notify = async (ids: string[]) => {
       await h.hub.fetch(
         new Request("https://lianki-push/internal/chat-tokens/revoked", {
@@ -525,7 +533,8 @@ describe("the hub: presence pushed to the page", () => {
     expect(ws.closed).toBe(TOKEN_REFUSED);
     await h.hub.webSocketClose(ws, TOKEN_REFUSED);
     await flush();
-    expect(page.lastPresent()).toEqual([]);
+    expect(page.presentTokens()).toEqual([]);
+    expect(page.lastPresent().filter((p) => p.self)).toHaveLength(1);
   });
 });
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useIntlayer } from "next-intlayer";
-import type { ScopeId } from "@/lib/api-tokens";
+import { DEFAULT_TOKEN_SCOPES, type ScopeId } from "@/lib/api-tokens";
 import {
   ExpiryPicker,
   PermissionPicker,
@@ -59,7 +59,7 @@ export default function CliLoginClient(p: {
 }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [scopes, setScopes] = useState<ScopeId[]>([]);
+  const [scopes, setScopes] = useState<ScopeId[]>([...DEFAULT_TOKEN_SCOPES]);
   const [expiry, setExpiry] = useState<Expiry>(null);
   const [missing, setMissing] = useState<string | null>(null);
   const tok = useIntlayer("api-tokens") as unknown as Record<string, unknown>;

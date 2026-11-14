@@ -19,7 +19,7 @@ import type { HostView } from "@/lib/mini-apps/handlers";
 
 type Ask = { cap: CapabilityId; resolve: (c: Choice | null) => void };
 
-export function MiniAppHost({ view }: { view: HostView }) {
+export function MiniAppHost({ view, embedded = false }: { view: HostView; embedded?: boolean }) {
   const c = useIntlayer("mini-app");
   const frame = useRef<HTMLIFrameElement>(null);
   const [ask, setAsk] = useState<Ask | null>(null);
@@ -57,6 +57,7 @@ export function MiniAppHost({ view }: { view: HostView }) {
         name: view.name,
         icon: view.icon,
         version: view.version,
+        style: view.style,
         permissions: view.permissions,
       },
       grants: () => view.grants,
@@ -94,14 +95,21 @@ export function MiniAppHost({ view }: { view: HostView }) {
 
   const f = view.frame;
   return (
-    <div className="relative flex min-h-[calc(100dvh-4rem)] flex-col" data-testid="mini-app">
-      {first.current && (
+    <div
+      className={
+        embedded
+          ? "relative flex h-full min-h-0 flex-col"
+          : "relative flex min-h-[calc(100dvh-4rem)] flex-col"
+      }
+      data-testid="mini-app"
+    >
+      {first.current && (!embedded || f.mode === "srcdoc") && (
         <iframe
           ref={frame}
           title={view.name}
           className="w-full flex-1 border-0"
-          style={{ minHeight: "calc(100dvh - 4rem)" }}
-          sandbox={f.sandbox}
+          style={embedded ? { minHeight: 0, height: "100%" } : { minHeight: "calc(100dvh - 4rem)" }}
+          sandbox={embedded ? "allow-scripts allow-forms" : f.sandbox}
           referrerPolicy="no-referrer"
           allow=""
           onLoad={() =>

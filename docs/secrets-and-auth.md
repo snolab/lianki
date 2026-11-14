@@ -480,7 +480,11 @@ login`'s and the agent lanes' tokens.
   for a site owner only `eval` ("Eval tokens", below) and `progress` (report
   to the state tree as the token's name; docs/api-for-agents.md, "Report
   progress"; no 30-day cap). Chosen at creation; a
-  route asks for one. `pair`, `grant`, `admin`, `answer` are not permissions
+  route asks for one. New forms default to chat only; the owning account can
+  later approve one additional scope on `/my/tokens/scopes`, through the
+  session-only `/api/token/scopes` endpoint ([MCP scopes](mcp-scopes.md)).
+  Approval never extends expiry or bypasses developer restrictions.
+  `pair`, `grant`, `admin`, `answer` are not permissions
   at all (`FORBIDDEN_SCOPES`): a request naming one is refused. Card and settings routes (`authEmailOrToken`,
   `apiTokenUser`) need `study`, so a chat-only lane token reaches none of them.
   The other way round, `study` never reaches the chat: the Learning Partner

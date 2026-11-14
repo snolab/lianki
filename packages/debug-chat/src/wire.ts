@@ -46,6 +46,9 @@ export type Sender = {
  * (optional; absent on older lines and on the agent's) draws the avatar.
  */
 export type ChatMessage = {
+  /** Current durable thread version; identity and logical display time remain stable. */
+  seq?: number;
+  removed?: true;
   id: string;
   from: "owner" | "friend" | "agent";
   label: string;
@@ -126,9 +129,9 @@ export type ChatMessage = {
    */
   parts?: MergedPart[];
   /**
-   * A merged line re-heard whole by the Mac's Whisper when the run ended (RecheckMark;
-   * flag stt.whisper-recheck, whisper-recheck.ts): `text` and `raw` became its
-   * reading, and the streaming text is kept here. Stamped by the hub only.
+   * The realtime reading and independent whole-recording recognition, with provenance.
+   * Continuous passages take the whole reading before polish; deliberate PTT keeps
+   * the signed realtime body until polish. Cloud-only prefixes are marked partial.
    */
   recheck?: RecheckMark;
   /**
@@ -192,6 +195,8 @@ export type ChatMessage = {
    * cleanAttachments. Owner lines only, as the host's upload is.
    */
   attachments?: AttachmentRef[];
+  /** Safe mini app references normalized from agent app attachments; HTML is never on a chat line. */
+  apps?: { type: "app"; slug: string }[];
   /**
    * Where a voice line was spoken: the page's path and title and the text on
    * its screen (cleanScene). Only on `source: "stt"` lines; what the agent's
@@ -233,6 +238,9 @@ export type ChatMessage = {
 
 /** The hub telling pages and listeners that an ask was answered by a tap. */
 export type AnsweredEvent = {
+  /** Full current version, so a missed prior patch cannot lose state. */
+  message?: ChatMessage;
+  seq?: number;
   type: "answered";
   /** The ask's message id, and the ask's own id. */
   id: string;
@@ -247,6 +255,9 @@ export type AnsweredEvent = {
  * (eval.ts withdraw): the card greys out, takes no tap, and is never read aloud.
  */
 export type WithdrawnEvent = {
+  /** Full current version, so a missed prior patch cannot lose state. */
+  message?: ChatMessage;
+  seq?: number;
   type: "withdrawn";
   /** The ask's message id, the ask's own id, and its thread. */
   id: string;
@@ -259,7 +270,8 @@ export type WithdrawnEvent = {
 export function applyWithdrawn<M extends ChatMessage>(m: M, e: Omit<WithdrawnEvent, "type">): M {
   if (m.id !== e.id || !m.ask || m.ask.askId !== e.askId || (m.thread ?? "owner") !== e.thread)
     return m;
-  return { ...m, ask: { ...m.ask, withdrawnAt: e.withdrawnAt } };
+  if (e.message) return { ...e.message } as M;
+  return { ...m, ...(e.seq === undefined ? {} : { seq: e.seq }), ask: { ...m.ask, withdrawnAt: e.withdrawnAt } };
 }
 
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
@@ -287,7 +299,25 @@ export type EchoMark = {
  * what Whisper read from the run's whole audio (level 2), its `engine` and `lang`.
  * A polish after it (level 3) is the line's `text` once `edited.by` is not "merge".
  */
-export type RecheckMark = { at: number; engine: string; lang?: string; heard: string; text: string };
+export type RecheckMark = { at: number; engine: string; lang?: string; heard: string; text: string; heardPartial?: true };
+
+/** A second recognition candidate is metadata, never a speaker authorization. */
+export function cleanRecheckMark(raw: unknown, primary?: string, stt?: SttTag): RecheckMark | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.at !== "number" || !Number.isFinite(r.at) || r.at < 0 ||
+      typeof r.engine !== "string" || !STT_ENGINE.test(r.engine) ||
+      typeof r.heard !== "string" || !r.heard.trim() || r.heard.length > MAX_CHAT ||
+      typeof r.text !== "string" || !r.text.trim() || r.text.length > MAX_CHAT) return undefined;
+  const heard = r.heard.trim();
+  if (primary !== undefined && (r.heardPartial === true
+    ? stt?.route !== "cloud" || r.text.trim() !== primary
+    : heard !== primary)) return undefined;
+  return { at: r.at, engine: r.engine, heard, text: r.text.trim(),
+    ...(r.heardPartial === true ? { heardPartial: true } : {}),
+    ...(typeof r.lang === "string" && /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/.test(r.lang) ? { lang: r.lang } : {}) };
+}
+
 /** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
 export type MergedPart = {
   id: string;
@@ -332,6 +362,9 @@ export type PassageMark = { at: number; by: string; ids: string[] };
  * listeners update that line in place (never read aloud again).
  */
 export type EditedEvent = {
+  /** Full current version, so a missed prior patch cannot lose state. */
+  message?: ChatMessage;
+  seq?: number;
   type: "edited";
   id: string;
   thread: string;
@@ -367,8 +400,10 @@ export type PolishDueEvent = {
 /** A message updated by an EditedEvent; any other message is returned as is. */
 export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "type">): M {
   if (m.id !== e.id || (m.thread ?? "owner") !== e.thread) return m;
+  if (e.message) return { ...e.message } as M;
   return {
     ...m,
+    ...(e.seq === undefined ? {} : { seq: e.seq }),
     text: e.text,
     raw: e.raw,
     edited: e.edited,
@@ -1573,3 +1608,6 @@ export function sttTagText(
   const engine = stt.engine?.split("/").at(-1);
   return [where, engine, stt.fallback ? l.sttFallback : undefined].filter(Boolean).join(" · ");
 }
+
+/** Authenticated thread replay coverage, including accepted nonvisible versions. */
+export type ChatReplayRange = { type: "history"; thread: string; messages: ChatMessage[]; removed: {id:string;seq:number}[]; afterSeq: number; throughSeq: number; headSeq: number; prunedThroughSeq: number; skipped: { from: number; to: number }[] };

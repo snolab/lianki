@@ -102,6 +102,35 @@ const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const abbrCache = new Map<string, string>();
 
 /**
+ * Conventional letter abbreviations for zones whose English short name ICU
+ * may not carry (a small-ICU runtime, e.g. bun on CI, prints "GMT+9" for
+ * every English locale): keyed by zone, then by the offset in minutes at
+ * `at`, so daylight time picks its own name. Data, not a default zone.
+ */
+const ABBR_FALLBACK: Readonly<Record<string, Readonly<Record<number, string>>>> = {
+  "Asia/Tokyo": { 540: "JST" },
+  "Asia/Seoul": { 540: "KST" },
+  "Asia/Shanghai": { 480: "CST" },
+  "Asia/Taipei": { 480: "CST" },
+  "Asia/Hong_Kong": { 480: "HKT" },
+  "Asia/Singapore": { 480: "SGT" },
+  "Asia/Kolkata": { 330: "IST" },
+  "Australia/Sydney": { 600: "AEST", 660: "AEDT" },
+  "Europe/London": { 0: "GMT", 60: "BST" },
+  "Europe/Berlin": { 60: "CET", 120: "CEST" },
+  "Europe/Paris": { 60: "CET", 120: "CEST" },
+  "America/New_York": { [-300]: "EST", [-240]: "EDT" },
+  "America/Chicago": { [-360]: "CST", [-300]: "CDT" },
+  "America/Denver": { [-420]: "MST", [-360]: "MDT" },
+  "America/Los_Angeles": { [-480]: "PST", [-420]: "PDT" },
+};
+
+/** The table's abbreviation for `tz` at offset `offMin`, or null when it has none. */
+export function abbrFallback(tz: string, offMin: number): string | null {
+  return ABBR_FALLBACK[tz]?.[offMin] ?? null;
+}
+
+/**
  * A short English label of `tz` at `at`: "JST", "EST", "CET", "UTC"; a
  * numeric "GMT+8" when no English locale names it. Which locale names a zone
  * is ICU data (en-US names US zones only), so the English locales are tried
@@ -136,6 +165,9 @@ export function zoneAbbr(tz: string, at: number | Date = Date.now()): string {
         }
       }
   }
+  // No English locale names it on this runtime: the conventional letters, when known.
+  if ((!out || NUMERIC.test(out)) && zone !== "UTC")
+    out = abbrFallback(zone, zoneOffsetMin(zone, at)) ?? out;
   abbrCache.set(key, out);
   return out;
 }

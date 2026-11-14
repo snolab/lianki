@@ -18,6 +18,10 @@
   "use strict";
   if (window.lianki) return;
   var PROTOCOL = "mini/1";
+  // Trusted bootstrap sets this before app markup. Capture once: author
+  // changes to the DOM or theme events cannot change the declared style.
+  var root = typeof document === "undefined" ? null : document.documentElement;
+  var style = root && root.dataset && root.dataset.lkStyle === "none" ? "none" : "lianki";
   var next = 1;
   var waiting = {};
   window.addEventListener("message", function (e) {
@@ -59,6 +63,7 @@
   };
   window.lianki = Object.freeze({
     version: PROTOCOL,
+    style: style,
     manifest: function () {
       return call("manifest");
     },

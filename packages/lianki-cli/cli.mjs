@@ -10,11 +10,13 @@
 //   - The token is never printed, in any mode.
 
 import yargs from "yargs";
+import { readPublishInput } from "./app-publish.mjs";
 import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call } from "./api.mjs";
 import { DEVICE_RE, randomId, s256, TOKEN_RE } from "./auth.mjs";
 import { createChatBridge, filterDecision, ayDeliver, bridgeConfig } from "./chat-bridge.mjs";
 import { createInterface } from "node:readline";
 import { createChatReceiver, turnConfig } from "./chat-receiver.mjs";
+import { readAckBody, readWindow, readCoverage } from "./chat-seq.mjs";
 import { applyGrantPolish } from "./chat-polish.mjs";
 import { createFriendInbox, INBOX_DEFAULTS } from "./chat-inbox.mjs";
 import {
@@ -527,18 +529,39 @@ function chatSocket(c, token, { history = 0, mode, onReady, onEvent, timeoutMs }
   });
 }
 
+async function cmdAppPublish(c) {
+  const token = await needToken(c);
+  let body;
+  try {
+    body = await readPublishInput(c.argv.manifest, c.argv.html);
+  } catch (e) {
+    throw usage(`Cannot read publish input: ${e.message}`);
+  }
+  const { data } = await call(c, token, { method: "POST", path: "/api/my/mini-apps", body });
+  emit(c, "app publish", data, (d) => `published ${d.url}`);
+}
+
 async function cmdChatSay(c) {
   const token = await needToken(c);
   const parts = (c.argv.text ?? []).map(String);
-  if (c.argv.stdin && parts.length > 0) throw usage("say takes its text or - (stdin), not both", 'lianki chat say "PR #12 is green"');
+  if (c.argv.stdin && parts.length > 0)
+    throw usage("say takes its text or - (stdin), not both", 'lianki chat say "PR #12 is green"');
   const text = c.argv.stdin ? (await c.deps.readStdin()).trim() : parts.join(" ").trim();
-  if (!text) throw usage("say needs text (or - to read it from stdin)", 'lianki chat say "PR #12 is green"');
+  const apps = c.argv.app ?? [];
+  if (
+    apps.length > 4 ||
+    apps.some((slug) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 40)
+  )
+    throw usage("--app needs up to four mini-app slugs");
+  if (!text && !apps.length)
+    throw usage("say needs text (or - to read it from stdin)", 'lianki chat say "PR #12 is green"');
   const { data } = await call(c, token, {
     method: "POST",
     path: CHAT_PATH,
     body: {
       op: "say",
-      text,
+      text: text || apps.map((slug) => `/m/${slug}`).join(" "),
+      ...(apps.length ? { attachments: apps.map((slug) => ({ type: "app", slug })) } : {}),
       ...(c.argv.quiet ? { quiet: true } : {}),
       ...(c.argv.voice ? { voice: String(c.argv.voice) } : {}),
       // How it cuts into the reading when it arrives live: stop yours, or pause and go on.
@@ -546,7 +569,12 @@ async function cmdChatSay(c) {
       ...(c.argv.interject ? { cut: "interject" } : {}),
     },
   });
-  emit(c, "chat say", { id: data.id, lane: data.lane ?? null }, (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`);
+  emit(
+    c,
+    "chat say",
+    { id: data.id, lane: data.lane ?? null },
+    (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`,
+  );
 }
 
 /**
@@ -603,11 +631,18 @@ async function cmdChatRead(c) {
   const token = await needToken(c);
   const limit = Number(c.argv.limit ?? 30);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw usage("--limit must be 1–100");
-  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "read", limit } });
+  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "read", limit, ...readWindow(c.argv["after-seq"], c.argv["through-seq"]) } });
   const messages = Array.isArray(data.messages) ? data.messages : [];
-  emit(c, "chat read", { thread: data.thread ?? null, lane: data.lane ?? null, messages }, (d) =>
+  emit(c, "chat read", { thread: data.thread ?? null, lane: data.lane ?? null, messages, ...readCoverage(data) }, (d) =>
     d.messages.length ? d.messages.map(chatLine).join("\n") : "no messages",
   );
+}
+
+async function cmdChatSeen(c) {
+  const token = await needToken(c);
+  const body = readAckBody(c.argv.seq);
+  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body });
+  emit(c, "chat seen", data, () => "Read position saved");
 }
 
 async function cmdChatPrepare(c) {
@@ -870,6 +905,7 @@ function build(args, deps, box) {
     .option("json", { type: "boolean", describe: "Machine output: one JSON object (schema v1)", global: true })
     .option("token", { type: "string", describe: "API token for this call (or - for stdin)", global: true, hidden: true })
     .option("api", { type: "string", describe: "Lianki site (default https://lianki.com, or $LIANKI_URL)", global: true, hidden: true })
+    .command("app", "Publish a mini-app", (y) => sub(y).command("publish", "Publish local HTML and a JSON manifest (no chat post)", (y) => y.option("manifest", {type: "string", demandOption: true, describe: "Manifest JSON file"}).option("html", {type: "string", demandOption: true, describe: "HTML file"}), act(cmdAppPublish)))
     .command("auth", "Sign in, check, sign out", (y) =>
       examples(
         sub(y)
@@ -1013,6 +1049,7 @@ function build(args, deps, box) {
               examples(
                 y
                   .positional("text", { type: "string", describe: "The line" })
+                  .option("app", { type: "string", array: true, describe: "Attach a published mini-app slug (up to four)" })
                   .option("quiet", { type: "boolean", describe: "Shown, never read aloud" })
                   .option("voice", { type: "string", describe: "Read this line in another voice: main | calm | bright, device:<name>, melo:<lang>" })
                   .option("supersede", {
@@ -1068,8 +1105,16 @@ function build(args, deps, box) {
           .command(
             "read",
             "The latest lines",
-            (y) => examples(y.option("limit", { type: "number", default: 30, describe: "How many (1–100)" }), [["lianki chat read --limit 10 --json", ""]]),
+            (y) => examples(y.option("limit", { type: "number", default: 30, describe: "How many (1–100)" })
+              .option("after-seq", { type: "number", describe: "Recover after this sequence (exclusive)" })
+              .option("through-seq", { type: "number", describe: "Recover through this sequence (inclusive; requires --after-seq)" }), [["lianki chat read --limit 10 --json", ""]]),
             act(cmdChatRead),
+          )
+          .command(
+            "seen",
+            "Explicitly acknowledge the last sequence you actually read",
+            (y) => y.option("seq", { type: "number", demandOption: true, describe: "Last sequence actually consumed; passive listening does not count" }),
+            act(cmdChatSeen),
           )
           .command(
             "listen",
@@ -1250,7 +1295,7 @@ function report(deps, json, e) {
       JSON.stringify({
         v: SCHEMA_VERSION,
         ok: false,
-        error: { code: err.code, message: err.message, ...(err.hint ? { hint: err.hint } : {}) },
+        error: { code: err.code, message: err.message, ...(err.hint ? { hint: err.hint } : {}), ...(err.needScope ? {needScope: err.needScope, requestUrl: err.requestUrl} : {}) },
         exit: err.exit,
       }),
     );

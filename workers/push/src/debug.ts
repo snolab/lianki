@@ -367,7 +367,10 @@ export type Socket = {
   serializeAttachment(v: unknown): void;
   deserializeAttachment(): unknown;
 };
+type ChatStorage = Pick<Storage, "get" | "put" | "delete" | "list">;
 export type Storage = {
+  /** Production DO storage commits line versions and their head atomically. */
+  transaction?<T>(run: (tx: ChatStorage) => Promise<T>): Promise<T>;
   get<T>(key: string): Promise<T | undefined>;
   put(key: string, value: unknown): Promise<void>;
   delete(key: string): Promise<boolean>;
@@ -669,7 +672,7 @@ const BOX_CLOSED_PATH = "/internal/box-closed";
 /** A box chat socket closed because its box lost box:chat (hub-side, on purpose). */
 export const BOX_CLOSED = 4401;
 /** What a box page may send (docs/box-oauth.md): the chat, and nothing of eval or recording. */
-const BOX_PAGE_TYPES = new Set(["chat", "page", "passage-end", "unmerge", "answer"]);
+const BOX_PAGE_TYPES = new Set(["chat", "page", "passage-end", "unmerge", "answer", "replay"]);
 /** What a box page with box:eval may send besides: pairing answers, results, page errors. */
 const BOX_EVAL_TYPES = new Set([
   "allow",
@@ -826,6 +829,7 @@ type ProgressNs = {
 export class DebugHub {
   /** Same incoming id cannot be accepted concurrently; durable receipts survive eviction. */
   private deliveringChat = new Map<string, Promise<void>>();
+  private lastLogicalAt = new Map<string, number>();
   private chatSequenceWrites = new Map<string, Promise<number>>();
   /**
    * Every stored grant by hash: read once per instance (an evicted hub reads
@@ -908,6 +912,9 @@ export class DebugHub {
         await this.post(m);
       },
       history: (thread) => this.history(thread),
+      replay: (thread, afterSeq, throughSeq, limit) =>
+        this.replay(thread, afterSeq, throughSeq, limit),
+      acknowledgeRead: (thread, identity, seq) => this.acknowledgeRead(thread, identity, seq),
       blocked: async (userId) =>
         (await this.ctx.storage.get<FriendRecord>(friendKey(userId)))?.blocked === true,
       kv: {
@@ -1138,6 +1145,22 @@ export class DebugHub {
     return this.listeners(except).filter((c) => !c.a.beat);
   }
 
+  /** Storage keys are versions; presentation and passage selection use stable logical time. */
+  private async keptChat(
+    thread: string = OWNER_THREAD,
+    limit: number = CHAT_HISTORY,
+  ): Promise<[string, ChatMessage][]> {
+    const rows = await this.ctx.storage.list<ChatMessage>({
+      prefix: threadKeys(thread).prefix,
+      reverse: true,
+      limit: CHAT_HISTORY,
+    });
+    return [...rows]
+      .filter(([, m]) => !m.removed)
+      .sort((a, b) => b[1].at - a[1].at || b[1].id.localeCompare(a[1].id))
+      .slice(0, limit);
+  }
+
   /** One thread's kept chat, oldest first. */
   async history(thread: string = OWNER_THREAD): Promise<ChatMessage[]> {
     const m = await this.ctx.storage.list<ChatMessage>({
@@ -1145,7 +1168,139 @@ export class DebugHub {
       reverse: true,
       limit: CHAT_HISTORY,
     });
-    return [...m.values()].reverse().map((x) => ({ thread, ...x }));
+    return [...m]
+      .map(([key, x]) => ({
+        thread,
+        ...x,
+        seq: Number(key.slice(threadKeys(thread).prefix.length)),
+      }))
+      .filter((x) => !x.removed)
+      .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+  }
+
+  /** Range coverage is read behind all pending writes, never ahead of a durable row. */
+  async replay(thread: string, afterSeq?: number, throughSeq?: number, limit?: number) {
+    const configured = await this.sessions?.config?.("chat.replayBatch").catch(() => undefined);
+    const batch = Math.min(
+      500,
+      Math.max(
+        1,
+        Math.floor(
+          limit ??
+            (typeof configured === "number" && Number.isFinite(configured) ? configured : 100),
+        ),
+      ),
+    );
+    return this.chatSequenceTask(thread, async () => {
+      const headSeq = (await this.ctx.storage.get<number>(threadKeys(thread).seq)) ?? 0;
+      const prunedThroughSeq = Math.max(0, headSeq - CHAT_HISTORY);
+      const after =
+        afterSeq === undefined
+          ? Math.max(prunedThroughSeq, headSeq - batch)
+          : Math.min(headSeq, afterSeq);
+      const end = Math.min(
+        headSeq,
+        throughSeq ?? headSeq,
+        Math.max(after, prunedThroughSeq) + batch,
+      );
+      const rows = await this.ctx.storage.list<ChatMessage>({
+        prefix: threadKeys(thread).prefix,
+        reverse: true,
+        limit: CHAT_HISTORY,
+      });
+      const messages = [...rows]
+        .map(([key, m]) => ({
+          ...m,
+          thread,
+          seq: Number(key.slice(threadKeys(thread).prefix.length)),
+        }))
+        .filter((m) => m.seq > after && m.seq <= end);
+      const seen = new Set(messages.map((m) => m.seq));
+      const skipped: { from: number; to: number }[] = [];
+      for (let seq = Math.max(after, prunedThroughSeq) + 1; seq <= end; seq++)
+        if (!seen.has(seq)) {
+          const tail = skipped[skipped.length - 1];
+          if (tail?.to === seq - 1) tail.to = seq;
+          else skipped.push({ from: seq, to: seq });
+        }
+      messages.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+      return {
+        type: "history" as const,
+        thread,
+        messages: messages.filter((m) => !m.removed),
+        removed: messages.filter((m) => m.removed).map((m) => ({ id: m.id, seq: m.seq })),
+        afterSeq: after,
+        throughSeq: end,
+        headSeq,
+        prunedThroughSeq,
+        skipped,
+      };
+    });
+  }
+
+  private readWrites = new Map<
+    string,
+    { at: number; pending?: { max: number; promise: Promise<number> } }
+  >();
+  private readKey(thread: string, identity: string) {
+    return `chat-read:${encodeURIComponent(thread)}:${encodeURIComponent(identity)}`;
+  }
+
+  /** Explicit consumption only. One bounded trailing write coalesces a burst; no idle polling. */
+  async acknowledgeRead(thread: string, identity: string, seq: number): Promise<number> {
+    if (!Number.isSafeInteger(seq) || seq < 0) throw new Error("invalid read cursor");
+    const key = this.readKey(thread, identity);
+    let state = this.readWrites.get(key);
+    if (state?.pending) {
+      state.pending.max = Math.max(state.pending.max, seq);
+      return state.pending.promise;
+    }
+    const configured = await this.sessions
+      ?.config?.("chat.readReceiptThrottleMs")
+      .catch(() => undefined);
+    const throttle =
+      typeof configured === "number" && Number.isFinite(configured)
+        ? Math.min(60000, Math.max(2000, configured))
+        : 2000;
+    // Another request may have entered while config was loading.
+    state = this.readWrites.get(key);
+    if (state?.pending) {
+      state.pending.max = Math.max(state.pending.max, seq);
+      return state.pending.promise;
+    }
+    const current = state ?? { at: -Infinity };
+    const pending = { max: seq, promise: Promise.resolve(0) };
+    pending.promise = (async () => {
+      await Promise.resolve();
+      try {
+        for (;;) {
+          const result = await this.chatSequenceTask(thread, async () => {
+            const wait = Math.max(0, current.at + throttle - this.now());
+            // Wait outside the shared thread queue: receipts never stall chat/replay during cooldown.
+            if (wait) return { wait };
+            const head = (await this.ctx.storage.get<number>(threadKeys(thread).seq)) ?? 0;
+            const previous = (await this.ctx.storage.get<number>(key)) ?? 0;
+            // Seal immediately before writing; newer reads form one next coalesced burst.
+            current.pending = undefined;
+            const next = Math.max(previous, Math.min(head, pending.max));
+            if (next !== previous) await this.ctx.storage.put(key, next);
+            current.at = this.now();
+            return { cursor: next };
+          });
+          if (result.wait !== undefined) {
+            await new Promise<void>((resolve) => this.timer.set(resolve, result.wait));
+            continue;
+          }
+          this.presenceSoon(thread);
+          return result.cursor!;
+        }
+      } finally {
+        if (current.pending === pending) current.pending = undefined;
+      }
+    })();
+    current.pending = pending;
+    this.readWrites.set(key, current);
+    return pending.promise;
   }
 
   /** An acceptance receipt contains no message text and is scoped to its authenticated thread. */
@@ -1217,28 +1372,75 @@ export class DebugHub {
    * Nonvisible inputs consume this same sequence; their receipts explain gaps
    * to future recovery/read cursors. A duplicate reuses its immutable receipt.
    */
-  private async nextChatSeq(thread: string): Promise<number> {
+  private async chatSequenceTask<T>(thread: string, run: () => Promise<T>): Promise<T> {
     const previous = this.chatSequenceWrites.get(thread);
-    const pending = (async () => {
+    const task = (async () => {
       if (previous) await previous.catch(() => {});
-      const { seq: seqKey } = threadKeys(thread);
-      const seq = ((await this.ctx.storage.get<number>(seqKey)) ?? 0) + 1;
-      await this.ctx.storage.put(seqKey, seq);
-      if (seq > CHAT_HISTORY) await this.ctx.storage.delete(msgKey(thread, seq - CHAT_HISTORY));
-      return seq;
+      return run();
     })();
-    this.chatSequenceWrites.set(thread, pending);
+    const barrier = task.then(
+      () => 0,
+      () => 0,
+    );
+    this.chatSequenceWrites.set(thread, barrier);
     try {
-      return await pending;
+      return await task;
     } finally {
-      if (this.chatSequenceWrites.get(thread) === pending) this.chatSequenceWrites.delete(thread);
+      if (this.chatSequenceWrites.get(thread) === barrier) this.chatSequenceWrites.delete(thread);
     }
+  }
+
+  private async nextChatSeq(
+    thread: string,
+    write?: (seq: number, tx: ChatStorage) => Promise<void>,
+  ): Promise<number> {
+    return this.chatSequenceTask(thread, async () => {
+      const run = async (tx: ChatStorage) => {
+        const { seq: seqKey } = threadKeys(thread);
+        const seq = ((await tx.get<number>(seqKey)) ?? 0) + 1;
+        await tx.put(seqKey, seq);
+        if (write) await write(seq, tx);
+        if (seq > CHAT_HISTORY) await tx.delete(msgKey(thread, seq - CHAT_HISTORY));
+        return seq;
+      };
+      // The optional fallback is for lightweight in-memory adapters; the runtime provides transactions.
+      return this.ctx.storage.transaction
+        ? this.ctx.storage.transaction(run)
+        : run(this.ctx.storage);
+    });
+  }
+
+  /** A changed line moves to its current version; unrelated stored keys never move. */
+  private async writeLine(
+    oldKey: string | undefined,
+    m: ChatMessage,
+    newPost = false,
+  ): Promise<number> {
+    const thread = m.thread ?? OWNER_THREAD;
+    return this.nextChatSeq(thread, async (seq, tx) => {
+      if (newPost) {
+        let last = this.lastLogicalAt.get(thread);
+        if (last === undefined) {
+          const kept = await tx.list<ChatMessage>({ prefix: threadKeys(thread).prefix });
+          last = Math.max(-Infinity, ...[...kept.values()].map((m) => m.at));
+        }
+        // Logical display time breaks millisecond collisions; voice capture timing stays untouched.
+        m.at = Math.max(m.at, last + 0.001);
+        this.lastLogicalAt.set(thread, m.at);
+      }
+      m.seq = seq;
+      await tx.put(msgKey(thread, seq), m);
+      // A concurrent edit may have moved the same id since its caller read it.
+      const rows = await tx.list<ChatMessage>({ prefix: threadKeys(thread).prefix });
+      for (const [key, row] of rows)
+        if (row.id === m.id && key !== msgKey(thread, seq)) await tx.delete(key);
+      if (oldKey && oldKey !== msgKey(thread, seq)) await tx.delete(oldKey);
+    });
   }
 
   /** Keep one chat message (dropping its thread's oldest past CHAT_HISTORY) and send it on. */
   private async post(m: ChatMessage & { thread: string }, only?: string[]) {
-    const seq = await this.nextChatSeq(m.thread);
-    await this.ctx.storage.put(msgKey(m.thread, seq), m);
+    const seq = await this.writeLine(undefined, m, true);
     if (m.from === "agent") this.agentAt.set(m.thread, Math.max(m.at, this.now()));
     const out = { type: "chat", message: m };
     // His devices read an agent line together (sync-speak.ts): pages only, never stored.
@@ -1313,13 +1515,7 @@ export class DebugHub {
    * may take any of his kept lines).
    */
   private async editable(depth: number = EDITABLE_LINES) {
-    const kept = [
-      ...(await this.ctx.storage.list<ChatMessage>({
-        prefix: threadKeys(OWNER_THREAD).prefix,
-        reverse: true,
-        limit: CHAT_HISTORY,
-      })),
-    ];
+    const kept = await this.keptChat(OWNER_THREAD, CHAT_HISTORY);
     // A line already inside a summary is not one of his lines any more: the summary is.
     const own = kept.filter(([, x]) => x.from === "owner" && !x.collapsedInto);
     return { kept, recent: own.slice(0, depth) };
@@ -1378,7 +1574,7 @@ export class DebugHub {
       raw,
       edited: { at: t, by, count: count + 1 },
     };
-    await this.ctx.storage.put(key, next);
+    await this.writeLine(key, next);
     await this.chatLogUpdate(OWNER_THREAD, next);
     const out: EditedEvent = {
       type: "edited",
@@ -1399,7 +1595,7 @@ export class DebugHub {
         head: head(m.text),
       }),
     );
-    this.tellEdit(out, line.to, opts.sender);
+    await this.tellEdit(out, line.to, opts.sender);
     return null;
   }
 
@@ -1472,8 +1668,7 @@ export class DebugHub {
     const edited = first.edited ?? { at: t, by, count: 0 };
     const next: ChatMessage = { ...first, text: m.text, raw: heard.join("\n"), edited, summary };
     await this.ctx.storage.put(firstKey, next);
-    for (const [k, x] of rest)
-      await this.ctx.storage.put(k, { ...x, collapsedInto: first.id } satisfies ChatMessage);
+    for (const [k, x] of rest) await this.writeLine(k, { ...x, collapsedInto: first.id });
     // History keeps every line as heard (or polished); the summary joins it as its own line.
     const logged = chatLogLine({
       id: `${first.id}.summary`,
@@ -1501,7 +1696,7 @@ export class DebugHub {
         len: m.text.length,
       }),
     );
-    this.tellEdit(out, first.to, ws);
+    await this.tellEdit(out, first.to, ws);
   }
 
   /**
@@ -1602,8 +1797,7 @@ export class DebugHub {
       premerge,
     };
     await this.ctx.storage.put(firstKey, next);
-    for (const [k, x] of rest)
-      await this.ctx.storage.put(k, { ...x, collapsedInto: first.id } satisfies ChatMessage);
+    for (const [k, x] of rest) await this.writeLine(k, { ...x, collapsedInto: first.id });
     // History keeps every line as it was; the passage joins it as its own line (undo drops it).
     const logged = chatLogLine({
       id: passageLogId(first.id),
@@ -1632,7 +1826,7 @@ export class DebugHub {
         heard: heard.reduce((n, h) => n + h.length, 0),
       }),
     );
-    this.tellEdit(out, first.to, opts.sender);
+    await this.tellEdit(out, first.to, opts.sender);
     return null;
   }
 
@@ -1762,13 +1956,7 @@ export class DebugHub {
     const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
     const no = await this.mayEdit(c);
     if (no) return fail(no);
-    const kept = [
-      ...(await this.ctx.storage.list<ChatMessage>({
-        prefix: threadKeys(OWNER_THREAD).prefix,
-        reverse: true,
-        limit: CHAT_HISTORY,
-      })),
-    ];
+    const kept = await this.keptChat(OWNER_THREAD, CHAT_HISTORY);
     const at = kept.findIndex(([, x]) => x.id === id);
     if (at < 0 && (await this.restoreEcho(id, cleanLabel(c.assignee ?? c.label, 80) || "agent")))
       return;
@@ -1798,12 +1986,12 @@ export class DebugHub {
       ...(pre.raw !== undefined ? { raw: pre.raw } : {}),
       ...(pre.edited ? { edited: pre.edited } : {}),
     };
-    await this.ctx.storage.put(key, first);
+    await this.writeLine(key, first);
     const restored: ChatMessage[] = [first];
     for (const [k, x] of kept)
       if (x.collapsedInto === line.id && mark.ids.includes(x.id)) {
         const { collapsedInto: _c, ...back } = x;
-        await this.ctx.storage.put(k, back);
+        await this.writeLine(k, back);
         restored.push(back);
       }
     // Oldest first, as the passage listed them.
@@ -1812,7 +2000,7 @@ export class DebugHub {
     console.log(
       JSON.stringify({ msg: "debug.passage-undo", id: line.id, lines: restored.length, by }),
     );
-    this.tellEdit(
+    await this.tellEdit(
       {
         type: "edited",
         id: line.id,
@@ -1828,7 +2016,12 @@ export class DebugHub {
   }
 
   /** An edit of an owner's line: its pages, and the listeners by the line's node. */
-  private tellEdit(out: EditedEvent, to: string | undefined, sender?: Socket) {
+  private async tellEdit(out: EditedEvent, to: string | undefined, sender?: Socket) {
+    const current = (await this.history(out.thread)).find((m) => m.id === out.id);
+    if (current?.seq !== undefined) {
+      out.seq = current.seq;
+      out.message = current;
+    }
     // A polish may be read back on his devices: together (sync-speak.ts), pages only.
     const speakAt = this.speakAt(OWNER_THREAD);
     const toPage = speakAt === undefined ? out : { ...out, speakAt };
@@ -1868,13 +2061,7 @@ export class DebugHub {
     page: PageAtt,
     cur: MergeCandidate & { id: string; at: number; continues: string },
   ): Promise<boolean> {
-    const kept = [
-      ...(await this.ctx.storage.list<ChatMessage>({
-        prefix: threadKeys(OWNER_THREAD).prefix,
-        reverse: true,
-        limit: CHAT_HISTORY,
-      })),
-    ];
+    const kept = await this.keptChat(OWNER_THREAD, CHAT_HISTORY);
     const refuse = (reason: string) => {
       console.log(JSON.stringify({ msg: "debug.merge-refused", id: cur.id, reason }));
       return false;
@@ -1894,7 +2081,7 @@ export class DebugHub {
     const v = mergeVerdict(prev, cur);
     if (!v.ok) return refuse(v.reason);
     const next = mergeLines(prev, cur, cur.at);
-    await this.ctx.storage.put(key, next);
+    await this.writeLine(key, next);
     await this.chatLogUpdate(OWNER_THREAD, next);
     console.log(
       JSON.stringify({
@@ -1907,7 +2094,7 @@ export class DebugHub {
         head: head(next.text),
       }),
     );
-    this.tellEdit(
+    await this.tellEdit(
       {
         type: "edited",
         id: prev.id,
@@ -1997,9 +2184,9 @@ export class DebugHub {
       ...(cur.speaker ? { speaker: cur.speaker } : {}),
       edited: { at: cur.at, by: TWO_MIC_BY, count: line.edited?.count ?? 0 },
     };
-    await this.ctx.storage.put(key, next);
+    await this.writeLine(key, next);
     await this.chatLogUpdate(OWNER_THREAD, next);
-    this.tellEdit(
+    await this.tellEdit(
       {
         type: "edited",
         id: line.id,
@@ -2023,32 +2210,15 @@ export class DebugHub {
     const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
     if (page.thread !== OWNER_THREAD) return fail("only the owner's lines are merged");
     if (await this.restoreEcho(id, page.label)) return;
-    const { prefix } = threadKeys(OWNER_THREAD);
-    const kept = [
-      ...(await this.ctx.storage.list<ChatMessage>({ prefix, reverse: true, limit: CHAT_HISTORY })),
-    ];
+    const kept = await this.keptChat(OWNER_THREAD);
     const at = kept.findIndex(([, x]) => x.id === id);
     const line = at < 0 ? undefined : kept[at][1];
     // A passage the lane wrote goes back to its lines first (its first line may hold parts too).
     if (line?.passage) return this.restorePassage(kept, at, page.label);
     if (!line?.parts) return fail(`message ${id} is not a merged line`);
     const lines = splitLine(line).map((x) => ({ ...x, thread: OWNER_THREAD }));
-    const grow = lines.length - 1;
-    const seqOf = (k: string) => Number(k.slice(prefix.length));
-    const seq = seqOf(kept[at][0]);
-    // Newest first: each line moves up by what the split adds, onto a key already moved.
-    for (const [k, x] of kept.slice(0, at)) {
-      await this.ctx.storage.put(msgKey(OWNER_THREAD, seqOf(k) + grow), x);
-      // Accepted nonvisible inputs leave gaps: the old slot may not be
-      // overwritten by the next moved line, so remove it explicitly.
-      await this.ctx.storage.delete(k);
-    }
-    for (const [i, x] of lines.entries())
-      await this.ctx.storage.put(msgKey(OWNER_THREAD, seq + i), x);
-    let top = seq;
-    for (let n = 0; n < grow; n++) top = await this.nextChatSeq(OWNER_THREAD);
-    for (let s = top - CHAT_HISTORY; s > top - CHAT_HISTORY - grow && s > 0; s--)
-      await this.ctx.storage.delete(msgKey(OWNER_THREAD, s));
+    for (const [i, restored] of lines.entries())
+      await this.writeLine(i === 0 ? kept[at][0] : undefined, restored);
     console.log(JSON.stringify({ msg: "debug.unmerge", id, lines: lines.length }));
     await this.chatLog({
       op: "split",
@@ -2056,7 +2226,7 @@ export class DebugHub {
       id,
       lines: lines.map(chatLogLine).filter((l) => l !== null),
     });
-    this.tellEdit(
+    await this.tellEdit(
       {
         type: "edited",
         id,
@@ -2077,11 +2247,7 @@ export class DebugHub {
    */
   private async passageEnd(page: PageAtt, recheck?: RecheckAmend) {
     if (page.thread !== OWNER_THREAD) return;
-    const kept = await this.ctx.storage.list<ChatMessage>({
-      prefix: threadKeys(OWNER_THREAD).prefix,
-      reverse: true,
-      limit: CHAT_HISTORY,
-    });
+    const kept = new Map(await this.keptChat(OWNER_THREAD));
     const latest = [...kept].find(([, x]) => x.from === "owner");
     if (!latest) return;
     const [key, found] = latest;
@@ -2093,7 +2259,7 @@ export class DebugHub {
     if (typeof next === "string")
       console.log(JSON.stringify({ msg: "debug.recheck-refused", id: recheck?.id, reason: next }));
     const line = typeof next === "string" ? found : next;
-    await this.ctx.storage.put(key, { ...line, settled: true } satisfies ChatMessage);
+    await this.writeLine(key, { ...line, settled: true });
     if (line !== found) {
       console.log(
         JSON.stringify({
@@ -2105,7 +2271,7 @@ export class DebugHub {
           heard: found.text.length,
         }),
       );
-      this.tellEdit(
+      await this.tellEdit(
         {
           type: "edited",
           id: line.id,
@@ -2203,14 +2369,23 @@ export class DebugHub {
       label: page.label,
       at: t,
     };
-    await this.ctx.storage.put(key, { ...line, answer } satisfies ChatMessage);
+    const message = { ...line, answer, thread: page.thread };
+    const seq = await this.writeLine(key, message);
     await this.chatLogUpdate(page.thread, { ...line, answer });
     const labels: Record<string, string[]> = {};
     for (const q of (line.ask as Ask).questions)
       labels[q.id] = (choices[q.id] ?? []).map(
         (id) => q.options.find((o) => o.id === id)?.label ?? id,
       );
-    const out: AnsweredEvent = { type: "answered", id: line.id, askId, answer, labels };
+    const out: AnsweredEvent = {
+      type: "answered",
+      seq,
+      message,
+      id: line.id,
+      askId,
+      answer,
+      labels,
+    };
     console.log(
       JSON.stringify({ msg: "debug.answer", thread: page.thread, page: page.label, askId }),
     );
@@ -2252,8 +2427,11 @@ export class DebugHub {
     const state = askState(line, t);
     if (state !== "open") return fail(`ask ${line.ask.askId} is ${state}`);
     const ask: Ask = { ...line.ask, withdrawnAt: t };
-    await this.ctx.storage.put(key, { ...line, ask } satisfies ChatMessage);
+    const message = { ...line, ask, thread: dest.thread };
+    const seq = await this.writeLine(key, message);
     const out: WithdrawnEvent = {
+      seq,
+      message,
       type: "withdrawn",
       id: line.id,
       askId: ask.askId,
@@ -2726,7 +2904,12 @@ export class DebugHub {
     if (!run.length) return;
     if (!page.user) return skip("no-user", { lines: run.length });
     const newest = run.at(-1)![0];
-    const sent = run.map(([, x]) => ({ id: x.id, text: x.text }));
+    const sent = run.map(([, x]) => ({
+      id: x.id,
+      text: x.text,
+      ...(x.stt ? { stt: x.stt } : {}),
+      ...(x.recheck ? { recheck: x.recheck } : {}),
+    }));
     const requestId = `auto:${newest.replace(/[^\w.-]/g, "-")}:${run.length}`.slice(0, 120);
     const t0 = this.now();
     let res: { ok?: boolean; error?: string; verdict?: unknown } | undefined;
@@ -3049,7 +3232,17 @@ export class DebugHub {
     this.sweep();
     // Everyone sees the new page in their list; this one gets its state first.
     send(ws, pageState(att(ws) as PageAtt, this.state(thread)));
-    send(ws, { type: "history", messages: await this.history(thread) });
+    send(
+      ws,
+      await this.replay(
+        thread,
+        url.searchParams.get("afterThread") === thread &&
+          /^\d+$/.test(url.searchParams.get("afterSeq") ?? "") &&
+          Number.isSafeInteger(Number(url.searchParams.get("afterSeq")))
+          ? Number(url.searchParams.get("afterSeq"))
+          : undefined,
+      ),
+    );
     // Who is here (presence.ts): this page gets the list now.
     await this.presenceTo(thread, ws);
     this.broadcast(ws);
@@ -3647,7 +3840,7 @@ export class DebugHub {
     }
     if (page.embed) {
       const em = parsePageMessage(raw);
-      if (!em || (em.type !== "chat" && em.type !== "page")) return;
+      if (!em || (em.type !== "chat" && em.type !== "page" && em.type !== "replay")) return;
     }
     return this.fromPageChecked(ws, page, raw);
   }
@@ -3773,6 +3966,17 @@ export class DebugHub {
     const m = parsePageMessage(raw);
     if (!m) return;
     const t = this.now();
+    if (m.type === "replay")
+      return this.replay(page.thread, m.afterSeq, m.throughSeq).then((range) => send(ws, range));
+    if (m.type === "read") {
+      if (!page.id || page.embed || page.box) return;
+      return this.acknowledgeRead(page.thread, `page:${page.id}`, m.lastReadSeq).then(
+        (lastReadSeq) => {
+          send(ws, { type: "read-ack", lastReadSeq });
+          this.presenceSoon(page.thread);
+        },
+      );
+    }
     if (m.type === "page") {
       // Only this socket's own label; silent: the agent hears it, the chat never shows it.
       const label = boxLabel(m.label, !!page.box);
@@ -3852,6 +4056,7 @@ export class DebugHub {
           // An echo (his other phone, or Li read aloud and heard back): kept aside, not posted.
           if (
             m.source === "stt" &&
+            !m.recheck &&
             (await this.echo({
               id: m.id,
               from: "owner",
@@ -3869,7 +4074,7 @@ export class DebugHub {
           )
             return false;
           // Voice lines only: a typed line never asks the flag, never merges, never waits.
-          const merging = m.source === "stt" && (await this.mergeOn());
+          const merging = m.source === "stt" && !m.recheck && (await this.mergeOn());
           if (
             merging &&
             m.continues &&
@@ -3892,6 +4097,7 @@ export class DebugHub {
           // The same sentence from his other mic, a moment ago: one line, not two.
           if (
             m.source === "stt" &&
+            !m.recheck &&
             (await this.twoMic({
               id: m.id,
               text: m.text,
@@ -3913,6 +4119,9 @@ export class DebugHub {
             ...(m.to ? { to: m.to } : {}),
             ...(m.source ? { source: m.source } : {}),
             ...(m.timing ? { timing: m.timing } : {}),
+            // Deliberate PTT retains both readings: local body is the proof-covered baseline;
+            // a cloud partial preview instead keeps the complete unsigned final as its body.
+            ...(m.recheck ? { recheck: m.recheck } : {}),
             // Which recognizer made the text (SttTag): route and engine, never text.
             ...(m.stt ? { stt: m.stt } : {}),
             ...(m.wake ? { wake: m.wake } : {}),
@@ -4967,8 +5176,32 @@ export class DebugHub {
     const lanes = [
       ...(await this.ctx.storage.list<LaneReg>({ prefix: LANE_REG_PREFIX })).values(),
     ].filter((r) => r.thread === thread);
+    const pageReads = await Promise.all(
+      pages
+        .filter((p) => p.a.id && !p.a.embed && !p.a.box)
+        .map(async ({ a }) => ({
+          a,
+          seq: (await this.ctx.storage.get<number>(this.readKey(thread, `page:${a.id}`))) ?? 0,
+        })),
+    );
+    const tokenReads = new Map(
+      await Promise.all(
+        records.map(
+          async (r) =>
+            [
+              r.tag,
+              (await this.ctx.storage.get<number>(this.readKey(thread, `token:${r.tag}`))) ?? 0,
+            ] as const,
+        ),
+      ),
+    );
     // No one to list: no config read either.
-    if (!records.length && !live.length && !lines.some((m) => m.from === "agent"))
+    if (
+      !pageReads.length &&
+      !records.length &&
+      !live.length &&
+      !lines.some((m) => m.from === "agent")
+    )
       return pages.map(({ ws }) => ({ ws, list: [] }));
     const { readMs, speakerMs } = await this.presenceWindows();
     const next = nextExpiry({ now: t, readMs, speakerMs, records, lines });
@@ -4979,7 +5212,24 @@ export class DebugHub {
         a.embed || a.box ? undefined : (a.user ?? (thread !== OWNER_THREAD ? thread : undefined));
       return {
         ws,
-        list: presentList({ now: t, readMs, speakerMs, live, records, lines, viewer, lanes }),
+        list: [
+          ...presentList({ now: t, readMs, speakerMs, live, records, lines, viewer, lanes }).map(
+            (p) => ({
+              ...p,
+              ...(viewer && p.tok ? { lastReadSeq: tokenReads.get(p.tok) ?? 0 } : {}),
+            }),
+          ),
+          ...(viewer ? pageReads : []).map(({ a: other, seq }) => ({
+            key: `page:${other.id}`,
+            name: other.sender?.name || "",
+            ...(other.sender?.avatars?.[0] ? { avatar: other.sender.avatars[0] } : {}),
+            live: true as const,
+            since: other.at,
+            active: other.at ?? 0,
+            lastReadSeq: seq,
+            ...(other.id === a.id ? { self: true as const } : {}),
+          })),
+        ],
       };
     });
   }

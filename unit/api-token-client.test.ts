@@ -110,6 +110,7 @@ describe("describeToken: a token asks what it may do", () => {
   test("a live token: its name, permissions and expiry", async () => {
     await seed('["study","chat:ask"]', "2099-01-01T00:00:00.000Z");
     expect(await describeToken(db(), TOKEN)).toEqual({
+      id: await sha256Hex(TOKEN),
       name: "my AI",
       scopes: ["study", "chat:ask"],
       expiresAt: "2099-01-01T00:00:00.000Z",

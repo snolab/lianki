@@ -589,6 +589,7 @@ describe("/api/cli-login/token", async () => {
     expect(me.status).toBe(200);
     expect(me.headers.get("cache-control")).toBe("no-store");
     expect(await me.json()).toEqual({
+      id: await sha256Hex(j.token),
       name: "lianki CLI mac",
       scopes: j.scopes,
       expiresAt: j.expiresAt,

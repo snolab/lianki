@@ -24,6 +24,8 @@ import {
   cleanTiming,
   type SttTag,
   cleanStt,
+  type RecheckMark,
+  cleanRecheckMark,
   type SpeakerTag,
   cleanSpeaker,
   type ChatContext,
@@ -302,6 +304,8 @@ export type ControllerMessage =
   | { type: "ungrant"; from: string; to: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
+  | { type: "replay"; afterSeq: number; throughSeq?: number }
+  | { type: "read"; lastReadSeq: number }
   /** A tap on an ask card: which options, per question. The hub stamps the rest. */
   | { type: "answer"; askId: string; choices: Record<string, unknown> }
   /**
@@ -323,6 +327,7 @@ export type PageMessage =
       timing?: VoiceTiming;
       /** A voice line's recognizer (SttTag; dev-only in the UI): route, engine, fallback. */
       stt?: SttTag;
+      recheck?: RecheckMark;
       /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
       wake?: "active" | "passive";
       /**
@@ -615,6 +620,23 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
   if (m.type === "chunk") return parseChunk(m);
   // Only a chunk may be that large.
   if ((raw as string).length > MAX_RAW) return null;
+  if (m.type === "read")
+    return Number.isSafeInteger(m.lastReadSeq) &&
+      (m.lastReadSeq as number) >= 0 &&
+      m.thread === undefined
+      ? { type: "read", lastReadSeq: m.lastReadSeq as number }
+      : null;
+  if (m.type === "replay") {
+    const afterSeq = m.afterSeq as number,
+      throughSeq = m.throughSeq as number | undefined;
+    return Number.isSafeInteger(afterSeq) &&
+      afterSeq >= 0 &&
+      m.thread === undefined &&
+      (throughSeq === undefined || (Number.isSafeInteger(throughSeq) && throughSeq >= afterSeq))
+      ? { type: "replay", afterSeq, ...(throughSeq === undefined ? {} : { throughSeq }) }
+      : null;
+  }
+
   if (m.type === "allow") {
     const pair = str(m.pair, 64);
     if (!pair) return null;
@@ -667,7 +689,9 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
     const stt = m.source === "stt" ? cleanStt(m.stt) : undefined;
-    const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
+    const recheck = m.source === "stt" ? cleanRecheckMark(m.recheck, text, stt) : undefined;
+    const speakerProof =
+      m.source === "stt" && !recheck?.heardPartial ? cleanProofs(m.speakerProof) : undefined;
     const context = cleanContext(m.context);
     const attachments = cleanAttachments(m.attachments);
     const scene = m.source === "stt" ? cleanScene(m.scene) : undefined;
@@ -679,6 +703,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
       ...(stt ? { stt } : {}),
+      ...(recheck ? { recheck } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
       ...(speakerProof ? { speakerProof } : {}),
       ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)

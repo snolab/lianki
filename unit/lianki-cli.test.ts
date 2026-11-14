@@ -957,3 +957,69 @@ test("no command ever printed a token", () => {
   }
   expect(printed.length).toBeGreaterThan(20);
 });
+
+describe("mini-app publishing", () => {
+  test("publishes local inputs once without posting chat", async () => {
+    const dir = tmp();
+    const manifest = join(dir, "manifest.json"),
+      html = join(dir, "app.html");
+    writeFileSync(manifest, JSON.stringify({ slug: "clock", name: "Clock" }));
+    writeFileSync(html, "<!doctype html><p>clock</p>");
+    const h = harness({
+      env,
+      server: { "POST /api/my/mini-apps": () => json({ slug: "clock", url: "/m/clock" }, 201) },
+    });
+    const result = await h.run("app", "publish", "--manifest", manifest, "--html", html, "--json");
+    expect(result.code).toBe(0);
+    expect(envelope(result.out).data.url).toBe("/m/clock");
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0].body).toEqual({
+      manifest: { slug: "clock", name: "Clock" },
+      html: "<!doctype html><p>clock</p>",
+    });
+    writeFileSync(manifest, "[]");
+    expect((await h.run("app", "publish", "--manifest", manifest, "--html", html)).code).toBe(1);
+    expect(h.calls).toHaveLength(1);
+  });
+  test("chat app reference can be sent without separate text", async () => {
+    const h = harness({
+      env,
+      server: { "POST /api/version/chat": () => json({ id: "app-message" }) },
+    });
+    expect((await h.run("chat", "say", "--app", "clock")).code).toBe(0);
+    expect(h.calls.at(-1)?.body).toMatchObject({
+      op: "say",
+      text: "/m/clock",
+      attachments: [{ type: "app", slug: "clock" }],
+    });
+    expect((await h.run("chat", "say", "--app", "../bad")).code).toBe(1);
+  });
+});
+
+test("publish scope refusals carry only a public approval link", async () => {
+  const dir = tmp(),
+    manifest = join(dir, "manifest.json"),
+    html = join(dir, "app.html");
+  writeFileSync(manifest, "{}");
+  writeFileSync(html, "<p>app</p>");
+  const requestUrl = `https://lianki.com/my/tokens/scopes?token=${"b".repeat(64)}&scope=apps%3Apublish`;
+  for (const link of [requestUrl, `https://evil.example/?token=${TOKEN}`]) {
+    const h = harness({
+      env,
+      server: {
+        "POST /api/my/mini-apps": () =>
+          json({ error: "scope", needScope: "apps:publish", requestUrl: link }, 403),
+      },
+    });
+    const result = await h.run("app", "publish", "--manifest", manifest, "--html", html, "--json");
+    expect(result.code).toBe(2);
+    const error = JSON.parse(result.err).error;
+    if (link === requestUrl) {
+      expect(error.needScope).toBe("apps:publish");
+      expect(error.requestUrl).toBe(requestUrl);
+    } else {
+      expect(error.requestUrl).toBeUndefined();
+      expect(result.err).not.toContain(TOKEN);
+    }
+  }
+});

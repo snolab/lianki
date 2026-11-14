@@ -186,6 +186,41 @@ export function localZone(env = process.env) {
 
 const NUMERIC_TZ = /^(GMT|UTC)([+\-−]|$)/;
 const tagCache = new Map();
+/**
+ * Conventional letters for zones a small-ICU runtime (bun on CI) only prints
+ * numerically ("GMT+9" in every English locale): by zone, then by the offset
+ * in minutes, so daylight time keeps its own name. Mirrors lib/time-zone.ts.
+ */
+const TAG_FALLBACK = {
+  "Asia/Tokyo": { 540: "JST" },
+  "Asia/Seoul": { 540: "KST" },
+  "Asia/Shanghai": { 480: "CST" },
+  "Asia/Taipei": { 480: "CST" },
+  "Asia/Hong_Kong": { 480: "HKT" },
+  "Asia/Singapore": { 480: "SGT" },
+  "Asia/Kolkata": { 330: "IST" },
+  "Australia/Sydney": { 600: "AEST", 660: "AEDT" },
+  "Europe/London": { 0: "GMT", 60: "BST" },
+  "Europe/Berlin": { 60: "CET", 120: "CEST" },
+  "Europe/Paris": { 60: "CET", 120: "CEST" },
+  "America/New_York": { [-300]: "EST", [-240]: "EDT" },
+  "America/Chicago": { [-360]: "CST", [-300]: "CDT" },
+  "America/Denver": { [-420]: "MST", [-360]: "MDT" },
+  "America/Los_Angeles": { [-480]: "PST", [-420]: "PDT" },
+};
+/** The offset in minutes a numeric label ("GMT+9", "UTC-3:30", "GMT") stands for. */
+export function numericOffsetMin(label) {
+  const m = /^(?:GMT|UTC)(?:([+\-−])(\d{1,2})(?::?(\d{2}))?)?$/.exec(label);
+  if (!m) return null;
+  if (!m[1]) return 0;
+  const sign = m[1] === "+" ? 1 : -1;
+  return sign * (Number(m[2]) * 60 + Number(m[3] ?? 0));
+}
+/** The table's letters for `tz` at a numeric label, or null. */
+export function tagFallback(tz, numericLabel) {
+  const off = numericOffsetMin(numericLabel);
+  return off === null ? null : (TAG_FALLBACK[tz]?.[off] ?? null);
+}
 /** A short label for `tz` at `at` ("JST", "EST", "CET", else "UTC+8"), as lib/time-zone.ts zoneAbbr. */
 export function zoneTag(tz, at) {
   const when = new Date(at);
@@ -214,6 +249,8 @@ export function zoneTag(tz, at) {
         break search;
       }
     }
+  // No English locale names it here: the conventional letters, when known.
+  if (NUMERIC_TZ.test(out)) out = tagFallback(tz, first) ?? out;
   tagCache.set(key, out);
   return out;
 }

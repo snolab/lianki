@@ -318,6 +318,16 @@ export const CONFIG = {
   }),
   // Whisper re-reads a whole continuous-speech run (packages/debug-chat/src/whisper-recheck.ts;
   // flag stt.whisper-recheck; docs/dev-debug-widget.md, "Whisper re-listens to the whole run").
+  "voice.pttMaxCaptureMs": int({
+    default: 60_000,
+    min: 1_000,
+    max: 600_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "按住说话一次保留的音频上限（毫秒）。达到上限明确停止本次录音并保留已识别文字，不静默截断后当作完整录音发送；限制浏览器内存占用。",
+  }),
   "stt.recheckMinSec": {
     default: 1.5 as number,
     schema: z.number().min(0).max(60),
@@ -728,6 +738,26 @@ export const CONFIG = {
     money: true,
     description: "全站每天最多发起几次聊天轻量整理；是独立于学习伙伴回复的额外支出上限。",
   }),
+  "chat.readReceiptThrottleMs": int({
+    default: 2_000,
+    min: 2_000,
+    max: 60_000,
+    unit: "ms",
+    group: "chat",
+    audience: "public",
+    description:
+      "聊天已读游标的最短上报和持久化间隔（毫秒），至少两秒。只有聊天内容实际出现在可见页面的可见区时才推进；没有新读到的行就不写。",
+  }),
+  "chat.replayBatch": int({
+    default: 100,
+    min: 1,
+    max: 500,
+    unit: "events",
+    group: "chat",
+    audience: "public",
+    description:
+      "聊天按线程序号补拉时，一次最多覆盖多少个序号；大缺口分批恢复并在原位置合并，不刷新整页。",
+  }),
   "chat.presenceReadMin": int({
     default: 5,
     min: 1,
@@ -1061,6 +1091,33 @@ export const CONFIG = {
     audience: "server",
     description:
       "小应用的 lianki.ui.card：在聊天里发出选择卡片后，最多等你点多久（毫秒）；超时应用收到「没有回答」。",
+  }),
+  "miniApps.chatHeightPx": int({
+    default: 360,
+    min: 120,
+    max: 1200,
+    unit: "px",
+    group: "miniApps",
+    audience: "public",
+    description: "聊天内嵌迷你应用面板的初始高度，实际大小会夹紧到当前可视窗口。",
+  }),
+  "miniApps.chatMinHeightPx": int({
+    default: 160,
+    min: 80,
+    max: 600,
+    unit: "px",
+    group: "miniApps",
+    audience: "public",
+    description: "聊天内嵌迷你应用面板的最小高度；小屏幕时仍以可视窗口为准。",
+  }),
+  "miniApps.chatResizeStepPx": int({
+    default: 24,
+    min: 4,
+    max: 120,
+    unit: "px",
+    group: "miniApps",
+    audience: "public",
+    description: "键盘方向键每次调整聊天迷你应用面板高度的像素数。",
   }),
   "miniApps.origin": {
     default: "" as string,

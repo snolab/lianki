@@ -309,7 +309,17 @@ describe("DebugHub: an embedded page is chat-only", () => {
     const owner = await ownerPage();
     await hub.fetch(embedReq());
     const embed = sockets.at(-1)!;
-    expect(embed.last("history")).toEqual({ type: "history", messages: [] });
+    expect(embed.last("history")).toEqual({
+      type: "history",
+      thread: "owner",
+      messages: [],
+      removed: [],
+      afterSeq: 0,
+      throughSeq: 0,
+      headSeq: 0,
+      prunedThroughSeq: 0,
+      skipped: [],
+    });
     await msg(embed, { type: "chat", id: "e1", text: "from github" });
     const line = owner.last("chat") as { message: { text: string; thread: string } };
     expect(line.message.text).toBe("from github");

@@ -9,6 +9,7 @@ import { migrateLegacyOwnerDraft } from "../../packages/debug-chat/src/legacy-ch
 import { chatUi } from "../../packages/debug-chat/src/ui-store";
 import { evalTrustStrings } from "../../packages/debug-chat/src/eval-trust-strings";
 
+import type { HostView } from "@/lib/mini-apps/handlers";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -47,6 +48,8 @@ import {
   cleanAttachments,
   type AttachmentRef,
   cleanTiming,
+  type RecheckMark,
+  cleanRecheckMark,
 } from "@lianki/debug-chat/wire";
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
@@ -89,6 +92,11 @@ import { useLiveView, widgetSource } from "@/lib/live-view/client";
 import { inboxFiles, linkInboxLine } from "@/lib/inbox/client";
 import { pageBuildId } from "@/lib/build-id";
 import { reconcileHistory } from "@/lib/chat-cache";
+import {
+  createChatSeqRecovery,
+  type ReplayEnvelope,
+  type ReplayItem,
+} from "@/lib/chat-seq-recovery";
 import { useChatCache } from "@/lib/use-chat-cache";
 import { loadChatHost } from "@/lib/chat-host-loader";
 
@@ -110,6 +118,16 @@ const backToCloseChat = (onBack: () => void) => openBackToClose(window, onBack);
  * chat's chunk is prefetched in idle time for a viewer who will see it
  * (DebugEvalLazy.tsx), through the same loadChatHost.
  */
+const MiniAppHost = lazy(() =>
+  import("@/app/(app)/m/[slug]/MiniAppHost").then((m) => ({ default: m.MiniAppHost })),
+);
+const renderMiniApp = (
+  view: import("../../packages/debug-chat/src/MiniAppCards").MiniAppEmbedView,
+) => (
+  <Suspense fallback={null}>
+    <MiniAppHost view={view as HostView} embedded />
+  </Suspense>
+);
 const DebugChatHost = lazy(() => loadChatHost().then((m) => ({ default: m.DebugChatHost })));
 const DebugPairModal = lazy(() =>
   import("@lianki/debug-chat/DebugPairModal").then((m) => ({ default: m.DebugPairModal })),
@@ -187,6 +205,7 @@ export function DebugEval({
   polishReadback: readback,
   foldOthers = true,
   whisperRecheck,
+  pttMaxCaptureMs,
   box = null,
   account = null,
   cacheLines = 0,
@@ -198,6 +217,8 @@ export function DebugEval({
    * the run whole, and the line takes it before its polish (whisper-recheck.ts). None: off.
    */
   whisperRecheck?: RecheckConf;
+  /** Config voice.pttMaxCaptureMs: bounded held-audio memory. */
+  pttMaxCaptureMs?: number;
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
   talkOver?: boolean;
   /**
@@ -295,6 +316,51 @@ export function DebugEval({
       ? `box:${box.provider}:${boxAccount.user.email}`
       : null
     : account;
+  const socketScope = useRef<string | null>(null);
+  const [recoveryThread, setRecoveryThread] = useState<{
+    scope: string | null;
+    thread?: string;
+    epoch: number;
+  }>({
+    scope: deliveryScope,
+    epoch: 0,
+  });
+  const recovered = useMemo(
+    () =>
+      createChatSeqRecovery({
+        batch: () => publicCfg("chat.replayBatch"),
+        request: (range) => {
+          const sock = sockRef.current;
+          if (socketScope.current !== deliveryScope || !sock || sock.readyState !== WebSocket.OPEN)
+            return false;
+          sock.send(JSON.stringify(range));
+          return true;
+        },
+      }),
+    [deliveryScope],
+  );
+  const readReceipt = useMemo(
+    () => ({ thread: undefined as string | undefined, seq: 0, sent: 0 }),
+    [deliveryScope],
+  );
+  const flushReadReceipt = () => {
+    const sock = sockRef.current;
+    if (
+      !readReceipt.thread ||
+      readReceipt.thread !== recovered.thread() ||
+      readReceipt.seq <= readReceipt.sent ||
+      socketScope.current !== deliveryScope ||
+      !sock ||
+      sock.readyState !== WebSocket.OPEN
+    )
+      return;
+    try {
+      sock.send(JSON.stringify({ type: "read", lastReadSeq: readReceipt.seq }));
+      readReceipt.sent = readReceipt.seq;
+    } catch {}
+  };
+  const flushReadRef = useRef(flushReadReceipt);
+  flushReadRef.current = flushReadReceipt;
   const [outgoingState, setOutgoingState] = useState<{
     scope: string | null;
     items: readonly OutgoingChat[];
@@ -488,6 +554,7 @@ export function DebugEval({
     let idle: ReturnType<typeof setTimeout> | undefined;
     let hideToast: ReturnType<typeof setTimeout> | undefined;
     const opened = new WeakSet<WebSocket>();
+    const reconciled = new WeakSet<WebSocket>();
     // Page errors (docs/dev-debug-widget.md, "Page errors"): hooked while the
     // socket is wanted, queued until the hub says this is the owner's page,
     // dropped for good on a friend's.
@@ -646,12 +713,18 @@ export function DebugEval({
       try {
         clipsQ = clipsConnectQuery();
       } catch {}
+      const resumeSeq = recovered.cursor();
+      const resumeQuery =
+        resumeSeq !== undefined
+          ? `&afterSeq=${resumeSeq}${recovered.thread() ? `&afterThread=${encodeURIComponent(recovered.thread()!)}` : ""}`
+          : "";
       const sock = new WebSocket(
-        `${base}?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}`,
+        `${base}?label=${encodeURIComponent(label)}${tab ? `&tab=${tab}` : ""}${clipsQ}&frame=${frameContext()}${resumeQuery}`,
         protocols,
       );
       ws = sock;
       sockRef.current = sock;
+      socketScope.current = deliveryScope;
       setPhase("opening");
       sock.onopen = () => {
         opened.add(sock);
@@ -669,10 +742,13 @@ export function DebugEval({
         hubClock().reset();
         clockPing(sock);
       };
+      let catchupAt = agentAtRef.current;
+      const catchupAgents = new Map<string, ChatMessage>();
       sock.onmessage = (e) => {
         let msg: {
           type?: unknown;
           id?: unknown;
+          seq?: unknown;
           to?: unknown;
           code?: unknown;
           messages?: unknown;
@@ -689,7 +765,7 @@ export function DebugEval({
         } catch {
           return;
         }
-        if (disposed) return;
+        if (disposed || ws !== sock) return;
         if (msg.type === "chat-ack" && typeof msg.id === "string") {
           outbox.acknowledge([msg.id], (msg as { seq?: number }).seq);
           return;
@@ -813,46 +889,148 @@ export function DebugEval({
           return;
         }
         if (msg.type === "history" && Array.isArray(msg.messages)) {
-          // A `【lane】` prefix becomes the line's lane (voices.ts): its mark, tag and voice.
-          const list = trimHistory((msg.messages as ChatMessage[]).map(withLane));
-          // After a reconnect, a reply sent while the socket was down comes only
-          // in the history: read the newest one past what this page saw (never
-          // old history; speak-rules.ts missedReply).
-          const missed = missedReply(list, agentAtRef.current, spokenIds.current);
-          for (const id of missed.gap) spokenIds.current.add(id);
+          const removed = (msg as { removed?: { id: string; seq: number }[] }).removed;
+          const items: ReplayItem[] = [
+            ...(msg.messages as ChatMessage[]),
+            ...(Array.isArray(removed)
+              ? removed
+                  .filter(
+                    (item) =>
+                      item &&
+                      typeof item.id === "string" &&
+                      Number.isSafeInteger(item.seq) &&
+                      item.seq > 0,
+                  )
+                  .map((item) => ({ ...item, removed: true as const }))
+              : []),
+          ];
+          const list = items
+            .filter(
+              (item): item is ChatMessage =>
+                !("removed" in item) &&
+                typeof item.text === "string" &&
+                typeof item.id === "string",
+            )
+            .map(withLane);
+          const coverage = recovered.history(msg as unknown as Partial<ReplayEnvelope>);
+          const thread = recovered.thread();
+          if (coverage.valid && thread) {
+            setRecoveryThread((current) =>
+              current.scope === deliveryScope && current.thread === thread
+                ? current
+                : {
+                    scope: deliveryScope,
+                    thread,
+                    epoch:
+                      current.scope === deliveryScope && current.thread ? current.epoch + 1 : 0,
+                  },
+            );
+            if (readReceipt.thread !== thread) {
+              readReceipt.thread = thread;
+              readReceipt.seq = 0;
+              readReceipt.sent = 0;
+            }
+          }
           for (const m of list)
-            if (m.from === "agent") agentAtRef.current = Math.max(agentAtRef.current, m.at);
-          // The hub wins over the device's copy (lib/chat-cache.ts).
-          setMessages((shown) => reconcileHistory(shown, list));
+            if (m.from === "agent") {
+              catchupAgents.set(m.id, m);
+              agentAtRef.current = Math.max(agentAtRef.current, m.at);
+            }
+          const envelopeHead = (msg as { headSeq?: number }).headSeq;
+          const caughtUp =
+            !coverage.valid ||
+            (typeof envelopeHead === "number" && (recovered.cursor() ?? 0) >= envelopeHead);
+          const missed = caughtUp
+            ? missedReply([...catchupAgents.values()], catchupAt, spokenIds.current)
+            : null;
+          if (missed) {
+            for (const id of missed.gap) spokenIds.current.add(id);
+            catchupAgents.clear();
+            catchupAt = agentAtRef.current;
+          }
+          setMessages((shown) =>
+            coverage.valid
+              ? trimHistory(
+                  recovered.merge(
+                    shown,
+                    items.map((item) => ("removed" in item ? item : withLane(item))),
+                    coverage.initial,
+                  ),
+                )
+              : reconcileHistory(shown, list),
+          );
           setFromHub(true);
-          outbox.ready(acknowledgedChatIds(list));
+          if (!reconciled.has(sock)) {
+            reconciled.add(sock);
+            outbox.ready(acknowledgedChatIds(list));
+          } else outbox.acknowledge(acknowledgedChatIds(list));
+          flushReadRef.current(); // Only a receipt previously produced by an actual viewport callback.
           reBeat();
-          const said = missed.line && spokenOf(missed.line);
-          if (missed.line && said && (tabsRef.current?.isSpeaker() ?? true))
+          const said = missed?.line && spokenOf(missed.line);
+          if (missed?.line && said && (tabsRef.current?.isSpeaker() ?? true))
             voice().reply(said, missed.line);
           return;
         }
         // An ask answered by a tap (on this page or another): the card shows it.
         if (msg.type === "answered" && typeof msg.id === "string" && msg.answer) {
           const answer = msg.answer as ChatMessage["answer"];
-          setMessages((list) => list.map((x) => (x.id === msg.id ? { ...x, answer } : x)));
+          const snapshot = msg.message as ChatMessage | undefined;
+          if (snapshot && snapshot.id === msg.id && typeof snapshot.text === "string") {
+            recovered.merge(messagesRef.current, [withLane(snapshot)]);
+            setMessages((list) => trimHistory(recovered.merge(list, [withLane(snapshot)])));
+            recovered.observe(snapshot.seq);
+            return;
+          }
+          recovered.notice(msg.seq);
+          setMessages((list) =>
+            recovered.merge(
+              list,
+              list
+                .filter((x) => x.id === msg.id)
+                .map((x) => ({
+                  ...x,
+                  answer,
+                })),
+            ),
+          );
           return;
         }
         // The agent withdrew an open ask: the card greys out and is never read aloud.
         if (msg.type === "withdrawn" && typeof msg.id === "string") {
           const e = msg as unknown as WithdrawnEvent;
           if (typeof e.askId !== "string" || typeof e.withdrawnAt !== "number") return;
+          const snapshot = e.message;
+          if (snapshot && snapshot.id === e.id && typeof snapshot.text === "string") {
+            const known = Math.max(
+              recovered.version(e.id) ?? 0,
+              messagesRef.current.find((m) => m.id === e.id)?.seq ?? 0,
+            );
+            recovered.merge(messagesRef.current, [withLane(snapshot)]);
+            setMessages((list) => trimHistory(recovered.merge(list, [withLane(snapshot)])));
+            recovered.observe(snapshot.seq);
+            if ((snapshot.seq ?? 0) >= known) markWithdrawn(e.id);
+            return;
+          }
           markWithdrawn(e.id);
-          setMessages((list) => list.map((m) => applyWithdrawn(m, e)));
+          recovered.notice(msg.seq);
+          setMessages((list) =>
+            recovered.merge(
+              list,
+              list
+                .filter((m) => m.id === e.id)
+                .map((m) => ({
+                  ...applyWithdrawn(m, { ...e, seq: undefined }),
+                })),
+            ),
+          );
           return;
         }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
           const m = withLane(msg.message as ChatMessage);
           if (typeof m.text !== "string" || typeof m.id !== "string") return;
           outbox.acknowledge(acknowledgedChatIds([m]));
-          setMessages((list) =>
-            list.some((x) => x.id === m.id) ? list : trimHistory([...list, m]),
-          );
+          recovered.observe(m.seq);
+          setMessages((list) => trimHistory(recovered.merge(list, [m])));
           // Live replies only: history loaded on connect is never read out.
           if (m.from === "agent") {
             agentAtRef.current = Math.max(agentAtRef.current, Number(m.at) || 0);
@@ -882,6 +1060,38 @@ export function DebugEval({
           // The agent polished a voice line: it changes in place, and is never read aloud again.
           const e = msg as unknown as EditedEvent;
           if (typeof e.id !== "string" || typeof e.text !== "string") return;
+          // Acceptance of a merged input is independent of this row's later display versions.
+          if (e.merged) outbox.acknowledge([e.merged.id]);
+          const snapshot = e.message;
+          const previous = messagesRef.current.find((m) => m.id === e.id);
+          const known = Math.max(recovered.version(e.id) ?? 0, previous?.seq ?? 0);
+          if (typeof e.seq === "number" && e.seq < known) return;
+          const duplicate = typeof e.seq === "number" && e.seq === known;
+          if (snapshot && snapshot.id === e.id && typeof snapshot.text === "string") {
+            recovered.merge(messagesRef.current, [withLane(snapshot)]);
+            setMessages((list) => {
+              const observed = [withLane(snapshot), ...(e.restored ?? []), ...(e.split ?? [])];
+              const full = new Map(observed.map((line) => [line.id, line]));
+              const before = new Map(list.map((line) => [line.id, line]));
+              const patched = applyEditTo(list, e).map((line) => {
+                const shown = before.get(line.id);
+                const version = full.get(line.id)?.seq ?? e.seq;
+                return typeof shown?.seq === "number" &&
+                  typeof version === "number" &&
+                  shown.seq > version
+                  ? shown
+                  : line;
+              });
+              return trimHistory(recovered.merge(patched, observed));
+            });
+            recovered.observe(snapshot.seq);
+            for (const line of [...(e.restored ?? []), ...(e.split ?? [])])
+              recovered.observe(line.seq);
+          } else {
+            recovered.notice(e.seq);
+            setMessages((list) => trimHistory(applyEditTo(list, { ...e, seq: undefined })));
+          }
+          if (duplicate) return;
           // His own voice line, raw → polished: read back once in his cloned voice (flag
           // voice.polish-readback), by the tab that reads, through Li's one queue.
           polishReadback(
@@ -894,9 +1104,7 @@ export function DebugEval({
               ...syncStart(sock, msg),
             },
           );
-          setMessages((list) => trimHistory(applyEditTo(list, e)));
           // A line that amended another has no echo of its own: this is its answer.
-          if (e.merged) outbox.acknowledge([e.merged.id]);
           if (e.merged) voiceLatency().heard({ id: e.merged.id, from: "owner", at: e.edited.at });
           return;
         }
@@ -918,6 +1126,8 @@ export function DebugEval({
       sock.onclose = (e) => {
         if (ws !== sock) return;
         outbox.disconnect();
+        recovered.disconnect();
+        readReceipt.sent = 0;
         ws = null;
         hubOwnerRef.current = false;
         setPhase("closed");
@@ -934,6 +1144,9 @@ export function DebugEval({
     };
     const disconnect = () => {
       outbox.disconnect();
+      recovered.disconnect();
+      readReceipt.sent = 0;
+      socketScope.current = null;
       clearTimeout(idle);
       reporter.detach();
       if (!chatOn()) {
@@ -1027,7 +1240,7 @@ export function DebugEval({
       disconnect();
       unhookErrors();
     };
-  }, [outbox]);
+  }, [outbox, recovered, readReceipt]);
 
   // The socket lives in the root layout, so it outlives client-side
   // navigation: tell the hub the new path (silently — the agent's side only),
@@ -1096,6 +1309,7 @@ export function DebugEval({
       timing?: VoiceTiming;
       stt?: ChatMessage["stt"];
       speakerProof?: string[];
+      recheck?: RecheckMark;
       context?: ChatContext;
       attachments?: AttachmentRef[];
       continues?: string;
@@ -1104,8 +1318,13 @@ export function DebugEval({
     try {
       // A voice line's timestamps ride along (an older hub drops them).
       const timing = opts?.source === "stt" ? cleanTiming(opts.timing) : undefined;
+      const recheck =
+        opts?.source === "stt" ? cleanRecheckMark(opts.recheck, text, opts.stt) : undefined;
       // The Mac's signed speaker attestations (lib/speaker-proof.ts); the hub verifies them.
-      const speakerProof = opts?.source === "stt" ? opts.speakerProof?.slice(0, 8) : undefined;
+      const speakerProof =
+        opts?.source === "stt" && !recheck?.heardPartial
+          ? opts.speakerProof?.slice(0, 8)
+          : undefined;
       // The mic's wake-word mode rides along, so the agent sees it (docs/wake-word.md).
       const mic = (
         globalThis as {
@@ -1127,6 +1346,7 @@ export function DebugEval({
         ...(opts?.source === "stt" ? { source: "stt" } : {}),
         ...(opts?.source === "stt" && opts.continues ? { continues: opts.continues } : {}),
         ...(timing ? { timing } : {}),
+        ...(recheck ? { recheck } : {}),
         ...(opts?.source === "stt" && opts.stt ? { stt: opts.stt } : {}),
         ...(wake === "active" || wake === "passive" ? { wake } : {}),
         ...(speakerProof?.length ? { speakerProof } : {}),
@@ -1229,8 +1449,29 @@ export function DebugEval({
       {chat && (
         <Suspense fallback={null}>
           <DebugChatHost
-            key={`${deliveryScope ?? "guest"}:${legacyRestore}`}
+            key={`${deliveryScope ?? "guest"}:${legacyRestore}:${recoveryThread.scope === deliveryScope ? recoveryThread.epoch : 0}`}
             draftScope={deliveryScope ?? "guest"}
+            viewerOwnThread={
+              !!deliveryScope &&
+              live &&
+              ((owner && confirmedOwnerScope === deliveryScope && !isFriend) || friend === "open")
+            }
+            readReceiptThrottleMs={publicCfg("chat.readReceiptThrottleMs")}
+            onReadSeq={(seq) => {
+              const thread =
+                recoveryThread.scope === deliveryScope ? recoveryThread.thread : undefined;
+              if (
+                !thread ||
+                thread !== recovered.thread() ||
+                socketScope.current !== deliveryScope ||
+                !Number.isSafeInteger(seq) ||
+                seq <= 0
+              )
+                return;
+              readReceipt.thread = thread;
+              readReceipt.seq = Math.max(readReceipt.seq, seq);
+              flushReadReceipt();
+            }}
             outgoing={outgoing.map((item) =>
               item.rejected ? { ...item, rejected: chatExtra().liveNotSent } : item,
             )}
@@ -1325,6 +1566,18 @@ export function DebugEval({
             treeRepo="snolab/lianki"
             // Every signed-in account's own inbox; guests keep coming-soon file actions.
             files={account ? accountFiles : undefined}
+            miniApps={
+              account && !box
+                ? {
+                    sizing: {
+                      height: publicCfg("miniApps.chatHeightPx"),
+                      minHeight: publicCfg("miniApps.chatMinHeightPx"),
+                      step: publicCfg("miniApps.chatResizeStepPx"),
+                    },
+                    renderHost: renderMiniApp,
+                  }
+                : undefined
+            }
             // The account's chat history (docs/chat-history.md): every signed-in user's own.
             onHistory={() => router.push("/chat/history")}
             agentAvatar={AGENT_AVATAR}
@@ -1332,6 +1585,7 @@ export function DebugEval({
             fullScreen={fullScreen}
             foldOthers={foldOthers}
             whisperRecheck={whisperRecheck}
+            pttMaxCaptureMs={pttMaxCaptureMs}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
             backToClose={backToCloseChat}
           />

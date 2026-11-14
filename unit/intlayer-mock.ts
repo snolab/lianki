@@ -1,4 +1,5 @@
 import { mock } from "bun:test";
+import apiTokens from "@/app/components/api-tokens.content";
 import sealSwitch from "@/app/components/seal-switch.content";
 import preferredLangs from "@/app/components/preferred-langs.content";
 
@@ -9,6 +10,7 @@ import preferredLangs from "@/app/components/preferred-langs.content";
  */
 type Leaf = { nodeType: string; translation: Record<string, string> };
 const DICTS: Record<string, { content: Record<string, Leaf> }> = {
+  "api-tokens": apiTokens as never,
   "seal-switch": sealSwitch as never,
   "preferred-langs": preferredLangs as never,
 };

@@ -579,13 +579,10 @@ describe("the start and end cues on VAD events", () => {
 
 describe("the wiring", () => {
   const chat = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
-  it("the send cue has one call, in submit, for spoken lines only (and push to talk's own send)", () => {
-    // Two: submit's, and push to talk's line, which is sent without the draft (ptt.ts).
-    expect(chat.match(/pageCues\(\)\.send\(\)/g)?.length).toBe(2);
-    const ptt = chat.lastIndexOf("pageCues().send()");
-    expect(chat.slice(chat.lastIndexOf("release: (at) =>", ptt), ptt)).toContain(
-      "Sent at once: push to talk has no draft step.",
-    );
+  it("spoken lines and push to talk share one send cue in submit", () => {
+    // PTT uses normal durable submission, so it shares the one accepted-send cue.
+    expect(chat.match(/pageCues\(\)\.send\(\)/g)?.length).toBe(1);
+    expect(chat).toContain("pttSendRef.current = (line) => submit(false, line);");
     const i = chat.indexOf("pageCues().send()");
     const before = chat.slice(chat.lastIndexOf("const submit = ", i), i);
     expect(before).toContain("if (!source) learnSttHint(text);");

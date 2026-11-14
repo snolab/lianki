@@ -173,18 +173,36 @@ MicButton's `pttRecorder`):
 
 - **A tap** toggles always-on listening, the VAD as ever.
 - **A long press** (`PTT_HOLD_MS`, the platform's long-press) is ONE voice
-  line. Recording starts at the pointerdown itself, which is the line's
-  `t_speechStart`. While held, no VAD or endpoint cuts it (the always-on
-  capture holds: `setPttHolding`), so soft or whispered speech is kept whole.
-  The held state is a pulsing seal-red ring with the seconds held, plus a
-  light haptic where `navigator.vibrate` exists.
-- **Release** keeps `PTT_TAIL_MS` (1 s) more, then sends the clip through
-  the same STT route once and **sends the line** (source `stt`, no draft). A
-  clip past the route's size limit (`PTT_MAX_WAV_BYTES` = `STT_MAX_BYTES`) is
-  sent in pieces, transcribed in order, and still makes one line.
-- **Pre-roll**: while the always-on mic is open, its last `PTT_PREROLL_MS`
-  (2 s) sit in a ring in memory (`createRing`) and go in front of the clip.
-  The ring is never stored or uploaded unless that clip is sent.
+  line. The pointerdown and pointerup timestamps delimit the held recording;
+  the ordinary VAD stays held so it cannot send duplicate fragments. The
+  independent PTT recognizer still receives audio and updates the same dashed
+  live bubble. The held state also shows the seal-red ring and elapsed time.
+- **Release** ends the clip at pointerup, without adding the old pre-roll or
+  release tail. The configured speech server provides streaming recognition;
+  if unavailable, cloud partial requests use the existing cadence with at
+  most one in flight. A whole-run recheck reuses the existing local Whisper
+  request and its configured time-window limits; cloud transcription uses
+  the existing supported route when that recheck is unavailable. Long clips
+  remain bounded by the existing per-request segmentation rules. A failed
+  optional second recognition leaves an already complete realtime transcript
+  intact; a cloud-only failure keeps the observed words as a recoverable draft.
+- **Two readings** stay with the line: the realtime baseline and the recorded
+  whole-run result. The ordinary polishing layer receives both readings and
+  reconciles them; speaker proofs continue to refer to the original signed
+  words. Neither the recheck nor polishing invents a verification of changed
+  text. Deliberate dual-reading PTT inputs stay as standalone messages: they
+  bypass automatic cross-mic echo suppression and continuous-speech merging
+  so both original readings stay attached to the explicit held input. Cloud
+  provisional previews carry `heardPartial`; the displayed body remains the full
+  result even when polishing is unavailable. Candidate selections and attachments use normal durable submission,
+  so a failed local enqueue does not consume them or report success.
+- **Capture boundaries** describe actual captured samples. Opening the mic
+  after permission or resuming its audio context can delay acquisition; audio
+  from before acquisition cannot be reconstructed. Cancel/account changes
+  stop the capture and ignore late recognition results. The server supplies
+  `voice.pttMaxCaptureMs` (default 60 seconds) through the existing boot props;
+  reaching it preserves recognized text and reports the recording limit instead
+  of silently sending a truncated clip.
 - **Cancel**: held, sliding `PTT_CANCEL_PX` away arms a cancel (the ring
   dashes, "✕"); letting go there drops the clip, and coming back disarms it.
 - **History**: it replaces the old drag-the-mic-to-scroll-history gesture.
@@ -194,7 +212,7 @@ MicButton's `pttRecorder`):
 The named defaults are ready for the config store. Tests:
 `unit/ptt.test.ts` (the gesture, the ring, the pieces) and
 `scripts/dev/debug-chat-ptt-qa.mjs` (CDP touch, 390×844: a hold sends one
-line with one STT call, a slide-away cancels, a tap sends nothing).
+line, progressive requests never send extra messages, a slide-away cancels, a tap sends nothing).
 
 ## Where the speech comes from
 

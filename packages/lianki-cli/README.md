@@ -109,6 +109,8 @@ lianki chat say --supersede "actually: skip that, read this first"
 lianki chat say --interject "heads-up: CI is red"
 lianki chat ask --q "Review now?" --opt Yes --opt Later --recommend 1 --wait
 lianki chat read --limit 20
+lianki chat read --after-seq 120 --through-seq 160 --json # recover a covered range
+lianki chat seen --seq 160       # explicitly acknowledge messages actually consumed
 lianki chat listen --json        # one JSON line an event, until Ctrl-C
 lianki chat avatar me.svg        # your picture in the chat (plain SVG, ≤ 4 KB)
 lianki chat avatar --clear       # back to the generated one
@@ -482,3 +484,34 @@ token owners still cannot read or write a different person's thread.
 ## Licence
 
 MIT
+
+Chat read responses include sequence coverage when supported by the hub. Reading
+or listening never marks messages as read automatically: call `chat seen --seq N`
+(or MCP `lianki_chat_seen`) only after consuming them. A read watermark does not
+prove that every earlier message was inspected. See [recovery and read receipts](../../docs/chat-seq-receipts.md).
+
+### Publish a mini-app
+
+Prepare a JSON manifest and an HTML file, then publish to your account:
+
+```sh
+lianki app publish --manifest ./manifest.json --html ./app.html --json
+# Optional, separate chat post:
+lianki chat say --app my-clock "Here is the clock"
+```
+
+A minimal manifest is `{"slug":"my-clock","name":"My clock"}`. Optional
+fields are `icon`, `version`, `style` (`lianki` or `none`), and `permissions`.
+The server validates the manifest, configured HTML size, account quota and
+permissions. Local reads have memory safety bounds of 64KiB for the manifest
+and 16MiB for HTML. Publishing the same slug replaces that account's app;
+the result includes its `/m/my-clock` URL. Publishing does not post to chat.
+
+The token must explicitly hold **both `apps:publish` and `chat:write`**;
+default chat tokens do not gain publishing permission. The local and remote
+MCP servers offer `lianki_app_publish` with `{manifest,html}` under the same
+checks. Missing permissions return `needScope` and a browser `requestUrl` for
+one explicit approval at a time; a tool call never grants permission.
+`lianki_chat_say` also accepts up to four `{type:"app",slug:"my-clock"}`
+entries in `attachments`. `chat say --app <slug>` can be repeated up to four
+times; omitting text uses the app links as the message.
