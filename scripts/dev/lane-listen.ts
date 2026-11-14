@@ -91,6 +91,8 @@ async function deliver(o: Opts, body: string): Promise<number> {
 
 /** How often a busy agent is looked at while lines wait for it. */
 export const BUSY_RECHECK_MS = 5_000;
+/** How long the busy check may take before the line goes out anyway. */
+export const BUSY_CHECK_MS = 3_000;
 
 /**
  * Is the agent the lines go to in the middle of a turn? `ay ls --json` status
@@ -101,9 +103,17 @@ export const BUSY_RECHECK_MS = 5_000;
 export async function targetBusy(o: Opts): Promise<boolean> {
   if (o.dryRun) return false;
   try {
-    const p = Bun.spawn(["ay", "ls", "--json"], { stdout: "pipe", stderr: "ignore" });
-    const txt = await new Response(p.stdout).text();
-    await p.exited;
+    // This machine only, and never longer than BUSY_CHECK_MS: a slow or stuck
+    // status query must not hold his lines (2026-11-14 20:0x: it did).
+    const p = Bun.spawn(["ay", "ls", "--json", "--local"], { stdout: "pipe", stderr: "ignore" });
+    const txt = await Promise.race([
+      new Response(p.stdout).text(),
+      new Promise<string>((r) => setTimeout(() => r(""), BUSY_CHECK_MS)),
+    ]);
+    if (!txt) {
+      p.kill();
+      return false;
+    }
     const v = JSON.parse(txt) as unknown;
     const list = (Array.isArray(v) ? v : (v as { local?: unknown[] }).local) ?? [];
     const me = (list as { pid?: number; cwd?: string; status?: string }[]).find((e) =>
