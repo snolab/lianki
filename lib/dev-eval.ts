@@ -304,6 +304,8 @@ export type ControllerMessage =
   | { type: "ungrant"; from: string; to: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
+  | { type: "replay"; afterSeq: number; throughSeq?: number }
+  | { type: "read"; lastReadSeq: number }
   /** A tap on an ask card: which options, per question. The hub stamps the rest. */
   | { type: "answer"; askId: string; choices: Record<string, unknown> }
   /**
@@ -618,6 +620,23 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
   if (m.type === "chunk") return parseChunk(m);
   // Only a chunk may be that large.
   if ((raw as string).length > MAX_RAW) return null;
+  if (m.type === "read")
+    return Number.isSafeInteger(m.lastReadSeq) &&
+      (m.lastReadSeq as number) >= 0 &&
+      m.thread === undefined
+      ? { type: "read", lastReadSeq: m.lastReadSeq as number }
+      : null;
+  if (m.type === "replay") {
+    const afterSeq = m.afterSeq as number,
+      throughSeq = m.throughSeq as number | undefined;
+    return Number.isSafeInteger(afterSeq) &&
+      afterSeq >= 0 &&
+      m.thread === undefined &&
+      (throughSeq === undefined || (Number.isSafeInteger(throughSeq) && throughSeq >= afterSeq))
+      ? { type: "replay", afterSeq, ...(throughSeq === undefined ? {} : { throughSeq }) }
+      : null;
+  }
+
   if (m.type === "allow") {
     const pair = str(m.pair, 64);
     if (!pair) return null;

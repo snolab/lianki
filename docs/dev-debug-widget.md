@@ -60,6 +60,12 @@ its own repo as is. Lianki passes what it needs as `DebugChatProps`; the wire
 types and the UI helpers are in `src/wire.ts`, which `lib/dev-eval.ts`
 re-exports for the hub and the sender.
 
+## Sequence recovery and visible read receipts
+
+Thread-local message versions, bounded replay and actual-viewport read cursors
+are described in [chat-seq-receipts.md](chat-seq-receipts.md). Acceptance, recovery
+and read cursors are separate; receiving a history frame never marks it read.
+
 ## Pending input and durable chat acceptance
 
 Typed drafts resume their usual three-second pause after reload. Voice drafts

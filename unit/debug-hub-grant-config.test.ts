@@ -130,7 +130,11 @@ describe("eval grant length and pages from live config", () => {
     const phone = await s.ownerPage("phone-tab-1");
     const mac = await s.ownerPage("mac-tab-0001");
     const c = await s.controller();
-    expect(s.asked.sort()).toEqual(["debug.evalGrantHours", "debug.evalGrantPages"]);
+    // Connecting a page also reads chat recovery/presence config. This test guards only eval grants.
+    expect(s.asked.filter((key) => key.startsWith("debug.")).sort()).toEqual([
+      "debug.evalGrantHours",
+      "debug.evalGrantPages",
+    ]);
     const p = s.pending(phone)!;
     expect(p).toMatchObject({ grantMs: 30 * DAY, allPages: true, scope: "eval" });
     // Ticking only this page does not narrow it: the grant covers every page.
@@ -202,7 +206,8 @@ describe("eval grant length and pages from live config", () => {
     const s = setup({ "debug.evalGrantHours": 720 });
     const phone = await s.ownerPage("phone-tab-1");
     await s.controller("&scope=chat");
-    expect(s.asked).toEqual([]);
+    expect(s.asked.filter((key) => key.startsWith("debug."))).toEqual([]);
+    expect(s.asked.every((key) => key.startsWith("chat."))).toBe(true);
     expect(s.pending(phone)?.grantMs).toBeUndefined();
   });
 });

@@ -59,6 +59,7 @@ function cacheSender(s: Sender | undefined): Sender | undefined {
  */
 export function cacheLine(m: ChatMessage): ChatMessage {
   const out: ChatMessage = { id: m.id, from: m.from, label: "", text: m.text, at: m.at };
+  if (typeof m.seq === "number" && Number.isSafeInteger(m.seq) && m.seq > 0) out.seq = m.seq;
   const sender = cacheSender(m.sender);
   if (sender) out.sender = sender;
   if (m.thread !== undefined) out.thread = m.thread;

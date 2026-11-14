@@ -15,6 +15,7 @@ import { DEVICE_RE, randomId, s256, TOKEN_RE } from "./auth.mjs";
 import { createChatBridge, filterDecision, ayDeliver, bridgeConfig } from "./chat-bridge.mjs";
 import { createInterface } from "node:readline";
 import { createChatReceiver, turnConfig } from "./chat-receiver.mjs";
+import { readAckBody, readWindow, readCoverage } from "./chat-seq.mjs";
 import { applyGrantPolish } from "./chat-polish.mjs";
 import { createFriendInbox, INBOX_DEFAULTS } from "./chat-inbox.mjs";
 import {
@@ -603,11 +604,18 @@ async function cmdChatRead(c) {
   const token = await needToken(c);
   const limit = Number(c.argv.limit ?? 30);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw usage("--limit must be 1–100");
-  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "read", limit } });
+  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "read", limit, ...readWindow(c.argv["after-seq"], c.argv["through-seq"]) } });
   const messages = Array.isArray(data.messages) ? data.messages : [];
-  emit(c, "chat read", { thread: data.thread ?? null, lane: data.lane ?? null, messages }, (d) =>
+  emit(c, "chat read", { thread: data.thread ?? null, lane: data.lane ?? null, messages, ...readCoverage(data) }, (d) =>
     d.messages.length ? d.messages.map(chatLine).join("\n") : "no messages",
   );
+}
+
+async function cmdChatSeen(c) {
+  const token = await needToken(c);
+  const body = readAckBody(c.argv.seq);
+  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body });
+  emit(c, "chat seen", data, () => "Read position saved");
 }
 
 async function cmdChatPrepare(c) {
@@ -1068,8 +1076,16 @@ function build(args, deps, box) {
           .command(
             "read",
             "The latest lines",
-            (y) => examples(y.option("limit", { type: "number", default: 30, describe: "How many (1–100)" }), [["lianki chat read --limit 10 --json", ""]]),
+            (y) => examples(y.option("limit", { type: "number", default: 30, describe: "How many (1–100)" })
+              .option("after-seq", { type: "number", describe: "Recover after this sequence (exclusive)" })
+              .option("through-seq", { type: "number", describe: "Recover through this sequence (inclusive; requires --after-seq)" }), [["lianki chat read --limit 10 --json", ""]]),
             act(cmdChatRead),
+          )
+          .command(
+            "seen",
+            "Explicitly acknowledge the last sequence you actually read",
+            (y) => y.option("seq", { type: "number", demandOption: true, describe: "Last sequence actually consumed; passive listening does not count" }),
+            act(cmdChatSeen),
           )
           .command(
             "listen",

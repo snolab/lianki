@@ -56,6 +56,8 @@ import { latencyLines, viaAt, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
+import { readersFor, validReadSeq } from "./read-receipts";
+import { useVisibleReads } from "./use-visible-reads";
 import { type AvatarSource, isLineFolded, isOtherVoice, isOwnVoice, lineAvatar, passageStarts, runsOf } from "./avatar-rules";
 import {
   VOICE_SENT_EVENT,
@@ -803,6 +805,10 @@ export type DebugChatProps = {
   cached?: boolean;
   /** Account-bound draft storage; unscoped only for standalone hosts. */
   draftScope?: string;
+  /** Authenticated hub verdict for this scope: receipt dots appear only in the viewer’s own authenticated thread. */
+  viewerOwnThread?: boolean;
+  onReadSeq?: (seq: number) => void;
+  readReceiptThrottleMs?: number;
   /** Accepted locally, awaiting the hub acknowledgement. */
   outgoing?: readonly { id: string; text: string; rejected?: string; attachments?: AttachmentRef[]; context?: ChatContext }[];
   /**
@@ -1059,6 +1065,9 @@ export function DebugChat({
   messages: rawMessages,
   cached = false,
   draftScope,
+  viewerOwnThread = false,
+  onReadSeq,
+  readReceiptThrottleMs = 2000,
   outgoing,
   onSend,
   onAnswer,
@@ -1125,6 +1134,8 @@ export function DebugChat({
   newLines.current.see(messages, Date.now());
   const shimmerOf = (m: ChatMessage) => newLines.current!.shimmer(m, Date.now());
   /** Who is here (presence.ts), by token tag: a line's name and picture follow the owner's choice. */
+  const latestOwn = messages.findLast((m) => m.from === (friend ? "friend" : "owner"));
+  const readBy = readersFor(latestOwn?.seq, presence?.list ?? [], viewerOwnThread).slice(0, Math.max(0, presence?.shown ?? 0));
   const byTok = useMemo(
     () => new Map((presence?.list ?? []).filter((p) => p.tok).map((p) => [p.tok!, p])),
     [presence?.list],
@@ -2113,6 +2124,14 @@ export function DebugChat({
     tree,
     // Full screen is for reading the whole chat: compact waits until it ends.
     fullLog: fullLog !== "off" || full,
+  });
+  useVisibleReads({
+    root: log,
+    enabled: open && !tree && !compact && fullLog !== "leaving",
+    scope: draftScope,
+    messages,
+    throttleMs: readReceiptThrottleMs,
+    onReadSeq,
   });
   useEffect(() => {
     const d = foldIn({
@@ -5424,6 +5443,7 @@ export function DebugChat({
                         {...details.forMessage(m, who.name)}
                         data-testid="debug-chat-line"
                         data-msg={m.id}
+                        data-read-seq={validReadSeq(m.seq) ? m.seq : undefined}
                         data-other-voice={otherVoiceLine ? "other" : undefined}
                         {...(otherVoiceLine ? { onClick: () => {
                           if (String(window.getSelection?.() ?? "")) return;
@@ -5502,6 +5522,13 @@ export function DebugChat({
                           );
                         })()}
                       </span>
+                      {m.id === latestOwn?.id && readBy.length > 0 && (
+                        <span data-testid="debug-chat-read-receipts" role="group" className="mt-0.5 flex min-w-0 max-w-full flex-wrap gap-0.5 overflow-hidden" aria-label={ux.readReceipts}>
+                          {readBy.map((p) => (
+                            <Avatar key={p.key} src={tokenPicture(p)} name={p.name} seed={p.key} size={12} />
+                          ))}
+                        </span>
+                      )}
                     </span>
                   );
                 })}

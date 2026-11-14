@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call } from "./api.mjs";
+import { readAckBody, readWindow, readCoverage } from "./chat-seq.mjs";
 import {
   PROGRESS_KINDS,
   PROGRESS_PATH,
@@ -191,16 +192,26 @@ export const TOOLS = [
     title: "Read the chat",
     description:
       "The latest messages in the user's own chat with the Learning Partner, oldest first. An answer to a question card shows up here.",
-    input: { limit: z.number().int().min(1).max(100).optional().describe("How many (default 30)") },
+    input: {
+      limit: z.number().int().min(1).max(100).optional().describe("How many (default 30)"),
+      afterSeq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional().describe("Recover after this sequence (exclusive)"),
+      throughSeq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional().describe("Recover through this sequence (inclusive; requires afterSeq)"),
+    },
     annotations: READ,
     run: async (api, a) => {
-      const d = await api({
-        method: "POST",
-        path: CHAT_PATH,
-        body: { op: "read", limit: a.limit ?? 30 },
-      });
-      return { messages: Array.isArray(d.messages) ? d.messages : [] };
+      const d = await api({ method: "POST", path: CHAT_PATH, body: { op: "read", limit: a.limit ?? 30, ...readWindow(a.afterSeq, a.throughSeq) } });
+      return { messages: Array.isArray(d.messages) ? d.messages : [], ...readCoverage(d) };
+
     },
+  },
+  {
+    name: "lianki_chat_seen",
+    scope: "chat:read",
+    title: "Acknowledge read chat",
+    description: "Explicitly report the last chat sequence you actually consumed. Receiving or passively listening to messages is not reading them.",
+    input: { lastReadSeq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).describe("Last sequence actually read, from a message or replay result") },
+    annotations: { ...WRITE, idempotentHint: true },
+    run: (api, args) => api({ method: "POST", path: CHAT_PATH, body: readAckBody(args.lastReadSeq) }),
   },
   {
     name: "lianki_chat_wait",

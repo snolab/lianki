@@ -15,6 +15,9 @@ import type { LaneMode } from "./lane-events";
 
 /** One participant, as a page gets it. */
 export type Present = {
+  lastReadSeq?: number;
+  /** This viewer's current page only; other signed-in devices remain visible. */
+  self?: true;
   /** "lane:codex", "tok:<tag>", "agent:<name>": one entry per participant. */
   key: string;
   /** The name shown: the owner's name for it, else the token's name (or the lane's). */
@@ -242,7 +245,10 @@ export function parsePresent(raw: unknown): Present[] | null {
     const e = x as Record<string, unknown>;
     if (typeof e.key !== "string" || typeof e.name !== "string" || typeof e.active !== "number")
       continue;
-    out.push(e as unknown as Present);
+    const entry = { ...e };
+    if (!Number.isSafeInteger(entry.lastReadSeq) || (entry.lastReadSeq as number) < 0) delete entry.lastReadSeq;
+    if (entry.self !== true) delete entry.self;
+    out.push(entry as unknown as Present);
   }
   return out;
 }

@@ -210,6 +210,7 @@ describe("tools", () => {
     const { result } = await (await handle(rpc("tools/list"), env)).json();
     expect(result.tools.map((t: { name: string }) => t.name)).toEqual([
       "lianki_chat_read",
+      "lianki_chat_seen",
       "lianki_chat_wait",
     ]);
   });

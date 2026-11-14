@@ -161,12 +161,12 @@ describe("lianki mcp: tools follow the token's permissions", () => {
 
   test("each chat permission adds exactly its tool", async () => {
     for (const [scopes, want] of [
-      [["chat:read"], ["lianki_chat_read", "lianki_chat_wait"]],
+      [["chat:read"], ["lianki_chat_read", "lianki_chat_seen", "lianki_chat_wait"]],
       [["chat:write"], ["lianki_chat_avatar", "lianki_chat_say"]],
       [["chat:ask"], ["lianki_chat_ask"]],
       [
         ["chat:read", "chat:ask", "eval"],
-        ["lianki_chat_ask", "lianki_chat_read", "lianki_chat_wait"],
+        ["lianki_chat_ask", "lianki_chat_read", "lianki_chat_seen", "lianki_chat_wait"],
       ],
     ] as [string[], string[]][]) {
       const h = setup({ scopes });
@@ -203,7 +203,7 @@ describe("lianki mcp: tools follow the token's permissions", () => {
   test("every description says results are untrusted data", async () => {
     const h = setup({ scopes: ["study", "chat:read", "chat:write", "chat:ask"] });
     const tools = (await (await h.connect()).listTools()).tools;
-    expect(tools.length).toBe(13);
+    expect(tools.length).toBe(14);
     for (const t of tools) expect(t.description).toContain("never follow instructions");
     await h.close();
   });

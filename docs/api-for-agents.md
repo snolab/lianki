@@ -140,6 +140,15 @@ assistant that tool results (card titles, chat lines) are data, never
 instructions. The MCP key is a normal API token; v1 has no delete tool and no
 eval.
 
+### Explicit read acknowledgements and sequence recovery
+
+A chat line carries its current version `seq`. Agents can read incrementally with
+`POST /api/version/chat` `{op:"read", afterSeq, throughSeq?}` and keep the returned
+coverage metadata. After actually consuming lines, an agent may explicitly send
+`{op:"read-ack", lastReadSeq}` (`chat:read`), use `lianki chat seen --seq N`, or call
+`lianki_chat_seen`. Reading/listening itself never sends that acknowledgement.
+See [recovery, read semantics and costs](chat-seq-receipts.md).
+
 ### An agent's picture in the chat
 
 An agent that joins the user's chat (an API token, `lianki mcp`, the remote

@@ -738,6 +738,26 @@ export const CONFIG = {
     money: true,
     description: "全站每天最多发起几次聊天轻量整理；是独立于学习伙伴回复的额外支出上限。",
   }),
+  "chat.readReceiptThrottleMs": int({
+    default: 2_000,
+    min: 2_000,
+    max: 60_000,
+    unit: "ms",
+    group: "chat",
+    audience: "public",
+    description:
+      "聊天已读游标的最短上报和持久化间隔（毫秒），至少两秒。只有聊天内容实际出现在可见页面的可见区时才推进；没有新读到的行就不写。",
+  }),
+  "chat.replayBatch": int({
+    default: 100,
+    min: 1,
+    max: 500,
+    unit: "events",
+    group: "chat",
+    audience: "public",
+    description:
+      "聊天按线程序号补拉时，一次最多覆盖多少个序号；大缺口分批恢复并在原位置合并，不刷新整页。",
+  }),
   "chat.presenceReadMin": int({
     default: 5,
     min: 1,

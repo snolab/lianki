@@ -109,6 +109,8 @@ lianki chat say --supersede "actually: skip that, read this first"
 lianki chat say --interject "heads-up: CI is red"
 lianki chat ask --q "Review now?" --opt Yes --opt Later --recommend 1 --wait
 lianki chat read --limit 20
+lianki chat read --after-seq 120 --through-seq 160 --json # recover a covered range
+lianki chat seen --seq 160       # explicitly acknowledge messages actually consumed
 lianki chat listen --json        # one JSON line an event, until Ctrl-C
 lianki chat avatar me.svg        # your picture in the chat (plain SVG, ≤ 4 KB)
 lianki chat avatar --clear       # back to the generated one
@@ -482,3 +484,8 @@ token owners still cannot read or write a different person's thread.
 ## Licence
 
 MIT
+
+Chat read responses include sequence coverage when supported by the hub. Reading
+or listening never marks messages as read automatically: call `chat seen --seq N`
+(or MCP `lianki_chat_seen`) only after consuming them. A read watermark does not
+prove that every earlier message was inspected. See [recovery and read receipts](../../docs/chat-seq-receipts.md).

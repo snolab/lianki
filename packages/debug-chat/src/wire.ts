@@ -46,6 +46,9 @@ export type Sender = {
  * (optional; absent on older lines and on the agent's) draws the avatar.
  */
 export type ChatMessage = {
+  /** Current durable thread version; identity and logical display time remain stable. */
+  seq?: number;
+  removed?: true;
   id: string;
   from: "owner" | "friend" | "agent";
   label: string;
@@ -233,6 +236,9 @@ export type ChatMessage = {
 
 /** The hub telling pages and listeners that an ask was answered by a tap. */
 export type AnsweredEvent = {
+  /** Full current version, so a missed prior patch cannot lose state. */
+  message?: ChatMessage;
+  seq?: number;
   type: "answered";
   /** The ask's message id, and the ask's own id. */
   id: string;
@@ -247,6 +253,9 @@ export type AnsweredEvent = {
  * (eval.ts withdraw): the card greys out, takes no tap, and is never read aloud.
  */
 export type WithdrawnEvent = {
+  /** Full current version, so a missed prior patch cannot lose state. */
+  message?: ChatMessage;
+  seq?: number;
   type: "withdrawn";
   /** The ask's message id, the ask's own id, and its thread. */
   id: string;
@@ -259,7 +268,8 @@ export type WithdrawnEvent = {
 export function applyWithdrawn<M extends ChatMessage>(m: M, e: Omit<WithdrawnEvent, "type">): M {
   if (m.id !== e.id || !m.ask || m.ask.askId !== e.askId || (m.thread ?? "owner") !== e.thread)
     return m;
-  return { ...m, ask: { ...m.ask, withdrawnAt: e.withdrawnAt } };
+  if (e.message) return { ...e.message } as M;
+  return { ...m, ...(e.seq === undefined ? {} : { seq: e.seq }), ask: { ...m.ask, withdrawnAt: e.withdrawnAt } };
 }
 
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
@@ -350,6 +360,9 @@ export type PassageMark = { at: number; by: string; ids: string[] };
  * listeners update that line in place (never read aloud again).
  */
 export type EditedEvent = {
+  /** Full current version, so a missed prior patch cannot lose state. */
+  message?: ChatMessage;
+  seq?: number;
   type: "edited";
   id: string;
   thread: string;
@@ -385,8 +398,10 @@ export type PolishDueEvent = {
 /** A message updated by an EditedEvent; any other message is returned as is. */
 export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "type">): M {
   if (m.id !== e.id || (m.thread ?? "owner") !== e.thread) return m;
+  if (e.message) return { ...e.message } as M;
   return {
     ...m,
+    ...(e.seq === undefined ? {} : { seq: e.seq }),
     text: e.text,
     raw: e.raw,
     edited: e.edited,
@@ -1591,3 +1606,6 @@ export function sttTagText(
   const engine = stt.engine?.split("/").at(-1);
   return [where, engine, stt.fallback ? l.sttFallback : undefined].filter(Boolean).join(" · ");
 }
+
+/** Authenticated thread replay coverage, including accepted nonvisible versions. */
+export type ChatReplayRange = { type: "history"; thread: string; messages: ChatMessage[]; removed: {id:string;seq:number}[]; afterSeq: number; throughSeq: number; headSeq: number; prunedThroughSeq: number; skipped: { from: number; to: number }[] };

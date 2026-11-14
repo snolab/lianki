@@ -70,6 +70,7 @@ export type LegacyKey = (typeof LEGACY_KEYS)[number];
 export type LegacyStrings = Record<LegacyKey, string>;
 
 export type ChatExtra = {
+  readReceipts: string;
   linkMenuTitle: string;
   linkOpen: string;
   linkOpenHere: string;
@@ -199,6 +200,7 @@ export const EXTRA_CONTEXT: ChatExtra = {
   polishedBy: `In ${CHAT}: accessible label and tooltip heading on the small sparkle after a polished voice message. Names WHO polished the wording, not who spoke or transcribed it. {name} is the assistant lane display name or the localized automatic-system name; keep {name}. Also shown above the original transcript in the tap-open popover.`,
   polishedAuto: `In ${CHAT}: the actor name substituted into polishedBy when edited.by is auto. This is automatic wording cleanup, not a human or a named assistant lane. A short localized name for the automatic system; the tiny badge itself uses a symbol.`,
   messageDetails: `In ${CHAT}: heading and accessible label of a popover opened by clicking a message. It shows only metadata already carried by that message: sender, timestamp, recognition and voiceprint fields when present. Short noun phrase.`,
+  readReceipts: "Accessible label for tiny participant avatars below the latest own chat message in the viewer’s own authenticated thread. These participants have actually read through this message; not merely connected or received it. No counts or technical sequence values are shown.",
   pttTooLong: "Shown in the pending push-to-talk speech bubble when a held recording reaches the configured memory/duration limit. Recording stops with an explicit failure; already recognized text remains available and is not silently sent as a complete recording.",
   voiceDetails: "Accessible label and heading of the small voice-information icon and its tap-open popover beside a spoken chat message. Shows recorded recognition, voiceprint and polishing metadata; not a playback action.",
   voiceDetailRoute: "Field label in a spoken message’s voice details: the recorded recognition route, local speech server or cloud. Does not identify a physical device or hostname.",
@@ -631,6 +633,7 @@ export const OTHER_LEGACY: Record<Other, LegacyStrings> = {
 /** The strings that were inline in the chat's code, in all 16 locales. */
 export const EXTRA: Record<ChatLocale, ChatExtra> = {
   en: {
+    readReceipts: "Read by",
     pttTooLong: "Recording limit reached. Recognized text is kept.",
     linkMenuTitle: "Link actions",
     linkOpen: "Open",
@@ -716,6 +719,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Retry",
   },
   zh: {
+    readReceipts: "已读者",
     pttTooLong: "已达到录音时长上限，已识别的文字会保留。",
     linkMenuTitle: "链接操作",
     linkOpen: "打开",
@@ -800,6 +804,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "重试",
   },
   hi: {
+    readReceipts: "इन लोगों ने पढ़ा",
     pttTooLong: "रिकॉर्डिंग की सीमा पूरी हो गई। पहचाना गया पाठ सुरक्षित है।",
     linkMenuTitle: "लिंक के विकल्प",
     linkOpen: "खोलें",
@@ -884,6 +889,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "फिर से कोशिश करें",
   },
   es: {
+    readReceipts: "Leído por",
     pttTooLong: "Se alcanzó el límite de grabación. Se conserva el texto reconocido.",
     linkMenuTitle: "Opciones del enlace",
     linkOpen: "Abrir",
@@ -968,6 +974,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Reintentar",
   },
   fr: {
+    readReceipts: "Lu par",
     pttTooLong: "Limite d’enregistrement atteinte. Le texte reconnu est conservé.",
     linkMenuTitle: "Actions du lien",
     linkOpen: "Ouvrir",
@@ -1052,6 +1059,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Réessayer",
   },
   ar: {
+    readReceipts: "قرأها",
     pttTooLong: "تم بلوغ حد التسجيل. تم الاحتفاظ بالنص الذي تم التعرف عليه.",
     linkMenuTitle: "خيارات الرابط",
     linkOpen: "فتح",
@@ -1136,6 +1144,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "إعادة المحاولة",
   },
   bn: {
+    readReceipts: "যারা পড়েছেন",
     pttTooLong: "রেকর্ডিংয়ের সীমা পূর্ণ হয়েছে। শনাক্ত করা লেখা রাখা হয়েছে।",
     linkMenuTitle: "লিংকের বিকল্প",
     linkOpen: "খুলুন",
@@ -1220,6 +1229,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "আবার চেষ্টা করুন",
   },
   pt: {
+    readReceipts: "Lido por",
     pttTooLong: "Limite de gravação atingido. O texto reconhecido foi mantido.",
     linkMenuTitle: "Ações do link",
     linkOpen: "Abrir",
@@ -1304,6 +1314,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Tentar de novo",
   },
   ru: {
+    readReceipts: "Прочитали",
     pttTooLong: "Достигнут предел записи. Распознанный текст сохранён.",
     linkMenuTitle: "Действия со ссылкой",
     linkOpen: "Открыть",
@@ -1388,6 +1399,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Повторить",
   },
   ur: {
+    readReceipts: "پڑھنے والے",
     pttTooLong: "ریکارڈنگ کی حد پوری ہو گئی۔ پہچانا گیا متن محفوظ ہے۔",
     linkMenuTitle: "لنک کے اختیارات",
     linkOpen: "کھولیں",
@@ -1472,6 +1484,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "دوبارہ کوشش کریں",
   },
   id: {
+    readReceipts: "Dibaca oleh",
     pttTooLong: "Batas rekaman tercapai. Teks yang dikenali tetap disimpan.",
     linkMenuTitle: "Tindakan tautan",
     linkOpen: "Buka",
@@ -1556,6 +1569,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Coba lagi",
   },
   de: {
+    readReceipts: "Gelesen von",
     pttTooLong: "Aufnahmelimit erreicht. Der erkannte Text bleibt erhalten.",
     linkMenuTitle: "Linkaktionen",
     linkOpen: "Öffnen",
@@ -1640,6 +1654,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Erneut versuchen",
   },
   ja: {
+    readReceipts: "既読の参加者",
     pttTooLong: "録音時間の上限に達しました。認識済みのテキストは保持されます。",
     linkMenuTitle: "リンクの操作",
     linkOpen: "開く",
@@ -1724,6 +1739,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "再試行",
   },
   sw: {
+    readReceipts: "Imesomwa na",
     pttTooLong: "Kikomo cha kurekodi kimefikiwa. Maandishi yaliyotambuliwa yamehifadhiwa.",
     linkMenuTitle: "Vitendo vya kiungo",
     linkOpen: "Fungua",
@@ -1808,6 +1824,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Jaribu tena",
   },
   mr: {
+    readReceipts: "यांनी वाचले",
     pttTooLong: "रेकॉर्डिंगची मर्यादा गाठली. ओळखलेला मजकूर जतन केला आहे.",
     linkMenuTitle: "दुव्याचे पर्याय",
     linkOpen: "उघडा",
@@ -1892,6 +1909,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "पुन्हा प्रयत्न करा",
   },
   ko: {
+    readReceipts: "읽은 참여자",
     pttTooLong: "녹음 한도에 도달했습니다. 인식된 텍스트는 유지됩니다.",
     linkMenuTitle: "링크 작업",
     linkOpen: "열기",
