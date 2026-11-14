@@ -7,6 +7,7 @@ import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { type RouteLane, routeLine, testText } from "../../lib/lane-route";
+import { ownerClock, ownerTag } from "./owner-time";
 
 /** Where a lane's token is kept on this Mac. */
 export const laneTokenDir = (env: Record<string, string | undefined> = process.env) =>
@@ -112,18 +113,18 @@ export function lineOf(raw: string): (Line & { history: boolean }) | null {
   };
 }
 
-/** HH:MM in JST. */
-export const jst = (at?: string) => {
+/** "HH:MM TAG" in the machine's zone (or LIANKI_OWNER_TZ), e.g. "01:06 JST"; now for a bad time. */
+export const ownerAt = (at?: string) => {
   const d = at ? new Date(at) : new Date();
   const t = Number.isNaN(d.getTime()) ? new Date() : d;
-  return new Date(t.getTime() + 9 * 3600_000).toISOString().slice(11, 16);
+  return `${ownerClock(t)} ${ownerTag(t)}`;
 };
 
 /** What the lane's agent is handed: his words, and how to answer as itself. */
 export function handoff(lane: RouteLane, l: Line, repo: string): string {
   if (l.etaLane === lane)
     return [
-      `【state tree → ${lane}】(${jst(l.at)} JST, automatic) ${l.text}`,
+      `【state tree → ${lane}】(${ownerAt(l.at)}, automatic) ${l.text}`,
       "",
       'The state tree\'s hub sent this to your lane (docs/state-tree.md, "Blocked and paused", "Receipts"). Act on it; report on the node with bun scripts/dev/progress.ts, or answer in Li with:',
       `  bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} say --repo ${repo} --as ${lane} "<your reply>"`,
@@ -134,8 +135,8 @@ export function handoff(lane: RouteLane, l: Line, repo: string): string {
   const reply = `bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} say --repo ${repo} --as ${lane} "<your reply>"`;
   return [
     test === null
-      ? `【owner → ${lane}】(${jst(l.at)} JST, Li chat) ${words}`
-      : `【lane-test → ${lane}】(${jst(l.at)} JST) ${words}`,
+      ? `【owner → ${lane}】(${ownerAt(l.at)}, Li chat) ${words}`
+      : `【lane-test → ${lane}】(${ownerAt(l.at)}) ${words}`,
     "",
     test !== null
       ? 'This is a routing TEST, not the owner. Answer once, starting "[lane-test] ", one short line, so the test sees you heard it:'
@@ -177,8 +178,8 @@ export function handoffBrief(
   repo: string,
   first: boolean,
 ): string {
-  const at = jst(lines.at(-1)?.at);
-  const out = [`【owner → ${lane}】${at} JST`, ...lines.map((l) => briefBullet(lane, l))];
+  const at = ownerAt(lines.at(-1)?.at);
+  const out = [`【owner → ${lane}】${at}`, ...lines.map((l) => briefBullet(lane, l))];
   if (first)
     out.push(
       `规则只读这一次：${join(repo, HANDOFF_SKILL)}（回复：bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} reply --as ${lane} --id <id> "…"）`,

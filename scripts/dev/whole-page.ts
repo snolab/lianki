@@ -76,6 +76,7 @@ import {
 import { PreviewUserscript, previewScriptRoute } from "./preview-userscript";
 import { devForwardHeaders } from "./whole-page-forward";
 import { devPwaAssets, devPwaFile } from "../../lib/dev-site/pwa";
+import { ownerStamp } from "./owner-time";
 
 const STATE_FILE = ".dev-whole-page.json";
 const SESSION_CACHE_MS = 60_000;
@@ -123,9 +124,9 @@ function loadState(): State {
   return state;
 }
 
-/** Now in JST, for the log (it has no other clock): "2026-11-03 14:05:09 JST". */
-function jst(): string {
-  return `${new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 19).replace("T", " ")} JST`;
+/** Now, for the log (it has no other clock), in the machine's zone: "2026-11-03 14:05:09 JST". */
+function stamp(): string {
+  return ownerStamp(Date.now(), true);
 }
 
 /** True once nothing listens on 127.0.0.1:<port>; false if something still does after `ms`. */
@@ -299,7 +300,7 @@ async function serve() {
   const noteRestarts = (n: number, openedAt: number) => {
     if (!n || restarting || stopping || !storm.note(n, Date.now(), openedAt)) return;
     console.error(
-      `[whole-page] ${jst()} reload storm (Turbopack restart loop): restarting next dev`,
+      `[whole-page] ${stamp()} reload storm (Turbopack restart loop): restarting next dev`,
     );
     restarting = true;
     stopNext(8_000);
@@ -371,7 +372,7 @@ async function serve() {
     ? new PreviewUserscript({
         root: process.cwd(),
         origin: `https://${publicHost}`,
-        log: (m) => console.error(`[whole-page] ${jst()} ${m}`),
+        log: (m) => console.error(`[whole-page] ${stamp()} ${m}`),
       })
     : undefined;
   if (userscript) {
@@ -871,7 +872,7 @@ async function serve() {
       ? "published"
       : `publish FAILED: ${p.stderr.toString().trim().split("\n")[0]}`;
     const head = Bun.spawnSync(["git", "log", "--oneline", "-1"]).stdout.toString().trim();
-    console.error(`[whole-page] ${jst()} ${msg} (${follow} → ${head})`);
+    console.error(`[whole-page] ${stamp()} ${msg} (${follow} → ${head})`);
     if (!p.success) return;
     // next dev does not rebuild intlayer's dictionaries for new or changed
     // *.content.ts that arrive by a merge, and the page throws until someone

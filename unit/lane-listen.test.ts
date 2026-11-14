@@ -9,7 +9,7 @@ import {
   HANDOFF_SKILL,
   handoff,
   handoffBrief,
-  jst,
+  ownerAt,
   laneToken,
   lineOf,
   briefBullet,
@@ -19,6 +19,9 @@ import {
   voiceAllowed,
   tokenNeeded,
 } from "../scripts/dev/lane-listen-lib";
+
+// The times these print are in the machine's zone; pin it so the JST labels below hold anywhere.
+process.env.LIANKI_OWNER_TZ = "Asia/Tokyo";
 
 const dir = mkdtempSync(join(tmpdir(), "lane-token-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -133,8 +136,13 @@ describe("handoff", () => {
     expect(h).toContain("agy, ping");
     expect(h).toContain('starting "[lane-test] "');
   });
-  it("jst", () => {
-    expect(jst("2026-11-08T23:59:00Z")).toBe("08:59");
+  it("ownerAt: the clock time in the owner's zone, labelled", () => {
+    expect(ownerAt("2026-11-08T23:59:00Z")).toBe("08:59 JST");
+    process.env.LIANKI_OWNER_TZ = "Europe/Berlin";
+    expect(ownerAt("2026-11-08T23:59:00Z")).toBe("00:59 CET");
+    process.env.LIANKI_OWNER_TZ = "UTC";
+    expect(ownerAt("2026-11-08T23:59:00Z")).toBe("23:59 UTC");
+    process.env.LIANKI_OWNER_TZ = "Asia/Tokyo";
   });
 });
 

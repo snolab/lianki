@@ -35,7 +35,7 @@ import {
   isNarrowedSuite,
   isReentrant,
   isReentrantAny,
-  jst,
+  ownerTime,
   liveHolders,
   lockPath,
   makeHolder,
@@ -51,6 +51,9 @@ import {
   tryAcquireSlot,
   waitReporter,
 } from "../scripts/dev/machine-lock-lib";
+
+// The times these print are in the machine's zone; pin it so the JST labels below hold anywhere.
+process.env.LIANKI_OWNER_TZ = "Asia/Tokyo";
 
 const CLI = join(import.meta.dir, "../scripts/dev/machine-lock.ts");
 const hasPs = processStartTime() !== null;
@@ -513,8 +516,8 @@ Pages speculative:                         5000.
 });
 
 describe("what a waiter prints", () => {
-  test("times are JST and labelled", () => {
-    expect(jst(Date.parse("2026-11-07T01:02:03Z"))).toBe("2026-11-07 10:02:03 JST");
+  test("times are in the owner's zone and labelled", () => {
+    expect(ownerTime(Date.parse("2026-11-07T01:02:03Z"))).toBe("2026-11-07 10:02:03 JST");
     expect(describeHolder(fakeHolder({ pid: 7 }))).toBe(
       "pid 7, /w/elsewhere, `bun test`, started 2026-11-07 10:00:00 JST",
     );

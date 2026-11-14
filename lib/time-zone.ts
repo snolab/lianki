@@ -178,3 +178,12 @@ export function formatZoned(
   const when = new Date(at);
   return `${when.toLocaleString(locale, { ...opts, timeZone: zone })} ${zoneTag(zone, when)}`;
 }
+
+/** "2026-11-07 10:02" (or with `:03` seconds) — `at` on the wall clock of `tz`. */
+export function zonedStamp(at: number | Date, tz: string, seconds = false): string {
+  const t = new Date(at).getTime();
+  return new Date(t + zoneOffsetMin(tz, t) * 60_000)
+    .toISOString()
+    .slice(0, seconds ? 19 : 16)
+    .replace("T", " ");
+}
