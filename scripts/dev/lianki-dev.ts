@@ -287,7 +287,7 @@ async function main(): Promise<number> {
   const { global: g } = parsed;
   let rest = parsed.rest;
   json = g.json;
-  const sub: Sub | undefined = parsed.sub;
+  let sub: Sub | undefined = parsed.sub;
   if (!sub || sub === "help") {
     const topic = sub === "help" ? (rest[0] as Sub | undefined) : undefined;
     console.log(topic && USAGE[topic] ? USAGE[topic] : USAGE.main);
@@ -333,6 +333,50 @@ async function main(): Promise<number> {
   if (sub === "progress") return progress(g, rest, repo);
   if (!repo)
     fail(EXIT.notReady, "no Lianki checkout here: pass --repo <path> (or set LIANKI_REPO)");
+  if (sub === "reply") {
+    // reply [--polish <text>] [--id <id>] <reply text>
+    let polishText: string | undefined;
+    let polishId: string | undefined;
+    const sayRest: string[] = [];
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i]!;
+      if (a === "--polish") {
+        polishText = rest[++i];
+      } else if (a === "--id") {
+        polishId = rest[++i];
+      } else {
+        sayRest.push(a);
+      }
+    }
+    // If polish requested, do edit first
+    if (polishText) {
+      try {
+        const editArgs = polishId ? [polishId, polishText] : ["--last", polishText];
+        const editChild = Bun.spawnSync(
+          [
+            process.execPath,
+            join(repo, "scripts", "dev", "eval.ts"),
+            "edit",
+            "--no-pair",
+            ...editArgs,
+          ],
+          { cwd: repo, stderr: "pipe", stdout: "pipe" },
+        );
+        // eval.ts edit reports a refusal on stdout and still exits 0 ("not among
+        // the owner's last N lines", polish off): say so; the reply still goes out.
+        const said = `${editChild.stdout.toString()}${editChild.stderr.toString()}`.trim();
+        if (editChild.exitCode !== 0 || /not among|refused|is off|error/i.test(said))
+          console.error(
+            `lianki-dev reply: polish not applied: ${said || `exit ${editChild.exitCode}`}`,
+          );
+      } catch (e) {
+        console.error(`lianki-dev reply: polish not applied: ${(e as Error).message}`);
+      }
+    }
+    // Run say with remaining args
+    sub = "say";
+    rest = sayRest;
+  }
   if (sub === "lane-listen") {
     // The lane's own listener (docs/lane-listen.md): its own script, its own token.
     const child = Bun.spawn(

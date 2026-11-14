@@ -150,8 +150,9 @@ describe("the box follows the visible area (the keyboard)", () => {
   });
   it("sits on the screen's bottom edge: the island's reserve is not padded (owner, 2026-11-15)", () => {
     // Full screen covers the bottom island: its reserve is no longer kept (owner, 2026-11-15).
-    expect(fullBottomPad(false)).not.not.toContain("--lk-bottom-reserve");
-    expect(FULL_SCREEN_STYLE.paddingBottom).toContain("--lk-bottom-reserve");
+    expect(fullBottomPad(false)).not.toContain("--lk-bottom-reserve");
+    expect(FULL_SCREEN_STYLE.paddingBottom).not.toContain("--lk-bottom-reserve");
+    expect(FULL_SCREEN_STYLE.paddingBottom).toContain("safe-area-inset-bottom");
   });
   it("on a phone the bar spans the screen inside the safe areas, at the panel's 0.5rem gutter", () => {
     const s = fullBarSpan(false);
