@@ -46,7 +46,6 @@ import {
   pathLabel,
   type VoiceTiming,
   type SttTag,
-  sttTagText,
   type AttachmentRef,
   type ChatContext,
   cleanContext,
@@ -98,6 +97,7 @@ import {
   createPassageRecheck,
 } from "./whisper-recheck";
 import { VoiceMark } from "./VoiceMark";
+import { hasVoiceDetails } from "./voice-details";
 import { VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
 import {
@@ -1592,7 +1592,15 @@ export function DebugChat({
   const partnerName = EMBED_NAME[embedLang()];
   // The strings that were inline here, in the page's language (chat-ui-locales.ts).
   const ux = chatExtra();
-  const details = useMessageDetails(ux.messageDetails, ux);
+  const details = useMessageDetails(ux.messageDetails, ux, owner ? ui : undefined, owner ? ux : undefined);
+  const voiceMark = (message: ChatMessage, sender: string) => {
+    if (message.from !== "owner" || !hasVoiceDetails(message)) return null;
+    if (!owner) return message.speaker?.decision === "me" ? <VoiceMark label={t.vpVerified} /> : null;
+    const route = message.stt?.route;
+    const label = route ? `${ux.voiceDetails}: ${route === "local" ? ui.latLocal : ui.latCloud}` : ux.voiceDetails;
+    return <VoiceMark label={label} verified={message.speaker?.decision === "me"}
+      controls={details.id} onOpen={(anchor) => details.openVoice(message, sender, anchor)} />;
+  };
   const withNew = (label: string, n: number) =>
     n ? `${label}, ${ux.newCount.replace("{n}", String(n))}` : label;
   /** Agent lines not read aloud because the page was in the background (voice.ts gateVoice). */
@@ -4004,7 +4012,7 @@ export function DebugChat({
               mark={
                 <>
                   {p.mark}
-                  {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                  {voiceMark(m, lineAvatar(m, { friend, viewer, agentName: t.name, you: t.you, ...laneOpts }).name)}
                   {addressedOf.has(m.id) && (
                     <AddressedMarks
                       lanes={addressedOf.get(m.id)!}
@@ -4810,6 +4818,7 @@ export function DebugChat({
         >
           <span className="sr-only">{who.name}: </span>
           <LineTag m={m} name={who.name} partnerName={partnerName} inline />
+          {voiceMark(m, who.name)}
           {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
           {m.attachments?.length && m.from !== "agent" ? <SentFiles refs={m.attachments} files={files} /> : null}
           {m.context?.selection === p.text && !m.attachments?.length ? null : m.ask
@@ -5268,9 +5277,10 @@ export function DebugChat({
                   {who.name}
                   {node ? ` (${node.subtitle})` : ""}:{" "}
                 </span>
-                {ownPassage && run.some((i) => messages[i]!.speaker?.decision === "me") && (
-                  <VoiceMark label={t.vpVerified} />
-                )}
+                {ownPassage && (() => {
+                  const firstVoice = run.map((i) => messages[i]!).find(hasVoiceDetails);
+                  return firstVoice ? voiceMark(firstVoice, who.name) : null;
+                })()}
                 {run.map((i, k) => {
                   const m = messages[i]!;
                   const text = polish(m).text;
@@ -5358,20 +5368,7 @@ export function DebugChat({
                             pulse={flashOn.has(`line:${m.id}`)}
                           />
                         )}
-                        {!ownPassage && m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
-                        {(() => {
-                          // Which recognizer made a voice line: dev holders only (`owner` needs dev).
-                          const tag = m.from === "owner" && !ownPassage ? sttTagText(m.stt, owner, ui) : undefined;
-                          return tag ? (
-                            <span
-                              data-testid="debug-chat-stt"
-                              className="ms-1 fs-10 text-gray-500"
-                              title={ui.sttTagTip}
-                            >
-                              {tag}
-                            </span>
-                          ) : null;
-                        })()}
+                        {!ownPassage && voiceMark(m, who.name)}
                         {m.from === "agent" && unheardIds.has(m.id) && (
                           <span
                             data-testid="debug-chat-unheard"

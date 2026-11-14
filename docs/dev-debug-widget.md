@@ -1111,6 +1111,19 @@ the hub's `twoMic()`.
   above handles those); a line the Mac said is someone else's with one it did not;
   summaries, passages and hidden lines.
 
+## Per-message voice details
+
+Voice inputs keep their recognition route and model inside message details, rather
+than printing a long model label beside the text. The small voice mark opens those
+details directly; later sentences in a grouped owner passage retain the ordinary
+message-details action without repeating the speaker mark. The panel shows recorded
+speaker decisions and scores, recognition and whole-run recheck models, polishing
+actor, actual voices heard on this device, and the existing timing breakdown.
+Missing observations remain absent: current settings do not establish which model
+or voice produced an earlier message. The local recognition route identifies a
+speech server, not the phone capturing the microphone. Private device slugs and
+signed proof text are not promoted into the structured voice rows.
+
 ## Voiceprint: enrolment and delete by a tap
 
 The chat menu's **Voiceprint** (owner pages with a local STT) opens a panel
@@ -1121,7 +1134,7 @@ features, never audio, encrypted in his account; flag `stt.voiceprint-cloud`),
 and "Delete my voiceprint" (a confirming tap; the Mac and the account). The
 print lives on the Mac, and a copy of its features in his account once he
 saves it there; voice lines it verified as him get a small green
-check (`VoiceMark`). The same rule as recording: starting enrolment and
+sound-wave mark (`VoiceMark`). The same rule as recording: starting enrolment and
 deleting are taps, never voice. Details: [local-stt.md](local-stt.md),
 "Voiceprint".
 

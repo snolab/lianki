@@ -49,19 +49,32 @@ export function voiceMarkHandlers(show: () => void) {
   };
 }
 
-export function VoiceMark({ label, tipMs = VOICE_TIP_MS }: { label: string; tipMs?: number }) {
+export function VoiceMark({ label, tipMs = VOICE_TIP_MS, onOpen, controls, verified = true }: {
+  label: string;
+  tipMs?: number;
+  /** Explicit metadata inspection instead of the legacy tooltip-only action. */
+  onOpen?: (anchor: DOMRect) => void;
+  controls?: string;
+  verified?: boolean;
+}) {
   const [tip, setTip] = useState(false);
   const hide = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const button = useRef<HTMLButtonElement>(null);
   useEffect(() => () => clearTimeout(hide.current), []);
   return (
     <button
+      ref={button}
       type="button"
+      aria-haspopup={onOpen ? "dialog" : undefined}
+      aria-controls={controls}
       data-testid="debug-chat-voice-verified"
       title={label}
       aria-label={label}
       className="pointer-events-auto relative ms-1 inline-flex select-none items-center align-baseline leading-none [-webkit-touch-callout:none]"
-      style={{ fontSize: "0.8em", color: "oklch(0.62 0.15 150)", opacity: 0.85, background: "transparent", border: 0, padding: 0 }}
-      {...voiceMarkHandlers(bubbleClock(setTip, hide, tipMs))}
+      style={{ fontSize: "0.8em", color: verified ? "oklch(0.62 0.15 150)" : "currentColor", opacity: 0.85, background: "transparent", border: 0, padding: 0 }}
+      {...voiceMarkHandlers(onOpen ? () => {
+        if (button.current) onOpen(button.current.getBoundingClientRect());
+      } : bubbleClock(setTip, hide, tipMs))}
     >
       <svg viewBox="0 0 16 16" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
         <path d="M3 6.5v3M6 4.5v7M9 3v10M12 5.5v5" />

@@ -123,3 +123,43 @@ describe("VoiceMark, in a DOM", () => {
     }
   });
 });
+
+it("an explicit details action opens the anchored message instead of the legacy tooltip", async () => {
+  const { Window } = await import("happy-dom");
+  const win = new Window();
+  const restore = stubGlobals({
+    window: win,
+    document: win.document,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  try {
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const host = win.document.createElement("div");
+    win.document.body.appendChild(host);
+    const root = createRoot(host as never);
+    const anchors: DOMRect[] = [];
+    await act(() =>
+      root.render(
+        createElement(VoiceMark, {
+          label: "Voice details: cloud",
+          controls: "voice-details",
+          verified: false,
+          onOpen: (anchor) => anchors.push(anchor),
+        }),
+      ),
+    );
+    const button = host.querySelector("button")!;
+    expect(button.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(button.getAttribute("aria-controls")).toBe("voice-details");
+    expect(button.getAttribute("style")?.toLowerCase()).toContain("currentcolor");
+    await act(() => button.dispatchEvent(new win.MouseEvent("click", { bubbles: true }) as never));
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0]!.width).toBe(button.getBoundingClientRect().width);
+    expect(host.querySelector('[role="tooltip"]')).toBeNull();
+    await act(() => root.unmount());
+  } finally {
+    restore();
+    await win.happyDOM.close();
+  }
+});
