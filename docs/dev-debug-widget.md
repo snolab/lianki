@@ -1013,6 +1013,51 @@ polishes are not capped (2026-11-14), and a settled line takes no more parts. Hu
 read per 30 s on voice lines (`flag()`'s budget is 60 a minute), one storage write per
 merge, one uncached `flag()` read per passage for `stt.polish`.
 
+### Whisper re-listens to the whole run
+
+The owner, 2026-11-15 03:17 JST: "用 Whisper 整段重听 … 作为第二步 polish。然后 agent
+的各种错字修复、大意理解、括号补充信息作为第三级 polish". Three readings of his speech:
+
+1. **Streaming** (SenseVoice on his Mac), part by part, merged into one line as above.
+2. **Whisper** (Large V3 Turbo, mlx-whisper on the same Mac): at the run's passage end
+   the Mac re-reads the run's whole audio from its RAM ring and the line takes that text.
+3. **Polish** (the hub's automatic one, or a lane's on `polish-due`) reads level 2.
+
+Flag **`stt.whisper-recheck`** (`/dev/flags#stt.whisper-recheck`, on by default,
+audience owner, read by the root layout with the dev grant); it needs `stt.merge`,
+since only a merged line has a passage end. Config: `stt.recheckMinSec` (1.5 s),
+`stt.recheckMaxSec` (60 s), `stt.recheckTimeoutMs` (8 s). Code:
+`packages/debug-chat/src/whisper-recheck.ts`; the Mac's side is docs/local-stt.md,
+"On-demand Whisper recheck".
+
+- **When.** The page's passage end (`PASSAGE_END_MS` with no speech) for a merged line
+  that nobody touched since the merge: not settled, not polished, not a passage, every
+  part from the local STT. Its span, first part's `t_speechStart` to the last part's
+  `t_speechEnd`, is within min and max. Otherwise the passage end goes at once, as before.
+- **Asking the Mac.** `__lkMic.recheck()` (mic session v16) on the local STT socket in
+  use, only while it is up (a new socket holds none of the run's audio):
+  `{t:"recheck", auto:true, run:<line id>, fromAgoMs, toAgoMs}`. The window is sent
+  as durations before now on the page's clock, so the Mac's clock never has to agree.
+- **The answer.** `ok:true` with text, for this run, and the line still exactly as asked
+  (same parts, same text): the page sends `{type:"passage-end", recheck:{id, parts,
+  text, engine, lang}}`. A failure, `recheck busy`, a timeout, another run, or a line
+  that moved on: a plain passage end, the line keeps level 1. A part that joined while
+  Whisper read sends nothing: the next passage end re-reads the longer run. One run is
+  never asked twice at once.
+- **The hub** (`passageEnd`, `applyRecheck`) checks it again on the stored line, then
+  sets `text` and `raw` to Whisper's reading, `edited.by` stays `merge` (no read-back of
+  a polish), and `recheck: {at, engine, lang, heard, text}` keeps the streaming text.
+  Then it settles the line and sends `polish-due` with the new text: one LLM polish per
+  run, after level 2. Pages and listeners hear one more `edited` (with `recheck`).
+  Logged `debug.recheck` (lengths only) or `debug.recheck-refused` (why).
+- **Undo** splits it back into the parts as heard; the reading goes with the merge.
+- **On the page.** The message details (double tap, right click) list the readings,
+  "Heard while speaking", "Re-listened whole (mlx-whisper)" and "Polished"
+  (`levelHeard`, `levelWhisper`, `levelPolished`, 16 locales); nothing else changes.
+- **Cost.** The polish waits for Whisper, at most `stt.recheckTimeoutMs`. The audio never
+  leaves the Mac's RAM. Tests: `unit/whisper-recheck.test.ts`, the hub's in
+  `unit/debug-hub.test.ts` ("Whisper's reading…"), the Mac's in `test_recheck.py`.
+
 ### Undo
 
 A small ↩ beside the sparkle on a merged line (`debug-chat-unmerge`). `{type:"unmerge",
