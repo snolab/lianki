@@ -37,6 +37,7 @@ import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
 import { LANE_IDS, type LaneId, isLaneId, parseLineVoice } from "../packages/debug-chat/src/voices";
 import { cleanProofs } from "./speaker-proof";
 import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
+import { type RecheckAmend, cleanRecheckAmend } from "../packages/debug-chat/src/whisper-recheck";
 
 export {
   MAX_AGENT_ID,
@@ -340,8 +341,12 @@ export type PageMessage =
       /** A voice line asks to amend this line, the page's last (voice-merge.ts); the hub decides. */
       continues?: string;
     }
-  /** The page's speech went quiet after a merged line: the passage is over. */
-  | { type: "passage-end" }
+  /**
+   * The page's speech went quiet after a merged line: the passage is over. `recheck`:
+   * the Mac's Whisper re-read the whole run (whisper-recheck.ts); the hub amends the
+   * line with it first, so the polish reads it.
+   */
+  | { type: "passage-end"; recheck?: RecheckAmend }
   /** The owner's undo on a merged line: split it back into its lines. */
   | { type: "unmerge"; id: string }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
@@ -645,7 +650,10 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       return null;
     return { type: "answer", askId, choices: m.choices as Record<string, unknown> };
   }
-  if (m.type === "passage-end") return { type: "passage-end" };
+  if (m.type === "passage-end") {
+    const recheck = cleanRecheckAmend(m.recheck);
+    return recheck ? { type: "passage-end", recheck } : { type: "passage-end" };
+  }
   if (m.type === "unmerge") {
     const id = str(m.id, 64);
     return id ? { type: "unmerge", id } : null;
