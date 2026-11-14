@@ -134,8 +134,8 @@ some zone). No day boundary and no time zone is involved:
 | limit              | value                                                       |
 | ------------------ | ----------------------------------------------------------- |
 | per user, messages | 30 per 10 min (the existing friend limit, before the model) |
-| per user, tokens   | `USER_DAILY_TOKENS` = 60,000 (≈ 40–80 typical messages)     |
-| site-wide, spend   | `SITE_DAILY_USD` = $2 at list price                         |
+| per user, tokens   | `partner.userWindowTokens`, default 60,000 (≈ 40–80 msgs)   |
+| site-wide, spend   | `partner.siteWindowUsd`, default $2 at list price           |
 | per reply          | `MAX_OUTPUT_TOKENS` = 600; 30 s timeout                     |
 
 Prices (model page, 2026-11-03): $0.30 / M input, $1.20 / M output tokens.
@@ -157,7 +157,15 @@ taken in. The first call of each hour sweeps every bucket that left the window
 (an emptied key is deleted, and so is any key of the older per-JST-day layout
 `ai:<day>:…`).
 Turning the flag off does not cancel a call already in flight (≤ 30 s). Over a cap, the page shows `aiLimit`
-("resting, try again in a few hours") and the lanes can still answer.
+("taking a short break") with `retryMin` — when this reply would fit
+again, the later of the two caps, from the oldest buckets that must age out
+(`fitsAgainAt`) — shown as `aiLimitIn` ("again in about N min"); without it
+(a reply larger than the cap itself) `aiLimit` ("try again in a while"). The
+lanes can still answer. The caps' values are live config (`/dev/config`,
+group chat; defaults `USER_DAILY_TOKENS` / `SITE_DAILY_USD` in
+`lib/partner-ai-config.ts`), read by the hub over `DebugSessions.config` and
+cached 30 s like the flag. Out of credits is a different line (`ai-credits`):
+it links to `/membership`, where the wallet is topped up.
 
 ## Credits: every reply is paid, reserve first
 

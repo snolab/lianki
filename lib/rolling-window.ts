@@ -54,3 +54,30 @@ export function addToBucket(b: HourBuckets | undefined, hour: number, delta: num
 export function windowHours(v: unknown, dflt: number, max: number) {
   return typeof v === "number" && Number.isInteger(v) && v >= 1 ? Math.min(v, max) : dflt;
 }
+
+/**
+ * When `need` more fits under `cap` again: the epoch ms at which enough of the
+ * oldest buckets have left the window (a bucket for hour h leaves at the
+ * start of hour h + hours). `now` when it fits already; null when even an
+ * empty window could not hold it.
+ */
+export function fitsAgainAt(
+  b: HourBuckets | undefined,
+  now: number,
+  hours: number,
+  cap: number,
+  need: number,
+): number | null {
+  if (need > cap) return null;
+  const nowHour = hourOf(now);
+  let sum = windowSum(b, nowHour, hours);
+  if (sum + need <= cap) return now;
+  const live = Object.entries(b ?? {})
+    .map(([k, v]) => [Number(k), v] as const)
+    .filter(([h, v]) => typeof v === "number" && inWindow(h, nowHour, hours))
+    .sort((x, y) => x[0] - y[0]);
+  // Drop the oldest until it fits (it does once all are gone: need ≤ cap).
+  let i = 0;
+  while (sum + need > cap) sum -= live[i++]![1];
+  return (live[i - 1]![0] + hours) * HOUR_MS;
+}

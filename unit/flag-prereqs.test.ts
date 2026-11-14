@@ -255,7 +255,7 @@ describe("never exposes a value", () => {
   }
 });
 
-test("/dev/flags card: who changed it and when, in JST", () => {
+test("/dev/flags card: who changed it and when, labelled with its zone", () => {
   const out = renderToString(
     createElement(FlagCard, {
       flag: {
@@ -271,7 +271,8 @@ test("/dev/flags card: who changed it and when, in JST", () => {
     }),
   );
   expect(out).toContain(BY);
-  expect(out).toContain("JST");
+  // Server-rendered: the viewer's zone is not known yet, so UTC, labelled (never a fixed JST).
+  expect(out).toContain("05:00 UTC");
 });
 
 describe("wiring", () => {

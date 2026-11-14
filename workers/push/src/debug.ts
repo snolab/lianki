@@ -309,12 +309,17 @@ import {
   CAP_WINDOW_HOURS,
   CAP_WINDOW_KEY,
   CAP_WINDOW_MAX,
+  SITE_WINDOW_USD_KEY,
+  SITE_WINDOW_USD_MAX,
+  USER_WINDOW_TOKENS_KEY,
+  USER_WINDOW_TOKENS_MAX,
   costUsd,
   reserveInTokens,
 } from "../../../lib/partner-ai-config";
 import {
   type HourBuckets,
   addToBucket,
+  fitsAgainAt,
   hourOf,
   pruneBuckets,
   windowHours,
@@ -840,8 +845,8 @@ export class DebugHub {
   /** The last read of PARTNER_AI_FLAG (AI_FLAG_CACHE_MS). */
   /** `unsure`: the flag could not be read (an RPC error, "busy"); the AI cannot answer then. */
   private aiFlag?: { at: number; on: boolean; unsure?: true };
-  /** The last read of CAP_WINDOW_KEY (AI_FLAG_CACHE_MS). */
-  private capWindow?: { at: number; hours: number };
+  /** The last read of the caps' config: CAP_WINDOW_KEY and the two caps (AI_FLAG_CACHE_MS). */
+  private capConf?: { at: number; hours: number; userTokens: number; siteMicro: number };
   private mergeFlag?: { at: number; on: boolean };
   /** The last read of TWO_MIC_FLAG and TWO_MIC_WINDOW_KEY (AI_FLAG_CACHE_MS). */
   private twoMicConf?: { at: number; on: boolean; windowMs: number };
@@ -4111,12 +4116,14 @@ export class DebugHub {
     if (!isUserId(userId) || !rpc?.partnerReply) return;
     const t = this.now();
     const hour = hourOf(t);
-    const win = await this.capWindowHours();
+    const caps = await this.capsConf();
+    const win = caps.hours;
     const userKey = aiUserKey(userId);
     const siteMap = await this.ctx.storage.get<HourBuckets>(AI_SITE_KEY);
     // The first call of a new hour sweeps buckets that left the window.
     if (!siteMap?.[hour]) await this.aiDropOld(hour, win);
-    const used = windowSum(await this.ctx.storage.get<HourBuckets>(userKey), hour, win);
+    const userMap = await this.ctx.storage.get<HourBuckets>(userKey);
+    const used = windowSum(userMap, hour, win);
     const site = windowSum(siteMap, hour, win);
     const lines = (await this.history(thread))
       .filter((m) => m.from === (owner ? "owner" : "friend") || m.from === "agent")
@@ -4145,14 +4152,19 @@ export class DebugHub {
     const reserveIn = reserveInTokens(chars + pageChars);
     const reserveTokens = reserveIn + MAX_OUTPUT_TOKENS;
     const reserveMicro = Math.ceil(costUsd(reserveIn, MAX_OUTPUT_TOKENS) * 1e6);
-    if (used + reserveTokens > USER_DAILY_TOKENS || site + reserveMicro > SITE_DAILY_USD * 1e6) {
-      console.log(
-        JSON.stringify({
-          msg: "partner.capped",
-          which: used + reserveTokens > USER_DAILY_TOKENS ? "user" : "site",
-        }),
-      );
-      for (const { ws } of this.pages(thread)) send(ws, { type: "ai-limit" });
+    const overUser = used + reserveTokens > caps.userTokens;
+    if (overUser || site + reserveMicro > caps.siteMicro) {
+      console.log(JSON.stringify({ msg: "partner.capped", which: overUser ? "user" : "site" }));
+      // When this reply would fit again: the later of the two caps, as the oldest use ages out.
+      const ats = [
+        fitsAgainAt(userMap, t, win, caps.userTokens, reserveTokens),
+        fitsAgainAt(siteMap, t, win, caps.siteMicro, reserveMicro),
+      ];
+      const retryMin = ats.includes(null)
+        ? undefined
+        : Math.max(1, Math.ceil((Math.max(...(ats as number[])) - t) / 60_000));
+      for (const { ws } of this.pages(thread))
+        send(ws, { type: "ai-limit", ...(retryMin !== undefined ? { retryMin } : {}) });
       return;
     }
     // The reservation goes into this hour's bucket; settling adjusts that same bucket.
@@ -4248,17 +4260,34 @@ export class DebugHub {
     });
   }
 
-  /** CAP_WINDOW_KEY from the main Worker, at most once per AI_FLAG_CACHE_MS; unreadable = the default. */
-  private async capWindowHours(): Promise<number> {
+  /**
+   * The caps' live config from the main Worker (lib/config.ts), at most once
+   * per AI_FLAG_CACHE_MS: the window's hours, the per-user tokens and the
+   * site's USD (as micro-USD). A value that cannot be read is its default.
+   */
+  private async capsConf() {
     const t = this.now();
-    if (this.capWindow && t - this.capWindow.at < AI_FLAG_CACHE_MS) return this.capWindow.hours;
-    let v: unknown;
-    try {
-      v = await this.sessions?.config?.(CAP_WINDOW_KEY);
-    } catch {}
-    const hours = windowHours(v, CAP_WINDOW_HOURS, CAP_WINDOW_MAX);
-    this.capWindow = { at: t, hours };
-    return hours;
+    if (this.capConf && t - this.capConf.at < AI_FLAG_CACHE_MS) return this.capConf;
+    const read = async (key: string) => {
+      try {
+        return await this.sessions?.config?.(key);
+      } catch {
+        return undefined;
+      }
+    };
+    const num = (v: unknown, dflt: number, max: number) =>
+      typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.min(v, max) : dflt;
+    this.capConf = {
+      at: t,
+      hours: windowHours(await read(CAP_WINDOW_KEY), CAP_WINDOW_HOURS, CAP_WINDOW_MAX),
+      userTokens: num(
+        await read(USER_WINDOW_TOKENS_KEY),
+        USER_DAILY_TOKENS,
+        USER_WINDOW_TOKENS_MAX,
+      ),
+      siteMicro: num(await read(SITE_WINDOW_USD_KEY), SITE_DAILY_USD, SITE_WINDOW_USD_MAX) * 1e6,
+    };
+    return this.capConf;
   }
 
   /** Add `delta` (may be negative, never below zero) to bucket `hour` of a usage key. */

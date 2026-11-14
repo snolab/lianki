@@ -444,9 +444,38 @@ describe("partner AI: caps (rolling window)", () => {
     const g = await s.friend("f2", "f2@x.com");
     await s.msg(f, { type: "chat", id: "a", text: "hi" });
     expect(s.stub.calls).toEqual([]);
-    expect(f.last("ai-limit")).toEqual({ type: "ai-limit" });
+    // Once the bucket of 23 hours ago leaves the window (the next hour; T0 is on the hour).
+    expect(f.last("ai-limit")).toEqual({ type: "ai-limit", retryMin: 60 });
     await s.msg(g, { type: "chat", id: "b", text: "hi" });
     expect(s.stub.calls.map((c) => c.userId)).toEqual(["f2"]);
+  });
+
+  it("the caps are live config (partner.userWindowTokens, partner.siteWindowUsd)", async () => {
+    const s = setup({ config: true });
+    s.stub.config = { "partner.userWindowTokens": 1000, "partner.siteWindowUsd": 100 };
+    const f = await s.friend();
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    // One reply's reservation (> 20,000 tokens) never fits 1000: no time to wait for.
+    expect(s.stub.calls).toEqual([]);
+    expect(f.last("ai-limit")).toEqual({ type: "ai-limit" });
+    s.tick(31_000);
+    s.stub.config = { "partner.userWindowTokens": 10_000_000, "partner.siteWindowUsd": 0 };
+    await s.msg(f, { type: "chat", id: "b", text: "hi" });
+    expect(s.stub.calls).toEqual([]);
+    // Unreadable values: the defaults.
+    s.tick(31_000);
+    s.stub.config = { "partner.userWindowTokens": "x", "partner.siteWindowUsd": -1 };
+    await s.msg(f, { type: "chat", id: "c", text: "hi" });
+    expect(s.stub.calls).toHaveLength(1);
+  });
+
+  it("over the site cap: the wait is until enough of the site's oldest use ages out", async () => {
+    const s = setup();
+    s.storage.store.set(AI_SITE_KEY, { ...at(SITE_DAILY_USD * 1e6 - 100, 20), ...at(99, 2) });
+    const f = await s.friend();
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    // The bucket of 20 hours ago leaves at the start of the hour 4 hours from T0.
+    expect(f.last("ai-limit")).toEqual({ type: "ai-limit", retryMin: 240 });
   });
 
   it("usage frees up as its hour leaves the window: 24 hours ago no longer counts", async () => {

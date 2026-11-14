@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   HOUR_MS,
   addToBucket,
+  fitsAgainAt,
   hourOf,
   inWindow,
   pruneBuckets,
@@ -57,5 +58,21 @@ describe("rolling window: hourly UTC buckets", () => {
     expect(windowHours(500, 24, 168)).toBe(168);
     for (const v of [0, -1, 2.5, "6", undefined, null, Number.NaN])
       expect(windowHours(v, 24, 168)).toBe(24);
+  });
+});
+
+describe("fitsAgainAt: when a capped request fits again", () => {
+  const now = 100 * HOUR_MS + 30 * 60_000; // half past hour 100
+  it("now when it fits; null when it never can", () => {
+    expect(fitsAgainAt({ 99: 10 }, now, 24, 100, 50)).toBe(now);
+    expect(fitsAgainAt(undefined, now, 24, 100, 101)).toBeNull();
+  });
+  it("the start of the hour the oldest needed bucket leaves the window", () => {
+    // 80 at hour 80, 15 at hour 95: 95 + 10 > 100. Hour 80 leaves at hour 104.
+    expect(fitsAgainAt({ 80: 80, 95: 15 }, now, 24, 100, 10)).toBe(104 * HOUR_MS);
+    // Both have to go: hour 95 leaves at hour 119.
+    expect(fitsAgainAt({ 80: 50, 95: 50 }, now, 24, 100, 60)).toBe(119 * HOUR_MS);
+    // A bucket already out of the window does not count.
+    expect(fitsAgainAt({ 70: 1000, 95: 95 }, now, 24, 100, 10)).toBe(119 * HOUR_MS);
   });
 });
