@@ -7,6 +7,7 @@ import {
   dragTransform,
   type DragGeom,
 } from "@lianki/debug-chat/drag-frame";
+import { stubGlobals } from "./support/globals";
 
 /** A hand-cranked animation frame clock. */
 function fakeClock() {
@@ -139,5 +140,35 @@ describe("the chat's drag commits once (DebugChat.tsx useDrag)", () => {
   it("will-change only while dragging", () => {
     expect(src).toContain('box.style.willChange = "transform"');
     expect(body("settle")).toContain('d.box.style.willChange = ""');
+  });
+});
+
+describe("the browser frame clock", () => {
+  it("uses requestAnimationFrame, cancelAnimationFrame and performance.now by default", () => {
+    const frames: ((t: number) => void)[] = [];
+    const cancelled: number[] = [];
+    const restore = stubGlobals({
+      requestAnimationFrame: (cb: (t: number) => void) => frames.push(cb),
+      cancelAnimationFrame: (id: number) => void cancelled.push(id),
+    });
+    try {
+      const seen: number[] = [];
+      const w = createFrameWriter<number>((v) => seen.push(v));
+      w.push(1);
+      w.push(2);
+      expect(frames).toHaveLength(1);
+      frames[0]!(16);
+      expect(seen).toEqual([2]);
+      w.push(3);
+      w.flush();
+      expect(cancelled).toEqual([2]);
+      expect(seen).toEqual([2, 3]);
+      w.push(4);
+      w.cancel();
+      expect(cancelled).toEqual([2, 3]);
+      expect(w.pending()).toBe(false);
+    } finally {
+      restore();
+    }
   });
 });

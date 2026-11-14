@@ -13,6 +13,7 @@ import {
   clockPong,
   clockSample,
   createHubClock,
+  hubClock,
   estimateOffset,
   keepSamples,
   speakAtFor,
@@ -23,6 +24,7 @@ import {
 import { createVoice, type UtterLike } from "@lianki/debug-chat/voice";
 import { CONFIG } from "@/lib/config";
 import { FLAGS } from "@/lib/flags";
+import { globalDescriptor, restoreGlobal } from "./support/globals";
 
 describe("clock offset", () => {
   it("one round: offset and round trip, NTP-style", () => {
@@ -264,5 +266,32 @@ describe("two devices, one line", () => {
     // Only the line's first sentence waited: the next follows at once.
     w.advance(1_000);
     expect(d.started).toEqual([t0 + 250, t0 + 1_250]);
+  });
+});
+
+describe("the page's hub clock", () => {
+  it("reset drops the round in flight and keeps fresh samples; one clock per page", () => {
+    let t = 1_000;
+    const c = createHubClock(() => t);
+    const p = c.ping()!;
+    t += 20;
+    c.pong({ t0: p.t0, t1: p.t0 + 5, t2: p.t0 + 6 });
+    const q = c.ping()!;
+    c.reset();
+    // The old round's pong is ignored; a new ping may go at once.
+    expect(c.pong({ t0: q.t0, t1: 0, t2: 0 })).toBe(false);
+    expect(c.ping()).not.toBeNull();
+    expect(c.samples().length).toBeGreaterThan(0);
+    t += CLOCK_REFRESH_MS + 1;
+    c.reset();
+    expect(c.samples()).toEqual([]);
+    // The default clock is Date.now.
+    expect(createHubClock().ping()!.t0).toBeGreaterThan(0);
+    const before = globalDescriptor("__lkHubClock");
+    try {
+      expect(hubClock()).toBe(hubClock());
+    } finally {
+      restoreGlobal("__lkHubClock", before);
+    }
   });
 });

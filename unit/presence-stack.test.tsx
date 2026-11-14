@@ -6,6 +6,7 @@
  * the connect snippet. And a custom avatar fetched, re-sanitized and drawn.
  */
 import { expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { PresenceStack, type ParticipantChange } from "../packages/debug-chat/src/PresenceStack";
 import { CustomAvatar } from "../packages/debug-chat/src/LaneMark";
 import { Avatar } from "../packages/debug-chat/src/Avatar";
@@ -58,13 +59,13 @@ it("summary, panel, rename, picture, remove and invite", async () => {
   const { Window } = await import("happy-dom");
   const win = new Window();
   const g = globalThis as Record<string, unknown>;
-  const saved = {
-    window: g.window,
-    document: g.document,
-    act: g.IS_REACT_ACT_ENVIRONMENT,
+  // Put back exactly as they were (absent stays absent): unit/support/globals.ts.
+  const restoreGlobals = stubGlobals({
+    window: win,
+    document: win.document,
+    IS_REACT_ACT_ENVIRONMENT: true,
     fetch: g.fetch,
-  };
-  Object.assign(g, { window: win, document: win.document, IS_REACT_ACT_ENVIRONMENT: true });
+  });
   const clip: string[] = [];
   Object.defineProperty(navigator, "clipboard", {
     value: { writeText: async (s: string) => void clip.push(s) },
@@ -256,12 +257,7 @@ it("summary, panel, rename, picture, remove and invite", async () => {
     expect($('[data-testid="debug-chat-auto-mark"]')).not.toBeNull();
   } finally {
     await act(() => root.unmount());
-    Object.assign(g, {
-      window: saved.window,
-      document: saved.document,
-      IS_REACT_ACT_ENVIRONMENT: saved.act,
-      fetch: saved.fetch,
-    });
+    restoreGlobals();
     await win.happyDOM.close();
   }
 });

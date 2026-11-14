@@ -17,6 +17,7 @@ import {
   setPolishReadback,
 } from "@lianki/debug-chat/polish-readback";
 import { type UtterLike, createVoice, gateVoice } from "@lianki/debug-chat/voice";
+import { stubGlobals } from "./support/globals";
 import { createCloudOut } from "@lianki/debug-chat/voice-out";
 import { MERGE_BY, UNMERGE_BY } from "@lianki/debug-chat/voice-merge";
 import { clearHeard, heardFor } from "@lianki/debug-chat/voice-heard";
@@ -179,16 +180,14 @@ describe("polish read-back: queued once, through the voice", () => {
   });
 
   it("defaults: the flag store on globalThis, the clone base from localStorage", () => {
-    const g = globalThis as Record<string, unknown>;
-    const saved = g.localStorage;
+    const restore = stubGlobals({ localStorage: { getItem: () => "off" } });
     try {
-      g.localStorage = { getItem: () => "off" };
       // No `base` given: the device key decides ("off": none).
       const calls: unknown[] = [];
       expect(polishReadback(raw(), polished(), { reply: () => (calls.push(1), true) })).toBe(false);
       expect(calls).toHaveLength(0);
     } finally {
-      g.localStorage = saved;
+      restore();
     }
   });
 });
@@ -209,17 +208,17 @@ describe("polish read-back: the clone server's URL and settings", () => {
       "https://mac/clone",
     );
     // Storage blocked: the default.
-    const g = globalThis as Record<string, unknown>;
-    const saved = g.localStorage;
-    try {
-      g.localStorage = {
+    const restore = stubGlobals({
+      localStorage: {
         getItem: () => {
           throw new Error("blocked");
         },
-      };
+      },
+    });
+    try {
       expect(cloneTtsBase()).toBe(DEFAULT_CLONE_TTS_BASE);
     } finally {
-      g.localStorage = saved;
+      restore();
     }
   });
 
