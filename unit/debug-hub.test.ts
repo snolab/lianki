@@ -4730,3 +4730,53 @@ describe("durable incoming chat acceptance", () => {
     expect(s.storage.store.get("t:f1:seq")).toBe(FRIEND_CHAT_MAX);
   });
 });
+
+it("PTT recheck never changes the primary text covered by a signed speaker proof", async () => {
+  const key = await speakerKey();
+  const s = setup({ STT_SPEAKER_PUB: key.pub });
+  const page = s.page();
+  const baseline = "Do not remove this word.";
+  const recheck = {
+    at: 1_000_000,
+    engine: "mlx-whisper",
+    heard: baseline,
+    text: "Remove this word.",
+  };
+  const proof = await key.sign({
+    decision: "me",
+    text: baseline,
+    uid: "ptt-proof-baseline",
+    thread: "owner",
+    at: 1_000_000,
+  });
+  await s.msg(page, {
+    type: "chat",
+    id: "ptt-signed",
+    text: baseline,
+    source: "stt",
+    recheck,
+    speakerProof: [proof],
+  });
+  const [line] = await s.hub.history();
+  expect(line).toMatchObject({
+    text: baseline,
+    recheck,
+    speaker: { decision: "me", signed: [baseline] },
+  });
+  const wrong = await key.sign({
+    decision: "me",
+    text: baseline,
+    uid: "ptt-proof-altered",
+    thread: "owner",
+    at: 1_000_000,
+  });
+  await s.msg(page, {
+    type: "chat",
+    id: "ptt-altered",
+    text: recheck.text,
+    source: "stt",
+    recheck: { ...recheck, heard: recheck.text },
+    speakerProof: [wrong],
+  });
+  expect((await s.hub.history()).find((m) => m.id === "ptt-altered")).not.toHaveProperty("speaker");
+});

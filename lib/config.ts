@@ -318,6 +318,16 @@ export const CONFIG = {
   }),
   // Whisper re-reads a whole continuous-speech run (packages/debug-chat/src/whisper-recheck.ts;
   // flag stt.whisper-recheck; docs/dev-debug-widget.md, "Whisper re-listens to the whole run").
+  "voice.pttMaxCaptureMs": int({
+    default: 60_000,
+    min: 1_000,
+    max: 600_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "按住说话一次保留的音频上限（毫秒）。达到上限明确停止本次录音并保留已识别文字，不静默截断后当作完整录音发送；限制浏览器内存占用。",
+  }),
   "stt.recheckMinSec": {
     default: 1.5 as number,
     schema: z.number().min(0).max(60),

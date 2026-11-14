@@ -19,6 +19,9 @@ import {
   postStt,
   reportLocalStt,
   resample,
+  MAX_UTTERANCE_MS,
+  PARTIAL_MIN_MS,
+  PARTIAL_EVERY_MS,
 } from "./mic";
 import {
   CUE_SEND_KEY,
@@ -31,10 +34,11 @@ import {
 } from "./cues";
 import { silenceHere } from "./speak-rules";
 import { voiceLatency, noteSttVia } from "./latency";
-import { type SttTag, sttTagOf } from "./wire";
+import { sttTagOf } from "./wire";
 import { postSessionClip } from "./clips-store";
 import { createRecorder, pageRecorder } from "./recorder";
-import { createLocalStt } from "./local-stt";
+import { createLocalStt, REQUEST_TIMEOUT_MS } from "./local-stt";
+import { createPttRecognition } from "./ptt-recognize";
 import {
   PUBLIC_CONNECT_TIMEOUT_MS,
   isMixedRoutes,
@@ -43,20 +47,31 @@ import {
   publicOpen,
 } from "./public-stt";
 import type { SttSignals } from "./stt-guard";
-import { VOICE_DEVICE_KEY, deviceSlug, filterSwitch, filterVerdict, noteFiltered, noteSpeaker, subscribeFiltered } from "./voiceprint";
+import {
+  VOICE_DEVICE_KEY,
+  deviceSlug,
+  filterSwitch,
+  filterVerdict,
+  noteFiltered,
+  noteSpeaker,
+  subscribeFiltered,
+} from "./voiceprint";
 import { localSttStrings, wakeStrings } from "./ui-strings";
 import { createKws } from "./wake-kws";
 import { wakeNames } from "./wake-names";
 import { MIC_BOX, MIC_RING, NO_SELECT } from "./bar-geometry";
-import { type LifeEvent, MIC_BLOCKED_NOTE, type MicSession, type MicView, micSession } from "./mic-session";
+import {
+  type LifeEvent,
+  MIC_BLOCKED_NOTE,
+  type MicSession,
+  type MicView,
+  micSession,
+} from "./mic-session";
 import { autoOffNote, micLook } from "./mic-off";
 import { sttHint } from "./stt-hint";
 import {
-  PTT_PREROLL_MS,
-  PTT_TAIL_MS,
+  PTT_MAX_WAV_BYTES,
   chunkSamples,
-  createRing,
-  joinClip,
   joinTexts,
   type PttState,
   onPttHolding,
@@ -116,7 +131,9 @@ const suspendIdle = () => {
   const st = voice().state();
   // Not while the page plays: the reader's clips play through it while the mic is on (lib/read/speaker.ts).
   if (!st.mic && !st.speaking && pageCues().quiet() && !pageAudio().playing())
-    void existingCtx()?.suspend().catch(() => {});
+    void existingCtx()
+      ?.suspend()
+      .catch(() => {});
 };
 
 /**
@@ -185,97 +202,137 @@ const micStream = async () => {
 const liveTrack = () =>
   liveStream?.getAudioTracks().some((t) => t.readyState === "live") ? liveStream : null;
 
-/**
- * The pre-roll (ptt.ts): while the always-on mic is open, its last
- * PTT_PREROLL_MS in a ring, in memory only. Started and stopped with the
- * session's state; a hold takes it, never stored or sent otherwise.
- */
-let preroll: { ring: ReturnType<typeof createRing>; stop: () => void } | null = null;
-const prerollOn = (on: boolean) => {
-  if (!on) {
-    preroll?.stop();
-    preroll?.ring.clear();
-    preroll = null;
-    return;
-  }
-  const ctx = audioCtx();
-  const s = liveTrack();
-  if (preroll || !ctx || !s) return;
-  const ring = createRing((ctx.sampleRate * PTT_PREROLL_MS) / 1000);
-  try {
-    preroll = { ring, stop: pcmTap(ctx, s, (c) => ring.push(c)) };
-  } catch {
-    preroll = null;
-  }
-};
+/** Both capture modes use the same account-aware local route transport. */
+function localFor(
+  url: string,
+  log: (event: Record<string, unknown>) => void,
+  filter = filterSwitch(),
+) {
+  if (isMixedRoutes(url))
+    return createLocalStt(url, {
+      log,
+      open: mixedOpen({ log }),
+      connectTimeoutMs: PUBLIC_CONNECT_TIMEOUT_MS,
+      device: voiceDevice(),
+      thread: "owner",
+      filter,
+    });
+  if (isPublicRoutes(url))
+    return createLocalStt(url, {
+      log,
+      open: publicOpen({ log }),
+      connectTimeoutMs: PUBLIC_CONNECT_TIMEOUT_MS,
+    });
+  return createLocalStt(url, { log, device: voiceDevice(), thread: "owner", filter });
+}
 
 /**
- * Push to talk's recorder (ptt.ts): `start` at the pointerdown (the
- * session's open stream, else one of its own), `finish` keeps PTT_TAIL_MS
- * more, then sends the pre-roll and the hold through the STT route (in
- * pieces only past its size limit) and resolves to one line's text;
- * `abort` drops everything. While it records, the always-on capture holds
- * (setPttHolding), so the VAD makes no line of its own from it.
+ * Push to talk records only the press/release window: no pre-roll or tail.
+ * A dedicated configured local connection streams live partials while the
+ * ordinary VAD holds. Its existing recheck window supplies the second reading,
+ * with bounded cloud fallback/progressive previews through the existing route.
+ * Microphone acquisition/buffer delay remains reflected in actual audioMs.
+ * abort cancels capture, in-flight decoding and late callbacks.
  */
-export function pttRecorder() {
-  let rec: {
-    ctx: AudioContext;
-    pre: Float32Array;
-    chunks: Float32Array[];
-    stop: () => void;
-    own: MediaStream | null;
-  } | null = null;
+export function pttRecorder(
+  options: {
+    localStt?: string;
+    recheck?: { maxSec: number; timeoutMs: number };
+    maxCaptureMs?: number;
+    onPartial?: (text: string) => void;
+    onFailure?: (error: Error) => void;
+  } = {},
+) {
+  let recorder: ReturnType<typeof createPttRecognition> | null = null;
+  let stop: (() => void) | null = null;
+  let own: MediaStream | null = null;
   let starting: Promise<void> | null = null;
-  const end = () => {
-    rec?.stop();
-    rec?.own?.getTracks().forEach((t) => t.stop());
-    rec = null;
-    setPttHolding(false);
+  let ended = false;
+  const closeCapture = (resume = true) => {
+    stop?.();
+    stop = null;
+    own?.getTracks().forEach((track) => track.stop());
+    own = null;
+    if (resume) setPttHolding(false);
   };
   return {
-    start() {
+    start(at = Date.now()) {
       setPttHolding(true);
       starting = (async () => {
         const ctx = audioCtx();
         if (!ctx) throw new Error("no audio context");
-        if (ctx.state !== "running") await ctx.resume().catch(() => {});
+        if (ctx.state !== "running") await ctx.resume();
         const live = liveTrack();
-        // Mic off: a stream of its own, closed with the clip (never the session's).
-        const own = live
-          ? null
-          : await navigator.mediaDevices.getUserMedia({ audio: micConstraints(aecOn()) });
-        const chunks: Float32Array[] = [];
-        const pre = preroll?.ring.take() ?? new Float32Array(0);
-        rec = { ctx, pre, chunks, own, stop: pcmTap(ctx, (live ?? own)!, (c) => chunks.push(c)) };
+        const acquired =
+          live ?? (await navigator.mediaDevices.getUserMedia({ audio: micConstraints(aecOn()) }));
+        if (!live) own = acquired;
+        if (ended) {
+          closeCapture();
+          return;
+        }
+        const local = options.localStt
+          ? localFor(
+              options.localStt,
+              (ev) => voice().log(ev),
+              () => false,
+            )
+          : undefined;
+        recorder = createPttRecognition({
+          now: Date.now,
+          run: crypto.randomUUID(),
+          rate: RATE,
+          startAt: at,
+          maxCaptureMs:
+            options.maxCaptureMs ?? Math.floor(((PTT_MAX_WAV_BYTES - 44) / 2 / RATE) * 1000),
+          localSegmentMs: MAX_UTTERANCE_MS,
+          partialMinMs: PARTIAL_MIN_MS,
+          partialEveryMs: PARTIAL_EVERY_MS,
+          requestTimeoutMs: REQUEST_TIMEOUT_MS,
+          recheck: options.recheck,
+          local,
+          onPartial: options.onPartial,
+          onFailure: (error) => {
+            closeCapture(false);
+            options.onFailure?.(error);
+          },
+          cloud: async (audio, signal) => {
+            const results = [];
+            for (const piece of chunkSamples(audio))
+              results.push(
+                await postStt(encodeWav(piece), fetch, "audio/wav", sttHint(), { signal }),
+              );
+            const models = [...new Set(results.map((result) => result.model))];
+            return {
+              text: joinTexts(results.map((result) => result.text)),
+              ...(models.length === 1 && models[0] ? { model: models[0] } : {}),
+              ...(results[0]?.language ? { language: results[0].language } : {}),
+            };
+          },
+        });
+        stop = pcmTap(ctx, acquired, (audio) => {
+          const samples = resample(audio, ctx.sampleRate, RATE);
+          recorder?.frame(samples, Date.now() - (samples.length * 1000) / RATE);
+        });
       })();
-      starting.catch(() => setPttHolding(false));
+      starting.catch(() => {
+        closeCapture();
+      });
     },
     abort() {
-      void starting?.finally(end).catch(end);
+      ended = true;
+      recorder?.abort();
+      closeCapture();
+      void starting?.finally(closeCapture).catch(() => {});
     },
-    async finish(): Promise<{ text: string; audioMs: number; stt?: SttTag }> {
+    async finish(at = Date.now()) {
       await starting;
-      await new Promise((r) => setTimeout(r, PTT_TAIL_MS));
-      const r = rec;
-      end();
-      if (!r) return { text: "", audioMs: 0 };
-      const held = new Float32Array(r.chunks.reduce((n, c) => n + c.length, 0));
-      let at = 0;
-      for (const c of r.chunks) {
-        held.set(c, at);
-        at += c.length;
-      }
-      const clip = resample(joinClip(r.pre, held), r.ctx.sampleRate, RATE);
-      const texts: string[] = [];
-      let model: string | undefined;
-      for (const piece of chunkSamples(clip)) {
-        const out = await postStt(encodeWav(piece), fetch, "audio/wav", sttHint());
-        texts.push(out.text);
-        model ??= out.model;
-      }
-      // Always the cloud route: its model is the line's engine (SttTag).
-      const stt = sttTagOf("cloud", model);
-      return { text: joinTexts(texts), audioMs: Math.round((clip.length / RATE) * 1000), stt };
+      closeCapture();
+      if (ended || !recorder) throw new Error("ptt-cancelled");
+      const result = await recorder.finish(at);
+      if (ended) throw new Error("ptt-cancelled");
+      if (result.stt?.route === "local" && !isPublicRoutes(options.localStt ?? ""))
+        reportLocalStt(result.audioMs, fetch);
+      return result;
     },
   };
 }
@@ -355,8 +412,7 @@ async function silero(ev: VadEvents, stream: MediaStream): Promise<Vad> {
   const input = agc?.stream ?? stream;
   // The page's overrides (__lkVoiceTune) win over the adaptive values.
   const over = (globalThis as { __lkVoiceTune?: Record<string, unknown> }).__lkVoiceTune ?? {};
-  const pick = () =>
-    Object.fromEntries(Object.entries(adapt.vad()).filter(([k]) => !(k in over)));
+  const pick = () => Object.fromEntries(Object.entries(adapt.vad()).filter(([k]) => !(k in over)));
   const v = await g.MicVAD.new({
     // From the VAD A/B (voice-tune.ts), then the adaptive values (adaptive.ts).
     positiveSpeechThreshold: t.positiveSpeechThreshold,
@@ -479,7 +535,9 @@ const wakeOff = () => {
 
 /** The page's recorder (recorder.ts): one per page, shared by every mic session. */
 const recorder = (v: { log(ev: Record<string, unknown>): void }) =>
-  pageRecorder(() => createRecorder({ fetch: globalThis.fetch.bind(globalThis), log: (ev) => v.log(ev) }));
+  pageRecorder(() =>
+    createRecorder({ fetch: globalThis.fetch.bind(globalThis), log: (ev) => v.log(ev) }),
+  );
 
 /** The page's mic session, built with this module's browser pieces (mic-session.ts). */
 function session(): MicSession {
@@ -496,8 +554,6 @@ function session(): MicSession {
     fallback: (ev, s) => energy(ev, s as MediaStream),
     onState: (s, last) => {
       const active = s !== "off";
-      // Push to talk's pre-roll runs while the mic is open (ptt.ts), memory only.
-      prerollOn(active);
       v.setMic(active);
       pageAudio().setMic(active);
       // The user starts talking: over the agent it ducks (a barge-in if they
@@ -507,8 +563,7 @@ function session(): MicSession {
         v.userSpeech();
         // A line held for joining waits for this speech (voice-tune.ts createJoiner).
         window.dispatchEvent(new Event(VOICE_CAPTURE_EVENT));
-      }
-      else if (last === "capturing") {
+      } else if (last === "capturing") {
         pageCues().capture(false);
         v.userIdle();
       }
@@ -542,25 +597,10 @@ function session(): MicSession {
     // no filter (none of the owner's voiceprint applies), WebRTC then the WSS tunnel.
     // His own list may mix rtc:lianki (his phone to his own Mac over WebRTC) with the
     // tailnet: each route its own transport, and everything of his goes along.
-    localStt: (url) =>
-      isMixedRoutes(url)
-        ? createLocalStt(url, {
-            log: (ev) => v.log(ev),
-            open: mixedOpen({ log: (ev) => v.log(ev) }),
-            connectTimeoutMs: PUBLIC_CONNECT_TIMEOUT_MS,
-            device: voiceDevice(),
-            thread: "owner",
-            filter: filterSwitch(),
-          })
-        : isPublicRoutes(url)
-        ? createLocalStt(url, {
-            log: (ev) => v.log(ev),
-            open: publicOpen({ log: (ev) => v.log(ev) }),
-            connectTimeoutMs: PUBLIC_CONNECT_TIMEOUT_MS,
-          })
-        : createLocalStt(url, { log: (ev) => v.log(ev), device: voiceDevice(), thread: "owner", filter: filterSwitch() }),
+    localStt: (url) => localFor(url, (ev) => v.log(ev)),
     speaker: noteSpeaker,
-    filtered: (r) => void v.log({ ev: "voice-filtered", mode: "passive", n: noteFiltered("filtered", r).n, ...r }),
+    filtered: (r) =>
+      void v.log({ ev: "voice-filtered", mode: "passive", n: noteFiltered("filtered", r).n, ...r }),
     // The account's recordings (recorder.ts, docs/recordings.md): every finished utterance
     // while the mic is on, queued and sent in the background when the account has them on.
     // A passive one goes for its text only to his own local STT, never a public speech
@@ -622,7 +662,9 @@ function session(): MicSession {
         // The text guard: the agent's own words that leaked past the AEC are dropped.
         // Talk-over (AEC off, flag voice.talk-over): by time and text together, and
         // what is not her echo, heard while she reads, pauses the reading (voice.ts duplexHeard).
-        const chatEcho = v.duplex() ? v.duplexHeard(out.text, spokeAt, at) : v.echoCheck(out.text, durationMs);
+        const chatEcho = v.duplex()
+          ? v.duplexHeard(out.text, spokeAt, at)
+          : v.echoCheck(out.text, durationMs);
         // The page reads aloud too (/read): what it said is the same kind of echo.
         // But first the page may claim the line as the user's own (/read's shadowing).
         const page = pageAudio();
@@ -673,13 +715,17 @@ function session(): MicSession {
             aec: aecAt,
             track: trackAt,
           };
-          sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
+          sideClip(() =>
+            postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log),
+          );
         }
         return out.text;
       } catch (e) {
         if (sink) {
           const meta = { at, durationMs, label: cfg.label, aec: aecAt, track: trackAt };
-          sideClip(() => postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log));
+          sideClip(() =>
+            postSessionClip(sink, (key) => postClip(sink, wav, meta, fetch, key), v.log),
+          );
         }
         throw e;
       }
@@ -924,13 +970,13 @@ export function DebugMic({
     ? micErrorNote(view.error)
     : view.auto && view.state === "off"
       ? autoOffNote(view.auto.reason, chatExtra(), MIC_BLOCKED_NOTE)
-    : view.state !== "off" && view.kws === "failed"
-      ? ws.failed
-      : view.state !== "off" && view.kws === "needs-wifi"
-        ? ws.wifi
-        : view.state !== "off" && stopped
-          ? localSttStrings().filtered
-          : null;
+      : view.state !== "off" && view.kws === "failed"
+        ? ws.failed
+        : view.state !== "off" && view.kws === "needs-wifi"
+          ? ws.wifi
+          : view.state !== "off" && stopped
+            ? localSttStrings().filtered
+            : null;
 
   useEffect(() => {
     if (state === "off") return;
@@ -997,8 +1043,8 @@ export function DebugMic({
               : passive
                 ? wakeLabel
                 : rec
-              ? mt.micRecordingTap
-              : mt.micListeningTap
+                  ? mt.micRecordingTap
+                  : mt.micListeningTap
         }
         aria-description={gesture?.description}
         title={
@@ -1026,7 +1072,9 @@ export function DebugMic({
           if (speaking) return voice().interrupt("tap");
           // Made in this gesture, so iOS lets it play the cues (and cloud replies) later.
           if (state === "off") {
-            void audioCtx()?.resume().catch(() => {});
+            void audioCtx()
+              ?.resume()
+              .catch(() => {});
             // The cloud reads replies when this device has no speechSynthesis voice (voice.ts).
             if (outMode() === "cloud" || noSpeechVoices()) cloudOut()?.unlock();
           }
@@ -1093,21 +1141,23 @@ export function DebugMic({
             className={`pointer-events-none absolute rounded-full border-2 border-dashed`}
             style={{ ...MIC_RING, borderColor: REC }}
           />
-        ) : listening && (
-          // Steady and faint while listening; red and pulsing (MIC_PULSE) while audio
-          // is captured. The ring alone shows it: no text on the button (owner, 2026-11-03).
-          <span
-            aria-hidden
-            key="ring"
-            data-testid="debug-chat-mic-ring"
-            data-rec={rec || undefined}
-            className="pointer-events-none absolute rounded-full"
-            style={{
-              ...MIC_RING,
-              boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}`,
-              animation: rec ? "lk-mic-pulse 1.2s ease-in-out infinite" : undefined,
-            }}
-          />
+        ) : (
+          listening && (
+            // Steady and faint while listening; red and pulsing (MIC_PULSE) while audio
+            // is captured. The ring alone shows it: no text on the button (owner, 2026-11-03).
+            <span
+              aria-hidden
+              key="ring"
+              data-testid="debug-chat-mic-ring"
+              data-rec={rec || undefined}
+              className="pointer-events-none absolute rounded-full"
+              style={{
+                ...MIC_RING,
+                boxShadow: `0 0 0 2px ${rec ? REC : "oklch(0.6 0.22 25 / 0.35)"}`,
+                animation: rec ? "lk-mic-pulse 1.2s ease-in-out infinite" : undefined,
+              }}
+            />
+          )
         )}
         <MicIcon fill={state !== "off"} />
         {state !== "off" && view.local && view.local !== "idle" && (

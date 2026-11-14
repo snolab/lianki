@@ -154,3 +154,54 @@ test("hub request cancellation reaches provider and settles failure", async () =
   expect(result).toMatchObject({ ok: false, error: "provider-timeout" });
   expect(await getBalance(env().DB, "u_test")).toBe(100);
 });
+
+test("polish retains both independently sourced candidates within the existing total budget", () => {
+  const recheck = {
+    at: 12,
+    engine: "@cf/openai/whisper-large-v3-turbo",
+    heard: "实时识别",
+    text: "整段识别",
+    lang: "zh",
+    device: "discarded",
+  };
+  const dual = parsePolish({
+    ...input,
+    lines: [
+      {
+        id: "v1",
+        text: "实时识别",
+        stt: { route: "local", engine: "sensevoice", host: "discarded" },
+        recheck,
+      },
+    ],
+  });
+  expect(dual?.lines).toEqual([
+    {
+      id: "v1",
+      text: "实时识别",
+      stt: { route: "local", engine: "sensevoice" },
+      recheck: { at: 12, engine: recheck.engine, heard: "实时识别", text: "整段识别", lang: "zh" },
+    },
+  ]);
+  expect(POLISH_PROMPT).toContain("compare BOTH candidates");
+  expect(polishVerdict(null, dual!)).toEqual({ v: 1, lines: [{ id: "v1", text: "实时识别" }] });
+  expect(
+    parsePolish({
+      ...input,
+      context: [],
+      lines: [
+        {
+          id: "v1",
+          text: "x".repeat(3001),
+          recheck: { ...recheck, heard: "y".repeat(3000), text: "z".repeat(3000) },
+        },
+      ],
+    }),
+  ).toBeNull();
+  expect(
+    parsePolish({
+      ...input,
+      lines: [{ id: "v1", text: "x", recheck: { ...recheck, engine: "bad engine" } }],
+    }),
+  ).toBeNull();
+});

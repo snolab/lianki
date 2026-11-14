@@ -47,6 +47,8 @@ import {
   cleanAttachments,
   type AttachmentRef,
   cleanTiming,
+  type RecheckMark,
+  cleanRecheckMark,
 } from "@lianki/debug-chat/wire";
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
@@ -187,6 +189,7 @@ export function DebugEval({
   polishReadback: readback,
   foldOthers = true,
   whisperRecheck,
+  pttMaxCaptureMs,
   box = null,
   account = null,
   cacheLines = 0,
@@ -198,6 +201,8 @@ export function DebugEval({
    * the run whole, and the line takes it before its polish (whisper-recheck.ts). None: off.
    */
   whisperRecheck?: RecheckConf;
+  /** Config voice.pttMaxCaptureMs: bounded held-audio memory. */
+  pttMaxCaptureMs?: number;
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
   talkOver?: boolean;
   /**
@@ -1096,6 +1101,7 @@ export function DebugEval({
       timing?: VoiceTiming;
       stt?: ChatMessage["stt"];
       speakerProof?: string[];
+      recheck?: RecheckMark;
       context?: ChatContext;
       attachments?: AttachmentRef[];
       continues?: string;
@@ -1104,8 +1110,13 @@ export function DebugEval({
     try {
       // A voice line's timestamps ride along (an older hub drops them).
       const timing = opts?.source === "stt" ? cleanTiming(opts.timing) : undefined;
+      const recheck =
+        opts?.source === "stt" ? cleanRecheckMark(opts.recheck, text, opts.stt) : undefined;
       // The Mac's signed speaker attestations (lib/speaker-proof.ts); the hub verifies them.
-      const speakerProof = opts?.source === "stt" ? opts.speakerProof?.slice(0, 8) : undefined;
+      const speakerProof =
+        opts?.source === "stt" && !recheck?.heardPartial
+          ? opts.speakerProof?.slice(0, 8)
+          : undefined;
       // The mic's wake-word mode rides along, so the agent sees it (docs/wake-word.md).
       const mic = (
         globalThis as {
@@ -1127,6 +1138,7 @@ export function DebugEval({
         ...(opts?.source === "stt" ? { source: "stt" } : {}),
         ...(opts?.source === "stt" && opts.continues ? { continues: opts.continues } : {}),
         ...(timing ? { timing } : {}),
+        ...(recheck ? { recheck } : {}),
         ...(opts?.source === "stt" && opts.stt ? { stt: opts.stt } : {}),
         ...(wake === "active" || wake === "passive" ? { wake } : {}),
         ...(speakerProof?.length ? { speakerProof } : {}),
@@ -1332,6 +1344,7 @@ export function DebugEval({
             fullScreen={fullScreen}
             foldOthers={foldOthers}
             whisperRecheck={whisperRecheck}
+            pttMaxCaptureMs={pttMaxCaptureMs}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
             backToClose={backToCloseChat}
           />

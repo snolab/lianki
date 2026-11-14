@@ -24,6 +24,8 @@ import {
   cleanTiming,
   type SttTag,
   cleanStt,
+  type RecheckMark,
+  cleanRecheckMark,
   type SpeakerTag,
   cleanSpeaker,
   type ChatContext,
@@ -323,6 +325,7 @@ export type PageMessage =
       timing?: VoiceTiming;
       /** A voice line's recognizer (SttTag; dev-only in the UI): route, engine, fallback. */
       stt?: SttTag;
+      recheck?: RecheckMark;
       /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
       wake?: "active" | "passive";
       /**
@@ -667,7 +670,9 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
     const stt = m.source === "stt" ? cleanStt(m.stt) : undefined;
-    const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
+    const recheck = m.source === "stt" ? cleanRecheckMark(m.recheck, text, stt) : undefined;
+    const speakerProof =
+      m.source === "stt" && !recheck?.heardPartial ? cleanProofs(m.speakerProof) : undefined;
     const context = cleanContext(m.context);
     const attachments = cleanAttachments(m.attachments);
     const scene = m.source === "stt" ? cleanScene(m.scene) : undefined;
@@ -679,6 +684,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
       ...(stt ? { stt } : {}),
+      ...(recheck ? { recheck } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
       ...(speakerProof ? { speakerProof } : {}),
       ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)

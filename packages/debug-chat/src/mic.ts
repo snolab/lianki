@@ -134,7 +134,11 @@ export function micErrorNote(e: unknown, lang?: string | null): string {
     if (e.status === 401) return t.micSignIn;
     if (e.status === 429) return t.micTooMuch;
   }
-  console.warn("[mic] failed:", e instanceof SttError ? e.status : "", (e as Error | null)?.message ?? e);
+  console.warn(
+    "[mic] failed:",
+    e instanceof SttError ? e.status : "",
+    (e as Error | null)?.message ?? e,
+  );
   return t.micFailed;
 }
 
@@ -243,7 +247,8 @@ export function isDictationBurst(settledLen: number, draft: string): boolean {
   return draft.length - settledLen >= AUTO_SEND_MIN && ENDS_SENTENCE.test(draft.trim());
 }
 
-const QUESTION_CJK = /(?:吗|嗎|呢|么|麼|吧|か|かな|かしら|の|でしょう|ですか|ますか|니까|나요|까요)$/u;
+const QUESTION_CJK =
+  /(?:吗|嗎|呢|么|麼|吧|か|かな|かしら|の|でしょう|ですか|ますか|니까|나요|까요)$/u;
 const QUESTION_LATIN =
   /^(?:what|why|how|when|where|who|whom|whose|which|can|could|do|does|did|is|are|was|were|will|would|should|shall|may|might|have|has|had)\b/i;
 const TRAILING_PUNCT = /[\p{P}\s]+$/u;
@@ -498,7 +503,14 @@ export function cleanTranscript(
   /** Whether a stock phrase can be the model's own: not from a ctc decoder (SttSignals). */
   phrases = true,
 ): TranscriptCleaning {
-  const res: TranscriptCleaning = { text, drop: false, prompt: 0, phrase: 0, repeat: 0, removed: [] };
+  const res: TranscriptCleaning = {
+    text,
+    drop: false,
+    prompt: 0,
+    phrase: 0,
+    repeat: 0,
+    removed: [],
+  };
   if (!normalizeTranscript(text)) return res;
   const ps = prompts.filter((p) => normalizeTranscript(p)).map(promptParts);
 
@@ -733,7 +745,8 @@ export const SEMANTIC_ENDPOINT_MS = 0;
 export function semanticMs(
   over: unknown = (globalThis as { __lkVoiceTune?: unknown }).__lkVoiceTune,
 ): number {
-  const v = over && typeof over === "object" ? (over as { semanticMs?: unknown }).semanticMs : undefined;
+  const v =
+    over && typeof over === "object" ? (over as { semanticMs?: unknown }).semanticMs : undefined;
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : SEMANTIC_ENDPOINT_MS;
 }
 /** A partial that ends a sentence: terminal punctuation only. */
@@ -1118,13 +1131,13 @@ export function createMic(d: {
       gated = d.wake?.passive() ?? false;
       utt = gated
         ? null
-        : d.stream?.()?.begin((text) => {
-          if (g !== gen || held || shadow) return;
-          const seq = cur ?? (cur = q.add());
-          ep.partial = text;
-          q.partial(seq, text);
-          pending();
-        }) ?? null;
+        : (d.stream?.()?.begin((text) => {
+            if (g !== gen || held || shadow) return;
+            const seq = cur ?? (cur = q.add());
+            ep.partial = text;
+            q.partial(seq, text);
+            pending();
+          }) ?? null);
     },
     onFrame(frame, prob) {
       if (g !== gen) return;
@@ -1148,7 +1161,13 @@ export function createMic(d: {
           shadow = false;
           d.onState("capturing");
         }
-        if (!startCued && !shadow && !gated && !enrolling && voicedOut >= toSamples(CUE_CONFIRM_MS)) {
+        if (
+          !startCued &&
+          !shadow &&
+          !gated &&
+          !enrolling &&
+          voicedOut >= toSamples(CUE_CONFIRM_MS)
+        ) {
           startCued = true;
           d.cue.edge("start");
         }
@@ -1162,7 +1181,9 @@ export function createMic(d: {
         } else ep.quiet += frame.length;
         const sem = semanticMs();
         const early = sem > 0 && endsSentence(ep.partial);
-        const wait = early ? Math.min(sem, a?.endpointMs ?? ENDPOINT_MS) : (a?.endpointMs ?? ENDPOINT_MS);
+        const wait = early
+          ? Math.min(sem, a?.endpointMs ?? ENDPOINT_MS)
+          : (a?.endpointMs ?? ENDPOINT_MS);
         if (ep.heard && ep.quiet >= toSamples(wait)) {
           ep.sent = true;
           d.log?.({
@@ -1310,7 +1331,14 @@ export function createMic(d: {
               // A name heard: the line is addressed to it ("@coco …", polish.ts wakeMention).
               const lead = w.onWake(r.label) || undefined;
               if (!r.rest.length) return drop();
-              send(seq, r.rest, toMs(r.rest.length), prob, f ? Promise.resolve(f) : undefined, lead);
+              send(
+                seq,
+                r.rest,
+                toMs(r.rest.length),
+                prob,
+                f ? Promise.resolve(f) : undefined,
+                lead,
+              );
             };
             // The Mac's speaker check first, when it is reachable: the whole utterance
             // ("Linky" included) is scored, the text read from after it. Someone
@@ -1578,11 +1606,16 @@ export async function postStt(
   f: typeof fetch = fetch,
   type = "audio/wav",
   hint?: string,
+  options: { signal?: AbortSignal; model?: string } = {},
 ): Promise<SttResult> {
-  const res = await f(hint ? `/api/debug/stt?hint=${encodeURIComponent(hint)}` : "/api/debug/stt", {
+  const query = new URLSearchParams();
+  if (hint) query.set("hint", hint);
+  if (options.model) query.set("model", options.model);
+  const res = await f(query.size ? `/api/debug/stt?${query}` : "/api/debug/stt", {
     method: "POST",
     body: wav as unknown as BodyInit,
     headers: { "content-type": type },
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   const out = (await res.json().catch(() => ({}))) as Partial<SttResult> & { error?: string };
   if (!res.ok) throw new SttError(res.status, out.error ?? `stt ${res.status}`);
@@ -1609,7 +1642,9 @@ export function reportLocalStt(audioMs: number, f: typeof fetch = fetch): void {
 }
 
 /** What the sink said about one clip: its name, or why it was not kept. */
-export type ClipResult = { ok: true; name?: string } | { ok: false; status?: number; error: string };
+export type ClipResult =
+  | { ok: true; name?: string }
+  | { ok: false; status?: number; error: string };
 
 /**
  * Keep one utterance on the owner's dev server (scripts/dev/clip-sink): a

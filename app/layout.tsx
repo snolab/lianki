@@ -201,6 +201,7 @@ export default async function RootLayout({
     polishReadback,
     foldOthers,
     whisperRecheck,
+    pttMaxCaptureMs: await cfg("voice.pttMaxCaptureMs"),
   };
   const box = boxConfig();
   return (

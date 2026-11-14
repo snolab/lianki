@@ -362,3 +362,64 @@ describe("automatic polish", () => {
     expect(s.stored().map((m) => m.text)).toEqual(["hello world", "same words", "third"]);
   });
 });
+
+it("PTT keeps realtime and whole-recording originals with model provenance through final polish", async () => {
+  const s = setup({
+    polish: async () => ({
+      ok: true,
+      verdict: { v: 1, lines: [{ id: "ptt-dual", text: "Reconciled final wording." }] },
+    }),
+  });
+  const page = await s.owner();
+  const recheck = {
+    at: 1_000_000,
+    engine: "@cf/openai/whisper-large-v3-turbo",
+    heard: "Realtime baseline.",
+    text: "Whole recording candidate.",
+    lang: "en",
+  };
+  await s.msg(page, {
+    type: "chat",
+    id: "ptt-dual",
+    text: recheck.heard,
+    source: "stt",
+    stt: { route: "local", engine: "sensevoice" },
+    recheck,
+    speaker: { decision: "me" },
+  });
+  expect(s.stored()[0]).toMatchObject({ text: recheck.heard, recheck });
+  expect(s.stored()[0]).not.toHaveProperty("speaker");
+  expect(s.stored()[0]).not.toHaveProperty("mergeable");
+  await s.settle();
+  expect(s.calls[0]!.input.lines).toEqual([
+    { id: "ptt-dual", text: recheck.heard, stt: { route: "local", engine: "sensevoice" }, recheck },
+  ]);
+  expect(s.stored()[0]).toMatchObject({
+    text: "Reconciled final wording.",
+    raw: recheck.heard,
+    recheck,
+  });
+});
+
+it("cloud PTT retains the complete final even when its live prefix was partial and polish is off", async () => {
+  const s = setup({ flags: { "voice.auto-polish": false } });
+  const page = await s.owner();
+  const recheck = {
+    at: 1_000_000,
+    engine: "@cf/openai/whisper-large-v3-turbo",
+    heard: "Only a preview",
+    text: "Only a preview, followed by the complete ending.",
+    heardPartial: true,
+  };
+  await s.msg(page, {
+    type: "chat",
+    id: "ptt-cloud",
+    text: recheck.text,
+    source: "stt",
+    stt: { route: "cloud", engine: recheck.engine },
+    recheck,
+  });
+  await s.settle();
+  expect(s.calls).toHaveLength(0);
+  expect(s.stored()[0]).toMatchObject({ text: recheck.text, recheck });
+});

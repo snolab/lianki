@@ -48,6 +48,7 @@ import {
   type SttTag,
   type AttachmentRef,
   type ChatContext,
+  type RecheckMark,
   cleanContext,
   cleanAttachments,
 } from "./wire";
@@ -217,6 +218,7 @@ import {
   newShimmer,
 } from "./shimmer";
 import { type PttState, createPttGesture } from "./ptt";
+import { createPttSubmission, type PttPreview } from "./ptt-submission";
 import { WAITING_INK, lastPendingIndex, waitingMark } from "./waiting-mark";
 import { TreeChips } from "./TreeChips";
 import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
@@ -816,6 +818,7 @@ export type DebugChatProps = {
       timing?: VoiceTiming;
       /** Which recognizer made a voice line's text (wire.ts SttTag). */
       stt?: SttTag;
+      recheck?: RecheckMark;
       speakerProof?: string[];
       /** Attached with the + menu (AttachMenu.tsx): the page selection and where. */
       context?: ChatContext;
@@ -995,6 +998,8 @@ export type DebugChatProps = {
    * end the local STT's Whisper re-reads the run whole first. None: the passage end at once.
    */
   whisperRecheck?: RecheckConf;
+  /** Stop an unresolved held recording at this duration; partial text is retained. */
+  pttMaxCaptureMs?: number;
   /**
    * The host's "Back closes an overlay" (Lianki: lib/back-to-close.ts
    * openBackToClose, docs/ui-state.md): opening full screen by a tap pushes
@@ -1045,6 +1050,7 @@ const NONE_ABOVE: ReadonlySet<string> = new Set();
 type Panel = "none" | "menu" | "tree" | "voiceprint";
 
 /** One live line (live-speech.ts): what it shows, and whether it is spoken, sending or failed. */
+type PttLine = { text: string; timing?: VoiceTiming; stt?: SttTag; recheck?: RecheckMark; speakerProof?: string[]; to: string };
 type LiveRow = { key: string; text: string; tail: string; state: "speaking" | "sending" | "unsent"; reason?: string; attachments?: AttachmentRef[]; context?: ChatContext };
 
 export function DebugChat({
@@ -1097,6 +1103,7 @@ export function DebugChat({
   fullScreen: fullScreenFlag = false,
   foldOthers = true,
   whisperRecheck,
+  pttMaxCaptureMs,
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
@@ -1821,6 +1828,8 @@ export function DebugChat({
   /** The + menu (AttachMenu.tsx): the page selection kept outside the chat, and what goes with the next line. */
   const pageSel = usePageSelection(embedded, draftScope ?? files?.scope);
   const appAddItems = useAddItems();
+  const setDraftRef = useRef(setDraft);
+  setDraftRef.current = setDraft;
   const attached = useUi(uiStore, (s) => s.attached);
   useEffect(() => {
     // A page selection is a candidate, never a send request on its own.
@@ -1954,6 +1963,19 @@ export function DebugChat({
   /** Arrival order up to which the agent's lines count as read (see countUnread). */
   const [readSeq, setReadSeq] = useState(0);
   const draftRef = useRef(uiStore.getState().draft);
+  const [pttLive, setPttLive] = useState<PttPreview | null>(null);
+  const pttLiveRef = useRef(pttLive);
+  pttLiveRef.current = pttLive;
+  const pttScope = useRef(draftScope ?? files?.scope ?? null);
+  pttScope.current = draftScope ?? files?.scope ?? null;
+  const pttSendRef = useRef<(line: PttLine) => boolean>(() => false);
+  const pttFailedDraft = useRef(false);
+  const pttSubmission = useRef<ReturnType<typeof createPttSubmission<PttLine>> | null>(null);
+  pttSubmission.current ??= createPttSubmission<PttLine>({
+    scope: () => pttScope.current,
+    show: (preview) => { pttLiveRef.current = preview; setPttLive(preview); },
+    send: (line) => pttSendRef.current(line),
+  });
   /** What the input box shows (live-speech.ts): the draft, or nothing while it is the live line. */
   const shownInput = useRef("");
   /**
@@ -2644,15 +2666,23 @@ export function DebugChat({
     heardFrom: ReturnType<typeof takeSpeaker>;
   } | null>(null);
   /** Send the draft; true when it went out. */
-  const submit = (candidateTapped = false): boolean => {
+  const submit = (candidateTapped = false, pttLine?: PttLine): boolean => {
+    if (!pttLine && pttSubmission.current?.busy()) {
+      if (pttSubmission.current.ready()) {
+        const accepted = pttSubmission.current.retry();
+        if (accepted) armRef.current();
+        return accepted;
+      }
+      return false;
+    }
     clearTimeout(timer.current);
     // Sent another way (Enter, the send button): nothing is held any more.
     joiner.current?.cancel();
     setArmed(0);
-    let text = draftRef.current.trim();
+    let text = (pttLine?.text ?? draftRef.current).trim();
     // A leading "@/words › prefetch " addresses that node, and keeps it as the target.
-    const addr = parseAddress(text);
-    let to = targetRef.current;
+    const addr = pttLine ? null : parseAddress(text);
+    let to = pttLine?.to ?? targetRef.current;
     if (addr) {
       if (!addr.complete) return false;
       to = addr.to;
@@ -2678,23 +2708,24 @@ export function DebugChat({
     });
     if (!plan) return false;
     text = plan.text;
-    const source = draftSource(draftRef.current, pureDictation.current);
+    const source = pttLine ? "stt" : draftSource(draftRef.current, pureDictation.current);
     /** It was the live line (spoken, not taken into the input): it stays as "sending" till its echo. */
-    const fromLive = !!source && !inInputRef.current;
+    const fromLive = !!pttLine || (!!source && !inInputRef.current);
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
     // And which recognizer made it (SttTag): an older store (hot swap) has no takeLine.
     const lat = voiceLatency();
-    const prepared = source && preparedVoice.current?.draft === draftRef.current
+    const prepared = !pttLine && source && preparedVoice.current?.draft === draftRef.current
       ? preparedVoice.current : null;
-    const taken: { timing?: VoiceTiming; stt?: SttTag } = source
-      ? (prepared?.taken ?? lat.takeLine?.() ?? { timing: lat.take() }) : {};
+    const taken: { timing?: VoiceTiming; stt?: SttTag } = pttLine
+      ? { timing: pttLine.timing, stt: pttLine.stt }
+      : source ? (prepared?.taken ?? lat.takeLine?.() ?? { timing: lat.take() }) : {};
     const timing = taken.timing;
     const stt = taken.stt;
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
     // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
-    const heardFrom = source ? (prepared?.heardFrom ?? takeSpeaker()) : (clearSpeaker(), undefined);
-    preparedVoice.current = source ? { draft: draftRef.current, taken, heardFrom: heardFrom! } : null;
-    const speakerProof = heardFrom?.proofs;
+    const heardFrom = pttLine ? undefined : source ? (prepared?.heardFrom ?? takeSpeaker()) : (clearSpeaker(), undefined);
+    if (!pttLine) preparedVoice.current = source ? { draft: draftRef.current, taken, heardFrom: heardFrom! } : null;
+    const speakerProof = pttLine?.speakerProof ?? heardFrom?.proofs;
     // What was attached with the + menu rides along, this line only.
     const context = plan.context;
     const attachments = plan.attachments;
@@ -2703,8 +2734,8 @@ export function DebugChat({
     const tapsNow = micTaps().kept?.() ?? 0;
     const lastLine = messagesNow.current.at(-1);
     // One speaker's part of a split final: a new line, never an amendment.
-    const fromSplit = splitPart.current;
-    splitPart.current = false;
+    const fromSplit = !!pttLine || splitPart.current;
+    if (!pttLine) splitPart.current = false;
     const continues =
       source &&
       !fromSplit &&
@@ -2726,6 +2757,7 @@ export function DebugChat({
       ...(source ? { source } : {}),
       ...(source && timing ? { timing } : {}),
       ...(source && stt ? { stt } : {}),
+      ...(pttLine?.recheck ? { recheck: pttLine.recheck } : {}),
       ...(source && speakerProof?.length ? { speakerProof } : {}),
       ...(context ? { context } : {}),
     };
@@ -2740,7 +2772,12 @@ export function DebugChat({
       return false;
     }
     setOffline(false);
-    preparedVoice.current = null;
+    if (!pttLine) {
+      pttFailedDraft.current = false;
+      if (pttLiveRef.current?.state === "unsent") pttSubmission.current?.cancel();
+    }
+    waitFiles.current = false;
+    if (!pttLine) preparedVoice.current = null;
     // The live line becomes "sending" in the same paint the draft empties: no blink, no gap.
     if (fromLive && outgoing === undefined) {
       const h = holdOf(++holdKey.current, text, messagesNow.current, Date.now(), continues);
@@ -2768,6 +2805,7 @@ export function DebugChat({
     }
     // Sent: an interruption is over, and the queue (still relevant) reads on.
     voice().resume();
+    if (pttLine) return true;
     draftRef.current = "";
     pureDictation.current = null;
     settledLen.current = 0;
@@ -2776,6 +2814,7 @@ export function DebugChat({
     setDraft("");
     return true;
   };
+  pttSendRef.current = (line) => submit(false, line);
   /**
    * The draft as dictation left it, while nothing typed is in it (else null):
    * a line sent while the draft still equals it is the mic's, `source: "stt"`.
@@ -3059,7 +3098,8 @@ export function DebugChat({
       attachments: cleanAttachments(h.attachments),
       context: cleanContext(h.context),
     })),
-    ...(speech.bubble
+    ...(pttLive ? [{ key: `ptt-${pttLive.key}`, text: pttLive.text, tail: "", state: pttLive.state, reason: pttLive.reason }] : []),
+    ...(speech.bubble && !pttLive
       ? [
           {
             key: LIVE_ID,
@@ -3119,7 +3159,7 @@ export function DebugChat({
           {r.reason ? (
             <>
               <span className="ms-1 fs-10" style={{ color: "oklch(0.6 0.17 45)" }}>
-                {ux.liveNotSent}
+                {r.reason}
               </span>
             </>
           ) : (
@@ -3234,6 +3274,10 @@ export function DebugChat({
   const afterUpload = useRef(() => {});
   afterUpload.current = () => {
     if (!pending.ready()) return;
+    if (pttSubmission.current?.busy()) {
+      if (pttSubmission.current.retry()) armRef.current();
+      return;
+    }
     if (waitFiles.current) {
       waitFiles.current = false;
       submit();
@@ -3268,6 +3312,7 @@ export function DebugChat({
     settledLen.current = next.length; // not a typed "burst"
     setDraft(next);
     setOffline(false);
+    if (pttSubmission.current?.busy() || pttFailedDraft.current) return;
     // A spoken sentence goes out after the join window (a soft tick; typed
     // sends are silent), unless more speech joins it; anything else waits
     // for the usual rules.
@@ -3290,6 +3335,7 @@ export function DebugChat({
   };
   const arm = () => {
     clearTimeout(timer.current);
+    if (pttSubmission.current?.busy() || pttFailedDraft.current) return setArmed(0);
     if (!composing.current) {
       const text = draftRef.current;
       const burst = isDictationBurst(settledLen.current, text);
@@ -3315,7 +3361,11 @@ export function DebugChat({
     // Legacy unscoped text needs the verified owner's migration before any auto-resume.
     if (!draftScope || draftScope === "guest") return;
     const resume = () => {
-      if (!draftRef.current.trim()) return;
+      if (pttSubmission.current?.busy()) {
+        if (pttSubmission.current.retry()) armRef.current();
+        return;
+      }
+      if (pttFailedDraft.current || !draftRef.current.trim()) return;
       const mic = (globalThis as { __lkMic?: { view?: () => { state: string } } }).__lkMic?.view?.();
       if (micPending.current || mic?.state === "capturing") return;
       if (draftSource(draftRef.current, pureDictation.current)) joiner.current?.final();
@@ -3331,7 +3381,10 @@ export function DebugChat({
     };
   }, [uiStore, draftScope]);
   useEffect(() => {
-    if (draftScope && draftScope !== "guest" && live && offline && draftRef.current.trim()) armRef.current();
+    if (draftScope && draftScope !== "guest" && live && offline) {
+      if (pttSubmission.current?.busy()) { if (pttSubmission.current.retry()) armRef.current(); }
+      else if (draftRef.current.trim()) armRef.current();
+    }
   }, [live, offline, draftScope]);
   const toggle = (v: boolean) => {
     if (v) atEnd.current = true;
@@ -3587,66 +3640,112 @@ export function DebugChat({
     since: 0,
   });
   const pttRec = useRef<ReturnType<typeof pttRecorder> | null>(null);
+  const pttKey = useRef<number | null>(null);
   const pttAt = useRef(0);
+  const pttTarget = useRef(ROOT_NODE);
+  const pttOptions = useRef({ localStt: micRoute, recheck: whisperRecheck, maxCaptureMs: pttMaxCaptureMs });
+  pttOptions.current = { localStt: micRoute, recheck: whisperRecheck, maxCaptureMs: pttMaxCaptureMs };
+  const pttStopping = useRef(false);
+  const pttFailureKey = useRef<number | null>(null);
+  const failPtt = (key: number, error: unknown) => {
+    if (!pttSubmission.current?.current(key) || pttFailureKey.current === key) return;
+    pttFailureKey.current = key;
+    pttFailedDraft.current = true;
+    const partial = pttLiveRef.current?.text ?? "";
+    if (partial.trim()) {
+      const next = joinText(draftRef.current, partial);
+      pureDictation.current = dictatedDraft(draftRef.current, pureDictation.current, next);
+      draftRef.current = next;
+      settledLen.current = next.length;
+      setDraftRef.current(next);
+    }
+    const code = (error as { code?: string; message?: string })?.code ?? (error as Error)?.message;
+    pttSubmission.current.failed(key, code === "ptt-too-long" ? ux.pttTooLong : ux.liveNotSent);
+    voice().log({ ev: "ptt-error", error: String(code ?? error) });
+  };
+  const failPttRef = useRef(failPtt);
+  failPttRef.current = failPtt;
   /** The last press was push to talk: its click is no tap. */
   const pttWasHold = useRef(false);
   const ptt = useRef<ReturnType<typeof createPttGesture> | null>(null);
   ptt.current ??= createPttGesture({
     press: (at) => {
+      const key = pttSubmission.current!.begin(at);
+      if (key === null) return;
+      pttKey.current = key;
       pttAt.current = at;
-      pttRec.current = pttRecorder();
-      pttRec.current.start();
+      pttTarget.current = targetRef.current;
+      const rec = pttRecorder({ ...pttOptions.current,
+        onPartial: (text) => pttSubmission.current?.partial(key, text),
+        onFailure: (error) => failPttRef.current(key, error),
+      });
+      pttRec.current = rec;
+      rec.start(at);
     },
     hold: () => {
       pttWasHold.current = true;
-      // A light tick (Android; iOS has no navigator.vibrate, and that is fine).
+      if (pttKey.current !== null) pttSubmission.current?.hold(pttKey.current);
+      clearTimeout(timer.current);
+      joiner.current?.speechStart();
+      passage.current?.speechStart();
       navigator.vibrate?.(PTT_HAPTIC_MS);
     },
     release: (at) => {
       const rec = pttRec.current;
-      pttRec.current = null;
+      const key = pttKey.current;
       const start = pttAt.current;
-      if (!rec) return;
-      void rec
-        .finish()
-        .then(({ text, audioMs, stt }) => {
-          if (!text) return;
-          const done = Date.now();
-          const timing: VoiceTiming = {
-            t_speechStart: start,
-            t_speechEnd: at,
-            t_uploadStart: at,
-            t_sttDone: done,
-            t_sent: done,
-            audioMs,
-          };
-          const to = targetRef.current;
-          // Sent at once: push to talk has no draft step.
-          sendRef.current(text, to === ROOT_NODE ? undefined : to, {
-            source: "stt",
-            timing,
-            ...(stt ? { stt } : {}),
-          });
-          window.dispatchEvent(
-            new CustomEvent(VOICE_SENT_EVENT, { detail: { sound: pageCues().send() } }),
-          );
-        })
-        // A failed transcription: logged for the dev view, the line is not sent.
-        .catch((e: unknown) => {
-          voice().log({ ev: "ptt-error", error: String((e as Error)?.message ?? e) });
+      const to = pttTarget.current;
+      if (!rec || key === null) return;
+      pttSubmission.current?.release(key, at);
+      void rec.finish(at).then((result) => {
+        if (!pttSubmission.current?.current(key)) return;
+        const done = Date.now();
+        const accepted = pttSubmission.current.complete(key, {
+          text: result.text,
+          to,
+          stt: result.stt,
+          recheck: result.recheck,
+          speakerProof: result.speakerProof,
+          timing: { ...result.timing, t_speechStart: start, t_speechEnd: at,
+            t_shown: done, t_sent: done, audioMs: result.audioMs },
         });
+        if (accepted) armRef.current();
+      }).catch((error: unknown) => {
+        failPttRef.current(key, error);
+      }).finally(() => {
+        if (pttRec.current === rec) pttRec.current = null;
+      });
     },
     drop: () => {
       pttRec.current?.abort();
       pttRec.current = null;
+      pttKey.current = null;
+      pttSubmission.current?.cancel();
+      if (!pttStopping.current) armRef.current();
     },
-    state: (st) =>
-      setPttView((v) => ({ state: st, since: st === "held" && v.state !== "away" ? Date.now() : v.since })),
+    state: (st) => setPttView((v) => ({ state: st, since: st === "held" && v.state !== "away" ? pttAt.current : v.since })),
   });
+  useEffect(() => {
+    pttStopping.current = false;
+    pttFailedDraft.current = false;
+    return () => {
+      pttStopping.current = true;
+      ptt.current?.cancel();
+      pttRec.current?.abort();
+      pttRec.current = null;
+      pttKey.current = null;
+      pttSubmission.current?.cancel();
+    };
+  }, [draftScope, fileScope]);
   const micGesture = {
     description: MIC_PTT_HINT,
     ptt: pttView,
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (pttSubmission.current?.busy()) {
+        pttWasHold.current = true;
+        if (pttSubmission.current.retry()) armRef.current();
+        return;
+      }
       micAxis.current.down(e.clientX, e.clientY);
       micDragged.current.down();
       micPress.current = { x: e.clientX, y: e.clientY };
@@ -5926,6 +6025,8 @@ export function DebugChat({
                   }}
                   aria-label={t.message.replace(/…$/, "")}
                   onChange={(e) => {
+                    pttFailedDraft.current = false;
+                    if (pttLiveRef.current?.state === "unsent" && !pttSubmission.current?.ready()) pttSubmission.current?.cancel();
                     let v = e.target.value;
                     // Typed while the spoken draft was the live line and no key told us
                     // (a keyboard that reports none): it goes after the spoken words.

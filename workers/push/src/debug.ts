@@ -2726,7 +2726,12 @@ export class DebugHub {
     if (!run.length) return;
     if (!page.user) return skip("no-user", { lines: run.length });
     const newest = run.at(-1)![0];
-    const sent = run.map(([, x]) => ({ id: x.id, text: x.text }));
+    const sent = run.map(([, x]) => ({
+      id: x.id,
+      text: x.text,
+      ...(x.stt ? { stt: x.stt } : {}),
+      ...(x.recheck ? { recheck: x.recheck } : {}),
+    }));
     const requestId = `auto:${newest.replace(/[^\w.-]/g, "-")}:${run.length}`.slice(0, 120);
     const t0 = this.now();
     let res: { ok?: boolean; error?: string; verdict?: unknown } | undefined;
@@ -3852,6 +3857,7 @@ export class DebugHub {
           // An echo (his other phone, or Li read aloud and heard back): kept aside, not posted.
           if (
             m.source === "stt" &&
+            !m.recheck &&
             (await this.echo({
               id: m.id,
               from: "owner",
@@ -3869,7 +3875,7 @@ export class DebugHub {
           )
             return false;
           // Voice lines only: a typed line never asks the flag, never merges, never waits.
-          const merging = m.source === "stt" && (await this.mergeOn());
+          const merging = m.source === "stt" && !m.recheck && (await this.mergeOn());
           if (
             merging &&
             m.continues &&
@@ -3892,6 +3898,7 @@ export class DebugHub {
           // The same sentence from his other mic, a moment ago: one line, not two.
           if (
             m.source === "stt" &&
+            !m.recheck &&
             (await this.twoMic({
               id: m.id,
               text: m.text,
@@ -3913,6 +3920,9 @@ export class DebugHub {
             ...(m.to ? { to: m.to } : {}),
             ...(m.source ? { source: m.source } : {}),
             ...(m.timing ? { timing: m.timing } : {}),
+            // Deliberate PTT retains both readings: local body is the proof-covered baseline;
+            // a cloud partial preview instead keeps the complete unsigned final as its body.
+            ...(m.recheck ? { recheck: m.recheck } : {}),
             // Which recognizer made the text (SttTag): route and engine, never text.
             ...(m.stt ? { stt: m.stt } : {}),
             ...(m.wake ? { wake: m.wake } : {}),

@@ -126,9 +126,9 @@ export type ChatMessage = {
    */
   parts?: MergedPart[];
   /**
-   * A merged line re-heard whole by the Mac's Whisper when the run ended (RecheckMark;
-   * flag stt.whisper-recheck, whisper-recheck.ts): `text` and `raw` became its
-   * reading, and the streaming text is kept here. Stamped by the hub only.
+   * The realtime reading and independent whole-recording recognition, with provenance.
+   * Continuous passages take the whole reading before polish; deliberate PTT keeps
+   * the signed realtime body until polish. Cloud-only prefixes are marked partial.
    */
   recheck?: RecheckMark;
   /**
@@ -287,7 +287,25 @@ export type EchoMark = {
  * what Whisper read from the run's whole audio (level 2), its `engine` and `lang`.
  * A polish after it (level 3) is the line's `text` once `edited.by` is not "merge".
  */
-export type RecheckMark = { at: number; engine: string; lang?: string; heard: string; text: string };
+export type RecheckMark = { at: number; engine: string; lang?: string; heard: string; text: string; heardPartial?: true };
+
+/** A second recognition candidate is metadata, never a speaker authorization. */
+export function cleanRecheckMark(raw: unknown, primary?: string, stt?: SttTag): RecheckMark | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.at !== "number" || !Number.isFinite(r.at) || r.at < 0 ||
+      typeof r.engine !== "string" || !STT_ENGINE.test(r.engine) ||
+      typeof r.heard !== "string" || !r.heard.trim() || r.heard.length > MAX_CHAT ||
+      typeof r.text !== "string" || !r.text.trim() || r.text.length > MAX_CHAT) return undefined;
+  const heard = r.heard.trim();
+  if (primary !== undefined && (r.heardPartial === true
+    ? stt?.route !== "cloud" || r.text.trim() !== primary
+    : heard !== primary)) return undefined;
+  return { at: r.at, engine: r.engine, heard, text: r.text.trim(),
+    ...(r.heardPartial === true ? { heardPartial: true } : {}),
+    ...(typeof r.lang === "string" && /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/.test(r.lang) ? { lang: r.lang } : {}) };
+}
+
 /** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
 export type MergedPart = {
   id: string;
