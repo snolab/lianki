@@ -8,11 +8,11 @@ const BAR = "fill-[oklch(0.5_0.132_22.3)] dark:fill-[oklch(0.74_0.121_22.3)]";
 const LINE = "stroke-[oklch(0.5_0.132_22.3)] dark:stroke-[oklch(0.74_0.121_22.3)]";
 
 /**
- * New accounts per JST calendar month. Finished months are solid bars; the
+ * New accounts per calendar month in `zone` (the viewer's, labelled in the note). Finished months are solid bars; the
  * current one is solid up to today plus a hatched part up to its forecast.
  * Hover, tap or focus a bar to read it; the newest month is shown first.
  */
-export default function SignupsChart({ series }: { series: MonthBar[] }) {
+export default function SignupsChart({ series, zone }: { series: MonthBar[]; zone: string }) {
   const c = useIntlayer("dev-users");
   const m = chartModel(series);
   const [sel, setSel] = useState(series.length - 1);
@@ -162,7 +162,7 @@ export default function SignupsChart({ series }: { series: MonthBar[] }) {
           </svg>
         </div>
       </div>
-      <p className="text-xs opacity-70">{c.forecastHow.value}</p>
+      <p className="text-xs opacity-70">{c.forecastHow.value.replace("{zone}", zone)}</p>
     </section>
   );
 }

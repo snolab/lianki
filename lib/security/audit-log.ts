@@ -87,7 +87,11 @@ export type AuditKind =
   | "stt-access.disallow"
   | "stt-worker.add"
   | "stt-worker.revoke"
-  | "stt-worker.official";
+  | "stt-worker.official"
+  // The sign-up bonus (lib/payments/signup-bonus-store.ts, docs/payments.md
+  // "Sign-up bonus"): one row per grant. Actor and subject: the account;
+  // detail: the path (new / backfill), the UTC day, the day's slot, the credits.
+  | "credits.signup-bonus";
 
 export type AuditEntry = {
   kind: AuditKind;

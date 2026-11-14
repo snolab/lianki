@@ -9,8 +9,9 @@
  * anyone whose agent line is within the recent-speaker window. Both windows
  * are live config (lib/config.ts chat.presenceReadMin, chat.presenceSpeakerMin).
  */
-import { LANES, type LaneId, isLaneId, laneOf } from "./voices";
+import { laneSpec, type LaneId, isLaneId, laneOf } from "./voices";
 import type { ChatMessage } from "./wire";
+import type { LaneMode } from "./lane-events";
 
 /** One participant, as a page gets it. */
 export type Present = {
@@ -38,6 +39,13 @@ export type Present = {
   mcp?: true;
   /** Reading right now (a socket open). */
   live?: true;
+  /**
+   * Its lane's mode in the hub's lane registry (lane-registry.ts): a resident
+   * listener or a reader; absent on an older hub, or for a lane it has no row for.
+   */
+  mode?: LaneMode;
+  /** Muted by the owner: it reads and listens, but cannot post. */
+  muted?: true;
   /** Since when it has been here (socket opened, or first read in the window). */
   since?: number;
   /** Its last read, and its last line. */
@@ -88,7 +96,8 @@ const known = (name: string): LaneId | null => laneOf({ text: `【${name}】` })
 
 /** A line's participant key (the same as its token's, when it has one). */
 export function lineKey(m: ChatMessage): string | null {
-  if (m.from !== "agent") return null;
+  // A system line about a lane is no one speaking (lane-events.ts).
+  if (m.from !== "agent" || m.laneEvent) return null;
   const lane = isLaneId(m.lane) ? m.lane : m.via === "token" ? null : laneOf(m).lane;
   if (lane) return `lane:${lane}`;
   if (m.via === "token") return m.tok ? `tok:${m.tok}` : `agent:${m.tokenLane ?? m.label}`;
@@ -110,6 +119,8 @@ export function presentList(p: {
   lines: readonly ChatMessage[];
   viewer?: string;
   mainName?: string;
+  /** The lane registry's rows of this thread (by lane name): each entry's mode and mute. */
+  lanes?: readonly { lane: string; state: string; muted?: true }[];
 }): Present[] {
   const out = new Map<string, Present>();
   const rec = new Map(p.records.map((r) => [r.tag, r]));
@@ -119,9 +130,19 @@ export function presentList(p: {
     const k = known(r.lane);
     return k ? `lane:${k}` : `tok:${r.tag}`;
   };
+  const reg = new Map((p.lanes ?? []).map((l) => [l.lane, l]));
+  const modeOf = (r: PartRecord) => {
+    const l = reg.get(r.lane);
+    if (!l) return {};
+    return {
+      ...(l.state === "listener" || l.state === "reader" ? { mode: l.state as LaneMode } : {}),
+      ...(l.muted ? { muted: true as const } : {}),
+    };
+  };
   const fromRecord = (r: PartRecord): Present => {
     const lane = known(r.lane);
     return {
+      ...modeOf(r),
       key: tokenKey(r),
       ...effective(r),
       ...(lane ? { lane } : {}),
@@ -163,7 +184,7 @@ export function presentList(p: {
         const lane = key.startsWith("lane:") ? (key.slice(5) as LaneId) : undefined;
         e = {
           key,
-          name: lane ? LANES[lane].name || p.mainName || "" : (m.tokenLane ?? m.label),
+          name: lane ? laneSpec(lane).name || p.mainName || "" : (m.tokenLane ?? m.label),
           ...(lane ? { lane } : {}),
           ...(m.tok ? { tok: m.tok } : {}),
           ...(m.avatar ? { avatar: m.avatar, avatarBy: "agent" as const } : {}),

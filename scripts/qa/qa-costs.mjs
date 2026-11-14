@@ -202,7 +202,8 @@ try {
   check(booked.length === 1 && booked[0].units === 12, "booked once, 12 audio seconds");
   // A free read-aloud call as the route books it (a real one needs Workers AI).
   const now = new Date();
-  const day = new Date(now.getTime() + 9 * 3600_000).toISOString().slice(0, 10);
+  // The ledger's day is the UTC date (lib/payments/cost-ledger.ts costDay).
+  const day = now.toISOString().slice(0, 10);
   d1(
     `INSERT INTO cost_ledger (user_id, feature, usd_micro, units, day, at) VALUES (${PLAIN_ID}, 'words.tts', 2.5, 12, '${day}', '${now.toISOString()}')`,
   );

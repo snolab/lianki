@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
 import type { ApplyResult, PreviewRow } from "@/lib/referrals/pregrant";
+import { useDeviceZone } from "@/app/components/useDeviceZone";
+import { endOfDayIso, zoneLabel } from "@/lib/time-zone";
 
 const newKey = () => crypto.randomUUID();
 
@@ -26,6 +28,9 @@ export default function PregrantPanel() {
   const [text, setText] = useState("");
   const [days, setDays] = useState(30);
   const [expires, setExpires] = useState("");
+  const zone = useDeviceZone() ?? "UTC";
+  // The end of the chosen day in the admin's own zone, shown as the UTC instant too.
+  const expiresAt = expires ? endOfDayIso(expires, zone) : null;
   const [note, setNote] = useState("");
   const [rows, setRows] = useState<PreviewRow[] | null>(null);
   const [direct, setDirect] = useState<Set<string>>(new Set());
@@ -48,8 +53,7 @@ export default function PregrantPanel() {
     text,
     days,
     note: note || null,
-    // The end of the chosen day, Japan time (the owner's clock).
-    grantExpiresAt: expires ? `${expires}T23:59:59+09:00` : null,
+    grantExpiresAt: expiresAt,
     direct: [...direct],
     key,
   });
@@ -140,6 +144,13 @@ export default function PregrantPanel() {
             onChange={(e) => edit(setExpires)(e.target.value)}
             className={field}
           />
+          {expiresAt ? (
+            <span data-pregrant-expires-at className="block text-xs opacity-80">
+              {c.expiresAt.value
+                .replace("{zone}", zoneLabel(zone))
+                .replace("{utc}", `${expiresAt.slice(0, 19).replace("T", " ")} UTC`)}
+            </span>
+          ) : null}
         </label>
         <label className="block space-y-1 text-sm">
           <span>{c.note}</span>

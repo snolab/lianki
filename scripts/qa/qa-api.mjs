@@ -687,10 +687,17 @@ let goalId;
 // ── CREDITS (docs/payments.md, "Credits") — local D1, no provider secrets ──
 {
   const w = await call("GET", "/api/payments/credits");
+  // A new account holds at most its sign-up bonus (docs/payments.md, "Sign-up
+  // bonus": the first N new accounts of the UTC day, so 0 once the cap is used).
+  const entries = Array.isArray(w.data?.entries) ? w.data.entries : [];
+  const start = Number(w.data?.balance);
   rec(
-    "CREDITS new wallet is empty",
-    w.status === 200 && w.data?.balance === 0 && w.data?.entries?.length === 0,
-    `HTTP ${w.status} balance=${w.data?.balance}`,
+    "CREDITS new wallet holds only the sign-up bonus",
+    w.status === 200 &&
+      entries.every((e) => e.reason === "gift" && e.refId.startsWith("signup:")) &&
+      entries.length <= 1 &&
+      start === entries.reduce((n, e) => n + e.amount, 0),
+    `HTTP ${w.status} balance=${w.data?.balance} entries=${entries.length}`,
   );
   rec(
     "CREDITS quick amounts line up with the passes",
@@ -711,8 +718,10 @@ let goalId;
     key: crypto.randomUUID(),
   });
   rec(
-    "CREDITS buy-pass with no balance -> 402 + missing",
-    short.status === 402 && short.data?.missing === 600 && short.data?.price === 600,
+    "CREDITS buy-pass short of the price -> 402 + missing",
+    short.status === 402 &&
+      short.data?.missing === Math.max(600 - start, 100) &&
+      short.data?.price === 600,
     `HTTP ${short.status} missing=${short.data?.missing}`,
   );
   const bad = await call("POST", "/api/payments/buy-pass", { passId: "pro-forever" });
@@ -733,7 +742,7 @@ let goalId;
   const after = await call("GET", "/api/payments/credits");
   rec(
     "CREDITS balance unchanged by refused calls",
-    after.data?.balance === 0,
+    after.data?.balance === start,
     `${after.data?.balance}`,
   );
 

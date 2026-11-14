@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useZonedTime } from "@/app/components/useZonedTime";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { accountLabel, fill, shortId, txt, workerMeta } from "./lines";
 
@@ -49,8 +50,8 @@ export default function SttAccessAdmin() {
   /** The row waiting for its confirming tap: "u:<userId>" or "w:<workerId>". */
   const [confirm, setConfirm] = useState<string | null>(null);
 
-  const when = (ms: number) =>
-    `${new Date(ms).toLocaleString(locale, { timeZone: "Asia/Tokyo", dateStyle: "medium", timeStyle: "short" })} JST`;
+  const { time } = useZonedTime();
+  const when = (ms: number) => time(ms, locale, { dateStyle: "medium", timeStyle: "short" });
 
   useEffect(() => {
     fetch(API, { cache: "no-store" })

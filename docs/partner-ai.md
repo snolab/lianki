@@ -2,8 +2,9 @@
 
 Owner decision, 2026-11-03 22:30 JST: "做 DEEPSEEK". For every signed-in user
 **other than the owner**, the Learning Partner chat is answered server-side by
-DeepSeek on Cloudflare Workers AI. The owner's thread never goes to the model:
-it stays his Claude lanes. Media upload, the + menu and every other part of
+DeepSeek on Cloudflare Workers AI. The owner's thread stays his Claude lanes;
+since 2026-11-15 the model fills the silence there too, behind its own flag
+(see "The owner's thread"). Media upload, the + menu and every other part of
 the chat are unchanged.
 
 Ships dark behind the flag **`partner.ai-reply`** (default off, `/dev/flags`).
@@ -54,11 +55,39 @@ no third-party API key. Non-streaming in v1.
   mode on that device. The owner's pages are unchanged. The chat cannot be
   closed, only folded, and a "Learning Partner" row in the sidebar and the
   phone drawer opens it (docs/dev-debug-widget.md, "Always findable").
-- **The owner, never.** Three checks: the hub routes only non-owner threads
+- **The owner, only through `partner.owner-thread`** (next section). Otherwise three checks: the hub routes only non-owner threads
   (the thread comes from the session the main Worker verified on connect);
   the RPC looks the user up by id and refuses an account holding `dev`;
   and with no owner readable (none, or D1 failing) it refuses everyone (fail
   closed).
+
+## The owner's thread
+
+Owner, 2026-11-15: "你把 Li 也叫上来，但是不要中断你自己的监听". With
+**`partner.owner-thread`** on (default on, `audience: "owner"`; it needs
+`partner.ai-reply` on too), the hub (`workers/push/src/owner-ai.ts`, called from
+the owner's chat in `debug.ts`) lets the model answer a line of his when:
+
+- it is his (`from: "owner"`), newly posted (not an echo, merge or two-mic duplicate);
+- it names no lane (`routeLine(text).addressed` false, packages/debug-chat/src/lane-route.ts)
+  and carries no node address (`to`);
+- its voiceprint did not decide another voice (`speaker.decision !== "other"`);
+- **no lane answered first**: the reply waits config `partner.ownerReplyDelayMs`
+  (default 8,000 ms, /dev/config) and is skipped when any agent line reached his
+  thread meanwhile. A newer line of his replaces the pending one (one reply, for
+  the newest); a line to a lane cancels it. The usual takeover rule still holds
+  while the model works.
+
+History: his lines as `user`, every agent line (lanes and Li) as `assistant`,
+the same `HISTORY_LINES` / `HISTORY_MAX_CHARS`. **Metering is his account's**:
+the hub sends his page's verified user id (`page.user`; a chat-only page of his
+uses his other open page's) with `owner: true`, the caps count it as
+`ai:u:<his id>`, and the main Worker reserves and settles his credits —
+no bypass. The main Worker serves `owner: true` only for an account holding
+`dev`, only with the flag on (D1 row, else the registry default), and still
+refuses his account without the mark. The reply is posted as the main lane
+(`lane: "main"`, label "Learning Partner AI"): Li's avatar and voice, read aloud
+by the usual path. Flag off: exactly as before — his thread never reaches the model.
 
 ## Memory and takeover
 
@@ -80,6 +109,9 @@ row — never by anything in the messages or the model's output:
 - word lists (name, language, cards, due now, next due),
 - page cards (total, due now, next due),
 - study plan goals (`roadmap_goals`: topic and up to 8 steps),
+- preferred languages and levels (`user_prefs` `lang.preferred` by the verified user id,
+  one line such as `zh native; en C1; ja A2`, lib/lang-levels.ts `levelsLine`): replies
+  are pitched to the level of the language being learnt (owner, 2026-11-15),
 - the current page: path (from the page's label), and the line's attached
   selection (`context`) or voice scene (`scene`).
 
@@ -94,29 +126,46 @@ own data. A `<think>` block is stripped; replies are cut to 2,000 characters.
 
 ## Caps (operational limits, not user quotas)
 
-All in `lib/partner-ai-config.ts`; per JST day (reset 00:00 JST):
+All in `lib/partner-ai-config.ts`, counted over a **rolling window**: the last
+`partner.capWindowHours` hours (live config, default 24, at most 168; owner,
+2026-11-15: mature AI services reset by rolling windows, not a calendar day in
+some zone). No day boundary and no time zone is involved:
 
 | limit              | value                                                       |
 | ------------------ | ----------------------------------------------------------- |
 | per user, messages | 30 per 10 min (the existing friend limit, before the model) |
-| per user, tokens   | `USER_DAILY_TOKENS` = 60,000 (≈ 40–80 typical messages)     |
-| site-wide, spend   | `SITE_DAILY_USD` = $2 at list price                         |
+| per user, tokens   | `partner.userWindowTokens`, default 60,000 (≈ 40–80 msgs)   |
+| site-wide, spend   | `partner.siteWindowUsd`, default $2 at list price           |
 | per reply          | `MAX_OUTPUT_TOKENS` = 600; 30 s timeout                     |
 
 Prices (model page, 2026-11-03): $0.30 / M input, $1.20 / M output tokens.
 A typical message (~1,500 in, ~150 out) is ≈ $0.0006.
 
-Counters live in the hub's Durable Object storage (`ai:<day>:u:<userId>`,
-tokens; `ai:<day>:site`, micro-USD). A call first reserves a ceiling — 2
+Counters live in the hub's Durable Object storage (`ai:u:<userId>`, tokens;
+`ai:site`, micro-USD), each a map of hourly buckets keyed by the UTC hour
+(`lib/rolling-window.ts`); the cap compares the sum over the window, so the
+window is the current hour plus the 23 before it, and a use stops counting
+23–24 hours later. A call first reserves a ceiling — 2
 tokens per character of everything the prompt can hold (history ≤ 12,000
 characters, page text, ≤ 10,000 for rules and study summary) plus every output
 token — so concurrent calls cannot all pass a nearly spent cap. It then settles
 to the model's reported counts. With no counts, the reservation stands; it is
 given back only when nothing can have been billed (a refusal before the call,
 or an error status from the model). A timeout, an RPC error or an unreadable
-answer keeps it. Earlier days' keys are deleted on the first call of a new day.
+answer keeps it. Settling adjusts the bucket of the hour the reservation was
+taken in. The first call of each hour sweeps every bucket that left the window
+(an emptied key is deleted, and so is any key of the older per-JST-day layout
+`ai:<day>:…`).
 Turning the flag off does not cancel a call already in flight (≤ 30 s). Over a cap, the page shows `aiLimit`
-("resting for today") and the lanes can still answer.
+("taking a short break") with `retryMin` — when this reply would fit
+again, the later of the two caps, from the oldest buckets that must age out
+(`fitsAgainAt`) — shown as `aiLimitIn` ("again in about N min"); without it
+(a reply larger than the cap itself) `aiLimit` ("try again in a while"). The
+lanes can still answer. The caps' values are live config (`/dev/config`,
+group chat; defaults `USER_DAILY_TOKENS` / `SITE_DAILY_USD` in
+`lib/partner-ai-config.ts`), read by the hub over `DebugSessions.config` and
+cached 30 s like the flag. Out of credits is a different line (`ai-credits`):
+it links to `/membership`, where the wallet is topped up.
 
 ## Credits: every reply is paid, reserve first
 
@@ -125,9 +174,9 @@ when user have no credits" + "扣 first and return when fail". Each reply is
 paid from the user's credit wallet (docs/payments.md, "Credits"), in the main
 Worker (`lib/partner-ai.ts` → `lib/payments/ai-credits.ts`), after the hub's
 caps and before the model. No account is exempt by its permissions (owner,
-2026-11-10): the `dev` holders' threads are not answered by the model at all
-(the lanes answer them), so there is nothing to make free; every reply that is
-made is paid like this:
+2026-11-10): the owner's replies in his own thread (`partner.owner-thread`)
+are paid from his wallet exactly like anyone's; every reply that is made is
+paid like this:
 
 1. **Sweep.** Reservations still `pending` `CHARGE_STALE_MS` (10 min) after
    they were taken belong to a reply that crashed between reserve and settle:

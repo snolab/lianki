@@ -1,15 +1,13 @@
 /**
- * Monthly sign-ups for the owner's /dev/users chart: calendar months in JST,
+ * Monthly sign-ups for the owner's /dev/users chart: calendar months in the
+ * viewer's zone (a fixed offset `offMin`, minutes east of UTC; 0 = UTC),
  * the current month's forecast, and the bar geometry the SVG draws. Pure, so
  * the bucketing and the forecast are unit-tested without a page.
  */
 
-/** JST is UTC+9 all year (no daylight saving). */
-const JST_MS = 9 * 3_600_000;
-
-/** "2026-11": the JST calendar month an instant falls in. */
-export function jstMonth(d: Date | string | number): string {
-  return new Date(new Date(d).getTime() + JST_MS).toISOString().slice(0, 7);
+/** "2026-11": the calendar month an instant falls in, at `offMin` minutes east of UTC. */
+export function zoneMonth(d: Date | string | number, offMin = 0): string {
+  return new Date(new Date(d).getTime() + offMin * 60_000).toISOString().slice(0, 7);
 }
 
 /** Days in a "YYYY-MM" month (28–31; leap Februaries are 29). */
@@ -27,12 +25,12 @@ export function addMonths(month: string, n: number): string {
 
 /**
  * The whole month at the pace so far: so far × days in month ÷ days elapsed,
- * where today (JST) counts as an elapsed day. Day 1 → so far × days in month;
+ * where today (in the zone) counts as an elapsed day. Day 1 → so far × days in month;
  * the last day → so far.
  */
-export function forecastMonth(soFar: number, now: Date | number = Date.now()) {
-  const month = jstMonth(now);
-  const elapsed = new Date(new Date(now).getTime() + JST_MS).getUTCDate();
+export function forecastMonth(soFar: number, now: Date | number = Date.now(), offMin = 0) {
+  const month = zoneMonth(now, offMin);
+  const elapsed = new Date(new Date(now).getTime() + offMin * 60_000).getUTCDate();
   const days = daysInMonth(month);
   return { month, elapsed, days, forecast: Math.round((soFar * days) / elapsed) };
 }
@@ -45,11 +43,16 @@ export type MonthBar = MonthCount & {
 
 /**
  * Every month from the first sign-up (at most `span` months back) to the
- * current JST month, with zero for months nobody joined. Rows from the query
+ * current month in the zone, with zero for months nobody joined. Rows from the query
  * outside that window are dropped.
  */
-export function monthSeries(rows: MonthCount[], now: Date | number = Date.now(), span = 24) {
-  const current = jstMonth(now);
+export function monthSeries(
+  rows: MonthCount[],
+  now: Date | number = Date.now(),
+  span = 24,
+  offMin = 0,
+) {
+  const current = zoneMonth(now, offMin);
   const counts = new Map(rows.map((r) => [r.month, r.n]));
   const earliest = rows.reduce((a, r) => (r.month < a ? r.month : a), current);
   const floor = addMonths(current, -(span - 1));
@@ -59,7 +62,7 @@ export function monthSeries(rows: MonthCount[], now: Date | number = Date.now(),
     out.push({ month: m, n: counts.get(m) ?? 0 });
   }
   const last = out[out.length - 1];
-  last.forecast = Math.max(last.n, forecastMonth(last.n, now).forecast);
+  last.forecast = Math.max(last.n, forecastMonth(last.n, now, offMin).forecast);
   return out;
 }
 

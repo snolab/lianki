@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { withIntlayer } from "next-intlayer/server";
 import { devOrigins } from "./lib/build/dev-origins.mjs";
+import { devSiteRewrites } from "./lib/build/dev-site-rewrites.mjs";
 
 /**
  * Code calling useIntlayer("key") or getIntlayer("key") imports that one
@@ -26,6 +27,11 @@ const nextConfig = {
   },
   // Internal workspace package shipping TypeScript source (@lianki/core).
   transpilePackages: ["@lianki/core", "@lianki/debug-chat", "@lianki/ui-state", "@snomiao/rgui"],
+  // The whole-page dev server is its own app, 开发站 (lib/dev-site/pwa.ts):
+  // its manifest and service worker. None outside that server.
+  ...(devSiteRewrites(process.env).length
+    ? { rewrites: async () => ({ beforeFiles: devSiteRewrites(process.env) }) }
+    : {}),
   async headers() {
     return [
       {

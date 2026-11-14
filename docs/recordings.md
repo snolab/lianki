@@ -87,7 +87,16 @@ it goes to his own Mac for its text and, sealed, to his own account.
 | its transcript                               | D1 `recording.text_sealed`                                  | AES-256-GCM sealed text  |
 | day, time, duration, size, mode, source, device, speaker | D1 `recording`                                  | clear                    |
 
-`db/migrations/0075_recording.sql`; primary key `(user_id, id)`. The audio
+`db/migrations/0075_recording.sql`; primary key `(user_id, id)`; the feed
+reads index `recording_user_at` (`0080`).
+
+**The day is internal, and UTC** (owner, 2026-11-15: nothing defaults to JST;
+a fixed zone is UTC, what is shown is in the device's zone). A new row's `day`
+— in the R2 key and the D1 column — is the **UTC date of `at`**: the recorder
+sends it so (`utcDay`, `recorder.ts`) and the server files the row under it
+whatever the body says. Rows stored before 2026-11-15 keep the device-local
+day they were sent with; every read works by id or by time, so both kinds
+read the same. No page ever groups by this day. The audio
 goes to R2 first, then the row points at it; a failed row write deletes the
 object, so a row never points at nothing.
 
@@ -112,11 +121,11 @@ names an account.
 | call                                   | auth                         | answer                                                                 |
 | -------------------------------------- | ---------------------------- | ---------------------------------------------------------------------- |
 | `GET ?status=1`                        | session or token             | `{on: true, retentionDays}` (404 when off)                             |
-| `GET [?before=<day>&limit=<n>]`        | session or token             | `{days: [{day, clips, ms, bytes}], more}`, newest first, 30 a call (≤ 100) |
+| `GET [?before=<at>&limit=<n>]`         | session or token             | `{clips: [{id, day, at, durationMs, bytes, mode, source, device, speaker, text}], more}`: the feed, newest first, **paged by time, never by day**; 50 a call (≤ 200), plus any further clip with the last one's `at`, so `before=<that at>` loses none |
 | `GET ?day=YYYY-MM-DD`                  | session or token             | `{day, clips: [{id, at, durationMs, bytes, mode, source, device, speaker, text}]}`, transcripts decrypted, no audio |
 | `GET ?clip=<id>`                       | session or token             | the WAV (`audio/wav`)                                                  |
 | `GET ?day=D&archive=zip[&tz=<min>]`    | session or token             | the day as a zip (below)                                               |
-| `POST {id, at, day, text, source, mode, device, speaker?, wav}` | session only | `{ok, id[, dup]}`                                                  |
+| `POST {id, at, day?, text, source, mode, device, speaker?, wav}` | session only | `{ok, id[, dup]}`                                                 |
 | `DELETE ?clip=<id>` / `DELETE ?day=D`  | session only                 | `{ok, deleted}` — rows and objects                                     |
 
 The token is an API token with the **`recordings:read`** permission
@@ -127,8 +136,10 @@ every use.
 
 **POST validation** (`parseRecordingPost`): exactly those keys; `id`
 16–32 base64url characters; `at` an integer within 2 days behind and 5 min
-ahead of the server's clock; `day` a real calendar date within a day and a
-half of `at` (the device's own date, any zone); `text` ≤ 4,000 characters, no
+ahead of the server's clock; `day` optional — the UTC date of `at` from a
+current recorder, the device's own date from an older one: any real calendar
+date within a day and a half of `at` is accepted, and the row is filed under
+the UTC date either way; `text` ≤ 4,000 characters, no
 control characters but tab and newlines (empty allowed); `source`, `mode`,
 `speaker` from their lists; `device` ≤ 40 of `[A-Za-z0-9._-]`; `wav`
 standard base64 of a RIFF/WAVE, PCM 16-bit mono **16 kHz**, 0.1–40 s,
@@ -139,6 +150,11 @@ is parsed. At most `MAX_CLIPS_PER_DAY` (5,000) clips a day per account (429
 the Worker decrypts and holds in memory.
 
 ### Download a day (the zip)
+
+The API keeps it (`GET ?day=D&archive=zip`, the internal UTC day), but the page
+no longer offers it (owner, 2026-11-15: no Download day / Delete day buttons).
+An export of any time range, in the viewer's own dates, is for later
+(Phase 2); until then the pull script below fetches a day.
 
 A day can be a few hundred MB of audio, more than a Worker should hold. The
 archive is a **stored (uncompressed) zip written as a stream**
@@ -174,17 +190,37 @@ route serves itself as before. lianki.com unreachable: 502
 
 ## The page: /my/recordings
 
-`app/(app)/my/recordings/` — days newest first in the one `VirtualList`
-(continuous scroll, more as the reader nears the end; no pages). Download day
-(the zip) and Delete day sit on the day's row.
+`app/(app)/my/recordings/` — **one continuous journal** (owner, 2026-11-15 03:2x
+JST: "录音列表不需要在数据层按日期切分，而是一个连续的分页…按前端的当地时间来分组";
+"显示成长长的段落形状的…像日记一样"):
 
-**A day reads as one article** (owner, 2026-11-14 22:4x JST). Opened, its clips
-flow as continuous text, one paragraph per clip in recording order, each a row
-of the same `VirtualList` (long days stay windowed): a faint time at the
-paragraph's start, a "Not for the chat" tag on passive ones, and a faint mark
-above it — "My voice" / "Another voice" from the Mac's check, and the device
-label — only where that changes from the paragraph before. The model is pure,
-in `lib/recordings-article.ts` (`paragraphs`, unit-tested in
+- **The feed is not cut by day.** The page reads `GET ?before=<at>&limit=100`,
+  newest first, in the one `VirtualList` (continuous scroll, more as the reader
+  nears the end; no page controls — "no pagination").
+- **Dates come from the device.** The client groups the clips into dates in
+  the device's own time zone (`Intl…resolvedOptions().timeZone`; an unknown
+  zone falls back to UTC, never JST): a date heading (`dateStyle: "full"` in the
+  page's locale, with the date's clip count and length), then that date's clips
+  in recording order. Dates run newest first. While more may come, the
+  **oldest date loaded is held back** until it is whole (the next page reaches
+  an earlier date, or there is no more), so a date's first lines never appear
+  above the reader later; a page that only adds to the held date fetches the
+  next at once (`keepLoading`).
+- **Paragraphs, not a log.** Each clip is one paragraph of flowing text (a row
+  of the same `VirtualList`, so long dates stay windowed), a "Not for the chat"
+  tag on passive ones, and a faint mark above it — "My voice" / "Another voice"
+  from the Mac's check, and the device label — only where that changes. A
+  **time** shows only at a date's first paragraph and where the clip began more
+  than [`recordings.timeMarkGapMin`](https://lianki.com/dev/config) minutes
+  (default **10**) after the one before ended — not at every clip. Times are in
+  the device's zone and the page's locale.
+- **No per-day buttons** (owner, same night: "不需要显示下载这一天和删除这一天的这两个
+  按钮"): a clip is deleted from its ⋯ menu; downloading a day is the pull
+  script's (above, "Download a day").
+
+The model is pure: `lib/recordings-view.ts` (`journal`, `zoneDay`,
+`mergeClips`, `cursor`, `keepLoading`; `unit/recordings-journal.test.ts`) and
+`lib/recordings-article.ts` (`paragraphs`, time marks; 
 `unit/recordings-article.test.ts`).
 
 **One shared player** (a single hidden `<audio preload="none">`; nothing plays
@@ -194,10 +230,11 @@ until tapped):
   the playing one pauses, on the paused current one resumes (`playTarget`).
   Selecting words is not a tap. The current paragraph is highlighted
   (seal-red tint).
-- The day plays on: when a clip ends the next one starts and is scrolled into
-  view (`VirtualList` handle `scrollToKey`), until the day's last clip.
-- **One continuous progress bar for the day** (owner, 22:5x JST): a glass bar
-  floating at the bottom, for the playing day (or the day last opened). The
+- The date plays on: when a clip ends the next one starts and is scrolled into
+  view (`VirtualList` handle `scrollToKey`), until the date's last clip.
+- **One continuous progress bar for the date** (owner, 2026-11-14 22:5x JST): a
+  glass bar floating at the bottom, for the date in the player — it appears at
+  the first tap on a paragraph and stays, paused, after. The
   day's clips lie end to end on it — durations summed, the silence between
   them not drawn — with a faint tick at each boundary. It shows the position
   while playing; tapping or dragging it seeks across the whole day
@@ -212,8 +249,9 @@ until tapped):
   [`recordings.speeds`](https://lianki.com/dev/config) (default
   `0.75,1,1.25,1.5,2`; 1 is always offered; an unknown stored value plays at 1).
 
-Storage and the API are unchanged by the article view: it uses `GET ?day=`
-(which already carries `device`) and `GET ?clip=`. Strings:
+The page uses the feed (`GET ?before=`), `GET ?clip=` and `DELETE ?clip=`;
+`GET ?day=` and `DELETE ?day=` stay in the API (the pull script, the bridge)
+but the page no longer calls them. Strings:
 `my-recordings.content.ts`, 16 locales, a context line each. The /my card
 shows only where the page exists (flag and `dev`). Browser check, silent and
 with fixture APIs: `bun scripts/qa/qa-recordings-view.mjs` (`QA_SHOT_DIR=…`
@@ -231,8 +269,9 @@ daily run, for good.
 
 ## Deleting
 
-He deletes a clip or a whole day on /my/recordings (`DELETE`), rows and
-objects at once. Turning the flag off does **not** delete anything: new clips
+He deletes a clip on /my/recordings (`DELETE ?clip=`), row and object at
+once. `DELETE ?day=` (an internal day) stays in the API; the page has no
+button for it (2026-11-15). Turning the flag off does **not** delete anything: new clips
 stop, the routes 404, stored clips stay sealed and unread — and are still
 swept when they pass the retention.
 
@@ -265,4 +304,6 @@ bun scripts/dev/recordings-pull.ts --day 2026-11-14 --stt ws://127.0.0.1:5193 --
 - Re-transcriptions from the Mac written back to the account (a
   `recordings:write`-style permission, text only).
 - Search across days; per-speaker filters; a day's audio as one long file.
+- Export any time range from the page (zip), in the viewer's own dates — the
+  replacement for the removed Download day button.
 - A per-account retention choice (today one global value).

@@ -10,12 +10,13 @@
  * page then uses the cloud for that utterance, as on any failure.
  *
  * Quotas (config stt.worker.*): tickets per minute per account (counted in D1
- * `stt_ticket`) and audio minutes per JST day (the account's
- * `speech.stt.local` rows in the cost ledger). Live sessions per account and
+ * `stt_ticket`) and audio minutes over a rolling window of
+ * `stt.capWindowHours` (default the last 24 hours; the account's
+ * `speech.stt.local` rows in the cost ledger, by their time) — no calendar day. Live sessions per account and
  * each server's capacity are the registry's (it sees the sockets).
  */
 import type { ConfigKey } from "@/lib/config";
-import { COST_DAY_OFFSET_MS, LOCAL_STT_FEATURE } from "@/lib/payments/cost-ledger";
+import { LOCAL_STT_FEATURE, costDay } from "@/lib/payments/cost-ledger";
 import { signSttTicketV2 } from "@/lib/stt-ticket";
 import type { SttDb } from "./store";
 
@@ -42,6 +43,7 @@ type NumKey = Extract<
   ConfigKey,
   | "stt.worker.ticketsPerMin"
   | "stt.worker.minutesPerDay"
+  | "stt.capWindowHours"
   | "stt.worker.maxUtteranceS"
   | "stt.worker.sessionMaxS"
   | "stt.worker.sessionsPerAccount"
@@ -83,14 +85,28 @@ export function wssRoute(raw: string): string | undefined {
   }
 }
 
-/** Audio seconds this account was served today (JST), from the cost ledger. */
-export async function secondsToday(db: SttDb, userId: string, now: number): Promise<number> {
-  const day = new Date(now + COST_DAY_OFFSET_MS).toISOString().slice(0, 10);
+/**
+ * Audio seconds this account was served in the last `hours` hours (a rolling
+ * window ending at `now`), from the cost ledger's row times. The `day` bound
+ * (a day wider than the window) only keeps the indexed scan short.
+ */
+export async function secondsInWindow(
+  db: SttDb,
+  userId: string,
+  now: number,
+  hours: number,
+): Promise<number> {
+  const since = now - hours * 3600_000;
   const r = await db
     .prepare(
-      "SELECT COALESCE(SUM(units), 0) AS s FROM cost_ledger WHERE user_id = ?1 AND feature = ?2 AND day = ?3",
+      "SELECT COALESCE(SUM(units), 0) AS s FROM cost_ledger WHERE feature = ?2 AND day >= ?3 AND user_id = ?1 AND at > ?4",
     )
-    .bind(userId, LOCAL_STT_FEATURE, day)
+    .bind(
+      userId,
+      LOCAL_STT_FEATURE,
+      costDay(new Date(since - 86400_000)),
+      new Date(since).toISOString(),
+    )
     .first<{ s: number }>();
   return Number(r?.s ?? 0);
 }
@@ -126,7 +142,8 @@ export async function handleSttSession(req: Request, d: SttSessionDeps): Promise
   if (Number(recent?.n ?? 0) >= perMin)
     return json({ error: "too-many-tickets" }, 429, { "retry-after": "60" });
   const minutes = await d.num("stt.worker.minutesPerDay");
-  if ((await secondsToday(db, userId, now)) >= minutes * 60)
+  const hours = await d.num("stt.capWindowHours");
+  if ((await secondsInWindow(db, userId, now, hours)) >= minutes * 60)
     return json({ error: "daily-limit" }, 429);
 
   const key = await d.key().catch(() => null);

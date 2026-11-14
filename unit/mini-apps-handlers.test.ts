@@ -402,11 +402,14 @@ describe("the frame", () => {
     if (v?.frame.mode !== "srcdoc") throw new Error("expected srcdoc");
     expect(v.frame.sandbox).toBe("allow-scripts allow-forms");
     expect(v.frame.srcdoc).toStartWith(
-      '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;'
-        .replace("&#39;", "'")
-        .replace("&#39;", "'"),
+      `<!doctype html><html data-theme="auto"><meta http-equiv="Content-Security-Policy" content="default-src 'none'`,
     );
-    expect(v.frame.srcdoc).toContain('<script src="https://lianki.com/m/sdk.js"></script><html>');
+    // The style pack is inlined (its <link> dropped), then the SDK, then the app.
+    expect(v.frame.srcdoc).toContain("<style data-lk-pack>");
+    expect(v.frame.srcdoc).toContain("--lk-primary: oklch(0.53 0.207 22.3)");
+    expect(v.frame.srcdoc).toEndWith(
+      '</style><script src="https://lianki.com/m/sdk.js"></script><html><head></head><body><script>1</script></body></html>',
+    );
     bucket.store.clear();
     expect(await hostView("calc", "https://lianki.com", deps)).toBeNull();
     expect(await hostView("nope", "https://lianki.com", deps)).toBeNull();
@@ -440,7 +443,9 @@ describe("the frame", () => {
     expect(r.headers.get("set-cookie")).toBeNull();
     expect(r.headers.get("x-content-type-options")).toBe("nosniff");
     const html = await r.text();
-    expect(html).toStartWith('<!doctype html><script src="https://lianki.com/m/sdk.js"></script>');
+    expect(html).toStartWith('<!doctype html><html data-theme="auto"><meta name="color-scheme"');
+    expect(html).toContain("<style data-lk-pack>");
+    expect(html).toContain('</style><script src="https://lianki.com/m/sdk.js"></script><html>');
     expect(html).not.toContain("http-equiv");
     // Another host, another slug, no ticket, a republished file, the flag off: 404.
     const t = new URL(v.frame.src).searchParams.get("t")!;

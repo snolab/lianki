@@ -1,4 +1,12 @@
 "use client";
+import {
+  createChatOutbox,
+  acknowledgedChatIds,
+  hasChatRejection,
+  type OutgoingChat,
+} from "../../packages/debug-chat/src/chat-outbox";
+import { migrateLegacyOwnerDraft } from "../../packages/debug-chat/src/legacy-chat-draft";
+import { chatUi } from "../../packages/debug-chat/src/ui-store";
 import { evalTrustStrings } from "../../packages/debug-chat/src/eval-trust-strings";
 
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
@@ -42,9 +50,11 @@ import {
 } from "@lianki/debug-chat/wire";
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
+import { setLaneTable } from "@lianki/debug-chat/voices";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
+import type { RecheckAmend, RecheckConf } from "@lianki/debug-chat/whisper-recheck";
 import { hubClock, syncWait } from "@lianki/debug-chat/sync-speak";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
@@ -149,6 +159,8 @@ export type PartnerStrings = ChatStrings & {
   aiHint: string;
   aiStatus: string;
   aiLimit: string;
+  /** aiLimit with "again in about {n} min", when the hub said when the window frees up. */
+  aiLimitIn?: string;
   aiFailed: string;
   /** Out of credits: the model was not asked; the line links to where credits are bought. */
   aiCredits: string;
@@ -174,12 +186,18 @@ export function DebugEval({
   talkOver = false,
   polishReadback: readback,
   foldOthers = true,
+  whisperRecheck,
   box = null,
   account = null,
   cacheLines = 0,
 }: {
   /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
   foldOthers?: boolean;
+  /**
+   * Flag `stt.whisper-recheck` + dev: at a run's passage end his Mac's Whisper re-reads
+   * the run whole, and the line takes it before its polish (whisper-recheck.ts). None: off.
+   */
+  whisperRecheck?: RecheckConf;
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
   talkOver?: boolean;
   /**
@@ -226,6 +244,8 @@ export function DebugEval({
 } = {}) {
   // Idempotent and cheap: the live table is in place before the first reply is read.
   if (lexicon !== undefined) setLexicon(lexicon);
+  // The lanes beyond the built-in four, and more names for them (config chat.lanes): live, no deploy.
+  setLaneTable(publicCfg("chat.lanes"));
   setCloudVoices(cloudVoices);
   setTalkOver(talkOver);
   setPolishReadback(readback);
@@ -269,6 +289,50 @@ export function DebugEval({
   /** Who this page's user is, from the hub on connect: their own lines' avatar. */
   const [viewer, setViewer] = useState<Sender | undefined>(undefined);
   const sockRef = useRef<WebSocket | null>(null);
+  const boxAccount = useBoxAccount();
+  const deliveryScope = box
+    ? boxAccount?.user.email
+      ? `box:${box.provider}:${boxAccount.user.email}`
+      : null
+    : account;
+  const [outgoingState, setOutgoingState] = useState<{
+    scope: string | null;
+    items: readonly OutgoingChat[];
+  }>({ scope: deliveryScope, items: [] });
+  const outbox = useMemo(() => {
+    const key = deliveryScope ? `lk:ui:chat-outbox:${encodeURIComponent(deliveryScope)}` : null;
+    return createChatOutbox({
+      read: () => (key ? JSON.parse(sessionStorage.getItem(key) ?? "[]") : []),
+      write: (items) => {
+        if (!key) throw new Error("chat identity unavailable");
+        sessionStorage.setItem(key, JSON.stringify(items));
+      },
+      readCursor: () => (key ? JSON.parse(sessionStorage.getItem(`${key}:cursor`) ?? "0") : 0),
+      writeCursor: (seq) => {
+        if (key) sessionStorage.setItem(`${key}:cursor`, JSON.stringify(seq));
+      },
+      id: () => crypto.randomUUID().slice(0, 12),
+      send: (item) => {
+        const sock = sockRef.current;
+        if (!sock || sock.readyState !== WebSocket.OPEN) return false;
+        sock.send(JSON.stringify({ ...item, type: "chat" }));
+        return true;
+      },
+      onChange: (items) => setOutgoingState({ scope: deliveryScope, items }),
+      onRejected: (_item, reason) =>
+        setWarning(
+          reason === "blocked"
+            ? (stringsRef.current?.unavailable ?? chatExtra().liveNotSent)
+            : chatExtra().liveNotSent,
+        ),
+    });
+  }, [deliveryScope]);
+  useEffect(() => {
+    setOutgoingState({ scope: deliveryScope, items: outbox.items() });
+    // React can replay effects in development; socket cleanup prevents stale sends.
+    return () => outbox.disconnect();
+  }, [outbox, deliveryScope]);
+  const outgoing = outgoingState.scope === deliveryScope ? outgoingState.items : outbox.items();
   const friendRef = useRef(false);
   /**
    * The hub put this socket in the owner's thread (a state with no friend-status
@@ -282,6 +346,30 @@ export function DebugEval({
   }, [messages]);
   /** The owner's page (a state arrived with no friend-status first): may hot-load the widget. */
   const [owner, setOwner] = useState(false);
+  const [confirmedOwnerScope, setConfirmedOwnerScope] = useState<string | null>(null);
+  const [legacyRestore, setLegacyRestore] = useState(0);
+  useEffect(() => {
+    if (!owner || friend !== null || !deliveryScope || confirmedOwnerScope !== deliveryScope)
+      return;
+    const store = chatUi(deliveryScope);
+    const current = store.getState();
+    if (!current.legacyOwnerMigrated && (current.draft.trim() || current.interim?.text.trim()))
+      return;
+    let storage: Storage;
+    try {
+      storage = sessionStorage;
+    } catch {
+      return;
+    }
+    const restored = migrateLegacyOwnerDraft({
+      storage,
+      scope: deliveryScope,
+      owner: true,
+    });
+    if (!restored) return;
+    store.setState(restored);
+    setLegacyRestore((n) => n + 1);
+  }, [owner, friend, deliveryScope, confirmedOwnerScope]);
   /** The agent's heartbeat (docs/monitoring.md, "Agent is working"). */
   const [busy, setBusy] = useState<{ label: string } | null>(null);
   const beatRef = useRef<(Heartbeat & { label: string }) | null>(null);
@@ -386,6 +474,13 @@ export function DebugEval({
 
   useEffect(() => {
     if (typeof WebSocket === "undefined") return;
+    // A changed signed-in identity needs its own fresh hub verdict.
+    friendRef.current = false;
+    hubOwnerRef.current = false;
+    setFriend(null);
+    setOwner(false);
+    setViewer(undefined);
+    setConfirmedOwnerScope(null);
     let ws: WebSocket | null = null;
     /** The chat is wanted: debug mode, or the Learning Partner opened to users (partnerOpen). */
     // Never false for a partner user (lib/partner-entry.ts): the chat folds, it never goes away.
@@ -594,6 +689,16 @@ export function DebugEval({
         } catch {
           return;
         }
+        if (disposed) return;
+        if (msg.type === "chat-ack" && typeof msg.id === "string") {
+          outbox.acknowledge([msg.id], (msg as { seq?: number }).seq);
+          return;
+        }
+        if (msg.type === "chat-rejected" && typeof msg.id === "string") {
+          const rejection = msg as { reason?: unknown };
+          if (typeof rejection.reason === "string") outbox.reject(msg.id, rejection.reason);
+          return;
+        }
         // This window's recording session (the hub holds it, not this origin).
         if (msg.type === "clips") return void onClipsState(msg);
         // A clock pong (sync-speak.ts): noted; the round goes on until it has its samples.
@@ -603,6 +708,7 @@ export function DebugEval({
         }
         if (msg.type === "friend-status") {
           friendRef.current = true;
+          setConfirmedOwnerScope(null);
           hubOwnerRef.current = false;
           if (msg.status !== "blocked") doubtFriend(sock);
           // Never a friend's errors: nothing queued is sent, nothing more is kept.
@@ -641,14 +747,22 @@ export function DebugEval({
         }
         if (msg.type === "ai-limit" || msg.type === "ai-failed") {
           const s = stringsRef.current;
+          // The usage window is full (not credits): when the hub knows, say when it frees up.
+          const retryMin = Number((msg as { retryMin?: unknown }).retryMin);
           const line =
             msg.type === "ai-limit"
-              ? (s?.aiLimit ?? "Your {name} is resting for today. Try again tomorrow.")
+              ? Number.isFinite(retryMin) && retryMin > 0
+                ? (
+                    s?.aiLimitIn ??
+                    "Your {name} is taking a short break. It can reply again in about {n} min."
+                  ).replaceAll("{n}", String(Math.ceil(retryMin)))
+                : (s?.aiLimit ?? "Your {name} is taking a short break. Try again in a while.")
               : (s?.aiFailed ?? "No reply this time. Please try again in a moment.");
           setWarning(line.replaceAll("{name}", s?.name || "Learning Partner"));
           return;
         }
         if (msg.type === "rate-limited") {
+          if (hasChatRejection(outbox.items(), msg.id)) return;
           const min = Math.max(1, Math.ceil(Number(msg.retryIn) / 60_000) || 1);
           setWarning(chatExtra().rateLimited.replace("{n}", String(min)));
           return;
@@ -663,6 +777,7 @@ export function DebugEval({
           // Friends hear friend-status before any state: no status yet = the owner.
           if (!friendRef.current) {
             setOwner(true);
+            setConfirmedOwnerScope(deliveryScope);
             if (!boxRef.current) {
               hubOwnerRef.current = true;
               rejoinTries = 0;
@@ -710,6 +825,7 @@ export function DebugEval({
           // The hub wins over the device's copy (lib/chat-cache.ts).
           setMessages((shown) => reconcileHistory(shown, list));
           setFromHub(true);
+          outbox.ready(acknowledgedChatIds(list));
           reBeat();
           const said = missed.line && spokenOf(missed.line);
           if (missed.line && said && (tabsRef.current?.isSpeaker() ?? true))
@@ -733,6 +849,7 @@ export function DebugEval({
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
           const m = withLane(msg.message as ChatMessage);
           if (typeof m.text !== "string" || typeof m.id !== "string") return;
+          outbox.acknowledge(acknowledgedChatIds([m]));
           setMessages((list) =>
             list.some((x) => x.id === m.id) ? list : trimHistory([...list, m]),
           );
@@ -779,6 +896,7 @@ export function DebugEval({
           );
           setMessages((list) => trimHistory(applyEditTo(list, e)));
           // A line that amended another has no echo of its own: this is its answer.
+          if (e.merged) outbox.acknowledge([e.merged.id]);
           if (e.merged) voiceLatency().heard({ id: e.merged.id, from: "owner", at: e.edited.at });
           return;
         }
@@ -799,6 +917,7 @@ export function DebugEval({
       // until the next visibility or debug event.
       sock.onclose = (e) => {
         if (ws !== sock) return;
+        outbox.disconnect();
         ws = null;
         hubOwnerRef.current = false;
         setPhase("closed");
@@ -814,6 +933,7 @@ export function DebugEval({
       };
     };
     const disconnect = () => {
+      outbox.disconnect();
       clearTimeout(idle);
       reporter.detach();
       if (!chatOn()) {
@@ -890,6 +1010,7 @@ export function DebugEval({
     window.addEventListener("pagehide", leaving);
     document.addEventListener("visibilitychange", update);
     window.addEventListener(DEBUG_EVENT, update);
+    window.addEventListener("online", update);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("pagehide", leaving);
@@ -897,6 +1018,7 @@ export function DebugEval({
       unClips();
       document.removeEventListener("visibilitychange", update);
       window.removeEventListener(DEBUG_EVENT, update);
+      window.removeEventListener("online", update);
       window.removeEventListener("storage", onStorage);
       clearTimeout(hideToast);
       clearTimeout(beatTimer.current);
@@ -905,7 +1027,7 @@ export function DebugEval({
       disconnect();
       unhookErrors();
     };
-  }, []);
+  }, [outbox]);
 
   // The socket lives in the root layout, so it outlives client-side
   // navigation: tell the hub the new path (silently — the agent's side only),
@@ -972,16 +1094,14 @@ export function DebugEval({
     opts?: {
       source?: "stt";
       timing?: VoiceTiming;
+      stt?: ChatMessage["stt"];
       speakerProof?: string[];
       context?: ChatContext;
       attachments?: AttachmentRef[];
       continues?: string;
     },
   ) => {
-    const sock = sockRef.current;
-    if (!sock || sock.readyState !== WebSocket.OPEN) return false;
     try {
-      const id = crypto.randomUUID().slice(0, 12);
       // A voice line's timestamps ride along (an older hub drops them).
       const timing = opts?.source === "stt" ? cleanTiming(opts.timing) : undefined;
       // The Mac's signed speaker attestations (lib/speaker-proof.ts); the hub verifies them.
@@ -1001,23 +1121,22 @@ export function DebugEval({
         owner && friend === null ? cleanAttachments(opts?.attachments) : undefined;
       // Where a voice line was spoken (path, title, screen text): its polish draws on it.
       const scene = opts?.source === "stt" ? pageScene() : undefined;
-      sock.send(
-        JSON.stringify({
-          type: "chat",
-          id,
-          text,
-          ...(to ? { to } : {}),
-          ...(opts?.source === "stt" ? { source: "stt" } : {}),
-          ...(opts?.source === "stt" && opts.continues ? { continues: opts.continues } : {}),
-          ...(timing ? { timing } : {}),
-          ...(wake === "active" || wake === "passive" ? { wake } : {}),
-          ...(speakerProof?.length ? { speakerProof } : {}),
-          ...(wakeReason ? { wakeReason } : {}),
-          ...(context ? { context } : {}),
-          ...(attachments ? { attachments } : {}),
-          ...(scene ? { scene } : {}),
-        }),
-      );
+      const accepted = outbox.enqueue({
+        text,
+        ...(to ? { to } : {}),
+        ...(opts?.source === "stt" ? { source: "stt" } : {}),
+        ...(opts?.source === "stt" && opts.continues ? { continues: opts.continues } : {}),
+        ...(timing ? { timing } : {}),
+        ...(opts?.source === "stt" && opts.stt ? { stt: opts.stt } : {}),
+        ...(wake === "active" || wake === "passive" ? { wake } : {}),
+        ...(speakerProof?.length ? { speakerProof } : {}),
+        ...(wakeReason ? { wakeReason } : {}),
+        ...(context ? { context } : {}),
+        ...(attachments ? { attachments } : {}),
+        ...(scene ? { scene } : {}),
+      });
+      if (!accepted) return false;
+      const id = outbox.items().at(-1)!.id;
       if (attachments)
         linkInboxLine(
           attachments.map((a) => a.id),
@@ -1032,7 +1151,9 @@ export function DebugEval({
   };
 
   /** A plain message to the hub, on this page's socket. */
-  const sendHub = (m: { type: "passage-end" } | { type: "unmerge"; id: string }) => {
+  const sendHub = (
+    m: { type: "passage-end"; recheck?: RecheckAmend } | { type: "unmerge"; id: string },
+  ) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return;
     try {
@@ -1061,7 +1182,6 @@ export function DebugEval({
   const devUi = owner && !isFriend && devParts({ dev, hubOwner: owner && !box });
   // On a box the layout's flag is the box server's own (its local D1, no
   // session): production's answer for the signed-in account decides there.
-  const boxAccount = useBoxAccount();
   const etaOn = ownerFlagOn(!!box, boxAccount, ETA_FLAG, etaBar);
   // A friend's thread answered by the AI says so: in the empty log and the status line.
   const friendStrings =
@@ -1109,6 +1229,11 @@ export function DebugEval({
       {chat && (
         <Suspense fallback={null}>
           <DebugChatHost
+            key={`${deliveryScope ?? "guest"}:${legacyRestore}`}
+            draftScope={deliveryScope ?? "guest"}
+            outgoing={outgoing.map((item) =>
+              item.rejected ? { ...item, rejected: chatExtra().liveNotSent } : item,
+            )}
             // A verified pointer is the owner's (the server checked the session).
             hot={(owner && !isFriend) || (liveState.on && !!liveState.claim.widget)}
             src={widgetSource(liveState)}
@@ -1124,7 +1249,9 @@ export function DebugEval({
             cached={!fromHub && cachedLines.length > 0}
             onSend={sendChat}
             onAnswer={sendAnswer}
-            onPassageEnd={() => sendHub({ type: "passage-end" })}
+            onPassageEnd={(recheck) =>
+              sendHub({ type: "passage-end", ...(recheck ? { recheck } : {}) })
+            }
             onUnmerge={(id) => sendHub({ type: "unmerge", id })}
             nodes={state?.nodes}
             notice={
@@ -1204,6 +1331,7 @@ export function DebugEval({
             viewer={boxViewer(!!box, boxAccount, viewer)}
             fullScreen={fullScreen}
             foldOthers={foldOthers}
+            whisperRecheck={whisperRecheck}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
             backToClose={backToCloseChat}
           />

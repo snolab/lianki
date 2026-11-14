@@ -28,7 +28,8 @@ import {
   deleteDay,
   getDay,
   isDay,
-  listDays,
+  listClips,
+  utcDay,
   objectKey,
   openAudio,
   openText,
@@ -42,7 +43,7 @@ import {
 } from "@/lib/recordings";
 import { type SweepDb, retentionDays, sweepRecordings, SWEEP_PAGE } from "@/lib/recordings-sweep";
 import { crc32, zipStream, ZIP_LIMITS } from "@/lib/zip-stream";
-import { clock, recordingRows, withoutClip, requestRecordings } from "@/lib/recordings-view";
+import { clock, journal, requestRecordings } from "@/lib/recordings-view";
 import { toBase64 } from "@/lib/voice-clone-ref";
 import { seal } from "@/lib/connections/crypto";
 import { OWNER_SCOPES, parseScopes } from "@/lib/api-tokens";
@@ -202,20 +203,24 @@ describe("the store: own rows only", () => {
       s.deps(),
       body({ id: "cccccccccccccccc", day: "2026-11-13", at: NOW - 86_400_000 }),
     );
-    const days = await listDays(s.deps(), new URLSearchParams());
-    expect(days.json).toEqual({
-      days: [
-        { day: DAY, clips: 2, ms: 2_000, bytes: audio().length * 2 },
-        { day: "2026-11-13", clips: 1, ms: 1_000, bytes: audio().length },
-      ],
-      more: false,
-    });
-    const page = await listDays(s.deps(), new URLSearchParams("limit=1"));
-    expect(page.json).toMatchObject({ more: true, days: [{ day: DAY }] });
-    const rest = await listDays(s.deps(), new URLSearchParams(`before=${DAY}&limit=500`));
-    expect(rest.json).toMatchObject({ days: [{ day: "2026-11-13" }] });
-    expect((await listDays(s.deps(), new URLSearchParams("before=x"))).status).toBe(400);
-    expect((await listDays(s.deps(), new URLSearchParams("limit=0"))).status).toBe(400);
+    // One feed, newest first, paged by time — never by day (owner, 2026-11-15).
+    const all = await listClips(s.deps(), new URLSearchParams());
+    expect(all.json.more).toBe(false);
+    expect((all.json.clips as { id: string }[]).map((c) => c.id)).toEqual([
+      "bbbbbbbbbbbbbbbb",
+      "abcdefghijklmnop",
+      "cccccccccccccccc",
+    ]);
+    expect((all.json.clips as unknown[])[1]).toMatchObject({ text: "你好 world", day: DAY });
+    const page = await listClips(s.deps(), new URLSearchParams("limit=1"));
+    expect(page.json).toMatchObject({ more: true, clips: [{ id: "bbbbbbbbbbbbbbbb" }] });
+    const rest = await listClips(s.deps(), new URLSearchParams(`before=${NOW - 500}&limit=500`));
+    expect((rest.json.clips as { id: string }[]).map((c) => c.id)).toEqual([
+      "abcdefghijklmnop",
+      "cccccccccccccccc",
+    ]);
+    for (const q of ["before=x", "before=", "before=-1", "before=1.5", "limit=0"])
+      expect((await listClips(s.deps(), new URLSearchParams(q))).status).toBe(400);
     const day = await getDay(s.deps(), DAY);
     expect(day.json.clips).toEqual([
       expect.objectContaining({ id: "abcdefghijklmnop", text: "你好 world", speaker: "me" }),
@@ -229,7 +234,7 @@ describe("the store: own rows only", () => {
   it("another account sees, plays and deletes nothing of it", async () => {
     const s = setup();
     await postRecording(s.deps(), body());
-    expect((await listDays(s.deps("u2"), new URLSearchParams())).json.days).toEqual([]);
+    expect((await listClips(s.deps("u2"), new URLSearchParams())).json.clips).toEqual([]);
     expect((await getDay(s.deps("u2"), DAY)).json.clips).toEqual([]);
     expect(await clipAudio(s.deps("u2"), "abcdefghijklmnop")).toMatchObject({ status: 404 });
     expect((await deleteClip(s.deps("u2"), "abcdefghijklmnop")).json.deleted).toBe(0);
@@ -525,46 +530,7 @@ describe("D1 and R2 adapters", () => {
   });
 });
 
-describe("the page's rows", () => {
-  const days = [
-    { day: "2026-11-14", clips: 2, ms: 3_000, bytes: 10 },
-    { day: "2026-11-13", clips: 1, ms: 1_000, bytes: 5 },
-  ];
-  const c = (id: string, day: string, durationMs = 1_000) => ({
-    id,
-    day,
-    at: 0,
-    durationMs,
-    mode: "active" as const,
-    source: "local" as const,
-    speaker: null,
-    text: "t",
-  });
-  it("open days list their clips, or a loading row until they come", () => {
-    const clips = new Map([["2026-11-14", [c("a", "2026-11-14"), c("b", "2026-11-14")]]]);
-    expect(recordingRows(days, new Set(), clips).map((r) => r.key)).toEqual([
-      "d:2026-11-14",
-      "d:2026-11-13",
-    ]);
-    expect(
-      recordingRows(days, new Set(["2026-11-14", "2026-11-13"]), clips).map((r) => r.key),
-    ).toEqual(["d:2026-11-14", "c:a", "c:b", "d:2026-11-13", "l:2026-11-13"]);
-  });
-  it("deleting a clip updates its day; the last one removes the day", () => {
-    const clips = new Map([
-      ["2026-11-14", [c("a", "2026-11-14", 2_000), c("b", "2026-11-14")]],
-      ["2026-11-13", [c("z", "2026-11-13")]],
-    ]);
-    const n = withoutClip(days, clips, c("a", "2026-11-14", 2_000));
-    expect(n.days[0]).toEqual({ day: "2026-11-14", clips: 1, ms: 1_000, bytes: 10 });
-    expect(n.clips.get("2026-11-14")!.map((x) => x.id)).toEqual(["b"]);
-    // Two confirmations can both finish successfully (the API is idempotent).
-    const repeated = withoutClip(n.days, n.clips, c("a", "2026-11-14", 2_000));
-    expect(repeated).toEqual(n);
-    const m = withoutClip(repeated.days, repeated.clips, c("z", "2026-11-13"));
-    expect(m.days.map((d) => d.day)).toEqual(["2026-11-14"]);
-    expect(m.clips.has("2026-11-13")).toBe(false);
-  });
+describe("the page's helpers", () => {
   it("clock", () => {
     expect(clock(0)).toBe("0:00");
     expect(clock(61_000)).toBe("1:01");
@@ -572,34 +538,71 @@ describe("the page's rows", () => {
   });
 });
 
+describe("the feed's pages and the stored day (owner, 2026-11-15)", () => {
+  it("a page never splits clips of the same time", async () => {
+    const s = setup();
+    for (const id of ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "cccccccccccccccc"])
+      await postRecording(s.deps(), body({ id, at: NOW - 2_000 }));
+    await postRecording(s.deps(), body({ id: "dddddddddddddddd", at: NOW - 9_000 }));
+    const first = await listClips(s.deps(), new URLSearchParams("limit=2"));
+    // Two asked for; the third of the same `at` comes along, so `before=<at>` loses none.
+    expect((first.json.clips as { id: string }[]).map((c) => c.id)).toEqual([
+      "cccccccccccccccc",
+      "bbbbbbbbbbbbbbbb",
+      "aaaaaaaaaaaaaaaa",
+    ]);
+    expect(first.json.more).toBe(true);
+    const next = await listClips(s.deps(), new URLSearchParams(`before=${NOW - 2_000}&limit=2`));
+    expect(next.json).toMatchObject({ more: false, clips: [{ id: "dddddddddddddddd" }] });
+  });
+  it("a row is filed under the UTC date; an older client's local date is still accepted", async () => {
+    const s = setup();
+    // 23:30 UTC on the 13th is the 14th in Tokyo: an old recorder sent "2026-11-14".
+    const at = Date.parse("2026-11-13T23:30:00Z");
+    expect(utcDay(at)).toBe("2026-11-13");
+    await postRecording({ ...s.deps(), now: at + 1_000 }, body({ at, day: "2026-11-14" }));
+    expect((await s.db.get("u1", "abcdefghijklmnop"))?.day).toBe("2026-11-13");
+    expect(s.objects.has(objectKey("u1", "2026-11-13", "abcdefghijklmnop"))).toBe(true);
+    // No day at all: the same.
+    await postRecording(
+      { ...s.deps(), now: at + 1_000 },
+      body({ id: "eeeeeeeeeeeeeeee", at, day: undefined }),
+    );
+    expect((await s.db.get("u1", "eeeeeeeeeeeeeeee"))?.day).toBe("2026-11-13");
+    // A day far from `at` is still refused.
+    expect(
+      (await postRecording({ ...s.deps(), now: at + 1_000 }, body({ at, day: "2026-11-10" })))
+        .status,
+    ).toBe(400);
+  });
+});
+
 describe("viewer request failures", () => {
-  it("renders an error after a failed day request and loads clips on retry", async () => {
-    const days = [{ day: DAY, clips: 1, ms: 1000, bytes: 100 }];
-    const clips = new Map();
-    const errors = new Set<string>();
+  it("a failed page rejects (the list offers Try again); the retry fills the journal", async () => {
     let attempt = 0;
-    const fetcher = (async () =>
-      ++attempt === 1
-        ? new Response("{}", { status: 503 })
-        : Response.json({ clips: [{ id: "test", day: DAY }] })) as unknown as typeof fetch;
-    const load = async () => {
-      errors.delete(DAY);
-      try {
-        const b = await requestRecordings<{ clips: never[] }>(fetcher, `?day=${DAY}`);
-        clips.set(DAY, b.clips);
-      } catch {
-        errors.add(DAY);
-      }
+    const clip = {
+      id: "t",
+      day: DAY,
+      at: NOW,
+      durationMs: 1_000,
+      mode: "active",
+      source: "local",
+      speaker: null,
+      text: "x",
     };
-    await load();
-    expect(clips.has(DAY)).toBe(false);
-    expect(recordingRows(days, new Set([DAY]), clips, errors)[1]?.kind).toBe("error");
-    await load();
-    expect(errors.size).toBe(0);
-    expect(recordingRows(days, new Set([DAY]), clips, errors)[1]?.kind).toBe("clip");
+    const fetcher = (async (url: RequestInfo | URL) => {
+      expect(String(url)).toBe("/api/my/recordings?limit=5");
+      return ++attempt === 1
+        ? new Response("{}", { status: 503 })
+        : Response.json({ clips: [clip], more: false });
+    }) as unknown as typeof fetch;
+    await expect(requestRecordings(fetcher, "?limit=5")).rejects.toThrow("503");
+    const b = await requestRecordings<{ clips: never[]; more: boolean }>(fetcher, "?limit=5");
+    const j = journal(b.clips, { timeZone: "UTC", gapMs: 600_000, more: b.more });
+    expect(j.rows.map((r) => r.kind)).toEqual(["date", "clip"]);
   });
   it("rejects HTTP and network delete failures so the viewer can report them", async () => {
-    for (const query of ["?day=2026-11-14", "?clip=abcdefghijklmnop"]) {
+    for (const query of ["?clip=abcdefghijklmnop"]) {
       for (const offline of [false, true]) {
         const fetcher = (async (_url: RequestInfo | URL, init?: RequestInit) => {
           expect(init?.method).toBe("DELETE");

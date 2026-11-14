@@ -1,4 +1,14 @@
 import { HUB_RPC_LIMITS } from "./hub-rpc-config";
+import {
+  CAP_WINDOW_HOURS,
+  CAP_WINDOW_MAX,
+  OWNER_REPLY_DELAY_MAX,
+  OWNER_REPLY_DELAY_MS,
+  SITE_DAILY_USD,
+  SITE_WINDOW_USD_MAX,
+  USER_DAILY_TOKENS,
+  USER_WINDOW_TOKENS_MAX,
+} from "./partner-ai-config";
 /**
  * The config registry: every user-meaningful number, text and icon whose live
  * value comes from the config store (lib/config-store.ts, D1 `config_values`)
@@ -24,7 +34,13 @@ import { HUB_RPC_LIMITS } from "./hub-rpc-config";
  */
 import { z } from "zod";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
-import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
+import {
+  isProviderVoice,
+  lineVoiceOf,
+  parseLaneDef,
+  type ChatLaneDef,
+} from "@lianki/debug-chat/voices";
+import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
 
 export type ConfigAudience = "server" | "public";
@@ -300,6 +316,39 @@ export const CONFIG = {
     description:
       "润色后用你的克隆声音读一遍（开关 voice.polish-readback）：每一句等 Mac 上的克隆声音服务器最多多久（毫秒）。一句通常要 5–10 秒生成；超过这个时间就安静跳过这一句，不换别的声音读。",
   }),
+  // Whisper re-reads a whole continuous-speech run (packages/debug-chat/src/whisper-recheck.ts;
+  // flag stt.whisper-recheck; docs/dev-debug-widget.md, "Whisper re-listens to the whole run").
+  "stt.recheckMinSec": {
+    default: 1.5 as number,
+    schema: z.number().min(0).max(60),
+    min: 0,
+    max: 60,
+    unit: "s",
+    group: "voice",
+    audience: "server",
+    description:
+      "Whisper 整段重听（开关 stt.whisper-recheck）：合并后的一段话从开口到说完短于这么多秒就不重听（太短，重听没多大用）。",
+  },
+  "stt.recheckMaxSec": int({
+    default: 60,
+    min: 5,
+    max: 600,
+    unit: "s",
+    group: "voice",
+    audience: "server",
+    description:
+      "Whisper 整段重听：一段话从开口到说完长于这么多秒就不重听。Mac 的语音服务器每个连接在内存里最多留这么多秒的录音（启动参数 --recheck-max-sec 或环境变量 LIANKI_STT_RECHECK_MAX_SEC，默认 60）；这里调大时那边也要一起调大，否则长的一段 Mac 会回答听不全，照旧用流式识别的文字。",
+  }),
+  "stt.recheckTimeoutMs": int({
+    default: 8000,
+    min: 1000,
+    max: 60_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "Whisper 整段重听：一段话说完以后最多等 Mac 多久（毫秒）。这段时间里润色也在等；超时就不等了，照旧润色流式识别的文字。",
+  }),
   // Synchronized read-aloud across his devices (packages/debug-chat/src/sync-speak.ts;
   // docs/li-sound-hub.md, "Synchronized read-aloud"; flag voice.sync-speak).
   "voice.syncLeadMs": int({
@@ -481,6 +530,18 @@ export const CONFIG = {
     description:
       "/my/recordings 每段录音的「⋯」菜单里可选的播放速度：逗号分隔的倍数（默认 0.75,1,1.25,1.5,2）。1 倍总会在里面。选中的速度记在这台设备上。",
   },
+  // /my/recordings reads as a journal (owner, 2026-11-15 JST: not a timestamp per
+  // clip): a time shows at the start of each date and after a pause longer than this.
+  "recordings.timeMarkGapMin": int({
+    default: 10,
+    min: 1,
+    max: 1440,
+    unit: "min",
+    group: "voice",
+    audience: "public",
+    description:
+      "/my/recordings 像日记一样连着读：每一天开头写一个时间，之后只有两段录音之间停了超过这么多分钟，才在下一段前面再写一个时间。默认 10 分钟。改小 = 时间更多，改大 = 更少。",
+  }),
   "voiceprint.passkeyWindowMs": int({
     default: 600_000,
     min: 0,
@@ -555,7 +616,17 @@ export const CONFIG = {
     group: "stt-worker",
     audience: "server",
     description:
-      "语音服务器：每个账号每天（日本时间）最多识别多少分钟音频，按成本账里记的 speech.stt.local 累计。用完当天就走云端识别。0 = 不给语音服务器。",
+      "语音服务器：每个账号在滚动窗口里（最近 stt.capWindowHours 小时，默认 24）最多识别多少分钟音频，按成本账里记的 speech.stt.local 累计。用完就走云端识别，旧的用量随时间逐渐释放，不在某个日历日一起清零。0 = 不给语音服务器。",
+  }),
+  "stt.capWindowHours": int({
+    default: 24,
+    min: 1,
+    max: 168,
+    unit: "h",
+    group: "stt-worker",
+    audience: "server",
+    description:
+      "语音服务器的分钟上限（stt.worker.minutesPerDay）按多少小时的滚动窗口算：默认 24 = 最近 24 小时里用掉的分钟数。",
   }),
   "stt.worker.maxUtteranceS": int({
     default: 40,
@@ -676,6 +747,77 @@ export const CONFIG = {
     audience: "server",
     description: "聊天头像栏：最近发过言的 agent / lane 在发言后多少分钟内仍显示在头像栏里。",
   }),
+  // 全员入群 (owner, 2026-11-15; docs/lane-listen.md, "Every agent joins"): the
+  // lanes beyond the built-in four, and more names for those four. The chat
+  // (voices.ts setLaneTable), the router (lane-route.ts) and the wake words read it.
+  "chat.lanes": {
+    default: [] as ChatLaneDef[],
+    schema: z
+      .array(z.unknown())
+      .max(64)
+      .refine(
+        (rows) => rows.every((r) => parseLaneDef(r) !== null),
+        "each row: {id, name?, aliases?, heard?, voice?, color?}",
+      ) as unknown as z.ZodType<ChatLaneDef[]>,
+    group: "chat",
+    audience: "public",
+    description:
+      '聊天里的「线」和它们的唤醒名（唯一的一张表，原 chat.laneNames 已并入；aliases 就是唤醒名，也进语音识别热词）：每个 agent 一条，名字 = 它的 API token 名。JSON 数组，每条 {id token 名, name 显示名, aliases 叫它的名字, heard 语音识别常写成的样子, voice main/calm/bright/sweet, color oklch 颜色}。内置的 coco（codex）、杰咪（agy）、小克（claude）写同一个 id 就是给它们加名字。例：{"id":"agy","aliases":["咪宝"]}、{"id":"rechrome","name":"小镀","heard":["瑞克罗姆"]}。点名、唤醒词、头像闪烁都按这张表。',
+  },
+  // The lanes manager on the Mac (scripts/dev/lanes-manager.ts): it runs there,
+  // not in the Worker, so its live value is the env var named in lib/lanes-config.ts.
+  "lanes.repos": {
+    default: [...LANES_CONFIG_DEFAULTS["lanes.repos"]] as string[],
+    schema: z.array(z.string().regex(/^[A-Za-z0-9._-]{1,40}$/, "a repo folder name")).max(64),
+    group: "lanes",
+    audience: "server",
+    description:
+      "哪些仓库里的 agent 自动入群（Lianki 和它依赖的仓库）：仓库文件夹名的 JSON 数组。agent 的工作目录里有这个名字的一段就算（…/lianki/tree/main、…/agent-yes/tree/x）。Mac 上的值是环境变量 LIANKI_LANES_REPOS（逗号分隔）。",
+  },
+  "lanes.agents": {
+    default: [...LANES_CONFIG_DEFAULTS["lanes.agents"]] as LaneAgentDef[],
+    schema: z.array(laneAgentSchema).max(64) as z.ZodType<LaneAgentDef[]>,
+    group: "lanes",
+    audience: "server",
+    description:
+      '登记过名字的 agent：JSON 数组，每条 {cwd 工作目录结尾, cli 可选 codex/claude/agy…, lane 线名 = token 名, resident 是否常驻实时监听}。没登记的 agent 叫 <仓库>-<cli>-<pid>，默认只读，被点名才叫醒。例：{"cwd":"lianki/tree/codex","cli":"codex","lane":"codex","resident":true}。Mac 上的值是环境变量 LIANKI_LANES_AGENTS（JSON）。',
+  },
+  "lanes.relistSec": int({
+    default: LANES_CONFIG_DEFAULTS["lanes.relistSec"],
+    min: 10,
+    max: 3600,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "入群管理器在 ay 没有报告变化时，最多隔多久重新列一次 agent（秒）；平时靠 ay 自己的变化推送。Mac 上的值是环境变量 LIANKI_LANES_RELIST_SEC。",
+  }),
+  "lanes.modeGraceSec": int({
+    default: 30,
+    min: 0,
+    max: 600,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "一条线的实时监听断开后，等几秒还没重连才算「转为只读」并在聊天里说一声；重连得快的不打扰你。0 = 立刻。",
+  }),
+  "lanes.eventLocale": {
+    default: "zh" as string,
+    schema: z.string().regex(/^[a-z]{2}$/, "a language code: zh, en, ja…"),
+    group: "lanes",
+    audience: "server",
+    description:
+      "「coco 开始实时监听」「杰咪 下线」这类系统消息存进聊天时用哪种语言写（新页面会按你的界面语言显示，旧页面显示这份）。",
+  },
+  "lanes.greeting": {
+    default: LANES_CONFIG_DEFAULTS["lanes.greeting"] as string,
+    schema: z.string().min(1).max(200),
+    group: "lanes",
+    audience: "server",
+    description:
+      "新 agent 入群时用它自己的 token 发的第一句问候。{name} = 线名，{repo} = 仓库，{cli} = 它是哪种 agent，{mode} = 只读 / 实时监听。Mac 上的值是环境变量 LIANKI_LANES_GREETING。",
+  },
   "chat.presenceShown": int({
     default: 3,
     min: 1,
@@ -737,6 +879,31 @@ export const CONFIG = {
     description:
       "连续学习奖励的断签规则：每漏一天，连续天数扣多少天（不清零）。默认 2：连续 7 天后漏 1 天，再学时按第 6 天算（7−2+1）。0 = 漏天不扣；填很大（如 1000）= 漏一天就从头开始。",
   }),
+  // Sign-up bonus (docs/payments.md, "Sign-up bonus"; owner 2026-11-15): a new
+  // account's one-time credits, for the first N new accounts per UTC day.
+  "credits.signupBonusUsd": {
+    default: 1 as number,
+    schema: z.number().min(0).max(10),
+    min: 0,
+    max: 10,
+    unit: "USD",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "注册礼：每个新注册的账号一次性送多少美元的积分（按 CREDITS_PER_USD 换成积分，四舍五入），只发给每个 UTC 日的前几个新账号（credits.signupBonusDaily）。功能上线前就有的老账号下次登录或打开钱包时也补发同样金额，一次，不占每日名额。0 = 不送。",
+  },
+  "credits.signupBonusDaily": int({
+    default: 10,
+    min: 0,
+    max: 10_000,
+    unit: "accounts/day",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "注册礼：每个 UTC 日（UTC 零点换日）最多前几个新注册的账号能拿到（每个账号只一次）。超出的人什么也拿不到，也不会看到报错。0 = 新账号都不送（老账号补发不受影响）。",
+  }),
   "inbox.maxFileBytes": int({
     default: 20 * 1024 * 1024,
     min: 1024,
@@ -794,6 +961,52 @@ export const CONFIG = {
     audience: "server",
     description: "聊天 hub 学习伙伴回复外呼的总等待上限；超时明确失败并结束忙碌状态。",
   }),
+  // Li in the owner's own thread (flag partner.owner-thread, docs/partner-ai.md):
+  // read by the debug hub over DebugSessions.config.
+  "partner.ownerReplyDelayMs": int({
+    default: OWNER_REPLY_DELAY_MS,
+    min: 0,
+    max: OWNER_REPLY_DELAY_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 8000 = 8 秒。开关在 /dev/flags 的 partner.owner-thread。",
+  }),
+  // The Learning Partner AI's caps (docs/partner-ai.md, "Caps"): read by the
+  // debug hub over DebugSessions.config.
+  "partner.capWindowHours": int({
+    default: CAP_WINDOW_HOURS,
+    min: 1,
+    max: CAP_WINDOW_MAX,
+    unit: "h",
+    group: "chat",
+    audience: "server",
+    description:
+      "学习伙伴 AI 的用量上限按滚动窗口算：每个账号和全站在最近多少小时里的用量（按 UTC 整点分桶）。默认 24 = 最近 24 小时，旧的用量随时间逐渐释放，不在某个日历日一起清零。",
+  }),
+  "partner.userWindowTokens": int({
+    default: USER_DAILY_TOKENS,
+    min: 0,
+    max: USER_WINDOW_TOKENS_MAX,
+    unit: "tokens",
+    group: "chat",
+    audience: "server",
+    description:
+      "学习伙伴 AI：每个账号在滚动窗口（partner.capWindowHours，默认最近 24 小时）里最多用多少 token（输入 + 输出，约 40–80 条普通消息 = 60000）。用满后提示大约多少分钟后能再回复。0 = 不回复。",
+  }),
+  "partner.siteWindowUsd": {
+    default: SITE_DAILY_USD as number,
+    schema: z.number().min(0).max(SITE_WINDOW_USD_MAX),
+    min: 0,
+    max: SITE_WINDOW_USD_MAX,
+    unit: "USD",
+    group: "chat",
+    audience: "server",
+    money: true,
+    description:
+      "学习伙伴 AI：全站在滚动窗口（partner.capWindowHours）里最多花多少美元（按模型标价算）。用满后所有人都暂停，旧的用量随时间释放。0 = 全站不回复。",
+  },
   "chat.partnerModelTimeoutMs": int({
     ...HUB_RPC_LIMITS["chat.partnerModelTimeoutMs"],
     unit: "ms",

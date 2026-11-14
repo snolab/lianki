@@ -40,7 +40,7 @@ describe("what better-auth makes of the options", () => {
   });
 
   test("on http nothing changes: a browser refuses a __Host- cookie there", () => {
-    for (const base of ["http://localhost:3000", "http://192.168.31.96:3100", undefined]) {
+    for (const base of ["http://localhost:3000", "http://192.168.1.10:3100", undefined]) {
       expect(authCookieOptions(base)).toEqual({});
       const c = getCookies({ baseURL: base, advanced: authCookieOptions(base) });
       expect(c.sessionToken.name).not.toContain("__Host-");

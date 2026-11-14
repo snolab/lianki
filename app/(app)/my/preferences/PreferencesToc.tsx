@@ -106,8 +106,8 @@ export function PreferencesToc({
 
   return (
     <div className="w-full">
-      {/* Mobile: Horizontal scrollable chips sticky near the top */}
-      <div className="lg:hidden mb-6 -mx-4 px-4 overflow-x-auto no-scrollbar py-1">
+      {/* Mobile: Horizontal scrollable chips sticky near the top with glass background */}
+      <div className="lg:hidden sticky top-0 z-20 -mx-4 px-4 py-2 mb-6 lk-glass border-b border-[var(--glass-line)] overflow-x-auto no-scrollbar">
         <nav aria-label={label} className="flex gap-2 min-w-max">
           {sections.map((s) => {
             const active = current === s.id;
@@ -197,7 +197,7 @@ export function CollapsibleSection({
       id={id}
       data-section={id}
       data-open={open ? "true" : "false"}
-      className={`scroll-mt-6 mb-8 border-b border-black/5 pb-8 last:border-b-0 dark:border-white/5 ${className}`}
+      className={`scroll-mt-14 mb-8 border-b border-black/5 pb-8 last:border-b-0 dark:border-white/5 ${className}`}
     >
       {/* Clickable accordion header for phone screens (<35em) */}
       <button

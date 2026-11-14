@@ -251,13 +251,13 @@ describe("in the mic's race", () => {
 describe("helpers", () => {
   test("the route list is recognised; the owner's URLs are not", () => {
     expect(isPublicRoutes(PUBLIC_ROUTE_LIST)).toBe(true);
-    expect(isPublicRoutes("wss://taku.onca-tint.ts.net/lianki-stt wss://stt.lianki.com")).toBe(
+    expect(isPublicRoutes("wss://owner.example.ts.net/lianki-stt wss://stt.lianki.com")).toBe(
       false,
     );
   });
 
   test("a mixed list: his own Mac over WebRTC beside the tailnet", () => {
-    const own = "wss://taku.onca-tint.ts.net/lianki-stt";
+    const own = "wss://owner.example.ts.net/lianki-stt";
     expect(isMixedRoutes(`${PUBLIC_RTC_URL} ${own}`)).toBe(true);
     expect(isMixedRoutes(PUBLIC_ROUTE_LIST)).toBe(false);
     expect(isMixedRoutes(own)).toBe(false);
@@ -272,9 +272,9 @@ describe("helpers", () => {
         return { readyState: 0 } as never;
       },
     );
-    open("wss://taku.onca-tint.ts.net/lianki-stt", ["lianki-stt", "tk"]);
+    open("wss://owner.example.ts.net/lianki-stt", ["lianki-stt", "tk"]);
     expect(plain).toEqual([
-      { url: "wss://taku.onca-tint.ts.net/lianki-stt", protocols: ["lianki-stt", "tk"] },
+      { url: "wss://owner.example.ts.net/lianki-stt", protocols: ["lianki-stt", "tk"] },
     ]);
     const rtc = open(PUBLIC_RTC_URL);
     expect(plain).toHaveLength(1); // not a plain socket

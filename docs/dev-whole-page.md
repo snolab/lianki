@@ -8,13 +8,13 @@ the ops lane (manual permission mode: the owner approves each command).
 
 ```bash
 tailscale serve --bg --https=8443 http://127.0.0.1:3103        # tailnet only, never funnel
-bun scripts/dev/whole-page.ts serve --host 192.168.31.96 --port 3100 \
-  --origin https://taku.onca-tint.ts.net:8443                    # keep running
+bun scripts/dev/whole-page.ts serve --host 192.168.1.10 --port 3100 \
+  --origin https://<your-mac>.ts.net:8443                    # keep running
 bun scripts/dev/whole-page.ts send-login --target Android        # sign his phone in
 ```
 
 Run `serve` from tree/preview-serve (see below). Then his phone is on
-`https://taku.onca-tint.ts.net:8443/words?list=all`, with
+`https://<your-mac>.ts.net:8443/words?list=all`, with
 Tailscale on. Stop the front with `tailscale serve --https=8443 off`.
 
 ## Feature agents: getting a change onto his phone
@@ -153,7 +153,7 @@ so a killed guard no longer leaves a server holding :3101.
 
 | Piece                                      | Where                                                                                    |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| Guard proxy (`scripts/dev/whole-page.ts`)  | `192.168.31.96:3100`. Only a private-LAN IPv4 is accepted, never `0.0.0.0`               |
+| Guard proxy (`scripts/dev/whole-page.ts`)  | `192.168.1.10:3100`. Only a private-LAN IPv4 is accepted, never `0.0.0.0`               |
 | `next dev` (Turbopack, fast refresh)       | `127.0.0.1:3101`, loopback only, reachable only through the guard                        |
 | Control port (one-time enter links)        | `127.0.0.1:3102`, loopback only                                                          |
 | Bindings (`wrangler.dev-whole-page.jsonc`) | D1 `lianki` and R2 `lianki-blobs` with `remote: true` (wrangler's own login, not a copy) |
@@ -162,6 +162,53 @@ so a killed guard no longer leaves a server holding :3101.
 `remoteBindings: true` when `LIANKI_DEV_WHOLE_PAGE=1`. It also lists the LAN
 host in `allowedDevOrigins`, because otherwise next dev refuses its dev assets
 to that origin.
+
+## The dev site as its own app: 开发站
+
+Owner, 2026-11-15 08:2x JST: the preview is a separate app, 「开发站」
+(Lianki 开发站). Chrome's "Install app" on preview.lianki.com had said
+无法安装应用. **Why**: the gate answered both things Chrome needs with no
+session. Chrome fetches the manifest (and its icons) **without cookies**
+(a `<link rel=manifest>` without `crossorigin="use-credentials"`), so
+`/manifest.json` got the gate's `503 (no session)`, and `/sw.js` got
+`SW_KILL_SWITCH`, which unregisters itself at once — so
+`getRegistration()` was always empty. lianki.com has neither obstacle.
+
+Now, on the whole-page dev server only (`LIANKI_DEV_WHOLE_PAGE=1`):
+
+- **`/manifest.json`** (same path) answers with `public/manifest.json`
+  renamed: name "Lianki 开发站", short_name "开发站", `id` "/?app=dev",
+  `scope` "/", `start_url` its relative "/home" (so always the origin it was
+  opened on), colours unchanged, and badged icons.
+- **Icons** at `/api/dev-whole-page/pwa/{icon.svg,icon-192.png,icon-512.png,icon-maskable-192.png,icon-maskable-512.png}`:
+  the public icons with a dark 开发 plate at the foot (inside the safe circle
+  on the maskable ones). Made from the public files when first asked
+  (`lib/dev-site/badge.ts`: the SVG gets two elements, the PNGs are decoded,
+  drawn into and re-encoded by `lib/dev-site/png.ts`); the two characters are
+  strokes, so no font and no badged file in the repo.
+- **`/sw.js`** is `DEV_SW` (`lib/dev-site/pwa.ts`), not `public/sw.js`. The
+  page registers `/sw.js` at scope "/" as on lianki.com
+  (`lib/sw-register.ts`); the server picks the script. **Why this worker**:
+  it caches nothing (no precache, no reads or writes) and intercepts only
+  top-level GET page loads, which it passes straight to the network (a short
+  "dev server not reachable" page when the Mac is off). Chunks, HMR, APIs and
+  sockets never go through it, so hot reload works exactly as without one,
+  and it cannot serve stale dev chunks — the reason the kill switch existed.
+  On activation it drops older caches (keeping only the word clips).
+- **Who serves them**: `next dev` through a dev-only `beforeFiles` rewrite
+  (`lib/build/dev-site-rewrites.mjs` → `app/api/dev-whole-page/pwa/[file]`,
+  404 in production), so the LAN and tailnet origins get them through the
+  guard; on the public host the **gate** serves the same files itself,
+  before any session check (`GateDeps.pwa`), GET/HEAD only, exactly those
+  paths. They hold no data.
+- **Hosts**: nothing names one. The gate serves `--public-host`
+  (`LIANKI_DEV_PUBLIC_HOST`), so preview.lianki.com today and dev.lianki.com
+  after the DNS move work the same; each origin is its own install.
+
+**On his phone**: open the dev host (signed in through the profile menu's
+switch), Chrome menu → "Install app" / 「安装应用」→ 安装. The icon on the home
+screen has the 开发 plate; the app opens on /home of that host. Production's
+Lianki app stays separate.
 
 ## His devices on the tailnet: let in by Tailscale identity
 
@@ -174,7 +221,7 @@ one-time link. `tailscale serve --https=8443` targets a **loopback** listener,
   default from `tailscale status`), a GET without a device cookie or session
   gets both, minted on the spot, and is redirected to the same URL.
 - Any other login on the tailnet gets 403, as before.
-- On the LAN listener (`192.168.31.96:3100`) a request carrying the header is
+- On the LAN listener (`192.168.1.10:3100`) a request carrying the header is
   refused as a forgery.
 - The identity headers are stripped before anything is forwarded.
 
@@ -277,10 +324,12 @@ no-referrer`, and a `__Host-lk_preview` cookie: HttpOnly, Secure,
   then adds its own `frame-ancestors`. Only the gate sets a cookie (its own
   session). A language picked on the preview build therefore does not
   stick there (the `lang` cookie is dropped); `?lang=` still works per page.
-  Service worker scripts (`/sw.js`, `Service-Worker: script`) get the
-  gate's self-removing worker (`SW_KILL_SWITCH`): it deletes the origin's
-  caches and unregisters. A 403 left a worker registered before the rule in
-  place, serving day-old `/_next/static` chunks (2026-11-05).
+  `/sw.js` is the dev site's pass-through worker (above, "The dev
+  site as its own app"); any other service worker script (`*sw.js`,
+  `Service-Worker: script`) gets the gate's self-removing worker
+  (`SW_KILL_SWITCH`): it deletes the origin's caches and unregisters. A 403
+  left a worker registered before the rule in place, serving day-old
+  `/_next/static` chunks (2026-11-05).
 - **Limits**: 10 failed tokens per IP per 10 minutes → 429, and attempts
   still in flight count towards it. No global lockout: one would let anyone
   with a few IPs lock the owner out without a token. Token checks go through
@@ -568,7 +617,7 @@ link.
 
 ## HTTPS (required): Tailscale serve
 
-Plain `http://192.168.31.96:3100` signs in fine, since better-auth sets
+Plain `http://192.168.1.10:3100` signs in fine, since better-auth sets
 non-`Secure` cookies for an http base URL. But the app then crashes:
 `http://<LAN IP>` is not a secure context, so the browser has no
 `crypto.randomUUID`, no service worker, no mic and no passkeys. The owner saw
@@ -616,11 +665,11 @@ restart once.
 - **Speech-to-text uses his local SenseVoice.** The server's clean env has no
   Workers AI credentials, so cloud STT (`/api/debug/stt`) answers 502 here.
   The widget streams to his Mac instead (docs/local-stt.md):
-  `localStorage["lk:debug-local-stt"] = "wss://taku.onca-tint.ts.net/lianki-stt"`
+  `localStorage["lk:debug-local-stt"] = "wss://<your-mac>.ts.net/lianki-stt"`
   on the dev origin, set once through eval. The enter link carries the key
   too when his lianki.com tab has it. The STT server must allow the dev
   origin, which has a port: oxmgr's `lianki-stt` runs `server.py … --origin
-https://taku.onca-tint.ts.net --origin https://taku.onca-tint.ts.net:8443`.
+https://<your-mac>.ts.net --origin https://<your-mac>.ts.net:8443`.
   Without the second `--origin` the handshake is refused (403 in
   `oxmgr logs lianki-stt`), and the page falls back to cloud STT, which
   returns 502.

@@ -19,6 +19,7 @@ import {
   parseTtl,
   titleName,
 } from "../../lib/progress";
+import { ownerStamp } from "./owner-time";
 
 export const PROGRESS_USAGE = `usage:
   bun scripts/dev/progress.ts --agent <name> --task "<name>: <description>" --status <${PROGRESS_STATUSES.join("|")}>
@@ -346,11 +347,9 @@ export function formatStats(stats: ProgressAgentStats[]): string {
     .join("\n");
 }
 
-const jst = (at: number) =>
-  new Date(at + 9 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
-
 /**
- * `history` for a terminal: one line per done node (JST end time, id, PRs,
+ * `history` for a terminal: one line per done node (end time in the machine's
+ * zone or LIANKI_OWNER_TZ, labelled; id, PRs,
  * title), filtered by agent and by `since` (ms back from `now`).
  */
 export function formatHistory(
@@ -368,7 +367,7 @@ export function formatHistory(
     .map((h) => {
       const prs = h.prs?.length ? `  ${h.prs.map((n) => `#${n}`).join(" ")}` : "";
       const kind = h.doneKind ? `  [${h.doneKind}${h.evidence ? `: ${h.evidence}` : ""}]` : "";
-      return `${jst(h.endedAt)} JST  ${h.id}${prs}  ${h.title}  (${h.agent})${kind}`;
+      return `${ownerStamp(h.endedAt)}  ${h.id}${prs}  ${h.title}  (${h.agent})${kind}`;
     })
     .join("\n");
 }

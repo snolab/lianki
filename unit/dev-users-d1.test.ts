@@ -12,7 +12,7 @@ import {
 import { listDevUsers, monthlySignups } from "@/lib/repos/devUsersD1";
 
 describe("monthlySignups", () => {
-  test("counts accounts per JST month in one aggregate", async () => {
+  test("counts accounts per month at the viewer's offset in one aggregate", async () => {
     const d1 = createTestD1(testSchema()) as unknown as D1Like;
     await d1.exec(`
       INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt)
@@ -22,10 +22,21 @@ describe("monthlySignups", () => {
                ('d', NULL, 'd@x.com', 1, '2026-09-01', '2026'),
                ('e', NULL, 'e@x.com', 1, 'not a date', '2026');
     `);
-    expect(await monthlySignups(d1)).toEqual([
+    expect(await monthlySignups(d1, 540)).toEqual([
       { month: "2026-09", n: 1 },
       { month: "2026-10", n: 1 },
       { month: "2026-11", n: 2 },
+    ]);
+    // UTC by default: 15:00Z on 31 October is still October; west of UTC too.
+    expect(await monthlySignups(d1)).toEqual([
+      { month: "2026-09", n: 1 },
+      { month: "2026-10", n: 2 },
+      { month: "2026-11", n: 1 },
+    ]);
+    expect(await monthlySignups(d1, -600)).toEqual([
+      { month: "2026-08", n: 1 },
+      { month: "2026-10", n: 2 },
+      { month: "2026-11", n: 1 },
     ]);
   });
 });

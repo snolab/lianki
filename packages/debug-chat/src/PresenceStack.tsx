@@ -24,6 +24,8 @@ import {
   stackOf,
 } from "./presence";
 import { sanitizeAvatarSvg } from "./svg-avatar";
+import { laneModeWord } from "./lane-events";
+import { chatLocale } from "./chat-ui-locales";
 import type { UiStrings } from "./ui-strings";
 
 export type PresenceWords = Pick<
@@ -222,7 +224,13 @@ function Panel({
       role="dialog"
       aria-label={t.people}
       data-testid="debug-chat-presence-panel"
-      className="absolute bottom-full start-0 z-40 mb-1 flex max-h-[60vh] w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 overflow-y-auto rounded-xl border border-current/20 bg-gray-50/95 p-2.5 fs-12 leading-snug text-gray-900 shadow-lg backdrop-blur-md dark:bg-gray-900/95 dark:text-gray-100"
+      // A drag inside the panel scrolls the panel only: a short list is not scrollable, and
+      // without this the chat behind takes the drag (owner, 2026-11-15 04:14 JST "滚动穿透").
+      onTouchMove={(e) => {
+        const el = e.currentTarget;
+        if (el.scrollHeight <= el.clientHeight) e.preventDefault();
+      }}
+      className="absolute bottom-full start-0 z-40 mb-1 flex max-h-[60vh] w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 overflow-y-auto overscroll-contain touch-pan-y rounded-xl border border-current/20 bg-gray-50/95 p-2.5 fs-12 leading-snug text-gray-900 shadow-lg backdrop-blur-md dark:bg-gray-900/95 dark:text-gray-100"
     >
       <div className="flex items-center gap-2">
         <span className="flex-1 font-semibold">{t.people}</span>
@@ -310,6 +318,9 @@ function Row({
   const [svgBad, setSvgBad] = useState(false);
   const mine = !!p.id && !!p.tok;
   const activity: ReactNode[] = [];
+  // Its lane's mode (lane-registry.ts): listening live, read-only, or muted by him.
+  const mode = laneModeWord(p, chatLocale());
+  if (mode) activity.push(mode);
   if (p.live) activity.push(t.peopleNow);
   else activity.push(t.peopleActive.replaceAll("{time}", clock(p.active)));
   if (p.since) activity.push(t.peopleSince.replaceAll("{time}", clock(p.since)));

@@ -54,7 +54,9 @@ describe("registry", () => {
     // mic recordings in his account, tap card 2026-11-14 ~03:35 JST, audience owner + dev;
     // the login-streak credits, which grant and never charge, 2026-11-14;
     // his devices reading a line together, asked 2026-11-14 20:2x JST, audience owner;
-    // mini apps at /m, asked 2026-11-15 05:2x JST, audience owner, publishing needs dev).
+    // mini apps at /m, asked 2026-11-15 05:2x JST, audience owner, publishing needs dev;
+    // the sign-up bonus, which grants and never charges, asked 2026-11-15 12:4x JST;
+    // every agent's lane state and its system lines, 全员入群 2026-11-15, audience owner).
     const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
     expect(on).toEqual([
       "app.auto-update",
@@ -66,7 +68,10 @@ describe("registry", () => {
       "voice.auto-polish",
       "voice.fold-others",
       "voice.echo-dedupe",
+      // His Mac's Whisper re-reads each run before its polish, asked 2026-11-15 03:17 JST, audience owner.
+      "stt.whisper-recheck",
       "stt.two-mic-merge",
+      "chat.lane-events",
       "library.catalogue",
       "books.mine",
       "voice.sync-speak",
@@ -74,7 +79,10 @@ describe("registry", () => {
       "words.pinch-card-height",
       "words.shatter",
       "credits.login-streak",
+      "credits.signup-bonus",
       "mini-apps",
+      // Li in his own thread, asked 2026-11-15 13:4x JST, audience owner.
+      "partner.owner-thread",
     ]);
     for (const k of FLAG_KEYS) expect(FLAGS[k].description.length).toBeGreaterThan(0);
     expect(FLAGS["payments.stripe.live"].default).toBe(false);

@@ -183,7 +183,9 @@ export const providerTtsUrl = (voice: string, text: string) =>
   `/api/voice/tts?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(text)}`;
 
 export const LOCAL_TTS_KEY = "lk:agent-local-tts";
-export const DEFAULT_LOCAL_TTS_BASE = "https://taku.onca-tint.ts.net/lianki-tts";
+/** The owner's Mac-local Kokoro server, from the build's environment (never the repository); "" = none. */
+export const DEFAULT_LOCAL_TTS_BASE =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE) || "";
 
 let nekoTurnIdx = 0;
 

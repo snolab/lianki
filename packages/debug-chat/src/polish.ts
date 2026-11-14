@@ -20,9 +20,8 @@
  * becomes "@<the lane's name>" ("@小克 帮我…"). Wake words can wake on the
  * wrong name, and an @mention shows which one it took (owner, 2026-11-14).
  */
-import { ROUTE_TO_LANE } from "./addressed";
-import { routeLine } from "./lane-route";
-import { LANES } from "./voices";
+import { laneOfRoute, routeLine } from "./lane-route";
+import { laneSpec } from "./voices";
 
 export type PolishVerdict = { ok: true } | { ok: false; reason: string };
 
@@ -66,7 +65,7 @@ export function wakeMention(text: string, mention?: string): string {
   if (!text.trim()) return text;
   const r = routeLine(text);
   if (r.addressed) {
-    const names = r.lanes.map((l) => `@${LANES[ROUTE_TO_LANE[l]].name}`).join(" ");
+    const names = r.lanes.map((l) => `@${laneSpec(laneOfRoute(l)).name}`).join(" ");
     return r.text ? `${names} ${r.text}` : names;
   }
   if (!mention) return text;

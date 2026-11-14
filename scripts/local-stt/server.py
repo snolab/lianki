@@ -29,7 +29,10 @@ Protocol (one socket per page, utterances one after another):
                    text   {"t":"end","id":N}                 decode it now
                    text   {"t":"cancel","id":N}              drop it
                    text   {"t":"recheck","rid":R,"seconds":15,"engine":"mlx-whisper"}
-                          re-read recent audio from this socket (0 < seconds <= 60)
+                          re-read recent audio from this socket (0 < seconds <= --recheck-max-sec)
+                   text   {"t":"recheck","rid":R,"auto":true,"run":RUN,"fromAgoMs":F,"toAgoMs":T}
+                          re-read one continuous-speech run: the utterances that began between
+                          F and T ms before now (the page's clock, as durations), whole
   server → client  {"t":"ready","engine":…,"model":…}
                    {"t":"partial","id":N,"text":…,"audioMs":…}
                    {"t":"final","id":N,"text":…,"lang":…,"model":…,"ms":decode ms,
@@ -37,6 +40,7 @@ Protocol (one socket per page, utterances one after another):
                    (langAuto: on a short utterance whose auto-detected language
                    lost to a forced ja/zh reading; engines.LangPicker)
                    {"t":"recheck_result","rid":R,"engine":"mlx-whisper","ok":true,"text":…}
+                   (auto: also "auto":true,"run":RUN,"lang":…,"audioMs":…; ok:false + error on failure)
                    {"t":"error","id":N,"error":…}
 
 The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
@@ -112,6 +116,16 @@ PARTIAL_MIN_S = 0.1
 ROLLING = os.environ.get("LIANKI_STT_ROLLING", "0") == "1"
 #: Longest utterance kept (the mic cuts at 30 s).
 MAX_S = 40
+#: Seconds of received audio each socket keeps in RAM for a Whisper recheck (--recheck-max-sec,
+#: env LIANKI_STT_RECHECK_MAX_SEC; config stt.recheckMaxSec is the page's side of the same bound).
+RECHECK_MAX_S = 60
+#: Bounds of --recheck-max-sec: 10 minutes of float32 is 38 MB per socket.
+RECHECK_MAX_BOUNDS = (5, 600)
+#: How far an utterance's begin may sit outside a run's window (the page's clock against this
+#: one's: the network's latency and its jitter, never a whole utterance).
+RUN_SLACK_S = 0.5
+#: A run id from the page (its chat line id): what the result carries back.
+RUN_ID = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 #: An enrolment not saved or cancelled within this long is dropped.
 ENROL_TTL_S = 30 * 60
 
@@ -142,6 +156,11 @@ ACCOUNTS_DIR = "accounts"
 #: Where tunnel.sh turns the tunnel listener on and off, so the oxmgr entry never changes.
 PUBLIC_CONFIG = os.path.expanduser("~/.config/lianki-stt/public.json")
 DEFAULT_PUBKEY = os.path.expanduser("~/.config/lianki-stt/ticket.pub")
+
+
+def now_s() -> float:
+    """This server's clock for a run's window (a function, so the tests can move it)."""
+    return time.monotonic()
 
 
 def log(msg: str) -> None:
@@ -188,12 +207,22 @@ def pcm(b: bytes) -> np.ndarray:
 
 
 class AudioRingBuffer:
-    """Fixed 60 seconds of float32 PCM in RAM, owned by one socket only."""
+    """Fixed seconds of float32 PCM in RAM (default 60), owned by one socket only.
+
+    `total` counts every sample ever appended: a position in it is a sample's absolute
+    place, so a run's utterances are found again while the ring keeps moving.
+    """
 
     def __init__(self, seconds: int = 60):
-        self.data = np.zeros(seconds * RATE, dtype=np.float32)
+        self.data = np.zeros(int(seconds * RATE), dtype=np.float32)
         self.end = 0
         self.size = 0
+        self.total = 0
+
+    @property
+    def oldest(self) -> int:
+        """The absolute position of the oldest sample still kept."""
+        return self.total - self.size
 
     def append(self, audio: np.ndarray) -> None:
         x = audio[-len(self.data):]
@@ -203,6 +232,7 @@ class AudioRingBuffer:
         self.data[:n - first] = x[first:]
         self.end = (self.end + n) % len(self.data)
         self.size = min(len(self.data), self.size + n)
+        self.total += len(audio)
 
     def tail(self, n: int) -> np.ndarray:
         n = min(n, self.size)
@@ -216,12 +246,64 @@ class AudioRingBuffer:
         current = self.tail(current_n)
         self.end = (self.end - len(current)) % len(self.data)
         self.size -= len(current)
+        self.total -= len(current)
         self.append(audio)
         self.append(current)
+
+    def span(self, start: int, stop: int) -> np.ndarray | None:
+        """Absolute samples [start, stop), or None when any of them has left the ring."""
+        if start < self.oldest or stop > self.total or start > stop:
+            return None
+        return self.tail(self.total - start)[:stop - start]
 
     def clear(self) -> None:
         self.data.fill(0)
         self.size = self.end = 0
+
+
+class Segment:
+    """One utterance's place in a socket's ring, and when (this clock) it began and ended."""
+
+    __slots__ = ("id", "start", "stop", "t0", "t1")
+
+    def __init__(self, uid: int, start: int, t0: float):
+        self.id, self.start, self.stop, self.t0, self.t1 = uid, start, start, t0, None
+
+
+def run_window(m: dict, cap_s: float) -> tuple[float, float] | None:
+    """An auto recheck's window in seconds before now (fromAgoMs >= toAgoMs >= 0), or None."""
+    fro, to = m.get("fromAgoMs"), m.get("toAgoMs", 0)
+    for v in (fro, to):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
+            return None
+    # A run longer than the ring cannot be whole; a little room for the time it waited.
+    if to > fro or fro > (cap_s + 60) * 1000:
+        return None
+    return fro / 1000, to / 1000
+
+
+def run_audio(ring: AudioRingBuffer, segs: list[Segment], start_t: float, end_t: float,
+              slack: float = RUN_SLACK_S) -> tuple[np.ndarray | None, str | None]:
+    """
+    A continuous-speech run's audio: every utterance that began within [start_t, end_t]
+    (with `slack` either side), from the first one's start to the last one's end, as one
+    stretch of the ring (the gaps between them were never streamed). None and why when
+    there is none, one is still being spoken, or the ring no longer holds all of it.
+    A run whose first or last utterance is not here (a socket that dropped and came
+    back holds only what was replayed on it) is refused: half a run read as the whole
+    would replace words he said.
+    """
+    picked = [s for s in segs if start_t - slack <= s.t0 <= end_t + slack and s.stop > s.start]
+    if not picked:
+        return None, "no audio"
+    if any(s.t1 is None for s in picked):
+        return None, "still speaking"
+    if picked[0].t0 > start_t + slack or picked[-1].t1 < end_t - slack:
+        return None, "run incomplete"
+    audio = ring.span(picked[0].start, picked[-1].stop)
+    if audio is None:
+        return None, "run too long"
+    return audio, None
 
 
 class Server:
@@ -231,7 +313,10 @@ class Server:
         self.recorder = recorder
         self.engine = engine
         self.recheck_engine = None
+        #: One Whisper job at a time, on its own thread: streaming never waits for it.
         self.recheck_pool = ThreadPoolExecutor(max_workers=1)
+        #: Each socket's ring, in seconds (--recheck-max-sec): the longest run re-read.
+        self.recheck_max_s = RECHECK_MAX_S
         self.pool = ThreadPoolExecutor(max_workers=workers)
         self.partial_step_s = PARTIAL_STEP_S
         self.partial_min_s = PARTIAL_MIN_S
@@ -263,6 +348,8 @@ class Server:
 
     async def recheck(self, m: dict, audio: np.ndarray) -> dict:
         out = {"t": "recheck_result", "rid": m.get("rid"), "engine": "mlx-whisper"}
+        if m.get("auto") is True:
+            out.update(auto=True, run=m.get("run"))
 
         def read():
             return self.warm_recheck().transcribe(audio)
@@ -565,8 +652,18 @@ class Server:
                 await ws.close(4408, "session over")
 
             session_end = asyncio.create_task(end_session())
-        ring = AudioRingBuffer()
+        ring = AudioRingBuffer(self.recheck_max_s)
+        #: The utterances in the ring, oldest first (a run's recheck finds them by time).
+        segs: list[Segment] = []
+        seg: Segment | None = None
         recheck_task = None
+
+        def forget():
+            """The ring was cleared: no utterance in it can be found again."""
+            nonlocal seg
+            ring.clear()
+            segs.clear()
+            seg = None
         cur: Utterance | None = None
         #: This socket's device (hello): whose print its finals are scored against.
         conn: dict = {"device": None, "thread": None, "filter": False}
@@ -768,6 +865,8 @@ class Server:
                         x = pcm(body)[:remaining]
                         if not cur.enrol and not conn["filter"]:
                             ring.append(x)
+                            if seg is not None:
+                                seg.stop = ring.total
                         cur.chunks.append(x)
                         cur.n += len(x)
                         if cur.sw is not None:
@@ -785,6 +884,8 @@ class Server:
                         cur.pre = pcm(body)[:max(0, max_samples - cur.n)]
                         if not cur.enrol and not conn["filter"]:
                             ring.prepend_current(cur.pre, cur.n)
+                            if seg is not None:
+                                seg.stop = ring.total  # the pre-pad went in before it: it starts where it did
                         cur.roll = Rolling()  # the samples moved: settle again from the start
                         if cur.sw is not None:
                             cur.sw.prepend(cur.pre)  # the picks made while he spoke stand
@@ -804,11 +905,18 @@ class Server:
                     e = m.get("enrol")
                     cur.enrol = e if isinstance(e, str) and 0 < len(e) <= 64 else None
                     if cur.enrol:
-                        ring.clear()
+                        forget()
+                    elif not conn["filter"]:
+                        seg = Segment(uid, ring.total, now_s())
+                        segs.append(seg)
+                        while segs and segs[0].stop <= ring.oldest and segs[0] is not seg:
+                            segs.pop(0)
                     q = m.get("uid")
                     cur.uid = q if isinstance(q, str) and re.fullmatch(r"[A-Za-z0-9_-]{16,64}", q) else None
                 elif t == "end" and cur is not None and cur.id == uid and not cur.done:
                     cur.done = True
+                    if seg is not None and seg.id == uid:
+                        seg.t1 = now_s()
                     tf = m.get("textFrom")
                     if isinstance(tf, int) and not isinstance(tf, bool) and tf > 0:
                         cur.text_from = tf
@@ -828,7 +936,7 @@ class Server:
                 elif t == "filter":
                     # The page says on or off (docs/local-stt.md, "Only my voice"); no message, no filter.
                     conn["filter"] = m.get("on") is True and self.verifier is not None
-                    ring.clear()
+                    forget()
                     log(f"voice filter {'on' if conn['filter'] else 'off'} ({conn['device']})")
                     await send({"t": "filter", "on": conn["filter"]})
                 elif t in ("enrol", "voiceprint") and guest:
@@ -839,14 +947,24 @@ class Server:
                 elif t == "cancel" and cur is not None and cur.id == uid:
                     cur.done = True
                     cur = None
+                    if seg is not None and seg.id == uid:
+                        seg.t1 = now_s()
                 elif t == "recheck":
                     out = {"t": "recheck_result", "rid": m.get("rid"), "engine": "mlx-whisper", "ok": False}
+                    auto = m.get("auto") is True
+                    if auto:
+                        out.update(auto=True, run=m.get("run"))
                     seconds = m.get("seconds", 15)
+                    cap = self.recheck_max_s
                     if m.get("engine", "mlx-whisper") != "mlx-whisper":
                         await send({**out, "error": "unsupported engine"})
-                    elif (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
-                          or not math.isfinite(seconds) or not 0 < seconds <= 60):
-                        await send({**out, "error": "seconds must be within (0, 60]"})
+                    elif auto and not (isinstance(m.get("run"), str) and RUN_ID.fullmatch(m["run"])):
+                        await send({**out, "run": None, "error": "bad run"})
+                    elif auto and not run_window(m, cap):
+                        await send({**out, "error": "bad window"})
+                    elif not auto and (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
+                                       or not math.isfinite(seconds) or not 0 < seconds <= cap):
+                        await send({**out, "error": f"seconds must be within (0, {cap}]"})
                     elif recheck_task is not None and not recheck_task.done():
                         await send({**out, "error": "recheck busy"})
                     elif conn["filter"] or (cur is not None and cur.enrol):
@@ -854,7 +972,15 @@ class Server:
                     elif not ring.size:
                         await send({**out, "error": "no audio"})
                     else:
-                        audio = ring.tail(max(1, int(seconds * RATE)))
+                        if auto:
+                            now_t = now_s()
+                            fro, to = run_window(m, cap)
+                            audio, why = run_audio(ring, segs, now_t - fro, now_t - to)
+                            if audio is None:
+                                await send({**out, "error": why})
+                                continue
+                        else:
+                            audio = ring.tail(max(1, int(seconds * RATE)))
 
                         async def recheck_reply(request, snapshot):
                             await send(await self.recheck(request, snapshot))
@@ -865,7 +991,7 @@ class Server:
         except ConnectionClosed:
             pass  # the page went away (reload, backgrounded): no close frame from iOS
         finally:
-            ring.clear()
+            forget()
             if recheck_task:
                 recheck_task.cancel()
             if session_end:
@@ -1121,6 +1247,10 @@ async def main() -> None:
                     help="opt in to private 24h VAD recordings in this directory; empty disables")
     ap.add_argument("--recordings-ttl", type=int, default=TTL_S,
                     help="capture-time retention in seconds, at most 86400")
+    ap.add_argument("--recheck-max-sec", type=int,
+                    default=int(os.environ.get("LIANKI_STT_RECHECK_MAX_SEC", RECHECK_MAX_S)),
+                    help="seconds of audio each socket keeps in RAM for a Whisper recheck "
+                         f"(config stt.recheckMaxSec; {RECHECK_MAX_BOUNDS[0]}-{RECHECK_MAX_BOUNDS[1]})")
     a = ap.parse_args()
 
     port, pubkey = public_settings(a.public_port, a.ticket_pubkey, a.public_config)
@@ -1187,6 +1317,8 @@ async def main() -> None:
         except Exception as e:
             log(f"recheck warmup unavailable: {type(e).__name__}")
     srv.partial_step_s, srv.partial_min_s = max(0.032, a.partial_step), max(0.0, a.partial_min)
+    srv.recheck_max_s = min(max(a.recheck_max_sec, RECHECK_MAX_BOUNDS[0]), RECHECK_MAX_BOUNDS[1])
+    log(f"whisper recheck: up to {srv.recheck_max_s} s of audio per socket")
     log(f"partials every {srv.partial_step_s:.2f} s of audio, from {srv.partial_min_s:.2f} s")
 
     def health(conn, req):

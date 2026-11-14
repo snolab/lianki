@@ -6,8 +6,8 @@
  * download it to his Mac. app/api/my/recordings is the route; this is the
  * logic, without the request plumbing, so it is unit-tested.
  *
- *   POST {id, at, day, text, source, mode, device, speaker?, wav}   store one utterance   session only
- *   GET                       → {days: [{day, clips, ms, bytes}]}   newest first (?before=day, ?limit)
+ *   POST {id, at, day?, text, source, mode, device, speaker?, wav}   store one utterance   session only
+ *   GET [?before=AT&limit=N]  → {clips: [{id, day, at, …, text}], more}   newest first, by time, never by day
  *   GET ?day=D                → {day, clips: [{id, at, durationMs, …, text}]}   transcripts decrypted, no audio
  *   GET ?clip=ID              → the clip's WAV
  *   GET ?day=D&archive=zip    → the day as a zip: transcript.txt, transcript.json, one WAV per clip
@@ -22,6 +22,9 @@
  *   salt and info. The audio is sealed bytes in R2
  *   (`recordings/<uid>/<day>/<id>`), the transcript sealed in D1 `recording`;
  *   the AAD of each is user, kind and id.
+ * - **Days are internal.** A new row's `day` is the UTC date of `at` (owner,
+ *   2026-11-15: a fixed zone is UTC; the page groups by the device's own
+ *   zone). Older rows keep the device-local day they were stored under.
  */
 import type { D1Database } from "@cloudflare/workers-types";
 import { seal, unseal } from "@/lib/connections/crypto";
@@ -50,9 +53,9 @@ export const RECORDING_LIMITS = {
 
 /** Clips one account may keep in one day; past it a POST is refused (429 day-full). */
 export const MAX_CLIPS_PER_DAY = 5_000;
-/** Days listed per GET, by default and at most. */
-export const DAYS_PAGE = 30;
-export const DAYS_PAGE_MAX = 100;
+/** Clips listed per GET, by default and at most (each one's transcript is decrypted). */
+export const CLIPS_PAGE = 50;
+export const CLIPS_PAGE_MAX = 200;
 /** How far `at` may lie behind the server's clock (a queued upload retried later) and ahead of it. */
 export const MAX_AGE_MS = 2 * 86_400_000;
 export const MAX_SKEW_MS = 5 * 60_000;
@@ -75,6 +78,8 @@ export type Source = (typeof SOURCES)[number];
 export type Speaker = (typeof SPEAKERS)[number];
 
 const DAY_MS = 86_400_000;
+/** The UTC calendar date of a time: the internal day a new row is stored under. */
+export const utcDay = (at: number) => new Date(at).toISOString().slice(0, 10);
 /** A calendar day that exists ("2026-02-30" does not). */
 export function isDay(s: unknown): s is string {
   if (typeof s !== "string" || !DAY_RE.test(s)) return false;
@@ -97,7 +102,7 @@ export type RecordingPost = {
 
 const KEYS = ["id", "at", "day", "text", "source", "mode", "device", "speaker", "wav"];
 
-/** A POST body: exactly these keys (speaker optional), each as described; anything else refused whole. */
+/** A POST body: exactly these keys (day and speaker optional), each as described; anything else refused whole. */
 export function parseRecordingPost(body: unknown, now: number): RecordingPost | string {
   if (!body || typeof body !== "object" || Array.isArray(body)) return "bad body";
   const b = body as Record<string, unknown>;
@@ -105,9 +110,13 @@ export function parseRecordingPost(body: unknown, now: number): RecordingPost | 
   if (typeof b.id !== "string" || !ID_RE.test(b.id)) return "bad id";
   if (typeof b.at !== "number" || !Number.isSafeInteger(b.at)) return "bad at";
   if (b.at > now + MAX_SKEW_MS || b.at < now - MAX_AGE_MS) return "bad at";
-  if (!isDay(b.day)) return "bad day";
-  // The device's own date of `at`: within a day and a half of its UTC date (any zone).
-  if (Math.abs(Date.parse(`${b.day}T12:00:00Z`) - b.at) > 1.5 * DAY_MS) return "bad day";
+  // Optional. A recorder sends the UTC date; an older one its own local date, so any
+  // real date within a day and a half of `at` is accepted — and the row is filed
+  // under the UTC date either way.
+  if (b.day !== undefined) {
+    if (!isDay(b.day)) return "bad day";
+    if (Math.abs(Date.parse(`${b.day}T12:00:00Z`) - b.at) > 1.5 * DAY_MS) return "bad day";
+  }
   if (typeof b.text !== "string") return "bad text";
   if (b.text.length > RECORDING_LIMITS.maxTextChars) return "text too long";
   if (CONTROL.test(b.text)) return "bad text";
@@ -134,7 +143,7 @@ export function parseRecordingPost(body: unknown, now: number): RecordingPost | 
   return {
     id: b.id,
     at: b.at,
-    day: b.day,
+    day: utcDay(b.at),
     text: b.text,
     source: b.source as Source,
     mode: b.mode as Mode,
@@ -260,7 +269,6 @@ export type ClipMeta = {
   speaker: Speaker | null;
 };
 export type ClipRow = ClipMeta & { textSealed: string; createdAt: number };
-export type DaySummary = { day: string; clips: number; ms: number; bytes: number };
 
 export type RecDb = {
   /** Insert unless the id is already the account's; true when it was new. */
@@ -269,8 +277,12 @@ export type RecDb = {
   get(uid: string, id: string): Promise<ClipRow | null>;
   /** One day's clips, oldest first. */
   day(uid: string, day: string): Promise<ClipRow[]>;
-  /** Days with clips, newest first, those before `before` when given. */
-  days(uid: string, limit: number, before?: string): Promise<DaySummary[]>;
+  /**
+   * Clips newest first (at, then id, descending), those before `before` (ms)
+   * when given: `limit` of them, plus every further one sharing the last one's
+   * `at`, so a page never splits clips of the same time.
+   */
+  recent(uid: string, limit: number, before?: number): Promise<ClipRow[]>;
   deleteClip(uid: string, id: string): Promise<boolean>;
 };
 export type RecBlobs = {
@@ -336,17 +348,6 @@ export async function postRecording(d: RecDeps, body: unknown): Promise<Out> {
   return { status: 200, json: { ok: true, id: b.id, ...(fresh ? {} : { dup: true }) } };
 }
 
-export async function listDays(d: RecDeps, q: URLSearchParams): Promise<Out> {
-  const before = q.get("before");
-  if (before !== null && !isDay(before)) return bad(400, "bad day");
-  const raw = q.get("limit");
-  const n = raw === null ? DAYS_PAGE : Number(raw);
-  if (!Number.isInteger(n) || n < 1) return bad(400, "bad limit");
-  const limit = Math.min(n, DAYS_PAGE_MAX);
-  const days = await d.db.days(d.uid, limit, before ?? undefined);
-  return { status: 200, json: { days, more: days.length === limit } };
-}
-
 export type DayClip = ClipMeta & { text: string | null };
 
 /** A day's clips with their transcripts (null: does not open — rotated secret). */
@@ -357,6 +358,24 @@ export async function dayClips(d: RecDeps, day: string): Promise<DayClip[]> {
   for (const r of rows)
     out.push({ ...metaOf(r), text: await openText(key, d.uid, r.id, r.textSealed) });
   return out;
+}
+
+/** The clip feed: newest first, by time (`?before=<at>&limit=<n>`), transcripts decrypted. */
+export async function listClips(d: RecDeps, q: URLSearchParams): Promise<Out> {
+  const rawBefore = q.get("before");
+  const before = rawBefore === null ? undefined : Number(rawBefore);
+  if (before !== undefined && (!rawBefore || !Number.isSafeInteger(before) || before < 0))
+    return bad(400, "bad before");
+  const raw = q.get("limit");
+  const n = raw === null ? CLIPS_PAGE : Number(raw);
+  if (!Number.isInteger(n) || n < 1) return bad(400, "bad limit");
+  const limit = Math.min(n, CLIPS_PAGE_MAX);
+  const rows = await d.db.recent(d.uid, limit, before);
+  const key = await d.key();
+  const clips: DayClip[] = [];
+  for (const r of rows)
+    clips.push({ ...metaOf(r), text: await openText(key, d.uid, r.id, r.textSealed) });
+  return { status: 200, json: { clips, more: rows.length >= limit } };
 }
 
 export async function getDay(d: RecDeps, day: string): Promise<Out> {
@@ -504,19 +523,28 @@ export function d1RecDb(db: D1Database): RecDb {
         .all<ClipRow>();
       return r.results ?? [];
     },
-    async days(uid, limit, before) {
-      const r = await db
-        .prepare(
-          "SELECT day, COUNT(*) AS clips, SUM(duration_ms) AS ms, SUM(bytes) AS bytes FROM recording WHERE user_id = ? AND day < ? GROUP BY day ORDER BY day DESC LIMIT ?",
-        )
-        .bind(uid, before ?? "9999-12-31", limit)
-        .all<DaySummary>();
-      return (r.results ?? []).map((x) => ({
-        day: x.day,
-        clips: Number(x.clips),
-        ms: Number(x.ms),
-        bytes: Number(x.bytes),
-      }));
+    async recent(uid, limit, before) {
+      const page =
+        (
+          await db
+            .prepare(
+              `SELECT ${COLS} FROM recording WHERE user_id = ? AND at < ? ORDER BY at DESC, id DESC LIMIT ?`,
+            )
+            .bind(uid, before ?? Number.MAX_SAFE_INTEGER, limit)
+            .all<ClipRow>()
+        ).results ?? [];
+      const last = page.at(-1);
+      if (page.length < limit || !last) return page;
+      const ties =
+        (
+          await db
+            .prepare(
+              `SELECT ${COLS} FROM recording WHERE user_id = ? AND at = ? AND id < ? ORDER BY id DESC`,
+            )
+            .bind(uid, last.at, last.id)
+            .all<ClipRow>()
+        ).results ?? [];
+      return [...page, ...ties];
     },
     async deleteClip(uid, id) {
       const r = await db

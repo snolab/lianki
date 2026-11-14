@@ -4,7 +4,7 @@
  * refresh, against PRODUCTION D1 — for the owner's phone on the home LAN.
  * docs/dev-whole-page.md has the why, the security model and the runbook.
  *
- *   bun scripts/dev/whole-page.ts serve [--host 192.168.31.96] [--port 3100] [--origin https://<mac>.ts.net:8443]
+ *   bun scripts/dev/whole-page.ts serve [--host 192.168.1.10] [--port 3100] [--origin https://<mac>.ts.net:8443]
  *       --origin: the address the phone opens, when it is not http://<host>:<port>
  *       — the `tailscale serve` HTTPS front (docs/dev-whole-page.md, "HTTPS").
  *       Starts `next dev` on 127.0.0.1:<port+1> (remote D1/R2 via
@@ -29,6 +29,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
+import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import tls from "node:tls";
 import { DEV_BRIDGE_HEADER } from "../../lib/dev-bridge";
@@ -74,6 +75,8 @@ import {
 } from "./preview-gate";
 import { PreviewUserscript, previewScriptRoute } from "./preview-userscript";
 import { devForwardHeaders } from "./whole-page-forward";
+import { devPwaAssets, devPwaFile } from "../../lib/dev-site/pwa";
+import { ownerStamp } from "./owner-time";
 
 const STATE_FILE = ".dev-whole-page.json";
 const SESSION_CACHE_MS = 60_000;
@@ -121,9 +124,9 @@ function loadState(): State {
   return state;
 }
 
-/** Now in JST, for the log (it has no other clock): "2026-11-03 14:05:09 JST". */
-function jst(): string {
-  return `${new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 19).replace("T", " ")} JST`;
+/** Now, for the log (it has no other clock), in the machine's zone: "2026-11-03 14:05:09 JST". */
+function stamp(): string {
+  return ownerStamp(Date.now(), true);
 }
 
 /** True once nothing listens on 127.0.0.1:<port>; false if something still does after `ms`. */
@@ -145,7 +148,7 @@ async function portFree(port: number, ms: number): Promise<boolean> {
 const OWNERS_CACHE_MS = 30_000;
 
 async function serve() {
-  const host = arg("host", "192.168.31.96");
+  const host = arg("host", "192.168.1.10");
   const port = Number(arg("port", "3100"));
   const inner = port + 1;
   const control = port + 2;
@@ -209,6 +212,13 @@ async function serve() {
     LIANKI_DEV_WHOLE_PAGE: "1",
     LIANKI_DEV_PUBLIC_HOST: publicHost,
     LIANKI_DEV_GUARD_SECRET: state.guardSecret,
+    // The owner's own hosts for the bundle's defaults (never in the repository):
+    // public, non-secret values from the environment `serve` was started with.
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([k, v]) => k.startsWith("NEXT_PUBLIC_LIANKI_") && typeof v === "string",
+      ),
+    ),
     // Outgoing only: /api/my/recordings forwards to lianki.com with it
     // (lib/recordings-bridge.ts). Not DEV_BRIDGE_SECRET, so nothing here accepts it.
     LIANKI_DEV_BRIDGE_SECRET: state.bridgeSecret,
@@ -290,7 +300,7 @@ async function serve() {
   const noteRestarts = (n: number, openedAt: number) => {
     if (!n || restarting || stopping || !storm.note(n, Date.now(), openedAt)) return;
     console.error(
-      `[whole-page] ${jst()} reload storm (Turbopack restart loop): restarting next dev`,
+      `[whole-page] ${stamp()} reload storm (Turbopack restart loop): restarting next dev`,
     );
     restarting = true;
     stopNext(8_000);
@@ -335,6 +345,8 @@ async function serve() {
       return [];
     }
   };
+  // 开发站's manifest, service worker and badged icons (lib/dev-site/pwa.ts).
+  const devPwaAsset = devPwaAssets((name) => readFileSync(join(process.cwd(), "public", name)));
   const gate = publicHost
     ? createGate({
         publicHost,
@@ -346,6 +358,10 @@ async function serve() {
           return r.ok ? ((await r.json()) as Verified) : null;
         },
         active: activeCall,
+        pwa: (path) => {
+          const file = devPwaFile(path);
+          return file ? devPwaAsset(file) : null;
+        },
         log: (m) => console.error(`[whole-page] ${m}`),
       })
     : undefined;
@@ -356,7 +372,7 @@ async function serve() {
     ? new PreviewUserscript({
         root: process.cwd(),
         origin: `https://${publicHost}`,
-        log: (m) => console.error(`[whole-page] ${jst()} ${m}`),
+        log: (m) => console.error(`[whole-page] ${stamp()} ${m}`),
       })
     : undefined;
   if (userscript) {
@@ -856,7 +872,7 @@ async function serve() {
       ? "published"
       : `publish FAILED: ${p.stderr.toString().trim().split("\n")[0]}`;
     const head = Bun.spawnSync(["git", "log", "--oneline", "-1"]).stdout.toString().trim();
-    console.error(`[whole-page] ${jst()} ${msg} (${follow} → ${head})`);
+    console.error(`[whole-page] ${stamp()} ${msg} (${follow} → ${head})`);
     if (!p.success) return;
     // next dev does not rebuild intlayer's dictionaries for new or changed
     // *.content.ts that arrive by a merge, and the page throws until someone

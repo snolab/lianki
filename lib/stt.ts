@@ -4,7 +4,7 @@
  * their answers are read. Shared by /api/debug/stt and the STT bench. No I/O.
  */
 import type { SttSignals } from "@lianki/debug-chat/stt-guard";
-import { STT_PROMPT, STT_PROMPT_ZH } from "@lianki/debug-chat/stt-hint";
+import { formatSttPrompt, STT_PROMPT, STT_PROMPT_ZH } from "@lianki/debug-chat/stt-hint";
 
 /**
  * The Workers AI ASR models that take one audio file over REST, from
@@ -56,9 +56,13 @@ export const sttHint = (raw: string | null | undefined): SttHint | undefined =>
  * output, 銀外 → 另外, and no katakana for a short clip that came back as
  * シェイカーマイカフォン), while `language: "zh"` dropped all punctuation and
  * turned the English clips into Chinese. ja and en keep STT_PROMPT.
+ *
+ * An optional list of hotwords (e.g. from laneHotwords()) can be appended
+ * to bias Whisper recognition towards project and lane names.
  */
-export function sttPrompt(hint?: SttHint): string {
-  return hint === "zh" ? STT_PROMPT_ZH : STT_PROMPT;
+export function sttPrompt(hint?: SttHint, hotwords?: readonly string[]): string {
+  const base = hint === "zh" ? STT_PROMPT_ZH : STT_PROMPT;
+  return formatSttPrompt(base, hotwords);
 }
 
 /**

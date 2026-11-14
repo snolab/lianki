@@ -74,7 +74,8 @@ describe("grouping", () => {
   test("my-box sits with box.oauth, and groups stay few", () => {
     const g = assignGroups();
     expect(g.get("my-box")).toBe(g.get("box.oauth")!);
-    expect(new Set(g.values()).size).toBeLessThan(8);
+    // 8 since 2026-11-15: the login-streak and sign-up bonus share a 积分 section.
+    expect(new Set(g.values()).size).toBeLessThan(9);
   });
 
   test("其他, then shipped, come last", () => {

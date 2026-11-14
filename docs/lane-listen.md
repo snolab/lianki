@@ -29,6 +29,15 @@ lane answers it. Every listener uses it, so a line gets exactly one answer
 - `codex的…` is talk about codex, not to it: the chat lane takes it.
 - Agent lines, friend lines and other threads are never routed.
 - New spellings go in `LANE_NAMES` with a test in `unit/lane-route.test.ts`.
+- The mapping can also be reconfigured live without deploys at `/dev/config`
+  via `chat.lanes` (one table for lanes and their wake names; the earlier
+  `chat.laneNames` key is folded into it: a row's `aliases` are its wake
+  names, `heard` its STT spellings). `setCustomLaneNames(table)` takes the
+  old name → {exact, heard} shape and writes it into the same table.
+- Project and branch names (`lianki`, `liagent`, `agent-yes`, `otoji`) default
+  to routing under the `chat` lane.
+- All unique names in the table can be extracted via `laneHotwords(table?)`
+  and fed to STT models (e.g. Whisper `initial_prompt`) to improve recognition.
 - The matcher itself lives in `packages/debug-chat/src/lane-route.ts`
   (`lib/lane-route.ts` re-exports it), so the chat uses the same rule: a name
   heard in his live speech, or in a line he sends, flashes that lane's avatar
@@ -160,6 +169,101 @@ oxmgr start "bun ~/ws/snolab/lianki/tree/main/scripts/dev/stall-watch.ts" --name
 Its log is one JSON line per state edge, read, report and clear (redacted).
 Tests: `unit/stall-watch.test.ts` (the matcher on real Claude/Codex screens,
 redaction, the node, the state machine).
+
+## Every agent joins (全员入群, owner 2026-11-15)
+
+Every agent working on Lianki or a repo it depends on joins his Li chat as a
+lane of its own, automatically. One API token = one name = one lane: the hub
+labels a token's lines with the token's name.
+
+**Two identities.** A **listener** is resident: it hears every line live
+(its socket is open) and shows in the presence stack (头像叠) as "listening
+live". A **reader** reads the thread when it wants and is woken when he
+names it. A joining agent is a reader by default; coco and 杰咪 listen to
+everything (`lanes.agents` resident); Li, the main lane, is always a
+listener and can never be downgraded (the hub refuses).
+
+**The hub's lane registry** (`workers/push/src/lane-registry.ts`, flag
+`chat.lane-events`, default on, audience owner). Per thread and lane: mode
+(`reader` | `listener` | `left`), `muted`, last seen.
+
+| what happens                                                                                 | mode     | system line (quiet)     |
+| -------------------------------------------------------------------------------------------- | -------- | ----------------------- |
+| first verified use (read, say, ask; an MCP wait; auth `mode: "reader"`)                      | reader   | "X 入群（只读）"        |
+| a token socket that listens (`lianki chat listen`, auth `mode: "listener"` or none, not MCP) | listener | "coco 开始实时监听"     |
+| its last listening socket closes and stays closed `lanes.modeGraceSec` (30 s; the alarm)     | reader   | "小开 转为只读"         |
+| op `lane` `state: "left"` (the manager: its agent exited)                                    | left     | "杰咪 下线"             |
+| the owner mutes it (page `participant` `muted: true`)                                        | (same)   | "X 已禁言" / "解除禁言" |
+
+A reconnect inside the grace says nothing. A muted lane still reads and
+listens; its `say`/`ask` get **403 `muted`** with the reason. The lines are
+`from: "agent"`, label `lanes`, `quiet`, with `laneEvent` set; their text is
+in `lanes.eventLocale` (zh), and a page shows them in its own language
+(`packages/debug-chat/src/lane-events.ts`, 16 locales with context lines).
+The presence list carries each token's `mode` and `muted`. The socket also
+takes `{type:"lane", state: "listener"|"reader"|"left"}`, HTTP `{op:"lane",
+state: "reader"|"left"}` (checked as a read, so the deployed main Worker
+answers it). With the flag off, or before the hub is deployed, nothing of
+this runs and the lanes work as before (the CLI's `mode` is ignored).
+
+**The lane table** is config `chat.lanes` (public): `{id, name, aliases,
+heard, voice, color}` rows beside the built-in coco / 杰咪 / 小克
+(`voices.ts` setLaneTable, `lane-route.ts` laneNames). A row with a
+built-in id adds names to it (咪宝 without a deploy). Routing, the avatar
+flash, the wake words and the @mention read the same table. Scripts take
+it as `LIANKI_LANE_TABLE` (lane-listen) or `LIANKI_CHAT_LANES` (the manager).
+
+**The manager**, `lianki-dev lanes` (`scripts/dev/lanes-manager.ts`; pure
+decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
+
+1. Watches `ay ls --watch --local` (ay's own registry diff); each edge
+   re-reads `ay ls --json --local`, plus a slow re-list every
+   `lanes.relistSec` (60 s) in case the stream is silent.
+2. Maps each alive agent to a repo: the first part of its cwd on the
+   `lanes.repos` whitelist (lianki, agent-yes, liagent, rechrome, otoji, rgui).
+3. Names it: the lane a running `lane-listen --deliver <pid>` already serves
+   (coco, 杰咪 today), else `lanes.agents` (the end of its cwd + its cli),
+   else `<repo>-<leaf>`, stable across restarts so one token keeps serving
+   it: the leaf is `<x>` for `…/<repo>/tree/<x>`, `agent` for a Claude
+   worktree (`.claude/worktrees/agent-<id>`), `main` for a bare checkout,
+   else the directory's name (`lianki-codex`, `lianki-agent`,
+   `liagent-main`); lowercase, 40 characters at most. Only when two alive
+   agents would share it does `-<cli>` follow, then `-<pid>` if they still do.
+4. Tokens: `~/.config/lianki/lanes/<lane>.token`, minted by him at
+   /my/preferences#tokens (name = the lane, chat:read chat:write chat:ask).
+   The manager never mints one; the names still missing are said once in
+   the chat as one line, with its own token (`lanes.token`, name `lanes`,
+   `LIANKI_LANES_MANAGER_LANE`), again only when the list changes.
+5. Resident lanes get `lane-listen --as <lane> --cwd <cwd> --all` (not when
+   one already runs, e.g. under oxmgr); stopped when the agent exits.
+   Readers get no process: the manager's own reader socket (`lianki chat
+listen --json --reader`) hears his lines, and a line that names a reader
+   (its lane name, a `chat.lanes` alias, `#<repo>`, or 全体) goes to that
+   agent with `ay send <pid> --force --no-wait --code alt-m`.
+   A `lanes.agents` row with `wake: false` joins (greets, reader, marked
+   left) but is never woken: 小克 (`lianki/tree/agy`, cli `claude`, lane
+   `claude`) keeps its own live feed of his lines.
+6. Each new lane greets once with its own token (`lanes.greeting`;
+   `manager-state.json` beside the tokens remembers who did); an agent that
+   exits is marked left (op `lane`).
+7. Joined agents report as every lane does: `lianki-dev say/reply --as
+<lane>` in the chat, `progress.ts` on the state tree.
+
+The Mac-side keys (`lanes.repos`, `lanes.agents`, `lanes.relistSec`,
+`lanes.greeting`) are in the config registry with their defaults
+(`lib/lanes-config.ts`); on the Mac each live value is its env var
+(`LIANKI_LANES_REPOS`, `LIANKI_LANES_AGENTS`, `LIANKI_LANES_RELIST_SEC`,
+`LIANKI_LANES_GREETING`), as for stall-watch.
+
+```bash
+bun scripts/dev/lianki-dev.ts lanes --once --dry-run   # who would join, what it would do
+oxmgr start "bun ~/ws/snolab/lianki/tree/main/scripts/dev/lianki-dev.ts lanes" --name lianki-lanes --max-restarts 3
+```
+
+Tests: `unit/lanes-manager.test.ts` (mapping, decisions, the loop mocked),
+`unit/lane-registry.test.ts` (transitions, system lines, mute, through the
+hub), `unit/lane-table.test.ts` (dynamic lanes and routing),
+`unit/lane-events.test.ts` (strings).
 
 ## End-to-end test
 

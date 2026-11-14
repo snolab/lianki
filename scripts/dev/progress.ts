@@ -35,10 +35,10 @@ import {
 } from "./progress-args";
 import { type ProgressDone, type ProgressHistory, progressStats } from "../../lib/progress";
 import { postProgress, prMerged, progressToken } from "./progress-client";
+import { ownerStamp } from "./owner-time";
 
-/** "2026-11-07 20:30 JST": when the estimate runs out, as the owner reads times. */
-const etaJst = (at: number) =>
-  `${new Date(at + 9 * 3_600_000).toISOString().slice(0, 16).replace("T", " ")} JST`;
+/** "2026-11-07 20:30 JST": when the estimate runs out, in the machine's zone (owner-time.ts). */
+const etaAt = (at: number) => ownerStamp(at);
 
 const args = process.argv.slice(2);
 if (args.includes("--help") || args.includes("-h")) {
@@ -105,7 +105,7 @@ else if (cmd.cmd === "show") {
   const results = (res.results ?? []) as Record<string, unknown>[];
   for (const r of results) {
     const e = r.entry as { id: string; status: string; etaAt?: number } | undefined;
-    if (e) console.log(`progress: ${e.id} ${e.status}${e.etaAt ? `, ETA ${etaJst(e.etaAt)}` : ""}`);
+    if (e) console.log(`progress: ${e.id} ${e.status}${e.etaAt ? `, ETA ${etaAt(e.etaAt)}` : ""}`);
     else console.error(`progress: ${r.status} ${String(r.error ?? "failed")}`);
   }
   console.log(`progress: change ${String(res.changeId)} (${results.length} nodes)`);
@@ -127,7 +127,7 @@ else {
     evidence?: string;
   };
   const eta = e.etaAt
-    ? `, ETA ${e.etaMinAt ? `${etaJst(e.etaMinAt).slice(11, 16)}–` : ""}${etaJst(e.etaAt)}`
+    ? `, ETA ${e.etaMinAt ? `${etaAt(e.etaMinAt).slice(11, 16)}–` : ""}${etaAt(e.etaAt)}`
     : "";
   const kind = e.doneKind ? ` ${e.doneKind}${e.evidence ? `: ${e.evidence}` : ""}` : "";
   console.log(

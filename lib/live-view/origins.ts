@@ -18,8 +18,18 @@
  */
 export const LIVE_PAGE_ORIGINS: readonly string[] = ["https://preview.lianki.com"];
 
-export const LIVE_VIEW_ORIGINS: readonly string[] = [
-  // The owner's Mac on his tailnet (tailscale serve, never funnel): the dev servers'
-  // `--tailnet /lianki-widget…` and `/lianki-islands…` paths.
-  "https://taku.onca-tint.ts.net",
-];
+/**
+ * The owner's own origins come from the build's environment, never from the
+ * repository (public): NEXT_PUBLIC_LIANKI_LIVE_VIEW_ORIGINS, a comma-separated
+ * list of exact origins — his Mac on his tailnet (tailscale serve, never
+ * funnel), where the dev servers' `--tailnet /lianki-widget…` and
+ * `/lianki-islands…` paths are. Unset: no live JS origin at all.
+ */
+const fromEnv = (v: string | undefined) =>
+  (v ?? "")
+    .split(",")
+    .map((s) => s.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+export const LIVE_VIEW_ORIGINS: readonly string[] = fromEnv(
+  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_LIANKI_LIVE_VIEW_ORIGINS : undefined,
+);

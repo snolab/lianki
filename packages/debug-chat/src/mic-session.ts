@@ -46,8 +46,11 @@ export type LocalClient = StreamStt & {
   close(): void;
   state(): LocalState;
   subscribe(f: (s: LocalState) => void): () => void;
-  /** A voiceprint request (local-stt.ts request); absent on an older client. */
-  request?(msg: Record<string, unknown>): Promise<Record<string, unknown>>;
+  /** A voiceprint or recheck request (local-stt.ts request); absent on an older client. */
+  request?(
+    msg: Record<string, unknown>,
+    o?: { timeoutMs?: number },
+  ): Promise<Record<string, unknown>>;
 };
 
 /** globalThis key of the session. */
@@ -61,8 +64,9 @@ export const MIC_SESSION_KEY = "__lkMic";
  * silence guard (stt-guard.ts) over each final, and the route's signals for it.
  * 14: why it went off (mic-off.ts): `auto`, autoOff(), a lost track reopened.
  * 15: each finished utterance to the account's recordings (`record`).
+ * 16: recheck(), Whisper re-reading a run on the local STT socket (whisper-recheck.ts).
  */
-export const MIC_SESSION_V = 15;
+export const MIC_SESSION_V = 16;
 /** sessionStorage: "1" while this tab has the mic on (cleared by an explicit off). */
 export const MIC_ON_KEY = "lk:agent:mic";
 
@@ -490,6 +494,16 @@ export function createMicSession(
       return () => {
         if (sink === s) sink = null;
       };
+    },
+    /**
+     * Whisper re-reads a continuous-speech run on the local STT socket in use
+     * (whisper-recheck.ts): only on a socket that is up, since a new one holds none
+     * of the run's audio. Rejects with none, or with no answer within `timeoutMs`.
+     */
+    recheck(msg: Record<string, unknown>, timeoutMs: number): Promise<Record<string, unknown>> {
+      const c = local?.c;
+      if (!c?.request || c.state() !== "ready") return Promise.reject(new Error("no local stt"));
+      return c.request(msg, { timeoutMs });
     },
     /** The config in force (a voice mode adds its local STT URL without dropping the widget's). */
     configured: (): MicConfig => cfg,

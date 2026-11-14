@@ -183,6 +183,7 @@ export function splitLine(line: ChatMessage): ChatMessage[] {
     edited: _edited,
     mergeable: _mergeable,
     settled: _settled,
+    recheck: _recheck,
     speaker: _speaker,
     timing: _timing,
     stt: _stt,

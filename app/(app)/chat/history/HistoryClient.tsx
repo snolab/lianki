@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LANES, type LaneId } from "@lianki/debug-chat/voices";
+import { type LaneId, laneSpec } from "@lianki/debug-chat/voices";
 import { laneAvatar } from "@lianki/debug-chat/LaneMark";
 import { longDate } from "@/lib/dates";
 import { dayRange, dayRows, plainText } from "@/lib/chat-history-view";
@@ -104,8 +104,8 @@ export default function HistoryClient(p: {
   const setLines = list.setItems;
 
   const nameOf = (l: ChatHistoryLine) =>
-    l.from !== "agent" ? L.you : LANES[(l.lane ?? "main") as LaneId].name || L.agent;
-  const laneName = (f: LaneFilter) => (f === "you" ? L.you : LANES[f].name || L.agent);
+    l.from !== "agent" ? L.you : laneSpec((l.lane ?? "main") as LaneId).name || L.agent;
+  const laneName = (f: LaneFilter) => (f === "you" ? L.you : laneSpec(f).name || L.agent);
 
   // The search and the filter are in the address (docs/ui-state.md: shareable), and a
   // change reloads from the newest, after typing pauses.

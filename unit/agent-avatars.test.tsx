@@ -568,6 +568,21 @@ describe("rendering", () => {
     expect(codex).toContain("MCP");
     expect(renderToStaticMarkup(<LineTag m={{ lane: "main" }} agentName="Li" />)).toContain("Li");
     expect(renderToStaticMarkup(<LineTag m={{ lane: "main" }} />)).toBe("");
+    // A Learning Partner reply in his thread: its own name, never the host's agent name.
+    const li = renderToStaticMarkup(
+      <LineTag
+        m={{ lane: "main", label: "Learning Partner AI" }}
+        agentName="Claude"
+        partnerName="学习伙伴"
+      />,
+    );
+    expect(li).toContain("学习伙伴");
+    expect(li).not.toContain("Claude");
+    expect(
+      renderToStaticMarkup(
+        <LineTag m={{ lane: "main", label: "Learning Partner AI" }} agentName="Claude" />,
+      ),
+    ).toContain("Learning Partner AI");
     expect(renderToStaticMarkup(<LineTag m={{ lane: "main", client: "mcp" }} inline />)).toContain(
       "MCP",
     );

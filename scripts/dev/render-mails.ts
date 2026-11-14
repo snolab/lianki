@@ -20,6 +20,7 @@ import { MAIL_KINDS } from "@/lib/mail-templates/kinds";
 import { previewDoc } from "@/lib/mail-templates/layout";
 import { MAIL_LOCALES, type MailLocale } from "@/lib/mail-templates/locales";
 import { approximateLocation, loginNoticeValues } from "@/lib/security/login-notice";
+import { ownerZone } from "@/lib/time-zone";
 
 const args = process.argv.slice(2);
 const outDir = args.find((a) => !a.startsWith("--")) ?? "mail-preview";
@@ -33,7 +34,7 @@ const locales: MailLocale[] =
 
 const IPHONE_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1";
-/** The owner's sample: 2026-11-09 18:07 in Tokyo. */
+/** The sample moment (2026-11-09 09:07 UTC), shown in the machine's zone (owner-time.ts). */
 const WHEN = new Date("2026-11-09T09:07:00Z");
 
 function values(id: MailTemplateId, l: MailLocale): Record<string, string> {
@@ -42,7 +43,7 @@ function values(id: MailTemplateId, l: MailLocale): Record<string, string> {
     when: WHEN,
     location: approximateLocation({ city: "Tokyo", region: "Tokyo", country: "JP" }, null, l),
     userAgent: IPHONE_UA,
-    eventTimeZone: "Asia/Tokyo",
+    eventTimeZone: ownerZone(),
   });
 }
 
@@ -92,7 +93,7 @@ pre{white-space:pre-wrap;font-size:13px}
 ${cards.join("\n")}
 <script>
 const t=document.getElementById("t"),l=document.getElementById("l");
-const q=new URLSearchParams(location.search);t.value=q.get("t")??"login-notice";l.value=q.get("l")??"zh";
+const q=new URLSearchParams(location.search);t.value=q.get("t")??"login-notice";l.value=q.get("l")??"en";
 function f(){for(const s of document.querySelectorAll("section"))s.hidden=(t.value&&s.dataset.t!==t.value)||(l.value&&s.dataset.l!==l.value);
 history.replaceState(null,"","?t="+t.value+"&l="+l.value)}
 t.onchange=l.onchange=f;f();

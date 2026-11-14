@@ -1,5 +1,5 @@
 // /dev/costs day and hour matrices (lib/payments/cost-buckets.ts; docs/payments.md,
-// "Cost ledger"): JST buckets, the window caps, the aggregation, the API views.
+// "Cost ledger"): buckets at the viewer's offset (UTC by default), the window caps, the aggregation, the API views.
 import { beforeEach, describe, expect, it } from "bun:test";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
@@ -20,18 +20,23 @@ import { MARGIN } from "@/lib/payments/prices";
 import { HEAT_LEVELS, heatLevel, heatVars } from "@/app/(app)/dev/costs/heat";
 import { contrast, oklchToHex } from "@/lib/mail-templates/color";
 
-const NOW = new Date("2026-11-11T01:30:00Z"); // 10:30 JST, 2026-11-11
+const NOW = new Date("2026-11-11T01:30:00Z"); // 10:30 at UTC+9, 2026-11-11
+/** A viewer at UTC+9 (minutes east of UTC), as the page sends for Asia/Tokyo. */
+const P9 = 540;
 
-describe("JST buckets", () => {
-  it("an hour is the JST hour, across the day boundary", () => {
-    expect(costHour(new Date("2026-11-10T14:59:59.999Z"))).toBe("2026-11-10T23");
-    expect(costHour(new Date("2026-11-10T15:00:00Z"))).toBe("2026-11-11T00");
-    expect(hourStartMs("2026-11-11T00")).toBe(Date.parse("2026-11-10T15:00:00Z"));
+describe("buckets at the viewer's offset", () => {
+  it("an hour is the viewer's hour, across the day boundary; UTC by default", () => {
+    expect(costHour(new Date("2026-11-10T14:59:59.999Z"), P9)).toBe("2026-11-10T23");
+    expect(costHour(new Date("2026-11-10T15:00:00Z"), P9)).toBe("2026-11-11T00");
+    expect(hourStartMs("2026-11-11T00", P9)).toBe(Date.parse("2026-11-10T15:00:00Z"));
+    expect(costHour(new Date("2026-11-10T15:00:00Z"))).toBe("2026-11-10T15");
+    expect(hourStartMs("2026-11-11T00")).toBe(Date.parse("2026-11-11T00:00:00Z"));
+    expect(costHour(new Date("2026-11-11T02:00:00Z"), -330)).toBe("2026-11-10T20");
   });
 
   it("no daylight saving: March and October hours are 1 h apart all the way", () => {
     for (const day of ["2026-03-08", "2026-03-29", "2026-10-25", "2026-11-01"]) {
-      const w = hourWindow(24, { from: day, to: day }, new Date("2027-01-01T00:00:00Z"));
+      const w = hourWindow(24, { from: day, to: day }, new Date("2027-01-01T00:00:00Z"), P9);
       expect(w.hours).toHaveLength(24);
       expect(w.hours[0]).toBe(`${day}T00`);
       expect(w.hours[23]).toBe(`${day}T23`);
@@ -50,13 +55,17 @@ describe("JST buckets", () => {
 
   it("the hour window: the last N hours up to now, capped, clipped to the range", () => {
     const range = { from: "2026-11-01", to: "2026-11-11" };
-    const w = hourWindow(48, range, NOW);
+    const w = hourWindow(48, range, NOW, P9);
     expect(w.hours).toHaveLength(48);
     expect(w.hours.at(-1)).toBe("2026-11-11T10");
     expect(w.hours[0]).toBe("2026-11-09T11");
     expect(w.startIso).toBe("2026-11-09T02:00:00.000Z");
     expect(w.endIso).toBe("2026-11-11T02:00:00.000Z");
-    expect([w.fromDay, w.toDay]).toEqual(["2026-11-09", "2026-11-11"]);
+    // The index bound is a day wider each side (UTC days, and older JST ones).
+    expect([w.fromDay, w.toDay]).toEqual(["2026-11-08", "2026-11-12"]);
+    expect(w.offMin).toBe(P9);
+    // In UTC the same window ends at the UTC hour.
+    expect(hourWindow(48, range, NOW).hours.at(-1)).toBe("2026-11-11T01");
     expect(hourWindow(10_000, range, NOW).hours).toHaveLength(COSTS_MAX_HOURS);
     // A past range ends with its last day's 23:00; a one-day range has 24 hours at most.
     const past = hourWindow(48, { from: "2026-11-05", to: "2026-11-05" }, NOW);
@@ -115,8 +124,8 @@ describe("from D1", () => {
         `INSERT INTO credit_ai_charge (key, userId, reserved, status, costMicro, charged, createdAt, settledAt) VALUES ('${key}', 'u1', 1, 'settled', ${cm}, 0, '${settledAt}', '${settledAt}')`,
       );
 
-  it("books land in their JST hour and day, both sides", async () => {
-    // 23:59 JST on the 10th and 00:00 JST on the 11th: different days and hours.
+  it("books land in the viewer's hour and day, both sides", async () => {
+    // 23:59 on the 10th and 00:00 on the 11th at UTC+9: different days and hours.
     await bookCost(
       d1,
       { userId: "u1", feature: "words.tts", usd: 1 },
@@ -135,7 +144,7 @@ describe("from D1", () => {
     paid("read.gloss:u1:x", 6_000_000, "2026-11-10T15:10:00.000Z");
     paid("read.gloss:u1:y", 6_000_000, "2026-11-08T00:00:00.000Z"); // outside the hours
 
-    const days = await costDayMatrix(d1, { from: "2026-11-10", to: "2026-11-11" });
+    const days = await costDayMatrix(d1, { from: "2026-11-10", to: "2026-11-11" }, P9);
     expect(days.rows.map((r) => [r.bucket, r.total.freeMicro])).toEqual([
       ["2026-11-10", 1e6],
       ["2026-11-11", 6e6],
@@ -143,7 +152,7 @@ describe("from D1", () => {
     expect(days.rows[1].cells["read.gloss"].paidCredits).toBe(6);
 
     const range = { from: "2026-11-01", to: "2026-11-11" };
-    const hours = await costHourMatrix(d1, hourWindow(48, range, NOW));
+    const hours = await costHourMatrix(d1, hourWindow(48, range, NOW, P9));
     const by = Object.fromEntries(hours.rows.map((r) => [r.bucket, r]));
     expect(by["2026-11-10T23"].total.freeMicro).toBe(1e6);
     expect(by["2026-11-11T00"].cells["words.tts"].freeMicro).toBe(2e6);
@@ -151,11 +160,21 @@ describe("from D1", () => {
     expect(by["2026-11-11T00"].cells["read.gloss"].paidCredits).toBe(6);
     expect(hours.totals.paidCredits).toBe(6);
     expect(hours.window).toEqual({ hours: 48, from: "2026-11-09T11", to: "2026-11-11T10" });
+    // The same rows for a UTC viewer: all on the 10th, in hour 14 and 15.
+    const utc = await costDayMatrix(d1, { from: "2026-11-10", to: "2026-11-11" });
+    expect(utc.rows.map((r) => [r.bucket, r.total.freeMicro])).toEqual([
+      ["2026-11-10", 7e6],
+      ["2026-11-11", 0],
+    ]);
+    const utcHours = await costHourMatrix(d1, hourWindow(48, range, NOW));
+    const u = Object.fromEntries(utcHours.rows.map((r) => [r.bucket, r]));
+    expect(u["2026-11-10T14"].total.freeMicro).toBe(1e6);
+    expect(u["2026-11-10T15"].total.freeMicro).toBe(6e6);
   });
 
   it("the API serves both views to an admin, 404 to anyone else", async () => {
     const days = await costsGet(
-      new Request("https://x/api/dev/costs?from=2026-11-10&to=2026-11-11&view=days"),
+      new Request("https://x/api/dev/costs?from=2026-11-10&to=2026-11-11&view=days&tz=540"),
       true,
       d1,
       NOW,

@@ -6,6 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
+  closedPageLang,
   AUTH_PATH,
   DEFAULT_NEXT,
   FAILS_PER_IP,
@@ -420,20 +421,41 @@ describe("a browser opening a preview link directly", () => {
     expect(csp).not.toContain("unsafe");
     expect(r.headers["cache-control"]).toContain("no-store");
     expect(r.body).toContain('href="https://lianki.com/dev/preview?to=%2Fen%2Fread%3Flist%3Dall"');
-    expect(r.body).toContain("从 lianki.com 进入预览版 / Enter via lianki.com");
+    // No Accept-Language: English first (the default language).
+    expect(r.body).toContain('<html lang="en">');
+    expect(r.body).toContain("Enter via lianki.com / ");
     expect(r.body).not.toMatch(/<script|src=|@import|url\(/i);
+    // A Chinese browser gets the Chinese page.
+    const zh = await h.req("/en/read?list=all", {
+      ...NAV,
+      "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+    });
+    if (zh.kind !== "respond") return;
+    expect(zh.body).toContain('<html lang="zh">');
+    expect(zh.body).toContain("从 lianki.com 进入预览版 / Enter via lianki.com");
     expect(r.body).not.toMatch(/rgb|#[0-9a-f]{3,6}\b/i);
     expect(h.verifyCalls).toEqual([]);
+  });
+
+  test("the closed page's language: the visitor's first choice if Chinese, else English", () => {
+    expect(closedPageLang(undefined)).toBe("en");
+    expect(closedPageLang("")).toBe("en");
+    expect(closedPageLang("zh-TW")).toBe("zh");
+    expect(closedPageLang("ja,zh;q=0.9")).toBe("en");
+    expect(closedPageLang("en;q=0.5, zh-CN")).toBe("zh");
+    expect(closedPageLang("zh;q=0, fr")).toBe("en");
+    expect(closedPageLang("*, zh;q=0.1")).toBe("zh");
+    expect(closedPageLang("zhx, de;q=bad")).toBe("en");
   });
 
   test("the style is allowed by its hash, and only it", async () => {
     const h = setup();
     const r = await h.req("/", NAV);
     if (r.kind !== "respond") throw new Error("no response");
-    const css = /<style>([^<]*)<\/style>/.exec(r.body)?.[1] ?? "";
+    const css = /<style>([^<]*)<\/style>/.exec(String(r.body))?.[1] ?? "";
     const hash = new Bun.CryptoHasher("sha256").update(css).digest("base64");
     expect(String(r.headers["content-security-policy"])).toContain(`'sha256-${hash}'`);
-    expect(r.body.match(/<style>/g)?.length).toBe(1);
+    expect(String(r.body).match(/<style>/g)?.length).toBe(1);
   });
 
   test("assets, APIs and sockets keep the plain 503", async () => {
@@ -468,7 +490,7 @@ describe("a browser opening a preview link directly", () => {
       const r = await h.req(u, NAV);
       expect(status(r)).toBe(503);
       if (r.kind !== "respond") continue;
-      expect([u, /lk(dev|hand)_/i.test(decodeURIComponent(r.body))]).toEqual([u, false]);
+      expect([u, /lk(dev|hand)_/i.test(decodeURIComponent(String(r.body)))]).toEqual([u, false]);
       expect(r.body).not.toContain("gggggggg");
     }
   });

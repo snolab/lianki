@@ -1,5 +1,6 @@
 import { mock } from "bun:test";
 import sealSwitch from "@/app/components/seal-switch.content";
+import preferredLangs from "@/app/components/preferred-langs.content";
 
 /**
  * `useIntlayer` for markup rendered in the unit suites, where no intlayer
@@ -9,6 +10,7 @@ import sealSwitch from "@/app/components/seal-switch.content";
 type Leaf = { nodeType: string; translation: Record<string, string> };
 const DICTS: Record<string, { content: Record<string, Leaf> }> = {
   "seal-switch": sealSwitch as never,
+  "preferred-langs": preferredLangs as never,
 };
 
 export function mockIntlayer(locale = "zh") {
@@ -20,5 +22,6 @@ export function mockIntlayer(locale = "zh") {
         Object.entries(d.content).map(([k, v]) => [k, { value: v.translation[locale] }]),
       );
     },
+    useLocale: () => ({ locale }),
   }));
 }

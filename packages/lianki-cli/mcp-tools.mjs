@@ -453,7 +453,8 @@ export function waitChat(io, { after, timeoutSec } = {}) {
           ),
         );
         try {
-          ws.send(JSON.stringify({ type: "auth", token: io.token, history: after ? WAIT_HISTORY : 1 }));
+          // A wait is a reader, never a resident listener (the hub's lane registry).
+          ws.send(JSON.stringify({ type: "auth", token: io.token, history: after ? WAIT_HISTORY : 1, mode: "reader" }));
         } catch (e) {
           finish(new CliError("network", EXIT.server, `cannot reach lianki.com: ${e?.message ?? e}`));
         }

@@ -60,6 +60,53 @@ its own repo as is. Lianki passes what it needs as `DebugChatProps`; the wire
 types and the UI helpers are in `src/wire.ts`, which `lib/dev-eval.ts`
 re-exports for the hub and the sender.
 
+## Pending input and durable chat acceptance
+
+Typed drafts resume their usual three-second pause after reload. Voice drafts
+and recovered interim words use the existing voice join cadence. Pending
+input remains scoped to the signed-in account and tab; a hot swap shares that
+same state. A durable outgoing entry is written before the input is cleared,
+with one stable client `id` and the original voice/context metadata. It remains
+a pending row until the hub acknowledges it. A successful WebSocket `send`
+alone is not acceptance. There is no retry button: reconnect and authoritative
+history reconciliation retry pending entries quietly, in FIFO order, with one
+unacknowledged entry in flight. A failed durable write leaves the draft intact.
+
+The authenticated page sends its existing `{type:"chat", id, text, ...}` frame.
+The hub responds on that page's socket with either:
+
+- `{type:"chat-ack", id, seq}` after durable acceptance;
+- `{type:"chat-rejected", id, reason}` for an explicit refusal of that ID.
+
+Network failures remain pending and do not produce rejection prompts. An
+explicit refusal retains the original text and reason as a blocked row, prompts
+once per ID and lets later pending entries proceed; it is not automatically
+replayed after reload. Malformed or unrelated rejection messages do not reject
+the current input. History and merged voice-part IDs also reconcile pending
+items, so an echo arriving before an acknowledgement does not duplicate a row.
+
+`seq` is the existing server sequence of the authenticated thread: owner
+`seq`/`msg:<seq>`, or a friend's `t:<thread>:seq`/`t:<thread>:msg:<seq>`. There
+is no second delivery sequence. A newly visible message uses its existing
+message sequence; accepted input merged into another line, suppressed as an
+echo, or deduplicated against another mic also consumes this same thread
+sequence even when it creates no visible row. Receipts explain these gaps to
+future loss recovery and read cursors. An acknowledgement proves durable
+acceptance, not that a line was visible, delivered to another device, or read.
+
+Accepted and refused client IDs have durable receipts scoped to that thread,
+independent of bounded visible history. A retransmission reuses the original
+acceptance sequence or refusal reason without posting, merging, invoking AI or
+charging again. The client stores only the largest valid server acknowledgement
+cursor; duplicate or out-of-order receipts cannot move it backwards. Storage
+failures after acknowledgement can leave stale local bytes, so hub receipts
+remain the authority when a later page retries them.
+
+Roll out the hub protocol first, verify durable receipts and compatibility
+with existing clients, then ship the pending-input client. Old clients ignore
+the additional response frames. Do not enable replay against an older hub
+that cannot durably acknowledge and deduplicate the same client ID.
+
 | File (`packages/debug-chat/src/` unless a path is given) | Role                                                     |
 | -------------------------------------------------------- | -------------------------------------------------------- |
 | `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
@@ -966,6 +1013,51 @@ polishes are not capped (2026-11-14), and a settled line takes no more parts. Hu
 read per 30 s on voice lines (`flag()`'s budget is 60 a minute), one storage write per
 merge, one uncached `flag()` read per passage for `stt.polish`.
 
+### Whisper re-listens to the whole run
+
+The owner, 2026-11-15 03:17 JST: "用 Whisper 整段重听 … 作为第二步 polish。然后 agent
+的各种错字修复、大意理解、括号补充信息作为第三级 polish". Three readings of his speech:
+
+1. **Streaming** (SenseVoice on his Mac), part by part, merged into one line as above.
+2. **Whisper** (Large V3 Turbo, mlx-whisper on the same Mac): at the run's passage end
+   the Mac re-reads the run's whole audio from its RAM ring and the line takes that text.
+3. **Polish** (the hub's automatic one, or a lane's on `polish-due`) reads level 2.
+
+Flag **`stt.whisper-recheck`** (`/dev/flags#stt.whisper-recheck`, on by default,
+audience owner, read by the root layout with the dev grant); it needs `stt.merge`,
+since only a merged line has a passage end. Config: `stt.recheckMinSec` (1.5 s),
+`stt.recheckMaxSec` (60 s), `stt.recheckTimeoutMs` (8 s). Code:
+`packages/debug-chat/src/whisper-recheck.ts`; the Mac's side is docs/local-stt.md,
+"On-demand Whisper recheck".
+
+- **When.** The page's passage end (`PASSAGE_END_MS` with no speech) for a merged line
+  that nobody touched since the merge: not settled, not polished, not a passage, every
+  part from the local STT. Its span, first part's `t_speechStart` to the last part's
+  `t_speechEnd`, is within min and max. Otherwise the passage end goes at once, as before.
+- **Asking the Mac.** `__lkMic.recheck()` (mic session v16) on the local STT socket in
+  use, only while it is up (a new socket holds none of the run's audio):
+  `{t:"recheck", auto:true, run:<line id>, fromAgoMs, toAgoMs}`. The window is sent
+  as durations before now on the page's clock, so the Mac's clock never has to agree.
+- **The answer.** `ok:true` with text, for this run, and the line still exactly as asked
+  (same parts, same text): the page sends `{type:"passage-end", recheck:{id, parts,
+  text, engine, lang}}`. A failure, `recheck busy`, a timeout, another run, or a line
+  that moved on: a plain passage end, the line keeps level 1. A part that joined while
+  Whisper read sends nothing: the next passage end re-reads the longer run. One run is
+  never asked twice at once.
+- **The hub** (`passageEnd`, `applyRecheck`) checks it again on the stored line, then
+  sets `text` and `raw` to Whisper's reading, `edited.by` stays `merge` (no read-back of
+  a polish), and `recheck: {at, engine, lang, heard, text}` keeps the streaming text.
+  Then it settles the line and sends `polish-due` with the new text: one LLM polish per
+  run, after level 2. Pages and listeners hear one more `edited` (with `recheck`).
+  Logged `debug.recheck` (lengths only) or `debug.recheck-refused` (why).
+- **Undo** splits it back into the parts as heard; the reading goes with the merge.
+- **On the page.** The message details (double tap, right click) list the readings,
+  "Heard while speaking", "Re-listened whole (mlx-whisper)" and "Polished"
+  (`levelHeard`, `levelWhisper`, `levelPolished`, 16 locales); nothing else changes.
+- **Cost.** The polish waits for Whisper, at most `stt.recheckTimeoutMs`. The audio never
+  leaves the Mac's RAM. Tests: `unit/whisper-recheck.test.ts`, the hub's in
+  `unit/debug-hub.test.ts` ("Whisper's reading…"), the Mac's in `test_recheck.py`.
+
 ### Undo
 
 A small ↩ beside the sparkle on a merged line (`debug-chat-unmerge`). `{type:"unmerge",
@@ -1019,6 +1111,19 @@ the hub's `twoMic()`.
   above handles those); a line the Mac said is someone else's with one it did not;
   summaries, passages and hidden lines.
 
+## Per-message voice details
+
+Voice inputs keep their recognition route and model inside message details, rather
+than printing a long model label beside the text. The small voice mark opens those
+details directly; later sentences in a grouped owner passage retain the ordinary
+message-details action without repeating the speaker mark. The panel shows recorded
+speaker decisions and scores, recognition and whole-run recheck models, polishing
+actor, actual voices heard on this device, and the existing timing breakdown.
+Missing observations remain absent: current settings do not establish which model
+or voice produced an earlier message. The local recognition route identifies a
+speech server, not the phone capturing the microphone. Private device slugs and
+signed proof text are not promoted into the structured voice rows.
+
 ## Voiceprint: enrolment and delete by a tap
 
 The chat menu's **Voiceprint** (owner pages with a local STT) opens a panel
@@ -1029,7 +1134,7 @@ features, never audio, encrypted in his account; flag `stt.voiceprint-cloud`),
 and "Delete my voiceprint" (a confirming tap; the Mac and the account). The
 print lives on the Mac, and a copy of its features in his account once he
 saves it there; voice lines it verified as him get a small green
-check (`VoiceMark`). The same rule as recording: starting enrolment and
+sound-wave mark (`VoiceMark`). The same rule as recording: starting enrolment and
 deleting are taps, never voice. Details: [local-stt.md](local-stt.md),
 "Voiceprint".
 
@@ -2079,8 +2184,8 @@ closes the old inbox and ignores late callbacks. No other `/api/dev` gate change
 The old `/api/dev/inbox/**` URLs are exact thin forwards, preserving existing
 widgets and the agent's single-use ticket downloads.
 
-| route                        | what                                                                                                 |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| route                       | what                                                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `POST /api/my/inbox`        | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
 | `GET /api/my/inbox`         | his files and usage (settles accrued storage cost)                                                   |
 | `PATCH /api/my/inbox`       | `{ids, line}`: the chat line they were sent with                                                     |

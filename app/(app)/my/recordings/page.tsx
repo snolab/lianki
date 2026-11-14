@@ -16,9 +16,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * /my/recordings (docs/recordings.md): the account's kept mic recordings, by
- * day. Signed-in only; 404 unless the flag `voice.recordings` is on and the
- * account holds `dev` (the same gate as /api/my/recordings).
+ * /my/recordings (docs/recordings.md): the account's kept mic recordings, one
+ * continuous journal dated in the viewer's zone. Signed-in only; 404 unless
+ * the flag `voice.recordings` is on and the account holds `dev` (the same
+ * gate as /api/my/recordings).
  */
 export default async function RecordingsPage() {
   const user = await authUserOrNull();

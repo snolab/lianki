@@ -3,6 +3,8 @@
 import { previewDoc } from "@/lib/mail-templates/layout";
 import { useCallback, useEffect, useState } from "react";
 import { useIntlayer } from "next-intlayer";
+import { useDeviceZone } from "@/app/components/useDeviceZone";
+import { zoneLabel, zoneOffsetMin } from "@/lib/time-zone";
 import { LOCALE_LABELS } from "@/lib/constants";
 import { VirtualList } from "@/app/components/VirtualList";
 import { useInfiniteList } from "@/app/components/useInfiniteList";
@@ -69,8 +71,6 @@ type Suppression = {
   masked: boolean | null;
 };
 
-const JST = 9 * 3600_000;
-const fmt = (ms: number) => new Date(ms + JST).toISOString().slice(0, 16).replace("T", " ");
 const fill = (s: string, vars: Record<string, string | number>) =>
   s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 const camel = (id: string) => id.replace(/-(\w)/g, (_m, c: string) => c.toUpperCase());
@@ -135,6 +135,13 @@ const REFUSAL_KEY: Record<string, string> = {
 
 export default function MailsLog() {
   const c = useIntlayer("dev-mails");
+  // Times and days in the viewer's device zone (unknown until the page runs in the browser).
+  const zone = useDeviceZone();
+  const zoneText = zone ? zoneLabel(zone) : "";
+  const fmt = (ms: number) =>
+    zone
+      ? new Date(ms + zoneOffsetMin(zone, ms) * 60_000).toISOString().slice(0, 16).replace("T", " ")
+      : "";
   const tpl = useIntlayer("dev-templates");
   const t = c as unknown as Record<string, { value: string }> & {
     statuses: Record<string, { value: string }>;
@@ -173,13 +180,14 @@ export default function MailsLog() {
   // end; a filter or search starts over from the newest.
   const logList = useInfiniteList<Item, number>({
     getKey: (r) => r.id,
-    deps: [filters],
-    enabled: tab === "log",
+    deps: [filters, zone],
+    enabled: tab === "log" && zone !== null,
     fetchBatch: async (page) => {
       const at = page ?? 0;
       const p = new URLSearchParams();
       for (const [k, v] of Object.entries(filters)) if (v) p.set(k, v);
       p.set("page", String(at));
+      if (zone) p.set("tz", String(zoneOffsetMin(zone)));
       const r = await fetch(`/api/dev/mails?${p}`, { cache: "no-store" });
       if (r.status === 404) location.reload();
       if (!r.ok) {
@@ -449,7 +457,7 @@ export default function MailsLog() {
 
           {days.length > 0 && (
             <section className="space-y-1" data-testid="mails-per-day">
-              <h2 className="text-sm font-semibold">{c.perDay}</h2>
+              <h2 className="text-sm font-semibold">{fill(c.perDay.value, { zone: zoneText })}</h2>
               <ul className="text-xs space-y-0.5">
                 {days.map(([day, e]) => (
                   <li key={day} className="flex flex-wrap gap-x-2 gap-y-0.5">
@@ -605,7 +613,7 @@ export default function MailsLog() {
             {detail && (
               <>
                 <dl className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-x-3 gap-y-1">
-                  <dt className="opacity-70">{c.time}</dt>
+                  <dt className="opacity-70">{fill(c.time.value, { zone: zoneText })}</dt>
                   <dd className="font-mono">{fmt(detail.mail.createdAt)}</dd>
                   <dt className="opacity-70">{c.recipient}</dt>
                   <dd className="break-all" data-testid="mails-d-recipient">

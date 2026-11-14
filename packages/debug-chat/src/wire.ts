@@ -7,6 +7,7 @@
 
 import type { Ask, AskAnswer } from "./ask";
 import type { LaneId, VoiceId } from "./voices";
+import type { LaneEvent } from "./lane-events";
 
 export * from "./node-path";
 
@@ -125,6 +126,12 @@ export type ChatMessage = {
    */
   parts?: MergedPart[];
   /**
+   * A merged line re-heard whole by the Mac's Whisper when the run ended (RecheckMark;
+   * flag stt.whisper-recheck, whisper-recheck.ts): `text` and `raw` became its
+   * reading, and the streaming text is kept here. Stamped by the hub only.
+   */
+  recheck?: RecheckMark;
+  /**
    * A voice line's timestamps on the sender's clock (VoiceTiming; the page's
    * latency record, packages/debug-chat/src/latency.ts). Optional: older pages
    * send none, and an older hub drops it.
@@ -212,6 +219,12 @@ export type ChatMessage = {
     /** "main" / "blocked": the lane (or "owner") it is for. */
     lane?: string;
   };
+  /**
+   * Stamped by the hub only (workers/push/src/lane-registry.ts): a system line
+   * about a lane (joined, listening live, read-only, left, muted; lane-events.ts).
+   * Its text is in the thread's language; a page shows it in its own.
+   */
+  laneEvent?: LaneEvent;
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
@@ -268,6 +281,13 @@ export type EchoMark = {
   of: string;
   sim: number;
 };
+/**
+ * The second of three readings of his speech (docs/dev-debug-widget.md, "Whisper
+ * re-listens to the whole run"): `heard` the streaming STT's text (level 1), `text`
+ * what Whisper read from the run's whole audio (level 2), its `engine` and `lang`.
+ * A polish after it (level 3) is the line's `text` once `edited.by` is not "merge".
+ */
+export type RecheckMark = { at: number; engine: string; lang?: string; heard: string; text: string };
 /** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
 export type MergedPart = {
   id: string;
@@ -322,6 +342,8 @@ export type EditedEvent = {
   parts?: MergedPart[];
   /** A merge: the utterance that just joined (the hub's answer to its `id`). */
   merged?: { id: string; text: string };
+  /** A merged line re-heard by Whisper at its run's end: `text` and `raw` are its reading. */
+  recheck?: RecheckMark;
   /** An undo: the lines this one goes back to, in order; the first keeps this id. */
   split?: ChatMessage[];
   /** A summary of a run of lines starting at `id` (its other lines are hidden). */
@@ -351,6 +373,7 @@ export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "typ
     raw: e.raw,
     edited: e.edited,
     ...(e.parts ? { parts: e.parts } : {}),
+    ...(e.recheck ? { recheck: e.recheck } : {}),
     ...(e.summary ? { summary: e.summary } : {}),
     ...(e.passage ? { passage: e.passage } : {}),
   };
@@ -971,6 +994,14 @@ export type ChatStrings = {
   etaGanttLinear: string;
   /** The other of the two buttons of that switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis logarithmically, near times wide and far times compressed, so minutes and days fit one screen. A single short word for 'logarithmic' as on a chart's axis, abbreviated if usual (对数 in Chinese, 'Log' in English); the button is narrow. */
   etaGanttLog: string;
+  /** Screen-reader label and tooltip of the gear button in the header of the full-screen timeline (Gantt): toggles the view settings panel. */
+  etaGanttSettings: string;
+  /** Section heading in the timeline settings panel for completed tasks visibility control. */
+  etaGanttHideDone: string;
+  /** Button in the timeline settings panel to hide completed tasks. */
+  etaGanttHide: string;
+  /** Button in the timeline settings panel to show completed tasks. */
+  etaGanttShow: string;
   /** A task waiting for the owner (Gantt and list): the red mark's label, and before its reminder time. */
   etaWaitingYou: string;
   /** The full-screen Gantt's one-line legend: the underline is the reported progress, the red line now. */
@@ -1177,6 +1208,10 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaGanttScale: "Time axis",
   etaGanttLinear: "Linear",
   etaGanttLog: "Log",
+  etaGanttSettings: "Timeline settings",
+  etaGanttHideDone: "Completed tasks",
+  etaGanttHide: "Hide",
+  etaGanttShow: "Show",
   etaWaitingYou: "Waiting for you",
   etaGanttLegend: "Underline = reported progress · red line = now",
   etaReminder: "reminder in {t}",

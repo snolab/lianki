@@ -83,17 +83,24 @@ const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(e.message));
 try {
   const DAY = "2026-11-14";
-  const clips = ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"].map((id) => ({
+  // One feed, newest first (the API's order): two clips a minute apart, one
+  // half an hour later — a journal shows a time at the first and the third only.
+  const T = 1794614400000;
+  const clips = [
+    ["cccccccccccccccc", T + 30 * 60_000],
+    ["bbbbbbbbbbbbbbbb", T + 60_000],
+    ["aaaaaaaaaaaaaaaa", T],
+  ].map(([id, at]) => ({
     id,
     day: DAY,
-    at: 1794614400000,
+    at,
     durationMs: 1000,
     text: "Fixture transcript",
     mode: "active",
     source: "local",
     speaker: null,
   }));
-  let failDay = true;
+  let failList = true;
   let failDelete = true;
   const pending = [];
   await page.route("**/api/my/recordings**", async (route) => {
@@ -108,28 +115,42 @@ try {
     }
     // No audio in QA: a clip answers 404, so the player only marks the paragraph.
     if (u.searchParams.has("clip")) return route.fulfill({ status: 404, json: {} });
-    if (u.searchParams.has("day")) {
-      if (failDay) {
-        failDay = false;
-        return route.fulfill({ status: 503, json: {} });
-      }
-      return route.fulfill({ json: { clips } });
+    if (u.searchParams.has("day")) throw new Error("the page asked for a day; it reads the feed");
+    if (failList) {
+      failList = false;
+      return route.fulfill({ status: 503, json: {} });
     }
-    return route.fulfill({
-      json: { days: [{ day: DAY, clips: 2, ms: 2000, bytes: 100 }], more: false },
-    });
+    return route.fulfill({ json: { clips, more: false } });
   });
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto(`${server.url}?lang=de`);
-  await page.locator('[data-qa="recordings-day"] button[aria-expanded]').click();
-  await page.getByRole("alert").waitFor();
   await page.getByRole("button", { name: "Erneut versuchen", exact: true }).click();
-  await page.locator('[data-qa="recordings-clip"]').nth(1).waitFor();
-  console.log("PASS failed load -> explicit retry -> two clips");
-  await page.locator('[data-qa="recordings-bar"]').waitFor();
+  await page.locator('[data-qa="recordings-clip"]').nth(2).waitFor();
+  console.log("PASS failed load -> explicit retry -> three clips");
+  const view = await page.evaluate(() => ({
+    days: document.querySelectorAll('[data-qa="recordings-day"]').length,
+    order: [...document.querySelectorAll('[data-qa="recordings-clip"]')].map((e) => e.dataset.clip),
+    times: document.querySelectorAll('[data-qa="recordings-time"]').length,
+    dayButtons: document.querySelectorAll(
+      '[data-qa="recordings-download"],[data-qa="recordings-delete-day"]',
+    ).length,
+  }));
+  if (
+    view.days !== 1 ||
+    view.times !== 2 ||
+    view.dayButtons !== 0 ||
+    view.order.join() !==
+      [...clips]
+        .reverse()
+        .map((c) => c.id)
+        .join()
+  )
+    throw new Error(`Journal: ${JSON.stringify(view)}`);
+  console.log("PASS one date heading, oldest first, a time only at the start and after the pause");
   await page.locator('[data-qa="recordings-text"]').nth(1).click();
   await page.locator(`[data-clip="${clips[1].id}"][data-current]`).waitFor();
-  console.log("PASS a tap on a paragraph makes it the player's current clip; the day bar shows");
+  await page.locator('[data-qa="recordings-bar"]').waitFor();
+  console.log("PASS a tap on a paragraph makes it the player's current clip; the date's bar shows");
   // QA_SHOT_DIR=… saves phone-size shots, light and dark, for a look by eye.
   if (process.env.QA_SHOT_DIR)
     for (const scheme of ["light", "dark"]) {
@@ -150,19 +171,17 @@ try {
     .getByRole("alert")
     .filter({ hasText: "Aufnahmen konnten nicht gelöscht werden" })
     .waitFor();
-  if ((await page.locator('[data-qa="recordings-clip"]').count()) !== 2)
+  if ((await page.locator('[data-qa="recordings-clip"]').count()) !== 3)
     throw new Error("Failed deletion removed a clip");
   console.log("PASS failed deletion keeps clips and reports a retryable error");
   for (const lang of Object.keys(dictionaries["my-recordings"].title.translation)) {
     await page.setViewportSize({ width: 320, height: 800 });
     await page.goto(`${server.url}?lang=${lang}`);
     await page.evaluate(() => document.documentElement.style.setProperty("--lk-fs-ui", "1.5"));
-    await page.locator('[data-qa="recordings-day"] button[aria-expanded]').click();
-    await page.locator('[data-qa="recordings-clip"]').nth(1).waitFor();
-    for (const steps of [
-      ['[data-qa="recordings-delete-day"]'],
-      ['[data-qa="recordings-more"]', '[data-qa="recordings-delete-clip"]'],
-    ]) {
+    await page.locator('[data-qa="recordings-clip"]').nth(2).waitFor();
+    await page.locator('[data-qa="recordings-text"]').first().click();
+    await page.locator('[data-qa="recordings-bar"]').waitFor();
+    for (const steps of [['[data-qa="recordings-more"]', '[data-qa="recordings-delete-clip"]']]) {
       for (const selector of steps) await page.locator(selector).first().click();
       const overflow = await page.evaluate(() => ({
         width: document.documentElement.scrollWidth,
@@ -193,7 +212,7 @@ try {
     );
     if (menuOut.length) throw new Error(`Menu overflow ${lang}: ${JSON.stringify(menuOut)}`);
     await page.keyboard.press("Escape");
-    console.log(`PASS ${lang} 320px 150% day and clip confirmation, menu, bar`);
+    console.log(`PASS ${lang} 320px 150% clip confirmation, menu, bar`);
   }
   for (const id of clips.map((c) => c.id)) {
     await page.locator(`[data-clip="${id}"] [data-qa="recordings-more"]`).click();
@@ -202,12 +221,12 @@ try {
   }
   await page.waitForFunction(() => true);
   const deadline = Date.now() + 5000;
-  while (pending.length < 2 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
-  if (pending.length !== 2) throw new Error("Expected two pending deletes");
-  await pending[1].fulfill({ json: { ok: true, deleted: 1 } });
-  await page.locator(`[data-clip="${clips[1].id}"]`).waitFor({ state: "detached" });
-  await pending[0].fulfill({ json: { ok: true, deleted: 1 } });
-  await page.locator(`[data-clip="${clips[0].id}"]`).waitFor({ state: "detached" });
+  while (pending.length < 3 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+  if (pending.length !== 3) throw new Error("Expected three pending deletes");
+  for (const i of [2, 0, 1]) {
+    await pending[i].fulfill({ json: { ok: true, deleted: 1 } });
+    await page.locator(`[data-clip="${clips[i].id}"]`).waitFor({ state: "detached" });
+  }
   const remaining = await page.locator('[data-qa="recordings-clip"]').count();
   console.log("concurrent deletion remaining clips:", remaining);
   if (remaining !== 0) throw new Error("A deleted clip reappeared after concurrent deletes");
