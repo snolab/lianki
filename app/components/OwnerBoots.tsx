@@ -25,7 +25,13 @@ export function OwnerBoots({
   talkOver = false,
   box = null,
   autoUpdate = false,
+  account = null,
+  cacheLines = 0,
 }: {
+  /** The signed-in account's id (null: a guest): keys the chat's device copy (lib/chat-cache.ts). */
+  account?: string | null;
+  /** Config `chat.cacheLines`: the chat's last lines kept on the device; 0 = none. */
+  cacheLines?: number;
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic. */
   talkOver?: boolean;
   /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
@@ -68,6 +74,8 @@ export function OwnerBoots({
         cloudVoices={cloudVoices}
         talkOver={talkOver}
         box={box}
+        account={account}
+        cacheLines={cacheLines}
       />
     </>
   );
