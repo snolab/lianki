@@ -430,10 +430,10 @@ describe("a browser opening a preview link directly", () => {
     const h = setup();
     const r = await h.req("/", NAV);
     if (r.kind !== "respond") throw new Error("no response");
-    const css = /<style>([^<]*)<\/style>/.exec(r.body)?.[1] ?? "";
+    const css = /<style>([^<]*)<\/style>/.exec(String(r.body))?.[1] ?? "";
     const hash = new Bun.CryptoHasher("sha256").update(css).digest("base64");
     expect(String(r.headers["content-security-policy"])).toContain(`'sha256-${hash}'`);
-    expect(r.body.match(/<style>/g)?.length).toBe(1);
+    expect(String(r.body).match(/<style>/g)?.length).toBe(1);
   });
 
   test("assets, APIs and sockets keep the plain 503", async () => {
@@ -468,7 +468,7 @@ describe("a browser opening a preview link directly", () => {
       const r = await h.req(u, NAV);
       expect(status(r)).toBe(503);
       if (r.kind !== "respond") continue;
-      expect([u, /lk(dev|hand)_/i.test(decodeURIComponent(r.body))]).toEqual([u, false]);
+      expect([u, /lk(dev|hand)_/i.test(decodeURIComponent(String(r.body)))]).toEqual([u, false]);
       expect(r.body).not.toContain("gggggggg");
     }
   });

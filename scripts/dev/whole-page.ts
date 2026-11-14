@@ -29,6 +29,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
+import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import tls from "node:tls";
 import { DEV_BRIDGE_HEADER } from "../../lib/dev-bridge";
@@ -74,6 +75,7 @@ import {
 } from "./preview-gate";
 import { PreviewUserscript, previewScriptRoute } from "./preview-userscript";
 import { devForwardHeaders } from "./whole-page-forward";
+import { devPwaAssets, devPwaFile } from "../../lib/dev-site/pwa";
 
 const STATE_FILE = ".dev-whole-page.json";
 const SESSION_CACHE_MS = 60_000;
@@ -335,6 +337,8 @@ async function serve() {
       return [];
     }
   };
+  // 开发站's manifest, service worker and badged icons (lib/dev-site/pwa.ts).
+  const devPwaAsset = devPwaAssets((name) => readFileSync(join(process.cwd(), "public", name)));
   const gate = publicHost
     ? createGate({
         publicHost,
@@ -346,6 +350,10 @@ async function serve() {
           return r.ok ? ((await r.json()) as Verified) : null;
         },
         active: activeCall,
+        pwa: (path) => {
+          const file = devPwaFile(path);
+          return file ? devPwaAsset(file) : null;
+        },
         log: (m) => console.error(`[whole-page] ${m}`),
       })
     : undefined;
