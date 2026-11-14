@@ -52,6 +52,16 @@ describe("devBridgeUser", () => {
     expect(lookups).toEqual([OWNER.email]);
   });
 
+  test("/api/my/recordings, any method: the same owner (the preview's recordings)", async () => {
+    for (const method of ["GET", "POST", "DELETE"]) {
+      const r = new Request("https://lianki.com/api/my/recordings?day=2026-11-14", {
+        method,
+        headers: { [DEV_BRIDGE_HEADER]: SECRET },
+      });
+      expect(await devBridgeUser(r)).toEqual(OWNER);
+    }
+  });
+
   test("a wrong secret: null, and no lookup", async () => {
     lookups.length = 0;
     expect(await devBridgeUser(req("wrong"))).toBeNull();

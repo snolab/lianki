@@ -13,7 +13,8 @@ export type BridgeUser = {
 /**
  * Who a dev-bridge request is (lib/dev-bridge.ts). Used by only the routes the
  * owner opened to it: /api/debug/identity, /api/words/tts, /api/debug/stt,
- * /api/prefs (his settings, docs/prefs-sync.md).
+ * /api/prefs (his settings, docs/prefs-sync.md), /api/my/recordings (his mic
+ * recordings, every method; docs/recordings.md, "On the preview").
  *
  * - `undefined`: no bridge header — the caller uses the session as usual.
  * - `null`: a header that does not match DEV_BRIDGE_SECRET (or no owner

@@ -12,7 +12,8 @@
  *
  * Auth: `Authorization: Bearer <API token>`, the same token `lianki mcp` and
  * the REST API take. It is not checked here: it is forwarded, with the call,
- * to the main Worker (MAIN) or, for the chat, to lianki-push (PUSH), which
+ * to the main Worker (MAIN) or, for the chat and the progress tools
+ * (/api/version/*), to lianki-push (PUSH), which
  * check it exactly as for any other API request — permissions, expiry,
  * account, rate limits. No header, or the server refusing the token (401),
  * answers HTTP 401 with `WWW-Authenticate: Bearer`. This Worker holds no

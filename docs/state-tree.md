@@ -85,6 +85,13 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   (or a scope above). Any agent may add an /@owner/… to-do whose ref is in
   its scope. Any valid token reads the whole tree (`show`). The token is
   --token, LIANKI_PROGRESS_TOKEN, PROGRESS_TOKEN or .dev.vars.
+  An API token (lk_…, lianki.com/my/preferences → API tokens) holding the
+  `progress` permission (site owners' tokens only) is taken on the same
+  routes: the main Worker checks it, and the hub writes as the root acting
+  as the token's name — the whole tree, every report that agent's, no
+  back-dating. `lianki progress …` (npm), the progress_* MCP tools and
+  `lianki-dev progress` with LIANKI_TOKEN all use it
+  (docs/api-for-agents.md, "Report progress").
 
   ETA pings (flag chat.eta-bar, owner only). --eta is the agent's own
   estimate, given each time it reports: a duration from now (25m, 1h30m), a
