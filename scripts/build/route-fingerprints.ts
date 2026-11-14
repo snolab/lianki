@@ -101,9 +101,11 @@ export function main(
   const nextDir = arg("--next") ?? ".next";
   const out = arg("--out") ?? ".open-next/assets/_lk/route-fp.json";
   // The same expression as next.config.mjs's NEXT_PUBLIC_BUILD_ID.
-  const build = arg("--build") ?? (env.GITHUB_SHA ?? "").slice(0, 20);
+  const build = arg("--build") ?? (env.LIANKI_BUILD_SHA ?? env.GITHUB_SHA ?? "").slice(0, 20);
   if (!build) {
-    console.error("route-fingerprints: no build id (--build, or GITHUB_SHA as in CI)");
+    console.error(
+      "route-fingerprints: no build id (--build, or LIANKI_BUILD_SHA / GITHUB_SHA as in CI)",
+    );
     return 1;
   }
   const force =
