@@ -311,6 +311,16 @@ describe("speaker avatars (another voice on an owner's voice line)", () => {
         voiceAvatar,
       }).seed,
     ).toBe("v1");
+    // An unknown voice with a cluster id is still drawn as him, marked unsure; only "other" gets its own disc.
+    const unsure = lineAvatar(line({ speaker: { decision: "unknown", voice: "s9" } }), {
+      viewer,
+      voiceAvatar,
+    });
+    expect(unsure).toMatchObject({ src: viewer.avatars, seed: "v1", unsure: true });
+    expect(
+      lineAvatar(line({ speaker: { decision: "other", voice: "s9" } }), { viewer, voiceAvatar })
+        .seed,
+    ).toBe("voice:s9");
     // Only the owner's voice lines carry a Mac-signed voice; a friend's or an agent's never does.
     expect(
       lineAvatar(
@@ -329,5 +339,50 @@ describe("speaker avatars (another voice on an owner's voice line)", () => {
         },
       ).seed,
     ).toBe("agent:li");
+  });
+});
+
+import { FOLD_OTHERS_FLAG, isLineFolded, isOtherVoice } from "@lianki/debug-chat/avatar-rules";
+
+describe("isOtherVoice helper", () => {
+  it("true when from owner and speaker decision is other or voice is not me", () => {
+    expect(isOtherVoice({ from: "owner", speaker: { decision: "other" } })).toBe(true);
+    expect(isOtherVoice({ from: "owner", speaker: { decision: "other", voice: "s1" } })).toBe(true);
+    // "unknown" is not "someone else": a short or soft sentence of his own stays his.
+    expect(isOtherVoice({ from: "owner", speaker: { decision: "unknown", voice: "s2" } })).toBe(
+      false,
+    );
+    expect(isOtherVoice({ from: "owner", speaker: { decision: "me", voice: "me" } })).toBe(false);
+    expect(isOtherVoice({ from: "owner", speaker: { decision: "unknown" } })).toBe(false);
+    expect(isOtherVoice({ from: "owner" })).toBe(false);
+    // Never true for agent or friend lines
+    expect(isOtherVoice({ from: "agent", speaker: { decision: "other", voice: "s1" } })).toBe(
+      false,
+    );
+    expect(isOtherVoice({ from: "friend", speaker: { decision: "other", voice: "s1" } })).toBe(
+      false,
+    );
+  });
+});
+
+describe("isLineFolded (voice.fold-others flag control)", () => {
+  const otherMsg = { from: "owner" as const, speaker: { decision: "other" as const, voice: "s1" } };
+  const myMsg = { from: "owner" as const, speaker: { decision: "me" as const, voice: "me" } };
+
+  it("flag FOLD_OTHERS_FLAG is voice.fold-others", () => {
+    expect(FOLD_OTHERS_FLAG).toBe("voice.fold-others");
+  });
+
+  it("flag ON (default): folds other-voice lines unless expanded in tab session", () => {
+    expect(isLineFolded(otherMsg, new Set(), "msg1")).toBe(true);
+    expect(isLineFolded(otherMsg, new Set(), "msg1", true)).toBe(true);
+    expect(isLineFolded(otherMsg, new Set(["msg1"]), "msg1", true)).toBe(false);
+    expect(isLineFolded(myMsg, new Set(), "msg2", true)).toBe(false);
+  });
+
+  it("flag OFF: never folds even if speaker is other", () => {
+    expect(isLineFolded(otherMsg, new Set(), "msg1", false)).toBe(false);
+    expect(isLineFolded(otherMsg, new Set(["msg1"]), "msg1", false)).toBe(false);
+    expect(isLineFolded(myMsg, new Set(), "msg2", false)).toBe(false);
   });
 });

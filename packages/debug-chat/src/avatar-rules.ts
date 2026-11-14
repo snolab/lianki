@@ -43,6 +43,8 @@ export type LineAvatar = {
   initialFrom: string;
   seed: string;
   mine: boolean;
+  /** The voiceprint could not decide (a short or soft sentence): drawn as him, faded, with a "?". */
+  unsure?: boolean;
 };
 
 /**
@@ -107,11 +109,15 @@ export function lineAvatar(
   // avatars"): that voice's own disc, named "another voice", seeded by its id, so
   // two people's lines fall into runs of their own. Only with a voiceprint enrolled
   // (the Mac sets no `voice` without one), and never on "me".
+  // Only a line the voiceprint *decided* was someone else: an "unknown" one (a
+  // short or soft sentence of his own, under the line) keeps his avatar, marked
+  // unsure (owner, 2026-11-14 23:1x: "我的头像怎么变成S了").
   const voice = m.from === "owner" ? m.speaker?.voice : undefined;
-  if (voice && voice !== "me") {
+  if (voice && voice !== "me" && m.speaker?.decision === "other") {
     const name = opts.otherVoice || "another voice";
     return { src: opts.voiceAvatar?.(voice), name, initialFrom: name, seed: `voice:${voice}`, mine };
   }
+  const unsure = m.from === "owner" && m.speaker?.decision === "unknown" ? true : undefined;
   const own = opts.avatarFor?.(m);
   const s: Sender = { ...(mine ? opts.viewer : undefined), ...m.sender, ...own };
   // The host's resolver first; then, on the viewer's own lines, the viewer's
@@ -128,6 +134,7 @@ export function lineAvatar(
     initialFrom: name,
     seed: s.id || m.thread || m.from,
     mine,
+    ...(unsure ? { unsure } : {}),
   };
 }
 
@@ -160,4 +167,65 @@ export function runStarts(
     const p = lines[i - 1];
     return !p || p.seed !== l.seed || p.node !== l.node || Math.abs(l.at - p.at) > gapMs;
   });
+}
+
+/** Own speech can flow as a passage; an undecided enrolled voice stays separate. */
+export function isOwnVoice(m: Pick<ChatMessage, "from" | "source" | "speaker">): boolean {
+  return (
+    m.from === "owner" &&
+    (!m.speaker ||
+      m.speaker.decision === "me" ||
+      (m.speaker.decision === "unknown" && m.speaker.reason === "no-print"))
+  );
+}
+
+/**
+ * Render-only passage boundaries: preserve every message, joining only own
+ * speech across changing avatar presentation. Other senders retain runStarts.
+ * A known person, thread or node change and a long pause always break speech.
+ */
+export function passageStarts(
+  messages: readonly Pick<ChatMessage, "from" | "source" | "speaker" | "sender" | "thread" | "at">[],
+  lines: readonly { seed: string; node?: string; at: number }[],
+  gapMs = RUN_GAP_MS,
+): boolean[] {
+  const starts = runStarts(lines, gapMs);
+  return messages.map((m, i) => {
+    const p = messages[i - 1];
+    if (!p) return true;
+    const own = isOwnVoice(m);
+    if (own !== isOwnVoice(p)) return true;
+    if (!own) return starts[i]!;
+    return (
+      m.thread !== p.thread ||
+      !!(m.sender?.id && p.sender?.id && m.sender.id !== p.sender.id) ||
+      lines[i]?.node !== lines[i - 1]?.node ||
+      Math.abs(m.at - p.at) > gapMs
+    );
+  });
+}
+
+/** Feature flag (lib/flags.ts): other-voice lines fold only while it is on. */
+export const FOLD_OTHERS_FLAG = "voice.fold-others";
+
+/** Whether a chat message was recognized as spoken by someone other than the owner. */
+export function isOtherVoice(m: Pick<ChatMessage, "from" | "speaker">): boolean {
+  if (m.from !== "owner") return false;
+  // Only a decided "other": an "unknown" line (his own, under the line) is not someone else.
+  return m.speaker?.decision === "other";
+}
+
+/**
+ * Whether a chat line should be displayed in folded form.
+ * Controlled by flag `voice.fold-others` (foldOthers): when false, never folds.
+ * When true (default), folds if recognized as other voice and not expanded in the tab.
+ */
+export function isLineFolded(
+  m: Pick<ChatMessage, "from" | "speaker">,
+  expandedIds: ReadonlySet<string>,
+  msgId: string,
+  foldOthers = true,
+): boolean {
+  if (!foldOthers) return false;
+  return isOtherVoice(m) && !expandedIds.has(msgId);
 }

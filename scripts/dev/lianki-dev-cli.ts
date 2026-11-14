@@ -43,6 +43,7 @@ export const errorLine = (exit: number, message: string) =>
 
 export const SUBCOMMANDS = [
   "say",
+  "reply",
   "voices",
   "ask",
   "withdraw",
@@ -67,6 +68,7 @@ export const USAGE: Record<Sub | "main", string> = {
   main: `usage: lianki-dev <command> [options]
 
   say       a chat line to the owner (or --to a thread)
+  reply     answer one of his lines: [--id <id>] [--polish "<his line, tidied>"] "<reply>" (polish = edit, then say)
   voices    the voice ids say --voice takes: the phone's own, and the cloud's
   ask      an ask card with tappable options
   withdraw  withdraw an open ask card he no longer needs to answer
@@ -108,6 +110,11 @@ ${EXITS}
   stdout: the hub's {"type":"said",…} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
+  reply: `usage: lianki-dev reply [--id <msgId>] [--polish "<his line, tidied>"] "<reply text>" | -
+  Answer one of his lines: with --polish, his line is edited first (eval.ts edit), then the reply is said.
+${GLOBAL}
+${EXITS}
+`,
   voices: `usage: lianki-dev voices [--cloud] [--target <text>]
   The ids say --voice takes, as one JSON line (eval.ts voices): each open
   debug page's device voices, read once over the eval channel (needs the

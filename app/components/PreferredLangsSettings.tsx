@@ -167,7 +167,8 @@ export function PreferredLangsSettings() {
 
   return (
     <section
-      className="mb-10 max-w-xl"
+      id="preferred-langs"
+      className="mb-10 max-w-xl scroll-mt-6"
       data-section="preferred-langs"
       data-testid="preferred-langs"
     >

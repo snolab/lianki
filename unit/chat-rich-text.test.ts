@@ -401,6 +401,8 @@ describe("rendering links", () => {
     const walk = (n: ReactNode) => {
       const el = n as ReactElement<{ children?: ReactNode }>;
       if (el?.type === "a") found = el;
+      else if (Array.isArray(n)) n.forEach(walk);
+      else if (el?.props?.children) walk(el.props.children);
     };
     function Probe() {
       const out = (ChatLink as (p: unknown) => ReactNode)({ href, children: "x", onOpenPage });
@@ -436,7 +438,7 @@ describe("rendering links", () => {
     expect(html(richOf("lianki.com/en", "markdown"))).toContain('target="_blank"');
   });
 
-  it("a click stays on the link: in-app when it can, native otherwise, none after a drag", () => {
+  it("a click is reserved for its action menu, never the line or router; drag opens nothing", () => {
     g.location = { hostname: "lianki.com" };
     const opened: string[] = [];
     const a = anchorProps("https://lianki.com/dev/flags#a.b", (p) => opened.push(p));
@@ -467,18 +469,18 @@ describe("rendering links", () => {
     >;
     const tap = ev();
     onClick!(tap);
-    expect(opened).toEqual(["/dev/flags#a.b"]);
+    expect(opened).toEqual([]);
     expect([tap.stops, tap.prevented]).toEqual([1, 1]);
 
     onPointerDown!(ev({ clientX: 0, clientY: 0 }));
     const dragged = ev({ clientX: 50, clientY: 0 });
     onClick!(dragged);
-    expect(opened.length).toBe(1);
+    expect(opened.length).toBe(0);
     expect(dragged.prevented).toBe(1);
 
     const meta = ev({ metaKey: true });
     onClick!(meta);
-    expect([meta.stops, meta.prevented]).toEqual([1, 0]);
+    expect([meta.stops, meta.prevented]).toEqual([1, 1]);
 
     const enter = ev();
     onKeyDown!(enter);

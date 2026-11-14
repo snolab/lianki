@@ -28,6 +28,17 @@ The rules are pure, in `packages/core/src/externalLink.ts`
 (`unit/external-link.test.ts`). QA: `scripts/qa/qa-external-link.mjs`
 (qa:all's `external-link`).
 
+## Chat link actions
+
+Chat message links first show their own action menu (production too). Open
+uses a temporary normal anchor outside the message tree, with no bypass
+attribute, so this same delegated guard receives it. Copy and System menu
+operate on the selected effective URL; the latter calls native share when
+available, or offers a normal anchor for a long press. On preview, Lianki
+links default to the current origin and also offer the production site;
+external URLs are never rewritten and do not offer that extra action.
+Normal page links continue to use the original direct-click behavior.
+
 ## The two bypasses (account settings)
 
 | Box in the dialog            | Local key          | Server key           | Value                                 |

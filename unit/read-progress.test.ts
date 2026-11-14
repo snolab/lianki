@@ -9,6 +9,7 @@ import {
   sentenceCount,
   sentenceRanges,
   sentenceState,
+  showsReading,
   type ReadEvent,
   type ReadProgress,
 } from "@lianki/debug-chat/read-progress";
@@ -153,5 +154,19 @@ describe("resuming after a reload", () => {
         now,
       ).map((r) => r.id),
     ).toEqual(["fresh"]);
+  });
+});
+
+describe("showsReading: which lines are drawn in their sentences", () => {
+  const back = (ids: string[]) => (id: string) => (ids.includes(id) ? "Read back." : undefined);
+  it("an agent line, always", () => {
+    expect(showsReading({ id: "a", from: "agent" }, back([]))).toBe(true);
+  });
+  it("his own line only when it was read back in his clone (polish-readback.ts)", () => {
+    expect(showsReading({ id: "o", from: "owner" }, back(["o"]))).toBe(true);
+    expect(showsReading({ id: "o", from: "owner" }, back([]))).toBe(false);
+  });
+  it("anyone else's line, never", () => {
+    expect(showsReading({ id: "f", from: "friend" }, back(["f"]))).toBe(false);
   });
 });

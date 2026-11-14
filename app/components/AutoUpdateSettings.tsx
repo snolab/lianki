@@ -29,7 +29,7 @@ export function AutoUpdateSettings() {
     };
   }, []);
   return (
-    <section className="mb-10 max-w-md" data-section="auto-update">
+    <section id="auto-update" className="mb-10 max-w-md scroll-mt-6" data-section="auto-update">
       <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">{c.heading}</h2>
       <div className="flex items-center gap-3">
         <span id="pref-auto-update-label" className="flex-1">

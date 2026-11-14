@@ -332,6 +332,24 @@ const dictionary = {
       mr: "चॅटसाठी नाही",
       ko: "채팅용 아님",
     }),
+    otherVoiceFolded: t({
+      en: "Another voice · tap to expand",
+      zh: "别的声音 · 点开",
+      hi: "कोई और आवाज़ · देखने के लिए टैप करें",
+      es: "Otra voz · pulsa para abrir",
+      fr: "Une autre voix · appuyer pour afficher",
+      ar: "صوت آخر · اضغط للفتح",
+      bn: "অন্য একটি কণ্ঠ · খুলতে ট্যাপ করুন",
+      pt: "Outra voz · toque para expandir",
+      ru: "Другой голос · нажмите, чтобы открыть",
+      ur: "ایک اور آواز · کھولنے کے لیے ٹیپ کریں",
+      id: "Suara lain · ketuk untuk membuka",
+      de: "Andere Stimme · zum Öffnen tippen",
+      ja: "別の声 · 点開",
+      sw: "Sauti nyingine · gusa ili ufungue",
+      mr: "दुसरा आवाज · उघडण्यासाठी टॅप करा",
+      ko: "다른 목소리 · 눌러서 펼치기",
+    }),
     otherVoice: t({
       en: "Another voice",
       zh: "别人的声音",
@@ -587,6 +605,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Shown on /my/recordings while a day's clips are being fetched. One word with an ellipsis.",
   passive:
     "Small tag on a clip of /my/recordings: this was heard while the mic was in passive (wake-word) mode, so it was recorded but not sent to the chat. Very short phrase.",
+  otherVoiceFolded:
+    "Folded placeholder for a paragraph spoken by another person on /my/recordings: short one-line button that shows it is another voice and tapping unfolds the full paragraph. Short phrase.",
   otherVoice:
     "Small tag on a clip of /my/recordings: the voice check says the speaker was not the account holder but someone else. Very short noun phrase.",
   listLabel:

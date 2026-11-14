@@ -87,6 +87,7 @@ describe("migrateChatUi", () => {
       spoken: { m1: 2, m2: 1 },
       reading: [{ id: "m3", from: 1, at: 1_000 }],
       attached: { selection: "a quoted line", path: "/words", title: "Words" },
+      expandedOthers: ["m-other-1"],
     };
     expect(migrateChatUi(s, CHAT_UI_VERSION)).toEqual(s);
   });

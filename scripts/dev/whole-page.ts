@@ -73,6 +73,7 @@ import {
   upstreamHeaders,
 } from "./preview-gate";
 import { PreviewUserscript, previewScriptRoute } from "./preview-userscript";
+import { devForwardHeaders } from "./whole-page-forward";
 
 const STATE_FILE = ".dev-whole-page.json";
 const SESSION_CACHE_MS = 60_000;
@@ -190,6 +191,13 @@ async function serve() {
     originUrl.hostname.endsWith(".ts.net") ? `https://${originUrl.hostname}` : "",
   );
 
+  // Validate before next dev starts; this exact configured host also permits
+  // its HMR Origin, which the proxy now preserves instead of rewriting.
+  const publicHost = arg("public-host", "").toLowerCase();
+  if (publicHost && !/^([a-z0-9-]+\.lianki\.com|[a-z0-9-]+\.trycloudflare\.com)$/.test(publicHost))
+    throw new Error(
+      `--public-host must be a lianki.com subdomain or a trycloudflare.com host, got ${publicHost}`,
+    );
   // A clean env: only what the app needs. No RESEND_*/EMAIL_FROM (no mail),
   // no STRIPE_* (no payments), no MONGODB_URI, no OAuth secrets.
   const env: NodeJS.ProcessEnv = {
@@ -199,6 +207,7 @@ async function serve() {
     TERM: process.env.TERM ?? "dumb",
     NEXT_TELEMETRY_DISABLED: "1",
     LIANKI_DEV_WHOLE_PAGE: "1",
+    LIANKI_DEV_PUBLIC_HOST: publicHost,
     LIANKI_DEV_GUARD_SECRET: state.guardSecret,
     // Outgoing only: /api/my/recordings forwards to lianki.com with it
     // (lib/recordings-bridge.ts). Not DEV_BRIDGE_SECRET, so nothing here accepts it.
@@ -292,14 +301,9 @@ async function serve() {
 
   // The public tunnel (docs/dev-whole-page.md, "Off the tailnet"): only with
   // --public-host, on a loopback listener that only cloudflared targets.
-  const publicHost = arg("public-host", "").toLowerCase();
   // A lianki.com subdomain (a named tunnel), or a quick tunnel's random host
   // (`cloudflared tunnel --url http://127.0.0.1:<port+4>`), which only a
   // pointer signed on this Mac can name as a live page (lib/live-view/rules.ts).
-  if (publicHost && !/^([a-z0-9-]+\.lianki\.com|[a-z0-9-]+\.trycloudflare\.com)$/.test(publicHost))
-    throw new Error(
-      `--public-host must be a lianki.com subdomain or a trycloudflare.com host, got ${publicHost}`,
-    );
   const verifyCall = async (body: unknown) => {
     const r = await fetch(`${HUB_ORIGIN}/api/dev-access/verify`, {
       method: "POST",
@@ -521,7 +525,7 @@ async function serve() {
           });
           return res.end(landingHtml(lab, origin));
         }
-        return proxy(req, res, url, framable);
+        return proxy(req, res, url, framable, trusted ? origin : `http://${host}:${port}`);
       } catch (e) {
         console.error("[whole-page] guard error:", (e as Error).message);
         if (!res.headersSent) res.writeHead(500);
@@ -535,6 +539,7 @@ async function serve() {
     res: http.ServerResponse,
     url: URL,
     down: (h: http.IncomingHttpHeaders) => http.OutgoingHttpHeaders,
+    browserOrigin = origin,
   ) {
     const hub = isHubPath(url.pathname) || isBridgedPath(url.pathname);
     const labPath = Boolean(lab) && isLabPath(url.pathname);
@@ -561,7 +566,14 @@ async function serve() {
               port: inner,
               method: req.method,
               path: req.url,
-              headers: forwardHeaders(req.headers),
+              headers: devForwardHeaders(
+                forwardHeaders(req.headers),
+                browserOrigin,
+                inner,
+                url.pathname === "/api/auth/get-session" || url.pathname === "/api/auth/sign-out"
+                  ? origin
+                  : undefined,
+              ),
             },
       (r) => {
         res.writeHead(r.statusCode ?? 502, down(r.headers));
@@ -660,16 +672,22 @@ async function serve() {
       // the browser through Cloudflare as max-age=14400 (the zone's browser TTL),
       // and its chunk names do not change with their contents, so a browser kept
       // hours-old chat code after every publish (2026-11-14). no-store is kept.
-      return proxy(req, res, url, (h) => ({
-        ...framable(
-          downstreamHeaders(h as Record<string, string | string[] | undefined>, {
-            publicHost,
-            origin,
-          }) as http.IncomingHttpHeaders,
-        ),
-        "cache-control": "no-store",
-        "cdn-cache-control": "no-store",
-      }));
+      return proxy(
+        req,
+        res,
+        url,
+        (h) => ({
+          ...framable(
+            downstreamHeaders(h as Record<string, string | string[] | undefined>, {
+              publicHost,
+              origin,
+            }) as http.IncomingHttpHeaders,
+          ),
+          "cache-control": "no-store",
+          "cdn-cache-control": "no-store",
+        }),
+        `https://${publicHost}`,
+      );
     } catch (e) {
       console.error("[whole-page] tunnel error:", (e as Error).message);
       if (!res.headersSent) res.writeHead(503, { "cache-control": "no-store" });
@@ -705,7 +723,7 @@ async function serve() {
     }
     // The 101 from upstream is filtered like any tunnel response (no cookies,
     // CSP, CORS, HSTS…): preview-gate.ts upgradeHeadFilter.
-    const up = pipeUpgrade(req, socket, head, url, true);
+    const up = pipeUpgrade(req, socket, head, url, true, `https://${publicHost}`);
     const close = () => {
       socket.destroy();
       up.destroy();
@@ -745,7 +763,7 @@ async function serve() {
         socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
         return;
       }
-      pipeUpgrade(req, socket, head, url);
+      pipeUpgrade(req, socket, head, url, false, trusted ? origin : `http://${host}:${port}`);
     };
 
   function pipeUpgrade(
@@ -754,9 +772,12 @@ async function serve() {
     head: Buffer,
     url: URL,
     filterHead = false,
+    browserOrigin = origin,
   ): Duplex {
     const hub = isHubPath(url.pathname);
-    const headers = hub ? hubHeaders(req.headers) : forwardHeaders(req.headers);
+    const headers = hub
+      ? hubHeaders(req.headers)
+      : devForwardHeaders(forwardHeaders(req.headers), browserOrigin, inner);
     const hubHost = new URL(HUB_ORIGIN).host;
     const connectUp = (onReady: () => void) =>
       hub

@@ -22,6 +22,7 @@ import {
   syncWanted,
 } from "@lianki/debug-chat/sync-speak";
 import { createVoice, type UtterLike } from "@lianki/debug-chat/voice";
+import { initialRead, readStep, sentenceState } from "@lianki/debug-chat/read-progress";
 import { CONFIG } from "@/lib/config";
 import { FLAGS } from "@/lib/flags";
 import { globalDescriptor, restoreGlobal } from "./support/globals";
@@ -293,5 +294,101 @@ describe("the page's hub clock", () => {
     } finally {
       restoreGlobal("__lkHubClock", before);
     }
+  });
+});
+
+describe("the read-aloud highlight follows a synchronized line", () => {
+  /**
+   * One device: a fake clock and timers, a synth whose utterance starts 5 ms
+   * after speak() and ends 1 s later, and the chat's read mirror
+   * (read-progress.ts) fed the way DebugChat feeds it: the session's count,
+   * the line's sentences claimed, and each sentence's start.
+   */
+  function rig() {
+    let t = 2_000_000;
+    const timers = new Set<{ f: () => void; at: number }>();
+    const setTimer = (f: () => void, ms: number) => {
+      const x = { f, at: t + ms };
+      timers.add(x);
+      return x;
+    };
+    const advance = (ms: number) => {
+      const end = t + ms;
+      for (;;) {
+        const due = [...timers].filter((x) => x.at <= end).sort((a, b) => a.at - b.at)[0];
+        if (!due) break;
+        timers.delete(due);
+        t = Math.max(t, due.at);
+        due.f();
+      }
+      t = end;
+    };
+    const spoke: number[] = [];
+    const v = createVoice({
+      synth: () => ({
+        speak: (u) => {
+          spoke.push(t);
+          setTimer(() => (u as UtterLike).onstart?.(), 5);
+          setTimer(() => (u as UtterLike).onend?.(), 1_000);
+        },
+        cancel() {},
+      }),
+      utter: (text, lang) =>
+        ({ text, lang, onend: null, onerror: null, onboundary: null, onstart: null }) as UtterLike,
+      enabled: () => true,
+      here: () => true,
+      now: () => t,
+      setTimer,
+      clearTimer: (x) => void timers.delete(x as { f: () => void; at: number }),
+    });
+    let p = initialRead();
+    v.subscribe((s) => {
+      p = readStep(p, { type: "queued", n: s.queued });
+      if (p.unmatched) p = readStep(p, { type: "enqueue", id: "l", n: p.unmatched });
+    });
+    v.onStart(() => {
+      p = readStep(p, { type: "start" });
+    });
+    return { v, advance, spoke, now: () => t, read: () => p };
+  }
+  const text = "Une phrase. Une autre.";
+
+  it("speaking from the moment playback starts after the wait, not before; cleared at the end", () => {
+    const r = rig();
+    const t0 = r.now();
+    r.v.reply(text, { id: "l" }, { live: true, startAt: t0 + 300 });
+    // Queued and claimed, but nothing is highlighted while the devices wait.
+    expect(r.read().queue).toHaveLength(2);
+    expect(r.read().speaking).toBeNull();
+    r.advance(299);
+    expect(r.spoke).toEqual([]);
+    expect(sentenceState(r.read(), "l", 0)).toBe("unread");
+    // Playback starts at the stamped time: the first sentence is the one speaking.
+    r.advance(1);
+    expect(r.spoke).toEqual([t0 + 300]);
+    expect(r.read().speaking).toBeNull();
+    r.advance(5);
+    expect(sentenceState(r.read(), "l", 0)).toBe("speaking");
+    expect(sentenceState(r.read(), "l", 1)).toBe("unread");
+    // The next sentence follows at once (only the first waited), then the line is done.
+    r.advance(1_000);
+    expect(sentenceState(r.read(), "l", 0)).toBe("spoken");
+    expect(sentenceState(r.read(), "l", 1)).toBe("speaking");
+    r.advance(1_000);
+    expect(r.read().speaking).toBeNull();
+    expect(sentenceState(r.read(), "l", 1)).toBe("spoken");
+    expect(r.read().done).toEqual({ l: 2 });
+  });
+
+  it("an immediate line (no stamp) is speaking as soon as it starts, as before", () => {
+    const r = rig();
+    const t0 = r.now();
+    r.v.reply(text, { id: "l" }, { live: true });
+    expect(r.spoke).toEqual([t0]);
+    r.advance(5);
+    expect(sentenceState(r.read(), "l", 0)).toBe("speaking");
+    r.advance(2_000);
+    expect(r.read().speaking).toBeNull();
+    expect(r.read().done).toEqual({ l: 2 });
   });
 });

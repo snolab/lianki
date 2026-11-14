@@ -29,6 +29,10 @@ import {
   positionMs,
   speedFrom,
   totalMs,
+  RECORDINGS_EXPANDED_KEY,
+  isOtherSpeaker,
+  parseExpandedClips,
+  isClipFolded,
 } from "@/lib/recordings-article";
 import {
   type ClipView,
@@ -65,7 +69,12 @@ function ticks(ps: readonly Paragraph[], total: number): string {
     .join(",");
 }
 
-export default function RecordingsClient() {
+export default function RecordingsClient({
+  foldOthers = true,
+}: {
+  /** Flag voice.fold-others (default true): fold clips recognized as another voice into a compact line by default. */
+  foldOthers?: boolean;
+} = {}) {
   const t = useIntlayer("my-recordings");
   const { locale } = useLocale();
   const [{ days, clips }, setRecordings] = useState({
@@ -91,6 +100,26 @@ export default function RecordingsClient() {
   const [lastOpened, setLastOpened] = useState<string | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  // Folded "another voice" paragraphs: kept in sessionStorage (docs/ui-state.md).
+  const [expandedClips, setExpandedClips] = useState<Set<string>>(() => {
+    try {
+      return parseExpandedClips(sessionStorage.getItem(RECORDINGS_EXPANDED_KEY));
+    } catch {
+      return new Set();
+    }
+  });
+
+  const toggleExpandClip = useCallback((id: string) => {
+    setExpandedClips((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        sessionStorage.setItem(RECORDINGS_EXPANDED_KEY, JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+  }, []);
   const speeds = useMemo(() => parseSpeeds(String(publicCfg("recordings.speeds"))), []);
   const [speed, setSpeedState] = useState(1);
   useEffect(
@@ -515,12 +544,65 @@ export default function RecordingsClient() {
           const { c, p } = r;
           const current = player?.id === c.id;
           const mark = p.mark ? markText(p.mark) : "";
+          const isOther = isOtherSpeaker(c.speaker);
+          const isFolded = isClipFolded(c.speaker, expandedClips, c.id, foldOthers);
+
+          if (isFolded) {
+            return (
+              <div
+                className={`rounded-lg px-2 py-1.5 ${current ? sealBg : ""}`}
+                data-qa="recordings-clip"
+                data-clip={c.id}
+                data-current={current ? (player?.playing ? "playing" : "paused") : undefined}
+                data-folded="other"
+              >
+                {mark && (
+                  <p className={`pt-1 pb-1 text-xs font-medium ${faint}`} data-qa="recordings-mark">
+                    {mark}
+                  </p>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandClip(c.id)}
+                    className="flex min-h-8 items-center gap-1.5 rounded px-2 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 bg-[oklch(0.5_0_0/0.05)] hover:bg-[oklch(0.5_0_0/0.1)] transition-colors"
+                    title={t.otherVoiceFolded.value}
+                    data-qa="recordings-folded-other"
+                  >
+                    <span>{time(c.at)}</span>
+                    <span>·</span>
+                    <span>{t.otherVoiceFolded.value}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t.more.value}
+                    title={t.more.value}
+                    aria-haspopup="menu"
+                    aria-expanded={menu?.id === c.id}
+                    data-qa="recordings-more"
+                    data-rec-menu
+                    onClick={(e) => {
+                      if (menu?.id === c.id) return setMenu(null);
+                      const b = e.currentTarget.getBoundingClientRect();
+                      setCopied(null);
+                      setMenu({ day: c.day, id: c.id, x: b.right, y: b.bottom });
+                    }}
+                    className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${faint}`}
+                  >
+                    <Icon name="dotsThree" weight="fill" />
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
           return (
             <div
               className={`rounded-lg ${current ? sealBg : ""}`}
               data-qa="recordings-clip"
               data-clip={c.id}
               data-current={current ? (player?.playing ? "playing" : "paused") : undefined}
+              data-other-voice={isOther ? "other" : undefined}
             >
               {mark && (
                 <p className={`px-2 pt-3 text-xs font-medium ${faint}`} data-qa="recordings-mark">
@@ -535,6 +617,10 @@ export default function RecordingsClient() {
                   onClick={() => {
                     // Selecting words to copy them is not a tap.
                     if (String(window.getSelection?.() ?? "")) return;
+                    if (isOther && expandedClips.has(c.id)) {
+                      toggleExpandClip(c.id);
+                      return;
+                    }
                     act(c.day, c.id);
                   }}
                   onKeyDown={(e) => {

@@ -183,6 +183,13 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  "voice.fold-others": {
+    description:
+      "非本人声纹内容折叠：打开（默认）时，声纹识别判定不是你本人的语音消息（识别为另一个声音）在 Li 聊天和 /my/recordings 录音回顾文章中默认折叠成一行小字，点击可展开或再次折叠；折叠状态仅在当前标签页会话（sessionStorage）中记忆。关闭 = 别人的声音在聊天与回顾中直接展开显示，不默认折叠。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   "voice.echo-dedupe": {
     description:
       "回声去重：两台手机同时开着麦克风时，同一句话被另一台设备再识别一次（超过两麦合并的几秒、或者识别得稍有不同），或者 Li 朗读的助手回复、你润色后的读回被另一台手机听到又转成文字，都会被当成回声：不显示、不朗读、不转给助手，原文留在 hub 里可以撤销（edited.by 为 auto，原因 echo）。时间窗和相似度在 /dev/config 的 voice.echo* 里。关闭 = 照旧，每条都当作你说的新话。",

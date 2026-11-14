@@ -22,7 +22,7 @@
  */
 import { join } from "node:path";
 import { type RouteLane, isRouteLane, laneTakes } from "../../lib/lane-route";
-import { laneToken, lineOf, makeDeliverer, tokenNeeded } from "./lane-listen-lib";
+import { laneToken, lineOf, makeDeliverer, tokenNeeded, voiceAllowed } from "./lane-listen-lib";
 
 type Opts = {
   lane: RouteLane;
@@ -69,7 +69,7 @@ function parse(argv: string[]): Opts | Error {
 const log = (v: Record<string, unknown>) =>
   console.log(JSON.stringify({ ...v, at: new Date().toISOString() }));
 
-async function deliver(o: Opts, body: string): Promise<number> {
+async function deliver(o: Opts, body: string, interrupt = false): Promise<number> {
   if (o.dryRun) {
     console.log(body);
     return 0;
@@ -77,12 +77,25 @@ async function deliver(o: Opts, body: string): Promise<number> {
   // `ay send . …` from the lane's dir finds the lane however often it restarted.
   // --no-wait: hand the text over and return; ay's own settle/idle waits used
   // to hold this loop for minutes, and every later line with it (2026-11-14).
-  const p = Bun.spawn(["ay", "send", o.deliver ?? ".", "--force", "--no-wait", "-"], {
-    cwd: o.cwd ?? process.cwd(),
-    stdin: new TextEncoder().encode(body),
-    stdout: "ignore",
-    stderr: "pipe",
-  });
+  // --code alt-m: an urgent line (his name, a roll call) breaks into the turn.
+  const p = Bun.spawn(
+    [
+      "ay",
+      "send",
+      o.deliver ?? ".",
+      "--force",
+      "--no-wait",
+      "--code",
+      interrupt ? "alt-m" : "enter",
+      "-",
+    ],
+    {
+      cwd: o.cwd ?? process.cwd(),
+      stdin: new TextEncoder().encode(body),
+      stdout: "ignore",
+      stderr: "pipe",
+    },
+  );
   const code = await Promise.race([
     p.exited,
     new Promise<number>((r) => setTimeout(() => r(-1), SEND_WAIT_MS)),
@@ -145,7 +158,7 @@ async function main(): Promise<number> {
   const t = laneToken(o.lane);
   const out = makeDeliverer(
     o,
-    (body) => deliver(o, body),
+    (body, interrupt) => deliver(o, body, interrupt),
     () => targetBusy(o),
     log,
   );
@@ -201,6 +214,10 @@ async function main(): Promise<number> {
         if (!l || l.history || seen.has(l.id)) continue;
         seen.add(l.id);
         if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests, all: o.all })) continue;
+        if (!voiceAllowed(l)) {
+          log({ type: "other-voice", lane: o.lane, id: l.id });
+          continue;
+        }
         backoff = 1_000;
         await out.add(l);
       }

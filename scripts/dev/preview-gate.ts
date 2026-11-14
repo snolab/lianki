@@ -787,20 +787,19 @@ export function createGate(d: GateDeps) {
 /**
  * What goes upstream from the tunnel: no token, no gate cookie, no browser
  * better-auth cookie (the guard adds the owner's session itself), no
- * Tailscale identity, and the dev server's own origin as Host/Origin.
+ * Tailscale identity. Preserve the authenticated public Host/Origin so the
+ * app's same-origin checks see the origin the browser actually opened.
  */
 export function upstreamHeaders(
   h: Headers,
   o: { publicHost: string; origin: string; drop: string[] },
 ): Headers {
   const out: Headers = {};
-  const originHost = new URL(o.origin).host;
   for (const [k, v] of Object.entries(h)) {
     const key = k.toLowerCase();
     if (key === "authorization" || key.startsWith("tailscale-") || key.startsWith("cf-")) continue;
     if (key === LIVE_GATE_HEADER) continue; // the Worker's secret never goes past the gate
-    if (key === "x-forwarded-host" || key === "x-forwarded-proto" || key === "x-forwarded-for")
-      continue;
+    if (key === "forwarded" || key.startsWith("x-forwarded-")) continue;
     if (o.drop.includes(key)) continue;
     out[key] = v;
   }
@@ -813,13 +812,13 @@ export function upstreamHeaders(
     );
   if (cookies.length) out.cookie = cookies.join("; ");
   else delete out.cookie;
-  out.host = originHost;
+  out.host = o.publicHost;
   const pub = `https://${o.publicHost}`;
   const org = one(h.origin);
-  if (org === pub) out.origin = o.origin;
-  else if (org) delete out.origin; // another site's Origin never reaches the app
+  if (org === pub) out.origin = pub;
+  else if (org) out.origin = "null"; // retain invalid-origin evidence; never fall back to Referer
   const ref = one(h.referer);
-  if (ref?.startsWith(`${pub}/`)) out.referer = o.origin + ref.slice(pub.length);
+  if (ref?.startsWith(`${pub}/`)) out.referer = ref;
   else delete out.referer;
   return out;
 }

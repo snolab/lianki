@@ -92,7 +92,8 @@ export function VibeRetention() {
   };
   return (
     <section
-      className="mx-auto mb-10 max-w-4xl px-8"
+      id="vibe"
+      className="mx-auto mb-10 max-w-4xl px-8 scroll-mt-6"
       data-section="vibe"
       data-testid="vibe-settings"
     >

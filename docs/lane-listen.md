@@ -177,3 +177,5 @@ Then restart the listeners without `--tests`.
 
 Tests: `unit/lane-route.test.ts` (the matcher), `unit/lane-listen.test.ts`
 (token lookup, line parsing, the hand-off).
+
+- **Urgent lines break in (2026-11-14 23:0x).** A line that names the lane, or starts with 全体 (every lane at once, `lane-route.ts`), or an ETA nudge addressed to it, is handed over immediately with `ay send --code alt-m` (interrupting the turn) together with whatever was waiting; everything else still waits for the batch (`urgentLine` in `scripts/dev/lane-listen-lib.ts`).

@@ -2171,6 +2171,24 @@ const learningPartnerContent = {
       mr: "तुमचा आवाज, पडताळलेला",
       ko: "내 목소리로 확인됨",
     }),
+    vpOtherVoiceFolded: t({
+      en: "Another voice · tap to expand",
+      zh: "别的声音 · 点开",
+      hi: "कोई और आवाज़ · देखने के लिए टैप करें",
+      es: "Otra voz · pulsa para abrir",
+      fr: "Une autre voix · appuyer pour afficher",
+      ar: "صوت آخر · اضغط للفتح",
+      bn: "অন্য একটি কণ্ঠ · খুলতে ট্যাপ করুন",
+      pt: "Outra voz · toque para expandir",
+      ru: "Другой голос · нажмите, чтобы открыть",
+      ur: "ایک اور آواز · کھولنے کے لیے ٹیپ کریں",
+      id: "Suara lain · ketuk untuk membuka",
+      de: "Andere Stimme · zum Öffnen tippen",
+      ja: "別の声 · 点開",
+      sw: "Sauti nyingine · gusa ili ufungue",
+      mr: "दुसरा आवाज · उघडण्यासाठी टॅप करा",
+      ko: "다른 목소리 · 눌러서 펼치기",
+    }),
     vpOtherVoice: t({
       en: "Another voice",
       zh: "另一个声音",
@@ -3741,6 +3759,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Note in the voiceprint panel after the user chose to keep the enrolment recordings: they stay on Lianki's speech servers. One short sentence; never name a person's computer.",
   vpVerified:
     "Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: Lianki's speech server confirmed the line was spoken in his own voice. Short phrase, no full stop.",
+  vpOtherVoiceFolded:
+    "Small button text for a collapsed chat message spoken by another person in the room: shows it was another voice and tapping unfolds it into full text. Short phrase.",
   vpOtherVoice:
     "Tooltip and screen-reader name of the small coloured avatar on a voice-typed chat line that was spoken by someone other than the account's owner (a family member or guest near the mic; each such person gets their own stable colour and shape). It names that person without knowing who they are. Short noun phrase, no full stop: 'Another voice'.",
   notReadHidden:

@@ -1500,15 +1500,28 @@ before this has none: markdown. It stays on a stored line after the pairing ends
 
 **Links.** `chat-links.ts`: http(s) and bare `lianki.com/…` only. Punctuation,
 closing brackets and scripts written without spaces end a URL; a host that is not
-ASCII is not a link, so none reads as ours. On lianki.com a lianki.com link stays
-in the tab through `onOpenPage`; any other opens a new tab with
-`rel="noopener noreferrer"`. **The anchor's text is always the URL**: a labelled
-`[docs](https://…)` shows `docs (https://…)`, the URL being the anchor, so no line
-can dress one address as another, in any tier. A link carries `pointer-events-auto`
-because the history is click-through at rest (log-engage.ts); the text around it
-stays glass. A long press on a link is the platform's own (Copy link), not the
-press-and-hold that selects the line. A table or a code block scrolls in its own
-box and takes the pointer only while the history is engaged.
+ASCII is not a link, so none reads as ours. A tap or context menu on a chat
+link opens `ChatLinkMenu`: Open, Copy link, System menu. The last action calls
+`navigator.share({url})` when available; otherwise it is a normal anchor to
+press and hold for the browser's options. Selecting text by dragging a link
+opens nothing. Actions never open the surrounding message's details.
+
+On preview.lianki.com, `sameOriginHref` (`link-destination.ts`) maps production
+Lianki URLs to the current origin with the path, query and hash intact. An
+explicit `?site=prod` or `#prod` keeps production as the first destination.
+Preview Lianki links also offer Open on production; external URLs have only
+the three normal actions. Production and other origins do not rewrite URLs.
+The menu displays/copies/shares the effective URL. The message itself keeps
+its address as written: a labelled `[docs](https://…)` shows `docs (https://…)`.
+
+Open routes through `onOpenPage` for this origin, or a temporary normal anchor
+outside the message tree: the app's existing ExternalLinkGuard still sees
+external navigation and applies its account policy. This is not a bypass.
+All new menu words live in `chat-ui-locales.ts`, mirrored by chat-ui.content.ts,
+in 16 locales with context. Links elsewhere on the page are unchanged.
+The link carries `pointer-events-auto` because the history is click-through
+at rest (log-engage.ts); the text around it stays glass. A table or code block
+scrolls in its own box and takes the pointer only while history is engaged.
 
 **Read-aloud** reads `spoken`, not `m.text` (`spokenOf`; DebugEval's `speakReply`
 and the resume): the words without markup, a link's label not its URL, table cells
@@ -1517,7 +1530,7 @@ URL is read as it always was. Each text keeps its offset in `spoken`, so the sen
 highlight (`sentenceRanges` over `spoken`) lands on the same words the voice reads,
 across bold and links.
 
-Tests: `unit/chat-links.test.ts`, `unit/chat-rich-text.test.ts` (the sanitizer
+Tests: `unit/link-destination.test.ts`, `unit/chat-links.test.ts`, `unit/chat-rich-text.test.ts` (the sanitizer
 corpus, tiers, read-aloud; happy-dom's parser), the stamp in `unit/debug-hub.test.ts`
 and `unit/partner-ai.test.ts`.
 
