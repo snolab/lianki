@@ -380,6 +380,20 @@ export const CONFIG = {
     description:
       "麦克风录音（/my/recordings）保留多少天：每天一次的清理会删掉比这更早录的片段（音频和文字一起删）。默认 90 天。改短后，下一次每日清理就会删掉超出的部分，删了找不回来；想留的先下载到 Mac。",
   }),
+  // The speeds in a recording paragraph's ⋯ menu on /my/recordings (owner, 2026-11-14
+  // 22:4x JST: 0.75/1/1.25/1.5/2); the choice is a device preference (lib/recordings-article.ts).
+  "recordings.speeds": {
+    default: "0.75,1,1.25,1.5,2" as string,
+    schema: z
+      .string()
+      .regex(/^\s*\d(\.\d{1,2})?(\s*,\s*\d(\.\d{1,2})?)*\s*$/, "speeds, comma-separated: 0.75,1,2")
+      .refine((s) => s.split(",").every((x) => Number(x) >= 0.25 && Number(x) <= 4), "each 0.25–4"),
+    unit: "×",
+    group: "voice",
+    audience: "public",
+    description:
+      "/my/recordings 每段录音的「⋯」菜单里可选的播放速度：逗号分隔的倍数（默认 0.75,1,1.25,1.5,2）。1 倍总会在里面。选中的速度记在这台设备上。",
+  },
   "voiceprint.passkeyWindowMs": int({
     default: 600_000,
     min: 0,
