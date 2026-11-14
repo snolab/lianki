@@ -21,7 +21,7 @@ computer" or "the local model" (it is one of Lianki's speech servers, and may
 move to the cloud). This doc keeps the technical truth. /privacy, "Your voice
 and speech-to-text" (`#voice`), states what users are promised: STT runs only
 when the user asks; the audio is not stored or logged (here: `server.py`
-writes no audio outside opt-in enrolment, the clip sink is the owner's own
+writes no audio outside opt-in enrolment or explicitly enabled owner VAD recording, the clip sink is the owner's own
 session only, `/api/debug/stt` logs sizes and timings only); only what a user
 keeps is stored (opt-in enrolment recordings in My Files; voiceprint features
 on the speech server and, encrypted, in the account). Keep both true together.
@@ -1704,3 +1704,55 @@ The server prewarms it on startup, except with `--engine fake`; warmup failure
 leaves SenseVoice available and a later recheck retries loading Whisper.
 Tests: `unit/local-stt-recheck.test.ts` runs `scripts/local-stt/test_recheck.py`
 with stub engines, without downloading or running a model.
+
+
+## Opt-in 24-hour local VAD recordings
+
+The default remains RAM-only. To opt in on the owner's speech server, add
+`--recordings-dir ~/.cache/lianki-recordings` (or set
+`LIANKI_STT_RECORDINGS_DIR` to that directory). This records completed VAD
+utterances, including client-supplied pre-pad, as 16 kHz mono PCM16 WAVs.
+It does not capture the Mac microphone or silent gaps that the client never
+streams. Cancelled or unfinished utterances, enrolment sentences, and guest
+peer connections are excluded. The owner's tailnet, tunnel, and verified
+peer-owner routes may record; each accepted utterance produces its own
+segment, even when different owner pages are connected. Recording is
+independent of whether the voiceprint filter accepts the transcript.
+
+The directory must be owned by the process user, mode 0700, and not a
+symlink; new files are exclusively created with mode 0600. A directory with
+unsafe permissions is refused. Filenames contain only capture time and a
+random ID, never transcript, device or account identifiers. A `ready` response
+on owner connections advertises `recording: {enabled: true, retentionS: 86400}`
+when enabled; no recording field is added when disabled or on guest routes.
+
+Retention defaults to 24 hours from the **start of capture**, including
+pre-pad, and can be shortened using `--recordings-ttl <seconds>` (1–86400).
+Segments expire as a whole; samples near a segment's end may therefore be
+deleted slightly early. Cleanup runs at startup, before each write, and at
+most every 30 seconds while idle. Only regular files owned by this process
+user and matching this recorder's exact `stt-<timestamp>-<random>.wav` name
+are deleted. Touching a file or restarting does not extend its lifetime.
+While the service is stopped it cannot delete files; startup removes expired
+segments before accepting audio. Disabling recording leaves existing files
+in place; run the service with recording enabled to resume TTL cleanup, or
+remove these recordings yourself.
+
+A dedicated serial disk worker has a four-utterance waiting queue (each
+utterance is capped by the server's audio limit). It never waits on disk in
+the socket's receive loop. Queue overflow drops the new recording and logs
+`recording dropped: queue full`; disk failures remove the incomplete file,
+log only the exception type, and allow later segments to continue. These
+failures do not stop STT. Successful shutdown drains accepted writes; a crash
+can leave a partial WAV, which still follows the same capture-time cleanup.
+
+This stage stores recordings **locally only**. My Files synchronization is
+pending an account-authorized upload path and remote scheduled TTL deletion;
+ordinary My Files uploads persist until explicitly deleted and must not be
+used as a substitute for the 24-hour lifecycle. No cloud upload, microphone
+activation, or production service restart is performed by this change.
+
+`unit/local-stt-recordings.test.ts` runs `test_recordings.py` with synthetic
+PCM, temporary private directories, and a fake clock: WAV ordering, modes,
+restart and idle cleanup, failure recovery, bounded admission, and exclusion
+of guests, enrolment, cancelled and incomplete utterances.
