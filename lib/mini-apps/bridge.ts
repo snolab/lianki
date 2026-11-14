@@ -48,7 +48,14 @@ export function fromFrame(
 export const replyTarget = (frameOrigin: string) => (frameOrigin === "null" ? "*" : frameOrigin);
 
 export type BridgeDeps = {
-  manifest: { slug: string; name: string; icon: string; version: string; permissions: string[] };
+  manifest: {
+    slug: string;
+    name: string;
+    icon: string;
+    version: string;
+    style?: "lianki" | "none";
+    permissions: string[];
+  };
   grants: () => Grants;
   /** Show the prompt card; the user's choice, or null when dismissed. */
   prompt: (cap: CapabilityId) => Promise<Choice | null>;

@@ -21,7 +21,7 @@ import { checkExternalRefs, miniAppCsp, miniAppCspMeta, parseSources, sandboxFla
 import { decisionOf, grantState, isChoice, type Grants } from "./grants";
 import { prepareHtml } from "./html";
 import { STYLE_PACK_CSS } from "./style-pack";
-import { checkHtml, isSlug, parseManifest } from "./manifest";
+import { checkHtml, isSlug, parseManifest, type MiniAppStyle } from "./manifest";
 import { appOrigin, ownOriginAllowed } from "./origin";
 import {
   type MiniApp,
@@ -107,6 +107,7 @@ const view = (a: MiniApp, grants: Grants) => ({
   name: a.name,
   icon: a.icon,
   version: a.version,
+  style: a.style,
   permissions: a.permissions,
   size: a.size,
   updatedAt: a.updatedMs,
@@ -181,6 +182,7 @@ export async function publish(req: Request, d: MiniDeps): Promise<Response> {
     {
       slug: m.manifest.slug,
       version: m.manifest.version,
+      style: m.manifest.style,
       size: h.bytes,
       url: `/m/${m.manifest.slug}`,
     },
@@ -354,6 +356,7 @@ export type HostView = {
   name: string;
   icon: string;
   version: string;
+  style: MiniAppStyle;
   permissions: CapabilityId[];
   grants: Grants;
   frame: Frame;
@@ -378,6 +381,7 @@ export async function hostView(slug: string, host: string, d: MiniDeps): Promise
     name: a.name,
     icon: a.icon,
     version: a.version,
+    style: a.style,
     permissions: a.permissions,
     grants,
   };
@@ -425,6 +429,7 @@ export async function hostView(slug: string, host: string, d: MiniDeps): Promise
         inlineCss: STYLE_PACK_CSS,
         assets: host,
         theme: "auto",
+        style: a.style,
       }),
       sandbox: sandboxFlags(false),
     },
@@ -465,6 +470,7 @@ export async function serveApp(req: Request, slug: string, d: MiniDeps): Promise
     inlineCss: STYLE_PACK_CSS,
     assets: t.b,
     theme: "auto",
+    style: a.style,
   });
   return new Response(html, {
     headers: {

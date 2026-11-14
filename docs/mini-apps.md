@@ -16,7 +16,8 @@ is shipped behind the flag `mini-apps`; publishing needs `dev`.
 - **A manifest**: `slug` (lowercase ASCII and hyphens, 1–40; `sdk`,
   `presets`, `new`, `api`, `edit`, `settings` reserved), `name` (≤ 60),
   `icon` (one short glyph), `version` (`x.y.z`, shown, never compared) and
-  `permissions`: the capabilities it may ask for (`lib/mini-apps/manifest.ts`).
+  `style`: `"lianki"` (default) or `"none"`, and `permissions`: the capabilities
+  it may ask for (`lib/mini-apps/manifest.ts`).
   A method whose capability is not declared is refused without a prompt.
 - **Stored**: R2 `lianki-blobs`, `mini-apps/<uid>/<slug>/index.html` and
   `manifest.json`; a D1 row per app in `mini_app` (migration
@@ -160,6 +161,31 @@ again. Prompts are queued one at a time.
 - **Phase 3**: the MCP tool `lianki_mini_app_publish`, so a user's own agent
   publishes with its token (a new token scope).
 
+## Recommended styling, optional per app
+
+The manifest accepts `style: "lianki" | "none"`. Omitting it keeps the
+recommended Lianki style pack, including for apps published before this option
+existed. Publishing through `POST /api/my/mini-apps` validates the field:
+other values are rejected, and the selected value remains in the stored manifest.
+Migration `0081_mini_app_style.sql` adds the D1 column with a `lianki` default;
+apply it before serving code that reads the new column. It does not rewrite app
+HTML or remove any existing app styles.
+
+Set `"style": "none"` to use browser defaults or the app's own styles. Lianki
+then skips automatic inline style-pack injection; the sandbox, CSP, SDK and
+capability prompts are unchanged. An app may still explicitly include its own
+CSS or opt into an allowed stylesheet. Theme information remains available for
+apps that choose to follow it. The SDK exposes the current choice as
+`lianki.style`, as well as the manifest's `style` field.
+
+A minimal native-styled example is `/m/presets/unstyled.html`, paired with
+`/m/presets/unstyled.manifest.json`; it is listed under `examples.none` in
+`/m/presets/presets.json`. To publish it locally:
+
+```bash
+bun scripts/dev/mini-app-publish.ts public/m/presets/unstyled.html public/m/presets/unstyled.manifest.json
+```
+
 ## Style pack and presets
 
 `<link rel="stylesheet" href="/m/presets/lianki.css">` is a small version of
@@ -172,7 +198,7 @@ Google Fonts), light and dark, base typography, and plain `button`, `input`,
 `.lk-app .lk-card .lk-btn .lk-btn-primary .lk-input .lk-row .lk-stack .lk-mono
 .lk-seal` helpers. No hex or rgb: oklch only (checked in a unit test).
 
-**In srcdoc mode the pack is inlined** (`lib/mini-apps/style-pack.ts`, kept
+**With `style: "lianki"` (the default), the pack is inlined** (`lib/mini-apps/style-pack.ts`, kept
 equal to the public file by a test) as a `<style>` before the app, and the
 app's own `<link>` to it is dropped: a srcdoc app has no origin, and a link
 would depend on the page's host matching the CSP's (it did not on the preview,
@@ -185,8 +211,8 @@ as `<html data-theme="light|dark">` before the app loads, and when the system
 theme changes it posts `{lk: "mini/1", event: "theme"}`, which the SDK applies.
 With no `data-theme`, the pack falls back to `prefers-color-scheme`.
 
-Use the variables, not colours of your
-own. `/m/presets/presets.json` lists the pinned presets:
+The recommended pack exposes variables for apps that want to match the site;
+apps may instead use their own styling. `/m/presets/presets.json` lists the pinned presets:
 
 ```html
 <script src="/m/presets/chart.js"></script>

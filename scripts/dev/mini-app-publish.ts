@@ -14,6 +14,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { publish } from "@/lib/mini-apps/handlers";
 import { CONFIG } from "@/lib/config";
+import { ensureMiniAppStyle } from "@/lib/mini-apps/store";
 
 const root = join(import.meta.dir, "../..");
 const args = process.argv.slice(2);
@@ -46,6 +47,10 @@ try {
     .map((s) => s.replace(/--.*$/gm, "").trim())
     .filter(Boolean))
     await db.prepare(stmt).first();
+  await ensureMiniAppStyle(
+    db,
+    await readFile(join(root, "db/migrations/0081_mini_app_style.sql"), "utf8"),
+  );
   const user = email
     ? await db
         .prepare("SELECT id, email FROM user WHERE email = ?")

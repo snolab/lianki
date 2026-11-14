@@ -1,0 +1,8 @@
+{
+  "slug": "plain-counter",
+  "name": "Plain counter",
+  "icon": "＋",
+  "version": "0.1.0",
+  "style": "none",
+  "permissions": []
+}

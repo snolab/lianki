@@ -4,6 +4,7 @@
  * app's, so no app markup runs ahead of them. Pure.
  */
 export type Theme = "light" | "dark";
+import type { MiniAppStyle } from "./manifest";
 
 const esc = (s: string) =>
   s
@@ -28,10 +29,12 @@ export function prepareHtml(
     assets?: string;
     /** `auto` until the host page knows its theme (withTheme). */
     theme?: Theme | "auto";
+    style?: MiniAppStyle;
   },
 ): string {
   let body = html;
-  if (o.inlineCss) body = body.replace(PACK_LINK, "");
+  const style = o.style === "none" ? "none" : "lianki";
+  if (style === "lianki" && o.inlineCss) body = body.replace(PACK_LINK, "");
   if (o.assets) {
     const base = o.assets.replace(/\/+$/, "");
     body = body.replace(
@@ -40,10 +43,10 @@ export function prepareHtml(
     );
   }
   const head =
-    (o.theme ? `<html data-theme="${o.theme}">` : "") +
+    `<html${o.theme ? ` data-theme="${o.theme}"` : ""} data-lk-style="${style}">` +
     (o.cspMeta ? `<meta http-equiv="Content-Security-Policy" content="${esc(o.cspMeta)}">` : "") +
-    (o.theme ? `<meta name="color-scheme" content="light dark">` : "") +
-    (o.inlineCss
+    (style === "lianki" && o.theme ? `<meta name="color-scheme" content="light dark">` : "") +
+    (style === "lianki" && o.inlineCss
       ? `<style data-lk-pack>${o.inlineCss.replace(/<\/style/gi, "<\\/style")}</style>`
       : "") +
     `<script src="${esc(o.sdkSrc)}"></script>`;
@@ -54,7 +57,7 @@ export function prepareHtml(
 
 /** The srcdoc with the host page's theme in place of `auto` (set once, before it loads). */
 export function withTheme(srcdoc: string, theme: Theme): string {
-  return srcdoc.replace('<html data-theme="auto">', `<html data-theme="${theme}">`);
+  return srcdoc.replace('<html data-theme="auto"', `<html data-theme="${theme}"`);
 }
 
 /** The theme the host page shows now (the site follows the system's). */

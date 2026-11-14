@@ -57,6 +57,7 @@ export function MiniAppHost({ view }: { view: HostView }) {
         name: view.name,
         icon: view.icon,
         version: view.version,
+        style: view.style,
         permissions: view.permissions,
       },
       grants: () => view.grants,

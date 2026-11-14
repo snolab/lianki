@@ -25,6 +25,7 @@ export const isSlug = (v: unknown): v is string =>
 export const NAME_MAX = 60;
 export const ICON_MAX = 8;
 export const DEFAULT_ICON = "▦";
+export type MiniAppStyle = "lianki" | "none";
 
 export type Manifest = {
   slug: string;
@@ -33,6 +34,8 @@ export type Manifest = {
   icon: string;
   /** major.minor.patch, bumped by the publisher; shown, never compared. */
   version: string;
+  /** Omitted older manifests retain the built-in pack. */
+  style?: MiniAppStyle;
   /** What the app may ask for; anything else is refused without a prompt. */
   permissions: CapabilityId[];
 };
@@ -61,6 +64,8 @@ export function parseManifest(
   const version = m.version === undefined ? "0.1.0" : m.version;
   if (typeof version !== "string" || !/^\d{1,4}\.\d{1,4}\.\d{1,6}$/.test(version))
     return { ok: false, error: "bad-version" };
+  const style = m.style === undefined ? "lianki" : m.style;
+  if (style !== "lianki" && style !== "none") return { ok: false, error: "bad-style" };
   const perms = m.permissions === undefined ? [] : m.permissions;
   if (!Array.isArray(perms) || perms.length > 16) return { ok: false, error: "bad-permissions" };
   const permissions: CapabilityId[] = [];
@@ -68,7 +73,7 @@ export function parseManifest(
     if (!isCapability(p)) return { ok: false, error: "unknown-permission" };
     if (!permissions.includes(p)) permissions.push(p);
   }
-  return { ok: true, manifest: { slug: m.slug, name, icon, version, permissions } };
+  return { ok: true, manifest: { slug: m.slug, name, icon, version, style, permissions } };
 }
 
 /** The app's one file: text, within the byte cap, and an HTML document. */
