@@ -137,8 +137,31 @@ export const CHAT_HISTORY = 200;
 /** A friend may send at most FRIEND_CHAT_MAX messages per FRIEND_CHAT_WINDOW_MS. */
 export const FRIEND_CHAT_MAX = 30;
 export const FRIEND_CHAT_WINDOW_MS = 10 * 60_000;
-/** The owner's chat thread; every other thread is a friend's user id. */
-export const OWNER_THREAD = "owner";
+/**
+ * The dispatch thread (docs/owner-paths-audit-2026-11-15.md): the one thread
+ * every `dev` grant holder's page joins (Identity.owner is `isDev`, never an
+ * address in code). Lanes listen there, ETA and receipt lines go there, the
+ * Learning Partner AI does not answer there. Every other thread is one
+ * account's own (its user id). The id is a storage key (hub storage
+ * prefixes, D1 chat_log rows, packages/debug-chat's default), so it stays a
+ * constant: a configurable id would orphan the history.
+ */
+export const DISPATCH_THREAD = "owner";
+/** @deprecated The old name of DISPATCH_THREAD, kept so the hub's many uses need no rename. */
+export const OWNER_THREAD = DISPATCH_THREAD;
+/** Is this the dispatch thread? */
+export const isDispatchThread = (thread: string | null | undefined): boolean =>
+  thread === DISPATCH_THREAD;
+/**
+ * The thread an account's page or chat token joins: the dispatch thread for a
+ * `dev` holder (`dispatch`: Identity.owner / Verified.owner, both read from
+ * account_permission), else the account's own thread; null for an id that
+ * cannot be a thread.
+ */
+export function threadFor(who: { userId: string; dispatch: boolean }): string | null {
+  if (who.dispatch) return DISPATCH_THREAD;
+  return isUserId(who.userId) ? who.userId : null;
+}
 /** The "agent is working" spinner stops this long after the last heartbeat. */
 export const BUSY_MS = 12_000;
 /**
@@ -182,7 +205,7 @@ export const isSessionTag = (v: unknown): v is string =>
 
 /** A user id usable as a thread and a storage key: no separators, bounded. */
 export const isUserId = (v: unknown): v is string =>
-  typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) && v !== OWNER_THREAD;
+  typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) && v !== DISPATCH_THREAD;
 
 /** A friend who has used the chat, as the hub keeps it (`friend:<userId>`). */
 export type FriendRecord = {
