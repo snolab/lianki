@@ -37,6 +37,23 @@ migration (marker `lk:agent-migrated`) copies `lk:debug*` to `lk:agent*`. Drop
 the `lk:debug*` writes one release later. `?agent=1` / `?agent=0` work as
 aliases of `?debug=1` / `?debug=0` (`?agent=` wins when both are given).
 
+### Account default and device override
+
+A signed-in account holding `dev` finds the chat on by default, including a
+new device or the preview origin. The root layout reads the account's grant
+and sends `<html data-chat-default="on">`; `debugOn()` uses it only when
+neither local key has a value. It never writes this default to storage, so it
+cannot stick after signing out or switching to a non-dev account. No new
+synced preference or extra session request is needed.
+
+`lk:agent` / `lk:debug` remain device/origin overrides: `0` temporarily turns
+this device's chat off until toggled on again; `1` explicitly turns it on.
+The existing hidden tap switches (seven on /words settings, ten on the
+profile name/email), as well as `?agent=0` / `?debug=0`, keep working. Accounts without `dev` keep their
+existing manual/partner-flag behavior. The marker is a UI default, never an
+authorization grant: remote eval still checks the server's dev grant and the
+hub's owner/session checks.
+
 The widget lives in its own workspace package, `packages/debug-chat`
 (`@lianki/debug-chat`), which imports nothing from the app, so it can move to
 its own repo as is. Lianki passes what it needs as `DebugChatProps`; the wire
