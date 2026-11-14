@@ -161,3 +161,11 @@ export function runStarts(
     return !p || p.seed !== l.seed || p.node !== l.node || Math.abs(l.at - p.at) > gapMs;
   });
 }
+
+/** Whether a chat message was recognized as spoken by someone other than the owner. */
+export function isOtherVoice(m: Pick<ChatMessage, "from" | "speaker">): boolean {
+  if (m.from !== "owner") return false;
+  const v = m.speaker?.voice;
+  if (v && v !== "me") return true;
+  return m.speaker?.decision === "other";
+}

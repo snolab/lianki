@@ -875,6 +875,8 @@ export type ChatStrings = {
   vpVerified: string;
   /** Tooltip and screen-reader name of the small coloured avatar on a voice-typed chat line that was spoken by someone other than the account's owner (a family member or guest near the mic; each such person gets their own stable colour and shape). It names that person without knowing who they are. Short noun phrase, no full stop: "Another voice". */
   vpOtherVoice: string;
+  /** Label of the folded one-line button for another person's voice in the chat log: "Another voice · tap to expand". */
+  vpOtherVoiceFolded: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
   notReadHidden: string;
   // The input's + menu (attach.tsx).
@@ -1104,6 +1106,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpMacRecKept: "The recordings stay on the speech servers.",
   vpVerified: "Your voice, verified",
   vpOtherVoice: "Another voice",
+  vpOtherVoiceFolded: "Another voice · tap to expand",
   vpFilterOn: "Only my voice: on. Speech that does not match is dropped on Lianki's speech server.",
   vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
   vpFilterWaiting: "Only my voice: needs a voiceprint on this device and the check on Lianki's speech server. Until then all speech is transcribed as usual.",

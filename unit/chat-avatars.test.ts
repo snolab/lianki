@@ -331,3 +331,25 @@ describe("speaker avatars (another voice on an owner's voice line)", () => {
     ).toBe("agent:li");
   });
 });
+
+import { isOtherVoice } from "@lianki/debug-chat/avatar-rules";
+
+describe("isOtherVoice helper", () => {
+  it("true when from owner and speaker decision is other or voice is not me", () => {
+    expect(isOtherVoice({ from: "owner", speaker: { decision: "other" } })).toBe(true);
+    expect(isOtherVoice({ from: "owner", speaker: { decision: "other", voice: "s1" } })).toBe(true);
+    expect(isOtherVoice({ from: "owner", speaker: { decision: "unknown", voice: "s2" } })).toBe(
+      true,
+    );
+    expect(isOtherVoice({ from: "owner", speaker: { decision: "me", voice: "me" } })).toBe(false);
+    expect(isOtherVoice({ from: "owner", speaker: { decision: "unknown" } })).toBe(false);
+    expect(isOtherVoice({ from: "owner" })).toBe(false);
+    // Never true for agent or friend lines
+    expect(isOtherVoice({ from: "agent", speaker: { decision: "other", voice: "s1" } })).toBe(
+      false,
+    );
+    expect(isOtherVoice({ from: "friend", speaker: { decision: "other", voice: "s1" } })).toBe(
+      false,
+    );
+  });
+});

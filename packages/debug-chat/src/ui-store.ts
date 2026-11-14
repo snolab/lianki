@@ -45,6 +45,8 @@ export type ChatUi = {
   reading: { id: string; from: number; at: number }[];
   /** Attached to the next line with the + menu (attach.ts): kept with the draft. */
   attached: ChatContext | null;
+  /** Message IDs of other voices manually expanded in Li chat (session storage). */
+  expandedOthers: string[];
   // Not kept: the log's scroll (at rest the compact log always shows the
   // newest lines), the bar's position (localStorage, remembered across
   // sessions), the full-screen log (only during a drag) and the mic (it
@@ -62,6 +64,7 @@ export const CHAT_UI_INITIAL: ChatUi = {
   spoken: {},
   reading: [],
   attached: null,
+  expandedOthers: [],
 };
 /** A draft longer than this is not restored (the input's own cap is lower). */
 const MAX_DRAFT = 20_000;
@@ -110,6 +113,10 @@ export function migrateChatUi(persisted: unknown, _version: number): ChatUi {
         reading.push({ id: x.id, from: x.from as number, at: x.at });
     }
   const attached = cleanContext(p.attached) ?? null;
+  const expandedOthers: string[] = [];
+  if (Array.isArray(p.expandedOthers))
+    for (const id of p.expandedOthers.slice(0, 500))
+      if (typeof id === "string" && id.length <= 100) expandedOthers.push(id);
   return {
     draft,
     caret,
@@ -120,6 +127,7 @@ export function migrateChatUi(persisted: unknown, _version: number): ChatUi {
     spoken,
     reading,
     attached,
+    expandedOthers,
   };
 }
 

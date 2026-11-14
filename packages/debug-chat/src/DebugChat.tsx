@@ -54,7 +54,7 @@ import { latencyLines, viaAt, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
-import { type AvatarSource, lineAvatar, runStarts, runsOf } from "./avatar-rules";
+import { type AvatarSource, isOtherVoice, lineAvatar, runStarts, runsOf } from "./avatar-rules";
 import {
   VOICE_SENT_EVENT,
   appendDictation,
@@ -1771,6 +1771,22 @@ export function DebugChat({
   const pageSel = usePageSelection(embedded);
   const appAddItems = useAddItems();
   const attached = useUi(uiStore, (s) => s.attached);
+  const expandedOthersList = useUi(uiStore, (s) => s.expandedOthers);
+  const expandedOthers = useMemo(() => new Set(expandedOthersList), [expandedOthersList]);
+  const toggleExpandOther = useCallback(
+    (id: string) => {
+      uiStore.setState((s) => {
+        const has = s.expandedOthers.includes(id);
+        return {
+          expandedOthers: has
+            ? s.expandedOthers.filter((x) => x !== id)
+            : [...s.expandedOthers, id],
+        };
+      });
+    },
+    [uiStore],
+  );
+
   const [attachMenu, setAttachMenu] = useState(false);
   const closeAttachMenu = useCallback(() => setAttachMenu(false), []);
   /** Files for the next line (files.ts): uploading or stored, removable until sent. */
@@ -5090,6 +5106,29 @@ export function DebugChat({
                 </span>
                 {run.map((i, k) => {
                   const m = messages[i]!;
+                  const otherVoiceLine = isOtherVoice(m);
+                  const foldedOther = otherVoiceLine && !expandedOthers.has(m.id);
+                  if (foldedOther) {
+                    return (
+                      <span key={m.id}>
+                        {k > 0 && (
+                          <span aria-hidden className="mx-1 opacity-40">
+                            ·
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          data-testid="debug-chat-line-folded-other"
+                          data-msg={m.id}
+                          onClick={() => toggleExpandOther(m.id)}
+                          className="inline-flex items-center gap-1 cursor-pointer py-0.5 px-1.5 rounded text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 bg-[oklch(0.5_0_0/0.05)] hover:bg-[oklch(0.5_0_0/0.1)] transition-colors"
+                          title={t.vpOtherVoiceFolded}
+                        >
+                          <span className="font-medium">{t.vpOtherVoiceFolded}</span>
+                        </button>
+                      </span>
+                    );
+                  }
                   return (
                     <span key={m.id}>
                       {k > 0 && (
@@ -5102,6 +5141,11 @@ export function DebugChat({
                         {...details.forMessage(m, who.name)}
                         data-testid="debug-chat-line"
                         data-msg={m.id}
+                        data-other-voice={otherVoiceLine ? "other" : undefined}
+                        onClick={otherVoiceLine ? (e) => {
+                          if (String(window.getSelection?.() ?? "")) return;
+                          toggleExpandOther(m.id);
+                        } : undefined}
                         data-from={m.from}
                         data-node={node?.node}
                         data-run-start={k === 0 || undefined}

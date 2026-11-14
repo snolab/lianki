@@ -127,3 +127,22 @@ export function speedFrom(stored: string | null | undefined, speeds: readonly nu
 
 /** localStorage key of the device's playback speed (docs/ui-state.md: a device preference). */
 export const SPEED_KEY = "lk:pref:recordings-speed";
+
+/** sessionStorage key of the session-expanded "other voice" paragraphs in /my/recordings. */
+export const RECORDINGS_EXPANDED_KEY = "lk:ui:recordings-expanded";
+
+/** Whether a clip is recognized as spoken by someone other than the account owner. */
+export function isOtherSpeaker(speaker: string | null | undefined): boolean {
+  return speaker === "other";
+}
+
+/** Reads expanded clip IDs from a JSON string or returns empty set. */
+export function parseExpandedClips(raw: string | null | undefined): Set<string> {
+  if (!raw) return new Set();
+  try {
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}

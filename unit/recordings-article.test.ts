@@ -143,3 +143,23 @@ describe("playback speed: a device preference", () => {
     expect(speedFrom("", speeds)).toBe(1);
   });
 });
+
+import { isOtherSpeaker, parseExpandedClips } from "@/lib/recordings-article";
+
+describe("recordings other speaker and folding helpers", () => {
+  it("identifies other speaker", () => {
+    expect(isOtherSpeaker("other")).toBe(true);
+    expect(isOtherSpeaker("me")).toBe(false);
+    expect(isOtherSpeaker("unknown")).toBe(false);
+    expect(isOtherSpeaker(null)).toBe(false);
+    expect(isOtherSpeaker(undefined)).toBe(false);
+  });
+
+  it("parses expanded clip IDs", () => {
+    expect(parseExpandedClips(null)).toEqual(new Set());
+    expect(parseExpandedClips("")).toEqual(new Set());
+    expect(parseExpandedClips("invalid json")).toEqual(new Set());
+    expect(parseExpandedClips(JSON.stringify(["c1", "c2"]))).toEqual(new Set(["c1", "c2"]));
+    expect(parseExpandedClips(JSON.stringify(["c1", 123, null]))).toEqual(new Set(["c1"]));
+  });
+});
