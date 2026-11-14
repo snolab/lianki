@@ -231,14 +231,6 @@ export const FLAGS = {
     requires: ["workers-ai.credentials", "ai-credits.migration"],
     group: "ai",
   },
-  // Only his own thread: on, it changes nothing for anyone else.
-  "partner.owner-thread": {
-    description:
-      "Li 也在你自己的线程里说话：「学习伙伴由 AI 回复」也打开时，你没有点名任何一条线（codex、agy…）的消息，如果几秒内（/dev/config 的 partner.ownerReplyDelayMs，默认 8 秒）没有开发通道回复，就由 Li（DeepSeek 模型）回复并朗读；通道先回复则 Li 不说话。声纹判断为别人的声音的消息不回复。和别人一样扣你自己的积分，没有免费。关闭 = 照旧：你的线程只由开发通道回复。",
-    default: true,
-    group: "ai",
-    audience: "owner",
-  },
   // No `audience`: on, it reaches everyone who has the Learning Partner chat.
   "partner.fullscreen": {
     description:
@@ -410,6 +402,15 @@ export const FLAGS = {
     description:
       "小应用（/m/<名字>，docs/mini-apps.md）：你的助手可以发布一个单文件 HTML 小应用，它在独立的沙盒里运行（不和 lianki.com 同源，不能读你的登录状态），通过 lianki.* 接口使用存储、设置和聊天；每一种能力第一次用时都会弹出卡片问你：仅这一次 / 这个应用一直允许 / 拒绝，之后可以在 /my/preferences 撤销。第一阶段只有有 dev 权限的账号能发布。关闭 = /m/ 和 /api/my/mini-apps 都不存在（404），已发布的应用留着但打不开。",
     default: true,
+    audience: "owner",
+  },
+  // Owner, 2026-11-15 13:4x JST: Li speaks in his own thread too. Only his
+  // thread: on, it changes nothing for anyone else (/dev/flags groups it under ai).
+  "partner.owner-thread": {
+    description:
+      "Li 也在你自己的线程里说话：「学习伙伴由 AI 回复」也打开时，你没有点名任何一条线（codex、agy…）的消息，如果几秒内（/dev/config 的 partner.ownerReplyDelayMs，默认 8 秒）没有开发通道回复，就由 Li（DeepSeek 模型）回复并朗读；通道先回复则 Li 不说话。声纹判断为别人的声音的消息不回复。和别人一样扣你自己的积分，没有免费。关闭 = 照旧：你的线程只由开发通道回复。",
+    default: true,
+    group: "ai",
     audience: "owner",
   },
 } as const satisfies Record<string, FlagDef>;

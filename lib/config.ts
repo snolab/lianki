@@ -1,4 +1,5 @@
 import { HUB_RPC_LIMITS } from "./hub-rpc-config";
+import { OWNER_REPLY_DELAY_MAX, OWNER_REPLY_DELAY_MS } from "./partner-ai-config";
 /**
  * The config registry: every user-meaningful number, text and icon whose live
  * value comes from the config store (lib/config-store.ts, D1 `config_values`)
@@ -26,7 +27,6 @@ import { z } from "zod";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
 import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
-import { OWNER_REPLY_DELAY_MAX, OWNER_REPLY_DELAY_MS } from "./partner-ai-config";
 import { LANE_NAMES, type LaneNamesTable, ROUTE_LANES } from "@lianki/debug-chat/lane-route";
 
 export type ConfigAudience = "server" | "public";
