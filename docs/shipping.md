@@ -17,6 +17,9 @@ waits for the required checks, then syncs local `main` and deletes the branch.
 are expected` unless the pushed SHA already has green checks. The PR is what gets
 the checks run.
 
+Landing on `main` does not deploy: production deploys from `prod`, which
+takes `main` once a day (below, "Daily release").
+
 `scripts/ship.ts` uses `git reset --keep`, not `--hard`, so a sync can never
 silently eat uncommitted work.
 
@@ -37,6 +40,78 @@ ship.ts warns and goes on — the PR still lands; report it by hand
 (`progress.ts … --pr N`). A lane shipping from its own branch with `gh pr
 create` reports `--pr` itself, as before. The node keeps every PR it named
 (`prs`), and /dev/roadmap links them.
+
+## Daily release
+
+Owner, 2026-11-15: production releases once a day, as one pull request.
+`main` stays the integration branch (PRs, the merge queue, preview
+back-and-forth, all as before); **`prod`** is what lianki.com runs.
+`deploy-worker.yml` deploys `prod`, never `main`.
+
+**When:** `.github/workflows/daily-release.yml`, cron `0 19 * * *` — 19:00
+UTC every day. A cron cannot read a repo variable, so another hour means
+editing that cron line.
+
+**What it does** (`scripts/release/daily-pr.ts`, logic in
+`scripts/release/daily-pr-lib.ts`, tested in `unit/daily-release.test.ts`):
+
+1. Fails, clearly, when `prod` does not exist; it never creates it.
+2. **Back-merge first.** If merging `prod` into `main` would change main's
+   tree (`git merge-tree`; hot fixes that went straight to prod), it opens or
+   updates **"Back-merge prod YYYY-MM-DD"** (`prod` → `main`), waits for its
+   `Typecheck + unit`, enqueues it in main's merge queue, and stops: the
+   release waits for the next run, or run the workflow by hand once the
+   back-merge has landed.
+3. Otherwise, if `main` has commits `prod` lacks, it opens or updates **one**
+   PR `main` → `prod`, **"Release YYYY-MM-DD"** (UTC date), label `release`,
+   with the commit subjects grouped by type (feat, fix, …). An open release
+   PR from an earlier day is updated, not doubled, with a comment saying it
+   did not merge then. Closing keywords are neutralised ("fixes (#12)"): an
+   issue closes when its fix is released, by hand.
+4. It waits (up to `LIANKI_RELEASE_WAIT_MIN`, 45 min) for `Typecheck + unit`
+   on the PR's head (the `main` tip, which CI already tested on its push), then
+   merges that exact commit with a **merge commit** (`expectedHeadOid`), so
+   main's commits become prod's and the next release lists only what is new.
+   If `prod` later gets a merge queue, it enqueues instead
+   (`enqueuePullRequest`, retried while checks are "expected").
+5. A merge made with the workflow token starts no push workflows, so the
+   script starts Deploy Worker on `prod` itself. The Full QA hold applies
+   as before: while Full QA on main is red, prod does not deploy.
+
+**By hand:** `gh workflow run daily-release.yml -R snolab/lianki` (add
+`-f dry_run=true` to only print), or locally `bun scripts/release/daily-pr.ts
+--dry-run` with your own `gh` sign-in. Run locally without `--dry-run`, it
+merges with your sign-in, and the push to prod starts CI and the deploy by
+itself.
+
+**Auth:** the workflow token (`GH_TOKEN: github.token`; contents,
+pull-requests, issues and actions write), like the Full QA revert PR — no PAT,
+no new secret. Opening a PR with it needs the repo setting _Allow GitHub
+Actions to create and approve pull requests_ (off as of 2026-11-10); while it
+is off the run fails with the compare link. A PR opened by that token gets no
+`pull_request` CI of its own, which is fine here: its head is `main`'s tip
+(or `prod`'s), which CI already checked on push.
+
+**Hot fixes.** There is no hot-fix branch: a hot fix is deployed from the Mac
+(`wrangler deploy`, after local tests) and then goes as a **PR straight to
+`prod`**, merged by a person, so CI runs on prod and Deploy Worker redeploys
+the same fix. `main` gets it back by itself: the next daily run opens the
+back-merge PR before any release.
+
+The caveat: **until that PR has merged into `prod`, the next deploy of
+`prod` reverts the hot fix.** A local deploy changes only what runs, not
+`prod`; the daily release (19:00 UTC), a lift of the Full QA hold, or any
+other prod deploy then ships prod's code, without the fix. Remedy: merge the
+hot fix PR into `prod` before 19:00 UTC; if a deploy has already dropped it,
+merge the PR (that redeploys) or `wrangler deploy` again from the fix. A hot
+fix merged only into `main` reaches production with the next release, not
+before.
+
+Follow-ups for the owner: create `prod` once from `main` (`git push origin
+origin/main:refs/heads/prod`), and give it branch protection (required
+`Typecheck + unit`, no force-push, no deletion; **not** linear history, since
+a release is a merge commit). Until `prod` exists, nothing
+deploys.
 
 ## CI
 
@@ -465,7 +540,8 @@ show bundled positions. To turn maps back on, first shrink them under the limit
 
 ## Deploy order
 
-`.github/workflows/deploy-worker.yml` runs after CI passes on `main`: OpenNext
+`.github/workflows/deploy-worker.yml` runs after CI passes on `prod` (or when
+the daily release starts it): OpenNext
 build, route fingerprints (see "Smart refresh" below), asset hygiene, **Worker exports unchanged**
 (`scripts/ci/check-worker-exports.ts`), D1 migrations, then the Workers in
 this order:
