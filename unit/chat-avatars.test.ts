@@ -311,6 +311,16 @@ describe("speaker avatars (another voice on an owner's voice line)", () => {
         voiceAvatar,
       }).seed,
     ).toBe("v1");
+    // An unknown voice with a cluster id is still drawn as him, marked unsure; only "other" gets its own disc.
+    const unsure = lineAvatar(line({ speaker: { decision: "unknown", voice: "s9" } }), {
+      viewer,
+      voiceAvatar,
+    });
+    expect(unsure).toMatchObject({ src: viewer.avatars, seed: "v1", unsure: true });
+    expect(
+      lineAvatar(line({ speaker: { decision: "other", voice: "s9" } }), { viewer, voiceAvatar })
+        .seed,
+    ).toBe("voice:s9");
     // Only the owner's voice lines carry a Mac-signed voice; a friend's or an agent's never does.
     expect(
       lineAvatar(
@@ -338,8 +348,9 @@ describe("isOtherVoice helper", () => {
   it("true when from owner and speaker decision is other or voice is not me", () => {
     expect(isOtherVoice({ from: "owner", speaker: { decision: "other" } })).toBe(true);
     expect(isOtherVoice({ from: "owner", speaker: { decision: "other", voice: "s1" } })).toBe(true);
+    // "unknown" is not "someone else": a short or soft sentence of his own stays his.
     expect(isOtherVoice({ from: "owner", speaker: { decision: "unknown", voice: "s2" } })).toBe(
-      true,
+      false,
     );
     expect(isOtherVoice({ from: "owner", speaker: { decision: "me", voice: "me" } })).toBe(false);
     expect(isOtherVoice({ from: "owner", speaker: { decision: "unknown" } })).toBe(false);

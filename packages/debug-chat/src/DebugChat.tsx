@@ -4647,7 +4647,11 @@ export function DebugChat({
         // A 40px tap target over the page; the text keeps the box's halo.
         className={`pointer-events-auto flex min-h-10 items-start gap-1.5 py-1 leading-snug ${asLine ? "cursor-pointer" : ""}`}
       >
-        <span className="inline-flex shrink-0 rounded-full" {...laneFlash(m)}>
+        <span
+          className={`relative inline-flex shrink-0 rounded-full ${who.unsure ? "opacity-60" : ""}`}
+          data-unsure={who.unsure ? "1" : undefined}
+          {...laneFlash(m)}
+        >
           <Avatar
             src={who.src}
             name={who.name}
@@ -4656,6 +4660,14 @@ export function DebugChat({
             size={AVATAR_PX}
             hidden
           />
+          {who.unsure && (
+            <span
+              aria-hidden
+              className="absolute -right-1 -bottom-1 rounded-full bg-[oklch(0.5_0.18_25)] px-1 text-[9px] leading-3 text-[oklch(0.99_0_0)]"
+            >
+              ?
+            </span>
+          )}
         </span>
         <div
           className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-3" : "whitespace-pre-wrap"}`}

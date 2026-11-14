@@ -43,6 +43,8 @@ export type LineAvatar = {
   initialFrom: string;
   seed: string;
   mine: boolean;
+  /** The voiceprint could not decide (a short or soft sentence): drawn as him, faded, with a "?". */
+  unsure?: boolean;
 };
 
 /**
@@ -107,11 +109,15 @@ export function lineAvatar(
   // avatars"): that voice's own disc, named "another voice", seeded by its id, so
   // two people's lines fall into runs of their own. Only with a voiceprint enrolled
   // (the Mac sets no `voice` without one), and never on "me".
+  // Only a line the voiceprint *decided* was someone else: an "unknown" one (a
+  // short or soft sentence of his own, under the line) keeps his avatar, marked
+  // unsure (owner, 2026-11-14 23:1x: "我的头像怎么变成S了").
   const voice = m.from === "owner" ? m.speaker?.voice : undefined;
-  if (voice && voice !== "me") {
+  if (voice && voice !== "me" && m.speaker?.decision === "other") {
     const name = opts.otherVoice || "another voice";
     return { src: opts.voiceAvatar?.(voice), name, initialFrom: name, seed: `voice:${voice}`, mine };
   }
+  const unsure = m.from === "owner" && m.speaker?.decision === "unknown" ? true : undefined;
   const own = opts.avatarFor?.(m);
   const s: Sender = { ...(mine ? opts.viewer : undefined), ...m.sender, ...own };
   // The host's resolver first; then, on the viewer's own lines, the viewer's
@@ -128,6 +134,7 @@ export function lineAvatar(
     initialFrom: name,
     seed: s.id || m.thread || m.from,
     mine,
+    ...(unsure ? { unsure } : {}),
   };
 }
 
@@ -165,7 +172,6 @@ export function runStarts(
 /** Whether a chat message was recognized as spoken by someone other than the owner. */
 export function isOtherVoice(m: Pick<ChatMessage, "from" | "speaker">): boolean {
   if (m.from !== "owner") return false;
-  const v = m.speaker?.voice;
-  if (v && v !== "me") return true;
+  // Only a decided "other": an "unknown" line (his own, under the line) is not someone else.
   return m.speaker?.decision === "other";
 }
