@@ -294,6 +294,7 @@ import {
   twoMicKeep,
   twoMicMatch,
 } from "../../../packages/debug-chat/src/two-mic";
+import { OwnerAi } from "./owner-ai";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
   HISTORY_LINES,
@@ -837,6 +838,18 @@ export class DebugHub {
   private agentAt = new Map<string, number>();
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
   private aiTurn = new Map<string, number>();
+  /** Li in the owner's thread (owner-ai.ts): his unaddressed lines no lane answered. */
+  private ownerAi = new OwnerAi<{ page: PageAtt; context?: ChatContext; scene?: SttScene }>({
+    now: () => this.now(),
+    timer: { set: (f, ms) => this.timer.set(f, ms), clear: (h) => this.timer.clear(h) },
+    // No model to call (an older main Worker): no flag read either.
+    flag: async (key) => (this.sessions?.partnerReply ? this.flagValue(key) : false),
+    config: async (key) => (this.sessions?.config ? this.sessions.config(key) : undefined),
+    aiOn: () => this.aiOn(),
+    agentAt: () => this.agentAt.get(OWNER_THREAD) ?? 0,
+    reply: (l, { page, context, scene }) =>
+      this.aiReply(page, page.email ?? "", l.at, context, scene, l.id),
+  });
   /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
   private tokens: TokenChat;
   /** The progress hub (same Worker): told when a listener connects, so queued ETA lines go out. */
@@ -3833,6 +3846,22 @@ export class DebugHub {
           const posted = await line(speaker);
           await accepted(typeof posted === "number" ? posted : undefined);
           if (posted !== false && m.source === "stt") this.autoPolishSoon(page);
+          // A new line of his: Li may answer it if no lane does (owner-ai.ts).
+          if (typeof posted === "number")
+            await this.ownerAi.line(
+              {
+                id: m.id,
+                text: m.text,
+                at: t,
+                ...(m.to ? { to: m.to } : {}),
+                ...(speaker ? { speaker } : {}),
+              },
+              {
+                page,
+                ...(m.context ? { context: m.context } : {}),
+                ...(m.scene ? { scene: m.scene } : {}),
+              },
+            );
         };
         // A voice line with the Mac's signed attestations: verified first, then stored.
         if (m.source === "stt" && m.speakerProof?.length)
@@ -4019,7 +4048,8 @@ export class DebugHub {
 
   /**
    * Answer a friend's line with the model (docs/partner-ai.md). The thread is
-   * the hub-verified user's own; the owner's is never passed here. Within the
+   * the hub-verified user's own; the owner's only through owner-ai.ts (flag
+   * partner.owner-thread), with his page's verified user id. Within the
    * daily caps, a reservation is taken before the call (so concurrent calls
    * cannot all pass a nearly spent cap) and settled with the real counts after.
    * The reply is dropped when an agent (a lane) posted in this thread after
@@ -4035,18 +4065,24 @@ export class DebugHub {
   ) {
     const thread = page.thread;
     const rpc = this.sessions;
-    if (thread === OWNER_THREAD || !isUserId(thread) || !rpc?.partnerReply) return;
+    // The owner's thread (owner-ai.ts schedules it): his account is the user, metered like any.
+    const owner = thread === OWNER_THREAD;
+    // A chat-only page of his (embed, box) carries no session: his other page's id.
+    const userId = owner
+      ? (page.user ?? this.pages(OWNER_THREAD).find((p) => p.a.user)?.a.user)
+      : thread;
+    if (!isUserId(userId) || !rpc?.partnerReply) return;
     const t = this.now();
     const day = jstDay(t);
-    const userKey = aiUserKey(day, thread);
+    const userKey = aiUserKey(day, userId);
     const siteKey = aiSiteKey(day);
     const used = (await this.ctx.storage.get<number>(userKey)) ?? 0;
     const site = await this.ctx.storage.get<number>(siteKey);
     if (site === undefined) await this.aiDropOldDays(day);
     const lines = (await this.history(thread))
-      .filter((m) => m.from === "friend" || m.from === "agent")
+      .filter((m) => m.from === (owner ? "owner" : "friend") || m.from === "agent")
       .slice(-HISTORY_LINES)
-      .map((m) => ({ role: m.from === "friend" ? "user" : "assistant", text: m.text }) as const);
+      .map((m) => ({ role: m.from === "agent" ? "assistant" : "user", text: m.text }) as const);
     // The newest lines within HISTORY_MAX_CHARS (the latest one always).
     const history: typeof lines = [];
     let chars = 0;
@@ -4094,8 +4130,9 @@ export class DebugHub {
     beat();
     const timer = setInterval(beat, AI_BEAT_MS);
     const req: PartnerRequest = {
-      userId: thread,
+      userId,
       ...(msgId ? { msgId } : {}),
+      ...(owner ? { owner: true as const } : {}),
       history,
       page: pageInfo,
     };
@@ -4172,6 +4209,8 @@ export class DebugHub {
       at: this.now(),
       thread,
       email,
+      // In his thread: the main lane's (Li's) avatar and voice.
+      ...(owner ? { lane: "main" as const } : {}),
     });
   }
 
