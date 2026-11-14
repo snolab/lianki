@@ -26,6 +26,8 @@ import { useSignedIn } from "@/app/components/BoxApiBridge";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useIntlayer, useLocale } from "next-intlayer";
+import { usePreferredLangs } from "@/lib/use-preferred-langs";
+import { explainIn } from "@/lib/lang-levels";
 import { type Virtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
 import { devLog } from "@/lib/debug-client";
@@ -1254,6 +1256,9 @@ function Reader({
   // ── The selection card: what is selected, its familiarity, its actions ──
   const ts = useIntlayer("read-select");
   const { locale } = useLocale();
+  // Translations go into a language the user knows well when they marked one
+  // (Settings → Preferred languages, lib/lang-levels.ts); else the app's.
+  const { items: langLevels } = usePreferredLangs();
   const [selStatus, setSelStatus] = useState<string | null>(null);
   useEffect(() => setSelStatus(null), [sel.unit]);
 
@@ -1414,7 +1419,7 @@ function Reader({
   const selLang = sel.unit ? sayLang(unitLine(sel.unit)) : lang;
   const autoTrans = useSelectTranslate(
     id,
-    String(locale),
+    explainIn(langLevels, String(locale), selLang),
     selLang && selLang !== "und" ? selLang : undefined,
     plan,
   );
@@ -2214,7 +2219,7 @@ function Reader({
             tail={liveTail}
             lang={lang}
             normLang={normLang}
-            to={String(locale)}
+            to={explainIn(langLevels, String(locale), lang)}
             title={material.title}
             mirror={mirror}
             onClose={closeDraft}
@@ -2226,7 +2231,7 @@ function Reader({
             text={liveTail}
             lang={lang}
             normLang={normLang}
-            to={String(locale)}
+            to={explainIn(langLevels, String(locale), lang)}
             lines={lines}
             title={material.title}
             sourceUrl={book?.sourceUrl}

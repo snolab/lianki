@@ -18,6 +18,7 @@ import {
   cleanReply,
   fence,
   parsePartnerRequest,
+  languagesLine,
   partnerReply,
   type PartnerDb,
   studySummary,
@@ -596,6 +597,41 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
       "alice@x.com",
     ])
       expect(system).not.toContain(leak);
+  });
+
+  it("the user's own languages and levels reach the prompt as one line; another user's never", async () => {
+    const db = d1.raw();
+    db.exec(`INSERT INTO user_prefs (user_id, key, value, hlc_ts, hlc_counter, device_id, updated_ms) VALUES
+      ('u_alice', 'lang.preferred', '[{"lang":"zh","level":"native"},{"lang":"fr","level":"a2"},"en"]', 1, 0, 'd', 1),
+      ('u_bob', 'lang.preferred', '[{"lang":"ko","level":"c2"}]', 1, 0, 'd', 1)`);
+    expect(await languagesLine(d1 as unknown as PartnerDb, "u_alice")).toBe("zh native; fr A2; en");
+    expect(await languagesLine(d1 as unknown as PartnerDb, "u_nobody")).toBe("");
+    const bodies: { messages: { role: string; content: string }[] }[] = [];
+    await partnerReply(
+      env(),
+      { userId: "u_alice", history: [{ role: "user", text: "hi" }] },
+      { fetch: fakeFetch(bodies), now: () => NOW },
+    );
+    const system = bodies[0].messages[0].content;
+    expect(system).toContain("zh native; fr A2; en");
+    expect(system).toContain("user_data.languages");
+    expect(system).not.toContain("ko C2");
+  });
+
+  it("no languages set, or the read failing: no languages field", async () => {
+    const broken = {
+      prepare: () => {
+        throw new Error("no table");
+      },
+    } as unknown as PartnerDb;
+    expect(await languagesLine(broken, "u_alice")).toBe("");
+    const bodies: { messages: { role: string; content: string }[] }[] = [];
+    await partnerReply(
+      env(),
+      { userId: "u_alice", history: [{ role: "user", text: "hi" }] },
+      { fetch: fakeFetch(bodies), now: () => NOW },
+    );
+    expect(bodies[0].messages[0].content).not.toContain('"languages"');
   });
 
   it("due counts and next due are the user's own", async () => {
