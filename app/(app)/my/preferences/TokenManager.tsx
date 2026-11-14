@@ -193,6 +193,7 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
   }
 
   const scopeName: Record<ScopeId, string> = {
+    "apps:publish": s("scopeAppsPublish"),
     study: s("scopeStudy"),
     "chat:read": s("scopeChatRead"),
     "chat:write": s("scopeChatWrite"),

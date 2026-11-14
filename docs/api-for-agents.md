@@ -332,3 +332,14 @@ share one request shape:
   API token until the main Worker with the new `CHAT_OPS` is live, so deploy
   order does not matter), the tools with `lianki-mcp`, and `lianki progress`
   to users only when `lianki` 0.5.0 is published to npm.
+
+### Publish a private mini app and reference it in chat
+
+An agent with **both `apps:publish` and `chat:write`** may POST `{manifest,html}`
+to `/api/my/mini-apps`, or use `lianki app publish --manifest ./manifest.json
+--html ./index.html` / MCP `lianki_app_publish`. The publishing permission is
+opt-in: use the normal single-scope approval flow. The app belongs only to the
+token account. Publication never grants runtime capabilities or makes an app
+public. Mention `/m/<slug>` in chat or send `attachments:[{type:"app",slug}]`
+with a `say` message to show its card; opening it uses the sandbox and per-app
+capability prompts. See [mini apps](mini-apps.md).

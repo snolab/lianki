@@ -81,16 +81,49 @@ export async function call(c, token, { method = "GET", path, query, body, header
   const said = (data && typeof data.error === "string" && data.error) || text.slice(0, 200);
   // Angle brackets dropped, so no markup survives (CodeQL: a tag regex alone is incomplete).
   const detail = said.replace(/[<>]/g, " ").replace(/\s+/g, " ").trim();
-  if (r.status === 401 || r.status === 403)
-    throw new CliError(
+  if (r.status === 401 || r.status === 403) {
+    const error = new CliError(
       "auth_refused",
       EXIT.auth,
       `${c.site} refused the token (${r.status}${/^(unknown|expired|scope|blocked)$/.test(detail) ? `: ${detail}` : ""})`,
       detail === "scope" ? SCOPE_HINT : LOGIN_HINT,
     );
+    // Only public token identities on the canonical approval route; never echo
+    // arbitrary server URLs or bearer credentials in command/tool errors.
+    if (
+      r.status === 403 &&
+      detail === "scope" &&
+      typeof data?.needScope === "string" &&
+      /^[a-z]+(?::[a-z]+)?$/.test(data.needScope) &&
+      data.needScope.length <= 64
+    ) {
+      try {
+        const approval = new URL(data.requestUrl);
+        if (
+          approval.origin === "https://lianki.com" &&
+          approval.pathname === "/my/tokens/scopes" &&
+          !approval.username &&
+          !approval.password &&
+          !approval.hash &&
+          /^[0-9a-f]{64}$/.test(approval.searchParams.get("token") ?? "") &&
+          approval.searchParams.get("scope") === data.needScope &&
+          [...approval.searchParams.keys()].length === 2
+        ) {
+          error.needScope = data.needScope;
+          error.requestUrl = approval.toString();
+          error.hint = error.requestUrl;
+        }
+      } catch {}
+    }
+    throw error;
+  }
   // The FSRS router answers a missing card with a 500 "Error: note not found".
   if (r.status === 404 || /note not found/i.test(detail))
-    throw new CliError("not_found", EXIT.notFound, detail && !/^404$/.test(detail) ? detail : "not found");
+    throw new CliError(
+      "not_found",
+      EXIT.notFound,
+      detail && !/^404$/.test(detail) ? detail : "not found",
+    );
   if (r.status === 429) {
     // Passed on as is: how long the server asked us to wait (seconds), if it said.
     const wait = Number(r.headers?.get?.("retry-after"));
@@ -105,6 +138,14 @@ export async function call(c, token, { method = "GET", path, query, body, header
   if (r.status >= 300 && r.status < 400)
     throw new CliError("server", EXIT.server, `${c.site} redirected (${r.status}); check --api`);
   if (r.status >= 500 || data === null)
-    throw new CliError("server", EXIT.server, `${c.site} failed (${r.status})${detail ? `: ${detail}` : ""}`);
-  throw new CliError("refused", EXIT.refused, `${c.site} refused it (${r.status})${detail ? `: ${detail}` : ""}`);
+    throw new CliError(
+      "server",
+      EXIT.server,
+      `${c.site} failed (${r.status})${detail ? `: ${detail}` : ""}`,
+    );
+  throw new CliError(
+    "refused",
+    EXIT.refused,
+    `${c.site} refused it (${r.status})${detail ? `: ${detail}` : ""}`,
+  );
 }

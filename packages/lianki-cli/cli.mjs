@@ -10,6 +10,7 @@
 //   - The token is never printed, in any mode.
 
 import yargs from "yargs";
+import { readPublishInput } from "./app-publish.mjs";
 import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call } from "./api.mjs";
 import { DEVICE_RE, randomId, s256, TOKEN_RE } from "./auth.mjs";
 import { createChatBridge, filterDecision, ayDeliver, bridgeConfig } from "./chat-bridge.mjs";
@@ -528,18 +529,39 @@ function chatSocket(c, token, { history = 0, mode, onReady, onEvent, timeoutMs }
   });
 }
 
+async function cmdAppPublish(c) {
+  const token = await needToken(c);
+  let body;
+  try {
+    body = await readPublishInput(c.argv.manifest, c.argv.html);
+  } catch (e) {
+    throw usage(`Cannot read publish input: ${e.message}`);
+  }
+  const { data } = await call(c, token, { method: "POST", path: "/api/my/mini-apps", body });
+  emit(c, "app publish", data, (d) => `published ${d.url}`);
+}
+
 async function cmdChatSay(c) {
   const token = await needToken(c);
   const parts = (c.argv.text ?? []).map(String);
-  if (c.argv.stdin && parts.length > 0) throw usage("say takes its text or - (stdin), not both", 'lianki chat say "PR #12 is green"');
+  if (c.argv.stdin && parts.length > 0)
+    throw usage("say takes its text or - (stdin), not both", 'lianki chat say "PR #12 is green"');
   const text = c.argv.stdin ? (await c.deps.readStdin()).trim() : parts.join(" ").trim();
-  if (!text) throw usage("say needs text (or - to read it from stdin)", 'lianki chat say "PR #12 is green"');
+  const apps = c.argv.app ?? [];
+  if (
+    apps.length > 4 ||
+    apps.some((slug) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 40)
+  )
+    throw usage("--app needs up to four mini-app slugs");
+  if (!text && !apps.length)
+    throw usage("say needs text (or - to read it from stdin)", 'lianki chat say "PR #12 is green"');
   const { data } = await call(c, token, {
     method: "POST",
     path: CHAT_PATH,
     body: {
       op: "say",
-      text,
+      text: text || apps.map((slug) => `/m/${slug}`).join(" "),
+      ...(apps.length ? { attachments: apps.map((slug) => ({ type: "app", slug })) } : {}),
       ...(c.argv.quiet ? { quiet: true } : {}),
       ...(c.argv.voice ? { voice: String(c.argv.voice) } : {}),
       // How it cuts into the reading when it arrives live: stop yours, or pause and go on.
@@ -547,7 +569,12 @@ async function cmdChatSay(c) {
       ...(c.argv.interject ? { cut: "interject" } : {}),
     },
   });
-  emit(c, "chat say", { id: data.id, lane: data.lane ?? null }, (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`);
+  emit(
+    c,
+    "chat say",
+    { id: data.id, lane: data.lane ?? null },
+    (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`,
+  );
 }
 
 /**
@@ -878,6 +905,7 @@ function build(args, deps, box) {
     .option("json", { type: "boolean", describe: "Machine output: one JSON object (schema v1)", global: true })
     .option("token", { type: "string", describe: "API token for this call (or - for stdin)", global: true, hidden: true })
     .option("api", { type: "string", describe: "Lianki site (default https://lianki.com, or $LIANKI_URL)", global: true, hidden: true })
+    .command("app", "Publish a mini-app", (y) => sub(y).command("publish", "Publish local HTML and a JSON manifest (no chat post)", (y) => y.option("manifest", {type: "string", demandOption: true, describe: "Manifest JSON file"}).option("html", {type: "string", demandOption: true, describe: "HTML file"}), act(cmdAppPublish)))
     .command("auth", "Sign in, check, sign out", (y) =>
       examples(
         sub(y)
@@ -1021,6 +1049,7 @@ function build(args, deps, box) {
               examples(
                 y
                   .positional("text", { type: "string", describe: "The line" })
+                  .option("app", { type: "string", array: true, describe: "Attach a published mini-app slug (up to four)" })
                   .option("quiet", { type: "boolean", describe: "Shown, never read aloud" })
                   .option("voice", { type: "string", describe: "Read this line in another voice: main | calm | bright, device:<name>, melo:<lang>" })
                   .option("supersede", {
@@ -1266,7 +1295,7 @@ function report(deps, json, e) {
       JSON.stringify({
         v: SCHEMA_VERSION,
         ok: false,
-        error: { code: err.code, message: err.message, ...(err.hint ? { hint: err.hint } : {}) },
+        error: { code: err.code, message: err.message, ...(err.hint ? { hint: err.hint } : {}), ...(err.needScope ? {needScope: err.needScope, requestUrl: err.requestUrl} : {}) },
         exit: err.exit,
       }),
     );

@@ -33,6 +33,7 @@ import {
   tokenScopes,
   tokenInfo,
   missingScope,
+  missingToolScope,
   TOOLS,
   inputJsonSchema,
   parseArgs,
@@ -107,7 +108,8 @@ export function buildServer(c, token, _initialScopes) {
     if (!t) throw new McpError(-32602, "Unknown tool");
     try {
       const identity = await tokenInfo(c, token);
-      if (!identity.scopes.includes(t.scope)) return missingScope(c, identity, t.scope);
+      const needed = missingToolScope(t, identity.scopes);
+      if (needed) return missingScope(c, identity, needed);
       const parsed = parseArgs(t, params.arguments);
       if (!parsed.ok)
         return {

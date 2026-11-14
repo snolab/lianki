@@ -18,6 +18,7 @@
  * localStorage, not IndexedDB: it is read synchronously in the first render,
  * which is the point. A device cache, never synced (docs/ui-state.md).
  */
+import { cleanAppRefs } from "../packages/debug-chat/src/mini-app-links";
 import type { ChatMessage, Sender } from "@/lib/dev-eval";
 
 export const CHAT_CACHE_KEY = "lk:chat-cache";
@@ -62,6 +63,8 @@ export function cacheLine(m: ChatMessage): ChatMessage {
   if (typeof m.seq === "number" && Number.isSafeInteger(m.seq) && m.seq > 0) out.seq = m.seq;
   const sender = cacheSender(m.sender);
   if (sender) out.sender = sender;
+  const apps = cleanAppRefs(m.apps);
+  if (apps) out.apps = apps;
   if (m.thread !== undefined) out.thread = m.thread;
   if (m.via) out.via = m.via;
   if (m.tokenLane) out.tokenLane = m.tokenLane;

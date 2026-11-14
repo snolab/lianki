@@ -1,5 +1,7 @@
 "use client";
 
+import { MiniAppCards, type MiniAppEmbedView, type MiniAppSizing } from "./MiniAppCards";
+
 import { evalTrustStrings } from "./eval-trust-strings";
 import { shortPage } from "./short-page";
 import { type AdaptState, voiceAdapt } from "./adaptive";
@@ -970,6 +972,8 @@ export type DebugChatProps = {
    * the menu's Inbox lists (and deletes) what it stored. Absent: no files.
    */
   files?: ChatFiles;
+  /** Signed-in host only: private mini apps reuse the host sandbox and capability prompts. */
+  miniApps?: { sizing: MiniAppSizing; renderHost: (view: MiniAppEmbedView) => ReactNode };
   /**
    * The host keeps the account's chat history (Lianki: /chat/history,
    * docs/chat-history.md): the + menu's View group gets History, which calls this.
@@ -1103,6 +1107,7 @@ export function DebugChat({
   portalRoot,
   attach = true,
   files,
+  miniApps,
   onHistory,
   etaBar = false,
   onEtaDue,
@@ -4853,6 +4858,13 @@ export function DebugChat({
    * "Cannot access 'lineText' before initialization" and took the chat down
    * as soon as a line floated (debug-chat-fold-qa, debug-chat-bar-qa).
    */
+  function appCards(m: ChatMessage, text: string) {
+    return miniApps && !embedded ? <MiniAppCards text={text} apps={m.apps}
+      origin={typeof window === "undefined" ? undefined : window.location.origin}
+      scope={draftScope} portalRoot={portalRoot} sizing={miniApps.sizing} renderHost={miniApps.renderHost}
+      labels={{open:ux.linkOpen,close:ux.linkClose,fullscreen:t.fullScreen,exitFullscreen:t.fullScreenExit,
+        resize:ux.miniAppResize,loading:ux.miniAppLoading,unavailable:ux.miniAppUnavailable}} /> : null;
+  }
   function lineText(m: ChatMessage, text: ReactNode) {
     return typeof text === "string" ? (
       <RichLine rich={richOf(text, lineTier(m, { embedded }))} onOpenPage={onOpenPage} />
@@ -5471,6 +5483,7 @@ export function DebugChat({
                             ? lineText(m, m.ask.questions[0]!.question)
                             : ""
                           : (m.context?.selection === text && !m.attachments?.length) ? null : readText(m, text)}
+                        {appCards(m, m.text)}
                         {m.ask && (
                           <AskCard
                             ask={m.ask}

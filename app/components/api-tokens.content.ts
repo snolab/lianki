@@ -11,6 +11,43 @@ import { describeKeys } from "@/lib/i18n-context";
 const dictionary = {
   key: "api-tokens",
   content: {
+    scopeAppsPublish: t({
+      en: "Publish mini apps",
+      zh: "发布迷你应用",
+      hi: "मिनी ऐप प्रकाशित करें",
+      es: "Publicar miniaplicaciones",
+      fr: "Publier des mini-apps",
+      ar: "نشر تطبيقات مصغرة",
+      bn: "মিনি অ্যাপ প্রকাশ করুন",
+      pt: "Publicar miniaplicativos",
+      ru: "Публиковать мини-приложения",
+      ur: "منی ایپس شائع کریں",
+      id: "Terbitkan aplikasi mini",
+      de: "Mini-Apps veröffentlichen",
+      ja: "ミニアプリを公開",
+      sw: "Chapisha programu ndogo",
+      mr: "मिनी ॲप प्रकाशित करा",
+      ko: "미니 앱 게시",
+    }),
+    scopeAppsPublishHint: t({
+      en: "Publish HTML mini apps to your account. Chat posting permission is also required.",
+      zh: "将 HTML 迷你应用发布到你的账号，同时需要聊天发言权限。",
+      hi: "अपने खाते में HTML मिनी ऐप प्रकाशित करें। चैट में संदेश भेजने की अनुमति भी चाहिए।",
+      es: "Publica miniaplicaciones HTML en tu cuenta. También requiere permiso para escribir en el chat.",
+      fr: "Publiez des mini-apps HTML dans votre compte. La permission de publier dans le chat est aussi requise.",
+      ar: "انشر تطبيقات HTML مصغرة في حسابك. يلزم أيضًا إذن إرسال رسائل الدردشة.",
+      bn: "আপনার অ্যাকাউন্টে HTML মিনি অ্যাপ প্রকাশ করুন। চ্যাটে বার্তা পাঠানোর অনুমতিও প্রয়োজন।",
+      pt: "Publique miniaplicativos HTML na sua conta. Também requer permissão para enviar mensagens no chat.",
+      ru: "Публикация HTML-приложений в вашем аккаунте. Также нужно разрешение отправлять сообщения в чат.",
+      ur: "اپنے اکاؤنٹ میں HTML منی ایپس شائع کریں۔ چیٹ میں پیغام بھیجنے کی اجازت بھی درکار ہے۔",
+      id: "Terbitkan aplikasi mini HTML ke akun Anda. Izin mengirim pesan chat juga diperlukan.",
+      de: "HTML-Mini-Apps in deinem Konto veröffentlichen. Dafür ist auch die Berechtigung zum Schreiben im Chat erforderlich.",
+      ja: "HTML ミニアプリを自分のアカウントに公開します。チャットへの投稿権限も必要です。",
+      sw: "Chapisha programu ndogo za HTML kwenye akaunti yako. Ruhusa ya kutuma ujumbe wa gumzo pia inahitajika.",
+      mr: "तुमच्या खात्यात HTML मिनी ॲप प्रकाशित करा. चॅटमध्ये संदेश पाठवण्याची परवानगीही आवश्यक आहे.",
+      ko: "내 계정에 HTML 미니 앱을 게시합니다. 채팅 메시지 작성 권한도 필요합니다.",
+    }),
+
     scopeRequestDevRequired: t({
       en: "This permission requires developer access for your account.",
       zh: "此权限要求你的账户拥有开发者授权。",
@@ -1343,6 +1380,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Checkbox label, one permission of an API token: use the flashcards (review, add, change cards) and the account settings. Short noun phrase.",
   scopeStudyHint:
     "Small text under the 'Cards and settings' permission checkbox: what it allows — review, add and change flashcards, and read and change the account's settings. One sentence.",
+  scopeAppsPublish:
+    "API token permission checkbox and individual scope-approval page: allow the agent to publish private HTML mini apps into this account, never another account. Short verb phrase.",
+  scopeAppsPublishHint:
+    "Hint for apps:publish on token permissions and approval page. Publishing HTML mini apps requires this explicitly approved scope AND chat:write on the same token. Publication stays private to this account; it does not grant the app any SDK capability.",
   scopeChatRead:
     "Checkbox label, one permission of an API token: read the user's own chat with the Learning Partner (the app's study assistant). Short verb phrase.",
   scopeChatReadHint:

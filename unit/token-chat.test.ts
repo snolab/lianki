@@ -395,6 +395,45 @@ describe("the hub: own thread only", () => {
     expect(ownerPage.of("chat")).toEqual([]);
   });
 
+  it("app attachments stay in the token account thread, retain a history link and never carry HTML", async () => {
+    const s = hubSetup();
+    const a = await mint(ALICE, "my-app-agent");
+    const page = await s.page({ userId: ALICE.userId, email: ALICE.email, owner: false });
+    const r = await s.http(a.token, {
+      op: "say",
+      attachments: [{ type: "app", slug: "calculator", html: "<script>bad()</script>" }],
+    });
+    expect(r.status).toBe(200);
+    const line = page.of("chat").at(-1)?.message as Record<string, unknown>;
+    expect(line.apps).toEqual([{ type: "app", slug: "calculator" }]);
+    expect(line.text).toBe("【my-app-agent】/m/calculator");
+    expect(line.thread).toBe(ALICE.userId);
+    expect(line.attachments).toBeUndefined();
+    expect(JSON.stringify(line)).not.toContain("<script>");
+    for (const attachments of [
+      null,
+      [],
+      [{ type: "app", slug: "../other" }],
+      [{ type: "app", slug: "ok" }, { type: "file" }],
+      Array.from({ length: 5 }, (_, i) => ({ type: "app", slug: `app-${i}` })),
+    ]) {
+      expect((await s.http(a.token, { op: "say", text: "invalid", attachments })).status).toBe(400);
+    }
+    expect(page.of("chat")).toHaveLength(1);
+    expect(
+      (
+        await s.http(a.token, {
+          op: "say",
+          text: "/m/calculator-other",
+          attachments: [{ type: "app", slug: "calculator" }],
+        })
+      ).status,
+    ).toBe(200);
+    expect((page.of("chat").at(-1)?.message as { text: string }).text).toBe(
+      "【my-app-agent】/m/calculator-other\n/m/calculator",
+    );
+  });
+
   it("say cut: supersede / interject kept on the line; anything else refused, nothing posted", async () => {
     const s = hubSetup();
     const o = await mint(OWNER, "codex");

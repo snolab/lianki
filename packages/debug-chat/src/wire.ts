@@ -195,6 +195,8 @@ export type ChatMessage = {
    * cleanAttachments. Owner lines only, as the host's upload is.
    */
   attachments?: AttachmentRef[];
+  /** Safe mini app references normalized from agent app attachments; HTML is never on a chat line. */
+  apps?: { type: "app"; slug: string }[];
   /**
    * Where a voice line was spoken: the page's path and title and the text on
    * its screen (cleanScene). Only on `source: "stt"` lines; what the agent's

@@ -19,7 +19,7 @@ export const CLIENT_HEADER = "x-lianki-client";
 export const IMPORT_MAX = 100;
 export const CHAT_PATH = "/api/version/chat";
 /** Known tool permissions; introspection must explicitly grant each permission. */
-const ALL_SCOPES = ["study", "chat:read", "chat:write", "chat:ask", "progress"];
+const ALL_SCOPES = ["study", "chat:read", "chat:write", "chat:ask", "progress", "apps:publish"];
 /** lianki_chat_wait: how long it waits by default, and at most (under a client's usual 60 s request timeout). */
 export const WAIT_DEFAULT_SEC = 50;
 export const WAIT_MAX_SEC = 55;
@@ -48,6 +48,32 @@ const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: fals
  * is cli.mjs `call` with the token and the client header already in place.
  */
 export const TOOLS = [
+  {
+    name: "lianki_app_publish",
+    scope: "apps:publish",
+    requires: ["apps:publish", "chat:write"],
+    title: "Publish a mini-app",
+    description:
+      "Publish or replace the user's mini-app from an HTML document and manifest. Returns its /m/ URL; does not post to chat. Requires apps:publish and chat:write.",
+    input: {
+      manifest: z
+        .object({
+          slug: z.string().min(1),
+          name: z.string().min(1),
+          icon: z.string().optional(),
+          version: z.string().optional(),
+          style: z.enum(["lianki", "none"]).optional(),
+          permissions: z.array(z.string()).optional(),
+        })
+        .strict(),
+      html: z
+        .string()
+        .min(1)
+        .describe("Complete HTML document; server enforces its configured size and safety limits"),
+    },
+    annotations: WRITE,
+    run: async (api, a) => api({ method: "POST", path: "/api/my/mini-apps", body: a }),
+  },
   {
     name: "lianki_stats",
     scope: "study",
@@ -194,24 +220,48 @@ export const TOOLS = [
       "The latest messages in the user's own chat with the Learning Partner, oldest first. An answer to a question card shows up here.",
     input: {
       limit: z.number().int().min(1).max(100).optional().describe("How many (default 30)"),
-      afterSeq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional().describe("Recover after this sequence (exclusive)"),
-      throughSeq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional().describe("Recover through this sequence (inclusive; requires afterSeq)"),
+      afterSeq: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional()
+        .describe("Recover after this sequence (exclusive)"),
+      throughSeq: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional()
+        .describe("Recover through this sequence (inclusive; requires afterSeq)"),
     },
     annotations: READ,
     run: async (api, a) => {
-      const d = await api({ method: "POST", path: CHAT_PATH, body: { op: "read", limit: a.limit ?? 30, ...readWindow(a.afterSeq, a.throughSeq) } });
+      const d = await api({
+        method: "POST",
+        path: CHAT_PATH,
+        body: { op: "read", limit: a.limit ?? 30, ...readWindow(a.afterSeq, a.throughSeq) },
+      });
       return { messages: Array.isArray(d.messages) ? d.messages : [], ...readCoverage(d) };
-
     },
   },
   {
     name: "lianki_chat_seen",
     scope: "chat:read",
     title: "Acknowledge read chat",
-    description: "Explicitly report the last chat sequence you actually consumed. Receiving or passively listening to messages is not reading them.",
-    input: { lastReadSeq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).describe("Last sequence actually read, from a message or replay result") },
+    description:
+      "Explicitly report the last chat sequence you actually consumed. Receiving or passively listening to messages is not reading them.",
+    input: {
+      lastReadSeq: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .describe("Last sequence actually read, from a message or replay result"),
+    },
     annotations: { ...WRITE, idempotentHint: true },
-    run: (api, args) => api({ method: "POST", path: CHAT_PATH, body: readAckBody(args.lastReadSeq) }),
+    run: (api, args) =>
+      api({ method: "POST", path: CHAT_PATH, body: readAckBody(args.lastReadSeq) }),
   },
   {
     name: "lianki_chat_wait",
@@ -244,10 +294,37 @@ export const TOOLS = [
     scope: "chat:write",
     title: "Post in the chat",
     description: "Post one message in the user's chat; it shows the token's name.",
-    input: { text: z.string().min(1).max(4000) },
+    input: {
+      text: z.string().max(4000).optional(),
+      attachments: z
+        .array(
+          z
+            .object({
+              type: z.literal("app"),
+              slug: z
+                .string()
+                .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+                .max(40),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(4)
+        .optional(),
+    },
     annotations: WRITE,
     run: async (api, a) => {
-      const d = await api({ method: "POST", path: CHAT_PATH, body: { op: "say", text: a.text } });
+      if (!a.text?.trim() && !a.attachments?.length)
+        throw new CliError("usage", EXIT.usage, "text or app attachments required");
+      const d = await api({
+        method: "POST",
+        path: CHAT_PATH,
+        body: {
+          op: "say",
+          text: a.text ?? a.attachments.map((app) => `/m/${app.slug}`).join(" "),
+          ...(a.attachments ? { attachments: a.attachments } : {}),
+        },
+      });
       return { id: d.id ?? null };
     },
   },
@@ -525,7 +602,9 @@ export function waitChat(io, { after, timeoutSec } = {}) {
 }
 
 /** The tools a token holding `scopes` may use. */
-export const toolsFor = (scopes) => TOOLS.filter((t) => scopes.includes(t.scope));
+export const missingToolScope = (tool, scopes) =>
+  (tool.requires ?? [tool.scope]).find((scope) => !scopes.includes(scope));
+export const toolsFor = (scopes) => TOOLS.filter((t) => !missingToolScope(t, scopes));
 
 /**
  * A tool's result as text: the data between tags, with every `<` escaped so
@@ -552,6 +631,15 @@ export function toolError(e) {
   ]
     .filter(Boolean)
     .join(" ");
+  if (err.needScope && err.requestUrl) {
+    const result = { needScope: err.needScope, requestUrl: err.requestUrl };
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify(result) }],
+      structuredContent: result,
+      _meta: { code: "scope_required", ...result },
+    };
+  }
   return {
     isError: true,
     content: [{ type: "text", text }],

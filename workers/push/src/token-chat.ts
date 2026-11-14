@@ -1,3 +1,4 @@
+import { cleanAppRefs, miniAppsIn } from "../../../packages/debug-chat/src/mini-app-links";
 /**
  * Token chat: `lianki chat say | ask | read | listen` (packages/lianki-cli),
  * authenticated with an API token (lib/api-tokens.ts), held by DebugHub
@@ -366,7 +367,29 @@ export class TokenChat {
   private async say(thread: string, lane: string, m: Record<string, unknown>, who: Who = {}) {
     const muted = await this.mutedRefusal(thread, lane);
     if (muted) return muted;
-    const text = typeof m.text === "string" ? laneText(lane, m.text.trim()) : undefined;
+    const apps = cleanAppRefs(m.attachments);
+    if (
+      m.attachments !== undefined &&
+      (!Array.isArray(m.attachments) ||
+        m.attachments.length > 4 ||
+        !apps ||
+        m.attachments.some(
+          (a: unknown) =>
+            !a ||
+            typeof a !== "object" ||
+            (a as { type?: unknown }).type !== "app" ||
+            !cleanAppRefs([a]),
+        ))
+    )
+      return { error: "attachments must contain app references" };
+    // Keep a normal link in text as well: the minimal long-term history format keeps text only.
+    let body = typeof m.text === "string" ? m.text.trim() : "";
+    for (const app of apps ?? []) {
+      const href = `/m/${app.slug}`;
+      if (!miniAppsIn(body).some((ref) => ref.slug === app.slug))
+        body += `${body ? "\n" : ""}${href}`;
+    }
+    const text = body ? laneText(lane, body) : undefined;
     if (!text) return { error: "say needs text (at most the chat's limit)" };
     // A line's own voice (main = the cat-girl voice…), checked as on the grant path.
     const voice = m.voice === undefined ? undefined : parseLineVoice(m.voice);
@@ -379,6 +402,7 @@ export class TokenChat {
       lane,
       text,
       {
+        ...(apps ? { apps } : {}),
         ...(m.quiet === true ? { quiet: true as const } : {}),
         ...(voice ? { voice: m.voice as string } : {}),
         // How it cuts into the reading when it arrives live (packages/debug-chat voice.ts).

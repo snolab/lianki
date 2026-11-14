@@ -39,6 +39,8 @@ function setup(opts: { scopes?: string[]; refuse?: boolean } = {}) {
           scopes: opts.scopes ?? ["study", "chat:read"],
           expiresAt: null,
         });
+      if (u.pathname === "/api/my/mini-apps")
+        return Response.json({ slug: "clock", url: "/m/clock" });
       if (u.pathname === "/api/fsrs/stats") return Response.json({ notes: 12, due: 3 });
       if (u.pathname === "/api/version/chat")
         return Response.json({ ok: true, messages: [{ text: "hi" }] });
@@ -197,7 +199,9 @@ describe("protocol", () => {
 
 describe("tools", () => {
   test("tools/list with every permission: exactly the local server's tool names", async () => {
-    const { env } = setup({ scopes: ["study", "chat:read", "chat:write", "chat:ask", "progress"] });
+    const { env } = setup({
+      scopes: ["study", "chat:read", "chat:write", "chat:ask", "progress", "apps:publish"],
+    });
     const { result } = await (await handle(rpc("tools/list"), env)).json();
     expect(result.tools.map((t: { name: string }) => t.name)).toEqual(TOOLS.map((t) => t.name));
     const review = result.tools.find((t: { name: string }) => t.name === "lianki_review");
@@ -278,4 +282,26 @@ test("remote scope lists refresh after approval and revocation never creates an 
   );
   expect(response.status).toBe(401);
   expect(await response.text()).not.toContain("requestUrl");
+});
+
+test("mini-app remote publishing checks both grants and forwards only allowed calls", async () => {
+  for (const scopes of [["apps:publish"], ["chat:write"], ["apps:publish", "chat:write"]]) {
+    const { env, seen } = setup({ scopes });
+    const body = { manifest: { slug: "clock", name: "Clock" }, html: "<p>clock</p>" };
+    const { result } = await (
+      await handle(rpc("tools/call", { name: "lianki_app_publish", arguments: body }), env)
+    ).json();
+    const posts = seen.filter((s) => s.path === "main:/api/my/mini-apps");
+    if (scopes.length === 2) {
+      expect(result.isError).not.toBe(true);
+      expect(posts).toHaveLength(1);
+      expect(JSON.parse(posts[0].body)).toEqual(body);
+      expect(posts[0].client).toContain("tool=lianki_app_publish");
+    } else {
+      expect(posts).toHaveLength(0);
+      expect(result.structuredContent.needScope).toBe(
+        scopes[0] === "apps:publish" ? "chat:write" : "apps:publish",
+      );
+    }
+  }
 });

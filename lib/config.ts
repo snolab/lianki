@@ -1092,6 +1092,33 @@ export const CONFIG = {
     description:
       "小应用的 lianki.ui.card：在聊天里发出选择卡片后，最多等你点多久（毫秒）；超时应用收到「没有回答」。",
   }),
+  "miniApps.chatHeightPx": int({
+    default: 360,
+    min: 120,
+    max: 1200,
+    unit: "px",
+    group: "miniApps",
+    audience: "public",
+    description: "聊天内嵌迷你应用面板的初始高度，实际大小会夹紧到当前可视窗口。",
+  }),
+  "miniApps.chatMinHeightPx": int({
+    default: 160,
+    min: 80,
+    max: 600,
+    unit: "px",
+    group: "miniApps",
+    audience: "public",
+    description: "聊天内嵌迷你应用面板的最小高度；小屏幕时仍以可视窗口为准。",
+  }),
+  "miniApps.chatResizeStepPx": int({
+    default: 24,
+    min: 4,
+    max: 120,
+    unit: "px",
+    group: "miniApps",
+    audience: "public",
+    description: "键盘方向键每次调整聊天迷你应用面板高度的像素数。",
+  }),
   "miniApps.origin": {
     default: "" as string,
     schema: z.union([

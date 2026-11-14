@@ -44,6 +44,7 @@ import {
   runTool,
   tokenInfo,
   missingScope,
+  missingToolScope,
   toolError,
   toolsFor,
 } from "../../../packages/lianki-cli/mcp-tools.mjs";
@@ -226,8 +227,8 @@ async function dispatch(
       // Refused before anything runs when the token lacks the tool's permission
       // (the routes would refuse it too; this names the permission).
       const identity = await identityOf(c, token);
-      if (!identity.scopes.includes(t.scope))
-        return { jsonrpc: "2.0", id, result: missingScope(c, identity, t.scope) };
+      const needed = missingToolScope(t, identity.scopes);
+      if (needed) return { jsonrpc: "2.0", id, result: missingScope(c, identity, needed) };
       const parsed = parseArgs(t, params.arguments);
       if (!parsed.ok)
         return {

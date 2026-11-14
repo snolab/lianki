@@ -9,6 +9,7 @@ import { migrateLegacyOwnerDraft } from "../../packages/debug-chat/src/legacy-ch
 import { chatUi } from "../../packages/debug-chat/src/ui-store";
 import { evalTrustStrings } from "../../packages/debug-chat/src/eval-trust-strings";
 
+import type { HostView } from "@/lib/mini-apps/handlers";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -117,6 +118,16 @@ const backToCloseChat = (onBack: () => void) => openBackToClose(window, onBack);
  * chat's chunk is prefetched in idle time for a viewer who will see it
  * (DebugEvalLazy.tsx), through the same loadChatHost.
  */
+const MiniAppHost = lazy(() =>
+  import("@/app/(app)/m/[slug]/MiniAppHost").then((m) => ({ default: m.MiniAppHost })),
+);
+const renderMiniApp = (
+  view: import("../../packages/debug-chat/src/MiniAppCards").MiniAppEmbedView,
+) => (
+  <Suspense fallback={null}>
+    <MiniAppHost view={view as HostView} embedded />
+  </Suspense>
+);
 const DebugChatHost = lazy(() => loadChatHost().then((m) => ({ default: m.DebugChatHost })));
 const DebugPairModal = lazy(() =>
   import("@lianki/debug-chat/DebugPairModal").then((m) => ({ default: m.DebugPairModal })),
@@ -1555,6 +1566,18 @@ export function DebugEval({
             treeRepo="snolab/lianki"
             // Every signed-in account's own inbox; guests keep coming-soon file actions.
             files={account ? accountFiles : undefined}
+            miniApps={
+              account && !box
+                ? {
+                    sizing: {
+                      height: publicCfg("miniApps.chatHeightPx"),
+                      minHeight: publicCfg("miniApps.chatMinHeightPx"),
+                      step: publicCfg("miniApps.chatResizeStepPx"),
+                    },
+                    renderHost: renderMiniApp,
+                  }
+                : undefined
+            }
             // The account's chat history (docs/chat-history.md): every signed-in user's own.
             onHistory={() => router.push("/chat/history")}
             agentAvatar={AGENT_AVATAR}

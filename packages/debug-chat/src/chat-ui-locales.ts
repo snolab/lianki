@@ -70,6 +70,10 @@ export type LegacyKey = (typeof LEGACY_KEYS)[number];
 export type LegacyStrings = Record<LegacyKey, string>;
 
 export type ChatExtra = {
+  miniAppLoading: string;
+  miniAppUnavailable: string;
+  miniAppResize: string;
+
   readReceipts: string;
   linkMenuTitle: string;
   linkOpen: string;
@@ -200,6 +204,9 @@ export const EXTRA_CONTEXT: ChatExtra = {
   polishedBy: `In ${CHAT}: accessible label and tooltip heading on the small sparkle after a polished voice message. Names WHO polished the wording, not who spoke or transcribed it. {name} is the assistant lane display name or the localized automatic-system name; keep {name}. Also shown above the original transcript in the tap-open popover.`,
   polishedAuto: `In ${CHAT}: the actor name substituted into polishedBy when edited.by is auto. This is automatic wording cleanup, not a human or a named assistant lane. A short localized name for the automatic system; the tiny badge itself uses a symbol.`,
   messageDetails: `In ${CHAT}: heading and accessible label of a popover opened by clicking a message. It shows only metadata already carried by that message: sender, timestamp, recognition and voiceprint fields when present. Short noun phrase.`,
+  miniAppLoading: "In a chat message mini-app card/panel, status while fetching the signed-in account's own app. The HTML is not executed until Open is chosen.",
+  miniAppUnavailable: "In a chat message mini-app card/panel: the requested app cannot be loaded, including deleted apps, unavailable feature or another account's app. Do not disclose ownership details.",
+  miniAppResize: "Accessible label for the chat mini-app panel height separator: drag vertically or use arrow keys to resize the embedded sandbox; this does not change the app's own HTML.",
   readReceipts: "Accessible label for tiny participant avatars below the latest own chat message in the viewer’s own authenticated thread. These participants have actually read through this message; not merely connected or received it. No counts or technical sequence values are shown.",
   pttTooLong: "Shown in the pending push-to-talk speech bubble when a held recording reaches the configured memory/duration limit. Recording stops with an explicit failure; already recognized text remains available and is not silently sent as a complete recording.",
   voiceDetails: "Accessible label and heading of the small voice-information icon and its tap-open popover beside a spoken chat message. Shows recorded recognition, voiceprint and polishing metadata; not a playback action.",
@@ -633,6 +640,10 @@ export const OTHER_LEGACY: Record<Other, LegacyStrings> = {
 /** The strings that were inline in the chat's code, in all 16 locales. */
 export const EXTRA: Record<ChatLocale, ChatExtra> = {
   en: {
+    miniAppLoading: "Loading mini app…",
+    miniAppUnavailable: "Mini app unavailable",
+    miniAppResize: "Resize mini app",
+
     readReceipts: "Read by",
     pttTooLong: "Recording limit reached. Recognized text is kept.",
     linkMenuTitle: "Link actions",
@@ -719,6 +730,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Retry",
   },
   zh: {
+    miniAppLoading: "正在加载迷你应用…",
+    miniAppUnavailable: "迷你应用不可用",
+    miniAppResize: "调整迷你应用高度",
+
     readReceipts: "已读者",
     pttTooLong: "已达到录音时长上限，已识别的文字会保留。",
     linkMenuTitle: "链接操作",
@@ -804,6 +819,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "重试",
   },
   hi: {
+    miniAppLoading: "मिनी ऐप लोड हो रहा है…",
+    miniAppUnavailable: "मिनी ऐप उपलब्ध नहीं है",
+    miniAppResize: "मिनी ऐप का आकार बदलें",
+
     readReceipts: "इन लोगों ने पढ़ा",
     pttTooLong: "रिकॉर्डिंग की सीमा पूरी हो गई। पहचाना गया पाठ सुरक्षित है।",
     linkMenuTitle: "लिंक के विकल्प",
@@ -889,6 +908,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "फिर से कोशिश करें",
   },
   es: {
+    miniAppLoading: "Cargando miniaplicación…",
+    miniAppUnavailable: "Miniaplicación no disponible",
+    miniAppResize: "Cambiar tamaño de la miniaplicación",
+
     readReceipts: "Leído por",
     pttTooLong: "Se alcanzó el límite de grabación. Se conserva el texto reconocido.",
     linkMenuTitle: "Opciones del enlace",
@@ -974,6 +997,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Reintentar",
   },
   fr: {
+    miniAppLoading: "Chargement de la mini-app…",
+    miniAppUnavailable: "Mini-app indisponible",
+    miniAppResize: "Redimensionner la mini-app",
+
     readReceipts: "Lu par",
     pttTooLong: "Limite d’enregistrement atteinte. Le texte reconnu est conservé.",
     linkMenuTitle: "Actions du lien",
@@ -1059,6 +1086,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Réessayer",
   },
   ar: {
+    miniAppLoading: "جارٍ تحميل التطبيق المصغر…",
+    miniAppUnavailable: "التطبيق المصغر غير متاح",
+    miniAppResize: "تغيير حجم التطبيق المصغر",
+
     readReceipts: "قرأها",
     pttTooLong: "تم بلوغ حد التسجيل. تم الاحتفاظ بالنص الذي تم التعرف عليه.",
     linkMenuTitle: "خيارات الرابط",
@@ -1144,6 +1175,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "إعادة المحاولة",
   },
   bn: {
+    miniAppLoading: "মিনি অ্যাপ লোড হচ্ছে…",
+    miniAppUnavailable: "মিনি অ্যাপ উপলব্ধ নেই",
+    miniAppResize: "মিনি অ্যাপের আকার পরিবর্তন করুন",
+
     readReceipts: "যারা পড়েছেন",
     pttTooLong: "রেকর্ডিংয়ের সীমা পূর্ণ হয়েছে। শনাক্ত করা লেখা রাখা হয়েছে।",
     linkMenuTitle: "লিংকের বিকল্প",
@@ -1229,6 +1264,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "আবার চেষ্টা করুন",
   },
   pt: {
+    miniAppLoading: "Carregando miniaplicativo…",
+    miniAppUnavailable: "Miniaplicativo indisponível",
+    miniAppResize: "Redimensionar miniaplicativo",
+
     readReceipts: "Lido por",
     pttTooLong: "Limite de gravação atingido. O texto reconhecido foi mantido.",
     linkMenuTitle: "Ações do link",
@@ -1314,6 +1353,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Tentar de novo",
   },
   ru: {
+    miniAppLoading: "Загрузка мини-приложения…",
+    miniAppUnavailable: "Мини-приложение недоступно",
+    miniAppResize: "Изменить размер мини-приложения",
+
     readReceipts: "Прочитали",
     pttTooLong: "Достигнут предел записи. Распознанный текст сохранён.",
     linkMenuTitle: "Действия со ссылкой",
@@ -1399,6 +1442,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Повторить",
   },
   ur: {
+    miniAppLoading: "منی ایپ لوڈ ہو رہی ہے…",
+    miniAppUnavailable: "منی ایپ دستیاب نہیں",
+    miniAppResize: "منی ایپ کا سائز بدلیں",
+
     readReceipts: "پڑھنے والے",
     pttTooLong: "ریکارڈنگ کی حد پوری ہو گئی۔ پہچانا گیا متن محفوظ ہے۔",
     linkMenuTitle: "لنک کے اختیارات",
@@ -1484,6 +1531,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "دوبارہ کوشش کریں",
   },
   id: {
+    miniAppLoading: "Memuat aplikasi mini…",
+    miniAppUnavailable: "Aplikasi mini tidak tersedia",
+    miniAppResize: "Ubah ukuran aplikasi mini",
+
     readReceipts: "Dibaca oleh",
     pttTooLong: "Batas rekaman tercapai. Teks yang dikenali tetap disimpan.",
     linkMenuTitle: "Tindakan tautan",
@@ -1569,6 +1620,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Coba lagi",
   },
   de: {
+    miniAppLoading: "Mini-App wird geladen…",
+    miniAppUnavailable: "Mini-App nicht verfügbar",
+    miniAppResize: "Größe der Mini-App ändern",
+
     readReceipts: "Gelesen von",
     pttTooLong: "Aufnahmelimit erreicht. Der erkannte Text bleibt erhalten.",
     linkMenuTitle: "Linkaktionen",
@@ -1654,6 +1709,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Erneut versuchen",
   },
   ja: {
+    miniAppLoading: "ミニアプリを読み込み中…",
+    miniAppUnavailable: "ミニアプリを利用できません",
+    miniAppResize: "ミニアプリの高さを変更",
+
     readReceipts: "既読の参加者",
     pttTooLong: "録音時間の上限に達しました。認識済みのテキストは保持されます。",
     linkMenuTitle: "リンクの操作",
@@ -1739,6 +1798,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "再試行",
   },
   sw: {
+    miniAppLoading: "Inapakia programu ndogo…",
+    miniAppUnavailable: "Programu ndogo haipatikani",
+    miniAppResize: "Badilisha ukubwa wa programu ndogo",
+
     readReceipts: "Imesomwa na",
     pttTooLong: "Kikomo cha kurekodi kimefikiwa. Maandishi yaliyotambuliwa yamehifadhiwa.",
     linkMenuTitle: "Vitendo vya kiungo",
@@ -1824,6 +1887,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Jaribu tena",
   },
   mr: {
+    miniAppLoading: "मिनी ॲप लोड होत आहे…",
+    miniAppUnavailable: "मिनी ॲप उपलब्ध नाही",
+    miniAppResize: "मिनी ॲपचा आकार बदला",
+
     readReceipts: "यांनी वाचले",
     pttTooLong: "रेकॉर्डिंगची मर्यादा गाठली. ओळखलेला मजकूर जतन केला आहे.",
     linkMenuTitle: "दुव्याचे पर्याय",
@@ -1909,6 +1976,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "पुन्हा प्रयत्न करा",
   },
   ko: {
+    miniAppLoading: "미니 앱 불러오는 중…",
+    miniAppUnavailable: "미니 앱을 사용할 수 없습니다",
+    miniAppResize: "미니 앱 크기 조절",
+
     readReceipts: "읽은 참여자",
     pttTooLong: "녹음 한도에 도달했습니다. 인식된 텍스트는 유지됩니다.",
     linkMenuTitle: "링크 작업",

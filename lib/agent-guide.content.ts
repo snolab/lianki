@@ -11,6 +11,25 @@ import type { GuideKey } from "@/lib/agent-guide";
 const dictionary = {
   key: "agent-guide",
   content: {
+    scopeAppsPublish: t({
+      en: "Publish mini apps",
+      zh: "发布迷你应用",
+      hi: "मिनी ऐप प्रकाशित करें",
+      es: "Publicar miniaplicaciones",
+      fr: "Publier des mini-apps",
+      ar: "نشر تطبيقات مصغرة",
+      bn: "মিনি অ্যাপ প্রকাশ করুন",
+      pt: "Publicar miniaplicativos",
+      ru: "Публиковать мини-приложения",
+      ur: "منی ایپس شائع کریں",
+      id: "Terbitkan aplikasi mini",
+      de: "Mini-Apps veröffentlichen",
+      ja: "ミニアプリを公開",
+      sw: "Chapisha programu ndogo",
+      mr: "मिनी ॲप प्रकाशित करा",
+      ko: "미니 앱 게시",
+    }),
+
     title: t({
       en: "Using Lianki with the user's API token",
       zh: "用用户的 API 令牌使用炼记（Lianki）",
@@ -1111,6 +1130,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Section heading in the AI-assistant instructions over the list of this token's permissions. A short noun phrase or question-like heading.",
   scopeStudy:
     "List item under 'What this token may do' in the AI-assistant instructions, for the 'Cards and settings' permission: what an AI assistant may do with it (see due flashcards, add cards, record reviews, read settings). Starts with the permission's name, a colon, then the explanation.",
+  scopeAppsPublish:
+    "Permission name in agent instructions: publish private HTML mini apps into the token account. Publication also requires chat:write, and never grants the app runtime capabilities.",
   scopeChatRead:
     "List item under 'What this token may do' in the AI-assistant instructions, for the 'Read the chat' permission: read the user's own chat with the Learning Partner (the app's study assistant). Starts with the permission's name, a colon, then the explanation.",
   scopeChatWrite:

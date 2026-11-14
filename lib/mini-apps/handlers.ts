@@ -5,7 +5,7 @@
  * `mini-apps` is off or for a guest; an app is only ever its owner's own.
  *
  *   GET    /api/my/mini-apps              the account's apps and their grants
- *   POST   /api/my/mini-apps              publish {manifest, html} (phase 1: `dev` only)
+ *   POST   /api/my/mini-apps              publish {manifest, html} (session `dev` or explicit token scopes)
  *   GET    /api/my/mini-apps/<slug>       one app's manifest and grants
  *   POST   /api/my/mini-apps/<slug>       {action: decide | revoke | call}
  *   DELETE /api/my/mini-apps/<slug>       the app, its grants, its storage, its files
@@ -44,7 +44,13 @@ import {
 } from "./store";
 import { TICKET_MS, secretUsable, signTicket, verifyTicket } from "./ticket";
 
-export type MiniWho = { id: string; email: string; dev: boolean };
+export type MiniWho = {
+  id: string;
+  email: string;
+  dev: boolean;
+  /** Set only by the verified apps:publish + chat:write publication adapter. */
+  canPublish?: true;
+};
 
 /** The slice of the R2 bucket used here. */
 export type MiniBucket = {
@@ -125,11 +131,11 @@ export async function listMine(d: MiniDeps): Promise<Response> {
   return json({ apps: out, canPublish: who.dev, maxBytes: c.maxBytes, perAccount: c.perAccount });
 }
 
-/** POST /api/my/mini-apps {manifest, html} — phase 1: accounts holding `dev`. */
+/** POST /api/my/mini-apps {manifest, html}: a dev session or explicit publication grant. */
 export async function publish(req: Request, d: MiniDeps): Promise<Response> {
   const who = await gate(d);
   if (!who) return notFound();
-  if (!who.dev) return json({ error: "dev-required" }, 403);
+  if (!who.dev && !who.canPublish) return json({ error: "dev-required" }, 403);
   const c = await d.config();
   if (d.allow && !d.allow(who.id, c.callsPerMinute)) return json({ error: "rate-limited" }, 429);
   const cap = c.maxBytes * 2 + 64 * 1024;
@@ -198,6 +204,12 @@ export async function appInfo(slug: string, d: MiniDeps): Promise<Response> {
   const a = await getApp(db, who.id, slug);
   if (!a) return notFound();
   return json(view(a, await grantsFor(db, who.id, a.id)));
+}
+
+/** Chat embeds are session-owned opaque frames even when the standalone app uses tickets. */
+export async function embedView(req: Request, slug: string, d: MiniDeps): Promise<Response> {
+  const view = await hostView(slug, new URL(req.url).origin, d, { forceSrcdoc: true });
+  return view ? json({ view }) : notFound();
 }
 
 /** DELETE /api/my/mini-apps/<slug> */
@@ -368,7 +380,12 @@ export type HostView = {
  * miniApps.origin is set (and AUTH_SECRET usable), else srcdoc with the CSP
  * as a <meta>. `host` is the page's origin. Null: 404.
  */
-export async function hostView(slug: string, host: string, d: MiniDeps): Promise<HostView | null> {
+export async function hostView(
+  slug: string,
+  host: string,
+  d: MiniDeps,
+  options: { forceSrcdoc?: boolean } = {},
+): Promise<HostView | null> {
   const who = await gate(d);
   if (!who || !isSlug(slug)) return null;
   const db = d.db();
@@ -387,7 +404,7 @@ export async function hostView(slug: string, host: string, d: MiniDeps): Promise
   };
   const origin = appOrigin(c.origin, a.id);
   const secret = d.secret?.();
-  if (origin && secretUsable(secret)) {
+  if (!options.forceSrcdoc && origin && secretUsable(secret)) {
     const now = (d.now ?? Date.now)();
     const t = await signTicket(
       {

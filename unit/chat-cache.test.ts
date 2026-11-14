@@ -412,3 +412,18 @@ describe("config chat.cacheLines", () => {
     expect(CONFIG["chat.cacheLines"].schema.safeParse(0).success).toBe(true);
   });
 });
+
+it("mini app references retain only validated slugs in the device cache", () => {
+  const line = cacheLine({
+    id: "app-line",
+    from: "agent",
+    label: "",
+    text: "/m/calculator",
+    at: 1,
+    apps: [
+      { type: "app", slug: "calculator" },
+      { type: "app", slug: "../private" },
+    ],
+  });
+  expect(line.apps).toEqual([{ type: "app", slug: "calculator" }]);
+});

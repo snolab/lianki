@@ -642,3 +642,50 @@ test("scope approval URLs stay on canonical Lianki regardless of the configured 
     expect(JSON.stringify(missing)).not.toContain(TOKEN);
   }
 });
+
+describe("mini-app publishing permissions", () => {
+  test("requires both permissions at listing and call time", async () => {
+    for (const scopes of [["chat:write"], ["apps:publish"], ["apps:publish", "chat:write"]]) {
+      const h = setup({
+        scopes,
+        server: { "POST /api/my/mini-apps": () => json({ slug: "clock", url: "/m/clock" }, 201) },
+      });
+      const c = await h.connect();
+      const allowed = scopes.length === 2;
+      expect((await c.listTools()).tools.some((t) => t.name === "lianki_app_publish")).toBe(
+        allowed,
+      );
+      const result: any = await c.callTool({
+        name: "lianki_app_publish",
+        arguments: { manifest: { slug: "clock", name: "Clock" }, html: "<p>clock</p>" },
+      });
+      if (allowed) {
+        expect(dataOf(result).url).toBe("/m/clock");
+        expect(h.seen.filter((s) => s.path === "/api/my/mini-apps")).toHaveLength(1);
+      } else {
+        expect(result.structuredContent.needScope).toBe(
+          scopes[0] === "chat:write" ? "apps:publish" : "chat:write",
+        );
+        expect(result.structuredContent.requestUrl).not.toContain(TOKEN);
+        expect(h.seen.some((s) => s.path === "/api/my/mini-apps")).toBe(false);
+      }
+      await h.close();
+    }
+  });
+  test("chat app references preserve attachment-only fallback", async () => {
+    const h = setup({ scopes: ["chat:write"] });
+    const c = await h.connect();
+    await c.callTool({
+      name: "lianki_chat_say",
+      arguments: { attachments: [{ type: "app", slug: "clock" }] },
+    });
+    expect(h.seen.at(-1)?.body).toEqual({
+      op: "say",
+      text: "/m/clock",
+      attachments: [{ type: "app", slug: "clock" }],
+    });
+    const empty: any = await c.callTool({ name: "lianki_chat_say", arguments: {} });
+    expect(empty.isError).toBe(true);
+    await h.close();
+  });
+});
