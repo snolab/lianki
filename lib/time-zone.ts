@@ -143,3 +143,12 @@ export function zoneAbbr(tz: string, at: number | Date = Date.now()): string {
 /** "Asia/Tokyo, UTC+9": a zone named for a reader, with its offset at `at`. */
 export const zoneLabel = (tz: string, at: number | Date = Date.now()) =>
   tz === "UTC" ? "UTC" : `${tz}, ${offsetLabel(zoneOffsetMin(tz, at))}`;
+
+/**
+ * The last second (23:59:59) of calendar day `day` (YYYY-MM-DD) in zone `tz`,
+ * as a UTC ISO instant; the zone's offset is taken on that day (DST-aware).
+ */
+export function endOfDayIso(day: string, tz: string): string {
+  const off = zoneOffsetMin(tz, Date.parse(`${day}T12:00:00Z`));
+  return new Date(Date.parse(`${day}T23:59:59Z`) - off * 60_000).toISOString();
+}

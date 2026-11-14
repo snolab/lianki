@@ -100,6 +100,24 @@ const dictionary = {
       mr: "न वापरल्यास संपण्याची तारीख (ऐच्छिक)",
       ko: "미사용 시 만료일 (선택)",
     }),
+    expiresAt: t({
+      en: "Lapses at 23:59:59 that day in your time zone ({zone}) = {utc}",
+      zh: "在你的时区（{zone}）当天 23:59:59 失效 = {utc}",
+      hi: "आपके समय क्षेत्र ({zone}) में उस दिन 23:59:59 पर समाप्त = {utc}",
+      es: "Caduca ese día a las 23:59:59 en tu zona horaria ({zone}) = {utc}",
+      fr: "Expire ce jour-là à 23:59:59 dans votre fuseau horaire ({zone}) = {utc}",
+      ar: "تنتهي في الساعة 23:59:59 من ذلك اليوم بمنطقتك الزمنية ({zone}) = {utc}",
+      bn: "আপনার সময় অঞ্চলে ({zone}) সেদিন 23:59:59-এ মেয়াদ শেষ = {utc}",
+      pt: "Expira nesse dia às 23:59:59 no seu fuso horário ({zone}) = {utc}",
+      ru: "Истекает в 23:59:59 этого дня в вашем часовом поясе ({zone}) = {utc}",
+      ur: "آپ کے ٹائم زون ({zone}) میں اس دن 23:59:59 پر ختم = {utc}",
+      id: "Kedaluwarsa pukul 23:59:59 hari itu di zona waktu Anda ({zone}) = {utc}",
+      de: "Verfällt an dem Tag um 23:59:59 in deiner Zeitzone ({zone}) = {utc}",
+      ja: "あなたのタイムゾーン（{zone}）でその日の 23:59:59 に失効 = {utc}",
+      sw: "Inaisha saa 23:59:59 siku hiyo kwa saa za eneo lako ({zone}) = {utc}",
+      mr: "तुमच्या वेळ क्षेत्रात ({zone}) त्या दिवशी 23:59:59 ला संपते = {utc}",
+      ko: "사용자 시간대({zone}) 기준 그날 23:59:59에 만료 = {utc}",
+    }),
     note: t({
       en: "Note (optional)",
       zh: "备注（可选）",
@@ -437,6 +455,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
   days: "Label of a number field: how many days of Pro membership each address gets by default. A short noun phrase; keep 'Pro'.",
   expires:
     "Label of an optional date field: the date after which an unclaimed pre-grant stops being valid. Not the end of the membership itself.",
+  expiresAt:
+    "Small line under the optional lapse-date field, once a date is picked: when exactly an unclaimed pre-grant lapses — the last second of that day in the admin's own device time zone. {zone} is that zone (IANA name and UTC offset, e.g. Europe/Berlin, UTC+1) and {utc} the same moment in UTC (e.g. 2026-11-20 14:59:59 UTC); keep both placeholders and the time 23:59:59.",
   note: "Label of an optional free-text field: a private note the admin keeps with each pre-grant (who, why).",
   preview:
     "Button that checks the pasted list and shows what would happen to each address, without saving anything. Imperative verb or noun.",

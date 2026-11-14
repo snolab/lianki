@@ -3,6 +3,7 @@ import {
   MAX_OFFSET_MIN,
   MIN_OFFSET_MIN,
   dayStartMs,
+  endOfDayIso,
   deviceZone,
   localDay,
   localHour,
@@ -121,5 +122,14 @@ describe("time zones: no fixed default", () => {
     } finally {
       Intl.DateTimeFormat = Orig;
     }
+  });
+});
+
+describe("endOfDayIso", () => {
+  it("the day's last second in the zone, as a UTC instant", () => {
+    expect(endOfDayIso("2026-11-20", "Asia/Tokyo")).toBe("2026-11-20T14:59:59.000Z");
+    expect(endOfDayIso("2026-11-20", "UTC")).toBe("2026-11-20T23:59:59.000Z");
+    expect(endOfDayIso("2026-07-01", "Europe/Berlin")).toBe("2026-07-01T21:59:59.000Z");
+    expect(endOfDayIso("2026-01-01", "America/New_York")).toBe("2026-01-02T04:59:59.000Z");
   });
 });
