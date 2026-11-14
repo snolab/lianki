@@ -657,7 +657,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   chartDays:
     "Title of a stacked bar chart: our cost per calendar day, each bar split by service (or by free/paid). Short.",
   chartHours:
-    "Title of a stacked bar chart: our cost per hour (Japan time), each bar split by service (or by free/paid). Short.",
+    "Title of a stacked bar chart: our cost per hour (in the viewer's own time zone, named in the note below), each bar split by service (or by free/paid). Short.",
   byService:
     "Toggle button: split the chart's bars by service (speech to text, read-aloud, AI…). Two or three words.",
   freeVsPaid:
@@ -670,7 +670,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   byDayFeature:
     "Heading of the table with one row per calendar day and one column per service, each cell our cost. Short.",
   byHourFeature:
-    "Heading of the table with one row per hour (Japan time) and one column per service, each cell our cost. Short.",
+    "Heading of the table with one row per hour (in the viewer's own time zone) and one column per service, each cell our cost. Short.",
   hours:
     "Label of the drop-down choosing how many recent hours the hourly chart and table cover. One word.",
   hoursOption: "An option of that drop-down: the last {n} hours (a number). Keep {n}.",
