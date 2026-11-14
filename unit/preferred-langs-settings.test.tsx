@@ -51,6 +51,11 @@ const click = async (el: HTMLElement | null) => {
   expect(el).not.toBeNull();
   await act(async () => el!.click());
 };
+/** The level pill opens only on a tap of the row's level badge (owner, 2026-11-15). */
+const openLevels = async (tag: string) => {
+  const b = q<HTMLElement>(`[data-pref-lang-level-toggle="${tag}"]`);
+  if (b && b.getAttribute("aria-expanded") !== "true") await click(b);
+};
 
 describe("PreferredLangsSettings: levels", () => {
   beforeEach(() => win.localStorage.clear());
@@ -62,6 +67,7 @@ describe("PreferredLangsSettings: levels", () => {
       "ja",
       "en",
     ]);
+    await openLevels("ja");
     const group = q('[data-pref-lang-levels="ja"]')!;
     expect(group.getAttribute("role")).toBe("radiogroup");
     expect(group.getAttribute("aria-label")).toContain("Japanese");
@@ -87,9 +93,11 @@ describe("PreferredLangsSettings: levels", () => {
   it("a pick is stored as {lang, level}; others stay plain tags; the active one moves", async () => {
     win.localStorage.setItem(PREFERRED_LANGS_KEY, JSON.stringify(["ja", "en"]));
     const m = await mount();
+    await openLevels("ja");
     await click(q('[data-pref-lang-levels="ja"] [data-level="b1"]'));
     expect(stored()).toEqual([{ lang: "ja", level: "b1" }, "en"]);
     expect(q('[data-pref-lang="ja"]')!.getAttribute("data-pref-lang-level")).toBe("b1");
+    await openLevels("ja");
     expect(q('[data-pref-lang-levels="ja"] [data-level="b1"]')!.getAttribute("aria-checked")).toBe(
       "true",
     );
@@ -97,9 +105,11 @@ describe("PreferredLangsSettings: levels", () => {
       q('[data-pref-lang-levels="ja"] [data-level="unset"]')!.getAttribute("aria-checked"),
     ).toBe("false");
     // The active one again: nothing changes.
+    await openLevels("ja");
     await click(q('[data-pref-lang-levels="ja"] [data-level="b1"]'));
     expect(stored()).toEqual([{ lang: "ja", level: "b1" }, "en"]);
     // Back to Not set: the old shape again.
+    await openLevels("ja");
     await click(q('[data-pref-lang-levels="ja"] [data-level="unset"]'));
     expect(stored()).toEqual(["ja", "en"]);
     await m.unmount();
@@ -108,6 +118,7 @@ describe("PreferredLangsSettings: levels", () => {
   it("one segmented control: one tab stop, arrows / Home / End move the choice", async () => {
     win.localStorage.setItem(PREFERRED_LANGS_KEY, JSON.stringify(["ja"]));
     const m = await mount();
+    await openLevels("ja");
     const group = q('[data-pref-lang-levels="ja"]')!;
     const tabbable = () =>
       ([...group.querySelectorAll("[data-level]")] as unknown as HTMLElement[])
@@ -155,14 +166,17 @@ describe("PreferredLangsSettings: levels", () => {
     expect(strip.scrollLeft).toBe(50);
   });
 
-  it("reorder and remove keep the levels; adding appends with no level", async () => {
+  it("remove keeps the levels; adding appends with no level; no arrow buttons", async () => {
     win.localStorage.setItem(
       PREFERRED_LANGS_KEY,
       JSON.stringify([{ lang: "zh", level: "native" }, "en", { lang: "ja", level: "a2" }]),
     );
     const m = await mount();
-    await click(q('[data-pref-lang="ja"] button[aria-label="Move Japanese up"]'));
-    expect(stored()).toEqual([{ lang: "zh", level: "native" }, { lang: "ja", level: "a2" }, "en"]);
+    // Reordering is by the drag handle only (owner, 2026-11-15: no ↑ ↓ buttons).
+    expect(q('[data-pref-lang="ja"] [aria-roledescription="sortable"]')).not.toBeNull();
+    expect(
+      document.querySelector('[data-pref-lang="ja"] button[aria-label="Move Japanese up"]'),
+    ).toBeNull();
     await click(q('[data-pref-lang-remove="en"]'));
     expect(stored()).toEqual([
       { lang: "zh", level: "native" },
@@ -183,6 +197,7 @@ describe("PreferredLangsSettings: levels", () => {
     const m = await mount({ hideHeading: true });
     expect(q('[data-testid="preferred-langs-auto"]')).not.toBeNull();
     const first = qa("[data-pref-lang]")[0]!.getAttribute("data-pref-lang")!;
+    await openLevels(first);
     await click(q(`[data-pref-lang-levels="${first}"] [data-level="native"]`));
     expect(stored()[0]).toEqual({ lang: first, level: "native" });
     expect(q('[data-testid="preferred-langs-auto"]')).toBeNull();

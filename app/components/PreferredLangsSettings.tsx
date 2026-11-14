@@ -2,14 +2,15 @@
 
 // Settings → Preferred languages (lib/lang-order.ts): the ordered list that
 // /words, /alphabet and /books put first. Reorder by dragging (dnd-kit, with
-// its keyboard sensor) or the ↑ ↓ buttons, add from a menu, remove with ×.
+// its keyboard sensor), add from a menu, remove with ×. Owner, 2026-11-15: no ↑ ↓ buttons;
+// the row shows its level where they were, and the level pill opens only on a tap.
 // Stored as `lk:lang-preferred`, synced as `lang.preferred`
 // (docs/prefs-sync.md). While nothing is picked, the list is automatic.
 // Each row also carries how well the user knows the language
 // (lib/lang-levels.ts): every level shown at once, the active one in the
 // theme red (owner rule: a switch shows all its states).
 
-import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import {
   closestCenter,
@@ -59,6 +60,14 @@ export function keepInView(strip: HTMLElement, el: HTMLElement) {
  * in seal red. Scrolls sideways on a narrow screen, keeping the active one in
  * view. A radiogroup: one tab stop, arrows / Home / End move the choice.
  */
+/** The level's short label as the pill shows it: the named ones from the dictionary, the CEFR ones by code. */
+function levelLabel(
+  c: ReturnType<typeof useIntlayer<"preferred-langs">>,
+  level: LangLevel,
+): string {
+  const l = LANG_LEVELS.find((x) => x.id === level);
+  return l?.label ? String(c[l.label].value) : levelCode(level);
+}
 function LevelPicker({
   tag,
   name,
@@ -138,19 +147,15 @@ function LevelPicker({
 function Row({
   tag,
   index,
-  count,
   locale,
   level,
-  onMove,
   onRemove,
   onLevel,
 }: {
   tag: string;
   index: number;
-  count: number;
   locale: string;
   level: LangLevel;
-  onMove: (from: number, to: number) => void;
   onRemove: () => void;
   onLevel: (level: LangLevel) => void;
 }) {
@@ -166,6 +171,7 @@ function Row({
   } = useSortable({ id: tag });
   const name = nameIn(tag, locale);
   const own = nameIn(tag, tag);
+  const [open, setOpen] = useState(false);
   const btn =
     "grid h-11 w-10 shrink-0 place-items-center rounded-full opacity-70 hover:bg-[oklch(0.5_0_0/0.12)] hover:opacity-100 disabled:opacity-20 disabled:hover:bg-transparent";
   return (
@@ -206,23 +212,18 @@ function Row({
         </span>
         <button
           type="button"
-          className={btn}
-          disabled={index === 0}
-          onClick={() => onMove(index, index - 1)}
-          aria-label={put(c.moveUp.value, name)}
-          title={put(c.moveUp.value, name)}
+          aria-expanded={open}
+          aria-controls={`pref-lang-levels-${tag}`}
+          onClick={() => setOpen((o) => !o)}
+          title={put(c.levelPick.value, name)}
+          data-pref-lang-level-toggle={tag}
+          className={`h-8 shrink-0 rounded-full px-3 text-xs font-medium whitespace-nowrap ${
+            level === "unset"
+              ? "bg-[oklch(0.5_0_0/0.12)] opacity-75"
+              : "bg-seal text-[oklch(0.99_0_0)] shadow-sm"
+          }`}
         >
-          ↑
-        </button>
-        <button
-          type="button"
-          className={btn}
-          disabled={index === count - 1}
-          onClick={() => onMove(index, index + 1)}
-          aria-label={put(c.moveDown.value, name)}
-          title={put(c.moveDown.value, name)}
-        >
-          ↓
+          {levelLabel(c, level)}
         </button>
         <button
           type="button"
@@ -235,7 +236,11 @@ function Row({
           <Icon name="x" className="h-5 w-5" />
         </button>
       </div>
-      <LevelPicker tag={tag} name={name} level={level} onLevel={onLevel} />
+      {open && (
+        <div id={`pref-lang-levels-${tag}`}>
+          <LevelPicker tag={tag} name={name} level={level} onLevel={onLevel} />
+        </div>
+      )}
     </li>
   );
 }
@@ -300,9 +305,7 @@ export function PreferredLangsSettings({ hideHeading = false }: { hideHeading?: 
                   key={tag}
                   tag={tag}
                   index={i}
-                  count={list.length}
                   locale={ui}
-                  onMove={move}
                   level={levelOf(tag)}
                   onRemove={() => set(list.filter((t) => t !== tag))}
                   onLevel={(lv) => setLevel(tag, lv)}
