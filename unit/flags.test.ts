@@ -54,7 +54,8 @@ describe("registry", () => {
     // mic recordings in his account, tap card 2026-11-14 ~03:35 JST, audience owner + dev;
     // the login-streak credits, which grant and never charge, 2026-11-14;
     // his devices reading a line together, asked 2026-11-14 20:2x JST, audience owner;
-    // mini apps at /m, asked 2026-11-15 05:2x JST, audience owner, publishing needs dev).
+    // mini apps at /m, asked 2026-11-15 05:2x JST, audience owner, publishing needs dev;
+    // Li in his own thread, asked 2026-11-15 13:4x JST, audience owner).
     const on = FLAG_KEYS.filter((k) => FLAGS[k].default);
     expect(on).toEqual([
       "app.auto-update",
@@ -67,6 +68,7 @@ describe("registry", () => {
       "voice.fold-others",
       "voice.echo-dedupe",
       "stt.two-mic-merge",
+      "partner.owner-thread",
       "library.catalogue",
       "books.mine",
       "voice.sync-speak",
