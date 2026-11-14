@@ -26,6 +26,8 @@ describe("routeLine: addressed lines", () => {
     ["Coco 帮我看看", ["codex"], "帮我看看"],
     ["可可，在吗", ["codex"], "在吗"],
     ["杰咪，在吗", ["agy"], "在吗"],
+    ["咪宝，在吗", ["agy"], "在吗"],
+    ["咪宝，在吗？", ["agy"], "在吗？"],
     ["agy, 你好", ["agy"], "你好"],
     ["AGY。试一下", ["agy"], "试一下"],
     ["A G Y, hello", ["agy"], "hello"],
