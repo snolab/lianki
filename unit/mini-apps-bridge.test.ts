@@ -11,6 +11,7 @@ import {
   fromFrame,
   parseRequest,
   replyTarget,
+  themeEvent,
   type BridgeDeps,
 } from "../lib/mini-apps/bridge";
 import type { CapabilityId } from "../lib/mini-apps/capabilities";
@@ -346,5 +347,23 @@ describe("the SDK (public/m/sdk.js)", () => {
       new Promise((r) => setTimeout(() => r("open"), 20)),
     ]);
     expect(await pending).toBe("open");
+  });
+
+  test("the host's theme sets <html data-theme>; anything else is left alone", () => {
+    const attrs: Record<string, string> = {};
+    const listeners: ((e: { source: unknown; data: unknown }) => void)[] = [];
+    const parent = { postMessage() {} };
+    const win: Record<string, unknown> = {
+      parent,
+      addEventListener: (_t: string, l: (typeof listeners)[number]) => listeners.push(l),
+    };
+    const doc = { documentElement: { setAttribute: (k: string, v: string) => (attrs[k] = v) } };
+    new Function("window", "document", src)(win, doc);
+    for (const l of listeners) l({ source: parent, data: themeEvent("dark") });
+    expect(attrs["data-theme"]).toBe("dark");
+    for (const l of listeners)
+      l({ source: parent, data: { lk: PROTOCOL, event: "theme", theme: "pink" } });
+    for (const l of listeners) l({ source: {}, data: themeEvent("light") });
+    expect(attrs["data-theme"]).toBe("dark");
   });
 });

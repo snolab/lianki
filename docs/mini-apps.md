@@ -162,11 +162,30 @@ again. Prompts are queued one at a time.
 
 ## Style pack and presets
 
-`<link rel="stylesheet" href="/m/presets/lianki.css">` gives the app Lianki's
-oklch tokens (seal-ink red primary, paper and ink, gold), fonts (LXGW WenKai
-TC, Klee One from Google Fonts), light/dark (system, or
-`<html data-theme>`), and `.lk-app .lk-card .lk-btn .lk-btn-primary
-.lk-input .lk-row .lk-mono .lk-seal`. Use its variables, not colours of your
+`<link rel="stylesheet" href="/m/presets/lianki.css">` is a small version of
+Lianki's own CSS: the oklch tokens of app/globals.css (seal-ink red primary,
+paper and ink, gold, surfaces, lines), the fonts (LXGW WenKai TC, Klee One from
+Google Fonts), light and dark, base typography, and plain `button`, `input`,
+`select`, `textarea`, `a`, `table` styled like the app with no class needed;
+`button.primary` / `.secondary` / `.ghost`, `.card`, `.pill` (`.on`),
+`.segmented` (every state shown, the current one seal red) and the
+`.lk-app .lk-card .lk-btn .lk-btn-primary .lk-input .lk-row .lk-stack .lk-mono
+.lk-seal` helpers. No hex or rgb: oklch only (checked in a unit test).
+
+**In srcdoc mode the pack is inlined** (`lib/mini-apps/style-pack.ts`, kept
+equal to the public file by a test) as a `<style>` before the app, and the
+app's own `<link>` to it is dropped: a srcdoc app has no origin, and a link
+would depend on the page's host matching the CSP's (it did not on the preview,
+2026-11-15: the calculator rendered unstyled). Other `/m/presets/*` references
+are rewritten to Lianki's absolute origin, which the CSP allows. Its own
+origin (mode 1) gets the same inlined copy.
+
+**Night mode follows the site**: the host page bakes its theme into the frame
+as `<html data-theme="light|dark">` before the app loads, and when the system
+theme changes it posts `{lk: "mini/1", event: "theme"}`, which the SDK applies.
+With no `data-theme`, the pack falls back to `prefers-color-scheme`.
+
+Use the variables, not colours of your
 own. `/m/presets/presets.json` lists the pinned presets:
 
 ```html

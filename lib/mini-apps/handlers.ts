@@ -20,6 +20,7 @@ import { type ChatPort, laneOfApp, parseCard, SAY_MAX } from "./chat";
 import { checkExternalRefs, miniAppCsp, miniAppCspMeta, parseSources, sandboxFlags } from "./csp";
 import { decisionOf, grantState, isChoice, type Grants } from "./grants";
 import { prepareHtml } from "./html";
+import { STYLE_PACK_CSS } from "./style-pack";
 import { checkHtml, isSlug, parseManifest } from "./manifest";
 import { appOrigin, ownOriginAllowed } from "./origin";
 import {
@@ -418,7 +419,13 @@ export async function hostView(slug: string, host: string, d: MiniDeps): Promise
     ...base,
     frame: {
       mode: "srcdoc",
-      srcdoc: prepareHtml(await obj.text(), { sdkSrc: `${host}/m/sdk.js`, cspMeta: csp }),
+      srcdoc: prepareHtml(await obj.text(), {
+        sdkSrc: `${host}/m/sdk.js`,
+        cspMeta: csp,
+        inlineCss: STYLE_PACK_CSS,
+        assets: host,
+        theme: "auto",
+      }),
       sandbox: sandboxFlags(false),
     },
   };
@@ -453,7 +460,13 @@ export async function serveApp(req: Request, slug: string, d: MiniDeps): Promise
     ancestors: t.f,
     sandbox,
   });
-  return new Response(prepareHtml(await obj.text(), { sdkSrc: `${t.b}/m/sdk.js` }), {
+  const html = prepareHtml(await obj.text(), {
+    sdkSrc: `${t.b}/m/sdk.js`,
+    inlineCss: STYLE_PACK_CSS,
+    assets: t.b,
+    theme: "auto",
+  });
+  return new Response(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "content-security-policy": csp,
