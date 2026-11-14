@@ -1356,8 +1356,9 @@ once when the mic turns on, never in an utterance's path), else 404. `POST`
 (same-origin JSON) checks, in order: signed in (401), on the list (403,
 `not-allowed`), `sessionsPerAccount` > 0 (403, `off`), tickets in the last
 minute under `ticketsPerMin` (429, `too-many-tickets`; D1 `stt_ticket`), audio
-today (JST) under `minutesPerDay` (429, `daily-limit`; the account's
-`speech.stt.local` rows in the cost ledger), the signing key set (503,
+over the rolling window of `stt.capWindowHours` (default the last 24 hours,
+no calendar day) under `minutesPerDay` (429, `daily-limit`; the account's
+`speech.stt.local` rows in the cost ledger, by their time `at`), the signing key set (503,
 `tickets-off`). Then: `{ticket, exp, signal, iceServers, limits[, wss]}` — the
 v2 ticket, `/api/version/stt/signal`, STUN from config `stt.worker.stunUrls`
 plus TURN when its key is set, and the WSS fallback when config

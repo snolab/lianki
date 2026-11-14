@@ -567,7 +567,17 @@ export const CONFIG = {
     group: "stt-worker",
     audience: "server",
     description:
-      "语音服务器：每个账号每天（日本时间）最多识别多少分钟音频，按成本账里记的 speech.stt.local 累计。用完当天就走云端识别。0 = 不给语音服务器。",
+      "语音服务器：每个账号在滚动窗口里（最近 stt.capWindowHours 小时，默认 24）最多识别多少分钟音频，按成本账里记的 speech.stt.local 累计。用完就走云端识别，旧的用量随时间逐渐释放，不在某个日历日一起清零。0 = 不给语音服务器。",
+  }),
+  "stt.capWindowHours": int({
+    default: 24,
+    min: 1,
+    max: 168,
+    unit: "h",
+    group: "stt-worker",
+    audience: "server",
+    description:
+      "语音服务器的分钟上限（stt.worker.minutesPerDay）按多少小时的滚动窗口算：默认 24 = 最近 24 小时里用掉的分钟数。",
   }),
   "stt.worker.maxUtteranceS": int({
     default: 40,

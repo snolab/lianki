@@ -1,0 +1,145 @@
+/**
+ * Time zones without a fixed default (owner, 2026-11-15: UTC is the default,
+ * the user's own zone wherever it can be known; never JST by default).
+ *
+ * - `deviceZone()`: the zone of the device running the code (a browser: the
+ *   viewer's; a script: the machine's), UTC when unknown.
+ * - `ownerZone()`: for dev scripts that print times to the person running
+ *   them: `LIANKI_OWNER_TZ` when set to a valid zone, else the machine's.
+ * - `zoneOffsetMin()`: minutes east of UTC of a zone at a moment (DST-aware).
+ * - `localDay()` / `localHour()`: the calendar bucket of a moment at a fixed
+ *   offset, for SQL-free bucketing that matches `date(at, '+N minutes')`.
+ * - `zoneAbbr()`: a short label ("JST", "EST", "CET"), falling back to a
+ *   numeric one ("GMT+8") when no English name exists.
+ *
+ * Client-safe: imports nothing.
+ */
+
+/** Offsets beyond these do not exist (UTC−12 … UTC+14). */
+export const MIN_OFFSET_MIN = -12 * 60;
+export const MAX_OFFSET_MIN = 14 * 60;
+
+/** True when `tz` is an IANA zone this runtime knows. */
+export function validZone(tz: unknown): tz is string {
+  if (typeof tz !== "string" || !tz || tz.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The zone this code runs in (the viewer's device, or the machine), UTC when unknown. */
+export function deviceZone(): string {
+  let tz: string | undefined;
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {}
+  return validZone(tz) ? tz : "UTC";
+}
+
+/** The zone a dev script reports times in: LIANKI_OWNER_TZ when valid, else the machine's. */
+export function ownerZone(
+  env: Record<string, string | undefined> = (
+    globalThis as { process?: { env: Record<string, string | undefined> } }
+  ).process?.env ?? {},
+): string {
+  const o = env.LIANKI_OWNER_TZ;
+  return validZone(o) ? o : deviceZone();
+}
+
+/** Minutes east of UTC of `tz` at `at` (e.g. 540 for Asia/Tokyo); 0 for an unknown zone. */
+export function zoneOffsetMin(tz: string, at: number | Date = Date.now()): number {
+  if (!validZone(tz)) return 0;
+  const t = new Date(at);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(t);
+  const n = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const asUtc = Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second"));
+  return Math.round((asUtc - Math.floor(t.getTime() / 1000) * 1000) / 60_000);
+}
+
+/** A ±minutes offset parameter (e.g. `?tz=540`), clamped to real offsets; UTC (0) when missing or malformed. */
+export function parseOffsetMin(s: string | null | undefined): number {
+  if (s == null || s === "") return 0;
+  const n = Number(s);
+  if (!Number.isInteger(n)) return 0;
+  return Math.min(MAX_OFFSET_MIN, Math.max(MIN_OFFSET_MIN, n));
+}
+
+/** "UTC", "UTC+9", "UTC−5:30" for an offset in minutes. */
+export function offsetLabel(min: number): string {
+  if (!min) return "UTC";
+  const a = Math.abs(min);
+  const h = Math.floor(a / 60);
+  const m = a % 60;
+  return `UTC${min > 0 ? "+" : "−"}${h}${m ? `:${String(m).padStart(2, "0")}` : ""}`;
+}
+
+/** The calendar day (YYYY-MM-DD) of `t` at a fixed offset of `offMin` minutes. */
+export const localDay = (t: number | Date, offMin = 0) =>
+  new Date(new Date(t).getTime() + offMin * 60_000).toISOString().slice(0, 10);
+
+/** The hour (YYYY-MM-DDTHH) of `t` at a fixed offset of `offMin` minutes. */
+export const localHour = (t: number | Date, offMin = 0) =>
+  new Date(new Date(t).getTime() + offMin * 60_000).toISOString().slice(0, 13);
+
+/** The UTC instant (ms) where local day `day` (YYYY-MM-DD) starts at offset `offMin`. */
+export const dayStartMs = (day: string, offMin = 0) =>
+  Date.parse(`${day}T00:00:00Z`) - offMin * 60_000;
+
+const NUMERIC = /^(GMT|UTC)([+\-−]|$)/;
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const abbrCache = new Map<string, string>();
+
+/**
+ * A short English label of `tz` at `at`: "JST", "EST", "CET", "UTC"; a
+ * numeric "GMT+8" when no English locale names it. Which locale names a zone
+ * is ICU data (en-US names US zones only), so the English locales are tried
+ * by region code until one gives a name; the result is cached.
+ */
+export function zoneAbbr(tz: string, at: number | Date = Date.now()): string {
+  const zone = validZone(tz) ? tz : "UTC";
+  const key = `${zone}|${zoneOffsetMin(zone, at)}`;
+  const hit = abbrCache.get(key);
+  if (hit) return hit;
+  const when = new Date(at);
+  const name = (loc: string) => {
+    try {
+      return (
+        new Intl.DateTimeFormat(loc, { timeZone: zone, timeZoneName: "short" })
+          .formatToParts(when)
+          .find((p) => p.type === "timeZoneName")?.value ?? ""
+      );
+    } catch {
+      return "";
+    }
+  };
+  const first = name("en-US");
+  let out = first;
+  if (NUMERIC.test(first) && zone !== "UTC") {
+    search: for (const a of LETTERS)
+      for (const b of LETTERS) {
+        const v = name(`en-${a}${b}`);
+        if (v && !NUMERIC.test(v)) {
+          out = v;
+          break search;
+        }
+      }
+  }
+  abbrCache.set(key, out);
+  return out;
+}
+
+/** "Asia/Tokyo, UTC+9": a zone named for a reader, with its offset at `at`. */
+export const zoneLabel = (tz: string, at: number | Date = Date.now()) =>
+  tz === "UTC" ? "UTC" : `${tz}, ${offsetLabel(zoneOffsetMin(tz, at))}`;

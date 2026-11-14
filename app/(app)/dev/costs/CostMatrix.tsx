@@ -2,7 +2,7 @@
 
 /**
  * A bucket × feature table for /dev/costs (docs/payments.md, "Cost ledger"):
- * one row per JST day or hour (a VirtualList, every bucket of the window),
+ * one row per day or hour (the viewer's zone) (a VirtualList, every bucket of the window),
  * one column per feature, the row sum on the right and the column sums on
  * top. Each cell shows its free cost over its paid cost on a seal-red heat
  * ground (heat.ts: AA text on every level, light and dark); the number is

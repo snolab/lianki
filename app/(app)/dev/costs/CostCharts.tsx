@@ -2,7 +2,7 @@
 
 /**
  * The charts of /dev/costs (docs/payments.md, "Cost ledger"): cost over time
- * (per JST day, per JST hour) stacked by service or by free/paid, and the top
+ * (per day, per hour, in the viewer's zone) stacked by service or by free/paid, and the top
  * accounts. Inline SVG, no chart library. Red/gold series (heat.ts), each with
  * its own pattern and a direct label in the legend, so colour is never alone.
  * Hover, tap or the arrow keys show a bar's exact values; the same numbers are

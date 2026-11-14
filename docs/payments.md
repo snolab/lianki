@@ -561,8 +561,13 @@ admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
   id, `''` for a guest), `feature`, `usd_micro` (the provider's cost in
   millionths of a USD, REAL so a MeloTTS clip's few millionths are kept),
   `units` (audio seconds for speech to text, characters for speech), `day`
-  (JST, YYYY-MM-DD) and `at`. Indexed by (day, user) and (feature, day). No
-  text, no audio, no email.
+  (YYYY-MM-DD) and `at`. Indexed by (day, user) and (feature, day). No
+  text, no audio, no email. **`day` is the UTC date of `at` since
+  2026-11-15** (owner: UTC is the default zone, never JST); rows written
+  before that hold the JST date, and the 0072 migration's comment still says
+  JST (an applied migration is never edited). Nothing groups by `day` any
+  more: the views bucket `at` in the viewer's zone and use `day` only as an
+  index bound, a day wider each side, so old and new rows both land right.
 - **Who books.** `freeCall` (`lib/payments/paid-calls.ts`) takes the payer
   (`{userId, db, units}`) from every caller: `/api/words/tts` (cache misses;
   recorded clips and cached audio cost nothing and are not booked),
@@ -589,25 +594,29 @@ admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
   `/dev/config`). Not booked: a box token's chat (box tokens never reach
   `/api/debug`), and an utterance whose page closed before the report left
   (`keepalive` covers most).
-- **The page** (`isAdmin`, 404 otherwise, page and API): a JST day range
+- **The page** (`isAdmin`, 404 otherwise, page and API): a day range in the
+  viewer's device zone (the page sends `?tz=` = its offset in minutes east of
+  UTC now, labelled with the zone's name; missing = UTC; nothing loads until
+  the browser knows the zone)
   (default the last 30 days, at most `COSTS_MAX_DAYS`); totals; **by
   feature** and **by day** (a VirtualList with a seal-red bar per day); **by
   account**, dearest first — the top three marked — as a VirtualList loading
   `lists.batchSize` rows as it scrolls, each with its display name and
   account id (never an email). Every table shows free cost and paid cost side
   by side, plus what paid features charged (credits) and the calls. The paid
-  side is read from `credit_ai_charge` (settled rows by `settledAt`, JST):
+  side is read from `credit_ai_charge` (settled rows by `settledAt`, in the same zone):
   `costMicro` ÷ `CREDITS_PER_USD` ÷ `MARGIN` is its provider cost; the feature
   is the charge key's prefix (`<feature>:<userId>:…`; none = a Learning
   Partner reply). Strings: `costs.content.ts` (`dev-costs`, 16 locales with
   context lines); the page name is `costs` in `dev-pages`.
 - **Per day and per hour, by service** (owner, 2026-11-11;
   `lib/payments/cost-buckets.ts`). `?view=days` is a day × feature matrix
-  (every JST day of the range, empty ones too); `?view=hours&hours=N` an
-  hour × feature matrix of the range's last N JST hours (default 48, at most
+  (every day of the range, empty ones too); `?view=hours&hours=N` an
+  hour × feature matrix of the range's last N hours (default 48, at most
   `COSTS_MAX_HOURS` = 168, never after the current hour). An hour is the
-  `at` / `settledAt` time + 9 h cut to `YYYY-MM-DDTHH` (JST has no daylight
-  saving). The hourly free query is bounded by the indexed `day` column as
+  `at` / `settledAt` time shifted by the `tz` offset and cut to
+  `YYYY-MM-DDTHH` (one fixed offset per request: across a daylight-saving
+  change the older hours are off by one). The hourly free query is bounded by the indexed `day` column as
   well as `at`, the paid one by the `settledAt` index, so no new index. The
   page shows both as tables (`CostMatrix.tsx`: rows a VirtualList, columns
   the services dearest first, row sums right, column sums on top; each cell
@@ -619,8 +628,8 @@ admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
   colour is never alone; hover, tap or ←/→ shows a bar's exact values; the
   chart points at its table with `aria-describedby`.
 - Tests: `unit/cost-ledger.test.ts` (booking, failure, the speech-server
-  route, aggregation, the API's 404); `unit/cost-buckets.test.ts` (JST hour
-  and day edges, no DST, the hour window cap, the matrix sums, both views and
+  route, aggregation, the API's 404); `unit/cost-buckets.test.ts` (hour
+  and day edges at UTC and at an offset, a fixed offset, the hour window cap, the matrix sums, both views and
   their 404, the heat scale's AA); QA `scripts/qa/qa-costs.mjs` (suite
   `costs`: non-admin 404 on the page and every view, a speech-server report
   booked, the account by name with no email, both matrices and the charts, a
