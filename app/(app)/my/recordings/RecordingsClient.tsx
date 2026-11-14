@@ -394,7 +394,7 @@ export default function RecordingsClient() {
 
   return (
     <div
-      className={`mx-auto max-w-2xl px-4 py-8 sm:px-8 ${barDay ? "pb-36" : ""}`}
+      className={`mx-auto max-w-2xl px-4 py-8 sm:px-8 ${barDay ? "pb-[calc(9rem+var(--lk-bottom-reserve,0px))]" : ""}`}
       data-qa="my-recordings"
     >
       <a href="/my" className="mb-3 inline-flex items-center gap-1 text-sm underline">
@@ -478,7 +478,7 @@ export default function RecordingsClient() {
                       href={`${API}?day=${day}&archive=zip&tz=${tz}`}
                       download
                       data-qa="recordings-download"
-                      className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm underline"
+                      className="flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 text-sm underline"
                     >
                       <Icon name="downloadSimple" />
                       {t.download}
@@ -487,7 +487,7 @@ export default function RecordingsClient() {
                       type="button"
                       data-qa="recordings-delete-day"
                       onClick={() => setConfirm(`d:${day}`)}
-                      className={`flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm ${seal}`}
+                      className={`flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 text-sm ${seal}`}
                     >
                       <Icon name="trash" />
                       {t.deleteDay}
@@ -681,7 +681,7 @@ export default function RecordingsClient() {
 
       {barDay && barParas.length > 0 && (
         <div
-          className="lk-glass fixed inset-x-0 bottom-0 z-30 border-t border-[oklch(0.5_0_0/0.2)] px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:left-[var(--nav-w,0px)]"
+          className="lk-glass fixed inset-x-0 bottom-[var(--lk-bottom-reserve,0px)] z-30 border-t border-[oklch(0.5_0_0/0.2)] px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:left-[var(--nav-w,0px)]"
           data-qa="recordings-bar"
           data-day={barDay}
         >
