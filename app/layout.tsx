@@ -167,6 +167,8 @@ export default async function RootLayout({
     dev && flagIn(flags, "voice.polish-readback")
       ? { on: true, timeoutMs: await cfg("voice.cloneTimeoutMs") }
       : undefined;
+  // Fold utterances from other voices by default in the chat (avatar-rules.ts); off: expanded.
+  const foldOthers = flagIn(flags, "voice.fold-others");
   const cloudVoices =
     dev && flagIn(flags, "voice.cloud-voices")
       ? { on: true, map: await cfg("voice.langVoices") }
@@ -187,6 +189,7 @@ export default async function RootLayout({
     cacheLines,
     talkOver,
     polishReadback,
+    foldOthers,
   };
   const box = boxConfig();
   return (

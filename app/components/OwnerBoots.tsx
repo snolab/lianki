@@ -24,6 +24,7 @@ export function OwnerBoots({
   cloudVoices,
   talkOver = false,
   polishReadback,
+  foldOthers = true,
   box = null,
   autoUpdate = false,
   account = null,
@@ -37,6 +38,8 @@ export function OwnerBoots({
   talkOver?: boolean;
   /** Flag `voice.polish-readback` + dev: his polished voice lines read back in his cloned voice. */
   polishReadback?: { on: boolean; timeoutMs?: number };
+  /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
+  foldOthers?: boolean;
   /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
   autoUpdate?: boolean;
   /** Provider voices on (flag voice.cloud-voices + dev) and the language → voice map. */
@@ -77,6 +80,7 @@ export function OwnerBoots({
         cloudVoices={cloudVoices}
         talkOver={talkOver}
         polishReadback={polishReadback}
+        foldOthers={foldOthers}
         box={box}
         account={account}
         cacheLines={cacheLines}

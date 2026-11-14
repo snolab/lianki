@@ -169,9 +169,27 @@ export function runStarts(
   });
 }
 
+/** Feature flag (lib/flags.ts): other-voice lines fold only while it is on. */
+export const FOLD_OTHERS_FLAG = "voice.fold-others";
+
 /** Whether a chat message was recognized as spoken by someone other than the owner. */
 export function isOtherVoice(m: Pick<ChatMessage, "from" | "speaker">): boolean {
   if (m.from !== "owner") return false;
   // Only a decided "other": an "unknown" line (his own, under the line) is not someone else.
   return m.speaker?.decision === "other";
+}
+
+/**
+ * Whether a chat line should be displayed in folded form.
+ * Controlled by flag `voice.fold-others` (foldOthers): when false, never folds.
+ * When true (default), folds if recognized as other voice and not expanded in the tab.
+ */
+export function isLineFolded(
+  m: Pick<ChatMessage, "from" | "speaker">,
+  expandedIds: ReadonlySet<string>,
+  msgId: string,
+  foldOthers = true,
+): boolean {
+  if (!foldOthers) return false;
+  return isOtherVoice(m) && !expandedIds.has(msgId);
 }

@@ -131,6 +131,9 @@ export const SPEED_KEY = "lk:pref:recordings-speed";
 /** sessionStorage key of the session-expanded "other voice" paragraphs in /my/recordings. */
 export const RECORDINGS_EXPANDED_KEY = "lk:ui:recordings-expanded";
 
+/** Feature flag (lib/flags.ts): other-voice clips in recordings fold only while it is on. */
+export const FOLD_OTHERS_FLAG = "voice.fold-others";
+
 /** Whether a clip is recognized as spoken by someone other than the account owner. */
 export function isOtherSpeaker(speaker: string | null | undefined): boolean {
   return speaker === "other";
@@ -145,4 +148,19 @@ export function parseExpandedClips(raw: string | null | undefined): Set<string> 
   } catch {
     return new Set();
   }
+}
+
+/**
+ * Whether a clip should be displayed in folded form.
+ * Controlled by flag `voice.fold-others` (foldOthers): when false, never folds.
+ * When true (default), folds if the speaker is "other" and not in the tab's expanded set.
+ */
+export function isClipFolded(
+  speaker: string | null | undefined,
+  expandedIds: ReadonlySet<string>,
+  clipId: string,
+  foldOthers = true,
+): boolean {
+  if (!foldOthers) return false;
+  return isOtherSpeaker(speaker) && !expandedIds.has(clipId);
 }

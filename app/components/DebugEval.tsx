@@ -173,10 +173,13 @@ export function DebugEval({
   cloudVoices,
   talkOver = false,
   polishReadback: readback,
+  foldOthers = true,
   box = null,
   account = null,
   cacheLines = 0,
 }: {
+  /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
+  foldOthers?: boolean;
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
   talkOver?: boolean;
   /**
@@ -1200,6 +1203,7 @@ export function DebugEval({
             agentAvatar={AGENT_AVATAR}
             viewer={boxViewer(!!box, boxAccount, viewer)}
             fullScreen={fullScreen}
+            foldOthers={foldOthers}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
             backToClose={backToCloseChat}
           />

@@ -32,6 +32,7 @@ import {
   RECORDINGS_EXPANDED_KEY,
   isOtherSpeaker,
   parseExpandedClips,
+  isClipFolded,
 } from "@/lib/recordings-article";
 import {
   type ClipView,
@@ -68,7 +69,12 @@ function ticks(ps: readonly Paragraph[], total: number): string {
     .join(",");
 }
 
-export default function RecordingsClient() {
+export default function RecordingsClient({
+  foldOthers = true,
+}: {
+  /** Flag voice.fold-others (default true): fold clips recognized as another voice into a compact line by default. */
+  foldOthers?: boolean;
+} = {}) {
   const t = useIntlayer("my-recordings");
   const { locale } = useLocale();
   const [{ days, clips }, setRecordings] = useState({
@@ -539,7 +545,7 @@ export default function RecordingsClient() {
           const current = player?.id === c.id;
           const mark = p.mark ? markText(p.mark) : "";
           const isOther = isOtherSpeaker(c.speaker);
-          const isFolded = isOther && !expandedClips.has(c.id);
+          const isFolded = isClipFolded(c.speaker, expandedClips, c.id, foldOthers);
 
           if (isFolded) {
             return (

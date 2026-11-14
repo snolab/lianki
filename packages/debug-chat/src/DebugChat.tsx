@@ -54,7 +54,7 @@ import { latencyLines, viaAt, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
-import { type AvatarSource, isOtherVoice, lineAvatar, runStarts, runsOf } from "./avatar-rules";
+import { type AvatarSource, isLineFolded, isOtherVoice, lineAvatar, runStarts, runsOf } from "./avatar-rules";
 import {
   VOICE_SENT_EVENT,
   appendDictation,
@@ -963,6 +963,11 @@ export type DebugChatProps = {
    */
   fullScreen?: boolean;
   /**
+   * Flag voice.fold-others (default true): fold voice lines recognized as someone
+   * other than the owner into a compact avatar button by default. Off: lines show expanded.
+   */
+  foldOthers?: boolean;
+  /**
    * The host's "Back closes an overlay" (Lianki: lib/back-to-close.ts
    * openBackToClose, docs/ui-state.md): opening full screen by a tap pushes
    * one history entry, Back runs `onBack`, and the returned close consumes the
@@ -1060,6 +1065,7 @@ export function DebugChat({
   link,
   presence,
   fullScreen: fullScreenFlag = false,
+  foldOthers = true,
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
@@ -5130,7 +5136,7 @@ export function DebugChat({
                 {run.map((i, k) => {
                   const m = messages[i]!;
                   const otherVoiceLine = isOtherVoice(m);
-                  const foldedOther = otherVoiceLine && !expandedOthers.has(m.id);
+                  const foldedOther = isLineFolded(m, expandedOthers, m.id, foldOthers);
                   if (foldedOther) {
                     return (
                       <span key={m.id}>

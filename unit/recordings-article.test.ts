@@ -144,7 +144,12 @@ describe("playback speed: a device preference", () => {
   });
 });
 
-import { isOtherSpeaker, parseExpandedClips } from "@/lib/recordings-article";
+import {
+  FOLD_OTHERS_FLAG,
+  isClipFolded,
+  isOtherSpeaker,
+  parseExpandedClips,
+} from "@/lib/recordings-article";
 
 describe("recordings other speaker and folding helpers", () => {
   it("identifies other speaker", () => {
@@ -161,5 +166,24 @@ describe("recordings other speaker and folding helpers", () => {
     expect(parseExpandedClips("invalid json")).toEqual(new Set());
     expect(parseExpandedClips(JSON.stringify(["c1", "c2"]))).toEqual(new Set(["c1", "c2"]));
     expect(parseExpandedClips(JSON.stringify(["c1", 123, null]))).toEqual(new Set(["c1"]));
+  });
+});
+
+describe("isClipFolded (voice.fold-others flag control)", () => {
+  it("flag FOLD_OTHERS_FLAG is voice.fold-others", () => {
+    expect(FOLD_OTHERS_FLAG).toBe("voice.fold-others");
+  });
+
+  it("flag ON (default): folds other speaker clips unless expanded in tab session", () => {
+    expect(isClipFolded("other", new Set(), "c1")).toBe(true);
+    expect(isClipFolded("other", new Set(), "c1", true)).toBe(true);
+    expect(isClipFolded("other", new Set(["c1"]), "c1", true)).toBe(false);
+    expect(isClipFolded("me", new Set(), "c2", true)).toBe(false);
+  });
+
+  it("flag OFF: never folds even if speaker is other", () => {
+    expect(isClipFolded("other", new Set(), "c1", false)).toBe(false);
+    expect(isClipFolded("other", new Set(["c1"]), "c1", false)).toBe(false);
+    expect(isClipFolded("me", new Set(), "c2", false)).toBe(false);
   });
 });
