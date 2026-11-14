@@ -20,6 +20,13 @@ export const isRouteLane = (v: unknown): v is RouteLane =>
 /** The lane a line with no name goes to. */
 export const DEFAULT_LANE: RouteLane = "chat";
 
+export type LaneNameEntry = {
+  readonly exact: readonly string[];
+  readonly heard: readonly string[];
+};
+
+export type LaneNamesTable = Record<RouteLane, LaneNameEntry>;
+
 /**
  * Each lane's names. `exact`: its own name, taken with any separator after it,
  * a space too ("codex 看一下"). `heard`: how STT writes it; these need a
@@ -28,13 +35,12 @@ export const DEFAULT_LANE: RouteLane = "chat";
  * Latin names are matched case-insensitively with spaces, dots and hyphens
  * inside them ignored ("A. G. Y.", "Anti-gravity", "Xiao Ke").
  */
-export const LANE_NAMES: Readonly<
-  Record<RouteLane, { exact: readonly string[]; heard: readonly string[] }>
-> = {
+export const LANE_NAMES: Readonly<LaneNamesTable> = {
   codex: {
     // coco: the owner's name for codex (2026-11-14), written coco, never 可可.
     exact: ["codex", "coco"],
     heard: [
+      "Q扣",
       "可可",
       "cocoa",
       "koko",
@@ -63,6 +69,7 @@ export const LANE_NAMES: Readonly<
       "杰米",
       "洁咪",
       "解密",
+      "杰明",
       "ajy",
       "aji",
       "反重力",
@@ -76,11 +83,60 @@ export const LANE_NAMES: Readonly<
   },
   chat: {
     // 小克: the lane's name (2026-11-14), also its @mention (polish.ts wakeMention).
-    exact: ["xiaoke", "小可", "小克"],
+    // Project/branch names also route to chat lane (lianki, liagent, agent-yes, otoji).
+    exact: ["xiaoke", "小可", "小克", "lianki", "liagent", "agent-yes", "otoji"],
     // 小客, 小课: how STT wrote 小克 for him (owner, 2026-11-14).
     heard: ["xiaoko", "shiaoke", "小客", "小课", "小科", "小柯", "晓可", "晓科", "小珂", "肖可"],
   },
 };
+
+/** Dynamic custom lane names configured live (e.g. from cfg("chat.laneNames")). */
+let customLaneNames: LaneNamesTable | null = null;
+
+/**
+ * Configure dynamic custom lane names.
+ * Setting `null` reverts to default LANE_NAMES.
+ */
+export function setCustomLaneNames(table: Partial<Record<RouteLane, Partial<LaneNameEntry>>> | null): void {
+  if (!table) {
+    customLaneNames = null;
+    return;
+  }
+  const merged: LaneNamesTable = {
+    codex: {
+      exact: [...(table.codex?.exact ?? LANE_NAMES.codex.exact)],
+      heard: [...(table.codex?.heard ?? LANE_NAMES.codex.heard)],
+    },
+    agy: {
+      exact: [...(table.agy?.exact ?? LANE_NAMES.agy.exact)],
+      heard: [...(table.agy?.heard ?? LANE_NAMES.agy.heard)],
+    },
+    chat: {
+      exact: [...(table.chat?.exact ?? LANE_NAMES.chat.exact)],
+      heard: [...(table.chat?.heard ?? LANE_NAMES.chat.heard)],
+    },
+  };
+  customLaneNames = merged;
+}
+
+/**
+ * The effective lane names table currently in use (custom overrides or LANE_NAMES defaults).
+ */
+export function getEffectiveLaneNames(): LaneNamesTable {
+  return customLaneNames ?? LANE_NAMES;
+}
+
+/**
+ * All wake words and aliases across all lanes, useful for STT hotword lists or prompts.
+ */
+export function laneHotwords(table: LaneNamesTable = getEffectiveLaneNames()): string[] {
+  const words = new Set<string>();
+  for (const lane of ROUTE_LANES) {
+    for (const name of table[lane].exact) words.add(name);
+    for (const name of table[lane].heard) words.add(name);
+  }
+  return [...words];
+}
 
 /** What may come before the name: a wake word, a greeting, an @. */
 const LEAD =
@@ -100,10 +156,11 @@ type Hit = { lane: RouteLane; end: number; exact: boolean };
 
 /** The longest lane name at the start of `s` (after nothing), or null. */
 function nameAt(s: string): Hit | null {
+  const table = getEffectiveLaneNames();
   let best: Hit | null = null;
   for (const lane of ROUTE_LANES) {
     for (const kind of ["exact", "heard"] as const) {
-      for (const name of LANE_NAMES[lane][kind]) {
+      for (const name of table[lane][kind]) {
         let end = -1;
         if (isLatin(name)) {
           // Walk the input, skipping spaces/dots/hyphens between letters, until the name is spelled.

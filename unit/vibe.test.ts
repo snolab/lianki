@@ -774,7 +774,7 @@ describe("the session: starting", () => {
   });
 
   it("uses the tailnet route, never the tunnel Cloudflare could hear", () => {
-    expect(vibeRoute(null)).toBe("wss://taku.onca-tint.ts.net/lianki-stt");
+    expect(vibeRoute(null)).toBe("wss://owner.example.ts.net/lianki-stt");
     expect(vibeRoute("wss://stt.lianki.com")).toBeNull();
     expect(vibeRoute("off")).toBeNull();
     expect(vibeRoute("ws://localhost:5193")).toBe("ws://localhost:5193/");

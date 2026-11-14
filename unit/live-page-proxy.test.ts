@@ -615,7 +615,7 @@ describe("the pointer's page origin", () => {
   test("a pointer without a page never makes a live page", async () => {
     await writeSigned(
       db,
-      await pointer(SERIAL + 1, { page: undefined, widget: "https://taku.onca-tint.ts.net/w.js" }),
+      await pointer(SERIAL + 1, { page: undefined, widget: "https://owner.example.ts.net/w.js" }),
       SERIAL + 1,
       T0,
     );

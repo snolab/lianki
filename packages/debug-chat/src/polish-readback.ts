@@ -28,7 +28,9 @@ import type { ChatMessage, EditMark, EditedEvent } from "./wire";
 export const POLISH_READBACK_FLAG = "voice.polish-readback";
 /** The clone server's base URL on this device (absent: the default; "off": none). */
 export const CLONE_TTS_KEY = "lk:agent-clone-tts";
-export const DEFAULT_CLONE_TTS_BASE = "https://taku.onca-tint.ts.net/lianki-clone-tts";
+/** The owner's Mac-local clone server, from the build's environment (never the repository); "" = none. */
+export const DEFAULT_CLONE_TTS_BASE =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE) || "";
 /** A clip not back in this long is skipped (config `voice.cloneTimeoutMs` overrides it). */
 export const DEFAULT_CLONE_TIMEOUT_MS = 20_000;
 /** The heard voice's name (voice-heard.ts; the line's details show it in words). */

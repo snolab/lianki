@@ -8,13 +8,13 @@ the ops lane (manual permission mode: the owner approves each command).
 
 ```bash
 tailscale serve --bg --https=8443 http://127.0.0.1:3103        # tailnet only, never funnel
-bun scripts/dev/whole-page.ts serve --host 192.168.31.96 --port 3100 \
-  --origin https://taku.onca-tint.ts.net:8443                    # keep running
+bun scripts/dev/whole-page.ts serve --host 192.168.1.10 --port 3100 \
+  --origin https://<your-mac>.ts.net:8443                    # keep running
 bun scripts/dev/whole-page.ts send-login --target Android        # sign his phone in
 ```
 
 Run `serve` from tree/preview-serve (see below). Then his phone is on
-`https://taku.onca-tint.ts.net:8443/words?list=all`, with
+`https://<your-mac>.ts.net:8443/words?list=all`, with
 Tailscale on. Stop the front with `tailscale serve --https=8443 off`.
 
 ## Feature agents: getting a change onto his phone
@@ -153,7 +153,7 @@ so a killed guard no longer leaves a server holding :3101.
 
 | Piece                                      | Where                                                                                    |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| Guard proxy (`scripts/dev/whole-page.ts`)  | `192.168.31.96:3100`. Only a private-LAN IPv4 is accepted, never `0.0.0.0`               |
+| Guard proxy (`scripts/dev/whole-page.ts`)  | `192.168.1.10:3100`. Only a private-LAN IPv4 is accepted, never `0.0.0.0`               |
 | `next dev` (Turbopack, fast refresh)       | `127.0.0.1:3101`, loopback only, reachable only through the guard                        |
 | Control port (one-time enter links)        | `127.0.0.1:3102`, loopback only                                                          |
 | Bindings (`wrangler.dev-whole-page.jsonc`) | D1 `lianki` and R2 `lianki-blobs` with `remote: true` (wrangler's own login, not a copy) |
@@ -221,7 +221,7 @@ one-time link. `tailscale serve --https=8443` targets a **loopback** listener,
   default from `tailscale status`), a GET without a device cookie or session
   gets both, minted on the spot, and is redirected to the same URL.
 - Any other login on the tailnet gets 403, as before.
-- On the LAN listener (`192.168.31.96:3100`) a request carrying the header is
+- On the LAN listener (`192.168.1.10:3100`) a request carrying the header is
   refused as a forgery.
 - The identity headers are stripped before anything is forwarded.
 
@@ -617,7 +617,7 @@ link.
 
 ## HTTPS (required): Tailscale serve
 
-Plain `http://192.168.31.96:3100` signs in fine, since better-auth sets
+Plain `http://192.168.1.10:3100` signs in fine, since better-auth sets
 non-`Secure` cookies for an http base URL. But the app then crashes:
 `http://<LAN IP>` is not a secure context, so the browser has no
 `crypto.randomUUID`, no service worker, no mic and no passkeys. The owner saw
@@ -665,11 +665,11 @@ restart once.
 - **Speech-to-text uses his local SenseVoice.** The server's clean env has no
   Workers AI credentials, so cloud STT (`/api/debug/stt`) answers 502 here.
   The widget streams to his Mac instead (docs/local-stt.md):
-  `localStorage["lk:debug-local-stt"] = "wss://taku.onca-tint.ts.net/lianki-stt"`
+  `localStorage["lk:debug-local-stt"] = "wss://<your-mac>.ts.net/lianki-stt"`
   on the dev origin, set once through eval. The enter link carries the key
   too when his lianki.com tab has it. The STT server must allow the dev
   origin, which has a port: oxmgr's `lianki-stt` runs `server.py … --origin
-https://taku.onca-tint.ts.net --origin https://taku.onca-tint.ts.net:8443`.
+https://<your-mac>.ts.net --origin https://<your-mac>.ts.net:8443`.
   Without the second `--origin` the handshake is refused (403 in
   `oxmgr logs lianki-stt`), and the page falls back to cloud STT, which
   returns 502.
