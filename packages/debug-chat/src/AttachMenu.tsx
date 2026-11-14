@@ -35,10 +35,19 @@ function inChat(node: unknown): boolean {
 }
 
 /** One memory per page (shared by a hot swap of the widget), started once. */
-function pageSelection(embedded: boolean): Memory | null {
+function pageSelection(embedded: boolean, scope?: string): Memory | null {
   if (typeof document === "undefined") return null;
-  const g = globalThis as unknown as Record<string, Memory | undefined>;
-  if (g[MEMORY]) return g[MEMORY];
+  const g = globalThis as unknown as Record<string, unknown>;
+  const ownerKey = `${MEMORY}Scope`;
+  const stopKey = `${MEMORY}Stop`;
+  if (g[MEMORY] && g[ownerKey] === scope) return g[MEMORY] as Memory;
+  // Account changes start with no remembered private selection; a hot swap keeps it.
+  (g[stopKey] as (() => void) | undefined)?.();
+  if (g[MEMORY]) {
+    const selection = document.getSelection();
+    if (selection && !inChat(selection.anchorNode) && !inChat(selection.focusNode))
+      selection.removeAllRanges();
+  }
   const m = createSelectionMemory({
     doc: document as never,
     inChat,
@@ -49,21 +58,32 @@ function pageSelection(embedded: boolean): Memory | null {
       ...(embedded ? { host: location.host } : {}),
     }),
   });
-  m.start();
+  g[stopKey] = m.start();
   g[MEMORY] = m;
+  g[ownerKey] = scope;
   return m;
 }
 
 const NONE = () => null;
 /** The remembered page selection (null: nothing selected outside the chat). */
-export function usePageSelection(embedded: boolean): { sel: PageSelection | null; clear(): void } {
-  const m = pageSelection(embedded);
+export function usePageSelection(embedded: boolean, scope?: string): { sel: PageSelection | null; clear(): void } {
+  const m = pageSelection(embedded, scope);
   const sel = useSyncExternalStore(
     m ? m.subscribe : () => () => {},
     m ? m.get : NONE,
     NONE,
   );
-  return { sel, clear: () => m?.clear() };
+  return {
+    sel,
+    clear: () => {
+      m?.clear();
+      // A consumed quote must not return on the next native selectionchange.
+      // This runs only after accepted enqueue, explicit removal, or account reset.
+      const selection = document.getSelection();
+      if (selection && !inChat(selection.anchorNode) && !inChat(selection.focusNode))
+        selection.removeAllRanges();
+    },
+  };
 }
 
 /** The app's add items (the bottom island's Create actions), live. */
