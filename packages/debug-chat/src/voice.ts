@@ -84,8 +84,14 @@ import {
   voiceIdOf,
 } from "./voices";
 
-/** A line's own voice beyond the table (voices.ts parseLineVoice): device, melo, aura, eleven. */
-export type LinePick = Exclude<LineVoice, { kind: "table" }>;
+/**
+ * The owner's own cloned voice (polish-readback.ts): set by the page for a
+ * read-back, never by a line (no voice id names it), and never read in any
+ * other voice: a clip that fails is skipped.
+ */
+export type ClonePick = { kind: "clone" };
+/** A line's own voice beyond the table (voices.ts parseLineVoice): device, melo, aura, eleven; or the clone. */
+export type LinePick = Exclude<LineVoice, { kind: "table" }> | ClonePick;
 
 /** Capture resumes this long after the last utterance ends (the room's echo; hold mode). */
 export const RESUME_TAIL_MS = 400;
@@ -137,8 +143,16 @@ export function speakerOf(meta: SpeakMeta | undefined, said: string): string {
   return "lane:main";
 }
 
-/** How a reply reached the page: `live` = a chat frame just now (not history, not a resume). */
-export type ReplyHow = { live?: boolean };
+/**
+ * How a reply reached the page: `live` = a chat frame just now (not history,
+ * not a resume). `pick`: the page's own choice of voice (a polish read-back
+ * in the owner's clone), over anything the line says. `startAt`: the local
+ * time (ms, `now()`) its first sentence starts no earlier than, so his devices
+ * read it together (sync-speak.ts); already past, or absent: at once.
+ */
+export type ReplyHow = { live?: boolean; pick?: ClonePick; startAt?: number };
+/** Who a read-back in the owner's clone is from, for superseding: no lane cuts it. */
+export const CLONE_SPEAKER = "clone:owner";
 
 /** A line's cut-in mode (wire.ts ChatMessage.cut), only when it arrived live. */
 export function cutOf(meta: SpeakMeta | undefined, how?: ReplyHow): "supersede" | "interject" | null {
@@ -156,7 +170,53 @@ export const TALK_OVER_SLACK_MS = 600;
  * …and the utterance is her echo when at least this share of its words (as
  * n-grams, echo.ts echoContained) is inside the sentences playing then.
  */
+/**
+ * The backlog speeds the reading up (owner, 2026-11-14: "队列特别长的话…读的快一点"):
+ * with more than BACKLOG_FROM characters still queued, his rate is raised
+ * linearly up to BACKLOG_MAX_BOOST× at BACKLOG_FULL characters; the result
+ * never exceeds RATE_CEILING. A short queue reads at his own rate.
+ */
+export const BACKLOG_FROM = 120;
+export const BACKLOG_FULL = 600;
+export const BACKLOG_MAX_BOOST = 1.5;
+export const RATE_CEILING = 3;
+/**
+ * Past this many queued characters, whole older lines still waiting are
+ * skipped when a new line comes: the sentence being read finishes, then the
+ * newest line ("甚至直接跳过一些段落，开始读最新的消息").
+ */
+export const BACKLOG_SKIP = 1500;
+/** The older lines to skip for a queue (ids in order), keeping `keep`; [] while under BACKLOG_SKIP. */
+export function backlogSkip(
+  queued: readonly { id?: string; text: string }[],
+  keep: ReadonlySet<string>,
+): string[] {
+  const chars = queued.reduce((n, q) => n + q.text.length, 0);
+  if (chars <= BACKLOG_SKIP) return [];
+  const out: string[] = [];
+  for (const q of queued) if (q.id && !keep.has(q.id) && !out.includes(q.id)) out.push(q.id);
+  return out;
+}
+/** The factor the backlog adds to his rate, for `chars` queued characters. */
+export function backlogBoost(chars: number): number {
+  if (!(chars > BACKLOG_FROM)) return 1;
+  const t = Math.min(1, (chars - BACKLOG_FROM) / (BACKLOG_FULL - BACKLOG_FROM));
+  return 1 + t * (BACKLOG_MAX_BOOST - 1);
+}
+/** His rate × the backlog boost, capped. */
+export const effectiveRate = (base: number, queuedChars: number) =>
+  Math.min(RATE_CEILING, base * backlogBoost(queuedChars));
 export const TALK_OVER_ECHO = 0.6;
+/**
+ * Talk-over pauses the reading only for speech that is clearly his: at least
+ * TALK_OVER_MIN_CHARS characters heard, and under TALK_OVER_PAUSE_BELOW of its
+ * words inside what Li is playing. Between that and TALK_OVER_ECHO it is
+ * neither dropped nor a barge-in: she reads on (owner, 2026-11-14: with echo
+ * cancellation off she heard herself, paused, heard silence, read on, heard
+ * herself again — early partials of her own echo rarely match it well).
+ */
+export const TALK_OVER_PAUSE_BELOW = 0.35;
+export const TALK_OVER_MIN_CHARS = 6;
 /** Sentences are cut to at most this many characters (the TTS route's limit). */
 export const CHUNK_MAX = 200;
 /** localStorage: the speaker toggle ("0" = replies silent). */
@@ -168,7 +228,7 @@ export const REPLY_DEDUPE_MS = 10 * 60_000;
 /** globalThis key of the shared session. */
 const KEY = "__lkVoice";
 /** The session's version: a copy on the page with another one is replaced. */
-const V = 7;
+const V = 8;
 
 const CJK_STOP = "。．！？";
 const LATIN_STOP = ".!?";
@@ -238,6 +298,29 @@ export function heardFraction(text: string, ms: number, rate = 1): number {
   return Math.min(1, (ms / 1000) * cps * Math.max(0.1, rate) / text.length);
 }
 
+/**
+ * Milliseconds per character at rate 1, by script class: how long
+ * speechSynthesis takes to read (the same speeds as SPEECH_CPS). A
+ * character of no listed class, spaces and marks included, is `other`.
+ */
+export const SPEECH_CHAR_MS = {
+  cjk: 1000 / SPEECH_CPS.cjk,
+  other: 1000 / SPEECH_CPS.other,
+} as const;
+/** Script classes by character, first match wins (the rest: `other`). */
+export const SPEECH_SCRIPTS: readonly (readonly [RegExp, keyof typeof SPEECH_CHAR_MS])[] = [
+  [CJK_TEXT, "cjk"],
+];
+/** How long speechSynthesis should take to read `text` at `rate` (no audio to measure). */
+export function speechMs(text: string, rate = 1): number {
+  let ms = 0;
+  for (const ch of text) {
+    const cls = SPEECH_SCRIPTS.find(([re]) => re.test(ch))?.[1] ?? "other";
+    ms += SPEECH_CHAR_MS[cls];
+  }
+  return ms / Math.max(0.1, rate);
+}
+
 /** A sentence in pieces of at most `max` chars: after the last clause mark, else a space, else hard. */
 export function chunk(s: string, max = CHUNK_MAX): string[] {
   const out: string[] = [];
@@ -305,7 +388,16 @@ export type PlayEvents = {
   onfail?(reason: string): void;
   /** The concrete voice it is read in, once known (voice-heard.ts: the line's details). */
   onvoice?(v: HeardVoice): void;
+  /** How long it should take, once known; again if a better figure comes later. */
+  ontiming?(t: ReadTiming): void;
 };
+/**
+ * A sentence's expected reading time, as of when it is told: `ms` still to
+ * go, at the reading speed, and the share `done` already behind it (a
+ * sentence resumed part-way). From the clip's length (audio), or an estimate
+ * from its characters (speechSynthesis, speechMs).
+ */
+export type ReadTiming = { ms: number; done: number };
 /** The cloud output (voice-out.ts createCloudOut). */
 export type CloudOut = {
   /** `written`: a provider voice's text before the lexicon (the server writes it as SSML). */
@@ -374,6 +466,8 @@ type Sentence = {
   who?: string;
   /** From an interjecting line: read before the line it paused. */
   jump?: true;
+  /** Its line's first sentence: not started before this local time (ReplyHow.startAt). */
+  startAt?: number;
 };
 /** What the agent said, and when (for the echo guard). */
 type Said = { text: string; start: number; end?: number };
@@ -456,6 +550,12 @@ export function createVoice(d: {
   const touch = () => d.touch?.() ?? false;
   let speaking = false;
   const queue: Sentence[] = [];
+  /** His rate, sped up by what is still queued (backlogBoost). */
+  const rateNow = () =>
+    effectiveRate(
+      d.rate?.() ?? 1,
+      queue.reduce((n, q) => n + q.text.length, 0),
+    );
   /** Replies queued lately, so a re-delivered one is not read twice. */
   const recent: { text: string; at: number }[] = [];
   /** Interruptions under way; the reading waits while any is. */
@@ -477,6 +577,8 @@ export function createVoice(d: {
   const subs = new Set<(s: VoiceState) => void>();
   /** Told each time a sentence starts playing (latency.ts). */
   const starts = new Set<() => void>();
+  /** Told how long the sentence playing should take (the chat's reading sweep, read-sweep.ts). */
+  const timings = new Set<(t: ReadTiming) => void>();
   /** Told the line ids whose unread sentences a superseding line dropped (the chat's read mirror). */
   const drops = new Set<(ids: string[]) => void>();
   /** Told where an interjecting line's sentences went into the queue (the chat's read mirror). */
@@ -545,7 +647,7 @@ export function createVoice(d: {
   const toSentences = (text: string, lang: string, voice?: VoiceId, pick?: LinePick): Sentence[] =>
     sentences(text)
       .flatMap((s): { text: string; written?: string }[] =>
-        isProviderVoice(pick)
+        pick?.kind !== "clone" && isProviderVoice(pick)
           ? chunk(s).map((w) => ({ text: speakForm(w, lang), written: w }))
           : chunk(speakForm(s, lang)).map((t) => ({ text: t })),
       )
@@ -573,7 +675,7 @@ export function createVoice(d: {
     // iOS cannot change it mid-utterance: a duck applies from the next sentence.
     if (level !== 1) u.volume = level;
     // The speed, as set now: a change applies from the next utterance.
-    u.rate = Math.min(10, (d.rate?.() ?? 1) * (u.rate ?? 1));
+    u.rate = Math.min(10, rateNow() * (u.rate ?? 1));
     u.onboundary = (b) => {
       if (e !== epoch || !current) return;
       if (b.name && b.name !== "word") return;
@@ -619,7 +721,16 @@ export function createVoice(d: {
         return ev.onfail?.("speech NotAllowedError");
       ev.onerror();
     };
-    u.onstart = () => (settle(), ev.onstart?.());
+    u.onstart = () => {
+      settle();
+      ev.onstart?.();
+      // No clip to measure: estimated from its characters at this utterance's speed.
+      const all = speechMs(head.text);
+      ev.ontiming?.({
+        ms: speechMs(head.text.slice(from), u.rate ?? 1),
+        done: all > 0 ? speechMs(head.text.slice(0, from)) / all : 0,
+      });
+    };
     ev.onvoice?.({ name: u.voice?.name ? `device:${u.voice.name}` : "device" });
     s.speak(u);
     return {
@@ -640,7 +751,10 @@ export function createVoice(d: {
     if (current || preroll !== null || pauses.size || !canSpeak()) return;
     const head = queue[0];
     if (!head) return;
-    const wait = d.preroll?.() ?? 0;
+    // In step with his other devices (sync-speak.ts): the pre-roll runs inside that wait.
+    const sync = head.startAt !== undefined ? head.startAt - now() : 0;
+    const wait = Math.max(d.preroll?.() ?? 0, sync);
+    if (sync > 0) log({ ev: "voice-sync", wait: Math.round(sync) });
     if (wait > 0) {
       // A stop or an interruption meanwhile: this finds nothing to say, or a pause.
       preroll = setTimer(() => {
@@ -675,6 +789,10 @@ export function createVoice(d: {
         if (e !== epoch) return;
         for (const f of starts) f();
       },
+      ontiming: (t) => {
+        if (e !== epoch) return;
+        for (const f of timings) f(t);
+      },
       onend: done,
       onerror: done,
       onvoice: (v) => {
@@ -704,6 +822,11 @@ export function createVoice(d: {
           return;
         }
         const refused = /NotAllowed/.test(reason);
+        if (head.pick?.kind === "clone" && !refused) {
+          // The clone server failed or timed out: skipped, never read in another voice.
+          log({ ev: "voice-out", out: "clone", route: "none", fallback: reason, ...info });
+          return done();
+        }
         // Refused by the browser with nothing else that could read it (or the
         // speech fallback refused too): keep the sentence and wait for a tap.
         if (refused && (current.p.route === "speech" || noVoice(head.lang))) return block(reason);
@@ -745,7 +868,7 @@ export function createVoice(d: {
             lang: head.lang,
             at: head.at,
             volume: level,
-            rate: d.rate?.() ?? 1,
+            rate: rateNow(),
             ...(head.voice ? { voice: head.voice } : {}),
             ...(head.pick && head.pick.kind !== "device" ? { pick: head.pick } : {}),
           },
@@ -798,7 +921,7 @@ export function createVoice(d: {
             current.mark > head.from
               ? current.mark
               : head.from +
-                resumeOffset(rest, heardFraction(rest, now() - current.said.start, d.rate?.() ?? 1));
+                resumeOffset(rest, heardFraction(rest, now() - current.said.start, rateNow()));
           head.at = 0;
         }
       }
@@ -886,6 +1009,11 @@ export function createVoice(d: {
       starts.add(f);
       return () => void starts.delete(f);
     },
+    /** `f` hears how long the sentence playing should take (after its start; again if refined). */
+    onTiming(f: (t: ReadTiming) => void) {
+      timings.add(f);
+      return () => void timings.delete(f);
+    },
     /** `f` hears where an interjecting line's sentences were put in the queue (read-progress mirror). */
     onInterject(f: (j: { id: string; n: number; at: number }) => void) {
       jumps.add(f);
@@ -940,7 +1068,8 @@ export function createVoice(d: {
      * pauses the sentence being read and goes in before the rest.
      */
     reply(said: string, meta?: SpeakMeta, how?: ReplyHow): boolean {
-      const who = speakerOf(meta, said);
+      const clone = how?.pick?.kind === "clone" ? how.pick : undefined;
+      const who = clone ? CLONE_SPEAKER : speakerOf(meta, said);
       const mode = cutOf(meta, how);
       const cutN = mode === "supersede" ? cut(who) : 0;
       /** Nothing queued for this line: still move on from what was cut. */
@@ -952,6 +1081,8 @@ export function createVoice(d: {
         return false;
       };
       if (!canSpeak() || !api.shouldSpeak()) return none();
+      // The clone plays only on the audio route: no cloud output here, nothing to read it.
+      if (clone && !cloud()) return none();
       // Its lane's voice; a `【lane】` prefix is not read out (voices.ts).
       const text = laneOf({ lane: meta?.lane, text: said }).text;
       const v = voiceIdOf({ voice: meta?.voice, lane: meta?.lane, text: said });
@@ -962,7 +1093,7 @@ export function createVoice(d: {
       const named = isProviderVoice(own) && !cloudVoicesOn() ? undefined : own;
       const t = now();
       // The same words in another voice are another line (a voice demo), not a re-delivery.
-      const key = `${typeof meta?.voice === "string" ? meta.voice : v}\n${text}`;
+      const key = `${clone ? CLONE_SPEAKER : typeof meta?.voice === "string" ? meta.voice : v}\n${text}`;
       if (recent.some((r) => r.text === key && t - r.at < REPLY_DEDUPE_MS)) {
         log({ ev: "voice-reply-dup", chars: text.length });
         return none();
@@ -971,7 +1102,8 @@ export function createVoice(d: {
       while (recent.length > 20) recent.shift();
       const lang = pickLang(text);
       // No voice of its own: the language → voice map's provider voice, if any (config voice.langVoices).
-      const pick = named ?? (meta?.voice === undefined ? langVoice(lang) : undefined);
+      const pick: LinePick | undefined =
+        clone ?? named ?? (meta?.voice === undefined ? langVoice(lang) : undefined);
       // An ElevenLabs preview stands for the whole line: one item, its text kept for a fallback.
       const idOf = { ...(typeof meta?.id === "string" ? { id: meta.id } : {}), who };
       const add = (
@@ -980,6 +1112,9 @@ export function createVoice(d: {
           : toSentences(text, lang, voice, pick?.kind === "eleven" ? undefined : pick)
       ).map((s) => ({ ...s, ...idOf, ...(mode === "interject" ? { jump: true as const } : {}) }));
       if (!add.length) return none();
+      const startAt = how?.startAt;
+      if (typeof startAt === "number" && Number.isFinite(startAt) && startAt > t)
+        add[0] = { ...add[0]!, startAt };
       if (mode === "interject" && queue.length) {
         // Interject: the sentence being read pauses where it got to (kept at
         // the head), unless it is an interjection itself; this line goes in
@@ -998,6 +1133,17 @@ export function createVoice(d: {
       }
       if (!queue.length) prepare(add[0]!);
       queue.push(...add);
+      // A very long backlog: skip whole older lines, read on from the newest.
+      const keep = new Set<string>();
+      if (current && queue[0]?.id) keep.add(queue[0].id);
+      if (idOf.id) keep.add(idOf.id);
+      const skip = backlogSkip(queue, keep);
+      if (skip.length) {
+        const before = queue.length;
+        for (let i = queue.length - 1; i >= (current ? 1 : 0); i--)
+          if (queue[i]!.id && skip.includes(queue[i]!.id!)) queue.splice(i, 1);
+        log({ ev: "voice-skip-backlog", lines: skip.length, sentences: before - queue.length });
+      }
       next();
       emit();
       return true;
@@ -1110,6 +1256,11 @@ export function createVoice(d: {
         paused: false,
       };
       if (drop || !words || !duplex() || !current || !during) return out;
+      // Not clearly his yet (short, or half like what she is reading): no pause.
+      if (score >= TALK_OVER_PAUSE_BELOW || normalizeEcho(transcript).length < TALK_OVER_MIN_CHARS) {
+        log({ ev: "voice-talk-over-unsure", score: out.score, chars: transcript.length });
+        return out;
+      }
       log({ ev: "voice-talk-over", score: out.score, chars: transcript.length });
       api.interrupt("speech");
       // His speech already ended (a final arrives after it): read on after the quiet, as userIdle would.
@@ -1192,7 +1343,7 @@ export function speakHere() {
 const alive = new Set<unknown>();
 
 /** The gate's version: a session gated by an older copy is gated again by this one. */
-const GATE_V = 3;
+const GATE_V = 4;
 /** How many unread line ids are kept (the note under each). */
 const UNHEARD_MAX = 50;
 
@@ -1267,7 +1418,8 @@ export function gateVoice(v: Voice, why: (m: SpeakMeta) => Silence | null = sile
       // A quiet superseding line still cuts its sender's reading; it reads nothing itself.
       if (silence === "quiet" && cutOf(m, how) === "supersede")
         (v as Partial<Voice>).supersede?.(speakerOf(m, text));
-      if (silence === "hidden") {
+      // A read-back in the clone kept silent is dropped: it never stands in for a missed line.
+      if (silence === "hidden" && !how?.pick) {
         s.__missed = { text, meta: m };
         if (id) unheard.add(id);
       }

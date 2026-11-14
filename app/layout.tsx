@@ -162,6 +162,11 @@ export default async function RootLayout({
   // Provider voices (lib/cloud-voices.ts): audience owner, so the flag and the dev grant.
   // Talking over Li's read-aloud with echo cancellation off (aec.ts talkOver): audience owner.
   const talkOver = dev && flagIn(flags, "voice.talk-over");
+  // His polished voice lines read back in his cloned voice (polish-readback.ts): audience owner.
+  const polishReadback =
+    dev && flagIn(flags, "voice.polish-readback")
+      ? { on: true, timeoutMs: await cfg("voice.cloneTimeoutMs") }
+      : undefined;
   const cloudVoices =
     dev && flagIn(flags, "voice.cloud-voices")
       ? { on: true, map: await cfg("voice.langVoices") }
@@ -181,6 +186,7 @@ export default async function RootLayout({
     account,
     cacheLines,
     talkOver,
+    polishReadback,
   };
   const box = boxConfig();
   return (
@@ -193,6 +199,9 @@ export default async function RootLayout({
       // Who the viewer is to the chat (lib/partner-entry.ts CHAT_VIEWER_ATTR):
       // the sidebar's "Learning Partner" row reads it. Absent for a guest.
       data-chat-viewer={viewer ?? undefined}
+      // Dev accounts find their chat on a new device/origin without a hidden
+      // gesture. debugOn() still honors this device's explicit local off.
+      data-chat-default={dev ? "on" : undefined}
       suppressHydrationWarning
     >
       <head>

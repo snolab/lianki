@@ -370,6 +370,87 @@ API, and removes the token file. The shared rate rule stays (the STT tunnel
 uses it). Restart `serve` without `--public-host` to close the loopback
 gate too. Revoke-all on `/dev/tokens` ends every session at once.
 
+## Preview dev userscript
+
+Owner request, 2026-11-14 ~03:50 JST: "I'd like
+https://preview.lianki.com/dev/loader.user.js … make it part of the preview
+site dev workflow … the dev loader can be a completely new thing."
+
+**Install once:** https://preview.lianki.com/dev/loader.user.js — a
+userscript named "Lianki (preview dev)" with its own `@namespace`
+(`https://preview.lianki.com/dev`), so a manager installs it beside the
+release "Lianki", never as an update of it. Its `@grant` lines are the release
+header's (read from the served checkout), its `@connect` is the preview host,
+and its `@downloadURL`/`@updateURL` are itself; `@version` is the bundle's
+version plus a loader generation (`LOADER_GEN`), so a header change reaches
+installed copies through the manager's own update check.
+
+**What serves it:** `whole-page.ts serve --public-host <host>` itself
+(`scripts/dev/preview-userscript.ts`): no extra process, no extra tunnel. It
+bundles the served checkout's `src/lianki.user.ts` in-process (`Bun.build`,
+iife) and answers, on the tunnel listener, before the gate and before next
+dev:
+
+| path                                 | answer                                                                |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| `GET /dev/loader.user.js`            | the loader                                                            |
+| `GET /dev/userscript.js`             | the current bundle, with `x-lianki-rev`                               |
+| `GET /dev/userscript.rev`            | `{rev, version}`                                                      |
+| `GET /dev/userscript.rev?wait=<rev>` | long poll: parked up to 25 s until a new build (64 at most, then 503) |
+
+**Gate: public.** These three answer without a dev session, like
+`lianki.com/lianki.user.js`: they are code only (no session, token, user or
+machine data, no build errors), and a phone that is not signed in to the
+preview must still be able to install and update. Every response is
+`no-store` (Cloudflare caches `.js` by extension otherwise). Any other method
+or path, including all of the app's `/dev/*` pages, goes through the gate as
+before. Only `Host: <publicHost>`; the LAN and tailnet listeners do not serve
+them. Everything the **bundle** does is still gated: its GM_info is shadowed
+so its origin is `https://preview.lianki.com` (`downloadURL`
+`…/lianki.user.js`), so its API calls go to the preview and need a preview
+session there (Tampermonkey and Violentmonkey send the browser's cookies for
+that host with `GM_xmlhttpRequest`).
+
+**Updates:** the rev is a SHA-256 of the bundle (12 hex), so the same code is
+the same rev across restarts. It is rebuilt after every publish (the follow
+update, with the intlayer step) and 200 ms after any change under `src/` in
+the served checkout; a failed build keeps the last good one and logs. An
+attached page long-polls the rev and re-evaluates a new bundle in place (the
+bundle unloads its previous copy itself, `unload_Lianki`); every page load
+reads the rev first and runs the bundle from GM storage when unchanged.
+Reinstalling is never needed for a new build.
+
+**Never two Lianki scripts on one page** (the double-run guard). The release
+script's `window` flags stay in its own sandbox, so the loader looks at the
+one thing both can see: the pill, a `<body>` child with the ⏪ 🔖 ⏩ buttons.
+The loader tags the pill its own bundle mounts (`data-lianki-preview="1"`);
+an untagged one is the release script's. It waits for DOMContentLoaded plus
+300 ms (the release script runs at document-end), then runs the bundle only
+when (`guardDecision`):
+
+- it is the top frame (`@noframes` too) — the iframe hotkey relay stays the
+  release script's;
+- the page is not `lianki.com` / `www.lianki.com` (the release script's own
+  site; on the preview host it runs, mirroring its cards to the preview's
+  /data as the release script also does there);
+- no other preview loader marked the page (`data-lianki-preview-loader`, e.g.
+  installed in two managers);
+- no release pill is on the page.
+
+If the release pill appears later (a manager may order the scripts either
+way), a MutationObserver unloads the preview bundle on that page. So **the
+release script wins**: to try the preview build on ordinary sites, disable
+"Lianki" in the manager (or per site) while this is installed. Pages whose
+CSP or Trusted Types forbid eval are skipped, as with the old loader.
+
+**How it differs from dev.lianki.com** (`scripts/dev-userscript-server.ts`,
+docs/dev-userscript-loader.md): that one is a separate server with its own
+tunnel, building whatever working tree it runs in, talking to lianki.com (or
+`--app`), with an error sink and a client table, and its loader keeps the old
+fleet's name/namespace. This one is part of the preview: it builds exactly
+what preview.lianki.com serves, talks only to the preview, has no endpoints
+that take input, and installs as a separate script.
+
 ## The profile menu switch
 
 For the owner only, decided on the server (`devSwitchFor`,

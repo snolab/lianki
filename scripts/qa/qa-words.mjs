@@ -1107,17 +1107,35 @@ try {
   // service is not part of the local Worker, so the socket is mocked here.
   // The page names its build in ?b= (smart refresh); a bare {build} — no
   // fingerprints — means "cannot tell", so the button shows.
+  let announcedBuild = "some-newer-build";
   await page.routeWebSocket(/\/api\/version\/ws(\?|$)/, (ws) =>
-    ws.send(JSON.stringify({ build: "some-newer-build" })),
+    ws.send(JSON.stringify({ build: announcedBuild })),
   );
-  // An automatic refresh first confirms this origin serves the announced
-  // build (lib/version-probe.ts); here the edge already has it. On the
-  // context: the service worker (public/sw.js) makes that fetch, and a
-  // page route never sees it.
-  const probeUrl = "**/_lk/route-fp.json?*";
-  const probe = (route) =>
-    route.fulfill({ json: { build: "some-newer-build", shell: "qa-shell", routes: {} } });
-  await ctx.route(probeUrl, probe);
+  // The announcement and the serving-build probe must agree, just as they
+  // do after a real rollout. A mocked socket alone is deliberately refused.
+  // This page is controlled by the offline service worker, whose fetches
+  // bypass Playwright routing. Stub the probe at its browser fetch boundary.
+  await page.addInitScript(() => {
+    const fetcher = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : input, location.href);
+      if (
+        sessionStorage.getItem("qa:serving-build") &&
+        url.pathname === "/_lk/route-fp.json" &&
+        url.searchParams.has("_lk_probe")
+      ) {
+        return Promise.resolve(
+          Response.json({
+            build: sessionStorage.getItem("qa:serving-build"),
+            shell: "qa-shell",
+            routes: {},
+          }),
+        );
+      }
+      return fetcher(input, init);
+    };
+  });
+  await page.evaluate(() => sessionStorage.setItem("qa:serving-build", "some-newer-build"));
   // A Learning Partner device reloads by itself instead of showing the
   // button: this check is about a user's device, so the flag must be off.
   const partnerFlags = () =>
@@ -1145,29 +1163,43 @@ try {
   // build; when the reload still hears the old build is stale, it shows the
   // button rather than reloading again and again.
   {
+    announcedBuild = "partner-newer-build";
     await page.evaluate(() => {
+      sessionStorage.setItem("qa:serving-build", "partner-newer-build");
       for (const k of ["lk:agent", "lk:debug"]) localStorage.setItem(k, "1");
       sessionStorage.removeItem("lk:reloaded-for");
     });
+    // A confirmed build may reload before the first document's load event.
+    // Count main-frame document requests so that fast reload is observed; a
+    // same-document navigation (the chat's history.replaceState) is not a load.
     let loads = 0;
-    const onLoad = () => loads++;
-    page.on("load", onLoad);
+    const onLoad = (rq) => {
+      if (rq.isNavigationRequest() && rq.frame() === page.mainFrame()) loads++;
+    };
+    page.on("request", onLoad);
     await page.reload({ waitUntil: "load" });
     await notice.waitFor({ timeout: budget(20000) }).catch(() => {});
     const shown = await notice.isVisible().catch(() => false);
     await page.waitForTimeout(3000); // a second auto-reload would land in here
-    page.off("load", onLoad);
+    page.off("request", onLoad);
+    const reloadState = await page.evaluate(() => ({
+      agent: localStorage.getItem("lk:agent"),
+      debug: localStorage.getItem("lk:debug"),
+      reloaded: sessionStorage.getItem("lk:reloaded-for"),
+      state: document.querySelector('[data-testid="new-version"]')?.getAttribute("data-state"),
+      focused: document.activeElement?.tagName,
+    }));
     check(
       shown && loads === 2,
-      `a Learning Partner device reloads once for a new build, then shows Refresh (loads ${loads}, shown ${shown})`,
+      `a Learning Partner device reloads once for a new build, then shows Refresh (loads ${loads}, shown ${shown}, ${JSON.stringify(reloadState)})`,
     );
   }
   await page.evaluate(() => {
+    sessionStorage.removeItem("qa:serving-build");
     localStorage.removeItem("lk:version-notice");
     for (const k of ["lk:agent", "lk:debug"]) localStorage.setItem(k, "0");
   });
   await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
-  await ctx.unroute(probeUrl, probe).catch(() => {});
   await page.reload({ waitUntil: "load" });
   await rows.first().waitFor({ timeout: budget(15000) });
 

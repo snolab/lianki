@@ -44,11 +44,15 @@ import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
+import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
+import { hubClock, syncWait } from "@lianki/debug-chat/sync-speak";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { withLane } from "@lianki/debug-chat/voices";
+import { type Present, parsePresent } from "@lianki/debug-chat/presence";
+import { publicCfg } from "@/lib/config-client";
 import { spokenOf } from "@lianki/debug-chat/rich-text";
 import { missedReply } from "@lianki/debug-chat/speak-rules";
 import { voice } from "@lianki/debug-chat/voice";
@@ -168,12 +172,18 @@ export function DebugEval({
   lexicon,
   cloudVoices,
   talkOver = false,
+  polishReadback: readback,
   box = null,
   account = null,
   cacheLines = 0,
 }: {
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
   talkOver?: boolean;
+  /**
+   * Flag `voice.polish-readback` + dev: a voice line an agent polished is read
+   * back once in his cloned voice (polish-readback.ts); config voice.cloneTimeoutMs. None: off.
+   */
+  polishReadback?: { on: boolean; timeoutMs?: number };
   /**
    * The signed-in account's id, from the server's session (null: a guest). It
    * keys the device's copy of the chat (lib/chat-cache.ts) and gates the
@@ -215,6 +225,7 @@ export function DebugEval({
   if (lexicon !== undefined) setLexicon(lexicon);
   setCloudVoices(cloudVoices);
   setTalkOver(talkOver);
+  setPolishReadback(readback);
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
   const devRef = useRef(dev);
@@ -230,6 +241,8 @@ export function DebugEval({
   const [phase, setPhase] = useState<SocketPhase>("closed");
   const [toast, setToast] = useState<string | null>(null);
   const [state, setState] = useState<HubState | null>(null);
+  /** Who is here (presence.ts): the hub pushes this page's list on every change. */
+  const [present, setPresent] = useState<Present[]>([]);
   /**
    * The chat's last lines from this device (lib/chat-cache.ts), shown at once
    * while the socket opens: only this account's, only when the chat is wanted;
@@ -463,6 +476,39 @@ export function DebugEval({
         sock.close(1000, "rejoin");
       }, wait);
     };
+    /** One clock ping to the hub, if none is out (sync-speak.ts). */
+    const clockPing = (sock: WebSocket) => {
+      const p = hubClock().ping();
+      if (!p || sock.readyState !== WebSocket.OPEN) return;
+      try {
+        sock.send(JSON.stringify(p));
+      } catch {}
+    };
+    /**
+     * A line the hub stamped `speakAt` (two or more of his devices here): the
+     * local time to start reading it, in step with the others; nothing for a
+     * line without one, or before this page knows the hub's clock.
+     */
+    const syncStart = (sock: WebSocket, msg: { speakAt?: unknown }): { startAt?: number } => {
+      if (msg.speakAt === undefined) return {};
+      const clock = hubClock();
+      if (clock.stale()) clockPing(sock);
+      const now = Date.now();
+      const offset = clock.offset();
+      const wait = syncWait({
+        speakAt: msg.speakAt,
+        offset,
+        now,
+        maxWaitMs: publicCfg("voice.syncMaxWaitMs"),
+      });
+      // Late by more than the tolerance: noted, so voice.syncLeadMs can be raised.
+      if (offset !== null && typeof msg.speakAt === "number") {
+        const late = now - (msg.speakAt - offset);
+        if (late > publicCfg("voice.syncSkewMs"))
+          voice().log({ ev: "voice-sync", late: Math.round(late) });
+      }
+      return wait > 0 ? { startAt: now + wait } : {};
+    };
     /** This effect was cleaned up (unmount, or React running it twice in dev): a late ticket opens nothing. */
     let disposed = false;
     const connect = () => {
@@ -521,6 +567,9 @@ export function DebugEval({
         setLive(true);
         setChat(true);
         if (!friendRef.current) devLog({ ev: "eval-socket", label });
+        // The hub's clock, for reading lines in step with his other devices (sync-speak.ts).
+        hubClock().reset();
+        clockPing(sock);
       };
       sock.onmessage = (e) => {
         let msg: {
@@ -534,6 +583,8 @@ export function DebugEval({
           retryIn?: unknown;
           sender?: unknown;
           answer?: unknown;
+          /** Hub time to start reading this line, in step with his other devices (sync-speak.ts). */
+          speakAt?: unknown;
         };
         try {
           msg = JSON.parse(String(e.data));
@@ -542,6 +593,11 @@ export function DebugEval({
         }
         // This window's recording session (the hub holds it, not this origin).
         if (msg.type === "clips") return void onClipsState(msg);
+        // A clock pong (sync-speak.ts): noted; the round goes on until it has its samples.
+        if (msg.type === "clock") {
+          if (hubClock().pong(msg as { t0?: unknown; t1?: unknown; t2?: unknown })) clockPing(sock);
+          return;
+        }
         if (msg.type === "friend-status") {
           friendRef.current = true;
           hubOwnerRef.current = false;
@@ -592,6 +648,11 @@ export function DebugEval({
         if (msg.type === "rate-limited") {
           const min = Math.max(1, Math.ceil(Number(msg.retryIn) / 60_000) || 1);
           setWarning(chatExtra().rateLimited.replace("{n}", String(min)));
+          return;
+        }
+        if (msg.type === "present") {
+          const list = parsePresent((msg as { list?: unknown }).list);
+          if (list) setPresent(list);
           return;
         }
         if (msg.type === "state") {
@@ -689,7 +750,7 @@ export function DebugEval({
               !!said &&
               (tabsRef.current?.isSpeaker() ?? true) &&
               // live: a superseding or interjecting line cuts in (voice.ts); history never does.
-              voice().reply(said, m, { live: true });
+              voice().reply(said, m, { live: true, ...syncStart(sock, msg) });
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);
@@ -701,6 +762,18 @@ export function DebugEval({
           // The agent polished a voice line: it changes in place, and is never read aloud again.
           const e = msg as unknown as EditedEvent;
           if (typeof e.id !== "string" || typeof e.text !== "string") return;
+          // His own voice line, raw → polished: read back once in his cloned voice (flag
+          // voice.polish-readback), by the tab that reads, through Li's one queue.
+          polishReadback(
+            messagesRef.current.find((m) => m.id === e.id),
+            e,
+            {
+              reply: (text, meta, how) => voice().reply(text, meta, how),
+              speaker: () => tabsRef.current?.isSpeaker() ?? true,
+              log: (ev) => voice().log(ev),
+              ...syncStart(sock, msg),
+            },
+          );
           setMessages((list) => trimHistory(applyEditTo(list, e)));
           // A line that amended another has no echo of its own: this is its answer.
           if (e.merged) voiceLatency().heard({ id: e.merged.id, from: "owner", at: e.edited.at });
@@ -1022,9 +1095,10 @@ export function DebugEval({
   }, [treeOn]);
   // The chat inbox's host side (lib/inbox/client.ts): an Anki package imports in one tap.
   const importDeck = strings?.importDeck ?? "Import as a deck";
-  const ownerFiles = useMemo(
-    () => inboxFiles({ importDeck, go: (path) => router.push(path) }),
-    [importDeck, router],
+  const accountFiles = useMemo(
+    () =>
+      inboxFiles({ importDeck, go: (path) => router.push(path), account: account ?? undefined }),
+    [importDeck, router, account],
   );
   if (!live && !toast && !chat) return null;
   return (
@@ -1067,6 +1141,31 @@ export function DebugEval({
             evalRan={!!toast}
             friend={isFriend}
             owner={devUi}
+            // Who is here, right of the connection chip (PresenceStack.tsx).
+            presence={
+              devUi
+                ? {
+                    list: present,
+                    shown: publicCfg("chat.presenceShown"),
+                    onChange: (tok, change) => {
+                      const sock = sockRef.current;
+                      if (!sock || sock.readyState !== WebSocket.OPEN) return;
+                      try {
+                        sock.send(JSON.stringify({ type: "participant", tok, ...change }));
+                      } catch {}
+                    },
+                    // The same revoke as /my/preferences (lib/api-token-api.ts): this account's tokens only.
+                    onRemove: async (id) => {
+                      const r = await fetch("/api/token", {
+                        method: "DELETE",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ id }),
+                      }).catch(() => null);
+                      return !!r?.ok;
+                    },
+                  }
+                : undefined
+            }
             // The connection chip (LinkChip.tsx): remote code on this page, and the selection.
             link={
               devUi
@@ -1094,8 +1193,8 @@ export function DebugEval({
             // This page's ETA timer went off: the hub pings the agent at most once per estimate.
             onEtaDue={(id) => ownerTree?.send({ type: "eta", id })}
             treeRepo="snolab/lianki"
-            // The chat inbox: the owner's own pages only (owner-only upload, lib/inbox/).
-            files={owner && !isFriend ? ownerFiles : undefined}
+            // Every signed-in account's own inbox; guests keep coming-soon file actions.
+            files={account ? accountFiles : undefined}
             // The account's chat history (docs/chat-history.md): every signed-in user's own.
             onHistory={() => router.push("/chat/history")}
             agentAvatar={AGENT_AVATAR}

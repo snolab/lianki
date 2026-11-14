@@ -18,8 +18,9 @@
  */
 import { noteOpened } from "./aec";
 import { encodeWav } from "./mic";
-import type { CloudOut, LinePick, PlayEvents, Playback } from "./voice";
+import type { CloudOut, LinePick, PlayEvents, Playback, ReadTiming } from "./voice";
 import { type HeardVoice, pickLocalVoice, pinnedLocalVoice } from "./voice-heard";
+import { CLONE_VOICE_NAME, cloneTimeoutMs, cloneTtsBase, cloneTtsUrl } from "./polish-readback";
 import { MELO_LANGS, VOICES, type VoiceId, cloudVoice } from "./voices";
 
 /** The route's X-Voice for a clip in a lane's own cloud speaker (lib/words-tts.ts). */
@@ -109,6 +110,21 @@ export function audioCtx(): AudioContext | null {
 }
 export const existingCtx = () => audio;
 
+/**
+ * How long a clip has left to play (the chat's reading sweep): its seconds
+ * still to go over its speed, and the share already behind it (a resume by
+ * offset). Null while its length is unknown (no metadata yet, or a stream).
+ */
+export function clipTiming(
+  a: Pick<ElementLike, "duration" | "currentTime" | "playbackRate">,
+): ReadTiming | null {
+  const d = a.duration;
+  if (d === undefined || !Number.isFinite(d) || d <= 0) return null;
+  const at = Math.min(Math.max(0, a.currentTime || 0), d);
+  const rate = a.playbackRate && a.playbackRate > 0 ? a.playbackRate : 1;
+  return { ms: ((d - at) / rate) * 1000, done: at / d };
+}
+
 /** The slice of an HTMLAudioElement the cloud output uses. */
 export type ElementLike = {
   src: string;
@@ -122,6 +138,8 @@ export type ElementLike = {
   /** Keep the voice's pitch at any speed (and Safari's prefixed name). */
   preservesPitch?: boolean;
   webkitPreservesPitch?: boolean;
+  /** Seconds, once the metadata is in (NaN before; Infinity for a stream). */
+  duration?: number;
   onended: (() => void) | null;
   onerror: (() => void) | null;
   onloadedmetadata: (() => void) | null;
@@ -186,6 +204,9 @@ export const localTts = (voice: string, text: string): { url: string; heard: Hea
 };
 export const localTtsUrl = (voice: string, text: string) => localTts(voice, text).url;
 
+/** The provider id of the owner's cloned voice (polish-readback.ts). */
+export const CLONE_PROVIDER = "clone";
+
 /** Why a provider voice cannot be asked for a sentence (null: ask it). Any language. */
 export function providerSkip(text: string): string | null {
   if (!text.trim()) return "empty";
@@ -216,10 +237,16 @@ export function createCloudOut(d: {
   toUrl?: (b: Blob) => string;
   revoke?: (u: string) => void;
   setTimer?: (f: () => void, ms: number) => unknown;
+  /** The clone server's base URL (null: off on this device); absent: polish-readback.ts cloneTtsBase. */
+  cloneBase?: () => string | null;
+  /** How long a clone clip may take (ms); absent: polish-readback.ts cloneTimeoutMs. */
+  cloneTimeout?: () => number;
 }): CloudOut & { unlock(): void; gain(): GainLike | null } {
   const toUrl = d.toUrl ?? ((b) => URL.createObjectURL(b));
   const revoke = d.revoke ?? ((u) => URL.revokeObjectURL(u));
   const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
+  const cloneBase = d.cloneBase ?? cloneTtsBase;
+  const cloneTimeout = d.cloneTimeout ?? cloneTimeoutMs;
   /**
    * The context the element plays through, running: null when it is (or
    * there is none, or the element is not routed through it), else the state
@@ -284,12 +311,25 @@ export function createCloudOut(d: {
     if (have) return have;
     const base = lang.split(/[-_]/)[0]!;
     const local = provider?.startsWith("local:") ? localTts(provider.slice(6), text) : null;
+    const clone = provider === CLONE_PROVIDER;
+    const cloneAt = clone ? cloneBase() : null;
+    if (clone && !cloneAt) return Promise.reject(new Error("clone off"));
     const url = local
       ? local.url
-      : provider
-        ? providerTtsUrl(provider, text)
-        : ttsUrl(text, base, speaker);
-    const p = d.fetch(url).then(async (r) => {
+      : cloneAt
+        ? cloneTtsUrl(cloneAt, text)
+        : provider
+          ? providerTtsUrl(provider, text)
+          : ttsUrl(text, base, speaker);
+    // The clone takes seconds per sentence on his Mac: one that never answers is given up on.
+    const got = clone
+      ? new Promise<Awaited<ReturnType<typeof d.fetch>>>((ok, no) => {
+          const ms = cloneTimeout();
+          setTimer(() => no(new Error(`clone timeout ${ms} ms`)), ms);
+          d.fetch(url).then(ok, no);
+        })
+      : d.fetch(url);
+    const p = got.then(async (r) => {
       if (!r.ok) throw new Error(`http ${r.status}${r.headers.get("X-Voice") ? ` ${r.headers.get("X-Voice")}` : ""}`);
       const url = toUrl(await r.blob());
       // The speaker was asked for but the route answered with its one voice (it fell back).
@@ -301,7 +341,9 @@ export function createCloudOut(d: {
         url,
         local
           ? local.heard
-          : { name: provider ?? (speaker && !fellBack.has(url) ? `aura:${speaker}` : `melo:${base}`) },
+          : clone
+            ? { name: CLONE_VOICE_NAME }
+            : { name: provider ?? (speaker && !fellBack.has(url) ? `aura:${speaker}` : `melo:${base}`) },
       );
       return url;
     });
@@ -338,6 +380,7 @@ export function createCloudOut(d: {
       return { lang, provider: pick.id, shift: 1 };
     if (pick?.kind === "local")
       return { lang, provider: `local:${pick.name}`, shift: 1 };
+    if (pick?.kind === "clone") return { lang, provider: CLONE_PROVIDER, shift: 1 };
     if (voice === "bright" && read(LOCAL_TTS_KEY) !== "off")
       return { lang, provider: "local:neko-cycle", shift: 1 };
     // The calm lanes (codex, 小克) get a Mac-local voice of their own for Chinese
@@ -388,10 +431,25 @@ export function createCloudOut(d: {
     ev.onvoice?.({ name: `eleven:${id}` });
     a.onended = () => live() && ev.onend();
     a.onerror = () => live() && ev.onfail?.("preview error");
-    a.onloadedmetadata = null;
+    // Its length may come after it started (no load() first): told then.
+    let started = false;
+    const tell = () => {
+      const t = clipTiming(a);
+      if (t) ev.ontiming?.(t);
+    };
+    a.onloadedmetadata = () => {
+      if (!live()) return;
+      a.onloadedmetadata = null;
+      if (started) tell();
+    };
     a.src = url;
     a.play().then(
-      () => live() && ev.onstart?.(),
+      () => {
+        if (!live()) return;
+        started = true;
+        ev.onstart?.();
+        tell();
+      },
       (e: unknown) => live() && ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`),
     );
     return pb;
@@ -460,7 +518,11 @@ export function createCloudOut(d: {
         return skip ? Promise.reject(new Error(skip)) : fetchClip(s.text, base.lang, base.speaker);
       };
       let clip: Promise<string>;
-      if (lane.provider) {
+      if (lane.provider === CLONE_PROVIDER) {
+        // His own voice or nothing: a failure is onfail (voice.ts skips the sentence).
+        const skip = providerSkip(s.text);
+        clip = skip ? Promise.reject(new Error(skip)) : fetchClip(s.text, lane.lang, undefined, lane.provider);
+      } else if (lane.provider) {
         const said = s.written ?? s.text;
         clip = providerSkip(said)
           ? ownVoice()
@@ -506,7 +568,13 @@ export function createCloudOut(d: {
             a.preservesPitch = true;
             a.webkitPreservesPitch = true;
             a.play().then(
-              () => live() && ev.onstart?.(),
+              () => {
+                if (!live()) return;
+                ev.onstart?.();
+                // The metadata is in: the clip's own length, at its speed.
+                const t = clipTiming(a);
+                if (t) ev.ontiming?.(t);
+              },
               (e: unknown) => {
                 if (live()) ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`);
               },

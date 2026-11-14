@@ -39,6 +39,8 @@ export type FileAction = {
 
 /** The host's file handling. Every method may throw; the widget shows it as a failed chip or row. */
 export type ChatFiles = {
+  /** Opaque signed-in account key: switching it clears pending private uploads. */
+  scope?: string;
   /**
    * Upload one file; resolves with its ref once stored. `onProgress` gets the
    * bytes sent so far; `signal` aborts it (× on the chip before it finished).

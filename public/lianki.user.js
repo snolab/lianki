@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.33
+// @version     2.24.34
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -3464,6 +3464,12 @@ Sasisha kadi kwa anwani mpya?`,
     untuckChat: `In ${CHAT}: tooltip and label of the handle left on the screen edge: brings the small chat pill back. An imperative phrase.`,
   };
   var EXTRA_CONTEXT = {
+    messageDetails: `In ${CHAT}: heading and accessible label of a popover opened by clicking a message. It shows only metadata already carried by that message: sender, timestamp, recognition and voiceprint fields when present. Short noun phrase.`,
+    voiceUsed: `In ${CHAT}, the message details popover: a row naming the voice that actually read this message aloud on this device; {name} is a technical voice id shown as is (e.g. neko-moe, device:Samantha, aura:luna). A label, a colon, then {name}; keep {name}.`,
+    voiceUseThis: `In ${CHAT}, the message details popover: a button beside that voice row, shown when the voice was picked by a rotation that takes turns through several voices: tapping keeps this voice for such lines on this device instead of taking turns. An imperative phrase.`,
+    voicePinned: `In ${CHAT}, the message details popover: the state shown once a voice was kept that way (pinned) on this device; the rotation is off and every such line uses {name}. A short state phrase; keep {name}.`,
+    voiceUnpin: `In ${CHAT}, the message details popover: a button that undoes that pin, so such lines take turns through the voices again (the rotation). An imperative verb, with 'rotate' or 'take turns' in brackets.`,
+    voiceClone: `In ${CHAT}, the message details popover, on the user's own spoken message: the row shown instead of a voice id when the message, after the assistant polished its wording, was read back to the user in a copy (clone) of the user's OWN voice made on their computer. The same 'Voice:' label as the voice row, then 'yours' and '(cloned)' in brackets. Addressed to the user.`,
     speakMicTitle: `In ${CHAT}, the menu's read-aloud row: tooltip while the mic is on; replies are always read aloud then, and the user's own setting comes back when the mic stops.`,
     speakTouchTitle: `In ${CHAT}, the menu's read-aloud row: tooltip when replies are read aloud whether typing or not, until the user turns it off.`,
     speakVoicedTitle: `In ${CHAT}, the menu's read-aloud row: tooltip after the user spoke with the mic on this device: replies are read aloud, typed or spoken, until turned off.`,
@@ -3483,6 +3489,8 @@ Sasisha kadi kwa anwani mpya?`,
     micReplyPlaying: `In ${CHAT}: spoken by screen readers while a reply is being read aloud (the mic waits). A short phrase.`,
     micReplyTap: `In ${CHAT}: tooltip of the mic button while a reply is being read aloud: tapping stops the reply so the user can talk.`,
     micResume: `In ${CHAT}: tooltip of the mic button when listening was paused: a tap listens again.`,
+    micCutOff: `In ${CHAT}: small note above the mic button when the microphone went off by itself, not by the user: the phone or browser stopped it (a call, another app, the app sent to the background). A tap on the button turns it on again. A short statement, then the tap hint.`,
+    micOtherTab: `In ${CHAT}: small note above the mic button when it went off because another open Lianki page (a tab or the installed app) on the same device turned its mic on; only one page listens at a time. A tap here takes the mic back. A short statement, then the tap hint.`,
     micDictate: `In ${CHAT}: tooltip of the mic button when it is off: it listens and types what the user says into the chat box.`,
     micRecordingTap: `In ${CHAT}: tooltip of the mic button while it records the user's speech: a tap stops listening.`,
     micListeningTap: `In ${CHAT}: tooltip of the mic button while it listens: a tap stops it.`,
@@ -5044,7 +5052,11 @@ Sasisha kadi kwa anwani mpya?`,
       }
     }
     const originHost = new URL(ORIGIN).hostname;
-    if (location.hostname === originHost || location.hostname === "www." + originHost) {
+    if (
+      location.hostname === originHost ||
+      location.hostname === "www." + originHost ||
+      location.hostname === "preview." + originHost
+    ) {
       mirrorPartnerSwitch(localStorage, GM_setValue);
       mirrorPillChatFlag({
         origin: ORIGIN,

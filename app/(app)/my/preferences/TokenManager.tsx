@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { longDate, longDateTime } from "@/lib/dates";
 import { MAX_NAME, type ScopeId } from "@/lib/api-tokens";
@@ -11,7 +11,9 @@ import {
   type Expiry,
 } from "@/app/components/TokenPickers";
 import { RevokeConfirm } from "./RevokeConfirm";
-import { AgentGuide, CopyGuideButton, useAgentGuide } from "./AgentGuide";
+import { AgentGuide, CopyGuideButton, useAgentGuide, useAgentGuidePointer } from "./AgentGuide";
+import { agentGuideWithToken } from "@/lib/agent-guide";
+import { INVITE_PREFILL, invitePrefill } from "@lianki/debug-chat/presence";
 
 /**
  * Settings → API tokens (lib/api-tokens.ts, /api/token): like GitHub's
@@ -21,7 +23,8 @@ import { AgentGuide, CopyGuideButton, useAgentGuide } from "./AgentGuide";
  * The account every token acts as is named at the top. The secret is shown
  * once, right after it is made, and never again. Every token also offers the
  * instructions for the user's own AI assistant (AgentGuide, lib/agent-guide.ts),
- * which never contain the secret. Shown to every signed-in user.
+ * which contain no secret unless the user explicitly copies the combined
+ * instructions-and-token message from the one-time box. Shown to every signed-in user.
  */
 type Token = {
   id: string;
@@ -52,8 +55,16 @@ export default function TokenManager() {
     scopes: ScopeId[];
     expiresAt: string | null;
   } | null>(null);
+  const form = useRef<HTMLFormElement>(null);
+  const shareButton = useRef<HTMLButtonElement>(null);
+  const formId = useId();
+  useEffect(() => {
+    if (secret) shareButton.current?.focus();
+  }, [secret]);
   const guide = useAgentGuide();
+  const pointer = useAgentGuidePointer();
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
   /** The row asking "Revoke …?", the one being revoked, and the one Cancel returned focus to. */
   const [asking, setAsking] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -66,12 +77,33 @@ export default function TokenManager() {
   useEffect(() => {
     load().catch(() => {});
   }, [load]);
+  // The chat's Invite (PresenceStack.tsx): the form filled in for a chat-only
+  // agent. Nothing is made until the user taps Create.
+  useEffect(() => {
+    const p = invitePrefill(location.search);
+    if (!p) return;
+    setName(p.name);
+    setScopes([...p.scopes]);
+    setExpiry({ days: p.days });
+  }, []);
+
+  function invalid(message: string, selector: string) {
+    setError(message);
+    form.current?.querySelector<HTMLElement>(selector)?.focus();
+  }
 
   async function create() {
+    if (busy) return;
     const exp = expiryBody(expiry);
-    if (!name.trim() || [...name.trim()].length > MAX_NAME) return setError(s("errName"));
-    if (scopes.length === 0) return setError(s("errScopes"));
-    if (!exp) return setError(s("errExpiry"));
+    if (!name.trim() || [...name.trim()].length > MAX_NAME)
+      return invalid(s("errName"), "[data-testid=token-name]");
+    if (scopes.length === 0)
+      return invalid(s("errScopes"), "[data-token-picker=permissions] input");
+    if (!exp)
+      return invalid(
+        s("errExpiry"),
+        "[data-token-picker=expiry] input, [data-token-picker=expiry] button",
+      );
     setError(null);
     setBusy(true);
     try {
@@ -98,6 +130,7 @@ export default function TokenManager() {
         expiresAt: j.expiresAt ?? null,
       });
       setCopied(false);
+      setShared(false);
       setName("");
       setScopes([]);
       setExpiry(null);
@@ -141,6 +174,24 @@ export default function TokenManager() {
     navigator.clipboard.writeText(secret.token).then(() => setCopied(true));
   }
 
+  async function copyWithGuide() {
+    if (!secret) return;
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(
+        agentGuideWithToken({
+          scopes: secret.scopes,
+          lang: String(locale),
+          token: secret.token,
+          template: s("shareMessage"),
+        }),
+      );
+      setShared(true);
+    } catch {
+      setError(s("errCopy"));
+    }
+  }
+
   const scopeName: Record<ScopeId, string> = {
     study: s("scopeStudy"),
     "chat:read": s("scopeChatRead"),
@@ -152,7 +203,7 @@ export default function TokenManager() {
   };
 
   return (
-    <section className="my-8 space-y-4" data-testid="api-tokens">
+    <section id="tokens" className="my-8 space-y-4 scroll-mt-6" data-testid="api-tokens">
       <div>
         <h2 className="text-xl font-semibold mb-2">{s("heading")}</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">{s("intro")}</p>
@@ -177,10 +228,11 @@ export default function TokenManager() {
 
       {secret && (
         <div
-          role="status"
+          role="region"
+          aria-labelledby={`${formId}-created`}
           className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-md space-y-2"
         >
-          <p className="text-sm font-medium">
+          <p id={`${formId}-created`} className="text-sm font-medium">
             {secret.name}: {s("copyOnce")}
           </p>
           <code
@@ -192,6 +244,15 @@ export default function TokenManager() {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <button
               type="button"
+              ref={shareButton}
+              data-testid="token-share-copy"
+              onClick={copyWithGuide}
+              className="text-sm font-medium bg-primary text-on-primary rounded px-3 py-1.5 hover:opacity-90"
+            >
+              {shared ? s("copied") : s("shareCopy")}
+            </button>
+            <button
+              type="button"
               onClick={copy}
               className="text-sm font-medium text-primary hover:underline"
             >
@@ -199,7 +260,10 @@ export default function TokenManager() {
             </button>
             <button
               type="button"
-              onClick={() => setSecret(null)}
+              onClick={() => {
+                setSecret(null);
+                form.current?.querySelector<HTMLElement>("[data-testid=token-name]")?.focus();
+              }}
               className="text-sm hover:underline"
             >
               {s("done")}
@@ -207,7 +271,7 @@ export default function TokenManager() {
           </div>
           <div className="space-y-1 pt-1">
             <CopyGuideButton
-              text={guide(secret)}
+              text={pointer(secret)}
               copy={guideLabels.copy}
               copied={guideLabels.copied}
             />
@@ -265,7 +329,7 @@ export default function TokenManager() {
             />
             {!t.expired && (
               <div className="basis-full min-w-0">
-                <AgentGuide text={guide(t)} labels={guideLabels} />
+                <AgentGuide text={guide(t)} copyText={pointer(t)} labels={guideLabels} />
               </div>
             )}
           </li>
@@ -275,11 +339,23 @@ export default function TokenManager() {
         )}
       </ul>
 
-      <div className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+      <form
+        ref={form}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void create();
+        }}
+        aria-describedby={error ? `${formId}-error` : undefined}
+        className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
+      >
         <label className="block text-sm">
           <span className="font-medium">{s("nameLabel")}</span>
           <input
             type="text"
+            name="token-name"
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby={`${formId}-name-hint`}
             value={name}
             maxLength={MAX_NAME}
             onChange={(e) => setName(e.target.value)}
@@ -287,8 +363,21 @@ export default function TokenManager() {
             data-testid="token-name"
             className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-900"
           />
-          <span className="block text-xs opacity-70 mt-1">{s("nameHint")}</span>
+          <span id={`${formId}-name-hint`} className="block text-xs opacity-70 mt-1">
+            {s("nameHint")}
+          </span>
         </label>
+        <button
+          type="button"
+          data-testid="token-chat-only"
+          disabled={busy}
+          // A preset that fills the permissions below, not a switch: the
+          // picker shows the result (switch-guard: no lit-up pill).
+          onClick={() => setScopes([...INVITE_PREFILL.scopes])}
+          className="min-h-10 rounded border border-current/30 px-3 py-1.5 text-sm font-medium text-primary disabled:opacity-50"
+        >
+          {s("chatOnly")}
+        </button>
         <PermissionPicker
           value={scopes}
           onChange={setScopes}
@@ -297,20 +386,20 @@ export default function TokenManager() {
         />
         <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
         {error && (
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          <p id={`${formId}-error`} role="alert" className="text-sm text-red-600 dark:text-red-400">
             {error}
           </p>
         )}
         <button
-          type="button"
-          onClick={create}
+          type="submit"
+          aria-busy={busy}
           disabled={busy}
           data-testid="token-create"
           className="bg-primary text-on-primary text-sm font-medium py-2 px-4 rounded hover:opacity-90 disabled:opacity-50"
         >
           {busy ? s("creating") : s("create")}
         </button>
-      </div>
+      </form>
     </section>
   );
 }

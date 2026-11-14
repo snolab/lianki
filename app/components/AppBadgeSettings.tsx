@@ -50,7 +50,7 @@ export function AppBadgeSettings() {
 
   return (
     <section className="mb-10 max-w-xl" data-section="notifications" data-testid="app-badge">
-      <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>
+      <h2 className="mb-3 break-words text-2xl font-semibold">{c.heading}</h2>
       <label className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2">
         <span className="min-w-0 basis-full sm:basis-auto sm:flex-1">{c.label}</span>
         <select

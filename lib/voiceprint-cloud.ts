@@ -37,14 +37,17 @@ import { type VoiceprintOp, VOICEPRINT_AUD, openPayload } from "@/lib/voiceprint
 
 /** Limits (named config, ready for the config store): a print as the Mac makes it. */
 export const VOICEPRINT_CLOUD_LIMITS = {
-  /** Sentences a print holds at most (voiceprint.py ENROL_MAX). */
-  maxSentences: 20,
+  /**
+   * Samples a print holds at most (voiceprint.py PRINT_MAX): up to 20 read at
+   * enrolment, the rest taken by progressive learning (docs/local-stt.md).
+   */
+  maxSentences: 200,
   /** Prints in one PUT (devices × models). */
   maxPrints: 16,
   /** Embedding width (CAM++ 192; ERes2NetV2 is wider). */
   maxDim: 1024,
-  /** The sealed payload's length at most. */
-  maxSealed: 600_000,
+  /** The sealed payload's length at most (200 × 192 floats is about 0.6 MB sealed; D1 takes 2 MB). */
+  maxSealed: 1_500_000,
   /** Ticket lifetime and clock skew, as the Mac's ticket.py. */
   ticketTtlS: 60,
   skewS: 5,
@@ -63,7 +66,10 @@ export const PRINT_KEYS = [
   "speechS",
   "centroid",
   "embeddings",
+  "sources",
 ] as const;
+/** Where a sample came from: read at enrolment, or taken by progressive learning. */
+export const SOURCES = ["enrol", "prog"] as const;
 const REQUIRED = ["device", "model", "dim", "n", "speechS", "centroid", "embeddings"] as const;
 const DEVICE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
@@ -74,6 +80,8 @@ export type Features = {
   self: { min: number; median: number } | null;
   created: string | null;
   updated: string | null;
+  /** Per sample, "enrol" or "prog"; absent on prints from before progressive learning. */
+  sources?: (typeof SOURCES)[number][];
 };
 export type CloudPrint = { device: string; model: string; dim: number; n: number } & Features;
 export type PrintRow = {
@@ -118,6 +126,15 @@ export function parsePrint(raw: unknown): CloudPrint | string {
     !p.speechS.every((s) => finite(s, 600) && s >= 0)
   )
     return "bad speechS";
+  if (
+    p.sources !== undefined &&
+    !(
+      Array.isArray(p.sources) &&
+      p.sources.length === n &&
+      p.sources.every((s) => (SOURCES as readonly unknown[]).includes(s))
+    )
+  )
+    return "bad sources";
   let self: Features["self"] = null;
   if (p.self !== undefined && p.self !== null) {
     const s = p.self as Record<string, unknown>;
@@ -144,6 +161,7 @@ export function parsePrint(raw: unknown): CloudPrint | string {
     self,
     created,
     updated,
+    ...(p.sources !== undefined ? { sources: p.sources as Features["sources"] } : {}),
   };
 }
 
@@ -244,6 +262,7 @@ const featuresOf = (p: CloudPrint): Features => ({
   self: p.self,
   created: p.created,
   updated: p.updated,
+  ...(p.sources ? { sources: p.sources } : {}),
 });
 export const sealPrint = (key: CryptoKey, uid: string, p: CloudPrint) =>
   seal(key, JSON.stringify(featuresOf(p)), aadOf(uid, p.device, p.model));

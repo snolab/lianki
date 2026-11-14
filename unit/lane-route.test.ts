@@ -22,6 +22,10 @@ describe("routeLine: addressed lines", () => {
     ["Code X, are you there?", ["codex"], "are you there?"],
     ["Codecs, are you there?", ["codex"], "are you there?"],
     ["扣德克斯，在吗？", ["codex"], "在吗？"],
+    ["coco, 看一下", ["codex"], "看一下"],
+    ["Coco 帮我看看", ["codex"], "帮我看看"],
+    ["可可，在吗", ["codex"], "在吗"],
+    ["杰咪，在吗", ["agy"], "在吗"],
     ["agy, 你好", ["agy"], "你好"],
     ["AGY。试一下", ["agy"], "试一下"],
     ["A G Y, hello", ["agy"], "hello"],
@@ -90,6 +94,15 @@ describe("laneTakes: exactly one lane per line (no triple replies)", () => {
   });
   it("an unaddressed owner line goes to the chat lane alone", () => {
     expect(takers(owner("今天学了什么"))).toEqual(["chat"]);
+  });
+  it("all: every owner line, never an agent line or another thread", () => {
+    expect(laneTakes("codex", owner("今天学了什么"), { all: true })).toBe(true);
+    expect(laneTakes("codex", { from: "agent", thread: "owner", text: "hi" }, { all: true })).toBe(
+      false,
+    );
+    expect(laneTakes("codex", { from: "owner", thread: "f1", text: "hi" }, { all: true })).toBe(
+      false,
+    );
   });
   it("two names: both of them, nobody else", () => {
     expect(takers(owner("codex 和 agy，看一下"))).toEqual(["codex", "agy"]);

@@ -23,7 +23,7 @@ export const LOCAL_VOICE_PIN_KEY = "lk:agent-local-tts-voice";
  * voice now (owner, 2026-11-14 02:0x JST: "不要轮换了，你就固定一个可爱的宝宝音");
  * a pin still replaces it on a device.
  */
-export const NEKO_ROTATION = ["baby"] as const;
+export const NEKO_ROTATION = ["neko-moe"] as const;
 /** Lines remembered (oldest dropped first). */
 export const HEARD_LINES = 200;
 

@@ -13,7 +13,9 @@ import {
   disallowSttUser,
   listSttAccess,
   listSttWorkers,
+  makeSttWorkerOfficial,
   revokeSttWorker,
+  searchUsers,
   sttAllowed,
   sttWorkerByKey,
   type SttDb,
@@ -54,7 +56,7 @@ describe("the allowlist", () => {
     expect(await sttAllowed(d, "u1")).toBe(true);
     expect(await sttAllowed(d, "u2")).toBe(false);
     expect(await listSttAccess(d)).toEqual([
-      { userId: "u1", name: "Ann", addedBy: "admin", addedAt: 1000 },
+      { userId: "u1", name: "Ann", addedBy: "admin", addedAt: 1000, lastUsedAt: null },
     ]);
     expect(JSON.stringify(await listSttAccess(d))).not.toContain("@");
     expect(await disallowSttUser(d, "u1", "admin")).toBe(true);
@@ -123,5 +125,37 @@ describe("speech servers", () => {
 describe("the admin page", () => {
   test("is an admin page", () => {
     expect(DEV_PAGE_PERMISSION["stt-access"]).toBe("admin");
+  });
+});
+
+describe("searchUsers: the admin's picker", () => {
+  test("by part of a name or email, case-insensitive; too short or wildcards find nothing extra", async () => {
+    const d = await db();
+    expect((await searchUsers(d, "ann")).map((u) => u.id)).toEqual(["u1"]);
+    expect((await searchUsers(d, "BOB@")).map((u) => u.email)).toEqual(["bob@x.com"]);
+    expect((await searchUsers(d, "x.com")).length).toBe(2);
+    expect(await searchUsers(d, "a")).toEqual([]);
+    expect(await searchUsers(d, "%%")).toEqual([]);
+    expect(await searchUsers(d, "__")).toEqual([]);
+  });
+  test("an id from the search adds the account, as an email does", async () => {
+    const d = await db();
+    const [u] = await searchUsers(d, "bob");
+    expect(await allowSttUser(d, u!.id, "u1")).toBeTruthy();
+    expect(await sttAllowed(d, "u2")).toBe(true);
+  });
+});
+
+describe("makeSttWorkerOfficial", () => {
+  test("a personal server becomes official once, audited", async () => {
+    const d = await db();
+    const id = "w-mac";
+    await addSttWorker(d, { id, name: "TKUMAC", pubkey: KEY, ownerUserId: "u1" }, "u1");
+    expect(await makeSttWorkerOfficial(d, id, "u1")).toBe(true);
+    expect(await makeSttWorkerOfficial(d, id, "u1")).toBe(false);
+    expect((await listSttWorkers(d)).find((x) => x.id === id)?.ownerUserId ?? null).toBeNull();
+    expect((await auditKinds(d)).map((a) => (a as { kind: string }).kind)).toContain(
+      "stt-worker.official",
+    );
   });
 });

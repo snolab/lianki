@@ -51,7 +51,8 @@ export type LineAvatar = {
  * resolver), else the line's `sender`; the viewer's own lines (owner lines
  * on the owner's page, friend lines on a friend's) fill the gaps from
  * `viewer` and are named "you". The fallback colour's seed is the sender's
- * hashed id, else the thread, never an email.
+ * hashed id, else the thread, never an email. An owner line in another voice
+ * (SpeakerTag.voice) gets that voice's own avatar instead (`voiceAvatar`).
  */
 export function lineAvatar(
   m: ChatMessage,
@@ -66,6 +67,14 @@ export function lineAvatar(
     you?: string;
     /** A lane's own mark (LaneMark.tsx laneAvatar); undefined = the agent's avatar. */
     laneAvatar?: (lane: LaneId) => AvatarSource | undefined;
+    /** Any other token agent's picture (LaneMark.tsx agentAvatar): its own SVG, else the generated mark. */
+    tokenAvatar?: (p: { name: string; avatar?: string }) => AvatarSource | undefined;
+    /** Who is here (presence.ts), by token tag: the owner's name and picture for it win. */
+    participant?: (tok: string) => { name: string; avatar?: string } | undefined;
+    /** Another voice's avatar (LaneMark.tsx voiceAvatar, from speaker-avatar.ts); undefined = its initial. */
+    voiceAvatar?: (voice: string) => AvatarSource | undefined;
+    /** What that avatar is called (localized): "Another voice". */
+    otherVoice?: string;
   },
 ): LineAvatar {
   // A lane with a mark of its own (voices.ts LANES): its mark and name.
@@ -75,12 +84,34 @@ export function lineAvatar(
     const src = opts.laneAvatar?.(m.lane!);
     return { src, name: lane.name, initialFrom: lane.name, seed: `lane:${m.lane}`, mine: false };
   }
+  // Any other API-token agent: its (owner-given) name, its own picture or the generated one.
+  if (m.from === "agent" && m.via === "token" && !lane?.mark) {
+    const p = m.tok ? opts.participant?.(m.tok) : undefined;
+    const name = p?.name || m.tokenLane || m.label || "agent";
+    const avatar = p ? p.avatar : m.avatar;
+    return {
+      src: opts.tokenAvatar?.({ name, ...(avatar ? { avatar } : {}) }),
+      name,
+      initialFrom: name,
+      seed: `tok:${m.tok ?? name}`,
+      mine: false,
+    };
+  }
   if (m.from === "agent") {
     // The node's assignee, when the line names one; else the controller's label.
     const name = m.agentId || m.label || opts.agentName || "agent";
     return { src: opts.agentAvatar, name, initialFrom: name, seed: `agent:${name}`, mine: false };
   }
   const mine = m.from === (opts.friend ? "friend" : "owner");
+  // An owner's voice line spoken by someone else (docs/voice-mode.md, "Speaker
+  // avatars"): that voice's own disc, named "another voice", seeded by its id, so
+  // two people's lines fall into runs of their own. Only with a voiceprint enrolled
+  // (the Mac sets no `voice` without one), and never on "me".
+  const voice = m.from === "owner" ? m.speaker?.voice : undefined;
+  if (voice && voice !== "me") {
+    const name = opts.otherVoice || "another voice";
+    return { src: opts.voiceAvatar?.(voice), name, initialFrom: name, seed: `voice:${voice}`, mine };
+  }
   const own = opts.avatarFor?.(m);
   const s: Sender = { ...(mine ? opts.viewer : undefined), ...m.sender, ...own };
   // The host's resolver first; then, on the viewer's own lines, the viewer's

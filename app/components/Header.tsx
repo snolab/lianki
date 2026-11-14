@@ -94,8 +94,9 @@ export function Header({
             {blogLabel}
           </Link>
 
-          {/* Language Switcher */}
-          <LanguageSwitcher />
+          {/* Language: in the header for guests; signed in, it is in the profile menu
+              (owner, 2026-11-14: "切换语言藏在 profile drop down 里面就行了"). */}
+          {!user && <LanguageSwitcher />}
 
           {/* Profile Dropdown */}
           {user ? (

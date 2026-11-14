@@ -80,12 +80,13 @@ export const PANEL_RIGHT = "calc(0.5rem + env(safe-area-inset-right))";
 export const SIDEBAR_QUERY = "(min-width: 35em)";
 
 /**
- * The sidebar's width. The app has no drag-to-resize pattern yet, so a fixed
- * one: 20rem (the panel's own width) at the breakpoint, growing with the
+ * The sidebar's default width before a device has saved a resized width:
+ * 20rem (the panel's own width) at the breakpoint, growing with the
  * window up to 28rem, which keeps the chat's lines readable and leaves the
  * page most of a desktop window.
  */
-export const SIDEBAR_W = "clamp(20rem, 32vw, 28rem)";
+export const SIDEBAR_MIN_REM = 20;
+export const SIDEBAR_W = `clamp(${SIDEBAR_MIN_REM}rem, 32vw, 28rem)`;
 
 /** Full screen's side padding (FULL_SCREEN_STYLE), and the bar's gutter there: the panel's own 0.5rem inset. */
 const PAD = (side: "left" | "right") => `max(0.75rem, env(safe-area-inset-${side}))`;
@@ -139,7 +140,8 @@ export const FULL_SCREEN_STYLE = {
 export const FULL_SIDEBAR_STYLE = {
   ...FULL_SCREEN_STYLE,
   left: "auto",
-  width: SIDEBAR_W,
+  width: `var(--lk-chat-dock-width, ${SIDEBAR_W})`,
+  right: "var(--lk-chat-dock-right, 0px)",
   paddingLeft: "0.5rem",
   paddingRight: GUTTER("right"),
   borderLeft: "1px solid color-mix(in oklch, currentColor 18%, transparent)",

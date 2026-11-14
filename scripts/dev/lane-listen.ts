@@ -21,8 +21,8 @@
  * spawns the listener and `ay send`.
  */
 import { join } from "node:path";
-import { type RouteLane, isRouteLane, laneTakes, testText } from "../../lib/lane-route";
-import { handoff, laneToken, lineOf, tokenNeeded } from "./lane-listen-lib";
+import { type RouteLane, isRouteLane, laneTakes } from "../../lib/lane-route";
+import { laneToken, lineOf, makeDeliverer, tokenNeeded } from "./lane-listen-lib";
 
 type Opts = {
   lane: RouteLane;
@@ -31,10 +31,16 @@ type Opts = {
   cwd?: string;
   tests: boolean;
   dryRun: boolean;
+  /** Every owner line, not only the ones addressed to this lane. */
+  all: boolean;
 };
 
 function parse(argv: string[]): Opts | Error {
-  const o: Partial<Opts> & { tests: boolean; dryRun: boolean } = { tests: false, dryRun: false };
+  const o: Partial<Opts> & { tests: boolean; dryRun: boolean; all: boolean } = {
+    tests: false,
+    dryRun: false,
+    all: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     const v = () => argv[++i];
@@ -44,6 +50,7 @@ function parse(argv: string[]): Opts | Error {
     else if (a === "--cwd") o.cwd = v();
     else if (a === "--tests") o.tests = true;
     else if (a === "--dry-run") o.dryRun = true;
+    else if (a === "--all") o.all = true;
     else return new Error(`lane-listen: unknown argument ${a}`);
   }
   o.lane ??= (process.env.LIANKI_LANE || undefined) as RouteLane | undefined;
@@ -68,18 +75,65 @@ async function deliver(o: Opts, body: string): Promise<number> {
     return 0;
   }
   // `ay send . …` from the lane's dir finds the lane however often it restarted.
-  const p = Bun.spawn(["ay", "send", o.deliver ?? ".", "--force", "-"], {
+  // --no-wait: hand the text over and return; ay's own settle/idle waits used
+  // to hold this loop for minutes, and every later line with it (2026-11-14).
+  const p = Bun.spawn(["ay", "send", o.deliver ?? ".", "--force", "--no-wait", "-"], {
     cwd: o.cwd ?? process.cwd(),
     stdin: new TextEncoder().encode(body),
     stdout: "ignore",
     stderr: "pipe",
   });
-  const code = await p.exited;
+  const code = await Promise.race([
+    p.exited,
+    new Promise<number>((r) => setTimeout(() => r(-1), SEND_WAIT_MS)),
+  ]);
+  if (code === -1) {
+    console.error(`lane-listen: ay send still running after ${SEND_WAIT_MS} ms; not waiting`);
+    return 4;
+  }
   if (code !== 0 && code !== 4)
     console.error(
       `lane-listen: ay send exited ${code}: ${(await new Response(p.stderr).text()).trim().split("\n").at(-1)}`,
     );
   return code;
+}
+
+/** How long one delivery may take before the loop moves on (ay keeps the hand-over going). */
+export const SEND_WAIT_MS = 20_000;
+/** How long the busy check may take before the line goes out anyway. */
+export const BUSY_CHECK_MS = 3_000;
+
+/**
+ * Is the agent the lines go to in the middle of a turn? `ay ls --json` status
+ * "active" (owner, 2026-11-14: a busy agent used to get every waiting line
+ * pushed one by one afterwards, each with the whole template). Unknown → not
+ * busy, so a line is never held forever.
+ */
+export async function targetBusy(o: Opts): Promise<boolean> {
+  if (o.dryRun) return false;
+  try {
+    // This machine only, and never longer than BUSY_CHECK_MS: a slow or stuck
+    // status query must not hold his lines (2026-11-14 20:0x: it did).
+    const p = Bun.spawn(["ay", "ls", "--json", "--local"], { stdout: "pipe", stderr: "ignore" });
+    const txt = await Promise.race([
+      new Response(p.stdout).text(),
+      new Promise<string>((r) => setTimeout(() => r(""), BUSY_CHECK_MS)),
+    ]);
+    if (!txt) {
+      p.kill();
+      return false;
+    }
+    const v = JSON.parse(txt) as unknown;
+    const list = (Array.isArray(v) ? v : (v as { local?: unknown[] }).local) ?? [];
+    // ay's rows: `status` is the process ("active" = alive), `state` the turn
+    // ("active" = mid-turn, "idle", "needs_input", …). Busy means mid-turn.
+    const me = (list as { pid?: number; cwd?: string; state?: string }[]).find((e) =>
+      o.deliver ? String(e.pid) === String(o.deliver) : e.cwd === o.cwd,
+    );
+    return me?.state === "active";
+  } catch {
+    return false;
+  }
 }
 
 async function main(): Promise<number> {
@@ -89,6 +143,12 @@ async function main(): Promise<number> {
     return 1;
   }
   const t = laneToken(o.lane);
+  const out = makeDeliverer(
+    o,
+    (body) => deliver(o, body),
+    () => targetBusy(o),
+    log,
+  );
   if (t.from === "none") {
     console.error(`lane-listen: ${t.why}. Needed: ${tokenNeeded(o.lane)}`);
     return 2;
@@ -129,12 +189,20 @@ async function main(): Promise<number> {
         const raw = buf.slice(0, nl);
         buf = buf.slice(nl + 1);
         const l = lineOf(raw);
+        if (process.env.LANE_LISTEN_DEBUG)
+          log({
+            type: "raw",
+            lane: o.lane,
+            parsed: !!l,
+            history: l?.history,
+            id: l?.id,
+            head: raw.slice(0, 80),
+          });
         if (!l || l.history || seen.has(l.id)) continue;
         seen.add(l.id);
-        if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests })) continue;
+        if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests, all: o.all })) continue;
         backoff = 1_000;
-        const code = await deliver(o, handoff(o.lane, l, o.repo));
-        log({ type: "delivered", lane: o.lane, id: l.id, test: testText(l) !== null, ay: code });
+        await out.add(l);
       }
     }
     const code = await child.exited;

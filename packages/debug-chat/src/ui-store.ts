@@ -241,3 +241,24 @@ export const chatUi = () =>
     clean: (v) => migrateChatUi(v, CHAT_UI_VERSION),
     migrate: (v, from) => migrateChatUi(v, from),
   });
+
+/** Dock width is a device preference, not synced. A viewport clamp never
+ * overwrites the remembered width; a later larger screen can restore it.
+ */
+export type ChatDock = { width: number | null };
+export const chatDock = () =>
+  createUiStore<ChatDock>(
+    "chat-dock",
+    1,
+    { width: null },
+    {
+      storage: "local",
+      clean: (value) => {
+        const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+        return {
+          width:
+            typeof v.width === "number" && Number.isFinite(v.width) && v.width > 0 ? v.width : null,
+        };
+      },
+    },
+  );

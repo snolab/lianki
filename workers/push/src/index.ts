@@ -97,6 +97,7 @@ import {
 import { explicitVersionNews } from "../../../lib/version-publish";
 import { CHAT_BACKFILL_PATH, EVAL_TOKEN_HEADER, IDENTITY_HEADERS } from "./debug";
 import { CHAT_PATH, REVOKED_PATH } from "./token-chat";
+import { AVATAR_PATH } from "../../../packages/debug-chat/src/svg-avatar";
 import {
   BOX_CLOSED_PATH,
   PROGRESS_BOX_HEADER,
@@ -428,6 +429,17 @@ export default {
     // each in its account's own thread (token-chat.ts). The hub asks the main
     // Worker about the token; nothing here is trusted. Not for browser pages:
     // a request with an Origin is refused, and no identity header passes.
+    // An agent's avatar by its SHA-256 (token-chat.ts): the sanitized SVG, read
+    // only, nothing of the caller passed on.
+    if (
+      url.pathname.startsWith(AVATAR_PATH) &&
+      /^[0-9a-f]{64}$/.test(url.pathname.slice(AVATAR_PATH.length))
+    ) {
+      if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+      return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(
+        new Request(new URL(url.pathname, url.origin), { method: "GET" }),
+      );
+    }
     if (url.pathname === CHAT_PATH) {
       if (req.headers.get("origin")) return new Response("forbidden", { status: 403 });
       const headers = new Headers(req.headers);

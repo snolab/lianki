@@ -14,6 +14,7 @@ const noop = () => {};
 const menu = (p: Partial<Parameters<typeof AttachMenu>[0]> = {}) =>
   renderToStaticMarkup(
     createElement(AttachMenu, {
+      anchorRef: { current: null },
       t,
       sel: null,
       items: [{ id: "create:link", title: "Add a link", onPick: noop }],
@@ -27,7 +28,7 @@ const menu = (p: Partial<Parameters<typeof AttachMenu>[0]> = {}) =>
 const order = (html: string) =>
   [...html.matchAll(/data-testid="(debug-chat-attach-[a-z-]+)"/g)]
     .map((m) => m[1])
-    .filter((id) => id !== "debug-chat-attach-menu");
+    .filter((id) => id !== "debug-chat-attach-menu" && id !== "debug-chat-attach-close");
 
 describe("the + menu's View group", () => {
   it("comes last, after Add and Attach to message", () => {
@@ -74,10 +75,18 @@ describe("the + menu's View group", () => {
 describe("the + button", () => {
   const button = (p: Partial<Parameters<typeof AttachButton>[0]> = {}) =>
     renderToStaticMarkup(createElement(AttachButton, { t, open: false, onToggle: noop, ...p }));
-  it("has a dot while there are sessions, pulsing when code just ran", () => {
+  it("shows no code mark (owner, 2026-11-14)", () => {
     expect(button()).not.toContain("debug-chat-evals");
-    expect(button({ sessions: 1 })).toMatch(/data-testid="debug-chat-evals"/);
-    expect(button({ sessions: 1 })).not.toContain("animate-pulse");
-    expect(button({ sessions: 1, ran: true })).toContain("animate-pulse");
+    expect(button({ attached: true })).toContain("debug-chat-attached-dot");
+  });
+});
+
+describe("the + menu's close button", () => {
+  it("comes first, labelled, in every form of the menu", () => {
+    for (const html of [menu(), menu({ attach: false, onHistory: noop })]) {
+      const ids = [...html.matchAll(/data-testid="(debug-chat-attach-[a-z-]+)"/g)].map((m) => m[1]);
+      expect(ids[1]).toBe("debug-chat-attach-close");
+      expect(html).toContain('aria-label="Close the menu"');
+    }
   });
 });

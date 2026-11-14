@@ -11,7 +11,7 @@
  * utterance (a VAD segment) is checked at a time, after it ends, so the
  * spotter costs nothing while the room is quiet.
  */
-import { type Detection, LINKY, type SpotResult, afterKeyword } from "./wake";
+import { type Detection, type KeywordEntry, LINKY, type SpotResult, afterKeyword } from "./wake";
 
 /** The KWS runtime: its Emscripten glue and wasm (npm @sherpaw/kws, published 2026-10-12). */
 export const KWS_BASE = "https://cdn.jsdelivr.net/npm/@sherpaw/kws@0.3.0/dist/";
@@ -47,6 +47,9 @@ export const TAIL_PAD_S = 1;
  * from a Blob (with its `import.meta.url` pointed back at jsDelivr, so it
  * finds its wasm there), writes the model into the WASM file system and
  * answers {type: "spot", id, samples} with {type: "spotted", id, hits, ms}.
+ * {type: "keywords", id, keywords} swaps the keyword list in place (the
+ * spotter's setKeywords: the model stays loaded, nothing restarts) and
+ * answers {type: "keywords-set", id, error?}; a refused list keeps the old one.
  */
 export const workerSource = (o: {
   base: string;
@@ -106,6 +109,16 @@ async function init(keywords) {
 }
 self.onmessage = async (e) => {
   const m = e.data || {};
+  if (m.type === "keywords") {
+    try {
+      if (!spotter) throw new Error("not ready");
+      await spotter.setKeywords(m.keywords);
+      postMessage({ type: "keywords-set", id: m.id });
+    } catch (err) {
+      postMessage({ type: "keywords-set", id: m.id, error: String((err && err.message) || err) });
+    }
+    return;
+  }
   if (m.type === "init") {
     try { postMessage({ type: "ready", ...(await init(m.keywords)) }); }
     catch (err) { postMessage({ type: "failed", error: String((err && err.message) || err) }); }
@@ -170,6 +183,15 @@ export type WorkerLike = {
 
 export type Kws = ReturnType<typeof createKws>;
 
+/** A keyword list as the spotter gets it (wake-names.ts WakeKeywordSet has this shape). */
+export type KeywordList = {
+  entries: KeywordEntry[];
+  /** Changes when the list does: equal = no swap. */
+  signature: string;
+  skipped?: string[];
+  clash?: { name: string; with: string }[];
+};
+
 /**
  * The spotter's page side: `load()` starts the Worker once (later calls share
  * it), `spot(audio)` checks one utterance. A failed load can be retried by
@@ -186,6 +208,15 @@ export function createKws(o: {
   loadTimeoutMs?: number;
   /** mayDownload, replaced in the tests. */
   allowed?: () => Promise<boolean>;
+  /**
+   * The keyword list and its changes (wake-names.ts wakeNames(): LINKY and
+   * everyone's names). The Worker starts with the list as it is then; each
+   * change after is sent as one in-place swap. Absent: LINKY alone.
+   */
+  keywords?: {
+    get(): KeywordList;
+    subscribe(f: (l: KeywordList) => void): () => void;
+  };
 }) {
   const make =
     o.worker ??
@@ -217,6 +248,25 @@ export function createKws(o: {
     state = s;
     o.onState?.(s);
   };
+  const linkyOnly: KeywordList = { entries: [LINKY], signature: "LINKY" };
+  const current = (): KeywordList => o.keywords?.get() ?? linkyOnly;
+  /** The list the Worker has (or was last sent). */
+  let sent: KeywordList | null = null;
+  const note = (l: KeywordList) =>
+    o.log?.({
+      ev: "wake-names",
+      labels: l.entries.map((e) => e.label),
+      ...(l.skipped?.length ? { skipped: l.skipped } : {}),
+      ...(l.clash?.length ? { clash: l.clash } : {}),
+    });
+  /** Send a changed list to a ready Worker: one swap per change, the mic untouched. */
+  const push = (l: KeywordList) => {
+    if (state !== "ready" || !w || l.signature === sent?.signature) return;
+    sent = l;
+    w.postMessage({ type: "keywords", id: ++seq, keywords: l.entries });
+    note(l);
+  };
+  const unsubscribe = o.keywords?.subscribe(push);
   /** The Worker's start itself, with no time limit; `ready` is it raced against the load timeout. */
   let boot: Promise<void> | null = null;
   const load = () => {
@@ -257,14 +307,20 @@ export function createKws(o: {
           set("ready");
           o.log?.({ ev: "wake-kws", ok: true, ms: m.ms, downloaded: m.downloaded });
           resolve();
+          // A change while it was starting: swap it in now.
+          push(current());
         } else if (m.type === "failed") fail(m.error ?? "failed");
+        else if (m.type === "keywords-set")
+          o.log?.({ ev: "wake-keywords", ok: !m.error, ...(m.error ? { error: m.error } : {}) });
         else if (m.type === "spotted" && typeof m.id === "number") {
           const f = waiting.get(m.id);
           waiting.delete(m.id);
           f?.({ hits: m.hits ?? [], ms: m.ms, error: m.error });
         }
       };
-      w.postMessage({ type: "init", keywords: [LINKY] });
+      sent = current();
+      note(sent);
+      w.postMessage({ type: "init", keywords: sent.entries });
     });
     if (!boot) {
       const b = (o.allowed ?? mayDownload)()
@@ -322,6 +378,8 @@ export function createKws(o: {
     spot,
     state: () => state,
     dispose() {
+      unsubscribe?.();
+      sent = null;
       w?.terminate();
       w = null;
       ready = null;

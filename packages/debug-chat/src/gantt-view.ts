@@ -525,3 +525,44 @@ export const TAIL_CSS =
   "@media (prefers-reduced-motion: reduce){" +
   `[${TAIL_ATTR}]{background:repeating-linear-gradient(135deg,var(${TAIL_VAR}) 0 3px,transparent 3px 7px)}}` +
   `html[data-motion="off"] [${TAIL_ATTR}]{background:repeating-linear-gradient(135deg,var(${TAIL_VAR}) 0 3px,transparent 3px 7px)}`;
+
+/**
+ * Off-screen hints (owner, 2026-11-14 05:00 JST): a row whose bar lies wholly
+ * outside the visible time range gets an arrow at that edge of the view. The
+ * time axis always runs left → right (the scroller is `dir="ltr"`, RTL too),
+ * so "earlier" is the left edge and "later" the right one.
+ */
+export type OffSide = "earlier" | "later";
+
+/**
+ * Which side of the view a bar is past, or null when any of it shows. The bar
+ * is `x` (content px) and `w` wide, overrun included; the view is the
+ * scroller's `left` (scrollLeft) and `width` (clientWidth).
+ */
+export function offScreenSide(
+  bar: { x: number; w: number },
+  view: { left: number; width: number },
+): OffSide | null {
+  if (view.width <= 0) return null;
+  if (bar.x + Math.max(0, bar.w) < view.left) return "earlier";
+  if (bar.x > view.left + view.width) return "later";
+  return null;
+}
+
+/** Room kept beside a revealed bar so it does not touch the edge (share of the view). */
+export const REVEAL_PAD = 0.1;
+
+/**
+ * The scrollLeft that brings a bar into view: centred when it fits, else its
+ * start a little in from the left edge; kept within the content.
+ */
+export function revealScrollLeft(
+  bar: { x: number; w: number },
+  view: { width: number },
+  contentWidth: number,
+): number {
+  const w = Math.max(0, bar.w);
+  const pad = Math.round(REVEAL_PAD * view.width);
+  const want = w + 2 * pad <= view.width ? bar.x + w / 2 - view.width / 2 : bar.x - pad;
+  return Math.round(Math.max(0, Math.min(Math.max(0, contentWidth - view.width), want)));
+}

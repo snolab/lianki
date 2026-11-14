@@ -17,7 +17,7 @@ import {
 import { queuePurge } from "@/lib/local-purge";
 import type { HostGroup, NoteRow, StoreStats } from "@/app/lib/notesAdmin";
 import BackupSection from "./BackupSection";
-import { useInfiniteList } from "@/app/components/useInfiniteList";
+import { useSparseList } from "@/app/components/useSparseList";
 import CardTable from "./CardTable";
 import DangerZone from "./DangerZone";
 import HostPanel from "./HostPanel";
@@ -143,14 +143,15 @@ export default function DataClient({
     void refreshHosts();
   }, [refreshLocal, refreshCloud, refreshHosts]);
 
-  // Cloud table: server-side filter and sort; no pages (owner, 2026-11-10) —
-  // more rows as the table nears its end, a filter or sort starts over.
-  const cloudList = useInfiniteList<NoteRow, number>({
-    getKey: (r) => r.url,
+  // Cloud table: server-side filter and sort; no pages (owner, 2026-11-10).
+  // Random access (owner, 2026-11-14): the table is its full length at once and
+  // fetches only the pages (`page` = index) under the viewport, so a fling far
+  // down loads where it lands and skips the rest. A filter or sort starts over
+  // with an empty cache.
+  const cloudList = useSparseList<NoteRow>({
     deps: [dq, state, onlyDue, sort, order],
     enabled: store === "cloud" && isLoggedIn,
-    fetchBatch: async (page, size) => {
-      const at = page ?? 0;
+    fetchPage: async (at, size, signal) => {
       const params = new URLSearchParams({
         page: String(at),
         size: String(size),
@@ -160,22 +161,14 @@ export default function DataClient({
       });
       if (dq) params.set("q", dq);
       if (state != null) params.set("state", String(state));
-      const res = await fetch(`/api/fsrs/list?${params}`);
+      const res = await fetch(`/api/fsrs/list?${params}`, { signal });
       if (!res.ok) throw new Error(`Failed to load cards (${res.status})`);
-      const data: { rows: NoteRow[]; total: number } = await res.json();
-      return {
-        items: data.rows,
-        next: (at + 1) * size < data.total ? at + 1 : null,
-        total: data.total,
-      };
+      return (await res.json()) as { rows: NoteRow[]; total: number };
     },
   });
   const cloudRows = cloudList.items;
   const setCloudRows = cloudList.setItems;
-  /** Rows deleted here since the last batch counted the total. */
-  const [cloudGone, setCloudGone] = useState(0);
-  const cloudTotal = Math.max(0, (cloudList.total ?? 0) - cloudGone);
-  useEffect(() => setCloudGone(0), [cloudList.total]);
+  const cloudTotal = cloudList.total ?? 0;
 
   const localUrls = useMemo(() => new Set((local?.cards ?? []).map((c) => c.url)), [local]);
 
@@ -326,8 +319,8 @@ export default function DataClient({
           const data = await res.json().catch(() => ({}));
           throw new Error(`bulk-delete ${res.status} ${data.error ?? ""}`);
         }
-        setCloudRows((rows) => rows.filter((r) => !selected.has(r.url)));
-        setCloudGone((g) => g + urls.length);
+        // Out of the sparse rows: later rows move up as the server's offsets do.
+        cloudList.remove((r) => selected.has(r.url));
         await refreshCloud();
       }
       // Both branches: the userscript's GM storage is a third copy, and it is
@@ -387,7 +380,8 @@ export default function DataClient({
     await deleteLocalCards(urls);
     queuePurge(urls);
 
-    setCloudRows((prev) => prev.filter((r) => !urls.includes(r.url)));
+    const gone = new Set(urls);
+    cloudList.remove((r) => gone.has(r.url));
     setSelected(new Set());
     await Promise.all([refreshCloud(), refreshLocal(), refreshHosts()]);
   }
@@ -425,7 +419,6 @@ export default function DataClient({
         pushResult={pushResult}
         pushLabel={t.pushLabel.value}
         onPush={pushLocalToCloud}
-        scriptHint={t.scriptHint.value}
         dev={dev}
       />
 
@@ -438,9 +431,10 @@ export default function DataClient({
         total={total}
         loading={store === "cloud" ? cloudList.loading : local === null}
         error={error ?? (store === "cloud" && cloudList.error ? t.errors.loadFailed.value : null)}
-        hasMore={store === "cloud" && cloudList.hasMore}
+        hasMore={false}
         listError={store === "cloud" && cloudList.error}
-        onReachEnd={cloudList.loadMore}
+        onReachEnd={cloudList.retry}
+        sparse={store === "cloud" ? cloudList.sparse : undefined}
         q={q}
         onQChange={setQ}
         state={state}
@@ -495,8 +489,7 @@ export default function DataClient({
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(`bulk-delete ${res.status} ${data.error ?? ""}`);
-          setCloudRows([]);
-          setCloudGone(cloudList.total ?? 0);
+          cloudList.reset();
           setSelected(new Set());
           queuePurge([], { all: true });
           await refreshCloud();

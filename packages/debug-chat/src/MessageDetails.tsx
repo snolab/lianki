@@ -18,9 +18,13 @@ import {
   subscribeHeard,
 } from "./voice-heard";
 import type { ChatMessage } from "./wire";
+import { CLONE_VOICE_NAME } from "./polish-readback";
 
 /** The details' voice rows' words (chat-ui-locales.ts). */
-export type VoiceWords = Pick<ChatExtra, "voiceUsed" | "voiceUseThis" | "voicePinned" | "voiceUnpin">;
+export type VoiceWords = Pick<
+  ChatExtra,
+  "voiceUsed" | "voiceUseThis" | "voicePinned" | "voiceUnpin" | "voiceClone"
+>;
 
 const SEAL = "oklch(0.6 0.11 22.3)";
 
@@ -48,7 +52,12 @@ export function HeardVoiceRows({
     <div data-testid="debug-chat-message-voice" className="mt-1 flex flex-col gap-1">
       {heard.map((v) => (
         <div key={v.name} className="flex flex-wrap items-center gap-2">
-          <span data-voice={v.name}>{words.voiceUsed.replace("{name}", v.name)}</span>
+          <span data-voice={v.name}>
+            {/* His own cloned voice (polish-readback.ts) in words, not its id. */}
+            {v.name === CLONE_VOICE_NAME && words.voiceClone
+              ? words.voiceClone
+              : words.voiceUsed.replace("{name}", v.name)}
+          </span>
           {v.cycle && v.name !== pinned && (
             <button
               type="button"
@@ -124,6 +133,17 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords) {
       );
       if (control && control !== e.currentTarget) return;
       if (selectingIn(e.currentTarget)) return;
+      // A tap on a link (or a field) is the link's: the browser follows it, the
+      // details stay closed (owner, 2026-11-14 21:0x: "手机点不开这个链接，它显示的是消息详情").
+      if (e.target instanceof Element && e.target.closest("a,input,textarea,select,button")) return;
+      // On a touch screen a single tap is for reading the line; the details
+      // (JSON) open on a double tap (owner, 2026-11-14 "双击才显示这种 JSON 的消息详情").
+      // A mouse click still opens them (a double click there selects a word).
+      const kind = "nativeEvent" in e ? (e.nativeEvent as PointerEvent).pointerType : undefined;
+      const touch =
+        kind === "touch" ||
+        (!kind && typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
+      if (touch && e.type === "click" && (e as MouseEvent<HTMLElement>).detail < 2) return;
       e.stopPropagation();
       setSelection({ message, sender, anchor: e.currentTarget.getBoundingClientRect() });
     };

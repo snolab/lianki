@@ -288,6 +288,50 @@ export const CONFIG = {
     description:
       'Li 朗读时哪种语言用哪个谷歌 / Azure 声音（JSON 对象：语言 → 声音），只在开关 voice.cloud-voices 打开时生效。语言先找完整的（zh-TW），再找主语言（zh）。台语和台湾国语从文字认不出来，所以只有标了语言的句子会用到 zh-TW / nan；想让所有中文都用台湾腔，就加 "zh"。声音写法：google:cmn-TW-Wavenet-A、azure:zh-TW-HsiaoChenNeural、azure:zh-CN-XiaoxiaoDialectsNeural/nan-CN（斜线后是它改用的口音）。按字数扣积分；没有密钥时照常用原来的声音。',
   },
+  // The polish read-back in his cloned voice (packages/debug-chat/src/polish-readback.ts),
+  // flag voice.polish-readback: a clip from the Mac's clone server not back by then is skipped.
+  "voice.cloneTimeoutMs": int({
+    default: 20_000,
+    min: 2_000,
+    max: 120_000,
+    unit: "ms",
+    group: "voice",
+    audience: "public",
+    description:
+      "润色后用你的克隆声音读一遍（开关 voice.polish-readback）：每一句等 Mac 上的克隆声音服务器最多多久（毫秒）。一句通常要 5–10 秒生成；超过这个时间就安静跳过这一句，不换别的声音读。",
+  }),
+  // Synchronized read-aloud across his devices (packages/debug-chat/src/sync-speak.ts;
+  // docs/li-sound-hub.md, "Synchronized read-aloud"; flag voice.sync-speak).
+  "voice.syncLeadMs": int({
+    default: 300,
+    min: 0,
+    max: 3_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "多台设备同时朗读（开关 voice.sync-speak）：Li 的一句话发出时，约定在多少毫秒之后各台设备一起开始读。要比慢的那台设备收到消息所需的时间长；越长越齐，但每句开读也晚这么多。",
+  }),
+  "voice.syncMaxWaitMs": int({
+    default: 1_500,
+    min: 0,
+    max: 10_000,
+    unit: "ms",
+    group: "voice",
+    audience: "public",
+    description:
+      "多台设备同时朗读（开关 voice.sync-speak）：一台设备为了和别的设备对齐，最多等多少毫秒才开始读。时钟估计出错时也不会等得比这更久。",
+  }),
+  "voice.syncSkewMs": int({
+    default: 200,
+    min: 0,
+    max: 2_000,
+    unit: "ms",
+    group: "voice",
+    audience: "public",
+    description:
+      "多台设备同时朗读（开关 voice.sync-speak）：可以接受的开读时间差（毫秒）。某台设备比约定时刻晚了超过这么多才开读，就记一条日志（voice-sync late），方便调大 voice.syncLeadMs。",
+  }),
   // Automatic polish of the owner's spoken lines (lib/chat-polish.ts; the hub,
   // workers/push/src/debug.ts, "Automatic polish"; flag voice.auto-polish).
   "voice.autoPolishMinChars": int({
@@ -309,6 +353,48 @@ export const CONFIG = {
     audience: "server",
     description:
       "语音自动润色：一句话识别完以后等多久（毫秒）再送去润色。这段时间里你接着说的下一句会和它一起送，明显是一句话的碎片就合并成一条；等得越短，润色出来越快，但碎片更可能各润各的。",
+  }),
+  // Echoes of the owner's voice lines (lib/echo-match.ts; the hub, "Echoes";
+  // flag voice.echo-dedupe).
+  "voice.echoWindowMs": int({
+    default: 8000,
+    min: 0,
+    max: 60_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "回声去重（开关 voice.echo-dedupe）：你在一台设备上说的话，另一台设备在这么多毫秒内识别出几乎同样的一句，就当作回声不再发出。0 = 不查另一台设备的重复。",
+  }),
+  "voice.echoReadWindowMs": int({
+    default: 60_000,
+    min: 0,
+    max: 300_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "回声去重：助手的回复到达后（或你的话润色读回后）这么多毫秒内，另一台手机把朗读的内容听成你说的话，就当作回声丢掉。朗读排队或很长时要更久；0 = 不查朗读回声。",
+  }),
+  "voice.echoSimilarity": {
+    default: 0.8 as number,
+    schema: z.number().min(0.5).max(1),
+    min: 0.5,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "server",
+    description:
+      "回声去重：两句话（去掉标点和空格、按字比较）相似到多少才算同一句；1 = 一字不差，越低越容易把你真正重复的话也当成回声。",
+  },
+  "voice.echoMinChars": int({
+    default: 4,
+    min: 1,
+    max: 50,
+    unit: "chars",
+    group: "voice",
+    audience: "server",
+    description: "回声去重：一句话至少几个字才可能被当作回声；更短的（「好」「嗯」）永远照常发出。",
   }),
   "voice.autoPolishTimeoutMs": int({
     default: 6000,
@@ -571,6 +657,34 @@ export const CONFIG = {
     money: true,
     description: "全站每天最多发起几次聊天轻量整理；是独立于学习伙伴回复的额外支出上限。",
   }),
+  "chat.presenceReadMin": int({
+    default: 5,
+    min: 1,
+    max: 120,
+    unit: "min",
+    group: "chat",
+    audience: "server",
+    description:
+      "聊天头像栏（进度条左侧链接图标右边）：一个 API token（MCP 等）读过聊天后，算作“在场”多少分钟；开着监听连接的一直在场。",
+  }),
+  "chat.presenceSpeakerMin": int({
+    default: 30,
+    min: 1,
+    max: 1440,
+    unit: "min",
+    group: "chat",
+    audience: "server",
+    description: "聊天头像栏：最近发过言的 agent / lane 在发言后多少分钟内仍显示在头像栏里。",
+  }),
+  "chat.presenceShown": int({
+    default: 3,
+    min: 1,
+    max: 12,
+    unit: "avatars",
+    group: "chat",
+    audience: "public",
+    description: "聊天头像栏默认叠放显示几个头像（最近活跃的在前），其余显示为「+N」。",
+  }),
   "chat.prepareAuthCalls": int({
     default: 120,
     min: 1,
@@ -590,52 +704,74 @@ export const CONFIG = {
     description:
       "有新版本时（开关 app.auto-update），页面干净且多久没有点、滑、打字就自己刷新（毫秒）。切到后台或换页面时不等这段时间。/words 和 /review 上只在切到后台或换页面时刷新。",
   }),
-  // Account-age bonus (docs/payments.md, "Account-age bonus"; owner 2026-11-14):
-  // credits given once per account when it reaches each age. USD amounts turn
-  // into credits at CREDITS_PER_USD (lib/payments/credits.ts), rounded.
-  "credits.ageBonus.day1Usd": {
-    default: 1 as number,
-    schema: z.number().min(0).max(100),
-    min: 0,
-    max: 100,
-    unit: "USD",
+  // The account-age bonus keys (credits.ageBonus.day1Usd / day7Usd / day1Hours /
+  // day7Hours) were removed 2026-11-14 with the feature; a stored row under
+  // them is ignored (docs/config-store.md, "Removed keys").
+  // Login-streak bonus (docs/payments.md, "Login-streak bonus"; owner 2026-11-14):
+  // credits for consecutive days of real learning, once per local day. The
+  // amounts become credits at CREDITS_PER_USD (lib/payments/credits.ts), rounded.
+  "credits.loginStreak.usdByDay": {
+    default: "0.02,0.02,0.05,0.05,0.06,0.10,0.20" as string,
+    schema: z
+      .string()
+      .regex(
+        /^\s*\d+(\.\d+)?(\s*,\s*\d+(\.\d+)?){0,29}\s*$/,
+        "USD per day, comma-separated: 0.02,0.02,0.05,…",
+      )
+      .refine((s) => s.split(",").every((d) => Number(d) >= 0 && Number(d) <= 10), "0–10 USD each"),
+    unit: "USD/day",
     group: "credits",
     audience: "server",
     money: true,
     description:
-      "账号满第一档年龄（credits.ageBonus.day1Hours）时送的积分，按美元计，按 CREDITS_PER_USD 换成积分（四舍五入）。每个账号只送一次；0 = 不送。",
+      "连续学习奖励：每个周期里第 1、2、3…天各送多少美元，逗号分隔（个数 = 周期长度，默认 7 天一轮，共 0.50 美元/轮，第 8 天回到第 1 档）。按 CREDITS_PER_USD 换成积分（四舍五入）。一天只有在服务器记到一次真实学习（复习了卡片、阅读打分）时才算，每个自然日（按账号所在时区）只送一次。某一档填 0 = 那天不送。",
   },
-  "credits.ageBonus.day7Usd": {
-    default: 2 as number,
-    schema: z.number().min(0).max(100),
+  "credits.loginStreak.missCostDays": int({
+    default: 2,
     min: 0,
-    max: 100,
-    unit: "USD",
+    max: 1000,
+    unit: "days",
     group: "credits",
     audience: "server",
     money: true,
     description:
-      "账号满第二档年龄（credits.ageBonus.day7Hours）时再送的积分（在第一档之外另加），按美元计。每个账号只送一次；0 = 不送。",
-  },
-  "credits.ageBonus.day1Hours": int({
-    default: 24,
-    min: 0,
-    max: 24 * 365,
-    unit: "h",
-    group: "credits",
-    audience: "server",
-    money: true,
-    description: "账号注册多少小时后可以领第一档年龄积分（默认 24 小时 = 1 天）。",
+      "连续学习奖励的断签规则：每漏一天，连续天数扣多少天（不清零）。默认 2：连续 7 天后漏 1 天，再学时按第 6 天算（7−2+1）。0 = 漏天不扣；填很大（如 1000）= 漏一天就从头开始。",
   }),
-  "credits.ageBonus.day7Hours": int({
-    default: 168,
-    min: 0,
-    max: 24 * 365,
-    unit: "h",
-    group: "credits",
+  "inbox.maxFileBytes": int({
+    default: 20 * 1024 * 1024,
+    min: 1024,
+    max: 100 * 1024 * 1024,
+    unit: "bytes",
+    group: "inbox",
+    audience: "public",
+    description: "每个登录账号的收件箱与共享文件存储：单个上传文件的安全大小上限。",
+  }),
+  "inbox.maxDayBytes": int({
+    default: 200 * 1024 * 1024,
+    min: 1024 * 1024,
+    max: 20 * 1024 ** 3,
+    unit: "bytes",
+    group: "inbox",
     audience: "server",
-    money: true,
-    description: "账号注册多少小时后可以领第二档年龄积分（默认 168 小时 = 7 天）。",
+    description: "每个账号滚动24小时上传的安全字节上限。",
+  }),
+  "inbox.maxStoredBytes": int({
+    default: 2 * 1024 ** 3,
+    min: 1024 * 1024,
+    max: 100 * 1024 ** 3,
+    unit: "bytes",
+    group: "inbox",
+    audience: "server",
+    description: "每个账号存储文件的安全总字节上限（所有文件来源共享）。",
+  }),
+  "inbox.uploadsPerMinute": int({
+    default: 30,
+    min: 1,
+    max: 120,
+    unit: "uploads/min",
+    group: "inbox",
+    audience: "server",
+    description: "每个账号每个Worker实例一分钟允许的上传次数，账号之间独立。",
   }),
   "chat.hubRpcTimeoutMs": int({
     ...HUB_RPC_LIMITS["chat.hubRpcTimeoutMs"],

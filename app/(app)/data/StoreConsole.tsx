@@ -17,7 +17,6 @@ type Props = {
   pushResult: string | null;
   pushLabel: string;
   onPush: () => void;
-  scriptHint: string;
   /** Holds `dev`: the diagnostics (userscript version, its count here, the backend). */
   dev?: boolean;
 };
@@ -65,7 +64,6 @@ export default function StoreConsole({
   pushResult,
   pushLabel,
   onPush,
-  scriptHint,
   dev = false,
 }: Props) {
   const s = useIntlayer("data-page").store;
@@ -78,22 +76,17 @@ export default function StoreConsole({
       </h2>
 
       <div className="flex flex-wrap gap-4">
-        <StoreCard icon="floppyDisk" name={s.scriptName.value} where={s.scriptWhere.value}>
-          {script ? (
-            <>
-              <Stat label={s.cards.value} value={script.cardCount} />
-              <Stat label={s.due.value} value={script.dueCount} />
-              {/* Diagnostics, for developers only (English). */}
-              {dev && <Stat label="Version" value={`v${script.version}`} />}
-              <Stat
-                label={s.lastSync.value}
-                value={new Date(script.lastSync).toLocaleTimeString()}
-              />
-            </>
-          ) : (
-            <p className="text-xs text-gray-500 dark:text-gray-400">{scriptHint}</p>
-          )}
-        </StoreCard>
+        {/* Only where the userscript has run on this site (owner, 2026-11-14): no
+            card, and no "not run here yet" hint, otherwise. */}
+        {script && (
+          <StoreCard icon="floppyDisk" name={s.scriptName.value} where={s.scriptWhere.value}>
+            <Stat label={s.cards.value} value={script.cardCount} />
+            <Stat label={s.due.value} value={script.dueCount} />
+            {/* Diagnostics, for developers only (English). */}
+            {dev && <Stat label="Version" value={`v${script.version}`} />}
+            <Stat label={s.lastSync.value} value={new Date(script.lastSync).toLocaleTimeString()} />
+          </StoreCard>
+        )}
 
         <StoreCard icon="folderSimple" name={s.localName.value} where={s.localWhere.value}>
           <Stat label={s.cards.value} value={local ? local.cards.length : "…"} />
@@ -119,17 +112,20 @@ export default function StoreConsole({
         </StoreCard>
       </div>
 
-      {/* Local → Cloud: the direction the userscript never covers. */}
+      {/* Local → Cloud: the direction the userscript never covers. Nothing to
+          copy (0 cards here), no button (owner, 2026-11-14: "数据是零的话，甚至都不需要显示"). */}
       <div className="mt-4 flex items-center gap-3 flex-wrap">
-        <button
-          type="button"
-          onClick={onPush}
-          disabled={!isLoggedIn || pushing || pendingPush === 0}
-          title={isLoggedIn ? undefined : s.pushSignIn.value}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {pushing ? s.pushing : `${pushLabel} (${pendingPush})`}
-        </button>
+        {(pendingPush > 0 || pushing) && (
+          <button
+            type="button"
+            onClick={onPush}
+            disabled={!isLoggedIn || pushing}
+            title={isLoggedIn ? undefined : s.pushSignIn.value}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {pushing ? s.pushing : `${pushLabel} (${pendingPush})`}
+          </button>
+        )}
         {pushResult && (
           <span className="text-sm text-gray-600 dark:text-gray-400">{pushResult}</span>
         )}

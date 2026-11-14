@@ -78,6 +78,47 @@ describe("wire: the speaker tag", () => {
       decision: "unknown",
       reason: "no-print",
     });
+    // The voice id (docs/voice-mode.md, "Speaker avatars"): "me" or "s1".."s999", nothing else.
+    expect(cleanSpeaker({ decision: "other", voice: "s2" })).toEqual({
+      decision: "other",
+      voice: "s2",
+    });
+    expect(cleanSpeaker({ decision: "me", voice: "me" })).toEqual({ decision: "me", voice: "me" });
+    for (const bad of ["s0", "s1000", "alice", "", 1, "<b>"])
+      expect(cleanSpeaker({ decision: "other", voice: bad })).toEqual({ decision: "other" });
+  });
+
+  it("combineSpeaker keeps the voice only when every utterance is the same one", () => {
+    expect(
+      combineSpeaker([
+        { ...other(), voice: "s1" },
+        { ...other(), voice: "s1" },
+      ]),
+    ).toMatchObject({
+      voice: "s1",
+    });
+    expect(
+      combineSpeaker([
+        { ...me(), voice: "me" },
+        { ...me(), voice: "me" },
+      ]),
+    ).toMatchObject({
+      voice: "me",
+    });
+    // Two voices in one line, or one untagged: no avatar can be right, so none.
+    expect(
+      combineSpeaker([
+        { ...other(), voice: "s1" },
+        { ...other(), voice: "s2" },
+      ]),
+    ).not.toHaveProperty("voice");
+    expect(
+      combineSpeaker([
+        { ...me(), voice: "me" },
+        { ...other(), voice: "s1" },
+      ]),
+    ).not.toHaveProperty("voice");
+    expect(combineSpeaker([{ ...other(), voice: "s1" }, other()])).not.toHaveProperty("voice");
   });
 
   it("combineSpeaker: the weakest decision and the lowest score win", () => {

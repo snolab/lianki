@@ -29,7 +29,6 @@ import listUi from "@/app/(app)/list/list-ui.content";
 import wordsStatus from "@/app/(app)/words/words-status.content";
 import leaveGuard from "@/app/components/leave-guard.content";
 import creditsUsage from "@/app/(app)/membership/credits/credits-usage.content";
-import devAgeBonus from "@/app/(app)/dev/credits/age-bonus.content";
 import devPermissions from "@/app/(app)/dev/permissions/permissions.content";
 import devTemplates from "@/app/(app)/dev/templates/templates.content";
 import devMails from "@/app/(app)/dev/mails/mails.content";
@@ -80,6 +79,7 @@ import appBadge from "@/app/components/app-badge.content";
 import languageSettings from "@/app/components/language-settings.content";
 import preferredLangs from "@/app/components/preferred-langs.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
+import myBoxes from "@/app/(app)/my/boxes/my-boxes.content";
 import apiTokens from "@/app/components/api-tokens.content";
 import agentGuide from "@/lib/agent-guide.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
@@ -168,7 +168,6 @@ describe.each([
   ["dev-mails", devMails],
   ["dev-users", devUsers],
   ["dev-pregrant", devPregrant],
-  ["dev-age-bonus", devAgeBonus],
   ["text-size", textSize],
   ["box-sign-in", boxSignIn],
   ["wallet-card", walletCard],
@@ -215,6 +214,7 @@ describe.each([
   ["sign-in-errors", signInErrors],
   ["privacy-page", privacyPage],
   ["api-tokens", apiTokens],
+  ["my-boxes", myBoxes],
   ["agent-guide", agentGuide],
   ["roadmap-page", roadmapPage],
   ["chat-history-page", chatHistoryPage],

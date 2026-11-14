@@ -26,6 +26,8 @@ const ALLOWED = new Set([
   "Esc",
   "ESC",
   "Aa",
+  // A protocol's name (the chat's badge on an agent that came through MCP).
+  "MCP",
 ]);
 const ATTRS = new Set(["aria-label", "placeholder", "title", "alt", "label"]);
 const CALLS = new Set([

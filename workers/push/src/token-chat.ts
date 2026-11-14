@@ -7,6 +7,7 @@
  *        {op:"say", text, quiet?, cut?}          → {ok, id}   cut: "supersede" | "interject"
  *        {op:"ask", question, options | questions, expiresAt?} → {ok, id, askId}
  *        {op:"read", limit?}                     → {ok, thread, lane, messages}
+ *        {op:"avatar", svg: "<svg…>" | null}     → {ok, avatar, dropped}  (chat:write)
  *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?};
  *        then {type:"say"|"ask", …}; hears {type:"chat"|"edited"|"answered"}.
  *
@@ -30,6 +31,17 @@
  * same account and lane, and to no other listener. A read or listen of
  * another lane's (or a controller's) ask carries no answer.
  *
+ * Avatars and presence (docs/dev-debug-widget.md, "Agent avatars", "Who is
+ * here"). `op:"avatar"` sets the token's own picture: sanitized here
+ * (svg-avatar.ts, strict allowlist, ≤ 4 KB), kept once by its SHA-256
+ * (`avsvg:<sha>`), and named on the token's record (`part:<tag>`); its lines
+ * then carry the reference, never the markup. The owner of the token's
+ * account may rename it or set its picture from his page (`participant`,
+ * debug.ts): his choice wins. Each verified call, socket and read updates the
+ * record, and the host pushes the thread's presence list to its pages.
+ * A call through an MCP client (x-lianki-client mcp/… or mcp-remote/…) marks
+ * its lines `client: "mcp"` (the "MCP" badge).
+ *
  * Revocation. A listening socket keeps the token's hash only, never the
  * secret. It closes when the main Worker says the token was revoked
  * (/internal/chat-tokens/revoked), when it expires (checked on every event
@@ -40,6 +52,12 @@ import type { ChatMessage, EditedEvent } from "../../../packages/debug-chat/src/
 import { type Ask, parseAsk, askText } from "../../../packages/debug-chat/src/ask";
 import { OWNER_THREAD, SAY_CUTS, chatText, isSayCut, isUserId } from "../../../lib/dev-eval";
 import { laneOf, parseLineVoice } from "../../../packages/debug-chat/src/voices";
+import { sanitizeAvatarSvg } from "../../../packages/debug-chat/src/svg-avatar";
+import {
+  type PartRecord,
+  cleanPartName,
+  effective,
+} from "../../../packages/debug-chat/src/presence";
 
 export const CHAT_PATH = "/api/version/chat";
 export const REVOKED_PATH = "/internal/chat-tokens/revoked";
@@ -74,11 +92,21 @@ export type TokenAtt = {
   tag?: string;
   /** The token's SHA-256: what a re-check names it by. Never the secret. */
   hash?: string;
+  /** Opened by an MCP client (x-lianki-client): its presence shows the badge. */
+  mcp?: true;
   until?: number | null;
   checkedAt?: number;
 };
 
-export type ChatTokenOp = "say" | "ask" | "read" | "listen" | "recheck" | "prepare" | "progress";
+export type ChatTokenOp =
+  | "say"
+  | "ask"
+  | "read"
+  | "listen"
+  | "recheck"
+  | "prepare"
+  | "avatar"
+  | "progress";
 export type ChatTokenAnswer =
   | {
       ok: true;
@@ -108,7 +136,30 @@ export interface TokenHost {
   history(thread: string): Promise<ChatMessage[]>;
   /** Is this (non-owner) user blocked from the chat? */
   blocked(userId: string): Promise<boolean>;
+  /** The hub's storage, for the token records and avatars. */
+  kv?: {
+    get<T>(k: string): Promise<T | undefined>;
+    put(k: string, v: unknown): Promise<void>;
+  };
+  /** Who is in `thread` changed: push the presence list to its pages. */
+  presence?(thread: string): void;
 }
+
+/** The token's record and avatar keys in the hub's storage. */
+export const partKey = (tag: string) => `part:${tag}`;
+export const avatarKey = (sha: string) => `avsvg:${sha}`;
+/** An MCP client's x-lianki-client: `mcp/<ver> tool=…` (lianki mcp) or `mcp-remote/<ver> tool=…`. */
+const MCP_CLIENT = /^mcp(?:-remote)?\/\d{1,4}\.\d{1,4}\.\d{1,4}\S{0,24} tool=lianki_[a-z_]{1,32}$/;
+export const isMcpClient = (raw: unknown) =>
+  typeof raw === "string" && raw.length <= 100 && MCP_CLIENT.test(raw.trim());
+
+/** The SHA-256 of a text, hex. */
+export async function sha256Hex(text: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+type Who = { tag?: string; avatar?: string; mcp?: boolean };
 
 const send = (ws: TokenSocket, msg: unknown) => {
   try {
@@ -194,7 +245,13 @@ export class TokenChat {
     return (await this.host.blocked(v.userId)) ? null : v.userId;
   }
 
-  private line(thread: string, lane: string, text: string, extra: Partial<ChatMessage> = {}) {
+  private line(
+    thread: string,
+    lane: string,
+    text: string,
+    extra: Partial<ChatMessage> = {},
+    who: Who = {},
+  ) {
     // A token named after a known lane (voices.ts LANES: codex, agy, main…)
     // gets that lane's mark and voice; any other name stays a 【name】 prefix.
     const known = laneOf({ text: `【${lane}】` }).lane;
@@ -208,11 +265,41 @@ export class TokenChat {
       via: "token" as const,
       tokenLane: lane,
       ...(known ? { lane: known } : {}),
+      ...(who.tag ? { tok: who.tag } : {}),
+      ...(who.avatar ? { avatar: who.avatar } : {}),
+      ...(who.mcp ? { client: "mcp" as const } : {}),
       ...extra,
     } satisfies ChatMessage & { thread: string };
   }
 
-  private async say(thread: string, lane: string, m: Record<string, unknown>) {
+  /** The token's record, as it will be kept (created on its first verified use). */
+  private async record(v: Verified, thread: string): Promise<PartRecord | undefined> {
+    const kv = this.host.kv;
+    if (!kv) return undefined;
+    const r = await kv.get<PartRecord>(partKey(v.tag));
+    if (r && r.id === v.id) {
+      if (r.lane === v.lane && r.thread === thread && !r.revoked) return r;
+      const { revoked: _r, ...rest } = r;
+      return { ...rest, lane: v.lane, thread };
+    }
+    return { tag: v.tag, id: v.id, userId: v.userId, thread, lane: v.lane };
+  }
+
+  /** Keep a token's record (and tell the host who is here changed). */
+  private async keep(r: PartRecord | undefined) {
+    if (!r || !this.host.kv) return;
+    await this.host.kv.put(partKey(r.tag), r);
+    this.host.presence?.(r.thread);
+  }
+
+  /** Who a token's lines are from: its tag, the avatar in effect, the MCP badge. */
+  private async who(v: Verified, thread: string, mcp: boolean): Promise<Who> {
+    const r = await this.record(v, thread);
+    if (r) await this.keep(mcp && !r.mcp ? { ...r, mcp: true } : r);
+    return { tag: v.tag, avatar: r ? effective(r).avatar : undefined, mcp };
+  }
+
+  private async say(thread: string, lane: string, m: Record<string, unknown>, who: Who = {}) {
     const text = typeof m.text === "string" ? laneText(lane, m.text.trim()) : undefined;
     if (!text) return { error: "say needs text (at most the chat's limit)" };
     // A line's own voice (main = the cat-girl voice…), checked as on the grant path.
@@ -221,23 +308,29 @@ export class TokenChat {
     // One of the two modes or nothing, like the grant path (lib/dev-eval.ts parseControllerMessage).
     if (m.cut !== undefined && !isSayCut(m.cut))
       return { error: `cut must be one of ${SAY_CUTS.join(", ")}` };
-    const line = this.line(thread, lane, text, {
-      ...(m.quiet === true ? { quiet: true as const } : {}),
-      ...(voice ? { voice: m.voice as string } : {}),
-      // How it cuts into the reading when it arrives live (packages/debug-chat voice.ts).
-      ...(isSayCut(m.cut) ? { cut: m.cut } : {}),
-    });
+    const line = this.line(
+      thread,
+      lane,
+      text,
+      {
+        ...(m.quiet === true ? { quiet: true as const } : {}),
+        ...(voice ? { voice: m.voice as string } : {}),
+        // How it cuts into the reading when it arrives live (packages/debug-chat voice.ts).
+        ...(isSayCut(m.cut) ? { cut: m.cut } : {}),
+      },
+      who,
+    );
     await this.host.post(line);
     console.log(JSON.stringify({ msg: "debug.token-say", lane, owner: thread === OWNER_THREAD }));
     return { id: line.id };
   }
 
-  private async ask(thread: string, lane: string, m: Record<string, unknown>) {
+  private async ask(thread: string, lane: string, m: Record<string, unknown>, who: Who = {}) {
     const r = parseAsk(m, this.host.now(), () => crypto.randomUUID().slice(0, 12));
     if (!r.ok) return { error: r.error };
     const ask: Ask = r.ask;
     const text = laneText(lane, askText(ask)) ?? `【${lane}】`;
-    const line = this.line(thread, lane, text, { ask });
+    const line = this.line(thread, lane, text, { ask }, who);
     await this.host.post(line);
     console.log(
       JSON.stringify({
@@ -265,8 +358,8 @@ export class TokenChat {
       return json({ ok: false, error: "expected a JSON object" }, 400);
     }
     const op = body.op;
-    if (op !== "say" && op !== "ask" && op !== "read" && op !== "prepare")
-      return json({ ok: false, error: 'op must be "say", "ask" or "read"' }, 400);
+    if (op !== "say" && op !== "ask" && op !== "read" && op !== "prepare" && op !== "avatar")
+      return json({ ok: false, error: 'op must be "say", "ask", "read" or "avatar"' }, 400);
     // `lianki mcp` names itself (x-lianki-client) for the audit log; the main
     // Worker keeps it only in its one known shape (lib/api-token-client.ts).
     const client = req.headers.get("x-lianki-client")?.slice(0, 100) || undefined;
@@ -284,7 +377,21 @@ export class TokenChat {
         return json({ ok: false, error: "unavailable" }, 503);
       }
     }
+    const mcp = isMcpClient(client);
+    if (op === "avatar") return this.avatar(v, thread, body.svg);
     if (op === "read") {
+      // A read is presence: it stays for the read window (chat.presenceReadMin).
+      const r = await this.record(v, thread);
+      if (r) {
+        const t = this.host.now();
+        const fresh = r.seenAt !== undefined && t - r.seenAt < this.readMs;
+        await this.keep({
+          ...r,
+          seenAt: t,
+          since: fresh ? (r.since ?? t) : t,
+          ...(mcp ? { mcp: true as const } : {}),
+        });
+      }
       const n = typeof body.limit === "number" && Number.isInteger(body.limit) ? body.limit : 30;
       const list = (await this.host.history(thread)).slice(-Math.max(1, Math.min(MAX_READ, n)));
       return json({
@@ -294,15 +401,97 @@ export class TokenChat {
         messages: list.map((x) => forLane(x, v.lane)),
       });
     }
+    const who = await this.who(v, thread, mcp);
     const out =
-      op === "say" ? await this.say(thread, v.lane, body) : await this.ask(thread, v.lane, body);
+      op === "say"
+        ? await this.say(thread, v.lane, body, who)
+        : await this.ask(thread, v.lane, body, who);
     if ("error" in out) return json({ ok: false, error: out.error }, 400);
     return json({ ok: true, lane: v.lane, ...out });
   }
 
+  /** The presence read window (ms): the host sets it from live config (chat.presenceReadMin). */
+  readMs = 5 * 60_000;
+
+  /** `op:"avatar"`: set (sanitized) or clear (`svg: null`) the token's own avatar. */
+  private async avatar(v: Verified, thread: string, svg: unknown): Promise<Response> {
+    const r = await this.record(v, thread);
+    if (!r) return json({ ok: false, error: "unavailable" }, 503);
+    if (svg === null) {
+      const { self: _drop, ...rest } = r;
+      await this.keep(rest);
+      console.log(JSON.stringify({ msg: "debug.token-avatar", lane: v.lane, cleared: true }));
+      return json({ ok: true, avatar: null });
+    }
+    const s = sanitizeAvatarSvg(svg);
+    if (!s.ok) return json({ ok: false, error: s.error }, 400);
+    const sha = await this.storeAvatar(s.svg);
+    await this.keep({ ...r, self: sha });
+    console.log(
+      JSON.stringify({ msg: "debug.token-avatar", lane: v.lane, dropped: s.dropped.length }),
+    );
+    return json({ ok: true, avatar: sha, dropped: s.dropped });
+  }
+
+  /** Keep a sanitized SVG once, by its SHA-256. */
+  private async storeAvatar(svg: string): Promise<string> {
+    const sha = await sha256Hex(svg);
+    const kv = this.host.kv!;
+    if ((await kv.get<string>(avatarKey(sha))) === undefined) await kv.put(avatarKey(sha), svg);
+    return sha;
+  }
+
+  /** A kept avatar's SVG by its reference (GET AVATAR_PATH<sha>), or undefined. */
+  async avatarSvg(sha: string): Promise<string | undefined> {
+    if (!/^[0-9a-f]{64}$/.test(sha)) return undefined;
+    return this.host.kv?.get<string>(avatarKey(sha));
+  }
+
+  /**
+   * The owner of a token's account names it or sets its picture from his page
+   * (debug.ts `participant`): only a token record whose account is `viewer`.
+   * `name: null` / `avatar: null` give the agent's own back; `avatar: "auto"`
+   * forces the generated mark; an SVG goes through the same sanitizer.
+   */
+  async override(
+    viewer: string | undefined,
+    tag: unknown,
+    change: { name?: unknown; avatar?: unknown },
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    const kv = this.host.kv;
+    if (!kv || !viewer || typeof tag !== "string" || !/^[0-9a-f]{16}$/.test(tag))
+      return { ok: false, error: "not found" };
+    const r = await kv.get<PartRecord>(partKey(tag));
+    if (!r || r.revoked || r.userId !== viewer) return { ok: false, error: "not found" };
+    let next: PartRecord = { ...r };
+    if (change.name !== undefined) {
+      if (change.name === null) delete next.ownerName;
+      else {
+        const n = cleanPartName(change.name);
+        if (!n) return { ok: false, error: "name: 1–40 characters" };
+        next.ownerName = n;
+      }
+    }
+    if (change.avatar !== undefined) {
+      if (change.avatar === null) delete next.ownerAvatar;
+      else if (change.avatar === "auto") next.ownerAvatar = "auto";
+      else {
+        const s = sanitizeAvatarSvg(change.avatar);
+        if (!s.ok) return { ok: false, error: s.error };
+        next = { ...next, ownerAvatar: await this.storeAvatar(s.svg) };
+      }
+    }
+    await this.keep(next);
+    return { ok: true };
+  }
+
   /** A new socket at GET /api/version/chat (debug.ts has accepted it). */
-  opened(ws: TokenSocket) {
-    ws.serializeAttachment({ role: "token", at: this.host.now() } satisfies TokenAtt);
+  opened(ws: TokenSocket, client?: string | null) {
+    ws.serializeAttachment({
+      role: "token",
+      at: this.host.now(),
+      ...(isMcpClient(client) ? { mcp: true as const } : {}),
+    } satisfies TokenAtt);
   }
 
   /** A message on a token socket. */
@@ -338,8 +527,11 @@ export class TokenChat {
     const thread = await this.threadOf(v);
     // The thread is the one this socket authenticated for; an account cannot change hands.
     if (thread !== a.thread) return close(ws, TOKEN_REFUSED, "refused");
+    const who = await this.who(v, thread, a.mcp === true);
     const out =
-      m.type === "say" ? await this.say(thread, v.lane, m) : await this.ask(thread, v.lane, m);
+      m.type === "say"
+        ? await this.say(thread, v.lane, m, who)
+        : await this.ask(thread, v.lane, m, who);
     if ("error" in out) return send(ws, { type: "error", error: out.error });
     send(ws, m.type === "say" ? { type: "sent", ...out } : { type: "asked", ...out });
   }
@@ -367,6 +559,7 @@ export class TokenChat {
     const next: TokenAtt = {
       role: "token",
       at: a.at,
+      ...(a.mcp ? { mcp: true as const } : {}),
       thread,
       userId: v.userId,
       lane: v.lane,
@@ -397,6 +590,9 @@ export class TokenChat {
         type: "history",
         messages: (await this.host.history(thread)).slice(-n).map((x) => forLane(x, v.lane)),
       });
+    // Joined: its record (the MCP badge if an MCP client opened it), and the pages hear it.
+    const r = await this.record(v, thread);
+    await this.keep(r && (a.mcp && !r.mcp ? { ...r, mcp: true } : r));
     console.log(JSON.stringify({ msg: "debug.token-listen", lane: v.lane, owner: v.owner }));
   }
 
@@ -414,6 +610,13 @@ export class TokenChat {
   /** How many token sockets listen in this thread (the pages' "agent listening"). */
   count(thread: string): number {
     return this.authed(thread).length;
+  }
+
+  /** The token sockets open in `thread`, by tag (presence: reading now). */
+  live(thread: string, except?: unknown): { tag: string; at: number }[] {
+    return this.authed(thread)
+      .filter(({ ws, a }) => ws !== except && a.tag)
+      .map(({ a }) => ({ tag: a.tag!, at: a.at }));
   }
 
   /**
@@ -490,13 +693,25 @@ export class TokenChat {
     const user = isUserId(body.userId) ? body.userId : undefined;
     if (!tags.length && !user) return json({ error: "expected {tags} or {userId}" }, 400);
     let closed = 0;
+    const threads = new Set<string>();
+    const gone = new Set(tags);
     for (const { ws, a } of this.authed()) {
       if ((a.tag && tags.includes(a.tag)) || (user && a.userId === user)) {
         send(ws, { type: "revoked" });
         close(ws, TOKEN_REFUSED, "token revoked");
+        if (a.tag) gone.add(a.tag);
+        threads.add(a.thread!);
         closed++;
       }
     }
+    // Their records stay (old lines keep their avatar) but leave every presence list.
+    for (const tag of gone) {
+      const r = await this.host.kv?.get<PartRecord>(partKey(tag));
+      if (!r || r.revoked) continue;
+      await this.host.kv!.put(partKey(tag), { ...r, revoked: true } satisfies PartRecord);
+      threads.add(r.thread);
+    }
+    for (const t of threads) this.host.presence?.(t);
     console.log(JSON.stringify({ msg: "debug.token-revoked", tags: tags.length, closed }));
     return json({ ok: true, closed });
   }

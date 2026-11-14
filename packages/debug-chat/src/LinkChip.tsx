@@ -12,7 +12,6 @@ import {
   EVAL_LINK_STATES,
   type EvalLink,
   type EvalSession,
-  SELECTION_STATES,
   type SelectionState,
 } from "./link-state";
 import type { UiStrings } from "./ui-strings";
@@ -55,12 +54,6 @@ const EVAL_WORD = {
   connected: ["evalConnected", "evalConnectedTip"],
   disconnected: ["evalDisconnected", "evalDisconnectedTip"],
 } as const satisfies Record<EvalLink, readonly [keyof LinkWords, keyof LinkWords]>;
-const SEL_WORD = {
-  none: ["selNone", "selNoneTip"],
-  pending: ["selPending", "selPendingTip"],
-  seen: ["selSeen", "selSeenTip"],
-  failed: ["selFailed", "selFailedTip"],
-} as const satisfies Record<SelectionState, readonly [keyof LinkWords, keyof LinkWords]>;
 
 /** The theme's seal fill and the word on it (globals.css --lk-primary / --lk-on-primary, AA). */
 const SEAL = "var(--lk-primary, oklch(0.53 0.207 22.3))";
@@ -129,14 +122,15 @@ export function LinkChip({
 }) {
   const [open, setOpen] = useState(false);
   const evalWord = (s: EvalLink) => t[EVAL_WORD[s][0]];
-  const selWord = (s: SelectionState) => t[SEL_WORD[s][0]];
-  const tip = `${t.linkEval}: ${t[EVAL_WORD[link][1]]}\n${t.linkSel}: ${t[SEL_WORD[selection][1]]}`;
+  // The selection's own state is no longer listed here (owner, 2026-11-14: too many
+  // states); a dot on the + button says something is attached (AttachMenu).
+  const tip = `${t.linkEval}: ${t[EVAL_WORD[link][1]]}`;
   return (
     <div className={`pointer-events-auto relative flex shrink-0 ${glass ? "" : "mb-1"}`}>
       <button
         type="button"
         data-testid="debug-chat-link"
-        aria-label={`${t.linkChip}: ${t.linkEval} ${evalWord(link)}, ${t.linkSel} ${selWord(selection)}`}
+        aria-label={`${t.linkChip}: ${t.linkEval} ${evalWord(link)}`}
         aria-expanded={open}
         title={tip}
         onPointerDown={keep}
@@ -190,13 +184,6 @@ export function LinkChip({
               ))}
             </ul>
           )}
-          <StateList
-            title={t.linkSel}
-            states={SELECTION_STATES}
-            current={selection}
-            word={selWord}
-            tip={t[SEL_WORD[selection][1]]}
-          />
         </div>
       )}
     </div>

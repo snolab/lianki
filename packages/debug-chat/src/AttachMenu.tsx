@@ -5,7 +5,8 @@
  * button since 2026-11-03). Every button keeps the input's focus (pointerdown preventDefault),
  * so a phone's keyboard stays up and the remembered selection stays put.
  */
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type RefObject, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { attachMenuRoom, attachMenuShift } from "./attach-menu-room";
 import {
   ADD_ITEMS_EVENT,
   ATTACH_KINDS,
@@ -84,30 +85,35 @@ const iconOf = (name: string | undefined): IconName =>
 
 /**
  * The + at the start of the input. With `announce` (its Add and Attach groups
- * shown) it announces itself, and the bottom island drops its ＋. `sessions`:
- * the eval/preview sessions (the tree row's count) — a dot on the + while
- * there are any, pulsing when code just ran (`ran`), as on the old tree button.
+ * shown) it announces itself, and the bottom island drops its ＋. No code
+ * mark on it (owner, 2026-11-14: "完全不用显示这个icon"). A dot top right: dim when a page selection could be attached, lit when
+ * something is attached (owner, 2026-11-14: allowed ≠ active; one + only).
  */
 export function AttachButton({
   t,
   open,
   announce = true,
-  sessions = 0,
-  ran = false,
+  attached = false,
+  selectable = false,
   onToggle,
+  buttonRef,
 }: {
   t: ChatStrings;
   open: boolean;
   announce?: boolean;
-  sessions?: number;
-  ran?: boolean;
+  /** Something rides with the next line (a page selection, files): the dot lit. */
+  attached?: boolean;
+  /** A page selection could be attached (allowed, not attached yet): the dot dim. */
+  selectable?: boolean;
   onToggle: () => void;
+  buttonRef?: RefObject<HTMLButtonElement | null>;
 }) {
   useEffect(() => (announce ? announceChatAttach() : undefined), [announce]);
   // Without its Add and Attach groups, the menu holds only the state tree.
   const label = announce ? t.attachOpen : t.attachTree;
   return (
     <button
+      ref={buttonRef}
       type="button"
       data-chat-attach
       data-testid="debug-chat-attach"
@@ -123,12 +129,14 @@ export function AttachButton({
       className="tap-40 relative flex shrink-0 items-center justify-center self-end rounded-full text-base text-gray-500 dark:text-gray-400"
     >
       <Icon name="plus" />
-      {sessions > 0 && (
+      {/* Something is attached to the next line (a page selection, files): a dot, top right. */}
+      {(attached || selectable) && (
         <span
           aria-hidden
-          data-testid="debug-chat-evals"
-          className={`absolute end-1.5 top-1 size-1.5 rounded-full ${ran ? "animate-pulse" : ""}`}
-          style={{ background: "oklch(0.55 0.15 30)" }}
+          data-testid="debug-chat-attached-dot"
+          data-active={attached || undefined}
+          className={`absolute end-1.5 top-1 size-1.5 rounded-full ${attached ? "" : "opacity-40"}`}
+          style={{ background: "oklch(0.65 0.17 150)" }}
         />
       )}
     </button>
@@ -140,7 +148,11 @@ export function AttachButton({
  * then "View" (the state tree). Without `attach` (the cross-site iframe, or
  * the chat unavailable) only View is shown.
  */
+/** Below this much room above the + button the menu opens downward instead. */
+export { MIN_ROOM_ABOVE } from "./attach-menu-room";
+
 export function AttachMenu({
+  anchorRef,
   t,
   attach = true,
   sel,
@@ -156,6 +168,7 @@ export function AttachMenu({
   onHistory,
   onClose,
 }: {
+  anchorRef: RefObject<HTMLButtonElement | null>;
   t: ChatStrings;
   attach?: boolean;
   sel: PageSelection | null;
@@ -179,6 +192,41 @@ export function AttachMenu({
   onClose: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  /**
+   * Never past the top of the screen (owner, 2026-11-14 "如果超出屏幕上方，就要限制
+   * 一下它的高度"): the menu opens upward from the bar, so its height is capped
+   * at the room between the screen's top and its own bottom edge; it scrolls inside.
+   */
+  const [room, setRoom] = useState<{ px: number; down: boolean; shift: number } | null>(null);
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = box.current;
+      const anchor = anchorRef.current;
+      if (!el || !anchor) return;
+      // offsetLeft ignores our transform, so resize cannot accumulate a shift.
+      const parent = el.offsetParent as HTMLElement | null;
+      const left = (parent?.getBoundingClientRect().left ?? 0) + el.offsetLeft;
+      setRoom({
+        ...attachMenuRoom(anchor.getBoundingClientRect(), {
+          height: visualViewport?.height ?? innerHeight,
+          offsetTop: visualViewport?.offsetTop ?? 0,
+        }),
+        shift: attachMenuShift({ left, width: el.offsetWidth }, {
+          width: visualViewport?.width ?? innerWidth,
+          offsetLeft: visualViewport?.offsetLeft ?? 0,
+        }),
+      });
+    };
+    fit();
+    addEventListener("resize", fit);
+    visualViewport?.addEventListener("resize", fit);
+    visualViewport?.addEventListener("scroll", fit);
+    return () => {
+      removeEventListener("resize", fit);
+      visualViewport?.removeEventListener("resize", fit);
+      visualViewport?.removeEventListener("scroll", fit);
+    };
+  }, [anchorRef]);
   useEffect(() => {
     const away = (e: Event) => {
       const el = e.target as Element | null;
@@ -193,19 +241,41 @@ export function AttachMenu({
       document.removeEventListener("keydown", key);
     };
   }, [onClose]);
+  // Two columns (owner, 2026-11-14: denser, and it scrolls): each item one cell,
+  // the group headings across both.
   const row =
-    "flex min-h-11 w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-start fs-13 disabled:cursor-default";
+    "flex min-h-10 w-full min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-start fs-13 disabled:cursor-default";
   const badge = "flex size-7 shrink-0 items-center justify-center rounded-full text-sm";
-  const heading = "px-2.5 pb-0.5 pt-1.5 fs-10 font-semibold uppercase tracking-wide opacity-60";
+  const heading =
+    "col-span-full px-2.5 pb-0.5 pt-1.5 fs-10 font-semibold uppercase tracking-wide opacity-60";
   return (
     <div
       ref={box}
       role="menu"
       aria-label={attach ? t.attachOpen : t.attachGroupView}
       data-testid="debug-chat-attach-menu"
-      style={{ background: "var(--lk-chat-menu-bg, oklch(0.99 0.004 85 / 0.97))" }}
-      className="pointer-events-auto absolute start-0 bottom-full z-10 mb-1 w-[min(17rem,100%)] overflow-hidden rounded-2xl p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100"
+      // Sized to the screen, not the (maybe narrow) bar, and scrolls when taller than
+      // the room above it (owner, 2026-11-14: it ran off the top and could not scroll).
+      style={{
+        background: "var(--lk-chat-menu-bg, oklch(0.99 0.004 85 / 0.97))",
+        ...(room !== null ? { maxHeight: `min(${room.px}px, 32rem)`, transform: `translateX(${room.shift}px)` } : {}),
+      }}
+      className={`pointer-events-auto absolute start-0 ${room?.down ? "top-full mt-1" : "bottom-full mb-1"} z-10 grid w-[min(24rem,calc(100vw-1rem))] grid-cols-1 min-[420px]:grid-cols-2 content-start gap-0.5 max-h-[min(70dvh,32rem)] overflow-y-auto overscroll-contain rounded-2xl p-1 text-gray-800 shadow-[0_12px_32px_-10px_oklch(0.22_0.015_65/0.45)] backdrop-blur-md dark:[--lk-chat-menu-bg:oklch(0.24_0.01_65/0.97)] dark:text-gray-100`}
     >
+      {/* An explicit way out (owner, 2026-11-14 "再给一个退出的按钮"), besides Escape and a tap outside. */}
+      <div className="col-span-full flex justify-end">
+        <button
+          type="button"
+          data-testid="debug-chat-attach-close"
+          aria-label={t.attachClose}
+          title={t.attachClose}
+          onPointerDown={keep}
+          onClick={onClose}
+          className="tap-40 flex size-8 items-center justify-center rounded-full fs-15 leading-none opacity-70 hover:bg-[oklch(0.5_0_0/0.08)] hover:opacity-100"
+        >
+          <span aria-hidden>×</span>
+        </button>
+      </div>
       {attach && items.length > 0 && (
         <>
           <div className={heading}>{t.attachGroupAdd}</div>

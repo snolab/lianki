@@ -41,6 +41,7 @@ export type VoiceprintOp =
   | "delete-audio"
   | "export"
   | "restore"
+  | "progressive"
   | "clone-ref-put"
   | "clone-ref-delete";
 export const VOICEPRINT_OPS: readonly VoiceprintOp[] = [
@@ -50,6 +51,7 @@ export const VOICEPRINT_OPS: readonly VoiceprintOp[] = [
   "delete-audio",
   "export",
   "restore",
+  "progressive",
   "clone-ref-put",
   "clone-ref-delete",
 ];
@@ -57,6 +59,9 @@ export const VOICEPRINT_OPS: readonly VoiceprintOp[] = [
  * The ops that need the owner's passkey with user verification (Face ID / Touch ID).
  * `delete-audio`: the enrolment recordings kept on the Mac, a separate question
  * from deleting the print (owner, 2026-11-11), with its own ticket.
+ * `progressive`: learning from his own clean finals on or off (device "*";
+ * docs/local-stt.md, "Progressive voiceprint"): it keeps features of what he
+ * says without a sentence to read, so it is approved like an enrolment.
  */
 export const PASSKEY_OPS: readonly VoiceprintOp[] = [
   "enrol",
@@ -64,6 +69,7 @@ export const PASSKEY_OPS: readonly VoiceprintOp[] = [
   "delete-audio",
   "export",
   "restore",
+  "progressive",
   "clone-ref-put",
   "clone-ref-delete",
 ];

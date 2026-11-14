@@ -38,6 +38,7 @@ import {
 } from "./voiceprint";
 import { notifyDirty, registerDirtyCheck } from "@lianki/ui-state/dirty";
 import type { ChatStrings } from "./wire";
+import { SealStamp } from "./SealStamp";
 
 /** The verified-voice mark lives in its own module; kept here as a re-export for its callers. */
 export { VoiceMark } from "./VoiceMark";
@@ -365,6 +366,7 @@ export function VoiceprintPanel({
               {view.prints.map((p) => (
                 <li key={`${p.device}.${p.model}`}>
                   {t.vpPrint.replaceAll("{device}", p.device).replaceAll("{n}", String(p.n))}
+                  {(p.enrolN !== undefined || p.progN !== undefined) && <span> · {t.vpCounts.replaceAll("{enrolled}", String(p.enrolN ?? p.n)).replaceAll("{learned}", String(p.progN ?? 0))}</span>}
                   <span style={{ opacity: 0.6 }}> · {p.model}</span>
                 </li>
               ))}
@@ -373,6 +375,21 @@ export function VoiceprintPanel({
             note(t.vpNone)
           )}
           {!view.local && note(t.vpOff, "debug-voiceprint-off")}
+          {view.local && view.progressive && (
+            <div style={{ marginTop: 10 }}>
+              <button type="button" role="switch" aria-checked={view.progressive.on}
+                aria-label={t.vpProgressive} disabled={view.progressiveBusy}
+                data-testid="debug-voiceprint-progressive"
+                className="lk-seal-switch pointer-events-auto tap-40"
+                style={{ display: "flex", alignItems: "center", gap: 8, color: "inherit" }}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => { if (e.nativeEvent.isTrusted) void c.progressive(!view.progressive!.on); }}>
+                <SealStamp on={view.progressive.on} onWord={t.vpOn} offWord={t.vpOffState} />
+                {t.vpProgressive}
+              </button>
+              {view.progressiveError && note(view.progressiveError, "debug-voiceprint-progressive-error")}
+            </div>
+          )}
           {view.filter && filterBlock(view.filter)}
           {view.cloud && cloudBlock(view.cloud, view.cloudOp, view.local && view.prints.length > 0, true)}
           {view.cloud && !view.prints.length && view.local && view.cloud.prints.length > 0 &&

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createElement, Fragment } from "react";
-import { accountLabel, fill, txt, workerMeta } from "@/app/(app)/dev/stt-access/lines";
+import { accountLabel, fill, shortId, txt, workerMeta } from "@/app/(app)/dev/stt-access/lines";
 
 /**
  * A `useIntlayer` leaf as react-intlayer builds it (renderIntlayerNode): a
@@ -52,5 +52,12 @@ describe("/dev/stt-access row text", () => {
 
   test("fill leaves unknown placeholders alone", () => {
     expect(fill("{n} of {m}", { n: 1 })).toBe("1 of {m}");
+  });
+});
+
+describe("shortId", () => {
+  test("keeps the first six characters of a long id, short ids as they are", () => {
+    expect(shortId("abcdefghijklmnop")).toBe("abcdef…");
+    expect(shortId("abc")).toBe("abc");
   });
 });

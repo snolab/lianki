@@ -101,24 +101,6 @@ const dictionary = {
       mr: "संचय",
       ko: "저장소",
     }),
-    scriptHint: t({
-      en: "The userscript has not run on this site yet.",
-      zh: "用户脚本尚未在本站运行。",
-      hi: "यूज़रस्क्रिप्ट अभी तक इस साइट पर नहीं चली है।",
-      es: "El userscript aún no se ha ejecutado en este sitio.",
-      fr: "Le userscript n'a pas encore été exécuté sur ce site.",
-      ar: "لم يعمل سكربت المستخدم على هذا الموقع بعد.",
-      bn: "ইউজারস্ক্রিপ্ট এখনও এই সাইটে চলেনি।",
-      pt: "O userscript ainda não foi executado neste site.",
-      ru: "Юзерскрипт ещё не запускался на этом сайте.",
-      ur: "یوزر اسکرپٹ ابھی تک اس سائٹ پر نہیں چلا۔",
-      id: "Userscript belum berjalan di situs ini.",
-      de: "Das Userscript wurde auf dieser Seite noch nicht ausgeführt.",
-      ja: "ユーザースクリプトはこのサイトでまだ実行されていません。",
-      sw: "Userscript bado haijaendeshwa kwenye tovuti hii.",
-      mr: "युजरस्क्रिप्ट अद्याप या साइटवर चाललेली नाही.",
-      ko: "이 사이트에서 유저스크립트가 아직 실행되지 않았습니다.",
-    }),
     pushLabel: t({
       en: "Copy this browser's cards to my account",
       zh: "把此浏览器的卡片复制到我的账户",
@@ -1730,8 +1712,6 @@ const context: KeyContext<typeof dictionary.content> = {
     "One-line intro under the /data heading: the learner's cards are kept in up to three places (their account, this browser, the userscript); here they see them all and can copy them. Plain words, no technical terms.",
   storesHeading:
     "Section heading on /data above the three cards that show where the learner's cards are kept. A short noun ('storage').",
-  scriptHint:
-    "/data, the Userscript card: shown instead of numbers when the userscript (the add-on that makes cards on other sites) has not run on this page yet. A short sentence.",
   pushLabel:
     "/data: button under the store cards that copies the cards saved only in this browser into the learner's Lianki account; a count in brackets follows it. An imperative phrase on a button.",
   cardsHeading:

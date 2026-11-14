@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.33
+// @version     2.24.34
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -959,9 +959,14 @@ function main() {
   }
 
   // On the Lianki site itself: sync GM cards to IndexedDB for offline display, then exit.
-  // Match www too — it 308s to apex, but a stale tab can still be sitting on it.
+  // Match www too — it 308s to apex, but a stale tab can still be sitting on it —
+  // and the preview build (same data), so its /data page sees this script too.
   const originHost = new URL(ORIGIN).hostname;
-  if (location.hostname === originHost || location.hostname === "www." + originHost) {
+  if (
+    location.hostname === originHost ||
+    location.hostname === "www." + originHost ||
+    location.hostname === "preview." + originHost
+  ) {
     // This browser's debug-mode switch is the partner's opt-in on other sites.
     mirrorPartnerSwitch(localStorage, GM_setValue);
     // Li chat from the pill (docs/userscript-li-chat.md): this account's flag, kept for other sites.
