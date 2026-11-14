@@ -304,6 +304,13 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  "voice.sync-speak": {
+    description:
+      "多台设备同时朗读：你有两台或更多设备同时连着、都在读 Li 的话时，同一句话尽量在同一时刻开始读（相差约 0.2 秒以内）。先收到的设备等几百毫秒（/dev/config 的 voice.syncLeadMs，默认 300），等慢的设备也收到；最多等 voice.syncMaxWaitMs（默认 1.5 秒），已经晚了的设备马上读。只有一台设备时从不等待。润色后的回读也一样。打开（默认，只对你）；关闭 = 照旧，每台设备收到就读。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   "voice.polish-readback": {
     description:
       "润色后用你自己的声音读一遍：在你本人的页面上（需要 dev 权限），你用麦克风说的一句话被 Li 润色以后（聊天里那句话变成润色后的文字、带小星星），Li 用你 Mac 上的克隆声音（你自己的声音）把润色后的文字读一遍给你听，每句只读一次。和 Li 的其它朗读排在同一个队列里：朗读开关关着就不读，你插话时照样暂停。只读你自己说的话，不读打字的、别人的或摘要；同一句再润色也不再读。克隆声音服务器没开或超时（/dev/config 的 voice.cloneTimeoutMs，默认 20 秒）就安静跳过，不换别的声音读。每台设备可以在 lk:agent-clone-tts 里改服务器地址，填 off 就这台设备不读。打开（默认，只对你）；关闭 = 照旧，润色后不读。",

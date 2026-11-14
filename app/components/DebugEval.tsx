@@ -45,6 +45,7 @@ import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
+import { hubClock, syncWait } from "@lianki/debug-chat/sync-speak";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
@@ -450,6 +451,39 @@ export function DebugEval({
         sock.close(1000, "rejoin");
       }, wait);
     };
+    /** One clock ping to the hub, if none is out (sync-speak.ts). */
+    const clockPing = (sock: WebSocket) => {
+      const p = hubClock().ping();
+      if (!p || sock.readyState !== WebSocket.OPEN) return;
+      try {
+        sock.send(JSON.stringify(p));
+      } catch {}
+    };
+    /**
+     * A line the hub stamped `speakAt` (two or more of his devices here): the
+     * local time to start reading it, in step with the others; nothing for a
+     * line without one, or before this page knows the hub's clock.
+     */
+    const syncStart = (sock: WebSocket, msg: { speakAt?: unknown }): { startAt?: number } => {
+      if (msg.speakAt === undefined) return {};
+      const clock = hubClock();
+      if (clock.stale()) clockPing(sock);
+      const now = Date.now();
+      const offset = clock.offset();
+      const wait = syncWait({
+        speakAt: msg.speakAt,
+        offset,
+        now,
+        maxWaitMs: publicCfg("voice.syncMaxWaitMs"),
+      });
+      // Late by more than the tolerance: noted, so voice.syncLeadMs can be raised.
+      if (offset !== null && typeof msg.speakAt === "number") {
+        const late = now - (msg.speakAt - offset);
+        if (late > publicCfg("voice.syncSkewMs"))
+          voice().log({ ev: "voice-sync", late: Math.round(late) });
+      }
+      return wait > 0 ? { startAt: now + wait } : {};
+    };
     /** This effect was cleaned up (unmount, or React running it twice in dev): a late ticket opens nothing. */
     let disposed = false;
     const connect = () => {
@@ -508,6 +542,9 @@ export function DebugEval({
         setLive(true);
         setChat(true);
         if (!friendRef.current) devLog({ ev: "eval-socket", label });
+        // The hub's clock, for reading lines in step with his other devices (sync-speak.ts).
+        hubClock().reset();
+        clockPing(sock);
       };
       sock.onmessage = (e) => {
         let msg: {
@@ -521,6 +558,8 @@ export function DebugEval({
           retryIn?: unknown;
           sender?: unknown;
           answer?: unknown;
+          /** Hub time to start reading this line, in step with his other devices (sync-speak.ts). */
+          speakAt?: unknown;
         };
         try {
           msg = JSON.parse(String(e.data));
@@ -529,6 +568,11 @@ export function DebugEval({
         }
         // This window's recording session (the hub holds it, not this origin).
         if (msg.type === "clips") return void onClipsState(msg);
+        // A clock pong (sync-speak.ts): noted; the round goes on until it has its samples.
+        if (msg.type === "clock") {
+          if (hubClock().pong(msg as { t0?: unknown; t1?: unknown; t2?: unknown })) clockPing(sock);
+          return;
+        }
         if (msg.type === "friend-status") {
           friendRef.current = true;
           hubOwnerRef.current = false;
@@ -679,7 +723,7 @@ export function DebugEval({
               !!said &&
               (tabsRef.current?.isSpeaker() ?? true) &&
               // live: a superseding or interjecting line cuts in (voice.ts); history never does.
-              voice().reply(said, m, { live: true });
+              voice().reply(said, m, { live: true, ...syncStart(sock, msg) });
             voiceLatency().heard(m, spoken === true);
           } else {
             setWarning(null);
@@ -700,6 +744,7 @@ export function DebugEval({
               reply: (text, meta, how) => voice().reply(text, meta, how),
               speaker: () => tabsRef.current?.isSpeaker() ?? true,
               log: (ev) => voice().log(ev),
+              ...syncStart(sock, msg),
             },
           );
           setMessages((list) => trimHistory(applyEditTo(list, e)));

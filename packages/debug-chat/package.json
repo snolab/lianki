@@ -53,6 +53,7 @@
     "./voice-heard": "./src/voice-heard.ts",
     "./echo": "./src/echo.ts",
     "./storage-keys": "./src/storage-keys.ts",
+    "./sync-speak": "./src/sync-speak.ts",
     "./stt-hint": "./src/stt-hint.ts",
     "./aec": "./src/aec.ts",
     "./anchor": "./src/anchor.ts",
