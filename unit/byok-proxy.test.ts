@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { readFileSync } from "node:fs";
 import { BYOK_PRESETS, RELAY_PRESETS, presetOf } from "@/lib/byok/presets";
 import {
@@ -726,17 +727,17 @@ describe("handleProxy", () => {
   });
 
   it("writes nothing anywhere: no cache API, no storage, only the counters", async () => {
-    const g = globalThis as unknown as Record<string, unknown>;
-    const prev = g.caches;
     const touched: string[] = [];
-    g.caches = new Proxy(
-      {},
-      { get: (_t, p) => (touched.push(String(p)), () => Promise.resolve(undefined)) },
-    );
+    const restore = stubGlobals({
+      caches: new Proxy(
+        {},
+        { get: (_t, p) => (touched.push(String(p)), () => Promise.resolve(undefined)) },
+      ),
+    });
     try {
       await handleProxy(req(), deps());
     } finally {
-      g.caches = prev;
+      restore();
     }
     expect(touched).toEqual([]);
     expect(hits.join(" ")).not.toContain(KEY);

@@ -1,6 +1,7 @@
 // "Keep speaker awake" (packages/debug-chat/src/output-bed.ts) with a mocked
 // AudioContext and a fake clock: nothing here makes a sound.
 import { describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { readFileSync } from "fs";
 import {
   BED_DBFS,
@@ -311,13 +312,13 @@ describe("the setting", () => {
 
   it("on unless turned off, kept on this device under its own key", () => {
     const store = new Map<string, string>();
-    const g = globalThis as unknown as { localStorage?: unknown };
-    const had = g.localStorage;
-    g.localStorage = {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
-      removeItem: (k: string) => void store.delete(k),
-    };
+    const restore = stubGlobals({
+      localStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: (k: string) => void store.delete(k),
+      },
+    });
     try {
       expect(keepAwakeOn()).toBe(true);
       setKeepAwake(false);
@@ -326,7 +327,7 @@ describe("the setting", () => {
       setKeepAwake(true);
       expect(store.has(KEEP_AWAKE_KEY)).toBe(false);
     } finally {
-      g.localStorage = had;
+      restore();
     }
     expect(readFileSync("docs/prefs-sync.md", "utf8")).toMatch(/`lk:voice-keep-awake`.*device/);
   });
@@ -588,9 +589,7 @@ describe("the page's bed (outputBed): the browser's events reach it", () => {
   it("the mic's state reaches it through page-audio, and the setting from another tab", () => {
     const p = page();
     const store = new Map<string, string>();
-    const g = globalThis as unknown as { localStorage?: unknown };
-    const had = g.localStorage;
-    g.localStorage = { getItem: (k: string) => store.get(k) ?? null };
+    const restore = stubGlobals({ localStorage: { getItem: (k: string) => store.get(k) ?? null } });
     try {
       const bed = outputBed();
       p.win.dispatchEvent(new Event("pointerup"));
@@ -607,7 +606,7 @@ describe("the page's bed (outputBed): the browser's events reach it", () => {
       expect(p.ctxs[0].closed).toBe(true);
       pageAudio().setMic(false);
     } finally {
-      g.localStorage = had;
+      restore();
       p.restore();
     }
   });

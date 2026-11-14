@@ -3,18 +3,18 @@
  * holds it, rendered for real: the write timer, the account changing under
  * one mounted instance, and sign-out racing a pending write or a hub line.
  */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Window } from "happy-dom";
 import { act, useRef } from "react";
 import type { ChatMessage } from "@/lib/dev-eval";
 import { CHAT_CACHE_KEY, freezeChatCache, thawChatCache } from "@/lib/chat-cache";
 import { CACHE_WRITE_MS, useChatCache } from "@/lib/use-chat-cache";
 import { signOut } from "@/lib/sign-out";
+import { stubGlobals } from "./support/globals";
 
 const win = new Window();
-const g = globalThis as Record<string, unknown>;
 const store = new Map<string, string>();
-Object.assign(g, {
+const restoreGlobals = stubGlobals({
   window: win,
   document: win.document,
   IS_REACT_ACT_ENVIRONMENT: true,
@@ -25,6 +25,7 @@ Object.assign(g, {
   },
 });
 const { createRoot } = await import("react-dom/client");
+afterAll(() => restoreGlobals());
 
 const line = (id: string): ChatMessage => ({
   id,

@@ -4,6 +4,7 @@
  * or a write in flight.
  */
 import { afterEach, describe, expect, test } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import {
   anchorSelector,
   audioPlaying,
@@ -249,12 +250,11 @@ describe("where the user was", () => {
       '[data-testid="a\\"b"]',
     );
     expect(anchorSelector({ getAttribute: () => null, getBoundingClientRect: rect })).toBe(null);
-    const saved = (globalThis as { CSS?: unknown }).CSS;
-    (globalThis as { CSS?: unknown }).CSS = undefined;
+    const restore = stubGlobals({ CSS: undefined });
     expect(
       anchorSelector({ id: "a.b", getAttribute: () => null, getBoundingClientRect: rect }),
     ).toBe("#a\\.b");
-    (globalThis as { CSS?: unknown }).CSS = saved;
+    restore();
   });
 
   test("restored only for the same path, and only a sane record", () => {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { globalDescriptor, restoreGlobal, setGlobal } from "./support/globals";
 import {
   STT_HINT_KEY,
   deviceLang,
@@ -8,7 +9,10 @@ import {
 } from "@lianki/debug-chat/stt-hint";
 
 const g = globalThis as Record<string, unknown>;
-const saved = { localStorage: g.localStorage, navigator: g.navigator };
+const saved = {
+  localStorage: globalDescriptor("localStorage"),
+  navigator: globalDescriptor("navigator"),
+};
 const fakeStorage = (fail = false) => {
   const m = new Map<string, string>();
   g.localStorage = {
@@ -23,11 +27,10 @@ const fakeStorage = (fail = false) => {
   };
   return m;
 };
-const setNavigator = (v: unknown) =>
-  Object.defineProperty(globalThis, "navigator", { value: v, configurable: true, writable: true });
+const setNavigator = (v: unknown) => setGlobal("navigator", v);
 afterEach(() => {
-  g.localStorage = saved.localStorage;
-  setNavigator(saved.navigator);
+  restoreGlobal("localStorage", saved.localStorage);
+  restoreGlobal("navigator", saved.navigator);
 });
 
 describe("the mic's STT hint", () => {

@@ -7,6 +7,7 @@
  * an API token at all.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
@@ -209,18 +210,16 @@ function fakeStorage(store = new Map<string, unknown>()): Storage {
 }
 
 describe("a token's partner ticket in the hub: the owner's thread, chat only", () => {
-  const g = globalThis as { WebSocketPair?: unknown };
-  let had: unknown;
+  let restore = () => {};
   beforeEach(() => {
-    had = g.WebSocketPair;
-    g.WebSocketPair = class {
-      0 = new FakeSocket();
-      1 = new FakeSocket();
-    };
+    restore = stubGlobals({
+      WebSocketPair: class {
+        0 = new FakeSocket();
+        1 = new FakeSocket();
+      },
+    });
   });
-  afterEach(() => {
-    g.WebSocketPair = had;
-  });
+  afterEach(() => restore());
 
   it("route → lianki-push → hub: an embedded socket that never sees eval, a pairing, or can Allow one", async () => {
     const { k, deps } = await setup();

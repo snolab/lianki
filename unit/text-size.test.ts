@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import {
   applyTextSize,
   installTextSize,
@@ -81,17 +82,16 @@ describe("text size", () => {
   it("the before-paint script sets only valid stored values", () => {
     const run = (stored: unknown) => {
       const props = new Map<string, string>();
-      const g = globalThis as unknown as Record<string, unknown>;
-      const prev = { localStorage: g.localStorage, document: g.document };
-      g.localStorage = { getItem: () => (stored === null ? null : JSON.stringify(stored)) };
-      g.document = {
-        documentElement: { style: { setProperty: (k: string, v: string) => props.set(k, v) } },
-      };
+      const restore = stubGlobals({
+        localStorage: { getItem: () => (stored === null ? null : JSON.stringify(stored)) },
+        document: {
+          documentElement: { style: { setProperty: (k: string, v: string) => props.set(k, v) } },
+        },
+      });
       try {
         new Function(TEXT_SIZE_BOOT_SCRIPT)();
       } finally {
-        g.localStorage = prev.localStorage;
-        g.document = prev.document;
+        restore();
       }
       return Object.fromEntries(props);
     };
