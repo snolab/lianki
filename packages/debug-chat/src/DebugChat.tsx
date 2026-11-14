@@ -54,7 +54,7 @@ import { latencyLines, viaAt, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
-import { type AvatarSource, isLineFolded, isOtherVoice, lineAvatar, runStarts, runsOf } from "./avatar-rules";
+import { type AvatarSource, isLineFolded, isOtherVoice, isOwnVoice, lineAvatar, passageStarts, runsOf } from "./avatar-rules";
 import {
   VOICE_SENT_EVENT,
   appendDictation,
@@ -4621,7 +4621,8 @@ export function DebugChat({
       ...laneOpts,
     }),
   );
-  const starts = runStarts(
+  const starts = passageStarts(
+    messages,
     messages.map((m, i) => ({
       seed: `${whos[i]!.seed}|${whos[i]!.mine ? "me" : ""}`,
       node: lineNode(m)?.node,
@@ -5056,7 +5057,8 @@ export function DebugChat({
           A game-style log, avatar then text, no bubbles. A run of one
           sender's messages (same sender and node, no long pause: runStarts)
           is ONE paragraph: the avatar once, the messages flowing inline one
-          after another, a faint dot between them. Merged at render time
+          after another. Own speech adjoins without separators; other runs
+          keep the faint dots between messages. Merged at render time
           only: every message stays its own span, with its own id, title
           (time), polish mark, waiting tag, so the hub's history, the polish
           edit (one line id), read-aloud and the anchoring are unchanged.
@@ -5065,6 +5067,7 @@ export function DebugChat({
           const i0 = run[0]!;
           const m0 = messages[i0]!;
           const who = whos[i0]!;
+          const ownPassage = isOwnVoice(m0);
           // The state-tree node the run belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m0);
           // The up-arrow floats at the log's end: the newest run keeps room
@@ -5074,6 +5077,7 @@ export function DebugChat({
             <li
               key={m0.id}
               data-testid="debug-chat-run"
+              data-own-passage={ownPassage || undefined}
               data-from={m0.from}
               data-node={node?.node}
               data-jump-room={room ? room.end : undefined}
@@ -5136,14 +5140,23 @@ export function DebugChat({
                   {who.name}
                   {node ? ` (${node.subtitle})` : ""}:{" "}
                 </span>
+                {ownPassage && run.some((i) => messages[i]!.speaker?.decision === "me") && (
+                  <VoiceMark label={t.vpVerified} />
+                )}
                 {run.map((i, k) => {
                   const m = messages[i]!;
+                  const text = polish(m).text;
+                  const previousText = k > 0 ? polish(messages[run[k - 1]!]!).text : "";
+                  // Keep each message untouched; only add the joiner's natural gap between spans.
+                  const passageSpace = ownPassage && k > 0 &&
+                    typeof text === "string" && typeof previousText === "string" && !/^\s/.test(text) &&
+                    joinText(previousText, text) !== previousText + text.trim() ? " " : "";
                   const otherVoiceLine = isOtherVoice(m);
                   const foldedOther = isLineFolded(m, expandedOthers, m.id, foldOthers);
                   if (foldedOther) {
                     return (
                       <span key={m.id}>
-                        {k > 0 && (
+                        {k > 0 && !ownPassage && (
                           <span aria-hidden className="mx-1 opacity-40">
                             ·
                           </span>
@@ -5163,7 +5176,8 @@ export function DebugChat({
                   }
                   return (
                     <span key={m.id}>
-                      {k > 0 && (
+                      {passageSpace}
+                      {k > 0 && !ownPassage && (
                         <span aria-hidden className="mx-1 opacity-40">
                           ·
                         </span>
@@ -5174,10 +5188,10 @@ export function DebugChat({
                         data-testid="debug-chat-line"
                         data-msg={m.id}
                         data-other-voice={otherVoiceLine ? "other" : undefined}
-                        onClick={otherVoiceLine ? (e) => {
+                        {...(otherVoiceLine ? { onClick: () => {
                           if (String(window.getSelection?.() ?? "")) return;
                           toggleExpandOther(m.id);
-                        } : undefined}
+                        } } : {})}
                         data-from={m.from}
                         data-node={node?.node}
                         data-run-start={k === 0 || undefined}
@@ -5199,7 +5213,7 @@ export function DebugChat({
                           ? m.ask.questions.length === 1
                             ? lineText(m, m.ask.questions[0]!.question)
                             : ""
-                          : readText(m, polish(m).text)}
+                          : readText(m, text)}
                         {m.ask && (
                           <AskCard
                             ask={m.ask}
@@ -5216,10 +5230,10 @@ export function DebugChat({
                             pulse={flashOn.has(`line:${m.id}`)}
                           />
                         )}
-                        {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                        {!ownPassage && m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
                         {(() => {
                           // Which recognizer made a voice line: dev holders only (`owner` needs dev).
-                          const tag = m.from === "owner" ? sttTagText(m.stt, owner, ui) : undefined;
+                          const tag = m.from === "owner" && !ownPassage ? sttTagText(m.stt, owner, ui) : undefined;
                           return tag ? (
                             <span
                               data-testid="debug-chat-stt"

@@ -169,6 +169,42 @@ export function runStarts(
   });
 }
 
+/** Own speech can flow as a passage; an undecided enrolled voice stays separate. */
+export function isOwnVoice(m: Pick<ChatMessage, "from" | "source" | "speaker">): boolean {
+  return (
+    m.from === "owner" &&
+    (!m.speaker ||
+      m.speaker.decision === "me" ||
+      (m.speaker.decision === "unknown" && m.speaker.reason === "no-print"))
+  );
+}
+
+/**
+ * Render-only passage boundaries: preserve every message, joining only own
+ * speech across changing avatar presentation. Other senders retain runStarts.
+ * A known person, thread or node change and a long pause always break speech.
+ */
+export function passageStarts(
+  messages: readonly Pick<ChatMessage, "from" | "source" | "speaker" | "sender" | "thread" | "at">[],
+  lines: readonly { seed: string; node?: string; at: number }[],
+  gapMs = RUN_GAP_MS,
+): boolean[] {
+  const starts = runStarts(lines, gapMs);
+  return messages.map((m, i) => {
+    const p = messages[i - 1];
+    if (!p) return true;
+    const own = isOwnVoice(m);
+    if (own !== isOwnVoice(p)) return true;
+    if (!own) return starts[i]!;
+    return (
+      m.thread !== p.thread ||
+      !!(m.sender?.id && p.sender?.id && m.sender.id !== p.sender.id) ||
+      lines[i]?.node !== lines[i - 1]?.node ||
+      Math.abs(m.at - p.at) > gapMs
+    );
+  });
+}
+
 /** Feature flag (lib/flags.ts): other-voice lines fold only while it is on. */
 export const FOLD_OTHERS_FLAG = "voice.fold-others";
 
