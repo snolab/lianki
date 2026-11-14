@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import { serviceWorkerToRegister } from "@/lib/sw-register";
 
 export function ServiceWorkerRegistration() {
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
-    }
+    const plan = serviceWorkerToRegister(navigator, window.isSecureContext);
+    if (plan) navigator.serviceWorker.register(plan.url, plan.options).catch(() => {});
   }, []);
   return null;
 }
