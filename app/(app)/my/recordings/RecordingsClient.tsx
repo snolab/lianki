@@ -531,7 +531,7 @@ export default function RecordingsClient() {
                 <p
                   role="button"
                   tabIndex={0}
-                  aria-pressed={current && !!player?.playing}
+                  aria-current={current || undefined}
                   onClick={() => {
                     // Selecting words to copy them is not a tap.
                     if (String(window.getSelection?.() ?? "")) return;
