@@ -178,3 +178,18 @@ export function sentenceState(
   if (p.speaking && p.speaking.id === id && p.speaking.idx === idx) return "speaking";
   return idx < (p.done[id] ?? 0) ? "spoken" : "unread";
 }
+
+/**
+ * Whether a line shows how far the reading got (its sentences wrapped,
+ * spoken/speaking/unread): an agent's line, and his own voice line read back
+ * in his cloned voice (polish-readback.ts `readbackOf`). The mirror claims
+ * both; before, only agent lines were drawn, so a read-back was heard with
+ * no highlight at all (owner, 2026-11-15: "朗读的高亮好像没了").
+ */
+export function showsReading(
+  m: { id: string; from: string },
+  readBack: (id: string) => string | undefined,
+): boolean {
+  if (m.from === "agent") return true;
+  return m.from === "owner" && readBack(m.id) !== undefined;
+}

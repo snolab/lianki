@@ -130,7 +130,7 @@ describe("DebugChat mounts", () => {
     const out = `${r.stdout.toString()}${r.stderr.toString()}`;
     if (r.exitCode !== 0) console.error(out);
     expect(r.exitCode).toBe(0);
-    expect(out).toMatch(/\b1 pass\b/);
+    expect(out).toMatch(/\b2 pass\b/);
     expect(out).toMatch(/\b0 fail\b/);
   }, 60_000);
 });

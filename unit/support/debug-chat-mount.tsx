@@ -3,7 +3,9 @@
  * console error): it renders its log; a spoken draft is the live line
  * (live-speech.ts), the input empty; a failed send offers a retry; a sent one
  * holds as "sending" until its echo and goes in the render the echo appears;
- * typing takes the words into the input; minimized, the line floats.
+ * typing takes the words into the input; minimized, the line floats; a line
+ * read aloud (an agent's, or his own read back in his clone) is highlighted
+ * sentence by sentence, a synchronized one only once it starts playing.
  *
  * Run by unit/chat-live-speech.test.tsx in its own `bun test` (from unit/support,
  * so the root bunfig is not read): mounting loads the whole widget (React glue no unit suite holds to
@@ -158,6 +160,115 @@ describe("DebugChat mounts", () => {
     } finally {
       await act(() => root.unmount());
       chatUi().setState({ draft: "", pureDictation: null, interim: null });
+      await p.close();
+    }
+  });
+});
+
+describe("DebugChat highlights the line read aloud", () => {
+  it("an agent line and his own read-back, each sentence as it plays (after a sync wait)", async () => {
+    const p = await page();
+    const g = globalThis as Record<string, unknown>;
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { createVoice } = await import("../../packages/debug-chat/src/voice");
+    // A fake session in the page's shared slot (voice.ts voice()): a fake clock, no sound.
+    let t = Date.now();
+    const timers = new Set<{ f: () => void; at: number }>();
+    const setTimer = (f: () => void, ms: number) => {
+      const x = { f, at: t + ms };
+      timers.add(x);
+      return x;
+    };
+    const advance = (ms: number) => {
+      const end = t + ms;
+      for (;;) {
+        const due = [...timers].filter((x) => x.at <= end).sort((a, b) => a.at - b.at)[0];
+        if (!due) break;
+        timers.delete(due);
+        t = Math.max(t, due.at);
+        due.f();
+      }
+      t = end;
+    };
+    type U = { onstart?: (() => void) | null; onend?: (() => void) | null };
+    const v = createVoice({
+      synth: () => ({
+        speak: (u) => {
+          setTimer(() => (u as U).onstart?.(), 5);
+          setTimer(() => (u as U).onend?.(), 1_000);
+        },
+        cancel() {},
+      }),
+      utter: (text, lang) =>
+        ({ text, lang, onend: null, onerror: null, onboundary: null, onstart: null }) as never,
+      enabled: () => true,
+      here: () => true,
+      now: () => t,
+      setTimer,
+      clearTimer: (x) => void timers.delete(x as never),
+    });
+    g.__lkVoice = v;
+    const { DebugChat } = await import("../../packages/debug-chat/src/DebugChat");
+    const { clearReadback } = await import("../../packages/debug-chat/src/polish-readback");
+    const host = p.win.document.createElement("div");
+    p.win.document.body.appendChild(host);
+    const root = createRoot(host as never);
+    const reads = (id: string) =>
+      [...host.querySelectorAll(`[data-msg="${id}"] [data-read]`)].map(
+        (e) => (e as unknown as HTMLElement).dataset.read,
+      );
+    try {
+      p.win.localStorage.setItem("lk:debug-chat-open", "1");
+      const base = [line("o1", "Earlier line."), line("g1", "A reply.", "agent")];
+      const props = { live: true, listeners: 1, onSend: () => true };
+      await act(() => root.render(<DebugChat {...props} messages={base} />));
+      // An agent line, stamped to start in step with his other device in 300 ms.
+      const a = line("g2", "Une phrase. Une autre.", "agent");
+      await act(async () => {
+        root.render(<DebugChat {...props} messages={[...base, a]} />);
+        v.reply(a.text, a, { live: true, startAt: t + 300 });
+      });
+      expect(reads("g2")).toEqual(["unread", "unread"]);
+      await act(async () => advance(299));
+      expect(reads("g2")).toEqual(["unread", "unread"]);
+      await act(async () => advance(6));
+      expect(reads("g2")).toEqual(["speaking", "unread"]);
+      await act(async () => advance(1_000));
+      expect(reads("g2")).toEqual(["spoken", "speaking"]);
+      await act(async () => advance(1_000));
+      expect(reads("g2")).toEqual(["spoken", "spoken"]);
+
+      // His own voice line, polished, read back in his clone (polish-readback.ts):
+      // it was heard with no highlight at all; now it reads like an agent line.
+      const o: ChatMessage = {
+        ...line("o2", "Deux phrases. Les voici."),
+        source: "stt",
+        raw: "deux phrases les voici",
+        edited: { at: 2, by: "main", count: 1 },
+      };
+      await act(() => root.render(<DebugChat {...props} messages={[...base, a, o]} />));
+      expect(reads("o2")).toEqual([]);
+      const { polishReadback } = await import("../../packages/debug-chat/src/polish-readback");
+      await act(async () => {
+        polishReadback(
+          { ...o, text: o.raw!, edited: undefined },
+          { id: o.id, thread: "owner", text: o.text, raw: o.raw!, edited: o.edited! },
+          {
+            on: () => true,
+            base: () => "https://clone.test",
+            reply: (text, meta) => v.reply(text, meta),
+          },
+        );
+      });
+      await act(async () => advance(5));
+      expect(reads("o2")).toEqual(["speaking", "unread"]);
+      await act(async () => advance(2_000));
+      expect(reads("o2")).toEqual(["spoken", "spoken"]);
+    } finally {
+      await act(() => root.unmount());
+      clearReadback();
+      delete g.__lkVoice;
       await p.close();
     }
   });

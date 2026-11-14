@@ -117,6 +117,7 @@ import {
   sentenceCount,
   sentenceRanges,
   sentenceState,
+  showsReading,
 } from "./read-progress";
 import { cloudOut, existingCtx, noSpeechVoices, outMode } from "./voice-out";
 import { UNLOCK_EVENTS, activationNow, unlockOnGesture } from "./speech-unlock";
@@ -4548,13 +4549,15 @@ export function DebugChat({
     if (voice().state().mic || activated) resumeNow();
   }, [resumeItems.length]);
   /**
-   * A line's text in full: markdown by its tier (rich-text.ts), and an agent
-   * line in its sentences, each coloured by how far the reading got.
+   * A line's text in full: markdown by its tier (rich-text.ts), and a line
+   * read aloud (an agent's, or his own read back: showsReading) in its
+   * sentences, each coloured by how far the reading got.
    */
   const readText = (m: ChatMessage, text: ReactNode) => {
     if (typeof text !== "string") return text;
     const rich = richOf(text, lineTier(m, { embedded }));
-    if (m.from !== "agent") return <RichBody rich={rich} onOpenPage={onOpenPage} />;
+    // An agent line, or his own read back in his cloned voice: in its sentences.
+    if (!showsReading(m, readbackOf)) return <RichBody rich={rich} onOpenPage={onOpenPage} />;
     return (
       <RichBody
         rich={rich}
