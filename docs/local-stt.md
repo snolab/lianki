@@ -1683,8 +1683,10 @@ everyone" above), not aiortc.
 
 ## On-demand Whisper recheck
 
-Each WebSocket keeps up to 60 seconds of its received 16 kHz PCM in a fixed
-float32 RAM ring (3.84 MB). No audio file or transcript log is created. The
+Each WebSocket keeps up to `--recheck-max-sec` (env `LIANKI_STT_RECHECK_MAX_SEC`,
+default 60, 5 to 600; config `stt.recheckMaxSec` is the page's side of the same
+bound) seconds of its received 16 kHz PCM in a fixed float32 RAM ring (3.84 MB
+at 60 s). No audio file or transcript log is created. The
 ring survives utterance end/cancel, evicts its oldest samples as frames arrive,
 and is cleared on disconnect. This is 60 seconds of received audio, excluding
 unstreamed gaps, rather than 60 seconds of wall time. VAD pre-pad is inserted
@@ -1694,12 +1696,26 @@ excluded; changing the filter or beginning enrolment clears the ring.
 
 Send `{"t":"recheck","rid":"request-id","engine":"mlx-whisper","seconds":15}`
 to re-read the latest received audio (default 15 seconds; greater than zero,
-at most 60). `rid` correlates the response; it does not select an utterance.
+at most the ring's seconds). `rid` correlates the response; it does not select an utterance.
 The response is `{"t":"recheck_result","rid":"request-id","engine":"mlx-whisper",
 "ok":true,"text":"…","lang":"zh","audioMs":15000}` or `ok:false` with an
-`error`. Recheck is unavailable while filtering or enrolling. One recheck per
-socket may run at a time; further requests receive `recheck busy`. Whisper
-uses a dedicated serial worker, leaving audio reception and ping responsive.
+`error`. Recheck is unavailable while filtering or enrolling.
+
+**A whole run** (flag `stt.whisper-recheck`; docs/dev-debug-widget.md, "Whisper
+re-listens to the whole run"): `{"t":"recheck","rid":R,"auto":true,"run":"<line id>",
+"fromAgoMs":F,"toAgoMs":T}` re-reads every utterance that began between F and T ms
+before now (±0.5 s, `RUN_SLACK_S`), from the first one's start to the last one's
+end, as one stretch: the ring holds only streamed utterances, so the silences
+between them are not in it. The server keeps each utterance's place in the ring
+(`Segment`) and its begin time on its own clock; the page sends durations, so the
+two clocks never need to agree. The answer adds `"auto":true,"run":"<line id>"`;
+`ok:false` with `no audio`, `still speaking` (one of them has not ended), `run
+incomplete` (its first or last utterance is not in this socket's ring, e.g. after a
+reconnect: half a run is never read as the whole), `run too
+long` (the ring no longer holds its start), `bad run` or `bad window`.
+
+One recheck per socket may run at a time, a whole run's or not; further requests
+receive `recheck busy`. Whisper uses a dedicated serial worker, leaving audio reception and ping responsive.
 The server prewarms it on startup, except with `--engine fake`; warmup failure
 leaves SenseVoice available and a later recheck retries loading Whisper.
 Tests: `unit/local-stt-recheck.test.ts` runs `scripts/local-stt/test_recheck.py`

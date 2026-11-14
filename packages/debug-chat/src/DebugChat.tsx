@@ -91,6 +91,12 @@ import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, setWakeWord, voic
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
 import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
+import {
+  type RecheckAmend,
+  type RecheckCall,
+  type RecheckConf,
+  createPassageRecheck,
+} from "./whisper-recheck";
 import { VoiceMark } from "./VoiceMark";
 import { VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
@@ -714,6 +720,11 @@ export function setTarget(path: string) {
  * re-mounts on every rebuild (and may mount after a setTarget call).
  */
 type TargetHolder = { __lkDebugChatTarget?: string };
+/** What the passage end uses of the mic session (`__lkMic`, mic-session.ts); recheck from v16. */
+type MicRecheckSlice = {
+  view?: () => { state: string };
+  recheck?: RecheckCall;
+};
 const keptTarget = () =>
   typeof window === "undefined"
     ? ROOT_NODE
@@ -814,8 +825,11 @@ export type DebugChatProps = {
       continues?: string;
     },
   ) => boolean;
-  /** The speech after a merged line went quiet: the passage is over (hub: polish-due). */
-  onPassageEnd?: () => void;
+  /**
+   * The speech after a merged line went quiet: the passage is over (hub: polish-due).
+   * `recheck`: his Mac's Whisper re-read the run, for the hub to amend the line with first.
+   */
+  onPassageEnd?: (recheck?: RecheckAmend) => void;
   /** The undo on a merged line: split it back into the lines it was made from. */
   onUnmerge?: (id: string) => void;
   /**
@@ -977,6 +991,11 @@ export type DebugChatProps = {
    */
   foldOthers?: boolean;
   /**
+   * Flag stt.whisper-recheck and its config (whisper-recheck.ts): at a run's passage
+   * end the local STT's Whisper re-reads the run whole first. None: the passage end at once.
+   */
+  whisperRecheck?: RecheckConf;
+  /**
    * The host's "Back closes an overlay" (Lianki: lib/back-to-close.ts
    * openBackToClose, docs/ui-state.md): opening full screen by a tap pushes
    * one history entry, Back runs `onBack`, and the returned close consumes the
@@ -1077,6 +1096,7 @@ export function DebugChat({
   presence,
   fullScreen: fullScreenFlag = false,
   foldOthers = true,
+  whisperRecheck,
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
@@ -3174,10 +3194,21 @@ export function DebugChat({
    * if that line is a merged one the hub is told (one polish for all of it).
    */
   const passage = useRef<ReturnType<typeof createJoiner> | null>(null);
+  const whisperRef = useRef(whisperRecheck);
+  whisperRef.current = whisperRecheck;
+  /** Level 2 first (whisper-recheck.ts): the passage end carries Whisper's reading of the run. */
+  const recheckEnd = useRef<ReturnType<typeof createPassageRecheck> | null>(null);
+  recheckEnd.current ??= createPassageRecheck({
+    conf: () => whisperRef.current,
+    recheck: () => (globalThis as { __lkMic?: MicRecheckSlice }).__lkMic?.recheck,
+    line: (id) => messagesNow.current.find((m) => m.id === id),
+    send: (recheck) => onPassageEndRef.current?.(recheck),
+  });
   const passageEnd = () => {
-    const mic = (globalThis as { __lkMic?: { view?: () => { state: string } } }).__lkMic?.view?.();
+    const mic = (globalThis as { __lkMic?: MicRecheckSlice }).__lkMic?.view?.();
     if (micPending.current || mic?.state === "capturing") return passage.current?.final();
-    if (messagesNow.current.findLast((m) => m.from === "owner")?.parts) onPassageEndRef.current?.();
+    const line = messagesNow.current.findLast((m) => m.from === "owner");
+    if (line?.parts) void recheckEnd.current?.(line);
   };
   const passageEndRef = useRef(passageEnd);
   passageEndRef.current = passageEnd;

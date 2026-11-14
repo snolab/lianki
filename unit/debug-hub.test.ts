@@ -4123,6 +4123,51 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     expect(lines()[0].text).toBe("我们用流式传输，流式传输比较快。");
   });
 
+  it("Whisper's reading of the whole run lands before the polish-due (whisper-recheck.ts)", async () => {
+    const { s, owner, c, two, lines } = await rig();
+    await two();
+    const whisper = "那你能不能给我显示一个按钮。";
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 2, text: whisper, engine: "mlx-whisper", lang: "zh" },
+    });
+    expect(lines()[0]).toMatchObject({
+      text: whisper,
+      raw: whisper,
+      settled: true,
+      edited: { by: "merge", count: 0 },
+      recheck: {
+        engine: "mlx-whisper",
+        lang: "zh",
+        heard: "那你能不能给，给我显示一个按钮。",
+        text: whisper,
+      },
+    });
+    expect(owner.last("edited")).toMatchObject({
+      id: "a",
+      text: whisper,
+      recheck: { text: whisper },
+    });
+    // Level 3 reads level 2: the lane's cue carries the Whisper text.
+    expect(c.last("polish-due")).toMatchObject({ id: "a", text: whisper, raw: whisper, parts: 2 });
+    // The undo still gives back the parts as heard.
+    await s.msg(owner, { type: "unmerge", id: "a" });
+    expect(lines().map((l) => l.text)).toEqual(["那你能不能给，", "给我显示一个按钮。"]);
+    expect(lines().some((l) => "recheck" in l)).toBe(false);
+  });
+
+  it("a stale Whisper reading is refused, and the passage still ends on level 1", async () => {
+    const { s, owner, c, two, lines } = await rig();
+    await two();
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 3, text: "旧的", engine: "mlx-whisper" },
+    });
+    expect(lines()[0]).toMatchObject({ text: "那你能不能给，给我显示一个按钮。", settled: true });
+    expect(lines()[0].recheck).toBeUndefined();
+    expect(c.last("polish-due")).toMatchObject({ raw: "那你能不能给，给我显示一个按钮。" });
+  });
+
   it("a polish of the first fragment is dropped by the merge; a later one lands (unrestricted)", async () => {
     const { s, owner, c, lines } = await rig();
     await s.msg(owner, say("a", "hello world,", 0, 1000));

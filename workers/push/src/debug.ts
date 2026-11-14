@@ -287,6 +287,7 @@ import {
   passageSpeakers,
   splitLine,
 } from "../../../packages/debug-chat/src/voice-merge";
+import { type RecheckAmend, applyRecheck } from "../../../packages/debug-chat/src/whisper-recheck";
 import {
   TWO_MIC_BY,
   TWO_MIC_WINDOW_MAX,
@@ -2054,7 +2055,7 @@ export class DebugHub {
    * and the listeners hear it is time for its one polish. With stt.polish off
    * (or unsure) they hear nothing, so no lane wakes for it: the raw line stands.
    */
-  private async passageEnd(page: PageAtt) {
+  private async passageEnd(page: PageAtt, recheck?: RecheckAmend) {
     if (page.thread !== OWNER_THREAD) return;
     const kept = await this.ctx.storage.list<ChatMessage>({
       prefix: threadKeys(OWNER_THREAD).prefix,
@@ -2063,10 +2064,42 @@ export class DebugHub {
     });
     const latest = [...kept].find(([, x]) => x.from === "owner");
     if (!latest) return;
-    const [key, line] = latest;
-    if (!line.parts || line.settled || line.label !== page.label) return;
-    if (line.collapsedInto || line.passage) return;
+    const [key, found] = latest;
+    if (!found.parts || found.settled || found.label !== page.label) return;
+    if (found.collapsedInto || found.passage) return;
+    // Whisper re-read the whole run on his Mac (whisper-recheck.ts): the line takes that
+    // reading as it settles, so the one polish below reads level 2, never level 1.
+    const next = recheck ? applyRecheck(found, recheck, this.now()) : found;
+    if (typeof next === "string")
+      console.log(JSON.stringify({ msg: "debug.recheck-refused", id: recheck?.id, reason: next }));
+    const line = typeof next === "string" ? found : next;
     await this.ctx.storage.put(key, { ...line, settled: true } satisfies ChatMessage);
+    if (line !== found) {
+      console.log(
+        JSON.stringify({
+          msg: "debug.recheck",
+          id: line.id,
+          parts: line.parts?.length,
+          engine: recheck?.engine,
+          len: line.text.length,
+          heard: found.text.length,
+        }),
+      );
+      this.tellEdit(
+        {
+          type: "edited",
+          id: line.id,
+          thread: OWNER_THREAD,
+          text: line.text,
+          raw: line.raw as string,
+          edited: line.edited as EditedEvent["edited"],
+          parts: line.parts,
+          recheck: line.recheck,
+        },
+        line.to,
+      );
+      await this.chatLogUpdate(OWNER_THREAD, line);
+    }
     if (!(await this.polishOn())) return;
     const out: PolishDueEvent = {
       type: "polish-due",
@@ -2074,7 +2107,7 @@ export class DebugHub {
       thread: OWNER_THREAD,
       text: line.text,
       raw: line.raw ?? line.text,
-      parts: line.parts.length,
+      parts: found.parts.length,
     };
     console.log(JSON.stringify({ msg: "debug.polish-due", id: line.id, parts: out.parts }));
     for (const { ws: l, a } of this.agents()) {
@@ -3909,7 +3942,7 @@ export class DebugHub {
         return spoken(undefined);
       });
     }
-    if (m.type === "passage-end") return this.passageEnd(page);
+    if (m.type === "passage-end") return this.passageEnd(page, m.recheck);
     if (m.type === "unmerge") return this.unmerge(ws, page, m.id);
     // A tap on an ask card: stamped here, never by the page or an agent.
     if (m.type === "answer") return this.answer(ws, page, m.askId, m.choices);

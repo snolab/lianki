@@ -126,6 +126,12 @@ export type ChatMessage = {
    */
   parts?: MergedPart[];
   /**
+   * A merged line re-heard whole by the Mac's Whisper when the run ended (RecheckMark;
+   * flag stt.whisper-recheck, whisper-recheck.ts): `text` and `raw` became its
+   * reading, and the streaming text is kept here. Stamped by the hub only.
+   */
+  recheck?: RecheckMark;
+  /**
    * A voice line's timestamps on the sender's clock (VoiceTiming; the page's
    * latency record, packages/debug-chat/src/latency.ts). Optional: older pages
    * send none, and an older hub drops it.
@@ -275,6 +281,13 @@ export type EchoMark = {
   of: string;
   sim: number;
 };
+/**
+ * The second of three readings of his speech (docs/dev-debug-widget.md, "Whisper
+ * re-listens to the whole run"): `heard` the streaming STT's text (level 1), `text`
+ * what Whisper read from the run's whole audio (level 2), its `engine` and `lang`.
+ * A polish after it (level 3) is the line's `text` once `edited.by` is not "merge".
+ */
+export type RecheckMark = { at: number; engine: string; lang?: string; heard: string; text: string };
 /** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
 export type MergedPart = {
   id: string;
@@ -329,6 +342,8 @@ export type EditedEvent = {
   parts?: MergedPart[];
   /** A merge: the utterance that just joined (the hub's answer to its `id`). */
   merged?: { id: string; text: string };
+  /** A merged line re-heard by Whisper at its run's end: `text` and `raw` are its reading. */
+  recheck?: RecheckMark;
   /** An undo: the lines this one goes back to, in order; the first keeps this id. */
   split?: ChatMessage[];
   /** A summary of a run of lines starting at `id` (its other lines are hidden). */
@@ -358,6 +373,7 @@ export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "typ
     raw: e.raw,
     edited: e.edited,
     ...(e.parts ? { parts: e.parts } : {}),
+    ...(e.recheck ? { recheck: e.recheck } : {}),
     ...(e.summary ? { summary: e.summary } : {}),
     ...(e.passage ? { passage: e.passage } : {}),
   };

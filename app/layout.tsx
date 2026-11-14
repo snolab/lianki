@@ -169,6 +169,16 @@ export default async function RootLayout({
       : undefined;
   // Fold utterances from other voices by default in the chat (avatar-rules.ts); off: expanded.
   const foldOthers = flagIn(flags, "voice.fold-others");
+  // His Mac's Whisper re-reads each continuous-speech run (whisper-recheck.ts): audience owner.
+  const whisperRecheck =
+    dev && flagIn(flags, "stt.whisper-recheck")
+      ? {
+          on: true,
+          minSec: await cfg("stt.recheckMinSec"),
+          maxSec: await cfg("stt.recheckMaxSec"),
+          timeoutMs: await cfg("stt.recheckTimeoutMs"),
+        }
+      : undefined;
   const cloudVoices =
     dev && flagIn(flags, "voice.cloud-voices")
       ? { on: true, map: await cfg("voice.langVoices") }
@@ -190,6 +200,7 @@ export default async function RootLayout({
     talkOver,
     polishReadback,
     foldOthers,
+    whisperRecheck,
   };
   const box = boxConfig();
   return (

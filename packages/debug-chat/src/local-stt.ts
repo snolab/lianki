@@ -294,7 +294,7 @@ export type LocalStt = {
    */
   begin(onPartial: (text: string) => void, opts?: BeginOpts): LocalUtt | null;
   /**
-   * A voiceprint request ({t:"enrol"|"voiceprint", op, …}): opens the socket
+   * A request ({t:"enrol"|"voiceprint", op, …}, or {t:"recheck"}): opens the socket
    * if needed, and resolves with the server's answer to it (matched by a
    * request id). Rejects when the Mac cannot be reached in time.
    */
@@ -527,7 +527,11 @@ export function createLocalStt(
   };
   /** The winner's messages: partials, finals and errors of the utterances. */
   const onMsg = (m: Msg) => {
-    if ((m.t === "enrol" || m.t === "voiceprint") && typeof m.rid === "string") {
+    // A request's answer: a voiceprint op, or a Whisper recheck (whisper-recheck.ts).
+    if (
+      (m.t === "enrol" || m.t === "voiceprint" || m.t === "recheck_result") &&
+      typeof m.rid === "string"
+    ) {
       const r = reqs.get(m.rid);
       if (!r) return;
       reqs.delete(m.rid);

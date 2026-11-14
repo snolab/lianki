@@ -203,6 +203,14 @@ export const FLAGS = {
     default: false,
     audience: "owner",
   },
+  // Owner, 2026-11-15 03:17 JST: "用 Whisper 整段重听 … 作为第二步 polish".
+  "stt.whisper-recheck": {
+    description:
+      "Whisper 整段重听：你断断续续说的几句合并成一条以后，说完（停顿下来）时，你 Mac 上的 Whisper（Large V3 Turbo）把这一整段的录音重新听一遍，这条消息换成它听出来的文字；之后的自动润色和助手润色都在这段文字上改。三级：流式识别（SenseVoice）→ Whisper 整段重听 → 润色。原来流式识别的文字留在消息详情里。录音只在 Mac 的内存里，不存文件、不上传；太短（/dev/config 的 stt.recheckMinSec）或太长（stt.recheckMaxSec）的一段不重听，Mac 没回答（stt.recheckTimeoutMs）就照旧。需要 stt.merge 开着、用的是 Mac 的本地识别。关闭 = 照旧：合并后直接润色流式识别的文字。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   // Owner, 2026-11-14 02:15 JST: the mic open on two devices doubled every sentence.
   "stt.two-mic-merge": {
     description:

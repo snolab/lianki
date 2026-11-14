@@ -371,6 +371,28 @@ describe("mic session: the local STT kept open while the mic is on", () => {
     await s.toggle(); // off
     expect(made[1].keeps).toEqual([true, false]);
   });
+
+  it("recheck goes to the socket in use, only while it is up (whisper-recheck.ts)", async () => {
+    let st: "idle" | "ready" = "idle";
+    const asked: unknown[] = [];
+    const f = fakes({
+      localStt: () => ({
+        begin: () => null,
+        keep: () => {},
+        close: () => {},
+        state: () => st,
+        subscribe: () => () => {},
+        request: async (m, o) => (asked.push([m, o]), { ok: true, text: "整段" }),
+      }),
+    });
+    const s = createMicSession(f.deps);
+    await expect(s.recheck({ t: "recheck" }, 5000)).rejects.toThrow("no local stt");
+    s.configure({ label: "", localStt: "wss://a.ts.net/x" });
+    await expect(s.recheck({ t: "recheck" }, 5000)).rejects.toThrow("no local stt");
+    st = "ready";
+    expect(await s.recheck({ t: "recheck" }, 5000)).toEqual({ ok: true, text: "整段" });
+    expect(asked).toEqual([[{ t: "recheck" }, { timeoutMs: 5000 }]]);
+  });
 });
 
 describe("mic session wiring", () => {

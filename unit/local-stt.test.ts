@@ -855,6 +855,24 @@ describe("edge paths: requests, hello, page events", () => {
     );
   });
 
+  it("request: a Whisper recheck is answered by its rid (whisper-recheck.ts)", async () => {
+    const h = setup();
+    const s = h.connect();
+    const p = h.stt.request({
+      t: "recheck",
+      auto: true,
+      run: "m1",
+      fromAgoMs: 9000,
+      toAgoMs: 2500,
+    });
+    await tick();
+    const sent = json(s.sent.at(-1)!) as { rid: string };
+    expect(sent).toMatchObject({ t: "recheck", auto: true, run: "m1" });
+    s.say({ t: "recheck_result", rid: "other", auto: true, run: "m1", ok: true, text: "x" });
+    s.say({ t: "recheck_result", rid: sent.rid, auto: true, run: "m1", ok: true, text: "整段" });
+    expect(await p).toMatchObject({ run: "m1", ok: true, text: "整段" });
+  });
+
   it("a hello that throws is swallowed, and an unparseable URL logs as '?'", () => {
     const w = fakeWs();
     const logs: Record<string, unknown>[] = [];
