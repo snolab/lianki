@@ -1,7 +1,8 @@
 # AGENTS.md — Lianki
 
 Spaced repetition app (FSRS algorithm) on Next.js 16 + Bun. Production:
-https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
+https://lianki.com (Cloudflare Worker, deploys from `prod`: `main` is
+released to `prod` once a day, docs/shipping.md "Daily release"). Repo: `snolab/lianki`.
 
 `CLAUDE.md` imports this file — edit this one.
 
@@ -49,6 +50,7 @@ bun run lint           # oxlint + oxfmt --check, whole repo (pre-push and CI run
 bun run qa:all         # full integration gate — merge queue (sharded) + Full QA after merges; time-sensitive suites wait for load-based admission
 bun scripts/gate/affected.ts plan  # what pre-push runs for this change, and why (LIANKI_GATE_FULL=1 push: everything)
 bun scripts/ship.ts    # land the current commit on main via PR + auto-merge
+bun scripts/release/daily-pr.ts --dry-run  # the daily main → prod release PR it would open (19:00 UTC, daily-release.yml)
 ```
 
 Agent lanes talk to the owner and the state tree through **one CLI**,
@@ -90,8 +92,9 @@ curl -sI https://lianki.com/en | grep -i x-vercel-id   # nothing = Worker
 
 So: production runtime errors are in `wrangler tail lianki`, the live data is
 **D1** (`lianki`), and MongoDB is a frozen rollback copy as of the cutover —
-do not write to it. The Worker deploys itself after CI passes on `main`
-(`.github/workflows/deploy-worker.yml`).
+do not write to it. The Worker deploys itself after CI passes on `prod`
+(`.github/workflows/deploy-worker.yml`); `main` reaches `prod` through the
+daily release PR, a hot fix through a PR straight to `prod`.
 
 **Vercel no longer builds.** `vercel.json`'s `git.deploymentEnabled.main` is
 `false` as of 2026-10-15, so a push to `main` triggers nothing there. The

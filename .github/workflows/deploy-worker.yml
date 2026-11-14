@@ -1,29 +1,28 @@
 name: Deploy Worker
 
-# Deploys the OpenNext build of main to the `lianki` Worker
-# (https://lianki.snomiao.workers.dev), so the CF cutover target tracks what
-# Vercel serves instead of drifting. Before this existed the Worker was only
-# deployed by hand and fell weeks behind (userscript 2.24.1 vs 2.24.5, no /lab),
-# which failed the differential gate for reasons that had nothing to do with
-# the Workers runtime. See docs/cf-d1-migration.md.
+# Deploys the OpenNext build of `prod` (the release branch: one `main` → `prod`
+# PR a day, docs/shipping.md "Daily release") to the `lianki` Worker, which
+# serves lianki.com. Before this existed the Worker was only deployed by hand
+# and fell weeks behind (docs/cf-d1-migration.md).
 #
-# Runs only after CI passes on main — never deploys a red commit. CI is the
-# fast lint + typecheck + unit job on a push to main; qa:all already ran in the
-# merge queue before the merge, and runs nightly (nightly-qa.yml), so the
-# deploy does not wait for it again.
+# Runs only after CI passes on prod — never deploys a red commit — or when
+# started by hand / by another workflow, always on the prod ref. A merge into
+# prod made with the workflow token (the daily release) starts no CI, so
+# daily-release.yml starts this workflow itself; a merge made by a person (a
+# hot fix PR to prod) starts CI on prod, and this follows it.
 #
 # Held while full QA is red (docs/shipping.md, "Full QA and the deploy hold"):
 # the `hold` job reads the latest finished run of nightly-qa.yml ("Full QA",
 # on main after merges) and deploys nothing while it failed, starting a new full
 # run if none is queued. A green full run that follows a red one lifts the
-# hold: Full QA dispatches this workflow with lifted_by (its run) and sha (the
-# commit it tested), checked here before that commit deploys. To deploy anyway,
-# run this workflow by hand with override_hold.
+# hold: Full QA dispatches this workflow on prod with lifted_by (its run) and
+# sha (the main commit it tested), checked here before prod deploys. To deploy
+# anyway, run this workflow by hand with override_hold.
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-    branches: [main]
+    branches: [prod]
   workflow_dispatch:
     inputs:
       override_hold:
@@ -35,7 +34,7 @@ on:
         type: string
         default: ""
       sha:
-        description: (Full QA sets this) the commit that run tested, to deploy
+        description: (Full QA sets this) the main commit that run tested
         type: string
         default: ""
 
@@ -70,7 +69,11 @@ jobs:
           LIFTED_BY: ${{ inputs.lifted_by }}
           SHA: ${{ inputs.sha }}
         run: |
-          if [ "$OVERRIDE" = "true" ]; then
+          # prod is the only branch that deploys (a dispatch can name any ref).
+          if [ "$GITHUB_REF" != "refs/heads/prod" ] && [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Deploy Worker deploys prod only; started on $GITHUB_REF_NAME (gh workflow run deploy-worker.yml --ref prod)" >> "$GITHUB_OUTPUT"
+          elif [ "$OVERRIDE" = "true" ]; then
             echo "::warning title=Full QA hold overridden::deploying by hand regardless of full QA"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           elif [ -n "$LIFTED_BY" ]; then
@@ -85,7 +88,7 @@ jobs:
         env:
           REASON: ${{ steps.hold.outputs.reason }}
         run: |
-          echo "::error title=Deploy held::$REASON. A green full QA run deploys main; to deploy now, run this workflow by hand with override_hold."
+          echo "::error title=Deploy held::$REASON. A green full QA run deploys prod; to deploy now, run this workflow by hand on prod with override_hold."
           exit 1
 
   deploy:
@@ -99,9 +102,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The commit CI just passed, not whatever main is by now.
-          # A lift deploys the commit its Full QA run tested.
-          ref: ${{ github.event.workflow_run.head_sha || inputs.sha || github.sha }}
+          # The prod commit CI just passed, not whatever prod is by now; on a
+          # dispatch (daily release, a lift, by hand) prod's tip.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       # wrangler requires Node >= 22.
       - uses: actions/setup-node@v4
         with:

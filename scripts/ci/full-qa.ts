@@ -4,7 +4,7 @@
  * deploy hold"). Logic in full-qa-lib.ts; this file talks to GitHub.
  *
  *   bun scripts/ci/full-qa.ts trigger           # a push to main: start Full QA now, later or not
- *   bun scripts/ci/full-qa.ts hold              # deploy-worker: may main deploy?
+ *   bun scripts/ci/full-qa.ts hold              # deploy-worker: may prod deploy? (held while Full QA on main is red)
  *   bun scripts/ci/full-qa.ts lifts <run id>    # Full QA, green: does this run lift a hold?
  *   bun scripts/ci/full-qa.ts lifted <run id> <sha>  # deploy-worker: is that lift genuine?
  *   bun scripts/ci/full-qa.ts revert <sha>      # Full QA went red at <sha>: open a revert PR

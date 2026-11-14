@@ -29,8 +29,8 @@ jobs:
     with:
       ext-smoke: true
 
-  # A green run after a red one lifts the deploy hold and deploys the commit it
-  # tested. deploy-worker cannot hear it through workflow_run: this run was
+  # A green run after a red one lifts the deploy hold and deploys prod (the
+  # release branch; this run tested main). deploy-worker cannot hear it through workflow_run: this run was
   # started with the workflow token (by the trigger or the hold), and such runs
   # start no workflow_run. A workflow_dispatch from here does start one.
   on-green:
@@ -54,9 +54,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow run deploy-worker.yml -R "$GITHUB_REPOSITORY" --ref main \
+          gh workflow run deploy-worker.yml -R "$GITHUB_REPOSITORY" --ref prod \
             -f lifted_by="$GITHUB_RUN_ID" -f sha="$GITHUB_SHA"
-          echo "::notice title=Deploy hold lifted::started Deploy Worker for ${GITHUB_SHA::7}"
+          echo "::notice title=Deploy hold lifted::green at ${GITHUB_SHA::7}; started Deploy Worker for prod"
 
   on-red:
     name: "On red: alert + revert PR"

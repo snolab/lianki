@@ -1,0 +1,54 @@
+name: Daily release
+
+# One release a day (docs/shipping.md, "Daily release"): `main` → `prod` as
+# one PR, "Release YYYY-MM-DD" (UTC date), opened or updated here and merged
+# once `Typecheck + unit` is green on its head. Merging it is the release:
+# Deploy Worker deploys `prod`. Logic: scripts/release/daily-pr.ts.
+#
+# When prod has changes main lacks (a hot fix PR'd straight to prod), this run
+# opens a back-merge PR prod → main instead, and the release follows on the
+# next run (or run this workflow by hand once the back-merge has merged).
+#
+# The hour is the cron line below; a cron cannot read a repo variable, so
+# changing the hour means editing that line.
+#
+# Auth: the workflow token, as the Full QA revert PR (scripts/ci/full-qa.ts).
+# Opening a PR with it needs the repo setting "Allow GitHub Actions to create
+# and approve pull requests". A merge made with it starts no push workflows,
+# so the script starts Deploy Worker itself after merging.
+on:
+  schedule:
+    - cron: "0 19 * * *" # 19:00 UTC, every day
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only print the PR it would open or update
+        type: boolean
+        default: false
+
+concurrency:
+  group: daily-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release PR
+    runs-on: ubuntu-latest
+    # Waits up to LIANKI_RELEASE_WAIT_MIN (45) minutes for the required check.
+    timeout-minutes: 60
+    permissions:
+      contents: write # merge into prod
+      pull-requests: write # open, edit, comment, enqueue
+      issues: write # the `release` label
+      actions: write # start Deploy Worker after the merge
+      checks: read # the required check on the PR's head
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # merge-tree and the commit list need history
+      - uses: ./.github/actions/setup-bun # pinned, cached, retried
+      - name: Open or update the release PR, merge it when green
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: bun scripts/release/daily-pr.ts
