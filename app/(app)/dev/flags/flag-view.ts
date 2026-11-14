@@ -25,6 +25,7 @@ const GROUP_LABELS: Record<string, string> = {
   stt: "语音",
   box: "开发盒",
   ai: "AI",
+  credits: "积分",
   [OTHER_GROUP]: "其他",
   [SHIPPED_GROUP]: "已全面打开",
 };

@@ -26,6 +26,7 @@ import { z } from "zod";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
 import { isProviderVoice, lineVoiceOf } from "@lianki/debug-chat/voices";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
+import { LANE_NAMES, type LaneNamesTable, ROUTE_LANES } from "@lianki/debug-chat/lane-route";
 
 export type ConfigAudience = "server" | "public";
 
@@ -240,6 +241,27 @@ export const CONFIG = {
     description:
       "两个麦克风同时开着（比如 Windows 和 Mac）时，同一句话会各发一条：另一台设备在这么多毫秒内发来几乎一样的语音消息，就当成同一句，只留一条（留声纹分数更高、或更完整的那条文字）。默认 4000 = 4 秒；0 = 不合并。开关在 /dev/flags 的 stt.two-mic-merge。",
   }),
+  "chat.laneNames": {
+    default: LANE_NAMES as LaneNamesTable,
+    schema: z
+      .record(
+        z.enum(ROUTE_LANES),
+        z
+          .object({
+            exact: z.array(z.string().min(1).max(50)).max(100),
+            heard: z.array(z.string().min(1).max(50)).max(200),
+          })
+          .strict(),
+      )
+      .refine(
+        (table) => ROUTE_LANES.every((lane) => lane in table),
+        "table must cover all route lanes (chat, codex, agy)",
+      ) as z.ZodType<LaneNamesTable>,
+    group: "chat",
+    audience: "public",
+    description:
+      "唤醒名与别名到车道（chat/codex/agy）的映射表（JSON 对象）。exact 为本名/明确呼叫名，heard 为语音识别可能听成的别名/谐音；项目/分支名（如 lianki, liagent, agent-yes, otoji）归在 chat 车道下。此表热生效并同步作为语音识别（STT）的热词与唤醒分发参考。",
+  },
   // Li's read-aloud pronunciation table (packages/debug-chat/src/lexicon.ts;
   // docs/li-sound-hub.md, "Pronunciation table"): handed to the chat by the root layout.
   "voice.lexicon": {
@@ -736,6 +758,31 @@ export const CONFIG = {
     money: true,
     description:
       "连续学习奖励的断签规则：每漏一天，连续天数扣多少天（不清零）。默认 2：连续 7 天后漏 1 天，再学时按第 6 天算（7−2+1）。0 = 漏天不扣；填很大（如 1000）= 漏一天就从头开始。",
+  }),
+  // Sign-up bonus (docs/payments.md, "Sign-up bonus"; owner 2026-11-15): a new
+  // account's one-time credits, for the first N new accounts per UTC day.
+  "credits.signupBonusUsd": {
+    default: 1 as number,
+    schema: z.number().min(0).max(10),
+    min: 0,
+    max: 10,
+    unit: "USD",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "注册礼：每个新注册的账号一次性送多少美元的积分（按 CREDITS_PER_USD 换成积分，四舍五入），只发给每个 UTC 日的前几个新账号（credits.signupBonusDaily）。功能上线前就有的老账号下次登录或打开钱包时也补发同样金额，一次，不占每日名额。0 = 不送。",
+  },
+  "credits.signupBonusDaily": int({
+    default: 10,
+    min: 0,
+    max: 10_000,
+    unit: "accounts/day",
+    group: "credits",
+    audience: "server",
+    money: true,
+    description:
+      "注册礼：每个 UTC 日（日本时间早上 9 点换日）最多前几个新注册的账号能拿到（每个账号只一次）。超出的人什么也拿不到，也不会看到报错。0 = 新账号都不送（老账号补发不受影响）。",
   }),
   "inbox.maxFileBytes": int({
     default: 20 * 1024 * 1024,

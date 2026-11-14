@@ -132,11 +132,19 @@ type Deps = {
  */
 export function createPendingFiles(deps: Deps) {
   let list: PendingFile[] = [];
+  let snapshot = Object.freeze([]) as unknown as PendingFile[];
   const aborts = new Map<string, AbortController>();
+  const originals = new Map<string, { file: File; scope?: string }>();
   const subs = new Set<() => void>();
   let n = 0;
   const set = (next: PendingFile[]) => {
     list = next;
+    // useSyncExternalStore needs one stable snapshot until the next change.
+    snapshot = Object.freeze(
+      next.map((item) =>
+        Object.freeze({ ...item, ...(item.ref ? { ref: Object.freeze({ ...item.ref }) } : {}) }),
+      ),
+    ) as unknown as PendingFile[];
     for (const f of subs) f();
   };
   const patch = (key: string, p: Partial<PendingFile>) =>
@@ -144,14 +152,51 @@ export function createPendingFiles(deps: Deps) {
   const drop = (x: PendingFile) => {
     aborts.get(x.key)?.abort();
     aborts.delete(x.key);
+    originals.delete(x.key);
     if (x.thumb) deps.objectUrl?.revoke(x.thumb);
+  };
+  const start = (key: string, file: File, host: ChatFiles) => {
+    if (!list.some((item) => item.key === key)) return;
+    const ac = new AbortController();
+    aborts.set(key, ac);
+    patch(key, { state: "uploading", sent: 0, ref: undefined });
+    if (aborts.get(key) !== ac) return;
+    const failed = () => {
+      if (aborts.get(key) !== ac) return;
+      aborts.delete(key);
+      patch(key, { state: "failed" });
+    };
+    try {
+      host
+        .upload(
+          file,
+          (sent) => {
+            if (aborts.get(key) !== ac) return;
+            const previous = list.find((item) => item.key === key)?.sent ?? 0;
+            patch(key, {
+              sent: Math.max(
+                previous,
+                Math.min(file.size, Math.max(0, Number.isFinite(sent) ? sent : 0)),
+              ),
+            });
+          },
+          ac.signal,
+        )
+        .then((ref) => {
+          if (aborts.get(key) !== ac) return;
+          aborts.delete(key);
+          patch(key, { state: "done", sent: file.size, ref: { ...ref } });
+        }, failed);
+    } catch {
+      failed();
+    }
   };
   return {
     subscribe(f: () => void) {
       subs.add(f);
       return () => void subs.delete(f);
     },
-    get: () => list,
+    get: () => snapshot,
     /** Start uploading these (past MAX_ATTACHMENTS in all, the rest are left out). */
     add(files: readonly File[]) {
       const host = deps.files();
@@ -173,27 +218,10 @@ export function createPendingFiles(deps: Deps) {
           ...(isInlineImage(type) && deps.objectUrl ? { thumb: deps.objectUrl.create(file) } : {}),
         };
         added.push(p);
+        originals.set(key, { file, scope: host.scope });
         if (big) continue;
-        const ac = new AbortController();
-        aborts.set(key, ac);
         // Started once the chips are listed, so a first progress report has a chip to land on.
-        starts.push(() => {
-          host
-          .upload(file, (sent) => patch(key, { sent }), ac.signal)
-          .then(
-            (ref) => {
-              if (aborts.get(key) !== ac) return;
-              patch(key, { state: "done", sent: file.size, ref });
-            },
-            () => {
-              if (aborts.get(key) !== ac) return;
-              patch(key, { state: "failed" });
-            },
-          )
-          .finally(() => {
-            if (aborts.get(key) === ac) aborts.delete(key);
-          });
-        });
+        starts.push(() => start(key, file, host));
       }
       if (added.length) set([...list, ...added]);
       for (const go of starts) go();
@@ -207,6 +235,18 @@ export function createPendingFiles(deps: Deps) {
     },
     /** Any file still on its way: the line waits (send is held). */
     busy: () => list.some((p) => p.state === "uploading"),
+    /** All files must be stored: a failure never silently sends just the successful subset. */
+    ready: () => list.length > 0 && list.every((p) => p.state === "done" && !!p.ref),
+    /** Retry only a failed upload, using its original File and the same host progress pipeline. */
+    retry(key: string): boolean {
+      const item = list.find((p) => p.key === key);
+      const original = originals.get(key);
+      const host = deps.files();
+      if (item?.state !== "failed" || !original || !host || host.scope !== original.scope)
+        return false;
+      start(key, original.file, host);
+      return true;
+    },
     /** The stored files' refs for the line being sent; every chip goes (failed ones too). */
     take(): AttachmentRef[] {
       const refs = list.flatMap((p) => (p.state === "done" && p.ref ? [p.ref] : []));

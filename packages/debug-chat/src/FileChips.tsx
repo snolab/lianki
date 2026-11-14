@@ -11,6 +11,7 @@ import {
   type InboxEntry,
   type InboxUsage,
   type PendingFiles,
+  type PendingFile,
   formatSize,
   isInlineImage,
 } from "./files";
@@ -85,6 +86,41 @@ export function PendingChips({ t, pending }: { t: ChatStrings; pending: PendingF
   );
 }
 
+/** One horizontal attachment strip inside the pending log bubble. Uploads stay in files.ts. */
+export function PendingFilesRow({ t, list, onRemove }: {
+  t: ChatStrings;
+  list: readonly PendingFile[];
+  onRemove: (key: string) => void;
+}) {
+  return (
+    <div data-testid="debug-chat-files" className="pointer-events-auto flex min-w-0 max-w-full flex-nowrap gap-1 overflow-x-auto pb-0.5">
+      {list.map((f) => {
+        const note = f.state === "failed" ? t.attachFailed : f.state === "too-big" ? t.attachTooBig : "";
+        const pct = f.size ? Math.min(100, Math.round(f.sent / f.size * 100)) : 0;
+        return (
+          <div key={f.key} data-testid="debug-chat-file" data-state={f.state}
+            className="relative w-24 shrink-0 overflow-hidden rounded-lg fs-10 leading-snug"
+            style={{ background: CHIP_BG }} title={f.name}>
+            {f.thumb ? <img src={f.thumb} alt={f.name} className="h-16 w-full object-cover" /> : (
+              <span aria-hidden className="flex h-16 items-center justify-center text-lg opacity-60">{ext(f.name)}</span>
+            )}
+            <button type="button" data-testid="debug-chat-file-remove" aria-label={t.attachFileRemove}
+              onPointerDown={keep} onClick={() => onRemove(f.key)}
+              className="tap-40 absolute end-0 top-0 rounded-full px-2 text-lg text-gray-700 dark:text-gray-100 lk-halo">×</button>
+            <span className="block truncate px-1 pt-0.5">{f.name}</span>
+            <span className="block truncate px-1 pb-0.5 opacity-70" style={note ? { color: BAD } : undefined}>
+              {note || (f.state === "uploading" ? `${pct}%` : formatSize(f.size))}
+            </span>
+            {f.state === "uploading" && <progress data-testid="debug-chat-file-progress"
+              aria-label={`${f.name}: ${t.attachUploading}`} max={100} value={pct}
+              className="block h-1 w-full" style={{ accentColor: BAR }} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** "PDF", "ZIP": a file chip's stand-in for a thumbnail. */
 function ext(name: string): string {
   const m = /\.([A-Za-z0-9]{1,5})$/.exec(name);
@@ -113,12 +149,12 @@ function Actions({ r, files }: { r: AttachmentRef; files?: ChatFiles }) {
 /** Under a sent line: its images (inline) and files (links), from the host's URL, and the host's actions. */
 export function SentFiles({ refs, files }: { refs: AttachmentRef[]; files?: ChatFiles }) {
   return (
-    <span data-testid="debug-chat-sent-files" className="pointer-events-auto my-0.5 flex flex-wrap items-center gap-1">
+    <span data-testid="debug-chat-sent-files" className="pointer-events-auto my-0.5 flex min-w-0 max-w-full flex-nowrap items-center gap-1 overflow-x-auto">
       {refs.map((r) => {
         const href = files?.url(r);
         if (href && isInlineImage(r.type))
           return (
-            <a key={r.id} href={href} target="_blank" rel="noopener noreferrer" title={r.name}>
+            <a key={r.id} className="shrink-0" href={href} target="_blank" rel="noopener noreferrer" title={r.name}>
               <img
                 src={href}
                 alt={r.name}
@@ -152,7 +188,7 @@ export function SentFiles({ refs, files }: { refs: AttachmentRef[]; files?: Chat
           </span>
         );
         return (
-          <span key={r.id} className="flex items-center gap-1">
+          <span key={r.id} className="flex shrink-0 items-center gap-1">
             {chip}
             <Actions r={r} files={files} />
           </span>

@@ -28,7 +28,9 @@ import {
   siteOf,
 } from "../lib/mini-apps/origin";
 import { secretUsable, signTicket, verifyTicket, type Ticket } from "../lib/mini-apps/ticket";
-import { prepareHtml } from "../lib/mini-apps/html";
+import { hostTheme, prepareHtml, withTheme } from "../lib/mini-apps/html";
+import { STYLE_PACK_CSS } from "../lib/mini-apps/style-pack";
+import { readFileSync } from "node:fs";
 import { CONFIG } from "../lib/config";
 import { siblingRequestRefused } from "../lib/security/same-site-guard";
 
@@ -369,5 +371,42 @@ describe("the file as the frame gets it", () => {
     expect(prepareHtml("<p>hi</p>", { sdkSrc: "/m/sdk.js" })).toBe(
       '<script src="/m/sdk.js"></script><p>hi</p>',
     );
+  });
+
+  test("srcdoc: the theme, the pack inlined, preset references made absolute", () => {
+    const out = prepareHtml(
+      `<!doctype html><link rel="stylesheet" href="/m/presets/lianki.css"><LINK HREF='/m/presets/lianki.css' rel=stylesheet><script src="/m/presets/chart.js"></script><img src=/m/presets/x.png>`,
+      {
+        sdkSrc: "https://lianki.com/m/sdk.js",
+        inlineCss: "a{} </style><b>",
+        assets: "https://lianki.com/",
+        theme: "auto",
+      },
+    );
+    expect(out).toBe(
+      '<!doctype html><html data-theme="auto"><meta name="color-scheme" content="light dark"><style data-lk-pack>a{} <\\/style><b></style><script src="https://lianki.com/m/sdk.js"></script><script src="https://lianki.com/m/presets/chart.js"></script><img src=https://lianki.com/m/presets/x.png>',
+    );
+    expect(withTheme(out, "dark")).toStartWith('<!doctype html><html data-theme="dark">');
+    expect(withTheme("<p>", "light")).toBe("<p>");
+    expect(hostTheme({ matches: true })).toBe("dark");
+    expect(hostTheme({ matches: false })).toBe("light");
+    expect(hostTheme(null)).toBe("light");
+  });
+
+  test("the inlined pack is the public file, oklch only", () => {
+    const file = readFileSync(new URL("../public/m/presets/lianki.css", import.meta.url), "utf8");
+    expect(STYLE_PACK_CSS).toBe(file);
+    expect(file).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
+    for (const sel of [
+      "button",
+      "input",
+      "select",
+      "textarea",
+      ".card",
+      ".pill",
+      ".segmented",
+      ':root[data-theme="dark"]',
+    ])
+      expect(file).toContain(sel);
   });
 });

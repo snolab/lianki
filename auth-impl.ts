@@ -34,6 +34,7 @@ import { apiTokenSignOutPlugin } from "./lib/api-token-signout";
 import { notifyTokensRevoked } from "./lib/push-chat-tokens";
 import type { D1Like } from "./lib/d1/types";
 import type { AuditDb } from "./lib/security/audit-log";
+import { signupBonusHooks, type SignupBonusDb } from "./lib/payments/signup-bonus-store";
 
 // The heavy half of auth: better-auth, its plugins, zod, kysely. Only ever
 // reached through the dynamic import in ./auth.ts, so it is one shared async
@@ -104,6 +105,10 @@ function passkeyPlugin() {
 
 /** Backend-agnostic better-auth options (everything except `database`). */
 function baseOptions() {
+  // Sign-up bonus (docs/payments.md, "Sign-up bonus"): never fails the sign-in.
+  const signupBonus = signupBonusHooks(() =>
+    dbBackend() === "d1" ? (getD1() as unknown as SignupBonusDb) : null,
+  );
   return {
     secret: process.env.AUTH_SECRET,
     baseURL:
@@ -170,6 +175,8 @@ function baseOptions() {
             await claimPregrants(getD1() as unknown as PregrantDb, session.userId).catch((e) =>
               console.error("[pregrant] claim:", e),
             );
+            // An account older than the sign-up bonus gets it once (the lazy backfill).
+            await signupBonus.sessionCreated(session);
           },
         },
         delete: {
@@ -197,6 +204,8 @@ function baseOptions() {
             await recordSignupLocale(getD1(), user.id, al).catch((e) =>
               console.error("[signup-locale] create:", e),
             );
+            // The sign-up bonus: one of the UTC day's first N new accounts.
+            await signupBonus.userCreated(user);
           },
         },
         update: {

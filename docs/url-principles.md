@@ -34,6 +34,10 @@ should be a 名詞 instead of 動詞". Read this before adding or renaming a rou
     permission check (`isAdmin`, `isDev`, …), never by a hidden or guessable
     URL.
 
+**Dev-server-only routes.** `/api/dev-whole-page/*` exists in every build
+but answers 404 outside the whole-page dev server (docs/dev-whole-page.md):
+`login`, and `pwa/<file>` — 开发站's manifest, service worker and badged icons.
+
 ## /my: the user's own data (owner's decision, 2026-11-10 02:08 JST)
 
 `/my` is the user's manager for **all** their Lianki data, one place for

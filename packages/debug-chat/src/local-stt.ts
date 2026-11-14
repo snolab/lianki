@@ -99,7 +99,9 @@ export function localSttFrom(raw: string | null | undefined, named = false): str
  * default for the owner"): his Mac on the tailnet first, then the tunnel.
  * Either failing is the usual race; both failing is the cloud, per utterance.
  */
-export const OWNER_DEFAULT_LOCAL_STT = "wss://taku.onca-tint.ts.net/lianki-stt wss://stt.lianki.com";
+export const OWNER_DEFAULT_LOCAL_STT =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT) ||
+  "wss://stt.lianki.com";
 
 /** A stored value that turns the local route off on this origin (the default included). */
 export const LOCAL_STT_OFF = "off";

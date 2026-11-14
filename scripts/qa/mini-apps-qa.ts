@@ -110,7 +110,10 @@ const server = Bun.serve({
     if (url.pathname === "/api/my/mini-apps/calc" && req.method === "POST")
       return act(req, "calc", deps);
     if (url.pathname === "/m/calc") {
-      const view = await hostView("calc", url.origin, deps);
+      // As on the preview: the host page's own origin is not the one the
+      // server names for /m/ files (localhost vs 127.0.0.1), so only the
+      // inlined style pack can style the app.
+      const view = await hostView("calc", url.origin.replace("127.0.0.1", "localhost"), deps);
       if (view?.frame.mode !== "srcdoc") return new Response("no view", { status: 500 });
       return new Response(hostPage(view), { headers: { "content-type": "text/html" } });
     }
@@ -135,7 +138,10 @@ function hostPage(view: Awaited<ReturnType<typeof hostView>> & object) {
 <script type="module">
   import { createBridge, fromFrame, parseRequest, replyTarget } from "/bridge.js";
   const frame = document.getElementById("f");
-  frame.srcdoc = ${JSON.stringify(f.srcdoc).replaceAll("</", "<\\/")};
+  const mq = matchMedia("(prefers-color-scheme: dark)");
+  const theme = () => (mq.matches ? "dark" : "light");
+  frame.srcdoc = ${JSON.stringify(f.srcdoc).replaceAll("</", "<\\/")}.replace('<html data-theme="auto">', '<html data-theme="' + theme() + '">');
+  mq.addEventListener("change", () => frame.contentWindow.postMessage({ lk: "mini/1", event: "theme", theme: theme() }, "*"));
   const ask = document.getElementById("ask");
   const post = async (body) => {
     const r = await fetch("/api/my/mini-apps/calc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -184,8 +190,33 @@ try {
   await app.locator("#keys button").first().waitFor();
   const frame = page.frames().find((x) => x !== page.mainFrame())!;
 
-  const bg = await frame.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  check("style pack applied (paper background)", /oklch|rgb\(2[34]\d/.test(bg), bg);
+  const colours = () =>
+    frame.evaluate(() => {
+      const eq = [...document.querySelectorAll("#keys button")].find((b) => b.textContent === "=")!;
+      return {
+        bg: getComputedStyle(document.body).backgroundColor,
+        primary: getComputedStyle(eq).backgroundColor,
+        theme: document.documentElement.dataset.theme,
+      };
+    });
+  const light = await colours();
+  check(
+    "style pack inlined: paper background, seal-red primary (light)",
+    light.bg === "oklch(0.945 0.02 82)" &&
+      light.primary === "oklch(0.53 0.207 22.3)" &&
+      light.theme === "light",
+    JSON.stringify(light),
+  );
+  await page.emulateMedia({ colorScheme: "dark" });
+  await frame.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+  await page.waitForTimeout(400); // the buttons' colour transition
+  const dark = await colours();
+  check(
+    "night mode follows the site: ink background, lifted seal red",
+    dark.bg === "oklch(0.18 0.01 65)" && dark.primary === "oklch(0.6 0.205 18.3)",
+    JSON.stringify(dark),
+  );
+  await page.emulateMedia({ colorScheme: "light" });
   check(
     "the SDK is there",
     await frame.evaluate(() => typeof (window as never as { lianki?: object }).lianki === "object"),

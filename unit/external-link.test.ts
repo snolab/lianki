@@ -75,7 +75,7 @@ describe("external links: the allowlist", () => {
     expect(allowedHostOf("en.wikipedia.org")).toBe("en.wikipedia.org");
     for (const h of [
       "localhost",
-      "taku.onca-tint.ts.net",
+      "owner.example.ts.net",
       "192.168.1.2",
       "printer.local",
       "https://example.com",

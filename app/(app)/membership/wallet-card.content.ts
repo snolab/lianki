@@ -527,6 +527,24 @@ const dictionary = {
       sw: "Bonasi ya mfululizo · siku ya {day}",
       mr: "स्ट्रीक बोनस · दिवस {day}",
     }),
+    signupBonus: t({
+      en: "Sign-up gift",
+      zh: "注册礼",
+      ja: "登録プレゼント",
+      ko: "가입 선물",
+      hi: "साइन-अप उपहार",
+      es: "Regalo de registro",
+      fr: "Cadeau d’inscription",
+      ar: "هدية التسجيل",
+      bn: "নিবন্ধন উপহার",
+      pt: "Presente de cadastro",
+      ru: "Подарок за регистрацию",
+      ur: "رجسٹریشن کا تحفہ",
+      id: "Hadiah pendaftaran",
+      de: "Willkommensgeschenk",
+      sw: "Zawadi ya kujisajili",
+      mr: "नोंदणी भेट",
+    }),
     reasons: {
       topup: t({
         en: "Top-up",
@@ -689,6 +707,7 @@ const context: KeyContext<typeof dictionary.content> = {
   streakToday: `${W} one small quiet line under the balance, shown on a day the user already learned (reviewed a card or graded a reading): how many days in a row this is and the credits that day earned. {day} is the ordinal count of consecutive days (1, 2, 15…), {credits} an amount like '+3 credits' is built from — keep the '+' before {credits} and both placeholders. Phrase so {day} = 1 reads naturally (an ordinal 'day 1', not a plural).`,
   streakAhead: `${W} the same small line on a day the user has not learned yet: an invitation saying that learning today makes it streak day {day} (the next count) and earns {credits}. Keep the '+' before {credits} and both placeholders; phrase so {day} = 1 reads naturally (a first day).`,
   streakDay: `${W} history row label for the credits granted for one day of a learning streak (the login-streak bonus, paid once per day of consecutive learning). 'Streak bonus', a middle dot, then 'day {day}' where {day} is how many days in a row it was (1, 2, 15…). Short noun phrase; keep {day}.`,
+  signupBonus: `${W} history row label for the one-time free credits an account received for signing up (a welcome gift from Lianki, given to the first few new accounts each day and once to accounts that existed before; not a purchase, not a code, not a referral). Short noun phrase, like a gift tag: 'Sign-up gift'.`,
   reasons: {
     topup: `${W} history row label: credits bought with money. One noun.`,
     pass: `${W} history row label: credits spent on a Pro pass (followed by ' · 1 month'). One noun.`,

@@ -397,6 +397,14 @@ export const FLAGS = {
     default: true,
     group: "credits",
   },
+  // No `audience`: every account; ON is the shipped state (owner 2026-11-15:
+  // "按默认生效上线"). Grants credits, never charges (docs/payments.md, "Sign-up bonus").
+  "credits.signup-bonus": {
+    description:
+      "注册礼：新注册的账号送 1 美元积分（金额在 /dev/config 的 credits.signupBonusUsd），但只有每个 UTC 日（日本时间早上 9 点换日）的前 10 个新账号能拿到（名额在 credits.signupBonusDaily）；超出的人什么也拿不到，也不报错。功能上线前就有的老账号，下次登录或打开钱包时补发一次，不占名额。每个账号只送一次，重试不会重复；钱包流水里显示为「注册礼」。关闭 = 新账号和老账号都不再送（已送的积分不动）。",
+    default: true,
+    group: "credits",
+  },
   // Owner, 2026-11-15 05:2x JST: an agent publishes a one-file app; each capability is a per-app grant.
   "mini-apps": {
     description:

@@ -50,7 +50,14 @@
  */
 import type { ChatMessage, EditedEvent } from "../../../packages/debug-chat/src/wire";
 import { type Ask, parseAsk, askText } from "../../../packages/debug-chat/src/ask";
-import { OWNER_THREAD, SAY_CUTS, chatText, isSayCut, isUserId } from "../../../lib/dev-eval";
+import {
+  OWNER_THREAD,
+  SAY_CUTS,
+  chatText,
+  isSayCut,
+  isUserId,
+  threadFor,
+} from "../../../lib/dev-eval";
 import { laneOf, parseLineVoice } from "../../../packages/debug-chat/src/voices";
 import { sanitizeAvatarSvg } from "../../../packages/debug-chat/src/svg-avatar";
 import {
@@ -239,9 +246,10 @@ export class TokenChat {
     }
   }
 
-  /** The token's own thread, or null when its user is blocked. */
+  /** The token's thread (the dispatch thread for a `dev` holder), or null when its user is blocked. */
   private async threadOf(v: Verified): Promise<string | null> {
-    if (v.owner) return OWNER_THREAD;
+    const thread = threadFor({ userId: v.userId, dispatch: v.owner });
+    if (thread === OWNER_THREAD) return thread;
     return (await this.host.blocked(v.userId)) ? null : v.userId;
   }
 

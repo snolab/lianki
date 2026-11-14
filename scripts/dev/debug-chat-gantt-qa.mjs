@@ -13,6 +13,7 @@
  *   - after scrolling sideways both ways, every row's name is inside the view
  *   - scrolling far left grows the axis (the view's time stays put); the DOM stays bounded
  *   - ctrl+wheel (a trackpad pinch) zooms about the pointer; the ticks re-label
+ *   - touch: a tap, then a drag down zooms in about the finger (Now stays under it)
  *   - the Now button brings Now back; Escape closes
  *
  * Categories first (owner, 2026-11-10 23:13; gantt-groups.ts), on open:
@@ -746,6 +747,31 @@ try {
           Math.abs(z2.nowX + 1 - (m0 - 30)) <= 1,
           `${tag}: a pinch whose midpoint drifts keeps Now under it (${z2.nowX + 1} vs ${m0 - 30})`,
         );
+        // Double-tap, then drag (owner, 2026-11-15; gantt-dbltap.ts): a tap on
+        // the Now line, a second finger down there at once, dragged down: the
+        // scale zooms in, Now stays under the finger, the rows never pan.
+        const n0 = Math.round(z2.nowX + 1);
+        const top0 = await scroller.evaluate((el) => el.scrollTop);
+        const one = (y) => [{ x: n0, y }];
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: one(420) });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await page.waitForTimeout(60);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: one(420) });
+        for (const y of [430, 450, 480, 520])
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: one(y) });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await page.waitForTimeout(250);
+        const z3 = await geo();
+        const top1 = await scroller.evaluate((el) => el.scrollTop);
+        check(
+          Math.abs(z3.nowX + 1 - n0) <= 2,
+          `${tag}: double-tap drag keeps Now under the finger (${z3.nowX + 1} vs ${n0})`,
+        );
+        check(
+          z3.ticks.join(" ") !== z2.ticks.join(" "),
+          `${tag}: double-tap drag zooms (the axis re-ticks)`,
+        );
+        check(top1 === top0, `${tag}: double-tap drag does not pan the rows (${top1} vs ${top0})`);
       }
 
       // Escape closes.

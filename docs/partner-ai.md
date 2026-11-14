@@ -80,6 +80,9 @@ row — never by anything in the messages or the model's output:
 - word lists (name, language, cards, due now, next due),
 - page cards (total, due now, next due),
 - study plan goals (`roadmap_goals`: topic and up to 8 steps),
+- preferred languages and levels (`user_prefs` `lang.preferred` by the verified user id,
+  one line such as `zh native; en C1; ja A2`, lib/lang-levels.ts `levelsLine`): replies
+  are pitched to the level of the language being learnt (owner, 2026-11-15),
 - the current page: path (from the page's label), and the line's attached
   selection (`context`) or voice scene (`scene`).
 

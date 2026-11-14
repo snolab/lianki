@@ -235,10 +235,10 @@ export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
     },
   },
   agy: {
-    // 杰咪 (owner, 2026-11-14: "你的名字名片还没改"); the lane id and `【agy】` stay.
+    // 杰咪 (owner, 2026-11-14: "你的名字名片还没改"); 咪宝 (owner, 2026-11-15); the lane id and `【agy】` stay.
     name: "杰咪",
     voice: "bright",
-    aliases: ["agy", "antigravity", "杰咪"],
+    aliases: ["agy", "antigravity", "杰咪", "咪宝"],
     // A four-point spark: bright, high.
     mark: {
       bg: "oklch(0.8 0.14 80)",
