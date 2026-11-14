@@ -187,6 +187,30 @@ function setup(opts: { polish?: Polish; flags?: Record<string, unknown>; noRpc?:
 }
 
 describe("automatic polish", () => {
+  it("idle wake has no tail timer or RPC; a completed polish leaves neither behind", async () => {
+    const s = setup();
+    const read = async () =>
+      (
+        await s.hub.fetch(new Request("https://lianki-push/internal/hub-diagnostics"))
+      ).json() as Promise<Record<string, unknown>>;
+    expect(s.timer.pending).toHaveLength(0);
+    expect(await read()).toMatchObject({
+      lastActiveAt: null,
+      pendingRpc: 0,
+      pendingPolishTimer: false,
+      polishBusy: false,
+    });
+    const p = await s.owner();
+    await s.msg(p, s.voice("idle-check", "检查空闲状态"));
+    await s.settle();
+    expect(s.timer.pending).toHaveLength(0);
+    expect(await read()).toMatchObject({
+      pendingRpc: 0,
+      pendingPolishTimer: false,
+      polishBusy: false,
+    });
+  });
+
   it("a final voice line is polished by the hub after the tail window, through the edit path", async () => {
     const s = setup();
     const p = await s.owner();

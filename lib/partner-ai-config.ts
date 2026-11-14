@@ -41,8 +41,6 @@ export const RESERVE_TOKENS_PER_CHAR = 2;
 export const MAX_PAGE_CHARS = 3000;
 /** The reply posted into the chat is cut to this many characters. */
 export const MAX_REPLY_CHARS = 2000;
-/** The model call gives up after this long (the page's spinner shows meanwhile). */
-export const MODEL_TIMEOUT_MS = 30_000;
 
 /**
  * A credit reservation still pending this long after it was taken belongs to

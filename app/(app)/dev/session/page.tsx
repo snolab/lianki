@@ -1,3 +1,4 @@
+import { HubDiagnostics } from "./HubDiagnostics";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
@@ -23,6 +24,7 @@ export default async function DevSessionPage() {
         {heading.text}
       </h1>
       <SessionDetailsCard viewerEmail={user?.email} session={session} />
+      <HubDiagnostics />
     </main>
   );
 }

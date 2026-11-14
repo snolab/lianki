@@ -1,3 +1,4 @@
+import { HUB_RPC_LIMITS } from "./hub-rpc-config";
 /**
  * The config registry: every user-meaningful number, text and icon whose live
  * value comes from the config store (lib/config-store.ts, D1 `config_values`)
@@ -635,6 +636,34 @@ export const CONFIG = {
     audience: "server",
     money: true,
     description: "账号注册多少小时后可以领第二档年龄积分（默认 168 小时 = 7 天）。",
+  }),
+  "chat.hubRpcTimeoutMs": int({
+    ...HUB_RPC_LIMITS["chat.hubRpcTimeoutMs"],
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description: "聊天 hub 普通外呼的总等待上限；超时按失败处理，避免悬挂请求阻止休眠。",
+  }),
+  "chat.polishRpcTimeoutMs": int({
+    ...HUB_RPC_LIMITS["chat.polishRpcTimeoutMs"],
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description: "聊天 hub 润色外呼的总等待上限，包含配置、额度与模型调用；超时保留原文。",
+  }),
+  "chat.partnerRpcTimeoutMs": int({
+    ...HUB_RPC_LIMITS["chat.partnerRpcTimeoutMs"],
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description: "聊天 hub 学习伙伴回复外呼的总等待上限；超时明确失败并结束忙碌状态。",
+  }),
+  "chat.partnerModelTimeoutMs": int({
+    ...HUB_RPC_LIMITS["chat.partnerModelTimeoutMs"],
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description: "学习伙伴模型 HTTP 请求超时；总 hub 等待上限仍由 partnerRpcTimeoutMs 控制。",
   }),
 } as const satisfies Record<string, ConfigDef>;
 

@@ -1,3 +1,4 @@
+import { sessionsHttp } from "./lib/sessions-http";
 /**
  * The main Worker's entry (wrangler.jsonc `main`): the OpenNext app exactly
  * as `opennextjs-cloudflare build` makes it — every named export (its
@@ -163,6 +164,17 @@ const allowChatLog = rateLimiter(600, 60_000);
 const allowSttBook = rateLimiter(1200, 60_000);
 
 export class DebugSessions extends WorkerEntrypoint<Env> {
+  /** Private binding transport: a cancellable HTTP lifetime for hub calls. */
+  fetch(request: Request): Promise<Response> {
+    return sessionsHttp(request, async (method, args, signal) => {
+      if (method === "polishLines") return this.polishLines(args[0], signal);
+      if (method === "partnerReply") return this.partnerReply(args[0], signal);
+      if (method === "prepareChatTurn") return this.prepareChatTurn(args[0], signal);
+      const call = this[method] as (...args: unknown[]) => Promise<unknown>;
+      return call.apply(this, args);
+    });
+  }
+
   /**
    * "live" only for the owner's unexpired session with this tag; "gone" for
    * anything else; "busy" over the rate limit (the hub renews nothing then,
@@ -229,14 +241,14 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
    * user's own data, refuses the owner, and answers the model's text with
    * token counts. "busy" over the rate limit.
    */
-  async partnerReply(req: unknown): Promise<PartnerResult> {
+  async partnerReply(req: unknown, signal?: AbortSignal): Promise<PartnerResult> {
     if (!allowPartner()) return { ok: false, error: "busy" };
-    return partnerReply(this.env as PartnerEnv, req);
+    return partnerReply(this.env as PartnerEnv, req, { signal });
   }
 
-  async prepareChatTurn(req: unknown) {
+  async prepareChatTurn(req: unknown, signal?: AbortSignal) {
     if (!allowPartner()) return { ok: false, error: "busy" };
-    return prepareChatTurn(this.env as PartnerEnv, req);
+    return prepareChatTurn(this.env as PartnerEnv, req, { signal });
   }
 
   /**
@@ -244,9 +256,9 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
    * docs/dev-debug-widget.md, "Automatic polish"): the hub sends his user id,
    * the raw lines and a little context; paid from his credits like any AI call.
    */
-  async polishLines(req: unknown) {
+  async polishLines(req: unknown, signal?: AbortSignal) {
     if (!allowPartner()) return { ok: false, error: "busy" };
-    return polishLines(this.env as PartnerEnv, req);
+    return polishLines(this.env as PartnerEnv, req, { signal });
   }
 
   /**
