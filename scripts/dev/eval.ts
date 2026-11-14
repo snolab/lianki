@@ -66,6 +66,11 @@
  *       waits for "Linky"; ignored = the last line was not for the agent.
  *       Each owner line carries "wake" (the mode it was sent in) while the mic is on.
  *
+ *   bun scripts/dev/eval.ts ui fullscreen on|off [--to <thread|email>]
+ *       Full screen on those pages, shown as it happens: the chat opens its
+ *       menu, the Full screen row pulses, then it flips (ui-cue.ts).
+ *       Answers {"type":"ui-done","thread","op","on","delivered","at"}.
+ *
  *   bun scripts/dev/eval.ts clips
  *   bun scripts/dev/eval.ts clips on --device <text> [--minutes N] [--sink <url>]
  *   bun scripts/dev/eval.ts clips off [--device <text>]
@@ -787,6 +792,11 @@ function wake(mode: string, to?: string): Promise<Msg> {
   return sendOnce({ type: "wake", mode, ...(to ? { to } : {}) }, "woke");
 }
 
+/** A view change on the owner's (or `to` a friend's) pages, shown as it happens (ui-cue.ts). */
+function ui(op: string, on: boolean, to?: string): Promise<Msg> {
+  return sendOnce({ type: "ui", op, on, ...(to ? { to } : {}) }, "ui-done");
+}
+
 /** One controller message with the saved grant; resolves on the hub's `done` answer. */
 function sendOnce(msg: Record<string, unknown>, done: string): Promise<Msg> {
   const grant = chatGrant();
@@ -1335,6 +1345,15 @@ async function main() {
     return;
   }
   if (args[0] === "inbox") return inbox(args[1] ?? "list", args[2]);
+  if (args[0] === "ui") {
+    const state = args[2];
+    if (args[1] !== "fullscreen" || (state !== "on" && state !== "off")) {
+      console.error("usage: bun scripts/dev/eval.ts ui fullscreen on|off [--to <thread|email>]");
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await ui("fullscreen", state === "on", to)));
+    return;
+  }
   if (args[0] === "wake") {
     const mode = args[1];
     if (mode !== "active" && mode !== "passive" && mode !== "ignored") {

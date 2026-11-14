@@ -220,6 +220,36 @@ describe("lianki-dev: --as labelling", () => {
     expect(evalArgv("serve", [], g())).toEqual(["serve", "--no-pair"]);
     expect(evalArgv("doctor", [], g())).toBeInstanceOf(Error);
   });
+  it("ui fullscreen: --on|--off (and --to) map to eval.ts ui; anything else is usage", () => {
+    expect(SUBCOMMANDS).toContain("ui");
+    expect(parseArgs(["--as", "codex", "ui", "fullscreen", "--on"], {})).toEqual({
+      global: { json: false, pair: false, help: false, lane: "codex" },
+      sub: "ui",
+      rest: ["fullscreen", "--on"],
+    });
+    expect(evalArgv("ui", ["fullscreen", "--on"], g())).toEqual([
+      "ui",
+      "fullscreen",
+      "on",
+      "--no-pair",
+    ]);
+    expect(evalArgv("ui", ["fullscreen", "--off", "--to", "f@x.com"], g({ pair: true }))).toEqual([
+      "ui",
+      "fullscreen",
+      "off",
+      "--to",
+      "f@x.com",
+    ]);
+    const err = (rest: string[]) => (evalArgv("ui", rest, g()) as Error).message;
+    expect(err([])).toBe("ui needs a view: fullscreen");
+    expect(err(["zoom", "--on"])).toBe("ui: unknown view zoom");
+    expect(err(["fullscreen"])).toBe("ui fullscreen needs --on or --off");
+    expect(err(["fullscreen", "--on", "--off"])).toBe("ui fullscreen takes one of --on or --off");
+    expect(err(["fullscreen", "--on", "--to"])).toBe("--to needs a value");
+    expect(err(["fullscreen", "on"])).toBe("ui fullscreen: unknown argument on");
+    expect(USAGE.ui).toContain("ui fullscreen --on|--off");
+    expect(USAGE.main).toContain("ui fullscreen --on|--off");
+  });
   it("progress: --agent defaults to the lane, on a report only", () => {
     expect(progressArgv(["--task", "t", "--status", "doing"], g({ lane: "codex" }))).toEqual([
       "--task",

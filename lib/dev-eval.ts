@@ -228,6 +228,12 @@ export type SayCut = (typeof SAY_CUTS)[number];
 export const isSayCut = (v: unknown): v is SayCut =>
   typeof v === "string" && (SAY_CUTS as readonly string[]).includes(v);
 
+/** The view changes a controller may ask of the chat (`{type: "ui"}`). */
+export const UI_OPS = ["fullscreen"] as const;
+export type UiOp = (typeof UI_OPS)[number];
+export const isUiOp = (v: unknown): v is UiOp =>
+  typeof v === "string" && (UI_OPS as readonly string[]).includes(v);
+
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
   | { type: "eval"; code: string; target?: string }
@@ -270,6 +276,13 @@ export type ControllerMessage =
    * Relayed like a heartbeat: not stored, not shown.
    */
   | { type: "wake"; mode: "active" | "passive" | "ignored"; to?: string }
+  /**
+   * A view change on that thread's pages, shown to the owner as it happens
+   * (`lianki-dev ui fullscreen --on|--off`): the chat opens its menu, the
+   * item pulses, then the switch flips (packages/debug-chat ui-cue.ts).
+   * Relayed like a wake: not stored, not shown.
+   */
+  | { type: "ui"; op: UiOp; on: boolean; to?: string }
   /**
    * Polish the owner's latest line, when it came from the widget's mic
    * (`source: "stt"`): docs/dev-debug-widget.md, "Agent edits of voice messages".
@@ -590,6 +603,12 @@ export function parseControllerMessage(
     const to = str(m.to, 320)?.trim();
     return { ok: true, value: { type: "wake", mode, ...(to ? { to } : {}) } };
   }
+  if (m?.type === "ui") {
+    if (!isUiOp(m.op)) return { ok: false, error: `ui needs op ${UI_OPS.join(" | ")}` };
+    if (typeof m.on !== "boolean") return { ok: false, error: "ui needs on: true or false" };
+    const to = str(m.to, 320)?.trim();
+    return { ok: true, value: { type: "ui", op: m.op, on: m.on, ...(to ? { to } : {}) } };
+  }
   if (m?.type === "busy") {
     const to = str(m.to, 320)?.trim();
     const label = cleanLabel(str(m.label, 80));
@@ -602,7 +621,7 @@ export function parseControllerMessage(
     return {
       ok: false,
       error:
-        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"}, {"type":"summary","ids"|"last","text"}, {"type":"merge","ids","text"}, {"type":"unmerge","id"}, {"type":"withdraw","id"} or {"type":"grant","from","to"}',
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"ui","op","on"}, {"type":"edit","id","text"}, {"type":"summary","ids"|"last","text"}, {"type":"merge","ids","text"}, {"type":"unmerge","id"}, {"type":"withdraw","id"} or {"type":"grant","from","to"}',
     };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };

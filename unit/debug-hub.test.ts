@@ -1458,6 +1458,48 @@ describe("DebugHub heartbeat (agent is working)", () => {
   });
 });
 
+describe("DebugHub ui (a view change shown on the owner's pages)", () => {
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return c;
+  };
+  const uis = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "ui");
+
+  it("goes to the owner's pages, unstored, and is acknowledged", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    const keys = s.storage.store.size;
+    await s.msg(c, { type: "ui", op: "fullscreen", on: true });
+    expect(uis(owner)).toEqual([{ type: "ui", op: "fullscreen", on: true, at: 1_000_000 }]);
+    expect(uis(f)).toEqual([]);
+    expect(c.last("ui-done")).toEqual({
+      type: "ui-done",
+      thread: "owner",
+      op: "fullscreen",
+      on: true,
+      delivered: 1,
+      at: 1_000_000,
+    });
+    expect(s.storage.store.size).toBe(keys);
+  });
+
+  it("refuses an unknown op, a missing on, and an unknown thread", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, { type: "ui", op: "zoom", on: true });
+    expect(c.last("error")?.error).toBe("ui needs op fullscreen");
+    await s.msg(c, { type: "ui", op: "fullscreen" });
+    expect(c.last("error")?.error).toBe("ui needs on: true or false");
+    await s.msg(c, { type: "ui", op: "fullscreen", on: false, to: "nobody@x.com" });
+    expect(c.last("error")?.error).toBe("no chat thread for nobody@x.com");
+    expect(uis(owner)).toEqual([]);
+  });
+});
+
 describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
   const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
     const c = s.controller("agent");

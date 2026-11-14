@@ -53,6 +53,7 @@ export const SUBCOMMANDS = [
   "lane-listen",
   "lanes",
   "serve",
+  "ui",
   "progress",
   "whoami",
   "doctor",
@@ -79,6 +80,7 @@ export const USAGE: Record<Sub | "main", string> = {
   lane-listen  a lane's own listener: the owner lines addressed to it, handed to its agent
   lanes     the lanes manager: every agent on Lianki and its repos joins the chat (全员入群)
   serve     hold an eval session (eval.ts serve)
+  ui        change his chat's view, shown as it happens: ui fullscreen --on|--off
   progress  report to the state tree (progress.ts)
   whoami    lane, checkout, hub, which grant and token are present
   doctor    what is missing here, one line each
@@ -187,6 +189,15 @@ ${EXITS}`,
   serve: `usage: lianki-dev serve [--label "…"]
   Hold an eval session (eval.ts serve) with the saved eval grant. Never pairs
   unless --pair (a human, no --as).
+${GLOBAL}
+${EXITS}`,
+  ui: `usage: lianki-dev ui fullscreen --on|--off [--to <thread|email>]
+  Full screen on his open chat pages (eval.ts ui), shown to him as it
+  happens: the chat opens its menu, the Full screen row pulses for 0.6 s in
+  the seal red, then the switch flips and the menu closes. The choice is the
+  same one his own tap makes (kept on that device). Pages that do not offer
+  full screen (another site's chat) ignore it.
+  stdout: the hub's {"type":"ui-done",…,"delivered"} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
   progress: `usage: lianki-dev progress --task "<text>" --status <status> [--path /a/b] [--pct 40] [--eta 15m] [--done] [--pr N] …
@@ -369,9 +380,32 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
     }
     return ["voices", ...rest, ...pair];
   }
+  if (sub === "ui") return uiArgv(rest, pair);
   if (sub === "listen") return ["chat", ...rest, ...pair];
   if (sub === "serve") return ["serve", ...rest, ...pair];
   return new Error(`${sub} does not run eval.ts`);
+}
+
+/** ui: `fullscreen --on|--off [--to <thread>]` → eval.ts `ui fullscreen on|off`. */
+function uiArgv(rest: string[], pair: string[]): string[] | Error {
+  const [op, ...flags] = rest;
+  if (op !== "fullscreen")
+    return new Error(op ? `ui: unknown view ${op}` : "ui needs a view: fullscreen");
+  let on: boolean | undefined;
+  const to: string[] = [];
+  for (let i = 0; i < flags.length; i++) {
+    const a = flags[i]!;
+    if (a === "--on" || a === "--off") {
+      if (on !== undefined) return new Error("ui fullscreen takes one of --on or --off");
+      on = a === "--on";
+    } else if (a === "--to") {
+      const v = flags[++i];
+      if (v === undefined) return new Error("--to needs a value");
+      to.push(a, v);
+    } else return new Error(`ui fullscreen: unknown argument ${a}`);
+  }
+  if (on === undefined) return new Error("ui fullscreen needs --on or --off");
+  return ["ui", "fullscreen", on ? "on" : "off", ...to, ...pair];
 }
 
 /**
