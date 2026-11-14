@@ -240,20 +240,23 @@ export async function listMails(
   return { rows: rows.results, total: Number(total?.n ?? 0) };
 }
 
-/** JST: the owner's day (docs: times in JST). */
-const JST_S = 9 * 3600;
-
-/** Mails per JST day and status under the same filter, newest day first, at most `days` days. */
+/**
+ * Mails per day and status under the same filter, newest day first, at most
+ * `days` days. Days are in the viewer's zone, `offMin` minutes east of UTC
+ * (the page sends its device zone's; 0 = UTC).
+ */
 export async function perDay(
   db: MailLogDb,
   f: MailFilter,
   days = 14,
+  offMin = 0,
 ): Promise<{ day: string; status: string; n: number }[]> {
   const w = whereOf(f);
   const n = w.args.length;
+  const offS = Math.trunc(offMin) * 60;
   const { results } = await db
     .prepare(
-      `SELECT date(created_at / 1000 + ${JST_S}, 'unixepoch') AS day, status, COUNT(*) AS n
+      `SELECT date(created_at / 1000 + ${offS}, 'unixepoch') AS day, status, COUNT(*) AS n
          FROM mail_log ${w.sql}
         GROUP BY day, status
         ORDER BY day DESC
