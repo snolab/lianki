@@ -162,11 +162,17 @@ class Model:
 #: a 5-fold enrolment on his conversational iPhone clips, not from sentences
 #: read aloud on each device. Re-check them on the scores logged after he
 #: enrols (the server logs the score and decision of every final, never text).
+#: The "me" lines, live-adjustable: LIANKI_STT_ME_ACCEPT (3 s and more) and
+#: LIANKI_STT_ME_ACCEPT_SHORT (under 3 s). The code keeps #394's measured
+#: defaults; the owner raised the live value to 0.40 / 0.38 on 2026-11-14 after
+#: another voice in the room scored 0.33-0.47 and was taken for him.
+ME_ACCEPT = _env_num("ME_ACCEPT", 0.30)
+ME_ACCEPT_SHORT = _env_num("ME_ACCEPT_SHORT", 0.28)
 MODELS: dict[str, Model] = {
     "campp": Model(
         "campp",
         os.path.join("speaker", "campplus_zh_en.onnx"),
-        (Band(MIN_SPEECH_S, 0.28, 0.18), Band(3.0, 0.30, 0.20)),
+        (Band(MIN_SPEECH_S, ME_ACCEPT_SHORT, 0.18), Band(3.0, ME_ACCEPT, 0.20)),
     ),
     # ERes2NetV2 is stronger in noise on the iPhone but needs a per-device
     # enrolment (#394 rejected 85-98 % of his Android clips against an iPhone

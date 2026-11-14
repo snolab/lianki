@@ -3,6 +3,7 @@
 // Plain ESM for Node >= 18 and Bun: no build step, no TypeScript at run time.
 // Everything is in cli.mjs (commands) and auth.mjs (token storage, browser login).
 
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { hostname } from "node:os";
 import { createInterface } from "node:readline";
@@ -39,6 +40,7 @@ process.exitCode = await run(process.argv.slice(2), {
   openUrl,
   hostname: hostname().replace(/\.local$/, ""),
   readStdin,
+  readFile: (path) => readFile(path, "utf8"),
   ask,
   stdinIsTTY: Boolean(process.stdin.isTTY),
   columns: process.stdout.columns,
