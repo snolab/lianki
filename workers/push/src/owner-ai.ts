@@ -101,16 +101,14 @@ export class OwnerAi<P> {
     // with the flag on (partner.ai-reply is not needed: no model is called).
     if (isRollCall(l.text) && !l.to && l.speaker?.decision !== "other") {
       if ((await this.state()).on && seq === this.seq)
-        await this.d
-          .present(l, page)
-          .catch((e) =>
-            console.log(
-              JSON.stringify({
-                msg: "partner.owner-rollcall-failed",
-                error: String(e).slice(0, 200),
-              }),
-            ),
-          );
+        await this.d.present(l, page).catch((e) =>
+          console.log(
+            JSON.stringify({
+              msg: "partner.owner-rollcall-failed",
+              error: String(e).slice(0, 200),
+            }),
+          ),
+        );
       return;
     }
     if (!ownerLineWanted(l)) return;
