@@ -40,6 +40,7 @@ export const LANE_NAMES: Readonly<LaneNamesTable> = {
     // coco: the owner's name for codex (2026-11-14), written coco, never 可可.
     exact: ["codex", "coco"],
     heard: [
+      "Q扣",
       "可可",
       "cocoa",
       "koko",
@@ -68,6 +69,7 @@ export const LANE_NAMES: Readonly<LaneNamesTable> = {
       "杰米",
       "洁咪",
       "解密",
+      "杰明",
       "ajy",
       "aji",
       "反重力",
