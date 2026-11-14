@@ -37,7 +37,7 @@ const RECHROME = {
   name: "小镀",
   aliases: ["Redu"],
   heard: ["瑞克罗姆"],
-  voice: "calm",
+  voice: "calm" as const,
   color: "oklch(0.6 0.12 200)",
 };
 

@@ -51,6 +51,7 @@ export const SUBCOMMANDS = [
   "inbox",
   "listen",
   "lane-listen",
+  "lanes",
   "serve",
   "progress",
   "whoami",
@@ -76,6 +77,7 @@ export const USAGE: Record<Sub | "main", string> = {
   inbox     the chat inbox: list | get <id> [--out <dir>] | done <id>
   listen    listen to the chat (eval.ts chat), one JSON line per event
   lane-listen  a lane's own listener: the owner lines addressed to it, handed to its agent
+  lanes     the lanes manager: every agent on Lianki and its repos joins the chat (全员入群)
   serve     hold an eval session (eval.ts serve)
   progress  report to the state tree (progress.ts)
   whoami    lane, checkout, hub, which grant and token are present
@@ -167,6 +169,17 @@ ${EXITS}`,
   with \`ay send\` (from --cwd: \`ay send .\`). The lane answers with
   \`lianki-dev say --as <lane>\`. --tests: also "[lane-test] …" agent lines.
   Token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (exit 2 without).
+${GLOBAL}
+${EXITS}`,
+  lanes: `usage: lianki-dev lanes [--once] [--dry-run]
+  The lanes manager (scripts/dev/lanes-manager.ts, docs/lane-listen.md "Every
+  agent joins"): each agent of \`ay ls --local\` under a repo in lanes.repos
+  (LIANKI_LANES_REPOS) joins the owner's chat as its own lane (its registered
+  name, lanes.agents / LIANKI_LANES_AGENTS, else <repo>-<cli>-<pid>). Resident
+  lanes get a lane-listen --all; the others are readers, woken by name. Each
+  new lane greets once with its own token (~/.config/lianki/lanes/<lane>.token);
+  the names still waiting for one are said once in the chat (never minted here).
+  --once: one look, then exit. --dry-run: log the actions, do none.
 ${GLOBAL}
 ${EXITS}`,
   serve: `usage: lianki-dev serve [--label "…"]
