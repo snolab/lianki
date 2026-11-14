@@ -82,7 +82,7 @@ History: his lines as `user`, every agent line (lanes and Li) as `assistant`,
 the same `HISTORY_LINES` / `HISTORY_MAX_CHARS`. **Metering is his account's**:
 the hub sends his page's verified user id (`page.user`; a chat-only page of his
 uses his other open page's) with `owner: true`, the caps count it as
-`ai:<day>:u:<his id>`, and the main Worker reserves and settles his credits —
+`ai:u:<his id>`, and the main Worker reserves and settles his credits —
 no bypass. The main Worker serves `owner: true` only for an account holding
 `dev`, only with the flag on (D1 row, else the registry default), and still
 refuses his account without the mark. The reply is posted as the main lane
@@ -126,7 +126,10 @@ own data. A `<think>` block is stripped; replies are cut to 2,000 characters.
 
 ## Caps (operational limits, not user quotas)
 
-All in `lib/partner-ai-config.ts`; per JST day (reset 00:00 JST):
+All in `lib/partner-ai-config.ts`, counted over a **rolling window**: the last
+`partner.capWindowHours` hours (live config, default 24, at most 168; owner,
+2026-11-15: mature AI services reset by rolling windows, not a calendar day in
+some zone). No day boundary and no time zone is involved:
 
 | limit              | value                                                       |
 | ------------------ | ----------------------------------------------------------- |
@@ -138,17 +141,23 @@ All in `lib/partner-ai-config.ts`; per JST day (reset 00:00 JST):
 Prices (model page, 2026-11-03): $0.30 / M input, $1.20 / M output tokens.
 A typical message (~1,500 in, ~150 out) is ≈ $0.0006.
 
-Counters live in the hub's Durable Object storage (`ai:<day>:u:<userId>`,
-tokens; `ai:<day>:site`, micro-USD). A call first reserves a ceiling — 2
+Counters live in the hub's Durable Object storage (`ai:u:<userId>`, tokens;
+`ai:site`, micro-USD), each a map of hourly buckets keyed by the UTC hour
+(`lib/rolling-window.ts`); the cap compares the sum over the window, so the
+window is the current hour plus the 23 before it, and a use stops counting
+23–24 hours later. A call first reserves a ceiling — 2
 tokens per character of everything the prompt can hold (history ≤ 12,000
 characters, page text, ≤ 10,000 for rules and study summary) plus every output
 token — so concurrent calls cannot all pass a nearly spent cap. It then settles
 to the model's reported counts. With no counts, the reservation stands; it is
 given back only when nothing can have been billed (a refusal before the call,
 or an error status from the model). A timeout, an RPC error or an unreadable
-answer keeps it. Earlier days' keys are deleted on the first call of a new day.
+answer keeps it. Settling adjusts the bucket of the hour the reservation was
+taken in. The first call of each hour sweeps every bucket that left the window
+(an emptied key is deleted, and so is any key of the older per-JST-day layout
+`ai:<day>:…`).
 Turning the flag off does not cancel a call already in flight (≤ 30 s). Over a cap, the page shows `aiLimit`
-("resting for today") and the lanes can still answer.
+("resting, try again in a few hours") and the lanes can still answer.
 
 ## Credits: every reply is paid, reserve first
 

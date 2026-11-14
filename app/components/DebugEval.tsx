@@ -740,7 +740,7 @@ export function DebugEval({
           const s = stringsRef.current;
           const line =
             msg.type === "ai-limit"
-              ? (s?.aiLimit ?? "Your {name} is resting for today. Try again tomorrow.")
+              ? (s?.aiLimit ?? "Your {name} is resting. Try again in a few hours.")
               : (s?.aiFailed ?? "No reply this time. Please try again in a moment.");
           setWarning(line.replaceAll("{name}", s?.name || "Learning Partner"));
           return;

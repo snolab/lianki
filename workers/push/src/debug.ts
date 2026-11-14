@@ -306,10 +306,20 @@ import {
   type PartnerResult,
   SITE_DAILY_USD,
   USER_DAILY_TOKENS,
+  CAP_WINDOW_HOURS,
+  CAP_WINDOW_KEY,
+  CAP_WINDOW_MAX,
   costUsd,
-  jstDay,
   reserveInTokens,
 } from "../../../lib/partner-ai-config";
+import {
+  type HourBuckets,
+  addToBucket,
+  hourOf,
+  pruneBuckets,
+  windowHours,
+  windowSum,
+} from "../../../lib/rolling-window";
 import { CHAT_PATH, REVOKED_PATH, TokenChat, partKey, tokenAtt } from "./token-chat";
 import { LANE_EVENTS_FLAG, LANE_REG_PREFIX, type LaneReg, LaneRegistry } from "./lane-registry";
 import {
@@ -575,9 +585,12 @@ export const CHAT_BACKFILL_PATH = "/internal/chat-backfill";
 const AI_FLAG_CACHE_MS = 30_000;
 /** The AI's spinner is re-sent this often while the model works (the page's BUSY_MS is 12 s). */
 const AI_BEAT_MS = 8_000;
-/** Daily usage keys (docs/partner-ai.md, "Caps"): a user's tokens, the site's micro-USD. */
-const aiUserKey = (day: string, userId: string) => `ai:${day}:u:${userId}`;
-const aiSiteKey = (day: string) => `ai:${day}:site`;
+/**
+ * Usage keys (docs/partner-ai.md, "Caps"): a user's tokens, the site's
+ * micro-USD, each as hourly UTC buckets summed over the rolling cap window.
+ */
+export const aiUserKey = (userId: string) => `ai:u:${userId}`;
+export const AI_SITE_KEY = "ai:site";
 /** The owner's switch for agent polish and summaries of his voice lines: ON (the default) = active (lib/flags.ts, /dev/flags). */
 export const POLISH_FLAG = "stt.polish";
 /** The owner's switch for continuous speech amending the last line (voice-merge.ts). */
@@ -827,6 +840,8 @@ export class DebugHub {
   /** The last read of PARTNER_AI_FLAG (AI_FLAG_CACHE_MS). */
   /** `unsure`: the flag could not be read (an RPC error, "busy"); the AI cannot answer then. */
   private aiFlag?: { at: number; on: boolean; unsure?: true };
+  /** The last read of CAP_WINDOW_KEY (AI_FLAG_CACHE_MS). */
+  private capWindow?: { at: number; hours: number };
   private mergeFlag?: { at: number; on: boolean };
   /** The last read of TWO_MIC_FLAG and TWO_MIC_WINDOW_KEY (AI_FLAG_CACHE_MS). */
   private twoMicConf?: { at: number; on: boolean; windowMs: number };
@@ -4072,7 +4087,7 @@ export class DebugHub {
    * Answer a friend's line with the model (docs/partner-ai.md). The thread is
    * the hub-verified user's own; the owner's only through owner-ai.ts (flag
    * partner.owner-thread), with his page's verified user id. Within the
-   * daily caps, a reservation is taken before the call (so concurrent calls
+   * caps over the rolling window (CAP_WINDOW_KEY), a reservation is taken before the call (so concurrent calls
    * cannot all pass a nearly spent cap) and settled with the real counts after.
    * The reply is dropped when an agent (a lane) posted in this thread after
    * the line, or a newer line started its own turn: a human reply wins.
@@ -4095,12 +4110,14 @@ export class DebugHub {
       : thread;
     if (!isUserId(userId) || !rpc?.partnerReply) return;
     const t = this.now();
-    const day = jstDay(t);
-    const userKey = aiUserKey(day, userId);
-    const siteKey = aiSiteKey(day);
-    const used = (await this.ctx.storage.get<number>(userKey)) ?? 0;
-    const site = await this.ctx.storage.get<number>(siteKey);
-    if (site === undefined) await this.aiDropOldDays(day);
+    const hour = hourOf(t);
+    const win = await this.capWindowHours();
+    const userKey = aiUserKey(userId);
+    const siteMap = await this.ctx.storage.get<HourBuckets>(AI_SITE_KEY);
+    // The first call of a new hour sweeps buckets that left the window.
+    if (!siteMap?.[hour]) await this.aiDropOld(hour, win);
+    const used = windowSum(await this.ctx.storage.get<HourBuckets>(userKey), hour, win);
+    const site = windowSum(siteMap, hour, win);
     const lines = (await this.history(thread))
       .filter((m) => m.from === (owner ? "owner" : "friend") || m.from === "agent")
       .slice(-HISTORY_LINES)
@@ -4128,10 +4145,7 @@ export class DebugHub {
     const reserveIn = reserveInTokens(chars + pageChars);
     const reserveTokens = reserveIn + MAX_OUTPUT_TOKENS;
     const reserveMicro = Math.ceil(costUsd(reserveIn, MAX_OUTPUT_TOKENS) * 1e6);
-    if (
-      used + reserveTokens > USER_DAILY_TOKENS ||
-      (site ?? 0) + reserveMicro > SITE_DAILY_USD * 1e6
-    ) {
+    if (used + reserveTokens > USER_DAILY_TOKENS || site + reserveMicro > SITE_DAILY_USD * 1e6) {
       console.log(
         JSON.stringify({
           msg: "partner.capped",
@@ -4141,8 +4155,9 @@ export class DebugHub {
       for (const { ws } of this.pages(thread)) send(ws, { type: "ai-limit" });
       return;
     }
-    await this.ctx.storage.put(userKey, used + reserveTokens);
-    await this.ctx.storage.put(siteKey, (site ?? 0) + reserveMicro);
+    // The reservation goes into this hour's bucket; settling adjusts that same bucket.
+    await this.aiAdd(userKey, hour, reserveTokens, win);
+    await this.aiAdd(AI_SITE_KEY, hour, reserveMicro, win);
     const turn = (this.aiTurn.get(thread) ?? 0) + 1;
     this.aiTurn.set(thread, turn);
     const beat = () => {
@@ -4180,15 +4195,12 @@ export class DebugHub {
     const unbilled = !res.ok && !res.tokensIn && !res.tokensOut && res.billed !== "unknown";
     const tokensIn = res.tokensIn ? res.tokensIn : unbilled ? 0 : reserveIn;
     const tokensOut = res.tokensOut ? res.tokensOut : unbilled ? 0 : MAX_OUTPUT_TOKENS;
-    const nowUser = (await this.ctx.storage.get<number>(userKey)) ?? 0;
-    const nowSite = (await this.ctx.storage.get<number>(siteKey)) ?? 0;
-    await this.ctx.storage.put(
-      userKey,
-      Math.max(0, nowUser - reserveTokens + tokensIn + tokensOut),
-    );
-    await this.ctx.storage.put(
-      siteKey,
-      Math.max(0, nowSite - reserveMicro + Math.ceil(costUsd(tokensIn, tokensOut) * 1e6)),
+    await this.aiAdd(userKey, hour, tokensIn + tokensOut - reserveTokens, win);
+    await this.aiAdd(
+      AI_SITE_KEY,
+      hour,
+      Math.ceil(costUsd(tokensIn, tokensOut) * 1e6) - reserveMicro,
+      win,
     );
     const stale = this.aiTurn.get(thread) !== turn || (this.agentAt.get(thread) ?? 0) >= lineAt;
     // Token counts and latency only: never the text, the user or the page.
@@ -4236,10 +4248,45 @@ export class DebugHub {
     });
   }
 
-  /** A new JST day: the usage keys of earlier days go (they only ever counted against caps). */
-  private async aiDropOldDays(day: string) {
-    const old = await this.ctx.storage.list<number>({ prefix: "ai:" });
-    for (const k of old.keys()) if (!k.startsWith(`ai:${day}:`)) await this.ctx.storage.delete(k);
+  /** CAP_WINDOW_KEY from the main Worker, at most once per AI_FLAG_CACHE_MS; unreadable = the default. */
+  private async capWindowHours(): Promise<number> {
+    const t = this.now();
+    if (this.capWindow && t - this.capWindow.at < AI_FLAG_CACHE_MS) return this.capWindow.hours;
+    let v: unknown;
+    try {
+      v = await this.sessions?.config?.(CAP_WINDOW_KEY);
+    } catch {}
+    const hours = windowHours(v, CAP_WINDOW_HOURS, CAP_WINDOW_MAX);
+    this.capWindow = { at: t, hours };
+    return hours;
+  }
+
+  /** Add `delta` (may be negative, never below zero) to bucket `hour` of a usage key. */
+  private async aiAdd(key: string, hour: number, delta: number, win: number) {
+    const b = addToBucket(
+      pruneBuckets(await this.ctx.storage.get<HourBuckets>(key), hour, win),
+      hour,
+      delta,
+    );
+    if (Object.keys(b).length) await this.ctx.storage.put(key, b);
+    else await this.ctx.storage.delete(key);
+  }
+
+  /**
+   * Buckets that left the rolling window go (they only ever counted against
+   * caps); a key left empty is deleted, and so is any key of the older per-day
+   * layout (`ai:<day>:…`).
+   */
+  private async aiDropOld(hour: number, win: number) {
+    const all = await this.ctx.storage.list<unknown>({ prefix: "ai:" });
+    for (const [k, v] of all) {
+      const ours = k === AI_SITE_KEY || k.startsWith("ai:u:");
+      const kept =
+        ours && v && typeof v === "object" ? pruneBuckets(v as HourBuckets, hour, win) : {};
+      if (!Object.keys(kept).length) await this.ctx.storage.delete(k);
+      else if (Object.keys(kept).length !== Object.keys(v as HourBuckets).length)
+        await this.ctx.storage.put(k, kept);
+    }
   }
 
   /**

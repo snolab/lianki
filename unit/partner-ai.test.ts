@@ -11,8 +11,10 @@ import {
   type PartnerResult,
   SITE_DAILY_USD,
   USER_DAILY_TOKENS,
-  jstDay,
+  CAP_WINDOW_KEY,
 } from "@/lib/partner-ai-config";
+import { HOUR_MS, hourOf } from "@/lib/rolling-window";
+import { AI_SITE_KEY, aiUserKey } from "@/workers/push/src/debug";
 import {
   buildMessages,
   cleanReply,
@@ -84,11 +86,15 @@ type Stub = {
   on: boolean;
   /** The flag read fails (the RPC itself, as `.bind(stub)` made it in production). */
   flagThrows?: boolean;
+  /** Config values the main Worker answers (undefined = not set). */
+  config?: Record<string, unknown>;
+  configThrows?: boolean;
   reply: (req: PartnerRequest) => Promise<PartnerResult>;
 };
 const T0 = 1_800_000_000_000;
 
-function setup(opts: { on?: boolean; sessions?: boolean } = {}) {
+/** `config`: the main Worker answers config reads (stub.config); without it, it has no such method. */
+function setup(opts: { on?: boolean; sessions?: boolean; config?: boolean } = {}) {
   const sockets: FakeSocket[] = [];
   let t = T0;
   const stub: Stub = {
@@ -116,6 +122,14 @@ function setup(opts: { on?: boolean; sessions?: boolean } = {}) {
       stub.calls.push(structuredClone(req));
       return stub.reply(req);
     },
+    ...(opts.config
+      ? {
+          config: async (k: string) => {
+            if (stub.configThrows) throw new Error("busy");
+            return stub.config?.[k];
+          },
+        }
+      : {}),
   };
   const storage = fakeStorage();
   const hub = new DebugHub(
@@ -290,8 +304,8 @@ describe("partner AI: hub routing", () => {
     expect(f.last("ai-credits")).toEqual({ type: "ai-credits" });
     expect(f.sent.some((m) => m.type === "ai-failed")).toBe(false);
     expect(chats(f).map((m) => m.from)).toEqual(["friend"]);
-    // Nothing billed: the day's counters are back to zero.
-    for (const [k, v] of s.storage.store) if (k.startsWith("ai:")) expect(v).toBe(0);
+    // Nothing billed: the window's counters are back to zero (empty keys removed).
+    expect([...s.storage.store.keys()].filter((k) => k.startsWith("ai:"))).toEqual([]);
     // A line already answered ("duplicate") says nothing.
     s.stub.reply = async () => ({ ok: false, error: "duplicate" });
     await s.msg(f, { type: "chat", id: "line2", text: "again" });
@@ -404,21 +418,28 @@ describe("partner AI: hub routing", () => {
   });
 });
 
-describe("partner AI: caps", () => {
-  const day = jstDay(T0);
-  it("settles the reservation to the real token counts and site cost", async () => {
+describe("partner AI: caps (rolling window)", () => {
+  const h0 = hourOf(T0);
+  const U = aiUserKey("f1");
+  /** One bucket's map: `amount` used `ago` hours before T0's hour. */
+  const at = (amount: number, ago = 0) => ({ [h0 - ago]: amount });
+  const userNow = (s: ReturnType<typeof setup>, id = "f1") =>
+    (s.storage.store.get(aiUserKey(id)) as Record<string, number> | undefined)?.[h0];
+
+  it("settles the reservation to the real token counts and site cost, in this UTC hour's bucket", async () => {
     const s = setup();
     const f = await s.friend();
     await s.msg(f, { type: "chat", id: "a", text: "hi" });
-    expect(s.storage.store.get(`ai:${day}:u:f1`)).toBe(540);
+    expect(s.storage.store.get(U)).toEqual({ [h0]: 540 });
     // 500 in × $0.30/M + 40 out × $1.20/M = $0.000198 → 198 micro-USD.
-    expect(s.storage.store.get(`ai:${day}:site`)).toBe(198);
+    expect(s.storage.store.get(AI_SITE_KEY)).toEqual({ [h0]: 198 });
   });
 
-  it("a user over their daily tokens gets ai-limit and no call; others still get replies", async () => {
+  it("a user over their tokens in the window gets ai-limit and no call; others still get replies", async () => {
     const s = setup();
-    s.storage.store.set(`ai:${day}:u:f1`, USER_DAILY_TOKENS - 10);
-    s.storage.store.set(`ai:${day}:site`, 0);
+    // Spread over the window: 23 hours ago still counts.
+    s.storage.store.set(U, { ...at(USER_DAILY_TOKENS - 1000, 23), ...at(990, 1) });
+    s.storage.store.set(AI_SITE_KEY, at(1));
     const f = await s.friend("f1", "f1@x.com");
     const g = await s.friend("f2", "f2@x.com");
     await s.msg(f, { type: "chat", id: "a", text: "hi" });
@@ -428,23 +449,76 @@ describe("partner AI: caps", () => {
     expect(s.stub.calls.map((c) => c.userId)).toEqual(["f2"]);
   });
 
-  it("the site-wide daily spend cap stops everyone", async () => {
+  it("usage frees up as its hour leaves the window: 24 hours ago no longer counts", async () => {
     const s = setup();
-    s.storage.store.set(`ai:${day}:site`, SITE_DAILY_USD * 1e6 - 1);
+    s.storage.store.set(U, at(USER_DAILY_TOKENS, 24));
+    s.storage.store.set(AI_SITE_KEY, at(SITE_DAILY_USD * 1e6, 24));
+    const f = await s.friend();
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    expect(s.stub.calls).toHaveLength(1);
+    // The old buckets were swept on the hour's first call.
+    expect(s.storage.store.get(U)).toEqual({ [h0]: 540 });
+    expect(s.storage.store.get(AI_SITE_KEY)).toEqual({ [h0]: 198 });
+  });
+
+  it("the site-wide spend cap over the window stops everyone", async () => {
+    const s = setup();
+    s.storage.store.set(AI_SITE_KEY, { ...at(SITE_DAILY_USD * 1e6 - 100, 12), ...at(99) });
     const f = await s.friend();
     await s.msg(f, { type: "chat", id: "a", text: "hi" });
     expect(s.stub.calls).toEqual([]);
     expect(f.last("ai-limit")).toBeTruthy();
   });
 
-  it("a new JST day starts from zero and drops the old day's keys", async () => {
+  it("the window length is live config (partner.capWindowHours): a shorter window frees sooner", async () => {
+    const s = setup({ config: true });
+    s.stub.config = { [CAP_WINDOW_KEY]: 6 };
+    s.storage.store.set(U, at(USER_DAILY_TOKENS, 6));
+    const f = await s.friend();
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    expect(s.stub.calls).toHaveLength(1);
+    // A longer window (read again after the cache) counts it again.
+    s.tick(31_000);
+    s.stub.config = { [CAP_WINDOW_KEY]: 48 };
+    s.storage.store.set(U, at(USER_DAILY_TOKENS, 30));
+    await s.msg(f, { type: "chat", id: "b", text: "hi" });
+    expect(s.stub.calls).toHaveLength(1);
+    expect(f.last("ai-limit")).toBeTruthy();
+  });
+
+  it("an unreadable or invalid window falls back to 24 hours", async () => {
+    for (const conf of [{ throws: true }, { v: 0 }, { v: 2.5 }, { v: "24" }]) {
+      const s = setup({ config: true });
+      if ("throws" in conf) s.stub.configThrows = true;
+      else s.stub.config = { [CAP_WINDOW_KEY]: conf.v };
+      s.storage.store.set(U, at(USER_DAILY_TOKENS, 23));
+      const f = await s.friend();
+      await s.msg(f, { type: "chat", id: "a", text: "hi" });
+      expect(s.stub.calls).toEqual([]);
+    }
+  });
+
+  it("the next hour adds a new bucket and keeps the earlier one", async () => {
+    const s = setup();
+    const f = await s.friend();
+    await s.msg(f, { type: "chat", id: "a", text: "hi" });
+    s.tick(HOUR_MS);
+    await s.msg(f, { type: "chat", id: "b", text: "hi" });
+    expect(s.storage.store.get(U)).toEqual({ [h0]: 540, [h0 + 1]: 540 });
+  });
+
+  it("drops keys of the older per-day layout", async () => {
     const s = setup();
     s.storage.store.set(`ai:2000-01-01:u:f1`, USER_DAILY_TOKENS);
     s.storage.store.set(`ai:2000-01-01:site`, SITE_DAILY_USD * 1e6);
+    s.storage.store.set(aiUserKey("gone"), at(5, 30));
+    s.storage.store.set(aiUserKey("kept"), { ...at(5, 30), ...at(7, 2) });
     const f = await s.friend();
     await s.msg(f, { type: "chat", id: "a", text: "hi" });
     expect(s.stub.calls).toHaveLength(1);
     expect([...s.storage.store.keys()].filter((k) => k.startsWith("ai:2000"))).toEqual([]);
+    expect(s.storage.store.has(aiUserKey("gone"))).toBe(false);
+    expect(s.storage.store.get(aiUserKey("kept"))).toEqual(at(7, 2));
   });
 
   it("an unknown outcome (timeout, RPC error) or missing usage keeps the reservation", async () => {
@@ -452,8 +526,7 @@ describe("partner AI: caps", () => {
     const f = await s.friend();
     s.stub.reply = async () => ({ ok: false, error: "model-failed", billed: "unknown" });
     await s.msg(f, { type: "chat", id: "a", text: "hi" });
-    const kept = s.storage.store.get(`ai:${day}:u:f1`) as number;
-    expect(kept).toBeGreaterThan(20_000);
+    expect(userNow(s)).toBeGreaterThan(20_000);
     s.stub.reply = async () => ({
       ok: true,
       text: "x",
@@ -463,10 +536,9 @@ describe("partner AI: caps", () => {
       model: PARTNER_AI_MODEL,
     });
     await s.msg(f, { type: "chat", id: "b", text: "hi" });
-    expect(s.storage.store.get(`ai:${day}:u:f1`) as number).toBeGreaterThan(2 * 20_000);
+    expect(userNow(s)).toBeGreaterThan(2 * 20_000);
     // An unusable answer with usage settles to that usage.
-    s.storage.store.set(`ai:${day}:u:f1`, 100);
-    const before = 100;
+    s.storage.store.set(U, at(100));
     s.stub.reply = async () => ({
       ok: false,
       error: "model-failed",
@@ -475,9 +547,9 @@ describe("partner AI: caps", () => {
       tokensOut: 3,
     });
     await s.msg(f, { type: "chat", id: "c", text: "hi" });
-    expect(s.storage.store.get(`ai:${day}:u:f1`)).toBe(before + 10);
+    expect(userNow(s)).toBe(110);
     // Only one count reported: the other keeps its reservation.
-    s.storage.store.set(`ai:${day}:u:f1`, 0);
+    s.storage.store.delete(U);
     s.stub.reply = async () => ({
       ok: true,
       text: "y",
@@ -487,20 +559,20 @@ describe("partner AI: caps", () => {
       model: PARTNER_AI_MODEL,
     });
     await s.msg(f, { type: "chat", id: "d", text: "hi" });
-    expect(s.storage.store.get(`ai:${day}:u:f1`) as number).toBeGreaterThan(20_000);
+    expect(userNow(s)).toBeGreaterThan(20_000);
   });
 
   it("the reservation is a ceiling for long text: a long thread is capped before the call", async () => {
     const s = setup();
-    s.storage.store.set(`ai:${day}:u:f1`, USER_DAILY_TOKENS - 25_000);
-    s.storage.store.set(`ai:${day}:site`, 0);
+    s.storage.store.set(U, at(USER_DAILY_TOKENS - 25_000));
+    s.storage.store.set(AI_SITE_KEY, at(1));
     const f = await s.friend();
     await s.msg(f, { type: "chat", id: "a", text: "語".repeat(3000) });
     expect(s.stub.calls).toEqual([]);
     expect(f.last("ai-limit")).toBeTruthy();
     // A short line in the same state still fits.
     const g = await s.friend("f9", "f9@x.com");
-    s.storage.store.set(`ai:${day}:u:f9`, USER_DAILY_TOKENS - 25_000);
+    s.storage.store.set(aiUserKey("f9"), at(USER_DAILY_TOKENS - 25_000));
     await s.msg(g, { type: "chat", id: "b", text: "hi" });
     expect(s.stub.calls).toHaveLength(1);
   });
@@ -510,8 +582,8 @@ describe("partner AI: caps", () => {
     s.stub.reply = async () => ({ ok: false, error: "model-failed" });
     const f = await s.friend();
     await s.msg(f, { type: "chat", id: "a", text: "hi" });
-    expect(s.storage.store.get(`ai:${day}:u:f1`)).toBe(0);
-    expect(s.storage.store.get(`ai:${day}:site`)).toBe(0);
+    expect(s.storage.store.has(U)).toBe(false);
+    expect(s.storage.store.has(AI_SITE_KEY)).toBe(false);
   });
 });
 

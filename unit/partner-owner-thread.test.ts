@@ -11,8 +11,8 @@ import {
   PARTNER_OWNER_FLAG,
   type PartnerRequest,
   type PartnerResult,
-  jstDay,
 } from "@/lib/partner-ai-config";
+import { hourOf } from "@/lib/rolling-window";
 import { partnerReply, type PartnerDb } from "@/lib/partner-ai";
 import { FLAGS } from "@/lib/flags";
 import { CONFIG } from "@/lib/config";
@@ -205,8 +205,8 @@ describe("Li in the owner's thread: the hub", () => {
       text: "Li here.",
       lane: "main",
     });
-    // No admin bypass: his account's daily counter is the one charged.
-    expect(s.storage.store.get(`ai:${jstDay(T0)}:u:owner1`)).toBe(540);
+    // No admin bypass: his account's counter (this UTC hour's bucket) is the one charged.
+    expect(s.storage.store.get("ai:u:owner1")).toEqual({ [hourOf(T0)]: 540 });
   });
 
   it("history: his lines as user, lane and Li lines as assistant", async () => {

@@ -1,5 +1,10 @@
 import { HUB_RPC_LIMITS } from "./hub-rpc-config";
-import { OWNER_REPLY_DELAY_MAX, OWNER_REPLY_DELAY_MS } from "./partner-ai-config";
+import {
+  CAP_WINDOW_HOURS,
+  CAP_WINDOW_MAX,
+  OWNER_REPLY_DELAY_MAX,
+  OWNER_REPLY_DELAY_MS,
+} from "./partner-ai-config";
 /**
  * The config registry: every user-meaningful number, text and icon whose live
  * value comes from the config store (lib/config-store.ts, D1 `config_values`)
@@ -908,6 +913,18 @@ export const CONFIG = {
     audience: "server",
     description:
       "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 8000 = 8 秒。开关在 /dev/flags 的 partner.owner-thread。",
+  }),
+  // The Learning Partner AI's caps (docs/partner-ai.md, "Caps"): read by the
+  // debug hub over DebugSessions.config.
+  "partner.capWindowHours": int({
+    default: CAP_WINDOW_HOURS,
+    min: 1,
+    max: CAP_WINDOW_MAX,
+    unit: "h",
+    group: "chat",
+    audience: "server",
+    description:
+      "学习伙伴 AI 的用量上限按滚动窗口算：每个账号和全站在最近多少小时里的用量（按 UTC 整点分桶）。默认 24 = 最近 24 小时，旧的用量随时间逐渐释放，不在某个日历日一起清零。",
   }),
   "chat.partnerModelTimeoutMs": int({
     ...HUB_RPC_LIMITS["chat.partnerModelTimeoutMs"],
