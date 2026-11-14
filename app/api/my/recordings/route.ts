@@ -3,6 +3,7 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { checkToken } from "@/lib/api-tokens";
 import { readConfig } from "@/lib/config-store";
 import { dbBackend, getBlobs, getD1 } from "@/lib/d1";
+import { devBridgeUser } from "@/lib/dev-bridge-user";
 import type { D1Like } from "@/lib/d1/types";
 import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
@@ -24,6 +25,7 @@ import {
   r2RecBlobs,
   recordingsKey,
 } from "@/lib/recordings";
+import { forwardRecordings, recordingsBridgeSecret } from "@/lib/recordings-bridge";
 
 export const dynamic = "force-dynamic";
 
@@ -33,16 +35,27 @@ export const dynamic = "force-dynamic";
  * account holds `dev`; 503 off D1. Writes and deletes take the session
  * cookie only; reads also take an API token with `recordings:read`
  * (scripts/dev/recordings-pull.ts), for that token's own account.
+ *
+ * The dev bridge header (lib/dev-bridge-user.ts) is the owner here, every
+ * method: his preview server forwards this route to lianki.com
+ * (lib/recordings-bridge.ts) once it has checked his session there, because
+ * only lianki.com holds the key the clips are sealed with.
  */
 const NO_STORE = { "cache-control": "no-store" };
 const notFound = () =>
   NextResponse.json({ error: "not-found" }, { status: 404, headers: NO_STORE });
 
-async function deps(req: Request, allowToken: boolean): Promise<RecDeps | NextResponse> {
+async function deps(req: Request, allowToken: boolean): Promise<RecDeps | Response> {
   let uid: string | null = null;
   let email: string | null = null;
+  const bridged = await devBridgeUser(req);
   const bearer = /^Bearer (\S+)$/.exec(req.headers.get("authorization") ?? "")?.[1];
-  if (bearer) {
+  if (bridged === null) {
+    return NextResponse.json({ error: "bad-bridge" }, { status: 401, headers: NO_STORE });
+  } else if (bridged) {
+    uid = bridged.id;
+    email = bridged.email;
+  } else if (bearer) {
     if (!allowToken || dbBackend() !== "d1") return notFound();
     const r = await checkToken(getD1() as unknown as D1Like, bearer, "recordings:read");
     if (!r.ok) return notFound();
@@ -57,6 +70,9 @@ async function deps(req: Request, allowToken: boolean): Promise<RecDeps | NextRe
   }
   if (!uid || !isDev(email)) return notFound();
   if (!flagIn(await readFlags(), "voice.recordings")) return notFound();
+  // The preview server: lianki.com answers, with the key only it has.
+  const bridge = recordingsBridgeSecret();
+  if (bridge) return forwardRecordings(req, bridge);
   if (dbBackend() !== "d1")
     return NextResponse.json({ error: "recordings-off" }, { status: 503, headers: NO_STORE });
   return {
@@ -71,7 +87,7 @@ const answer = (o: Out) => NextResponse.json(o.json, { status: o.status, headers
 
 export const GET = async (req: Request) => {
   const d = await deps(req, true);
-  if (d instanceof NextResponse) return d;
+  if (d instanceof Response) return d;
   const q = new URL(req.url).searchParams;
   // The recorder's check before it sends anything (asked at an utterance, never by a timer).
   if (q.get("status") === "1") {
@@ -110,7 +126,7 @@ export const GET = async (req: Request) => {
 
 export const POST = async (req: Request) => {
   const d = await deps(req, false);
-  if (d instanceof NextResponse) return d;
+  if (d instanceof Response) return d;
   // Refuse an oversized body before reading it (a missing length is read, then checked whole).
   const len = Number(req.headers.get("content-length") ?? 0);
   if (len > MAX_POST_BODY) return answer({ status: 413, json: { error: "too-large" } });
@@ -125,7 +141,7 @@ export const POST = async (req: Request) => {
 
 export const DELETE = async (req: Request) => {
   const d = await deps(req, false);
-  if (d instanceof NextResponse) return d;
+  if (d instanceof Response) return d;
   const q = new URL(req.url).searchParams;
   const clip = q.get("clip");
   const day = q.get("day");
