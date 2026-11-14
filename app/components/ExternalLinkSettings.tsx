@@ -50,7 +50,12 @@ export function ExternalLinkSettings() {
   }, [reload]);
 
   return (
-    <section className="mb-10 max-w-xl" data-section="external-links" data-testid="external-links">
+    <section
+      id="external-links"
+      className="mb-10 max-w-xl scroll-mt-6"
+      data-section="external-links"
+      data-testid="external-links"
+    >
       <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>
       <div className="mb-4 flex min-h-11 items-center gap-3">
         <span id="external-links-ask-label" className="flex-1">

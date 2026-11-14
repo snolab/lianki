@@ -47,8 +47,9 @@ export default async function PreferencesPage() {
     <div className="flex flex-col">
       {/* Main Content */}
       <div className="flex-grow">
-        <PreferencesClient showKeySync={showKeySync} appBadge={appBadge} />
-        {vibe && <VibeRetention />}
+        <PreferencesClient showKeySync={showKeySync} appBadge={appBadge} hasVibe={vibe}>
+          {vibe && <VibeRetention />}
+        </PreferencesClient>
       </div>
     </div>
   );

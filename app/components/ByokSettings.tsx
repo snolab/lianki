@@ -317,7 +317,7 @@ export function ByokSettings({
 
   const relayRow = preset.relay ? (
     <div className="flex items-start gap-3" data-testid="byok-relay-row">
-      <span className="min-w-0 flex-1 break-words">
+      <span className="flex-1">
         <span id="byok-relay-label" className="block font-medium">
           {c.relay}
         </span>
@@ -362,13 +362,18 @@ export function ByokSettings({
   ) : null;
 
   return (
-    <section className="mb-10 max-w-xl" data-section="byok" data-testid="byok-settings">
+    <section
+      id="byok"
+      className="mb-10 max-w-xl scroll-mt-6"
+      data-section="byok"
+      data-testid="byok-settings"
+    >
       <h2 className="mb-2 text-2xl font-semibold">{c.heading}</h2>
       <p className="mb-1 opacity-80">{c.intro}</p>
       <p className="mb-4 text-sm opacity-70">{c.serverSide}</p>
 
       <div className="flex items-start gap-3 rounded-lg bg-[oklch(0.5_0.02_250/0.08)] p-3">
-        <span className="min-w-0 flex-1 break-words">
+        <span className="flex-1">
           <span id="byok-enable-label" className="block font-medium">
             {c.enable}
           </span>
@@ -563,7 +568,7 @@ export function ByokSettings({
         )}
 
         <div className={`mt-2 flex items-start gap-3 ${signedIn ? "" : "opacity-70"}`}>
-          <span className="min-w-0 flex-1 break-words">
+          <span className="flex-1">
             <span id="byok-sync-label" className="block font-medium">
               {c.sync}
             </span>
@@ -588,10 +593,10 @@ export function ByokSettings({
         </div>
         {showKeySync && (
           <div className="flex items-start gap-3 opacity-60" data-testid="byok-key-sync">
-            <span className="min-w-0 flex-1 break-words">
+            <span className="flex-1">
               <span id="byok-key-sync-label" className="block font-medium">
                 {c.keySync}
-                <span className="ms-2 inline-block max-w-full break-words rounded-full bg-[oklch(0.62_0.132_22.3/0.16)] px-2 py-0.5 text-xs">
+                <span className="ms-2 rounded-full bg-[oklch(0.62_0.132_22.3/0.16)] px-2 py-0.5 text-xs">
                   {c.soon}
                 </span>
               </span>

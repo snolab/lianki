@@ -78,6 +78,24 @@ const preferencesPageContent = {
       sw: "Mapendeleo",
       mr: "प्राधान्ये",
     }),
+    toc: t({
+      en: "Contents",
+      zh: "目录",
+      ja: "目次",
+      ko: "목차",
+      hi: "विषय-सूची",
+      es: "Índice",
+      fr: "Sommaire",
+      ar: "المحتويات",
+      bn: "সূচিপত্র",
+      pt: "Sumário",
+      ru: "Содержание",
+      ur: "فہرست",
+      id: "Daftar isi",
+      de: "Inhalt",
+      sw: "Yaliyomo",
+      mr: "अनुक्रमणिका",
+    }),
     resetSection: t({
       en: "Reset to default",
       zh: "恢复默认",
@@ -1009,6 +1027,7 @@ export default {
   description: describeKeys("The signed-in settings page. Only recent keys have a line so far.", {
     paperHeading:
       "Section heading on the settings page over the paper picker: the paper-like background texture of the app's pages (a skin; today 宣紙, Xuan rice paper). Kept on this device only. A short noun for the texture of a sheet of paper, not newspaper or a document.",
+    toc: "Heading of the table of contents in the sidebar (desktop) or sticky bar (phones): a noun, not a verb.",
     resetSection:
       "Screen-reader label and tooltip of a small icon button beside a section heading on the settings page: puts that section's settings back to their defaults (unsaved until Save). Imperative verb, short.",
     "watchTime.heading":

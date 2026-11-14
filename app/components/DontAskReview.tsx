@@ -65,7 +65,12 @@ export function DontAskReview() {
   const ids = rows.map((r) => r.id);
 
   return (
-    <section className="mb-10 max-w-xl" data-section="dont-ask" data-testid="dont-ask">
+    <section
+      id="dont-ask"
+      className="mb-10 max-w-xl scroll-mt-6"
+      data-section="dont-ask"
+      data-testid="dont-ask"
+    >
       <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>
       <p className="mb-4 text-sm opacity-80">
         {c.intro.value.replace("{days}", String(DONT_ASK_CONFIG.reaskDays[0]))}

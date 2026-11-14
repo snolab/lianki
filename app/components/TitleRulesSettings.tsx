@@ -108,7 +108,12 @@ export function TitleRulesSettings() {
   });
 
   return (
-    <section className="mb-10 max-w-xl" data-section="title-rules" data-testid="title-rules">
+    <section
+      id="title-rules"
+      className="mb-10 max-w-xl scroll-mt-6"
+      data-section="title-rules"
+      data-testid="title-rules"
+    >
       <h2 className="mb-2 text-2xl font-semibold">{c.heading}</h2>
       <p className="mb-2 opacity-80">{c.intro}</p>
       <p className="mb-4 text-sm opacity-70">{c.syntax}</p>
@@ -204,11 +209,11 @@ export function TitleRulesSettings() {
         </button>
       </form>
 
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="min-w-0 break-words font-medium">{c.builtIn}</h3>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h3 className="font-medium">{c.builtIn}</h3>
         <button
           type="button"
-          className={`${QUIET} max-w-full break-words`}
+          className={QUIET}
           disabled={pref.off.length === 0}
           onClick={() => save({ ...pref, off: [] })}
           data-testid="title-rules-restore"

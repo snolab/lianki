@@ -2,9 +2,10 @@
 
 import { asReviewOrder, DEFAULT_REVIEW_ORDER, type ReviewOrder } from "@lianki/core";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import TokenManager from "./TokenManager";
+import { PreferencesToc, type TocSection } from "./PreferencesToc";
 import { PaperSkinPicker } from "@/app/components/PaperSkinPicker";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { ByokSettings } from "@/app/components/ByokSettings";
@@ -56,7 +57,7 @@ function ReaderSettings() {
     };
   }, []);
   return (
-    <section className="mb-10 max-w-md" data-section="reader">
+    <section id="reader" className="mb-10 max-w-md scroll-mt-6" data-section="reader">
       <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">{t.prefHeading}</h2>
       <div className="flex items-center gap-3">
         <span id="pref-polish-offer-label" className="flex-1">
@@ -103,27 +104,18 @@ function SectionHeading({
   canReset: boolean;
   onReset: () => void;
 }) {
-  const headingId = useId();
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2">
-      <h2
-        id={headingId}
-        className="min-w-0 flex-[1_1_12rem] break-words text-2xl font-semibold text-gray-900 dark:text-white"
-      >
-        {children}
-      </h2>
+    <div className="mb-4 flex items-center gap-2">
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">{children}</h2>
       <button
         type="button"
         onClick={onReset}
         disabled={!canReset}
-        aria-labelledby={`${headingId} ${headingId}-reset`}
+        aria-label={label}
         title={label}
         data-section-reset
         className="grid h-9 w-9 shrink-0 place-items-center rounded-full opacity-70 hover:bg-[oklch(0.5_0_0/0.12)] hover:opacity-100 disabled:opacity-25 disabled:hover:bg-transparent"
       >
-        <span id={`${headingId}-reset`} className="sr-only">
-          {label}
-        </span>
         <Icon name="reset" className="h-5 w-5" />
       </button>
     </div>
@@ -137,14 +129,19 @@ const snapshot = (patterns: FilterPattern[], reviewOrder: ReviewOrder, watchTrac
 export default function PreferencesClient({
   showKeySync = false,
   appBadge = false,
+  hasVibe = false,
+  children,
 }: {
   showKeySync?: boolean;
   /** `pwa.app-badge` is on: the Notifications section (docs/app-badge.md). */
   appBadge?: boolean;
+  hasVibe?: boolean;
+  children?: React.ReactNode;
 }) {
   const {
     loading: loadingText,
     heading,
+    toc: tocHeading,
     mobileFilters,
     save,
     errors,
@@ -157,12 +154,72 @@ export default function PreferencesClient({
     watchTime,
   } = useIntlayer("preferences-page");
   const textSize = useIntlayer("text-size");
+  const lang = useIntlayer("language-settings");
+  const prefLangs = useIntlayer("preferred-langs");
+  const byok = useIntlayer("byok-settings");
+  const titleRules = useIntlayer("title-rules");
+  const mail = useIntlayer("mail-settings");
+  const autoUpdate = useIntlayer("auto-update-pref");
+  const extLink = useIntlayer("external-link");
+  const readPolish = useIntlayer("read-polish");
+  const dontAsk = useIntlayer("dont-ask");
+  const tokens = useIntlayer("api-tokens");
+  const badge = useIntlayer("app-badge");
+  const vibe = useIntlayer("vibe-page");
   const textSizes = useTextSizes();
 
+  const tocSections: TocSection[] = useMemo(() => {
+    const list: TocSection[] = [
+      { id: "language", title: lang.heading.value },
+      { id: "preferred-langs", title: prefLangs.heading.value },
+      { id: "paper", title: paperHeading.value },
+      { id: "text-size", title: textSize.heading.value },
+    ];
+    if (appBadge) {
+      list.push({ id: "notifications", title: badge.heading.value });
+    }
+    list.push(
+      { id: "byok", title: byok.heading.value },
+      { id: "title-rules", title: titleRules.heading.value },
+      { id: "mail", title: mail.heading.value },
+      { id: "auto-update", title: autoUpdate.heading.value },
+      { id: "external-links", title: extLink.heading.value },
+      { id: "reader", title: readPolish.prefHeading.value },
+      { id: "dont-ask", title: dontAsk.heading.value },
+      { id: "review-order", title: reviewOrderUi.heading.value },
+      { id: "tokens", title: tokens.heading.value },
+      { id: "licards-group", title: licardsGroup.heading.value },
+      { id: "watch-time", title: watchTime.heading.value },
+      { id: "mobile-filters", title: mobileFilters.heading.value },
+    );
+    if (hasVibe) {
+      list.push({ id: "vibe", title: vibe.settingsHeading.value });
+    }
+    return list;
+  }, [
+    appBadge,
+    hasVibe,
+    lang.heading.value,
+    prefLangs.heading.value,
+    paperHeading.value,
+    textSize.heading.value,
+    badge.heading.value,
+    byok.heading.value,
+    titleRules.heading.value,
+    mail.heading.value,
+    autoUpdate.heading.value,
+    extLink.heading.value,
+    readPolish.prefHeading.value,
+    dontAsk.heading.value,
+    reviewOrderUi.heading.value,
+    tokens.heading.value,
+    licardsGroup.heading.value,
+    watchTime.heading.value,
+    mobileFilters.heading.value,
+    vibe.settingsHeading.value,
+  ]);
+
   const [loading, setLoading] = useState(true);
-  const patternInput = useRef<HTMLInputElement>(null);
-  const [feedback, setFeedback] = useState<{ text: string; error: boolean } | null>(null);
-  const [patternError, setPatternError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [patterns, setPatterns] = useState<FilterPattern[]>([]);
   const [newPattern, setNewPattern] = useState("");
@@ -198,7 +255,7 @@ export default function PreferencesClient({
       setSaved(snapshot(loaded, order, watch));
     } catch (error) {
       console.error("Error fetching preferences:", error);
-      setFeedback({ text: errors.failedToLoad.value, error: true });
+      alert(errors.failedToLoad.value);
     } finally {
       setLoading(false);
     }
@@ -206,7 +263,6 @@ export default function PreferencesClient({
 
   async function savePreferences() {
     setSaving(true);
-    setFeedback(null);
     try {
       const res = await fetch("/api/preferences", {
         method: "POST",
@@ -220,10 +276,10 @@ export default function PreferencesClient({
       localStorage.setItem(REVIEW_FILTERS_KEY, JSON.stringify(patterns));
       window.dispatchEvent(new Event(REVIEW_FILTERS_EVENT));
       setSaved(current);
-      setFeedback({ text: success.saved.value, error: false });
+      alert(success.saved.value);
     } catch (error) {
       console.error("Error saving preferences:", error);
-      setFeedback({ text: errors.failedToSave.value, error: true });
+      alert(errors.failedToSave.value);
     } finally {
       setSaving(false);
     }
@@ -236,9 +292,8 @@ export default function PreferencesClient({
     if (isRegex) {
       try {
         new RegExp(newPattern);
-      } catch {
-        setPatternError(true);
-        patternInput.current?.focus();
+      } catch (e) {
+        alert(errors.invalidRegex.value);
         return;
       }
     }
@@ -252,7 +307,6 @@ export default function PreferencesClient({
       createdAt: new Date().toISOString(),
     };
 
-    setPatternError(false);
     setPatterns([...patterns, pattern]);
     setNewPattern("");
     setIsRegex(false);
@@ -260,7 +314,6 @@ export default function PreferencesClient({
 
   function removePattern(id: string) {
     setPatterns(patterns.filter((p) => p.id !== id));
-    patternInput.current?.focus();
   }
 
   function togglePattern(id: string) {
@@ -283,365 +336,331 @@ export default function PreferencesClient({
   }
 
   if (loading) {
-    return (
-      <div className="p-8" role="status">
-        {loadingText}
-      </div>
-    );
+    return <div className="p-8">{loadingText}</div>;
   }
 
   return (
-    <div className="preferences-accessible max-w-4xl mx-auto p-8">
-      <h1 className="text-3xl font-bold mb-8">{heading}</h1>
-      <p
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        className={
-          feedback?.error ? "text-red-700 dark:text-red-300" : "text-gray-700 dark:text-gray-200"
-        }
-      >
-        {feedback?.text}
-      </p>
+    <div className="max-w-6xl mx-auto px-4 py-8 lg:grid lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-10">
+      {/* Table of Contents */}
+      <aside className="lg:order-1">
+        <PreferencesToc label={tocHeading.value} sections={tocSections} />
+      </aside>
 
-      {/* Language — follows the account (lib/account-locale.ts) */}
-      <LanguageSettings />
+      {/* Main Settings Content */}
+      <div className="min-w-0 lg:order-2">
+        <h1 className="text-3xl font-bold mb-8">{heading}</h1>
 
-      {/* Preferred languages — the order of many-language pages (lib/lang-order.ts) */}
-      <PreferredLangsSettings />
+        {/* Language — follows the account (lib/account-locale.ts) */}
+        <LanguageSettings />
 
-      {/* Paper skin — this device only, kept in localStorage */}
-      <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
-          {paperHeading}
-        </h2>
-        <PaperSkinPicker />
-      </section>
+        {/* Preferred languages — the order of many-language pages (lib/lang-order.ts) */}
+        <PreferredLangsSettings />
 
-      {/* Text size — follows the account (lib/text-size.ts) */}
-      <section className="mb-10 max-w-md" data-section="text-size">
-        <SectionHeading
-          label={resetSection.value}
-          canReset={TEXT_AREAS.some((a) => textSizes[a] !== 1)}
-          onReset={() => textSizeStore.setState({ ui: 1, chat: 1, cards: 1, read: 1 })}
-        >
-          {textSize.heading}
-        </SectionHeading>
-        <TextSizeControls />
-      </section>
+        {/* Paper skin — this device only, kept in localStorage */}
+        <section id="paper" className="mb-10 scroll-mt-6" data-section="paper">
+          <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">
+            {paperHeading}
+          </h2>
+          <PaperSkinPicker />
+        </section>
 
-      {/* Notifications: the app-icon badge — follows the account (docs/app-badge.md) */}
-      {appBadge && <AppBadgeSettings />}
+        {/* Text size — follows the account (lib/text-size.ts) */}
+        <section id="text-size" className="mb-10 max-w-md scroll-mt-6" data-section="text-size">
+          <SectionHeading
+            label={resetSection.value}
+            canReset={TEXT_AREAS.some((a) => textSizes[a] !== 1)}
+            onReset={() => textSizeStore.setState({ ui: 1, chat: 1, cards: 1, read: 1 })}
+          >
+            {textSize.heading}
+          </SectionHeading>
+          <TextSizeControls />
+        </section>
 
-      {/* Your own AI — the key on this device only (docs/byok.md) */}
-      <ByokSettings showKeySync={showKeySync} />
+        {/* Notifications: the app-icon badge — follows the account (docs/app-badge.md) */}
+        {appBadge && <AppBadgeSettings />}
 
-      {/* Page titles — follows the account (docs/title-clean.md) */}
-      <TitleRulesSettings />
+        {/* Your own AI — the key on this device only (docs/byok.md) */}
+        <ByokSettings showKeySync={showKeySync} />
 
-      {/* Email: which mails the account gets — follows the account (lib/mail-templates/kinds.ts) */}
-      <MailSettings />
+        {/* Page titles — follows the account (docs/title-clean.md) */}
+        <TitleRulesSettings />
 
-      {/* Updates: a new version applies itself on a clean page — follows the account (lib/auto-update.ts) */}
-      <AutoUpdateSettings />
+        {/* Email: which mails the account gets — follows the account (lib/mail-templates/kinds.ts) */}
+        <MailSettings />
 
-      {/* Links to other sites — follows the account (lib/external-link.ts) */}
-      <ExternalLinkSettings />
+        {/* Updates: a new version applies itself on a clean page — follows the account (lib/auto-update.ts) */}
+        <AutoUpdateSettings />
 
-      {/* Reader — follows the account (lib/read/polish-offer.ts) */}
-      <ReaderSettings />
+        {/* Links to other sites — follows the account (lib/external-link.ts) */}
+        <ExternalLinkSettings />
 
-      {/* "Don't ask again" choices, for review — follows the account (lib/dont-ask.ts) */}
-      <DontAskReview />
+        {/* Reader — follows the account (lib/read/polish-offer.ts) */}
+        <ReaderSettings />
 
-      {/* Next-card order */}
-      <section className="mb-10">
-        <SectionHeading
-          label={resetSection.value}
-          canReset={reviewOrder !== DEFAULT_REVIEW_ORDER}
-          onReset={() => setReviewOrder(DEFAULT_REVIEW_ORDER)}
-        >
-          {reviewOrderUi.heading}
-        </SectionHeading>
-        <p className="text-gray-400 mb-4">{reviewOrderUi.description}</p>
-        <fieldset className="space-y-2">
-          <legend className="sr-only">{reviewOrderUi.heading}</legend>
-          {(["newest", "oldest"] as const).map((opt) => (
-            <label
-              key={opt}
-              className="flex items-start gap-3 p-3 rounded-lg bg-white/5 cursor-pointer hover:bg-white/10"
-            >
-              <input
-                type="radio"
-                name="reviewOrder"
-                className="mt-1"
-                checked={reviewOrder === opt}
-                onChange={() => setReviewOrder(opt)}
-              />
-              <span>
-                <span className="block font-medium">
-                  {reviewOrderUi[opt].label}
-                  {opt === DEFAULT_REVIEW_ORDER && <> {reviewOrderUi.defaultMark}</>}
+        {/* "Don't ask again" choices, for review — follows the account (lib/dont-ask.ts) */}
+        <DontAskReview />
+
+        {/* Next-card order */}
+        <section id="review-order" className="mb-10 scroll-mt-6" data-section="review-order">
+          <SectionHeading
+            label={resetSection.value}
+            canReset={reviewOrder !== DEFAULT_REVIEW_ORDER}
+            onReset={() => setReviewOrder(DEFAULT_REVIEW_ORDER)}
+          >
+            {reviewOrderUi.heading}
+          </SectionHeading>
+          <p className="text-gray-400 mb-4">{reviewOrderUi.description}</p>
+          <div className="space-y-2">
+            {(["newest", "oldest"] as const).map((opt) => (
+              <label
+                key={opt}
+                className="flex items-start gap-3 p-3 rounded-lg bg-white/5 cursor-pointer hover:bg-white/10"
+              >
+                <input
+                  type="radio"
+                  name="reviewOrder"
+                  className="mt-1"
+                  checked={reviewOrder === opt}
+                  onChange={() => setReviewOrder(opt)}
+                />
+                <span>
+                  <span className="block font-medium">
+                    {reviewOrderUi[opt].label}
+                    {opt === DEFAULT_REVIEW_ORDER && <> {reviewOrderUi.defaultMark}</>}
+                  </span>
+                  <span className="block text-sm text-gray-400">{reviewOrderUi[opt].hint}</span>
                 </span>
-                <span className="block text-sm text-gray-400">{reviewOrderUi[opt].hint}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
-      </section>
+              </label>
+            ))}
+          </div>
+        </section>
 
-      {/* API Tokens */}
-      <TokenManager />
+        {/* API Tokens */}
+        <TokenManager />
 
-      {/* Used only by the userscript or extension on other sites: watch time, review filters */}
-      <div className="mt-14 mb-6 border-t border-gray-700/40 pt-8" data-section="licards-group">
-        <h2 className="text-2xl font-semibold mb-2 text-gray-900 dark:text-white">
-          {licardsGroup.heading}
-        </h2>
-        <p className="text-gray-400">{licardsGroup.note}</p>
-      </div>
-
-      {/* Watch tracking */}
-      <section className="mb-10">
-        <SectionHeading
-          label={resetSection.value}
-          canReset={!watchTracking}
-          onReset={() => setWatchTracking(true)}
+        {/* Used only by the userscript or extension on other sites: watch time, review filters */}
+        <div
+          id="licards-group"
+          className="mt-14 mb-6 border-t border-gray-700/40 pt-8 scroll-mt-6"
+          data-section="licards-group"
         >
-          {watchTime.heading}
-        </SectionHeading>
-        <p className="text-gray-400 mb-4">{watchTime.description}</p>
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5">
-          <span className="flex-1">
-            <span id="watchTracking-label" className="block font-medium">
-              {watchTime.toggle}
-            </span>
-            <span id="watchTracking-hint" className="block text-sm text-gray-400">
-              {watchTime.toggleHint}
-            </span>
-          </span>
-          <SealSwitch
-            id="watchTracking"
-            checked={watchTracking}
-            aria-labelledby="watchTracking-label"
-            aria-describedby="watchTracking-hint"
-            onClick={() => setWatchTracking(!watchTracking)}
-          />
+          <h2 className="text-2xl font-semibold mb-2 text-gray-900 dark:text-white">
+            {licardsGroup.heading}
+          </h2>
+          <p className="text-gray-400">{licardsGroup.note}</p>
         </div>
-      </section>
 
-      {/* Mobile Exclude Patterns */}
-      <section className="mb-10">
-        <SectionHeading
-          label={resetSection.value}
-          canReset={patterns.length > 0}
-          onReset={() => setPatterns([])}
-        >
-          {mobileFilters.heading}
-        </SectionHeading>
-        <p className="mb-4 break-words text-gray-400">{mobileFilters.description}</p>
+        {/* Watch tracking */}
+        <section id="watch-time" className="mb-10 scroll-mt-6" data-section="watch-time">
+          <SectionHeading
+            label={resetSection.value}
+            canReset={!watchTracking}
+            onReset={() => setWatchTracking(true)}
+          >
+            {watchTime.heading}
+          </SectionHeading>
+          <p className="text-gray-400 mb-4">{watchTime.description}</p>
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5">
+            <span className="flex-1">
+              <span id="watchTracking-label" className="block font-medium">
+                {watchTime.toggle}
+              </span>
+              <span id="watchTracking-hint" className="block text-sm text-gray-400">
+                {watchTime.toggleHint}
+              </span>
+            </span>
+            <SealSwitch
+              id="watchTracking"
+              checked={watchTracking}
+              aria-labelledby="watchTracking-label"
+              aria-describedby="watchTracking-hint"
+              onClick={() => setWatchTracking(!watchTracking)}
+            />
+          </div>
+        </section>
 
-        {/* Current Patterns */}
-        <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-4">
-          <h3 className="text-lg font-medium mb-3 text-gray-200">{mobileFilters.activeFilters}</h3>
-          {patterns.length === 0 ? (
-            <p className="text-gray-500">{mobileFilters.noFilters}</p>
-          ) : (
-            <ul className="space-y-2">
-              {patterns.map((pattern) => (
-                <li
-                  key={pattern.id}
-                  className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-gray-800/50 border rounded px-4 py-3 ${
-                    pattern.enabled ? "border-gray-700" : "border-gray-800 opacity-50"
-                  }`}
-                >
-                  <div className="flex min-w-0 flex-[1_1_10rem] items-center gap-3">
-                    <SealSwitch
-                      size="sm"
-                      checked={pattern.enabled}
-                      aria-labelledby={`pattern-${pattern.id}`}
-                      onClick={() => togglePattern(pattern.id)}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div
-                        id={`pattern-${pattern.id}`}
-                        className="break-all font-mono text-sm text-gray-200"
-                      >
-                        {pattern.pattern}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        <span
-                          className={`inline-block max-w-full break-all px-2 py-0.5 rounded ${
-                            pattern.type === "domain"
-                              ? "bg-blue-900/30 text-blue-400"
-                              : pattern.type === "title"
-                                ? "bg-gold-300/40 text-gold-800 dark:bg-gold-300/20 dark:text-gold-300"
-                                : "bg-gray-500/20 text-gray-700 dark:text-gray-300"
-                          }`}
+        {/* Mobile Exclude Patterns */}
+        <section id="mobile-filters" className="mb-10 scroll-mt-6" data-section="mobile-filters">
+          <SectionHeading
+            label={resetSection.value}
+            canReset={patterns.length > 0}
+            onReset={() => setPatterns([])}
+          >
+            {mobileFilters.heading}
+          </SectionHeading>
+          <p className="text-gray-400 mb-4">{mobileFilters.description}</p>
+
+          {/* Current Patterns */}
+          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-4">
+            <h3 className="text-lg font-medium mb-3 text-gray-200">
+              {mobileFilters.activeFilters}
+            </h3>
+            {patterns.length === 0 ? (
+              <p className="text-gray-500">{mobileFilters.noFilters}</p>
+            ) : (
+              <ul className="space-y-2">
+                {patterns.map((pattern) => (
+                  <li
+                    key={pattern.id}
+                    className={`flex items-center justify-between gap-4 bg-gray-800/50 border rounded px-4 py-3 ${
+                      pattern.enabled ? "border-gray-700" : "border-gray-800 opacity-50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <SealSwitch
+                        size="sm"
+                        checked={pattern.enabled}
+                        aria-labelledby={`pattern-${pattern.id}`}
+                        onClick={() => togglePattern(pattern.id)}
+                      />
+                      <div className="flex-1">
+                        <div
+                          id={`pattern-${pattern.id}`}
+                          className="font-mono text-sm text-gray-200"
                         >
-                          {mobileFilters[pattern.type]}
-                        </span>
-                        {pattern.isRegex && (
-                          <span className="ml-2 inline-block px-2 py-0.5 rounded bg-orange-900/30 text-orange-400">
-                            {mobileFilters.regexBadge}
+                          {pattern.pattern}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded ${
+                              pattern.type === "domain"
+                                ? "bg-blue-900/30 text-blue-400"
+                                : pattern.type === "title"
+                                  ? "bg-gold-300/40 text-gold-800 dark:bg-gold-300/20 dark:text-gold-300"
+                                  : "bg-gray-500/20 text-gray-700 dark:text-gray-300"
+                            }`}
+                          >
+                            {mobileFilters[pattern.type]}
                           </span>
-                        )}
+                          {pattern.isRegex && (
+                            <span className="ml-2 inline-block px-2 py-0.5 rounded bg-orange-900/30 text-orange-400">
+                              {mobileFilters.regexBadge}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label={`${mobileFilters.remove.value}: ${pattern.pattern}`}
-                    onClick={() => removePattern(pattern.id)}
-                    className="text-red-400 hover:text-red-300 transition-colors text-sm shrink-0"
-                  >
-                    {mobileFilters.remove}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Add New Pattern */}
-        <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
-          <h3 className="text-lg font-medium mb-4 text-gray-200">{mobileFilters.addPattern}</h3>
-
-          {/* Filter Type */}
-          <div className="mb-4">
-            <p id="pattern-type-label" className="block text-sm font-medium mb-2 text-gray-300">
-              {mobileFilters.filterType}
-            </p>
-            <div role="group" aria-labelledby="pattern-type-label" className="flex flex-wrap gap-3">
-              {(["domain", "title", "url"] as FilterType[]).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  aria-pressed={newType === type}
-                  onClick={() => setNewType(type)}
-                  className={`px-4 py-2 rounded transition-colors ${
-                    newType === type
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-                  }`}
-                >
-                  {mobileFilters[type]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Pattern Input */}
-          <div className="mb-4">
-            <label
-              htmlFor="filter-pattern"
-              className="block text-sm font-medium mb-2 text-gray-300"
-            >
-              {mobileFilters.patternLabel}
-            </label>
-            <input
-              ref={patternInput}
-              id="filter-pattern"
-              name="filter-pattern"
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              aria-describedby={
-                patternError
-                  ? "filter-pattern-example filter-pattern-error"
-                  : "filter-pattern-example"
-              }
-              aria-invalid={patternError || undefined}
-              value={newPattern}
-              onChange={(e) => {
-                setNewPattern(e.target.value);
-                setPatternError(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addPattern();
-                }
-              }}
-              placeholder={mobileFilters.patternPlaceholder.value.replace("{type}", newType)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-4 py-2 text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
-            />
-            <p id="filter-pattern-example" className="text-xs text-gray-500 mt-2">
-              {getPatternExamples(newType, isRegex)}
-            </p>
-            {patternError && (
-              <p
-                id="filter-pattern-error"
-                role="alert"
-                className="text-sm text-red-700 dark:text-red-300"
-              >
-                {errors.invalidRegex}
-              </p>
+                    <button
+                      onClick={() => removePattern(pattern.id)}
+                      className="text-red-400 hover:text-red-300 transition-colors text-sm shrink-0"
+                    >
+                      {mobileFilters.remove}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
 
-          {/* Regex Checkbox */}
-          <div className="mb-4">
-            <div className="flex items-center gap-2 text-sm text-gray-300">
-              <span id="pattern-regex-label">{mobileFilters.useRegex}</span>
-              <SealSwitch
-                size="sm"
-                role="checkbox"
-                checked={isRegex}
-                aria-labelledby="pattern-regex-label"
-                aria-describedby="pattern-regex-help"
-                onClick={() => setIsRegex(!isRegex)}
-              />
+          {/* Add New Pattern */}
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-medium mb-4 text-gray-200">{mobileFilters.addPattern}</h3>
+
+            {/* Filter Type */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2 text-gray-300">
+                {mobileFilters.filterType}
+              </label>
+              <div className="flex gap-3">
+                {(["domain", "title", "url"] as FilterType[]).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setNewType(type)}
+                    className={`px-4 py-2 rounded transition-colors ${
+                      newType === type
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                    }`}
+                  >
+                    {mobileFilters[type]}
+                  </button>
+                ))}
+              </div>
             </div>
-            <p id="pattern-regex-help" className="text-xs text-gray-500 mt-1">
-              {mobileFilters.regexHelp}
-            </p>
+
+            {/* Pattern Input */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2 text-gray-300">
+                {mobileFilters.patternLabel}
+              </label>
+              <input
+                type="text"
+                value={newPattern}
+                onChange={(e) => setNewPattern(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addPattern();
+                  }
+                }}
+                placeholder={mobileFilters.patternPlaceholder.value.replace("{type}", newType)}
+                className="w-full bg-gray-800 border border-gray-700 rounded px-4 py-2 text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-2">{getPatternExamples(newType, isRegex)}</p>
+            </div>
+
+            {/* Regex Checkbox */}
+            <div className="mb-4">
+              <div className="flex items-center gap-2 text-sm text-gray-300">
+                <span id="pattern-regex-label">{mobileFilters.useRegex}</span>
+                <SealSwitch
+                  size="sm"
+                  role="checkbox"
+                  checked={isRegex}
+                  aria-labelledby="pattern-regex-label"
+                  onClick={() => setIsRegex(!isRegex)}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{mobileFilters.regexHelp}</p>
+            </div>
+
+            {/* Add Button */}
+            <button
+              onClick={addPattern}
+              disabled={!newPattern.trim()}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 px-6 py-2 rounded transition-colors"
+            >
+              {mobileFilters.addFilter}
+            </button>
           </div>
 
-          {/* Add Button */}
+          {/* Help Text */}
+          <div className="mt-4 p-4 bg-blue-900/20 border border-blue-800/30 rounded-lg">
+            <h4 className="text-sm font-semibold mb-2 text-blue-300">{mobileFilters.howItWorks}</h4>
+            <ul className="text-xs text-gray-400 space-y-1">
+              <li>{mobileFilters.helpDomain}</li>
+              <li>{mobileFilters.helpTitle}</li>
+              <li>{mobileFilters.helpUrl}</li>
+              <li>{mobileFilters.helpRegex}</li>
+              <li>• {mobileFilters.helpDisabled}</li>
+            </ul>
+          </div>
+        </section>
+
+        {/* Vibe Retention or other children */}
+        {children}
+
+        {/* Save: floats above the bottom island, lit while there is something to save */}
+        <div
+          className="sticky z-30 flex justify-end pt-4"
+          style={{
+            bottom:
+              "calc(max(env(safe-area-inset-bottom), var(--lk-bottom-reserve, 0px)) + 0.5rem)",
+          }}
+        >
           <button
-            onClick={addPattern}
-            disabled={!newPattern.trim()}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 px-6 py-2 rounded transition-colors"
+            onClick={savePreferences}
+            disabled={saving || !dirty}
+            data-dirty-save={dirty || undefined}
+            className={`rounded-full px-8 py-3 text-lg font-semibold transition-colors ${
+              dirty
+                ? "bg-[oklch(0.55_0.15_150)] text-[oklch(0.99_0_0)] shadow-lg ring-2 ring-[oklch(0.75_0.15_150)] hover:bg-[oklch(0.5_0.15_150)]"
+                : "lk-glass opacity-70"
+            }`}
           >
-            {mobileFilters.addFilter}
+            {saving ? save.saving : save.saveButton}
           </button>
         </div>
-
-        {/* Help Text */}
-        <div className="mt-4 p-4 bg-blue-900/20 border border-blue-800/30 rounded-lg">
-          <h4 className="text-sm font-semibold mb-2 text-blue-300">{mobileFilters.howItWorks}</h4>
-          <ul className="text-xs text-gray-400 space-y-1">
-            <li>{mobileFilters.helpDomain}</li>
-            <li>{mobileFilters.helpTitle}</li>
-            <li>{mobileFilters.helpUrl}</li>
-            <li>{mobileFilters.helpRegex}</li>
-            <li>• {mobileFilters.helpDisabled}</li>
-          </ul>
-        </div>
-      </section>
-
-      {/* Save: floats above the bottom island, lit while there is something to save */}
-      <div
-        className="sticky z-30 flex justify-end pt-4"
-        style={{
-          bottom: "calc(max(env(safe-area-inset-bottom), var(--lk-bottom-reserve, 0px)) + 0.5rem)",
-        }}
-      >
-        <button
-          type="button"
-          aria-busy={saving}
-          onClick={savePreferences}
-          disabled={saving || !dirty}
-          data-dirty-save={dirty || undefined}
-          className={`rounded-full px-8 py-3 text-lg font-semibold transition-colors ${
-            dirty
-              ? "bg-primary text-on-primary shadow-lg ring-2 ring-primary hover:opacity-90"
-              : "lk-glass opacity-70"
-          }`}
-        >
-          {saving ? save.saving : save.saveButton}
-        </button>
       </div>
     </div>
   );
