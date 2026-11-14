@@ -54,6 +54,35 @@ describe("chatUi (on @lianki/ui-state)", () => {
     expect(chatUi()).toBe(chatUi());
   });
 
+  it("drafts remain isolated across accounts, reloads and widget hot swaps", () => {
+    chatUi().setState({ draft: "legacy unscoped draft" });
+    const a = chatUi("account-a");
+    a.setState({
+      draft: "private dictated words",
+      pureDictation: "private dictated words",
+      interim: { text: "unfinished speech", page: 10 },
+    });
+    expect(chatUi("account-a")).toBe(a);
+    expect(chatUi("account-b").getState()).toMatchObject({
+      draft: "",
+      pureDictation: null,
+      interim: null,
+    });
+    chatUi("account-b").setState({ draft: "other account typed words", pureDictation: null });
+    resetUiStores();
+    expect(chatUi("account-a").getState()).toMatchObject({
+      draft: "private dictated words",
+      pureDictation: "private dictated words",
+      interim: { text: "unfinished speech", page: 10 },
+    });
+    expect(chatUi("account-b").getState()).toMatchObject({
+      draft: "other account typed words",
+      pureDictation: null,
+      interim: null,
+    });
+    expect(chatUi().getState().draft).toBe("legacy unscoped draft");
+  });
+
   it("a damaged entry is cleaned on the way in", () => {
     data.set(
       "lk:ui:chat",
@@ -71,6 +100,7 @@ describe("chatUi (on @lianki/ui-state)", () => {
 describe("migrateChatUi", () => {
   it("keeps a valid state as it is", () => {
     const s: ChatUi = {
+      legacyOwnerMigrated: false,
       draft: "hello there",
       caret: 5,
       pureDictation: "hello there",

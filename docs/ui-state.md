@@ -20,11 +20,16 @@ the local copy plus server sync), is designed in [prefs-sync.md](prefs-sync.md).
 
 Rules:
 
-- **Business data never goes in sessionStorage.** That means cards, grades,
-  queues, review logs, notes and anything the server owns. Those belong to the
+- **Server-owned business data never goes in sessionStorage.** That means cards, grades,
+  study queues, review logs, notes and anything the server owns. Those belong to the
   server, plus the offline copies in IndexedDB (`lib/words/idb.ts`). A UI
   store may hold a _pointer_ to them, such as a list id or the key of the word
   at the top of the screen. It never holds the thing itself.
+  A chat draft or outgoing line awaiting acknowledgement is still this tab's
+  pending UI input. Its session outbox may retain that input until the hub
+  durably accepts it; this is not a second store for accepted chat history.
+  Explicitly rejected input stays visible in the outbox with its reason,
+  without automatic replay or another rejection prompt after reload.
 - **The URL wins** when it carries the same state. sessionStorage only fills
   in when the URL is silent. For example, `/words` with no `?list=` reopens
   this tab's list by replacing the address, with no extra history entry.
@@ -99,7 +104,7 @@ target that is not built yet.
 | /reader word review: card in focus, list scroll   | session `lk:ui:words` `focus` / `anchors`, key `review:<book>:<ref>`                     | done: a refresh lands on the same card while it is still in the review                                                                                   |
 | /reader word review: rows' meanings, translations | memory, per tab (`glossed`, `translated`); the server's caches behind them               | done: asked when near the screen, never stored as UI state (lib/read/review-row-fill.ts)                                                                 |
 | any list's scroll position (VirtualList)          | session `lk:ui:list:<name>`: the id of the row at the viewport centre                    | done (owner, 2026-11-10): restored by scrolling that id back to the centre, loading batches until it shows; never a pixel offset or an index             |
-| docked chat sidebar width | local `lk:pref:chat-dock` (`chatDock`, packages/debug-chat/src/ui-store.ts) | device only; committed border resize, temporarily clamped to visual viewport; never synced |
+| docked chat sidebar width                         | local `lk:pref:chat-dock` (`chatDock`, packages/debug-chat/src/ui-store.ts)              | device only; committed border resize, temporarily clamped to visual viewport; never synced                                                               |
 | sidebar collapsed (rail folded away)              | local `lk:pref:sidebar` (`railUi`, lib/nav/rail-store.ts)                                | done (owner, 2026-11-11): per device; folded, the rail is gone and `--nav-w` is 0; the first shell's `lk:sidebar` is carried over once                   |
 | phone drawer open                                 | memory, `navUi` (lib/nav/ui-store.ts)                                                    | done: the bottom island opens it too                                                                                                                     |
 | recent pages (nav)                                | session `lk:ui:nav`                                                                      | done                                                                                                                                                     |
@@ -109,23 +114,25 @@ target that is not built yet.
 
 ### Chat widget (packages/debug-chat, another lane)
 
-| State                               | Where                                                                 | Status                                                                                                   |
-| ----------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| bar position                        | local `lk:debug-chat-pos`                                             | → session `lk:ui:chat` (per tab)                                                                         |
-| chat open, full-screen log          | local `lk:debug-chat-open`                                            | → session `lk:ui:chat`                                                                                   |
-| tree level / expanded node          | —                                                                     | → session `lk:ui:chat`                                                                                   |
-| chat scroll, draft                  | —                                                                     | → session `lk:ui:chat` (draft text is UI, not a message)                                                 |
-| mic on                              | local `lk:agent:mic`                                                  | → session (a mic should not reopen in a new tab by itself)                                               |
-| voice-clip recording (on, sink)     | the hub, per window session; session `lk:ui:clips` (its id)           | done (dev-debug-widget.md, "Recording")                                                                  |
-| speech rate, voice out, echo cancel | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec`          | → `lk:pref:chat-voice`                                                                                   |
-| voice cues: send, speech start/end  | local `lk:voice-cue-send`, `lk:voice-cue-speech` → account            | done: chat ⋯ menu, on by default (voice-mode.md, "Cues")                                                 |
-| compact mode (last message only)    | local `lk:pref:chat-view` (`chatPrefs`, off by default)               | done: per device, never synced                                                                           |
-| Gantt time axis: log or linear      | local `lk:pref:gantt` (`ganttPrefs`, log by default)                  | done: per device, never synced (owner, 2026-11-09 15:27 JST)                                             |
-| Gantt categories open (▸/▾)         | session `lk:ui:gantt-groups` (`ganttGroupsUi`, all folded)            | done: this tab; the Gantt and the task list share it (dev-debug-widget.md, "Categories")                 |
-| full screen                         | local `lk:pref:chat-view` `full` (`chatPrefs`, off by default)        | done: per device, never synced; the button, Escape or Back leave it (dev-debug-widget.md, "Full screen") |
-| ETA task bar hidden (▸/▾)           | local `lk:pref:chat-view` `etaFolded` (`chatPrefs`, shown by default) | done: per device, never synced (dev-debug-widget.md, "Hiding the bar")                                   |
-| tucked into the edge, which edge    | local `lk:pref:chat-fold` (`chatFold`, fold.ts)                       | done: per device, never synced                                                                           |
-| the last lines, for an instant chat | local `lk:chat-cache` (lib/chat-cache.ts, one account)                | done: a device cache, never synced; another account's or a signed-out page drops it, so does sign-out, which also freezes writes until the page is gone; an account change under a mounted chat resets it (lib/use-chat-cache.ts) (cold-start.md, "The chat at once") |
+| State                                       | Where                                                                 | Status                                                                                                                                                                                                                                                                |
+| ------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| bar position                                | local `lk:debug-chat-pos`                                             | → account-scoped session chat state (per tab)                                                                                                                                                                                                                         |
+| chat open, full-screen log                  | local `lk:debug-chat-open`                                            | → account-scoped session chat state                                                                                                                                                                                                                                   |
+| tree level / expanded node                  | —                                                                     | → account-scoped session chat state                                                                                                                                                                                                                                   |
+| chat draft, caret, dictation, interim, tree | session `lk:ui:chat:<encoded account scope>`                          | done: per account and tab; reload and hot swaps share the scoped store; drafts are pending UI input                                                                                                                                                                   |
+| outgoing chat awaiting hub acceptance       | session `lk:ui:chat-outbox:<encoded account scope>`                   | done: stable IDs, FIFO, durable before clearing the draft; accepted IDs leave the outbox, rejected rows retain text and reason                                                                                                                                        |
+| last acknowledged server chat sequence      | session `lk:ui:chat-outbox:<encoded account scope>:cursor`            | done: monotonically increasing cursor on the existing thread sequence; no separate client delivery sequence                                                                                                                                                           |
+| mic on                                      | local `lk:agent:mic`                                                  | → session (a mic should not reopen in a new tab by itself)                                                                                                                                                                                                            |
+| voice-clip recording (on, sink)             | the hub, per window session; session `lk:ui:clips` (its id)           | done (dev-debug-widget.md, "Recording")                                                                                                                                                                                                                               |
+| speech rate, voice out, echo cancel         | local `lk:agent-speech-rate`, `lk:voice-out`, `lk:voice-aec`          | → `lk:pref:chat-voice`                                                                                                                                                                                                                                                |
+| voice cues: send, speech start/end          | local `lk:voice-cue-send`, `lk:voice-cue-speech` → account            | done: chat ⋯ menu, on by default (voice-mode.md, "Cues")                                                                                                                                                                                                              |
+| compact mode (last message only)            | local `lk:pref:chat-view` (`chatPrefs`, off by default)               | done: per device, never synced                                                                                                                                                                                                                                        |
+| Gantt time axis: log or linear              | local `lk:pref:gantt` (`ganttPrefs`, log by default)                  | done: per device, never synced (owner, 2026-11-09 15:27 JST)                                                                                                                                                                                                          |
+| Gantt categories open (▸/▾)                 | session `lk:ui:gantt-groups` (`ganttGroupsUi`, all folded)            | done: this tab; the Gantt and the task list share it (dev-debug-widget.md, "Categories")                                                                                                                                                                              |
+| full screen                                 | local `lk:pref:chat-view` `full` (`chatPrefs`, off by default)        | done: per device, never synced; the button, Escape or Back leave it (dev-debug-widget.md, "Full screen")                                                                                                                                                              |
+| ETA task bar hidden (▸/▾)                   | local `lk:pref:chat-view` `etaFolded` (`chatPrefs`, shown by default) | done: per device, never synced (dev-debug-widget.md, "Hiding the bar")                                                                                                                                                                                                |
+| tucked into the edge, which edge            | local `lk:pref:chat-fold` (`chatFold`, fold.ts)                       | done: per device, never synced                                                                                                                                                                                                                                        |
+| the last lines, for an instant chat         | local `lk:chat-cache` (lib/chat-cache.ts, one account)                | done: a device cache, never synced; another account's or a signed-out page drops it, so does sign-out, which also freezes writes until the page is gone; an account change under a mounted chat resets it (lib/use-chat-cache.ts) (cold-start.md, "The chat at once") |
 
 ### Cards and the swipe
 
@@ -236,6 +243,26 @@ local storage for preferences. Because stores are kept per page on
 `globalThis`, the hot-loaded widget bundle and the built-in one share state
 across a reload of the widget.
 
+Chat input uses `chatUi(accountScope)` and an account-bound outbox. The scope
+is encoded with `encodeURIComponent`; ordinary signed-in pages use the account
+ID, while box hosts also distinguish their provider/account. A missing identity
+cannot commit an outgoing item. Neither another account's draft nor the old
+unscoped store is implicitly inherited. The socket must reconcile the hub's
+history before replaying pending items, keeping each item's original ID.
+
+There is one explicitly authorized exception for old `lk:ui:chat` input: a
+one-time migration for the signed-in owner of the current owner thread. It
+copies pending input into that account's durable flow before deleting the old
+key and records a migration marker. A failed target write leaves the old key
+available; guests, friends and other accounts never claim or delete it.
+`packages/debug-chat/src/legacy-chat-draft.ts` first writes the global per-tab
+`lk:ui:chat-legacy-owner` claim as `{scope,pending:true}`. It then writes and
+reads back the scoped target with `legacyOwnerMigrated:true`, marks the claim
+`{scope,pending:false}`, and removes `lk:ui:chat`. A pending claim can resume
+only in that same scope, including after a completion-marker interruption;
+another account cannot take the partially migrated text. Existing nonempty
+scoped draft/interim input defers migration without changing its order.
+
 ## Unsaved work
 
 Owner rules (2026-11-02): a deploy never reloads a page over unsaved work, and
@@ -256,7 +283,7 @@ chat widget shares it).
   and inputs that save on change.
 - **Persisted.** Anything inside `data-dirty="persisted"` never counts, in
   either mode, focused or not: what is typed there is already saved. The
-  chat's input is one: its draft is kept in sessionStorage (`lk:ui:chat`), so
+  chat's input is one: its draft is kept in account-scoped sessionStorage (`lk:ui:chat:<encoded account scope>`), so
   a reload or leaving loses nothing (the owner's rule, 2026-11-02).
 - **Two modes.** `"leave"` is used by the guard and counts unsaved content
   only. `"reload"` is used by the deploy auto-reload and is stricter: it also

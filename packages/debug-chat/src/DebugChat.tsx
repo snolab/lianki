@@ -784,6 +784,10 @@ export type DebugChatProps = {
    * `data-cached` on the chat, and the status still says it is not connected.
    */
   cached?: boolean;
+  /** Account-bound draft storage; unscoped only for standalone hosts. */
+  draftScope?: string;
+  /** Accepted locally, awaiting the hub acknowledgement. */
+  outgoing?: readonly { id: string; text: string; rejected?: string }[];
   /**
    * Send a line; `to` is the state-tree node it is addressed to (absent = the
    * main thread). `opts.source` is "stt" when the line is the mic's text, unchanged;
@@ -1018,13 +1022,15 @@ const NONE_ABOVE: ReadonlySet<string> = new Set();
 type Panel = "none" | "menu" | "tree" | "voiceprint";
 
 /** One live line (live-speech.ts): what it shows, and whether it is spoken, sending or failed. */
-type LiveRow = { key: string; text: string; tail: string; state: "speaking" | "sending" | "unsent" };
+type LiveRow = { key: string; text: string; tail: string; state: "speaking" | "sending" | "unsent"; reason?: string };
 
 export function DebugChat({
   live,
   listeners,
   messages: rawMessages,
   cached = false,
+  draftScope,
+  outgoing,
   onSend,
   onAnswer,
   onPassageEnd,
@@ -1288,7 +1294,7 @@ export function DebugChat({
     moved();
   };
   /** Session UI state (draft, panel, tree): survives a refresh and a hot swap. */
-  const uiStore = chatUi();
+  const uiStore = chatUi(draftScope);
   /** The box: its bar is kept on screen, expanded or minimized. */
   const root = useRef<HTMLElement | null>(null);
   // Only expanding or minimizing refits (fit itself is fresh each render).
@@ -2579,6 +2585,12 @@ export function DebugChat({
   messagesNow.current = messages;
   /** How many commands the mic's taps had kept at the last spoken line. */
   const tapsAtVoice = useRef(0);
+  // A quota/transport refusal leaves the draft intact, including its consumed mic metadata.
+  const preparedVoice = useRef<{
+    draft: string;
+    taken: { timing?: VoiceTiming; stt?: SttTag };
+    heardFrom: ReturnType<typeof takeSpeaker>;
+  } | null>(null);
   /** Send the draft; true when it went out. */
   const submit = (): boolean => {
     clearTimeout(timer.current);
@@ -2620,13 +2632,16 @@ export function DebugChat({
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
     // And which recognizer made it (SttTag): an older store (hot swap) has no takeLine.
     const lat = voiceLatency();
+    const prepared = source && preparedVoice.current?.draft === draftRef.current
+      ? preparedVoice.current : null;
     const taken: { timing?: VoiceTiming; stt?: SttTag } = source
-      ? (lat.takeLine?.() ?? { timing: lat.take() }) : {};
+      ? (prepared?.taken ?? lat.takeLine?.() ?? { timing: lat.take() }) : {};
     const timing = taken.timing;
     const stt = taken.stt;
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
     // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
-    const heardFrom = source ? takeSpeaker() : (clearSpeaker(), undefined);
+    const heardFrom = source ? (prepared?.heardFrom ?? takeSpeaker()) : (clearSpeaker(), undefined);
+    preparedVoice.current = source ? { draft: draftRef.current, taken, heardFrom: heardFrom! } : null;
     const speakerProof = heardFrom?.proofs;
     // What was attached with the + menu rides along, this line only.
     const context = uiStore.getState().attached ?? undefined;
@@ -2673,8 +2688,9 @@ export function DebugChat({
       return false;
     }
     setOffline(false);
+    preparedVoice.current = null;
     // The live line becomes "sending" in the same paint the draft empties: no blink, no gap.
-    if (fromLive) {
+    if (fromLive && outgoing === undefined) {
       const h = holdOf(++holdKey.current, text, messagesNow.current, Date.now(), continues);
       flushSync(() => setHolds((x) => [...x, h]));
     }
@@ -2982,11 +2998,12 @@ export function DebugChat({
    * not sent, not read aloud, no hub id.
    */
   const liveRows: LiveRow[] = [
-    ...shownHolds.map((h) => ({
-      key: `${LIVE_ID}-${h.key}`,
+    ...(outgoing ?? shownHolds.map((h) => ({ id: `${LIVE_ID}-${h.key}`, text: h.text, rejected: undefined }))).map((h) => ({
+      key: h.id,
       text: h.text,
       tail: "",
-      state: "sending" as const,
+      state: h.rejected ? "unsent" as const : "sending" as const,
+      reason: h.rejected,
     })),
     ...(speech.bubble
       ? [
@@ -3010,16 +3027,16 @@ export function DebugChat({
   };
   function liveLine(r: LiveRow, where: "log" | "compact" | "float") {
     const label =
-      r.state === "sending" ? ux.liveSending : r.state === "unsent" ? ux.liveNotSent : ux.liveSpeaking;
+      r.reason ? ux.liveNotSent : r.state === "speaking" ? ux.liveSpeaking : ux.liveSending;
     const Tag = where === "compact" ? "div" : "li";
     return (
       <Tag
         key={r.key}
         data-testid="debug-chat-live"
         data-live={r.state}
-        aria-busy={r.state !== "unsent" || undefined}
-        title={label}
-        onClick={r.state === "sending" ? undefined : editLive}
+        aria-busy={!r.reason || undefined}
+        title={r.reason ?? label}
+        onClick={r.key === LIVE_ID && r.state !== "sending" ? editLive : undefined}
         style={where === "float" ? { textShadow: LINE_HALO } : undefined}
         // His own line's look, outlined dashed and a little faded: not sent yet.
         className={`pointer-events-auto flex items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 leading-snug opacity-80 ${r.state === "sending" ? "" : "cursor-text"} ${where === "float" ? "py-0.5" : ""}`}
@@ -3043,22 +3060,11 @@ export function DebugChat({
             </span>
           )}
           {r.state === "speaking" && micActive && <MicCaret />}
-          {r.state === "unsent" ? (
+          {r.reason ? (
             <>
               <span className="ms-1 fs-10" style={{ color: "oklch(0.6 0.17 45)" }}>
                 {ux.liveNotSent}
               </span>
-              <button
-                type="button"
-                data-testid="debug-chat-live-retry"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  submit();
-                }}
-                className="ms-1 fs-10 underline"
-              >
-                {ux.liveRetry}
-              </button>
             </>
           ) : (
             // Speaking: a soft pulse (none under reduced motion); sending: still.
@@ -3205,6 +3211,30 @@ export function DebugChat({
     setArmed((n) => n + 1);
     timer.current = setTimeout(submit, DEBOUNCE_MS);
   };
+  const armRef = useRef(arm);
+  armRef.current = arm;
+  useEffect(() => {
+    // Legacy unscoped text needs the verified owner's migration before any auto-resume.
+    if (!draftScope || draftScope === "guest") return;
+    const resume = () => {
+      if (!draftRef.current.trim()) return;
+      const mic = (globalThis as { __lkMic?: { view?: () => { state: string } } }).__lkMic?.view?.();
+      if (micPending.current || mic?.state === "capturing") return;
+      if (draftSource(draftRef.current, pureDictation.current)) joiner.current?.final();
+      else armRef.current();
+    };
+    let mounted = true;
+    queueMicrotask(() => { if (mounted) resume(); });
+    window.addEventListener("online", resume);
+    return () => {
+      mounted = false;
+      window.removeEventListener("online", resume);
+      clearTimeout(timer.current);
+    };
+  }, [uiStore, draftScope]);
+  useEffect(() => {
+    if (draftScope && draftScope !== "guest" && live && offline && draftRef.current.trim()) armRef.current();
+  }, [live, offline, draftScope]);
   const toggle = (v: boolean) => {
     if (v) atEnd.current = true;
     // Opened from anywhere (the island, a voice command, the menu): no longer tucked.
