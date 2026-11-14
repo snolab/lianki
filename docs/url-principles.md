@@ -47,6 +47,10 @@ everything that is theirs:
 | `/my/files`       | every stored file in folders by origin (inbox_item `source`): Open, delete (docs/import-material.md, "My Files") |
 | `/my/recordings`  | the account's mic recordings by day: listen, download a day, delete (flag `voice.recordings` + `dev`; docs/recordings.md) |
 
+Chat uploads use `/api/my/inbox/**`: session identity scopes every file;
+`/api/dev/inbox/**` only forwards for old clients and owner-agent download
+tickets. The agent still cannot read ordinary accounts' files.
+
 Signed-in only: a guest is sent to sign in (except the guest level card on
 `/my/profile`, as before). Never owner-only. A new user-level settings page
 goes under `/my/<noun>`, not at the top level; `/dev/<x>` stays separate.

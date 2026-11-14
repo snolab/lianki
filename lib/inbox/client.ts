@@ -1,13 +1,13 @@
 /**
  * The page's ChatFiles for the chat widget (packages/debug-chat/src/files.ts):
- * uploads to the owner-only /api/dev/inbox, same origin, the session cookie.
- * Passed only on the owner's own pages (DebugEval); nobody else gets files.
+ * uploads to the signed-in account's own /api/my/inbox, with its session.
+ * Guests never receive these capabilities.
  */
 import type { ChatFiles, InboxListing } from "@lianki/debug-chat/files";
 import type { AttachmentRef } from "@lianki/debug-chat/wire";
-import { INBOX } from "./config";
+import { publicCfg } from "@/lib/config-client";
 
-const BASE = "/api/dev/inbox";
+const BASE = "/api/my/inbox";
 
 /** One file up, with progress (XHR: fetch has no upload progress). */
 function upload(
@@ -16,6 +16,7 @@ function upload(
   signal: AbortSignal,
 ): Promise<AttachmentRef> {
   return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new Error("aborted"));
     const x = new XMLHttpRequest();
     x.open("POST", BASE);
     x.setRequestHeader("x-file-name", encodeURIComponent(file.name));
@@ -45,13 +46,15 @@ type ListBody = {
 export const isAnkiPackage = (name: string) => /\.(apkg|colpkg)$/i.test(name);
 
 /**
- * The owner's ChatFiles. `importDeck` labels the one-tap import of an Anki
+ * The signed-in account's ChatFiles. `importDeck` labels the one-tap import of an Anki
  * package; `go` navigates in the app (the import page reads ?inbox=<id>).
  */
 export const inboxFiles = (opts: {
   importDeck: string;
   go: (path: string) => void;
+  account?: string;
 }): ChatFiles => ({
+  scope: opts.account,
   upload,
   actions: (ref) =>
     isAnkiPackage(ref.name)
@@ -64,7 +67,7 @@ export const inboxFiles = (opts: {
         ]
       : [],
   url: (ref) => `${BASE}/${encodeURIComponent(ref.id)}`,
-  maxBytes: INBOX.maxFileBytes,
+  maxBytes: publicCfg("inbox.maxFileBytes"),
   async list() {
     const r = await fetch(BASE, { cache: "no-store" });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -76,6 +79,7 @@ export const inboxFiles = (opts: {
             usage: {
               bytes: b.usage.bytesStored,
               items: b.usage.items,
+              ...(b.usage.capBytes === undefined ? {} : { quota: b.usage.capBytes }),
             },
           }
         : {}),
@@ -87,7 +91,7 @@ export const inboxFiles = (opts: {
   },
 });
 
-/** One inbox file as a File (the import page's hand-off): the owner's session, our own URL. */
+/** One inbox file as a File (the import page's hand-off): the account's session, our own URL. */
 export async function inboxFile(id: string): Promise<File> {
   if (!/^[0-9a-f]{20}$/.test(id)) throw new Error("bad inbox id");
   const r = await fetch(`${BASE}/${id}`, { cache: "no-store" });

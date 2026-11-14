@@ -84,7 +84,7 @@ to every signed-in user while it is on).
   below, answered "one table, a source column". The type is sniffed, never
   trusted from the name. Usage (`inbox_usage`) and the caps are shared with
   the inbox: 20 MB a file, 200 MB a rolling day, 2 GB stored, 30 uploads a
-  minute (`INBOX`, lib/inbox/config.ts); costs are recorded as the inbox's.
+  minute per account (`cfg("inbox.*")`, defaults in lib/config.ts); costs are recorded as the inbox's.
 - **Routes** (`lib/import/files.ts`, `app/api/import/files/`): `POST`
   (raw body, `x-file-name`), `GET` (the user's import files and usage),
   `DELETE /<id>` (the R2 object, the row and the usage, for good). Writes
