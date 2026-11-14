@@ -480,6 +480,8 @@ The voiceprint adds these (next section):
 | client | `{"t":"voiceprint","op":"export","rid","device":D\|"*","ticket"}`                                 | the features, for his account (passkey ticket): `prints` back            |
 | client | `{"t":"voiceprint","op":"restore","rid","device":D\|"*","prints":[…],"ticket"}`                   | write prints read from his account (passkey ticket)                      |
 | client | `{"t":"filter","on":bool}`                                                                        | the voiceprint filter on this socket (off until said)                    |
+| client | `{"t":"voiceprint","op":"progressive","rid","on":bool,"ticket"}`                                  | progressive learning on the Mac on/off (passkey ticket, device `*`)      |
+| client | `{"t":"end","id":N,"playback":true}`                                                              | something played while he spoke: never learned from                      |
 | server | `ready` + `"speaker":{"models":["campp"]}`                                                        | the check is on                                                          |
 | server | `final` + `"speaker":{score,decision,model,device,speechS,snrDb[,reason]}`                        | the check on that final                                                  |
 | server | `final` + `"speakerProof":"<payload>.<sig>"`                                                      | the Mac's signature over that tag and the final's text                   |
@@ -767,6 +769,13 @@ per speaker, each verified by its own proof (lib/speaker-proof.ts). Not after
 "Linky" (the cuts are in the whole audio, the text only after it): one `mixed`
 line there. Costs one more decode of the final's audio, only on these finals.
 
+**Which other voice** (owner, 2026-11-14; [voice-mode.md](voice-mode.md),
+"Speaker avatars"): an `other` final also carries `voice`, a stable id per
+voice heard lately (`Voices`: cosine to a running centroid, `VOICE_SAME`,
+`VOICES_MAX`, `VOICE_FORGET_S`; memory only, never audio), `"me"` on his;
+nothing on an unknown and nothing without a print. Signed with the tag, so
+the chat can draw one avatar per voice.
+
 **Merging keeps the speakers apart.** A split part never amends the line
 before it (`continues` is not asked for it). An agent's passage merge
 (`eval.ts edit --merge`, `passageSpeakers` in voice-merge.ts, the hub's
@@ -926,6 +935,93 @@ of the "only my voice" filter, with a link to
 [`stt.voiceprint-filter`](https://lianki.com/dev/flags#stt.voiceprint-filter),
 and per line whether the filter stopped it or would have. **Done** gives the
 mic back to the chat; closing the panel does too.
+
+### Progressive voiceprint
+
+Owner, 2026-11-14 (~04:00 JST): "no need to actively enrol; check whether
+each sentence I say has a clean background, and if it is clean, just take
+it." Each device is used in other rooms and moods, so a print read once in
+one room ages. With progressive learning on, the Mac adds the **embedding**
+(192 numbers, never audio) of his own clean, confident finals to **this
+device's** print, and makes a print for a device that has none.
+
+**Off until he turns it on, with his passkey.** The enrolment consent
+("Nothing is captured until his tap on 'I agree, start' and his passkey")
+covers only the sentences he reads on the card. Learning from everything he
+says is a new use of his voice, so it gets its own approval: the voiceprint
+op `{"t":"voiceprint","op":"progressive","on":true|false}` with a passkey
+ticket for op `progressive`, device `*` (`lib/voiceprint-ticket.ts`
+`PASSKEY_OPS`; the ten-minute window applies as to every voiceprint op). The
+switch lives on the Mac, `voiceprints/progressive.json` (0600; a file it
+cannot trust reads as off). On the Mac itself, `voiceprint.py progressive
+[on|off]`. The panel has no switch for it yet: the op and its ticket are
+ready for one.
+
+**What a final must be** (`Verifier.learn_gate`, then `Verifier.learn`; all
+of them):
+
+| check                    | value (constant, env override `LIANKI_STT_<NAME>`)                                                                                                                                             |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| decision                 | `me`, no reason (never `between`, `mixed`, `noise`, `short`); a model with measured bands (not ERes2NetV2)                                                                                     |
+| score over the "me" line | ≥ the band's `me` + **0.10** (`PROG_MARGIN`): CAM++ ≥ 0.40 on 3 s and more                                                                                                                     |
+| speech                   | ≥ **3.0 s** (`PROG_MIN_SPEECH_S`): the long band                                                                                                                                               |
+| read SNR                 | ≥ **20 dB** (`PROG_MIN_SNR_DB`; the decision's gate is 10)                                                                                                                                     |
+| windows                  | at least one 2.5 s window, and **every** window over the short band's `me` line (0.28)                                                                                                         |
+| this device's own print  | ≥ the band's `me` + **0.05** (`PROG_OUTLIER_MARGIN`) against it, or against its pending samples from the third on: an **outlier** is not taken even when another device's print vouched for it |
+| rate                     | one sample per device per **60 s** at most (`PROG_EVERY_S`)                                                                                                                                    |
+| the page                 | not an enrolment sentence, not another account's socket, not split into parts, not flagged `playback`                                                                                          |
+
+**Li's own read-aloud.** The Mac cannot know when the page plays something:
+the mic stays open with echo cancellation (`aec.ts`), and nothing in the
+protocol says so. Hence the higher SNR (her voice under his lowers it) and the
+every-window rule (a stretch of her alone scores far under his line). The
+`end` message takes `"playback":true` and such a final is never learned from;
+the page does not send it yet.
+
+**Bounded.** At most **200 samples** per device and model (`PRINT_MAX`),
+enrolment included. When full, the **oldest progressive sample** goes; the
+enrolment samples never do. Oldest rather than "least representative": he
+asked for the print to learn other rooms and moods, and evicting whatever is
+furthest from the centroid would prune exactly those and narrow the print to
+one condition. First-in-first-out keeps the last ~180 clean sentences, the
+enrolment stays as the anchor, and the outlier check (against the device's
+own print) limits how far a run of samples can pull it. The centroid and the
+leave-one-out self scores are recomputed at each addition.
+
+**A print from nothing.** A device with no print collects samples vouched
+for by another device's print (score over the margin, against the best of
+them) in `voiceprints/<device>.<model>.pending.json` (0600, embeddings
+only). It becomes a print at **10** samples (`PROG_CREATE_MIN`, the
+enrolment minimum); until then it is not used for scoring and the filter
+still sees no print for that device.
+
+**What is kept.** Per sample: the embedding, its speech seconds, its source
+(`enrol` | `prog`) and when it was added. No audio, no text. The account copy
+("Voiceprint in your account") carries the sources too (`sources`, optional,
+in `EXPORT_KEYS` and `PRINT_KEYS`), not the times; its limit is 200 samples
+(`VOICEPRINT_CLOUD_LIMITS.maxSentences`), sealed payloads up to 1.5 MB. A
+print from before this, or restored without sources, counts as enrolment.
+
+**Delete.** Deleting a print (panel or CLI) also deletes that device's
+pending samples and **turns progressive learning off**: left on, another
+device's print would grow the deleted one back. He turns it on again with
+his passkey. Re-enrolling a device replaces its print, progressive samples
+included.
+
+**Seeing it.** The status op answers per print `enrolN`, `progN` and
+`lastAdded`, and `progressive: {on, updated, pending:[{device, model, n,
+need}], minSpeechS, minSnrDb, margin, outlierMargin, everyS, max,
+createMin}`. `voiceprint.py list` shows the same counts. The server logs each
+outcome after the final has gone out (never text): `progressive #12: added
+to iphone (31 sample(s))`, `… not taken (noise)`. Learning runs after the
+final is sent, on the speaker thread: it never delays a final.
+
+Tests: `scripts/local-stt/test_voiceprint.py` `Progressive` (clean and
+confident added; noisy, short, mixed, low margin, not me, provisional
+refused; outlier; the cap and FIFO eviction; the rate limit; a print only at
+10; no audio kept; delete turns it off; sources in the account copy) and
+`ServerProtocol.test_progressive_learns_his_clean_finals` (the ticket, off by
+default, playback and noise not learned, the rate limit, delete).
 
 ## Only my voice: the filter
 

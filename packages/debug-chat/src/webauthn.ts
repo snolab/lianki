@@ -66,7 +66,14 @@ export async function getAssertion(
   };
 }
 
-export type VoiceprintTicketOp = "status" | "enrol" | "delete" | "delete-audio" | "export" | "restore";
+export type VoiceprintTicketOp =
+  | "status"
+  | "enrol"
+  | "delete"
+  | "delete-audio"
+  | "export"
+  | "restore"
+  | "progressive";
 
 /**
  * The passkey window (docs/local-stt.md, "One approval for ten minutes"): the

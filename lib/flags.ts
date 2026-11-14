@@ -183,6 +183,13 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  "voice.echo-dedupe": {
+    description:
+      "回声去重：两台手机同时开着麦克风时，同一句话被另一台设备再识别一次（超过两麦合并的几秒、或者识别得稍有不同），或者 Li 朗读的助手回复、你润色后的读回被另一台手机听到又转成文字，都会被当成回声：不显示、不朗读、不转给助手，原文留在 hub 里可以撤销（edited.by 为 auto，原因 echo）。时间窗和相似度在 /dev/config 的 voice.echo* 里。关闭 = 照旧，每条都当作你说的新话。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   "stt.merge": {
     description:
       "连续语音合并：打开后，你接着说的话如果明显是上一句的延续，会并入你刚发的那条语音消息，而不是多出一个气泡；助手收到的是完整的一句，等你说完后再按上下文润色一次整段。只并你自己刚发的语音、中间没有任何人说话、没有问答卡片；语音口令不会被合并。合并后的消息有 ✨ 和撤销按钮，撤销可拆回原来的几条。关闭（默认）= 照旧：每段语音各发一条。",
@@ -318,6 +325,20 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  "voice.sync-speak": {
+    description:
+      "多台设备同时朗读：你有两台或更多设备同时连着、都在读 Li 的话时，同一句话尽量在同一时刻开始读（相差约 0.2 秒以内）。先收到的设备等几百毫秒（/dev/config 的 voice.syncLeadMs，默认 300），等慢的设备也收到；最多等 voice.syncMaxWaitMs（默认 1.5 秒），已经晚了的设备马上读。只有一台设备时从不等待。润色后的回读也一样。打开（默认，只对你）；关闭 = 照旧，每台设备收到就读。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
+  "voice.polish-readback": {
+    description:
+      "润色后用你自己的声音读一遍：在你本人的页面上（需要 dev 权限），你用麦克风说的一句话被 Li 润色以后（聊天里那句话变成润色后的文字、带小星星），Li 用你 Mac 上的克隆声音（你自己的声音）把润色后的文字读一遍给你听，每句只读一次。和 Li 的其它朗读排在同一个队列里：朗读开关关着就不读，你插话时照样暂停。只读你自己说的话，不读打字的、别人的或摘要；同一句再润色也不再读。克隆声音服务器没开或超时（/dev/config 的 voice.cloneTimeoutMs，默认 20 秒）就安静跳过，不换别的声音读。每台设备可以在 lk:agent-clone-tts 里改服务器地址，填 off 就这台设备不读。打开（默认，只对你）；关闭 = 照旧，润色后不读。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   "voice.cloud-voices": {
     description:
       "Li 用谷歌 / Azure 的声音朗读（docs/li-sound-hub.md，「Provider voices」）：打开后，在你本人的页面上（需要 dev 权限），一句话可以用 google:<声音> 或 azure:<声音> 来读（say --voice google:cmn-TW-Wavenet-A），按语言自动选声音的表在 /dev/config 的 voice.langVoices（默认 zh-TW → 谷歌台湾国语，nan → Azure 闽南语）。声音在服务器上生成，手机用云端 <audio> 播放，没有系统语音的手机也能听。按字数从你的积分扣（和别人一样，没有管理员免费）。没有谷歌 / Azure 密钥时什么都不变，照常用原来的声音。关闭（默认）= 完全不用这些声音。",
@@ -360,6 +381,14 @@ export const FLAGS = {
       "邮件邀请好友：所有 Pro 用户（和管理员）在 /membership 的邀请卡片里多一个「用邮件邀请」框，填一个朋友的邮箱，Lianki 用发件人的账户语言发一封邀请信，里面是他自己的邀请链接（奖励规则不变）。防滥用：每人每天最多 5 封、同一个地址一个月内只收一封（不管谁邀请）、一次只能填一个地址、已有账户的地址不发（发件人看到的结果一样）、信里有退订和举报链接（一键退订），被举报 2 次的发件人不能再发。收件人地址只存哈希，发件人只看到自己发过的打码地址。关闭（默认）= 只有你本人（管理员）能用。",
     default: false,
     requires: ["auth-secret"],
+  },
+  // No `audience`: every account; ON is the shipped state. Grants credits,
+  // never charges, so default-on (docs/payments.md, "Login-streak bonus").
+  "credits.login-streak": {
+    description:
+      "连续学习奖励：每天服务器记到一次真实学习（复习了卡片、阅读打分）就送当天的积分，连续天数越多送得越多（7 天一轮，金额在 /dev/config 的 credits.loginStreak.*）；漏一天只扣几天，不清零。每个自然日（按账号时区）只送一次，重试不会重复。钱包卡片上有一行「连续 N 天 · +X」，流水里显示为「连续学习 · 第 N 天」。关闭 = 不再送（已送的积分不动），钱包上没有这一行。",
+    default: true,
+    group: "credits",
   },
 } as const satisfies Record<string, FlagDef>;
 

@@ -3,7 +3,9 @@ import { getKey, migrateKeys, queryFlag, setKey } from "@lianki/debug-chat/stora
 /**
  * Remote-debug mode, in the browser — users know it as their learning partner
  * (docs/dev-debug-widget.md, "Naming"). `?debug=1` or `?agent=1` on any page
- * turns it on for this device (`=0` off); the installed app toggles it with seven quick
+ * turns it on for this device (`=0` off). A signed-in dev account defaults
+ * on when this device has no override (root layout data-chat-default). The
+ * installed app toggles it with seven quick
  * taps on /words' Settings button or ten on your own name in the profile menu
  * (top right, any page). For the owner it opens remote eval, the agent chat
  * and /api/dev/log. For any other signed-in user it opens only their own chat
@@ -22,7 +24,13 @@ export function debugOn(): boolean {
     if (!migrated) migrated = (migrateKeys(), true);
     const q = queryFlag(location.search);
     if (q !== null) setKey(KEY, q === "1" ? "1" : "0");
-    return getKey(KEY) === "1";
+    const local = getKey(KEY);
+    // The root layout derives this default from the signed-in account's dev
+    // grant. Never persist it: signing out or switching accounts must remove it.
+    const accountOn =
+      typeof document !== "undefined" &&
+      document.documentElement?.getAttribute("data-chat-default") === "on";
+    return local === null ? accountOn : local === "1";
   } catch {
     return false;
   }

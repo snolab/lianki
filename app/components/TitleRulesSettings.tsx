@@ -204,11 +204,11 @@ export function TitleRulesSettings() {
         </button>
       </form>
 
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <h3 className="font-medium">{c.builtIn}</h3>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+        <h3 className="min-w-0 break-words font-medium">{c.builtIn}</h3>
         <button
           type="button"
-          className={QUIET}
+          className={`${QUIET} max-w-full break-words`}
           disabled={pref.off.length === 0}
           onClick={() => save({ ...pref, off: [] })}
           data-testid="title-rules-restore"

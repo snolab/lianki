@@ -9,7 +9,7 @@ export function turnConfig(env = {}) {
   }));
 }
 
-const urgent = (s) => /^(?:(?:codex|claude|agy|小可|linky)[,，:：\s]*)?(?:(?:please|请|马上|立即)\s*)?(?:停止|取消|先停一下|停一下|停下|别做了|不要继续|撤销|やめて|中止|(?:stop|cancel|abort|never mind)\b)/iu.test(s.trim());
+const urgent = (s) => /^(?:@?(?:codex|coco|claude|agy|杰咪|小可|小克|linky)[,，:：\s]*)?(?:(?:please|请|马上|立即)\s*)?(?:停止|取消|先停一下|停一下|停下|别做了|不要继续|撤销|やめて|中止|(?:stop|cancel|abort|never mind)\b)/iu.test(s.trim());
 
 /** @param {{bridge: any, prepare?: (input: any) => Promise<any>, config?: Record<string, number>, now?: () => number, requestId: () => string, report?: (event: any) => void, onError?: (error: any) => void, polish?: (turn: any, suggestion: string) => Promise<any>, thread?: string, lockScope?: boolean}} options */
 export function createChatReceiver({ bridge, prepare, config = {}, now = Date.now, requestId, report = () => {}, onError = () => {}, polish, thread = "owner", lockScope = false }) {

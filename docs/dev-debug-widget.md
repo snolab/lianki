@@ -37,6 +37,23 @@ migration (marker `lk:agent-migrated`) copies `lk:debug*` to `lk:agent*`. Drop
 the `lk:debug*` writes one release later. `?agent=1` / `?agent=0` work as
 aliases of `?debug=1` / `?debug=0` (`?agent=` wins when both are given).
 
+### Account default and device override
+
+A signed-in account holding `dev` finds the chat on by default, including a
+new device or the preview origin. The root layout reads the account's grant
+and sends `<html data-chat-default="on">`; `debugOn()` uses it only when
+neither local key has a value. It never writes this default to storage, so it
+cannot stick after signing out or switching to a non-dev account. No new
+synced preference or extra session request is needed.
+
+`lk:agent` / `lk:debug` remain device/origin overrides: `0` temporarily turns
+this device's chat off until toggled on again; `1` explicitly turns it on.
+The existing hidden tap switches (seven on /words settings, ten on the
+profile name/email), as well as `?agent=0` / `?debug=0`, keep working. Accounts without `dev` keep their
+existing manual/partner-flag behavior. The marker is a UI default, never an
+authorization grant: remote eval still checks the server's dev grant and the
+hub's owner/session checks.
+
 The widget lives in its own workspace package, `packages/debug-chat`
 (`@lianki/debug-chat`), which imports nothing from the app, so it can move to
 its own repo as is. Lianki passes what it needs as `DebugChatProps`; the wire
@@ -514,6 +531,13 @@ to the main thread, as before, but prints agent lines addressed to a node.
 
 ## Agent edits of voice messages
 
+The polished sparkle identifies `edited.by`: its bottom-right badge is the
+existing lane avatar (aliases resolve to the lane's display name), or an
+automatic-system symbol for `auto`. Its accessible label and original-text
+popover say "Polished by {name}" (`chat-ui`'s `polishedBy` / `polishedAuto`,
+16 locales, with context). Messages without `by` keep the plain mark. An
+unknown assistant label keeps its name and uses the existing generated avatar.
+
 STT gets words wrong, and it has no context on the conversation. The chat
 lane does: it may **polish any of the owner's own lines** in his thread, so the
 log reads what was meant.
@@ -600,6 +624,23 @@ never read aloud again. A small muted sparkle after it marks it polished
 the raw STT text, muted; another tap goes back. The icon is one slot:
 `POLISHED_ICON` in `packages/debug-chat/src/icons.tsx`, or the widget's
 `polishedIcon` prop.
+
+**Read back in his own voice** (owner, 2026-11-14; flag `voice.polish-readback`,
+audience owner, <https://lianki.com/dev/flags#voice.polish-readback>): the
+polished text is read to him **once**, in his cloned voice from the Mac's
+clone server (`GET …/lianki-clone-tts/tts?text=` → WAV). The trigger is
+DebugEval's `edited` handler calling `polishReadback`
+(`packages/debug-chat/src/polish-readback.ts`): only his own `source: "stt"`
+line going from raw (or merged, unpolished) to an agent's polish or polished
+passage; never a line's first arrival, a merge, a summary or an undo; never
+twice for one id (memory). It goes into Li's one queue (`voice().reply` with
+`how.pick = {kind: "clone"}`), so the read-aloud switch, the talk-over pause
+and the tab that reads all apply; a hidden page drops it. A clip that fails
+or is not back within config `voice.cloneTimeoutMs` (default 20 s) is skipped
+and logged (`voice-out`, `out: "clone"`), never read in another voice. The
+server is the device key `lk:agent-clone-tts` (`off` = none on that device).
+The line's details name the voice "Voice: yours (cloned)". Tests:
+`unit/polish-readback.test.ts`.
 
 ### Summaries
 
@@ -752,6 +793,45 @@ runs it again after. Logged `debug.auto-polish` (lines, merged, polished, ms),
 (an embed, a box) never asks. Tests: `unit/debug-hub-auto-polish.test.ts`
 (the hub, with its timer fired by hand), `unit/auto-polish-model.test.ts`
 (the contract and the metering).
+
+### Echoes
+
+The owner, 2026-11-14 20:2x JST: two phones with their mics open in one room.
+Two kinds of copy still landed as his own lines: **(a)** the same sentence from
+the other phone, later than the two-mic window or transcribed a little
+differently; **(b)** Li reading a line aloud — an agent's reply, or his own
+polished line read back — heard by the other phone and transcribed back as if
+he said it (seen 20:3x JST: "表里机费，只表示进程活着，忙不忙要看 state", an
+agent line re-entering as his). Flag **`voice.echo-dedupe`**
+(`/dev/flags#voice.echo-dedupe`, on by default, audience owner).
+
+**Where: the hub**, before an owner voice line (`source: "stt"`) is posted —
+before the continuous-speech merge, so an echo never amends his line either.
+`echoMatch` (`lib/echo-match.ts`, pure, no language rules: letters and digits
+only, lower case) reads the thread's newest 40 lines:
+
+- **other-device**: his voice line from another page (`label`) whose latest
+  words are within `voice.echoWindowMs` (8 s), the same sentence (whole-line
+  edit-distance similarity) or a stretch of it (best-matching substring), at
+  least `voice.echoSimilarity` (0.8). His own page repeating itself is never
+  an echo.
+- **read-aloud**: an agent line that is read (not `quiet`) within
+  `voice.echoReadWindowMs` (60 s) of landing, or his line polished (and so read
+  back) within that window of the polish, with the new line a stretch of its
+  text at the same similarity. The pages do not report what was read when to
+  the hub (read progress stays on the page), so the window runs from the
+  line's arrival / the polish: wide enough for a queued or long reading.
+
+A line shorter than `voice.echoMinChars` (4) is never an echo. The flag and
+config are read only when a line could match at all (cached 30 s).
+
+**What happens to it.** Not posted: not shown, not read back, not polished,
+never sent to a lane or a token listener, not in the account's history. It is
+kept aside as `echo:<id>` (the newest 50) with `raw` = the text as heard,
+`edited: {by: "auto", count: 0}` and `echo: {reason: "echo", kind, of, sim}`
+(`EchoMark`, hub-side only), and logged `debug.echo` (`of`, `kind`, `sim`,
+`gap`). **Undo**: `unmerge` with the echo's id (the page's, or a lane's
+`edit --unmerge`) posts it after all, as heard (`debug.echo-undo`).
 
 ## The live speech line
 
@@ -1138,12 +1218,30 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
 - **Phone or sidebar** (owner, 2026-11-07 20:31–20:34 JST). Narrower than
   `SIDEBAR_QUERY`, `(min-width: 35em)` (his number, in em), full screen is the
   whole screen. Wider, it is a full-height sidebar docked to the right edge,
-  `SIDEBAR_W` = `clamp(20rem, 32vw, 28rem)` wide (no drag-to-resize pattern
-  exists in the app, so a fixed width: 409.6 px at 1280), with a 1 px oklch
+  `SIDEBAR_W` = `clamp(20rem, 32vw, 28rem)` wide by default (409.6 px at
+  1280 before resizing), with a 1 px oklch
   left border. The page beside it stays usable: while it is up the page's root
   is padded on the right by its width (`--lk-chat-side`, `sidebarReserve`), so
   the page reflows clear of it and scrolls as ever. A host's own fixed bars do
   not reflow by themselves; they can read `--lk-chat-side`.
+- **Resize the docked sidebar** (owner, 2026-11-14). Only `full && sidebar`
+  exposes a vertical resize separator on the inner/left border; narrow phone
+  full screen and floating panels do not resize. Dragging horizontally keeps
+  the right edge fixed and clamps the width between the established 20rem
+  composer minimum and the current visual viewport (the viewport wins if it
+  is smaller). The border uses Pointer Capture, prevents focus transfer, and
+  does not reach the grip's move/fold handlers. Pointer cancel, lost capture,
+  blur, hiding the page or leaving the sidebar discard the preview; a tap
+  alone does not save a fixed width. The release saves only the desired width
+  in `ui-store.ts` `chatDock`, device-local `lk:pref:chat-dock`, never synced.
+  Shrinking the viewport temporarily clamps its display without overwriting
+  that preference; the page's right reserve follows the displayed width.
+  Keyboard: focus the separator, Left widens, Right narrows, Shift uses a
+  larger step, Home/End choose the bounds. The 40px hit area stays away from
+  the composer, and is inset beyond the system back strip when the sidebar
+  reaches the viewport's left edge. Existing grip move/fold behavior remains.
+  Pure rules: `dock-resize.ts`; tests: `unit/chat-dock-resize.test.ts`;
+  silent actual-widget check: `bun scripts/dev/debug-chat-dock-resize-qa.mjs`.
 - **The bar spans it** (owner, 2026-11-07 20:30 JST: the input across the full
   width). On a phone the bar is the screen's width less the safe areas and the
   panel's own 0.5rem gutter (`fullBarSpan`); in the sidebar it is the
@@ -1742,6 +1840,84 @@ lane changes which voice reads a line, never whether.
 Tests: `unit/voices.test.ts` (lane resolution, voice picks on fake voice
 lists including this Mac's, fallbacks, the cloud speaker and shift, the
 route's speaker, `say --lane/--voice`).
+
+### Agent avatars
+
+Owner, 2026-11-14: an agent that joins his chat (an API token, `lianki mcp`,
+the remote MCP) gets an avatar automatically, or sets its own as plain SVG,
+never an image link.
+
+- **Known lanes** (`LANES`: codex, agy) keep their marks.
+- **Any other token** gets a generated mark (`svg-avatar.ts autoMark`): an
+  oklch disc whose hue is FNV-1a of the token's name (trimmed, lower case)
+  mod 360, with one of `AUTO_GLYPHS` (triangle, square, ring, plus, diamond,
+  bars, hexagon, chevron, cross) picked by the same hash. Same name, same
+  mark, on every device.
+- **Its own SVG**: `op: "avatar"` on the token chat API (`chat:write`;
+  `lianki chat avatar`, MCP `lianki_chat_avatar`). lianki-push sanitizes it
+  (`sanitizeAvatarSvg`): ≤ 4 KB (`AVATAR_MAX_BYTES`) before and after; no
+  DOCTYPE/ENTITY/CDATA/processing instruction; one `<svg>` root, ≤ 200
+  elements, ≤ 16 deep; elements `svg g path circle ellipse rect line polyline
+polygon text tspan title` only (any other is dropped with its subtree:
+  script, style, foreignObject, image, use, a…); attributes only from
+  `AVATAR_ATTRIBUTES` (geometry, `d`, `points`, `viewBox`, `transform`, `fill`,
+  `stroke`, `stroke-*`, `opacity`, `fill-opacity`, `font-size`, `font-weight`,
+  `text-anchor`, `dominant-baseline`), each with a strict value shape; colours
+  are keywords, hex or colour functions of numbers (no `url()`, no `var()`);
+  no `&` in any attribute value; text only in text/tspan/title, only the five
+  XML entities and numeric ones. The output is written fresh (`xmlns` added,
+  every value escaped), kept once as `avsvg:<sha256>` in the DebugHub's
+  storage, and named on the token's record (`part:<tag>`). Lines carry only
+  the reference (`avatar`), never the markup. `svg: null` clears it.
+- **Drawn** by reference: the page fetches `GET /api/version/chat-avatar/<sha>`
+  (content-addressed, immutable, `image/svg+xml` with a `default-src 'none'`
+  CSP), sanitizes it again, and draws it as an `<img>` of a `data:` URL (an
+  image never runs script or loads anything). While it loads, or if it
+  fails, the generated mark.
+- **MCP badge**: a call whose `x-lianki-client` is `mcp/<ver> tool=…` or
+  `mcp-remote/<ver> tool=…` marks its line `client: "mcp"`; the name tag shows
+  a small "MCP" badge after the name (`LaneMark.tsx McpBadge`).
+- A token line whose lane is not in `LANES` shows its name as a tag and loses
+  the `【name】` prefix in the log (`withTokenName`); what is read aloud keeps it.
+
+### Who is here
+
+Owner, 2026-11-14: right of the connection chip (the link icon, over the
+input), small overlapping avatars of everyone in this thread
+(`PresenceStack.tsx`): most recently active first, `chat.presenceShown`
+(default 3, `/dev/config`) of them, then "+N".
+
+- **Who counts** (`presence.ts presentList`, built in the hub): a token with a
+  listening socket open (`lianki chat listen`, an MCP wait on a socket); a
+  token that read the thread (`op: "read"`, or a wait that reads) within
+  `chat.presenceReadMin` (default 5); anyone whose agent line is within
+  `chat.presenceSpeakerMin` (default 30) — known lanes with their marks, main
+  as the host's agent. A revoked token never shows again.
+- **Pushed, never polled**: the hub sends `{type:"present", list}` to the
+  thread's pages on every join (socket auth, a read), leave (socket close,
+  revoke), post, owner change, and when a window ends (the Durable Object
+  alarm, set for the next expiry). Each page gets its own list: the token's id
+  only on the pages of the account that owns it.
+- **Look and touch**: hover (mouse) or one tap (touch) shows a one-line summary
+  ("agy, codex, mcp-bot +2"); a click, a double tap or Enter opens the panel:
+  a row each (avatar, name, MCP badge, "reading now" or last active, since).
+- **Managing**: for the viewer's own tokens a row offers Rename, the picture
+  (Generated / Its own / Paste an SVG, sanitized on the page and again in the
+  hub) and **Remove**, which asks once, then revokes the token through
+  `/api/token` (the same path as /my/preferences; another account's token is a
+  404), so its socket closes at once and it leaves the list. The owner's name
+  and picture are kept on the token's record and win over the agent's own
+  (`effective`); the panel shows which is in effect. **Invite** links to the
+  token form prefilled for a chat-only agent (`/my/preferences?new-token=chat-agent`:
+  name, chat:read/write/ask, 7 days; nothing is made until he taps Create) and
+  shows the connect snippet (the MCP URL with `Authorization: Bearer <token>`,
+  and `npx -y lianki mcp`).
+- Lanes on eval.ts listeners (no token) show once they post; they have no
+  Remove (their grant is ended from the connection chip).
+
+Tests: `unit/agent-avatars.test.tsx` (sanitizer, generated mark, presence
+order/expiry/cap, the hub's avatar op, presence pushes, owner override, Remove
+closing the socket, rendering).
 
 ### A line's own voice
 

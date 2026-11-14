@@ -299,6 +299,52 @@ tested by anything automatic, because it takes a speaker and a mic: how the tone
 sound, and whether a real cue leaks into the real VAD. Its log line `cue-echo-drop`
 counts the leaks the guard caught.
 
+## Speaker avatars
+
+The owner, 2026-11-14: in the Li chat a voice line in his own voice shows
+his avatar, as before; a line in a **different** voice shows a stable avatar
+for that voice, the same one every time that voice speaks, so two people
+talking over each other get their sentences split between A and B.
+
+- **Only with a voiceprint.** The Mac's speaker check ([local-stt.md](local-stt.md),
+  "Voiceprint") tags each final `me | other | unknown`; from this change it
+  also names the voice: `speaker.voice` is `"me"` on his, `"s1"`, `"s2"`… on
+  an `other`, and absent on an `unknown` (too short, too noisy, between the
+  bands, mixed) and whenever **no print is enrolled**. An account with no or
+  too few voiceprint samples therefore never gets a voice id, and every one
+  of its lines keeps the account's own avatar.
+- **The same voice, the same id** (`scripts/local-stt/voiceprint.py` `Voices`):
+  an `other` final's CAM++ embedding is matched by cosine against the voices
+  heard lately, each a running centroid (`VOICE_SAME` 0.30, the whole-clip
+  "me" line: a merge of two strangers costs only an avatar). At most
+  `VOICES_MAX` 8 voices are kept, the one heard longest ago making room; a
+  voice silent for `VOICE_FORGET_S` (2 h) is forgotten and gets a new id next
+  time. Embeddings in memory only, never audio, never a file; a restart starts
+  again at `s1`. A final with two speakers in it is cut first ("Split at the
+  speaker change"), and each part gets its own id.
+- **Signed, like the rest of the tag.** `voice` is in the Mac's attestation
+  (`Attestor.sign`), and the hub keeps it only from a proof that verifies
+  (lib/speaker-proof.ts); a page's own `speaker` is never stored. A line
+  made of several utterances keeps the id only when all of them name the
+  same voice (`combineSpeaker`); two voices in one line leave none, so no
+  one's avatar is wrong. The live merge already refuses `other` lines, so a
+  stranger's sentence never amends his.
+- **The avatar** (`packages/debug-chat/src/speaker-avatar.ts`,
+  `LaneMark.tsx` `voiceAvatar`, `avatar-rules.ts` `lineAvatar`): an owner
+  line with `voice` set and not `"me"` is drawn as a disc with a glyph, both
+  from the id: `s1` the seal red, then eight hues round the wheel and nine
+  glyphs (72 voices before a pair repeats), oklch only, mid lightness for
+  both themes. Its name (tooltip, screen reader) is the localized "Another
+  voice" (`vpOtherVoice`), never a word like diarization. The avatar's run
+  seed is `voice:<id>`, so a stranger's consecutive lines group under their
+  disc and his under his. A friend's or an agent's line never carries a voice
+  (the Mac signs the owner's lines only), so nothing changes there.
+
+Tests: `scripts/local-stt/test_voiceprint.py` (`OtherVoices`, `Scoring`,
+`Attesting`), `unit/voiceprint.test.ts` (the wire tag), `unit/chat-avatars.test.ts`
+(the disc, `lineAvatar`), `unit/debug-hub.test.ts` (the hub keeps the id from
+the proof only).
+
 ## Talking over Li with echo cancellation off
 
 The owner, 2026-11-13 ~23:59 JST: when he speaks while Li reads a reply aloud,
@@ -483,6 +529,7 @@ nothing but the chat.
 | `lib/words/voice-mic.ts`                   | browser glue to `__lkMic` (lazy import)                     |
 | `packages/debug-chat/src/voice-merge.ts`   | continuous speech amending the last line (flag `stt.merge`); a kept command keeps lines apart |
 | `packages/debug-chat/src/mic-taps.ts`      | command taps and pins on the page's mic                     |
+| `packages/debug-chat/src/speaker-avatar.ts` | another voice's avatar from its id (pure); "Speaker avatars" above |
 | `app/(app)/words/VoiceMode.tsx`            | the hook, the switch (`useVoicePref`), the badge, its labels; any screen |
 | `app/(app)/review/ReviewClient.tsx`        | /review's registration: the grades and exit                 |
 | `unit/voice-commands.test.ts`              | grammar, fuzz, sentences, echo, the wiring, access          |

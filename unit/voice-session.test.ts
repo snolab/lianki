@@ -1483,6 +1483,19 @@ describe("voice session: talk-over (aec off, flag voice.talk-over)", () => {
     expect(h.v.state()).toMatchObject({ paused: false, speaking: true });
   });
 
+  it("half like what she is reading, or too short: no pause (no hear-myself loop)", () => {
+    const h = reading();
+    h.v.userSpeech();
+    h.h0.t = 1_600;
+    // An early, garbled partial of her own sentence: neither dropped nor a barge-in.
+    const r = h.v.duplexHeard("the weather is love", 1_200, 1_600);
+    expect(r.paused).toBe(false);
+    expect(h.v.state()).toMatchObject({ paused: false });
+    // A fragment too short to judge.
+    expect(h.v.duplexHeard("uh ok", 1_200, 1_600).paused).toBe(false);
+    expect(h.logs.some((l) => l.ev === "voice-talk-over-unsure" || l.ev === undefined)).toBe(true);
+  });
+
   it("his interim words pause before his utterance ends", () => {
     const h = reading();
     h.v.userSpeech();

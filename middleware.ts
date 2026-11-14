@@ -31,6 +31,13 @@ function appRouteLocale(request: NextRequest) {
   );
 }
 
+/** `/agent-guide.md` or `/agent-guide.<lang>.md` → the guide's language (base tag, lower case), or null. */
+export function agentGuideFile(pathname: string): { lang: string | null } | null {
+  const m = /^\/agent-guide(?:\.([A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?))?\.md$/.exec(pathname);
+  if (!m) return null;
+  return { lang: m[1] ? m[1].split("-")[0]!.toLowerCase() : null };
+}
+
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   const host = request.headers.get("host");
@@ -40,6 +47,17 @@ export function middleware(request: NextRequest) {
     const canonicalUrl = new URL(request.url);
     canonicalUrl.host = "lianki.com";
     return NextResponse.redirect(canonicalUrl, 308);
+  }
+
+  // The AI-assistant guide as a public file (docs/api-for-agents.md):
+  // /agent-guide.md (Accept-Language) and /agent-guide.<lang>.md, e.g.
+  // agent-guide.zh-CN.md → ?lang=zh. The query (?scopes=…) is kept.
+  const guide = agentGuideFile(pathname);
+  if (guide) {
+    const to = new URL("/api/agent-guide", request.url);
+    for (const [k, v] of searchParams) to.searchParams.set(k, v);
+    if (guide.lang) to.searchParams.set("lang", guide.lang);
+    return NextResponse.rewrite(to);
   }
 
   // Redirect legacy /cn/* → /zh/*

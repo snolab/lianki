@@ -54,6 +54,9 @@ The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
                        (and the kept recordings, base64 wav, for My Files), for the account
                    {"t":"voiceprint","op":"restore","rid":R,"device":D|"*","prints":[…]}   from the account
                    {"t":"filter","on":bool}                  the voiceprint filter on this socket
+                   {"t":"voiceprint","op":"progressive","rid":R,"on":bool}   progressive learning on the
+                       Mac (passkey ticket, device "*"); status answers "progressive":{on,pending,…}
+                   {"t":"end",…,"playback":true}             something played while he spoke: never learned
   server → client  ready gains "speaker":{"models":[…]} when the check is on
                    final gains "speaker":{score,decision:"me"|"other"|"unknown",model,device,
                     speechS,snrDb[,reason]}, or on an enrolment sentence "enrol":{ok,n[,reason],…}
@@ -172,6 +175,8 @@ class Utterance:
         self.sw = None
         #: The languages of a switched utterance, stretch by stretch (its final was read so).
         self.switched: list[str] | None = None
+        #: The page said something was playing while he spoke (end's "playback"): never learned from.
+        self.playback = False
 
     def audio(self) -> np.ndarray:
         parts = ([self.pre] if self.pre is not None else []) + self.chunks
@@ -320,6 +325,9 @@ class Server:
         # The account copy (docs/local-stt.md, "Voiceprint in your account"): features out, a print in.
         ("voiceprint", "export"): lambda m: {"op": "export", "device": m.get("device"), "uv": True},
         ("voiceprint", "restore"): lambda m: {"op": "restore", "device": m.get("device"), "uv": True},
+        # Progressive learning on or off (docs/local-stt.md, "Progressive voiceprint"): his passkey,
+        # as for an enrolment, since it keeps features of what he says without a sentence to read.
+        ("voiceprint", "progressive"): lambda m: {"op": "progressive", "device": "*", "uv": True},
     }
 
     async def control(self, m: dict, device: str | None = None) -> dict:
@@ -375,8 +383,17 @@ class Server:
             if t == "voiceprint" and op == "status":
                 prints = await loop.run_in_executor(self.spk_pool, v.status)
                 kept = await loop.run_in_executor(self.spk_pool, v.store.audio_count, None)
+                prog = await loop.run_in_executor(self.spk_pool, self.progressive_info)
                 return {**out, "ok": True, "prints": prints, "models": v.order, "filter": self.filter_state(device),
-                        "bands": VP.bands_info(v.order), "recordings": kept}
+                        "bands": VP.bands_info(v.order), "recordings": kept, "progressive": prog}
+            if t == "voiceprint" and op == "progressive":
+                on = m.get("on")
+                if not isinstance(on, bool):
+                    return {**out, "ok": False, "error": "on must be true or false"}
+                await loop.run_in_executor(self.spk_pool, v.store.set_progressive, on)
+                log(f"progressive voiceprint {'on' if on else 'off'}")
+                prog = await loop.run_in_executor(self.spk_pool, self.progressive_info)
+                return {**out, "ok": True, "progressive": prog}
             if t == "voiceprint" and op == "delete":
                 device = m.get("device")
                 if device != "*" and not VP.valid_device(device):
@@ -387,8 +404,9 @@ class Server:
                 n = await loop.run_in_executor(self.spk_pool, v.store.delete, who)
                 v.refresh()
                 kept = await loop.run_in_executor(self.spk_pool, v.store.audio_count, who)
-                log(f"voiceprint deleted ({device}, {n} files, {dropped} open enrolment(s) dropped, {kept} recording(s) kept)")
-                return {**out, "ok": True, "deleted": n, "recordings": kept}
+                log(f"voiceprint deleted ({device}, {n} files, {dropped} open enrolment(s) dropped, {kept} recording(s) kept, "
+                    "progressive off)")
+                return {**out, "ok": True, "deleted": n, "recordings": kept, "progressive": False}
             if t == "voiceprint" and op == "delete-audio":
                 device = m.get("device")
                 if device != "*" and not VP.valid_device(device):
@@ -433,6 +451,34 @@ class Server:
             log(f"voiceprint {op} failed: {e}")
             return {**out, "ok": False, "error": str(e)[:200]}
         return {**out, "ok": False, "error": "unknown request"}
+
+    def progressive_info(self) -> dict:
+        """The status answer's `progressive`: the switch, samples still pending, and the thresholds."""
+        v = self.verifier
+        st = v.store.progressive()
+        return {"on": st["on"], "updated": st["updated"], "pending": v.store.pending(),
+                "minSpeechS": VP.PROG_MIN_SPEECH_S, "minSnrDb": VP.PROG_MIN_SNR_DB, "margin": VP.PROG_MARGIN,
+                "outlierMargin": VP.PROG_OUTLIER_MARGIN, "everyS": VP.PROG_EVERY_S, "max": VP.PRINT_MAX,
+                "createMin": VP.PROG_CREATE_MIN}
+
+    async def learn(self, audio: np.ndarray, device: str | None, spk: dict, uid: int) -> None:
+        """
+        Progressive learning, after the final is sent (it never delays one): the cheap checks
+        first, the embedding only for a candidate. Logs the outcome, never text; keeps no audio.
+        """
+        v = self.verifier
+        if not v or v.learn_gate(spk, device) == "not-me":
+            return
+        try:
+            r = await asyncio.get_running_loop().run_in_executor(self.spk_pool, v.learn, audio, device, spk)
+        except Exception as e:  # a store it cannot read: nothing learned, nothing else changes
+            log(f"progressive #{uid}: failed ({type(e).__name__}: {e})")
+            return
+        if r.get("ok"):
+            extra = (", print made" if r.get("created") else "") + (f", {r['evicted']} oldest out" if r.get("evicted") else "")
+            log(f"progressive #{uid}: added to {device} ({r['n']} sample(s){'' if r.get('active') else ', pending'}{extra})")
+        elif r.get("reason") not in ("off",):
+            log(f"progressive #{uid}: not taken ({r.get('reason')})")
 
     def tracker(self):
         """A language switch tracker for a new utterance (switch.py), or None."""
@@ -684,13 +730,18 @@ class Server:
                     msg["wouldFilter"] = would
                 sc = "-" if spk.get("score") is None else f"{spk['score']:.3f}"
                 why = f" {spk['reason']}" if spk.get("reason") else ""
+                # Which other voice (voiceprint.Voices): an id, never anything of theirs.
+                who = f" {spk['voice']}" if spk.get("voice") not in (None, "me") else ""
                 c = self.counts
-                tag = f", spk {d} {sc}{why} (me {c['me']} other {c['other']} unknown {c['unknown']})"
+                tag = f", spk {d} {sc}{why}{who} (me {c['me']} other {c['other']} unknown {c['unknown']})"
                 if parts:
-                    tag += ", split " + "+".join(p["speaker"]["decision"] for p in parts)
+                    tag += ", split " + "+".join(p["speaker"].get("voice") or p["speaker"]["decision"] for p in parts)
                 if would:
                     tag += f", would filter ({self.would_filter})"
             await send(msg)
+            # Progressive voiceprint: his own clean, confident finals only, after the final went out.
+            if spk is not None and not enrol and not u.enrol and not guest and not parts and not u.playback:
+                asyncio.create_task(self.learn(audio, conn["device"], spk, u.id))
             picked = f", lang {auto_lang}->{lang}" if auto_lang else ""
             if u.switched:
                 picked += f", langs {'+'.join(u.switched)}"
@@ -761,6 +812,7 @@ class Server:
                     tf = m.get("textFrom")
                     if isinstance(tf, int) and not isinstance(tf, bool) and tf > 0:
                         cur.text_from = tf
+                    cur.playback = m.get("playback") is True
                     if self.recorder is not None and not guest and not cur.enrol:
                         self.recorder.submit(cur.audio(), cur.captured_at - (len(cur.pre) / RATE if cur.pre is not None else 0))
                     asyncio.create_task(final(cur))

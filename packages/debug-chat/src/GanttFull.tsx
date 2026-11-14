@@ -32,6 +32,9 @@ import {
   ganttSpan,
   ganttTickX,
   ghostShows,
+  type OffSide,
+  offScreenSide,
+  revealScrollLeft,
   TAIL_ATTR,
   TAIL_CSS,
   TAIL_VAR,
@@ -122,6 +125,8 @@ type Strings = Pick<
   | "etaTickSet"
   | "etaTickStatus"
   | "etaTickClose"
+  | "etaGanttToEarlier"
+  | "etaGanttToLater"
   | "etaGroupToggle"
   | "etaGroupChat"
   | "etaGroupGantt"
@@ -132,6 +137,62 @@ type Strings = Pick<
   | "etaGroupShip"
   | "etaGroupArch"
 >;
+
+/** The off-screen arrow's width (px): a row whose bar is past an edge of the view. */
+const OFF_ARROW_W = 22;
+
+const reducedMotion = () =>
+  typeof window !== "undefined" &&
+  (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ||
+    document.documentElement.dataset.motion === "off");
+
+/**
+ * The hint at the view's edge for a row whose bar lies wholly past it (owner,
+ * 2026-11-14 05:00 JST): ◀ at the left (earlier), ▶ at the right (later). A
+ * tap scrolls the bar into view. Drawn, not a glyph ("▶" is an emoji on iOS).
+ */
+function OffArrow({
+  side,
+  label,
+  scrollX,
+  viewW,
+  h,
+  onReveal,
+}: {
+  side: OffSide;
+  label: string;
+  scrollX: number;
+  viewW: number;
+  h: number;
+  onReveal: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid="debug-chat-gantt-off-arrow"
+      data-side={side}
+      aria-label={label}
+      title={label}
+      onClick={onReveal}
+      className="absolute flex items-center justify-center rounded-sm p-0"
+      style={{
+        left: side === "earlier" ? scrollX : scrollX + viewW - OFF_ARROW_W,
+        top: 0,
+        width: OFF_ARROW_W,
+        height: Math.min(h, ROW_H),
+        zIndex: 4,
+        border: 0,
+        background: c("track"),
+        color: c("late"),
+        cursor: "pointer",
+      }}
+    >
+      <svg aria-hidden="true" width={12} height={12} viewBox="0 0 12 12" fill="currentColor">
+        <path d={side === "earlier" ? "M8 2.2 3 6 8 9.8Z" : "M4 2.2 9 6 4 9.8Z"} />
+      </svg>
+    </button>
+  );
+}
 
 /** A tick's visible line (px): a change or a status change, a confirm (shorter), and its tap area. */
 const TICK_W = 2;
@@ -703,6 +764,32 @@ export function GanttFull({
     }
   };
   const setScale = (s: GanttScale) => ganttPrefs().setState({ scale: s });
+  /** An off-screen arrow's tap: scroll so that bar is in view (at once under reduced motion). */
+  const reveal = (bar: { x: number; w: number }) => {
+    const el = scroller.current;
+    if (!el) return;
+    const left = revealScrollLeft(bar, { width: el.clientWidth }, el.scrollWidth);
+    el.scrollTo({ left, behavior: reducedMotion() ? "auto" : "smooth" });
+  };
+  /** The arrow for a row whose bar is past an edge of the view, if it is. */
+  const offArrow = (bar: { x: number; w: number }, title: string, h: number) => {
+    const side = offScreenSide(bar, { left: scrollX, width: w });
+    if (!side) return null;
+    const label = (side === "earlier" ? strings.etaGanttToEarlier : strings.etaGanttToLater).replace(
+      "{task}",
+      title,
+    );
+    return (
+      <OffArrow
+        side={side}
+        label={label}
+        scrollX={scrollX}
+        viewW={w}
+        h={h}
+        onReveal={() => reveal(bar)}
+      />
+    );
+  };
 
   /** ▸/▾: a category's children as their own rows, or folded onto its one row. */
   const toggle = (id: string) =>
@@ -921,6 +1008,9 @@ export function GanttFull({
                 if (l.kind === "task") {
                   const t = l.task;
                   const on = picked === t.id;
+                  const tb = ganttBar(t, axis, now);
+                  const tBar = { x: tb.x, w: tb.w + (isParked(t) ? 0 : tb.over) };
+                  const tOff = offScreenSide(tBar, { left: scrollX, width: w });
                   return (
                     <li
                       key={l.key}
@@ -937,6 +1027,7 @@ export function GanttFull({
                       }}
                     >
                       {barMarks(t, axis, now, nowX, 0, h, "row")}
+                      {offArrow(tBar, splitTitle(t.title).name, h)}
                       {(t.ticks ?? []).map((ev, i) => {
                         // The estimate's history: a short tick per event; one action's line up.
                         const x = ganttTickX(ev.at, axis, now);
@@ -989,10 +1080,12 @@ export function GanttFull({
                         className="flex min-w-0 items-baseline gap-1.5 px-2"
                         style={{
                           position: "sticky",
-                          left: 0,
+                          // Clear of the ◀ when the bar is past the left edge.
+                          left: tOff === "earlier" ? OFF_ARROW_W : 0,
                           zIndex: 1,
                           maxWidth: "min(36rem, calc(100vw - 1rem))",
                           ...(l.group ? { paddingInlineStart: CHILD_INDENT } : {}),
+
                         }}
                       >
                         <TaskName t={t} strings={strings} />
@@ -1005,6 +1098,8 @@ export function GanttFull({
                 const p = l.task;
                 const span = ganttBar(p, axis, now);
                 const name = p.title;
+                const pBar = { x: span.x, w: span.w + span.over };
+                const pOff = offScreenSide(pBar, { left: scrollX, width: w });
                 const openAt = l.children.reduce(
                   (m, x) => (x.done ? m : Math.max(m, x.at)),
                   -Infinity,
@@ -1035,6 +1130,7 @@ export function GanttFull({
                         outlineOffset: -1,
                       }}
                     />
+                    {offArrow(pBar, name, h)}
                     {l.open
                       ? barMarks(p, axis, now, nowX, 0, h, "row")
                       : l.children.map((x, i) => {
@@ -1094,11 +1190,12 @@ export function GanttFull({
                       className="flex min-w-0 items-center gap-1 pe-2"
                       style={{
                         position: "sticky",
-                        left: 0,
+                        left: pOff === "earlier" ? OFF_ARROW_W : 0,
                         zIndex: 3,
                         maxWidth: "min(36rem, calc(100vw - 1rem))",
                         borderRadius: 4,
                         ...(l.open ? {} : { background: c("chip") }),
+
                       }}
                     >
                       <button

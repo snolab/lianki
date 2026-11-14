@@ -7,6 +7,8 @@ import {
   runStarts,
   runsOf,
 } from "@lianki/debug-chat/avatar-rules";
+import { VOICE_HUES, speakerAvatar } from "@lianki/debug-chat/speaker-avatar";
+import { AUTO_GLYPHS } from "@lianki/debug-chat/svg-avatar";
 
 describe("runStarts (avatar grouping)", () => {
   const at = (min: number) => min * 60_000;
@@ -243,5 +245,89 @@ describe("lineAvatar", () => {
     );
     expect(a.src).toEqual(["https://example.com/app.png", "https://example.com/s.png"]);
     expect(a.name).toBe("Grace");
+  });
+});
+
+describe("speaker avatars (another voice on an owner's voice line)", () => {
+  const viewer = { id: "v1", name: "Ada", avatars: ["https://example.com/now.png"] };
+  const voiceAvatar = (voice: string) => `voice-svg:${voice}`;
+  it("speakerAvatar: the same id, the same disc; the first voices all differ; oklch only", () => {
+    const a = speakerAvatar("s1");
+    expect(speakerAvatar("s1")).toEqual(a);
+    expect(a.hue).toBe(22.3); // s1: the seal red
+    expect(a.bg).toBe("oklch(0.58 0.15 22.3)");
+    expect(a.fg).toStartWith("oklch(");
+    expect(a.paths).toBe(AUTO_GLYPHS[a.glyph]!);
+    const first = Array.from({ length: VOICE_HUES.length }, (_, i) => speakerAvatar(`s${i + 1}`));
+    expect(new Set(first.map((v) => v.hue)).size).toBe(VOICE_HUES.length);
+    // The ninth wraps to the first hue, but with another glyph.
+    const ninth = speakerAvatar(`s${VOICE_HUES.length + 1}`);
+    expect(ninth.hue).toBe(a.hue);
+    expect(ninth.glyph).not.toBe(a.glyph);
+    // Any other id still gets a stable disc, from its hash.
+    expect(speakerAvatar("guest-7")).toEqual(speakerAvatar("guest-7"));
+    expect(VOICE_HUES.every((h) => h >= 0 && h < 360)).toBe(true);
+  });
+  it("an owner line in another voice gets that voice's disc, its own seed and the localized name", () => {
+    const m = line({ source: "stt", speaker: { decision: "other", voice: "s2" } });
+    expect(lineAvatar(m, { viewer, voiceAvatar, otherVoice: "Another voice" })).toEqual({
+      src: "voice-svg:s2",
+      name: "Another voice",
+      initialFrom: "Another voice",
+      seed: "voice:s2",
+      mine: true,
+    });
+    // Without a host renderer: its initial on the seed's colour, named by default.
+    expect(lineAvatar(m, { viewer })).toMatchObject({ src: undefined, name: "another voice" });
+    // Two voices: two seeds, so runStarts splits their lines into runs of their own.
+    const s1 = lineAvatar(line({ speaker: { decision: "other", voice: "s1" } }), {
+      viewer,
+      voiceAvatar,
+    });
+    expect(s1.seed).not.toBe("voice:s2");
+    expect(
+      runStarts([
+        { seed: s1.seed, at: 0 },
+        { seed: "voice:s2", at: 1 },
+        { seed: "voice:s2", at: 2 },
+      ]),
+    ).toEqual([true, true, false]);
+  });
+  it("his own voice, no voice id (no voiceprint, unknown), a friend's or an agent's line: as before", () => {
+    const own = lineAvatar(line({ speaker: { decision: "me", voice: "me" } }), {
+      viewer,
+      voiceAvatar,
+    });
+    expect(own).toMatchObject({ src: viewer.avatars, name: "you", seed: "v1" });
+    expect(
+      lineAvatar(line({ speaker: { decision: "other" } }), { viewer, voiceAvatar }),
+    ).toMatchObject({
+      src: viewer.avatars,
+      seed: "v1",
+    });
+    expect(
+      lineAvatar(line({ speaker: { decision: "unknown", reason: "no-print" } }), {
+        viewer,
+        voiceAvatar,
+      }).seed,
+    ).toBe("v1");
+    // Only the owner's voice lines carry a Mac-signed voice; a friend's or an agent's never does.
+    expect(
+      lineAvatar(
+        line({ from: "friend", thread: "f1", speaker: { decision: "other", voice: "s1" } }),
+        {
+          viewer,
+          voiceAvatar,
+        },
+      ).seed,
+    ).toBe("f1");
+    expect(
+      lineAvatar(
+        line({ from: "agent", label: "li", speaker: { decision: "other", voice: "s1" } }),
+        {
+          voiceAvatar,
+        },
+      ).seed,
+    ).toBe("agent:li");
   });
 });

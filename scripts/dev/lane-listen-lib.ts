@@ -114,10 +114,94 @@ export function handoff(lane: RouteLane, l: Line, repo: string): string {
       ? `【owner → ${lane}】(${jst(l.at)} JST, Li chat) ${words}`
       : `【lane-test → ${lane}】(${jst(l.at)} JST) ${words}`,
     "",
-    test === null
-      ? `He addressed this to you by name; only you got it, the other lanes stay silent. Answer once, yourself, short, in his language${said.text ? "" : " (he only said your name: ask what he needs)"}:`
-      : 'This is a routing TEST, not the owner. Answer once, starting "[lane-test] ", one short line, so the test sees you heard it:',
+    test !== null
+      ? 'This is a routing TEST, not the owner. Answer once, starting "[lane-test] ", one short line, so the test sees you heard it:'
+      : said.lanes.includes(lane)
+        ? `He addressed this to you by name; only you got it, the other lanes stay silent. Answer once, yourself, short, in his language${said.text ? "" : " (he only said your name: ask what he needs)"}:`
+        : "Heard, not addressed to you by name (you listen to all his lines): keep it as context. Answer only if it is clearly meant for you; otherwise stay silent, another lane answers. To answer:",
     `  ${reply}`,
     "It posts as your lane (your name, mark and voice) with your own lane token; never read or print the token. Do not hand this to another lane.",
   ].join("\n");
+}
+
+/** The skill every lane's agent reads once; after that the hand-offs stay short. */
+export const HANDOFF_SKILL = ".agents/skills/lane-listen/SKILL.md";
+
+/**
+ * One owner line as a bullet of a brief hand-off: the id to answer with, "@你"
+ * when he said this lane's name (lane-route.ts), then his words (owner,
+ * 2026-11-14: every short line used to arrive as its own long message with the
+ * whole instruction block; the instructions now live in HANDOFF_SKILL).
+ */
+export function briefBullet(lane: RouteLane, l: Line): string {
+  if (l.etaLane === lane) return `- (state tree) ${l.text}`;
+  const test = testText(l);
+  if (test !== null) return `- (id:${l.id}) [lane-test] ${test}`;
+  const mine = routeLine(l.text).lanes.includes(lane);
+  return `- (id:${l.id})${mine ? " @你" : ""} ${l.text}`;
+}
+
+/**
+ * A brief hand-off for one or more lines (several when the agent was busy and
+ * they waited): a header with the lane and the newest line's time, one bullet
+ * per line, and — only the first time in this listener's life — where the
+ * rules are. ~2 lines per message instead of ~8.
+ */
+export function handoffBrief(
+  lane: RouteLane,
+  lines: readonly Line[],
+  repo: string,
+  first: boolean,
+): string {
+  const at = jst(lines.at(-1)?.at);
+  const out = [`【owner → ${lane}】${at} JST`, ...lines.map((l) => briefBullet(lane, l))];
+  if (first)
+    out.push(
+      `规则只读这一次：${join(repo, HANDOFF_SKILL)}（回复：bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} reply --as ${lane} --id <id> "…"）`,
+    );
+  return out.join("\n");
+}
+
+/** How often a busy agent is looked at while lines wait for it. */
+export const BUSY_RECHECK_MS = 5_000;
+
+/**
+ * Lines wait here while the agent is busy; when it is free they go as ONE
+ * message (handoffBrief), in order. The first message of the listener's life
+ * also names the skill with the rules.
+ */
+export function makeDeliverer(
+  o: { lane: RouteLane; repo: string },
+  send: (body: string) => Promise<number>,
+  busy: () => Promise<boolean>,
+  log: (v: Record<string, unknown>) => void = () => {},
+  recheckMs = BUSY_RECHECK_MS,
+) {
+  const pending: Line[] = [];
+  let first = true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const flush = async (): Promise<number | undefined> => {
+    if (!pending.length) return undefined;
+    if (await busy()) {
+      if (process.env.LANE_LISTEN_DEBUG)
+        log({ type: "held", lane: o.lane, pending: pending.length });
+      timer ??= setTimeout(() => {
+        timer = undefined;
+        void flush();
+      }, recheckMs);
+      return undefined;
+    }
+    const batch = pending.splice(0, pending.length);
+    const code = await send(handoffBrief(o.lane, batch, o.repo, first));
+    first = false;
+    log({ type: "delivered", lane: o.lane, ids: batch.map((l) => l.id), ay: code });
+    return code;
+  };
+  return {
+    add: async (l: Line) => {
+      pending.push(l);
+      return flush();
+    },
+    pending: () => pending.length,
+  };
 }

@@ -1622,6 +1622,51 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
     expect([...s.storage.store.keys()].filter((k) => k.startsWith("proof:")).length).toBe(3);
   });
 
+  it("the voice id rides on the signed tag only; two voices in one line leave none", async () => {
+    const mac = await speakerKey();
+    const s = setup({ STT_SPEAKER_PUB: mac.pub });
+    const owner = s.page();
+    await agent(s, owner);
+    const at = 1_000_000;
+    const sign = (text: string, uid: string, voice: string) =>
+      mac.sign({
+        decision: voice === "me" ? "me" : "other",
+        score: 0.4,
+        model: "campp",
+        device: "iphone",
+        text,
+        uid: uid.padEnd(16, "x"),
+        thread: "owner",
+        at,
+        voice,
+      });
+    const say = (id: string, text: string, speakerProof: string[]) =>
+      s.msg(owner, { type: "chat", id, text, source: "stt", speakerProof });
+    await say("v1", "hello there", [await sign("hello there", "w1", "s1")]);
+    await say("v2", "one two", [await sign("one", "w2", "s1"), await sign("two", "w3", "s1")]);
+    await say("v3", "one two", [await sign("one", "w4", "s1"), await sign("two", "w5", "s2")]);
+    await say("v4", "mine", [await sign("mine", "w6", "me")]);
+    // A page's own voice on an unsigned line: never kept.
+    await s.msg(owner, {
+      type: "chat",
+      id: "v5",
+      text: "fake",
+      source: "stt",
+      speaker: { decision: "other", voice: "s1" },
+    });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as { id: string; speaker?: { decision: string; voice?: string } })
+      .sort((a, b) => a.id.localeCompare(b.id));
+    expect(stored.map((m) => [m.id, m.speaker?.decision, m.speaker?.voice])).toEqual([
+      ["v1", "other", "s1"],
+      ["v2", "other", "s1"],
+      ["v3", "other", undefined],
+      ["v4", "me", "me"],
+      ["v5", undefined, undefined],
+    ]);
+  });
+
   it("without STT_SPEAKER_PUB no tag is ever kept", async () => {
     const mac = await speakerKey();
     const s = setup();
@@ -4420,6 +4465,16 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
         .map(([, v]) => v as Record<string, unknown>);
     return { s, win, mac, c, lines };
   };
+  /**
+   * The echo filter (voice.echo-dedupe) runs first and would take a copy from
+   * his other mic itself; off here, so these cases reach the two-mic merge.
+   */
+  const noEcho = {
+    live: async () => "live",
+    flag: async (k: string) =>
+      k === "voice.echo-dedupe" ? false : Promise.reject(new Error("d1")),
+    config: async () => Promise.reject(new Error("d1")),
+  };
 
   it("the same sentence from two pages within the window: one line", async () => {
     const { s, win, mac, lines } = rig();
@@ -4449,7 +4504,7 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
   });
 
   it("outside the window: two lines", async () => {
-    const { s, win, mac, lines } = rig();
+    const { s, win, mac, lines } = rig({ SESSIONS: noEcho });
     await s.msg(win, say("w1", "同时发送着两个麦克风"));
     s.tick(4001);
     await s.msg(mac, say("m1", "同时发送的两个麦克风"));
@@ -4523,7 +4578,7 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
         thread: "owner",
         at: 1_000_000,
       });
-    const { s, win, mac, lines } = rig({ STT_SPEAKER_PUB: key.pub });
+    const { s, win, mac, lines } = rig({ STT_SPEAKER_PUB: key.pub, SESSIONS: noEcho });
     // Signed first: the unsigned, longer copy is dropped.
     await s.msg(
       win,

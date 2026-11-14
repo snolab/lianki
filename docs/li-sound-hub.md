@@ -155,3 +155,38 @@ all, so these are made **on the server** and played by the chat's cloud
   his thread; his phone plays it. The Mac and the tests never play it.
 - Tests: `unit/cloud-voices.test.ts` (parser, requests, prices, the route with
   fakes), `unit/cloud-voices-page.test.ts` (the page: map, fallback).
+
+## Synchronized read-aloud
+
+The owner, 2026-11-14 20:2x JST: when two of his devices both read Li's
+lines aloud, they start the same line at the same instant — 「快的设备可以稍微等那么几毫秒，等慢的设备也收到了消息」.
+About 200 ms of skew is fine. Flag **`voice.sync-speak`** (audience owner,
+default on; <https://lianki.com/dev/flags#voice.sync-speak>); code in
+`packages/debug-chat/src/sync-speak.ts`, tests in `unit/sync-speak.test.ts`
+and `unit/debug-hub-sync-speak.test.ts`.
+
+- **Clock.** Each page sends `{type:"clock", t0}` over the chat socket when
+  it opens (`CLOCK_ROUNDS` pings, one after another's answer); the hub
+  (`workers/push/src/debug.ts`, `fromPage`) answers `{type:"clock", t0, t1,
+  t2}` with its own time. offset = ((t1 − t0) + (t2 − t3)) / 2; the
+  lowest-RTT samples are kept and the best one is used. A stamped line that
+  finds the estimate older than `CLOCK_REFRESH_MS` starts a new round (no
+  timer). The estimate lives on `globalThis.__lkHubClock`.
+- **Stamp.** The hub adds `speakAt` = hubNow + `voice.syncLeadMs` (config,
+  default 300) to each agent `chat` frame and each `edited` frame (the polish
+  read-back), to his pages only — never stored, never sent to a lane — and
+  only while at least two of his _devices_ are connected (`syncDevices`:
+  distinct device ids; two tabs on one Mac are one device, and only one of
+  them reads anyway). The flag and lead are read in the background (cached a
+  minute) so no line waits for the main Worker; unread, busy or off = no
+  stamp.
+- **Wait.** `DebugEval` turns `speakAt` into a local `startAt` (`syncWait`):
+  a page early waits until then, a page already past it starts at once, and
+  none waits more than `voice.syncMaxWaitMs` (config, default 1500). Li's
+  queue (`voice.ts` `next()`) holds the line's first sentence until
+  `startAt`; the output-bed pre-roll runs inside that wait. A start later
+  than `voice.syncSkewMs` (default 200, the tolerance the tests assert) is
+  logged as `voice-sync` with `late`, so the lead can be raised.
+- **Tolerant.** `speakAt` is optional: a page built from main (the widget
+  hot-loaded on it), an older hub that never answers a ping, or a page with
+  no estimate yet simply reads at once, as before.

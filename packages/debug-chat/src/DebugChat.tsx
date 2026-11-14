@@ -15,7 +15,7 @@ import {
 } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { useUi } from "@lianki/ui-state";
-import { chatFold, chatPrefs, chatUi } from "./ui-store";
+import { chatDock, chatFold, chatPrefs, chatUi } from "./ui-store";
 import { lineTier, richOf, spokenOf } from "./rich-text";
 import { RichBody, RichLine } from "./RichText";
 import {
@@ -69,8 +69,7 @@ import { learnSttHint } from "./stt-hint";
 import { DevMenuGroup } from "./DevMenuGroup";
 import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
-import { LinkChip } from "./LinkChip";
-import { type EvalLink, type EvalSession, selectionState } from "./link-state";
+import { type EvalLink, type EvalSession } from "./link-state";
 import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
@@ -92,7 +91,22 @@ import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
 import { VoiceMark } from "./VoiceMark";
 import { VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
-import { SPEAK_KEY, type VoiceState, speechEnabled, unheard, voice } from "./voice";
+import {
+  type ReadTiming,
+  SPEAK_KEY,
+  type VoiceState,
+  speechEnabled,
+  unheard,
+  voice,
+} from "./voice";
+import {
+  READ_SWEEP_CSS,
+  SPEAKING_BG,
+  SWEEP_ATTR,
+  initialSweep,
+  sweepStep,
+  sweepStyle,
+} from "./read-sweep";
 import { hideStops, isDesktop } from "./voice-bg";
 import {
   type ReadingLeft,
@@ -110,6 +124,14 @@ import { AEC_EVENT, aecOn, applyAec } from "./aec";
 import { type SpeakMeta, isWithdrawn } from "./speak-rules";
 import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
 import {
+  DRAG_PERF_KEY,
+  type DragGeom,
+  createFrameWriter,
+  createGapMeter,
+  dragStep,
+  dragTransform,
+} from "./drag-frame";
+import {
   FADE_MS,
   FLOAT_MAX,
   type FloatPhase,
@@ -123,6 +145,7 @@ import {
 import { Icon, POLISHED_ICON } from "./icons";
 import { useMessageDetails } from "./MessageDetails";
 import { PolishedMark } from "./PolishedMark";
+import { readbackOf } from "./polish-readback";
 import { LINE_SELECTABLE } from "./copy-line";
 import { type Held, logEngaged, typingLook } from "./log-engage";
 import { wireLogHold } from "./log-hold-dom";
@@ -168,6 +191,14 @@ import {
 import { treeDefaults, uiStrings } from "./ui-strings";
 import { chatExtra } from "./chat-ui-locales";
 import {
+  ADDRESSED_CSS,
+  FLASH_MS,
+  addressedLanes,
+  createAddressFlash,
+  flashProps,
+  latestOfLane,
+} from "./addressed";
+import {
   NEW_ATTR,
   SCRUB_ATTR,
   SCRUB_PULSE_MS,
@@ -206,6 +237,14 @@ import {
   nearestEdge,
   pushedAgainst,
 } from "./fold";
+import { DockResize } from "./DockResize";
+import {
+  DOCK_WIDTH_VAR,
+  DOCK_RIGHT_VAR,
+  clampDockWidth,
+  dockBounds,
+  dockViewport,
+} from "./dock-resize";
 import { keyboardLift } from "./keyboard-lift";
 import {
   FULL_H_VAR,
@@ -215,6 +254,9 @@ import {
   FULL_SIDEBAR_STYLE,
   FULL_TOP_VAR,
   SIDEBAR_QUERY,
+  SIDEBAR_MIN_REM,
+  SIDEBAR_W,
+  SIDEBAR_RESERVE_VAR,
   escapeLeaves,
   fullBarSpan,
   sidebarReserve,
@@ -237,11 +279,31 @@ import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
-import { withLane } from "./voices";
-import { LaneTag, laneAvatar } from "./LaneMark";
+import { type LaneId, withLane } from "./voices";
+import {
+  AddressedMarks,
+  LineTag,
+  agentAvatar as tokenPicture,
+  laneAvatar,
+  voiceAvatar,
+  withTokenName,
+} from "./LaneMark";
+import { type ParticipantChange, PresenceStack } from "./PresenceStack";
+import type { Present } from "./presence";
+import { wakeNames } from "./wake-names";
 import { PUBLIC_ROUTE_LIST, publicSttAvailable, readConsent, writeConsent } from "./public-stt";
 import { SttServersCard } from "./SttServersCard";
 import { MicCaret } from "./MicCaret";
+import {
+  HOLD_MS,
+  LIVE_ID,
+  type SentHold,
+  holdOf,
+  liveHolds,
+  liveSpeech,
+  spokenPending,
+  takesSpoken,
+} from "./live-speech";
 import { type Frontier, treeFrontier } from "./frontier-view";
 import {
   type TreeSource,
@@ -323,14 +385,22 @@ function useDrag(
       return { x: 0, y: 0 };
     }
   });
+  /** The offset as rendered (a press that begins after a flushSync reads the new one). */
+  const posRef = useRef(pos);
+  posRef.current = pos;
   const drag = useRef<{
     px: number;
     py: number;
     x: number;
     y: number;
     moved: boolean;
-    /** The bar's span after the last move, and its box: the drop's edge (fold.ts). */
+    /** The bar and box, measured once on the drag's first frame (drag-frame.ts). */
+    geom?: DragGeom;
+    /** The offset written after the last frame, and the bar's span: the drop's edge (fold.ts). */
+    at?: { x: number; y: number };
     last?: DropSpan;
+    box?: HTMLElement;
+    gaps?: ReturnType<typeof createGapMeter>;
   } | null>(null);
   const dropRef = useRef(onDrop);
   dropRef.current = onDrop;
@@ -341,9 +411,46 @@ function useDrag(
   /** The pill is held down: the input shows how to use it. */
   const [holding, setHolding] = useState(false);
   /**
-   * Move the box to follow the pointer. Keep the chat bar on screen, up to
-   * the very top under the notch: its rect at the start, moved by the delta.
-   * The click-through log above it may go off-screen.
+   * One frame of a drag (drag-frame.ts): the box follows the latest pointer,
+   * written straight to its style; React hears of it once, when the press ends.
+   * Its first frame measures the bar and box (the only layout reads of a drag).
+   */
+  const frame = useRef<ReturnType<typeof createFrameWriter<{ cx: number; cy: number }>> | null>(null);
+  frame.current ??= createFrameWriter<{ cx: number; cy: number }>(({ cx, cy }, t) => {
+    const d = drag.current;
+    const box = d?.box;
+    if (!d || !box) return;
+    if (!d.geom) {
+      const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
+      const b = box.getBoundingClientRect();
+      // The rect is where the box is rendered now; the drag starts from (d.x, d.y).
+      const rx = posRef.current.x - d.x;
+      const ry = posRef.current.y - d.y;
+      d.geom = {
+        left: row.left - rx,
+        top: row.top + liftOf(box) - ry,
+        width: row.width,
+        height: row.height,
+        boxLeft: b.left - rx,
+        boxRight: b.right - rx,
+        vw: innerWidth,
+        vh: innerHeight,
+        safeTop: safeTop(),
+      };
+      box.style.willChange = "transform";
+      if (dragPerfOn()) d.gaps = createGapMeter();
+    }
+    const s = dragStep(d.geom, d, cx - d.px, cy - d.py);
+    d.at = { x: s.x, y: s.y };
+    d.last = s.span;
+    box.style.transform = dragTransform(s.x, s.y, KB_LIFT_VAR);
+    d.gaps?.frame(t);
+    moveRef.current?.(d.last);
+  });
+  useEffect(() => () => frame.current?.cancel(), []);
+  /**
+   * Move the box to follow the pointer: only the latest point is kept, and the
+   * next animation frame moves the box (no React render, no layout read here).
    */
   const moveTo = (box: HTMLElement | null, cx: number, cy: number) => {
     const d = drag.current;
@@ -354,28 +461,16 @@ function useDrag(
     d.moved = true;
     // Full screen does not move: a drag up past FULL_LEAVE_PX leaves it, and
     // the panel, back where it was, follows the finger from the next move on
-    // (this frame's rect is still the full-screen bar's).
+    // (measured afresh then: this frame's rect is still the full-screen bar's).
     if (fullDrag?.now()) {
-      if (dragLeavesFull({ full: true, dy })) fullDrag.leave();
+      if (dragLeavesFull({ full: true, dy })) {
+        fullDrag.leave();
+        d.geom = undefined;
+      }
       return;
     }
-    const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
-    const left = row.left - (pos.x - d.x);
-    const top = row.top + liftOf(box) - (pos.y - d.y);
-    const x = d.x + Math.max(-left, Math.min(innerWidth - row.width - left, dx));
-    const y = d.y + Math.max(safeTop() - top, Math.min(innerHeight - row.height - top, dy));
-    // The box as it will be once this move renders.
-    const by = x - pos.x;
-    const b = box.getBoundingClientRect();
-    d.last = {
-      left: left + x - d.x,
-      right: left + x - d.x + row.width,
-      boxLeft: b.left + by,
-      boxRight: b.right + by,
-      bottom: top + y - d.y + row.height,
-    };
-    moveRef.current?.(d.last);
-    setPos({ x, y });
+    d.box = box;
+    frame.current!.push({ cx, cy });
   };
   /**
    * The host's bottom island may dock above (or leave) the bar now, and only
@@ -383,18 +478,30 @@ function useDrag(
    */
   const moved = () =>
     requestAnimationFrame(() => dispatchEvent(new CustomEvent("lk:chat-moved")));
+  /**
+   * The drag's frames are over: the last point is written, and React takes the
+   * offset back (one render). `save` remembers it (a drop, not a cancel).
+   */
+  const settle = (d: NonNullable<typeof drag.current>, save: boolean) => {
+    frame.current!.flush();
+    if (d.box) d.box.style.willChange = "";
+    if (d.gaps) logDragPerf(d.gaps.report());
+    const at = d.at;
+    if (!at) return;
+    posRef.current = at;
+    setPos(at);
+    if (save) write(POS_KEY, JSON.stringify(at));
+  };
   /** The press is over: a drag is saved, and its drop told (the fold's edge, fold.ts). */
   const end = () => {
     setHolding(false);
     const d = drag.current;
+    if (d?.moved) settle(d, true);
+    else frame.current!.cancel();
     drag.current = null;
     moveRef.current?.(null);
     if (!d?.moved) return;
     dragged.current.dragEnded();
-    setPos((p) => {
-      write(POS_KEY, JSON.stringify(p));
-      return p;
-    });
     if (d.last) dropRef.current?.(d.last);
     moved();
   };
@@ -411,7 +518,8 @@ function useDrag(
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
       if ((e.target as HTMLElement).closest("button:not([data-drag-handle]), textarea")) return;
       setHolding(true);
-      drag.current = { px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, moved: false };
+      const p = posRef.current;
+      drag.current = { px: e.clientX, py: e.clientY, x: p.x, y: p.y, moved: false };
       dragged.current.down();
       e.currentTarget.setPointerCapture(e.pointerId);
     },
@@ -420,6 +528,10 @@ function useDrag(
     onPointerUp: () => end(),
     onPointerCancel: () => {
       setHolding(false);
+      const d = drag.current;
+      // Where the finger left it stays (not remembered), as before.
+      if (d?.moved) settle(d, false);
+      else frame.current!.cancel();
       drag.current = null;
       moveRef.current?.(null);
     },
@@ -431,7 +543,8 @@ function useDrag(
    */
   const begin = (px: number, py: number) => {
     setHolding(true);
-    drag.current = { px, py, x: pos.x, y: pos.y, moved: false };
+    const p = posRef.current;
+    drag.current = { px, py, x: p.x, y: p.y, moved: false };
   };
   /**
    * Bring the chat bar back on screen, e.g. after restoring the box where the
@@ -487,11 +600,8 @@ function useDrag(
 
 /** A sentence read aloud: a quieter grey, still legible (light and dark). */
 const SPOKEN_STYLE = { color: "light-dark(oklch(0.5 0.01 260), oklch(0.72 0.01 260))" };
-/** The sentence being read: a soft highlight behind it. */
-const SPEAKING_STYLE = {
-  background: "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.055 22.3 / 0.7))",
-  borderRadius: 3,
-};
+/** The sentence being read, its length not known: a soft highlight behind it (else read-sweep.ts). */
+const SPEAKING_STYLE = { background: SPEAKING_BG, borderRadius: 3 };
 /** The full-screen log's wipe in and out. */
 const WIPE = "clip-path 200ms ease-out";
 /** The input-started full-screen log fades in and out, as the bar does the other way. */
@@ -521,6 +631,20 @@ const sheetLook = () => {
 const KB_LIFT_VAR = "--lk-kb-lift";
 const liftOf = (box: HTMLElement) =>
   Number.parseFloat(box.style.getPropertyValue(KB_LIFT_VAR)) || 0;
+/** The drag perf log (drag-frame.ts) is switched on: a dev's localStorage key, never in the UI. */
+const dragPerfOn = () => {
+  try {
+    return localStorage.getItem(DRAG_PERF_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+/** One drag's frame gaps, ms: logged, and kept on `__lkDragPerf` for a scripted check. */
+function logDragPerf(r: { frames: number; max: number; p95: number }) {
+  (globalThis as { __lkDragPerf?: unknown[] }).__lkDragPerf ??= [];
+  (globalThis as unknown as { __lkDragPerf: unknown[] }).__lkDragPerf.push(r);
+  console.debug(`[drag-perf] ${r.frames} frames, gap p95 ${r.p95.toFixed(1)} ms, max ${r.max.toFixed(1)} ms`);
+}
 
 /** env(safe-area-inset-left/right) in px (a landscape notch). */
 function safeSides() {
@@ -727,6 +851,18 @@ export type DebugChatProps = {
    * code on this page; `sessions`: the eval grants in time; `beatAt`: the
    * agent's latest heartbeat (it saw what came before); `onEnd` revokes one.
    */
+  /**
+   * Who is here (presence.ts, PresenceStack.tsx): the hub's list for this
+   * page, how many avatars the stack shows (chat.presenceShown), and the
+   * viewer's own token actions (rename / picture over the hub socket; Remove
+   * revokes the token). Shown right of the connection chip.
+   */
+  presence?: {
+    list: Present[];
+    shown: number;
+    onChange?: (tok: string, change: ParticipantChange) => void;
+    onRemove?: (id: string) => Promise<boolean>;
+  };
   link?: {
     state: EvalLink;
     sessions: (EvalSession & { here: boolean })[];
@@ -875,6 +1011,9 @@ const NONE_ABOVE: ReadonlySet<string> = new Set();
 /** The one panel over the log. */
 type Panel = "none" | "menu" | "tree" | "voiceprint";
 
+/** One live line (live-speech.ts): what it shows, and whether it is spoken, sending or failed. */
+type LiveRow = { key: string; text: string; tail: string; state: "speaking" | "sending" | "unsent" };
+
 export function DebugChat({
   live,
   listeners,
@@ -885,7 +1024,6 @@ export function DebugChat({
   onPassageEnd,
   sessions = [],
   onEnd,
-  evalRan = false,
   friend = false,
   owner = false,
   notice,
@@ -920,6 +1058,7 @@ export function DebugChat({
   onEtaDue,
   etaSource,
   link,
+  presence,
   fullScreen: fullScreenFlag = false,
   backToClose,
 }: DebugChatProps) {
@@ -929,7 +1068,7 @@ export function DebugChat({
    * A line inside a summary (`collapsedInto`) is not shown: the summary's tap shows it as heard.
    */
   const messages = useMemo(
-    () => rawMessages.filter((m) => !m.collapsedInto).map(withLane),
+    () => rawMessages.filter((m) => !m.collapsedInto).map((m) => withTokenName(withLane(m))),
     [rawMessages],
   );
   /** Which lines arrived live: they shimmer while read (shimmer.ts). Seen at render, idempotent. */
@@ -937,7 +1076,83 @@ export function DebugChat({
   newLines.current ??= createNewLines();
   newLines.current.see(messages, Date.now());
   const shimmerOf = (m: ChatMessage) => newLines.current!.shimmer(m, Date.now());
-  const laneOpts = { laneAvatar };
+  /** Who is here (presence.ts), by token tag: a line's name and picture follow the owner's choice. */
+  const byTok = useMemo(
+    () => new Map((presence?.list ?? []).filter((p) => p.tok).map((p) => [p.tok!, p])),
+    [presence?.list],
+  );
+  // Everyone's name is a wake word (wake-names.ts): the agents here, the main agent, and him.
+  // A rename or a newcomer changes the set; the spotter swaps its keywords in place.
+  const presentNames = (presence?.list ?? []).map((p) => p.name).join("\n");
+  useEffect(() => {
+    wakeNames().set({
+      mainName: t.name,
+      agents: presentNames ? presentNames.split("\n") : [],
+      owner: viewer?.name,
+    });
+  }, [t.name, presentNames, viewer?.name]);
+  const laneOpts = {
+    laneAvatar,
+    tokenAvatar: tokenPicture,
+    participant: (tok: string) => byTok.get(tok),
+    // Another voice on his voice line (speaker-avatar.ts): its own disc, not his picture.
+    voiceAvatar,
+    otherVoice: t.vpOtherVoice,
+  };
+  /**
+   * Who the owner called (addressed.ts): each owner line's addressed lanes
+   * (small marks after it, kept), and what flashes now: `lane:<id>` pulses
+   * that lane's most recent avatar, `line:<id>` an arrived line's marks.
+   * Each key is on for FLASH_MS.
+   */
+  const addressedOf = useMemo(() => {
+    const out = new Map<string, LaneId[]>();
+    for (const m of messages) {
+      if (m.from !== "owner") continue;
+      const lanes = addressedLanes(m.text);
+      if (lanes.length) out.set(m.id, lanes);
+    }
+    return out;
+  }, [messages]);
+  const latestLane = useMemo(() => latestOfLane(messages), [messages]);
+  const addrFlash = useRef<ReturnType<typeof createAddressFlash> | null>(null);
+  addrFlash.current ??= createAddressFlash();
+  const [flashOn, setFlashOn] = useState<ReadonlySet<string>>(() => new Set());
+  const flashTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const flashKeys = useCallback((keys: string[]) => {
+    if (!keys.length) return;
+    setFlashOn((s) => new Set([...s, ...keys]));
+    for (const k of keys) {
+      clearTimeout(flashTimers.current.get(k));
+      flashTimers.current.set(
+        k,
+        setTimeout(() => {
+          flashTimers.current.delete(k);
+          setFlashOn((s) => {
+            const n = new Set(s);
+            n.delete(k);
+            return n;
+          });
+        }, FLASH_MS),
+      );
+    }
+  }, []);
+  useEffect(() => {
+    const timers = flashTimers.current;
+    return () => {
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
+  useEffect(() => {
+    const r = addrFlash.current!.lines(messages, Date.now());
+    flashKeys([...r.lanes.map((l) => `lane:${l}`), ...r.arrived.map((a) => `line:${a.id}`)]);
+  }, [messages, flashKeys]);
+  /** Props that flash message `id`'s avatar when it is its lane's most recent and the lane was just called. */
+  const laneFlash = (m: { id: string; lane?: LaneId }) =>
+    m.lane && latestLane[m.lane] === m.id && flashOn.has(`lane:${m.lane}`)
+      ? flashProps(m.lane)
+      : undefined;
   /** This window's recording session, as the hub holds it (clips.ts); null before it spoke. */
   const clipsHub = useUi(clipsLive(), (s) => s.hub);
   const clipsAuto = useUi(clipsDevice(), (s) => s.autoStop);
@@ -969,10 +1184,22 @@ export function DebugChat({
     return () => mq.removeEventListener("change", on);
   }, []);
   const asSidebar = full && sidebar;
+  const dockSavedWidth = useUi(chatDock(), (s) => s.width);
+  const dockSaved = useRef(dockSavedWidth);
+  dockSaved.current = dockSavedWidth;
+  const dockPreview = useRef<number | null>(null);
+  const asSidebarNow = useRef(asSidebar);
+  asSidebarNow.current = asSidebar;
   // The sidebar leaves the page usable beside it: the page reflows clear of it.
   useEffect(() => {
     if (!asSidebar || typeof document === "undefined") return;
-    return sidebarReserve(document.documentElement);
+    const restore = sidebarReserve(document.documentElement);
+    liftRef.current();
+    return () => {
+      restore();
+      root.current?.style.removeProperty(DOCK_WIDTH_VAR);
+      root.current?.style.removeProperty(DOCK_RIGHT_VAR);
+    };
   }, [asSidebar]);
   const [speak, setSpeak] = useState(speechEnabled);
   /** Echo cancellation on the mic (lk:voice-aec): the menu's A/B switch. */
@@ -1193,6 +1420,20 @@ export function DebugChat({
     // Full screen: the box is the visible area (full-screen.ts), so the bar
     // already sits above the keyboard; no lift.
     if (fullOn.current) {
+      if (asSidebarNow.current) {
+        const viewport = dockViewport(innerWidth, vv);
+        const bounds = dockBounds(
+          viewport.width,
+          SIDEBAR_MIN_REM * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16),
+        );
+        const desired = dockPreview.current ?? dockSaved.current;
+        const width = desired === null
+          ? `min(${SIDEBAR_W}, ${viewport.width}px)`
+          : `${clampDockWidth(desired, bounds)}px`;
+        box.style.setProperty(DOCK_WIDTH_VAR, width);
+        box.style.setProperty(DOCK_RIGHT_VAR, `${viewport.right}px`);
+        document.documentElement.style.setProperty(SIDEBAR_RESERVE_VAR, width);
+      }
       const b = fullScreenBox({ innerHeight, vv });
       box.style.setProperty(FULL_TOP_VAR, `${b.top}px`);
       box.style.setProperty(FULL_H_VAR, `${b.height}px`);
@@ -1621,6 +1862,19 @@ export function DebugChat({
   /** Arrival order up to which the agent's lines count as read (see countUnread). */
   const [readSeq, setReadSeq] = useState(0);
   const draftRef = useRef(uiStore.getState().draft);
+  /** What the input box shows (live-speech.ts): the draft, or nothing while it is the live line. */
+  const shownInput = useRef("");
+  /**
+   * He took the spoken draft into the input to edit it (typing started, or a
+   * tap on the live line): from then on it is an ordinary draft. Not kept
+   * across reloads: a restored spoken draft is the live line again.
+   */
+  const [inInput, setInInput] = useState(false);
+  const inInputRef = useRef(false);
+  inInputRef.current = inInput;
+  /** Spoken lines sent from the live line, shown as "sending" until their echo (live-speech.ts). */
+  const [holds, setHolds] = useState<SentHold[]>([]);
+  const holdKey = useRef(0);
   const composing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** The chat's one scroller: the tree (when open) and the log. */
@@ -1731,9 +1985,6 @@ export function DebugChat({
    * re-armed when it fires: no polling, and no render per scroll.
    */
   const compactPref = useUi(chatPrefs(), (s) => s.compact);
-  /** The task bar hidden by its ▸/▾ (ui-store.ts chatPrefs `etaFolded`, this device). */
-  const etaFolded = useUi(chatPrefs(), (s) => s.etaFolded);
-  const foldEta = (v: boolean) => chatPrefs().setState({ etaFolded: v });
   const [expanded, setExpanded] = useState(false);
   const holdUntil = useRef(0);
   const hold = (ms: number) => {
@@ -1965,7 +2216,7 @@ export function DebugChat({
   const inputDrag = {
     onPointerDown: (e: React.PointerEvent<HTMLTextAreaElement>) => {
       tune.current = joystickTune();
-      if (!open || draftRef.current) return;
+      if (!open || shownInput.current) return;
       inputAxis.current.down(e.clientX, e.clientY);
       // Captured from the press: a quick flick leaves the input before the
       // axis locks, and its moves must still come here (touch pointers are
@@ -2124,7 +2375,7 @@ export function DebugChat({
       el.setSelectionRange(end, end);
       el.scrollTop = el.scrollHeight;
     }
-  }, [draft, open]);
+  }, [draft, open, inInput]);
   // The log is click-through, so it can't be swiped: a vertical swipe on the
   // empty input scrolls it instead (inputDrag, by pointer events). Here the
   // swipe only keeps the page from scrolling; it once scrolled the log as
@@ -2330,6 +2581,8 @@ export function DebugChat({
         .slice(0, MAX_CHAT);
     if (!text) return false;
     const source = draftSource(draftRef.current, pureDictation.current);
+    /** It was the live line (spoken, not taken into the input): it stays as "sending" till its echo. */
+    const fromLive = !!source && !inInputRef.current;
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
     // And which recognizer made it (SttTag): an older store (hot swap) has no takeLine.
     const lat = voiceLatency();
@@ -2386,6 +2639,11 @@ export function DebugChat({
       return false;
     }
     setOffline(false);
+    // The live line becomes "sending" in the same paint the draft empties: no blink, no gap.
+    if (fromLive) {
+      const h = holdOf(++holdKey.current, text, messagesNow.current, Date.now(), continues);
+      flushSync(() => setHolds((x) => [...x, h]));
+    }
     if (context) {
       uiStore.setState({ attached: null });
       pageSel.clear();
@@ -2411,6 +2669,8 @@ export function DebugChat({
     draftRef.current = "";
     pureDictation.current = null;
     settledLen.current = 0;
+    inInputRef.current = false;
+    setInInput(false);
     setDraft("");
     return true;
   };
@@ -2598,6 +2858,7 @@ export function DebugChat({
   }, [full]);
   /** The + menu or the inbox is up: their own Escape closes them first. */
   const attachMenuNow = useRef(false);
+  const attachButtonRef = useRef<HTMLButtonElement | null>(null);
   attachMenuNow.current = attachMenu || inboxOpen;
   // Escape leaves full screen, after the tree's and the + menu's own Escape.
   // Caught before the mic's Escape (which turns it off): leaving full screen
@@ -2645,6 +2906,151 @@ export function DebugChat({
   useEffect(() => setHasMic(!embedded && canCapture()), [embedded]);
   /** Dimmed after the draft: partial transcripts, or "…" for those still out. */
   const [interim, setInterim] = useState("");
+  /** Where the spoken words show: the log's live line, or (typed text in the draft) the input. */
+  const speech = liveSpeech({ draft, pureDictation: pureDictation.current, interim, inInput });
+  shownInput.current = speech.input;
+  // The draft emptied (sent, cleared): the next spoken words are the live line again.
+  useEffect(() => {
+    if (!draft && inInput) setInInput(false);
+  }, [draft, inInput]);
+  /** The held lines still waiting for their echo: the echo removes one in the render it arrives. */
+  const shownHolds = liveHolds(holds, messages, Date.now());
+  useEffect(() => {
+    if (!holds.length) return;
+    const now = Date.now();
+    const next = liveHolds(holds, messages, now);
+    if (next.length !== holds.length) return void setHolds(next);
+    const wait = Math.min(...holds.map((h) => h.at + HOLD_MS - now));
+    const t = setTimeout(
+      () => setHolds((x) => liveHolds(x, messagesNow.current, Date.now())),
+      Math.max(0, wait) + 20,
+    );
+    return () => clearTimeout(t);
+  }, [holds, messages]);
+  /**
+   * Typing starts (a key, a paste, an IME composition) or a tap on the live
+   * line: the spoken draft moves into the input, editable, before the key
+   * lands. The join's pending send is dropped: he is editing it now, and the
+   * typed draft's own rules (the debounce, Enter) send it.
+   */
+  const takeSpoken = (): boolean => {
+    if (inInputRef.current || !spokenPending(draftRef.current, pureDictation.current)) return false;
+    joiner.current?.cancel();
+    caretToEnd.current = true;
+    inInputRef.current = true;
+    flushSync(() => setInInput(true));
+    return true;
+  };
+  /**
+   * The live lines, newest last: spoken lines sent and waiting for their echo
+   * ("sending"), then the words being spoken now ("speaking"; "unsent" when
+   * the send failed). Drawn as his own lines, never ChatMessages: not stored,
+   * not sent, not read aloud, no hub id.
+   */
+  const liveRows: LiveRow[] = [
+    ...shownHolds.map((h) => ({
+      key: `${LIVE_ID}-${h.key}`,
+      text: h.text,
+      tail: "",
+      state: "sending" as const,
+    })),
+    ...(speech.bubble
+      ? [
+          {
+            key: LIVE_ID,
+            text: speech.bubble.text,
+            tail: speech.bubble.tail,
+            state: offline && speech.bubble.text ? ("unsent" as const) : ("speaking" as const),
+          },
+        ]
+      : []),
+  ];
+  const liveWho = lineAvatar(
+    { id: LIVE_ID, from: friend ? "friend" : "owner", label: "", text: "", at: 0 },
+    { friend, viewer, agentAvatar, avatarFor, agentName: t.name, you: t.you, ...laneOpts },
+  );
+  /** A tap on the words being spoken: they come into the input to be edited. */
+  const editLive = () => {
+    if (!open) toggle(true);
+    if (takeSpoken()) requestAnimationFrame(() => input.current?.focus());
+  };
+  function liveLine(r: LiveRow, where: "log" | "compact" | "float") {
+    const label =
+      r.state === "sending" ? ux.liveSending : r.state === "unsent" ? ux.liveNotSent : ux.liveSpeaking;
+    const Tag = where === "compact" ? "div" : "li";
+    return (
+      <Tag
+        key={r.key}
+        data-testid="debug-chat-live"
+        data-live={r.state}
+        aria-busy={r.state !== "unsent" || undefined}
+        title={label}
+        onClick={r.state === "sending" ? undefined : editLive}
+        style={where === "float" ? { textShadow: LINE_HALO } : undefined}
+        // His own line's look, outlined dashed and a little faded: not sent yet.
+        className={`pointer-events-auto flex items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 leading-snug opacity-80 ${r.state === "sending" ? "" : "cursor-text"} ${where === "float" ? "py-0.5" : ""}`}
+      >
+        <Avatar
+          src={liveWho.src}
+          name={liveWho.name}
+          initialFrom={liveWho.initialFrom}
+          seed={liveWho.seed}
+          size={AVATAR_PX}
+          hidden
+        />
+        <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
+          <span className="sr-only">
+            {liveWho.name} ({label}):{" "}
+          </span>
+          {r.text}
+          {r.tail && (
+            <span data-testid="debug-chat-live-tail" className="text-gray-400">
+              {r.tail}
+            </span>
+          )}
+          {r.state === "speaking" && micActive && <MicCaret />}
+          {r.state === "unsent" ? (
+            <>
+              <span className="ms-1 fs-10" style={{ color: "oklch(0.6 0.17 45)" }}>
+                {ux.liveNotSent}
+              </span>
+              <button
+                type="button"
+                data-testid="debug-chat-live-retry"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  submit();
+                }}
+                className="ms-1 fs-10 underline"
+              >
+                {ux.liveRetry}
+              </button>
+            </>
+          ) : (
+            // Speaking: a soft pulse (none under reduced motion); sending: still.
+            <span
+              aria-hidden
+              data-testid="debug-chat-live-mark"
+              className={`ms-1 inline-block size-1.5 rounded-full bg-current align-middle opacity-50 ${r.state === "speaking" ? "animate-pulse motion-reduce:animate-none" : ""}`}
+            />
+          )}
+        </div>
+      </Tag>
+    );
+  }
+  // At the end, the log follows the live line as it grows.
+  const liveSig = liveRows.map((r) => `${r.key}:${r.text}${r.tail}`).join("|");
+  useLayoutEffect(() => {
+    const el = log.current;
+    if (!open || !liveSig || !el || !atEnd.current) return;
+    el.scrollTo({ top: el.scrollHeight });
+    pinnedAt.current = el.scrollTop;
+  }, [liveSig, open]);
+  // A name heard in the live interim flashes its lane at once, once per utterance (addressed.ts).
+  useEffect(() => {
+    const lanes = addrFlash.current!.heard(interim ? joinText(draft, interim) : "", Date.now());
+    flashKeys(lanes.map((l) => `lane:${l}`));
+  }, [interim, draft, flashKeys]);
   const mirror = useRef<HTMLDivElement | null>(null);
   /** A transcript lands in the draft, as typed text would, but is never sent by itself. */
   /**
@@ -2917,6 +3323,7 @@ export function DebugChat({
       mark: (
         <>
           <PolishedMark
+            by={m.edited?.by}
             icon={
               m.summary ? (
                 <span data-testid="debug-chat-summary" className="rounded border border-current px-1 text-[0.8em]">
@@ -3415,14 +3822,13 @@ export function DebugChat({
     </div>
   );
   /** One floating line; `above` is the line before it (its dwell waits for that one's). */
-  const floatLine = (f: ChatMessage, above: string | undefined, oneLine = false) => {
+  const floatLine = (f: ChatMessage, above: string | undefined) => {
     // The latest copy of the line: an edit changes it in place.
     const m = messages.find((x) => x.id === f.id) ?? f;
     const p = polish(m);
     return (
             <FloatLine
               details={details.forMessage}
-              oneLine={oneLine}
               key={m.id}
               m={m}
               arrivedAt={newLines.current!.arrivedAt(m.id)}
@@ -3438,15 +3844,19 @@ export function DebugChat({
               })}
               text={lineText(m, p.text)}
               mark={
-                m.speaker?.decision === "me" ? (
-                  <>
-                    {p.mark}
-                    <VoiceMark label={t.vpVerified} />
-                  </>
-                ) : (
-                  p.mark
-                )
+                <>
+                  {p.mark}
+                  {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                  {addressedOf.has(m.id) && (
+                    <AddressedMarks
+                      lanes={addressedOf.get(m.id)!}
+                      label={ux.addressed}
+                      pulse={flashOn.has(`line:${m.id}`)}
+                    />
+                  )}
+                </>
               }
+              flash={laneFlash(m)}
               epoch={floatEpoch}
               aboveLeft={() => (above ? (floatLives.current.get(above)?.remaining() ?? 0) : 0)}
               onLife={(l) => (l ? floatLives.current.set(m.id, l) : floatLives.current.delete(m.id))}
@@ -3474,7 +3884,8 @@ export function DebugChat({
    * pill in one box, from the pill's side (fold.ts floatSide, anchor.ts),
    * clamped inside the viewport. Tucked, only the newest line peeks (tuckEl).
    */
-  const floatBoxEl = fold === "pill" && (floats.length > 0 || !!shownFrontier || tree) && (
+  const floatBoxEl =
+    fold === "pill" && (floats.length > 0 || liveRows.length > 0 || !!shownFrontier || tree) && (
     <div
       ref={setFloatBox}
       data-testid="debug-chat-float-box"
@@ -3484,6 +3895,15 @@ export function DebugChat({
     >
       {tree && treePanel(true)}
       {floatsEl}
+      {liveRows.length > 0 && (
+        // Minimized: what he is saying floats as his newest line too.
+        <ol
+          data-testid="debug-chat-live-floats"
+          className={`m-0 flex list-none flex-col gap-0.5 p-0 ${ALIGN_ITEMS[place.side]}`}
+        >
+          {liveRows.map((r) => liveLine(r, "float"))}
+        </ol>
+      )}
       {shownFrontier && (
         <FrontierLines frontier={shownFrontier} renderAvatar={renderAvatar} align={place.side} />
       )}
@@ -3661,9 +4081,8 @@ export function DebugChat({
         </span>
         {ui.wakeWord}
       </button>
-      {/* Dev (DevMenuGroup.tsx): internal diagnostics, on the owner's pages only, collapsed. */}
-      <DevMenuGroup owner={owner} label={t.devGroup}>
-      {/* Echo cancellation, an A/B (aec.ts lk:voice-aec): an open mic reopens with it at once. */}
+      {/* Echo cancellation (aec.ts lk:voice-aec): a real setting, in the main menu, not the Dev group
+          (owner, 2026-11-14: he could not find it). An open mic reopens with it at once. */}
       <button
         type="button"
         role="menuitemcheckbox"
@@ -3681,6 +4100,8 @@ export function DebugChat({
         </span>
         {ui.aec}
       </button>
+      {/* Dev (DevMenuGroup.tsx): internal diagnostics, on the owner's pages only, collapsed. */}
+      <DevMenuGroup owner={owner} label={t.devGroup}>
       {/* The last voice line's path to its reply (latency.ts), when there is one or the mic is on. */}
       {(lastLatency || vs.mic) && (
         <div data-testid="debug-menu-latency" className="px-3 py-1 text-gray-500">
@@ -3943,15 +4364,29 @@ export function DebugChat({
   const [readP, readDispatch] = useReducer(readStep, undefined, () =>
     initialRead(uiStore.getState().spoken),
   );
+  /**
+   * The speaking sentence's sweep (read-sweep.ts): when it started, how long
+   * it should take (voice.ts onTiming; an older session copy has none: the
+   * static highlight), held while the reading waits.
+   */
+  const [sweep, sweepDispatch] = useReducer(sweepStep, undefined, initialSweep);
   useEffect(() => {
     const v = voice() as ReturnType<typeof voice> & {
       onStart?: (f: () => void) => () => void;
+      onTiming?: (f: (t: ReadTiming) => void) => () => void;
       onDrop?: (f: (ids: string[]) => void) => () => void;
       onInterject?: (f: (j: { id: string; n: number; at: number }) => void) => () => void;
     };
     readDispatch({ type: "queued", n: v.state().queued });
-    const off1 = v.subscribe((s) => readDispatch({ type: "queued", n: s.queued }));
-    const off2 = v.onStart?.(() => readDispatch({ type: "start" }));
+    const off1 = v.subscribe((s) => {
+      readDispatch({ type: "queued", n: s.queued });
+      sweepDispatch({ type: s.paused ? "pause" : "resume", at: Date.now() });
+    });
+    const off2 = v.onStart?.(() => {
+      readDispatch({ type: "start" });
+      sweepDispatch({ type: "start", at: Date.now() });
+    });
+    const off5 = v.onTiming?.((t) => sweepDispatch({ type: "timing", at: Date.now(), ...t }));
     // say --supersede / --interject (voice.ts): lines cut, or put in ahead of the rest.
     const off3 = v.onDrop?.((ids) => {
       for (const id of ids) readDispatch({ type: "drop", id });
@@ -3965,6 +4400,7 @@ export function DebugChat({
       off2?.();
       off3?.();
       off4?.();
+      off5?.();
     };
   }, []);
   /** Agent lines there before this widget came up: history, never claimed. */
@@ -3975,8 +4411,11 @@ export function DebugChat({
     let left = readP.unmatched;
     if (!left) return;
     for (const m of messages) {
-      if (m.from !== "agent" || historyIds.current!.has(m.id) || claimed.current.has(m.id)) continue;
-      const n = sentenceCount(spokenOf(m, { embedded }));
+      // His own line read back in his cloned voice (polish-readback.ts) is in the queue too.
+      const back = m.from === "owner" ? readbackOf(m.id) : undefined;
+      if (claimed.current.has(m.id)) continue;
+      if (!back && (m.from !== "agent" || historyIds.current!.has(m.id))) continue;
+      const n = sentenceCount(back ?? spokenOf(m, { embedded }));
       if (!n || n > left) continue;
       claimed.current.add(m.id);
       readDispatch({ type: "enqueue", id: m.id, n });
@@ -4091,6 +4530,19 @@ export function DebugChat({
           ranges: sentenceRanges(rich.spoken),
           wrap: (idx, key, children) => {
             const st = sentenceState(readP, m.id, idx);
+            // Speaking, its length known: swept left to right over it (read-sweep.ts).
+            const swept = st === "speaking" ? sweepStyle(sweep) : null;
+            if (swept)
+              return (
+                <span
+                  key={`${key}:${sweep.v}`}
+                  data-read={st}
+                  {...{ [SWEEP_ATTR]: "" }}
+                  style={swept}
+                >
+                  {children}
+                </span>
+              );
             return (
               <span
                 key={key}
@@ -4168,20 +4620,22 @@ export function DebugChat({
         // A 40px tap target over the page; the text keeps the box's halo.
         className={`pointer-events-auto flex min-h-10 items-start gap-1.5 py-1 leading-snug ${asLine ? "cursor-pointer" : ""}`}
       >
-        <Avatar
-          src={who.src}
-          name={who.name}
-          initialFrom={who.initialFrom}
-          seed={who.seed}
-          size={AVATAR_PX}
-          hidden
-        />
+        <span className="inline-flex shrink-0 rounded-full" {...laneFlash(m)}>
+          <Avatar
+            src={who.src}
+            name={who.name}
+            initialFrom={who.initialFrom}
+            seed={who.seed}
+            size={AVATAR_PX}
+            hidden
+          />
+        </span>
         <div
-          className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-2" : "whitespace-pre-wrap"}`}
+          className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-3" : "whitespace-pre-wrap"}`}
           {...shimmerOf(m)}
         >
           <span className="sr-only">{who.name}: </span>
-          {m.lane && <LaneTag lane={m.lane} inline />}
+          <LineTag m={m} name={who.name} inline />
           {m.ask
             ? m.ask.questions.length === 1
               ? lineText(m, m.ask.questions[0]!.question)
@@ -4198,6 +4652,13 @@ export function DebugChat({
             />
           )}
           {p.mark}
+          {addressedOf.has(m.id) && (
+            <AddressedMarks
+              lanes={addressedOf.get(m.id)!}
+              label={ux.addressed}
+              pulse={flashOn.has(`line:${m.id}`)}
+            />
+          )}
         </div>
       </div>
     );
@@ -4211,7 +4672,10 @@ export function DebugChat({
         className="pointer-events-none flex flex-col px-0 pt-1"
       >
         {asks.map((m) => compactRow(m, false))}
-        {last ? compactRow(last, true) : <p className="m-0 py-1 text-gray-500">{t.hint}</p>}
+        {last
+          ? compactRow(last, true)
+          : !liveRows.length && <p className="m-0 py-1 text-gray-500">{t.hint}</p>}
+        {liveRows.map((r) => liveLine(r, "compact"))}
       </div>
     );
   })();
@@ -4297,7 +4761,7 @@ export function DebugChat({
             }}
             className="pointer-events-none fixed z-[var(--lk-z-chat,80)] flex w-max max-w-[min(20rem,calc(100vw-6rem))] -translate-y-1/2 cursor-pointer flex-col lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100"
           >
-            {floatLine(peek, undefined, true)}
+            {floatLine(peek, undefined)}
           </ol>
         )}
       </>
@@ -4313,20 +4777,14 @@ export function DebugChat({
     fullLog: fullLog !== "off" || full,
   });
   /** The progress bar (EtaBar) shows over the input. */
-  const etaShown = open && !tree && etaBar && etaList.length > 0;
+  const etaShown = !tree && etaBar && etaList.length > 0;
   /** The connection chip: a developer's page, the chat open, not over the tree. */
-  const linkShown = open && !tree && !notice && owner && !!link;
-  const selState = selectionState({
-    attached: !!attached,
-    lines: messages,
-    beatAt: link?.beatAt,
-    listeners: listeners ?? 0,
-  });
+  const linkShown = !tree && !notice && owner && !!link;
   /**
    * The bar and the progress bar as one glass strip (owner, 2026-11-10); not
    * while the typing glass is the frame, nor full screen (the screen is the glass).
    */
-  const strip = etaShown && !full && !typingGlassShown;
+  const strip = open && etaShown && !full && !typingGlassShown;
   const typingGlassLookNow = (() => {
     const has = (prop: string, v: string) => typeof CSS !== "undefined" && CSS.supports(prop, v);
     const look = typingGlassLook({
@@ -4402,6 +4860,21 @@ export function DebugChat({
       }}
       className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing: typingNow, plusMenu, micActive, fullLog: fullLog !== "off" || full }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} ${full ? "pointer-events-auto" : "pointer-events-none"} lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
+      {asSidebar && (
+        <DockResize
+          box={() => root.current}
+          label={t.dockResize}
+          preview={(width) => {
+            dockPreview.current = width;
+            liftRef.current();
+          }}
+          commit={(width) => {
+            dockSaved.current = width;
+            chatDock().setState({ width });
+            liftRef.current();
+          }}
+        />
+      )}
       {/* The recording badge, top of the screen, out of the box's transform. */}
       {!friend &&
         !embedded &&
@@ -4451,7 +4924,17 @@ export function DebugChat({
           the log starts under it. Escape, Back, the menu and a drag up
           leave too. Entering without a drag: the menu's Full screen row. */}
       {open && full && (
-        <div className="pointer-events-none flex shrink-0 justify-end">
+        <div className="pointer-events-none flex shrink-0 items-center justify-between">
+          {/* The site's logo, top left (owner, 2026-11-14: "全屏的时候…左上角显示 logo"). */}
+          <img
+            src="/icon.svg?v=5"
+            alt=""
+            aria-hidden
+            width={28}
+            height={28}
+            data-testid="debug-chat-fullscreen-logo"
+            className="ms-1 size-7 select-none opacity-90"
+          />
           <button
             type="button"
             data-testid="debug-chat-fullscreen-exit"
@@ -4518,7 +5001,7 @@ export function DebugChat({
         data-testid="debug-chat-log"
         className="m-0 list-none space-y-0.5 p-0"
       >
-        {messages.length === 0 && (
+        {messages.length === 0 && !liveRows.length && (
           <li className="text-gray-500">{t.hint}</li>
         )}
         {/*
@@ -4563,14 +5046,31 @@ export function DebugChat({
                   : {}),
               }}
             >
-              <Avatar
-                src={who.src}
-                name={who.name}
-                initialFrom={who.initialFrom}
-                seed={who.seed}
-                size={AVATAR_PX}
-                hidden
-              />
+              {(() => {
+                // The lane just called by name: its most recent avatar pulses (addressed.ts).
+                const flash = run.map((i) => laneFlash(messages[i]!)).find(Boolean);
+                const avatar = (
+                  <Avatar
+                    src={who.src}
+                    name={who.name}
+                    initialFrom={who.initialFrom}
+                    seed={who.seed}
+                    size={AVATAR_PX}
+                    hidden
+                  />
+                );
+                return flash ? (
+                  <span
+                    data-testid="debug-chat-lane-flash"
+                    className="inline-flex shrink-0 rounded-full"
+                    {...flash}
+                  >
+                    {avatar}
+                  </span>
+                ) : (
+                  avatar
+                );
+              })()}
               <div className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px">
                 {node && (
                   <span
@@ -4582,7 +5082,7 @@ export function DebugChat({
                   </span>
                 )}
                 {/* A lane's name, "name：", once per run, then the text; lines with no lane have none. */}
-                {m0.lane && <LaneTag lane={m0.lane} agentName={t.name} />}
+                <LineTag m={m0} name={who.name} agentName={t.name} />
                 {/* Screen readers hear the name once per run, from the sr-only span. */}
                 <span className="sr-only">
                   {who.name}
@@ -4633,6 +5133,13 @@ export function DebugChat({
                           />
                         )}
                         {polish(m).mark}
+                        {addressedOf.has(m.id) && (
+                          <AddressedMarks
+                            lanes={addressedOf.get(m.id)!}
+                            label={ux.addressed}
+                            pulse={flashOn.has(`line:${m.id}`)}
+                          />
+                        )}
                         {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
                         {(() => {
                           // Which recognizer made a voice line: dev holders only (`owner` needs dev).
@@ -4688,6 +5195,8 @@ export function DebugChat({
             </li>
           );
         })}
+        {/* What he is saying now, as his newest line (live-speech.ts): not sent yet. */}
+        {liveRows.map((r) => liveLine(r, "log"))}
       </ol>
       </div>
       {compact && compactEl}
@@ -4801,15 +5310,19 @@ export function DebugChat({
         >
           {linkShown && link ? (
             <div className="flex items-stretch gap-1">
-              <LinkChip
-                glass={strip}
-                t={ui}
-                link={link.state}
-                selection={selState}
-                sessions={link.sessions}
-                now={link.now}
-                onEnd={link.onEnd}
-              />
+              {/* No link chip here any more (owner, 2026-11-14): the + carries the
+                  remote-code mark and the attached dot (AttachMenu). */}
+              {presence && (
+                <PresenceStack
+                  glass={strip}
+                  list={presence.list}
+                  shown={presence.shown}
+                  t={ui}
+                  mainName={t.name}
+                  onChange={presence.onChange}
+                  onRemove={presence.onRemove}
+                />
+              )}
               {etaShown && (
                 <div className="min-w-0 flex-1">
                   <EtaBar
@@ -4818,8 +5331,7 @@ export function DebugChat({
                     strings={t}
                     glass={strip}
                     onOpen={() => setGanttOpen(true)}
-                    folded={etaFolded}
-                    onFold={foldEta}
+                    compact={!open || compact}
                   />
                 </div>
               )}
@@ -4831,8 +5343,7 @@ export function DebugChat({
               strings={t}
               glass={strip}
               onOpen={() => setGanttOpen(true)}
-              folded={etaFolded}
-              onFold={foldEta}
+              compact={!open || compact}
             />
           )}
         </div>
@@ -4948,6 +5459,7 @@ export function DebugChat({
         )}
         {open && attachMenu && (
           <AttachMenu
+            anchorRef={attachButtonRef}
             t={t}
             attach={attach && !notice}
             sel={pageSel.sel}
@@ -5108,17 +5620,22 @@ export function DebugChat({
           <style>{TAP_44_CSS}</style>
           {/* New lines and the mic scrub's cue (shimmer.ts). */}
           <style>{SHIMMER_CSS}</style>
+          {/* A lane called by name: its avatar's pulse (addressed.ts). */}
+          <style>{ADDRESSED_CSS}</style>
+          {/* The sentence read aloud, swept over its reading time (read-sweep.ts). */}
+          <style>{READ_SWEEP_CSS}</style>
           {controls}
           {/* + : add to Lianki, attach to the line, view the state tree
           (AttachMenu.tsx). Open only; without `attach` (or with a notice) it
           holds only the View group. */}
           {open && (
             <AttachButton
+              buttonRef={attachButtonRef}
               t={t}
               open={attachMenu}
               announce={attach && !notice}
-              sessions={evalSessions.length}
-              ran={evalRan}
+              attached={!!attached}
+              selectable={!!pageSel.sel}
               onToggle={() => setAttachMenu((v) => !v)}
             />
           )}
@@ -5154,7 +5671,7 @@ export function DebugChat({
               </p>
             ) : (
               <>
-                {(interim || micActive) && (
+                {!speech.bubble && (interim || micActive) && (
                   // A mirror of the draft, invisible, then the interim text dimmed and the
                   // caret that follows the voice (MicCaret): where the transcript will land.
                   <div
@@ -5178,7 +5695,8 @@ export function DebugChat({
                   data-drag-hint={holding || undefined}
                   rows={1}
                   // 16px: iOS zooms the whole page into any input under 16px.
-                  value={draft}
+                  // Spoken words are the log's live line (live-speech.ts): the box stays free for typing.
+                  value={speech.input}
                   maxLength={MAX_CHAT}
                   placeholder={
                     holding
@@ -5196,16 +5714,28 @@ export function DebugChat({
                   }}
                   // A pasted image or file goes up as an attachment (files.ts); text pastes as usual.
                   onPaste={(e) => {
-                    if (!filesRef.current) return;
-                    const got = filesFrom(e.clipboardData);
-                    if (!got.length) return;
+                    const got = filesRef.current ? filesFrom(e.clipboardData) : [];
+                    // Text pasted after the spoken words: they come into the input first.
+                    if (!got.length) return void takeSpoken();
                     e.preventDefault();
                     pending.add(got);
                   }}
                   aria-label={t.message.replace(/…$/, "")}
                   onChange={(e) => {
-                    draftRef.current = e.target.value;
-                    setDraft(e.target.value);
+                    let v = e.target.value;
+                    // Typed while the spoken draft was the live line and no key told us
+                    // (a keyboard that reports none): it goes after the spoken words.
+                    if (
+                      !inInputRef.current &&
+                      spokenPending(draftRef.current, pureDictation.current)
+                    ) {
+                      v = joinText(draftRef.current, v);
+                      caretToEnd.current = true;
+                      inInputRef.current = true;
+                      setInInput(true);
+                    }
+                    draftRef.current = v;
+                    setDraft(v);
                     setOffline(false);
                     // Typing pauses the reading; a send (or, mic on, a blur) reads on.
                     voice().interrupt("typing");
@@ -5230,6 +5760,7 @@ export function DebugChat({
                     else voice().stop();
                   }}
                   onCompositionStart={() => {
+                    takeSpoken();
                     composing.current = true;
                     clearTimeout(timer.current);
                     setArmed(0);
@@ -5250,6 +5781,12 @@ export function DebugChat({
                     submit();
                   }}
                   onKeyDown={(e) => {
+                    // Typing starts: the spoken words come into the input, then the key lands.
+                    if (
+                      !e.nativeEvent.isComposing &&
+                      takesSpoken(e.key, { ctrl: e.ctrlKey, meta: e.metaKey })
+                    )
+                      takeSpoken();
                     shiftEnter.current = e.key === "Enter" && e.shiftKey;
                     // "@/wo" + Tab (or Enter): the first completion becomes the target.
                     if ((e.key === "Tab" || e.key === "Enter") && !e.shiftKey && completions[0]) {
@@ -5269,9 +5806,9 @@ export function DebugChat({
                   // A drag on a long draft scrolls its text, never the page or the box.
                   {...inputDrag}
                   // Empty, a vertical drag scrolls the log (full screen), not the page.
-                  className={`block h-[2.125rem] max-h-32 min-h-[2.125rem] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain ${draft ? "touch-pan-y" : "touch-none"} border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
+                  className={`block h-[2.125rem] max-h-32 min-h-[2.125rem] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain ${speech.input ? "touch-pan-y" : "touch-none"} border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${inputPad}`}
                 />
-                {holding && draft && (
+                {holding && speech.input && (
                   // The draft hides the placeholder: the hint sits over it instead.
                   <span
                     data-testid="debug-chat-drag-hint"
@@ -5374,7 +5911,6 @@ function GripDots() {
  */
 function FloatLine({
   details,
-  oneLine,
   m,
   who,
   text,
@@ -5386,10 +5922,11 @@ function FloatLine({
   onHover,
   onGone,
   arrivedAt,
+  flash,
 }: {
   details: ReturnType<typeof useMessageDetails>["forMessage"];
-  /** Its first line only (the tucked handle's peek), else up to three. */
-  oneLine?: boolean;
+  /** Its lane was just called by name (addressed.ts): its avatar pulses. */
+  flash?: ReturnType<typeof flashProps>;
   m: ChatMessage;
   /** When it arrived live (shimmer.ts createNewLines): it shimmers while read. */
   arrivedAt?: number;
@@ -5455,9 +5992,9 @@ function FloatLine({
       {...(shim ? { [NEW_ATTR]: true } : {})}
       // The fade runs FADE_MS (ease-out, opacity only); held (touched), the line
       // snaps back to full at once. Reduced motion: no fade, it just goes.
-      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto ${oneLine ? "line-clamp-1" : "line-clamp-3"} max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
+      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
     >
-      <span className="me-1 inline-block align-[-0.25em]">
+      <span className="me-1 inline-block rounded-full align-[-0.25em]" {...flash}>
         <Avatar
           src={who.src}
           name={who.name}
@@ -5468,7 +6005,7 @@ function FloatLine({
         />
       </span>
       <span className="sr-only">{who.name}: </span>
-      {m.lane && <LaneTag lane={m.lane} inline />}
+      <LineTag m={m} name={who.name} inline />
       {text}
       {mark}
     </li>

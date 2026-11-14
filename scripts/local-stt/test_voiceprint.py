@@ -212,7 +212,16 @@ class StoreFiles(unittest.TestCase):
         cli = os.path.join(HERE, "voiceprint.py")
         r = subprocess.run([py, "-I", cli, "--store", self.root, "list"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0)
-        self.assertIn("iphone\tcampp\t12 sentences", r.stdout)
+        self.assertIn("iphone\tcampp\t12 samples (12 enrolled, 0 learned", r.stdout)
+        # Progressive learning: off until said, on and off from the Mac's own shell.
+        r = subprocess.run([py, "-I", cli, "--store", self.root, "progressive"], capture_output=True, text=True)
+        self.assertIn("progressive learning off", r.stdout)
+        r = subprocess.run([py, "-I", cli, "--store", self.root, "progressive", "on"], capture_output=True, text=True)
+        self.assertIn("progressive learning on", r.stdout)
+        self.assertTrue(V.Store(self.root).progressive()["on"])
+        r = subprocess.run([py, "-I", cli, "--store", self.root, "progressive", "off"], capture_output=True, text=True)
+        self.assertFalse(V.Store(self.root).progressive()["on"])
+        os.unlink(os.path.join(self.root, V.PROGRESSIVE))
         r = subprocess.run([py, "-I", cli, "--store", self.root, "delete", "--device", "../x"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 2)
         r = subprocess.run([py, "-I", cli, "--store", self.root, "delete", "--device", "iphone"], capture_output=True, text=True)
@@ -301,6 +310,28 @@ class Scoring(unittest.TestCase):
         # Only him: no cuts.
         self.assertNotIn("cuts", self.v.verify(tone(350, speech_s=7.0), "iphone"))
 
+    def test_other_voices_get_stable_ids(self):
+        # No print: no voice id at all (an account that enrolled nothing keeps its own avatar).
+        self.assertNotIn("voice", self.v.verify(tone(900), "iphone"))
+        self.enrol("iphone", 300)
+        self.assertEqual(self.v.verify(tone(310), "iphone")["voice"], "me")
+        a = self.v.verify(tone(900), "iphone")
+        self.assertEqual((a["decision"], a["voice"]), ("other", "s1"))
+        self.assertEqual(self.v.verify(tone(920, seed=3), "iphone")["voice"], "s1")  # the same voice again
+        self.assertEqual(self.v.verify(tone(1200), "iphone")["voice"], "s2")  # someone else
+        self.assertEqual(self.v.verify(tone(900, seed=4), "iphone")["voice"], "s1")  # still s1 after s2
+        self.assertEqual(self.v.verify(tone(300, seed=5), "iphone")["voice"], "me")
+        # Unknown (too short, too noisy): no id, never a guess.
+        self.assertNotIn("voice", self.v.verify(tone(900, speech_s=1.0), "iphone"))
+        self.assertNotIn("voice", self.v.verify(tone(900, snr_db=7), "iphone"))
+        # A split final: each part on its own, the stranger's half keeps its id.
+        him, other = tone(350, speech_s=3.5, seed=1), tone(950, speech_s=3.5, seed=2)  # 950: mid-bin, as 900
+        self.enrol("android", 350)
+        mixed = np.concatenate([him, other * 0.6]).astype(np.float32)
+        [cut] = self.v.verify(mixed, "android")["cuts"]
+        self.assertEqual(self.v.verify(mixed[:cut], "android")["voice"], "me")
+        self.assertEqual(self.v.verify(mixed[cut:], "android")["voice"], "s1")
+
     def test_split_points(self):
         hop = int(V.WINDOW_HOP_S * RATE)
         win = int(V.WINDOW_S * RATE)
@@ -324,10 +355,13 @@ class Scoring(unittest.TestCase):
         quiet = np.concatenate([np.full(int(2.5 * RATE), 0.003, dtype=np.float32), audio])
         self.assertEqual(V.split_points(ws("other", "me", "me", "me"), quiet), [])
 
-    def test_own_device_first_then_any(self):
+    def test_own_device_first_then_every_other(self):
         self.enrol("iphone", 300)
         self.enrol("android", 600)
-        self.assertEqual(self.v.verify(tone(600), "iphone")["decision"], "other")  # only its own print
+        # Its own print first, then the others: the best match counts.
+        r = self.v.verify(tone(600), "iphone")
+        self.assertEqual((r["decision"], r["device"]), ("me", "android"))
+        self.assertEqual(self.v.verify(tone(300), "iphone")["device"], "iphone")
         self.assertEqual(self.v.verify(tone(600), "android")["decision"], "me")
         r = self.v.verify(tone(600), "ipad")  # not enrolled: the best of the others
         self.assertEqual((r["decision"], r["device"]), ("me", "android"))
@@ -340,6 +374,47 @@ class Scoring(unittest.TestCase):
         time.sleep(0.01)
         V.Store(self.root).delete("iphone")  # the CLI, while the server runs
         self.assertEqual(self.v.verify(tone(300), "iphone")["reason"], "no-print")
+
+
+class OtherVoices(unittest.TestCase):
+    """Voices: stable ids per voice, the cap, forgetting (docs/voice-mode.md, "Speaker avatars")."""
+
+    def e(self, i: int, dim: int = 16):
+        v = np.zeros(dim, dtype=np.float32)
+        v[i] = 1.0
+        return v
+
+    def test_same_voice_same_id(self):
+        vs = V.Voices(same=0.5)
+        self.assertEqual(vs.tag(self.e(0), now=0), "s1")
+        self.assertEqual(vs.tag(self.e(1), now=1), "s2")
+        near = V.unit(self.e(0) + 0.3 * self.e(2))  # the first voice, a little off
+        self.assertEqual(vs.tag(near, now=2), "s1")
+        self.assertEqual(vs.tag(self.e(1), now=3), "s2")
+        self.assertEqual(vs.known(), ["s1", "s2"])
+        # The centroid moved towards what it heard, but stays a unit vector.
+        self.assertAlmostEqual(float(np.linalg.norm(vs.items[0]["c"])), 1.0, places=5)
+        self.assertEqual(vs.items[0]["n"], 2)
+
+    def test_cap_drops_the_voice_heard_longest_ago(self):
+        vs = V.Voices(same=0.5, max_n=2)
+        self.assertEqual([vs.tag(self.e(i), now=i) for i in range(3)], ["s1", "s2", "s3"])
+        self.assertEqual(vs.known(), ["s2", "s3"])  # s1, heard longest ago, made room
+        self.assertEqual(vs.tag(self.e(1), now=10), "s2")
+        self.assertEqual(vs.tag(self.e(0), now=11), "s4")  # the first voice again: a new id, s3 dropped
+        self.assertEqual(vs.known(), ["s2", "s4"])
+
+    def test_forgotten_after_a_while(self):
+        vs = V.Voices(same=0.5, forget_s=100)
+        self.assertEqual(vs.tag(self.e(0), now=0), "s1")
+        self.assertEqual(vs.tag(self.e(0), now=99), "s1")
+        self.assertEqual(vs.tag(self.e(0), now=250), "s2")  # 151 s since: forgotten, a new id
+        self.assertEqual(vs.known(), ["s2"])
+
+    def test_an_id_is_short_and_plain(self):
+        vs = V.Voices()
+        for i in range(5):
+            self.assertRegex(vs.tag(self.e(i), now=i), r"^s[1-9][0-9]{0,2}$")
 
 
 class Enrolling(unittest.TestCase):
@@ -518,7 +593,8 @@ class Attesting(unittest.TestCase):
             self.assertEqual(mode(path), 0o600)
             self.assertEqual(mode(os.path.dirname(path)), 0o700)
             self.assertEqual(V.Attestor(path).public(), a.public())  # kept, not remade
-            tok = a.sign({"decision": "me", "score": 0.5, "model": "campp", "device": "iphone"}, "下一个")
+            tok = a.sign({"decision": "me", "score": 0.5, "model": "campp", "device": "iphone", "voice": "me"},
+                         "下一个")
             body, sig = tok.split(".")
             pad = lambda x: x + "=" * (-len(x) % 4)  # noqa: E731
             import base64
@@ -527,6 +603,7 @@ class Attesting(unittest.TestCase):
             pub.verify(base64.urlsafe_b64decode(pad(sig)), body.encode())
             p = json.loads(base64.urlsafe_b64decode(pad(body)))
             self.assertEqual((p["v"], p["decision"], p["text"], p["device"]), (1, "me", "下一个", "iphone"))
+            self.assertEqual(p["voice"], "me")  # signed too: the hub keeps it only from the proof
             self.assertIn("uid", p)
 
 
@@ -596,6 +673,199 @@ class Locking(unittest.TestCase):
         # The delete ran after the whole commit: nothing of it survives.
         self.assertEqual(ls(self.root), [V.GENERATIONS])
         self.assertEqual(V.Store(self.root).generation("iphone"), 1)
+
+
+class Progressive(unittest.TestCase):
+    """
+    Progressive voiceprint (docs/local-stt.md, "Progressive voiceprint"): his clean,
+    confident finals add their embedding to this device's print. The embedder hands
+    back whatever vector the test sets, so scores are exact.
+    """
+
+    DIM = 16
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = os.path.join(self.tmp.name, "vp")
+        self.store = V.Store(self.root)
+        self.next = self.vec(0)
+        self.v = V.Verifier(self.store, ["campp"], embedders={"campp": lambda audio: self.next})
+        self.t = 1_000_000.0
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def vec(self, k: int, jitter: float = 0.0, seed: int = 0) -> np.ndarray:
+        """Near axis k: two vectors on one axis score about 1, on two axes about 0."""
+        rng = np.random.default_rng(seed)
+        return V.unit(np.eye(self.DIM, dtype=np.float32)[k] + jitter * rng.standard_normal(self.DIM).astype(np.float32))
+
+    def enrolled(self, device="iphone", k=0, n=10):
+        self.store.save(device, "campp", [self.vec(k, 0.1, i) for i in range(n)], [3.0] * n, audio=False)
+
+    def spk(self, **o):
+        """A verify() result that passes every gate."""
+        return {"decision": "me", "score": 0.9, "model": "campp", "device": "iphone", "speechS": 4.0,
+                "snrDb": 30.0, "windows": [0.9, 0.9, 0.9], **o}
+
+    def offer(self, at="iphone", vec=None, step=V.PROG_EVERY_S, **o):
+        self.t += step
+        if vec is not None:
+            self.next = vec
+        return self.v.learn(np.zeros(RATE * 5, dtype=np.float32), at, self.spk(**o), now=self.t)
+
+    def test_off_until_he_turns_it_on(self):
+        self.enrolled()
+        self.assertEqual(self.store.progressive()["on"], False)
+        self.assertEqual(self.offer(), {"ok": False, "reason": "off"})
+        self.assertEqual(self.store.load("iphone", "campp")["n"], 10)
+        self.store.set_progressive(True)
+        self.assertEqual(mode(os.path.join(self.root, V.PROGRESSIVE)), 0o600)
+        self.assertTrue(self.offer()["ok"])
+
+    def test_clean_and_confident_is_added(self):
+        self.enrolled()
+        self.store.set_progressive(True)
+        r = self.offer(vec=self.vec(0, 0.1, 99))
+        self.assertEqual((r["ok"], r["n"], r["active"]), (True, 11, True))
+        p = self.store.load("iphone", "campp")
+        self.assertEqual((p["n"], p["sources"].count("enrol"), p["sources"][-1]), (11, 10, "prog"))
+        self.assertEqual(p["added"][-1], int(self.t))
+        [s] = self.store.prints()
+        self.assertEqual((s["enrolN"], s["progN"]), (10, 1))
+        self.assertEqual(s["lastAdded"], V.iso(int(self.t)))
+        # The centroid follows the new sample.
+        E = np.array(p["embeddings"], dtype=np.float32)
+        self.assertTrue(np.allclose(p["_centroid"], V.unit(E.mean(axis=0)), atol=1e-5))
+
+    def test_noisy_short_mixed_low_margin_are_not(self):
+        self.enrolled()
+        self.store.set_progressive(True)
+        accept = V.MODELS["campp"].bands[-1].accept
+        for o, why in (
+            ({"snrDb": V.PROG_MIN_SNR_DB - 0.1}, "noise"),
+            ({"snrDb": 12.0}, "noise"),  # passes the 10 dB gate, not learning's
+            ({"speechS": V.PROG_MIN_SPEECH_S - 0.1}, "short"),
+            ({"windows": [0.9, 0.1]}, "mixed"),  # a window that is someone else
+            ({"windows": [0.9, 0.25]}, "mixed"),  # a window not clearly him
+            ({"windows": []}, "mixed"),  # too short to look inside
+            ({"score": accept + V.PROG_MARGIN - 0.01}, "margin"),
+            ({"decision": "unknown", "reason": "mixed"}, "not-me"),
+            ({"decision": "unknown", "reason": "between"}, "not-me"),
+            ({"decision": "other", "score": 0.0}, "not-me"),
+            ({"model": "eres2netv2"}, "provisional"),
+        ):
+            self.assertEqual(self.offer(**o), {"ok": False, "reason": why}, o)
+        self.assertEqual(self.v.learn(np.zeros(RATE), None, self.spk(), now=self.t + 999)["reason"], "no-device")
+        self.assertEqual(self.store.load("iphone", "campp")["n"], 10)
+
+    def test_outlier_is_not_added(self):
+        # Another device's print vouched for it (score 0.9), but it is far from this device's own.
+        self.enrolled("iphone", k=0)
+        self.enrolled("android", k=5)
+        self.store.set_progressive(True)
+        r = self.offer("iphone", vec=self.vec(5, 0.1, 7), device="android")
+        self.assertEqual((r["ok"], r["reason"]), (False, "outlier"))
+        self.assertEqual(self.store.load("iphone", "campp")["n"], 10)
+        # Pending samples are checked the same way, from the third on.
+        for i in range(3):
+            self.assertTrue(self.offer("mac", vec=self.vec(0, 0.1, 20 + i))["ok"])
+        self.assertEqual(self.offer("mac", vec=self.vec(5, 0.1, 30))["reason"], "outlier")
+
+    def test_bounded_the_oldest_learned_sample_goes(self):
+        self.enrolled()
+        self.store.set_progressive(True)
+        old = V.PRINT_MAX
+        V.PRINT_MAX = 14
+        try:
+            for i in range(7):
+                r = self.offer(vec=self.vec(0, 0.1, 100 + i))
+                self.assertTrue(r["ok"], r)
+            p = self.store.load("iphone", "campp")
+            self.assertEqual((p["n"], p["sources"].count("enrol")), (14, 10))  # enrolment never evicted
+            self.assertEqual(r.get("evicted"), 1)
+            # The four newest learned samples are kept, the three oldest went.
+            self.assertEqual(sorted(t for t, s in zip(p["added"], p["sources"]) if s == "prog"),
+                             [int(self.t - k * V.PROG_EVERY_S) for k in (3, 2, 1, 0)])
+            self.assertTrue(np.allclose(p["embeddings"][-1], self.vec(0, 0.1, 106), atol=1e-5))
+        finally:
+            V.PRINT_MAX = old
+
+    def test_rate_limited(self):
+        self.enrolled()
+        self.store.set_progressive(True)
+        self.assertTrue(self.offer()["ok"])
+        self.assertEqual(self.offer(step=V.PROG_EVERY_S - 1), {"ok": False, "reason": "rate"})
+        self.assertTrue(self.offer(step=1)["ok"])
+        # Per device: another device is not held back.
+        self.enrolled("android")
+        self.assertTrue(self.offer("android", step=0)["ok"])
+
+    def test_a_print_is_made_only_at_the_enrolment_minimum(self):
+        self.enrolled("android")  # the print that vouches while this Mac has none
+        self.store.set_progressive(True)
+        for i in range(V.PROG_CREATE_MIN - 1):
+            r = self.offer("mac", vec=self.vec(0, 0.1, 40 + i), device="android")
+            self.assertEqual((r["ok"], r["n"], r["active"]), (True, i + 1, False))
+        self.assertIsNone(self.store.load("mac", "campp"))
+        self.assertFalse(self.v.has_print("mac"))  # not used yet: scored against android's
+        self.assertEqual(self.v.pick("mac"), ("campp", ["android"]))
+        [q] = self.store.pending()
+        self.assertEqual((q["device"], q["n"], q["need"]), ("mac", V.PROG_CREATE_MIN - 1, V.PROG_CREATE_MIN))
+        self.assertEqual(mode(os.path.join(self.root, f"mac.campp.{V.PENDING}.json")), 0o600)
+        r = self.offer("mac", vec=self.vec(0, 0.1, 60), device="android")
+        self.assertEqual((r["n"], r["active"], r["created"]), (V.PROG_CREATE_MIN, True, True))
+        p = self.store.load("mac", "campp")
+        self.assertEqual(p["sources"], ["prog"] * V.PROG_CREATE_MIN)
+        self.assertEqual(self.store.pending(), [])
+        self.assertTrue(self.v.has_print("mac"))
+        self.assertEqual(self.v.pick("mac"), ("campp", ["mac", "android"]))
+
+    def test_no_audio_is_kept(self):
+        self.enrolled()
+        self.store.set_progressive(True)
+        self.assertTrue(self.offer()["ok"])
+        self.assertTrue(self.offer("mac")["ok"])  # pending
+        names = ls(self.root)
+        self.assertEqual(names, sorted(["iphone.campp.json", f"mac.campp.{V.PENDING}.json", V.PROGRESSIVE]))
+        for n in names:
+            with open(os.path.join(self.root, n)) as fh:
+                d = json.load(fh)
+            for k, v in d.items():
+                # Nothing as long as audio: each embedding is DIM numbers.
+                if isinstance(v, list) and v and isinstance(v[0], list):
+                    self.assertTrue(all(len(e) == self.DIM for e in v), (n, k))
+                elif isinstance(v, list):
+                    self.assertLessEqual(len(v), V.PRINT_MAX, (n, k))
+                self.assertNotIn(k, ("wav", "pcm", "samples", "text"))
+            self.assertFalse(d.get("audio"), n)
+
+    def test_delete_turns_it_off_and_drops_pending(self):
+        self.enrolled()
+        self.enrolled("android")
+        self.store.set_progressive(True)
+        self.assertTrue(self.offer("mac")["ok"])
+        self.store.delete("mac")
+        self.assertFalse(self.store.progressive()["on"])
+        self.assertEqual(self.store.pending(), [])
+        self.assertEqual(self.offer("mac"), {"ok": False, "reason": "off"})
+
+    def test_account_copy_keeps_the_sources(self):
+        self.enrolled()
+        self.store.set_progressive(True)
+        self.assertTrue(self.offer()["ok"])
+        [p] = self.store.export("iphone")
+        self.assertEqual(p["sources"], ["enrol"] * 10 + ["prog"])
+        other = V.Store(os.path.join(self.tmp.name, "new-mac"))
+        other.restore(p)
+        q = other.load("iphone", "campp")
+        self.assertEqual((q["sources"], q["added"]), (p["sources"], [0] * 11))
+        # A print from before progressive learning: all enrolment.
+        other.restore({k: v for k, v in p.items() if k != "sources"})
+        self.assertEqual(other.load("iphone", "campp")["sources"], ["enrol"] * 11)
+        for bad in ({**p, "sources": ["prog"]}, {**p, "sources": ["audio"] * 11}, {**p, "n": V.PRINT_MAX + 1}):
+            with self.assertRaises(V.StoreError):
+                V.check_export(bad)
 
 
 def free_port() -> int:
@@ -726,12 +996,13 @@ class ServerProtocol(unittest.TestCase):
                 return m
 
     @staticmethod
-    async def utter(ws, uid, audio, enrol=None, text_from=None, page_uid=None):
+    async def utter(ws, uid, audio, enrol=None, text_from=None, page_uid=None, playback=False):
         await ws.send(json.dumps({"t": "begin", "id": uid, **({"enrol": enrol} if enrol else {}),
                                   **({"uid": page_uid} if page_uid else {})}))
         pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
         await ws.send(b"\x01" + pcm)
-        await ws.send(json.dumps({"t": "end", "id": uid, **({"textFrom": text_from} if text_from else {})}))
+        await ws.send(json.dumps({"t": "end", "id": uid, **({"textFrom": text_from} if text_from else {}),
+                                  **({"playback": True} if playback else {})}))
         while True:
             m = json.loads(await ws.recv())
             if m.get("t") == "final" and m.get("id") == uid:
@@ -1043,6 +1314,64 @@ class ServerProtocol(unittest.TestCase):
             self.assertEqual((r["ok"], r["deleted"]), (True, 1))
             f = await self.utter(ws, 33, tone(300))
             self.assertEqual(f["speaker"]["reason"], "no-print")
+            return True
+
+        self.assertTrue(self.run_ws(flow))
+
+    def test_progressive_learns_his_clean_finals(self):
+        sg = self.signer
+
+        async def flow(ws):
+            await ws.send(json.dumps({"t": "hello", "device": "mac", "thread": "owner"}))
+
+            async def learned():
+                r = await self.ask(ws, {"t": "voiceprint", "op": "status", "ticket": sg.vp("status")})
+                [p] = [p for p in r["prints"] if p["device"] == "mac"]
+                return r, p
+
+            # Only with its own passkey ticket.
+            for t in (None, sg.vp("progressive", uv=False), sg.vp("enrol", "*"), sg.vp("status")):
+                r = await self.ask(ws, {"t": "voiceprint", "op": "progressive", "on": True,
+                                        **({"ticket": t} if t else {})})
+                self.assertFalse(r["ok"], r)
+            r = await self.ask(ws, {"t": "enrol", "op": "start", "device": "mac", "ticket": sg.vp("enrol", "mac")})
+            eid = r["enrolment"]
+            for i in range(10):
+                await self.utter(ws, 100 + i, tone(300, seed=i), enrol=eid)
+            self.assertTrue((await self.ask(ws, {"t": "enrol", "op": "commit", "enrolment": eid}))["ok"])
+            r, p = await learned()
+            self.assertEqual((r["progressive"]["on"], p["enrolN"], p["progN"]), (False, 10, 0))
+            # Off: a clean, confident final teaches nothing.
+            f = await self.utter(ws, 120, tone(300, speech_s=4.0, seed=20))
+            self.assertEqual(f["speaker"]["decision"], "me")
+            r = await self.ask(ws, {"t": "voiceprint", "op": "progressive", "on": True,
+                                    "ticket": sg.vp("progressive")})
+            self.assertEqual((r["ok"], r["progressive"]["on"]), (True, True), r)
+            # Something was playing: not learned. Too noisy for learning: not learned.
+            await self.utter(ws, 121, tone(300, speech_s=4.0, seed=21), playback=True)
+            await self.utter(ws, 122, tone(300, speech_s=4.0, snr_db=14, seed=22))
+            await asyncio.sleep(0.3)
+            self.assertEqual((await learned())[1]["progN"], 0)
+            # Clean and confident: its embedding joins the print (after the final went out).
+            f = await self.utter(ws, 123, tone(300, speech_s=4.0, seed=23))
+            self.assertNotIn("learn", f["speaker"])
+            for _ in range(50):
+                _, p = await learned()
+                if p["progN"]:
+                    break
+                await asyncio.sleep(0.05)
+            self.assertEqual((p["n"], p["enrolN"], p["progN"]), (11, 10, 1))
+            self.assertIsNotNone(p["lastAdded"])
+            # Within the rate limit: not again.
+            await self.utter(ws, 124, tone(300, speech_s=4.0, seed=24))
+            await asyncio.sleep(0.3)
+            self.assertEqual((await learned())[1]["progN"], 1)
+            self.assertFalse(os.path.exists(os.path.join(self.root, "mac.audio")))
+            # A delete turns learning off.
+            r = await self.ask(ws, {"t": "voiceprint", "op": "delete", "device": "mac", "ticket": sg.vp("delete", "mac")})
+            self.assertEqual((r["ok"], r["progressive"]), (True, False))
+            r = await self.ask(ws, {"t": "voiceprint", "op": "status", "ticket": sg.vp("status")})
+            self.assertFalse(r["progressive"]["on"])
             return True
 
         self.assertTrue(self.run_ws(flow))

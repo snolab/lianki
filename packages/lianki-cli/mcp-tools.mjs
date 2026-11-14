@@ -227,6 +227,19 @@ export const TOOLS = [
     },
   },
   {
+    name: "lianki_chat_avatar",
+    scope: "chat:write",
+    title: "Set your chat picture",
+    description:
+      "Set the picture your messages show in the user's chat, as plain SVG text (at most 4 KB; shapes, text and plain colours only — links, images, scripts and styles are removed). Pass null to go back to the generated one.",
+    input: { svg: z.string().max(4096).nullable() },
+    annotations: WRITE,
+    run: async (api, a) => {
+      const d = await api({ method: "POST", path: CHAT_PATH, body: { op: "avatar", svg: a.svg } });
+      return { avatar: d.avatar ?? null, dropped: Array.isArray(d.dropped) ? d.dropped : [] };
+    },
+  },
+  {
     name: "lianki_chat_ask",
     scope: "chat:ask",
     title: "Ask in the chat",

@@ -241,54 +241,74 @@ Gift codes can carry credits (`gift_code.credits`) as well as, or instead of,
 Pro days; both land in one batch with the `membership_grant` marker, once per
 person per code.
 
-### Account-age bonus
+### Login-streak bonus
 
-Owner decision 2026-11-14 (tap on an ask card): every account at least
-**1 day** old gets **$1** of credits, and at least **7 days** old **$2 more**
-($3 in all by day 7) — for accounts that already existed and, automatically,
-for every future account as it reaches each age.
+Owner decision 2026-11-14: credits for **consecutive days of real learning**,
+replacing the account-age bonus (below, "Retired"). A day counts when the
+server records a qualifying learning action — a card reviewed on /words
+(on screen at least human reaction time) or a reading graded in /read — that
+is, the `study_day` write (`lib/study-days.ts`); opening the app counts for
+nothing. One grant per calendar day in the account's **home time zone** (the
+zone its first study day was cut in, as for study days).
 
-| piece                                           | where                                                                                                                      |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| rules (pure): tiers owed, USD → credits, refIds | `lib/payments/age-bonus.ts`                                                                                                |
-| grants over D1, preview, backfill               | `lib/payments/age-bonus-store.ts`                                                                                          |
-| backfill endpoint (admin only, 404 otherwise)   | `POST /api/dev/credits/age-bonus` → `lib/payments/age-bonus-api.ts`                                                        |
-| backfill UI                                     | the "Account-age bonus" panel on `/dev/credits` (`AgeBonusPanel.tsx`; strings `age-bonus.content.ts`, key `dev-age-bonus`) |
-| wallet label                                    | `wallet-card.content.ts` `ageBonusDay1` / `ageBonusDay7` ("Welcome bonus · 1 day / 7 days")                                |
-| tests                                           | `unit/age-bonus.test.ts`                                                                                                   |
+| piece                                            | where                                                                                              |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| rules (pure): the cycle, the miss rule, refIds   | `lib/payments/login-streak.ts`                                                                     |
+| state + grant over D1, the wallet's view         | `lib/payments/login-streak-store.ts`; table `login_streak` (migration 0076)                        |
+| hook: the day's first qualifying action          | `recordStudySafe` in `lib/study-days.ts` (both the /words review and /read grade routes call it)   |
+| shown                                            | the wallet card on /membership: one quiet line under the balance, and the history row label         |
+| strings                                          | `wallet-card.content.ts` `streakToday` / `streakAhead` / `streakDay` (16 locales, context lines)    |
+| flag                                             | `credits.login-streak`, **default ON** for everyone (it grants, never charges)                      |
+| tests                                            | `unit/login-streak.test.ts`, `unit/study-days.test.ts` ("recording from a route")                   |
 
-- **Config** (`lib/config.ts`, `/dev/config`, group `credits`, all `money`):
-  `credits.ageBonus.day1Usd` (1), `credits.ageBonus.day7Usd` (2),
-  `credits.ageBonus.day1Hours` (24), `credits.ageBonus.day7Hours` (168). The
-  amounts become credits at `CREDITS_PER_USD`, rounded to a whole credit
-  (150 and 300 today). An amount of 0 turns that tier off.
-- **The rule**: a tier is owed when `now − user.createdAt ≥ its hours`, its
-  amount is above 0 and it was not granted yet. A changed amount or age
-  applies to grants made after the change; nothing granted is redone.
+- **Config** (`lib/config.ts`, `/dev/config`, group `credits`, both `money`):
+  - `credits.loginStreak.usdByDay` (text, default
+    `0.02,0.02,0.05,0.05,0.06,0.10,0.20`): USD for cycle day 1, 2, … — its
+    length is the cycle (7 by default, $0.50 a cycle; day 8 pays as day 1
+    again). Each becomes credits at `CREDITS_PER_USD`, rounded (3, 3, 8, 8,
+    9, 15, 30 today). A 0 pays nothing for that day but the day still counts.
+  - `credits.loginStreak.missCostDays` (default **2**): each missed calendar
+    day costs this many streak days — **never a full reset**. 7 days, one
+    missed, learn again: 7 − 2 + 1 = **6**, paid as cycle day 6. 0 = misses
+    are free; a large value (1000) ≈ start over after any miss. Chosen as the
+    conservative middle: a one-day slip costs two steps, a week away costs the
+    streak.
+- **The rule** (`nextStreak`): the streak after today = max(0, previous −
+  missed × missCost) + 1; its cycle step = ((streak − 1) mod cycle) + 1. The
+  same day, an earlier day, or an unreadable day does nothing.
 - **Ledger**: reason `gift` (no new reason, so no CHECK migration), refId
-  `agebonus:d1:<userId>` / `agebonus:d7:<userId>`, note `age bonus d1|d7`.
-  UNIQUE (reason, refId) makes each tier once per account. The statements are
-  race-proof on their own (as `creditTopup`): the ledger row is
-  `INSERT OR IGNORE … WHERE EXISTS (the user)` and the balance moves only
-  `WHERE EXISTS` that very row, all in one D1 batch — so a sign-in racing the
-  backfill, a double click or a re-run never grants twice and never fails a
-  batch.
-- **Automatic, event-driven** (no cron): `grantAgeBonus` runs in the
-  better-auth `databaseHooks.session.create.after` (every sign-in, right after
-  the pre-grant claim, `auth-impl.ts`) and on every wallet read
-  (`GET /api/payments/credits`), so a returning user sees it the first time
-  they look. Cheap when there is nothing to do: one user row read, and for an
-  account old enough one indexed lookup of its two refIds. Never fails the
-  sign-in or the wallet read.
-- **Backfill** (once, by the owner): `/dev/credits` → Preview (counts accounts
-  owed the 1-day / 7-day tier, distinct accounts, total credits; writes
-  nothing) → Apply (asks first; grants in batches of 40, returns what this run
-  granted plus `failed`). Apply is idempotent: a second Apply grants 0. Logged
-  as `credits.ageBonus.apply`.
-- **Shown** in the wallet history as "Welcome bonus · 1 day" / "· 7 days"
-  (16 locales), recognised by the refId; elsewhere it reads as a gift.
-- Every account counts, verified email or not (the owner's rule as decided);
-  if sign-up farming shows up, setting the amounts to 0 stops new grants at once.
+  `streak:<userId>:<day>`, note `login streak day <step> (<streak>)`. UNIQUE
+  (reason, refId) makes a day once per account. The `login_streak` row moves
+  only forward (`WHERE day < the new day`) in the **same D1 batch** as the
+  ledger row (`INSERT OR IGNORE … WHERE EXISTS the user`) and the balance
+  move (`WHERE EXISTS` that ledger row) — so a retry, a second review that
+  day, or two concurrent first reviews pay once and agree on the streak.
+- **Event-driven** (no cron, no timer): the first qualifying action of a day
+  (`recordStudy` reports whether it opened the day) runs the grant once; later
+  reviews of the day touch nothing. The wallet read is read only — it never
+  counts a day. A failing grant never fails the review; it is logged as
+  `login-streak: grant failed`.
+- **Shown**: the wallet card's line reads "Day N of your streak · +X" once
+  today counted, or "Learn today for streak day N · +X" (what today would pay)
+  before; no line while the flag is off or the day would pay 0. A grant in the
+  history reads "Streak bonus · day N" (N = the streak length that day).
+- **Admins are metered the same**: there is no admin or dev branch anywhere in
+  the rule or the grant.
+- Every account counts, verified email or not; if farming shows up, setting
+  every amount to 0 stops new grants at once (the flag off stops the counting
+  and hides the line; credits already granted stay).
+
+#### Retired: the account-age bonus (2026-11-14)
+
+The earlier bonus ($1 at 1 day, $2 more at 7 days per account, 2026-11-14
+morning) was replaced by the streak the same day. Its code, the
+`/dev/credits` backfill panel, `POST /api/dev/credits/age-bonus` and the
+config keys `credits.ageBonus.day1Usd / day7Usd / day1Hours / day7Hours` are
+gone; a `config_values` row under those keys is ignored (unknown keys read
+as nothing). **The data stays**: its ledger rows (`gift`,
+`agebonus:d1|d7:<userId>`) keep their balance and their wallet label
+("Welcome bonus · 1 day / 7 days", `ageBonusDay1` / `ageBonusDay7`). No
+migration: there was no table and no flag of its own.
 
 ### Credits usage (`/membership/credits`)
 

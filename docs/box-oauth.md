@@ -26,6 +26,24 @@ as if it did not exist.
 | code on the owner's box (`box:eval`)        | `lib/box-oauth/store.ts` (`setBoxEval`, `boxEvalLive`), `worker.ts` (`boxEval`), `workers/push/src/debug.ts`                                                                                   |
 | tests                                       | `unit/box-oauth.test.ts`, `unit/box-allowlist.test.ts`, `unit/box-session.test.ts`, `unit/box-locale.test.ts`, `unit/box-chat.test.ts`, `unit/box-eval.test.ts`, `scripts/qa/qa-box-oauth.mjs` |
 
+## Account self-service: /my/boxes
+
+Every signed-in account can open **My box** from `/my` to inspect its current
+binding (address, scopes, binding date). `/api/my/boxes` reads only that
+session account. With no binding, the page shows an empty state.
+
+Disconnect is confirmed inline, then revokes the binding, disables the OAuth
+client and its tokens through the existing revoke path, and notifies the
+chat hub. The request must be same-origin JSON and match the current box id;
+another account's id or a stale binding id cannot revoke anything. It never
+deletes a machine or files. Reconnecting requires a new administrative
+binding; this page cannot create bindings or grant permissions.
+
+Inspection and disconnection work even while `box.oauth` is off or the
+account is off the allowlist, so access can still be cleaned up. A guest
+cannot read or write; the page redirects to sign-in, the API returns 401.
+The API returns 503 off D1. Tests: `unit/my-box.test.ts`.
+
 ## Who may have a box
 
 my-box is a premium feature (owner, 2026-11-07): **default deny**, only for

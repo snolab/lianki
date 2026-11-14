@@ -72,6 +72,7 @@ import {
   upgradeHeadFilter,
   upstreamHeaders,
 } from "./preview-gate";
+import { PreviewUserscript, previewScriptRoute } from "./preview-userscript";
 
 const STATE_FILE = ".dev-whole-page.json";
 const SESSION_CACHE_MS = 60_000;
@@ -344,6 +345,20 @@ async function serve() {
         log: (m) => console.error(`[whole-page] ${m}`),
       })
     : undefined;
+  // The preview dev userscript (docs/dev-whole-page.md, "Preview dev
+  // userscript"): this checkout's src/lianki.user.ts, bundled here with the
+  // preview as its origin, served before the gate as public code.
+  const userscript = publicHost
+    ? new PreviewUserscript({
+        root: process.cwd(),
+        origin: `https://${publicHost}`,
+        log: (m) => console.error(`[whole-page] ${jst()} ${m}`),
+      })
+    : undefined;
+  if (userscript) {
+    void userscript.rebuild();
+    userscript.watch();
+  }
   // Upgraded sockets on the tunnel: re-checked per token, closed on revoke (preview-gate.ts).
   const watch = new SocketWatch({
     active: activeCall,
@@ -595,6 +610,11 @@ async function serve() {
         res.writeHead(503, { "cache-control": "no-store" });
         return res.end();
       }
+      // Public code only (the loader, the bundle, its rev): no session, token or
+      // data, like lianki.com/lianki.user.js. Answered here, never by next dev.
+      const route = previewScriptRoute(req.method, new URL(req.url ?? "/", origin).pathname);
+      if (userscript && route && req.headers.host?.toLowerCase() === publicHost)
+        return await userscript.serve(route, new URL(req.url ?? "/", origin), req, res);
       // The client going away drops its queued token check (VerifyQueue).
       const gone = new AbortController();
       res.on("close", () => {
@@ -821,6 +841,8 @@ async function serve() {
     // *.content.ts that arrive by a merge, and the page throws until someone
     // runs `intlayer build` (twice on 2026-10-31). Rebuild them here, at once.
     const changed = Bun.spawnSync(["git", "diff", "--name-only", before, "HEAD"]).stdout.toString();
+    // The preview dev userscript follows the checkout too.
+    void userscript?.rebuild();
     // A merge of main (preview-follow) can bring new dependencies.
     if (needsBunInstall(changed.split("\n"))) {
       const i = Bun.spawnSync(["bun", "install", "--frozen-lockfile"]);

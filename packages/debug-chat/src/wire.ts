@@ -62,6 +62,16 @@ export type ChatMessage = {
    */
   via?: "token";
   tokenLane?: string;
+  /** A token line: the token's short tag (lib/api-tokens.ts tagOf), what presence entries are keyed by. */
+  tok?: string;
+  /**
+   * A token line's own avatar when it set one (svg-avatar.ts): the SHA-256 of
+   * its sanitized SVG, fetched by reference (AVATAR_PATH), never inline.
+   * Absent: the generated mark (autoMark) from its name.
+   */
+  avatar?: string;
+  /** "mcp": posted through an MCP client (`lianki mcp`, the remote MCP): the "MCP" badge. */
+  client?: "mcp";
   /**
    * The state-tree node an agent line comes from ("/words/prefetch"; absent =
    * the main thread). Shown as a muted subtitle under the agent's avatar.
@@ -94,6 +104,12 @@ export type ChatMessage = {
    * The other lines carry `collapsedInto`. Undo restores them all.
    */
   passage?: PassageMark;
+  /**
+   * Hub-side only, never sent: an owner voice line kept aside as an echo
+   * (lib/echo-match.ts; flag voice.echo-dedupe) — the copy of `of` heard from
+   * his other device, or of a line read aloud. Undo (unmerge with its id) posts it.
+   */
+  echo?: EchoMark;
   /** On a passage's first line, hub-side: what it read before the merge, for the undo. */
   premerge?: { text: string; raw?: string; edited?: EditMark };
   /**
@@ -243,6 +259,15 @@ export type MessageSource = "stt";
 export type LineSource = MessageSource | "eta";
 /** An agent's polish of a voice line (ChatMessage.edited). */
 export type EditMark = { at: number; by: string; count: number };
+/** Why a voice line was kept aside as an echo (ChatMessage.echo): of which line, how alike. */
+export type EchoMark = {
+  at: number;
+  by: string;
+  reason: "echo";
+  kind: "other-device" | "read-aloud";
+  of: string;
+  sim: number;
+};
 /** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
 export type MergedPart = {
   id: string;
@@ -694,6 +719,11 @@ export type ChatStrings = {
   /** Line in the voiceprint panel when no device has enrolled a voiceprint yet. One short sentence. */
   vpNone: string;
   /** One row per enrolled device in the voiceprint panel: {device} is a device name like iphone or android, {n} how many sentences were read for it. Keep both placeholders. */
+  vpProgressive: string;
+  vpCounts: string;
+  vpOn: string;
+  vpOffState: string;
+  dockResize: string;
   vpPrint: string;
   /** Note in the voiceprint panel when Lianki's speech server (the service that turns speech into text and checks the voice) is not reachable; the mic button shows a green dot when it is. 'Lianki's speech server' is the company's own server; never name a person's computer. One sentence. */
   vpOff: string;
@@ -843,6 +873,8 @@ export type ChatStrings = {
   vpMacRecKept: string;
   /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: Lianki's speech server confirmed the line was spoken in his own voice. Short phrase, no full stop. */
   vpVerified: string;
+  /** Tooltip and screen-reader name of the small coloured avatar on a voice-typed chat line that was spoken by someone other than the account's owner (a family member or guest near the mic; each such person gets their own stable colour and shape). It names that person without knowing who they are. Short noun phrase, no full stop: "Another voice". */
+  vpOtherVoice: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
   notReadHidden: string;
   // The input's + menu (attach.tsx).
@@ -868,6 +900,7 @@ export type ChatStrings = {
   attachQuoted: string;
   /** Section heading in the + menu, the last group: things to look at (the state tree). One short word. */
   attachGroupView: string;
+  attachClose: string;
   /** Menu item in the + menu's View group: shows or hides the state tree (the progress outline of what is being built). Short noun phrase, the panel's name. */
   attachTree: string;
   // Files attached to a message (files.ts; FileChips.tsx).
@@ -947,6 +980,10 @@ export type ChatStrings = {
   etaTickStatus: string;
   /** The tick note's close button (screen reader, tooltip). */
   etaTickClose: string;
+  /** The arrow at the left edge of the timeline for a task whose bar is off-screen, earlier (screen reader, tooltip); {task} is its name. */
+  etaGanttToEarlier: string;
+  /** The same arrow at the right edge, for a bar off-screen later. */
+  etaGanttToLater: string;
   /** Part of the minimized chat's one status line: a task's name followed by the minutes left until the assistant's own time estimate for it runs out, e.g. 'Native swipe 5 min · Box fix 40 min' (two tasks, the nearest and the last). {n} becomes a whole number; keep it. Abbreviate 'minutes' as is usual in the language; no full stop. */
   etaMinutes: string;
   /** Heading above the list of tasks with time estimates at the top of the state tree panel in the chat (each row: task title, a small progress bar, time left). Short noun phrase, no full stop. */
@@ -1009,6 +1046,11 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpMenu: "Voiceprint",
   vpTitle: "Your voiceprint",
   vpNone: "No voiceprint yet.",
+  vpProgressive: "Learn from my voice as I talk",
+  vpCounts: "{enrolled} enrolled / {learned} learned",
+  vpOn: "On",
+  vpOffState: "Off",
+  dockResize: "Resize chat sidebar",
   vpPrint: "{device}: {n} sentences",
   vpOff: "Needs Lianki's speech server (the green dot on the mic).",
   vpEnrol: "Enrol this device",
@@ -1061,6 +1103,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpMacRecDeleted: "Recordings deleted from the speech servers.",
   vpMacRecKept: "The recordings stay on the speech servers.",
   vpVerified: "Your voice, verified",
+  vpOtherVoice: "Another voice",
   vpFilterOn: "Only my voice: on. Speech that does not match is dropped on Lianki's speech server.",
   vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
   vpFilterWaiting: "Only my voice: needs a voiceprint on this device and the check on Lianki's speech server. Until then all speech is transcribed as usual.",
@@ -1132,6 +1175,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaTickSet: "estimated: {names}",
   etaTickStatus: "status changed: {names}",
   etaTickClose: "Close",
+  etaGanttToEarlier: "Scroll back to {task}",
+  etaGanttToLater: "Scroll ahead to {task}",
   etaList: "Timed tasks",
   etaGroupChat: "Chat & voice",
   etaGroupGantt: "Timeline & progress",
@@ -1145,6 +1190,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaMinutes: "{n} min",
   attachQuoted: "Quoted from the page",
   attachGroupView: "View",
+  attachClose: "Close the menu",
   attachTree: "State tree",
 };
 
@@ -1355,6 +1401,13 @@ export type SpeakerTag = {
   speechS?: number;
   snrDb?: number;
   /**
+   * Which voice (docs/voice-mode.md, "Speaker avatars"): "me" on his own,
+   * "s1", "s2"… on another voice heard lately (the same voice, the same id,
+   * scripts/local-stt/voiceprint.py Voices). Only when a voiceprint is
+   * enrolled and the decision is not unknown; the line's avatar reads it.
+   */
+  voice?: string;
+  /**
    * The texts the Mac signed, in order: set only by the hub after it verified
    * the proofs (lib/speaker-proof.ts), never taken from a page (cleanSpeaker
    * drops it). Any decision based on a voice line must use these words, not
@@ -1364,6 +1417,8 @@ export type SpeakerTag = {
 };
 const SPEAKER_DECISIONS: readonly SpeakerDecision[] = ["me", "other", "unknown"];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,31}$/;
+/** A voice id: "me", or "s1".."s999". */
+export const VOICE_ID = /^(me|s[1-9]\d{0,2})$/;
 
 /** A SpeakerTag from the wire, or undefined: known keys only, each checked. */
 export function cleanSpeaker(raw: unknown): SpeakerTag | undefined {
@@ -1384,23 +1439,29 @@ export function cleanSpeaker(raw: unknown): SpeakerTag | undefined {
     const v = r[k];
     if (typeof v === "string" && SLUG.test(v)) out[k] = v;
   }
+  if (typeof r.voice === "string" && VOICE_ID.test(r.voice)) out.voice = r.voice;
   return out;
 }
 
 /**
  * One tag for a line made of several utterances: the weakest decision wins
  * (any "other" → other; else any "unknown" → unknown; all "me" → me), with
- * the lowest score. Undefined when no utterance carried a tag.
+ * the lowest score. The voice stays only when every tagged utterance names
+ * the same one (two voices in one line: none, so no one's avatar is wrong).
+ * Undefined when no utterance carried a tag.
  */
 export function combineSpeaker(tags: readonly (SpeakerTag | undefined)[]): SpeakerTag | undefined {
   const ts = tags.filter((t): t is SpeakerTag => !!t);
   if (!ts.length) return undefined;
   const rank: Record<SpeakerDecision, number> = { other: 0, unknown: 1, me: 2 };
-  return ts.reduce((a, b) => {
+  const { voice: _v, ...out } = ts.reduce((a, b) => {
     const w = rank[b.decision] < rank[a.decision] ? b : a;
     const scores = [a.score, b.score].filter((s): s is number => s !== undefined);
     return scores.length ? { ...w, score: Math.min(...scores) } : w;
   });
+  const voices = new Set(ts.map((t) => t.voice));
+  const [voice] = voices;
+  return voices.size === 1 && voice ? { ...out, voice } : out;
 }
 
 export function cleanTiming(raw: unknown): VoiceTiming | undefined {

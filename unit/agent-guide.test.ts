@@ -7,6 +7,8 @@
 import { describe, expect, it } from "bun:test";
 import dict from "@/lib/agent-guide.content";
 import {
+  agentGuidePointer,
+  agentGuideUrl,
   GUIDE_KEYS,
   MCP_CLIENTS,
   MCP_REMOTE_CLIENTS,
@@ -207,5 +209,24 @@ describe("agent-guide dictionary", () => {
       });
       expect([l, g.match(/\{(base|name|date|post|read|minutes|url)\}/g)]).toEqual([l, null]);
     }
+  });
+});
+
+describe("the short pointer the copy button copies", () => {
+  it("points at the public file in the user's language with the token's scopes, never the secret", () => {
+    const zh = guideStrings(dict.content, "zh");
+    const p = agentGuidePointer({
+      scopes: ["study", "chat:read"],
+      t: zh,
+      name: `mine ${newSecret()}`,
+      lang: "zh",
+    });
+    expect(p).toContain("https://lianki.com/agent-guide.zh.md?scopes=study,chat%3Aread");
+    expect(p).toContain("LIANKI_TOKEN");
+    expect(p).not.toMatch(/lk_[0-9a-f]{64}/);
+    expect(p.length).toBeLessThan(400);
+  });
+  it("no scopes: the file without a query", () => {
+    expect(agentGuideUrl([], "en")).toBe("https://lianki.com/agent-guide.en.md");
   });
 });

@@ -5,7 +5,16 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handoff, jst, laneToken, lineOf, tokenNeeded } from "../scripts/dev/lane-listen-lib";
+import {
+  HANDOFF_SKILL,
+  handoff,
+  handoffBrief,
+  jst,
+  laneToken,
+  lineOf,
+  makeDeliverer,
+  tokenNeeded,
+} from "../scripts/dev/lane-listen-lib";
 
 const dir = mkdtempSync(join(tmpdir(), "lane-token-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -148,5 +157,73 @@ describe("state-tree lines addressed to a lane (docs/state-tree.md, Blocked and 
     const typed = JSON.parse(raw);
     typed.message.from = "owner";
     expect(lineOf(JSON.stringify(typed))!.etaLane).toBeUndefined();
+  });
+});
+
+describe("handoff: a line heard by a listen-to-all lane", () => {
+  it("says it was not addressed and to stay silent unless meant for it", () => {
+    const l = lineOf(
+      JSON.stringify({
+        type: "chat",
+        message: { id: "m1", from: "owner", thread: "owner", text: "今天学了什么", at: 0 },
+      }),
+    )!;
+    const text = handoff("codex", l, "/repo");
+    expect(text).toContain("not addressed to you by name");
+    expect(text).toContain("say --repo /repo --as codex");
+  });
+});
+
+describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
+  const line = (id: string, text: string, at = "2026-11-14T07:17:00Z") => ({
+    id,
+    thread: "owner",
+    from: "owner",
+    text,
+    at,
+  });
+  it("handoffBrief: one header, one bullet per line, @你 only when he said the name, the skill once", () => {
+    const b = handoffBrief(
+      "codex",
+      [line("a1", "小克，看一下"), line("a2", "coco，你在吗")],
+      "/repo",
+      true,
+    );
+    const rows = b.split("\n");
+    expect(rows[0]).toMatch(/^【owner → codex】\d\d:\d\d JST$/);
+    expect(rows[1]).toBe("- (id:a1) 小克，看一下");
+    expect(rows[2]).toBe("- (id:a2) @你 coco，你在吗");
+    expect(rows[3]).toContain(HANDOFF_SKILL);
+    expect(rows[3]).toContain("reply --as codex --id <id>");
+    expect(handoffBrief("codex", [line("a3", "嗯")], "/repo", false).split("\n")).toHaveLength(2);
+  });
+  it("makeDeliverer: lines wait while the agent is busy, then go as one message", async () => {
+    const sent: string[] = [];
+    let busy = true;
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/repo", tests: false, dryRun: true, all: true } as Parameters<
+        typeof makeDeliverer
+      >[0],
+      async (body) => {
+        sent.push(body);
+        return 0;
+      },
+      async () => busy,
+      () => {},
+      5,
+    );
+    await d.add(line("b1", "第一句"));
+    await d.add(line("b2", "第二句"));
+    expect(sent).toEqual([]);
+    expect(d.pending()).toBe(2);
+    busy = false;
+    await new Promise((r) => setTimeout(r, 30));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("(id:b1) 第一句");
+    expect(sent[0]).toContain("(id:b2) 第二句");
+    expect(sent[0]).toContain(HANDOFF_SKILL);
+    await d.add(line("b3", "第三句"));
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).not.toContain(HANDOFF_SKILL);
   });
 });

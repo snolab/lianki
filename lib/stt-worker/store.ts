@@ -23,6 +23,32 @@ const changes = (r: unknown) => Number((r as { meta?: { changes?: number } })?.m
 
 /* ------------------------------------------------------------ the allowlist */
 
+/** Most accounts one search returns. */
+export const USER_SEARCH_LIMIT = 10;
+
+/**
+ * Accounts whose name or email contains `q` (case-insensitive, LIKE with its
+ * wildcards escaped), for the admin's picker on /dev/stt-access. Two
+ * characters at least; nothing else about the account.
+ */
+export async function searchUsers(
+  db: SttDb,
+  q: string,
+): Promise<{ id: string; name: string | null; email: string }[]> {
+  const t = q.trim().slice(0, 100);
+  if (t.length < 2) return [];
+  const like = `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const r = await db
+    .prepare(
+      `SELECT id, name, email FROM user
+       WHERE name LIKE ?1 ESCAPE '\\' OR email LIKE ?1 ESCAPE '\\'
+       ORDER BY name LIMIT ${USER_SEARCH_LIMIT}`,
+    )
+    .bind(like)
+    .all<{ id: string; name: string | null; email: string }>();
+  return r.results ?? [];
+}
+
 /** Whether this account may use Lianki's speech servers. A failed read is "no". */
 export async function sttAllowed(db: SttDb, userId: string): Promise<boolean> {
   if (!userId) return false;
@@ -42,6 +68,8 @@ export type SttAccessRow = {
   name: string | null;
   addedBy: string;
   addedAt: number;
+  /** When this account last opened a speech session (its newest stt_ticket), or null: never. */
+  lastUsedAt: number | null;
 };
 
 /**
@@ -52,7 +80,8 @@ export async function listSttAccess(db: SttDb): Promise<SttAccessRow[]> {
   const { results } = await db
     .prepare(
       `SELECT a.user_id AS userId, u.name AS name, a.added_by AS addedBy,
-              a.added_at AS addedAt
+              a.added_at AS addedAt,
+              (SELECT MAX(t.at) FROM stt_ticket t WHERE t.user_id = a.user_id) AS lastUsedAt
        FROM stt_access a LEFT JOIN user u ON u.id = a.user_id ORDER BY a.added_at DESC`,
     )
     .bind()
@@ -182,6 +211,28 @@ export async function addSttWorker(
 }
 
 /** Revoke a worker: the registry refuses it from its next check on. */
+/**
+ * Mark a speech server as Lianki's own (official): it serves everyone on the
+ * allowlist, not one account (owner, 2026-11-14: "TKUMAC 不要标记为某个账号自己的
+ * 服务器，要标记为官方服务器"). Audited.
+ */
+export async function makeSttWorkerOfficial(
+  db: SttDb,
+  id: string,
+  by: string,
+  now = Date.now(),
+): Promise<boolean> {
+  const r = await db
+    .prepare(
+      "UPDATE stt_worker SET owner_user_id = NULL WHERE id = ?1 AND owner_user_id IS NOT NULL",
+    )
+    .bind(id)
+    .run();
+  const done = changes(r) === 1;
+  if (done) await audit(db, { kind: "stt-worker.official", actor: by, subject: id }, now);
+  return done;
+}
+
 export async function revokeSttWorker(
   db: SttDb,
   id: string,

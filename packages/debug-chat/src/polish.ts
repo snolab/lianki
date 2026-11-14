@@ -14,7 +14,15 @@
  * the chat lane may collapse a run of his voice lines that were not addressed
  * to it (room talk, someone else talking) into one short line saying what was
  * said.
+ *
+ * A **wake mention** (`wakeMention`): a lane's name at the start of a voice
+ * line, as STT wrote it ("小客，帮我…"), or the name the wake word heard,
+ * becomes "@<the lane's name>" ("@小克 帮我…"). Wake words can wake on the
+ * wrong name, and an @mention shows which one it took (owner, 2026-11-14).
  */
+import { ROUTE_TO_LANE } from "./addressed";
+import { routeLine } from "./lane-route";
+import { LANES } from "./voices";
 
 export type PolishVerdict = { ok: true } | { ok: false; reason: string };
 
@@ -45,6 +53,25 @@ const graphemes = (s: string) =>
  */
 export function polishCheck(_raw: string, polished: string): PolishVerdict {
   return polished.trim() ? { ok: true } : { ok: false, reason: "a polish needs text" };
+}
+
+/**
+ * The line with the name it is addressed to written as an @mention: the
+ * lanes named at its start (lane-route.ts, with STT's spellings: "小客，帮我"
+ * → "@小克 帮我", "coco 和 杰米，看一下" → "@coco @杰咪 看一下"), else
+ * `mention`, the name the wake word heard (wake-names.ts mentionOf: "@coco"),
+ * put in front. A line that names no one, with no mention, is unchanged.
+ */
+export function wakeMention(text: string, mention?: string): string {
+  if (!text.trim()) return text;
+  const r = routeLine(text);
+  if (r.addressed) {
+    const names = r.lanes.map((l) => `@${LANES[ROUTE_TO_LANE[l]].name}`).join(" ");
+    return r.text ? `${names} ${r.text}` : names;
+  }
+  if (!mention) return text;
+  const rest = text.replace(/^[\s,，、:：.。!！~～-]+/u, "");
+  return rest ? `${mention} ${rest}` : mention;
 }
 
 /** How long a summary may be, as a share of the raw lines it stands for (graphemes). */

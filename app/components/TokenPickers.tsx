@@ -44,7 +44,7 @@ export function PermissionPicker(p: {
   const offered = p.offered ?? SCOPE_IDS.filter((id) => !OWNER_SCOPES.includes(id));
   const owner = offered.some((id) => OWNER_SCOPES.includes(id));
   return (
-    <fieldset className="space-y-2" disabled={p.disabled}>
+    <fieldset data-token-picker="permissions" className="space-y-2" disabled={p.disabled}>
       <legend className="text-sm font-medium mb-1">{s("permissions")}</legend>
       {SCOPES.filter(({ id }) => offered.includes(id)).map(({ id }) => {
         const on = p.value.includes(id);
@@ -82,7 +82,7 @@ export function ExpiryPicker(p: {
   const max = isoDay(today + (MAX_EXPIRY_DAYS - 1) * 86_400_000);
   const isDate = p.value !== null && "date" in p.value;
   return (
-    <fieldset className="space-y-2" disabled={p.disabled}>
+    <fieldset data-token-picker="expiry" className="space-y-2" disabled={p.disabled}>
       <legend className="text-sm font-medium mb-1">{s("expiry")}</legend>
       <div className="flex flex-wrap gap-2">
         {EXPIRY_DAYS.map((n) => {

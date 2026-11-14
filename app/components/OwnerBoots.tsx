@@ -23,6 +23,7 @@ export function OwnerBoots({
   lexicon,
   cloudVoices,
   talkOver = false,
+  polishReadback,
   box = null,
   autoUpdate = false,
   account = null,
@@ -34,6 +35,8 @@ export function OwnerBoots({
   cacheLines?: number;
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic. */
   talkOver?: boolean;
+  /** Flag `voice.polish-readback` + dev: his polished voice lines read back in his cloned voice. */
+  polishReadback?: { on: boolean; timeoutMs?: number };
   /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
   autoUpdate?: boolean;
   /** Provider voices on (flag voice.cloud-voices + dev) and the language → voice map. */
@@ -73,6 +76,7 @@ export function OwnerBoots({
         lexicon={lexicon}
         cloudVoices={cloudVoices}
         talkOver={talkOver}
+        polishReadback={polishReadback}
         box={box}
         account={account}
         cacheLines={cacheLines}

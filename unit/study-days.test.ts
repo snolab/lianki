@@ -16,7 +16,11 @@ import {
   studyDaysSince,
   userLevel,
   userLevelOf,
+  type StudyDayHooks,
 } from "@/lib/study-days";
+import { STREAK_DEFAULTS, stepCredits } from "@/lib/payments/login-streak";
+import { recordLoginStreak } from "@/lib/payments/login-streak-store";
+import { getBalance, type D1WithBatch } from "@/lib/payments/credits-store";
 
 const DAY = 86_400_000;
 const T0 = new Date("2026-01-01T03:00:00Z"); // first paid day, 12:00 JST
@@ -184,6 +188,81 @@ describe("recording from a route", () => {
     expect(await recentStudyDays(d1, "ann@x.com")).toMatchObject([
       { day: "2026-03-01", tz: "UTC", reviews: 2 },
     ]);
+  });
+
+  test("recordStudy says which write opened the day", async () => {
+    const d1 = await seed();
+    expect(await recordStudy(d1, "ann@x.com", 1, T0, "Asia/Tokyo")).toEqual({
+      day: "2026-01-01",
+      tz: "Asia/Tokyo",
+      first: true,
+    });
+    expect(
+      await recordStudy(d1, "ann@x.com", 2, new Date(T0.getTime() + 60_000), "Asia/Tokyo"),
+    ).toEqual({
+      day: "2026-01-01",
+      tz: "Asia/Tokyo",
+      first: false,
+    });
+    expect(await recordStudy(d1, "ann@x.com", 0, T0, "Asia/Tokyo")).toBeNull();
+  });
+
+  test("the login streak counts on the day's first qualifying action only, and only while its flag is on", async () => {
+    const d1 = await seed();
+    const calls: string[] = [];
+    let on = true;
+    const hooks: StudyDayHooks = {
+      streakOn: async () => on,
+      streak: async (_d1, email, day, tz) => {
+        calls.push(`${email} ${day} ${tz}`);
+      },
+    };
+    await recordStudySafe(d1, "ann@x.com", 2, T0, hooks);
+    await recordStudySafe(d1, "ann@x.com", 3, new Date(T0.getTime() + 3_600_000), hooks);
+    await recordStudySafe(d1, "ann@x.com", 0, new Date(T0.getTime() + DAY), hooks);
+    await recordStudySafe(d1, "ann@x.com", 1, new Date(T0.getTime() + DAY), hooks);
+    on = false;
+    await recordStudySafe(d1, "ann@x.com", 1, new Date(T0.getTime() + 2 * DAY), hooks);
+    expect(calls).toEqual(["ann@x.com 2026-01-01 UTC", "ann@x.com 2026-01-02 UTC"]);
+    expect(await recentStudyDays(d1, "ann@x.com")).toHaveLength(3);
+  });
+
+  test("end to end: the review route's write pays the streak into the wallet, once a day", async () => {
+    const d1 = await seed();
+    const hooks: StudyDayHooks = {
+      streakOn: async () => true,
+      streak: async (db, email, day, tz, now) => {
+        const u = await db
+          .prepare("SELECT id FROM user WHERE lower(email) = lower(?)")
+          .bind(email)
+          .first<{ id: string }>();
+        await recordLoginStreak(db as D1WithBatch, u!.id, day, tz, now, STREAK_DEFAULTS);
+      },
+    };
+    await recordStudySafe(d1, "ann@x.com", 2, T0, hooks);
+    await recordStudySafe(d1, "ann@x.com", 2, new Date(T0.getTime() + 1000), hooks);
+    await recordStudySafe(d1, "ann@x.com", 2, new Date(T0.getTime() + DAY), hooks);
+    const c = (n: number) => stepCredits(n, STREAK_DEFAULTS);
+    expect(await getBalance(d1 as D1WithBatch, "u1")).toBe(c(1) + c(2));
+  });
+
+  test("a failing streak hook never fails the review either", async () => {
+    const d1 = await seed();
+    const err = console.error;
+    console.error = () => {};
+    try {
+      await expect(
+        recordStudySafe(d1, "ann@x.com", 1, T0, {
+          streakOn: async () => true,
+          streak: async () => {
+            throw new Error("wallet down");
+          },
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      console.error = err;
+    }
+    expect(await recentStudyDays(d1, "ann@x.com")).toHaveLength(1);
   });
 
   test("a failed write never fails the review it follows", async () => {

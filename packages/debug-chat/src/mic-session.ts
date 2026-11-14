@@ -36,6 +36,7 @@ import type { SttGuardLimits } from "./stt-guard";
 import type { SpeakerTag } from "./wire";
 import type { KwsState } from "./wake-kws";
 import { type SpotResult, type WakeCommand, type WakeMode, type WakeReason, createWake } from "./wake";
+import { heardName, mentionOf } from "./wake-names";
 import { micTaps } from "./mic-taps";
 import { reportPageError } from "./page-errors";
 import { type AutoOff, type AutoOffReason, onTrackLost, trackNote } from "./mic-off";
@@ -99,6 +100,8 @@ export type MicView = {
   wake: WakeMode;
   /** Why it is in that mode (its last change), sent with each chat line for the agents. */
   wakeReason?: WakeReason;
+  /** The name the last wake word was (wake-names.ts), absent for "Linky". */
+  wakeName?: string;
   /** The on-device spotter, once passive mode first asked for it (wake-kws.ts). */
   kws?: Exclude<KwsState, "idle">;
 };
@@ -372,7 +375,15 @@ export function createMicSession(
             const k = spotter();
             return k ? k.spot(audio) : { hit: false };
           },
-          onWake: () => void wake.set("active", "wake-word"),
+          // Which word woke it: "Linky", or someone's name (wake-names.ts); a name addresses
+          // the line with its @mention (polish.ts wakeMention).
+          onWake: (label) => {
+            const heard = heardName(label);
+            emit({ wakeName: heard?.name });
+            deps.log?.({ ev: "wake-name", label: label ?? "LINKY", ...(heard ? { kind: heard.kind } : {}) });
+            wake.set("active", "wake-word");
+            return mentionOf(label);
+          },
           // Pinned: what is said is for the voice mode, so it never counts towards passive.
           verdict: (ok) => void (ok ? wake.accept() : taps.pinned() ? undefined : wake.reject()),
         }

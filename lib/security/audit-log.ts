@@ -86,7 +86,8 @@ export type AuditKind =
   | "stt-access.allow"
   | "stt-access.disallow"
   | "stt-worker.add"
-  | "stt-worker.revoke";
+  | "stt-worker.revoke"
+  | "stt-worker.official";
 
 export type AuditEntry = {
   kind: AuditKind;

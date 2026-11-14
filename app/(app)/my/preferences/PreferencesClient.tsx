@@ -2,7 +2,7 @@
 
 import { asReviewOrder, DEFAULT_REVIEW_ORDER, type ReviewOrder } from "@lianki/core";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import TokenManager from "./TokenManager";
 import { PaperSkinPicker } from "@/app/components/PaperSkinPicker";
@@ -103,18 +103,27 @@ function SectionHeading({
   canReset: boolean;
   onReset: () => void;
 }) {
+  const headingId = useId();
   return (
-    <div className="mb-4 flex items-center gap-2">
-      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">{children}</h2>
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      <h2
+        id={headingId}
+        className="min-w-0 flex-[1_1_12rem] break-words text-2xl font-semibold text-gray-900 dark:text-white"
+      >
+        {children}
+      </h2>
       <button
         type="button"
         onClick={onReset}
         disabled={!canReset}
-        aria-label={label}
+        aria-labelledby={`${headingId} ${headingId}-reset`}
         title={label}
         data-section-reset
         className="grid h-9 w-9 shrink-0 place-items-center rounded-full opacity-70 hover:bg-[oklch(0.5_0_0/0.12)] hover:opacity-100 disabled:opacity-25 disabled:hover:bg-transparent"
       >
+        <span id={`${headingId}-reset`} className="sr-only">
+          {label}
+        </span>
         <Icon name="reset" className="h-5 w-5" />
       </button>
     </div>
@@ -151,6 +160,9 @@ export default function PreferencesClient({
   const textSizes = useTextSizes();
 
   const [loading, setLoading] = useState(true);
+  const patternInput = useRef<HTMLInputElement>(null);
+  const [feedback, setFeedback] = useState<{ text: string; error: boolean } | null>(null);
+  const [patternError, setPatternError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [patterns, setPatterns] = useState<FilterPattern[]>([]);
   const [newPattern, setNewPattern] = useState("");
@@ -186,7 +198,7 @@ export default function PreferencesClient({
       setSaved(snapshot(loaded, order, watch));
     } catch (error) {
       console.error("Error fetching preferences:", error);
-      alert(errors.failedToLoad.value);
+      setFeedback({ text: errors.failedToLoad.value, error: true });
     } finally {
       setLoading(false);
     }
@@ -194,6 +206,7 @@ export default function PreferencesClient({
 
   async function savePreferences() {
     setSaving(true);
+    setFeedback(null);
     try {
       const res = await fetch("/api/preferences", {
         method: "POST",
@@ -207,10 +220,10 @@ export default function PreferencesClient({
       localStorage.setItem(REVIEW_FILTERS_KEY, JSON.stringify(patterns));
       window.dispatchEvent(new Event(REVIEW_FILTERS_EVENT));
       setSaved(current);
-      alert(success.saved.value);
+      setFeedback({ text: success.saved.value, error: false });
     } catch (error) {
       console.error("Error saving preferences:", error);
-      alert(errors.failedToSave.value);
+      setFeedback({ text: errors.failedToSave.value, error: true });
     } finally {
       setSaving(false);
     }
@@ -223,8 +236,9 @@ export default function PreferencesClient({
     if (isRegex) {
       try {
         new RegExp(newPattern);
-      } catch (e) {
-        alert(errors.invalidRegex.value);
+      } catch {
+        setPatternError(true);
+        patternInput.current?.focus();
         return;
       }
     }
@@ -238,6 +252,7 @@ export default function PreferencesClient({
       createdAt: new Date().toISOString(),
     };
 
+    setPatternError(false);
     setPatterns([...patterns, pattern]);
     setNewPattern("");
     setIsRegex(false);
@@ -245,6 +260,7 @@ export default function PreferencesClient({
 
   function removePattern(id: string) {
     setPatterns(patterns.filter((p) => p.id !== id));
+    patternInput.current?.focus();
   }
 
   function togglePattern(id: string) {
@@ -267,12 +283,26 @@ export default function PreferencesClient({
   }
 
   if (loading) {
-    return <div className="p-8">{loadingText}</div>;
+    return (
+      <div className="p-8" role="status">
+        {loadingText}
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-8">
+    <div className="preferences-accessible max-w-4xl mx-auto p-8">
       <h1 className="text-3xl font-bold mb-8">{heading}</h1>
+      <p
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className={
+          feedback?.error ? "text-red-700 dark:text-red-300" : "text-gray-700 dark:text-gray-200"
+        }
+      >
+        {feedback?.text}
+      </p>
 
       {/* Language — follows the account (lib/account-locale.ts) */}
       <LanguageSettings />
@@ -334,7 +364,8 @@ export default function PreferencesClient({
           {reviewOrderUi.heading}
         </SectionHeading>
         <p className="text-gray-400 mb-4">{reviewOrderUi.description}</p>
-        <div className="space-y-2">
+        <fieldset className="space-y-2">
+          <legend className="sr-only">{reviewOrderUi.heading}</legend>
           {(["newest", "oldest"] as const).map((opt) => (
             <label
               key={opt}
@@ -356,7 +387,7 @@ export default function PreferencesClient({
               </span>
             </label>
           ))}
-        </div>
+        </fieldset>
       </section>
 
       {/* API Tokens */}
@@ -408,7 +439,7 @@ export default function PreferencesClient({
         >
           {mobileFilters.heading}
         </SectionHeading>
-        <p className="text-gray-400 mb-4">{mobileFilters.description}</p>
+        <p className="mb-4 break-words text-gray-400">{mobileFilters.description}</p>
 
         {/* Current Patterns */}
         <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6 mb-4">
@@ -420,24 +451,27 @@ export default function PreferencesClient({
               {patterns.map((pattern) => (
                 <li
                   key={pattern.id}
-                  className={`flex items-center justify-between gap-4 bg-gray-800/50 border rounded px-4 py-3 ${
+                  className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-gray-800/50 border rounded px-4 py-3 ${
                     pattern.enabled ? "border-gray-700" : "border-gray-800 opacity-50"
                   }`}
                 >
-                  <div className="flex items-center gap-3 flex-1">
+                  <div className="flex min-w-0 flex-[1_1_10rem] items-center gap-3">
                     <SealSwitch
                       size="sm"
                       checked={pattern.enabled}
                       aria-labelledby={`pattern-${pattern.id}`}
                       onClick={() => togglePattern(pattern.id)}
                     />
-                    <div className="flex-1">
-                      <div id={`pattern-${pattern.id}`} className="font-mono text-sm text-gray-200">
+                    <div className="min-w-0 flex-1">
+                      <div
+                        id={`pattern-${pattern.id}`}
+                        className="break-all font-mono text-sm text-gray-200"
+                      >
                         {pattern.pattern}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
                         <span
-                          className={`inline-block px-2 py-0.5 rounded ${
+                          className={`inline-block max-w-full break-all px-2 py-0.5 rounded ${
                             pattern.type === "domain"
                               ? "bg-blue-900/30 text-blue-400"
                               : pattern.type === "title"
@@ -456,6 +490,8 @@ export default function PreferencesClient({
                     </div>
                   </div>
                   <button
+                    type="button"
+                    aria-label={`${mobileFilters.remove.value}: ${pattern.pattern}`}
                     onClick={() => removePattern(pattern.id)}
                     className="text-red-400 hover:text-red-300 transition-colors text-sm shrink-0"
                   >
@@ -473,13 +509,15 @@ export default function PreferencesClient({
 
           {/* Filter Type */}
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-2 text-gray-300">
+            <p id="pattern-type-label" className="block text-sm font-medium mb-2 text-gray-300">
               {mobileFilters.filterType}
-            </label>
-            <div className="flex gap-3">
+            </p>
+            <div role="group" aria-labelledby="pattern-type-label" className="flex flex-wrap gap-3">
               {(["domain", "title", "url"] as FilterType[]).map((type) => (
                 <button
                   key={type}
+                  type="button"
+                  aria-pressed={newType === type}
                   onClick={() => setNewType(type)}
                   className={`px-4 py-2 rounded transition-colors ${
                     newType === type
@@ -495,13 +533,30 @@ export default function PreferencesClient({
 
           {/* Pattern Input */}
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-2 text-gray-300">
+            <label
+              htmlFor="filter-pattern"
+              className="block text-sm font-medium mb-2 text-gray-300"
+            >
               {mobileFilters.patternLabel}
             </label>
             <input
+              ref={patternInput}
+              id="filter-pattern"
+              name="filter-pattern"
               type="text"
+              autoComplete="off"
+              spellCheck={false}
+              aria-describedby={
+                patternError
+                  ? "filter-pattern-example filter-pattern-error"
+                  : "filter-pattern-example"
+              }
+              aria-invalid={patternError || undefined}
               value={newPattern}
-              onChange={(e) => setNewPattern(e.target.value)}
+              onChange={(e) => {
+                setNewPattern(e.target.value);
+                setPatternError(false);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -511,7 +566,18 @@ export default function PreferencesClient({
               placeholder={mobileFilters.patternPlaceholder.value.replace("{type}", newType)}
               className="w-full bg-gray-800 border border-gray-700 rounded px-4 py-2 text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
             />
-            <p className="text-xs text-gray-500 mt-2">{getPatternExamples(newType, isRegex)}</p>
+            <p id="filter-pattern-example" className="text-xs text-gray-500 mt-2">
+              {getPatternExamples(newType, isRegex)}
+            </p>
+            {patternError && (
+              <p
+                id="filter-pattern-error"
+                role="alert"
+                className="text-sm text-red-700 dark:text-red-300"
+              >
+                {errors.invalidRegex}
+              </p>
+            )}
           </div>
 
           {/* Regex Checkbox */}
@@ -523,10 +589,13 @@ export default function PreferencesClient({
                 role="checkbox"
                 checked={isRegex}
                 aria-labelledby="pattern-regex-label"
+                aria-describedby="pattern-regex-help"
                 onClick={() => setIsRegex(!isRegex)}
               />
             </div>
-            <p className="text-xs text-gray-500 mt-1">{mobileFilters.regexHelp}</p>
+            <p id="pattern-regex-help" className="text-xs text-gray-500 mt-1">
+              {mobileFilters.regexHelp}
+            </p>
           </div>
 
           {/* Add Button */}
@@ -560,12 +629,14 @@ export default function PreferencesClient({
         }}
       >
         <button
+          type="button"
+          aria-busy={saving}
           onClick={savePreferences}
           disabled={saving || !dirty}
           data-dirty-save={dirty || undefined}
           className={`rounded-full px-8 py-3 text-lg font-semibold transition-colors ${
             dirty
-              ? "bg-[oklch(0.55_0.15_150)] text-[oklch(0.99_0_0)] shadow-lg ring-2 ring-[oklch(0.75_0.15_150)] hover:bg-[oklch(0.5_0.15_150)]"
+              ? "bg-primary text-on-primary shadow-lg ring-2 ring-primary hover:opacity-90"
               : "lk-glass opacity-70"
           }`}
         >
