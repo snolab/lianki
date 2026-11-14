@@ -70,6 +70,17 @@ export type LegacyKey = (typeof LEGACY_KEYS)[number];
 export type LegacyStrings = Record<LegacyKey, string>;
 
 export type ChatExtra = {
+  linkMenuTitle: string;
+  linkOpen: string;
+  linkOpenHere: string;
+  linkOpenProd: string;
+  linkCopy: string;
+  linkCopied: string;
+  linkCopyFailed: string;
+  linkSystem: string;
+  linkSystemHint: string;
+  linkClose: string;
+
   polishedBy: string;
   polishedAuto: string;
   messageDetails: string;
@@ -151,6 +162,17 @@ export const LEGACY_CONTEXT: LegacyStrings = {
 };
 
 export const EXTRA_CONTEXT: ChatExtra = {
+  linkMenuTitle: `In ${CHAT}: Heading and accessible name of the action menu opened by tapping a URL in a chat message. This menu is only for chat links, not links elsewhere on the page.`,
+  linkOpen: `In ${CHAT}: Action in that menu: follow the selected URL, using the existing external-site confirmation when needed. On the production site or for an external URL. Short imperative.`,
+  linkOpenHere: `In ${CHAT}: Action for a Lianki URL while the chat is on preview.lianki.com: open the same path/query/hash on the CURRENT preview site rather than lianki.com. Parenthetical this site clarifies the destination.`,
+  linkOpenProd: `In ${CHAT}: Action: open this Lianki URL on the public production site lianki.com rather than the preview. Also the default open label when site=prod or #prod explicitly requests production. Production means the normal public website, not a product or factory.`,
+  linkCopy: `In ${CHAT}: Action: copy the effective full URL, including its query/hash, to the clipboard. Imperative.`,
+  linkCopied: `In ${CHAT}: Brief success status after that copy action.`,
+  linkCopyFailed: `In ${CHAT}: Brief failure status when the browser cannot write the link to the clipboard. No technical error details.`,
+  linkSystem: `In ${CHAT}: Action: show the device/browser system options for the effective link. Uses native sharing when supported; otherwise offers a normal anchor that can be pressed and held.`,
+  linkSystemHint: `In ${CHAT}: Hint under the native-link fallback of System menu: press and hold the link to get the browser/system actions. It does not promise a custom popup.`,
+  linkClose: `In ${CHAT}: Accessible label of the close button of the chat link action menu.`,
+
   polishedBy: `In ${CHAT}: accessible label and tooltip heading on the small sparkle after a polished voice message. Names WHO polished the wording, not who spoke or transcribed it. {name} is the assistant lane display name or the localized automatic-system name; keep {name}. Also shown above the original transcript in the tap-open popover.`,
   polishedAuto: `In ${CHAT}: the actor name substituted into polishedBy when edited.by is auto. This is automatic wording cleanup, not a human or a named assistant lane. A short localized name for the automatic system; the tiny badge itself uses a symbol.`,
   messageDetails: `In ${CHAT}: heading and accessible label of a popover opened by clicking a message. It shows only metadata already carried by that message: sender, timestamp, recognition and voiceprint fields when present. Short noun phrase.`,
@@ -563,6 +585,17 @@ export const OTHER_LEGACY: Record<Other, LegacyStrings> = {
 /** The strings that were inline in the chat's code, in all 16 locales. */
 export const EXTRA: Record<ChatLocale, ChatExtra> = {
   en: {
+    linkMenuTitle: "Link actions",
+    linkOpen: "Open",
+    linkOpenHere: "Open (this site)",
+    linkOpenProd: "Open on production",
+    linkCopy: "Copy link",
+    linkCopied: "Link copied",
+    linkCopyFailed: "Could not copy the link.",
+    linkSystem: "System menu",
+    linkSystemHint: "Press and hold for browser options.",
+    linkClose: "Close link actions",
+
     polishedBy: "Polished by {name}",
     polishedAuto: "Auto",
     messageDetails: "Message details",
@@ -614,6 +647,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Retry",
   },
   zh: {
+    linkMenuTitle: "链接操作",
+    linkOpen: "打开",
+    linkOpenHere: "打开（当前站点）",
+    linkOpenProd: "在正式站打开",
+    linkCopy: "复制链接",
+    linkCopied: "链接已复制",
+    linkCopyFailed: "无法复制链接。",
+    linkSystem: "系统菜单",
+    linkSystemHint: "长按以显示浏览器选项。",
+    linkClose: "关闭链接操作",
+
     polishedBy: "由{name}润色",
     polishedAuto: "自动",
     messageDetails: "消息详情",
@@ -664,6 +708,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "重试",
   },
   hi: {
+    linkMenuTitle: "लिंक के विकल्प",
+    linkOpen: "खोलें",
+    linkOpenHere: "खोलें (यह साइट)",
+    linkOpenProd: "मुख्य साइट पर खोलें",
+    linkCopy: "लिंक कॉपी करें",
+    linkCopied: "लिंक कॉपी हो गया",
+    linkCopyFailed: "लिंक कॉपी नहीं हो सका।",
+    linkSystem: "सिस्टम मेन्यू",
+    linkSystemHint: "ब्राउज़र के विकल्पों के लिए दबाकर रखें।",
+    linkClose: "लिंक के विकल्प बंद करें",
+
     polishedBy: "{name} द्वारा सुधारा गया",
     polishedAuto: "स्वचालित प्रणाली",
     messageDetails: "संदेश विवरण",
@@ -714,6 +769,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "फिर से कोशिश करें",
   },
   es: {
+    linkMenuTitle: "Opciones del enlace",
+    linkOpen: "Abrir",
+    linkOpenHere: "Abrir (este sitio)",
+    linkOpenProd: "Abrir en el sitio principal",
+    linkCopy: "Copiar enlace",
+    linkCopied: "Enlace copiado",
+    linkCopyFailed: "No se pudo copiar el enlace.",
+    linkSystem: "Menú del sistema",
+    linkSystemHint: "Mantén pulsado para ver las opciones del navegador.",
+    linkClose: "Cerrar opciones del enlace",
+
     polishedBy: "Revisado por {name}",
     polishedAuto: "el sistema automático",
     messageDetails: "Detalles del mensaje",
@@ -764,6 +830,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Reintentar",
   },
   fr: {
+    linkMenuTitle: "Actions du lien",
+    linkOpen: "Ouvrir",
+    linkOpenHere: "Ouvrir (ce site)",
+    linkOpenProd: "Ouvrir sur le site principal",
+    linkCopy: "Copier le lien",
+    linkCopied: "Lien copié",
+    linkCopyFailed: "Impossible de copier le lien.",
+    linkSystem: "Menu du système",
+    linkSystemHint: "Appuyez longuement pour les options du navigateur.",
+    linkClose: "Fermer les actions du lien",
+
     polishedBy: "Retouché par {name}",
     polishedAuto: "le système automatique",
     messageDetails: "Détails du message",
@@ -814,6 +891,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Réessayer",
   },
   ar: {
+    linkMenuTitle: "خيارات الرابط",
+    linkOpen: "فتح",
+    linkOpenHere: "فتح (هذا الموقع)",
+    linkOpenProd: "فتح في الموقع الرئيسي",
+    linkCopy: "نسخ الرابط",
+    linkCopied: "تم نسخ الرابط",
+    linkCopyFailed: "تعذر نسخ الرابط.",
+    linkSystem: "قائمة النظام",
+    linkSystemHint: "اضغط مطولًا لعرض خيارات المتصفح.",
+    linkClose: "إغلاق خيارات الرابط",
+
     polishedBy: "نقّحه {name}",
     polishedAuto: "النظام الآلي",
     messageDetails: "تفاصيل الرسالة",
@@ -864,6 +952,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "إعادة المحاولة",
   },
   bn: {
+    linkMenuTitle: "লিংকের বিকল্প",
+    linkOpen: "খুলুন",
+    linkOpenHere: "খুলুন (এই সাইটে)",
+    linkOpenProd: "মূল সাইটে খুলুন",
+    linkCopy: "লিংক কপি করুন",
+    linkCopied: "লিংক কপি হয়েছে",
+    linkCopyFailed: "লিংক কপি করা যায়নি।",
+    linkSystem: "সিস্টেম মেনু",
+    linkSystemHint: "ব্রাউজারের বিকল্প দেখতে চেপে ধরে রাখুন।",
+    linkClose: "লিংকের বিকল্প বন্ধ করুন",
+
     polishedBy: "{name} পরিমার্জন করেছে",
     polishedAuto: "স্বয়ংক্রিয় ব্যবস্থা",
     messageDetails: "বার্তার বিবরণ",
@@ -914,6 +1013,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "আবার চেষ্টা করুন",
   },
   pt: {
+    linkMenuTitle: "Ações do link",
+    linkOpen: "Abrir",
+    linkOpenHere: "Abrir (este site)",
+    linkOpenProd: "Abrir no site principal",
+    linkCopy: "Copiar link",
+    linkCopied: "Link copiado",
+    linkCopyFailed: "Não foi possível copiar o link.",
+    linkSystem: "Menu do sistema",
+    linkSystemHint: "Mantenha pressionado para ver as opções do navegador.",
+    linkClose: "Fechar ações do link",
+
     polishedBy: "Revisado por {name}",
     polishedAuto: "o sistema automático",
     messageDetails: "Detalhes da mensagem",
@@ -964,6 +1074,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Tentar de novo",
   },
   ru: {
+    linkMenuTitle: "Действия со ссылкой",
+    linkOpen: "Открыть",
+    linkOpenHere: "Открыть (этот сайт)",
+    linkOpenProd: "Открыть на основном сайте",
+    linkCopy: "Копировать ссылку",
+    linkCopied: "Ссылка скопирована",
+    linkCopyFailed: "Не удалось скопировать ссылку.",
+    linkSystem: "Системное меню",
+    linkSystemHint: "Нажмите и удерживайте для настроек браузера.",
+    linkClose: "Закрыть действия со ссылкой",
+
     polishedBy: "Исправлено: {name}",
     polishedAuto: "автоматика",
     messageDetails: "Сведения о сообщении",
@@ -1014,6 +1135,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Повторить",
   },
   ur: {
+    linkMenuTitle: "لنک کے اختیارات",
+    linkOpen: "کھولیں",
+    linkOpenHere: "کھولیں (یہ سائٹ)",
+    linkOpenProd: "مرکزی سائٹ پر کھولیں",
+    linkCopy: "لنک کاپی کریں",
+    linkCopied: "لنک کاپی ہو گیا",
+    linkCopyFailed: "لنک کاپی نہیں ہو سکا۔",
+    linkSystem: "سسٹم مینیو",
+    linkSystemHint: "براؤزر کے اختیارات کے لیے دبا کر رکھیں۔",
+    linkClose: "لنک کے اختیارات بند کریں",
+
     polishedBy: "{name} نے سنوارا",
     polishedAuto: "خودکار نظام",
     messageDetails: "پیغام کی تفصیلات",
@@ -1064,6 +1196,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "دوبارہ کوشش کریں",
   },
   id: {
+    linkMenuTitle: "Tindakan tautan",
+    linkOpen: "Buka",
+    linkOpenHere: "Buka (situs ini)",
+    linkOpenProd: "Buka di situs utama",
+    linkCopy: "Salin tautan",
+    linkCopied: "Tautan disalin",
+    linkCopyFailed: "Tautan tidak dapat disalin.",
+    linkSystem: "Menu sistem",
+    linkSystemHint: "Tekan dan tahan untuk opsi peramban.",
+    linkClose: "Tutup tindakan tautan",
+
     polishedBy: "Dirapikan oleh {name}",
     polishedAuto: "sistem otomatis",
     messageDetails: "Detail pesan",
@@ -1114,6 +1257,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Coba lagi",
   },
   de: {
+    linkMenuTitle: "Linkaktionen",
+    linkOpen: "Öffnen",
+    linkOpenHere: "Öffnen (diese Website)",
+    linkOpenProd: "Auf der Hauptseite öffnen",
+    linkCopy: "Link kopieren",
+    linkCopied: "Link kopiert",
+    linkCopyFailed: "Link konnte nicht kopiert werden.",
+    linkSystem: "Systemmenü",
+    linkSystemHint: "Für Browseroptionen gedrückt halten.",
+    linkClose: "Linkaktionen schließen",
+
     polishedBy: "Überarbeitet von {name}",
     polishedAuto: "Automatik",
     messageDetails: "Nachrichtendetails",
@@ -1164,6 +1318,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Erneut versuchen",
   },
   ja: {
+    linkMenuTitle: "リンクの操作",
+    linkOpen: "開く",
+    linkOpenHere: "開く（現在のサイト）",
+    linkOpenProd: "本番サイトで開く",
+    linkCopy: "リンクをコピー",
+    linkCopied: "リンクをコピーしました",
+    linkCopyFailed: "リンクをコピーできませんでした。",
+    linkSystem: "システムメニュー",
+    linkSystemHint: "長押しでブラウザのメニューを表示します。",
+    linkClose: "リンクの操作を閉じる",
+
     polishedBy: "{name}による推敲",
     polishedAuto: "自動処理",
     messageDetails: "メッセージの詳細",
@@ -1214,6 +1379,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "再試行",
   },
   sw: {
+    linkMenuTitle: "Vitendo vya kiungo",
+    linkOpen: "Fungua",
+    linkOpenHere: "Fungua (tovuti hii)",
+    linkOpenProd: "Fungua kwenye tovuti kuu",
+    linkCopy: "Nakili kiungo",
+    linkCopied: "Kiungo kimenakiliwa",
+    linkCopyFailed: "Imeshindwa kunakili kiungo.",
+    linkSystem: "Menyu ya mfumo",
+    linkSystemHint: "Bonyeza na ushikilie kwa chaguo za kivinjari.",
+    linkClose: "Funga vitendo vya kiungo",
+
     polishedBy: "Imeboreshwa na {name}",
     polishedAuto: "mfumo otomatiki",
     messageDetails: "Maelezo ya ujumbe",
@@ -1264,6 +1440,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "Jaribu tena",
   },
   mr: {
+    linkMenuTitle: "दुव्याचे पर्याय",
+    linkOpen: "उघडा",
+    linkOpenHere: "उघडा (या साइटवर)",
+    linkOpenProd: "मुख्य साइटवर उघडा",
+    linkCopy: "दुवा कॉपी करा",
+    linkCopied: "दुवा कॉपी झाला",
+    linkCopyFailed: "दुवा कॉपी करता आला नाही.",
+    linkSystem: "सिस्टम मेनू",
+    linkSystemHint: "ब्राउझरच्या पर्यायांसाठी दाबून ठेवा.",
+    linkClose: "दुव्याचे पर्याय बंद करा",
+
     polishedBy: "{name} यांनी सुधारले",
     polishedAuto: "स्वयंचलित प्रणाली",
     messageDetails: "संदेशाचा तपशील",
@@ -1314,6 +1501,17 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     liveRetry: "पुन्हा प्रयत्न करा",
   },
   ko: {
+    linkMenuTitle: "링크 작업",
+    linkOpen: "열기",
+    linkOpenHere: "열기 (현재 사이트)",
+    linkOpenProd: "정식 사이트에서 열기",
+    linkCopy: "링크 복사",
+    linkCopied: "링크를 복사했습니다",
+    linkCopyFailed: "링크를 복사할 수 없습니다.",
+    linkSystem: "시스템 메뉴",
+    linkSystemHint: "길게 눌러 브라우저 옵션을 여세요.",
+    linkClose: "링크 작업 닫기",
+
     polishedBy: "다듬은 주체: {name}",
     polishedAuto: "자동 처리",
     messageDetails: "메시지 세부 정보",
