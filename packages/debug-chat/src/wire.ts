@@ -511,19 +511,22 @@ export type PairInfo = {
 /** An open debug page: its socket's id, current label (path…), and when it connected. */
 export type PageInfo = { id: string; label: string; at: number };
 
-/** Kana must be at least this share of a line's CJK characters before the line reads as Japanese. */
-export const KANA_SHARE = 0.25;
+/** Hiragana must be at least this share of a line's CJK characters before a line with kanji reads as Japanese. */
+export const HIRAGANA_SHARE = 0.25;
 /**
- * The language to read a reply in, from its script alone: kana is Japanese
- * only when it is a real share of the line's CJK characters (KANA_SHARE) — a
- * Chinese line that quotes a katakana shop name or a Japanese UI label stays
- * Chinese (owner, 2026-11-15 03:1x: "不要用日语读"); Hangul is Korean, other
- * Han Chinese (zh-CN), and everything else English.
+ * The language to read a reply in, from its script alone. Japanese is told
+ * by hiragana — the particles and endings every Japanese sentence has — as a
+ * real share of the CJK characters (HIRAGANA_SHARE), or any kana with no
+ * kanji at all; a Chinese line that quotes a katakana shop name or a short
+ * Japanese UI label stays Chinese (owner, 2026-11-15 03:1x: "不要用日语读").
+ * Hangul is Korean, other Han Chinese (zh-CN), and everything else English.
  */
 export function pickLang(text: string): "ja-JP" | "ko-KR" | "zh-CN" | "en-US" {
-  const kana = (text.match(/[\p{Script=Hiragana}\p{Script=Katakana}]/gu) ?? []).length;
+  const hira = (text.match(/\p{Script=Hiragana}/gu) ?? []).length;
+  const kata = (text.match(/\p{Script=Katakana}/gu) ?? []).length;
   const han = (text.match(/\p{Script=Han}/gu) ?? []).length;
-  if (kana && (han === 0 || kana / (kana + han) >= KANA_SHARE)) return "ja-JP";
+  if ((hira || kata) && han === 0) return "ja-JP";
+  if (hira && hira / (hira + kata + han) >= HIRAGANA_SHARE) return "ja-JP";
   if (/\p{Script=Hangul}/u.test(text)) return "ko-KR";
   if (han) return "zh-CN";
   return "en-US";
