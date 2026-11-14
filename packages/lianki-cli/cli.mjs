@@ -17,6 +17,22 @@ import { createInterface } from "node:readline";
 import { createChatReceiver, turnConfig } from "./chat-receiver.mjs";
 import { applyGrantPolish } from "./chat-polish.mjs";
 import { createFriendInbox, INBOX_DEFAULTS } from "./chat-inbox.mjs";
+import {
+  HISTORY_LIMIT_DEFAULT,
+  PROGRESS_KINDS,
+  PROGRESS_PATH,
+  PROGRESS_STATUSES,
+  STATS_SINCE_DEFAULT,
+  ackBody,
+  batchBody,
+  batchLines,
+  entryLine,
+  formatHistory,
+  formatStats,
+  reportBody,
+  sinceMs,
+  statsOf,
+} from "./progress.mjs";
 import { join } from "node:path";
 
 export { CliError, EXIT, PREF_KEYS, call };
@@ -741,6 +757,68 @@ async function cmdChatBridge(c) {
 // ── mcp ───────────────────────────────────────────────────────────────────
 
 /** `lianki mcp`: the local MCP server (mcp.mjs), loaded only for this command. */
+// ── progress ──────────────────────────────────────────────────────────────
+//
+// Your work on the user's live task list (the state tree), with a token that
+// holds the `progress` permission (site owners' tokens only). The hub records
+// every report under the token's name; --agent, when given, must be that name.
+
+const progressCall = (c, token, path, body) =>
+  call(c, token, { method: body === undefined ? "GET" : "POST", path: `${PROGRESS_PATH}${path}`, body });
+
+async function cmdProgressReport(c) {
+  const body = reportBody(c.argv);
+  const token = await needToken(c);
+  const { data } = await progressCall(c, token, "", body);
+  emit(c, "progress", data, entryLine);
+}
+
+async function cmdProgressBatch(c) {
+  if (c.argv.file && !c.deps.readFile) throw usage("--file is not available here; pass the JSON list");
+  const text = c.argv.file ? await c.deps.readFile(String(c.argv.file)) : c.argv.list;
+  if (!text) throw usage("batch needs '<JSON list>' or --file <path.json>");
+  const body = batchBody(text, c.argv["change-id"]);
+  const token = await needToken(c);
+  const { data } = await progressCall(c, token, "/batch", body);
+  emit(c, "progress batch", data, batchLines);
+  if (data.ok === false) return EXIT.refused;
+}
+
+async function cmdProgressAck(c) {
+  const body = ackBody(c.argv.code);
+  const token = await needToken(c);
+  const { data } = await progressCall(c, token, "/ack", body);
+  emit(c, "progress ack", data, (d) => `progress: acked ${d.id} (receipt ${body.code})`);
+}
+
+async function cmdProgressShow(c) {
+  const token = await needToken(c);
+  const { data } = await progressCall(c, token, "");
+  const all = c.argv.all ? (await progressCall(c, token, `/history?limit=${HISTORY_LIMIT_DEFAULT}`)).data : null;
+  const out = all ? { ...data, history: all.items ?? [] } : data;
+  emit(c, "progress show", out, (d) => JSON.stringify(d, null, 2));
+}
+
+async function cmdProgressStats(c) {
+  const since = sinceMs(c.argv.since);
+  const token = await needToken(c);
+  const { data } = await progressCall(c, token, "/stats");
+  const stats = statsOf(data.done, { agent: c.argv.agent, since });
+  emit(c, "progress stats", { since, agents: stats }, (d) => formatStats(d.agents));
+}
+
+async function cmdProgressHistory(c) {
+  const since = c.argv.since ? sinceMs(c.argv.since) : undefined;
+  const limit = Number(c.argv.limit ?? HISTORY_LIMIT_DEFAULT);
+  if (!Number.isInteger(limit) || limit < 1) throw usage("--limit must be a whole number");
+  const token = await needToken(c);
+  const { data } = await progressCall(c, token, `/history?limit=${limit}`);
+  const items = (Array.isArray(data.items) ? data.items : []).filter(
+    (h) => (!c.argv.agent || h.agent === c.argv.agent) && (since === undefined || Number(h.endedAt) >= Date.now() - since),
+  );
+  emit(c, "progress history", { items }, (d) => formatHistory(d.items));
+}
+
 async function cmdMcp(c) {
   const { serveMcp } = await import("./mcp.mjs");
   await serveMcp(c);
@@ -993,6 +1071,102 @@ function build(args, deps, box) {
             "Needs a token with the chat permissions (lianki.com/my/preferences → API tokens). An agent lane uses its own token: LIANKI_TOKEN=lk_… lianki chat say …",
           ),
         [['lianki chat say "hello"', ""]],
+      ),
+    )
+    .command("progress", "Report your work to the user's task list (state tree)", (y) =>
+      examples(
+        y
+          .usage("lianki progress [report|batch|ack|show|stats|history] — your work on the user's task list, as the token's name")
+          .command(
+            ["report", "$0"],
+            "Report one task (the default)",
+            (y) =>
+              examples(
+                y
+                  .option("path", { type: "string", describe: "The task's place in the tree, e.g. /words/swipe" })
+                  .option("id", { type: "string", describe: "A slug instead of --path (with --parent)" })
+                  .option("parent", { type: "string", describe: "The parent of a slug id" })
+                  .option("task", { type: "string", describe: '"name: description" — a short name (≤ 20 columns), then what it is' })
+                  .option("status", { type: "string", choices: PROGRESS_STATUSES, describe: "Where it stands" })
+                  .option("done", { type: "boolean", describe: "Short for --status done" })
+                  .option("pct", { type: "string", describe: "How far along, 0–100" })
+                  .option("eta", { type: "string", describe: "Your estimate: 30m, 1h30m, a range 12m-63m, or an ISO time" })
+                  .option("late", { type: "string", describe: "Past the estimate: why, with the new --eta (the user is told)" })
+                  .option("confirm", { type: "boolean", describe: "The estimate still holds (before it runs out)" })
+                  .option("note", { type: "string", describe: "Free text on the node" })
+                  .option("pr", { type: "string", describe: "A pull request number, or several: 703,707" })
+                  .option("needs", { type: "string", describe: "What someone must do (with --who when blocked)" })
+                  .option("who", { type: "string", describe: "Who can act now: owner or a name" })
+                  .option("verified", { type: "string", describe: "With --done: the evidence (a merged PR, a test, a link)" })
+                  .option("unverified", { type: "boolean", describe: "With --done: done, not confirmed (the default)" })
+                  .option("kind", { type: "string", choices: PROGRESS_KINDS, describe: "The node's kind" })
+                  .option("ref", { type: "string", describe: "A related node" })
+                  .option("action", { type: "string", describe: "A command or URL that acts on it" })
+                  .option("link", { type: "string", describe: "A link to show" })
+                  .option("rev", { type: "string", describe: "Only write over this revision" })
+                  .option("change-id", { type: "string", describe: "One change across several reports" })
+                  .option("agent", { type: "string", describe: "Your name; must be the token's name (the default)" })
+                  .option("human", { type: "boolean", hidden: true })
+                  .option("ended", { type: "string", hidden: true }),
+                [
+                  ['lianki progress --path /words/swipe --task "Swipe fix: the card snaps back" --status doing --pct 40 --eta 30m', ""],
+                  ['lianki progress --path /words/swipe --task "Swipe fix: the card snaps back" --status doing --eta 20m --late "CI queue was slow"', "past the estimate"],
+                  ['lianki progress --path /words/swipe --task "Swipe fix: the card snaps back" --done --verified "pr #310 merged"', ""],
+                ],
+              ),
+            act(cmdProgressReport),
+          )
+          .command(
+            "batch [list]",
+            "Several reports as one change (a JSON list of flag objects)",
+            (y) =>
+              examples(
+                y
+                  .positional("list", { type: "string", describe: "JSON: [{\"path\": \"/x/a\", \"task\": \"A: …\", \"status\": \"doing\", \"eta\": \"20m\"}, …]" })
+                  .option("file", { type: "string", describe: "Read the list from this file" })
+                  .option("change-id", { type: "string", describe: "The change id (else the hub makes one)" }),
+                [["lianki progress batch '[{\"path\":\"/x/a\",\"task\":\"A: one\",\"status\":\"doing\",\"eta\":\"20m\"}]'", ""]],
+              ),
+            act(cmdProgressBatch),
+          )
+          .command(
+            "ack <code>",
+            'Acknowledge an "ETA reached" line by its receipt code',
+            (y) => examples(y.positional("code", { type: "string", describe: "The 6-character code" }), [["lianki progress ack k3x9qa", ""]]),
+            act(cmdProgressAck),
+          )
+          .command(
+            "show",
+            "The live tree (JSON)",
+            (y) => examples(y.option("all", { type: "boolean", describe: "With the done history" }), [["lianki progress show --all", ""]]),
+            act(cmdProgressShow),
+          )
+          .command(
+            "stats",
+            "Your done tasks: estimate vs actual, median ratio",
+            (y) =>
+              examples(
+                y
+                  .option("agent", { type: "string", describe: "One agent's tasks" })
+                  .option("since", { type: "string", default: STATS_SINCE_DEFAULT, describe: "How far back (7d, 30d)" }),
+                [["lianki progress stats --since 30d", ""]],
+              ),
+            act(cmdProgressStats),
+          )
+          .command(
+            "history",
+            "Done nodes, newest first",
+            (y) =>
+              y
+                .option("agent", { type: "string", describe: "One agent's nodes" })
+                .option("since", { type: "string", describe: "How far back (30d)" })
+                .option("limit", { type: "number", describe: `At most this many (default ${HISTORY_LIMIT_DEFAULT})` }),
+            act(cmdProgressHistory),
+          )
+          .epilogue(
+            "Needs a token with the 'Report progress' permission (lianki.com/my/preferences → API tokens; site owners' tokens only). The hub records every report as the token's name. Rules: report at start with --eta, at milestones, when blocked, and when done; past the estimate, report again within 5 minutes with a new --eta and --late \"why\".",
+          ),
+        [['lianki progress --path /dev/cli --task "CLI: progress verbs" --status doing --eta 30m', ""]],
       ),
     )
     .command(

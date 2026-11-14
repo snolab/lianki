@@ -18,7 +18,13 @@ export type ProgressGrant = {
   /** The node of the token that asked for this one ("root" for the root token). */
   via?: string;
 };
-export type ProgressAuth = { root: true } | ({ root: false } & ProgressGrant);
+/**
+ * The root, or a scoped grant. A root with `agent` is an API token holding
+ * the `progress` permission (lib/api-tokens.ts; verified by the main Worker,
+ * never here): the whole tree, but every report is that agent's (the token's
+ * name), and it cannot back-date a node.
+ */
+export type ProgressAuth = { root: true; agent?: string } | ({ root: false } & ProgressGrant);
 
 const enc = new TextEncoder();
 
