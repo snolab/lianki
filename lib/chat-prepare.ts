@@ -97,7 +97,7 @@ export function prepareVerdict(raw: unknown, _input: PrepareInput): PrepareVerdi
 export async function prepareChatTurn(
   env: PartnerEnv,
   raw: unknown,
-  deps: { fetch?: typeof fetch } = {},
+  deps: { fetch?: typeof fetch; signal?: AbortSignal } = {},
 ) {
   const r = raw as { userId?: unknown; input?: unknown } | null;
   const input = parsePrepare(r?.input);
@@ -136,7 +136,9 @@ export async function prepareChatTurn(
           windowMs: 24 * 60 * 60_000,
         });
         if (!siteLimit.allowed) throw new PrepareRateError();
-        const signal = AbortSignal.timeout(timeout);
+        const signal = deps.signal
+          ? AbortSignal.any([deps.signal, AbortSignal.timeout(timeout)])
+          : AbortSignal.timeout(timeout);
         let j: {
           choices?: { message?: { content?: string; refusal?: unknown }; finish_reason?: string }[];
           usage?: { prompt_tokens?: number; completion_tokens?: number };

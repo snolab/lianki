@@ -469,7 +469,8 @@ export default {
       return res;
     }
     if (
-      (url.pathname.startsWith("/internal/friends") ||
+      (url.pathname === "/internal/hub-diagnostics" ||
+        url.pathname.startsWith("/internal/friends") ||
         url.pathname === "/internal/signed-out" ||
         url.pathname === REVOKED_PATH ||
         url.pathname === CHAT_BACKFILL_PATH) &&

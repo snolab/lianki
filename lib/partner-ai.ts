@@ -1,3 +1,5 @@
+import { defaultConfig } from "./config";
+import { loadConfig } from "./config-store";
 import { isUserId } from "@/lib/dev-eval";
 import { isFlagKey } from "@/lib/flags";
 import { readHolders } from "@/lib/account-permission";
@@ -20,7 +22,6 @@ import {
   MAX_OUTPUT_TOKENS,
   MAX_PAGE_CHARS,
   MAX_REPLY_CHARS,
-  MODEL_TIMEOUT_MS,
   PROMPT_OVERHEAD_CHARS,
   PARTNER_AI_FLAG,
   PARTNER_AI_MODEL,
@@ -62,7 +63,7 @@ export type PartnerEnv = {
   CLOUDFLARE_API_TOKEN?: string;
 };
 
-type Deps = { fetch?: typeof fetch; now?: () => number };
+type Deps = { fetch?: typeof fetch; now?: () => number; signal?: AbortSignal };
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
 
@@ -341,6 +342,9 @@ async function callModel(
 ): Promise<PartnerResult> {
   const summary = await studySummary(db, email, now());
   const t0 = now();
+  const config = await loadConfig(db).catch(defaultConfig);
+  const deadline = AbortSignal.timeout(config["chat.partnerModelTimeoutMs"]);
+  const signal = deps.signal ? AbortSignal.any([deps.signal, deadline]) : deadline;
   try {
     const res = await (deps.fetch ?? fetch)(
       `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1/chat/completions`,
@@ -355,7 +359,7 @@ async function callModel(
           max_tokens: MAX_OUTPUT_TOKENS,
           temperature: 0.6,
         }),
-        signal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
+        signal,
       },
     );
     const ms = now() - t0;

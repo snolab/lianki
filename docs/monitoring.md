@@ -928,3 +928,58 @@ trust. Signing in to the same account on that device lets the credential resume
 without a new approval. **End** removes both trust and grant, including dormant
 ones; a late auth reply cannot recreate either. Existing grants and renewal
 chain caps are unchanged. No previously issued grant is upgraded automatically.
+
+## Chat hub idle work and cancellation
+
+`/dev/session` and `GET /api/dev/hub-diagnostics` (both `isDev`, otherwise
+404) read one snapshot through the private PUSH binding. It contains the
+current wake cycle's start, last activity, pending service calls (method and
+start time only), and pending automatic-polish state. No identities, message
+text, tokens or polling. An inspection itself wakes the Durable Object: a
+snapshot is **not** continuous active duration or proof of billed sleep.
+A new wake starts a new in-memory snapshot; alarms and socket attachments
+remain the existing durable source of truth.
+
+The hub already accepts WebSockets with the hibernation API and answers
+listener `ping` using runtime auto-responses. There is no permanent hub
+polling timer. Automatic polish has a short tail timeout; the partner's
+busy interval exists only while a reply is in progress and is cleared in
+`finally`. Grant renewal, idle pages, proofs and recording deadlines retain
+their necessary alarms. Silence does not disconnect sockets.
+
+All DebugHub SESSIONS calls now use a bounded private binding HTTP lifetime,
+while the existing RPC methods remain compatible with other callers. The
+main Worker's named DebugSessions entrypoint accepts only a fixed method
+allowlist. `AbortSignal.timeout` reaches binding fetch and, for model calls,
+is combined with the provider's own deadline. It bounds headers **and** body
+reading; timeout follows the existing failure paths (raw polish retained,
+partner failure reported and busy heartbeat stopped). No unbounded background
+`waitUntil` is added. A failed config read uses the last valid value/default;
+config refresh is request-driven and never polls.
+
+Live keys are `chat.hubRpcTimeoutMs` (default 20 s),
+`chat.polishRpcTimeoutMs` (20 s), `chat.partnerRpcTimeoutMs` (60 s), and
+`chat.partnerModelTimeoutMs` (60 s). Existing `voice.autoPolishTimeoutMs`
+and `chat.prepareTimeoutMs` continue to bound their provider calls.
+The hub reads timeout values through bounded calls and caches them for one
+minute. A cold call can spend one ordinary deadline loading config before
+its operation deadline begins. This is bounded, not a single combined budget.
+
+The main Worker explicitly enables `enable_request_signal`: our compatibility
+date precedes 2026-11-17, when Cloudflare makes it the default. A real workerd
+regression proves a hanging binding request is aborted remotely and both
+pending counts return to zero; a caller-side promise race alone is insufficient.
+See [Request cancellation](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/http/)
+and [Durable Object lifecycle](https://developers.cloudflare.com/durable-objects/concepts/durable-object-lifecycle/).
+
+For online duration use Cloudflare's aggregate Analytics API, including
+`durableObjectsInvocationsAdaptiveGroups`, rather than the snapshot. A read-only baseline query of the DebugHub namespace from
+2026-11-11 14:00 UTC to 2026-11-14 14:01 UTC covered one object: about
+3,752.8 active seconds (62.5 minutes), 38.6 CPU seconds, and 480.36 GB*s of
+reported duration. Day boundaries were UTC and the first/last days partial.
+These sampled aggregates show the existing hub is not continuously active;
+they do not establish which individual quiet periods hibernated. Request
+wall-time totals include overlapping long-lived WebSockets and must not be
+used as billed active time. No before/after savings have been measured.
+Local cancellation proves a bounded failure path, not a new production
+hibernation rate.

@@ -1,3 +1,5 @@
+import { HubWork } from "../../../lib/hub-work";
+import { boundedSessions } from "../../../lib/bounded-sessions";
 /**
  * The remote-eval and chat hub (docs/monitoring.md, "Remote eval (owner
  * debug)", "Chat with the agent" and "Friends").
@@ -810,6 +812,7 @@ export class DebugHub {
   private renewing = new Map<string, Promise<void>>();
   /** The main Worker (service binding): asked whether a renewal's session is still live. */
   private sessions?: SessionsRpc;
+  private work: HubWork;
   /** When each grant's session was last checked (the per-grant rate limit). */
   private checkedAt = new Map<string, number>();
   /** The last read of PARTNER_AI_FLAG (AI_FLAG_CACHE_MS). */
@@ -838,9 +841,11 @@ export class DebugHub {
     private now: () => number = Date.now,
     private timer: HubTimer = realTimer,
   ) {
+    this.work = new HubWork(this.now);
     // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
     this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
-    this.sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
+    const sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
+    this.sessions = sessions ? boundedSessions(sessions, this.work, this.now) : undefined;
     this.progress = (env as { PROGRESS?: ProgressNs } | undefined)?.PROGRESS;
     this.tokens = new TokenChat({
       now: () => this.now(),
@@ -2109,6 +2114,16 @@ export class DebugHub {
 
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
+    if (url.pathname === "/internal/hub-diagnostics")
+      return Response.json(
+        {
+          ...this.work.snapshot(),
+          pendingPolishTimer: this.autoTimer !== undefined,
+          polishBusy: this.autoBusy,
+        },
+        { headers: { "cache-control": "no-store" } },
+      );
+    this.work.touch();
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     if (url.pathname === ETA_PATH) return this.etaApi(req);
@@ -3376,6 +3391,7 @@ export class DebugHub {
 
   /** The Durable Object alarm (set by markEmpty). */
   async alarm() {
+    this.work.touch();
     this.sweep();
     await this.checkIdle();
     await this.clipsSweep();
@@ -3387,6 +3403,7 @@ export class DebugHub {
   }
 
   webSocketMessage(ws: Socket, raw: string | ArrayBuffer): void | Promise<void> {
+    if (raw !== KEEPALIVE.ping) this.work.touch();
     // The alarm is what normally announces an idle thread; any message checks too.
     this.checkIdle().catch(() => {});
     this.sweep();
