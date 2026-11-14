@@ -29,7 +29,7 @@ const QUIET =
 const SEAL =
   "min-h-11 shrink-0 rounded-full bg-[oklch(0.42_0.143_22.3)] px-4 text-sm font-medium text-[oklch(0.99_0_0)] hover:bg-[oklch(0.36_0.143_22.3)] dark:bg-[oklch(0.78_0.11_22.3)] dark:text-[oklch(0.18_0.02_250)] dark:hover:bg-[oklch(0.84_0.088_22.3)] pointer-fine:min-h-9";
 
-export function DontAskReview() {
+export function DontAskReview({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const c = useIntlayer("dont-ask");
   const { locale } = useLocale();
   const [rows, setRows] = useState<DontAskRow[]>([]);
@@ -71,7 +71,7 @@ export function DontAskReview() {
       data-section="dont-ask"
       data-testid="dont-ask"
     >
-      <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>
+      {!hideHeading && <h2 className="mb-3 text-2xl font-semibold">{c.heading}</h2>}
       <p className="mb-4 text-sm opacity-80">
         {c.intro.value.replace("{days}", String(DONT_ASK_CONFIG.reaskDays[0]))}
       </p>

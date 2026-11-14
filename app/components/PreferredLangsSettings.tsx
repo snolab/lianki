@@ -137,7 +137,7 @@ function Row({
   );
 }
 
-export function PreferredLangsSettings() {
+export function PreferredLangsSettings({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const c = useIntlayer("preferred-langs");
   const { locale } = useLocale();
   const ui = String(locale ?? "en");
@@ -172,7 +172,7 @@ export function PreferredLangsSettings() {
       data-section="preferred-langs"
       data-testid="preferred-langs"
     >
-      <h2 className="mb-2 text-2xl font-semibold">{c.heading}</h2>
+      {!hideHeading && <h2 className="mb-2 text-2xl font-semibold">{c.heading}</h2>}
       <p className="mb-3 text-sm text-[oklch(0.42_0.02_250)] dark:text-[oklch(0.78_0.02_250)]">
         {c.help}
       </p>

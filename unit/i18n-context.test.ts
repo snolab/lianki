@@ -287,6 +287,7 @@ describe("preferences-page: keys that already carry context", () => {
     "watchTime.toggle",
     "watchTime.toggleHint",
     "mobileFilters.regexBadge",
+    "toc",
   ])("%s has a line of 5+ words", (k) => {
     expect((context[k] ?? "").split(/\s+/).length).toBeGreaterThanOrEqual(5);
   });

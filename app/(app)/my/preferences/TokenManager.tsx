@@ -39,7 +39,7 @@ type Token = {
 /** `scopes`: what this account may pick (`eval` only for a site owner, lib/api-token-api.ts). */
 type Listing = { account: string; tokens: Token[]; scopes?: { id: ScopeId }[] };
 
-export default function TokenManager() {
+export default function TokenManager({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const c = useIntlayer("api-tokens") as unknown as Record<string, unknown>;
   const s = (k: string) => textOf(c[k]);
   const { locale } = useLocale();
@@ -204,7 +204,7 @@ export default function TokenManager() {
   return (
     <section id="tokens" className="my-8 space-y-4 scroll-mt-6" data-testid="api-tokens">
       <div>
-        <h2 className="text-xl font-semibold mb-2">{s("heading")}</h2>
+        {!hideHeading && <h2 className="text-xl font-semibold mb-2">{s("heading")}</h2>}
         <p className="text-sm text-gray-600 dark:text-gray-400">{s("intro")}</p>
         <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">{s("aiIntro")}</p>
         {list && (
