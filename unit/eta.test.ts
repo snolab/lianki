@@ -1,5 +1,4 @@
-import { afterAll, describe, expect, it } from "bun:test";
-import { stubGlobals } from "./support/globals";
+import { describe, expect, it } from "bun:test";
 import {
   ETA_GIVE_UP_MS,
   ETA_RETRY_MS,
@@ -65,14 +64,10 @@ class FakeSocket implements Socket {
     return null;
   }
 }
-afterAll(
-  stubGlobals({
-    WebSocketPair: class {
-      0 = new FakeSocket();
-      1 = new FakeSocket();
-    },
-  }),
-);
+(globalThis as unknown as { WebSocketPair: unknown }).WebSocketPair = class {
+  0 = new FakeSocket();
+  1 = new FakeSocket();
+};
 
 function fakeStorage(): Storage & { store: Map<string, unknown>; alarm: number | null } {
   const store = new Map<string, unknown>();

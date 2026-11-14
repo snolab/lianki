@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { globalDescriptor, restoreGlobal } from "./support/globals";
 import { DEAD, PING, PONG, keepalive } from "@/scripts/dev/keepalive";
 import { DebugHub, KEEPALIVE, type Socket, type Storage } from "@/workers/push/src/debug";
 
@@ -124,8 +123,10 @@ describe("eval.ts chat keepalive", () => {
 
 describe("DebugHub answers the keepalive ping", () => {
   const g = globalThis as { WebSocketRequestResponsePair?: unknown };
-  const had = globalDescriptor("WebSocketRequestResponsePair");
-  afterEach(() => restoreGlobal("WebSocketRequestResponsePair", had));
+  const had = g.WebSocketRequestResponsePair;
+  afterEach(() => {
+    g.WebSocketRequestResponsePair = had;
+  });
   const storage = {} as Storage;
 
   it("sets the runtime's auto-response (no wake-up) when there is one", () => {

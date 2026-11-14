@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { stubGlobals } from "./support/globals";
 import {
   BACKOFF_BASE_MS,
   CONNECT_TIMEOUT_MS,
@@ -882,13 +881,16 @@ describe("edge paths: requests, hello, page events", () => {
   });
 
   it("by default it watches the page's visibilitychange and online events, and a worker free again", () => {
+    const g = globalThis as Record<string, unknown>;
+    const had = { window: g.window, document: g.document };
     const on = new Map<string, () => void>();
     const target = () => ({
       addEventListener: (k: string, f: () => void) => on.set(k, f),
       removeEventListener: (k: string) => on.delete(k),
     });
     const doc = { ...target(), visibilityState: "hidden" };
-    const restore = stubGlobals({ window: target(), document: doc });
+    g.window = target();
+    g.document = doc;
     try {
       const w = fakeWs();
       const stt = createLocalStt("wss://mac.ts.net/lianki-stt", {
@@ -907,7 +909,8 @@ describe("edge paths: requests, hello, page events", () => {
       expect(on.size).toBe(0);
       stt.close();
     } finally {
-      restore();
+      g.window = had.window;
+      g.document = had.document;
     }
   });
 });

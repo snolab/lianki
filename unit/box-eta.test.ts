@@ -7,8 +7,7 @@
  * resolves; a cookie page can never claim to be a box; the outline route opens
  * to a box:chat token only for GET.
  */
-import { afterAll, describe, expect, test } from "bun:test";
-import { stubGlobals } from "./support/globals";
+import { describe, expect, test } from "bun:test";
 import {
   BOX_CHAT_TICKET_PATH,
   BOX_CHAT_TREE_PATH,
@@ -57,14 +56,10 @@ class FakeSocket implements Socket {
     return this.att;
   }
 }
-afterAll(
-  stubGlobals({
-    WebSocketPair: class {
-      0 = new FakeSocket();
-      1 = new FakeSocket();
-    },
-  }),
-);
+(globalThis as unknown as { WebSocketPair: unknown }).WebSocketPair = class {
+  0 = new FakeSocket();
+  1 = new FakeSocket();
+};
 
 function fakeStorage(): Storage {
   const store = new Map<string, unknown>();

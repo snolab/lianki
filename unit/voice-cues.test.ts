@@ -4,7 +4,6 @@
  * Nothing here makes a sound.
  */
 import { describe, expect, it } from "bun:test";
-import { stubGlobals } from "./support/globals";
 import { readFileSync } from "node:fs";
 import {
   CUES,
@@ -614,12 +613,14 @@ describe("the wiring", () => {
 });
 
 describe("the switches and the defaults", () => {
+  const g = globalThis as unknown as { localStorage?: unknown };
+  const had = g.localStorage;
   const withStore = (store: unknown, f: () => void) => {
-    const restore = stubGlobals({ localStorage: store });
+    g.localStorage = store;
     try {
       f();
     } finally {
-      restore();
+      g.localStorage = had;
     }
   };
 

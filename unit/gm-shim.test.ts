@@ -1,5 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
-import { globalDescriptor, restoreGlobal } from "./support/globals";
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 import { installGmShim, loadGmCache } from "../packages/ext/src/gm-shim";
 
 // Unit tests for the MV3 GM→chrome adapter (packages/ext/src/gm-shim.ts). No
@@ -30,19 +29,6 @@ function mockChrome() {
 // `loadGmCache()` clearing the cache instead — which is what it must do anyway.
 
 describe("gm-shim", () => {
-  const GLOBALS = [
-    "fetch",
-    "chrome",
-    "GM_info",
-    "GM_getValue",
-    "GM_setValue",
-    "GM_deleteValue",
-    "GM_xmlhttpRequest",
-  ];
-  const had = GLOBALS.map((name) => [name, globalDescriptor(name)] as const);
-  afterAll(() => {
-    for (const [name, desc] of had) restoreGlobal(name, desc);
-  });
   beforeEach(() => {
     delete g.GM_getValue;
     delete g.GM_setValue;

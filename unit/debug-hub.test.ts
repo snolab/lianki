@@ -1,5 +1,4 @@
-import { afterAll, describe, expect, it } from "bun:test";
-import { stubGlobals } from "./support/globals";
+import { describe, expect, it } from "bun:test";
 import { DebugHub, type Socket, type Storage, hashToken } from "@/workers/push/src/debug";
 import { rpcStub } from "./support/rpc-stub";
 import push, { type Env, KEEP_FINGERPRINTS, VersionHub } from "@/workers/push/src/index";
@@ -885,14 +884,10 @@ describe("lianki-push debug routes", () => {
 });
 
 // The Workers runtime's socket pair, for the hubs' fetch(); bun has none.
-afterAll(
-  stubGlobals({
-    WebSocketPair: class {
-      0 = new FakeSocket();
-      1 = new FakeSocket();
-    },
-  }),
-);
+(globalThis as unknown as { WebSocketPair: unknown }).WebSocketPair = class {
+  0 = new FakeSocket();
+  1 = new FakeSocket();
+};
 
 describe("DebugHub.fetch", () => {
   it("upgrades pages and controllers, and drops a closed controller from the prompt", async () => {

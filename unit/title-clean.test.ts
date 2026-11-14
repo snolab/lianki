@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { stubGlobals } from "./support/globals";
 import {
   activeTitleRules,
   cleanTitle,
@@ -383,9 +382,11 @@ describe("displayTitle", () => {
 
   it("follows this device's copy of the preference, junk included", () => {
     const store = new Map<string, string>();
-    const restore = stubGlobals({
-      localStorage: { getItem: (k: string) => store.get(k) ?? null },
-    });
+    const g = globalThis as unknown as { localStorage?: unknown };
+    const before = g.localStorage;
+    g.localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+    };
     try {
       store.set("lk:title-rules", JSON.stringify({ off: [], add: [{ host: "", pattern: "[x]" }] }));
       expect(displayTitle("[x] Foo")).toBe("Foo");
@@ -393,7 +394,7 @@ describe("displayTitle", () => {
       expect(displayTitle("[x] Foo")).toBe("[x] Foo");
       expect(displayTitle("(99+) Foo")).toBe("Foo");
     } finally {
-      restore();
+      g.localStorage = before;
     }
   });
 });

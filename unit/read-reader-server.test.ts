@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
-import { stubGlobals } from "./support/globals";
 import {
   blocksFromItems,
   GRADE_HOLD_MS,
@@ -256,13 +255,13 @@ describe("server reader data", () => {
 
   it("keeps sent-but-unacknowledged grades on the device and replays them on the next open", async () => {
     const store = new Map<string, string>();
-    const restore = stubGlobals({
-      localStorage: {
-        getItem: (k: string) => store.get(k) ?? null,
-        setItem: (k: string, v: string) => void store.set(k, v),
-        removeItem: (k: string) => void store.delete(k),
-      },
-    });
+    const g = globalThis as unknown as { localStorage?: unknown };
+    const had = g.localStorage;
+    g.localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    };
     try {
       fake({
         ...res,
@@ -296,17 +295,17 @@ describe("server reader data", () => {
       expect(calls.some((c) => c.url.endsWith("/grade"))).toBe(true);
       expect(store.has("lk:read-unsent")).toBe(false);
     } finally {
-      restore();
+      g.localStorage = had;
     }
   });
 
   it("an outbox that cannot be read or written never breaks grading", async () => {
+    const g = globalThis as unknown as { localStorage?: unknown };
+    const had = g.localStorage;
     const boom = () => {
       throw new Error("denied");
     };
-    const restore = stubGlobals({
-      localStorage: { getItem: () => "not json", setItem: boom, removeItem: boom },
-    });
+    g.localStorage = { getItem: () => "not json", setItem: boom, removeItem: boom };
     try {
       fake({
         ...res,
@@ -324,7 +323,7 @@ describe("server reader data", () => {
       await new Promise((ok) => setTimeout(ok, 5));
       expect(calls.some((c) => c.url.endsWith("/grade"))).toBe(true);
     } finally {
-      restore();
+      g.localStorage = had;
     }
   });
 

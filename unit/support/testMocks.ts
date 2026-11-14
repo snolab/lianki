@@ -83,8 +83,4 @@ mock.module("@/lib/d1", () => ({
     if (blobs) return blobs;
     throw new Error("getBlobs() is not stubbed for unit tests");
   },
-  // Every export of lib/d1, as outside a Worker request: the mock is process-wide,
-  // so a file loaded after this one that imports a missing name fails to link.
-  cfRequestProps: () => undefined,
-  workerWaitUntil: () => false,
 }));

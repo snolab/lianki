@@ -4,11 +4,6 @@
 # test runner. Rooting here keeps `bun test` to the unit suites.
 root = "unit"
 
-# No test file may leave a global behind (a document stub, a read-only
-# location, a fake localStorage): the files run in one process, in an order
-# that differs between macOS and Linux. Names the file, fails the run.
-preload = ["./unit/support/globals-guard.ts"]
-
 coverage = true
 coverageSkipTestFiles = true
 

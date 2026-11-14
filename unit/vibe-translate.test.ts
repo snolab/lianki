@@ -2,7 +2,6 @@
 // the private cache, no second charge, pause, delete. Invented text and a stubbed
 // model; no microphone, no audio.
 import { beforeEach, describe, expect, it } from "bun:test";
-import { stubGlobals } from "./support/globals";
 import { readFileSync } from "fs";
 import { deleteReadMaterial, getReadMaterialById } from "@/lib/getReadMaterialsCollection";
 import { useBackend, useBlobs, useD1 } from "./support/testMocks";
@@ -58,12 +57,14 @@ describe("which languages", () => {
 });
 
 describe("the setting", () => {
+  const g = globalThis as unknown as { localStorage?: unknown };
+  const had = g.localStorage;
   const withStored = (getItem: () => string | null) => {
-    const restore = stubGlobals({ localStorage: { getItem } });
+    g.localStorage = { getItem };
     try {
       return readShare();
     } finally {
-      restore();
+      g.localStorage = had;
     }
   };
   it("is the user's number; unset, out of range or unreadable is the default", () => {

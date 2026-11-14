@@ -1,5 +1,4 @@
-import { afterAll, describe, expect, it } from "bun:test";
-import { stubGlobals } from "./support/globals";
+import { describe, expect, it } from "bun:test";
 import push, { type Env } from "@/workers/push/src/index";
 import {
   GRANT_MAX_MS,
@@ -55,14 +54,10 @@ class FakeSocket implements Socket {
     return null;
   }
 }
-afterAll(
-  stubGlobals({
-    WebSocketPair: class {
-      0 = new FakeSocket();
-      1 = new FakeSocket();
-    },
-  }),
-);
+(globalThis as unknown as { WebSocketPair: unknown }).WebSocketPair = class {
+  0 = new FakeSocket();
+  1 = new FakeSocket();
+};
 
 function fakeStorage(): Storage & { store: Map<string, unknown>; alarm: number | null } {
   const store = new Map<string, unknown>();

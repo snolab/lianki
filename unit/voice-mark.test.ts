@@ -4,7 +4,6 @@
  * on a phone, not only as a hover title.
  */
 import { describe, expect, it } from "bun:test";
-import { stubGlobals } from "./support/globals";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -76,11 +75,9 @@ describe("VoiceMark, in a DOM", () => {
   it("a tap opens the centred bubble, which closes by itself", async () => {
     const { Window } = await import("happy-dom");
     const win = new Window();
-    const restore = stubGlobals({
-      window: win,
-      document: win.document,
-      IS_REACT_ACT_ENVIRONMENT: true,
-    });
+    const g = globalThis as Record<string, unknown>;
+    const saved = { window: g.window, document: g.document, act: g.IS_REACT_ACT_ENVIRONMENT };
+    Object.assign(g, { window: win, document: win.document, IS_REACT_ACT_ENVIRONMENT: true });
     try {
       const { act } = await import("react");
       const { createRoot } = await import("react-dom/client");
@@ -118,7 +115,11 @@ describe("VoiceMark, in a DOM", () => {
       expect(bubble()).toBeNull();
       await act(() => root.unmount());
     } finally {
-      restore();
+      Object.assign(g, {
+        window: saved.window,
+        document: saved.document,
+        IS_REACT_ACT_ENVIRONMENT: saved.act,
+      });
       await win.happyDOM.close();
     }
   });
