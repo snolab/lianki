@@ -973,7 +973,13 @@ See [Request cancellation](https://developers.cloudflare.com/workers/runtime-api
 and [Durable Object lifecycle](https://developers.cloudflare.com/durable-objects/concepts/durable-object-lifecycle/).
 
 For online duration use Cloudflare's aggregate Analytics API, including
-`durableObjectsInvocationsAdaptiveGroups`, rather than the snapshot. During
-implementation no Analytics API credential was available, so no online
-active-time numbers or savings were measured. Local cancellation proves a
-bounded failure path, not the production hibernation rate.
+`durableObjectsInvocationsAdaptiveGroups`, rather than the snapshot. A read-only baseline query of the DebugHub namespace from
+2026-11-11 14:00 UTC to 2026-11-14 14:01 UTC covered one object: about
+3,752.8 active seconds (62.5 minutes), 38.6 CPU seconds, and 480.36 GB*s of
+reported duration. Day boundaries were UTC and the first/last days partial.
+These sampled aggregates show the existing hub is not continuously active;
+they do not establish which individual quiet periods hibernated. Request
+wall-time totals include overlapping long-lived WebSockets and must not be
+used as billed active time. No before/after savings have been measured.
+Local cancellation proves a bounded failure path, not a new production
+hibernation rate.
