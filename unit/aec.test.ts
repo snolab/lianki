@@ -11,6 +11,8 @@ import {
   noteOpened,
   onOpened,
   openedAec,
+  setTalkOver,
+  talkOver,
 } from "@lianki/debug-chat/aec";
 import { MIC_SESSION_KEY } from "@lianki/debug-chat/mic-session";
 import { captureHeld, createPageAudio, pageAudio } from "@lianki/debug-chat/page-audio";
@@ -137,6 +139,46 @@ describe("aec: applyAec", () => {
       expect(await applyAec(true, failing)).toBe("next-open");
     });
   });
+
+  it("a page whose event dispatch throws still gets the switch written", async () => {
+    const store: Record<string, string> = {};
+    const g = globalThis as Record<string, unknown>;
+    const saved = g.dispatchEvent;
+    g.dispatchEvent = () => {
+      throw new Error("no window");
+    };
+    try {
+      await withStorage(store, async () => {
+        expect(await applyAec(false, {})).toBe("next-open");
+        expect(store[VOICE_AEC_KEY]).toBe("0");
+      });
+    } finally {
+      if (saved === undefined) delete g.dispatchEvent;
+      else g.dispatchEvent = saved;
+    }
+  });
+});
+
+describe("aec: talk-over (flag voice.talk-over)", () => {
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).__lkTalkOver;
+  });
+
+  it("off until set; on globalThis so every bundle on the page agrees", () => {
+    expect(talkOver()).toBe(false);
+    setTalkOver(true);
+    expect(talkOver()).toBe(true);
+    expect((globalThis as Record<string, unknown>).__lkTalkOver).toBe(true);
+    setTalkOver(false);
+    expect(talkOver()).toBe(false);
+  });
+
+  it("only a real true counts", () => {
+    (globalThis as Record<string, unknown>).__lkTalkOver = "1";
+    expect(talkOver()).toBe(false);
+    setTalkOver(1 as unknown as boolean);
+    expect(talkOver()).toBe(true);
+  });
 });
 
 describe("page audio: the half-duplex hold for word read-aloud", () => {
@@ -212,5 +254,26 @@ describe("page audio: the half-duplex hold for word read-aloud", () => {
     expect(captureHeld(false, true, false)).toBe(true);
     expect(captureHeld(false, false, false)).toBe(false);
     expect(captureHeld(true, false, false)).toBe(true);
+  });
+});
+
+describe("aec: the talk-over flag (voice.talk-over)", () => {
+  // Reached through voice.ts's default deps only when aec is off, which
+  // depended on what earlier files left behind: tested on its own.
+  it("is off until set, and set on globalThis so every bundle agrees", () => {
+    const g = globalThis as Record<string, unknown>;
+    const had = g.__lkTalkOver;
+    try {
+      delete g.__lkTalkOver;
+      expect(talkOver()).toBe(false);
+      setTalkOver(true);
+      expect(talkOver()).toBe(true);
+      expect(g.__lkTalkOver).toBe(true);
+      setTalkOver(false);
+      expect(talkOver()).toBe(false);
+    } finally {
+      if (had === undefined) delete g.__lkTalkOver;
+      else g.__lkTalkOver = had;
+    }
   });
 });

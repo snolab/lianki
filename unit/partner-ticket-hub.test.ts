@@ -4,6 +4,7 @@
  * and a ticket socket is chat-only in the owner's thread.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { DebugHub, type Socket, type Storage } from "@/workers/push/src/debug";
 import push, { type Env } from "@/workers/push/src/index";
 import { EMBED_HEADER, partnerTicket } from "@/workers/push/src/auth";
@@ -254,18 +255,16 @@ function fakeStorage(store = new Map<string, unknown>()): Storage {
 
 describe("DebugHub: an embedded page is chat-only", () => {
   // The Workers runtime's socket pair (bun has none); ours, whatever other files set.
-  const g = globalThis as { WebSocketPair?: unknown };
-  let had: unknown;
+  let restore = () => {};
   beforeEach(() => {
-    had = g.WebSocketPair;
-    g.WebSocketPair = class {
-      0 = new FakeSocket();
-      1 = new FakeSocket();
-    };
+    restore = stubGlobals({
+      WebSocketPair: class {
+        0 = new FakeSocket();
+        1 = new FakeSocket();
+      },
+    });
   });
-  afterEach(() => {
-    g.WebSocketPair = had;
-  });
+  afterEach(() => restore());
   const T = 1_800_000_000_000;
   const setup = () => {
     const sockets: FakeSocket[] = [];

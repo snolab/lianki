@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { LINE_SELECTABLE } from "@lianki/debug-chat/copy-line";
 
 describe("LINE_SELECTABLE", () => {
@@ -22,14 +23,12 @@ describe("the reader leaves the chat alone", () => {
         return s === CHAT_SELECTOR && this.sel === "chat";
       }
     }
-    const g = globalThis as { Element?: unknown };
-    const had = g.Element;
-    g.Element = El;
+    const restore = stubGlobals({ Element: El });
     try {
       expect(inChat({ composedPath: () => [new El("span"), new El("chat")] as never })).toBe(true);
       expect(inChat({ composedPath: () => [new El("span"), new El("book")] as never })).toBe(false);
     } finally {
-      g.Element = had;
+      restore();
     }
   });
 });

@@ -6,7 +6,8 @@
  * audited; the hub takes it for the owner's thread only, asks again before
  * each eval, and closes it when revoked; it reaches the box only with box:eval.
  */
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { DebugHub, type Socket, type Storage } from "@/workers/push/src/debug";
 import { BOX_HEADER, EMBED_HEADER } from "@/workers/push/src/auth";
 import push, { type Env } from "@/workers/push/src/index";
@@ -230,6 +231,15 @@ describe("using an eval token (the main Worker's check)", () => {
 });
 
 describe("the hub: an eval token's sender", () => {
+  // The Workers runtime's socket pair, for the hub's fetch(); bun has none.
+  afterAll(
+    stubGlobals({
+      WebSocketPair: class {
+        0 = new FakeSocket();
+        1 = new FakeSocket();
+      },
+    }),
+  );
   const setup = (o: { rpc?: boolean; boxEval?: "live" | "gone"; unsure?: boolean } = {}) => {
     const sockets: FakeSocket[] = [];
     const SESSIONS = {
@@ -254,11 +264,6 @@ describe("the hub: an eval token's sender", () => {
       { SESSIONS: rpcStub(SESSIONS) },
       () => t,
     );
-    const g = globalThis as { WebSocketPair?: unknown };
-    g.WebSocketPair = class {
-      0 = new FakeSocket();
-      1 = new FakeSocket();
-    };
     const sender = async (token: string) => {
       await hub.fetch(
         new Request("https://lianki.com/api/version/debug/control?label=lane", {

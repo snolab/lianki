@@ -2,7 +2,8 @@
 // and ambient text never leaving for anything but its own transcript. Every line
 // here is invented text. No microphone, no audio: a fake VAD drives the real mic
 // core, and a fake Mac answers.
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
+import { stubGlobals } from "./support/globals";
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
@@ -1111,7 +1112,11 @@ describe("ambient text is not a command", () => {
 });
 
 describe("screen context on an ordinary page, for contrast", () => {
-  (globalThis as { NodeFilter?: unknown }).NodeFilter ??= { SHOW_TEXT: 4 };
+  let restore = () => {};
+  beforeAll(() => {
+    restore = stubGlobals({ NodeFilter: { SHOW_TEXT: 4 } });
+  });
+  afterAll(() => restore());
   const fakeDoc = (privatePage: boolean) => {
     const parent = { closest: () => null, checkVisibility: () => true };
     const nodes = [{ textContent: "  invented   words on screen ", parentElement: parent }];
