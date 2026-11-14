@@ -296,9 +296,18 @@ no-referrer`, and a `__Host-lk_preview` cookie: HttpOnly, Secure,
   a dev page load is a hundred-odd requests (Next's dev chunks, HMR), so the
   whole host under that rule would block the owner's own pages. The gate's
   limits above cover `/` and everything else.
-- Upstream, Host/Origin/Referer become the dev server's own origin; the
-  gate cookie, `Authorization`, `cf-*`, `x-forwarded-*`, Tailscale and the
-  guard's secret headers are removed.
+- Upstream app requests retain the authenticated public Host and exact
+  matching browser Origin. The guard drops incoming `Forwarded` and all
+  `X-Forwarded-*` headers, then stamps forwarding metadata from its configured
+  listener origin. A mismatched Origin stays invalid. HTTP LAN requests use
+  loopback upstream only after validating the original Host and exact Origin;
+  missing Origin or cross-site fetch metadata cannot become same-origin.
+  The two permitted Better Auth routes use its configured trusted origin
+  after the same validation, with invalid or missing Origin never falling
+  back to Referer. Public tunnel sign-out still ends only the tunnel session.
+  The gate cookie, `Authorization`, `cf-*`, Tailscale and the guard's secret
+  headers are removed. The launcher supplies the exact public hostname to
+  Next's development-only HMR allowlist; production origins are unchanged.
 
 **The same page on lianki.com itself** (2026-11-05): with the gate running,
 `bun scripts/dev/live-view.ts on --page preview` prints

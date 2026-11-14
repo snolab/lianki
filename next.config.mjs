@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { withIntlayer } from "next-intlayer/server";
+import { devOrigins } from "./lib/build/dev-origins.mjs";
 
 /**
  * Code calling useIntlayer("key") or getIntlayer("key") imports that one
@@ -16,10 +17,7 @@ const nextConfig = {
   // The whole-page dev server (docs/dev-whole-page.md) is opened on its LAN
   // address, and a friend's dev box (devbox/README.md) on its tunnel host;
   // next dev refuses dev assets to other origins unless listed.
-  ...((process.env.LIANKI_DEV_WHOLE_PAGE === "1" || process.env.LIANKI_DEVBOX === "1") &&
-  process.env.BETTER_AUTH_BASE_URL
-    ? { allowedDevOrigins: [new URL(process.env.BETTER_AUTH_BASE_URL).hostname] }
-    : {}),
+  ...(devOrigins(process.env).length ? { allowedDevOrigins: devOrigins(process.env) } : {}),
   // Which build this is, inlined into server and client alike: a page whose
   // id differs from the one lianki-push announces is out of date (workers/push;
   // CI publishes this same value after each deploy).
