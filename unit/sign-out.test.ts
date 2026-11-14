@@ -1,7 +1,12 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { stubGlobals } from "./support/globals";
 import { readFileSync } from "node:fs";
 import { SIGN_OUT_KEEP_CACHES, SIGN_OUT_PATH, setSignOutSession, signOut } from "@/lib/sign-out";
+import { thawChatCache } from "@/lib/chat-cache";
+
+// signOut's browser default freezes the chat cache for the rest of the page; in
+// one test process that page is every later file (unit/chat-cache.test.ts).
+afterEach(() => thawChatCache());
 
 function env(opts: { fail?: boolean; status?: number } = {}) {
   const calls: { url: string; init?: RequestInit }[] = [];
