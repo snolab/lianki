@@ -26,7 +26,8 @@ export const OWNER_REPLY_DELAY_MAX = 120_000;
  * its default. `{n}` = how many are present besides Li, `{names}` = who.
  */
 export const ROLL_CALL_REPLY_KEY = "partner.rollCallReply";
-export const ROLL_CALL_REPLY_DEFAULT = "Li 在，这里 {n} 位：{names}";
+/** Only Li's own presence: the owner wants every lane to answer for itself (2026-11-15 14:2x JST "不要别人代答"). */
+export const ROLL_CALL_REPLY_DEFAULT = "Li 在";
 
 /**
  * DeepSeek on Cloudflare Workers AI (verified listed by `wrangler ai models`,

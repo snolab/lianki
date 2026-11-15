@@ -1022,11 +1022,11 @@ export const CONFIG = {
   }),
   "partner.rollCallReply": {
     default: ROLL_CALL_REPLY_DEFAULT as string,
-    schema: z.string().min(1).max(200).includes("{names}"),
+    schema: z.string().min(1).max(200),
     group: "chat",
     audience: "server",
     description:
-      "你在自己的线程里点名 / 报数时，Li 立刻（不调用模型）回的话。{n} = 除 Li 外在场几位，{names} = 他们的名字（用「、」隔开，实时监听的在前）。没有别人在场时只说第一句（逗号前那段，比如「Li 在」）。",
+      "你在自己的线程里点名 / 报数时，Li 立刻（不调用模型）回的话。默认只报自己「Li 在」（你要求每个人亲自回答，不代答）。可选占位符：{n} = 除 Li 外在场几位，{names} = 他们的名字（「、」隔开，实时监听的在前）；用了 {names} 而没人在场时只说逗号前那段。",
   },
   // The Learning Partner AI's caps (docs/partner-ai.md, "Caps"): read by the
   // debug hub over DebugSessions.config.

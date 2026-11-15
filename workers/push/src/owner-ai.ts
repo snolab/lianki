@@ -65,8 +65,16 @@ export type OwnerAiDeps<P> = {
  * wrote 报数 for him (13:1x JST: "小朋友们全体都有包书一" → 包书; 报树).
  */
 export const ROLL_CALL = /报数|点名|包书|报树|全体都有|都有报/;
+/** The 全体 forms count at any length; the bare words only in a short line (owner, 2026-11-15: "我点名的时候…" is a rule, not a roll call). */
+export const ROLL_CALL_ALL = /全体都有|都有报|全体.{0,6}(报数|点名|包书|报树)/;
+export const ROLL_CALL_MAX = 14;
+/** A line that ENDS with the word ("@小克 @coco 报数", "大家报树。") is a roll call at any length. */
+export const ROLL_CALL_END = /(报数|点名|包书|报树|报树一|包书一)[。！!．.\s]*$/;
 export function isRollCall(text: string): boolean {
-  return ROLL_CALL.test(text);
+  const t = text.trim();
+  if (ROLL_CALL_ALL.test(t)) return true;
+  if (ROLL_CALL_END.test(t)) return true;
+  return t.length <= ROLL_CALL_MAX && ROLL_CALL.test(t);
 }
 
 export class OwnerAi<P> {
