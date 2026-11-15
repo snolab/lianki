@@ -165,7 +165,7 @@ describe("config", () => {
       audience: "public",
     });
     expect(ETA_TICKER_SEC).toBe(6);
-    expect(ETA_TICKER_KEEP).toBe(5);
+    expect(ETA_TICKER_KEEP).toBe(1);
   });
 });
 

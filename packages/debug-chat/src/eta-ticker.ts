@@ -16,7 +16,9 @@ import type { ChatStrings } from "./wire";
 
 /** Defaults of the config keys chat.etaTickerSec / chat.etaTickerKeep (lib/config.ts). */
 export const ETA_TICKER_SEC = 6;
-export const ETA_TICKER_KEEP = 5;
+// 1 (owner, 2026-11-15 22:32 JST): no carousel of past changes — the bar shows the
+// change an agent just made, for a few seconds, then the summary; quiet otherwise.
+export const ETA_TICKER_KEEP = 1;
 
 export type TickerKind = "new" | "done" | "early" | "later" | "blocked" | "waiting" | "late";
 

@@ -108,6 +108,10 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
       "jmy",
       "Jmy",
       "杰明",
+      // STT 2026-11-15 22:3x JST: "建明建明在吗？"
+      "建明",
+      "剑明",
+      "健明",
       "ajy",
       "aji",
       "反重力",

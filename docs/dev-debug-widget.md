@@ -2450,7 +2450,7 @@ its mark (`Icon` plus, check, sparkle, an arrow, pause; the red clock for
 late) and its string (`etaNews*`, every locale with its context line), with
 the lane that made it (the node's last ETA event's `by`) in front. One item
 shows for `chat.etaTickerSec` seconds (default 6), the most recent
-`chat.etaTickerKeep` (default 5) in turn, newest first, then the summary is
+`chat.etaTickerKeep` (default 1: only the change an agent just made, no carousel — owner, 2026-11-15 22:32 JST) in turn, newest first, then the summary is
 back; a new change starts the pass over (`tickerPush` / `tickerShown`).
 Config keys, public (`publicCfg` in DebugEval → DebugChat `etaTicker`). A new
 change lights the bar once in its gold (`ETA_FLASH_CSS`, an overlay fading
