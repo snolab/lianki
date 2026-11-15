@@ -230,7 +230,7 @@ decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
    re-reads `ay ls --json --local`, plus a slow re-list every
    `lanes.relistSec` (60 s) in case the stream is silent.
 2. Maps each alive agent to a repo: the first part of its cwd on the
-   `lanes.repos` whitelist (lianki, agent-yes, liagent, rechrome, otoji, rgui).
+   `lanes.repos` whitelist (lianki, agent-yes, liagent, rechrome, otoji, rgui, mimiai).
 3. Names it: the lane a running `lane-listen --deliver <pid>` already serves
    (coco, 杰咪 today), else `lanes.agents` (the end of its cwd + its cli),
    else `<repo>-<leaf>`, stable across restarts so one token keeps serving
