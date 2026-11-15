@@ -19,6 +19,12 @@ export const ETA_TICKER_SEC = 6;
 // 1 (owner, 2026-11-15 22:32 JST): no carousel of past changes — the bar shows the
 // change an agent just made, for a few seconds, then the summary; quiet otherwise.
 export const ETA_TICKER_KEEP = 1;
+/**
+ * Default of chat.etaBarCycle: how many open tasks the resting bar rolls
+ * through, by deadline (eta.ts deadlinePick). 1 (owner, 2026-11-15 22:58 JST):
+ * only the one due first, overdue or not.
+ */
+export const ETA_BAR_CYCLE = 1;
 
 export type TickerKind = "new" | "done" | "early" | "later" | "blocked" | "waiting" | "late";
 
@@ -155,4 +161,5 @@ export function tickerText(i: TickerItem, s: TickerText): string {
     .replace("{t}", compactTime(i.deltaMs ?? 0));
 }
 
-export type TickerConfig = { sec: number; keep: number };
+/** `cycle`: chat.etaBarCycle (ETA_BAR_CYCLE when absent); it rolls every `sec`. */
+export type TickerConfig = { sec: number; keep: number; cycle?: number };

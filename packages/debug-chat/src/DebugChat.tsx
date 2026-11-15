@@ -5750,6 +5750,8 @@ export function DebugChat({
                     onOpen={() => setGanttOpen(true)}
                     compact={!open || compact}
                     news={etaNews}
+                    cycle={etaTicker?.cycle}
+                    cycleSec={etaTicker?.sec}
                   />
                 </div>
               )}
@@ -5763,6 +5765,8 @@ export function DebugChat({
               onOpen={() => setGanttOpen(true)}
               compact={!open || compact}
               news={etaNews}
+              cycle={etaTicker?.cycle}
+              cycleSec={etaTicker?.sec}
             />
           )}
         </div>

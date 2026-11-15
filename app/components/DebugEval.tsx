@@ -1511,6 +1511,7 @@ export function DebugEval({
             etaTicker={{
               sec: publicCfg("chat.etaTickerSec"),
               keep: publicCfg("chat.etaTickerKeep"),
+              cycle: publicCfg("chat.etaBarCycle"),
             }}
             onReadSeq={(seq) => {
               const thread =

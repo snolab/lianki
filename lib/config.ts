@@ -51,7 +51,7 @@ import {
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
 import { PHONETIC_MAX_NEAR_DEFAULT, PHONETIC_MAX_NEAR_MAX } from "@lianki/debug-chat/lane-phonetic";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
-import { ETA_TICKER_KEEP, ETA_TICKER_SEC } from "@lianki/debug-chat/eta-ticker";
+import { ETA_BAR_CYCLE, ETA_TICKER_KEEP, ETA_TICKER_SEC } from "@lianki/debug-chat/eta-ticker";
 import { MERGE_REOPEN_DEFAULT_SEC, MERGE_REOPEN_MAX_SEC } from "@lianki/debug-chat/voice-tune";
 import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
 import { VAD_MAX, VAD_MIN, VAD_THRESHOLDS } from "@lianki/debug-chat/adaptive";
@@ -876,7 +876,7 @@ export const CONFIG = {
     group: "chat",
     audience: "public",
     description:
-      "聊天里的任务进度条：agent 改了甘特图上的任务（新增、完成、提前完成、推迟、卡住、等你、到点）时，进度条中间播报这条变化，每条显示几秒，之后回到“23 个任务 · 1.4H · 99%”的汇总。",
+      "聊天里的任务进度条：agent 改了甘特图上的任务（新增、完成、提前完成、推迟、卡住、等你、到点）时，进度条中间播报这条变化，每条显示几秒，之后回到截止最早的任务（chat.etaBarCycle）。",
   }),
   "chat.etaTickerKeep": int({
     default: ETA_TICKER_KEEP,
@@ -886,7 +886,17 @@ export const CONFIG = {
     group: "chat",
     audience: "public",
     description:
-      "任务进度条一次播报最近几条变化：默认 1 = 只在 agent 刚更新了甘特图时闪一下并显示那一条，之后回到汇总，没有变化就安静；设大于 1 则轮流显示最近几条（最新的在前）。你自己在页面上做的修改不播报。",
+      "任务进度条一次播报最近几条变化：默认 1 = 只在 agent 刚更新了甘特图时闪一下并显示那一条，之后回到截止最早的任务，没有变化就安静；设大于 1 则轮流显示最近几条（最新的在前）。你自己在页面上做的修改不播报。",
+  }),
+  "chat.etaBarCycle": int({
+    default: ETA_BAR_CYCLE,
+    min: 1,
+    max: 10,
+    unit: "items",
+    group: "chat",
+    audience: "public",
+    description:
+      "任务进度条平时显示截止时间最早的那个未完成任务：名字和“超时 20M”或“还剩 35M”。默认 1 = 只显示最早的那一条；设大于 1 则按截止时间顺序轮流显示最早的几条，每条停留 chat.etaTickerSec 秒。有新变化时先播报变化，之后回到这里；“23 个任务 · 1.4H · 99%”的汇总在悬停提示里。",
   }),
   "chat.gripHoldMs": int({
     default: 500,

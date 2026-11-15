@@ -8,6 +8,7 @@ import { describe, expect, it } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { EtaTask } from "@lianki/debug-chat/eta";
 import {
+  ETA_BAR_CYCLE,
   ETA_TICKER_KEEP,
   ETA_TICKER_SEC,
   TICKER_EMPTY,
@@ -20,7 +21,14 @@ import {
   tickerText,
 } from "@lianki/debug-chat/eta-ticker";
 import { useEtaTicker } from "@lianki/debug-chat/eta-ticker-hook";
-import { ETA_FLASH_CSS, EtaBar } from "@lianki/debug-chat/EtaBar";
+import {
+  ETA_FLASH_CSS,
+  EtaBar,
+  deadlineParts,
+  deadlineText,
+  useRollStep,
+} from "@lianki/debug-chat/EtaBar";
+import { byDeadline, deadlinePick } from "@lianki/debug-chat/eta";
 import { CHAT_STRINGS_EN } from "@lianki/debug-chat/wire";
 import { CONFIG } from "@/lib/config";
 import { stubGlobals } from "./support/globals";
@@ -164,6 +172,13 @@ describe("config", () => {
       default: ETA_TICKER_KEEP,
       audience: "public",
     });
+    expect(CONFIG["chat.etaBarCycle"]).toMatchObject({
+      default: ETA_BAR_CYCLE,
+      min: 1,
+      max: 10,
+      audience: "public",
+    });
+    expect(ETA_BAR_CYCLE).toBe(1);
     expect(ETA_TICKER_SEC).toBe(6);
     expect(ETA_TICKER_KEEP).toBe(1);
   });
@@ -198,10 +213,12 @@ describe("the bar with an announcement", () => {
     expect(out).toContain('data-testid="debug-chat-eta-news"');
     expect(out).toContain("codex");
     expect(out).toContain("20M later: a");
-    expect(out).toContain('aria-label="codex: 20M later: a · 25%');
+    expect(out).toContain('aria-label="codex: 20M later: a — 2 tasks · 25M · next in 5M · 25%');
     expect(out).toContain('data-testid="debug-chat-eta-flash"');
     expect(out).toContain('data-kind="later"');
-    expect(out).not.toContain("2 tasks");
+    // The change has priority over the resting deadline text.
+    expect(out).not.toContain("debug-chat-eta-deadline");
+    expect(out).not.toContain("5M left");
     // The percent stays: nothing moves.
     expect(out).toContain("25%</span>");
   });
@@ -214,8 +231,9 @@ describe("the bar with an announcement", () => {
     expect(late).toContain("ETA reached: a");
     expect(late).not.toContain("debug-chat-eta-news-icon");
   });
-  it("no announcement, or the folded chat: the summary", () => {
-    expect(bar(null)).toContain("2 tasks");
+  it("no announcement: the earliest deadline; the folded chat: only a time", () => {
+    expect(bar(null)).toContain('data-testid="debug-chat-eta-deadline"');
+    expect(bar(null)).toContain('title="2 tasks · 25M · next in 5M · 25%');
     expect(bar(null)).not.toContain("debug-chat-eta-flash");
     const folded = bar({ item: { key: "n", kind: "new", id: "/a", title: "a" }, since: 1 }, true);
     expect(folded).not.toContain("debug-chat-eta-news");
@@ -289,5 +307,144 @@ describe("icons the ticker draws", () => {
     );
     expect(renderToStaticMarkup(<TreeIcon />)).toContain("<rect");
     expect(renderToStaticMarkup(<HistoryIcon />)).toContain("<path");
+  });
+});
+
+describe("the resting text: the earliest deadline", () => {
+  const late = task({ id: "/late", title: "Box ETA: on the box", at: 10 * MIN });
+  const soon = task({ id: "/soon", title: "Docs", at: 40 * MIN });
+  const later = task({ id: "/later", title: "Ship", at: 90 * MIN });
+  const done = task({ id: "/done", title: "Old", at: 1 * MIN, done: true, doneAt: 0 });
+  const zh = {
+    ...CHAT_STRINGS_EN,
+    etaDeadlineLate: "{task} · 超时 {dur}",
+    etaDeadlineLeft: "{task} · 还剩 {dur}",
+  };
+  it("open tasks by deadline, done ones left out, overdue first; a tie by id", () => {
+    expect(byDeadline([later, done, soon, late]).map((t) => t.id)).toEqual([
+      "/late",
+      "/soon",
+      "/later",
+    ]);
+    const a = task({ id: "/a", at: 5 * MIN });
+    const b = task({ id: "/b", at: 5 * MIN });
+    expect(byDeadline([b, a]).map((t) => t.id)).toEqual(["/a", "/b"]);
+  });
+  it("the pick: the earliest; none open: null", () => {
+    expect(deadlinePick([later, soon, late, done], 0, 1)?.id).toBe("/late");
+    expect(deadlinePick([later, soon, late], 5, 1)?.id).toBe("/late");
+    expect(deadlinePick([done], 0, 1)).toBeNull();
+    expect(deadlinePick([], 0, 3)).toBeNull();
+  });
+  it("the cycle cap: the n earliest in turn, never more than are open", () => {
+    const all = [later, soon, late];
+    expect([0, 1, 2, 3].map((i) => deadlinePick(all, i, 2)?.id)).toEqual([
+      "/late",
+      "/soon",
+      "/late",
+      "/soon",
+    ]);
+    expect([0, 1, 2, 3].map((i) => deadlinePick(all, i, 10)?.id)).toEqual([
+      "/late",
+      "/soon",
+      "/later",
+      "/late",
+    ]);
+    // A bad cap is 1; a negative step still lands in range.
+    expect(deadlinePick(all, 1, 0)?.id).toBe("/late");
+    expect(deadlinePick(all, -1, 2)?.id).toBe("/soon");
+  });
+  it("overdue vs time left, the name only, in the bar's time", () => {
+    expect(deadlineText(late, 90 * MIN, zh)).toBe("Box ETA · 超时 1.3H");
+    expect(deadlineText(soon, 5 * MIN, zh)).toBe("Docs · 还剩 35M");
+    expect(deadlineText(late, 30 * MIN, CHAT_STRINGS_EN)).toBe("Box ETA · 20M over");
+    expect(deadlineText(soon, 5 * MIN, CHAT_STRINGS_EN)).toBe("Docs · 35M left");
+    // Exactly at its ETA: overdue, "0M".
+    expect(deadlineParts(soon, 40 * MIN, zh)).toMatchObject({ late: true, dur: "0M" });
+  });
+  const draw = (tasks: EtaTask[], now: number, strings = zh) =>
+    renderToStaticMarkup(<EtaBar tasks={tasks} now={now} strings={strings} onOpen={() => {}} />);
+  it("the bar: overdue in the late colour, the summary in the tooltip", () => {
+    const out = draw([soon, late, done], 30 * MIN);
+    expect(out).toContain('data-deadline="/late"');
+    expect(out).toContain(
+      'data-testid="debug-chat-eta-deadline" class="min-w-0 truncate">Box ETA<',
+    );
+    expect(out).toMatch(/data-late="true"[^>]*color:light-dark\(oklch\(0.47 0.17 27\)[^>]*>20M</);
+    expect(out).toMatch(/color:light-dark\(oklch\(0.47 0.17 27\)[^>]*>超时</);
+    expect(out).toContain('aria-label="Box ETA · 超时 20M — 2 tasks · 10M · 80%');
+    expect(out).toContain('title="2 tasks · 10M · 80% — ');
+    const left = draw([soon], 5 * MIN);
+    expect(left).toContain(">还剩</span>");
+    expect(left).not.toContain("data-late");
+    // A template with the time first, no separator: drawn in its order.
+    const first = draw([soon], 5 * MIN, { ...zh, etaDeadlineLeft: "{dur} — {task}" });
+    expect(first.indexOf(">35M<")).toBeLessThan(first.indexOf(">Docs<"));
+  });
+  it("none open: today's summary", () => {
+    const out = draw([done], 0);
+    expect(out).not.toContain("debug-chat-eta-deadline");
+    expect(out).not.toContain("data-deadline");
+    expect(out).toContain("Old");
+  });
+  it("the roll: steps every few seconds with more than one, still otherwise; the ticker first", async () => {
+    const { Window } = await import("happy-dom");
+    const win = new Window();
+    const restore = stubGlobals({
+      window: win,
+      document: win.document,
+      IS_REACT_ACT_ENVIRONMENT: true,
+    });
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const host = win.document.createElement("div");
+    win.document.body.appendChild(host);
+    const root = createRoot(host as never);
+    const shown = () =>
+      host.querySelector("[data-testid=debug-chat-eta-bar]")?.getAttribute("data-deadline");
+    const news = () => host.querySelector("[data-testid=debug-chat-eta-news]")?.textContent;
+    const now = 5 * MIN;
+    const el = (cycle: number, n: Parameters<typeof EtaBar>[0]["news"] = null) => (
+      <EtaBar
+        tasks={[later, soon, late]}
+        now={now}
+        strings={zh}
+        onOpen={() => {}}
+        cycle={cycle}
+        cycleSec={0.04}
+        news={n}
+      />
+    );
+    try {
+      await act(() => root.render(el(1)));
+      expect(shown()).toBe("/late");
+      await act(() => Bun.sleep(100));
+      expect(shown()).toBe("/late");
+      await act(() => root.render(el(2)));
+      const seen = new Set<string>();
+      for (let i = 0; i < 6; i++) {
+        await act(() => Bun.sleep(25));
+        seen.add(shown()!);
+      }
+      expect([...seen].sort()).toEqual(["/late", "/soon"]);
+      // A fresh change replaces the text; when it is gone, the deadline is back.
+      await act(() =>
+        root.render(el(2, { item: { key: "n", kind: "new", id: "/x", title: "X: y" }, since: 1 })),
+      );
+      expect(news()).toBe("new: X");
+      await act(() => root.render(el(1)));
+      expect(news()).toBeUndefined();
+      expect(shown()).toBe("/late");
+      await act(() => root.unmount());
+    } finally {
+      restore();
+    }
+  });
+  it("useRollStep: 0 with one task or no seconds", () => {
+    function P({ n, ms }: { n: number; ms: number }) {
+      return <i>{useRollStep(n, ms)}</i>;
+    }
+    expect(renderToStaticMarkup(<P n={1} ms={1000} />)).toBe("<i>0</i>");
+    expect(renderToStaticMarkup(<P n={3} ms={0} />)).toBe("<i>0</i>");
   });
 });
