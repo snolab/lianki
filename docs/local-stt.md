@@ -442,6 +442,51 @@ rolling decode's stretches read it as 「Yeah」「嗯」):
 
 The rolling decode's own language spans (`LIANKI_STT_LANG_SPANS`) are gone.
 
+## Long finals in chunks
+
+The owner, 2026-11-16 02:46 JST: he spoke 17.2 s, the dashed partial line
+showed the whole sentence, and the final replaced it with 17 characters.
+SenseVoice's one pass over a long utterance can drop most of it: on that clip
+the whole pass read 17 characters, while prefixes of 8–16.5 s read 41–74 and
+Whisper large-v3-turbo read 67. It is not the language switch (one language)
+nor a repetition guard; the partials decode the same audio with the same model,
+only shorter.
+
+So a final longer than `LIANKI_STT_FINAL_CHUNK_S` (default **12 s**; 0: never)
+is read in **chunks cut in the middle of the silences between Silero's speech
+runs** (`switch.chunk_spans`, never inside a run; as few cuts as keep each
+chunk within 12 s; the chunks cover the whole clip). The runs are the switch
+Tracker's, already found while he spoke; without a Tracker (`LIANKI_STT_SWITCH=0`,
+"Linky" finals) Silero reads the clip once at the final (`switch.speech_runs`,
+~3 ms per audio second). Each chunk goes through the same final pass, in
+parallel on the decode pool, and the texts are joined (`join_spans`); `lang` is
+the longest chunk's. The final carries `"chunks":N` and the log line `, N
+chunks`. One run (no silence to cut at), no Silero model, or no chunk that reads
+as anything: the whole pass stands. A switched utterance is read stretch by
+stretch as before. On the 17.2 s clip: 17 characters before, 67 after (two
+chunks, cut at 10.0 s), decode 246 ms.
+
+## A final shorter than its partials
+
+A guard behind the chunks: when the final of an utterance of at least
+`LIANKI_STT_FINAL_GUARD_MIN_S` (default 6 s) has fewer than
+`LIANKI_STT_FINAL_MIN_RATIO` (default **0.6**; 0: off) of the last partial's
+characters (spaces at the ends not counted), the read dropped words rather than
+corrected them: the **last partial's text is the final**, marked
+`"partialKept":true` (its speaker proof is signed over that text), and the log
+line says `partial kept (F < 0.6 x P chars)`. Not after "Linky" (the partials
+read the whole audio, the final only what follows), nor on a split final or an
+enrolment sentence.
+
+The Mac's Whisper then re-reads that utterance on its own, through the same
+serial worker and the same one-at-a-time slot as a page's recheck ("On-demand
+Whisper recheck"): `{"t":"recheck_result","rid":"final-<id>","final":<id>,
+"partialKept":true,"engine":"mlx-whisper","ok":true,"text":…,"lang":…,
+"audioMs":…}`. It is skipped (logged) while another recheck runs, while
+filtering or enrolling, and on a guest socket. The page does not ask for it, so
+today it drops the answer (`local-stt.ts` resolves only its own `rid`s);
+using it to amend the line is the page's next step. Tests: `test_long_final.py`.
+
 ## Protocol
 
 One socket per page; utterances one after another (`server.py` docstring):

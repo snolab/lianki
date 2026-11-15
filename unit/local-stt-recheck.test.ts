@@ -16,4 +16,13 @@ describe.skipIf(!existsSync(PY))("local STT ring buffer and recheck (python)", (
     expect(out).toMatch(/\nOK/);
     expect(r.exitCode).toBe(0);
   }, 60_000);
+
+  it("reads long finals in chunks and keeps a much longer partial", () => {
+    const r = Bun.spawnSync(
+      [PY, "-I", resolve(import.meta.dir, "../scripts/local-stt/test_long_final.py")],
+      { env: { ...process.env, OMP_NUM_THREADS: "1" }, stdout: "pipe", stderr: "pipe" },
+    );
+    expect(r.stderr.toString()).toMatch(/\nOK/);
+    expect(r.exitCode).toBe(0);
+  }, 60_000);
 });

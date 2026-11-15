@@ -63,6 +63,60 @@ def plan(runs: list[tuple[int, int, str, float]], min_run_s: float = MIN_RUN_S,
     return [tuple(s) for s in out]
 
 
+#: A final longer than this is read in chunks cut at the VAD's silences (env
+#: LIANKI_STT_FINAL_CHUNK_S; 0: never). SenseVoice's whole-utterance pass on long audio
+#: can drop most of it: a 17.2 s clip (2026-11-16) read as 17 characters whole, 67 in
+#: two chunks, while every partial up to 16.5 s had read the sentence.
+FINAL_CHUNK_S = 12.0
+
+
+def chunk_spans(runs: list[tuple[int, int]], total: int, max_s: float = FINAL_CHUNK_S) -> list[tuple[int, int]]:
+    """
+    A long final's chunks, (start, end) in samples, covering [0, total) with no gap: cut
+    only in the middle of the silence between two speech runs (never inside one), with
+    as few cuts as keep each chunk within `max_s` (a run longer than that stays whole).
+    One chunk back means no cut: the whole decode stands.
+    """
+    if total <= 0:
+        return []
+    limit = max_s * RATE
+    runs = sorted((max(0, int(a)), min(total, int(b))) for a, b in runs if b > a)
+    cuts = [(b0 + a1) // 2 for (_, b0), (a1, _) in zip(runs, runs[1:]) if a1 > b0]
+    out: list[tuple[int, int]] = []
+    start, last = 0, None
+    for c in cuts:
+        if c - start > limit and last is not None:
+            out.append((start, last))
+            start = last
+        last = c if c > start else last
+    if total - start > limit and last is not None and last > start:
+        out.append((start, last))
+        start = last
+    out.append((start, total))
+    return out
+
+
+def speech_runs(vad_model: str, audio: np.ndarray, min_silence_s: float = 0.25,
+                min_speech_s: float = 0.25, threshold: float = 0.5) -> list[tuple[int, int]]:
+    """Silero's speech runs in a whole clip, (start, end) in samples (a final with no Tracker)."""
+    vad, win = _vad(vad_model, min_silence_s, min_speech_s, threshold)
+    x = np.asarray(audio, dtype=np.float32)
+    out = []
+    for i in range(0, len(x), win):
+        w = x[i:i + win]
+        if len(w) < win:
+            w = np.concatenate([w, np.zeros(win - len(w), dtype=np.float32)])
+        vad.accept_waveform(w)
+        while not vad.empty():
+            out.append((vad.front.start, vad.front.start + len(vad.front.samples)))
+            vad.pop()
+    vad.flush()
+    while not vad.empty():
+        out.append((vad.front.start, vad.front.start + len(vad.front.samples)))
+        vad.pop()
+    return out
+
+
 def _vad(model: str, min_silence_s: float, min_speech_s: float, threshold: float):
     import sherpa_onnx
 

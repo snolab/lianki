@@ -114,6 +114,18 @@ class SenseVoice:
 
         return Tracker(vad, self.picker.lang_probs, self.side)
 
+    def speech_runs(self, audio: np.ndarray) -> list[tuple[int, int]] | None:
+        """
+        Silero's speech runs in a whole final, (start, end) in samples, where a long one may
+        be cut (server.py `decode_chunked`); None: no Silero model, so no cut.
+        """
+        vad = os.path.join(MODELS, "silero_vad.onnx")
+        if not os.path.exists(vad):
+            return None
+        from switch import speech_runs
+
+        return speech_runs(vad, audio)
+
     def read_stretches(self, audio: np.ndarray, stretches: list[tuple[int, int, str]]) -> list[tuple[str, str]]:
         """
         A switched utterance read stretch by stretch (switch.py plan): each stretch holds

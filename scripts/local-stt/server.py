@@ -39,6 +39,11 @@ Protocol (one socket per page, utterances one after another):
                     "audioMs":…,"endToFinalMs":…[,"langAuto":…]}
                    (langAuto: on a short utterance whose auto-detected language
                    lost to a forced ja/zh reading; engines.LangPicker)
+                   final gains "chunks":N when a long one was read in N chunks cut at silences,
+                    and "partialKept":true when its read was much shorter than the last partial's
+                    and the partial's text stands (docs/local-stt.md, "Long finals in chunks",
+                    "A final shorter than its partials"); then Whisper re-reads it unasked:
+                   {"t":"recheck_result","rid":"final-<id>","final":N,"partialKept":true,…}
                    {"t":"recheck_result","rid":R,"engine":"mlx-whisper","ok":true,"text":…}
                    (auto: also "auto":true,"run":RUN,"lang":…,"audioMs":…; ok:false + error on failure)
                    {"t":"error","id":N,"error":…}
@@ -102,7 +107,7 @@ from ticket import (  # noqa: E402
 import voiceprint as VP  # noqa: E402
 from engines import simplified, tidy  # noqa: E402
 from rolling import CTX_S, Rolling, join_spans  # noqa: E402
-from switch import plan, runs_of  # noqa: E402
+from switch import FINAL_CHUNK_S as FINAL_CHUNK_DEFAULT, chunk_spans, plan, runs_of  # noqa: E402
 from recordings import RecordingStore, RecordingWorker, TTL_S  # noqa: E402
 
 #: A partial every this much new audio (--partial-step)… The owner's bar: the next feedback
@@ -116,6 +121,21 @@ PARTIAL_MIN_S = 0.1
 ROLLING = os.environ.get("LIANKI_STT_ROLLING", "0") == "1"
 #: Longest utterance kept (the mic cuts at 30 s).
 MAX_S = 40
+#: A long final is read in chunks cut at silences (switch.chunk_spans; env
+#: LIANKI_STT_FINAL_CHUNK_S, 0: never): SenseVoice's one pass over 17 s dropped most of it.
+FINAL_CHUNK_S = float(os.environ.get("LIANKI_STT_FINAL_CHUNK_S", str(FINAL_CHUNK_DEFAULT)))
+#: The partial kept (docs/local-stt.md, "A final shorter than its partials"): a final of at
+#: least FINAL_GUARD_MIN_S of audio whose text has fewer than this share of the last partial's
+#: characters is a dropped read, not a correction (env LIANKI_STT_FINAL_MIN_RATIO; 0: off).
+FINAL_MIN_RATIO = float(os.environ.get("LIANKI_STT_FINAL_MIN_RATIO", "0.6"))
+FINAL_GUARD_MIN_S = float(os.environ.get("LIANKI_STT_FINAL_GUARD_MIN_S", "6"))
+
+
+def keep_partial(final_text: str, partial_text: str, audio_s: float,
+                 ratio: float = FINAL_MIN_RATIO, min_s: float = FINAL_GUARD_MIN_S) -> bool:
+    """True: the final read much less than the last partial of a long utterance, so the partial stands."""
+    f, p = len(final_text.strip()), len(partial_text.strip())
+    return ratio > 0 and audio_s >= min_s and p > 0 and f < ratio * p
 #: Seconds of received audio each socket keeps in RAM for a Whisper recheck (--recheck-max-sec,
 #: env LIANKI_STT_RECHECK_MAX_SEC; config stt.recheckMaxSec is the page's side of the same bound).
 RECHECK_MAX_S = 60
@@ -196,6 +216,8 @@ class Utterance:
         self.switched: list[str] | None = None
         #: The page said something was playing while he spoke (end's "playback"): never learned from.
         self.playback = False
+        #: How many chunks its final was read in (decode_chunked); 0: one pass.
+        self.chunked = 0
 
     def audio(self) -> np.ndarray:
         parts = ([self.pre] if self.pre is not None else []) + self.chunks
@@ -320,6 +342,10 @@ class Server:
         self.pool = ThreadPoolExecutor(max_workers=workers)
         self.partial_step_s = PARTIAL_STEP_S
         self.partial_min_s = PARTIAL_MIN_S
+        #: Finals longer than this are read in chunks (0: never); the partial-kept guard's bounds.
+        self.final_chunk_s = FINAL_CHUNK_S
+        self.final_min_ratio = FINAL_MIN_RATIO
+        self.final_guard_min_s = FINAL_GUARD_MIN_S
         #: The speaker check (voiceprint.py), or None when it is off.
         self.verifier = verifier
         #: Voiceprint tickets (aud lianki-voiceprint, lib/voiceprint-ticket.ts): every op but
@@ -611,6 +637,32 @@ class Server:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.pool, fin, audio)
 
+    async def decode_chunked(self, audio: np.ndarray, runs: list[tuple[int, int]] | None = None):
+        """
+        A long final read chunk by chunk, cut in the silences between speech runs
+        (switch.chunk_spans; docs/local-stt.md, "Long finals in chunks"): SenseVoice's one
+        pass over a long utterance can drop most of it. `runs`: the Tracker's, or None to
+        find them here (Silero). (text, lang of the longest chunk read, None, chunks), or
+        None when it cannot be cut (no VAD, one run) or no chunk reads as anything: then
+        the whole decode stands.
+        """
+        if runs is None:
+            find = getattr(self.engine, "speech_runs", None)
+            if find is None:
+                return None
+            runs = await asyncio.get_running_loop().run_in_executor(self.pool, find, audio)
+            if not runs:
+                return None
+        spans = chunk_spans(runs, len(audio), self.final_chunk_s)
+        if len(spans) < 2:
+            return None
+        got = await asyncio.gather(*(self.decode_final(audio[a:b]) for a, b in spans))
+        read = [(r[0], r[1], b - a) for (a, b), r in zip(spans, got) if r[0].strip()]
+        if not read:
+            return None
+        lang = max(read, key=lambda r: r[2])[1]
+        return join_spans([t for t, _, _ in read]), lang, None, len(spans)
+
     async def split(self, audio: np.ndarray, cuts: list[int], device: str | None) -> list[dict] | None:
         """
         A final with two speakers in it, cut where the speaker changes (voiceprint.split_points):
@@ -703,22 +755,59 @@ class Server:
                 u.first_partial_ms = int((time.perf_counter() - u.began) * 1000)
             await send({"t": "partial", "id": u.id, "text": text, "audioMs": int(u.n / RATE * 1000)})
 
+        def recheck_final(u: Utterance, audio: np.ndarray) -> None:
+            """
+            Whisper re-reads a final whose partial was kept (the same worker and one-at-a-time
+            slot as a page's recheck): `{"t":"recheck_result","rid":"final-<id>","final":<id>,
+            "partialKept":true,…}`. Skipped, as a page's request would be refused, while one
+            runs, while filtering or enrolling, or for a guest socket.
+            """
+            nonlocal recheck_task
+            if guest or conn["filter"] or u.enrol or (recheck_task is not None and not recheck_task.done()):
+                log(f"final #{u.id}: partial kept, no recheck (busy or unavailable)")
+                return
+            request = {"rid": f"final-{u.id}"}
+
+            async def reply():
+                out = await self.recheck(request, audio)
+                await send({**out, "final": u.id, "partialKept": True})
+
+            recheck_task = asyncio.create_task(reply())
+
         async def final(u: Utterance):
             t0 = time.perf_counter()
             audio = u.audio()
             heard = audio[u.text_from:] if u.text_from > 0 else audio
             enrol = self.enrolments.get(u.enrol) if u.enrol else None
 
+            # A long final is read in chunks cut at silences (decode_chunked): one pass over
+            # 17 s of SenseVoice kept 17 characters of a sentence every partial had read.
+            long = (self.final_chunk_s > 0 and len(heard) > self.final_chunk_s * RATE
+                    and getattr(self.engine, "speech_runs", None) is not None)
+
+            async def chunked(runs=None):
+                try:
+                    got = await self.decode_chunked(heard, runs)
+                except Exception as e:  # the whole decode, as before
+                    log(f"chunked final failed: {type(e).__name__}: {e}")
+                    got = None
+                if got is None:
+                    return await self.decode_final(heard)
+                u.chunked = got[3]
+                return got[:3]
+
             async def text_of():
                 if len(heard) < RATE // 10:  # a bare "Linky": nothing after it to read
                     return "", "", None
                 if u.sw is None or u.text_from:
-                    return await self.decode_final(heard)
+                    return await (chunked() if long else self.decode_final(heard))
                 # The speaker changed language (docs/local-stt.md, "Language switch"): the
                 # stretches between silences, each re-read in its own language, are the final
                 # (backfill). The whole decode runs beside the last run's language pick, and
                 # stands when there is no switch, so most finals wait for nothing more.
-                whole = asyncio.ensure_future(self.decode_final(heard))
+                # A long one is not decoded whole: its chunks are, once the runs are known.
+                whole = None if long else asyncio.ensure_future(self.decode_final(heard))
+                runs = []
                 try:
                     runs = u.sw.close()
                     probs = await asyncio.gather(*(asyncio.wrap_future(f) for _, _, f in runs))
@@ -726,12 +815,18 @@ class Server:
                 except Exception as e:  # the whole decode, as before
                     log(f"language switch failed: {type(e).__name__}: {e}")
                     stretches = []
+
+                async def no_switch():
+                    if whole is not None:
+                        return await whole
+                    return await chunked([(a, b) for a, b, _ in runs] or None)
+
                 if len(stretches) < 2:
-                    return await whole
+                    return await no_switch()
                 loop = asyncio.get_running_loop()
                 got = await loop.run_in_executor(self.pool, self.engine.read_stretches, audio, stretches)
                 if not got:
-                    return await whole
+                    return await no_switch()
                 u.switched = [lang for _, lang in got]
                 main = max(stretches, key=lambda sp: sp[1] - sp[0])[2]
                 return join_spans([t for t, _ in got]), main, None
@@ -783,6 +878,16 @@ class Server:
             parts = await self.split(audio, cuts, conn["device"]) if cuts and not u.text_from else None
             if parts:
                 text = join_spans([p["text"] for p in parts])
+            # A final much shorter than the last partial of a long utterance dropped words the
+            # partials had (docs/local-stt.md, "A final shorter than its partials"): the partial
+            # stands, marked, and Whisper re-reads it. Not after "Linky" (the partials read the
+            # whole audio, the final only what follows) nor a split one (each part its own text).
+            kept = (not u.text_from and not parts and not enrol and not u.enrol
+                    and keep_partial(text, u.last_text, len(heard) / RATE,
+                                     self.final_min_ratio, self.final_guard_min_s))
+            final_len = len(text)
+            if kept:
+                text = u.last_text
             ms = int((time.perf_counter() - t0) * 1000)
             msg = {
                 "t": "final",
@@ -801,7 +906,12 @@ class Server:
                 msg["langAuto"] = auto_lang  # what auto-detect said before the short-utterance pick
             if u.switched:
                 msg["langs"] = u.switched  # a switched utterance: read stretch by stretch, in these
+            if u.chunked:
+                msg["chunks"] = u.chunked  # a long one: read in this many chunks cut at silences
             tag = ""
+            if kept:
+                msg["partialKept"] = True
+                tag += f", partial kept ({final_len} < {self.final_min_ratio:g} x {len(text)} chars)"
             if enrol and spk is not None:
                 msg["enrol"] = spk
                 tag = f", enrol {'ok' if spk.get('ok') else spk.get('reason')} ({spk.get('n')})"
@@ -844,12 +954,16 @@ class Server:
                 if would:
                     tag += f", would filter ({self.would_filter})"
             await send(msg)
+            if kept:
+                recheck_final(u, heard)
             # Progressive voiceprint: his own clean, confident finals only, after the final went out.
             if spk is not None and not enrol and not u.enrol and not guest and not parts and not u.playback:
                 asyncio.create_task(self.learn(audio, conn["device"], spk, u.id))
             picked = f", lang {auto_lang}->{lang}" if auto_lang else ""
             if u.switched:
                 picked += f", langs {'+'.join(u.switched)}"
+            if u.chunked:
+                picked += f", {u.chunked} chunks"
             log(f"final #{u.id}: {len(audio) / RATE:.1f}s audio, decode {ms} ms, {len(text)} chars{picked}{tag}")
 
         ready = {"t": "ready", "engine": self.engine.name, "model": self.engine.model}
