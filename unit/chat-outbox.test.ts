@@ -6,8 +6,11 @@ import {
   migrateSessionOutbox,
   ACK_BACKOFF_CAP,
   NO_RECEIPT,
+  splitChatText,
+  splitOutgoing,
   type OutgoingChat,
 } from "../packages/debug-chat/src/chat-outbox";
+import { MAX_CHAT } from "../packages/debug-chat/src/wire";
 
 /** Durable bytes survive a page reload; callbacks and in-flight state do not. */
 function fixture(initial: unknown = []) {
@@ -191,7 +194,7 @@ describe("persistent outgoing chat", () => {
       { id: "x".repeat(129), text: "bad" },
       { id: "empty", text: " " },
       { id: "not-text", text: 7 },
-      { id: "long", text: "x".repeat(20_001) },
+      { id: "long", text: "x".repeat(200_001) },
       { id: "valid", text: "restored", source: "stt" },
       { id: "valid", text: "duplicate" },
     ]);
@@ -718,5 +721,78 @@ describe("migration from the per-tab queue", () => {
     const empty = store();
     migrateSessionOutbox("k", empty, store());
     migrateSessionOutbox("k", store({ k: "{broken" }), store());
+  });
+});
+
+describe("a line over MAX_CHAT goes out as several", () => {
+  const para = (n: number) => `${"这是一句很长的话，".repeat(n)}结束。`;
+  test("cut at paragraphs, then sentences, then clauses, spaces, else hard; nothing lost", () => {
+    expect(splitChatText("short")).toEqual(["short"]);
+    const text = `${para(200)}\n\n${para(200)}\n\n${para(200)}`;
+    const parts = splitChatText(text, 3000);
+    expect(parts.every((p) => p.length <= 3000)).toBe(true);
+    expect(parts.join("")).toBe(text.replace(/\s+/g, ""));
+    expect(parts[0]!.endsWith("结束。")).toBe(true);
+    // No paragraph: a sentence end.
+    const sentences = "One two three. ".repeat(40).trim();
+    for (const p of splitChatText(sentences, 100)) expect(p.endsWith(".")).toBe(true);
+    // A clause, then a space.
+    expect(splitChatText("甲，".repeat(60), 50).every((p) => p.length <= 50)).toBe(true);
+    expect(splitChatText("word ".repeat(50).trim(), 32).every((p) => !p.startsWith(" "))).toBe(
+      true,
+    );
+    // No break at all: a hard cut, every character kept.
+    const solid = "字".repeat(250);
+    expect(splitChatText(solid, 100)).toEqual([
+      "字".repeat(100),
+      "字".repeat(100),
+      "字".repeat(50),
+    ]);
+  });
+
+  test("parts keep the first id, drop whole-line proofs, carry the selection once", () => {
+    const item: OutgoingChat = {
+      id: "abc",
+      text: "字".repeat(MAX_CHAT + 10),
+      source: "stt",
+      speakerProof: ["p"],
+      recheck: { x: 1 },
+      context: { selection: "s" },
+      to: "/w",
+    };
+    const parts = splitOutgoing(item);
+    expect(parts.map((p) => p.id)).toEqual(["abc", "abc-2"]);
+    expect(parts.every((p) => p.text.length <= MAX_CHAT && p.speakerProof === undefined)).toBe(
+      true,
+    );
+    expect(parts[0]!.context).toEqual({ selection: "s" });
+    expect(parts[1]!.context).toBeUndefined();
+    expect(parts.every((p) => p.to === "/w" && p.source === "stt")).toBe(true);
+    expect(splitOutgoing({ id: "x", text: "ok" })).toEqual([{ id: "x", text: "ok" }]);
+  });
+
+  test("enqueue sends the parts in order; a stored long line, even one marked no-receipt, is cut on load", () => {
+    const f = fixture();
+    const q = f.make();
+    q.ready();
+    q.enqueue({ text: "字".repeat(MAX_CHAT * 2 + 5) });
+    expect(q.items().map((i) => i.text.length)).toEqual([MAX_CHAT, MAX_CHAT, 5]);
+    expect(f.attempts[0]!.item.id).toBe("pending-1");
+    q.ready(["pending-1"]);
+    expect(f.attempts.at(-1)!.item.id).toBe("pending-1-2");
+
+    const g = fixture([
+      { id: "old", text: "字".repeat(MAX_CHAT + 1), rejected: NO_RECEIPT },
+      { id: "refused", text: "字".repeat(MAX_CHAT + 1), rejected: "rate" },
+    ]);
+    const r = g.make();
+    expect(r.items().map((i) => [i.id, i.rejected])).toEqual([
+      ["old", undefined],
+      ["old-2", undefined],
+      ["refused", "rate"],
+      ["refused-2", "rate"],
+    ]);
+    r.ready();
+    expect(g.attempts[0]!.item.id).toBe("old");
   });
 });

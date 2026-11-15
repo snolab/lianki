@@ -91,6 +91,17 @@ receipt, the line is marked refused locally (`no-receipt`), shown as unsent
 like a hub refusal, and the lines behind it go on; a receipt that still arrives
 later removes it.
 
+**Long lines are cut** (owner, 2026-11-15: a voice line of several pages stayed
+dashed). The hub drops a line over `MAX_CHAT` (4000 characters, wire.ts) without
+a receipt, so the outbox never queues one: `splitChatText` cuts it at the latest
+paragraph, line, sentence end, clause or space in each 4000-character window (a
+hard cut only when there is none) and the parts go out in order as `<id>`,
+`<id>-2`, … Speaker proofs, the recheck, `timing`, `stt` and `continues` vouch
+for the whole line's words, so no part carries them; the page selection and
+files go with the first part. A long line already on the device (stored before
+this, up to 200 000 characters) is cut the same way when the queue loads, and
+one marked `no-receipt` is sent again as its parts.
+
 **Durable queue.** The outbox is in **localStorage**, `lk:ui:chat-outbox:<scope>`
 (and `:cursor`), per account and device, not per tab: a closed tab's unsent
 lines go out from the next tab of that account. Tabs share it: each one re-reads

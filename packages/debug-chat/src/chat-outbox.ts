@@ -5,6 +5,8 @@
  * under the same id (the hub de-duplicates by id), backing off up to
  * `ACK_BACKOFF_CAP`× the timeout until the next receipt.
  */
+import { MAX_CHAT } from "./wire";
+
 export type OutgoingChat = { id: string; text: string; rejected?: string; [key: string]: unknown };
 export type OutgoingDraft = { text: string; [key: string]: unknown };
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -14,6 +16,69 @@ export const ACK_BACKOFF_CAP = 8;
 export const NO_RECEIPT = "no-receipt";
 /** Up to this share of the wait is added at random, so two tabs do not resend in lockstep. */
 const ACK_JITTER = 0.25;
+/** The longest line kept on the device; a longer one is cut into MAX_CHAT parts as it is sent. */
+const MAX_STORED = 200_000;
+
+/** Where a long line may be cut, best first: a paragraph, a line, a sentence, a clause, a space. */
+const CUTS = [/\n\s*\n/g, /\n/g, /[。！？!?.]+["”』」)）]*\s*/g, /[，、；;,:：]\s*/g, /\s+/g];
+
+/**
+ * A line longer than the hub takes (MAX_CHAT, which it drops without a
+ * receipt) as several lines of at most `max` characters, cut at the latest
+ * paragraph, line, sentence, clause or space in each window (a hard cut only
+ * when there is none), in order, nothing lost but the spaces at the cuts.
+ */
+export function splitChatText(text: string, max = MAX_CHAT): string[] {
+  const parts: string[] = [];
+  let rest = text.trim();
+  while (rest.length > max) {
+    const window = rest.slice(0, max + 1);
+    let cut = 0;
+    let next = 0;
+    for (const re of CUTS) {
+      // The latest break that keeps a part at least a quarter of the window.
+      for (const m of window.matchAll(re)) {
+        const end = m.index + m[0].length;
+        const head = m.index + m[0].trimEnd().length;
+        if (head > max || head < max / 4) continue;
+        cut = head;
+        next = end;
+      }
+      if (cut) break;
+    }
+    if (!cut) {
+      cut = max;
+      next = max;
+    }
+    const part = rest.slice(0, cut).trim();
+    if (part) parts.push(part);
+    rest = rest.slice(next).trim();
+  }
+  if (rest) parts.push(rest);
+  return parts;
+}
+
+/** Fields that vouch for the whole line's words (speaker proofs, the recheck): never on a part. */
+const WHOLE_LINE_ONLY = ["speakerProof", "recheck", "continues", "timing", "stt"];
+
+/**
+ * One queued line, or the parts it is cut into when it is over MAX_CHAT. The
+ * first keeps the id (a late receipt for it still lands); the others get
+ * `<id>-2`, `<id>-3`… The page selection and files go with the first part only.
+ */
+export function splitOutgoing(item: OutgoingChat, max = MAX_CHAT): OutgoingChat[] {
+  if (item.text.length <= max) return [item];
+  const texts = splitChatText(item.text, max);
+  return texts.map((text, i) => {
+    const part: OutgoingChat = { ...item, id: i ? `${item.id.slice(0, 56)}-${i + 1}` : item.id, text };
+    for (const k of WHOLE_LINE_ONLY) delete part[k];
+    if (i) {
+      delete part.context;
+      delete part.attachments;
+    }
+    return part;
+  });
+}
 
 function validQueue(stored: unknown): OutgoingChat[] {
   const queue: OutgoingChat[] = [];
@@ -28,18 +93,25 @@ function validQueue(stored: unknown): OutgoingChat[] {
       item.id.length > 128 ||
       typeof item.text !== "string" ||
       !item.text.trim() ||
-      item.text.length > 20_000 ||
+      item.text.length > MAX_STORED ||
       seen.has(item.id)
     )
       continue;
     seen.add(item.id);
     const { rejected, ...message } = item;
-    queue.push(
-      copy({
-        ...message,
-        ...(typeof rejected === "string" && rejected.trim() ? { rejected } : {}),
-      }),
-    );
+    const long = message.text.length > MAX_CHAT;
+    // A long line refused only for want of a receipt was dropped by the hub for
+    // its length: cut into parts, it goes out after all.
+    const reason =
+      typeof rejected === "string" && rejected.trim() && !(long && rejected === NO_RECEIPT)
+        ? { rejected }
+        : {};
+    // A line over MAX_CHAT (stored before lines were cut) goes out as its parts.
+    for (const part of splitOutgoing(copy({ ...message, ...reason }) as OutgoingChat)) {
+      if (part.id !== item.id && seen.has(part.id)) continue;
+      seen.add(part.id);
+      queue.push(part);
+    }
   }
   return queue;
 }
@@ -210,9 +282,11 @@ export function createChatOutbox(d: {
       delete item.rejected;
       reload();
       const wasSynced = synced;
-      queue.push(item);
+      // Over MAX_CHAT the hub drops it with no receipt: it goes as several lines.
+      const parts = splitOutgoing(item);
+      queue.push(...parts);
       if (!changed()) {
-        queue.pop();
+        queue.splice(queue.length - parts.length, parts.length);
         synced = wasSynced;
         return false;
       }
