@@ -8,12 +8,19 @@ import { createMicTaps } from "@lianki/debug-chat/mic-taps";
 import { pickTiming } from "@lianki/debug-chat/latency";
 import {
   MAX_MERGE_PARTS,
+  MERGE_REOPEN_KEY,
+  REOPEN_EDITS,
+  joinVerdict,
   mergeLines,
   mergeVerdict,
   passageSpeakers,
+  reopenMsOf,
+  reopenVerdict,
   splitLine,
   textEnd,
 } from "@lianki/debug-chat/voice-merge";
+import { MAX_UTTERANCE_MS } from "@lianki/debug-chat/mic";
+import { CONFIG } from "@/lib/config";
 import { isBlip, isShortAnswer } from "@lianki/debug-chat/voice-tune";
 import { type ChatMessage, applyEditTo, cleanTiming } from "@lianki/debug-chat/wire";
 import { FLAGS } from "@/lib/flags";
@@ -301,5 +308,164 @@ describe("passageSpeakers: a merged passage keeps one speaker (owner, 2026-11-13
     expect(passageSpeakers([line("a", "other"), line("b", "other")])).toContain("someone else's");
     expect(passageSpeakers([line("a", "me"), line("b", "unknown")])).toContain("message b");
     expect(passageSpeakers([line("a"), line("b", "me")])).toContain("message a");
+  });
+});
+
+describe("reopen: a posted line takes the speech that follows (stt.mergeReopenSec)", () => {
+  const W = 20_000;
+  const ok = (v: ReturnType<typeof reopenVerdict>) => (v.ok ? v.signal : v.reason);
+  /** His posted line: settled, Whisper re-read, then the hub's own polish. */
+  const posted = (over: Partial<ChatMessage> = {}) =>
+    prev("我想把按钮放到右边。", {
+      settled: true,
+      raw: "我想把按钮放到右边。",
+      text: "我想把按钮放到右边。",
+      edited: { at: 2, by: "auto", count: 1 },
+      ...over,
+    });
+
+  it("the key, its default and bounds, and the value as read", () => {
+    expect(MERGE_REOPEN_KEY).toBe("stt.mergeReopenSec");
+    expect(CONFIG[MERGE_REOPEN_KEY]).toMatchObject({ default: 20, min: 0, max: 120, unit: "s" });
+    expect(reopenMsOf(20)).toBe(20_000);
+    expect(reopenMsOf(0.5)).toBe(500);
+    for (const off of [0, -1, 121, Number.NaN, Infinity, "20", undefined, null]) {
+      expect(reopenMsOf(off)).toBe(0);
+    }
+  });
+
+  it("within the window, a settled, re-listened or hub-polished line reopens", () => {
+    expect(ok(reopenVerdict(posted(), next("然后把颜色改成红色。", 8000), W))).toBe("reopen");
+    expect(ok(reopenVerdict(posted(), next("然后。。改成红色", W), W))).toBe("reopen");
+    for (const by of REOPEN_EDITS)
+      expect(
+        ok(reopenVerdict(posted({ edited: { at: 2, by, count: 0 } }), next("再来。", 5000), W)),
+      ).toBe("reopen");
+    expect(ok(reopenVerdict(posted({ edited: undefined }), next("再来。", 5000), W))).toBe(
+      "reopen",
+    );
+    // His voiceprint on both, or on neither (no print on the device).
+    const me = { decision: "me" as const };
+    expect(
+      ok(reopenVerdict(posted({ speaker: me }), { ...next("再来。", 5000), speaker: me }, W)),
+    ).toBe("reopen");
+    // The hub's own clock, when given, may run a whole utterance past the window.
+    expect(ok(reopenVerdict(posted(), next("再来。", 5000), W, W + MAX_UTTERANCE_MS))).toBe(
+      "reopen",
+    );
+  });
+
+  it("closed: off, past the window, or by the hub's clock", () => {
+    expect(ok(reopenVerdict(posted(), next("再来。", 5000), 0))).toBe("reopen-off");
+    expect(ok(reopenVerdict(posted(), next("再来。", W + 1), W))).toBe("gap");
+    expect(ok(reopenVerdict(posted(), next("再来。", 5000), W, W + MAX_UTTERANCE_MS + 1))).toBe(
+      "gap",
+    );
+    expect(ok(reopenVerdict(posted({ timing: undefined }), next("再来。", 5000), W))).toBe(
+      "no-timing",
+    );
+    expect(ok(reopenVerdict(posted(), { text: "再来。" }, W))).toBe("no-timing");
+  });
+
+  it("closed: not his voice line, not stamped, superseded, or edited by hand", () => {
+    const n = next("再来。", 5000);
+    expect(ok(reopenVerdict(posted({ from: "agent" }), n, W))).toBe("not-voice");
+    expect(ok(reopenVerdict(posted({ source: undefined }), n, W))).toBe("not-voice");
+    expect(ok(reopenVerdict(posted({ mergeable: undefined }), n, W))).toBe("not-mergeable");
+    const passage = { at: 1, by: "main", ids: ["a", "b"] };
+    const summary = { at: 1, by: "main", ids: ["a", "b"] } as ChatMessage["summary"];
+    const echo = {
+      at: 1,
+      by: "auto",
+      reason: "echo",
+      kind: "read-aloud",
+      of: "x",
+      sim: 1,
+    } as const;
+    for (const over of [
+      { removed: true as const },
+      { collapsedInto: "z" },
+      { passage },
+      { summary },
+      { echo },
+    ])
+      expect(ok(reopenVerdict(posted(over), n, W))).toBe("superseded");
+    expect(ok(reopenVerdict(posted({ edited: { at: 2, by: "main", count: 1 } }), n, W))).toBe(
+      "edited",
+    );
+  });
+
+  it("closed by what any merge refuses, and by a voice the Mac did not sign as his", () => {
+    expect(
+      ok(
+        reopenVerdict(
+          posted({ text: "这样可以吗？", raw: "这样可以吗？" }),
+          next("再来。", 5000),
+          W,
+        ),
+      ),
+    ).toBe("ended");
+    expect(ok(reopenVerdict(posted(), { ...next("再来。", 5000), to: "/words" }, W))).toBe(
+      "other-node",
+    );
+    expect(ok(reopenVerdict(posted(), next("行。", 5000), W))).toBe("short-answer");
+    const me = { decision: "me" as const };
+    expect(ok(reopenVerdict(posted({ speaker: me }), next("再来。", 5000), W))).toBe("unverified");
+    expect(
+      ok(reopenVerdict(posted(), { ...next("再来。", 5000), speaker: { decision: "unknown" } }, W)),
+    ).toBe("unverified");
+  });
+
+  it("joinVerdict: a live merge first, then a reopen; both reasons when neither", () => {
+    const live = prev("那你能不能给，");
+    expect(joinVerdict(live, next("给我。", 1000), W)).toEqual({ ok: true, signal: "open" });
+    expect(joinVerdict(live, next("给我。", 5000), 0)).toEqual({ ok: false, reason: "gap" });
+    expect(joinVerdict(live, next("给我。", 5000), W)).toEqual({ ok: true, signal: "reopen" });
+    expect(joinVerdict(posted(), next("再来。", W + 1), W)).toEqual({
+      ok: false,
+      reason: "settled; reopen: gap",
+    });
+  });
+
+  it("the reopened line: heard text again, not settled, its reading gone; undo gives the parts", () => {
+    const line = mergeLines(
+      prev("我想把按钮。", { timing: { t_speechStart: -900, t_speechEnd: 0 } }),
+      { id: "b", at: 2, text: "放到右边。", timing: { t_speechStart: 500, t_speechEnd: 1500 } },
+      2,
+    );
+    const done: ChatMessage = {
+      ...line,
+      text: "我想把按钮放到右边。",
+      raw: "我想把按钮放到右边。",
+      settled: true,
+      recheck: { at: 3, engine: "mlx-whisper", heard: line.text, text: "我想把按钮放到右边。" },
+    };
+    const polished = {
+      ...done,
+      text: "我想把按钮放在右边。",
+      edited: { at: 4, by: "auto", count: 1 },
+    };
+    const cur = {
+      id: "c",
+      at: 9,
+      text: "然后改成红色。",
+      timing: { t_speechStart: 9000, t_speechEnd: 10_000 },
+    };
+    expect(reopenVerdict(polished, cur, W).ok).toBe(true);
+    const re = mergeLines(polished, cur, 9);
+    expect(re.text).toBe("我想把按钮。放到右边。然后改成红色。");
+    expect(re.raw).toBe(re.text);
+    expect(re.settled).toBeUndefined();
+    expect(re.recheck).toBeUndefined();
+    expect(re.edited).toEqual({ at: 9, by: "merge", count: 1 });
+    expect(re.parts?.map((p) => p.id)).toEqual(["a", "b", "c"]);
+    expect(splitLine(re).map((x) => x.text)).toEqual([
+      "我想把按钮。",
+      "放到右边。",
+      "然后改成红色。",
+    ]);
+    // A single posted line the hub polished: its part is the text as heard.
+    const one = mergeLines(posted({ text: "我想把按钮放在右边。" }), cur, 9);
+    expect(one.parts?.map((p) => p.text)).toEqual(["我想把按钮放到右边。", "然后改成红色。"]);
   });
 });
