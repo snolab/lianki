@@ -481,7 +481,7 @@ const pingMs = (env = {}) => {
  * rejects on a refusal, a close, the timeout, or (a listener) a socket gone
  * silent past its keepalive.
  */
-function chatSocket(c, token, { history = 0, mode, onReady, onEvent, timeoutMs }) {
+function chatSocket(c, token, { history = 0, mode, scope, onReady, onEvent, timeoutMs }) {
   const WS = c.deps.WebSocket ?? globalThis.WebSocket;
   if (!WS)
     throw new CliError("usage", EXIT.usage, "this needs a WebSocket: Node.js 22 or newer, or Bun", "bunx lianki …");
@@ -520,7 +520,8 @@ function chatSocket(c, token, { history = 0, mode, onReady, onEvent, timeoutMs }
     }
     // mode: "listener" (resident: hears every line live) or "reader" (a wait, the lanes
     // manager): the lane's mode in the hub's lane registry; an older hub ignores it.
-    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, ...(history ? { history } : {}), ...(mode ? { mode } : {}) }));
+    // scope "all": a listener whose agent is handed every line, not only the owner's.
+    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, ...(history ? { history } : {}), ...(mode ? { mode } : {}), ...(scope ? { scope } : {}) }));
     ws.onmessage = async (ev) => {
       unanswered = false;
       if (ev.data === "pong") return;
@@ -697,6 +698,7 @@ async function cmdChatListen(c) {
   await chatSocket(c, token, {
     history,
     mode: c.argv.reader ? "reader" : "listener",
+    ...(c.argv.everyone && !c.argv.reader ? { scope: "all" } : {}),
     onEvent: (m) => {
       if (m.type === "history") for (const x of m.messages ?? []) c.deps.out(c.json ? JSON.stringify({ type: "chat", message: x, history: true }) : chatLine(x));
       else if (m.type === "chat") c.deps.out(c.json ? JSON.stringify(m) : chatLine(m.message));
@@ -1154,6 +1156,7 @@ function build(args, deps, box) {
             (y) =>
               examples(y.option("history", { type: "number", default: 0, describe: "First print the last n lines (0–100; memory only with --deliver)" })
                 .option("reader", { type: "boolean", describe: "Listen as a reader, not a resident listener (the lane's mode in the chat)" })
+                .option("everyone", { type: "boolean", describe: "Tell the chat this listener's agent hears every line (agents' and system lines too), not only the owner's" })
                 .option("deliver", { type: "string", describe: "Optionally bridge to this ay agent target" })
                 .option("cwd", { type: "string", describe: "Agent directory for ay target ." })
                 .option("filter-service", { type: "string", describe: "Optional AI filter URL for --deliver" })

@@ -912,6 +912,30 @@ describe("chat (your own thread, with a chat token)", () => {
     }
   });
 
+  test("listen --everyone tells the hub its agent hears every line (scope all); --reader never", async () => {
+    for (const [args, want] of [
+      [["--everyone"], { type: "auth", token: TOKEN, mode: "listener", scope: "all" }],
+      [["--everyone", "--reader"], { type: "auth", token: TOKEN, mode: "reader" }],
+    ] as const) {
+      const h = harness({ env });
+      const sent: any[] = [];
+      (h.deps as any).WebSocket = class {
+        onopen?: () => void;
+        onmessage?: (e: { data: string }) => void;
+        constructor() {
+          queueMicrotask(() => this.onopen?.());
+        }
+        send(raw: string) {
+          sent.push(JSON.parse(raw));
+          queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ type: "revoked" }) }));
+        }
+        close() {}
+      };
+      await h.run("chat", "listen", "--json", ...args);
+      expect(sent).toEqual([want]);
+    }
+  });
+
   test("listen reports a closed socket as auth or network failure instead of hanging", async () => {
     for (const closeCode of [4401, 1006]) {
       const h = harness({ env });
