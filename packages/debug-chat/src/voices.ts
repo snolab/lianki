@@ -270,7 +270,7 @@ export const LANES: Readonly<Record<DefaultLaneId, LaneSpec>> = {
     name: "小克",
     // A young girl's voice (owner, 2026-11-15); was calm (low) like coco.
     voice: "sweet",
-    aliases: ["claude", "小克", "小可", "小柯"],
+    aliases: ["claude", "小克", "小可", "小柯", "小客", "小贺", "小课", "小科"],
     role: "聊天调度与发布",
     mark: {
       bg: "oklch(0.55 0.1 250)",
