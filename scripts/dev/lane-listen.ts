@@ -43,6 +43,8 @@ import {
   voiceAllowed,
   type AyRow,
   pickTarget,
+  sendCodes,
+  unknownCode,
 } from "./lane-listen-lib";
 
 type Opts = {
@@ -134,27 +136,27 @@ async function deliver(o: Opts, body: string, interrupt = false): Promise<number
   // The pid is looked up first (pickTarget): `.` alone is refused by ay when the
   // dir holds more than one agent, and the line is lost (杰咪, 2026-11-15).
   const target = o.deliver ?? (await resolveTarget(o)) ?? ".";
-  const p = Bun.spawn(
-    ["ay", "send", target, "--force", "--no-wait", "--code", interrupt ? "alt-m" : "enter", "-"],
-    {
+  let code = 1;
+  for (const key of sendCodes(interrupt)) {
+    const p = Bun.spawn(["ay", "send", target, "--force", "--no-wait", "--code", key, "-"], {
       cwd: o.cwd ?? process.cwd(),
       stdin: new TextEncoder().encode(body),
       stdout: "ignore",
       stderr: "pipe",
-    },
-  );
-  const code = await Promise.race([
-    p.exited,
-    new Promise<number>((r) => setTimeout(() => r(-1), SEND_WAIT_MS)),
-  ]);
-  if (code === -1) {
-    console.error(`lane-listen: ay send still running after ${SEND_WAIT_MS} ms; not waiting`);
-    return 4;
+    });
+    code = await Promise.race([
+      p.exited,
+      new Promise<number>((r) => setTimeout(() => r(-1), SEND_WAIT_MS)),
+    ]);
+    if (code === -1) {
+      console.error(`lane-listen: ay send still running after ${SEND_WAIT_MS} ms; not waiting`);
+      return 4;
+    }
+    if (code === 0 || code === 4) return code;
+    const err = (await new Response(p.stderr).text()).trim();
+    console.error(`lane-listen: ay send (--code ${key}) exited ${code}: ${err.split("\n").at(-1)}`);
+    if (!unknownCode(err)) return code;
   }
-  if (code !== 0 && code !== 4)
-    console.error(
-      `lane-listen: ay send exited ${code}: ${(await new Response(p.stderr).text()).trim().split("\n").at(-1)}`,
-    );
   return code;
 }
 

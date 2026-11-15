@@ -475,6 +475,16 @@ export function pickTarget(rows: readonly AyRow[], cwd: string, cli?: string): s
   return String(alive[0]!.pid);
 }
 
+/**
+ * The ay codes to try for one hand-off, in order. An urgent line breaks into the
+ * turn with alt-m, but an ay without that key (v1.303, 2026-11-16 00:16 JST)
+ * refuses the whole send and the line was lost: plain Enter follows it.
+ */
+export const sendCodes = (interrupt: boolean): string[] =>
+  interrupt ? ["alt-m", "enter"] : ["enter"];
+/** ay refused the key itself (not the target): try the next code. */
+export const unknownCode = (stderr: string) => /unknown key\/code/i.test(stderr);
+
 export const RECONNECT_RESET_MS = 60_000;
 
 /**
