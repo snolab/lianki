@@ -219,7 +219,10 @@ describe("strings", () => {
   it("has English defaults and the package's fallbacks", () => {
     expect(CHAT_STRINGS_EN.fullScreen).toBe("Full screen");
     expect(CHAT_STRINGS_EN.fullScreenExit).toBe("Exit full screen");
-    expect(CHAT_STRINGS_EN.dragGrip).toContain("drag");
+    expect(CHAT_STRINGS_EN.dragGrip.toLowerCase()).toContain("drag");
+    expect(CHAT_STRINGS_EN.dragGrip).toContain("double-click");
+    expect(CHAT_STRINGS_EN.dragGrip).toContain("full screen");
+    expect(CHAT_STRINGS_EN.dragGrip).toContain("Right-click");
     for (const lang of ["en", "zh", "ja"]) {
       expect(uiStrings(lang).fullScreen.length).toBeGreaterThan(0);
       expect(uiStrings(lang).fullScreenExit.length).toBeGreaterThan(0);
@@ -262,7 +265,8 @@ describe("by a drag: the bottom edge enters, a drag up leaves (owner, 2026-11-09
     const src = readFileSync("packages/debug-chat/src/DebugChat.tsx", "utf8");
     expect(src).not.toContain('data-testid="debug-chat-fullscreen"');
     expect(src).toContain('data-testid="debug-chat-fullscreen-exit"');
-    expect(src).toContain('data-testid="debug-menu-fullscreen"');
+    // The menu's row is its own component (FullScreenMenuItem.tsx, unit/chat-fullscreen-menu.test.tsx).
+    expect(src).toContain("<FullScreenMenuItem");
     expect(src).toContain("dropEntersFull(");
     expect(src).toContain("dragLeavesFull(");
   });

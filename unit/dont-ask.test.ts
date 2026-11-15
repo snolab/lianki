@@ -67,7 +67,7 @@ describe("ids and the stored map", () => {
       "link-any:x",
       "link-site:",
       "link-site:localhost",
-      "link-site:taku.onca-tint.ts.net",
+      "link-site:owner.example.ts.net",
       "link-site:192.168.1.2",
     ])
       expect(parseDontAskId(bad)).toBeNull();

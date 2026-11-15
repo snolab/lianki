@@ -20,8 +20,15 @@
  *
  * Pure, and free of the DOM: the Worker imports it.
  */
-import { joinText } from "./mic";
-import { JOIN_WINDOW_MS, VOICE_TUNE, isShortAnswer } from "./voice-tune";
+import { MAX_UTTERANCE_MS, joinText } from "./mic";
+import {
+  JOIN_WINDOW_MS,
+  MERGE_REOPEN_DEFAULT_SEC,
+  MERGE_REOPEN_KEY,
+  MERGE_REOPEN_MAX_SEC,
+  VOICE_TUNE,
+  isShortAnswer,
+} from "./voice-tune";
 import {
   type ChatContext,
   type ChatMessage,
@@ -58,7 +65,7 @@ export function textEnd(text: string): TextEnd {
 }
 
 /** Two parts as one text: no space after a full-width mark (joinText spaces those). */
-const joinParts = (a: string, b: string) =>
+export const joinParts = (a: string, b: string) =>
   /[\uff00-\uffef]$/.test(a) ? a + b.trim() : joinText(a, b);
 
 /** The newest utterance in a line: what the next one follows. */
@@ -79,7 +86,7 @@ export type MergeCandidate = {
 };
 
 export type MergeVerdict =
-  | { ok: true; signal: "cut" | "open" | "quick" }
+  | { ok: true; signal: "cut" | "open" | "quick" | "reopen" }
   | { ok: false; reason: string };
 
 /**
@@ -91,6 +98,29 @@ export function mergeVerdict(prev: ChatMessage, cur: MergeCandidate): MergeVerdi
   if (prev.from !== "owner" || prev.source !== "stt") return no("not-voice");
   if (!prev.mergeable) return no("not-mergeable");
   if (prev.settled) return no("settled");
+  const why = joinable(prev, cur);
+  if (why) return no(why);
+  // No timestamps, no evidence.
+  const a = lastTiming(prev);
+  const start = cur.timing?.t_speechStart;
+  if (start === undefined || a?.t_speechEnd === undefined) return no("no-timing");
+  const since = start - a.t_speechEnd;
+  if (a.t_cut !== undefined && since <= JOIN_WINDOW_MS) return { ok: true, signal: "cut" };
+  if (textEnd(lastRaw(prev)) === "open" && since <= JOIN_WINDOW_MS)
+    return { ok: true, signal: "open" };
+  if (a.t_lastVoice === undefined || start - a.t_lastVoice > VOICE_TUNE.redemptionMs)
+    return no("gap");
+  if (prev.speaker?.decision !== "me" || cur.speaker?.decision !== "me") return no("unverified");
+  return { ok: true, signal: "quick" };
+}
+
+/**
+ * What a live merge and a reopen both need, or why not: the same node, no wake
+ * word, nothing attached, nobody else's voice, no short answer, no question or
+ * exclamation at the end, and the caps.
+ */
+function joinable(prev: ChatMessage, cur: MergeCandidate): string | undefined {
+  const no = (reason: string) => reason;
   if ((prev.to ?? undefined) !== (cur.to ?? undefined)) return no("other-node");
   // A wake-word line is a new turn; files or a selection make a line about them.
   if (prev.wake === "passive" || cur.wake === "passive") return no("wake");
@@ -100,21 +130,88 @@ export function mergeVerdict(prev: ChatMessage, cur: MergeCandidate): MergeVerdi
   if (prev.speaker?.decision === "other" || cur.speaker?.decision === "other")
     return no("speaker");
   if (isShortAnswer(lastRaw(prev)) || isShortAnswer(cur.text)) return no("short-answer");
-  const end = textEnd(lastRaw(prev));
-  if (end === "final") return no("ended");
+  if (textEnd(lastRaw(prev)) === "final") return no("ended");
   if ((prev.parts?.length ?? 1) >= MAX_MERGE_PARTS) return no("parts");
-  if (joinParts(prev.raw ?? prev.text, cur.text).length > MAX_CHAT) return no("long");
-  // No timestamps, no evidence.
-  const a = lastTiming(prev);
+  if (joinParts(heardOf(prev), cur.text).length > MAX_CHAT) return no("long");
+  return undefined;
+}
+
+/** What a line read as heard: before Whisper's reading of its run, before any polish. */
+const heardOf = (m: ChatMessage) => m.recheck?.heard ?? m.raw ?? m.text;
+
+/**
+ * Config `stt.mergeReopenSec` (lib/config.ts): how long after his last voice line
+ * a new utterance may still join it. Defaults and bounds here, the live value from
+ * the DB; the hub and the page both read it through reopenMsOf.
+ */
+export { MERGE_REOPEN_DEFAULT_SEC, MERGE_REOPEN_KEY, MERGE_REOPEN_MAX_SEC };
+
+/** The reopen window in ms from a config value; anything unreadable or out of range is off (0). */
+export function reopenMsOf(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v > MERGE_REOPEN_MAX_SEC) return 0;
+  return Math.round(v * 1000);
+}
+
+/**
+ * The `by` marks a reopened line may carry: a merge, the hub's own polish, the
+ * two-mic swap. Nobody chose those words, so the next ones may still join them.
+ * A lane's or his own edit (`eval.ts edit`) is a hand on the line: it stays.
+ */
+export const REOPEN_EDITS: readonly string[] = [MERGE_BY, "auto", "two-mic"];
+
+/**
+ * May `cur` join `prev` although the live run has ended (owner, 2026-11-15:
+ * "已经提交的语音消息是不是也可以继续贡献给识别窗口？")? `prev` is his newest voice
+ * line, posted (and perhaps settled, re-listened, polished by the hub) and still
+ * the thread's latest line; the caller checks that. `windowMs` is
+ * stt.mergeReopenSec; `arrived`, when known (the hub), is how long after the
+ * line last grew `cur` reached it, on the hub's clock: at most the window plus
+ * one utterance, so a page clock that jumped does not stretch it.
+ *
+ * The gap no longer has to look like one utterance, so the speaker check is
+ * stricter than a live merge's: both lines verified as him by the Mac, or (no
+ * voiceprint on the device) neither tagged at all.
+ */
+export function reopenVerdict(
+  prev: ChatMessage,
+  cur: MergeCandidate,
+  windowMs: number,
+  arrived?: number,
+): MergeVerdict {
+  const no = (reason: string): MergeVerdict => ({ ok: false, reason });
+  if (!(windowMs > 0)) return no("reopen-off");
+  if (prev.from !== "owner" || prev.source !== "stt") return no("not-voice");
+  if (!prev.mergeable) return no("not-mergeable");
+  if (prev.removed || prev.echo || prev.collapsedInto || prev.passage || prev.summary)
+    return no("superseded");
+  if (prev.edited && !REOPEN_EDITS.includes(prev.edited.by)) return no("edited");
+  const why = joinable(prev, cur);
+  if (why) return no(why);
+  const a = prev.speaker?.decision;
+  const b = cur.speaker?.decision;
+  if ((a || b) && (a !== "me" || b !== "me")) return no("unverified");
+  const end = lastTiming(prev)?.t_speechEnd;
   const start = cur.timing?.t_speechStart;
-  if (start === undefined || a?.t_speechEnd === undefined) return no("no-timing");
-  const since = start - a.t_speechEnd;
-  if (a.t_cut !== undefined && since <= JOIN_WINDOW_MS) return { ok: true, signal: "cut" };
-  if (end === "open" && since <= JOIN_WINDOW_MS) return { ok: true, signal: "open" };
-  if (a.t_lastVoice === undefined || start - a.t_lastVoice > VOICE_TUNE.redemptionMs)
-    return no("gap");
-  if (prev.speaker?.decision !== "me" || cur.speaker?.decision !== "me") return no("unverified");
-  return { ok: true, signal: "quick" };
+  if (start === undefined || end === undefined) return no("no-timing");
+  if (start - end > windowMs) return no("gap");
+  if (arrived !== undefined && arrived > windowMs + MAX_UTTERANCE_MS) return no("gap");
+  return { ok: true, signal: "reopen" };
+}
+
+/**
+ * The page's and the hub's one question: a live merge first (mergeVerdict), else
+ * a reopen within the window. The refusal names both reasons when a reopen was tried.
+ */
+export function joinVerdict(
+  prev: ChatMessage,
+  cur: MergeCandidate,
+  windowMs: number,
+  arrived?: number,
+): MergeVerdict {
+  const v = mergeVerdict(prev, cur);
+  if (v.ok || !(windowMs > 0)) return v;
+  const r = reopenVerdict(prev, cur, windowMs, arrived);
+  return r.ok ? r : { ok: false, reason: `${v.reason}; reopen: ${r.reason}` };
 }
 
 /** A line as one part of a merged line. Never a polish: only what was heard. */
@@ -156,8 +253,17 @@ export function mergeLines(
   cur: MergeCandidate & { id: string; at: number },
   at: number,
 ): ChatMessage {
-  const raw = joinParts(prev.raw ?? prev.text, cur.text);
-  const { speaker: _speaker, timing: _timing, stt: _stt, ...rest } = prev;
+  const raw = joinParts(heardOf(prev), cur.text);
+  // A reopened line (reopenVerdict) is a run again: not settled, and its Whisper
+  // reading, made of fewer parts, goes; the next passage end re-listens all of it.
+  const {
+    speaker: _speaker,
+    timing: _timing,
+    stt: _stt,
+    settled: _settled,
+    recheck: _recheck,
+    ...rest
+  } = prev;
   const a = prev.speaker;
   const b = cur.speaker;
   const weakest = a && b ? combineSpeaker([a, b]) : undefined;
@@ -183,6 +289,7 @@ export function splitLine(line: ChatMessage): ChatMessage[] {
     edited: _edited,
     mergeable: _mergeable,
     settled: _settled,
+    recheck: _recheck,
     speaker: _speaker,
     timing: _timing,
     stt: _stt,

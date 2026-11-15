@@ -9,11 +9,15 @@
  * anyone whose agent line is within the recent-speaker window. Both windows
  * are live config (lib/config.ts chat.presenceReadMin, chat.presenceSpeakerMin).
  */
-import { LANES, type LaneId, isLaneId, laneOf } from "./voices";
+import { laneSpec, type LaneId, isLaneId, laneOf } from "./voices";
 import type { ChatMessage } from "./wire";
+import type { LaneMode } from "./lane-events";
 
 /** One participant, as a page gets it. */
 export type Present = {
+  lastReadSeq?: number;
+  /** This viewer's current page only; other signed-in devices remain visible. */
+  self?: true;
   /** "lane:codex", "tok:<tag>", "agent:<name>": one entry per participant. */
   key: string;
   /** The name shown: the owner's name for it, else the token's name (or the lane's). */
@@ -38,6 +42,18 @@ export type Present = {
   mcp?: true;
   /** Reading right now (a socket open). */
   live?: true;
+  /**
+   * Its lane's mode in the hub's lane registry (lane-registry.ts): a resident
+   * listener or a reader; absent on an older hub, or for a lane it has no row for.
+   */
+  mode?: LaneMode;
+  /**
+   * A listener that hears every line, agents' and system lines too (tier ①, lane-listen
+   * --everyone); absent: the owner's lines only (tier ②), or not a listener.
+   */
+  scope?: "all";
+  /** Muted by the owner: it reads and listens, but cannot post. */
+  muted?: true;
   /** Since when it has been here (socket opened, or first read in the window). */
   since?: number;
   /** Its last read, and its last line. */
@@ -88,7 +104,8 @@ const known = (name: string): LaneId | null => laneOf({ text: `【${name}】` })
 
 /** A line's participant key (the same as its token's, when it has one). */
 export function lineKey(m: ChatMessage): string | null {
-  if (m.from !== "agent") return null;
+  // A system line about a lane is no one speaking (lane-events.ts).
+  if (m.from !== "agent" || m.laneEvent) return null;
   const lane = isLaneId(m.lane) ? m.lane : m.via === "token" ? null : laneOf(m).lane;
   if (lane) return `lane:${lane}`;
   if (m.via === "token") return m.tok ? `tok:${m.tok}` : `agent:${m.tokenLane ?? m.label}`;
@@ -110,6 +127,15 @@ export function presentList(p: {
   lines: readonly ChatMessage[];
   viewer?: string;
   mainName?: string;
+  /** The lane registry's rows of this thread (by lane name): each entry's mode and mute. */
+  lanes?: readonly {
+    lane: string;
+    state: string;
+    muted?: true;
+    scope?: string;
+    seenAt?: number;
+    name?: string;
+  }[];
 }): Present[] {
   const out = new Map<string, Present>();
   const rec = new Map(p.records.map((r) => [r.tag, r]));
@@ -119,9 +145,20 @@ export function presentList(p: {
     const k = known(r.lane);
     return k ? `lane:${k}` : `tok:${r.tag}`;
   };
+  const reg = new Map((p.lanes ?? []).map((l) => [l.lane, l]));
+  const modeOf = (r: PartRecord) => {
+    const l = reg.get(r.lane);
+    if (!l) return {};
+    return {
+      ...(l.state === "listener" || l.state === "reader" ? { mode: l.state as LaneMode } : {}),
+      ...(l.state === "listener" && l.scope === "all" ? { scope: "all" as const } : {}),
+      ...(l.muted ? { muted: true as const } : {}),
+    };
+  };
   const fromRecord = (r: PartRecord): Present => {
     const lane = known(r.lane);
     return {
+      ...modeOf(r),
       key: tokenKey(r),
       ...effective(r),
       ...(lane ? { lane } : {}),
@@ -163,7 +200,7 @@ export function presentList(p: {
         const lane = key.startsWith("lane:") ? (key.slice(5) as LaneId) : undefined;
         e = {
           key,
-          name: lane ? LANES[lane].name || p.mainName || "" : (m.tokenLane ?? m.label),
+          name: lane ? laneSpec(lane).name || p.mainName || "" : (m.tokenLane ?? m.label),
           ...(lane ? { lane } : {}),
           ...(m.tok ? { tok: m.tok } : {}),
           ...(m.avatar ? { avatar: m.avatar, avatarBy: "agent" as const } : {}),
@@ -176,7 +213,44 @@ export function presentList(p: {
     if (m.client === "mcp") e.mcp = true;
     touch(e);
   }
+  // Read-only lanes (registry rows in state "reader") not here by a read or a line: listed
+  // too, as of their last use (owner, 2026-11-15 "3的成员也要显示在叠叠头像这里"). An older
+  // page draws them as more avatars; a newer one greys them and groups them last.
+  for (const l of p.lanes ?? []) {
+    if (l.state !== "reader") continue;
+    const mine = p.records.filter((r) => r.lane === l.lane);
+    // Its tokens all revoked: gone, like their lines.
+    if (mine.length && mine.every((r) => r.revoked)) continue;
+    const r = mine
+      .filter((x) => !x.revoked)
+      .sort((a, b) => (b.seenAt ?? 0) - (a.seenAt ?? 0))[0];
+    const lane = known(l.lane);
+    const key = r ? tokenKey(r) : lane ? `lane:${lane}` : `agent:${l.lane}`;
+    if (out.has(key)) continue;
+    const e: Present = r
+      ? fromRecord(r)
+      : {
+          key,
+          name: l.name || (lane && laneSpec(lane).name) || l.lane,
+          ...(lane ? { lane } : {}),
+          mode: "reader",
+          ...(l.muted ? { muted: true as const } : {}),
+          active: 0,
+        };
+    if (l.seenAt !== undefined) e.seenAt = Math.max(e.seenAt ?? 0, l.seenAt);
+    touch(e);
+  }
   return [...out.values()].sort((a, b) => b.active - a.active || a.key.localeCompare(b.key));
+}
+
+/** The stack's and the panel's order: the live ones (most recent first), then the read-only lanes. */
+export function liveFirst<T extends Pick<Present, "mode">>(
+  list: readonly T[],
+): { live: T[]; readers: T[] } {
+  return {
+    live: list.filter((p) => p.mode !== "reader"),
+    readers: list.filter((p) => p.mode === "reader"),
+  };
 }
 
 /**
@@ -221,7 +295,10 @@ export function parsePresent(raw: unknown): Present[] | null {
     const e = x as Record<string, unknown>;
     if (typeof e.key !== "string" || typeof e.name !== "string" || typeof e.active !== "number")
       continue;
-    out.push(e as unknown as Present);
+    const entry = { ...e };
+    if (!Number.isSafeInteger(entry.lastReadSeq) || (entry.lastReadSeq as number) < 0) delete entry.lastReadSeq;
+    if (entry.self !== true) delete entry.self;
+    out.push(entry as unknown as Present);
   }
   return out;
 }

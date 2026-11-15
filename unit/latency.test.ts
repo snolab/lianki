@@ -84,6 +84,21 @@ describe("pickTiming", () => {
       undefined,
     );
   });
+
+  it("a loop cut off any utterance of the line marks its tag, never the timing", () => {
+    const marks = new Map<number, UttMarks>([
+      [0, { t_speechEnd: 100, t_sttDone: 300, repeat: "trimmed" }],
+      [1, { t_speechEnd: 200, t_sttDone: 400, stt: { route: "local" } }],
+    ]);
+    expect(pickTiming(marks, 500)).toEqual({
+      timing: { t_speechEnd: 200, t_sttDone: 400, t_sent: 500 },
+      used: [0, 1],
+      stt: { route: "local", repeat: "trimmed" },
+    });
+    // No tag to carry it: nothing is made up.
+    marks.delete(1);
+    expect(pickTiming(marks, 500)?.stt).toBeUndefined();
+  });
 });
 
 describe("createLatency", () => {
@@ -180,7 +195,7 @@ describe("the mic's marks (createMic timing)", () => {
         return { start() {}, pause() {}, flush() {}, destroy() {} };
       },
       upload: () => new Promise((r) => (answer = r)),
-      guard: { minFrameRms: 0 },
+      guard: { minFrameRms: 0, minSpeechMs: 32 }, // zeros, two speech frames; unit/stt-guard.test.ts has the gate
       onState() {},
       onText() {},
       onPending() {},

@@ -32,7 +32,7 @@ const OFFLINE_SHELLS = ["/words", "/alphabet"];
  * rule accepts is caught here.
  */
 const SW_HOST = self.location.hostname || "";
-// The preview build (preview.lianki.com, and the tailnet address it is opened on) is
+// The preview build (preview.lianki.com, dev.lianki.com after the move, and the tailnet address it is opened on) is
 // `next dev` too: cache-first chunks there served the chat as it was before an update,
 // so a fresh page kept the old menu (owner, 2026-11-14). Same treatment as a box.
 const IS_BOX =
@@ -40,6 +40,7 @@ const IS_BOX =
     SW_HOST.endsWith(".lianki.com") &&
     SW_HOST.split(".").length === 3) ||
   SW_HOST === "preview.lianki.com" ||
+  SW_HOST === "dev.lianki.com" ||
   SW_HOST.endsWith(".ts.net");
 
 self.addEventListener("install", (event) => {

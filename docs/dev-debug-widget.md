@@ -60,6 +60,91 @@ its own repo as is. Lianki passes what it needs as `DebugChatProps`; the wire
 types and the UI helpers are in `src/wire.ts`, which `lib/dev-eval.ts`
 re-exports for the hub and the sender.
 
+## Sequence recovery and visible read receipts
+
+Thread-local message versions, bounded replay and actual-viewport read cursors
+are described in [chat-seq-receipts.md](chat-seq-receipts.md). Acceptance, recovery
+and read cursors are separate; receiving a history frame never marks it read.
+
+## Pending input and durable chat acceptance
+
+Typed drafts resume their usual three-second pause after reload. Voice drafts
+and recovered interim words use the existing voice join cadence. Drafts
+remain scoped to the signed-in account and tab; a hot swap shares that same
+state. A durable outgoing entry is written before the input is cleared,
+with one stable client `id` and the original voice/context metadata. It remains
+a pending row until the hub acknowledges it. A successful WebSocket `send`
+alone is not acceptance. There is no retry button: reconnect and authoritative
+history reconciliation retry pending entries quietly, in FIFO order, with one
+unacknowledged entry in flight. A failed durable write leaves the draft intact.
+
+**Receipt timeout.** An entry in flight with no receipt for
+`chat.outboxAckTimeoutMs` (default 15 s, /dev/config; 0 = wait forever) is
+sent again under the same `id`, so a lost frame, an ack format the page does
+not recognise or a hub path that accepts without posting no longer holds every
+later line as a dashed row (owner, 2026-11-15: 20 lines stuck). The hub's
+per-id receipt makes the resend a no-op if the first copy landed. The wait
+doubles on each miss, up to 8× the timeout, and resets on the next receipt;
+up to a quarter is added at random so two tabs do not resend in lockstep.
+After `chat.outboxMaxResends` resends (default 4; 0 = never give up) with no
+receipt, the line is marked refused locally (`no-receipt`), shown as unsent
+like a hub refusal, and the lines behind it go on; a receipt that still arrives
+later removes it.
+
+**Long lines are cut** (owner, 2026-11-15: a voice line of several pages stayed
+dashed). The hub drops a line over `MAX_CHAT` (4000 characters, wire.ts) without
+a receipt, so the outbox never queues one: `splitChatText` cuts it at the latest
+paragraph, line, sentence end, clause or space in each 4000-character window (a
+hard cut only when there is none) and the parts go out in order as `<id>`,
+`<id>-2`, … Speaker proofs, the recheck, `timing`, `stt` and `continues` vouch
+for the whole line's words, so no part carries them; the page selection and
+files go with the first part. A long line already on the device (stored before
+this, up to 200 000 characters) is cut the same way when the queue loads, and
+one marked `no-receipt` is sent again as its parts.
+
+**Durable queue.** The outbox is in **localStorage**, `lk:ui:chat-outbox:<scope>`
+(and `:cursor`), per account and device, not per tab: a closed tab's unsent
+lines go out from the next tab of that account. Tabs share it: each one re-reads
+the stored queue before changing it and refreshes on the `storage` event, so
+neither overwrites the other's lines; a line both send is de-duplicated by the
+hub. A tab's older sessionStorage queue is moved in once on load
+(`migrateSessionOutbox`). Other devices see a line once the hub accepts it.
+
+The authenticated page sends its existing `{type:"chat", id, text, ...}` frame.
+The hub responds on that page's socket with either:
+
+- `{type:"chat-ack", id, seq}` after durable acceptance;
+- `{type:"chat-rejected", id, reason}` for an explicit refusal of that ID.
+
+Network failures remain pending and do not produce rejection prompts. An
+explicit refusal retains the original text and reason as a blocked row, prompts
+once per ID and lets later pending entries proceed; it is not automatically
+replayed after reload. Malformed or unrelated rejection messages do not reject
+the current input. History and merged voice-part IDs also reconcile pending
+items, so an echo arriving before an acknowledgement does not duplicate a row.
+
+`seq` is the existing server sequence of the authenticated thread: owner
+`seq`/`msg:<seq>`, or a friend's `t:<thread>:seq`/`t:<thread>:msg:<seq>`. There
+is no second delivery sequence. A newly visible message uses its existing
+message sequence; accepted input merged into another line, suppressed as an
+echo, or deduplicated against another mic also consumes this same thread
+sequence even when it creates no visible row. Receipts explain these gaps to
+future loss recovery and read cursors. An acknowledgement proves durable
+acceptance, not that a line was visible, delivered to another device, or read.
+
+Accepted and refused client IDs have durable receipts scoped to that thread,
+independent of bounded visible history. A retransmission reuses the original
+acceptance sequence or refusal reason without posting, merging, invoking AI or
+charging again. The client stores only the largest valid server acknowledgement
+cursor; duplicate or out-of-order receipts cannot move it backwards. Storage
+failures after acknowledgement can leave stale local bytes, so hub receipts
+remain the authority when a later page retries them.
+
+Roll out the hub protocol first, verify durable receipts and compatibility
+with existing clients, then ship the pending-input client. Old clients ignore
+the additional response frames. Do not enable replay against an older hub
+that cannot durably acknowledge and deduplicate the same client ID.
+
 | File (`packages/debug-chat/src/` unless a path is given) | Role                                                     |
 | -------------------------------------------------------- | -------------------------------------------------------- |
 | `debug-chat-widget.ts`                                   | the widget entry: `DebugChat` and `WIDGET_API`           |
@@ -926,6 +1011,38 @@ because a wrong merge is worse than two bubbles; `debug.merge` and
 `debug.merge-refused` (with a reason) in `wrangler tail lianki-push` are what to tune
 it from.
 
+### Reopened: a posted line takes what follows
+
+The owner, 2026-11-15 16:3x JST: "已经提交的语音消息是不是也可以继续贡献给识别窗口？" A line
+whose run already ended on silence (passage end, settled, re-listened, the hub's polish
+on it) still takes the speech that follows, instead of a new line starting. Config
+**`stt.mergeReopenSec`** (`/dev/config`, default 20 s, 0 to 120, 0 = off; unreadable
+in the hub = off), behind the same flag `stt.merge`. Rule: `reopenVerdict` in
+`voice-merge.ts`; the page and the hub both ask `joinVerdict` (a live merge first,
+then a reopen), and the hub alone decides, as above.
+
+- **Open while:** his voice line, stamped, is still the thread's very latest line
+  (his typed line, any agent's or lane's line, an ask card in between: closed), the
+  next utterance starts at most the window after its last part ended (page clock),
+  and reached the hub at most the window plus `MAX_UTTERANCE_MS` after it last grew
+  (hub clock). Same page, same `to`, and every row of the table above except the
+  signal and its window.
+- **Closed by a hand on it:** an edit by a lane or by him (`eval.ts edit`), a summary,
+  a passage, an echo, a removed line. Only `edited.by` `merge`, `auto` (the hub's
+  polish) and `two-mic` reopen (`REOPEN_EDITS`).
+- **Speaker:** stricter than a live merge, since the gap is no longer one utterance:
+  both lines signed as him by the Mac, or neither tagged at all (no voiceprint on the
+  device). One tagged and one not: a new line.
+- **What changes on the line:** `mergeLines` as for a live merge, from the text as
+  heard (`recheck.heard`, else `raw`): the old polish and the old Whisper reading go,
+  `settled` goes, the parts grow. Logged `debug.merge` with `signal: "reopen"`
+  (`reopened: true` when it had settled).
+- **Once more, once:** its next passage end re-listens the whole merged run and sends
+  one `polish-due`; the hub's own polish counts a line whose `edited.by` is `merge` as
+  unpolished, so it polishes the reopened line once, at that passage end, never in
+  between (still being spoken) and never twice.
+- **Undo** splits it into every part as heard, the reopened ones too.
+
 ### An agent already on it
 
 A busy beat does not stop a merge: `--ack` beats every line at once, so a beat
@@ -962,9 +1079,61 @@ An undo: `{type:"edited", …, split:[{id, text, at}…]}`.
 below) is one cheap metered call per run. Today N fragments are N lines and up to N polishes. Merged, they
 are N wakes (each `edited` is a wake, as the chat line was) plus one for `polish-due`,
 and exactly one polish, however long the passage; flag off, nothing. A line's
-polishes are not capped (2026-11-14), and a settled line takes no more parts. Hub: one flag
+polishes are not capped (2026-11-14), and a settled line takes no more parts but by a reopen ("Reopened", above), which costs one polish more. Hub: one flag
 read per 30 s on voice lines (`flag()`'s budget is 60 a minute), one storage write per
 merge, one uncached `flag()` read per passage for `stt.polish`.
+
+### Whisper re-listens to the whole run
+
+The owner, 2026-11-15 03:17 JST: "用 Whisper 整段重听 … 作为第二步 polish。然后 agent
+的各种错字修复、大意理解、括号补充信息作为第三级 polish". Three readings of his speech:
+
+1. **Streaming** (SenseVoice on his Mac), part by part, merged into one line as above.
+2. **Whisper** (Large V3 Turbo, mlx-whisper on the same Mac): at the run's passage end
+   the Mac re-reads the run's whole audio from its RAM ring and the line takes that text.
+3. **Polish** (the hub's automatic one, or a lane's on `polish-due`) reads level 2.
+
+Flag **`stt.whisper-recheck`** (`/dev/flags#stt.whisper-recheck`, on by default,
+audience owner, read by the root layout with the dev grant); it needs `stt.merge`,
+since only a merged line has a passage end. Config: `stt.recheckMinSec` (1.5 s),
+`stt.recheckMaxSec` (60 s), `stt.recheckTimeoutMs` (8 s). Code:
+`packages/debug-chat/src/whisper-recheck.ts`; the Mac's side is docs/local-stt.md,
+"On-demand Whisper recheck".
+
+- **When.** The page's passage end (`PASSAGE_END_MS` with no speech) for a merged line
+  that nobody touched since the merge: not settled, not polished, not a passage, every
+  part from the local STT. Its span, first part's `t_speechStart` to the last part's
+  `t_speechEnd`, is within min and max. Otherwise the passage end goes at once, as before.
+- **Asking the Mac.** `__lkMic.recheck()` (mic session v16) on the local STT socket in
+  use, only while it is up (a new socket holds none of the run's audio):
+  `{t:"recheck", auto:true, run:<line id>, fromAgoMs, toAgoMs}`. The window is sent
+  as durations before now on the page's clock, so the Mac's clock never has to agree.
+- **A run longer than `stt.recheckMaxSec`** (a reopened one, mostly): only its newest
+  parts are re-read, those whose wall-clock span (first one's start to the last one's
+  end) fits; `from` in the request's plan and the amend names the first. The parts
+  before it keep the streaming text (level 1), and `recheck.from` says so. The Mac's
+  ring holds only streamed audio, so a span that fits the wall clock always fits the
+  ring: `--recheck-max-sec` (default 60) and `stt.recheckMaxSec` stay as they are.
+  Only the newest part alone too long: `long`, level 1.
+- **The answer.** `ok:true` with text, for this run, and the line still exactly as asked
+  (same parts, same text): the page sends `{type:"passage-end", recheck:{id, parts,
+text, engine, lang}}`. A failure, `recheck busy`, a timeout, another run, or a line
+  that moved on: a plain passage end, the line keeps level 1. A part that joined while
+  Whisper read sends nothing: the next passage end re-reads the longer run. One run is
+  never asked twice at once.
+- **The hub** (`passageEnd`, `applyRecheck`) checks it again on the stored line, then
+  sets `text` and `raw` to Whisper's reading, `edited.by` stays `merge` (no read-back of
+  a polish), and `recheck: {at, engine, lang, heard, text}` keeps the streaming text.
+  Then it settles the line and sends `polish-due` with the new text: one LLM polish per
+  run, after level 2. Pages and listeners hear one more `edited` (with `recheck`).
+  Logged `debug.recheck` (lengths only) or `debug.recheck-refused` (why).
+- **Undo** splits it back into the parts as heard; the reading goes with the merge.
+- **On the page.** The message details (double tap, right click) list the readings,
+  "Heard while speaking", "Re-listened whole (mlx-whisper)" and "Polished"
+  (`levelHeard`, `levelWhisper`, `levelPolished`, 16 locales); nothing else changes.
+- **Cost.** The polish waits for Whisper, at most `stt.recheckTimeoutMs`. The audio never
+  leaves the Mac's RAM. Tests: `unit/whisper-recheck.test.ts`, the hub's in
+  `unit/debug-hub.test.ts` ("Whisper's reading…"), the Mac's in `test_recheck.py`.
 
 ### Undo
 
@@ -1019,6 +1188,19 @@ the hub's `twoMic()`.
   above handles those); a line the Mac said is someone else's with one it did not;
   summaries, passages and hidden lines.
 
+## Per-message voice details
+
+Voice inputs keep their recognition route and model inside message details, rather
+than printing a long model label beside the text. The small voice mark opens those
+details directly; later sentences in a grouped owner passage retain the ordinary
+message-details action without repeating the speaker mark. The panel shows recorded
+speaker decisions and scores, recognition and whole-run recheck models, polishing
+actor, actual voices heard on this device, and the existing timing breakdown.
+Missing observations remain absent: current settings do not establish which model
+or voice produced an earlier message. The local recognition route identifies a
+speech server, not the phone capturing the microphone. Private device slugs and
+signed proof text are not promoted into the structured voice rows.
+
 ## Voiceprint: enrolment and delete by a tap
 
 The chat menu's **Voiceprint** (owner pages with a local STT) opens a panel
@@ -1029,7 +1211,7 @@ features, never audio, encrypted in his account; flag `stt.voiceprint-cloud`),
 and "Delete my voiceprint" (a confirming tap; the Mac and the account). The
 print lives on the Mac, and a copy of its features in his account once he
 saves it there; voice lines it verified as him get a small green
-check (`VoiceMark`). The same rule as recording: starting enrolment and
+sound-wave mark (`VoiceMark`). The same rule as recording: starting enrolment and
 deleting are taps, never voice. Details: [local-stt.md](local-stt.md),
 "Voiceprint".
 
@@ -1183,7 +1365,19 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
   (`dragLeavesFull`): the panel comes back, its own size, and follows the finger
   from there; a smaller wobble, sideways or down, stays. Without a drag (the
   keyboard, a screen reader): the menu's **Full screen** row (a double tap on the
-  grip), `fullScreen` in 16 locales. The old ⤢ toggle over the panel's top
+  grip), `fullScreen` in 16 locales. The row is a switch showing both states,
+  `[ On | Off ]` (`SealStamp`, the current half filled seal red; words
+  `menuSwitchOn`/`menuSwitchOff` in chat-ui-locales.ts), `FullScreenMenuItem.tsx`.
+- **The agent can flip it, visibly** (owner, 2026-11-15: "全屏时你帮我把菜单点开…
+  高亮全屏按钮区域"): `lianki-dev ui fullscreen --on|--off` (eval.ts `ui`) sends
+  `{type: "ui", op: "fullscreen", on}`; the hub relays it to that thread's pages
+  like a wake (not stored) and answers `ui-done` with the delivered count.
+  DebugEval passes it on as the window event `lk:chat-ui`; the chat restores
+  itself if minimized (for `--on`), opens the menu, outlines the row in seal red
+  and pulses it once (`CUE_MS`, 0.6 s; the outline alone under reduced motion),
+  then flips it as a tap would (same `full` choice) and closes the menu
+  (`ui-cue.ts`; unit/chat-fullscreen-menu.test.tsx). Ignored where full screen
+  is not offered. The old ⤢ toggle over the panel's top
   corner is gone; the Gantt's own ⤢ is unrelated.
 - **The way out** (owner, 18:25 JST: "an exit button is still needed"): a pill,
   ✕ and the words `fullScreenExit`, at the top corner under the notch, 40 px tall
@@ -1330,7 +1524,15 @@ and the unit tests are in `unit/chat-fold.test.ts` and `unit/anchor.test.ts`.
 - **The grip** (owner, 2026-11-07 20:34 JST: the handle did not look
   draggable). The mark is a six-dot vertical grip (its own SVG, `GripDots`),
   `cursor: grab`, `grabbing` while held, labelled `dragGrip` (16 locales,
-  with context). Its 44 px touch area, place and gestures are unchanged.
+  with context). Its 44 px touch area and place are unchanged. A primary mouse
+  press drags immediately; right-click opens the existing menu anchored beside
+  the grip. A touch/pen hold (config `chat.gripHoldMs`, default 500 ms) opens the
+  same menu, cancelling the drag and suppressing the release click. Movement
+  cancels hold-to-menu. A single click/tap still folds or opens; a double click
+  or double tap now toggles the existing app-screen fullscreen layout. The
+  standalone external iframe host's outer grip is separate and unchanged.
+  `grip-gesture.ts` keeps these decisions and menu viewport bounds pure and
+  tested with injected timers; no native browser fullscreen request is made.
 - **Pill → open.** The pill's Li (part of the pill, not a new button) opens
   the chat again, as does the grip, the menu's Restore row or `chat.open`.
 - **The handle (dormant).** Tucked, the chat left one thumb-sized handle. Its shape
@@ -1898,7 +2100,15 @@ polygon text tspan title` only (any other is dropped with its subtree:
 Owner, 2026-11-14: right of the connection chip (the link icon, over the
 input), small overlapping avatars of everyone in this thread
 (`PresenceStack.tsx`): most recently active first, `chat.presenceShown`
-(default 3, `/dev/config`) of them, then "+N".
+(default 6, `/dev/config`) of them, then "+N".
+
+- **Read-only lanes too** (owner, 2026-11-15 "3的成员也要显示在叠叠头像这里"):
+  every lane-registry row in state `reader` is listed even when it has not
+  read lately (`presentList`, as of its last use). The stack puts them after
+  the live ones, greyed with no dot; the panel lists them last under
+  "read-only" (`peopleReadOnly`). Every row shows its role (`roster.ts
+  laneRole`: config `chat.lanes`, else `LANES`). An older page just draws them
+  as more avatars.
 
 - **Who counts** (`presence.ts presentList`, built in the hub): a token with a
   listening socket open (`lianki chat listen`, an MCP wait on a socket); a
@@ -2079,8 +2289,8 @@ closes the old inbox and ignores late callbacks. No other `/api/dev` gate change
 The old `/api/dev/inbox/**` URLs are exact thin forwards, preserving existing
 widgets and the agent's single-use ticket downloads.
 
-| route                        | what                                                                                                 |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| route                       | what                                                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `POST /api/my/inbox`        | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
 | `GET /api/my/inbox`         | his files and usage (settles accrued storage cost)                                                   |
 | `PATCH /api/my/inbox`       | `{ids, line}`: the chat line they were sent with                                                     |
@@ -2227,6 +2437,28 @@ default, never synced. The mic's note above the bar (the wake word waiting
 for Wi-Fi, a mic error) is lifted by the strip's measured height
 (`DebugMic noteLift={etaH}`), so it sits over the strip (or its ▸), never
 on it.
+
+**Change ticker** (owner, 2026-11-15 20:1x JST: "agent 对我们的甘特图，有任何一个任务
+进行更新的时候，你就在这里播报一下"). Each new snapshot of the timed tasks
+(a progress event over the owner's reader socket re-lays the tree, so
+`etaTasks` changes) is compared with the last (`eta-ticker.ts etaChanges`),
+and each change is announced in the bar in place of its summary: a new task,
+done, done early ("done 20M early"), its ETA pushed later ("20M later", under
+a minute is not news), blocked, waiting for the owner, and ETA reached (the
+page's own clock passing it, `lateCrossings`, or the hub's `sent`). Each has
+its mark (`Icon` plus, check, sparkle, an arrow, pause; the red clock for
+late) and its string (`etaNews*`, every locale with its context line), with
+the lane that made it (the node's last ETA event's `by`) in front. One item
+shows for `chat.etaTickerSec` seconds (default 6), the most recent
+`chat.etaTickerKeep` (default 5) in turn, newest first, then the summary is
+back; a new change starts the pass over (`tickerPush` / `tickerShown`).
+Config keys, public (`publicCfg` in DebugEval → DebugChat `etaTicker`). A new
+change lights the bar once in its gold (`ETA_FLASH_CSS`, an overlay fading
+out; none under reduced motion); the height never changes, and the percent
+stays. A tap does what the bar always does (the full-screen Gantt). Not
+announced: the first snapshot (the page loading), and anything whose last
+event is by "owner" (his own check-off from his page). The folded chat's
+compact bar shows only its time, no announcements.
 
 ### Full-screen Gantt
 
@@ -2928,3 +3160,20 @@ doc comments are their context).
 
 Delivery nouns, one vocabulary for the chip and, later, the chat's message
 marks (`DELIVERY`): sent → delivered → seen → handled; failed.
+
+### Initial history and tail following
+
+The chat log is a normal scrolling div and ordered list, not the page's
+VirtualList. A fresh chat/account/thread starts following newest. That intent
+survives cached history, every sequence-replay batch, repeated programmatic
+scroll events, and passive image/card or viewport resizing. The content list's
+ResizeObserver and asset-load capture correct the bottom after asynchronous
+growth; there is no polling or extra history request.
+
+`scroll-follow.ts` separates intent from geometry: a wheel/touch/key/scrollbar
+move toward older text or a jump to an unanswered question interrupts following
+before a queued resize/history callback can pull it back. History ending in an
+owner line is not treated as a local send. While reading older lines, updates
+keep the existing new-message indicator. Reaching the bottom or pressing that
+indicator resumes following. Tests inject a scroll box and replay callback
+orders without real clocks.

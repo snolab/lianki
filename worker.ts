@@ -326,7 +326,7 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
    */
   async bookStt(userId: unknown, audioMs: unknown): Promise<boolean | "busy"> {
     if (!allowSttBook()) return "busy";
-    return bookSttUsage(this.env.DB, userId, audioMs);
+    return bookSttUsage(this.env.DB, userId, audioMs, new Date(), this.env.PUSH ?? null);
   }
 }
 

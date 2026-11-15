@@ -10,6 +10,26 @@
 export const PARTNER_AI_FLAG = "partner.ai-reply";
 
 /**
+ * The owner's own thread answered by the model too (docs/partner-ai.md,
+ * "The owner's thread"), on top of PARTNER_AI_FLAG: only his unaddressed
+ * lines that no lane answered within OWNER_REPLY_DELAY_MS.
+ */
+export const PARTNER_OWNER_FLAG = "partner.owner-thread";
+/** The live value's key (lib/config.ts) for how long the lanes have before the model answers. */
+export const OWNER_REPLY_DELAY_KEY = "partner.ownerReplyDelayMs";
+/** Its default: 30 s for a lane to answer first (2026-11-15: lanes take 20–40 s; at 8 s Li cut in while 小克 typed). */
+export const OWNER_REPLY_DELAY_MS = 30_000;
+export const OWNER_REPLY_DELAY_MAX = 120_000;
+/**
+ * Li's roll-call answer in his thread, no model (workers/push/src/owner-ai.ts;
+ * packages/debug-chat/src/roster.ts rollCallText): the live value's key and
+ * its default. `{n}` = how many are present besides Li, `{names}` = who.
+ */
+export const ROLL_CALL_REPLY_KEY = "partner.rollCallReply";
+/** Only Li's own presence: the owner wants every lane to answer for itself (2026-11-15 14:2x JST "不要别人代答"). */
+export const ROLL_CALL_REPLY_DEFAULT = "Li 在";
+
+/**
  * DeepSeek on Cloudflare Workers AI (verified listed by `wrangler ai models`,
  * 2026-11-03). Called over the OpenAI-compatible REST endpoint with the
  * existing CLOUDFLARE_AI_TOKEN: no new secret, no third-party API.
@@ -49,10 +69,26 @@ export const MAX_REPLY_CHARS = 2000;
  */
 export const CHARGE_STALE_MS = 10 * 60_000;
 
-/** Per user, per JST day: input + output tokens (≈ 40–80 typical messages). */
+/**
+ * Defaults of the caps' live values (lib/config.ts, read by the hub):
+ * per user, over the rolling cap window (CAP_WINDOW_HOURS, by default the last
+ * 24 hours), input + output tokens (≈ 40–80 typical messages). The name keeps
+ * "DAILY" from when the caps reset on a calendar day; no day boundary remains.
+ */
 export const USER_DAILY_TOKENS = 60_000;
-/** Whole site, per JST day, in USD at the list prices above. */
+/** The live value's key for the per-user tokens over the window. */
+export const USER_WINDOW_TOKENS_KEY = "partner.userWindowTokens";
+export const USER_WINDOW_TOKENS_MAX = 10_000_000;
+/** Whole site, over the same rolling window, in USD at the list prices above (default). */
 export const SITE_DAILY_USD = 2;
+/** The live value's key for the site's USD over the window. */
+export const SITE_WINDOW_USD_KEY = "partner.siteWindowUsd";
+export const SITE_WINDOW_USD_MAX = 1000;
+/** The live value's key (lib/config.ts): how many hours the caps' rolling window spans. */
+export const CAP_WINDOW_KEY = "partner.capWindowHours";
+/** Its default: the last 24 hours (hourly UTC buckets, lib/rolling-window.ts). */
+export const CAP_WINDOW_HOURS = 24;
+export const CAP_WINDOW_MAX = 168;
 
 /** The label on the AI's lines (the agent's name on them is the chat's own, "Learning Partner"). */
 export const PARTNER_AI_LABEL = "Learning Partner AI";
@@ -60,9 +96,6 @@ export const PARTNER_AI_LABEL = "Learning Partner AI";
 /** USD for one call's tokens. */
 export const costUsd = (tokensIn: number, tokensOut: number) =>
   (tokensIn * PRICE_IN_PER_M + tokensOut * PRICE_OUT_PER_M) / 1_000_000;
-
-/** The JST calendar day (YYYY-MM-DD) of an epoch-ms time: when the daily caps reset (00:00 JST). */
-export const jstDay = (t: number) => new Date(t + 9 * 3600_000).toISOString().slice(0, 10);
 
 /** What the hub sends the main Worker (DebugSessions.partnerReply). */
 export type PartnerRequest = {
@@ -73,6 +106,16 @@ export type PartnerRequest = {
    * retried request is charged once. An older hub sends none (a fresh key).
    */
   msgId?: string;
+  /**
+   * The owner's own thread (PARTNER_OWNER_FLAG): the hub sets it only there,
+   * and the main Worker then serves the account only if it is the owner's.
+   */
+  owner?: true;
+  /**
+   * The owner's thread only: who is present there (the hub's presence list,
+   * packages/debug-chat/src/roster.ts rosterOf), for Li's "who is here" prompt block.
+   */
+  roster?: { id: string; name: string; mode?: "listener" | "reader"; muted?: true }[];
   /** The thread's latest lines, oldest first: the user's and the agent's. */
   history: { role: "user" | "assistant"; text: string }[];
   /** Where the user is: the page's path (from its label) and what the line carried. */

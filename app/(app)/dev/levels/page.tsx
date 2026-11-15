@@ -4,7 +4,16 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { isDev } from "@/lib/permissions";
 import { LEVEL_IDS } from "@/lib/levels";
 import { dbBackend, getD1 } from "@/lib/d1";
-import { recentStudyDays, userLevelOf, type StudyDayRow, type UserLevel } from "@/lib/study-days";
+import {
+  recentStudyDays,
+  requestTimeZone,
+  userLevelOf,
+  type StudyDayRow,
+  type UserLevel,
+} from "@/lib/study-days";
+import { appLocale } from "@/lib/app-locale.server";
+import { LANG_TAGS } from "@/lib/constants";
+import { formatZoned, validZone, zoneTag } from "@/lib/time-zone";
 import { LevelBadge } from "@/app/components/level-badge";
 import { LevelGallery, type LevelNames } from "./LevelGallery";
 import { devPageText, devPageMetadata } from "../dev-page-title";
@@ -39,6 +48,13 @@ export default async function DevLevelsPage() {
       error = (e as Error).message;
     }
   const myLevel = await devPageText("myLevel");
+  // Times in the page's locale and the viewer's zone (where the request comes from; else UTC).
+  const pageLocale = await appLocale();
+  const tag = LANG_TAGS[pageLocale] ?? pageLocale;
+  const rz = requestTimeZone();
+  const zone = validZone(rz) ? rz : "UTC";
+  const when = (at: string | number) =>
+    formatZoned(at, zone, tag, { dateStyle: "medium", timeStyle: "medium" });
   return (
     <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
       <section className="rounded-xl border border-gray-300 dark:border-gray-700 p-4 space-y-3">
@@ -59,12 +75,7 @@ export default async function DevLevelsPage() {
                   {mine.level.level} · tier {mine.level.tier} · {mine.level.studyDays} study days
                 </p>
                 <p className="text-gray-500">
-                  paid since{" "}
-                  {mine.level.paidSince
-                    ? new Date(mine.level.paidSince).toLocaleString("ja-JP", {
-                        timeZone: "Asia/Tokyo",
-                      }) + " JST"
-                    : "— (never)"}
+                  paid since {mine.level.paidSince ? when(mine.level.paidSince) : "— (never)"}
                 </p>
                 {mine.level.next && (
                   <p className="text-gray-500">
@@ -80,7 +91,7 @@ export default async function DevLevelsPage() {
                 <tr className="text-left text-gray-500">
                   <th className="pr-4">day</th>
                   <th className="pr-4">zone</th>
-                  <th className="pr-4">first review (JST)</th>
+                  <th className="pr-4">first review ({zoneTag(zone)})</th>
                   <th>qualifying reviews</th>
                 </tr>
               </thead>
@@ -89,9 +100,7 @@ export default async function DevLevelsPage() {
                   <tr key={d.day}>
                     <td className="pr-4">{d.day}</td>
                     <td className="pr-4">{d.tz}</td>
-                    <td className="pr-4">
-                      {new Date(d.first_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
-                    </td>
+                    <td className="pr-4">{when(d.first_at)}</td>
                     <td>{d.reviews}</td>
                   </tr>
                 ))}

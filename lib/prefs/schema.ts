@@ -46,6 +46,7 @@ import { isAllowedHost, ALLOWED_HOSTS_MAX } from "@lianki/core/externalLink";
 import { checkDontAsk } from "@/lib/dont-ask";
 import { BADGE_MODES } from "@/lib/app-badge";
 import { LANG_TAG_MAX, LANG_TAG_RE, PREFERRED_LANGS_MAX } from "@/lib/lang-order";
+import { STORED_LEVEL_IDS } from "@/lib/lang-levels";
 
 // ── Limits ────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,9 @@ const titleRules = z
   })
   .strict();
 
+/** A stored BCP 47 tag (lib/lang-order.ts). */
+const langTag = z.string().max(LANG_TAG_MAX).regex(LANG_TAG_RE);
+
 export const PREF_SCHEMAS = {
   // /words study settings
   "words.showAll": z.boolean(),
@@ -167,9 +171,12 @@ export const PREF_SCHEMAS = {
   "home.pins": z.array(catalogUrl).max(100),
   "lab.immersionLangs": z.array(z.enum(IMMERSION_CODES)).max(IMMERSION_CODES.length),
   "lab.immersionTranspose": z.boolean(),
-  // preferred languages, in order (lib/lang-order.ts): material in many languages lists these first; [] = automatic
+  // preferred languages, in order (lib/lang-order.ts): material in many languages lists these first; [] = automatic.
+  // An item is a plain tag (level unset, the original shape) or { lang, level } (lib/lang-levels.ts).
   "lang.preferred": z
-    .array(z.string().max(LANG_TAG_MAX).regex(LANG_TAG_RE))
+    .array(
+      z.union([langTag, z.object({ lang: langTag, level: z.enum(STORED_LEVEL_IDS) }).strict()]),
+    )
     .max(PREFERRED_LANGS_MAX),
   // /read: which language's entry a word means where it stands
   "read.sensePicks": sensePicks,

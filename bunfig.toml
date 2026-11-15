@@ -32,6 +32,10 @@ coveragePathIgnorePatterns = [
   # matching the test globs, and support modules deliberately do not.
   # Must be a glob — a bare "unit/support/" silently matches nothing.
   "unit/support/**",
+  # intlayer's generated dictionaries (built from the *.content.ts files): a UI
+  # test that renders a component under next-intlayer loads them, and the
+  # generated module has no functions of its own to cover.
+  ".intlayer/**",
   "app/db.ts",
   # Replaced wholesale by unit/support/testMocks.ts (mock.module), so the real
   # function never runs under the unit suites: 0% funcs / 50% lines on bun

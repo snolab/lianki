@@ -6,19 +6,42 @@
 import { useEffect, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { CAPABILITIES, type CapabilityId } from "@/lib/mini-apps/capabilities";
-import { createBridge, fromFrame, parseRequest, replyTarget } from "@/lib/mini-apps/bridge";
+import {
+  createBridge,
+  fromFrame,
+  parseRequest,
+  replyTarget,
+  themeEvent,
+} from "@/lib/mini-apps/bridge";
+import { type Theme, hostTheme, withTheme } from "@/lib/mini-apps/html";
 import type { Choice, Grants } from "@/lib/mini-apps/grants";
 import type { HostView } from "@/lib/mini-apps/handlers";
 
 type Ask = { cap: CapabilityId; resolve: (c: Choice | null) => void };
 
-export function MiniAppHost({ view }: { view: HostView }) {
+export function MiniAppHost({ view, embedded = false }: { view: HostView; embedded?: boolean }) {
   const c = useIntlayer("mini-app");
   const frame = useRef<HTMLIFrameElement>(null);
   const [ask, setAsk] = useState<Ask | null>(null);
+  // The site's theme (it follows the system): baked into the srcdoc once, then sent as events.
+  const [theme, setTheme] = useState<Theme | null>(null);
+  const frameOrigin = view.frame.mode === "origin" ? view.frame.origin : "null";
 
   useEffect(() => {
-    const frameOrigin = view.frame.mode === "origin" ? view.frame.origin : "null";
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    setTheme(hostTheme(mq));
+    const on = () => {
+      const t = hostTheme(mq);
+      setTheme(t);
+      frame.current?.contentWindow?.postMessage(themeEvent(t), replyTarget(frameOrigin));
+    };
+    mq?.addEventListener("change", on);
+    return () => mq?.removeEventListener("change", on);
+  }, [frameOrigin]);
+  const first = useRef<Theme | null>(null);
+  if (theme && !first.current) first.current = theme;
+
+  useEffect(() => {
     const api = `/api/my/mini-apps/${encodeURIComponent(view.slug)}`;
     const post = async (body: Record<string, unknown>) => {
       const r = await fetch(api, {
@@ -34,6 +57,7 @@ export function MiniAppHost({ view }: { view: HostView }) {
         name: view.name,
         icon: view.icon,
         version: view.version,
+        style: view.style,
         permissions: view.permissions,
       },
       grants: () => view.grants,
@@ -53,7 +77,7 @@ export function MiniAppHost({ view }: { view: HostView }) {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [view]);
+  }, [view, frameOrigin]);
 
   useEffect(() => {
     if (!ask) return;
@@ -71,17 +95,32 @@ export function MiniAppHost({ view }: { view: HostView }) {
 
   const f = view.frame;
   return (
-    <div className="relative flex min-h-[calc(100dvh-4rem)] flex-col" data-testid="mini-app">
-      <iframe
-        ref={frame}
-        title={view.name}
-        className="w-full flex-1 border-0"
-        style={{ minHeight: "calc(100dvh - 4rem)" }}
-        sandbox={f.sandbox}
-        referrerPolicy="no-referrer"
-        allow=""
-        {...(f.mode === "origin" ? { src: f.src } : { srcDoc: f.srcdoc })}
-      />
+    <div
+      className={
+        embedded
+          ? "relative flex h-full min-h-0 flex-col"
+          : "relative flex min-h-[calc(100dvh-4rem)] flex-col"
+      }
+      data-testid="mini-app"
+    >
+      {first.current && (!embedded || f.mode === "srcdoc") && (
+        <iframe
+          ref={frame}
+          title={view.name}
+          className="w-full flex-1 border-0"
+          style={embedded ? { minHeight: 0, height: "100%" } : { minHeight: "calc(100dvh - 4rem)" }}
+          sandbox={embedded ? "allow-scripts allow-forms" : f.sandbox}
+          referrerPolicy="no-referrer"
+          allow=""
+          onLoad={() =>
+            theme &&
+            frame.current?.contentWindow?.postMessage(themeEvent(theme), replyTarget(frameOrigin))
+          }
+          {...(f.mode === "origin"
+            ? { src: f.src }
+            : { srcDoc: withTheme(f.srcdoc, first.current) })}
+        />
+      )}
       {ask && (
         <div
           role="dialog"

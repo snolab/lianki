@@ -23,7 +23,7 @@ import {
   GAP,
   escapeRe,
   STOCK_PHRASES,
-  STT_GUARD,
+  guardLimits,
   type SttGuardLimits,
   type SttSignals,
   judgeFinal,
@@ -33,6 +33,7 @@ import {
   phraseKey,
   wholePhraseRe,
 } from "./stt-guard";
+import { type RepeatLimits, repeatGuard, repeatLimits } from "./stt-repeat";
 import type { FilterVerdict } from "./local-stt";
 import type { SpeakerTag } from "./wire";
 import type { SpotResult, WakeSpot } from "./wake";
@@ -134,7 +135,11 @@ export function micErrorNote(e: unknown, lang?: string | null): string {
     if (e.status === 401) return t.micSignIn;
     if (e.status === 429) return t.micTooMuch;
   }
-  console.warn("[mic] failed:", e instanceof SttError ? e.status : "", (e as Error | null)?.message ?? e);
+  console.warn(
+    "[mic] failed:",
+    e instanceof SttError ? e.status : "",
+    (e as Error | null)?.message ?? e,
+  );
   return t.micFailed;
 }
 
@@ -243,7 +248,8 @@ export function isDictationBurst(settledLen: number, draft: string): boolean {
   return draft.length - settledLen >= AUTO_SEND_MIN && ENDS_SENTENCE.test(draft.trim());
 }
 
-const QUESTION_CJK = /(?:吗|嗎|呢|么|麼|吧|か|かな|かしら|の|でしょう|ですか|ますか|니까|나요|까요)$/u;
+const QUESTION_CJK =
+  /(?:吗|嗎|呢|么|麼|吧|か|かな|かしら|の|でしょう|ですか|ますか|니까|나요|까요)$/u;
 const QUESTION_LATIN =
   /^(?:what|why|how|when|where|who|whom|whose|which|can|could|do|does|did|is|are|was|were|will|would|should|shall|may|might|have|has|had)\b/i;
 const TRAILING_PUNCT = /[\p{P}\s]+$/u;
@@ -498,7 +504,14 @@ export function cleanTranscript(
   /** Whether a stock phrase can be the model's own: not from a ctc decoder (SttSignals). */
   phrases = true,
 ): TranscriptCleaning {
-  const res: TranscriptCleaning = { text, drop: false, prompt: 0, phrase: 0, repeat: 0, removed: [] };
+  const res: TranscriptCleaning = {
+    text,
+    drop: false,
+    prompt: 0,
+    phrase: 0,
+    repeat: 0,
+    removed: [],
+  };
   if (!normalizeTranscript(text)) return res;
   const ps = prompts.filter((p) => normalizeTranscript(p)).map(promptParts);
 
@@ -733,7 +746,8 @@ export const SEMANTIC_ENDPOINT_MS = 0;
 export function semanticMs(
   over: unknown = (globalThis as { __lkVoiceTune?: unknown }).__lkVoiceTune,
 ): number {
-  const v = over && typeof over === "object" ? (over as { semanticMs?: unknown }).semanticMs : undefined;
+  const v =
+    over && typeof over === "object" ? (over as { semanticMs?: unknown }).semanticMs : undefined;
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : SEMANTIC_ENDPOINT_MS;
 }
 /** A partial that ends a sentence: terminal punctuation only. */
@@ -875,6 +889,8 @@ export function createMic(d: {
   log?: (ev: Record<string, unknown>) => void;
   /** Overrides of the silence guard's limits (stt-guard.ts STT_GUARD), for tests. */
   guard?: Partial<SttGuardLimits>;
+  /** The repetition guard's limits (stt-repeat.ts); default: the live config ones. */
+  repeat?: () => RepeatLimits;
   /** Rolling partial chunks for long utterances (on unless false). */
   partials?: boolean;
   /** The local streaming STT, if one is configured now (asked at each utterance). */
@@ -1016,11 +1032,13 @@ export function createMic(d: {
         }
         const c = cleanTranscript(x.text, STT_PROMPTS, x.signals?.decoder !== "ctc");
         if (c.drop || !c.text.trim() || isHallucinationPhrase(c.text)) return;
+        const loop = repeatGuard(c.text, d.repeat?.() ?? repeatLimits());
+        if (loop.action === "drop") return;
         keep({
           wav,
           durationMs,
           at,
-          text: c.text,
+          text: loop.text,
           source: "local",
           mode: "passive",
           speaker: x.speaker?.decision,
@@ -1118,13 +1136,13 @@ export function createMic(d: {
       gated = d.wake?.passive() ?? false;
       utt = gated
         ? null
-        : d.stream?.()?.begin((text) => {
-          if (g !== gen || held || shadow) return;
-          const seq = cur ?? (cur = q.add());
-          ep.partial = text;
-          q.partial(seq, text);
-          pending();
-        }) ?? null;
+        : (d.stream?.()?.begin((text) => {
+            if (g !== gen || held || shadow) return;
+            const seq = cur ?? (cur = q.add());
+            ep.partial = text;
+            q.partial(seq, text);
+            pending();
+          }) ?? null);
     },
     onFrame(frame, prob) {
       if (g !== gen) return;
@@ -1148,7 +1166,13 @@ export function createMic(d: {
           shadow = false;
           d.onState("capturing");
         }
-        if (!startCued && !shadow && !gated && !enrolling && voicedOut >= toSamples(CUE_CONFIRM_MS)) {
+        if (
+          !startCued &&
+          !shadow &&
+          !gated &&
+          !enrolling &&
+          voicedOut >= toSamples(CUE_CONFIRM_MS)
+        ) {
           startCued = true;
           d.cue.edge("start");
         }
@@ -1162,7 +1186,9 @@ export function createMic(d: {
         } else ep.quiet += frame.length;
         const sem = semanticMs();
         const early = sem > 0 && endsSentence(ep.partial);
-        const wait = early ? Math.min(sem, a?.endpointMs ?? ENDPOINT_MS) : (a?.endpointMs ?? ENDPOINT_MS);
+        const wait = early
+          ? Math.min(sem, a?.endpointMs ?? ENDPOINT_MS)
+          : (a?.endpointMs ?? ENDPOINT_MS);
         if (ep.heard && ep.quiet >= toSamples(wait)) {
           ep.sent = true;
           d.log?.({
@@ -1310,7 +1336,14 @@ export function createMic(d: {
               // A name heard: the line is addressed to it ("@coco …", polish.ts wakeMention).
               const lead = w.onWake(r.label) || undefined;
               if (!r.rest.length) return drop();
-              send(seq, r.rest, toMs(r.rest.length), prob, f ? Promise.resolve(f) : undefined, lead);
+              send(
+                seq,
+                r.rest,
+                toMs(r.rest.length),
+                prob,
+                f ? Promise.resolve(f) : undefined,
+                lead,
+              );
             };
             // The Mac's speaker check first, when it is reachable: the whole utterance
             // ("Linky" included) is scored, the text read from after it. Someone
@@ -1395,7 +1428,19 @@ export function createMic(d: {
         (heard) => {
           // Whisper's additions out of real speech: prompt echo, stock phrases, loops.
           const c = cleanTranscript(heard, STT_PROMPTS, signals?.decoder !== "ctc");
-          const text = c.drop ? "" : c.text;
+          // A loop of a longer unit, or one that is most of the line (stt-repeat.ts).
+          const loop = c.drop ? undefined : repeatGuard(c.text, d.repeat?.() ?? repeatLimits());
+          const looped = loop && loop.action !== "keep" ? loop : undefined;
+          const text = c.drop ? "" : (loop?.text ?? c.text);
+          if (looped)
+            d.log?.({
+              ev: "stt-cleaned",
+              repetition: looped.action,
+              runs: looped.runs,
+              unitChars: [...looped.unit].length,
+              share: Math.round(looped.share * 100) / 100,
+              removedChars: c.text.length - text.length,
+            });
           if (c.prompt || c.phrase || c.repeat)
             d.log?.({
               ev: "stt-cleaned",
@@ -1409,10 +1454,12 @@ export function createMic(d: {
           // and its cue, and the polish never hear a dropped line.
           const reason = c.drop
             ? null
-            : judgeFinal(
+            : looped?.action === "drop"
+              ? ("repetition" as const)
+              : judgeFinal(
                 text,
                 { speechMs: ms, prob, frameRms: loudestFrameRms(audio), signals },
-                { ...STT_GUARD, ...d.guard },
+                { ...guardLimits(), ...d.guard },
               );
           const drop = c.drop || !!reason;
           if (reason) {
@@ -1427,7 +1474,11 @@ export function createMic(d: {
               vadShare: signals?.vadShare,
             });
           }
-          d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
+          d.timing?.(seq, {
+            t_sttDone: now(),
+            dropped: drop || !text.trim(),
+            ...(looped?.action === "trim" ? { repeat: "trimmed" as const } : {}),
+          });
           const other = spk?.decision === "other";
           // Split by speaker on the Mac, and the text is the Mac's as it came: one line per
           // part, each noted as it lands (report). Anything changed it: one line, as before.
@@ -1578,11 +1629,16 @@ export async function postStt(
   f: typeof fetch = fetch,
   type = "audio/wav",
   hint?: string,
+  options: { signal?: AbortSignal; model?: string } = {},
 ): Promise<SttResult> {
-  const res = await f(hint ? `/api/debug/stt?hint=${encodeURIComponent(hint)}` : "/api/debug/stt", {
+  const query = new URLSearchParams();
+  if (hint) query.set("hint", hint);
+  if (options.model) query.set("model", options.model);
+  const res = await f(query.size ? `/api/debug/stt?${query}` : "/api/debug/stt", {
     method: "POST",
     body: wav as unknown as BodyInit,
     headers: { "content-type": type },
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   const out = (await res.json().catch(() => ({}))) as Partial<SttResult> & { error?: string };
   if (!res.ok) throw new SttError(res.status, out.error ?? `stt ${res.status}`);
@@ -1609,7 +1665,9 @@ export function reportLocalStt(audioMs: number, f: typeof fetch = fetch): void {
 }
 
 /** What the sink said about one clip: its name, or why it was not kept. */
-export type ClipResult = { ok: true; name?: string } | { ok: false; status?: number; error: string };
+export type ClipResult =
+  | { ok: true; name?: string }
+  | { ok: false; status?: number; error: string };
 
 /**
  * Keep one utterance on the owner's dev server (scripts/dev/clip-sink): a

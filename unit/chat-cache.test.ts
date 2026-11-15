@@ -45,6 +45,14 @@ const line = (id: string, text = `t-${id}`, extra: Partial<ChatMessage> = {}): C
 beforeEach(() => thawChatCache());
 
 describe("chat cache: write and read", () => {
+  it("keeps only valid current version seq alongside cached message identity", () => {
+    const s = memStore();
+    writeChatCache("acct-a", [line("1", "current", { seq: 12 })], 40, s);
+    expect(readChatCache("acct-a", s)[0]?.seq).toBe(12);
+    for (const seq of [undefined, -1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY])
+      expect(cacheLine(line("1", "legacy", { seq })).seq).toBeUndefined();
+  });
+
   it("reads back what was written for the same account", () => {
     const s = memStore();
     writeChatCache("acct-a", [line("1"), line("2")], 40, s);
@@ -403,4 +411,19 @@ describe("config chat.cacheLines", () => {
     expect(CONFIG["chat.cacheLines"].default).toBe(40);
     expect(CONFIG["chat.cacheLines"].schema.safeParse(0).success).toBe(true);
   });
+});
+
+it("mini app references retain only validated slugs in the device cache", () => {
+  const line = cacheLine({
+    id: "app-line",
+    from: "agent",
+    label: "",
+    text: "/m/calculator",
+    at: 1,
+    apps: [
+      { type: "app", slug: "calculator" },
+      { type: "app", slug: "../private" },
+    ],
+  });
+  expect(line.apps).toEqual([{ type: "app", slug: "calculator" }]);
 });

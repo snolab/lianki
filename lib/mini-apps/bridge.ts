@@ -48,7 +48,14 @@ export function fromFrame(
 export const replyTarget = (frameOrigin: string) => (frameOrigin === "null" ? "*" : frameOrigin);
 
 export type BridgeDeps = {
-  manifest: { slug: string; name: string; icon: string; version: string; permissions: string[] };
+  manifest: {
+    slug: string;
+    name: string;
+    icon: string;
+    version: string;
+    style?: "lianki" | "none";
+    permissions: string[];
+  };
   grants: () => Grants;
   /** Show the prompt card; the user's choice, or null when dismissed. */
   prompt: (cap: CapabilityId) => Promise<Choice | null>;
@@ -137,3 +144,6 @@ export function createBridge(d: BridgeDeps) {
 
   return { handle, grants: () => grants };
 }
+
+/** host → app: the site's theme now (the SDK sets <html data-theme>). */
+export const themeEvent = (theme: "light" | "dark") => ({ lk: PROTOCOL, event: "theme", theme });

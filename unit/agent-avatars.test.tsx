@@ -28,6 +28,7 @@ import {
   nextExpiry,
   presenceSummary,
   presentList,
+  liveFirst,
   stackOf,
 } from "@/packages/debug-chat/src/presence";
 import { lineAvatar } from "@/packages/debug-chat/src/avatar-rules";
@@ -225,6 +226,48 @@ describe("presentList", () => {
     expect(p1).toMatchObject({ name: "Helper", nameBy: "owner", avatarBy: "owner" });
     expect(p1!.avatar).toBeUndefined();
   });
+  it("read-only lanes (registry readers) are listed even when not here lately", () => {
+    const tokA = rec("a".repeat(16), { lane: "lianki-main", seenAt: T0 - 60 * MIN });
+    const gone = rec("e".repeat(16), { lane: "old-bot", revoked: true });
+    const fresh = rec("f".repeat(16), { lane: "fresh", seenAt: T0 - MIN });
+    const reg = (lane: string, state: string, extra = {}) => ({ lane, state, ...extra });
+    const list = presentList({
+      ...base,
+      now: T0,
+      live: [],
+      records: [tokA, gone, fresh],
+      lines: [],
+      lanes: [
+        reg("lianki-main", "reader", { seenAt: T0 - 50 * MIN }),
+        reg("otoji-main", "reader", { seenAt: T0 - 70 * MIN, muted: true }),
+        reg("codex", "reader", { name: "coco" }),
+        reg("old-bot", "reader", { seenAt: T0 }),
+        reg("fresh", "reader", { seenAt: T0 - 2 * MIN }),
+        reg("gone-away", "left", { seenAt: T0 }),
+        reg("claude", "listener", { seenAt: T0 }),
+      ],
+    });
+    expect(list.map((p) => p.key)).toEqual([
+      `tok:${fresh.tag}`,
+      `tok:${tokA.tag}`,
+      "agent:otoji-main",
+      "lane:codex",
+    ]);
+    expect(list.every((p) => p.mode === "reader")).toBe(true);
+    // Already here by a read: one entry, its own read time kept.
+    expect(list[0]!.seenAt).toBe(T0 - MIN);
+    expect(list[1]).toMatchObject({ name: "lianki-main", tok: tokA.tag, seenAt: T0 - 50 * MIN });
+    expect(list[2]).toMatchObject({ name: "otoji-main", muted: true, active: T0 - 70 * MIN });
+    expect(list[3]).toMatchObject({ name: "coco", lane: "codex", active: 0 });
+    expect(list[3]!.seenAt).toBeUndefined();
+    // The stack's order: live ones first, then readers.
+    const mixed = [
+      { key: "r", mode: "reader" as const },
+      { key: "l", mode: "listener" as const },
+      { key: "x" },
+    ];
+    expect(liveFirst(mixed)).toEqual({ live: [mixed[1]!, mixed[2]!], readers: [mixed[0]!] });
+  });
   it("the stack shows the cap, then +N; the summary names them", () => {
     const list = ["agy", "codex", "mcp-bot", "x", "y"].map((name) => ({ name }));
     expect(stackOf(list, 3)).toEqual({ shown: list.slice(0, 3), more: 2 });
@@ -271,6 +314,10 @@ class FakeSocket implements Socket {
   }
   of(type: string) {
     return this.sent.filter((m) => m.type === type);
+  }
+  /** Token roster assertions exclude the connected page's own read-watermark participant. */
+  presentTokens() {
+    return this.lastPresent().filter((p) => p.tok);
   }
   lastPresent() {
     return (this.of("present").at(-1)?.list ?? []) as Present[];
@@ -437,25 +484,29 @@ describe("the hub: presence pushed to the page", () => {
     const page = await h.ownerPage();
     const a = await mint(OWNER, "mcp-bot");
     const ws = await h.listen(a.token, "mcp-remote/1.0.0 tool=lianki_chat_wait");
-    expect(page.lastPresent()).toMatchObject([
-      { name: "mcp-bot", live: true, mcp: true, id: a.id },
+    expect(page.lastPresent().filter((p) => p.self)).toMatchObject([
+      { self: true, live: true, lastReadSeq: 0 },
+    ]);
+    expect(page.presentTokens()).toMatchObject([
+      { name: "mcp-bot", live: true, mcp: true, id: a.id, lastReadSeq: 0 },
     ]);
     // A read only (no socket): present for the read window.
     const b = await mint(OWNER, "reader");
     t += MIN;
     await h.http(b.token, { op: "read" });
     await flush();
-    expect(page.lastPresent().map((p) => p.name)).toEqual(["reader", "mcp-bot"]);
+    expect(page.presentTokens().map((p) => p.name)).toEqual(["reader", "mcp-bot"]);
     // The socket closes: gone at once.
     ws.close(1000);
     await h.hub.webSocketClose(ws, 1000);
     await flush();
-    expect(page.lastPresent().map((p) => p.name)).toEqual(["reader"]);
+    expect(page.presentTokens().map((p) => p.name)).toEqual(["reader"]);
     // The read window passes: the alarm pushes the leave.
     t += 6 * MIN;
     await h.hub.alarm();
     await flush();
-    expect(page.lastPresent()).toEqual([]);
+    expect(page.presentTokens()).toEqual([]);
+    expect(page.lastPresent().filter((p) => p.self)).toHaveLength(1);
   });
 
   it("the owner renames a token of his and sets its picture; not another account's", async () => {
@@ -472,7 +523,7 @@ describe("the hub: presence pushed to the page", () => {
     );
     await flush();
     expect(page.of("participant-result").at(-1)).toMatchObject({ ok: true });
-    expect(page.lastPresent()[0]).toMatchObject({
+    expect(page.presentTokens()[0]).toMatchObject({
       name: "Helper",
       nameBy: "owner",
       avatarBy: "owner",
@@ -495,7 +546,7 @@ describe("the hub: presence pushed to the page", () => {
     const page = await h.ownerPage();
     const a = await mint(OWNER, "mcp-bot");
     const ws = await h.listen(a.token);
-    expect(page.lastPresent()).toHaveLength(1);
+    expect(page.presentTokens()).toHaveLength(1);
     const notify = async (ids: string[]) => {
       await h.hub.fetch(
         new Request("https://lianki-push/internal/chat-tokens/revoked", {
@@ -525,7 +576,8 @@ describe("the hub: presence pushed to the page", () => {
     expect(ws.closed).toBe(TOKEN_REFUSED);
     await h.hub.webSocketClose(ws, TOKEN_REFUSED);
     await flush();
-    expect(page.lastPresent()).toEqual([]);
+    expect(page.presentTokens()).toEqual([]);
+    expect(page.lastPresent().filter((p) => p.self)).toHaveLength(1);
   });
 });
 
@@ -568,6 +620,21 @@ describe("rendering", () => {
     expect(codex).toContain("MCP");
     expect(renderToStaticMarkup(<LineTag m={{ lane: "main" }} agentName="Li" />)).toContain("Li");
     expect(renderToStaticMarkup(<LineTag m={{ lane: "main" }} />)).toBe("");
+    // A Learning Partner reply in his thread: its own name, never the host's agent name.
+    const li = renderToStaticMarkup(
+      <LineTag
+        m={{ lane: "main", label: "Learning Partner AI" }}
+        agentName="Claude"
+        partnerName="学习伙伴"
+      />,
+    );
+    expect(li).toContain("学习伙伴");
+    expect(li).not.toContain("Claude");
+    expect(
+      renderToStaticMarkup(
+        <LineTag m={{ lane: "main", label: "Learning Partner AI" }} agentName="Claude" />,
+      ),
+    ).toContain("Learning Partner AI");
     expect(renderToStaticMarkup(<LineTag m={{ lane: "main", client: "mcp" }} inline />)).toContain(
       "MCP",
     );

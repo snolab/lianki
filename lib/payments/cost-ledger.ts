@@ -8,15 +8,17 @@
  *   (`cost.book.failed`, the feature only) and the user's call goes on.
  * - Amounts are the provider's cost in millionths of a USD — our price
  *   (lib/payments/prices.ts) over `MARGIN` — so free and paid line up.
- * - Days are JST (`COST_DAY_OFFSET_MS`): the owner reads them in JST.
+ * - `day` is the UTC date of `at` (rows written before 2026-11-15 hold the JST
+ *   date; docs/payments.md, "Cost ledger"). The admin views never group by it:
+ *   they bucket `at` in the viewer's zone (an offset in minutes, `offMin`) and
+ *   use `day` only as an index bound, widened by a day each side.
  * - Only the account id is kept: no text, no audio, no email.
  */
 import type { D1Like } from "@/lib/d1/types";
 import { CREDITS_PER_USD } from "./credits";
 import { FEATURES, MARGIN, type Feature } from "./prices";
-
-/** The day boundary of the ledger: JST (UTC+9). */
-export const COST_DAY_OFFSET_MS = 9 * 3600_000;
+import { dayStartMs, localDay } from "@/lib/time-zone";
+import { paidUsdMicro, recordSpend, type SpendDeps } from "./spend-alert";
 
 /** Lianki's own speech server (the owner's Mac, docs/local-stt.md), booked as a cloud service. */
 export const LOCAL_STT_FEATURE = "speech.stt.local";
@@ -38,9 +40,8 @@ export type CostEntry = {
 type Log = (o: Record<string, unknown>) => void;
 const defaultLog: Log = (o) => console.log(JSON.stringify(o));
 
-/** The JST day of `at`, YYYY-MM-DD. */
-export const costDay = (at: Date) =>
-  new Date(at.getTime() + COST_DAY_OFFSET_MS).toISOString().slice(0, 10);
+/** The UTC day of `at`, YYYY-MM-DD: what `cost_ledger.day` holds. */
+export const costDay = (at: Date) => localDay(at, 0);
 
 /** The provider's cost of a call priced at `ourUsd` (our price includes MARGIN). */
 export const providerUsd = (ourUsd: number) => Math.max(0, ourUsd) / MARGIN;
@@ -49,12 +50,17 @@ export const providerUsd = (ourUsd: number) => Math.max(0, ourUsd) / MARGIN;
 export const localSttUsd = (audioMs: number, perMinUsd: number) =>
   (Math.min(LOCAL_STT_MAX_AUDIO_MS, Math.max(0, audioMs)) / 60_000) * Math.max(0, perMinUsd);
 
-/** Book one call. Never throws; never blocks a user's call on its own failure. */
+/**
+ * Book one call. Never throws; never blocks a user's call on its own failure.
+ * A booked cost goes on to the spend alert's counters (lib/payments/spend-alert.ts);
+ * `push` is the hub it posts to (default: the Worker's PUSH binding).
+ */
 export async function bookCost(
   d1: D1Like | null | undefined,
   e: CostEntry,
   now: Date = new Date(),
   log: Log = defaultLog,
+  push?: SpendDeps["push"],
 ): Promise<boolean> {
   if (!d1) return false;
   const micro = Math.max(0, e.usd) * 1e6;
@@ -73,7 +79,6 @@ export async function bookCost(
         now.toISOString(),
       )
       .run();
-    return true;
   } catch (err) {
     log({
       event: "cost.book.failed",
@@ -82,6 +87,8 @@ export async function bookCost(
     });
     return false;
   }
+  await recordSpend(d1, e.userId, micro, { now, log, ...(push !== undefined ? { push } : {}) });
+  return true;
 }
 
 // ---------------------------------------------------------------- the admin view
@@ -92,10 +99,44 @@ export const isDay = (s: unknown): s is string =>
 
 export type CostRange = { from: string; to: string };
 
-/** The default range: the last 30 JST days, today included. */
-export function defaultRange(now = new Date()): CostRange {
-  return { from: costDay(new Date(now.getTime() - 29 * 86400_000)), to: costDay(now) };
+/** The default range: the last 30 days in the viewer's zone (`offMin`), today included. */
+export function defaultRange(now = new Date(), offMin = 0): CostRange {
+  return {
+    from: localDay(now.getTime() - 29 * 86400_000, offMin),
+    to: localDay(now, offMin),
+  };
 }
+
+export type RangeBounds = {
+  /** UTC ISO instants of the range in the viewer's zone: start inclusive, end exclusive. */
+  startIso: string;
+  endIso: string;
+  /** `cost_ledger.day` bounds for the index: a day wider each side (UTC and older JST rows). */
+  fromDay: string;
+  toDay: string;
+};
+
+/** The instants and index bounds of `range` (local days at `offMin`, inclusive). */
+export function rangeBounds(range: CostRange, offMin = 0): RangeBounds {
+  const start = dayStartMs(range.from, offMin);
+  const end = dayStartMs(range.to, offMin) + 86400_000;
+  return {
+    startIso: new Date(start).toISOString(),
+    endIso: new Date(end).toISOString(),
+    fromDay: localDay(start - 86400_000),
+    toDay: localDay(end + 86400_000),
+  };
+}
+
+/** SQL: the day of a stored ISO time at `offMin` minutes (an integer, checked by the caller). */
+export const sqlDay = (col: string, offMin = 0) =>
+  `date(${col}, '${offMin >= 0 ? "+" : ""}${Math.trunc(offMin)} minutes')`;
+/** SQL: the hour (YYYY-MM-DDTHH) of a stored ISO time at `offMin` minutes. */
+export const sqlHour = (col: string, offMin = 0) =>
+  `strftime('%Y-%m-%dT%H', ${col}, '${offMin >= 0 ? "+" : ""}${Math.trunc(offMin)} minutes')`;
+/** SQL: a cost_ledger row inside RangeBounds (?fromDay ?toDay ?startIso ?endIso, in that order). */
+const FREE_IN = "day BETWEEN ? AND ? AND at >= ? AND at < ?";
+const freeArgs = (b: RangeBounds) => [b.fromDay, b.toDay, b.startIso, b.endIso];
 
 export type CostTotals = {
   /** Free features: provider cost, millionths of a USD. */
@@ -122,12 +163,6 @@ export type CostSummary = {
   byFeature: ({ feature: string } & CostTotals)[];
 };
 
-/** credit_ai_charge.costMicro (millionths of a credit at our price) → provider USD micro. */
-const paidUsdMicro = (costMicro: number) => costMicro / CREDITS_PER_USD / MARGIN;
-
-/** The SQL JST day of a stored ISO time. */
-const JST_DAY = (col: string) => `date(${col}, '+${COST_DAY_OFFSET_MS / 3600_000} hours')`;
-
 /** A paid charge's feature from its key: `<feature>:<userId>:…`; a Learning Partner reply has none. */
 export function paidFeature(prefix: string | null | undefined): string {
   return prefix && (FEATURES as readonly string[]).includes(prefix) ? prefix : "partner.reply";
@@ -135,33 +170,37 @@ export function paidFeature(prefix: string | null | undefined): string {
 
 const PREFIX = "CASE WHEN instr(key, ':') > 0 THEN substr(key, 1, instr(key, ':') - 1) ELSE '' END";
 
-/** Totals by day and by feature, free and paid side by side, over `range` (inclusive). */
-export async function costSummary(d1: D1Like, range: CostRange): Promise<CostSummary> {
-  const { from, to } = range;
+/**
+ * Totals by day and by feature, free and paid side by side, over `range`
+ * (days in the viewer's zone, `offMin` minutes east of UTC; inclusive).
+ */
+export async function costSummary(d1: D1Like, range: CostRange, offMin = 0): Promise<CostSummary> {
+  const b = rangeBounds(range, offMin);
+  const paidIn = "status = 'settled' AND settledAt >= ? AND settledAt < ?";
   const [freeDays, paidDays, freeFeat, paidFeat] = await Promise.all([
     d1
       .prepare(
-        "SELECT day, SUM(usd_micro) AS micro, COUNT(*) AS n FROM cost_ledger WHERE day BETWEEN ? AND ? GROUP BY day",
+        `SELECT ${sqlDay("at", offMin)} AS day, SUM(usd_micro) AS micro, COUNT(*) AS n FROM cost_ledger WHERE ${FREE_IN} GROUP BY 1`,
       )
-      .bind(from, to)
+      .bind(...freeArgs(b))
       .all<{ day: string; micro: number; n: number }>(),
     d1
       .prepare(
-        `SELECT ${JST_DAY("settledAt")} AS day, SUM(costMicro) AS cm, COUNT(*) AS n FROM credit_ai_charge WHERE status = 'settled' AND ${JST_DAY("settledAt")} BETWEEN ? AND ? GROUP BY day`,
+        `SELECT ${sqlDay("settledAt", offMin)} AS day, SUM(costMicro) AS cm, COUNT(*) AS n FROM credit_ai_charge WHERE ${paidIn} GROUP BY 1`,
       )
-      .bind(from, to)
+      .bind(b.startIso, b.endIso)
       .all<{ day: string; cm: number; n: number }>(),
     d1
       .prepare(
-        "SELECT feature, SUM(usd_micro) AS micro, COUNT(*) AS n FROM cost_ledger WHERE day BETWEEN ? AND ? GROUP BY feature",
+        `SELECT feature, SUM(usd_micro) AS micro, COUNT(*) AS n FROM cost_ledger WHERE ${FREE_IN} GROUP BY feature`,
       )
-      .bind(from, to)
+      .bind(...freeArgs(b))
       .all<{ feature: string; micro: number; n: number }>(),
     d1
       .prepare(
-        `SELECT ${PREFIX} AS prefix, SUM(costMicro) AS cm, COUNT(*) AS n FROM credit_ai_charge WHERE status = 'settled' AND ${JST_DAY("settledAt")} BETWEEN ? AND ? GROUP BY prefix`,
+        `SELECT ${PREFIX} AS prefix, SUM(costMicro) AS cm, COUNT(*) AS n FROM credit_ai_charge WHERE ${paidIn} GROUP BY prefix`,
       )
-      .bind(from, to)
+      .bind(b.startIso, b.endIso)
       .all<{ prefix: string; cm: number; n: number }>(),
   ]);
   const totals = zero();
@@ -214,14 +253,15 @@ export async function costUsers(
   range: CostRange,
   offset: number,
   limit: number,
+  offMin = 0,
 ): Promise<{ rows: CostUser[]; total: number }> {
-  const { from, to } = range;
+  const b = rangeBounds(range, offMin);
   const cte = `WITH f AS (
       SELECT user_id AS uid, SUM(usd_micro) AS fm, COUNT(*) AS fn FROM cost_ledger
-      WHERE day BETWEEN ?1 AND ?2 GROUP BY user_id),
+      WHERE day BETWEEN ?6 AND ?7 AND at >= ?1 AND at < ?2 GROUP BY user_id),
     p AS (
       SELECT userId AS uid, SUM(costMicro) AS cm, COUNT(*) AS pn FROM credit_ai_charge
-      WHERE status = 'settled' AND ${JST_DAY("settledAt")} BETWEEN ?1 AND ?2 GROUP BY userId),
+      WHERE status = 'settled' AND settledAt >= ?1 AND settledAt < ?2 GROUP BY userId),
     u AS (SELECT uid FROM f UNION SELECT uid FROM p)`;
   const rows = await d1
     .prepare(
@@ -232,11 +272,11 @@ export async function costUsers(
       ORDER BY (COALESCE(f.fm, 0) + COALESCE(p.cm, 0) / ?3) DESC, u.uid
       LIMIT ?4 OFFSET ?5`,
     )
-    .bind(from, to, CREDITS_PER_USD * MARGIN, limit, offset)
+    .bind(b.startIso, b.endIso, CREDITS_PER_USD * MARGIN, limit, offset, b.fromDay, b.toDay)
     .all<{ uid: string; name: string | null; fm: number; fn: number; cm: number; pn: number }>();
   const count = await d1
     .prepare(`${cte} SELECT COUNT(*) AS n FROM u`)
-    .bind(from, to)
+    .bind(b.startIso, b.endIso, null, null, null, b.fromDay, b.toDay)
     .first<{ n: number }>();
   return {
     total: count?.n ?? 0,

@@ -11,6 +11,12 @@
  *   lianki-dev lane-listen --as codex --cwd ~/ws/snolab/lianki/tree/codex
  *   lianki-dev lane-listen --as agy --deliver 12549 --tests
  *   lianki-dev lane-listen --as codex --dry-run       # print what it would hand over
+ *   lianki-dev lane-listen --as claude --cwd … --everyone --skip-owner
+ *
+ * --everyone (tier ①, docs/lane-listen.md "Five tiers"): agents' lines and system
+ * lines are handed over too, marked 【agent · coco】 / 【系统】 (FYI, never answered),
+ * never the lane's own; the hub shows it as hearing all messages. --skip-owner: not
+ * his lines (小克 has its own feed of them).
  *
  * The token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (0600),
  * made by the owner (lianki.com/my/preferences → API tokens; name = the lane,
@@ -21,25 +27,51 @@
  * spawns the listener and `ay send`.
  */
 import { join } from "node:path";
-import { type RouteLane, isRouteLane, laneTakes } from "../../lib/lane-route";
-import { laneToken, lineOf, makeDeliverer, tokenNeeded, voiceAllowed } from "./lane-listen-lib";
+import { type RouteLane, isRouteLane } from "../../lib/lane-route";
+import { setLaneTable } from "../../packages/debug-chat/src/voices";
+import {
+  listenerTakes,
+  routeKey,
+  laneToken,
+  lineOf,
+  makeDeliverer,
+  reconnectWait,
+  tokenNeeded,
+  voiceAllowed,
+  type AyRow,
+  pickTarget,
+} from "./lane-listen-lib";
 
 type Opts = {
   lane: RouteLane;
   repo: string;
   deliver?: string;
   cwd?: string;
+  /** The lane's agent CLI kind (`ay ls` cli: agy, codex, claude); picks among several agents in `cwd`. */
+  cli?: string;
   tests: boolean;
   dryRun: boolean;
   /** Every owner line, not only the ones addressed to this lane. */
   all: boolean;
+  /** Agents' and system lines too (tier ①). */
+  everyone: boolean;
+  /** No owner lines (the lane has its own feed of them). */
+  skipOwner: boolean;
 };
 
 function parse(argv: string[]): Opts | Error {
-  const o: Partial<Opts> & { tests: boolean; dryRun: boolean; all: boolean } = {
+  const o: Partial<Opts> & {
+    tests: boolean;
+    dryRun: boolean;
+    all: boolean;
+    everyone: boolean;
+    skipOwner: boolean;
+  } = {
     tests: false,
     dryRun: false,
     all: false,
+    everyone: false,
+    skipOwner: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -48,15 +80,25 @@ function parse(argv: string[]): Opts | Error {
     else if (a === "--repo") o.repo = v();
     else if (a === "--deliver") o.deliver = v();
     else if (a === "--cwd") o.cwd = v();
+    else if (a === "--cli") o.cli = v();
     else if (a === "--tests") o.tests = true;
     else if (a === "--dry-run") o.dryRun = true;
     else if (a === "--all") o.all = true;
+    else if (a === "--everyone") o.everyone = o.all = true;
+    else if (a === "--skip-owner") o.skipOwner = true;
     else return new Error(`lane-listen: unknown argument ${a}`);
   }
   o.lane ??= (process.env.LIANKI_LANE || undefined) as RouteLane | undefined;
-  if (!isRouteLane(o.lane) || o.lane === "chat")
+  // The joined lanes (the lanes manager hands them over, docs/lane-listen.md "Every agent
+  // joins"): a lane beyond codex and agy listens under its own name, and the router knows it.
+  if (process.env.LIANKI_LANE_TABLE)
+    try {
+      setLaneTable(JSON.parse(process.env.LIANKI_LANE_TABLE));
+    } catch {}
+  // 小克's token "claude" listens too (as the route "chat"); "chat" itself is eval.ts's.
+  if (!o.lane || o.lane === "chat" || !isRouteLane(routeKey(o.lane)))
     return new Error(
-      "lane-listen: --as codex | agy (the chat lane listens with `eval.ts chat --route chat`)",
+      "lane-listen: --as codex | agy | a lane in LIANKI_LANE_TABLE (the chat lane listens with `eval.ts chat --route chat`)",
     );
   if (!o.repo) return new Error("lane-listen: --repo <checkout> missing");
   if (!o.dryRun && !o.deliver && !o.cwd)
@@ -78,17 +120,11 @@ async function deliver(o: Opts, body: string, interrupt = false): Promise<number
   // --no-wait: hand the text over and return; ay's own settle/idle waits used
   // to hold this loop for minutes, and every later line with it (2026-11-14).
   // --code alt-m: an urgent line (his name, a roll call) breaks into the turn.
+  // The pid is looked up first (pickTarget): `.` alone is refused by ay when the
+  // dir holds more than one agent, and the line is lost (杰咪, 2026-11-15).
+  const target = o.deliver ?? (await resolveTarget(o)) ?? ".";
   const p = Bun.spawn(
-    [
-      "ay",
-      "send",
-      o.deliver ?? ".",
-      "--force",
-      "--no-wait",
-      "--code",
-      interrupt ? "alt-m" : "enter",
-      "-",
-    ],
+    ["ay", "send", target, "--force", "--no-wait", "--code", interrupt ? "alt-m" : "enter", "-"],
     {
       cwd: o.cwd ?? process.cwd(),
       stdin: new TextEncoder().encode(body),
@@ -122,6 +158,31 @@ export const BUSY_CHECK_MS = 3_000;
  * pushed one by one afterwards, each with the whole template). Unknown → not
  * busy, so a line is never held forever.
  */
+/** `ay ls --json --local` rows, or [] when ay is slow or absent (never longer than BUSY_CHECK_MS). */
+async function ayRows(): Promise<AyRow[]> {
+  try {
+    const p = Bun.spawn(["ay", "ls", "--json", "--local"], { stdout: "pipe", stderr: "ignore" });
+    const txt = await Promise.race([
+      new Response(p.stdout).text(),
+      new Promise<string>((r) => setTimeout(() => r(""), BUSY_CHECK_MS)),
+    ]);
+    if (!txt) {
+      p.kill();
+      return [];
+    }
+    const v = JSON.parse(txt) as unknown;
+    return ((Array.isArray(v) ? v : (v as { local?: unknown[] }).local) ?? []) as AyRow[];
+  } catch {
+    return [];
+  }
+}
+
+/** The pid the lines go to when only a dir was given: the newest agent of the lane's CLI kind there. */
+async function resolveTarget(o: Opts): Promise<string | null> {
+  if (!o.cwd) return null;
+  return pickTarget(await ayRows(), o.cwd, o.cli);
+}
+
 export async function targetBusy(o: Opts): Promise<boolean> {
   if (o.dryRun) return false;
   try {
@@ -140,9 +201,9 @@ export async function targetBusy(o: Opts): Promise<boolean> {
     const list = (Array.isArray(v) ? v : (v as { local?: unknown[] }).local) ?? [];
     // ay's rows: `status` is the process ("active" = alive), `state` the turn
     // ("active" = mid-turn, "idle", "needs_input", …). Busy means mid-turn.
-    const me = (list as { pid?: number; cwd?: string; state?: string }[]).find((e) =>
-      o.deliver ? String(e.pid) === String(o.deliver) : e.cwd === o.cwd,
-    );
+    const rows = list as (AyRow & { state?: string })[];
+    const pid = o.deliver ?? (o.cwd ? pickTarget(rows, o.cwd, o.cli) : null);
+    const me = rows.find((e) => String(e.pid) === String(pid));
     return me?.state === "active";
   } catch {
     return false;
@@ -175,6 +236,7 @@ async function main(): Promise<number> {
       process.exit(0);
     });
   for (;;) {
+    const started = Date.now();
     child = Bun.spawn(
       [
         process.execPath,
@@ -184,6 +246,8 @@ async function main(): Promise<number> {
         o.repo,
         "--as",
         o.lane,
+        // The hub shows this listener as hearing every line (presence, "全部消息").
+        ...(o.everyone ? ["--everyone"] : []),
       ],
       {
         cwd: o.repo,
@@ -213,8 +277,8 @@ async function main(): Promise<number> {
           });
         if (!l || l.history || seen.has(l.id)) continue;
         seen.add(l.id);
-        if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests, all: o.all })) continue;
-        if (!voiceAllowed(l)) {
+        if (!listenerTakes(o, l)) continue;
+        if (!voiceAllowed(l, o)) {
           log({ type: "other-voice", lane: o.lane, id: l.id });
           continue;
         }
@@ -230,9 +294,11 @@ async function main(): Promise<number> {
         console.error(`lane-listen: the token was refused. Needed: ${tokenNeeded(o.lane)}`);
       return code;
     }
-    log({ type: "reconnect", lane: o.lane, exit: code, inMs: backoff });
-    await Bun.sleep(backoff);
-    backoff = Math.min(backoff * 2, code === 5 ? 600_000 : 60_000);
+    // Exit 4 includes a socket gone silent (the CLI's keepalive): reconnect inside the hub's grace.
+    const { wait, next } = reconnectWait(backoff, code, Date.now() - started);
+    log({ type: "reconnect", lane: o.lane, exit: code, inMs: wait });
+    await Bun.sleep(wait);
+    backoff = next;
   }
 }
 

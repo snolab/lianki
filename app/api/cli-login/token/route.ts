@@ -13,7 +13,7 @@ const NO_STORE = { "Cache-Control": "no-store", Pragma: "no-cache" };
 
 /**
  * POST   /api/cli-login/token {code, code_verifier, redirect_uri} → {token, id, name, email}
- * GET    /api/cli-login/token  (Authorization: Bearer lk_…)       → {name, scopes, expiresAt}
+ * GET    /api/cli-login/token  (Authorization: Bearer lk_…)       → {id, name, scopes, expiresAt}
  * DELETE /api/cli-login/token  (Authorization: Bearer lk_…)       → {ok}
  *
  * The CLI's side of the browser login (lib/cli-login.ts): the one-time code

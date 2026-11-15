@@ -254,6 +254,10 @@ these rows newest first, 50 a page, with the time in JST, the actor's address
   debug-session renewal), the pill chat and partner ticket, the my-box allowlist,
   and features shipped dark (`libraryOn(flags, isDev(…))`, YouTube songs). The
   Learning Partner AI refuses a `dev` holder (his thread is the dev lanes').
+- The "owner chat thread" is the **dispatch thread** (`DISPATCH_THREAD` in
+  `lib/dev-eval.ts`): every `dev` holder's pages and chat tokens join it
+  (`threadFor`). No path checks the owner's address; the inventory is
+  [owner-paths-audit-2026-11-15.md](owner-paths-audit-2026-11-15.md).
 - Neither implies the other; each is its own grant. Which permission a `/dev`
   page checks is listed in `lib/dev-page-permissions.ts` (a unit test keeps it
   in step with the pages), and the `/dev` layout prints a small "who can see
@@ -476,7 +480,11 @@ login`'s and the agent lanes' tokens.
   for a site owner only `eval` ("Eval tokens", below) and `progress` (report
   to the state tree as the token's name; docs/api-for-agents.md, "Report
   progress"; no 30-day cap). Chosen at creation; a
-  route asks for one. `pair`, `grant`, `admin`, `answer` are not permissions
+  route asks for one. New forms default to chat only; the owning account can
+  later approve one additional scope on `/my/tokens/scopes`, through the
+  session-only `/api/token/scopes` endpoint ([MCP scopes](mcp-scopes.md)).
+  Approval never extends expiry or bypasses developer restrictions.
+  `pair`, `grant`, `admin`, `answer` are not permissions
   at all (`FORBIDDEN_SCOPES`): a request naming one is refused. Card and settings routes (`authEmailOrToken`,
   `apiTokenUser`) need `study`, so a chat-only lane token reaches none of them.
   The other way round, `study` never reaches the chat: the Learning Partner

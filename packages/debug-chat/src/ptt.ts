@@ -5,14 +5,11 @@
  * - A short tap still toggles always-on listening, the VAD as ever.
  * - A long press (PTT_HOLD_MS, the platform's long-press) is ONE voice input:
  *   the recorder starts at the pointerdown itself (the line's start time),
- *   no VAD or endpoint cuts it while held, so soft or whispered speech is
- *   kept whole. Release keeps PTT_TAIL_MS more, then the whole clip goes
- *   through the STT route once (cut into pieces only past its size limit)
- *   and the line is SENT, no draft step.
- * - While the always-on mic is already open, the last PTT_PREROLL_MS of its
- *   audio is kept in a ring in memory (`createRing`) and put in front of the
- *   clip, so words said just before the press are not lost. Memory only:
- *   never stored or uploaded unless that clip is sent.
+ *   no VAD or endpoint cuts the press into independent messages. A dedicated
+ *   speech-server stream supplies partials; release ends the exact press clip
+ *   and requests the existing whole-run recheck, with bounded cloud fallback.
+ *   No pre-roll or release tail is included. Captured audio begins only once
+ *   microphone permission/acquisition succeeds; missing audio is not invented.
  * - Sliding the finger PTT_CANCEL_PX away while held arms a cancel; letting
  *   go there drops the clip. Coming back disarms it.
  * - It replaces the old drag-the-mic-to-scroll-history gesture; the history
@@ -25,9 +22,9 @@ import { HOLD_MS } from "./log-engage";
 
 /** A press held this long is push to talk (the platform's long-press). */
 export const PTT_HOLD_MS = HOLD_MS;
-/** Kept from before the press while the mic is open (owner: 1–3 s). */
+/** Legacy ring utility default; the current recorder does not include pre-roll. */
 export const PTT_PREROLL_MS = 2_000;
-/** Kept after the release, so the last word is not cut (owner: 1–3 s). */
+/** Legacy compatibility export; the current recorder does not include a tail. */
 export const PTT_TAIL_MS = 1_000;
 /** Held, the finger this far from where it pressed arms a cancel. */
 export const PTT_CANCEL_PX = 80;
@@ -48,7 +45,7 @@ export type PttEvents = {
   press(at: number): void;
   /** The press became push to talk (PTT_HOLD_MS): the held state, a haptic. */
   hold(at: number): void;
-  /** Let go while held: keep the tail, then transcribe and send. */
+  /** Let go while held: close the clip, transcribe and submit normally. */
   release(at: number): void;
   /** No clip: a tap, a cancel, or a press that became a drag. */
   drop(why: "tap" | "cancel" | "drag"): void;
@@ -188,7 +185,7 @@ export const joinTexts = (texts: readonly string[]) =>
 
 const holders = new Set<() => void>();
 let holding = false;
-/** Push to talk is recording (held or in its tail): the always-on capture holds. */
+/** Push to talk owns the press: the ordinary VAD holds until release or cancel. */
 export const pttHolding = () => holding;
 export function setPttHolding(on: boolean) {
   if (holding === on) return;

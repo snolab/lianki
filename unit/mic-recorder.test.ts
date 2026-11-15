@@ -12,7 +12,7 @@ import {
   RECORDINGS_URL,
   base64,
   createRecorder,
-  localDay,
+  utcDay,
   pageRecorder,
   randomClipId,
 } from "@lianki/debug-chat/recorder";
@@ -235,8 +235,10 @@ describe("the recorder", () => {
     expect(off.stats().on).toBe(false);
   });
 
-  it("helpers: local day, ids, base64, one recorder per page", () => {
-    expect(localDay(new Date(2026, 10, 4, 23, 30).getTime())).toBe("2026-11-04");
+  it("helpers: UTC day, ids, base64, one recorder per page", () => {
+    expect(utcDay(Date.parse("2026-11-04T23:30:00Z"))).toBe("2026-11-04");
+    // Never the device's own date: 08:30 in Tokyo on the 5th is still the 4th in UTC.
+    expect(utcDay(Date.parse("2026-11-05T08:30:00+09:00"))).toBe("2026-11-04");
     expect(randomClipId()).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(base64(new Uint8Array([104, 105]))).toBe("aGk=");
     const a = pageRecorder(() => createRecorder({ fetch: route().f }));

@@ -6,18 +6,25 @@
  * while they have picked nothing, the automatic list — the language they
  * study (`lk:home:lang`), the app's language and the browser's.
  *
+ * Each language also carries how well the user knows it (lib/lang-levels.ts):
+ * `items` and `levelOf`, `setLevel` to change one. Setting a level on the
+ * automatic list makes it the user's own.
+ *
  * Before mount (and on the server) `langs` is null, so a page renders in its
  * own order first and hydration agrees; it reorders right after.
  */
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useLocale } from "next-intlayer";
 import { notePrefWrite, PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
+import { defaultPreferred, PREFERRED_LANGS_KEY } from "@/lib/lang-order";
 import {
-  defaultPreferred,
-  normalizePreferred,
-  parseStored,
-  PREFERRED_LANGS_KEY,
-} from "@/lib/lang-order";
+  encodeItems,
+  langLevelOf,
+  normalizeItems,
+  parseStoredItems,
+  type LangLevel,
+  type PrefLang,
+} from "@/lib/lang-levels";
 
 /** Fired on this tab after a local write, so every hook re-reads. */
 const LOCAL_EVENT = "lk:lang-preferred";
@@ -54,10 +61,18 @@ function snapshot() {
   ]);
 }
 
-/** Store `list` ([] = back to automatic) and tell the sync engine and the page. */
-export function writePreferred(list: readonly string[]) {
+/**
+ * Store `list` ([] = back to automatic) and tell the sync engine and the page.
+ * Plain tags keep the level already stored for them; `{ lang, level }` items
+ * set it.
+ */
+export function writePreferred(list: readonly (string | PrefLang)[]) {
+  const had = parseStoredItems(read(PREFERRED_LANGS_KEY));
+  const items = normalizeItems(
+    list.map((it) => (typeof it === "string" ? { lang: it, level: langLevelOf(had, it) } : it)),
+  );
   try {
-    localStorage.setItem(PREFERRED_LANGS_KEY, JSON.stringify(normalizePreferred(list)));
+    localStorage.setItem(PREFERRED_LANGS_KEY, JSON.stringify(encodeItems(items)));
   } catch {}
   notePrefWrite();
   try {
@@ -75,16 +90,27 @@ export function usePreferredLangs() {
       string | null,
       string[],
     ];
-    const picks = parseStored(stored);
+    const own = parseStoredItems(stored);
+    const picks = own.map((it) => it.lang);
     const auto = defaultPreferred({
       learning: learning ? [learning] : [],
       ui: String(locale ?? ""),
       browser,
     });
-    return { picks, auto, langs: picks.length ? picks : auto };
+    const items: PrefLang[] = own.length
+      ? own
+      : auto.map((lang) => ({ lang, level: "unset" as const }));
+    return { picks, auto, langs: picks.length ? picks : auto, items };
   }, [snap, locale]);
   const set = useCallback((list: readonly string[]) => writePreferred(list), []);
   const reset = useCallback(() => writePreferred([]), []);
+  const items = state?.items;
+  const setLevel = useCallback(
+    (lang: string, level: LangLevel) =>
+      writePreferred((items ?? []).map((it) => (it.lang === lang ? { lang, level } : it))),
+    [items],
+  );
+  const levelOf = useCallback((lang: string) => langLevelOf(items, lang), [items]);
   return {
     /** The order to use, or null before mount. */
     langs: state?.langs ?? null,
@@ -94,7 +120,12 @@ export function usePreferredLangs() {
     auto: state?.auto ?? [],
     /** True while nothing is picked. */
     automatic: !state?.picks.length,
+    /** The list in use with each language's level (unset on the automatic list), or null before mount. */
+    items: items ?? null,
+    /** The user's level in a language (lib/lang-levels.ts `langLevelOf`). */
+    levelOf,
     set,
+    setLevel,
     reset,
   };
 }

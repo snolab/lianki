@@ -32,6 +32,13 @@ import {
 import { getDocLog, getRetentionDays, listDocs, setRetentionDays } from "@/lib/vibe/store";
 import { createMicTaps, micTaps } from "@lianki/debug-chat/mic-taps";
 import { createMicSession } from "@lianki/debug-chat/mic-session";
+import { setGuardLimits } from "@lianki/debug-chat/stt-guard";
+
+// The fake utterances hold one to three 32 ms frames of speech: under the silence
+// guard's 160 ms (stt-guard.ts; unit/stt-guard.test.ts has the gate). These tests
+// are about the session, so the gate is set to one frame here.
+beforeAll(() => setGuardLimits({ minSpeechMs: 32 }));
+afterAll(() => setGuardLimits({}));
 import type { LocalState } from "@lianki/debug-chat/local-stt";
 import { pageScene, screenText } from "@lianki/debug-chat/scene";
 import { useBackend, useBlobs, useD1 } from "./support/testMocks";
@@ -774,7 +781,7 @@ describe("the session: starting", () => {
   });
 
   it("uses the tailnet route, never the tunnel Cloudflare could hear", () => {
-    expect(vibeRoute(null)).toBe("wss://taku.onca-tint.ts.net/lianki-stt");
+    expect(vibeRoute(null)).toBe("wss://owner.example.ts.net/lianki-stt");
     expect(vibeRoute("wss://stt.lianki.com")).toBeNull();
     expect(vibeRoute("off")).toBeNull();
     expect(vibeRoute("ws://localhost:5193")).toBe("ws://localhost:5193/");

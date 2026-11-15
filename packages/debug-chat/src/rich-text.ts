@@ -48,12 +48,12 @@ export type Rich = {
 export type TierLine = { from: string; thread?: string; ownerGrant?: boolean };
 type View = { embedded?: boolean };
 
-/** The thread name lib/dev-eval.ts OWNER_THREAD (this package imports nothing from the app). */
-const OWNER_THREAD = "owner";
+/** lib/dev-eval.ts DISPATCH_THREAD, the `dev` holders' thread (this package imports nothing from the app). */
+const DISPATCH_THREAD = "owner";
 
 export function lineTier(m: TierLine, view: View = {}): RichTier {
-  const owners = (m.thread ?? OWNER_THREAD) === OWNER_THREAD;
-  return m.from === "agent" && m.ownerGrant === true && owners && !view.embedded
+  const dispatch = (m.thread ?? DISPATCH_THREAD) === DISPATCH_THREAD;
+  return m.from === "agent" && m.ownerGrant === true && dispatch && !view.embedded
     ? "html"
     : "markdown";
 }

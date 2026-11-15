@@ -3,7 +3,10 @@
  * this chat thread (presence.ts: tokens reading now or lately, recent
  * speakers), as overlapping avatars right of the connection chip, most
  * recently active first, `shown` of them (live config chat.presenceShown)
- * then "+N".
+ * then "+N". The read-only lanes (mode "reader", lane-registry.ts) come
+ * after the live ones, greyed and without a dot (owner, 2026-11-15 "3的成员也要
+ * 显示在叠叠头像这里"); the panel lists them last, under "read-only", each with
+ * its role (roster.ts laneRole: config chat.lanes, else voices.ts LANES).
  *
  * A mouse hovering it, or one tap on a touch screen, shows a one-line
  * summary of names; a mouse click, a double tap, or Enter opens the panel:
@@ -20,10 +23,15 @@ import {
   INVITE_HREF,
   type Present,
   mcpSnippet,
+  liveFirst,
   presenceSummary,
   stackOf,
 } from "./presence";
+import { laneRole } from "./roster";
+import { laneTable } from "./voices";
 import { sanitizeAvatarSvg } from "./svg-avatar";
+import { laneModeWord } from "./lane-events";
+import { chatLocale } from "./chat-ui-locales";
 import type { UiStrings } from "./ui-strings";
 
 export type PresenceWords = Pick<
@@ -46,6 +54,7 @@ export type PresenceWords = Pick<
   | "peopleInviteHow"
   | "peopleCopy"
   | "peopleClose"
+  | "peopleReadOnly"
 >;
 
 /** A participant's change: a name (null: its own back), a picture ("auto", an SVG, null: its own back). */
@@ -61,6 +70,36 @@ const SVG_SAMPLE = '<svg viewBox="0 0 24 24">…</svg>';
 
 const clock = (at: number) =>
   new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+
+/**
+ * The small dot on a live listener's avatar (lane-registry.ts): filled seal red when it hears
+ * every line (tier ①, scope "all"), a red ring when it hears the owner's lines only (tier ②).
+ * Readers and muted lanes get none. Its title is the mode word (lane-events.ts).
+ */
+export function LiveMark({ p }: { p: Pick<Present, "mode" | "muted" | "scope"> }) {
+  if (p.mode !== "listener" || p.muted) return null;
+  const all = p.scope === "all";
+  return (
+    <span
+      data-testid="debug-chat-presence-live"
+      data-scope={all ? "all" : "owner"}
+      title={laneModeWord(p, chatLocale()) ?? undefined}
+      className="absolute -bottom-px -end-px h-1.5 w-1.5 rounded-full ring-1 ring-[oklch(0.98_0.005_85)] dark:ring-[oklch(0.22_0.01_260)]"
+      style={
+        all
+          ? { background: SEAL }
+          : { background: "oklch(0.98 0.005 85)", boxShadow: `inset 0 0 0 1.5px ${SEAL}` }
+      }
+    />
+  );
+}
+
+/** A read-only lane's avatar: greyed, the same in the stack and the panel. */
+const READER_LOOK = { filter: "grayscale(1)", opacity: 0.5 } as const;
+
+/** An entry's role (its lane's, roster.ts), or undefined. */
+const roleOf = (p: Present) =>
+  laneRole({ id: p.lane ?? p.selfName ?? p.name, name: p.name }, laneTable());
 
 /** The picture an entry is drawn with (its own, its lane's, or the generated mark). */
 const pictureOf = (p: Present, mainName: string) =>
@@ -92,7 +131,8 @@ export function PresenceStack({
   /** How the last press came: "mouse", "touch", "pen". */
   const pointer = useRef<string>("mouse");
   const box = useRef<HTMLDivElement>(null);
-  const named = list.map((p) => ({ ...p, name: p.name || mainName }));
+  const groups = liveFirst(list.map((p) => ({ ...p, name: p.name || mainName })));
+  const named = [...groups.live, ...groups.readers];
   const stack = stackOf(named, shown);
   const summary = presenceSummary(named, shown);
 
@@ -158,10 +198,14 @@ export function PresenceStack({
             key={p.key}
             data-testid="debug-chat-presence-avatar"
             data-key={p.key}
+            data-mode={p.mode}
             className={`relative inline-flex rounded-full ring-1 ring-[oklch(0.98_0.005_85)] dark:ring-[oklch(0.22_0.01_260)] ${i ? "-ms-1.5" : ""}`}
             style={{ zIndex: stack.shown.length - i }}
           >
-            <Avatar src={pictureOf(p, mainName)} name={p.name} size={AV} hidden />
+            <span className="inline-flex" style={p.mode === "reader" ? READER_LOOK : undefined}>
+              <Avatar src={pictureOf(p, mainName)} name={p.name} size={AV} hidden />
+            </span>
+            <LiveMark p={p} />
           </span>
         ))}
         {stack.more > 0 && (
@@ -189,7 +233,8 @@ export function PresenceStack({
       )}
       {open && (
         <Panel
-          list={named}
+          live={groups.live}
+          readers={groups.readers}
           t={t}
           mainName={mainName}
           onChange={onChange}
@@ -202,27 +247,38 @@ export function PresenceStack({
 }
 
 function Panel({
-  list,
+  live,
+  readers,
   t,
   mainName,
   onChange,
   onRemove,
   onClose,
 }: {
-  list: readonly Present[];
+  live: readonly Present[];
+  readers: readonly Present[];
   t: PresenceWords;
   mainName: string;
   onChange?: (tok: string, change: ParticipantChange) => void;
   onRemove?: (id: string) => Promise<boolean>;
   onClose: () => void;
 }) {
+  const row = (p: Present) => (
+    <Row key={p.key} p={p} t={t} mainName={mainName} onChange={onChange} onRemove={onRemove} />
+  );
   const [inviting, setInviting] = useState(false);
   return (
     <div
       role="dialog"
       aria-label={t.people}
       data-testid="debug-chat-presence-panel"
-      className="absolute bottom-full start-0 z-40 mb-1 flex max-h-[60vh] w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 overflow-y-auto rounded-xl border border-current/20 bg-gray-50/95 p-2.5 fs-12 leading-snug text-gray-900 shadow-lg backdrop-blur-md dark:bg-gray-900/95 dark:text-gray-100"
+      // A drag inside the panel scrolls the panel only: a short list is not scrollable, and
+      // without this the chat behind takes the drag (owner, 2026-11-15 04:14 JST "滚动穿透").
+      onTouchMove={(e) => {
+        const el = e.currentTarget;
+        if (el.scrollHeight <= el.clientHeight) e.preventDefault();
+      }}
+      className="absolute bottom-full start-0 z-40 mb-1 flex max-h-[60vh] w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 overflow-y-auto overscroll-contain touch-pan-y rounded-xl border border-current/20 bg-gray-50/95 p-2.5 fs-12 leading-snug text-gray-900 shadow-lg backdrop-blur-md dark:bg-gray-900/95 dark:text-gray-100"
     >
       <div className="flex items-center gap-2">
         <span className="flex-1 font-semibold">{t.people}</span>
@@ -235,11 +291,15 @@ function Panel({
           {t.peopleClose}
         </button>
       </div>
-      <ul className="flex flex-col gap-2">
-        {list.map((p) => (
-          <Row key={p.key} p={p} t={t} mainName={mainName} onChange={onChange} onRemove={onRemove} />
-        ))}
-      </ul>
+      <ul className="flex flex-col gap-2">{live.map(row)}</ul>
+      {readers.length > 0 && (
+        <section data-testid="debug-chat-presence-readers" className="flex flex-col gap-2">
+          <h3 className="border-t border-current/10 pt-2 fs-11 font-semibold opacity-70">
+            {t.peopleReadOnly}
+          </h3>
+          <ul className="flex flex-col gap-2">{readers.map(row)}</ul>
+        </section>
+      )}
       {onRemove && (
         <div className="border-t border-current/10 pt-2">
           <button
@@ -310,9 +370,13 @@ function Row({
   const [svgBad, setSvgBad] = useState(false);
   const mine = !!p.id && !!p.tok;
   const activity: ReactNode[] = [];
+  // Its lane's mode (lane-registry.ts): listening live (all lines, or his only), read-only, or muted by him.
+  const mode = laneModeWord(p, chatLocale());
+  if (mode) activity.push(mode);
   if (p.live) activity.push(t.peopleNow);
   else activity.push(t.peopleActive.replaceAll("{time}", clock(p.active)));
   if (p.since) activity.push(t.peopleSince.replaceAll("{time}", clock(p.since)));
+  const role = roleOf(p);
   const btn = "tap-40 rounded px-1.5 leading-6 underline";
   /** The picture in effect: one of three, all shown; the one in effect in seal red. */
   const pic = !p.avatar ? "auto" : p.avatarBy === "agent" ? "own" : "pasted";
@@ -321,7 +385,12 @@ function Row({
   return (
     <li data-testid="debug-chat-presence-row" data-key={p.key} className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
-        <Avatar src={pictureOf(p, mainName)} name={p.name} size={24} hidden />
+        <span className="relative inline-flex shrink-0">
+          <span className="inline-flex" style={p.mode === "reader" ? READER_LOOK : undefined}>
+            <Avatar src={pictureOf(p, mainName)} name={p.name} size={24} hidden />
+          </span>
+          <LiveMark p={p} />
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">
             {p.name || mainName}
@@ -330,6 +399,11 @@ function Row({
               <span className="ms-1 fs-10 opacity-70">({t.peopleByYou})</span>
             )}
           </span>
+          {role && (
+            <span data-testid="debug-chat-presence-role" className="block truncate opacity-80">
+              {role}
+            </span>
+          )}
           <span className="block opacity-80">{activity.join(" · ")}</span>
         </span>
         {mine && onRemove && !asking && (

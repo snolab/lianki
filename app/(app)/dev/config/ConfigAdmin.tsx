@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { CONFIG, type ConfigDef } from "@/lib/config";
 import type { ConfigLogEntry, ConfigRow } from "@/lib/config-store";
-import { card, Chevron, jst } from "../flags/FlagCard";
+import { card, Chevron, When } from "../flags/FlagCard";
 import { DevToast, type DevToastMsg } from "../DevToast";
 import { Icon } from "@/app/components/icons";
 import {
@@ -180,7 +180,8 @@ function ConfigCard({
           {t.invalid}
         </p>
       )}
-      <p className="text-xs opacity-70">
+      {/* A long default (a JSON list) must wrap, or the whole page scrolls sideways (qa-config). */}
+      <p className="text-xs opacity-70 break-all">
         {fill(t.defaultIs.value, { value: formatValue(row.default, def.unit) })}
         {def.min !== undefined && def.max !== undefined && (
           <> · {fill(t.range.value, { min: def.min, max: def.max })}</>
@@ -256,10 +257,10 @@ function ConfigCard({
             {fill(t.history.value, { count: log.length })}
           </button>
           {open && (
-            <ul className="space-y-1 font-mono text-xs">
+            <ul className="space-y-1 font-mono text-xs break-all">
               {log.map((e, i) => (
                 <li key={i}>
-                  {jst(e.at)} · {formatValue(e.old, def.unit, t.defaultWord.value)} →{" "}
+                  <When at={e.at} /> · {formatValue(e.old, def.unit, t.defaultWord.value)} →{" "}
                   {formatValue(e.new, def.unit, t.defaultWord.value)} · {e.by}
                   {e.note && <span className="opacity-70"> · {e.note}</span>}
                 </li>

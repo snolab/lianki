@@ -18,11 +18,25 @@
   "use strict";
   if (window.lianki) return;
   var PROTOCOL = "mini/1";
+  // Trusted bootstrap sets this before app markup. Capture once: author
+  // changes to the DOM or theme events cannot change the declared style.
+  var root = typeof document === "undefined" ? null : document.documentElement;
+  var style = root && root.dataset && root.dataset.lkStyle === "none" ? "none" : "lianki";
   var next = 1;
   var waiting = {};
   window.addEventListener("message", function (e) {
     if (e.source !== window.parent) return;
     var m = e.data;
+    // The host's theme (night mode follows the site): <html data-theme>.
+    if (
+      m &&
+      m.lk === PROTOCOL &&
+      m.event === "theme" &&
+      (m.theme === "dark" || m.theme === "light")
+    ) {
+      document.documentElement.setAttribute("data-theme", m.theme);
+      return;
+    }
     if (!m || m.lk !== PROTOCOL || typeof m.id !== "number" || !waiting[m.id]) return;
     var w = waiting[m.id];
     delete waiting[m.id];
@@ -49,6 +63,7 @@
   };
   window.lianki = Object.freeze({
     version: PROTOCOL,
+    style: style,
     manifest: function () {
       return call("manifest");
     },

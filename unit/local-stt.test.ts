@@ -140,7 +140,7 @@ describe("localSttFrom", () => {
 describe("needsTicket / fetchSttTicket", () => {
   it("the tunnel needs a ticket; the tailnet and localhost do not", () => {
     expect(needsTicket("wss://stt.lianki.com/")).toBe(true);
-    expect(needsTicket("wss://mac.onca-tint.ts.net/lianki-stt")).toBe(false);
+    expect(needsTicket("wss://mac.example.ts.net/lianki-stt")).toBe(false);
     expect(needsTicket("ws://localhost:5193/")).toBe(false);
     expect(needsTicket("ws://127.0.0.1:5193/")).toBe(false);
     // A ticket goes to the tunnel only, never to another host a stored value names.
@@ -855,6 +855,24 @@ describe("edge paths: requests, hello, page events", () => {
     );
   });
 
+  it("request: a Whisper recheck is answered by its rid (whisper-recheck.ts)", async () => {
+    const h = setup();
+    const s = h.connect();
+    const p = h.stt.request({
+      t: "recheck",
+      auto: true,
+      run: "m1",
+      fromAgoMs: 9000,
+      toAgoMs: 2500,
+    });
+    await tick();
+    const sent = json(s.sent.at(-1)!) as { rid: string };
+    expect(sent).toMatchObject({ t: "recheck", auto: true, run: "m1" });
+    s.say({ t: "recheck_result", rid: "other", auto: true, run: "m1", ok: true, text: "x" });
+    s.say({ t: "recheck_result", rid: sent.rid, auto: true, run: "m1", ok: true, text: "整段" });
+    expect(await p).toMatchObject({ run: "m1", ok: true, text: "整段" });
+  });
+
   it("a hello that throws is swallowed, and an unparseable URL logs as '?'", () => {
     const w = fakeWs();
     const logs: Record<string, unknown>[] = [];
@@ -916,7 +934,7 @@ describe("localSttRoute (the owner's default)", () => {
   it("nothing stored: the owner gets the tailnet then the tunnel, in that order", () => {
     const r = localSttRoute(null, true);
     expect(r.source).toBe("owner-default");
-    expect(r.urls).toBe("wss://taku.onca-tint.ts.net/lianki-stt wss://stt.lianki.com/");
+    expect(r.urls).toBe("wss://owner.example.ts.net/lianki-stt wss://stt.lianki.com/");
     expect(r.urls?.split(" ").map((u) => needsTicket(u))).toEqual([false, true]);
     expect(localSttFrom(OWNER_DEFAULT_LOCAL_STT)).toBe(r.urls);
   });

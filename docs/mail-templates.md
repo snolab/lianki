@@ -225,8 +225,8 @@ caller adds the user / inviter ids. `log` is never sent to the provider.
 
 The page (`app/(app)/dev/mails`, API `app/api/dev/mails` →
 `lib/mail-log/route.ts`): the list newest first, 50 a page; filters
-(template, status, language, JST date range); search by part of an address or
-a whole message id; per-day counts (JST); one mail's detail in a sandboxed
+(template, status, language, a date range in the viewer's device zone); search by part of an address or
+a whole message id; per-day counts (that zone, sent as `?tz=` minutes east of UTC; missing = UTC); one mail's detail in a sandboxed
 frame; the suppressed-addresses list with Remove.
 
 - **Resend** (confirmation first): refused for `signin-code`, `signin-link`,

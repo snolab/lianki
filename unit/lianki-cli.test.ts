@@ -790,7 +790,8 @@ describe("chat (your own thread, with a chat token)", () => {
     );
     expect(r.code).toBe(0);
     expect(r.out).toBe("Yes");
-    expect(sent[0]).toEqual({ type: "auth", token: TOKEN });
+    // An ask's wait is a reader in the hub's lane registry, never a resident listener.
+    expect(sent[0]).toEqual({ type: "auth", token: TOKEN, mode: "reader" });
     expect(sent[1]).toMatchObject({ type: "ask", question: "Ship it?" });
   });
 
@@ -893,7 +894,8 @@ describe("chat (your own thread, with a chat token)", () => {
       const r = await h.run("chat", "listen", "--history", "2", ...(machine ? ["--json"] : []));
       expect(r.code).toBe(2);
       expect(closed).toBe(true);
-      expect(sent).toEqual([{ type: "auth", token: TOKEN, history: 2 }]);
+      // `chat listen` is a resident listener (lane-registry.ts).
+      expect(sent).toEqual([{ type: "auth", token: TOKEN, history: 2, mode: "listener" }]);
       if (machine) {
         const events = r.out.split("\n").map((x) => JSON.parse(x));
         expect(events).toContainEqual({ type: "chat", message: old, history: true });
@@ -907,6 +909,30 @@ describe("chat (your own thread, with a chat token)", () => {
         expect(r.err).toContain("revoked");
       }
       expect(r.out).not.toContain("malformed frame");
+    }
+  });
+
+  test("listen --everyone tells the hub its agent hears every line (scope all); --reader never", async () => {
+    for (const [args, want] of [
+      [["--everyone"], { type: "auth", token: TOKEN, mode: "listener", scope: "all" }],
+      [["--everyone", "--reader"], { type: "auth", token: TOKEN, mode: "reader" }],
+    ] as const) {
+      const h = harness({ env });
+      const sent: any[] = [];
+      (h.deps as any).WebSocket = class {
+        onopen?: () => void;
+        onmessage?: (e: { data: string }) => void;
+        constructor() {
+          queueMicrotask(() => this.onopen?.());
+        }
+        send(raw: string) {
+          sent.push(JSON.parse(raw));
+          queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ type: "revoked" }) }));
+        }
+        close() {}
+      };
+      await h.run("chat", "listen", "--json", ...args);
+      expect(sent).toEqual([want]);
     }
   });
 
@@ -939,6 +965,48 @@ describe("chat (your own thread, with a chat token)", () => {
     }
   });
 
+  test("listen pings; a socket that stops answering is dead (exit 4, lane-listen reconnects)", async () => {
+    for (const answers of [true, false]) {
+      const h = harness({ env: { ...env, LIANKI_CHAT_PING_MS: "20" } });
+      const sent: unknown[] = [];
+      let closed = false;
+      (h.deps as any).WebSocket = class {
+        onopen?: () => void;
+        onmessage?: (e: { data: string }) => void;
+        constructor() {
+          queueMicrotask(() => this.onopen?.());
+        }
+        send(raw: string) {
+          sent.push(raw);
+          if (raw === "ping") {
+            // The hub's auto-response, until the connection drops unseen; then a revoke ends it.
+            if (answers && sent.filter((x) => x === "ping").length < 4)
+              queueMicrotask(() => this.onmessage?.({ data: "pong" }));
+            else if (answers)
+              queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ type: "revoked" }) }));
+          } else
+            queueMicrotask(() =>
+              this.onmessage?.({ data: JSON.stringify({ type: "ready", thread: "owner" }) }),
+            );
+        }
+        close() {
+          closed = true;
+        }
+      };
+      const r = await h.run("chat", "listen", "--json");
+      expect(closed).toBe(true);
+      expect(sent.filter((x) => x === "ping").length).toBeGreaterThanOrEqual(answers ? 4 : 1);
+      if (answers) expect(r.code).toBe(2);
+      else {
+        expect(r.code).toBe(4);
+        expect(envelope(r.err).error.code).toBe("network");
+        expect(envelope(r.err).error.message).toContain("went silent");
+      }
+      // The pongs are not events.
+      expect(r.out).not.toContain("pong");
+    }
+  });
+
   test("there is no eval, pair or grant command", async () => {
     const h = harness({ env });
     for (const c of ["eval", "pair", "grant", "serve"])
@@ -954,4 +1022,70 @@ test("no command ever printed a token", () => {
     expect(line).not.toMatch(/lk_[0-9a-f]{64}/);
   }
   expect(printed.length).toBeGreaterThan(20);
+});
+
+describe("mini-app publishing", () => {
+  test("publishes local inputs once without posting chat", async () => {
+    const dir = tmp();
+    const manifest = join(dir, "manifest.json"),
+      html = join(dir, "app.html");
+    writeFileSync(manifest, JSON.stringify({ slug: "clock", name: "Clock" }));
+    writeFileSync(html, "<!doctype html><p>clock</p>");
+    const h = harness({
+      env,
+      server: { "POST /api/my/mini-apps": () => json({ slug: "clock", url: "/m/clock" }, 201) },
+    });
+    const result = await h.run("app", "publish", "--manifest", manifest, "--html", html, "--json");
+    expect(result.code).toBe(0);
+    expect(envelope(result.out).data.url).toBe("/m/clock");
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0].body).toEqual({
+      manifest: { slug: "clock", name: "Clock" },
+      html: "<!doctype html><p>clock</p>",
+    });
+    writeFileSync(manifest, "[]");
+    expect((await h.run("app", "publish", "--manifest", manifest, "--html", html)).code).toBe(1);
+    expect(h.calls).toHaveLength(1);
+  });
+  test("chat app reference can be sent without separate text", async () => {
+    const h = harness({
+      env,
+      server: { "POST /api/version/chat": () => json({ id: "app-message" }) },
+    });
+    expect((await h.run("chat", "say", "--app", "clock")).code).toBe(0);
+    expect(h.calls.at(-1)?.body).toMatchObject({
+      op: "say",
+      text: "/m/clock",
+      attachments: [{ type: "app", slug: "clock" }],
+    });
+    expect((await h.run("chat", "say", "--app", "../bad")).code).toBe(1);
+  });
+});
+
+test("publish scope refusals carry only a public approval link", async () => {
+  const dir = tmp(),
+    manifest = join(dir, "manifest.json"),
+    html = join(dir, "app.html");
+  writeFileSync(manifest, "{}");
+  writeFileSync(html, "<p>app</p>");
+  const requestUrl = `https://lianki.com/my/tokens/scopes?token=${"b".repeat(64)}&scope=apps%3Apublish`;
+  for (const link of [requestUrl, `https://evil.example/?token=${TOKEN}`]) {
+    const h = harness({
+      env,
+      server: {
+        "POST /api/my/mini-apps": () =>
+          json({ error: "scope", needScope: "apps:publish", requestUrl: link }, 403),
+      },
+    });
+    const result = await h.run("app", "publish", "--manifest", manifest, "--html", html, "--json");
+    expect(result.code).toBe(2);
+    const error = JSON.parse(result.err).error;
+    if (link === requestUrl) {
+      expect(error.needScope).toBe("apps:publish");
+      expect(error.requestUrl).toBe(requestUrl);
+    } else {
+      expect(error.requestUrl).toBeUndefined();
+      expect(result.err).not.toContain(TOKEN);
+    }
+  }
 });

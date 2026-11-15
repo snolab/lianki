@@ -39,9 +39,18 @@
  * Pure: unit/voices.test.ts.
  */
 
-/** A lane: who is talking in the owner's chat. */
+import { autoMark } from "./svg-avatar";
+
+/**
+ * A lane: who is talking in the owner's chat. LANE_IDS are the built-in ones
+ * (the default table, LANES); more come from config `chat.lanes` at run time
+ * (setLaneTable, owner 2026-11-15 "全员入群": every agent on Lianki or its
+ * dependency repos is a lane of its own), so a lane id is any string the
+ * table knows (isLaneId).
+ */
 export const LANE_IDS = ["main", "codex", "agy", "claude"] as const;
-export type LaneId = (typeof LANE_IDS)[number];
+export type DefaultLaneId = (typeof LANE_IDS)[number];
+export type LaneId = DefaultLaneId | (string & {});
 
 /** A voice a line is read in. */
 export const VOICE_IDS = ["main", "calm", "bright", "sweet"] as const;
@@ -218,15 +227,22 @@ export type LaneSpec = {
   aliases: readonly string[];
   /** Its avatar; absent = the host's agent avatar, as today. */
   mark?: LaneMark;
+  /**
+   * What it does, a few words (zh; prompt text for Li's roster in the owner's
+   * thread, roster.ts; under its name in the "who is here" panel, PresenceStack.tsx).
+   * Config `chat.lanes` `role` overrides it.
+   */
+  role?: string;
 };
 
-export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
-  main: { name: "", voice: "main", aliases: ["main", "chat"] },
+export const LANES: Readonly<Record<DefaultLaneId, LaneSpec>> = {
+  main: { name: "", voice: "main", aliases: ["main", "chat"], role: "学习伙伴" },
   codex: {
     // coco (owner, 2026-11-14: "codex 的话就让它叫做 coco 吧"); the lane id and `【codex】` stay.
     name: "coco",
     voice: "calm",
     aliases: ["codex", "coco"],
+    role: "界面与前端开发",
     // Two slow waves: calm, low.
     mark: {
       bg: "oklch(0.5 0.143 22.3)",
@@ -235,10 +251,11 @@ export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
     },
   },
   agy: {
-    // 杰咪 (owner, 2026-11-14: "你的名字名片还没改"); the lane id and `【agy】` stay.
+    // 杰咪 (owner, 2026-11-14: "你的名字名片还没改"); 咪宝 (owner, 2026-11-15); the lane id and `【agy】` stay.
     name: "杰咪",
     voice: "bright",
-    aliases: ["agy", "antigravity", "杰咪"],
+    aliases: ["agy", "antigravity", "杰咪", "咪宝", "杰米", "Jimmy", "jimmy"],
+    role: "功能开发",
     // A four-point spark: bright, high.
     mark: {
       bg: "oklch(0.8 0.14 80)",
@@ -253,7 +270,8 @@ export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
     name: "小克",
     // A young girl's voice (owner, 2026-11-15); was calm (low) like coco.
     voice: "sweet",
-    aliases: ["claude", "小克", "小可"],
+    aliases: ["claude", "小克", "小可", "小柯", "小客", "小贺", "小课", "小科"],
+    role: "聊天调度与发布",
     mark: {
       bg: "oklch(0.55 0.1 250)",
       fg: "oklch(0.97 0.02 250)",
@@ -266,8 +284,141 @@ export const LANES: Readonly<Record<LaneId, LaneSpec>> = {
   },
 };
 
+// ---- The live lane table (config `chat.lanes`) ---------------------------
+
+/**
+ * One row of config `chat.lanes` (lib/config.ts): a lane beyond the built-in
+ * four, or more names for one of them. `id` is the lane's token name (the hub
+ * labels a token's lines with it: one token = one name = one lane). For a
+ * built-in id the row adds its `aliases` / `heard` and may rename it or change
+ * its voice; the rest of the built-in lane stays.
+ */
+export type ChatLaneDef = {
+  id: string;
+  /** The name tag (a proper name, not translated); absent = the id. */
+  name?: string;
+  /** Its own names (lower case): its `【…】` prefix, and what addresses it in a line. */
+  aliases?: readonly string[];
+  /** How speech-to-text writes its name: addresses it only with a punctuation mark after (lane-route.ts). */
+  heard?: readonly string[];
+  voice?: VoiceId;
+  /** Its disc colour (oklch); absent = the generated mark's (svg-avatar.ts autoMark). */
+  color?: string;
+  /** What it does, a few words (Li's roster, roster.ts); absent = the built-in lane's, else none. */
+  role?: string;
+};
+
+/** The limits of the table: ids as token names are written, at most 64 rows. */
+export const LANE_TABLE_LIMITS = { rows: 64, names: 24, name: 40, role: 60 } as const;
+const LANE_ID_RE = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,39}$/u;
+const COLOR_RE = /^oklch\(\s*[\d.]+%?\s+[\d.]+\s+[\d.]+(?:\s*\/\s*[\d.]+%?)?\s*\)$/;
+const cleanNames = (v: unknown): string[] | null => {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > LANE_TABLE_LIMITS.names) return null;
+  const out: string[] = [];
+  for (const n of v) {
+    if (typeof n !== "string") return null;
+    const t = n.trim().toLowerCase();
+    if (!t || [...t].length > LANE_TABLE_LIMITS.name || /[【】\n]/u.test(t)) return null;
+    out.push(t);
+  }
+  return out;
+};
+
+/** One row as given, checked; null when anything in it is wrong (the whole row is dropped). */
+export function parseLaneDef(raw: unknown): ChatLaneDef | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || !LANE_ID_RE.test(r.id)) return null;
+  const aliases = cleanNames(r.aliases);
+  const heard = cleanNames(r.heard);
+  if (!aliases || !heard) return null;
+  if (r.name !== undefined && (typeof r.name !== "string" || !r.name.trim() || [...r.name].length > 40))
+    return null;
+  if (r.voice !== undefined && !isVoiceId(r.voice)) return null;
+  if (r.color !== undefined && (typeof r.color !== "string" || !COLOR_RE.test(r.color))) return null;
+  if (
+    r.role !== undefined &&
+    (typeof r.role !== "string" ||
+      !r.role.trim() ||
+      [...r.role].length > LANE_TABLE_LIMITS.role ||
+      /[\n<>]/u.test(r.role))
+  )
+    return null;
+  return {
+    id: r.id,
+    ...(typeof r.name === "string" ? { name: r.name.trim() } : {}),
+    ...(aliases.length ? { aliases } : {}),
+    ...(heard.length ? { heard } : {}),
+    ...(r.voice !== undefined ? { voice: r.voice as VoiceId } : {}),
+    ...(r.color !== undefined ? { color: r.color as string } : {}),
+    ...(typeof r.role === "string" ? { role: r.role.trim() } : {}),
+  };
+}
+
+type TableStore = { __lkLaneTable?: readonly ChatLaneDef[] };
+
+/**
+ * Put the live table in force (the app hands config `chat.lanes` to the chat,
+ * a script its own copy): the rows that check out, at most LANE_TABLE_LIMITS.rows,
+ * the first row per id. Anything that is not a list clears it (the built-ins only).
+ */
+export function setLaneTable(rows: unknown): readonly ChatLaneDef[] {
+  const out: ChatLaneDef[] = [];
+  if (Array.isArray(rows))
+    for (const r of rows.slice(0, LANE_TABLE_LIMITS.rows)) {
+      const d = parseLaneDef(r);
+      if (d && !out.some((x) => x.id === d.id)) out.push(d);
+    }
+  (globalThis as TableStore).__lkLaneTable = out;
+  return out;
+}
+
+/** The rows in force (none: the built-in table alone). */
+export const laneTable = (): readonly ChatLaneDef[] => (globalThis as TableStore).__lkLaneTable ?? [];
+
+const isDefaultLane = (v: string): v is DefaultLaneId => (LANE_IDS as readonly string[]).includes(v);
+
+/** Every lane id the table knows: the built-ins, then the configured ones in order. */
+export function laneIds(): LaneId[] {
+  const out: LaneId[] = [...LANE_IDS];
+  for (const d of laneTable()) if (!isDefaultLane(d.id)) out.push(d.id);
+  return out;
+}
+
+/**
+ * A lane's spec: a built-in one (with its config row's names added), a
+ * configured one (its own name, voice and a mark in its colour), or, for an
+ * id the table does not know, a plain one named after it (main's voice, the
+ * generated mark).
+ */
+export function laneSpec(id: LaneId): LaneSpec {
+  const row = laneTable().find((d) => d.id === id);
+  if (isDefaultLane(id)) {
+    const base = LANES[id];
+    if (!row) return base;
+    return {
+      ...base,
+      ...(row.name ? { name: row.name } : {}),
+      ...(row.voice ? { voice: row.voice } : {}),
+      ...(row.role ? { role: row.role } : {}),
+      aliases: [...new Set([...base.aliases, ...(row.aliases ?? [])])],
+    };
+  }
+  const name = row?.name ?? id;
+  const mark = autoMark(name);
+  return {
+    name,
+    voice: row?.voice ?? "main",
+    aliases: [...new Set([id.toLowerCase(), ...(row?.name ? [row.name.toLowerCase()] : []), ...(row?.aliases ?? [])])],
+    mark: row?.color ? { ...mark, bg: row.color } : mark,
+    ...(row?.role ? { role: row.role } : {}),
+  };
+}
+
+/** Is this a lane the table knows (built-in or configured)? */
 export const isLaneId = (v: unknown): v is LaneId =>
-  typeof v === "string" && (LANE_IDS as readonly string[]).includes(v);
+  typeof v === "string" && (isDefaultLane(v) || laneTable().some((d) => d.id === v));
 export const isVoiceId = (v: unknown): v is VoiceId =>
   typeof v === "string" && (VOICE_IDS as readonly string[]).includes(v);
 
@@ -276,7 +427,7 @@ const PREFIX = /^\s*【\s*([^】\n]{1,24}?)\s*】\s*/u;
 
 const laneByAlias = (name: string): LaneId | null => {
   const n = name.toLowerCase();
-  return LANE_IDS.find((id) => LANES[id].aliases.includes(n)) ?? null;
+  return laneIds().find((id) => laneSpec(id).aliases.includes(n)) ?? null;
 };
 
 /**
@@ -308,7 +459,7 @@ export function withLane<M extends { from?: string; lane?: unknown; text: string
 export function voiceIdOf(m: { voice?: unknown; lane?: unknown; text?: string }): VoiceId {
   if (isVoiceId(m.voice)) return m.voice;
   const lane = laneOf({ lane: m.lane, text: m.text ?? "" }).lane;
-  return lane ? LANES[lane].voice : "main";
+  return lane ? laneSpec(lane).voice : "main";
 }
 
 // ---- Device voices -------------------------------------------------------

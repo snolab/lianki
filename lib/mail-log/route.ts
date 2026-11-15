@@ -4,7 +4,8 @@
  * Plain functions over deps, so the unit tests drive every answer.
  * docs/mail-templates.md, "Send log".
  *
- *   GET  ?template&status&locale&from&to&q&page  → the log, newest first, + per-day counts
+ *   GET  ?template&status&locale&from&to&q&page[&tz]  → the log, newest first, + per-day counts
+ *        (tz: the viewer's zone, minutes east of UTC, for the days; missing = UTC)
  *   GET  ?id=…                                   → one mail, re-rendered from its template
  *   GET  ?view=suppression&page                  → invite_email_suppression
  *   POST {op:"resend", id}       → the same mail again (never a sign-in code or link,
@@ -15,6 +16,7 @@
  *
  * Addresses leave only in these answers, to a developer. Nothing here logs one.
  */
+import { dayStartMs, parseOffsetMin } from "@/lib/time-zone";
 import { NextResponse } from "next/server";
 import type { D1Like } from "@/lib/d1/types";
 import type { SendEmailInput } from "@/lib/email";
@@ -65,23 +67,27 @@ const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: NO_STORE });
 
 const DAY_MS = 24 * 3600_000;
-/** A YYYY-MM-DD day in JST → its first millisecond. */
-export function jstDay(s: string | null): number | null {
+/** A YYYY-MM-DD day at `offMin` minutes east of UTC (the viewer's zone; 0 = UTC) → its first millisecond. */
+export function zoneDay(s: string | null, offMin = 0): number | null {
   if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-  const t = Date.parse(`${s}T00:00:00+09:00`);
+  const t = dayStartMs(s, offMin);
   return Number.isFinite(t) ? t : null;
 }
+
+/** `?tz=`: the viewer's zone as minutes east of UTC (missing = UTC). */
+const offOf = (q: URLSearchParams) => parseOffsetMin(q.get("tz"));
 
 function filterOf(q: URLSearchParams): MailFilter {
   const template = q.get("template");
   const status = q.get("status");
   const locale = q.get("locale");
-  const to = jstDay(q.get("to"));
+  const off = offOf(q);
+  const to = zoneDay(q.get("to"), off);
   return {
     template: isMailTemplateId(template) || template === "unknown" ? template : null,
     status: isMailStatus(status) ? status : null,
     locale: isMailLocale(locale) ? locale : null,
-    from: jstDay(q.get("from")),
+    from: zoneDay(q.get("from"), off),
     to: to === null ? null : to + DAY_MS,
     q: q.get("q")?.slice(0, 200) ?? null,
   };
@@ -184,7 +190,10 @@ export async function mailsGet(req: Request, who: MailsCaller | null, d: MailsDe
   }
   const f = filterOf(q);
   const page = pageOf(q);
-  const [{ rows, total }, days] = await Promise.all([listMails(db, f, page), perDay(db, f)]);
+  const [{ rows, total }, days] = await Promise.all([
+    listMails(db, f, page),
+    perDay(db, f, undefined, offOf(q)),
+  ]);
   return json({
     rows: rows.map(listItem),
     total,

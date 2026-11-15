@@ -3,6 +3,7 @@ import { globalDescriptor, restoreGlobal, setGlobal } from "./support/globals";
 import {
   STT_HINT_KEY,
   deviceLang,
+  formatSttPrompt,
   learnSttHint,
   scriptLang,
   sttHint,
@@ -72,5 +73,12 @@ describe("the mic's STT hint", () => {
     setNavigator({ languages: ["zh-CN"] });
     learnSttHint("中文");
     expect(sttHint()).toBe("zh");
+  });
+
+  it("formatSttPrompt formats prompt with hotwords or returns base prompt", () => {
+    expect(formatSttPrompt("base")).toBe("base");
+    expect(formatSttPrompt("base", [])).toBe("base");
+    expect(formatSttPrompt("base", ["  "])).toBe("base");
+    expect(formatSttPrompt("base", ["lianki", "codex"])).toBe("base 热词: lianki, codex。");
   });
 });

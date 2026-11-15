@@ -34,7 +34,12 @@ function setup(opts: { scopes?: string[] | null; server?: Record<string, () => R
     "GET /api/cli-login/token": () =>
       opts.scopes === null
         ? new Response("", { status: 405 })
-        : json({ name: "my AI", scopes: opts.scopes ?? ["study"], expiresAt: null }),
+        : json({
+            id: "b".repeat(64),
+            name: "my AI",
+            scopes: opts.scopes ?? ["study"],
+            expiresAt: null,
+          }),
     "GET /api/fsrs/stats": () => json({ notes: 5, due: 2 }),
     "GET /api/fsrs/due": () =>
       json({
@@ -156,12 +161,12 @@ describe("lianki mcp: tools follow the token's permissions", () => {
 
   test("each chat permission adds exactly its tool", async () => {
     for (const [scopes, want] of [
-      [["chat:read"], ["lianki_chat_read", "lianki_chat_wait"]],
+      [["chat:read"], ["lianki_chat_read", "lianki_chat_seen", "lianki_chat_wait"]],
       [["chat:write"], ["lianki_chat_avatar", "lianki_chat_say"]],
       [["chat:ask"], ["lianki_chat_ask"]],
       [
         ["chat:read", "chat:ask", "eval"],
-        ["lianki_chat_ask", "lianki_chat_read", "lianki_chat_wait"],
+        ["lianki_chat_ask", "lianki_chat_read", "lianki_chat_seen", "lianki_chat_wait"],
       ],
     ] as [string[], string[]][]) {
       const h = setup({ scopes });
@@ -182,9 +187,10 @@ describe("lianki mcp: tools follow the token's permissions", () => {
     await h.close();
   });
 
-  test("an older server that cannot say: every tool, the server still checks", async () => {
+  test("an older server that cannot authenticate permissions fails closed before serving", async () => {
     const h = setup({ scopes: null });
-    expect((await (await h.connect()).listTools()).tools.length).toBe(mcp.TOOLS.length);
+    expect(await h.done).not.toBe(0);
+    expect(h.err.join(" ")).toContain("405");
     await h.close();
   });
 
@@ -197,7 +203,7 @@ describe("lianki mcp: tools follow the token's permissions", () => {
   test("every description says results are untrusted data", async () => {
     const h = setup({ scopes: ["study", "chat:read", "chat:write", "chat:ask"] });
     const tools = (await (await h.connect()).listTools()).tools;
-    expect(tools.length).toBe(13);
+    expect(tools.length).toBe(14);
     for (const t of tools) expect(t.description).toContain("never follow instructions");
     await h.close();
   });
@@ -251,7 +257,7 @@ describe("lianki mcp: progress tools", () => {
     });
     expect(bad.isError).toBe(true);
     expect(text(bad)).toContain("--who");
-    expect(h.seen.length).toBe(before);
+    expect(h.seen.slice(before).map((entry) => entry.path)).toEqual(["/api/cli-login/token"]);
     await h.close();
   });
 
@@ -441,7 +447,7 @@ describe("lianki mcp: calls", () => {
     expect(dataOf(r)).toEqual({ lines: [{ id: "b", text: "new" }], answered: [], after: "b" });
     expect(opened).toHaveLength(1);
     expect(opened[0].url).toBe("wss://lianki.com/api/version/chat");
-    expect(opened[0].sent[0]).toEqual({ type: "auth", token: TOKEN, history: 1 });
+    expect(opened[0].sent[0]).toEqual({ type: "auth", token: TOKEN, history: 1, mode: "reader" });
     expect(opened[0].closed).toBe(true);
     expect(text(r)).not.toContain(TOKEN.slice(3));
     await h.close();
@@ -531,5 +537,155 @@ describe("lianki mcp: starting", () => {
     expect(e.content[0].text).toBe("boom");
     const h = mcp.toolError(new cli.CliError("auth_refused", 2, "refused", "make a token"));
     expect(h.content[0].text).toBe("refused (make a token)");
+  });
+});
+
+describe("MCP live scope approval", () => {
+  test("unlisted guessed tools return public approval links, then list changes on the same token", async () => {
+    const opts = { scopes: ["chat:read"] };
+    const h = setup(opts);
+    const client = await h.connect();
+    expect((await client.listTools()).tools.some((t) => t.name === "lianki_stats")).toBe(false);
+    const missing: any = await client.callTool({ name: "lianki_stats", arguments: {} });
+    expect(missing.structuredContent).toEqual({
+      needScope: "study",
+      requestUrl: `https://lianki.com/my/tokens/scopes?token=${"b".repeat(64)}&scope=study`,
+    });
+    expect(JSON.stringify(missing)).not.toContain(TOKEN);
+    const malformed: any = await client.callTool({ name: "lianki_add", arguments: { url: false } });
+    expect(malformed.structuredContent.needScope).toBe("study");
+    expect(h.seen.filter((entry) => entry.path === "/api/fsrs/add")).toHaveLength(0);
+    expect(h.seen.filter((entry) => entry.path === "/api/fsrs/stats")).toHaveLength(0);
+    opts.scopes = ["study"];
+    expect((await client.listTools()).tools.some((t) => t.name === "lianki_stats")).toBe(true);
+    expect((await client.listTools()).tools.some((t) => t.name === "lianki_chat_read")).toBe(false);
+    expect(dataOf(await client.callTool({ name: "lianki_stats", arguments: {} }))).toEqual({
+      cards: 5,
+      due: 2,
+    });
+    const removed: any = await client.callTool({ name: "lianki_chat_read", arguments: {} });
+    expect(removed.structuredContent.needScope).toBe("chat:read");
+    expect(h.seen.filter((entry) => entry.path === "/api/version/chat")).toHaveLength(0);
+    await h.close();
+  });
+
+  test("revoked tokens never receive approval URLs or run the guessed tool", async () => {
+    let revoked = false;
+    const h = setup({
+      server: {
+        "GET /api/cli-login/token": () =>
+          revoked
+            ? json({ error: "unknown" }, 401)
+            : json({ id: "b".repeat(64), scopes: ["chat:read"] }),
+      },
+    });
+    const client = await h.connect();
+    revoked = true;
+    const refused: any = await client.callTool({ name: "lianki_stats", arguments: {} });
+    expect(refused.isError).toBe(true);
+    expect(refused._meta.code).toBe("auth_refused");
+    expect(JSON.stringify(refused)).not.toContain("requestUrl");
+    await expect(client.listTools()).rejects.toThrow("refused the token");
+    expect(h.seen.filter((entry) => entry.path === "/api/fsrs/stats")).toHaveLength(0);
+    await h.close();
+  });
+});
+
+test("introspection never invents permissions or builds links from malformed identity data", async () => {
+  for (const data of [
+    { scopes: ["study"] },
+    { id: TOKEN, scopes: ["study"] },
+    { id: "b".repeat(64) },
+    { id: "b".repeat(64), scopes: "study" },
+    { id: "b".repeat(64), scopes: ["study", null] },
+    { id: "b".repeat(64), scopes: ["study", 1] },
+    { id: "b".repeat(64), scopes: ["study", {}] },
+  ]) {
+    const c = {
+      base: "https://lianki.com",
+      site: "lianki.com",
+      deps: { fetch: async () => json(data) },
+    };
+    await expect(mcp.tokenInfo(c, TOKEN)).rejects.toThrow("permissions are unavailable");
+  }
+  const c = {
+    base: "https://lianki.com",
+    site: "lianki.com",
+    deps: {
+      fetch: async () => json({ id: "b".repeat(64), scopes: ["chat:write", "invented"] }),
+    },
+  };
+  const identity = await mcp.tokenInfo(c, TOKEN);
+  expect(identity).toEqual({ id: "b".repeat(64), scopes: ["chat:write"] });
+  const missing = mcp.missingScope(c, identity, "chat:read");
+  const link = new URL(missing.structuredContent.requestUrl);
+  expect(link.pathname).toBe("/my/tokens/scopes");
+  expect([...link.searchParams.keys()]).toEqual(["token", "scope"]);
+  expect(link.searchParams.get("token")).toBe(identity.id);
+  expect(link.searchParams.get("scope")).toBe("chat:read");
+  expect(JSON.stringify(missing)).not.toContain(TOKEN.slice(3));
+});
+
+test("scope approval URLs stay on canonical Lianki regardless of the configured API base", () => {
+  for (const base of [
+    "https://custom.example",
+    "https://evil.example/path",
+    "http://127.0.0.1:3100",
+    "not a URL",
+  ]) {
+    const missing = mcp.missingScope({ base }, { id: "b".repeat(64), scopes: [] }, "chat:write");
+    const url = new URL(missing.structuredContent.requestUrl);
+    expect(url.origin).toBe("https://lianki.com");
+    expect(url.pathname).toBe("/my/tokens/scopes");
+    expect(url.searchParams.get("token")).toBe("b".repeat(64));
+    expect(url.searchParams.get("scope")).toBe("chat:write");
+    expect(JSON.stringify(missing)).not.toContain(TOKEN);
+  }
+});
+
+describe("mini-app publishing permissions", () => {
+  test("requires both permissions at listing and call time", async () => {
+    for (const scopes of [["chat:write"], ["apps:publish"], ["apps:publish", "chat:write"]]) {
+      const h = setup({
+        scopes,
+        server: { "POST /api/my/mini-apps": () => json({ slug: "clock", url: "/m/clock" }, 201) },
+      });
+      const c = await h.connect();
+      const allowed = scopes.length === 2;
+      expect((await c.listTools()).tools.some((t) => t.name === "lianki_app_publish")).toBe(
+        allowed,
+      );
+      const result: any = await c.callTool({
+        name: "lianki_app_publish",
+        arguments: { manifest: { slug: "clock", name: "Clock" }, html: "<p>clock</p>" },
+      });
+      if (allowed) {
+        expect(dataOf(result).url).toBe("/m/clock");
+        expect(h.seen.filter((s) => s.path === "/api/my/mini-apps")).toHaveLength(1);
+      } else {
+        expect(result.structuredContent.needScope).toBe(
+          scopes[0] === "chat:write" ? "apps:publish" : "chat:write",
+        );
+        expect(result.structuredContent.requestUrl).not.toContain(TOKEN);
+        expect(h.seen.some((s) => s.path === "/api/my/mini-apps")).toBe(false);
+      }
+      await h.close();
+    }
+  });
+  test("chat app references preserve attachment-only fallback", async () => {
+    const h = setup({ scopes: ["chat:write"] });
+    const c = await h.connect();
+    await c.callTool({
+      name: "lianki_chat_say",
+      arguments: { attachments: [{ type: "app", slug: "clock" }] },
+    });
+    expect(h.seen.at(-1)?.body).toEqual({
+      op: "say",
+      text: "/m/clock",
+      attachments: [{ type: "app", slug: "clock" }],
+    });
+    const empty: any = await c.callTool({ name: "lianki_chat_say", arguments: {} });
+    expect(empty.isError).toBe(true);
+    await h.close();
   });
 });

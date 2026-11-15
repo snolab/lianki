@@ -5,14 +5,21 @@
 
 import { z } from "zod";
 import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call } from "./api.mjs";
-import { PROGRESS_KINDS, PROGRESS_PATH, PROGRESS_STATUSES, ackBody, reportBody } from "./progress.mjs";
+import { readAckBody, readWindow, readCoverage } from "./chat-seq.mjs";
+import {
+  PROGRESS_KINDS,
+  PROGRESS_PATH,
+  PROGRESS_STATUSES,
+  ackBody,
+  reportBody,
+} from "./progress.mjs";
 
 export const CLIENT_HEADER = "x-lianki-client";
 /** Most pages one lianki_import call sends (the server's own cap is higher). */
 export const IMPORT_MAX = 100;
 export const CHAT_PATH = "/api/version/chat";
-/** When the server cannot say what the token may do (an older server): offer all, it still checks. */
-const ALL_SCOPES = ["study", "chat:read", "chat:write", "chat:ask", "progress"];
+/** Known tool permissions; introspection must explicitly grant each permission. */
+const ALL_SCOPES = ["study", "chat:read", "chat:write", "chat:ask", "progress", "apps:publish"];
 /** lianki_chat_wait: how long it waits by default, and at most (under a client's usual 60 s request timeout). */
 export const WAIT_DEFAULT_SEC = 50;
 export const WAIT_MAX_SEC = 55;
@@ -41,6 +48,32 @@ const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: fals
  * is cli.mjs `call` with the token and the client header already in place.
  */
 export const TOOLS = [
+  {
+    name: "lianki_app_publish",
+    scope: "apps:publish",
+    requires: ["apps:publish", "chat:write"],
+    title: "Publish a mini-app",
+    description:
+      "Publish or replace the user's mini-app from an HTML document and manifest. Returns its /m/ URL; does not post to chat. Requires apps:publish and chat:write.",
+    input: {
+      manifest: z
+        .object({
+          slug: z.string().min(1),
+          name: z.string().min(1),
+          icon: z.string().optional(),
+          version: z.string().optional(),
+          style: z.enum(["lianki", "none"]).optional(),
+          permissions: z.array(z.string()).optional(),
+        })
+        .strict(),
+      html: z
+        .string()
+        .min(1)
+        .describe("Complete HTML document; server enforces its configured size and safety limits"),
+    },
+    annotations: WRITE,
+    run: async (api, a) => api({ method: "POST", path: "/api/my/mini-apps", body: a }),
+  },
   {
     name: "lianki_stats",
     scope: "study",
@@ -116,7 +149,11 @@ export const TOOLS = [
     },
     annotations: { ...WRITE, idempotentHint: true },
     run: async (api, a) => {
-      const d = await api({ method: "POST", path: "/api/fsrs/batch-add", body: { items: a.items } });
+      const d = await api({
+        method: "POST",
+        path: "/api/fsrs/batch-add",
+        body: { items: a.items },
+      });
       return {
         created: d.created ?? 0,
         existed: d.existed ?? 0,
@@ -181,12 +218,50 @@ export const TOOLS = [
     title: "Read the chat",
     description:
       "The latest messages in the user's own chat with the Learning Partner, oldest first. An answer to a question card shows up here.",
-    input: { limit: z.number().int().min(1).max(100).optional().describe("How many (default 30)") },
+    input: {
+      limit: z.number().int().min(1).max(100).optional().describe("How many (default 30)"),
+      afterSeq: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional()
+        .describe("Recover after this sequence (exclusive)"),
+      throughSeq: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional()
+        .describe("Recover through this sequence (inclusive; requires afterSeq)"),
+    },
     annotations: READ,
     run: async (api, a) => {
-      const d = await api({ method: "POST", path: CHAT_PATH, body: { op: "read", limit: a.limit ?? 30 } });
-      return { messages: Array.isArray(d.messages) ? d.messages : [] };
+      const d = await api({
+        method: "POST",
+        path: CHAT_PATH,
+        body: { op: "read", limit: a.limit ?? 30, ...readWindow(a.afterSeq, a.throughSeq) },
+      });
+      return { messages: Array.isArray(d.messages) ? d.messages : [], ...readCoverage(d) };
     },
+  },
+  {
+    name: "lianki_chat_seen",
+    scope: "chat:read",
+    title: "Acknowledge read chat",
+    description:
+      "Explicitly report the last chat sequence you actually consumed. Receiving or passively listening to messages is not reading them.",
+    input: {
+      lastReadSeq: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .describe("Last sequence actually read, from a message or replay result"),
+    },
+    annotations: { ...WRITE, idempotentHint: true },
+    run: (api, args) =>
+      api({ method: "POST", path: CHAT_PATH, body: readAckBody(args.lastReadSeq) }),
   },
   {
     name: "lianki_chat_wait",
@@ -219,10 +294,37 @@ export const TOOLS = [
     scope: "chat:write",
     title: "Post in the chat",
     description: "Post one message in the user's chat; it shows the token's name.",
-    input: { text: z.string().min(1).max(4000) },
+    input: {
+      text: z.string().max(4000).optional(),
+      attachments: z
+        .array(
+          z
+            .object({
+              type: z.literal("app"),
+              slug: z
+                .string()
+                .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+                .max(40),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(4)
+        .optional(),
+    },
     annotations: WRITE,
     run: async (api, a) => {
-      const d = await api({ method: "POST", path: CHAT_PATH, body: { op: "say", text: a.text } });
+      if (!a.text?.trim() && !a.attachments?.length)
+        throw new CliError("usage", EXIT.usage, "text or app attachments required");
+      const d = await api({
+        method: "POST",
+        path: CHAT_PATH,
+        body: {
+          op: "say",
+          text: a.text ?? a.attachments.map((app) => `/m/${app.slug}`).join(" "),
+          ...(a.attachments ? { attachments: a.attachments } : {}),
+        },
+      });
       return { id: d.id ?? null };
     },
   },
@@ -289,21 +391,37 @@ export const TOOLS = [
         .string()
         .min(1)
         .max(500)
-        .describe('"name: description": a short name (at most 20 columns; the user\'s bar shows only it), then what it is'),
+        .describe(
+          '"name: description": a short name (at most 20 columns; the user\'s bar shows only it), then what it is',
+        ),
       status: z.enum(PROGRESS_STATUSES).describe("Where it stands"),
       pct: z.number().min(0).max(100).optional().describe("How far along"),
       eta: z
         .string()
         .max(60)
         .optional()
-        .describe("Your own estimate: a duration from now (30m, 1h30m), a range 12m-63m, or an ISO time"),
-      late: z.string().max(500).optional().describe("Past the estimate: why, always with a new eta"),
+        .describe(
+          "Your own estimate: a duration from now (30m, 1h30m), a range 12m-63m, or an ISO time",
+        ),
+      late: z
+        .string()
+        .max(500)
+        .optional()
+        .describe("Past the estimate: why, always with a new eta"),
       confirm: z.boolean().optional().describe("The estimate still holds (before it runs out)"),
       note: z.string().max(2000).optional().describe("Free text on the node"),
       pr: z.string().max(100).optional().describe("A pull request number, or several: 703,707"),
-      needs: z.string().max(500).optional().describe("What someone must do (with who when blocked)"),
+      needs: z
+        .string()
+        .max(500)
+        .optional()
+        .describe("What someone must do (with who when blocked)"),
       who: z.string().max(60).optional().describe("Who can act now: owner, or a name"),
-      verified: z.string().max(500).optional().describe("With status done: the evidence (a merged PR, a test, a link)"),
+      verified: z
+        .string()
+        .max(500)
+        .optional()
+        .describe("With status done: the evidence (a merged PR, a test, a link)"),
       kind: z.enum(PROGRESS_KINDS).optional().describe("The node's kind (default task)"),
       link: z.string().max(2048).optional().describe("A link to show on the node"),
       changeId: z.string().max(40).optional().describe("One change across several reports"),
@@ -365,7 +483,9 @@ export const TOOLS = [
  */
 export function waitChat(io, { after, timeoutSec } = {}) {
   if (!io?.openChat || !io.token)
-    return Promise.reject(new CliError("unavailable", EXIT.server, "waiting for the chat is not available here"));
+    return Promise.reject(
+      new CliError("unavailable", EXIT.server, "waiting for the chat is not available here"),
+    );
   const ms = Math.min(WAIT_MAX_SEC, Math.max(1, timeoutSec ?? WAIT_DEFAULT_SEC)) * 1000;
   return io.openChat().then(
     (ws) =>
@@ -410,7 +530,11 @@ export function waitChat(io, { after, timeoutSec } = {}) {
           if (!m || typeof m !== "object") return;
           if (m.type === "error") {
             if (m.error === "rate") {
-              const e = new CliError("rate_limited", EXIT.refused, "lianki.com refused it (rate limit for this token)");
+              const e = new CliError(
+                "rate_limited",
+                EXIT.refused,
+                "lianki.com refused it (rate limit for this token)",
+              );
               const wait = Math.ceil(Number(m.retryAfterMs) / 1000);
               e.retryAfter = wait > 0 ? wait : null;
               return finish(e);
@@ -420,7 +544,12 @@ export function waitChat(io, { after, timeoutSec } = {}) {
           }
           if (m.type === "revoked" || m.type === "expired") return finish(refused(m.type));
           if (m.type === "answered") {
-            answered.push({ id: m.id ?? null, askId: m.askId ?? null, labels: m.labels ?? {}, at: m.answer?.at ?? null });
+            answered.push({
+              id: m.id ?? null,
+              askId: m.askId ?? null,
+              labels: m.labels ?? {},
+              at: m.answer?.at ?? null,
+            });
             // An answer on its own counts when nothing newer is pending behind the history.
             if (!after || history) return deliver([]);
             return;
@@ -436,7 +565,8 @@ export function waitChat(io, { after, timeoutSec } = {}) {
             const newer = i < 0 ? list : list.slice(i + 1);
             const ids = new Set(newer.map((x) => x?.id));
             const all = [...newer, ...early.filter((x) => !ids.has(x?.id))];
-            if (all.length || answered.length) return deliver(all, i < 0 && list.length ? { gap: true } : {});
+            if (all.length || answered.length)
+              return deliver(all, i < 0 && list.length ? { gap: true } : {});
             return;
           }
           if (m.type === "chat" && m.message) {
@@ -453,16 +583,28 @@ export function waitChat(io, { after, timeoutSec } = {}) {
           ),
         );
         try {
-          ws.send(JSON.stringify({ type: "auth", token: io.token, history: after ? WAIT_HISTORY : 1 }));
+          // A wait is a reader, never a resident listener (the hub's lane registry).
+          ws.send(
+            JSON.stringify({
+              type: "auth",
+              token: io.token,
+              history: after ? WAIT_HISTORY : 1,
+              mode: "reader",
+            }),
+          );
         } catch (e) {
-          finish(new CliError("network", EXIT.server, `cannot reach lianki.com: ${e?.message ?? e}`));
+          finish(
+            new CliError("network", EXIT.server, `cannot reach lianki.com: ${e?.message ?? e}`),
+          );
         }
       }),
   );
 }
 
 /** The tools a token holding `scopes` may use. */
-export const toolsFor = (scopes) => TOOLS.filter((t) => scopes.includes(t.scope));
+export const missingToolScope = (tool, scopes) =>
+  (tool.requires ?? [tool.scope]).find((scope) => !scopes.includes(scope));
+export const toolsFor = (scopes) => TOOLS.filter((t) => !missingToolScope(t, scopes));
 
 /**
  * A tool's result as text: the data between tags, with every `<` escaped so
@@ -480,7 +622,8 @@ export function untrusted(tool, data) {
 
 /** A failed call as a tool error; a 429 says how long to wait. Never the token. */
 export function toolError(e) {
-  const err = e instanceof CliError ? e : new CliError("internal", EXIT.server, String(e?.message ?? e));
+  const err =
+    e instanceof CliError ? e : new CliError("internal", EXIT.server, String(e?.message ?? e));
   const text = [
     err.message,
     err.retryAfter ? `Wait ${err.retryAfter} seconds before trying again.` : "",
@@ -488,6 +631,15 @@ export function toolError(e) {
   ]
     .filter(Boolean)
     .join(" ");
+  if (err.needScope && err.requestUrl) {
+    const result = { needScope: err.needScope, requestUrl: err.requestUrl };
+    return {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify(result) }],
+      structuredContent: result,
+      _meta: { code: "scope_required", ...result },
+    };
+  }
   return {
     isError: true,
     content: [{ type: "text", text }],
@@ -495,15 +647,40 @@ export function toolError(e) {
   };
 }
 
-/** What the token may do, from the server; every permission when an older server cannot say. */
+/** Fresh authenticated identity; unavailable or malformed introspection fails closed. */
+export async function tokenInfo(c, token) {
+  const { data } = await call(c, token, { path: "/api/cli-login/token" });
+  if (
+    !data ||
+    typeof data.id !== "string" ||
+    !/^[0-9a-f]{64}$/.test(data.id) ||
+    !Array.isArray(data.scopes) ||
+    data.scopes.some((scope) => typeof scope !== "string")
+  )
+    throw new CliError(
+      "permissions_unavailable",
+      EXIT.server,
+      "Token permissions are unavailable; reconnect after the server is updated.",
+    );
+  return { id: data.id, scopes: data.scopes.filter((scope) => ALL_SCOPES.includes(scope)) };
+}
+
 export async function tokenScopes(c, token) {
-  try {
-    const { data } = await call(c, token, { path: "/api/cli-login/token" });
-    return Array.isArray(data.scopes) ? data.scopes.filter((s) => ALL_SCOPES.includes(s)) : ALL_SCOPES;
-  } catch (e) {
-    if (e instanceof CliError && (e.code === "not_found" || e.code === "refused")) return ALL_SCOPES;
-    throw e;
-  }
+  return (await tokenInfo(c, token)).scopes;
+}
+
+/** An approval link contains only the token's public id and one known missing scope. */
+export function missingScope(_context, identity, scope) {
+  const url = new URL("https://lianki.com/my/tokens/scopes");
+  url.searchParams.set("token", identity.id);
+  url.searchParams.set("scope", scope);
+  const result = { needScope: scope, requestUrl: url.toString() };
+  return {
+    isError: true,
+    content: [{ type: "text", text: JSON.stringify(result) }],
+    structuredContent: result,
+    _meta: { code: "scope_required", ...result },
+  };
 }
 
 /** The server's instructions to the client, the same for both transports. */
@@ -524,7 +701,9 @@ export function parseArgs(t, raw) {
     ? { ok: true, args: r.data }
     : {
         ok: false,
-        error: r.error.issues.map((i) => `${i.path.join(".") || "arguments"}: ${i.message}`).join("; "),
+        error: r.error.issues
+          .map((i) => `${i.path.join(".") || "arguments"}: ${i.message}`)
+          .join("; "),
       };
 }
 

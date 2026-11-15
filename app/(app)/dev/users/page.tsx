@@ -6,6 +6,8 @@ import { cfg } from "@/lib/config-store";
 import { cachedReadBlobSizes, type ListBucket } from "@/lib/repos/devUserFiles";
 import { listDevUsers, monthlySignups } from "@/lib/repos/devUsersD1";
 import { monthSeries } from "@/lib/signups-chart";
+import { requestTimeZone } from "@/lib/study-days";
+import { validZone, zoneLabel, zoneOffsetMin } from "@/lib/time-zone";
 import { listPending } from "@/lib/referrals/pregrant";
 import PregrantPanel from "./PregrantPanel";
 import SignupsChart from "./SignupsChart";
@@ -24,9 +26,13 @@ export default async function DevUsersPage() {
   // Long reading texts have no stored size: R2's listing, capped and cached (devUserFiles.ts).
   const read = await cachedReadBlobSizes(() => getBlobs() as unknown as ListBucket);
   const now = new Date();
+  // The chart's months in the viewer's zone: where Cloudflare places the request, else UTC.
+  const rz = requestTimeZone();
+  const zone = validZone(rz) ? rz : "UTC";
+  const off = zoneOffsetMin(zone, now);
   const [rows, signups, heading, pending] = await Promise.all([
     listDevUsers(getD1(), now, read.sizes),
-    monthlySignups(getD1()),
+    monthlySignups(getD1(), off),
     devPageText("users"),
     listPending(getD1()),
   ]);
@@ -42,7 +48,7 @@ export default async function DevUsersPage() {
           的文件（收件箱、头像、长阅读文本）的实际字节。
         </p>
       </header>
-      <SignupsChart series={monthSeries(signups, now)} />
+      <SignupsChart series={monthSeries(signups, now, 24, off)} zone={zoneLabel(zone, now)} />
       <PregrantPanel />
       <UsersTable
         rows={rows}

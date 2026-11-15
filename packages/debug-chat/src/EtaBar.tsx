@@ -1,7 +1,8 @@
 "use client";
 
 import { useUi } from "@lianki/ui-state";
-import { Disclosure } from "./icons";
+import { Disclosure, Icon } from "./icons";
+import { type TickerItem, type TickerKind, type TickerText, tickerText } from "./eta-ticker";
 import type { ReactNode } from "react";
 import {
   GANTT_GROUPS,
@@ -197,7 +198,8 @@ export function EtaClockIcon({ size = 12 }: { size?: number }) {
   );
 }
 
-type EtaText = Pick<
+type EtaText = TickerText &
+  Pick<
   ChatStrings,
   | "etaTasks"
   | "etaLeft"
@@ -220,6 +222,38 @@ type EtaText = Pick<
   | "etaGroupShip"
   | "etaGroupArch"
 >;
+
+/**
+ * The ticker's flash (eta-ticker.ts): a new change lights the bar once, in
+ * its own gold, fading out; nothing moves, nothing under reduced motion.
+ */
+export const ETA_FLASH_CSS =
+  "@keyframes lk-eta-flash{from{opacity:0.85}to{opacity:0}}" +
+  "@media (prefers-reduced-motion: reduce){[data-eta-flash]{display:none}}";
+
+/** Each announcement's mark (icons.tsx; the clock is the bar's own). */
+function NewsIcon({ kind }: { kind: TickerKind }) {
+  if (kind === "late")
+    return (
+      <span className="inline-flex shrink-0" style={{ color: both("late") }}>
+        <EtaClockIcon />
+      </span>
+    );
+  const name = (
+    { new: "plus", done: "check", early: "sparkle", later: "arrowUp", blocked: "pause", waiting: "pause" } as const
+  )[kind];
+  return (
+    <span
+      data-testid="debug-chat-eta-news-icon"
+      data-kind={kind}
+      className="inline-flex shrink-0 fs-12 leading-none"
+      // "Later" is an arrow along time, to the right (time runs left to right in every locale, as on the Gantt).
+      style={kind === "later" ? { transform: "rotate(90deg)" } : undefined}
+    >
+      <Icon name={name} />
+    </span>
+  );
+}
 
 /** A category's child row is indented past the ▸/▾. */
 const ETA_CHILD_INDENT = "2.25rem";
@@ -301,11 +335,14 @@ export function EtaBar({
   folded = false,
   compact = false,
   onFold,
+  news = null,
 }: {
   tasks: readonly EtaTask[];
   now: number;
   strings: EtaText;
   onOpen: () => void;
+  /** The change ticker's item now (eta-ticker.ts useEtaTicker): shown in place of the summary. */
+  news?: { item: TickerItem; since: number } | null;
   /** Part of the chat's glass strip (DebugChat): no track, no gap under it. */
   glass?: boolean;
   /** Hidden by the viewer: only the ▸ to show it again (EtaFold). */
@@ -318,7 +355,16 @@ export function EtaBar({
   const p = summaryParts(tasks, now, strings);
   if (!p) return null;
   const line = (
-    <EtaLine p={p} tasks={tasks} now={now} strings={strings} onOpen={onOpen} glass={glass} compact={compact} />
+    <EtaLine
+      p={p}
+      tasks={tasks}
+      now={now}
+      strings={strings}
+      onOpen={onOpen}
+      glass={glass}
+      compact={compact}
+      news={compact ? null : news}
+    />
   );
   if (!onFold || compact) return line;
   if (folded)
@@ -346,6 +392,7 @@ function EtaLine({
   onOpen,
   glass,
   compact,
+  news,
 }: {
   p: NonNullable<ReturnType<typeof summaryParts>>;
   tasks: readonly EtaTask[];
@@ -354,16 +401,21 @@ function EtaLine({
   onOpen: () => void;
   glass: boolean;
   compact: boolean;
+  news: { item: TickerItem; since: number } | null;
 }) {
   const { sum } = p;
   const past = sum.leftMs !== null && sum.leftMs <= 0;
-  const text = summaryText(tasks, now, strings);
+  const summary = summaryText(tasks, now, strings);
+  const said = news ? tickerText(news.item, strings) : null;
+  const who = news?.item.by;
+  const text = said ? (who ? `${who}: ${said}` : said) : summary;
   return (
     <button
       type="button"
       data-testid="debug-chat-eta-bar"
       data-count={sum.count}
       data-pct={sum.pct}
+      data-news={news?.item.kind}
       aria-label={`${text} · ${sum.pct}% — ${strings.etaOpen}`}
       title={strings.etaOpen}
       onMouseDown={keepFocus}
@@ -378,9 +430,26 @@ function EtaLine({
         // In progress: something still open (not all done).
         busy={p.leftMs !== null && sum.open > 0}
       >
-        <EtaClockIcon />
+        {news && (
+          <span
+            key={news.since}
+            aria-hidden
+            data-eta-flash
+            data-testid="debug-chat-eta-flash"
+            className="absolute inset-0 -z-10"
+            style={{ background: both("fill"), opacity: 0, animation: "lk-eta-flash 1.2s ease-out" }}
+          >
+            <style>{ETA_FLASH_CSS}</style>
+          </span>
+        )}
+        {news ? <NewsIcon kind={news.item.kind} /> : <EtaClockIcon />}
         <span data-testid="debug-chat-eta-text" className="flex min-w-0 flex-1 items-baseline gap-1">
-          {compact ? (p.leftMs === null ? <span>{strings.etaDone}</span> : <TimeLabel ms={sum.next ? sum.next.at - now : p.leftMs} />) : <>
+          {news ? (
+            <span data-testid="debug-chat-eta-news" data-key={news.item.key} className="min-w-0 truncate">
+              {who && <span className="font-semibold">{who} </span>}
+              {said}
+            </span>
+          ) : compact ? (p.leftMs === null ? <span>{strings.etaDone}</span> : <TimeLabel ms={sum.next ? sum.next.at - now : p.leftMs} />) : <>
           <span className="min-w-0 truncate">{p.lead}</span>
           <span aria-hidden className="shrink-0">
             ·

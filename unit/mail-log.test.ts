@@ -21,7 +21,7 @@ import {
 } from "../lib/mail-log/store";
 import {
   RESENDS,
-  jstDay,
+  zoneDay,
   mailsGet,
   mailsPost,
   type MailsDb,
@@ -555,7 +555,7 @@ describe("/api/dev/mails", () => {
     expect((await act({ op: "resend", id: 5 })).status).toBe(404);
   });
 
-  test("list: newest first, filters, search by address or message id, paging, per-day counts (JST)", async () => {
+  test("list: newest first, filters, search by address or message id, paging, per-day counts (UTC, or the viewer's zone)", async () => {
     await oneRow();
     now += 60_000;
     await logged()({
@@ -592,9 +592,18 @@ describe("/api/dev/mails", () => {
     // Bad filters are ignored, not errors.
     expect((await get("?template=x&status=y&locale=zz&from=bad&page=-1")).body.total).toBe(4);
     expect((await get("?page=1")).body.rows).toEqual([]);
-    expect(jstDay("2027-01-15")).toBe(Date.parse("2027-01-14T15:00:00Z"));
-    expect(jstDay("2027-13-45")).toBeNull();
-    expect(jstDay(null)).toBeNull();
+    expect(zoneDay("2027-01-15")).toBe(Date.parse("2027-01-15T00:00:00Z"));
+    expect(zoneDay("2027-01-15", 540)).toBe(Date.parse("2027-01-14T15:00:00Z"));
+    expect(zoneDay("2027-13-45")).toBeNull();
+    expect(zoneDay(null)).toBeNull();
+    // A viewer at UTC−4: 03:00Z is 23:00 the day before, for the counts and the day filters.
+    const west = await get("?tz=-240");
+    expect([...new Set(west.body.perDay.map((d: any) => d.day))]).toEqual([
+      "2027-01-15",
+      "2027-01-14",
+    ]);
+    expect((await get("?tz=-240&to=2027-01-14")).body.total).toBe(2);
+    expect((await get("?tz=-240&from=2027-01-15")).body.total).toBe(2);
   });
 
   test("detail: a login notice re-rendered from its kept variables", async () => {

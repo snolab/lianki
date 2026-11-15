@@ -10,11 +10,13 @@
 //   - The token is never printed, in any mode.
 
 import yargs from "yargs";
+import { readPublishInput } from "./app-publish.mjs";
 import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call } from "./api.mjs";
 import { DEVICE_RE, randomId, s256, TOKEN_RE } from "./auth.mjs";
 import { createChatBridge, filterDecision, ayDeliver, bridgeConfig } from "./chat-bridge.mjs";
 import { createInterface } from "node:readline";
 import { createChatReceiver, turnConfig } from "./chat-receiver.mjs";
+import { readAckBody, readWindow, readCoverage } from "./chat-seq.mjs";
 import { applyGrantPolish } from "./chat-polish.mjs";
 import { createFriendInbox, INBOX_DEFAULTS } from "./chat-inbox.mjs";
 import {
@@ -459,11 +461,27 @@ const wsUrl = (c) => {
 };
 
 /**
+ * A resident listener's keepalive: it sends "ping" every CHAT_PING_MS (the hub's
+ * auto-response answers "pong" without waking it), and a socket that heard
+ * nothing back by the next tick (10–20 s of silence) is dead: a connection that dropped without a close
+ * reaching this end (the hub saw it close, so its lane turns reader after
+ * lanes.modeGraceSec, 30 s). It fails as a network error (exit 4), and
+ * lane-listen reconnects inside the grace, saying `mode: "listener"` again.
+ * LIANKI_CHAT_PING_MS overrides it; 0 turns it off.
+ */
+export const CHAT_PING_MS = 10_000;
+const pingMs = (env = {}) => {
+  const v = Number(env.LIANKI_CHAT_PING_MS);
+  return env.LIANKI_CHAT_PING_MS !== undefined && Number.isFinite(v) && v >= 0 ? v : CHAT_PING_MS;
+};
+
+/**
  * One chat socket: authenticated with the token in its first message (never
  * the URL). `onEvent` gets each event; resolves when it returns true, or
- * rejects on a refusal, a close or the timeout.
+ * rejects on a refusal, a close, the timeout, or (a listener) a socket gone
+ * silent past its keepalive.
  */
-function chatSocket(c, token, { history = 0, onReady, onEvent, timeoutMs }) {
+function chatSocket(c, token, { history = 0, mode, scope, onReady, onEvent, timeoutMs }) {
   const WS = c.deps.WebSocket ?? globalThis.WebSocket;
   if (!WS)
     throw new CliError("usage", EXIT.usage, "this needs a WebSocket: Node.js 22 or newer, or Bun", "bunx lianki …");
@@ -474,6 +492,7 @@ function chatSocket(c, token, { history = 0, onReady, onEvent, timeoutMs }) {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      clearInterval(beat);
       try {
         ws.close(1000);
       } catch {}
@@ -481,13 +500,31 @@ function chatSocket(c, token, { history = 0, onReady, onEvent, timeoutMs }) {
       else resolve(value);
     };
     const timer = timeoutMs ? setTimeout(() => finish(new CliError("timeout", EXIT.server, "timed out waiting")), timeoutMs) : null;
+    // The keepalive: a tick whose last ping heard nothing back (no pong, no event) ends it.
+    const every = mode === "listener" ? pingMs(c.deps.env) : 0;
+    let unanswered = false;
+    const beat = every
+      ? setInterval(() => {
+          if (unanswered)
+            return finish(new CliError("network", EXIT.server, `the chat socket went silent (no answer to a ping in ${every / 1000} s)`));
+          unanswered = true;
+          try {
+            ws.send("ping");
+          } catch {}
+        }, every)
+      : null;
     try {
       ws = new WS(wsUrl(c));
     } catch (e) {
       return finish(new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`));
     }
-    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, ...(history ? { history } : {}) }));
+    // mode: "listener" (resident: hears every line live) or "reader" (a wait, the lanes
+    // manager): the lane's mode in the hub's lane registry; an older hub ignores it.
+    // scope "all": a listener whose agent is handed every line, not only the owner's.
+    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, ...(history ? { history } : {}), ...(mode ? { mode } : {}), ...(scope ? { scope } : {}) }));
     ws.onmessage = async (ev) => {
+      unanswered = false;
+      if (ev.data === "pong") return;
       let m;
       try {
         m = JSON.parse(typeof ev.data === "string" ? ev.data : String(ev.data));
@@ -525,18 +562,39 @@ function chatSocket(c, token, { history = 0, onReady, onEvent, timeoutMs }) {
   });
 }
 
+async function cmdAppPublish(c) {
+  const token = await needToken(c);
+  let body;
+  try {
+    body = await readPublishInput(c.argv.manifest, c.argv.html);
+  } catch (e) {
+    throw usage(`Cannot read publish input: ${e.message}`);
+  }
+  const { data } = await call(c, token, { method: "POST", path: "/api/my/mini-apps", body });
+  emit(c, "app publish", data, (d) => `published ${d.url}`);
+}
+
 async function cmdChatSay(c) {
   const token = await needToken(c);
   const parts = (c.argv.text ?? []).map(String);
-  if (c.argv.stdin && parts.length > 0) throw usage("say takes its text or - (stdin), not both", 'lianki chat say "PR #12 is green"');
+  if (c.argv.stdin && parts.length > 0)
+    throw usage("say takes its text or - (stdin), not both", 'lianki chat say "PR #12 is green"');
   const text = c.argv.stdin ? (await c.deps.readStdin()).trim() : parts.join(" ").trim();
-  if (!text) throw usage("say needs text (or - to read it from stdin)", 'lianki chat say "PR #12 is green"');
+  const apps = c.argv.app ?? [];
+  if (
+    apps.length > 4 ||
+    apps.some((slug) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 40)
+  )
+    throw usage("--app needs up to four mini-app slugs");
+  if (!text && !apps.length)
+    throw usage("say needs text (or - to read it from stdin)", 'lianki chat say "PR #12 is green"');
   const { data } = await call(c, token, {
     method: "POST",
     path: CHAT_PATH,
     body: {
       op: "say",
-      text,
+      text: text || apps.map((slug) => `/m/${slug}`).join(" "),
+      ...(apps.length ? { attachments: apps.map((slug) => ({ type: "app", slug })) } : {}),
       ...(c.argv.quiet ? { quiet: true } : {}),
       ...(c.argv.voice ? { voice: String(c.argv.voice) } : {}),
       // How it cuts into the reading when it arrives live: stop yours, or pause and go on.
@@ -544,7 +602,12 @@ async function cmdChatSay(c) {
       ...(c.argv.interject ? { cut: "interject" } : {}),
     },
   });
-  emit(c, "chat say", { id: data.id, lane: data.lane ?? null }, (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`);
+  emit(
+    c,
+    "chat say",
+    { id: data.id, lane: data.lane ?? null },
+    (d) => `sent ${d.id}${d.lane ? ` as 【${d.lane}】` : ""}`,
+  );
 }
 
 /**
@@ -579,6 +642,7 @@ async function cmdChatAsk(c) {
   if (!wait) throw usage("--timeout is like 90s, 10m or 2h");
   let asked = null;
   const answered = await chatSocket(c, token, {
+    mode: "reader",
     timeoutMs: wait,
     onReady: (ws) => ws.send(JSON.stringify({ type: "ask", ...body })),
     onEvent: (m) => {
@@ -600,11 +664,18 @@ async function cmdChatRead(c) {
   const token = await needToken(c);
   const limit = Number(c.argv.limit ?? 30);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw usage("--limit must be 1–100");
-  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "read", limit } });
+  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "read", limit, ...readWindow(c.argv["after-seq"], c.argv["through-seq"]) } });
   const messages = Array.isArray(data.messages) ? data.messages : [];
-  emit(c, "chat read", { thread: data.thread ?? null, lane: data.lane ?? null, messages }, (d) =>
+  emit(c, "chat read", { thread: data.thread ?? null, lane: data.lane ?? null, messages, ...readCoverage(data) }, (d) =>
     d.messages.length ? d.messages.map(chatLine).join("\n") : "no messages",
   );
+}
+
+async function cmdChatSeen(c) {
+  const token = await needToken(c);
+  const body = readAckBody(c.argv.seq);
+  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body });
+  emit(c, "chat seen", data, () => "Read position saved");
 }
 
 async function cmdChatPrepare(c) {
@@ -626,6 +697,8 @@ async function cmdChatListen(c) {
   // One JSON line an event, as it comes; stops on Ctrl-C, a revoke or an expiry.
   await chatSocket(c, token, {
     history,
+    mode: c.argv.reader ? "reader" : "listener",
+    ...(c.argv.everyone && !c.argv.reader ? { scope: "all" } : {}),
     onEvent: (m) => {
       if (m.type === "history") for (const x of m.messages ?? []) c.deps.out(c.json ? JSON.stringify({ type: "chat", message: x, history: true }) : chatLine(x));
       else if (m.type === "chat") c.deps.out(c.json ? JSON.stringify(m) : chatLine(m.message));
@@ -759,7 +832,7 @@ async function cmdChatBridge(c) {
       }
     } else {
       const token = await needToken(c);
-      await chatSocket(c, token, { history, onEvent: async (m) => {
+      await chatSocket(c, token, { history, mode: "listener", onEvent: async (m) => {
         if (failed) throw failed;
         await accept(m);
         return false;
@@ -866,6 +939,7 @@ function build(args, deps, box) {
     .option("json", { type: "boolean", describe: "Machine output: one JSON object (schema v1)", global: true })
     .option("token", { type: "string", describe: "API token for this call (or - for stdin)", global: true, hidden: true })
     .option("api", { type: "string", describe: "Lianki site (default https://lianki.com, or $LIANKI_URL)", global: true, hidden: true })
+    .command("app", "Publish a mini-app", (y) => sub(y).command("publish", "Publish local HTML and a JSON manifest (no chat post)", (y) => y.option("manifest", {type: "string", demandOption: true, describe: "Manifest JSON file"}).option("html", {type: "string", demandOption: true, describe: "HTML file"}), act(cmdAppPublish)))
     .command("auth", "Sign in, check, sign out", (y) =>
       examples(
         sub(y)
@@ -1009,6 +1083,7 @@ function build(args, deps, box) {
               examples(
                 y
                   .positional("text", { type: "string", describe: "The line" })
+                  .option("app", { type: "string", array: true, describe: "Attach a published mini-app slug (up to four)" })
                   .option("quiet", { type: "boolean", describe: "Shown, never read aloud" })
                   .option("voice", { type: "string", describe: "Read this line in another voice: main | calm | bright, device:<name>, melo:<lang>" })
                   .option("supersede", {
@@ -1064,14 +1139,24 @@ function build(args, deps, box) {
           .command(
             "read",
             "The latest lines",
-            (y) => examples(y.option("limit", { type: "number", default: 30, describe: "How many (1–100)" }), [["lianki chat read --limit 10 --json", ""]]),
+            (y) => examples(y.option("limit", { type: "number", default: 30, describe: "How many (1–100)" })
+              .option("after-seq", { type: "number", describe: "Recover after this sequence (exclusive)" })
+              .option("through-seq", { type: "number", describe: "Recover through this sequence (inclusive; requires --after-seq)" }), [["lianki chat read --limit 10 --json", ""]]),
             act(cmdChatRead),
+          )
+          .command(
+            "seen",
+            "Explicitly acknowledge the last sequence you actually read",
+            (y) => y.option("seq", { type: "number", demandOption: true, describe: "Last sequence actually consumed; passive listening does not count" }),
+            act(cmdChatSeen),
           )
           .command(
             "listen",
             "Follow the thread live (one JSON line an event with --json)",
             (y) =>
               examples(y.option("history", { type: "number", default: 0, describe: "First print the last n lines (0–100; memory only with --deliver)" })
+                .option("reader", { type: "boolean", describe: "Listen as a reader, not a resident listener (the lane's mode in the chat)" })
+                .option("everyone", { type: "boolean", describe: "Tell the chat this listener's agent hears every line (agents' and system lines too), not only the owner's" })
                 .option("deliver", { type: "string", describe: "Optionally bridge to this ay agent target" })
                 .option("cwd", { type: "string", describe: "Agent directory for ay target ." })
                 .option("filter-service", { type: "string", describe: "Optional AI filter URL for --deliver" })
@@ -1245,7 +1330,7 @@ function report(deps, json, e) {
       JSON.stringify({
         v: SCHEMA_VERSION,
         ok: false,
-        error: { code: err.code, message: err.message, ...(err.hint ? { hint: err.hint } : {}) },
+        error: { code: err.code, message: err.message, ...(err.hint ? { hint: err.hint } : {}), ...(err.needScope ? {needScope: err.needScope, requestUrl: err.requestUrl} : {}) },
         exit: err.exit,
       }),
     );

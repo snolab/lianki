@@ -1,3 +1,4 @@
+import { cleanAppRefs, miniAppsIn } from "../../../packages/debug-chat/src/mini-app-links";
 /**
  * Token chat: `lianki chat say | ask | read | listen` (packages/lianki-cli),
  * authenticated with an API token (lib/api-tokens.ts), held by DebugHub
@@ -6,10 +7,18 @@
  *   POST /api/version/chat  Authorization: Bearer lk_…
  *        {op:"say", text, quiet?, cut?}          → {ok, id}   cut: "supersede" | "interject"
  *        {op:"ask", question, options | questions, expiresAt?} → {ok, id, askId}
- *        {op:"read", limit?}                     → {ok, thread, lane, messages}
+ *        {op:"read", limit?, afterSeq?, throughSeq?} → {ok, thread, lane, messages, ...coverage}
+ *        {op:"read-ack", lastReadSeq}              → {ok, thread, lastReadSeq} explicit consumption only
  *        {op:"avatar", svg: "<svg…>" | null}     → {ok, avatar, dropped}  (chat:write)
- *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?};
- *        then {type:"say"|"ask", …}; hears {type:"chat"|"edited"|"answered"}.
+ *        {op:"lane", state: "reader" | "left"}   → {ok, lane, state}    (chat:read; lane-registry.ts)
+ *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?, mode?, scope?};
+ *        then {type:"say"|"ask", …}, {type:"lane", state}, {type:"read-ack",lastReadSeq}
+ *        or {type:"replay",afterSeq,throughSeq?}; passive delivery never advances reads.
+ *        `scope`: "all" | "owner" (a listener: does its agent get every line, or the
+ *        owner's only; absent = "owner"), kept on the presence row.
+ *        `mode`: "listener" (`lianki chat listen`; the default without one, but for an
+ *        MCP client) or "reader" (an MCP wait, the lanes manager): the lane's mode in
+ *        the lane registry (lane-registry.ts, "全员入群").
  *
  * Scope, deny by default. The main Worker's DebugSessions.chatToken
  * (lib/chat-token.ts, over the SESSIONS binding) checks the token for the
@@ -48,10 +57,23 @@
  * for it), or when a re-check (at most every RECHECK_MS, before a delivery)
  * finds it gone. No timers, no polling.
  */
-import type { ChatMessage, EditedEvent } from "../../../packages/debug-chat/src/wire";
+import type {
+  ChatMessage,
+  ChatReplayRange,
+  EditedEvent,
+} from "../../../packages/debug-chat/src/wire";
 import { type Ask, parseAsk, askText } from "../../../packages/debug-chat/src/ask";
-import { OWNER_THREAD, SAY_CUTS, chatText, isSayCut, isUserId } from "../../../lib/dev-eval";
-import { laneOf, parseLineVoice } from "../../../packages/debug-chat/src/voices";
+import {
+  OWNER_THREAD,
+  SAY_CUTS,
+  chatText,
+  isSayCut,
+  isUserId,
+  threadFor,
+} from "../../../lib/dev-eval";
+import { laneOf, laneSpec, parseLineVoice } from "../../../packages/debug-chat/src/voices";
+import { type LaneRegistry, MUTED_REASON } from "./lane-registry";
+import type { LaneScope } from "../../../packages/debug-chat/src/lane-events";
 import { sanitizeAvatarSvg } from "../../../packages/debug-chat/src/svg-avatar";
 import {
   type PartRecord,
@@ -94,6 +116,10 @@ export type TokenAtt = {
   hash?: string;
   /** Opened by an MCP client (x-lianki-client): its presence shows the badge. */
   mcp?: true;
+  /** A resident listener's socket (lane-registry.ts): its lane is a listener while one is open. */
+  listener?: true;
+  /** A listener whose agent hears every line (auth `scope: "all"`); absent: the owner's only. */
+  scope?: "all";
   until?: number | null;
   checkedAt?: number;
 };
@@ -102,11 +128,14 @@ export type ChatTokenOp =
   | "say"
   | "ask"
   | "read"
+  | "read-ack"
   | "listen"
   | "recheck"
   | "prepare"
   | "avatar"
   | "progress";
+/** What {type:"lane"} on a socket may set (op "lane" over HTTP: reader or left only). */
+export const LANE_STATES = ["reader", "listener", "left"] as const;
 export type ChatTokenAnswer =
   | {
       ok: true;
@@ -134,6 +163,13 @@ export interface TokenHost {
   sockets(): TokenSocket[];
   post(m: ChatMessage & { thread: string }): Promise<void>;
   history(thread: string): Promise<ChatMessage[]>;
+  replay?(
+    thread: string,
+    afterSeq?: number,
+    throughSeq?: number,
+    limit?: number,
+  ): Promise<ChatReplayRange>;
+  acknowledgeRead?(thread: string, identity: string, lastReadSeq: number): Promise<number>;
   /** Is this (non-owner) user blocked from the chat? */
   blocked(userId: string): Promise<boolean>;
   /** The hub's storage, for the token records and avatars. */
@@ -143,6 +179,8 @@ export interface TokenHost {
   };
   /** Who is in `thread` changed: push the presence list to its pages. */
   presence?(thread: string): void;
+  /** The lane registry (lane-registry.ts): modes, mutes, the system lines. Absent: none of it. */
+  lanes?: LaneRegistry;
 }
 
 /** The token's record and avatar keys in the hub's storage. */
@@ -197,6 +235,13 @@ export function forLane(m: ChatMessage, lane: string | undefined): ChatMessage {
 }
 
 type Verified = Extract<ChatTokenAnswer, { ok: true }>;
+
+/** How a lane's system line names it: the owner's name for it, else its lane's (coco for codex), else the token's. */
+export function laneShownName(lane: string, ownerName?: string): string {
+  if (ownerName) return ownerName;
+  const known = laneOf({ text: `【${lane}】` }).lane;
+  return (known && laneSpec(known).name) || lane;
+}
 const STATUS: Record<string, number> = {
   "bad request": 400,
   unknown: 401,
@@ -204,6 +249,15 @@ const STATUS: Record<string, number> = {
   scope: 403,
   rate: 429,
 };
+const validSeq = (raw: unknown): raw is number =>
+  typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0;
+/** A requested window is numeric, exclusive-after / inclusive-through; no request chooses a thread. */
+export function validReadWindow(after: unknown, through: unknown): boolean {
+  return (
+    (after === undefined && through === undefined) ||
+    (validSeq(after) && (through === undefined || (validSeq(through) && through >= after)))
+  );
+}
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(body, { status, headers: { "cache-control": "no-store", ...headers } });
 
@@ -239,9 +293,10 @@ export class TokenChat {
     }
   }
 
-  /** The token's own thread, or null when its user is blocked. */
+  /** The token's thread (the dispatch thread for a `dev` holder), or null when its user is blocked. */
   private async threadOf(v: Verified): Promise<string | null> {
-    if (v.owner) return OWNER_THREAD;
+    const thread = threadFor({ userId: v.userId, dispatch: v.owner });
+    if (thread === OWNER_THREAD) return thread;
     return (await this.host.blocked(v.userId)) ? null : v.userId;
   }
 
@@ -299,8 +354,57 @@ export class TokenChat {
     return { tag: v.tag, avatar: r ? effective(r).avatar : undefined, mcp };
   }
 
+  /** A muted lane (lane-registry.ts) posts nothing: the refusal, else null. */
+  private async mutedRefusal(thread: string, lane: string) {
+    return (await this.host.lanes?.muted(thread, lane))
+      ? { error: "muted", reason: MUTED_REASON, status: 403 }
+      : null;
+  }
+
+  /** The registry hears of a verified use: a reader unless it listens; the name the owner gave it shows. */
+  private async seen(
+    v: Verified,
+    thread: string,
+    input: "seen" | "listen" | "reader" = "seen",
+    scope?: LaneScope,
+  ) {
+    const lanes = this.host.lanes;
+    if (!lanes) return;
+    const r = await this.host.kv?.get<PartRecord>(partKey(v.tag));
+    await lanes.apply(
+      thread,
+      v.lane,
+      input === "listen" ? { type: input, scope: scope ?? "owner" } : { type: input },
+      laneShownName(v.lane, r?.ownerName),
+    );
+  }
+
   private async say(thread: string, lane: string, m: Record<string, unknown>, who: Who = {}) {
-    const text = typeof m.text === "string" ? laneText(lane, m.text.trim()) : undefined;
+    const muted = await this.mutedRefusal(thread, lane);
+    if (muted) return muted;
+    const apps = cleanAppRefs(m.attachments);
+    if (
+      m.attachments !== undefined &&
+      (!Array.isArray(m.attachments) ||
+        m.attachments.length > 4 ||
+        !apps ||
+        m.attachments.some(
+          (a: unknown) =>
+            !a ||
+            typeof a !== "object" ||
+            (a as { type?: unknown }).type !== "app" ||
+            !cleanAppRefs([a]),
+        ))
+    )
+      return { error: "attachments must contain app references" };
+    // Keep a normal link in text as well: the minimal long-term history format keeps text only.
+    let body = typeof m.text === "string" ? m.text.trim() : "";
+    for (const app of apps ?? []) {
+      const href = `/m/${app.slug}`;
+      if (!miniAppsIn(body).some((ref) => ref.slug === app.slug))
+        body += `${body ? "\n" : ""}${href}`;
+    }
+    const text = body ? laneText(lane, body) : undefined;
     if (!text) return { error: "say needs text (at most the chat's limit)" };
     // A line's own voice (main = the cat-girl voice…), checked as on the grant path.
     const voice = m.voice === undefined ? undefined : parseLineVoice(m.voice);
@@ -313,6 +417,7 @@ export class TokenChat {
       lane,
       text,
       {
+        ...(apps ? { apps } : {}),
         ...(m.quiet === true ? { quiet: true as const } : {}),
         ...(voice ? { voice: m.voice as string } : {}),
         // How it cuts into the reading when it arrives live (packages/debug-chat voice.ts).
@@ -326,6 +431,8 @@ export class TokenChat {
   }
 
   private async ask(thread: string, lane: string, m: Record<string, unknown>, who: Who = {}) {
+    const muted = await this.mutedRefusal(thread, lane);
+    if (muted) return muted;
     const r = parseAsk(m, this.host.now(), () => crypto.randomUUID().slice(0, 12));
     if (!r.ok) return { error: r.error };
     const ask: Ask = r.ask;
@@ -358,15 +465,40 @@ export class TokenChat {
       return json({ ok: false, error: "expected a JSON object" }, 400);
     }
     const op = body.op;
-    if (op !== "say" && op !== "ask" && op !== "read" && op !== "prepare" && op !== "avatar")
-      return json({ ok: false, error: 'op must be "say", "ask", "read" or "avatar"' }, 400);
+    if (
+      op !== "say" &&
+      op !== "ask" &&
+      op !== "read" &&
+      op !== "read-ack" &&
+      op !== "prepare" &&
+      op !== "avatar" &&
+      op !== "lane"
+    )
+      return json(
+        { ok: false, error: 'op must be "say", "ask", "read", "read-ack", "avatar" or "lane"' },
+        400,
+      );
+    if (
+      (op === "read-ack" && !validSeq(body.lastReadSeq)) ||
+      (op === "read" && !validReadWindow(body.afterSeq, body.throughSeq))
+    )
+      return json({ ok: false, error: "invalid sequence" }, 400);
+    // op "lane" is a reader's word about itself: checked as a read (chat:read), so a
+    // main Worker that has never heard of it answers it as before.
+    if (op === "lane" && body.state !== "reader" && body.state !== "left")
+      return json({ ok: false, error: 'lane: state must be "reader" or "left"' }, 400);
     // `lianki mcp` names itself (x-lianki-client) for the audit log; the main
     // Worker keeps it only in its one known shape (lib/api-token-client.ts).
     const client = req.headers.get("x-lianki-client")?.slice(0, 100) || undefined;
-    const v = await this.check(op, { token: m[1] }, client);
+    const v = await this.check(
+      op === "lane" || op === "read-ack" ? "read" : op,
+      { token: m[1] },
+      client,
+    );
     if (!v.ok) return refusal(v);
     const thread = await this.threadOf(v);
     if (!thread) return json({ ok: false, error: "blocked" }, 403);
+    if (op === "lane") return this.laneOp(v, thread, body.state as "reader" | "left");
     if (op === "prepare") {
       const rpc = this.host.rpc();
       if (!rpc?.prepareChatTurn) return json({ ok: false, error: "unavailable" }, 503);
@@ -378,7 +510,27 @@ export class TokenChat {
       }
     }
     const mcp = isMcpClient(client);
+    // Any verified use puts its lane in the registry (a reader, unless a socket of it listens).
+    await this.seen(v, thread);
     if (op === "avatar") return this.avatar(v, thread, body.svg);
+    if (op === "read-ack") {
+      if (!this.host.acknowledgeRead || !/^[0-9a-f]{16}$/.test(v.tag))
+        return json({ ok: false, error: "unavailable" }, 503);
+      const lastReadSeq = await this.host.acknowledgeRead(
+        thread,
+        `token:${v.tag}`,
+        body.lastReadSeq as number,
+      );
+      const r = await this.record(v, thread);
+      if (r)
+        await this.keep({
+          ...r,
+          seenAt: this.host.now(),
+          since: r.since ?? this.host.now(),
+          ...(mcp ? { mcp: true as const } : {}),
+        });
+      return json({ ok: true, thread: thread === OWNER_THREAD ? "owner" : "own", lastReadSeq });
+    }
     if (op === "read") {
       // A read is presence: it stays for the read window (chat.presenceReadMin).
       const r = await this.record(v, thread);
@@ -393,7 +545,24 @@ export class TokenChat {
         });
       }
       const n = typeof body.limit === "number" && Number.isInteger(body.limit) ? body.limit : 30;
-      const list = (await this.host.history(thread)).slice(-Math.max(1, Math.min(MAX_READ, n)));
+      const limit = Math.max(1, Math.min(MAX_READ, n));
+      if (this.host.replay) {
+        const range = await this.host.replay(
+          thread,
+          body.afterSeq as number | undefined,
+          body.throughSeq as number | undefined,
+          limit,
+        );
+        return json({
+          ...range,
+          ok: true,
+          thread: thread === OWNER_THREAD ? "owner" : "own",
+          lane: v.lane,
+          messages: range.messages.map((line) => forLane(line, v.lane)),
+        });
+      }
+      if (body.afterSeq !== undefined) return json({ ok: false, error: "unavailable" }, 503);
+      const list = (await this.host.history(thread)).slice(-limit);
       return json({
         ok: true,
         thread: thread === OWNER_THREAD ? "owner" : "own",
@@ -406,8 +575,32 @@ export class TokenChat {
       op === "say"
         ? await this.say(thread, v.lane, body, who)
         : await this.ask(thread, v.lane, body, who);
-    if ("error" in out) return json({ ok: false, error: out.error }, 400);
+    if ("error" in out)
+      return json(
+        { ok: false, error: out.error, ...("reason" in out ? { reason: out.reason } : {}) },
+        "status" in out ? out.status : 400,
+      );
     return json({ ok: true, lane: v.lane, ...out });
+  }
+
+  /**
+   * op "lane": the lanes manager says its agent's lane reads only, or left
+   * (its agent exited). Only the row changes; open sockets stay. "reader"
+   * while a socket of the lane still listens: that one keeps it a listener
+   * (as on a socket), so no "转为只读" is said of a lane that hears live.
+   */
+  private async laneOp(v: Verified, thread: string, state: "reader" | "left"): Promise<Response> {
+    const lanes = this.host.lanes;
+    const r = await this.host.kv?.get<PartRecord>(partKey(v.tag));
+    const input = state === "left" ? "leave" : this.listening(thread, v.lane) ? "seen" : "reader";
+    const next = await lanes?.apply(
+      thread,
+      v.lane,
+      { type: input },
+      laneShownName(v.lane, r?.ownerName),
+    );
+    // Flag off: nothing is kept, and the caller carries on as before.
+    return json({ ok: true, lane: v.lane, state: next?.state ?? null });
   }
 
   /** The presence read window (ms): the host sets it from live config (chat.presenceReadMin). */
@@ -452,17 +645,20 @@ export class TokenChat {
    * (debug.ts `participant`): only a token record whose account is `viewer`.
    * `name: null` / `avatar: null` give the agent's own back; `avatar: "auto"`
    * forces the generated mark; an SVG goes through the same sanitizer.
+   * `muted: true | false` mutes its lane or lets it post again (lane-registry.ts).
    */
   async override(
     viewer: string | undefined,
     tag: unknown,
-    change: { name?: unknown; avatar?: unknown },
+    change: { name?: unknown; avatar?: unknown; muted?: unknown },
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     const kv = this.host.kv;
     if (!kv || !viewer || typeof tag !== "string" || !/^[0-9a-f]{16}$/.test(tag))
       return { ok: false, error: "not found" };
     const r = await kv.get<PartRecord>(partKey(tag));
     if (!r || r.revoked || r.userId !== viewer) return { ok: false, error: "not found" };
+    if (change.muted !== undefined && typeof change.muted !== "boolean")
+      return { ok: false, error: "muted: true or false" };
     let next: PartRecord = { ...r };
     if (change.name !== undefined) {
       if (change.name === null) delete next.ownerName;
@@ -482,6 +678,14 @@ export class TokenChat {
       }
     }
     await this.keep(next);
+    // Mute (lane-registry.ts): its lane keeps reading and listening, and cannot post.
+    if (typeof change.muted === "boolean")
+      await this.host.lanes?.apply(
+        r.thread,
+        r.lane,
+        { type: "mute", muted: change.muted },
+        laneShownName(r.lane, next.ownerName),
+      );
     return { ok: true };
   }
 
@@ -509,10 +713,51 @@ export class TokenChat {
         type: "error",
         error: "answers come only from a tap on a page; a token cannot answer",
       });
+    if (m?.type === "lane") return this.laneFromSocket(ws, a, m.state);
+    if (m?.type === "read-ack" || m?.type === "replay") {
+      if (
+        (m.type === "read-ack" && !validSeq(m.lastReadSeq)) ||
+        (m.type === "replay" &&
+          (m.afterSeq === undefined || !validReadWindow(m.afterSeq, m.throughSeq)))
+      )
+        return send(ws, { type: "error", error: "invalid sequence" });
+      // An explicit receipt/replay needs read permission now, never just the socket's original scopes.
+      const verified = await this.check("read", { tokenHash: a.hash! });
+      if (!verified.ok) {
+        send(ws, { type: "error", error: verified.error });
+        if (verified.error === "unknown" || verified.error === "expired")
+          close(ws, TOKEN_REFUSED, verified.error);
+        return;
+      }
+      const thread = await this.threadOf(verified);
+      if (!thread || thread !== a.thread) return close(ws, TOKEN_REFUSED, "refused");
+      if (m.type === "read-ack") {
+        if (!this.host.acknowledgeRead || !/^[0-9a-f]{16}$/.test(verified.tag))
+          return send(ws, { type: "error", error: "unavailable" });
+        const lastReadSeq = await this.host.acknowledgeRead(
+          thread,
+          `token:${verified.tag}`,
+          m.lastReadSeq as number,
+        );
+        return send(ws, { type: "read-ack", lastReadSeq });
+      }
+      if (!this.host.replay) return send(ws, { type: "error", error: "unavailable" });
+      const range = await this.host.replay(
+        thread,
+        m.afterSeq as number,
+        m.throughSeq as number | undefined,
+      );
+      return send(ws, {
+        ...range,
+        thread: thread === OWNER_THREAD ? "owner" : "own",
+        messages: range.messages.map((line) => forLane(line, verified.lane)),
+      });
+    }
+
     if (m?.type !== "say" && m?.type !== "ask")
       return send(ws, {
         type: "error",
-        error: 'a token socket sends only {"type":"say"} or {"type":"ask"}',
+        error: 'a token socket sends only {"type":"say"}, {"type":"ask"} or {"type":"lane"}',
       });
     const v = await this.check(m.type, { tokenHash: a.hash! });
     if (!v.ok) {
@@ -532,8 +777,69 @@ export class TokenChat {
       m.type === "say"
         ? await this.say(thread, v.lane, m, who)
         : await this.ask(thread, v.lane, m, who);
-    if ("error" in out) return send(ws, { type: "error", error: out.error });
+    if ("error" in out)
+      return send(ws, {
+        type: "error",
+        error: out.error,
+        ...("reason" in out ? { reason: out.reason } : {}),
+      });
     send(ws, m.type === "say" ? { type: "sent", ...out } : { type: "asked", ...out });
+  }
+
+  /** {type:"lane", state}: this socket listens live, reads only, or its agent left. */
+  private async laneFromSocket(ws: TokenSocket, a: TokenAtt, state: unknown) {
+    if (!(LANE_STATES as readonly unknown[]).includes(state))
+      return send(ws, {
+        type: "error",
+        error: 'lane: state must be "listener", "reader" or "left"',
+      });
+    const listener = state === "listener";
+    const { listener: _l, scope: _s, ...rest } = a;
+    ws.serializeAttachment({
+      ...rest,
+      ...(listener ? { listener: true as const } : {}),
+      ...(listener && a.scope ? { scope: a.scope } : {}),
+    } satisfies TokenAtt);
+    const lanes = this.host.lanes;
+    let next = null;
+    if (lanes && a.lane) {
+      const r = a.tag ? await this.host.kv?.get<PartRecord>(partKey(a.tag)) : undefined;
+      const name = laneShownName(a.lane, r?.ownerName);
+      // Reading only while another socket of the lane still listens: that one keeps it a listener.
+      if (state === "reader" && this.listening(a.thread!, a.lane, ws))
+        next = await lanes.apply(a.thread!, a.lane, { type: "seen" }, name);
+      else
+        next = await lanes.apply(
+          a.thread!,
+          a.lane,
+          listener
+            ? { type: "listen", scope: a.scope ?? "owner" }
+            : { type: state === "left" ? "leave" : "reader" },
+          name,
+        );
+    }
+    send(ws, { type: "lane", state: next?.state ?? null });
+  }
+
+  /** Does another open socket of this lane (in this thread) listen? */
+  listening(thread: string, lane: string, except?: unknown): boolean {
+    return this.authed(thread).some(({ ws, a }) => ws !== except && a.lane === lane && a.listener);
+  }
+
+  /**
+   * A token socket closed (debug.ts webSocketClose): if it was its lane's last
+   * listener, the lane turns reader after the grace (lane-registry.ts).
+   */
+  async closed(ws: TokenSocket, a: TokenAtt) {
+    if (!a.listener || !a.thread || !a.lane || !this.host.lanes) return;
+    if (this.listening(a.thread, a.lane, ws)) return;
+    const r = a.tag ? await this.host.kv?.get<PartRecord>(partKey(a.tag)) : undefined;
+    await this.host.lanes.unlisten(a.thread, a.lane, laneShownName(a.lane, r?.ownerName));
+  }
+
+  /** The alarm: listeners past their grace turn reader (unless one came back). */
+  async laneSweep() {
+    await this.host.lanes?.sweep((thread, lane) => this.listening(thread, lane));
   }
 
   private async auth(ws: TokenSocket, a: TokenAtt, m: Record<string, unknown> | null) {
@@ -541,6 +847,10 @@ export class TokenChat {
     if (t - a.at > AUTH_MS) return close(ws, TOKEN_REFUSED, "too slow");
     if (m?.type !== "auth" || typeof m.token !== "string" || !TOKEN_RE.test(m.token))
       return close(ws, TOKEN_REFUSED, 'first message: {"type":"auth","token":"lk_…"}');
+    if (!validReadWindow(m.afterSeq, m.throughSeq)) {
+      send(ws, { type: "error", error: "invalid sequence" });
+      return close(ws, TOKEN_REFUSED, "invalid sequence");
+    }
     const v = await this.check("listen", { token: m.token });
     if (!v.ok) {
       send(ws, {
@@ -556,10 +866,18 @@ export class TokenChat {
       return close(ws, TOKEN_REFUSED, "blocked");
     }
     const hash = v.id;
+    // A resident listener (`lianki chat listen`): it says so, or says nothing and is
+    // not an MCP client (whose wait is a reader). "reader": the lanes manager, a wait.
+    const listener = m.mode === "listener" || (m.mode === undefined && !a.mcp);
+    // What its agent hears: every line (`lianki chat listen --everyone`), else the owner's
+    // (an older client says nothing: "owner").
+    const scope: LaneScope = listener && m.scope === "all" ? "all" : "owner";
     const next: TokenAtt = {
       role: "token",
       at: a.at,
       ...(a.mcp ? { mcp: true as const } : {}),
+      ...(listener ? { listener: true as const } : {}),
+      ...(scope === "all" ? { scope } : {}),
       thread,
       userId: v.userId,
       lane: v.lane,
@@ -585,7 +903,20 @@ export class TokenChat {
       typeof m.history === "number" && Number.isInteger(m.history)
         ? Math.min(MAX_READ, m.history)
         : 0;
-    if (n > 0)
+    if (this.host.replay && (n > 0 || m.afterSeq !== undefined)) {
+      const range = await this.host.replay(
+        thread,
+        m.afterSeq as number | undefined,
+        m.throughSeq as number | undefined,
+        n > 0 ? n : undefined,
+      );
+      send(ws, {
+        ...range,
+        thread: thread === OWNER_THREAD ? "owner" : "own",
+        messages: range.messages.map((line) => forLane(line, v.lane)),
+      });
+    } else if (m.afterSeq !== undefined) send(ws, { type: "error", error: "unavailable" });
+    else if (n > 0)
       send(ws, {
         type: "history",
         messages: (await this.host.history(thread)).slice(-n).map((x) => forLane(x, v.lane)),
@@ -593,6 +924,7 @@ export class TokenChat {
     // Joined: its record (the MCP badge if an MCP client opened it), and the pages hear it.
     const r = await this.record(v, thread);
     await this.keep(r && (a.mcp && !r.mcp ? { ...r, mcp: true } : r));
+    await this.seen(v, thread, listener ? "listen" : "seen", scope);
     console.log(JSON.stringify({ msg: "debug.token-listen", lane: v.lane, owner: v.owner }));
   }
 
@@ -661,7 +993,8 @@ export class TokenChat {
   async edited(out: EditedEvent) {
     await Promise.all(
       this.authed(OWNER_THREAD).map(async ({ ws, a }) => {
-        if (await this.fresh(ws, a)) send(ws, out);
+        if (await this.fresh(ws, a))
+          send(ws, { ...out, ...(out.message ? { message: forLane(out.message, a.lane) } : {}) });
       }),
     );
   }

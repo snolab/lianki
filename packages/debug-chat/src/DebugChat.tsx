@@ -1,5 +1,8 @@
 "use client";
 
+import { MiniAppCards, type MiniAppEmbedView, type MiniAppSizing } from "./MiniAppCards";
+
+import { createScrollFollow } from "./scroll-follow";
 import { evalTrustStrings } from "./eval-trust-strings";
 import { shortPage } from "./short-page";
 import { type AdaptState, voiceAdapt } from "./adaptive";
@@ -46,14 +49,18 @@ import {
   pathLabel,
   type VoiceTiming,
   type SttTag,
-  sttTagText,
   type AttachmentRef,
   type ChatContext,
+  type RecheckMark,
+  cleanContext,
+  cleanAttachments,
 } from "./wire";
 import { latencyLines, viaAt, voiceLatency } from "./latency";
 import { getKey, setKey } from "./storage-keys";
 import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
+import { readersFor, validReadSeq } from "./read-receipts";
+import { useVisibleReads } from "./use-visible-reads";
 import { type AvatarSource, isLineFolded, isOtherVoice, isOwnVoice, lineAvatar, passageStarts, runsOf } from "./avatar-rules";
 import {
   VOICE_SENT_EVENT,
@@ -67,13 +74,16 @@ import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
 import { learnSttHint } from "./stt-hint";
 import { DevMenuGroup } from "./DevMenuGroup";
-import { AttachButton, AttachChip, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
+import { AttachButton, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
 import { EtaBar, EtaList } from "./EtaBar";
 import { type EvalLink, type EvalSession } from "./link-state";
 import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
+import type { TickerConfig } from "./eta-ticker";
+import { useEtaTicker } from "./eta-ticker-hook";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
-import { InboxPanel, PendingChips, SentFiles } from "./FileChips";
+import { InboxPanel, PendingFilesRow, SentFiles, usePending } from "./FileChips";
+import { pendingBubble, planPendingSend } from "./pending-bubble";
 import {
   BAR_CONTROL,
   INPUT_START,
@@ -87,8 +97,15 @@ import {
 import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, setWakeWord, voiceDevice, wakeWordOn } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
-import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
+import { PASSAGE_END_MS, joinVerdict, reopenMsOf } from "./voice-merge";
+import {
+  type RecheckAmend,
+  type RecheckCall,
+  type RecheckConf,
+  createPassageRecheck,
+} from "./whisper-recheck";
 import { VoiceMark } from "./VoiceMark";
+import { hasVoiceDetails } from "./voice-details";
 import { VoiceprintPanel, panelDeps } from "./VoiceprintPanel";
 import { clearSpeaker, takeSpeaker } from "./voiceprint";
 import {
@@ -123,7 +140,8 @@ import { cloudOut, existingCtx, noSpeechVoices, outMode } from "./voice-out";
 import { UNLOCK_EVENTS, activationNow, unlockOnGesture } from "./speech-unlock";
 import { AEC_EVENT, aecOn, applyAec } from "./aec";
 import { type SpeakMeta, isWithdrawn } from "./speak-rules";
-import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
+import { createGripGesture, gripMenuPosition } from "./grip-gesture";
+import { createAxisLock, createDragFlag, scrubBack } from "./tap-gesture";
 import {
   DRAG_PERF_KEY,
   type DragGeom,
@@ -185,12 +203,10 @@ import {
   logSurface,
   nearEnd,
   pickAnchor,
-  repinEnd,
-  stillAtEnd,
   sheetScrim,
 } from "./log-surface";
-import { treeDefaults, uiStrings } from "./ui-strings";
-import { chatExtra } from "./chat-ui-locales";
+import { EMBED_NAME, embedLang, treeDefaults, uiStrings } from "./ui-strings";
+import { chatExtra, chatLocale } from "./chat-ui-locales";
 import {
   ADDRESSED_CSS,
   FLASH_MS,
@@ -208,6 +224,7 @@ import {
   newShimmer,
 } from "./shimmer";
 import { type PttState, createPttGesture } from "./ptt";
+import { createPttSubmission, type PttPreview } from "./ptt-submission";
 import { WAITING_INK, lastPendingIndex, waitingMark } from "./waiting-mark";
 import { TreeChips } from "./TreeChips";
 import { keepTree, navIndexOf, restoreTree } from "./tree-keep";
@@ -272,6 +289,8 @@ import {
   FULL_HINT_STYLE,
   fullHintStep,
 } from "./full-screen";
+import { FullScreenMenuItem } from "./FullScreenMenuItem";
+import { CHAT_UI_EVENT, chatUiOf, runMenuCue } from "./ui-cue";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
 import { type ScrollBox, forwardWheel } from "./wheel-forward";
@@ -281,6 +300,7 @@ import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tu
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import { type LaneId, withLane } from "./voices";
+import { withLaneEvent } from "./lane-events";
 import {
   AddressedMarks,
   LineTag,
@@ -710,6 +730,11 @@ export function setTarget(path: string) {
  * re-mounts on every rebuild (and may mount after a setTarget call).
  */
 type TargetHolder = { __lkDebugChatTarget?: string };
+/** What the passage end uses of the mic session (`__lkMic`, mic-session.ts); recheck from v16. */
+type MicRecheckSlice = {
+  view?: () => { state: string };
+  recheck?: RecheckCall;
+};
 const keptTarget = () =>
   typeof window === "undefined"
     ? ROOT_NODE
@@ -784,6 +809,18 @@ export type DebugChatProps = {
    * `data-cached` on the chat, and the status still says it is not connected.
    */
   cached?: boolean;
+  /** Account-bound draft storage; unscoped only for standalone hosts. */
+  draftScope?: string;
+  /** Authenticated hub verdict for this scope: receipt dots appear only in the viewer’s own authenticated thread. */
+  viewerOwnThread?: boolean;
+  onReadSeq?: (seq: number) => void;
+  readReceiptThrottleMs?: number;
+  /** Touch/pen long press on the grip opens its menu; mouse movement starts immediately. */
+  gripHoldMs?: number;
+  /** The ETA bar's change ticker (eta-ticker.ts): config chat.etaTickerSec / chat.etaTickerKeep. */
+  etaTicker?: TickerConfig;
+  /** Accepted locally, awaiting the hub acknowledgement. */
+  outgoing?: readonly { id: string; text: string; rejected?: string; attachments?: AttachmentRef[]; context?: ChatContext }[];
   /**
    * Send a line; `to` is the state-tree node it is addressed to (absent = the
    * main thread). `opts.source` is "stt" when the line is the mic's text, unchanged;
@@ -797,6 +834,7 @@ export type DebugChatProps = {
       timing?: VoiceTiming;
       /** Which recognizer made a voice line's text (wire.ts SttTag). */
       stt?: SttTag;
+      recheck?: RecheckMark;
       speakerProof?: string[];
       /** Attached with the + menu (AttachMenu.tsx): the page selection and where. */
       context?: ChatContext;
@@ -806,8 +844,11 @@ export type DebugChatProps = {
       continues?: string;
     },
   ) => boolean;
-  /** The speech after a merged line went quiet: the passage is over (hub: polish-due). */
-  onPassageEnd?: () => void;
+  /**
+   * The speech after a merged line went quiet: the passage is over (hub: polish-due).
+   * `recheck`: his Mac's Whisper re-read the run, for the hub to amend the line with first.
+   */
+  onPassageEnd?: (recheck?: RecheckAmend) => void;
   /** The undo on a merged line: split it back into the lines it was made from. */
   onUnmerge?: (id: string) => void;
   /**
@@ -939,6 +980,8 @@ export type DebugChatProps = {
    * the menu's Inbox lists (and deletes) what it stored. Absent: no files.
    */
   files?: ChatFiles;
+  /** Signed-in host only: private mini apps reuse the host sandbox and capability prompts. */
+  miniApps?: { sizing: MiniAppSizing; renderHost: (view: MiniAppEmbedView) => ReactNode };
   /**
    * The host keeps the account's chat history (Lianki: /chat/history,
    * docs/chat-history.md): the + menu's View group gets History, which calls this.
@@ -968,6 +1011,18 @@ export type DebugChatProps = {
    * other than the owner into a compact avatar button by default. Off: lines show expanded.
    */
   foldOthers?: boolean;
+  /**
+   * Flag stt.whisper-recheck and its config (whisper-recheck.ts): at a run's passage
+   * end the local STT's Whisper re-reads the run whole first. None: the passage end at once.
+   */
+  whisperRecheck?: RecheckConf;
+  /** Stop an unresolved held recording at this duration; partial text is retained. */
+  pttMaxCaptureMs?: number;
+  /**
+   * Config stt.mergeReopenSec (voice-merge.ts reopenVerdict): within this many seconds
+   * of his last voice line the next one asks to join it, posted or not. None: off.
+   */
+  mergeReopenSec?: number;
   /**
    * The host's "Back closes an overlay" (Lianki: lib/back-to-close.ts
    * openBackToClose, docs/ui-state.md): opening full screen by a tap pushes
@@ -1018,13 +1073,21 @@ const NONE_ABOVE: ReadonlySet<string> = new Set();
 type Panel = "none" | "menu" | "tree" | "voiceprint";
 
 /** One live line (live-speech.ts): what it shows, and whether it is spoken, sending or failed. */
-type LiveRow = { key: string; text: string; tail: string; state: "speaking" | "sending" | "unsent" };
+type PttLine = { text: string; timing?: VoiceTiming; stt?: SttTag; recheck?: RecheckMark; speakerProof?: string[]; to: string };
+type LiveRow = { key: string; text: string; tail: string; state: "speaking" | "sending" | "unsent"; reason?: string; attachments?: AttachmentRef[]; context?: ChatContext };
 
 export function DebugChat({
   live,
   listeners,
   messages: rawMessages,
   cached = false,
+  draftScope,
+  viewerOwnThread = false,
+  onReadSeq,
+  readReceiptThrottleMs = 2000,
+  gripHoldMs = 500,
+  etaTicker,
+  outgoing,
   onSend,
   onAnswer,
   onPassageEnd,
@@ -1059,6 +1122,7 @@ export function DebugChat({
   portalRoot,
   attach = true,
   files,
+  miniApps,
   onHistory,
   etaBar = false,
   onEtaDue,
@@ -1067,6 +1131,9 @@ export function DebugChat({
   presence,
   fullScreen: fullScreenFlag = false,
   foldOthers = true,
+  whisperRecheck,
+  pttMaxCaptureMs,
+  mergeReopenSec,
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
@@ -1075,7 +1142,11 @@ export function DebugChat({
    * A line inside a summary (`collapsedInto`) is not shown: the summary's tap shows it as heard.
    */
   const messages = useMemo(
-    () => rawMessages.filter((m) => !m.collapsedInto).map((m) => withTokenName(withLane(m))),
+    () =>
+      rawMessages
+        .filter((m) => !m.collapsedInto)
+        // A lane's system line (lane-events.ts) in this page's language.
+        .map((m) => withTokenName(withLane(withLaneEvent(m, chatLocale())))),
     [rawMessages],
   );
   /** Which lines arrived live: they shimmer while read (shimmer.ts). Seen at render, idempotent. */
@@ -1084,6 +1155,8 @@ export function DebugChat({
   newLines.current.see(messages, Date.now());
   const shimmerOf = (m: ChatMessage) => newLines.current!.shimmer(m, Date.now());
   /** Who is here (presence.ts), by token tag: a line's name and picture follow the owner's choice. */
+  const latestOwn = messages.findLast((m) => m.from === (friend ? "friend" : "owner"));
+  const readBy = readersFor(latestOwn?.seq, presence?.list ?? [], viewerOwnThread).slice(0, Math.max(0, presence?.shown ?? 0));
   const byTok = useMemo(
     () => new Map((presence?.list ?? []).filter((p) => p.tok).map((p) => [p.tok!, p])),
     [presence?.list],
@@ -1288,7 +1361,7 @@ export function DebugChat({
     moved();
   };
   /** Session UI state (draft, panel, tree): survives a refresh and a hot swap. */
-  const uiStore = chatUi();
+  const uiStore = chatUi(draftScope);
   /** The box: its bar is kept on screen, expanded or minimized. */
   const root = useRef<HTMLElement | null>(null);
   // Only expanding or minimizing refits (fit itself is fresh each render).
@@ -1550,13 +1623,25 @@ export function DebugChat({
     setEtaNow(Date.now());
     etaClockRef.current?.update(etaList);
   }, [etaList]);
+  /** Agents' changes to the tasks, announced in the bar (eta-ticker.ts); not before the tree loads. */
+  const etaNews = useEtaTicker(etaBar && etaRoot ? etaList : null, etaNow, etaTicker);
   /** Without a host tree: the dev fragment at lk:tree-src (TreeFragment.tsx). */
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
   const ui = uiStrings();
+  /** The Learning Partner's name in the page's language: the tag on Li's replies in his thread. */
+  const partnerName = EMBED_NAME[embedLang()];
   // The strings that were inline here, in the page's language (chat-ui-locales.ts).
   const ux = chatExtra();
-  const details = useMessageDetails(ux.messageDetails, ux);
+  const details = useMessageDetails(ux.messageDetails, ux, owner ? ui : undefined, owner ? ux : undefined);
+  const voiceMark = (message: ChatMessage, sender: string) => {
+    if (message.from !== "owner" || !hasVoiceDetails(message)) return null;
+    if (!owner) return message.speaker?.decision === "me" ? <VoiceMark label={t.vpVerified} /> : null;
+    const route = message.stt?.route;
+    const label = route ? `${ux.voiceDetails}: ${route === "local" ? ui.latLocal : ui.latCloud}` : ux.voiceDetails;
+    return <VoiceMark label={label} verified={message.speaker?.decision === "me"}
+      controls={details.id} onOpen={(anchor) => details.openVoice(message, sender, anchor)} />;
+  };
   const withNew = (label: string, n: number) =>
     n ? `${label}, ${ux.newCount.replace("{n}", String(n))}` : label;
   /** Agent lines not read aloud because the page was in the background (voice.ts gateVoice). */
@@ -1750,14 +1835,21 @@ export function DebugChat({
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
   }, [tree]);
-  /** The pill's mark: one tap minimizes or restores, two open the menu (the single waits for a second). */
-  const gripAct = useRef({ single: () => {}, double: () => {} });
-  const gripTaps = useRef<ReturnType<typeof createTapper> | null>(null);
-  gripTaps.current ??= createTapper({
+  /** Grip callbacks stay fresh; its gesture controller survives rerenders. */
+  const gripEl = useRef<HTMLButtonElement | null>(null);
+  const [gripMenuAt, setGripMenuAt] = useState<ReturnType<typeof gripMenuPosition> | null>(null);
+  const gripAct = useRef({ single: () => {}, double: () => {}, menu: () => {}, cancelDrag: () => {}, holdMs: 500 });
+  gripAct.current.holdMs = gripHoldMs;
+  const gripGesture = useRef<ReturnType<typeof createGripGesture> | null>(null);
+  gripGesture.current ??= createGripGesture({
     onSingle: () => gripAct.current.single(),
     onDouble: () => gripAct.current.double(),
+    onMenu: () => gripAct.current.menu(),
+    onHoldCancelDrag: () => gripAct.current.cancelDrag(),
+    holdMs: () => gripAct.current.holdMs,
   });
-  useEffect(() => () => gripTaps.current?.cancel(), []);
+  useEffect(() => () => gripGesture.current?.cancel(), []);
+  useEffect(() => { if (!menu) setGripMenuAt(null); }, [menu]);
   /** The chat session whose End was tapped once: a second tap within END_CONFIRM_MS ends it. */
   const [endArmed, setEndArmed] = useState<string | null>(null);
   const endTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -1775,9 +1867,17 @@ export function DebugChat({
       ...(v ? {} : { caret: null }),
     });
   /** The + menu (AttachMenu.tsx): the page selection kept outside the chat, and what goes with the next line. */
-  const pageSel = usePageSelection(embedded);
+  const pageSel = usePageSelection(embedded, draftScope ?? files?.scope);
   const appAddItems = useAddItems();
+  const setDraftRef = useRef(setDraft);
+  setDraftRef.current = setDraft;
   const attached = useUi(uiStore, (s) => s.attached);
+  useEffect(() => {
+    // A page selection is a candidate, never a send request on its own.
+    if (!attach || notice || !pageSel.sel) return;
+    const { at: _at, ...context } = pageSel.sel;
+    uiStore.setState({ attached: context });
+  }, [pageSel.sel, attach, notice, uiStore]);
   const expandedOthersList = useUi(uiStore, (s) => s.expandedOthers);
   const expandedOthers = useMemo(() => new Set(expandedOthersList), [expandedOthersList]);
   const toggleExpandOther = useCallback(
@@ -1808,11 +1908,19 @@ export function DebugChat({
           : undefined,
     }),
   );
+  const pendingFiles = usePending(pending);
+  const pendingView = pendingBubble(pendingFiles);
   /** A send waited for uploads (submit): it goes when they are done. */
   const waitFiles = useRef(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const fileScope = attach ? (files?.scope ?? null) : null;
+  const previousFileScope = useRef(fileScope);
   useEffect(() => {
+    if (previousFileScope.current !== fileScope) {
+      uiStore.setState({ attached: null });
+      pageSel.clear();
+      previousFileScope.current = fileScope;
+    }
     // No private file names, thumbnails or in-flight callbacks cross accounts.
     pending.take();
     waitFiles.current = false;
@@ -1896,6 +2004,19 @@ export function DebugChat({
   /** Arrival order up to which the agent's lines count as read (see countUnread). */
   const [readSeq, setReadSeq] = useState(0);
   const draftRef = useRef(uiStore.getState().draft);
+  const [pttLive, setPttLive] = useState<PttPreview | null>(null);
+  const pttLiveRef = useRef(pttLive);
+  pttLiveRef.current = pttLive;
+  const pttScope = useRef(draftScope ?? files?.scope ?? null);
+  pttScope.current = draftScope ?? files?.scope ?? null;
+  const pttSendRef = useRef<(line: PttLine) => boolean>(() => false);
+  const pttFailedDraft = useRef(false);
+  const pttSubmission = useRef<ReturnType<typeof createPttSubmission<PttLine>> | null>(null);
+  pttSubmission.current ??= createPttSubmission<PttLine>({
+    scope: () => pttScope.current,
+    show: (preview) => { pttLiveRef.current = preview; setPttLive(preview); },
+    send: (line) => pttSendRef.current(line),
+  });
   /** What the input box shows (live-speech.ts): the draft, or nothing while it is the live line. */
   const shownInput = useRef("");
   /**
@@ -1915,8 +2036,14 @@ export function DebugChat({
   const log = useRef<HTMLDivElement | null>(null);
   /** The log is scrolled to its end (new messages follow it there). */
   const atEnd = useRef(true);
-  /** The scrollTop the resize re-pin set, until its scroll event comes. */
+  /** Latest programmatic pin; repeated delayed scroll events keep the same follow intent. */
   const pinnedAt = useRef<number | null>(null);
+  const tail = useMemo(() => {
+    const follow = createScrollFollow({box: () => log.current, following: atEnd, pinned: pinnedAt});
+    follow.reset(); // A fresh account/thread starts at newest, never another thread's scroll position.
+    return follow;
+  }, [draftScope]);
+  const touchScrollY = useRef<number | null>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
   /**
    * The ETA bar's height (margin included), 0 without it. The floating buttons
@@ -1967,12 +2094,7 @@ export function DebugChat({
     if (!el || el.hidden) return;
     lastLogScroll.current = el.scrollTop;
     setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
-    // Our own re-pin's scroll (below) can land a frame late, after the log
-    // shrank further (the keyboard): it is not him leaving the end.
-    const own = pinnedAt.current !== null && Math.abs(el.scrollTop - pinnedAt.current) <= 1;
-    pinnedAt.current = null;
-    const end = stillAtEnd({ gap: el.scrollHeight - el.scrollTop - el.clientHeight, ownPin: own });
-    atEnd.current = end;
+    const end = tail.scroll();
     setScrolledUp(!end);
     if (end) setBelow(0);
   };
@@ -2033,6 +2155,14 @@ export function DebugChat({
     tree,
     // Full screen is for reading the whole chat: compact waits until it ends.
     fullLog: fullLog !== "off" || full,
+  });
+  useVisibleReads({
+    root: log,
+    enabled: open && !tree && !compact && fullLog !== "leaving",
+    scope: draftScope,
+    messages,
+    throttleMs: readReceiptThrottleMs,
+    onReadSeq,
   });
   useEffect(() => {
     const d = foldIn({
@@ -2464,6 +2594,7 @@ export function DebugChat({
       });
       if (!dy || !el) return;
       if (e.cancelable) e.preventDefault();
+      if (dy < 0 && el === log.current) tail.away();
       el.scrollTop += dy;
       userScrollAt.current = Date.now();
       holdRef.current(COMPACT_SCROLL_MS);
@@ -2520,37 +2651,31 @@ export function DebugChat({
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
-  // Compact again (the input lost focus): back to the newest lines. Not while
+  // Compact again (the input lost focus): follow newest only if still following. Not while
   // held open: a press on a line took the focus, and the lines must stay put
   // under the drag that selects them.
   useLayoutEffect(() => {
     if (typingNow) return;
     const el = log.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight });
-    atEnd.current = true;
-    setScrolledUp(false);
-    setBelow(0);
-  }, [typingNow]);
+    if (tail.pin()) {
+      setScrolledUp(false);
+      setBelow(0);
+    }
+  }, [typingNow, tail]);
   useLayoutEffect(() => {
     if (!open) return;
     const added = messages.length - shown.current;
     shown.current = messages.length;
-    // Follow new messages only from the end (or the owner's own, just sent);
-    // scrolled up, they wait under the scroll-down button's dot.
-    const mine = added > 0 && messages.at(-1)?.from !== "agent";
-    if (atEnd.current || mine) {
-      log.current?.scrollTo({ top: log.current.scrollHeight });
-      // Its scroll event can land after the newest run grew (the arrow's
-      // room, a card): this pin's own, not him leaving the end.
-      if (log.current) pinnedAt.current = log.current.scrollTop;
-      atEnd.current = true;
+    // The same follow intent handles cache, every seq replay batch and live rows.
+    // A history batch ending in an owner line is not an explicit local send.
+    if (tail.pin()) {
       setScrolledUp(false);
       setBelow(0);
     } else if (added > 0) setBelow((n) => n + added);
     const el = log.current;
     if (el) setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
-  }, [messages, open]);
+  }, [messages, open, tail]);
   // At the end, the log stays there when it or its lines change size (the
   // keyboard, the text size, the box moved, a card opening): a shrinking
   // scroller keeps its scrollTop, which showed older lines. Scrolled up, it
@@ -2560,35 +2685,41 @@ export function DebugChat({
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
       if (el.hidden || fullNow.current !== "off") return;
-      const top = repinEnd({
-        atEnd: atEnd.current,
-        scrollTop: el.scrollTop,
-        scrollHeight: el.scrollHeight,
-        clientHeight: el.clientHeight,
-      });
-      if (top === null) return;
-      el.scrollTop = top;
-      pinnedAt.current = el.scrollTop;
+      tail.pin();
     });
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
-  }, [open]);
+  }, [open, tail]);
 
   const messagesNow = useRef(messages);
   messagesNow.current = messages;
   /** How many commands the mic's taps had kept at the last spoken line. */
   const tapsAtVoice = useRef(0);
+  // A quota/transport refusal leaves the draft intact, including its consumed mic metadata.
+  const preparedVoice = useRef<{
+    draft: string;
+    taken: { timing?: VoiceTiming; stt?: SttTag };
+    heardFrom: ReturnType<typeof takeSpeaker>;
+  } | null>(null);
   /** Send the draft; true when it went out. */
-  const submit = (): boolean => {
+  const submit = (candidateTapped = false, pttLine?: PttLine): boolean => {
+    if (!pttLine && pttSubmission.current?.busy()) {
+      if (pttSubmission.current.ready()) {
+        const accepted = pttSubmission.current.retry();
+        if (accepted) armRef.current();
+        return accepted;
+      }
+      return false;
+    }
     clearTimeout(timer.current);
     // Sent another way (Enter, the send button): nothing is held any more.
     joiner.current?.cancel();
     setArmed(0);
-    let text = draftRef.current.trim();
+    let text = (pttLine?.text ?? draftRef.current).trim();
     // A leading "@/words › prefetch " addresses that node, and keeps it as the target.
-    const addr = parseAddress(text);
-    let to = targetRef.current;
+    const addr = pttLine ? null : parseAddress(text);
+    let to = pttLine?.to ?? targetRef.current;
     if (addr) {
       if (!addr.complete) return false;
       to = addr.to;
@@ -2600,57 +2731,66 @@ export function DebugChat({
         return false;
       }
     }
-    // Files still uploading: the line waits for them, and goes once they are stored.
-    if (pending.busy()) {
+    // The batch is one message: a failed upload stays beside its successful siblings.
+    if (pending.get().length && !pending.ready()) {
       waitFiles.current = true;
       return false;
     }
-    const hasFiles = pending.get().some((p) => p.state === "done");
-    // Files alone: the line's text is their names (a line always has text).
-    if (!text && hasFiles)
-      text = pending
-        .get()
-        .flatMap((p) => (p.state === "done" ? [p.name] : []))
-        .join(", ")
-        .slice(0, MAX_CHAT);
-    if (!text) return false;
-    const source = draftSource(draftRef.current, pureDictation.current);
+    const plan = planPendingSend({
+      text,
+      files: pending.get(),
+      attached: uiStore.getState().attached,
+      candidate: attach ? pageSel.sel : null,
+      candidateTapped,
+    });
+    if (!plan) return false;
+    text = plan.text;
+    const source = pttLine ? "stt" : draftSource(draftRef.current, pureDictation.current);
     /** It was the live line (spoken, not taken into the input): it stays as "sending" till its echo. */
-    const fromLive = !!source && !inInputRef.current;
+    const fromLive = !!pttLine || (!!source && !inInputRef.current);
     // A voice line carries its timestamps (latency.ts): the latest utterance in it.
     // And which recognizer made it (SttTag): an older store (hot swap) has no takeLine.
     const lat = voiceLatency();
-    const taken: { timing?: VoiceTiming; stt?: SttTag } = source
-      ? (lat.takeLine?.() ?? { timing: lat.take() }) : {};
+    const prepared = !pttLine && source && preparedVoice.current?.draft === draftRef.current
+      ? preparedVoice.current : null;
+    const taken: { timing?: VoiceTiming; stt?: SttTag } = pttLine
+      ? { timing: pttLine.timing, stt: pttLine.stt }
+      : source ? (prepared?.taken ?? lat.takeLine?.() ?? { timing: lat.take() }) : {};
     const timing = taken.timing;
     const stt = taken.stt;
     // And the Mac's speaker check (voiceprint.ts): the weakest of its utterances.
     // The Mac's signed proofs ride along; the hub verifies them and stores the tag.
-    const heardFrom = source ? takeSpeaker() : (clearSpeaker(), undefined);
-    const speakerProof = heardFrom?.proofs;
+    const heardFrom = pttLine ? undefined : source ? (prepared?.heardFrom ?? takeSpeaker()) : (clearSpeaker(), undefined);
+    if (!pttLine) preparedVoice.current = source ? { draft: draftRef.current, taken, heardFrom: heardFrom! } : null;
+    const speakerProof = pttLine?.speakerProof ?? heardFrom?.proofs;
     // What was attached with the + menu rides along, this line only.
-    const context = uiStore.getState().attached ?? undefined;
-    const attachments = hasFiles ? pending.get().flatMap((p) => (p.ref ? [p.ref] : [])) : [];
+    const context = plan.context;
+    const attachments = plan.attachments;
     // Continuous speech (voice-merge.ts): asks to amend the line before, if it is
-    // stamped mergeable (the flag is on) and no command ran since. The hub decides.
+    // stamped mergeable (the flag is on) and no command ran since: a live merge, or a
+    // reopen of the line he posted within stt.mergeReopenSec. The hub decides.
     const tapsNow = micTaps().kept?.() ?? 0;
     const lastLine = messagesNow.current.at(-1);
     // One speaker's part of a split final: a new line, never an amendment.
-    const fromSplit = splitPart.current;
-    splitPart.current = false;
+    const fromSplit = !!pttLine || splitPart.current;
+    if (!pttLine) splitPart.current = false;
     const continues =
       source &&
       !fromSplit &&
       lastLine &&
       tapsAtVoice.current === tapsNow &&
-      mergeVerdict(lastLine, {
-        text,
-        ...(timing ? { timing } : {}),
-        ...(to === ROOT_NODE ? {} : { to }),
-        ...(context ? { context } : {}),
-        ...(heardFrom?.tag ? { speaker: heardFrom.tag } : {}),
-        attachments,
-      }).ok
+      joinVerdict(
+        lastLine,
+        {
+          text,
+          ...(timing ? { timing } : {}),
+          ...(to === ROOT_NODE ? {} : { to }),
+          ...(context ? { context } : {}),
+          ...(heardFrom?.tag ? { speaker: heardFrom.tag } : {}),
+          attachments,
+        },
+        reopenMsOf(mergeReopenSec),
+      ).ok
         ? lastLine.id
         : undefined;
     const opts = {
@@ -2659,6 +2799,7 @@ export function DebugChat({
       ...(source ? { source } : {}),
       ...(source && timing ? { timing } : {}),
       ...(source && stt ? { stt } : {}),
+      ...(pttLine?.recheck ? { recheck: pttLine.recheck } : {}),
       ...(source && speakerProof?.length ? { speakerProof } : {}),
       ...(context ? { context } : {}),
     };
@@ -2673,8 +2814,14 @@ export function DebugChat({
       return false;
     }
     setOffline(false);
+    if (!pttLine) {
+      pttFailedDraft.current = false;
+      if (pttLiveRef.current?.state === "unsent") pttSubmission.current?.cancel();
+    }
+    waitFiles.current = false;
+    if (!pttLine) preparedVoice.current = null;
     // The live line becomes "sending" in the same paint the draft empties: no blink, no gap.
-    if (fromLive) {
+    if (fromLive && outgoing === undefined) {
       const h = holdOf(++holdKey.current, text, messagesNow.current, Date.now(), continues);
       flushSync(() => setHolds((x) => [...x, h]));
     }
@@ -2700,6 +2847,7 @@ export function DebugChat({
     }
     // Sent: an interruption is over, and the queue (still relevant) reads on.
     voice().resume();
+    if (pttLine) return true;
     draftRef.current = "";
     pureDictation.current = null;
     settledLen.current = 0;
@@ -2708,6 +2856,7 @@ export function DebugChat({
     setDraft("");
     return true;
   };
+  pttSendRef.current = (line) => submit(false, line);
   /**
    * The draft as dictation left it, while nothing typed is in it (else null):
    * a line sent while the draft still equals it is the mic's, `source: "stt"`.
@@ -2802,7 +2951,7 @@ export function DebugChat({
     const id = nearestAbove(asksAbove(openAskIds(messages, Date.now()), askCardsAbove));
     const line = id && el && lineIn(el, id);
     if (!id || !el || !line) return;
-    atEnd.current = false;
+    tail.away();
     el.scrollTop = jumpTop({
       scrollTop: el.scrollTop,
       lineTop: line.getBoundingClientRect().top,
@@ -2982,13 +3131,17 @@ export function DebugChat({
    * not sent, not read aloud, no hub id.
    */
   const liveRows: LiveRow[] = [
-    ...shownHolds.map((h) => ({
-      key: `${LIVE_ID}-${h.key}`,
+    ...(outgoing ?? shownHolds.map((h) => ({ id: `${LIVE_ID}-${h.key}`, text: h.text, rejected: undefined, attachments: undefined, context: undefined }))).map((h) => ({
+      key: h.id,
       text: h.text,
       tail: "",
-      state: "sending" as const,
+      state: h.rejected ? "unsent" as const : "sending" as const,
+      reason: h.rejected,
+      attachments: cleanAttachments(h.attachments),
+      context: cleanContext(h.context),
     })),
-    ...(speech.bubble
+    ...(pttLive ? [{ key: `ptt-${pttLive.key}`, text: pttLive.text, tail: "", state: pttLive.state, reason: pttLive.reason }] : []),
+    ...(speech.bubble && !pttLive
       ? [
           {
             key: LIVE_ID,
@@ -3010,16 +3163,16 @@ export function DebugChat({
   };
   function liveLine(r: LiveRow, where: "log" | "compact" | "float") {
     const label =
-      r.state === "sending" ? ux.liveSending : r.state === "unsent" ? ux.liveNotSent : ux.liveSpeaking;
+      r.reason ? ux.liveNotSent : r.state === "speaking" ? ux.liveSpeaking : ux.liveSending;
     const Tag = where === "compact" ? "div" : "li";
     return (
       <Tag
         key={r.key}
         data-testid="debug-chat-live"
         data-live={r.state}
-        aria-busy={r.state !== "unsent" || undefined}
-        title={label}
-        onClick={r.state === "sending" ? undefined : editLive}
+        aria-busy={!r.reason || undefined}
+        title={r.reason ?? label}
+        onClick={r.key === LIVE_ID && r.state !== "sending" ? editLive : undefined}
         style={where === "float" ? { textShadow: LINE_HALO } : undefined}
         // His own line's look, outlined dashed and a little faded: not sent yet.
         className={`pointer-events-auto flex items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 leading-snug opacity-80 ${r.state === "sending" ? "" : "cursor-text"} ${where === "float" ? "py-0.5" : ""}`}
@@ -3036,29 +3189,20 @@ export function DebugChat({
           <span className="sr-only">
             {liveWho.name} ({label}):{" "}
           </span>
-          {r.text}
+          {r.context && <QuoteBlock t={t} ctx={r.context} />}
+          {r.attachments?.length ? <SentFiles refs={r.attachments} files={files} /> : null}
+          {r.text !== r.context?.selection || r.attachments?.length ? r.text : null}
           {r.tail && (
             <span data-testid="debug-chat-live-tail" className="text-gray-400">
               {r.tail}
             </span>
           )}
           {r.state === "speaking" && micActive && <MicCaret />}
-          {r.state === "unsent" ? (
+          {r.reason ? (
             <>
               <span className="ms-1 fs-10" style={{ color: "oklch(0.6 0.17 45)" }}>
-                {ux.liveNotSent}
+                {r.reason}
               </span>
-              <button
-                type="button"
-                data-testid="debug-chat-live-retry"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  submit();
-                }}
-                className="ms-1 fs-10 underline"
-              >
-                {ux.liveRetry}
-              </button>
             </>
           ) : (
             // Speaking: a soft pulse (none under reduced motion); sending: still.
@@ -3072,8 +3216,39 @@ export function DebugChat({
       </Tag>
     );
   }
+  function pendingLine(where: "log" | "compact" | "float") {
+    if (!attach || notice || (!pendingFiles.length && !attached)) return null;
+    const Tag = where === "compact" ? "div" : "li";
+    return (
+      <Tag data-testid="debug-chat-pending" data-state={pendingView.state}
+        aria-busy={pendingFiles.some((file) => file.state === "uploading") || undefined}
+        className="pointer-events-auto flex min-w-0 items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 py-0.5 leading-snug opacity-80">
+        <Avatar src={liveWho.src} name={liveWho.name} initialFrom={liveWho.initialFrom}
+          seed={liveWho.seed} size={AVATAR_PX} hidden />
+        <div className="min-w-0 flex-1 pt-px">
+          <span className="sr-only">{liveWho.name}: </span>
+          {attached && <div className="mb-0.5 flex min-w-0 items-start gap-1 border-s-2 ps-1.5" style={{ borderInlineStartColor: "oklch(0.6 0.11 22.3 / 0.75)" }}>
+            <button type="button" data-testid="debug-chat-candidate" title={t.attachSelection}
+              onPointerDown={(e) => e.preventDefault()} onClick={() => submit(true)}
+              className="min-w-0 flex-1 whitespace-pre-wrap break-words text-start fs-11 text-gray-600 dark:text-gray-300">
+              {attached.selection}
+            </button>
+            <button type="button" data-testid="debug-chat-attached-remove" aria-label={t.attachRemove}
+              onPointerDown={(e) => e.preventDefault()} onClick={() => { uiStore.setState({ attached: null }); pageSel.clear(); }}
+              className="tap-40 shrink-0 px-1.5 text-sm text-gray-500">×</button>
+          </div>}
+          {pendingFiles.length > 0 && <PendingFilesRow t={t} list={pendingFiles} onRemove={(key) => pending.remove(key)} />}
+          {pendingFiles.some((file) => file.state === "failed") && <button type="button"
+            data-testid="debug-chat-file-retry" onPointerDown={(e) => e.preventDefault()}
+            onClick={() => { for (const file of pending.get()) if (file.state === "failed") pending.retry(file.key); }}
+            className="tap-40 fs-11 underline">{ux.liveRetry}</button>}
+        </div>
+      </Tag>
+    );
+  }
   // At the end, the log follows the live line as it grows.
-  const liveSig = liveRows.map((r) => `${r.key}:${r.text}${r.tail}`).join("|");
+  const liveSig = liveRows.map((r) => `${r.key}:${r.text}${r.tail}`).join("|") +
+    (attached || pendingFiles.length ? `${attached?.selection ?? ""}:${pendingFiles.map((file) => `${file.key}:${file.state}:${file.sent}`).join("|")}` : "");
   useLayoutEffect(() => {
     const el = log.current;
     if (!open || !liveSig || !el || !atEnd.current) return;
@@ -3109,10 +3284,21 @@ export function DebugChat({
    * if that line is a merged one the hub is told (one polish for all of it).
    */
   const passage = useRef<ReturnType<typeof createJoiner> | null>(null);
+  const whisperRef = useRef(whisperRecheck);
+  whisperRef.current = whisperRecheck;
+  /** Level 2 first (whisper-recheck.ts): the passage end carries Whisper's reading of the run. */
+  const recheckEnd = useRef<ReturnType<typeof createPassageRecheck> | null>(null);
+  recheckEnd.current ??= createPassageRecheck({
+    conf: () => whisperRef.current,
+    recheck: () => (globalThis as { __lkMic?: MicRecheckSlice }).__lkMic?.recheck,
+    line: (id) => messagesNow.current.find((m) => m.id === id),
+    send: (recheck) => onPassageEndRef.current?.(recheck),
+  });
   const passageEnd = () => {
-    const mic = (globalThis as { __lkMic?: { view?: () => { state: string } } }).__lkMic?.view?.();
+    const mic = (globalThis as { __lkMic?: MicRecheckSlice }).__lkMic?.view?.();
     if (micPending.current || mic?.state === "capturing") return passage.current?.final();
-    if (messagesNow.current.findLast((m) => m.from === "owner")?.parts) onPassageEndRef.current?.();
+    const line = messagesNow.current.findLast((m) => m.from === "owner");
+    if (line?.parts) void recheckEnd.current?.(line);
   };
   const passageEndRef = useRef(passageEnd);
   passageEndRef.current = passageEnd;
@@ -3129,11 +3315,15 @@ export function DebugChat({
   /** Uploads finished: a held send goes now; files alone send after the usual pause. */
   const afterUpload = useRef(() => {});
   afterUpload.current = () => {
-    if (pending.busy()) return;
+    if (!pending.ready()) return;
+    if (pttSubmission.current?.busy()) {
+      if (pttSubmission.current.retry()) armRef.current();
+      return;
+    }
     if (waitFiles.current) {
       waitFiles.current = false;
       submit();
-    } else if (pending.get().some((p) => p.state === "done")) arm();
+    } else arm();
   };
   useEffect(() => pending.subscribe(() => afterUpload.current()), [pending]);
   useEffect(() => {
@@ -3164,6 +3354,7 @@ export function DebugChat({
     settledLen.current = next.length; // not a typed "burst"
     setDraft(next);
     setOffline(false);
+    if (pttSubmission.current?.busy() || pttFailedDraft.current) return;
     // A spoken sentence goes out after the join window (a soft tick; typed
     // sends are silent), unless more speech joins it; anything else waits
     // for the usual rules.
@@ -3186,6 +3377,7 @@ export function DebugChat({
   };
   const arm = () => {
     clearTimeout(timer.current);
+    if (pttSubmission.current?.busy() || pttFailedDraft.current) return setArmed(0);
     if (!composing.current) {
       const text = draftRef.current;
       const burst = isDictationBurst(settledLen.current, text);
@@ -3205,6 +3397,37 @@ export function DebugChat({
     setArmed((n) => n + 1);
     timer.current = setTimeout(submit, DEBOUNCE_MS);
   };
+  const armRef = useRef(arm);
+  armRef.current = arm;
+  useEffect(() => {
+    // Legacy unscoped text needs the verified owner's migration before any auto-resume.
+    if (!draftScope || draftScope === "guest") return;
+    const resume = () => {
+      if (pttSubmission.current?.busy()) {
+        if (pttSubmission.current.retry()) armRef.current();
+        return;
+      }
+      if (pttFailedDraft.current || !draftRef.current.trim()) return;
+      const mic = (globalThis as { __lkMic?: { view?: () => { state: string } } }).__lkMic?.view?.();
+      if (micPending.current || mic?.state === "capturing") return;
+      if (draftSource(draftRef.current, pureDictation.current)) joiner.current?.final();
+      else armRef.current();
+    };
+    let mounted = true;
+    queueMicrotask(() => { if (mounted) resume(); });
+    window.addEventListener("online", resume);
+    return () => {
+      mounted = false;
+      window.removeEventListener("online", resume);
+      clearTimeout(timer.current);
+    };
+  }, [uiStore, draftScope]);
+  useEffect(() => {
+    if (draftScope && draftScope !== "guest" && live && offline) {
+      if (pttSubmission.current?.busy()) { if (pttSubmission.current.retry()) armRef.current(); }
+      else if (draftRef.current.trim()) armRef.current();
+    }
+  }, [live, offline, draftScope]);
   const toggle = (v: boolean) => {
     if (v) atEnd.current = true;
     // Opened from anywhere (the island, a voice command, the menu): no longer tucked.
@@ -3274,6 +3497,42 @@ export function DebugChat({
     foldStore.setState({ tucked: tuckNow, edge: next.edge });
     if ((next.fold === "open") !== open) toggle(next.fold === "open");
   };
+  /**
+   * The agent's view change (ui-cue.ts; `lianki-dev ui fullscreen --on|--off`):
+   * the menu opens, the Full screen row pulses, then it flips as his own tap
+   * would and the menu closes. Off another site's chat (no full screen), ignored.
+   * A newer one cancels the one under way.
+   */
+  const [fullCue, setFullCue] = useState(false);
+  const cueRun = useRef<(on: boolean) => void>(() => {});
+  cueRun.current = (on) => {
+    if (!fullAllowed) return;
+    cueStop.current?.();
+    cueStop.current = runMenuCue({
+      openMenu: () => {
+        if (on && !openRef.current) foldBy({ type: "restore" });
+        setMenu(true);
+      },
+      cue: setFullCue,
+      apply: () => {
+        setFull(on);
+        chatPrefs().setState({ full: on });
+      },
+      closeMenu: () => setMenu(false),
+    });
+  };
+  const cueStop = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const heard = (e: Event) => {
+      const ui = chatUiOf((e as CustomEvent).detail);
+      if (ui) cueRun.current(ui.on);
+    };
+    window.addEventListener(CHAT_UI_EVENT, heard);
+    return () => {
+      window.removeEventListener(CHAT_UI_EVENT, heard);
+      cueStop.current?.();
+    };
+  }, []);
   // While dragging: the moment letting go would enter full screen, preview it.
   onDragMove.current = (bar) => {
     const on =
@@ -3318,7 +3577,25 @@ export function DebugChat({
       setPanel("none");
       foldBy({ type: "mark" });
     },
-    double: () => setPanel((p) => (p === "menu" ? "none" : "menu")),
+    double: () => {
+      if (!fullAllowed) return;
+      setPanel("none");
+      if (!openRef.current) foldBy({ type: "restore" });
+      setFull(!fullOn.current, true);
+    },
+    menu: () => {
+      const rect = gripEl.current?.getBoundingClientRect();
+      if (rect) {
+        const vv = window.visualViewport;
+        setGripMenuAt(gripMenuPosition(rect, {
+          width: vv?.width ?? innerWidth, height: vv?.height ?? innerHeight,
+          left: vv?.offsetLeft ?? 0, top: vv?.offsetTop ?? 0,
+        }));
+      }
+      setMenu(true);
+    },
+    cancelDrag: () => handle.onPointerCancel(),
+    holdMs: gripHoldMs,
   };
   /**
    * Minimized, the log is hidden and messages float above the bar instead
@@ -3459,66 +3736,112 @@ export function DebugChat({
     since: 0,
   });
   const pttRec = useRef<ReturnType<typeof pttRecorder> | null>(null);
+  const pttKey = useRef<number | null>(null);
   const pttAt = useRef(0);
+  const pttTarget = useRef(ROOT_NODE);
+  const pttOptions = useRef({ localStt: micRoute, recheck: whisperRecheck, maxCaptureMs: pttMaxCaptureMs });
+  pttOptions.current = { localStt: micRoute, recheck: whisperRecheck, maxCaptureMs: pttMaxCaptureMs };
+  const pttStopping = useRef(false);
+  const pttFailureKey = useRef<number | null>(null);
+  const failPtt = (key: number, error: unknown) => {
+    if (!pttSubmission.current?.current(key) || pttFailureKey.current === key) return;
+    pttFailureKey.current = key;
+    pttFailedDraft.current = true;
+    const partial = pttLiveRef.current?.text ?? "";
+    if (partial.trim()) {
+      const next = joinText(draftRef.current, partial);
+      pureDictation.current = dictatedDraft(draftRef.current, pureDictation.current, next);
+      draftRef.current = next;
+      settledLen.current = next.length;
+      setDraftRef.current(next);
+    }
+    const code = (error as { code?: string; message?: string })?.code ?? (error as Error)?.message;
+    pttSubmission.current.failed(key, code === "ptt-too-long" ? ux.pttTooLong : ux.liveNotSent);
+    voice().log({ ev: "ptt-error", error: String(code ?? error) });
+  };
+  const failPttRef = useRef(failPtt);
+  failPttRef.current = failPtt;
   /** The last press was push to talk: its click is no tap. */
   const pttWasHold = useRef(false);
   const ptt = useRef<ReturnType<typeof createPttGesture> | null>(null);
   ptt.current ??= createPttGesture({
     press: (at) => {
+      const key = pttSubmission.current!.begin(at);
+      if (key === null) return;
+      pttKey.current = key;
       pttAt.current = at;
-      pttRec.current = pttRecorder();
-      pttRec.current.start();
+      pttTarget.current = targetRef.current;
+      const rec = pttRecorder({ ...pttOptions.current,
+        onPartial: (text) => pttSubmission.current?.partial(key, text),
+        onFailure: (error) => failPttRef.current(key, error),
+      });
+      pttRec.current = rec;
+      rec.start(at);
     },
     hold: () => {
       pttWasHold.current = true;
-      // A light tick (Android; iOS has no navigator.vibrate, and that is fine).
+      if (pttKey.current !== null) pttSubmission.current?.hold(pttKey.current);
+      clearTimeout(timer.current);
+      joiner.current?.speechStart();
+      passage.current?.speechStart();
       navigator.vibrate?.(PTT_HAPTIC_MS);
     },
     release: (at) => {
       const rec = pttRec.current;
-      pttRec.current = null;
+      const key = pttKey.current;
       const start = pttAt.current;
-      if (!rec) return;
-      void rec
-        .finish()
-        .then(({ text, audioMs, stt }) => {
-          if (!text) return;
-          const done = Date.now();
-          const timing: VoiceTiming = {
-            t_speechStart: start,
-            t_speechEnd: at,
-            t_uploadStart: at,
-            t_sttDone: done,
-            t_sent: done,
-            audioMs,
-          };
-          const to = targetRef.current;
-          // Sent at once: push to talk has no draft step.
-          sendRef.current(text, to === ROOT_NODE ? undefined : to, {
-            source: "stt",
-            timing,
-            ...(stt ? { stt } : {}),
-          });
-          window.dispatchEvent(
-            new CustomEvent(VOICE_SENT_EVENT, { detail: { sound: pageCues().send() } }),
-          );
-        })
-        // A failed transcription: logged for the dev view, the line is not sent.
-        .catch((e: unknown) => {
-          voice().log({ ev: "ptt-error", error: String((e as Error)?.message ?? e) });
+      const to = pttTarget.current;
+      if (!rec || key === null) return;
+      pttSubmission.current?.release(key, at);
+      void rec.finish(at).then((result) => {
+        if (!pttSubmission.current?.current(key)) return;
+        const done = Date.now();
+        const accepted = pttSubmission.current.complete(key, {
+          text: result.text,
+          to,
+          stt: result.stt,
+          recheck: result.recheck,
+          speakerProof: result.speakerProof,
+          timing: { ...result.timing, t_speechStart: start, t_speechEnd: at,
+            t_shown: done, t_sent: done, audioMs: result.audioMs },
         });
+        if (accepted) armRef.current();
+      }).catch((error: unknown) => {
+        failPttRef.current(key, error);
+      }).finally(() => {
+        if (pttRec.current === rec) pttRec.current = null;
+      });
     },
     drop: () => {
       pttRec.current?.abort();
       pttRec.current = null;
+      pttKey.current = null;
+      pttSubmission.current?.cancel();
+      if (!pttStopping.current) armRef.current();
     },
-    state: (st) =>
-      setPttView((v) => ({ state: st, since: st === "held" && v.state !== "away" ? Date.now() : v.since })),
+    state: (st) => setPttView((v) => ({ state: st, since: st === "held" && v.state !== "away" ? pttAt.current : v.since })),
   });
+  useEffect(() => {
+    pttStopping.current = false;
+    pttFailedDraft.current = false;
+    return () => {
+      pttStopping.current = true;
+      ptt.current?.cancel();
+      pttRec.current?.abort();
+      pttRec.current = null;
+      pttKey.current = null;
+      pttSubmission.current?.cancel();
+    };
+  }, [draftScope, fileScope]);
   const micGesture = {
     description: MIC_PTT_HINT,
     ptt: pttView,
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (pttSubmission.current?.busy()) {
+        pttWasHold.current = true;
+        if (pttSubmission.current.retry()) armRef.current();
+        return;
+      }
       micAxis.current.down(e.clientX, e.clientY);
       micDragged.current.down();
       micPress.current = { x: e.clientX, y: e.clientY };
@@ -3631,7 +3954,8 @@ export function DebugChat({
   /**
    * The bar's controls, left of the input: drag any of them (or the bar's
    * edge) to move the box. The liagent mark: a tap minimizes or restores
-   * (after 280 ms), a double tap opens the menu. It is its own drag handle,
+   * (after 280 ms), a double click/tap toggles full screen. Right-click or a
+   * touch hold opens the menu. It is its own drag handle,
    * so its click still lands on it. The state tree is in the + menu (its
    * "View" group; AttachMenu.tsx). The mic follows them (micEl).
    */
@@ -3642,22 +3966,27 @@ export function DebugChat({
         data-drag-handle
         data-testid="debug-chat-pill-min"
         // The grip (owner, 2026-11-07 20:34 JST: it did not look draggable):
-        // six dots, grab / grabbing. A tap folds or opens, a double tap the menu.
+        // six dots, grab / grabbing. Tap folds; double tap toggles full screen.
         aria-label={withNew(t.dragGrip, !open ? unread : 0)}
         title={t.dragGrip}
         aria-expanded={open}
         {...handle}
+        ref={gripEl}
         onPointerDown={(e) => {
+          if (!gripGesture.current?.down({ pointerType:e.pointerType,button:e.button,x:e.clientX,y:e.clientY,id:e.pointerId })) return;
           unlockSpeech();
-          // In full screen a drag up leaves it (useDrag); the panel keeps its place.
+          // Capture begins immediately; only touch/pen hold-to-menu waits.
           handle.onPointerDown(e);
         }}
-        onClick={() => !wasDrag() && gripTaps.current?.tap()}
-        // Right-click opens the menu, like the double tap (owner, 2026-11-14: settings from the handle on a computer).
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setMenu(true);
+        onPointerMove={(e) => {
+          gripGesture.current?.move({x:e.clientX,y:e.clientY,id:e.pointerId});
+          handle.onPointerMove(e);
         }}
+        onPointerUp={() => { gripGesture.current?.up(); handle.onPointerUp(); }}
+        onPointerCancel={() => { gripGesture.current?.cancel(); handle.onPointerCancel(); }}
+        onClick={() => gripGesture.current?.click(wasDrag())}
+        onDoubleClick={(e) => e.preventDefault()}
+        onContextMenu={(e) => { e.preventDefault(); gripGesture.current?.context(); }}
         style={{
           ...handle.style,
           ...BAR_CONTROL,
@@ -3876,11 +4205,15 @@ export function DebugChat({
                 you: t.you,
                 ...laneOpts,
               })}
-              text={lineText(m, p.text)}
+              text={m.attachments?.length || m.context ? <>
+                {m.context && <QuoteBlock t={t} ctx={m.context} />}
+                {m.attachments?.length ? <SentFiles refs={m.attachments} files={files} /> : null}
+                {m.context?.selection === p.text && !m.attachments?.length ? null : lineText(m, p.text)}
+              </> : lineText(m, p.text)}
               mark={
                 <>
                   {p.mark}
-                  {m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
+                  {voiceMark(m, lineAvatar(m, { friend, viewer, agentName: t.name, you: t.you, ...laneOpts }).name)}
                   {addressedOf.has(m.id) && (
                     <AddressedMarks
                       lanes={addressedOf.get(m.id)!}
@@ -3919,7 +4252,7 @@ export function DebugChat({
    * clamped inside the viewport. Tucked, only the newest line peeks (tuckEl).
    */
   const floatBoxEl =
-    fold === "pill" && (floats.length > 0 || liveRows.length > 0 || !!shownFrontier || tree) && (
+    fold === "pill" && (floats.length > 0 || liveRows.length > 0 || pendingFiles.length > 0 || !!attached || !!shownFrontier || tree) && (
     <div
       ref={setFloatBox}
       data-testid="debug-chat-float-box"
@@ -3929,13 +4262,14 @@ export function DebugChat({
     >
       {tree && treePanel(true)}
       {floatsEl}
-      {liveRows.length > 0 && (
+      {(liveRows.length > 0 || pendingFiles.length > 0 || !!attached) && (
         // Minimized: what he is saying floats as his newest line too.
         <ol
           data-testid="debug-chat-live-floats"
           className={`m-0 flex list-none flex-col gap-0.5 p-0 ${ALIGN_ITEMS[place.side]}`}
         >
           {liveRows.map((r) => liveLine(r, "float"))}
+          {pendingLine("float")}
         </ol>
       )}
       {shownFrontier && (
@@ -3953,13 +4287,13 @@ export function DebugChat({
       testCapture: (on, onFinal) => pageMic().enrolCapture(on, onFinal, "", true),
       log: (ev) => voice().log(ev),
     });
-  /** The menu (a double tap on the mark), open or minimized. */
+  /** The existing menu; grip gestures anchor it to the grip in viewport coordinates. */
   const menuEl = menu && (
     <div
       role="menu"
       data-testid="debug-menu"
-      style={{ background: INPUT_BG }}
-      className="pointer-events-auto absolute bottom-full start-0 mb-1 flex max-h-[60vh] min-w-48 flex-col overflow-y-auto rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
+      style={{ background: INPUT_BG, ...(gripMenuAt ? {position:"fixed",...gripMenuAt,minWidth:0,bottom:"auto",right:"auto",marginBottom:0,zIndex:"calc(var(--lk-z-chat,80) + 2)"} : {}) }}
+      className="pointer-events-auto absolute bottom-full start-0 mb-1 flex max-h-[60vh] min-w-48 flex-col overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
     >
       <span data-testid="debug-menu-status" className="px-3 py-1 text-gray-500" aria-live="polite">
         {status}
@@ -4055,22 +4389,17 @@ export function DebugChat({
       {/* Full screen without a drag (the keyboard's and a screen reader's way
           in; a drop on the bottom edge is the other, full-screen.ts). */}
       {fullAllowed && !tucked && (
-        <button
-          type="button"
-          role="menuitemcheckbox"
-          data-testid="debug-menu-fullscreen"
-          aria-checked={full}
-          onClick={() => {
+        <FullScreenMenuItem
+          on={full}
+          cue={fullCue}
+          label={t.fullScreen}
+          onWord={ux.menuSwitchOn}
+          offWord={ux.menuSwitchOff}
+          onToggle={() => {
             setMenu(false);
             setFull(!full, true);
           }}
-          className="flex items-center gap-2 px-3 py-1.5 text-start"
-        >
-          <span aria-hidden className="w-[1em] text-center">
-            {full ? "◉" : "○"}
-          </span>
-          {t.fullScreen}
-        </button>
+        />
       )}
       {/* Reading speed, per device: from the next sentence on. */}
       <div
@@ -4602,6 +4931,13 @@ export function DebugChat({
    * "Cannot access 'lineText' before initialization" and took the chat down
    * as soon as a line floated (debug-chat-fold-qa, debug-chat-bar-qa).
    */
+  function appCards(m: ChatMessage, text: string) {
+    return miniApps && !embedded ? <MiniAppCards text={text} apps={m.apps}
+      origin={typeof window === "undefined" ? undefined : window.location.origin}
+      scope={draftScope} portalRoot={portalRoot} sizing={miniApps.sizing} renderHost={miniApps.renderHost}
+      labels={{open:ux.linkOpen,close:ux.linkClose,fullscreen:t.fullScreen,exitFullscreen:t.fullScreenExit,
+        resize:ux.miniAppResize,loading:ux.miniAppLoading,unavailable:ux.miniAppUnavailable}} /> : null;
+  }
   function lineText(m: ChatMessage, text: ReactNode) {
     return typeof text === "string" ? (
       <RichLine rich={richOf(text, lineTier(m, { embedded }))} onOpenPage={onOpenPage} />
@@ -4680,12 +5016,15 @@ export function DebugChat({
           )}
         </span>
         <div
-          className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine ? "line-clamp-3" : "whitespace-pre-wrap"}`}
+          className={`m-0 min-w-0 flex-1 break-words pt-px ${LINE_SELECTABLE} ${asLine && !m.attachments?.length ? "line-clamp-3" : "whitespace-pre-wrap"}`}
           {...shimmerOf(m)}
         >
           <span className="sr-only">{who.name}: </span>
-          <LineTag m={m} name={who.name} inline />
-          {m.ask
+          <LineTag m={m} name={who.name} partnerName={partnerName} inline />
+          {voiceMark(m, who.name)}
+          {m.context && m.from !== "agent" && <QuoteBlock t={t} ctx={m.context} />}
+          {m.attachments?.length && m.from !== "agent" ? <SentFiles refs={m.attachments} files={files} /> : null}
+          {m.context?.selection === p.text && !m.attachments?.length ? null : m.ask
             ? m.ask.questions.length === 1
               ? lineText(m, m.ask.questions[0]!.question)
               : ""
@@ -4723,8 +5062,9 @@ export function DebugChat({
         {asks.map((m) => compactRow(m, false))}
         {last
           ? compactRow(last, true)
-          : !liveRows.length && <p className="m-0 py-1 text-gray-500">{t.hint}</p>}
+          : !liveRows.length && !pendingFiles.length && !attached && <p className="m-0 py-1 text-gray-500">{t.hint}</p>}
         {liveRows.map((r) => liveLine(r, "compact"))}
+        {pendingLine("compact")}
       </div>
     );
   })();
@@ -5011,16 +5351,28 @@ export function DebugChat({
         id="debug-chat-column"
         data-testid="debug-chat-column"
         onScroll={onLogScroll}
-        onWheel={() => {
+        onWheel={(e) => {
+          if (!e.ctrlKey && e.deltaY < 0) tail.away();
           userScrollAt.current = Date.now();
           hold(COMPACT_SCROLL_MS);
         }}
-        onTouchMove={() => {
+        onTouchStart={(e) => { touchScrollY.current = e.touches[0]?.clientY ?? null; }}
+        onTouchMove={(e) => {
+          const y = e.touches[0]?.clientY;
+          if (y !== undefined && touchScrollY.current !== null && y > touchScrollY.current) tail.away();
+          touchScrollY.current = y ?? null;
           userScrollAt.current = Date.now();
           hold(COMPACT_SCROLL_MS);
         }}
         // A tap on a line (its polish mark, an ask card) is use too.
-        onPointerDown={() => hold(COMPACT_SCROLL_MS)}
+        onPointerDown={(e) => {
+          if (e.pointerType === "mouse" && e.target === e.currentTarget) tail.away();
+          hold(COMPACT_SCROLL_MS);
+        }}
+        onKeyDownCapture={(e) => {
+          if (["ArrowUp", "PageUp", "Home"].includes(e.key) || (e.key === " " && e.shiftKey)) tail.away();
+        }}
+        onLoadCapture={() => { tail.pin(); }}
         data-fade={fade || undefined}
         data-expanded={typing || undefined}
         hidden={!open || tree || compact}
@@ -5033,7 +5385,7 @@ export function DebugChat({
           }
           // Shrunk: land on the newest lines again, now that the height settled.
           // Not when held open: it grew (a jump to an ask), and he is reading there.
-          if (!typingNow && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
+          if (!typingNow && !micActive) tail.pin();
           onLogScroll();
         }}
         data-full={fullLog === "off" ? undefined : fullLog}
@@ -5050,7 +5402,7 @@ export function DebugChat({
         data-testid="debug-chat-log"
         className="m-0 list-none space-y-0.5 p-0"
       >
-        {messages.length === 0 && !liveRows.length && (
+        {messages.length === 0 && !liveRows.length && !pendingFiles.length && !attached && (
           <li className="text-gray-500">{t.hint}</li>
         )}
         {/*
@@ -5070,9 +5422,9 @@ export function DebugChat({
           const ownPassage = isOwnVoice(m0);
           // The state-tree node the run belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m0);
-          // The up-arrow floats at the log's end: the newest run keeps room
-          // beside it (ask-above.ts jumpRoom), never an empty row under it.
-          const room = askJumpShown && r === runs.length - 1 ? jumpRoom(asksUp.length) : null;
+          // Always keep the same side room: toggling the floating arrow or its
+          // count never changes wrapping/height. It adds no minimum row height.
+          const room = r === runs.length - 1 ? jumpRoom() : null;
           return (
             <li
               key={m0.id}
@@ -5084,18 +5436,7 @@ export function DebugChat({
               className="flex items-start gap-1.5 leading-snug"
               style={{
                 ...(node ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 } : {}),
-                // A short run sits at the bottom of its room: nothing blank under it.
-                // The ROW goes down (align-content on a one-line wrapping flex), not
-                // each item: align-items would drop the avatar to a long run's last
-                // line, away from its first (owner, 2026-11-09 13:42 JST).
-                ...(room
-                  ? {
-                      paddingInlineEnd: room.end,
-                      minHeight: room.minHeight,
-                      flexWrap: "wrap",
-                      alignContent: "flex-end",
-                    }
-                  : {}),
+                ...(room ? { paddingInlineEnd: room.end } : {}),
               }}
             >
               {(() => {
@@ -5134,15 +5475,16 @@ export function DebugChat({
                   </span>
                 )}
                 {/* A lane's name, "name：", once per run, then the text; lines with no lane have none. */}
-                <LineTag m={m0} name={who.name} agentName={t.name} />
+                <LineTag m={m0} name={who.name} agentName={t.name} partnerName={partnerName} />
                 {/* Screen readers hear the name once per run, from the sr-only span. */}
                 <span className="sr-only">
                   {who.name}
                   {node ? ` (${node.subtitle})` : ""}:{" "}
                 </span>
-                {ownPassage && run.some((i) => messages[i]!.speaker?.decision === "me") && (
-                  <VoiceMark label={t.vpVerified} />
-                )}
+                {ownPassage && (() => {
+                  const firstVoice = run.map((i) => messages[i]!).find(hasVoiceDetails);
+                  return firstVoice ? voiceMark(firstVoice, who.name) : null;
+                })()}
                 {run.map((i, k) => {
                   const m = messages[i]!;
                   const text = polish(m).text;
@@ -5187,6 +5529,7 @@ export function DebugChat({
                         {...details.forMessage(m, who.name)}
                         data-testid="debug-chat-line"
                         data-msg={m.id}
+                        data-read-seq={validReadSeq(m.seq) ? m.seq : undefined}
                         data-other-voice={otherVoiceLine ? "other" : undefined}
                         {...(otherVoiceLine ? { onClick: () => {
                           if (String(window.getSelection?.() ?? "")) return;
@@ -5213,7 +5556,8 @@ export function DebugChat({
                           ? m.ask.questions.length === 1
                             ? lineText(m, m.ask.questions[0]!.question)
                             : ""
-                          : readText(m, text)}
+                          : (m.context?.selection === text && !m.attachments?.length) ? null : readText(m, text)}
+                        {appCards(m, m.text)}
                         {m.ask && (
                           <AskCard
                             ask={m.ask}
@@ -5230,20 +5574,7 @@ export function DebugChat({
                             pulse={flashOn.has(`line:${m.id}`)}
                           />
                         )}
-                        {!ownPassage && m.speaker?.decision === "me" && <VoiceMark label={t.vpVerified} />}
-                        {(() => {
-                          // Which recognizer made a voice line: dev holders only (`owner` needs dev).
-                          const tag = m.from === "owner" && !ownPassage ? sttTagText(m.stt, owner, ui) : undefined;
-                          return tag ? (
-                            <span
-                              data-testid="debug-chat-stt"
-                              className="ms-1 fs-10 text-gray-500"
-                              title={ui.sttTagTip}
-                            >
-                              {tag}
-                            </span>
-                          ) : null;
-                        })()}
+                        {!ownPassage && voiceMark(m, who.name)}
                         {m.from === "agent" && unheardIds.has(m.id) && (
                           <span
                             data-testid="debug-chat-unheard"
@@ -5278,6 +5609,13 @@ export function DebugChat({
                           );
                         })()}
                       </span>
+                      {m.id === latestOwn?.id && readBy.length > 0 && (
+                        <span data-testid="debug-chat-read-receipts" role="group" className="mt-0.5 flex min-w-0 max-w-full flex-wrap gap-0.5 overflow-hidden" aria-label={ux.readReceipts}>
+                          {readBy.map((p) => (
+                            <Avatar key={p.key} src={tokenPicture(p)} name={p.name} seed={p.key} size={12} />
+                          ))}
+                        </span>
+                      )}
                     </span>
                   );
                 })}
@@ -5287,6 +5625,7 @@ export function DebugChat({
         })}
         {/* What he is saying now, as his newest line (live-speech.ts): not sent yet. */}
         {liveRows.map((r) => liveLine(r, "log"))}
+        {pendingLine("log")}
       </ol>
       </div>
       {compact && compactEl}
@@ -5373,18 +5712,6 @@ export function DebugChat({
           onLater={() => setPublicStt("no")}
         />
       )}
-      {open && !notice && filesRef.current && <PendingChips t={t} pending={pending} />}
-      {open && attached && !notice && (
-        <AttachChip
-          t={t}
-          flat={typingGlassShown}
-          ctx={attached}
-          onRemove={() => {
-            uiStore.setState({ attached: null });
-            pageSel.clear();
-          }}
-        />
-      )}
       {(etaShown || linkShown) && (
         // Right over the bar. flow-root: the bar's own margin counts in the
         // height the buttons above step over. In the strip it has no margin
@@ -5422,6 +5749,7 @@ export function DebugChat({
                     glass={strip}
                     onOpen={() => setGanttOpen(true)}
                     compact={!open || compact}
+                    news={etaNews}
                   />
                 </div>
               )}
@@ -5434,6 +5762,7 @@ export function DebugChat({
               glass={strip}
               onOpen={() => setGanttOpen(true)}
               compact={!open || compact}
+              news={etaNews}
             />
           )}
         </div>
@@ -5605,8 +5934,8 @@ export function DebugChat({
               title={askJumpText}
               onClick={jumpToAsk}
               style={{
-                background: "oklch(0.5 0.187 22.3)",
-                color: "oklch(0.98 0 0)",
+                color: "var(--foreground)",
+                border: "1px solid var(--glass-line)",
                 height: JUMP_H_PX,
                 width: jumpWidth(asksUp.length),
                 padding: "0 10px",
@@ -5616,7 +5945,7 @@ export function DebugChat({
                 lineHeight: 1,
                 boxShadow: "0 1px 4px oklch(0 0 0 / 0.3)",
               }}
-              className="tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full"
+              className="lk-glass tap-40 pointer-events-auto inline-flex items-center justify-center whitespace-nowrap rounded-full"
             >
               {asksUp.length > 1 && <span aria-hidden>{asksUp.length}</span>}
               <span aria-hidden style={{ display: "inline-flex", fontSize: 16 }}>
@@ -5639,9 +5968,11 @@ export function DebugChat({
               aria-label={
                 withNew(ux.scrollNewest, below)
               }
-              onClick={() =>
-                log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" })
-              }
+              onClick={() => {
+                tail.pin(true);
+                setScrolledUp(false);
+                setBelow(0);
+              }}
               style={{ background: INPUT_BG }}
               className="pointer-events-auto relative inline-flex size-6 items-center justify-center rounded-full border border-current/25 text-sm leading-none text-gray-600 dark:text-gray-300"
             >
@@ -5812,6 +6143,8 @@ export function DebugChat({
                   }}
                   aria-label={t.message.replace(/…$/, "")}
                   onChange={(e) => {
+                    pttFailedDraft.current = false;
+                    if (pttLiveRef.current?.state === "unsent" && !pttSubmission.current?.ready()) pttSubmission.current?.cancel();
                     let v = e.target.value;
                     // Typed while the spoken draft was the live line and no key told us
                     // (a keyboard that reports none): it goes after the spoken words.
@@ -5952,7 +6285,7 @@ export function DebugChat({
         <span aria-hidden />
         <div style={LTR}>
         {floatBoxEl}
-        {menuEl}
+        {menuEl && gripMenuAt ? createPortal(menuEl, portalRoot ?? document.body) : menuEl}
         {panel === "voiceprint" && (
           <div className="pointer-events-auto absolute inset-x-0 bottom-full mb-1">
             <VoiceprintPanel t={t} deps={voiceprintDeps} onClose={() => setPanel("none")} />
@@ -6082,7 +6415,7 @@ function FloatLine({
       {...(shim ? { [NEW_ATTR]: true } : {})}
       // The fade runs FADE_MS (ease-out, opacity only); held (touched), the line
       // snaps back to full at once. Reduced motion: no fade, it just goes.
-      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto line-clamp-3 max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
+      className={`${fading ? "opacity-0 transition-opacity ease-out" : "opacity-100 transition-none"} pointer-events-auto ${m.attachments?.length ? "" : "line-clamp-3"} max-w-full whitespace-pre-wrap break-words py-0.5 leading-snug motion-reduce:transition-none`}
     >
       <span className="me-1 inline-block rounded-full align-[-0.25em]" {...flash}>
         <Avatar
@@ -6095,7 +6428,7 @@ function FloatLine({
         />
       </span>
       <span className="sr-only">{who.name}: </span>
-      <LineTag m={m} name={who.name} inline />
+      <LineTag m={m} name={who.name} partnerName={EMBED_NAME[embedLang()]} inline />
       {text}
       {mark}
     </li>

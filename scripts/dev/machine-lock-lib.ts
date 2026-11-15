@@ -15,6 +15,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { linkSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { availableParallelism, freemem, loadavg, tmpdir } from "node:os";
 import { join } from "node:path";
+import { ownerStamp } from "./owner-time";
 
 export const LOCK_ENV = "LIANKI_GATE_LOCK";
 /** Set for the wrapped command: nested wrappers with this token just run. */
@@ -408,7 +409,7 @@ export async function acquireGate(
         if (!shouldBackOff(me, liveHolders(paths, me.token), rules)) {
           if (waited) {
             const s = Math.round((now() - started) / 1000);
-            io.say(`admitted at ${jst(now())}, after ${s} s (${d.why})`);
+            io.say(`admitted at ${ownerTime(now())}, after ${s} s (${d.why})`);
           }
           return { path: r.path, me };
         }
@@ -428,13 +429,13 @@ export function isReentrantAny(paths: string[], token: string | undefined): bool
   return paths.some((p) => isReentrant(p, token));
 }
 
-/** A time for the owner: JST, labelled. */
-export function jst(ms: number): string {
-  return `${new Date(ms + 9 * 3_600_000).toISOString().slice(0, 19).replace("T", " ")} JST`;
+/** A time for the owner: in the machine's zone (or LIANKI_OWNER_TZ), labelled. */
+export function ownerTime(ms: number): string {
+  return ownerStamp(ms, true);
 }
 
 export function describeHolder(h: Holder): string {
-  return `pid ${h.pid}, ${h.worktree}, \`${h.command}\`, started ${jst(Date.parse(h.startedAt))}`;
+  return `pid ${h.pid}, ${h.worktree}, \`${h.command}\`, started ${ownerTime(Date.parse(h.startedAt))}`;
 }
 
 const minutes = (ms: number) => Math.floor(ms / 60_000);

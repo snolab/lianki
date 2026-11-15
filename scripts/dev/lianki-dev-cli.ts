@@ -51,7 +51,9 @@ export const SUBCOMMANDS = [
   "inbox",
   "listen",
   "lane-listen",
+  "lanes",
   "serve",
+  "ui",
   "progress",
   "whoami",
   "doctor",
@@ -76,7 +78,9 @@ export const USAGE: Record<Sub | "main", string> = {
   inbox     the chat inbox: list | get <id> [--out <dir>] | done <id>
   listen    listen to the chat (eval.ts chat), one JSON line per event
   lane-listen  a lane's own listener: the owner lines addressed to it, handed to its agent
+  lanes     the lanes manager: every agent on Lianki and its repos joins the chat (全员入群)
   serve     hold an eval session (eval.ts serve)
+  ui        change his chat's view, shown as it happens: ui fullscreen --on|--off
   progress  report to the state tree (progress.ts)
   whoami    lane, checkout, hub, which grant and token are present
   doctor    what is missing here, one line each
@@ -169,9 +173,31 @@ ${EXITS}`,
   Token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (exit 2 without).
 ${GLOBAL}
 ${EXITS}`,
+  lanes: `usage: lianki-dev lanes [--once] [--dry-run]
+  The lanes manager (scripts/dev/lanes-manager.ts, docs/lane-listen.md "Every
+  agent joins"): each agent of \`ay ls --local\` under a repo in lanes.repos
+  (LIANKI_LANES_REPOS) joins the owner's chat as its own lane (its registered
+  name, lanes.agents / LIANKI_LANES_AGENTS, else <repo>-<leaf>, e.g.
+  lianki-codex for lianki/tree/codex; -<cli>, -<pid> only to break a tie).
+  Resident lanes get a lane-listen --all; the others are readers, woken by
+  name (not a wake:false row). Each
+  new lane greets once with its own token (~/.config/lianki/lanes/<lane>.token);
+  the names still waiting for one are said once in the chat (never minted here).
+  --once: one look, then exit. --dry-run: log the actions, do none.
+${GLOBAL}
+${EXITS}`,
   serve: `usage: lianki-dev serve [--label "…"]
   Hold an eval session (eval.ts serve) with the saved eval grant. Never pairs
   unless --pair (a human, no --as).
+${GLOBAL}
+${EXITS}`,
+  ui: `usage: lianki-dev ui fullscreen --on|--off [--to <thread|email>]
+  Full screen on his open chat pages (eval.ts ui), shown to him as it
+  happens: the chat opens its menu, the Full screen row pulses for 0.6 s in
+  the seal red, then the switch flips and the menu closes. The choice is the
+  same one his own tap makes (kept on that device). Pages that do not offer
+  full screen (another site's chat) ignore it.
+  stdout: the hub's {"type":"ui-done",…,"delivered"} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
   progress: `usage: lianki-dev progress --task "<text>" --status <status> [--path /a/b] [--pct 40] [--eta 15m] [--done] [--pr N] …
@@ -354,9 +380,32 @@ export function evalArgv(sub: Sub, rest: string[], g: Global, stdin?: string): s
     }
     return ["voices", ...rest, ...pair];
   }
+  if (sub === "ui") return uiArgv(rest, pair);
   if (sub === "listen") return ["chat", ...rest, ...pair];
   if (sub === "serve") return ["serve", ...rest, ...pair];
   return new Error(`${sub} does not run eval.ts`);
+}
+
+/** ui: `fullscreen --on|--off [--to <thread>]` → eval.ts `ui fullscreen on|off`. */
+function uiArgv(rest: string[], pair: string[]): string[] | Error {
+  const [op, ...flags] = rest;
+  if (op !== "fullscreen")
+    return new Error(op ? `ui: unknown view ${op}` : "ui needs a view: fullscreen");
+  let on: boolean | undefined;
+  const to: string[] = [];
+  for (let i = 0; i < flags.length; i++) {
+    const a = flags[i]!;
+    if (a === "--on" || a === "--off") {
+      if (on !== undefined) return new Error("ui fullscreen takes one of --on or --off");
+      on = a === "--on";
+    } else if (a === "--to") {
+      const v = flags[++i];
+      if (v === undefined) return new Error("--to needs a value");
+      to.push(a, v);
+    } else return new Error(`ui fullscreen: unknown argument ${a}`);
+  }
+  if (on === undefined) return new Error("ui fullscreen needs --on or --off");
+  return ["ui", "fullscreen", on ? "on" : "off", ...to, ...pair];
 }
 
 /**
@@ -420,9 +469,10 @@ export function chatArgv(
     return ["chat", "ask", ...out];
   }
   if (sub === "listen") {
-    if (rest.length)
-      return new Error(`listen: ${rest[0]} needs the grant path (unset LIANKI_TOKEN)`);
-    return ["chat", "listen", "--json"];
+    // --everyone: the hub shows this listener as hearing every line (lane-listen --everyone).
+    const other = rest.find((a) => a !== "--everyone");
+    if (other) return new Error(`listen: ${other} needs the grant path (unset LIANKI_TOKEN)`);
+    return ["chat", "listen", "--json", ...(rest.includes("--everyone") ? ["--everyone"] : [])];
   }
   return new Error(`${sub} has no lane-token path`);
 }

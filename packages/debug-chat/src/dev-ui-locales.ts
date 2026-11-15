@@ -105,6 +105,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "अपनी पसंद में केवल-चैट टोकन बनाएँ (भरा हुआ), फिर एजेंट को यह दें:",
     peopleCopy: "कॉपी करें",
     peopleClose: "बंद करें",
+    peopleReadOnly: "केवल पढ़ने वाले",
   },
   es: {
     stateTree: "Árbol de estado",
@@ -196,6 +197,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "Crea un token solo de chat en tus preferencias (ya rellenado) y dale esto al agente:",
     peopleCopy: "Copiar",
     peopleClose: "Cerrar",
+    peopleReadOnly: "Solo lectura",
   },
   fr: {
     stateTree: "Arbre d'état",
@@ -288,6 +290,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "Créez un jeton réservé au chat dans vos préférences (prérempli), puis donnez ceci à l’agent :",
     peopleCopy: "Copier",
     peopleClose: "Fermer",
+    peopleReadOnly: "Lecture seule",
   },
   ar: {
     stateTree: "شجرة الحالة",
@@ -378,6 +381,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "أنشئ رمزًا للدردشة فقط في تفضيلاتك (معبأ مسبقًا)، ثم أعطِ الوكيل هذا:",
     peopleCopy: "نسخ",
     peopleClose: "إغلاق",
+    peopleReadOnly: "للقراءة فقط",
   },
   bn: {
     stateTree: "স্টেট ট্রি",
@@ -468,6 +472,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "পছন্দে শুধু-চ্যাট টোকেন বানান (পূরণ করা), তারপর এজেন্টকে এটি দিন:",
     peopleCopy: "কপি",
     peopleClose: "বন্ধ",
+    peopleReadOnly: "শুধু পড়া",
   },
   pt: {
     stateTree: "Árvore de estado",
@@ -559,6 +564,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "Crie um token só de chat nas preferências (já preenchido) e dê isto ao agente:",
     peopleCopy: "Copiar",
     peopleClose: "Fechar",
+    peopleReadOnly: "Somente leitura",
   },
   ru: {
     stateTree: "Дерево состояния",
@@ -650,6 +656,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "Создайте токен только для чата в настройках (уже заполнен) и дайте агенту это:",
     peopleCopy: "Копировать",
     peopleClose: "Закрыть",
+    peopleReadOnly: "Только чтение",
   },
   ur: {
     stateTree: "اسٹیٹ ٹری",
@@ -740,6 +747,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "ترجیحات میں صرف چیٹ والا ٹوکن بنائیں (بھرا ہوا)، پھر ایجنٹ کو یہ دیں:",
     peopleCopy: "کاپی",
     peopleClose: "بند کریں",
+    peopleReadOnly: "صرف پڑھنے والے",
   },
   id: {
     stateTree: "Pohon status",
@@ -832,6 +840,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "Buat token khusus chat di preferensi (sudah terisi), lalu berikan ini ke agen:",
     peopleCopy: "Salin",
     peopleClose: "Tutup",
+    peopleReadOnly: "Hanya baca",
   },
   de: {
     stateTree: "Statusbaum",
@@ -924,6 +933,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "Erstelle in den Einstellungen ein Token nur für den Chat (vorausgefüllt) und gib dem Agenten dies:",
     peopleCopy: "Kopieren",
     peopleClose: "Schließen",
+    peopleReadOnly: "Nur lesend",
   },
   sw: {
     stateTree: "Mti wa hali",
@@ -1015,6 +1025,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "Tengeneza tokeni ya gumzo pekee kwenye mapendeleo (imejazwa), kisha mpe wakala hii:",
     peopleCopy: "Nakili",
     peopleClose: "Funga",
+    peopleReadOnly: "Kusoma tu",
   },
   mr: {
     stateTree: "स्टेट ट्री",
@@ -1105,6 +1116,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "पसंतीत फक्त-चॅट टोकन तयार करा (भरलेले), मग एजंटला हे द्या:",
     peopleCopy: "कॉपी करा",
     peopleClose: "बंद करा",
+    peopleReadOnly: "फक्त वाचणारे",
   },
   ko: {
     stateTree: "상태 트리",
@@ -1194,6 +1206,7 @@ export const OTHER_DEV: Record<OtherLocale, DevStrings> = {
     peopleInviteHow: "환경설정에서 채팅 전용 토큰을 만들고(미리 채워짐) 에이전트에게 이것을 주세요:",
     peopleCopy: "복사",
     peopleClose: "닫기",
+    peopleReadOnly: "읽기 전용",
   },
 };
 

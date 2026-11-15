@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { stubGlobals } from "./support/globals";
 import { DebugHub, type Socket, type Storage, hashToken } from "@/workers/push/src/debug";
 import { rpcStub } from "./support/rpc-stub";
+import type { ChatMessage } from "@lianki/debug-chat/wire";
 import push, { type Env, KEEP_FINGERPRINTS, VersionHub } from "@/workers/push/src/index";
 import { FINGERPRINTS_HEADER } from "@/lib/smart-refresh";
 import { DEV_BRIDGE_HEADER, debugIdentity } from "@/workers/push/src/auth";
@@ -29,6 +30,7 @@ class FakeSocket implements Socket {
   sent: Record<string, unknown>[] = [];
   readyState = 1;
   closed?: number;
+  ready?: Promise<void>;
   private att: unknown = null;
   send(data: string) {
     this.sent.push(JSON.parse(data));
@@ -102,7 +104,7 @@ function setup(env?: unknown, storage = fakeStorage()) {
   const page = (label = "/words pwa iPhone") => {
     const ws = new FakeSocket();
     sockets.push(ws);
-    void hub.connectPage(
+    ws.ready = hub.connectPage(
       ws,
       new URL(`https://lianki.com/api/version/debug?label=${encodeURIComponent(label)}`),
     );
@@ -346,6 +348,7 @@ describe("DebugHub pairing", () => {
 
 type Chat = {
   message: {
+    seq?: number;
     id: string;
     from: string;
     label: string;
@@ -377,6 +380,7 @@ describe("DebugHub chat", () => {
       expect(chats(ws)).toEqual([
         {
           id: "m1",
+          seq: 1,
           from: "owner",
           label: "/words pwa iPhone",
           text: "hello agent",
@@ -451,7 +455,7 @@ describe("DebugHub chat", () => {
   });
 
   it("say --quiet: the hub keeps the flag (true only) and forwards it, live and in history; an old loud is dropped", async () => {
-    const { hub, page, controller, msg, pairOf } = setup();
+    const { page, controller, msg, pairOf } = setup();
     const p = page();
     const c = controller("main lane");
     await msg(p, { type: "allow", pair: pairOf(p) });
@@ -472,7 +476,7 @@ describe("DebugHub chat", () => {
     for (const m of lines) expect(m).not.toHaveProperty("loud");
     for (const m of lines.slice(1, 4)) expect(m).not.toHaveProperty("quiet");
     const again = page();
-    await hub.history();
+    await again.ready;
     const h = again.last("history") as { messages: Record<string, unknown>[] };
     expect(h.messages.find((m) => m.text === "deployed")).toMatchObject({ quiet: true });
     expect(h.messages.find((m) => m.text === "approve?")).not.toHaveProperty("loud");
@@ -509,10 +513,11 @@ describe("DebugHub chat", () => {
     for (let i = 0; i < CHAT_HISTORY + 5; i++)
       await msg(p, { type: "chat", id: `m${i}`, text: `${i}` });
     const again = page();
-    await hub.history();
+    await again.ready;
     const h = again.last("history") as { messages: { id: string }[] };
-    expect(h.messages).toHaveLength(CHAT_HISTORY);
-    expect(h.messages[0].id).toBe("m5");
+    expect(h.messages).toHaveLength(100);
+    expect(h.messages[0].id).toBe(`m${CHAT_HISTORY + 5 - 100}`);
+    expect(await hub.history()).toHaveLength(CHAT_HISTORY);
     expect(h.messages.at(-1)?.id).toBe(`m${CHAT_HISTORY + 4}`);
     expect([...storage.store.keys()].filter((k) => k.startsWith("msg:"))).toHaveLength(
       CHAT_HISTORY,
@@ -919,7 +924,12 @@ describe("DebugHub.fetch", () => {
     hub.webSocketClose(ctl, 1005);
     expect(ctl.closed).toBe(1000);
     expect((page.last("state") as { pending: unknown }).pending).toBeNull();
-    expect(page.last("history")).toEqual({ type: "history", messages: [] });
+    expect(page.last("history")).toMatchObject({
+      type: "history",
+      messages: [],
+      headSeq: 0,
+      throughSeq: 0,
+    });
   });
 
   it("passes the grant token header to the hub", async () => {
@@ -1103,7 +1113,12 @@ describe("DebugHub friends", () => {
     const { c } = await agent(s, owner);
     const f = await s.friend("f1", "f1@x.com", "/words pwa Android");
     expect(f.last("friend-status")?.status).toBe("open");
-    expect(f.last("history")).toEqual({ type: "history", messages: [] });
+    expect(f.last("history")).toMatchObject({
+      type: "history",
+      messages: [],
+      headSeq: 0,
+      throughSeq: 0,
+    });
     await s.msg(f, { type: "chat", id: "a", text: "the button is too small" });
     expect(chats(c).at(-1)).toMatchObject({
       from: "friend",
@@ -1444,6 +1459,48 @@ describe("DebugHub heartbeat (agent is working)", () => {
   });
 });
 
+describe("DebugHub ui (a view change shown on the owner's pages)", () => {
+  const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
+    const c = s.controller("agent");
+    await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+    return c;
+  };
+  const uis = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "ui");
+
+  it("goes to the owner's pages, unstored, and is acknowledged", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const f = await s.friend("f1", "f1@x.com");
+    const keys = s.storage.store.size;
+    await s.msg(c, { type: "ui", op: "fullscreen", on: true });
+    expect(uis(owner)).toEqual([{ type: "ui", op: "fullscreen", on: true, at: 1_000_000 }]);
+    expect(uis(f)).toEqual([]);
+    expect(c.last("ui-done")).toEqual({
+      type: "ui-done",
+      thread: "owner",
+      op: "fullscreen",
+      on: true,
+      delivered: 1,
+      at: 1_000_000,
+    });
+    expect(s.storage.store.size).toBe(keys);
+  });
+
+  it("refuses an unknown op, a missing on, and an unknown thread", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    await s.msg(c, { type: "ui", op: "zoom", on: true });
+    expect(c.last("error")?.error).toBe("ui needs op fullscreen");
+    await s.msg(c, { type: "ui", op: "fullscreen" });
+    expect(c.last("error")?.error).toBe("ui needs on: true or false");
+    await s.msg(c, { type: "ui", op: "fullscreen", on: false, to: "nobody@x.com" });
+    expect(c.last("error")?.error).toBe("no chat thread for nobody@x.com");
+    expect(uis(owner)).toEqual([]);
+  });
+});
+
 describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
   const agent = async (s: ReturnType<typeof setup>, owner: FakeSocket) => {
     const c = s.controller("agent");
@@ -1539,6 +1596,42 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
     expect(stored.map((m) => m.stt)).toEqual([local, cloud, undefined, undefined]);
   });
 
+  it("a looping voice line is cut to its head, or acked and never posted (stt-repeat.ts)", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const local = { route: "local", engine: "sensevoice-small-2024-07-17-int8" };
+    const loop = "あなたが" + "ウィッター".repeat(300);
+    await s.msg(owner, { type: "chat", id: "r1", text: loop, source: "stt", stt: local });
+    expect(c.last("chat")?.message).toMatchObject({
+      id: "r1",
+      text: "あなたがウィッター",
+      stt: { ...local, repeat: "trimmed" },
+    });
+    // Nothing real left: acked (the page's outbox clears), never stored or forwarded.
+    await s.msg(owner, {
+      type: "chat",
+      id: "r2",
+      text: "ab".repeat(40),
+      source: "stt",
+      stt: local,
+    });
+    expect(owner.last("chat-ack")).toMatchObject({ type: "chat-ack", id: "r2" });
+    expect(c.last("chat")?.message).toMatchObject({ id: "r1" });
+    // A typed line is his own: untouched. Natural repetition in speech too.
+    await s.msg(owner, { type: "chat", id: "r3", text: "ab".repeat(40) });
+    await s.msg(owner, { type: "chat", id: "r4", text: "好好好，我知道了", source: "stt" });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as Record<string, unknown>)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    expect(stored.map((m) => [m.id, m.text])).toEqual([
+      ["r1", "あなたがウィッター"],
+      ["r3", "ab".repeat(40)],
+      ["r4", "好好好，我知道了"],
+    ]);
+  });
+
   it("a voice line keeps only a speaker tag the Mac signed over exactly its words", async () => {
     const mac = await speakerKey();
     const s = setup({ STT_SPEAKER_PUB: mac.pub });
@@ -1588,7 +1681,8 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
     await say("s11", "next word", [await sign("next word", "u12", { at: at - 11 * 60_000 })]);
     const stored = [...s.storage.store.entries()]
       .filter(([k]) => k.startsWith("msg:"))
-      .map(([, v]) => v as Record<string, unknown>);
+      .map(([, v]) => v as Record<string, unknown>)
+      .sort((a, b) => Number(a.at) - Number(b.at) || String(a.id).localeCompare(String(b.id)));
     expect(stored.map((m) => !!m.speaker)).toEqual([
       true,
       true,
@@ -2856,7 +2950,8 @@ describe("DebugHub agent edits of voice messages", () => {
   const stored = (s: ReturnType<typeof setup>) =>
     [...s.storage.store.entries()]
       .filter(([k]) => k.startsWith("msg:"))
-      .map(([, v]) => v as Record<string, unknown>);
+      .map(([, v]) => v as Record<string, unknown>)
+      .sort((a, b) => Number(a.at) - Number(b.at) || String(a.id).localeCompare(String(b.id)));
 
   it("a page's voice line carries source stt; a typed one none", async () => {
     const s = setup();
@@ -2886,9 +2981,9 @@ describe("DebugHub agent edits of voice messages", () => {
       raw: "fix the sink button",
       edited: { at: 1_000_005, by: "main lane", count: 1 },
     };
-    expect(owner.last("edited")).toEqual(ev);
-    expect(mac.last("edited")).toEqual(ev);
-    expect(c.last("edited")).toEqual(ev);
+    expect(owner.last("edited")).toMatchObject(ev);
+    expect(mac.last("edited")).toMatchObject(ev);
+    expect(c.last("edited")).toMatchObject(ev);
     expect(stored(s)[0]).toMatchObject({
       id: "v1",
       text: "Fix the sync button.",
@@ -3606,9 +3701,9 @@ describe("DebugHub ask cards (the agent asks, a person taps)", () => {
         thread: "owner",
         withdrawnAt: 1_000_005,
       };
-      expect(owner.last("withdrawn")).toEqual(ev);
-      expect(mac.last("withdrawn")).toEqual(ev);
-      expect(c.last("withdrawn")).toEqual(ev);
+      expect(owner.last("withdrawn")).toMatchObject(ev);
+      expect(mac.last("withdrawn")).toMatchObject(ev);
+      expect(c.last("withdrawn")).toMatchObject(ev);
       expect((await s.hub.history()).at(-1)?.ask?.withdrawnAt).toBe(1_000_005);
       await s.msg(owner, { type: "answer", askId: "cal1", choices: { q1: "o1" } });
       expect(owner.last("error")?.error).toContain("is withdrawn");
@@ -3811,7 +3906,8 @@ describe("DebugHub continuous speech (stt.merge)", () => {
       [...s.storage.store.entries()]
         .filter(([k]) => k.startsWith("msg:"))
         .sort(([x], [y]) => x.localeCompare(y))
-        .map(([, v]) => v as Record<string, unknown>);
+        .map(([, v]) => v as Record<string, unknown>)
+        .sort((a, b) => Number(a.at) - Number(b.at) || String(a.id).localeCompare(String(b.id)));
     const ownerIds = () =>
       lines()
         .filter((l) => l.from === "owner")
@@ -3820,8 +3916,12 @@ describe("DebugHub continuous speech (stt.merge)", () => {
   };
 
   it("merges a continuation: one line, complete text, every part's raw kept, marked edited", async () => {
-    const { owner, c, two, lines } = await rig();
+    const { s, owner, c, two, lines } = await rig();
     await two();
+    const ack = owner.last("chat-ack");
+    expect(ack).toEqual({ type: "chat-ack", id: "b", seq: 3 });
+    await s.msg(owner, say("b", "给我显示一个按钮。", 1700, 3000, { continues: "a" }));
+    expect(owner.last("chat-ack")).toEqual(ack);
     expect(lines()).toHaveLength(1);
     expect(lines()[0]).toMatchObject({
       id: "a",
@@ -4019,8 +4119,11 @@ describe("DebugHub continuous speech (stt.merge)", () => {
 
   it("the message cap holds: a merged line over MAX_CHAT stays two lines", async () => {
     const { s, owner, lines } = await rig();
-    await s.msg(owner, say("a", `${"字".repeat(3000)}，`, 0, 1000));
-    await s.msg(owner, say("b", `${"词".repeat(1500)}。`, 1500, 3000, { continues: "a" }));
+    // Distinct characters: a run of one is a loop the repetition guard would cut.
+    const han = (from: number, n: number) =>
+      Array.from({ length: n }, (_, i) => String.fromCharCode(0x4e00 + from + i)).join("");
+    await s.msg(owner, say("a", `${han(0, 3000)}，`, 0, 1000));
+    await s.msg(owner, say("b", `${han(3000, 1500)}。`, 1500, 3000, { continues: "a" }));
     expect(lines().map((l) => l.id)).toEqual(["a", "b"]);
   });
 
@@ -4036,7 +4139,7 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     expect(lines()[1].timing).toMatchObject({ t_speechStart: T0 + 2000 });
     const ev = c.last("edited") as { split: { id: string }[] };
     expect(ev.split.map((x) => x.id)).toEqual(["a", "b"]);
-    expect(owner.last("edited")).toEqual(ev);
+    expect(owner.last("edited")).toMatchObject(ev);
     // The next line goes after the reply, and the history a page reconnects to agrees.
     await s.msg(owner, say("n", "next.", 9000, 9500));
     expect(
@@ -4119,6 +4222,51 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     expect(lines()[0].text).toBe("我们用流式传输，流式传输比较快。");
   });
 
+  it("Whisper's reading of the whole run lands before the polish-due (whisper-recheck.ts)", async () => {
+    const { s, owner, c, two, lines } = await rig();
+    await two();
+    const whisper = "那你能不能给我显示一个按钮。";
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 2, text: whisper, engine: "mlx-whisper", lang: "zh" },
+    });
+    expect(lines()[0]).toMatchObject({
+      text: whisper,
+      raw: whisper,
+      settled: true,
+      edited: { by: "merge", count: 0 },
+      recheck: {
+        engine: "mlx-whisper",
+        lang: "zh",
+        heard: "那你能不能给，给我显示一个按钮。",
+        text: whisper,
+      },
+    });
+    expect(owner.last("edited")).toMatchObject({
+      id: "a",
+      text: whisper,
+      recheck: { text: whisper },
+    });
+    // Level 3 reads level 2: the lane's cue carries the Whisper text.
+    expect(c.last("polish-due")).toMatchObject({ id: "a", text: whisper, raw: whisper, parts: 2 });
+    // The undo still gives back the parts as heard.
+    await s.msg(owner, { type: "unmerge", id: "a" });
+    expect(lines().map((l) => l.text)).toEqual(["那你能不能给，", "给我显示一个按钮。"]);
+    expect(lines().some((l) => "recheck" in l)).toBe(false);
+  });
+
+  it("a stale Whisper reading is refused, and the passage still ends on level 1", async () => {
+    const { s, owner, c, two, lines } = await rig();
+    await two();
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 3, text: "旧的", engine: "mlx-whisper" },
+    });
+    expect(lines()[0]).toMatchObject({ text: "那你能不能给，给我显示一个按钮。", settled: true });
+    expect(lines()[0].recheck).toBeUndefined();
+    expect(c.last("polish-due")).toMatchObject({ raw: "那你能不能给，给我显示一个按钮。" });
+  });
+
   it("a polish of the first fragment is dropped by the merge; a later one lands (unrestricted)", async () => {
     const { s, owner, c, lines } = await rig();
     await s.msg(owner, say("a", "hello world,", 0, 1000));
@@ -4162,6 +4310,210 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     await s.msg(owner, say("a", "first.", 0, 1000));
     await s.msg(owner, say("b", "second.", 5000, 6000));
     expect(asked).toEqual(["stt.merge"]);
+  });
+});
+
+describe("DebugHub reopen: a posted voice line takes what follows (stt.mergeReopenSec)", () => {
+  const T0 = 7_000_000;
+  const say = (id: string, text: string, start: number, end: number, more = {}) => ({
+    type: "chat",
+    id,
+    text,
+    source: "stt",
+    timing: { t_speechStart: T0 + start, t_lastVoice: T0 + end, t_speechEnd: T0 + end + 600 },
+    ...more,
+  });
+  const rig = async (sec: unknown = 20, flags: Record<string, unknown> = { "stt.merge": true }) => {
+    const asked: string[] = [];
+    const s = setup({
+      SESSIONS: {
+        live: async () => "live",
+        flag: async (k: string) => flags[k] ?? k === "stt.polish",
+        config: async (k: string) => {
+          asked.push(k);
+          return k === "stt.mergeReopenSec" ? sec : undefined;
+        },
+      },
+    });
+    const owner = s.page();
+    const lane = async (label: string) => {
+      const ws = s.controller(label);
+      for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+      await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+      return ws;
+    };
+    const c = await lane("main lane");
+    const lines = () =>
+      [...s.storage.store.entries()]
+        .filter(([k]) => k.startsWith("msg:"))
+        .map(([, v]) => v as ChatMessage)
+        .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+    const dues = () => c.sent.filter((m) => m.type === "polish-due");
+    return { s, owner, c, lane, lines, dues, asked };
+  };
+
+  it("a single posted line is amended in place by speech 8 s later", async () => {
+    const { s, owner, c, lines } = await rig();
+    await s.msg(owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    s.tick(9000);
+    await s.msg(owner, say("b", "然后颜色改成红色。", 9600, 11_000, { continues: "a" }));
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).toMatchObject({
+      id: "a",
+      text: "我想把按钮放到右边。然后颜色改成红色。",
+      edited: { by: "merge" },
+    });
+    expect(lines()[0].parts?.map((p) => p.id)).toEqual(["a", "b"]);
+    expect(c.last("edited")).toMatchObject({ id: "a", merged: { id: "b" } });
+  });
+
+  it("a settled, re-listened run reopens: heard text again, re-listened whole, polished once more", async () => {
+    const { s, owner, c, lines, dues } = await rig();
+    await s.msg(owner, say("a", "我想把按钮，", 0, 1000));
+    await s.msg(owner, say("b", "放到右边。", 1800, 3000, { continues: "a" }));
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 2, text: "我想把按钮放到右边。", engine: "mlx-whisper" },
+    });
+    expect(lines()[0]).toMatchObject({ settled: true, text: "我想把按钮放到右边。" });
+    expect(dues()).toHaveLength(1);
+    // Ten seconds of silence, then he goes on: the same line, unsettled, its reading gone.
+    s.tick(12_000);
+    await s.msg(owner, say("c", "然后颜色改成红色。", 13_600, 15_000, { continues: "a" }));
+    expect(lines()).toHaveLength(1);
+    const re = lines()[0];
+    expect(re).toMatchObject({ id: "a", text: "我想把按钮，放到右边。然后颜色改成红色。" });
+    expect(re.settled).toBeUndefined();
+    expect(re.recheck).toBeUndefined();
+    expect(re.parts?.map((p) => p.id)).toEqual(["a", "b", "c"]);
+    // Still being spoken: no polish lands, none is due.
+    await s.msg(c, { type: "edit", id: "a", text: "x" });
+    expect(c.last("error")?.error).toContain("still being spoken");
+    expect(dues()).toHaveLength(1);
+    // The next passage end re-listens the whole merged run, then one polish is due.
+    const whisper = "我想把按钮放到右边，然后颜色改成红色。";
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 3, text: whisper, engine: "mlx-whisper" },
+    });
+    expect(lines()[0]).toMatchObject({
+      text: whisper,
+      settled: true,
+      recheck: { heard: "我想把按钮，放到右边。然后颜色改成红色。", text: whisper },
+    });
+    expect(dues()).toHaveLength(2);
+    expect(dues()[1]).toMatchObject({ id: "a", text: whisper, parts: 3 });
+    // Told again: no second polish for the same run.
+    await s.msg(owner, { type: "passage-end" });
+    expect(dues()).toHaveLength(2);
+    // Undo still splits it into the parts as heard.
+    await s.msg(owner, { type: "unmerge", id: "a" });
+    expect(lines().map((l) => l.text)).toEqual([
+      "我想把按钮，",
+      "放到右边。",
+      "然后颜色改成红色。",
+    ]);
+    expect(lines().some((l) => "recheck" in l || "settled" in l)).toBe(false);
+  });
+
+  it("a merged run longer than the ring: the tail re-listened, the head keeps what was heard", async () => {
+    const { s, owner, lines } = await rig();
+    await s.msg(owner, say("a", "第一句，", 0, 1000));
+    await s.msg(owner, say("b", "第二句。", 1800, 3000, { continues: "a" }));
+    await s.msg(owner, { type: "passage-end" });
+    await s.msg(owner, say("c", "第三句。", 15_000, 16_000, { continues: "a" }));
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 3, from: 2, text: "第三局。", engine: "mlx-whisper" },
+    });
+    expect(lines()[0]).toMatchObject({
+      text: "第一句，第二句。第三局。",
+      raw: "第一句，第二句。第三局。",
+      recheck: { from: 2, heard: "第一句，第二句。第三句。" },
+    });
+  });
+
+  it("a line polished by the hub reopens; a lane's (or his) edit keeps it closed", async () => {
+    const auto = await rig();
+    await auto.s.msg(auto.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    const key = [...auto.s.storage.store.keys()].find((k) => k.startsWith("msg:"))!;
+    const stored = auto.s.storage.store.get(key) as ChatMessage;
+    auto.s.storage.store.set(key, {
+      ...stored,
+      text: "我想把按钮放在右边。",
+      raw: stored.text,
+      edited: { at: 1, by: "auto", count: 1 },
+    });
+    await auto.s.msg(auto.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+    expect(auto.lines()).toHaveLength(1);
+    // The polish goes with the reopen: the line reads as heard, and is due its polish again.
+    expect(auto.lines()[0]).toMatchObject({
+      text: "我想把按钮放到右边。然后改成红色。",
+      edited: { by: "merge", count: 1 },
+    });
+
+    const lane = await rig();
+    await lane.s.msg(lane.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    await lane.s.msg(lane.c, { type: "edit", id: "a", text: "我想把按钮放在右边。" });
+    await lane.s.msg(lane.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+    expect(lane.lines().map((l) => l.id)).toEqual(["a", "b"]);
+  });
+
+  it("closed by his typed line, an agent's line or another lane's in between", async () => {
+    for (const between of [
+      (r: Awaited<ReturnType<typeof rig>>) =>
+        r.s.msg(r.owner, { type: "chat", id: "t", text: "typed by hand" }),
+      (r: Awaited<ReturnType<typeof rig>>) => r.s.msg(r.c, { type: "say", text: "on it" }),
+      async (r: Awaited<ReturnType<typeof rig>>) => {
+        const codex = await r.lane("codex lane");
+        await r.s.msg(codex, { type: "say", text: "【codex】 done" });
+      },
+    ]) {
+      const r = await rig();
+      await r.s.msg(r.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+      await between(r);
+      await r.s.msg(r.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+      const owners = r.lines().filter((l) => l.from === "owner");
+      expect(owners.length).toBeGreaterThanOrEqual(2);
+      expect(owners.find((l) => l.id === "a")?.parts).toBeUndefined();
+      expect(owners.some((l) => l.id === "b")).toBe(true);
+    }
+  });
+
+  it("closed past the window, by the hub's clock, with the key at 0, or unreadable", async () => {
+    const late = await rig();
+    await late.s.msg(late.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    await late.s.msg(late.owner, say("b", "然后改成红色。", 22_000, 23_000, { continues: "a" }));
+    expect(late.lines().map((l) => l.id)).toEqual(["a", "b"]);
+
+    const clock = await rig();
+    await clock.s.msg(clock.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    clock.s.tick(20_000 + 30_000 + 1);
+    await clock.s.msg(clock.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+    expect(clock.lines().map((l) => l.id)).toEqual(["a", "b"]);
+
+    for (const sec of [0, "20", null]) {
+      const off = await rig(sec);
+      await off.s.msg(off.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+      await off.s.msg(off.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+      expect(off.lines().map((l) => l.id)).toEqual(["a", "b"]);
+    }
+
+    // The flag off: no stamp, nothing reopens, the key is never read.
+    const flagOff = await rig(20, {});
+    await flagOff.s.msg(flagOff.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    await flagOff.s.msg(flagOff.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+    expect(flagOff.lines().map((l) => l.id)).toEqual(["a", "b"]);
+    expect(flagOff.asked).not.toContain("stt.mergeReopenSec");
+  });
+
+  it("the key is read at most once per 30 s, and only for a line that asks to continue", async () => {
+    const { s, owner, asked } = await rig();
+    await s.msg(owner, say("a", "一。", 0, 1000));
+    expect(asked.filter((k) => k === "stt.mergeReopenSec")).toHaveLength(0);
+    await s.msg(owner, say("b", "二。", 3000, 4000, { continues: "a" }));
+    await s.msg(owner, say("c", "三。", 6000, 7000, { continues: "a" }));
+    expect(asked.filter((k) => k === "stt.mergeReopenSec")).toHaveLength(1);
   });
 });
 
@@ -4347,6 +4699,50 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
   });
 });
 
+describe("DebugHub spend alert (/internal/spend-alert, lib/payments/spend-alert.ts)", () => {
+  const post = (s: ReturnType<typeof setup>, body: unknown, method = "POST") =>
+    s.hub.fetch(
+      new Request("https://lianki-push/internal/spend-alert", {
+        method,
+        ...(method === "POST"
+          ? { body: typeof body === "string" ? body : JSON.stringify(body) }
+          : {}),
+      }),
+    );
+
+  it("one agent-side line in the owner's thread, read aloud (not quiet), never his words", async () => {
+    const s = setup();
+    const owner = s.page();
+    await owner.ready;
+    const text = "AI 全站花费已达 $3（今日 $0.42，本月 $3.00）";
+    const res = await post(s, { scope: "site", step: 3, text });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, delivered: true });
+    const line = chats(owner).at(-1) as Record<string, unknown>;
+    expect(line).toMatchObject({
+      from: "agent",
+      label: "spend",
+      agentId: "spend",
+      thread: "owner",
+      text,
+    });
+    expect(line.quiet).toBeUndefined();
+    expect(line.ownerGrant).toBeUndefined();
+    expect(line.answer).toBeUndefined();
+  });
+
+  it("refuses anything but a bounded {scope, step, text} POST", async () => {
+    const s = setup();
+    const owner = s.page();
+    await owner.ready;
+    const before = chats(owner).length;
+    expect((await post(s, { scope: "site", step: 1 })).status).toBe(400);
+    expect((await post(s, "{not json")).status).toBe(400);
+    expect((await post(s, null, "GET")).status).toBe(405);
+    expect(chats(owner).length).toBe(before);
+  });
+});
+
 describe("DebugHub chat history (lib/chat-log.ts over SESSIONS.chatLog)", () => {
   type Req = { op: string; thread: string; id?: string; lines: Record<string, unknown>[] };
   const withLog = (fail = false) => {
@@ -4462,7 +4858,8 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
       [...s.storage.store.entries()]
         .filter(([k]) => k.startsWith("msg:"))
         .sort(([x], [y]) => x.localeCompare(y))
-        .map(([, v]) => v as Record<string, unknown>);
+        .map(([, v]) => v as Record<string, unknown>)
+        .sort((a, b) => Number(a.at) - Number(b.at) || String(a.id).localeCompare(String(b.id)));
     return { s, win, mac, c, lines };
   };
   /**
@@ -4483,6 +4880,11 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
     await s.msg(mac, say("m1", "同时发送的两个麦克风"));
     expect(lines().map((l) => [l.id, l.text])).toEqual([["w1", "同时发送着两个麦克风"]]);
     expect(chats(mac).map((m) => m.id)).toEqual(["w1"]);
+    const ack = mac.last("chat-ack");
+    expect(ack).toEqual({ type: "chat-ack", id: "m1", seq: 2 });
+    await s.msg(mac, say("m1", "同时发送的两个麦克风"));
+    expect(mac.last("chat-ack")).toEqual(ack);
+    expect(lines()).toHaveLength(1);
   });
 
   it("the longer text replaces the first line's in place, through the edit path", async () => {
@@ -4534,7 +4936,7 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
         },
       });
       await s.msg(win, say("w1", "第一句话"));
-      const mine = () => asked.filter((k) => /^(stt\.two|chat\.)/.test(k));
+      const mine = () => asked.filter((k) => /^(stt\.two|chat\.twoMicWindowMs$)/.test(k));
       expect(mine()).toEqual([]);
       await s.msg(mac, say("m1", "第一句话"));
       expect(lines().map((l) => l.id)).toEqual(["w1", "m1"]);
@@ -4599,4 +5001,130 @@ describe("DebugHub two mics, one line (stt.two-mic-merge)", () => {
     ]);
     expect((lines()[1].speaker as { decision: string; score: number }).score).toBe(0.65);
   });
+});
+
+describe("durable incoming chat acceptance", () => {
+  it("acks concurrent retries once, reuses the receipt sequence after eviction, and scopes ids by thread", async () => {
+    const s = setup();
+    const p = s.page();
+    const input = { type: "chat", id: "stable-input", text: "One durable line." };
+    await Promise.all([s.msg(p, input), s.msg(p, input)]);
+    expect((await s.hub.history()).filter((m) => m.id === input.id)).toHaveLength(1);
+    const acks = p.sent.filter((m) => m.type === "chat-ack");
+    expect(acks).toHaveLength(2);
+    expect(acks[0]).toEqual({ type: "chat-ack", id: input.id, seq: 1 });
+    expect(acks[1]).toEqual(acks[0]);
+    const revived = setup(undefined, s.storage);
+    const again = revived.page();
+    await revived.msg(again, input);
+    expect(again.last("chat-ack")).toEqual(acks[0]);
+    expect(await revived.hub.history()).toHaveLength(1);
+    const friend = await revived.friend();
+    await revived.msg(friend, input);
+    expect(friend.last("chat-ack")).toEqual(acks[0]);
+    expect(await revived.hub.history("f1")).toHaveLength(1);
+    await revived.msg(again, { ...input, id: "next", text: "Next line." });
+    expect(again.last("chat-ack")).toMatchObject({ id: "next", seq: 2 });
+  });
+
+  it("never acknowledges a failed receipt write; a retry recovers the durable primary line", async () => {
+    const storage = fakeStorage();
+    const put = storage.put;
+    let failed = false;
+    storage.put = async (key, value) => {
+      if (key.startsWith("chat-receipt:") && !failed) {
+        failed = true;
+        throw Error("fixture receipt unavailable");
+      }
+      return put(key, value);
+    };
+    const s = setup(undefined, storage);
+    const p = s.page();
+    const input = { type: "chat", id: "receipt-gap", text: "Already durable." };
+    await expect(s.msg(p, input)).rejects.toThrow("fixture receipt unavailable");
+    expect(p.last("chat-ack")).toBeUndefined();
+    await s.msg(p, input);
+    expect(p.last("chat-ack")).toEqual({ type: "chat-ack", id: input.id, seq: 1 });
+    expect(await s.hub.history()).toHaveLength(1);
+  });
+
+  it("rejects only the specific rate-limited chat and does not advance its acceptance cursor", async () => {
+    const s = setup();
+    const p = await s.friend();
+    for (let i = 0; i < FRIEND_CHAT_MAX; i++)
+      await s.msg(p, { type: "chat", id: `accepted-${i}`, text: "Accepted." });
+    const last = p.last("chat-ack")!;
+    await s.msg(p, { type: "chat", id: "refused", text: "Over limit." });
+    expect(p.last("chat-rejected")).toEqual({
+      type: "chat-rejected",
+      id: "refused",
+      reason: "rate-limited",
+    });
+    expect(p.last("chat-ack")).toEqual(last);
+    expect(s.storage.store.get("t:f1:seq")).toBe(FRIEND_CHAT_MAX);
+    await s.msg(p, { type: "chat", id: "accepted-0", text: "Accepted." });
+    expect(p.last("chat-ack")).toEqual({ type: "chat-ack", id: "accepted-0", seq: 1 });
+    expect(await s.hub.history("f1")).toHaveLength(FRIEND_CHAT_MAX);
+    s.tick(FRIEND_CHAT_WINDOW_MS);
+    const revived = setup(undefined, s.storage);
+    const again = await revived.friend();
+    await revived.msg(again, { type: "chat", id: "refused", text: "Over limit." });
+    expect(again.last("chat-rejected")).toEqual({
+      type: "chat-rejected",
+      id: "refused",
+      reason: "rate-limited",
+    });
+    expect(again.last("chat-ack")).toBeUndefined();
+    expect(s.storage.store.get("t:f1:seq")).toBe(FRIEND_CHAT_MAX);
+  });
+});
+
+it("PTT recheck never changes the primary text covered by a signed speaker proof", async () => {
+  const key = await speakerKey();
+  const s = setup({ STT_SPEAKER_PUB: key.pub });
+  const page = s.page();
+  const baseline = "Do not remove this word.";
+  const recheck = {
+    at: 1_000_000,
+    engine: "mlx-whisper",
+    heard: baseline,
+    text: "Remove this word.",
+  };
+  const proof = await key.sign({
+    decision: "me",
+    text: baseline,
+    uid: "ptt-proof-baseline",
+    thread: "owner",
+    at: 1_000_000,
+  });
+  await s.msg(page, {
+    type: "chat",
+    id: "ptt-signed",
+    text: baseline,
+    source: "stt",
+    recheck,
+    speakerProof: [proof],
+  });
+  const [line] = await s.hub.history();
+  expect(line).toMatchObject({
+    text: baseline,
+    recheck,
+    speaker: { decision: "me", signed: [baseline] },
+  });
+  const wrong = await key.sign({
+    decision: "me",
+    text: baseline,
+    uid: "ptt-proof-altered",
+    thread: "owner",
+    at: 1_000_000,
+  });
+  await s.msg(page, {
+    type: "chat",
+    id: "ptt-altered",
+    text: recheck.text,
+    source: "stt",
+    recheck: { ...recheck, heard: recheck.text },
+    speakerProof: [wrong],
+  });
+  expect((await s.hub.history()).find((m) => m.id === "ptt-altered")).not.toHaveProperty("speaker");
 });

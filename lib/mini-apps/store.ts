@@ -5,7 +5,7 @@
  */
 import type { CapabilityId } from "./capabilities";
 import { type Decision, type Grants, grantsOf } from "./grants";
-import type { Manifest } from "./manifest";
+import type { Manifest, MiniAppStyle } from "./manifest";
 
 export type MiniStmt = {
   bind(...v: unknown[]): MiniStmt;
@@ -30,6 +30,7 @@ export const manifestKey = (uid: string, slug: string) =>
 export const newAppId = () => crypto.randomUUID().replaceAll("-", "").slice(0, 16);
 
 export type MiniApp = Manifest & {
+  style: MiniAppStyle;
   id: string;
   ownerId: string;
   size: number;
@@ -46,6 +47,7 @@ type Row = {
   name: string;
   icon: string;
   version: string;
+  style?: string;
   permissions: string;
   size: number;
   sha256: string;
@@ -54,7 +56,7 @@ type Row = {
   updated_ms: number;
 };
 const COLS =
-  "id, owner_id, slug, name, icon, version, permissions, size, sha256, r2_key, created_ms, updated_ms";
+  "id, owner_id, slug, name, icon, version, permissions, size, sha256, r2_key, created_ms, updated_ms, style";
 const perms = (raw: string): CapabilityId[] => {
   try {
     const p = JSON.parse(raw);
@@ -70,6 +72,7 @@ const app = (r: Row): MiniApp => ({
   name: r.name,
   icon: r.icon,
   version: r.version,
+  style: r.style === "none" ? "none" : "lianki",
   permissions: perms(r.permissions),
   size: Number(r.size),
   sha256: r.sha256,
@@ -100,18 +103,22 @@ export async function getApp(db: MiniDb, ownerId: string, slug: string): Promise
  */
 export async function upsertApp(
   db: MiniDb,
-  a: Omit<MiniApp, "createdMs" | "updatedMs" | "id"> & { id: string; now: number },
+  a: Omit<MiniApp, "createdMs" | "updatedMs" | "id" | "style"> & {
+    id: string;
+    now: number;
+    style?: MiniAppStyle;
+  },
   perAccount: number,
 ): Promise<boolean> {
   const r = await db
     .prepare(
       `INSERT INTO mini_app (${COLS})
-       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, ?13
        WHERE EXISTS (SELECT 1 FROM mini_app WHERE owner_id = ?2 AND slug = ?3)
           OR (SELECT COUNT(*) FROM mini_app WHERE owner_id = ?2) < ?12
        ON CONFLICT (owner_id, slug) DO UPDATE SET name = excluded.name, icon = excluded.icon,
          version = excluded.version, permissions = excluded.permissions, size = excluded.size,
-         sha256 = excluded.sha256, r2_key = excluded.r2_key, updated_ms = excluded.updated_ms
+         sha256 = excluded.sha256, r2_key = excluded.r2_key, updated_ms = excluded.updated_ms, style = excluded.style
        RETURNING id`,
     )
     .bind(
@@ -127,9 +134,21 @@ export async function upsertApp(
       a.r2Key,
       a.now,
       perAccount,
+      a.style ?? "lianki",
     )
     .first<{ id: string }>();
   return !!r;
+}
+
+/** Local publish bootstrap: ALTER TABLE is applied only before the column exists. */
+export async function ensureMiniAppStyle(
+  db: { prepare(sql: string): { first<T>(): Promise<T | null> } },
+  migration: string,
+) {
+  const column = await db
+    .prepare("SELECT name FROM pragma_table_info('mini_app') WHERE name = 'style'")
+    .first<{ name: string }>();
+  if (!column) await db.prepare(migration).first();
 }
 
 /** The app, its grants and its storage, gone. */

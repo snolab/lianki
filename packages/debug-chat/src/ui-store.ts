@@ -19,6 +19,8 @@ import { type ChatContext, cleanContext } from "./wire";
 export type ChatUi = {
   /** The input's draft, and the caret in it (null: the end). */
   draft: string;
+  /** Durable receipt for the owner's one-time pre-account draft adoption. */
+  legacyOwnerMigrated: boolean;
   caret: number | null;
   /** The draft as dictation left it (wire.ts dictatedDraft): a restored voice line still sends as `stt`. */
   pureDictation: string | null;
@@ -56,6 +58,7 @@ export const CHAT_UI_NAME = "chat";
 export const CHAT_UI_VERSION = 1;
 export const CHAT_UI_INITIAL: ChatUi = {
   draft: "",
+  legacyOwnerMigrated: false,
   caret: null,
   pureDictation: null,
   interim: null,
@@ -119,6 +122,7 @@ export function migrateChatUi(persisted: unknown, _version: number): ChatUi {
       if (typeof id === "string" && id.length <= 100) expandedOthers.push(id);
   return {
     draft,
+    legacyOwnerMigrated: p.legacyOwnerMigrated === true,
     caret,
     pureDictation,
     interim,
@@ -242,8 +246,8 @@ export const ganttGroupsUi = () =>
   });
 
 /** The chat's UI store (one per page, shared by hot-swapped widget copies). */
-export const chatUi = () =>
-  createUiStore<ChatUi>(CHAT_UI_NAME, CHAT_UI_VERSION, CHAT_UI_INITIAL, {
+export const chatUi = (scope?: string) =>
+  createUiStore<ChatUi>(scope ? `${CHAT_UI_NAME}:${encodeURIComponent(scope)}` : CHAT_UI_NAME, CHAT_UI_VERSION, CHAT_UI_INITIAL, {
     storage: "session",
     // Every stored value goes through the same checks, whatever its version.
     clean: (v) => migrateChatUi(v, CHAT_UI_VERSION),

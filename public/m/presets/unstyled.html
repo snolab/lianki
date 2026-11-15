@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plain counter</title>
+</head>
+<body>
+  <main>
+    <h1>Plain counter</h1>
+    <p>This app uses native browser styles. Its manifest sets style to none.</p>
+    <button type="button" id="increment">Count: 0</button>
+    <p id="style"></p>
+  </main>
+  <script>
+    document.getElementById("style").textContent = `Style: ${lianki.style}`;
+    let count = 0;
+    const button = document.getElementById("increment");
+    button.addEventListener("click", () => { button.textContent = `Count: ${++count}`; });
+  </script>
+</body>
+</html>

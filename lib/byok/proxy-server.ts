@@ -23,7 +23,7 @@ import {
   type RefuseReason,
   type Resolve,
 } from "./proxy-guard";
-import type { ByokPreset } from "./presets";
+import type { ByokPreset } from "./preset-data";
 
 export type ProxyErrorKind =
   | "origin" // not a same-origin JSON POST

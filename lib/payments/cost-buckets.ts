@@ -1,10 +1,11 @@
 /**
- * Costs per JST day and per JST hour, by feature (docs/payments.md, "Cost
- * ledger", "Day and hour matrices"; owner, 2026-11-11). The same two sides as
- * `costSummary`: free from `cost_ledger`, paid from settled `credit_ai_charge`
- * rows (by `settledAt`), the feature from the charge key's prefix.
+ * Costs per day and per hour, by feature, in the viewer's time zone (docs/payments.md,
+ * "Cost ledger", "Day and hour matrices"; owner, 2026-11-11). The same two
+ * sides as `costSummary`: free from `cost_ledger`, paid from settled
+ * `credit_ai_charge` rows (by `settledAt`), the feature from the charge key's prefix.
  *
- * - Buckets are JST (UTC+9, no daylight saving): a day is `YYYY-MM-DD`, an
+ * - Buckets are in the viewer's zone, given as a fixed offset `offMin`
+ *   (minutes east of UTC; 0 = UTC, the default): a day is `YYYY-MM-DD`, an
  *   hour `YYYY-MM-DDTHH`. Every bucket of the window is listed, empty ones
  *   too, so a chart's time axis has no holes.
  * - The hourly window is capped (`COSTS_MAX_HOURS`) and bounded by both the
@@ -12,32 +13,33 @@
  * - The aggregation (`costMatrix`) is pure and unit-tested.
  */
 import type { D1Like } from "@/lib/d1/types";
+import { localDay, localHour } from "@/lib/time-zone";
 import { CREDITS_PER_USD } from "./credits";
 import {
-  COST_DAY_OFFSET_MS,
-  costDay,
   paidFeature,
+  rangeBounds,
+  sqlDay,
+  sqlHour,
   type CostRange,
   type CostTotals,
 } from "./cost-ledger";
 import { MARGIN } from "./prices";
 
-/** The default hourly window: the last 48 JST hours, this one included. */
+/** The default hourly window: the last 48 hours, this one included. */
 export const COSTS_DEFAULT_HOURS = 48;
 /** The widest hourly window one request may ask for (7 days). */
 export const COSTS_MAX_HOURS = 168;
 
 const HOUR = 3600_000;
-const OFFSET_H = COST_DAY_OFFSET_MS / HOUR;
 
-/** The JST hour of `at`: `YYYY-MM-DDTHH`. */
-export const costHour = (at: Date) =>
-  new Date(at.getTime() + COST_DAY_OFFSET_MS).toISOString().slice(0, 13);
+/** The hour of `at` at offset `offMin`: `YYYY-MM-DDTHH`. */
+export const costHour = (at: Date, offMin = 0) => localHour(at, offMin);
 
-/** The start (UTC ms) of the JST hour `YYYY-MM-DDTHH`. */
-export const hourStartMs = (hour: string) => Date.parse(`${hour}:00:00Z`) - COST_DAY_OFFSET_MS;
+/** The start (UTC ms) of the hour `YYYY-MM-DDTHH` at offset `offMin`. */
+export const hourStartMs = (hour: string, offMin = 0) =>
+  Date.parse(`${hour}:00:00Z`) - offMin * 60_000;
 
-/** Every JST day from `from` to `to`, inclusive, oldest first. */
+/** Every day from `from` to `to`, inclusive, oldest first. */
 export function dayBuckets({ from, to }: CostRange): string[] {
   const out: string[] = [];
   for (let t = Date.parse(`${from}T00:00:00Z`); ; t += 86400_000) {
@@ -49,34 +51,43 @@ export function dayBuckets({ from, to }: CostRange): string[] {
 }
 
 export type HourWindow = {
-  /** The hours, oldest first (`YYYY-MM-DDTHH`, JST). */
+  /** The hours, oldest first (`YYYY-MM-DDTHH`, at `offMin`). */
   hours: string[];
   /** UTC ISO bounds: start inclusive, end exclusive. */
   startIso: string;
   endIso: string;
-  /** The JST days the window touches (for the indexed `day` bound). */
+  /** The `cost_ledger.day` bounds for the index (a day wider each side). */
   fromDay: string;
   toDay: string;
+  /** The viewer's offset the hours are in, minutes east of UTC. */
+  offMin: number;
 };
 
 /**
- * The last `count` JST hours of `range` (at most `COSTS_MAX_HOURS`), not after
- * the hour that holds `now` and not before the range's first day.
+ * The last `count` hours of `range` (at most `COSTS_MAX_HOURS`), not after
+ * the hour that holds `now` and not before the range's first day; in the
+ * viewer's zone at offset `offMin`.
  */
-export function hourWindow(count: number, range: CostRange, now = new Date()): HourWindow {
+export function hourWindow(
+  count: number,
+  range: CostRange,
+  now = new Date(),
+  offMin = 0,
+): HourWindow {
   const n = Math.max(1, Math.min(COSTS_MAX_HOURS, Math.floor(count) || COSTS_DEFAULT_HOURS));
-  const endOfTo = Date.parse(`${range.to}T23:00:00Z`) - COST_DAY_OFFSET_MS;
-  const startOfFrom = Date.parse(`${range.from}T00:00:00Z`) - COST_DAY_OFFSET_MS;
-  const last = Math.max(startOfFrom, Math.min(hourStartMs(costHour(now)), endOfTo));
+  const endOfTo = hourStartMs(`${range.to}T23`, offMin);
+  const startOfFrom = hourStartMs(`${range.from}T00`, offMin);
+  const last = Math.max(startOfFrom, Math.min(hourStartMs(costHour(now, offMin), offMin), endOfTo));
   const first = Math.max(startOfFrom, last - (n - 1) * HOUR);
   const len = (last - first) / HOUR + 1;
-  const hours = Array.from({ length: len }, (_, i) => costHour(new Date(first + i * HOUR)));
+  const hours = Array.from({ length: len }, (_, i) => costHour(new Date(first + i * HOUR), offMin));
   return {
     hours,
     startIso: new Date(first).toISOString(),
     endIso: new Date(last + HOUR).toISOString(),
-    fromDay: costDay(new Date(first)),
-    toDay: costDay(new Date(last)),
+    fromDay: localDay(first - 86400_000),
+    toDay: localDay(last + 86400_000),
+    offMin,
   };
 }
 
@@ -157,40 +168,39 @@ export function costMatrix(buckets: string[], free: FreeGroup[], paid: PaidGroup
 }
 
 const PREFIX = "CASE WHEN instr(key, ':') > 0 THEN substr(key, 1, instr(key, ':') - 1) ELSE '' END";
-const JST_DAY = (col: string) => `date(${col}, '+${OFFSET_H} hours')`;
-const JST_HOUR = (col: string) => `strftime('%Y-%m-%dT%H', ${col}, '+${OFFSET_H} hours')`;
 
-/** Day × feature over `range` (JST days, inclusive). */
-export async function costDayMatrix(d1: D1Like, range: CostRange) {
+/** Day × feature over `range` (days at offset `offMin`, inclusive). */
+export async function costDayMatrix(d1: D1Like, range: CostRange, offMin = 0) {
+  const b = rangeBounds(range, offMin);
   const [free, paid] = await Promise.all([
     d1
       .prepare(
-        "SELECT day AS b, feature, SUM(usd_micro) AS micro, COUNT(*) AS n FROM cost_ledger WHERE day BETWEEN ? AND ? GROUP BY day, feature",
+        `SELECT ${sqlDay("at", offMin)} AS b, feature, SUM(usd_micro) AS micro, COUNT(*) AS n FROM cost_ledger WHERE day BETWEEN ? AND ? AND at >= ? AND at < ? GROUP BY b, feature`,
       )
-      .bind(range.from, range.to)
+      .bind(b.fromDay, b.toDay, b.startIso, b.endIso)
       .all<FreeGroup>(),
     d1
       .prepare(
-        `SELECT ${JST_DAY("settledAt")} AS b, ${PREFIX} AS prefix, SUM(costMicro) AS cm, COUNT(*) AS n FROM credit_ai_charge WHERE status = 'settled' AND ${JST_DAY("settledAt")} BETWEEN ? AND ? GROUP BY b, prefix`,
+        `SELECT ${sqlDay("settledAt", offMin)} AS b, ${PREFIX} AS prefix, SUM(costMicro) AS cm, COUNT(*) AS n FROM credit_ai_charge WHERE status = 'settled' AND settledAt >= ? AND settledAt < ? GROUP BY b, prefix`,
       )
-      .bind(range.from, range.to)
+      .bind(b.startIso, b.endIso)
       .all<PaidGroup>(),
   ]);
   return { range, ...costMatrix(dayBuckets(range), free.results, paid.results) };
 }
 
-/** Hour × feature over `w` (JST hours). Bounded by the indexed day / settledAt columns. */
+/** Hour × feature over `w` (hours at `w.offMin`). Bounded by the indexed day / settledAt columns. */
 export async function costHourMatrix(d1: D1Like, w: HourWindow) {
   const [free, paid] = await Promise.all([
     d1
       .prepare(
-        `SELECT ${JST_HOUR("at")} AS b, feature, SUM(usd_micro) AS micro, COUNT(*) AS n FROM cost_ledger WHERE day BETWEEN ? AND ? AND at >= ? AND at < ? GROUP BY b, feature`,
+        `SELECT ${sqlHour("at", w.offMin)} AS b, feature, SUM(usd_micro) AS micro, COUNT(*) AS n FROM cost_ledger WHERE day BETWEEN ? AND ? AND at >= ? AND at < ? GROUP BY b, feature`,
       )
       .bind(w.fromDay, w.toDay, w.startIso, w.endIso)
       .all<FreeGroup>(),
     d1
       .prepare(
-        `SELECT ${JST_HOUR("settledAt")} AS b, ${PREFIX} AS prefix, SUM(costMicro) AS cm, COUNT(*) AS n FROM credit_ai_charge WHERE status = 'settled' AND settledAt >= ? AND settledAt < ? GROUP BY b, prefix`,
+        `SELECT ${sqlHour("settledAt", w.offMin)} AS b, ${PREFIX} AS prefix, SUM(costMicro) AS cm, COUNT(*) AS n FROM credit_ai_charge WHERE status = 'settled' AND settledAt >= ? AND settledAt < ? GROUP BY b, prefix`,
       )
       .bind(w.startIso, w.endIso)
       .all<PaidGroup>(),

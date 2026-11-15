@@ -22,7 +22,14 @@ import {
   type MiniDeps,
   type MiniWho,
 } from "../lib/mini-apps/handlers";
-import { kvGet, kvList, kvSet, upsertApp, type MiniDb } from "../lib/mini-apps/store";
+import {
+  ensureMiniAppStyle,
+  kvGet,
+  kvList,
+  kvSet,
+  upsertApp,
+  type MiniDb,
+} from "../lib/mini-apps/store";
 import {
   type ChatPort,
   type PortSocket,
@@ -42,6 +49,7 @@ const SCHEMA = [
   mig("0020_user_prefs.sql"),
   mig("0057_chat_line.sql"),
   mig("0078_mini_apps.sql"),
+  mig("0081_mini_app_style.sql"),
 ].join("\n");
 
 const DEV: MiniWho = { id: "u1", email: "dev@example.com", dev: true };
@@ -173,12 +181,26 @@ describe("gates", () => {
 });
 
 describe("publish", () => {
+  test("style persists through publish, reload, listing and republish, with omitted input defaulting to Lianki", async () => {
+    expect((await pub({ ...MANIFEST, style: "none" })).status).toBe(201);
+    expect(await body(await appInfo("calc", deps))).toMatchObject({ style: "none" });
+    expect((await body(await listMine(deps))).apps).toMatchObject([{ style: "none" }]);
+    expect(JSON.parse(bucket.store.get("mini-apps/u1/calc/manifest.json")!).style).toBe("none");
+    expect((await hostView("calc", "https://lianki.com", deps))?.style).toBe("none");
+    expect((await pub({ ...MANIFEST, style: "lianki", version: "0.2.0" })).status).toBe(200);
+    expect(await body(await appInfo("calc", deps))).toMatchObject({ style: "lianki" });
+    await pub({ ...MANIFEST, style: "none" });
+    await pub(MANIFEST);
+    expect(await body(await appInfo("calc", deps))).toMatchObject({ style: "lianki" });
+    expect((await pub({ ...MANIFEST, style: "other" })).status).toBe(400);
+  });
   test("stores the file and manifest in R2 and a row in D1; a republish keeps the id", async () => {
     const r = await pub();
     expect(r.status).toBe(201);
     expect(await body(r)).toEqual({
       slug: "calc",
       version: "0.1.0",
+      style: "lianki",
       size: HTML.length,
       url: "/m/calc",
     });
@@ -396,17 +418,48 @@ describe("the frame", () => {
     await pub();
   });
 
+  test("none preserves both frame security modes and explicit app-authored style opt-in", async () => {
+    await pub({ ...MANIFEST, style: "none" });
+    const plain = await hostView("calc", "https://lianki.com", deps);
+    if (plain?.frame.mode !== "srcdoc") throw Error("expected srcdoc");
+    expect(plain.style).toBe("none");
+    expect(plain.frame.sandbox).toBe("allow-scripts allow-forms");
+    expect(plain.frame.srcdoc).toContain('data-lk-style="none"');
+    expect(plain.frame.srcdoc).not.toContain("data-lk-pack");
+    expect(plain.frame.srcdoc).not.toContain('name="color-scheme"');
+    expect(plain.frame.srcdoc).toContain("connect-src 'none'");
+    expect(plain.frame.srcdoc).toContain('href="https://lianki.com/m/presets/lianki.css"');
+    cfg = config({ origin: "https://m.lianki.com" });
+    const origin = await hostView("calc", "https://lianki.com", deps);
+    if (origin?.frame.mode !== "origin") throw Error("expected origin");
+    const served = await serveApp(new Request(origin.frame.src), "calc", deps);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-security-policy")).toContain(
+      "sandbox allow-scripts allow-forms",
+    );
+    expect(served.headers.get("content-security-policy")).toContain("connect-src 'none'");
+    expect(served.headers.get("set-cookie")).toBeNull();
+    const html = await served.text();
+    expect(html).toContain('data-lk-style="none"');
+    expect(html).not.toContain("data-lk-pack");
+    expect(html).not.toContain('name="color-scheme"');
+    expect(html).toContain('href="https://lianki.com/m/presets/lianki.css"');
+  });
+
   test("srcdoc: the CSP meta and the SDK first, opaque sandbox", async () => {
     const v = await hostView("calc", "https://lianki.com", deps);
     expect(v).toMatchObject({ slug: "calc", name: "Calc", grants: {} });
     if (v?.frame.mode !== "srcdoc") throw new Error("expected srcdoc");
     expect(v.frame.sandbox).toBe("allow-scripts allow-forms");
     expect(v.frame.srcdoc).toStartWith(
-      '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;'
-        .replace("&#39;", "'")
-        .replace("&#39;", "'"),
+      `<!doctype html><html data-theme="auto" data-lk-style="lianki"><meta http-equiv="Content-Security-Policy" content="default-src 'none'`,
     );
-    expect(v.frame.srcdoc).toContain('<script src="https://lianki.com/m/sdk.js"></script><html>');
+    // The style pack is inlined (its <link> dropped), then the SDK, then the app.
+    expect(v.frame.srcdoc).toContain("<style data-lk-pack>");
+    expect(v.frame.srcdoc).toContain("--lk-primary: oklch(0.53 0.207 22.3)");
+    expect(v.frame.srcdoc).toEndWith(
+      '</style><script src="https://lianki.com/m/sdk.js"></script><html><head></head><body><script>1</script></body></html>',
+    );
     bucket.store.clear();
     expect(await hostView("calc", "https://lianki.com", deps)).toBeNull();
     expect(await hostView("nope", "https://lianki.com", deps)).toBeNull();
@@ -440,7 +493,11 @@ describe("the frame", () => {
     expect(r.headers.get("set-cookie")).toBeNull();
     expect(r.headers.get("x-content-type-options")).toBe("nosniff");
     const html = await r.text();
-    expect(html).toStartWith('<!doctype html><script src="https://lianki.com/m/sdk.js"></script>');
+    expect(html).toStartWith(
+      '<!doctype html><html data-theme="auto" data-lk-style="lianki"><meta name="color-scheme"',
+    );
+    expect(html).toContain("<style data-lk-pack>");
+    expect(html).toContain('</style><script src="https://lianki.com/m/sdk.js"></script><html>');
     expect(html).not.toContain("http-equiv");
     // Another host, another slug, no ticket, a republished file, the flag off: 404.
     const t = new URL(v.frame.src).searchParams.get("t")!;
@@ -498,6 +555,28 @@ describe("the frame", () => {
 });
 
 describe("store", () => {
+  test("local bootstrap applies style migration once and existing rows keep Lianki", async () => {
+    const old = createTestD1(
+      "CREATE TABLE mini_app(id TEXT PRIMARY KEY); INSERT INTO mini_app(id) VALUES ('existing');",
+    ) as unknown as MiniDb;
+    await ensureMiniAppStyle(old, mig("0081_mini_app_style.sql"));
+    expect(
+      await old
+        .prepare("SELECT style FROM mini_app WHERE id = 'existing'")
+        .first<{ style: string }>(),
+    ).toEqual({
+      style: "lianki",
+    });
+    await ensureMiniAppStyle(old, mig("0081_mini_app_style.sql"));
+    expect(
+      await old
+        .prepare("SELECT style FROM mini_app WHERE id = 'existing'")
+        .first<{ style: string }>(),
+    ).toEqual({
+      style: "lianki",
+    });
+    await expect(old.prepare("UPDATE mini_app SET style = 'other'").run()).rejects.toThrow();
+  });
   test("kv rows are per app; a row past the cap is refused atomically", async () => {
     expect(await kvSet(db, "a1", "k", "v", 10, T0)).toBe(true);
     expect(await kvSet(db, "a2", "k", "vvvv", 10, T0)).toBe(true);

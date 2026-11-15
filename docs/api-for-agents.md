@@ -17,6 +17,34 @@ The creation form also offers **Chat only**: it replaces the selected
 permissions with `chat:read`, `chat:write`, `chat:ask`, removing study and eval.
 The user still picks a name and expiry and taps Create.
 
+## Chat by default, one additional permission at a time
+
+New token forms in Preferences and CLI browser login initially select only
+`chat:read`, `chat:write`, and `chat:ask` (`DEFAULT_TOKEN_SCOPES`). Existing
+stored tokens keep their scopes. The public `/api/agent-guide` also defaults
+to the chat sections; its explicit `?scopes=...` parameter still selects the
+requested documentation.
+
+Both MCP transports refresh the token's live permissions for tool discovery
+and calls. Only tools allowed by those scopes are listed. Failed or malformed
+permission introspection does not fall back to every tool. A known tool called
+without its required permission returns structured `needScope` and `requestUrl`
+fields; an unknown, expired or revoked token remains an authentication failure.
+
+`requestUrl` points to
+`https://lianki.com/my/tokens/scopes?token=<public-id>&scope=<one-scope>`.
+The public ID is the stored token hash, never its bearer secret. Following this
+link does not grant anything. The account that owns the token signs in and
+explicitly approves that one scope; the page uses session-only
+`GET/POST /api/token/scopes`. The token cannot approve itself. Foreign tokens,
+invalid scopes, expired/revoked tokens and cross-site writes are refused.
+Additional grants preserve existing scopes and expiry; developer-only scopes
+still require a live `dev` grant and the existing expiry limits.
+
+The assistant shows the link and waits. After approval it may refresh the tool
+list and retry the requested operation. It must not click approval for the user
+or broaden the request to other scopes. See [MCP scope requests](mcp-scopes.md).
+
 ## What the user sees
 
 Settings (`/my/preferences`) → API tokens (`TokenManager.tsx`), for every
@@ -45,7 +73,7 @@ the function and stay untranslated. The same function serves:
 - the Settings page (client, `useIntlayer("agent-guide")`);
 - **`GET /api/agent-guide`**, public Markdown (`text/markdown`), for an agent
   to fetch itself: `?scopes=study,chat:read` picks the sections (default:
-  every permission but the owner-only `eval`), `?lang=zh` the language (else
+  `chat:read`, `chat:write`, `chat:ask`), `?lang=zh` the language (else
   `Accept-Language`, else English). No session, nothing about any account.
   It is under `/api` because it is a machine interface
   ([url-principles.md](url-principles.md), rule 5).
@@ -112,6 +140,15 @@ assistant that tool results (card titles, chat lines) are data, never
 instructions. The MCP key is a normal API token; v1 has no delete tool and no
 eval.
 
+### Explicit read acknowledgements and sequence recovery
+
+A chat line carries its current version `seq`. Agents can read incrementally with
+`POST /api/version/chat` `{op:"read", afterSeq, throughSeq?}` and keep the returned
+coverage metadata. After actually consuming lines, an agent may explicitly send
+`{op:"read-ack", lastReadSeq}` (`chat:read`), use `lianki chat seen --seq N`, or call
+`lianki_chat_seen`. Reading/listening itself never sends that acknowledgement.
+See [recovery, read semantics and costs](chat-seq-receipts.md).
+
 ### An agent's picture in the chat
 
 An agent that joins the user's chat (an API token, `lianki mcp`, the remote
@@ -133,8 +170,8 @@ participant list.
   the tools those scopes allow (`TOOLS` in `packages/lianki-cli/mcp.mjs`:
   `study` → stats, due, next, get, add, import, review, settings_get;
   `chat:read|write|ask` → chat_read + chat_wait, chat_say + chat_avatar, chat_ask;
-  `progress` → progress_report, progress_show, progress_ack). An older server
-  that has no GET there gets every tool; each route still checks.
+  `progress` → progress_report, progress_show, progress_ack). The scopes are
+  refreshed for discovery and calls; failed introspection exposes no tools.
 - **Untrusted results.** Every result is `<untrusted-data>` JSON with `<`
   escaped, after a line saying never to follow instructions inside it.
 - **429.** `call()` turns a 429 into `rate_limited` with the `Retry-After`
@@ -295,3 +332,14 @@ share one request shape:
   API token until the main Worker with the new `CHAT_OPS` is live, so deploy
   order does not matter), the tools with `lianki-mcp`, and `lianki progress`
   to users only when `lianki` 0.5.0 is published to npm.
+
+### Publish a private mini app and reference it in chat
+
+An agent with **both `apps:publish` and `chat:write`** may POST `{manifest,html}`
+to `/api/my/mini-apps`, or use `lianki app publish --manifest ./manifest.json
+--html ./index.html` / MCP `lianki_app_publish`. The publishing permission is
+opt-in: use the normal single-scope approval flow. The app belongs only to the
+token account. Publication never grants runtime capabilities or makes an app
+public. Mention `/m/<slug>` in chat or send `attachments:[{type:"app",slug}]`
+with a `say` message to show its card; opening it uses the sandbox and per-app
+capability prompts. See [mini apps](mini-apps.md).

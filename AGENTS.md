@@ -12,8 +12,10 @@ released to `prod` once a day, docs/shipping.md "Daily release"). Repo: `snolab/
 - **NEVER `--no-verify`** — pre-commit (seconds, staged files only) scans
   secrets, runs oxlint --fix + oxfmt, and syncs the userscript build,
   `lianki.meta.js` and `@version`; pre-push runs whole-repo lint, typecheck,
-  then only the unit tests and `qa:all` suites the change reaches
-  (`scripts/gate/affected.ts`; the full set, with coverage, runs in CI).
+  then only the unit tests the change reaches; the `qa:all` suites it reaches
+  run too, but only for a push to `main` or `prod` — a feature or preview
+  branch gets them in CI when its PR enters the queue (`scripts/gate/affected.ts`;
+  the full set, with coverage, runs in CI).
   Bypassing causes meta drift, broken userscript auto-updates, and failures CI
   finds later.
 - **NEVER `git reset --hard`** to move a branch — it silently destroys

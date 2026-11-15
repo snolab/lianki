@@ -3,10 +3,14 @@
 import { describe, expect, it } from "bun:test";
 import {
   DEFAULT_LANE,
+  LANE_NAMES,
   ROUTE_LANES,
+  getEffectiveLaneNames,
   isRouteLane,
+  laneHotwords,
   laneTakes,
   routeLine,
+  setCustomLaneNames,
   testText,
 } from "../lib/lane-route";
 
@@ -25,7 +29,12 @@ describe("routeLine: addressed lines", () => {
     ["coco, 看一下", ["codex"], "看一下"],
     ["Coco 帮我看看", ["codex"], "帮我看看"],
     ["可可，在吗", ["codex"], "在吗"],
+    ["Q扣，看下", ["codex"], "看下"],
+    ["扣扣，在吗", ["codex"], "在吗"],
     ["杰咪，在吗", ["agy"], "在吗"],
+    ["杰明，看一下", ["agy"], "看一下"],
+    ["咪宝，在吗", ["agy"], "在吗"],
+    ["咪宝，在吗？", ["agy"], "在吗？"],
     ["agy, 你好", ["agy"], "你好"],
     ["AGY。试一下", ["agy"], "试一下"],
     ["A G Y, hello", ["agy"], "hello"],
@@ -38,7 +47,12 @@ describe("routeLine: addressed lines", () => {
     ["Xiao Ke, 批准", ["chat"], "批准"],
     ["小可，批准", ["chat"], "批准"],
     ["小克，驳回", ["chat"], "驳回"],
+    ["小柯，在吗", ["chat"], "在吗"],
     ["晓可，搁置", ["chat"], "搁置"],
+    ["lianki, 看一下", ["chat"], "看一下"],
+    ["liagent: status", ["chat"], "status"],
+    ["agent-yes, review PR", ["chat"], "review PR"],
+    ["otoji，播放", ["chat"], "播放"],
     ["Linky, codex, 在吗", ["codex"], "在吗"],
     ["嘿，agy，你好", ["agy"], "你好"],
     ["hey codex, ping", ["codex"], "ping"],
@@ -50,6 +64,26 @@ describe("routeLine: addressed lines", () => {
     expect(r.addressed).toBe(true);
     expect(r.lanes).toEqual([...lanes]);
     expect(r.text).toBe(rest);
+  });
+});
+
+describe("routeLine: 小柯 and all hands further in (2026-11-15)", () => {
+  it("小柯 is 小克's own name: no separator needed", () => {
+    const r = routeLine("小柯你给Li配置一下");
+    expect(r.addressed).toBe(true);
+    expect(r.lanes).toEqual(["chat"]);
+    expect(r.text).toBe("你给Li配置一下");
+  });
+  it.each(["小朋友们全体都有包书一。", "小朋友们全体都有报数", "大家都有报数", "全体都有，报数"])(
+    "%j addresses every lane",
+    (text) => {
+      const r = routeLine(text);
+      expect(r.addressed).toBe(true);
+      expect(r.lanes).toEqual([...ROUTE_LANES]);
+    },
+  );
+  it("全体 far into a line is not an all-hands call", () => {
+    expect(routeLine("我今天读了一篇很长的文章，讲的是全体会议").addressed).toBe(false);
   });
 });
 
@@ -123,5 +157,45 @@ describe("laneTakes: exactly one lane per line (no triple replies)", () => {
     expect(testText(t)).toBe("codex, 测试");
     expect(testText({ from: "owner", text: "[lane-test] codex, x" })).toBeNull();
     expect(testText({ from: "agent", text: "codex, x" })).toBeNull();
+  });
+});
+
+describe("customLaneNames and laneHotwords", () => {
+  it("getEffectiveLaneNames returns default LANE_NAMES initially", () => {
+    setCustomLaneNames(null);
+    expect(getEffectiveLaneNames()).toEqual(LANE_NAMES);
+  });
+
+  it("setCustomLaneNames overrides or extends lane names dynamically", () => {
+    setCustomLaneNames({
+      agy: { exact: ["jamie", "agy"] },
+      codex: { heard: ["koko"] },
+    });
+    // One table (chat.lanes): the names are added to the built-in ones, which stay.
+    const eff = getEffectiveLaneNames();
+    expect(eff.agy.exact).toEqual([...LANE_NAMES.agy.exact, "jamie"]);
+    expect(eff.agy.heard).toEqual(LANE_NAMES.agy.heard);
+    expect(eff.codex.heard).toEqual(LANE_NAMES.codex.heard);
+    expect(eff.codex.exact).toEqual(LANE_NAMES.codex.exact);
+
+    expect(routeLine("jamie, 在吗").lanes).toEqual(["agy"]);
+    // Set again: that lane's wake names are replaced, not piled up.
+    setCustomLaneNames({ agy: { exact: ["jay"] } });
+    expect(getEffectiveLaneNames().agy.exact).toEqual([...LANE_NAMES.agy.exact, "jay"]);
+
+    setCustomLaneNames(null);
+    expect(getEffectiveLaneNames()).toEqual(LANE_NAMES);
+  });
+
+  it("laneHotwords gathers all unique exact and heard names", () => {
+    const words = laneHotwords();
+    expect(words).toContain("codex");
+    expect(words).toContain("杰咪");
+    expect(words).toContain("咪宝");
+    expect(words).toContain("lianki");
+    expect(words).toContain("liagent");
+    expect(words).toContain("agent-yes");
+    expect(words).toContain("otoji");
+    expect(words).toContain("可可");
   });
 });

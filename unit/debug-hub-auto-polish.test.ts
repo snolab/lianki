@@ -89,7 +89,14 @@ function fakeTimer(): HubTimer & { pending: { f: () => void; ms: number }[]; fir
 
 type Polish = (req: { userId: string; input: Record<string, unknown> }) => unknown;
 
-function setup(opts: { polish?: Polish; flags?: Record<string, unknown>; noRpc?: boolean } = {}) {
+function setup(
+  opts: {
+    polish?: Polish;
+    flags?: Record<string, unknown>;
+    noRpc?: boolean;
+    config?: Record<string, unknown>;
+  } = {},
+) {
   const flags: Record<string, unknown> = {
     "stt.polish": true,
     "voice.auto-polish": true,
@@ -114,7 +121,7 @@ function setup(opts: { polish?: Polish; flags?: Record<string, unknown>; noRpc?:
   const SESSIONS = {
     live: async () => "live",
     flag: async (k: string) => flags[k] ?? false,
-    config: async () => undefined,
+    config: async (k: string) => opts.config?.[k],
     ...(opts.noRpc ? {} : { polishLines }),
   };
   const sockets: FakeSocket[] = [];
@@ -288,6 +295,46 @@ describe("automatic polish", () => {
     expect(v2).toMatchObject({ collapsedInto: "v1" });
   });
 
+  it("a reopened line (stt.mergeReopenSec) drops its polish and is polished once more, at its passage end", async () => {
+    const s = setup({ flags: { "stt.merge": true }, config: { "stt.mergeReopenSec": 20 } });
+    const p = await s.owner();
+    const timing = (start: number, end: number) => ({
+      t_speechStart: start,
+      t_lastVoice: end,
+      t_speechEnd: end + 600,
+    });
+    await s.msg(p, { ...s.voice("v1", "我想把按钮放到右边"), timing: timing(0, 1000) });
+    await s.settle();
+    expect(s.calls).toHaveLength(1);
+    expect(s.stored()[0]).toMatchObject({
+      text: "我想把按钮放到右边。",
+      edited: { by: AUTO_POLISH_BY },
+    });
+    // Eight seconds later he goes on: the same line, read as heard again.
+    s.tick(8000);
+    await s.msg(p, {
+      ...s.voice("v2", "然后改成红色"),
+      timing: timing(8600, 9600),
+      continues: "v1",
+    });
+    expect(s.stored()).toHaveLength(1);
+    expect(s.stored()[0]).toMatchObject({ id: "v1", text: "我想把按钮放到右边然后改成红色" });
+    // Still being spoken: the tail timer asks nothing.
+    await s.settle();
+    expect(s.calls).toHaveLength(1);
+    // The passage end: one polish for the whole line, and only one.
+    await s.msg(p, { type: "passage-end" });
+    await s.settle();
+    await s.msg(p, { type: "passage-end" });
+    await s.settle();
+    expect(s.calls).toHaveLength(2);
+    expect(s.calls[1]!.input.lines).toEqual([{ id: "v1", text: "我想把按钮放到右边然后改成红色" }]);
+    expect(s.stored()[0]).toMatchObject({
+      text: "我想把按钮放到右边然后改成红色。",
+      edited: { by: AUTO_POLISH_BY },
+    });
+  });
+
   it("a line already polished (an agent got there first) is left alone, and never polished twice", async () => {
     const s = setup();
     const p = await s.owner();
@@ -361,4 +408,65 @@ describe("automatic polish", () => {
     expect(p.all("edited")).toHaveLength(0);
     expect(s.stored().map((m) => m.text)).toEqual(["hello world", "same words", "third"]);
   });
+});
+
+it("PTT keeps realtime and whole-recording originals with model provenance through final polish", async () => {
+  const s = setup({
+    polish: async () => ({
+      ok: true,
+      verdict: { v: 1, lines: [{ id: "ptt-dual", text: "Reconciled final wording." }] },
+    }),
+  });
+  const page = await s.owner();
+  const recheck = {
+    at: 1_000_000,
+    engine: "@cf/openai/whisper-large-v3-turbo",
+    heard: "Realtime baseline.",
+    text: "Whole recording candidate.",
+    lang: "en",
+  };
+  await s.msg(page, {
+    type: "chat",
+    id: "ptt-dual",
+    text: recheck.heard,
+    source: "stt",
+    stt: { route: "local", engine: "sensevoice" },
+    recheck,
+    speaker: { decision: "me" },
+  });
+  expect(s.stored()[0]).toMatchObject({ text: recheck.heard, recheck });
+  expect(s.stored()[0]).not.toHaveProperty("speaker");
+  expect(s.stored()[0]).not.toHaveProperty("mergeable");
+  await s.settle();
+  expect(s.calls[0]!.input.lines).toEqual([
+    { id: "ptt-dual", text: recheck.heard, stt: { route: "local", engine: "sensevoice" }, recheck },
+  ]);
+  expect(s.stored()[0]).toMatchObject({
+    text: "Reconciled final wording.",
+    raw: recheck.heard,
+    recheck,
+  });
+});
+
+it("cloud PTT retains the complete final even when its live prefix was partial and polish is off", async () => {
+  const s = setup({ flags: { "voice.auto-polish": false } });
+  const page = await s.owner();
+  const recheck = {
+    at: 1_000_000,
+    engine: "@cf/openai/whisper-large-v3-turbo",
+    heard: "Only a preview",
+    text: "Only a preview, followed by the complete ending.",
+    heardPartial: true,
+  };
+  await s.msg(page, {
+    type: "chat",
+    id: "ptt-cloud",
+    text: recheck.text,
+    source: "stt",
+    stt: { route: "cloud", engine: recheck.engine },
+    recheck,
+  });
+  await s.settle();
+  expect(s.calls).toHaveLength(0);
+  expect(s.stored()[0]).toMatchObject({ text: recheck.text, recheck });
 });

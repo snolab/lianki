@@ -50,9 +50,10 @@ const broken: D1Like = {
 };
 
 describe("booking", () => {
-  it("days are JST", () => {
-    expect(costDay(new Date("2026-11-10T14:59:59Z"))).toBe("2026-11-10");
-    expect(costDay(new Date("2026-11-10T15:00:00Z"))).toBe("2026-11-11");
+  it("the ledger's day is the UTC date (no zone offset)", () => {
+    expect(costDay(new Date("2026-11-10T23:59:59Z"))).toBe("2026-11-10");
+    expect(costDay(new Date("2026-11-11T00:00:00Z"))).toBe("2026-11-11");
+    expect(costDay(new Date("2026-11-10T15:00:00Z"))).toBe("2026-11-10");
   });
 
   it("freeCall books the provider cost to the payer, nothing charged", async () => {
@@ -271,7 +272,7 @@ describe("aggregation", () => {
     await bookCost(d1, { userId: "u2", feature: "speech.stt", usd: 9 }, at("2026-11-01T00:00:00Z"));
     // Paid: u2 spent 1.5 credits on read.gloss (= 0.01 USD at our price → provider cost 0.01/1.5).
     charge("read.gloss:u2:abc", "u2", 1_500_000, "2026-11-11T02:00:00.000Z");
-    // A Learning Partner reply (key without a feature) — 15:30 UTC is the next JST day.
+    // A Learning Partner reply (key without a feature) — 15:30 UTC: the next day at UTC+9.
     charge("u1:msg1", "u1", 150_000, "2026-11-10T15:30:00.000Z");
     // A pending hold is not spent.
     d1.raw().exec(
@@ -281,8 +282,33 @@ describe("aggregation", () => {
 
   const range = { from: "2026-11-10", to: "2026-11-11" };
 
-  it("by day and feature, free and paid side by side", async () => {
+  it("days are UTC by default: a time near midnight stays on its UTC day", async () => {
     const s = await costSummary(d1, range);
+    expect(s.byDay.map((d) => d.day)).toEqual(["2026-11-11", "2026-11-10"]);
+    expect(s.byDay[0]).toMatchObject({ freeCalls: 3, paidCalls: 1 });
+    expect(s.byDay[1]).toMatchObject({ freeCalls: 1, paidCalls: 1 });
+    expect(s.totals).toMatchObject({ freeCalls: 4, paidCalls: 2 });
+  });
+
+  it("a viewer west of UTC: the range's days shift with the offset", async () => {
+    // UTC−5: 2026-11-11T00:00Z is 2026-11-10 19:00 local.
+    const s = await costSummary(d1, { from: "2026-11-09", to: "2026-11-11" }, -300);
+    expect(s.byDay.map((d) => d.day)).toEqual(["2026-11-10", "2026-11-09"]);
+    expect(s.byDay[0]).toMatchObject({ freeCalls: 3, paidCalls: 2 });
+    expect(s.byDay[1]).toMatchObject({ freeCalls: 1, paidCalls: 0 });
+  });
+
+  it("a row written with the older JST day still lands by its time", async () => {
+    // Before 2026-11-15 `day` was the JST date: 16:00Z on 11-11 was booked as 11-12.
+    d1.raw().exec(
+      "INSERT INTO cost_ledger (user_id, feature, usd_micro, units, day, at) VALUES ('u1', 'words.tts', 1, 0, '2026-11-12', '2026-11-11T16:00:00.000Z')",
+    );
+    const s = await costSummary(d1, range);
+    expect(s.byDay[0]).toMatchObject({ day: "2026-11-11", freeCalls: 4 });
+  });
+
+  it("by day and feature, free and paid side by side (a viewer at UTC+9)", async () => {
+    const s = await costSummary(d1, range, 540);
     expect(s.totals.freeCalls).toBe(4);
     expect(s.totals.freeMicro).toBeCloseTo(3600, 6);
     expect(s.totals.paidCalls).toBe(2);
@@ -298,7 +324,7 @@ describe("aggregation", () => {
   });
 
   it("accounts, dearest first, with display names and no emails", async () => {
-    const r = await costUsers(d1, range, 0, 10);
+    const r = await costUsers(d1, range, 0, 10, 540);
     expect(r.total).toBe(3);
     expect(r.rows.map((x) => x.userId)).toEqual(["u2", "u1", ""]);
     expect(r.rows[0]).toMatchObject({ name: "Bob", freeCalls: 1, paidCalls: 1 });
@@ -329,5 +355,14 @@ describe("aggregation", () => {
     expect(u.rows).toHaveLength(2);
     expect(u.next).toBe(2);
     expect(rangeOf(new URLSearchParams(), NOW)).toEqual({ from: "2026-10-13", to: "2026-11-11" });
+    // The viewer's offset (?tz=minutes east of UTC) decides the days.
+    const west = await (
+      await costsGet(get("from=2026-11-09&to=2026-11-11&tz=-300"), true, d1, NOW)
+    ).json();
+    expect(west.byDay.map((d: { day: string }) => d.day)).toEqual(["2026-11-10", "2026-11-09"]);
+    expect(rangeOf(new URLSearchParams(), new Date("2026-11-11T20:00:00Z"), 540)).toEqual({
+      from: "2026-10-14",
+      to: "2026-11-12",
+    });
   });
 });

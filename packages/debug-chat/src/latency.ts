@@ -23,7 +23,12 @@ import type { ChatMessage, SttTag, VoiceTiming } from "./wire";
  * One utterance's marks while it is on its way (keyed by the mic's seq).
  * `stt`: which recognizer made its final (MicButton), sent beside the line's timing.
  */
-export type UttMarks = VoiceTiming & { dropped?: boolean; stt?: SttTag };
+export type UttMarks = VoiceTiming & {
+  dropped?: boolean;
+  stt?: SttTag;
+  /** The repetition guard cut a loop off its final (stt-repeat.ts): noted on the line's SttTag. */
+  repeat?: "trimmed";
+};
 
 /** A voice line after it was sent, until its reply (and its first sound). */
 export type LatencyRecord = {
@@ -117,7 +122,10 @@ export function pickTiming(
   if (!best) return undefined;
   const end = best[1].t_speechEnd as number;
   const used = [...marks].filter(([, m]) => (m.t_speechEnd ?? 0) <= end).map(([k]) => k);
-  const { dropped: _d, stt, ...timing } = best[1];
+  const { dropped: _d, stt: tag, repeat: _r, ...timing } = best[1];
+  // Any utterance of the line had a loop cut off: the line's tag says so.
+  const cut = used.some((k) => marks.get(k)?.repeat === "trimmed");
+  const stt = tag && cut ? { ...tag, repeat: "trimmed" as const } : tag;
   // A line joined from several utterances began when the first of them did.
   const starts = used.flatMap((k) => marks.get(k)?.t_speechStart ?? []);
   if (starts.length) timing.t_speechStart = Math.min(...starts);

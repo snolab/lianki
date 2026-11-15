@@ -7,6 +7,7 @@
 
 import type { Ask, AskAnswer } from "./ask";
 import type { LaneId, VoiceId } from "./voices";
+import type { LaneEvent } from "./lane-events";
 
 export * from "./node-path";
 
@@ -45,6 +46,9 @@ export type Sender = {
  * (optional; absent on older lines and on the agent's) draws the avatar.
  */
 export type ChatMessage = {
+  /** Current durable thread version; identity and logical display time remain stable. */
+  seq?: number;
+  removed?: true;
   id: string;
   from: "owner" | "friend" | "agent";
   label: string;
@@ -125,6 +129,12 @@ export type ChatMessage = {
    */
   parts?: MergedPart[];
   /**
+   * The realtime reading and independent whole-recording recognition, with provenance.
+   * Continuous passages take the whole reading before polish; deliberate PTT keeps
+   * the signed realtime body until polish. Cloud-only prefixes are marked partial.
+   */
+  recheck?: RecheckMark;
+  /**
    * A voice line's timestamps on the sender's clock (VoiceTiming; the page's
    * latency record, packages/debug-chat/src/latency.ts). Optional: older pages
    * send none, and an older hub drops it.
@@ -185,6 +195,8 @@ export type ChatMessage = {
    * cleanAttachments. Owner lines only, as the host's upload is.
    */
   attachments?: AttachmentRef[];
+  /** Safe mini app references normalized from agent app attachments; HTML is never on a chat line. */
+  apps?: { type: "app"; slug: string }[];
   /**
    * Where a voice line was spoken: the page's path and title and the text on
    * its screen (cleanScene). Only on `source: "stt"` lines; what the agent's
@@ -212,6 +224,12 @@ export type ChatMessage = {
     /** "main" / "blocked": the lane (or "owner") it is for. */
     lane?: string;
   };
+  /**
+   * Stamped by the hub only (workers/push/src/lane-registry.ts): a system line
+   * about a lane (joined, listening live, read-only, left, muted; lane-events.ts).
+   * Its text is in the thread's language; a page shows it in its own.
+   */
+  laneEvent?: LaneEvent;
   /** An agent line that asks: the question(s) and their options (ask.ts). */
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
@@ -220,6 +238,9 @@ export type ChatMessage = {
 
 /** The hub telling pages and listeners that an ask was answered by a tap. */
 export type AnsweredEvent = {
+  /** Full current version, so a missed prior patch cannot lose state. */
+  message?: ChatMessage;
+  seq?: number;
   type: "answered";
   /** The ask's message id, and the ask's own id. */
   id: string;
@@ -234,6 +255,9 @@ export type AnsweredEvent = {
  * (eval.ts withdraw): the card greys out, takes no tap, and is never read aloud.
  */
 export type WithdrawnEvent = {
+  /** Full current version, so a missed prior patch cannot lose state. */
+  message?: ChatMessage;
+  seq?: number;
   type: "withdrawn";
   /** The ask's message id, the ask's own id, and its thread. */
   id: string;
@@ -246,7 +270,8 @@ export type WithdrawnEvent = {
 export function applyWithdrawn<M extends ChatMessage>(m: M, e: Omit<WithdrawnEvent, "type">): M {
   if (m.id !== e.id || !m.ask || m.ask.askId !== e.askId || (m.thread ?? "owner") !== e.thread)
     return m;
-  return { ...m, ask: { ...m.ask, withdrawnAt: e.withdrawnAt } };
+  if (e.message) return { ...e.message } as M;
+  return { ...m, ...(e.seq === undefined ? {} : { seq: e.seq }), ask: { ...m.ask, withdrawnAt: e.withdrawnAt } };
 }
 
 /** Where an owner line came from: "stt" (the widget's mic). Absent = typed. */
@@ -268,6 +293,40 @@ export type EchoMark = {
   of: string;
   sim: number;
 };
+/**
+ * The second of three readings of his speech (docs/dev-debug-widget.md, "Whisper
+ * re-listens to the whole run"): `heard` the streaming STT's text (level 1), `text`
+ * what Whisper read from the run's whole audio (level 2), its `engine` and `lang`.
+ * A polish after it (level 3) is the line's `text` once `edited.by` is not "merge".
+ */
+export type RecheckMark = {
+  at: number;
+  engine: string;
+  lang?: string;
+  heard: string;
+  text: string;
+  heardPartial?: true;
+  /** Whisper re-read only the parts from this one on (the run was longer than stt.recheckMaxSec); hub-stamped. */
+  from?: number;
+};
+
+/** A second recognition candidate is metadata, never a speaker authorization. */
+export function cleanRecheckMark(raw: unknown, primary?: string, stt?: SttTag): RecheckMark | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.at !== "number" || !Number.isFinite(r.at) || r.at < 0 ||
+      typeof r.engine !== "string" || !STT_ENGINE.test(r.engine) ||
+      typeof r.heard !== "string" || !r.heard.trim() || r.heard.length > MAX_CHAT ||
+      typeof r.text !== "string" || !r.text.trim() || r.text.length > MAX_CHAT) return undefined;
+  const heard = r.heard.trim();
+  if (primary !== undefined && (r.heardPartial === true
+    ? stt?.route !== "cloud" || r.text.trim() !== primary
+    : heard !== primary)) return undefined;
+  return { at: r.at, engine: r.engine, heard, text: r.text.trim(),
+    ...(r.heardPartial === true ? { heardPartial: true } : {}),
+    ...(typeof r.lang === "string" && /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/.test(r.lang) ? { lang: r.lang } : {}) };
+}
+
 /** One utterance of a merged line (ChatMessage.parts): its raw text and what it arrived with. */
 export type MergedPart = {
   id: string;
@@ -312,6 +371,9 @@ export type PassageMark = { at: number; by: string; ids: string[] };
  * listeners update that line in place (never read aloud again).
  */
 export type EditedEvent = {
+  /** Full current version, so a missed prior patch cannot lose state. */
+  message?: ChatMessage;
+  seq?: number;
   type: "edited";
   id: string;
   thread: string;
@@ -322,6 +384,8 @@ export type EditedEvent = {
   parts?: MergedPart[];
   /** A merge: the utterance that just joined (the hub's answer to its `id`). */
   merged?: { id: string; text: string };
+  /** A merged line re-heard by Whisper at its run's end: `text` and `raw` are its reading. */
+  recheck?: RecheckMark;
   /** An undo: the lines this one goes back to, in order; the first keeps this id. */
   split?: ChatMessage[];
   /** A summary of a run of lines starting at `id` (its other lines are hidden). */
@@ -345,12 +409,15 @@ export type PolishDueEvent = {
 /** A message updated by an EditedEvent; any other message is returned as is. */
 export function applyEdit<M extends ChatMessage>(m: M, e: Omit<EditedEvent, "type">): M {
   if (m.id !== e.id || (m.thread ?? "owner") !== e.thread) return m;
+  if (e.message) return { ...e.message } as M;
   return {
     ...m,
+    ...(e.seq === undefined ? {} : { seq: e.seq }),
     text: e.text,
     raw: e.raw,
     edited: e.edited,
     ...(e.parts ? { parts: e.parts } : {}),
+    ...(e.recheck ? { recheck: e.recheck } : {}),
     ...(e.summary ? { summary: e.summary } : {}),
     ...(e.passage ? { passage: e.passage } : {}),
   };
@@ -971,6 +1038,14 @@ export type ChatStrings = {
   etaGanttLinear: string;
   /** The other of the two buttons of that switch in the header of the full-screen task timeline (a Gantt chart): draws the time axis logarithmically, near times wide and far times compressed, so minutes and days fit one screen. A single short word for 'logarithmic' as on a chart's axis, abbreviated if usual (对数 in Chinese, 'Log' in English); the button is narrow. */
   etaGanttLog: string;
+  /** Screen-reader label and tooltip of the gear button in the header of the full-screen timeline (Gantt): toggles the view settings panel. */
+  etaGanttSettings: string;
+  /** Section heading in the timeline settings panel for completed tasks visibility control. */
+  etaGanttHideDone: string;
+  /** Button in the timeline settings panel to hide completed tasks. */
+  etaGanttHide: string;
+  /** Button in the timeline settings panel to show completed tasks. */
+  etaGanttShow: string;
   /** A task waiting for the owner (Gantt and list): the red mark's label, and before its reminder time. */
   etaWaitingYou: string;
   /** The full-screen Gantt's one-line legend: the underline is the reported progress, the red line now. */
@@ -991,6 +1066,20 @@ export type ChatStrings = {
   etaTickStatus: string;
   /** The tick note's close button (screen reader, tooltip). */
   etaTickClose: string;
+  /** The ETA bar's change ticker (eta-ticker.ts): a new task; {task} its name. */
+  etaNewsNew: string;
+  /** …a task done. */
+  etaNewsDone: string;
+  /** …done before its ETA; {t} how long before ("20M"). */
+  etaNewsEarly: string;
+  /** …its ETA pushed later by {t}. */
+  etaNewsLater: string;
+  /** …blocked. */
+  etaNewsBlocked: string;
+  /** …now waiting for the owner. */
+  etaNewsWaiting: string;
+  /** …its ETA reached, not done. */
+  etaNewsLate: string;
   /** The arrow at the left edge of the timeline for a task whose bar is off-screen, earlier (screen reader, tooltip); {task} is its name. */
   etaGanttToEarlier: string;
   /** The same arrow at the right edge, for a bar off-screen later. */
@@ -1053,7 +1142,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   askJump: "Go to the nearest unanswered question above. Unanswered above: {count}",
   fullScreen: "Full screen",
   fullScreenExit: "Exit full screen",
-  dragGrip: "Move the chat: drag. Tap to fold or open, double-tap for the menu",
+  dragGrip: "Drag to move. Tap to fold or open; double-click or double-tap for full screen. Right-click or touch and hold for the menu.",
   vpMenu: "Voiceprint",
   vpTitle: "Your voiceprint",
   vpNone: "No voiceprint yet.",
@@ -1177,6 +1266,10 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaGanttScale: "Time axis",
   etaGanttLinear: "Linear",
   etaGanttLog: "Log",
+  etaGanttSettings: "Timeline settings",
+  etaGanttHideDone: "Completed tasks",
+  etaGanttHide: "Hide",
+  etaGanttShow: "Show",
   etaWaitingYou: "Waiting for you",
   etaGanttLegend: "Underline = reported progress · red line = now",
   etaReminder: "reminder in {t}",
@@ -1187,6 +1280,13 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaTickSet: "estimated: {names}",
   etaTickStatus: "status changed: {names}",
   etaTickClose: "Close",
+  etaNewsNew: "new: {task}",
+  etaNewsDone: "done: {task}",
+  etaNewsEarly: "done {t} early: {task}",
+  etaNewsLater: "{t} later: {task}",
+  etaNewsBlocked: "blocked: {task}",
+  etaNewsWaiting: "waiting for you: {task}",
+  etaNewsLate: "ETA reached: {task}",
   etaGanttToEarlier: "Scroll back to {task}",
   etaGanttToLater: "Scroll ahead to {task}",
   etaList: "Timed tasks",
@@ -1499,7 +1599,13 @@ export function cleanTiming(raw: unknown): VoiceTiming | undefined {
  * shown to friends or normal users); it never carries text.
  */
 export type SttRoute = "local" | "cloud";
-export type SttTag = { route: SttRoute; engine?: string; fallback?: true };
+export type SttTag = {
+  route: SttRoute;
+  engine?: string;
+  fallback?: true;
+  /** The repetition guard cut a decoding loop off the text (stt-repeat.ts). */
+  repeat?: "trimmed";
+};
 /** An engine or model id: "sensevoice-small-2024-07-17-int8", "@cf/openai/whisper-large-v3-turbo". */
 const STT_ENGINE = /^[@A-Za-z0-9][A-Za-z0-9@._/+:-]{0,79}$/;
 
@@ -1511,6 +1617,7 @@ export function cleanStt(raw: unknown): SttTag | undefined {
   const out: SttTag = { route: r.route };
   if (typeof r.engine === "string" && STT_ENGINE.test(r.engine)) out.engine = r.engine;
   if (r.fallback === true && r.route === "cloud") out.fallback = true;
+  if (r.repeat === "trimmed") out.repeat = "trimmed";
   return out;
 }
 
@@ -1538,3 +1645,6 @@ export function sttTagText(
   const engine = stt.engine?.split("/").at(-1);
   return [where, engine, stt.fallback ? l.sttFallback : undefined].filter(Boolean).join(" · ");
 }
+
+/** Authenticated thread replay coverage, including accepted nonvisible versions. */
+export type ChatReplayRange = { type: "history"; thread: string; messages: ChatMessage[]; removed: {id:string;seq:number}[]; afterSeq: number; throughSeq: number; headSeq: number; prunedThroughSeq: number; skipped: { from: number; to: number }[] };

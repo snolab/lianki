@@ -1,7 +1,7 @@
 "use client";
 
 import { useUi } from "@lianki/ui-state";
-import { Disclosure } from "./icons";
+import { Disclosure, Icon } from "./icons";
 import {
   type CSSProperties,
   Fragment,
@@ -63,6 +63,18 @@ import {
   wheelFactor,
 } from "./gantt-view";
 import {
+  DBLTAP,
+  DBLTAP_IDLE,
+  type DbltapPointer,
+  type DbltapState,
+  type DbltapStep,
+  dbltapCancel,
+  dbltapDown,
+  dbltapHolds,
+  dbltapMove,
+  dbltapUp,
+} from "./gantt-dbltap";
+import {
   GANTT_GROUPS,
   type GanttGroupDef,
   type GanttLine,
@@ -74,6 +86,15 @@ import {
   toggleOpen,
 } from "./gantt-groups";
 import { ganttGroupsUi, ganttPrefs } from "./ui-store";
+import { readGanttHideDone, writeGanttHideDone } from "./gantt-settings";
+import {
+  GANTT_STATUS_COLORS,
+  GANTT_STATUS_FALLBACK_LABELS,
+  GANTT_STATUS_KEYS,
+  type GanttStatusKey,
+  type TaskStateSegment,
+  computeStateSegments,
+} from "./gantt-states";
 import type { ChatStrings } from "./wire";
 
 /**
@@ -92,7 +113,9 @@ import type { ChatStrings } from "./wire";
  * leaves the scroller room to bounce. Pinch (touch) or ctrl+wheel
  * (trackpad) zooms about the fingers' midpoint, batched to one step a frame;
  * on iPhone the touch pinch alone zooms (Safari's gesture events, which
- * fire alongside it, only stop the page zoom). ✕ or Escape closes.
+ * fire alongside it, only stop the page zoom). Touch or pen only, a tap
+ * and then a drag zooms like a map (gantt-dbltap.ts): down = in, the time
+ * under the finger stays under it. ✕ or Escape closes.
  *
  * The axis is logarithmic by default (owner, 2026-11-09 15:27 JST): distance
  * from Now compressed symmetrically (gantt-view.ts symlog), so minute and day
@@ -115,6 +138,10 @@ type Strings = Pick<
   | "etaGanttScale"
   | "etaGanttLinear"
   | "etaGanttLog"
+  | "etaGanttSettings"
+  | "etaGanttHideDone"
+  | "etaGanttHide"
+  | "etaGanttShow"
   | "etaWaitingYou"
   | "etaReminder"
   | "etaGanttLegend"
@@ -207,6 +234,9 @@ const charPxOf = (el: HTMLElement) => {
 
 /** A child row's name is indented past its parent's ▸/▾. */
 const CHILD_INDENT = "2.75rem";
+/** The scroller's own touch-action: native pan, no page zoom (the double-tap drag sets none while armed). */
+const PAN = "pan-x pan-y";
+
 /** The ▸/▾ button's width (its height takes the row; .tap-40 makes it 40 px tall to the touch). */
 const TOGGLE_W = 28;
 /** A slice's tap area is at least this wide (px), however short its bar. */
@@ -308,9 +338,11 @@ function barMarks(
   top: number,
   h: number,
   mode: "row" | "slice",
+  onSelectSegment?: (info: { task: EtaTask; seg: TaskStateSegment } | null) => void,
 ) {
   const b = ganttBar(t, axis, now);
   const parked = isParked(t);
+  const segments = useMemo(() => computeStateSegments(t, axis, now), [t, axis, now]);
   // A range's tail (P5 → P95) on a running bar; queued, parked and done draw whole.
   const tail = !t.done && !t.queued && !parked ? b.w - b.solid : 0;
   // The original plan as a ghost; a done task's bar is how it really ran, so with no
@@ -364,7 +396,35 @@ function barMarks(
           ...(t.queued ? { outline: `1px dashed ${c("muted")}`, outlineOffset: -1 } : {}),
           ...(parked ? parkedBar(c("bar"), c("muted")) : {}),
         }}
-      />
+      >
+        {!parked &&
+          !t.queued &&
+          segments.length > 0 &&
+          segments.map((seg, i) => {
+            const segLeft = Math.max(0, seg.x - b.x);
+            const segW = Math.max(1, Math.min(seg.w, (tail > 0 ? b.solid : b.w) - segLeft));
+            const tooltip = `${seg.label} · ${seg.durationLabel}`;
+            return (
+              <span
+                key={`${seg.status}:${seg.from}:${i}`}
+                data-testid="debug-chat-gantt-state-segment"
+                data-status={seg.status}
+                title={tooltip}
+                aria-label={tooltip}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectSegment?.({ task: t, seg });
+                }}
+                className="absolute inset-y-0 transition-opacity hover:opacity-80 active:opacity-60 cursor-pointer"
+                style={{
+                  left: segLeft,
+                  width: segW,
+                  background: seg.color,
+                }}
+              />
+            );
+          })}
+      </span>
       {!parked &&
         !t.queued &&
         b.fill > 0 &&
@@ -452,7 +512,13 @@ export function GanttFull({
   /** The categories (gantt-groups.ts): the default table, or a config-store value. */
   groups?: readonly GanttGroupDef[];
 }) {
-  const rows = useMemo(() => ganttRowsByEnd(ganttPlan(tasks, now)), [tasks, now]);
+  const [hideDone, setHideDone] = useState(readGanttHideDone);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const plannedTasks = useMemo(
+    () => (hideDone ? tasks.filter((t) => !t.done) : tasks),
+    [tasks, hideDone],
+  );
+  const rows = useMemo(() => ganttRowsByEnd(ganttPlan(plannedTasks, now)), [plannedTasks, now]);
   /** The categories this tab has open (session UI state); folded is the default. */
   const groupsOpen = useUi(ganttGroupsUi(), (s) => s.open);
   const lines = useMemo(
@@ -633,10 +699,21 @@ export function GanttFull({
     // One zoom step a frame: the steps between frames multiply, the pans add.
     let step: { cx: number; factor: number; dx: number; dy: number } | null = null;
     let frame = 0;
+    /** Double-tap-and-drag (touch/pen): the machine, its zoom's start and where the pointer is now. */
+    let tap: DbltapState = DBLTAP_IDLE;
+    let drag: { from: ReturnType<typeof pinchStart>; factor: number; x: number } | null = null;
+    /** The release after a drag zoom: its click (if the browser sends one) is not a tap. */
+    let eatClick = false;
+    let disarm = 0;
     /** A client x as px from the view's left edge (the scroller's own box). */
     const viewX = (clientX: number) => clientX - el.getBoundingClientRect().left - el.clientLeft;
     const flush = () => {
       frame = 0;
+      if (drag) {
+        const v = view.current;
+        if (v) commit(pinchView(drag.from, drag.factor, viewX(drag.x), v.w, nowRef.current));
+        return;
+      }
       if (pinch) {
         // Absolute from the pinch's start: t0 back under the midpoint, exactly.
         const p = pinch.now;
@@ -702,6 +779,68 @@ export function GanttFull({
         touching = false;
       }
     };
+    // Double-tap, then drag: the browser must not pan that second pointer, so
+    // touch-action goes to none only while a second down would arm it (no
+    // delay for a single tap, a single drag still pans natively).
+    const hold = () => {
+      el.style.touchAction = dbltapHolds(tap, performance.now()) ? "none" : PAN;
+    };
+    const apply = (r: DbltapStep) => {
+      tap = r.state;
+      const o = r.out;
+      if (o?.type === "start") {
+        const v = view.current;
+        if (v)
+          drag = {
+            from: pinchStart(v.axis, pending.current ?? el.scrollLeft, viewX(o.x), nowRef.current),
+            factor: 1,
+            x: o.x,
+          };
+      } else if (o?.type === "zoom" && drag) {
+        drag.factor = o.factor;
+        drag.x = o.x;
+        frame ||= requestAnimationFrame(flush);
+      } else if (o?.type === "end") {
+        // The last move waiting for its frame lands first.
+        if (frame && drag) {
+          cancelAnimationFrame(frame);
+          flush();
+        }
+        drag = null;
+        eatClick = true;
+      }
+      hold();
+      clearTimeout(disarm);
+      // Armed but no second down in time: give the browser its pan back.
+      if (tap.kind === "armed") disarm = window.setTimeout(hold, DBLTAP.gapMs + 1);
+    };
+    const pt = (e: PointerEvent): DbltapPointer => ({
+      id: e.pointerId,
+      type: e.pointerType,
+      x: e.clientX,
+      y: e.clientY,
+      t: e.timeStamp,
+    });
+    const pDown = (e: PointerEvent) => {
+      eatClick = false;
+      apply(dbltapDown(tap, pt(e)));
+    };
+    const pMove = (e: PointerEvent) => {
+      if (tap.kind === "idle" || tap.kind === "armed") return;
+      apply(dbltapMove(tap, pt(e)));
+    };
+    const pUp = (e: PointerEvent) => apply(dbltapUp(tap, pt(e)));
+    const pCancel = () => apply(dbltapCancel(tap));
+    const click = (e: MouseEvent) => {
+      if (!eatClick) return;
+      eatClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    // iOS before touch-action took hold: a live drag zoom never scrolls.
+    const tMove = (e: TouchEvent) => {
+      if (tap.kind === "zoom" && e.touches.length === 1) e.preventDefault();
+    };
     // Safari's own pinch: a Mac trackpad's zoom; on iPhone it fires with the
     // touches above, so it only keeps the page from zooming.
     const gStart = (e: Event) => {
@@ -721,7 +860,21 @@ export function GanttFull({
     el.addEventListener("touchcancel", end);
     el.addEventListener("gesturestart", gStart);
     el.addEventListener("gesturechange", gChange);
+    el.addEventListener("pointerdown", pDown);
+    el.addEventListener("pointermove", pMove);
+    el.addEventListener("pointerup", pUp);
+    el.addEventListener("pointercancel", pCancel);
+    el.addEventListener("click", click, true);
+    el.addEventListener("touchmove", tMove, { passive: false });
     return () => {
+      el.removeEventListener("pointerdown", pDown);
+      el.removeEventListener("pointermove", pMove);
+      el.removeEventListener("pointerup", pUp);
+      el.removeEventListener("pointercancel", pCancel);
+      el.removeEventListener("click", click, true);
+      el.removeEventListener("touchmove", tMove);
+      clearTimeout(disarm);
+      el.style.touchAction = PAN;
       el.removeEventListener("wheel", wheel);
       el.removeEventListener("touchstart", start);
       el.removeEventListener("touchmove", move);
@@ -900,6 +1053,22 @@ export function GanttFull({
           Now
         </button>
         <button
+          type="button"
+          data-testid="debug-chat-gantt-settings-btn"
+          aria-label={strings.etaGanttSettings}
+          title={strings.etaGanttSettings}
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen((o) => !o)}
+          className="tap-40 rounded px-2 py-1"
+          style={{
+            color: c("text"),
+            background: settingsOpen ? c("bar") : "transparent",
+            border: 0,
+          }}
+        >
+          <Icon name="gearSix" />
+        </button>
+        <button
           ref={closeBtn}
           type="button"
           data-testid="debug-chat-gantt-close"
@@ -912,6 +1081,79 @@ export function GanttFull({
           ✕
         </button>
       </header>
+      {settingsOpen && (
+        <section
+          role="region"
+          aria-label={strings.etaGanttSettings}
+          data-testid="debug-chat-gantt-settings-panel"
+          className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-2 fs-11"
+          style={{
+            background: c("bar"),
+            borderBottom: `1px solid ${c("grid")}`,
+          }}
+        >
+          <span className="font-medium">{strings.etaGanttHideDone}</span>
+          <div
+            role="group"
+            aria-label={strings.etaGanttHideDone}
+            data-testid="debug-chat-gantt-hide-done-toggle"
+            className="flex shrink-0 overflow-hidden rounded"
+            style={{ border: `1px solid ${c("grid")}` }}
+          >
+            {(
+              [
+                [true, strings.etaGanttHide],
+                [false, strings.etaGanttShow],
+              ] as const
+            ).map(([val, label]) => (
+              <button
+                key={String(val)}
+                type="button"
+                data-testid={`debug-chat-gantt-hide-done-${val ? "true" : "false"}`}
+                aria-pressed={hideDone === val}
+                onClick={() => {
+                  setHideDone(val);
+                  writeGanttHideDone(val);
+                }}
+                className="tap-40 px-2.5 py-1"
+                style={{
+                  border: 0,
+                  color: c("text"),
+                  fontWeight: hideDone === val ? 600 : 400,
+                  background: hideDone === val ? c("track") : "transparent",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div
+            data-testid="debug-chat-gantt-state-legend"
+            className="flex w-full flex-wrap items-center gap-2 pt-1 border-t"
+            style={{ borderColor: c("grid") }}
+          >
+            {GANTT_STATUS_KEYS.map((k) => (
+              <span
+                key={k}
+                data-testid={`debug-chat-gantt-legend-${k}`}
+                className="inline-flex items-center gap-1.5 fs-10"
+                style={{ color: c("muted") }}
+              >
+                <span
+                  aria-hidden
+                  className="inline-block rounded-xs"
+                  style={{
+                    width: 10,
+                    height: 10,
+                    background: `light-dark(${GANTT_STATUS_COLORS[k].light}, ${GANTT_STATUS_COLORS[k].dark})`,
+                  }}
+                />
+                {GANTT_STATUS_FALLBACK_LABELS[k]}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
       {/* What the marks mean: the underline is the reported progress, the red line now. */}
       <p
         data-testid="debug-chat-gantt-legend"
@@ -926,7 +1168,7 @@ export function GanttFull({
         dir="ltr"
         onScroll={onScroll}
         className="min-h-0 flex-1"
-        style={{ overflow: "auto", overscrollBehavior: "contain", touchAction: "pan-x pan-y" }}
+        style={{ overflow: "auto", overscrollBehavior: "contain", touchAction: PAN }}
       >
         <div
           data-testid="debug-chat-gantt-content"

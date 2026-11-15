@@ -24,6 +24,8 @@ import {
   cleanTiming,
   type SttTag,
   cleanStt,
+  type RecheckMark,
+  cleanRecheckMark,
   type SpeakerTag,
   cleanSpeaker,
   type ChatContext,
@@ -37,6 +39,7 @@ import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
 import { LANE_IDS, type LaneId, isLaneId, parseLineVoice } from "../packages/debug-chat/src/voices";
 import { cleanProofs } from "./speaker-proof";
 import { type WakeReason, isWakeReason } from "../packages/debug-chat/src/wake";
+import { type RecheckAmend, cleanRecheckAmend } from "../packages/debug-chat/src/whisper-recheck";
 
 export {
   MAX_AGENT_ID,
@@ -137,8 +140,31 @@ export const CHAT_HISTORY = 200;
 /** A friend may send at most FRIEND_CHAT_MAX messages per FRIEND_CHAT_WINDOW_MS. */
 export const FRIEND_CHAT_MAX = 30;
 export const FRIEND_CHAT_WINDOW_MS = 10 * 60_000;
-/** The owner's chat thread; every other thread is a friend's user id. */
-export const OWNER_THREAD = "owner";
+/**
+ * The dispatch thread (docs/owner-paths-audit-2026-11-15.md): the one thread
+ * every `dev` grant holder's page joins (Identity.owner is `isDev`, never an
+ * address in code). Lanes listen there, ETA and receipt lines go there, the
+ * Learning Partner AI does not answer there. Every other thread is one
+ * account's own (its user id). The id is a storage key (hub storage
+ * prefixes, D1 chat_log rows, packages/debug-chat's default), so it stays a
+ * constant: a configurable id would orphan the history.
+ */
+export const DISPATCH_THREAD = "owner";
+/** @deprecated The old name of DISPATCH_THREAD, kept so the hub's many uses need no rename. */
+export const OWNER_THREAD = DISPATCH_THREAD;
+/** Is this the dispatch thread? */
+export const isDispatchThread = (thread: string | null | undefined): boolean =>
+  thread === DISPATCH_THREAD;
+/**
+ * The thread an account's page or chat token joins: the dispatch thread for a
+ * `dev` holder (`dispatch`: Identity.owner / Verified.owner, both read from
+ * account_permission), else the account's own thread; null for an id that
+ * cannot be a thread.
+ */
+export function threadFor(who: { userId: string; dispatch: boolean }): string | null {
+  if (who.dispatch) return DISPATCH_THREAD;
+  return isUserId(who.userId) ? who.userId : null;
+}
 /** The "agent is working" spinner stops this long after the last heartbeat. */
 export const BUSY_MS = 12_000;
 /**
@@ -182,7 +208,7 @@ export const isSessionTag = (v: unknown): v is string =>
 
 /** A user id usable as a thread and a storage key: no separators, bounded. */
 export const isUserId = (v: unknown): v is string =>
-  typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) && v !== OWNER_THREAD;
+  typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) && v !== DISPATCH_THREAD;
 
 /** A friend who has used the chat, as the hub keeps it (`friend:<userId>`). */
 export type FriendRecord = {
@@ -201,6 +227,12 @@ export const SAY_CUTS = ["supersede", "interject"] as const;
 export type SayCut = (typeof SAY_CUTS)[number];
 export const isSayCut = (v: unknown): v is SayCut =>
   typeof v === "string" && (SAY_CUTS as readonly string[]).includes(v);
+
+/** The view changes a controller may ask of the chat (`{type: "ui"}`). */
+export const UI_OPS = ["fullscreen"] as const;
+export type UiOp = (typeof UI_OPS)[number];
+export const isUiOp = (v: unknown): v is UiOp =>
+  typeof v === "string" && (UI_OPS as readonly string[]).includes(v);
 
 /** Messages a controller (the sender CLI) may send to the hub. */
 export type ControllerMessage =
@@ -245,6 +277,13 @@ export type ControllerMessage =
    */
   | { type: "wake"; mode: "active" | "passive" | "ignored"; to?: string }
   /**
+   * A view change on that thread's pages, shown to the owner as it happens
+   * (`lianki-dev ui fullscreen --on|--off`): the chat opens its menu, the
+   * item pulses, then the switch flips (packages/debug-chat ui-cue.ts).
+   * Relayed like a wake: not stored, not shown.
+   */
+  | { type: "ui"; op: UiOp; on: boolean; to?: string }
+  /**
    * Polish the owner's latest line, when it came from the widget's mic
    * (`source: "stt"`): docs/dev-debug-widget.md, "Agent edits of voice messages".
    */
@@ -278,6 +317,8 @@ export type ControllerMessage =
   | { type: "ungrant"; from: string; to: string };
 /** Messages an owner page may send to the hub. */
 export type PageMessage =
+  | { type: "replay"; afterSeq: number; throughSeq?: number }
+  | { type: "read"; lastReadSeq: number }
   /** A tap on an ask card: which options, per question. The hub stamps the rest. */
   | { type: "answer"; askId: string; choices: Record<string, unknown> }
   /**
@@ -299,6 +340,7 @@ export type PageMessage =
       timing?: VoiceTiming;
       /** A voice line's recognizer (SttTag; dev-only in the UI): route, engine, fallback. */
       stt?: SttTag;
+      recheck?: RecheckMark;
       /** The mic's wake-word mode when the line was sent (docs/wake-word.md); absent = mic off. */
       wake?: "active" | "passive";
       /**
@@ -317,8 +359,12 @@ export type PageMessage =
       /** A voice line asks to amend this line, the page's last (voice-merge.ts); the hub decides. */
       continues?: string;
     }
-  /** The page's speech went quiet after a merged line: the passage is over. */
-  | { type: "passage-end" }
+  /**
+   * The page's speech went quiet after a merged line: the passage is over. `recheck`:
+   * the Mac's Whisper re-read the whole run (whisper-recheck.ts); the hub amends the
+   * line with it first, so the polish reads it.
+   */
+  | { type: "passage-end"; recheck?: RecheckAmend }
   /** The owner's undo on a merged line: split it back into its lines. */
   | { type: "unmerge"; id: string }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
@@ -557,6 +603,12 @@ export function parseControllerMessage(
     const to = str(m.to, 320)?.trim();
     return { ok: true, value: { type: "wake", mode, ...(to ? { to } : {}) } };
   }
+  if (m?.type === "ui") {
+    if (!isUiOp(m.op)) return { ok: false, error: `ui needs op ${UI_OPS.join(" | ")}` };
+    if (typeof m.on !== "boolean") return { ok: false, error: "ui needs on: true or false" };
+    const to = str(m.to, 320)?.trim();
+    return { ok: true, value: { type: "ui", op: m.op, on: m.on, ...(to ? { to } : {}) } };
+  }
   if (m?.type === "busy") {
     const to = str(m.to, 320)?.trim();
     const label = cleanLabel(str(m.label, 80));
@@ -569,7 +621,7 @@ export function parseControllerMessage(
     return {
       ok: false,
       error:
-        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"edit","id","text"}, {"type":"summary","ids"|"last","text"}, {"type":"merge","ids","text"}, {"type":"unmerge","id"}, {"type":"withdraw","id"} or {"type":"grant","from","to"}',
+        'expected {"type":"eval","code":"…"}, {"type":"say","text":"…"}, {"type":"busy"}, {"type":"wake","mode"}, {"type":"ui","op","on"}, {"type":"edit","id","text"}, {"type":"summary","ids"|"last","text"}, {"type":"merge","ids","text"}, {"type":"unmerge","id"}, {"type":"withdraw","id"} or {"type":"grant","from","to"}',
     };
   if (typeof m.code !== "string" || !m.code.trim()) return { ok: false, error: "empty code" };
   if (m.code.length > MAX_CODE) return { ok: false, error: `code over ${MAX_CODE} chars` };
@@ -587,6 +639,23 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
   if (m.type === "chunk") return parseChunk(m);
   // Only a chunk may be that large.
   if ((raw as string).length > MAX_RAW) return null;
+  if (m.type === "read")
+    return Number.isSafeInteger(m.lastReadSeq) &&
+      (m.lastReadSeq as number) >= 0 &&
+      m.thread === undefined
+      ? { type: "read", lastReadSeq: m.lastReadSeq as number }
+      : null;
+  if (m.type === "replay") {
+    const afterSeq = m.afterSeq as number,
+      throughSeq = m.throughSeq as number | undefined;
+    return Number.isSafeInteger(afterSeq) &&
+      afterSeq >= 0 &&
+      m.thread === undefined &&
+      (throughSeq === undefined || (Number.isSafeInteger(throughSeq) && throughSeq >= afterSeq))
+      ? { type: "replay", afterSeq, ...(throughSeq === undefined ? {} : { throughSeq }) }
+      : null;
+  }
+
   if (m.type === "allow") {
     const pair = str(m.pair, 64);
     if (!pair) return null;
@@ -622,7 +691,10 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       return null;
     return { type: "answer", askId, choices: m.choices as Record<string, unknown> };
   }
-  if (m.type === "passage-end") return { type: "passage-end" };
+  if (m.type === "passage-end") {
+    const recheck = cleanRecheckAmend(m.recheck);
+    return recheck ? { type: "passage-end", recheck } : { type: "passage-end" };
+  }
   if (m.type === "unmerge") {
     const id = str(m.id, 64);
     return id ? { type: "unmerge", id } : null;
@@ -636,7 +708,9 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     const to = nodePath(m.to);
     const timing = m.source === "stt" ? cleanTiming(m.timing) : undefined;
     const stt = m.source === "stt" ? cleanStt(m.stt) : undefined;
-    const speakerProof = m.source === "stt" ? cleanProofs(m.speakerProof) : undefined;
+    const recheck = m.source === "stt" ? cleanRecheckMark(m.recheck, text, stt) : undefined;
+    const speakerProof =
+      m.source === "stt" && !recheck?.heardPartial ? cleanProofs(m.speakerProof) : undefined;
     const context = cleanContext(m.context);
     const attachments = cleanAttachments(m.attachments);
     const scene = m.source === "stt" ? cleanScene(m.scene) : undefined;
@@ -648,6 +722,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
       ...(stt ? { stt } : {}),
+      ...(recheck ? { recheck } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
       ...(speakerProof ? { speakerProof } : {}),
       ...((m.wake === "active" || m.wake === "passive") && isWakeReason(m.wakeReason)

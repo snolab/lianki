@@ -298,6 +298,53 @@ zone its first study day was cut in, as for study days).
   every amount to 0 stops new grants at once (the flag off stops the counting
   and hides the line; credits already granted stay).
 
+### Sign-up bonus
+
+Owner decision 2026-11-15 (12:4x JST): every **new account** gets **US$1**
+of credits once — but only the **first 10 new accounts of each UTC day**
+(the day turns at 00:00 UTC). Shipped on; no switch to flip. Added 13:0x JST:
+accounts that **already existed** when it launched get the same US$1 once,
+outside the cap.
+
+| piece                                      | where                                                                                              |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| rules (pure): refId, UTC day, credits      | `lib/payments/signup-bonus.ts`                                                                     |
+| claim + grant over D1, the hook entry      | `lib/payments/signup-bonus-store.ts`; tables `signup_bonus_day`, `signup_bonus_launch` (migration 0079) |
+| hooks                                      | better-auth `user.create.after` (new) and `session.create.after` (backfill) in `auth-impl.ts`; the wallet read `GET /api/payments/credits` (backfill) |
+| shown                                      | the wallet history row label only: 「注册礼」 (`wallet-card.content.ts` `signupBonus`, 16 locales)     |
+| flag                                       | `credits.signup-bonus`, **default ON** for everyone — the off switch for both paths                |
+| config                                     | `credits.signupBonusUsd` (default **1**), `credits.signupBonusDaily` (default **10**), group `credits`, both `money` |
+| audit                                      | one `security_audit` row per grant, kind `credits.signup-bonus` (path, UTC day, slot, credits)     |
+| tests                                      | `unit/signup-bonus.test.ts`                                                                        |
+
+- **Ledger**: reason `gift` (no new reason, so no CHECK migration), refId
+  `signup:<userId>` for both paths — UNIQUE (reason, refId) makes it once per
+  account, whichever path runs first, however often it is retried. Note
+  `signup bonus <UTC day> #<slot>` (new) or `signup bonus (existing account)`
+  (backfill).
+- **The daily cap, atomically**: one D1 batch (one transaction) per claim —
+  open the day's `signup_bonus_day` row at 0; `INSERT OR IGNORE` the ledger
+  row only WHERE the user exists AND that day's `granted` < the cap (its note
+  takes slot `granted + 1`); add 1 to `granted` and move the balance only
+  WHERE EXISTS that very ledger row. D1 runs batches one at a time, so no two
+  accounts can both be number 10, and a repeat of the same account takes no
+  slot. Account 11 gets nothing and sees nothing — no error, no line.
+- **The backfill, lazily**: no batch job over production rows. An account
+  whose `user.createdAt` is before `signup_bonus_launch.at` (the moment
+  migration 0079 ran in production) gets the bonus on its next sign-in or its
+  next wallet read, outside the cap. After one cheap read (it already has the
+  row) every later sign-in stops. Accounts created after launch never qualify
+  here, so missing the cap stays missed. Accounts created in the short gap
+  between the migration and the new Worker going live get neither.
+- **Never blocks**: the hook entry (`runSignupBonus`) never throws; a failure
+  is logged as `signup-bonus: grant failed` and the sign-up, sign-in or wallet
+  read goes on.
+- **Admins are metered the same**: no admin or dev branch anywhere.
+- **Abuse**: one bonus per account; the cap bounds new-account farming to 10
+  × US$1 a day site-wide. Setting `credits.signupBonusUsd` to 0 (or the
+  daily cap to 0 for new accounts) stops new grants at once; the flag off
+  stops both paths. Credits already granted stay.
+
 #### Retired: the account-age bonus (2026-11-14)
 
 The earlier bonus ($1 at 1 day, $2 more at 7 days per account, 2026-11-14
@@ -514,8 +561,13 @@ admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
   id, `''` for a guest), `feature`, `usd_micro` (the provider's cost in
   millionths of a USD, REAL so a MeloTTS clip's few millionths are kept),
   `units` (audio seconds for speech to text, characters for speech), `day`
-  (JST, YYYY-MM-DD) and `at`. Indexed by (day, user) and (feature, day). No
-  text, no audio, no email.
+  (YYYY-MM-DD) and `at`. Indexed by (day, user) and (feature, day). No
+  text, no audio, no email. **`day` is the UTC date of `at` since
+  2026-11-15** (owner: UTC is the default zone, never JST); rows written
+  before that hold the JST date, and the 0072 migration's comment still says
+  JST (an applied migration is never edited). Nothing groups by `day` any
+  more: the views bucket `at` in the viewer's zone and use `day` only as an
+  index bound, a day wider each side, so old and new rows both land right.
 - **Who books.** `freeCall` (`lib/payments/paid-calls.ts`) takes the payer
   (`{userId, db, units}`) from every caller: `/api/words/tts` (cache misses;
   recorded clips and cached audio cost nothing and are not booked),
@@ -542,25 +594,29 @@ admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
   `/dev/config`). Not booked: a box token's chat (box tokens never reach
   `/api/debug`), and an utterance whose page closed before the report left
   (`keepalive` covers most).
-- **The page** (`isAdmin`, 404 otherwise, page and API): a JST day range
+- **The page** (`isAdmin`, 404 otherwise, page and API): a day range in the
+  viewer's device zone (the page sends `?tz=` = its offset in minutes east of
+  UTC now, labelled with the zone's name; missing = UTC; nothing loads until
+  the browser knows the zone)
   (default the last 30 days, at most `COSTS_MAX_DAYS`); totals; **by
   feature** and **by day** (a VirtualList with a seal-red bar per day); **by
   account**, dearest first — the top three marked — as a VirtualList loading
   `lists.batchSize` rows as it scrolls, each with its display name and
   account id (never an email). Every table shows free cost and paid cost side
   by side, plus what paid features charged (credits) and the calls. The paid
-  side is read from `credit_ai_charge` (settled rows by `settledAt`, JST):
+  side is read from `credit_ai_charge` (settled rows by `settledAt`, in the same zone):
   `costMicro` ÷ `CREDITS_PER_USD` ÷ `MARGIN` is its provider cost; the feature
   is the charge key's prefix (`<feature>:<userId>:…`; none = a Learning
   Partner reply). Strings: `costs.content.ts` (`dev-costs`, 16 locales with
   context lines); the page name is `costs` in `dev-pages`.
 - **Per day and per hour, by service** (owner, 2026-11-11;
   `lib/payments/cost-buckets.ts`). `?view=days` is a day × feature matrix
-  (every JST day of the range, empty ones too); `?view=hours&hours=N` an
-  hour × feature matrix of the range's last N JST hours (default 48, at most
+  (every day of the range, empty ones too); `?view=hours&hours=N` an
+  hour × feature matrix of the range's last N hours (default 48, at most
   `COSTS_MAX_HOURS` = 168, never after the current hour). An hour is the
-  `at` / `settledAt` time + 9 h cut to `YYYY-MM-DDTHH` (JST has no daylight
-  saving). The hourly free query is bounded by the indexed `day` column as
+  `at` / `settledAt` time shifted by the `tz` offset and cut to
+  `YYYY-MM-DDTHH` (one fixed offset per request: across a daylight-saving
+  change the older hours are off by one). The hourly free query is bounded by the indexed `day` column as
   well as `at`, the paid one by the `settledAt` index, so no new index. The
   page shows both as tables (`CostMatrix.tsx`: rows a VirtualList, columns
   the services dearest first, row sums right, column sums on top; each cell
@@ -572,12 +628,58 @@ admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
   colour is never alone; hover, tap or ←/→ shows a bar's exact values; the
   chart points at its table with `aria-describedby`.
 - Tests: `unit/cost-ledger.test.ts` (booking, failure, the speech-server
-  route, aggregation, the API's 404); `unit/cost-buckets.test.ts` (JST hour
-  and day edges, no DST, the hour window cap, the matrix sums, both views and
+  route, aggregation, the API's 404); `unit/cost-buckets.test.ts` (hour
+  and day edges at UTC and at an offset, a fixed offset, the hour window cap, the matrix sums, both views and
   their 404, the heat scale's AA); QA `scripts/qa/qa-costs.mjs` (suite
   `costs`: non-admin 404 on the page and every view, a speech-server report
   booked, the account by name with no email, both matrices and the charts, a
   tapped bar's values, 360 px light + dark).
+
+### Spend alert
+
+Owner, 2026-11-15: "能不能给我一个额度预算提醒，每超过一美元，就在我这里发一个新的通知"
+— and "除了全站额度，还有我个人的". Each time what the calls cost us passes the
+next whole step, one line in his own thread, read aloud like any agent line:
+"AI 全站花费已达 $3（今日 $0.42，本月 $3.00）" for the site, "我的 AI 花费已达 $1（…）"
+for his own account. `lib/payments/spend-alert.ts`; names and defaults in
+`spend-alert-config.ts`.
+
+- **What counts.** Everything the cost ledger books (`bookCost`: free word
+  read-aloud, the microphone, the speech server) and every settled paid charge
+  (`settleAi`: the Learning Partner, Li in his thread, the metered features),
+  at the provider's cost (`costMicro` ÷ `CREDITS_PER_USD` ÷ `MARGIN`, as
+  `/dev/costs`). Both functions call `recordSpend` after a successful write; it
+  never throws and never fails the call.
+- **Two counters**, rows of D1 `spend_alert` (migration 0082): `site`, and
+  `user:<id>` for the account that spent. A running `total_micro` (since the
+  table shipped, not since the ledger began) and `last_micro`, the last step
+  announced. A row whose total reached a higher multiple of the step claims it
+  with `UPDATE … WHERE last_micro < ?`: one line per step however many calls
+  cross it together; several steps crossed at once are one line, the highest.
+  `last_micro` is an amount, so changing the step size never repeats a line.
+- **Whose line.** The site's always; a `user:` counter's only when that
+  account holds `admin` or `dev` now (`holdsSql`, never an email). Anyone
+  else's counter, and every counter while the flag is off, claims its steps
+  silently: turning the flag back on posts the next step, not the missed ones.
+- **Totals** in the line: today and this month in UTC, free + paid, from
+  `cost_ledger` (bounded by the `day` index a day each side, then `at`) and
+  `credit_ai_charge` (`settledAt`); for `mine`, that account's rows only.
+- **Posting.** POST `/internal/spend-alert {scope: "site"|"mine", step, text}`
+  to lianki-push over the PUSH binding (index.ts answers it on the binding's
+  hostname only; DebugHub `spendApi`): `from: "agent"`, label and agentId
+  `spend`, not quiet, never ownerGrant. Over RPC (the Learning Partner, the
+  speech-server booking) there is no OpenNext context, so `worker.ts` passes
+  `env.PUSH`. No binding (a script, a test): the step is left for the next call
+  that has one. A post that fails gives the step back (logged
+  `spend.alert.failed`, the step only).
+- **Switches.** Flag `partner.spend-alert` (default on, audience owner, group
+  ai). Config `partner.spendAlertStepUsd` (default 1, 0.1–100),
+  `partner.spendAlertSiteText` and `partner.spendAlertMineText` (placeholders
+  `{n}`, `{today}`, `{month}`; `{n}` required; the `$` is literal text).
+- Tests: `unit/spend-alert.test.ts` (the step arithmetic, idempotency under
+  concurrent calls, flag off, no binding, a failed post, his account vs anyone
+  else's, the bookCost / settleAi hooks and their totals, the registry);
+  `unit/debug-hub.test.ts` ("DebugHub spend alert").
 
 ### Providers
 

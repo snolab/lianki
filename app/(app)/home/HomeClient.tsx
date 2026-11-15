@@ -98,7 +98,7 @@ export default function HomeClient({
             )}
             <Link
               href={words.lists > 1 ? "/words?list=all" : "/words"}
-              className={`${todayGoal ? "" : "ms-auto "}rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5`}
+              className={`${todayGoal ? "" : "ms-auto "}rounded-lg lk-btn-primary font-semibold px-5 py-2.5`}
             >
               {t.cont} →
             </Link>

@@ -18,13 +18,17 @@
 saw_ref=0
 only_deletes=1
 shas=""
-while read -r _local_ref local_sha _remote_ref _remote_sha; do
+release_ref=0 # a push to main or prod: the branches production is built from
+while read -r _local_ref local_sha remote_ref _remote_sha; do
   saw_ref=1
   case "$local_sha" in
   *[!0]*)
     only_deletes=0 # any non-zero char ⇒ a real ref update, not a delete
     shas="$shas $local_sha"
     ;;
+  esac
+  case "$remote_ref" in
+  refs/heads/main | refs/heads/prod) release_ref=1 ;;
   esac
 done
 if [ "$saw_ref" = "1" ] && [ "$only_deletes" = "1" ]; then
@@ -69,4 +73,11 @@ MINGW* | MSYS* | CYGWIN*)
   ;;
 esac
 
+# QA suites run here only for a push to main or prod (owner, 2026-11-15: "只有上主线
+# 才需要 QA"); any other branch gets qa:all in CI when its PR enters the merge
+# queue. LIANKI_QA_ALWAYS=1 runs them for every push.
+if [ "$release_ref" != "1" ] && [ "${LIANKI_QA_ALWAYS:-}" != "1" ]; then
+  echo "pre-push: not a push to main/prod — the qa suites run in CI for the PR (LIANKI_QA_ALWAYS=1 to run them here)."
+  exit 0
+fi
 bun scripts/gate/affected.ts qa

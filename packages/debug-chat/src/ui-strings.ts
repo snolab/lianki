@@ -235,6 +235,9 @@ export type UiStrings = {
    *   chat-only access token is made (the form already filled in), then the
    *   text below it is given to the agent.
    * - peopleCopy / peopleClose: copy that text; close the list. One verb.
+   * - peopleReadOnly: the heading over the agents in that list that only
+   *   read the chat when called by name (they do not hear every message
+   *   live); their avatars are greyed. One or two words ("Read-only").
    */
   linkChip: string;
   linkEval: string;
@@ -278,6 +281,7 @@ export type UiStrings = {
   peopleInviteHow: string;
   peopleCopy: string;
   peopleClose: string;
+  peopleReadOnly: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -392,6 +396,7 @@ export const UI_EN: UiStrings = {
   peopleInviteHow: "Make a chat-only token in your preferences (filled in for you), then give the agent this:",
   peopleCopy: "Copy",
   peopleClose: "Close",
+  peopleReadOnly: "Read-only",
 };
 
 export const UI_ZH: UiStrings = {
@@ -505,6 +510,7 @@ export const UI_ZH: UiStrings = {
   peopleInviteHow: "在偏好设置里创建一个只用于聊天的令牌（已为你填好），然后把下面这段给 agent：",
   peopleCopy: "复制",
   peopleClose: "关闭",
+  peopleReadOnly: "只读",
 };
 
 export const UI_JA: UiStrings = {
@@ -618,6 +624,7 @@ export const UI_JA: UiStrings = {
   peopleInviteHow: "設定でチャット専用のトークンを作り（入力済み）、エージェントに次を渡してください：",
   peopleCopy: "コピー",
   peopleClose: "閉じる",
+  peopleReadOnly: "読み取り専用",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

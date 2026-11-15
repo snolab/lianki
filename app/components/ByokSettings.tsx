@@ -18,9 +18,10 @@
 // exists until the owner approves the storage design.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useIntlayer } from "next-intlayer";
+import { useIntlayer, useLocale } from "next-intlayer";
 import { notePrefWrite, PREF_APPLIED_EVENT } from "@lianki/ui-state/account";
-import { BYOK_PRESETS, presetOf } from "@/lib/byok/presets";
+import { livePresets, presetOf, rowNote } from "@/lib/byok/presets";
+import { ByokPresetInfo, ByokProviderPicker } from "@/app/components/ByokProviderPicker";
 import {
   BYOK_EVENT,
   checkBaseUrl,
@@ -81,6 +82,7 @@ export function ByokSettings({
   signedIn?: boolean;
 }) {
   const c = useIntlayer("byok-settings");
+  const { locale } = useLocale();
   const [device, setDevice] = useState<ByokDevice>(blankForm);
   const [synced, setSynced] = useState(false);
   const [acked, setAcked] = useState(false);
@@ -119,20 +121,36 @@ export function ByokSettings({
     };
   }, [reload]);
 
-  const preset = presetOf(device.backend.provider) ?? BYOK_PRESETS[0];
+  const presets = livePresets();
+  const preset = presetOf(device.backend.provider) ?? presets[0];
+  /** The built-in providers' notes (the config row's own `note` wins). */
+  const builtInNote: Record<string, { value: string } | undefined> = {
+    openai: c.noteOpenai,
+    anthropic: c.noteAnthropic,
+    deepseek: c.noteDeepseek,
+    gemini: c.noteGemini,
+    openrouter: c.noteOpenrouter,
+    deepinfra: c.noteDeepinfra,
+    groq: c.noteGroq,
+    "workers-ai": c.noteWorkersAi,
+    ollama: c.noteOllama,
+  };
+  const presetNote = rowNote(preset, locale) ?? builtInNote[preset.id]?.value ?? null;
   const pageHost = typeof location === "undefined" ? null : location.host;
   const gap = gapOf(device.backend, device.apiKey, pageHost);
   const gapText = useMemo(
     () =>
-      gap === "url" || gap === "server-only"
+      gap === "url"
         ? c.errUrl.value
-        : gap === "relay"
-          ? c.errRelay.value.replaceAll("{name}", preset.name)
-          : gap === "model"
-            ? c.errModel.value
-            : gap === "key"
-              ? c.errKey.value
-              : null,
+        : gap === "server-only"
+          ? c.errServerOnly.value.replaceAll("{name}", preset.name)
+          : gap === "relay"
+            ? c.errRelay.value.replaceAll("{name}", preset.name)
+            : gap === "model"
+              ? c.errModel.value
+              : gap === "key"
+                ? c.errKey.value
+                : null,
     [gap, c, preset.name],
   );
 
@@ -413,21 +431,35 @@ export function ByokSettings({
           save();
         }}
       >
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">{c.provider}</span>
-          <select
-            className={FIELD}
+        <div className="flex flex-col gap-2">
+          <span id="byok-provider-label" className="text-sm font-medium">
+            {c.provider}
+          </span>
+          <ByokProviderPicker
+            presets={presets}
             value={preset.id}
-            onChange={(e) => pickProvider(e.target.value)}
-            data-testid="byok-provider"
-          >
-            {BYOK_PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.id === "custom" ? c.custom.value : p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            onPick={pickProvider}
+            label={c.provider.value}
+            customLabel={c.custom.value}
+          />
+          <ByokPresetInfo
+            preset={preset}
+            note={presetNote}
+            model={device.backend.model}
+            onModel={(model) => setBackend({ model })}
+            text={{
+              recommended: c.recommended.value,
+              tiers: {
+                cheap: c.tierCheap.value,
+                balanced: c.tierBalanced.value,
+                strong: c.tierStrong.value,
+              },
+              pricing: c.pricing.value,
+              getKey: c.getKey.value,
+              serverOnly: c.errServerOnly.value,
+            }}
+          />
+        </div>
 
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium">{c.baseUrl}</span>

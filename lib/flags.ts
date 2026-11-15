@@ -165,7 +165,7 @@ export const FLAGS = {
   },
   "voice.recordings": {
     description:
-      "麦克风录音存到你的账号（/my/recordings，docs/recordings.md）：在 Lianki 里开着麦克风时，每一句话（主动和被动模式都算，发不发到聊天都算）的录音和它已有的文字（Mac 本机识别的；Mac 不在时是聊天用的云端结果）加密存进你的账号，第二天也能回听、按天下载到 Mac 上重新识别。会议里别人的声音也会被录下；只有你的账号能读。服务器从不替录音做识别。默认保留 90 天（/dev/config 的 recordings.retentionDays），可以按句或按天删除。只对有 dev 权限的账号开放。关闭 = 不再上传新的录音，/api/my/recordings 和 /my/recordings 都不存在（404）；已存的录音留着但读不到，到期照样清理。",
+      "麦克风录音存到你的账号（/my/recordings，docs/recordings.md）：在 Lianki 里开着麦克风时，每一句话（主动和被动模式都算，发不发到聊天都算）的录音和它已有的文字（Mac 本机识别的；Mac 不在时是聊天用的云端结果）加密存进你的账号，第二天也能回听、按天下载到 Mac 上重新识别。会议里别人的声音也会被录下；只有你的账号能读。服务器从不替录音做识别。默认保留 90 天（/dev/config 的 recordings.retentionDays），可以在页面上按句删除。只对有 dev 权限的账号开放。关闭 = 不再上传新的录音，/api/my/recordings 和 /my/recordings 都不存在（404）；已存的录音留着但读不到，到期照样清理。",
     default: true,
     audience: "owner",
     group: "stt",
@@ -203,6 +203,14 @@ export const FLAGS = {
     default: false,
     audience: "owner",
   },
+  // Owner, 2026-11-15 03:17 JST: "用 Whisper 整段重听 … 作为第二步 polish".
+  "stt.whisper-recheck": {
+    description:
+      "Whisper 整段重听：你断断续续说的几句合并成一条以后，说完（停顿下来）时，你 Mac 上的 Whisper（Large V3 Turbo）把这一整段的录音重新听一遍，这条消息换成它听出来的文字；之后的自动润色和助手润色都在这段文字上改。三级：流式识别（SenseVoice）→ Whisper 整段重听 → 润色。原来流式识别的文字留在消息详情里。录音只在 Mac 的内存里，不存文件、不上传；太短（/dev/config 的 stt.recheckMinSec）或太长（stt.recheckMaxSec）的一段不重听，Mac 没回答（stt.recheckTimeoutMs）就照旧。需要 stt.merge 开着、用的是 Mac 的本地识别。关闭 = 照旧：合并后直接润色流式识别的文字。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   // Owner, 2026-11-14 02:15 JST: the mic open on two devices doubled every sentence.
   "stt.two-mic-merge": {
     description:
@@ -218,6 +226,14 @@ export const FLAGS = {
     default: false,
     audience: "allowlist",
   },
+  "chat.lane-events": {
+    description:
+      "全员入群：聊天里每个 agent（API token）一条线，记下它是「实时监听」还是「只读」、有没有被禁言。线入群、开始实时监听、转为只读、下线、被禁言时，聊天里出现一行系统消息（静音，不朗读），头像栏显示每个 agent 的状态；被禁言的线发言会被拒绝（403）。关闭 = 不记状态、不发系统消息、不禁言，聊天和以前一样。",
+    default: true,
+    audience: "owner",
+    // With the other agent switches (the groups stay few, flag-view.ts).
+    group: "ai",
+  },
   "chat.eta-bar": {
     description:
       "学习伙伴聊天里的任务进度条：助手给每个任务报的预计时间（progress.ts --eta）在聊天输入框上方汇总成一条进度条（总进度按预计时长加权、总剩余时间、下一个到期），点一下打开状态树，每个任务有自己的进度条和剩余时间。预计时间一到，自动在你的线程里发一条「ETA reached for …: report to the owner」给助手（静音，不朗读；不是你说的话，永远不算批准）。没有页面开着也会发（服务器定时）。只给你本人。关闭（默认）= 不显示进度条，也不发到期消息。",
@@ -226,7 +242,7 @@ export const FLAGS = {
   },
   "partner.ai-reply": {
     description:
-      "学习伙伴由 AI 回复（除你以外的所有用户）：打开后，普通登录用户在任意页面都能看到学习伙伴聊天框（不用调试模式），他们的消息由 Cloudflare Workers AI 上的 DeepSeek 模型在服务器端回复，只读他们自己的词表、到期卡片和学习计划。你的线程永远不经过模型，仍是你的 Claude 通道；通道先回复则 AI 不再回复。每人每日 token 上限和全站每日花费上限在 lib/partner-ai-config.ts。关闭（默认）= 照旧：只有调试模式的朋友能聊，由开发通道回复。",
+      "学习伙伴由 AI 回复（除你以外的所有用户）：打开后，普通登录用户在任意页面都能看到学习伙伴聊天框（不用调试模式），他们的消息由 Cloudflare Workers AI 上的 DeepSeek 模型在服务器端回复，只读他们自己的词表、到期卡片和学习计划。你的线程仍是你的 Claude 通道（只有 partner.owner-thread 打开时，没有通道回复的消息才由 Li 回复）；通道先回复则 AI 不再回复。每人每日 token 上限和全站每日花费上限在 lib/partner-ai-config.ts。关闭（默认）= 照旧：只有调试模式的朋友能聊，由开发通道回复。",
     default: false,
     requires: ["workers-ai.credentials", "ai-credits.migration"],
     group: "ai",
@@ -397,11 +413,37 @@ export const FLAGS = {
     default: true,
     group: "credits",
   },
+  // No `audience`: every account; ON is the shipped state (owner 2026-11-15:
+  // "按默认生效上线"). Grants credits, never charges (docs/payments.md, "Sign-up bonus").
+  "credits.signup-bonus": {
+    description:
+      "注册礼：新注册的账号送 1 美元积分（金额在 /dev/config 的 credits.signupBonusUsd），但只有每个 UTC 日（UTC 零点换日）的前 10 个新账号能拿到（名额在 credits.signupBonusDaily）；超出的人什么也拿不到，也不报错。功能上线前就有的老账号，下次登录或打开钱包时补发一次，不占名额。每个账号只送一次，重试不会重复；钱包流水里显示为「注册礼」。关闭 = 新账号和老账号都不再送（已送的积分不动）。",
+    default: true,
+    group: "credits",
+  },
   // Owner, 2026-11-15 05:2x JST: an agent publishes a one-file app; each capability is a per-app grant.
   "mini-apps": {
     description:
       "小应用（/m/<名字>，docs/mini-apps.md）：你的助手可以发布一个单文件 HTML 小应用，它在独立的沙盒里运行（不和 lianki.com 同源，不能读你的登录状态），通过 lianki.* 接口使用存储、设置和聊天；每一种能力第一次用时都会弹出卡片问你：仅这一次 / 这个应用一直允许 / 拒绝，之后可以在 /my/preferences 撤销。第一阶段只有有 dev 权限的账号能发布。关闭 = /m/ 和 /api/my/mini-apps 都不存在（404），已发布的应用留着但打不开。",
     default: true,
+    audience: "owner",
+  },
+  // Owner, 2026-11-15 13:4x JST: Li speaks in his own thread too. Only his
+  // thread: on, it changes nothing for anyone else (/dev/flags groups it under ai).
+  "partner.owner-thread": {
+    description:
+      "Li 也在你自己的线程里说话：「学习伙伴由 AI 回复」也打开时，你没有点名任何一条线（codex、agy…）的消息，如果几秒内（/dev/config 的 partner.ownerReplyDelayMs，默认 8 秒）没有开发通道回复，就由 Li（DeepSeek 模型）回复并朗读；通道先回复则 Li 不说话。声纹判断为别人的声音的消息不回复。和别人一样扣你自己的积分，没有免费。关闭 = 照旧：你的线程只由开发通道回复。",
+    default: true,
+    group: "ai",
+    audience: "owner",
+  },
+  // Owner, 2026-11-15 15:0x JST: "每超过一美元，就在我这里发一个新的通知" — the
+  // whole site's and his own account's AI/TTS/STT spend (lib/payments/spend-alert.ts).
+  "partner.spend-alert": {
+    description:
+      "AI 花费提醒：全站和你自己账号的 AI（学习伙伴、朗读、语音识别）花费（按服务商成本算，cost ledger 和已结算的付费调用）每多一个整数步长（/dev/config 的 partner.spendAlertStepUsd，默认 1 美元），就在你的线程里发一条消息并朗读，比如「AI 全站花费已达 $3（今日 $0.42，本月 $3.00）」「我的 AI 花费已达 $1（…）」；文字在 /dev/config 的 partner.spendAlertSiteText / partner.spendAlertMineText。同一个金额只提醒一次。累计从上线这一刻算起。关闭 = 不发；关闭期间经过的金额不补发。",
+    default: true,
+    group: "ai",
     audience: "owner",
   },
 } as const satisfies Record<string, FlagDef>;

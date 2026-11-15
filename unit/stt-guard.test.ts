@@ -3,19 +3,24 @@
  * "Silence guard"): known hallucinations dropped, real sentences kept, and a
  * dropped line reaching nothing: not the chat, not a command, not a send cue.
  */
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { type MicDeps, createMicSession } from "@lianki/debug-chat/mic-session";
 import { micTaps } from "@lianki/debug-chat/mic-taps";
 import { type VadEvents, cleanTranscript, createMic } from "@lianki/debug-chat/mic";
 import { localSignals } from "@lianki/debug-chat/local-stt";
 import {
   STOCK_PHRASES,
+  GUARD_MIN_SPEECH_MS,
   STT_GUARD,
+  guardLimits,
+  guardLimitsOf,
   judgeFinal,
+  setGuardLimits,
   loudestFrameRms,
   phraseKey,
   stockPhraseKind,
 } from "@lianki/debug-chat/stt-guard";
+import { type RepeatLimits, STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
 import { readStt } from "@/lib/stt";
 
 const RATE = 16_000;
@@ -219,8 +224,11 @@ describe("what each route gives the guard", () => {
 
 describe("a dropped line reaches nothing", () => {
   /** One utterance through createMic: the audio's level, frames at `prob`, the route's answer. */
-  async function say(text: string, o: { sec?: number; prob?: number; level?: number } = {}) {
-    const { sec = 3, prob = 0.9, level = 0.2 } = o;
+  async function say(
+    text: string,
+    o: { sec?: number; prob?: number; level?: number; repeat?: RepeatLimits } = {},
+  ) {
+    const { sec = 3, prob = 0.9, level = 0.2, repeat } = o;
     const logs: Record<string, unknown>[] = [];
     const texts: string[] = [];
     let ev: VadEvents | null = null;
@@ -238,6 +246,7 @@ describe("a dropped line reaches nothing", () => {
       onPending() {},
       log: (e) => void logs.push(e),
       partials: false,
+      ...(repeat ? { repeat: () => repeat } : {}),
     });
     await mic.toggle();
     const e = ev as unknown as VadEvents;
@@ -280,6 +289,38 @@ describe("a dropped line reaches nothing", () => {
     expect(kept.texts).toEqual(["他说感谢观看这个视频的人"]);
   });
 
+  it("the live minimum speech (config stt.guardMinSpeechMs) reaches the mic's guard", async () => {
+    // 100 ms of Silero speech: under the 160 ms default (owner, 2026-11-15, café noise).
+    const short = await say("今天天气不错", { sec: 0.1 });
+    expect(short.texts).toEqual([]);
+    expect(short.logs[0]).toMatchObject({ reason: "no-speech-frames", ms: 100 });
+    setGuardLimits({ minSpeechMs: 64 });
+    expect((await say("今天天气不错", { sec: 0.1 })).texts).toEqual(["今天天气不错"]);
+    setGuardLimits({ minSpeechMs: 1_000 });
+    expect((await say("今天天气不错", { sec: 0.5 })).texts).toEqual([]);
+    setGuardLimits({});
+  });
+
+  it("a decoding loop is cut to its head, or dropped as repetition (stt-repeat.ts)", async () => {
+    const cut = await say("あなたが" + "ウィッター".repeat(200));
+    expect(cut.texts).toEqual(["あなたがウィッター"]);
+    expect(cut.logs[0]).toMatchObject({
+      ev: "stt-cleaned",
+      repetition: "trim",
+      runs: 200,
+      unitChars: 5,
+      share: 1,
+    });
+    // A short unit is already one copy (cleanTranscript); a head too short to keep: dropped.
+    expect((await say("谢谢".repeat(30))).texts).toEqual(["谢"]);
+    const gone = await say("ウィッター".repeat(50), { repeat: { ...STT_REPEAT, minKeepChars: 6 } });
+    expect(gone.texts).toEqual([]);
+    expect(gone.logs.at(-1)).toMatchObject({ ev: "stt-dropped", reason: "repetition", chars: 0 });
+    expect(JSON.stringify([...cut.logs, ...gone.logs])).not.toContain("ウィッター");
+    // Natural repetition is speech.
+    expect((await say("好好好，我知道了")).texts).toEqual(["好好好，我知道了"]);
+  });
+
   /** Through the page's session: the taps first, then the chat's sink. */
   async function session(text: string, level: number) {
     let events: VadEvents | null = null;
@@ -316,5 +357,26 @@ describe("a dropped line reaches nothing", () => {
     expect(await session("下一张", 0)).toEqual({ offered: [], sent: [] });
     // The same path with a real line: offered first, then the chat.
     expect(await session("下一张", 0.2)).toEqual({ offered: ["下一张"], sent: ["下一张"] });
+  });
+});
+
+describe("the silence guard's live limits", () => {
+  afterEach(() => setGuardLimits({}));
+
+  it("defaults to STT_GUARD (160 ms); bad or out-of-range values read as the default", () => {
+    expect(STT_GUARD.minSpeechMs).toBe(160);
+    expect(guardLimits()).toEqual(STT_GUARD);
+    expect(guardLimitsOf({ minSpeechMs: 400.4 }).minSpeechMs).toBe(400);
+    for (const bad of [
+      "300",
+      Number.NaN,
+      GUARD_MIN_SPEECH_MS.min - 1,
+      GUARD_MIN_SPEECH_MS.max + 1,
+      undefined,
+    ])
+      expect(guardLimitsOf({ minSpeechMs: bad })).toEqual(STT_GUARD);
+    setGuardLimits({ minSpeechMs: 500 });
+    expect(guardLimits()).toEqual({ ...STT_GUARD, minSpeechMs: 500 });
+    expect(judgeFinal("好", { ...CLEAR, speechMs: 400 }, guardLimits())).toBe("no-speech-frames");
   });
 });

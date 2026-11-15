@@ -221,9 +221,20 @@ tuning. The guard does read:
 | gate | reason logged | limit (`STT_GUARD`) | based on |
 | --- | --- | --- | --- |
 | loudest 32 ms frame | `silent-audio` | 0.008 | the owner's quietest of 211 clips peaks at 0.0101 |
-| Silero speech, when it ran | `no-speech-frames` | 32 ms | all 211 clips reach one frame ≥ 0.5; noise windows mostly have none |
+| Silero speech, when it ran | `no-speech-frames` | 160 ms (was 32) | raised 2026-11-15 for café noise; at 32 ms all 211 clips passed, 160 ms not re-measured |
 | turbo's own VAD share | `route-vad` | 0.25 | owner's lowest with text 0.295; noise down to 0.108 |
 | stock phrase, whole line | `stock-credit`, `stock-courtesy` | below | |
+
+**Live thresholds (owner, 2026-11-15).** In a café, background sound became
+lines he never said, so the gate before the speech model was raised and made
+live: public config keys at /dev/config, read by the page (`DebugEval`) and
+handed to the mic, applied from the next utterance with no deploy.
+`stt.vadPositive` / `stt.vadNegative` (Silero's start/end thresholds in normal
+mode, default 0.5 / 0.35, was 0.3 / 0.25), `stt.vadWhisperPositive` /
+`stt.vadWhisperNegative` (whisper mode, 0.35 / 0.25, was 0.2 / 0.15), and
+`stt.guardMinSpeechMs` (the `no-speech-frames` gate, 160 ms, was 32). A negative
+not below its positive is clamped to positive − 0.05 (`vadThresholdsOf` in
+`adaptive.ts`); `__lkVoiceAdapt = { NORMAL_POSITIVE: … }` on the page still wins.
 
 **The phrases.** The whole line, normalized (NFKC, case, punctuation, spacing,
 Traditional folded onto Simplified), must be one phrase or a run of them; `…`
@@ -299,6 +310,23 @@ through `cleanTranscript` (`mic.ts`), which takes out:
    "the"), or to nothing when it is a Latin fragment that is no word ("ert").
    Three in a row ("no no no") stays, and one CJK character needs 6
    (哈哈哈哈 is laughter).
+4. **Long loops** (`repeatGuard`, packages/debug-chat/src/stt-repeat.ts),
+   after the three above. Step 3 misses a unit longer than four tokens: on
+   2026-11-15, in a café, a final came back as 「あなたが」 and then
+   「ウィッター」 hundreds of times, and was posted, read aloud and answered.
+   This step reads the text as letters only (NFKC, lowercased, no spaces or
+   punctuation). A unit of 1–8 letters, or one whole word, repeated
+   `stt.repeatMaxRuns` times in a row (default 6), where such loops cover
+   `stt.repeatMaxShare` of the letters (default 0.6), cuts the text to what
+   came before the first loop plus one copy. If fewer than
+   `stt.repeatMinKeepChars` letters (default 4) are left, the line is
+   dropped (`stt-dropped`, reason `repetition`). A cut line's SttTag carries
+   `repeat: "trimmed"`, which the voice details popover shows. A unit made
+   only of digits never counts (1000000). The hub runs the same guard on
+   every voice line from any client (`debug.stt-repeat` in the log). It
+   acks a dropped line without posting it, and checks speaker proofs on the
+   words before the cut. The three keys are public config (/dev/config) and
+   take effect without a deploy.
 
 If nothing meaningful is left, the message is dropped. Each cleaning is a
 `stt-cleaned` devLog event with the counts `{prompt, phrase, repeat,

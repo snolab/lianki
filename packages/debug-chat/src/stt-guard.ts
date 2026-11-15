@@ -165,13 +165,16 @@ export const STT_GUARD = {
    */
   minFrameRms: 0.008,
   /**
-   * Under this much Silero speech (one 32 ms frame), no frame looked like speech
-   * at all. All 211 of the owner's clips reach it. It stays this low because real
-   * single words are as faint as noise (docs/stt-ab.md): it never sorts speech
-   * from noise, only nothing from something. The energy VAD gives no
-   * probabilities, and then this gate does not run.
+   * Under this much Silero speech (frames at SPEECH_FRAME_PROB or over), the
+   * utterance is no line. It was 32 ms (one frame: "nothing from something";
+   * all 211 of the owner's clips reach it). Raised to 160 ms (five frames) by the
+   * owner, 2026-11-15: in a café, background sound with a frame or two over the
+   * bar became lines he never said. A short real word still holds five frames;
+   * not re-measured on the 211 clips. Live: config stt.guardMinSpeechMs
+   * (setGuardLimits); raising it drops more short noise and more very short
+   * words. The energy VAD gives no probabilities, and then this gate does not run.
    */
-  minSpeechMs: 32,
+  minSpeechMs: 160,
   /**
    * Under this share of the clip kept by cloud turbo's own VAD, there is too
    * little speech for a line. Lowest on the owner's clips with text: 0.295;
@@ -184,6 +187,25 @@ export const STT_GUARD = {
   faintProb: 0.5,
 } as const;
 export type SttGuardLimits = { [K in keyof typeof STT_GUARD]: number };
+
+/** The live limits, set by the page from config (setGuardLimits); STT_GUARD until then. */
+let liveGuard: SttGuardLimits = STT_GUARD;
+/** The minimum-speech gate's range (config stt.guardMinSpeechMs too). */
+export const GUARD_MIN_SPEECH_MS = { min: 32, max: 2_000 } as const;
+/** Valid limits from untrusted values: out of range or not a number reads as the default. */
+export function guardLimitsOf(v: { minSpeechMs?: unknown }): SttGuardLimits {
+  const x = v.minSpeechMs;
+  const ok =
+    typeof x === "number" &&
+    Number.isFinite(x) &&
+    x >= GUARD_MIN_SPEECH_MS.min &&
+    x <= GUARD_MIN_SPEECH_MS.max;
+  return { ...STT_GUARD, minSpeechMs: ok ? Math.round(x) : STT_GUARD.minSpeechMs };
+}
+export function setGuardLimits(v: { minSpeechMs?: unknown }): void {
+  liveGuard = guardLimitsOf(v);
+}
+export const guardLimits = (): SttGuardLimits => liveGuard;
 
 /** What the mic knows of one final, for the gates. */
 export type SttEvidence = {
@@ -202,7 +224,9 @@ export type SttDropReason =
   | "no-speech-frames"
   | "route-vad"
   | "stock-credit"
-  | "stock-courtesy";
+  | "stock-courtesy"
+  /** A decoding loop with too little left once cut (stt-repeat.ts). */
+  | "repetition";
 
 /** The characters a `…` may stand for: "the Amara.org community" fits, a paragraph does not. */
 const SLOT = 40;

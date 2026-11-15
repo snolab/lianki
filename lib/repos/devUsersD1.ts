@@ -121,16 +121,22 @@ export async function listDevUsers(
 }
 
 /**
- * Sign-ups per JST calendar month ("2026-11"), from the oldest. One grouped
- * query: only month totals leave the database, never a row per account.
- * Unparseable dates (strftime → NULL) are left out.
+ * Sign-ups per calendar month ("2026-11") at `offMin` minutes east of UTC
+ * (the viewer's zone; 0 = UTC), from the oldest. One grouped query: only
+ * month totals leave the database, never a row per account. Unparseable
+ * dates (strftime → NULL) are left out.
  */
-export async function monthlySignups(db: D1Like): Promise<{ month: string; n: number }[]> {
+export async function monthlySignups(
+  db: D1Like,
+  offMin = 0,
+): Promise<{ month: string; n: number }[]> {
+  const mod = `${offMin >= 0 ? "+" : ""}${Math.trunc(offMin)} minutes`;
   const { results } = await db
     .prepare(
-      `SELECT strftime('%Y-%m', createdAt, '+9 hours') AS month, COUNT(*) AS n
+      `SELECT strftime('%Y-%m', createdAt, ?1) AS month, COUNT(*) AS n
        FROM user WHERE month IS NOT NULL GROUP BY month ORDER BY month`,
     )
+    .bind(mod)
     .all<{ month: string; n: number }>();
   return results.map((r) => ({ month: r.month, n: Number(r.n) }));
 }

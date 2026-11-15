@@ -1,7 +1,7 @@
 /**
  * DebugChat mounted in happy-dom (a previous change broke mounting with no
  * console error): it renders its log; a spoken draft is the live line
- * (live-speech.ts), the input empty; a failed send offers a retry; a sent one
+ * (live-speech.ts), the input empty; a failed send retries after the normal pause; a sent one
  * holds as "sending" until its echo and goes in the render the echo appears;
  * typing takes the words into the input; minimized, the line floats; a line
  * read aloud (an agent's, or his own read back in his clone) is highlighted
@@ -65,6 +65,75 @@ async function page() {
 }
 
 describe("DebugChat mounts", () => {
+  it("an unscoped host cannot auto-send legacy input on mount or online; fresh typing still follows its normal pause", async () => {
+    const p = await page();
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { DebugChat } = await import("../../packages/debug-chat/src/DebugChat");
+    const { chatUi } = await import("../../packages/debug-chat/src/ui-store");
+    const host = p.win.document.createElement("div");
+    p.win.document.body.appendChild(host);
+    const root = createRoot(host as never);
+    const sent: string[] = [];
+    try {
+      p.win.localStorage.setItem("lk:debug-chat-open", "1");
+      chatUi().setState({
+        draft: "Legacy owner's voice.",
+        pureDictation: "Legacy owner's voice.",
+        interim: null,
+      });
+      await act(() =>
+        root.render(
+          <DebugChat
+            live
+            listeners={1}
+            messages={[]}
+            onSend={(text) => {
+              sent.push(text);
+              return true;
+            }}
+          />,
+        ),
+      );
+      expect(sent).toEqual([]);
+      const old = p.win.sessionStorage.getItem("lk:ui:chat");
+      await act(async () => {
+        p.win.dispatchEvent(new p.win.Event("online"));
+        await new Promise((resolve) => setTimeout(resolve, 3200));
+      });
+      expect(sent).toEqual([]);
+      expect(chatUi().getState()).toMatchObject({
+        draft: "Legacy owner's voice.",
+        pureDictation: "Legacy owner's voice.",
+      });
+      expect(p.win.sessionStorage.getItem("lk:ui:chat")).toBe(old);
+      expect(host.querySelector('[data-testid="debug-chat-live-retry"]')).toBeNull();
+
+      const input = host.querySelector(
+        '[data-testid="debug-chat-input"]',
+      ) as unknown as HTMLTextAreaElement;
+      await act(async () => {
+        input.dispatchEvent(
+          new p.win.KeyboardEvent("keydown", { key: "x", bubbles: true }) as never,
+        );
+        const setter = Object.getOwnPropertyDescriptor(
+          p.win.HTMLTextAreaElement.prototype,
+          "value",
+        )!.set!;
+        setter.call(input, "Newly typed words");
+        input.dispatchEvent(new p.win.Event("input", { bubbles: true }) as never);
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 3200));
+      });
+      expect(sent).toEqual(["Newly typed words"]);
+    } finally {
+      await act(() => root.unmount());
+      chatUi().setState({ draft: "", pureDictation: null, interim: null });
+      await p.close();
+    }
+  }, 15_000);
+
   it("renders its log; a spoken draft is the live line, sent it holds until its echo", async () => {
     const p = await page();
     const { act } = await import("react");
@@ -75,9 +144,10 @@ describe("DebugChat mounts", () => {
     p.win.document.body.appendChild(host);
     let root = createRoot(host as never);
     const sent: { text: string; source?: string }[] = [];
-    let ok = true;
+    let ok = false;
     const base = [line("o1", "Earlier line."), line("g1", "A reply.", "agent")];
     const props = {
+      draftScope: "fixture-account",
       live: true,
       listeners: 1,
       messages: base,
@@ -92,19 +162,23 @@ describe("DebugChat mounts", () => {
     try {
       // Open, with a spoken draft kept from before a reload (ui-store.ts).
       p.win.localStorage.setItem("lk:debug-chat-open", "1");
-      chatUi().setState({ draft: "Hello there.", pureDictation: "Hello there.", interim: null });
+      chatUi("fixture-account").setState({
+        draft: "Hello there.",
+        pureDictation: "Hello there.",
+        interim: null,
+      });
       await act(() => root.render(<DebugChat {...props} />));
       expect(q('[data-testid="debug-chat-log"]')).not.toBeNull();
       expect(qa('[data-testid="debug-chat-line"]').map((e) => e.dataset.msg)).toEqual(["o1", "g1"]);
       // The restored spoken words: the live line, last, the input empty.
       const liveEl = qa('[data-testid="debug-chat-live"]');
       expect(liveEl.length).toBeGreaterThan(0);
-      expect(liveEl.at(-1)!.dataset.live).toBe("speaking");
+      expect(liveEl.at(-1)!.dataset.live).toBe("unsent");
       expect(liveEl.at(-1)!.textContent).toContain("Hello there.");
       const input = q('[data-testid="debug-chat-input"]') as unknown as HTMLTextAreaElement;
       expect(input.value).toBe("");
 
-      // The send fails (offline): the live line stays, with a retry.
+      // A transient send failure keeps the live line without a retry button.
       ok = false;
       await act(async () => {
         input.dispatchEvent(
@@ -113,11 +187,15 @@ describe("DebugChat mounts", () => {
       });
       expect(sent).toEqual([]);
       expect(qa('[data-testid="debug-chat-live"]').at(-1)!.dataset.live).toBe("unsent");
-      // Retry, online: sent as the mic's, and held as "sending" with the draft gone.
+      expect(q('[data-testid="debug-chat-live-retry"]')).toBeNull();
+      // A browser reconnect resumes it automatically, with no retry interaction.
       ok = true;
-      await act(async () => q('[data-testid="debug-chat-live-retry"]')!.click());
+      await act(async () => {
+        p.win.dispatchEvent(new p.win.Event("online"));
+        await new Promise((resolve) => setTimeout(resolve, 3200));
+      });
       expect(sent).toEqual([{ text: "Hello there.", source: "stt" }]);
-      expect(chatUi().getState().draft).toBe("");
+      expect(chatUi("fixture-account").getState().draft).toBe("");
       const held = qa('[data-testid="debug-chat-live"]');
       expect(held.map((e) => e.dataset.live)).toEqual(["sending"]);
       expect(held.at(-1)!.textContent).toContain("Hello there.");
@@ -134,12 +212,11 @@ describe("DebugChat mounts", () => {
       // Another spoken draft kept over a reload, then typing starts: the words come
       // into the input to be edited, and the live line goes.
       await act(() => root.unmount());
-      chatUi().setState({ draft: "Second.", pureDictation: "Second." });
+      ok = false;
+      chatUi("fixture-account").setState({ draft: "Second.", pureDictation: "Second." });
       root = createRoot(host as never);
       await act(() => root.render(<DebugChat {...props} />));
-      expect(qa('[data-testid="debug-chat-live"]').map((e) => e.dataset.live)).toEqual([
-        "speaking",
-      ]);
+      expect(qa('[data-testid="debug-chat-live"]').map((e) => e.dataset.live)).toEqual(["unsent"]);
       const input2 = q('[data-testid="debug-chat-input"]') as unknown as HTMLTextAreaElement;
       expect(input2.value).toBe("");
       await act(async () => {
@@ -152,14 +229,14 @@ describe("DebugChat mounts", () => {
       // Minimized: the live line floats over the pill too.
       await act(() => root.unmount());
       p.win.localStorage.setItem("lk:debug-chat-open", "0");
-      chatUi().setState({ draft: "Third.", pureDictation: "Third." });
+      chatUi("fixture-account").setState({ draft: "Third.", pureDictation: "Third." });
       root = createRoot(host as never);
       await act(() => root.render(<DebugChat {...props} />));
       expect(q('[data-testid="debug-chat-minimized"]')).not.toBeNull();
       expect(q('[data-testid="debug-chat-live-floats"]')?.textContent).toContain("Third.");
     } finally {
       await act(() => root.unmount());
-      chatUi().setState({ draft: "", pureDictation: null, interim: null });
+      chatUi("fixture-account").setState({ draft: "", pureDictation: null, interim: null });
       await p.close();
     }
   });

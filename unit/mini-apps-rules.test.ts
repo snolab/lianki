@@ -28,7 +28,9 @@ import {
   siteOf,
 } from "../lib/mini-apps/origin";
 import { secretUsable, signTicket, verifyTicket, type Ticket } from "../lib/mini-apps/ticket";
-import { prepareHtml } from "../lib/mini-apps/html";
+import { hostTheme, prepareHtml, withTheme } from "../lib/mini-apps/html";
+import { STYLE_PACK_CSS } from "../lib/mini-apps/style-pack";
+import { readFileSync } from "node:fs";
 import { CONFIG } from "../lib/config";
 import { siblingRequestRefused } from "../lib/security/same-site-guard";
 
@@ -57,6 +59,17 @@ describe("slugs", () => {
 });
 
 describe("manifest", () => {
+  test("style is an explicit two-value choice, with old manifests retaining Lianki", () => {
+    for (const style of ["none", "lianki"] as const) {
+      const parsed = parseManifest({ slug: "custom", name: "Custom", style });
+      expect(parsed.ok && parsed.manifest.style).toBe(style);
+    }
+    for (const style of [null, false, 0, "", "None", "custom", {}, []])
+      expect(parseManifest({ slug: "custom", name: "Custom", style })).toEqual({
+        ok: false,
+        error: "bad-style",
+      });
+  });
   test("a full manifest is kept; defaults fill icon, version, permissions", () => {
     const r = parseManifest({
       slug: "calc",
@@ -72,6 +85,7 @@ describe("manifest", () => {
         name: "Calculator",
         icon: "🧮",
         version: "1.2.3",
+        style: "lianki",
         permissions: ["storage", "chat:write"],
       },
     });
@@ -81,6 +95,7 @@ describe("manifest", () => {
       name: "X",
       icon: DEFAULT_ICON,
       version: "0.1.0",
+      style: "lianki",
       permissions: [],
     });
   });
@@ -358,16 +373,82 @@ describe("the ticket", () => {
 });
 
 describe("the file as the frame gets it", () => {
+  test("none omits only automatic appearance while security, SDK and authored styles stay intact", () => {
+    const out = prepareHtml(
+      '<!doctype html><html data-lk-style="lianki"><link rel="stylesheet" href="/m/presets/lianki.css"><style>body{margin:7px}</style><script>app()</script>',
+      {
+        sdkSrc: "https://lianki.com/m/sdk.js",
+        cspMeta: "default-src 'none'; connect-src 'none'",
+        inlineCss: "automatic-pack{}",
+        assets: "https://lianki.com",
+        theme: "auto",
+        style: "none",
+      },
+    );
+    expect(out).toStartWith(
+      '<!doctype html><html data-theme="auto" data-lk-style="none"><meta http-equiv="Content-Security-Policy"',
+    );
+    expect(out).toContain('<script src="https://lianki.com/m/sdk.js"></script>');
+    expect(out.indexOf("Content-Security-Policy")).toBeLessThan(out.indexOf("app()"));
+    expect(out).not.toContain("data-lk-pack");
+    expect(out).not.toContain("automatic-pack");
+    expect(out).not.toContain('name="color-scheme"');
+    expect(out).toContain('<link rel="stylesheet" href="https://lianki.com/m/presets/lianki.css">');
+    expect(out).toContain("<style>body{margin:7px}</style>");
+    expect(withTheme(out, "dark")).toContain('<html data-theme="dark" data-lk-style="none">');
+    expect(prepareHtml("<div>App</div>", { sdkSrc: "/m/sdk.js", style: "none" })).toStartWith(
+      '<html data-lk-style="none"><script',
+    );
+  });
   test("the CSP and the SDK go before anything of the app's", () => {
     const out = prepareHtml("<!DOCTYPE html><script>evil()</script><head></head>", {
       sdkSrc: "https://lianki.com/m/sdk.js",
       cspMeta: `default-src 'none'; x "<>&`,
     });
     expect(out).toBe(
-      '<!DOCTYPE html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; x &quot;&lt;&gt;&amp;"><script src="https://lianki.com/m/sdk.js"></script><script>evil()</script><head></head>',
+      '<!DOCTYPE html><html data-lk-style="lianki"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; x &quot;&lt;&gt;&amp;"><script src="https://lianki.com/m/sdk.js"></script><script>evil()</script><head></head>',
     );
     expect(prepareHtml("<p>hi</p>", { sdkSrc: "/m/sdk.js" })).toBe(
-      '<script src="/m/sdk.js"></script><p>hi</p>',
+      '<html data-lk-style="lianki"><script src="/m/sdk.js"></script><p>hi</p>',
     );
+  });
+
+  test("srcdoc: the theme, the pack inlined, preset references made absolute", () => {
+    const out = prepareHtml(
+      `<!doctype html><link rel="stylesheet" href="/m/presets/lianki.css"><LINK HREF='/m/presets/lianki.css' rel=stylesheet><script src="/m/presets/chart.js"></script><img src=/m/presets/x.png>`,
+      {
+        sdkSrc: "https://lianki.com/m/sdk.js",
+        inlineCss: "a{} </style><b>",
+        assets: "https://lianki.com/",
+        theme: "auto",
+      },
+    );
+    expect(out).toBe(
+      '<!doctype html><html data-theme="auto" data-lk-style="lianki"><meta name="color-scheme" content="light dark"><style data-lk-pack>a{} <\\/style><b></style><script src="https://lianki.com/m/sdk.js"></script><script src="https://lianki.com/m/presets/chart.js"></script><img src=https://lianki.com/m/presets/x.png>',
+    );
+    expect(withTheme(out, "dark")).toStartWith(
+      '<!doctype html><html data-theme="dark" data-lk-style="lianki">',
+    );
+    expect(withTheme("<p>", "light")).toBe("<p>");
+    expect(hostTheme({ matches: true })).toBe("dark");
+    expect(hostTheme({ matches: false })).toBe("light");
+    expect(hostTheme(null)).toBe("light");
+  });
+
+  test("the inlined pack is the public file, oklch only", () => {
+    const file = readFileSync(new URL("../public/m/presets/lianki.css", import.meta.url), "utf8");
+    expect(STYLE_PACK_CSS).toBe(file);
+    expect(file).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
+    for (const sel of [
+      "button",
+      "input",
+      "select",
+      "textarea",
+      ".card",
+      ".pill",
+      ".segmented",
+      ':root[data-theme="dark"]',
+    ])
+      expect(file).toContain(sel);
   });
 });

@@ -210,7 +210,7 @@ describe("checkTarget / checkBackend (allowlist)", () => {
       BYOK_PRESETS.filter((p) => !p.relay)
         .map((p) => p.id)
         .sort(),
-    ).toEqual(["custom", "ollama"]);
+    ).toEqual(["custom", "deepinfra", "groq", "ollama", "workers-ai"]);
   });
 
   const refused: [string, string][] = [

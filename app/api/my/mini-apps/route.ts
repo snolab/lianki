@@ -1,10 +1,12 @@
-import { sameOriginJson } from "@/lib/security/same-origin";
-import { json, listMine, publish } from "@/lib/mini-apps/handlers";
+import { checkToken } from "@/lib/api-tokens";
+import { getD1 } from "@/lib/d1";
+import { publishRequest } from "@/lib/mini-apps/publish-auth";
+import { listMine } from "@/lib/mini-apps/handlers";
 import { miniDeps } from "./deps";
 
 export const dynamic = "force-dynamic";
 
-/** docs/mini-apps.md: the account's apps; publish one (phase 1: `dev` only). */
+/** docs/mini-apps.md: the account's apps; publish with a dev session or apps:publish + chat:write token. */
 export const GET = () => listMine(miniDeps);
 export const POST = (req: Request) =>
-  sameOriginJson(req) ? publish(req, miniDeps) : Promise.resolve(json({ error: "forbidden" }, 403));
+  publishRequest(req, miniDeps, (token) => checkToken(getD1(), token, "apps:publish"));
