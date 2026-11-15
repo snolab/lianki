@@ -1,6 +1,5 @@
-// Type checking (owner rule, 2026-10-29, symphr docs/toolchain.md; for Lianki
-// 2026-11-16): tsrs everywhere (oxc-project/tsrs, the Rust port of TS 7), and
-// tsc 7 only when tsrs itself breaks. Ported from syform's scripts/typecheck.ts.
+// Type checking (owner rule, 2026-11-16): tsrs everywhere (oxc-project/tsrs,
+// the Rust port of TS 7), and tsc 7 only when tsrs itself breaks.
 //
 // Exit codes: 0 = no type errors, 1 = config error (tsconfig, -p), 2 = type
 // errors. Those three are tsrs's answer and are returned as is — tsc never
@@ -36,7 +35,7 @@ function find(path: string): string | null {
 
 const TSRS = find("tsrs/bin/tsrs");
 // Ask for the version first: with no binary for this machine the launcher
-// exits 1, which would read as a config error (codex syform#6).
+// exits 1, which would read as a config error.
 const rc = TSRS && run(TSRS, ["--version"], true) === 0 ? run(TSRS) : null;
 if (rc === 0 || rc === 1 || rc === 2) process.exit(rc);
 console.error(
