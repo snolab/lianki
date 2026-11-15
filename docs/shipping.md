@@ -689,3 +689,10 @@ reaches (`scripts/gate/affected.ts unit`). The qa suites it reaches
 decided on 2026-11-15 that QA is for the release path ("只有上主线才需要 QA");
 a preview or feature branch gets `qa:all` in CI once its PR is in the merge
 queue. `LIANKI_QA_ALWAYS=1` runs the qa step for any push.
+
+"The pushed change" is each pushed sha diffed against what the remote already
+holds for that ref (the hook's `<remote_sha>`, passed as `LIANKI_PUSH_BASES`)
+when that is an ancestor of the push, else against its merge base with
+`origin/main`. main merges by squash, so a long-lived branch's merge base with
+main never advances; before this (2026-11-15) every preview push looked like
+the whole branch and ran the full suite and all QA.
