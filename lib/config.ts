@@ -331,6 +331,20 @@ export const CONFIG = {
   },
   // The polish read-back in his cloned voice (packages/debug-chat/src/polish-readback.ts),
   // flag voice.polish-readback: a clip from the Mac's clone server not back by then is skipped.
+  // An undecided voice line well under his print shows another voice's avatar
+  // (packages/debug-chat/src/avatar-rules.ts, owner 2026-11-15 23:49 JST).
+  "voice.otherAvatarBelow": {
+    // Same as OTHER_AVATAR_BELOW in avatar-rules.ts (not imported: it pulls the lane tables into config).
+    default: 0.45,
+    schema: z.number().min(0).max(1),
+    min: 0,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "public",
+    description:
+      "声纹判定不了（未定）的语音行，如果和你的声纹相似度低于这个值，就用「另一个声音」的头像显示，而不是你的头像（淡色加问号）。你自己的话通常在 0.76–0.85，家人等其他人在 0.30–0.42。0 = 关闭，未定的行一律用你的头像。",
+  },
   "voice.cloneTimeoutMs": int({
     default: 20_000,
     min: 2_000,

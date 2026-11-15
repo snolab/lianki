@@ -60,6 +60,7 @@ import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setLaneTable } from "@lianki/debug-chat/voices";
 import { setPhoneticMaxNear } from "@lianki/debug-chat/lane-phonetic";
+import { setOtherAvatarBelow } from "@lianki/debug-chat/avatar-rules";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
@@ -278,6 +279,8 @@ export function DebugEval({
   setLaneTable(publicCfg("chat.lanes"));
   // How near a lane name may sound and still be that name (lane-phonetic.ts): live, no deploy.
   setPhoneticMaxNear(publicCfg("lanes.phoneticMaxNear"));
+  // Undecided voice lines well under his print get another voice's avatar (avatar-rules.ts).
+  setOtherAvatarBelow(publicCfg("voice.otherAvatarBelow"));
   // The mic's repetition guard on every final (stt-repeat.ts): live, no deploy.
   setRepeatLimits({
     maxRuns: publicCfg("stt.repeatMaxRuns"),

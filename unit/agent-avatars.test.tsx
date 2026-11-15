@@ -662,3 +662,37 @@ describe("rendering", () => {
     expect(html).toContain('aria-label="Who is here: agy, codex, mcp-bot +2"');
   });
 });
+
+describe("voice.otherAvatarBelow: an undecided line well under his print is another voice", () => {
+  // Owner, 2026-11-15 23:49 JST: his wife's lines (0.30–0.42) were "unknown" and drew his picture.
+  const line = (score: number) =>
+    ({
+      id: "v1",
+      from: "owner",
+      text: "老公把电脑给我拿过来",
+      at: 1,
+      source: "stt",
+      speaker: { decision: "unknown", score, reason: "between" },
+    }) as never;
+  const opts = { voiceAvatar: (v: string) => `voice-${v}.svg`, otherVoice: "Another voice" };
+  it("under the threshold: another voice's disc, not his", async () => {
+    const { setOtherAvatarBelow, OTHER_AVATAR_BELOW } =
+      await import("@/packages/debug-chat/src/avatar-rules");
+    expect(OTHER_AVATAR_BELOW).toBe(0.45);
+    setOtherAvatarBelow(0.45);
+    const a = lineAvatar(line(0.399), opts);
+    expect(a.name).toBe("Another voice");
+    expect(a.src).toBe("voice-other.svg");
+    expect(a.unsure).toBeUndefined();
+    // At or over it: still him, faded and unsure.
+    const b = lineAvatar(line(0.514), opts);
+    expect(b.name).not.toBe("Another voice");
+    expect(b.unsure).toBe(true);
+    // 0 turns it off; a bad value falls back to the default.
+    setOtherAvatarBelow(0);
+    expect(lineAvatar(line(0.3), opts).unsure).toBe(true);
+    setOtherAvatarBelow("x");
+    expect(lineAvatar(line(0.3), opts).name).toBe("Another voice");
+    setOtherAvatarBelow(OTHER_AVATAR_BELOW);
+  });
+});
