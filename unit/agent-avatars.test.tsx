@@ -786,10 +786,10 @@ describe("voice.otherAvatarBelow: an undecided line well under his print is anot
 });
 
 describe("presence names: a built-in lane's token shows the lane's name", () => {
-  it("claude → 小克, agy → 杰咪; an owner rename still wins; other tokens keep theirs", async () => {
+  it("claude → 小克, agy → 哈基米; an owner rename still wins; other tokens keep theirs", async () => {
     const { effective } = await import("@/packages/debug-chat/src/presence");
     expect(effective({ lane: "claude" } as never).name).toBe("小克");
-    expect(effective({ lane: "agy" } as never).name).toBe("杰咪");
+    expect(effective({ lane: "agy" } as never).name).toBe("哈基米");
     expect(effective({ lane: "agy", ownerName: "Jimmy" } as never).name).toBe("Jimmy");
     expect(effective({ lane: "otoji-main" } as never).name).toBe("otoji-main");
   });

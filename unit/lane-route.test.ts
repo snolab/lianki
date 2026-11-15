@@ -36,6 +36,16 @@ describe("routeLine: addressed lines", () => {
     ["Q扣，看下", ["codex"], "看下"],
     ["扣扣，在吗", ["codex"], "在吗"],
     ["杰咪，在吗", ["agy"], "在吗"],
+    // 哈基米: agy's name since 2026-11-16, and how STT writes it.
+    ["哈基米，在吗", ["agy"], "在吗"],
+    ["哈吉米，看一下", ["agy"], "看一下"],
+    ["海吉米，在吗", ["agy"], "在吗"],
+    ["哈急米，在吗", ["agy"], "在吗"],
+    ["哈几米，看下", ["agy"], "看下"],
+    ["ハチミ、聞こえる？", ["agy"], "聞こえる？"],
+    ["ハッチミ、聞こえる？", ["agy"], "聞こえる？"],
+    ["Hajimi, are you there?", ["agy"], "are you there?"],
+    ["hajimi, 你好", ["agy"], "你好"],
     ["杰明，看一下", ["agy"], "看一下"],
     ["咪宝，在吗", ["agy"], "在吗"],
     ["咪宝，在吗？", ["agy"], "在吗？"],
@@ -195,6 +205,8 @@ describe("customLaneNames and laneHotwords", () => {
     const words = laneHotwords();
     expect(words).toContain("codex");
     expect(words).toContain("杰咪");
+    expect(words).toContain("哈基米");
+    expect(words).toContain("哈吉米");
     expect(words).toContain("咪宝");
     expect(words).toContain("lianki");
     expect(words).toContain("liagent");

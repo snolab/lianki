@@ -147,7 +147,7 @@ describe("a configured lane", () => {
     ]);
     expect(laneIds()).toEqual([...LANE_IDS]);
     expect(laneSpec("agy").aliases).toContain("mibao");
-    expect(laneSpec("agy").name).toBe("杰咪");
+    expect(laneSpec("agy").name).toBe("哈基米");
     expect(laneSpec("codex")).toMatchObject({ name: "可乐", voice: "bright" });
     expect(routeLine("mibao, hi").lanes).toEqual(["agy"]);
     expect(routeLine("米宝，在吗").lanes).toEqual(["agy"]);

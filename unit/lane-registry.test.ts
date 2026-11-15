@@ -128,7 +128,7 @@ describe("laneStep: the transitions", () => {
   });
   it("a lane's shown name: the owner's for it, its lane's, else the token's", () => {
     expect(laneShownName("codex")).toBe("coco");
-    expect(laneShownName("agy")).toBe("杰咪");
+    expect(laneShownName("agy")).toBe("哈基米");
     expect(laneShownName("codex", "Coco!")).toBe("Coco!");
     expect(laneShownName("rechrome-codex-1")).toBe("rechrome-codex-1");
     expect(laneShownName("main")).toBe("main");
@@ -551,20 +551,20 @@ describe("the hub: modes and system lines", () => {
     const one = await h.listen(a.token);
     const two = await h.listen(a.token);
     await h.leave(one);
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听"]);
     await h.leave(two);
     // In the grace: still listening.
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听"]);
     const three = await h.listen(a.token);
     t += 31_000;
     await h.hub.alarm();
     await flush();
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听"]);
     await h.leave(three);
     t += 31_000;
     await h.hub.alarm();
     await flush();
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听", "杰咪 转为只读"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听", "哈基米 转为只读"]);
   });
   it("one lane, an all-socket and an owner-only one: one line; losing all is graced and silent", async () => {
     const h = hubSetup({ graceSec: 30 });
