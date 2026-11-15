@@ -227,15 +227,21 @@ export type LaneSpec = {
   aliases: readonly string[];
   /** Its avatar; absent = the host's agent avatar, as today. */
   mark?: LaneMark;
+  /**
+   * What it does, a few words (zh; prompt text for Li's roster in the owner's
+   * thread, roster.ts, never shown in the UI). Config `chat.lanes` `role` overrides it.
+   */
+  role?: string;
 };
 
 export const LANES: Readonly<Record<DefaultLaneId, LaneSpec>> = {
-  main: { name: "", voice: "main", aliases: ["main", "chat"] },
+  main: { name: "", voice: "main", aliases: ["main", "chat"], role: "学习伙伴" },
   codex: {
     // coco (owner, 2026-11-14: "codex 的话就让它叫做 coco 吧"); the lane id and `【codex】` stay.
     name: "coco",
     voice: "calm",
     aliases: ["codex", "coco"],
+    role: "界面与前端开发",
     // Two slow waves: calm, low.
     mark: {
       bg: "oklch(0.5 0.143 22.3)",
@@ -248,6 +254,7 @@ export const LANES: Readonly<Record<DefaultLaneId, LaneSpec>> = {
     name: "杰咪",
     voice: "bright",
     aliases: ["agy", "antigravity", "杰咪", "咪宝"],
+    role: "功能开发",
     // A four-point spark: bright, high.
     mark: {
       bg: "oklch(0.8 0.14 80)",
@@ -263,6 +270,7 @@ export const LANES: Readonly<Record<DefaultLaneId, LaneSpec>> = {
     // A young girl's voice (owner, 2026-11-15); was calm (low) like coco.
     voice: "sweet",
     aliases: ["claude", "小克", "小可", "小柯"],
+    role: "聊天调度与发布",
     mark: {
       bg: "oklch(0.55 0.1 250)",
       fg: "oklch(0.97 0.02 250)",
@@ -295,10 +303,12 @@ export type ChatLaneDef = {
   voice?: VoiceId;
   /** Its disc colour (oklch); absent = the generated mark's (svg-avatar.ts autoMark). */
   color?: string;
+  /** What it does, a few words (Li's roster, roster.ts); absent = the built-in lane's, else none. */
+  role?: string;
 };
 
 /** The limits of the table: ids as token names are written, at most 64 rows. */
-export const LANE_TABLE_LIMITS = { rows: 64, names: 24, name: 40 } as const;
+export const LANE_TABLE_LIMITS = { rows: 64, names: 24, name: 40, role: 60 } as const;
 const LANE_ID_RE = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,39}$/u;
 const COLOR_RE = /^oklch\(\s*[\d.]+%?\s+[\d.]+\s+[\d.]+(?:\s*\/\s*[\d.]+%?)?\s*\)$/;
 const cleanNames = (v: unknown): string[] | null => {
@@ -326,6 +336,14 @@ export function parseLaneDef(raw: unknown): ChatLaneDef | null {
     return null;
   if (r.voice !== undefined && !isVoiceId(r.voice)) return null;
   if (r.color !== undefined && (typeof r.color !== "string" || !COLOR_RE.test(r.color))) return null;
+  if (
+    r.role !== undefined &&
+    (typeof r.role !== "string" ||
+      !r.role.trim() ||
+      [...r.role].length > LANE_TABLE_LIMITS.role ||
+      /[\n<>]/u.test(r.role))
+  )
+    return null;
   return {
     id: r.id,
     ...(typeof r.name === "string" ? { name: r.name.trim() } : {}),
@@ -333,6 +351,7 @@ export function parseLaneDef(raw: unknown): ChatLaneDef | null {
     ...(heard.length ? { heard } : {}),
     ...(r.voice !== undefined ? { voice: r.voice as VoiceId } : {}),
     ...(r.color !== undefined ? { color: r.color as string } : {}),
+    ...(typeof r.role === "string" ? { role: r.role.trim() } : {}),
   };
 }
 
@@ -381,6 +400,7 @@ export function laneSpec(id: LaneId): LaneSpec {
       ...base,
       ...(row.name ? { name: row.name } : {}),
       ...(row.voice ? { voice: row.voice } : {}),
+      ...(row.role ? { role: row.role } : {}),
       aliases: [...new Set([...base.aliases, ...(row.aliases ?? [])])],
     };
   }
@@ -391,6 +411,7 @@ export function laneSpec(id: LaneId): LaneSpec {
     voice: row?.voice ?? "main",
     aliases: [...new Set([id.toLowerCase(), ...(row?.name ? [row.name.toLowerCase()] : []), ...(row?.aliases ?? [])])],
     mark: row?.color ? { ...mark, bg: row.color } : mark,
+    ...(row?.role ? { role: row.role } : {}),
   };
 }
 
