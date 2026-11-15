@@ -2099,16 +2099,46 @@ polygon text tspan title` only (any other is dropped with its subtree:
 
 Owner, 2026-11-14: right of the connection chip (the link icon, over the
 input), small overlapping avatars of everyone in this thread
-(`PresenceStack.tsx`): most recently active first, `chat.presenceShown`
-(default 6, `/dev/config`) of them, then "+N".
+(`PresenceStack.tsx`). Simplified 2026-11-16 ("为什么我们有好几个方框头像…能不能给它简化一点？";
+then "按钮和「实时监听」这种文字太多了"):
 
-- **Read-only lanes too** (owner, 2026-11-15 "3的成员也要显示在叠叠头像这里"):
-  every lane-registry row in state `reader` is listed even when it has not
-  read lately (`presentList`, as of its last use). The stack puts them after
-  the live ones, greyed with no dot; the panel lists them last under
-  "read-only" (`peopleReadOnly`). Every row shows its role (`roster.ts
-  laneRole`: config `chat.lanes`, else `LANES`). An older page just draws them
-  as more avatars.
+- **The stack** draws avatars only for those who can answer now (live
+  listener lanes, tokens, people): most recently active first,
+  `chat.presenceShown` (default 3, `/dev/config`) of them, then "+K". Every
+  lane-registry row in state `reader` (listed even when it has not read
+  lately, `presentList`) is **not** an avatar: they are one small chip
+  "+N read-only" (`peopleReadersChip`) at the end. The summary / label reads
+  "小克, coco +1 · +3 read-only".
+- **The panel**: one row per live participant — avatar, name · role
+  (`roster.ts laneRole`: config `chat.lanes`, else `LANES`), and a strip of
+  state icons in place of words like "实时监听" (`icons.tsx`, Phosphor-like,
+  drawn here):
+  - listening, one segmented group with all three states visible, the one in
+    effect filled seal red: **ear** hears live (all lines, or his only),
+    **bell** woken only when named (reader), **closed eye** not listening
+    (muted). Drawn only when the lane registry gives a mode.
+  - then two abilities (owner, 2026-11-16: three groups in all, listen / talk /
+    act, in words a 13-year-old knows, no "eval", "code" or "scope"): **speech
+    bubble** can read and answer you (one icon: answering means it reads, so
+    there is no eye), **hand** may operate the page for you (the eval grant).
+    Not allowed = the same icon struck through and grey (`Icon slash`). Only
+    what the page knows (`presence.ts knownState`): talk = the hub's
+    `perms.post`, else posted a line (muted: no); act only from `perms.eval`.
+    Unknown = no icon, never a guess.
+  - **busy**: a slow turning seal-red ring around the avatar, in the stack and
+    in the panel (`BusyRing`), while its agent works; with reduced motion a
+    still, full ring; stuck = a still amber dashed ring. From the lane row's
+    `busy` / `stuck` (lane-registry.ts), which the lanes manager sets from the
+    agent's live output (docs/lane-listen.md, "Who is busy"). The "…" details
+    say it in words (`peopleBusy`, `peopleStuck`).
+  - a tap on any icon shows its one-line meaning under the row (also its
+    hover title / label).
+    The read-only lanes fold into one row "3 read-only lanes"
+    (`peopleReadersRow`) that opens to plain names (no avatar, role or icons).
+    Each row's **"…"** holds the rest: activity ("reading now", "here since"),
+    and for the viewer's own tokens Rename, Picture and Remove (below); a
+    reader that is the viewer's own token keeps a "…" for the same. Invite is
+    one quiet row at the bottom. Every control is ≥44px tall.
 
 - **Who counts** (`presence.ts presentList`, built in the hub): a token with a
   listening socket open (`lianki chat listen`, an MCP wait on a socket); a
@@ -2123,10 +2153,10 @@ input), small overlapping avatars of everyone in this thread
   only on the pages of the account that owns it.
 - **Look and touch**: hover (mouse) or one tap (touch) shows a one-line summary
   ("agy, codex, mcp-bot +2"); a click, a double tap or Enter opens the panel:
-  a row each (avatar, name, MCP badge, "reading now" or last active, since).
-- **Managing**: for the viewer's own tokens a row offers Rename, the picture
-  (Generated / Its own / Paste an SVG, sanitized on the page and again in the
-  hub) and **Remove**, which asks once, then revokes the token through
+  the rows above (activity behind each "…").
+- **Managing**: for the viewer's own tokens a row's "…" offers Rename,
+  Picture (one segmented choice: Generated / Its own / Paste an SVG, sanitized
+  on the page and again in the hub) and **Remove**, which asks once, then revokes the token through
   `/api/token` (the same path as /my/preferences; another account's token is a
   404), so its socket closes at once and it leaves the list. The owner's name
   and picture are kept on the token's record and win over the agent's own
@@ -2139,8 +2169,10 @@ input), small overlapping avatars of everyone in this thread
   Remove (their grant is ended from the connection chip).
 
 Tests: `unit/agent-avatars.test.tsx` (sanitizer, generated mark, presence
-order/expiry/cap, the hub's avatar op, presence pushes, owner override, Remove
-closing the socket, rendering).
+order/expiry/cap, the read-only chip, `knownState`, the state icons, the hub's
+avatar op, presence pushes, owner override, Remove closing the socket,
+rendering) and `unit/presence-stack.test.tsx` (the panel in a DOM: "…" menus,
+icon states and their meanings, the folded readers row).
 
 ### A line's own voice
 

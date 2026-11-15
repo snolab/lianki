@@ -792,3 +792,80 @@ describe("LaneRegistry.apply: one lane's inputs run in order, a failed one does 
     expect(await f.reg.list("owner")).toHaveLength(1);
   });
 });
+
+describe("busy: the lanes manager's word about its agent (the page's ring)", () => {
+  it("laneStep: busy, stuck, idle; the same word twice changes nothing; a leave clears it", () => {
+    const r = laneStep(undefined, { type: "seen" }, ctx()).next;
+    const b = laneStep(r, { type: "busy", busy: true }, ctx(T0 + 1));
+    expect(b.next).toMatchObject({ state: "reader", busy: true, busyAt: T0 + 1 });
+    expect(b.event).toBeUndefined();
+    expect(b.next.stuck).toBeUndefined();
+    expect(laneStep(b.next, { type: "busy", busy: true }, ctx(T0 + 2)).next).toBe(b.next);
+    const s = laneStep(b.next, { type: "busy", busy: true, stuck: true }, ctx(T0 + 3)).next;
+    expect(s).toMatchObject({ busy: true, stuck: true, busyAt: T0 + 3 });
+    // stuck without busy is not stuck.
+    const idle = laneStep(s, { type: "busy", busy: false, stuck: true }, ctx(T0 + 4)).next;
+    expect(idle.busy).toBeUndefined();
+    expect(idle.stuck).toBeUndefined();
+    expect(idle.busyAt).toBe(T0 + 4);
+    // A mode change keeps it; leaving clears it.
+    const l = laneStep(b.next, { type: "listen" }, ctx(T0 + 5)).next;
+    expect(l).toMatchObject({ state: "listener", busy: true });
+    const gone = laneStep(l, { type: "leave" }, ctx(T0 + 6)).next;
+    expect(gone.state).toBe("left");
+    expect(gone.busy).toBeUndefined();
+    expect(gone.busyAt).toBeUndefined();
+  });
+  it("over HTTP: stored on the row, pushed in presence on a change only, no line; bad values refused", async () => {
+    const h = hubSetup();
+    const page = await h.ownerPage();
+    const a = await mint("codex");
+    await h.http(a.token, { op: "say", text: "hi" });
+    await flush();
+    const before = page.of("present").length;
+    const lines = h.events(page).length;
+    expect((await h.http(a.token, { op: "lane", busy: "yes" })).status).toBe(400);
+    expect((await h.http(a.token, { op: "lane", busy: true, stuck: "no" })).status).toBe(400);
+    expect((await h.http(a.token, { op: "lane", busy: true })).body).toEqual({
+      ok: true,
+      lane: "codex",
+      state: "reader",
+      busy: true,
+    });
+    await flush();
+    const row = h.store.get(laneRegKey("owner", "codex")) as LaneReg;
+    expect(row).toMatchObject({ busy: true, busyAt: T0 });
+    expect(page.lastPresent().find((p) => p.key === "lane:codex")).toMatchObject({ busy: true });
+    const afterBusy = page.of("present").length;
+    expect(afterBusy).toBeGreaterThan(before);
+    // The same word again: no new presence push.
+    await h.http(a.token, { op: "lane", busy: true });
+    await flush();
+    expect(page.of("present").length).toBe(afterBusy);
+    await h.http(a.token, { op: "lane", busy: true, stuck: true });
+    await flush();
+    expect(page.lastPresent().find((p) => p.key === "lane:codex")).toMatchObject({
+      busy: true,
+      stuck: true,
+    });
+    expect((await h.http(a.token, { op: "lane", busy: false })).body.busy).toBe(false);
+    await flush();
+    expect(page.lastPresent().find((p) => p.key === "lane:codex")?.busy).toBeUndefined();
+    // Never a system line for it.
+    expect(h.events(page).length).toBe(lines);
+    // Checked as a read: a token without one is refused.
+    const w = await mint("writer", ["chat:write"]);
+    expect((await h.http(w.token, { op: "lane", busy: true })).status).toBe(403);
+  });
+  it("flag off: busy answers null and keeps nothing", async () => {
+    const h = hubSetup({ flag: false });
+    const a = await mint("codex");
+    expect((await h.http(a.token, { op: "lane", busy: true })).body).toEqual({
+      ok: true,
+      lane: "codex",
+      state: null,
+      busy: null,
+    });
+    expect([...h.store.keys()].some((k) => k.startsWith("lanereg:"))).toBe(false);
+  });
+});

@@ -10,10 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
 import { readFileSync } from "node:fs";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import type { Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { resetUiStores, useUi } from "@lianki/ui-state";
-import { stubGlobals } from "./support/globals";
+import { importReactDomClient, stubGlobals } from "./support/globals";
 import { FullScreenMenuItem } from "@lianki/debug-chat/FullScreenMenuItem";
 import { chatPrefs } from "@lianki/debug-chat/ui-store";
 import { CHAT_LOCALES, EXTRA, EXTRA_CONTEXT } from "@lianki/debug-chat/chat-ui-locales";
@@ -27,6 +27,9 @@ import {
   pulseRow,
   runMenuCue,
 } from "@lianki/debug-chat/ui-cue";
+
+// Not a static import: react-dom must first load with a DOM (unit/support/globals.ts).
+const { createRoot } = await importReactDomClient();
 
 const words = { label: "Full screen", onWord: "On", offWord: "Off" };
 

@@ -8,10 +8,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { stubGlobals } from "./support/globals";
+import type { Root } from "react-dom/client";
+import { importReactDomClient, stubGlobals } from "./support/globals";
 import { ChatLinkMenu, openChatLink } from "@lianki/debug-chat/ChatLinkMenu";
 import { ChatLink } from "@lianki/debug-chat/RichText";
+
+// Not a static import: react-dom must first load with a DOM (unit/support/globals.ts).
+const { createRoot } = await importReactDomClient();
 
 let win: Window;
 let restore: () => void;

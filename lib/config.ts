@@ -1078,6 +1078,16 @@ export const CONFIG = {
     description:
       "只读的 agent 被你点名（名字、别名、#仓库、全体、@它）之后，接下来多少分钟里你说的话都实时发给它；每次再点名重新计时，到时间回到只读。0 = 只发点名的那句。Mac 上的值是环境变量 LIANKI_LANES_WAKE_LIVE_MIN。",
   }),
+  "lanes.busyIdleSec": int({
+    default: LANES_CONFIG_DEFAULTS["lanes.busyIdleSec"],
+    min: 1,
+    max: 600,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "谁在忙：agent 的实时输出停了这么多秒，就算它闲下来了，头像上的转圈停下。输出一来就又算忙。Mac 上的值是环境变量 LIANKI_LANES_BUSY_IDLE_SEC。",
+  }),
   "lanes.modeGraceSec": int({
     default: 30,
     min: 0,
@@ -1113,14 +1123,14 @@ export const CONFIG = {
       "可以答没点名的话的 agent（coco、杰咪）入群时的第一句问候，占位符同上。Mac 上的值是环境变量 LIANKI_LANES_GREETING_ANSWER_UNNAMED。",
   },
   "chat.presenceShown": int({
-    default: 6,
+    default: 3,
     min: 1,
     max: 12,
     unit: "avatars",
     group: "chat",
     audience: "public",
     description:
-      "聊天头像栏最多叠放显示几个头像：实时监听的在前（最近活跃的在前），只读的灰色排在后面；其余显示为「+N」，展开的列表仍列出全部。",
+      "聊天头像栏最多叠放显示几个头像：只算能马上回答的（实时监听的 agent 和人，最近活跃的在前），其余显示为「+N」；只读车道不画头像，只在最后显示一个「+N 只读」，展开的列表仍列出全部。",
   }),
   "chat.prepareAuthCalls": int({
     default: 120,

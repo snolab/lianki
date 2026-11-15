@@ -63,6 +63,14 @@ export type LaneReg = {
   scopeDownAt?: number;
   /** The name its lines were last shown with (the owner's for it, else its own), for the alarm's line. */
   name?: string;
+  /**
+   * Its agent is mid-task (the lanes manager's word, op "lane" `busy`, from its agent's live
+   * output): the page's turning ring. `stuck`: busy but stuck. `busyAt`: when it last changed.
+   * A lane that leaves is not busy.
+   */
+  busy?: true;
+  stuck?: true;
+  busyAt?: number;
 };
 
 export type LaneInput =
@@ -73,7 +81,9 @@ export type LaneInput =
   | { type: "due" }
   | { type: "reader" }
   | { type: "leave" }
-  | { type: "mute"; muted: boolean };
+  | { type: "mute"; muted: boolean }
+  /** The lanes manager: its agent started or ended a task (stuck: busy, but stuck on it). No line is said. */
+  | { type: "busy"; busy: boolean; stuck?: boolean };
 
 export const LANE_REG_PREFIX = "lanereg:";
 export const laneRegKey = (thread: string, lane: string) => `${LANE_REG_PREFIX}${thread}:${lane}`;
@@ -107,7 +117,10 @@ export function laneStep(
     changedAt: now,
   };
   const to = (state: LaneState, event?: LaneEventKind, scope?: LaneScope) => {
-    const { downAt: _d, scope: _s, scopeDownAt: _sd, ...rest } = base;
+    const { downAt: _d, scope: _s, scopeDownAt: _sd, ...kept } = base;
+    // Gone: not busy any more either.
+    const { busy: _b, stuck: _st, busyAt: _ba, ...idle } = kept;
+    const rest = state === "left" ? idle : kept;
     return {
       next: { ...rest, state, ...(scope === "all" ? { scope } : {}), seenAt: now, changedAt: now },
       event,
@@ -166,6 +179,21 @@ export function laneStep(
     case "leave":
       if (pinned || !prev || prev.state === "left") return { next: prev ?? base };
       return to("left", "left");
+    case "busy": {
+      const busy = input.busy;
+      const stuck = busy && input.stuck === true;
+      if ((prev?.busy === true) === busy && (prev?.stuck === true) === stuck)
+        return { next: prev ?? base };
+      const { busy: _b, stuck: _s, busyAt: _a, ...rest } = base;
+      return {
+        next: {
+          ...rest,
+          ...(busy ? { busy: true as const } : {}),
+          ...(stuck ? { stuck: true as const } : {}),
+          busyAt: now,
+        },
+      };
+    }
     case "mute": {
       const was = prev?.muted === true;
       if (was === input.muted) return { next: prev ?? base };
@@ -264,7 +292,13 @@ export class LaneRegistry {
       await this.host.post(line);
       console.log(JSON.stringify({ msg: "debug.lane-event", lane, kind: r.event }));
     }
-    if (r.event || (prev?.state ?? "left") !== r.next.state || prev?.scope !== r.next.scope)
+    if (
+      r.event ||
+      (prev?.state ?? "left") !== r.next.state ||
+      prev?.scope !== r.next.scope ||
+      prev?.busy !== r.next.busy ||
+      prev?.stuck !== r.next.stuck
+    )
       this.host.presence?.(thread);
     return r.next;
   }

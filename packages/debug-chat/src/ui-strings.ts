@@ -237,7 +237,49 @@ export type UiStrings = {
    * - peopleCopy / peopleClose: copy that text; close the list. One verb.
    * - peopleReadOnly: the heading over the agents in that list that only
    *   read the chat when called by name (they do not hear every message
-   *   live); their avatars are greyed. One or two words ("Read-only").
+   *   live). One or two words ("Read-only").
+   * - peopleReadersChip: a tiny chip at the end of the avatar stack counting
+   *   those read-only agents instead of drawing their avatars; keep `{n}`
+   *   (how many). As short as possible ("+3 read-only").
+   * - peopleReadersRow: the one collapsed row in the list that stands for all
+   *   of them and shows their names on tap; keep `{n}`. A few words ("3
+   *   read-only lanes"; a lane is one AI agent's seat in the chat).
+   * - peopleActions: the label (read by screen readers, not shown) of the "…"
+   *   button on an agent's row that opens its details and actions; keep
+   *   `{name}` (the agent's name). A few words.
+   * - peoplePicture: the item in that menu that opens the picture choices
+   *   (peopleAuto / peopleOwn / peoplePaste). One word.
+   *
+   * Each agent's row shows small state icons instead of words; a tap on an
+   * icon shows its one-line meaning (one of the lines below), also its
+   * hover title. Short sentences without a full stop; the agent is the
+   * implied subject ("Can read and answer you"). The readers include
+   * children of about 13: everyday words only.
+   * - peopleListening: the label (screen readers) of the three listening
+   *   icons together. One word.
+   * - peopleHearsAll: the ear icon, the agent hears every message in the
+   *   chat live, the other agents' too.
+   * - peopleHearsYours: the ear icon, the agent hears the user's own
+   *   messages live (not the other agents').
+   * - peopleWokenByName: the bell icon, the agent only wakes and reads when
+   *   the user calls it by name.
+   * - peopleNotListening: the closed-eye icon, the agent is not listening:
+   *   it left, or the user muted it.
+   * - peopleAbilities: the label (screen readers) of the two icons after the
+   *   listening ones, what the agent is allowed to do. A few words.
+   * - peopleCanTalk / peopleCannotTalk: the speech-bubble icon (struck
+   *   through and grey when not allowed): whether the agent can read the
+   *   user's messages and answer them. Never "post", "permission" or other
+   *   technical words.
+   * - peopleCanAct / peopleCannotAct: the hand icon (struck through and grey
+   *   when not allowed): whether the agent may operate the page the user has
+   *   open for them (tap buttons, scroll, fill things in), something the user
+   *   allowed. Never "code", "run" or "remote control".
+   * - peopleBusy: the turning ring around an agent's picture (its hover
+   *   title, and a line in the agent's row): the agent is doing a task right
+   *   now. Short, no full stop.
+   * - peopleStuck: the same ring when the agent has been stuck on its task
+   *   for a while and the user may want to look. Short, no full stop.
    */
   linkChip: string;
   linkEval: string;
@@ -282,6 +324,22 @@ export type UiStrings = {
   peopleCopy: string;
   peopleClose: string;
   peopleReadOnly: string;
+  peopleReadersChip: string;
+  peopleReadersRow: string;
+  peopleActions: string;
+  peoplePicture: string;
+  peopleListening: string;
+  peopleHearsAll: string;
+  peopleHearsYours: string;
+  peopleWokenByName: string;
+  peopleNotListening: string;
+  peopleAbilities: string;
+  peopleCanTalk: string;
+  peopleCannotTalk: string;
+  peopleCanAct: string;
+  peopleCannotAct: string;
+  peopleBusy: string;
+  peopleStuck: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -397,6 +455,22 @@ export const UI_EN: UiStrings = {
   peopleCopy: "Copy",
   peopleClose: "Close",
   peopleReadOnly: "Read-only",
+  peopleReadersChip: "+{n} read-only",
+  peopleReadersRow: "{n} read-only lanes",
+  peopleActions: "More for {name}",
+  peoplePicture: "Picture",
+  peopleListening: "Listening",
+  peopleHearsAll: "Hears every message live",
+  peopleHearsYours: "Hears your messages live",
+  peopleWokenByName: "Wakes only when named",
+  peopleNotListening: "Not listening (left or muted)",
+  peopleAbilities: "What it can do",
+  peopleCanTalk: "Can read and answer you",
+  peopleCannotTalk: "Can't read or answer you",
+  peopleCanAct: "Can tap around this page for you",
+  peopleCannotAct: "Can't touch this page",
+  peopleBusy: "Working on something now",
+  peopleStuck: "Stuck, may need you",
 };
 
 export const UI_ZH: UiStrings = {
@@ -511,6 +585,22 @@ export const UI_ZH: UiStrings = {
   peopleCopy: "复制",
   peopleClose: "关闭",
   peopleReadOnly: "只读",
+  peopleReadersChip: "+{n} 只读",
+  peopleReadersRow: "只读车道 {n} 个",
+  peopleActions: "{name} 的更多操作",
+  peoplePicture: "头像",
+  peopleListening: "监听",
+  peopleHearsAll: "实时听到每一条消息",
+  peopleHearsYours: "实时听到你的消息",
+  peopleWokenByName: "被点名时才醒来",
+  peopleNotListening: "没在听（已离开或已禁言）",
+  peopleAbilities: "能做什么",
+  peopleCanTalk: "能看懂并回答你",
+  peopleCannotTalk: "不能看也不能回答你",
+  peopleCanAct: "能帮你点页面",
+  peopleCannotAct: "不能碰这个页面",
+  peopleBusy: "正在忙",
+  peopleStuck: "卡住了，可能需要你",
 };
 
 export const UI_JA: UiStrings = {
@@ -625,6 +715,22 @@ export const UI_JA: UiStrings = {
   peopleCopy: "コピー",
   peopleClose: "閉じる",
   peopleReadOnly: "読み取り専用",
+  peopleReadersChip: "+{n} 読み取り専用",
+  peopleReadersRow: "読み取り専用レーン {n} 件",
+  peopleActions: "{name} のその他の操作",
+  peoplePicture: "アイコン",
+  peopleListening: "受信",
+  peopleHearsAll: "すべてのメッセージをリアルタイムで聞く",
+  peopleHearsYours: "あなたのメッセージをリアルタイムで聞く",
+  peopleWokenByName: "名前を呼ばれたときだけ起きる",
+  peopleNotListening: "聞いていない（退出またはミュート）",
+  peopleAbilities: "できること",
+  peopleCanTalk: "読んで返事ができる",
+  peopleCannotTalk: "読むことも返事もできない",
+  peopleCanAct: "このページを代わりに操作できる",
+  peopleCannotAct: "このページには触れない",
+  peopleBusy: "いま作業中",
+  peopleStuck: "止まっている。助けが要るかも",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

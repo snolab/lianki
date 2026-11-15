@@ -1,20 +1,23 @@
 /**
  * Who is here (docs/dev-debug-widget.md, "Who is here"): the participants of
  * this chat thread (presence.ts: tokens reading now or lately, recent
- * speakers), as overlapping avatars right of the connection chip, most
- * recently active first, `shown` of them (live config chat.presenceShown)
- * then "+N". The read-only lanes (mode "reader", lane-registry.ts) come
- * after the live ones, greyed and without a dot (owner, 2026-11-15 "3的成员也要
- * 显示在叠叠头像这里"); the panel lists them last, under "read-only", each with
- * its role (roster.ts laneRole: config chat.lanes, else voices.ts LANES).
+ * speakers), right of the connection chip. The stack draws avatars only for
+ * those who can answer now (live lanes, tokens, people), most recently active
+ * first, `shown` of them (live config chat.presenceShown) then "+K"; the
+ * read-only lanes (mode "reader", lane-registry.ts) are one chip "+N
+ * read-only" at the end (owner, 2026-11-16 "为什么我们有好几个方框头像…简化一点").
  *
  * A mouse hovering it, or one tap on a touch screen, shows a one-line
- * summary of names; a mouse click, a double tap, or Enter opens the panel:
- * one row per participant (avatar, name, MCP badge, activity) and, for the
- * viewer's own tokens, Rename, Picture (generated / the agent's own / a
- * pasted SVG, the same sanitizer as the hub's) and Remove (revokes the
- * token, after one confirm step). Invite links to the token form,
- * prefilled for a chat-only token, and shows the connect snippet.
+ * summary; a mouse click, a double tap, or Enter opens the panel: one row per
+ * live participant (avatar, name · role, and a strip of state icons:
+ * listening ear / bell / closed eye, then talk (a speech bubble: reads and
+ * answers) and act (a hand: may operate the page), each struck through and
+ * grey when not allowed, each tapped for its meaning), the read-only lanes
+ * collapsed into one row that
+ * opens to plain names, and a quiet Invite row at the bottom. Each row's "…"
+ * holds the rest: its activity and, for the viewer's own tokens, Rename,
+ * Picture (generated / the agent's own / a pasted SVG, the same sanitizer as
+ * the hub's) and Remove (revokes the token, after one confirm step).
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Avatar } from "./Avatar";
@@ -23,6 +26,8 @@ import {
   INVITE_HREF,
   type Present,
   mcpSnippet,
+  knownState,
+  type ListenState,
   liveFirst,
   presenceSummary,
   stackOf,
@@ -31,6 +36,7 @@ import { laneRole } from "./roster";
 import { laneTable } from "./voices";
 import { sanitizeAvatarSvg } from "./svg-avatar";
 import { laneModeWord } from "./lane-events";
+import { Icon, type IconName } from "./icons";
 import { chatLocale } from "./chat-ui-locales";
 import type { UiStrings } from "./ui-strings";
 
@@ -55,6 +61,22 @@ export type PresenceWords = Pick<
   | "peopleCopy"
   | "peopleClose"
   | "peopleReadOnly"
+  | "peopleReadersChip"
+  | "peopleReadersRow"
+  | "peopleActions"
+  | "peoplePicture"
+  | "peopleListening"
+  | "peopleHearsAll"
+  | "peopleHearsYours"
+  | "peopleWokenByName"
+  | "peopleNotListening"
+  | "peopleAbilities"
+  | "peopleCanTalk"
+  | "peopleCannotTalk"
+  | "peopleCanAct"
+  | "peopleCannotAct"
+  | "peopleBusy"
+  | "peopleStuck"
 >;
 
 /** A participant's change: a name (null: its own back), a picture ("auto", an SVG, null: its own back). */
@@ -94,8 +116,39 @@ export function LiveMark({ p }: { p: Pick<Present, "mode" | "muted" | "scope"> }
   );
 }
 
-/** A read-only lane's avatar: greyed, the same in the stack and the panel. */
-const READER_LOOK = { filter: "grayscale(1)", opacity: 0.5 } as const;
+/**
+ * The ring around a busy agent's picture (owner, 2026-11-16 "在干活的 agent 的头像上面给它一个
+ * 闪烁动画或者转圈圈的动画"): a seal-red arc turning slowly; with reduced motion a still, full
+ * ring. Stuck: a still amber dashed ring (stopped, not working), its own hue so it never reads
+ * as the theme red. The words are its title (and the row's line).
+ */
+export function BusyRing({
+  p,
+  t,
+  inset = -2,
+}: {
+  p: Pick<Present, "busy" | "stuck">;
+  t: Pick<PresenceWords, "peopleBusy" | "peopleStuck">;
+  inset?: number;
+}) {
+  if (!p.busy) return null;
+  const stuck = !!p.stuck;
+  return (
+    <span
+      data-testid="debug-chat-presence-busy"
+      data-stuck={stuck || undefined}
+      title={stuck ? t.peopleStuck : t.peopleBusy}
+      aria-hidden
+      className={
+        "pointer-events-none absolute rounded-full border-2 " +
+        (stuck
+          ? "border-dashed border-[oklch(0.72_0.15_75)]"
+          : "animate-spin border-[var(--lk-primary,oklch(0.53_0.207_22.3))] border-t-transparent motion-reduce:animate-none motion-reduce:border-t-[var(--lk-primary,oklch(0.53_0.207_22.3))]")
+      }
+      style={{ inset, ...(stuck ? {} : { animationDuration: "2.4s" }) }}
+    />
+  );
+}
 
 /** An entry's role (its lane's, roster.ts), or undefined. */
 const roleOf = (p: Present) =>
@@ -104,6 +157,14 @@ const roleOf = (p: Present) =>
 /** The picture an entry is drawn with (its own, its lane's, or the generated mark). */
 const pictureOf = (p: Present, mainName: string) =>
   agentAvatar({ name: p.name || mainName, lane: p.lane, avatar: p.avatar });
+
+/** The small grey chip style shared by "+K" and "+N read-only" in the stack. */
+const CHIP =
+  "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[oklch(0.9_0.01_260)] px-1 fs-9 font-semibold text-[oklch(0.35_0.02_260)] ring-1 ring-[oklch(0.98_0.005_85)] dark:bg-[oklch(0.35_0.02_260)] dark:text-[oklch(0.92_0.01_260)] dark:ring-[oklch(0.22_0.01_260)]";
+
+/** A full-width, 44px-tall item in the panel (a menu entry, the readers row, Invite). */
+const ITEM =
+  "flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-start hover:bg-[oklch(0.5_0.02_250/0.1)] focus-visible:outline-2 focus-visible:outline-offset-[-2px]";
 
 export function PresenceStack({
   list,
@@ -132,9 +193,12 @@ export function PresenceStack({
   const pointer = useRef<string>("mouse");
   const box = useRef<HTMLDivElement>(null);
   const groups = liveFirst(list.map((p) => ({ ...p, name: p.name || mainName })));
-  const named = [...groups.live, ...groups.readers];
-  const stack = stackOf(named, shown);
-  const summary = presenceSummary(named, shown);
+  // Avatars only for those who can answer now; the read-only lanes are one count chip.
+  const stack = stackOf(groups.live, shown);
+  const readersChip = groups.readers.length
+    ? t.peopleReadersChip.replaceAll("{n}", String(groups.readers.length))
+    : "";
+  const summary = [presenceSummary(groups.live, shown), readersChip].filter(Boolean).join(" · ");
 
   // Outside a tap, or Escape: the panel closes.
   useEffect(() => {
@@ -191,7 +255,7 @@ export function PresenceStack({
             setTip((x) => !x);
           }
         }}
-        className="inline-flex min-h-5 items-center rounded px-0.5 py-0.5 leading-none"
+        className="tap-40 inline-flex min-h-5 items-center rounded px-0.5 py-0.5 leading-none"
       >
         {stack.shown.map((p, i) => (
           <span
@@ -199,21 +263,26 @@ export function PresenceStack({
             data-testid="debug-chat-presence-avatar"
             data-key={p.key}
             data-mode={p.mode}
+            data-busy={p.busy || undefined}
             className={`relative inline-flex rounded-full ring-1 ring-[oklch(0.98_0.005_85)] dark:ring-[oklch(0.22_0.01_260)] ${i ? "-ms-1.5" : ""}`}
             style={{ zIndex: stack.shown.length - i }}
           >
-            <span className="inline-flex" style={p.mode === "reader" ? READER_LOOK : undefined}>
-              <Avatar src={pictureOf(p, mainName)} name={p.name} size={AV} hidden />
-            </span>
+            <Avatar src={pictureOf(p, mainName)} name={p.name} size={AV} hidden />
+            <BusyRing p={p} t={t} />
             <LiveMark p={p} />
           </span>
         ))}
         {stack.more > 0 && (
-          <span
-            data-testid="debug-chat-presence-more"
-            className="-ms-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[oklch(0.9_0.01_260)] px-1 fs-9 font-semibold text-[oklch(0.35_0.02_260)] ring-1 ring-[oklch(0.98_0.005_85)] dark:bg-[oklch(0.35_0.02_260)] dark:text-[oklch(0.92_0.01_260)] dark:ring-[oklch(0.22_0.01_260)]"
-          >
+          <span data-testid="debug-chat-presence-more" className={`-ms-1.5 ${CHIP}`}>
             +{stack.more}
+          </span>
+        )}
+        {readersChip && (
+          <span
+            data-testid="debug-chat-presence-readers-chip"
+            className={`${stack.shown.length ? "ms-1" : ""} ${CHIP} font-medium opacity-80`}
+          >
+            {readersChip}
           </span>
         )}
         {!list.length && (
@@ -263,10 +332,19 @@ function Panel({
   onRemove?: (id: string) => Promise<boolean>;
   onClose: () => void;
 }) {
-  const row = (p: Present) => (
-    <Row key={p.key} p={p} t={t} mainName={mainName} onChange={onChange} onRemove={onRemove} />
+  const row = (p: Present, plain = false) => (
+    <Row
+      key={p.key}
+      p={p}
+      t={t}
+      mainName={mainName}
+      plain={plain}
+      onChange={onChange}
+      onRemove={onRemove}
+    />
   );
   const [inviting, setInviting] = useState(false);
+  const [showReaders, setShowReaders] = useState(false);
   return (
     <div
       role="dialog"
@@ -278,40 +356,59 @@ function Panel({
         const el = e.currentTarget;
         if (el.scrollHeight <= el.clientHeight) e.preventDefault();
       }}
-      className="absolute bottom-full start-0 z-40 mb-1 flex max-h-[60vh] w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 overflow-y-auto overscroll-contain touch-pan-y rounded-xl border border-current/20 bg-gray-50/95 p-2.5 fs-12 leading-snug text-gray-900 shadow-lg backdrop-blur-md dark:bg-gray-900/95 dark:text-gray-100"
+      className="absolute bottom-full start-0 z-40 mb-1 flex max-h-[60vh] w-[min(22rem,calc(100vw-2rem))] flex-col gap-1 overflow-y-auto overscroll-contain touch-pan-y rounded-xl border border-current/20 bg-gray-50/95 p-2 fs-12 leading-snug text-gray-900 shadow-lg backdrop-blur-md dark:bg-gray-900/95 dark:text-gray-100"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 ps-1">
         <span className="flex-1 font-semibold">{t.people}</span>
         <button
           type="button"
           onPointerDown={keep}
           onClick={onClose}
-          className="tap-40 rounded px-1.5 leading-6 opacity-80"
+          className="min-h-11 rounded px-2 opacity-80"
         >
           {t.peopleClose}
         </button>
       </div>
-      <ul className="flex flex-col gap-2">{live.map(row)}</ul>
+      {live.length > 0 && <ul className="flex flex-col">{live.map((p) => row(p))}</ul>}
       {readers.length > 0 && (
-        <section data-testid="debug-chat-presence-readers" className="flex flex-col gap-2">
-          <h3 className="border-t border-current/10 pt-2 fs-11 font-semibold opacity-70">
-            {t.peopleReadOnly}
-          </h3>
-          <ul className="flex flex-col gap-2">{readers.map(row)}</ul>
+        <section
+          data-testid="debug-chat-presence-readers"
+          className="border-t border-current/10 pt-1"
+        >
+          <button
+            type="button"
+            data-testid="debug-chat-presence-readers-toggle"
+            aria-expanded={showReaders}
+            onPointerDown={keep}
+            onClick={() => setShowReaders((x) => !x)}
+            className={`${ITEM} opacity-80`}
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {t.peopleReadersRow.replaceAll("{n}", String(readers.length))}
+            </span>
+            <span aria-hidden className={showReaders ? "rotate-180" : ""}>
+              ▾
+            </span>
+          </button>
+          {showReaders && (
+            <ul aria-label={t.peopleReadOnly} className="flex flex-col ps-2">
+              {readers.map((p) => row(p, true))}
+            </ul>
+          )}
         </section>
       )}
       {onRemove && (
-        <div className="border-t border-current/10 pt-2">
+        <div className="border-t border-current/10 pt-1">
           <button
             type="button"
             data-testid="debug-chat-presence-invite"
             onPointerDown={keep}
             onClick={() => setInviting((x) => !x)}
             aria-expanded={inviting}
-            className="tap-40 rounded-full px-2.5 leading-6 font-medium"
-            style={{ background: SEAL, color: PAPER }}
+            className={`${ITEM} opacity-80`}
           >
-            {t.peopleInvite}
+            <span aria-hidden>+</span>
+            <span className="min-w-0 flex-1 truncate">{t.peopleInvite}</span>
           </button>
           {inviting && <Invite t={t} />}
         </div>
@@ -324,7 +421,7 @@ function Invite({ t }: { t: PresenceWords }) {
   const [copied, setCopied] = useState(false);
   const snippet = mcpSnippet(typeof location === "undefined" ? undefined : location.origin);
   return (
-    <div data-testid="debug-chat-presence-invite-box" className="mt-2 flex flex-col gap-1.5">
+    <div data-testid="debug-chat-presence-invite-box" className="flex flex-col gap-1.5 px-2 pb-1">
       <p>
         <a href={INVITE_HREF} className="underline" data-testid="debug-chat-presence-invite-link">
           {t.peopleInviteHow}
@@ -340,7 +437,7 @@ function Invite({ t }: { t: PresenceWords }) {
             () => {},
           )
         }
-        className="tap-40 self-start rounded px-1.5 leading-6 underline"
+        className="min-h-11 self-start rounded px-2 underline"
       >
         {copied ? "✓ " : ""}
         {t.peopleCopy}
@@ -349,194 +446,359 @@ function Invite({ t }: { t: PresenceWords }) {
   );
 }
 
+/**
+ * One participant. Shown: avatar, name and one line (its role, else what it is doing); a read-only
+ * lane ("plain") just its name. The "…" opens the rest: its activity and, for the viewer's own
+ * tokens, Rename, Picture and Remove.
+ */
 function Row({
   p,
   t,
   mainName,
+  plain,
   onChange,
   onRemove,
 }: {
   p: Present;
   t: PresenceWords;
   mainName: string;
+  plain: boolean;
   onChange?: (tok: string, change: ParticipantChange) => void;
   onRemove?: (id: string) => Promise<boolean>;
 }) {
+  const [menu, setMenu] = useState(false);
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [name, setName] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
   const [svg, setSvg] = useState<string | null>(null);
   const [svgBad, setSvgBad] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
   const mine = !!p.id && !!p.tok;
+  // Its listening mode (lane-registry.ts) is drawn as icons; the words are for the "…" details.
   const activity: ReactNode[] = [];
-  // Its lane's mode (lane-registry.ts): listening live (all lines, or his only), read-only, or muted by him.
-  const mode = laneModeWord(p, chatLocale());
-  if (mode) activity.push(mode);
+  if (p.busy) activity.push(p.stuck ? t.peopleStuck : t.peopleBusy);
   if (p.live) activity.push(t.peopleNow);
   else activity.push(t.peopleActive.replaceAll("{time}", clock(p.active)));
   if (p.since) activity.push(t.peopleSince.replaceAll("{time}", clock(p.since)));
+  const doing = activity.join(" · ");
   const role = roleOf(p);
-  const btn = "tap-40 rounded px-1.5 leading-6 underline";
+  const shownName = p.name || mainName;
+  // A read-only lane that is not the viewer's: its name and nothing more.
+  const hasMenu = !plain || (mine && (!!onChange || !!onRemove));
   /** The picture in effect: one of three, all shown; the one in effect in seal red. */
   const pic = !p.avatar ? "auto" : p.avatarBy === "agent" ? "own" : "pasted";
-  const choice = (on: boolean) =>
-    `tap-40 rounded-full border px-2 leading-6 ${on ? "border-transparent font-semibold text-[var(--lk-on-primary,oklch(0.985_0.01_85))] bg-[var(--lk-primary,oklch(0.53_0.207_22.3))]" : "border-current/30 text-gray-500"}`;
+  const seg = (on: boolean) =>
+    `min-h-11 flex-1 px-1 fs-11 leading-tight ${on ? "font-semibold text-[var(--lk-on-primary,oklch(0.985_0.01_85))] bg-[var(--lk-primary,oklch(0.53_0.207_22.3))]" : "text-gray-500"}`;
+  const btn = "min-h-11 rounded px-2 underline";
+  const state = knownState(p);
+  /** One state icon: a tap (or hover) gives its one-line meaning. */
+  const icon = (
+    kind: string,
+    name: IconName,
+    meaning: string,
+    on: boolean,
+    look: string,
+    weight: "regular" | "fill" = "regular",
+    slash = false,
+  ) => (
+    <button
+      key={kind}
+      type="button"
+      data-testid="debug-chat-presence-icon"
+      data-kind={kind}
+      data-on={on}
+      aria-label={meaning}
+      title={meaning}
+      onPointerDown={keep}
+      onClick={() => setInfo((x) => (x === meaning ? null : meaning))}
+      className="inline-flex h-11 w-8 items-center justify-center fs-14"
+    >
+      {/* The look sits inside: the button stays 44px tall to tap, the segment 28px to see. */}
+      <span className={`inline-flex h-7 w-full items-center justify-center ${look}`}>
+        <Icon name={name} weight={weight} slash={slash} />
+      </span>
+    </button>
+  );
+  const ear = state.listen === "yours" ? t.peopleHearsYours : t.peopleHearsAll;
+  const listenOn = (k: ListenState[]) => !!state.listen && k.includes(state.listen);
+  /** A segment of the listening group: its edge rounded, all three bordered as one pill. */
+  const segLook = (on: boolean, edge: "start" | "mid" | "end") =>
+    `border-y border-current/20 ${edge === "start" ? "rounded-s-full border-s" : edge === "end" ? "rounded-e-full border-e" : ""} ` +
+    (on
+      ? "text-[var(--lk-on-primary,oklch(0.985_0.01_85))] bg-[var(--lk-primary,oklch(0.53_0.207_22.3))]"
+      : "text-gray-400 dark:text-gray-500");
+  const listening: [string, IconName, string, ListenState[], "start" | "mid" | "end"][] = [
+    ["listen-ear", "ear", ear, ["all", "yours"], "start"],
+    ["listen-bell", "bell", t.peopleWokenByName, ["named"], "mid"],
+    ["listen-off", "eyeClosed", t.peopleNotListening, ["off"], "end"],
+  ];
+  const listenIcons = listening.map(([kind, name, meaning, states, edge]) =>
+    icon(kind, name, meaning, listenOn(states), segLook(listenOn(states), edge)),
+  );
+  /** Allowed: the icon (filled when it has a fill); not: the same icon struck through, grey. */
+  const can = (kind: string, name: IconName, has: boolean | undefined, yes: string, no: string) =>
+    has === undefined
+      ? null
+      : icon(
+          kind,
+          name,
+          has ? yes : no,
+          has,
+          has ? "" : "text-gray-400 dark:text-gray-500",
+          has ? "fill" : "regular",
+          !has,
+        );
+  const perms = [
+    can("talk", "chatBubble", state.talk, t.peopleCanTalk, t.peopleCannotTalk),
+    can("act", "hand", state.act, t.peopleCanAct, t.peopleCannotAct),
+  ].filter(Boolean);
   return (
-    <li data-testid="debug-chat-presence-row" data-key={p.key} className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        <span className="relative inline-flex shrink-0">
-          <span className="inline-flex" style={p.mode === "reader" ? READER_LOOK : undefined}>
+    <li
+      data-testid={plain ? "debug-chat-presence-reader" : "debug-chat-presence-row"}
+      data-key={p.key}
+      className="flex flex-col"
+    >
+      <div className="flex min-h-11 items-center gap-2 ps-1">
+        {!plain && (
+          <span
+            className="relative inline-flex shrink-0"
+            data-testid="debug-chat-presence-row-avatar"
+            data-busy={p.busy || undefined}
+          >
             <Avatar src={pictureOf(p, mainName)} name={p.name} size={24} hidden />
+            <BusyRing p={p} t={t} />
           </span>
-          <LiveMark p={p} />
-        </span>
+        )}
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-medium">
-            {p.name || mainName}
-            {p.mcp && <McpBadge />}
-            {p.nameBy === "owner" && (
+          <span className="block truncate">
+            <span className="font-medium">{shownName}</span>
+            {!plain && p.mcp && <McpBadge />}
+            {!plain && p.nameBy === "owner" && (
               <span className="ms-1 fs-10 opacity-70">({t.peopleByYou})</span>
             )}
+            {!plain && role && (
+              <span data-testid="debug-chat-presence-role" className="opacity-70">
+                {" · "}
+                {role}
+              </span>
+            )}
           </span>
-          {role && (
-            <span data-testid="debug-chat-presence-role" className="block truncate opacity-80">
-              {role}
+          {!plain && (state.listen || perms.length > 0) && (
+            <span className="-my-2 flex items-center gap-2">
+              {state.listen && (
+                <span
+                  role="group"
+                  aria-label={t.peopleListening}
+                  className="inline-flex items-center"
+                >
+                  {listenIcons}
+                </span>
+              )}
+              {perms.length > 0 && (
+                <span role="group" aria-label={t.peopleAbilities} className="inline-flex items-center">
+                  {perms}
+                </span>
+              )}
             </span>
           )}
-          <span className="block opacity-80">{activity.join(" · ")}</span>
         </span>
-        {mine && onRemove && !asking && (
+        {hasMenu && (
           <button
             type="button"
-            data-testid="debug-chat-presence-remove"
+            data-testid="debug-chat-presence-menu"
+            aria-label={t.peopleActions.replaceAll("{name}", shownName)}
+            aria-expanded={menu}
             onPointerDown={keep}
-            onClick={() => setAsking(true)}
-            className="tap-40 shrink-0 rounded-full px-2.5 leading-6 font-medium"
-            style={{ background: SEAL, color: PAPER }}
+            onClick={() => setMenu((x) => !x)}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg fs-16 leading-none opacity-70 hover:bg-[oklch(0.5_0.02_250/0.1)]"
           >
-            {t.peopleRemove}
+            …
           </button>
         )}
       </div>
-      {asking && (
-        <div data-testid="debug-chat-presence-confirm" className="flex flex-wrap items-center gap-2">
-          <span className="min-w-0 flex-1">{t.peopleRemoveAsk.replaceAll("{name}", p.name)}</span>
-          <button
-            type="button"
-            data-testid="debug-chat-presence-remove-yes"
-            disabled={busy}
-            onPointerDown={keep}
-            onClick={async () => {
-              setBusy(true);
-              setFailed(false);
-              const ok = await onRemove!(p.id!).catch(() => false);
-              setBusy(false);
-              if (ok) setAsking(false);
-              else setFailed(true);
-            }}
-            className="tap-40 rounded-full px-2.5 leading-6 font-medium"
-            style={{ background: SEAL, color: PAPER }}
-          >
-            {t.peopleRemove}
-          </button>
-          <button type="button" onPointerDown={keep} onClick={() => setAsking(false)} className={btn}>
-            {t.peopleCancel}
-          </button>
-        </div>
-      )}
-      {failed && (
-        <p role="alert" className="opacity-90">
-          ⚠ {t.peopleFailed}
+      {info && (
+        <p
+          role="status"
+          data-testid="debug-chat-presence-icon-tip"
+          className="ms-8 mb-1 rounded-md bg-gray-900/90 px-2 py-1 fs-11 text-white dark:bg-gray-100/90 dark:text-gray-900"
+        >
+          {info}
         </p>
       )}
-      {mine && onChange && (
-        <div className="flex flex-wrap items-center gap-x-1 gap-y-1 ps-8">
-          {name === null ? (
-            <button type="button" onPointerDown={keep} onClick={() => setName(p.name)} className={btn}>
-              {t.peopleName}
-            </button>
-          ) : (
-            <form
-              className="flex w-full items-center gap-1"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const n = name.trim();
-                onChange(p.tok!, { name: n && n !== p.selfName ? n : null });
-                setName(null);
-              }}
-            >
-              <input
-                data-testid="debug-chat-presence-name"
-                value={name}
-                maxLength={40}
-                aria-label={t.peopleName}
-                onChange={(e) => setName(e.target.value)}
-                className="min-w-0 flex-1 rounded border border-current/20 bg-transparent px-1.5 leading-6"
-              />
-              <button type="submit" className={btn}>
-                {t.peopleSave}
+      {menu && (
+        <div
+          data-testid="debug-chat-presence-menu-box"
+          className="mb-1 ms-8 flex flex-col rounded-lg bg-black/5 p-1 dark:bg-white/10"
+        >
+          <p data-testid="debug-chat-presence-activity" className="px-2 py-1 opacity-80">
+            {doing}
+          </p>
+          {mine && onChange && (
+            <>
+              {name === null ? (
+                <button
+                  type="button"
+                  onPointerDown={keep}
+                  onClick={() => setName(p.name)}
+                  className={ITEM}
+                >
+                  {t.peopleName}
+                </button>
+              ) : (
+                <form
+                  className="flex w-full items-center gap-1 px-1"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const n = name.trim();
+                    onChange(p.tok!, { name: n && n !== p.selfName ? n : null });
+                    setName(null);
+                  }}
+                >
+                  <input
+                    data-testid="debug-chat-presence-name"
+                    value={name}
+                    maxLength={40}
+                    aria-label={t.peopleName}
+                    onChange={(e) => setName(e.target.value)}
+                    className="min-h-11 min-w-0 flex-1 rounded border border-current/20 bg-transparent px-1.5"
+                  />
+                  <button type="submit" className={btn}>
+                    {t.peopleSave}
+                  </button>
+                </form>
+              )}
+              <button
+                type="button"
+                data-testid="debug-chat-presence-picture"
+                aria-expanded={picking}
+                onPointerDown={keep}
+                onClick={() => setPicking((x) => !x)}
+                className={ITEM}
+              >
+                {t.peoplePicture}
               </button>
-            </form>
+              {picking && (
+                <div className="flex flex-col gap-1 px-1 pb-1">
+                  <div
+                    role="group"
+                    aria-label={t.peoplePicture}
+                    className="flex w-full overflow-hidden rounded-full border border-current/30"
+                  >
+                    <button
+                      type="button"
+                      data-testid="debug-chat-presence-auto"
+                      aria-pressed={pic === "auto"}
+                      onPointerDown={keep}
+                      onClick={() => onChange(p.tok!, { avatar: "auto" })}
+                      className={seg(pic === "auto")}
+                    >
+                      {t.peopleAuto}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={pic === "own"}
+                      onPointerDown={keep}
+                      onClick={() => onChange(p.tok!, { avatar: null })}
+                      className={seg(pic === "own")}
+                    >
+                      {t.peopleOwn}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={pic === "pasted"}
+                      onPointerDown={keep}
+                      onClick={() => setSvg((x) => (x === null ? "" : null))}
+                      className={seg(pic === "pasted")}
+                    >
+                      {t.peoplePaste}
+                    </button>
+                  </div>
+                  {svg !== null && (
+                    <form
+                      className="flex w-full flex-col gap-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const s = sanitizeAvatarSvg(svg);
+                        if (!s.ok) return setSvgBad(true);
+                        onChange(p.tok!, { avatar: s.svg });
+                        setSvg(null);
+                        setSvgBad(false);
+                      }}
+                    >
+                      <textarea
+                        data-testid="debug-chat-presence-svg"
+                        value={svg}
+                        rows={3}
+                        aria-label={t.peoplePaste}
+                        aria-invalid={svgBad || undefined}
+                        placeholder={SVG_SAMPLE}
+                        onChange={(e) => {
+                          setSvg(e.target.value);
+                          setSvgBad(false);
+                        }}
+                        className="w-full rounded border border-current/20 bg-transparent p-1 fs-11 font-mono"
+                      />
+                      {svgBad && <span role="alert">⚠ {t.peopleFailed}</span>}
+                      <button type="submit" className={`${btn} self-start`}>
+                        {t.peopleSave}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+            </>
           )}
-          <button
-            type="button"
-            data-testid="debug-chat-presence-auto"
-            aria-pressed={pic === "auto"}
-            onPointerDown={keep}
-            onClick={() => onChange(p.tok!, { avatar: "auto" })}
-            className={choice(pic === "auto")}
-          >
-            {t.peopleAuto}
-          </button>
-          <button
-            type="button"
-            aria-pressed={pic === "own"}
-            onPointerDown={keep}
-            onClick={() => onChange(p.tok!, { avatar: null })}
-            className={choice(pic === "own")}
-          >
-            {t.peopleOwn}
-          </button>
-          <button
-            type="button"
-            aria-pressed={pic === "pasted"}
-            onPointerDown={keep}
-            onClick={() => setSvg((x) => (x === null ? "" : null))}
-            className={choice(pic === "pasted")}
-          >
-            {t.peoplePaste}
-          </button>
-          {svg !== null && (
-            <form
-              className="flex w-full flex-col gap-1"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const s = sanitizeAvatarSvg(svg);
-                if (!s.ok) return setSvgBad(true);
-                onChange(p.tok!, { avatar: s.svg });
-                setSvg(null);
-                setSvgBad(false);
-              }}
+          {mine && onRemove && !asking && (
+            <button
+              type="button"
+              data-testid="debug-chat-presence-remove"
+              onPointerDown={keep}
+              onClick={() => setAsking(true)}
+              className={ITEM}
             >
-              <textarea
-                data-testid="debug-chat-presence-svg"
-                value={svg}
-                rows={3}
-                aria-label={t.peoplePaste}
-                aria-invalid={svgBad || undefined}
-                placeholder={SVG_SAMPLE}
-                onChange={(e) => {
-                  setSvg(e.target.value);
-                  setSvgBad(false);
+              {t.peopleRemove}
+            </button>
+          )}
+          {asking && (
+            <div
+              data-testid="debug-chat-presence-confirm"
+              className="flex flex-wrap items-center gap-2 px-2 py-1"
+            >
+              <span className="min-w-0 flex-1">{t.peopleRemoveAsk.replaceAll("{name}", p.name)}</span>
+              <button
+                type="button"
+                data-testid="debug-chat-presence-remove-yes"
+                disabled={busy}
+                onPointerDown={keep}
+                onClick={async () => {
+                  setBusy(true);
+                  setFailed(false);
+                  const ok = await onRemove!(p.id!).catch(() => false);
+                  setBusy(false);
+                  if (ok) setAsking(false);
+                  else setFailed(true);
                 }}
-                className="w-full rounded border border-current/20 bg-transparent p-1 fs-11 font-mono"
-              />
-              {svgBad && <span role="alert">⚠ {t.peopleFailed}</span>}
-              <button type="submit" className={`${btn} self-start`}>
-                {t.peopleSave}
+                className="min-h-11 rounded-full px-3 font-medium"
+                style={{ background: SEAL, color: PAPER }}
+              >
+                {t.peopleRemove}
               </button>
-            </form>
+              <button
+                type="button"
+                onPointerDown={keep}
+                onClick={() => setAsking(false)}
+                className={btn}
+              >
+                {t.peopleCancel}
+              </button>
+            </div>
+          )}
+          {failed && (
+            <p role="alert" className="px-2 py-1 opacity-90">
+              ⚠ {t.peopleFailed}
+            </p>
           )}
         </div>
       )}

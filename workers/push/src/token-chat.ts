@@ -11,6 +11,8 @@ import { cleanAppRefs, miniAppsIn } from "../../../packages/debug-chat/src/mini-
  *        {op:"read-ack", lastReadSeq}              → {ok, thread, lastReadSeq} explicit consumption only
  *        {op:"avatar", svg: "<svg…>" | null}     → {ok, avatar, dropped}  (chat:write)
  *        {op:"lane", state: "reader" | "left"}   → {ok, lane, state}    (chat:read; lane-registry.ts)
+ *        {op:"lane", busy: boolean, stuck?}      → {ok, lane, state, busy}  the lanes manager: its agent
+ *                                                  is mid-task (the page's turning ring)
  *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?, mode?, scope?};
  *        then {type:"say"|"ask", …}, {type:"lane", state}, {type:"read-ack",lastReadSeq}
  *        or {type:"replay",afterSeq,throughSeq?}; passive delivery never advances reads.
@@ -484,7 +486,14 @@ export class TokenChat {
       return json({ ok: false, error: "invalid sequence" }, 400);
     // op "lane" is a reader's word about itself: checked as a read (chat:read), so a
     // main Worker that has never heard of it answers it as before.
-    if (op === "lane" && body.state !== "reader" && body.state !== "left")
+    const busyOp = op === "lane" && body.state === undefined && body.busy !== undefined;
+    if (
+      busyOp &&
+      (typeof body.busy !== "boolean" ||
+        (body.stuck !== undefined && typeof body.stuck !== "boolean"))
+    )
+      return json({ ok: false, error: "lane: busy and stuck must be true or false" }, 400);
+    if (op === "lane" && !busyOp && body.state !== "reader" && body.state !== "left")
       return json({ ok: false, error: 'lane: state must be "reader" or "left"' }, 400);
     // `lianki mcp` names itself (x-lianki-client) for the audit log; the main
     // Worker keeps it only in its one known shape (lib/api-token-client.ts).
@@ -497,6 +506,7 @@ export class TokenChat {
     if (!v.ok) return refusal(v);
     const thread = await this.threadOf(v);
     if (!thread) return json({ ok: false, error: "blocked" }, 403);
+    if (busyOp) return this.laneBusy(v, thread, body.busy as boolean, body.stuck === true);
     if (op === "lane") return this.laneOp(v, thread, body.state as "reader" | "left");
     if (op === "prepare") {
       const rpc = this.host.rpc();
@@ -600,6 +610,32 @@ export class TokenChat {
     );
     // Flag off: nothing is kept, and the caller carries on as before.
     return json({ ok: true, lane: v.lane, state: next?.state ?? null });
+  }
+
+  /**
+   * op "lane" with `busy`: the lanes manager says its agent started (true) or ended (false) a
+   * task, from the agent's live output (scripts/dev/lanes-busy.ts). Only the row's busy changes,
+   * no line is said; the thread's pages get the presence list again when it changed.
+   */
+  private async laneBusy(
+    v: Verified,
+    thread: string,
+    busy: boolean,
+    stuck: boolean,
+  ): Promise<Response> {
+    const r = await this.host.kv?.get<PartRecord>(partKey(v.tag));
+    const next = await this.host.lanes?.apply(
+      thread,
+      v.lane,
+      { type: "busy", busy, stuck },
+      laneShownName(v.lane, r?.ownerName),
+    );
+    return json({
+      ok: true,
+      lane: v.lane,
+      state: next?.state ?? null,
+      busy: next ? next.busy === true : null,
+    });
   }
 
   /** The presence read window (ms): the host sets it from live config (chat.presenceReadMin). */
