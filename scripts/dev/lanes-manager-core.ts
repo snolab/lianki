@@ -41,6 +41,7 @@ export interface Deps {
     table: string;
     scope?: LaneScope;
     skipOwner?: boolean;
+    cli?: string;
   }): Child;
   /** POST the hub's chat API with a lane's token: {ok, status}. */
   chat(token: string, body: Record<string, unknown>): Promise<{ ok: boolean; status: number }>;
@@ -93,6 +94,7 @@ export function createManager(d: Deps, o: ManagerOpts) {
           table: table(),
           scope: a.scope,
           skipOwner: a.skipOwner,
+          cli: a.cli,
         });
         children.set(a.lane, c);
         void c.exited.then((code) => {
@@ -211,6 +213,7 @@ export function createManager(d: Deps, o: ManagerOpts) {
             lane: p.lane,
             cwd: p.cwd,
             pid: p.pid,
+            cli: p.cli,
             scope: p.scope,
             skipOwner: false,
           });
@@ -242,7 +245,7 @@ export const listenerArgv = (
   repo: string,
   lane: string,
   cwd: string,
-  o: { scope?: LaneScope; skipOwner?: boolean } = {},
+  o: { scope?: LaneScope; skipOwner?: boolean; cli?: string } = {},
 ) => [
   bun,
   join(repo, "scripts", "dev", "lianki-dev.ts"),
@@ -253,6 +256,8 @@ export const listenerArgv = (
   lane,
   "--cwd",
   cwd,
+  // Which agent in the dir (lanes.agents `cli`): a stale one beside the live one is skipped.
+  ...(o.cli ? ["--cli", o.cli] : []),
   "--all",
   ...(o.scope === "all" ? ["--everyone"] : []),
   ...(o.scope === "all" && o.skipOwner ? ["--skip-owner"] : []),

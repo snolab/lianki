@@ -254,6 +254,8 @@ export type Action =
       lane: string;
       cwd: string;
       pid: number;
+      /** Its agent CLI kind (`ay ls` cli), so the listener picks it among several agents in `cwd`. */
+      cli: string;
       scope: LaneScope;
       /** Its agent has its own feed of his lines (wake: false): the listener skips them. */
       skipOwner: boolean;
@@ -325,6 +327,7 @@ export function decide(
         lane: p.lane,
         cwd: p.cwd,
         pid: p.pid,
+        cli: p.cli,
         scope: p.scope,
         skipOwner: !p.wake,
       });

@@ -451,6 +451,40 @@ export function makeDeliverer(
 }
 
 /** A listener that ran this long was a good connection: its next reconnect starts quick again. */
+/** One row of `ay ls --json --local`, as far as picking a delivery target needs. */
+export type AyRow = {
+  pid?: number;
+  cwd?: string;
+  cli?: string;
+  status?: string;
+  started_at?: string | number | null;
+};
+/**
+ * The agent a lane's lines go to when the listener was given a dir (`--cwd`)
+ * and not a pid: the alive agents in that dir, of the lane's CLI kind when
+ * known (`--cli`, from lanes.agents), the newest first. A dir may hold a stale
+ * idle agent beside the live one, or another CLI (the chat lane's own session):
+ * `ay send .` then refuses the ambiguous target and every line is lost
+ * (杰咪, 2026-11-15 20:28 JST). Null when nothing matches.
+ */
+export function pickTarget(rows: readonly AyRow[], cwd: string, cli?: string): string | null {
+  const alive = rows.filter(
+    (r) =>
+      typeof r.pid === "number" &&
+      r.cwd === cwd &&
+      r.status !== "exited" &&
+      (!cli || r.cli === cli),
+  );
+  if (!alive.length) return null;
+  const at = (r: AyRow) => {
+    const v = r.started_at;
+    const n = typeof v === "number" ? v : v ? Date.parse(String(v)) : NaN;
+    return Number.isFinite(n) ? n : 0;
+  };
+  alive.sort((a, b) => at(b) - at(a) || (b.pid ?? 0) - (a.pid ?? 0));
+  return String(alive[0]!.pid);
+}
+
 export const RECONNECT_RESET_MS = 60_000;
 
 /**
