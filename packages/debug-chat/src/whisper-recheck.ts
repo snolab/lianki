@@ -17,7 +17,7 @@
  *
  * Pure and free of the DOM: the push Worker imports it.
  */
-import { MERGE_BY } from "./voice-merge";
+import { MERGE_BY, joinParts } from "./voice-merge";
 import { type ChatMessage, MAX_CHAT, type RecheckMark } from "./wire";
 
 /** The engine the Mac re-reads with (server.py `recheck`). */
@@ -29,7 +29,7 @@ export type RecheckConf = {
   on: boolean;
   /** stt.recheckMinSec: a shorter run is not re-read. */
   minSec: number;
-  /** stt.recheckMaxSec: a longer run is not re-read (the Mac's ring holds no more). */
+  /** stt.recheckMaxSec: a longer run is re-read only in its newest parts (the Mac's ring holds no more). */
   maxSec: number;
   /** stt.recheckTimeoutMs: how long the passage end waits for the Mac. */
   timeoutMs: number;
@@ -45,11 +45,28 @@ export type RecheckRequest = {
   toAgoMs: number;
 };
 
-/** A run to re-read: which line, as it read when asked. */
-export type RecheckPlan = { run: string; parts: number; text: string; msg: RecheckRequest };
+/**
+ * A run to re-read: which line, as it read when asked, and `from`, the first part
+ * re-read (0: all of it; more when the run is longer than stt.recheckMaxSec, a
+ * reopened line's for instance: the parts before it keep the streaming text).
+ */
+export type RecheckPlan = {
+  run: string;
+  parts: number;
+  text: string;
+  from: number;
+  msg: RecheckRequest;
+};
 
-/** What the page sends with its passage end, and the hub checks again. */
-export type RecheckAmend = { id: string; parts: number; text: string; engine: string; lang?: string };
+/** What the page sends with its passage end, and the hub checks again. `from` as in RecheckPlan, absent = 0. */
+export type RecheckAmend = {
+  id: string;
+  parts: number;
+  text: string;
+  engine: string;
+  lang?: string;
+  from?: number;
+};
 
 const ENGINE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 const LANG = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/;
@@ -84,19 +101,25 @@ export function recheckPlan(
   const no = closed(line);
   if (no) return { skip: no };
   const parts = line.parts!;
-  // Every part from the Mac: the cloud's parts were never in its ring.
-  if (parts.some((p) => p.stt?.route !== "local")) return { skip: "not-local" };
-  const start = parts[0].timing?.t_speechStart;
-  const end = parts.at(-1)!.timing?.t_speechEnd;
-  if (start === undefined || end === undefined || end < start) return { skip: "no-timing" };
-  const sec = (end - start) / 1000;
-  if (sec < conf.minSec) return { skip: "short" };
-  if (sec > conf.maxSec) return { skip: "long" };
+  if (parts.some((p) => p.timing?.t_speechStart === undefined || p.timing.t_speechEnd === undefined))
+    return { skip: "no-timing" };
+  const end = parts.at(-1)!.timing!.t_speechEnd!;
+  if (end < parts[0].timing!.t_speechStart!) return { skip: "no-timing" };
+  // The newest parts that fit in stt.recheckMaxSec, from the first one's start to the
+  // last one's end on the wall clock. The ring holds only what was streamed, so the
+  // wall span is never less than what it must hold: what fits here is in the ring.
+  const from = parts.findIndex((p) => (end - p.timing!.t_speechStart!) / 1000 <= conf.maxSec);
+  if (from < 0) return { skip: "long" };
+  // Every part re-read from the Mac: the cloud's parts were never in its ring.
+  if (parts.slice(from).some((p) => p.stt?.route !== "local")) return { skip: "not-local" };
+  const start = parts[from].timing!.t_speechStart!;
+  if ((end - start) / 1000 < conf.minSec) return { skip: "short" };
   if (now < end) return { skip: "no-timing" };
   return {
     run: line.id,
     parts: parts.length,
     text: line.text,
+    from,
     msg: {
       t: "recheck",
       auto: true,
@@ -131,6 +154,7 @@ export function recheckAmend(
     text,
     engine,
     ...(typeof res.lang === "string" && LANG.test(res.lang) ? { lang: res.lang } : {}),
+    ...(plan.from > 0 ? { from: plan.from } : {}),
   };
 }
 
@@ -142,12 +166,16 @@ export function cleanRecheckAmend(raw: unknown): RecheckAmend | undefined {
   if (typeof r.parts !== "number" || !Number.isInteger(r.parts) || r.parts < 2) return undefined;
   if (typeof r.text !== "string" || !r.text.trim() || r.text.length > MAX_CHAT) return undefined;
   if (typeof r.engine !== "string" || !ENGINE.test(r.engine)) return undefined;
+  const from = r.from ?? 0;
+  if (typeof from !== "number" || !Number.isInteger(from) || from < 0 || from >= r.parts)
+    return undefined;
   return {
     id: r.id,
     parts: r.parts,
     text: r.text.trim(),
     engine: r.engine,
     ...(typeof r.lang === "string" && LANG.test(r.lang) ? { lang: r.lang } : {}),
+    ...(from > 0 ? { from } : {}),
   };
 }
 
@@ -166,17 +194,23 @@ export function applyRecheck(
   const no = closed(line);
   if (no) return no;
   if (line.parts!.length !== a.parts) return "parts-changed";
+  // Only the newest parts were re-read: the ones before keep what was heard (level 1).
+  const from = a.from ?? 0;
+  if (!Number.isInteger(from) || from < 0 || from >= a.parts) return "bad-from";
+  const text = [...line.parts!.slice(0, from).map((p) => p.text), a.text].reduce(joinParts);
+  if (text.length > MAX_CHAT) return "long";
   const mark: RecheckMark = {
     at,
     engine: a.engine,
     ...(a.lang ? { lang: a.lang } : {}),
     heard: line.text,
-    text: a.text,
+    text,
+    ...(from > 0 ? { from } : {}),
   };
   return {
     ...line,
-    text: a.text,
-    raw: a.text,
+    text,
+    raw: text,
     recheck: mark,
     edited: { at, by: MERGE_BY, count: line.edited?.count ?? 0 },
   };

@@ -299,7 +299,16 @@ export type EchoMark = {
  * what Whisper read from the run's whole audio (level 2), its `engine` and `lang`.
  * A polish after it (level 3) is the line's `text` once `edited.by` is not "merge".
  */
-export type RecheckMark = { at: number; engine: string; lang?: string; heard: string; text: string; heardPartial?: true };
+export type RecheckMark = {
+  at: number;
+  engine: string;
+  lang?: string;
+  heard: string;
+  text: string;
+  heardPartial?: true;
+  /** Whisper re-read only the parts from this one on (the run was longer than stt.recheckMaxSec); hub-stamped. */
+  from?: number;
+};
 
 /** A second recognition candidate is metadata, never a speaker authorization. */
 export function cleanRecheckMark(raw: unknown, primary?: string, stt?: SttTag): RecheckMark | undefined {

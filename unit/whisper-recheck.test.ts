@@ -81,6 +81,7 @@ describe("recheckPlan", () => {
       run: "ab12-cd34",
       parts: 2,
       text: "那你能不能给。我一个按钮",
+      from: 0,
       msg: {
         t: "recheck",
         auto: true,
@@ -112,7 +113,40 @@ describe("recheckPlan", () => {
     expect(skip(untimed)).toBe("no-timing");
     expect(skip(merged(), CONF, 13_000)).toBe("no-timing");
     expect(skip(merged(), { ...CONF, minSec: 5 })).toBe("short");
-    expect(skip(merged(), { ...CONF, maxSec: 3 })).toBe("long");
+    // Even the newest part alone is longer than the ring holds.
+    expect(skip(merged(), { ...CONF, maxSec: 1 })).toBe("long");
+    // The re-read tail too short, or a cloud part in it.
+    expect(skip(merged(), { ...CONF, maxSec: 3, minSec: 2.5 })).toBe("short");
+    const cloudTail = merged();
+    cloudTail.parts![1] = { ...cloudTail.parts![1], stt: { route: "cloud" } };
+    expect(skip(cloudTail, { ...CONF, maxSec: 3 })).toBe("not-local");
+    const backwards = merged();
+    backwards.parts![1] = { ...backwards.parts![1], timing: { t_speechStart: 1, t_speechEnd: 2 } };
+    expect(skip(backwards)).toBe("no-timing");
+  });
+
+  it("a run longer than stt.recheckMaxSec re-reads only its newest parts", () => {
+    // 10 000 → 14 000 is 4 s; 3 s holds only the second part (12 000 → 14 000).
+    const p = recheckPlan(merged(), 16_500, { ...CONF, maxSec: 3 }) as RecheckPlan;
+    expect(p.from).toBe(1);
+    expect(p.msg).toMatchObject({ fromAgoMs: 4500, toAgoMs: 2500 });
+    // A cloud part before the tail is fine: it keeps its streaming text.
+    const cloudHead = merged();
+    cloudHead.parts![0] = { ...cloudHead.parts![0], stt: { route: "cloud" } };
+    expect((recheckPlan(cloudHead, 16_500, { ...CONF, maxSec: 3 }) as RecheckPlan).from).toBe(1);
+    // The amend says so, and the hub keeps level 1 for the head.
+    const amend = recheckAmend(p, answer({ text: "我要一个按钮。" }), merged());
+    expect(amend).toMatchObject({ from: 1, parts: 2, text: "我要一个按钮。" });
+    const next = applyRecheck(merged(), amend!, 7) as ChatMessage;
+    expect(next.text).toBe("那你能不能给。我要一个按钮。");
+    expect(next.raw).toBe(next.text);
+    expect(next.recheck).toMatchObject({
+      from: 1,
+      heard: "那你能不能给。我一个按钮",
+      text: next.text,
+    });
+    // A whole run carries no `from`.
+    expect(recheckAmend(planOf(), answer(), merged())).not.toHaveProperty("from");
   });
 });
 
@@ -238,6 +272,8 @@ describe("the wire and the hub", () => {
 
   it("checks the passage end's recheck field", () => {
     expect(cleanRecheckAmend(amend)).toEqual(amend);
+    expect(cleanRecheckAmend({ ...amend, from: 1 })).toEqual({ ...amend, from: 1 });
+    expect(cleanRecheckAmend({ ...amend, from: 0 })).toEqual(amend);
     expect(cleanRecheckAmend({ ...amend, text: " a ", lang: "zzzzzzzzzzzz" })).toEqual({
       id: amend.id,
       parts: 2,
@@ -254,6 +290,10 @@ describe("the wire and the hub", () => {
       { ...amend, text: "" },
       { ...amend, text: "x".repeat(MAX_CHAT + 1) },
       { ...amend, engine: "" },
+      { ...amend, from: 2 },
+      { ...amend, from: -1 },
+      { ...amend, from: 0.5 },
+      { ...amend, from: "1" },
     ])
       expect(cleanRecheckAmend(bad)).toBeUndefined();
     expect(parsePageMessage(JSON.stringify({ type: "passage-end", recheck: amend }))).toEqual({
@@ -295,6 +335,10 @@ describe("the wire and the hub", () => {
 
   it("leaves a line that is not the run as it was", () => {
     expect(applyRecheck(merged({ id: "zz" }), amend, 1)).toBe("other-line");
+    expect(applyRecheck(merged(), { ...amend, from: 2 }, 1)).toBe("bad-from");
+    expect(applyRecheck(merged(), { ...amend, from: 1, text: "x".repeat(MAX_CHAT) }, 1)).toBe(
+      "long",
+    );
     expect(applyRecheck(merged({ passage: { at: 1, by: "main", ids: [] } }), amend, 1)).toBe(
       "closed",
     );
@@ -377,5 +421,6 @@ describe("flag and config", () => {
     expect(CONFIG["stt.recheckMinSec"].default).toBe(1.5);
     expect(CONFIG["stt.recheckMaxSec"].default).toBe(60);
     expect(CONFIG["stt.recheckTimeoutMs"].default).toBe(8000);
+    expect(CONFIG["stt.mergeReopenSec"]).toMatchObject({ default: 20, min: 0, max: 120 });
   });
 });
