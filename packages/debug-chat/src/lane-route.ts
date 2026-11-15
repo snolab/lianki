@@ -12,7 +12,9 @@
  * Pure, tested in unit/lane-route.test.ts.
  */
 
+import { nameSyllables, phoneticPrefix } from "./lane-phonetic";
 import { type LaneId, laneTable, setLaneTable } from "./voices";
+import { pinyinOf } from "./wake-tokens";
 
 /**
  * The built-in route lanes. More come from config `chat.lanes` (voices.ts
@@ -250,6 +252,33 @@ function nameAt(s: string): Hit | null {
       }
     }
   }
+  return best ?? phoneticAt(s);
+}
+
+const sylCache = new Map<string, string[] | null>();
+/** A Han name's toneless syllables (lane-phonetic.ts), cached per spelling. */
+function sylsOf(name: string): string[] | null {
+  if (!sylCache.has(name)) sylCache.set(name, nameSyllables(name, pinyinOf));
+  return sylCache.get(name)!;
+}
+
+/**
+ * The fallback when no spelling matched: a lane name by sound (lane-phonetic.ts,
+ * owner 2026-11-15: "从语音层面来"). Every Han name and heard spelling of every
+ * lane is a pronunciation; the longest one `s` starts with wins. A sound match
+ * counts as a heard spelling: a punctuation mark must follow it.
+ */
+function phoneticAt(s: string): Hit | null {
+  let best: Hit | null = null;
+  for (const lane of routeLanes()) {
+    const names = laneNames(lane);
+    for (const name of [...names.exact, ...names.heard]) {
+      const syls = sylsOf(name);
+      if (!syls) continue;
+      const end = phoneticPrefix(s, syls, pinyinOf);
+      if (end > 0 && (!best || end > best.end)) best = { lane, end, exact: false };
+    }
+  }
   return best;
 }
 
@@ -313,7 +342,14 @@ export function routeLine(text: string): Route {
     const hit = nameAt(s);
     if (!hit) return none;
     if (!lanes.includes(hit.lane)) lanes.push(hit.lane);
-    const tail = s.slice(hit.end);
+    let tail = s.slice(hit.end);
+    // The same name said twice ("建明建明在吗？"): calling him, so it is an address
+    // as an own name is, whatever spelling STT chose.
+    const again = nameAt(tail);
+    if (again && again.lane === hit.lane) {
+      tail = tail.slice(again.end);
+      hit.exact = true;
+    }
     // Another name joined to this one: "codex 和 agy，…".
     const j = JOIN.exec(tail);
     if (j && j[0].trim() && nameAt(tail.slice(j[0].length))) {

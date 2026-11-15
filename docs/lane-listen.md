@@ -28,7 +28,24 @@ lane answers it. Every listener uses it, so a line gets exactly one answer
   "Gemini says…", "反重力的设计…") is not an address.
 - `codex的…` is talk about codex, not to it: the chat lane takes it.
 - Agent lines, friend lines and other threads are never routed.
-- New spellings go in `LANE_NAMES` with a test in `unit/lane-route.test.ts`.
+- Names by sound (owner, 2026-11-15: "从语音层面来"): when no spelling
+  matches, `packages/debug-chat/src/lane-phonetic.ts` compares toneless
+  pinyin. Every Han name and heard spelling of a lane is a pronunciation; a
+  run of Han characters at the start with the same syllable count, each
+  syllable the same or near, is that name (解密 / 借咪 = jie mi = 杰咪). Near =
+  same final with a confusable initial (j/q/x, zh/z, ch/c, sh/s, n/l) or same
+  initial with a confusable final (in/ing, en/eng, an/ang, ian/iang,
+  uan/uang, ie/i); the groups are data (`INITIAL_NEAR`, `FINAL_NEAR`). At most
+  `lanes.phoneticMaxNear` near syllables per name (default 1, 0 = the same
+  pinyin only; the Mac's listeners read env `LIANKI_LANES_PHONETIC_MAX_NEAR`).
+  One-syllable and Latin names are never matched by sound (jmy, 杰my stay
+  spellings). A sound match counts as a heard spelling, so a mark must follow
+  it: 节目 / 街面 / 小鸡 never match, and 小河 (xiao he, like 小贺) only with a
+  mark after it. A name said twice ("建明建明在吗") is an address without a mark.
+  It lives in `nameAt`, so the hand-off marks, the avatar flash and the
+  @mention rewrite all get it.
+- New spellings go in `LANE_NAMES` with a test in `unit/lane-route.test.ts`;
+  most of them are now caught by sound and need no entry.
 - The mapping can also be reconfigured live without deploys at `/dev/config`
   via `chat.lanes` (one table for lanes and their wake names; the earlier
   `chat.laneNames` key is folded into it: a row's `aliases` are its wake

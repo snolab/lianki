@@ -49,6 +49,7 @@ import {
   type ChatLaneDef,
 } from "@lianki/debug-chat/voices";
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
+import { PHONETIC_MAX_NEAR_DEFAULT, PHONETIC_MAX_NEAR_MAX } from "@lianki/debug-chat/lane-phonetic";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
 import { ETA_TICKER_KEEP, ETA_TICKER_SEC } from "@lianki/debug-chat/eta-ticker";
 import { MERGE_REOPEN_DEFAULT_SEC, MERGE_REOPEN_MAX_SEC } from "@lianki/debug-chat/voice-tune";
@@ -973,6 +974,18 @@ export const CONFIG = {
     description:
       '聊天里的「线」和它们的唤醒名（唯一的一张表，原 chat.laneNames 已并入；aliases 就是唤醒名，也进语音识别热词）：每个 agent 一条，名字 = 它的 API token 名。JSON 数组，每条 {id token 名, name 显示名, aliases 叫它的名字, heard 语音识别常写成的样子, voice main/calm/bright/sweet, color oklch 颜色}。内置的 coco（codex）、杰咪（agy）、小克（claude）写同一个 id 就是给它们加名字。例：{"id":"agy","aliases":["咪宝"]}、{"id":"rechrome","name":"小镀","heard":["瑞克罗姆"]}。点名、唤醒词、头像闪烁都按这张表。',
   },
+  // Lane names by sound (packages/debug-chat/src/lane-phonetic.ts): the router,
+  // the avatar flash and the @mention all read it. The Mac's listeners read
+  // env LIANKI_LANES_PHONETIC_MAX_NEAR.
+  "lanes.phoneticMaxNear": int({
+    default: PHONETIC_MAX_NEAR_DEFAULT,
+    min: 0,
+    max: PHONETIC_MAX_NEAR_MAX,
+    group: "lanes",
+    audience: "public",
+    description:
+      "点名按读音认名字时，一个名字里最多几个字可以「读音相近」（j/q/x、zh/z、n/l、in/ing、an/ang、ie/i 这类混淆；声调不算）。例：1 时「切咪」「杰民」都算叫杰咪；0 = 拼音完全一样才算（「解密」「杰米」照样算）。Mac 上的监听读环境变量 LIANKI_LANES_PHONETIC_MAX_NEAR。",
+  }),
   // The lanes manager on the Mac (scripts/dev/lanes-manager.ts): it runs there,
   // not in the Worker, so its live value is the env var named in lib/lanes-config.ts.
   "lanes.repos": {

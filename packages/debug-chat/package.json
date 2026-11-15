@@ -25,6 +25,7 @@
     "./files": "./src/files.ts",
     "./icons": "./src/icons.tsx",
     "./lane-route": "./src/lane-route.ts",
+    "./lane-phonetic": "./src/lane-phonetic.ts",
     "./latency": "./src/latency.ts",
     "./mic": "./src/mic.ts",
     "./stt-guard": "./src/stt-guard.ts",
