@@ -11,9 +11,11 @@ import { cleanAppRefs, miniAppsIn } from "../../../packages/debug-chat/src/mini-
  *        {op:"read-ack", lastReadSeq}              → {ok, thread, lastReadSeq} explicit consumption only
  *        {op:"avatar", svg: "<svg…>" | null}     → {ok, avatar, dropped}  (chat:write)
  *        {op:"lane", state: "reader" | "left"}   → {ok, lane, state}    (chat:read; lane-registry.ts)
- *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?, mode?};
+ *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?, mode?, scope?};
  *        then {type:"say"|"ask", …}, {type:"lane", state}, {type:"read-ack",lastReadSeq}
  *        or {type:"replay",afterSeq,throughSeq?}; passive delivery never advances reads.
+ *        `scope`: "all" | "owner" (a listener: does its agent get every line, or the
+ *        owner's only; absent = "owner"), kept on the presence row.
  *        `mode`: "listener" (`lianki chat listen`; the default without one, but for an
  *        MCP client) or "reader" (an MCP wait, the lanes manager): the lane's mode in
  *        the lane registry (lane-registry.ts, "全员入群").
@@ -71,6 +73,7 @@ import {
 } from "../../../lib/dev-eval";
 import { laneOf, laneSpec, parseLineVoice } from "../../../packages/debug-chat/src/voices";
 import { type LaneRegistry, MUTED_REASON } from "./lane-registry";
+import type { LaneScope } from "../../../packages/debug-chat/src/lane-events";
 import { sanitizeAvatarSvg } from "../../../packages/debug-chat/src/svg-avatar";
 import {
   type PartRecord,
@@ -115,6 +118,8 @@ export type TokenAtt = {
   mcp?: true;
   /** A resident listener's socket (lane-registry.ts): its lane is a listener while one is open. */
   listener?: true;
+  /** A listener whose agent hears every line (auth `scope: "all"`); absent: the owner's only. */
+  scope?: "all";
   until?: number | null;
   checkedAt?: number;
 };
@@ -357,11 +362,21 @@ export class TokenChat {
   }
 
   /** The registry hears of a verified use: a reader unless it listens; the name the owner gave it shows. */
-  private async seen(v: Verified, thread: string, input: "seen" | "listen" | "reader" = "seen") {
+  private async seen(
+    v: Verified,
+    thread: string,
+    input: "seen" | "listen" | "reader" = "seen",
+    scope?: LaneScope,
+  ) {
     const lanes = this.host.lanes;
     if (!lanes) return;
     const r = await this.host.kv?.get<PartRecord>(partKey(v.tag));
-    await lanes.apply(thread, v.lane, { type: input }, laneShownName(v.lane, r?.ownerName));
+    await lanes.apply(
+      thread,
+      v.lane,
+      input === "listen" ? { type: input, scope: scope ?? "owner" } : { type: input },
+      laneShownName(v.lane, r?.ownerName),
+    );
   }
 
   private async say(thread: string, lane: string, m: Record<string, unknown>, who: Who = {}) {
@@ -779,10 +794,11 @@ export class TokenChat {
         error: 'lane: state must be "listener", "reader" or "left"',
       });
     const listener = state === "listener";
-    const { listener: _l, ...rest } = a;
+    const { listener: _l, scope: _s, ...rest } = a;
     ws.serializeAttachment({
       ...rest,
       ...(listener ? { listener: true as const } : {}),
+      ...(listener && a.scope ? { scope: a.scope } : {}),
     } satisfies TokenAtt);
     const lanes = this.host.lanes;
     let next = null;
@@ -796,7 +812,9 @@ export class TokenChat {
         next = await lanes.apply(
           a.thread!,
           a.lane,
-          { type: listener ? "listen" : state === "left" ? "leave" : "reader" },
+          listener
+            ? { type: "listen", scope: a.scope ?? "owner" }
+            : { type: state === "left" ? "leave" : "reader" },
           name,
         );
     }
@@ -851,11 +869,15 @@ export class TokenChat {
     // A resident listener (`lianki chat listen`): it says so, or says nothing and is
     // not an MCP client (whose wait is a reader). "reader": the lanes manager, a wait.
     const listener = m.mode === "listener" || (m.mode === undefined && !a.mcp);
+    // What its agent hears: every line (`lianki chat listen --everyone`), else the owner's
+    // (an older client says nothing: "owner").
+    const scope: LaneScope = listener && m.scope === "all" ? "all" : "owner";
     const next: TokenAtt = {
       role: "token",
       at: a.at,
       ...(a.mcp ? { mcp: true as const } : {}),
       ...(listener ? { listener: true as const } : {}),
+      ...(scope === "all" ? { scope } : {}),
       thread,
       userId: v.userId,
       lane: v.lane,
@@ -902,7 +924,7 @@ export class TokenChat {
     // Joined: its record (the MCP badge if an MCP client opened it), and the pages hear it.
     const r = await this.record(v, thread);
     await this.keep(r && (a.mcp && !r.mcp ? { ...r, mcp: true } : r));
-    await this.seen(v, thread, listener ? "listen" : "seen");
+    await this.seen(v, thread, listener ? "listen" : "seen", scope);
     console.log(JSON.stringify({ msg: "debug.token-listen", lane: v.lane, owner: v.owner }));
   }
 

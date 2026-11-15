@@ -9,6 +9,10 @@
  *             socket that said `mode: "reader"`): passive, not resident.
  *   listener  a token socket opened by `lianki chat listen` (auth without a
  *             mode, or `mode: "listener"`): resident, hears every line live.
+ *             Its `scope` (auth `scope`, `lianki chat listen --everyone`):
+ *             "all" when its agent is handed every line (agents' and system
+ *             lines too, tier ①), else the owner's only (tier ②; absent =
+ *             "owner", an older client). "X 开始实时监听（全部消息）" vs "X 开始实时监听".
  * A listener whose last socket closes becomes a reader after the grace
  * (config `lanes.modeGraceSec`), so a reconnect says nothing. `left`: the
  * manager said its agent exited (op "lane", state "left").
@@ -27,6 +31,7 @@
 import {
   type LaneEvent,
   type LaneEventKind,
+  type LaneScope,
   laneEventText,
 } from "../../../packages/debug-chat/src/lane-events";
 import { laneOf } from "../../../packages/debug-chat/src/voices";
@@ -37,6 +42,8 @@ export type LaneReg = {
   lane: string;
   thread: string;
   state: LaneState;
+  /** A listener that hears every line (tier ①); absent: the owner's lines only. */
+  scope?: "all";
   muted?: true;
   /** Its last verified use. */
   seenAt: number;
@@ -50,7 +57,7 @@ export type LaneReg = {
 
 export type LaneInput =
   | { type: "seen" }
-  | { type: "listen" }
+  | { type: "listen"; scope?: LaneScope }
   | { type: "unlisten"; graceMs: number }
   | { type: "due" }
   | { type: "reader" }
@@ -88,21 +95,30 @@ export function laneStep(
     seenAt: now,
     changedAt: now,
   };
-  const to = (state: LaneState, event?: LaneEventKind) => {
-    const { downAt: _d, ...rest } = base;
-    return { next: { ...rest, state, seenAt: now, changedAt: now }, event };
+  const to = (state: LaneState, event?: LaneEventKind, scope?: LaneScope) => {
+    const { downAt: _d, scope: _s, ...rest } = base;
+    return {
+      next: { ...rest, state, ...(scope === "all" ? { scope } : {}), seenAt: now, changedAt: now },
+      event,
+    };
   };
   switch (input.type) {
     case "seen":
       if (!prev || prev.state === "left")
         return pinned ? to("listener", "listening") : to("reader", "joined");
       return { next: { ...prev, seenAt: now } };
-    case "listen":
+    case "listen": {
+      // No scope (the alarm sees a socket again, an older client): the one it had.
+      const scope = input.scope ?? (prev?.state === "listener" ? (prev.scope ?? "owner") : "owner");
+      const kind = scope === "all" ? "listeningAll" : "listening";
       if (prev?.state === "listener") {
+        // The same scope again (a reconnect): nothing to say. A new one: its line.
+        if ((prev.scope ?? "owner") !== scope) return to("listener", kind, scope);
         const { downAt: _d, ...rest } = prev;
         return { next: { ...rest, seenAt: now } };
       }
-      return to("listener", "listening");
+      return to("listener", kind, scope);
+    }
     case "unlisten":
       if (prev?.state !== "listener" || pinned) return { next: prev ?? base };
       if (input.graceMs <= 0) return to("reader", "reader");

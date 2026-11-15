@@ -173,6 +173,30 @@ function fakeRegistry(enabled = true, list = true) {
   };
 }
 
+describe("laneStep: scope (tier ① all messages vs ② the owner's)", () => {
+  it("a listener with scope all says so; a reconnect says nothing; a change of scope says the new one", () => {
+    const a = laneStep(undefined, { type: "listen", scope: "all" }, ctx());
+    expect(a).toMatchObject({ event: "listeningAll", next: { state: "listener", scope: "all" } });
+    // Again with all, or with no scope (the alarm, an older client): nothing.
+    expect(laneStep(a.next, { type: "listen", scope: "all" }, ctx(T0 + 1)).event).toBeUndefined();
+    const kept = laneStep(a.next, { type: "listen" }, ctx(T0 + 1));
+    expect(kept.event).toBeUndefined();
+    expect(kept.next.scope).toBe("all");
+    const down = laneStep(a.next, { type: "listen", scope: "owner" }, ctx(T0 + 2));
+    expect(down).toMatchObject({ event: "listening", next: { state: "listener" } });
+    expect(down.next.scope).toBeUndefined();
+    const up = laneStep(down.next, { type: "listen", scope: "all" }, ctx(T0 + 3));
+    expect(up).toMatchObject({ event: "listeningAll", next: { scope: "all" } });
+    // A listener with no scope: the owner's; turned reader, the scope goes.
+    expect(laneStep(undefined, { type: "listen" }, ctx()).event).toBe("listening");
+    const r = laneStep(up.next, { type: "unlisten", graceMs: 0 }, ctx(T0 + 4));
+    expect(r.event).toBe("reader");
+    expect(r.next.scope).toBeUndefined();
+    // Muting keeps the scope.
+    expect(laneStep(up.next, { type: "mute", muted: true }, ctx(T0 + 5)).next.scope).toBe("all");
+  });
+});
+
 describe("LaneRegistry", () => {
   it("applies, posts, keeps the name, schedules, sweeps", async () => {
     const f = fakeRegistry();
@@ -389,6 +413,42 @@ function hubSetup(opts: { flag?: boolean; graceSec?: number } = {}) {
 }
 
 describe("the hub: modes and system lines", () => {
+  it("scope all: its own line, the presence row carries it; an older client is owner", async () => {
+    const h = hubSetup({ graceSec: 30 });
+    const page = await h.ownerPage();
+    const k = await mint("claude");
+    const ws = await h.listen(k.token, { mode: "listener", scope: "all" });
+    expect(h.events(page)).toEqual(["小克 开始实时监听（全部消息）"]);
+    expect(page.lastPresent().find((x) => x.key === "lane:claude")).toMatchObject({
+      mode: "listener",
+      scope: "all",
+    });
+    expect(ws.deserializeAttachment()).toMatchObject({ listener: true, scope: "all" });
+    // {type:"lane", state:"listener"} on that socket keeps its scope: nothing new said.
+    await h.hub.webSocketMessage(ws, JSON.stringify({ type: "lane", state: "listener" }));
+    await flush();
+    expect(h.events(page)).toEqual(["小克 开始实时监听（全部消息）"]);
+    // A reconnect inside the grace with scope all: nothing; the alarm keeps the scope.
+    await h.leave(ws);
+    const again = await h.listen(k.token, { scope: "all" });
+    t += 31_000;
+    await h.hub.alarm();
+    await flush();
+    expect(h.events(page)).toEqual(["小克 开始实时监听（全部消息）"]);
+    expect(page.lastPresent().find((x) => x.key === "lane:claude")?.scope).toBe("all");
+    await h.leave(again);
+    // An older client (no scope) and a reader asking for all: the owner's only.
+    const c = await mint("codex");
+    await h.listen(c.token);
+    expect(h.events(page).at(-1)).toBe("coco 开始实时监听");
+    expect(page.lastPresent().find((x) => x.key === "lane:codex")?.scope).toBeUndefined();
+    const r = await mint("lanes");
+    const rs = await h.listen(r.token, { mode: "reader", scope: "all" });
+    expect(rs.deserializeAttachment()).not.toHaveProperty("scope");
+    await h.hub.webSocketMessage(rs, JSON.stringify({ type: "lane", state: "listener" }));
+    await flush();
+    expect(h.events(page).at(-1)).toBe("lanes 开始实时监听");
+  });
   it("listen → listener line, close → reader line, read → joined; presence carries the mode", async () => {
     const h = hubSetup();
     const page = await h.ownerPage();
