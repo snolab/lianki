@@ -16,6 +16,7 @@ import {
   phraseKey,
   stockPhraseKind,
 } from "@lianki/debug-chat/stt-guard";
+import { type RepeatLimits, STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
 import { readStt } from "@/lib/stt";
 
 const RATE = 16_000;
@@ -219,8 +220,11 @@ describe("what each route gives the guard", () => {
 
 describe("a dropped line reaches nothing", () => {
   /** One utterance through createMic: the audio's level, frames at `prob`, the route's answer. */
-  async function say(text: string, o: { sec?: number; prob?: number; level?: number } = {}) {
-    const { sec = 3, prob = 0.9, level = 0.2 } = o;
+  async function say(
+    text: string,
+    o: { sec?: number; prob?: number; level?: number; repeat?: RepeatLimits } = {},
+  ) {
+    const { sec = 3, prob = 0.9, level = 0.2, repeat } = o;
     const logs: Record<string, unknown>[] = [];
     const texts: string[] = [];
     let ev: VadEvents | null = null;
@@ -238,6 +242,7 @@ describe("a dropped line reaches nothing", () => {
       onPending() {},
       log: (e) => void logs.push(e),
       partials: false,
+      ...(repeat ? { repeat: () => repeat } : {}),
     });
     await mic.toggle();
     const e = ev as unknown as VadEvents;
@@ -278,6 +283,26 @@ describe("a dropped line reaches nothing", () => {
     expect((await say("今天天气不错", { level: 0 })).texts).toEqual([]);
     const kept = await say("他说感谢观看这个视频的人");
     expect(kept.texts).toEqual(["他说感谢观看这个视频的人"]);
+  });
+
+  it("a decoding loop is cut to its head, or dropped as repetition (stt-repeat.ts)", async () => {
+    const cut = await say("あなたが" + "ウィッター".repeat(200));
+    expect(cut.texts).toEqual(["あなたがウィッター"]);
+    expect(cut.logs[0]).toMatchObject({
+      ev: "stt-cleaned",
+      repetition: "trim",
+      runs: 200,
+      unitChars: 5,
+      share: 1,
+    });
+    // A short unit is already one copy (cleanTranscript); a head too short to keep: dropped.
+    expect((await say("谢谢".repeat(30))).texts).toEqual(["谢"]);
+    const gone = await say("ウィッター".repeat(50), { repeat: { ...STT_REPEAT, minKeepChars: 6 } });
+    expect(gone.texts).toEqual([]);
+    expect(gone.logs.at(-1)).toMatchObject({ ev: "stt-dropped", reason: "repetition", chars: 0 });
+    expect(JSON.stringify([...cut.logs, ...gone.logs])).not.toContain("ウィッター");
+    // Natural repetition is speech.
+    expect((await say("好好好，我知道了")).texts).toEqual(["好好好，我知道了"]);
   });
 
   /** Through the page's session: the taps first, then the chat's sink. */

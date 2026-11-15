@@ -289,6 +289,11 @@ import {
 } from "../../../packages/debug-chat/src/voice-merge";
 import { type RecheckAmend, applyRecheck } from "../../../packages/debug-chat/src/whisper-recheck";
 import {
+  type RepeatLimits,
+  repeatGuard,
+  repeatLimitsOf,
+} from "../../../packages/debug-chat/src/stt-repeat";
+import {
   TWO_MIC_BY,
   TWO_MIC_WINDOW_MAX,
   TWO_MIC_WINDOW_MS,
@@ -616,6 +621,12 @@ export const MERGE_FLAG = "stt.merge";
 export const TWO_MIC_FLAG = "stt.two-mic-merge";
 /** The live window between two mics' copies of one sentence (lib/config.ts). */
 export const TWO_MIC_WINDOW_KEY = "chat.twoMicWindowMs";
+/** The repetition guard's config keys (stt-repeat.ts; lib/config.ts holds the defaults). */
+export const REPEAT_KEYS = {
+  maxRuns: "stt.repeatMaxRuns",
+  maxShare: "stt.repeatMaxShare",
+  minKeepChars: "stt.repeatMinKeepChars",
+} as const satisfies Record<keyof RepeatLimits, string>;
 /** How many of the newest lines a two-mic look reads: a few seconds hold far fewer. */
 const TWO_MIC_SCAN = 20;
 /** Automatic polish of the owner's spoken lines (lib/flags.ts, on by default; "Automatic polish" below). */
@@ -863,6 +874,7 @@ export class DebugHub {
   private mergeFlag?: { at: number; on: boolean };
   /** The last read of TWO_MIC_FLAG and TWO_MIC_WINDOW_KEY (AI_FLAG_CACHE_MS). */
   private twoMicConf?: { at: number; on: boolean; windowMs: number };
+  private repeatConf?: { at: number; limits: RepeatLimits };
   /** The last read of SYNC_SPEAK_FLAG and voice.syncLeadMs (AUTO_POLISH_CONF_MS); see speakAt. */
   private syncConf?: { at: number; on: boolean; leadMs: number };
   private syncReading?: Promise<void>;
@@ -2137,6 +2149,29 @@ export class DebugHub {
     } catch {}
     this.twoMicConf = { at: t, on, windowMs };
     return this.twoMicConf;
+  }
+
+  /**
+   * The repetition guard's limits (REPEAT_KEYS) from the main Worker, at most
+   * once per AI_FLAG_CACHE_MS; a key that cannot be read keeps its default.
+   */
+  private async repeatLimits(): Promise<RepeatLimits> {
+    const t = this.now();
+    if (this.repeatConf && t - this.repeatConf.at < AI_FLAG_CACHE_MS) return this.repeatConf.limits;
+    const read = async (key: string) => {
+      try {
+        return this.sessions?.config ? await this.sessions.config(key) : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const limits = repeatLimitsOf({
+      maxRuns: await read(REPEAT_KEYS.maxRuns),
+      maxShare: await read(REPEAT_KEYS.maxShare),
+      minKeepChars: await read(REPEAT_KEYS.minKeepChars),
+    });
+    this.repeatConf = { at: t, limits };
+    return limits;
   }
 
   /** The owner thread's newest lines, newest first (enough for any two-mic window). */
@@ -4080,6 +4115,31 @@ export class DebugHub {
       // Its attachment (the page selection) stays on the sender's own thread.
       // Files are the owner's only (the upload is owner-only): a friend's refs are dropped.
       return this.deliverChat(ws, page.thread, m.id, async (accepted) => {
+        // The repetition guard (stt-repeat.ts), for any client: a voice line that is a
+        // decoding loop is cut back to its head, or accepted and never posted.
+        // The Mac's speaker proofs cover the words it heard, so they are checked on those.
+        const heard = m.text;
+        const loop =
+          m.source === "stt" ? repeatGuard(m.text, await this.repeatLimits()) : undefined;
+        if (loop && loop.action !== "keep") {
+          console.log(
+            JSON.stringify({
+              msg: "debug.stt-repeat",
+              page: page.label,
+              action: loop.action,
+              runs: loop.runs,
+              unitChars: [...loop.unit].length,
+              share: Math.round(loop.share * 100) / 100,
+            }),
+          );
+          if (loop.action === "trim") {
+            m.text = loop.text;
+            if (m.stt) m.stt = { ...m.stt, repeat: "trimmed" };
+            // Its readings were of the whole loop: not this line's any more.
+            delete m.recheck;
+          }
+        }
+        if (loop?.action === "drop") return accepted();
         if (page.thread !== OWNER_THREAD)
           return this.friendChat(
             ws,
@@ -4201,7 +4261,7 @@ export class DebugHub {
         if (m.source === "stt" && m.speakerProof?.length)
           return verifySpeakerProofs(
             m.speakerProof,
-            m.text,
+            heard,
             page.thread,
             this.speakerPub,
             (uids, until) => this.burnProofs(uids, until),

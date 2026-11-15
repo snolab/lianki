@@ -153,6 +153,7 @@ export function VoiceDetailRows({ message, words, ui }: {
     if (key === "route") return v === "local" ? ui.latLocal : ui.latCloud;
     if (key === "speakerDecision") return v === "me" ? words.voiceDecisionMe : v === "other" ? words.voiceDecisionOther : words.voiceDecisionUnknown;
     if (key === "polishedAt" && typeof v === "number") return new Date(v).toLocaleString();
+    if (key === "repeat") return words.voiceRepeatTrimmed;
     return typeof v === "boolean" ? ui.sttFallback : String(v);
   };
   return <dl data-testid="debug-chat-voice-details" className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-3 gap-y-1">

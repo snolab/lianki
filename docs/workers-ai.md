@@ -299,6 +299,23 @@ through `cleanTranscript` (`mic.ts`), which takes out:
    "the"), or to nothing when it is a Latin fragment that is no word ("ert").
    Three in a row ("no no no") stays, and one CJK character needs 6
    (哈哈哈哈 is laughter).
+4. **Long loops** (`repeatGuard`, packages/debug-chat/src/stt-repeat.ts),
+   after the three above. Step 3 misses a unit longer than four tokens: on
+   2026-11-15, in a café, a final came back as 「あなたが」 and then
+   「ウィッター」 hundreds of times, and was posted, read aloud and answered.
+   This step reads the text as letters only (NFKC, lowercased, no spaces or
+   punctuation). A unit of 1–8 letters, or one whole word, repeated
+   `stt.repeatMaxRuns` times in a row (default 6), where such loops cover
+   `stt.repeatMaxShare` of the letters (default 0.6), cuts the text to what
+   came before the first loop plus one copy. If fewer than
+   `stt.repeatMinKeepChars` letters (default 4) are left, the line is
+   dropped (`stt-dropped`, reason `repetition`). A cut line's SttTag carries
+   `repeat: "trimmed"`, which the voice details popover shows. A unit made
+   only of digits never counts (1000000). The hub runs the same guard on
+   every voice line from any client (`debug.stt-repeat` in the log). It
+   acks a dropped line without posting it, and checks speaker proofs on the
+   words before the cut. The three keys are public config (/dev/config) and
+   take effect without a deploy.
 
 If nothing meaningful is left, the message is dropped. Each cleaning is a
 `stt-cleaned` devLog event with the counts `{prompt, phrase, repeat,

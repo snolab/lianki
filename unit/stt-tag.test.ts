@@ -47,6 +47,12 @@ describe("cleanStt", () => {
     // Only the cloud can be a fallback.
     expect(cleanStt({ route: "local", fallback: true })).toEqual({ route: "local" });
     expect(cleanStt({ route: "cloud", fallback: "yes" })).toEqual({ route: "cloud" });
+    // The repetition guard's mark (stt-repeat.ts): that one value only.
+    expect(cleanStt({ route: "local", repeat: "trimmed" })).toEqual({
+      route: "local",
+      repeat: "trimmed",
+    });
+    expect(cleanStt({ route: "local", repeat: "dropped" })).toEqual({ route: "local" });
   });
 });
 

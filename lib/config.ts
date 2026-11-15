@@ -50,6 +50,7 @@ import {
 } from "@lianki/debug-chat/voices";
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
+import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
 
 export type ConfigAudience = "server" | "public";
 
@@ -335,6 +336,39 @@ export const CONFIG = {
     audience: "server",
     description:
       "按住说话一次保留的音频上限（毫秒）。达到上限明确停止本次录音并保留已识别文字，不静默截断后当作完整录音发送；限制浏览器内存占用。",
+  }),
+  // The repetition guard (packages/debug-chat/src/stt-repeat.ts): a final that is a
+  // decoding loop is cut or dropped, in the mic and again in the hub.
+  "stt.repeatMaxRuns": int({
+    default: STT_REPEAT.maxRuns,
+    min: 2,
+    max: 1000,
+    unit: "times",
+    group: "voice",
+    audience: "public",
+    description:
+      "复读幻觉过滤：识别结果里同一个短片段（1–8 个字，或一个词）连续出现这么多次就算复读（比如「ウィッターウィッター…」）。3 次（「好好好」）是正常说话，默认 6。",
+  }),
+  "stt.repeatMaxShare": {
+    default: STT_REPEAT.maxShare as number,
+    schema: z.number().min(0).max(1),
+    min: 0,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "public",
+    description:
+      "复读幻觉过滤：复读部分占整句文字的比例达到这么多才处理（0–1，默认 0.6）。长句里偶尔重复几次不动它。处理方式：只留复读开始前的部分加一遍复读内容。",
+  },
+  "stt.repeatMinKeepChars": int({
+    default: STT_REPEAT.minKeepChars,
+    min: 0,
+    max: 1000,
+    unit: "chars",
+    group: "voice",
+    audience: "public",
+    description:
+      "复读幻觉过滤：剪掉复读后剩下的字少于这么多，就整句丢掉，不发到聊天里（详情里记为「复读」）。默认 4。",
   }),
   "stt.recheckMinSec": {
     default: 1.5 as number,
