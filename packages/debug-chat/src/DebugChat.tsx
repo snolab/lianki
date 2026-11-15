@@ -2,6 +2,7 @@
 
 import { MiniAppCards, type MiniAppEmbedView, type MiniAppSizing } from "./MiniAppCards";
 
+import { createScrollFollow } from "./scroll-follow";
 import { evalTrustStrings } from "./eval-trust-strings";
 import { shortPage } from "./short-page";
 import { type AdaptState, voiceAdapt } from "./adaptive";
@@ -200,8 +201,6 @@ import {
   logSurface,
   nearEnd,
   pickAnchor,
-  repinEnd,
-  stillAtEnd,
   sheetScrim,
 } from "./log-surface";
 import { EMBED_NAME, embedLang, treeDefaults, uiStrings } from "./ui-strings";
@@ -2030,8 +2029,14 @@ export function DebugChat({
   const log = useRef<HTMLDivElement | null>(null);
   /** The log is scrolled to its end (new messages follow it there). */
   const atEnd = useRef(true);
-  /** The scrollTop the resize re-pin set, until its scroll event comes. */
+  /** Latest programmatic pin; repeated delayed scroll events keep the same follow intent. */
   const pinnedAt = useRef<number | null>(null);
+  const tail = useMemo(() => {
+    const follow = createScrollFollow({box: () => log.current, following: atEnd, pinned: pinnedAt});
+    follow.reset(); // A fresh account/thread starts at newest, never another thread's scroll position.
+    return follow;
+  }, [draftScope]);
+  const touchScrollY = useRef<number | null>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
   /**
    * The ETA bar's height (margin included), 0 without it. The floating buttons
@@ -2082,12 +2087,7 @@ export function DebugChat({
     if (!el || el.hidden) return;
     lastLogScroll.current = el.scrollTop;
     setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
-    // Our own re-pin's scroll (below) can land a frame late, after the log
-    // shrank further (the keyboard): it is not him leaving the end.
-    const own = pinnedAt.current !== null && Math.abs(el.scrollTop - pinnedAt.current) <= 1;
-    pinnedAt.current = null;
-    const end = stillAtEnd({ gap: el.scrollHeight - el.scrollTop - el.clientHeight, ownPin: own });
-    atEnd.current = end;
+    const end = tail.scroll();
     setScrolledUp(!end);
     if (end) setBelow(0);
   };
@@ -2587,6 +2587,7 @@ export function DebugChat({
       });
       if (!dy || !el) return;
       if (e.cancelable) e.preventDefault();
+      if (dy < 0 && el === log.current) tail.away();
       el.scrollTop += dy;
       userScrollAt.current = Date.now();
       holdRef.current(COMPACT_SCROLL_MS);
@@ -2643,37 +2644,31 @@ export function DebugChat({
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
-  // Compact again (the input lost focus): back to the newest lines. Not while
+  // Compact again (the input lost focus): follow newest only if still following. Not while
   // held open: a press on a line took the focus, and the lines must stay put
   // under the drag that selects them.
   useLayoutEffect(() => {
     if (typingNow) return;
     const el = log.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight });
-    atEnd.current = true;
-    setScrolledUp(false);
-    setBelow(0);
-  }, [typingNow]);
+    if (tail.pin()) {
+      setScrolledUp(false);
+      setBelow(0);
+    }
+  }, [typingNow, tail]);
   useLayoutEffect(() => {
     if (!open) return;
     const added = messages.length - shown.current;
     shown.current = messages.length;
-    // Follow new messages only from the end (or the owner's own, just sent);
-    // scrolled up, they wait under the scroll-down button's dot.
-    const mine = added > 0 && messages.at(-1)?.from !== "agent";
-    if (atEnd.current || mine) {
-      log.current?.scrollTo({ top: log.current.scrollHeight });
-      // Its scroll event can land after the newest run grew (the arrow's
-      // room, a card): this pin's own, not him leaving the end.
-      if (log.current) pinnedAt.current = log.current.scrollTop;
-      atEnd.current = true;
+    // The same follow intent handles cache, every seq replay batch and live rows.
+    // A history batch ending in an owner line is not an explicit local send.
+    if (tail.pin()) {
       setScrolledUp(false);
       setBelow(0);
     } else if (added > 0) setBelow((n) => n + added);
     const el = log.current;
     if (el) setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
-  }, [messages, open]);
+  }, [messages, open, tail]);
   // At the end, the log stays there when it or its lines change size (the
   // keyboard, the text size, the box moved, a card opening): a shrinking
   // scroller keeps its scrollTop, which showed older lines. Scrolled up, it
@@ -2683,20 +2678,12 @@ export function DebugChat({
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
       if (el.hidden || fullNow.current !== "off") return;
-      const top = repinEnd({
-        atEnd: atEnd.current,
-        scrollTop: el.scrollTop,
-        scrollHeight: el.scrollHeight,
-        clientHeight: el.clientHeight,
-      });
-      if (top === null) return;
-      el.scrollTop = top;
-      pinnedAt.current = el.scrollTop;
+      tail.pin();
     });
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
-  }, [open]);
+  }, [open, tail]);
 
   const messagesNow = useRef(messages);
   messagesNow.current = messages;
@@ -2957,7 +2944,7 @@ export function DebugChat({
     const id = nearestAbove(asksAbove(openAskIds(messages, Date.now()), askCardsAbove));
     const line = id && el && lineIn(el, id);
     if (!id || !el || !line) return;
-    atEnd.current = false;
+    tail.away();
     el.scrollTop = jumpTop({
       scrollTop: el.scrollTop,
       lineTop: line.getBoundingClientRect().top,
@@ -5357,16 +5344,28 @@ export function DebugChat({
         id="debug-chat-column"
         data-testid="debug-chat-column"
         onScroll={onLogScroll}
-        onWheel={() => {
+        onWheel={(e) => {
+          if (!e.ctrlKey && e.deltaY < 0) tail.away();
           userScrollAt.current = Date.now();
           hold(COMPACT_SCROLL_MS);
         }}
-        onTouchMove={() => {
+        onTouchStart={(e) => { touchScrollY.current = e.touches[0]?.clientY ?? null; }}
+        onTouchMove={(e) => {
+          const y = e.touches[0]?.clientY;
+          if (y !== undefined && touchScrollY.current !== null && y > touchScrollY.current) tail.away();
+          touchScrollY.current = y ?? null;
           userScrollAt.current = Date.now();
           hold(COMPACT_SCROLL_MS);
         }}
         // A tap on a line (its polish mark, an ask card) is use too.
-        onPointerDown={() => hold(COMPACT_SCROLL_MS)}
+        onPointerDown={(e) => {
+          if (e.pointerType === "mouse" && e.target === e.currentTarget) tail.away();
+          hold(COMPACT_SCROLL_MS);
+        }}
+        onKeyDownCapture={(e) => {
+          if (["ArrowUp", "PageUp", "Home"].includes(e.key) || (e.key === " " && e.shiftKey)) tail.away();
+        }}
+        onLoadCapture={() => { tail.pin(); }}
         data-fade={fade || undefined}
         data-expanded={typing || undefined}
         hidden={!open || tree || compact}
@@ -5379,7 +5378,7 @@ export function DebugChat({
           }
           // Shrunk: land on the newest lines again, now that the height settled.
           // Not when held open: it grew (a jump to an ask), and he is reading there.
-          if (!typingNow && !micActive) log.current?.scrollTo({ top: log.current.scrollHeight });
+          if (!typingNow && !micActive) tail.pin();
           onLogScroll();
         }}
         data-full={fullLog === "off" ? undefined : fullLog}
@@ -5960,9 +5959,11 @@ export function DebugChat({
               aria-label={
                 withNew(ux.scrollNewest, below)
               }
-              onClick={() =>
-                log.current?.scrollTo({ top: log.current.scrollHeight, behavior: "smooth" })
-              }
+              onClick={() => {
+                tail.pin(true);
+                setScrolledUp(false);
+                setBelow(0);
+              }}
               style={{ background: INPUT_BG }}
               className="pointer-events-auto relative inline-flex size-6 items-center justify-center rounded-full border border-current/25 text-sm leading-none text-gray-600 dark:text-gray-300"
             >

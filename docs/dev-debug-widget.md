@@ -3098,3 +3098,20 @@ doc comments are their context).
 
 Delivery nouns, one vocabulary for the chip and, later, the chat's message
 marks (`DELIVERY`): sent → delivered → seen → handled; failed.
+
+### Initial history and tail following
+
+The chat log is a normal scrolling div and ordered list, not the page's
+VirtualList. A fresh chat/account/thread starts following newest. That intent
+survives cached history, every sequence-replay batch, repeated programmatic
+scroll events, and passive image/card or viewport resizing. The content list's
+ResizeObserver and asset-load capture correct the bottom after asynchronous
+growth; there is no polling or extra history request.
+
+`scroll-follow.ts` separates intent from geometry: a wheel/touch/key/scrollbar
+move toward older text or a jump to an unanswered question interrupts following
+before a queued resize/history callback can pull it back. History ending in an
+owner line is not treated as a local send. While reading older lines, updates
+keep the existing new-message indicator. Reaching the bottom or pressing that
+indicator resumes following. Tests inject a scroll box and replay callback
+orders without real clocks.
