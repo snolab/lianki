@@ -84,6 +84,8 @@ export const LANES_CONFIG_DEFAULTS = {
       lane: "claude",
       wake: false,
       scope: "all",
+      // 小克 answers from its own feed by its own judgement; the manager's hand-offs stay listen-only.
+      answerUnnamed: false,
     },
   ] as LaneAgentDef[],
   "lanes.relistSec": 60,
@@ -95,7 +97,7 @@ export const LANES_CONFIG_DEFAULTS = {
     "大家好，我是 {name}（{repo} · {cli}），{mode}入群。只回答点名我或「全体」的话。",
   /** The greeting of a lane that may answer unnamed lines (lanes.agents answerUnnamed). */
   "lanes.greetingAnswerUnnamed":
-    "大家好，我是 {name}（{repo} · {cli}），{mode}入群。点名我必答，没点名的话有想法也会简短答。",
+    "大家好，我是 {name}（{repo} · {cli}），{mode}入群。点名我必答，没点名但和我的项目有关的话也会简短答。",
 } as const;
 
 /** The env var each Mac-side key is read from. */

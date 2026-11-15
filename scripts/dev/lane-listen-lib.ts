@@ -233,7 +233,7 @@ export const NO_CROSS_RULE = "只回答点名我或「全体」的话；被点�
  * a line naming another lane is still never answered.
  */
 export const ANSWER_UNNAMED_RULE =
-  "点名你或「全体」的必答；未点名的有想法就简短答（1–3 句），没想法不回；被点名的是别人时不插话、不代答、不追问。";
+  "点名你或「全体」的必答；未点名的看相关性：和你的项目或职责有关就简短答（1–3 句），无关不回；被点名的是别人时不插话、不代答、不追问。";
 
 /** How a lane treats his lines that name nobody: listen only (default), or answer briefly when it has something to say. */
 export type UnnamedOpts = { answerUnnamed?: boolean };
@@ -256,7 +256,8 @@ export const OTHER_NOTE = "点名别人的：不要回答、不要代做；只�
 /** Once per batch that holds a line with no name (a listen-to-all lane). */
 export const NONE_NOTE = "未点名：只听，不回。";
 /** The same, for a lane that may answer unnamed lines (answerUnnamed). */
-export const ANSWER_UNNAMED_NOTE = "未点名：有想法就简短答（1–3 句），没想法不回；点名你的必答。";
+export const ANSWER_UNNAMED_NOTE =
+  "未点名：和你的项目或职责有关就简短答（1–3 句），无关不回；点名你的必答。";
 /** The note for a line with no name, as this lane treats them. */
 export const unnamedNote = (o: UnnamedOpts = {}) =>
   o.answerUnnamed ? ANSWER_UNNAMED_NOTE : NONE_NOTE;

@@ -434,7 +434,7 @@ describe("only the lane he names answers (owner, 2026-11-15 15:0x JST)", () => {
     expect(unnamedNote()).toBe(NONE_NOTE);
     expect(unnamedNote(yes)).toBe(ANSWER_UNNAMED_NOTE);
     expect(ANSWER_UNNAMED_NOTE).toBe(
-      "未点名：有想法就简短答（1–3 句），没想法不回；点名你的必答。",
+      "未点名：和你的项目或职责有关就简短答（1–3 句），无关不回；点名你的必答。",
     );
     const none = [line("n1", "今天学了什么")];
     expect(handoffBrief("codex", none, "/r", false, yes).split("\n")).toEqual([

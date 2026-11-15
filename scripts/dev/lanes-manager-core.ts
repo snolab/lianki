@@ -218,7 +218,9 @@ export function createManager(d: Deps, o: ManagerOpts) {
             cwd: p.cwd,
             pid: p.pid,
             cli: p.cli,
-            scope: p.scope,
+            // Owner, 2026-11-15 23:11 JST: a named lane hears everything for the window,
+            // agents' and system lines too, related to it or not.
+            scope: "all",
             skipOwner: false,
             answerUnnamed: p.answerUnnamed,
           });

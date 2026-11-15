@@ -117,6 +117,7 @@ describe("config", () => {
       lane: "claude",
       wake: false,
       scope: "all",
+      answerUnnamed: false,
     });
     // coco and 小克 hear every line by default (tier ①, owner 2026-11-15 15:44 JST); the others his lines.
     expect(CFG.agents.filter((a) => a.scope === "all").map((a) => a.lane)).toEqual([
@@ -225,8 +226,9 @@ describe("agent → lane", () => {
     ]);
     expect(p[0]!.busy).toBe(true);
     expect(p.every((x) => x.wake)).toBe(true);
-    // answerUnnamed rides from the row (lanes.agents); a held lane (an outside listener) has none.
-    expect(p.every((x) => !x.answerUnnamed)).toBe(true);
+    // A live lane answers by relevance to its project (owner, 2026-11-15 23:09 JST): on by
+    // default for held and resident lanes; a row's explicit false keeps it listen-only.
+    expect(p.every((x) => x.answerUnnamed === x.resident)).toBe(true);
     // Without listeners: the registered names (resident), the first agent that matches.
     const q = planLanes(AGENTS, CFG);
     expect(q.find((x) => x.pid === 52435)).toMatchObject({
@@ -554,7 +556,7 @@ describe("the loop (createManager), every effect mocked", () => {
       {
         token: "lk_codex",
         op: "say",
-        text: "大家好，我是 codex（lianki · codex），实时监听（全部消息）入群。点名我必答，没点名的话有想法也会简短答。",
+        text: "大家好，我是 codex（lianki · codex），实时监听（全部消息）入群。点名我必答，没点名但和我的项目有关的话也会简短答。",
         quiet: true,
       },
       {
@@ -663,7 +665,8 @@ describe("the loop (createManager), every effect mocked", () => {
     const started = s.calls.started.length;
     // Named: woken now, and a listener of its own (his lines only) for 5 minutes.
     expect(await s.m.line(l("b1", "rechrome-main，看看"))).toEqual([71565]);
-    expect(s.calls.started.slice(started)).toEqual(["rechrome-main"]);
+    // The named lane hears everything for the window (owner, 2026-11-15 23:11 JST).
+    expect(s.calls.started.slice(started)).toEqual(["rechrome-main:all"]);
     expect(s.m.running()).toContain("rechrome-main");
     expect(s.m.wakeLive().get("rechrome-main")).toBe(1_000_000 + 5 * 60_000);
     // A re-list inside the window keeps that listener (live, so not stopped).
@@ -682,7 +685,7 @@ describe("the loop (createManager), every effect mocked", () => {
     expect(s.m.wakeLive().has("rechrome-main")).toBe(false);
     // Named once more: woken by the manager again, a new window.
     expect(await s.m.line(l("b3", "#rechrome 再看"))).toEqual([71565]);
-    expect(s.calls.started.at(-1)).toBe("rechrome-main");
+    expect(s.calls.started.at(-1)).toBe("rechrome-main:all");
     s.m.stop();
   });
   it("scope all: the listener hears everyone (and skips his lines when the agent has its own feed)", () => {
@@ -749,7 +752,7 @@ describe("the loop (createManager), every effect mocked", () => {
       {
         type: "greet",
         lane: "codex",
-        text: "大家好，我是 codex（lianki · codex），实时监听（全部消息）入群。点名我必答，没点名的话有想法也会简短答。",
+        text: "大家好，我是 codex（lianki · codex），实时监听（全部消息）入群。点名我必答，没点名但和我的项目有关的话也会简短答。",
       },
     ]);
     // Without the second template (an older cfg), the plain greeting.

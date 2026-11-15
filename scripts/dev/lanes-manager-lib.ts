@@ -197,7 +197,9 @@ export function planLanes(
     resident: held || !!reg?.resident || reg?.scope === "all",
     scope: reg?.scope ?? "owner",
     wake: reg?.wake !== false,
-    answerUnnamed: !!reg?.answerUnnamed,
+    // Owner, 2026-11-15 23:09 JST: a live lane answers by relevance to its project,
+    // not by being named; a row may still say false (listen only).
+    answerUnnamed: reg?.answerUnnamed ?? (held || !!reg?.resident || reg?.scope === "all"),
     busy: a.state === "active",
   }));
 }
