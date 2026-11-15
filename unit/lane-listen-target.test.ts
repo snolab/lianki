@@ -6,7 +6,7 @@
  * (2026-11-15 20:28 JST). The newest agent of the lane's CLI kind wins.
  */
 import { describe, expect, it } from "bun:test";
-import { type AyRow, pickTarget } from "../scripts/dev/lane-listen-lib";
+import { type AyRow, pickTarget, sendCodes, unknownCode } from "../scripts/dev/lane-listen-lib";
 
 const DIR = "/r/tree/agy";
 const rows: AyRow[] = [
@@ -41,5 +41,16 @@ describe("pickTarget", () => {
       { pid: 20, cwd: DIR, cli: "agy" },
     ];
     expect(pickTarget(bare, DIR, "agy")).toBe("20");
+  });
+});
+
+describe("sendCodes / unknownCode: an ay without alt-m still gets the line", () => {
+  it("urgent: alt-m, then Enter; normal: Enter only", () => {
+    expect(sendCodes(true)).toEqual(["alt-m", "enter"]);
+    expect(sendCodes(false)).toEqual(["enter"]);
+  });
+  it("only a refused key moves on to the next code", () => {
+    expect(unknownCode("ay send: unknown key/code: alt-m")).toBe(true);
+    expect(unknownCode("ay send: no agent matches")).toBe(false);
   });
 });

@@ -21,6 +21,7 @@
  * The decisions are pure (./lanes-manager-lib.ts) and the loop takes its
  * effects as Deps (./lanes-manager-core.ts); this file only wires them up.
  */
+import { sendCodes, unknownCode } from "./lane-listen-lib";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { lanesConfig } from "../../lib/lanes-config";
@@ -107,11 +108,25 @@ async function main(): Promise<number> {
       }
     },
     wake: async (pid, body) => {
-      const p = Bun.spawn(
-        ["ay", "send", String(pid), "--force", "--no-wait", "--code", "alt-m", "-"],
-        { stdin: new TextEncoder().encode(body), stdout: "ignore", stderr: "ignore" },
-      );
-      return Promise.race([p.exited, new Promise<number>((r) => setTimeout(() => r(-1), 20_000))]);
+      // alt-m breaks into the turn; an ay without that key refuses it, so Enter follows.
+      let code = 1;
+      for (const key of sendCodes(true)) {
+        const p = Bun.spawn(
+          ["ay", "send", String(pid), "--force", "--no-wait", "--code", key, "-"],
+          {
+            stdin: new TextEncoder().encode(body),
+            stdout: "ignore",
+            stderr: "pipe",
+          },
+        );
+        code = await Promise.race([
+          p.exited,
+          new Promise<number>((r) => setTimeout(() => r(-1), 20_000)),
+        ]);
+        if (code === 0 || code === 4 || code === -1) return code;
+        if (!unknownCode(await new Response(p.stderr).text())) return code;
+      }
+      return code;
     },
     loadState: (): ManagerState => {
       try {
