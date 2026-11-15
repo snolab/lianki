@@ -16,7 +16,9 @@
  * --everyone (tier ①, docs/lane-listen.md "Five tiers"): agents' lines and system
  * lines are handed over too, marked 【agent · coco】 / 【系统】 (FYI, never answered),
  * never the lane's own; the hub shows it as hearing all messages. --skip-owner: not
- * his lines (小克 has its own feed of them).
+ * his lines (小克 has its own feed of them). --answer-unnamed (lanes.agents
+ * answerUnnamed: coco, 杰咪): his lines that name nobody may be answered briefly,
+ * when the lane has something to say; the hand-off notes say so.
  *
  * The token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (0600),
  * made by the owner (lianki.com/my/preferences → API tokens; name = the lane,
@@ -58,6 +60,8 @@ type Opts = {
   everyone: boolean;
   /** No owner lines (the lane has its own feed of them). */
   skipOwner: boolean;
+  /** It may answer his lines that name nobody, briefly (lanes.agents answerUnnamed). */
+  answerUnnamed: boolean;
 };
 
 function parse(argv: string[]): Opts | Error {
@@ -67,12 +71,14 @@ function parse(argv: string[]): Opts | Error {
     all: boolean;
     everyone: boolean;
     skipOwner: boolean;
+    answerUnnamed: boolean;
   } = {
     tests: false,
     dryRun: false,
     all: false,
     everyone: false,
     skipOwner: false,
+    answerUnnamed: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -87,6 +93,7 @@ function parse(argv: string[]): Opts | Error {
     else if (a === "--all") o.all = true;
     else if (a === "--everyone") o.everyone = o.all = true;
     else if (a === "--skip-owner") o.skipOwner = true;
+    else if (a === "--answer-unnamed") o.answerUnnamed = true;
     else return new Error(`lane-listen: unknown argument ${a}`);
   }
   o.lane ??= (process.env.LIANKI_LANE || undefined) as RouteLane | undefined;

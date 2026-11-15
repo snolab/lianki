@@ -69,12 +69,14 @@ describe("config", () => {
       forwardUnknownVoice: false,
       wakeLiveMin: 5,
       greeting: LANES_CONFIG_DEFAULTS["lanes.greeting"],
+      greetingAnswerUnnamed: LANES_CONFIG_DEFAULTS["lanes.greetingAnswerUnnamed"],
     });
     const c = lanesConfig({
       LIANKI_LANES_REPOS: "lianki, foo ,bad repo",
       LIANKI_LANES_AGENTS: JSON.stringify([{ cwd: "foo/main", lane: "foo" }]),
       LIANKI_LANES_RELIST_SEC: "120",
       LIANKI_LANES_GREETING: "hi {name}",
+      LIANKI_LANES_GREETING_ANSWER_UNNAMED: "yo {name}",
       LIANKI_LANES_FORWARD_UNKNOWN_VOICE: "true",
       LIANKI_LANES_WAKE_LIVE_MIN: "0",
     });
@@ -85,12 +87,14 @@ describe("config", () => {
       forwardUnknownVoice: true,
       wakeLiveMin: 0,
       greeting: "hi {name}",
+      greetingAnswerUnnamed: "yo {name}",
     });
     const bad = lanesConfig({
       LIANKI_LANES_REPOS: " ,",
       LIANKI_LANES_AGENTS: "{nope",
       LIANKI_LANES_RELIST_SEC: "5",
       LIANKI_LANES_GREETING: "x".repeat(201),
+      LIANKI_LANES_GREETING_ANSWER_UNNAMED: "x".repeat(201),
       LIANKI_LANES_FORWARD_UNKNOWN_VOICE: "maybe",
       LIANKI_LANES_WAKE_LIVE_MIN: "1.5",
     });
@@ -125,7 +129,16 @@ describe("config", () => {
       lane: "codex",
       resident: true,
       scope: "all",
+      answerUnnamed: true,
     });
+    // coco and 杰咪 may answer his unnamed lines (owner, 2026-11-15 22:55 JST); the read-only ones never.
+    expect(CFG.agents.filter((a) => a.answerUnnamed).map((a) => a.lane)).toEqual(["codex", "agy"]);
+    expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", answerUnnamed: true }).success).toBe(
+      true,
+    );
+    expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", answerUnnamed: "yes" }).success).toBe(
+      false,
+    );
     expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "all" }).success).toBe(true);
     expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "owner" }).success).toBe(true);
     expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "some" }).success).toBe(false);
@@ -208,9 +221,17 @@ describe("agent → lane", () => {
     ]);
     expect(p[0]!.busy).toBe(true);
     expect(p.every((x) => x.wake)).toBe(true);
+    // answerUnnamed rides from the row (lanes.agents); a held lane (an outside listener) has none.
+    expect(p.every((x) => !x.answerUnnamed)).toBe(true);
     // Without listeners: the registered names (resident), the first agent that matches.
     const q = planLanes(AGENTS, CFG);
-    expect(q.find((x) => x.pid === 52435)).toMatchObject({ lane: "codex", resident: true });
+    expect(q.find((x) => x.pid === 52435)).toMatchObject({
+      lane: "codex",
+      resident: true,
+      answerUnnamed: true,
+    });
+    expect(q.find((x) => x.pid === 5468)).toMatchObject({ lane: "agy", answerUnnamed: true });
+    expect(q.find((x) => x.pid === 71565)).toMatchObject({ answerUnnamed: false });
     expect(q.find((x) => x.pid === 64893)).toMatchObject({
       lane: "lianki-coco-ui",
       resident: false,
@@ -306,6 +327,7 @@ const plan = (lane: string, extra: Partial<Planned> = {}): Planned => ({
   resident: false,
   scope: "owner",
   wake: true,
+  answerUnnamed: false,
   busy: false,
   ...extra,
 });
@@ -334,6 +356,7 @@ describe("decide", () => {
         cli: "codex",
         scope: "owner",
         skipOwner: false,
+        answerUnnamed: false,
       },
       {
         type: "greet",
@@ -476,8 +499,10 @@ describe("the loop (createManager), every effect mocked", () => {
       ayList: async () => ay,
       ps: async () => o.ps ?? " 7906 bun lane-listen.ts --as agy --deliver 5468",
       token: (lane) => (tokens.has(lane) ? `lk_${lane}` : undefined),
-      startListener: ({ lane, table, scope, skipOwner }): Child => {
-        calls.started.push(`${lane}${scope === "all" ? ":all" : ""}${skipOwner ? ":skip" : ""}`);
+      startListener: ({ lane, table, scope, skipOwner, answerUnnamed }): Child => {
+        calls.started.push(
+          `${lane}${scope === "all" ? ":all" : ""}${skipOwner ? ":skip" : ""}${answerUnnamed ? ":unnamed" : ""}`,
+        );
         expect(JSON.parse(table)).toBeArray();
         return {
           pid: pid++,
@@ -519,13 +544,13 @@ describe("the loop (createManager), every effect mocked", () => {
     const acts = await s.m.relist();
     expect(acts.map((a) => a.type)).toEqual(["start-listener", "greet", "greet", "tokens-needed"]);
     // agy is served by the oxmgr listener; codex (tree/codex, registered) gets ours.
-    expect(s.calls.started).toEqual(["codex:all"]);
+    expect(s.calls.started).toEqual(["codex:all:unnamed"]);
     expect(s.m.running()).toEqual(["codex"]);
     expect(s.calls.chat).toEqual([
       {
         token: "lk_codex",
         op: "say",
-        text: "大家好，我是 codex（lianki · codex），实时监听（全部消息）入群。只回答点名我或「全体」的话。",
+        text: "大家好，我是 codex（lianki · codex），实时监听（全部消息）入群。点名我必答，没点名的话有想法也会简短答。",
         quiet: true,
       },
       {
@@ -560,7 +585,7 @@ describe("the loop (createManager), every effect mocked", () => {
       ],
     });
     await s.m.relist();
-    expect(s.calls.started).toEqual(["codex:all", "claude:all:skip"]);
+    expect(s.calls.started).toEqual(["codex:all:unnamed", "claude:all:skip"]);
   });
   it("an agent leaves: listener stopped, lane left; ay silent: nothing changes", async () => {
     const s = setup();
@@ -678,12 +703,76 @@ describe("the loop (createManager), every effect mocked", () => {
         cli: "codex",
         scope: "all",
         skipOwner: true,
+        answerUnnamed: false,
       },
       {
         type: "greet",
         lane: "claude",
         text: "大家好，我是 claude（lianki · codex），实时监听（全部消息）入群。只回答点名我或「全体」的话。",
       },
+    ]);
+  });
+  it("a lane that answers unnamed lines: --answer-unnamed, and its own greeting", () => {
+    const c = plan("codex", {
+      resident: true,
+      scope: "all",
+      answerUnnamed: true,
+      cwd: "/c",
+      pid: 9,
+    });
+    const r = decide(
+      [],
+      {
+        planned: [c],
+        tokens: new Set(["codex"]),
+        running: new Set<string>(),
+        external: new Set<string>(),
+      },
+      { greeted: [] },
+      CFG,
+    );
+    expect(r.actions).toEqual([
+      {
+        type: "start-listener",
+        lane: "codex",
+        cwd: "/c",
+        pid: 9,
+        cli: "codex",
+        scope: "all",
+        skipOwner: false,
+        answerUnnamed: true,
+      },
+      {
+        type: "greet",
+        lane: "codex",
+        text: "大家好，我是 codex（lianki · codex），实时监听（全部消息）入群。点名我必答，没点名的话有想法也会简短答。",
+      },
+    ]);
+    // Without the second template (an older cfg), the plain greeting.
+    const old = decide(
+      [],
+      { planned: [c], tokens: new Set(["codex"]), running: new Set(), external: new Set() },
+      { greeted: [] },
+      { greeting: "hi {name}" },
+    );
+    expect(old.actions.at(-1)).toEqual({ type: "greet", lane: "codex", text: "hi codex" });
+    expect(
+      listenerArgv("bun", "/r", "codex", "/c", { scope: "all", answerUnnamed: true }).slice(-3),
+    ).toEqual(["--all", "--everyone", "--answer-unnamed"]);
+    expect(listenerArgv("bun", "/r", "agy", "/a", { cli: "agy", answerUnnamed: true })).toEqual([
+      "bun",
+      "/r/scripts/dev/lianki-dev.ts",
+      "lane-listen",
+      "--repo",
+      "/r",
+      "--as",
+      "agy",
+      "--cwd",
+      "/a",
+      "--cli",
+      "agy",
+      "--all",
+      "--answer-unnamed",
     ]);
   });
   it("the listener's command line", () => {

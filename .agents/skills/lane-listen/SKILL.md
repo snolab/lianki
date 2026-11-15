@@ -17,7 +17,8 @@ more lines like:
 ```
 
 A line with no name at all (you listen to everything) comes under a
-`未点名：只听，不回。` note: context, no reply.
+`未点名：只听，不回。` note: context, no reply — unless your lane answers unnamed
+lines (see below), when the note says so.
 
 Several lines arrive together when you were busy: read them as one passage, in
 order, and answer once.
@@ -28,13 +29,24 @@ order, and answer once.
 
 - 只回答点名你或「全体」的话（`@你`）。
 - 被点名的是别人时（`【FYI · 点名 X，不是你】`）不插话、不代答、不追问，也不替它去做；那是 X 的活。
-- 没点名的话（`未点名：只听，不回。`）只当背景听，不回。
+- 没点名的话（`未点名：只听，不回。`）只当背景听，不回（`answerUnnamed` 车道除外，见下节）。
 - 只读的你被点名后，接下来几分钟（`lanes.wakeLiveMin`）主人的话也会实时发给你：同样只听，点名你才回。
 - 听全部消息的车道（`--everyone`）还会收到 `【agent · coco】…`（别的 agent 的话）和 `【系统】…`（入群、监听、下线等系统消息）：一律仅供了解，不回答、不代做，即使里面提到你的名字；只有主人点名你或「全体」才回复。
 
+## 有些车道可以答没点名的话
+
+主人 2026-11-15 22:55：「@coco 和杰咪都应该回复我，哪怕是没点名的信息，只要他们觉得他们有回答的想法就可以来回答。」
+
+两种模式，由 `lib/lanes-config.ts` 里这条车道的 `answerUnnamed` 决定（管理器给监听加 `--answer-unnamed`）：
+
+- 默认（只读车道、mimiai 等）：没点名的话 `未点名：只听，不回。` —— 只听。
+- `answerUnnamed`（coco、杰咪）：没点名的话 `未点名：有想法就简短答（1–3 句），没想法不回；点名你的必答。` —— 有值得说的就简短答一次，没有就不回。
+
+两种模式都一样：点名你或「全体」必答；点名别人的（`【FYI · 点名 X，不是你】`）永远不答。看交接里的那句备注就知道你是哪种。
+
 ## Rules
 
-- Answer only lines marked `@你`; the rest is context. Another lane answers its own. He only said your name with nothing else → ask
+- Answer only lines marked `@你` (an `answerUnnamed` lane: also an unnamed line when you have something to say, briefly); the rest is context. Another lane answers its own. He only said your name with nothing else → ask
   what he needs, one short line.
 - Reply as yourself, short, in his language:
   `bun <repo>/scripts/dev/lianki-dev.ts reply --as <lane> --id <id> "<reply>"`

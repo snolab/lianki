@@ -42,6 +42,7 @@ export interface Deps {
     scope?: LaneScope;
     skipOwner?: boolean;
     cli?: string;
+    answerUnnamed?: boolean;
   }): Child;
   /** POST the hub's chat API with a lane's token: {ok, status}. */
   chat(token: string, body: Record<string, unknown>): Promise<{ ok: boolean; status: number }>;
@@ -95,6 +96,7 @@ export function createManager(d: Deps, o: ManagerOpts) {
           scope: a.scope,
           skipOwner: a.skipOwner,
           cli: a.cli,
+          answerUnnamed: a.answerUnnamed,
         });
         children.set(a.lane, c);
         void c.exited.then((code) => {
@@ -202,7 +204,9 @@ export function createManager(d: Deps, o: ManagerOpts) {
           d.log({ type: "wake-live", lane: p.lane, id: l.id, until: t + liveMs });
           continue;
         }
-        const body = handoffBrief(p.lane, [l], o.repo, !briefed.has(p.lane));
+        const body = handoffBrief(p.lane, [l], o.repo, !briefed.has(p.lane), {
+          answerUnnamed: p.answerUnnamed,
+        });
         briefed.add(p.lane);
         const code = o.dryRun ? 0 : await d.wake(p.pid, body);
         d.log({ type: "woken", lane: p.lane, pid: p.pid, id: l.id, ay: code });
@@ -216,6 +220,7 @@ export function createManager(d: Deps, o: ManagerOpts) {
             cli: p.cli,
             scope: p.scope,
             skipOwner: false,
+            answerUnnamed: p.answerUnnamed,
           });
       }
       return woken;
@@ -238,14 +243,15 @@ export function createManager(d: Deps, o: ManagerOpts) {
 /**
  * The listener command for a lane (lane-listen through lianki-dev, every owner line, from
  * the agent's dir); scope "all" adds `--everyone` (agents' and system lines too), and
- * `skipOwner` `--skip-owner` (its agent has its own feed of his lines).
+ * `skipOwner` `--skip-owner` (its agent has its own feed of his lines), and `answerUnnamed`
+ * `--answer-unnamed` (it may answer his lines that name nobody, briefly).
  */
 export const listenerArgv = (
   bun: string,
   repo: string,
   lane: string,
   cwd: string,
-  o: { scope?: LaneScope; skipOwner?: boolean; cli?: string } = {},
+  o: { scope?: LaneScope; skipOwner?: boolean; cli?: string; answerUnnamed?: boolean } = {},
 ) => [
   bun,
   join(repo, "scripts", "dev", "lianki-dev.ts"),
@@ -261,4 +267,5 @@ export const listenerArgv = (
   "--all",
   ...(o.scope === "all" ? ["--everyone"] : []),
   ...(o.scope === "all" && o.skipOwner ? ["--skip-owner"] : []),
+  ...(o.answerUnnamed ? ["--answer-unnamed"] : []),
 ];

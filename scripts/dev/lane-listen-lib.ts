@@ -227,6 +227,16 @@ export const ownerAt = (at?: string) => {
  * AI（包括 mimiai）不要乱回复"): answer only a line that names you or 全体.
  */
 export const NO_CROSS_RULE = "只回答点名我或「全体」的话；被点名的是别人时不插话、不代答、不追问。";
+/**
+ * The rule of a lane that may answer unnamed lines (lanes.agents answerUnnamed; owner,
+ * 2026-11-15 22:55 JST: "@coco 和杰咪都应该回复我，哪怕是没点名的信息，只要他们觉得他们有回答的想法就可以来回答"):
+ * a line naming another lane is still never answered.
+ */
+export const ANSWER_UNNAMED_RULE =
+  "点名你或「全体」的必答；未点名的有想法就简短答（1–3 句），没想法不回；被点名的是别人时不插话、不代答、不追问。";
+
+/** How a lane treats his lines that name nobody: listen only (default), or answer briefly when it has something to say. */
+export type UnnamedOpts = { answerUnnamed?: boolean };
 
 /** Whom a line is for, as `lane` sees it: "mine" (its name or 全体), "other" (another lane's name), or "none". */
 export function addressee(
@@ -245,6 +255,11 @@ export const otherMark = (names: readonly string[]) => `【FYI · 点名 ${names
 export const OTHER_NOTE = "点名别人的：不要回答、不要代做；只在点名你或 全体 时回复。";
 /** Once per batch that holds a line with no name (a listen-to-all lane). */
 export const NONE_NOTE = "未点名：只听，不回。";
+/** The same, for a lane that may answer unnamed lines (answerUnnamed). */
+export const ANSWER_UNNAMED_NOTE = "未点名：有想法就简短答（1–3 句），没想法不回；点名你的必答。";
+/** The note for a line with no name, as this lane treats them. */
+export const unnamedNote = (o: UnnamedOpts = {}) =>
+  o.answerUnnamed ? ANSWER_UNNAMED_NOTE : NONE_NOTE;
 /** Once per batch that holds an agent's or a system line (--everyone): they are FYI, never his asks. */
 export const FYI_NOTE = "agent/系统消息仅供了解：不要回答、不要代做；只在他点名你或 全体 时回复。";
 /** How an agent line and a system line are marked in a hand-off. */
@@ -252,7 +267,7 @@ export const agentMark = (name?: string) => `【agent · ${name || "?"}】`;
 export const SYSTEM_MARK = "【系统】";
 
 /** What the lane's agent is handed: his words, and how to answer as itself. */
-export function handoff(lane: RouteLane, l: Line, repo: string): string {
+export function handoff(lane: RouteLane, l: Line, repo: string, o: UnnamedOpts = {}): string {
   if (l.etaLane === lane)
     return [
       `【state tree → ${lane}】(${ownerAt(l.at)}, automatic) ${l.text}`,
@@ -281,7 +296,9 @@ export function handoff(lane: RouteLane, l: Line, repo: string): string {
         ? `He addressed this to you by name; only you got it, the other lanes stay silent. Answer once, yourself, short, in his language${routeLine(words).text ? "" : " (he only said your name: ask what he needs)"}:`
         : said.to === "other"
           ? `${otherMark(said.names)} He addressed this to another lane by name: do not answer, do not do it for them, do not follow up. ${OTHER_NOTE} Only if he names you or 全体 later:`
-          : `${NONE_NOTE} Heard, not addressed to you by name (you listen to all his lines): keep it as context and stay silent; another lane answers. Only if he names you or 全体:`,
+          : o.answerUnnamed
+            ? `${ANSWER_UNNAMED_NOTE} Not addressed to anyone by name (you listen to all his lines): if you have something useful to say, answer once, briefly (1–3 sentences), in his language; otherwise stay silent:`
+            : `${NONE_NOTE} Heard, not addressed to you by name (you listen to all his lines): keep it as context and stay silent; another lane answers. Only if he names you or 全体:`,
     `  ${reply}`,
     "It posts as your lane (your name, mark and voice) with your own lane token; never read or print the token. Do not hand this to another lane.",
   ].join("\n");
@@ -308,8 +325,8 @@ export function briefBullet(lane: RouteLane, l: Line): string {
   return `- (id:${l.id})${mark}${unsure} ${l.text}`;
 }
 
-/** The notes a batch carries once each: OTHER_NOTE when a line names another lane, NONE_NOTE when one names nobody. */
-export function batchNotes(lane: RouteLane, lines: readonly Line[]): string[] {
+/** The notes a batch carries once each: OTHER_NOTE when a line names another lane, unnamedNote when one names nobody. */
+export function batchNotes(lane: RouteLane, lines: readonly Line[], o: UnnamedOpts = {}): string[] {
   const kinds = new Set(
     lines
       .filter((l) => l.etaLane !== lane && !l.kind && testText(l) === null)
@@ -317,7 +334,7 @@ export function batchNotes(lane: RouteLane, lines: readonly Line[]): string[] {
   );
   return [
     ...(kinds.has("other") ? [OTHER_NOTE] : []),
-    ...(kinds.has("none") ? [NONE_NOTE] : []),
+    ...(kinds.has("none") ? [unnamedNote(o)] : []),
     ...(lines.some((l) => l.kind && l.etaLane !== lane) ? [FYI_NOTE] : []),
   ];
 }
@@ -333,22 +350,23 @@ export function handoffBrief(
   lines: readonly Line[],
   repo: string,
   first: boolean,
+  o: UnnamedOpts = {},
 ): string {
   const at = ownerAt(lines.at(-1)?.at);
   // Only agents' and system lines (--everyone): not his words, so not "owner →".
   const from = lines.some((l) => !l.kind) ? "owner" : "chat";
   const out = [
     `【${from} → ${lane}】${at}`,
-    ...batchNotes(lane, lines),
+    ...batchNotes(lane, lines, o),
     ...lines.map((l) => briefBullet(lane, l)),
   ];
-  if (first) out.push(...firstLines(lane, repo));
+  if (first) out.push(...firstLines(lane, repo, o));
   return out.join("\n");
 }
 
 /** What only the first message of a listener's (or a woken reader's) life carries: the rule, and where the rules are. */
-export const firstLines = (lane: RouteLane, repo: string) => [
-  NO_CROSS_RULE,
+export const firstLines = (lane: RouteLane, repo: string, o: UnnamedOpts = {}) => [
+  o.answerUnnamed ? ANSWER_UNNAMED_RULE : NO_CROSS_RULE,
   `规则只读这一次：${join(repo, HANDOFF_SKILL)}（回复：bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} reply --as ${lane} --id <id> "…"）`,
 ];
 
@@ -379,11 +397,13 @@ export function chunkLines(
   lane: RouteLane,
   lines: readonly Line[],
   max = SEND_MAX_CHARS,
+  o: UnnamedOpts = {},
 ): Line[][] {
   const parts: Line[][] = [];
   let cur: Line[] = [];
   let size = 0;
-  const notes = (ls: readonly Line[]) => batchNotes(lane, ls).reduce((n, x) => n + x.length + 1, 0);
+  const notes = (ls: readonly Line[]) =>
+    batchNotes(lane, ls, o).reduce((n, x) => n + x.length + 1, 0);
   for (const l of lines) {
     let line = l;
     const room = max - notes([l]);
@@ -405,7 +425,7 @@ export function chunkLines(
   return parts;
 }
 export function makeDeliverer(
-  o: { lane: RouteLane; repo: string },
+  o: { lane: RouteLane; repo: string } & UnnamedOpts,
   send: (body: string, interrupt: boolean) => Promise<number>,
   busy: () => Promise<boolean>,
   log: (v: Record<string, unknown>) => void = () => {},
@@ -431,9 +451,10 @@ export function makeDeliverer(
     // So a long batch goes as several messages, each under SEND_MAX_CHARS.
     let code: number | undefined;
     // The first message also carries firstLines: its parts leave room for them.
-    const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo).join("\n").length + 1 : 0);
-    for (const part of chunkLines(o.lane, batch, room)) {
-      code = await send(handoffBrief(o.lane, part, o.repo, first), interrupt);
+    const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo, o).join("\n").length + 1 : 0);
+    const unnamed = { answerUnnamed: o.answerUnnamed };
+    for (const part of chunkLines(o.lane, batch, room, unnamed)) {
+      code = await send(handoffBrief(o.lane, part, o.repo, first, unnamed), interrupt);
       first = false;
       log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
       if (code !== 0 && code !== 4)

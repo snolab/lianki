@@ -6,6 +6,9 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  ANSWER_UNNAMED_NOTE,
+  ANSWER_UNNAMED_RULE,
+  unnamedNote,
   FYI_NOTE,
   HANDOFF_SKILL,
   NO_CROSS_RULE,
@@ -425,6 +428,57 @@ describe("only the lane he names answers (owner, 2026-11-15 15:0x JST)", () => {
     expect([OTHER_NOTE, briefBullet("codex", huge[0]![0]!)].join("\n").length).toBeLessThanOrEqual(
       400,
     );
+  });
+  it("a lane that answers unnamed lines (answerUnnamed): its own note and rule; others' lines stay unanswered", () => {
+    const yes = { answerUnnamed: true };
+    expect(unnamedNote()).toBe(NONE_NOTE);
+    expect(unnamedNote(yes)).toBe(ANSWER_UNNAMED_NOTE);
+    expect(ANSWER_UNNAMED_NOTE).toBe(
+      "未点名：有想法就简短答（1–3 句），没想法不回；点名你的必答。",
+    );
+    const none = [line("n1", "今天学了什么")];
+    expect(handoffBrief("codex", none, "/r", false, yes).split("\n")).toEqual([
+      expect.stringMatching(/^【owner → codex】/),
+      ANSWER_UNNAMED_NOTE,
+      "- (id:n1) 今天学了什么",
+    ]);
+    expect(handoffBrief("codex", none, "/r", false).split("\n")[1]).toBe(NONE_NOTE);
+    // A line naming another lane: OTHER_NOTE in both modes.
+    const mixed = [line("o1", "@小克 看一下"), line("n2", "嗯")];
+    expect(batchNotes("agy", mixed, yes)).toEqual([OTHER_NOTE, ANSWER_UNNAMED_NOTE]);
+    expect(batchNotes("agy", mixed)).toEqual([OTHER_NOTE, NONE_NOTE]);
+    // The first message: the matching rule.
+    expect(firstLines("agy", "/r", yes)[0]).toBe(ANSWER_UNNAMED_RULE);
+    expect(firstLines("agy", "/r")[0]).toBe(NO_CROSS_RULE);
+    expect(ANSWER_UNNAMED_RULE).toContain("被点名的是别人时不插话、不代答、不追问");
+    const first = handoffBrief("agy", none, "/r", true, yes).split("\n");
+    expect(first).toContain(ANSWER_UNNAMED_RULE);
+    expect(first).not.toContain(NO_CROSS_RULE);
+    // The long form agrees.
+    const long = handoff("codex", line("h2", "今天学了什么"), "/r", yes);
+    expect(long).toContain(ANSWER_UNNAMED_NOTE);
+    expect(long).toContain("briefly");
+    expect(handoff("codex", line("h1", "@小克 看一下"), "/r", yes)).toContain("do not answer");
+    // Chunks leave room for the longer note.
+    const many = Array.from({ length: 6 }, (_, i) => line(`Y${i}`, "字".repeat(150)));
+    for (const p of chunkLines("codex", many, 400, yes))
+      expect(handoffBrief("codex", p, "/r", false, yes).length).toBeLessThanOrEqual(400 + 30);
+  });
+  it("makeDeliverer with answerUnnamed hands the lane its rule and note", async () => {
+    const sent: string[] = [];
+    const d = makeDeliverer(
+      { lane: "agy", repo: "/repo", answerUnnamed: true },
+      async (body) => {
+        sent.push(body);
+        return 0;
+      },
+      async () => false,
+    );
+    await d.add(line("u1", "今天学了什么"));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain(ANSWER_UNNAMED_NOTE);
+    expect(sent[0]).toContain(ANSWER_UNNAMED_RULE);
+    expect(sent[0]).not.toContain(NONE_NOTE);
   });
   it("handoff (the long form) says the same", () => {
     const other = handoff("mimiai", line("h1", "@小克 看一下"), "/r");

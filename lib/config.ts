@@ -1058,6 +1058,14 @@ export const CONFIG = {
     description:
       "新 agent 入群时用它自己的 token 发的第一句问候。{name} = 线名，{repo} = 仓库，{cli} = 它是哪种 agent，{mode} = 只读 / 实时监听。Mac 上的值是环境变量 LIANKI_LANES_GREETING。",
   },
+  "lanes.greetingAnswerUnnamed": {
+    default: LANES_CONFIG_DEFAULTS["lanes.greetingAnswerUnnamed"] as string,
+    schema: z.string().min(1).max(200),
+    group: "lanes",
+    audience: "server",
+    description:
+      "可以答没点名的话的 agent（coco、杰咪）入群时的第一句问候，占位符同上。Mac 上的值是环境变量 LIANKI_LANES_GREETING_ANSWER_UNNAMED。",
+  },
   "chat.presenceShown": int({
     default: 6,
     min: 1,

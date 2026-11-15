@@ -239,6 +239,11 @@ Tier ① in detail:
   row with `wake: false` (小克, `lane: "claude"`, which keeps its own feed of
   his lines), so nothing reaches it twice. `--as claude` listens as the route
   lane `chat` (`routeKey`) with the `claude` token.
+- `answerUnnamed: true` on a row (coco, 杰咪; owner 2026-11-15 22:55 JST) adds
+  `--answer-unnamed`: his lines that name nobody come under `ANSWER_UNNAMED_NOTE`
+  (answer briefly when it has something to say) instead of `NONE_NOTE`, the
+  first message carries `ANSWER_UNNAMED_RULE`, and its greeting is
+  `lanes.greetingAnswerUnnamed`. Lines naming another lane stay unanswered.
 - `scope: "all"` makes a row live even without `resident`. The listener's
   `lianki chat listen --everyone` sends auth `scope: "all"`; the hub keeps it
   on the socket and the registry row (`LaneReg.scope`), the presence list
