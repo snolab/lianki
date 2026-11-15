@@ -102,7 +102,8 @@ import { boundedSessions } from "../../../lib/bounded-sessions";
  * Continuous speech (flag stt.merge, voice-merge.ts; docs/dev-debug-widget.md,
  * "Continuous speech amends the last line"). With the flag on, an owner's voice
  * line is stamped `mergeable`. A next voice line carrying `continues: <that id>`
- * amends it, if it is still the thread's very latest line and mergeVerdict and
+ * amends it, if it is still the thread's very latest line and joinVerdict (a live
+ * merge, or a reopen of the line he posted within stt.mergeReopenSec) and
  * the checks in merge() pass; else it is a new line, as ever. Same edit path:
  * pages and listeners hear {type:"edited", …, parts, merged}, with the complete
  * text. Every part's raw text is kept in `parts`; {type:"unmerge", id} from an
@@ -279,12 +280,15 @@ import {
   syncWanted,
 } from "../../../packages/debug-chat/src/sync-speak";
 import {
+  MERGE_BY,
+  MERGE_REOPEN_KEY,
   type MergeCandidate,
   UNMERGE_BY,
+  joinVerdict,
   lastPartAt,
   mergeLines,
-  mergeVerdict,
   passageSpeakers,
+  reopenMsOf,
   splitLine,
 } from "../../../packages/debug-chat/src/voice-merge";
 import { type RecheckAmend, applyRecheck } from "../../../packages/debug-chat/src/whisper-recheck";
@@ -641,6 +645,13 @@ const ECHO_INDEX = "echo:index";
 const echoKey = (id: string) => `echo:${id}`;
 /** The `by` an automatic polish or merge is stamped with (an agent's carries its label). */
 export const AUTO_POLISH_BY = "auto";
+
+/**
+ * A polish still stands on the line, so the hub's own polish leaves it alone. A
+ * merge (a live one, or a reopen of a line polished before: voice-merge.ts) reads
+ * as heard again: its old polish is gone, and it is due its one polish.
+ */
+const polishStands = (x: ChatMessage) => (x.edited?.count ?? 0) > 0 && x.edited?.by !== MERGE_BY;
 /** Lines further apart than this are never one automatic run (an old unpolished line is left alone). */
 export const AUTO_POLISH_RUN_MS = 60_000;
 /** Kept lines before the run sent as context (lines, each cut to AUTO_POLISH_CONTEXT_CHARS). */
@@ -872,6 +883,8 @@ export class DebugHub {
   /** The last read of the caps' config: CAP_WINDOW_KEY and the two caps (AI_FLAG_CACHE_MS). */
   private capConf?: { at: number; hours: number; userTokens: number; siteMicro: number };
   private mergeFlag?: { at: number; on: boolean };
+  /** The last read of MERGE_REOPEN_KEY, in ms (AI_FLAG_CACHE_MS); 0 = off. */
+  private reopenConf?: { at: number; ms: number };
   /** The last read of TWO_MIC_FLAG and TWO_MIC_WINDOW_KEY (AI_FLAG_CACHE_MS). */
   private twoMicConf?: { at: number; on: boolean; windowMs: number };
   private repeatConf?: { at: number; limits: RepeatLimits };
@@ -2073,14 +2086,36 @@ export class DebugHub {
   }
 
   /**
+   * stt.mergeReopenSec from the main Worker, in ms, at most once per
+   * AI_FLAG_CACHE_MS: how long after his last voice line a new utterance may still
+   * join it (voice-merge.ts reopenVerdict). Unreadable (no binding, an error) is
+   * off, like an unsure flag: a wrong merge costs more than two bubbles.
+   */
+  private async reopenMs(): Promise<number> {
+    const t = this.now();
+    if (this.reopenConf && t - this.reopenConf.at < AI_FLAG_CACHE_MS) return this.reopenConf.ms;
+    let ms = 0;
+    try {
+      ms = reopenMsOf(
+        this.sessions?.config ? await this.sessions.config(MERGE_REOPEN_KEY) : undefined,
+      );
+    } catch {}
+    this.reopenConf = { at: t, ms };
+    return ms;
+  }
+
+  /**
    * The owner's voice line amends his last one, when it asked to and everything
-   * holds (voice-merge.ts). False: it goes out as a new line. Reads and writes
-   * storage only, so no other event lands in between (the Durable Object's gate).
+   * holds (voice-merge.ts): a live merge, or a reopen of the line he posted within
+   * stt.mergeReopenSec. False: it goes out as a new line. After the one config
+   * read, it reads and writes storage only, so no other event lands in between
+   * (the Durable Object's gate).
    */
   private async merge(
     page: PageAtt,
     cur: MergeCandidate & { id: string; at: number; continues: string },
   ): Promise<boolean> {
+    const reopenMs = await this.reopenMs();
     const kept = await this.keptChat(OWNER_THREAD, CHAT_HISTORY);
     const refuse = (reason: string) => {
       console.log(JSON.stringify({ msg: "debug.merge-refused", id: cur.id, reason }));
@@ -2098,7 +2133,8 @@ export class DebugHub {
     const before = kept[1]?.[1];
     if (before?.ask && askState(before, cur.at) === "open") return refuse("open-ask");
     if (kept.some(([, x]) => x.answer && x.answer.at >= prev.at)) return refuse("answered");
-    const v = mergeVerdict(prev, cur);
+    // A live merge, else a reopen: the line he posted, still the latest, within the window.
+    const v = joinVerdict(prev, cur, reopenMs, cur.at - lastPartAt(prev));
     if (!v.ok) return refuse(v.reason);
     const next = mergeLines(prev, cur, cur.at);
     await this.writeLine(key, next);
@@ -2109,6 +2145,7 @@ export class DebugHub {
         id: prev.id,
         part: cur.id,
         signal: v.signal,
+        ...(v.signal === "reopen" ? { reopened: !!prev.settled } : {}),
         parts: next.parts?.length,
         len: next.text.length,
         head: head(next.text),
@@ -2284,8 +2321,9 @@ export class DebugHub {
   }
 
   /**
-   * The page that spoke went quiet after a merged line. Nothing more joins it,
-   * and the listeners hear it is time for its one polish. With stt.polish off
+   * The page that spoke went quiet after a merged line. Nothing more joins it
+   * but a reopen within stt.mergeReopenSec (which unsettles it, and its next
+   * passage end comes here again), and the listeners hear it is time for its one polish. With stt.polish off
    * (or unsure) they hear nothing, so no lane wakes for it: the raw line stands.
    */
   private async passageEnd(page: PageAtt, recheck?: RecheckAmend) {
@@ -2310,6 +2348,7 @@ export class DebugHub {
           id: line.id,
           parts: line.parts?.length,
           engine: recheck?.engine,
+          ...(recheck?.from ? { from: recheck.from } : {}),
           len: line.text.length,
           heard: found.text.length,
         }),
@@ -2927,7 +2966,7 @@ export class DebugHub {
       const [, x] = kept[i]!;
       if (x.collapsedInto) continue;
       if (x.from !== "owner" || x.source !== "stt") break;
-      if (x.summary || x.passage || (x.edited?.count ?? 0) > 0) break;
+      if (x.summary || x.passage || polishStands(x)) break;
       if (x.parts && !x.settled && this.now() - lastPartAt(x) < MAX_UTTERANCE_MS) break;
       if (x.text.trim().length < minChars) break;
       if (run.length && run[0]![1].at - x.at > AUTO_POLISH_RUN_MS) break;
@@ -3002,7 +3041,7 @@ export class DebugHub {
     const now = new Map((await this.editable()).kept.map(([, x]) => [x.id, x]));
     const fresh = sent.filter((l) => {
       const x = now.get(l.id);
-      return !!x && x.text === l.text && !(x.edited?.count ?? 0) && !x.collapsedInto && !x.passage;
+      return !!x && x.text === l.text && !polishStands(x) && !x.collapsedInto && !x.passage;
     });
     if (!fresh.length) return skip("stale", { lines: run.length });
     let merged = false;

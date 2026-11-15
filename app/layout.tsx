@@ -202,6 +202,8 @@ export default async function RootLayout({
     foldOthers,
     whisperRecheck,
     pttMaxCaptureMs: await cfg("voice.pttMaxCaptureMs"),
+    // A posted voice line takes the speech that follows (voice-merge.ts reopenVerdict): owner only.
+    mergeReopenSec: dev ? await cfg("stt.mergeReopenSec") : undefined,
   };
   const box = boxConfig();
   return (

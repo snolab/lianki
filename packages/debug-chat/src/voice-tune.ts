@@ -56,6 +56,13 @@ export function voiceTune(
  * path's one measured figure for how long a cut sentence takes to go on.
  */
 export const JOIN_WINDOW_MS = 2500;
+/**
+ * Config stt.mergeReopenSec (lib/config.ts; voice-merge.ts reopenVerdict): how long
+ * after his last voice line, posted and settled, the next utterance still joins it.
+ */
+export const MERGE_REOPEN_KEY = "stt.mergeReopenSec";
+export const MERGE_REOPEN_DEFAULT_SEC = 20;
+export const MERGE_REOPEN_MAX_SEC = 120;
 
 /** Short answers that always pass the blip guard. */
 const SHORT_ANSWERS = new Set([

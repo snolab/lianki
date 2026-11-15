@@ -50,6 +50,7 @@ import {
 } from "@lianki/debug-chat/voices";
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
+import { MERGE_REOPEN_DEFAULT_SEC, MERGE_REOPEN_MAX_SEC } from "@lianki/debug-chat/voice-tune";
 import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
 import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
 
@@ -380,6 +381,18 @@ export const CONFIG = {
     audience: "public",
     description:
       "复读幻觉过滤：剪掉复读后剩下的字少于这么多，就整句丢掉，不发到聊天里（详情里记为「复读」）。默认 4。",
+  }),
+  // A posted voice line takes the speech that follows (voice-merge.ts reopenVerdict;
+  // docs/dev-debug-widget.md, "Continuous speech amends the last line", "Reopened").
+  "stt.mergeReopenSec": int({
+    default: MERGE_REOPEN_DEFAULT_SEC,
+    min: 0,
+    max: MERGE_REOPEN_MAX_SEC,
+    unit: "s",
+    group: "voice",
+    audience: "server",
+    description:
+      "连续语音续写已发出的消息（开关 stt.merge）：你的一条语音消息发出去以后（哪怕已经停顿、已经润色过），这么多秒内你又开口说话，就接到这条消息后面，而不是新起一条；之后整段重新 Whisper 重听、重新润色一次，撤销（↩）还能拆回每一句。中间有任何别的消息（你打字的、助手的、别的 lane 的）就不再接。默认 20 秒；0 = 关闭，只按原来的规则合并。",
   }),
   "stt.recheckMinSec": {
     default: 1.5 as number,
