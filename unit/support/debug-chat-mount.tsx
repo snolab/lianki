@@ -134,6 +134,49 @@ describe("DebugChat mounts", () => {
     }
   }, 15_000);
 
+  // Owner, 2026-11-16 02:5x JST: "最后一条消息，它的右边有一个很大的空白区域". The
+  // glass up-arrow floats; no run, the newest included, is squeezed from the right.
+  it("the newest run is as wide as the others: no end room beside it", async () => {
+    const p = await page();
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { DebugChat } = await import("../../packages/debug-chat/src/DebugChat");
+    const host = p.win.document.createElement("div");
+    p.win.document.body.appendChild(host);
+    const root = createRoot(host as never);
+    try {
+      p.win.localStorage.setItem("lk:debug-chat-open", "1");
+      const messages = [
+        line("o1", "First."),
+        line("g1", "A reply.", "agent"),
+        line("o2", "The newest line, long enough to wrap on a phone if squeezed."),
+      ];
+      await act(() =>
+        root.render(<DebugChat live listeners={1} messages={messages} onSend={() => true} />),
+      );
+      const runs = [
+        ...host.querySelectorAll('[data-testid="debug-chat-run"]'),
+      ] as unknown as HTMLElement[];
+      expect(runs.length).toBe(3);
+      const ends = runs.map((li) => [
+        li.style.paddingInlineEnd,
+        li.style.paddingRight,
+        li.style.marginInlineEnd,
+        li.style.marginRight,
+        li.style.minHeight,
+        li.className,
+        li.dataset.jumpRoom,
+      ]);
+      for (const e of ends) expect(e).toEqual(ends[0]!);
+      expect(ends.at(-1)!.slice(0, 5)).toEqual(["", "", "", "", ""]);
+      expect(ends.at(-1)![5]).not.toMatch(/(^|\s)(pe|pr|me|mr)-/);
+      expect(ends.at(-1)![6]).toBeUndefined();
+    } finally {
+      await act(() => root.unmount());
+      await p.close();
+    }
+  });
+
   it("renders its log; a spoken draft is the live line, sent it holds until its echo", async () => {
     const p = await page();
     const { act } = await import("react");
