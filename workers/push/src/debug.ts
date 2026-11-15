@@ -350,7 +350,7 @@ import {
   presentList,
 } from "../../../packages/debug-chat/src/presence";
 import { AVATAR_PATH } from "../../../packages/debug-chat/src/svg-avatar";
-import { CHAT_PATH, REVOKED_PATH, TokenChat, tokenAtt } from "./token-chat";
+import { CHAT_PATH, REVOKED_PATH, TokenChat, partKey, tokenAtt } from "./token-chat";
 import { playRefusal, srcHost } from "../../../packages/debug-chat/src/play-audio";
 import { BOX_HEADER, EMBED_HEADER } from "./auth";
 import { type ChatLogRequest, chatLogLine, passageLogId } from "../../../lib/chat-log-line";
