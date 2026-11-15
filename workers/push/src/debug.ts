@@ -856,6 +856,23 @@ type ProgressNs = {
   get(id: unknown): { fetch(req: Request): Promise<Response> };
 };
 
+/** The id of a chat frame the page parser refused, for a `chat-rejected` answer; null for anything else. */
+export function refusedChatId(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length > 1 << 20) return null;
+  try {
+    const m = JSON.parse(raw) as { type?: unknown; id?: unknown } | null;
+    return m &&
+      m.type === "chat" &&
+      typeof m.id === "string" &&
+      m.id.length > 0 &&
+      m.id.length <= 64
+      ? m.id
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export class DebugHub {
   /** Same incoming id cannot be accepted concurrently; durable receipts survive eviction. */
   private deliveringChat = new Map<string, Promise<void>>();
@@ -4077,7 +4094,16 @@ export class DebugHub {
     const cm = clipsParse(raw, parseClipsPageMessage);
     if (cm) return page.thread === OWNER_THREAD ? this.clipsFromPage(ws, page, cm) : undefined;
     const m = parsePageMessage(raw);
-    if (!m) return;
+    if (!m) {
+      // A chat line the parser refuses (over MAX_CHAT, a bad id…) is told so at
+      // once, never dropped in silence: the page's outbox would wait for a receipt
+      // that never comes (owner's phone, 2026-11-15: one 5859-char voice line held
+      // 200 lines behind it for hours). No receipt is stored, so the page may cut
+      // the line and send its parts under this id.
+      const refused = refusedChatId(raw);
+      if (refused) send(ws, { type: "chat-rejected", id: refused, reason: "invalid" });
+      return;
+    }
     const t = this.now();
     if (m.type === "replay")
       return this.replay(page.thread, m.afterSeq, m.throughSeq).then((range) => send(ws, range));
