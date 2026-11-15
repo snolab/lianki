@@ -195,7 +195,17 @@ listener and can never be downgraded (the hub refuses).
 | op `lane` `state: "left"` (the manager: its agent exited)                                    | left     | "杰咪 下线"             |
 | the owner mutes it (page `participant` `muted: true`)                                        | (same)   | "X 已禁言" / "解除禁言" |
 
-A reconnect inside the grace says nothing. A muted lane still reads and
+A reconnect inside the grace says nothing. The hub reads "listening" from
+its attached sockets and their attachments, so a hibernated hub that wakes
+still sees them. A connection that dies without its close reaching the
+listener (the hub saw it close) is the listener's to find: `lianki chat
+listen` sends `"ping"` every 10 s (`LIANKI_CHAT_PING_MS`; the hub's
+auto-response answers `"pong"` without waking it), and a tick with no answer
+ends it with exit 4. lane-listen then reconnects after 1 s when the socket
+had lived a minute or more, inside the grace, and the new socket says
+`mode: "listener"` again (2026-11-15: coco's half-open socket turned it
+reader for the night). An HTTP `op:"lane"` `reader` while a socket of the
+lane still listens leaves it a listener, as on a socket. A muted lane still reads and
 listens; its `say`/`ask` get **403 `muted`** with the reason. The lines are
 `from: "agent"`, label `lanes`, `quiet`, with `laneEvent` set; their text is
 in `lanes.eventLocale` (zh), and a page shows them in its own language
