@@ -145,12 +145,27 @@ it("summary, panel, rename, picture, remove and invite", async () => {
     expect($('[data-testid="debug-chat-presence-panel"]')).toBeNull();
     await click(stack, 0);
     const rows = $$('[data-testid="debug-chat-presence-row"]');
-    expect(rows[0]!.textContent).toContain("reading now");
+    // A row shows avatar, name (and role) only; the rest is behind its "…".
     expect(rows[0]!.textContent).toContain("MCP");
+    expect(rows[0]!.textContent).not.toContain("reading now");
     expect(rows[2]!.textContent).toContain("set by you");
     expect(rows[3]!.textContent).toContain("Li");
+    expect($$('[data-testid="debug-chat-presence-remove"]')).toHaveLength(0);
+    expect($$('[data-testid="debug-chat-presence-menu"]')).toHaveLength(4);
+    const menuOf = (r: HTMLElement) =>
+      r.querySelector('[data-testid="debug-chat-presence-menu"]') as HTMLElement;
+    expect(menuOf(rows[0]!).getAttribute("aria-label")).toBe("More for mcp-bot");
+    for (const r of rows) await click(menuOf(r));
+    expect(rows[0]!.textContent).toContain("reading now");
+    expect(
+      rows[0]!.querySelector('[data-testid="debug-chat-presence-activity"]')!.textContent,
+    ).toContain("here since");
     // Only the viewer's own tokens can be managed.
     expect($$('[data-testid="debug-chat-presence-remove"]')).toHaveLength(2);
+    expect(rows[1]!.textContent).not.toContain("Rename");
+    // "…" again folds it.
+    await click(menuOf(rows[1]!));
+    expect(rows[1]!.querySelector('[data-testid="debug-chat-presence-menu-box"]')).toBeNull();
 
     // Rename.
     const rename = [...rows[0]!.querySelectorAll("button")].find(
@@ -171,10 +186,12 @@ it("summary, panel, rename, picture, remove and invite", async () => {
     await submit(name2.closest("form"));
     expect(changes.pop()).toEqual(["bbbbbbbbbbbbbbbb", { name: null }]);
 
-    // Picture: generated, its own, pasted (bad, then good).
+    // Picture: behind "Picture", one segmented choice: generated, its own, pasted (bad, then good).
     const row0 = () => $$('[data-testid="debug-chat-presence-row"]')[0]!;
     const btn = (r: HTMLElement, label: string) =>
       [...r.querySelectorAll("button")].find((b) => b.textContent === label)!;
+    expect(btn(row0(), "Generated picture")).toBeUndefined();
+    await click(btn(row0(), "Picture"));
     expect(btn(row0(), "Generated picture").getAttribute("aria-pressed")).toBe("true");
     await click(btn(row0(), "Generated picture"));
     expect(changes.pop()).toEqual(["aaaaaaaaaaaaaaaa", { avatar: "auto" }]);
@@ -190,9 +207,11 @@ it("summary, panel, rename, picture, remove and invite", async () => {
     const [, pasted] = changes.pop()!;
     expect(pasted.avatar).toContain("<rect");
     expect(pasted.avatar).not.toContain("script");
+    await click(btn(row0(), "Picture"));
+    expect(btn(row0(), "Generated picture")).toBeUndefined();
 
     // Remove: asks once; a failure says so; cancel; then it goes.
-    await click($('[data-testid="debug-chat-presence-remove"]'));
+    await click(row0().querySelector('[data-testid="debug-chat-presence-remove"]'));
     expect($('[data-testid="debug-chat-presence-confirm"]')!.textContent).toContain(
       "Remove mcp-bot?",
     );
@@ -202,13 +221,16 @@ it("summary, panel, rename, picture, remove and invite", async () => {
     await click(btn(row0(), "Cancel"));
     expect($('[data-testid="debug-chat-presence-confirm"]')).toBeNull();
     removeOk = true;
-    await click($('[data-testid="debug-chat-presence-remove"]'));
+    await click(row0().querySelector('[data-testid="debug-chat-presence-remove"]'));
     await click($('[data-testid="debug-chat-presence-remove-yes"]'));
     expect(removed).toHaveLength(2);
     expect($('[data-testid="debug-chat-presence-confirm"]')).toBeNull();
 
-    // Invite: the prefilled link and the snippet to copy.
-    await click($('[data-testid="debug-chat-presence-invite"]'));
+    // Invite: one quiet row; it opens the prefilled link and the snippet to copy.
+    const invite = $('[data-testid="debug-chat-presence-invite"]')!;
+    expect(invite.textContent).toContain(UI_EN.peopleInvite);
+    expect(invite.getAttribute("style")).toBeNull();
+    await click(invite);
     expect($('[data-testid="debug-chat-presence-invite-link"]')!.getAttribute("href")).toBe(
       INVITE_HREF,
     );
@@ -222,7 +244,7 @@ it("summary, panel, rename, picture, remove and invite", async () => {
     await click(btn($('[data-testid="debug-chat-presence-panel"]')!, "Close"));
     expect($('[data-testid="debug-chat-presence-panel"]')).toBeNull();
 
-    // The two live kinds (tier ① all messages, ② his only) carry distinct marks; readers and muted none.
+    // The stack's dots: tier ① all messages and ② his only carry distinct marks; muted none.
     await render([
       {
         key: "lane:claude",
@@ -230,11 +252,18 @@ it("summary, panel, rename, picture, remove and invite", async () => {
         lane: "claude",
         mode: "listener",
         scope: "all",
+        seenAt: T,
         active: T,
       },
       { key: "lane:codex", name: "coco", lane: "codex", mode: "listener", active: T - 1 },
       { key: "lane:agy", name: "杰咪", lane: "agy", mode: "listener", muted: true, active: T - 2 },
-      { key: "tok:r", name: "reader", mode: "reader", active: T - 3 },
+      {
+        key: "tok:e",
+        name: "ev",
+        perms: { read: true, post: false, eval: true },
+        active: T - 3,
+      },
+      { key: "tok:r", name: "reader", mode: "reader", active: T - 4 },
     ]);
     const marks = $$('[data-testid="debug-chat-presence-live"]');
     expect(marks.map((m) => [m.getAttribute("data-scope"), m.getAttribute("title")])).toEqual([
@@ -242,60 +271,145 @@ it("summary, panel, rename, picture, remove and invite", async () => {
       ["owner", "listening live"],
     ]);
     await click(stack, 0);
-    const liveRows = $$('[data-testid="debug-chat-presence-row"]').map((r) => r.textContent ?? "");
-    expect(liveRows[0]).toContain("listening live (all messages)");
-    expect(liveRows[1]).toContain("listening live");
-    expect(liveRows[1]).not.toContain("all messages");
-    expect(liveRows[2]).toContain("muted");
-    expect(liveRows[3]).toContain("read-only");
-    expect($$('[data-testid="debug-chat-presence-live"]')).toHaveLength(4);
+    // In the panel the mode words are icons: one listening group (all states shown, the one in
+    // effect on), then the permissions that are known (filled granted, outline not).
+    const iconsOf = (k: string) =>
+      [
+        ...$(`[data-testid="debug-chat-presence-row"][data-key="${k}"]`)!.querySelectorAll(
+          '[data-testid="debug-chat-presence-icon"]',
+        ),
+      ].map(
+        (b) =>
+          `${b.getAttribute("data-kind")}:${b.getAttribute("data-on")}:${b.querySelector("svg")!.getAttribute("data-icon")}`,
+      );
+    expect(iconsOf("lane:claude")).toEqual([
+      "listen-ear:true:ear",
+      "listen-bell:false:bell",
+      "listen-off:false:eyeClosed",
+      "read:true:eye",
+    ]);
+    expect(iconsOf("lane:codex")).toEqual([
+      "listen-ear:true:ear",
+      "listen-bell:false:bell",
+      "listen-off:false:eyeClosed",
+      "read:true:eye",
+    ]);
+    expect(iconsOf("lane:agy")).toEqual([
+      "listen-ear:false:ear",
+      "listen-bell:false:bell",
+      "listen-off:true:eyeClosed",
+      "post:false:chatBubble",
+      "read:true:eye",
+    ]);
+    // A token the hub knows nothing about listening for: permissions only.
+    expect(iconsOf("tok:e")).toEqual(["post:false:chatBubble", "read:true:eye", "eval:true:code"]);
+    expect(
+      $$('[data-testid="debug-chat-presence-row"]').map((r) => r.textContent ?? ""),
+    ).not.toContain("listening live");
+    for (const r of $$('[data-testid="debug-chat-presence-row"]'))
+      expect(r.textContent).not.toContain("listening live");
+    // A tap on an icon says what it means; again, it goes. Filled when granted.
+    const iconBtn = (k: string, kind: string) =>
+      $(
+        `[data-testid="debug-chat-presence-row"][data-key="${k}"] [data-testid="debug-chat-presence-icon"][data-kind="${kind}"]`,
+      )!;
+    const tipOf = (k: string) =>
+      $(
+        `[data-testid="debug-chat-presence-row"][data-key="${k}"] [data-testid="debug-chat-presence-icon-tip"]`,
+      )?.textContent;
+    await click(iconBtn("lane:claude", "listen-ear"));
+    expect(tipOf("lane:claude")).toBe(UI_EN.peopleHearsAll);
+    await click(iconBtn("lane:claude", "listen-bell"));
+    expect(tipOf("lane:claude")).toBe(UI_EN.peopleWokenByName);
+    await click(iconBtn("lane:claude", "listen-bell"));
+    expect(tipOf("lane:claude")).toBeUndefined();
+    await click(iconBtn("lane:codex", "listen-ear"));
+    expect(tipOf("lane:codex")).toBe(UI_EN.peopleHearsYours);
+    expect(iconBtn("tok:e", "eval").getAttribute("title")).toBe(UI_EN.peopleCanEval);
+    expect(iconBtn("tok:e", "post").getAttribute("aria-label")).toBe(UI_EN.peopleCannotPost);
+    expect(iconBtn("tok:e", "read").querySelector("path")!.getAttribute("fill-rule")).toBe(
+      "evenodd",
+    );
+    expect(iconBtn("tok:e", "post").querySelector("path")!.getAttribute("stroke")).toBe(
+      "currentColor",
+    );
+    await click(iconBtn("lane:agy", "listen-off"));
+    expect(tipOf("lane:agy")).toBe(UI_EN.peopleNotListening);
     await click(stack, 0);
 
-    // Read-only lanes (tier ③) in the stack too: after the live ones, greyed, no dot;
-    // past the cap a "+K" chip; the panel lists all, readers last under "Read-only", with roles.
+    // Read-only lanes (tier ③) are not avatars: one "+N read-only" chip after the live ones
+    // (and their "+K"); the panel folds them into one row that opens to plain names.
     await render([
       { key: "lane:release", name: "lianki-release", mode: "reader", seenAt: T, active: T },
       { key: "lane:claude", name: "小克", lane: "claude", mode: "listener", active: T - 1 },
       { key: "lane:codex", name: "coco", lane: "codex", mode: "listener", active: T - 2 },
-      { key: "agent:otoji-main", name: "otoji-main", mode: "reader", active: T - 3 },
-      { key: "agent:lanes", name: "lanes", mode: "reader", active: T - 4 },
+      { key: "lane:agy", name: "杰咪", lane: "agy", mode: "listener", active: T - 3 },
+      { key: "lane:voice", name: "voice", mode: "listener", active: T - 4 },
+      { key: "agent:otoji-main", name: "otoji-main", mode: "reader", active: T - 5 },
+      {
+        key: "tok:mine",
+        name: "my-reader",
+        mode: "reader",
+        tok: "cccccccccccccccc",
+        id: "c".repeat(64),
+        active: T - 6,
+      },
     ]);
     const avs = $$('[data-testid="debug-chat-presence-avatar"]');
     expect(avs.map((a) => a.getAttribute("data-key"))).toEqual([
       "lane:claude",
       "lane:codex",
-      "lane:release",
+      "lane:agy",
     ]);
-    expect(avs.map((a) => a.getAttribute("data-mode"))).toEqual(["listener", "listener", "reader"]);
-    expect((avs[2]!.firstElementChild as HTMLElement).style.filter).toBe("grayscale(1)");
-    expect((avs[0]!.firstElementChild as HTMLElement).style.filter).toBe("");
-    expect(avs[2]!.querySelector('[data-testid="debug-chat-presence-live"]')).toBeNull();
-    expect($('[data-testid="debug-chat-presence-more"]')!.textContent).toBe("+2");
-    expect(stack.getAttribute("aria-label")).toBe("Who is here: 小克, coco, lianki-release +2");
+    expect(avs.every((a) => a.getAttribute("data-mode") === "listener")).toBe(true);
+    expect($('[data-testid="debug-chat-presence-more"]')!.textContent).toBe("+1");
+    expect($('[data-testid="debug-chat-presence-readers-chip"]')!.textContent).toBe("+3 read-only");
+    expect(stack.getAttribute("aria-label")).toBe(
+      "Who is here: 小克, coco, 杰咪 +1 · +3 read-only",
+    );
     await click(stack, 0);
-    const readers = $('[data-testid="debug-chat-presence-readers"]')!;
-    expect(readers.querySelector("h3")!.textContent).toBe(UI_EN.peopleReadOnly);
+    expect($$('[data-testid="debug-chat-presence-row"]')).toHaveLength(4);
+    const toggle = $('[data-testid="debug-chat-presence-readers-toggle"]')!;
+    expect(toggle.textContent).toContain("3 read-only lanes");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect($$('[data-testid="debug-chat-presence-reader"]')).toHaveLength(0);
+    await click(toggle);
+    const readerRows = $$('[data-testid="debug-chat-presence-reader"]');
+    expect(readerRows.map((r) => r.getAttribute("data-key"))).toEqual([
+      "lane:release",
+      "agent:otoji-main",
+      "tok:mine",
+    ]);
+    // Plain names: no avatar, no role, no icons; a "…" only on the viewer's own token.
+    expect(readerRows[0]!.textContent).toBe("lianki-release");
+    expect(readerRows[0]!.querySelector("[data-avatar]")).toBeNull();
+    expect(readerRows[0]!.querySelector('[data-testid="debug-chat-presence-menu"]')).toBeNull();
+    expect(readerRows[0]!.querySelector('[data-testid="debug-chat-presence-icon"]')).toBeNull();
+    await click(readerRows[2]!.querySelector('[data-testid="debug-chat-presence-menu"]'));
     expect(
-      [...readers.querySelectorAll('[data-testid="debug-chat-presence-row"]')].map((r) =>
-        r.getAttribute("data-key"),
-      ),
-    ).toEqual(["lane:release", "agent:otoji-main", "agent:lanes"]);
-    expect($$('[data-testid="debug-chat-presence-row"]')).toHaveLength(5);
+      readerRows[2]!.querySelector('[data-testid="debug-chat-presence-remove"]'),
+    ).not.toBeNull();
     const rowOf = (k: string) => $(`[data-testid="debug-chat-presence-row"][data-key="${k}"]`)!;
-    // Roles from the lane table (voices.ts LANES): claude's is known; an unknown reader has none.
+    // Roles from the lane table (voices.ts LANES): claude's is known; an unknown one has none.
     expect(
       rowOf("lane:claude").querySelector('[data-testid="debug-chat-presence-role"]'),
     ).not.toBeNull();
     expect(
-      rowOf("agent:otoji-main").querySelector('[data-testid="debug-chat-presence-role"]'),
+      rowOf("lane:voice").querySelector('[data-testid="debug-chat-presence-role"]'),
     ).toBeNull();
+    await click(toggle);
+    expect($$('[data-testid="debug-chat-presence-reader"]')).toHaveLength(0);
     await click(stack, 0);
-    // Only live ones: no read-only group.
+    // Only read-only lanes: no avatars, just the chip.
+    await render([{ key: "agent:lanes", name: "lanes", mode: "reader", active: T }]);
+    expect($$('[data-testid="debug-chat-presence-avatar"]')).toHaveLength(0);
+    expect($('[data-testid="debug-chat-presence-readers-chip"]')!.textContent).toBe("+1 read-only");
+    // Only live ones: no read-only group, no chip.
     await render([{ key: "lane:codex", name: "coco", lane: "codex", mode: "listener", active: T }]);
+    expect($('[data-testid="debug-chat-presence-readers-chip"]')).toBeNull();
     await click(stack, 0);
     expect($('[data-testid="debug-chat-presence-readers"]')).toBeNull();
     await click(stack, 0);
-
     // No one here: on the owner's page a "+" still opens Invite.
     await render([]);
     expect($('[data-testid="debug-chat-presence"]')!.textContent).toBe("+");

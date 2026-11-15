@@ -1113,14 +1113,14 @@ export const CONFIG = {
       "可以答没点名的话的 agent（coco、杰咪）入群时的第一句问候，占位符同上。Mac 上的值是环境变量 LIANKI_LANES_GREETING_ANSWER_UNNAMED。",
   },
   "chat.presenceShown": int({
-    default: 6,
+    default: 3,
     min: 1,
     max: 12,
     unit: "avatars",
     group: "chat",
     audience: "public",
     description:
-      "聊天头像栏最多叠放显示几个头像：实时监听的在前（最近活跃的在前），只读的灰色排在后面；其余显示为「+N」，展开的列表仍列出全部。",
+      "聊天头像栏最多叠放显示几个头像：只算能马上回答的（实时监听的 agent 和人，最近活跃的在前），其余显示为「+N」；只读车道不画头像，只在最后显示一个「+N 只读」，展开的列表仍列出全部。",
   }),
   "chat.prepareAuthCalls": int({
     default: 120,

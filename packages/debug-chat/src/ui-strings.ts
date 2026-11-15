@@ -237,7 +237,42 @@ export type UiStrings = {
    * - peopleCopy / peopleClose: copy that text; close the list. One verb.
    * - peopleReadOnly: the heading over the agents in that list that only
    *   read the chat when called by name (they do not hear every message
-   *   live); their avatars are greyed. One or two words ("Read-only").
+   *   live). One or two words ("Read-only").
+   * - peopleReadersChip: a tiny chip at the end of the avatar stack counting
+   *   those read-only agents instead of drawing their avatars; keep `{n}`
+   *   (how many). As short as possible ("+3 read-only").
+   * - peopleReadersRow: the one collapsed row in the list that stands for all
+   *   of them and shows their names on tap; keep `{n}`. A few words ("3
+   *   read-only lanes"; a lane is one AI agent's seat in the chat).
+   * - peopleActions: the label (read by screen readers, not shown) of the "…"
+   *   button on an agent's row that opens its details and actions; keep
+   *   `{name}` (the agent's name). A few words.
+   * - peoplePicture: the item in that menu that opens the picture choices
+   *   (peopleAuto / peopleOwn / peoplePaste). One word.
+   *
+   * Each agent's row shows small state icons instead of words; a tap on an
+   * icon shows its one-line meaning (one of the lines below), also its
+   * hover title. Short sentences without a full stop; the agent is the
+   * implied subject ("Can post messages").
+   * - peopleListening: the label (screen readers) of the three listening
+   *   icons together. One word.
+   * - peopleHearsAll: the ear icon, the agent hears every message in the
+   *   chat live, the other agents' too.
+   * - peopleHearsYours: the ear icon, the agent hears the user's own
+   *   messages live (not the other agents').
+   * - peopleWokenByName: the bell icon, the agent only wakes and reads when
+   *   the user calls it by name.
+   * - peopleNotListening: the closed-eye icon, the agent is not listening:
+   *   it left, or the user muted it.
+   * - peoplePerms: the label (screen readers) of the permission icons
+   *   together. One word.
+   * - peopleCanPost / peopleCannotPost: the speech-bubble icon, whether the
+   *   agent may post messages in the chat.
+   * - peopleCanRead / peopleCannotRead: the eye icon, whether it may read
+   *   the chat.
+   * - peopleCanEval / peopleCannotEval: the code icon, whether it may run
+   *   code on the user's open page (a remote-control permission the user
+   *   granted).
    */
   linkChip: string;
   linkEval: string;
@@ -282,6 +317,22 @@ export type UiStrings = {
   peopleCopy: string;
   peopleClose: string;
   peopleReadOnly: string;
+  peopleReadersChip: string;
+  peopleReadersRow: string;
+  peopleActions: string;
+  peoplePicture: string;
+  peopleListening: string;
+  peopleHearsAll: string;
+  peopleHearsYours: string;
+  peopleWokenByName: string;
+  peopleNotListening: string;
+  peoplePerms: string;
+  peopleCanPost: string;
+  peopleCannotPost: string;
+  peopleCanRead: string;
+  peopleCannotRead: string;
+  peopleCanEval: string;
+  peopleCannotEval: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -397,6 +448,22 @@ export const UI_EN: UiStrings = {
   peopleCopy: "Copy",
   peopleClose: "Close",
   peopleReadOnly: "Read-only",
+  peopleReadersChip: "+{n} read-only",
+  peopleReadersRow: "{n} read-only lanes",
+  peopleActions: "More for {name}",
+  peoplePicture: "Picture",
+  peopleListening: "Listening",
+  peopleHearsAll: "Hears every message live",
+  peopleHearsYours: "Hears your messages live",
+  peopleWokenByName: "Wakes only when named",
+  peopleNotListening: "Not listening (left or muted)",
+  peoplePerms: "Permissions",
+  peopleCanPost: "Can post messages",
+  peopleCannotPost: "Cannot post messages",
+  peopleCanRead: "Can read the chat",
+  peopleCannotRead: "Cannot read the chat",
+  peopleCanEval: "Can run code on this page",
+  peopleCannotEval: "Cannot run code on this page",
 };
 
 export const UI_ZH: UiStrings = {
@@ -511,6 +578,22 @@ export const UI_ZH: UiStrings = {
   peopleCopy: "复制",
   peopleClose: "关闭",
   peopleReadOnly: "只读",
+  peopleReadersChip: "+{n} 只读",
+  peopleReadersRow: "只读车道 {n} 个",
+  peopleActions: "{name} 的更多操作",
+  peoplePicture: "头像",
+  peopleListening: "监听",
+  peopleHearsAll: "实时听到每一条消息",
+  peopleHearsYours: "实时听到你的消息",
+  peopleWokenByName: "被点名时才醒来",
+  peopleNotListening: "没在听（已离开或已禁言）",
+  peoplePerms: "权限",
+  peopleCanPost: "可以发消息",
+  peopleCannotPost: "不能发消息",
+  peopleCanRead: "可以读聊天",
+  peopleCannotRead: "不能读聊天",
+  peopleCanEval: "可以在这个页面运行代码",
+  peopleCannotEval: "不能在这个页面运行代码",
 };
 
 export const UI_JA: UiStrings = {
@@ -625,6 +708,22 @@ export const UI_JA: UiStrings = {
   peopleCopy: "コピー",
   peopleClose: "閉じる",
   peopleReadOnly: "読み取り専用",
+  peopleReadersChip: "+{n} 読み取り専用",
+  peopleReadersRow: "読み取り専用レーン {n} 件",
+  peopleActions: "{name} のその他の操作",
+  peoplePicture: "アイコン",
+  peopleListening: "受信",
+  peopleHearsAll: "すべてのメッセージをリアルタイムで聞く",
+  peopleHearsYours: "あなたのメッセージをリアルタイムで聞く",
+  peopleWokenByName: "名前を呼ばれたときだけ起きる",
+  peopleNotListening: "聞いていない（退出またはミュート）",
+  peoplePerms: "権限",
+  peopleCanPost: "メッセージを送れる",
+  peopleCannotPost: "メッセージを送れない",
+  peopleCanRead: "チャットを読める",
+  peopleCannotRead: "チャットを読めない",
+  peopleCanEval: "このページでコードを実行できる",
+  peopleCannotEval: "このページでコードを実行できない",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

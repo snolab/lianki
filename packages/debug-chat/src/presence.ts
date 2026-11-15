@@ -61,7 +61,39 @@ export type Present = {
   postAt?: number;
   /** The latest of since/seenAt/postAt: the order (most recent first). */
   active: number;
+  /**
+   * What the hub knows it may do: read the chat, post, run code on the page (an eval grant).
+   * Each one absent = not known here; the panel then draws no icon for it (knownState).
+   */
+  perms?: { read?: boolean; post?: boolean; eval?: boolean };
 };
+
+/** The listening states the panel draws (ear, ear, bell, closed eye). */
+export type ListenState = "all" | "yours" | "named" | "off";
+
+/**
+ * What the page knows of an entry, for the panel's state icons; undefined = not known (no icon,
+ * never a guess). Listening: muted is off; a listener hears all lines or the owner's; a reader
+ * wakes when named. Reading: the hub's word, else known from being here as a lane, a socket or a
+ * read. Posting: the hub's word, else muted cannot, a line posted can. Code: the hub's word only.
+ */
+export function knownState(
+  p: Pick<Present, "mode" | "muted" | "scope" | "live" | "seenAt" | "postAt" | "perms">,
+): { listen?: ListenState; read?: boolean; post?: boolean; eval?: boolean } {
+  const listen: ListenState | undefined = p.muted
+    ? "off"
+    : p.mode === "listener"
+      ? p.scope === "all"
+        ? "all"
+        : "yours"
+      : p.mode === "reader"
+        ? "named"
+        : undefined;
+  const said = (v: unknown) => (typeof v === "boolean" ? v : undefined);
+  const read = said(p.perms?.read) ?? (p.mode || p.live || p.seenAt ? true : undefined);
+  const post = said(p.perms?.post) ?? (p.muted ? false : p.postAt ? true : undefined);
+  return { listen, read, post, eval: said(p.perms?.eval) };
+}
 
 /** What the hub keeps per token (`part:<tag>` in its storage). */
 export type PartRecord = {
@@ -298,6 +330,14 @@ export function parsePresent(raw: unknown): Present[] | null {
     const entry = { ...e };
     if (!Number.isSafeInteger(entry.lastReadSeq) || (entry.lastReadSeq as number) < 0) delete entry.lastReadSeq;
     if (entry.self !== true) delete entry.self;
+    if (entry.perms !== undefined) {
+      const q = entry.perms as Record<string, unknown> | null;
+      const perms: Record<string, boolean> = {};
+      for (const k of ["read", "post", "eval"])
+        if (q && typeof q === "object" && typeof q[k] === "boolean") perms[k] = q[k] as boolean;
+      if (Object.keys(perms).length) entry.perms = perms;
+      else delete entry.perms;
+    }
     out.push(entry as unknown as Present);
   }
   return out;

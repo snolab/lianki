@@ -25,7 +25,9 @@ import {
   type PartRecord,
   type Present,
   invitePrefill,
+  knownState,
   nextExpiry,
+  parsePresent,
   presenceSummary,
   presentList,
   liveFirst,
@@ -39,6 +41,7 @@ import {
   withTokenName,
 } from "@/packages/debug-chat/src/LaneMark";
 import { PresenceStack } from "@/packages/debug-chat/src/PresenceStack";
+import { Disclosure, HistoryIcon, Icon, TreeIcon } from "@/packages/debug-chat/src/icons";
 import { UI_EN } from "@/packages/debug-chat/src/ui-strings";
 import type { ChatMessage } from "@/packages/debug-chat/src/wire";
 
@@ -273,6 +276,58 @@ describe("presentList", () => {
     expect(stackOf(list, 3)).toEqual({ shown: list.slice(0, 3), more: 2 });
     expect(presenceSummary(list, 3)).toBe("agy, codex, mcp-bot +2");
     expect(presenceSummary(list.slice(0, 2), 3)).toBe("agy, codex");
+  });
+  it("the state icons: drawn lines stroked, their solid shapes even-odd; the rest as before", () => {
+    const ear = renderToStaticMarkup(<Icon name="ear" />);
+    expect(ear).toContain('stroke="currentColor"');
+    expect(ear).toContain('fill="none"');
+    // No solid shape: the line again.
+    expect(renderToStaticMarkup(<Icon name="bell" weight="fill" />)).toContain('stroke-width="16"');
+    const eye = renderToStaticMarkup(<Icon name="eye" weight="fill" />);
+    expect(eye).toContain('fill-rule="evenodd"');
+    expect(eye).not.toContain("stroke=");
+    expect(renderToStaticMarkup(<Icon name="code" />)).not.toContain("fill-rule");
+    for (const n of ["eyeClosed", "chatBubble"] as const)
+      expect(renderToStaticMarkup(<Icon name={n} />)).toContain(`data-icon="${n}"`);
+    expect(renderToStaticMarkup(<TreeIcon />)).toContain("<svg");
+    expect(renderToStaticMarkup(<HistoryIcon />)).toContain("<svg");
+    expect(renderToStaticMarkup(<Disclosure open />)).toContain("<svg");
+    expect(renderToStaticMarkup(<Disclosure open={false} size={16} />)).toContain("<svg");
+  });
+  it("state icons: only what the page knows, never a guess", () => {
+    // Listening: muted off; a listener all lines or his; a reader woken by name; else unknown.
+    expect(knownState({ mode: "listener", scope: "all" }).listen).toBe("all");
+    expect(knownState({ mode: "listener" }).listen).toBe("yours");
+    expect(knownState({ mode: "reader" }).listen).toBe("named");
+    expect(knownState({ mode: "listener", muted: true }).listen).toBe("off");
+    expect(knownState({}).listen).toBeUndefined();
+    // Reading: being here as a lane, a socket or a read; posting: a line posted, or muted.
+    expect(knownState({})).toEqual({
+      listen: undefined,
+      read: undefined,
+      post: undefined,
+      eval: undefined,
+    });
+    expect(knownState({ live: true }).read).toBe(true);
+    expect(knownState({ seenAt: 1 }).read).toBe(true);
+    expect(knownState({ postAt: 1 }).post).toBe(true);
+    expect(knownState({ postAt: 1, muted: true }).post).toBe(false);
+    // The hub's word wins, and code is only ever its word.
+    expect(knownState({ live: true, perms: { read: false, post: true, eval: false } })).toEqual({
+      listen: undefined,
+      read: false,
+      post: true,
+      eval: false,
+    });
+    // parsePresent keeps only boolean permissions.
+    const [a, b, c] = parsePresent([
+      { key: "a", name: "a", active: 1, perms: { read: true, eval: "yes", x: true } },
+      { key: "b", name: "b", active: 1, perms: "all" },
+      { key: "c", name: "c", active: 1, perms: null },
+    ])!;
+    expect(a!.perms).toEqual({ read: true });
+    expect(b!.perms).toBeUndefined();
+    expect(c!.perms).toBeUndefined();
   });
   it("the invite prefills a chat-only token form, nothing more", () => {
     expect(invitePrefill("?new-token=chat-agent")).toMatchObject({
@@ -648,7 +703,7 @@ describe("rendering", () => {
     const other = { text: "【mcp-bot】x" };
     expect(withTokenName(other)).toBe(other);
   });
-  it("the stack: the cap, most recent first, +N", () => {
+  it("the stack: the cap, most recent first, +N; read-only lanes one chip, no avatars", () => {
     const list: Present[] = ["agy", "codex", "mcp-bot", "x", "y"].map((name, i) => ({
       key: `k${i}`,
       name,
@@ -660,6 +715,17 @@ describe("rendering", () => {
     expect(html.match(/debug-chat-presence-avatar/g)).toHaveLength(3);
     expect(html).toContain("+2");
     expect(html).toContain('aria-label="Who is here: agy, codex, mcp-bot +2"');
+    expect(html).not.toContain("debug-chat-presence-readers-chip");
+    const readers: Present[] = ["lanes", "lianki-main", "otoji-main", "liagent-main"].map(
+      (name, i) => ({ key: `agent:${name}`, name, mode: "reader", active: 200 - i }),
+    );
+    const mixed = renderToStaticMarkup(
+      <PresenceStack list={[...readers, ...list.slice(0, 2)]} shown={3} t={UI_EN} mainName="Li" />,
+    );
+    expect(mixed.match(/debug-chat-presence-avatar"/g)).toHaveLength(2);
+    expect(mixed).not.toContain('data-mode="reader"');
+    expect(mixed).toContain(">+4 read-only<");
+    expect(mixed).toContain('aria-label="Who is here: agy, codex · +4 read-only"');
   });
 });
 
