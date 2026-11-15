@@ -10,7 +10,7 @@
 // or misconfigured DNS record pointing at a private or metadata address is
 // refused), redirects are re-checked hop by hop against the same allowlist.
 
-import { MODEL_RE, presetOf, type ByokPreset } from "./presets";
+import { MODEL_RE, relayPresetOf, type ByokPreset } from "./preset-data";
 
 // ── Limits ────────────────────────────────────────────────────────────────
 
@@ -224,7 +224,7 @@ export function endpointOf(baseUrl: string, preset: ByokPreset): string {
 
 /** The provider + base URL the browser sent, as a relay target. */
 export function checkBackend(provider: unknown, baseUrl: unknown): TargetCheck {
-  const preset = typeof provider === "string" ? presetOf(provider) : null;
+  const preset = typeof provider === "string" ? relayPresetOf(provider) : null;
   if (!preset?.relay) return { ok: false, reason: "provider" };
   if (typeof baseUrl !== "string") return { ok: false, reason: "url" };
   return checkTarget(endpointOf(baseUrl, preset), preset);
