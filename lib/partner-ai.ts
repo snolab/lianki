@@ -14,6 +14,8 @@ import {
 } from "@/lib/payments/ai-credits";
 import type { D1WithBatch } from "@/lib/payments/credits-store";
 import { textUsd } from "@/lib/payments/prices";
+import { parseRoster, rosterSection } from "@/packages/debug-chat/src/roster";
+import type { ChatLaneDef } from "@/packages/debug-chat/src/voices";
 import {
   CHARGE_STALE_MS,
   reserveInTokens,
@@ -100,10 +102,13 @@ export function parsePartnerRequest(raw: unknown): PartnerRequest | null {
   }
   const msgId =
     typeof r.msgId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(r.msgId) ? r.msgId : undefined;
+  // Who is here: only with the owner's thread (the hub sends it nowhere else).
+  const roster = r.owner === true ? parseRoster(r.roster) : undefined;
   return {
     userId: r.userId,
     ...(msgId ? { msgId } : {}),
     ...(r.owner === true ? { owner: true as const } : {}),
+    ...(roster ? { roster } : {}),
     history,
     ...(page ? { page } : {}),
   };
@@ -207,7 +212,7 @@ export async function languagesLine(db: PartnerDb, userId: string): Promise<stri
  * Untrusted text placed inside a tagged block: its own tag markers are
  * broken so it cannot close the block and pose as instructions.
  */
-export const fence = (s: string) => s.replace(/<\s*\/?\s*(data|page|user_data)\b/gi, "‹$1");
+export const fence = (s: string) => s.replace(/<\s*\/?\s*(data|page|user_data|roster)\b/gi, "‹$1");
 
 export const SYSTEM_PROMPT = `You are Lianki's Learning Partner: a friendly, concise study companion inside Lianki, a spaced-repetition app for learning languages (word lists, page cards, a study plan).
 
@@ -221,13 +226,23 @@ Rules:
 - If the user reports a bug or asks for a feature, thank them and say the developer reads this chat.
 - Never ask for passwords, payment details or other private information.`;
 
-/** The messages for the model: rules, this user's data, then the thread. */
-export function buildMessages(req: PartnerRequest, summary: StudySummary, now: number) {
-  // Bounded so rules + data stay within PROMPT_OVERHEAD_CHARS (the hub's reservation counts on it).
+/**
+ * The messages for the model: rules, this user's data, then the thread. In
+ * the owner's thread, also who is here and their roles (roster.ts; `lanes` =
+ * config `chat.lanes`, whose rows' `role` override the built-in ones).
+ */
+export function buildMessages(
+  req: PartnerRequest,
+  summary: StudySummary,
+  now: number,
+  lanes: readonly ChatLaneDef[] = [],
+) {
+  const roster = req.owner ? rosterSection(req.roster ?? [], lanes) : "";
+  // Bounded so rules + roster + data stay within PROMPT_OVERHEAD_CHARS (the hub's reservation counts on it).
   const data = JSON.stringify({
     today: new Date(now).toISOString().slice(0, 10),
     ...summary,
-  }).slice(0, PROMPT_OVERHEAD_CHARS - SYSTEM_PROMPT.length - 100);
+  }).slice(0, PROMPT_OVERHEAD_CHARS - SYSTEM_PROMPT.length - roster.length - 120);
   const p = req.page;
   const page = p
     ? [
@@ -241,6 +256,7 @@ export function buildMessages(req: PartnerRequest, summary: StudySummary, now: n
     : "";
   const system = [
     SYSTEM_PROMPT,
+    roster ? `<roster>\n${fence(roster)}\n</roster>` : "",
     `<user_data>\n${fence(data)}\n</user_data>`,
     page ? `<page>\n${fence(page)}\n</page>` : "",
   ]
@@ -395,7 +411,7 @@ async function callModel(
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify({
           model: PARTNER_AI_MODEL,
-          messages: buildMessages(req, summary, now()),
+          messages: buildMessages(req, summary, now(), config["chat.lanes"]),
           reasoning_effort: PARTNER_AI_REASONING,
           max_completion_tokens: MAX_OUTPUT_TOKENS,
           max_tokens: MAX_OUTPUT_TOKENS,

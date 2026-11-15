@@ -55,17 +55,19 @@ export type OwnerAiDeps<P> = {
   agentAt(): number;
   /** Answer this line now, for the page it came from (DebugHub.aiReply for his thread). */
   reply(l: OwnerLine, page: P): Promise<void>;
-  /** Post Li's roll-call answer at once (no model): "Li 在". */
+  /** Post Li's roll-call answer at once (no model): config partner.rollCallReply over who is here. */
   present(l: OwnerLine, page: P): Promise<void>;
 };
 
-/** A roll call (owner, 2026-11-15 04:51 JST "报数也应该包括 Li"): 报数 / 点名 anywhere in his line. */
-export const ROLL_CALL = /报数|点名/;
+/**
+ * A roll call (owner, 2026-11-15 04:51 JST "报数也应该包括 Li"), anywhere in
+ * his line: 报数 / 点名, his "全体都有" / "都有报…", and how speech-to-text
+ * wrote 报数 for him (13:1x JST: "小朋友们全体都有包书一" → 包书; 报树).
+ */
+export const ROLL_CALL = /报数|点名|包书|报树|全体都有|都有报/;
 export function isRollCall(text: string): boolean {
   return ROLL_CALL.test(text);
 }
-/** What Li answers a roll call with (the line's own clock says when). */
-export const ROLL_CALL_REPLY = "Li 在";
 
 export class OwnerAi<P> {
   private pending?: { timer: unknown };

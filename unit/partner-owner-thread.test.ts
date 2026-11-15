@@ -209,6 +209,43 @@ describe("Li in the owner's thread: the hub", () => {
     expect(s.storage.store.get("ai:u:owner1")).toEqual({ [hourOf(T0)]: 540 });
   });
 
+  it("who is here: the lanes that spoke go with his line (roster), Li left out", async () => {
+    const s = setup();
+    const o = await s.ownerPage();
+    const l = await s.lane();
+    await s.msg(l, { type: "say", text: "【coco】在" });
+    await s.msg(l, { type: "say", text: "【杰咪】在" });
+    s.tick(1000);
+    await s.msg(o, { type: "chat", id: "a1", text: "你们在干嘛" });
+    await s.timers.fire();
+    expect(s.calls).toHaveLength(1);
+    expect(s.calls[0].roster?.map((e) => e.name).toSorted()).toEqual(["coco", "杰咪"]);
+    expect(s.calls[0].roster?.every((e) => !("tok" in e) && !("key" in e))).toBe(true);
+  });
+
+  it("a roll call (an STT slip of 报数): Li answers at once with who is here, no model", async () => {
+    const s = setup();
+    const o = await s.ownerPage();
+    const l = await s.lane();
+    await s.msg(l, { type: "say", text: "【coco】在" });
+    s.tick(1000);
+    await s.msg(o, { type: "chat", id: "r1", text: "小朋友们全体都有包书一。" });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(s.calls).toEqual([]);
+    expect(chats(o).at(-1)).toMatchObject({
+      from: "agent",
+      label: PARTNER_AI_LABEL,
+      text: "Li 在，这里 1 位：coco",
+      lane: "main",
+    });
+    // Nobody else here: the first clause only.
+    const alone = setup();
+    const ao = await alone.ownerPage();
+    await alone.msg(ao, { type: "chat", id: "r2", text: "报数" });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(chats(ao).at(-1)).toMatchObject({ text: "Li 在", lane: "main" });
+  });
+
   it("history: his lines as user, lane and Li lines as assistant", async () => {
     const s = setup();
     const o = await s.ownerPage();

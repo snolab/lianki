@@ -90,6 +90,24 @@ refuses his account without the mark. The reply is posted as the main lane
 (`lane: "main"`, label "Learning Partner AI"): Li's avatar and voice, read aloud
 by the usual path. Flag off: exactly as before — his thread never reaches the model.
 
+**Who is here** (owner, 2026-11-15: "它应该能够看到所有在这里的人，以及能够知道各自的职责").
+With his line the hub sends `roster`: his thread's presence list (presence.ts)
+without Li and without pages — names, mode (listener / reader) and mute, no
+token ids (`packages/debug-chat/src/roster.ts` `rosterOf`). The main Worker
+accepts it only with `owner: true` and puts a `<roster>` block of at most 400
+characters into the system prompt (`rosterSection`): Li's own role, each one's
+name, mode and **role**, and the rule "On a roll call, answer that you are here
+and name who is present; never say you cannot." Roles are data: `role` in
+`voices.ts` LANES (coco 界面与前端开发, 杰咪 功能开发, 小克 聊天调度与发布, Li
+学习伙伴), overridden by a `chat.lanes` row's `role`.
+
+**Roll call.** A line of his matching `owner-ai.ts` `ROLL_CALL` (报数, 点名,
+全体都有, 都有报…, and the STT slips 包书 / 报树) gets Li's answer at once, no
+model: config `partner.rollCallReply` (default "Li 在，这里 {n} 位：{names}";
+listeners first; with nobody else, only its first clause, "Li 在"). The lane
+router also takes 全体 within a line's first 12 characters and 都有报数 as an
+all-hands call (lane-route.ts), so the lanes answer it too.
+
 ## Memory and takeover
 
 - Memory is the thread's own stored history (the last `HISTORY_LINES` = 20 of

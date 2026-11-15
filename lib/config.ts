@@ -4,6 +4,7 @@ import {
   CAP_WINDOW_MAX,
   OWNER_REPLY_DELAY_MAX,
   OWNER_REPLY_DELAY_MS,
+  ROLL_CALL_REPLY_DEFAULT,
   SITE_DAILY_USD,
   SITE_WINDOW_USD_MAX,
   USER_DAILY_TOKENS,
@@ -1003,6 +1004,14 @@ export const CONFIG = {
     description:
       "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 30000 = 30 秒。开关在 /dev/flags 的 partner.owner-thread。",
   }),
+  "partner.rollCallReply": {
+    default: ROLL_CALL_REPLY_DEFAULT as string,
+    schema: z.string().min(1).max(200).includes("{names}"),
+    group: "chat",
+    audience: "server",
+    description:
+      "你在自己的线程里点名 / 报数时，Li 立刻（不调用模型）回的话。{n} = 除 Li 外在场几位，{names} = 他们的名字（用「、」隔开，实时监听的在前）。没有别人在场时只说第一句（逗号前那段，比如「Li 在」）。",
+  },
   // The Learning Partner AI's caps (docs/partner-ai.md, "Caps"): read by the
   // debug hub over DebugSessions.config.
   "partner.capWindowHours": int({
