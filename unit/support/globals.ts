@@ -60,3 +60,24 @@ export function setGlobal(name: string, value: unknown): void {
     enumerable: true,
   });
 }
+
+/**
+ * `import("react-dom/client")` with a DOM in place. react-dom decides once, when
+ * it is first imported, whether it runs in a browser (`canUseDOM`), and with it
+ * whether a text input's `input` event reaches `onChange`. The suite shares one
+ * module cache, so a file that imports it statically, before any `window`
+ * exists, leaves every later file with inputs that never change
+ * (2026-11-16: presence-stack's rename sent the old name, only in the affected
+ * run, after chat-fullscreen-menu). Use this instead of a static import.
+ */
+export async function importReactDomClient(): Promise<typeof import("react-dom/client")> {
+  const { Window } = await import("happy-dom");
+  const win = new Window();
+  const restore = stubGlobals({ window: win, document: win.document });
+  try {
+    return await import("react-dom/client");
+  } finally {
+    restore();
+    await win.happyDOM.close();
+  }
+}
