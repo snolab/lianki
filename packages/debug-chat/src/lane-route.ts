@@ -94,7 +94,7 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
   },
   agy: {
     // 杰咪: the owner's name for agy (2026-11-14), 咪宝 (owner, 2026-11-15: "咪宝咪宝在吗").
-    exact: ["agy", "antigravity", "杰咪", "咪宝"],
+    exact: ["agy", "antigravity", "杰咪", "咪宝", "Jimmy", "jimmy"],
     heard: [
       "杰米",
       "洁咪",

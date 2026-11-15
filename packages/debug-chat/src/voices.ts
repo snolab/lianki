@@ -253,7 +253,7 @@ export const LANES: Readonly<Record<DefaultLaneId, LaneSpec>> = {
     // 杰咪 (owner, 2026-11-14: "你的名字名片还没改"); 咪宝 (owner, 2026-11-15); the lane id and `【agy】` stay.
     name: "杰咪",
     voice: "bright",
-    aliases: ["agy", "antigravity", "杰咪", "咪宝"],
+    aliases: ["agy", "antigravity", "杰咪", "咪宝", "杰米", "Jimmy", "jimmy"],
     role: "功能开发",
     // A four-point spark: bright, high.
     mark: {
