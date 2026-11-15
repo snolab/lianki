@@ -15,6 +15,7 @@ import {
   testText,
 } from "../../lib/lane-route";
 import { isLaneId, laneOf, laneSpec } from "../../packages/debug-chat/src/voices";
+import { lanesConfig } from "../../lib/lanes-config";
 import { ownerClock, ownerTag } from "./owner-time";
 
 /** Where a lane's token is kept on this Mac. */
@@ -85,18 +86,22 @@ export type Line = {
 };
 /**
  * Whether a lane may hear this owner line (owner, 2026-11-14 23:2x: "只有我自己的
- *语音才广播给所有 agent"): a line the voiceprint decided was someone else never
- * goes out; an "unknown" one (his own short or soft sentence) does, marked, unless
- * LANE_LISTEN_VOICES=me asks for his decided voice only. The chat lane still
+ * 语音才广播给所有 agent"): a line the voiceprint decided was someone else never
+ * goes out. An "unknown" one (his own short or soft sentence, or not) goes, marked,
+ * to a lane that hears every line (tier ①, `everyone`) unless LANE_LISTEN_VOICES=me;
+ * to a lane on his lines only (tier ②) not at all ("未定不送", owner 2026-11-15
+ * 15:44 JST) unless config lanes.forwardUnknownVoice says so. The chat lane still
  * sees every line (it polishes and answers in the thread).
  */
 export function voiceAllowed(
   l: Pick<Line, "from" | "voice">,
+  o: { everyone?: boolean } = {},
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   if (l.from !== "owner" || !l.voice) return true;
   if (l.voice === "other") return false;
-  if (l.voice === "unknown") return env.LANE_LISTEN_VOICES !== "me";
+  if (l.voice === "unknown")
+    return o.everyone ? env.LANE_LISTEN_VOICES !== "me" : lanesConfig(env).forwardUnknownVoice;
   return true;
 }
 export function lineOf(raw: string): (Line & { history: boolean }) | null {

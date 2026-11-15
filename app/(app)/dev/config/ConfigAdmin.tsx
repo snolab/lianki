@@ -180,7 +180,8 @@ function ConfigCard({
           {t.invalid}
         </p>
       )}
-      <p className="text-xs opacity-70">
+      {/* A long default (a JSON list) must wrap, or the whole page scrolls sideways (qa-config). */}
+      <p className="text-xs opacity-70 break-all">
         {fill(t.defaultIs.value, { value: formatValue(row.default, def.unit) })}
         {def.min !== undefined && def.max !== undefined && (
           <> · {fill(t.range.value, { min: def.min, max: def.max })}</>
@@ -256,7 +257,7 @@ function ConfigCard({
             {fill(t.history.value, { count: log.length })}
           </button>
           {open && (
-            <ul className="space-y-1 font-mono text-xs">
+            <ul className="space-y-1 font-mono text-xs break-all">
               {log.map((e, i) => (
                 <li key={i}>
                   <When at={e.at} /> · {formatValue(e.old, def.unit, t.defaultWord.value)} →{" "}

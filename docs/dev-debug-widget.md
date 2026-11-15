@@ -91,6 +91,17 @@ receipt, the line is marked refused locally (`no-receipt`), shown as unsent
 like a hub refusal, and the lines behind it go on; a receipt that still arrives
 later removes it.
 
+**Long lines are cut** (owner, 2026-11-15: a voice line of several pages stayed
+dashed). The hub drops a line over `MAX_CHAT` (4000 characters, wire.ts) without
+a receipt, so the outbox never queues one: `splitChatText` cuts it at the latest
+paragraph, line, sentence end, clause or space in each 4000-character window (a
+hard cut only when there is none) and the parts go out in order as `<id>`,
+`<id>-2`, … Speaker proofs, the recheck, `timing`, `stt` and `continues` vouch
+for the whole line's words, so no part carries them; the page selection and
+files go with the first part. A long line already on the device (stored before
+this, up to 200 000 characters) is cut the same way when the queue loads, and
+one marked `no-receipt` is sent again as its parts.
+
 **Durable queue.** The outbox is in **localStorage**, `lk:ui:chat-outbox:<scope>`
 (and `:cursor`), per account and device, not per tab: a closed tab's unsent
 lines go out from the next tab of that account. Tabs share it: each one re-reads
@@ -2089,7 +2100,15 @@ polygon text tspan title` only (any other is dropped with its subtree:
 Owner, 2026-11-14: right of the connection chip (the link icon, over the
 input), small overlapping avatars of everyone in this thread
 (`PresenceStack.tsx`): most recently active first, `chat.presenceShown`
-(default 3, `/dev/config`) of them, then "+N".
+(default 6, `/dev/config`) of them, then "+N".
+
+- **Read-only lanes too** (owner, 2026-11-15 "3的成员也要显示在叠叠头像这里"):
+  every lane-registry row in state `reader` is listed even when it has not
+  read lately (`presentList`, as of its last use). The stack puts them after
+  the live ones, greyed with no dot; the panel lists them last under
+  "read-only" (`peopleReadOnly`). Every row shows its role (`roster.ts
+  laneRole`: config `chat.lanes`, else `LANES`). An older page just draws them
+  as more avatars.
 
 - **Who counts** (`presence.ts presentList`, built in the hub): a token with a
   listening socket open (`lianki chat listen`, an MCP wait on a socket); a

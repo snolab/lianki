@@ -28,6 +28,7 @@ import {
   nextExpiry,
   presenceSummary,
   presentList,
+  liveFirst,
   stackOf,
 } from "@/packages/debug-chat/src/presence";
 import { lineAvatar } from "@/packages/debug-chat/src/avatar-rules";
@@ -224,6 +225,48 @@ describe("presentList", () => {
     const [p1] = presentList({ ...base, now: T0, live: [], records: [b], lines: [] });
     expect(p1).toMatchObject({ name: "Helper", nameBy: "owner", avatarBy: "owner" });
     expect(p1!.avatar).toBeUndefined();
+  });
+  it("read-only lanes (registry readers) are listed even when not here lately", () => {
+    const tokA = rec("a".repeat(16), { lane: "lianki-main", seenAt: T0 - 60 * MIN });
+    const gone = rec("e".repeat(16), { lane: "old-bot", revoked: true });
+    const fresh = rec("f".repeat(16), { lane: "fresh", seenAt: T0 - MIN });
+    const reg = (lane: string, state: string, extra = {}) => ({ lane, state, ...extra });
+    const list = presentList({
+      ...base,
+      now: T0,
+      live: [],
+      records: [tokA, gone, fresh],
+      lines: [],
+      lanes: [
+        reg("lianki-main", "reader", { seenAt: T0 - 50 * MIN }),
+        reg("otoji-main", "reader", { seenAt: T0 - 70 * MIN, muted: true }),
+        reg("codex", "reader", { name: "coco" }),
+        reg("old-bot", "reader", { seenAt: T0 }),
+        reg("fresh", "reader", { seenAt: T0 - 2 * MIN }),
+        reg("gone-away", "left", { seenAt: T0 }),
+        reg("claude", "listener", { seenAt: T0 }),
+      ],
+    });
+    expect(list.map((p) => p.key)).toEqual([
+      `tok:${fresh.tag}`,
+      `tok:${tokA.tag}`,
+      "agent:otoji-main",
+      "lane:codex",
+    ]);
+    expect(list.every((p) => p.mode === "reader")).toBe(true);
+    // Already here by a read: one entry, its own read time kept.
+    expect(list[0]!.seenAt).toBe(T0 - MIN);
+    expect(list[1]).toMatchObject({ name: "lianki-main", tok: tokA.tag, seenAt: T0 - 50 * MIN });
+    expect(list[2]).toMatchObject({ name: "otoji-main", muted: true, active: T0 - 70 * MIN });
+    expect(list[3]).toMatchObject({ name: "coco", lane: "codex", active: 0 });
+    expect(list[3]!.seenAt).toBeUndefined();
+    // The stack's order: live ones first, then readers.
+    const mixed = [
+      { key: "r", mode: "reader" as const },
+      { key: "l", mode: "listener" as const },
+      { key: "x" },
+    ];
+    expect(liveFirst(mixed)).toEqual({ live: [mixed[1]!, mixed[2]!], readers: [mixed[0]!] });
   });
   it("the stack shows the cap, then +N; the summary names them", () => {
     const list = ["agy", "codex", "mcp-bot", "x", "y"].map((name) => ({ name }));

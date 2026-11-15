@@ -254,7 +254,7 @@ async function main(): Promise<number> {
         if (!l || l.history || seen.has(l.id)) continue;
         seen.add(l.id);
         if (!listenerTakes(o, l)) continue;
-        if (!voiceAllowed(l)) {
+        if (!voiceAllowed(l, o)) {
           log({ type: "other-voice", lane: o.lane, id: l.id });
           continue;
         }

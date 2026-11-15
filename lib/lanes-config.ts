@@ -53,7 +53,8 @@ export const LANES_CONFIG_DEFAULTS = {
   "lanes.repos": ["lianki", "agent-yes", "liagent", "rechrome", "otoji", "rgui", "mimiai"],
   /** coco and 杰咪 keep listening to everything (owner, 2026-11-15). */
   "lanes.agents": [
-    { cwd: "lianki/tree/codex", cli: "codex", lane: "codex", resident: true },
+    // coco hears every line too (owner, 2026-11-15 15:44 JST: tier ①, like 小克).
+    { cwd: "lianki/tree/codex", cli: "codex", lane: "codex", resident: true, scope: "all" },
     { cwd: "lianki/tree/agy", cli: "agy", lane: "agy", resident: true },
     // mimiai's codex listens to everything too (owner, 2026-11-15 13:2x JST "把它叫进来这里监听").
     { cwd: "mimiai/tree/main", cli: "codex", lane: "mimiai", resident: true },
@@ -70,6 +71,10 @@ export const LANES_CONFIG_DEFAULTS = {
     },
   ] as LaneAgentDef[],
   "lanes.relistSec": 60,
+  /** Tier ② lanes get a line whose voiceprint is undecided ("未定不送", owner 2026-11-15 15:44 JST: no). */
+  "lanes.forwardUnknownVoice": false as boolean,
+  /** A read-only lane named in his line hears his following lines live this many minutes. */
+  "lanes.wakeLiveMin": 5,
   "lanes.greeting":
     "大家好，我是 {name}（{repo} · {cli}），{mode}入群。只回答点名我或「全体」的话。",
 } as const;
@@ -79,6 +84,8 @@ export const LANES_ENV = {
   "lanes.repos": "LIANKI_LANES_REPOS",
   "lanes.agents": "LIANKI_LANES_AGENTS",
   "lanes.relistSec": "LIANKI_LANES_RELIST_SEC",
+  "lanes.forwardUnknownVoice": "LIANKI_LANES_FORWARD_UNKNOWN_VOICE",
+  "lanes.wakeLiveMin": "LIANKI_LANES_WAKE_LIVE_MIN",
   "lanes.greeting": "LIANKI_LANES_GREETING",
 } as const;
 
@@ -86,6 +93,8 @@ export type LanesConfig = {
   repos: string[];
   agents: LaneAgentDef[];
   relistSec: number;
+  forwardUnknownVoice: boolean;
+  wakeLiveMin: number;
   greeting: string;
 };
 
@@ -105,11 +114,23 @@ export function lanesConfig(env: Record<string, string | undefined> = {}): Lanes
     } catch {}
   const n = Number(env[LANES_ENV["lanes.relistSec"]]);
   const relistSec = Number.isInteger(n) && n >= 10 && n <= 3600 ? n : d["lanes.relistSec"];
+  const fwd = env[LANES_ENV["lanes.forwardUnknownVoice"]]?.trim();
+  const w = Number(env[LANES_ENV["lanes.wakeLiveMin"]]);
   const g = env[LANES_ENV["lanes.greeting"]]?.trim();
   return {
     repos: repos.length ? repos : [...d["lanes.repos"]],
     agents,
     relistSec,
+    forwardUnknownVoice:
+      fwd === "true" || fwd === "1"
+        ? true
+        : fwd === "false" || fwd === "0"
+          ? false
+          : d["lanes.forwardUnknownVoice"],
+    wakeLiveMin:
+      Number.isInteger(w) && w >= 0 && w <= 240 && env[LANES_ENV["lanes.wakeLiveMin"]]?.trim()
+        ? w
+        : d["lanes.wakeLiveMin"],
     greeting: g && g.length <= 200 ? g : d["lanes.greeting"],
   };
 }

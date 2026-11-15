@@ -19,7 +19,9 @@
  * feed of his lines: wake false, 小克). Any other lane is a reader: no listener
  * process; when a line names it (lane-route.ts, with the joined lanes in the
  * table, or `#<repo>`), the manager hands that line to its agent with
- * `ay send <pid> --code alt-m`. Each new lane greets once, with its own token.
+ * `ay send <pid> --code alt-m`, and it gets a listener of its own (tier ②)
+ * for lanes.wakeLiveMin minutes after the last line that named it
+ * (withWakeLive). Each new lane greets once, with its own token.
  */
 import type { LaneAgentDef, LaneScope, LanesConfig } from "../../lib/lanes-config";
 import { LANE_NAME_RE } from "../../lib/lanes-config";
@@ -346,9 +348,10 @@ export function decide(
 
 /**
  * The readers a line wakes: an owner line in the owner thread that names
- * them (lane-route.ts, with laneTableFor's rows in force), or `#<repo>` for
- * every reader of that repo. Listeners hear it themselves, and a lane with
- * lanes.agents `wake: false` (小克: its own feed) is never woken; both are left out.
+ * them (lane-route.ts, with laneTableFor's rows in force), `@<lane>` anywhere
+ * in it, or `#<repo>` for every reader of that repo. Listeners hear it
+ * themselves, and a lane with lanes.agents `wake: false` (小克: its own feed)
+ * is never woken; both are left out.
  */
 export function wakeTargets(
   l: { from: string; thread?: string; text: string },
@@ -362,5 +365,27 @@ export function wakeTargets(
   const tags = new Set(
     [...l.text.matchAll(/#([A-Za-z0-9._-]{1,40})/g)].map((m) => m[1]!.toLowerCase()),
   );
-  return readers.filter((p) => named.has(p.lane) || tags.has(p.repo.toLowerCase()));
+  const text = l.text.toLowerCase();
+  const at = (lane: string) => {
+    const want = `@${lane.toLowerCase()}`;
+    for (let i = text.indexOf(want); i >= 0; i = text.indexOf(want, i + 1))
+      if (!/[\p{L}\p{N}._-]/u.test(text[i + want.length] ?? "")) return true;
+    return false;
+  };
+  return readers.filter((p) => named.has(p.lane) || tags.has(p.repo.toLowerCase()) || at(p.lane));
+}
+
+/**
+ * The plan with the lanes woken by name in the last lanes.wakeLiveMin minutes
+ * made live (owner, 2026-11-15 15:44 JST): until `liveUntil`, a reader hears
+ * his lines as a tier-② listener does; then it is a reader again.
+ */
+export function withWakeLive(
+  planned: readonly Planned[],
+  liveUntil: ReadonlyMap<string, number>,
+  now: number,
+): Planned[] {
+  return planned.map((p) =>
+    !p.resident && (liveUntil.get(p.lane) ?? 0) > now ? { ...p, resident: true } : p,
+  );
 }

@@ -229,7 +229,8 @@ export type LaneSpec = {
   mark?: LaneMark;
   /**
    * What it does, a few words (zh; prompt text for Li's roster in the owner's
-   * thread, roster.ts, never shown in the UI). Config `chat.lanes` `role` overrides it.
+   * thread, roster.ts; under its name in the "who is here" panel, PresenceStack.tsx).
+   * Config `chat.lanes` `role` overrides it.
    */
   role?: string;
 };

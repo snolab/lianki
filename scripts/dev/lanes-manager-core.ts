@@ -21,6 +21,7 @@ import {
   parseAyList,
   planLanes,
   wakeTargets,
+  withWakeLive,
 } from "./lanes-manager-lib";
 
 /** A child the manager started (a lane's listener). */
@@ -48,6 +49,10 @@ export interface Deps {
   loadState(): ManagerState;
   saveState(s: ManagerState): void;
   log(v: Record<string, unknown>): void;
+  /** The clock (default Date.now). */
+  now?(): number;
+  /** Run `fn` in `ms` (default setTimeout): a woken lane's live window ending. */
+  later?(ms: number, fn: () => void): void;
 }
 
 export type ManagerOpts = {
@@ -69,6 +74,10 @@ export function createManager(d: Deps, o: ManagerOpts) {
   /** Readers already handed their first line (the hand-off names the rules once). */
   const briefed = new Set<string>();
   const seen = new Set<string>();
+  /** Readers woken by name, live (a listener of their own) until this time (lanes.wakeLiveMin). */
+  const liveUntil = new Map<string, number>();
+  const now = () => (d.now ? d.now() : Date.now());
+  const later = d.later ?? ((ms: number, fn: () => void) => void setTimeout(fn, ms));
 
   const table = () => JSON.stringify(laneTableFor(planned, o.extraTable));
 
@@ -126,6 +135,18 @@ export function createManager(d: Deps, o: ManagerOpts) {
     }
   }
 
+  /** The live windows that ended: their listeners stop, the lanes are readers again. */
+  async function expire(): Promise<void> {
+    const t = now();
+    for (const [lane, until] of [...liveUntil]) {
+      if (until > t) continue;
+      liveUntil.delete(lane);
+      d.log({ type: "wake-live-end", lane });
+      if (children.has(lane) && !planned.some((p) => p.lane === lane && p.resident))
+        await run({ type: "stop-listener", lane });
+    }
+  }
+
   return {
     /** One look at ay's agents: plan, decide, act. */
     async relist(): Promise<Action[]> {
@@ -141,7 +162,7 @@ export function createManager(d: Deps, o: ManagerOpts) {
       const r = decide(
         planned,
         {
-          planned: next,
+          planned: withWakeLive(next, liveUntil, now()),
           tokens,
           running: new Set(children.keys()),
           external,
@@ -164,13 +185,35 @@ export function createManager(d: Deps, o: ManagerOpts) {
       if (!l || l.history || seen.has(l.id)) return [];
       seen.add(l.id);
       const woken: number[] = [];
+      const t = now();
+      const liveMs = o.cfg.wakeLiveMin * 60_000;
       for (const p of wakeTargets(l, planned)) {
         if (!d.token(p.lane)) continue;
+        // Named: his following lines reach it live for lanes.wakeLiveMin minutes after this one.
+        const live = children.has(p.lane);
+        if (liveMs > 0) {
+          liveUntil.set(p.lane, t + liveMs);
+          later(liveMs + 1, () => void expire());
+        }
+        // Its listener (started by an earlier name) hands this line over itself.
+        if (live) {
+          d.log({ type: "wake-live", lane: p.lane, id: l.id, until: t + liveMs });
+          continue;
+        }
         const body = handoffBrief(p.lane, [l], o.repo, !briefed.has(p.lane));
         briefed.add(p.lane);
         const code = o.dryRun ? 0 : await d.wake(p.pid, body);
         d.log({ type: "woken", lane: p.lane, pid: p.pid, id: l.id, ay: code });
         woken.push(p.pid);
+        if (liveMs > 0)
+          await run({
+            type: "start-listener",
+            lane: p.lane,
+            cwd: p.cwd,
+            pid: p.pid,
+            scope: p.scope,
+            skipOwner: false,
+          });
       }
       return woken;
     },
@@ -179,6 +222,10 @@ export function createManager(d: Deps, o: ManagerOpts) {
       for (const c of children.values()) c.kill();
       children.clear();
     },
+    /** End the live windows that are over (the timers call it; tests too). */
+    expire,
+    /** The lanes live by a recent name, and until when. */
+    wakeLive: () => new Map(liveUntil),
     planned: () => planned,
     running: () => [...children.keys()],
     state: () => state,

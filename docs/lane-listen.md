@@ -179,17 +179,35 @@ Its log is one JSON line per state edge, read, report and clear (redacted).
 Tests: `unit/stall-watch.test.ts` (the matcher on real Claude/Codex screens,
 redaction, the node, the state machine).
 
-## Five tiers (owner, 2026-11-15 15:1x JST)
+## Five tiers (owner, 2026-11-15 15:1x JST; 15:44 JST changes)
 
 How much of his chat a participant hears, from most to least:
 
-| tier | who                          | hears                                                           | how                                                                          | presence / system line                                               |
-| ---- | ---------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| ①    | live, all messages (小克)    | his lines, every agent's lines, the system lines; never its own | `lanes.agents` `scope: "all"` → `lane-listen --all --everyone`               | filled red dot, "实时监听（全部消息）"; "X 开始实时监听（全部消息）" |
-| ②    | live, his lines (coco, 杰咪) | his lines only (today's "listener")                             | `lanes.agents` `resident: true` (scope `owner`) → `lane-listen --all`        | red ring dot, "实时监听"; "X 开始实时监听"                           |
-| ③    | reader                       | the thread when it reads; woken when he names it                | any other joined agent: the manager's `ay send` on a name, `#<repo>` or 全体 | "只读"; "X 入群（只读）"                                             |
-| ④    | Li                           | everything (the main lane, always a listener)                   | the hub's own main lane                                                      | —                                                                    |
-| ⑤    | display-only pages           | what the page shows                                             | a page, no agent                                                             | —                                                                    |
+| tier | who                             | hears                                                                                             | how                                                                                            | presence / system line                                               |
+| ---- | ------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| ①    | live, all messages (小克, coco) | his lines, every agent's lines, the system lines; never its own                                   | `lanes.agents` `scope: "all"` → `lane-listen --all --everyone`                                 | filled red dot, "实时监听（全部消息）"; "X 开始实时监听（全部消息）" |
+| ②    | live, his lines (杰咪, mimiai)  | his lines only (today's "listener"); a voiceprint "unknown" line not ("未定不送")                 | `lanes.agents` `resident: true` (scope `owner`) → `lane-listen --all`                          | red ring dot, "实时监听"; "X 开始实时监听"                           |
+| ③    | reader                          | the thread when it reads; woken when he names it, then his lines live for `lanes.wakeLiveMin` min | any other joined agent: the manager's `ay send` on a name, alias, `@<lane>`, `#<repo>` or 全体 | "只读"; "X 入群（只读）"                                             |
+| ④    | Li                              | everything (the main lane, always a listener)                                                     | the hub's own main lane                                                                        | —                                                                    |
+| ⑤    | display-only pages              | what the page shows                                                                               | a page, no agent                                                                               | —                                                                    |
+
+The voiceprint gate (`voiceAllowed`, lane-listen-lib.ts): a spoken line decided
+"other" goes to no lane. One decided "unknown" (a short or soft sentence) goes
+to tier ① only, marked `（声纹未定）` (`LANE_LISTEN_VOICES=me` drops it there
+too); tier ② gets only "me" and typed lines (owner, 2026-11-15 15:44 JST "未定不送").
+Config `lanes.forwardUnknownVoice` (default false; on the Mac env
+`LIANKI_LANES_FORWARD_UNKNOWN_VOICE=true`) sends "unknown" to tier ② again.
+
+Named → live (owner, 2026-11-15 15:44 JST): a line that wakes a tier-③ lane
+(its name, an alias, `@<lane>` anywhere, `#<repo>`, 全体) also gives it a
+tier-② listener of its own (the manager's `start-listener`, `withWakeLive`)
+until `lanes.wakeLiveMin` minutes (default 5; env `LIANKI_LANES_WAKE_LIVE_MIN`;
+0 = only the naming line) after the last line that named it; then the
+listener stops and the lane is a reader again. The hub sees it as the usual
+mode events ("X 开始实时监听", then "转为只读" after `lanes.modeGraceSec`),
+so the presence stack shows it with no hub change. A line he says in the
+second or two the new listener takes to connect arrives as history and is
+not handed over.
 
 Tier ① in detail:
 
