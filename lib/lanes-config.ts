@@ -39,11 +39,13 @@ export const laneAgentSchema = z
 
 export const LANES_CONFIG_DEFAULTS = {
   /** Lianki and the repos it depends on (owner, 2026-11-15: agent-yes, liagent, rechrome, otoji, rgui, …). */
-  "lanes.repos": ["lianki", "agent-yes", "liagent", "rechrome", "otoji", "rgui"],
+  "lanes.repos": ["lianki", "agent-yes", "liagent", "rechrome", "otoji", "rgui", "mimiai"],
   /** coco and 杰咪 keep listening to everything (owner, 2026-11-15). */
   "lanes.agents": [
     { cwd: "lianki/tree/codex", cli: "codex", lane: "codex", resident: true },
     { cwd: "lianki/tree/agy", cli: "agy", lane: "agy", resident: true },
+    // mimiai's codex listens to everything too (owner, 2026-11-15 13:2x JST "把它叫进来这里监听").
+    { cwd: "mimiai/tree/main", cli: "codex", lane: "mimiai", resident: true },
     // 小克 (the Claude Code chat lane) keeps its own live feed of the owner's
     // lines: it joins as `claude`, but the manager never wakes it.
     { cwd: "lianki/tree/agy", cli: "claude", lane: "claude", resident: false, wake: false },

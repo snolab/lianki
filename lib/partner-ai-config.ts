@@ -17,9 +17,16 @@ export const PARTNER_AI_FLAG = "partner.ai-reply";
 export const PARTNER_OWNER_FLAG = "partner.owner-thread";
 /** The live value's key (lib/config.ts) for how long the lanes have before the model answers. */
 export const OWNER_REPLY_DELAY_KEY = "partner.ownerReplyDelayMs";
-/** Its default: 8 s for a lane to answer first. */
-export const OWNER_REPLY_DELAY_MS = 8000;
+/** Its default: 30 s for a lane to answer first (2026-11-15: lanes take 20–40 s; at 8 s Li cut in while 小克 typed). */
+export const OWNER_REPLY_DELAY_MS = 30_000;
 export const OWNER_REPLY_DELAY_MAX = 120_000;
+/**
+ * Li's roll-call answer in his thread, no model (workers/push/src/owner-ai.ts;
+ * packages/debug-chat/src/roster.ts rollCallText): the live value's key and
+ * its default. `{n}` = how many are present besides Li, `{names}` = who.
+ */
+export const ROLL_CALL_REPLY_KEY = "partner.rollCallReply";
+export const ROLL_CALL_REPLY_DEFAULT = "Li 在，这里 {n} 位：{names}";
 
 /**
  * DeepSeek on Cloudflare Workers AI (verified listed by `wrangler ai models`,
@@ -103,6 +110,11 @@ export type PartnerRequest = {
    * and the main Worker then serves the account only if it is the owner's.
    */
   owner?: true;
+  /**
+   * The owner's thread only: who is present there (the hub's presence list,
+   * packages/debug-chat/src/roster.ts rosterOf), for Li's "who is here" prompt block.
+   */
+  roster?: { id: string; name: string; mode?: "listener" | "reader"; muted?: true }[];
   /** The thread's latest lines, oldest first: the user's and the agent's. */
   history: { role: "user" | "assistant"; text: string }[];
   /** Where the user is: the page's path (from its label) and what the line carried. */

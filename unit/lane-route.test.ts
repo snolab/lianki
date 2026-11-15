@@ -67,6 +67,26 @@ describe("routeLine: addressed lines", () => {
   });
 });
 
+describe("routeLine: 小柯 and all hands further in (2026-11-15)", () => {
+  it("小柯 is 小克's own name: no separator needed", () => {
+    const r = routeLine("小柯你给Li配置一下");
+    expect(r.addressed).toBe(true);
+    expect(r.lanes).toEqual(["chat"]);
+    expect(r.text).toBe("你给Li配置一下");
+  });
+  it.each(["小朋友们全体都有包书一。", "小朋友们全体都有报数", "大家都有报数", "全体都有，报数"])(
+    "%j addresses every lane",
+    (text) => {
+      const r = routeLine(text);
+      expect(r.addressed).toBe(true);
+      expect(r.lanes).toEqual([...ROUTE_LANES]);
+    },
+  );
+  it("全体 far into a line is not an all-hands call", () => {
+    expect(routeLine("我今天读了一篇很长的文章，讲的是全体会议").addressed).toBe(false);
+  });
+});
+
 describe("routeLine: not addressed → the chat lane only", () => {
   it.each([
     "帮我看看今天的进度",
