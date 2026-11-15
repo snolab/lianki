@@ -223,7 +223,7 @@ describe("Li in the owner's thread: the hub", () => {
     expect(s.calls[0].roster?.every((e) => !("tok" in e) && !("key" in e))).toBe(true);
   });
 
-  it("a roll call (an STT slip of 报数): Li answers at once with who is here, no model", async () => {
+  it("a roll call (an STT slip of 报数): Li answers at once for itself, no model", async () => {
     const s = setup();
     const o = await s.ownerPage();
     const l = await s.lane();
@@ -235,7 +235,7 @@ describe("Li in the owner's thread: the hub", () => {
     expect(chats(o).at(-1)).toMatchObject({
       from: "agent",
       label: PARTNER_AI_LABEL,
-      text: "Li 在，这里 1 位：coco",
+      text: "Li 在",
       lane: "main",
     });
     // Nobody else here: the first clause only.

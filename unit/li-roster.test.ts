@@ -29,9 +29,14 @@ describe("isRollCall: his phrasings and STT slips", () => {
     "都有报一下",
     "@小克 @coco @杰咪 报数",
   ])("%j is a roll call", (t) => expect(isRollCall(t)).toBe(true));
-  it.each(["今天学什么", "我在包饺子", "全体会议", ""])("%j is not", (t) =>
-    expect(isRollCall(t)).toBe(false),
-  );
+  it.each([
+    "今天学什么",
+    "我在包饺子",
+    "全体会议",
+    "",
+    // A rule about roll calls is not one (owner, 2026-11-15 14:2x JST).
+    "我点名的时候，所有人都要亲自来回答，不要别人代答。",
+  ])("%j is not", (t) => expect(isRollCall(t)).toBe(false));
 });
 
 describe("rosterOf", () => {
@@ -157,7 +162,9 @@ describe("rollCallText (config partner.rollCallReply)", () => {
     { id: "agy", name: "杰咪" },
   ];
   it("fills {n} and {names}", () => {
-    expect(rollCallText(ROLL_CALL_REPLY_DEFAULT, who)).toBe("Li 在，这里 2 位：coco、杰咪");
+    // The default names only Li: he wants every lane to answer for itself.
+    expect(rollCallText(ROLL_CALL_REPLY_DEFAULT, who)).toBe("Li 在");
+    expect(rollCallText("Li 在，这里 {n} 位：{names}", who)).toBe("Li 在，这里 2 位：coco、杰咪");
     expect(rollCallText("{names} 和 Li", who)).toBe("coco、杰咪 和 Li");
   });
   it("nobody else: the first clause only", () => {
@@ -166,11 +173,12 @@ describe("rollCallText (config partner.rollCallReply)", () => {
     expect(rollCallText("{names}", [])).toBe("{names}");
     expect(rollCallText("Li 在 {names}", [])).toBe("Li 在");
   });
-  it("is a registered server config with {names} required", () => {
+  it("is a registered server config; {names} is optional", () => {
     const c = CONFIG[ROLL_CALL_REPLY_KEY as keyof typeof CONFIG];
     expect(c.default).toBe(ROLL_CALL_REPLY_DEFAULT);
     expect(c.schema.safeParse("Li 到，{n} 位：{names}").success).toBe(true);
-    expect(c.schema.safeParse("Li 到").success).toBe(false);
+    expect(c.schema.safeParse("Li 到").success).toBe(true);
+    expect(c.schema.safeParse("").success).toBe(false);
   });
 });
 
