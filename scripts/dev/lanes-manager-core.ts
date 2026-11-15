@@ -7,7 +7,7 @@
  * missing-token line, the readers' wake hand-offs.
  */
 import { join } from "node:path";
-import type { LanesConfig } from "../../lib/lanes-config";
+import type { LaneScope, LanesConfig } from "../../lib/lanes-config";
 import { type ChatLaneDef, setLaneTable } from "../../packages/debug-chat/src/voices";
 import { handoffBrief, lineOf } from "./lane-listen-lib";
 import {
@@ -33,8 +33,14 @@ export interface Deps {
   ps(): Promise<string>;
   /** A lane's token (never logged), or undefined. */
   token(lane: string): string | undefined;
-  /** Start `lane-listen --as <lane> --cwd <cwd> --all` with the lane table in its env. */
-  startListener(p: { lane: string; cwd: string; table: string }): Child;
+  /** Start `lane-listen --as <lane> --cwd <cwd> --all` (listenerArgv) with the lane table in its env. */
+  startListener(p: {
+    lane: string;
+    cwd: string;
+    table: string;
+    scope?: LaneScope;
+    skipOwner?: boolean;
+  }): Child;
   /** POST the hub's chat API with a lane's token: {ok, status}. */
   chat(token: string, body: Record<string, unknown>): Promise<{ ok: boolean; status: number }>;
   /** Hand `body` to the agent `pid` now (`ay send <pid> --force --no-wait --code alt-m -`): its exit code. */
@@ -72,7 +78,13 @@ export function createManager(d: Deps, o: ManagerOpts) {
     if (o.dryRun) return;
     switch (a.type) {
       case "start-listener": {
-        const c = d.startListener({ lane: a.lane, cwd: a.cwd, table: table() });
+        const c = d.startListener({
+          lane: a.lane,
+          cwd: a.cwd,
+          table: table(),
+          scope: a.scope,
+          skipOwner: a.skipOwner,
+        });
         children.set(a.lane, c);
         void c.exited.then((code) => {
           if (children.get(a.lane) === c) children.delete(a.lane);
@@ -173,8 +185,18 @@ export function createManager(d: Deps, o: ManagerOpts) {
   };
 }
 
-/** The listener command for a lane (lane-listen through lianki-dev, every line, from the agent's dir). */
-export const listenerArgv = (bun: string, repo: string, lane: string, cwd: string) => [
+/**
+ * The listener command for a lane (lane-listen through lianki-dev, every owner line, from
+ * the agent's dir); scope "all" adds `--everyone` (agents' and system lines too), and
+ * `skipOwner` `--skip-owner` (its agent has its own feed of his lines).
+ */
+export const listenerArgv = (
+  bun: string,
+  repo: string,
+  lane: string,
+  cwd: string,
+  o: { scope?: LaneScope; skipOwner?: boolean } = {},
+) => [
   bun,
   join(repo, "scripts", "dev", "lianki-dev.ts"),
   "lane-listen",
@@ -185,4 +207,6 @@ export const listenerArgv = (bun: string, repo: string, lane: string, cwd: strin
   "--cwd",
   cwd,
   "--all",
+  ...(o.scope === "all" ? ["--everyone"] : []),
+  ...(o.scope === "all" && o.skipOwner ? ["--skip-owner"] : []),
 ];
