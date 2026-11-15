@@ -14,7 +14,15 @@
  *             lines too, tier ①), else the owner's only (tier ②; absent =
  *             "owner", an older client). "X 开始实时监听（全部消息）" vs "X 开始实时监听".
  * A listener whose last socket closes becomes a reader after the grace
- * (config `lanes.modeGraceSec`), so a reconnect says nothing. `left`: the
+ * (config `lanes.modeGraceSec`), so a reconnect says nothing.
+ * One lane, several sockets (the lanes manager's listener and a second feed
+ * on the same token): the lane's mode and scope are those of all its live
+ * sockets together (token-chat.ts passes the effective scope: "all" while any
+ * live socket hears all). Only a change of the LANE is said: a second socket,
+ * a reconnect in the grace, say nothing. Losing "all" (its last all-socket
+ * closed, an owner-only one still open) is also graced (`scopeDownAt`) and
+ * then dropped silently, since the lane still listens; an upgrade back to
+ * "all" says "开始实时监听（全部消息）" once. `left`: the
  * manager said its agent exited (op "lane", state "left").
  * The main lane (Li; voices.ts LANES.main's names) is always a listener: it
  * is never downgraded, never leaves.
@@ -51,13 +59,16 @@ export type LaneReg = {
   changedAt: number;
   /** A listener whose sockets all closed: it turns reader at this time, unless one reopens. */
   downAt?: number;
+  /** A listener with scope all whose all-sockets closed (an owner-only one still open): it drops to the owner's at this time, silently, unless one reopens. */
+  scopeDownAt?: number;
   /** The name its lines were last shown with (the owner's for it, else its own), for the alarm's line. */
   name?: string;
 };
 
 export type LaneInput =
   | { type: "seen" }
-  | { type: "listen"; scope?: LaneScope }
+  /** `scope`: the lane's effective scope over its live sockets (absent: keep the one it has); `graceMs`: how long a drop from all waits. */
+  | { type: "listen"; scope?: LaneScope; graceMs?: number }
   | { type: "unlisten"; graceMs: number }
   | { type: "due" }
   | { type: "reader" }
@@ -96,7 +107,7 @@ export function laneStep(
     changedAt: now,
   };
   const to = (state: LaneState, event?: LaneEventKind, scope?: LaneScope) => {
-    const { downAt: _d, scope: _s, ...rest } = base;
+    const { downAt: _d, scope: _s, scopeDownAt: _sd, ...rest } = base;
     return {
       next: { ...rest, state, ...(scope === "all" ? { scope } : {}), seenAt: now, changedAt: now },
       event,
@@ -108,25 +119,47 @@ export function laneStep(
         return pinned ? to("listener", "listening") : to("reader", "joined");
       return { next: { ...prev, seenAt: now } };
     case "listen": {
-      // No scope (the alarm sees a socket again, an older client): the one it had.
-      const scope = input.scope ?? (prev?.state === "listener" ? (prev.scope ?? "owner") : "owner");
-      const kind = scope === "all" ? "listeningAll" : "listening";
-      if (prev?.state === "listener") {
-        // The same scope again (a reconnect): nothing to say. A new one: its line.
-        if ((prev.scope ?? "owner") !== scope) return to("listener", kind, scope);
-        const { downAt: _d, ...rest } = prev;
-        return { next: { ...rest, seenAt: now } };
+      if (prev?.state !== "listener") {
+        const scope = input.scope ?? "owner";
+        return to("listener", scope === "all" ? "listeningAll" : "listening", scope);
       }
-      return to("listener", kind, scope);
+      // Already live: a second socket, a reconnect in the grace. Only a change of scope counts.
+      const { downAt: _d, scopeDownAt: _sd, ...rest } = prev;
+      const had = prev.scope ?? "owner";
+      // No scope (the alarm sees a socket again): the one it had, a pending drop kept.
+      if (input.scope === undefined || (input.scope === had && had === "owner"))
+        return {
+          next: {
+            ...rest,
+            ...(prev.scopeDownAt ? { scopeDownAt: prev.scopeDownAt } : {}),
+            seenAt: now,
+          },
+        };
+      if (input.scope === "all")
+        return had === "all"
+          ? { next: { ...rest, seenAt: now } }
+          : { next: { ...rest, scope: "all", seenAt: now, changedAt: now }, event: "listeningAll" };
+      // all → owner: graced, then silent (it still listens).
+      const grace = input.graceMs ?? 0;
+      if (grace <= 0) {
+        const { scope: _s, ...owner } = rest;
+        return { next: { ...owner, seenAt: now, changedAt: now } };
+      }
+      const at = prev.scopeDownAt ?? now + grace;
+      return { next: { ...rest, scopeDownAt: at, seenAt: now }, dueAt: at };
     }
     case "unlisten":
       if (prev?.state !== "listener" || pinned) return { next: prev ?? base };
       if (input.graceMs <= 0) return to("reader", "reader");
       return { next: { ...prev, downAt: now + input.graceMs }, dueAt: now + input.graceMs };
     case "due":
-      if (prev?.state !== "listener" || prev.downAt === undefined || prev.downAt > now)
-        return { next: prev ?? base };
-      return to("reader", "reader");
+      if (prev?.state !== "listener") return { next: prev ?? base };
+      if (prev.downAt !== undefined && prev.downAt <= now) return to("reader", "reader");
+      if (prev.scopeDownAt !== undefined && prev.scopeDownAt <= now) {
+        const { scope: _s, scopeDownAt: _sd, ...rest } = prev;
+        return { next: { ...rest, changedAt: now } };
+      }
+      return { next: prev };
     case "reader":
       if (pinned || prev?.state === "reader") return { next: { ...(prev ?? base), seenAt: now } };
       return to("reader", prev?.state === "listener" ? "reader" : "joined");
@@ -188,16 +221,32 @@ export interface LaneHost {
 
 export class LaneRegistry {
   constructor(private host: LaneHost) {}
+  /** One input at a time per row: two sockets authing together must not both see "left". */
+  private chains = new Map<string, Promise<unknown>>();
 
   /** Apply one input; post its line. `name`: how the line names the lane (the owner's name for it, else its own). */
-  async apply(
+  apply(thread: string, lane: string, input: LaneInput, name?: string): Promise<LaneReg | null> {
+    const key = laneRegKey(thread, lane);
+    const run = (this.chains.get(key) ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => this.applyNow(key, thread, lane, input, name));
+    this.chains.set(key, run);
+    void run
+      .finally(() => {
+        if (this.chains.get(key) === run) this.chains.delete(key);
+      })
+      .catch(() => {});
+    return run;
+  }
+
+  private async applyNow(
+    key: string,
     thread: string,
     lane: string,
     input: LaneInput,
     name?: string,
   ): Promise<LaneReg | null> {
     if (!(await this.host.enabled())) return null;
-    const key = laneRegKey(thread, lane);
     const prev = await this.host.kv.get<LaneReg>(key);
     const r = laneStep(prev, input, { lane, thread, now: this.host.now() });
     if (name && name !== lane && r.next.name !== name) r.next = { ...r.next, name };
@@ -215,8 +264,19 @@ export class LaneRegistry {
       await this.host.post(line);
       console.log(JSON.stringify({ msg: "debug.lane-event", lane, kind: r.event }));
     }
-    if (r.event || (prev?.state ?? "left") !== r.next.state) this.host.presence?.(thread);
+    if (r.event || (prev?.state ?? "left") !== r.next.state || prev?.scope !== r.next.scope)
+      this.host.presence?.(thread);
     return r.next;
+  }
+
+  /** A socket of the lane listens: `scope` is the lane's effective one over its live sockets. */
+  async listen(thread: string, lane: string, scope: LaneScope, name?: string) {
+    return this.apply(
+      thread,
+      lane,
+      { type: "listen", scope, graceMs: await this.host.graceMs() },
+      name,
+    );
   }
 
   /** A listener went down: its row, with the grace from config. */
@@ -240,20 +300,30 @@ export class LaneRegistry {
   }
 
   /**
-   * The alarm: listeners whose grace ran out turn reader, unless `live` says a
-   * socket of theirs is open again.
+   * The alarm: listeners whose grace ran out turn reader (or drop from all to
+   * the owner's), unless `live` says a socket of theirs is open again; `live`
+   * gives the lane's effective scope, or true (scope unknown: keep it).
    */
-  async sweep(live: (thread: string, lane: string) => boolean) {
+  async sweep(live: (thread: string, lane: string) => boolean | LaneScope) {
     if (!(await this.host.enabled())) return;
     const t = this.host.now();
-    for (const r of await this.list()) {
-      if (r.state !== "listener" || r.downAt === undefined) continue;
-      if (live(r.thread, r.lane)) {
-        await this.apply(r.thread, r.lane, { type: "listen" });
+    for (let r of await this.list()) {
+      if (r.state !== "listener" || (r.downAt === undefined && r.scopeDownAt === undefined))
         continue;
+      const l = live(r.thread, r.lane);
+      if (l) {
+        const scope = l === true ? undefined : l;
+        r =
+          (await this.apply(r.thread, r.lane, {
+            type: "listen",
+            scope,
+            graceMs: await this.host.graceMs(),
+          })) ?? r;
       }
-      if (r.downAt <= t) await this.apply(r.thread, r.lane, { type: "due" });
-      else await this.host.schedule(r.downAt);
+      const at = Math.min(r.downAt ?? Infinity, r.scopeDownAt ?? Infinity);
+      if (at === Infinity) continue;
+      if (at <= t) await this.apply(r.thread, r.lane, { type: "due" });
+      else await this.host.schedule(at);
     }
   }
 }

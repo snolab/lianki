@@ -371,12 +371,11 @@ export class TokenChat {
     const lanes = this.host.lanes;
     if (!lanes) return;
     const r = await this.host.kv?.get<PartRecord>(partKey(v.tag));
-    await lanes.apply(
-      thread,
-      v.lane,
-      input === "listen" ? { type: input, scope: scope ?? "owner" } : { type: input },
-      laneShownName(v.lane, r?.ownerName),
-    );
+    const name = laneShownName(v.lane, r?.ownerName);
+    // The lane's scope over all its live sockets (this one is attached already).
+    if (input === "listen")
+      await lanes.listen(thread, v.lane, this.laneScope(thread, v.lane) || scope || "owner", name);
+    else await lanes.apply(thread, v.lane, { type: input }, name);
   }
 
   private async say(thread: string, lane: string, m: Record<string, unknown>, who: Who = {}) {
@@ -805,16 +804,22 @@ export class TokenChat {
     if (lanes && a.lane) {
       const r = a.tag ? await this.host.kv?.get<PartRecord>(partKey(a.tag)) : undefined;
       const name = laneShownName(a.lane, r?.ownerName);
-      // Reading only while another socket of the lane still listens: that one keeps it a listener.
-      if (state === "reader" && this.listening(a.thread!, a.lane, ws))
-        next = await lanes.apply(a.thread!, a.lane, { type: "seen" }, name);
+      // Reading only while another socket of the lane still listens: that one keeps it a
+      // listener (its scope: the remaining sockets').
+      const others = this.laneScope(a.thread!, a.lane, ws);
+      if (state === "reader" && others) next = await lanes.listen(a.thread!, a.lane, others, name);
+      else if (listener)
+        next = await lanes.listen(
+          a.thread!,
+          a.lane,
+          this.laneScope(a.thread!, a.lane) || "owner",
+          name,
+        );
       else
         next = await lanes.apply(
           a.thread!,
           a.lane,
-          listener
-            ? { type: "listen", scope: a.scope ?? "owner" }
-            : { type: state === "left" ? "leave" : "reader" },
+          { type: state === "left" ? "leave" : "reader" },
           name,
         );
     }
@@ -823,7 +828,18 @@ export class TokenChat {
 
   /** Does another open socket of this lane (in this thread) listen? */
   listening(thread: string, lane: string, except?: unknown): boolean {
-    return this.authed(thread).some(({ ws, a }) => ws !== except && a.lane === lane && a.listener);
+    return this.laneScope(thread, lane, except) !== false;
+  }
+
+  /** The lane's effective scope over its open listening sockets ("all" if any hears all); false: none listens. */
+  laneScope(thread: string, lane: string, except?: unknown): LaneScope | false {
+    let out: LaneScope | false = false;
+    for (const { ws, a } of this.authed(thread)) {
+      if (ws === except || a.lane !== lane || !a.listener) continue;
+      if (a.scope === "all") return "all";
+      out = "owner";
+    }
+    return out;
   }
 
   /**
@@ -832,14 +848,18 @@ export class TokenChat {
    */
   async closed(ws: TokenSocket, a: TokenAtt) {
     if (!a.listener || !a.thread || !a.lane || !this.host.lanes) return;
-    if (this.listening(a.thread, a.lane, ws)) return;
+    const others = this.laneScope(a.thread, a.lane, ws);
+    // Another socket still listens: the lane stays live; only a lost "all" is (graced) news.
+    if (others === "all" || (others && a.scope !== "all")) return;
     const r = a.tag ? await this.host.kv?.get<PartRecord>(partKey(a.tag)) : undefined;
-    await this.host.lanes.unlisten(a.thread, a.lane, laneShownName(a.lane, r?.ownerName));
+    const name = laneShownName(a.lane, r?.ownerName);
+    if (others) await this.host.lanes.listen(a.thread, a.lane, others, name);
+    else await this.host.lanes.unlisten(a.thread, a.lane, name);
   }
 
   /** The alarm: listeners past their grace turn reader (unless one came back). */
   async laneSweep() {
-    await this.host.lanes?.sweep((thread, lane) => this.listening(thread, lane));
+    await this.host.lanes?.sweep((thread, lane) => this.laneScope(thread, lane));
   }
 
   private async auth(ws: TokenSocket, a: TokenAtt, m: Record<string, unknown> | null) {

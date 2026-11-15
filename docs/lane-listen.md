@@ -271,7 +271,12 @@ listener and can never be downgraded (the hub refuses).
 | op `lane` `state: "left"` (the manager: its agent exited)                                    | left     | "杰咪 下线"             |
 | the owner mutes it (page `participant` `muted: true`)                                        | (same)   | "X 已禁言" / "解除禁言" |
 
-A reconnect inside the grace says nothing. The hub reads "listening" from
+A reconnect inside the grace says nothing, and only a change of the whole
+lane is said: a second socket of a lane that is already live is silent, its
+scope is "all" while any live socket hears all, and losing "all" (an
+owner-only socket still open) is graced the same way and then dropped
+without a line (2026-11-15: two feeds on one token re-announced
+"开始实时监听" on every restart). The hub reads "listening" from
 its attached sockets and their attachments, so a hibernated hub that wakes
 still sees them. A connection that dies without its close reaching the
 listener (the hub saw it close) is the listener's to find: `lianki chat
