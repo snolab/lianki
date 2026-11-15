@@ -14,12 +14,14 @@
  * says once in the chat which names still wait for theirs.
  *
  * A resident lane (lanes.agents resident) gets a `lane-listen --all` of its
- * own: it hears every line live. Any other lane is a reader: no listener
+ * own: it hears every owner line live; scope "all" (tier ①) adds `--everyone`,
+ * agents' and system lines too (and `--skip-owner` when its agent has its own
+ * feed of his lines: wake false, 小克). Any other lane is a reader: no listener
  * process; when a line names it (lane-route.ts, with the joined lanes in the
  * table, or `#<repo>`), the manager hands that line to its agent with
  * `ay send <pid> --code alt-m`. Each new lane greets once, with its own token.
  */
-import type { LaneAgentDef, LanesConfig } from "../../lib/lanes-config";
+import type { LaneAgentDef, LaneScope, LanesConfig } from "../../lib/lanes-config";
 import { LANE_NAME_RE } from "../../lib/lanes-config";
 import { laneModeWord, tokensNeededText } from "../../packages/debug-chat/src/lane-events";
 import { type ChatLaneDef, isLaneId } from "../../packages/debug-chat/src/voices";
@@ -130,6 +132,8 @@ export type Planned = {
   repo: string;
   lane: string;
   resident: boolean;
+  /** What its listener hears (lanes.agents scope): "all" adds agents' and system lines (--everyone). */
+  scope: LaneScope;
   /** Woken by name when a line names it (lanes.agents wake, default true). */
   wake: boolean;
   /** Mid-turn now (ay's `state`). */
@@ -185,7 +189,9 @@ export function planLanes(
     cwd: a.cwd,
     repo,
     lane: lane!,
-    resident: held || !!reg?.resident,
+    // scope "all" (tier ①) is live by definition.
+    resident: held || !!reg?.resident || reg?.scope === "all",
+    scope: reg?.scope ?? "owner",
     wake: reg?.wake !== false,
     busy: a.state === "active",
   }));
@@ -241,7 +247,15 @@ export type ManagerState = {
 };
 
 export type Action =
-  | { type: "start-listener"; lane: string; cwd: string; pid: number }
+  | {
+      type: "start-listener";
+      lane: string;
+      cwd: string;
+      pid: number;
+      scope: LaneScope;
+      /** Its agent has its own feed of his lines (wake: false): the listener skips them. */
+      skipOwner: boolean;
+    }
   | { type: "stop-listener"; lane: string }
   | { type: "greet"; lane: string; text: string }
   | { type: "left"; lane: string }
@@ -260,7 +274,8 @@ export type World = {
 
 /** The greeting, from config lanes.greeting. */
 export function greeting(p: Planned, template: string, locale = "zh"): string {
-  const mode = laneModeWord({ mode: p.resident ? "listener" : "reader" }, locale) ?? "";
+  const mode =
+    laneModeWord({ mode: p.resident ? "listener" : "reader", scope: p.scope }, locale) ?? "";
   return template
     .replaceAll("{name}", p.lane)
     .replaceAll("{repo}", p.repo)
@@ -303,7 +318,14 @@ export function decide(
       continue;
     }
     if (p.resident && !w.running.has(p.lane) && !w.external.has(p.lane))
-      actions.push({ type: "start-listener", lane: p.lane, cwd: p.cwd, pid: p.pid });
+      actions.push({
+        type: "start-listener",
+        lane: p.lane,
+        cwd: p.cwd,
+        pid: p.pid,
+        scope: p.scope,
+        skipOwner: !p.wake,
+      });
     if (!greeted.has(p.lane)) {
       actions.push({ type: "greet", lane: p.lane, text: greeting(p, cfg.greeting, locale) });
       greeted.add(p.lane);

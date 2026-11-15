@@ -11,6 +11,12 @@
  *   lianki-dev lane-listen --as codex --cwd ~/ws/snolab/lianki/tree/codex
  *   lianki-dev lane-listen --as agy --deliver 12549 --tests
  *   lianki-dev lane-listen --as codex --dry-run       # print what it would hand over
+ *   lianki-dev lane-listen --as claude --cwd … --everyone --skip-owner
+ *
+ * --everyone (tier ①, docs/lane-listen.md "Five tiers"): agents' lines and system
+ * lines are handed over too, marked 【agent · coco】 / 【系统】 (FYI, never answered),
+ * never the lane's own; the hub shows it as hearing all messages. --skip-owner: not
+ * his lines (小克 has its own feed of them).
  *
  * The token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (0600),
  * made by the owner (lianki.com/my/preferences → API tokens; name = the lane,
@@ -21,9 +27,11 @@
  * spawns the listener and `ay send`.
  */
 import { join } from "node:path";
-import { type RouteLane, isRouteLane, laneTakes } from "../../lib/lane-route";
+import { type RouteLane, isRouteLane } from "../../lib/lane-route";
 import { setLaneTable } from "../../packages/debug-chat/src/voices";
 import {
+  listenerTakes,
+  routeKey,
   laneToken,
   lineOf,
   makeDeliverer,
@@ -41,13 +49,25 @@ type Opts = {
   dryRun: boolean;
   /** Every owner line, not only the ones addressed to this lane. */
   all: boolean;
+  /** Agents' and system lines too (tier ①). */
+  everyone: boolean;
+  /** No owner lines (the lane has its own feed of them). */
+  skipOwner: boolean;
 };
 
 function parse(argv: string[]): Opts | Error {
-  const o: Partial<Opts> & { tests: boolean; dryRun: boolean; all: boolean } = {
+  const o: Partial<Opts> & {
+    tests: boolean;
+    dryRun: boolean;
+    all: boolean;
+    everyone: boolean;
+    skipOwner: boolean;
+  } = {
     tests: false,
     dryRun: false,
     all: false,
+    everyone: false,
+    skipOwner: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -59,6 +79,8 @@ function parse(argv: string[]): Opts | Error {
     else if (a === "--tests") o.tests = true;
     else if (a === "--dry-run") o.dryRun = true;
     else if (a === "--all") o.all = true;
+    else if (a === "--everyone") o.everyone = o.all = true;
+    else if (a === "--skip-owner") o.skipOwner = true;
     else return new Error(`lane-listen: unknown argument ${a}`);
   }
   o.lane ??= (process.env.LIANKI_LANE || undefined) as RouteLane | undefined;
@@ -68,7 +90,8 @@ function parse(argv: string[]): Opts | Error {
     try {
       setLaneTable(JSON.parse(process.env.LIANKI_LANE_TABLE));
     } catch {}
-  if (!isRouteLane(o.lane) || o.lane === "chat")
+  // 小克's token "claude" listens too (as the route "chat"); "chat" itself is eval.ts's.
+  if (!o.lane || o.lane === "chat" || !isRouteLane(routeKey(o.lane)))
     return new Error(
       "lane-listen: --as codex | agy | a lane in LIANKI_LANE_TABLE (the chat lane listens with `eval.ts chat --route chat`)",
     );
@@ -199,6 +222,8 @@ async function main(): Promise<number> {
         o.repo,
         "--as",
         o.lane,
+        // The hub shows this listener as hearing every line (presence, "全部消息").
+        ...(o.everyone ? ["--everyone"] : []),
       ],
       {
         cwd: o.repo,
@@ -228,7 +253,7 @@ async function main(): Promise<number> {
           });
         if (!l || l.history || seen.has(l.id)) continue;
         seen.add(l.id);
-        if (l.etaLane !== o.lane && !laneTakes(o.lane, l, { tests: o.tests, all: o.all })) continue;
+        if (!listenerTakes(o, l)) continue;
         if (!voiceAllowed(l)) {
           log({ type: "other-voice", lane: o.lane, id: l.id });
           continue;

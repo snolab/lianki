@@ -8,6 +8,7 @@ import {
   isLaneEventKind,
   laneEventText,
   laneModeWord,
+  isLaneScope,
   parseLaneEvent,
   tokensNeededText,
   withLaneEvent,
@@ -42,6 +43,16 @@ describe("lane event strings", () => {
   });
   it("the mode word: muted first, then the mode, else none", () => {
     expect(laneModeWord({ mode: "listener" }, "zh")).toBe("实时监听");
+    expect(laneModeWord({ mode: "listener", scope: "all" }, "zh")).toBe("实时监听（全部消息）");
+    expect(laneModeWord({ mode: "listener", scope: "owner" }, "en")).toBe("listening live");
+    expect(laneModeWord({ mode: "reader", scope: "all" }, "en")).toBe("read-only");
+    expect(laneEventText({ kind: "listeningAll", name: "小克" }, "zh")).toBe(
+      "小克 开始实时监听（全部消息）",
+    );
+    expect(laneEventText({ kind: "listening", name: "小克" }, "zh")).toBe("小克 开始实时监听");
+    expect(isLaneScope("all")).toBe(true);
+    expect(isLaneScope("owner")).toBe(true);
+    expect(isLaneScope("x")).toBe(false);
     expect(laneModeWord({ mode: "reader" }, "en")).toBe("read-only");
     expect(laneModeWord({ mode: "listener", muted: true }, "en")).toBe("muted");
     expect(laneModeWord({}, "en")).toBeNull();

@@ -6,8 +6,15 @@
 import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { type RouteLane, laneOfRoute, routeLine, testText } from "../../lib/lane-route";
-import { laneSpec } from "../../packages/debug-chat/src/voices";
+import {
+  type RouteLane,
+  laneOfRoute,
+  laneTakes,
+  routeLine,
+  routeOfLane,
+  testText,
+} from "../../lib/lane-route";
+import { isLaneId, laneOf, laneSpec } from "../../packages/debug-chat/src/voices";
 import { ownerClock, ownerTag } from "./owner-time";
 
 /** Where a lane's token is kept on this Mac. */
@@ -64,6 +71,17 @@ export type Line = {
   etaLane?: string;
   /** The Mac's voiceprint decision on a spoken owner line: "me" | "other" | "unknown" (absent: typed, or no print). */
   voice?: string;
+  /**
+   * An agent's line ("agent") or a system line ("system": the hub's lane events, the
+   * lanes manager's, a state-tree line for another lane), for a lane that hears every
+   * line (lane-listen --everyone, tier ①). Absent: the owner's (or a friend's) line.
+   */
+  kind?: "agent" | "system";
+  /** An agent line's sender: its shown name ("coco", "Li") and its lane (token name or lane id). */
+  sender?: string;
+  senderLane?: string;
+  /** A lane event's lane (a system line about that lane). */
+  eventLane?: string;
 };
 /**
  * Whether a lane may hear this owner line (owner, 2026-11-14 23:2x: "只有我自己的
@@ -110,8 +128,86 @@ export function lineOf(raw: string): (Line & { history: boolean }) | null {
     typeof (m.speaker as { decision?: unknown }).decision === "string"
       ? { voice: (m.speaker as { decision: string }).decision }
       : {}),
+    ...(m.from === "agent" ? agentFields(m) : {}),
     history: v.history === true,
   };
+}
+
+/** The labels of lines the system posts (lane-registry.ts LANE_EVENT_LABEL, the lanes manager's token). */
+const SYSTEM_LABELS = new Set(["lanes"]);
+
+/** An agent line's kind, sender and (its prefix gone) text; a system line's kind and event lane. */
+function agentFields(m: Record<string, unknown>): Partial<Line> {
+  // A routing test line (--tests) stays what it was: not an agent's FYI.
+  if (testText({ from: "agent", text: m.text as string }) !== null) return {};
+  const ev = m.laneEvent as { lane?: unknown } | undefined;
+  const label = typeof m.label === "string" ? m.label : "";
+  if (
+    (ev && typeof ev === "object") ||
+    SYSTEM_LABELS.has(label) ||
+    m.source === "eta" ||
+    m.agentId === "eta"
+  )
+    return {
+      kind: "system",
+      ...(ev && typeof ev.lane === "string" ? { eventLane: ev.lane } : {}),
+    };
+  const r = laneOf({ lane: m.lane, text: m.text as string });
+  const tokenLane = typeof m.tokenLane === "string" ? m.tokenLane : undefined;
+  const senderLane = tokenLane ?? r.lane ?? (label || undefined);
+  const known = r.lane ?? (tokenLane && isLaneId(tokenLane) ? tokenLane : null);
+  const sender = (known && laneSpec(known).name) || (known === "main" ? "Li" : "") || senderLane;
+  return {
+    kind: "agent",
+    text: r.text,
+    ...(sender ? { sender } : {}),
+    ...(senderLane ? { senderLane } : {}),
+  };
+}
+
+/** What a listener was started with (lane-listen.ts flags). */
+export type TakeOpts = {
+  lane: string;
+  tests?: boolean;
+  all?: boolean;
+  /** --everyone: agents' and system lines too. */
+  everyone?: boolean;
+  /** --skip-owner: none of his lines (the lane has its own feed of them). */
+  skipOwner?: boolean;
+};
+
+/** Does this listener take the line: a state-tree nudge to it, his lines it hears, and with --everyone agents' and system lines. */
+export function listenerTakes(o: TakeOpts, l: Line): boolean {
+  if (l.etaLane === o.lane) return true;
+  if (o.everyone && everyoneTakes(o.lane, l)) return true;
+  if (o.skipOwner && l.from === "owner") return false;
+  return laneTakes(routeKey(o.lane), l, { tests: o.tests, all: o.all });
+}
+
+/** The route lane a listening lane matches as: 小克's token "claude" answers as the route "chat". */
+export const routeKey = (lane: string): RouteLane =>
+  isLaneId(lane) ? (routeOfLane(lane) ?? lane) : lane;
+/** The chat lane id a listening lane is ("chat" and "claude" are 小克's). */
+const laneIdKey = (lane: string) => laneOfRoute(routeKey(lane));
+
+/** Is this line the lane's own (its own say, or a system line about itself)? Never handed back to it. */
+export function ownLine(lane: string, l: Pick<Line, "kind" | "senderLane" | "eventLane">): boolean {
+  if (l.kind === "system")
+    return l.eventLane !== undefined && laneIdKey(l.eventLane) === laneIdKey(lane);
+  if (l.kind !== "agent" || !l.senderLane) return false;
+  return l.senderLane === lane || laneIdKey(l.senderLane) === laneIdKey(lane);
+}
+
+/**
+ * Does a lane that hears every line (--everyone) take this agent or system line? In the
+ * owner thread, not its own. Owner lines go through laneTakes as before.
+ */
+export function everyoneTakes(
+  lane: string,
+  l: Pick<Line, "kind" | "thread" | "senderLane" | "eventLane">,
+): boolean {
+  if (!l.kind || (l.thread ?? "owner") !== "owner") return false;
+  return !ownLine(lane, l);
 }
 
 /** "HH:MM TAG" in the machine's zone (or LIANKI_OWNER_TZ), e.g. "01:06 JST"; now for a bad time. */
@@ -134,7 +230,7 @@ export function addressee(
 ): { to: "mine" } | { to: "other"; names: string[] } | { to: "none" } {
   const r = routeLine(text);
   if (!r.addressed) return { to: "none" };
-  if (r.all || r.lanes.includes(lane)) return { to: "mine" };
+  if (r.all || r.lanes.includes(routeKey(lane))) return { to: "mine" };
   return { to: "other", names: r.lanes.map((x) => laneSpec(laneOfRoute(x)).name || x) };
 }
 
@@ -144,6 +240,11 @@ export const otherMark = (names: readonly string[]) => `【FYI · 点名 ${names
 export const OTHER_NOTE = "点名别人的：不要回答、不要代做；只在点名你或 全体 时回复。";
 /** Once per batch that holds a line with no name (a listen-to-all lane). */
 export const NONE_NOTE = "未点名：只听，不回。";
+/** Once per batch that holds an agent's or a system line (--everyone): they are FYI, never his asks. */
+export const FYI_NOTE = "agent/系统消息仅供了解：不要回答、不要代做；只在他点名你或 全体 时回复。";
+/** How an agent line and a system line are marked in a hand-off. */
+export const agentMark = (name?: string) => `【agent · ${name || "?"}】`;
+export const SYSTEM_MARK = "【系统】";
 
 /** What the lane's agent is handed: his words, and how to answer as itself. */
 export function handoff(lane: RouteLane, l: Line, repo: string): string {
@@ -153,6 +254,12 @@ export function handoff(lane: RouteLane, l: Line, repo: string): string {
       "",
       'The state tree\'s hub sent this to your lane (docs/state-tree.md, "Blocked and paused", "Receipts"). Act on it; report on the node with bun scripts/dev/progress.ts, or answer in Li with:',
       `  bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} say --repo ${repo} --as ${lane} "<your reply>"`,
+    ].join("\n");
+  if (l.kind)
+    return [
+      `${l.kind === "agent" ? agentMark(l.sender) : SYSTEM_MARK}(${ownerAt(l.at)}, Li chat) ${l.text}`,
+      "",
+      `${FYI_NOTE} You hear every line in his chat (lane-listen --everyone); this one is not his.`,
     ].join("\n");
   const test = testText(l);
   const words = test ?? l.text;
@@ -186,6 +293,8 @@ export const HANDOFF_SKILL = ".agents/skills/lane-listen/SKILL.md";
  */
 export function briefBullet(lane: RouteLane, l: Line): string {
   if (l.etaLane === lane) return `- (state tree) ${l.text}`;
+  if (l.kind === "agent") return `- (id:${l.id}) ${agentMark(l.sender)}${l.text}`;
+  if (l.kind === "system") return `- (id:${l.id}) ${SYSTEM_MARK}${l.text}`;
   const test = testText(l);
   if (test !== null) return `- (id:${l.id}) [lane-test] ${test}`;
   const to = addressee(lane, l.text);
@@ -198,10 +307,14 @@ export function briefBullet(lane: RouteLane, l: Line): string {
 export function batchNotes(lane: RouteLane, lines: readonly Line[]): string[] {
   const kinds = new Set(
     lines
-      .filter((l) => l.etaLane !== lane && testText(l) === null)
+      .filter((l) => l.etaLane !== lane && !l.kind && testText(l) === null)
       .map((l) => addressee(lane, l.text).to),
   );
-  return [...(kinds.has("other") ? [OTHER_NOTE] : []), ...(kinds.has("none") ? [NONE_NOTE] : [])];
+  return [
+    ...(kinds.has("other") ? [OTHER_NOTE] : []),
+    ...(kinds.has("none") ? [NONE_NOTE] : []),
+    ...(lines.some((l) => l.kind && l.etaLane !== lane) ? [FYI_NOTE] : []),
+  ];
 }
 
 /**
@@ -217,8 +330,10 @@ export function handoffBrief(
   first: boolean,
 ): string {
   const at = ownerAt(lines.at(-1)?.at);
+  // Only agents' and system lines (--everyone): not his words, so not "owner →".
+  const from = lines.some((l) => !l.kind) ? "owner" : "chat";
   const out = [
-    `【owner → ${lane}】${at}`,
+    `【${from} → ${lane}】${at}`,
     ...batchNotes(lane, lines),
     ...lines.map((l) => briefBullet(lane, l)),
   ];
@@ -248,6 +363,8 @@ export const BUSY_RECHECK_MS = 5_000;
  */
 export const urgentLine = (lane: RouteLane, l: Line) => {
   if (l.etaLane === lane) return true;
+  // An agent's or a system line never breaks in: FYI, whatever names it holds.
+  if (l.kind) return false;
   return addressee(lane, l.text).to === "mine";
 };
 /** The body `ay send` still accepts: its own 1024 limit minus its ~150-char wrapper, with room for the header and the skill line. */

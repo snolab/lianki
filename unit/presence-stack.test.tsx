@@ -222,6 +222,35 @@ it("summary, panel, rename, picture, remove and invite", async () => {
     await click(btn($('[data-testid="debug-chat-presence-panel"]')!, "Close"));
     expect($('[data-testid="debug-chat-presence-panel"]')).toBeNull();
 
+    // The two live kinds (tier ① all messages, ② his only) carry distinct marks; readers and muted none.
+    await render([
+      {
+        key: "lane:claude",
+        name: "小克",
+        lane: "claude",
+        mode: "listener",
+        scope: "all",
+        active: T,
+      },
+      { key: "lane:codex", name: "coco", lane: "codex", mode: "listener", active: T - 1 },
+      { key: "lane:agy", name: "杰咪", lane: "agy", mode: "listener", muted: true, active: T - 2 },
+      { key: "tok:r", name: "reader", mode: "reader", active: T - 3 },
+    ]);
+    const marks = $$('[data-testid="debug-chat-presence-live"]');
+    expect(marks.map((m) => [m.getAttribute("data-scope"), m.getAttribute("title")])).toEqual([
+      ["all", "listening live (all messages)"],
+      ["owner", "listening live"],
+    ]);
+    await click(stack, 0);
+    const liveRows = $$('[data-testid="debug-chat-presence-row"]').map((r) => r.textContent ?? "");
+    expect(liveRows[0]).toContain("listening live (all messages)");
+    expect(liveRows[1]).toContain("listening live");
+    expect(liveRows[1]).not.toContain("all messages");
+    expect(liveRows[2]).toContain("muted");
+    expect(liveRows[3]).toContain("read-only");
+    expect($$('[data-testid="debug-chat-presence-live"]')).toHaveLength(4);
+    await click(stack, 0);
+
     // No one here: on the owner's page a "+" still opens Invite.
     await render([]);
     expect($('[data-testid="debug-chat-presence"]')!.textContent).toBe("+");

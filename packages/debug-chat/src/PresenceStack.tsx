@@ -64,6 +64,29 @@ const SVG_SAMPLE = '<svg viewBox="0 0 24 24">…</svg>';
 const clock = (at: number) =>
   new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
+/**
+ * The small dot on a live listener's avatar (lane-registry.ts): filled seal red when it hears
+ * every line (tier ①, scope "all"), a red ring when it hears the owner's lines only (tier ②).
+ * Readers and muted lanes get none. Its title is the mode word (lane-events.ts).
+ */
+export function LiveMark({ p }: { p: Pick<Present, "mode" | "muted" | "scope"> }) {
+  if (p.mode !== "listener" || p.muted) return null;
+  const all = p.scope === "all";
+  return (
+    <span
+      data-testid="debug-chat-presence-live"
+      data-scope={all ? "all" : "owner"}
+      title={laneModeWord(p, chatLocale()) ?? undefined}
+      className="absolute -bottom-px -end-px h-1.5 w-1.5 rounded-full ring-1 ring-[oklch(0.98_0.005_85)] dark:ring-[oklch(0.22_0.01_260)]"
+      style={
+        all
+          ? { background: SEAL }
+          : { background: "oklch(0.98 0.005 85)", boxShadow: `inset 0 0 0 1.5px ${SEAL}` }
+      }
+    />
+  );
+}
+
 /** The picture an entry is drawn with (its own, its lane's, or the generated mark). */
 const pictureOf = (p: Present, mainName: string) =>
   agentAvatar({ name: p.name || mainName, lane: p.lane, avatar: p.avatar });
@@ -164,6 +187,7 @@ export function PresenceStack({
             style={{ zIndex: stack.shown.length - i }}
           >
             <Avatar src={pictureOf(p, mainName)} name={p.name} size={AV} hidden />
+            <LiveMark p={p} />
           </span>
         ))}
         {stack.more > 0 && (
@@ -318,7 +342,7 @@ function Row({
   const [svgBad, setSvgBad] = useState(false);
   const mine = !!p.id && !!p.tok;
   const activity: ReactNode[] = [];
-  // Its lane's mode (lane-registry.ts): listening live, read-only, or muted by him.
+  // Its lane's mode (lane-registry.ts): listening live (all lines, or his only), read-only, or muted by him.
   const mode = laneModeWord(p, chatLocale());
   if (mode) activity.push(mode);
   if (p.live) activity.push(t.peopleNow);
@@ -332,7 +356,10 @@ function Row({
   return (
     <li data-testid="debug-chat-presence-row" data-key={p.key} className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
-        <Avatar src={pictureOf(p, mainName)} name={p.name} size={24} hidden />
+        <span className="relative inline-flex shrink-0">
+          <Avatar src={pictureOf(p, mainName)} name={p.name} size={24} hidden />
+          <LiveMark p={p} />
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">
             {p.name || mainName}

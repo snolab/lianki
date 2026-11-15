@@ -469,9 +469,10 @@ export function chatArgv(
     return ["chat", "ask", ...out];
   }
   if (sub === "listen") {
-    if (rest.length)
-      return new Error(`listen: ${rest[0]} needs the grant path (unset LIANKI_TOKEN)`);
-    return ["chat", "listen", "--json"];
+    // --everyone: the hub shows this listener as hearing every line (lane-listen --everyone).
+    const other = rest.find((a) => a !== "--everyone");
+    if (other) return new Error(`listen: ${other} needs the grant path (unset LIANKI_TOKEN)`);
+    return ["chat", "listen", "--json", ...(rest.includes("--everyone") ? ["--everyone"] : [])];
   }
   return new Error(`${sub} has no lane-token path`);
 }

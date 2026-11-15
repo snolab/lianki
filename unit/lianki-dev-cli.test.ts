@@ -488,6 +488,8 @@ describe("lane token: say/ask/listen through lianki chat", () => {
   });
   it("listen is the JSON stream; serve and inbox have no token path", () => {
     expect(chatArgv("listen", [])).toEqual(["chat", "listen", "--json"]);
+    expect(chatArgv("listen", ["--everyone"])).toEqual(["chat", "listen", "--json", "--everyone"]);
+    expect(chatArgv("listen", ["--everyone", "--to"])).toBeInstanceOf(Error);
     expect(chatArgv("serve", [])).toBeInstanceOf(Error);
     expect(chatArgv("inbox", [])).toBeInstanceOf(Error);
   });

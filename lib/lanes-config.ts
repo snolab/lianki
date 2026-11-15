@@ -20,7 +20,17 @@ export type LaneAgentDef = {
   resident?: boolean;
   /** Woken by name (`ay send`) when a line names it; false = it joins (greets, reader) but is never woken. Default true. */
   wake?: boolean;
+  /**
+   * What a live lane hears (docs/lane-listen.md, "Five tiers"): "owner" (default) his lines
+   * only; "all" his lines, every agent's and the system lines too (lane-listen --everyone).
+   * "all" makes the lane live (a listener) even without `resident`.
+   */
+  scope?: LaneScope;
 };
+
+/** What a live lane hears: the owner's lines only, or every line in the thread. */
+export type LaneScope = "owner" | "all";
+export const LANE_SCOPES = ["owner", "all"] as const;
 
 export const LANE_NAME_RE = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,39}$/u;
 
@@ -34,6 +44,7 @@ export const laneAgentSchema = z
     lane: z.string().regex(LANE_NAME_RE, "a lane name: the token's name"),
     resident: z.boolean().optional(),
     wake: z.boolean().optional(),
+    scope: z.enum(LANE_SCOPES).optional(),
   })
   .strict();
 
@@ -47,8 +58,16 @@ export const LANES_CONFIG_DEFAULTS = {
     // mimiai's codex listens to everything too (owner, 2026-11-15 13:2x JST "把它叫进来这里监听").
     { cwd: "mimiai/tree/main", cli: "codex", lane: "mimiai", resident: true },
     // 小克 (the Claude Code chat lane) keeps its own live feed of the owner's
-    // lines: it joins as `claude`, but the manager never wakes it.
-    { cwd: "lianki/tree/agy", cli: "claude", lane: "claude", resident: false, wake: false },
+    // lines: it joins as `claude`, but the manager never wakes it. It hears every
+    // other line live (owner, 2026-11-15 15:1x JST: tier ①, scope "all"): its
+    // lane-listen --everyone skips his lines, which its own feed already brings.
+    {
+      cwd: "lianki/tree/agy",
+      cli: "claude",
+      lane: "claude",
+      wake: false,
+      scope: "all",
+    },
   ] as LaneAgentDef[],
   "lanes.relistSec": 60,
   "lanes.greeting":

@@ -47,6 +47,11 @@ export type Present = {
    * listener or a reader; absent on an older hub, or for a lane it has no row for.
    */
   mode?: LaneMode;
+  /**
+   * A listener that hears every line, agents' and system lines too (tier ①, lane-listen
+   * --everyone); absent: the owner's lines only (tier ②), or not a listener.
+   */
+  scope?: "all";
   /** Muted by the owner: it reads and listens, but cannot post. */
   muted?: true;
   /** Since when it has been here (socket opened, or first read in the window). */
@@ -123,7 +128,7 @@ export function presentList(p: {
   viewer?: string;
   mainName?: string;
   /** The lane registry's rows of this thread (by lane name): each entry's mode and mute. */
-  lanes?: readonly { lane: string; state: string; muted?: true }[];
+  lanes?: readonly { lane: string; state: string; muted?: true; scope?: string }[];
 }): Present[] {
   const out = new Map<string, Present>();
   const rec = new Map(p.records.map((r) => [r.tag, r]));
@@ -139,6 +144,7 @@ export function presentList(p: {
     if (!l) return {};
     return {
       ...(l.state === "listener" || l.state === "reader" ? { mode: l.state as LaneMode } : {}),
+      ...(l.state === "listener" && l.scope === "all" ? { scope: "all" as const } : {}),
       ...(l.muted ? { muted: true as const } : {}),
     };
   };
