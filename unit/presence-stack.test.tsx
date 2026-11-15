@@ -251,6 +251,51 @@ it("summary, panel, rename, picture, remove and invite", async () => {
     expect($$('[data-testid="debug-chat-presence-live"]')).toHaveLength(4);
     await click(stack, 0);
 
+    // Read-only lanes (tier ③) in the stack too: after the live ones, greyed, no dot;
+    // past the cap a "+K" chip; the panel lists all, readers last under "Read-only", with roles.
+    await render([
+      { key: "lane:release", name: "lianki-release", mode: "reader", seenAt: T, active: T },
+      { key: "lane:claude", name: "小克", lane: "claude", mode: "listener", active: T - 1 },
+      { key: "lane:codex", name: "coco", lane: "codex", mode: "listener", active: T - 2 },
+      { key: "agent:otoji-main", name: "otoji-main", mode: "reader", active: T - 3 },
+      { key: "agent:lanes", name: "lanes", mode: "reader", active: T - 4 },
+    ]);
+    const avs = $$('[data-testid="debug-chat-presence-avatar"]');
+    expect(avs.map((a) => a.getAttribute("data-key"))).toEqual([
+      "lane:claude",
+      "lane:codex",
+      "lane:release",
+    ]);
+    expect(avs.map((a) => a.getAttribute("data-mode"))).toEqual(["listener", "listener", "reader"]);
+    expect((avs[2]!.firstElementChild as HTMLElement).style.filter).toBe("grayscale(1)");
+    expect((avs[0]!.firstElementChild as HTMLElement).style.filter).toBe("");
+    expect(avs[2]!.querySelector('[data-testid="debug-chat-presence-live"]')).toBeNull();
+    expect($('[data-testid="debug-chat-presence-more"]')!.textContent).toBe("+2");
+    expect(stack.getAttribute("aria-label")).toBe("Who is here: 小克, coco, lianki-release +2");
+    await click(stack, 0);
+    const readers = $('[data-testid="debug-chat-presence-readers"]')!;
+    expect(readers.querySelector("h3")!.textContent).toBe(UI_EN.peopleReadOnly);
+    expect(
+      [...readers.querySelectorAll('[data-testid="debug-chat-presence-row"]')].map((r) =>
+        r.getAttribute("data-key"),
+      ),
+    ).toEqual(["lane:release", "agent:otoji-main", "agent:lanes"]);
+    expect($$('[data-testid="debug-chat-presence-row"]')).toHaveLength(5);
+    const rowOf = (k: string) => $(`[data-testid="debug-chat-presence-row"][data-key="${k}"]`)!;
+    // Roles from the lane table (voices.ts LANES): claude's is known; an unknown reader has none.
+    expect(
+      rowOf("lane:claude").querySelector('[data-testid="debug-chat-presence-role"]'),
+    ).not.toBeNull();
+    expect(
+      rowOf("agent:otoji-main").querySelector('[data-testid="debug-chat-presence-role"]'),
+    ).toBeNull();
+    await click(stack, 0);
+    // Only live ones: no read-only group.
+    await render([{ key: "lane:codex", name: "coco", lane: "codex", mode: "listener", active: T }]);
+    await click(stack, 0);
+    expect($('[data-testid="debug-chat-presence-readers"]')).toBeNull();
+    await click(stack, 0);
+
     // No one here: on the owner's page a "+" still opens Invite.
     await render([]);
     expect($('[data-testid="debug-chat-presence"]')!.textContent).toBe("+");

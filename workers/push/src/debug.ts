@@ -5382,7 +5382,8 @@ export class DebugHub {
       !pageReads.length &&
       !records.length &&
       !live.length &&
-      !lines.some((m) => m.from === "agent")
+      !lines.some((m) => m.from === "agent") &&
+      !lanes.some((l) => l.state === "reader")
     )
       return pages.map(({ ws }) => ({ ws, list: [] }));
     const { readMs, speakerMs } = await this.presenceWindows();
