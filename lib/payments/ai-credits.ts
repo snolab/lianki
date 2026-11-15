@@ -22,6 +22,7 @@
 import type { D1StmtLike } from "@/lib/d1/types";
 import { CREDITS_PER_USD } from "./credits";
 import { creditStmts, getBalance, type D1WithBatch } from "./credits-store";
+import { paidUsdMicro, recordSpend, type SpendDeps } from "./spend-alert";
 
 const MICRO = 1_000_000;
 
@@ -87,13 +88,16 @@ export type SettleResult = { charged: number; refunded: number } | null;
 /**
  * Settle a reservation with the real cost in millionths of a credit (0 when
  * nothing was billed). Once only: null when it was not pending (already
- * settled, or never reserved).
+ * settled, or never reserved). A settled cost goes on to the spend alert's
+ * counters (lib/payments/spend-alert.ts) at the provider's cost; `spend.push`
+ * is the hub it posts to (default: the Worker's PUSH binding).
  */
 export async function settleAi(
   d1: D1WithBatch,
   key: string,
   costMicro: number,
   now = new Date(),
+  spend: Omit<SpendDeps, "now"> = {},
 ): Promise<SettleResult> {
   const cost = Math.max(0, Math.ceil(costMicro));
   const row = await d1
@@ -156,6 +160,7 @@ export async function settleAi(
     .bind(key, tok)
     .first<{ reserved: number; charged: number }>();
   if (!done) return null;
+  if (cost > 0) await recordSpend(d1, userId, paidUsdMicro(cost), { ...spend, now });
   return { charged: Number(done.charged), refunded: Number(done.reserved) - Number(done.charged) };
 }
 

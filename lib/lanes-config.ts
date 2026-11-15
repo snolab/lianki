@@ -51,7 +51,8 @@ export const LANES_CONFIG_DEFAULTS = {
     { cwd: "lianki/tree/agy", cli: "claude", lane: "claude", resident: false, wake: false },
   ] as LaneAgentDef[],
   "lanes.relistSec": 60,
-  "lanes.greeting": "大家好，我是 {name}（{repo} · {cli}），{mode}入群。",
+  "lanes.greeting":
+    "大家好，我是 {name}（{repo} · {cli}），{mode}入群。只回答点名我或「全体」的话。",
 } as const;
 
 /** The env var each Mac-side key is read from. */

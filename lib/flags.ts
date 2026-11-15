@@ -437,6 +437,15 @@ export const FLAGS = {
     group: "ai",
     audience: "owner",
   },
+  // Owner, 2026-11-15 15:0x JST: "每超过一美元，就在我这里发一个新的通知" — the
+  // whole site's and his own account's AI/TTS/STT spend (lib/payments/spend-alert.ts).
+  "partner.spend-alert": {
+    description:
+      "AI 花费提醒：全站和你自己账号的 AI（学习伙伴、朗读、语音识别）花费（按服务商成本算，cost ledger 和已结算的付费调用）每多一个整数步长（/dev/config 的 partner.spendAlertStepUsd，默认 1 美元），就在你的线程里发一条消息并朗读，比如「AI 全站花费已达 $3（今日 $0.42，本月 $3.00）」「我的 AI 花费已达 $1（…）」；文字在 /dev/config 的 partner.spendAlertSiteText / partner.spendAlertMineText。同一个金额只提醒一次。累计从上线这一刻算起。关闭 = 不发；关闭期间经过的金额不补发。",
+    default: true,
+    group: "ai",
+    audience: "owner",
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;

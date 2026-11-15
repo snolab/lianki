@@ -332,6 +332,11 @@ import {
 import { CHAT_PATH, REVOKED_PATH, TokenChat, partKey, tokenAtt } from "./token-chat";
 import { LANE_EVENTS_FLAG, LANE_REG_PREFIX, type LaneReg, LaneRegistry } from "./lane-registry";
 import {
+  SPEND_ALERT_LABEL,
+  SPEND_ALERT_PATH,
+  parseSpendNotice,
+} from "../../../lib/payments/spend-alert-config";
+import {
   type PartRecord,
   nextExpiry,
   presentList,
@@ -2503,6 +2508,7 @@ export class DebugHub {
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     if (url.pathname === ETA_PATH) return this.etaApi(req);
+    if (url.pathname === SPEND_ALERT_PATH) return this.spendApi(req);
     if (url.pathname === REVOKED_PATH) return this.tokensRevoked(req);
     if (url.pathname.startsWith(AVATAR_PATH)) return this.avatarApi(req, url);
     if (url.pathname === CHAT_PATH) {
@@ -2676,6 +2682,36 @@ export class DebugHub {
       }),
     );
     return Response.json({ ok: true, delivered: true, listeners });
+  }
+
+  /**
+   * POST /internal/spend-alert {scope, step, text}: a spend counter passed a
+   * step (lib/payments/spend-alert.ts, which checked flag partner.spend-alert,
+   * the account and that this step was never posted). From the main Worker
+   * alone, over its PUSH binding (index.ts answers /internal/* on the
+   * binding's hostname only). One line in the owner's thread, `from: "agent"`
+   * (never the owner), label and agentId "spend", NOT quiet: he asked to be
+   * told, so it is read aloud like any agent line. Never an answer, never
+   * ownerGrant.
+   */
+  private async spendApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let notice: ReturnType<typeof parseSpendNotice> = null;
+    try {
+      notice = parseSpendNotice(await req.json());
+    } catch {}
+    if (!notice) return Response.json({ error: "expected {scope, step, text}" }, { status: 400 });
+    await this.post({
+      id: crypto.randomUUID().slice(0, 8),
+      from: "agent",
+      label: SPEND_ALERT_LABEL,
+      text: notice.text,
+      at: this.now(),
+      thread: OWNER_THREAD,
+      agentId: SPEND_ALERT_LABEL,
+    });
+    console.log(JSON.stringify({ msg: "debug.spend", scope: notice.scope, step: notice.step }));
+    return Response.json({ ok: true, delivered: true });
   }
 
   /**

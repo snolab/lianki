@@ -635,6 +635,52 @@ admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
   booked, the account by name with no email, both matrices and the charts, a
   tapped bar's values, 360 px light + dark).
 
+### Spend alert
+
+Owner, 2026-11-15: "能不能给我一个额度预算提醒，每超过一美元，就在我这里发一个新的通知"
+— and "除了全站额度，还有我个人的". Each time what the calls cost us passes the
+next whole step, one line in his own thread, read aloud like any agent line:
+"AI 全站花费已达 $3（今日 $0.42，本月 $3.00）" for the site, "我的 AI 花费已达 $1（…）"
+for his own account. `lib/payments/spend-alert.ts`; names and defaults in
+`spend-alert-config.ts`.
+
+- **What counts.** Everything the cost ledger books (`bookCost`: free word
+  read-aloud, the microphone, the speech server) and every settled paid charge
+  (`settleAi`: the Learning Partner, Li in his thread, the metered features),
+  at the provider's cost (`costMicro` ÷ `CREDITS_PER_USD` ÷ `MARGIN`, as
+  `/dev/costs`). Both functions call `recordSpend` after a successful write; it
+  never throws and never fails the call.
+- **Two counters**, rows of D1 `spend_alert` (migration 0082): `site`, and
+  `user:<id>` for the account that spent. A running `total_micro` (since the
+  table shipped, not since the ledger began) and `last_micro`, the last step
+  announced. A row whose total reached a higher multiple of the step claims it
+  with `UPDATE … WHERE last_micro < ?`: one line per step however many calls
+  cross it together; several steps crossed at once are one line, the highest.
+  `last_micro` is an amount, so changing the step size never repeats a line.
+- **Whose line.** The site's always; a `user:` counter's only when that
+  account holds `admin` or `dev` now (`holdsSql`, never an email). Anyone
+  else's counter, and every counter while the flag is off, claims its steps
+  silently: turning the flag back on posts the next step, not the missed ones.
+- **Totals** in the line: today and this month in UTC, free + paid, from
+  `cost_ledger` (bounded by the `day` index a day each side, then `at`) and
+  `credit_ai_charge` (`settledAt`); for `mine`, that account's rows only.
+- **Posting.** POST `/internal/spend-alert {scope: "site"|"mine", step, text}`
+  to lianki-push over the PUSH binding (index.ts answers it on the binding's
+  hostname only; DebugHub `spendApi`): `from: "agent"`, label and agentId
+  `spend`, not quiet, never ownerGrant. Over RPC (the Learning Partner, the
+  speech-server booking) there is no OpenNext context, so `worker.ts` passes
+  `env.PUSH`. No binding (a script, a test): the step is left for the next call
+  that has one. A post that fails gives the step back (logged
+  `spend.alert.failed`, the step only).
+- **Switches.** Flag `partner.spend-alert` (default on, audience owner, group
+  ai). Config `partner.spendAlertStepUsd` (default 1, 0.1–100),
+  `partner.spendAlertSiteText` and `partner.spendAlertMineText` (placeholders
+  `{n}`, `{today}`, `{month}`; `{n}` required; the `$` is literal text).
+- Tests: `unit/spend-alert.test.ts` (the step arithmetic, idempotency under
+  concurrent calls, flag off, no binding, a failed post, his account vs anyone
+  else's, the bookCost / settleAi hooks and their totals, the registry);
+  `unit/debug-hub.test.ts` ("DebugHub spend alert").
+
 ### Providers
 
 The wallet is provider-plural (`lib/payments/providers/`). A provider is

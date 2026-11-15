@@ -11,17 +11,28 @@ more lines like:
 
 ```
 【owner → codex】16:17 JST
-- (id:16cd71a4-f49) 小克，我刚刚发现……          ← addressed to another lane: context only
-- (id:2b5b0e58-38a) @你 coco，看一下 #946        ← "@你" = he said your name: answer
+点名别人的：不要回答、不要代做；只在点名你或 全体 时回复。
+- (id:16cd71a4-f49) 【FYI · 点名 小克，不是你】 小克，我刚刚发现……   ← another lane's: silent
+- (id:2b5b0e58-38a) @你 coco，看一下 #946                              ← "@你" = your name or 全体: answer
 ```
+
+A line with no name at all (you listen to everything) comes under a
+`未点名：只听，不回。` note: context, no reply.
 
 Several lines arrive together when you were busy: read them as one passage, in
 order, and answer once.
 
+## 只回答点名你的话
+
+主人 2026-11-15：「我在 @ 你的时候，这些只读 AI（包括 mimiai）不要乱回复。」
+
+- 只回答点名你或「全体」的话（`@你`）。
+- 被点名的是别人时（`【FYI · 点名 X，不是你】`）不插话、不代答、不追问，也不替它去做；那是 X 的活。
+- 没点名的话（`未点名：只听，不回。`）只当背景听，不回。
+
 ## Rules
 
-- Answer only lines marked `@你` (or clearly meant for you); the rest is context.
-  Another lane answers its own. He only said your name with nothing else → ask
+- Answer only lines marked `@你`; the rest is context. Another lane answers its own. He only said your name with nothing else → ask
   what he needs, one short line.
 - Reply as yourself, short, in his language:
   `bun <repo>/scripts/dev/lianki-dev.ts reply --as <lane> --id <id> "<reply>"`

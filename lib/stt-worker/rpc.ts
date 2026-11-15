@@ -32,6 +32,8 @@ export async function bookSttUsage(
   userId: unknown,
   audioMs: unknown,
   now = new Date(),
+  /** lianki-push, for the spend alert (called over RPC: no OpenNext context). */
+  push: Parameters<typeof bookCost>[4] = null,
 ): Promise<boolean> {
   const ms = Number(audioMs);
   if (typeof userId !== "string" || !USER_ID.test(userId)) return false;
@@ -47,5 +49,7 @@ export async function bookSttUsage(
     db as Parameters<typeof bookCost>[0],
     { userId, feature: LOCAL_STT_FEATURE, usd: (clamped / 60_000) * rate, units: clamped / 1000 },
     now,
+    undefined,
+    push,
   );
 }

@@ -4455,6 +4455,50 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
   });
 });
 
+describe("DebugHub spend alert (/internal/spend-alert, lib/payments/spend-alert.ts)", () => {
+  const post = (s: ReturnType<typeof setup>, body: unknown, method = "POST") =>
+    s.hub.fetch(
+      new Request("https://lianki-push/internal/spend-alert", {
+        method,
+        ...(method === "POST"
+          ? { body: typeof body === "string" ? body : JSON.stringify(body) }
+          : {}),
+      }),
+    );
+
+  it("one agent-side line in the owner's thread, read aloud (not quiet), never his words", async () => {
+    const s = setup();
+    const owner = s.page();
+    await owner.ready;
+    const text = "AI 全站花费已达 $3（今日 $0.42，本月 $3.00）";
+    const res = await post(s, { scope: "site", step: 3, text });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, delivered: true });
+    const line = chats(owner).at(-1) as Record<string, unknown>;
+    expect(line).toMatchObject({
+      from: "agent",
+      label: "spend",
+      agentId: "spend",
+      thread: "owner",
+      text,
+    });
+    expect(line.quiet).toBeUndefined();
+    expect(line.ownerGrant).toBeUndefined();
+    expect(line.answer).toBeUndefined();
+  });
+
+  it("refuses anything but a bounded {scope, step, text} POST", async () => {
+    const s = setup();
+    const owner = s.page();
+    await owner.ready;
+    const before = chats(owner).length;
+    expect((await post(s, { scope: "site", step: 1 })).status).toBe(400);
+    expect((await post(s, "{not json")).status).toBe(400);
+    expect((await post(s, null, "GET")).status).toBe(405);
+    expect(chats(owner).length).toBe(before);
+  });
+});
+
 describe("DebugHub chat history (lib/chat-log.ts over SESSIONS.chatLog)", () => {
   type Req = { op: string; thread: string; id?: string; lines: Record<string, unknown>[] };
   const withLog = (fail = false) => {
