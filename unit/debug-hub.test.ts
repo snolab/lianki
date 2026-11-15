@@ -1595,6 +1595,42 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
     expect(stored.map((m) => m.stt)).toEqual([local, cloud, undefined, undefined]);
   });
 
+  it("a looping voice line is cut to its head, or acked and never posted (stt-repeat.ts)", async () => {
+    const s = setup();
+    const owner = s.page();
+    const c = await agent(s, owner);
+    const local = { route: "local", engine: "sensevoice-small-2024-07-17-int8" };
+    const loop = "あなたが" + "ウィッター".repeat(300);
+    await s.msg(owner, { type: "chat", id: "r1", text: loop, source: "stt", stt: local });
+    expect(c.last("chat")?.message).toMatchObject({
+      id: "r1",
+      text: "あなたがウィッター",
+      stt: { ...local, repeat: "trimmed" },
+    });
+    // Nothing real left: acked (the page's outbox clears), never stored or forwarded.
+    await s.msg(owner, {
+      type: "chat",
+      id: "r2",
+      text: "ab".repeat(40),
+      source: "stt",
+      stt: local,
+    });
+    expect(owner.last("chat-ack")).toMatchObject({ type: "chat-ack", id: "r2" });
+    expect(c.last("chat")?.message).toMatchObject({ id: "r1" });
+    // A typed line is his own: untouched. Natural repetition in speech too.
+    await s.msg(owner, { type: "chat", id: "r3", text: "ab".repeat(40) });
+    await s.msg(owner, { type: "chat", id: "r4", text: "好好好，我知道了", source: "stt" });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as Record<string, unknown>)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    expect(stored.map((m) => [m.id, m.text])).toEqual([
+      ["r1", "あなたがウィッター"],
+      ["r3", "ab".repeat(40)],
+      ["r4", "好好好，我知道了"],
+    ]);
+  });
+
   it("a voice line keeps only a speaker tag the Mac signed over exactly its words", async () => {
     const mac = await speakerKey();
     const s = setup({ STT_SPEAKER_PUB: mac.pub });
@@ -4082,8 +4118,11 @@ describe("DebugHub continuous speech (stt.merge)", () => {
 
   it("the message cap holds: a merged line over MAX_CHAT stays two lines", async () => {
     const { s, owner, lines } = await rig();
-    await s.msg(owner, say("a", `${"字".repeat(3000)}，`, 0, 1000));
-    await s.msg(owner, say("b", `${"词".repeat(1500)}。`, 1500, 3000, { continues: "a" }));
+    // Distinct characters: a run of one is a loop the repetition guard would cut.
+    const han = (from: number, n: number) =>
+      Array.from({ length: n }, (_, i) => String.fromCharCode(0x4e00 + from + i)).join("");
+    await s.msg(owner, say("a", `${han(0, 3000)}，`, 0, 1000));
+    await s.msg(owner, say("b", `${han(3000, 1500)}。`, 1500, 3000, { continues: "a" }));
     expect(lines().map((l) => l.id)).toEqual(["a", "b"]);
   });
 
