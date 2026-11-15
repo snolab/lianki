@@ -1463,6 +1463,7 @@ export function DebugEval({
               ((owner && confirmedOwnerScope === deliveryScope && !isFriend) || friend === "open")
             }
             readReceiptThrottleMs={publicCfg("chat.readReceiptThrottleMs")}
+            gripHoldMs={publicCfg("chat.gripHoldMs")}
             onReadSeq={(seq) => {
               const thread =
                 recoveryThread.scope === deliveryScope ? recoveryThread.thread : undefined;

@@ -1119,7 +1119,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   askJump: "Go to the nearest unanswered question above. Unanswered above: {count}",
   fullScreen: "Full screen",
   fullScreenExit: "Exit full screen",
-  dragGrip: "Move the chat: drag. Tap to fold or open, double-tap for the menu",
+  dragGrip: "Drag to move. Tap to fold or open; double-click or double-tap for full screen. Right-click or touch and hold for the menu.",
   vpMenu: "Voiceprint",
   vpTitle: "Your voiceprint",
   vpNone: "No voiceprint yet.",
