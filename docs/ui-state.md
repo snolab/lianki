@@ -25,9 +25,10 @@ Rules:
   server, plus the offline copies in IndexedDB (`lib/words/idb.ts`). A UI
   store may hold a _pointer_ to them, such as a list id or the key of the word
   at the top of the screen. It never holds the thing itself.
-  A chat draft or outgoing line awaiting acknowledgement is still this tab's
-  pending UI input. Its session outbox may retain that input until the hub
-  durably accepts it; this is not a second store for accepted chat history.
+  A chat draft is still this tab's pending UI input. An outgoing line awaiting
+  acknowledgement waits in the device's outbox (localStorage, per account, so
+  a closed tab's lines are still sent) until the hub durably accepts it; this
+  is not a second store for accepted chat history.
   Explicitly rejected input stays visible in the outbox with its reason,
   without automatic replay or another rejection prompt after reload.
 - **The URL wins** when it carries the same state. sessionStorage only fills

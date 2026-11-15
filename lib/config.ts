@@ -833,6 +833,27 @@ export const CONFIG = {
     description:
       "聊天按线程序号补拉时，一次最多覆盖多少个序号；大缺口分批恢复并在原位置合并，不刷新整页。",
   }),
+  // packages/debug-chat/src/chat-outbox.ts; docs/dev-debug-widget.md, "Pending input".
+  "chat.outboxAckTimeoutMs": int({
+    default: 15000,
+    min: 0,
+    max: 600000,
+    unit: "ms",
+    group: "chat",
+    audience: "public",
+    description:
+      "发出的一条聊天消息（虚线那行）等服务器回执最多等这么多毫秒；没等到就用同一个编号再发一次（服务器按编号去重，不会出现两条），之后每次等待翻倍，最多 8 倍，收到回执就恢复。默认 15000 = 15 秒；0 = 一直等，不重发。",
+  }),
+  "chat.outboxMaxResends": int({
+    default: 4,
+    min: 0,
+    max: 100,
+    unit: "times",
+    group: "chat",
+    audience: "public",
+    description:
+      "一条聊天消息重发这么多次仍没有服务器回执，就不再重发，标成“未发出”（和被服务器拒收一样，可以修改后再发），后面排队的消息继续发；之后若回执到了，这条照样消失。默认 4；0 = 一直重发，不放弃。",
+  }),
   "chat.presenceReadMin": int({
     default: 5,
     min: 1,

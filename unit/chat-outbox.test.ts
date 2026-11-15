@@ -3,6 +3,9 @@ import {
   acknowledgedChatIds,
   hasChatRejection,
   createChatOutbox,
+  migrateSessionOutbox,
+  ACK_BACKOFF_CAP,
+  NO_RECEIPT,
   type OutgoingChat,
 } from "../packages/debug-chat/src/chat-outbox";
 
@@ -423,5 +426,297 @@ describe("persistent outgoing chat", () => {
     expect(a.attempts.at(-1)!.item.text).toBe("private a");
     expect(b.attempts.map((x) => x.item.text)).toEqual(["private b"]);
     expect(replacement.items()[0]!.text).toBe("private a");
+  });
+});
+
+/** A fake clock and a store shared by every outbox made from it (two tabs on one device). */
+function clock(
+  opts: {
+    timeout?: number | (() => number);
+    random?: () => number;
+    maxResends?: number | (() => number);
+  } = {},
+) {
+  let now = 0;
+  let nextHandle = 0;
+  let stored: unknown = [];
+  let n = 0;
+  const timers = new Map<number, { at: number; fn: () => void; ms: number }>();
+  const sends: { tab: string; id: string; at: number }[] = [];
+  const delays: number[] = [];
+  const refused: { id: string; reason: string }[] = [];
+  const tab = (name: string, online = () => true) =>
+    createChatOutbox({
+      shared: true,
+      read: () => structuredClone(stored),
+      write: (items) => {
+        stored = structuredClone(items);
+      },
+      send: (item) => {
+        sends.push({ tab: name, id: item.id, at: now });
+        return online();
+      },
+      id: () => `line-${++n}`,
+      onRejected: (item, reason) => refused.push({ id: item.id, reason }),
+      ackTimeoutMs: opts.timeout ?? 1000,
+      maxResends: opts.maxResends,
+      random: opts.random ?? (() => 0),
+      setTimer: (fn, ms) => {
+        delays.push(ms);
+        timers.set(++nextHandle, { at: now + ms, fn, ms });
+        return nextHandle;
+      },
+      clearTimer: (h) => {
+        timers.delete(h as number);
+      },
+    });
+  const advance = (ms: number) => {
+    const end = now + ms;
+    for (;;) {
+      const due = [...timers.entries()]
+        .filter(([, t]) => t.at <= end)
+        .sort((a, b) => a[1].at - b[1].at)[0];
+      if (!due) break;
+      timers.delete(due[0]);
+      now = due[1].at;
+      due[1].fn();
+    }
+    now = end;
+  };
+  return { tab, advance, sends, delays, timers, refused, stored: () => stored };
+}
+
+describe("receipt timeout and the durable queue", () => {
+  test("a line in flight with no receipt is sent again, same id, after the timeout", () => {
+    const c = clock();
+    const q = c.tab("a");
+    q.ready();
+    q.enqueue({ text: "hello" });
+    expect(c.sends).toEqual([{ tab: "a", id: "line-1", at: 0 }]);
+    c.advance(999);
+    expect(c.sends).toHaveLength(1);
+    c.advance(1);
+    expect(c.sends.map((s) => [s.id, s.at])).toEqual([
+      ["line-1", 0],
+      ["line-1", 1000],
+    ]);
+    expect(q.items().map((i) => i.id)).toEqual(["line-1"]);
+  });
+
+  test("back-off doubles up to the cap and resets after a receipt", () => {
+    const c = clock();
+    const q = c.tab("a");
+    q.ready();
+    q.enqueue({ text: "one" });
+    q.enqueue({ text: "two" });
+    c.advance(60_000);
+    const gaps = c.sends.slice(1).map((s, i) => s.at - c.sends[i]!.at);
+    expect(gaps.slice(0, 5)).toEqual([1000, 2000, 4000, 8000, 8000]);
+    expect(Math.max(...gaps)).toBe(1000 * ACK_BACKOFF_CAP);
+    expect(c.sends.every((s) => s.id === "line-1")).toBe(true);
+    q.acknowledge(["line-1"], 5);
+    expect(c.sends.at(-1)!.id).toBe("line-2");
+    expect(c.delays.at(-1)).toBe(1000);
+    q.acknowledge(["line-2"]);
+    expect(q.items()).toEqual([]);
+    expect(c.timers.size).toBe(0);
+  });
+
+  test("a late receipt after a resend clears the line once and sends the next once", () => {
+    const c = clock();
+    const q = c.tab("a");
+    q.ready();
+    q.enqueue({ text: "slow" });
+    q.enqueue({ text: "next" });
+    c.advance(1000);
+    expect(c.sends.map((s) => s.id)).toEqual(["line-1", "line-1"]);
+    q.acknowledge(["line-1"]);
+    q.acknowledge(["line-1"]);
+    expect(q.items().map((i) => i.text)).toEqual(["next"]);
+    expect(c.sends.map((s) => s.id)).toEqual(["line-1", "line-1", "line-2"]);
+    q.acknowledge(["line-2"]);
+    c.advance(100_000);
+    expect(c.sends).toHaveLength(3);
+  });
+
+  test("no timeout configured, a disconnect, a refusal or dispose stop the resend timer", () => {
+    const off = clock({ timeout: 0 });
+    const quiet = off.tab("a");
+    quiet.ready();
+    quiet.enqueue({ text: "wait forever" });
+    expect(off.timers.size).toBe(0);
+    const broken = clock({
+      timeout: () => {
+        throw Error("config");
+      },
+      random: () => Number.NaN,
+    });
+    broken.tab("a").ready();
+    const c = clock({ random: () => 2 });
+    const q = c.tab("a");
+    q.ready();
+    q.enqueue({ text: "x" });
+    expect(c.delays).toEqual([1250]);
+    q.disconnect();
+    expect(c.timers.size).toBe(0);
+    q.ready();
+    q.reject("line-1", "blocked");
+    expect(c.timers.size).toBe(0);
+    q.enqueue({ text: "y" });
+    expect(c.timers.size).toBe(1);
+    q.dispose();
+    expect(c.timers.size).toBe(0);
+    const offline = clock();
+    let up = false;
+    const o = offline.tab("a", () => up);
+    o.ready();
+    o.enqueue({ text: "z" });
+    expect(offline.timers.size).toBe(0);
+    up = true;
+    o.ready();
+    expect(offline.timers.size).toBe(1);
+  });
+
+  test("a resend timer that fires after its line landed elsewhere does nothing", () => {
+    const c = clock();
+    const a = c.tab("a");
+    const b = c.tab("b");
+    a.ready();
+    a.enqueue({ text: "shared" });
+    b.ready();
+    b.acknowledge(["line-1"]);
+    a.refresh();
+    expect(a.items()).toEqual([]);
+    c.advance(10_000);
+    expect(c.sends.filter((s) => s.tab === "a")).toHaveLength(1);
+    a.dispose();
+    a.refresh();
+  });
+
+  test("two tabs share one stored queue: neither overwrites the other's lines", () => {
+    const c = clock({ random: () => 0.5 });
+    const a = c.tab("a");
+    const b = c.tab("b");
+    a.enqueue({ text: "from a" });
+    b.enqueue({ text: "from b" });
+    expect((c.stored() as OutgoingChat[]).map((i) => i.text)).toEqual(["from a", "from b"]);
+    b.ready();
+    expect(c.sends).toEqual([{ tab: "b", id: "line-1", at: 0 }]);
+    expect(c.delays).toEqual([1125]);
+    b.acknowledge(["line-1"]);
+    a.reject("line-2", "blocked");
+    expect((c.stored() as OutgoingChat[])[0]!.rejected).toBe("blocked");
+    b.refresh();
+    expect(b.items().map((i) => i.rejected)).toEqual(["blocked"]);
+  });
+
+  test("a closed tab's lines are sent by the next tab on that device", () => {
+    const c = clock();
+    const closed = c.tab("a");
+    closed.enqueue({ text: "left behind" });
+    closed.dispose();
+    const next = c.tab("b");
+    next.ready();
+    expect(c.sends.map((s) => [s.tab, s.id])).toEqual([["b", "line-1"]]);
+  });
+});
+
+describe("giving up after the resend cap", () => {
+  test("after the cap the line is marked unsent and the next line goes out", () => {
+    const c = clock({ maxResends: 2 });
+    const q = c.tab("a");
+    q.ready();
+    q.enqueue({ text: "lost" });
+    q.enqueue({ text: "behind" });
+    c.advance(1000 + 2000);
+    expect(c.sends.map((s) => s.id)).toEqual(["line-1", "line-1", "line-1"]);
+    c.advance(3999);
+    expect(c.sends).toHaveLength(3);
+    c.advance(1);
+    expect(q.items().map((i) => [i.id, i.rejected])).toEqual([
+      ["line-1", NO_RECEIPT],
+      ["line-2", undefined],
+    ]);
+    expect(c.refused).toEqual([{ id: "line-1", reason: NO_RECEIPT }]);
+    expect(c.sends.at(-1)!.id).toBe("line-2");
+    // The next line starts with a fresh wait, not the lost line's back-off.
+    expect(c.delays.at(-1)).toBe(1000);
+    q.acknowledge(["line-2"]);
+    c.advance(100_000);
+    expect(c.sends.filter((s) => s.id === "line-1")).toHaveLength(3);
+  });
+
+  test("a late receipt still removes a line marked unsent", () => {
+    const c = clock({ maxResends: () => 1 });
+    const q = c.tab("a");
+    q.ready();
+    q.enqueue({ text: "late" });
+    c.advance(1000 + 2000);
+    expect(q.items()[0]!.rejected).toBe(NO_RECEIPT);
+    q.acknowledge(["line-1"], 3);
+    expect(q.items()).toEqual([]);
+    expect(q.cursor()).toBe(3);
+  });
+
+  test("a cap of 0 never gives up", () => {
+    const c = clock({ maxResends: 0 });
+    const q = c.tab("a");
+    q.ready();
+    q.enqueue({ text: "keep trying" });
+    c.advance(1_000_000);
+    expect(c.sends.length).toBeGreaterThan(100);
+    expect(q.items()[0]!.rejected).toBeUndefined();
+    expect(c.refused).toEqual([]);
+  });
+});
+
+describe("migration from the per-tab queue", () => {
+  const store = (init: Record<string, string> = {}) => {
+    const m = new Map(Object.entries(init));
+    return {
+      m,
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+    };
+  };
+  const line = (id: string) => ({ id, text: id });
+
+  test("moves session lines and cursor into localStorage once, after lines already there", () => {
+    const session = store({
+      k: JSON.stringify([line("old"), line("both"), { id: 3 }]),
+      "k:cursor": "9",
+    });
+    const local = store({ k: JSON.stringify([line("both"), line("new")]), "k:cursor": "4" });
+    migrateSessionOutbox("k", session, local);
+    expect(JSON.parse(local.m.get("k")!).map((i: OutgoingChat) => i.id)).toEqual([
+      "both",
+      "new",
+      "old",
+    ]);
+    expect(local.m.get("k:cursor")).toBe("9");
+    expect(session.m.size).toBe(0);
+    migrateSessionOutbox("k", session, local);
+    expect(JSON.parse(local.m.get("k")!)).toHaveLength(3);
+  });
+
+  test("keeps the larger cursor, survives damaged bytes, and leaves nothing to migrate alone", () => {
+    const session = store({ k: JSON.stringify([line("a")]), "k:cursor": "2" });
+    const local = store({ k: "{not json", "k:cursor": "nope" });
+    migrateSessionOutbox("k", session, local);
+    expect(JSON.parse(local.m.get("k")!)).toEqual([line("a")]);
+    expect(local.m.get("k:cursor")).toBe("2");
+    const s2 = store({ "k:cursor": "1" });
+    const l2 = store({ "k:cursor": "7" });
+    migrateSessionOutbox("k", s2, l2);
+    expect(l2.m.get("k:cursor")).toBe("7");
+    expect(s2.m.size).toBe(0);
+    const s3 = store({ k: "[]" });
+    const l3 = store();
+    migrateSessionOutbox("k", s3, l3);
+    expect(l3.m.has("k")).toBe(false);
+    const empty = store();
+    migrateSessionOutbox("k", empty, store());
+    migrateSessionOutbox("k", store({ k: "{broken" }), store());
   });
 });

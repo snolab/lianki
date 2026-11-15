@@ -69,14 +69,35 @@ and read cursors are separate; receiving a history frame never marks it read.
 ## Pending input and durable chat acceptance
 
 Typed drafts resume their usual three-second pause after reload. Voice drafts
-and recovered interim words use the existing voice join cadence. Pending
-input remains scoped to the signed-in account and tab; a hot swap shares that
-same state. A durable outgoing entry is written before the input is cleared,
+and recovered interim words use the existing voice join cadence. Drafts
+remain scoped to the signed-in account and tab; a hot swap shares that same
+state. A durable outgoing entry is written before the input is cleared,
 with one stable client `id` and the original voice/context metadata. It remains
 a pending row until the hub acknowledges it. A successful WebSocket `send`
 alone is not acceptance. There is no retry button: reconnect and authoritative
 history reconciliation retry pending entries quietly, in FIFO order, with one
 unacknowledged entry in flight. A failed durable write leaves the draft intact.
+
+**Receipt timeout.** An entry in flight with no receipt for
+`chat.outboxAckTimeoutMs` (default 15 s, /dev/config; 0 = wait forever) is
+sent again under the same `id`, so a lost frame, an ack format the page does
+not recognise or a hub path that accepts without posting no longer holds every
+later line as a dashed row (owner, 2026-11-15: 20 lines stuck). The hub's
+per-id receipt makes the resend a no-op if the first copy landed. The wait
+doubles on each miss, up to 8× the timeout, and resets on the next receipt;
+up to a quarter is added at random so two tabs do not resend in lockstep.
+After `chat.outboxMaxResends` resends (default 4; 0 = never give up) with no
+receipt, the line is marked refused locally (`no-receipt`), shown as unsent
+like a hub refusal, and the lines behind it go on; a receipt that still arrives
+later removes it.
+
+**Durable queue.** The outbox is in **localStorage**, `lk:ui:chat-outbox:<scope>`
+(and `:cursor`), per account and device, not per tab: a closed tab's unsent
+lines go out from the next tab of that account. Tabs share it: each one re-reads
+the stored queue before changing it and refreshes on the `storage` event, so
+neither overwrites the other's lines; a line both send is de-duplicated by the
+hub. A tab's older sessionStorage queue is moved in once on load
+(`migrateSessionOutbox`). Other devices see a line once the hub accepts it.
 
 The authenticated page sends its existing `{type:"chat", id, text, ...}` frame.
 The hub responds on that page's socket with either:
