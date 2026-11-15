@@ -28,7 +28,24 @@ lane answers it. Every listener uses it, so a line gets exactly one answer
   "Gemini says…", "反重力的设计…") is not an address.
 - `codex的…` is talk about codex, not to it: the chat lane takes it.
 - Agent lines, friend lines and other threads are never routed.
-- New spellings go in `LANE_NAMES` with a test in `unit/lane-route.test.ts`.
+- Names by sound (owner, 2026-11-15: "从语音层面来"): when no spelling
+  matches, `packages/debug-chat/src/lane-phonetic.ts` compares toneless
+  pinyin. Every Han name and heard spelling of a lane is a pronunciation; a
+  run of Han characters at the start with the same syllable count, each
+  syllable the same or near, is that name (解密 / 借咪 = jie mi = 杰咪). Near =
+  same final with a confusable initial (j/q/x, zh/z, ch/c, sh/s, n/l) or same
+  initial with a confusable final (in/ing, en/eng, an/ang, ian/iang,
+  uan/uang, ie/i); the groups are data (`INITIAL_NEAR`, `FINAL_NEAR`). At most
+  `lanes.phoneticMaxNear` near syllables per name (default 1, 0 = the same
+  pinyin only; the Mac's listeners read env `LIANKI_LANES_PHONETIC_MAX_NEAR`).
+  One-syllable and Latin names are never matched by sound (jmy, 杰my stay
+  spellings). A sound match counts as a heard spelling, so a mark must follow
+  it: 节目 / 街面 / 小鸡 never match, and 小河 (xiao he, like 小贺) only with a
+  mark after it. A name said twice ("建明建明在吗") is an address without a mark.
+  It lives in `nameAt`, so the hand-off marks, the avatar flash and the
+  @mention rewrite all get it.
+- New spellings go in `LANE_NAMES` with a test in `unit/lane-route.test.ts`;
+  most of them are now caught by sound and need no entry.
 - The mapping can also be reconfigured live without deploys at `/dev/config`
   via `chat.lanes` (one table for lanes and their wake names; the earlier
   `chat.laneNames` key is folded into it: a row's `aliases` are its wake
@@ -72,13 +89,16 @@ name, mark and voice (docs/lianki-dev-cli.md, "`lianki chat`"). The lane never
 sees the token.
 
 Only the lane he names answers (owner, 2026-11-15 15:0x JST: "我在 @ 你的时候，
-这些只读 AI（包括 mimiai）不要乱回复"). A `--all` listener also hears lines named
-to another lane: each such bullet starts `【FYI · 点名 小克，不是你】` and the
-batch carries "点名别人的：不要回答、不要代做；只在点名你或 全体 时回复。"; a line
-with no name gets "未点名：只听，不回。" once per batch. The first message of a
-listener's (or a woken reader's) life adds the rule line
-(`NO_CROSS_RULE`), and `lanes.greeting` ends with it, so every joining agent
-says it aloud.
+这些只读 AI（包括 mimiai）不要乱回复"). Each line goes as one bullet,
+`- <id> <mark> <text>`, the mark one short token: `点名你`, `全体`, `未点名`,
+`点名X（不是你）`, `【agent · X】`, `【系统】`, `测试`, `状态树`. No rule prose and no
+reply command per message (owner, 2026-11-15 23:13 JST: "回答规则之类的，可以作为
+SKILL 加载……不需要每个消息都重复一遍"): what each mark means is defined once in
+`.agents/skills/lane-listen/SKILL.md`. The first message of a listener's (or a
+woken reader's) life adds two lines: the rule (`NO_CROSS_RULE`, or
+`ANSWER_UNNAMED_RULE`) and the skill path with the reply command. A batch with a
+state-tree line carries `STATE_TREE_NOTE` once. `lanes.greeting` ends with the
+rule, so every joining agent says it aloud.
 
 It reconnects with backoff when the socket drops, and stops (exit 2) when the
 token is refused: revoked or expired. `--dry-run` prints the hand-offs instead
@@ -215,13 +235,18 @@ Tier ① in detail:
   (the sender's shown name), and system lines (the hub's lane events, the
   lanes manager's line, a state-tree line for another lane), marked `【系统】…`.
   Never the lane's own lines, nor a system line about itself (its own echo).
-  A batch holding any of them carries `FYI_NOTE` once: they are FYI by
-  definition, never answered, never urgent (no `alt-m`), never `@你`, even
+  Their mark is the whole note: they are FYI by
+  definition, never answered, never urgent (no `alt-m`), never `点名你`, even
   when they name the lane. Chunks stay under 800 characters as before.
 - `--skip-owner` leaves out his lines: the manager adds it for a `scope: "all"`
   row with `wake: false` (小克, `lane: "claude"`, which keeps its own feed of
   his lines), so nothing reaches it twice. `--as claude` listens as the route
   lane `chat` (`routeKey`) with the `claude` token.
+- `answerUnnamed: true` on a row (coco, 杰咪; owner 2026-11-15 22:55 JST) adds
+  `--answer-unnamed`: his lines that name nobody (`未点名`) may be
+  answered briefly when they concern its project (the skill says so), the
+  first message carries `ANSWER_UNNAMED_RULE`, and its greeting is
+  `lanes.greetingAnswerUnnamed`. Lines naming another lane stay unanswered.
 - `scope: "all"` makes a row live even without `resident`. The listener's
   `lianki chat listen --everyone` sends auth `scope: "all"`; the hub keeps it
   on the socket and the registry row (`LaneReg.scope`), the presence list
@@ -254,7 +279,12 @@ listener and can never be downgraded (the hub refuses).
 | op `lane` `state: "left"` (the manager: its agent exited)                                    | left     | "杰咪 下线"             |
 | the owner mutes it (page `participant` `muted: true`)                                        | (same)   | "X 已禁言" / "解除禁言" |
 
-A reconnect inside the grace says nothing. The hub reads "listening" from
+A reconnect inside the grace says nothing, and only a change of the whole
+lane is said: a second socket of a lane that is already live is silent, its
+scope is "all" while any live socket hears all, and losing "all" (an
+owner-only socket still open) is graced the same way and then dropped
+without a line (2026-11-15: two feeds on one token re-announced
+"开始实时监听" on every restart). The hub reads "listening" from
 its attached sockets and their attachments, so a hibernated hub that wakes
 still sees them. A connection that dies without its close reaching the
 listener (the hub saw it close) is the listener's to find: `lianki chat

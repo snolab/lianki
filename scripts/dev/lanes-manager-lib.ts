@@ -138,6 +138,8 @@ export type Planned = {
   scope: LaneScope;
   /** Woken by name when a line names it (lanes.agents wake, default true). */
   wake: boolean;
+  /** May answer his lines that name nobody, briefly (lanes.agents answerUnnamed). */
+  answerUnnamed: boolean;
   /** Mid-turn now (ay's `state`). */
   busy: boolean;
 };
@@ -195,6 +197,9 @@ export function planLanes(
     resident: held || !!reg?.resident || reg?.scope === "all",
     scope: reg?.scope ?? "owner",
     wake: reg?.wake !== false,
+    // Owner, 2026-11-15 23:09 JST: a live lane answers by relevance to its project,
+    // not by being named; a row may still say false (listen only).
+    answerUnnamed: reg?.answerUnnamed ?? (held || !!reg?.resident || reg?.scope === "all"),
     busy: a.state === "active",
   }));
 }
@@ -259,6 +264,8 @@ export type Action =
       scope: LaneScope;
       /** Its agent has its own feed of his lines (wake: false): the listener skips them. */
       skipOwner: boolean;
+      /** It may answer his unnamed lines (lanes.agents answerUnnamed): `--answer-unnamed`. */
+      answerUnnamed: boolean;
     }
   | { type: "stop-listener"; lane: string }
   | { type: "greet"; lane: string; text: string }
@@ -276,7 +283,7 @@ export type World = {
   external: { has(lane: string): boolean };
 };
 
-/** The greeting, from config lanes.greeting. */
+/** The greeting, from config lanes.greeting (lanes.greetingAnswerUnnamed for a lane that answers unnamed lines: decide picks it). */
 export function greeting(p: Planned, template: string, locale = "zh"): string {
   const mode =
     laneModeWord({ mode: p.resident ? "listener" : "reader", scope: p.scope }, locale) ?? "";
@@ -296,7 +303,7 @@ export function decide(
   prev: readonly Planned[],
   w: World,
   state: ManagerState,
-  cfg: Pick<LanesConfig, "greeting">,
+  cfg: Pick<LanesConfig, "greeting"> & Partial<Pick<LanesConfig, "greetingAnswerUnnamed">>,
   locale = "zh",
 ): { actions: Action[]; state: ManagerState } {
   const actions: Action[] = [];
@@ -330,9 +337,12 @@ export function decide(
         cli: p.cli,
         scope: p.scope,
         skipOwner: !p.wake,
+        answerUnnamed: p.answerUnnamed,
       });
     if (!greeted.has(p.lane)) {
-      actions.push({ type: "greet", lane: p.lane, text: greeting(p, cfg.greeting, locale) });
+      const template =
+        p.answerUnnamed && cfg.greetingAnswerUnnamed ? cfg.greetingAnswerUnnamed : cfg.greeting;
+      actions.push({ type: "greet", lane: p.lane, text: greeting(p, template, locale) });
       greeted.add(p.lane);
     }
   }

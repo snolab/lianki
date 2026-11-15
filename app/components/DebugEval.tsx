@@ -59,6 +59,7 @@ import {
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setLaneTable } from "@lianki/debug-chat/voices";
+import { setPhoneticMaxNear } from "@lianki/debug-chat/lane-phonetic";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
@@ -275,6 +276,8 @@ export function DebugEval({
   if (lexicon !== undefined) setLexicon(lexicon);
   // The lanes beyond the built-in four, and more names for them (config chat.lanes): live, no deploy.
   setLaneTable(publicCfg("chat.lanes"));
+  // How near a lane name may sound and still be that name (lane-phonetic.ts): live, no deploy.
+  setPhoneticMaxNear(publicCfg("lanes.phoneticMaxNear"));
   // The mic's repetition guard on every final (stt-repeat.ts): live, no deploy.
   setRepeatLimits({
     maxRuns: publicCfg("stt.repeatMaxRuns"),
@@ -1508,6 +1511,7 @@ export function DebugEval({
             etaTicker={{
               sec: publicCfg("chat.etaTickerSec"),
               keep: publicCfg("chat.etaTickerKeep"),
+              cycle: publicCfg("chat.etaBarCycle"),
             }}
             onReadSeq={(seq) => {
               const thread =

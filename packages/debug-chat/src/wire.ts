@@ -1080,6 +1080,10 @@ export type ChatStrings = {
   etaNewsWaiting: string;
   /** …its ETA reached, not done. */
   etaNewsLate: string;
+  /** The ETA bar at rest: the open task due first, past its ETA; {task} its name, {dur} how long past ("20M"). */
+  etaDeadlineLate: string;
+  /** …not yet due; {dur} the time left. */
+  etaDeadlineLeft: string;
   /** The arrow at the left edge of the timeline for a task whose bar is off-screen, earlier (screen reader, tooltip); {task} is its name. */
   etaGanttToEarlier: string;
   /** The same arrow at the right edge, for a bar off-screen later. */
@@ -1287,6 +1291,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaNewsBlocked: "blocked: {task}",
   etaNewsWaiting: "waiting for you: {task}",
   etaNewsLate: "ETA reached: {task}",
+  etaDeadlineLate: "{task} · {dur} over",
+  etaDeadlineLeft: "{task} · {dur} left",
   etaGanttToEarlier: "Scroll back to {task}",
   etaGanttToLater: "Scroll ahead to {task}",
   etaList: "Timed tasks",

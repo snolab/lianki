@@ -3341,6 +3341,42 @@ const learningPartnerContent = {
       mr: "वेळ झाली: {task}",
       ko: "예정 시간 도달: {task}",
     }),
+    etaDeadlineLate: t({
+      en: "{task} · {dur} over",
+      zh: "{task} · 超时 {dur}",
+      hi: "{task} · {dur} देर",
+      es: "{task} · {dur} de retraso",
+      fr: "{task} · {dur} de retard",
+      ar: "{task} · متأخرة {dur}",
+      bn: "{task} · {dur} দেরি",
+      pt: "{task} · {dur} de atraso",
+      ru: "{task} · просрочено на {dur}",
+      ur: "{task} · {dur} تاخیر",
+      id: "{task} · lewat {dur}",
+      de: "{task} · {dur} überfällig",
+      ja: "{task} · {dur} 超過",
+      sw: "{task} · imechelewa {dur}",
+      mr: "{task} · {dur} उशीर",
+      ko: "{task} · {dur} 초과",
+    }),
+    etaDeadlineLeft: t({
+      en: "{task} · {dur} left",
+      zh: "{task} · 还剩 {dur}",
+      hi: "{task} · {dur} बाकी",
+      es: "{task} · quedan {dur}",
+      fr: "{task} · reste {dur}",
+      ar: "{task} · متبقٍ {dur}",
+      bn: "{task} · {dur} বাকি",
+      pt: "{task} · faltam {dur}",
+      ru: "{task} · осталось {dur}",
+      ur: "{task} · {dur} باقی",
+      id: "{task} · sisa {dur}",
+      de: "{task} · noch {dur}",
+      ja: "{task} · 残り {dur}",
+      sw: "{task} · zimebaki {dur}",
+      mr: "{task} · {dur} बाकी",
+      ko: "{task} · {dur} 남음",
+    }),
     etaGanttToEarlier: t({
       en: "Scroll back to {task}",
       zh: "向前滚动到 {task}",
@@ -4103,6 +4139,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "The same one-line announcement in the chat's task progress bar: a task now waits for the USER (an answer, a decision, an approval), addressed to the user. {task} is the task's short name (keep it). Use the same words as the 'Waiting for you' mark on the timeline (等你 in Chinese); very short, no full stop.",
   etaNewsLate:
     "The same one-line announcement in the chat's task progress bar: a task reached its estimated finish time and is not done yet (it is now overdue). {task} is the task's short name (keep it). Very short label, colon, name; no full stop; not alarming.",
+  etaDeadlineLate:
+    "The resting text of the chat's task progress bar (a thin one-line bar above the chat input showing the assistant's timed tasks): it names the open task whose deadline comes first, here one whose estimated finish time has already PASSED, and how long ago. {task} is the task's short name and {dur} a compact time like '20M' (minutes) or '1.5H' (hours) — keep both as is, and keep the ' · ' between them. Neutral, very short, no full stop; it must fit one narrow line on a phone. The owner's Chinese: {task} · 超时 {dur}.",
+  etaDeadlineLeft:
+    "The same resting text of the chat's task progress bar, for the open task due first when its estimated finish time is still AHEAD: how much time is left. {task} is the task's short name and {dur} a compact time like '35M' or '1.5H' (keep both and the ' · '). Very short, no full stop. The owner's Chinese: {task} · 还剩 {dur}.",
   etaGanttToEarlier:
     "Screen-reader label and tooltip of a small arrow (pointing left) at the left edge of one task's row in the full-screen task timeline (a Gantt chart). It appears when that task's bar lies entirely off-screen to the left, i.e. EARLIER in time; tapping it scrolls the timeline back so the bar is in view. {task} is the task's name (keep it as is). Imperative, no full stop. Time runs left to right in every language, including right-to-left ones.",
   etaGanttToLater:

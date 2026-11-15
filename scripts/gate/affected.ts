@@ -52,6 +52,23 @@ function git(args: string[]): string | null {
 const lines = (s: string | null) => (s ?? "").split("\n").filter(Boolean);
 
 /** Changed paths, or null when there is no merge base to diff against. */
+/**
+ * The base a pushed sha is diffed against: the remote's current sha for that
+ * ref when it is known here and an ancestor of the push (a fast-forward: only
+ * what this push adds is new), else the merge base with origin/main. main
+ * merges by squash, so its merge base with a long-lived branch never advances
+ * and every push would look like the whole branch (2026-11-15: full suite and
+ * all QA on each preview push).
+ */
+export function pushBase(sha: string, remote?: string): string | undefined {
+  if (remote && remote !== "-" && /^[0-9a-f]{7,40}$/.test(remote)) {
+    const known = git(["cat-file", "-e", `${remote}^{commit}`]);
+    const ff = known !== null && git(["merge-base", "--is-ancestor", remote, sha]) !== null;
+    if (ff) return remote;
+  }
+  return git(["merge-base", sha, "origin/main"])?.trim() || undefined;
+}
+
 export function changedFiles(env = process.env): string[] | null {
   if (env.LIANKI_GATE_CHANGED) return env.LIANKI_GATE_CHANGED.split(/\s+/).filter(Boolean).sort();
   // The merge queue: everything the group adds on top of main (this PR and
@@ -61,9 +78,12 @@ export function changedFiles(env = process.env): string[] | null {
     return diff === null ? null : lines(diff).sort();
   }
   const shas = (env.LIANKI_PUSH_SHAS || "HEAD").split(/\s+/).filter(Boolean);
+  // What the remote already holds for each pushed ref (the hook's <remote_sha>,
+  // "-" for a new ref), in the same order as LIANKI_PUSH_SHAS.
+  const remotes = (env.LIANKI_PUSH_BASES || "").split(/\s+/).filter(Boolean);
   const out = new Set<string>();
-  for (const sha of shas) {
-    const base = git(["merge-base", sha, "origin/main"])?.trim();
+  for (const [i, sha] of shas.entries()) {
+    const base = pushBase(sha, remotes[i]);
     if (!base) return null;
     const diff = git(["diff", "--name-only", "--no-renames", base, sha]);
     if (diff === null) return null;

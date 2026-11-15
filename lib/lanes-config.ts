@@ -26,6 +26,13 @@ export type LaneAgentDef = {
    * "all" makes the lane live (a listener) even without `resident`.
    */
   scope?: LaneScope;
+  /**
+   * It may answer the owner's lines that name nobody when it has something to
+   * say, briefly (owner, 2026-11-15 22:55 JST: "@coco 和杰咪都应该回复我，哪怕是没点名的信息");
+   * named lines are always answered, lines naming another lane never. Absent = it
+   * listens to unnamed lines silently (only 点名 or 全体).
+   */
+  answerUnnamed?: boolean;
 };
 
 /** What a live lane hears: the owner's lines only, or every line in the thread. */
@@ -45,6 +52,7 @@ export const laneAgentSchema = z
     resident: z.boolean().optional(),
     wake: z.boolean().optional(),
     scope: z.enum(LANE_SCOPES).optional(),
+    answerUnnamed: z.boolean().optional(),
   })
   .strict();
 
@@ -54,10 +62,18 @@ export const LANES_CONFIG_DEFAULTS = {
   /** coco and 杰咪 keep listening to everything (owner, 2026-11-15). */
   "lanes.agents": [
     // coco hears every line too (owner, 2026-11-15 15:44 JST: tier ①, like 小克).
-    { cwd: "lianki/tree/codex", cli: "codex", lane: "codex", resident: true, scope: "all" },
-    { cwd: "lianki/tree/agy", cli: "agy", lane: "agy", resident: true },
+    {
+      cwd: "lianki/tree/codex",
+      cli: "codex",
+      lane: "codex",
+      resident: true,
+      scope: "all",
+      answerUnnamed: true,
+    },
+    // coco and 杰咪 may answer his unnamed lines too (owner, 2026-11-15 22:55 JST).
+    { cwd: "lianki/tree/agy", cli: "agy", lane: "agy", resident: true, answerUnnamed: true },
     // mimiai's codex listens to everything too (owner, 2026-11-15 13:2x JST "把它叫进来这里监听").
-    { cwd: "mimiai/tree/main", cli: "codex", lane: "mimiai", resident: true },
+    { cwd: "mimiai/tree/main", cli: "codex", lane: "mimiai", resident: true, answerUnnamed: true },
     // 小克 (the Claude Code chat lane) keeps its own live feed of the owner's
     // lines: it joins as `claude`, but the manager never wakes it. It hears every
     // other line live (owner, 2026-11-15 15:1x JST: tier ①, scope "all"): its
@@ -68,6 +84,8 @@ export const LANES_CONFIG_DEFAULTS = {
       lane: "claude",
       wake: false,
       scope: "all",
+      // 小克 answers from its own feed by its own judgement; the manager's hand-offs stay listen-only.
+      answerUnnamed: false,
     },
   ] as LaneAgentDef[],
   "lanes.relistSec": 60,
@@ -77,6 +95,9 @@ export const LANES_CONFIG_DEFAULTS = {
   "lanes.wakeLiveMin": 5,
   "lanes.greeting":
     "大家好，我是 {name}（{repo} · {cli}），{mode}入群。只回答点名我或「全体」的话。",
+  /** The greeting of a lane that may answer unnamed lines (lanes.agents answerUnnamed). */
+  "lanes.greetingAnswerUnnamed":
+    "大家好，我是 {name}（{repo} · {cli}），{mode}入群。点名我必答，没点名但和我的项目有关的话也会简短答。",
 } as const;
 
 /** The env var each Mac-side key is read from. */
@@ -87,6 +108,7 @@ export const LANES_ENV = {
   "lanes.forwardUnknownVoice": "LIANKI_LANES_FORWARD_UNKNOWN_VOICE",
   "lanes.wakeLiveMin": "LIANKI_LANES_WAKE_LIVE_MIN",
   "lanes.greeting": "LIANKI_LANES_GREETING",
+  "lanes.greetingAnswerUnnamed": "LIANKI_LANES_GREETING_ANSWER_UNNAMED",
 } as const;
 
 export type LanesConfig = {
@@ -96,6 +118,7 @@ export type LanesConfig = {
   forwardUnknownVoice: boolean;
   wakeLiveMin: number;
   greeting: string;
+  greetingAnswerUnnamed: string;
 };
 
 /** The manager's config: each key's env value when it checks out, else its default. */
@@ -117,6 +140,7 @@ export function lanesConfig(env: Record<string, string | undefined> = {}): Lanes
   const fwd = env[LANES_ENV["lanes.forwardUnknownVoice"]]?.trim();
   const w = Number(env[LANES_ENV["lanes.wakeLiveMin"]]);
   const g = env[LANES_ENV["lanes.greeting"]]?.trim();
+  const ga = env[LANES_ENV["lanes.greetingAnswerUnnamed"]]?.trim();
   return {
     repos: repos.length ? repos : [...d["lanes.repos"]],
     agents,
@@ -132,5 +156,6 @@ export function lanesConfig(env: Record<string, string | undefined> = {}): Lanes
         ? w
         : d["lanes.wakeLiveMin"],
     greeting: g && g.length <= 200 ? g : d["lanes.greeting"],
+    greetingAnswerUnnamed: ga && ga.length <= 200 ? ga : d["lanes.greetingAnswerUnnamed"],
   };
 }

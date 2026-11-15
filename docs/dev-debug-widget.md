@@ -2374,10 +2374,22 @@ Flag `chat.eta-bar` (owner only; the root layout reads it and passes
 `etaBar` down to DebugChat). Every live state-tree node with an estimate
 (`progress.ts --eta 25m`, its `etaAt`; docs/state-tree.md, "ETA pings") is a
 timed task (`eta.ts etaTasks`, read from the overlaid tree). Above the input,
-one line (`EtaBar.tsx`): a small clock drawn in place, "Title · 25M" for
-one task, or "3 tasks · 1.5H · next in 5M" for several, and the percent;
-a tap opens the state tree, whose top lists each task as a Gantt row
-(`EtaList`). There is no separate meter (owner, 2026-11-08): the summary
+one line (`EtaBar.tsx`): a small clock drawn in place, the open task whose
+deadline comes first and how it stands, and the percent (owner, 2026-11-15
+22:58 JST: "它的 deadline 是最早的一条任务，它的名字和它超时的时间就可以显示在这里，
+滚动播报"). `eta.ts byDeadline` orders the open tasks (done ones left out) by
+`at`, overdue ones included, and the bar names the first (the title's name
+part) with `etaDeadlineLate` "Box ETA · 超时 20M" (its ETA passed; the words
+and time in `ETA_COLORS.late`) or `etaDeadlineLeft` "Docs · 还剩 35M", in
+compactTime. `chat.etaBarCycle` (public, default 1, 1–10) rolls through that
+many earliest deadlines in turn, `chat.etaTickerSec` seconds each
+(`deadlinePick`, `useRollStep`; no timer with one). A change the ticker
+announces (below) still takes the line for its seconds first. The summary,
+"3 tasks · 1.5H · next in 5M · 82%", is the bar's tooltip (`title`) and the
+second half of its accessible label, and the line itself once no task is
+open ("3 tasks · done"). The folded chat's compact bar still shows only the
+nearest time. A tap opens the state tree, whose top lists each task as a
+Gantt row (`EtaList`). There is no separate meter (owner, 2026-11-08): the summary
 line's own background is filled from the start edge to the progress
 (weighted by each estimate), blue running, red past its estimate, green done.
 
@@ -2450,7 +2462,7 @@ its mark (`Icon` plus, check, sparkle, an arrow, pause; the red clock for
 late) and its string (`etaNews*`, every locale with its context line), with
 the lane that made it (the node's last ETA event's `by`) in front. One item
 shows for `chat.etaTickerSec` seconds (default 6), the most recent
-`chat.etaTickerKeep` (default 5) in turn, newest first, then the summary is
+`chat.etaTickerKeep` (default 1: only the change an agent just made, no carousel — owner, 2026-11-15 22:32 JST) in turn, newest first, then the earliest deadline is
 back; a new change starts the pass over (`tickerPush` / `tickerShown`).
 Config keys, public (`publicCfg` in DebugEval → DebugChat `etaTicker`). A new
 change lights the bar once in its gold (`ETA_FLASH_CSS`, an overlay fading

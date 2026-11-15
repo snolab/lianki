@@ -1,6 +1,10 @@
 // lib/lane-route.ts: which lane answers an owner line (docs/lane-listen.md).
 // One matcher for every listener, so each line gets exactly one lane.
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import {
+  PHONETIC_MAX_NEAR_DEFAULT,
+  setPhoneticMaxNear,
+} from "../packages/debug-chat/src/lane-phonetic";
 import {
   DEFAULT_LANE,
   LANE_NAMES,
@@ -197,5 +201,59 @@ describe("customLaneNames and laneHotwords", () => {
     expect(words).toContain("agent-yes");
     expect(words).toContain("otoji");
     expect(words).toContain("可可");
+  });
+});
+
+describe("routeLine: names by sound (lane-phonetic.ts, 2026-11-15)", () => {
+  afterEach(() => setPhoneticMaxNear(PHONETIC_MAX_NEAR_DEFAULT));
+  it.each([
+    // Spellings he reported, now also the same pinyin.
+    ["建明，在吗", ["agy"]],
+    ["解密，在吗", ["agy"]],
+    ["解米，在吗", ["agy"]],
+    ["杰米，在吗", ["agy"]],
+    ["小客，在吗", ["chat"]],
+    ["小贺，在吗", ["chat"]],
+    ["小课，在吗", ["chat"]],
+    ["小科，在吗", ["chat"]],
+    ["晓可，在吗", ["chat"]],
+    ["可可，在吗", ["codex"]],
+    ["扣扣，在吗", ["codex"]],
+    // Never listed: the same pinyin, or one near syllable.
+    ["借咪，在吗", ["agy"]],
+    ["切咪，在吗", ["agy"]],
+    ["谢咪，在吗", ["agy"]],
+    ["杰民，在吗", ["agy"]],
+    ["晓刻，在吗", ["chat"]],
+    ["寇寇，在吗", ["codex"]],
+    ["切咪和晓刻，在吗", ["agy", "chat"]],
+  ])("%s → %j", (line, lanes) => {
+    const r = routeLine(line);
+    expect(r.addressed).toBe(true);
+    expect(r.lanes).toEqual(lanes);
+    expect(r.text).toBe("在吗");
+  });
+  it.each(["节目，很好看", "街面，很干净", "小河边有棵树", "小鸡，在吃米", "切民，在吗"])(
+    "%s → not a name",
+    (line) => expect(routeLine(line).addressed).toBe(false),
+  );
+  it("known limit: 小河 is xiao he like the own name 小贺, so with a mark after it, it calls 小克", () => {
+    expect(routeLine("小河，很长的那条")).toMatchObject({ lanes: ["chat"], addressed: true });
+  });
+  it("a sound match needs a punctuation mark, as a heard spelling does", () => {
+    expect(routeLine("切咪在吗").addressed).toBe(false);
+  });
+  it("a name said twice is an address without a mark (建明建明在吗)", () => {
+    expect(routeLine("建明建明在吗？")).toEqual({
+      lanes: ["agy"],
+      addressed: true,
+      text: "在吗？",
+    });
+    expect(routeLine("切咪切咪在吗").lanes).toEqual(["agy"]);
+  });
+  it("cap 0: only the same pinyin", () => {
+    setPhoneticMaxNear(0);
+    expect(routeLine("切咪，在吗").addressed).toBe(false);
+    expect(routeLine("借咪，在吗").lanes).toEqual(["agy"]);
   });
 });

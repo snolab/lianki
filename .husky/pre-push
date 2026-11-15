@@ -18,13 +18,18 @@
 saw_ref=0
 only_deletes=1
 shas=""
+bases="" # what the remote holds for each pushed ref (its sha, or - for a new ref)
 release_ref=0 # a push to main or prod: the branches production is built from
-while read -r _local_ref local_sha remote_ref _remote_sha; do
+while read -r _local_ref local_sha remote_ref remote_sha; do
   saw_ref=1
   case "$local_sha" in
   *[!0]*)
     only_deletes=0 # any non-zero char ⇒ a real ref update, not a delete
     shas="$shas $local_sha"
+    case "$remote_sha" in
+    *[!0]*) bases="$bases $remote_sha" ;;
+    *) bases="$bases -" ;;
+    esac
     ;;
   esac
   case "$remote_ref" in
@@ -46,6 +51,11 @@ bun run typecheck
 # The selector diffs the pushed commits against their merge base with
 # origin/main, and prints what it picked and why before running it.
 export LIANKI_PUSH_SHAS="$shas"
+# The gate diffs each pushed sha against what the remote already has for that
+# ref when that is an ancestor (a plain fast-forward), else against its merge
+# base with origin/main. main merges by squash, so the merge base with main
+# stops moving and every preview push looked like the whole branch (2026-11-15).
+export LIANKI_PUSH_BASES="$bases"
 
 # Nothing here waits for the machine-wide gate except qa:all's time-sensitive
 # suites, which wait for load-based admission inside qa:all (scripts/qa/suites.mjs

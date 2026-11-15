@@ -82,9 +82,9 @@ async function main(): Promise<number> {
     ps: () => text(["ps", "-axo", "pid=,command="]),
     // LIANKI_TOKEN is the manager's own environment, never a lane's: lanes use their files only.
     token: (lane) => laneToken(lane, { ...process.env, LIANKI_TOKEN: undefined }).token,
-    startListener: ({ lane, cwd, table, scope, skipOwner, cli }): Child => {
+    startListener: ({ lane, cwd, table, scope, skipOwner, cli, answerUnnamed }): Child => {
       const p = Bun.spawn(
-        listenerArgv(process.execPath, o.repo, lane, cwd, { scope, skipOwner, cli }),
+        listenerArgv(process.execPath, o.repo, lane, cwd, { scope, skipOwner, cli, answerUnnamed }),
         {
           cwd: o.repo,
           env: { ...process.env, LIANKI_TOKEN: undefined, LIANKI_LANE_TABLE: table },
