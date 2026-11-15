@@ -12,26 +12,28 @@ keeps the key, encrypted, so server-side features can use it) waits for the
 owner's tap card on the storage design; nothing of it is built except a
 disabled checkbox behind the flag `byok.sync`.
 
-| piece                           | where                                                           |
-| ------------------------------- | --------------------------------------------------------------- |
-| presets (data)                  | `lib/byok/presets.ts`                                           |
-| storage, URL rules, the notice  | `lib/byok/config.ts`                                            |
-| the call, errors, Test          | `lib/byok/call.ts`                                              |
-| settings UI, strings            | `app/components/ByokSettings.tsx`, `byok-settings.content.ts`   |
-| reader translation              | `app/(app)/reader/[id]/use-select-translate.ts`                   |
-| reader word meaning (gloss)     | `app/(app)/reader/[id]/use-select-gloss.ts`, `/api/read/[id]/gloss` (`own: true`) |
-| sync of the backend             | `byok.backend` in `lib/prefs/schema.ts` / `bindings.ts`         |
-| the relay (server)              | `app/api/byok/proxy/route.ts`, `lib/byok/proxy-server.ts`, guards in `lib/byok/proxy-guard.ts` |
-| the relay's allowlist (data)    | `relay: {host, paths}` on a preset in `lib/byok/presets.ts`     |
-| tests                           | `unit/byok.test.ts`, `unit/byok-proxy.test.ts`                  |
+| piece                          | where                                                                                                             |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| presets (data, defaults)       | `lib/byok/preset-data.ts`; live list: config key `byok.presets`                                                   |
+| presets (live, browser)        | `lib/byok/presets.ts` (`livePresets`, `presetOf`)                                                                 |
+| provider picker, preset info   | `app/components/ByokProviderPicker.tsx`                                                                           |
+| storage, URL rules, the notice | `lib/byok/config.ts`                                                                                              |
+| the call, errors, Test         | `lib/byok/call.ts`                                                                                                |
+| settings UI, strings           | `app/components/ByokSettings.tsx`, `byok-settings.content.ts`                                                     |
+| reader translation             | `app/(app)/reader/[id]/use-select-translate.ts`                                                                   |
+| reader word meaning (gloss)    | `app/(app)/reader/[id]/use-select-gloss.ts`, `/api/read/[id]/gloss` (`own: true`)                                 |
+| sync of the backend            | `byok.backend` in `lib/prefs/schema.ts` / `bindings.ts`                                                           |
+| the relay (server)             | `app/api/byok/proxy/route.ts`, `lib/byok/proxy-server.ts`, guards in `lib/byok/proxy-guard.ts`                    |
+| the relay's allowlist (data)   | `RELAY_ALLOW` in `lib/byok/preset-data.ts` (code only)                                                            |
+| tests                          | `unit/byok.test.ts`, `unit/byok-proxy.test.ts`, `unit/byok-presets.test.ts`, `unit/byok-provider-picker.test.tsx` |
 
 ## What is kept, where
 
-| Key               | Holds                                                          | Class                                  |
-| ----------------- | -------------------------------------------------------------- | -------------------------------------- |
-| `lk:byok`         | `{v, mode: "device", enabled, backend, apiKey}`                 | **device only, never synced**          |
-| `lk:byok-ack`     | `{v: <notice version>, at}`: the privacy notice was acknowledged | device only                            |
-| `lk:byok-backend` | `{provider, baseUrl, model, relay?}` or `null`                  | **synced** as `byok.backend`, opt-in   |
+| Key               | Holds                                                            | Class                                |
+| ----------------- | ---------------------------------------------------------------- | ------------------------------------ |
+| `lk:byok`         | `{v, mode: "device", enabled, backend, apiKey}`                  | **device only, never synced**        |
+| `lk:byok-ack`     | `{v: <notice version>, at}`: the privacy notice was acknowledged | device only                          |
+| `lk:byok-backend` | `{provider, baseUrl, model, relay?}` or `null`                   | **synced** as `byok.backend`, opt-in |
 
 Signing out removes `lk:byok` from the device, key and form together (owner's
 card, 2026-11-06; `lib/sign-out.ts`, before anything else, on every sign-out
@@ -119,17 +121,17 @@ session lookup.
 
 **Allowlist, not an open proxy** (owner, 15:35 JST: "we should make a allow
 list, or we will be dangerously open proxy"). The relay forwards only to a
-preset with `relay: {host, paths}` in `lib/byok/presets.ts`:
+preset listed in `RELAY_ALLOW` in `lib/byok/preset-data.ts` (code only; never the config key):
 
-| preset     | host                                | path(s)                                   |
-| ---------- | ----------------------------------- | ----------------------------------------- |
-| openai     | `api.openai.com`                    | `/v1/chat/completions`                    |
-| anthropic  | `api.anthropic.com`                 | `/v1/messages`                            |
+| preset     | host                                | path(s)                                     |
+| ---------- | ----------------------------------- | ------------------------------------------- |
+| openai     | `api.openai.com`                    | `/v1/chat/completions`                      |
+| anthropic  | `api.anthropic.com`                 | `/v1/messages`                              |
 | deepseek   | `api.deepseek.com`                  | `/chat/completions`, `/v1/chat/completions` |
-| gemini     | `generativelanguage.googleapis.com` | `/v1beta/openai/chat/completions`         |
-| openrouter | `openrouter.ai`                     | `/api/v1/chat/completions`                |
+| gemini     | `generativelanguage.googleapis.com` | `/v1beta/openai/chat/completions`           |
+| openrouter | `openrouter.ai`                     | `/api/v1/chat/completions`                  |
 
-Custom and Ollama are never relayed: custom backends stay browser-direct
+Custom, Ollama, DeepInfra, Groq and Workers AI are never relayed: custom backends stay browser-direct
 only, and the toggle is drawn only for an allowlisted preset. Adding a host is
 an **owner action**: a reviewed PR adding `relay` to a preset (chosen over a
 D1 table at /dev — simpler, versioned, reviewed; users can never add one).
@@ -168,7 +170,7 @@ Guards (each tested in `unit/byok-proxy.test.ts`):
   keys are `byok-proxy:{global,ip:<ip>,user:<id>}`, never anything of the
   request). A failing counter refuses (fails closed).
 - **Logging**: one line per call: `{event: "byok.proxy", provider, outcome,
-  status, ms, hops, bytes}`. Never the key, a header, the URL, a body or the
+status, ms, hops, bytes}`. Never the key, a header, the URL, a body or the
   provider's message (a test spies on every console method).
 
 **Testing it for real.** The guards' unit tests inject `fetch` and the
@@ -182,24 +184,24 @@ allowlisted provider must answer `502 auth`.
 
 **Residual risks.**
 
-- *DNS rebinding / pinning.* A Worker's `fetch()` resolves the name itself and
+- _DNS rebinding / pinning._ A Worker's `fetch()` resolves the name itself and
   offers no way to pin the address we checked, so its resolution may differ
   from our DoH check. Mitigations: the allowlist (a few
   providers' own hostnames, not attacker-chosen names), the DoH check before
   every hop, https with the provider's certificate (a rebind to another
   address fails TLS for that name), and Cloudflare's egress itself, which has
   no route to private networks or a cloud metadata service.
-- *In transit.* Our server sees the key and text while it forwards them;
+- _In transit._ Our server sees the key and text while it forwards them;
   "not stored, not logged" is our code's promise, which the notice and
   `/privacy#own-ai` state plainly. Cloudflare's own request metadata records
   the request but not its body. Checked 2026-11-05 with `wrangler tail lianki
-  --format json` and a throwaway random value: `Authorization` and
+--format json` and a throwaway random value: `Authorization` and
   `x-byok-key` arrive as `REDACTED`, an ordinary `x-lk-plain` in clear, so the
   key's header is not readable in tail events (what `lianki-monitor` gets).
   **Keep the key in `Authorization`**: a custom header name without `key`,
   `auth` or the like could be logged in clear. Not checked: the Workers Logs
   dashboard store, which wrangler cannot query.
-- *Abuse with stolen keys.* The relay could launder calls made with someone
+- _Abuse with stolen keys._ The relay could launder calls made with someone
   else's key; the per-IP/user/global limits and the size caps bound it.
 
 The client: `relayRequest` / `relayComplete` in `lib/byok/call.ts`
@@ -212,19 +214,56 @@ allowlisted preset (`cors` / `opaque-auth`) suggest the relay with a
 
 ## Presets and the browser
 
+**The list is data** (owner, 2026-11-15: "在配置页面推荐一下 OpenRouter 和
+DeepInfra，或者其他的各种 AI 供应商，包括 Workers AI"). The rows live in the
+public config key `byok.presets` (`lib/config.ts`, defaults
+`DEFAULT_PRESET_ROWS`), editable at /dev/config with no deploy; the settings
+draw whatever it holds, then Custom. A row: `{id, name, protocol, baseUrl,
+model, browser, keyless?, opaqueAuthErrors?, policyUrl?, pricingUrl?, keyUrl?,
+models?: [{id, tier: cheap|balanced|strong}], note?: {en, zh, …}}`. **No
+prices**: they change, so a row names a tier per model and links to the
+provider's own price page. The built-in providers' one-line notes are in the
+`byok-settings` dictionary (`note*`); a config row's `note` wins. A provider
+added in config is browser-direct only: `relay` comes from `RELAY_ALLOW` in
+code, by id, and only while the row's base URL is on that host; the relay
+server reads only the code list (`relayPresetOf`). On the server the live list
+is the code default until the isolate has rendered a page with the config, so
+syncing a backend of a just-added provider may wait for that.
+
+The picker is one segmented pill (`ByokProviderPicker`; every provider shown,
+the chosen one seal red, a radiogroup), not a dropdown. Under it: the note,
+"<name> prices" and "Get an API key" links, and the recommended models; a tap
+puts one in the model field.
+
+Added 2026-11-15, checked against the providers' docs (OpenAI-compatible
+`/chat/completions`, `Authorization: Bearer`) and from `Origin:
+https://lianki.com` with a throwaway key:
+
+| preset     | base URL                                                         | browser                                | source                                                                    |
+| ---------- | ---------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------- |
+| DeepInfra  | `https://api.deepinfra.com/v1/openai`                            | yes (ACAO `*`)                         | docs.deepinfra.com/chat/overview                                          |
+| Groq       | `https://api.groq.com/openai/v1`                                 | yes (ACAO `*`)                         | console.groq.com/docs/models                                              |
+| Workers AI | `https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1` | **no**: preflight 405, no CORS headers | developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/ |
+
+Workers AI is listed with `browser: false`, so the settings say it cannot be
+called from a web page yet (`errServerOnly`). Making it usable needs the relay:
+its path carries the user's account id, so it would need a path pattern on the
+allowlist, which is an owner decision (the AI Gateway endpoint answers its
+preflight 401 without CORS too).
+
 Checked 2026-11-05 from `Origin: https://lianki.com` with a throwaway invalid
 key (no real key used): a 401/400 that carries `Access-Control-Allow-Origin`
 means a page may call it.
 
-| preset     | endpoint                                                  | browser | note                                                                 |
-| ---------- | --------------------------------------------------------- | ------- | -------------------------------------------------------------------- |
-| OpenAI     | `https://api.openai.com/v1/chat/completions`              | yes     | preflight allows; a 401 comes **without** CORS headers, so a bad key reads as a network error (`opaque-auth`: "check the key") |
-| Anthropic  | `https://api.anthropic.com/v1/messages`                   | yes     | needs `anthropic-dangerous-direct-browser-access: true`; ACAO `*`    |
-| DeepSeek   | `https://api.deepseek.com/chat/completions`               | yes     | ACAO echoes the origin                                               |
-| Gemini     | `…/v1beta/openai/chat/completions` (OpenAI-compatible)    | yes     | preflight refuses unknown headers: send only authorization + content-type |
-| OpenRouter | `https://openrouter.ai/api/v1/chat/completions`           | yes     | ACAO `*`                                                             |
-| Ollama     | `http://localhost:11434/v1/chat/completions`              | yes     | needs `OLLAMA_ORIGINS=https://lianki.com`; Safari blocks http://localhost from https |
-| Custom     | `<base>/chat/completions`, OpenAI-compatible              | depends | must send CORS headers itself; "Test" explains a CORS failure        |
+| preset     | endpoint                                               | browser | note                                                                                                                           |
+| ---------- | ------------------------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| OpenAI     | `https://api.openai.com/v1/chat/completions`           | yes     | preflight allows; a 401 comes **without** CORS headers, so a bad key reads as a network error (`opaque-auth`: "check the key") |
+| Anthropic  | `https://api.anthropic.com/v1/messages`                | yes     | needs `anthropic-dangerous-direct-browser-access: true`; ACAO `*`                                                              |
+| DeepSeek   | `https://api.deepseek.com/chat/completions`            | yes     | ACAO echoes the origin                                                                                                         |
+| Gemini     | `…/v1beta/openai/chat/completions` (OpenAI-compatible) | yes     | preflight refuses unknown headers: send only authorization + content-type                                                      |
+| OpenRouter | `https://openrouter.ai/api/v1/chat/completions`        | yes     | ACAO `*`                                                                                                                       |
+| Ollama     | `http://localhost:11434/v1/chat/completions`           | yes     | needs `OLLAMA_ORIGINS=https://lianki.com`; Safari blocks http://localhost from https                                           |
+| Custom     | `<base>/chat/completions`, OpenAI-compatible           | depends | must send CORS headers itself; "Test" explains a CORS failure                                                                  |
 
 A preset that turns out to have no CORS gets `browser: false` and is shown as
 unusable in browser mode (`gapOf` → "server-only"); none does today.

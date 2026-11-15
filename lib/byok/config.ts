@@ -17,7 +17,7 @@
 // The privacy notice's acknowledgement (`lk:byok-ack`) is per device and
 // carries the notice's version: a changed notice asks again.
 
-import { BYOK_PRESETS, MODEL_RE, presetOf, type ByokPreset } from "./presets";
+import { MODEL_RE, livePresets, presetOf, type ByokPreset } from "./presets";
 import { checkBackend } from "./proxy-guard";
 
 export { MODEL_RE };
@@ -112,6 +112,8 @@ export function checkBaseUrl(raw: string, pageHost?: string | null): UrlCheck {
 export function cleanBackend(v: unknown): ByokBackend | null {
   if (!v || typeof v !== "object") return null;
   const b = v as Record<string, unknown>;
+  // A provider of the live list (on the server: the code default until this
+  // isolate has rendered a page with the config, docs/byok.md "Presets").
   if (typeof b.provider !== "string" || !presetOf(b.provider)) return null;
   if (typeof b.baseUrl !== "string" || b.baseUrl.length > 300) return null;
   if (typeof b.model !== "string" || !MODEL_RE.test(b.model)) return null;
@@ -143,8 +145,8 @@ function changed() {
   } catch {}
 }
 
-export function emptyDevice(provider = BYOK_PRESETS[0].id): ByokDevice {
-  const p = presetOf(provider) ?? BYOK_PRESETS[0];
+export function emptyDevice(provider?: string): ByokDevice {
+  const p = presetOf(provider) ?? livePresets()[0];
   return {
     v: 1,
     mode: "device",

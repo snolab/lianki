@@ -51,6 +51,7 @@ import {
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
 import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
+import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
 
 export type ConfigAudience = "server" | "public";
 
@@ -124,6 +125,16 @@ export const CONFIG = {
     description:
       "所有列表（阅读材料、链卡、聊天记录……）滚动到底时一次向服务器多要几行。不是分页：用户看不到这个数，只影响每次加载的量。",
   }),
+  // Settings → 「自己的 AI」 (docs/byok.md): the providers offered, as data.
+  // The relay's allowlist is NOT here (lib/byok/preset-data.ts RELAY_ALLOW, code only).
+  "byok.presets": {
+    default: DEFAULT_PRESET_ROWS,
+    schema: presetListSchema as z.ZodType<ByokPresetRow[]>,
+    group: "byok",
+    audience: "public",
+    description:
+      '设置 →「自己的 AI」里推荐的 AI 供应商（分段选择器按这个顺序显示，最后总有「自定义」）。JSON 数组，每条 {id 小写短名, name 供应商名, protocol "openai"/"anthropic", baseUrl, model 起始模型, browser 浏览器能否直接调用（CORS）, keyless?, opaqueAuthErrors?, policyUrl?, pricingUrl? 价格页, keyUrl? 申请 key 的页, models? [{id, tier: "cheap"/"balanced"/"strong"}] 2–4 个推荐模型, note? {en, zh, …} 一句话介绍（内置供应商的介绍在词典里，这里写了就以这里为准）}。不写价格（价格会变，只链到价格页）。加在这里的供应商只能浏览器直连，不能经 Lianki 转发（转发白名单只在代码里）。',
+  },
   "study.humanReactionMs": int({
     default: 1000,
     min: 200,
