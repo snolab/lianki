@@ -34,6 +34,9 @@ The CLI (never touches ~/lianki-voice-clips; it only reads files you name):
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete-audio --all      # only the kept recordings
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py score a.wav b.wav [--device iphone]
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py progressive [on|off]   # learning from his finals
+
+Household voices (another voice at home, scored against so the margin decides):
+scripts/local-stt/household-print.py builds `<device>.<model>.other.json`; deleting or renaming it turns it off.
 """
 from __future__ import annotations
 
@@ -133,6 +136,36 @@ VOICES_MAX = int(_env_num("VOICES_MAX", 8))
 VOICE_FORGET_S = _env_num("VOICE_FORGET_S", 2 * 3600)
 #: A voice's centroid is the running mean of its embeddings, the last this many counting.
 VOICE_MEAN_N = int(_env_num("VOICE_MEAN_N", 20))
+
+#: Household voices (docs/local-stt.md, "Household voices"; owner, 2026-11-16
+#: ~02:19 JST, "要做，帮我做"): one print cannot tell him from his wife (CAM++
+#: on 2026-11-15 16:28-16:40 UTC: his finals 0.425-0.743, hers 0.306-0.516),
+#: but how much closer a final is to his print than to a print of her voice
+#: can. A household print is `<device>.<model>.other.json` (or
+#: `.other-<name>.json`, one per voice), the same format as his, built by
+#: scripts/local-stt/household-print.py. When this device has one, the
+#: decision reads the margin = score(his best print) - max(score(household)):
+#: "me" from ME_MARGIN up (and his own score still over its band's "me" line),
+#: "other" under OTHER_MARGIN (or his score under the band's "other" line, as
+#: without one), "unknown" between. Chosen on that night's 53 finals with the
+#: household print left out of its own clips: her finals -0.494..-0.303, his
+#: one-voice finals -0.210 and up (two-voice ones lower), so the midpoint of
+#: the gap is -0.27; "me" sits 0.02 over it, towards him (a wrong "me" is what
+#: he complained about), "other" just above her highest.
+ME_MARGIN = _env_num("ME_MARGIN", -0.25)
+OTHER_MARGIN = _env_num("OTHER_MARGIN", -0.30)
+#: A final at least this long (audio seconds) with a household print is scored in
+#: WINDOW_S windows too, each decided on the same margin: "mixed" when both voices
+#: hold windows. Its decision is the majority voice when that voice holds at least
+#: MIXED_MAJORITY of the decided windows, else "unknown".
+MIXED_MIN_S = _env_num("MIXED_MIN_S", 4.0)
+MIXED_MAJORITY = _env_num("MIXED_MAJORITY", 0.7)
+#: Progressive learning waits this long after an "other" (or mixed) final: two
+#: voices are about, and a "me" just after is the likeliest to be wrong.
+TWO_VOICES_PAUSE_S = _env_num("TWO_VOICES_PAUSE_S", 60.0)
+#: The household print files: `<device>.<model>.other.json`, `<device>.<model>.other-<name>.json`.
+HOUSEHOLD = "other"
+_HOUSEHOLD_FILE = re.compile(r"^([a-z0-9][a-z0-9-]{0,31})\.([a-z0-9]+)\.other(?:-([a-z0-9]{1,16}))?\.json$")
 
 
 @dataclass(frozen=True)
@@ -262,6 +295,41 @@ def decide(model: Model, score: float, speech_s: float, snr_db: float) -> tuple[
     if score < b.reject:
         return "other", None
     return "unknown", "between"
+
+
+def decide_margin(model: Model, score: float, other: float, speech_s: float, snr_db: float) -> tuple[str, str | None]:
+    """
+    The decision with a household print: `score` his best print's, `other` the best
+    household print's. The noise gate and his own band still hold: under the band's
+    "other" line it is a stranger as before; the margin can only veto a "me".
+    """
+    if speech_s < MIN_SPEECH_S:
+        return "unknown", "short"
+    if snr_db < MIN_SNR_DB:
+        return "unknown", "noise"
+    b = band_for(model, speech_s)
+    if b is None:
+        return "unknown", "short"
+    margin = score - other
+    if score < b.reject or margin < OTHER_MARGIN:
+        return "other", None
+    if margin >= ME_MARGIN and score >= b.accept:
+        return "me", None
+    return "unknown", "margin" if margin < ME_MARGIN else "between"
+
+
+def majority(votes: list[str]) -> tuple[bool, float | None, str | None]:
+    """
+    (mixed, his share of the decided windows, the majority decision or None): mixed
+    when both "me" and "other" windows are there; the majority when its share is at
+    least MIXED_MAJORITY.
+    """
+    me, other = votes.count("me"), votes.count("other")
+    if not me + other:
+        return False, None, None
+    share = me / (me + other)
+    winner = "me" if share >= MIXED_MAJORITY else "other" if 1 - share >= MIXED_MAJORITY else None
+    return bool(me and other), round(share, 2), winner
 
 
 def bands_info(order: list[str]) -> dict:
@@ -407,6 +475,9 @@ class Store:
         f = self._file(device, model)
         if not os.path.lexists(f):
             return None
+        return self._read(f, device, model)
+
+    def _read(self, f: str, device: str, model: str) -> dict:
         why = path_problem(f, want_dir=False)
         if why:
             raise StoreError(why)
@@ -414,7 +485,8 @@ class Store:
             with open(f, encoding="utf-8") as fh:
                 p = json.load(fh)
             c = unit(np.array(p["centroid"], dtype=np.float32))
-            if p.get("v") != FORMAT or p.get("device") != device or p.get("model") != model or c.ndim != 1:
+            if (p.get("v") != FORMAT or p.get("device") != device or p.get("model") != model or c.ndim != 1
+                    or not np.isfinite(c).all()):
                 raise ValueError("wrong format")
         except (OSError, ValueError, KeyError, TypeError) as e:
             raise StoreError(f"unreadable ({type(e).__name__})") from e
@@ -426,6 +498,79 @@ class Store:
         p["sources"] = src if isinstance(src, list) and len(src) == n and set(src) <= set(SOURCES) else ["enrol"] * n
         p["added"] = (added if isinstance(added, list) and len(added) == n
                       and all(isinstance(t, int) and not isinstance(t, bool) for t in added) else [0] * n)
+        return p
+
+    # -- household voices (docs/local-stt.md, "Household voices")
+    def household_file(self, device: str, model: str, name: str | None = None) -> str:
+        if not valid_device(device) or model not in MODELS or (name is not None and not re.fullmatch(r"[a-z0-9]{1,16}", name)):
+            raise StoreError("bad device, model or name")
+        return os.path.join(self.root, f"{device}.{model}.{HOUSEHOLD}{'-' + name if name else ''}.json")
+
+    def load_households(self, device: str, model: str) -> list[dict]:
+        """This device's household prints for this model (another voice in his home each), in name order."""
+        if not valid_device(device) or model not in MODELS or not self._ready(create=False):
+            return []
+        out = []
+        for name in sorted(os.listdir(self.root)):
+            m = _HOUSEHOLD_FILE.match(name)
+            if not m or m.group(1) != device or m.group(2) != model:
+                continue
+            p = self._read(os.path.join(self.root, name), device, model)
+            p["_name"] = m.group(3) or HOUSEHOLD
+            out.append(p)
+        return out
+
+    def households(self) -> list[dict]:
+        """Every household print's summary (no embeddings): device, model, name, n, created."""
+        out = []
+        if not self._ready(create=False):
+            return out
+        for name in sorted(os.listdir(self.root)):
+            m = _HOUSEHOLD_FILE.match(name)
+            if not m or m.group(2) not in MODELS:
+                continue
+            try:
+                p = self._read(os.path.join(self.root, name), m.group(1), m.group(2))
+            except StoreError as e:
+                print(f"household print skipped: {name} {e}", file=sys.stderr, flush=True)
+                continue
+            out.append({"device": m.group(1), "model": m.group(2), "name": m.group(3) or HOUSEHOLD, "n": p.get("n"),
+                        "created": p.get("created"), "self": p.get("self")})
+        return out
+
+    def save_household(self, device: str, model: str, embeddings: list[np.ndarray], speech_s: list[float],
+                       name: str | None = None, replace: bool = False) -> dict:
+        """
+        Write a household print, the same format as his. An existing one is kept unless
+        `replace`, and then copied first to `<file>.bak-<epoch>` (never deleted here).
+        """
+        self._ready(create=True)
+        f = self.household_file(device, model, name)
+        if not embeddings:
+            raise StoreError("no samples")
+        if len(embeddings) > PRINT_MAX:
+            raise StoreError(f"at most {PRINT_MAX} samples")
+        with self.lock():
+            if os.path.lexists(f):
+                if not replace:
+                    raise StoreError(f"{os.path.basename(f)} exists (--replace keeps a backup and writes a new one)")
+                with open(f, "rb") as fh:
+                    write_private(f"{f}.bak-{int(time.time())}", fh.read())
+            E = np.array([unit(e) for e in embeddings], dtype=np.float32)
+            c = unit(E.mean(axis=0))
+            loo = [float(unit(np.delete(E, i, axis=0).mean(axis=0)) @ E[i]) for i in range(len(E))] if len(E) > 1 else []
+            now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            p = {
+                "v": FORMAT, "device": device, "model": model, "kind": "household", "name": name or HOUSEHOLD,
+                "dim": int(E.shape[1]), "n": int(len(E)), "created": now, "updated": now, "audio": False,
+                "self": {"min": round(min(loo), 3), "median": round(float(np.median(loo)), 3)} if loo else None,
+                "speechS": [round(float(s), 2) for s in speech_s],
+                "centroid": [round(float(v), 6) for v in c],
+                "embeddings": [[round(float(v), 6) for v in e] for e in E],
+                "sources": ["enrol"] * len(E), "added": [int(time.time())] * len(E),
+            }
+            write_private(f, json.dumps(p).encode())
+        p["_centroid"] = c
         return p
 
     # -- progressive learning (docs/local-stt.md, "Progressive voiceprint")
@@ -672,8 +817,8 @@ class Store:
 
     def delete(self, device: str | None, audio: bool = False) -> int:
         """
-        Remove one device's prints (every model), or all (device None), and
-        bump the generation so a pending enrolment cannot save over the delete.
+        Remove one device's prints (every model, its household prints too), or all
+        (device None), and bump the generation so a pending enrolment cannot save over the delete.
         The kept enrolment recordings stay unless `audio` is True: deleting the
         print never deletes them implicitly (owner, 2026-11-11; the panel asks
         separately, `delete_audio`). Count of files. Progressive learning is turned
@@ -718,7 +863,7 @@ class Store:
         n = 0
         for name in sorted(os.listdir(self.root)):
             full = os.path.join(self.root, name)
-            m = re.match(r"^([a-z0-9][a-z0-9-]{0,31})\.(?:[a-z0-9]+(?:\.pending)?\.json|audio)$", name)
+            m = re.match(r"^([a-z0-9][a-z0-9-]{0,31})\.(?:[a-z0-9]+(?:\.pending|\.other(?:-[a-z0-9]{1,16})?)?\.json|audio)$", name)
             if not m or (device is not None and m.group(1) != device):
                 continue
             if name.endswith(".audio"):
@@ -973,9 +1118,15 @@ class Verifier:
         self._stamp: int | None = -1
         #: The other voices heard lately (Voices): one table for the Mac, whoever's device heard them.
         self.voices = Voices()
+        #: (device, model) -> that device's household prints (load_households), cached as `_cache`.
+        self._house: dict[tuple[str, str], list[dict]] = {}
+        #: Per device (its mic), when the last "other" or mixed final was verified (epoch s):
+        #: learning from that device pauses after it.
+        self.last_other: dict[str, float] = {}
 
     def refresh(self) -> None:
         self._cache.clear()
+        self._house.clear()
         self._listed = None
         self._stamp = -1
 
@@ -986,6 +1137,7 @@ class Verifier:
             stamp = None
         if stamp != self._stamp:
             self._cache.clear()
+            self._house.clear()
             self._listed = None
             self._stamp = stamp
 
@@ -998,6 +1150,19 @@ class Verifier:
                 print(f"voiceprint {device}.{model} not used: {e}", file=sys.stderr, flush=True)
                 self._cache[k] = None
         return self._cache[k]
+
+    def _households(self, device: str | None, model: str) -> list[dict]:
+        """This device's household prints for the model ([] without a device, or when unreadable)."""
+        if not device or not valid_device(device):
+            return []
+        k = (device, model)
+        if k not in self._house:
+            try:
+                self._house[k] = self.store.load_households(device, model)
+            except StoreError as e:
+                print(f"household print {device}.{model} not used: {e}", file=sys.stderr, flush=True)
+                self._house[k] = []
+        return self._house[k]
 
     def _all(self) -> list[dict]:
         if self._listed is None:
@@ -1036,10 +1201,13 @@ class Verifier:
     def embed(self, model: str, audio: np.ndarray) -> np.ndarray | None:
         return self.embedders[model](audio)
 
-    def windows(self, model: str, device: str, audio: np.ndarray) -> list[dict]:
+    def windows(self, model: str, device: str, audio: np.ndarray, house: list[dict] | None = None,
+                mine: list[dict] | None = None) -> list[dict]:
         """
         Each WINDOW_S window of a final long enough for two, scored against that print and
-        decided alone: {score, decision, start, end} (samples into the final).
+        decided alone: {score, decision, start, end} (samples into the final). With household
+        prints (`house`), `score` is the best of his prints (`mine`), each window also has
+        `margin`, and its decision is decide_margin's.
         """
         p = self._print(device, model)
         win, hop = int(WINDOW_S * RATE), int(WINDOW_HOP_S * RATE)
@@ -1055,14 +1223,25 @@ class Verifier:
             e = self.embed(model, w)
             if e is None:
                 continue
+            if house:
+                score = max(float(e @ q["_centroid"]) for q in (mine or [p]))
+                other = max(float(e @ h["_centroid"]) for h in house)
+                out.append({"score": round(score, 3), "margin": round(score - other, 3),
+                            "decision": decide_margin(MODELS[model], score, other, speech_s, snr)[0],
+                            "start": at, "end": at + win})
+                continue
             score = float(e @ p["_centroid"])
             out.append({"score": round(score, 3), "decision": decide(MODELS[model], score, speech_s, snr)[0],
                         "start": at, "end": at + win})
         return out
 
-    def verify(self, audio: np.ndarray, device: str | None) -> dict:
+    def verify(self, audio: np.ndarray, device: str | None, now: float | None = None) -> dict:
         """
-        {score, decision, model, device, speechS, snrDb[, reason, windows, cuts, voice]} for one final.
+        {score, decision, model, device, speechS, snrDb[, reason, windows, cuts, voice]} for one final;
+        with a household print for this device also `otherScore` (the best household print's),
+        `margin` (score - otherScore) and, for a final of MIXED_MIN_S and more, `windowMargins`
+        and, when both voices hold windows, `mixed: true` with `meShare` (docs/local-stt.md,
+        "Household voices").
         `voice` (docs/voice-mode.md, "Speaker avatars"): "me" on his, "s1", "s2"… on an
         `other` (the same voice, the same id: Voices); none on an unknown, and none at
         all without a print, so an account that enrolled nothing never sees one.
@@ -1078,20 +1257,45 @@ class Verifier:
         if e is None:
             return {"decision": "unknown", "reason": "short", "model": model, "device": devices[0], "score": None, **base}
         best, who = -1.0, devices[0]
+        mine = []
         for d in devices:
             p = self._print(d, model)
             if p is None:
                 continue
+            mine.append(p)
             s = float(e @ p["_centroid"])
             if s > best:
                 best, who = s, d
-        decision, reason = decide(MODELS[model], best, speech_s, snr)
-        windows = self.windows(model, who, audio) if decision == "me" else []
+        house = self._households(device, model)
+        extra: dict = {}
         cuts: list[int] = []
-        if any(w["decision"] == "other" for w in windows):
-            decision, reason = "unknown", "mixed"
-            cuts = split_points(windows, audio)
-        out = {"score": round(best, 3), "decision": decision, "model": model, "device": who, **base}
+        if house:
+            other = max(float(e @ h["_centroid"]) for h in house)
+            extra = {"otherScore": round(other, 3), "margin": round(best - other, 3)}
+            decision, reason = decide_margin(MODELS[model], best, other, speech_s, snr)
+            windows = (self.windows(model, who, audio, house=house, mine=mine)
+                       if len(audio) >= MIXED_MIN_S * RATE else [])
+            mixed, share, winner = majority([w["decision"] for w in windows])
+            if mixed:
+                extra.update(mixed=True, meShare=share)
+                # The majority voice when there is a clear one; the gates (short, noise) still win.
+                if reason not in ("short", "noise"):
+                    decision, reason = (winner, None) if winner else ("unknown", "mixed")
+                cuts = split_points(windows, audio)
+            elif winner and decision in ("me", "other") and winner != decision:
+                # One voice in every decided window, the other voice over the whole: not sure.
+                decision, reason = "unknown", "windows"
+            if windows:
+                extra["windowMargins"] = [w["margin"] for w in windows]
+        else:
+            decision, reason = decide(MODELS[model], best, speech_s, snr)
+            windows = self.windows(model, who, audio) if decision == "me" else []
+            if any(w["decision"] == "other" for w in windows):
+                decision, reason = "unknown", "mixed"
+                cuts = split_points(windows, audio)
+        if (decision == "other" or extra.get("mixed")) and device and valid_device(device):
+            self.last_other[device] = time.time() if now is None else now
+        out = {"score": round(best, 3), "decision": decision, "model": model, "device": who, **base, **extra}
         if decision == "me":
             out["voice"] = "me"
         elif decision == "other":
@@ -1107,16 +1311,27 @@ class Verifier:
         return out
 
     # -- progressive learning (docs/local-stt.md, "Progressive voiceprint")
-    def learn_gate(self, spk: dict | None, device: str | None) -> str | None:
+    def learn_gate(self, spk: dict | None, device: str | None, now: float | None = None) -> str | None:
         """
         Why this verified final may not join the print, or None: the checks that need
         no embedding, read from verify's result. Only an unambiguous "me": no reason,
-        a model with measured bands, long, clean, every window his, well over the line.
+        a model with measured bands, long, clean, every window his, well over the line;
+        with a household print also over the "me" margin, whole and in every window, not
+        mixed, and not within TWO_VOICES_PAUSE_S of an "other" or mixed final.
         """
         if not device or not valid_device(device):
             return "no-device"
         if not spk or spk.get("decision") != "me" or spk.get("reason") or spk.get("score") is None:
             return "not-me"
+        if spk.get("mixed"):
+            return "mixed"
+        if spk.get("margin") is not None and (spk["margin"] < ME_MARGIN
+                                              or any(w < ME_MARGIN for w in spk.get("windowMargins") or [])):
+            return "household"
+        t = time.time() if now is None else now
+        last = self.last_other.get(device)
+        if last is not None and 0 <= t - last < TWO_VOICES_PAUSE_S:
+            return "two-voices"
         m = MODELS.get(spk.get("model") or "")
         if m is None or m.provisional:
             return "provisional"
@@ -1154,7 +1369,7 @@ class Verifier:
         now = time.time() if now is None else now
         if not self.store.progressive()["on"]:
             return {"ok": False, "reason": "off"}
-        why = self.learn_gate(spk, device)
+        why = self.learn_gate(spk, device, now)
         if why:
             return {"ok": False, "reason": why}
         speech_s = float(spk["speechS"])
@@ -1417,6 +1632,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{p['device']}\t{p['model']}\t{p['n']} samples ({p['enrolN']} enrolled, {p['progN']} learned,"
                       f" last {p['lastAdded'] or '-'})\tupdated {p['updated']}"
                       f"\taudio kept: {'yes' if p['audio'] else 'no'}\tself {p['self']}")
+            for h in store.households():
+                print(f"{h['device']}\t{h['model']}\thousehold '{h['name']}': {h['n']} samples, made {h['created']}"
+                      f"\tself {h['self']} (margins: me >= {ME_MARGIN}, other < {OTHER_MARGIN})")
             return 0
         if a.cmd == "delete":
             if a.device is not None and not valid_device(a.device):

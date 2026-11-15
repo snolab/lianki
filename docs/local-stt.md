@@ -1023,6 +1023,93 @@ refused; outlier; the cap and FIFO eviction; the rate limit; a print only at
 `ServerProtocol.test_progressive_learns_his_clean_finals` (the ticket, off by
 default, playback and noise not learned, the rate limit, delete).
 
+### Household voices
+
+Owner, 2026-11-16 (~02:19 JST, "要做，帮我做"): his wife's lines got his
+avatar, because one print cannot tell them apart. On 2026-11-15 16:28-16:40
+UTC his CAM++ finals scored 0.425-0.743 against his print, and hers scored
+0.306-0.516. What does separate them is the **margin**: how much closer a
+final is to his print than to a print of her voice.
+
+**What is stored.** A household print, `voiceprints/<device>.<model>.other.json`
+(a second voice: `.other-<name>.json`), on this Mac only, 0600. It uses the
+same format as his print (`"kind": "household"`). It holds embeddings only:
+no audio, no text, no clip names. It is never listed as his print, never goes
+into the account copy (`export`), and is deleted together with that device's
+prints (`voiceprint.py delete`). `voiceprint.py list` shows its count.
+
+**Build or rebuild it** from clips of her voice. The clips are read in place
+and never copied:
+
+    ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/household-print.py \
+        --device android --model campp --list clips.txt [--replace] [--min-speech 1.0]
+
+An existing file is kept unless you pass `--replace`, which first copies it
+to `<file>.bak-<epoch>`. The first one (android, CAM++) was made on
+2026-11-16 from the 18 finals of that night that the analysis labelled
+"other". The scores were checked against the stored embeddings.
+
+**The decision** (`decide_margin`) applies when this device has a household
+print. The margin is `score(his best print) - max(score(household))`:
+
+| margin / score                                          | decision                       |
+| ------------------------------------------------------- | ------------------------------ |
+| his score under the band's `other` line                 | `other` (a stranger, as before) |
+| margin < **-0.30** (`OTHER_MARGIN`)                     | `other` (the household voice)  |
+| margin ≥ **-0.25** (`ME_MARGIN`) and his score ≥ the band's `me` line | `me`             |
+| otherwise                                               | `unknown` (`margin` / `between`) |
+
+The noise gate (`short`, `noise`) applies first, as before. The margin can
+only **veto** a "me". His own `me` line (live 0.50 / 0.48) still has to be
+met, so a stranger who is unlike both voices is not taken for him.
+
+**How the margins were chosen.** The household print was rebuilt with each of
+her clips left out of it in turn (leave-one-out). On that basis her finals
+scored -0.494 to -0.303. His one-voice finals scored -0.21 and up; his finals
+with her voice in them scored lower. The midpoint of the gap is -0.27. "me"
+sits 0.02 above it, on his side, because a wrong "me" is the error he
+complained about. "other" sits just above her highest margin. Both values can
+be changed through `LIANKI_STT_ME_MARGIN` and `LIANKI_STT_OTHER_MARGIN`.
+
+**Re-run of those 53 finals** (stored embeddings, with the prints as they are
+now and the live me line of 0.50 / 0.48): 10 me, 16 other, 27 unknown, and
+13 of them mixed. None of her finals came out "me", and none of his came out
+"other". The leave-one-out run gives the same counts.
+
+**Mixed lines.** A final of **4 s** or more (`MIXED_MIN_S`) is also scored in
+2.5 s windows, each window decided on the same margin. The final is mixed
+when windows of both voices are present: `speaker.mixed: true` and `meShare`
+(his share of the decided windows). Its decision then goes to the voice that
+holds at least **70 %** of those windows (`MIXED_MAJORITY`). Without such a
+majority it is `unknown`, reason `mixed`. The cuts are kept, so the server
+still splits the line between the speakers. A final whose windows all go to
+one voice while the whole final scores as the other is `unknown`, reason
+`windows`.
+
+**The tag** has, besides `score`, the numbers `otherScore`, `margin`, and
+`windowMargins` (for a long final). The log line adds
+`margin -0.123 (other 0.456)[, mixed me 0.60]`. It never logs text.
+
+**Progressive learning pauses** (`learn_gate`). A final is not learned from
+when:
+
+- its margin, or the margin of any of its windows, is under `ME_MARGIN`
+  (reason `household`);
+- it is mixed (reason `mixed`);
+- it comes within **60 s** (`TWO_VOICES_PAUSE_S`) of an `other` or mixed
+  final on the same device, when two voices are about (reason `two-voices`).
+
+The pause applies with or without a household print.
+
+**Turn it off.** Delete or rename the `.other.json` file. The server notices
+on the next final, because the folder changed, and today's bands apply
+unchanged. Without a household print, nothing in the decision differs from
+before.
+
+Tests: `scripts/local-stt/test_voiceprint.py` `Household` (the bands, the
+fallback when there is no household print, mixed lines, the learning pause,
+the store and the builder).
+
 ## Only my voice: the filter
 
 Approved by the owner's tap on 2026-11-06 (about 01:02 JST). **Default off**:

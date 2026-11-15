@@ -903,6 +903,212 @@ class Signer:
         return self.ticket(aud="lianki-voiceprint", op=op, device=device, uv=uv, **extra)
 
 
+class Household(unittest.TestCase):
+    """
+    Household voices (docs/local-stt.md, "Household voices"): with a second-voice print
+    for the device, the margin score(his) - score(hers) decides; mixed finals by window
+    majority; progressive learning pauses. Voices are tones (FakeEmbedder's bins) mapped
+    to exact vectors: his print is axis 0, hers axis 1, so scores are what the test sets.
+    """
+
+    DIM = 16
+    HIM, HER = 350, 950  # mid-bin tones (FakeEmbedder bins by 100 Hz)
+
+    @staticmethod
+    def voice(me: float, her: float) -> np.ndarray:
+        v = np.zeros(Household.DIM, dtype=np.float32)
+        v[0], v[1], v[2] = me, her, np.sqrt(max(0.0, 1 - me * me - her * her))
+        return v
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = os.path.join(self.tmp.name, "vp")
+        self.store = V.Store(self.root)
+        fe = V.FakeEmbedder()
+        #: tone bin -> the vector it embeds to; anything else: a stranger on axis 3.
+        self.bins = {2: self.voice(0.70, 0.45), 8: self.voice(0.50, 0.85)}
+
+        def embed(a):
+            b = fe(a)
+            if b is None:
+                return None
+            k = int(np.argmax(b))
+            return self.bins.get(k, np.eye(self.DIM, dtype=np.float32)[3])
+
+        self.embed = embed
+        self.v = V.Verifier(self.store, ["campp"], embedders={"campp": embed})
+        axis = np.eye(self.DIM, dtype=np.float32)
+        self.store.save("android", "campp", [axis[0]] * 10, [3.0] * 10, audio=False)
+        self.store.save("iphone", "campp", [axis[0]] * 10, [3.0] * 10, audio=False)
+        self.her = [axis[1]] * 5
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def house(self, device="android"):
+        self.store.save_household(device, "campp", self.her, [3.0] * 5)
+        self.v.refresh()
+
+    @staticmethod
+    def talk(*fs, each=2.0):
+        """Sentences one after another, room noise between them (the windows need a floor)."""
+        return np.concatenate([tone(f, speech_s=each, pad_s=0.25, seed=i) for i, f in enumerate(fs)]).astype(np.float32)
+
+    # -- the decision bands
+    def test_relative_decision_bands(self):
+        m = V.MODELS["campp"]
+        acc = V.band_for(m, 4.0).accept
+        # Her: a high score of his (as on 2026-11-15, 0.74) but closer to hers: other.
+        self.assertEqual(V.decide_margin(m, 0.74, 0.74 - V.OTHER_MARGIN + 0.01, 4.0, 30), ("other", None))
+        # Him: over the "me" margin and his band's "me" line.
+        self.assertEqual(V.decide_margin(m, acc + 0.2, acc + 0.2 - V.ME_MARGIN, 4.0, 30), ("me", None))
+        # Between the margins: unknown, "margin".
+        mid = (V.ME_MARGIN + V.OTHER_MARGIN) / 2
+        self.assertEqual(V.decide_margin(m, 0.7, 0.7 - mid, 4.0, 30), ("unknown", "margin"))
+        # The margin only vetoes: his score under the band's "me" line stays unknown ("between")
+        # however far from hers, and under its "other" line it is a stranger, as without a household print.
+        self.assertEqual(V.decide_margin(m, acc - 0.01, -0.5, 4.0, 30), ("unknown", "between"))
+        self.assertEqual(V.decide_margin(m, 0.05, -0.9, 4.0, 30), ("other", None))
+        # The noise gate still wins.
+        self.assertEqual(V.decide_margin(m, 0.9, 0.0, 1.0, 30), ("unknown", "short"))
+        self.assertEqual(V.decide_margin(m, 0.9, 0.0, 4.0, 5), ("unknown", "noise"))
+        # The defaults: from the 2026-11-15 analysis, "me" above "other".
+        self.assertGreater(V.ME_MARGIN, V.OTHER_MARGIN)
+
+    def test_verify_with_a_household_print(self):
+        self.house()
+        her = self.v.verify(tone(self.HER, speech_s=3.0), "android")
+        self.assertEqual((her["decision"], her["score"], her["otherScore"], her["margin"]), ("other", 0.5, 0.85, -0.35))
+        self.assertRegex(her["voice"], r"^s\d+$")
+        him = self.v.verify(tone(self.HIM, speech_s=3.0), "android")
+        self.assertEqual((him["decision"], him["voice"], him["margin"]), ("me", "me", 0.25))
+        # Numbers only in the tag (no names, no paths).
+        for k in ("score", "otherScore", "margin"):
+            self.assertIsInstance(him[k], float)
+
+    def test_no_household_print_is_unchanged(self):
+        # Before any household print: exactly the bands as before, no margin keys.
+        her = self.v.verify(tone(self.HER, speech_s=3.0), "android")
+        self.assertEqual((her["decision"], her["score"]), ("me", 0.5))  # her 0.5 passes his 0.30 line: the bug
+        for k in ("margin", "otherScore", "mixed", "windowMargins"):
+            self.assertNotIn(k, her)
+        # Another device's household print does not change this one.
+        self.house("iphone")
+        self.assertEqual(self.v.verify(tone(self.HER, speech_s=3.0), "android")["decision"], "me")
+        self.assertEqual(self.v.verify(tone(self.HER, speech_s=3.0), "iphone")["decision"], "other")
+        # Renamed away: off again on the next final (the folder changed).
+        f = self.store.household_file("iphone", "campp")
+        time.sleep(0.01)
+        os.rename(f, f + ".off")
+        r = self.v.verify(tone(self.HER, speech_s=3.0), "iphone")
+        self.assertEqual(r["decision"], "me")
+        self.assertNotIn("margin", r)
+
+    def test_mixed_finals(self):
+        self.house()
+        # Half him, half her: both hold windows; no clear majority.
+        r = self.v.verify(self.talk(self.HIM, self.HIM, self.HER, self.HER), "android")
+        self.assertTrue(r["mixed"])
+        self.assertTrue(0.3 <= r["meShare"] <= 0.7, r)
+        self.assertEqual((r["decision"], r["reason"]), ("unknown", "mixed"))
+        self.assertTrue(r["cuts"])  # where the voice changes, as before
+        self.assertEqual(len(r["windowMargins"]), len(r["windows"]))
+        # Mostly him: mixed, his by majority.
+        r = self.v.verify(self.talk(*[self.HIM] * 7, self.HER), "android")
+        self.assertTrue(r["mixed"])
+        self.assertGreaterEqual(r["meShare"], V.MIXED_MAJORITY)
+        self.assertEqual(r["decision"], "me")
+        # Mostly her: hers.
+        r = self.v.verify(self.talk(self.HIM, *[self.HER] * 7), "android")
+        self.assertTrue(r["mixed"])
+        self.assertEqual(r["decision"], "other")
+        # One voice all along: not mixed.
+        r = self.v.verify(self.talk(*[self.HIM] * 4), "android")
+        self.assertNotIn("mixed", r)
+        self.assertEqual(r["decision"], "me")
+        # Under MIXED_MIN_S (3.5 s of audio): no windows at all.
+        r = self.v.verify(tone(self.HIM, speech_s=2.5), "android")
+        self.assertNotIn("windowMargins", r)
+        self.assertNotIn("mixed", r)
+        # Majority alone.
+        self.assertEqual(V.majority(["me", "me", "me", "other", "unknown"]), (True, 0.75, "me"))
+        self.assertEqual(V.majority(["me", "other"]), (True, 0.5, None))
+        self.assertEqual(V.majority(["unknown"]), (False, None, None))
+
+    def spk(self, **o):
+        """A verify() result that passes every gate (with a household print)."""
+        return {"decision": "me", "score": 0.9, "model": "campp", "device": "android", "speechS": 4.0,
+                "snrDb": 30.0, "windows": [0.9, 0.9, 0.9], "otherScore": 0.3, "margin": 0.6,
+                "windowMargins": [0.5, 0.5, 0.5], **o}
+
+    def test_learning_pause(self):
+        self.house()
+        t = 2_000_000.0
+        g = self.v.learn_gate
+        self.assertIsNone(g(self.spk(), "android", now=t))
+        # Under the "me" margin, whole or in a window: not learned.
+        self.assertEqual(g(self.spk(margin=V.ME_MARGIN - 0.01), "android", now=t), "household")
+        self.assertEqual(g(self.spk(windowMargins=[0.5, V.ME_MARGIN - 0.01]), "android", now=t), "household")
+        # Mixed (even when his by majority): not learned.
+        self.assertEqual(g(self.spk(mixed=True, meShare=0.8), "android", now=t), "mixed")
+        # Within TWO_VOICES_PAUSE_S after an "other" final on that device: not learned.
+        self.assertEqual(self.v.verify(tone(self.HER, speech_s=3.0), "android", now=t)["decision"], "other")
+        self.assertEqual(g(self.spk(), "android", now=t + 1), "two-voices")
+        self.assertEqual(g(self.spk(), "android", now=t + V.TWO_VOICES_PAUSE_S - 1), "two-voices")
+        self.assertIsNone(g(self.spk(), "iphone", now=t + 1))  # another device's mic
+        self.assertIsNone(g(self.spk(), "android", now=t + V.TWO_VOICES_PAUSE_S + 1))
+        # A mixed final pauses too.
+        self.v.verify(self.talk(*[self.HIM] * 7, self.HER), "android", now=t + 100)
+        self.assertEqual(g(self.spk(), "android", now=t + 110), "two-voices")
+        # And learn() refuses on the same grounds, before any embedding.
+        with self.store.lock():
+            self.store.set_progressive(True)
+        r = self.v.learn(np.zeros(RATE * 5, dtype=np.float32), "android", self.spk(), now=t + 110)
+        self.assertEqual(r, {"ok": False, "reason": "two-voices"})
+
+    def test_store_and_builder(self):
+        self.house()
+        f = self.store.household_file("android", "campp")
+        self.assertEqual(os.path.basename(f), "android.campp.other.json")
+        self.assertEqual(mode(f), 0o600)
+        with open(f) as fh:
+            p = json.load(fh)
+        self.assertEqual((p["kind"], p["n"], p["audio"]), ("household", 5, False))
+        # Not his print: not listed as one, never in the account copy.
+        self.assertEqual(sorted(x["device"] for x in self.store.prints()), ["android", "iphone"])
+        self.assertEqual([x["model"] for x in self.store.export("android")], ["campp"])
+        self.assertEqual([(h["device"], h["name"], h["n"]) for h in self.store.households()], [("android", "other", 5)])
+        # An existing one is kept; --replace copies it aside first.
+        with self.assertRaises(V.StoreError):
+            self.store.save_household("android", "campp", self.her, [3.0] * 5)
+        self.store.save_household("android", "campp", self.her[:3], [3.0] * 3, replace=True)
+        with open(f) as fh:
+            self.assertEqual(json.load(fh)["n"], 3)
+        self.assertEqual(len([x for x in os.listdir(self.root) if x.startswith("android.campp.other.json.bak-")]), 1)
+        # A second named voice: the best household score counts.
+        self.store.save_household("android", "campp", [np.eye(self.DIM, dtype=np.float32)[3]] * 2, [3.0] * 2, name="guest")
+        self.v.refresh()
+        self.assertEqual([h["_name"] for h in self.store.load_households("android", "campp")], ["guest", "other"])
+        # The builder script, from wav files (read in place), with the fake embedder.
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("household_print", os.path.join(HERE, "household-print.py"))
+        hp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(hp)
+        wavs = []
+        for i, sp in enumerate((3.0, 3.0, 0.5)):
+            w = os.path.join(self.tmp.name, f"{i}.wav")
+            with open(w, "wb") as fh:
+                fh.write(V.wav_bytes(tone(self.HER, speech_s=sp, seed=i)))
+            wavs.append(w)
+        r = hp.build(self.store, self.embed, "iphone", "campp", wavs)
+        self.assertEqual((r["n"], r["skipped"]), (2, 1))  # the 0.5 s clip has too little speech
+        self.assertEqual(sorted(os.listdir(self.tmp.name)), sorted(["0.wav", "1.wav", "2.wav", "vp"]))  # clips untouched
+        # Deleting a device's prints takes its household prints along; another device's stay.
+        self.store.delete("android")
+        self.assertEqual([h["device"] for h in self.store.households()], ["iphone"])
+
+
 class FilterLineTest(unittest.TestCase):
     """The filter's rule: in doubt it never stops anything."""
 

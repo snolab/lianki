@@ -471,8 +471,11 @@ class Server:
                 prints = await loop.run_in_executor(self.spk_pool, v.status)
                 kept = await loop.run_in_executor(self.spk_pool, v.store.audio_count, None)
                 prog = await loop.run_in_executor(self.spk_pool, self.progressive_info)
+                # Household prints (docs/local-stt.md, "Household voices"): counts and the margins, no features.
+                house = await loop.run_in_executor(self.spk_pool, v.store.households)
                 return {**out, "ok": True, "prints": prints, "models": v.order, "filter": self.filter_state(device),
-                        "bands": VP.bands_info(v.order), "recordings": kept, "progressive": prog}
+                        "bands": VP.bands_info(v.order), "recordings": kept, "progressive": prog,
+                        "households": house, "margins": {"me": VP.ME_MARGIN, "other": VP.OTHER_MARGIN}}
             if t == "voiceprint" and op == "progressive":
                 on = m.get("on")
                 if not isinstance(on, bool):
@@ -831,6 +834,11 @@ class Server:
                 who = f" {spk['voice']}" if spk.get("voice") not in (None, "me") else ""
                 c = self.counts
                 tag = f", spk {d} {sc}{why}{who} (me {c['me']} other {c['other']} unknown {c['unknown']})"
+                if spk.get("margin") is not None:
+                    # Household voices: numbers only (his score, hers, the margin, his share when mixed).
+                    tag += f", margin {spk['margin']:+.3f} (other {spk['otherScore']:.3f})"
+                    if spk.get("mixed"):
+                        tag += f", mixed me {spk['meShare']:.2f}"
                 if parts:
                     tag += ", split " + "+".join(p["speaker"].get("voice") or p["speaker"]["decision"] for p in parts)
                 if would:
