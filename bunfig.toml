@@ -94,4 +94,9 @@ coveragePathIgnorePatterns = [
   # (unit/rgui-gantt.test.ts, unit/gantt-view.test.ts).
   "packages/rgui/src/core/**",
   "packages/rgui/src/lane/**",
+  # The full-screen Gantt's React/DOM glue (measuring, scrolling, pinch and tap
+  # gestures, rAF). Its logic is in pure files held to 90% here (gantt-view,
+  # gantt-plan, gantt-states…); unit/gantt-hooks.test.tsx mounts the component
+  # only to guard the hook order, which pulled it into the report at 44%.
+  "packages/debug-chat/src/GanttFull.tsx",
 ]
