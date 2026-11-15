@@ -29,6 +29,7 @@ export function OwnerBoots({
   whisperRecheck,
   pttMaxCaptureMs,
   mergeReopenSec,
+  playAudio = false,
   box = null,
   autoUpdate = false,
   account = null,
@@ -72,6 +73,8 @@ export function OwnerBoots({
   chatFull?: boolean;
   /** Flag `voice.li-hub`: Li's sound hub observes the owner's pages (docs/li-sound-hub.md). */
   liHub?: boolean;
+  /** Flag `chat.play-audio`: an agent's audio lines play (docs/li-sound-hub.md, "Playing audio"). */
+  playAudio?: boolean;
 }) {
   return (
     <>
@@ -94,6 +97,7 @@ export function OwnerBoots({
         whisperRecheck={whisperRecheck}
         pttMaxCaptureMs={pttMaxCaptureMs}
         mergeReopenSec={mergeReopenSec}
+        playAudio={playAudio}
         box={box}
         account={account}
         cacheLines={cacheLines}

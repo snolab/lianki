@@ -5,6 +5,7 @@ import { cleanAppRefs, miniAppsIn } from "../../../packages/debug-chat/src/mini-
  * (debug.ts calls in here). docs/lianki-dev-cli.md, "lianki chat".
  *
  *   POST /api/version/chat  Authorization: Bearer lk_…
+ *        {op:"say", text, quiet?, play?:{src,title?,kind?}} → {ok, id}   (play: chat:play)
  *        {op:"say", text, quiet?, cut?}          → {ok, id}   cut: "supersede" | "interject"
  *        {op:"ask", question, options | questions, expiresAt?} → {ok, id, askId}
  *        {op:"read", limit?, afterSeq?, throughSeq?} → {ok, thread, lane, messages, ...coverage}
@@ -80,6 +81,7 @@ import {
   cleanPartName,
   effective,
 } from "../../../packages/debug-chat/src/presence";
+import { parsePlay, playRefusal, srcHost } from "../../../packages/debug-chat/src/play-audio";
 
 export const CHAT_PATH = "/api/version/chat";
 export const REVOKED_PATH = "/internal/chat-tokens/revoked";
@@ -155,6 +157,8 @@ export type ChatTokenRpc = {
     tokenHash?: string;
     client?: string;
   }): Promise<unknown>;
+  /** `say --play` (lib/play-check.ts): chat:play, the flag, deny list, rate; audited. */
+  playAudio?(req: Record<string, unknown>): Promise<unknown>;
 };
 
 export interface TokenHost {
@@ -379,7 +383,13 @@ export class TokenChat {
     );
   }
 
-  private async say(thread: string, lane: string, m: Record<string, unknown>, who: Who = {}) {
+  private async say(
+    thread: string,
+    lane: string,
+    m: Record<string, unknown>,
+    who: Who = {},
+    cred?: { token: string } | { tokenHash: string },
+  ) {
     const muted = await this.mutedRefusal(thread, lane);
     if (muted) return muted;
     const apps = cleanAppRefs(m.attachments);
@@ -412,6 +422,22 @@ export class TokenChat {
     // One of the two modes or nothing, like the grant path (lib/dev-eval.ts parseControllerMessage).
     if (m.cut !== undefined && !isSayCut(m.cut))
       return { error: `cut must be one of ${SAY_CUTS.join(", ")}` };
+    // Parse locally; the main Worker authorizes the host, scope, feature flag and rate.
+    let audio: ChatMessage["audio"];
+    if (m.play !== undefined) {
+      const raw = (m.play && typeof m.play === "object" ? m.play : {}) as Record<string, unknown>;
+      const p = parsePlay({ src: raw.src, title: raw.title, kind: raw.kind });
+      if (!p.ok) return { error: p.error };
+      if (!cred) return { error: playRefusal("unavailable") };
+      const refused = await this.playVerdict({
+        via: "token",
+        ...cred,
+        host: srcHost(p.audio.src),
+        kind: p.audio.kind,
+      });
+      if (refused) return { error: refused };
+      audio = p.audio;
+    }
     const line = this.line(
       thread,
       lane,
@@ -422,11 +448,19 @@ export class TokenChat {
         ...(voice ? { voice: m.voice as string } : {}),
         // How it cuts into the reading when it arrives live (packages/debug-chat voice.ts).
         ...(isSayCut(m.cut) ? { cut: m.cut } : {}),
+        ...(audio ? { audio } : {}),
       },
       who,
     );
     await this.host.post(line);
-    console.log(JSON.stringify({ msg: "debug.token-say", lane, owner: thread === OWNER_THREAD }));
+    console.log(
+      JSON.stringify({
+        msg: "debug.token-say",
+        lane,
+        owner: thread === OWNER_THREAD,
+        ...(audio ? { play: { host: srcHost(audio.src), kind: audio.kind } } : {}),
+      }),
+    );
     return { id: line.id };
   }
 
@@ -448,6 +482,21 @@ export class TokenChat {
       }),
     );
     return { id: line.id, askId: ask.askId };
+  }
+
+  /** null: the audio line may go; else why not (deny by default). */
+  private async playVerdict(req: Record<string, unknown>): Promise<string | null> {
+    const rpc = this.host.rpc();
+    if (!rpc?.playAudio) return playRefusal("unavailable");
+    try {
+      const a = (await rpc.playAudio(req)) as { ok?: unknown; error?: unknown } | null;
+      return a?.ok === true ? null : playRefusal(String(a?.error ?? "unavailable"));
+    } catch (e) {
+      console.error(
+        JSON.stringify({ msg: "debug.token-play-failed", error: String(e).slice(0, 200) }),
+      );
+      return playRefusal("unavailable");
+    }
   }
 
   /** POST /api/version/chat. */
@@ -573,7 +622,7 @@ export class TokenChat {
     const who = await this.who(v, thread, mcp);
     const out =
       op === "say"
-        ? await this.say(thread, v.lane, body, who)
+        ? await this.say(thread, v.lane, body, who, { token: m[1]! })
         : await this.ask(thread, v.lane, body, who);
     if ("error" in out)
       return json(
@@ -775,7 +824,7 @@ export class TokenChat {
     const who = await this.who(v, thread, a.mcp === true);
     const out =
       m.type === "say"
-        ? await this.say(thread, v.lane, m, who)
+        ? await this.say(thread, v.lane, m, who, { tokenHash: a.hash! })
         : await this.ask(thread, v.lane, m, who);
     if ("error" in out)
       return send(ws, {
