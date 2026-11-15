@@ -131,8 +131,12 @@ describe("config", () => {
       scope: "all",
       answerUnnamed: true,
     });
-    // coco and 杰咪 may answer his unnamed lines (owner, 2026-11-15 22:55 JST); the read-only ones never.
-    expect(CFG.agents.filter((a) => a.answerUnnamed).map((a) => a.lane)).toEqual(["codex", "agy"]);
+    // coco, 杰咪 and mimiai may answer his unnamed lines (owner, 2026-11-15 22:55 and 23:08 JST); the read-only ones never.
+    expect(CFG.agents.filter((a) => a.answerUnnamed).map((a) => a.lane)).toEqual([
+      "codex",
+      "agy",
+      "mimiai",
+    ]);
     expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", answerUnnamed: true }).success).toBe(
       true,
     );

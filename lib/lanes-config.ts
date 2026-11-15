@@ -73,7 +73,7 @@ export const LANES_CONFIG_DEFAULTS = {
     // coco and 杰咪 may answer his unnamed lines too (owner, 2026-11-15 22:55 JST).
     { cwd: "lianki/tree/agy", cli: "agy", lane: "agy", resident: true, answerUnnamed: true },
     // mimiai's codex listens to everything too (owner, 2026-11-15 13:2x JST "把它叫进来这里监听").
-    { cwd: "mimiai/tree/main", cli: "codex", lane: "mimiai", resident: true },
+    { cwd: "mimiai/tree/main", cli: "codex", lane: "mimiai", resident: true, answerUnnamed: true },
     // 小克 (the Claude Code chat lane) keeps its own live feed of the owner's
     // lines: it joins as `claude`, but the manager never wakes it. It hears every
     // other line live (owner, 2026-11-15 15:1x JST: tier ①, scope "all"): its
