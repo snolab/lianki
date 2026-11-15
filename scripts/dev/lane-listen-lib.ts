@@ -6,7 +6,8 @@
 import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { type RouteLane, routeLine, testText } from "../../lib/lane-route";
+import { type RouteLane, laneOfRoute, routeLine, testText } from "../../lib/lane-route";
+import { laneSpec } from "../../packages/debug-chat/src/voices";
 import { ownerClock, ownerTag } from "./owner-time";
 
 /** Where a lane's token is kept on this Mac. */
@@ -120,6 +121,30 @@ export const ownerAt = (at?: string) => {
   return `${ownerClock(t)} ${ownerTag(t)}`;
 };
 
+/**
+ * The rule every lane hears (owner, 2026-11-15 15:0x JST: "我在 @ 你的时候，这些只读
+ * AI（包括 mimiai）不要乱回复"): answer only a line that names you or 全体.
+ */
+export const NO_CROSS_RULE = "只回答点名我或「全体」的话；被点名的是别人时不插话、不代答、不追问。";
+
+/** Whom a line is for, as `lane` sees it: "mine" (its name or 全体), "other" (another lane's name), or "none". */
+export function addressee(
+  lane: RouteLane,
+  text: string,
+): { to: "mine" } | { to: "other"; names: string[] } | { to: "none" } {
+  const r = routeLine(text);
+  if (!r.addressed) return { to: "none" };
+  if (r.all || r.lanes.includes(lane)) return { to: "mine" };
+  return { to: "other", names: r.lanes.map((x) => laneSpec(laneOfRoute(x)).name || x) };
+}
+
+/** The marker in front of a line he addressed to another lane by name. */
+export const otherMark = (names: readonly string[]) => `【FYI · 点名 ${names.join("、")}，不是你】`;
+/** Once per batch that holds such a line: what to do with it. */
+export const OTHER_NOTE = "点名别人的：不要回答、不要代做；只在点名你或 全体 时回复。";
+/** Once per batch that holds a line with no name (a listen-to-all lane). */
+export const NONE_NOTE = "未点名：只听，不回。";
+
 /** What the lane's agent is handed: his words, and how to answer as itself. */
 export function handoff(lane: RouteLane, l: Line, repo: string): string {
   if (l.etaLane === lane)
@@ -131,7 +156,7 @@ export function handoff(lane: RouteLane, l: Line, repo: string): string {
     ].join("\n");
   const test = testText(l);
   const words = test ?? l.text;
-  const said = routeLine(words);
+  const said = addressee(lane, words);
   const reply = `bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} say --repo ${repo} --as ${lane} "<your reply>"`;
   return [
     test === null
@@ -140,9 +165,11 @@ export function handoff(lane: RouteLane, l: Line, repo: string): string {
     "",
     test !== null
       ? 'This is a routing TEST, not the owner. Answer once, starting "[lane-test] ", one short line, so the test sees you heard it:'
-      : said.lanes.includes(lane)
-        ? `He addressed this to you by name; only you got it, the other lanes stay silent. Answer once, yourself, short, in his language${said.text ? "" : " (he only said your name: ask what he needs)"}:`
-        : "Heard, not addressed to you by name (you listen to all his lines): keep it as context. Answer only if it is clearly meant for you; otherwise stay silent, another lane answers. To answer:",
+      : said.to === "mine"
+        ? `He addressed this to you by name; only you got it, the other lanes stay silent. Answer once, yourself, short, in his language${routeLine(words).text ? "" : " (he only said your name: ask what he needs)"}:`
+        : said.to === "other"
+          ? `${otherMark(said.names)} He addressed this to another lane by name: do not answer, do not do it for them, do not follow up. ${OTHER_NOTE} Only if he names you or 全体 later:`
+          : `${NONE_NOTE} Heard, not addressed to you by name (you listen to all his lines): keep it as context and stay silent; another lane answers. Only if he names you or 全体:`,
     `  ${reply}`,
     "It posts as your lane (your name, mark and voice) with your own lane token; never read or print the token. Do not hand this to another lane.",
   ].join("\n");
@@ -161,9 +188,20 @@ export function briefBullet(lane: RouteLane, l: Line): string {
   if (l.etaLane === lane) return `- (state tree) ${l.text}`;
   const test = testText(l);
   if (test !== null) return `- (id:${l.id}) [lane-test] ${test}`;
-  const mine = routeLine(l.text).lanes.includes(lane);
+  const to = addressee(lane, l.text);
+  const mark = to.to === "mine" ? " @你" : to.to === "other" ? ` ${otherMark(to.names)}` : "";
   const unsure = l.voice === "unknown" ? "（声纹未定）" : "";
-  return `- (id:${l.id})${mine ? " @你" : ""}${unsure} ${l.text}`;
+  return `- (id:${l.id})${mark}${unsure} ${l.text}`;
+}
+
+/** The notes a batch carries once each: OTHER_NOTE when a line names another lane, NONE_NOTE when one names nobody. */
+export function batchNotes(lane: RouteLane, lines: readonly Line[]): string[] {
+  const kinds = new Set(
+    lines
+      .filter((l) => l.etaLane !== lane && testText(l) === null)
+      .map((l) => addressee(lane, l.text).to),
+  );
+  return [...(kinds.has("other") ? [OTHER_NOTE] : []), ...(kinds.has("none") ? [NONE_NOTE] : [])];
 }
 
 /**
@@ -179,13 +217,20 @@ export function handoffBrief(
   first: boolean,
 ): string {
   const at = ownerAt(lines.at(-1)?.at);
-  const out = [`【owner → ${lane}】${at}`, ...lines.map((l) => briefBullet(lane, l))];
-  if (first)
-    out.push(
-      `规则只读这一次：${join(repo, HANDOFF_SKILL)}（回复：bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} reply --as ${lane} --id <id> "…"）`,
-    );
+  const out = [
+    `【owner → ${lane}】${at}`,
+    ...batchNotes(lane, lines),
+    ...lines.map((l) => briefBullet(lane, l)),
+  ];
+  if (first) out.push(...firstLines(lane, repo));
   return out.join("\n");
 }
+
+/** What only the first message of a listener's (or a woken reader's) life carries: the rule, and where the rules are. */
+export const firstLines = (lane: RouteLane, repo: string) => [
+  NO_CROSS_RULE,
+  `规则只读这一次：${join(repo, HANDOFF_SKILL)}（回复：bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} reply --as ${lane} --id <id> "…"）`,
+];
 
 /** How often a busy agent is looked at while lines wait for it. */
 export const BUSY_RECHECK_MS = 5_000;
@@ -203,12 +248,11 @@ export const BUSY_RECHECK_MS = 5_000;
  */
 export const urgentLine = (lane: RouteLane, l: Line) => {
   if (l.etaLane === lane) return true;
-  const r = routeLine(l.text);
-  return r.addressed && r.lanes.includes(lane);
+  return addressee(lane, l.text).to === "mine";
 };
 /** The body `ay send` still accepts: its own 1024 limit minus its ~150-char wrapper, with room for the header and the skill line. */
 export const SEND_MAX_CHARS = 800;
-/** A batch cut into parts whose bullets stay under SEND_MAX_CHARS; one bullet too long on its own is cut with "…". */
+/** A batch cut into parts whose bullets (and their batch notes) stay under SEND_MAX_CHARS; one bullet too long on its own is cut with "…". */
 export function chunkLines(
   lane: RouteLane,
   lines: readonly Line[],
@@ -217,15 +261,17 @@ export function chunkLines(
   const parts: Line[][] = [];
   let cur: Line[] = [];
   let size = 0;
+  const notes = (ls: readonly Line[]) => batchNotes(lane, ls).reduce((n, x) => n + x.length + 1, 0);
   for (const l of lines) {
     let line = l;
+    const room = max - notes([l]);
     let len = briefBullet(lane, line).length + 1;
-    if (len > max) {
-      const over = len - max + 1;
+    if (len > room) {
+      const over = len - room + 1;
       line = { ...l, text: `${l.text.slice(0, Math.max(0, l.text.length - over))}…` };
       len = briefBullet(lane, line).length + 1;
     }
-    if (cur.length && size + len > max) {
+    if (cur.length && size + len + notes([...cur, line]) > max) {
       parts.push(cur);
       cur = [];
       size = 0;
@@ -262,7 +308,9 @@ export function makeDeliverer(
     // and a refused batch was simply lost (2026-11-14 23:xx, four of coco's).
     // So a long batch goes as several messages, each under SEND_MAX_CHARS.
     let code: number | undefined;
-    for (const part of chunkLines(o.lane, batch)) {
+    // The first message also carries firstLines: its parts leave room for them.
+    const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo).join("\n").length + 1 : 0);
+    for (const part of chunkLines(o.lane, batch, room)) {
       code = await send(handoffBrief(o.lane, part, o.repo, first), interrupt);
       first = false;
       log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
