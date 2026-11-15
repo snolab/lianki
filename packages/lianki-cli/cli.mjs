@@ -574,7 +574,25 @@ async function cmdAppPublish(c) {
   emit(c, "app publish", data, (d) => `published ${d.url}`);
 }
 
+/**
+ * `say --play <src> [--title …] [--kind file|stream]`: audio the user's phone
+ * may play on this line. Only its shape is checked here (https:// or
+ * file:<id>); lianki.com checks the rest and never fetches it.
+ */
+export function playOf(argv) {
+  if (argv.play === undefined) return undefined;
+  const src = String(argv.play ?? "").trim();
+  if (!/^(https:\/\/\S+|file:[0-9a-f]{20})$/.test(src))
+    throw usage("--play takes an https URL or file:<id> (a My Files id)", 'lianki chat say --play https://example.com/a.mp3 "listen"');
+  const kind = argv.kind === undefined ? undefined : String(argv.kind);
+  if (kind !== undefined && kind !== "file" && kind !== "stream")
+    throw usage("--kind is file or stream", 'lianki chat say --play https://radio.example/live --kind stream "live"');
+  const title = argv.title === undefined ? undefined : String(argv.title).trim();
+  return { src, ...(title ? { title } : {}), ...(kind ? { kind } : {}) };
+}
+
 async function cmdChatSay(c) {
+  const play = playOf(c.argv);
   const token = await needToken(c);
   const parts = (c.argv.text ?? []).map(String);
   if (c.argv.stdin && parts.length > 0)
@@ -600,6 +618,7 @@ async function cmdChatSay(c) {
       // How it cuts into the reading when it arrives live: stop yours, or pause and go on.
       ...(c.argv.supersede ? { cut: "supersede" } : {}),
       ...(c.argv.interject ? { cut: "interject" } : {}),
+      ...(play ? { play } : {}),
     },
   });
   emit(
@@ -1095,10 +1114,17 @@ function build(args, deps, box) {
                     type: "boolean",
                     describe: "Urgent: pauses the line being read, reads this one, then goes on",
                   })
+                  .option("play", {
+                    type: "string",
+                    describe: "Audio the phone plays on this line: an https URL (file or stream) or file:<id> (needs chat:play)",
+                  })
+                  .option("title", { type: "string", describe: "With --play: a short name on its play button" })
+                  .option("kind", { type: "string", describe: "With --play: file or stream (default: from the URL)" })
                   .option("stdin", { type: "boolean", hidden: true }),
                 [
                   ['lianki chat say "PR #12 is green"', "→ 【<token name>】PR #12 is green"],
                   ['lianki chat say --voice main "hi"', "read in main's voice instead of the lane's"],
+                  ['lianki chat say --play https://example.com/hello.mp3 "listen to this"', "a line with a ▶ on the phone"],
                   ["git log -1 --format=%s | lianki chat say -", ""],
                 ],
               ),

@@ -92,7 +92,11 @@ export type AuditKind =
   // The sign-up bonus (lib/payments/signup-bonus-store.ts, docs/payments.md
   // "Sign-up bonus"): one row per grant. Actor and subject: the account;
   // detail: the path (new / backfill), the UTC day, the day's slot, the credits.
-  | "credits.signup-bonus";
+  | "credits.signup-bonus"
+  // An agent's audio line (`say --play`; lib/play-check.ts): every one the hub
+  // posts. Actor: the token's account, or "grant"; subject: the src's host
+  // only (never the URL); detail: the kind and the token's name or the sender.
+  | "chat.play";
 
 export type AuditEntry = {
   kind: AuditKind;

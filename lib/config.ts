@@ -1504,6 +1504,28 @@ export const CONFIG = {
     description:
       "小应用经你同意后可以读、改哪些账号设置（逗号分隔的设置键；不在 lib/prefs/schema.ts 里的会被忽略）。默认只有界面语言、纸张、动画、字号、偏好语言、朗读和语速。",
   },
+  // Agent audio on his phone (docs/li-sound-hub.md, "Playing audio from an agent").
+  "chat.play.denyHosts": {
+    default: "" as string,
+    schema: z
+      .string()
+      .max(2000)
+      .regex(/^[A-Za-z0-9.,\s-]*$/, "host names, comma separated"),
+    group: "chat",
+    audience: "server",
+    description:
+      "播放音频（say --play）：不许播放的网站（主机名，逗号分隔；也拦它下面的子域名，如 example.com 也拦 a.example.com）。空（默认）= 任何 https 网站都能播（IP 地址、本地网络和带账号密码的地址永远不行）。",
+  },
+  "chat.play.perTenMin": int({
+    default: 20,
+    min: 0,
+    max: 600,
+    unit: "次/10 分钟",
+    group: "chat",
+    audience: "server",
+    description:
+      "播放音频（say --play）：每个通道令牌（或配对的发送端）每 10 分钟最多发几条带音频的消息。0 = 不许播放。",
+  }),
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

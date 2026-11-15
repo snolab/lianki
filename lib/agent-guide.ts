@@ -107,6 +107,7 @@ export const GUIDE_KEYS = [
   "scopeChatWrite",
   "scopeChatAsk",
   "scopeAppsPublish",
+  "scopeChatPlay",
   "scopeEval",
   "scopeProgress",
   "scopeRecordingsRead",
@@ -156,6 +157,7 @@ const SCOPE_LINE: Record<ScopeId, GuideKey> = {
   "chat:write": "scopeChatWrite",
   "chat:ask": "scopeChatAsk",
   "apps:publish": "scopeAppsPublish",
+  "chat:play": "scopeChatPlay",
   eval: "scopeEval",
   progress: "scopeProgress",
   "recordings:read": "scopeRecordingsRead",
@@ -194,7 +196,7 @@ export type GuideInput = {
 export function agentGuide({ scopes, t, name, expires }: GuideInput): string {
   const has = (s: ScopeId) => scopes.includes(s);
   const study = has("study");
-  const chat = has("chat:read") || has("chat:write") || has("chat:ask");
+  const chat = has("chat:read") || has("chat:write") || has("chat:ask") || has("chat:play");
   const progress = has("progress");
   const H = `Authorization: Bearer ${TOKEN_PLACEHOLDER}`;
   const out: string[] = [];

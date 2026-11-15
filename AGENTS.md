@@ -202,6 +202,7 @@ that are expensive to rediscover.
 | /books public-domain library: catalogue rule, slugs, R2 cache              | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"   |
 | Voice mode: spoken commands per screen, grammar, mic taps                  | [docs/voice-mode.md](docs/voice-mode.md)                            |
 | All sound through Li: `__lkLi` hub, who holds mic / plays                  | [docs/li-sound-hub.md](docs/li-sound-hub.md)                        |
+| Agent audio on the phone (`say --play`)                                    | [docs/li-sound-hub.md](docs/li-sound-hub.md), "Playing audio"      |
 | /words owner spec: tall slips, window, review-first, voice                 | [docs/words-session-spec.md](docs/words-session-spec.md)            |
 | PWA cold start: measuring it, per-page dictionaries, lazy chat, SW         | [docs/cold-start.md](docs/cold-start.md)                            |
 | Branch API previews: Core gateway, MyBox auth, sandbox persistence         | [docs/api-preview-proxy.md](docs/api-preview-proxy.md)              |
