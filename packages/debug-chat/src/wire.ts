@@ -1569,7 +1569,13 @@ export function cleanTiming(raw: unknown): VoiceTiming | undefined {
  * shown to friends or normal users); it never carries text.
  */
 export type SttRoute = "local" | "cloud";
-export type SttTag = { route: SttRoute; engine?: string; fallback?: true };
+export type SttTag = {
+  route: SttRoute;
+  engine?: string;
+  fallback?: true;
+  /** The repetition guard cut a decoding loop off the text (stt-repeat.ts). */
+  repeat?: "trimmed";
+};
 /** An engine or model id: "sensevoice-small-2024-07-17-int8", "@cf/openai/whisper-large-v3-turbo". */
 const STT_ENGINE = /^[@A-Za-z0-9][A-Za-z0-9@._/+:-]{0,79}$/;
 
@@ -1581,6 +1587,7 @@ export function cleanStt(raw: unknown): SttTag | undefined {
   const out: SttTag = { route: r.route };
   if (typeof r.engine === "string" && STT_ENGINE.test(r.engine)) out.engine = r.engine;
   if (r.fallback === true && r.route === "cloud") out.fallback = true;
+  if (r.repeat === "trimmed") out.repeat = "trimmed";
   return out;
 }
 

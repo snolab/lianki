@@ -202,7 +202,9 @@ export type SttDropReason =
   | "no-speech-frames"
   | "route-vad"
   | "stock-credit"
-  | "stock-courtesy";
+  | "stock-courtesy"
+  /** A decoding loop with too little left once cut (stt-repeat.ts). */
+  | "repetition";
 
 /** The characters a `…` may stand for: "the Amara.org community" fits, a paragraph does not. */
 const SLOT = 40;

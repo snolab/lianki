@@ -35,6 +35,7 @@ import { ETA_FLAG } from "@/lib/eta-ping";
 import { boxViewer, ownerFlagOn } from "@/lib/box-oauth/session";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
+import { setRepeatLimits } from "@lianki/debug-chat/stt-repeat";
 import { dispatchChatUi } from "@lianki/debug-chat/ui-cue";
 import { getKey, isKey, setKey } from "@lianki/debug-chat/storage-keys";
 import { WAS_OWNER_KEY, devParts, mayRunEval, rejoinDelay } from "@/lib/debug-rejoin";
@@ -268,6 +269,12 @@ export function DebugEval({
   if (lexicon !== undefined) setLexicon(lexicon);
   // The lanes beyond the built-in four, and more names for them (config chat.lanes): live, no deploy.
   setLaneTable(publicCfg("chat.lanes"));
+  // The mic's repetition guard on every final (stt-repeat.ts): live, no deploy.
+  setRepeatLimits({
+    maxRuns: publicCfg("stt.repeatMaxRuns"),
+    maxShare: publicCfg("stt.repeatMaxShare"),
+    minKeepChars: publicCfg("stt.repeatMinKeepChars"),
+  });
   setCloudVoices(cloudVoices);
   setTalkOver(talkOver);
   setPolishReadback(readback);

@@ -22,6 +22,11 @@ describe("observed voice detail metadata", () => {
     expect(voiceDetailRows({ stt: { route: "cloud" } })).toEqual([
       { key: "route", value: "cloud" },
     ]);
+    // The repetition guard cut a loop off the text (stt-repeat.ts).
+    expect(voiceDetailRows({ stt: { route: "local", repeat: "trimmed" } })).toEqual([
+      { key: "route", value: "local" },
+      { key: "repeat", value: "trimmed" },
+    ]);
   });
 
   test("speaker attribution keeps actual scores and uncertainty without exposing device or signed text", () => {

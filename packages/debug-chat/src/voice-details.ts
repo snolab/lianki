@@ -4,6 +4,7 @@ export type VoiceDetailKey =
   | "route"
   | "recognitionModel"
   | "fallback"
+  | "repeat"
   | "speakerDecision"
   | "speakerScore"
   | "speakerModel"
@@ -36,6 +37,7 @@ export function voiceDetailRows(message: Partial<VoiceMetadata>): VoiceDetailRow
     text("recognitionModel", message.stt.engine);
     if (message.stt.route === "cloud" && message.stt.fallback === true)
       rows.push({ key: "fallback", value: true });
+    if (message.stt.repeat === "trimmed") rows.push({ key: "repeat", value: "trimmed" });
   }
   const speaker = message.speaker;
   if (speaker && ["me", "other", "unknown"].includes(speaker.decision)) {

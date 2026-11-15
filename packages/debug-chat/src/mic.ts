@@ -33,6 +33,7 @@ import {
   phraseKey,
   wholePhraseRe,
 } from "./stt-guard";
+import { type RepeatLimits, repeatGuard, repeatLimits } from "./stt-repeat";
 import type { FilterVerdict } from "./local-stt";
 import type { SpeakerTag } from "./wire";
 import type { SpotResult, WakeSpot } from "./wake";
@@ -888,6 +889,8 @@ export function createMic(d: {
   log?: (ev: Record<string, unknown>) => void;
   /** Overrides of the silence guard's limits (stt-guard.ts STT_GUARD), for tests. */
   guard?: Partial<SttGuardLimits>;
+  /** The repetition guard's limits (stt-repeat.ts); default: the live config ones. */
+  repeat?: () => RepeatLimits;
   /** Rolling partial chunks for long utterances (on unless false). */
   partials?: boolean;
   /** The local streaming STT, if one is configured now (asked at each utterance). */
@@ -1029,11 +1032,13 @@ export function createMic(d: {
         }
         const c = cleanTranscript(x.text, STT_PROMPTS, x.signals?.decoder !== "ctc");
         if (c.drop || !c.text.trim() || isHallucinationPhrase(c.text)) return;
+        const loop = repeatGuard(c.text, d.repeat?.() ?? repeatLimits());
+        if (loop.action === "drop") return;
         keep({
           wav,
           durationMs,
           at,
-          text: c.text,
+          text: loop.text,
           source: "local",
           mode: "passive",
           speaker: x.speaker?.decision,
@@ -1423,7 +1428,19 @@ export function createMic(d: {
         (heard) => {
           // Whisper's additions out of real speech: prompt echo, stock phrases, loops.
           const c = cleanTranscript(heard, STT_PROMPTS, signals?.decoder !== "ctc");
-          const text = c.drop ? "" : c.text;
+          // A loop of a longer unit, or one that is most of the line (stt-repeat.ts).
+          const loop = c.drop ? undefined : repeatGuard(c.text, d.repeat?.() ?? repeatLimits());
+          const looped = loop && loop.action !== "keep" ? loop : undefined;
+          const text = c.drop ? "" : (loop?.text ?? c.text);
+          if (looped)
+            d.log?.({
+              ev: "stt-cleaned",
+              repetition: looped.action,
+              runs: looped.runs,
+              unitChars: [...looped.unit].length,
+              share: Math.round(looped.share * 100) / 100,
+              removedChars: c.text.length - text.length,
+            });
           if (c.prompt || c.phrase || c.repeat)
             d.log?.({
               ev: "stt-cleaned",
@@ -1437,7 +1454,9 @@ export function createMic(d: {
           // and its cue, and the polish never hear a dropped line.
           const reason = c.drop
             ? null
-            : judgeFinal(
+            : looped?.action === "drop"
+              ? ("repetition" as const)
+              : judgeFinal(
                 text,
                 { speechMs: ms, prob, frameRms: loudestFrameRms(audio), signals },
                 { ...STT_GUARD, ...d.guard },
@@ -1455,7 +1474,11 @@ export function createMic(d: {
               vadShare: signals?.vadShare,
             });
           }
-          d.timing?.(seq, { t_sttDone: now(), dropped: drop || !text.trim() });
+          d.timing?.(seq, {
+            t_sttDone: now(),
+            dropped: drop || !text.trim(),
+            ...(looped?.action === "trim" ? { repeat: "trimmed" as const } : {}),
+          });
           const other = spk?.decision === "other";
           // Split by speaker on the Mac, and the text is the Mac's as it came: one line per
           // part, each noted as it lands (report). Anything changed it: one line, as before.
