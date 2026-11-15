@@ -50,6 +50,7 @@ import {
 } from "@lianki/debug-chat/voices";
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
+import { ETA_TICKER_KEEP, ETA_TICKER_SEC } from "@lianki/debug-chat/eta-ticker";
 import { MERGE_REOPEN_DEFAULT_SEC, MERGE_REOPEN_MAX_SEC } from "@lianki/debug-chat/voice-tune";
 import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
 import { VAD_MAX, VAD_MIN, VAD_THRESHOLDS } from "@lianki/debug-chat/adaptive";
@@ -863,6 +864,28 @@ export const CONFIG = {
     audience: "server",
     money: true,
     description: "全站每天最多发起几次聊天轻量整理；是独立于学习伙伴回复的额外支出上限。",
+  }),
+  // The ETA bar's change ticker (packages/debug-chat/src/eta-ticker.ts;
+  // docs/dev-debug-widget.md, "ETA bar").
+  "chat.etaTickerSec": int({
+    default: ETA_TICKER_SEC,
+    min: 1,
+    max: 60,
+    unit: "s",
+    group: "chat",
+    audience: "public",
+    description:
+      "聊天里的任务进度条：agent 改了甘特图上的任务（新增、完成、提前完成、推迟、卡住、等你、到点）时，进度条中间播报这条变化，每条显示几秒，之后回到“23 个任务 · 1.4H · 99%”的汇总。",
+  }),
+  "chat.etaTickerKeep": int({
+    default: ETA_TICKER_KEEP,
+    min: 1,
+    max: 20,
+    unit: "items",
+    group: "chat",
+    audience: "public",
+    description:
+      "任务进度条播报时轮流显示最近几条变化（最新的在前）；有新变化时从头播一遍，播完回到汇总。你自己在页面上做的修改不播报。",
   }),
   "chat.gripHoldMs": int({
     default: 500,

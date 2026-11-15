@@ -79,6 +79,8 @@ import { EtaBar, EtaList } from "./EtaBar";
 import { type EvalLink, type EvalSession } from "./link-state";
 import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
+import type { TickerConfig } from "./eta-ticker";
+import { useEtaTicker } from "./eta-ticker-hook";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
 import { InboxPanel, PendingFilesRow, SentFiles, usePending } from "./FileChips";
 import { pendingBubble, planPendingSend } from "./pending-bubble";
@@ -815,6 +817,8 @@ export type DebugChatProps = {
   readReceiptThrottleMs?: number;
   /** Touch/pen long press on the grip opens its menu; mouse movement starts immediately. */
   gripHoldMs?: number;
+  /** The ETA bar's change ticker (eta-ticker.ts): config chat.etaTickerSec / chat.etaTickerKeep. */
+  etaTicker?: TickerConfig;
   /** Accepted locally, awaiting the hub acknowledgement. */
   outgoing?: readonly { id: string; text: string; rejected?: string; attachments?: AttachmentRef[]; context?: ChatContext }[];
   /**
@@ -1082,6 +1086,7 @@ export function DebugChat({
   onReadSeq,
   readReceiptThrottleMs = 2000,
   gripHoldMs = 500,
+  etaTicker,
   outgoing,
   onSend,
   onAnswer,
@@ -1618,6 +1623,8 @@ export function DebugChat({
     setEtaNow(Date.now());
     etaClockRef.current?.update(etaList);
   }, [etaList]);
+  /** Agents' changes to the tasks, announced in the bar (eta-ticker.ts); not before the tree loads. */
+  const etaNews = useEtaTicker(etaBar && etaRoot ? etaList : null, etaNow, etaTicker);
   /** Without a host tree: the dev fragment at lk:tree-src (TreeFragment.tsx). */
   const fetchedTree = useFragmentSource(tree && !renderTree && !treeSource);
   /** The widget's strings for the page's language (ui-strings.ts), under the host's. */
@@ -5742,6 +5749,7 @@ export function DebugChat({
                     glass={strip}
                     onOpen={() => setGanttOpen(true)}
                     compact={!open || compact}
+                    news={etaNews}
                   />
                 </div>
               )}
@@ -5754,6 +5762,7 @@ export function DebugChat({
               glass={strip}
               onOpen={() => setGanttOpen(true)}
               compact={!open || compact}
+              news={etaNews}
             />
           )}
         </div>

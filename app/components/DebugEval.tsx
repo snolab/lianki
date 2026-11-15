@@ -1505,6 +1505,10 @@ export function DebugEval({
             }
             readReceiptThrottleMs={publicCfg("chat.readReceiptThrottleMs")}
             gripHoldMs={publicCfg("chat.gripHoldMs")}
+            etaTicker={{
+              sec: publicCfg("chat.etaTickerSec"),
+              keep: publicCfg("chat.etaTickerKeep"),
+            }}
             onReadSeq={(seq) => {
               const thread =
                 recoveryThread.scope === deliveryScope ? recoveryThread.thread : undefined;

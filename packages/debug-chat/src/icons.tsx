@@ -3,7 +3,7 @@
  * app: Phosphor Icons (https://phosphoricons.com), MIT License, Copyright (c)
  * 2023 Phosphor Icons. "regular" is the normal line, "fill" the on state.
  * `sparkle` is drawn here (a four-point star and a small one), not Phosphor's,
- * and so are `cornersOut` / `cornersIn` (full screen and its way back).
+ * and so are `cornersOut` / `cornersIn` (full screen and its way back) and `pause`.
  */
 const ICONS = {
   play: {
@@ -36,6 +36,18 @@ const ICONS = {
   cornersIn: {
     regular:
       "M96,40a8,8,0,0,1,8,8v48a8,8,0,0,1-8,8H48a8,8,0,0,1,0-16H88V48A8,8,0,0,1,96,40Zm64,0a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,0-16H168V48A8,8,0,0,0,160,40ZM96,216a8,8,0,0,0,8-8V160a8,8,0,0,0-8-8H48a8,8,0,0,0,0,16H88v40A8,8,0,0,0,96,216Zm64,0a8,8,0,0,1-8-8V160a8,8,0,0,1,8-8h48a8,8,0,0,1,0,16H168v40A8,8,0,0,1,160,216Z",
+    fill: undefined,
+  },
+  /** Done (Phosphor "check"). */
+  check: {
+    regular:
+      "M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z",
+    fill: undefined,
+  },
+  /** Paused on someone (drawn here: two rounded bars). */
+  pause: {
+    regular:
+      "M88,48h16a8,8,0,0,1,8,8V200a8,8,0,0,1-8,8H88a8,8,0,0,1-8-8V56A8,8,0,0,1,88,48Zm64,0h16a8,8,0,0,1,8,8V200a8,8,0,0,1-8,8H152a8,8,0,0,1-8-8V56A8,8,0,0,1,152,48Z",
     fill: undefined,
   },
   plus: {
