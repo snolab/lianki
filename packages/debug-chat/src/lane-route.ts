@@ -114,9 +114,10 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
   chat: {
     // 小克: the lane's name (2026-11-14), also its @mention (polish.ts wakeMention).
     // Project/branch names also route to chat lane (lianki, liagent, agent-yes, otoji).
-    exact: ["xiaoke", "小可", "小克", "lianki", "liagent", "agent-yes", "otoji"],
+    // 小柯: his STT writes it often enough to be an own name (2026-11-15: "小柯你给Li配置一下" went unaddressed).
+    exact: ["xiaoke", "小可", "小克", "小柯", "lianki", "liagent", "agent-yes", "otoji"],
     // 小客, 小课: how STT wrote 小克 for him (owner, 2026-11-14).
-    heard: ["xiaoko", "shiaoke", "小客", "小课", "小科", "小柯", "晓可", "晓科", "小珂", "肖可"],
+    heard: ["xiaoko", "shiaoke", "小客", "小课", "小科", "晓可", "晓科", "小珂", "肖可"],
   },
 };
 
@@ -272,6 +273,12 @@ export type Route = {
  */
 /** The all-hands word, with the separator that may follow it. */
 const ALL = /^全体[，,、:：!！ ]*/;
+/**
+ * All hands further in (2026-11-15: "小朋友们全体都有包书一" went unaddressed, so Li
+ * answered a roll call as the learning partner): 全体 within the first 12
+ * characters, or 都有报数 anywhere. The whole line stays the text.
+ */
+const ALL_NEAR = /^[^\n]{0,12}?全体|都有报数/u;
 export function routeLine(text: string): Route {
   const raw = typeof text === "string" ? text : "";
   const none: Route = { lanes: [DEFAULT_LANE], addressed: false, text: raw.trim() };
@@ -280,6 +287,7 @@ export function routeLine(text: string): Route {
   // "点名应该监听全体这两个字").
   const all = ALL.exec(s);
   if (all) return { lanes: routeLanes(), addressed: true, text: s.slice(all[0].length).trim() };
+  if (ALL_NEAR.test(s)) return { lanes: routeLanes(), addressed: true, text: s.trim() };
   const lanes: RouteLane[] = [];
   for (;;) {
     const hit = nameAt(s);

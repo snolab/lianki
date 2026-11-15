@@ -295,7 +295,8 @@ import {
   twoMicKeep,
   twoMicMatch,
 } from "../../../packages/debug-chat/src/two-mic";
-import { OwnerAi, ROLL_CALL_REPLY } from "./owner-ai";
+import { OwnerAi } from "./owner-ai";
+import { type RosterEntry, rollCallText, rosterOf } from "../../../packages/debug-chat/src/roster";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
   HISTORY_LINES,
@@ -303,6 +304,8 @@ import {
   MAX_OUTPUT_TOKENS,
   PARTNER_AI_FLAG,
   PARTNER_AI_LABEL,
+  ROLL_CALL_REPLY_DEFAULT,
+  ROLL_CALL_REPLY_KEY,
   type PartnerRequest,
   type PartnerResult,
   SITE_DAILY_USD,
@@ -880,7 +883,7 @@ export class DebugHub {
         id: crypto.randomUUID().slice(0, 8),
         from: "agent",
         label: PARTNER_AI_LABEL,
-        text: ROLL_CALL_REPLY,
+        text: await this.rollCallReply(page.thread),
         at: this.now(),
         thread: page.thread,
         email: page.email ?? "",
@@ -4431,10 +4434,13 @@ export class DebugHub {
     };
     beat();
     const timer = setInterval(beat, AI_BEAT_MS);
+    // His thread: who is here, for Li's "who is here" prompt block (roster.ts).
+    const roster = owner ? await this.rosterNow(thread).catch(() => []) : [];
     const req: PartnerRequest = {
       userId,
       ...(msgId ? { msgId } : {}),
       ...(owner ? { owner: true as const } : {}),
+      ...(roster.length ? { roster } : {}),
       history,
       page: pageInfo,
     };
@@ -5180,8 +5186,8 @@ export class DebugHub {
   }
 
   /** The thread's list for one page: token ids only for the tokens of the page's own account. */
-  private async presenceFor(thread: string, pages: { ws: Socket; a: PageAtt }[]) {
-    const t = this.now();
+  /** What a thread's presence list is made of: its tokens, lines, open token sockets and lane rows. */
+  private async presenceInputs(thread: string) {
     const records = [
       ...(await this.ctx.storage.list<PartRecord>({ prefix: partKey("") })).values(),
     ].filter((r) => r.thread === thread);
@@ -5191,6 +5197,32 @@ export class DebugHub {
     const lanes = [
       ...(await this.ctx.storage.list<LaneReg>({ prefix: LANE_REG_PREFIX })).values(),
     ].filter((r) => r.thread === thread);
+    return { records, lines, live, lanes };
+  }
+
+  /** Who is in a thread now, for Li (roster.ts): the presence list without any viewer's pages. */
+  async rosterNow(thread: string): Promise<RosterEntry[]> {
+    const { records, lines, live, lanes } = await this.presenceInputs(thread);
+    const { readMs, speakerMs } = await this.presenceWindows();
+    return rosterOf(
+      presentList({ now: this.now(), readMs, speakerMs, live, records, lines, lanes }),
+    );
+  }
+
+  /** Li's roll-call answer: config partner.rollCallReply (a template with {names}) over who is here. */
+  private async rollCallReply(thread: string): Promise<string> {
+    let tpl = ROLL_CALL_REPLY_DEFAULT;
+    try {
+      const v = await this.sessions?.config?.(ROLL_CALL_REPLY_KEY);
+      // "busy" (the RPC's rate limit) or an older main Worker's undefined: the default.
+      if (typeof v === "string" && v.includes("{names}")) tpl = v;
+    } catch {}
+    return rollCallText(tpl, await this.rosterNow(thread).catch(() => []));
+  }
+
+  private async presenceFor(thread: string, pages: { ws: Socket; a: PageAtt }[]) {
+    const t = this.now();
+    const { records, lines, live, lanes } = await this.presenceInputs(thread);
     const pageReads = await Promise.all(
       pages
         .filter((p) => p.a.id && !p.a.embed && !p.a.box)

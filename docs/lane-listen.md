@@ -217,7 +217,8 @@ answers it). With the flag off, or before the hub is deployed, nothing of
 this runs and the lanes work as before (the CLI's `mode` is ignored).
 
 **The lane table** is config `chat.lanes` (public): `{id, name, aliases,
-heard, voice, color}` rows beside the built-in coco / 杰咪 / 小克
+heard, voice, color, role}` rows (`role`: a few words on what the lane does,
+for Li's roster in his thread, docs/partner-ai.md "Who is here") beside the built-in coco / 杰咪 / 小克
 (`voices.ts` setLaneTable, `lane-route.ts` laneNames). A row with a
 built-in id adds names to it (咪宝 without a deploy). Routing, the avatar
 flash, the wake words and the @mention read the same table. Scripts take
