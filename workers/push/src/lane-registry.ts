@@ -9,20 +9,22 @@
  *             socket that said `mode: "reader"`): passive, not resident.
  *   listener  a token socket opened by `lianki chat listen` (auth without a
  *             mode, or `mode: "listener"`): resident, hears every line live.
- *             Its `scope` (auth `scope`, `lianki chat listen --everyone`):
- *             "all" when its agent is handed every line (agents' and system
- *             lines too, tier ①), else the owner's only (tier ②; absent =
- *             "owner", an older client). "X 开始实时监听（全部消息）" vs "X 开始实时监听".
+ *             Its `scope` (auth `scope`, `lianki chat listen --everyone|--system`):
+ *             "system" when its agent is handed every line and the system
+ *             notices (tier ⓪), "all" every agent's line but no system line
+ *             (tier ①), else the owner's only (tier ②; absent = "owner", an
+ *             older client). "X 开始实时监听（全部消息 + 系统通知）",
+ *             "X 开始实时监听（全部消息）", "X 开始实时监听".
  * A listener whose last socket closes becomes a reader after the grace
  * (config `lanes.modeGraceSec`), so a reconnect says nothing.
  * One lane, several sockets (the lanes manager's listener and a second feed
  * on the same token): the lane's mode and scope are those of all its live
- * sockets together (token-chat.ts passes the effective scope: "all" while any
- * live socket hears all). Only a change of the LANE is said: a second socket,
- * a reconnect in the grace, say nothing. Losing "all" (its last all-socket
- * closed, an owner-only one still open) is also graced (`scopeDownAt`) and
- * then dropped silently, since the lane still listens; an upgrade back to
- * "all" says "开始实时监听（全部消息）" once. `left`: the
+ * sockets together (token-chat.ts passes the effective scope: the widest of
+ * its live sockets, system > all > owner). Only a change of the LANE is said: a second socket,
+ * a reconnect in the grace, say nothing. Narrowing (its last widest socket
+ * closed, a narrower one still open) is also graced (`scopeDownAt`, to
+ * `scopeDownTo`) and then done silently, since the lane still listens; a
+ * widening says its line ("开始实时监听（全部消息）") once. `left`: the
  * manager said its agent exited (op "lane", state "left").
  * The main lane (Li; voices.ts LANES.main's names) is always a listener: it
  * is never downgraded, never leaves.
@@ -41,6 +43,9 @@ import {
   type LaneEventKind,
   type LaneScope,
   laneEventText,
+  listeningEvent,
+  scopeRank,
+  wideScope,
 } from "../../../packages/debug-chat/src/lane-events";
 import { laneOf } from "../../../packages/debug-chat/src/voices";
 import type { ChatMessage } from "../../../packages/debug-chat/src/wire";
@@ -50,8 +55,8 @@ export type LaneReg = {
   lane: string;
   thread: string;
   state: LaneState;
-  /** A listener that hears every line (tier ①); absent: the owner's lines only. */
-  scope?: "all";
+  /** A listener that hears every line and the system notices ("system", tier ⓪) or every line ("all", tier ①); absent: the owner's lines only. */
+  scope?: "all" | "system";
   muted?: true;
   /** Its last verified use. */
   seenAt: number;
@@ -61,6 +66,8 @@ export type LaneReg = {
   downAt?: number;
   /** A listener with scope all whose all-sockets closed (an owner-only one still open): it drops to the owner's at this time, silently, unless one reopens. */
   scopeDownAt?: number;
+  /** What it narrows to at `scopeDownAt`: "all"; absent = the owner's. */
+  scopeDownTo?: "all";
   /** The name its lines were last shown with (the owner's for it, else its own), for the alarm's line. */
   name?: string;
   /**
@@ -75,7 +82,7 @@ export type LaneReg = {
 
 export type LaneInput =
   | { type: "seen" }
-  /** `scope`: the lane's effective scope over its live sockets (absent: keep the one it has); `graceMs`: how long a drop from all waits. */
+  /** `scope`: the lane's effective scope over its live sockets (absent: keep the one it has); `graceMs`: how long a narrowing waits. */
   | { type: "listen"; scope?: LaneScope; graceMs?: number }
   | { type: "unlisten"; graceMs: number }
   | { type: "due" }
@@ -117,12 +124,18 @@ export function laneStep(
     changedAt: now,
   };
   const to = (state: LaneState, event?: LaneEventKind, scope?: LaneScope) => {
-    const { downAt: _d, scope: _s, scopeDownAt: _sd, ...kept } = base;
+    const { downAt: _d, scope: _s, scopeDownAt: _sd, scopeDownTo: _st0, ...kept } = base;
     // Gone: not busy any more either.
     const { busy: _b, stuck: _st, busyAt: _ba, ...idle } = kept;
     const rest = state === "left" ? idle : kept;
     return {
-      next: { ...rest, state, ...(scope === "all" ? { scope } : {}), seenAt: now, changedAt: now },
+      next: {
+        ...rest,
+        state,
+        ...(wideScope(scope) ? { scope: wideScope(scope) } : {}),
+        seenAt: now,
+        changedAt: now,
+      },
       event,
     };
   };
@@ -134,32 +147,44 @@ export function laneStep(
     case "listen": {
       if (prev?.state !== "listener") {
         const scope = input.scope ?? "owner";
-        return to("listener", scope === "all" ? "listeningAll" : "listening", scope);
+        return to("listener", listeningEvent(scope), scope);
       }
       // Already live: a second socket, a reconnect in the grace. Only a change of scope counts.
-      const { downAt: _d, scopeDownAt: _sd, ...rest } = prev;
+      const { downAt: _d, scopeDownAt: _sd, scopeDownTo: _sdt, ...rest } = prev;
       const had = prev.scope ?? "owner";
+      const pending = {
+        ...(prev.scopeDownAt ? { scopeDownAt: prev.scopeDownAt } : {}),
+        ...(prev.scopeDownTo ? { scopeDownTo: prev.scopeDownTo } : {}),
+      };
       // No scope (the alarm sees a socket again): the one it had, a pending drop kept.
       if (input.scope === undefined || (input.scope === had && had === "owner"))
+        return { next: { ...rest, ...pending, seenAt: now } };
+      // The same wide scope again: a pending narrowing is off.
+      if (input.scope === had) return { next: { ...rest, seenAt: now } };
+      const want = input.scope;
+      const { scope: _s, ...noScope } = rest;
+      const wide = wideScope(want);
+      if (scopeRank(want) > scopeRank(had))
         return {
-          next: {
-            ...rest,
-            ...(prev.scopeDownAt ? { scopeDownAt: prev.scopeDownAt } : {}),
-            seenAt: now,
-          },
+          next: { ...noScope, ...(wide ? { scope: wide } : {}), seenAt: now, changedAt: now },
+          event: listeningEvent(want),
         };
-      if (input.scope === "all")
-        return had === "all"
-          ? { next: { ...rest, seenAt: now } }
-          : { next: { ...rest, scope: "all", seenAt: now, changedAt: now }, event: "listeningAll" };
-      // all → owner: graced, then silent (it still listens).
+      // Narrower (system → all, all → owner): graced, then silent (it still listens).
       const grace = input.graceMs ?? 0;
-      if (grace <= 0) {
-        const { scope: _s, ...owner } = rest;
-        return { next: { ...owner, seenAt: now, changedAt: now } };
-      }
+      if (grace <= 0)
+        return {
+          next: { ...noScope, ...(wide ? { scope: wide } : {}), seenAt: now, changedAt: now },
+        };
       const at = prev.scopeDownAt ?? now + grace;
-      return { next: { ...rest, scopeDownAt: at, seenAt: now }, dueAt: at };
+      return {
+        next: {
+          ...rest,
+          scopeDownAt: at,
+          ...(want === "all" ? { scopeDownTo: "all" as const } : {}),
+          seenAt: now,
+        },
+        dueAt: at,
+      };
     }
     case "unlisten":
       if (prev?.state !== "listener" || pinned) return { next: prev ?? base };
@@ -169,8 +194,8 @@ export function laneStep(
       if (prev?.state !== "listener") return { next: prev ?? base };
       if (prev.downAt !== undefined && prev.downAt <= now) return to("reader", "reader");
       if (prev.scopeDownAt !== undefined && prev.scopeDownAt <= now) {
-        const { scope: _s, scopeDownAt: _sd, ...rest } = prev;
-        return { next: { ...rest, changedAt: now } };
+        const { scope: _s, scopeDownAt: _sd, scopeDownTo: to_, ...rest } = prev;
+        return { next: { ...rest, ...(to_ ? { scope: to_ } : {}), changedAt: now } };
       }
       return { next: prev };
     case "reader":
@@ -334,8 +359,8 @@ export class LaneRegistry {
   }
 
   /**
-   * The alarm: listeners whose grace ran out turn reader (or drop from all to
-   * the owner's), unless `live` says a socket of theirs is open again; `live`
+   * The alarm: listeners whose grace ran out turn reader (or narrow their
+   * scope), unless `live` says a socket of theirs is open again; `live`
    * gives the lane's effective scope, or true (scope unknown: keep it).
    */
   async sweep(live: (thread: string, lane: string) => boolean | LaneScope) {

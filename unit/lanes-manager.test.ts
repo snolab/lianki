@@ -120,14 +120,15 @@ describe("config", () => {
       cli: "claude",
       lane: "claude",
       wake: false,
-      scope: "all",
+      scope: "system",
       answerUnnamed: false,
     });
-    // coco and 小克 hear every line by default (tier ①, owner 2026-11-15 15:44 JST); the others his lines.
-    expect(CFG.agents.filter((a) => a.scope === "all").map((a) => a.lane)).toEqual([
-      "codex",
-      "claude",
-    ]);
+    // coco hears every line (tier ①, owner 2026-11-15 15:44 JST); 小克 the system notices too
+    // (tier ⓪, owner 2026-11-16 02:16 JST); the others his lines.
+    expect(CFG.agents.filter((a) => a.scope === "all").map((a) => a.lane)).toEqual(["codex"]);
+    expect(CFG.agents.filter((a) => a.scope === "system").map((a) => a.lane)).toEqual(["claude"]);
+    expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "system" }).success).toBe(true);
+    expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "every" }).success).toBe(false);
     expect(CFG.agents.find((a) => a.lane === "codex")).toEqual({
       cwd: "lianki/tree/codex",
       cli: "codex",
@@ -254,12 +255,12 @@ describe("agent → lane", () => {
       planLanes([AGENTS[2]!], { ...CFG, agents: [{ cwd: "codex", lane: "bad name" }] })[0]!.lane,
     ).toBe("lianki-codex");
   });
-  it("小克 (claude in tree/agy) joins as claude, live on every line (scope all), never woken", () => {
+  it("小克 (claude in tree/agy) joins as claude, live on every line and the system notices (scope system), never woken", () => {
     const k = { pid: 77, cli: "claude", cwd: `${W}/snolab/lianki/tree/agy`, status: "active" };
     const p = planLanes([AGENTS[0]!, k], CFG);
     expect(p.map((x) => [x.lane, x.resident, x.wake, x.scope])).toEqual([
       ["agy", true, true, "owner"],
-      ["claude", true, false, "all"],
+      ["claude", true, false, "system"],
     ]);
     setLaneTable(laneTableFor(p));
     expect(wakeTargets({ from: "owner", text: "全体，集合" }, p)).toEqual([]);
@@ -511,7 +512,7 @@ describe("the loop (createManager), every effect mocked", () => {
       token: (lane) => (tokens.has(lane) ? `lk_${lane}` : undefined),
       startListener: ({ lane, table, scope, skipOwner, answerUnnamed }): Child => {
         calls.started.push(
-          `${lane}${scope === "all" ? ":all" : ""}${skipOwner ? ":skip" : ""}${answerUnnamed ? ":unnamed" : ""}`,
+          `${lane}${scope && scope !== "owner" ? `:${scope}` : ""}${skipOwner ? ":skip" : ""}${answerUnnamed ? ":unnamed" : ""}`,
         );
         expect(JSON.parse(table)).toBeArray();
         return {
@@ -586,7 +587,7 @@ describe("the loop (createManager), every effect mocked", () => {
     expect(s.m.running()).toEqual([]);
     expect((await s.m.relist()).map((a) => a.type)).toEqual(["start-listener"]);
   });
-  it("小克 in the list: its listener starts with scope all, skipping his lines", async () => {
+  it("小克 in the list: its listener starts with scope system, skipping his lines", async () => {
     const s = setup({
       tokens: ["agy", "codex", "claude", "lanes"],
       ay: [
@@ -595,7 +596,7 @@ describe("the loop (createManager), every effect mocked", () => {
       ],
     });
     await s.m.relist();
-    expect(s.calls.started).toEqual(["codex:all:unnamed", "claude:all:skip"]);
+    expect(s.calls.started).toEqual(["codex:all:unnamed", "claude:system:skip"]);
   });
   it("an agent leaves: listener stopped, lane left; ay silent: nothing changes", async () => {
     const s = setup();
@@ -670,7 +671,7 @@ describe("the loop (createManager), every effect mocked", () => {
     // Named: woken now, and a listener of its own (his lines only) for 5 minutes.
     expect(await s.m.line(l("b1", "rechrome-main，看看"))).toEqual([71565]);
     // The named lane hears everything for the window (owner, 2026-11-15 23:11 JST).
-    expect(s.calls.started.slice(started)).toEqual(["rechrome-main:all"]);
+    expect(s.calls.started.slice(started)).toEqual(["rechrome-main:system"]);
     expect(s.m.running()).toContain("rechrome-main");
     expect(s.m.wakeLive().get("rechrome-main")).toBe(1_000_000 + 5 * 60_000);
     // A re-list inside the window keeps that listener (live, so not stopped).
@@ -689,7 +690,7 @@ describe("the loop (createManager), every effect mocked", () => {
     expect(s.m.wakeLive().has("rechrome-main")).toBe(false);
     // Named once more: woken by the manager again, a new window.
     expect(await s.m.line(l("b3", "#rechrome 再看"))).toEqual([71565]);
-    expect(s.calls.started.at(-1)).toBe("rechrome-main:all");
+    expect(s.calls.started.at(-1)).toBe("rechrome-main:system");
     s.m.stop();
   });
   it("scope all: the listener hears everyone (and skips his lines when the agent has its own feed)", () => {
@@ -798,6 +799,15 @@ describe("the loop (createManager), every effect mocked", () => {
       "--all",
       "--everyone",
     ]);
+    // Tier ⓪: the system lines as well (owner, 2026-11-16 02:16 JST).
+    expect(listenerArgv("bun", "/r", "x", "/c", { scope: "system" }).slice(-3)).toEqual([
+      "--all",
+      "--everyone",
+      "--system",
+    ]);
+    expect(
+      listenerArgv("bun", "/r", "claude", "/c", { scope: "system", skipOwner: true }).slice(-4),
+    ).toEqual(["--all", "--everyone", "--system", "--skip-owner"]);
     // --skip-owner only with --everyone: an owner-scope listener without his lines would hear nothing.
     expect(listenerArgv("bun", "/r", "x", "/c", { scope: "owner", skipOwner: true }).at(-1)).toBe(
       "--all",

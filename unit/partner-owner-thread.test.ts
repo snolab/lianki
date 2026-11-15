@@ -219,7 +219,7 @@ describe("Li in the owner's thread: the hub", () => {
     await s.msg(o, { type: "chat", id: "a1", text: "你们在干嘛" });
     await s.timers.fire();
     expect(s.calls).toHaveLength(1);
-    expect(s.calls[0].roster?.map((e) => e.name).toSorted()).toEqual(["coco", "杰咪"]);
+    expect(s.calls[0].roster?.map((e) => e.name).toSorted()).toEqual(["coco", "哈基米"]);
     expect(s.calls[0].roster?.every((e) => !("tok" in e) && !("key" in e))).toBe(true);
   });
 

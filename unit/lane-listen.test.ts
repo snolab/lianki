@@ -597,7 +597,7 @@ describe("--everyone: agents' lines and system lines too (tier ①, owner 2026-1
     expect(routeKey("otoji-main")).toBe("otoji-main");
   });
 
-  it("listenerTakes: his lines as before; --everyone adds agents and system; --skip-owner drops his", () => {
+  it("listenerTakes: his lines as before; --everyone adds agents, --system the system lines; --skip-owner drops his", () => {
     const o = { lane: "codex", all: true };
     expect(listenerTakes(o, he)).toBe(true);
     expect(listenerTakes(o, li)).toBe(false);
@@ -607,7 +607,23 @@ describe("--everyone: agents' lines and system lines too (tier ①, owner 2026-1
     const k = { lane: "claude", all: true, everyone: true, skipOwner: true };
     expect(listenerTakes(k, he)).toBe(false);
     expect(listenerTakes(k, coco)).toBe(true);
-    expect(listenerTakes(k, sys)).toBe(true);
+    // Tier ①: no system lines (owner, 2026-11-16 02:16 JST); tier ⓪ (--system) has them.
+    expect(listenerTakes(k, sys)).toBe(false);
+    expect(listenerTakes({ ...k, system: true }, sys)).toBe(true);
+    expect(listenerTakes({ ...k, system: true }, coco)).toBe(true);
+    expect(listenerTakes({ ...k, system: true }, own)).toBe(false);
+    expect(listenerTakes({ lane: "codex", all: true, system: true, everyone: true }, sys)).toBe(
+      false,
+    ); // about itself
+    // Without --everyone a system line never reaches a lane (tier ②).
+    expect(listenerTakes({ lane: "claude", all: true }, sys)).toBe(false);
+    // A spend alert is a system line too.
+    const spend = lineOf(
+      raw({ id: "sp1", from: "agent", label: "spend", agentId: "spend", text: "AI 花费 $3" }),
+    )!;
+    expect(spend.kind).toBe("system");
+    expect(listenerTakes(k, spend)).toBe(false);
+    expect(listenerTakes({ ...k, system: true }, spend)).toBe(true);
     expect(listenerTakes(k, own)).toBe(false);
     // 小克 without --skip-owner: his unnamed lines route to it ("chat").
     expect(

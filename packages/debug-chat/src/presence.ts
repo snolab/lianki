@@ -11,7 +11,7 @@
  */
 import { laneSpec, type LaneId, isLaneId, laneOf } from "./voices";
 import type { ChatMessage } from "./wire";
-import type { LaneMode } from "./lane-events";
+import { type LaneMode, wideScope } from "./lane-events";
 
 /** One participant, as a page gets it. */
 export type Present = {
@@ -48,10 +48,11 @@ export type Present = {
    */
   mode?: LaneMode;
   /**
-   * A listener that hears every line, agents' and system lines too (tier ①, lane-listen
-   * --everyone); absent: the owner's lines only (tier ②), or not a listener.
+   * A listener that hears every line: agents' lines ("all", tier ①, lane-listen --everyone),
+   * and the system lines too ("system", tier ⓪, --system); absent: the owner's lines only
+   * (tier ②), or not a listener.
    */
-  scope?: "all";
+  scope?: "all" | "system";
   /** Muted by the owner: it reads and listens, but cannot post. */
   muted?: true;
   /** Since when it has been here (socket opened, or first read in the window). */
@@ -90,7 +91,7 @@ export function knownState(
   const listen: ListenState | undefined = p.muted
     ? "off"
     : p.mode === "listener"
-      ? p.scope === "all"
+      ? wideScope(p.scope)
         ? "all"
         : "yours"
       : p.mode === "reader"
@@ -201,7 +202,7 @@ export function presentList(p: {
     if (!l) return {};
     return {
       ...(l.state === "listener" || l.state === "reader" ? { mode: l.state as LaneMode } : {}),
-      ...(l.state === "listener" && l.scope === "all" ? { scope: "all" as const } : {}),
+      ...(l.state === "listener" && wideScope(l.scope) ? { scope: wideScope(l.scope) } : {}),
       ...(l.muted ? { muted: true as const } : {}),
       ...busyOf(l),
     };

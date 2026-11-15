@@ -17,8 +17,9 @@ import { cleanAppRefs, miniAppsIn } from "../../../packages/debug-chat/src/mini-
  *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?, mode?, scope?};
  *        then {type:"say"|"ask", …}, {type:"lane", state}, {type:"read-ack",lastReadSeq}
  *        or {type:"replay",afterSeq,throughSeq?}; passive delivery never advances reads.
- *        `scope`: "all" | "owner" (a listener: does its agent get every line, or the
- *        owner's only; absent = "owner"), kept on the presence row.
+ *        `scope`: "system" | "all" | "owner" (a listener: does its agent get every line
+ *        and the system notices, every line, or the owner's only; absent = "owner"),
+ *        kept on the presence row.
  *        `mode`: "listener" (`lianki chat listen`; the default without one, but for an
  *        MCP client) or "reader" (an MCP wait, the lanes manager): the lane's mode in
  *        the lane registry (lane-registry.ts, "全员入群").
@@ -76,7 +77,12 @@ import {
 } from "../../../lib/dev-eval";
 import { laneOf, laneSpec, parseLineVoice } from "../../../packages/debug-chat/src/voices";
 import { type LaneRegistry, MUTED_REASON } from "./lane-registry";
-import type { LaneScope } from "../../../packages/debug-chat/src/lane-events";
+import {
+  type LaneScope,
+  scopeRank,
+  wideScope,
+  widerScope,
+} from "../../../packages/debug-chat/src/lane-events";
 import { sanitizeAvatarSvg } from "../../../packages/debug-chat/src/svg-avatar";
 import {
   type PartRecord,
@@ -122,8 +128,8 @@ export type TokenAtt = {
   mcp?: true;
   /** A resident listener's socket (lane-registry.ts): its lane is a listener while one is open. */
   listener?: true;
-  /** A listener whose agent hears every line (auth `scope: "all"`); absent: the owner's only. */
-  scope?: "all";
+  /** A listener whose agent hears every line (auth `scope: "all"`), and the system notices too ("system"); absent: the owner's only. */
+  scope?: "all" | "system";
   until?: number | null;
   checkedAt?: number;
 };
@@ -916,13 +922,12 @@ export class TokenChat {
     return this.laneScope(thread, lane, except) !== false;
   }
 
-  /** The lane's effective scope over its open listening sockets ("all" if any hears all); false: none listens. */
+  /** The lane's effective scope over its open listening sockets (the widest: system > all > owner); false: none listens. */
   laneScope(thread: string, lane: string, except?: unknown): LaneScope | false {
     let out: LaneScope | false = false;
     for (const { ws, a } of this.authed(thread)) {
       if (ws === except || a.lane !== lane || !a.listener) continue;
-      if (a.scope === "all") return "all";
-      out = "owner";
+      out = widerScope(out || "owner", a.scope ?? "owner");
     }
     return out;
   }
@@ -934,8 +939,8 @@ export class TokenChat {
   async closed(ws: TokenSocket, a: TokenAtt) {
     if (!a.listener || !a.thread || !a.lane || !this.host.lanes) return;
     const others = this.laneScope(a.thread, a.lane, ws);
-    // Another socket still listens: the lane stays live; only a lost "all" is (graced) news.
-    if (others === "all" || (others && a.scope !== "all")) return;
+    // Another socket still listens: the lane stays live; only a narrowing is (graced) news.
+    if (others && scopeRank(others) >= scopeRank(a.scope)) return;
     const r = a.tag ? await this.host.kv?.get<PartRecord>(partKey(a.tag)) : undefined;
     const name = laneShownName(a.lane, r?.ownerName);
     if (others) await this.host.lanes.listen(a.thread, a.lane, others, name);
@@ -976,13 +981,14 @@ export class TokenChat {
     const listener = m.mode === "listener" || (m.mode === undefined && !a.mcp);
     // What its agent hears: every line (`lianki chat listen --everyone`), else the owner's
     // (an older client says nothing: "owner").
-    const scope: LaneScope = listener && m.scope === "all" ? "all" : "owner";
+    // (`--system`: the system notices too.)
+    const scope: LaneScope = (listener && wideScope(m.scope)) || "owner";
     const next: TokenAtt = {
       role: "token",
       at: a.at,
       ...(a.mcp ? { mcp: true as const } : {}),
       ...(listener ? { listener: true as const } : {}),
-      ...(scope === "all" ? { scope } : {}),
+      ...(wideScope(scope) ? { scope: wideScope(scope) } : {}),
       thread,
       userId: v.userId,
       lane: v.lane,

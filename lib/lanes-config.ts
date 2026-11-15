@@ -21,9 +21,10 @@ export type LaneAgentDef = {
   /** Woken by name (`ay send`) when a line names it; false = it joins (greets, reader) but is never woken. Default true. */
   wake?: boolean;
   /**
-   * What a live lane hears (docs/lane-listen.md, "Five tiers"): "owner" (default) his lines
-   * only; "all" his lines, every agent's and the system lines too (lane-listen --everyone).
-   * "all" makes the lane live (a listener) even without `resident`.
+   * What a live lane hears (docs/lane-listen.md, "Six tiers"): "owner" (default) his lines
+   * only (tier ②); "all" his lines and every agent's, no system lines (tier ①, lane-listen
+   * --everyone); "system" all of that and the system notices too (tier ⓪, --system).
+   * "all" and "system" make the lane live (a listener) even without `resident`.
    */
   scope?: LaneScope;
   /**
@@ -35,9 +36,11 @@ export type LaneAgentDef = {
   answerUnnamed?: boolean;
 };
 
-/** What a live lane hears: the owner's lines only, or every line in the thread. */
-export type LaneScope = "owner" | "all";
-export const LANE_SCOPES = ["owner", "all"] as const;
+/** What a live lane hears: the owner's lines only, every line in the thread, or every line and the system notices. */
+export type LaneScope = "owner" | "all" | "system";
+export const LANE_SCOPES = ["owner", "all", "system"] as const;
+/** Does this scope hear every line (tier ① or ⓪)? */
+export const hearsAll = (s?: LaneScope) => s === "all" || s === "system";
 
 export const LANE_NAME_RE = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,39}$/u;
 
@@ -76,14 +79,15 @@ export const LANES_CONFIG_DEFAULTS = {
     { cwd: "mimiai/tree/main", cli: "codex", lane: "mimiai", resident: true, answerUnnamed: true },
     // 小克 (the Claude Code chat lane) keeps its own live feed of the owner's
     // lines: it joins as `claude`, but the manager never wakes it. It hears every
-    // other line live (owner, 2026-11-15 15:1x JST: tier ①, scope "all"): its
-    // lane-listen --everyone skips his lines, which its own feed already brings.
+    // other line live and the system notices too (owner, 2026-11-16 02:16 JST: tier ⓪,
+    // scope "system"): its lane-listen --everyone --system skips his lines, which its
+    // own feed already brings.
     {
       cwd: "lianki/tree/agy",
       cli: "claude",
       lane: "claude",
       wake: false,
-      scope: "all",
+      scope: "system",
       // 小克 answers from its own feed by its own judgement; the manager's hand-offs stay listen-only.
       answerUnnamed: false,
     },

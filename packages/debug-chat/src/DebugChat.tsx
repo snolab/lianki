@@ -174,7 +174,6 @@ import {
   JUMP_H_PX,
   asksAbove,
   jumpLabel,
-  jumpRoom,
   jumpTop,
   jumpWidth,
   nearestAbove,
@@ -3660,6 +3659,8 @@ export function DebugChat({
         <>
           <PolishedMark
             by={m.edited?.by}
+            mainName={t.name}
+            mainAvatar={agentAvatar}
             icon={
               m.summary ? (
                 <span data-testid="debug-chat-summary" className="rounded border border-current px-1 text-[0.8em]">
@@ -5441,16 +5442,18 @@ export function DebugChat({
           (time), polish mark, waiting tag, so the hub's history, the polish
           edit (one line id), read-aloud and the anchoring are unchanged.
         */}
-        {runsOf(starts).map((run, r, runs) => {
+        {runsOf(starts).map((run) => {
           const i0 = run[0]!;
           const m0 = messages[i0]!;
           const who = whos[i0]!;
           const ownPassage = isOwnVoice(m0);
           // The state-tree node the run belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m0);
-          // Always keep the same side room: toggling the floating arrow or its
-          // count never changes wrapping/height. It adds no minimum row height.
-          const room = r === runs.length - 1 ? jumpRoom() : null;
+          // No room beside the newest run: the glass up-arrow floats over the
+          // log and the text keeps its full width (owner, 2026-11-16 02:5x JST:
+          // "最后一条消息，它的右边有一个很大的空白区域"; agreed 00:3x JST: never
+          // squeeze from the right). Every run is the same width, so the arrow
+          // appearing or its count changing never rewraps or moves a line.
           return (
             <li
               key={m0.id}
@@ -5458,11 +5461,9 @@ export function DebugChat({
               data-own-passage={ownPassage || undefined}
               data-from={m0.from}
               data-node={node?.node}
-              data-jump-room={room ? room.end : undefined}
               className="flex items-start gap-1.5 leading-snug"
               style={{
                 ...(node ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 } : {}),
-                ...(room ? { paddingInlineEnd: room.end } : {}),
               }}
             >
               {(() => {

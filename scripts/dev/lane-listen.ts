@@ -11,11 +11,13 @@
  *   lianki-dev lane-listen --as codex --cwd ~/ws/snolab/lianki/tree/codex
  *   lianki-dev lane-listen --as agy --deliver 12549 --tests
  *   lianki-dev lane-listen --as codex --dry-run       # print what it would hand over
- *   lianki-dev lane-listen --as claude --cwd … --everyone --skip-owner
+ *   lianki-dev lane-listen --as claude --cwd … --everyone --system --skip-owner
  *
- * --everyone (tier ①, docs/lane-listen.md "Five tiers"): agents' lines and system
- * lines are handed over too, marked 【agent · coco】 / 【系统】 (FYI, never answered),
- * never the lane's own; the hub shows it as hearing all messages. --skip-owner: not
+ * --everyone (tier ①, docs/lane-listen.md "Six tiers"): agents' lines are handed over
+ * too, marked 【agent · coco】 (FYI, never answered), never the lane's own; the hub
+ * shows it as hearing all messages. --system (tier ⓪, implies --everyone): the system
+ * lines as well (lane events, state-tree hub lines, alerts), marked 【系统】; the hub
+ * shows "all messages + system notices". --skip-owner: not
  * his lines (小克 has its own feed of them). --answer-unnamed (lanes.agents
  * answerUnnamed: coco, 杰咪): his lines that name nobody may be answered briefly,
  * when the lane has something to say; the hand-off notes say so.
@@ -58,8 +60,10 @@ type Opts = {
   dryRun: boolean;
   /** Every owner line, not only the ones addressed to this lane. */
   all: boolean;
-  /** Agents' and system lines too (tier ①). */
+  /** Agents' lines too (tier ①). */
   everyone: boolean;
+  /** The system lines as well (tier ⓪; implies everyone). */
+  system: boolean;
   /** No owner lines (the lane has its own feed of them). */
   skipOwner: boolean;
   /** It may answer his lines that name nobody, briefly (lanes.agents answerUnnamed). */
@@ -72,6 +76,7 @@ function parse(argv: string[]): Opts | Error {
     dryRun: boolean;
     all: boolean;
     everyone: boolean;
+    system: boolean;
     skipOwner: boolean;
     answerUnnamed: boolean;
   } = {
@@ -79,6 +84,7 @@ function parse(argv: string[]): Opts | Error {
     dryRun: false,
     all: false,
     everyone: false,
+    system: false,
     skipOwner: false,
     answerUnnamed: false,
   };
@@ -94,6 +100,7 @@ function parse(argv: string[]): Opts | Error {
     else if (a === "--dry-run") o.dryRun = true;
     else if (a === "--all") o.all = true;
     else if (a === "--everyone") o.everyone = o.all = true;
+    else if (a === "--system") o.system = o.everyone = o.all = true;
     else if (a === "--skip-owner") o.skipOwner = true;
     else if (a === "--answer-unnamed") o.answerUnnamed = true;
     else return new Error(`lane-listen: unknown argument ${a}`);
@@ -259,8 +266,10 @@ async function main(): Promise<number> {
         o.repo,
         "--as",
         o.lane,
-        // The hub shows this listener as hearing every line (presence, "全部消息").
+        // The hub shows this listener as hearing every line (presence, "全部消息"),
+        // and the system notices too ("全部消息 + 系统通知").
         ...(o.everyone ? ["--everyone"] : []),
+        ...(o.system ? ["--system"] : []),
       ],
       {
         cwd: o.repo,

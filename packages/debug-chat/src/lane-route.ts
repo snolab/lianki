@@ -96,8 +96,18 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
   },
   agy: {
     // 杰咪: the owner's name for agy (2026-11-14), 咪宝 (owner, 2026-11-15: "咪宝咪宝在吗").
-    exact: ["agy", "antigravity", "杰咪", "咪宝", "Jimmy", "jimmy"],
+    // 哈基米: his new name for agy (owner, 2026-11-16 02:03 JST); 杰咪 stays a name.
+    exact: ["agy", "antigravity", "哈基米", "杰咪", "咪宝", "Jimmy", "jimmy"],
     heard: [
+      // STT spellings of 哈基米 (2026-11-16: "你把自己改名为海吉米吧").
+      "哈吉米",
+      "海吉米",
+      "哈急米",
+      "哈几米",
+      "ハチミ",
+      "ハッチミ",
+      "Hajimi",
+      "hajimi",
       "杰米",
       "洁咪",
       "解密",

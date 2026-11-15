@@ -128,7 +128,7 @@ describe("laneStep: the transitions", () => {
   });
   it("a lane's shown name: the owner's for it, its lane's, else the token's", () => {
     expect(laneShownName("codex")).toBe("coco");
-    expect(laneShownName("agy")).toBe("杰咪");
+    expect(laneShownName("agy")).toBe("哈基米");
     expect(laneShownName("codex", "Coco!")).toBe("Coco!");
     expect(laneShownName("rechrome-codex-1")).toBe("rechrome-codex-1");
     expect(laneShownName("main")).toBe("main");
@@ -238,6 +238,61 @@ describe("laneStep: one lane, several sockets", () => {
     const gone = laneStep(down.next, { type: "unlisten", graceMs: 0 }, ctx(T0 + 4));
     expect(gone.event).toBe("reader");
     expect(gone.next.scopeDownAt).toBeUndefined();
+  });
+});
+
+describe("laneStep: scope system (tier ⓪, owner 2026-11-16 02:16 JST)", () => {
+  it("system says its own line; all → system widens, system → all narrows (graced, silent)", () => {
+    const a = laneStep(undefined, { type: "listen", scope: "system" }, ctx());
+    expect(a).toMatchObject({
+      event: "listeningSystem",
+      next: { state: "listener", scope: "system" },
+    });
+    expect(
+      laneStep(a.next, { type: "listen", scope: "system" }, ctx(T0 + 1)).event,
+    ).toBeUndefined();
+    // all → system: widened, said once.
+    const all = laneStep(undefined, { type: "listen", scope: "all" }, ctx()).next;
+    const up = laneStep(all, { type: "listen", scope: "system" }, ctx(T0 + 1));
+    expect(up).toMatchObject({ event: "listeningSystem", next: { scope: "system" } });
+    // system → all with no grace: at once, silent.
+    const now = laneStep(up.next, { type: "listen", scope: "all" }, ctx(T0 + 2));
+    expect(now.event).toBeUndefined();
+    expect(now.next.scope).toBe("all");
+    // system → all with a grace: pending to "all", then due.
+    const down = laneStep(up.next, { type: "listen", scope: "all", graceMs: 1000 }, ctx(T0 + 2));
+    expect(down).toMatchObject({
+      dueAt: T0 + 1002,
+      next: { scope: "system", scopeDownAt: T0 + 1002, scopeDownTo: "all" },
+    });
+    // The alarm with no scope keeps the pending narrowing, target and all.
+    expect(laneStep(down.next, { type: "listen" }, ctx(T0 + 3)).next).toMatchObject({
+      scopeDownAt: T0 + 1002,
+      scopeDownTo: "all",
+    });
+    // Narrower still (owner) while pending: the same time, down to the owner's.
+    const lower = laneStep(
+      down.next,
+      { type: "listen", scope: "owner", graceMs: 1000 },
+      ctx(T0 + 4),
+    );
+    expect(lower.next.scopeDownAt).toBe(T0 + 1002);
+    expect(lower.next.scopeDownTo).toBeUndefined();
+    const due = laneStep(down.next, { type: "due" }, ctx(T0 + 1002));
+    expect(due.event).toBeUndefined();
+    expect(due.next.scope).toBe("all");
+    expect(due.next.scopeDownAt).toBeUndefined();
+    expect(due.next.scopeDownTo).toBeUndefined();
+    // A system socket is back before the end: the narrowing is off.
+    const back = laneStep(down.next, { type: "listen", scope: "system" }, ctx(T0 + 5));
+    expect(back.event).toBeUndefined();
+    expect(back.next).toMatchObject({ scope: "system" });
+    expect(back.next.scopeDownAt).toBeUndefined();
+    expect(back.next.scopeDownTo).toBeUndefined();
+    // Turned reader: the scope and any pending narrowing go.
+    const r = laneStep(down.next, { type: "unlisten", graceMs: 0 }, ctx(T0 + 6));
+    expect(r.next.scope).toBeUndefined();
+    expect(r.next.scopeDownTo).toBeUndefined();
   });
 });
 
@@ -522,6 +577,34 @@ describe("the hub: modes and system lines", () => {
     await flush();
     expect(h.events(page).at(-1)).toBe("lanes 开始实时监听");
   });
+  it("scope system: its own line, the presence row carries it; the widest socket wins", async () => {
+    const h = hubSetup({ graceSec: 30 });
+    const page = await h.ownerPage();
+    const k = await mint("claude");
+    const all = await h.listen(k.token, { mode: "listener", scope: "all" });
+    const sys = await h.listen(k.token, { mode: "listener", scope: "system" });
+    expect(sys.deserializeAttachment()).toMatchObject({ listener: true, scope: "system" });
+    expect(h.events(page)).toEqual([
+      "小克 开始实时监听（全部消息）",
+      "小克 开始实时监听（全部消息 + 系统通知）",
+    ]);
+    expect(page.lastPresent().find((x) => x.key === "lane:claude")).toMatchObject({
+      mode: "listener",
+      scope: "system",
+    });
+    // Closing the all-socket while the system one is open: nothing.
+    await h.leave(all);
+    expect(h.events(page)).toHaveLength(2);
+    // Closing the system one while an all-socket is open: graced, then silently "all".
+    const all2 = await h.listen(k.token, { scope: "all" });
+    await h.leave(sys);
+    t += 31_000;
+    await h.hub.alarm();
+    await flush();
+    expect(h.events(page)).toHaveLength(2);
+    expect(page.lastPresent().find((x) => x.key === "lane:claude")?.scope).toBe("all");
+    await h.leave(all2);
+  });
   it("listen → listener line, close → reader line, read → joined; presence carries the mode", async () => {
     const h = hubSetup();
     const page = await h.ownerPage();
@@ -551,20 +634,20 @@ describe("the hub: modes and system lines", () => {
     const one = await h.listen(a.token);
     const two = await h.listen(a.token);
     await h.leave(one);
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听"]);
     await h.leave(two);
     // In the grace: still listening.
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听"]);
     const three = await h.listen(a.token);
     t += 31_000;
     await h.hub.alarm();
     await flush();
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听"]);
     await h.leave(three);
     t += 31_000;
     await h.hub.alarm();
     await flush();
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听", "杰咪 转为只读"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听", "哈基米 转为只读"]);
   });
   it("one lane, an all-socket and an owner-only one: one line; losing all is graced and silent", async () => {
     const h = hubSetup({ graceSec: 30 });

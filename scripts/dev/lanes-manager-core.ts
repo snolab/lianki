@@ -7,7 +7,7 @@
  * missing-token line, the readers' wake hand-offs.
  */
 import { join } from "node:path";
-import type { LaneScope, LanesConfig } from "../../lib/lanes-config";
+import { type LaneScope, type LanesConfig, hearsAll } from "../../lib/lanes-config";
 import { type ChatLaneDef, setLaneTable } from "../../packages/debug-chat/src/voices";
 import { handoffBrief, lineOf } from "./lane-listen-lib";
 import { type BusyDeps, createBusyTracker } from "./lanes-busy";
@@ -249,8 +249,8 @@ export function createManager(d: Deps, o: ManagerOpts) {
             pid: p.pid,
             cli: p.cli,
             // Owner, 2026-11-15 23:11 JST: a named lane hears everything for the window,
-            // agents' and system lines too, related to it or not.
-            scope: "all",
+            // agents' and system lines too, related to it or not (tier ⓪ for the window).
+            scope: "system",
             skipOwner: false,
             answerUnnamed: p.answerUnnamed,
           });
@@ -281,8 +281,8 @@ export function createManager(d: Deps, o: ManagerOpts) {
 
 /**
  * The listener command for a lane (lane-listen through lianki-dev, every owner line, from
- * the agent's dir); scope "all" adds `--everyone` (agents' and system lines too), and
- * `skipOwner` `--skip-owner` (its agent has its own feed of his lines), and `answerUnnamed`
+ * the agent's dir); scope "all" adds `--everyone` (agents' lines too), scope "system"
+ * `--everyone --system` (the system lines as well), and `skipOwner` `--skip-owner` (its agent has its own feed of his lines), and `answerUnnamed`
  * `--answer-unnamed` (it may answer his lines that name nobody, briefly).
  */
 export const listenerArgv = (
@@ -304,7 +304,8 @@ export const listenerArgv = (
   // Which agent in the dir (lanes.agents `cli`): a stale one beside the live one is skipped.
   ...(o.cli ? ["--cli", o.cli] : []),
   "--all",
-  ...(o.scope === "all" ? ["--everyone"] : []),
-  ...(o.scope === "all" && o.skipOwner ? ["--skip-owner"] : []),
+  ...(hearsAll(o.scope) ? ["--everyone"] : []),
+  ...(o.scope === "system" ? ["--system"] : []),
+  ...(hearsAll(o.scope) && o.skipOwner ? ["--skip-owner"] : []),
   ...(o.answerUnnamed ? ["--answer-unnamed"] : []),
 ];

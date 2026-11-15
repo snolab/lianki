@@ -1048,7 +1048,7 @@ export const CONFIG = {
     group: "lanes",
     audience: "server",
     description:
-      '登记过名字的 agent：JSON 数组，每条 {cwd 工作目录结尾, cli 可选 codex/claude/agy…, lane 线名 = token 名, resident 是否常驻实时监听}。没登记的 agent 叫 <仓库>-<cli>-<pid>，默认只读，被点名才叫醒。例：{"cwd":"lianki/tree/codex","cli":"codex","lane":"codex","resident":true}。Mac 上的值是环境变量 LIANKI_LANES_AGENTS（JSON）。',
+      '登记过名字的 agent：JSON 数组，每条 {cwd 工作目录结尾, cli 可选 codex/claude/agy…, lane 线名 = token 名, resident 是否常驻实时监听, scope 可选 owner 只听你的/all 全部消息/system 全部消息 + 系统通知}。没登记的 agent 叫 <仓库>-<cli>-<pid>，默认只读，被点名才叫醒。例：{"cwd":"lianki/tree/codex","cli":"codex","lane":"codex","resident":true}。Mac 上的值是环境变量 LIANKI_LANES_AGENTS（JSON）。',
   },
   "lanes.relistSec": int({
     default: LANES_CONFIG_DEFAULTS["lanes.relistSec"],
@@ -1104,7 +1104,7 @@ export const CONFIG = {
     group: "lanes",
     audience: "server",
     description:
-      "「coco 开始实时监听」「杰咪 下线」这类系统消息存进聊天时用哪种语言写（新页面会按你的界面语言显示，旧页面显示这份）。",
+      "「coco 开始实时监听」「哈基米 下线」这类系统消息存进聊天时用哪种语言写（新页面会按你的界面语言显示，旧页面显示这份）。",
   },
   "lanes.greeting": {
     default: LANES_CONFIG_DEFAULTS["lanes.greeting"] as string,
@@ -1120,7 +1120,7 @@ export const CONFIG = {
     group: "lanes",
     audience: "server",
     description:
-      "可以答没点名的话的 agent（coco、杰咪）入群时的第一句问候，占位符同上。Mac 上的值是环境变量 LIANKI_LANES_GREETING_ANSWER_UNNAMED。",
+      "可以答没点名的话的 agent（coco、哈基米）入群时的第一句问候，占位符同上。Mac 上的值是环境变量 LIANKI_LANES_GREETING_ANSWER_UNNAMED。",
   },
   "chat.presenceShown": int({
     default: 3,

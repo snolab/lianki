@@ -15,7 +15,8 @@
  *
  * A resident lane (lanes.agents resident) gets a `lane-listen --all` of its
  * own: it hears every owner line live; scope "all" (tier ①) adds `--everyone`,
- * agents' and system lines too (and `--skip-owner` when its agent has its own
+ * agents' lines too, scope "system" (tier ⓪) `--everyone --system`, the system
+ * lines as well (and `--skip-owner` when its agent has its own
  * feed of his lines: wake false, 小克). Any other lane is a reader: no listener
  * process; when a line names it (lane-route.ts, with the joined lanes in the
  * table, or `#<repo>`), the manager hands that line to its agent with
@@ -23,7 +24,12 @@
  * for lanes.wakeLiveMin minutes after the last line that named it
  * (withWakeLive). Each new lane greets once, with its own token.
  */
-import type { LaneAgentDef, LaneScope, LanesConfig } from "../../lib/lanes-config";
+import {
+  type LaneAgentDef,
+  type LaneScope,
+  type LanesConfig,
+  hearsAll,
+} from "../../lib/lanes-config";
 import { LANE_NAME_RE } from "../../lib/lanes-config";
 import { laneModeWord, tokensNeededText } from "../../packages/debug-chat/src/lane-events";
 import { type ChatLaneDef, isLaneId } from "../../packages/debug-chat/src/voices";
@@ -139,7 +145,7 @@ export type Planned = {
   repo: string;
   lane: string;
   resident: boolean;
-  /** What its listener hears (lanes.agents scope): "all" adds agents' and system lines (--everyone). */
+  /** What its listener hears (lanes.agents scope): "all" adds agents' lines (--everyone), "system" the system lines too (--system). */
   scope: LaneScope;
   /** Woken by name when a line names it (lanes.agents wake, default true). */
   wake: boolean;
@@ -201,13 +207,13 @@ export function planLanes(
     cwd: a.cwd,
     repo,
     lane: lane!,
-    // scope "all" (tier ①) is live by definition.
-    resident: held || !!reg?.resident || reg?.scope === "all",
+    // scope "all" / "system" (tier ① / ⓪) is live by definition.
+    resident: held || !!reg?.resident || hearsAll(reg?.scope),
     scope: reg?.scope ?? "owner",
     wake: reg?.wake !== false,
     // Owner, 2026-11-15 23:09 JST: a live lane answers by relevance to its project,
     // not by being named; a row may still say false (listen only).
-    answerUnnamed: reg?.answerUnnamed ?? (held || !!reg?.resident || reg?.scope === "all"),
+    answerUnnamed: reg?.answerUnnamed ?? (held || !!reg?.resident || hearsAll(reg?.scope)),
     busy: a.state === "active",
     ...(a.state ? { state: a.state } : {}),
     ...(a.logFile ? { logFile: a.logFile } : {}),
