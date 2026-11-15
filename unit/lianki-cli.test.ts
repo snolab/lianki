@@ -941,6 +941,48 @@ describe("chat (your own thread, with a chat token)", () => {
     }
   });
 
+  test("listen pings; a socket that stops answering is dead (exit 4, lane-listen reconnects)", async () => {
+    for (const answers of [true, false]) {
+      const h = harness({ env: { ...env, LIANKI_CHAT_PING_MS: "20" } });
+      const sent: unknown[] = [];
+      let closed = false;
+      (h.deps as any).WebSocket = class {
+        onopen?: () => void;
+        onmessage?: (e: { data: string }) => void;
+        constructor() {
+          queueMicrotask(() => this.onopen?.());
+        }
+        send(raw: string) {
+          sent.push(raw);
+          if (raw === "ping") {
+            // The hub's auto-response, until the connection drops unseen; then a revoke ends it.
+            if (answers && sent.filter((x) => x === "ping").length < 4)
+              queueMicrotask(() => this.onmessage?.({ data: "pong" }));
+            else if (answers)
+              queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ type: "revoked" }) }));
+          } else
+            queueMicrotask(() =>
+              this.onmessage?.({ data: JSON.stringify({ type: "ready", thread: "owner" }) }),
+            );
+        }
+        close() {
+          closed = true;
+        }
+      };
+      const r = await h.run("chat", "listen", "--json");
+      expect(closed).toBe(true);
+      expect(sent.filter((x) => x === "ping").length).toBeGreaterThanOrEqual(answers ? 4 : 1);
+      if (answers) expect(r.code).toBe(2);
+      else {
+        expect(r.code).toBe(4);
+        expect(envelope(r.err).error.code).toBe("network");
+        expect(envelope(r.err).error.message).toContain("went silent");
+      }
+      // The pongs are not events.
+      expect(r.out).not.toContain("pong");
+    }
+  });
+
   test("there is no eval, pair or grant command", async () => {
     const h = harness({ env });
     for (const c of ["eval", "pair", "grant", "serve"])

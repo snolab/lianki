@@ -570,15 +570,18 @@ export class TokenChat {
 
   /**
    * op "lane": the lanes manager says its agent's lane reads only, or left
-   * (its agent exited). Only the row changes; open sockets stay.
+   * (its agent exited). Only the row changes; open sockets stay. "reader"
+   * while a socket of the lane still listens: that one keeps it a listener
+   * (as on a socket), so no "转为只读" is said of a lane that hears live.
    */
   private async laneOp(v: Verified, thread: string, state: "reader" | "left"): Promise<Response> {
     const lanes = this.host.lanes;
     const r = await this.host.kv?.get<PartRecord>(partKey(v.tag));
+    const input = state === "left" ? "leave" : this.listening(thread, v.lane) ? "seen" : "reader";
     const next = await lanes?.apply(
       thread,
       v.lane,
-      { type: state === "left" ? "leave" : "reader" },
+      { type: input },
       laneShownName(v.lane, r?.ownerName),
     );
     // Flag off: nothing is kept, and the caller carries on as before.

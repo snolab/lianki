@@ -23,7 +23,14 @@
 import { join } from "node:path";
 import { type RouteLane, isRouteLane, laneTakes } from "../../lib/lane-route";
 import { setLaneTable } from "../../packages/debug-chat/src/voices";
-import { laneToken, lineOf, makeDeliverer, tokenNeeded, voiceAllowed } from "./lane-listen-lib";
+import {
+  laneToken,
+  lineOf,
+  makeDeliverer,
+  reconnectWait,
+  tokenNeeded,
+  voiceAllowed,
+} from "./lane-listen-lib";
 
 type Opts = {
   lane: RouteLane;
@@ -182,6 +189,7 @@ async function main(): Promise<number> {
       process.exit(0);
     });
   for (;;) {
+    const started = Date.now();
     child = Bun.spawn(
       [
         process.execPath,
@@ -237,9 +245,11 @@ async function main(): Promise<number> {
         console.error(`lane-listen: the token was refused. Needed: ${tokenNeeded(o.lane)}`);
       return code;
     }
-    log({ type: "reconnect", lane: o.lane, exit: code, inMs: backoff });
-    await Bun.sleep(backoff);
-    backoff = Math.min(backoff * 2, code === 5 ? 600_000 : 60_000);
+    // Exit 4 includes a socket gone silent (the CLI's keepalive): reconnect inside the hub's grace.
+    const { wait, next } = reconnectWait(backoff, code, Date.now() - started);
+    log({ type: "reconnect", lane: o.lane, exit: code, inMs: wait });
+    await Bun.sleep(wait);
+    backoff = next;
   }
 }
 

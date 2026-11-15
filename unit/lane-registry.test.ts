@@ -300,29 +300,32 @@ const mint = (name: string, scopes = CHAT) =>
 function hubSetup(opts: { flag?: boolean; graceSec?: number } = {}) {
   const sockets: FakeSocket[] = [];
   const store = new Map<string, unknown>();
-  const hub = new DebugHub(
-    {
-      acceptWebSocket: (ws) => sockets.push(ws as FakeSocket),
-      getWebSockets: () => sockets,
-      storage: fakeStorage(store),
-    },
-    {
-      SESSIONS: {
-        live: async () => "gone",
-        chatToken: (req: unknown) => chatTokenCheck(db(), req, t),
-        flag: async (key: string) => (key === "chat.lane-events" ? (opts.flag ?? true) : false),
-        config: async (key: string) =>
-          key === "lanes.modeGraceSec"
-            ? (opts.graceSec ?? 0)
-            : key === "lanes.eventLocale"
-              ? "zh"
-              : key === "chat.presenceReadMin"
-                ? 5
-                : undefined,
+  /** A hub over the store and the sockets; a second one is the same Durable Object woken from hibernation. */
+  const make = () =>
+    new DebugHub(
+      {
+        acceptWebSocket: (ws) => sockets.push(ws as FakeSocket),
+        getWebSockets: () => sockets,
+        storage: fakeStorage(store),
       },
-    },
-    () => t,
-  );
+      {
+        SESSIONS: {
+          live: async () => "gone",
+          chatToken: (req: unknown) => chatTokenCheck(db(), req, t),
+          flag: async (key: string) => (key === "chat.lane-events" ? (opts.flag ?? true) : false),
+          config: async (key: string) =>
+            key === "lanes.modeGraceSec"
+              ? (opts.graceSec ?? 0)
+              : key === "lanes.eventLocale"
+                ? "zh"
+                : key === "chat.presenceReadMin"
+                  ? 5
+                  : undefined,
+        },
+      },
+      () => t,
+    );
+  let hub = make();
   const http = async (token: string, body: unknown) => {
     const r = await hub.fetch(
       new Request("https://lianki.com/api/version/chat", {
@@ -365,7 +368,24 @@ function hubSetup(opts: { flag?: boolean; graceSec?: number } = {}) {
       .map((m) => m.message as ChatMessage)
       .filter((m) => m.laneEvent)
       .map((m) => m.text);
-  return { hub, sockets, store, http, listen, ownerPage, leave, events };
+  /** Hibernation: the in-memory hub is gone; a new one wakes over the same storage and attached sockets. */
+  const wake = () => {
+    hub = make();
+    return hub;
+  };
+  return {
+    get hub() {
+      return hub;
+    },
+    wake,
+    sockets,
+    store,
+    http,
+    listen,
+    ownerPage,
+    leave,
+    events,
+  };
 }
 
 describe("the hub: modes and system lines", () => {
@@ -450,6 +470,52 @@ describe("the hub: modes and system lines", () => {
     await flush();
     expect(two.of("lane").at(-1)).toEqual({ type: "lane", state: "listener" });
     expect(h.events(page)).toEqual(["coco 开始实时监听"]);
+  });
+  it("hibernation: a hub woken over the same storage and sockets keeps a live listener", async () => {
+    const h = hubSetup({ graceSec: 30 });
+    const page = await h.ownerPage();
+    const a = await mint("codex");
+    const resident = await h.listen(a.token);
+    // A wait of the same lane (a reader socket) comes and goes before the hub sleeps.
+    const wait = await h.listen(a.token, { mode: "reader" });
+    // The Durable Object hibernates: nothing in memory survives, the sockets stay attached.
+    h.wake();
+    await h.leave(wait);
+    t += 31_000;
+    await h.hub.alarm();
+    await flush();
+    // An old socket of the resident (a reconnect earlier in the night) closes only now.
+    const ghost = await h.listen(a.token);
+    h.wake();
+    await h.leave(ghost);
+    t += 31_000;
+    await h.hub.alarm();
+    await flush();
+    expect(resident.closed).toBeUndefined();
+    expect(h.events(page)).toEqual(["coco 开始实时监听"]);
+    expect(h.store.get(laneRegKey("owner", "codex"))).toMatchObject({ state: "listener" });
+    expect((h.store.get(laneRegKey("owner", "codex")) as LaneReg).downAt).toBeUndefined();
+  });
+  it("op lane reader over HTTP while a socket of the lane still listens: still a listener, no line", async () => {
+    const h = hubSetup();
+    const page = await h.ownerPage();
+    const a = await mint("codex");
+    await h.listen(a.token);
+    expect((await h.http(a.token, { op: "lane", state: "reader" })).body.state).toBe("listener");
+    await flush();
+    expect(h.events(page)).toEqual(["coco 开始实时监听"]);
+  });
+  it("a listener that reconnects after the grace (its socket had died unseen) is a listener again", async () => {
+    const h = hubSetup({ graceSec: 30 });
+    const page = await h.ownerPage();
+    const a = await mint("codex");
+    await h.leave(await h.listen(a.token));
+    t += 31_000;
+    await h.hub.alarm();
+    await flush();
+    // `lianki chat listen` says mode listener on every socket it opens.
+    await h.listen(a.token, { mode: "listener" });
+    expect(h.events(page)).toEqual(["coco 开始实时监听", "coco 转为只读", "coco 开始实时监听"]);
   });
   it("op lane over HTTP: reader or left, checked as a read", async () => {
     const h = hubSetup();

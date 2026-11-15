@@ -461,9 +461,25 @@ const wsUrl = (c) => {
 };
 
 /**
+ * A resident listener's keepalive: it sends "ping" every CHAT_PING_MS (the hub's
+ * auto-response answers "pong" without waking it), and a socket that heard
+ * nothing back by the next tick (10–20 s of silence) is dead: a connection that dropped without a close
+ * reaching this end (the hub saw it close, so its lane turns reader after
+ * lanes.modeGraceSec, 30 s). It fails as a network error (exit 4), and
+ * lane-listen reconnects inside the grace, saying `mode: "listener"` again.
+ * LIANKI_CHAT_PING_MS overrides it; 0 turns it off.
+ */
+export const CHAT_PING_MS = 10_000;
+const pingMs = (env = {}) => {
+  const v = Number(env.LIANKI_CHAT_PING_MS);
+  return env.LIANKI_CHAT_PING_MS !== undefined && Number.isFinite(v) && v >= 0 ? v : CHAT_PING_MS;
+};
+
+/**
  * One chat socket: authenticated with the token in its first message (never
  * the URL). `onEvent` gets each event; resolves when it returns true, or
- * rejects on a refusal, a close or the timeout.
+ * rejects on a refusal, a close, the timeout, or (a listener) a socket gone
+ * silent past its keepalive.
  */
 function chatSocket(c, token, { history = 0, mode, onReady, onEvent, timeoutMs }) {
   const WS = c.deps.WebSocket ?? globalThis.WebSocket;
@@ -476,6 +492,7 @@ function chatSocket(c, token, { history = 0, mode, onReady, onEvent, timeoutMs }
       if (done) return;
       done = true;
       clearTimeout(timer);
+      clearInterval(beat);
       try {
         ws.close(1000);
       } catch {}
@@ -483,6 +500,19 @@ function chatSocket(c, token, { history = 0, mode, onReady, onEvent, timeoutMs }
       else resolve(value);
     };
     const timer = timeoutMs ? setTimeout(() => finish(new CliError("timeout", EXIT.server, "timed out waiting")), timeoutMs) : null;
+    // The keepalive: a tick whose last ping heard nothing back (no pong, no event) ends it.
+    const every = mode === "listener" ? pingMs(c.deps.env) : 0;
+    let unanswered = false;
+    const beat = every
+      ? setInterval(() => {
+          if (unanswered)
+            return finish(new CliError("network", EXIT.server, `the chat socket went silent (no answer to a ping in ${every / 1000} s)`));
+          unanswered = true;
+          try {
+            ws.send("ping");
+          } catch {}
+        }, every)
+      : null;
     try {
       ws = new WS(wsUrl(c));
     } catch (e) {
@@ -492,6 +522,8 @@ function chatSocket(c, token, { history = 0, mode, onReady, onEvent, timeoutMs }
     // manager): the lane's mode in the hub's lane registry; an older hub ignores it.
     ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, ...(history ? { history } : {}), ...(mode ? { mode } : {}) }));
     ws.onmessage = async (ev) => {
+      unanswered = false;
+      if (ev.data === "pong") return;
       let m;
       try {
         m = JSON.parse(typeof ev.data === "string" ? ev.data : String(ev.data));
