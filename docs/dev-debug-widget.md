@@ -979,6 +979,38 @@ because a wrong merge is worse than two bubbles; `debug.merge` and
 `debug.merge-refused` (with a reason) in `wrangler tail lianki-push` are what to tune
 it from.
 
+### Reopened: a posted line takes what follows
+
+The owner, 2026-11-15 16:3x JST: "已经提交的语音消息是不是也可以继续贡献给识别窗口？" A line
+whose run already ended on silence (passage end, settled, re-listened, the hub's polish
+on it) still takes the speech that follows, instead of a new line starting. Config
+**`stt.mergeReopenSec`** (`/dev/config`, default 20 s, 0 to 120, 0 = off; unreadable
+in the hub = off), behind the same flag `stt.merge`. Rule: `reopenVerdict` in
+`voice-merge.ts`; the page and the hub both ask `joinVerdict` (a live merge first,
+then a reopen), and the hub alone decides, as above.
+
+- **Open while:** his voice line, stamped, is still the thread's very latest line
+  (his typed line, any agent's or lane's line, an ask card in between: closed), the
+  next utterance starts at most the window after its last part ended (page clock),
+  and reached the hub at most the window plus `MAX_UTTERANCE_MS` after it last grew
+  (hub clock). Same page, same `to`, and every row of the table above except the
+  signal and its window.
+- **Closed by a hand on it:** an edit by a lane or by him (`eval.ts edit`), a summary,
+  a passage, an echo, a removed line. Only `edited.by` `merge`, `auto` (the hub's
+  polish) and `two-mic` reopen (`REOPEN_EDITS`).
+- **Speaker:** stricter than a live merge, since the gap is no longer one utterance:
+  both lines signed as him by the Mac, or neither tagged at all (no voiceprint on the
+  device). One tagged and one not: a new line.
+- **What changes on the line:** `mergeLines` as for a live merge, from the text as
+  heard (`recheck.heard`, else `raw`): the old polish and the old Whisper reading go,
+  `settled` goes, the parts grow. Logged `debug.merge` with `signal: "reopen"`
+  (`reopened: true` when it had settled).
+- **Once more, once:** its next passage end re-listens the whole merged run and sends
+  one `polish-due`; the hub's own polish counts a line whose `edited.by` is `merge` as
+  unpolished, so it polishes the reopened line once, at that passage end, never in
+  between (still being spoken) and never twice.
+- **Undo** splits it into every part as heard, the reopened ones too.
+
 ### An agent already on it
 
 A busy beat does not stop a merge: `--ack` beats every line at once, so a beat
@@ -1015,7 +1047,7 @@ An undo: `{type:"edited", …, split:[{id, text, at}…]}`.
 below) is one cheap metered call per run. Today N fragments are N lines and up to N polishes. Merged, they
 are N wakes (each `edited` is a wake, as the chat line was) plus one for `polish-due`,
 and exactly one polish, however long the passage; flag off, nothing. A line's
-polishes are not capped (2026-11-14), and a settled line takes no more parts. Hub: one flag
+polishes are not capped (2026-11-14), and a settled line takes no more parts but by a reopen ("Reopened", above), which costs one polish more. Hub: one flag
 read per 30 s on voice lines (`flag()`'s budget is 60 a minute), one storage write per
 merge, one uncached `flag()` read per passage for `stt.polish`.
 
@@ -1044,9 +1076,16 @@ since only a merged line has a passage end. Config: `stt.recheckMinSec` (1.5 s),
   use, only while it is up (a new socket holds none of the run's audio):
   `{t:"recheck", auto:true, run:<line id>, fromAgoMs, toAgoMs}`. The window is sent
   as durations before now on the page's clock, so the Mac's clock never has to agree.
+- **A run longer than `stt.recheckMaxSec`** (a reopened one, mostly): only its newest
+  parts are re-read, those whose wall-clock span (first one's start to the last one's
+  end) fits; `from` in the request's plan and the amend names the first. The parts
+  before it keep the streaming text (level 1), and `recheck.from` says so. The Mac's
+  ring holds only streamed audio, so a span that fits the wall clock always fits the
+  ring: `--recheck-max-sec` (default 60) and `stt.recheckMaxSec` stay as they are.
+  Only the newest part alone too long: `long`, level 1.
 - **The answer.** `ok:true` with text, for this run, and the line still exactly as asked
   (same parts, same text): the page sends `{type:"passage-end", recheck:{id, parts,
-  text, engine, lang}}`. A failure, `recheck busy`, a timeout, another run, or a line
+text, engine, lang}}`. A failure, `recheck busy`, a timeout, another run, or a line
   that moved on: a plain passage end, the line keeps level 1. A part that joined while
   Whisper read sends nothing: the next passage end re-reads the longer run. One run is
   never asked twice at once.
