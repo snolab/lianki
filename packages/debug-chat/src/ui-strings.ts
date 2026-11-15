@@ -253,7 +253,8 @@ export type UiStrings = {
    * Each agent's row shows small state icons instead of words; a tap on an
    * icon shows its one-line meaning (one of the lines below), also its
    * hover title. Short sentences without a full stop; the agent is the
-   * implied subject ("Can post messages").
+   * implied subject ("Can read and answer you"). The readers include
+   * children of about 13: everyday words only.
    * - peopleListening: the label (screen readers) of the three listening
    *   icons together. One word.
    * - peopleHearsAll: the ear icon, the agent hears every message in the
@@ -264,15 +265,21 @@ export type UiStrings = {
    *   the user calls it by name.
    * - peopleNotListening: the closed-eye icon, the agent is not listening:
    *   it left, or the user muted it.
-   * - peoplePerms: the label (screen readers) of the permission icons
-   *   together. One word.
-   * - peopleCanPost / peopleCannotPost: the speech-bubble icon, whether the
-   *   agent may post messages in the chat.
-   * - peopleCanRead / peopleCannotRead: the eye icon, whether it may read
-   *   the chat.
-   * - peopleCanEval / peopleCannotEval: the code icon, whether it may run
-   *   code on the user's open page (a remote-control permission the user
-   *   granted).
+   * - peopleAbilities: the label (screen readers) of the two icons after the
+   *   listening ones, what the agent is allowed to do. A few words.
+   * - peopleCanTalk / peopleCannotTalk: the speech-bubble icon (struck
+   *   through and grey when not allowed): whether the agent can read the
+   *   user's messages and answer them. Never "post", "permission" or other
+   *   technical words.
+   * - peopleCanAct / peopleCannotAct: the hand icon (struck through and grey
+   *   when not allowed): whether the agent may operate the page the user has
+   *   open for them (tap buttons, scroll, fill things in), something the user
+   *   allowed. Never "code", "run" or "remote control".
+   * - peopleBusy: the turning ring around an agent's picture (its hover
+   *   title, and a line in the agent's row): the agent is doing a task right
+   *   now. Short, no full stop.
+   * - peopleStuck: the same ring when the agent has been stuck on its task
+   *   for a while and the user may want to look. Short, no full stop.
    */
   linkChip: string;
   linkEval: string;
@@ -326,13 +333,13 @@ export type UiStrings = {
   peopleHearsYours: string;
   peopleWokenByName: string;
   peopleNotListening: string;
-  peoplePerms: string;
-  peopleCanPost: string;
-  peopleCannotPost: string;
-  peopleCanRead: string;
-  peopleCannotRead: string;
-  peopleCanEval: string;
-  peopleCannotEval: string;
+  peopleAbilities: string;
+  peopleCanTalk: string;
+  peopleCannotTalk: string;
+  peopleCanAct: string;
+  peopleCannotAct: string;
+  peopleBusy: string;
+  peopleStuck: string;
 };
 
 export const UI_EN: UiStrings = {
@@ -457,13 +464,13 @@ export const UI_EN: UiStrings = {
   peopleHearsYours: "Hears your messages live",
   peopleWokenByName: "Wakes only when named",
   peopleNotListening: "Not listening (left or muted)",
-  peoplePerms: "Permissions",
-  peopleCanPost: "Can post messages",
-  peopleCannotPost: "Cannot post messages",
-  peopleCanRead: "Can read the chat",
-  peopleCannotRead: "Cannot read the chat",
-  peopleCanEval: "Can run code on this page",
-  peopleCannotEval: "Cannot run code on this page",
+  peopleAbilities: "What it can do",
+  peopleCanTalk: "Can read and answer you",
+  peopleCannotTalk: "Can't read or answer you",
+  peopleCanAct: "Can tap around this page for you",
+  peopleCannotAct: "Can't touch this page",
+  peopleBusy: "Working on something now",
+  peopleStuck: "Stuck, may need you",
 };
 
 export const UI_ZH: UiStrings = {
@@ -587,13 +594,13 @@ export const UI_ZH: UiStrings = {
   peopleHearsYours: "实时听到你的消息",
   peopleWokenByName: "被点名时才醒来",
   peopleNotListening: "没在听（已离开或已禁言）",
-  peoplePerms: "权限",
-  peopleCanPost: "可以发消息",
-  peopleCannotPost: "不能发消息",
-  peopleCanRead: "可以读聊天",
-  peopleCannotRead: "不能读聊天",
-  peopleCanEval: "可以在这个页面运行代码",
-  peopleCannotEval: "不能在这个页面运行代码",
+  peopleAbilities: "能做什么",
+  peopleCanTalk: "能看懂并回答你",
+  peopleCannotTalk: "不能看也不能回答你",
+  peopleCanAct: "能帮你点页面",
+  peopleCannotAct: "不能碰这个页面",
+  peopleBusy: "正在忙",
+  peopleStuck: "卡住了，可能需要你",
 };
 
 export const UI_JA: UiStrings = {
@@ -717,13 +724,13 @@ export const UI_JA: UiStrings = {
   peopleHearsYours: "あなたのメッセージをリアルタイムで聞く",
   peopleWokenByName: "名前を呼ばれたときだけ起きる",
   peopleNotListening: "聞いていない（退出またはミュート）",
-  peoplePerms: "権限",
-  peopleCanPost: "メッセージを送れる",
-  peopleCannotPost: "メッセージを送れない",
-  peopleCanRead: "チャットを読める",
-  peopleCannotRead: "チャットを読めない",
-  peopleCanEval: "このページでコードを実行できる",
-  peopleCannotEval: "このページでコードを実行できない",
+  peopleAbilities: "できること",
+  peopleCanTalk: "読んで返事ができる",
+  peopleCannotTalk: "読むことも返事もできない",
+  peopleCanAct: "このページを代わりに操作できる",
+  peopleCannotAct: "このページには触れない",
+  peopleBusy: "いま作業中",
+  peopleStuck: "止まっている。助けが要るかも",
 };
 
 /** The tree's strings in Chinese (StateTree.tsx TreeStrings). */

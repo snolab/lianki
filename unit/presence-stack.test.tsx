@@ -286,23 +286,20 @@ it("summary, panel, rename, picture, remove and invite", async () => {
       "listen-ear:true:ear",
       "listen-bell:false:bell",
       "listen-off:false:eyeClosed",
-      "read:true:eye",
     ]);
     expect(iconsOf("lane:codex")).toEqual([
       "listen-ear:true:ear",
       "listen-bell:false:bell",
       "listen-off:false:eyeClosed",
-      "read:true:eye",
     ]);
     expect(iconsOf("lane:agy")).toEqual([
       "listen-ear:false:ear",
       "listen-bell:false:bell",
       "listen-off:true:eyeClosed",
-      "post:false:chatBubble",
-      "read:true:eye",
+      "talk:false:chatBubble",
     ]);
-    // A token the hub knows nothing about listening for: permissions only.
-    expect(iconsOf("tok:e")).toEqual(["post:false:chatBubble", "read:true:eye", "eval:true:code"]);
+    // A token the hub knows nothing about listening for: talk and act only (no eye any more).
+    expect(iconsOf("tok:e")).toEqual(["talk:false:chatBubble", "act:true:hand"]);
     expect(
       $$('[data-testid="debug-chat-presence-row"]').map((r) => r.textContent ?? ""),
     ).not.toContain("listening live");
@@ -325,12 +322,11 @@ it("summary, panel, rename, picture, remove and invite", async () => {
     expect(tipOf("lane:claude")).toBeUndefined();
     await click(iconBtn("lane:codex", "listen-ear"));
     expect(tipOf("lane:codex")).toBe(UI_EN.peopleHearsYours);
-    expect(iconBtn("tok:e", "eval").getAttribute("title")).toBe(UI_EN.peopleCanEval);
-    expect(iconBtn("tok:e", "post").getAttribute("aria-label")).toBe(UI_EN.peopleCannotPost);
-    expect(iconBtn("tok:e", "read").querySelector("path")!.getAttribute("fill-rule")).toBe(
-      "evenodd",
-    );
-    expect(iconBtn("tok:e", "post").querySelector("path")!.getAttribute("stroke")).toBe(
+    expect(iconBtn("tok:e", "act").getAttribute("title")).toBe(UI_EN.peopleCanAct);
+    expect(iconBtn("tok:e", "talk").getAttribute("aria-label")).toBe(UI_EN.peopleCannotTalk);
+    expect(iconBtn("tok:e", "act").querySelector("svg")!.getAttribute("data-slash")).toBeNull();
+    expect(iconBtn("tok:e", "talk").querySelector("svg")!.getAttribute("data-slash")).toBe("true");
+    expect(iconBtn("tok:e", "talk").querySelector("path")!.getAttribute("stroke")).toBe(
       "currentColor",
     );
     await click(iconBtn("lane:agy", "listen-off"));

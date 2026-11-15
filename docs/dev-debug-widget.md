@@ -2117,12 +2117,20 @@ then "按钮和「实时监听」这种文字太多了"):
     effect filled seal red: **ear** hears live (all lines, or his only),
     **bell** woken only when named (reader), **closed eye** not listening
     (muted). Drawn only when the lane registry gives a mode.
-  - permissions, filled when granted, grey outline when not: **speech bubble**
-    may post, **eye** may read, **`</>`** may run code on the page. Only what
-    the page knows (`presence.ts knownState`): the hub's `perms` when it sends
-    them, else read = being here as a lane / socket / read, post = posted a
-    line (muted: no); code only from `perms.eval`. Unknown = no icon, never a
-    guess. (The hub does not send `perms` yet, so `</>` does not show today.)
+  - then two abilities (owner, 2026-11-16: three groups in all, listen / talk /
+    act, in words a 13-year-old knows, no "eval", "code" or "scope"): **speech
+    bubble** can read and answer you (one icon: answering means it reads, so
+    there is no eye), **hand** may operate the page for you (the eval grant).
+    Not allowed = the same icon struck through and grey (`Icon slash`). Only
+    what the page knows (`presence.ts knownState`): talk = the hub's
+    `perms.post`, else posted a line (muted: no); act only from `perms.eval`.
+    Unknown = no icon, never a guess.
+  - **busy**: a slow turning seal-red ring around the avatar, in the stack and
+    in the panel (`BusyRing`), while its agent works; with reduced motion a
+    still, full ring; stuck = a still amber dashed ring. From the lane row's
+    `busy` / `stuck` (lane-registry.ts), which the lanes manager sets from the
+    agent's live output (docs/lane-listen.md, "Who is busy"). The "…" details
+    say it in words (`peopleBusy`, `peopleStuck`).
   - a tap on any icon shows its one-line meaning under the row (also its
     hover title / label).
     The read-only lanes fold into one row "3 read-only lanes"

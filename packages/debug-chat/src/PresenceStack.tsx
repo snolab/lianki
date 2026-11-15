@@ -10,8 +10,10 @@
  * A mouse hovering it, or one tap on a touch screen, shows a one-line
  * summary; a mouse click, a double tap, or Enter opens the panel: one row per
  * live participant (avatar, name · role, and a strip of state icons:
- * listening ear / bell / closed eye, permissions post / read / code, each
- * tapped for its meaning), the read-only lanes collapsed into one row that
+ * listening ear / bell / closed eye, then talk (a speech bubble: reads and
+ * answers) and act (a hand: may operate the page), each struck through and
+ * grey when not allowed, each tapped for its meaning), the read-only lanes
+ * collapsed into one row that
  * opens to plain names, and a quiet Invite row at the bottom. Each row's "…"
  * holds the rest: its activity and, for the viewer's own tokens, Rename,
  * Picture (generated / the agent's own / a pasted SVG, the same sanitizer as
@@ -68,13 +70,13 @@ export type PresenceWords = Pick<
   | "peopleHearsYours"
   | "peopleWokenByName"
   | "peopleNotListening"
-  | "peoplePerms"
-  | "peopleCanPost"
-  | "peopleCannotPost"
-  | "peopleCanRead"
-  | "peopleCannotRead"
-  | "peopleCanEval"
-  | "peopleCannotEval"
+  | "peopleAbilities"
+  | "peopleCanTalk"
+  | "peopleCannotTalk"
+  | "peopleCanAct"
+  | "peopleCannotAct"
+  | "peopleBusy"
+  | "peopleStuck"
 >;
 
 /** A participant's change: a name (null: its own back), a picture ("auto", an SVG, null: its own back). */
@@ -110,6 +112,40 @@ export function LiveMark({ p }: { p: Pick<Present, "mode" | "muted" | "scope"> }
           ? { background: SEAL }
           : { background: "oklch(0.98 0.005 85)", boxShadow: `inset 0 0 0 1.5px ${SEAL}` }
       }
+    />
+  );
+}
+
+/**
+ * The ring around a busy agent's picture (owner, 2026-11-16 "在干活的 agent 的头像上面给它一个
+ * 闪烁动画或者转圈圈的动画"): a seal-red arc turning slowly; with reduced motion a still, full
+ * ring. Stuck: a still amber dashed ring (stopped, not working), its own hue so it never reads
+ * as the theme red. The words are its title (and the row's line).
+ */
+export function BusyRing({
+  p,
+  t,
+  inset = -2,
+}: {
+  p: Pick<Present, "busy" | "stuck">;
+  t: Pick<PresenceWords, "peopleBusy" | "peopleStuck">;
+  inset?: number;
+}) {
+  if (!p.busy) return null;
+  const stuck = !!p.stuck;
+  return (
+    <span
+      data-testid="debug-chat-presence-busy"
+      data-stuck={stuck || undefined}
+      title={stuck ? t.peopleStuck : t.peopleBusy}
+      aria-hidden
+      className={
+        "pointer-events-none absolute rounded-full border-2 " +
+        (stuck
+          ? "border-dashed border-[oklch(0.72_0.15_75)]"
+          : "animate-spin border-[var(--lk-primary,oklch(0.53_0.207_22.3))] border-t-transparent motion-reduce:animate-none motion-reduce:border-t-[var(--lk-primary,oklch(0.53_0.207_22.3))]")
+      }
+      style={{ inset, ...(stuck ? {} : { animationDuration: "2.4s" }) }}
     />
   );
 }
@@ -227,10 +263,12 @@ export function PresenceStack({
             data-testid="debug-chat-presence-avatar"
             data-key={p.key}
             data-mode={p.mode}
+            data-busy={p.busy || undefined}
             className={`relative inline-flex rounded-full ring-1 ring-[oklch(0.98_0.005_85)] dark:ring-[oklch(0.22_0.01_260)] ${i ? "-ms-1.5" : ""}`}
             style={{ zIndex: stack.shown.length - i }}
           >
             <Avatar src={pictureOf(p, mainName)} name={p.name} size={AV} hidden />
+            <BusyRing p={p} t={t} />
             <LiveMark p={p} />
           </span>
         ))}
@@ -440,6 +478,7 @@ function Row({
   const mine = !!p.id && !!p.tok;
   // Its listening mode (lane-registry.ts) is drawn as icons; the words are for the "…" details.
   const activity: ReactNode[] = [];
+  if (p.busy) activity.push(p.stuck ? t.peopleStuck : t.peopleBusy);
   if (p.live) activity.push(t.peopleNow);
   else activity.push(t.peopleActive.replaceAll("{time}", clock(p.active)));
   if (p.since) activity.push(t.peopleSince.replaceAll("{time}", clock(p.since)));
@@ -462,6 +501,7 @@ function Row({
     on: boolean,
     look: string,
     weight: "regular" | "fill" = "regular",
+    slash = false,
   ) => (
     <button
       key={kind}
@@ -477,7 +517,7 @@ function Row({
     >
       {/* The look sits inside: the button stays 44px tall to tap, the segment 28px to see. */}
       <span className={`inline-flex h-7 w-full items-center justify-center ${look}`}>
-        <Icon name={name} weight={weight} />
+        <Icon name={name} weight={weight} slash={slash} />
       </span>
     </button>
   );
@@ -497,7 +537,8 @@ function Row({
   const listenIcons = listening.map(([kind, name, meaning, states, edge]) =>
     icon(kind, name, meaning, listenOn(states), segLook(listenOn(states), edge)),
   );
-  const perm = (kind: string, name: IconName, has: boolean | undefined, yes: string, no: string) =>
+  /** Allowed: the icon (filled when it has a fill); not: the same icon struck through, grey. */
+  const can = (kind: string, name: IconName, has: boolean | undefined, yes: string, no: string) =>
     has === undefined
       ? null
       : icon(
@@ -507,11 +548,11 @@ function Row({
           has,
           has ? "" : "text-gray-400 dark:text-gray-500",
           has ? "fill" : "regular",
+          !has,
         );
   const perms = [
-    perm("post", "chatBubble", state.post, t.peopleCanPost, t.peopleCannotPost),
-    perm("read", "eye", state.read, t.peopleCanRead, t.peopleCannotRead),
-    perm("eval", "code", state.eval, t.peopleCanEval, t.peopleCannotEval),
+    can("talk", "chatBubble", state.talk, t.peopleCanTalk, t.peopleCannotTalk),
+    can("act", "hand", state.act, t.peopleCanAct, t.peopleCannotAct),
   ].filter(Boolean);
   return (
     <li
@@ -521,8 +562,13 @@ function Row({
     >
       <div className="flex min-h-11 items-center gap-2 ps-1">
         {!plain && (
-          <span className="inline-flex shrink-0">
+          <span
+            className="relative inline-flex shrink-0"
+            data-testid="debug-chat-presence-row-avatar"
+            data-busy={p.busy || undefined}
+          >
             <Avatar src={pictureOf(p, mainName)} name={p.name} size={24} hidden />
+            <BusyRing p={p} t={t} />
           </span>
         )}
         <span className="min-w-0 flex-1">
@@ -551,7 +597,7 @@ function Row({
                 </span>
               )}
               {perms.length > 0 && (
-                <span role="group" aria-label={t.peoplePerms} className="inline-flex items-center">
+                <span role="group" aria-label={t.peopleAbilities} className="inline-flex items-center">
                   {perms}
                 </span>
               )}

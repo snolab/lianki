@@ -10,6 +10,7 @@ import { join } from "node:path";
 import type { LaneScope, LanesConfig } from "../../lib/lanes-config";
 import { type ChatLaneDef, setLaneTable } from "../../packages/debug-chat/src/voices";
 import { handoffBrief, lineOf } from "./lane-listen-lib";
+import { type BusyDeps, createBusyTracker } from "./lanes-busy";
 import {
   type Action,
   type ManagerState,
@@ -55,6 +56,13 @@ export interface Deps {
   now?(): number;
   /** Run `fn` in `ms` (default setTimeout): a woken lane's live window ending. */
   later?(ms: number, fn: () => void): void;
+  /**
+   * Who is busy (./lanes-busy.ts): follow an agent's live output log; absent = no busy ring
+   * (the timers default to setTimeout / clearTimeout).
+   */
+  follow?: BusyDeps["follow"];
+  setTimer?: BusyDeps["setTimer"];
+  clearTimer?: BusyDeps["clearTimer"];
 }
 
 export type ManagerOpts = {
@@ -82,6 +90,26 @@ export function createManager(d: Deps, o: ManagerOpts) {
   const later = d.later ?? ((ms: number, fn: () => void) => void setTimeout(fn, ms));
 
   const table = () => JSON.stringify(laneTableFor(planned, o.extraTable));
+
+  // Who is busy: each lane's agent's live output, told to the hub with the lane's own token.
+  const busy = d.follow
+    ? createBusyTracker(
+        {
+          follow: d.follow,
+          setTimer: d.setTimer ?? ((ms, fn) => setTimeout(fn, ms)),
+          clearTimer: d.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>)),
+          log: d.log,
+          send: async (lane, b, stuck) => {
+            if (o.dryRun) return;
+            const t = d.token(lane);
+            if (!t) return;
+            const r = await d.chat(t, { op: "lane", busy: b, ...(stuck ? { stuck } : {}) });
+            if (!r.ok) d.log({ type: "busy-refused", lane, status: r.status });
+          },
+        },
+        { idleMs: o.cfg.busyIdleSec * 1000 },
+      )
+    : null;
 
   async function run(a: Action): Promise<void> {
     const { type: action, ...rest } = a;
@@ -176,6 +204,8 @@ export function createManager(d: Deps, o: ManagerOpts) {
         o.locale,
       );
       planned = next;
+      // Only lanes with a token can be shown busy.
+      busy?.sync(next.filter((p) => tokens.has(p.lane)));
       for (const a of r.actions) await run(a);
       if (JSON.stringify(r.state) !== JSON.stringify(state)) {
         state = r.state;
@@ -227,11 +257,18 @@ export function createManager(d: Deps, o: ManagerOpts) {
       }
       return woken;
     },
-    /** Stop every listener this manager started. */
+    /** One line of `ay ls --watch --json --local`: the busy fallback's input (lanes-busy.ts). */
+    ayLine(raw: string) {
+      busy?.ayLine(raw);
+    },
+    /** Stop every listener this manager started (and the busy followers: busy lanes told idle). */
     stop() {
       for (const c of children.values()) c.kill();
       children.clear();
+      busy?.stop();
     },
+    /** The busy tracker's view (lanes-busy.ts snapshot), or null without one. */
+    busy: () => busy?.snapshot() ?? null,
     /** End the live windows that are over (the timers call it; tests too). */
     expire,
     /** The lanes live by a recent name, and until when. */

@@ -316,9 +316,10 @@ it as `LIANKI_LANE_TABLE` (lane-listen) or `LIANKI_CHAT_LANES` (the manager).
 **The manager**, `lianki-dev lanes` (`scripts/dev/lanes-manager.ts`; pure
 decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
 
-1. Watches `ay ls --watch --local` (ay's own registry diff); each edge
-   re-reads `ay ls --json --local`, plus a slow re-list every
-   `lanes.relistSec` (60 s) in case the stream is silent.
+1. Watches `ay ls --watch --json --local` (ay's state transitions; ay
+   itself polls every 2 s for them); each edge re-reads `ay ls --json
+   --local`, plus a slow re-list every `lanes.relistSec` (60 s) in case the
+   stream is silent.
 2. Maps each alive agent to a repo: the first part of its cwd on the
    `lanes.repos` whitelist (lianki, agent-yes, liagent, rechrome, otoji, rgui, mimiai).
 3. Names it: the lane a running `lane-listen --deliver <pid>` already serves
@@ -385,3 +386,25 @@ Tests: `unit/lane-route.test.ts` (the matcher), `unit/lane-listen.test.ts`
 (token lookup, line parsing, the hand-off).
 
 - **Urgent lines break in (2026-11-14 23:0x).** A line that names the lane, or starts with 全体 (every lane at once, `lane-route.ts`), or an ETA nudge addressed to it, is handed over immediately with `ay send --code alt-m` (interrupting the turn) together with whatever was waiting; everything else still waits for the batch (`urgentLine` in `scripts/dev/lane-listen-lib.ts`).
+
+## Who is busy
+
+The page turns a ring around a lane's avatar while its agent works (owner,
+2026-11-16 "在干活的 agent 的头像上面给它一个…转圈圈的动画"). The lanes manager
+(`scripts/dev/lanes-busy.ts`) follows each joined lane's live output, the
+`log_file` ay writes everything the agent prints to, with one `tail -f -n 0`
+per lane (kqueue: it blocks until the file grows, no polling). Output = busy;
+quiet for `lanes.busyIdleSec` (8 s, env `LIANKI_LANES_BUSY_IDLE_SEC`) = idle,
+one timer per lane re-armed on each write. Only a change goes to the hub:
+`{op:"lane", busy, stuck?}` with the lane's own token (checked as a read),
+kept on the lane registry row (`busy`, `stuck`, `busyAt`) and sent in the
+presence list; no system line. A lane that leaves is not busy; the manager
+stopping tells its busy lanes idle.
+
+Not `fs.watch`: ay keeps the log open and writes to that descriptor, and
+neither Node's nor Bun's `fs.watch` reports those writes on macOS (measured
+2026-11-16). A lane whose follower cannot start or dies (retried with
+back-off, 1 s doubling to 60 s) falls back to ay's states from the same `ay ls
+--watch --json` stream (active / stuck busy, the rest idle). That stream
+polls (every 2 s inside ay), so a lane on it is up to 2 s late.
+

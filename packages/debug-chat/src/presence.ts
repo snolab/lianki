@@ -66,20 +66,27 @@ export type Present = {
    * Each one absent = not known here; the panel then draws no icon for it (knownState).
    */
   perms?: { read?: boolean; post?: boolean; eval?: boolean };
+  /**
+   * Its agent is mid-task now (the lanes manager's word, lane-registry.ts `busy`): the
+   * turning ring around its picture. `stuck`: busy, but stuck on it (the ring says so).
+   */
+  busy?: true;
+  stuck?: true;
 };
 
 /** The listening states the panel draws (ear, ear, bell, closed eye). */
 export type ListenState = "all" | "yours" | "named" | "off";
 
 /**
- * What the page knows of an entry, for the panel's state icons; undefined = not known (no icon,
- * never a guess). Listening: muted is off; a listener hears all lines or the owner's; a reader
- * wakes when named. Reading: the hub's word, else known from being here as a lane, a socket or a
- * read. Posting: the hub's word, else muted cannot, a line posted can. Code: the hub's word only.
+ * What the page knows of an entry, for the panel's three state groups (owner, 2026-11-16: listen,
+ * talk, act); undefined = not known (no icon, never a guess). Listening: muted is off; a listener
+ * hears all lines or the owner's; a reader wakes when named. Talk (read AND answer, one icon:
+ * answering means it reads): the hub's post word, else muted cannot, a line posted can. Act
+ * (operate the page, the eval grant): the hub's word only.
  */
 export function knownState(
-  p: Pick<Present, "mode" | "muted" | "scope" | "live" | "seenAt" | "postAt" | "perms">,
-): { listen?: ListenState; read?: boolean; post?: boolean; eval?: boolean } {
+  p: Pick<Present, "mode" | "muted" | "scope" | "postAt" | "perms">,
+): { listen?: ListenState; talk?: boolean; act?: boolean } {
   const listen: ListenState | undefined = p.muted
     ? "off"
     : p.mode === "listener"
@@ -90,9 +97,8 @@ export function knownState(
         ? "named"
         : undefined;
   const said = (v: unknown) => (typeof v === "boolean" ? v : undefined);
-  const read = said(p.perms?.read) ?? (p.mode || p.live || p.seenAt ? true : undefined);
-  const post = said(p.perms?.post) ?? (p.muted ? false : p.postAt ? true : undefined);
-  return { listen, read, post, eval: said(p.perms?.eval) };
+  const talk = said(p.perms?.post) ?? (p.muted ? false : p.postAt ? true : undefined);
+  return { listen, talk, act: said(p.perms?.eval) };
 }
 
 /** What the hub keeps per token (`part:<tag>` in its storage). */
@@ -172,6 +178,8 @@ export function presentList(p: {
     scope?: string;
     seenAt?: number;
     name?: string;
+    busy?: true;
+    stuck?: true;
   }[];
 }): Present[] {
   const out = new Map<string, Present>();
@@ -183,6 +191,11 @@ export function presentList(p: {
     return k ? `lane:${k}` : `tok:${r.tag}`;
   };
   const reg = new Map((p.lanes ?? []).map((l) => [l.lane, l]));
+  /** A lane row's busy ring (a left lane is not busy). */
+  const busyOf = (l: { state: string; busy?: true; stuck?: true }) =>
+    l.busy && l.state !== "left"
+      ? { busy: true as const, ...(l.stuck ? { stuck: true as const } : {}) }
+      : {};
   const modeOf = (r: PartRecord) => {
     const l = reg.get(r.lane);
     if (!l) return {};
@@ -190,6 +203,7 @@ export function presentList(p: {
       ...(l.state === "listener" || l.state === "reader" ? { mode: l.state as LaneMode } : {}),
       ...(l.state === "listener" && l.scope === "all" ? { scope: "all" as const } : {}),
       ...(l.muted ? { muted: true as const } : {}),
+      ...busyOf(l),
     };
   };
   const fromRecord = (r: PartRecord): Present => {
@@ -242,6 +256,7 @@ export function presentList(p: {
           ...(m.tok ? { tok: m.tok } : {}),
           ...(m.avatar ? { avatar: m.avatar, avatarBy: "agent" as const } : {}),
           ...(m.client === "mcp" ? { mcp: true as const } : {}),
+          ...(lane && reg.get(lane) ? busyOf(reg.get(lane)!) : {}),
           active: 0,
         };
       }
@@ -272,6 +287,7 @@ export function presentList(p: {
           ...(lane ? { lane } : {}),
           mode: "reader",
           ...(l.muted ? { muted: true as const } : {}),
+          ...busyOf(l),
           active: 0,
         };
     if (l.seenAt !== undefined) e.seenAt = Math.max(e.seenAt ?? 0, l.seenAt);
@@ -335,6 +351,8 @@ export function parsePresent(raw: unknown): Present[] | null {
     const entry = { ...e };
     if (!Number.isSafeInteger(entry.lastReadSeq) || (entry.lastReadSeq as number) < 0) delete entry.lastReadSeq;
     if (entry.self !== true) delete entry.self;
+    if (entry.busy !== true) delete entry.busy;
+    if (entry.stuck !== true || entry.busy !== true) delete entry.stuck;
     if (entry.perms !== undefined) {
       const q = entry.perms as Record<string, unknown> | null;
       const perms: Record<string, boolean> = {};

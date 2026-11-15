@@ -38,6 +38,8 @@ export type AyAgent = {
   status?: string;
   /** The turn: "active" (mid-turn), "idle", "needs_input"… */
   state?: string;
+  /** Where ay writes everything the agent prints (`log_file`): its live output, for the busy ring. */
+  logFile?: string;
 };
 
 /** `ay ls --json --local`'s rows (a list, or {local: [...]}); anything unreadable: none. */
@@ -62,6 +64,9 @@ export function parseAyList(raw: string): AyAgent[] {
       cwd: r.cwd,
       ...(typeof r.status === "string" ? { status: r.status } : {}),
       ...(typeof r.state === "string" ? { state: r.state } : {}),
+      ...(typeof r.log_file === "string" && r.log_file.startsWith("/")
+        ? { logFile: r.log_file }
+        : {}),
     });
   }
   return out;
@@ -142,6 +147,9 @@ export type Planned = {
   answerUnnamed: boolean;
   /** Mid-turn now (ay's `state`). */
   busy: boolean;
+  /** ay's turn state as listed (`state`), and the agent's live output log (lanes-busy.ts). */
+  state?: string;
+  logFile?: string;
 };
 
 /**
@@ -201,6 +209,8 @@ export function planLanes(
     // not by being named; a row may still say false (listen only).
     answerUnnamed: reg?.answerUnnamed ?? (held || !!reg?.resident || reg?.scope === "all"),
     busy: a.state === "active",
+    ...(a.state ? { state: a.state } : {}),
+    ...(a.logFile ? { logFile: a.logFile } : {}),
   }));
 }
 

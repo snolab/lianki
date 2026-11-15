@@ -68,6 +68,7 @@ describe("config", () => {
       relistSec: 60,
       forwardUnknownVoice: false,
       wakeLiveMin: 5,
+      busyIdleSec: 8,
       greeting: LANES_CONFIG_DEFAULTS["lanes.greeting"],
       greetingAnswerUnnamed: LANES_CONFIG_DEFAULTS["lanes.greetingAnswerUnnamed"],
     });
@@ -79,6 +80,7 @@ describe("config", () => {
       LIANKI_LANES_GREETING_ANSWER_UNNAMED: "yo {name}",
       LIANKI_LANES_FORWARD_UNKNOWN_VOICE: "true",
       LIANKI_LANES_WAKE_LIVE_MIN: "0",
+      LIANKI_LANES_BUSY_IDLE_SEC: "20",
     });
     expect(c).toEqual({
       repos: ["lianki", "foo"],
@@ -86,6 +88,7 @@ describe("config", () => {
       relistSec: 120,
       forwardUnknownVoice: true,
       wakeLiveMin: 0,
+      busyIdleSec: 20,
       greeting: "hi {name}",
       greetingAnswerUnnamed: "yo {name}",
     });
@@ -97,6 +100,7 @@ describe("config", () => {
       LIANKI_LANES_GREETING_ANSWER_UNNAMED: "x".repeat(201),
       LIANKI_LANES_FORWARD_UNKNOWN_VOICE: "maybe",
       LIANKI_LANES_WAKE_LIVE_MIN: "1.5",
+      LIANKI_LANES_BUSY_IDLE_SEC: "0",
     });
     expect(bad).toEqual(CFG);
     expect(lanesConfig({ LIANKI_LANES_FORWARD_UNKNOWN_VOICE: "0" }).forwardUnknownVoice).toBe(

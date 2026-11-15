@@ -283,11 +283,16 @@ describe("presentList", () => {
     expect(ear).toContain('fill="none"');
     // No solid shape: the line again.
     expect(renderToStaticMarkup(<Icon name="bell" weight="fill" />)).toContain('stroke-width="16"');
-    const eye = renderToStaticMarkup(<Icon name="eye" weight="fill" />);
-    expect(eye).toContain('fill-rule="evenodd"');
-    expect(eye).not.toContain("stroke=");
-    expect(renderToStaticMarkup(<Icon name="code" />)).not.toContain("fill-rule");
-    for (const n of ["eyeClosed", "chatBubble"] as const)
+    const bubble = renderToStaticMarkup(<Icon name="chatBubble" weight="fill" />);
+    expect(bubble).toContain('fill-rule="evenodd"');
+    expect(bubble).not.toContain("stroke=");
+    // Not allowed: the same icon, struck through; allowed: no stroke across it.
+    const struck = renderToStaticMarkup(<Icon name="hand" slash />);
+    expect(struck).toContain('data-slash="true"');
+    expect(struck).toContain('d="M40,40L216,216"');
+    expect(renderToStaticMarkup(<Icon name="hand" />)).not.toContain("data-slash");
+    expect(renderToStaticMarkup(<Icon name="hand" weight="fill" />)).toContain('stroke-width="16"');
+    for (const n of ["eyeClosed", "chatBubble", "hand"] as const)
       expect(renderToStaticMarkup(<Icon name={n} />)).toContain(`data-icon="${n}"`);
     expect(renderToStaticMarkup(<TreeIcon />)).toContain("<svg");
     expect(renderToStaticMarkup(<HistoryIcon />)).toContain("<svg");
@@ -301,23 +306,21 @@ describe("presentList", () => {
     expect(knownState({ mode: "reader" }).listen).toBe("named");
     expect(knownState({ mode: "listener", muted: true }).listen).toBe("off");
     expect(knownState({}).listen).toBeUndefined();
-    // Reading: being here as a lane, a socket or a read; posting: a line posted, or muted.
-    expect(knownState({})).toEqual({
+    // Talk (reads and answers, one icon): a line posted, or muted; act: the hub's word only.
+    expect(knownState({})).toEqual({ listen: undefined, talk: undefined, act: undefined });
+    expect(knownState({ mode: "listener" }).talk).toBeUndefined();
+    expect(knownState({ postAt: 1 }).talk).toBe(true);
+    expect(knownState({ postAt: 1, muted: true }).talk).toBe(false);
+    // The hub's word wins; reading alone is no icon of its own any more.
+    expect(knownState({ perms: { read: false, post: true, eval: false } })).toEqual({
       listen: undefined,
-      read: undefined,
-      post: undefined,
-      eval: undefined,
+      talk: true,
+      act: false,
     });
-    expect(knownState({ live: true }).read).toBe(true);
-    expect(knownState({ seenAt: 1 }).read).toBe(true);
-    expect(knownState({ postAt: 1 }).post).toBe(true);
-    expect(knownState({ postAt: 1, muted: true }).post).toBe(false);
-    // The hub's word wins, and code is only ever its word.
-    expect(knownState({ live: true, perms: { read: false, post: true, eval: false } })).toEqual({
+    expect(knownState({ perms: { read: true } })).toEqual({
       listen: undefined,
-      read: false,
-      post: true,
-      eval: false,
+      talk: undefined,
+      act: undefined,
     });
     // parsePresent keeps only boolean permissions.
     const [a, b, c] = parsePresent([
