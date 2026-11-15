@@ -918,6 +918,24 @@ export const CONFIG = {
     description:
       "入群管理器在 ay 没有报告变化时，最多隔多久重新列一次 agent（秒）；平时靠 ay 自己的变化推送。Mac 上的值是环境变量 LIANKI_LANES_RELIST_SEC。",
   }),
+  "lanes.forwardUnknownVoice": {
+    default: LANES_CONFIG_DEFAULTS["lanes.forwardUnknownVoice"],
+    schema: z.boolean(),
+    group: "lanes",
+    audience: "server",
+    description:
+      "声纹没判定是不是你的语音（短句、小声）要不要也发给实时监听你的 agent（第②层）。默认不发（未定不送）；听全部消息的 agent（第①层）照样收到，带「声纹未定」标记。Mac 上的值是环境变量 LIANKI_LANES_FORWARD_UNKNOWN_VOICE（true/false）。",
+  },
+  "lanes.wakeLiveMin": int({
+    default: LANES_CONFIG_DEFAULTS["lanes.wakeLiveMin"],
+    min: 0,
+    max: 240,
+    unit: "min",
+    group: "lanes",
+    audience: "server",
+    description:
+      "只读的 agent 被你点名（名字、别名、#仓库、全体、@它）之后，接下来多少分钟里你说的话都实时发给它；每次再点名重新计时，到时间回到只读。0 = 只发点名的那句。Mac 上的值是环境变量 LIANKI_LANES_WAKE_LIVE_MIN。",
+  }),
   "lanes.modeGraceSec": int({
     default: 30,
     min: 0,

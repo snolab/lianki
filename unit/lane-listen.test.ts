@@ -341,10 +341,27 @@ describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
     expect(voiceAllowed({ from: "owner", voice: "other" })).toBe(false);
     expect(voiceAllowed({ from: "owner", voice: "me" })).toBe(true);
     expect(voiceAllowed({ from: "owner" })).toBe(true);
-    expect(voiceAllowed({ from: "owner", voice: "unknown" }, {})).toBe(true);
-    expect(voiceAllowed({ from: "owner", voice: "unknown" }, { LANE_LISTEN_VOICES: "me" })).toBe(
-      false,
-    );
+    // 未定不送 (owner, 2026-11-15 15:44 JST): not to tier ② (his lines only) …
+    expect(voiceAllowed({ from: "owner", voice: "unknown" }, {}, {})).toBe(false);
+    // … unless lanes.forwardUnknownVoice flips it back;
+    expect(
+      voiceAllowed(
+        { from: "owner", voice: "unknown" },
+        {},
+        { LIANKI_LANES_FORWARD_UNKNOWN_VOICE: "true" },
+      ),
+    ).toBe(true);
+    // tier ① (every line) still gets it, marked, unless LANE_LISTEN_VOICES=me.
+    expect(voiceAllowed({ from: "owner", voice: "unknown" }, { everyone: true }, {})).toBe(true);
+    expect(
+      voiceAllowed(
+        { from: "owner", voice: "unknown" },
+        { everyone: true },
+        { LANE_LISTEN_VOICES: "me" },
+      ),
+    ).toBe(false);
+    expect(voiceAllowed({ from: "owner", voice: "me" }, {}, {})).toBe(true);
+    expect(voiceAllowed({ from: "owner", voice: "other" }, { everyone: true }, {})).toBe(false);
     expect(briefBullet("codex", { ...line("v2", "短句"), voice: "unknown" })).toBe(
       "- (id:v2)（声纹未定） 短句",
     );

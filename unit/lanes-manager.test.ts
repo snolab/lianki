@@ -66,6 +66,8 @@ describe("config", () => {
       repos: [...LANES_CONFIG_DEFAULTS["lanes.repos"]],
       agents: [...LANES_CONFIG_DEFAULTS["lanes.agents"]],
       relistSec: 60,
+      forwardUnknownVoice: false,
+      wakeLiveMin: 5,
       greeting: LANES_CONFIG_DEFAULTS["lanes.greeting"],
     });
     const c = lanesConfig({
@@ -73,11 +75,15 @@ describe("config", () => {
       LIANKI_LANES_AGENTS: JSON.stringify([{ cwd: "foo/main", lane: "foo" }]),
       LIANKI_LANES_RELIST_SEC: "120",
       LIANKI_LANES_GREETING: "hi {name}",
+      LIANKI_LANES_FORWARD_UNKNOWN_VOICE: "true",
+      LIANKI_LANES_WAKE_LIVE_MIN: "0",
     });
     expect(c).toEqual({
       repos: ["lianki", "foo"],
       agents: [{ cwd: "foo/main", lane: "foo" }],
       relistSec: 120,
+      forwardUnknownVoice: true,
+      wakeLiveMin: 0,
       greeting: "hi {name}",
     });
     const bad = lanesConfig({
@@ -85,8 +91,15 @@ describe("config", () => {
       LIANKI_LANES_AGENTS: "{nope",
       LIANKI_LANES_RELIST_SEC: "5",
       LIANKI_LANES_GREETING: "x".repeat(201),
+      LIANKI_LANES_FORWARD_UNKNOWN_VOICE: "maybe",
+      LIANKI_LANES_WAKE_LIVE_MIN: "1.5",
     });
     expect(bad).toEqual(CFG);
+    expect(lanesConfig({ LIANKI_LANES_FORWARD_UNKNOWN_VOICE: "0" }).forwardUnknownVoice).toBe(
+      false,
+    );
+    expect(lanesConfig({ LIANKI_LANES_WAKE_LIVE_MIN: " " }).wakeLiveMin).toBe(5);
+    expect(lanesConfig({ LIANKI_LANES_WAKE_LIVE_MIN: "241" }).wakeLiveMin).toBe(5);
     expect(
       lanesConfig({ LIANKI_LANES_AGENTS: JSON.stringify([{ cwd: "a", lane: "has space" }]) })
         .agents,
@@ -101,8 +114,18 @@ describe("config", () => {
       wake: false,
       scope: "all",
     });
-    // Only 小克 hears every line by default; the others stay on his lines.
-    expect(CFG.agents.filter((a) => a.scope === "all").map((a) => a.lane)).toEqual(["claude"]);
+    // coco and 小克 hear every line by default (tier ①, owner 2026-11-15 15:44 JST); the others his lines.
+    expect(CFG.agents.filter((a) => a.scope === "all").map((a) => a.lane)).toEqual([
+      "codex",
+      "claude",
+    ]);
+    expect(CFG.agents.find((a) => a.lane === "codex")).toEqual({
+      cwd: "lianki/tree/codex",
+      cli: "codex",
+      lane: "codex",
+      resident: true,
+      scope: "all",
+    });
     expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "all" }).success).toBe(true);
     expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "owner" }).success).toBe(true);
     expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "some" }).success).toBe(false);
@@ -402,6 +425,10 @@ describe("wakeTargets: readers named in his line", () => {
     expect(on("全体，集合")).toEqual([2, 3]);
     expect(on("coco，看一下")).toEqual([]);
     expect(on("随便说说")).toEqual([]);
+    // @<lane> anywhere in the line, a whole name only.
+    expect(on("这个问题 @otoji-codex-3 看一下")).toEqual([3]);
+    expect(on("这个问题 @OTOJI-codex-3")).toEqual([3]);
+    expect(on("这个问题 @otoji-codex-33 看一下")).toEqual([]);
     expect(on("rechrome-codex-2，看一下", { thread: "uFriend" })).toEqual([]);
     expect(wakeTargets({ from: "agent", text: "rechrome-codex-2，看一下" }, planned)).toEqual([]);
     expect(
@@ -412,7 +439,14 @@ describe("wakeTargets: readers named in his line", () => {
 
 describe("the loop (createManager), every effect mocked", () => {
   function setup(
-    o: { tokens?: string[]; ay?: AyAgent[]; ps?: string; dryRun?: boolean; ayRaw?: string } = {},
+    o: {
+      tokens?: string[];
+      ay?: AyAgent[];
+      ps?: string;
+      dryRun?: boolean;
+      ayRaw?: string;
+      cfg?: typeof CFG;
+    } = {},
   ) {
     const calls: {
       chat: unknown[];
@@ -433,7 +467,11 @@ describe("the loop (createManager), every effect mocked", () => {
     const exits: ((c: number) => void)[] = [];
     let ay = o.ayRaw ?? JSON.stringify(o.ay ?? AGENTS);
     let pid = 100;
+    const clock = { t: 1_000_000 };
+    const timers: [number, () => void][] = [];
     const d: Deps = {
+      now: () => clock.t,
+      later: (ms, fn) => void timers.push([clock.t + ms, fn]),
       ayList: async () => ay,
       ps: async () => o.ps ?? " 7906 bun lane-listen.ts --as agy --deliver 5468",
       token: (lane) => (tokens.has(lane) ? `lk_${lane}` : undefined),
@@ -458,8 +496,21 @@ describe("the loop (createManager), every effect mocked", () => {
       saveState: (s) => void calls.saved.push(s),
       log: (v) => void calls.logs.push(v),
     };
-    const m = createManager(d, { repo: "/repo", cfg: CFG, managerLane: "lanes", dryRun: o.dryRun });
-    return { m, calls, exits, setAy: (a: AyAgent[]) => (ay = JSON.stringify(a)), tokens };
+    const m = createManager(d, {
+      repo: "/repo",
+      cfg: o.cfg ?? CFG,
+      managerLane: "lanes",
+      dryRun: o.dryRun,
+    });
+    /** Move the clock and fire the timers that are due. */
+    const advance = async (ms: number) => {
+      clock.t += ms;
+      const due = timers.filter(([at]) => at <= clock.t);
+      timers.splice(0, timers.length, ...timers.filter(([at]) => at > clock.t));
+      for (const [, fn] of due) fn();
+      await Bun.sleep(1);
+    };
+    return { m, calls, exits, setAy: (a: AyAgent[]) => (ay = JSON.stringify(a)), tokens, advance };
   }
 
   it("relist: plans, starts the resident listener it lacks, greets once, posts the missing tokens", async () => {
@@ -467,13 +518,13 @@ describe("the loop (createManager), every effect mocked", () => {
     const acts = await s.m.relist();
     expect(acts.map((a) => a.type)).toEqual(["start-listener", "greet", "greet", "tokens-needed"]);
     // agy is served by the oxmgr listener; codex (tree/codex, registered) gets ours.
-    expect(s.calls.started).toEqual(["codex"]);
+    expect(s.calls.started).toEqual(["codex:all"]);
     expect(s.m.running()).toEqual(["codex"]);
     expect(s.calls.chat).toEqual([
       {
         token: "lk_codex",
         op: "say",
-        text: "大家好，我是 codex（lianki · codex），实时监听入群。只回答点名我或「全体」的话。",
+        text: "大家好，我是 codex（lianki · codex），实时监听（全部消息）入群。只回答点名我或「全体」的话。",
         quiet: true,
       },
       {
@@ -508,7 +559,7 @@ describe("the loop (createManager), every effect mocked", () => {
       ],
     });
     await s.m.relist();
-    expect(s.calls.started).toEqual(["codex", "claude:all:skip"]);
+    expect(s.calls.started).toEqual(["codex:all", "claude:all:skip"]);
   });
   it("an agent leaves: listener stopped, lane left; ay silent: nothing changes", async () => {
     const s = setup();
@@ -550,7 +601,7 @@ describe("the loop (createManager), every effect mocked", () => {
     expect(s.calls.wake).toEqual([]);
   });
   it("line: wakes a reader named in his line, once per line; the first hand-off names the rules", async () => {
-    const s = setup();
+    const s = setup({ cfg: { ...CFG, wakeLiveMin: 0 } });
     await s.m.relist();
     const l = (id: string, text: string, extra = {}) =>
       JSON.stringify({
@@ -570,6 +621,39 @@ describe("the loop (createManager), every effect mocked", () => {
     expect(await s.m.line(l("a4", "lianki-agent，在吗"))).toEqual([]);
     expect(s.m.planned().length).toBe(6);
     expect(s.m.state().greeted).toContain("codex");
+  });
+  it("named → live for lanes.wakeLiveMin after the last name, then a reader again", async () => {
+    const s = setup();
+    await s.m.relist();
+    const l = (id: string, text: string) =>
+      JSON.stringify({
+        type: "chat",
+        message: { id, from: "owner", text, thread: "owner", at: 0 },
+      });
+    const started = s.calls.started.length;
+    // Named: woken now, and a listener of its own (his lines only) for 5 minutes.
+    expect(await s.m.line(l("b1", "rechrome-main，看看"))).toEqual([71565]);
+    expect(s.calls.started.slice(started)).toEqual(["rechrome-main"]);
+    expect(s.m.running()).toContain("rechrome-main");
+    expect(s.m.wakeLive().get("rechrome-main")).toBe(1_000_000 + 5 * 60_000);
+    // A re-list inside the window keeps that listener (live, so not stopped).
+    expect(await s.m.relist()).toEqual([]);
+    // Named again 4 min later: its listener hands it over; the window restarts.
+    await s.advance(4 * 60_000);
+    expect(await s.m.line(l("b2", "@rechrome-main 还有这个"))).toEqual([]);
+    expect(s.calls.wake).toHaveLength(1);
+    // 5 min after the first name: still live (the second one moved the end).
+    await s.advance(60_000 + 1);
+    expect(s.calls.killed).not.toContain("rechrome-main");
+    // 5 min after the last name: a reader again.
+    await s.advance(4 * 60_000);
+    expect(s.calls.killed).toContain("rechrome-main");
+    expect(s.m.running()).not.toContain("rechrome-main");
+    expect(s.m.wakeLive().has("rechrome-main")).toBe(false);
+    // Named once more: woken by the manager again, a new window.
+    expect(await s.m.line(l("b3", "#rechrome 再看"))).toEqual([71565]);
+    expect(s.calls.started.at(-1)).toBe("rechrome-main");
+    s.m.stop();
   });
   it("scope all: the listener hears everyone (and skips his lines when the agent has its own feed)", () => {
     const k = plan("claude", { resident: true, scope: "all", wake: false, cwd: "/k", pid: 7 });
