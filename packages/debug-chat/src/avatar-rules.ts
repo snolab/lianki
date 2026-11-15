@@ -56,6 +56,33 @@ export type LineAvatar = {
  * hashed id, else the thread, never an email. An owner line in another voice
  * (SpeakerTag.voice) gets that voice's own avatar instead (`voiceAvatar`).
  */
+/**
+ * Default of config `voice.otherAvatarBelow`: an undecided voice line ("unknown")
+ * whose score against his print is under this is drawn as another voice, not as
+ * him faded. His own lines score 0.76–0.85; a family member's 0.30–0.42 fell in
+ * the undecided band and showed his picture (owner, 2026-11-15 23:49 JST:
+ * "我老婆说的话，你能不能给它用另一个头像"). 0 turns it off.
+ */
+export const OTHER_AVATAR_BELOW = 0.45;
+const otherBelow = { v: OTHER_AVATAR_BELOW };
+/**
+ * Config `voice.otherAvatar` / `voice.otherAvatarName`: the picture and name for
+ * another voice's lines in his thread (owner, 2026-11-15 23:53 JST: his wife's
+ * own account picture). Empty = the generated disc and "another voice".
+ */
+const otherLook = { src: "", name: "" };
+export function setOtherAvatar(src: unknown, name?: unknown) {
+  otherLook.src = typeof src === "string" && /^(https:\/\/|\/)/.test(src.trim()) ? src.trim() : "";
+  otherLook.name = typeof name === "string" ? name.trim().slice(0, 40) : "";
+}
+const otherAvatarOf = (fallback: AvatarSource | undefined): AvatarSource | undefined =>
+  otherLook.src ? [otherLook.src] : fallback;
+
+/** The live value of `voice.otherAvatarBelow` (DebugEval reads it from config). */
+export function setOtherAvatarBelow(v: unknown) {
+  otherBelow.v = typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : OTHER_AVATAR_BELOW;
+}
+
 export function lineAvatar(
   m: ChatMessage,
   opts: {
@@ -114,8 +141,21 @@ export function lineAvatar(
   // unsure (owner, 2026-11-14 23:1x: "我的头像怎么变成S了").
   const voice = m.from === "owner" ? m.speaker?.voice : undefined;
   if (voice && voice !== "me" && m.speaker?.decision === "other") {
-    const name = opts.otherVoice || "another voice";
-    return { src: opts.voiceAvatar?.(voice), name, initialFrom: name, seed: `voice:${voice}`, mine };
+    const name = otherLook.name || opts.otherVoice || "another voice";
+    return { src: otherAvatarOf(opts.voiceAvatar?.(voice)), name, initialFrom: name, seed: `voice:${voice}`, mine };
+  }
+  // Undecided but well under his print (voice.otherAvatarBelow): someone else's
+  // voice by the look of it, so another voice's disc rather than his faded picture.
+  const sc = m.speaker?.score;
+  if (
+    m.from === "owner" &&
+    m.speaker?.decision === "unknown" &&
+    typeof sc === "number" &&
+    otherBelow.v > 0 &&
+    sc < otherBelow.v
+  ) {
+    const name = otherLook.name || opts.otherVoice || "another voice";
+    return { src: otherAvatarOf(opts.voiceAvatar?.("other")), name, initialFrom: name, seed: "voice:other", mine };
   }
   const unsure = m.from === "owner" && m.speaker?.decision === "unknown" ? true : undefined;
   const own = opts.avatarFor?.(m);

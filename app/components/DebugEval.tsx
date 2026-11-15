@@ -60,6 +60,8 @@ import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setLaneTable } from "@lianki/debug-chat/voices";
 import { setPhoneticMaxNear } from "@lianki/debug-chat/lane-phonetic";
+import { setOtherAvatar, setOtherAvatarBelow } from "@lianki/debug-chat/avatar-rules";
+import { waitText } from "@/lib/wait-text";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
@@ -278,6 +280,9 @@ export function DebugEval({
   setLaneTable(publicCfg("chat.lanes"));
   // How near a lane name may sound and still be that name (lane-phonetic.ts): live, no deploy.
   setPhoneticMaxNear(publicCfg("lanes.phoneticMaxNear"));
+  // Undecided voice lines well under his print get another voice's avatar (avatar-rules.ts).
+  setOtherAvatarBelow(publicCfg("voice.otherAvatarBelow"));
+  setOtherAvatar(publicCfg("voice.otherAvatar"), publicCfg("voice.otherAvatarName"));
   // The mic's repetition guard on every final (stt-repeat.ts): live, no deploy.
   setRepeatLimits({
     maxRuns: publicCfg("stt.repeatMaxRuns"),
@@ -875,8 +880,11 @@ export function DebugEval({
               ? Number.isFinite(retryMin) && retryMin > 0
                 ? (
                     s?.aiLimitIn ??
-                    "Your {name} is taking a short break. It can reply again in about {n} min."
-                  ).replaceAll("{n}", String(Math.ceil(retryMin)))
+                    "Your {name} is taking a short break. It can reply again in about {n}."
+                  ).replaceAll(
+                    "{n}",
+                    waitText(retryMin, document.documentElement.lang || navigator.language),
+                  )
                 : (s?.aiLimit ?? "Your {name} is taking a short break. Try again in a while.")
               : (s?.aiFailed ?? "No reply this time. Please try again in a moment.");
           setWarning(line.replaceAll("{name}", s?.name || "Learning Partner"));
