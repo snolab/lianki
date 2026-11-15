@@ -384,7 +384,7 @@ Differences that stay:
   root's wrangler 4.151.0 and its patched miniflare. 1.67 wants wrangler ≥ 4.156.
   `workers/edge` is its own package with its own lockfile, so the root install,
   and the Worker `lianki` deploys, don't change. The cost: CI doesn't typecheck
-  it (`tsconfig.json` excludes it; `bunx tsgo --noEmit -p workers/edge/tsconfig.json`).
+  it (`tsconfig.json` excludes it; `bunx tsrs --noEmit -p workers/edge/tsconfig.json`).
   Phase 1 should move it into the root and CI.
 - **The doc's reasons for Vite still hold** for the backend: `vite build` takes
   about 2 s in all, and `vite dev` runs in workerd with real local D1 and the

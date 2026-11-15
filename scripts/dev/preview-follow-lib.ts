@@ -70,7 +70,7 @@ export function mergeTreeConflicts(stdout: string): string[] {
 
 /**
  * Type errors as a set, positions stripped, so a line that moved is not new.
- * `.next/` is generated and ignored. tsgo prints `path(l,c): error TSnnnn: msg`.
+ * `.next/` is generated and ignored. tsrs prints `path(l,c): error TSnnnn: msg`.
  */
 export function typeErrors(output: string): Set<string> {
   const out = new Set<string>();

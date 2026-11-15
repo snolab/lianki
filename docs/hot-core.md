@@ -174,7 +174,7 @@ export const modules = { "audio.clips": clipPoolModule } satisfies CoreModulesEx
 ```
 
 `satisfies` means a module whose `provides` type does not match `Services`
-fails typecheck. The dev server already runs `tsgo` on every build and serves
+fails typecheck. The dev server already runs the typecheck (tsrs) on every build and serves
 nothing that fails it. This is the same safety net islands have.
 
 ## 4. Version compatibility

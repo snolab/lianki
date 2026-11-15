@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 
-// library build: bun run build:lib → dist/rgui.js (ESM) + dist/*.d.ts (tsgo)
+// library build: bun run build:lib → dist/rgui.js (ESM) + dist/*.d.ts (tsc 7)
 export default defineConfig({
   build: {
     lib: {

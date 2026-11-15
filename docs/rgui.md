@@ -86,7 +86,9 @@ Kept small so `subtree pull` merges cleanly:
 
 - It is a workspace package (`@snomiao/rgui`); `bun install` installs its
   deps (d3, three, vite …) next to it. `cd packages/rgui && bun run typecheck`
-  checks it with its own `tsconfig.json`; `bun test` there runs upstream's
+  checks it with its own `tsconfig.json` (tsrs; `build:lib` emits the
+  `.d.ts` with tsc 7, whose output tsgo matched byte for byte — tsrs drops
+  `sourceRoot` from the maps); `bun test` there runs upstream's
   suites (its `bunfig.toml` roots them at `src`).
 - Our suites: `unit/rgui-gantt.test.ts` and `unit/gantt-view.test.ts` hold the
   gantt module to 100%. The root `bunfig.toml` ignores upstream's

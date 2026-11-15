@@ -43,7 +43,7 @@ https://lianki.com (Vercel, deploys from `main`). Repo: `snolab/lianki`.
 
 ```bash
 bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
-bun run typecheck      # tsgo --noEmit
+bun run typecheck      # tsrs --noEmit (scripts/typecheck.ts; tsc 7 only if tsrs crashes)
 bun test unit/x.test.ts  # one test file, no queue
 bun run test:unit      # whole unit suite, starts at once (CI adds -- --coverage)
 bun fix                # oxlint --fix + oxfmt
