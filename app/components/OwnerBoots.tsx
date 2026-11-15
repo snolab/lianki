@@ -28,6 +28,7 @@ export function OwnerBoots({
   foldOthers = true,
   whisperRecheck,
   pttMaxCaptureMs,
+  mergeReopenSec,
   box = null,
   autoUpdate = false,
   account = null,
@@ -47,6 +48,8 @@ export function OwnerBoots({
   whisperRecheck?: RecheckConf;
   /** Config voice.pttMaxCaptureMs: bounded held-audio memory. */
   pttMaxCaptureMs?: number;
+  /** Config stt.mergeReopenSec: a posted voice line takes the speech that follows. */
+  mergeReopenSec?: number;
   /** Flag `app.auto-update`: a new version applies itself on a clean page (lib/auto-update.ts). */
   autoUpdate?: boolean;
   /** Provider voices on (flag voice.cloud-voices + dev) and the language → voice map. */
@@ -90,6 +93,7 @@ export function OwnerBoots({
         foldOthers={foldOthers}
         whisperRecheck={whisperRecheck}
         pttMaxCaptureMs={pttMaxCaptureMs}
+        mergeReopenSec={mergeReopenSec}
         box={box}
         account={account}
         cacheLines={cacheLines}

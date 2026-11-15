@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { stubGlobals } from "./support/globals";
 import { DebugHub, type Socket, type Storage, hashToken } from "@/workers/push/src/debug";
 import { rpcStub } from "./support/rpc-stub";
+import type { ChatMessage } from "@lianki/debug-chat/wire";
 import push, { type Env, KEEP_FINGERPRINTS, VersionHub } from "@/workers/push/src/index";
 import { FINGERPRINTS_HEADER } from "@/lib/smart-refresh";
 import { DEV_BRIDGE_HEADER, debugIdentity } from "@/workers/push/src/auth";
@@ -4309,6 +4310,210 @@ describe("DebugHub continuous speech (stt.merge)", () => {
     await s.msg(owner, say("a", "first.", 0, 1000));
     await s.msg(owner, say("b", "second.", 5000, 6000));
     expect(asked).toEqual(["stt.merge"]);
+  });
+});
+
+describe("DebugHub reopen: a posted voice line takes what follows (stt.mergeReopenSec)", () => {
+  const T0 = 7_000_000;
+  const say = (id: string, text: string, start: number, end: number, more = {}) => ({
+    type: "chat",
+    id,
+    text,
+    source: "stt",
+    timing: { t_speechStart: T0 + start, t_lastVoice: T0 + end, t_speechEnd: T0 + end + 600 },
+    ...more,
+  });
+  const rig = async (sec: unknown = 20, flags: Record<string, unknown> = { "stt.merge": true }) => {
+    const asked: string[] = [];
+    const s = setup({
+      SESSIONS: {
+        live: async () => "live",
+        flag: async (k: string) => flags[k] ?? k === "stt.polish",
+        config: async (k: string) => {
+          asked.push(k);
+          return k === "stt.mergeReopenSec" ? sec : undefined;
+        },
+      },
+    });
+    const owner = s.page();
+    const lane = async (label: string) => {
+      const ws = s.controller(label);
+      for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+      await s.msg(owner, { type: "allow", pair: s.pairOf(owner), scope: "chat" });
+      return ws;
+    };
+    const c = await lane("main lane");
+    const lines = () =>
+      [...s.storage.store.entries()]
+        .filter(([k]) => k.startsWith("msg:"))
+        .map(([, v]) => v as ChatMessage)
+        .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+    const dues = () => c.sent.filter((m) => m.type === "polish-due");
+    return { s, owner, c, lane, lines, dues, asked };
+  };
+
+  it("a single posted line is amended in place by speech 8 s later", async () => {
+    const { s, owner, c, lines } = await rig();
+    await s.msg(owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    s.tick(9000);
+    await s.msg(owner, say("b", "然后颜色改成红色。", 9600, 11_000, { continues: "a" }));
+    expect(lines()).toHaveLength(1);
+    expect(lines()[0]).toMatchObject({
+      id: "a",
+      text: "我想把按钮放到右边。然后颜色改成红色。",
+      edited: { by: "merge" },
+    });
+    expect(lines()[0].parts?.map((p) => p.id)).toEqual(["a", "b"]);
+    expect(c.last("edited")).toMatchObject({ id: "a", merged: { id: "b" } });
+  });
+
+  it("a settled, re-listened run reopens: heard text again, re-listened whole, polished once more", async () => {
+    const { s, owner, c, lines, dues } = await rig();
+    await s.msg(owner, say("a", "我想把按钮，", 0, 1000));
+    await s.msg(owner, say("b", "放到右边。", 1800, 3000, { continues: "a" }));
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 2, text: "我想把按钮放到右边。", engine: "mlx-whisper" },
+    });
+    expect(lines()[0]).toMatchObject({ settled: true, text: "我想把按钮放到右边。" });
+    expect(dues()).toHaveLength(1);
+    // Ten seconds of silence, then he goes on: the same line, unsettled, its reading gone.
+    s.tick(12_000);
+    await s.msg(owner, say("c", "然后颜色改成红色。", 13_600, 15_000, { continues: "a" }));
+    expect(lines()).toHaveLength(1);
+    const re = lines()[0];
+    expect(re).toMatchObject({ id: "a", text: "我想把按钮，放到右边。然后颜色改成红色。" });
+    expect(re.settled).toBeUndefined();
+    expect(re.recheck).toBeUndefined();
+    expect(re.parts?.map((p) => p.id)).toEqual(["a", "b", "c"]);
+    // Still being spoken: no polish lands, none is due.
+    await s.msg(c, { type: "edit", id: "a", text: "x" });
+    expect(c.last("error")?.error).toContain("still being spoken");
+    expect(dues()).toHaveLength(1);
+    // The next passage end re-listens the whole merged run, then one polish is due.
+    const whisper = "我想把按钮放到右边，然后颜色改成红色。";
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 3, text: whisper, engine: "mlx-whisper" },
+    });
+    expect(lines()[0]).toMatchObject({
+      text: whisper,
+      settled: true,
+      recheck: { heard: "我想把按钮，放到右边。然后颜色改成红色。", text: whisper },
+    });
+    expect(dues()).toHaveLength(2);
+    expect(dues()[1]).toMatchObject({ id: "a", text: whisper, parts: 3 });
+    // Told again: no second polish for the same run.
+    await s.msg(owner, { type: "passage-end" });
+    expect(dues()).toHaveLength(2);
+    // Undo still splits it into the parts as heard.
+    await s.msg(owner, { type: "unmerge", id: "a" });
+    expect(lines().map((l) => l.text)).toEqual([
+      "我想把按钮，",
+      "放到右边。",
+      "然后颜色改成红色。",
+    ]);
+    expect(lines().some((l) => "recheck" in l || "settled" in l)).toBe(false);
+  });
+
+  it("a merged run longer than the ring: the tail re-listened, the head keeps what was heard", async () => {
+    const { s, owner, lines } = await rig();
+    await s.msg(owner, say("a", "第一句，", 0, 1000));
+    await s.msg(owner, say("b", "第二句。", 1800, 3000, { continues: "a" }));
+    await s.msg(owner, { type: "passage-end" });
+    await s.msg(owner, say("c", "第三句。", 15_000, 16_000, { continues: "a" }));
+    await s.msg(owner, {
+      type: "passage-end",
+      recheck: { id: "a", parts: 3, from: 2, text: "第三局。", engine: "mlx-whisper" },
+    });
+    expect(lines()[0]).toMatchObject({
+      text: "第一句，第二句。第三局。",
+      raw: "第一句，第二句。第三局。",
+      recheck: { from: 2, heard: "第一句，第二句。第三句。" },
+    });
+  });
+
+  it("a line polished by the hub reopens; a lane's (or his) edit keeps it closed", async () => {
+    const auto = await rig();
+    await auto.s.msg(auto.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    const key = [...auto.s.storage.store.keys()].find((k) => k.startsWith("msg:"))!;
+    const stored = auto.s.storage.store.get(key) as ChatMessage;
+    auto.s.storage.store.set(key, {
+      ...stored,
+      text: "我想把按钮放在右边。",
+      raw: stored.text,
+      edited: { at: 1, by: "auto", count: 1 },
+    });
+    await auto.s.msg(auto.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+    expect(auto.lines()).toHaveLength(1);
+    // The polish goes with the reopen: the line reads as heard, and is due its polish again.
+    expect(auto.lines()[0]).toMatchObject({
+      text: "我想把按钮放到右边。然后改成红色。",
+      edited: { by: "merge", count: 1 },
+    });
+
+    const lane = await rig();
+    await lane.s.msg(lane.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    await lane.s.msg(lane.c, { type: "edit", id: "a", text: "我想把按钮放在右边。" });
+    await lane.s.msg(lane.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+    expect(lane.lines().map((l) => l.id)).toEqual(["a", "b"]);
+  });
+
+  it("closed by his typed line, an agent's line or another lane's in between", async () => {
+    for (const between of [
+      (r: Awaited<ReturnType<typeof rig>>) =>
+        r.s.msg(r.owner, { type: "chat", id: "t", text: "typed by hand" }),
+      (r: Awaited<ReturnType<typeof rig>>) => r.s.msg(r.c, { type: "say", text: "on it" }),
+      async (r: Awaited<ReturnType<typeof rig>>) => {
+        const codex = await r.lane("codex lane");
+        await r.s.msg(codex, { type: "say", text: "【codex】 done" });
+      },
+    ]) {
+      const r = await rig();
+      await r.s.msg(r.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+      await between(r);
+      await r.s.msg(r.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+      const owners = r.lines().filter((l) => l.from === "owner");
+      expect(owners.length).toBeGreaterThanOrEqual(2);
+      expect(owners.find((l) => l.id === "a")?.parts).toBeUndefined();
+      expect(owners.some((l) => l.id === "b")).toBe(true);
+    }
+  });
+
+  it("closed past the window, by the hub's clock, with the key at 0, or unreadable", async () => {
+    const late = await rig();
+    await late.s.msg(late.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    await late.s.msg(late.owner, say("b", "然后改成红色。", 22_000, 23_000, { continues: "a" }));
+    expect(late.lines().map((l) => l.id)).toEqual(["a", "b"]);
+
+    const clock = await rig();
+    await clock.s.msg(clock.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    clock.s.tick(20_000 + 30_000 + 1);
+    await clock.s.msg(clock.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+    expect(clock.lines().map((l) => l.id)).toEqual(["a", "b"]);
+
+    for (const sec of [0, "20", null]) {
+      const off = await rig(sec);
+      await off.s.msg(off.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+      await off.s.msg(off.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+      expect(off.lines().map((l) => l.id)).toEqual(["a", "b"]);
+    }
+
+    // The flag off: no stamp, nothing reopens, the key is never read.
+    const flagOff = await rig(20, {});
+    await flagOff.s.msg(flagOff.owner, say("a", "我想把按钮放到右边。", 0, 1000));
+    await flagOff.s.msg(flagOff.owner, say("b", "然后改成红色。", 6000, 7000, { continues: "a" }));
+    expect(flagOff.lines().map((l) => l.id)).toEqual(["a", "b"]);
+    expect(flagOff.asked).not.toContain("stt.mergeReopenSec");
+  });
+
+  it("the key is read at most once per 30 s, and only for a line that asks to continue", async () => {
+    const { s, owner, asked } = await rig();
+    await s.msg(owner, say("a", "一。", 0, 1000));
+    expect(asked.filter((k) => k === "stt.mergeReopenSec")).toHaveLength(0);
+    await s.msg(owner, say("b", "二。", 3000, 4000, { continues: "a" }));
+    await s.msg(owner, say("c", "三。", 6000, 7000, { continues: "a" }));
+    expect(asked.filter((k) => k === "stt.mergeReopenSec")).toHaveLength(1);
   });
 });
 

@@ -208,6 +208,7 @@ export function DebugEval({
   foldOthers = true,
   whisperRecheck,
   pttMaxCaptureMs,
+  mergeReopenSec,
   box = null,
   account = null,
   cacheLines = 0,
@@ -221,6 +222,8 @@ export function DebugEval({
   whisperRecheck?: RecheckConf;
   /** Config voice.pttMaxCaptureMs: bounded held-audio memory. */
   pttMaxCaptureMs?: number;
+  /** Config stt.mergeReopenSec: a posted voice line takes the speech that follows. */
+  mergeReopenSec?: number;
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic (aec.ts). */
   talkOver?: boolean;
   /**
@@ -1600,6 +1603,7 @@ export function DebugEval({
             foldOthers={foldOthers}
             whisperRecheck={whisperRecheck}
             pttMaxCaptureMs={pttMaxCaptureMs}
+            mergeReopenSec={mergeReopenSec}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
             backToClose={backToCloseChat}
           />

@@ -94,7 +94,7 @@ import {
 import { DebugMic, canCapture, pageCues, pageMic, pttRecorder, setWakeWord, voiceDevice, wakeWordOn } from "./MicButton";
 import { CUE_SEND_KEY, CUE_SPEECH_KEY, cueOn, setCue } from "./cues";
 import { micTaps } from "./mic-taps";
-import { PASSAGE_END_MS, mergeVerdict } from "./voice-merge";
+import { PASSAGE_END_MS, joinVerdict, reopenMsOf } from "./voice-merge";
 import {
   type RecheckAmend,
   type RecheckCall,
@@ -1016,6 +1016,11 @@ export type DebugChatProps = {
   /** Stop an unresolved held recording at this duration; partial text is retained. */
   pttMaxCaptureMs?: number;
   /**
+   * Config stt.mergeReopenSec (voice-merge.ts reopenVerdict): within this many seconds
+   * of his last voice line the next one asks to join it, posted or not. None: off.
+   */
+  mergeReopenSec?: number;
+  /**
    * The host's "Back closes an overlay" (Lianki: lib/back-to-close.ts
    * openBackToClose, docs/ui-state.md): opening full screen by a tap pushes
    * one history entry, Back runs `onBack`, and the returned close consumes the
@@ -1124,6 +1129,7 @@ export function DebugChat({
   foldOthers = true,
   whisperRecheck,
   pttMaxCaptureMs,
+  mergeReopenSec,
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
@@ -2767,7 +2773,8 @@ export function DebugChat({
     const context = plan.context;
     const attachments = plan.attachments;
     // Continuous speech (voice-merge.ts): asks to amend the line before, if it is
-    // stamped mergeable (the flag is on) and no command ran since. The hub decides.
+    // stamped mergeable (the flag is on) and no command ran since: a live merge, or a
+    // reopen of the line he posted within stt.mergeReopenSec. The hub decides.
     const tapsNow = micTaps().kept?.() ?? 0;
     const lastLine = messagesNow.current.at(-1);
     // One speaker's part of a split final: a new line, never an amendment.
@@ -2778,14 +2785,18 @@ export function DebugChat({
       !fromSplit &&
       lastLine &&
       tapsAtVoice.current === tapsNow &&
-      mergeVerdict(lastLine, {
-        text,
-        ...(timing ? { timing } : {}),
-        ...(to === ROOT_NODE ? {} : { to }),
-        ...(context ? { context } : {}),
-        ...(heardFrom?.tag ? { speaker: heardFrom.tag } : {}),
-        attachments,
-      }).ok
+      joinVerdict(
+        lastLine,
+        {
+          text,
+          ...(timing ? { timing } : {}),
+          ...(to === ROOT_NODE ? {} : { to }),
+          ...(context ? { context } : {}),
+          ...(heardFrom?.tag ? { speaker: heardFrom.tag } : {}),
+          attachments,
+        },
+        reopenMsOf(mergeReopenSec),
+      ).ok
         ? lastLine.id
         : undefined;
     const opts = {
