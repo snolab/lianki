@@ -37,6 +37,8 @@ import { boxViewer, ownerFlagOn } from "@/lib/box-oauth/session";
 import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
 import { setRepeatLimits } from "@lianki/debug-chat/stt-repeat";
+import { setGuardLimits } from "@lianki/debug-chat/stt-guard";
+import { setVadThresholds } from "@lianki/debug-chat/adaptive";
 import { dispatchChatUi } from "@lianki/debug-chat/ui-cue";
 import { getKey, isKey, setKey } from "@lianki/debug-chat/storage-keys";
 import { WAS_OWNER_KEY, devParts, mayRunEval, rejoinDelay } from "@/lib/debug-rejoin";
@@ -279,6 +281,16 @@ export function DebugEval({
     maxShare: publicCfg("stt.repeatMaxShare"),
     minKeepChars: publicCfg("stt.repeatMinKeepChars"),
   });
+  // Silero's start thresholds and the silence guard's minimum speech (adaptive.ts,
+  // stt-guard.ts): live, no deploy; Silero takes new thresholds between utterances.
+  setVadThresholds({
+    normal: { positive: publicCfg("stt.vadPositive"), negative: publicCfg("stt.vadNegative") },
+    whisper: {
+      positive: publicCfg("stt.vadWhisperPositive"),
+      negative: publicCfg("stt.vadWhisperNegative"),
+    },
+  });
+  setGuardLimits({ minSpeechMs: publicCfg("stt.guardMinSpeechMs") });
   setCloudVoices(cloudVoices);
   setTalkOver(talkOver);
   setPolishReadback(readback);

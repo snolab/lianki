@@ -23,7 +23,7 @@ import {
   GAP,
   escapeRe,
   STOCK_PHRASES,
-  STT_GUARD,
+  guardLimits,
   type SttGuardLimits,
   type SttSignals,
   judgeFinal,
@@ -1459,7 +1459,7 @@ export function createMic(d: {
               : judgeFinal(
                 text,
                 { speechMs: ms, prob, frameRms: loudestFrameRms(audio), signals },
-                { ...STT_GUARD, ...d.guard },
+                { ...guardLimits(), ...d.guard },
               );
           const drop = c.drop || !!reason;
           if (reason) {

@@ -3,15 +3,19 @@
  * "Silence guard"): known hallucinations dropped, real sentences kept, and a
  * dropped line reaching nothing: not the chat, not a command, not a send cue.
  */
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { type MicDeps, createMicSession } from "@lianki/debug-chat/mic-session";
 import { micTaps } from "@lianki/debug-chat/mic-taps";
 import { type VadEvents, cleanTranscript, createMic } from "@lianki/debug-chat/mic";
 import { localSignals } from "@lianki/debug-chat/local-stt";
 import {
   STOCK_PHRASES,
+  GUARD_MIN_SPEECH_MS,
   STT_GUARD,
+  guardLimits,
+  guardLimitsOf,
   judgeFinal,
+  setGuardLimits,
   loudestFrameRms,
   phraseKey,
   stockPhraseKind,
@@ -285,6 +289,18 @@ describe("a dropped line reaches nothing", () => {
     expect(kept.texts).toEqual(["他说感谢观看这个视频的人"]);
   });
 
+  it("the live minimum speech (config stt.guardMinSpeechMs) reaches the mic's guard", async () => {
+    // 100 ms of Silero speech: under the 160 ms default (owner, 2026-11-15, café noise).
+    const short = await say("今天天气不错", { sec: 0.1 });
+    expect(short.texts).toEqual([]);
+    expect(short.logs[0]).toMatchObject({ reason: "no-speech-frames", ms: 100 });
+    setGuardLimits({ minSpeechMs: 64 });
+    expect((await say("今天天气不错", { sec: 0.1 })).texts).toEqual(["今天天气不错"]);
+    setGuardLimits({ minSpeechMs: 1_000 });
+    expect((await say("今天天气不错", { sec: 0.5 })).texts).toEqual([]);
+    setGuardLimits({});
+  });
+
   it("a decoding loop is cut to its head, or dropped as repetition (stt-repeat.ts)", async () => {
     const cut = await say("あなたが" + "ウィッター".repeat(200));
     expect(cut.texts).toEqual(["あなたがウィッター"]);
@@ -341,5 +357,26 @@ describe("a dropped line reaches nothing", () => {
     expect(await session("下一张", 0)).toEqual({ offered: [], sent: [] });
     // The same path with a real line: offered first, then the chat.
     expect(await session("下一张", 0.2)).toEqual({ offered: ["下一张"], sent: ["下一张"] });
+  });
+});
+
+describe("the silence guard's live limits", () => {
+  afterEach(() => setGuardLimits({}));
+
+  it("defaults to STT_GUARD (160 ms); bad or out-of-range values read as the default", () => {
+    expect(STT_GUARD.minSpeechMs).toBe(160);
+    expect(guardLimits()).toEqual(STT_GUARD);
+    expect(guardLimitsOf({ minSpeechMs: 400.4 }).minSpeechMs).toBe(400);
+    for (const bad of [
+      "300",
+      Number.NaN,
+      GUARD_MIN_SPEECH_MS.min - 1,
+      GUARD_MIN_SPEECH_MS.max + 1,
+      undefined,
+    ])
+      expect(guardLimitsOf({ minSpeechMs: bad })).toEqual(STT_GUARD);
+    setGuardLimits({ minSpeechMs: 500 });
+    expect(guardLimits()).toEqual({ ...STT_GUARD, minSpeechMs: 500 });
+    expect(judgeFinal("好", { ...CLEAR, speechMs: 400 }, guardLimits())).toBe("no-speech-frames");
   });
 });

@@ -33,22 +33,111 @@ export type AdaptParams = {
   endpointMin: number;
   endpointMargin: number;
 };
+/**
+ * Silero's start thresholds: 0.5 / 0.35 normal, 0.35 / 0.25 whisper (raised from
+ * 0.3 / 0.25 and 0.2 / 0.15 by the owner, 2026-11-15: in a café the background
+ * crossed 0.3 and was transcribed as his lines). 0.5 / 0.35 are Silero's own
+ * defaults. Live values: config stt.vadPositive, stt.vadNegative,
+ * stt.vadWhisperPositive, stt.vadWhisperNegative (setVadThresholds, from the
+ * page); raising them lets less background through and needs a clearer voice.
+ * minSpeechMs is unchanged.
+ */
 export const NORMAL: AdaptParams = {
-  positiveSpeechThreshold: 0.3,
-  negativeSpeechThreshold: 0.25,
+  positiveSpeechThreshold: 0.5,
+  negativeSpeechThreshold: 0.35,
   minSpeechMs: 250,
   endpointMs: 600,
   endpointMin: 0.35,
   endpointMargin: 0.25,
 };
 export const WHISPER: AdaptParams = {
-  positiveSpeechThreshold: 0.2,
-  negativeSpeechThreshold: 0.15,
+  positiveSpeechThreshold: 0.35,
+  negativeSpeechThreshold: 0.25,
   minSpeechMs: 150,
   endpointMs: 800,
   endpointMin: 0.15,
   endpointMargin: 0.1,
 };
+/** The start thresholds of one mode. */
+export type VadThreshold = { positive: number; negative: number };
+export type VadThresholds = { normal: VadThreshold; whisper: VadThreshold };
+export const VAD_THRESHOLDS: VadThresholds = {
+  normal: {
+    positive: NORMAL.positiveSpeechThreshold,
+    negative: NORMAL.negativeSpeechThreshold,
+  },
+  whisper: {
+    positive: WHISPER.positiveSpeechThreshold,
+    negative: WHISPER.negativeSpeechThreshold,
+  },
+};
+/** The thresholds' range (the config keys' too). */
+export const VAD_MIN = 0.05;
+export const VAD_MAX = 0.95;
+/** How far below positive negative must stay (Silero needs negative < positive). */
+export const VAD_GAP = 0.05;
+
+/**
+ * Valid thresholds from untrusted values: out of range or not a number reads as
+ * the default; a negative not below positive is clamped to positive − VAD_GAP.
+ */
+export function vadThresholdsOf(v: {
+  normal?: Partial<Record<keyof VadThreshold, unknown>>;
+  whisper?: Partial<Record<keyof VadThreshold, unknown>>;
+}): VadThresholds {
+  const num = (x: unknown, d: number) =>
+    typeof x === "number" && Number.isFinite(x) && x >= VAD_MIN && x <= VAD_MAX ? x : d;
+  const one = (o: Partial<Record<keyof VadThreshold, unknown>> | undefined, d: VadThreshold) => {
+    const positive = num(o?.positive, d.positive);
+    const negative = num(o?.negative, d.negative);
+    return {
+      positive,
+      negative: negative < positive ? negative : Math.max(0, positive - VAD_GAP),
+    };
+  };
+  return {
+    normal: one(v.normal, VAD_THRESHOLDS.normal),
+    whisper: one(v.whisper, VAD_THRESHOLDS.whisper),
+  };
+}
+
+/** The live thresholds, set by the page from config (setVadThresholds); defaults until then. */
+let liveVad: VadThresholds = VAD_THRESHOLDS;
+export function setVadThresholds(v: Parameters<typeof vadThresholdsOf>[0]): void {
+  const next = vadThresholdsOf(v);
+  if (JSON.stringify(next) === JSON.stringify(liveVad)) return;
+  liveVad = next;
+  // The page's estimator hands Silero the new values before the next utterance.
+  (globalThis as unknown as Record<string, { refresh?: () => void } | undefined>)[
+    ADAPT_KEY
+  ]?.refresh?.();
+}
+export const vadThresholds = (): VadThresholds => liveVad;
+
+/**
+ * One mode's settings: NORMAL / WHISPER with the live thresholds, and the page's
+ * overrides last (`__lkVoiceAdapt = { NORMAL_POSITIVE: 0.6 }`; also
+ * NORMAL_NEGATIVE, WHISPER_POSITIVE, WHISPER_NEGATIVE), read at each call.
+ */
+export function vadParams(
+  whisper: boolean,
+  t: VadThresholds = liveVad,
+  over: unknown = (globalThis as { __lkVoiceAdapt?: unknown }).__lkVoiceAdapt,
+): AdaptParams {
+  const base = whisper ? WHISPER : NORMAL;
+  const m = whisper ? t.whisper : t.normal;
+  const o = (k: string) => {
+    const v = over && typeof over === "object" ? (over as Record<string, unknown>)[k] : undefined;
+    return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  };
+  const tag = whisper ? "WHISPER" : "NORMAL";
+  return {
+    ...base,
+    positiveSpeechThreshold: o(`${tag}_POSITIVE`) ?? m.positive,
+    negativeSpeechThreshold: o(`${tag}_NEGATIVE`) ?? m.negative,
+  };
+}
+
 export const POLICY = {
   ENTER_LEVEL: -34,
   EXIT_LEVEL: -30,
@@ -136,7 +225,13 @@ export type AdaptState = AdaptParams & {
  * settings, and of the gain by a dB or more (the menu's readout).
  */
 export function createAdaptive(
-  opts: { speaking?: () => boolean; policy?: () => Policy; mode?: () => WhisperMode } = {},
+  opts: {
+    speaking?: () => boolean;
+    policy?: () => Policy;
+    mode?: () => WhisperMode;
+    /** Each mode's settings; default: vadParams (live config, then the page's overrides). */
+    params?: (whisper: boolean) => AdaptParams;
+  } = {},
 ) {
   const modeOf = opts.mode ?? whisperMode;
   let mode: WhisperMode = "auto";
@@ -152,7 +247,7 @@ export function createAdaptive(
   /** The mode the VAD's start settings follow (latched between utterances). */
   let vadWhisper = false;
   let shownGain = 0;
-  const params = (w: boolean) => (w ? WHISPER : NORMAL);
+  const params = opts.params ?? ((w: boolean) => vadParams(w));
   const state = (): AdaptState => ({
     ...params(whisper),
     mode,
@@ -212,6 +307,8 @@ export function createAdaptive(
       if (changed) emit();
       return gain;
     },
+    /** The settings changed outside (live config): listeners re-read vad(). */
+    refresh: emit,
     /** Hear a change (the VAD's settings, the readout); returns an unsubscribe. */
     subscribe(f: (s: AdaptState) => void) {
       listeners.add(f);
@@ -224,7 +321,7 @@ export type Adaptive = ReturnType<typeof createAdaptive>;
 /** globalThis key of the page's estimator: one per page, kept across hot swaps. */
 export const ADAPT_KEY = "__lkAdapt";
 /** Bumped when the estimator's shape changes (an older one is replaced). */
-export const ADAPT_V = 2;
+export const ADAPT_V = 3;
 
 /** The page's estimator, made once (`speaking` is read at each frame). */
 export function voiceAdapt(speaking?: () => boolean): Adaptive {

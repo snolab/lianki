@@ -221,9 +221,20 @@ tuning. The guard does read:
 | gate | reason logged | limit (`STT_GUARD`) | based on |
 | --- | --- | --- | --- |
 | loudest 32 ms frame | `silent-audio` | 0.008 | the owner's quietest of 211 clips peaks at 0.0101 |
-| Silero speech, when it ran | `no-speech-frames` | 32 ms | all 211 clips reach one frame ≥ 0.5; noise windows mostly have none |
+| Silero speech, when it ran | `no-speech-frames` | 160 ms (was 32) | raised 2026-11-15 for café noise; at 32 ms all 211 clips passed, 160 ms not re-measured |
 | turbo's own VAD share | `route-vad` | 0.25 | owner's lowest with text 0.295; noise down to 0.108 |
 | stock phrase, whole line | `stock-credit`, `stock-courtesy` | below | |
+
+**Live thresholds (owner, 2026-11-15).** In a café, background sound became
+lines he never said, so the gate before the speech model was raised and made
+live: public config keys at /dev/config, read by the page (`DebugEval`) and
+handed to the mic, applied from the next utterance with no deploy.
+`stt.vadPositive` / `stt.vadNegative` (Silero's start/end thresholds in normal
+mode, default 0.5 / 0.35, was 0.3 / 0.25), `stt.vadWhisperPositive` /
+`stt.vadWhisperNegative` (whisper mode, 0.35 / 0.25, was 0.2 / 0.15), and
+`stt.guardMinSpeechMs` (the `no-speech-frames` gate, 160 ms, was 32). A negative
+not below its positive is clamped to positive − 0.05 (`vadThresholdsOf` in
+`adaptive.ts`); `__lkVoiceAdapt = { NORMAL_POSITIVE: … }` on the page still wins.
 
 **The phrases.** The whole line, normalized (NFKC, case, punctuation, spacing,
 Traditional folded onto Simplified), must be one phrase or a run of them; `…`

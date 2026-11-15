@@ -116,6 +116,26 @@ describe("registry", () => {
     }
   });
 
+  test("the mic's VAD thresholds and minimum speech: public, defaults, bounds (2026-11-15)", () => {
+    const want = {
+      "stt.vadPositive": 0.5,
+      "stt.vadNegative": 0.35,
+      "stt.vadWhisperPositive": 0.35,
+      "stt.vadWhisperNegative": 0.25,
+      "stt.guardMinSpeechMs": 160,
+    } as const;
+    for (const [k, v] of Object.entries(want)) {
+      expect(PUBLIC_CONFIG_KEYS).toContain(k as never);
+      expect(defaultConfig()[k as keyof typeof want]).toBe(v);
+    }
+    expect(parseConfigValue("stt.vadPositive", 0.62).ok).toBe(true);
+    expect(parseConfigValue("stt.vadPositive", 0.01).ok).toBe(false);
+    expect(parseConfigValue("stt.vadNegative", 1).ok).toBe(false);
+    expect(parseConfigValue("stt.guardMinSpeechMs", 160.5).ok).toBe(false);
+    expect(parseConfigValue("stt.guardMinSpeechMs", 31).ok).toBe(false);
+    expect(parseConfigValue("stt.guardMinSpeechMs", 2000).ok).toBe(true);
+  });
+
   test("only public keys go to the browser", () => {
     expect(PUBLIC_CONFIG_KEYS).toContain("words.undoMs");
     expect(PUBLIC_CONFIG_KEYS).not.toContain("study.humanReactionMs" as never);
