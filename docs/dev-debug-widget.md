@@ -2438,6 +2438,28 @@ for Wi-Fi, a mic error) is lifted by the strip's measured height
 (`DebugMic noteLift={etaH}`), so it sits over the strip (or its ▸), never
 on it.
 
+**Change ticker** (owner, 2026-11-15 20:1x JST: "agent 对我们的甘特图，有任何一个任务
+进行更新的时候，你就在这里播报一下"). Each new snapshot of the timed tasks
+(a progress event over the owner's reader socket re-lays the tree, so
+`etaTasks` changes) is compared with the last (`eta-ticker.ts etaChanges`),
+and each change is announced in the bar in place of its summary: a new task,
+done, done early ("done 20M early"), its ETA pushed later ("20M later", under
+a minute is not news), blocked, waiting for the owner, and ETA reached (the
+page's own clock passing it, `lateCrossings`, or the hub's `sent`). Each has
+its mark (`Icon` plus, check, sparkle, an arrow, pause; the red clock for
+late) and its string (`etaNews*`, every locale with its context line), with
+the lane that made it (the node's last ETA event's `by`) in front. One item
+shows for `chat.etaTickerSec` seconds (default 6), the most recent
+`chat.etaTickerKeep` (default 5) in turn, newest first, then the summary is
+back; a new change starts the pass over (`tickerPush` / `tickerShown`).
+Config keys, public (`publicCfg` in DebugEval → DebugChat `etaTicker`). A new
+change lights the bar once in its gold (`ETA_FLASH_CSS`, an overlay fading
+out; none under reduced motion); the height never changes, and the percent
+stays. A tap does what the bar always does (the full-screen Gantt). Not
+announced: the first snapshot (the page loading), and anything whose last
+event is by "owner" (his own check-off from his page). The folded chat's
+compact bar shows only its time, no announcements.
+
 ### Full-screen Gantt
 
 A tap on the ETA bar (or ⤢ on the state tree's list) opens the Gantt full

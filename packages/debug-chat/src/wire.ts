@@ -1066,6 +1066,20 @@ export type ChatStrings = {
   etaTickStatus: string;
   /** The tick note's close button (screen reader, tooltip). */
   etaTickClose: string;
+  /** The ETA bar's change ticker (eta-ticker.ts): a new task; {task} its name. */
+  etaNewsNew: string;
+  /** …a task done. */
+  etaNewsDone: string;
+  /** …done before its ETA; {t} how long before ("20M"). */
+  etaNewsEarly: string;
+  /** …its ETA pushed later by {t}. */
+  etaNewsLater: string;
+  /** …blocked. */
+  etaNewsBlocked: string;
+  /** …now waiting for the owner. */
+  etaNewsWaiting: string;
+  /** …its ETA reached, not done. */
+  etaNewsLate: string;
   /** The arrow at the left edge of the timeline for a task whose bar is off-screen, earlier (screen reader, tooltip); {task} is its name. */
   etaGanttToEarlier: string;
   /** The same arrow at the right edge, for a bar off-screen later. */
@@ -1266,6 +1280,13 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   etaTickSet: "estimated: {names}",
   etaTickStatus: "status changed: {names}",
   etaTickClose: "Close",
+  etaNewsNew: "new: {task}",
+  etaNewsDone: "done: {task}",
+  etaNewsEarly: "done {t} early: {task}",
+  etaNewsLater: "{t} later: {task}",
+  etaNewsBlocked: "blocked: {task}",
+  etaNewsWaiting: "waiting for you: {task}",
+  etaNewsLate: "ETA reached: {task}",
   etaGanttToEarlier: "Scroll back to {task}",
   etaGanttToLater: "Scroll ahead to {task}",
   etaList: "Timed tasks",

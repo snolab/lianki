@@ -4,6 +4,7 @@ import {
   LIMIT,
   NORMAL,
   POLICY,
+  VAD_THRESHOLDS,
   WHISPER,
   WHISPER_KEY,
   type WhisperMode,
@@ -11,6 +12,10 @@ import {
   createAdaptive,
   frameDb,
   limiterCurve,
+  setVadThresholds,
+  vadParams,
+  vadThresholds,
+  vadThresholdsOf,
   voiceAdapt,
   whisperMode,
 } from "@lianki/debug-chat/adaptive";
@@ -53,8 +58,8 @@ describe("adaptive whisper mode", () => {
     expect(a.vad().positiveSpeechThreshold).toBe(NORMAL.positiveSpeechThreshold);
     a.frame(at(-65 + g), 0, false);
     expect(a.vad()).toEqual({
-      positiveSpeechThreshold: 0.2,
-      negativeSpeechThreshold: 0.15,
+      positiveSpeechThreshold: 0.35,
+      negativeSpeechThreshold: 0.25,
       minSpeechMs: 150,
     });
     expect(seen).toContain(true);
@@ -154,5 +159,65 @@ describe("adaptive whisper mode", () => {
     expect(voiceAdapt()).toBe(one);
     const off = one.subscribe(() => {});
     off();
+  });
+
+  describe("live VAD thresholds (config stt.vad*)", () => {
+    afterEach(() => {
+      setVadThresholds({});
+      delete (globalThis as Record<string, unknown>).__lkVoiceAdapt;
+    });
+
+    it("defaults: Silero's own 0.5 / 0.35, whisper 0.35 / 0.25 (owner, 2026-11-15)", () => {
+      expect(VAD_THRESHOLDS).toEqual({
+        normal: { positive: 0.5, negative: 0.35 },
+        whisper: { positive: 0.35, negative: 0.25 },
+      });
+      expect(vadThresholds()).toEqual(VAD_THRESHOLDS);
+      expect(vadParams(false)).toEqual(NORMAL);
+      expect(vadParams(true)).toEqual(WHISPER);
+    });
+
+    it("validates: out of range reads as the default; negative stays below positive", () => {
+      expect(
+        vadThresholdsOf({ normal: { positive: 2, negative: "x" }, whisper: { positive: 0.01 } }),
+      ).toEqual(VAD_THRESHOLDS);
+      const t = vadThresholdsOf({
+        normal: { positive: 0.6, negative: 0.7 },
+        whisper: { positive: 0.3, negative: 0.3 },
+      });
+      expect(t.normal).toEqual({ positive: 0.6, negative: expect.closeTo(0.55, 9) });
+      expect(t.whisper).toEqual({ positive: 0.3, negative: expect.closeTo(0.25, 9) });
+      expect(vadThresholdsOf({ normal: { positive: 0.05, negative: 0.9 } }).normal.negative).toBe(
+        0,
+      );
+    });
+
+    it("reach vad(), the page override winning; the page estimator is refreshed", () => {
+      const a = voiceAdapt(() => false);
+      const seen: number[] = [];
+      a.subscribe((s) => seen.push(s.positiveSpeechThreshold));
+      setVadThresholds({ normal: { positive: 0.7, negative: 0.5 } });
+      expect(a.vad()).toEqual({
+        positiveSpeechThreshold: 0.7,
+        negativeSpeechThreshold: 0.5,
+        minSpeechMs: NORMAL.minSpeechMs,
+      });
+      expect(seen).toEqual([0.7]);
+      // The same values again: no refresh.
+      setVadThresholds({ normal: { positive: 0.7, negative: 0.5 } });
+      expect(seen).toEqual([0.7]);
+      (globalThis as Record<string, unknown>).__lkVoiceAdapt = {
+        NORMAL_POSITIVE: 0.9,
+        WHISPER_NEGATIVE: 0.1,
+      };
+      expect(a.vad().positiveSpeechThreshold).toBe(0.9);
+      expect(a.vad().negativeSpeechThreshold).toBe(0.5);
+      expect(vadParams(true).negativeSpeechThreshold).toBe(0.1);
+      // An injected source replaces both.
+      const b = createAdaptive({
+        params: (w) => ({ ...(w ? WHISPER : NORMAL), positiveSpeechThreshold: 0.42 }),
+      });
+      expect(b.vad().positiveSpeechThreshold).toBe(0.42);
+    });
   });
 });

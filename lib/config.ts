@@ -50,8 +50,11 @@ import {
 } from "@lianki/debug-chat/voices";
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
+import { ETA_TICKER_KEEP, ETA_TICKER_SEC } from "@lianki/debug-chat/eta-ticker";
 import { MERGE_REOPEN_DEFAULT_SEC, MERGE_REOPEN_MAX_SEC } from "@lianki/debug-chat/voice-tune";
 import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
+import { VAD_MAX, VAD_MIN, VAD_THRESHOLDS } from "@lianki/debug-chat/adaptive";
+import { GUARD_MIN_SPEECH_MS, STT_GUARD } from "@lianki/debug-chat/stt-guard";
 import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
 
 export type ConfigAudience = "server" | "public";
@@ -381,6 +384,64 @@ export const CONFIG = {
     audience: "public",
     description:
       "复读幻觉过滤：剪掉复读后剩下的字少于这么多，就整句丢掉，不发到聊天里（详情里记为「复读」）。默认 4。",
+  }),
+  // Silero's start thresholds and the silence guard's minimum speech (adaptive.ts
+  // NORMAL / WHISPER, stt-guard.ts STT_GUARD; owner 2026-11-15: café background
+  // noise became his lines). A negative not below its positive is clamped to
+  // positive − 0.05 in the mic (vadThresholdsOf).
+  "stt.vadPositive": {
+    default: VAD_THRESHOLDS.normal.positive as number,
+    schema: z.number().min(VAD_MIN).max(VAD_MAX),
+    min: VAD_MIN,
+    max: VAD_MAX,
+    unit: "0–1",
+    group: "voice",
+    audience: "public",
+    description:
+      "语音开始的门槛（正常说话）：Silero 判断一帧是说话的概率达到这么多才算开口（0–1，默认 0.5，和 Silero 自己的默认一样）。调高：背景声音（咖啡店、人声、音乐）更不容易被当成你在说话、转成文字；太高时小声或离得远的话会漏掉。下一句开始前生效。",
+  },
+  "stt.vadNegative": {
+    default: VAD_THRESHOLDS.normal.negative as number,
+    schema: z.number().min(VAD_MIN).max(VAD_MAX),
+    min: VAD_MIN,
+    max: VAD_MAX,
+    unit: "0–1",
+    group: "voice",
+    audience: "public",
+    description:
+      "语音结束的门槛（正常说话）：概率掉到这么多以下才算停了（0–1，默认 0.35）。必须比 stt.vadPositive 低，否则自动压到它减 0.05。调高：话尾的背景声音更快截断；太高时句子中间的轻声会被切开。",
+  },
+  "stt.vadWhisperPositive": {
+    default: VAD_THRESHOLDS.whisper.positive as number,
+    schema: z.number().min(VAD_MIN).max(VAD_MAX),
+    min: VAD_MIN,
+    max: VAD_MAX,
+    unit: "0–1",
+    group: "voice",
+    audience: "public",
+    description:
+      "语音开始的门槛（安静房间里自动进入的耳语模式）：概率达到这么多才算开口（0–1，默认 0.35）。调高：耳语模式下背景声音更难被转成文字；太高时耳语会漏掉。",
+  },
+  "stt.vadWhisperNegative": {
+    default: VAD_THRESHOLDS.whisper.negative as number,
+    schema: z.number().min(VAD_MIN).max(VAD_MAX),
+    min: VAD_MIN,
+    max: VAD_MAX,
+    unit: "0–1",
+    group: "voice",
+    audience: "public",
+    description:
+      "语音结束的门槛（耳语模式）：概率掉到这么多以下才算停了（0–1，默认 0.25）。必须比 stt.vadWhisperPositive 低，否则自动压到它减 0.05。",
+  },
+  "stt.guardMinSpeechMs": int({
+    default: STT_GUARD.minSpeechMs,
+    min: GUARD_MIN_SPEECH_MS.min,
+    max: GUARD_MIN_SPEECH_MS.max,
+    unit: "ms",
+    group: "voice",
+    audience: "public",
+    description:
+      "静音过滤：一句话里 Silero 认为是说话的部分（每帧 32 毫秒）加起来不到这么多毫秒，识别出的文字就丢掉，不发到聊天里（详情里记为「no-speech-frames」）。默认 160（5 帧）；原来是 32。调高：背景噪声里一闪而过的声音更不容易变成文字；太高时很短的一个词（「好」「嗯」）也会被丢。",
   }),
   // A posted voice line takes the speech that follows (voice-merge.ts reopenVerdict;
   // docs/dev-debug-widget.md, "Continuous speech amends the last line", "Reopened").
@@ -803,6 +864,28 @@ export const CONFIG = {
     audience: "server",
     money: true,
     description: "全站每天最多发起几次聊天轻量整理；是独立于学习伙伴回复的额外支出上限。",
+  }),
+  // The ETA bar's change ticker (packages/debug-chat/src/eta-ticker.ts;
+  // docs/dev-debug-widget.md, "ETA bar").
+  "chat.etaTickerSec": int({
+    default: ETA_TICKER_SEC,
+    min: 1,
+    max: 60,
+    unit: "s",
+    group: "chat",
+    audience: "public",
+    description:
+      "聊天里的任务进度条：agent 改了甘特图上的任务（新增、完成、提前完成、推迟、卡住、等你、到点）时，进度条中间播报这条变化，每条显示几秒，之后回到“23 个任务 · 1.4H · 99%”的汇总。",
+  }),
+  "chat.etaTickerKeep": int({
+    default: ETA_TICKER_KEEP,
+    min: 1,
+    max: 20,
+    unit: "items",
+    group: "chat",
+    audience: "public",
+    description:
+      "任务进度条播报时轮流显示最近几条变化（最新的在前）；有新变化时从头播一遍，播完回到汇总。你自己在页面上做的修改不播报。",
   }),
   "chat.gripHoldMs": int({
     default: 500,

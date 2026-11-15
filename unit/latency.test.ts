@@ -195,7 +195,7 @@ describe("the mic's marks (createMic timing)", () => {
         return { start() {}, pause() {}, flush() {}, destroy() {} };
       },
       upload: () => new Promise((r) => (answer = r)),
-      guard: { minFrameRms: 0 },
+      guard: { minFrameRms: 0, minSpeechMs: 32 }, // zeros, two speech frames; unit/stt-guard.test.ts has the gate
       onState() {},
       onText() {},
       onPending() {},

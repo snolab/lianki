@@ -99,6 +99,14 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
       "杰米",
       "洁咪",
       "解密",
+      // STT on 2026-11-15 20:3x JST: "Jmy杰my听到了没", "解米都认识自己的名字".
+      "解米",
+      "姐咪",
+      "揭米",
+      "杰my",
+      "杰mi",
+      "jmy",
+      "Jmy",
       "杰明",
       "ajy",
       "aji",
@@ -115,7 +123,7 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
     // 小克: the lane's name (2026-11-14), also its @mention (polish.ts wakeMention).
     // Project/branch names also route to chat lane (lianki, liagent, agent-yes, otoji).
     // 小柯: his STT writes it often enough to be an own name (2026-11-15: "小柯你给Li配置一下" went unaddressed).
-    exact: ["xiaoke", "小可", "小克", "小柯", "lianki", "liagent", "agent-yes", "otoji"],
+    exact: ["xiaoke", "小可", "小克", "小柯", "小客", "小贺", "小课", "小科", "lianki", "liagent", "agent-yes", "otoji"],
     // 小客, 小课: how STT wrote 小克 for him (owner, 2026-11-14).
     heard: ["xiaoko", "shiaoke", "小客", "小课", "小科", "晓可", "晓科", "小珂", "肖可"],
   },

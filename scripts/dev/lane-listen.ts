@@ -38,6 +38,8 @@ import {
   reconnectWait,
   tokenNeeded,
   voiceAllowed,
+  type AyRow,
+  pickTarget,
 } from "./lane-listen-lib";
 
 type Opts = {
@@ -45,6 +47,8 @@ type Opts = {
   repo: string;
   deliver?: string;
   cwd?: string;
+  /** The lane's agent CLI kind (`ay ls` cli: agy, codex, claude); picks among several agents in `cwd`. */
+  cli?: string;
   tests: boolean;
   dryRun: boolean;
   /** Every owner line, not only the ones addressed to this lane. */
@@ -76,6 +80,7 @@ function parse(argv: string[]): Opts | Error {
     else if (a === "--repo") o.repo = v();
     else if (a === "--deliver") o.deliver = v();
     else if (a === "--cwd") o.cwd = v();
+    else if (a === "--cli") o.cli = v();
     else if (a === "--tests") o.tests = true;
     else if (a === "--dry-run") o.dryRun = true;
     else if (a === "--all") o.all = true;
@@ -115,17 +120,11 @@ async function deliver(o: Opts, body: string, interrupt = false): Promise<number
   // --no-wait: hand the text over and return; ay's own settle/idle waits used
   // to hold this loop for minutes, and every later line with it (2026-11-14).
   // --code alt-m: an urgent line (his name, a roll call) breaks into the turn.
+  // The pid is looked up first (pickTarget): `.` alone is refused by ay when the
+  // dir holds more than one agent, and the line is lost (杰咪, 2026-11-15).
+  const target = o.deliver ?? (await resolveTarget(o)) ?? ".";
   const p = Bun.spawn(
-    [
-      "ay",
-      "send",
-      o.deliver ?? ".",
-      "--force",
-      "--no-wait",
-      "--code",
-      interrupt ? "alt-m" : "enter",
-      "-",
-    ],
+    ["ay", "send", target, "--force", "--no-wait", "--code", interrupt ? "alt-m" : "enter", "-"],
     {
       cwd: o.cwd ?? process.cwd(),
       stdin: new TextEncoder().encode(body),
@@ -159,6 +158,31 @@ export const BUSY_CHECK_MS = 3_000;
  * pushed one by one afterwards, each with the whole template). Unknown → not
  * busy, so a line is never held forever.
  */
+/** `ay ls --json --local` rows, or [] when ay is slow or absent (never longer than BUSY_CHECK_MS). */
+async function ayRows(): Promise<AyRow[]> {
+  try {
+    const p = Bun.spawn(["ay", "ls", "--json", "--local"], { stdout: "pipe", stderr: "ignore" });
+    const txt = await Promise.race([
+      new Response(p.stdout).text(),
+      new Promise<string>((r) => setTimeout(() => r(""), BUSY_CHECK_MS)),
+    ]);
+    if (!txt) {
+      p.kill();
+      return [];
+    }
+    const v = JSON.parse(txt) as unknown;
+    return ((Array.isArray(v) ? v : (v as { local?: unknown[] }).local) ?? []) as AyRow[];
+  } catch {
+    return [];
+  }
+}
+
+/** The pid the lines go to when only a dir was given: the newest agent of the lane's CLI kind there. */
+async function resolveTarget(o: Opts): Promise<string | null> {
+  if (!o.cwd) return null;
+  return pickTarget(await ayRows(), o.cwd, o.cli);
+}
+
 export async function targetBusy(o: Opts): Promise<boolean> {
   if (o.dryRun) return false;
   try {
@@ -177,9 +201,9 @@ export async function targetBusy(o: Opts): Promise<boolean> {
     const list = (Array.isArray(v) ? v : (v as { local?: unknown[] }).local) ?? [];
     // ay's rows: `status` is the process ("active" = alive), `state` the turn
     // ("active" = mid-turn, "idle", "needs_input", …). Busy means mid-turn.
-    const me = (list as { pid?: number; cwd?: string; state?: string }[]).find((e) =>
-      o.deliver ? String(e.pid) === String(o.deliver) : e.cwd === o.cwd,
-    );
+    const rows = list as (AyRow & { state?: string })[];
+    const pid = o.deliver ?? (o.cwd ? pickTarget(rows, o.cwd, o.cli) : null);
+    const me = rows.find((e) => String(e.pid) === String(pid));
     return me?.state === "active";
   } catch {
     return false;

@@ -331,6 +331,7 @@ describe("decide", () => {
         lane: "codex",
         cwd: "/c",
         pid: 9,
+        cli: "codex",
         scope: "owner",
         skipOwner: false,
       },
@@ -674,6 +675,7 @@ describe("the loop (createManager), every effect mocked", () => {
         lane: "claude",
         cwd: "/k",
         pid: 7,
+        cli: "codex",
         scope: "all",
         skipOwner: true,
       },
@@ -688,6 +690,10 @@ describe("the loop (createManager), every effect mocked", () => {
     expect(
       listenerArgv("bun", "/r", "claude", "/c", { scope: "all", skipOwner: true }).slice(-3),
     ).toEqual(["--all", "--everyone", "--skip-owner"]);
+    // The lane's CLI kind rides along, so the listener picks its agent among several in the dir.
+    expect(
+      listenerArgv("bun", "/r", "agy", "/a", { scope: "owner", cli: "agy" }).slice(-4),
+    ).toEqual(["/a", "--cli", "agy", "--all"]);
     expect(listenerArgv("bun", "/r", "x", "/c", { scope: "all" }).slice(-2)).toEqual([
       "--all",
       "--everyone",
