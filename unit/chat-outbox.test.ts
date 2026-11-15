@@ -5,6 +5,7 @@ import {
   createChatOutbox,
   migrateSessionOutbox,
   ACK_BACKOFF_CAP,
+  NO_RECEIPT,
   type OutgoingChat,
 } from "../packages/debug-chat/src/chat-outbox";
 
@@ -429,7 +430,13 @@ describe("persistent outgoing chat", () => {
 });
 
 /** A fake clock and a store shared by every outbox made from it (two tabs on one device). */
-function clock(opts: { timeout?: number | (() => number); random?: () => number } = {}) {
+function clock(
+  opts: {
+    timeout?: number | (() => number);
+    random?: () => number;
+    maxResends?: number | (() => number);
+  } = {},
+) {
   let now = 0;
   let nextHandle = 0;
   let stored: unknown = [];
@@ -437,6 +444,7 @@ function clock(opts: { timeout?: number | (() => number); random?: () => number 
   const timers = new Map<number, { at: number; fn: () => void; ms: number }>();
   const sends: { tab: string; id: string; at: number }[] = [];
   const delays: number[] = [];
+  const refused: { id: string; reason: string }[] = [];
   const tab = (name: string, online = () => true) =>
     createChatOutbox({
       shared: true,
@@ -449,8 +457,9 @@ function clock(opts: { timeout?: number | (() => number); random?: () => number 
         return online();
       },
       id: () => `line-${++n}`,
-      onRejected: () => {},
+      onRejected: (item, reason) => refused.push({ id: item.id, reason }),
       ackTimeoutMs: opts.timeout ?? 1000,
+      maxResends: opts.maxResends,
       random: opts.random ?? (() => 0),
       setTimer: (fn, ms) => {
         delays.push(ms);
@@ -474,7 +483,7 @@ function clock(opts: { timeout?: number | (() => number); random?: () => number 
     }
     now = end;
   };
-  return { tab, advance, sends, delays, timers, stored: () => stored };
+  return { tab, advance, sends, delays, timers, refused, stored: () => stored };
 }
 
 describe("receipt timeout and the durable queue", () => {
@@ -609,6 +618,55 @@ describe("receipt timeout and the durable queue", () => {
     const next = c.tab("b");
     next.ready();
     expect(c.sends.map((s) => [s.tab, s.id])).toEqual([["b", "line-1"]]);
+  });
+});
+
+describe("giving up after the resend cap", () => {
+  test("after the cap the line is marked unsent and the next line goes out", () => {
+    const c = clock({ maxResends: 2 });
+    const q = c.tab("a");
+    q.ready();
+    q.enqueue({ text: "lost" });
+    q.enqueue({ text: "behind" });
+    c.advance(1000 + 2000);
+    expect(c.sends.map((s) => s.id)).toEqual(["line-1", "line-1", "line-1"]);
+    c.advance(3999);
+    expect(c.sends).toHaveLength(3);
+    c.advance(1);
+    expect(q.items().map((i) => [i.id, i.rejected])).toEqual([
+      ["line-1", NO_RECEIPT],
+      ["line-2", undefined],
+    ]);
+    expect(c.refused).toEqual([{ id: "line-1", reason: NO_RECEIPT }]);
+    expect(c.sends.at(-1)!.id).toBe("line-2");
+    // The next line starts with a fresh wait, not the lost line's back-off.
+    expect(c.delays.at(-1)).toBe(1000);
+    q.acknowledge(["line-2"]);
+    c.advance(100_000);
+    expect(c.sends.filter((s) => s.id === "line-1")).toHaveLength(3);
+  });
+
+  test("a late receipt still removes a line marked unsent", () => {
+    const c = clock({ maxResends: () => 1 });
+    const q = c.tab("a");
+    q.ready();
+    q.enqueue({ text: "late" });
+    c.advance(1000 + 2000);
+    expect(q.items()[0]!.rejected).toBe(NO_RECEIPT);
+    q.acknowledge(["line-1"], 3);
+    expect(q.items()).toEqual([]);
+    expect(q.cursor()).toBe(3);
+  });
+
+  test("a cap of 0 never gives up", () => {
+    const c = clock({ maxResends: 0 });
+    const q = c.tab("a");
+    q.ready();
+    q.enqueue({ text: "keep trying" });
+    c.advance(1_000_000);
+    expect(c.sends.length).toBeGreaterThan(100);
+    expect(q.items()[0]!.rejected).toBeUndefined();
+    expect(c.refused).toEqual([]);
   });
 });
 

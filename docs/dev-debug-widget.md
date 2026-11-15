@@ -86,6 +86,10 @@ later line as a dashed row (owner, 2026-11-15: 20 lines stuck). The hub's
 per-id receipt makes the resend a no-op if the first copy landed. The wait
 doubles on each miss, up to 8× the timeout, and resets on the next receipt;
 up to a quarter is added at random so two tabs do not resend in lockstep.
+After `chat.outboxMaxResends` resends (default 4; 0 = never give up) with no
+receipt, the line is marked refused locally (`no-receipt`), shown as unsent
+like a hub refusal, and the lines behind it go on; a receipt that still arrives
+later removes it.
 
 **Durable queue.** The outbox is in **localStorage**, `lk:ui:chat-outbox:<scope>`
 (and `:cursor`), per account and device, not per tab: a closed tab's unsent

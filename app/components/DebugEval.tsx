@@ -388,6 +388,7 @@ export function DebugEval({
     return createChatOutbox({
       shared: true,
       ackTimeoutMs: () => publicCfg("chat.outboxAckTimeoutMs"),
+      maxResends: () => publicCfg("chat.outboxMaxResends"),
       read: () => (key ? JSON.parse(localStorage.getItem(key) ?? "[]") : []),
       write: (items) => {
         if (!key) throw new Error("chat identity unavailable");

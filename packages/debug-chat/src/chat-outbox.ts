@@ -10,6 +10,8 @@ export type OutgoingDraft = { text: string; [key: string]: unknown };
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 /** Largest multiple of the receipt timeout between resends of an unacknowledged line. */
 export const ACK_BACKOFF_CAP = 8;
+/** The local refusal reason of a line resent `maxResends` times with no receipt. */
+export const NO_RECEIPT = "no-receipt";
 /** Up to this share of the wait is added at random, so two tabs do not resend in lockstep. */
 const ACK_JITTER = 0.25;
 
@@ -55,6 +57,8 @@ export function createChatOutbox(d: {
   shared?: boolean;
   /** Config `chat.outboxAckTimeoutMs`; 0 or absent = wait for a receipt forever. */
   ackTimeoutMs?: number | (() => number);
+  /** Config `chat.outboxMaxResends`: resends before a line is marked `NO_RECEIPT`; 0 = never give up. */
+  maxResends?: number | (() => number);
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
   random?: () => number;
@@ -99,14 +103,15 @@ export function createChatOutbox(d: {
     timer = null;
     flight = null;
   };
-  const timeoutMs = () => {
+  const positive = (value: number | (() => number) | undefined) => {
     try {
-      const ms = typeof d.ackTimeoutMs === "function" ? d.ackTimeoutMs() : d.ackTimeoutMs;
-      return typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? ms : 0;
+      const n = typeof value === "function" ? value() : value;
+      return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0;
     } catch {
       return 0;
     }
   };
+  const timeoutMs = () => positive(d.ackTimeoutMs);
   const arm = (id: string) => {
     const base = timeoutMs();
     if (!base) return;
@@ -120,6 +125,12 @@ export function createChatOutbox(d: {
       () => {
         timer = null;
         if (disposed || flight !== id) return;
+        const max = positive(d.maxResends);
+        if (max && misses >= max) {
+          // Stop holding the lines behind it; a late receipt still removes it.
+          reject(id, NO_RECEIPT);
+          return;
+        }
         misses++;
         flight = null;
         // Another tab may have landed or refused it meanwhile.
@@ -128,6 +139,20 @@ export function createChatOutbox(d: {
       },
       Math.round(wait * (1 + jitter)),
     );
+  };
+  const reject = (id: string, reason: string) => {
+    if (disposed || typeof reason !== "string" || !reason.trim()) return;
+    reload();
+    const item = queue.find((item) => item.id === id);
+    if (!item || item.rejected) return;
+    item.rejected = reason;
+    if (flight === id) {
+      land();
+      misses = 0;
+    }
+    changed(true);
+    d.onRejected(copy(item), reason);
+    flush();
   };
   const changed = (notifyOnFailure = false) => {
     try {
@@ -216,17 +241,7 @@ export function createChatOutbox(d: {
       d.onChange?.(copy(queue));
       flush();
     },
-    reject(id: string, reason: string) {
-      if (disposed || typeof reason !== "string" || !reason.trim()) return;
-      reload();
-      const item = queue.find((item) => item.id === id);
-      if (!item || item.rejected) return;
-      item.rejected = reason;
-      if (flight === id) land();
-      changed(true);
-      d.onRejected(copy(item), reason);
-      flush();
-    },
+    reject,
     dispose() {
       disposed = true;
       ready = false;
