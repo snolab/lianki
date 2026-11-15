@@ -945,13 +945,14 @@ export const CONFIG = {
       "新 agent 入群时用它自己的 token 发的第一句问候。{name} = 线名，{repo} = 仓库，{cli} = 它是哪种 agent，{mode} = 只读 / 实时监听。Mac 上的值是环境变量 LIANKI_LANES_GREETING。",
   },
   "chat.presenceShown": int({
-    default: 3,
+    default: 6,
     min: 1,
     max: 12,
     unit: "avatars",
     group: "chat",
     audience: "public",
-    description: "聊天头像栏默认叠放显示几个头像（最近活跃的在前），其余显示为「+N」。",
+    description:
+      "聊天头像栏最多叠放显示几个头像：实时监听的在前（最近活跃的在前），只读的灰色排在后面；其余显示为「+N」，展开的列表仍列出全部。",
   }),
   "chat.prepareAuthCalls": int({
     default: 120,

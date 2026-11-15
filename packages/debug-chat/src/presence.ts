@@ -128,7 +128,14 @@ export function presentList(p: {
   viewer?: string;
   mainName?: string;
   /** The lane registry's rows of this thread (by lane name): each entry's mode and mute. */
-  lanes?: readonly { lane: string; state: string; muted?: true; scope?: string }[];
+  lanes?: readonly {
+    lane: string;
+    state: string;
+    muted?: true;
+    scope?: string;
+    seenAt?: number;
+    name?: string;
+  }[];
 }): Present[] {
   const out = new Map<string, Present>();
   const rec = new Map(p.records.map((r) => [r.tag, r]));
@@ -206,7 +213,44 @@ export function presentList(p: {
     if (m.client === "mcp") e.mcp = true;
     touch(e);
   }
+  // Read-only lanes (registry rows in state "reader") not here by a read or a line: listed
+  // too, as of their last use (owner, 2026-11-15 "3的成员也要显示在叠叠头像这里"). An older
+  // page draws them as more avatars; a newer one greys them and groups them last.
+  for (const l of p.lanes ?? []) {
+    if (l.state !== "reader") continue;
+    const mine = p.records.filter((r) => r.lane === l.lane);
+    // Its tokens all revoked: gone, like their lines.
+    if (mine.length && mine.every((r) => r.revoked)) continue;
+    const r = mine
+      .filter((x) => !x.revoked)
+      .sort((a, b) => (b.seenAt ?? 0) - (a.seenAt ?? 0))[0];
+    const lane = known(l.lane);
+    const key = r ? tokenKey(r) : lane ? `lane:${lane}` : `agent:${l.lane}`;
+    if (out.has(key)) continue;
+    const e: Present = r
+      ? fromRecord(r)
+      : {
+          key,
+          name: l.name || (lane && laneSpec(lane).name) || l.lane,
+          ...(lane ? { lane } : {}),
+          mode: "reader",
+          ...(l.muted ? { muted: true as const } : {}),
+          active: 0,
+        };
+    if (l.seenAt !== undefined) e.seenAt = Math.max(e.seenAt ?? 0, l.seenAt);
+    touch(e);
+  }
   return [...out.values()].sort((a, b) => b.active - a.active || a.key.localeCompare(b.key));
+}
+
+/** The stack's and the panel's order: the live ones (most recent first), then the read-only lanes. */
+export function liveFirst<T extends Pick<Present, "mode">>(
+  list: readonly T[],
+): { live: T[]; readers: T[] } {
+  return {
+    live: list.filter((p) => p.mode !== "reader"),
+    readers: list.filter((p) => p.mode === "reader"),
+  };
 }
 
 /**
