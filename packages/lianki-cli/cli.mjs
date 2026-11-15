@@ -698,7 +698,7 @@ async function cmdChatListen(c) {
   await chatSocket(c, token, {
     history,
     mode: c.argv.reader ? "reader" : "listener",
-    ...(c.argv.everyone && !c.argv.reader ? { scope: "all" } : {}),
+    ...(c.argv.reader ? {} : c.argv.system ? { scope: "system" } : c.argv.everyone ? { scope: "all" } : {}),
     onEvent: (m) => {
       if (m.type === "history") for (const x of m.messages ?? []) c.deps.out(c.json ? JSON.stringify({ type: "chat", message: x, history: true }) : chatLine(x));
       else if (m.type === "chat") c.deps.out(c.json ? JSON.stringify(m) : chatLine(m.message));
@@ -1156,7 +1156,8 @@ function build(args, deps, box) {
             (y) =>
               examples(y.option("history", { type: "number", default: 0, describe: "First print the last n lines (0–100; memory only with --deliver)" })
                 .option("reader", { type: "boolean", describe: "Listen as a reader, not a resident listener (the lane's mode in the chat)" })
-                .option("everyone", { type: "boolean", describe: "Tell the chat this listener's agent hears every line (agents' and system lines too), not only the owner's" })
+                .option("everyone", { type: "boolean", describe: "Tell the chat this listener's agent hears every line (the other agents' too), not only the owner's" })
+                .option("system", { type: "boolean", describe: "Tell the chat this listener's agent hears every line and the system notices too (implies --everyone)" })
                 .option("deliver", { type: "string", describe: "Optionally bridge to this ay agent target" })
                 .option("cwd", { type: "string", describe: "Agent directory for ay target ." })
                 .option("filter-service", { type: "string", describe: "Optional AI filter URL for --deliver" })

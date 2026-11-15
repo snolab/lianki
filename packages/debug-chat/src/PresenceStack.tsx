@@ -95,16 +95,16 @@ const clock = (at: number) =>
 
 /**
  * The small dot on a live listener's avatar (lane-registry.ts): filled seal red when it hears
- * every line (tier ①, scope "all"), a red ring when it hears the owner's lines only (tier ②).
+ * every line (tier ⓪ scope "system", tier ① scope "all"), a red ring when it hears the owner's lines only (tier ②).
  * Readers and muted lanes get none. Its title is the mode word (lane-events.ts).
  */
 export function LiveMark({ p }: { p: Pick<Present, "mode" | "muted" | "scope"> }) {
   if (p.mode !== "listener" || p.muted) return null;
-  const all = p.scope === "all";
+  const all = p.scope === "all" || p.scope === "system";
   return (
     <span
       data-testid="debug-chat-presence-live"
-      data-scope={all ? "all" : "owner"}
+      data-scope={all ? p.scope : "owner"}
       title={laneModeWord(p, chatLocale()) ?? undefined}
       className="absolute -bottom-px -end-px h-1.5 w-1.5 rounded-full ring-1 ring-[oklch(0.98_0.005_85)] dark:ring-[oklch(0.22_0.01_260)]"
       style={

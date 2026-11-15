@@ -40,7 +40,7 @@ import {
   autoAvatar,
   withTokenName,
 } from "@/packages/debug-chat/src/LaneMark";
-import { PresenceStack } from "@/packages/debug-chat/src/PresenceStack";
+import { LiveMark, PresenceStack } from "@/packages/debug-chat/src/PresenceStack";
 import { Disclosure, HistoryIcon, Icon, TreeIcon } from "@/packages/debug-chat/src/icons";
 import { UI_EN } from "@/packages/debug-chat/src/ui-strings";
 import type { ChatMessage } from "@/packages/debug-chat/src/wire";
@@ -302,6 +302,12 @@ describe("presentList", () => {
   it("state icons: only what the page knows, never a guess", () => {
     // Listening: muted off; a listener all lines or his; a reader woken by name; else unknown.
     expect(knownState({ mode: "listener", scope: "all" }).listen).toBe("all");
+    // Tier ⓪ (system notices too) shows as all lines.
+    expect(knownState({ mode: "listener", scope: "system" }).listen).toBe("all");
+    // Its avatar dot: filled like tier ①, tagged with its own scope and mode word.
+    const dot = renderToStaticMarkup(<LiveMark p={{ mode: "listener", scope: "system" }} />);
+    expect(dot).toContain('data-scope="system"');
+    expect(dot).toContain("background:var(--lk-primary");
     expect(knownState({ mode: "listener" }).listen).toBe("yours");
     expect(knownState({ mode: "reader" }).listen).toBe("named");
     expect(knownState({ mode: "listener", muted: true }).listen).toBe("off");

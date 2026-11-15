@@ -16,6 +16,7 @@ import {
 } from "../../lib/lane-route";
 import { isLaneId, laneOf, laneSpec } from "../../packages/debug-chat/src/voices";
 import { lanesConfig } from "../../lib/lanes-config";
+import { SPEND_ALERT_LABEL } from "../../lib/payments/spend-alert-config";
 import { ownerClock, ownerTag } from "./owner-time";
 
 /** Where a lane's token is kept on this Mac. */
@@ -73,9 +74,10 @@ export type Line = {
   /** The Mac's voiceprint decision on a spoken owner line: "me" | "other" | "unknown" (absent: typed, or no print). */
   voice?: string;
   /**
-   * An agent's line ("agent") or a system line ("system": the hub's lane events, the
-   * lanes manager's, a state-tree line for another lane), for a lane that hears every
-   * line (lane-listen --everyone, tier ①). Absent: the owner's (or a friend's) line.
+   * An agent's line ("agent", for a lane that hears every line: lane-listen --everyone,
+   * tier ①) or a system line ("system": the hub's lane events, the lanes manager's, a
+   * state-tree line for another lane; only for tier ⓪, --system). Absent: the owner's
+   * (or a friend's) line.
    */
   kind?: "agent" | "system";
   /** An agent line's sender: its shown name ("coco", "Li") and its lane (token name or lane id). */
@@ -138,8 +140,11 @@ export function lineOf(raw: string): (Line & { history: boolean }) | null {
   };
 }
 
-/** The labels of lines the system posts (lane-registry.ts LANE_EVENT_LABEL, the lanes manager's token). */
-const SYSTEM_LABELS = new Set(["lanes"]);
+/**
+ * The labels of lines the system posts (lane-registry.ts LANE_EVENT_LABEL, the lanes
+ * manager's token; the hub's spend alerts, debug.ts spendApi).
+ */
+const SYSTEM_LABELS = new Set(["lanes", SPEND_ALERT_LABEL]);
 
 /** An agent line's kind, sender and (its prefix gone) text; a system line's kind and event lane. */
 function agentFields(m: Record<string, unknown>): Partial<Line> {
@@ -175,15 +180,22 @@ export type TakeOpts = {
   lane: string;
   tests?: boolean;
   all?: boolean;
-  /** --everyone: agents' and system lines too. */
+  /** --everyone: agents' lines too (tier ①). */
   everyone?: boolean;
+  /** --system: the system lines as well (tier ⓪; with --everyone). */
+  system?: boolean;
   /** --skip-owner: none of his lines (the lane has its own feed of them). */
   skipOwner?: boolean;
 };
 
-/** Does this listener take the line: a state-tree nudge to it, his lines it hears, and with --everyone agents' and system lines. */
+/**
+ * Does this listener take the line: a state-tree nudge to it, his lines it hears, with
+ * --everyone agents' lines, and with --system the system lines (owner, 2026-11-16 02:16
+ * JST: only the top tier hears the system notices).
+ */
 export function listenerTakes(o: TakeOpts, l: Line): boolean {
   if (l.etaLane === o.lane) return true;
+  if (l.kind === "system" && !o.system) return false;
   if (o.everyone && everyoneTakes(o.lane, l)) return true;
   if (o.skipOwner && l.from === "owner") return false;
   return laneTakes(routeKey(o.lane), l, { tests: o.tests, all: o.all });
@@ -205,7 +217,8 @@ export function ownLine(lane: string, l: Pick<Line, "kind" | "senderLane" | "eve
 
 /**
  * Does a lane that hears every line (--everyone) take this agent or system line? In the
- * owner thread, not its own. Owner lines go through laneTakes as before.
+ * owner thread, not its own (listenerTakes keeps system lines for --system). Owner
+ * lines go through laneTakes as before.
  */
 export function everyoneTakes(
   lane: string,
@@ -315,7 +328,7 @@ export function handoffBrief(
   o: UnnamedOpts = {},
 ): string {
   const at = ownerAt(lines.at(-1)?.at);
-  // Only agents' and system lines (--everyone): not his words, so not "owner →".
+  // Only agents' and system lines (--everyone, --system): not his words, so not "owner →".
   const from = lines.some((l) => !l.kind && l.etaLane !== lane)
     ? "owner"
     : lines.every((l) => l.etaLane === lane)

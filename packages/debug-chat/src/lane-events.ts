@@ -21,6 +21,7 @@ export const LANE_EVENT_KINDS = [
   "joined",
   "listening",
   "listeningAll",
+  "listeningSystem",
   "reader",
   "left",
   "muted",
@@ -30,12 +31,26 @@ export type LaneEventKind = (typeof LANE_EVENT_KINDS)[number];
 /** A lane's mode: a resident listener (hears every line live) or a reader (reads when it wants, woken by name). */
 export type LaneMode = "reader" | "listener";
 /**
- * What a listener hears (owner, 2026-11-15 15:1x JST, the five tiers in docs/lane-listen.md):
- * "owner" his lines only (tier ②), "all" every line, agents' and system lines too (tier ①).
- * Absent = "owner" (an older client or hub).
+ * What a listener hears (the six tiers in docs/lane-listen.md; owner, 2026-11-16 02:16 JST):
+ * "owner" his lines only (tier ②), "all" his and every agent's lines, no system lines
+ * (tier ①), "system" all of that and the system notices too (tier ⓪). Absent = "owner"
+ * (an older client or hub).
  */
-export type LaneScope = "owner" | "all";
-export const isLaneScope = (v: unknown): v is LaneScope => v === "owner" || v === "all";
+export type LaneScope = "owner" | "all" | "system";
+export const LANE_SCOPE_ORDER = ["owner", "all", "system"] as const;
+export const isLaneScope = (v: unknown): v is LaneScope =>
+  typeof v === "string" && (LANE_SCOPE_ORDER as readonly string[]).includes(v);
+/** How much a scope hears: owner 0 < all 1 < system 2 (absent or unknown = owner). */
+export const scopeRank = (s: unknown): number => (isLaneScope(s) ? LANE_SCOPE_ORDER.indexOf(s) : 0);
+/** The wider of two scopes. */
+export const widerScope = (a: LaneScope, b: LaneScope): LaneScope =>
+  scopeRank(b) > scopeRank(a) ? b : a;
+/** A scope wider than the owner's ("all" | "system"), as kept on a socket or row; else undefined. */
+export const wideScope = (s: unknown): "all" | "system" | undefined =>
+  s === "all" || s === "system" ? s : undefined;
+/** The system line a listener of this scope says when it starts. */
+export const listeningEvent = (s: LaneScope | undefined) =>
+  s === "system" ? "listeningSystem" : s === "all" ? "listeningAll" : "listening";
 
 /** On a system line (wire.ts ChatMessage.laneEvent): which lane, its name then, and what happened. */
 export type LaneEvent = { lane: string; name: string; kind: LaneEventKind };
@@ -43,6 +58,7 @@ export type LaneEvent = { lane: string; name: string; kind: LaneEventKind };
 export type LaneEventStrings = Record<LaneEventKind, string> & {
   modeListener: string;
   modeListenerAll: string;
+  modeListenerSystem: string;
   modeReader: string;
   modeMuted: string;
   tokensNeeded: string;
@@ -56,7 +72,9 @@ export const LANE_EVENT_CONTEXT: Record<Key, string> = {
   listening:
     "A one-line system notice in the chat log: the AI agent {name} now hears the owner's messages in real time (it switched to live listening). Keep {name}. A short statement, like a status change.",
   listeningAll:
-    "A one-line system notice in the chat log: the AI agent {name} now hears ALL messages in real time — the owner's, every other AI agent's and these system notices — not only the owner's. Keep {name}. The same statement as the plain live-listening notice, with a short qualifier for 'all messages' (e.g. in parentheses).",
+    "A one-line system notice in the chat log: the AI agent {name} now hears ALL messages in real time — the owner's and every other AI agent's (but not these system notices) — not only the owner's. Keep {name}. The same statement as the plain live-listening notice, with a short qualifier for 'all messages' (e.g. in parentheses).",
+  listeningSystem:
+    "A one-line system notice in the chat log: the AI agent {name} now hears EVERYTHING in real time — all messages (the owner's and every other AI agent's) plus these system notices (agents joining or leaving, task reminders, alerts). Keep {name}. The same statement as the 'all messages' live-listening notice, with the qualifier extended by 'and system notices' (e.g. in parentheses).",
   reader:
     "A one-line system notice in the chat log: the AI agent {name} stopped listening live and is now read-only (it reads the chat only when called by name). Keep {name}. A short statement.",
   left:
@@ -68,7 +86,9 @@ export const LANE_EVENT_CONTEXT: Record<Key, string> = {
   modeListener:
     "A small status word in the list of agents present in the chat (hover card beside each avatar): this agent hears the owner's messages live. An adjective or short phrase, not a verb command.",
   modeListenerAll:
-    "A small status word in the list of agents present in the chat (hover card beside each avatar, also the tooltip of the small dot on its avatar): this agent hears ALL messages live, the other agents' and system notices too, not only the owner's. The plain live-listening phrase with a short 'all messages' qualifier.",
+    "A small status word in the list of agents present in the chat (hover card beside each avatar, also the tooltip of the small dot on its avatar): this agent hears ALL messages live, the other agents' too, not only the owner's (but not the system notices). The plain live-listening phrase with a short 'all messages' qualifier.",
+  modeListenerSystem:
+    "A small status word in the list of agents present in the chat (hover card beside each avatar, also the tooltip of the small dot on its avatar): this agent hears everything live — all messages plus the system notices (agents joining or leaving, task reminders, alerts). The 'all messages' live-listening phrase with the qualifier extended by 'and system notices'.",
   modeReader:
     "A small status word in the list of agents present in the chat (hover card beside each avatar): this agent only reads the chat, and is woken when called by name. An adjective or short phrase.",
   modeMuted:
@@ -82,12 +102,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} joined (read-only)",
     listening: "{name} is now listening live",
     listeningAll: "{name} is now listening live (all messages)",
+    listeningSystem: "{name} is now listening live (all messages + system notices)",
     reader: "{name} switched to read-only",
     left: "{name} went offline",
     muted: "{name} was muted",
     unmuted: "{name} may post again",
     modeListener: "listening live",
     modeListenerAll: "listening live (all messages)",
+    modeListenerSystem: "listening live (all messages + system notices)",
     modeReader: "read-only",
     modeMuted: "muted",
     tokensNeeded: "Waiting for a token to join: {names} (Preferences → API tokens)",
@@ -96,12 +118,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} 入群（只读）",
     listening: "{name} 开始实时监听",
     listeningAll: "{name} 开始实时监听（全部消息）",
+    listeningSystem: "{name} 开始实时监听（全部消息 + 系统通知）",
     reader: "{name} 转为只读",
     left: "{name} 下线",
     muted: "{name} 已禁言",
     unmuted: "{name} 解除禁言",
     modeListener: "实时监听",
     modeListenerAll: "实时监听（全部消息）",
+    modeListenerSystem: "实时监听（全部消息 + 系统通知）",
     modeReader: "只读",
     modeMuted: "已禁言",
     tokensNeeded: "还在等 token 才能入群：{names}（偏好设置 → API tokens）",
@@ -110,12 +134,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} जुड़ा (केवल पढ़ने के लिए)",
     listening: "{name} अब लाइव सुन रहा है",
     listeningAll: "{name} अब लाइव सुन रहा है (सभी संदेश)",
+    listeningSystem: "{name} अब लाइव सुन रहा है (सभी संदेश + सिस्टम सूचनाएँ)",
     reader: "{name} अब केवल पढ़ रहा है",
     left: "{name} ऑफ़लाइन हो गया",
     muted: "{name} को म्यूट किया गया",
     unmuted: "{name} फिर से लिख सकता है",
     modeListener: "लाइव सुन रहा है",
     modeListenerAll: "लाइव सुन रहा है (सभी संदेश)",
+    modeListenerSystem: "लाइव सुन रहा है (सभी संदेश + सिस्टम सूचनाएँ)",
     modeReader: "केवल पढ़ना",
     modeMuted: "म्यूट",
     tokensNeeded: "जुड़ने के लिए टोकन का इंतज़ार: {names} (प्राथमिकताएँ → API टोकन)",
@@ -124,12 +150,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} se unió (solo lectura)",
     listening: "{name} ahora escucha en directo",
     listeningAll: "{name} ahora escucha en directo (todos los mensajes)",
+    listeningSystem: "{name} ahora escucha en directo (todos los mensajes + avisos del sistema)",
     reader: "{name} pasó a solo lectura",
     left: "{name} se desconectó",
     muted: "{name} fue silenciado",
     unmuted: "{name} puede volver a escribir",
     modeListener: "escuchando en directo",
     modeListenerAll: "escuchando en directo (todos los mensajes)",
+    modeListenerSystem: "escuchando en directo (todos los mensajes + avisos del sistema)",
     modeReader: "solo lectura",
     modeMuted: "silenciado",
     tokensNeeded: "Esperan un token para unirse: {names} (Preferencias → Tokens de API)",
@@ -138,12 +166,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} a rejoint (lecture seule)",
     listening: "{name} écoute maintenant en direct",
     listeningAll: "{name} écoute maintenant en direct (tous les messages)",
+    listeningSystem: "{name} écoute maintenant en direct (tous les messages + avis système)",
     reader: "{name} est passé en lecture seule",
     left: "{name} s'est déconnecté",
     muted: "{name} a été mis en sourdine",
     unmuted: "{name} peut de nouveau écrire",
     modeListener: "écoute en direct",
     modeListenerAll: "écoute en direct (tous les messages)",
+    modeListenerSystem: "écoute en direct (tous les messages + avis système)",
     modeReader: "lecture seule",
     modeMuted: "en sourdine",
     tokensNeeded: "En attente d'un jeton pour rejoindre : {names} (Préférences → Jetons d'API)",
@@ -152,12 +182,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "انضم {name} (قراءة فقط)",
     listening: "{name} يستمع الآن مباشرة",
     listeningAll: "{name} يستمع الآن مباشرة (كل الرسائل)",
+    listeningSystem: "{name} يستمع الآن مباشرة (كل الرسائل + إشعارات النظام)",
     reader: "تحوّل {name} إلى القراءة فقط",
     left: "خرج {name} من الاتصال",
     muted: "تم كتم {name}",
     unmuted: "يمكن لـ {name} الكتابة مجددًا",
     modeListener: "يستمع مباشرة",
     modeListenerAll: "يستمع مباشرة (كل الرسائل)",
+    modeListenerSystem: "يستمع مباشرة (كل الرسائل + إشعارات النظام)",
     modeReader: "قراءة فقط",
     modeMuted: "مكتوم",
     tokensNeeded: "بانتظار رمز للانضمام: {names} (التفضيلات ← رموز API)",
@@ -166,12 +198,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} যোগ দিয়েছে (শুধু পড়া)",
     listening: "{name} এখন সরাসরি শুনছে",
     listeningAll: "{name} এখন সরাসরি শুনছে (সব বার্তা)",
+    listeningSystem: "{name} এখন সরাসরি শুনছে (সব বার্তা + সিস্টেম বিজ্ঞপ্তি)",
     reader: "{name} এখন শুধু পড়ছে",
     left: "{name} অফলাইন হয়েছে",
     muted: "{name}-কে মিউট করা হয়েছে",
     unmuted: "{name} আবার লিখতে পারে",
     modeListener: "সরাসরি শুনছে",
     modeListenerAll: "সরাসরি শুনছে (সব বার্তা)",
+    modeListenerSystem: "সরাসরি শুনছে (সব বার্তা + সিস্টেম বিজ্ঞপ্তি)",
     modeReader: "শুধু পড়া",
     modeMuted: "মিউট",
     tokensNeeded: "যোগ দিতে টোকেনের অপেক্ষায়: {names} (পছন্দ → API টোকেন)",
@@ -180,12 +214,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} entrou (somente leitura)",
     listening: "{name} agora ouve ao vivo",
     listeningAll: "{name} agora ouve ao vivo (todas as mensagens)",
+    listeningSystem: "{name} agora ouve ao vivo (todas as mensagens + avisos do sistema)",
     reader: "{name} passou para somente leitura",
     left: "{name} ficou offline",
     muted: "{name} foi silenciado",
     unmuted: "{name} pode escrever de novo",
     modeListener: "ouvindo ao vivo",
     modeListenerAll: "ouvindo ao vivo (todas as mensagens)",
+    modeListenerSystem: "ouvindo ao vivo (todas as mensagens + avisos do sistema)",
     modeReader: "somente leitura",
     modeMuted: "silenciado",
     tokensNeeded: "Aguardando um token para entrar: {names} (Preferências → Tokens de API)",
@@ -194,12 +230,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} присоединился (только чтение)",
     listening: "{name} теперь слушает в реальном времени",
     listeningAll: "{name} теперь слушает в реальном времени (все сообщения)",
+    listeningSystem: "{name} теперь слушает в реальном времени (все сообщения + системные уведомления)",
     reader: "{name} перешёл в режим только чтения",
     left: "{name} отключился",
     muted: "{name}: публикация запрещена",
     unmuted: "{name} снова может писать",
     modeListener: "слушает в реальном времени",
     modeListenerAll: "слушает в реальном времени (все сообщения)",
+    modeListenerSystem: "слушает в реальном времени (все сообщения + системные уведомления)",
     modeReader: "только чтение",
     modeMuted: "без права писать",
     tokensNeeded: "Ждут токена, чтобы присоединиться: {names} (Настройки → API-токены)",
@@ -208,12 +246,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} شامل ہوا (صرف پڑھنا)",
     listening: "{name} اب براہِ راست سن رہا ہے",
     listeningAll: "{name} اب براہِ راست سن رہا ہے (تمام پیغامات)",
+    listeningSystem: "{name} اب براہِ راست سن رہا ہے (تمام پیغامات + سسٹم اطلاعات)",
     reader: "{name} اب صرف پڑھ رہا ہے",
     left: "{name} آف لائن ہو گیا",
     muted: "{name} کو خاموش کر دیا گیا",
     unmuted: "{name} دوبارہ لکھ سکتا ہے",
     modeListener: "براہِ راست سن رہا ہے",
     modeListenerAll: "براہِ راست سن رہا ہے (تمام پیغامات)",
+    modeListenerSystem: "براہِ راست سن رہا ہے (تمام پیغامات + سسٹم اطلاعات)",
     modeReader: "صرف پڑھنا",
     modeMuted: "خاموش",
     tokensNeeded: "شامل ہونے کے لیے ٹوکن کا انتظار: {names} (ترجیحات ← API ٹوکن)",
@@ -222,12 +262,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} bergabung (hanya baca)",
     listening: "{name} kini mendengarkan langsung",
     listeningAll: "{name} kini mendengarkan langsung (semua pesan)",
+    listeningSystem: "{name} kini mendengarkan langsung (semua pesan + notifikasi sistem)",
     reader: "{name} beralih ke hanya baca",
     left: "{name} sedang offline",
     muted: "{name} dibisukan",
     unmuted: "{name} boleh menulis lagi",
     modeListener: "mendengarkan langsung",
     modeListenerAll: "mendengarkan langsung (semua pesan)",
+    modeListenerSystem: "mendengarkan langsung (semua pesan + notifikasi sistem)",
     modeReader: "hanya baca",
     modeMuted: "dibisukan",
     tokensNeeded: "Menunggu token untuk bergabung: {names} (Preferensi → Token API)",
@@ -236,12 +278,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} ist beigetreten (nur lesen)",
     listening: "{name} hört jetzt live mit",
     listeningAll: "{name} hört jetzt live mit (alle Nachrichten)",
+    listeningSystem: "{name} hört jetzt live mit (alle Nachrichten + Systemhinweise)",
     reader: "{name} liest jetzt nur noch",
     left: "{name} ist offline",
     muted: "{name} wurde stummgeschaltet",
     unmuted: "{name} darf wieder schreiben",
     modeListener: "hört live mit",
     modeListenerAll: "hört live mit (alle Nachrichten)",
+    modeListenerSystem: "hört live mit (alle Nachrichten + Systemhinweise)",
     modeReader: "nur lesen",
     modeMuted: "stummgeschaltet",
     tokensNeeded: "Warten auf ein Token zum Beitreten: {names} (Einstellungen → API-Tokens)",
@@ -250,12 +294,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} が参加しました（閲覧のみ）",
     listening: "{name} がリアルタイムで聞き始めました",
     listeningAll: "{name} がリアルタイムで聞き始めました（全メッセージ）",
+    listeningSystem: "{name} がリアルタイムで聞き始めました（全メッセージ＋システム通知）",
     reader: "{name} は閲覧のみになりました",
     left: "{name} がオフラインになりました",
     muted: "{name} は発言できなくなりました",
     unmuted: "{name} は再び発言できます",
     modeListener: "リアルタイムで聞いている",
     modeListenerAll: "リアルタイムで聞いている（全メッセージ）",
+    modeListenerSystem: "リアルタイムで聞いている（全メッセージ＋システム通知）",
     modeReader: "閲覧のみ",
     modeMuted: "発言停止中",
     tokensNeeded: "参加にトークンが必要です：{names}（設定 → API トークン）",
@@ -264,12 +310,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} amejiunga (kusoma tu)",
     listening: "{name} sasa anasikiliza moja kwa moja",
     listeningAll: "{name} sasa anasikiliza moja kwa moja (ujumbe wote)",
+    listeningSystem: "{name} sasa anasikiliza moja kwa moja (ujumbe wote + arifa za mfumo)",
     reader: "{name} amehamia kusoma tu",
     left: "{name} ametoka mtandaoni",
     muted: "{name} amenyamazishwa",
     unmuted: "{name} anaweza kuandika tena",
     modeListener: "anasikiliza moja kwa moja",
     modeListenerAll: "anasikiliza moja kwa moja (ujumbe wote)",
+    modeListenerSystem: "anasikiliza moja kwa moja (ujumbe wote + arifa za mfumo)",
     modeReader: "kusoma tu",
     modeMuted: "amenyamazishwa",
     tokensNeeded: "Wanasubiri tokeni ili kujiunga: {names} (Mapendeleo → Tokeni za API)",
@@ -278,12 +326,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} सामील झाला (फक्त वाचन)",
     listening: "{name} आता थेट ऐकत आहे",
     listeningAll: "{name} आता थेट ऐकत आहे (सर्व संदेश)",
+    listeningSystem: "{name} आता थेट ऐकत आहे (सर्व संदेश + सिस्टम सूचना)",
     reader: "{name} आता फक्त वाचत आहे",
     left: "{name} ऑफलाइन झाला",
     muted: "{name} ला म्यूट केले",
     unmuted: "{name} पुन्हा लिहू शकतो",
     modeListener: "थेट ऐकत आहे",
     modeListenerAll: "थेट ऐकत आहे (सर्व संदेश)",
+    modeListenerSystem: "थेट ऐकत आहे (सर्व संदेश + सिस्टम सूचना)",
     modeReader: "फक्त वाचन",
     modeMuted: "म्यूट",
     tokensNeeded: "सामील होण्यासाठी टोकनची वाट: {names} (प्राधान्ये → API टोकन)",
@@ -292,12 +342,14 @@ export const LANE_EVENT_STRINGS: Record<ChatLocale, LaneEventStrings> = {
     joined: "{name} 님이 참여했습니다(읽기 전용)",
     listening: "{name} 님이 실시간으로 듣기 시작했습니다",
     listeningAll: "{name} 님이 실시간으로 듣기 시작했습니다(모든 메시지)",
+    listeningSystem: "{name} 님이 실시간으로 듣기 시작했습니다(모든 메시지 + 시스템 알림)",
     reader: "{name} 님이 읽기 전용으로 바뀌었습니다",
     left: "{name} 님이 오프라인이 되었습니다",
     muted: "{name} 님의 발언이 중지되었습니다",
     unmuted: "{name} 님이 다시 발언할 수 있습니다",
     modeListener: "실시간 듣는 중",
     modeListenerAll: "실시간 듣는 중(모든 메시지)",
+    modeListenerSystem: "실시간 듣는 중(모든 메시지 + 시스템 알림)",
     modeReader: "읽기 전용",
     modeMuted: "발언 중지됨",
     tokensNeeded: "참여하려면 토큰이 필요합니다: {names}(환경설정 → API 토큰)",
@@ -326,7 +378,12 @@ export function laneModeWord(
 ): string | null {
   const t = table(locale);
   if (p.muted === true) return t.modeMuted;
-  if (p.mode === "listener") return p.scope === "all" ? t.modeListenerAll : t.modeListener;
+  if (p.mode === "listener")
+    return p.scope === "system"
+      ? t.modeListenerSystem
+      : p.scope === "all"
+        ? t.modeListenerAll
+        : t.modeListener;
   if (p.mode === "reader") return t.modeReader;
   return null;
 }

@@ -916,6 +916,12 @@ describe("chat (your own thread, with a chat token)", () => {
     for (const [args, want] of [
       [["--everyone"], { type: "auth", token: TOKEN, mode: "listener", scope: "all" }],
       [["--everyone", "--reader"], { type: "auth", token: TOKEN, mode: "reader" }],
+      // Tier ⓪: the system notices too (owner, 2026-11-16 02:16 JST).
+      [
+        ["--everyone", "--system"],
+        { type: "auth", token: TOKEN, mode: "listener", scope: "system" },
+      ],
+      [["--system", "--reader"], { type: "auth", token: TOKEN, mode: "reader" }],
     ] as const) {
       const h = harness({ env });
       const sent: any[] = [];

@@ -199,13 +199,16 @@ Its log is one JSON line per state edge, read, report and clear (redacted).
 Tests: `unit/stall-watch.test.ts` (the matcher on real Claude/Codex screens,
 redaction, the node, the state machine).
 
-## Five tiers (owner, 2026-11-15 15:1x JST; 15:44 JST changes)
+## Six tiers (owner, 2026-11-15 15:1x JST; 15:44 JST changes; tier ⓪ 2026-11-16 02:16 JST)
 
-How much of his chat a participant hears, from most to least:
+How much of his chat a participant hears, from most to least. Tier ⓪ was
+added on top (owner, 2026-11-16 02:16 JST: "再多一层监听，一共是 6 层监听，最上面
+那一层会包括各种系统通知"): the system notices moved from ① up to ⓪.
 
 | tier | who                             | hears                                                                                             | how                                                                                            | presence / system line                                               |
 | ---- | ------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| ①    | live, all messages (小克, coco) | his lines, every agent's lines, the system lines; never its own                                   | `lanes.agents` `scope: "all"` → `lane-listen --all --everyone`                                 | filled red dot, "实时监听（全部消息）"; "X 开始实时监听（全部消息）" |
+| ⓪    | live, everything (小克)         | tier ①'s lines and the system lines (lane join/leave/live/read-only, state-tree hub lines and ETA receipts, spend alerts) | `lanes.agents` `scope: "system"` → `lane-listen --all --everyone --system`                    | filled red dot, "实时监听（全部消息 + 系统通知）"; "X 开始实时监听（全部消息 + 系统通知）" |
+| ①    | live, all messages (coco)       | his lines and every agent's lines, NO system lines; never its own                                 | `lanes.agents` `scope: "all"` → `lane-listen --all --everyone`                                 | filled red dot, "实时监听（全部消息）"; "X 开始实时监听（全部消息）" |
 | ②    | live, his lines (杰咪, mimiai)  | his lines only (today's "listener"); a voiceprint "unknown" line not ("未定不送")                 | `lanes.agents` `resident: true` (scope `owner`) → `lane-listen --all`                          | red ring dot, "实时监听"; "X 开始实时监听"                           |
 | ③    | reader                          | the thread when it reads; woken when he names it, then his lines live for `lanes.wakeLiveMin` min | any other joined agent: the manager's `ay send` on a name, alias, `@<lane>`, `#<repo>` or 全体 | "只读"; "X 入群（只读）"                                             |
 | ④    | Li                              | everything (the main lane, always a listener)                                                     | the hub's own main lane                                                                        | —                                                                    |
@@ -213,7 +216,7 @@ How much of his chat a participant hears, from most to least:
 
 The voiceprint gate (`voiceAllowed`, lane-listen-lib.ts): a spoken line decided
 "other" goes to no lane. One decided "unknown" (a short or soft sentence) goes
-to tier ① only, marked `（声纹未定）` (`LANE_LISTEN_VOICES=me` drops it there
+to tiers ⓪ and ① only, marked `（声纹未定）` (`LANE_LISTEN_VOICES=me` drops it there
 too); tier ② gets only "me" and typed lines (owner, 2026-11-15 15:44 JST "未定不送").
 Config `lanes.forwardUnknownVoice` (default false; on the Mac env
 `LIANKI_LANES_FORWARD_UNKNOWN_VOICE=true`) sends "unknown" to tier ② again.
@@ -229,17 +232,20 @@ so the presence stack shows it with no hub change. A line he says in the
 second or two the new listener takes to connect arrives as history and is
 not handed over.
 
-Tier ① in detail:
+Tiers ⓪ and ① in detail:
 
-- `lane-listen --everyone` also hands over agent lines, marked `【agent · coco】…`
-  (the sender's shown name), and system lines (the hub's lane events, the
-  lanes manager's line, a state-tree line for another lane), marked `【系统】…`.
+- `lane-listen --everyone` (tier ①) also hands over agent lines, marked
+  `【agent · coco】…` (the sender's shown name). `--system` (tier ⓪, implies
+  `--everyone`) adds the system lines (the hub's lane events, the lanes
+  manager's line, a state-tree line for another lane, the spend alerts),
+  marked `【系统】…`; without it they are dropped (`listenerTakes`). A
+  state-tree nudge addressed to the lane itself reaches every tier.
   Never the lane's own lines, nor a system line about itself (its own echo).
   Their mark is the whole note: they are FYI by
   definition, never answered, never urgent (no `alt-m`), never `点名你`, even
   when they name the lane. Chunks stay under 800 characters as before.
 - `--skip-owner` leaves out his lines: the manager adds it for a `scope: "all"`
-  row with `wake: false` (小克, `lane: "claude"`, which keeps its own feed of
+  or `"system"` row with `wake: false` (小克, `lane: "claude"`, which keeps its own feed of
   his lines), so nothing reaches it twice. `--as claude` listens as the route
   lane `chat` (`routeKey`) with the `claude` token.
 - `answerUnnamed: true` on a row (coco, 杰咪; owner 2026-11-15 22:55 JST) adds
@@ -247,12 +253,18 @@ Tier ① in detail:
   answered briefly when they concern its project (the skill says so), the
   first message carries `ANSWER_UNNAMED_RULE`, and its greeting is
   `lanes.greetingAnswerUnnamed`. Lines naming another lane stay unanswered.
-- `scope: "all"` makes a row live even without `resident`. The listener's
-  `lianki chat listen --everyone` sends auth `scope: "all"`; the hub keeps it
-  on the socket and the registry row (`LaneReg.scope`), the presence list
-  carries `scope: "all"`, and the line says "（全部消息）". A reconnect with the
-  same scope says nothing; a change of scope says the new line. An older
-  client (no `scope`) is "owner"; a reader's `scope` is ignored.
+- `scope: "all"` / `"system"` makes a row live even without `resident`. The
+  listener's `lianki chat listen --everyone` sends auth `scope: "all"`, with
+  `--system` `scope: "system"`; the hub keeps it on the socket and the
+  registry row (`LaneReg.scope`), the presence list carries it, and the line
+  says "（全部消息）" / "（全部消息 + 系统通知）". A lane's scope is the widest of
+  its live sockets (system > all > owner). A reconnect with the same scope
+  says nothing; a widening says the new line; a narrowing is graced
+  (`scopeDownAt`, `scopeDownTo`) and silent. An older client (no `scope`) or
+  an older hub (no "system") is "owner"; a reader's `scope` is ignored.
+- A reader named by him (tier ③ → live for `lanes.wakeLiveMin`) gets a
+  `scope: "system"` listener for the window (owner, 2026-11-15 23:11 JST:
+  everything, agents' and system lines too).
 
 ## Every agent joins (全员入群, owner 2026-11-15)
 
@@ -336,16 +348,17 @@ decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
    the chat as one line, with its own token (`lanes.token`, name `lanes`,
    `LIANKI_LANES_MANAGER_LANE`), again only when the list changes.
 5. Resident lanes get `lane-listen --as <lane> --cwd <cwd> --all` (not when
-   one already runs, e.g. under oxmgr), `scope: "all"` rows also `--everyone`
-   (and `--skip-owner` with `wake: false`); stopped when the agent exits.
+   one already runs, e.g. under oxmgr), `scope: "all"` rows also `--everyone`,
+   `scope: "system"` rows `--everyone --system` (and `--skip-owner` with
+   `wake: false`); stopped when the agent exits.
    Readers get no process: the manager's own reader socket (`lianki chat
 listen --json --reader`) hears his lines, and a line that names a reader
    (its lane name, a `chat.lanes` alias, `#<repo>`, or 全体) goes to that
    agent with `ay send <pid> --force --no-wait --code alt-m`.
    A `lanes.agents` row with `wake: false` joins (greets, marked left) but is
    never woken: 小克 (`lianki/tree/agy`, cli `claude`, lane `claude`) keeps
-   its own live feed of his lines, and with `scope: "all"` its listener
-   brings it everything else (tier ①).
+   its own live feed of his lines, and with `scope: "system"` its listener
+   brings it everything else, the system notices included (tier ⓪).
 6. Each new lane greets once with its own token (`lanes.greeting`;
    `manager-state.json` beside the tokens remembers who did); an agent that
    exits is marked left (op `lane`).
