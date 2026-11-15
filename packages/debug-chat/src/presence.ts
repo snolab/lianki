@@ -116,12 +116,18 @@ export type PartRecord = {
   revoked?: true;
 };
 
+const known = (name: string): LaneId | null => laneOf({ text: `【${name}】` }).lane;
+
 /** The name and avatar in effect for a token record. */
 export function effective(r: PartRecord): Pick<Present, "name" | "avatar" | "nameBy" | "avatarBy" | "selfName"> {
   const avatar =
     r.ownerAvatar === "auto" ? undefined : (r.ownerAvatar ?? r.self);
+  // A built-in lane's token (claude, agy, codex…) shows the lane's own name (小克,
+  // 杰咪, coco), not the token's (owner, 2026-11-16 00:41 JST: "小克还叫 claude").
+  const lane = r.lane ? known(r.lane) : null;
+  const laneName = lane ? laneSpec(lane).name : "";
   return {
-    name: r.ownerName || r.lane,
+    name: r.ownerName || laneName || r.lane,
     ...(r.ownerName ? { nameBy: "owner" as const, selfName: r.lane } : {}),
     ...(avatar ? { avatar } : {}),
     ...(r.ownerAvatar
@@ -132,7 +138,6 @@ export function effective(r: PartRecord): Pick<Present, "name" | "avatar" | "nam
   };
 }
 
-const known = (name: string): LaneId | null => laneOf({ text: `【${name}】` }).lane;
 
 /** A line's participant key (the same as its token's, when it has one). */
 export function lineKey(m: ChatMessage): string | null {
