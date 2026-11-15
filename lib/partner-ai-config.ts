@@ -17,8 +17,8 @@ export const PARTNER_AI_FLAG = "partner.ai-reply";
 export const PARTNER_OWNER_FLAG = "partner.owner-thread";
 /** The live value's key (lib/config.ts) for how long the lanes have before the model answers. */
 export const OWNER_REPLY_DELAY_KEY = "partner.ownerReplyDelayMs";
-/** Its default: 8 s for a lane to answer first. */
-export const OWNER_REPLY_DELAY_MS = 8000;
+/** Its default: 30 s for a lane to answer first (2026-11-15: lanes take 20–40 s; at 8 s Li cut in while 小克 typed). */
+export const OWNER_REPLY_DELAY_MS = 30_000;
 export const OWNER_REPLY_DELAY_MAX = 120_000;
 
 /**

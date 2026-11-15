@@ -73,7 +73,8 @@ the owner's chat in `debug.ts`) lets the model answer a line of his when:
   and carries no node address (`to`);
 - its voiceprint did not decide another voice (`speaker.decision !== "other"`);
 - **no lane answered first**: the reply waits config `partner.ownerReplyDelayMs`
-  (default 8,000 ms, /dev/config) and is skipped when any agent line reached his
+  (default 30,000 ms, /dev/config; was 8 s until 2026-11-15, when Li
+  cut in while a lane was still typing) and is skipped when any agent line reached his
   thread meanwhile. A newer line of his replaces the pending one (one reply, for
   the newest); a line to a lane cancels it. The usual takeover rule still holds
   while the model works.

@@ -1001,7 +1001,7 @@ export const CONFIG = {
     group: "chat",
     audience: "server",
     description:
-      "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 8000 = 8 秒。开关在 /dev/flags 的 partner.owner-thread。",
+      "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 30000 = 30 秒。开关在 /dev/flags 的 partner.owner-thread。",
   }),
   // The Learning Partner AI's caps (docs/partner-ai.md, "Caps"): read by the
   // debug hub over DebugSessions.config.

@@ -9,7 +9,7 @@
  * ("me"); an "other" or "unknown" voice gets no reply (2026-11-15 04:05 JST:
  * Li answered ambient speech marked unknown). A typed line has no speaker tag
  * and qualifies. The reply waits
- * `partner.ownerReplyDelayMs` (default 8 s) and is skipped when an agent line
+ * `partner.ownerReplyDelayMs` (default 30 s) and is skipped when an agent line
  * arrived in his thread meanwhile: the lanes keep priority, Li fills the
  * silence. One pending reply at a time; any newer line of his replaces it.
  */

@@ -499,7 +499,7 @@ describe("Li in the owner's thread: the main Worker", () => {
   });
   const balance = (id: string) => getBalance(d1 as unknown as D1WithBatch, id);
 
-  it("the flag and its config are registered: on by default, owner-only, 8 s", () => {
+  it("the flag and its config are registered: on by default, owner-only, 30 s", () => {
     expect(FLAGS[PARTNER_OWNER_FLAG as keyof typeof FLAGS]).toMatchObject({
       default: true,
       audience: "owner",
