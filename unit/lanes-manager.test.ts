@@ -644,9 +644,9 @@ describe("the loop (createManager), every effect mocked", () => {
     expect(await s.m.line(l("a1", "rechrome-main，看看 #946"))).toEqual([71565]);
     expect(await s.m.line(l("a1", "rechrome-main，看看 #946"))).toEqual([]);
     expect(await s.m.line(l("a2", "#rechrome 再看一下"))).toEqual([71565]);
-    expect(s.calls.wake[0]![1]).toContain("规则只读这一次");
-    expect(s.calls.wake[1]![1]).not.toContain("规则只读这一次");
-    expect(s.calls.wake[0]![1]).toContain("@你");
+    expect(s.calls.wake[0]![1]).toContain("规则读一次");
+    expect(s.calls.wake[1]![1]).not.toContain("规则读一次");
+    expect(s.calls.wake[0]![1]).toContain(" 点名你 ");
     // History, junk, a reader without a token: nothing.
     expect(await s.m.line(l("a3", "#rechrome x", { history: true }))).toEqual([]);
     expect(await s.m.line("not json")).toEqual([]);

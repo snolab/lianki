@@ -226,14 +226,14 @@ export const ownerAt = (at?: string) => {
  * The rule every lane hears (owner, 2026-11-15 15:0x JST: "我在 @ 你的时候，这些只读
  * AI（包括 mimiai）不要乱回复"): answer only a line that names you or 全体.
  */
-export const NO_CROSS_RULE = "只回答点名我或「全体」的话；被点名的是别人时不插话、不代答、不追问。";
+export const NO_CROSS_RULE = "只答「点名你」「全体」；点名别人的不插话、不代答。";
 /**
  * The rule of a lane that may answer unnamed lines (lanes.agents answerUnnamed; owner,
  * 2026-11-15 22:55 JST: "@coco 和杰咪都应该回复我，哪怕是没点名的信息，只要他们觉得他们有回答的想法就可以来回答"):
  * a line naming another lane is still never answered.
  */
 export const ANSWER_UNNAMED_RULE =
-  "点名你或「全体」的必答；未点名的看相关性：和你的项目或职责有关就简短答（1–3 句），无关不回；被点名的是别人时不插话、不代答、不追问。";
+  "「点名你」「全体」必答；「未点名」与你的项目有关才简短答；点名别人的不插话。";
 
 /** How a lane treats his lines that name nobody: listen only (default), or answer briefly when it has something to say. */
 export type UnnamedOpts = { answerUnnamed?: boolean };
@@ -242,109 +242,70 @@ export type UnnamedOpts = { answerUnnamed?: boolean };
 export function addressee(
   lane: RouteLane,
   text: string,
-): { to: "mine" } | { to: "other"; names: string[] } | { to: "none" } {
+): { to: "mine"; all: boolean } | { to: "other"; names: string[] } | { to: "none" } {
   const r = routeLine(text);
   if (!r.addressed) return { to: "none" };
-  if (r.all || r.lanes.includes(routeKey(lane))) return { to: "mine" };
+  if (r.all) return { to: "mine", all: true };
+  if (r.lanes.includes(routeKey(lane))) return { to: "mine", all: false };
   return { to: "other", names: r.lanes.map((x) => laneSpec(laneOfRoute(x)).name || x) };
 }
 
-/** The marker in front of a line he addressed to another lane by name. */
-export const otherMark = (names: readonly string[]) => `【FYI · 点名 ${names.join("、")}，不是你】`;
-/** Once per batch that holds such a line: what to do with it. */
-export const OTHER_NOTE = "点名别人的：不要回答、不要代做；只在点名你或 全体 时回复。";
-/** Once per batch that holds a line with no name (a listen-to-all lane). */
-export const NONE_NOTE = "未点名：只听，不回。";
-/** The same, for a lane that may answer unnamed lines (answerUnnamed). */
-export const ANSWER_UNNAMED_NOTE =
-  "未点名：和你的项目或职责有关就简短答（1–3 句），无关不回；点名你的必答。";
-/** The note for a line with no name, as this lane treats them. */
-export const unnamedNote = (o: UnnamedOpts = {}) =>
-  o.answerUnnamed ? ANSWER_UNNAMED_NOTE : NONE_NOTE;
-/** Once per batch that holds an agent's or a system line (--everyone): they are FYI, never his asks. */
-export const FYI_NOTE = "agent/系统消息仅供了解：不要回答、不要代做；只在他点名你或 全体 时回复。";
+/**
+ * The marks in front of a line (owner, 2026-11-15 23:13 JST: "每次从监听器转给 agent 的
+ * token 不要消耗太多……回答规则之类的，可以作为 SKILL 加载"): one short token each; what
+ * each means and what to do with it is in HANDOFF_SKILL, read once.
+ */
+export const MINE_MARK = "点名你";
+export const ALL_MARK = "全体";
+export const NONE_MARK = "未点名";
+export const TEST_MARK = "测试";
+export const STATE_TREE_MARK = "状态树";
+/** After the mark of a spoken line the voiceprint could not decide. */
+export const UNSURE_MARK = "（声纹未定）";
+/** The mark of a line he addressed to another lane by name. */
+export const otherMark = (names: readonly string[]) => `点名${names.join("、")}（不是你）`;
 /** How an agent line and a system line are marked in a hand-off. */
 export const agentMark = (name?: string) => `【agent · ${name || "?"}】`;
 export const SYSTEM_MARK = "【系统】";
+/** Once per batch that holds a state-tree line for this lane: where to answer it. */
+export const STATE_TREE_NOTE = "状态树：在节点上用 scripts/dev/progress.ts 报告。";
 
-/** What the lane's agent is handed: his words, and how to answer as itself. */
-export function handoff(lane: RouteLane, l: Line, repo: string, o: UnnamedOpts = {}): string {
-  if (l.etaLane === lane)
-    return [
-      `【state tree → ${lane}】(${ownerAt(l.at)}, automatic) ${l.text}`,
-      "",
-      'The state tree\'s hub sent this to your lane (docs/state-tree.md, "Blocked and paused", "Receipts"). Act on it; report on the node with bun scripts/dev/progress.ts, or answer in Li with:',
-      `  bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} say --repo ${repo} --as ${lane} "<your reply>"`,
-    ].join("\n");
-  if (l.kind)
-    return [
-      `${l.kind === "agent" ? agentMark(l.sender) : SYSTEM_MARK}(${ownerAt(l.at)}, Li chat) ${l.text}`,
-      "",
-      `${FYI_NOTE} You hear every line in his chat (lane-listen --everyone); this one is not his.`,
-    ].join("\n");
-  const test = testText(l);
-  const words = test ?? l.text;
-  const said = addressee(lane, words);
-  const reply = `bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} say --repo ${repo} --as ${lane} "<your reply>"`;
-  return [
-    test === null
-      ? `【owner → ${lane}】(${ownerAt(l.at)}, Li chat) ${words}`
-      : `【lane-test → ${lane}】(${ownerAt(l.at)}) ${words}`,
-    "",
-    test !== null
-      ? 'This is a routing TEST, not the owner. Answer once, starting "[lane-test] ", one short line, so the test sees you heard it:'
-      : said.to === "mine"
-        ? `He addressed this to you by name; only you got it, the other lanes stay silent. Answer once, yourself, short, in his language${routeLine(words).text ? "" : " (he only said your name: ask what he needs)"}:`
-        : said.to === "other"
-          ? `${otherMark(said.names)} He addressed this to another lane by name: do not answer, do not do it for them, do not follow up. ${OTHER_NOTE} Only if he names you or 全体 later:`
-          : o.answerUnnamed
-            ? `${ANSWER_UNNAMED_NOTE} Not addressed to anyone by name (you listen to all his lines): if you have something useful to say, answer once, briefly (1–3 sentences), in his language; otherwise stay silent:`
-            : `${NONE_NOTE} Heard, not addressed to you by name (you listen to all his lines): keep it as context and stay silent; another lane answers. Only if he names you or 全体:`,
-    `  ${reply}`,
-    "It posts as your lane (your name, mark and voice) with your own lane token; never read or print the token. Do not hand this to another lane.",
-  ].join("\n");
+/** The one mark of a line, as `lane` sees it. */
+export function lineMark(lane: RouteLane, l: Line): string {
+  if (l.etaLane === lane) return STATE_TREE_MARK;
+  if (l.kind === "agent") return agentMark(l.sender);
+  if (l.kind === "system") return SYSTEM_MARK;
+  if (testText(l) !== null) return TEST_MARK;
+  const to = addressee(lane, l.text);
+  const mark =
+    to.to === "mine"
+      ? to.all
+        ? ALL_MARK
+        : MINE_MARK
+      : to.to === "other"
+        ? otherMark(to.names)
+        : NONE_MARK;
+  return l.voice === "unknown" ? `${mark}${UNSURE_MARK}` : mark;
 }
 
 /** The skill every lane's agent reads once; after that the hand-offs stay short. */
 export const HANDOFF_SKILL = ".agents/skills/lane-listen/SKILL.md";
 
-/**
- * One owner line as a bullet of a brief hand-off: the id to answer with, "@你"
- * when he said this lane's name (lane-route.ts), then his words (owner,
- * 2026-11-14: every short line used to arrive as its own long message with the
- * whole instruction block; the instructions now live in HANDOFF_SKILL).
- */
+/** One line as a bullet of a hand-off: `- <id> <mark> <text>`. */
 export function briefBullet(lane: RouteLane, l: Line): string {
-  if (l.etaLane === lane) return `- (state tree) ${l.text}`;
-  if (l.kind === "agent") return `- (id:${l.id}) ${agentMark(l.sender)}${l.text}`;
-  if (l.kind === "system") return `- (id:${l.id}) ${SYSTEM_MARK}${l.text}`;
-  const test = testText(l);
-  if (test !== null) return `- (id:${l.id}) [lane-test] ${test}`;
-  const to = addressee(lane, l.text);
-  const mark = to.to === "mine" ? " @你" : to.to === "other" ? ` ${otherMark(to.names)}` : "";
-  const unsure = l.voice === "unknown" ? "（声纹未定）" : "";
-  return `- (id:${l.id})${mark}${unsure} ${l.text}`;
+  return `- ${l.id} ${lineMark(lane, l)} ${testText(l) ?? l.text}`;
 }
 
-/** The notes a batch carries once each: OTHER_NOTE when a line names another lane, unnamedNote when one names nobody. */
-export function batchNotes(lane: RouteLane, lines: readonly Line[], o: UnnamedOpts = {}): string[] {
-  const kinds = new Set(
-    lines
-      .filter((l) => l.etaLane !== lane && !l.kind && testText(l) === null)
-      .map((l) => addressee(lane, l.text).to),
-  );
-  return [
-    ...(kinds.has("other") ? [OTHER_NOTE] : []),
-    ...(kinds.has("none") ? [unnamedNote(o)] : []),
-    ...(lines.some((l) => l.kind && l.etaLane !== lane) ? [FYI_NOTE] : []),
-  ];
+/** The notes a batch carries once each: only STATE_TREE_NOTE, when it holds a state-tree line for this lane. */
+export function batchNotes(lane: RouteLane, lines: readonly Line[]): string[] {
+  return lines.some((l) => l.etaLane === lane) ? [STATE_TREE_NOTE] : [];
 }
 
 /**
- * A brief hand-off for one or more lines (several when the agent was busy and
- * they waited): a header with the lane and the newest line's time, one bullet
- * per line, and — only the first time in this listener's life — where the
- * rules are. ~2 lines per message instead of ~8.
+ * A hand-off for one or more lines (several when the agent was busy and they
+ * waited): a header with the lane and the newest line's time, one bullet per
+ * line, and — only the first time in this listener's life — the rule and
+ * where the rules are (firstLines).
  */
 export function handoffBrief(
   lane: RouteLane,
@@ -355,20 +316,28 @@ export function handoffBrief(
 ): string {
   const at = ownerAt(lines.at(-1)?.at);
   // Only agents' and system lines (--everyone): not his words, so not "owner →".
-  const from = lines.some((l) => !l.kind) ? "owner" : "chat";
+  const from = lines.some((l) => !l.kind && l.etaLane !== lane)
+    ? "owner"
+    : lines.every((l) => l.etaLane === lane)
+      ? "state tree"
+      : "chat";
   const out = [
     `【${from} → ${lane}】${at}`,
-    ...batchNotes(lane, lines, o),
     ...lines.map((l) => briefBullet(lane, l)),
+    ...batchNotes(lane, lines),
   ];
   if (first) out.push(...firstLines(lane, repo, o));
   return out.join("\n");
 }
 
-/** What only the first message of a listener's (or a woken reader's) life carries: the rule, and where the rules are. */
+/** One line as its own hand-off (the same short form as a batch of one). */
+export const handoff = (lane: RouteLane, l: Line, repo: string, o: UnnamedOpts = {}) =>
+  handoffBrief(lane, [l], repo, false, o);
+
+/** What only the first message of a listener's (or a woken reader's) life carries: the rule, and the skill path + reply command. */
 export const firstLines = (lane: RouteLane, repo: string, o: UnnamedOpts = {}) => [
   o.answerUnnamed ? ANSWER_UNNAMED_RULE : NO_CROSS_RULE,
-  `规则只读这一次：${join(repo, HANDOFF_SKILL)}（回复：bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} reply --as ${lane} --id <id> "…"）`,
+  `规则读一次：${join(repo, HANDOFF_SKILL)}；回复：bun ${join(repo, "scripts", "dev", "lianki-dev.ts")} reply --as ${lane} --id <id> "…"`,
 ];
 
 /** How often a busy agent is looked at while lines wait for it. */
@@ -393,18 +362,17 @@ export const urgentLine = (lane: RouteLane, l: Line) => {
 };
 /** The body `ay send` still accepts: its own 1024 limit minus its ~150-char wrapper, with room for the header and the skill line. */
 export const SEND_MAX_CHARS = 800;
-/** A batch cut into parts whose bullets (and their batch notes) stay under SEND_MAX_CHARS; one bullet too long on its own is cut with "…". */
+/** A batch cut into parts whose bullets (and their batch note) stay under SEND_MAX_CHARS (`_o` is kept for callers; the text no longer depends on it); one bullet too long on its own is cut with "…". */
 export function chunkLines(
   lane: RouteLane,
   lines: readonly Line[],
   max = SEND_MAX_CHARS,
-  o: UnnamedOpts = {},
+  _o: UnnamedOpts = {},
 ): Line[][] {
   const parts: Line[][] = [];
   let cur: Line[] = [];
   let size = 0;
-  const notes = (ls: readonly Line[]) =>
-    batchNotes(lane, ls, o).reduce((n, x) => n + x.length + 1, 0);
+  const notes = (ls: readonly Line[]) => batchNotes(lane, ls).reduce((n, x) => n + x.length + 1, 0);
   for (const l of lines) {
     let line = l;
     const room = max - notes([l]);

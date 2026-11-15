@@ -89,13 +89,16 @@ name, mark and voice (docs/lianki-dev-cli.md, "`lianki chat`"). The lane never
 sees the token.
 
 Only the lane he names answers (owner, 2026-11-15 15:0x JST: "我在 @ 你的时候，
-这些只读 AI（包括 mimiai）不要乱回复"). A `--all` listener also hears lines named
-to another lane: each such bullet starts `【FYI · 点名 小克，不是你】` and the
-batch carries "点名别人的：不要回答、不要代做；只在点名你或 全体 时回复。"; a line
-with no name gets "未点名：只听，不回。" once per batch. The first message of a
-listener's (or a woken reader's) life adds the rule line
-(`NO_CROSS_RULE`), and `lanes.greeting` ends with it, so every joining agent
-says it aloud.
+这些只读 AI（包括 mimiai）不要乱回复"). Each line goes as one bullet,
+`- <id> <mark> <text>`, the mark one short token: `点名你`, `全体`, `未点名`,
+`点名X（不是你）`, `【agent · X】`, `【系统】`, `测试`, `状态树`. No rule prose and no
+reply command per message (owner, 2026-11-15 23:13 JST: "回答规则之类的，可以作为
+SKILL 加载……不需要每个消息都重复一遍"): what each mark means is defined once in
+`.agents/skills/lane-listen/SKILL.md`. The first message of a listener's (or a
+woken reader's) life adds two lines: the rule (`NO_CROSS_RULE`, or
+`ANSWER_UNNAMED_RULE`) and the skill path with the reply command. A batch with a
+state-tree line carries `STATE_TREE_NOTE` once. `lanes.greeting` ends with the
+rule, so every joining agent says it aloud.
 
 It reconnects with backoff when the socket drops, and stops (exit 2) when the
 token is refused: revoked or expired. `--dry-run` prints the hand-offs instead
@@ -232,16 +235,16 @@ Tier ① in detail:
   (the sender's shown name), and system lines (the hub's lane events, the
   lanes manager's line, a state-tree line for another lane), marked `【系统】…`.
   Never the lane's own lines, nor a system line about itself (its own echo).
-  A batch holding any of them carries `FYI_NOTE` once: they are FYI by
-  definition, never answered, never urgent (no `alt-m`), never `@你`, even
+  Their mark is the whole note: they are FYI by
+  definition, never answered, never urgent (no `alt-m`), never `点名你`, even
   when they name the lane. Chunks stay under 800 characters as before.
 - `--skip-owner` leaves out his lines: the manager adds it for a `scope: "all"`
   row with `wake: false` (小克, `lane: "claude"`, which keeps its own feed of
   his lines), so nothing reaches it twice. `--as claude` listens as the route
   lane `chat` (`routeKey`) with the `claude` token.
 - `answerUnnamed: true` on a row (coco, 杰咪; owner 2026-11-15 22:55 JST) adds
-  `--answer-unnamed`: his lines that name nobody come under `ANSWER_UNNAMED_NOTE`
-  (answer briefly when it has something to say) instead of `NONE_NOTE`, the
+  `--answer-unnamed`: his lines that name nobody (`未点名`) may be
+  answered briefly when they concern its project (the skill says so), the
   first message carries `ANSWER_UNNAMED_RULE`, and its greeting is
   `lanes.greetingAnswerUnnamed`. Lines naming another lane stay unanswered.
 - `scope: "all"` makes a row live even without `resident`. The listener's
