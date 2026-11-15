@@ -1453,7 +1453,15 @@ and the unit tests are in `unit/chat-fold.test.ts` and `unit/anchor.test.ts`.
 - **The grip** (owner, 2026-11-07 20:34 JST: the handle did not look
   draggable). The mark is a six-dot vertical grip (its own SVG, `GripDots`),
   `cursor: grab`, `grabbing` while held, labelled `dragGrip` (16 locales,
-  with context). Its 44 px touch area, place and gestures are unchanged.
+  with context). Its 44 px touch area and place are unchanged. A primary mouse
+  press drags immediately; right-click opens the existing menu anchored beside
+  the grip. A touch/pen hold (config `chat.gripHoldMs`, default 500 ms) opens the
+  same menu, cancelling the drag and suppressing the release click. Movement
+  cancels hold-to-menu. A single click/tap still folds or opens; a double click
+  or double tap now toggles the existing app-screen fullscreen layout. The
+  standalone external iframe host's outer grip is separate and unchanged.
+  `grip-gesture.ts` keeps these decisions and menu viewport bounds pure and
+  tested with injected timers; no native browser fullscreen request is made.
 - **Pill → open.** The pill's Li (part of the pill, not a new button) opens
   the chat again, as does the grip, the menu's Restore row or `chat.open`.
 - **The handle (dormant).** Tucked, the chat left one thumb-sized handle. Its shape

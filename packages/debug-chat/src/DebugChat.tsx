@@ -137,7 +137,8 @@ import { cloudOut, existingCtx, noSpeechVoices, outMode } from "./voice-out";
 import { UNLOCK_EVENTS, activationNow, unlockOnGesture } from "./speech-unlock";
 import { AEC_EVENT, aecOn, applyAec } from "./aec";
 import { type SpeakMeta, isWithdrawn } from "./speak-rules";
-import { createAxisLock, createDragFlag, createTapper, scrubBack } from "./tap-gesture";
+import { createGripGesture, gripMenuPosition } from "./grip-gesture";
+import { createAxisLock, createDragFlag, scrubBack } from "./tap-gesture";
 import {
   DRAG_PERF_KEY,
   type DragGeom,
@@ -813,6 +814,8 @@ export type DebugChatProps = {
   viewerOwnThread?: boolean;
   onReadSeq?: (seq: number) => void;
   readReceiptThrottleMs?: number;
+  /** Touch/pen long press on the grip opens its menu; mouse movement starts immediately. */
+  gripHoldMs?: number;
   /** Accepted locally, awaiting the hub acknowledgement. */
   outgoing?: readonly { id: string; text: string; rejected?: string; attachments?: AttachmentRef[]; context?: ChatContext }[];
   /**
@@ -1074,6 +1077,7 @@ export function DebugChat({
   viewerOwnThread = false,
   onReadSeq,
   readReceiptThrottleMs = 2000,
+  gripHoldMs = 500,
   outgoing,
   onSend,
   onAnswer,
@@ -1819,14 +1823,21 @@ export function DebugChat({
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
   }, [tree]);
-  /** The pill's mark: one tap minimizes or restores, two open the menu (the single waits for a second). */
-  const gripAct = useRef({ single: () => {}, double: () => {} });
-  const gripTaps = useRef<ReturnType<typeof createTapper> | null>(null);
-  gripTaps.current ??= createTapper({
+  /** Grip callbacks stay fresh; its gesture controller survives rerenders. */
+  const gripEl = useRef<HTMLButtonElement | null>(null);
+  const [gripMenuAt, setGripMenuAt] = useState<ReturnType<typeof gripMenuPosition> | null>(null);
+  const gripAct = useRef({ single: () => {}, double: () => {}, menu: () => {}, cancelDrag: () => {}, holdMs: 500 });
+  gripAct.current.holdMs = gripHoldMs;
+  const gripGesture = useRef<ReturnType<typeof createGripGesture> | null>(null);
+  gripGesture.current ??= createGripGesture({
     onSingle: () => gripAct.current.single(),
     onDouble: () => gripAct.current.double(),
+    onMenu: () => gripAct.current.menu(),
+    onHoldCancelDrag: () => gripAct.current.cancelDrag(),
+    holdMs: () => gripAct.current.holdMs,
   });
-  useEffect(() => () => gripTaps.current?.cancel(), []);
+  useEffect(() => () => gripGesture.current?.cancel(), []);
+  useEffect(() => { if (!menu) setGripMenuAt(null); }, [menu]);
   /** The chat session whose End was tapped once: a second tap within END_CONFIRM_MS ends it. */
   const [endArmed, setEndArmed] = useState<string | null>(null);
   const endTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -3561,7 +3572,25 @@ export function DebugChat({
       setPanel("none");
       foldBy({ type: "mark" });
     },
-    double: () => setPanel((p) => (p === "menu" ? "none" : "menu")),
+    double: () => {
+      if (!fullAllowed) return;
+      setPanel("none");
+      if (!openRef.current) foldBy({ type: "restore" });
+      setFull(!fullOn.current, true);
+    },
+    menu: () => {
+      const rect = gripEl.current?.getBoundingClientRect();
+      if (rect) {
+        const vv = window.visualViewport;
+        setGripMenuAt(gripMenuPosition(rect, {
+          width: vv?.width ?? innerWidth, height: vv?.height ?? innerHeight,
+          left: vv?.offsetLeft ?? 0, top: vv?.offsetTop ?? 0,
+        }));
+      }
+      setMenu(true);
+    },
+    cancelDrag: () => handle.onPointerCancel(),
+    holdMs: gripHoldMs,
   };
   /**
    * Minimized, the log is hidden and messages float above the bar instead
@@ -3920,7 +3949,8 @@ export function DebugChat({
   /**
    * The bar's controls, left of the input: drag any of them (or the bar's
    * edge) to move the box. The liagent mark: a tap minimizes or restores
-   * (after 280 ms), a double tap opens the menu. It is its own drag handle,
+   * (after 280 ms), a double click/tap toggles full screen. Right-click or a
+   * touch hold opens the menu. It is its own drag handle,
    * so its click still lands on it. The state tree is in the + menu (its
    * "View" group; AttachMenu.tsx). The mic follows them (micEl).
    */
@@ -3931,22 +3961,27 @@ export function DebugChat({
         data-drag-handle
         data-testid="debug-chat-pill-min"
         // The grip (owner, 2026-11-07 20:34 JST: it did not look draggable):
-        // six dots, grab / grabbing. A tap folds or opens, a double tap the menu.
+        // six dots, grab / grabbing. Tap folds; double tap toggles full screen.
         aria-label={withNew(t.dragGrip, !open ? unread : 0)}
         title={t.dragGrip}
         aria-expanded={open}
         {...handle}
+        ref={gripEl}
         onPointerDown={(e) => {
+          if (!gripGesture.current?.down({ pointerType:e.pointerType,button:e.button,x:e.clientX,y:e.clientY,id:e.pointerId })) return;
           unlockSpeech();
-          // In full screen a drag up leaves it (useDrag); the panel keeps its place.
+          // Capture begins immediately; only touch/pen hold-to-menu waits.
           handle.onPointerDown(e);
         }}
-        onClick={() => !wasDrag() && gripTaps.current?.tap()}
-        // Right-click opens the menu, like the double tap (owner, 2026-11-14: settings from the handle on a computer).
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setMenu(true);
+        onPointerMove={(e) => {
+          gripGesture.current?.move({x:e.clientX,y:e.clientY,id:e.pointerId});
+          handle.onPointerMove(e);
         }}
+        onPointerUp={() => { gripGesture.current?.up(); handle.onPointerUp(); }}
+        onPointerCancel={() => { gripGesture.current?.cancel(); handle.onPointerCancel(); }}
+        onClick={() => gripGesture.current?.click(wasDrag())}
+        onDoubleClick={(e) => e.preventDefault()}
+        onContextMenu={(e) => { e.preventDefault(); gripGesture.current?.context(); }}
         style={{
           ...handle.style,
           ...BAR_CONTROL,
@@ -4247,12 +4282,12 @@ export function DebugChat({
       testCapture: (on, onFinal) => pageMic().enrolCapture(on, onFinal, "", true),
       log: (ev) => voice().log(ev),
     });
-  /** The menu (a double tap on the mark), open or minimized. */
+  /** The existing menu; grip gestures anchor it to the grip in viewport coordinates. */
   const menuEl = menu && (
     <div
       role="menu"
       data-testid="debug-menu"
-      style={{ background: INPUT_BG }}
+      style={{ background: INPUT_BG, ...(gripMenuAt ? {position:"fixed",...gripMenuAt,minWidth:0,bottom:"auto",right:"auto",marginBottom:0,zIndex:"calc(var(--lk-z-chat,80) + 2)"} : {}) }}
       className="pointer-events-auto absolute bottom-full start-0 mb-1 flex max-h-[60vh] min-w-48 flex-col overflow-y-auto overscroll-contain touch-pan-y rounded-lg border border-current/25 py-1 text-xs backdrop-blur"
     >
       <span data-testid="debug-menu-status" className="px-3 py-1 text-gray-500" aria-live="polite">
@@ -5370,9 +5405,9 @@ export function DebugChat({
           const ownPassage = isOwnVoice(m0);
           // The state-tree node the run belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m0);
-          // The up-arrow floats at the log's end: the newest run keeps room
-          // beside it (ask-above.ts jumpRoom), never an empty row under it.
-          const room = askJumpShown && r === runs.length - 1 ? jumpRoom(asksUp.length) : null;
+          // Always keep the same side room: toggling the floating arrow or its
+          // count never changes wrapping/height. It adds no minimum row height.
+          const room = r === runs.length - 1 ? jumpRoom() : null;
           return (
             <li
               key={m0.id}
@@ -5384,18 +5419,7 @@ export function DebugChat({
               className="flex items-start gap-1.5 leading-snug"
               style={{
                 ...(node ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 } : {}),
-                // A short run sits at the bottom of its room: nothing blank under it.
-                // The ROW goes down (align-content on a one-line wrapping flex), not
-                // each item: align-items would drop the avatar to a long run's last
-                // line, away from its first (owner, 2026-11-09 13:42 JST).
-                ...(room
-                  ? {
-                      paddingInlineEnd: room.end,
-                      minHeight: room.minHeight,
-                      flexWrap: "wrap",
-                      alignContent: "flex-end",
-                    }
-                  : {}),
+                ...(room ? { paddingInlineEnd: room.end } : {}),
               }}
             >
               {(() => {
@@ -5891,8 +5915,8 @@ export function DebugChat({
               title={askJumpText}
               onClick={jumpToAsk}
               style={{
-                background: "oklch(0.5 0.187 22.3)",
-                color: "oklch(0.98 0 0)",
+                color: "var(--foreground)",
+                border: "1px solid var(--glass-line)",
                 height: JUMP_H_PX,
                 width: jumpWidth(asksUp.length),
                 padding: "0 10px",
@@ -5902,7 +5926,7 @@ export function DebugChat({
                 lineHeight: 1,
                 boxShadow: "0 1px 4px oklch(0 0 0 / 0.3)",
               }}
-              className="tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full"
+              className="lk-glass tap-40 pointer-events-auto inline-flex items-center justify-center whitespace-nowrap rounded-full"
             >
               {asksUp.length > 1 && <span aria-hidden>{asksUp.length}</span>}
               <span aria-hidden style={{ display: "inline-flex", fontSize: 16 }}>
@@ -6240,7 +6264,7 @@ export function DebugChat({
         <span aria-hidden />
         <div style={LTR}>
         {floatBoxEl}
-        {menuEl}
+        {menuEl && gripMenuAt ? createPortal(menuEl, portalRoot ?? document.body) : menuEl}
         {panel === "voiceprint" && (
           <div className="pointer-events-auto absolute inset-x-0 bottom-full mb-1">
             <VoiceprintPanel t={t} deps={voiceprintDeps} onClose={() => setPanel("none")} />

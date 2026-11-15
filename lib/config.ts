@@ -739,6 +739,15 @@ export const CONFIG = {
     money: true,
     description: "全站每天最多发起几次聊天轻量整理；是独立于学习伙伴回复的额外支出上限。",
   }),
+  "chat.gripHoldMs": int({
+    default: 500,
+    min: 300,
+    max: 1200,
+    unit: "ms",
+    group: "chat",
+    audience: "public",
+    description: "触屏或触笔按住聊天拖柄多久打开菜单。鼠标拖动立即开始；双击/双点切换全屏。",
+  }),
   "chat.readReceiptThrottleMs": int({
     default: 2_000,
     min: 2_000,
