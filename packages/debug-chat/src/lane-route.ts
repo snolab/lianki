@@ -263,6 +263,8 @@ export type Route = {
   lanes: RouteLane[];
   /** Whether the line named a lane. */
   addressed: boolean;
+  /** An all-hands call (全体…, 都有报数): every lane, including ones this table does not list. */
+  all?: true;
   /** The line without the names in front. */
   text: string;
 };
@@ -286,8 +288,14 @@ export function routeLine(text: string): Route {
   // "全体…" at the start addresses every lane at once (owner, 2026-11-14:
   // "点名应该监听全体这两个字").
   const all = ALL.exec(s);
-  if (all) return { lanes: routeLanes(), addressed: true, text: s.slice(all[0].length).trim() };
-  if (ALL_NEAR.test(s)) return { lanes: routeLanes(), addressed: true, text: s.trim() };
+  if (all)
+    return {
+      lanes: routeLanes(),
+      addressed: true,
+      all: true,
+      text: s.slice(all[0].length).trim(),
+    };
+  if (ALL_NEAR.test(s)) return { lanes: routeLanes(), addressed: true, all: true, text: s.trim() };
   const lanes: RouteLane[] = [];
   for (;;) {
     const hit = nameAt(s);

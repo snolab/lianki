@@ -7,6 +7,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   HANDOFF_SKILL,
+  NO_CROSS_RULE,
+  NONE_NOTE,
+  OTHER_NOTE,
+  SEND_MAX_CHARS,
+  addressee,
+  batchNotes,
+  firstLines,
+  otherMark,
   handoff,
   handoffBrief,
   ownerAt,
@@ -205,11 +213,17 @@ describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
     );
     const rows = b.split("\n");
     expect(rows[0]).toMatch(/^【owner → codex】\d\d:\d\d JST$/);
-    expect(rows[1]).toBe("- (id:a1) 小克，看一下");
-    expect(rows[2]).toBe("- (id:a2) @你 coco，你在吗");
-    expect(rows[3]).toContain(HANDOFF_SKILL);
-    expect(rows[3]).toContain("reply --as codex --id <id>");
-    expect(handoffBrief("codex", [line("a3", "嗯")], "/repo", false).split("\n")).toHaveLength(2);
+    expect(rows[1]).toBe(OTHER_NOTE);
+    expect(rows[2]).toBe("- (id:a1) 【FYI · 点名 小克，不是你】 小克，看一下");
+    expect(rows[3]).toBe("- (id:a2) @你 coco，你在吗");
+    expect(rows[4]).toBe(NO_CROSS_RULE);
+    expect(rows[5]).toContain(HANDOFF_SKILL);
+    expect(rows[5]).toContain("reply --as codex --id <id>");
+    expect(handoffBrief("codex", [line("a3", "嗯")], "/repo", false).split("\n")).toEqual([
+      expect.stringMatching(/^【owner → codex】/),
+      NONE_NOTE,
+      "- (id:a3) 嗯",
+    ]);
   });
   it("makeDeliverer: lines wait while the agent is busy, then go as one message", async () => {
     const sent: string[] = [];
@@ -303,8 +317,10 @@ describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
     expect(sent).toEqual([]);
     busy = false;
     await new Promise((r) => setTimeout(r, 30));
-    expect(sent.length).toBe(parts.length);
-    for (const b of sent) expect(b.length).toBeLessThanOrEqual(1000);
+    // The first message leaves room for the rule and the skill line, so it may take one part more.
+    expect(sent.length).toBeGreaterThanOrEqual(parts.length);
+    for (const b of sent) expect(b.length).toBeLessThanOrEqual(SEND_MAX_CHARS + 40);
+    expect(sent.join("\n").match(/\(id:L\d+\)/g)).toHaveLength(lines.length);
     expect(sent[0]).toContain(HANDOFF_SKILL);
     expect(sent[1]).not.toContain(HANDOFF_SKILL);
   });
@@ -325,6 +341,73 @@ describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
     expect(briefBullet("codex", { ...line("v2", "短句"), voice: "unknown" })).toBe(
       "- (id:v2)（声纹未定） 短句",
     );
+  });
+});
+
+describe("only the lane he names answers (owner, 2026-11-15 15:0x JST)", () => {
+  const line = (id: string, text: string) => ({ id, thread: "owner", from: "owner", text });
+  it("three shapes: addressed to me, to another lane, to nobody", () => {
+    expect(addressee("codex", "coco，看一下")).toEqual({ to: "mine" });
+    expect(addressee("codex", "全体，报数")).toEqual({ to: "mine" });
+    expect(addressee("mimiai", "全体都有，报数")).toEqual({ to: "mine" });
+    expect(addressee("mimiai", "@小克 看一下")).toEqual({ to: "other", names: ["小克"] });
+    expect(addressee("agy", "coco 和 小克，看一下")).toEqual({
+      to: "other",
+      names: ["coco", "小克"],
+    });
+    expect(addressee("codex", "今天学了什么")).toEqual({ to: "none" });
+    expect(otherMark(["小克"])).toBe("【FYI · 点名 小克，不是你】");
+
+    const mine = handoffBrief("mimiai", [line("m1", "全体，报数")], "/r", false).split("\n");
+    expect(mine).toEqual([
+      expect.stringMatching(/^【owner → mimiai】/),
+      "- (id:m1) @你 全体，报数",
+    ]);
+
+    const other = handoffBrief("mimiai", [line("o1", "@小克 看一下")], "/r", false).split("\n");
+    expect(other).toEqual([
+      expect.stringMatching(/^【owner → mimiai】/),
+      OTHER_NOTE,
+      "- (id:o1) 【FYI · 点名 小克，不是你】 @小克 看一下",
+    ]);
+    expect(OTHER_NOTE).toContain("不要回答、不要代做");
+
+    const none = handoffBrief(
+      "mimiai",
+      [line("n1", "今天学了什么"), line("n2", "还有这个")],
+      "/r",
+      false,
+    ).split("\n");
+    expect(none.filter((x) => x === NONE_NOTE)).toHaveLength(1);
+    expect(none.slice(2)).toEqual(["- (id:n1) 今天学了什么", "- (id:n2) 还有这个"]);
+  });
+  it("another lane's line never breaks in; the notes skip state-tree and test lines", () => {
+    expect(urgentLine("mimiai", line("u1", "@小克 看一下"))).toBe(false);
+    expect(urgentLine("mimiai", line("u2", "全体，看一下"))).toBe(true);
+    expect(
+      batchNotes("codex", [
+        { ...line("s1", "x"), etaLane: "codex" },
+        { id: "t1", thread: "owner", from: "agent", text: "【main】[lane-test] agy, ping" },
+      ]),
+    ).toEqual([]);
+  });
+  it("the first message carries the rule; chunks leave room for the notes", () => {
+    expect(firstLines("codex", "/r")[0]).toBe(NO_CROSS_RULE);
+    expect(NO_CROSS_RULE).toContain("被点名的是别人时不插话、不代答、不追问");
+    const lines = Array.from({ length: 6 }, (_, i) => line(`X${i}`, `小克，${"字".repeat(150)}`));
+    for (const p of chunkLines("codex", lines, 400))
+      expect(handoffBrief("codex", p, "/r", false).length).toBeLessThanOrEqual(400 + 30);
+    const huge = chunkLines("codex", [line("H", `小克，${"长".repeat(900)}`)], 400);
+    expect([OTHER_NOTE, briefBullet("codex", huge[0]![0]!)].join("\n").length).toBeLessThanOrEqual(
+      400,
+    );
+  });
+  it("handoff (the long form) says the same", () => {
+    const other = handoff("mimiai", line("h1", "@小克 看一下"), "/r");
+    expect(other).toContain("【FYI · 点名 小克，不是你】");
+    expect(other).toContain("do not answer");
+    expect(handoff("codex", line("h2", "今天学了什么"), "/r")).toContain(NONE_NOTE);
+    expect(handoff("codex", line("h3", "全体，报数"), "/r")).toContain("only you got it");
   });
 });
 

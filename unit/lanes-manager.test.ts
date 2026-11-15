@@ -301,12 +301,12 @@ describe("decide", () => {
       {
         type: "greet",
         lane: "codex",
-        text: "大家好，我是 codex（lianki · codex），实时监听入群。",
+        text: "大家好，我是 codex（lianki · codex），实时监听入群。只回答点名我或「全体」的话。",
       },
       {
         type: "greet",
         lane: "rechrome-codex-2",
-        text: "大家好，我是 rechrome-codex-2（rechrome · codex），只读入群。",
+        text: "大家好，我是 rechrome-codex-2（rechrome · codex），只读入群。只回答点名我或「全体」的话。",
       },
       {
         type: "tokens-needed",
@@ -460,13 +460,13 @@ describe("the loop (createManager), every effect mocked", () => {
       {
         token: "lk_codex",
         op: "say",
-        text: "大家好，我是 codex（lianki · codex），实时监听入群。",
+        text: "大家好，我是 codex（lianki · codex），实时监听入群。只回答点名我或「全体」的话。",
         quiet: true,
       },
       {
         token: "lk_rechrome-main",
         op: "say",
-        text: "大家好，我是 rechrome-main（rechrome · codex），只读入群。",
+        text: "大家好，我是 rechrome-main（rechrome · codex），只读入群。只回答点名我或「全体」的话。",
         quiet: true,
       },
       {

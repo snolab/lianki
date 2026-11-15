@@ -71,6 +71,15 @@ That posts with the lane's token: an agent line `【codex】…` with codex's
 name, mark and voice (docs/lianki-dev-cli.md, "`lianki chat`"). The lane never
 sees the token.
 
+Only the lane he names answers (owner, 2026-11-15 15:0x JST: "我在 @ 你的时候，
+这些只读 AI（包括 mimiai）不要乱回复"). A `--all` listener also hears lines named
+to another lane: each such bullet starts `【FYI · 点名 小克，不是你】` and the
+batch carries "点名别人的：不要回答、不要代做；只在点名你或 全体 时回复。"; a line
+with no name gets "未点名：只听，不回。" once per batch. The first message of a
+listener's (or a woken reader's) life adds the rule line
+(`NO_CROSS_RULE`), and `lanes.greeting` ends with it, so every joining agent
+says it aloud.
+
 It reconnects with backoff when the socket drops, and stops (exit 2) when the
 token is refused: revoked or expired. `--dry-run` prints the hand-offs instead
 of sending them.
