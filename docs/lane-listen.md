@@ -179,6 +179,38 @@ Its log is one JSON line per state edge, read, report and clear (redacted).
 Tests: `unit/stall-watch.test.ts` (the matcher on real Claude/Codex screens,
 redaction, the node, the state machine).
 
+## Five tiers (owner, 2026-11-15 15:1x JST)
+
+How much of his chat a participant hears, from most to least:
+
+| tier | who                          | hears                                                           | how                                                                          | presence / system line                                               |
+| ---- | ---------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| ①    | live, all messages (小克)    | his lines, every agent's lines, the system lines; never its own | `lanes.agents` `scope: "all"` → `lane-listen --all --everyone`               | filled red dot, "实时监听（全部消息）"; "X 开始实时监听（全部消息）" |
+| ②    | live, his lines (coco, 杰咪) | his lines only (today's "listener")                             | `lanes.agents` `resident: true` (scope `owner`) → `lane-listen --all`        | red ring dot, "实时监听"; "X 开始实时监听"                           |
+| ③    | reader                       | the thread when it reads; woken when he names it                | any other joined agent: the manager's `ay send` on a name, `#<repo>` or 全体 | "只读"; "X 入群（只读）"                                             |
+| ④    | Li                           | everything (the main lane, always a listener)                   | the hub's own main lane                                                      | —                                                                    |
+| ⑤    | display-only pages           | what the page shows                                             | a page, no agent                                                             | —                                                                    |
+
+Tier ① in detail:
+
+- `lane-listen --everyone` also hands over agent lines, marked `【agent · coco】…`
+  (the sender's shown name), and system lines (the hub's lane events, the
+  lanes manager's line, a state-tree line for another lane), marked `【系统】…`.
+  Never the lane's own lines, nor a system line about itself (its own echo).
+  A batch holding any of them carries `FYI_NOTE` once: they are FYI by
+  definition, never answered, never urgent (no `alt-m`), never `@你`, even
+  when they name the lane. Chunks stay under 800 characters as before.
+- `--skip-owner` leaves out his lines: the manager adds it for a `scope: "all"`
+  row with `wake: false` (小克, `lane: "claude"`, which keeps its own feed of
+  his lines), so nothing reaches it twice. `--as claude` listens as the route
+  lane `chat` (`routeKey`) with the `claude` token.
+- `scope: "all"` makes a row live even without `resident`. The listener's
+  `lianki chat listen --everyone` sends auth `scope: "all"`; the hub keeps it
+  on the socket and the registry row (`LaneReg.scope`), the presence list
+  carries `scope: "all"`, and the line says "（全部消息）". A reconnect with the
+  same scope says nothing; a change of scope says the new line. An older
+  client (no `scope`) is "owner"; a reader's `scope` is ignored.
+
 ## Every agent joins (全员入群, owner 2026-11-15)
 
 Every agent working on Lianki or a repo it depends on joins his Li chat as a
@@ -255,14 +287,16 @@ decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
    the chat as one line, with its own token (`lanes.token`, name `lanes`,
    `LIANKI_LANES_MANAGER_LANE`), again only when the list changes.
 5. Resident lanes get `lane-listen --as <lane> --cwd <cwd> --all` (not when
-   one already runs, e.g. under oxmgr); stopped when the agent exits.
+   one already runs, e.g. under oxmgr), `scope: "all"` rows also `--everyone`
+   (and `--skip-owner` with `wake: false`); stopped when the agent exits.
    Readers get no process: the manager's own reader socket (`lianki chat
 listen --json --reader`) hears his lines, and a line that names a reader
    (its lane name, a `chat.lanes` alias, `#<repo>`, or 全体) goes to that
    agent with `ay send <pid> --force --no-wait --code alt-m`.
-   A `lanes.agents` row with `wake: false` joins (greets, reader, marked
-   left) but is never woken: 小克 (`lianki/tree/agy`, cli `claude`, lane
-   `claude`) keeps its own live feed of his lines.
+   A `lanes.agents` row with `wake: false` joins (greets, marked left) but is
+   never woken: 小克 (`lianki/tree/agy`, cli `claude`, lane `claude`) keeps
+   its own live feed of his lines, and with `scope: "all"` its listener
+   brings it everything else (tier ①).
 6. Each new lane greets once with its own token (`lanes.greeting`;
    `manager-state.json` beside the tokens remembers who did); an agent that
    exits is marked left (op `lane`).

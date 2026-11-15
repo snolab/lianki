@@ -98,9 +98,14 @@ describe("config", () => {
       cwd: "lianki/tree/agy",
       cli: "claude",
       lane: "claude",
-      resident: false,
       wake: false,
+      scope: "all",
     });
+    // Only 小克 hears every line by default; the others stay on his lines.
+    expect(CFG.agents.filter((a) => a.scope === "all").map((a) => a.lane)).toEqual(["claude"]);
+    expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "all" }).success).toBe(true);
+    expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "owner" }).success).toBe(true);
+    expect(laneAgentSchema.safeParse({ cwd: "a", lane: "a", scope: "some" }).success).toBe(false);
   });
 });
 
@@ -195,12 +200,12 @@ describe("agent → lane", () => {
       planLanes([AGENTS[2]!], { ...CFG, agents: [{ cwd: "codex", lane: "bad name" }] })[0]!.lane,
     ).toBe("lianki-codex");
   });
-  it("小克 (claude in tree/agy) joins as claude, a reader never woken", () => {
+  it("小克 (claude in tree/agy) joins as claude, live on every line (scope all), never woken", () => {
     const k = { pid: 77, cli: "claude", cwd: `${W}/snolab/lianki/tree/agy`, status: "active" };
     const p = planLanes([AGENTS[0]!, k], CFG);
-    expect(p.map((x) => [x.lane, x.resident, x.wake])).toEqual([
-      ["agy", true, true],
-      ["claude", false, false],
+    expect(p.map((x) => [x.lane, x.resident, x.wake, x.scope])).toEqual([
+      ["agy", true, true, "owner"],
+      ["claude", true, false, "all"],
     ]);
     setLaneTable(laneTableFor(p));
     expect(wakeTargets({ from: "owner", text: "全体，集合" }, p)).toEqual([]);
@@ -276,6 +281,7 @@ const plan = (lane: string, extra: Partial<Planned> = {}): Planned => ({
   repo: "lianki",
   lane,
   resident: false,
+  scope: "owner",
   wake: true,
   busy: false,
   ...extra,
@@ -297,7 +303,14 @@ describe("decide", () => {
     };
     const r = decide([], w, { greeted: [] }, cfg);
     expect(r.actions).toEqual([
-      { type: "start-listener", lane: "codex", cwd: "/c", pid: 9 },
+      {
+        type: "start-listener",
+        lane: "codex",
+        cwd: "/c",
+        pid: 9,
+        scope: "owner",
+        skipOwner: false,
+      },
       {
         type: "greet",
         lane: "codex",
@@ -424,8 +437,8 @@ describe("the loop (createManager), every effect mocked", () => {
       ayList: async () => ay,
       ps: async () => o.ps ?? " 7906 bun lane-listen.ts --as agy --deliver 5468",
       token: (lane) => (tokens.has(lane) ? `lk_${lane}` : undefined),
-      startListener: ({ lane, table }): Child => {
-        calls.started.push(lane);
+      startListener: ({ lane, table, scope, skipOwner }): Child => {
+        calls.started.push(`${lane}${scope === "all" ? ":all" : ""}${skipOwner ? ":skip" : ""}`);
         expect(JSON.parse(table)).toBeArray();
         return {
           pid: pid++,
@@ -485,6 +498,17 @@ describe("the loop (createManager), every effect mocked", () => {
     await Bun.sleep(1);
     expect(s.m.running()).toEqual([]);
     expect((await s.m.relist()).map((a) => a.type)).toEqual(["start-listener"]);
+  });
+  it("小克 in the list: its listener starts with scope all, skipping his lines", async () => {
+    const s = setup({
+      tokens: ["agy", "codex", "claude", "lanes"],
+      ay: [
+        ...AGENTS,
+        { pid: 77, cli: "claude", cwd: `${W}/snolab/lianki/tree/agy`, status: "active" },
+      ],
+    });
+    await s.m.relist();
+    expect(s.calls.started).toEqual(["codex", "claude:all:skip"]);
   });
   it("an agent leaves: listener stopped, lane left; ay silent: nothing changes", async () => {
     const s = setup();
@@ -547,7 +571,47 @@ describe("the loop (createManager), every effect mocked", () => {
     expect(s.m.planned().length).toBe(6);
     expect(s.m.state().greeted).toContain("codex");
   });
+  it("scope all: the listener hears everyone (and skips his lines when the agent has its own feed)", () => {
+    const k = plan("claude", { resident: true, scope: "all", wake: false, cwd: "/k", pid: 7 });
+    const r = decide(
+      [],
+      {
+        planned: [k],
+        tokens: new Set(["claude"]),
+        running: new Set<string>(),
+        external: new Set<string>(),
+      },
+      { greeted: [] },
+      { greeting: CFG.greeting },
+    );
+    expect(r.actions).toEqual([
+      {
+        type: "start-listener",
+        lane: "claude",
+        cwd: "/k",
+        pid: 7,
+        scope: "all",
+        skipOwner: true,
+      },
+      {
+        type: "greet",
+        lane: "claude",
+        text: "大家好，我是 claude（lianki · codex），实时监听（全部消息）入群。只回答点名我或「全体」的话。",
+      },
+    ]);
+  });
   it("the listener's command line", () => {
+    expect(
+      listenerArgv("bun", "/r", "claude", "/c", { scope: "all", skipOwner: true }).slice(-3),
+    ).toEqual(["--all", "--everyone", "--skip-owner"]);
+    expect(listenerArgv("bun", "/r", "x", "/c", { scope: "all" }).slice(-2)).toEqual([
+      "--all",
+      "--everyone",
+    ]);
+    // --skip-owner only with --everyone: an owner-scope listener without his lines would hear nothing.
+    expect(listenerArgv("bun", "/r", "x", "/c", { scope: "owner", skipOwner: true }).at(-1)).toBe(
+      "--all",
+    );
     expect(listenerArgv("bun", "/r", "codex", "/c")).toEqual([
       "bun",
       "/r/scripts/dev/lianki-dev.ts",

@@ -6,8 +6,15 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  FYI_NOTE,
   HANDOFF_SKILL,
   NO_CROSS_RULE,
+  SYSTEM_MARK,
+  agentMark,
+  everyoneTakes,
+  listenerTakes,
+  ownLine,
+  routeKey,
   NONE_NOTE,
   OTHER_NOTE,
   SEND_MAX_CHARS,
@@ -418,5 +425,217 @@ describe("reconnectWait", () => {
     expect(reconnectWait(32_000, 4, 5_000)).toEqual({ wait: 32_000, next: 60_000 });
     expect(reconnectWait(60_000, 4, 0).next).toBe(60_000);
     expect(reconnectWait(400_000, 5, 0)).toEqual({ wait: 400_000, next: 600_000 });
+  });
+});
+
+describe("--everyone: agents' lines and system lines too (tier ①, owner 2026-11-15 15:1x JST)", () => {
+  const raw = (m: Record<string, unknown>) =>
+    JSON.stringify({
+      type: "chat",
+      message: { thread: "owner", at: "2026-11-15T06:20:00Z", ...m },
+    });
+  const coco = lineOf(
+    raw({
+      id: "c1",
+      from: "agent",
+      label: "codex",
+      text: "【codex】done, PR #12",
+      tokenLane: "codex",
+      lane: "codex",
+    }),
+  )!;
+  const sys = lineOf(
+    raw({
+      id: "s1",
+      from: "agent",
+      label: "lanes",
+      text: "coco 开始实时监听",
+      laneEvent: { lane: "codex", name: "coco", kind: "listening" },
+    }),
+  )!;
+  const li = lineOf(raw({ id: "m1", from: "agent", label: "agent", text: "【main】好的喵" }))!;
+  const own = lineOf(
+    raw({
+      id: "k1",
+      from: "agent",
+      label: "claude",
+      text: "【claude】我来看",
+      tokenLane: "claude",
+    }),
+  )!;
+  const he = lineOf(raw({ id: "o1", from: "owner", text: "coco，看一下" }))!;
+
+  it("reads agent and system lines: kind, sender (its shown name), the prefix gone", () => {
+    expect(coco).toMatchObject({
+      kind: "agent",
+      sender: "coco",
+      senderLane: "codex",
+      text: "done, PR #12",
+    });
+    expect(sys).toMatchObject({ kind: "system", eventLane: "codex", text: "coco 开始实时监听" });
+    expect(li).toMatchObject({ kind: "agent", sender: "Li", senderLane: "main" });
+    expect(he.kind).toBeUndefined();
+    // A friend lane with no known id: its token name.
+    const f = lineOf(
+      raw({ id: "f1", from: "agent", label: "otoji-main", text: "hi", tokenLane: "otoji-main" }),
+    )!;
+    expect(f).toMatchObject({ kind: "agent", sender: "otoji-main", senderLane: "otoji-main" });
+    // Unnamed, unlabelled: no sender.
+    expect(lineOf(raw({ id: "u1", from: "agent", label: "", text: "x" }))!.sender).toBeUndefined();
+    // A state-tree line for another lane, the manager's token line: system.
+    expect(
+      lineOf(
+        raw({
+          id: "e1",
+          from: "agent",
+          label: "x",
+          text: "ETA",
+          source: "eta",
+          eta: { lane: "agy" },
+        }),
+      )!.kind,
+    ).toBe("system");
+    expect(
+      lineOf(raw({ id: "e2", from: "agent", label: "eta", agentId: "eta", text: "ETA" }))!.kind,
+    ).toBe("system");
+    // A routing test line stays a test line.
+    expect(
+      lineOf(raw({ id: "t1", from: "agent", label: "agent", text: "[lane-test] codex, hi" }))!.kind,
+    ).toBeUndefined();
+  });
+
+  it("never its own: its own say, or a system line about itself", () => {
+    expect(ownLine("claude", own)).toBe(true);
+    expect(ownLine("chat", own)).toBe(true);
+    expect(ownLine("codex", coco)).toBe(true);
+    expect(ownLine("codex", sys)).toBe(true);
+    expect(ownLine("claude", coco)).toBe(false);
+    expect(ownLine("claude", sys)).toBe(false);
+    expect(ownLine("claude", { kind: "system" })).toBe(false);
+    expect(ownLine("claude", { kind: "agent" })).toBe(false);
+    expect(ownLine("claude", he)).toBe(false);
+    expect(everyoneTakes("claude", coco)).toBe(true);
+    expect(everyoneTakes("claude", own)).toBe(false);
+    expect(everyoneTakes("claude", he)).toBe(false);
+    expect(everyoneTakes("claude", { ...coco, thread: "u-friend" })).toBe(false);
+    expect(routeKey("claude")).toBe("chat");
+    expect(routeKey("codex")).toBe("codex");
+    expect(routeKey("main")).toBe("main");
+    expect(routeKey("otoji-main")).toBe("otoji-main");
+  });
+
+  it("listenerTakes: his lines as before; --everyone adds agents and system; --skip-owner drops his", () => {
+    const o = { lane: "codex", all: true };
+    expect(listenerTakes(o, he)).toBe(true);
+    expect(listenerTakes(o, li)).toBe(false);
+    expect(listenerTakes({ ...o, everyone: true }, li)).toBe(true);
+    expect(listenerTakes({ ...o, everyone: true }, sys)).toBe(false); // about itself
+    expect(listenerTakes({ ...o, everyone: true }, coco)).toBe(false); // its own
+    const k = { lane: "claude", all: true, everyone: true, skipOwner: true };
+    expect(listenerTakes(k, he)).toBe(false);
+    expect(listenerTakes(k, coco)).toBe(true);
+    expect(listenerTakes(k, sys)).toBe(true);
+    expect(listenerTakes(k, own)).toBe(false);
+    // 小克 without --skip-owner: his unnamed lines route to it ("chat").
+    expect(
+      listenerTakes({ lane: "claude" }, lineOf(raw({ id: "o2", from: "owner", text: "在吗" }))!),
+    ).toBe(true);
+    // A state-tree nudge to the lane always.
+    const nudge = lineOf(
+      raw({
+        id: "n1",
+        from: "agent",
+        label: "eta",
+        text: "ETA",
+        source: "eta",
+        eta: { lane: "codex" },
+      }),
+    )!;
+    expect(listenerTakes({ lane: "codex" }, nudge)).toBe(true);
+    expect(briefBullet("codex", nudge)).toBe("- (state tree) ETA");
+    expect(urgentLine("codex", nudge)).toBe(true);
+  });
+
+  it("the hand-off marks them 【agent · coco】 and 【系统】, FYI once, never urgent, never @你", () => {
+    expect(briefBullet("claude", coco)).toBe(`- (id:c1) ${agentMark("coco")}done, PR #12`);
+    expect(briefBullet("claude", sys)).toBe(`- (id:s1) ${SYSTEM_MARK}coco 开始实时监听`);
+    expect(agentMark()).toBe("【agent · ?】");
+    const named = lineOf(
+      raw({ id: "c2", from: "agent", label: "codex", text: "小克，你来", tokenLane: "codex" }),
+    )!;
+    expect(urgentLine("claude", named)).toBe(false);
+    expect(briefBullet("claude", named)).not.toContain("@你");
+    expect(batchNotes("claude", [coco, sys])).toEqual([FYI_NOTE]);
+    expect(batchNotes("claude", [he, coco])).toEqual([OTHER_NOTE, FYI_NOTE]);
+    const b = handoffBrief("claude", [coco, sys], "/r", false);
+    expect(b.split("\n")[0]).toStartWith("【chat → claude】");
+    expect(b.match(new RegExp(FYI_NOTE, "g"))).toHaveLength(1);
+    expect(handoffBrief("claude", [he, coco], "/r", false).split("\n")[0]).toStartWith(
+      "【owner → claude】",
+    );
+    const long = handoff("claude", coco, "/r");
+    expect(long).toStartWith(`${agentMark("coco")}(15:20 JST, Li chat) done, PR #12`);
+    expect(long).toContain(FYI_NOTE);
+    expect(handoff("claude", sys, "/r")).toStartWith(SYSTEM_MARK);
+  });
+
+  it("chunks stay under 800 characters with agent lines, the FYI note counted", () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      ...coco,
+      id: `c${i}`,
+      text: "长".repeat(60),
+    }));
+    const parts = chunkLines("claude", many);
+    expect(parts.length).toBeGreaterThan(1);
+    for (const p of parts)
+      expect(handoffBrief("claude", p, "/r", false).length).toBeLessThanOrEqual(
+        SEND_MAX_CHARS + 40,
+      );
+    const huge = chunkLines("claude", [{ ...coco, text: "x".repeat(2000) }]);
+    expect(huge[0]![0]!.text.endsWith("…")).toBe(true);
+    expect(briefBullet("claude", huge[0]![0]!).length + FYI_NOTE.length + 2).toBeLessThanOrEqual(
+      SEND_MAX_CHARS,
+    );
+  });
+
+  it("addressee knows 小克's token lane as the chat route", () => {
+    expect(addressee("claude", "小克，看一下").to).toBe("mine");
+    expect(addressee("claude", "coco，看一下").to).toBe("other");
+  });
+});
+
+describe("makeDeliverer logs", () => {
+  it("a held batch (LANE_LISTEN_DEBUG) and a lost one", async () => {
+    const logs: Record<string, unknown>[] = [];
+    const prev = process.env.LANE_LISTEN_DEBUG;
+    process.env.LANE_LISTEN_DEBUG = "1";
+    let busy = true;
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/r" },
+      async () => 1,
+      async () => busy,
+      (v) => void logs.push(v),
+      1,
+    );
+    await d.add({ id: "q1", thread: "owner", from: "owner", text: "今天学了什么" });
+    expect(logs.map((l) => l.type)).toEqual(["held"]);
+    busy = false;
+    await Bun.sleep(10);
+    expect(logs.map((l) => l.type)).toEqual(["held", "delivered", "lost"]);
+    if (prev === undefined) delete process.env.LANE_LISTEN_DEBUG;
+    else process.env.LANE_LISTEN_DEBUG = prev;
+  });
+});
+
+describe("makeDeliverer without a log", () => {
+  it("still delivers", async () => {
+    const sent: string[] = [];
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/r" },
+      async (b) => (sent.push(b), 0),
+      async () => false,
+    );
+    expect(await d.add({ id: "q2", thread: "owner", from: "owner", text: "codex，在吗" })).toBe(0);
+    expect(sent).toHaveLength(1);
   });
 });
