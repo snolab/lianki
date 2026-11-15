@@ -1,6 +1,7 @@
 "use client";
 import {
   createChatOutbox,
+  migrateSessionOutbox,
   acknowledgedChatIds,
   hasChatRejection,
   type OutgoingChat,
@@ -378,15 +379,23 @@ export function DebugEval({
   }>({ scope: deliveryScope, items: [] });
   const outbox = useMemo(() => {
     const key = deliveryScope ? `lk:ui:chat-outbox:${encodeURIComponent(deliveryScope)}` : null;
+    // Device-wide, so a closed tab's unsent lines go out from the next one.
+    if (key) {
+      try {
+        migrateSessionOutbox(key, sessionStorage, localStorage);
+      } catch {}
+    }
     return createChatOutbox({
-      read: () => (key ? JSON.parse(sessionStorage.getItem(key) ?? "[]") : []),
+      shared: true,
+      ackTimeoutMs: () => publicCfg("chat.outboxAckTimeoutMs"),
+      read: () => (key ? JSON.parse(localStorage.getItem(key) ?? "[]") : []),
       write: (items) => {
         if (!key) throw new Error("chat identity unavailable");
-        sessionStorage.setItem(key, JSON.stringify(items));
+        localStorage.setItem(key, JSON.stringify(items));
       },
-      readCursor: () => (key ? JSON.parse(sessionStorage.getItem(`${key}:cursor`) ?? "0") : 0),
+      readCursor: () => (key ? JSON.parse(localStorage.getItem(`${key}:cursor`) ?? "0") : 0),
       writeCursor: (seq) => {
-        if (key) sessionStorage.setItem(`${key}:cursor`, JSON.stringify(seq));
+        if (key) localStorage.setItem(`${key}:cursor`, JSON.stringify(seq));
       },
       id: () => crypto.randomUUID().slice(0, 12),
       send: (item) => {
@@ -406,8 +415,17 @@ export function DebugEval({
   }, [deliveryScope]);
   useEffect(() => {
     setOutgoingState({ scope: deliveryScope, items: outbox.items() });
+    const key = deliveryScope ? `lk:ui:chat-outbox:${encodeURIComponent(deliveryScope)}` : null;
+    // Another tab of this account added, landed or refused a line.
+    const onStorage = (e: StorageEvent) => {
+      if (key && e.key === key) outbox.refresh();
+    };
+    window.addEventListener("storage", onStorage);
     // React can replay effects in development; socket cleanup prevents stale sends.
-    return () => outbox.disconnect();
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      outbox.disconnect();
+    };
   }, [outbox, deliveryScope]);
   const outgoing = outgoingState.scope === deliveryScope ? outgoingState.items : outbox.items();
   const friendRef = useRef(false);
