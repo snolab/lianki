@@ -18,6 +18,7 @@ import type { D1Like } from "@/lib/d1/types";
 import { CREDITS_PER_USD } from "./credits";
 import { FEATURES, MARGIN, type Feature } from "./prices";
 import { dayStartMs, localDay } from "@/lib/time-zone";
+import { paidUsdMicro, recordSpend, type SpendDeps } from "./spend-alert";
 
 /** Lianki's own speech server (the owner's Mac, docs/local-stt.md), booked as a cloud service. */
 export const LOCAL_STT_FEATURE = "speech.stt.local";
@@ -49,12 +50,17 @@ export const providerUsd = (ourUsd: number) => Math.max(0, ourUsd) / MARGIN;
 export const localSttUsd = (audioMs: number, perMinUsd: number) =>
   (Math.min(LOCAL_STT_MAX_AUDIO_MS, Math.max(0, audioMs)) / 60_000) * Math.max(0, perMinUsd);
 
-/** Book one call. Never throws; never blocks a user's call on its own failure. */
+/**
+ * Book one call. Never throws; never blocks a user's call on its own failure.
+ * A booked cost goes on to the spend alert's counters (lib/payments/spend-alert.ts);
+ * `push` is the hub it posts to (default: the Worker's PUSH binding).
+ */
 export async function bookCost(
   d1: D1Like | null | undefined,
   e: CostEntry,
   now: Date = new Date(),
   log: Log = defaultLog,
+  push?: SpendDeps["push"],
 ): Promise<boolean> {
   if (!d1) return false;
   const micro = Math.max(0, e.usd) * 1e6;
@@ -73,7 +79,6 @@ export async function bookCost(
         now.toISOString(),
       )
       .run();
-    return true;
   } catch (err) {
     log({
       event: "cost.book.failed",
@@ -82,6 +87,8 @@ export async function bookCost(
     });
     return false;
   }
+  await recordSpend(d1, e.userId, micro, { now, log, ...(push !== undefined ? { push } : {}) });
+  return true;
 }
 
 // ---------------------------------------------------------------- the admin view
@@ -155,9 +162,6 @@ export type CostSummary = {
   byDay: ({ day: string } & CostTotals)[];
   byFeature: ({ feature: string } & CostTotals)[];
 };
-
-/** credit_ai_charge.costMicro (millionths of a credit at our price) → provider USD micro. */
-const paidUsdMicro = (costMicro: number) => costMicro / CREDITS_PER_USD / MARGIN;
 
 /** A paid charge's feature from its key: `<feature>:<userId>:…`; a Learning Partner reply has none. */
 export function paidFeature(prefix: string | null | undefined): string {
