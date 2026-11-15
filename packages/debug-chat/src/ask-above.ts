@@ -27,17 +27,11 @@ export const JUMP_END_PX = 32;
 export const jumpWidth = (count: number) => (count > 1 ? (count > 9 ? 60 : 52) : 40);
 
 /**
- * The room the newest run of lines keeps beside the button, at the log's end
- * (owner, 2026-11-07 18:10 JST: "滚动不在正确的位置，它的下面半个窗口是空的": a
- * whole empty row under the last line left the bottom of the 3-line log
- * blank). Not a row: room at the end side of the newest run, that run at
- * least the button's height, so the button covers no line or pill and the
- * newest line still sits at the log's bottom.
+ * Reserve the widest arrow beside the newest run even while it is hidden.
+ * Appearance, disappearance and count changes must never rewrap the paragraph.
+ * No minimum height: the floating button must not add a blank line below text.
  */
-export const jumpRoom = (count: number) => ({
-  end: JUMP_END_PX + jumpWidth(count) + 6,
-  minHeight: JUMP_H_PX + JUMP_GAP_PX,
-});
+export const jumpRoom = () => ({ end: JUMP_END_PX + jumpWidth(10) + 6 });
 
 /** The ids of the lines whose ask can still be answered, oldest first. */
 export function openAskIds(

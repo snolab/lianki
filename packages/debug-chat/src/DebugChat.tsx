@@ -5370,9 +5370,9 @@ export function DebugChat({
           const ownPassage = isOwnVoice(m0);
           // The state-tree node the run belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m0);
-          // The up-arrow floats at the log's end: the newest run keeps room
-          // beside it (ask-above.ts jumpRoom), never an empty row under it.
-          const room = askJumpShown && r === runs.length - 1 ? jumpRoom(asksUp.length) : null;
+          // Always keep the same side room: toggling the floating arrow or its
+          // count never changes wrapping/height. It adds no minimum row height.
+          const room = r === runs.length - 1 ? jumpRoom() : null;
           return (
             <li
               key={m0.id}
@@ -5384,18 +5384,7 @@ export function DebugChat({
               className="flex items-start gap-1.5 leading-snug"
               style={{
                 ...(node ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 } : {}),
-                // A short run sits at the bottom of its room: nothing blank under it.
-                // The ROW goes down (align-content on a one-line wrapping flex), not
-                // each item: align-items would drop the avatar to a long run's last
-                // line, away from its first (owner, 2026-11-09 13:42 JST).
-                ...(room
-                  ? {
-                      paddingInlineEnd: room.end,
-                      minHeight: room.minHeight,
-                      flexWrap: "wrap",
-                      alignContent: "flex-end",
-                    }
-                  : {}),
+                ...(room ? { paddingInlineEnd: room.end } : {}),
               }}
             >
               {(() => {
@@ -5891,8 +5880,8 @@ export function DebugChat({
               title={askJumpText}
               onClick={jumpToAsk}
               style={{
-                background: "oklch(0.5 0.187 22.3)",
-                color: "oklch(0.98 0 0)",
+                color: "var(--foreground)",
+                border: "1px solid var(--glass-line)",
                 height: JUMP_H_PX,
                 width: jumpWidth(asksUp.length),
                 padding: "0 10px",
@@ -5902,7 +5891,7 @@ export function DebugChat({
                 lineHeight: 1,
                 boxShadow: "0 1px 4px oklch(0 0 0 / 0.3)",
               }}
-              className="tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full"
+              className="lk-glass tap-40 pointer-events-auto inline-flex items-center justify-center whitespace-nowrap rounded-full"
             >
               {asksUp.length > 1 && <span aria-hidden>{asksUp.length}</span>}
               <span aria-hidden style={{ display: "inline-flex", fontSize: 16 }}>
