@@ -15,6 +15,8 @@ import {
   briefBullet,
   chunkLines,
   makeDeliverer,
+  reconnectWait,
+  RECONNECT_RESET_MS,
   urgentLine,
   voiceAllowed,
   tokenNeeded,
@@ -323,5 +325,15 @@ describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
     expect(briefBullet("codex", { ...line("v2", "短句"), voice: "unknown" })).toBe(
       "- (id:v2)（声纹未定） 短句",
     );
+  });
+});
+
+describe("reconnectWait", () => {
+  it("a socket that lived a while reconnects at once; quick failures back off", () => {
+    // After a quiet night (its socket died unseen; the keepalive ended it): 1 s, inside the 30 s grace.
+    expect(reconnectWait(32_000, 4, RECONNECT_RESET_MS)).toEqual({ wait: 1_000, next: 2_000 });
+    expect(reconnectWait(32_000, 4, 5_000)).toEqual({ wait: 32_000, next: 60_000 });
+    expect(reconnectWait(60_000, 4, 0).next).toBe(60_000);
+    expect(reconnectWait(400_000, 5, 0)).toEqual({ wait: 400_000, next: 600_000 });
   });
 });

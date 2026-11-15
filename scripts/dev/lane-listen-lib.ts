@@ -279,3 +279,22 @@ export function makeDeliverer(
     pending: () => pending.length,
   };
 }
+
+/** A listener that ran this long was a good connection: its next reconnect starts quick again. */
+export const RECONNECT_RESET_MS = 60_000;
+
+/**
+ * The wait before the next reconnect, and the one after it. A socket that
+ * lived RECONNECT_RESET_MS or more starts again at 1 s, so a drop after a
+ * quiet night reconnects inside the hub's grace (lanes.modeGraceSec, 30 s)
+ * and no "转为只读" is said; quick failures back off to 60 s (10 min on 5,
+ * a refusal).
+ */
+export function reconnectWait(
+  backoff: number,
+  code: number,
+  ranMs: number,
+): { wait: number; next: number } {
+  const wait = ranMs >= RECONNECT_RESET_MS ? 1_000 : backoff;
+  return { wait, next: Math.min(wait * 2, code === 5 ? 600_000 : 60_000) };
+}
