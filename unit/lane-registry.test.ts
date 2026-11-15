@@ -773,3 +773,22 @@ describe("the hub: modes and system lines", () => {
     expect(page.lastPresent()[0]?.mode).toBeUndefined();
   });
 });
+
+describe("LaneRegistry.apply: one lane's inputs run in order, a failed one does not jam the chain", () => {
+  it("a store write that throws rejects that input; the next input on the lane still applies", async () => {
+    const f = fakeRegistry();
+    const set = f.store.set.bind(f.store);
+    let failOnce = true;
+    f.store.set = ((k: string, v: unknown) => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error("kv down");
+      }
+      return set(k, v);
+    }) as typeof f.store.set;
+    await expect(f.reg.listen("owner", "agy", "owner")).rejects.toThrow("kv down");
+    // The chain's catch swallows the failure, so the lane's next input runs and lands.
+    expect((await f.reg.listen("owner", "agy", "owner"))?.state).toBe("listener");
+    expect(await f.reg.list("owner")).toHaveLength(1);
+  });
+});
