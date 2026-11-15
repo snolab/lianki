@@ -22,7 +22,8 @@
 export const AUDIO_CLAIM = "lk:audio-claim";
 export const AUDIO_RELEASE = "lk:audio-release";
 /** Higher wins. */
-export const AUDIO_PRIO = { li: 3, card: 2, para: 1 } as const;
+/** `play`: an agent's audio on a chat line (li-player.ts), ranked with a card read aloud. */
+export const AUDIO_PRIO = { li: 3, card: 2, play: 2, para: 1 } as const;
 
 export type AudioClaimDetail = { id: string; prio: number };
 export type AudioOwnerState = "idle" | "holding" | "waiting";
