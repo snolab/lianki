@@ -3,6 +3,7 @@
 // the page's audio owner, the mic rule, the tap fallback. All on fakes: a
 // fake element whose play() is a promise the test settles, no sound at all.
 import { afterEach, describe, expect, it } from "bun:test";
+import { globalDescriptor, restoreGlobal } from "./support/globals";
 import { AUDIO_CLAIM, AUDIO_PRIO, AUDIO_RELEASE, audioOwner } from "@lianki/debug-chat/audio-claim";
 import {
   LI_PLAY_KEY,
@@ -434,7 +435,9 @@ describe("hold, unlock, the page's one player", () => {
   });
 
   it("in a browser: one element, the play URL from the page's own session, the mic read", async () => {
-    const saved = { Audio: g.Audio, fetch: g.fetch, location: g.location };
+    const saved = Object.fromEntries(
+      ["Audio", "fetch", "location"].map((key) => [key, globalDescriptor(key)]),
+    );
     const made: unknown[] = [];
     g.Audio = class {
       constructor() {
@@ -480,9 +483,7 @@ describe("hold, unlock, the page's one player", () => {
       env.log!({ x: 1 });
       expect(logs).toEqual([{ x: 1 }]);
     } finally {
-      g.Audio = saved.Audio;
-      g.fetch = saved.fetch;
-      g.location = saved.location;
+      for (const [key, descriptor] of Object.entries(saved)) restoreGlobal(key, descriptor);
     }
   });
 

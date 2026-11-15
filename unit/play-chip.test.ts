@@ -3,6 +3,7 @@
 // each state of Li's player, and that its buttons drive the player. A fake
 // player and happy-dom: nothing plays.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { globalDescriptor, restoreGlobal } from "./support/globals";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -111,17 +112,20 @@ describe("what the chip shows", () => {
 describe("the buttons drive the player", () => {
   const win = new Window({ url: "https://lianki.com/" });
   const g = globalThis as Record<string, unknown>;
-  const saved: Record<string, unknown> = {};
+  const saved = Object.fromEntries(
+    ["window", "document", "navigator", "HTMLElement", "IS_REACT_ACT_ENVIRONMENT"].map((key) => [
+      key,
+      globalDescriptor(key),
+    ]),
+  );
   beforeAll(() => {
-    for (const k of ["window", "document", "navigator", "HTMLElement", "IS_REACT_ACT_ENVIRONMENT"])
-      saved[k] = g[k];
     g.window = win;
     g.document = win.document;
     g.HTMLElement = win.HTMLElement;
     g.IS_REACT_ACT_ENVIRONMENT = true;
   });
   afterAll(() => {
-    for (const [k, v] of Object.entries(saved)) g[k] = v;
+    for (const [key, descriptor] of Object.entries(saved)) restoreGlobal(key, descriptor);
   });
 
   it("▶ toggles, ⏹ stops, the tap note plays; a press keeps the focus", async () => {
