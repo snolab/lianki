@@ -10,6 +10,13 @@ import {
   USER_DAILY_TOKENS,
   USER_WINDOW_TOKENS_MAX,
 } from "./partner-ai-config";
+import {
+  SPEND_MINE_TEXT,
+  SPEND_SITE_TEXT,
+  SPEND_STEP_MAX,
+  SPEND_STEP_MIN,
+  SPEND_STEP_USD,
+} from "./payments/spend-alert-config";
 /**
  * The config registry: every user-meaningful number, text and icon whose live
  * value comes from the config store (lib/config-store.ts, D1 `config_values`)
@@ -1054,6 +1061,34 @@ export const CONFIG = {
     money: true,
     description:
       "学习伙伴 AI：全站在滚动窗口（partner.capWindowHours）里最多花多少美元（按模型标价算）。用满后所有人都暂停，旧的用量随时间释放。0 = 全站不回复。",
+  },
+  // The spend alert (flag partner.spend-alert; lib/payments/spend-alert.ts).
+  "partner.spendAlertStepUsd": {
+    default: SPEND_STEP_USD as number,
+    schema: z.number().min(SPEND_STEP_MIN).max(SPEND_STEP_MAX),
+    min: SPEND_STEP_MIN,
+    max: SPEND_STEP_MAX,
+    unit: "USD",
+    group: "chat",
+    audience: "server",
+    description:
+      "AI 花费提醒的步长：全站和你自己账号的 AI 花费（服务商成本）每多这么多美元，就在你的线程里发一条提醒。默认 1 = 每 1 美元一条。改了步长不会重复已经提醒过的金额。开关在 /dev/flags 的 partner.spend-alert。",
+  },
+  "partner.spendAlertSiteText": {
+    default: SPEND_SITE_TEXT as string,
+    schema: z.string().min(1).max(200).includes("{n}"),
+    group: "chat",
+    audience: "server",
+    description:
+      "全站 AI 花费提醒的那句话（发在你的线程里并朗读）。{n} = 达到的金额（美元，如 3），{today} = 今天（UTC）全站花了多少，{month} = 本月（UTC）全站花了多少（两位小数）。$ 是文字本身的美元符号。",
+  },
+  "partner.spendAlertMineText": {
+    default: SPEND_MINE_TEXT as string,
+    schema: z.string().min(1).max(200).includes("{n}"),
+    group: "chat",
+    audience: "server",
+    description:
+      "你自己账号的 AI 花费提醒那句话（发在你的线程里并朗读）。{n} = 达到的金额（美元），{today} = 你今天（UTC）花了多少，{month} = 你本月（UTC）花了多少（两位小数）。",
   },
   "chat.partnerModelTimeoutMs": int({
     ...HUB_RPC_LIMITS["chat.partnerModelTimeoutMs"],

@@ -65,6 +65,8 @@ export type PartnerEnv = {
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_AI_TOKEN?: string;
   CLOUDFLARE_API_TOKEN?: string;
+  /** lianki-push, where the spend alert posts (lib/payments/spend-alert.ts). */
+  PUSH?: { fetch(url: string, init?: RequestInit): Promise<Response> };
 };
 
 type Deps = { fetch?: typeof fetch; now?: () => number; signal?: AbortSignal };
@@ -377,6 +379,8 @@ export async function partnerReply(
         key,
         usdToMicroCredits(textUsd(PARTNER_AI_MODEL, tokensIn, tokensOut)),
         new Date(now()),
+        // Called over RPC: no OpenNext context, so the hub is passed in.
+        { push: env.PUSH ?? null },
       );
     } catch {}
     if (res.ok && settled) res = { ...res, charged: settled.charged };

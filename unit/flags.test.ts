@@ -83,6 +83,8 @@ describe("registry", () => {
       "mini-apps",
       // Li in his own thread, asked 2026-11-15 13:4x JST, audience owner.
       "partner.owner-thread",
+      // The spend alert, asked 2026-11-15 15:0x JST, audience owner.
+      "partner.spend-alert",
     ]);
     for (const k of FLAG_KEYS) expect(FLAGS[k].description.length).toBeGreaterThan(0);
     expect(FLAGS["payments.stripe.live"].default).toBe(false);
