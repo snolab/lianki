@@ -695,4 +695,23 @@ describe("voice.otherAvatarBelow: an undecided line well under his print is anot
     expect(lineAvatar(line(0.3), opts).name).toBe("Another voice");
     setOtherAvatarBelow(OTHER_AVATAR_BELOW);
   });
+  it("a configured picture and name replace the generated disc; a bad link is ignored", async () => {
+    const { setOtherAvatar } = await import("@/packages/debug-chat/src/avatar-rules");
+    setOtherAvatar("https://lianki.com/avatars/x.png", "  她  ");
+    const a = lineAvatar(line(0.35), opts);
+    expect(a.src).toEqual(["https://lianki.com/avatars/x.png"]);
+    expect(a.name).toBe("她");
+    const decided = lineAvatar(
+      {
+        ...(line(0.1) as object),
+        speaker: { decision: "other", score: 0.1, voice: "v7" },
+      } as never,
+      opts,
+    );
+    expect(decided.src).toEqual(["https://lianki.com/avatars/x.png"]);
+    setOtherAvatar("javascript:alert(1)", 5);
+    expect(lineAvatar(line(0.35), opts).src).toBe("voice-other.svg");
+    expect(lineAvatar(line(0.35), opts).name).toBe("Another voice");
+    setOtherAvatar("");
+  });
 });

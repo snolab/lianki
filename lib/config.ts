@@ -345,6 +345,28 @@ export const CONFIG = {
     description:
       "声纹判定不了（未定）的语音行，如果和你的声纹相似度低于这个值，就用「另一个声音」的头像显示，而不是你的头像（淡色加问号）。你自己的话通常在 0.76–0.85，家人等其他人在 0.30–0.42。0 = 关闭，未定的行一律用你的头像。",
   },
+  // The picture and name of another voice in his thread (avatar-rules.ts setOtherAvatar).
+  "voice.otherAvatar": {
+    default: "",
+    schema: z.union([
+      z.literal(""),
+      z
+        .string()
+        .max(500)
+        .regex(/^(https:\/\/|\/)/, "an https:// or /path picture link"),
+    ]),
+    group: "voice",
+    audience: "public",
+    description:
+      "你线程里「另一个声音」的行用的头像图片链接（https:// 或站内 /路径），比如家人自己账号的头像。空 = 用自动生成的圆形图案。只影响显示。",
+  },
+  "voice.otherAvatarName": {
+    default: "",
+    schema: z.string().max(40),
+    group: "voice",
+    audience: "public",
+    description: "「另一个声音」的行显示的名字（比如家人的名字）。空 = 「另一个声音」。",
+  },
   "voice.cloneTimeoutMs": int({
     default: 20_000,
     min: 2_000,
