@@ -3,6 +3,7 @@
 import { MiniAppCards, type MiniAppEmbedView, type MiniAppSizing } from "./MiniAppCards";
 
 import { createScrollFollow } from "./scroll-follow";
+import { createLogResizeAnchor } from "./log-resize-anchor";
 import { evalTrustStrings } from "./eval-trust-strings";
 import { shortPage } from "./short-page";
 import { type AdaptState, voiceAdapt } from "./adaptive";
@@ -2067,6 +2068,10 @@ export function DebugChat({
     follow.reset(); // A fresh account/thread starts at newest, never another thread's scroll position.
     return follow;
   }, [draftScope]);
+  const resizeAnchor = useMemo(
+    () => createLogResizeAnchor({ box: () => log.current, following: atEnd }),
+    [tail],
+  );
   const touchScrollY = useRef<number | null>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
   /**
@@ -2119,6 +2124,7 @@ export function DebugChat({
     lastLogScroll.current = el.scrollTop;
     setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
     const end = tail.scroll();
+    resizeAnchor.remember();
     setScrolledUp(!end);
     if (end) setBelow(0);
   };
@@ -2702,19 +2708,25 @@ export function DebugChat({
   }, [messages, open, tail]);
   // At the end, the log stays there when it or its lines change size (the
   // keyboard, the text size, the box moved, a card opening): a shrinking
-  // scroller keeps its scrollTop, which showed older lines. Scrolled up, it
-  // is left alone; the full-screen log places itself.
+  // scroller keeps its scrollTop, which showed older lines. Scrolled up, keep
+  // the message under the reader's focus in place when the viewport resizes.
+  // The temporary full-screen log places itself.
   useEffect(() => {
     const el = log.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
-      if (el.hidden || fullNow.current !== "off") return;
+      if (el.hidden || fullNow.current !== "off") {
+        resizeAnchor.reset();
+        return;
+      }
+      resizeAnchor.resize();
       tail.pin();
+      resizeAnchor.remember();
     });
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
-  }, [open, tail]);
+  }, [open, tail, resizeAnchor]);
 
   const messagesNow = useRef(messages);
   messagesNow.current = messages;
