@@ -915,6 +915,8 @@ export class DebugHub {
   private echoConf?: { at: number; on: boolean; conf: EchoConf };
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
   private agentAt = new Map<string, number>();
+  /** His thread: when a lane's line (an agent line not Li's own) was last posted (owner-ai.ts laneAt). */
+  private ownerLaneAt = 0;
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
   private aiTurn = new Map<string, number>();
   /** Li in the owner's thread (owner-ai.ts): his unaddressed lines no lane answered. */
@@ -926,6 +928,7 @@ export class DebugHub {
     config: async (key) => (this.sessions?.config ? this.sessions.config(key) : undefined),
     aiOn: () => this.aiOn(),
     agentAt: () => this.agentAt.get(OWNER_THREAD) ?? 0,
+    laneAt: () => this.ownerLaneAt,
     reply: (l, { page, context, scene }) =>
       this.aiReply(page, page.email ?? "", l.at, context, scene, l.id),
     present: async (_l, { page }) =>
@@ -1495,6 +1498,15 @@ export class DebugHub {
   private async post(m: ChatMessage & { thread: string }, only?: string[]) {
     const seq = await this.writeLine(undefined, m, true);
     if (m.from === "agent") this.agentAt.set(m.thread, Math.max(m.at, this.now()));
+    // A lane talking with him: not Li's own lines, nor the hub's notices (ETA, spend, lane joins).
+    if (
+      m.from === "agent" &&
+      m.thread === OWNER_THREAD &&
+      !m.laneEvent &&
+      m.source !== "eta" &&
+      ![PARTNER_AI_LABEL, ETA_LABEL, SPEND_ALERT_LABEL].includes(m.label ?? "")
+    )
+      this.ownerLaneAt = Math.max(m.at, this.now());
     const out = { type: "chat", message: m };
     // His devices read an agent line together (sync-speak.ts): pages only, never stored.
     const speakAt = m.from === "agent" ? this.speakAt(m.thread) : undefined;
@@ -4317,6 +4329,7 @@ export class DebugHub {
                 at: t,
                 ...(m.to ? { to: m.to } : {}),
                 ...(speaker ? { speaker } : {}),
+                ...(m.source ? { source: m.source } : {}),
               },
               {
                 page,

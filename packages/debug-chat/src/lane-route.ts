@@ -104,6 +104,17 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
       "海吉米",
       "哈急米",
       "哈几米",
+      // STT 2026-11-16 13:3x JST: "韩吉敏回答。", "韩今明要实施监控这个页面的改动。"
+      "韩吉敏",
+      "韩今明",
+      "韩吉明",
+      "韩金明",
+      "韩基米",
+      "韩吉米",
+      "汉吉米",
+      "哈吉敏",
+      "哈基敏",
+      "哈吉明",
       "ハチミ",
       "ハッチミ",
       "Hajimi",
@@ -405,4 +416,36 @@ export function laneTakes(
   if (text === null) return false;
   // `all`: every owner line, addressed or not (owner, 2026-11-14: "coco 也要听所有的话").
   return (opts.all === true && m.from === "owner") || routeLine(text).lanes.includes(lane);
+}
+
+/** A name inside a line: Latin ones as whole words, the others as written. */
+function namedIn(t: string, name: string): boolean {
+  const n = name.toLowerCase();
+  if (!n) return false;
+  if (!isLatin(n)) return t.includes(n);
+  for (let i = t.indexOf(n); i >= 0; i = t.indexOf(n, i + 1)) {
+    const before = i > 0 ? t[i - 1]! : "";
+    const next = t[i + n.length] ?? "";
+    if (!/[a-z0-9]/i.test(before) && !/[a-z0-9]/i.test(next)) return true;
+  }
+  return false;
+}
+
+/**
+ * Does this line name a lane at all, as an address or not (owner,
+ * 2026-11-16: Li answered "韩今明要实施监控这个页面的改动", a heard spelling
+ * of 哈基米 with no mark after it)? Broader than routeLine: any own name or
+ * heard spelling anywhere in the line, and a name by sound at its start
+ * without the mark. Used only to keep Li (the Learning Partner model) quiet,
+ * so a false hit costs a silence, never a wrong hand-off.
+ */
+export function namesLane(text: string): boolean {
+  const raw = typeof text === "string" ? text : "";
+  if (routeLine(raw).addressed) return true;
+  const t = raw.toLowerCase();
+  for (const lane of routeLanes()) {
+    const names = laneNames(lane);
+    for (const name of [...names.exact, ...names.heard]) if (namedIn(t, name)) return true;
+  }
+  return nameAt(raw.replace(LEAD, "")) !== null;
 }
