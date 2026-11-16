@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import { CONFIG } from "@/lib/config";
+import { clearConfigCache, setConfig } from "@/lib/config-store";
 import { FLAGS } from "@/lib/flags";
 import { CREDITS_PER_USD } from "@/lib/payments/credits";
 import {
@@ -18,8 +19,13 @@ import {
   streakStepOf,
   usdToCredits,
 } from "@/lib/payments/login-streak";
-import { loginStreakView, recordLoginStreak } from "@/lib/payments/login-streak-store";
+import {
+  loginStreakConfig,
+  loginStreakView,
+  recordLoginStreak,
+} from "@/lib/payments/login-streak-store";
 import { getBalance, ledger, type D1WithBatch } from "@/lib/payments/credits-store";
+import { useBackend, useD1 } from "./support/testMocks";
 
 /**
  * Login-streak bonus (docs/payments.md, "Login-streak bonus"): credits for
@@ -303,6 +309,69 @@ describe("loginStreakView (the wallet line)", () => {
       today: false,
       credits: cr(6),
       step: 6,
+    });
+  });
+});
+
+/**
+ * The live values behind every call that passes no `conf` (the review routes,
+ * the wallet). Tested here directly so their coverage never hangs on which
+ * suite last left a D1 backend behind (prod CI, PR #996: the indirect path ran
+ * or not depending on file order).
+ */
+describe("loginStreakConfig (the live credits.loginStreak.* values)", () => {
+  afterEach(() => {
+    useBackend("mongodb");
+    useD1(null);
+    clearConfigCache();
+  });
+
+  test("off the D1 backend: the registry defaults", async () => {
+    useBackend("mongodb");
+    clearConfigCache();
+    expect(await loginStreakConfig()).toEqual(STREAK_DEFAULTS);
+  });
+
+  test("an unreadable store: the registry defaults", async () => {
+    useBackend("d1");
+    useD1({
+      prepare() {
+        throw new Error("D1 down");
+      },
+    });
+    clearConfigCache();
+    const err = console.error;
+    console.error = () => {};
+    try {
+      expect(await loginStreakConfig()).toEqual(STREAK_DEFAULTS);
+    } finally {
+      console.error = err;
+    }
+  });
+
+  test("values set on /dev/config: parsed, and the grant and the wallet use them", async () => {
+    const { d1, db, addUser } = setup();
+    useBackend("d1");
+    useD1(d1);
+    await setConfig(db, "credits.loginStreak.usdByDay", "0.1, 0.3", "owner@x.com", {
+      confirmMoney: true,
+    });
+    await setConfig(db, "credits.loginStreak.missCostDays", 5, "owner@x.com", {
+      confirmMoney: true,
+    });
+    clearConfigCache();
+    const live = await loginStreakConfig();
+    expect(live).toEqual({ usdByDay: [0.1, 0.3], missCostDays: 5 });
+
+    addUser("u");
+    expect((await recordLoginStreak(db, "u", "2026-11-14", "UTC", NOW)).credits).toBe(
+      usdToCredits(0.1),
+    );
+    expect(await loginStreakView(db, "u", "2026-11-15")).toMatchObject({
+      today: false,
+      credits: usdToCredits(0.3),
+      step: 2,
+      cycle: 2,
     });
   });
 });
