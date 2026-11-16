@@ -2,8 +2,14 @@ import { HUB_RPC_LIMITS } from "./hub-rpc-config";
 import {
   CAP_WINDOW_HOURS,
   CAP_WINDOW_MAX,
+  OWNER_LANE_ACTIVE_MAX,
+  OWNER_LANE_ACTIVE_MS,
+  OWNER_LI_NAMES,
+  OWNER_QUIET_MAX,
+  OWNER_QUIET_MS,
   OWNER_REPLY_DELAY_MAX,
   OWNER_REPLY_DELAY_MS,
+  OWNER_STOP_PHRASES,
   ROLL_CALL_REPLY_DEFAULT,
   SITE_DAILY_USD,
   SITE_WINDOW_USD_MAX,
@@ -1277,6 +1283,42 @@ export const CONFIG = {
     audience: "server",
     description:
       "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 30000 = 30 秒。开关在 /dev/flags 的 partner.owner-thread。",
+  }),
+  "partner.ownerQuietMs": int({
+    default: OWNER_QUIET_MS,
+    min: 0,
+    max: OWNER_QUIET_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "你在自己的线程里叫 Li 别说话（partner.stopPhrases 里的话，如「没问你」「闭嘴」）后，Li 沉默多少毫秒；其间你直接叫 Li（partner.liNames）它才回答。默认 600000 = 10 分钟；0 = 不沉默。",
+  }),
+  "partner.stopPhrases": {
+    default: [...OWNER_STOP_PHRASES] as string[],
+    schema: z.array(z.string().min(1).max(40)).max(200),
+    group: "chat",
+    audience: "server",
+    description:
+      "让 Li 沉默的话：你的一句话里含其中任何一条（不分大小写，任何语言都直接加在这里），且没有叫开发通道的名字，Li 就沉默 partner.ownerQuietMs。JSON 字符串数组。",
+  },
+  "partner.liNames": {
+    default: [...OWNER_LI_NAMES] as string[],
+    schema: z.array(z.string().min(1).max(40)).max(50),
+    group: "chat",
+    audience: "server",
+    description:
+      "Li 自己的名字：你的一句话以其中一个开头、后面跟标点或什么都没有（「Li，…」），就是在叫 Li：结束沉默，开发通道正在说话时也照样回答。JSON 字符串数组。",
+  },
+  "partner.laneActiveMs": int({
+    default: OWNER_LANE_ACTIVE_MS,
+    min: 0,
+    max: OWNER_LANE_ACTIVE_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "开发通道（不算 Li）最近这么多毫秒内在你的线程里说过话，Li 就不回答你没点名的话（多半是在跟那个通道对话）。默认 300000 = 5 分钟；0 = 不看。",
   }),
   "partner.rollCallReply": {
     default: ROLL_CALL_REPLY_DEFAULT as string,

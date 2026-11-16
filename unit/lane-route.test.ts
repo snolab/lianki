@@ -13,6 +13,7 @@ import {
   isRouteLane,
   laneHotwords,
   laneTakes,
+  namesLane,
   routeLine,
   setCustomLaneNames,
   testText,
@@ -267,5 +268,30 @@ describe("routeLine: names by sound (lane-phonetic.ts, 2026-11-15)", () => {
     setPhoneticMaxNear(0);
     expect(routeLine("切咪，在吗").addressed).toBe(false);
     expect(routeLine("借咪，在吗").lanes).toEqual(["agy"]);
+  });
+});
+
+describe("namesLane: any lane name in a line keeps Li quiet (2026-11-16)", () => {
+  it("heard spellings of 哈基米 from his thread route to agy with a mark", () => {
+    for (const n of ["韩吉敏", "韩今明", "韩吉明", "韩金明"])
+      expect(routeLine(`${n}，回答。`).lanes).toEqual(["agy"]);
+    expect(routeLine("韩吉敏回答。").addressed).toBe(false);
+  });
+  it("names a lane: an address, a heard spelling without a mark, a name further in", () => {
+    expect(namesLane("agy，看一下")).toBe(true);
+    expect(namesLane("韩今明要实施监控这个页面的改动。")).toBe(true);
+    expect(namesLane("韩吉敏回答。")).toBe(true);
+    expect(namesLane("这个你问一下哈基米吧")).toBe(true);
+    expect(namesLane("let coco check it")).toBe(true);
+    // By sound at the start, no mark (ha ji mi, written as no list has it).
+    expect(routeLine("哈机米去看看").addressed).toBe(false);
+    expect(namesLane("哈机米去看看")).toBe(true);
+  });
+  it("Latin names only as whole words; plain lines name nobody", () => {
+    expect(namesLane("今天学什么")).toBe(false);
+    expect(namesLane("codexes everywhere")).toBe(false);
+    expect(namesLane("the cocoon")).toBe(false);
+    expect(namesLane("xcoco")).toBe(false);
+    expect(namesLane(undefined as unknown as string)).toBe(false);
   });
 });

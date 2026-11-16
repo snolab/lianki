@@ -13,12 +13,22 @@
  * arrived in his thread meanwhile: the lanes keep priority, Li fills the
  * silence. One pending reply at a time; any newer line of his replaces it.
  */
-import { routeLine } from "../../../packages/debug-chat/src/lane-route";
+import { namesLane } from "../../../packages/debug-chat/src/lane-route";
 import type { SpeakerTag } from "../../../packages/debug-chat/src/wire";
 import {
+  OWNER_LANE_ACTIVE_KEY,
+  OWNER_LANE_ACTIVE_MAX,
+  OWNER_LANE_ACTIVE_MS,
+  OWNER_LI_NAMES,
+  OWNER_LI_NAMES_KEY,
+  OWNER_QUIET_KEY,
+  OWNER_QUIET_MAX,
+  OWNER_QUIET_MS,
   OWNER_REPLY_DELAY_KEY,
   OWNER_REPLY_DELAY_MAX,
   OWNER_REPLY_DELAY_MS,
+  OWNER_STOP_PHRASES,
+  OWNER_STOP_PHRASES_KEY,
   PARTNER_OWNER_FLAG,
 } from "../../../lib/partner-ai-config";
 import type { HubTimer } from "./debug";
@@ -35,12 +45,48 @@ export type OwnerLine = {
   speaker?: Pick<SpeakerTag, "decision">;
 };
 
-/** Could Li answer this line of his at all (before the flags and the delay)? */
+/**
+ * Could Li answer this line of his at all (before the flags and the delay)?
+ * Not when it names a lane anywhere, heard spellings included (namesLane):
+ * 2026-11-16, Li answered "韩今明要实施监控这个页面的改动", meant for 哈基米.
+ */
 export function ownerLineWanted(l: OwnerLine): boolean {
   if (l.to) return false;
   if (l.speaker && l.speaker.decision !== "me") return false;
-  return !routeLine(l.text).addressed;
+  return !namesLane(l.text);
 }
+
+/** Does the line hold one of the stop phrases (case-insensitive, anywhere)? */
+export function isStopLine(text: string, phrases: readonly string[] = OWNER_STOP_PHRASES): boolean {
+  const t = text.toLowerCase();
+  return phrases.some((p) => p.trim() !== "" && t.includes(p.trim().toLowerCase()));
+}
+
+/** After a name: nothing, or a mark or a space (a Latin name must not run on into a word). */
+const LI_AFTER = /^(?:$|[\s,，、:：.。!！?？~～—–-])/u;
+/** Does the line start by naming Li ("Li，…", "@Li 在吗", "学习伙伴：…")? */
+export function addressesLi(text: string, names: readonly string[] = OWNER_LI_NAMES): boolean {
+  const t = text.replace(/^[\s@,，、:：.。!！~～-]+/u, "").toLowerCase();
+  return names.some((n) => {
+    const name = n.trim().toLowerCase();
+    return name !== "" && t.startsWith(name) && LI_AFTER.test(t.slice(name.length));
+  });
+}
+
+type Conf = {
+  at: number;
+  on: boolean;
+  delayMs: number;
+  quietMs: number;
+  laneActiveMs: number;
+  stop: readonly string[];
+  liNames: readonly string[];
+};
+
+const ms = (v: unknown, max: number): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.min(v, max) : undefined;
+const words = (v: unknown): string[] | undefined =>
+  Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : undefined;
 
 export type OwnerAiDeps<P> = {
   now(): number;
@@ -53,6 +99,8 @@ export type OwnerAiDeps<P> = {
   aiOn(): Promise<boolean>;
   /** When an agent line last arrived in his thread (0 = never). */
   agentAt(): number;
+  /** When a lane's line (an agent line that is neither Li's nor a hub notice) last arrived in his thread; absent = never. */
+  laneAt?(): number;
   /** Answer this line now, for the page it came from (DebugHub.aiReply for his thread). */
   reply(l: OwnerLine, page: P): Promise<void>;
   /** Post Li's roll-call answer at once (no model): config partner.rollCallReply over who is here. */
@@ -79,27 +127,51 @@ export function isRollCall(text: string): boolean {
 
 export class OwnerAi<P> {
   private pending?: { timer: unknown };
-  private conf?: { at: number; on: boolean; delayMs: number };
+  private conf?: Conf;
   /** Counts his lines: a line whose flag read finished after a newer one began is dropped. */
   private seq = 0;
+  /** Li keeps silent until then (a stop line of his), unless he names Li. */
+  private quietUntil = 0;
 
   constructor(private d: OwnerAiDeps<P>) {}
 
-  /** The flag (only exactly true is on; unreadable = off) and the delay, cached. */
-  async state(): Promise<{ on: boolean; delayMs: number }> {
+  /** Is Li in a quiet spell (he told it to stop)? */
+  quiet(): boolean {
+    return this.d.now() < this.quietUntil;
+  }
+
+  private async read(key: string): Promise<unknown> {
+    try {
+      return await this.d.config(key);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The flag (only exactly true is on; unreadable = off) and the live values, cached. */
+  async state(): Promise<Conf> {
     const t = this.d.now();
     if (this.conf && t - this.conf.at < CONF_MS) return this.conf;
     let on = false;
     try {
       on = (await this.d.flag(PARTNER_OWNER_FLAG)) === true;
     } catch {}
-    let delayMs = OWNER_REPLY_DELAY_MS;
-    try {
-      const v = await this.d.config(OWNER_REPLY_DELAY_KEY);
-      if (typeof v === "number" && Number.isFinite(v) && v >= 0)
-        delayMs = Math.min(v, OWNER_REPLY_DELAY_MAX);
-    } catch {}
-    this.conf = { at: t, on, delayMs };
+    const [delay, quiet, active, stop, liNames] = await Promise.all([
+      this.read(OWNER_REPLY_DELAY_KEY),
+      this.read(OWNER_QUIET_KEY),
+      this.read(OWNER_LANE_ACTIVE_KEY),
+      this.read(OWNER_STOP_PHRASES_KEY),
+      this.read(OWNER_LI_NAMES_KEY),
+    ]);
+    this.conf = {
+      at: t,
+      on,
+      delayMs: ms(delay, OWNER_REPLY_DELAY_MAX) ?? OWNER_REPLY_DELAY_MS,
+      quietMs: ms(quiet, OWNER_QUIET_MAX) ?? OWNER_QUIET_MS,
+      laneActiveMs: ms(active, OWNER_LANE_ACTIVE_MAX) ?? OWNER_LANE_ACTIVE_MS,
+      stop: words(stop) ?? OWNER_STOP_PHRASES,
+      liNames: words(liNames) ?? OWNER_LI_NAMES,
+    };
     return this.conf;
   }
 
@@ -121,8 +193,23 @@ export class OwnerAi<P> {
         );
       return;
     }
-    if (!ownerLineWanted(l)) return;
+    if (l.to || l.speaker?.decision === "other") return;
     const conf = await this.state();
+    // "没问你" / "闭嘴" (owner, 2026-11-16: "我已经要求他闭嘴了"): Li keeps silent a while.
+    // A stop line that names a lane ("哈基米，别说了") is for that lane, not Li.
+    if (isStopLine(l.text, conf.stop) && !namesLane(l.text)) {
+      this.quietUntil = this.d.now() + conf.quietMs;
+      return;
+    }
+    if (!ownerLineWanted(l)) return;
+    const direct = addressesLi(l.text, conf.liNames);
+    if (direct) this.quietUntil = 0;
+    else {
+      if (this.quiet()) return;
+      // A lane is talking with him: his unaddressed line is most likely for it.
+      const laneAt = this.d.laneAt?.() ?? 0;
+      if (conf.laneActiveMs > 0 && laneAt > 0 && this.d.now() - laneAt < conf.laneActiveMs) return;
+    }
     if (!conf.on || !(await this.d.aiOn())) return;
     // A newer line came in while the flags were read: that one decides.
     if (seq !== this.seq) return;

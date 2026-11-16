@@ -1,7 +1,21 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { DebugHub, type HubTimer, type Socket, type Storage } from "@/workers/push/src/debug";
-import { OwnerAi, isRollCall, ownerLineWanted } from "@/workers/push/src/owner-ai";
 import {
+  OwnerAi,
+  addressesLi,
+  isRollCall,
+  isStopLine,
+  ownerLineWanted,
+} from "@/workers/push/src/owner-ai";
+import {
+  OWNER_LANE_ACTIVE_KEY,
+  OWNER_LANE_ACTIVE_MS,
+  OWNER_LI_NAMES,
+  OWNER_LI_NAMES_KEY,
+  OWNER_QUIET_KEY,
+  OWNER_QUIET_MS,
+  OWNER_STOP_PHRASES,
+  OWNER_STOP_PHRASES_KEY,
   OWNER_REPLY_DELAY_KEY,
   OWNER_REPLY_DELAY_MAX,
   OWNER_REPLY_DELAY_MS,
@@ -215,7 +229,8 @@ describe("Li in the owner's thread: the hub", () => {
     const l = await s.lane();
     await s.msg(l, { type: "say", text: "【coco】在" });
     await s.msg(l, { type: "say", text: "【杰咪】在" });
-    s.tick(1000);
+    // Past the lanes' active window: Li may answer an unaddressed line again.
+    s.tick(OWNER_LANE_ACTIVE_MS + 1000);
     await s.msg(o, { type: "chat", id: "a1", text: "你们在干嘛" });
     await s.timers.fire();
     expect(s.calls).toHaveLength(1);
@@ -255,7 +270,7 @@ describe("Li in the owner's thread: the hub", () => {
     await s.msg(l, { type: "say", text: "lane answer" });
     await s.timers.fire();
     expect(s.calls).toEqual([]);
-    s.tick(1000);
+    s.tick(OWNER_LANE_ACTIVE_MS + 1000);
     await s.msg(o, { type: "chat", id: "a2", text: "second" });
     await s.timers.fire();
     expect(s.calls.at(-1)?.history).toEqual([
@@ -275,6 +290,63 @@ describe("Li in the owner's thread: the hub", () => {
     await s.timers.fire();
     expect(s.calls).toEqual([]);
     expect(chats(o).map((m) => m.text)).toEqual(["hello", "lane here"]);
+  });
+
+  it("the 2026-11-16 thread: a lane talking, a heard 哈基米, 没问你 — Li keeps out until named", async () => {
+    const s = setup();
+    const o = await s.ownerPage();
+    const l = await s.lane();
+    await s.msg(l, { type: "say", text: "【哈基米】我查了一下" });
+    s.tick(1000);
+    // Unaddressed, but a lane is talking with him: not Li's.
+    await s.msg(o, { type: "chat", id: "e1", text: "这个是什么意思？你看你自己幻觉" });
+    expect(s.timers.live.size).toBe(0);
+    s.tick(OWNER_LANE_ACTIVE_MS + 1000);
+    // A heard spelling of 哈基米 with no mark after it still names the lane.
+    await s.msg(o, { type: "chat", id: "e2", text: "韩今明要实施监控这个页面的改动。" });
+    expect(s.timers.live.size).toBe(0);
+    // Told to stop: quiet for partner.ownerQuietMs, even on a plain line.
+    await s.msg(o, { type: "chat", id: "e3", text: "没问你，没问你。" });
+    await s.msg(o, { type: "chat", id: "e4", text: "今天学什么" });
+    expect(s.timers.live.size).toBe(0);
+    // Named, Li answers (and the quiet spell ends).
+    await s.msg(o, { type: "chat", id: "e5", text: "Li，今天学什么" });
+    expect(s.timers.live.size).toBe(1);
+    await s.timers.fire();
+    expect(s.calls.map((c) => c.msgId)).toEqual(["e5"]);
+    // Li's own reply is not a lane talking: his next plain line may get Li.
+    s.tick(1000);
+    await s.msg(o, { type: "chat", id: "e6", text: "再来一个" });
+    expect(s.timers.live.size).toBe(1);
+  });
+
+  it("the hub's own notices (ETA, lane joins) do not count as a lane talking", async () => {
+    const s = setup();
+    const o = await s.ownerPage();
+    // The hub's own post (private): what its ETA and lane-event paths call.
+    const post = (m: unknown) =>
+      (s.hub as unknown as { post(m: unknown): Promise<unknown> }).post(m);
+    await post({
+      id: "n1",
+      from: "agent",
+      label: "lanes",
+      text: "coco joined",
+      at: T0,
+      thread: "owner",
+      laneEvent: { kind: "join", lane: "codex" },
+    });
+    await post({
+      id: "n2",
+      from: "agent",
+      label: "ETA",
+      text: "eta",
+      at: T0,
+      thread: "owner",
+      source: "eta",
+    });
+    s.tick(1000);
+    await s.msg(o, { type: "chat", id: "a1", text: "今天学什么" });
+    expect(s.timers.live.size).toBe(1);
   });
 
   it("a newer line of his replaces the pending reply (one reply, for the newest)", async () => {
@@ -471,6 +543,102 @@ describe("Li in the owner's thread: which lines", () => {
     expect(replies).toEqual(["x"]);
     expect(logs.some((l) => l.includes("partner.owner-failed"))).toBe(true);
     expect(flagReads).toBe(2);
+  });
+
+  it("stop lines and Li's names are data: matched anywhere / at the start", () => {
+    expect(isStopLine("没问你，没问你。")).toBe(true);
+    expect(isStopLine("Shut UP please")).toBe(true);
+    expect(isStopLine("今天学什么")).toBe(false);
+    expect(isStopLine("halt", ["HALT", " "])).toBe(true);
+    expect(isStopLine("anything", [""])).toBe(false);
+    expect(addressesLi("Li，今天学什么")).toBe(true);
+    expect(addressesLi("@li 在吗")).toBe(true);
+    expect(addressesLi("Li")).toBe(true);
+    expect(addressesLi("学习伙伴：帮我")).toBe(true);
+    expect(addressesLi("Like this")).toBe(false);
+    expect(addressesLi("Lisa，你好")).toBe(false);
+    expect(addressesLi("小李，你好", ["小李", ""])).toBe(true);
+  });
+
+  it("OwnerAi: a stop line quiets Li for the configured spell; naming Li or the spell's end lets it speak", async () => {
+    const timers = fakeTimer();
+    let now = 0;
+    let laneAt = 0;
+    const replies: string[] = [];
+    const conf: Record<string, unknown> = {
+      [OWNER_QUIET_KEY]: 60_000,
+      [OWNER_STOP_PHRASES_KEY]: ["stop it"],
+      [OWNER_LI_NAMES_KEY]: ["Lia"],
+      [OWNER_LANE_ACTIVE_KEY]: 10_000,
+    };
+    const ai = new OwnerAi<null>({
+      now: () => now,
+      timer: timers.timer,
+      flag: async () => true,
+      config: async (k) => conf[k],
+      aiOn: async () => true,
+      agentAt: () => 0,
+      laneAt: () => laneAt,
+      reply: async (l) => void replies.push(l.id),
+      present: async () => {},
+    });
+    // The configured list replaces the default: 没问你 is a plain line now.
+    await ai.line({ id: "p0", text: "没问你", at: 1 }, null);
+    expect(timers.live.size).toBe(1);
+    await ai.line({ id: "s1", text: "please stop it", at: 2 }, null);
+    expect(timers.live.size).toBe(0);
+    expect(ai.quiet()).toBe(true);
+    await ai.line({ id: "p1", text: "hello", at: 3 }, null);
+    expect(timers.live.size).toBe(0);
+    // A stop line naming a lane is for that lane, and an addressed line never gets Li.
+    now = 61_000;
+    expect(ai.quiet()).toBe(false);
+    await ai.line({ id: "s2", text: "codex, stop it", at: 4 }, null);
+    expect(ai.quiet()).toBe(false);
+    await ai.line({ id: "p2", text: "hello again", at: 5 }, null);
+    expect(timers.live.size).toBe(1);
+    // A lane spoke just now: unaddressed lines wait out laneActiveMs; naming Li does not.
+    laneAt = now - 1000;
+    await ai.line({ id: "p3", text: "and this", at: 6 }, null);
+    expect(timers.live.size).toBe(0);
+    await ai.line({ id: "s3", text: "stop it", at: 7 }, null);
+    await ai.line({ id: "d1", text: "Lia, what now?", at: 8 }, null);
+    expect(ai.quiet()).toBe(false);
+    expect(timers.live.size).toBe(1);
+    await timers.fire();
+    expect(replies).toEqual(["d1"]);
+    // Past the window, unaddressed lines are Li's again.
+    now += 10_000;
+    await ai.line({ id: "p4", text: "and now", at: 9 }, null);
+    expect(timers.live.size).toBe(1);
+  });
+
+  it("OwnerAi: bad config values fall back to the defaults; 0 turns the lane window off", async () => {
+    const timers = fakeTimer();
+    const conf: Record<string, unknown> = {
+      [OWNER_QUIET_KEY]: -1,
+      [OWNER_STOP_PHRASES_KEY]: [1, 2],
+      [OWNER_LI_NAMES_KEY]: "Li",
+      [OWNER_LANE_ACTIVE_KEY]: 0,
+    };
+    const ai = new OwnerAi<null>({
+      now: () => 5,
+      timer: timers.timer,
+      flag: async () => true,
+      config: async (k) => conf[k],
+      aiOn: async () => true,
+      agentAt: () => 0,
+      laneAt: () => 4,
+      reply: async () => {},
+      present: async () => {},
+    });
+    const c = await ai.state();
+    expect(c.quietMs).toBe(OWNER_QUIET_MS);
+    expect(c.stop).toEqual(OWNER_STOP_PHRASES);
+    expect(c.liNames).toEqual(OWNER_LI_NAMES);
+    expect(c.laneActiveMs).toBe(0);
+    await ai.line({ id: "p", text: "hello", at: 5 }, null);
+    expect(timers.live.size).toBe(1);
   });
 
   it("OwnerAi: a line whose flag read ends after a newer line began is dropped", async () => {
