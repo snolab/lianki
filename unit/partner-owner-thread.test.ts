@@ -5,6 +5,7 @@ import {
   addressesLi,
   isRollCall,
   isStopLine,
+  namesLi,
   ownerLineWanted,
 } from "@/workers/push/src/owner-ai";
 import {
@@ -14,6 +15,8 @@ import {
   OWNER_LI_NAMES_KEY,
   OWNER_QUIET_KEY,
   OWNER_QUIET_MS,
+  OWNER_SPOKEN_NEEDS_NAME,
+  OWNER_SPOKEN_NEEDS_NAME_KEY,
   OWNER_STOP_PHRASES,
   OWNER_STOP_PHRASES_KEY,
   OWNER_REPLY_DELAY_KEY,
@@ -320,6 +323,26 @@ describe("Li in the owner's thread: the hub", () => {
     expect(s.timers.live.size).toBe(1);
   });
 
+  it("spoken lines (2026-11-16 room talk): Li answers only when named; typed lines as before", async () => {
+    const s = setup();
+    const o = await s.ownerPage();
+    for (const [id, text] of [
+      ["v1", "あります。"],
+      ["v2", "And here a few."],
+      ["v3", "当公公司能够通接下。"],
+      ["v4", "like this one"],
+    ])
+      await s.msg(o, { type: "chat", id, text, source: "stt" });
+    expect(s.timers.live.size).toBe(0);
+    await s.msg(o, { type: "chat", id: "v5", text: "这个 Li 你觉得呢", source: "stt" });
+    expect(s.timers.live.size).toBe(1);
+    await s.timers.fire();
+    expect(s.calls.map((c) => c.msgId)).toEqual(["v5"]);
+    // Typed, unnamed: Li may answer, as before.
+    await s.msg(o, { type: "chat", id: "t1", text: "And here a few." });
+    expect(s.timers.live.size).toBe(1);
+  });
+
   it("the hub's own notices (ETA, lane joins) do not count as a lane talking", async () => {
     const s = setup();
     const o = await s.ownerPage();
@@ -611,6 +634,58 @@ describe("Li in the owner's thread: which lines", () => {
     now += 10_000;
     await ai.line({ id: "p4", text: "and now", at: 9 }, null);
     expect(timers.live.size).toBe(1);
+  });
+
+  it("namesLi: Li's names anywhere, Latin ones as whole words", () => {
+    expect(namesLi("Li，你说呢")).toBe(true);
+    expect(namesLi("这个 Li 你觉得呢")).toBe(true);
+    expect(namesLi("ask li.")).toBe(true);
+    expect(namesLi("like this")).toBe(false);
+    expect(namesLi("Lisa and Eli")).toBe(false);
+    expect(namesLi("你问学习伙伴吧")).toBe(true);
+    expect(namesLi("anything", [""])).toBe(false);
+  });
+
+  it("OwnerAi: spoken lines need Li's name (config, default on); other voices never; typed as before", async () => {
+    const timers = fakeTimer();
+    const conf: Record<string, unknown> = {};
+    const replies: string[] = [];
+    const make = () =>
+      new OwnerAi<null>({
+        now: () => 0,
+        timer: timers.timer,
+        flag: async () => true,
+        config: async (k) => conf[k],
+        aiOn: async () => true,
+        agentAt: () => 0,
+        reply: async (l) => void replies.push(l.id),
+        present: async () => {},
+      });
+    const ai = make();
+    expect((await ai.state()).spokenNeedsName).toBe(OWNER_SPOKEN_NEEDS_NAME);
+    await ai.line({ id: "a", text: "あります。", at: 1, source: "stt" }, null);
+    await ai.line(
+      { id: "b", text: "And here a few.", at: 2, source: "stt", speaker: { decision: "unknown" } },
+      null,
+    );
+    await ai.line(
+      { id: "c", text: "Li，在吗", at: 3, source: "stt", speaker: { decision: "other" } },
+      null,
+    );
+    expect(timers.live.size).toBe(0);
+    await ai.line({ id: "d", text: "当公公司能够通接下。Li?", at: 4, source: "stt" }, null);
+    expect(timers.live.size).toBe(1);
+    await ai.line({ id: "e", text: "typed, no name", at: 5 }, null);
+    expect(timers.live.size).toBe(1);
+    // Off: spoken lines are treated like typed ones.
+    conf[OWNER_SPOKEN_NEEDS_NAME_KEY] = false;
+    const off = make();
+    await off.line({ id: "f", text: "あります。", at: 6, source: "stt" }, null);
+    await timers.fire();
+    expect(replies.toSorted()).toEqual(["e", "f"]);
+    // A non-boolean value falls back to the default.
+    conf[OWNER_SPOKEN_NEEDS_NAME_KEY] = "no";
+    expect((await make().state()).spokenNeedsName).toBe(true);
   });
 
   it("OwnerAi: bad config values fall back to the defaults; 0 turns the lane window off", async () => {

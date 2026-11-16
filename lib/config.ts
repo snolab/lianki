@@ -9,6 +9,7 @@ import {
   OWNER_QUIET_MS,
   OWNER_REPLY_DELAY_MAX,
   OWNER_REPLY_DELAY_MS,
+  OWNER_SPOKEN_NEEDS_NAME,
   OWNER_STOP_PHRASES,
   ROLL_CALL_REPLY_DEFAULT,
   SITE_DAILY_USD,
@@ -1309,6 +1310,14 @@ export const CONFIG = {
     audience: "server",
     description:
       "Li 自己的名字：你的一句话以其中一个开头、后面跟标点或什么都没有（「Li，…」），就是在叫 Li：结束沉默，开发通道正在说话时也照样回答。JSON 字符串数组。",
+  },
+  "partner.spokenNeedsName": {
+    default: OWNER_SPOKEN_NEEDS_NAME as boolean,
+    schema: z.boolean(),
+    group: "chat",
+    audience: "server",
+    description:
+      "你说出来的话（麦克风转写）只有叫到 Li 的名字（partner.liNames，句中任何位置）时 Li 才回答：房间里别人说话、转写串了都不接。默认 true；false = 和打字的话一样处理。打字的话不受影响。",
   },
   "partner.laneActiveMs": int({
     default: OWNER_LANE_ACTIVE_MS,

@@ -68,6 +68,13 @@ export const OWNER_STOP_PHRASES: readonly string[] = [
 export const OWNER_LI_NAMES_KEY = "partner.liNames";
 export const OWNER_LI_NAMES: readonly string[] = ["Li", "Lee", "学习伙伴", "learning partner"];
 /**
+ * A spoken line of his (source "stt") gets Li only when it names Li
+ * (OWNER_LI_NAMES, anywhere): the room may be talking (owner, 2026-11-16: the
+ * AI is in the room, silent until named). Typed lines are unaffected.
+ */
+export const OWNER_SPOKEN_NEEDS_NAME_KEY = "partner.spokenNeedsName";
+export const OWNER_SPOKEN_NEEDS_NAME = true;
+/**
  * While a lane talks with him (an agent line other than Li's within this
  * long), Li does not answer his unaddressed lines: they are most likely part
  * of that conversation (2026-11-16: Li answered a line meant for 哈基米).

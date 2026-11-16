@@ -27,6 +27,8 @@ import {
   OWNER_REPLY_DELAY_KEY,
   OWNER_REPLY_DELAY_MAX,
   OWNER_REPLY_DELAY_MS,
+  OWNER_SPOKEN_NEEDS_NAME,
+  OWNER_SPOKEN_NEEDS_NAME_KEY,
   OWNER_STOP_PHRASES,
   OWNER_STOP_PHRASES_KEY,
   PARTNER_OWNER_FLAG,
@@ -43,6 +45,8 @@ export type OwnerLine = {
   /** A node address (`to`): the line is for that node's lane, not Li. */
   to?: string;
   speaker?: Pick<SpeakerTag, "decision">;
+  /** "stt": heard by a microphone (the room may be talking); absent = typed. */
+  source?: string;
 };
 
 /**
@@ -73,9 +77,28 @@ export function addressesLi(text: string, names: readonly string[] = OWNER_LI_NA
   });
 }
 
+/**
+ * Does the line name Li anywhere (a spoken line: "…，Li 你说呢")? Latin names
+ * as whole words ("Li" not in "like"), the others as written.
+ */
+export function namesLi(text: string, names: readonly string[] = OWNER_LI_NAMES): boolean {
+  if (addressesLi(text, names)) return true;
+  const t = text.toLowerCase();
+  return names.some((n) => {
+    const name = n.trim().toLowerCase();
+    if (!name) return false;
+    if (!/^[a-z ]+$/.test(name)) return t.includes(name);
+    for (let i = t.indexOf(name); i >= 0; i = t.indexOf(name, i + 1))
+      if (!/[a-z0-9]/.test(t[i - 1] ?? "") && !/[a-z0-9]/.test(t[i + name.length] ?? ""))
+        return true;
+    return false;
+  });
+}
+
 type Conf = {
   at: number;
   on: boolean;
+  spokenNeedsName: boolean;
   delayMs: number;
   quietMs: number;
   laneActiveMs: number;
@@ -156,16 +179,18 @@ export class OwnerAi<P> {
     try {
       on = (await this.d.flag(PARTNER_OWNER_FLAG)) === true;
     } catch {}
-    const [delay, quiet, active, stop, liNames] = await Promise.all([
+    const [delay, quiet, active, stop, liNames, spoken] = await Promise.all([
       this.read(OWNER_REPLY_DELAY_KEY),
       this.read(OWNER_QUIET_KEY),
       this.read(OWNER_LANE_ACTIVE_KEY),
       this.read(OWNER_STOP_PHRASES_KEY),
       this.read(OWNER_LI_NAMES_KEY),
+      this.read(OWNER_SPOKEN_NEEDS_NAME_KEY),
     ]);
     this.conf = {
       at: t,
       on,
+      spokenNeedsName: typeof spoken === "boolean" ? spoken : OWNER_SPOKEN_NEEDS_NAME,
       delayMs: ms(delay, OWNER_REPLY_DELAY_MAX) ?? OWNER_REPLY_DELAY_MS,
       quietMs: ms(quiet, OWNER_QUIET_MAX) ?? OWNER_QUIET_MS,
       laneActiveMs: ms(active, OWNER_LANE_ACTIVE_MAX) ?? OWNER_LANE_ACTIVE_MS,
@@ -202,7 +227,11 @@ export class OwnerAi<P> {
       return;
     }
     if (!ownerLineWanted(l)) return;
-    const direct = addressesLi(l.text, conf.liNames);
+    // A spoken line: the room may be talking (2026-11-16: "あります。", "And here a few."
+    // got a reply). Li is in the room, silent until named (partner.spokenNeedsName).
+    const spoken = l.source === "stt";
+    if (spoken && conf.spokenNeedsName && !namesLi(l.text, conf.liNames)) return;
+    const direct = spoken ? namesLi(l.text, conf.liNames) : addressesLi(l.text, conf.liNames);
     if (direct) this.quietUntil = 0;
     else {
       if (this.quiet()) return;

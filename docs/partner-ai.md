@@ -79,6 +79,11 @@ the owner's chat in `debug.ts`) lets the model answer a line of his when:
 - **no lane is talking with him**: no lane line (an agent line other than Li's and the
   hub's notices: ETA, spend, lane joins) in the last `partner.laneActiveMs` (default
   300,000 ms = 5 min; 0 = off). Owner, 2026-11-16: "他不应该回答我的这个问题，我已经要求他闭嘴了";
+- **a spoken line names Li**: a line heard by a microphone (`source: "stt"`) gets Li only
+  when one of `partner.liNames` appears in it anywhere (Latin names as whole words), with
+  config `partner.spokenNeedsName` on (default; off = treated like a typed line). Owner,
+  2026-11-16: the AI is in the room, silent until named ("あります。", "And here a few." from
+  people in the room got a reply). A line whose voiceprint decided "other" never gets Li;
 - a line starting with one of Li's names (config `partner.liNames`: Li, Lee, 学习伙伴,
   learning partner; then a mark, a space or nothing) skips both of the last two and ends a quiet spell;
 - its voiceprint did not decide another voice (`speaker.decision !== "other"`);
