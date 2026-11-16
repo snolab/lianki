@@ -124,6 +124,8 @@ export type OwnerAiDeps<P> = {
   agentAt(): number;
   /** When a lane's line (an agent line that is neither Li's nor a hub notice) last arrived in his thread; absent = never. */
   laneAt?(): number;
+  /** Where the decision lines go (default console.log). */
+  log?(line: string): void;
   /** Answer this line now, for the page it came from (DebugHub.aiReply for his thread). */
   reply(l: OwnerLine, page: P): Promise<void>;
   /** Post Li's roll-call answer at once (no model): config partner.rollCallReply over who is here. */
@@ -147,6 +149,13 @@ export function isRollCall(text: string): boolean {
   if (ROLL_CALL_END.test(t)) return true;
   return t.length <= ROLL_CALL_MAX && ROLL_CALL.test(t);
 }
+
+/**
+ * Which rule set this hub runs, in every decision log: after a deploy,
+ * `wrangler tail lianki-push` shows whether the live object has the new code
+ * (2026-11-16: a reply after the deploy matched the rules before it).
+ */
+export const OWNER_AI_RULES = "2026-11-16.spoken";
 
 export class OwnerAi<P> {
   private pending?: { timer: unknown };
@@ -218,36 +227,19 @@ export class OwnerAi<P> {
         );
       return;
     }
-    if (l.to || l.speaker?.decision === "other") return;
+    if (l.to || l.speaker?.decision === "other") return this.skip(l, l.to ? "node" : "other-voice");
     const conf = await this.state();
-    // "没问你" / "闭嘴" (owner, 2026-11-16: "我已经要求他闭嘴了"): Li keeps silent a while.
-    // A stop line that names a lane ("哈基米，别说了") is for that lane, not Li.
-    if (isStopLine(l.text, conf.stop) && !namesLane(l.text)) {
-      this.quietUntil = this.d.now() + conf.quietMs;
-      return;
-    }
-    if (!ownerLineWanted(l)) return;
-    // A spoken line: the room may be talking (2026-11-16: "あります。", "And here a few."
-    // got a reply). Li is in the room, silent until named (partner.spokenNeedsName).
-    const spoken = l.source === "stt";
-    if (spoken && conf.spokenNeedsName && !namesLi(l.text, conf.liNames)) return;
-    const direct = spoken ? namesLi(l.text, conf.liNames) : addressesLi(l.text, conf.liNames);
-    if (direct) this.quietUntil = 0;
-    else {
-      if (this.quiet()) return;
-      // A lane is talking with him: his unaddressed line is most likely for it.
-      const laneAt = this.d.laneAt?.() ?? 0;
-      if (conf.laneActiveMs > 0 && laneAt > 0 && this.d.now() - laneAt < conf.laneActiveMs) return;
-    }
-    if (!conf.on || !(await this.d.aiOn())) return;
+    const why = this.decide(l, conf);
+    if (why) return this.skip(l, why);
+    if (!conf.on || !(await this.d.aiOn())) return this.skip(l, "off");
     // A newer line came in while the flags were read: that one decides.
-    if (seq !== this.seq) return;
+    if (seq !== this.seq) return this.skip(l, "newer");
     const pending: { timer: unknown } = { timer: undefined };
     pending.timer = this.d.timer.set(() => {
       if (this.pending !== pending) return;
       this.pending = undefined;
       // A lane answered within the delay: Li stays quiet.
-      if (this.d.agentAt() >= l.at) return;
+      if (this.d.agentAt() >= l.at) return this.skip(l, "answered");
       this.d
         .reply(l, page)
         .catch((e) =>
@@ -257,6 +249,50 @@ export class OwnerAi<P> {
         );
     }, conf.delayMs);
     this.pending = pending;
+    this.log({
+      msg: "partner.owner-scheduled",
+      id: l.id,
+      rules: OWNER_AI_RULES,
+      delayMs: conf.delayMs,
+    });
+  }
+
+  /**
+   * Why Li must not answer this line (null = it may): the rules after the flags.
+   * A stop line starts a quiet spell; a direct address ends one.
+   */
+  private decide(l: OwnerLine, conf: Conf): string | null {
+    // "没问你" / "闭嘴" (owner, 2026-11-16: "我已经要求他闭嘴了"): Li keeps silent a while.
+    // A stop line that names a lane ("哈基米，别说了") is for that lane, not Li.
+    if (isStopLine(l.text, conf.stop) && !namesLane(l.text)) {
+      this.quietUntil = this.d.now() + conf.quietMs;
+      return "stop";
+    }
+    if (!ownerLineWanted(l)) return l.speaker ? "voice-not-his" : "names-lane";
+    // A spoken line: the room may be talking (2026-11-16: "あります。", "And here a few."
+    // got a reply). Li is in the room, silent until named (partner.spokenNeedsName).
+    const spoken = l.source === "stt";
+    if (spoken && conf.spokenNeedsName && !namesLi(l.text, conf.liNames)) return "spoken-unnamed";
+    const direct = spoken ? namesLi(l.text, conf.liNames) : addressesLi(l.text, conf.liNames);
+    if (direct) {
+      this.quietUntil = 0;
+      return null;
+    }
+    if (this.quiet()) return "quiet";
+    // A lane is talking with him: his unaddressed line is most likely for it.
+    const laneAt = this.d.laneAt?.() ?? 0;
+    if (conf.laneActiveMs > 0 && laneAt > 0 && this.d.now() - laneAt < conf.laneActiveMs)
+      return "lane-active";
+    return null;
+  }
+
+  /** One log line per decision: the line's id and the rule, never its text (wrangler tail). */
+  private skip(l: OwnerLine, reason: string): void {
+    this.log({ msg: "partner.owner-skip", id: l.id, rules: OWNER_AI_RULES, reason });
+  }
+
+  private log(o: Record<string, unknown>) {
+    (this.d.log ?? ((s: string) => console.log(s)))(JSON.stringify(o));
   }
 
   /** Drop the pending reply (a newer line of his). */

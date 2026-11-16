@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { DebugHub, type HubTimer, type Socket, type Storage } from "@/workers/push/src/debug";
 import {
+  OWNER_AI_RULES,
   OwnerAi,
   addressesLi,
   isRollCall,
@@ -112,13 +113,16 @@ function fakeTimer() {
 
 const T0 = 1_800_000_000_000;
 
-function setup(opts: { ai?: boolean; owner?: boolean; delay?: unknown } = {}) {
+function setup(
+  opts: { ai?: boolean; owner?: boolean; delay?: unknown; flags?: Record<string, unknown> } = {},
+) {
   const sockets: FakeSocket[] = [];
   let t = T0;
   const calls: PartnerRequest[] = [];
   const flags: Record<string, unknown> = {
     [PARTNER_AI_FLAG]: opts.ai ?? true,
     [PARTNER_OWNER_FLAG]: opts.owner ?? true,
+    ...opts.flags,
   };
   let reply = async (_req: PartnerRequest): Promise<PartnerResult> => ({
     ok: true,
@@ -341,6 +345,42 @@ describe("Li in the owner's thread: the hub", () => {
     // Typed, unnamed: Li may answer, as before.
     await s.msg(o, { type: "chat", id: "t1", text: "And here a few." });
     expect(s.timers.live.size).toBe(1);
+  });
+
+  it("2026-11-16 07:41 UTC replay: room talk after a lane line, merge and two-mic on — no Li", async () => {
+    const s = setup({ flags: { "stt.merge": true, "stt.two-mic-merge": true } });
+    const o = await s.ownerPage();
+    const l = await s.lane();
+    const logs: string[] = [];
+    const was = console.log;
+    console.log = (m: unknown) => void logs.push(String(m));
+    try {
+      await s.msg(o, { type: "chat", id: "becb8a6b", text: "可好。", source: "stt" });
+      s.tick(188);
+      await s.msg(l, { type: "say", text: "【小克】PR 好了，等你合并" });
+      s.tick(31_513);
+      await s.msg(o, { type: "chat", id: "cc2c54f0", text: "そう。", source: "stt" });
+      s.tick(23_924);
+      await s.msg(o, { type: "chat", id: "3a2c0c69", text: "好。", source: "stt" });
+    } finally {
+      console.log = was;
+    }
+    expect(s.timers.live.size).toBe(0);
+    // Each decision is logged with the rule set and the line id, never the text.
+    const skips = logs
+      .filter((x) => x.includes("partner.owner-skip"))
+      .map((x) => JSON.parse(x) as { id: string; reason: string; rules: string });
+    expect(skips.map((x) => [x.id, x.reason])).toEqual([
+      ["becb8a6b", "spoken-unnamed"],
+      ["cc2c54f0", "spoken-unnamed"],
+      ["3a2c0c69", "spoken-unnamed"],
+    ]);
+    expect(skips.every((x) => x.rules === OWNER_AI_RULES)).toBe(true);
+    expect(logs.some((x) => x.includes("好。") && x.includes("owner-skip"))).toBe(false);
+    await s.timers.fire();
+    s.tick(32_440);
+    expect(s.calls).toEqual([]);
+    expect(chats(o).some((m) => m.label === PARTNER_AI_LABEL)).toBe(false);
   });
 
   it("the hub's own notices (ETA, lane joins) do not count as a lane talking", async () => {

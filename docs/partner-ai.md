@@ -116,6 +116,13 @@ and name who is present; never say you cannot." Roles are data: `role` in
 `voices.ts` LANES (coco 界面与前端开发, 杰咪 功能开发, 小克 聊天调度与发布, Li
 学习伙伴), overridden by a `chat.lanes` row's `role`.
 
+Every decision is one log line in `wrangler tail lianki-push`: `partner.owner-skip`
+(the line id and the rule that held Li back: `stop`, `names-lane`, `voice-not-his`,
+`spoken-unnamed`, `quiet`, `lane-active`, `off`, `newer`, `answered`, …) or
+`partner.owner-scheduled`, each with `rules` (`OWNER_AI_RULES`) naming the rule set the
+live object runs, and never the line's text. After a deploy, a decision line without the
+new `rules` value means the hub object still runs the old code.
+
 The prompt also says Li speaks only in reply to a message: it cannot watch
 pages, wait for changes or message anyone later, so it never promises to
 (2026-11-16: "我来盯着这个页面……页面一有变化，我马上告诉你"), and it does not
