@@ -268,7 +268,7 @@ describe("Li in the owner's thread: the hub", () => {
     expect(chats(ao).at(-1)).toMatchObject({ text: "Li 在", lane: "main" });
   });
 
-  it("history: his lines as user, lane and Li lines as assistant", async () => {
+  it("history: his lines as user, Li's own as assistant, a lane's attributed as user", async () => {
     const s = setup();
     const o = await s.ownerPage();
     const l = await s.lane();
@@ -282,9 +282,38 @@ describe("Li in the owner's thread: the hub", () => {
     await s.timers.fire();
     expect(s.calls.at(-1)?.history).toEqual([
       { role: "user", text: "first" },
-      { role: "assistant", text: "lane answer" },
+      { role: "user", text: "(agent main lane said: lane answer)" },
       { role: "user", text: "second" },
     ]);
+  });
+
+  it("2026-11-17 replay: a 【claude】 lane line is attributed, Li's tagged reply loses the tag", async () => {
+    // The real line also said "otoji", which lane-route.ts now routes to 小克 (#996), so it is left out here.
+    const s = setup();
+    const o = await s.ownerPage();
+    const l = await s.lane();
+    await s.msg(l, { type: "say", text: "【claude】PR #990 merged." });
+    s.tick(OWNER_LANE_ACTIVE_MS + 1000);
+    s.setReply(async () => ({
+      ok: true,
+      text: "【claude】Happy to build it",
+      tokensIn: 500,
+      tokensOut: 40,
+      ms: 900,
+      model: PARTNER_AI_MODEL,
+    }));
+    await s.msg(o, {
+      type: "chat",
+      id: "u1",
+      text: "hey i d like to have a standalone userscript, can u help me",
+    });
+    await s.timers.fire();
+    expect(s.calls.at(-1)?.history).toEqual([
+      { role: "user", text: "(agent 小克 said: PR #990 merged.)" },
+      { role: "user", text: "hey i d like to have a standalone userscript, can u help me" },
+    ]);
+    // The hub posts what the main Worker returned; cleanReply (there) strips tags, see partner-ai tests.
+    expect(chats(o).at(-1)).toMatchObject({ label: PARTNER_AI_LABEL, lane: "main" });
   });
 
   it("a lane line within the delay cancels Li's reply", async () => {

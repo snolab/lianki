@@ -700,6 +700,41 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
       expect(system).not.toContain(leak);
   });
 
+  it("2026-11-17 replay: a reply opening 【claude】 is posted without the tag; the prompt forbids it", async () => {
+    const bodies: { messages: { role: string; content: string }[] }[] = [];
+    const answer = {
+      choices: [
+        {
+          message: {
+            content:
+              "【claude】Happy to build it, but it's a lot for one go — I'd split it: 1. **M1 (today):** …",
+          },
+        },
+      ],
+      usage: { prompt_tokens: 300, completion_tokens: 30 },
+    };
+    const res = await partnerReply(
+      env(),
+      {
+        userId: "u_alice",
+        history: [
+          { role: "user", text: "(agent 小克 said: PR merged.)" },
+          { role: "user", text: "hey i d like to have a standalone userscript … can u help me" },
+        ],
+      },
+      { fetch: fakeFetch(bodies, answer), now: () => NOW },
+    );
+    expect(res).toMatchObject({
+      ok: true,
+      text: "Happy to build it, but it's a lot for one go — I'd split it: 1. **M1 (today):** …",
+    });
+    const system = bodies[0].messages[0].content;
+    expect(system).toContain("You speak only as yourself");
+    expect(system).toContain("never start a reply with a name tag");
+    expect(system).toContain("You do not write code, build apps");
+    expect(system).toContain("the developer reads this chat");
+  });
+
   it("the user's own languages and levels reach the prompt as one line; another user's never", async () => {
     const db = d1.raw();
     db.exec(`INSERT INTO user_prefs (user_id, key, value, hlc_ts, hlc_counter, device_id, updated_ms) VALUES
@@ -845,5 +880,12 @@ describe("partner AI: prompt-injection basics", () => {
     expect(cleanReply("<think>secret plan</think>  Hello ")).toBe("Hello");
     expect(cleanReply("x".repeat(5000))).toHaveLength(2000);
     expect(cleanReply(null)).toBe("");
+  });
+
+  it("strips a speaker tag in front: any 【…】, a member's [name] or name: (config rows too)", () => {
+    expect(cleanReply("<think>x</think>【claude】Happy to build it")).toBe("Happy to build it");
+    expect(cleanReply("[robo] hi", [{ id: "robo" }])).toBe("hi");
+    expect(cleanReply("[robo] hi")).toBe("[robo] hi");
+    expect(cleanReply("Note: hi")).toBe("Note: hi");
   });
 });
