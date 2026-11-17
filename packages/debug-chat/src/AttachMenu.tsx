@@ -186,6 +186,7 @@ export function AttachMenu({
   onPickFiles,
   onInbox,
   onHistory,
+  share,
   onClose,
 }: {
   anchorRef: RefObject<HTMLButtonElement | null>;
@@ -209,6 +210,13 @@ export function AttachMenu({
   onInbox?: () => void;
   /** The host keeps the chat's history: the View group's History opens it. */
   onHistory?: () => void;
+  /**
+   * The pill's Li frame on another site (docs/userscript-li-chat.md, M3): it
+   * cannot see the page, so "Attach to message" holds Share selection and
+   * Share page title and link instead, each asking the userscript then.
+   * Neither sends: they fill the attachment chip or the draft.
+   */
+  share?: { onSelection: () => void; onPage: () => void };
   onClose: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -272,7 +280,7 @@ export function AttachMenu({
     <div
       ref={box}
       role="menu"
-      aria-label={attach ? t.attachOpen : t.attachGroupView}
+      aria-label={attach || share ? t.attachOpen : t.attachGroupView}
       data-testid="debug-chat-attach-menu"
       // Sized to the screen, not the (maybe narrow) bar, and scrolls when taller than
       // the room above it (owner, 2026-11-14: it ran off the top and could not scroll).
@@ -378,6 +386,46 @@ export function AttachMenu({
           </button>
         );
       })}
+      {!attach && share && (
+        <>
+          <div className={heading}>{t.attachGroupMessage}</div>
+          {(
+            [
+              ["selection", t.shareSelection, share.onSelection],
+              ["page", t.sharePage, share.onPage],
+            ] as const
+          ).map(([id, label, pick]) => (
+            <button
+              key={id}
+              type="button"
+              role="menuitem"
+              data-testid={`debug-chat-share-${id}`}
+              onPointerDown={keep}
+              onClick={(e) => {
+                // Only his own press (the page cannot reach into this frame anyway).
+                if (!e.isTrusted) return;
+                onClose();
+                pick();
+              }}
+              className={`${row} hover:bg-[oklch(0.5_0_0/0.08)]`}
+            >
+              <span
+                className={badge}
+                style={{ background: "oklch(0.6 0.11 22.3 / 0.14)", color: "oklch(0.5 0.132 22.3)" }}
+              >
+                {id === "selection" ? (
+                  <span aria-hidden className="font-serif text-lg leading-none">
+                    “
+                  </span>
+                ) : (
+                  <Icon name="link" />
+                )}
+              </span>
+              <span className="min-w-0 flex-1 truncate">{label}</span>
+            </button>
+          ))}
+        </>
+      )}
       <div className={heading}>{t.attachGroupView}</div>
       {onInbox && (
         <button

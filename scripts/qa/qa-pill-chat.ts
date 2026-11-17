@@ -18,6 +18,9 @@
  * once" the frame gets its ticket over the port, typed text never reaches the
  * page, no ticket in anything the page can see, the page's hello gets
  * nothing, a navigated frame is torn down, and "Never" hides the entry.
+ * M3 (share): the page is read only on a real press of Share inside the
+ * frame; the link carries no query or fragment, a hostile title arrives as
+ * plain text, and nothing about it reaches the app origin or the page.
  *
  *   bun scripts/qa/qa-pill-chat.ts
  *
@@ -42,7 +45,7 @@ const check = (ok: unknown, what: string) => {
 };
 
 const HOSTILE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>hostile</title></head>
-<body><p id="own">The page's own text.</p><input id="pageInput" aria-label="page input">
+<body><p id="own">The page's own text.</p><p id="pick">words he chose</p><input id="pageInput" aria-label="page input">
 <script>
   const w = window;
   w.__keys = []; w.__msgs = []; w.__posted = []; w.__portPosted = []; w.__sockets = [];
@@ -107,6 +110,13 @@ const server = Bun.serve({
       new Response(s, { headers: { "content-type": "text/html; charset=utf-8" } });
     if (host.startsWith("127.0.0.1")) {
       if (url.pathname === "/hostile") return html(HOSTILE);
+      if (url.pathname === "/hostile-share")
+        return html(
+          HOSTILE.replace(
+            "<title>hostile</title>",
+            "<title>[x](javascript:alert(1)) &lt;img src=x onerror=alert(1)&gt;</title>",
+          ),
+        );
       if (url.pathname === "/phish") return html("<!doctype html><textarea>phish</textarea>");
       return new Response("not found", { status: 404 });
     }
@@ -124,7 +134,7 @@ const server = Bun.serve({
       return Response.json({ ticket: "TK-pill.secret" }, { headers: cors });
     if (url.pathname === "/embed/partner")
       return html(
-        `<!doctype html><meta charset=utf-8><body style="margin:0;background:oklch(0.97 0.01 82)"><textarea id=t aria-label=chat></textarea><script>${guestJs}</script>`,
+        `<!doctype html><meta charset=utf-8><body style="margin:0;background:oklch(0.97 0.01 82)"><textarea id=t aria-label=chat></textarea><button id=share-page>page</button><button id=share-selection>sel</button><script>${guestJs}</script>`,
       );
     return new Response("not found", { status: 404 });
   },
@@ -272,6 +282,97 @@ try {
   );
   check(errors.length === 0, `no page errors (${errors.join("; ")})`);
   await p.close();
+
+  // ── 3b. Share (M3): only on his press in the frame ───────────────────────────
+  {
+    const sp = await ctx.newPage();
+    const cdp = await ctx.newCDPSession(sp);
+    await cdp.send("Page.enable");
+    await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `globalThis.__QA_APP__=${JSON.stringify(APP)};\n${fixtureJs}`,
+      worldName: "lianki-userscript",
+    });
+    await sp.goto(`${PAGE}/hostile-share?token=s3cret#frag`);
+    await sp.waitForTimeout(200);
+    await tapLi(sp);
+    await sp.waitForTimeout(200);
+    await sp.keyboard.press("Tab");
+    await sp.keyboard.press("Tab");
+    await sp.keyboard.press("Enter");
+    let f: import("playwright").Frame | null = null;
+    for (let i = 0; i < 50 && !f; i++) {
+      f = sp.frames().find((x) => x.url().startsWith(`${APP}/embed/partner`)) ?? null;
+      if (!f) await sp.waitForTimeout(100);
+    }
+    check(!!f, "share: the frame opens on the hostile page");
+    if (f) {
+      await f.waitForFunction(() => !!document.body.dataset.ticket, undefined, { timeout: 5000 });
+      const before = appSeen().length;
+      await sp.waitForTimeout(300);
+      check(
+        (await f.evaluate(() => document.body.dataset.sharePage ?? "")) === "",
+        "share: nothing read from the page before he presses Share",
+      );
+      // The page scripts a click on the frame's Share: it cannot reach into the frame.
+      await sp.evaluate(() => {
+        const at = document.elementFromPoint(innerWidth - 40, innerHeight - 60);
+        (at as HTMLElement | null)?.click();
+      });
+      await sp.waitForTimeout(200);
+      check(
+        (await f.evaluate(() => document.body.dataset.sharePage ?? "")) === "",
+        "share: the page's scripted click shares nothing",
+      );
+      await f.click("#share-page");
+      await f.waitForFunction(() => !!document.body.dataset.sharePage, undefined, {
+        timeout: 3000,
+      });
+      const page = JSON.parse(await f.evaluate(() => document.body.dataset.sharePage!));
+      check(
+        page?.url === `${PAGE}/hostile-share`,
+        `share page: the link has no query or fragment (${page?.url})`,
+      );
+      check(
+        page?.title === "[x](javascript:alert(1)) <img src=x onerror=alert(1)>",
+        "share page: the hostile title arrives as plain text (escaped in the composer)",
+      );
+      // Nothing selected yet: no selection share.
+      await f.click("#share-selection");
+      await f.waitForFunction(() => !!document.body.dataset.shareSelection, undefined, {
+        timeout: 3000,
+      });
+      check(
+        (await f.evaluate(() => document.body.dataset.shareSelection)) === "null",
+        "share selection: nothing selected → nothing shared",
+      );
+      await sp.evaluate(() => {
+        const r = document.createRange();
+        r.selectNodeContents(document.getElementById("pick")!);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(r);
+      });
+      await f.evaluate(() => delete document.body.dataset.shareSelection);
+      await f.click("#share-selection");
+      await f.waitForFunction(() => !!document.body.dataset.shareSelection, undefined, {
+        timeout: 3000,
+      });
+      const sel = JSON.parse(await f.evaluate(() => document.body.dataset.shareSelection!));
+      check(
+        sel?.selection === "words he chose",
+        `share selection: the chosen words (${sel?.selection})`,
+      );
+      check(appSeen().length === before, "share: nothing about it reaches the app origin");
+      const heard = await sp.evaluate(() => {
+        const w = window as unknown as Record<string, string[]>;
+        return JSON.stringify([w.__msgs, w.__posted, w.__portPosted, w.__sockets]);
+      });
+      check(
+        !heard.includes("words he chose") && !heard.includes("hostile-share"),
+        "share: the page hears nothing of it (port only)",
+      );
+    }
+    await sp.close();
+  }
 
   // ── 4. Never ───────────────────────────────────────────────────────────────
   const before = appSeen().length;

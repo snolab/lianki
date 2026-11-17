@@ -37,6 +37,15 @@ export const PARTNER_SUBPROTOCOL = "lianki-partner";
  */
 export const BOX_CHAT_TICKET_AUD = "lianki-box-chat";
 /**
+ * Li chat from the userscript pill for any signed-in account
+ * (docs/userscript-li-chat.md, M2): a fourth audience. It names the account
+ * (`sub`, the D1 user id, never an email); lianki-push takes it only from the
+ * lianki.com frame (origin https://lianki.com) and binds the socket to that
+ * account's own thread, chat only: never the owner's thread, never eval, never
+ * a pairing. An owner ticket is never one of these, nor the other way round.
+ */
+export const LI_CHAT_TICKET_AUD = "lianki-li-chat";
+/**
  * The userscript asks for a partner ticket with this header (value "1"). A
  * web page cannot send it cross-origin without a CORS preflight, which the
  * route never answers.
@@ -51,6 +60,8 @@ export type SttTicketPayload = {
   /** A box chat ticket only: the box's exact origin and its client id. */
   org?: string;
   cid?: string;
+  /** A Li chat ticket only (LI_CHAT_TICKET_AUD): the account id it opens the thread of. */
+  sub?: string;
 };
 
 const ED = { name: "Ed25519" } as const;
@@ -99,8 +110,11 @@ export async function signSttTicket(
     /** A box chat ticket's origin and client (BOX_CHAT_TICKET_AUD). */
     org?: string;
     cid?: string;
+    /** A Li chat ticket's account id (LI_CHAT_TICKET_AUD): checked, never an email. */
+    sub?: string;
   } = {},
 ): Promise<{ ticket: string; exp: number }> {
+  if (o.sub !== undefined && !isTicketSub(o.sub)) throw new Error("ticket: bad sub");
   const iat = Math.floor((o.now ?? Date.now()) / 1000);
   const exp = iat + (o.ttlS ?? STT_TICKET_TTL_S);
   const payload: SttTicketPayload = {
@@ -110,6 +124,7 @@ export async function signSttTicket(
     exp,
     ...(o.org ? { org: o.org } : {}),
     ...(o.cid ? { cid: o.cid } : {}),
+    ...(o.sub ? { sub: o.sub } : {}),
   };
   const body = b64url(new TextEncoder().encode(JSON.stringify(payload)));
   const sig = new Uint8Array(await crypto.subtle.sign(ED, key, new TextEncoder().encode(body)));
@@ -200,6 +215,10 @@ export type SttTicketV2Payload = {
 
 /** An account id as it may travel in a ticket: what D1 `user.id` holds, nothing longer. */
 const SUB_RE = /^[A-Za-z0-9_-]{1,64}$/;
+/** Is this an account id a ticket may carry (`sub`)? */
+export function isTicketSub(v: unknown): v is string {
+  return typeof v === "string" && SUB_RE.test(v);
+}
 
 const validLimits = (l: unknown): l is SttLimits => {
   const o = l as Partial<SttLimits> | null;

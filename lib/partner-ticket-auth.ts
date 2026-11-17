@@ -35,17 +35,27 @@ export type PartnerTicketDeps = {
   now?: () => number;
 };
 
-/** The token's account email when it may chat, else null. */
-export async function partnerTokenEmail(
+/** The token's account (id and email) when it may chat, else null. */
+export async function partnerTokenUser(
   req: Request,
   deps: Pick<PartnerTicketDeps, "backend" | "d1" | "now">,
-): Promise<string | null> {
+): Promise<{ id: string; email: string } | null> {
   const m = /^Bearer (lk_[0-9a-f]{64})$/.exec(req.headers.get("Authorization") ?? "");
   if (!m || deps.backend() !== "d1") return null;
   const now = deps.now?.() ?? Date.now();
   const r = await checkToken(deps.d1(), m[1], PARTNER_TOKEN_SCOPES[0], now);
   if (!r.ok) return null;
-  return PARTNER_TOKEN_SCOPES.every((s) => r.scopes.includes(s)) ? r.user.email : null;
+  return PARTNER_TOKEN_SCOPES.every((s) => r.scopes.includes(s))
+    ? { id: r.user.id, email: r.user.email }
+    : null;
+}
+
+/** The token's account email when it may chat, else null. */
+export async function partnerTokenEmail(
+  req: Request,
+  deps: Pick<PartnerTicketDeps, "backend" | "d1" | "now">,
+): Promise<string | null> {
+  return (await partnerTokenUser(req, deps))?.email ?? null;
 }
 
 const json = (body: unknown, status: number) =>

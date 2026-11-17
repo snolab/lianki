@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { DebugChat } from "@lianki/debug-chat/DebugChat";
-import type { ChatStrings } from "@lianki/debug-chat/wire";
+import { CHAT_STRINGS_EN, type ChatStrings } from "@lianki/debug-chat/wire";
 import { type Guest, startFrameGuest } from "@lianki/debug-chat/embed/frame-guest";
 import { type PartnerClient, createPartnerClient } from "@lianki/debug-chat/embed/partner-client";
 
@@ -14,8 +14,16 @@ import { type PartnerClient, createPartnerClient } from "@lianki/debug-chat/embe
  * connects only with a ticket the userscript's shell hands over its port,
  * chat only, as the shadow widget did.
  */
-export function PartnerFrame({ strings }: { strings?: Partial<ChatStrings> }) {
+export function PartnerFrame({
+  strings,
+  shareChars,
+}: {
+  strings?: Partial<ChatStrings>;
+  /** Config chat.pillShareChars: most characters a shared selection keeps. */
+  shareChars?: number;
+}) {
   const [client, setClient] = useState<PartnerClient | null>(null);
+  const [shell, setShell] = useState<Guest | null>(null);
   const guest = useRef<Guest | null>(null);
   useEffect(() => {
     document.documentElement.dataset.partnerFrame = "";
@@ -29,6 +37,7 @@ export function PartnerFrame({ strings }: { strings?: Partial<ChatStrings> }) {
         label: () => g.label || "embedded",
         doc: document,
       });
+      setShell(g);
       setClient(c);
     });
     return () => {
@@ -57,23 +66,51 @@ export function PartnerFrame({ strings }: { strings?: Partial<ChatStrings> }) {
       mo.disconnect();
     };
   }, [client]);
-  if (!client) return null;
-  return <Chat client={client} strings={strings} />;
+  if (!client || !shell) return null;
+  return <Chat client={client} guest={shell} strings={strings} shareChars={shareChars} />;
 }
 
-function Chat({ client, strings }: { client: PartnerClient; strings?: Partial<ChatStrings> }) {
+function Chat({
+  client,
+  guest,
+  strings,
+  shareChars,
+}: {
+  client: PartnerClient;
+  guest: Guest;
+  strings?: Partial<ChatStrings>;
+  shareChars?: number;
+}) {
   const s = useSyncExternalStore(client.subscribe, client.get, client.get);
+  /** "Nothing to share" after a Share press that found nothing (docs/userscript-li-chat.md, M3). */
+  const [note, setNote] = useState<string>();
   return (
     <DebugChat
       embedded
-      // No + menu: the frame cannot see the host page's selection.
+      // No page selection or uploads here: the frame cannot see the host page.
+      // Its + menu shares from the page instead, through the userscript (M3).
       attach={false}
+      share={async (what) => {
+        const p = await guest.share(what);
+        setNote(
+          p
+            ? undefined
+            : what === "page"
+              ? (strings?.shareNoPage ?? CHAT_STRINGS_EN.shareNoPage)
+              : (strings?.attachSelectionNone ?? CHAT_STRINGS_EN.attachSelectionNone),
+        );
+        return p;
+      }}
+      shareChars={shareChars}
       live={s.live}
       listeners={s.listeners}
       messages={s.messages}
-      onSend={(text, to) => client.send(text, to)}
+      onSend={(text, to, opts) => {
+        setNote(undefined);
+        return client.send(text, to, opts?.context);
+      }}
       busy={s.busy}
-      warning={s.warning}
+      warning={note ?? s.warning}
       viewer={s.viewer}
       agentAvatar="/icon-192.png"
       strings={strings}

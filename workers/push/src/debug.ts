@@ -438,8 +438,9 @@ type PageAtt = {
   leaving?: boolean;
   /**
    * The Learning Partner on another site (a ticket socket, index.ts): the
-   * owner's thread, chat only. It never gets eval, never counts for a
-   * pairing or a grant's pages, never joins a recording session.
+   * owner's thread (a partner ticket) or the account's own (a Li chat
+   * ticket), chat only. It never gets eval, never counts for a pairing or a
+   * grant's pages, never joins a recording session.
    */
   embed?: true;
   /**
@@ -3348,6 +3349,10 @@ export class DebugHub {
         ...me,
         id,
         at: this.now(),
+        // A Li chat ticket socket (the userscript pill's frame, index.ts) or a
+        // framed page: chat only in this account's own thread — never eval, never
+        // a pairing, minimal state (docs/userscript-li-chat.md, M2).
+        ...(embed ? { embed: true as const } : {}),
       } satisfies PageAtt);
       // `ai`: replies on this thread come from the model (the page says so in its strings).
       const ai = await this.aiOn();
@@ -3614,7 +3619,8 @@ export class DebugHub {
       return close(ws, 4404, "no such friend");
     }
     if (!this.clearPending(ws, f.userId)) return;
-    if (this.pages(f.userId, ws).length === 0) {
+    // A chat-only page (the pill's frame) can never answer a pairing: it does not count.
+    if (this.pages(f.userId, ws).filter((p) => !p.a.embed).length === 0) {
       send(ws, { type: "error", error: `no debug page of ${f.email} is open` });
       return close(ws, 4404, "no debug page");
     }

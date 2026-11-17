@@ -8,6 +8,12 @@
  *   shell → frame window   {lk:"partner-hello", v, label}   (to the app origin, + a MessagePort)
  *   frame → port           {type:"ready"} | {type:"need-ticket"}
  *   shell → port           {type:"ticket", ticket: string | null}
+ *   frame → port           {type:"need-share", what: "selection" | "page"}
+ *   shell → port           {type:"share", what, share: SharedPage | null}
+ *
+ * A share (docs/userscript-li-chat.md, M3) is asked only when he presses
+ * Share in the frame's composer; the shell reads the page then, and only
+ * then. It goes into the draft or the attachment chip, never out on its own.
  *
  * Only the shell holds a ticket, and it only ever writes one into its own
  * port. The frame sends nothing secret over the port, and typed text goes
@@ -15,6 +21,8 @@
  * first can only keep the frame from working (no ticket, no socket); the
  * shell then falls back to read-only.
  */
+
+import { type ShareWhat, type SharedPage, cleanShare, isShareWhat } from "./share";
 
 export const PROTOCOL_V = 1;
 export const FRAME_UP = "partner-frame-up";
@@ -31,7 +39,11 @@ export type PortMsg =
   | { type: "need-ticket" }
   | { type: "ticket"; ticket: string | null }
   /** The chat's box, px from the frame's bottom-right: the shell sizes the iframe to it. */
-  | { type: "size"; w: number; h: number };
+  | { type: "size"; w: number; h: number }
+  /** He pressed Share in the frame: the shell reads that from the page now. */
+  | { type: "need-share"; what: ShareWhat }
+  /** The shell's read (share.ts readShare), checked again here; null = nothing to share. */
+  | { type: "share"; what: ShareWhat; share: SharedPage | null };
 
 /** The iframe's size bounds (px). */
 export const MIN_W = 120;
@@ -75,6 +87,9 @@ export function portMsg(data: unknown): PortMsg | null {
       w: clamp(d.w as number, MIN_W, MAX_W),
       h: clamp(d.h as number, MIN_H, MAX_H),
     };
+  if (d?.type === "need-share" && isShareWhat(d.what)) return { type: "need-share", what: d.what };
+  if (d?.type === "share" && isShareWhat(d.what))
+    return { type: "share", what: d.what, share: cleanShare(d.share, d.what) };
   if (d?.type === "ticket")
     return {
       type: "ticket",

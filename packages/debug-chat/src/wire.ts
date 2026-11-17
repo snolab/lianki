@@ -988,6 +988,12 @@ export type ChatStrings = {
   attachClose: string;
   /** Menu item in the + menu's View group: shows or hides the state tree (the progress outline of what is being built). Short noun phrase, the panel's name. */
   attachTree: string;
+  /** The pill's Li frame on another site, + menu: puts the text the user selected on that page into the chip above the input (not sent until they press send). Short verb phrase. */
+  shareSelection: string;
+  /** The pill's Li frame on another site, + menu: puts the page's title and link (no query) into the input (not sent until they press send). Short verb phrase. */
+  sharePage: string;
+  /** One-line note in the pill's Li frame after Share page: this page has no http(s) address to share. One short sentence. */
+  shareNoPage: string;
   // Files attached to a message (files.ts; FileChips.tsx).
   /** Big hint over the chat while files are dragged over it: let go to attach them to the message. Short imperative phrase. */
   attachDrop: string;
@@ -1317,6 +1323,9 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   attachGroupView: "View",
   attachClose: "Close the menu",
   attachTree: "State tree",
+  shareSelection: "Share selection",
+  sharePage: "Share page title and link",
+  shareNoPage: "This page has no web link to share.",
 };
 
 /** Most characters of a page selection attached to a line. */

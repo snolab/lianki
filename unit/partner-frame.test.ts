@@ -229,7 +229,12 @@ class El {
   }
 }
 function shellSetup(
-  o: { ticket?: () => Promise<string | null>; readyMs?: number; capMs?: number } = {},
+  o: {
+    ticket?: () => Promise<string | null>;
+    readyMs?: number;
+    capMs?: number;
+    share?: Parameters<typeof frameShell>[0]["share"];
+  } = {},
 ) {
   const html = new El("html");
   const doc = Object.assign(new El("#doc"), {
@@ -244,6 +249,7 @@ function shellSetup(
     origin: ORIGIN,
     label: "github.com/a",
     ticket: o.ticket ?? (async () => "TK"),
+    share: o.share,
     gripLabel: "grip",
     pos: { get: () => ({ x: -10, y: 0 }), set: (p) => void saved.push(p) },
     readyMs: o.readyMs ?? 30,
@@ -351,5 +357,128 @@ describe("frame shell (userscript side)", () => {
     grip.fire("dblclick");
     expect(iframe.props.get("display")).toBe("block");
     shell.destroy();
+  });
+});
+
+// ── M3: sharing the page, only when the frame asks (docs/userscript-li-chat.md) ──
+
+describe("share over the port", () => {
+  const PAGE_SHARE = { what: "page" as const, title: "T", url: "https://news.example/a" };
+
+  it("the shell reads the page only on need-share, and answers into the port only", async () => {
+    const reads: string[] = [];
+    const { shell, win, iframe } = shellSetup({
+      share: (what) => {
+        reads.push(what);
+        return what === "page" ? PAGE_SHARE : null;
+      },
+    });
+    win.fire("message", { source: iframe.contentWindow, origin: ORIGIN, data: { lk: FRAME_UP } });
+    const port = iframe.contentWindow!.posted[0][2][0] as MessagePort;
+    const got: unknown[] = [];
+    port.onmessage = (m) => void got.push(m.data);
+    port.postMessage({ type: "ready" });
+    await tick(20);
+    // Up, hello, ready: the page was never read.
+    expect(reads).toEqual([]);
+    port.postMessage({ type: "need-share", what: "page" });
+    port.postMessage({ type: "need-share", what: "selection" });
+    port.postMessage({ type: "need-share", what: "cookies" }); // not a share kind: ignored
+    await tick(20);
+    expect(reads).toEqual(["page", "selection"]);
+    expect(got).toEqual([
+      { type: "share", what: "page", share: PAGE_SHARE },
+      { type: "share", what: "selection", share: null },
+    ]);
+    // Nothing went to the frame window itself (only the hello did).
+    expect(iframe.contentWindow!.posted.length).toBe(1);
+    shell.destroy();
+    port.close();
+  });
+
+  it("no share reader, or one that throws: null", async () => {
+    for (const share of [
+      undefined,
+      () => {
+        throw new Error("page");
+      },
+    ]) {
+      const { shell, win, iframe } = shellSetup({ share });
+      win.fire("message", { source: iframe.contentWindow, origin: ORIGIN, data: { lk: FRAME_UP } });
+      const port = iframe.contentWindow!.posted[0][2][0] as MessagePort;
+      const got: unknown[] = [];
+      port.onmessage = (m) => void got.push(m.data);
+      port.postMessage({ type: "need-share", what: "page" });
+      await tick(20);
+      expect(got).toEqual([{ type: "share", what: "page", share: null }]);
+      shell.destroy();
+      port.close();
+    }
+  });
+
+  it("the guest asks only when called, checks the answer again, and times out to null", async () => {
+    const w = fakeWin();
+    let g: Parameters<Parameters<typeof startFrameGuest>[1]>[0] | undefined;
+    startFrameGuest(w as never, (x) => (g = x), 60);
+    const ch = new MessageChannel();
+    const fromFrame: unknown[] = [];
+    ch.port1.onmessage = (m) => {
+      fromFrame.push(m.data);
+      const d = m.data as { type: string; what?: string };
+      if (d.type !== "need-share") return;
+      if (d.what === "page")
+        ch.port1.postMessage({
+          type: "share",
+          what: "page",
+          // A hostile reader: a javascript: link and a query are refused / dropped.
+          share: { what: "page", title: "T", url: "https://news.example/a?token=1#x" },
+        });
+      if (d.what === "selection")
+        ch.port1.postMessage({
+          type: "share",
+          what: "selection",
+          share: { what: "selection", title: "T", url: "javascript:alert(1)", selection: "x" },
+        });
+    };
+    w.fire({ source: w.parent as never, data: { lk: HELLO }, ports: [ch.port2] });
+    await tick(10);
+    // Connected: still no share asked.
+    expect(fromFrame).toEqual([{ type: "ready" }]);
+    expect(await g!.share("page")).toEqual({
+      what: "page",
+      title: "T",
+      url: "https://news.example/a",
+    });
+    expect(await g!.share("selection")).toBeNull();
+    // A share answer nobody asked for is dropped.
+    ch.port1.postMessage({ type: "share", what: "page", share: PAGE_SHARE });
+    await tick(10);
+    expect(fromFrame.filter((m) => (m as { type: string }).type === "need-share")).toEqual([
+      { type: "need-share", what: "page" },
+      { type: "need-share", what: "selection" },
+    ]);
+    ch.port1.close();
+    // A shell that never answers (an old userscript): null after the wait.
+    const w2 = fakeWin();
+    let g2: typeof g;
+    startFrameGuest(w2 as never, (x) => (g2 = x), 30);
+    const silent = new MessageChannel();
+    w2.fire({ source: w2.parent as never, data: { lk: HELLO }, ports: [silent.port2] });
+    expect(await g2!.share("page")).toBeNull();
+    silent.port1.close();
+  });
+
+  it("portMsg: share kinds only, the payload re-checked", () => {
+    expect(portMsg({ type: "need-share", what: "page" })).toEqual({
+      type: "need-share",
+      what: "page",
+    });
+    expect(portMsg({ type: "need-share", what: "all" })).toBeNull();
+    expect(portMsg({ type: "share", what: "x", share: null })).toBeNull();
+    expect(portMsg({ type: "share", what: "page", share: { what: "selection" } })).toEqual({
+      type: "share",
+      what: "page",
+      share: null,
+    });
   });
 });

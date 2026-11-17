@@ -13,7 +13,10 @@ export const GET = (req: Request) =>
   pillChatState(req, {
     backend: dbBackend,
     d1: () => getD1() as unknown as D1Like,
-    sessionEmail: async () => (await authUserOrNull())?.email ?? null,
+    sessionUser: async () => {
+      const u = await authUserOrNull();
+      return u?.id && u.email ? { id: u.id, email: u.email } : null;
+    },
     isDev: async (email) => {
       await refreshPermissions();
       return isDev(email);
