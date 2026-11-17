@@ -305,6 +305,7 @@ import {
   twoMicMatch,
 } from "../../../packages/debug-chat/src/two-mic";
 import { OwnerAi } from "./owner-ai";
+import { partnerHistoryLine } from "../../../lib/partner-lines";
 import { type RosterEntry, rollCallText, rosterOf } from "../../../packages/debug-chat/src/roster";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
@@ -4561,7 +4562,8 @@ export class DebugHub {
     const lines = (await this.history(thread))
       .filter((m) => m.from === (owner ? "owner" : "friend") || m.from === "agent")
       .slice(-HISTORY_LINES)
-      .map((m) => ({ role: m.from === "agent" ? "assistant" : "user", text: m.text }) as const);
+      // Li's own lines as its own; every other agent's attributed, never as Li's (partner-lines.ts).
+      .map(partnerHistoryLine);
     // The newest lines within HISTORY_MAX_CHARS (the latest one always).
     const history: typeof lines = [];
     let chars = 0;
