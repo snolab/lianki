@@ -27,7 +27,10 @@ Content-Type: application/json
 - The whole body is at most `mic.polishMaxBodyBytes` (default **32 KiB**,
   32768 bytes). The otoji proxy caps the body at 32 KiB and the transcript at
   8000 characters itself, so these defaults must never be lowered under those:
-  a valid proxied call would be refused.
+  a valid proxied call would be refused. The body is read as a bounded
+  stream: a `Content-Length` over the cap is refused before anything is read,
+  and a body without one is cancelled the moment its byte count passes the cap
+  (400 `too-long`, `field: "body"`); it is never buffered past the cap.
 - **No other field.** `userId`, `model`, `price`, `max_tokens` or anything else
   → 400 `unknown-field`. The account is the token's, the model, limits and
   price are the server's.
@@ -36,7 +39,7 @@ Answers (all `cache-control: no-store`, JSON):
 
 | status | body                                                                           | when                                                                 |
 | ------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| 200    | `{ "text": "So the meeting is at three.", "charged": 1, "daily": { "used": 4, "max": 300 } }` | polished; `charged` (whole credits kept) and `daily.used`/`daily.max` are always numbers |
+| 200    | `{ "text": "So the meeting is at three.", "charged": 1, "basis": "reported", "daily": { "used": 4, "max": 300 } }` | polished; `charged` (whole credits kept) and `daily.used`/`daily.max` are always numbers; `basis` is `"reported"` or `"estimated"` (see Metering) |
 | 400    | `{ "error": "bad-json" }`, `{ "error": "bad-input", "field" }`, `{ "error": "too-long", "field": "transcript" \| "context" \| "body" }`, `{ "error": "unknown-field", "field" }` | bad input; nothing held, no daily slot used |
 | 401    | `{ "error": "unauthorized" }`                                                  | no / unknown / expired token, or no session                          |
 | 403    | `{ "error": "scope", "needScope": "mic:polish", "requestUrl" }`                | the token lacks `mic:polish` (the one-scope approval link)           |
@@ -65,9 +68,33 @@ Answers (all `cache-control: no-store`, JSON):
 `lib/payments/metered.ts`, feature `mic.polish` (usage group "stt"):
 the worst case (prompt × 2 tokens per character + `min(16000, 100 + 2 ×
 transcript chars)` output tokens, DeepSeek v4.1 flash × MARGIN) is held before
-the call, the reported tokens are settled after, the rest is refunded. A thrown
-call or an unusable answer (not `{"text"}` JSON, empty, or grown past 1.5× the
-transcript + 40) is refunded in full. Admin and dev accounts pay the same.
+the call and settled after it; the rest is refunded. A thrown call or an
+unusable answer (not `{"text"}` JSON, empty, or grown past 1.5× the transcript
+\+ 40) is refunded in full. Admin and dev accounts pay the same.
+
+The settle has two bases, never mixed, and the 200 answer and the log line
+`mic.polish.settle` say which one was used:
+
+- **`basis: "reported"`**: the provider's own token counts, priced with
+  `textUsd`. Believed only when both `prompt_tokens` and `completion_tokens`
+  are whole numbers in 0…1,000,000 and not both 0.
+- **`basis: "estimated"`**: no counts, or counts that fail that check
+  (negative, NaN, Infinity, not a number, absurdly large). This is an estimate
+  from lengths, not a token count: `textUsd(model, ceil(promptChars × 1),
+  ceil(answerChars × 1))`, capped at the hold (`micEstimateUsd`). The ratio is
+  `EST_TOKENS_PER_CHAR = 1` (`lib/payments/prices.ts`), the CJK figure of the
+  ratios the hold uses (Latin ~0.3, CJK ~1, emoji ~2), so Latin text is
+  over-estimated rather than under-estimated. It is half the hold's ratio, and
+  the answer's real length replaces the hold's maximum output, so an estimate
+  is well under the hold.
+
+## Logging
+
+Nothing about the text is ever logged, and neither is any error message (an
+upstream body can echo the transcript or a credential). A failure logs one
+line, `{"event":"mic.polish.failed","kind":…}`. `kind` is one of `model-throw`
+(with the provider's HTTP `status` number when it has one), `model-junk` or
+`hold-failed`. A settle logs `{"event":"mic.polish.settle","basis":…}`.
 
 ## The daily maximum
 

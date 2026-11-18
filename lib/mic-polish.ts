@@ -32,7 +32,7 @@ import { checkToken } from "@/lib/api-tokens";
 import type { D1Like } from "@/lib/d1/types";
 import type { D1WithBatch } from "@/lib/payments/credits-store";
 import { metered, noCreditsResponse, pausedResponse } from "@/lib/payments/metered";
-import { textHoldUsd, textUsd } from "@/lib/payments/prices";
+import { EST_TOKENS_PER_CHAR, textHoldUsd, textUsd } from "@/lib/payments/prices";
 
 export const MIC_POLISH_FEATURE = "mic.polish" as const;
 export const MIC_POLISH_SCOPE = "mic:polish" as const;
@@ -179,7 +179,7 @@ export async function releaseDailySlot(db: D1Like, userId: string, now: number):
 
 type Completion = {
   choices?: { message?: { content?: string | null } }[];
-  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
 };
 /** An OpenAI-compatible chat call (Workers AI in the route; a fake in tests). */
 export type MicComplete = (body: Record<string, unknown>) => Promise<Completion>;
@@ -203,6 +203,60 @@ const json = (body: unknown, status: number, headers: Record<string, string> = {
 class MicModelError extends Error {}
 
 /**
+ * The only things ever logged: a fixed kind and, for a provider HTTP error,
+ * its status number. Never an error's message (an upstream body can echo the
+ * transcript or a credential).
+ */
+export type MicFailKind = "model-throw" | "model-junk" | "hold-failed";
+function logFail(kind: MicFailKind, err?: unknown) {
+  const status = (err as { status?: unknown } | null)?.status;
+  console.error(
+    JSON.stringify({
+      event: "mic.polish.failed",
+      kind,
+      ...(typeof status === "number" && Number.isInteger(status) ? { status } : {}),
+    }),
+  );
+}
+
+/** How a charge was worked out: the provider's token counts, or an estimate from lengths. */
+export type ChargeBasis = "reported" | "estimated";
+
+/** Past this, a reported count is not believed (the largest call is ~40k tokens). */
+const MAX_REPORTED_TOKENS = 1_000_000;
+const okCount = (n: unknown): n is number =>
+  typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= MAX_REPORTED_TOKENS;
+
+/**
+ * The provider's token counts, only when both are whole numbers in
+ * 0…MAX_REPORTED_TOKENS and not both 0; anything else (missing, negative,
+ * NaN, Infinity, a string, absurdly large) counts as not reported.
+ */
+export function reportedUsage(
+  u: { prompt_tokens?: unknown; completion_tokens?: unknown } | undefined | null,
+): { in: number; out: number } | null {
+  if (!u || !okCount(u.prompt_tokens) || !okCount(u.completion_tokens)) return null;
+  if (u.prompt_tokens + u.completion_tokens === 0) return null;
+  return { in: u.prompt_tokens, out: u.completion_tokens };
+}
+
+/**
+ * A call's cost when the provider reports no token counts: the prompt's and
+ * the answer's characters at EST_TOKENS_PER_CHAR (lib/payments/prices.ts, the
+ * CJK figure, so Latin text is over- rather than under-estimated), never past
+ * the hold.
+ */
+export const micEstimateUsd = (model: string, inChars: number, outChars: number, holdUsd: number) =>
+  Math.min(
+    holdUsd,
+    textUsd(
+      model,
+      Math.ceil(inChars * EST_TOKENS_PER_CHAR),
+      Math.ceil(outChars * EST_TOKENS_PER_CHAR),
+    ),
+  );
+
+/**
  * A cookie may speak for the account only from our own pages: a request
  * another site's page made (Origin of another host, or Fetch Metadata saying
  * cross-site / same-site) is refused before the session is read.
@@ -214,14 +268,40 @@ export function sessionAllowed(req: Request): boolean {
   return origin === null || origin === new URL(req.url).origin;
 }
 
-/** Read the body with a byte cap; null when over it or not JSON. */
-async function readBody(req: Request, max: number): Promise<{ ok: boolean; value?: unknown }> {
+/**
+ * The body as a bounded stream: a Content-Length over `max` is refused before
+ * anything is read, and the stream is cancelled the moment its byte count
+ * passes `max` (a body with no Content-Length is never buffered past the cap).
+ * `ok: false`: over the cap; `value` undefined: not JSON.
+ */
+export async function readBody(
+  req: Request,
+  max: number,
+): Promise<{ ok: boolean; value?: unknown }> {
   const len = req.headers.get("content-length");
   if (len !== null && !(Number(len) <= max)) return { ok: false };
-  const buf = new Uint8Array(await req.arrayBuffer());
-  if (buf.byteLength > max) return { ok: false };
+  if (!req.body) return { ok: true, value: undefined };
+  const reader = req.body.getReader();
+  const parts: Uint8Array[] = [];
+  let n = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    n += value.byteLength;
+    if (n > max) {
+      await reader.cancel().catch(() => {});
+      return { ok: false };
+    }
+    parts.push(value);
+  }
+  const all = new Uint8Array(n);
+  let at = 0;
+  for (const p of parts) {
+    all.set(p, at);
+    at += p.byteLength;
+  }
   try {
-    return { ok: true, value: JSON.parse(new TextDecoder().decode(buf)) };
+    return { ok: true, value: JSON.parse(new TextDecoder().decode(all)) };
   } catch {
     return { ok: true, value: undefined };
   }
@@ -321,12 +401,15 @@ export async function handleMicPolish(req: Request, deps: MicPolishDeps): Promis
         const text = micPolishText(out.choices?.[0]?.message?.content, input.transcript);
         // Unusable output is a failed call: refunded in full, like a thrown one.
         if (text === null) throw new MicModelError("unusable");
-        const u = out.usage;
-        const usd =
-          u?.prompt_tokens || u?.completion_tokens
-            ? textUsd(model, u.prompt_tokens ?? 0, u.completion_tokens ?? 0)
-            : holdUsd;
-        return { value: text, usd };
+        const used = reportedUsage(out.usage);
+        const outChars = String(out.choices?.[0]?.message?.content).length;
+        const basis: ChargeBasis = used ? "reported" : "estimated";
+        const usd = used
+          ? textUsd(model, used.in, used.out)
+          : micEstimateUsd(model, chars, outChars, holdUsd);
+        // The basis only (never the text): how this charge was worked out.
+        console.log(JSON.stringify({ event: "mic.polish.settle", basis }));
+        return { value: { text, basis }, usd };
       },
     );
     if (!r.ok) {
@@ -336,15 +419,17 @@ export async function handleMicPolish(req: Request, deps: MicPolishDeps): Promis
       if (r.reason === "paused") return pausedResponse();
       return json({ error: "duplicate" }, 409);
     }
-    return json({ text: r.value, charged: Number(r.charged) || 0, daily }, 200);
+    return json(
+      { text: r.value.text, charged: Number(r.charged) || 0, basis: r.value.basis, daily },
+      200,
+    );
   } catch (err) {
     await giveBack();
     if (called) {
-      // The error's kind only: never the text.
-      console.error("mic.polish: model failed", String(err).slice(0, 120));
+      logFail(err instanceof MicModelError ? "model-junk" : "model-throw", err);
       return json({ error: "model-failed" }, 502);
     }
-    console.error("mic.polish: failed before the model", String(err).slice(0, 120));
+    logFail("hold-failed");
     return json({ error: "internal" }, 500);
   }
 }

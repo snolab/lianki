@@ -4,7 +4,8 @@ import { testSchema } from "@/lib/d1/testSchema";
 import { createToken, DEFAULT_TOKEN_SCOPES, SCOPE_IDS, OWNER_SCOPES } from "@/lib/api-tokens";
 import { defaultConfig, CONFIG } from "@/lib/config";
 import { FLAGS } from "@/lib/flags";
-import { FEATURES } from "@/lib/payments/prices";
+import { FEATURES, textHoldUsd } from "@/lib/payments/prices";
+import { usdToMicroCredits } from "@/lib/payments/ai-credits";
 import { FEATURES as USAGE_FEATURES } from "@/lib/payments/credit-usage";
 import { getBalance, type D1WithBatch } from "@/lib/payments/credits-store";
 import { setPermissionSnapshot, clearPermissionCache } from "@/lib/permissions";
@@ -23,6 +24,9 @@ import {
   type MicComplete,
   type MicPolishConfig,
   type MicPolishDeps,
+  micEstimateUsd,
+  readBody,
+  reportedUsage,
 } from "@/lib/mic-polish";
 
 const NOW = Date.parse("2026-11-18T09:30:00Z");
@@ -231,6 +235,82 @@ describe("the daily slot", () => {
   });
 });
 
+describe("charge basis", () => {
+  it("reportedUsage believes only whole, sane counts", () => {
+    expect(reportedUsage({ prompt_tokens: 10, completion_tokens: 2 })).toEqual({ in: 10, out: 2 });
+    expect(reportedUsage({ prompt_tokens: 0, completion_tokens: 0 })).toBeNull();
+    expect(reportedUsage(null)).toBeNull();
+    expect(reportedUsage({ prompt_tokens: 10 })).toBeNull();
+    expect(reportedUsage({ prompt_tokens: 1.5, completion_tokens: 2 })).toBeNull();
+    expect(reportedUsage({ prompt_tokens: 10, completion_tokens: 2_000_000 })).toBeNull();
+  });
+  it("an estimate never exceeds the hold, whatever the lengths", () => {
+    for (const chars of [0, 1, 50, 900, 8000, 10_000]) {
+      const inChars = chars + 1500;
+      const hold = textHoldUsd(MIC_POLISH_MODEL, inChars, micPolishMaxTokens(chars));
+      for (const outChars of [0, chars, chars * 2, 1e6]) {
+        const est = micEstimateUsd(MIC_POLISH_MODEL, inChars, outChars, hold);
+        expect(est).toBeLessThanOrEqual(hold);
+        expect(est).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+});
+
+describe("readBody", () => {
+  const endless = () => {
+    let pulled = 0;
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled++;
+        c.enqueue(new Uint8Array(1024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    return { stream, pulled: () => pulled, cancelled: () => cancelled };
+  };
+  it("a stream with no Content-Length stops at the cap and is cancelled", async () => {
+    const s = endless();
+    const r = new Request("https://lianki.com/api/mic/polish", {
+      method: "POST",
+      body: s.stream,
+      // @ts-expect-error: a streamed request body
+      duplex: "half",
+    });
+    expect(r.headers.get("content-length")).toBeNull();
+    expect(await readBody(r, 4096)).toEqual({ ok: false });
+    expect(s.cancelled()).toBe(true);
+    expect(s.pulled()).toBeLessThanOrEqual(8);
+  });
+  it("a Content-Length over the cap is refused before reading", async () => {
+    const s = endless();
+    const r = new Request("https://lianki.com/api/mic/polish", {
+      method: "POST",
+      headers: { "content-length": "5000" },
+      body: s.stream,
+      // @ts-expect-error: a streamed request body
+      duplex: "half",
+    });
+    expect(await readBody(r, 4096)).toEqual({ ok: false });
+    expect(s.pulled()).toBeLessThanOrEqual(1);
+    expect(
+      await readBody(
+        new Request("https://lianki.com/x", { method: "POST", headers: { "content-length": "x" } }),
+        10,
+      ),
+    ).toEqual({ ok: false });
+  });
+  it("within the cap: parsed; no body or not JSON: no value", async () => {
+    const post = (b?: string) => new Request("https://lianki.com/x", { method: "POST", body: b });
+    expect(await readBody(post('{"a":1}'), 100)).toEqual({ ok: true, value: { a: 1 } });
+    expect(await readBody(post("nope"), 100)).toEqual({ ok: true, value: undefined });
+    expect(await readBody(post(), 100)).toEqual({ ok: true, value: undefined });
+  });
+});
+
 describe("handleMicPolish", () => {
   it("flag off: 404 before anything else", async () => {
     const r = await handleMicPolish(req(ok), deps({ flags: async () => ({}) }));
@@ -254,6 +334,7 @@ describe("handleMicPolish", () => {
     expect(j).toEqual({
       text: "Hello, world.",
       charged: expect.any(Number),
+      basis: "reported",
       daily: { used: 1, max: 300 },
     });
     expect(r.headers.get("cache-control")).toBe("no-store");
@@ -393,7 +474,7 @@ describe("handleMicPolish", () => {
       req(ok),
       deps({
         complete: async () => {
-          throw new Error("down");
+          throw Object.assign(new Error("upstream said: hello world lk_secret"), { status: 500 });
         },
       }),
     );
@@ -403,6 +484,11 @@ describe("handleMicPolish", () => {
       deps({ complete: async () => ({ choices: [{ message: { content: "Sure!" } }] }) }),
     );
     expect(junk.status).toBe(502);
+    const logged = err.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+    expect(logged).toContain('"kind":"model-throw","status":500');
+    expect(logged).toContain('"kind":"model-junk"');
+    expect(logged).not.toContain("hello world");
+    expect(logged).not.toContain("lk_secret");
     err.mockRestore();
     expect(await bal()).toBe(100);
     expect(await dailyUsed(d1, "u1", NOW)).toBe(0);
@@ -413,21 +499,64 @@ describe("handleMicPolish", () => {
     const err = spyOn(console, "error").mockImplementation(() => {});
     d1.raw().exec("DROP TABLE credit_ai_charge");
     const r = await handleMicPolish(req(ok), deps());
+    expect(String(err.mock.calls[0]?.[0])).toBe(
+      '{"event":"mic.polish.failed","kind":"hold-failed"}',
+    );
     err.mockRestore();
     expect(r.status).toBe(500);
     expect(await dailyUsed(d1, "u1", NOW)).toBe(0);
   });
 
-  it("no usage reported: charged at the hold", async () => {
-    setBalance(100);
-    const r = await handleMicPolish(
-      req(ok),
-      deps({
-        complete: async () => ({ choices: [{ message: { content: '{"text":"Hi."}' } }] }),
-      }),
+  it("no or invalid usage: estimated from lengths, below the hold, basis says so", async () => {
+    const holdMicro = usdToMicroCredits(
+      textHoldUsd(
+        MIC_POLISH_MODEL,
+        micPolishMessages({ transcript: ok.transcript, context: ok.context }).reduce(
+          (n, m) => n + m.content.length,
+          0,
+        ),
+        micPolishMaxTokens(ok.transcript.length),
+      ),
     );
-    expect(r.status).toBe(200);
-    expect((await r.json()).charged).toBeGreaterThanOrEqual(0);
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    for (const usage of [
+      undefined,
+      { prompt_tokens: -5, completion_tokens: 3 },
+      { prompt_tokens: Number.NaN, completion_tokens: 3 },
+      { prompt_tokens: Infinity, completion_tokens: 3 },
+      { prompt_tokens: "400", completion_tokens: 3 },
+      { prompt_tokens: 1e12, completion_tokens: 1e12 },
+    ]) {
+      d1.raw().exec("DELETE FROM credit_balance; DELETE FROM credit_ai_charge");
+      setBalance(100);
+      const r = await handleMicPolish(
+        req(ok),
+        deps({
+          complete: async () => ({
+            choices: [{ message: { content: '{"text":"Hello world."}' } }],
+            usage,
+          }),
+        }),
+      );
+      expect(r.status).toBe(200);
+      const j = await r.json();
+      expect(j.basis).toBe("estimated");
+      const row = d1
+        .raw()
+        .prepare("SELECT reserved, charged, costMicro FROM credit_ai_charge")
+        .get() as {
+        reserved: number;
+        charged: number;
+        costMicro: number;
+      };
+      expect(row.costMicro).toBeGreaterThan(0);
+      expect(row.costMicro).toBeLessThan(holdMicro);
+      expect(j.charged).toBeLessThanOrEqual(row.reserved);
+    }
+    const logged = log.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(logged).toContain('"basis":"estimated"');
+    expect(logged).not.toContain("hello world");
+    log.mockRestore();
   });
 
   it("daily limit: 429 under concurrency, exactly max pass, nothing held for the rest", async () => {

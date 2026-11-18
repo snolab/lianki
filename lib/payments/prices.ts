@@ -77,6 +77,12 @@ export const STT_USD_PER_MIN = 0.000513;
  *   far more bytes per second, so it is over-held, never under-held).
  */
 export const HOLD_TOKENS_PER_CHAR = 2;
+/**
+ * The tokens a text is estimated at when a provider reports no counts (a
+ * settle, not a hold): the CJK figure above, so Latin text is over- rather
+ * than under-estimated; a caller still caps the estimate at its hold.
+ */
+export const EST_TOKENS_PER_CHAR = 1;
 /** Input tokens held per attached image (a large image is ~1,500 tokens). */
 export const HOLD_TOKENS_PER_IMAGE = 4000;
 export const HOLD_SPEECH_SEC_PER_CHAR = 1 / 3;
