@@ -278,7 +278,7 @@ describe("handleMicPolish", () => {
   });
 
   it("an admin pays like anyone", async () => {
-    setPermissionSnapshot([{ email: "u1@x.com", perm: "admin" }]);
+    setPermissionSnapshot([{ email: "u1@x.com", permission: "admin" }]);
     setBalance(0);
     const r = await handleMicPolish(req(ok), deps());
     expect(r.status).toBe(402);
