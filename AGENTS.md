@@ -172,6 +172,7 @@ that are expensive to rediscover.
 | The owner's local streaming speech-to-text (mic → his Mac)                 | [docs/local-stt.md](docs/local-stt.md)                              |
 | His voice-clone reference in his account (audio, sealed, passkey)          | [docs/voice-clone.md](docs/voice-clone.md)                          |
 | Mic recordings in his account: what is kept, sealing, /my/recordings, pull | [docs/recordings.md](docs/recordings.md)                            |
+| Meetings: screen + mic + tab sound recorded to /my/meetings (design)       | [docs/meetings.md](docs/meetings.md)                                |
 | /vibe: a conversation transcribed into a private doc                       | [docs/vibe.md](docs/vibe.md)                                        |
 | Whole-page dev server on prod D1 (owner only, home LAN)                    | [docs/dev-whole-page.md](docs/dev-whole-page.md)                    |
 | A friend's dev container (devbox: agents, local D1, tunnel)                | [devbox/README.md](devbox/README.md)                                |
