@@ -89,6 +89,7 @@ export const FEATURES = [
   "partner.reply",
   "chat.prepare",
   "voice.auto-polish",
+  "mic.polish",
   "read.gloss",
   "read.polish",
   "read.live-polish",
