@@ -6,7 +6,9 @@ import {
   initialScale,
   pinchDirection,
   pinchFactors,
+  pinchGroupAt,
   pinchOf,
+  pinchOpenGroups,
   pinchRowHeight,
   pinchScrollTop,
   pinchStart,
@@ -116,5 +118,51 @@ describe("pinch: the time under the fingers stays under them (owner, 2026-11-10)
         total1: 1200,
       }),
     ).toBe(340);
+  });
+
+  it("expands and collapses categories on vertical pinch (snomiao/rgui semantic zoom)", () => {
+    const lines = [
+      { kind: "group" as const, def: { id: "chat" } },
+      { kind: "task" as const, group: "chat" },
+      { kind: "task" as const, group: null },
+      { kind: "group" as const, def: { id: "words" } },
+    ];
+    const geo = { tops: [0, 32, 64, 96], hs: [30, 30, 30, 30] };
+    expect(pinchGroupAt(lines, geo, 15)).toBe("chat");
+    expect(pinchGroupAt(lines, geo, 40)).toBe("chat");
+    expect(pinchGroupAt(lines, geo, 105)).toBe("words");
+    expect(pinchGroupAt(lines, geo, 200)).toBe("words");
+    expect(pinchGroupAt([{ kind: "task", group: null }], { tops: [0], hs: [30] }, 10)).toBeNull();
+
+    const allGroups = ["chat", "words", "ui"];
+    // Vertical pinch out (>= 1.25) expands targetGroup first, then all categories (>= 1.6 or already open)
+    expect(pinchOpenGroups({ open0: [], targetGroup: "chat", allGroups, fy: 1.0 })).toEqual([]);
+    expect(pinchOpenGroups({ open0: [], targetGroup: "chat", allGroups, fy: 1.3 })).toEqual([
+      "chat",
+    ]);
+    expect(pinchOpenGroups({ open0: ["chat"], targetGroup: "chat", allGroups, fy: 1.3 })).toEqual([
+      "chat",
+      "words",
+      "ui",
+    ]);
+    expect(pinchOpenGroups({ open0: [], targetGroup: "chat", allGroups, fy: 1.7 })).toEqual([
+      "chat",
+      "words",
+      "ui",
+    ]);
+
+    // Vertical pinch in (<= 0.8) collapses targetGroup first, then all categories (<= 0.6 or already folded)
+    expect(
+      pinchOpenGroups({ open0: ["chat", "words"], targetGroup: "chat", allGroups, fy: 0.75 }),
+    ).toEqual(["words"]);
+    expect(pinchOpenGroups({ open0: ["words"], targetGroup: "chat", allGroups, fy: 0.75 })).toEqual(
+      [],
+    );
+    expect(
+      pinchOpenGroups({ open0: ["chat", "words"], targetGroup: "chat", allGroups, fy: 0.55 }),
+    ).toEqual([]);
+    expect(
+      pinchOpenGroups({ open0: ["chat"], targetGroup: "chat", allGroups, fy: Number.NaN }),
+    ).toEqual(["chat"]);
   });
 });

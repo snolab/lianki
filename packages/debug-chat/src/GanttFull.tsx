@@ -53,7 +53,9 @@ import {
   paceOf,
   parkedBar,
   pinchFactors,
+  pinchGroupAt,
   pinchOf,
+  pinchOpenGroups,
   pinchRowHeight,
   pinchScrollTop,
   pinchStart,
@@ -547,8 +549,8 @@ export function GanttFull({
     }
     return { hs, tops, total: y };
   }, [lines, rowH]);
-  const linesRef = useRef({ lines, geo });
-  linesRef.current = { lines, geo };
+  const linesRef = useRef({ lines, geo, groups });
+  linesRef.current = { lines, geo, groups };
   const scale = useUi(ganttPrefs(), (s) => s.scale);
   /** This device's zoom overrides (ui-store.ts ganttPrefs), else the defaults. */
   const fitP = useUi(ganttPrefs(), (s) => s.fitPercentile);
@@ -698,7 +700,7 @@ export function GanttFull({
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    /** The pinch under way: its start (t0 under cx, rowH0/top0 under cy) and where the fingers are now. */
+    /** The pinch under way: its start (t0 under cx, rowH0/top0/open0 under cy) and where the fingers are now. */
     let pinch: {
       from: ReturnType<typeof pinchStart>;
       p0: ReturnType<typeof pinchOf>;
@@ -706,6 +708,8 @@ export function GanttFull({
       top0: number;
       rowH0: number;
       total0: number;
+      open0: readonly string[];
+      targetGroup: string | null;
       now: ReturnType<typeof pinchOf>;
     } | null = null;
     let gesture = 1;
@@ -732,12 +736,27 @@ export function GanttFull({
       }
       if (pinch) {
         // Absolute from the pinch's start: horizontal pinch zooms time (t0 back
-        // under cx), vertical pinch zooms row height (row under cy0 back under cy).
+        // under cx), vertical pinch zooms row height + expands/collapses
+        // categories (rgui semantic zoom, row under cy0 back under cy).
         const p = pinch.now;
         const v = view.current;
         const { fx, fy } = pinchFactors(pinch.p0, p);
         if (v) {
           commit(pinchView(pinch.from, fx, viewX(p.cx), v.w, nowRef.current));
+        }
+        const allGroups = linesRef.current.groups.map((g) => g.id);
+        const nextOpen = pinchOpenGroups({
+          open0: pinch.open0,
+          targetGroup: pinch.targetGroup,
+          allGroups,
+          fy,
+        });
+        const curOpen = ganttGroupsUi().getState().open;
+        if (
+          nextOpen.length !== curOpen.length ||
+          nextOpen.some((id, idx) => id !== curOpen[idx])
+        ) {
+          ganttGroupsUi().setState({ open: nextOpen });
         }
         const nextRowH = pinchRowHeight(pinch.rowH0, fy);
         const total1 = linesRef.current.lines.reduce(
@@ -785,13 +804,18 @@ export function GanttFull({
       const p = pinchOf(touches);
       const left = pending.current ?? el.scrollLeft;
       const top = pendingTop.current ?? el.scrollTop;
+      const anchorY0 = viewY(p.cy);
+      const originY = AXIS_H + ROW_GAP + Math.round(GANTT_END_SPACE * el.clientHeight);
+      const { lines: ls, geo: g } = linesRef.current;
       pinch = {
         from: pinchStart(v.axis, left, viewX(p.cx), nowRef.current),
         p0: p,
-        anchorY0: viewY(p.cy),
+        anchorY0,
         top0: top,
         rowH0: rowHRef.current,
-        total0: linesRef.current.geo.total,
+        total0: g.total,
+        open0: ganttGroupsUi().getState().open,
+        targetGroup: pinchGroupAt(ls, g, top + anchorY0 - originY),
         now: p,
       };
     };

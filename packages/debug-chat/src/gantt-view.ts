@@ -200,6 +200,76 @@ export function pinchRowHeight(rowH0: number, fy: number): number {
   return clamp(Math.round(rowH0 * fy), GANTT_MIN_ROW_H, GANTT_MAX_ROW_H);
 }
 
+/** Vertical pinch factor thresholds for rgui-style category expand/collapse (展开/压缩). */
+export const PINCH_EXPAND_RATIO = 1.25;
+export const PINCH_EXPAND_ALL_RATIO = 1.6;
+export const PINCH_COLLAPSE_RATIO = 0.8;
+export const PINCH_COLLAPSE_ALL_RATIO = 0.6;
+
+/**
+ * Find the category id under `yOffset` (px from the first line's top) from
+ * the current lines and their geometry (`tops`, `hs`). Picks the nearest
+ * line that belongs to a category.
+ */
+export function pinchGroupAt(
+  lines: readonly { kind: "group" | "task"; def?: { id: string }; group?: string | null }[],
+  geo: { readonly tops: readonly number[]; readonly hs: readonly number[] },
+  yOffset: number,
+): string | null {
+  let best: string | null = null;
+  let bestDist = Infinity;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]!;
+    const gid = l.kind === "group" ? (l.def?.id ?? null) : (l.group ?? null);
+    if (!gid) continue;
+    const top = geo.tops[i] ?? 0;
+    const bottom = top + (geo.hs[i] ?? GANTT_ROW_H);
+    const dist = yOffset < top ? top - yOffset : yOffset > bottom ? yOffset - bottom : 0;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = gid;
+      if (dist === 0) break;
+    }
+  }
+  return best;
+}
+
+/**
+ * Semantic-zoom category disclosure along the vertical pinch axis (snomiao/rgui
+ * renormalization-group flow: vertical pinch out expands categories into their
+ * children rows; vertical pinch in collapses them back into summary rows):
+ * - `fy >= PINCH_EXPAND_ALL_RATIO` (1.6), or `fy >= PINCH_EXPAND_RATIO` (1.25)
+ *   when `targetGroup` was already open at pinch start: expand all categories.
+ * - `fy >= PINCH_EXPAND_RATIO` (1.25): expand `targetGroup`.
+ * - `fy <= PINCH_COLLAPSE_ALL_RATIO` (0.6), or `fy <= PINCH_COLLAPSE_RATIO` (0.8)
+ *   when `targetGroup` was already collapsed at pinch start: collapse all categories.
+ * - `fy <= PINCH_COLLAPSE_RATIO` (0.8): collapse `targetGroup`.
+ * - Otherwise: keep `open0`.
+ */
+export function pinchOpenGroups(opts: {
+  open0: readonly string[];
+  targetGroup: string | null;
+  allGroups: readonly string[];
+  fy: number;
+}): string[] {
+  const { open0, targetGroup, allGroups, fy } = opts;
+  const uniq = (list: readonly string[]) => [...new Set(list)];
+  if (!Number.isFinite(fy) || fy <= 0) return [...open0];
+  if (fy >= PINCH_EXPAND_ALL_RATIO) return uniq([...open0, ...allGroups]);
+  if (fy >= PINCH_EXPAND_RATIO) {
+    if (targetGroup && !open0.includes(targetGroup)) return [...open0, targetGroup];
+    return uniq([...open0, ...allGroups]);
+  }
+  if (fy <= PINCH_COLLAPSE_ALL_RATIO) return [];
+  if (fy <= PINCH_COLLAPSE_RATIO) {
+    if (targetGroup && open0.includes(targetGroup)) {
+      return open0.filter((id) => id !== targetGroup);
+    }
+    return [];
+  }
+  return [...open0];
+}
+
 /**
  * Solve `scrollTop` during a pinch so the row position initially under
  * `anchorY0` (at total rows height `total0`) stays under `anchorY` (at
