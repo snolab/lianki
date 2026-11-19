@@ -71,3 +71,18 @@ CREATE TABLE IF NOT EXISTS meeting_line (
   PRIMARY KEY (meeting_id, track, start_ms)
 );
 CREATE INDEX IF NOT EXISTS meeting_line_user ON meeting_line (user_id, meeting_id, start_ms);
+
+-- The spans a final transcript PUT has finalized (lib/meetings/store.ts
+-- `putLines`): written in the same batch, even when the span holds no line
+-- (silence). A live line overlapping one is never stored, and GET hides any
+-- that does, so a late live line cannot reappear over finalized text.
+CREATE TABLE IF NOT EXISTS meeting_final_span (
+  meeting_id  TEXT NOT NULL,
+  track       TEXT NOT NULL,     -- me | others
+  start_ms    INTEGER NOT NULL,
+  end_ms      INTEGER NOT NULL,
+  user_id     TEXT NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  PRIMARY KEY (meeting_id, track, start_ms, end_ms)
+);
+CREATE INDEX IF NOT EXISTS meeting_final_span_user ON meeting_final_span (user_id, meeting_id, track);

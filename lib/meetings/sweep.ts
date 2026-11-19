@@ -78,6 +78,7 @@ export async function purgeMeeting(
   }
   await db.batch([
     db.prepare("DELETE FROM meeting_line WHERE user_id = ? AND meeting_id = ?").bind(uid, id),
+    db.prepare("DELETE FROM meeting_final_span WHERE user_id = ? AND meeting_id = ?").bind(uid, id),
     db.prepare("DELETE FROM meeting_chunk WHERE user_id = ? AND meeting_id = ?").bind(uid, id),
     db.prepare("DELETE FROM meeting WHERE user_id = ? AND id = ?").bind(uid, id),
   ]);

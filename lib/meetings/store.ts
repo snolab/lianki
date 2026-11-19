@@ -626,12 +626,29 @@ export async function putLines(d: MeetDeps, id: string, body: unknown): Promise<
       );
     }
   }
+  // A final PUT also records the span it finalizes (lines may be empty: silence),
+  // so a live line arriving later for that span is dropped and stays hidden.
+  if (put.source === "final")
+    for (const sp of finalSpans(put))
+      stmts.push(
+        d.db
+          .prepare(
+            `INSERT INTO meeting_final_span (meeting_id, track, start_ms, end_ms, user_id, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT (meeting_id, track, start_ms, end_ms) DO UPDATE SET updated_at = excluded.updated_at
+             WHERE meeting_final_span.user_id = excluded.user_id`,
+          )
+          .bind(id, sp.track, sp.startMs, sp.endMs, d.uid, now),
+      );
   for (const l of put.lines)
     stmts.push(
       d.db
         .prepare(
+          // A live line is written only where no finalized span overlaps it.
           `INSERT INTO meeting_line (meeting_id, track, start_ms, user_id, end_ms, speaker, lang, text_sealed, source, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+           WHERE ?9 = 'final' OR NOT EXISTS (
+             SELECT 1 FROM meeting_final_span s WHERE s.user_id = ?4 AND s.meeting_id = ?1 AND s.track = ?2
+               AND s.start_ms < ?5 AND s.end_ms > ?3)
            ON CONFLICT (meeting_id, track, start_ms) DO UPDATE SET
              end_ms = excluded.end_ms, speaker = excluded.speaker, lang = excluded.lang,
              text_sealed = excluded.text_sealed, source = excluded.source, updated_at = excluded.updated_at
@@ -655,9 +672,26 @@ export async function putLines(d: MeetDeps, id: string, body: unknown): Promise<
   return { status: 200, json: { ok: true, lines: put.lines.length } };
 }
 
+/** The spans a final PUT finalizes: `replace`'s, else per track [min start, max end) of its lines. */
+export function finalSpans(put: LinesPut): { track: AudioTrack; startMs: number; endMs: number }[] {
+  if (put.source !== "final") return [];
+  if (put.replace) return [put.replace];
+  const out: { track: AudioTrack; startMs: number; endMs: number }[] = [];
+  for (const t of AUDIO_TRACKS) {
+    const ls = put.lines.filter((l) => l.track === t);
+    if (ls.length)
+      out.push({
+        track: t,
+        startMs: Math.min(...ls.map((l) => l.startMs)),
+        endMs: Math.max(...ls.map((l) => l.endMs)),
+      });
+  }
+  return out;
+}
+
 export type StoredLine = Line & { updatedAt: number };
 
-/** Every final, plus the live lines no final (of the same track) overlaps; in time order. */
+/** Every final, plus the live lines no final and no finalized span (of the same track) overlaps; in time order. */
 export async function readLines(d: MeetDeps, id: string): Promise<StoredLine[]> {
   const r = await d.db
     .prepare(
@@ -665,7 +699,10 @@ export async function readLines(d: MeetDeps, id: string): Promise<StoredLine[]> 
        FROM meeting_line l
        WHERE l.user_id = ? AND l.meeting_id = ? AND (l.source = 'final' OR NOT EXISTS (
          SELECT 1 FROM meeting_line f WHERE f.user_id = l.user_id AND f.meeting_id = l.meeting_id AND f.track = l.track
-           AND f.source = 'final' AND f.start_ms < l.end_ms AND f.end_ms > l.start_ms))
+           AND f.source = 'final' AND f.start_ms < l.end_ms AND f.end_ms > l.start_ms)
+         AND NOT EXISTS (
+         SELECT 1 FROM meeting_final_span s WHERE s.user_id = l.user_id AND s.meeting_id = l.meeting_id AND s.track = l.track
+           AND s.start_ms < l.end_ms AND s.end_ms > l.start_ms))
        ORDER BY l.start_ms, l.track`,
     )
     .bind(d.uid, id)

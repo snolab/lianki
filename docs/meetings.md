@@ -247,8 +247,10 @@ meetings/<user id>/<meeting id>/others/000000 …
 `meeting_line`, primary key `(meeting_id, track, start_ms)` (upserted on it;
 every statement also carries `user_id`): `user_id`, `end_ms`, `speaker`
 (nullable: a label such as `me`, `others` or a voice id), `lang`,
-`text_sealed`, `source` (`live` | `final`), `updated_at`. Migration
-`db/migrations/0083_meetings.sql`.
+`text_sealed`, `source` (`live` | `final`), `updated_at`.
+`meeting_final_span`, primary key `(meeting_id, track, start_ms, end_ms)`,
+plus `user_id`, `updated_at`: the spans a final PUT finalized (below).
+Migration `db/migrations/0083_meetings.sql`.
 
 ### The upload route
 
@@ -461,8 +463,24 @@ recorder's one clock (the `AudioContext` that captures every track); a piece's
    whose `[start_ms, end_ms)` overlaps its lines' span `[min startMs, max endMs)`.
 3. Every line is upserted on `(meeting_id, track, start_ms)`. A `live` line
    never overwrites a stored `final` at the same key.
-4. `GET` returns every final, plus only the live rows that no final of the
-   same track overlaps.
+4. Every `final` PUT also records the span it finalizes in
+   `meeting_final_span` (`replace`'s span, else per track its lines'
+   `[min startMs, max endMs)`), in the same batch, even when `lines` is empty
+   (silence). A `live` line that overlaps a finalized span of its track is
+   dropped (the PUT still answers 200), so a late live line never reappears
+   over a final. Spans that only touch (`[1000,2000)` and a live
+   `[2000,2500)`) do not overlap.
+5. `GET` returns every final, plus only the live rows that no final and no
+   finalized span of the same track overlaps.
+
+**Known risk, follow-up.** A client cannot revoke an older `final` PUT that
+is already in flight: aborting the fetch does not stop the Worker, so an
+older final can land after a newer one and overwrite its lines. Proposed fix:
+a per-meeting transcript run revision. `meeting.transcript_run` (an
+integer) is bumped by a "start run" call that returns the new run id; every
+lines PUT carries `run`, and each statement in its batch is conditioned on
+`run = meeting.transcript_run`, so a PUT from a stale run writes nothing and
+answers 409 `stale-run`. Not built yet.
 
 **Live PCM hook** (for live captions; `lib/meetings/capture.ts`). While a
 meeting records, `meetingRecorder().onPcm(f)` calls
