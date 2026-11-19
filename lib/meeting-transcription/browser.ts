@@ -1,0 +1,53 @@
+"use client";
+
+import { createMeetingTranscription, type MeetingTranscriptionOptions } from "./controller";
+import { createMeetingChunkDecoder } from "./decode";
+import {
+  MeetingTranscriptionError,
+  type MeetingTrack,
+  type MeetingTranscriptSdk,
+} from "./contracts";
+
+export interface MeetingPcmRecorder {
+  readonly state: { meetingId: string | null };
+  onPcm(
+    listener: (frame: { track: MeetingTrack; offset: number; samples: Float32Array }) => void,
+  ): () => void;
+}
+export type BrowserMeetingTranscriptionOptions = Omit<
+  MeetingTranscriptionOptions,
+  "sdk" | "subscribePcm" | "decodeChunk"
+> & {
+  decodeChunk?: MeetingTranscriptionOptions["decodeChunk"];
+};
+
+/** Loads browser integration on demand; creates no recorder/provider until explicit startLive. */
+export async function createBrowserMeetingTranscription(
+  options: BrowserMeetingTranscriptionOptions,
+  deps: {
+    sdk?: MeetingTranscriptSdk;
+    getRecorder?: () => MeetingPcmRecorder;
+  } = {},
+) {
+  const sdk = deps.sdk ?? (await import("./sdk")).meetingTranscriptSdk;
+  const getRecorder = deps.getRecorder ?? (await import("../meetings/capture")).meetingRecorder;
+  const consumer = createMeetingTranscription({
+    ...options,
+    sdk,
+    decodeChunk: options.decodeChunk ?? createMeetingChunkDecoder(options.limits),
+    subscribePcm(listener) {
+      const recorder = getRecorder();
+      if (recorder.state.meetingId !== options.meetingId)
+        throw new MeetingTranscriptionError("config");
+      return recorder.onPcm((frame) => {
+        // A reused page singleton must never feed another meeting into this one's transcript.
+        if (recorder.state.meetingId !== options.meetingId) {
+          consumer.stop();
+          return;
+        }
+        listener(frame);
+      });
+    },
+  });
+  return consumer;
+}

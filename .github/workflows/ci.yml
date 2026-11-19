@@ -53,6 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          submodules: true
           fetch-depth: 0 # gitleaks scans history, not just the tip
       # gitleaks-action@v2 requires a paid licence for organisation accounts, so
       # run the upstream binary directly — same tool, no licence gate.
@@ -132,6 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          submodules: true
           fetch-depth: 0 # the diff needs merge_group.base_sha
       - uses: ./.github/actions/setup-bun # pinned, cached, retried
       # No install: the selector needs only bun and git.

@@ -12,16 +12,20 @@
  * an hour never sits in memory. Where MSE cannot play the type, the
  * download stream plays instead.
  *
- * The transcript is a stub list over meeting_line (GET …/lines): a tap on a
- * line seeks there. Writing lines is the transcript side's (M3/M4).
+ * Transcript rereads start only on a trusted button tap. Cancellation/navigation
+ * closes that page's consumer without touching the archive or the media player.
  */
 import Link from "next/link";
+import { SealSwitch } from "@/app/components/SealSwitch";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { type ChunkMeta, clockOf, seekPlan, sizeOf } from "@/lib/meetings/core";
 import { resumeLeftovers } from "@/lib/meetings/capture";
 import type { MeetingView, StoredLine } from "@/lib/meetings/store";
+import { publicCfg } from "@/lib/config-client";
+import type { createConfiguredMeetingTranscription } from "@/lib/meeting-transcription/configured";
+import type { TranscriptionStatus } from "@/lib/meeting-transcription/controller";
 
 const AHEAD_S = 60;
 const BEHIND_S = 30;
@@ -46,18 +50,139 @@ export default function MeetingPlayer({ id }: { id: string }) {
   const [failed, setFailed] = useState(false);
   const [missing, setMissing] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [speakerConsent, setSpeakerConsent] = useState(false);
+  const [speakerAvailable, setSpeakerAvailable] = useState(() =>
+    Boolean(publicCfg("meetings.voiceprintAssets")),
+  );
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcriptionStatus, setTranscriptionStatus] = useState<TranscriptionStatus | null>(null);
+  const transcription = useRef<{
+    controller: AbortController;
+    consumer: Awaited<ReturnType<typeof createConfiguredMeetingTranscription>>["consumer"] | null;
+  } | null>(null);
 
   useEffect(() => {
+    setTranscribing(false);
+    setTranscriptionStatus(null);
+    setSpeakerConsent(false);
+    setSpeakerAvailable(Boolean(publicCfg("meetings.voiceprintAssets")));
+    return () => {
+      transcription.current?.controller.abort();
+      transcription.current?.consumer?.close();
+      transcription.current = null;
+    };
+  }, [id]);
+
+  const onTranscribe = async (event: React.MouseEvent) => {
+    if (
+      !event.isTrusted ||
+      transcription.current ||
+      !meeting ||
+      meeting.id !== id ||
+      meeting.status === "recording"
+    )
+      return;
+    const run = {
+      controller: new AbortController(),
+      consumer: null as
+        | Awaited<ReturnType<typeof createConfiguredMeetingTranscription>>["consumer"]
+        | null,
+    };
+    transcription.current = run;
+    setTranscribing(true);
+    setTranscriptionStatus({ phase: "starting" });
+    try {
+      const { createConfiguredMeetingTranscription } =
+        await import("@/lib/meeting-transcription/configured");
+      if (transcription.current !== run) return;
+      const configured = await createConfiguredMeetingTranscription({
+        meetingId: id,
+        origin: location.origin,
+        speakerConsent,
+        onDraft() {},
+        onStatus(status) {
+          if (transcription.current === run) setTranscriptionStatus(status);
+        },
+        onEmbeddingStatus(status) {
+          if (
+            transcription.current === run &&
+            ["assets-unavailable", "embedding-unavailable"].includes(status)
+          )
+            setSpeakerAvailable(false);
+        },
+      });
+      if (transcription.current !== run) {
+        configured.consumer.close();
+        return;
+      }
+      run.consumer = configured.consumer;
+      setSpeakerAvailable(configured.voiceprintConfigured);
+      await run.consumer.runFinal({ userInitiated: true }, run.controller.signal);
+      if (transcription.current !== run) return;
+      const response = await fetch(`/api/my/meetings/${id}/lines`, {
+        credentials: "same-origin",
+        signal: run.controller.signal,
+        redirect: "error",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("lines");
+      const body = (await response.json()) as { lines: StoredLine[] };
+      if (transcription.current === run) setLines(body.lines);
+    } catch {
+      if (transcription.current === run)
+        setTranscriptionStatus({ phase: run.controller.signal.aborted ? "stopped" : "error" });
+    } finally {
+      run.consumer?.close();
+      if (transcription.current === run) {
+        transcription.current = null;
+        setTranscribing(false);
+      }
+    }
+  };
+  const cancelTranscription = () => {
+    const run = transcription.current;
+    if (!run) return;
+    transcription.current = null;
+    run.controller.abort();
+    run.consumer?.close();
+    setTranscribing(false);
+    setTranscriptionStatus({ phase: "stopped" });
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let current = true;
+    setMeeting(null);
+    setChunks([]);
+    setLines([]);
+    setMissing(false);
+    setFailed(false);
+    setConfirm(false);
     void resumeLeftovers();
     void (async () => {
-      const r = await fetch(`/api/my/meetings/${id}`).catch(() => null);
+      const r = await fetch(`/api/my/meetings/${id}`, { signal: controller.signal }).catch(
+        () => null,
+      );
+      if (!current) return;
       if (!r?.ok) return setMissing(true);
       const b = (await r.json()) as { meeting: MeetingView; chunks: ChunkMeta[] };
+      if (!current) return;
       setMeeting(b.meeting);
       setChunks(b.chunks);
-      const l = await fetch(`/api/my/meetings/${id}/lines`).catch(() => null);
-      if (l?.ok) setLines(((await l.json()) as { lines: StoredLine[] }).lines);
-    })();
+      const l = await fetch(`/api/my/meetings/${id}/lines`, { signal: controller.signal }).catch(
+        () => null,
+      );
+      if (l?.ok) {
+        const body = (await l.json()) as { lines: StoredLine[] };
+        if (current) setLines(body.lines);
+      }
+    })().catch(() => {
+      if (current) setMissing(true);
+    });
+    return () => {
+      current = false;
+      controller.abort();
+    };
   }, [id]);
 
   const av = chunks.filter((c) => c.track === "av").sort((a, b) => a.seq - b.seq);
@@ -240,6 +365,17 @@ export default function MeetingPlayer({ id }: { id: string }) {
     );
 
   const fmt = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
+  const transcriptionText = !transcriptionStatus
+    ? null
+    : transcriptionStatus.phase === "error"
+      ? t.transcriptionFailed
+      : transcriptionStatus.phase === "stopped"
+        ? t.transcriptionCancelled
+        : transcriptionStatus.phase === "done"
+          ? t.transcriptSaved
+          : transcriptionStatus.phase === "backpressure"
+            ? t.captionGap
+            : t.transcribing;
   return (
     <main className="px-3 py-4 md:px-6" data-lk-private-screen="">
       <div className="flex flex-wrap items-center gap-3">
@@ -320,6 +456,36 @@ export default function MeetingPlayer({ id }: { id: string }) {
           <h2 id="lk-meet-transcript" className="mb-2 font-semibold">
             {t.transcript}
           </h2>
+          <div className="mb-4 space-y-2 text-sm">
+            <p>{t.tLocal}</p>
+            <div className="flex items-center justify-between gap-4">
+              <span id="lk-meet-speaker-consent-final">{t.speakerConsent}</span>
+              <SealSwitch
+                checked={speakerConsent}
+                aria-labelledby="lk-meet-speaker-consent-final"
+                disabled={transcribing || !speakerAvailable}
+                onClick={() => setSpeakerConsent((previous) => !previous)}
+              />
+            </div>
+            <p className="text-gray-600 dark:text-gray-400">{t.speakerPrivacy}</p>
+            {!speakerAvailable && <p>{t.speakerUnavailable}</p>}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="lk-btn lk-btn-secondary"
+                disabled={transcribing || !meeting || meeting.status === "recording"}
+                onClick={onTranscribe}
+              >
+                {transcribing ? t.transcribing : t.transcribeAction}
+              </button>
+              {transcribing && (
+                <button type="button" className="lk-btn lk-btn-quiet" onClick={cancelTranscription}>
+                  {t.cancelTranscription}
+                </button>
+              )}
+            </div>
+            {transcriptionText && <p role="status">{transcriptionText}</p>}
+          </div>
           {lines.length === 0 ? (
             <p className="text-sm text-gray-500">{t.noTranscript}</p>
           ) : (
@@ -335,11 +501,13 @@ export default function MeetingPlayer({ id }: { id: string }) {
                       {clockOf(l.startMs)}
                     </span>
                     <span className="me-1 text-xs font-semibold">
-                      {l.speaker && l.speaker !== l.track
-                        ? l.speaker
-                        : l.track === "me"
-                          ? t.speakerMe
-                          : t.speakerOthers}
+                      {l.speaker === "unknown"
+                        ? t.speakerOthers
+                        : l.speaker && l.speaker !== l.track
+                          ? l.speaker
+                          : l.track === "me"
+                            ? t.speakerMe
+                            : t.speakerOthers}
                     </span>
                     <span className={l.source === "live" ? "text-gray-500" : ""}>{l.text}</span>
                   </button>
