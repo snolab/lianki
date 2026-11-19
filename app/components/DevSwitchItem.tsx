@@ -17,8 +17,6 @@ export type DevSwitchLabels = {
 
 export type DevSwitch = { mode: Exclude<DevSwitchMode, null>; labels: DevSwitchLabels };
 
-const BLUE = "oklch(0.62 0.209 22.3)";
-
 /**
  * The owner's "Preview build" toggle in the account menu
  * (lib/dev-server-switch.ts; owner, 2026-11-03 14:45 JST: a switch). On =
@@ -95,15 +93,16 @@ export function DevSwitchItem({ sw, children }: { sw: DevSwitch; children?: Reac
 
 /**
  * On the dev server only: a small blue dot on the corner of the profile
- * menu's button (owner, 2026-11-03 14:44 JST), instead of a top-bar badge.
+ * avatar (owner, 2026-11-03 14:44 JST), instead of a top-bar badge.
  * The menu's switch, on, says what it means.
  */
 export function DevServerDot({ label }: { label: string }) {
   return (
     <span
       data-dev-server-dot
-      className="pointer-events-none absolute -top-0.5 -end-0.5 w-2 h-2 rounded-full ring-2 ring-white dark:ring-gray-900"
-      style={{ background: BLUE }}
+      // The blue palette is remapped to seal red; sky keeps this environment
+      // indicator blue, distinct from an unread-notification marker.
+      className="pointer-events-none absolute -top-0.5 -end-0.5 w-2 h-2 rounded-full bg-sky-500 ring-2 ring-white dark:ring-gray-900"
     >
       <span className="sr-only">{label}</span>
     </span>
