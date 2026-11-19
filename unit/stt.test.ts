@@ -76,7 +76,7 @@ describe("STT language hint", () => {
     expect(sttPrompt("ja")).toBe(STT_PROMPT);
     expect(sttPrompt("en")).toBe(STT_PROMPT);
     expect(sttPrompt()).toBe(STT_PROMPT);
-    expect(sttPrompt("zh", ["lianki", "小克"])).toContain("热词: lianki, 小克");
+    expect(sttPrompt("zh", ["Aurora", "星河"])).toContain('Vocabulary: ["Aurora","星河"]');
   });
 });
 
@@ -215,7 +215,7 @@ describe("POST /api/debug/stt", () => {
       msg: "debug.stt.error",
       model: FALLBACK_STT_MODEL,
       bytes: 4,
-      detail: "all down",
+      detail: "provider-failed",
     });
     const asked = deps({
       owner: true,

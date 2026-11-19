@@ -19,6 +19,10 @@ import { createOpenAI } from "@ai-sdk/openai";
 import OpenAI from "openai";
 import type { SttSignals } from "@lianki/debug-chat/stt-guard";
 import { type SttHint, type SttModel, readStt, sttPrompt } from "./stt";
+import {
+  glossaryAsrPrompt,
+  type Glossary,
+} from "../vendor/otoji/packages/transcript-glossary/src/index";
 
 /** Replaces gpt-4o-mini: the everyday model for short, cheap generations. */
 export const textModel = () =>
@@ -226,6 +230,7 @@ export async function workersAiTranscribe(opts: {
   model: SttModel;
   lang?: string;
   hint?: SttHint;
+  glossary?: Glossary;
   signal?: AbortSignal;
 }): Promise<{ text: string; language?: string; signals?: SttSignals }> {
   const { apiToken } = requireConfig();
@@ -240,9 +245,15 @@ export async function workersAiTranscribe(opts: {
         task: "transcribe",
         vad_filter: true,
         ...STT_ANTI_HALLUCINATION,
-        ...(opts.lang
-          ? { language: opts.lang.split("-")[0] }
-          : { initial_prompt: sttPrompt(opts.hint) }),
+        ...(opts.lang ? { language: opts.lang.split("-")[0] } : {}),
+        ...(!opts.lang || opts.glossary?.terms.length
+          ? {
+              initial_prompt: glossaryAsrPrompt(
+                sttPrompt(opts.hint),
+                opts.glossary ?? { terms: [], corrections: [] },
+              ),
+            }
+          : {}),
       }),
     };
   } else {

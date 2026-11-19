@@ -1,3 +1,6 @@
 [submodule "packages/pardon-could-you-say-it-again"]
 	path = packages/pardon-could-you-say-it-again
 	url = https://github.com/snomiao/pardon-could-you-say-it-again
+[submodule "vendor/otoji"]
+	path = vendor/otoji
+	url = https://github.com/snomiao/otoji.git

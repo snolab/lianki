@@ -1,5 +1,55 @@
 # Local streaming speech-to-text
 
+## Dynamic vocabulary
+
+Settings → Speech vocabulary saves explicit hotwords and manual
+`misheard => correct` pairs to account preferences (`docs/prefs-sync.md`).
+The next request reads the current account's choices. Automatic polish never
+trains correction memory. Deleting a term removes that source immediately;
+the same spelling can still occur in the already permitted conversation/page
+context.
+
+All ranking and paragraph-polish policy live in the pinned
+`vendor/otoji/packages/transcript-glossary` SDK. Lianki supplies verified-account
+preferences and the context already allowed on spoken chat lines. There are no
+new tab, repository, calendar or contact reads. Cloud STT receives at most 600
+characters of the existing page scene in a request header, never a URL query;
+pages marked `data-lk-private-screen` send none. Automatic polish receives only
+the existing recent thread context and scenes with nonempty permitted screen
+text; title-only private scenes are omitted. Form values,
+hidden content and other tabs are not newly collected.
+
+The SDK ranks a bounded candidate pool by frequency multiplied by exponential
+time decay, with configurable fixed-word/correction weights. A bounded count-min
+sketch estimates frequencies so repeated late terms can enter a full pool;
+collisions can overestimate scores, so this is approximate Top-K. CJK context
+uses word segmentation when available, with a deterministic adjacent-bigram
+fallback. Explicit multiword hotwords and corrections keep their whole phrases.
+Product knobs live
+in `lib/config.ts` (`stt.glossaryTopK`, `Capacity`, `TermChars`, `OutputChars`,
+`ContextChars`, `HalfLifeMs`, `FixedWeight`, `CorrectionWeight`, all with the
+`stt.glossary` prefix). Top-K zero disables the glossary; context zero disables
+context terms. Inputs and JSON output remain bounded and untrusted. Context is
+sampled per request, not accumulated into an expanding hidden dictionary.
+
+Only the current **Whisper large-v3-turbo** adapter accepts this vocabulary as
+`initial_prompt` (including when a language is explicitly selected). The original
+Whisper and Nova-3 raw-audio adapters do not expose a prompt here. **SenseVoice
+CTC has no text-prompt input** in the current Python recognizer/protocol and is
+not claimed to support biasing. Those recognizers benefit only from the later
+paragraph polish. Hints do not guarantee recognition accuracy.
+
+Polish includes the bounded glossary as JSON data beside the paragraph, with
+the shared Otoji rule to ignore embedded instructions and never insert terms
+without transcript evidence. Existing provider selection, authorization,
+rate limits, credit holds/settlement and failure behavior remain in place.
+Provider diagnostics at the STT handler use fixed codes so echoed glossary
+text cannot enter its error logs.
+
+For a new checkout run `git submodule update --init -- vendor/otoji` before
+install/build. The glossary integration depends on the exact Otoji commit
+recorded by that gitlink; no model or runtime download is added.
+
 The owner's mic can transcribe on his own Mac instead of Workers AI: while he
 speaks, the frames stream there and partial text comes back as he talks; the
 final text lands the moment the VAD ends the utterance. It is owner-only,

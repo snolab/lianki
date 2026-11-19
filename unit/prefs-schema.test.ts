@@ -49,7 +49,10 @@ describe("prefs schema: nothing device-specific is accepted", () => {
     ])
       expect(checkPref(k, true)).toBeUndefined();
     const local = /aec|\bmic|fullscreen|stt|widget|slots|tree|clip|\.pos\b|debug/i;
-    for (const k of PREF_KEYS) expect(local.test(k)).toBe(false);
+    for (const k of PREF_KEYS) {
+      if (k === "stt.hotwords" || k === "stt.corrections") continue; // Explicit synced vocabulary choices.
+      expect(local.test(k)).toBe(false);
+    }
   });
 
   it("every binding has a schema, and every schema a binding", () => {

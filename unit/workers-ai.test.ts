@@ -251,6 +251,25 @@ describe("workersAiTranscribe", () => {
   };
   const audio = new Uint8Array([1, 2, 3]);
 
+  it("only the supported Whisper turbo adapter receives glossary prompts, even with explicit language", async () => {
+    configure();
+    answer(200, JSON.stringify({ result: { text: "heard" } }));
+    const glossary = { terms: ["Aurora"], corrections: [] };
+    await workersAiTranscribe({
+      audio,
+      mime: "audio/wav",
+      model: "@cf/openai/whisper-large-v3-turbo",
+      lang: "en",
+      glossary,
+    });
+    expect(JSON.parse(String(calls[0]!.init.body)).initial_prompt).toContain("Aurora");
+    expect(calls[0]!.url).not.toContain("Aurora");
+    calls.length = 0;
+    await workersAiTranscribe({ audio, mime: "audio/wav", model: "@cf/openai/whisper", glossary });
+    expect(calls[0]!.init.body).toBe(audio as unknown as BodyInit);
+    expect(calls[0]!.url).not.toContain("Aurora");
+  });
+
   it("Nova-3: raw bytes, multilingual unless a language is given", async () => {
     configure();
     answer(

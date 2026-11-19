@@ -84,6 +84,8 @@ jobs:
       # integration job still needs Node, because wrangler requires it.
       # Pinned Bun, cached, retried: .github/actions/setup-bun.
       - uses: ./.github/actions/setup-bun
+      - name: Initialize pinned Otoji SDK only
+        run: git submodule update --init --depth 1 -- vendor/otoji
       - run: bun install --frozen-lockfile
       # 脆弱性対策 ② (docs/security-measures.md): nothing in public/ may be a
       # secret, an env file, a key or a server source map.

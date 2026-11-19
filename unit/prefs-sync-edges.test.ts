@@ -6,6 +6,7 @@ import {
   notePrefWrite,
   PREF_APPLIED_EVENT,
   PREF_WRITE_EVENT,
+  PREF_EXPECTED_USER_HEADER,
   SYNC_KEY,
   type PrefBinding,
   type PrefSyncOptions,
@@ -37,6 +38,83 @@ function make(fetch: PrefSyncOptions["fetch"], b: PrefBinding[], seed?: string) 
 }
 
 describe("account prefs: failures and edges", () => {
+  for (const mode of ["response-switch", "other-tab-switch"] as const)
+    it(`second full GET rejects ${mode} before applying foreign rows`, async () => {
+      let release!: (response: Response) => void;
+      let started!: () => void;
+      const began = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const pending = new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+      let gets = 0;
+      let applied = 0;
+      const fixture = make(async () => {
+        gets++;
+        if (gets === 1) return Response.json({ user: "account-b", prefs: {}, cursor: 1 });
+        started();
+        return pending;
+      }, [
+        binding({
+          get: () => false,
+          set: () => {
+            applied++;
+          },
+        }),
+      ]);
+      const record = fixture.sync.load();
+      fixture.ls.set(
+        SYNC_KEY,
+        JSON.stringify({ ...record, userId: "account-a", cursor: 100, migrated: ["account-a"] }),
+      );
+      const pull = fixture.sync.pull();
+      await began;
+      expect(fixture.sync.load().userId).toBe("account-b");
+      if (mode === "other-tab-switch")
+        fixture.ls.set(SYNC_KEY, JSON.stringify({ ...fixture.sync.load(), userId: "account-c" }));
+      release(
+        Response.json({
+          user: mode === "response-switch" ? "account-c" : "account-b",
+          prefs: {
+            "words.showAll": {
+              value: true,
+              hlc: { timestamp: 2_000_000, counter: 0, deviceId: "fixture00" },
+            },
+          },
+          cursor: 2,
+        }),
+      );
+      await pull;
+      expect(applied).toBe(0);
+      expect(fixture.logs).toContain("prefs-account-response-stale");
+    });
+  it("PATCH pins expected account to its operation snapshot even if another tab replaces storage", async () => {
+    let value = false;
+    let cookie = "account-a";
+    let writes = 0;
+    let captured = "";
+    const fixture = make(
+      async (_url, init) => {
+        if (init?.method !== "PATCH") return Response.json({ user: cookie, prefs: {}, cursor: 1 });
+        const record = fixture.sync.load();
+        fixture.ls.set(SYNC_KEY, JSON.stringify({ ...record, userId: "account-b" }));
+        cookie = "account-b";
+        captured = new Headers(init.headers).get(PREF_EXPECTED_USER_HEADER) ?? "";
+        if (captured !== cookie)
+          return Response.json({ error: "account-changed" }, { status: 409 });
+        writes++;
+        return Response.json({ user: cookie, prefs: {} });
+      },
+      [binding({ get: () => value })],
+    );
+    await fixture.sync.pull();
+    value = true;
+    await fixture.sync.flush();
+    expect(captured).toBe("account-a");
+    expect(writes).toBe(0);
+    expect(fixture.logs).toContain("prefs-push-failed");
+  });
   it("a broken record starts over; a server error is logged, not thrown", async () => {
     const { sync, logs } = make(
       async () => new Response("no", { status: 500 }),

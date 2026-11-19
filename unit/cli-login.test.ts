@@ -486,13 +486,32 @@ describe("apiTokenUser", () => {
 describe("/api/prefs with a Bearer token", async () => {
   const { GET, PATCH } = await import("@/app/api/prefs/route");
   const { NextRequest } = await import("next/server");
-  const at = (init: { method?: string; auth?: string; body?: string; query?: string } = {}) =>
+  const at = (
+    init: { method?: string; auth?: string; body?: string; query?: string; expected?: string } = {},
+  ) =>
     new NextRequest(`https://lianki.com/api/prefs${init.query ?? ""}`, {
       method: init.method ?? "GET",
-      headers: init.auth ? { Authorization: init.auth } : {},
+      headers: {
+        ...(init.auth ? { Authorization: init.auth } : {}),
+        ...(init.expected !== undefined ? { "x-lk-prefs-user": init.expected } : {}),
+      },
       body: init.body,
     });
   const hlc = { timestamp: T0, counter: 0, deviceId: "cli0000001" };
+
+  test("stale account glossary PATCH is refused before any preference write", async () => {
+    await seedToken();
+    const auth = `Bearer ${TOKEN}`;
+    const body = JSON.stringify({ ops: [{ key: "stt.hotwords", value: ["Aurora"], hlc }] });
+    const denied = await PATCH(at({ method: "PATCH", auth, body, expected: "previous-account" }));
+    expect(denied.status).toBe(409);
+    expect(await denied.json()).toEqual({ error: "account-changed" });
+    expect((await (await GET(at({ auth }))).json()).prefs["stt.hotwords"]).toBeUndefined();
+    expect((await PATCH(at({ method: "PATCH", auth, body, expected: "u1" }))).status).toBe(200);
+    expect((await (await GET(at({ auth }))).json()).prefs["stt.hotwords"].value).toEqual([
+      "Aurora",
+    ]);
+  });
 
   test("reads and writes the token's own settings", async () => {
     await seedToken();
