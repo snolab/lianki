@@ -55,9 +55,12 @@ describe("prefs schema: nothing device-specific is accepted", () => {
     }
   });
 
-  it("every binding has a schema, and every schema a binding", () => {
+  it("every device binding has a schema; private media references stay server-only", () => {
     const bound = prefBindings().map((b) => b.key);
-    expect([...bound].sort()).toEqual([...PREF_KEYS].sort());
+    expect(bound).not.toContain("words.nativeAudioManifest");
+    expect([...bound].sort()).toEqual(
+      PREF_KEYS.filter((key) => key !== "words.nativeAudioManifest").sort(),
+    );
   });
 
   it("only the home matrix's public sites pass as a URL", () => {
@@ -90,6 +93,21 @@ describe("prefs schema: titles.rules", () => {
 });
 
 describe("prefs schema: values", () => {
+  it("accepts only an opaque private media reference or explicit removal", () => {
+    const ref = { version: 1, fileId: "a".repeat(20), sha256: "b".repeat(64) };
+    expect(checkPref("words.nativeAudioManifest", ref)).toEqual(ref);
+    expect(checkPref("words.nativeAudioManifest", null)).toBeNull();
+    for (const value of [
+      { ...ref, version: 2 },
+      { ...ref, fileId: "../private" },
+      { ...ref, sha256: "unverified" },
+      { ...ref, userId: "another-account" },
+      { ...ref, url: "https://example.com/private.mp3" },
+      { ...ref, entries: [] },
+    ])
+      expect(checkPref("words.nativeAudioManifest", value)).toBeUndefined();
+  });
+
   it("accepts the settings as the app writes them", () => {
     const ok: Record<string, unknown> = {
       "words.showAll": true,

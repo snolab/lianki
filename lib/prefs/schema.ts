@@ -154,6 +154,18 @@ export const PREF_SCHEMAS = {
   "words.showAll": z.boolean(),
   "words.readAloud": z.boolean(),
   "words.serverVoice": z.boolean(),
+  // A private My Files index, read from the authenticated server response only.
+  // The reference grants no access: each index/archive download checks ownership.
+  "words.nativeAudioManifest": z.union([
+    z.null(),
+    z
+      .object({
+        version: z.literal(1),
+        fileId: z.string().regex(/^[0-9a-f]{20}$/),
+        sha256: z.string().regex(/^[0-9a-f]{64}$/),
+      })
+      .strict(),
+  ]),
   "words.speakOnSwipe": z.boolean(),
   "words.gradeTones": z.boolean(),
   "words.voiceMode": z.boolean(),
