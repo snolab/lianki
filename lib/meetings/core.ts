@@ -216,6 +216,33 @@ function clusterHasTimecode(b: Uint8Array, at: number): boolean {
   return b[at + len] === 0xe7;
 }
 
+/**
+ * A WebM Cluster's Timecode (ms at the default TimecodeScale of 1 ms, which
+ * MediaRecorder writes), for the Cluster starting at `at`; null when absent.
+ */
+export function clusterTimecode(b: Uint8Array, at: number): number | null {
+  if (b[at] !== 0x1f || b[at + 1] !== 0x43 || b[at + 2] !== 0xb6 || b[at + 3] !== 0x75) return null;
+  const sizeLen = vintLen(b[at + 4]);
+  if (!sizeLen) return null;
+  let i = at + 4 + sizeLen;
+  if (b[i] !== 0xe7) return null;
+  const len = vintLen(b[i + 1]);
+  if (!len) return null;
+  let n = b[i + 1] & (0xff >> len);
+  for (let k = 1; k < len; k++) n = n * 256 + b[i + 1 + k];
+  if (n < 1 || n > 8 || i + 1 + len + n > b.length) return null;
+  i += 1 + len;
+  let v = 0;
+  for (let k = 0; k < n; k++) v = v * 256 + b[i + k];
+  return v;
+}
+function vintLen(first: number | undefined): number {
+  if (!first) return 0;
+  let len = 1;
+  while (len <= 8 && !(first & (0x80 >> (len - 1)))) len++;
+  return len <= 8 ? len : 0;
+}
+
 // ---------------------------------------------------------------- playback plan
 
 export type ChunkMeta = {

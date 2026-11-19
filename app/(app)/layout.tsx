@@ -12,6 +12,7 @@ import { cookies } from "next/headers";
 import { InviteClaim } from "@/app/components/InviteClaim";
 import { PrefSync } from "@/app/components/PrefSync";
 import { AppBadge } from "@/app/components/AppBadge";
+import { MeetingBar } from "@/app/components/MeetingBar";
 import { appBadgeOn } from "@/lib/app-badge-gate";
 import { INVITE_COOKIE } from "@/lib/referrals/cookie";
 import { devSwitchFor } from "@/lib/dev-server-switch.server";
@@ -64,6 +65,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const levels = Boolean(user) && flags !== null && levelsOn(flags, owner);
   // The app-icon badge (docs/app-badge.md): signed in, D1, `pwa.app-badge` on, the owner only.
   const appBadge = Boolean(user) && flags !== null && appBadgeOn(flags, owner);
+  // The floating "Recording" bar (docs/meetings.md): meetings.record and `dev`.
+  const meetings = Boolean(user) && owner && flags?.["meetings.record"] === true;
 
   // Public config values (docs/config-store.md): cached 30 s, the defaults off D1.
   const config = await publicConfig();
@@ -105,6 +108,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <PrefSync signedIn={Boolean(user)} />
               {localeState.adopt && <AccountLocaleAdopt locale={localeState.adopt.locale} />}
               <AppBadge on={appBadge} />
+              <MeetingBar on={meetings} />
               {children}
             </AppShell>
           </PublicConfig>
