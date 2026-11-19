@@ -2276,13 +2276,27 @@ inside `[data-sensitive]` / `[data-lk-sensitive]` (any page may mark a part).
 
 Choosing it puts a quote chip above the input (one line; a tap shows it whole;
 × drops it). It is kept with the draft in `lk:ui:chat` (`attached`), and sent
-with the **next line only** as `context: {selection, path, title, host?}` —
+with the **next line only** as `context: {selection, path, title, host?, location?}` —
 `selection` ≤ 2000 characters, `path` without query or fragment, `host` only
 on another site (`cleanContext` in wire.ts, applied by the page, the hub's
 `parsePageMessage` and the session store). The hub stores it on the line in
 the sender's own thread — a friend's selection stays in their thread — and
 logs only its length. The log shows it as a small quote above the line;
 `eval.ts chat` prints it in the JSON line as `"context"`.
+
+**Selection location.** Captured with the selection, before focusing chat:
+the nearest heading, a unique bounded block selector, offsets in that block's
+UTF-16 text, up to 160 characters before and after, and a document-coordinate
+rectangle plus the viewport/scroll snapshot in CSS pixels. Fields carry their
+locator and value offsets only, never their unselected value. Broad page
+containers and blocks containing private, chat, field or hidden content do not
+provide surrounding text. Coordinates describe that moment; text context is
+more useful after the page moves. Missing metadata stays absent (including
+unsupported selections); it is never inferred. Identical text at two locations
+updates the remembered anchor. The listener receives the structured location,
+and the built-in partner receives the same bounded reference data in its prompt;
+its characters count towards the credit reservation. Query strings and fragments
+remain excluded. Chat-history storage still omits the entire page context.
 
 ## Attachments and the inbox
 

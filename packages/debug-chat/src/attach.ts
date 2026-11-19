@@ -13,7 +13,7 @@
  *   page's selection the moment the chat input takes focus, so it cannot be
  *   read at send time.
  */
-import { type ChatContext, MAX_SELECTION, cleanContext } from "./wire";
+import { type ChatContext, type SelectionLocation, MAX_SELECTION, cleanContext } from "./wire";
 
 /** One attach kind in the + menu's "Attach to message" group. */
 export type AttachKind = {
@@ -162,6 +162,8 @@ export type SelectionDeps = {
   inChat(node: unknown): boolean;
   /** Where the page is: path (no query), title, host (only off lianki.com). */
   where(): Omit<ChatContext, "selection">;
+  /** Snapshot only while the native selection still exists. */
+  locate?(): SelectionLocation | undefined;
   now?: () => number;
 };
 
@@ -203,7 +205,8 @@ export function createSelectionMemory(d: SelectionDeps) {
   let downInChat = false;
   const subs = new Set<() => void>();
   const set = (v: PageSelection | null) => {
-    if (v === kept || (v && kept && v.selection === kept.selection && v.path === kept.path))
+    if (v === kept || (v && kept && v.selection === kept.selection && v.path === kept.path &&
+      v.title === kept.title && v.host === kept.host && JSON.stringify(v.location) === JSON.stringify(kept.location)))
       return;
     kept = v;
     for (const f of subs) f();
@@ -216,7 +219,7 @@ export function createSelectionMemory(d: SelectionDeps) {
     if (text === null) return;
     const trimmed = text.trim();
     if (trimmed) {
-      const ctx = cleanContext({ ...d.where(), selection: trimmed.slice(0, MAX_SELECTION) });
+      const ctx = cleanContext({ ...d.where(), selection: trimmed.slice(0, MAX_SELECTION), location: d.locate?.() });
       if (ctx) set({ ...ctx, at: now() });
       return;
     }

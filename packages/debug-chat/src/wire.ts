@@ -1342,7 +1342,53 @@ export type ChatContext = {
   path?: string;
   title?: string;
   host?: string;
+  location?: SelectionLocation;
 };
+
+/** A selection-time snapshot. Offsets are UTF-16 within the selected block
+ * (or a field's value); rectangle coordinates are document CSS pixels. */
+export type SelectionLocation = {
+  kind: "dom" | "field";
+  selector?: string;
+  heading?: string;
+  before?: string;
+  after?: string;
+  start?: number;
+  end?: number;
+  rect?: { x: number; y: number; width: number; height: number };
+  viewport?: { width: number; height: number; scrollX: number; scrollY: number };
+};
+export const MAX_SELECTION_NEARBY = 160;
+
+/** Keep only bounded descriptive fields; selectors are never executed here. */
+export function cleanSelectionLocation(raw: unknown): SelectionLocation | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+  const r = raw as Record<string, unknown>;
+  if (r.kind !== "dom" && r.kind !== "field") return;
+  const out: SelectionLocation = { kind: r.kind };
+  const text = (v: unknown, max: number) => typeof v === "string"
+    ? v.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").slice(0, max) : "";
+  for (const key of ["selector", "heading", "before", "after"] as const) {
+    const value = text(r[key], key === "selector" ? MAX_CONTEXT_PATH : MAX_SELECTION_NEARBY);
+    if (value) out[key] = value;
+  }
+  if (typeof r.start === "number" && typeof r.end === "number" &&
+    Number.isSafeInteger(r.start) && Number.isSafeInteger(r.end) &&
+    r.start >= 0 && r.end > r.start && r.end <= 10_000_000) {
+    out.start = r.start; out.end = r.end;
+  }
+  const numbers = (value: unknown, keys: string[]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const v = value as Record<string, unknown>;
+    if (keys.some(k => typeof v[k] !== "number" || !Number.isFinite(v[k]) || Math.abs(v[k] as number) > 100_000_000)) return;
+    return Object.fromEntries(keys.map(k => [k, Math.round((v[k] as number) * 100) / 100]));
+  };
+  const rect = numbers(r.rect, ["x", "y", "width", "height"]);
+  if (rect && rect.width >= 0 && rect.height >= 0) out.rect = rect as SelectionLocation["rect"];
+  const viewport = numbers(r.viewport, ["width", "height", "scrollX", "scrollY"]);
+  if (viewport && viewport.width > 0 && viewport.height > 0) out.viewport = viewport as SelectionLocation["viewport"];
+  return Object.keys(out).length > 1 ? out : undefined;
+}
 
 /**
  * Most characters of a voice line's screen text: the same bound as a page
@@ -1427,11 +1473,13 @@ export function cleanContext(raw: unknown): ChatContext | undefined {
   const path = text(r.path, MAX_CONTEXT_PATH).split(/[?#]/)[0]!.trim();
   const title = text(r.title, MAX_CONTEXT_TITLE).replace(/\s+/g, " ").trim();
   const host = text(r.host, MAX_CONTEXT_PATH).trim().toLowerCase();
+  const location = cleanSelectionLocation(r.location);
   return {
     selection,
     ...(path.startsWith("/") ? { path } : {}),
     ...(title ? { title } : {}),
     ...(/^[a-z0-9.-]+(:\d+)?$/.test(host) ? { host } : {}),
+    ...(location ? { location } : {}),
   };
 }
 
