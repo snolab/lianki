@@ -34,6 +34,11 @@ import {
   cleanAttachments,
   type SttScene,
   cleanScene,
+  type AudioSyncSignalPayload,
+  type AudioSyncPeer,
+  type AudioSyncPeersEvent,
+  type AudioSyncSignalEvent,
+  cleanAudioSyncSignal,
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
 import { LANE_IDS, type LaneId, isLaneId, parseLineVoice } from "../packages/debug-chat/src/voices";
@@ -97,6 +102,11 @@ export {
   type AttachmentRef,
   cleanAttachments,
   MAX_SELECTION,
+  type AudioSyncSignalPayload,
+  type AudioSyncPeer,
+  type AudioSyncPeersEvent,
+  type AudioSyncSignalEvent,
+  cleanAudioSyncSignal,
 } from "../packages/debug-chat/src/wire";
 
 /** Largest `code` accepted, in characters. */
@@ -377,6 +387,10 @@ export type PageMessage =
   | { type: "page"; label: string }
   /** Close another (or this) page of the same audience, from the chat's menu. */
   | { type: "end-page"; id: string }
+  /** Query same-account peer pages for WebRTC audio sync. */
+  | { type: "audio-sync-peers" }
+  /** Relay a WebRTC signaling payload to another page of the same account. */
+  | { type: "audio-sync-signal"; to: string; signal: AudioSyncSignalPayload }
   /**
    * One piece of a streamed result (`$lk.send(data)` in the eval code):
    * piece `part` of the eval `id`, split into `total` chunks; this is `seq`.
@@ -694,6 +708,13 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
   if (m.type === "end-page") {
     const id = str(m.id, 64);
     return id ? { type: "end-page", id } : null;
+  }
+  if (m.type === "audio-sync-peers") return { type: "audio-sync-peers" };
+  if (m.type === "audio-sync-signal") {
+    const to = str(m.to, 64);
+    const signal = cleanAudioSyncSignal(m.signal);
+    if (!to || !signal) return null;
+    return { type: "audio-sync-signal", to, signal };
   }
   if (m.type === "page") {
     const label = cleanLabel(str(m.label, MAX_LABEL * 2));

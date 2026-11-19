@@ -414,6 +414,10 @@ export type CloudOut = {
       voice?: VoiceId;
       /** The line's own cloud voice (melo, aura) or ElevenLabs preview (eleven). */
       pick?: LinePick;
+      /** Scheduled AudioContext start time in seconds (multi-device sync). */
+      when?: number;
+      /** Prefer decoded Web Audio buffer playback when available. */
+      sync?: boolean;
     },
     ev: PlayEvents,
   ): Playback;

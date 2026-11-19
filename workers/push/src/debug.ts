@@ -252,6 +252,8 @@ import {
 } from "../../../packages/debug-chat/src/ask";
 import type {
   AnsweredEvent,
+  AudioSyncPeersEvent,
+  AudioSyncSignalEvent,
   PolishDueEvent,
   SpeakerTag,
   SttScene,
@@ -4164,6 +4166,29 @@ export class DebugHub {
         JSON.stringify({ msg: "debug.end-page", thread: page.thread, page: target.a.label }),
       );
       return this.broadcast(target.ws);
+    }
+    if (m.type === "audio-sync-peers") {
+      // Lightweight same-account peer listing; never touches storage or D1.
+      send(ws, {
+        type: "audio-sync-peers",
+        selfId: page.id ?? "",
+        peers: this.pages(page.thread, ws)
+          .filter((p) => !p.a.embed && !!p.a.id)
+          .map((p) => ({ id: p.a.id!, label: p.a.label })),
+      } satisfies AudioSyncPeersEvent);
+      return;
+    }
+    if (m.type === "audio-sync-signal") {
+      // Ephemeral WebRTC signaling relay strictly within the same authenticated account.
+      if (!page.id || m.to === page.id) return;
+      const target = this.pages(page.thread, ws).find((p) => !p.a.embed && p.a.id === m.to);
+      if (!target) return;
+      send(target.ws, {
+        type: "audio-sync-signal",
+        from: page.id,
+        signal: m.signal,
+      } satisfies AudioSyncSignalEvent);
+      return;
     }
     if (m.type === "page-error") {
       // The owner's pages only: a friend's page never reports one (and is
