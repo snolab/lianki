@@ -1746,7 +1746,12 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       false,
     ]);
     // The signed words ride on the stored tag (an approval must use them, not the line).
-    expect(stored[0]!.speaker).toEqual({ ...tag, signed: ["Next  word"] });
+    expect(stored[0]!.speaker).toEqual({
+      ...tag,
+      signed: ["Next  word"],
+      trust: "signed",
+      kid: "mac",
+    });
     // Burned durably: a new hub on the same storage (a restart, a deploy) refuses it too.
     const again = setup({ STT_SPEAKER_PUB: mac.pub }, s.storage);
     const p2 = again.page();
@@ -1850,6 +1855,63 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       ["c3", undefined, undefined],
       ["c4", undefined, undefined],
     ]);
+  });
+
+  it("a key ring (STT_SPEAKER_PUBS): each proof checked with its signer's key; text-less proofs stay advisory", async () => {
+    const mac = await speakerKey();
+    const service = await speakerKey();
+    const s = setup({ STT_SPEAKER_PUBS: JSON.stringify({ mac: mac.pub, otoji: service.pub }) });
+    const owner = s.page();
+    await agent(s, owner);
+    const at = 1_000_000;
+    const base = { decision: "me", score: 0.5, model: "campp", thread: "owner", at };
+    const say = (id: string, text: string, speakerProof: string[]) =>
+      s.msg(owner, { type: "chat", id, text, source: "stt", speakerProof });
+    // No kid: the Mac's (today's proofs).
+    await say("k1", "one", [await mac.sign({ ...base, text: "one", uid: "a1".padEnd(16, "x") })]);
+    // kid otoji, signed by the otoji service.
+    await say("k2", "two", [
+      await service.sign({ ...base, kid: "otoji", text: "two", uid: "a2".padEnd(16, "x") }),
+    ]);
+    // kid otoji but the Mac's signature (a signer swapped): dropped.
+    await say("k3", "three", [
+      await mac.sign({ ...base, kid: "otoji", text: "three", uid: "a3".padEnd(16, "x") }),
+    ]);
+    // An unknown signer: dropped.
+    await say("k4", "four", [
+      await mac.sign({ ...base, kid: "browser", text: "four", uid: "a4".padEnd(16, "x") }),
+    ]);
+    // The otoji service vouched for the voice, not the words: advisory, the line undecided.
+    await say("k5", "five", [
+      await service.sign({ ...base, kid: "otoji", text: null, uid: "a5".padEnd(16, "x") }),
+    ]);
+    // Both signers on one line.
+    await say("k6", "six seven", [
+      await mac.sign({ ...base, text: "six", uid: "a6".padEnd(16, "x") }),
+      await service.sign({ ...base, kid: "otoji", text: "seven", uid: "a7".padEnd(16, "x") }),
+    ]);
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as { id: string; speaker?: Record<string, unknown> })
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const sp = (id: string) => stored.find((m) => m.id === id)?.speaker;
+    expect(sp("k1")).toMatchObject({
+      decision: "me",
+      trust: "signed",
+      kid: "mac",
+      signed: ["one"],
+    });
+    expect(sp("k2")).toMatchObject({ decision: "me", trust: "signed", kid: "otoji" });
+    expect(sp("k3")).toBeUndefined();
+    expect(sp("k4")).toBeUndefined();
+    expect(sp("k5")).toEqual({
+      decision: "unknown",
+      reason: "advisory",
+      trust: "advisory",
+      kid: "otoji",
+      advisory: { decision: "me", score: 0.5, model: "campp" },
+    });
+    expect(sp("k6")).toMatchObject({ decision: "me", trust: "signed", kid: "mac+otoji" });
   });
 
   it("without STT_SPEAKER_PUB no tag is ever kept", async () => {

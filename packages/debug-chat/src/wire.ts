@@ -1553,7 +1553,25 @@ export type SpeakerTag = {
    * the line's displayed text.
    */
   signed?: string[];
+  /**
+   * Who signed the proofs (lib/speaker-proof.ts key ring): "mac" (his Mac),
+   * "otoji" (the otoji voiceprint service at otoji.org; docs/voiceprint-service.md),
+   * or both joined by "+" on a line made from both. Set only by the hub.
+   */
+  kid?: string;
+  /**
+   * How far the tag may be relied on, set only by the hub: "signed" = every
+   * proof signed these very words (the check, later approvals); "advisory" =
+   * the signer vouched for the voice but not the words, so the line's own
+   * decision is "unknown" and the signer's view is kept in `advisory`, for
+   * avatars and clusters only. Absent on lines stored before the key ring
+   * (all of them signed, `signed` set).
+   */
+  trust?: SpeakerTrust;
+  /** The signer's tag when the trust is "advisory" (never the check, never an approval). */
+  advisory?: SpeakerTag;
 };
+export type SpeakerTrust = "signed" | "advisory";
 const SPEAKER_DECISIONS: readonly SpeakerDecision[] = ["me", "other", "unknown"];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,31}$/;
 /** A voice cluster's label: "A".."ZZZ", or "household:<name>" (cluster-avatar.ts). */
@@ -1616,9 +1634,32 @@ export function combineSpeaker(tags: readonly (SpeakerTag | undefined)[]): Speak
   // The cluster too: only when every utterance names the same one (its weakest score).
   const clusters = new Set(ts.map((t) => t.cluster));
   const [cluster] = clusters;
-  if (clusters.size !== 1 || !cluster) return withVoice;
+  if (clusters.size !== 1 || !cluster) return withTrust(ts, withVoice);
   const cs = ts.map((t) => t.clusterScore).filter((s): s is number => s !== undefined);
-  return { ...withVoice, cluster, ...(cs.length ? { clusterScore: Math.min(...cs) } : {}) };
+  return withTrust(ts, {
+    ...withVoice,
+    cluster,
+    ...(cs.length ? { clusterScore: Math.min(...cs) } : {}),
+  });
+}
+
+/**
+ * The trust and signer of a combined tag: "advisory" if any part is, "signed"
+ * only when every part is (a tag stored before the ring counts as signed when
+ * it carries `signed`); the signers joined. Tags without either (all from
+ * before the ring) are left exactly as they were.
+ */
+function withTrust(ts: readonly SpeakerTag[], out: SpeakerTag): SpeakerTag {
+  if (!ts.some((t) => t.trust || t.kid)) return out;
+  const { trust: _t, kid: _k, ...rest } = out;
+  const trusts = ts.map((t) => t.trust ?? (t.signed ? "signed" : undefined));
+  const trust: SpeakerTrust | undefined = trusts.includes("advisory")
+    ? "advisory"
+    : trusts.every((t) => t === "signed")
+      ? "signed"
+      : undefined;
+  const kids = [...new Set(ts.flatMap((t) => (t.kid ? t.kid.split("+") : [])))].sort();
+  return { ...rest, ...(trust ? { trust } : {}), ...(kids.length ? { kid: kids.join("+") } : {}) };
 }
 
 export function cleanTiming(raw: unknown): VoiceTiming | undefined {

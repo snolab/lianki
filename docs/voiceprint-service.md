@@ -1,6 +1,10 @@
 # Voiceprint as a service
 
-**Status: design, nothing built.** The owner asked on 2026-11-19 (~14:40 JST)
+**Status: design; M1 (the hub's key ring) built.** On 2026-11-19 (~14:58
+JST) the owner moved the voiceprint service itself into the otoji project
+(otoji.org): Lianki becomes a consumer, the future signer's `kid` is
+`otoji` (written `service` below), and M2 (thresholds in Lianki config) is
+dropped, since the otoji service will own the numbers. The owner asked on 2026-11-19 (~14:40 JST)
 for the voiceprint (speaker identification) to become a proper service, not a
 script that only runs on his Mac. It must not depend on Tailscale or similar
 network infrastructure. Earlier the same day he said speaker clusters should
