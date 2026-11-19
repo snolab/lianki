@@ -290,6 +290,7 @@ import {
   fullHintStep,
 } from "./full-screen";
 import { FullScreenMenuItem } from "./FullScreenMenuItem";
+import { SealStamp } from "./SealStamp";
 import { CHAT_UI_EVENT, chatUiOf, runMenuCue } from "./ui-cue";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
@@ -3936,7 +3937,7 @@ export function DebugChat({
     notePrefWrite(); // synced with the account by the app (docs/prefs-sync.md)
     // His mute wins: it also ends "the mic was used here" (sticky read-aloud, voice.ts).
     if (!v) voice().unvoice?.();
-    if (!v && !voice().state().mic) voice().stop();
+    if (!v) voice().stop();
   };
 
   /** The draft's "@/…" while it is typed: the listeners' nodes under it, to pick from. */
@@ -4349,23 +4350,23 @@ export function DebugChat({
         type="button"
         role="menuitemcheckbox"
         data-testid="debug-menu-speak"
-        // The mic forces read-aloud on for its session; the setting itself is kept.
-        aria-checked={speak || vs.mic}
-        aria-disabled={vs.mic}
+        aria-checked={speak}
         title={
-          vs.mic
-            ? ux.speakMicTitle
+          !speak
+            ? ux.speakSilent
+            : vs.mic
+            ? ux.speakTouchTitle
             : speak && vs.touch
               ? ux.speakTouchTitle
               : speak && vs.voiced
                 ? ux.speakVoicedTitle
                 : ux.speakTypingTitle
         }
-        onClick={() => !vs.mic && toggleSpeak()}
-        className={`flex items-center gap-2 px-3 py-1.5 text-start ${vs.mic ? "opacity-70" : ""}`}
+        onClick={toggleSpeak}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
       >
-        <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
-        {vs.mic
+        <Icon name="speakerHigh" weight={speak ? "fill" : "regular"} />
+        {speak && vs.mic
           ? ux.speakMicOn
           : speak && vs.touch
             ? strings?.readAloud
@@ -4378,6 +4379,9 @@ export function DebugChat({
                   ? t.readAloudTyping
                   : ui.readAloudTyping
                 : ux.speakSilent}
+        <span className="ms-auto">
+          <SealStamp on={speak} onWord={ux.menuSwitchOn} offWord={ux.menuSwitchOff} />
+        </span>
       </button>
       {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
       <button

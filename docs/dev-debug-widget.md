@@ -1860,8 +1860,14 @@ it onto the `ChatMessage`, so pages get it live and in history, and logs it
 in `debug.say`.
 
 **On the page** (`packages/debug-chat/src/speak-rules.ts`, gated in
-`voice.ts` `gateVoice`), on top of the usual rules (mic on; or the speaker
-toggle on and either a phone, the mic used on this device, or the input focused):
+`voice.ts` `gateVoice`), on top of the usual rules (speaker toggle on, plus
+the mic on, a phone, the mic used on this device, or the input focused):
+
+- **Manual mute while listening:** the read-aloud menu row stays usable with
+  the microphone on. Turning it off immediately stops the current and queued
+  replies and silences new replies, while microphone capture continues.
+  Its saved setting remains off after a microphone restart. Hot-loading a new
+  widget guards the existing shared voice session without replacing capture.
 
 - **A phone: the toggle alone** (owner, 2026-11-10): on a touch device
   (voice-bg.ts `isDesktop` false) every reply is read with the speaker

@@ -258,7 +258,7 @@ export const EXTRA_CONTEXT: ChatExtra = {
   speakTouchTitle: `In ${CHAT}, the menu's read-aloud row: tooltip when replies are read aloud whether typing or not, until the user turns it off.`,
   speakVoicedTitle: `In ${CHAT}, the menu's read-aloud row: tooltip after the user spoke with the mic on this device: replies are read aloud, typed or spoken, until turned off.`,
   speakTypingTitle: `In ${CHAT}, the menu's read-aloud row: tooltip when replies are read aloud only while the user is typing in the chat box (it has the focus).`,
-  speakMicOn: `In ${CHAT}, the menu's read-aloud row: its text while the mic is on (replies are then read aloud). A short state phrase.`,
+  speakMicOn: `In ${CHAT}, the menu's read-aloud switch: its text while the mic and reply read-aloud are both on. It can still be turned off without stopping the mic. A short state phrase.`,
   speakMicUsed: `In ${CHAT}, the menu's read-aloud row: its text after the mic was used on this device. A short state phrase.`,
   speakSilent: `In ${CHAT}, the menu's read-aloud row: its text when replies are not read aloud. A short state phrase.`,
   readingSpeed: `In ${CHAT}, the menu: screen-reader label of the group of buttons that set how fast replies are read aloud.`,
