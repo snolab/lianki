@@ -57,15 +57,15 @@ describe("speakerKeyRing", () => {
     expect(speakerKeyRing(undefined)).toBeUndefined();
     expect(speakerKeyRing({ STT_SPEAKER_PUB: " m " })).toEqual({ mac: "m" });
     expect(
-      speakerKeyRing({ STT_SPEAKER_PUBS: '{"mac":"a","otoji":"b","browser":"c","x":1}' }),
-    ).toEqual({ mac: "a", otoji: "b" });
+      speakerKeyRing({ STT_SPEAKER_PUBS: '{"mac":"a","service":"b","browser":"c","x":1}' }),
+    ).toEqual({ mac: "a", service: "b" });
     // The ring's own mac wins; the single key fills a ring without one.
     expect(speakerKeyRing({ STT_SPEAKER_PUBS: '{"mac":"a"}', STT_SPEAKER_PUB: "z" })).toEqual({
       mac: "a",
     });
-    expect(speakerKeyRing({ STT_SPEAKER_PUBS: '{"otoji":"b"}', STT_SPEAKER_PUB: "z" })).toEqual({
+    expect(speakerKeyRing({ STT_SPEAKER_PUBS: '{"service":"b"}', STT_SPEAKER_PUB: "z" })).toEqual({
       mac: "z",
-      otoji: "b",
+      service: "b",
     });
     // Not JSON, or not an object: as if absent.
     expect(speakerKeyRing({ STT_SPEAKER_PUBS: "nope", STT_SPEAKER_PUB: "z" })).toEqual({
@@ -122,7 +122,7 @@ describe("verifySpeakerProofs with a ring", () => {
     const v = (p: string, line = "hi") =>
       verifySpeakerProofs([p], line, "owner", ring, burnAll, at);
     expect(
-      await v(await svc.sign({ ...base, kid: "otoji", text: "hi", uid: "y".repeat(16) })),
+      await v(await svc.sign({ ...base, kid: "service", text: "hi", uid: "y".repeat(16) })),
     ).toBeUndefined();
     expect(await v(await mac.sign({ ...base, text: 7, uid: "z".repeat(16) }))).toBeUndefined();
     expect(
@@ -144,10 +144,10 @@ describe("verifySpeakerProofs with a ring", () => {
 
   it("an advisory proof never binds the words, and a burned one is refused", async () => {
     const svc = await key();
-    const ring = { otoji: svc.pub };
+    const ring = { service: svc.pub };
     const p = await svc.sign({
       ...base,
-      kid: "otoji",
+      kid: "service",
       text: null,
       uid: "r".repeat(16),
       voice: "me",
@@ -157,7 +157,7 @@ describe("verifySpeakerProofs with a ring", () => {
       decision: "unknown",
       reason: "advisory",
       trust: "advisory",
-      kid: "otoji",
+      kid: "service",
       advisory: { decision: "me", score: 0.6, voice: "me" },
     });
     expect(

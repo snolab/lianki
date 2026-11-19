@@ -839,8 +839,8 @@ bands on those after he enrols, before anything relies on them.
   (the weakest utterance). Only such a tag shows the small green check
   (`VoiceMark`, "Your voice, verified"). Without `STT_SPEAKER_PUB` no tag is
   ever kept. The hub also takes a key ring (`STT_SPEAKER_PUBS`,
-  `{"mac", "otoji"}`; a proof without `kid` is `mac`), and the stored tag
-  records its signer (`speaker.kid`: "mac", "otoji" or "mac+otoji") and
+  `{"mac", "service"}`; a proof without `kid` is `mac`), and the stored tag
+  records its signer (`speaker.kid`: "mac", "service" or "mac+service") and
   `speaker.trust`: "signed" when every proof signed the words; "advisory"
   when a signer vouched for the voice with `text: null` (not the words). An
   advisory line is stored as `decision: "unknown"`, `reason: "advisory"`,

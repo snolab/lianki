@@ -1555,7 +1555,7 @@ export type SpeakerTag = {
   signed?: string[];
   /**
    * Who signed the proofs (lib/speaker-proof.ts key ring): "mac" (his Mac),
-   * "otoji" (the otoji voiceprint service at otoji.org; docs/voiceprint-service.md),
+   * "service" (Lianki's own voiceprint service, docs/voiceprint-service.md),
    * or both joined by "+" on a line made from both. Set only by the hub.
    */
   kid?: string;
