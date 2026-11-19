@@ -601,6 +601,7 @@ describe("AudioSyncPeerSession & AudioSyncRtcManager", () => {
 
     // Test toPeerTime / toLocalTime
     const peerT = sA.toPeerTime(1000);
+    if (peerT === null) throw new Error("expected peerT");
     expect(sA.toLocalTime(peerT)).toBeCloseTo(1000, 1);
 
     // Simulate PC disconnected -> closed

@@ -56,6 +56,10 @@ class FakePeerConnection implements AudioSyncPeerConnectionLike {
       this.remote.ch.peer = r;
       this.ch = r;
       this.ondatachannel?.({ channel: r });
+      queueMicrotask(() => {
+        r.onopen?.();
+        this.remote?.ch?.onopen?.();
+      });
     }
   }
   async addIceCandidate() {}
@@ -250,11 +254,12 @@ describe("createAudioSyncHub", () => {
     await tick();
     await tick();
     await tick();
+    expect(hubA.hasPeers()).toBe(true);
 
     hubA.playSynced({ text: "Hello.", lang: "en", at: 0, volume: 1 }, { onend() {}, onerror() {} });
     await tick();
     await tick();
-    expect(scheduled.length).toBeGreaterThanOrEqual(1);
+    expect(scheduled.length).toBeGreaterThanOrEqual(2);
 
     // Feed delayed mic capture (+150ms) and verify acoustic delta detection
     const delaySamples = Math.round(0.15 * sr);
