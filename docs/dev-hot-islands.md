@@ -114,7 +114,7 @@ gets a fresh boundary.
 **Contracts.** `IslandProps` in `contract.ts` holds each island's static
 props, and `ISLAND_VERSIONS` its version. `entry.ts` declares
 `islands = {…} satisfies IslandsExport`. So an island that breaks its
-contract fails typecheck, and the dev server runs `tsgo` with every build:
+contract fails typecheck, and the dev server runs the typecheck (tsrs, `scripts/typecheck.ts`) with every build:
 an error in a file the islands import blocks the reload and is logged, and
 the last good build keeps being served (`--no-typecheck` skips this). At
 runtime, the page skips an island whose contract version differs from its

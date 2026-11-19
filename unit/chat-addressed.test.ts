@@ -186,7 +186,7 @@ describe("AddressedMarks", () => {
   it("labels each mark with the lane's name", () => {
     const h = html();
     expect(h).toContain('aria-label="Addressed: coco"');
-    expect(h).toContain('aria-label="Addressed: 杰咪"');
+    expect(h).toContain('aria-label="Addressed: 哈基米"');
     expect(h).toContain('data-lane="codex"');
     expect(h).not.toContain(FLASH_ATTR);
   });
@@ -216,7 +216,7 @@ describe("LaneTag", () => {
     renderToStaticMarkup(createElement(LaneTag, props));
   it("writes the name with the colour that suits it", () => {
     expect(tag({ lane: "codex" })).toContain("coco: ");
-    expect(tag({ lane: "agy" })).toContain("杰咪：");
+    expect(tag({ lane: "agy" })).toContain("哈基米：");
     expect(tag({ lane: "codex", inline: true })).not.toContain(":");
     expect(tag({ lane: "main", agentName: "Li" })).toContain("Li: ");
     expect(tag({ lane: "main" })).toBe("");

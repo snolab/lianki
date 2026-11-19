@@ -2,8 +2,15 @@
 
 import { useUi } from "@lianki/ui-state";
 import { Disclosure, Icon } from "./icons";
-import { type TickerItem, type TickerKind, type TickerText, tickerText } from "./eta-ticker";
-import type { ReactNode } from "react";
+import {
+  ETA_BAR_CYCLE,
+  ETA_TICKER_SEC,
+  type TickerItem,
+  type TickerKind,
+  type TickerText,
+  tickerText,
+} from "./eta-ticker";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   GANTT_GROUPS,
   type GanttGroupDef,
@@ -17,7 +24,9 @@ import { ganttGroupsUi } from "./ui-store";
 import {
   type EtaTask,
   type GanttWindow,
+  byDeadline,
   compactTime,
+  deadlinePick,
   etaLabel,
   etaSummary,
   ganttPlan,
@@ -33,9 +42,12 @@ import { parkedBar } from "./gantt-view";
 import type { ChatStrings } from "./wire";
 
 /**
- * The ETA bar (eta.ts): one line above the chat input summing up every timed
- * task — overall progress weighted by the estimates, time left, and with
- * several, their count and when the next is due. A tap opens the state tree,
+ * The ETA bar (eta.ts): one line above the chat input. At rest it names the
+ * open task whose deadline comes first and how overdue it is or how long it
+ * has left ("Box ETA · 20M over"; with chat.etaBarCycle > 1 the next few by
+ * deadline in turn); the summary of every timed task — count, time left,
+ * when the next is due, the progress weighted by the estimates — is its
+ * tooltip, and its text once none is open. A tap opens the state tree,
  * where EtaList shows each task as a Gantt row. Nothing when there is no
  * timed task. Every time label is compactTime ("5M", "1.5H", "-5M"); a
  * negative one is red.
@@ -205,6 +217,8 @@ type EtaText = TickerText &
   | "etaLeft"
   | "etaNext"
   | "etaReached"
+  | "etaDeadlineLate"
+  | "etaDeadlineLeft"
   | "etaDone"
   | "etaOpen"
   | "etaHide"
@@ -293,6 +307,87 @@ export function summaryText(tasks: readonly EtaTask[], now: number, s: EtaText) 
 }
 
 /**
+ * The resting text's parts (owner, 2026-11-15 22:58 JST): the deadline task's
+ * name, whether its ETA has passed, and the time since (overdue) or left, in
+ * the bar's time (compactTime, never negative here: the words say which).
+ */
+export function deadlineParts(t: EtaTask, now: number, s: EtaText) {
+  const late = t.at <= now;
+  return {
+    late,
+    task: splitTitle(t.title).name,
+    dur: compactTime(Math.abs(t.at - now)),
+    template: late ? s.etaDeadlineLate : s.etaDeadlineLeft,
+  };
+}
+
+/** The resting text: "Box ETA · 20M over", "Box ETA · 35M left" (etaDeadlineLate / etaDeadlineLeft). */
+export function deadlineText(t: EtaTask, now: number, s: EtaText) {
+  const p = deadlineParts(t, now, s);
+  return p.template.replace("{task}", p.task).replace("{dur}", p.dur);
+}
+
+/**
+ * The resting text drawn: the name truncates, the rest keeps its width; the
+ * template's own words and the time are red when overdue (ETA_COLORS.late,
+ * as every negative time), a "·" in it stays plain.
+ */
+function DeadlineLabel({ t, now, strings }: { t: EtaTask; now: number; strings: EtaText }) {
+  const p = deadlineParts(t, now, strings);
+  const red = p.late ? { color: both("late"), fontWeight: 600 } : undefined;
+  return (
+    <>
+      {p.template.split(/(\{task\}|\{dur\})/).flatMap((tok, i) => {
+        if (tok === "{task}")
+          return [
+            <span key={i} data-testid="debug-chat-eta-deadline" className="min-w-0 truncate">
+              {p.task}
+            </span>,
+          ];
+        if (tok === "{dur}")
+          return [
+            <span
+              key={i}
+              data-testid="debug-chat-eta-time"
+              data-late={p.late || undefined}
+              className="shrink-0 tabular-nums"
+              style={red}
+            >
+              {p.dur}
+            </span>,
+          ];
+        return tok
+          .split(/(·)/)
+          .map((w) => w.trim())
+          .filter(Boolean)
+          .map((w, j) =>
+            w === "·" ? (
+              <span key={`${i}.${j}`} aria-hidden className="shrink-0">
+                ·
+              </span>
+            ) : (
+              <span key={`${i}.${j}`} className="shrink-0" style={red}>
+                {w}
+              </span>
+            ),
+          );
+      })}
+    </>
+  );
+}
+
+/** The roll's step: +1 every `secMs` while there are `n` > 1 tasks to roll through, else 0. */
+export function useRollStep(n: number, secMs: number) {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (n <= 1 || secMs <= 0) return;
+    const id = setInterval(() => setStep((x) => x + 1), secMs);
+    return () => clearInterval(id);
+  }, [n, secMs]);
+  return n > 1 ? step : 0;
+}
+
+/**
  * The ▸/▾ that hides or shows the bar (owner, 2026-11-13: hide it so the chat
  * stays open). Its state is drawn: ▾ with the bar shown, ▸ and the clock alone
  * with it hidden, a tap away from coming back.
@@ -336,6 +431,8 @@ export function EtaBar({
   compact = false,
   onFold,
   news = null,
+  cycle = ETA_BAR_CYCLE,
+  cycleSec = ETA_TICKER_SEC,
 }: {
   tasks: readonly EtaTask[];
   now: number;
@@ -351,6 +448,10 @@ export function EtaBar({
   compact?: boolean;
   /** Given: the bar carries its own hide/show toggle. */
   onFold?: (folded: boolean) => void;
+  /** chat.etaBarCycle: the resting text rolls through this many earliest deadlines (1: only the first). */
+  cycle?: number;
+  /** chat.etaTickerSec: seconds per task in that roll. */
+  cycleSec?: number;
 }) {
   const p = summaryParts(tasks, now, strings);
   if (!p) return null;
@@ -364,6 +465,8 @@ export function EtaBar({
       glass={glass}
       compact={compact}
       news={compact ? null : news}
+      cycle={cycle}
+      cycleSec={cycleSec}
     />
   );
   if (!onFold || compact) return line;
@@ -383,7 +486,11 @@ export function EtaBar({
   );
 }
 
-/** The summary line itself: a tap opens the full-screen timeline. */
+/**
+ * The bar's line: a fresh change (news) first, else the earliest-deadline
+ * open task, else (none open) the summary; the summary is always its tooltip.
+ * A tap opens the full-screen timeline.
+ */
 function EtaLine({
   p,
   tasks,
@@ -393,6 +500,8 @@ function EtaLine({
   glass,
   compact,
   news,
+  cycle,
+  cycleSec,
 }: {
   p: NonNullable<ReturnType<typeof summaryParts>>;
   tasks: readonly EtaTask[];
@@ -402,13 +511,20 @@ function EtaLine({
   glass: boolean;
   compact: boolean;
   news: { item: TickerItem; since: number } | null;
+  cycle: number;
+  cycleSec: number;
 }) {
   const { sum } = p;
   const past = sum.leftMs !== null && sum.leftMs <= 0;
+  const step = useRollStep(Math.min(cycle, byDeadline(tasks).length), cycleSec * 1000);
+  const due = deadlinePick(tasks, step, cycle);
   const summary = summaryText(tasks, now, strings);
   const said = news ? tickerText(news.item, strings) : null;
   const who = news?.item.by;
-  const text = said ? (who ? `${who}: ${said}` : said) : summary;
+  const rest = due ? deadlineText(due, now, strings) : summary;
+  const text = said ? (who ? `${who}: ${said}` : said) : rest;
+  // The summary moved to the tooltip (and the label): the count, the total and the percent.
+  const all = `${summary} · ${sum.pct}%`;
   return (
     <button
       type="button"
@@ -416,8 +532,9 @@ function EtaLine({
       data-count={sum.count}
       data-pct={sum.pct}
       data-news={news?.item.kind}
-      aria-label={`${text} · ${sum.pct}% — ${strings.etaOpen}`}
-      title={strings.etaOpen}
+      data-deadline={due?.id}
+      aria-label={`${text === summary ? all : `${text} — ${all}`} — ${strings.etaOpen}`}
+      title={`${all} — ${strings.etaOpen}`}
       onMouseDown={keepFocus}
       onClick={onOpen}
       className={`pointer-events-auto block w-full min-w-0 border-0 bg-transparent p-0 text-start fs-10 ${glass ? "" : "mb-1"}`}
@@ -449,17 +566,15 @@ function EtaLine({
               {who && <span className="font-semibold">{who} </span>}
               {said}
             </span>
-          ) : compact ? (p.leftMs === null ? <span>{strings.etaDone}</span> : <TimeLabel ms={sum.next ? sum.next.at - now : p.leftMs} />) : <>
+          ) : compact ? (p.leftMs === null ? <span>{strings.etaDone}</span> : <TimeLabel ms={sum.next ? sum.next.at - now : p.leftMs} />) : due ? (
+            <DeadlineLabel t={due} now={now} strings={strings} />
+          ) : <>
           <span className="min-w-0 truncate">{p.lead}</span>
           <span aria-hidden className="shrink-0">
             ·
           </span>
-          {p.leftMs === null ? (
-            <span className="shrink-0">{strings.etaDone}</span>
-          ) : (
-            <TimeLabel ms={p.leftMs} />
-          )}
-          {p.next && <span className="min-w-0 truncate">· {p.next}</span>}
+          {/* Here none is open (an open one is `due`): all done. */}
+          <span className="shrink-0">{strings.etaDone}</span>
           </>}
         </span>
         {!compact && <span className="shrink-0 tabular-nums">{sum.pct}%</span>}

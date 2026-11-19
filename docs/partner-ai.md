@@ -43,7 +43,8 @@ no third-party API key. Non-streaming in v1.
 | routing, caps, takeover               | `workers/push/src/debug.ts` `friendChat` → `aiReply`                                     |
 | who sees the chat                     | `app/layout.tsx` `partnerOpenFor` → `OwnerBoots` → `DebugEval partnerOpen`               |
 | strings (16 locales, with context)    | `app/components/learning-partner.content.ts` `aiHint`, `aiStatus`, `aiLimit`, `aiFailed` |
-| tests                                 | `unit/partner-ai.test.ts`                                                                |
+| who said what (history, reply tags)   | `lib/partner-lines.ts`                                                                   |
+| tests                                 | `unit/partner-ai.test.ts`, `unit/partner-lines.test.ts`                                  |
 
 ## Who gets it
 
@@ -69,8 +70,23 @@ Owner, 2026-11-15: "你把 Li 也叫上来，但是不要中断你自己的监�
 the owner's chat in `debug.ts`) lets the model answer a line of his when:
 
 - it is his (`from: "owner"`), newly posted (not an echo, merge or two-mic duplicate);
-- it names no lane (`routeLine(text).addressed` false, packages/debug-chat/src/lane-route.ts)
-  and carries no node address (`to`);
+- it names no lane anywhere, heard spellings included (`namesLane(text)` false,
+  packages/debug-chat/src/lane-route.ts: an address, any own name or heard spelling
+  in the line, or a name by sound at its start without the mark; 2026-11-16 Li answered
+  "韩今明要实施监控这个页面的改动", meant for 哈基米) and carries no node address (`to`);
+- **he has not told Li to stop**: a line holding one of config `partner.stopPhrases`
+  (没问你, 闭嘴, 别说了, shut up, … a data list, any language, matched anywhere, case-insensitive)
+  that names no lane keeps Li silent for `partner.ownerQuietMs` (default 600,000 ms = 10 min);
+- **no lane is talking with him**: no lane line (an agent line other than Li's and the
+  hub's notices: ETA, spend, lane joins) in the last `partner.laneActiveMs` (default
+  300,000 ms = 5 min; 0 = off). Owner, 2026-11-16: "他不应该回答我的这个问题，我已经要求他闭嘴了";
+- **a spoken line names Li**: a line heard by a microphone (`source: "stt"`) gets Li only
+  when one of `partner.liNames` appears in it anywhere (Latin names as whole words), with
+  config `partner.spokenNeedsName` on (default; off = treated like a typed line). Owner,
+  2026-11-16: the AI is in the room, silent until named ("あります。", "And here a few." from
+  people in the room got a reply). A line whose voiceprint decided "other" never gets Li;
+- a line starting with one of Li's names (config `partner.liNames`: Li, Lee, 学习伙伴,
+  learning partner; then a mark, a space or nothing) skips both of the last two and ends a quiet spell;
 - its voiceprint did not decide another voice (`speaker.decision !== "other"`);
 - **no lane answered first**: the reply waits config `partner.ownerReplyDelayMs`
   (default 30,000 ms, /dev/config; was 8 s until 2026-11-15, when Li
@@ -101,6 +117,29 @@ and name who is present; never say you cannot." Roles are data: `role` in
 `voices.ts` LANES (coco 界面与前端开发, 杰咪 功能开发, 小克 聊天调度与发布, Li
 学习伙伴), overridden by a `chat.lanes` row's `role`.
 
+Every decision is one log line in `wrangler tail lianki-push`: `partner.owner-skip`
+(the line id and the rule that held Li back: `stop`, `names-lane`, `voice-not-his`,
+`spoken-unnamed`, `quiet`, `lane-active`, `off`, `newer`, `answered`, …) or
+`partner.owner-scheduled`, each with `rules` (`OWNER_AI_RULES`) naming the rule set the
+live object runs, and never the line's text. After a deploy, a decision line without the
+new `rules` value means the hub object still runs the old code.
+
+The prompt also says Li speaks only in reply to a message: it cannot watch
+pages, wait for changes or message anyone later, so it never promises to
+(2026-11-16: "我来盯着这个页面……页面一有变化，我马上告诉你"), and it does not
+answer a message meant for someone else.
+
+**Speaking as itself** (`lib/partner-lines.ts`). Li never writes as another
+member or offers to build things (2026-11-17: an unaddressed request for a
+userscript got "【claude】Happy to build it… M1 (today)"). Three layers: lane
+lines reach the model attributed, as `user` lines "(agent coco said: …)" —
+not as its own `assistant` lines, which it had been continuing in their
+voice; the prompt says it speaks only as itself, never writes a name tag and
+does not write code, build features or run tasks (the developer reads this
+chat); and `cleanReply` strips any leading speaker tag from its reply: every
+`【…】` (in this chat a leading 【name】 is always a speaker tag), and `[name]`
+/ `name:` when the name is a lane's id, name or alias or Li's own.
+
 **Roll call.** A line of his matching `owner-ai.ts` `ROLL_CALL` (报数, 点名,
 全体都有, 都有报…, and the STT slips 包书 / 报树) gets Li's answer at once, no
 model: config `partner.rollCallReply` (default "Li 在，这里 {n} 位：{names}";
@@ -111,8 +150,9 @@ all-hands call (lane-route.ts), so the lanes answer it too.
 ## Memory and takeover
 
 - Memory is the thread's own stored history (the last `HISTORY_LINES` = 20 of
-  its `CHAT_HISTORY`): the user's lines as `user`, agent lines (the AI's and
-  any lane's) as `assistant`.
+  its `CHAT_HISTORY`): the user's lines as `user`, the AI's own as
+  `assistant`, any other agent line (a lane, a hub notice) as an attributed
+  `user` line, "(agent NAME said: …)" (`lib/partner-lines.ts`).
 - **A human or lane reply wins.** The owner's lanes still hear every friend
   thread. If a lane `say`s into the thread while the model is working, the
   AI's reply is dropped. A newer line from the user also makes the older

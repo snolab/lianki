@@ -140,7 +140,9 @@ scroll step).
 ## Bun and Node
 
 Bun runs the toolchain (owner, 2026-11-03: no Node-based tooling; native TS
-tools). Typecheck is tsgo (`@typescript/native-preview`), lint and format are
+tools). Typecheck is tsrs (oxc-project/tsrs, the Rust port of TS 7; owner,
+2026-11-16), run by `scripts/typecheck.ts`, which falls back to tsc 7 (the
+`typescript-7` alias) only when tsrs itself crashes, never on a type error. Lint and format are
 oxlint and oxfmt, unit tests are `bun test`. Our own scripts run on Bun:
 `dev:db`, every `qa:*` script and the suites `qa:all` spawns, `test:e2e`,
 `scripts/dev/*-qa.mjs` and the soaks (`#!/usr/bin/env bun`), the userscript
@@ -162,7 +164,7 @@ on Node. Kept on Node, one reason each:
 | `packages/lianki-cli` (`#!/usr/bin/env node`, `engines.node >=18`), `publish-cli.yml` | The published `lianki` CLI: `npx lianki` users may have only Node, so it stays Node ≥ 18 compatible and is smoke-tested and published with npm. |
 | `migrate-mongo-to-d1.yml` (`tsx`)                                               | Bun's TLS mishandled SNI to MongoDB Atlas. The one-off Mongo → D1 migration (done 2026-10-06), kept for a rollback re-run.                  |
 | `docker-compose.yml` (`node` image)                                             | Legacy and unused; its note says the Bun image broke Next's Edge VM.                                                                        |
-| `typescript` (tsc) devDependency                                                | Not called by us (tsgo typechecks), but Next requires it when `tsconfig.json` exists, and intlayer (`zod-to-ts`) and others peer-depend on it. |
+| `typescript` (tsc) devDependency                                                | Stays on 5.x and is not called by us (tsrs typechecks), but Next requires it when `tsconfig.json` exists, and intlayer (`zod-to-ts`) and others peer-depend on it. |
 | root `engines.node >=22.12`, `.nvmrc`                                           | For the Node pieces above (wrangler; `node:sqlite` null rows).                                                                              |
 | `.husky/pre-commit` `bunx lint-staged`                                          | lint-staged and secretlint have node shebangs; `bunx --bun lint-staged` works (checked 2026-11-04) — switch it when the hook is next edited. |
 

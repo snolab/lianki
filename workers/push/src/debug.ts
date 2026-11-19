@@ -258,7 +258,11 @@ import type {
   SttTag,
   WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
-import { verifySpeakerProofs } from "../../../lib/speaker-proof";
+import {
+  type SpeakerKeyRing,
+  speakerKeyRing,
+  verifySpeakerProofs,
+} from "../../../lib/speaker-proof";
 import {
   ECHO_MIN_CHARS,
   ECHO_READ_WINDOW_MAX,
@@ -305,6 +309,7 @@ import {
   twoMicMatch,
 } from "../../../packages/debug-chat/src/two-mic";
 import { OwnerAi } from "./owner-ai";
+import { partnerHistoryLine } from "../../../lib/partner-lines";
 import { type RosterEntry, rollCallText, rosterOf } from "../../../packages/debug-chat/src/roster";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
@@ -338,7 +343,6 @@ import {
   windowHours,
   windowSum,
 } from "../../../lib/rolling-window";
-import { CHAT_PATH, REVOKED_PATH, TokenChat, partKey, tokenAtt } from "./token-chat";
 import { LANE_EVENTS_FLAG, LANE_REG_PREFIX, type LaneReg, LaneRegistry } from "./lane-registry";
 import {
   SPEND_ALERT_LABEL,
@@ -351,6 +355,8 @@ import {
   presentList,
 } from "../../../packages/debug-chat/src/presence";
 import { AVATAR_PATH } from "../../../packages/debug-chat/src/svg-avatar";
+import { CHAT_PATH, REVOKED_PATH, TokenChat, partKey, tokenAtt } from "./token-chat";
+import { playRefusal, srcHost } from "../../../packages/debug-chat/src/play-audio";
 import { BOX_HEADER, EMBED_HEADER } from "./auth";
 import { type ChatLogRequest, chatLogLine, passageLogId } from "../../../lib/chat-log-line";
 import {
@@ -604,6 +610,8 @@ type SessionsRpc = {
   chatLog?(req: ChatLogRequest): Promise<unknown>;
   /** A live config value (lib/config.ts registry keys; the default when unset or invalid). */
   config?(key: string): Promise<unknown>;
+  /** May a line with audio be posted (lib/play-check.ts)? An older main Worker has none: refused. */
+  playAudio?(req: Record<string, unknown>): Promise<unknown>;
 };
 /** POST, from the main Worker over its binding: the owner thread's history into D1, once. */
 export const CHAT_BACKFILL_PATH = "/internal/chat-backfill";
@@ -885,8 +893,11 @@ export class DebugHub {
    */
   private grants?: Map<string, Grant>;
   private loadingGrants?: Promise<void>;
-  /** STT_SPEAKER_PUB: the Mac's attestation key (lib/speaker-proof.ts). */
-  private speakerPub?: string;
+  /**
+   * The speaker-attestation key ring (lib/speaker-proof.ts): STT_SPEAKER_PUBS
+   * (`{"mac", "service"}`), with STT_SPEAKER_PUB as `mac`.
+   */
+  private speakerKeys?: SpeakerKeyRing;
   /** A renewal in flight per grant hash: two events at once renew once. */
   private renewing = new Map<string, Promise<void>>();
   /** The main Worker (service binding): asked whether a renewal's session is still live. */
@@ -912,6 +923,8 @@ export class DebugHub {
   private echoConf?: { at: number; on: boolean; conf: EchoConf };
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
   private agentAt = new Map<string, number>();
+  /** His thread: when a lane's line (an agent line not Li's own) was last posted (owner-ai.ts laneAt). */
+  private ownerLaneAt = 0;
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
   private aiTurn = new Map<string, number>();
   /** Li in the owner's thread (owner-ai.ts): his unaddressed lines no lane answered. */
@@ -923,6 +936,7 @@ export class DebugHub {
     config: async (key) => (this.sessions?.config ? this.sessions.config(key) : undefined),
     aiOn: () => this.aiOn(),
     agentAt: () => this.agentAt.get(OWNER_THREAD) ?? 0,
+    laneAt: () => this.ownerLaneAt,
     reply: (l, { page, context, scene }) =>
       this.aiReply(page, page.email ?? "", l.at, context, scene, l.id),
     present: async (_l, { page }) =>
@@ -949,8 +963,8 @@ export class DebugHub {
     private timer: HubTimer = realTimer,
   ) {
     this.work = new HubWork(this.now);
-    // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
-    this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
+    // The speaker-attestation public keys (the Mac's: voiceprint.py attest-key); without any no tag is kept.
+    this.speakerKeys = speakerKeyRing(env);
     const sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
     this.sessions = sessions ? boundedSessions(sessions, this.work, this.now) : undefined;
     this.progress = (env as { PROGRESS?: ProgressNs } | undefined)?.PROGRESS;
@@ -1492,6 +1506,15 @@ export class DebugHub {
   private async post(m: ChatMessage & { thread: string }, only?: string[]) {
     const seq = await this.writeLine(undefined, m, true);
     if (m.from === "agent") this.agentAt.set(m.thread, Math.max(m.at, this.now()));
+    // A lane talking with him: not Li's own lines, nor the hub's notices (ETA, spend, lane joins).
+    if (
+      m.from === "agent" &&
+      m.thread === OWNER_THREAD &&
+      !m.laneEvent &&
+      m.source !== "eta" &&
+      ![PARTNER_AI_LABEL, ETA_LABEL, SPEND_ALERT_LABEL].includes(m.label ?? "")
+    )
+      this.ownerLaneAt = Math.max(m.at, this.now());
     const out = { type: "chat", message: m };
     // His devices read an agent line together (sync-speak.ts): pages only, never stored.
     const speakAt = m.from === "agent" ? this.speakAt(m.thread) : undefined;
@@ -4314,6 +4337,7 @@ export class DebugHub {
                 at: t,
                 ...(m.to ? { to: m.to } : {}),
                 ...(speaker ? { speaker } : {}),
+                ...(m.source ? { source: m.source } : {}),
               },
               {
                 page,
@@ -4328,7 +4352,7 @@ export class DebugHub {
             m.speakerProof,
             heard,
             page.thread,
-            this.speakerPub,
+            this.speakerKeys,
             (uids, until) => this.burnProofs(uids, until),
             this.now(),
           ).then(spoken);
@@ -4545,7 +4569,8 @@ export class DebugHub {
     const lines = (await this.history(thread))
       .filter((m) => m.from === (owner ? "owner" : "friend") || m.from === "agent")
       .slice(-HISTORY_LINES)
-      .map((m) => ({ role: m.from === "agent" ? "assistant" : "user", text: m.text }) as const);
+      // Li's own lines as its own; every other agent's attributed, never as Li's (partner-lines.ts).
+      .map(partnerHistoryLine);
     // The newest lines within HISTORY_MAX_CHARS (the latest one always).
     const history: typeof lines = [];
     let chars = 0;
@@ -4560,7 +4585,9 @@ export class DebugHub {
         ? { path: context?.path ?? scene?.path ?? path }
         : {}),
       ...(context?.title || scene?.title ? { title: context?.title ?? scene?.title } : {}),
+      ...(context?.host ? { host: context.host } : {}),
       ...(context?.selection ? { selection: context.selection } : {}),
+      ...(context?.location ? { selectionLocation: JSON.stringify(context.location) } : {}),
       ...(scene?.screen ? { screen: scene.screen } : {}),
     };
     const pageChars = Object.values(pageInfo).reduce((n, v) => n + (v?.length ?? 0), 0);
@@ -5154,9 +5181,20 @@ export class DebugHub {
       const scoped = node
         ? this.nodeGrants().then((grants) => mayAddress(from, node, grants, t))
         : Promise.resolve({ ok: true as const });
-      return Promise.all([scoped, this.sayTarget(to)]).then(([scope, dest]) => {
+      // `say --play`: the main Worker says yes (flag, deny list, rate) and audits it first.
+      const audio = m.value.audio;
+      const play = audio
+        ? playVerdict(this.sessions, {
+            via: "grant",
+            label: c.label,
+            host: srcHost(audio.src),
+            kind: audio.kind,
+          })
+        : Promise.resolve(null);
+      return Promise.all([scoped, this.sayTarget(to), play]).then(([scope, dest, refused]) => {
         if (!scope.ok) return send(ws, { type: "error", error: scope.error, reason: scope.error });
         if ("error" in dest) return send(ws, { type: "error", error: dest.error });
+        if (refused) return send(ws, { type: "error", error: refused, reason: refused });
         const who = agentId ?? c.assignee;
         const said: ChatMessage & { thread: string } = {
           id: crypto.randomUUID().slice(0, 8),
@@ -5177,6 +5215,8 @@ export class DebugHub {
           // Its lane and voice (packages/debug-chat/src/voices.ts), already checked against the table.
           ...(lane ? { lane } : {}),
           ...(voice ? { voice } : {}),
+          // Played by the page only; the hub never fetches it.
+          ...(audio ? { audio } : {}),
         };
         console.log(
           JSON.stringify({
@@ -5190,6 +5230,7 @@ export class DebugHub {
             ...(cut ? { cut } : {}),
             ...(lane ? { lane } : {}),
             ...(voice ? { voice } : {}),
+            ...(audio ? { play: { host: srcHost(audio.src), kind: audio.kind } } : {}),
             len: text.length,
             // A reply in a user's thread may quote them: only the owner's thread logs its start.
             ...(said.thread === OWNER_THREAD ? { head: head(text) } : {}),
@@ -5850,6 +5891,25 @@ export class DebugHub {
  * Worker's logs (`wrangler tail lianki-push`), never silence. The method and a
  * flag key or op only: no user, no text.
  */
+/**
+ * The main Worker's answer on an audio line (lib/play-check.ts): null when it
+ * may be posted, else the sender's error line. No binding, an older main
+ * Worker or a failed call: refused (deny by default).
+ */
+export async function playVerdict(
+  rpc: { playAudio?(req: Record<string, unknown>): Promise<unknown> } | undefined,
+  req: Record<string, unknown>,
+): Promise<string | null> {
+  if (!rpc?.playAudio) return playRefusal("unavailable");
+  try {
+    const a = (await rpc.playAudio(req)) as { ok?: unknown; error?: unknown } | null;
+    return a?.ok === true ? null : playRefusal(String(a?.error ?? "unavailable"));
+  } catch (e) {
+    rpcFailed("playAudio", e, String(req.host ?? ""));
+    return playRefusal("unavailable");
+  }
+}
+
 function rpcFailed(method: string, e: unknown, what?: string) {
   console.error(
     JSON.stringify({

@@ -107,7 +107,7 @@ describe("the wake keyword set", () => {
   it("LINKY first, then the lanes, the main agent, agents present, and him", () => {
     const people = wakeParticipants({ mainName: "Li", agents: ["bot"], owner: "Sno" });
     // One per lane, its other names with it.
-    expect(people.slice(0, 3).map((p) => p.name)).toEqual(["coco", "杰咪", "小克"]);
+    expect(people.slice(0, 3).map((p) => p.name)).toEqual(["coco", "哈基米", "小克"]);
     expect(people[0]!.spellings).toContain("codex");
     expect(people[0]!.spellings).toContain("可可");
     expect(people.map((p) => p.name)).not.toContain("main");
@@ -115,7 +115,7 @@ describe("the wake keyword set", () => {
     expect(people.at(-1)).toEqual({ name: "Sno", kind: "owner" });
     const s = buildWakeKeywords(people);
     expect(s.entries[0]).toBe(LINKY);
-    expect(s.names.map((n) => n.name)).toEqual(["coco", "杰咪", "小克", "Li", "bot", "Sno"]);
+    expect(s.names.map((n) => n.name)).toEqual(["coco", "哈基米", "小克", "Li", "bot", "Sno"]);
     // 小可 is 小克's own spelling now: one entry, no clash.
     expect(s.clash).toEqual([]);
     const coco = s.entries.find((e) => e.label === "agent:coco")!;
@@ -139,7 +139,7 @@ describe("the wake keyword set", () => {
     const s = buildWakeKeywords(wakeParticipants({}));
     const said = (label: string) =>
       new Set(s.entries.find((e) => e.label === label)!.matches.map((m) => m.tokens.join(" ")));
-    const jiemi = said("agent:杰咪");
+    const jiemi = said("agent:哈基米");
     expect(jiemi.has("j ié m ī")).toBe(true); // 杰咪
     expect(jiemi.has("j ié m ǐ")).toBe(true); // 杰米
     expect(jiemi.has("j iě m ì")).toBe(true); // 解密
@@ -472,7 +472,7 @@ describe("a name wakes the mic and addresses the line", () => {
     expect(s.view()).toMatchObject({ wake: "active", wakeName: "小克" });
     await say(); // active: "小客，再看一下"
     await say(); // active: "杰米，看日志"
-    expect(texts).toEqual(["@小克 帮我看一下", "@小克 再看一下", "@杰咪 看日志"]);
+    expect(texts).toEqual(["@小克 帮我看一下", "@小克 再看一下", "@哈基米 看日志"]);
     expect(texts.map((t) => routeLine(t).lanes)).toEqual([["chat"], ["chat"], ["agy"]]);
     // Passive again, and the name wakes it a second time.
     s.wake("passive");

@@ -51,7 +51,7 @@ export function DevSwitchItem({ sw, children }: { sw: DevSwitch; children?: Reac
     <>
       <span className="flex-1 min-w-0 truncate">{label}</span>
       <span aria-hidden className={up === null ? "animate-pulse" : undefined}>
-        <SealStamp on={on} size="sm" />
+        <SealStamp on={on} size="sm" pending={busy} />
       </span>
     </>
   );
@@ -61,9 +61,13 @@ export function DevSwitchItem({ sw, children }: { sw: DevSwitch; children?: Reac
     <a
       role="switch"
       aria-checked
+      aria-busy={busy || undefined}
       data-dev-switch="back"
       href={backUrl(location)}
       referrerPolicy="no-referrer"
+      onClick={(e) => {
+        if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) setBusy(true);
+      }}
       className={cls}
     >
       {inner}
@@ -73,6 +77,7 @@ export function DevSwitchItem({ sw, children }: { sw: DevSwitch; children?: Reac
       type="button"
       role="switch"
       aria-checked={false}
+      aria-busy={busy || undefined}
       data-dev-switch="go"
       disabled={!up || busy}
       onClick={async () => {

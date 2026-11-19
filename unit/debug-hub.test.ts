@@ -454,6 +454,55 @@ describe("DebugHub chat", () => {
     expect(chats(p).some((m) => m.text === "<b>hi</b>")).toBe(false);
   });
 
+  it("say --play: the main Worker says yes first (host and kind only), then the line carries its audio", async () => {
+    const asked: Record<string, unknown>[] = [];
+    let answer: unknown = { ok: true };
+    const { hub, page, controller, msg, pairOf } = setup({
+      SESSIONS: {
+        live: async () => "gone",
+        playAudio: async (req: Record<string, unknown>) => (asked.push(req), answer),
+      },
+    });
+    const p = page();
+    const c = controller("main lane");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    const audio = { src: "https://cdn.example.com/p/a.mp3?sig=secret", title: "Lesson" };
+    await msg(c, { type: "say", text: "listen", audio });
+    expect(asked).toEqual([
+      { via: "grant", label: "main lane", host: "cdn.example.com", kind: "file" },
+    ]);
+    expect(chats(p).at(-1)).toMatchObject({
+      text: "listen",
+      audio: { src: audio.src, kind: "file", mime: "audio/mpeg", title: "Lesson" },
+    });
+    expect((await hub.history()).at(-1)?.audio?.kind).toBe("file");
+    // Refused (the flag off): nothing posted, the sender told how to turn it on.
+    answer = { ok: false, error: "flag" };
+    const before = chats(p).length;
+    await msg(c, { type: "say", text: "again", audio });
+    expect(chats(p).length).toBe(before);
+    expect(String(c.last("error")?.error)).toContain("dev/flags#chat.play-audio");
+    // A bad src never reaches the main Worker.
+    await msg(c, { type: "say", text: "x", audio: { src: "https://127.0.0.1/a.mp3" } });
+    expect(asked.length).toBe(2);
+    expect(String(c.last("error")?.error)).toContain("IP");
+    // The main Worker failing: refused, never posted.
+    answer = Promise.reject(new Error("d1 down"));
+    await msg(c, { type: "say", text: "y", audio });
+    expect(chats(p).length).toBe(before);
+    expect(String(c.last("error")?.error)).toContain("nothing was sent");
+  });
+
+  it("say --play with an older main Worker (no playAudio): refused", async () => {
+    const { page, controller, msg, pairOf } = setup({ SESSIONS: { live: async () => "gone" } });
+    const p = page();
+    const c = controller("main lane");
+    await msg(p, { type: "allow", pair: pairOf(p) });
+    await msg(c, { type: "say", text: "x", audio: { src: "https://cdn.example.com/a.mp3" } });
+    expect(chats(p).some((m) => m.text === "x")).toBe(false);
+    expect(String(c.last("error")?.error)).toContain("nothing was sent");
+  });
+
   it("say --quiet: the hub keeps the flag (true only) and forwards it, live and in history; an old loud is dropped", async () => {
     const { page, controller, msg, pairOf } = setup();
     const p = page();
@@ -1697,7 +1746,12 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       false,
     ]);
     // The signed words ride on the stored tag (an approval must use them, not the line).
-    expect(stored[0]!.speaker).toEqual({ ...tag, signed: ["Next  word"] });
+    expect(stored[0]!.speaker).toEqual({
+      ...tag,
+      signed: ["Next  word"],
+      trust: "signed",
+      kid: "mac",
+    });
     // Burned durably: a new hub on the same storage (a restart, a deploy) refuses it too.
     const again = setup({ STT_SPEAKER_PUB: mac.pub }, s.storage);
     const p2 = again.page();
@@ -1759,6 +1813,105 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
       ["v4", "me", "me"],
       ["v5", undefined, undefined],
     ]);
+  });
+
+  it("the voice cluster rides on the signed tag only (one avatar per voice in the room)", async () => {
+    const mac = await speakerKey();
+    const s = setup({ STT_SPEAKER_PUB: mac.pub });
+    const owner = s.page();
+    await agent(s, owner);
+    const at = 1_000_000;
+    const sign = (text: string, uid: string, cluster: string) =>
+      mac.sign({
+        decision: "other",
+        score: 0.2,
+        text,
+        uid: uid.padEnd(16, "x"),
+        thread: "owner",
+        at,
+        cluster,
+        clusterScore: 0.83,
+      });
+    const say = (id: string, text: string, speakerProof: string[]) =>
+      s.msg(owner, { type: "chat", id, text, source: "stt", speakerProof });
+    await say("c1", "hello there", [await sign("hello there", "k1", "B")]);
+    await say("c2", "tea please", [await sign("tea please", "k2", "household:other")]);
+    await say("c3", "one two", [await sign("one", "k3", "A"), await sign("two", "k4", "B")]);
+    // A page's own cluster on an unsigned line: never kept.
+    await s.msg(owner, {
+      type: "chat",
+      id: "c4",
+      text: "fake",
+      source: "stt",
+      speaker: { decision: "other", cluster: "A" },
+    });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as { id: string; speaker?: { cluster?: string; clusterScore?: number } })
+      .sort((a, b) => a.id.localeCompare(b.id));
+    expect(stored.map((m) => [m.id, m.speaker?.cluster, m.speaker?.clusterScore])).toEqual([
+      ["c1", "B", 0.83],
+      ["c2", "household:other", 0.83],
+      ["c3", undefined, undefined],
+      ["c4", undefined, undefined],
+    ]);
+  });
+
+  it("a key ring (STT_SPEAKER_PUBS): each proof checked with its signer's key; text-less proofs stay advisory", async () => {
+    const mac = await speakerKey();
+    const service = await speakerKey();
+    const s = setup({ STT_SPEAKER_PUBS: JSON.stringify({ mac: mac.pub, service: service.pub }) });
+    const owner = s.page();
+    await agent(s, owner);
+    const at = 1_000_000;
+    const base = { decision: "me", score: 0.5, model: "campp", thread: "owner", at };
+    const say = (id: string, text: string, speakerProof: string[]) =>
+      s.msg(owner, { type: "chat", id, text, source: "stt", speakerProof });
+    // No kid: the Mac's (today's proofs).
+    await say("k1", "one", [await mac.sign({ ...base, text: "one", uid: "a1".padEnd(16, "x") })]);
+    // kid service, signed by the service.
+    await say("k2", "two", [
+      await service.sign({ ...base, kid: "service", text: "two", uid: "a2".padEnd(16, "x") }),
+    ]);
+    // kid service but the Mac's signature (a signer swapped): dropped.
+    await say("k3", "three", [
+      await mac.sign({ ...base, kid: "service", text: "three", uid: "a3".padEnd(16, "x") }),
+    ]);
+    // An unknown signer: dropped.
+    await say("k4", "four", [
+      await mac.sign({ ...base, kid: "browser", text: "four", uid: "a4".padEnd(16, "x") }),
+    ]);
+    // The service vouched for the voice, not the words: advisory, the line undecided.
+    await say("k5", "five", [
+      await service.sign({ ...base, kid: "service", text: null, uid: "a5".padEnd(16, "x") }),
+    ]);
+    // Both signers on one line.
+    await say("k6", "six seven", [
+      await mac.sign({ ...base, text: "six", uid: "a6".padEnd(16, "x") }),
+      await service.sign({ ...base, kid: "service", text: "seven", uid: "a7".padEnd(16, "x") }),
+    ]);
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as { id: string; speaker?: Record<string, unknown> })
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const sp = (id: string) => stored.find((m) => m.id === id)?.speaker;
+    expect(sp("k1")).toMatchObject({
+      decision: "me",
+      trust: "signed",
+      kid: "mac",
+      signed: ["one"],
+    });
+    expect(sp("k2")).toMatchObject({ decision: "me", trust: "signed", kid: "service" });
+    expect(sp("k3")).toBeUndefined();
+    expect(sp("k4")).toBeUndefined();
+    expect(sp("k5")).toEqual({
+      decision: "unknown",
+      reason: "advisory",
+      trust: "advisory",
+      kid: "service",
+      advisory: { decision: "me", score: 0.5, model: "campp" },
+    });
+    expect(sp("k6")).toMatchObject({ decision: "me", trust: "signed", kid: "mac+service" });
   });
 
   it("without STT_SPEAKER_PUB no tag is ever kept", async () => {

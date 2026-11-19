@@ -128,7 +128,7 @@ describe("laneStep: the transitions", () => {
   });
   it("a lane's shown name: the owner's for it, its lane's, else the token's", () => {
     expect(laneShownName("codex")).toBe("coco");
-    expect(laneShownName("agy")).toBe("杰咪");
+    expect(laneShownName("agy")).toBe("哈基米");
     expect(laneShownName("codex", "Coco!")).toBe("Coco!");
     expect(laneShownName("rechrome-codex-1")).toBe("rechrome-codex-1");
     expect(laneShownName("main")).toBe("main");
@@ -174,7 +174,7 @@ function fakeRegistry(enabled = true, list = true) {
 }
 
 describe("laneStep: scope (tier ① all messages vs ② the owner's)", () => {
-  it("a listener with scope all says so; a reconnect says nothing; a change of scope says the new one", () => {
+  it("a listener with scope all says so; a reconnect says nothing; only an upgrade is said", () => {
     const a = laneStep(undefined, { type: "listen", scope: "all" }, ctx());
     expect(a).toMatchObject({ event: "listeningAll", next: { state: "listener", scope: "all" } });
     // Again with all, or with no scope (the alarm, an older client): nothing.
@@ -182,8 +182,10 @@ describe("laneStep: scope (tier ① all messages vs ② the owner's)", () => {
     const kept = laneStep(a.next, { type: "listen" }, ctx(T0 + 1));
     expect(kept.event).toBeUndefined();
     expect(kept.next.scope).toBe("all");
+    // A drop to the owner's with no grace: at once, silently (it still listens).
     const down = laneStep(a.next, { type: "listen", scope: "owner" }, ctx(T0 + 2));
-    expect(down).toMatchObject({ event: "listening", next: { state: "listener" } });
+    expect(down.event).toBeUndefined();
+    expect(down.next).toMatchObject({ state: "listener", changedAt: T0 + 2 });
     expect(down.next.scope).toBeUndefined();
     const up = laneStep(down.next, { type: "listen", scope: "all" }, ctx(T0 + 3));
     expect(up).toMatchObject({ event: "listeningAll", next: { scope: "all" } });
@@ -197,7 +199,133 @@ describe("laneStep: scope (tier ① all messages vs ② the owner's)", () => {
   });
 });
 
+describe("laneStep: one lane, several sockets", () => {
+  it("a drop from all waits the grace; an upgrade in it says nothing; due drops it silently", () => {
+    const a = laneStep(undefined, { type: "listen", scope: "all" }, ctx()).next;
+    const down = laneStep(a, { type: "listen", scope: "owner", graceMs: 30_000 }, ctx(T0 + 1));
+    expect(down).toMatchObject({
+      dueAt: T0 + 30_001,
+      next: { scope: "all", scopeDownAt: T0 + 30_001 },
+    });
+    expect(down.event).toBeUndefined();
+    // Another owner-only socket in the grace keeps the first deadline.
+    const again = laneStep(
+      down.next,
+      { type: "listen", scope: "owner", graceMs: 30_000 },
+      ctx(T0 + 9),
+    );
+    expect(again.next.scopeDownAt).toBe(T0 + 30_001);
+    // No scope (the alarm): kept, the pending drop too.
+    expect(laneStep(down.next, { type: "listen" }, ctx(T0 + 2)).next.scopeDownAt).toBe(T0 + 30_001);
+    // Back to all in the grace: nothing said, the drop gone.
+    const up = laneStep(down.next, { type: "listen", scope: "all", graceMs: 30_000 }, ctx(T0 + 3));
+    expect(up.event).toBeUndefined();
+    expect(up.next.scope).toBe("all");
+    expect(up.next.scopeDownAt).toBeUndefined();
+    // Not yet due: unchanged.
+    expect(laneStep(down.next, { type: "due" }, ctx(T0 + 5)).next).toBe(down.next);
+    // Due: the owner's, silently, still a listener.
+    const due = laneStep(down.next, { type: "due" }, ctx(T0 + 30_001));
+    expect(due.event).toBeUndefined();
+    expect(due.next).toMatchObject({ state: "listener" });
+    expect(due.next.scope).toBeUndefined();
+    expect(due.next.scopeDownAt).toBeUndefined();
+    // Then all again: one line.
+    expect(laneStep(due.next, { type: "listen", scope: "all" }, ctx(T0 + 30_002)).event).toBe(
+      "listeningAll",
+    );
+    // The last socket closes after it: the reader line, the pending drop gone with the scope.
+    const gone = laneStep(down.next, { type: "unlisten", graceMs: 0 }, ctx(T0 + 4));
+    expect(gone.event).toBe("reader");
+    expect(gone.next.scopeDownAt).toBeUndefined();
+  });
+});
+
+describe("laneStep: scope system (tier ⓪, owner 2026-11-16 02:16 JST)", () => {
+  it("system says its own line; all → system widens, system → all narrows (graced, silent)", () => {
+    const a = laneStep(undefined, { type: "listen", scope: "system" }, ctx());
+    expect(a).toMatchObject({
+      event: "listeningSystem",
+      next: { state: "listener", scope: "system" },
+    });
+    expect(
+      laneStep(a.next, { type: "listen", scope: "system" }, ctx(T0 + 1)).event,
+    ).toBeUndefined();
+    // all → system: widened, said once.
+    const all = laneStep(undefined, { type: "listen", scope: "all" }, ctx()).next;
+    const up = laneStep(all, { type: "listen", scope: "system" }, ctx(T0 + 1));
+    expect(up).toMatchObject({ event: "listeningSystem", next: { scope: "system" } });
+    // system → all with no grace: at once, silent.
+    const now = laneStep(up.next, { type: "listen", scope: "all" }, ctx(T0 + 2));
+    expect(now.event).toBeUndefined();
+    expect(now.next.scope).toBe("all");
+    // system → all with a grace: pending to "all", then due.
+    const down = laneStep(up.next, { type: "listen", scope: "all", graceMs: 1000 }, ctx(T0 + 2));
+    expect(down).toMatchObject({
+      dueAt: T0 + 1002,
+      next: { scope: "system", scopeDownAt: T0 + 1002, scopeDownTo: "all" },
+    });
+    // The alarm with no scope keeps the pending narrowing, target and all.
+    expect(laneStep(down.next, { type: "listen" }, ctx(T0 + 3)).next).toMatchObject({
+      scopeDownAt: T0 + 1002,
+      scopeDownTo: "all",
+    });
+    // Narrower still (owner) while pending: the same time, down to the owner's.
+    const lower = laneStep(
+      down.next,
+      { type: "listen", scope: "owner", graceMs: 1000 },
+      ctx(T0 + 4),
+    );
+    expect(lower.next.scopeDownAt).toBe(T0 + 1002);
+    expect(lower.next.scopeDownTo).toBeUndefined();
+    const due = laneStep(down.next, { type: "due" }, ctx(T0 + 1002));
+    expect(due.event).toBeUndefined();
+    expect(due.next.scope).toBe("all");
+    expect(due.next.scopeDownAt).toBeUndefined();
+    expect(due.next.scopeDownTo).toBeUndefined();
+    // A system socket is back before the end: the narrowing is off.
+    const back = laneStep(down.next, { type: "listen", scope: "system" }, ctx(T0 + 5));
+    expect(back.event).toBeUndefined();
+    expect(back.next).toMatchObject({ scope: "system" });
+    expect(back.next.scopeDownAt).toBeUndefined();
+    expect(back.next.scopeDownTo).toBeUndefined();
+    // Turned reader: the scope and any pending narrowing go.
+    const r = laneStep(down.next, { type: "unlisten", graceMs: 0 }, ctx(T0 + 6));
+    expect(r.next.scope).toBeUndefined();
+    expect(r.next.scopeDownTo).toBeUndefined();
+  });
+});
+
 describe("LaneRegistry", () => {
+  it("two inputs at once on one row: one line (they run in turn)", async () => {
+    const f = fakeRegistry();
+    await Promise.all([
+      f.reg.listen("owner", "agy", "owner"),
+      f.reg.listen("owner", "agy", "owner"),
+    ]);
+    expect(f.posts.map((p) => p.text)).toEqual(["agy is now listening live"]);
+  });
+  it("the sweep drops a lost all once its grace is over, and keeps it while a socket hears all", async () => {
+    const f = fakeRegistry();
+    await f.reg.listen("owner", "claude", "all");
+    await f.reg.listen("owner", "claude", "owner");
+    expect(f.due).toEqual([T0 + 1000]);
+    // An all-socket is back by the alarm: kept, nothing scheduled.
+    await f.reg.sweep(() => "all");
+    expect((f.store.get(laneRegKey("owner", "claude")) as LaneReg).scopeDownAt).toBeUndefined();
+    await f.reg.listen("owner", "claude", "owner");
+    // Still owner-only and not yet due: scheduled again.
+    await f.reg.sweep(() => "owner");
+    f.at(T0 + 1000);
+    await f.reg.sweep(() => "owner");
+    const r = f.store.get(laneRegKey("owner", "claude")) as LaneReg;
+    expect(r).toMatchObject({ state: "listener" });
+    expect(r.scope).toBeUndefined();
+    expect(f.posts).toHaveLength(1);
+    // A presence refresh for the scope change.
+    expect(f.touched.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("applies, posts, keeps the name, schedules, sweeps", async () => {
     const f = fakeRegistry();
     await f.reg.apply("owner", "rechrome", { type: "listen" }, "小镀");
@@ -449,6 +577,34 @@ describe("the hub: modes and system lines", () => {
     await flush();
     expect(h.events(page).at(-1)).toBe("lanes 开始实时监听");
   });
+  it("scope system: its own line, the presence row carries it; the widest socket wins", async () => {
+    const h = hubSetup({ graceSec: 30 });
+    const page = await h.ownerPage();
+    const k = await mint("claude");
+    const all = await h.listen(k.token, { mode: "listener", scope: "all" });
+    const sys = await h.listen(k.token, { mode: "listener", scope: "system" });
+    expect(sys.deserializeAttachment()).toMatchObject({ listener: true, scope: "system" });
+    expect(h.events(page)).toEqual([
+      "小克 开始实时监听（全部消息）",
+      "小克 开始实时监听（全部消息 + 系统通知）",
+    ]);
+    expect(page.lastPresent().find((x) => x.key === "lane:claude")).toMatchObject({
+      mode: "listener",
+      scope: "system",
+    });
+    // Closing the all-socket while the system one is open: nothing.
+    await h.leave(all);
+    expect(h.events(page)).toHaveLength(2);
+    // Closing the system one while an all-socket is open: graced, then silently "all".
+    const all2 = await h.listen(k.token, { scope: "all" });
+    await h.leave(sys);
+    t += 31_000;
+    await h.hub.alarm();
+    await flush();
+    expect(h.events(page)).toHaveLength(2);
+    expect(page.lastPresent().find((x) => x.key === "lane:claude")?.scope).toBe("all");
+    await h.leave(all2);
+  });
   it("listen → listener line, close → reader line, read → joined; presence carries the mode", async () => {
     const h = hubSetup();
     const page = await h.ownerPage();
@@ -478,20 +634,69 @@ describe("the hub: modes and system lines", () => {
     const one = await h.listen(a.token);
     const two = await h.listen(a.token);
     await h.leave(one);
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听"]);
     await h.leave(two);
     // In the grace: still listening.
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听"]);
     const three = await h.listen(a.token);
     t += 31_000;
     await h.hub.alarm();
     await flush();
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听"]);
     await h.leave(three);
     t += 31_000;
     await h.hub.alarm();
     await flush();
-    expect(h.events(page)).toEqual(["杰咪 开始实时监听", "杰咪 转为只读"]);
+    expect(h.events(page)).toEqual(["哈基米 开始实时监听", "哈基米 转为只读"]);
+  });
+  it("one lane, an all-socket and an owner-only one: one line; losing all is graced and silent", async () => {
+    const h = hubSetup({ graceSec: 30 });
+    const page = await h.ownerPage();
+    const k = await mint("claude");
+    const all = await h.listen(k.token, { mode: "listener", scope: "all" });
+    const own = await h.listen(k.token, { mode: "listener" });
+    expect(h.events(page)).toEqual(["小克 开始实时监听（全部消息）"]);
+    // The all-socket restarts within the grace: nothing.
+    await h.leave(all);
+    expect(page.lastPresent().find((x) => x.key === "lane:claude")?.scope).toBe("all");
+    const all2 = await h.listen(k.token, { mode: "listener", scope: "all" });
+    t += 31_000;
+    await h.hub.alarm();
+    await flush();
+    expect(h.events(page)).toEqual(["小克 开始实时监听（全部消息）"]);
+    // The owner-only feed restarting says nothing either.
+    await h.leave(own);
+    await h.listen(k.token, { mode: "listener" });
+    expect(h.events(page)).toEqual(["小克 开始实时监听（全部消息）"]);
+    // The all-socket gone for good: after the grace the scope drops, silently.
+    await h.leave(all2);
+    t += 31_000;
+    await h.hub.alarm();
+    await flush();
+    expect(h.events(page)).toEqual(["小克 开始实时监听（全部消息）"]);
+    expect(page.lastPresent().find((x) => x.key === "lane:claude")).toMatchObject({
+      mode: "listener",
+    });
+    expect(page.lastPresent().find((x) => x.key === "lane:claude")?.scope).toBeUndefined();
+    // A real upgrade: one line.
+    const all3 = await h.listen(k.token, { mode: "listener", scope: "all" });
+    expect(h.events(page)).toEqual([
+      "小克 开始实时监听（全部消息）",
+      "小克 开始实时监听（全部消息）",
+    ]);
+    // The all-socket reads only while the owner-only one listens: still live, the drop graced.
+    await h.hub.webSocketMessage(all3, JSON.stringify({ type: "lane", state: "reader" }));
+    await flush();
+    expect(all3.of("lane").at(-1)).toMatchObject({ state: "listener" });
+    expect(h.events(page)).toHaveLength(2);
+    // Every socket gone: one "转为只读" after the grace.
+    for (const s of h.sockets.filter((x) => x !== page && x.readyState === 1)) await h.leave(s);
+    expect(h.events(page)).toHaveLength(2);
+    t += 31_000;
+    await h.hub.alarm();
+    await flush();
+    expect(h.events(page).at(-1)).toBe("小克 转为只读");
+    expect(h.events(page)).toHaveLength(3);
   });
   it("an MCP client's socket, or mode reader, is a reader; {type:'lane'} switches it", async () => {
     const h = hubSetup();
@@ -649,5 +854,101 @@ describe("the hub: modes and system lines", () => {
     await h.http(a.token, { op: "read", limit: 1 });
     await flush();
     expect(page.lastPresent()[0]?.mode).toBeUndefined();
+  });
+});
+
+describe("LaneRegistry.apply: one lane's inputs run in order, a failed one does not jam the chain", () => {
+  it("a store write that throws rejects that input; the next input on the lane still applies", async () => {
+    const f = fakeRegistry();
+    const set = f.store.set.bind(f.store);
+    let failOnce = true;
+    f.store.set = ((k: string, v: unknown) => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error("kv down");
+      }
+      return set(k, v);
+    }) as typeof f.store.set;
+    await expect(f.reg.listen("owner", "agy", "owner")).rejects.toThrow("kv down");
+    // The chain's catch swallows the failure, so the lane's next input runs and lands.
+    expect((await f.reg.listen("owner", "agy", "owner"))?.state).toBe("listener");
+    expect(await f.reg.list("owner")).toHaveLength(1);
+  });
+});
+
+describe("busy: the lanes manager's word about its agent (the page's ring)", () => {
+  it("laneStep: busy, stuck, idle; the same word twice changes nothing; a leave clears it", () => {
+    const r = laneStep(undefined, { type: "seen" }, ctx()).next;
+    const b = laneStep(r, { type: "busy", busy: true }, ctx(T0 + 1));
+    expect(b.next).toMatchObject({ state: "reader", busy: true, busyAt: T0 + 1 });
+    expect(b.event).toBeUndefined();
+    expect(b.next.stuck).toBeUndefined();
+    expect(laneStep(b.next, { type: "busy", busy: true }, ctx(T0 + 2)).next).toBe(b.next);
+    const s = laneStep(b.next, { type: "busy", busy: true, stuck: true }, ctx(T0 + 3)).next;
+    expect(s).toMatchObject({ busy: true, stuck: true, busyAt: T0 + 3 });
+    // stuck without busy is not stuck.
+    const idle = laneStep(s, { type: "busy", busy: false, stuck: true }, ctx(T0 + 4)).next;
+    expect(idle.busy).toBeUndefined();
+    expect(idle.stuck).toBeUndefined();
+    expect(idle.busyAt).toBe(T0 + 4);
+    // A mode change keeps it; leaving clears it.
+    const l = laneStep(b.next, { type: "listen" }, ctx(T0 + 5)).next;
+    expect(l).toMatchObject({ state: "listener", busy: true });
+    const gone = laneStep(l, { type: "leave" }, ctx(T0 + 6)).next;
+    expect(gone.state).toBe("left");
+    expect(gone.busy).toBeUndefined();
+    expect(gone.busyAt).toBeUndefined();
+  });
+  it("over HTTP: stored on the row, pushed in presence on a change only, no line; bad values refused", async () => {
+    const h = hubSetup();
+    const page = await h.ownerPage();
+    const a = await mint("codex");
+    await h.http(a.token, { op: "say", text: "hi" });
+    await flush();
+    const before = page.of("present").length;
+    const lines = h.events(page).length;
+    expect((await h.http(a.token, { op: "lane", busy: "yes" })).status).toBe(400);
+    expect((await h.http(a.token, { op: "lane", busy: true, stuck: "no" })).status).toBe(400);
+    expect((await h.http(a.token, { op: "lane", busy: true })).body).toEqual({
+      ok: true,
+      lane: "codex",
+      state: "reader",
+      busy: true,
+    });
+    await flush();
+    const row = h.store.get(laneRegKey("owner", "codex")) as LaneReg;
+    expect(row).toMatchObject({ busy: true, busyAt: T0 });
+    expect(page.lastPresent().find((p) => p.key === "lane:codex")).toMatchObject({ busy: true });
+    const afterBusy = page.of("present").length;
+    expect(afterBusy).toBeGreaterThan(before);
+    // The same word again: no new presence push.
+    await h.http(a.token, { op: "lane", busy: true });
+    await flush();
+    expect(page.of("present").length).toBe(afterBusy);
+    await h.http(a.token, { op: "lane", busy: true, stuck: true });
+    await flush();
+    expect(page.lastPresent().find((p) => p.key === "lane:codex")).toMatchObject({
+      busy: true,
+      stuck: true,
+    });
+    expect((await h.http(a.token, { op: "lane", busy: false })).body.busy).toBe(false);
+    await flush();
+    expect(page.lastPresent().find((p) => p.key === "lane:codex")?.busy).toBeUndefined();
+    // Never a system line for it.
+    expect(h.events(page).length).toBe(lines);
+    // Checked as a read: a token without one is refused.
+    const w = await mint("writer", ["chat:write"]);
+    expect((await h.http(w.token, { op: "lane", busy: true })).status).toBe(403);
+  });
+  it("flag off: busy answers null and keeps nothing", async () => {
+    const h = hubSetup({ flag: false });
+    const a = await mint("codex");
+    expect((await h.http(a.token, { op: "lane", busy: true })).body).toEqual({
+      ok: true,
+      lane: "codex",
+      state: null,
+      busy: null,
+    });
+    expect([...h.store.keys()].some((k) => k.startsWith("lanereg:"))).toBe(false);
   });
 });

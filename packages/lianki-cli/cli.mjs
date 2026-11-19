@@ -574,7 +574,25 @@ async function cmdAppPublish(c) {
   emit(c, "app publish", data, (d) => `published ${d.url}`);
 }
 
+/**
+ * `say --play <src> [--title …] [--kind file|stream]`: audio the user's phone
+ * may play on this line. Only its shape is checked here (https:// or
+ * file:<id>); lianki.com checks the rest and never fetches it.
+ */
+export function playOf(argv) {
+  if (argv.play === undefined) return undefined;
+  const src = String(argv.play ?? "").trim();
+  if (!/^(https:\/\/\S+|file:[0-9a-f]{20})$/.test(src))
+    throw usage("--play takes an https URL or file:<id> (a My Files id)", 'lianki chat say --play https://example.com/a.mp3 "listen"');
+  const kind = argv.kind === undefined ? undefined : String(argv.kind);
+  if (kind !== undefined && kind !== "file" && kind !== "stream")
+    throw usage("--kind is file or stream", 'lianki chat say --play https://radio.example/live --kind stream "live"');
+  const title = argv.title === undefined ? undefined : String(argv.title).trim();
+  return { src, ...(title ? { title } : {}), ...(kind ? { kind } : {}) };
+}
+
 async function cmdChatSay(c) {
+  const play = playOf(c.argv);
   const token = await needToken(c);
   const parts = (c.argv.text ?? []).map(String);
   if (c.argv.stdin && parts.length > 0)
@@ -600,6 +618,7 @@ async function cmdChatSay(c) {
       // How it cuts into the reading when it arrives live: stop yours, or pause and go on.
       ...(c.argv.supersede ? { cut: "supersede" } : {}),
       ...(c.argv.interject ? { cut: "interject" } : {}),
+      ...(play ? { play } : {}),
     },
   });
   emit(
@@ -698,7 +717,7 @@ async function cmdChatListen(c) {
   await chatSocket(c, token, {
     history,
     mode: c.argv.reader ? "reader" : "listener",
-    ...(c.argv.everyone && !c.argv.reader ? { scope: "all" } : {}),
+    ...(c.argv.reader ? {} : c.argv.system ? { scope: "system" } : c.argv.everyone ? { scope: "all" } : {}),
     onEvent: (m) => {
       if (m.type === "history") for (const x of m.messages ?? []) c.deps.out(c.json ? JSON.stringify({ type: "chat", message: x, history: true }) : chatLine(x));
       else if (m.type === "chat") c.deps.out(c.json ? JSON.stringify(m) : chatLine(m.message));
@@ -1095,10 +1114,17 @@ function build(args, deps, box) {
                     type: "boolean",
                     describe: "Urgent: pauses the line being read, reads this one, then goes on",
                   })
+                  .option("play", {
+                    type: "string",
+                    describe: "Audio the phone plays on this line: an https URL (file or stream) or file:<id> (needs chat:play)",
+                  })
+                  .option("title", { type: "string", describe: "With --play: a short name on its play button" })
+                  .option("kind", { type: "string", describe: "With --play: file or stream (default: from the URL)" })
                   .option("stdin", { type: "boolean", hidden: true }),
                 [
                   ['lianki chat say "PR #12 is green"', "→ 【<token name>】PR #12 is green"],
                   ['lianki chat say --voice main "hi"', "read in main's voice instead of the lane's"],
+                  ['lianki chat say --play https://example.com/hello.mp3 "listen to this"', "a line with a ▶ on the phone"],
                   ["git log -1 --format=%s | lianki chat say -", ""],
                 ],
               ),
@@ -1156,7 +1182,8 @@ function build(args, deps, box) {
             (y) =>
               examples(y.option("history", { type: "number", default: 0, describe: "First print the last n lines (0–100; memory only with --deliver)" })
                 .option("reader", { type: "boolean", describe: "Listen as a reader, not a resident listener (the lane's mode in the chat)" })
-                .option("everyone", { type: "boolean", describe: "Tell the chat this listener's agent hears every line (agents' and system lines too), not only the owner's" })
+                .option("everyone", { type: "boolean", describe: "Tell the chat this listener's agent hears every line (the other agents' too), not only the owner's" })
+                .option("system", { type: "boolean", describe: "Tell the chat this listener's agent hears every line and the system notices too (implies --everyone)" })
                 .option("deliver", { type: "string", describe: "Optionally bridge to this ay agent target" })
                 .option("cwd", { type: "string", describe: "Agent directory for ay target ." })
                 .option("filter-service", { type: "string", describe: "Optional AI filter URL for --deliver" })

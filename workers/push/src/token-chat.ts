@@ -5,17 +5,21 @@ import { cleanAppRefs, miniAppsIn } from "../../../packages/debug-chat/src/mini-
  * (debug.ts calls in here). docs/lianki-dev-cli.md, "lianki chat".
  *
  *   POST /api/version/chat  Authorization: Bearer lk_…
+ *        {op:"say", text, quiet?, play?:{src,title?,kind?}} → {ok, id}   (play: chat:play)
  *        {op:"say", text, quiet?, cut?}          → {ok, id}   cut: "supersede" | "interject"
  *        {op:"ask", question, options | questions, expiresAt?} → {ok, id, askId}
  *        {op:"read", limit?, afterSeq?, throughSeq?} → {ok, thread, lane, messages, ...coverage}
  *        {op:"read-ack", lastReadSeq}              → {ok, thread, lastReadSeq} explicit consumption only
  *        {op:"avatar", svg: "<svg…>" | null}     → {ok, avatar, dropped}  (chat:write)
  *        {op:"lane", state: "reader" | "left"}   → {ok, lane, state}    (chat:read; lane-registry.ts)
+ *        {op:"lane", busy: boolean, stuck?}      → {ok, lane, state, busy}  the lanes manager: its agent
+ *                                                  is mid-task (the page's turning ring)
  *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?, mode?, scope?};
  *        then {type:"say"|"ask", …}, {type:"lane", state}, {type:"read-ack",lastReadSeq}
  *        or {type:"replay",afterSeq,throughSeq?}; passive delivery never advances reads.
- *        `scope`: "all" | "owner" (a listener: does its agent get every line, or the
- *        owner's only; absent = "owner"), kept on the presence row.
+ *        `scope`: "system" | "all" | "owner" (a listener: does its agent get every line
+ *        and the system notices, every line, or the owner's only; absent = "owner"),
+ *        kept on the presence row.
  *        `mode`: "listener" (`lianki chat listen`; the default without one, but for an
  *        MCP client) or "reader" (an MCP wait, the lanes manager): the lane's mode in
  *        the lane registry (lane-registry.ts, "全员入群").
@@ -73,13 +77,19 @@ import {
 } from "../../../lib/dev-eval";
 import { laneOf, laneSpec, parseLineVoice } from "../../../packages/debug-chat/src/voices";
 import { type LaneRegistry, MUTED_REASON } from "./lane-registry";
-import type { LaneScope } from "../../../packages/debug-chat/src/lane-events";
+import {
+  type LaneScope,
+  scopeRank,
+  wideScope,
+  widerScope,
+} from "../../../packages/debug-chat/src/lane-events";
 import { sanitizeAvatarSvg } from "../../../packages/debug-chat/src/svg-avatar";
 import {
   type PartRecord,
   cleanPartName,
   effective,
 } from "../../../packages/debug-chat/src/presence";
+import { parsePlay, playRefusal, srcHost } from "../../../packages/debug-chat/src/play-audio";
 
 export const CHAT_PATH = "/api/version/chat";
 export const REVOKED_PATH = "/internal/chat-tokens/revoked";
@@ -118,8 +128,8 @@ export type TokenAtt = {
   mcp?: true;
   /** A resident listener's socket (lane-registry.ts): its lane is a listener while one is open. */
   listener?: true;
-  /** A listener whose agent hears every line (auth `scope: "all"`); absent: the owner's only. */
-  scope?: "all";
+  /** A listener whose agent hears every line (auth `scope: "all"`), and the system notices too ("system"); absent: the owner's only. */
+  scope?: "all" | "system";
   until?: number | null;
   checkedAt?: number;
 };
@@ -155,6 +165,8 @@ export type ChatTokenRpc = {
     tokenHash?: string;
     client?: string;
   }): Promise<unknown>;
+  /** `say --play` (lib/play-check.ts): chat:play, the flag, deny list, rate; audited. */
+  playAudio?(req: Record<string, unknown>): Promise<unknown>;
 };
 
 export interface TokenHost {
@@ -371,15 +383,20 @@ export class TokenChat {
     const lanes = this.host.lanes;
     if (!lanes) return;
     const r = await this.host.kv?.get<PartRecord>(partKey(v.tag));
-    await lanes.apply(
-      thread,
-      v.lane,
-      input === "listen" ? { type: input, scope: scope ?? "owner" } : { type: input },
-      laneShownName(v.lane, r?.ownerName),
-    );
+    const name = laneShownName(v.lane, r?.ownerName);
+    // The lane's scope over all its live sockets (this one is attached already).
+    if (input === "listen")
+      await lanes.listen(thread, v.lane, this.laneScope(thread, v.lane) || scope || "owner", name);
+    else await lanes.apply(thread, v.lane, { type: input }, name);
   }
 
-  private async say(thread: string, lane: string, m: Record<string, unknown>, who: Who = {}) {
+  private async say(
+    thread: string,
+    lane: string,
+    m: Record<string, unknown>,
+    who: Who = {},
+    cred?: { token: string } | { tokenHash: string },
+  ) {
     const muted = await this.mutedRefusal(thread, lane);
     if (muted) return muted;
     const apps = cleanAppRefs(m.attachments);
@@ -412,6 +429,22 @@ export class TokenChat {
     // One of the two modes or nothing, like the grant path (lib/dev-eval.ts parseControllerMessage).
     if (m.cut !== undefined && !isSayCut(m.cut))
       return { error: `cut must be one of ${SAY_CUTS.join(", ")}` };
+    // Parse locally; the main Worker authorizes the host, scope, feature flag and rate.
+    let audio: ChatMessage["audio"];
+    if (m.play !== undefined) {
+      const raw = (m.play && typeof m.play === "object" ? m.play : {}) as Record<string, unknown>;
+      const p = parsePlay({ src: raw.src, title: raw.title, kind: raw.kind });
+      if (!p.ok) return { error: p.error };
+      if (!cred) return { error: playRefusal("unavailable") };
+      const refused = await this.playVerdict({
+        via: "token",
+        ...cred,
+        host: srcHost(p.audio.src),
+        kind: p.audio.kind,
+      });
+      if (refused) return { error: refused };
+      audio = p.audio;
+    }
     const line = this.line(
       thread,
       lane,
@@ -422,11 +455,19 @@ export class TokenChat {
         ...(voice ? { voice: m.voice as string } : {}),
         // How it cuts into the reading when it arrives live (packages/debug-chat voice.ts).
         ...(isSayCut(m.cut) ? { cut: m.cut } : {}),
+        ...(audio ? { audio } : {}),
       },
       who,
     );
     await this.host.post(line);
-    console.log(JSON.stringify({ msg: "debug.token-say", lane, owner: thread === OWNER_THREAD }));
+    console.log(
+      JSON.stringify({
+        msg: "debug.token-say",
+        lane,
+        owner: thread === OWNER_THREAD,
+        ...(audio ? { play: { host: srcHost(audio.src), kind: audio.kind } } : {}),
+      }),
+    );
     return { id: line.id };
   }
 
@@ -448,6 +489,21 @@ export class TokenChat {
       }),
     );
     return { id: line.id, askId: ask.askId };
+  }
+
+  /** null: the audio line may go; else why not (deny by default). */
+  private async playVerdict(req: Record<string, unknown>): Promise<string | null> {
+    const rpc = this.host.rpc();
+    if (!rpc?.playAudio) return playRefusal("unavailable");
+    try {
+      const a = (await rpc.playAudio(req)) as { ok?: unknown; error?: unknown } | null;
+      return a?.ok === true ? null : playRefusal(String(a?.error ?? "unavailable"));
+    } catch (e) {
+      console.error(
+        JSON.stringify({ msg: "debug.token-play-failed", error: String(e).slice(0, 200) }),
+      );
+      return playRefusal("unavailable");
+    }
   }
 
   /** POST /api/version/chat. */
@@ -485,7 +541,14 @@ export class TokenChat {
       return json({ ok: false, error: "invalid sequence" }, 400);
     // op "lane" is a reader's word about itself: checked as a read (chat:read), so a
     // main Worker that has never heard of it answers it as before.
-    if (op === "lane" && body.state !== "reader" && body.state !== "left")
+    const busyOp = op === "lane" && body.state === undefined && body.busy !== undefined;
+    if (
+      busyOp &&
+      (typeof body.busy !== "boolean" ||
+        (body.stuck !== undefined && typeof body.stuck !== "boolean"))
+    )
+      return json({ ok: false, error: "lane: busy and stuck must be true or false" }, 400);
+    if (op === "lane" && !busyOp && body.state !== "reader" && body.state !== "left")
       return json({ ok: false, error: 'lane: state must be "reader" or "left"' }, 400);
     // `lianki mcp` names itself (x-lianki-client) for the audit log; the main
     // Worker keeps it only in its one known shape (lib/api-token-client.ts).
@@ -498,6 +561,7 @@ export class TokenChat {
     if (!v.ok) return refusal(v);
     const thread = await this.threadOf(v);
     if (!thread) return json({ ok: false, error: "blocked" }, 403);
+    if (busyOp) return this.laneBusy(v, thread, body.busy as boolean, body.stuck === true);
     if (op === "lane") return this.laneOp(v, thread, body.state as "reader" | "left");
     if (op === "prepare") {
       const rpc = this.host.rpc();
@@ -573,7 +637,7 @@ export class TokenChat {
     const who = await this.who(v, thread, mcp);
     const out =
       op === "say"
-        ? await this.say(thread, v.lane, body, who)
+        ? await this.say(thread, v.lane, body, who, { token: m[1]! })
         : await this.ask(thread, v.lane, body, who);
     if ("error" in out)
       return json(
@@ -601,6 +665,32 @@ export class TokenChat {
     );
     // Flag off: nothing is kept, and the caller carries on as before.
     return json({ ok: true, lane: v.lane, state: next?.state ?? null });
+  }
+
+  /**
+   * op "lane" with `busy`: the lanes manager says its agent started (true) or ended (false) a
+   * task, from the agent's live output (scripts/dev/lanes-busy.ts). Only the row's busy changes,
+   * no line is said; the thread's pages get the presence list again when it changed.
+   */
+  private async laneBusy(
+    v: Verified,
+    thread: string,
+    busy: boolean,
+    stuck: boolean,
+  ): Promise<Response> {
+    const r = await this.host.kv?.get<PartRecord>(partKey(v.tag));
+    const next = await this.host.lanes?.apply(
+      thread,
+      v.lane,
+      { type: "busy", busy, stuck },
+      laneShownName(v.lane, r?.ownerName),
+    );
+    return json({
+      ok: true,
+      lane: v.lane,
+      state: next?.state ?? null,
+      busy: next ? next.busy === true : null,
+    });
   }
 
   /** The presence read window (ms): the host sets it from live config (chat.presenceReadMin). */
@@ -775,7 +865,7 @@ export class TokenChat {
     const who = await this.who(v, thread, a.mcp === true);
     const out =
       m.type === "say"
-        ? await this.say(thread, v.lane, m, who)
+        ? await this.say(thread, v.lane, m, who, { tokenHash: a.hash! })
         : await this.ask(thread, v.lane, m, who);
     if ("error" in out)
       return send(ws, {
@@ -805,16 +895,22 @@ export class TokenChat {
     if (lanes && a.lane) {
       const r = a.tag ? await this.host.kv?.get<PartRecord>(partKey(a.tag)) : undefined;
       const name = laneShownName(a.lane, r?.ownerName);
-      // Reading only while another socket of the lane still listens: that one keeps it a listener.
-      if (state === "reader" && this.listening(a.thread!, a.lane, ws))
-        next = await lanes.apply(a.thread!, a.lane, { type: "seen" }, name);
+      // Reading only while another socket of the lane still listens: that one keeps it a
+      // listener (its scope: the remaining sockets').
+      const others = this.laneScope(a.thread!, a.lane, ws);
+      if (state === "reader" && others) next = await lanes.listen(a.thread!, a.lane, others, name);
+      else if (listener)
+        next = await lanes.listen(
+          a.thread!,
+          a.lane,
+          this.laneScope(a.thread!, a.lane) || "owner",
+          name,
+        );
       else
         next = await lanes.apply(
           a.thread!,
           a.lane,
-          listener
-            ? { type: "listen", scope: a.scope ?? "owner" }
-            : { type: state === "left" ? "leave" : "reader" },
+          { type: state === "left" ? "leave" : "reader" },
           name,
         );
     }
@@ -823,7 +919,17 @@ export class TokenChat {
 
   /** Does another open socket of this lane (in this thread) listen? */
   listening(thread: string, lane: string, except?: unknown): boolean {
-    return this.authed(thread).some(({ ws, a }) => ws !== except && a.lane === lane && a.listener);
+    return this.laneScope(thread, lane, except) !== false;
+  }
+
+  /** The lane's effective scope over its open listening sockets (the widest: system > all > owner); false: none listens. */
+  laneScope(thread: string, lane: string, except?: unknown): LaneScope | false {
+    let out: LaneScope | false = false;
+    for (const { ws, a } of this.authed(thread)) {
+      if (ws === except || a.lane !== lane || !a.listener) continue;
+      out = widerScope(out || "owner", a.scope ?? "owner");
+    }
+    return out;
   }
 
   /**
@@ -832,14 +938,18 @@ export class TokenChat {
    */
   async closed(ws: TokenSocket, a: TokenAtt) {
     if (!a.listener || !a.thread || !a.lane || !this.host.lanes) return;
-    if (this.listening(a.thread, a.lane, ws)) return;
+    const others = this.laneScope(a.thread, a.lane, ws);
+    // Another socket still listens: the lane stays live; only a narrowing is (graced) news.
+    if (others && scopeRank(others) >= scopeRank(a.scope)) return;
     const r = a.tag ? await this.host.kv?.get<PartRecord>(partKey(a.tag)) : undefined;
-    await this.host.lanes.unlisten(a.thread, a.lane, laneShownName(a.lane, r?.ownerName));
+    const name = laneShownName(a.lane, r?.ownerName);
+    if (others) await this.host.lanes.listen(a.thread, a.lane, others, name);
+    else await this.host.lanes.unlisten(a.thread, a.lane, name);
   }
 
   /** The alarm: listeners past their grace turn reader (unless one came back). */
   async laneSweep() {
-    await this.host.lanes?.sweep((thread, lane) => this.listening(thread, lane));
+    await this.host.lanes?.sweep((thread, lane) => this.laneScope(thread, lane));
   }
 
   private async auth(ws: TokenSocket, a: TokenAtt, m: Record<string, unknown> | null) {
@@ -871,13 +981,14 @@ export class TokenChat {
     const listener = m.mode === "listener" || (m.mode === undefined && !a.mcp);
     // What its agent hears: every line (`lianki chat listen --everyone`), else the owner's
     // (an older client says nothing: "owner").
-    const scope: LaneScope = listener && m.scope === "all" ? "all" : "owner";
+    // (`--system`: the system notices too.)
+    const scope: LaneScope = (listener && wideScope(m.scope)) || "owner";
     const next: TokenAtt = {
       role: "token",
       at: a.at,
       ...(a.mcp ? { mcp: true as const } : {}),
       ...(listener ? { listener: true as const } : {}),
-      ...(scope === "all" ? { scope } : {}),
+      ...(wideScope(scope) ? { scope: wideScope(scope) } : {}),
       thread,
       userId: v.userId,
       lane: v.lane,

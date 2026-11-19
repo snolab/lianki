@@ -169,6 +169,8 @@ export default async function RootLayout({
       : undefined;
   // Fold utterances from other voices by default in the chat (avatar-rules.ts); off: expanded.
   const foldOthers = flagIn(flags, "voice.fold-others");
+  // One avatar per voice in the room (cluster-avatar.ts); off: one shared "another voice".
+  const speakerAvatars = flagIn(flags, "voice.speaker-avatars");
   // His Mac's Whisper re-reads each continuous-speech run (whisper-recheck.ts): audience owner.
   const whisperRecheck =
     dev && flagIn(flags, "stt.whisper-recheck")
@@ -183,6 +185,8 @@ export default async function RootLayout({
     dev && flagIn(flags, "voice.cloud-voices")
       ? { on: true, map: await cfg("voice.langVoices") }
       : undefined;
+  // An agent's audio lines play on his phone (docs/li-sound-hub.md); dev holders only (the flag's audience).
+  const playAudio = flagIn(flags, "chat.play-audio");
   const boots = {
     strings: partner,
     leave,
@@ -200,10 +204,12 @@ export default async function RootLayout({
     talkOver,
     polishReadback,
     foldOthers,
+    speakerAvatars,
     whisperRecheck,
     pttMaxCaptureMs: await cfg("voice.pttMaxCaptureMs"),
     // A posted voice line takes the speech that follows (voice-merge.ts reopenVerdict): owner only.
     mergeReopenSec: dev ? await cfg("stt.mergeReopenSec") : undefined,
+    playAudio,
   };
   const box = boxConfig();
   return (

@@ -2,8 +2,15 @@ import { HUB_RPC_LIMITS } from "./hub-rpc-config";
 import {
   CAP_WINDOW_HOURS,
   CAP_WINDOW_MAX,
+  OWNER_LANE_ACTIVE_MAX,
+  OWNER_LANE_ACTIVE_MS,
+  OWNER_LI_NAMES,
+  OWNER_QUIET_MAX,
+  OWNER_QUIET_MS,
   OWNER_REPLY_DELAY_MAX,
   OWNER_REPLY_DELAY_MS,
+  OWNER_SPOKEN_NEEDS_NAME,
+  OWNER_STOP_PHRASES,
   ROLL_CALL_REPLY_DEFAULT,
   SITE_DAILY_USD,
   SITE_WINDOW_USD_MAX,
@@ -49,8 +56,9 @@ import {
   type ChatLaneDef,
 } from "@lianki/debug-chat/voices";
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
+import { PHONETIC_MAX_NEAR_DEFAULT, PHONETIC_MAX_NEAR_MAX } from "@lianki/debug-chat/lane-phonetic";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
-import { ETA_TICKER_KEEP, ETA_TICKER_SEC } from "@lianki/debug-chat/eta-ticker";
+import { ETA_BAR_CYCLE, ETA_TICKER_KEEP, ETA_TICKER_SEC } from "@lianki/debug-chat/eta-ticker";
 import { MERGE_REOPEN_DEFAULT_SEC, MERGE_REOPEN_MAX_SEC } from "@lianki/debug-chat/voice-tune";
 import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
 import { VAD_MAX, VAD_MIN, VAD_THRESHOLDS } from "@lianki/debug-chat/adaptive";
@@ -330,6 +338,64 @@ export const CONFIG = {
   },
   // The polish read-back in his cloned voice (packages/debug-chat/src/polish-readback.ts),
   // flag voice.polish-readback: a clip from the Mac's clone server not back by then is skipped.
+  // An undecided voice line well under his print shows another voice's avatar
+  // (packages/debug-chat/src/avatar-rules.ts, owner 2026-11-15 23:49 JST).
+  "voice.otherAvatarBelow": {
+    // Same as OTHER_AVATAR_BELOW in avatar-rules.ts (not imported: it pulls the lane tables into config).
+    default: 0.45,
+    schema: z.number().min(0).max(1),
+    min: 0,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "public",
+    description:
+      "声纹判定不了（未定）的语音行，如果和你的声纹相似度低于这个值，就用「另一个声音」的头像显示，而不是你的头像（淡色加问号）。你自己的话通常在 0.76–0.85，家人等其他人在 0.30–0.42。0 = 关闭，未定的行一律用你的头像。",
+  },
+  // The picture and name of another voice in his thread (avatar-rules.ts setOtherAvatar).
+  "voice.otherAvatar": {
+    default: "",
+    schema: z.union([
+      z.literal(""),
+      z
+        .string()
+        .max(500)
+        .regex(/^(https:\/\/|\/)/, "an https:// or /path picture link"),
+    ]),
+    group: "voice",
+    audience: "public",
+    description:
+      "你线程里「另一个声音」的行用的头像图片链接（https:// 或站内 /路径），比如家人自己账号的头像。空 = 用自动生成的圆形图案。只影响显示。",
+  },
+  "voice.otherAvatarName": {
+    default: "",
+    schema: z.string().max(40),
+    group: "voice",
+    audience: "public",
+    description: "「另一个声音」的行显示的名字（比如家人的名字）。空 = 「另一个声音」。",
+  },
+  // One avatar per voice in the room (packages/debug-chat/src/cluster-avatar.ts, flag voice.speaker-avatars).
+  "voice.clusterHues": {
+    // Same as CLUSTER_HUES in cluster-avatar.ts (not imported: config stays free of the chat package).
+    default: [70, 110, 150, 185, 220, 255, 290, 325],
+    schema: z.array(z.number().min(0).max(360)).min(1).max(24),
+    group: "voice",
+    audience: "public",
+    description:
+      "每个声音的头像颜色（oklch 色相 0–360，按顺序：A 用第一个，B 用第二个……）。印章红附近（约 5–45）的色相会被跳过，那是你的颜色。只影响显示。",
+  },
+  "voice.clusterMinScore": {
+    // Same as CLUSTER_MIN_SCORE in cluster-avatar.ts.
+    default: 0,
+    schema: z.number().min(0).max(1),
+    min: 0,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "public",
+    description:
+      "一行语音和它所属声音分组的相似度（clusterScore）低于这个值时，不画这个分组的头像，改用共用的「另一个声音」头像。0 = 有分组就画。",
+  },
   "voice.cloneTimeoutMs": int({
     default: 20_000,
     min: 2_000,
@@ -875,7 +941,7 @@ export const CONFIG = {
     group: "chat",
     audience: "public",
     description:
-      "聊天里的任务进度条：agent 改了甘特图上的任务（新增、完成、提前完成、推迟、卡住、等你、到点）时，进度条中间播报这条变化，每条显示几秒，之后回到“23 个任务 · 1.4H · 99%”的汇总。",
+      "聊天里的任务进度条：agent 改了甘特图上的任务（新增、完成、提前完成、推迟、卡住、等你、到点）时，进度条中间播报这条变化，每条显示几秒，之后回到截止最早的任务（chat.etaBarCycle）。",
   }),
   "chat.etaTickerKeep": int({
     default: ETA_TICKER_KEEP,
@@ -885,7 +951,17 @@ export const CONFIG = {
     group: "chat",
     audience: "public",
     description:
-      "任务进度条播报时轮流显示最近几条变化（最新的在前）；有新变化时从头播一遍，播完回到汇总。你自己在页面上做的修改不播报。",
+      "任务进度条一次播报最近几条变化：默认 1 = 只在 agent 刚更新了甘特图时闪一下并显示那一条，之后回到截止最早的任务，没有变化就安静；设大于 1 则轮流显示最近几条（最新的在前）。你自己在页面上做的修改不播报。",
+  }),
+  "chat.etaBarCycle": int({
+    default: ETA_BAR_CYCLE,
+    min: 1,
+    max: 10,
+    unit: "items",
+    group: "chat",
+    audience: "public",
+    description:
+      "任务进度条平时显示截止时间最早的那个未完成任务：名字和“超时 20M”或“还剩 35M”。默认 1 = 只显示最早的那一条；设大于 1 则按截止时间顺序轮流显示最早的几条，每条停留 chat.etaTickerSec 秒。有新变化时先播报变化，之后回到这里；“23 个任务 · 1.4H · 99%”的汇总在悬停提示里。",
   }),
   "chat.gripHoldMs": int({
     default: 500,
@@ -973,6 +1049,18 @@ export const CONFIG = {
     description:
       '聊天里的「线」和它们的唤醒名（唯一的一张表，原 chat.laneNames 已并入；aliases 就是唤醒名，也进语音识别热词）：每个 agent 一条，名字 = 它的 API token 名。JSON 数组，每条 {id token 名, name 显示名, aliases 叫它的名字, heard 语音识别常写成的样子, voice main/calm/bright/sweet, color oklch 颜色}。内置的 coco（codex）、杰咪（agy）、小克（claude）写同一个 id 就是给它们加名字。例：{"id":"agy","aliases":["咪宝"]}、{"id":"rechrome","name":"小镀","heard":["瑞克罗姆"]}。点名、唤醒词、头像闪烁都按这张表。',
   },
+  // Lane names by sound (packages/debug-chat/src/lane-phonetic.ts): the router,
+  // the avatar flash and the @mention all read it. The Mac's listeners read
+  // env LIANKI_LANES_PHONETIC_MAX_NEAR.
+  "lanes.phoneticMaxNear": int({
+    default: PHONETIC_MAX_NEAR_DEFAULT,
+    min: 0,
+    max: PHONETIC_MAX_NEAR_MAX,
+    group: "lanes",
+    audience: "public",
+    description:
+      "点名按读音认名字时，一个名字里最多几个字可以「读音相近」（j/q/x、zh/z、n/l、in/ing、an/ang、ie/i 这类混淆；声调不算）。例：1 时「切咪」「杰民」都算叫杰咪；0 = 拼音完全一样才算（「解密」「杰米」照样算）。Mac 上的监听读环境变量 LIANKI_LANES_PHONETIC_MAX_NEAR。",
+  }),
   // The lanes manager on the Mac (scripts/dev/lanes-manager.ts): it runs there,
   // not in the Worker, so its live value is the env var named in lib/lanes-config.ts.
   "lanes.repos": {
@@ -989,7 +1077,7 @@ export const CONFIG = {
     group: "lanes",
     audience: "server",
     description:
-      '登记过名字的 agent：JSON 数组，每条 {cwd 工作目录结尾, cli 可选 codex/claude/agy…, lane 线名 = token 名, resident 是否常驻实时监听}。没登记的 agent 叫 <仓库>-<cli>-<pid>，默认只读，被点名才叫醒。例：{"cwd":"lianki/tree/codex","cli":"codex","lane":"codex","resident":true}。Mac 上的值是环境变量 LIANKI_LANES_AGENTS（JSON）。',
+      '登记过名字的 agent：JSON 数组，每条 {cwd 工作目录结尾, cli 可选 codex/claude/agy…, lane 线名 = token 名, resident 是否常驻实时监听, scope 可选 owner 只听你的/all 全部消息/system 全部消息 + 系统通知}。没登记的 agent 叫 <仓库>-<cli>-<pid>，默认只读，被点名才叫醒。例：{"cwd":"lianki/tree/codex","cli":"codex","lane":"codex","resident":true}。Mac 上的值是环境变量 LIANKI_LANES_AGENTS（JSON）。',
   },
   "lanes.relistSec": int({
     default: LANES_CONFIG_DEFAULTS["lanes.relistSec"],
@@ -1019,6 +1107,16 @@ export const CONFIG = {
     description:
       "只读的 agent 被你点名（名字、别名、#仓库、全体、@它）之后，接下来多少分钟里你说的话都实时发给它；每次再点名重新计时，到时间回到只读。0 = 只发点名的那句。Mac 上的值是环境变量 LIANKI_LANES_WAKE_LIVE_MIN。",
   }),
+  "lanes.busyIdleSec": int({
+    default: LANES_CONFIG_DEFAULTS["lanes.busyIdleSec"],
+    min: 1,
+    max: 600,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "谁在忙：agent 的实时输出停了这么多秒，就算它闲下来了，头像上的转圈停下。输出一来就又算忙。Mac 上的值是环境变量 LIANKI_LANES_BUSY_IDLE_SEC。",
+  }),
   "lanes.modeGraceSec": int({
     default: 30,
     min: 0,
@@ -1035,7 +1133,7 @@ export const CONFIG = {
     group: "lanes",
     audience: "server",
     description:
-      "「coco 开始实时监听」「杰咪 下线」这类系统消息存进聊天时用哪种语言写（新页面会按你的界面语言显示，旧页面显示这份）。",
+      "「coco 开始实时监听」「哈基米 下线」这类系统消息存进聊天时用哪种语言写（新页面会按你的界面语言显示，旧页面显示这份）。",
   },
   "lanes.greeting": {
     default: LANES_CONFIG_DEFAULTS["lanes.greeting"] as string,
@@ -1045,15 +1143,23 @@ export const CONFIG = {
     description:
       "新 agent 入群时用它自己的 token 发的第一句问候。{name} = 线名，{repo} = 仓库，{cli} = 它是哪种 agent，{mode} = 只读 / 实时监听。Mac 上的值是环境变量 LIANKI_LANES_GREETING。",
   },
+  "lanes.greetingAnswerUnnamed": {
+    default: LANES_CONFIG_DEFAULTS["lanes.greetingAnswerUnnamed"] as string,
+    schema: z.string().min(1).max(200),
+    group: "lanes",
+    audience: "server",
+    description:
+      "可以答没点名的话的 agent（coco、哈基米）入群时的第一句问候，占位符同上。Mac 上的值是环境变量 LIANKI_LANES_GREETING_ANSWER_UNNAMED。",
+  },
   "chat.presenceShown": int({
-    default: 6,
+    default: 3,
     min: 1,
     max: 12,
     unit: "avatars",
     group: "chat",
     audience: "public",
     description:
-      "聊天头像栏最多叠放显示几个头像：实时监听的在前（最近活跃的在前），只读的灰色排在后面；其余显示为「+N」，展开的列表仍列出全部。",
+      "聊天头像栏最多叠放显示几个头像：只算能马上回答的（实时监听的 agent 和人，最近活跃的在前），其余显示为「+N」；只读车道不画头像，只在最后显示一个「+N 只读」，展开的列表仍列出全部。",
   }),
   "chat.prepareAuthCalls": int({
     default: 120,
@@ -1200,6 +1306,50 @@ export const CONFIG = {
     audience: "server",
     description:
       "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 30000 = 30 秒。开关在 /dev/flags 的 partner.owner-thread。",
+  }),
+  "partner.ownerQuietMs": int({
+    default: OWNER_QUIET_MS,
+    min: 0,
+    max: OWNER_QUIET_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "你在自己的线程里叫 Li 别说话（partner.stopPhrases 里的话，如「没问你」「闭嘴」）后，Li 沉默多少毫秒；其间你直接叫 Li（partner.liNames）它才回答。默认 600000 = 10 分钟；0 = 不沉默。",
+  }),
+  "partner.stopPhrases": {
+    default: [...OWNER_STOP_PHRASES] as string[],
+    schema: z.array(z.string().min(1).max(40)).max(200),
+    group: "chat",
+    audience: "server",
+    description:
+      "让 Li 沉默的话：你的一句话里含其中任何一条（不分大小写，任何语言都直接加在这里），且没有叫开发通道的名字，Li 就沉默 partner.ownerQuietMs。JSON 字符串数组。",
+  },
+  "partner.liNames": {
+    default: [...OWNER_LI_NAMES] as string[],
+    schema: z.array(z.string().min(1).max(40)).max(50),
+    group: "chat",
+    audience: "server",
+    description:
+      "Li 自己的名字：你的一句话以其中一个开头、后面跟标点或什么都没有（「Li，…」），就是在叫 Li：结束沉默，开发通道正在说话时也照样回答。JSON 字符串数组。",
+  },
+  "partner.spokenNeedsName": {
+    default: OWNER_SPOKEN_NEEDS_NAME as boolean,
+    schema: z.boolean(),
+    group: "chat",
+    audience: "server",
+    description:
+      "你说出来的话（麦克风转写）只有叫到 Li 的名字（partner.liNames，句中任何位置）时 Li 才回答：房间里别人说话、转写串了都不接。默认 true；false = 和打字的话一样处理。打字的话不受影响。",
+  },
+  "partner.laneActiveMs": int({
+    default: OWNER_LANE_ACTIVE_MS,
+    min: 0,
+    max: OWNER_LANE_ACTIVE_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "开发通道（不算 Li）最近这么多毫秒内在你的线程里说过话，Li 就不回答你没点名的话（多半是在跟那个通道对话）。默认 300000 = 5 分钟；0 = 不看。",
   }),
   "partner.rollCallReply": {
     default: ROLL_CALL_REPLY_DEFAULT as string,
@@ -1427,6 +1577,28 @@ export const CONFIG = {
     description:
       "小应用经你同意后可以读、改哪些账号设置（逗号分隔的设置键；不在 lib/prefs/schema.ts 里的会被忽略）。默认只有界面语言、纸张、动画、字号、偏好语言、朗读和语速。",
   },
+  // Agent audio on his phone (docs/li-sound-hub.md, "Playing audio from an agent").
+  "chat.play.denyHosts": {
+    default: "" as string,
+    schema: z
+      .string()
+      .max(2000)
+      .regex(/^[A-Za-z0-9.,\s-]*$/, "host names, comma separated"),
+    group: "chat",
+    audience: "server",
+    description:
+      "播放音频（say --play）：不许播放的网站（主机名，逗号分隔；也拦它下面的子域名，如 example.com 也拦 a.example.com）。空（默认）= 任何 https 网站都能播（IP 地址、本地网络和带账号密码的地址永远不行）。",
+  },
+  "chat.play.perTenMin": int({
+    default: 20,
+    min: 0,
+    max: 600,
+    unit: "次/10 分钟",
+    group: "chat",
+    audience: "server",
+    description:
+      "播放音频（say --play）：每个通道令牌（或配对的发送端）每 10 分钟最多发几条带音频的消息。0 = 不许播放。",
+  }),
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

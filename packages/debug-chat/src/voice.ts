@@ -16,9 +16,9 @@
  *   "speech", a sentence in a language the device has no voice for (some
  *   Android Chromes list no voices at all) goes to the cloud instead of
  *   staying silent.
- * - Mic on: every reply is read, whatever the speaker toggle or focus says
- *   (the toggle itself is never changed, so it is "restored" when the mic
- *   stops). Mic off, on a phone (touch, `touch`): the speaker toggle alone
+ * - The speaker toggle always decides whether replies may be read, including
+ *   while the mic is on. Mic on removes the focus requirement, not the user's
+ *   mute. Mic off, on a phone (touch, `touch`): the speaker toggle alone
  *   decides (owner 2026-11-10: the focus rule needed the keyboard up, so a
  *   reader on /reader heard nothing). Mic off, on a computer: a reply is
  *   read with the toggle on, and either the mic has been used on this device
@@ -1044,10 +1044,10 @@ export function createVoice(d: {
     aec,
     /** Talk-over is in force (echo cancellation off, flag `voice.talk-over` on): no hold. */
     duplex,
-    /** Whether a reply arriving now is read: always with the mic on, else by the toggle and (mic used here, or focus). */
-    shouldSpeak: () => mic || focusRule(),
-    /** The speaker toggle as it applies now (forced on while the mic is on). */
-    readAloud: () => mic || d.enabled(),
+    /** The manual mute wins; the mic only removes the focus requirement. */
+    shouldSpeak: () => d.enabled() && (mic || focusRule()),
+    /** The speaker toggle, independent of whether the microphone is on. */
+    readAloud: () => d.enabled(),
     /** The mic turned on or off. Off: what the focus rule would not read stops. */
     setMic(on: boolean) {
       if (mic === on) return;
@@ -1338,7 +1338,8 @@ export const speechEnabled = () => {
 
 /**
  * Replies are read only to someone typing here: this tab is visible and the
- * chat input has focus (checked as each reply arrives). The mic overrides it.
+ * chat input has focus (checked as each reply arrives). With the mic on,
+ * focus is unnecessary, but the speaker toggle still applies.
  */
 export function speakHere() {
   if (typeof document === "undefined" || document.visibilityState !== "visible") return false;
@@ -1494,11 +1495,25 @@ const voicedStore = {
   },
 };
 
+/**
+ * Patch an already-running session when this module is hot-loaded: keep its
+ * mic, subscribers and queue rather than replacing the shared session.
+ */
+export function respectReadoutPreference(v: Voice, enabled: () => boolean): Voice {
+  const guarded = v as Voice & { __manualReadout?: true };
+  if (guarded.__manualReadout) return v;
+  const shouldSpeak = v.shouldSpeak;
+  v.shouldSpeak = () => enabled() && shouldSpeak();
+  v.readAloud = enabled;
+  guarded.__manualReadout = true;
+  return v;
+}
+
 /** The session, shared by every copy of this module on the page. */
 export function voice(): Voice {
   const g = globalThis as unknown as Record<string, Voice | undefined>;
   const have = g[KEY];
-  if (have && have.v === V) return gateVoice(have);
+  if (have && have.v === V) return gateVoice(respectReadoutPreference(have, speechEnabled));
   const v = createVoice({
     synth,
     enabled: speechEnabled,

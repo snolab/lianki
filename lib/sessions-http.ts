@@ -10,6 +10,7 @@ export const SESSION_METHODS = [
   "polishLines",
   "inbox",
   "chatToken",
+  "playAudio",
   "evalToken",
   "chatLog",
 ] as const;

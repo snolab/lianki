@@ -1,6 +1,10 @@
 // lib/lane-route.ts: which lane answers an owner line (docs/lane-listen.md).
 // One matcher for every listener, so each line gets exactly one lane.
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import {
+  PHONETIC_MAX_NEAR_DEFAULT,
+  setPhoneticMaxNear,
+} from "../packages/debug-chat/src/lane-phonetic";
 import {
   DEFAULT_LANE,
   LANE_NAMES,
@@ -9,6 +13,7 @@ import {
   isRouteLane,
   laneHotwords,
   laneTakes,
+  namesLane,
   routeLine,
   setCustomLaneNames,
   testText,
@@ -32,6 +37,16 @@ describe("routeLine: addressed lines", () => {
     ["Q扣，看下", ["codex"], "看下"],
     ["扣扣，在吗", ["codex"], "在吗"],
     ["杰咪，在吗", ["agy"], "在吗"],
+    // 哈基米: agy's name since 2026-11-16, and how STT writes it.
+    ["哈基米，在吗", ["agy"], "在吗"],
+    ["哈吉米，看一下", ["agy"], "看一下"],
+    ["海吉米，在吗", ["agy"], "在吗"],
+    ["哈急米，在吗", ["agy"], "在吗"],
+    ["哈几米，看下", ["agy"], "看下"],
+    ["ハチミ、聞こえる？", ["agy"], "聞こえる？"],
+    ["ハッチミ、聞こえる？", ["agy"], "聞こえる？"],
+    ["Hajimi, are you there?", ["agy"], "are you there?"],
+    ["hajimi, 你好", ["agy"], "你好"],
     ["杰明，看一下", ["agy"], "看一下"],
     ["咪宝，在吗", ["agy"], "在吗"],
     ["咪宝，在吗？", ["agy"], "在吗？"],
@@ -191,11 +206,92 @@ describe("customLaneNames and laneHotwords", () => {
     const words = laneHotwords();
     expect(words).toContain("codex");
     expect(words).toContain("杰咪");
+    expect(words).toContain("哈基米");
+    expect(words).toContain("哈吉米");
     expect(words).toContain("咪宝");
     expect(words).toContain("lianki");
     expect(words).toContain("liagent");
     expect(words).toContain("agent-yes");
     expect(words).toContain("otoji");
     expect(words).toContain("可可");
+  });
+});
+
+describe("routeLine: names by sound (lane-phonetic.ts, 2026-11-15)", () => {
+  afterEach(() => setPhoneticMaxNear(PHONETIC_MAX_NEAR_DEFAULT));
+  it.each([
+    // Spellings he reported, now also the same pinyin.
+    ["建明，在吗", ["agy"]],
+    ["解密，在吗", ["agy"]],
+    ["解米，在吗", ["agy"]],
+    ["杰米，在吗", ["agy"]],
+    ["小客，在吗", ["chat"]],
+    ["小贺，在吗", ["chat"]],
+    ["小课，在吗", ["chat"]],
+    ["小科，在吗", ["chat"]],
+    ["晓可，在吗", ["chat"]],
+    ["可可，在吗", ["codex"]],
+    ["扣扣，在吗", ["codex"]],
+    // Never listed: the same pinyin, or one near syllable.
+    ["借咪，在吗", ["agy"]],
+    ["切咪，在吗", ["agy"]],
+    ["谢咪，在吗", ["agy"]],
+    ["杰民，在吗", ["agy"]],
+    ["晓刻，在吗", ["chat"]],
+    ["寇寇，在吗", ["codex"]],
+    ["切咪和晓刻，在吗", ["agy", "chat"]],
+  ])("%s → %j", (line, lanes) => {
+    const r = routeLine(line);
+    expect(r.addressed).toBe(true);
+    expect(r.lanes).toEqual(lanes);
+    expect(r.text).toBe("在吗");
+  });
+  it.each(["节目，很好看", "街面，很干净", "小河边有棵树", "小鸡，在吃米", "切民，在吗"])(
+    "%s → not a name",
+    (line) => expect(routeLine(line).addressed).toBe(false),
+  );
+  it("known limit: 小河 is xiao he like the own name 小贺, so with a mark after it, it calls 小克", () => {
+    expect(routeLine("小河，很长的那条")).toMatchObject({ lanes: ["chat"], addressed: true });
+  });
+  it("a sound match needs a punctuation mark, as a heard spelling does", () => {
+    expect(routeLine("切咪在吗").addressed).toBe(false);
+  });
+  it("a name said twice is an address without a mark (建明建明在吗)", () => {
+    expect(routeLine("建明建明在吗？")).toEqual({
+      lanes: ["agy"],
+      addressed: true,
+      text: "在吗？",
+    });
+    expect(routeLine("切咪切咪在吗").lanes).toEqual(["agy"]);
+  });
+  it("cap 0: only the same pinyin", () => {
+    setPhoneticMaxNear(0);
+    expect(routeLine("切咪，在吗").addressed).toBe(false);
+    expect(routeLine("借咪，在吗").lanes).toEqual(["agy"]);
+  });
+});
+
+describe("namesLane: any lane name in a line keeps Li quiet (2026-11-16)", () => {
+  it("heard spellings of 哈基米 from his thread route to agy with a mark", () => {
+    for (const n of ["韩吉敏", "韩今明", "韩吉明", "韩金明"])
+      expect(routeLine(`${n}，回答。`).lanes).toEqual(["agy"]);
+    expect(routeLine("韩吉敏回答。").addressed).toBe(false);
+  });
+  it("names a lane: an address, a heard spelling without a mark, a name further in", () => {
+    expect(namesLane("agy，看一下")).toBe(true);
+    expect(namesLane("韩今明要实施监控这个页面的改动。")).toBe(true);
+    expect(namesLane("韩吉敏回答。")).toBe(true);
+    expect(namesLane("这个你问一下哈基米吧")).toBe(true);
+    expect(namesLane("let coco check it")).toBe(true);
+    // By sound at the start, no mark (ha ji mi, written as no list has it).
+    expect(routeLine("哈机米去看看").addressed).toBe(false);
+    expect(namesLane("哈机米去看看")).toBe(true);
+  });
+  it("Latin names only as whole words; plain lines name nobody", () => {
+    expect(namesLane("今天学什么")).toBe(false);
+    expect(namesLane("codexes everywhere")).toBe(false);
+    expect(namesLane("the cocoon")).toBe(false);
+    expect(namesLane("xcoco")).toBe(false);
+    expect(namesLane(undefined as unknown as string)).toBe(false);
   });
 });

@@ -220,7 +220,7 @@ export async function buildIslands(entry = ISLANDS_ENTRY): Promise<IslandsBuild>
   };
 }
 
-/** Files a typecheck reported errors in (tsgo's `path(line,col): error` lines), absolute. */
+/** Files a typecheck reported errors in (tsrs's `path(line,col): error` lines), absolute. */
 export function typeErrorFiles(output: string, cwd = ROOT): string[] {
   const files = new Set<string>();
   for (const m of output.matchAll(/^(.+?)\(\d+,\d+\): error /gm)) files.add(resolve(cwd, m[1]));

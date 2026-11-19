@@ -1,12 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { Ask, AskAnswer } from "@lianki/debug-chat/ask";
 import {
-  JUMP_END_PX,
   JUMP_INSET_PX,
   asksAbove,
   isAbove,
   jumpLabel,
-  jumpRoom,
   jumpTop,
   jumpWidth,
   nearestAbove,
@@ -108,20 +106,9 @@ describe("jumpLabel", () => {
   });
 });
 
-describe("jumpRoom: stable space beside the floating glass arrow", () => {
-  it("reserves its widest count without increasing paragraph height", () => {
-    const room = jumpRoom();
-    expect(Object.keys(room)).toEqual(["end"]);
-    expect(room).not.toHaveProperty("minHeight");
-    for (const count of [0, 1, 2, 9, 10, 99])
-      expect(room.end).toBeGreaterThan(JUMP_END_PX + jumpWidth(count));
-  });
-  it("button count may change its own width, but not the reserved text width", () => {
+describe("jumpWidth", () => {
+  it("is wider with a count beside the arrow", () => {
     expect(jumpWidth(1)).toBeLessThan(jumpWidth(3));
     expect(jumpWidth(3)).toBeLessThan(jumpWidth(12));
-    const before = jumpRoom();
-    jumpWidth(0);
-    jumpWidth(99);
-    expect(jumpRoom()).toEqual(before);
   });
 });

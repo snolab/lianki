@@ -11,7 +11,7 @@
  */
 import { laneSpec, type LaneId, isLaneId, laneOf } from "./voices";
 import type { ChatMessage } from "./wire";
-import type { LaneMode } from "./lane-events";
+import { type LaneMode, wideScope } from "./lane-events";
 
 /** One participant, as a page gets it. */
 export type Present = {
@@ -48,10 +48,11 @@ export type Present = {
    */
   mode?: LaneMode;
   /**
-   * A listener that hears every line, agents' and system lines too (tier ①, lane-listen
-   * --everyone); absent: the owner's lines only (tier ②), or not a listener.
+   * A listener that hears every line: agents' lines ("all", tier ①, lane-listen --everyone),
+   * and the system lines too ("system", tier ⓪, --system); absent: the owner's lines only
+   * (tier ②), or not a listener.
    */
-  scope?: "all";
+  scope?: "all" | "system";
   /** Muted by the owner: it reads and listens, but cannot post. */
   muted?: true;
   /** Since when it has been here (socket opened, or first read in the window). */
@@ -61,7 +62,45 @@ export type Present = {
   postAt?: number;
   /** The latest of since/seenAt/postAt: the order (most recent first). */
   active: number;
+  /**
+   * What the hub knows it may do: read the chat, post, run code on the page (an eval grant).
+   * Each one absent = not known here; the panel then draws no icon for it (knownState).
+   */
+  perms?: { read?: boolean; post?: boolean; eval?: boolean };
+  /**
+   * Its agent is mid-task now (the lanes manager's word, lane-registry.ts `busy`): the
+   * turning ring around its picture. `stuck`: busy, but stuck on it (the ring says so).
+   */
+  busy?: true;
+  stuck?: true;
 };
+
+/** The listening states the panel draws (ear, ear, bell, closed eye). */
+export type ListenState = "all" | "yours" | "named" | "off";
+
+/**
+ * What the page knows of an entry, for the panel's three state groups (owner, 2026-11-16: listen,
+ * talk, act); undefined = not known (no icon, never a guess). Listening: muted is off; a listener
+ * hears all lines or the owner's; a reader wakes when named. Talk (read AND answer, one icon:
+ * answering means it reads): the hub's post word, else muted cannot, a line posted can. Act
+ * (operate the page, the eval grant): the hub's word only.
+ */
+export function knownState(
+  p: Pick<Present, "mode" | "muted" | "scope" | "postAt" | "perms">,
+): { listen?: ListenState; talk?: boolean; act?: boolean } {
+  const listen: ListenState | undefined = p.muted
+    ? "off"
+    : p.mode === "listener"
+      ? wideScope(p.scope)
+        ? "all"
+        : "yours"
+      : p.mode === "reader"
+        ? "named"
+        : undefined;
+  const said = (v: unknown) => (typeof v === "boolean" ? v : undefined);
+  const talk = said(p.perms?.post) ?? (p.muted ? false : p.postAt ? true : undefined);
+  return { listen, talk, act: said(p.perms?.eval) };
+}
 
 /** What the hub keeps per token (`part:<tag>` in its storage). */
 export type PartRecord = {
@@ -84,12 +123,18 @@ export type PartRecord = {
   revoked?: true;
 };
 
+const known = (name: string): LaneId | null => laneOf({ text: `【${name}】` }).lane;
+
 /** The name and avatar in effect for a token record. */
 export function effective(r: PartRecord): Pick<Present, "name" | "avatar" | "nameBy" | "avatarBy" | "selfName"> {
   const avatar =
     r.ownerAvatar === "auto" ? undefined : (r.ownerAvatar ?? r.self);
+  // A built-in lane's token (claude, agy, codex…) shows the lane's own name (小克,
+  // 杰咪, coco), not the token's (owner, 2026-11-16 00:41 JST: "小克还叫 claude").
+  const lane = r.lane ? known(r.lane) : null;
+  const laneName = lane ? laneSpec(lane).name : "";
   return {
-    name: r.ownerName || r.lane,
+    name: r.ownerName || laneName || r.lane,
     ...(r.ownerName ? { nameBy: "owner" as const, selfName: r.lane } : {}),
     ...(avatar ? { avatar } : {}),
     ...(r.ownerAvatar
@@ -100,7 +145,6 @@ export function effective(r: PartRecord): Pick<Present, "name" | "avatar" | "nam
   };
 }
 
-const known = (name: string): LaneId | null => laneOf({ text: `【${name}】` }).lane;
 
 /** A line's participant key (the same as its token's, when it has one). */
 export function lineKey(m: ChatMessage): string | null {
@@ -135,6 +179,8 @@ export function presentList(p: {
     scope?: string;
     seenAt?: number;
     name?: string;
+    busy?: true;
+    stuck?: true;
   }[];
 }): Present[] {
   const out = new Map<string, Present>();
@@ -146,13 +192,19 @@ export function presentList(p: {
     return k ? `lane:${k}` : `tok:${r.tag}`;
   };
   const reg = new Map((p.lanes ?? []).map((l) => [l.lane, l]));
+  /** A lane row's busy ring (a left lane is not busy). */
+  const busyOf = (l: { state: string; busy?: true; stuck?: true }) =>
+    l.busy && l.state !== "left"
+      ? { busy: true as const, ...(l.stuck ? { stuck: true as const } : {}) }
+      : {};
   const modeOf = (r: PartRecord) => {
     const l = reg.get(r.lane);
     if (!l) return {};
     return {
       ...(l.state === "listener" || l.state === "reader" ? { mode: l.state as LaneMode } : {}),
-      ...(l.state === "listener" && l.scope === "all" ? { scope: "all" as const } : {}),
+      ...(l.state === "listener" && wideScope(l.scope) ? { scope: wideScope(l.scope) } : {}),
       ...(l.muted ? { muted: true as const } : {}),
+      ...busyOf(l),
     };
   };
   const fromRecord = (r: PartRecord): Present => {
@@ -205,6 +257,7 @@ export function presentList(p: {
           ...(m.tok ? { tok: m.tok } : {}),
           ...(m.avatar ? { avatar: m.avatar, avatarBy: "agent" as const } : {}),
           ...(m.client === "mcp" ? { mcp: true as const } : {}),
+          ...(lane && reg.get(lane) ? busyOf(reg.get(lane)!) : {}),
           active: 0,
         };
       }
@@ -235,6 +288,7 @@ export function presentList(p: {
           ...(lane ? { lane } : {}),
           mode: "reader",
           ...(l.muted ? { muted: true as const } : {}),
+          ...busyOf(l),
           active: 0,
         };
     if (l.seenAt !== undefined) e.seenAt = Math.max(e.seenAt ?? 0, l.seenAt);
@@ -298,6 +352,16 @@ export function parsePresent(raw: unknown): Present[] | null {
     const entry = { ...e };
     if (!Number.isSafeInteger(entry.lastReadSeq) || (entry.lastReadSeq as number) < 0) delete entry.lastReadSeq;
     if (entry.self !== true) delete entry.self;
+    if (entry.busy !== true) delete entry.busy;
+    if (entry.stuck !== true || entry.busy !== true) delete entry.stuck;
+    if (entry.perms !== undefined) {
+      const q = entry.perms as Record<string, unknown> | null;
+      const perms: Record<string, boolean> = {};
+      for (const k of ["read", "post", "eval"])
+        if (q && typeof q === "object" && typeof q[k] === "boolean") perms[k] = q[k] as boolean;
+      if (Object.keys(perms).length) entry.perms = perms;
+      else delete entry.perms;
+    }
     out.push(entry as unknown as Present);
   }
   return out;

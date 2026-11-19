@@ -4,10 +4,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PolishedMark, polishedEditor } from "@lianki/debug-chat/PolishedMark";
 import { chatExtra, CHAT_LOCALES, EXTRA, EXTRA_CONTEXT } from "@lianki/debug-chat/chat-ui-locales";
 
-const render = (by?: string) =>
+const render = (by?: string, main?: { mainName?: string; mainAvatar?: string }) =>
   renderToStaticMarkup(
     createElement(PolishedMark, {
       by,
+      ...main,
       icon: createElement("span", null, "★"),
       label: "Polished",
       showRaw: false,
@@ -39,7 +40,27 @@ describe("polished mark editor identity", () => {
       auto: false,
     });
     expect(polishedEditor("【claude】", "Auto")).toMatchObject({ name: "小克", lane: "claude" });
-    expect(polishedEditor("agy", "Auto")).toMatchObject({ name: "杰咪", lane: "agy" });
+    expect(polishedEditor("agy", "Auto")).toMatchObject({ name: "哈基米", lane: "agy" });
+  });
+  it("the main lane shows the Learning Partner's name and avatar, never the initial of 'main'", () => {
+    expect(polishedEditor("main", "Auto", "学习伙伴")).toMatchObject({
+      name: "学习伙伴",
+      lane: "main",
+      main: true,
+    });
+    expect(polishedEditor("【main】", "Auto", "Learning Partner")).toMatchObject({
+      name: "Learning Partner",
+    });
+    const html = render("main", { mainName: "学习伙伴", mainAvatar: "/icon-192.png" });
+    expect(html).toContain('data-editor="main"');
+    expect(html).toContain(chatExtra().polishedBy.replace("{name}", "学习伙伴"));
+    expect(html).toContain('src="/icon-192.png"');
+    expect(html).not.toContain(">m<");
+    // No host avatar: the generated mark of the partner's name, still not "m".
+    const bare = render("main", { mainName: "学习伙伴" });
+    expect(bare).toContain('data-testid="debug-chat-auto-mark"');
+    expect(bare).toContain('data-name="学习伙伴"');
+    expect(render("auto", { mainName: "学习伙伴" })).toContain('data-editor="auto"');
   });
   it("legacy messages without by keep the old label and have no editor badge", () => {
     const html = render();
