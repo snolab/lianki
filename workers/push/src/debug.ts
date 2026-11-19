@@ -895,7 +895,7 @@ export class DebugHub {
   private loadingGrants?: Promise<void>;
   /**
    * The speaker-attestation key ring (lib/speaker-proof.ts): STT_SPEAKER_PUBS
-   * (`{"mac", "otoji"}`), with STT_SPEAKER_PUB as `mac`.
+   * (`{"mac", "service"}`), with STT_SPEAKER_PUB as `mac`.
    */
   private speakerKeys?: SpeakerKeyRing;
   /** A renewal in flight per grant hash: two events at once renew once. */

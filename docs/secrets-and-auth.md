@@ -425,8 +425,8 @@ keeps a speaker tag on a voice line only when its signature verifies
 (`lib/speaker-proof.ts`); without the secret no tag is kept.
 
 **Key ring (optional, `STT_SPEAKER_PUBS`).** A JSON object of public keys by
-signer, `{"mac": "<b64url>", "otoji": "<b64url>"}` (`otoji`: the future
-otoji.org voiceprint service; docs/voiceprint-service.md). Each proof names
+signer, `{"mac": "<b64url>", "service": "<b64url>"}` (`service`: Lianki's own
+future voiceprint service; docs/voiceprint-service.md). Each proof names
 its signer as `kid` inside the signed payload; a proof without `kid` is
 `mac`. `STT_SPEAKER_PUB` still counts as `mac` when the ring has none, so
 with only today's secret nothing changes. Not set yet: it needs the owner's

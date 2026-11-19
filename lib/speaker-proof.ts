@@ -81,8 +81,8 @@ const fromB64url = (s: string) => {
   return Uint8Array.from(atob(p + "=".repeat((4 - (p.length % 4)) % 4)), (c) => c.charCodeAt(0));
 };
 
-/** The signers the hub knows: the owner's Mac, and later the otoji voiceprint service (otoji.org). */
-export const SPEAKER_KIDS = ["mac", "otoji"] as const;
+/** The signers the hub knows: the owner's Mac, and later Lianki's own voiceprint service. */
+export const SPEAKER_KIDS = ["mac", "service"] as const;
 export type SpeakerKid = (typeof SPEAKER_KIDS)[number];
 /** Public keys (raw Ed25519, base64url) by signer. */
 export type SpeakerKeyRing = Partial<Record<SpeakerKid, string>>;
@@ -91,7 +91,7 @@ const isKid = (k: unknown): k is SpeakerKid =>
 
 /**
  * The hub's key ring from its env: `STT_SPEAKER_PUBS` (JSON `{"mac": "<b64>",
- * "otoji": "<b64>"}`; unknown signers and non-string keys are ignored), and
+ * "service": "<b64>"}`; unknown signers and non-string keys are ignored), and
  * `STT_SPEAKER_PUB` as `mac` when the ring names no `mac` of its own. A ring
  * that is not JSON counts as absent (the single key still works). Undefined
  * when no key is set: then no tag is ever kept.

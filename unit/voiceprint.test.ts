@@ -1048,23 +1048,23 @@ describe("combineSpeaker: trust and signers", () => {
     expect(
       combineSpeaker([
         { decision: "me", trust: "signed", kid: "mac" },
-        { decision: "me", trust: "signed", kid: "otoji" },
+        { decision: "me", trust: "signed", kid: "service" },
       ]),
-    ).toEqual({ decision: "me", trust: "signed", kid: "mac+otoji" });
+    ).toEqual({ decision: "me", trust: "signed", kid: "mac+service" });
     expect(
       combineSpeaker([
         { decision: "me", trust: "signed", kid: "mac" },
-        { decision: "unknown", reason: "advisory", trust: "advisory", kid: "otoji" },
+        { decision: "unknown", reason: "advisory", trust: "advisory", kid: "service" },
       ]),
-    ).toMatchObject({ decision: "unknown", trust: "advisory", kid: "mac+otoji" });
+    ).toMatchObject({ decision: "unknown", trust: "advisory", kid: "mac+service" });
     // An old signed tag (signed texts, no trust) beside a new one: still signed.
     expect(
       combineSpeaker([
         { decision: "me", signed: ["a"], voice: "me", cluster: "A" },
         { decision: "me", trust: "signed", kid: "mac", voice: "me", cluster: "A" },
-        { decision: "me", trust: "signed", kid: "mac+otoji", voice: "me", cluster: "A" },
+        { decision: "me", trust: "signed", kid: "mac+service", voice: "me", cluster: "A" },
       ]),
-    ).toMatchObject({ trust: "signed", kid: "mac+otoji", voice: "me", cluster: "A" });
+    ).toMatchObject({ trust: "signed", kid: "mac+service", voice: "me", cluster: "A" });
     // A part with no trust and no signed texts: no trust claimed.
     expect(
       combineSpeaker([{ decision: "me" }, { decision: "me", trust: "signed", kid: "mac" }]),
