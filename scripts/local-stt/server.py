@@ -68,7 +68,7 @@ The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
                    {"t":"end",…,"playback":true}             something played while he spoke: never learned
   server → client  ready gains "speaker":{"models":[…]} when the check is on
                    final gains "speaker":{score,decision:"me"|"other"|"unknown",model,device,
-                    speechS,snrDb[,reason]}, or on an enrolment sentence "enrol":{ok,n[,reason],…}
+                    speechS,snrDb[,reason,voice,cluster,clusterScore]}, or on an enrolment sentence "enrol":{ok,n[,reason],…}
                    {"t":"enrol"|"voiceprint","rid":R,"ok":…[,"error"]…}
                    {"t":"filter","on":bool}                  (the filter's state: voiceprint status, "filter")
                    final gains "filtered":{reason,score} when the filter stopped it (text "",
@@ -942,6 +942,8 @@ class Server:
                 why = f" {spk['reason']}" if spk.get("reason") else ""
                 # Which other voice (voiceprint.Voices): an id, never anything of theirs.
                 who = f" {spk['voice']}" if spk.get("voice") not in (None, "me") else ""
+                if spk.get("cluster"):
+                    who += f" [{spk['cluster']} {spk.get('clusterScore', 0):.2f}]"  # a label, never theirs
                 c = self.counts
                 tag = f", spk {d} {sc}{why}{who} (me {c['me']} other {c['other']} unknown {c['unknown']})"
                 if spk.get("margin") is not None:

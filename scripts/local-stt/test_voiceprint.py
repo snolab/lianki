@@ -324,6 +324,12 @@ class Scoring(unittest.TestCase):
         # Unknown (too short, too noisy): no id, never a guess.
         self.assertNotIn("voice", self.v.verify(tone(900, speech_s=1.0), "iphone"))
         self.assertNotIn("voice", self.v.verify(tone(900, snr_db=7), "iphone"))
+        # Clusters: the strangers as A and B, never on his, nothing on a gated unknown.
+        self.assertEqual(self.v.verify(tone(900, seed=8), "iphone")["cluster"], "A")
+        self.assertEqual(self.v.verify(tone(1200, seed=8), "iphone")["cluster"], "B")
+        self.assertNotIn("cluster", self.v.verify(tone(310, seed=8), "iphone"))
+        for gated in (tone(900, speech_s=1.0), tone(900, snr_db=7)):
+            self.assertNotIn("cluster", self.v.verify(gated, "iphone"))
         # A split final: each part on its own, the stranger's half keeps its id.
         him, other = tone(350, speech_s=3.5, seed=1), tone(950, speech_s=3.5, seed=2)  # 950: mid-bin, as 900
         self.enrol("android", 350)
@@ -415,6 +421,62 @@ class OtherVoices(unittest.TestCase):
         vs = V.Voices()
         for i in range(5):
             self.assertRegex(vs.tag(self.e(i), now=i), r"^s[1-9][0-9]{0,2}$")
+
+
+class SpeakerClusters(unittest.TestCase):
+    """Clusters: "A", "B"… per voice, reset at local midnight (docs/local-stt.md, "Speaker clusters")."""
+
+    def e(self, i: int, dim: int = 16):
+        v = np.zeros(dim, dtype=np.float32)
+        v[i] = 1.0
+        return v
+
+    def test_letters(self):
+        self.assertEqual([V.letters(n) for n in (1, 2, 26, 27, 28, 52, 53)], ["A", "B", "Z", "AA", "AB", "AZ", "BA"])
+
+    def test_labels_and_scores(self):
+        cs = V.Voices(same=0.5, label=V.letters, daily=True, forget_s=float("inf"))
+        t0 = time.mktime((2026, 11, 19, 10, 0, 0, 0, 0, -1))
+        self.assertEqual(cs.tag_score(self.e(0), now=t0), ("A", 1.0))
+        self.assertEqual(cs.tag_score(self.e(1), now=t0 + 1), ("B", 1.0))
+        near = V.unit(self.e(0) + 0.3 * self.e(2))
+        label, score = cs.tag_score(near, now=t0 + 2)
+        self.assertEqual(label, "A")
+        self.assertAlmostEqual(score, float(near @ self.e(0)), places=5)
+        # Hours later the same day: still remembered (no forgetting within a day).
+        self.assertEqual(cs.tag(self.e(1), now=t0 + 8 * 3600), "B")
+
+    def test_reset_at_local_midnight(self):
+        cs = V.clusters()
+        late = time.mktime((2026, 11, 19, 23, 59, 0, 0, 0, -1))
+        self.assertEqual(cs.tag(self.e(0), now=late), "A")
+        self.assertEqual(cs.tag(self.e(1), now=late + 1), "B")
+        # 00:00:30 the next day: everything forgotten, the labels start again at A.
+        self.assertEqual(cs.tag(self.e(1), now=late + 90), "A")
+        self.assertEqual(cs.known(), ["A"])
+
+    def test_cap_and_defaults(self):
+        cs = V.Voices(same=0.5, max_n=2, label=V.letters, daily=True, forget_s=float("inf"))
+        self.assertEqual([cs.tag(self.e(i), now=i) for i in range(3)], ["A", "B", "C"])
+        self.assertEqual(cs.known(), ["B", "C"])
+        d = V.clusters()
+        self.assertEqual((d.same, d.max_n), (V.CLUSTER_SAME, V.CLUSTER_MAX))
+        self.assertEqual((V.CLUSTER_SAME, V.CLUSTER_MAX, V.CLUSTER_UNKNOWN_BELOW), (0.30, 8, 0.45))
+
+    def test_only_labels_are_signed(self):
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            a = V.Attestor(os.path.join(tmp.name, "k", "attest.key"))
+            proof = a.sign({"decision": "other", "score": 0.1, "cluster": "B", "clusterScore": 0.71,
+                            "_centroid": [1, 2]}, "hi")
+            import base64
+
+            body = proof.split(".")[0]
+            p = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+            self.assertEqual((p["cluster"], p["clusterScore"]), ("B", 0.71))
+            self.assertNotIn("_centroid", p)
+        finally:
+            tmp.cleanup()
 
 
 class Enrolling(unittest.TestCase):
@@ -986,6 +1048,22 @@ class Household(unittest.TestCase):
         for k in ("score", "otherScore", "margin"):
             self.assertIsInstance(him[k], float)
 
+    def test_clusters_with_a_household_print(self):
+        self.house()
+        her = self.v.verify(tone(self.HER, speech_s=3.0), "android")
+        self.assertEqual((her["cluster"], her["clusterScore"]), ("household:other", 0.85))
+        him = self.v.verify(tone(self.HIM, speech_s=3.0), "android")
+        self.assertNotIn("cluster", him)  # never on his own
+        # A stranger (near neither print): a running cluster, the same label next time.
+        s1 = self.v.verify(tone(2050, speech_s=3.0), "android")
+        self.assertEqual((s1["decision"], s1["cluster"], s1["clusterScore"]), ("other", "A", 1.0))
+        self.assertEqual(self.v.verify(tone(2050, speech_s=3.0, seed=7), "android")["cluster"], "A")
+        # A named household print gets its own name.
+        self.store.save_household("android", "campp", [np.eye(self.DIM, dtype=np.float32)[1]] * 2, [3.0] * 2,
+                                  name="guest")
+        self.v.refresh()
+        self.assertRegex(self.v.verify(tone(self.HER, speech_s=3.0), "android")["cluster"], r"^household:(other|guest)$")
+
     def test_no_household_print_is_unchanged(self):
         # Before any household print: exactly the bands as before, no margin keys.
         her = self.v.verify(tone(self.HER, speech_s=3.0), "android")
@@ -1435,6 +1513,9 @@ class ServerProtocol(unittest.TestCase):
         # …and its two parts, someone else first, then him with his ✓, each read on its own audio.
         a, b = mixed["parts"]
         self.assertEqual((a["speaker"]["decision"], b["speaker"]["decision"]), ("other", "me"))
+        # The stranger's part names its cluster, signed; his has none.
+        self.assertEqual((a["speaker"]["cluster"], payload(a["speakerProof"])["cluster"]), ("A", "A"))
+        self.assertNotIn("cluster", b["speaker"])
         self.assertEqual(mixed["text"], f"{a['text']} {b['text']}")
         self.assertEqual(a["startMs"], 0)
         self.assertEqual(b["startMs"], a["audioMs"])

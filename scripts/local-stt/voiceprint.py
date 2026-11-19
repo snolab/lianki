@@ -25,6 +25,9 @@ from docs/stt-ab.md, "Noise and speaker grid", #394).
   `other` is matched against the voices heard lately (`Voices`, in memory
   only), so each gets a stable id `s1`, `s2`… next to the score (`voice`),
   and his own finals `me`. Nothing of theirs is stored.
+- **Speaker clusters** (docs/local-stt.md, "Speaker clusters"): every final
+  that is not him also gets `cluster` ("A", "B"…, or `household:<name>` on a
+  household print) and `clusterScore`; memory only, reset at local midnight.
 
 The CLI (never touches ~/lianki-voice-clips; it only reads files you name):
 
@@ -137,6 +140,21 @@ VOICE_FORGET_S = _env_num("VOICE_FORGET_S", 2 * 3600)
 #: A voice's centroid is the running mean of its embeddings, the last this many counting.
 VOICE_MEAN_N = int(_env_num("VOICE_MEAN_N", 20))
 
+#: Speaker clusters (owner, 2026-11-19 ~15:0x JST, "给所有不同的人的声线都给弄一个不同的
+#: 头像"; docs/local-stt.md, "Speaker clusters"): every final that is not him and has an
+#: embedding (an "other", or an "unknown" scored under CLUSTER_UNKNOWN_BELOW against his
+#: print, never one gated as short or noisy) gets `cluster`, a short label "A", "B"… per
+#: voice, and `clusterScore`, its cosine to that voice's centroid before it moved (1.0 on
+#: a new one). The same cosine rule as Voices: CLUSTER_SAME the "same voice" line, at most
+#: CLUSTER_MAX voices (the one heard longest ago making room). Memory only; the labels
+#: start again at "A" at local midnight and on a restart. A final closer to a household
+#: print than to his by CLUSTER_HOUSE_MARGIN (the "other" margin), scoring at least
+#: CLUSTER_HOUSE_MIN against it, is that voice: `household:<name>` (the print's name,
+#: "other" or the `-<name>` of its file, never a person's name).
+CLUSTER_SAME = _env_num("CLUSTER_SAME", VOICE_SAME)
+CLUSTER_MAX = int(_env_num("CLUSTER_MAX", 8))
+CLUSTER_UNKNOWN_BELOW = _env_num("CLUSTER_UNKNOWN_BELOW", 0.45)
+
 #: Household voices (docs/local-stt.md, "Household voices"; owner, 2026-11-16
 #: ~02:19 JST, "要做，帮我做"): one print cannot tell him from his wife (CAM++
 #: on 2026-11-15 16:28-16:40 UTC: his finals 0.425-0.743, hers 0.306-0.516),
@@ -165,6 +183,10 @@ MIXED_MAJORITY = _env_num("MIXED_MAJORITY", 0.7)
 TWO_VOICES_PAUSE_S = _env_num("TWO_VOICES_PAUSE_S", 60.0)
 #: The household print files: `<device>.<model>.other.json`, `<device>.<model>.other-<name>.json`.
 HOUSEHOLD = "other"
+#: Speaker clusters' household rule (CLUSTER_SAME above): the margin under which, and the
+#: household score from which, a final is that household voice.
+CLUSTER_HOUSE_MARGIN = _env_num("CLUSTER_HOUSE_MARGIN", OTHER_MARGIN)
+CLUSTER_HOUSE_MIN = _env_num("CLUSTER_HOUSE_MIN", 0.30)
 _HOUSEHOLD_FILE = re.compile(r"^([a-z0-9][a-z0-9-]{0,31})\.([a-z0-9]+)\.other(?:-([a-z0-9]{1,16}))?\.json$")
 
 
@@ -1059,10 +1081,15 @@ class Voices:
     """
 
     def __init__(self, same: float = VOICE_SAME, max_n: int = VOICES_MAX, forget_s: float = VOICE_FORGET_S,
-                 mean_n: int = VOICE_MEAN_N):
+                 mean_n: int = VOICE_MEAN_N, label=None, daily: bool = False):
         import threading
 
         self.same, self.max_n, self.forget_s, self.mean_n = same, max_n, forget_s, mean_n
+        #: n (1, 2, …) -> the id; "s1", "s2"… by default (Clusters: "A", "B"…).
+        self.label = label or (lambda n: f"s{n}")
+        #: Start again (ids from the first) when the local date changes (Clusters).
+        self.daily = daily
+        self.day: tuple | None = None
         #: {id, c (unit centroid), n, at (last heard)}, in order of first hearing.
         self.items: list[dict] = []
         self.next = 1
@@ -1070,28 +1097,50 @@ class Voices:
 
     def tag(self, e: np.ndarray, now: float | None = None) -> str:
         """The id of the voice `e` (a unit embedding) is: a known one, moved towards it, or a new one."""
+        return self.tag_score(e, now)[0]
+
+    def tag_score(self, e: np.ndarray, now: float | None = None) -> tuple[str, float]:
+        """(id, cosine to its centroid before it moved): a known voice, or a new one at 1.0."""
         t = time.time() if now is None else now
         e = unit(e)
         with self._lock:
+            if self.daily:
+                day = time.localtime(t)[:3]
+                if day != self.day:
+                    self.day, self.items, self.next = day, [], 1
             self.items = [v for v in self.items if t - v["at"] <= self.forget_s]
             best = max(self.items, key=lambda v: float(e @ v["c"]), default=None)
-            if best is not None and float(e @ best["c"]) >= self.same:
+            if best is not None and (s := float(e @ best["c"])) >= self.same:
                 n = min(best["n"], self.mean_n)
                 best["c"] = unit(best["c"] * n + e)
                 best["n"] = best["n"] + 1
                 best["at"] = t
-                return best["id"]
+                return best["id"], s
             if len(self.items) >= self.max_n:
                 self.items.remove(min(self.items, key=lambda v: v["at"]))
-            v = {"id": f"s{self.next}", "c": e, "n": 1, "at": t}
+            v = {"id": self.label(self.next), "c": e, "n": 1, "at": t}
             self.next += 1
             self.items.append(v)
-            return v["id"]
+            return v["id"], 1.0
 
     def known(self) -> list[str]:
         """The ids remembered now, oldest first (the tests, the log)."""
         with self._lock:
             return [v["id"] for v in self.items]
+
+
+def letters(n: int) -> str:
+    """1 -> "A", 26 -> "Z", 27 -> "AA": a cluster's short label (spreadsheet columns)."""
+    out = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        out = chr(65 + r) + out
+    return out
+
+
+def clusters() -> Voices:
+    """The speaker clusters (CLUSTER_*): "A", "B"… per voice, never forgotten within a day, reset at midnight."""
+    return Voices(same=CLUSTER_SAME, max_n=CLUSTER_MAX, forget_s=float("inf"), label=letters, daily=True)
 
 
 class Verifier:
@@ -1118,6 +1167,8 @@ class Verifier:
         self._stamp: int | None = -1
         #: The other voices heard lately (Voices): one table for the Mac, whoever's device heard them.
         self.voices = Voices()
+        #: Speaker clusters (CLUSTER_*): "A", "B"… and household voices, for every final not his.
+        self.clusters = clusters()
         #: (device, model) -> that device's household prints (load_households), cached as `_cache`.
         self._house: dict[tuple[str, str], list[dict]] = {}
         #: Per device (its mic), when the last "other" or mixed final was verified (epoch s):
@@ -1245,6 +1296,8 @@ class Verifier:
         `voice` (docs/voice-mode.md, "Speaker avatars"): "me" on his, "s1", "s2"… on an
         `other` (the same voice, the same id: Voices); none on an unknown, and none at
         all without a print, so an account that enrolled nothing never sees one.
+        `cluster`/`clusterScore` (Verifier.cluster): on an `other`, and on an `unknown` under
+        CLUSTER_UNKNOWN_BELOW that was not gated as short or noisy; never on his.
         """
         speech_s, snr = speech_stats(audio)
         base = {"speechS": round(speech_s, 2), "snrDb": round(snr, 1)}
@@ -1300,6 +1353,9 @@ class Verifier:
             out["voice"] = "me"
         elif decision == "other":
             out["voice"] = self.voices.tag(e)
+        if decision != "me" and reason not in ("short", "noise") and (
+                decision == "other" or best < CLUSTER_UNKNOWN_BELOW):
+            out.update(self.cluster(e, house, extra, now))
         if cuts:
             out["cuts"] = cuts  # where the speaker changes (server.py splits the final there)
         if windows:
@@ -1309,6 +1365,19 @@ class Verifier:
         if MODELS[model].provisional:
             out["provisional"] = True
         return out
+
+    def cluster(self, e: np.ndarray, house: list[dict], extra: dict, now: float | None = None) -> dict:
+        """
+        {cluster, clusterScore} for a final that is not his (CLUSTER_*): its household voice
+        when it is closer to that print than to his by CLUSTER_HOUSE_MARGIN, else a running
+        cluster's label. Only labels and a number leave here, never an embedding.
+        """
+        if house and extra.get("margin") is not None and extra["margin"] <= CLUSTER_HOUSE_MARGIN:
+            s, h = max(((float(e @ h["_centroid"]), h) for h in house), key=lambda x: x[0])
+            if s >= CLUSTER_HOUSE_MIN:
+                return {"cluster": f"household:{h.get('_name') or HOUSEHOLD}", "clusterScore": round(s, 3)}
+        label, s = self.clusters.tag_score(e, now)
+        return {"cluster": label, "clusterScore": round(s, 3)}
 
     # -- progressive learning (docs/local-stt.md, "Progressive voiceprint")
     def learn_gate(self, spk: dict | None, device: str | None, now: float | None = None) -> str | None:
@@ -1537,7 +1606,7 @@ class Attestor:
     tag only when this signature verifies and the signed text matches the line
     (lib/speaker-proof.ts). Wire form: `<payload b64url>.<signature b64url>`,
     the signature over the ASCII of the first part; payload
-    `{v:1, uid, at, text, decision, score, model, device, speechS, snrDb[, reason, voice]}`.
+    `{v:1, uid, at, text, decision, score, model, device, speechS, snrDb[, reason, voice, cluster, clusterScore]}`.
     """
 
     def __init__(self, path: str = ATTEST_KEY, create: bool = True):
@@ -1581,7 +1650,8 @@ class Attestor:
             **({"thread": thread} if thread else {}),
             "at": int(at_ms if at_ms is not None else time.time() * 1000),
             "text": text[:2000],
-            **{k: tag[k] for k in ("decision", "score", "model", "device", "speechS", "snrDb", "reason", "voice")
+            **{k: tag[k] for k in ("decision", "score", "model", "device", "speechS", "snrDb", "reason", "voice",
+                                   "cluster", "clusterScore")
                if k in tag},
         }
         body = _b64url(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))

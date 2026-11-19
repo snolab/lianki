@@ -821,6 +821,25 @@ voice heard lately (`Voices`: cosine to a running centroid, `VOICE_SAME`,
 nothing on an unknown and nothing without a print. Signed with the tag, so
 the chat can draw one avatar per voice.
 
+**Speaker clusters** (owner, 2026-11-19 ~15:0x JST: "给所有不同的人的声线都给弄一个不同的
+头像"): every final that is not him and has an embedding also carries
+`cluster` and `clusterScore` (`Verifier.cluster`, `voiceprint.clusters()`).
+That is an `other`, or an `unknown` scoring under `CLUSTER_UNKNOWN_BELOW`
+(0.45, the chat's `voice.otherAvatarBelow`) against his print and not gated as
+`short` or `noise`; never his. A final closer to a household print than to his
+by `CLUSTER_HOUSE_MARGIN` (−0.30, the "other" margin) and scoring at least
+`CLUSTER_HOUSE_MIN` (0.30) against it is `household:<name>` (the print's name:
+`other`, or the `-<name>` of `<device>.<model>.other-<name>.json`; never a
+person's name). Anyone else goes to the nearest running centroid by cosine,
+at `CLUSTER_SAME` (0.30) or more, else a new cluster: labels `A`, `B`… (after
+`Z`, `AA`), at most `CLUSTER_MAX` (8), the one heard longest ago making room.
+`clusterScore` is the cosine to that centroid before it moved (1.0 on a new
+one; the household print's score for a household voice). All in memory: no
+embedding or audio is written, and the labels start again at `A` at local
+midnight and on a restart. Every value is an env override (`LIANKI_STT_` +
+the name, as the other voiceprint constants). Signed with the tag, so the hub
+keeps it only from a proof that verifies.
+
 **Merging keeps the speakers apart.** A split part never amends the line
 before it (`continues` is not asked for it). An agent's passage merge
 (`eval.ts edit --merge`, `passageSpeakers` in voice-merge.ts, the hub's
