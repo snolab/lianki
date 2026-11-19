@@ -258,7 +258,11 @@ import type {
   SttTag,
   WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
-import { verifySpeakerProofs } from "../../../lib/speaker-proof";
+import {
+  type SpeakerKeyRing,
+  speakerKeyRing,
+  verifySpeakerProofs,
+} from "../../../lib/speaker-proof";
 import {
   ECHO_MIN_CHARS,
   ECHO_READ_WINDOW_MAX,
@@ -890,8 +894,11 @@ export class DebugHub {
    */
   private grants?: Map<string, Grant>;
   private loadingGrants?: Promise<void>;
-  /** STT_SPEAKER_PUB: the Mac's attestation key (lib/speaker-proof.ts). */
-  private speakerPub?: string;
+  /**
+   * The speaker-attestation key ring (lib/speaker-proof.ts): STT_SPEAKER_PUBS
+   * (`{"mac", "service"}`), with STT_SPEAKER_PUB as `mac`.
+   */
+  private speakerKeys?: SpeakerKeyRing;
   /** A renewal in flight per grant hash: two events at once renew once. */
   private renewing = new Map<string, Promise<void>>();
   /** The main Worker (service binding): asked whether a renewal's session is still live. */
@@ -957,8 +964,8 @@ export class DebugHub {
     private timer: HubTimer = realTimer,
   ) {
     this.work = new HubWork(this.now);
-    // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
-    this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
+    // The speaker-attestation public keys (the Mac's: voiceprint.py attest-key); without any no tag is kept.
+    this.speakerKeys = speakerKeyRing(env);
     const sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
     this.sessions = sessions ? boundedSessions(sessions, this.work, this.now) : undefined;
     this.progress = (env as { PROGRESS?: ProgressNs } | undefined)?.PROGRESS;
@@ -4351,7 +4358,7 @@ export class DebugHub {
             m.speakerProof,
             heard,
             page.thread,
-            this.speakerPub,
+            this.speakerKeys,
             (uids, until) => this.burnProofs(uids, until),
             this.now(),
           ).then(spoken);

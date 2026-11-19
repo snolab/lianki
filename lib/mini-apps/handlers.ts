@@ -497,7 +497,8 @@ export async function serveApp(req: Request, slug: string, d: MiniDeps): Promise
       "referrer-policy": "no-referrer",
       "cross-origin-opener-policy": "same-origin",
       "cross-origin-resource-policy": "cross-origin",
-      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      "permissions-policy":
+        "camera=(), microphone=(), display-capture=(), geolocation=(), payment=(), usb=()",
       ...NO_STORE,
     },
   });

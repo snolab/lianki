@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ButtonHTMLAttributes } from "react";
 import { useIntlayer } from "next-intlayer";
+import { SealPending } from "@lianki/debug-chat/SealPending";
 
 /**
  * Every on/off control in the app, drawn as a two-part box seal that shows
@@ -29,7 +30,15 @@ import { useIntlayer } from "next-intlayer";
  */
 export type SealSize = "sm" | "md";
 
-export function SealStamp({ on, size = "md" }: { on: boolean; size?: SealSize }) {
+export function SealStamp({
+  on,
+  size = "md",
+  pending = false,
+}: {
+  on: boolean;
+  size?: SealSize;
+  pending?: boolean;
+}) {
   const words = useIntlayer("seal-switch");
   const [stamp, setStamp] = useState(false);
   const was = useRef(on);
@@ -44,11 +53,13 @@ export function SealStamp({ on, size = "md" }: { on: boolean; size?: SealSize })
       data-seal={on ? "on" : "off"}
       data-size={size}
       data-stamping={stamp || undefined}
+      data-pending={pending || undefined}
       onAnimationEnd={() => setStamp(false)}
     >
       <span data-word="on" data-active={on || undefined}>
         {words.on.value}
       </span>
+      {pending && <SealPending />}
       <span data-word="off" data-active={!on || undefined}>
         {words.off.value}
       </span>
@@ -61,12 +72,28 @@ export function SealSwitch({
   size = "md",
   role = "switch",
   className = "",
+  pending = false,
+  disabled,
+  onClick,
   ...rest
 }: {
   checked: boolean;
   size?: SealSize;
   role?: "switch" | "checkbox";
-} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "role" | "type">) {
+  /** An operation managed by the parent is still awaiting confirmation. */
+  pending?: boolean;
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void | PromiseLike<unknown>;
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "role" | "type" | "onClick">) {
+  const [waiting, setWaiting] = useState(false);
+  const inFlight = useRef(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const busy = pending || waiting || rest["aria-busy"] === true || rest["aria-busy"] === "true";
   return (
     <button
       type="button"
@@ -75,8 +102,22 @@ export function SealSwitch({
       data-seal-check={checked ? "on" : "off"}
       className={`lk-seal-switch ${className}`}
       {...rest}
+      aria-busy={busy || undefined}
+      disabled={disabled || busy}
+      onClick={(event) => {
+        if (disabled || busy || inFlight.current) return;
+        const result = onClick?.(event);
+        if (!result || typeof result.then !== "function") return;
+        inFlight.current = true;
+        setWaiting(true);
+        // Keep the caller's rejection semantics; only the pending visual is ours.
+        return Promise.resolve(result).finally(() => {
+          inFlight.current = false;
+          if (mounted.current) setWaiting(false);
+        });
+      }}
     >
-      <SealStamp on={checked} size={size} />
+      <SealStamp on={checked} size={size} pending={busy} />
     </button>
   );
 }

@@ -236,6 +236,44 @@ const dictionary = {
           ko: "마이크가 켜져 있을 때 말한 것, 날짜별로: 듣기, 내려받기, 삭제.",
         }),
       },
+      meetings: {
+        title: t({
+          en: "Meetings",
+          zh: "会议录制",
+          hi: "मीटिंग",
+          es: "Reuniones",
+          fr: "Réunions",
+          ar: "الاجتماعات",
+          bn: "মিটিং",
+          pt: "Reuniões",
+          ru: "Встречи",
+          ur: "میٹنگز",
+          id: "Rapat",
+          de: "Meetings",
+          ja: "会議の録画",
+          sw: "Mikutano",
+          mr: "मीटिंग",
+          ko: "회의 녹화",
+        }),
+        blurb: t({
+          en: "Meetings you recorded, screen and sound: watch, download, delete.",
+          zh: "你录下的会议（画面和声音）：观看、下载、删除。",
+          hi: "आपकी रिकॉर्ड की गई मीटिंग, स्क्रीन और आवाज़: देखें, डाउनलोड करें, मिटाएँ।",
+          es: "Las reuniones que grabaste, pantalla y sonido: ver, descargar, borrar.",
+          fr: "Les réunions que vous avez enregistrées, écran et son : regarder, télécharger, supprimer.",
+          ar: "الاجتماعات التي سجّلتها، الشاشة والصوت: شاهد ونزّل واحذف.",
+          bn: "আপনার রেকর্ড করা মিটিং, স্ক্রিন ও শব্দ: দেখুন, ডাউনলোড করুন, মুছুন।",
+          pt: "As reuniões que você gravou, tela e som: assistir, baixar, apagar.",
+          ru: "Записанные вами встречи, экран и звук: смотреть, скачивать, удалять.",
+          ur: "آپ کی ریکارڈ کی ہوئی میٹنگز، اسکرین اور آواز: دیکھیں، ڈاؤن لوڈ کریں، حذف کریں۔",
+          id: "Rapat yang Anda rekam, layar dan suara: tonton, unduh, hapus.",
+          de: "Deine aufgenommenen Meetings, Bildschirm und Ton: ansehen, herunterladen, löschen.",
+          ja: "録画した会議（画面と音声）：見る、ダウンロード、削除。",
+          sw: "Mikutano uliyorekodi, skrini na sauti: tazama, pakua, futa.",
+          mr: "तुम्ही रेकॉर्ड केलेल्या मीटिंग, स्क्रीन आणि आवाज: पाहा, डाउनलोड करा, हटवा.",
+          ko: "녹화한 회의(화면과 소리): 보기, 내려받기, 삭제.",
+        }),
+      },
       data: {
         title: t({
           en: "Cards and sync",
@@ -351,6 +389,12 @@ const context: KeyContext<typeof dictionary.content> = {
         "Title of the card on /my that opens /my/recordings, what the user's microphone recorded in Lianki, kept in their account (shown only when that feature is on for the account). Short noun phrase; 'mic' is the microphone.",
       blurb:
         "One line under the Mic recordings card's title on /my: what was said while the mic was on, listed by day, and what one can do there (listen, download, delete). Short.",
+    },
+    meetings: {
+      title:
+        "Title of the card on /my that opens /my/meetings, the meetings the user recorded in Lianki (their shared screen and its sound), kept in their account (shown only when that feature is on for the account). One plural noun.",
+      blurb:
+        "One line under the Meetings card's title on /my: the recorded meetings (screen video and sound) and what one can do there (watch, download, delete). Short.",
     },
     data: {
       title:

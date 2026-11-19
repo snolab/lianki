@@ -1,4 +1,5 @@
 "use client";
+import { isMeetingsPath } from "@/lib/meetings/core";
 import {
   createChatOutbox,
   migrateSessionOutbox,
@@ -647,6 +648,15 @@ export function DebugEval({
     };
 
     const run = async (sock: WebSocket, id: string, to: string, code: string) => {
+      // Meetings' pages hold recordings of other people: no eval runs there (docs/meetings.md).
+      if (isMeetingsPath(location.pathname)) {
+        try {
+          sock.send(
+            JSON.stringify({ type: "result", id, to, ok: false, error: "refused: private page" }),
+          );
+        } catch {}
+        return;
+      }
       clearTimeout(hideToast);
       setToast(`eval ran · ${id}`);
       hideToast = setTimeout(() => setToast(null), TOAST_MS);

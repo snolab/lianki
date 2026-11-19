@@ -47,14 +47,18 @@ export default async function MyPage() {
     },
     { key: "data", href: "/data", icon: "database", ...strs(cards.data) },
   ];
+  const flags = await readFlags();
   // Mic recordings (docs/recordings.md): only where the page exists — flag voice.recordings and `dev`.
-  if (isDev(user.email) && flagIn(await readFlags(), "voice.recordings"))
+  if (isDev(user.email) && flagIn(flags, "voice.recordings"))
     items.push({
       key: "recordings",
       href: "/my/recordings",
       icon: "microphone",
       ...strs(cards.recordings),
     });
+  // Meetings (docs/meetings.md): only where the page exists — flag meetings.record and `dev`.
+  if (isDev(user.email) && flagIn(flags, "meetings.record"))
+    items.push({ key: "meetings", href: "/my/meetings", icon: "play", ...strs(cards.meetings) });
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-8">
