@@ -44,6 +44,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - id: lifts
         env:
@@ -71,6 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          submodules: true
           fetch-depth: 0 # the revert needs the commits since the last green run
       - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - name: Revert PR

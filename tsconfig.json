@@ -54,6 +54,9 @@
     // own tsconfig (vite/client, WebGPU and three types). What the app imports
     // from it is still checked here, through the imports.
     "packages/rgui",
+    // Imported Otoji SDK sources are checked through their imports; its other
+    // applications/tests have their own dependencies and CI gates.
+    "vendor/otoji",
     "workers/edge"
   ]
 }

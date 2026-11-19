@@ -82,6 +82,9 @@ __pycache__/
 # The Learning Partner for other sites: built at deploy (scripts/build-partner-embed.ts)
 public/partner-embed.js
 
+# Generated local meeting model/runtime assets, never published by git.
+/public/meeting-voice/
+
 # friend dev boxes (devbox/README.md): the DeepSeek key lives here
 /devbox/.env
 /devbox/.env.*

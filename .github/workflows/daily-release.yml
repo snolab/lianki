@@ -45,6 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          submodules: true
           fetch-depth: 0 # merge-tree and the commit list need history
       - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - name: Open or update the release PR, merge it when green
