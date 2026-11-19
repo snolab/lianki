@@ -363,6 +363,40 @@ Tests: `scripts/local-stt/test_voiceprint.py` (`OtherVoices`, `Scoring`,
 (the disc, `lineAvatar`), `unit/debug-hub.test.ts` (the hub keeps the id from
 the proof only).
 
+## Speaker clusters
+
+The owner, 2026-11-19 ~15:0x JST: "你应该给所有不同的人的声线都给弄一个不同的头像".
+Every voice that is not his gets its own avatar, not one shared "another voice".
+
+- **The label** comes from the Mac (`scripts/local-stt/voiceprint.py`
+  `Verifier.cluster`; [local-stt.md](local-stt.md), "Speaker clusters"):
+  `speaker.cluster` is `"A"`, `"B"`… per voice heard today, or
+  `"household:<name>"` for a household print (the print's name, never a
+  person's), with `speaker.clusterScore`. Memory only on the Mac; the letters
+  start again at A at local midnight and on a restart. Signed with the rest of
+  the tag, so the hub keeps it only from a verified proof (`cleanSpeaker`,
+  `combineSpeaker`: a line of several utterances keeps it only when all name
+  the same cluster). The hub (`workers/push`) bundles that code: a change to
+  it needs a hub deploy.
+- **The avatar** (`packages/debug-chat/src/cluster-avatar.ts`, `LaneMark.tsx`
+  `clusterAvatar`, `avatar-rules.ts` `lineAvatar`): a disc with the letter, or
+  with a house for a household voice; the colour from the label (letters in
+  palette order, a household voice by its name's hash), oklch only, from config
+  `voice.clusterHues` (hues near the seal red are dropped: that red is his).
+  Named "Voice A" / "Household voice" (`vpVoiceCluster`, `vpHouseholdVoice`),
+  the screen-reader name and tooltip. A household voice uses `voice.otherAvatar`
+  / `voice.otherAvatarName` when set (a family member's own picture). Run seed
+  `cluster:<label>`.
+- **When**: only where another voice's avatar would show anyway (a decided
+  `other`, or an `unknown` under `voice.otherAvatarBelow`), the flag
+  `voice.speaker-avatars` on (default, owner audience), and `clusterScore` not
+  under `voice.clusterMinScore` (0 = always). Otherwise, and on any line with no
+  cluster (an older Mac), the single other-voice avatar ("Speaker avatars",
+  above) stays.
+
+Tests: `unit/speaker-clusters.test.tsx`, `scripts/local-stt/test_voiceprint.py`
+(`SpeakerClusters`).
+
 ## Talking over Li with echo cancellation off
 
 The owner, 2026-11-13 ~23:59 JST: when he speaks while Li reads a reply aloud,
@@ -548,6 +582,7 @@ nothing but the chat.
 | `packages/debug-chat/src/voice-merge.ts`   | continuous speech amending the last line (flag `stt.merge`); a kept command keeps lines apart |
 | `packages/debug-chat/src/mic-taps.ts`      | command taps and pins on the page's mic                     |
 | `packages/debug-chat/src/speaker-avatar.ts` | another voice's avatar from its id (pure); "Speaker avatars" above |
+| `packages/debug-chat/src/cluster-avatar.ts` | one avatar per voice cluster (pure); "Speaker clusters" above |
 | `app/(app)/words/VoiceMode.tsx`            | the hook, the switch (`useVoicePref`), the badge, its labels; any screen |
 | `app/(app)/review/ReviewClient.tsx`        | /review's registration: the grades and exit                 |
 | `unit/voice-commands.test.ts`              | grammar, fuzz, sentences, echo, the wiring, access          |

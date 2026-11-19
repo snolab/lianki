@@ -43,7 +43,8 @@ no third-party API key. Non-streaming in v1.
 | routing, caps, takeover               | `workers/push/src/debug.ts` `friendChat` → `aiReply`                                     |
 | who sees the chat                     | `app/layout.tsx` `partnerOpenFor` → `OwnerBoots` → `DebugEval partnerOpen`               |
 | strings (16 locales, with context)    | `app/components/learning-partner.content.ts` `aiHint`, `aiStatus`, `aiLimit`, `aiFailed` |
-| tests                                 | `unit/partner-ai.test.ts`                                                                |
+| who said what (history, reply tags)   | `lib/partner-lines.ts`                                                                   |
+| tests                                 | `unit/partner-ai.test.ts`, `unit/partner-lines.test.ts`                                  |
 
 ## Who gets it
 
@@ -128,6 +129,17 @@ pages, wait for changes or message anyone later, so it never promises to
 (2026-11-16: "我来盯着这个页面……页面一有变化，我马上告诉你"), and it does not
 answer a message meant for someone else.
 
+**Speaking as itself** (`lib/partner-lines.ts`). Li never writes as another
+member or offers to build things (2026-11-17: an unaddressed request for a
+userscript got "【claude】Happy to build it… M1 (today)"). Three layers: lane
+lines reach the model attributed, as `user` lines "(agent coco said: …)" —
+not as its own `assistant` lines, which it had been continuing in their
+voice; the prompt says it speaks only as itself, never writes a name tag and
+does not write code, build features or run tasks (the developer reads this
+chat); and `cleanReply` strips any leading speaker tag from its reply: every
+`【…】` (in this chat a leading 【name】 is always a speaker tag), and `[name]`
+/ `name:` when the name is a lane's id, name or alias or Li's own.
+
 **Roll call.** A line of his matching `owner-ai.ts` `ROLL_CALL` (报数, 点名,
 全体都有, 都有报…, and the STT slips 包书 / 报树) gets Li's answer at once, no
 model: config `partner.rollCallReply` (default "Li 在，这里 {n} 位：{names}";
@@ -138,8 +150,9 @@ all-hands call (lane-route.ts), so the lanes answer it too.
 ## Memory and takeover
 
 - Memory is the thread's own stored history (the last `HISTORY_LINES` = 20 of
-  its `CHAT_HISTORY`): the user's lines as `user`, agent lines (the AI's and
-  any lane's) as `assistant`.
+  its `CHAT_HISTORY`): the user's lines as `user`, the AI's own as
+  `assistant`, any other agent line (a lane, a hub notice) as an attributed
+  `user` line, "(agent NAME said: …)" (`lib/partner-lines.ts`).
 - **A human or lane reply wins.** The owner's lanes still hear every friend
   thread. If a lane `say`s into the thread while the model is working, the
   AI's reply is dropped. A newer line from the user also makes the older

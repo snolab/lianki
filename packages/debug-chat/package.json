@@ -8,6 +8,7 @@
   "exports": {
     "./Avatar": "./src/Avatar.tsx",
     "./avatar-rules": "./src/avatar-rules.ts",
+    "./cluster-avatar": "./src/cluster-avatar.ts",
     "./DebugChat": "./src/DebugChat.tsx",
     "./DebugChatHost": "./src/DebugChatHost.tsx",
     "./DebugPairModal": "./src/DebugPairModal.tsx",

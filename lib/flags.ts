@@ -190,6 +190,13 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  "voice.speaker-avatars": {
+    description:
+      "每个声音一个头像：打开（默认）时，Li 聊天里不是你本人的语音行，按 Mac 声纹服务器给的声音分组（今天听到的第一个陌生声音 A、第二个 B……，家人声纹则是「家人的声音」）各用自己的头像：字母或小房子，颜色各不相同（不用你的印章红）。分组只在 Mac 内存里，每天本地午夜和重启后从 A 重新开始。调色板和最低相似度在 /dev/config 的 voice.clusterHues、voice.clusterMinScore。关闭 = 照旧，所有别人的声音共用一个「另一个声音」头像。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   "voice.echo-dedupe": {
     description:
       "回声去重：两台手机同时开着麦克风时，同一句话被另一台设备再识别一次（超过两麦合并的几秒、或者识别得稍有不同），或者 Li 朗读的助手回复、你润色后的读回被另一台手机听到又转成文字，都会被当成回声：不显示、不朗读、不转给助手，原文留在 hub 里可以撤销（edited.by 为 auto，原因 echo）。时间窗和相似度在 /dev/config 的 voice.echo* 里。关闭 = 照旧，每条都当作你说的新话。",
