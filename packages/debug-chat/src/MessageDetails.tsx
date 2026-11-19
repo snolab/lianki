@@ -1,6 +1,7 @@
 import {
   type MouseEvent,
   type KeyboardEvent,
+  type PointerEvent,
   useId,
   useEffect,
   useLayoutEffect,
@@ -24,6 +25,10 @@ import { readingsOf } from "./whisper-recheck";
 import { hasVoiceDetails, voiceDetailRows } from "./voice-details";
 import { latencyLines, voiceLatency } from "./latency";
 import type { UiStrings } from "./ui-strings";
+import { createLongPress } from "./long-press";
+
+/** What keeps its own press inside a message line: a long press there is not the line's. */
+const OWN_PRESS = "a,button,input,textarea,select,[contenteditable=true],[role=button]";
 
 /** The details' voice rows' words (chat-ui-locales.ts). */
 export type VoiceWords = Pick<
@@ -210,35 +215,31 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords & Parti
     if (!sel || sel.isCollapsed || !sel.toString()) return false;
     return el.contains(sel.anchorNode) || el.contains(sel.focusNode);
   };
+  /** The line a touch press is held on, for the long press to open. */
+  const pressed = useRef<{ message: ChatMessage; sender: string; el: HTMLElement } | null>(null);
+  const [longPress] = useState(() =>
+    createLongPress({
+      onLong: () => {
+        const p = pressed.current;
+        if (!p || selectingIn(p.el)) return;
+        setSelection({ message: p.message, sender: p.sender, anchor: p.el.getBoundingClientRect() });
+      },
+    }),
+  );
+  useEffect(() => () => longPress.cancel(), [longPress]);
   const forMessage = (message: ChatMessage, sender: string) => {
-    const open = (e: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
-      const target = e.target;
-      if (!(target instanceof Element)) return;
-      const control = target.closest(
-        "button,a,input,textarea,select,[contenteditable=true],[role=button]",
-      );
-      if (control && control !== e.currentTarget) return;
-      if (selectingIn(e.currentTarget)) return;
-      // A tap on a link (or a field) is the link's: the browser follows it, the
-      // details stay closed (owner, 2026-11-14 21:0x: "手机点不开这个链接，它显示的是消息详情").
-      if (e.target instanceof Element && e.target.closest("a,input,textarea,select,button")) return;
-      // On a touch screen a single tap is for reading the line; the details
-      // (JSON) open on a double tap (owner, 2026-11-14 "双击才显示这种 JSON 的消息详情").
-      // A mouse click still opens them (a double click there selects a word).
-      const kind = "nativeEvent" in e ? (e.nativeEvent as PointerEvent).pointerType : undefined;
-      const touch =
-        kind === "touch" ||
-        (!kind && typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
-      if (touch && e.type === "click" && (e as MouseEvent<HTMLElement>).detail < 2) return;
-      e.stopPropagation();
-      setSelection({ message, sender, anchor: e.currentTarget.getBoundingClientRect() });
-    };
+    const show = (el: HTMLElement) =>
+      setSelection({ message, sender, anchor: el.getBoundingClientRect() });
+    const endPress = () => longPress.cancel();
+    // A plain click or tap is for reading and selecting the line: it opens nothing
+    // (owner, 2026-11-19: "电脑上单击消息就会显示消息详情，我觉得没有必要"). The details
+    // are the line's context action: right-click, a long press on a phone, or
+    // Enter / Space (and the context-menu key) on the focused line.
     return {
       tabIndex: 0,
       "aria-haspopup": "dialog" as const,
       "aria-controls": id,
-      onClick: open,
-      // Right-click opens the details too (owner, 2026-11-14: "我想用右键就能打开"); the
+      // Right-click opens the details (owner, 2026-11-14: "我想用右键就能打开"); the
       // browser's own menu stays for selected text.
       onContextMenu: (e: MouseEvent<HTMLElement>) => {
         if (selectingIn(e.currentTarget)) return;
@@ -247,12 +248,27 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords & Parti
         if (e.target instanceof Element && e.target.closest("a,input,textarea,select,[contenteditable=true]")) return;
         e.preventDefault();
         e.stopPropagation();
-        setSelection({ message, sender, anchor: e.currentTarget.getBoundingClientRect() });
+        // The long press already opened them (Android sends this for the same press).
+        if (longPress.fired()) return;
+        endPress();
+        show(e.currentTarget);
       },
+      onPointerDown: (e: PointerEvent<HTMLElement>) => {
+        if (e.pointerType !== "touch") return;
+        const own = e.target instanceof Element && e.target.closest(OWN_PRESS);
+        // A control in the line (a link, a button, the polished mark) keeps its press.
+        if (own && own !== e.currentTarget && e.currentTarget.contains(own)) return;
+        pressed.current = { message, sender, el: e.currentTarget };
+        longPress.down(e.clientX, e.clientY);
+      },
+      onPointerMove: (e: PointerEvent<HTMLElement>) => longPress.move(e.clientX, e.clientY),
+      onPointerUp: endPress,
+      onPointerCancel: endPress,
       onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
         if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
         e.preventDefault();
-        open(e);
+        e.stopPropagation();
+        show(e.currentTarget);
       },
     };
   };
