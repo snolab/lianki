@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { shortStamp } from "@/lib/dates";
 import { useState } from "react";
 import type { Friend } from "@/lib/push-friends";
 
 /** ISO order, in the viewer's time zone: 2026-10-29 18:11. */
-const when = (at: number) =>
-  new Date(at).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" });
+const when = (at: number) => shortStamp(at);
 
 /** The chat's users, newest message first, each with Block / Unblock. */
 export default function FriendsTable({ friends }: { friends: Friend[] }) {

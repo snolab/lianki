@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { shortStamp } from "@/lib/dates";
 import { notFound } from "next/navigation";
 import { authUserOrNull } from "@/app/signInEmail";
 import { isAdmin } from "@/lib/permissions";
@@ -13,8 +14,7 @@ export const dynamic = "force-dynamic";
 export const generateMetadata = devPageMetadata("friends");
 
 /** ISO order, local time: 2026-10-29 18:11. */
-const when = (at: number) =>
-  new Date(at).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" });
+const when = (at: number) => shortStamp(at);
 
 /**
  * Everyone who has used the debug chat (docs/monitoring.md, "Friends"), with

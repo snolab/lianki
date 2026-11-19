@@ -262,7 +262,7 @@ test("/dev/flags card: who changed it and when, labelled with its zone", () => {
         key: "words.voice-mode",
         description: "d",
         enabled: true,
-        updatedAt: NOW.toISOString(),
+        updatedAt: NOW.getTime(),
         updatedBy: BY,
       },
       busy: false,

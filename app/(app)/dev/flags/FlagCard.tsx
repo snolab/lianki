@@ -1,3 +1,4 @@
+import { NO_DATE } from "@/lib/dates";
 import { FLAGS, type FlagDef } from "@/lib/flags";
 import type { FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
@@ -8,9 +9,9 @@ import { useZonedTime } from "@/app/components/useZonedTime";
 export const MONEY_NOTE = "打开正式收款前请在 Slack 打字确认";
 
 /** A time written out in the viewer's device zone, labelled with it (these pages are Chinese). */
-export function When({ at }: { at: string | number }) {
+export function When({ at }: { at: string | number | null }) {
   const { time } = useZonedTime();
-  return <>{time(at, "zh-CN")}</>;
+  return <>{at == null ? NO_DATE : time(at, "zh-CN")}</>;
 }
 
 export const card =

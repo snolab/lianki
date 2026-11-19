@@ -131,6 +131,37 @@ describe("store", () => {
     expect(await flagLog(d1)).toEqual([]);
   });
 
+  test("timestamps stored as numeric strings (a number bound into the TEXT column) come back as numbers", async () => {
+    const ms = 1794387558000; // 2026-11-11T08:59:18Z
+    const raw = d1.raw();
+    // An integer written into a TEXT column is kept as its digits: "1794387558000".
+    raw
+      .prepare(
+        `INSERT INTO feature_flags (key, enabled, updated_at, updated_by) VALUES (?, 1, ${ms}, ?)`,
+      )
+      .run("read.vibe", BY);
+    raw
+      .prepare("INSERT INTO feature_flag_log (key, enabled, at, by) VALUES (?, 1, ?, ?)")
+      .run("read.vibe", String(ms), BY);
+    raw
+      .prepare("INSERT INTO feature_flag_log (key, enabled, at, by) VALUES (?, 1, ?, ?)")
+      .run("read.vibe", "2026-11-11 08:59:18", BY); // datetime('now')
+    raw
+      .prepare("INSERT INTO feature_flag_log (key, enabled, at, by) VALUES (?, 1, ?, ?)")
+      .run("read.vibe", "x", BY);
+    const stored = raw
+      .prepare("SELECT typeof(updated_at) AS t, updated_at AS v FROM feature_flags")
+      .get() as { t: string; v: unknown };
+    expect(stored).toEqual({ t: "text", v: String(ms) });
+    const row = (await listFlags(d1)).find((f) => f.key === "read.vibe");
+    expect(row?.updatedAt).toBe(ms);
+    expect((await flagLog(d1)).map((e) => e.at)).toEqual([
+      null,
+      Date.parse("2026-11-11 08:59:18"),
+      ms,
+    ]);
+  });
+
   test("setFlag writes the row and a log entry, who and when", async () => {
     const row = await setFlag(d1, "payments.stripe.live", true, BY, NOW);
     expect(row).toMatchObject({ key: "payments.stripe.live", enabled: true, updatedBy: BY });
@@ -142,12 +173,12 @@ describe("store", () => {
     const listed = (await listFlags(d1)).find((f) => f.key === "payments.stripe.live");
     expect(listed).toMatchObject({
       enabled: false,
-      updatedAt: later.toISOString(),
+      updatedAt: later.getTime(),
       updatedBy: "other@x.com",
     });
     expect(await flagLog(d1)).toEqual([
-      { key: "payments.stripe.live", enabled: false, at: later.toISOString(), by: "other@x.com" },
-      { key: "payments.stripe.live", enabled: true, at: NOW.toISOString(), by: BY },
+      { key: "payments.stripe.live", enabled: false, at: later.getTime(), by: "other@x.com" },
+      { key: "payments.stripe.live", enabled: true, at: NOW.getTime(), by: BY },
     ]);
     expect(await flagLog(d1, 1)).toHaveLength(1);
     expect(await flagLog(d1, 0)).toHaveLength(1); // at least one
@@ -251,7 +282,7 @@ describe("store", () => {
       put(OLD, 1);
       expect((await loadFlags(d1))["my-box"]).toBe(true);
       const on = (await listFlags(d1)).find((f) => f.key === "my-box");
-      expect(on).toMatchObject({ enabled: true, updatedAt: NOW.toISOString(), updatedBy: BY });
+      expect(on).toMatchObject({ enabled: true, updatedAt: NOW.getTime(), updatedBy: BY });
 
       d1.raw().prepare("UPDATE feature_flags SET enabled = 0 WHERE key = ?").run(OLD);
       expect((await loadFlags(d1))["my-box"]).toBe(false);

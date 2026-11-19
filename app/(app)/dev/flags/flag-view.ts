@@ -11,6 +11,7 @@ import {
   type FlagDef,
   type FlagKey,
 } from "@/lib/flags";
+import { toEpochMs } from "@/lib/dates";
 import type { FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
 import { flagKeyFromHash } from "./flag-anchor";
@@ -100,8 +101,8 @@ export const RECENT_DAYS = 7;
 
 /** Changed in the last RECENT_DAYS, from the row's `updated_at` (a renamed flag's old row counts). */
 export function isRecent(row: Pick<FlagRow, "updatedAt">, now: number): boolean {
-  if (!row.updatedAt) return false;
-  const at = new Date(row.updatedAt).getTime();
+  const at = toEpochMs(row.updatedAt);
+  if (at === null) return false;
   return now - at < RECENT_DAYS * 86_400_000;
 }
 

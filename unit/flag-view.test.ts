@@ -160,8 +160,8 @@ describe("search", () => {
 
 describe("filters", () => {
   const rows = all({
-    "read.vibe": { enabled: true, updatedAt: new Date(NOW - 3_600_000).toISOString() },
-    "stt.merge": { updatedAt: new Date(NOW - (RECENT_DAYS + 1) * 86_400_000).toISOString() },
+    "read.vibe": { enabled: true, updatedAt: NOW - 3_600_000 },
+    "stt.merge": { updatedAt: NOW - (RECENT_DAYS + 1) * 86_400_000 },
   });
 
   test("on and off", () => {

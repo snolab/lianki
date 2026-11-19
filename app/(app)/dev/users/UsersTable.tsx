@@ -3,13 +3,13 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIntlayer } from "next-intlayer";
+import { shortStamp } from "@/lib/dates";
 import { compactBytes as size } from "@/lib/repos/devUserFiles";
 import type { DevUserRow } from "@/lib/repos/devUsersD1";
 import type { PendingRow } from "@/lib/referrals/pregrant";
 
 /** ISO-style, in the viewer's time zone: 2026-11-05 18:11. Never 11/5/2026. */
-const when = (s: string | null) =>
-  s ? new Date(s).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) : "—";
+const when = (s: string | number | null) => shortStamp(s);
 
 const tier = (u: DevUserRow, now: number) =>
   u.proEndsAt && Date.parse(u.proEndsAt) > now

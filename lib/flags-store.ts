@@ -18,6 +18,7 @@
  */
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like, D1StmtLike } from "@/lib/d1/types";
+import { toEpochMs } from "@/lib/dates";
 import { snapshotCache } from "@/lib/snapshot-cache";
 import {
   closedFlags,
@@ -97,14 +98,16 @@ export interface FlagRow {
   key: FlagKey;
   description: string;
   enabled: boolean;
-  updatedAt: string | null;
+  /** Epoch ms; null when never stored (or the stored value cannot be read as a time). */
+  updatedAt: number | null;
   updatedBy: string | null;
 }
 
 export interface FlagLogEntry {
   key: string;
   enabled: boolean;
-  at: string;
+  /** Epoch ms; null when the stored value cannot be read as a time. */
+  at: number | null;
   by: string;
 }
 
@@ -112,7 +115,7 @@ export interface FlagLogEntry {
 export async function listFlags(d1: D1Like): Promise<FlagRow[]> {
   const { results } = await d1
     .prepare("SELECT key, enabled, updated_at, updated_by FROM feature_flags")
-    .all<{ key: string; enabled: number; updated_at: string; updated_by: string }>();
+    .all<{ key: string; enabled: number; updated_at: unknown; updated_by: string }>();
   const byKey = new Map(results.map((r) => [r.key, r]));
   return (Object.keys(FLAGS) as FlagKey[]).map((key) => {
     const r = storedFlagRow(byKey, key);
@@ -121,7 +124,7 @@ export async function listFlags(d1: D1Like): Promise<FlagRow[]> {
       description: FLAGS[key].description,
       // No row: the registry default (a stored row always wins).
       enabled: r ? r.enabled === 1 : (FLAGS[key].default as boolean),
-      updatedAt: r?.updated_at ?? null,
+      updatedAt: r ? toEpochMs(r.updated_at) : null,
       updatedBy: r?.updated_by ?? null,
     };
   });
@@ -132,8 +135,13 @@ export async function flagLog(d1: D1Like, limit = 50): Promise<FlagLogEntry[]> {
   const { results } = await d1
     .prepare("SELECT key, enabled, at, by FROM feature_flag_log ORDER BY id DESC LIMIT ?")
     .bind(Math.max(1, Math.min(500, Math.floor(limit))))
-    .all<{ key: string; enabled: number; at: string; by: string }>();
-  return results.map((r) => ({ key: r.key, enabled: r.enabled === 1, at: r.at, by: r.by }));
+    .all<{ key: string; enabled: number; at: unknown; by: string }>();
+  return results.map((r) => ({
+    key: r.key,
+    enabled: r.enabled === 1,
+    at: toEpochMs(r.at),
+    by: r.by,
+  }));
 }
 
 export class FlagError extends Error {}
@@ -172,7 +180,7 @@ export async function setFlag(
     key,
     description: FLAGS[key].description,
     enabled,
-    updatedAt: at,
+    updatedAt: now.getTime(),
     updatedBy: by,
   };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { NO_DATE, toDate } from "@/lib/dates";
 import { formatZoned, localDay, zoneOffsetMin } from "@/lib/time-zone";
 import { useDeviceZone } from "./useDeviceZone";
 
@@ -19,7 +20,10 @@ export function useZonedTime() {
   );
   /** The ISO calendar day (YYYY-MM-DD) of `at` in the zone. */
   const day = useCallback(
-    (at: number | string | Date) => localDay(new Date(at), zoneOffsetMin(zone, new Date(at))),
+    (at: number | string | Date) => {
+      const t = toDate(at);
+      return t ? localDay(t, zoneOffsetMin(zone, t)) : NO_DATE;
+    },
     [zone],
   );
   return { zone, time, day };

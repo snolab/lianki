@@ -3,15 +3,58 @@
  * never the numeric 11/5/2026 that reads as May in half the world.
  * `locale` undefined = the reader's own.
  */
-export const longDate = (d: Date | string | number, locale?: string): string =>
-  new Date(d).toLocaleDateString(locale, { dateStyle: "long" });
+export const longDate = (d: Date | string | number, locale?: string): string => {
+  const t = toDate(d);
+  return t ? t.toLocaleDateString(locale, { dateStyle: "long" }) : NO_DATE;
+};
 
-export const longDateTime = (d: Date | string | number, locale?: string): string =>
-  new Date(d).toLocaleString(locale, { dateStyle: "long", timeStyle: "short" });
+export const longDateTime = (d: Date | string | number, locale?: string): string => {
+  const t = toDate(d);
+  return t ? t.toLocaleString(locale, { dateStyle: "long", timeStyle: "short" }) : NO_DATE;
+};
 
 /** For machine-ish labels (an import's default title): 2026-11-05. */
-export const isoDay = (d: Date | string | number = new Date()): string =>
-  new Date(d).toLocaleDateString("en-CA");
+export const isoDay = (d: Date | string | number = new Date()): string => {
+  const t = toDate(d);
+  return t ? t.toLocaleDateString("en-CA") : NO_DATE;
+};
+
+/** What a time that cannot be read is shown as. */
+export const NO_DATE = "—";
+
+/** Digits only (optionally signed / with a fraction): epoch milliseconds sent as text. */
+const NUMERIC_TIME = /^-?\d+(\.\d+)?$/;
+
+/**
+ * A moment as epoch milliseconds, or null when it cannot be one. Accepts a
+ * number, a Date, an ISO / SQL date string, and epoch milliseconds sent as a
+ * string ("1794387558000" — a number bound into a D1 TEXT column comes back
+ * like that, and `new Date("1794387558000")` is Invalid Date).
+ */
+export function toEpochMs(v: unknown): number | null {
+  let t: number;
+  if (typeof v === "number") t = v;
+  else if (v instanceof Date) t = v.getTime();
+  else if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return null;
+    t = NUMERIC_TIME.test(s) ? Number(s) : Date.parse(s);
+  } else return null;
+  // Beyond ±8.64e15 ms a Date is invalid too.
+  return Number.isFinite(t) && Math.abs(t) <= 8.64e15 ? t : null;
+}
+
+/** `toEpochMs` as a Date: null instead of an Invalid Date (which makes Intl throw). */
+export function toDate(v: unknown): Date | null {
+  const t = toEpochMs(v);
+  return t === null ? null : new Date(t);
+}
+
+/** ISO order, in the viewer's time zone: 2026-11-05 18:11; "—" when unreadable. */
+export const shortStamp = (v: unknown): string => {
+  const t = toDate(v);
+  return t ? t.toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) : NO_DATE;
+};
 
 const CJK = /^(zh|ja|ko)/;
 
@@ -42,7 +85,8 @@ export function zonedDateTime(
 ): string {
   const loc = intlLocale(locale);
   const tz = isTimeZone(timeZone) && timeZone !== "Etc/UTC" ? timeZone : "UTC";
-  const when = new Date(d);
+  const when = toDate(d);
+  if (!when) return NO_DATE;
   const text = new Intl.DateTimeFormat(loc, {
     dateStyle: "long",
     timeStyle: "short",

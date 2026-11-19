@@ -12,8 +12,10 @@
  * - `zoneAbbr()`: a short label ("JST", "EST", "CET"), falling back to a
  *   numeric one ("GMT+8") when no English name exists.
  *
- * Client-safe: imports nothing.
+ * Client-safe: imports only lib/dates.ts (which imports nothing).
  */
+
+import { NO_DATE, toDate } from "./dates";
 
 /** Offsets beyond these do not exist (UTC−12 … UTC+14). */
 export const MIN_OFFSET_MIN = -12 * 60;
@@ -52,7 +54,8 @@ export function ownerZone(
 /** Minutes east of UTC of `tz` at `at` (e.g. 540 for Asia/Tokyo); 0 for an unknown zone. */
 export function zoneOffsetMin(tz: string, at: number | Date = Date.now()): number {
   if (!validZone(tz)) return 0;
-  const t = new Date(at);
+  const t = toDate(at);
+  if (!t) return 0;
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     hourCycle: "h23",
@@ -192,9 +195,11 @@ export function endOfDayIso(day: string, tz: string): string {
 export function zoneTag(tz: string, at: number | Date = Date.now()): string {
   const zone = validZone(tz) ? tz : "UTC";
   if (zone === "UTC" || zone === "Etc/UTC") return "UTC";
+  const when = toDate(at);
+  if (!when) return "";
   const v =
     new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "short" })
-      .formatToParts(new Date(at))
+      .formatToParts(when)
       .find((p) => p.type === "timeZoneName")?.value ?? "";
   return v && !NUMERIC.test(v) ? v : offsetLabel(zoneOffsetMin(zone, at));
 }
@@ -207,7 +212,8 @@ export function formatZoned(
   opts: Intl.DateTimeFormatOptions = { dateStyle: "long", timeStyle: "short" },
 ): string {
   const zone = validZone(tz) ? tz : "UTC";
-  const when = new Date(at);
+  const when = toDate(at);
+  if (!when) return NO_DATE;
   return `${when.toLocaleString(locale, { ...opts, timeZone: zone })} ${zoneTag(zone, when)}`;
 }
 
