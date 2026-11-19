@@ -15,7 +15,8 @@
  *
  * A resident lane (lanes.agents resident) gets a `lane-listen --all` of its
  * own: it hears every owner line live; scope "all" (tier ①) adds `--everyone`,
- * agents' and system lines too (and `--skip-owner` when its agent has its own
+ * agents' lines too, scope "system" (tier ⓪) `--everyone --system`, the system
+ * lines as well (and `--skip-owner` when its agent has its own
  * feed of his lines: wake false, 小克). Any other lane is a reader: no listener
  * process; when a line names it (lane-route.ts, with the joined lanes in the
  * table, or `#<repo>`), the manager hands that line to its agent with
@@ -23,7 +24,12 @@
  * for lanes.wakeLiveMin minutes after the last line that named it
  * (withWakeLive). Each new lane greets once, with its own token.
  */
-import type { LaneAgentDef, LaneScope, LanesConfig } from "../../lib/lanes-config";
+import {
+  type LaneAgentDef,
+  type LaneScope,
+  type LanesConfig,
+  hearsAll,
+} from "../../lib/lanes-config";
 import { LANE_NAME_RE } from "../../lib/lanes-config";
 import { laneModeWord, tokensNeededText } from "../../packages/debug-chat/src/lane-events";
 import { type ChatLaneDef, isLaneId } from "../../packages/debug-chat/src/voices";
@@ -38,6 +44,8 @@ export type AyAgent = {
   status?: string;
   /** The turn: "active" (mid-turn), "idle", "needs_input"… */
   state?: string;
+  /** Where ay writes everything the agent prints (`log_file`): its live output, for the busy ring. */
+  logFile?: string;
 };
 
 /** `ay ls --json --local`'s rows (a list, or {local: [...]}); anything unreadable: none. */
@@ -62,6 +70,9 @@ export function parseAyList(raw: string): AyAgent[] {
       cwd: r.cwd,
       ...(typeof r.status === "string" ? { status: r.status } : {}),
       ...(typeof r.state === "string" ? { state: r.state } : {}),
+      ...(typeof r.log_file === "string" && r.log_file.startsWith("/")
+        ? { logFile: r.log_file }
+        : {}),
     });
   }
   return out;
@@ -134,12 +145,17 @@ export type Planned = {
   repo: string;
   lane: string;
   resident: boolean;
-  /** What its listener hears (lanes.agents scope): "all" adds agents' and system lines (--everyone). */
+  /** What its listener hears (lanes.agents scope): "all" adds agents' lines (--everyone), "system" the system lines too (--system). */
   scope: LaneScope;
   /** Woken by name when a line names it (lanes.agents wake, default true). */
   wake: boolean;
+  /** May answer his lines that name nobody, briefly (lanes.agents answerUnnamed). */
+  answerUnnamed: boolean;
   /** Mid-turn now (ay's `state`). */
   busy: boolean;
+  /** ay's turn state as listed (`state`), and the agent's live output log (lanes-busy.ts). */
+  state?: string;
+  logFile?: string;
 };
 
 /**
@@ -191,11 +207,16 @@ export function planLanes(
     cwd: a.cwd,
     repo,
     lane: lane!,
-    // scope "all" (tier ①) is live by definition.
-    resident: held || !!reg?.resident || reg?.scope === "all",
+    // scope "all" / "system" (tier ① / ⓪) is live by definition.
+    resident: held || !!reg?.resident || hearsAll(reg?.scope),
     scope: reg?.scope ?? "owner",
     wake: reg?.wake !== false,
+    // Owner, 2026-11-15 23:09 JST: a live lane answers by relevance to its project,
+    // not by being named; a row may still say false (listen only).
+    answerUnnamed: reg?.answerUnnamed ?? (held || !!reg?.resident || hearsAll(reg?.scope)),
     busy: a.state === "active",
+    ...(a.state ? { state: a.state } : {}),
+    ...(a.logFile ? { logFile: a.logFile } : {}),
   }));
 }
 
@@ -259,6 +280,8 @@ export type Action =
       scope: LaneScope;
       /** Its agent has its own feed of his lines (wake: false): the listener skips them. */
       skipOwner: boolean;
+      /** It may answer his unnamed lines (lanes.agents answerUnnamed): `--answer-unnamed`. */
+      answerUnnamed: boolean;
     }
   | { type: "stop-listener"; lane: string }
   | { type: "greet"; lane: string; text: string }
@@ -276,7 +299,7 @@ export type World = {
   external: { has(lane: string): boolean };
 };
 
-/** The greeting, from config lanes.greeting. */
+/** The greeting, from config lanes.greeting (lanes.greetingAnswerUnnamed for a lane that answers unnamed lines: decide picks it). */
 export function greeting(p: Planned, template: string, locale = "zh"): string {
   const mode =
     laneModeWord({ mode: p.resident ? "listener" : "reader", scope: p.scope }, locale) ?? "";
@@ -296,7 +319,7 @@ export function decide(
   prev: readonly Planned[],
   w: World,
   state: ManagerState,
-  cfg: Pick<LanesConfig, "greeting">,
+  cfg: Pick<LanesConfig, "greeting"> & Partial<Pick<LanesConfig, "greetingAnswerUnnamed">>,
   locale = "zh",
 ): { actions: Action[]; state: ManagerState } {
   const actions: Action[] = [];
@@ -330,9 +353,12 @@ export function decide(
         cli: p.cli,
         scope: p.scope,
         skipOwner: !p.wake,
+        answerUnnamed: p.answerUnnamed,
       });
     if (!greeted.has(p.lane)) {
-      actions.push({ type: "greet", lane: p.lane, text: greeting(p, cfg.greeting, locale) });
+      const template =
+        p.answerUnnamed && cfg.greetingAnswerUnnamed ? cfg.greetingAnswerUnnamed : cfg.greeting;
+      actions.push({ type: "greet", lane: p.lane, text: greeting(p, template, locale) });
       greeted.add(p.lane);
     }
   }

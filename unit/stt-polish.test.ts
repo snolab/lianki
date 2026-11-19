@@ -129,15 +129,17 @@ describe("wake mention: the lane named in front becomes its @mention", () => {
   it("STT's spelling of a lane's name, or the name the wake word heard", () => {
     expect(wakeMention("小客，帮我看一下")).toBe("@小克 帮我看一下");
     expect(wakeMention("小课，帮我看一下")).toBe("@小克 帮我看一下");
-    expect(wakeMention("杰米，看一下日志")).toBe("@杰咪 看一下日志");
+    expect(wakeMention("杰米，看一下日志")).toBe("@哈基米 看一下日志");
+    expect(wakeMention("哈吉米，看一下日志")).toBe("@哈基米 看一下日志");
     expect(wakeMention("可可，部署了吗")).toBe("@coco 部署了吗");
-    expect(wakeMention("codex 和 解密，看一下")).toBe("@coco @杰咪 看一下");
+    expect(wakeMention("codex 和 解密，看一下")).toBe("@coco @哈基米 看一下");
     // The wake word heard the name and cut it off: the mention goes in front.
     expect(wakeMention("帮我看一下", "@小克")).toBe("@小克 帮我看一下");
     expect(wakeMention("，帮我看一下", "@小克")).toBe("@小克 帮我看一下");
     // Already mentioned: unchanged in effect.
     expect(wakeMention("@小克 帮我看一下")).toBe("@小克 帮我看一下");
-    expect(wakeMention("@coco @杰咪 看一下")).toBe("@coco @杰咪 看一下");
+    // An old name (杰咪, before 2026-11-16) is rewritten to the lane's name now.
+    expect(wakeMention("@coco @杰咪 看一下")).toBe("@coco @哈基米 看一下");
   });
 
   it("a line that names no one stays as it is", () => {

@@ -7,9 +7,10 @@
  * missing-token line, the readers' wake hand-offs.
  */
 import { join } from "node:path";
-import type { LaneScope, LanesConfig } from "../../lib/lanes-config";
+import { type LaneScope, type LanesConfig, hearsAll } from "../../lib/lanes-config";
 import { type ChatLaneDef, setLaneTable } from "../../packages/debug-chat/src/voices";
 import { handoffBrief, lineOf } from "./lane-listen-lib";
+import { type BusyDeps, createBusyTracker } from "./lanes-busy";
 import {
   type Action,
   type ManagerState,
@@ -42,6 +43,7 @@ export interface Deps {
     scope?: LaneScope;
     skipOwner?: boolean;
     cli?: string;
+    answerUnnamed?: boolean;
   }): Child;
   /** POST the hub's chat API with a lane's token: {ok, status}. */
   chat(token: string, body: Record<string, unknown>): Promise<{ ok: boolean; status: number }>;
@@ -54,6 +56,13 @@ export interface Deps {
   now?(): number;
   /** Run `fn` in `ms` (default setTimeout): a woken lane's live window ending. */
   later?(ms: number, fn: () => void): void;
+  /**
+   * Who is busy (./lanes-busy.ts): follow an agent's live output log; absent = no busy ring
+   * (the timers default to setTimeout / clearTimeout).
+   */
+  follow?: BusyDeps["follow"];
+  setTimer?: BusyDeps["setTimer"];
+  clearTimer?: BusyDeps["clearTimer"];
 }
 
 export type ManagerOpts = {
@@ -82,6 +91,26 @@ export function createManager(d: Deps, o: ManagerOpts) {
 
   const table = () => JSON.stringify(laneTableFor(planned, o.extraTable));
 
+  // Who is busy: each lane's agent's live output, told to the hub with the lane's own token.
+  const busy = d.follow
+    ? createBusyTracker(
+        {
+          follow: d.follow,
+          setTimer: d.setTimer ?? ((ms, fn) => setTimeout(fn, ms)),
+          clearTimer: d.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>)),
+          log: d.log,
+          send: async (lane, b, stuck) => {
+            if (o.dryRun) return;
+            const t = d.token(lane);
+            if (!t) return;
+            const r = await d.chat(t, { op: "lane", busy: b, ...(stuck ? { stuck } : {}) });
+            if (!r.ok) d.log({ type: "busy-refused", lane, status: r.status });
+          },
+        },
+        { idleMs: o.cfg.busyIdleSec * 1000 },
+      )
+    : null;
+
   async function run(a: Action): Promise<void> {
     const { type: action, ...rest } = a;
     d.log({ type: "action", action, ...rest, ...("text" in rest ? { text: undefined } : {}) });
@@ -95,6 +124,7 @@ export function createManager(d: Deps, o: ManagerOpts) {
           scope: a.scope,
           skipOwner: a.skipOwner,
           cli: a.cli,
+          answerUnnamed: a.answerUnnamed,
         });
         children.set(a.lane, c);
         void c.exited.then((code) => {
@@ -174,6 +204,8 @@ export function createManager(d: Deps, o: ManagerOpts) {
         o.locale,
       );
       planned = next;
+      // Only lanes with a token can be shown busy.
+      busy?.sync(next.filter((p) => tokens.has(p.lane)));
       for (const a of r.actions) await run(a);
       if (JSON.stringify(r.state) !== JSON.stringify(state)) {
         state = r.state;
@@ -202,7 +234,9 @@ export function createManager(d: Deps, o: ManagerOpts) {
           d.log({ type: "wake-live", lane: p.lane, id: l.id, until: t + liveMs });
           continue;
         }
-        const body = handoffBrief(p.lane, [l], o.repo, !briefed.has(p.lane));
+        const body = handoffBrief(p.lane, [l], o.repo, !briefed.has(p.lane), {
+          answerUnnamed: p.answerUnnamed,
+        });
         briefed.add(p.lane);
         const code = o.dryRun ? 0 : await d.wake(p.pid, body);
         d.log({ type: "woken", lane: p.lane, pid: p.pid, id: l.id, ay: code });
@@ -214,17 +248,27 @@ export function createManager(d: Deps, o: ManagerOpts) {
             cwd: p.cwd,
             pid: p.pid,
             cli: p.cli,
-            scope: p.scope,
+            // Owner, 2026-11-15 23:11 JST: a named lane hears everything for the window,
+            // agents' and system lines too, related to it or not (tier ⓪ for the window).
+            scope: "system",
             skipOwner: false,
+            answerUnnamed: p.answerUnnamed,
           });
       }
       return woken;
     },
-    /** Stop every listener this manager started. */
+    /** One line of `ay ls --watch --json --local`: the busy fallback's input (lanes-busy.ts). */
+    ayLine(raw: string) {
+      busy?.ayLine(raw);
+    },
+    /** Stop every listener this manager started (and the busy followers: busy lanes told idle). */
     stop() {
       for (const c of children.values()) c.kill();
       children.clear();
+      busy?.stop();
     },
+    /** The busy tracker's view (lanes-busy.ts snapshot), or null without one. */
+    busy: () => busy?.snapshot() ?? null,
     /** End the live windows that are over (the timers call it; tests too). */
     expire,
     /** The lanes live by a recent name, and until when. */
@@ -237,15 +281,16 @@ export function createManager(d: Deps, o: ManagerOpts) {
 
 /**
  * The listener command for a lane (lane-listen through lianki-dev, every owner line, from
- * the agent's dir); scope "all" adds `--everyone` (agents' and system lines too), and
- * `skipOwner` `--skip-owner` (its agent has its own feed of his lines).
+ * the agent's dir); scope "all" adds `--everyone` (agents' lines too), scope "system"
+ * `--everyone --system` (the system lines as well), and `skipOwner` `--skip-owner` (its agent has its own feed of his lines), and `answerUnnamed`
+ * `--answer-unnamed` (it may answer his lines that name nobody, briefly).
  */
 export const listenerArgv = (
   bun: string,
   repo: string,
   lane: string,
   cwd: string,
-  o: { scope?: LaneScope; skipOwner?: boolean; cli?: string } = {},
+  o: { scope?: LaneScope; skipOwner?: boolean; cli?: string; answerUnnamed?: boolean } = {},
 ) => [
   bun,
   join(repo, "scripts", "dev", "lianki-dev.ts"),
@@ -259,6 +304,8 @@ export const listenerArgv = (
   // Which agent in the dir (lanes.agents `cli`): a stale one beside the live one is skipped.
   ...(o.cli ? ["--cli", o.cli] : []),
   "--all",
-  ...(o.scope === "all" ? ["--everyone"] : []),
-  ...(o.scope === "all" && o.skipOwner ? ["--skip-owner"] : []),
+  ...(hearsAll(o.scope) ? ["--everyone"] : []),
+  ...(o.scope === "system" ? ["--system"] : []),
+  ...(hearsAll(o.scope) && o.skipOwner ? ["--skip-owner"] : []),
+  ...(o.answerUnnamed ? ["--answer-unnamed"] : []),
 ];

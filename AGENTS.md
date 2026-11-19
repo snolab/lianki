@@ -44,7 +44,7 @@ released to `prod` once a day, docs/shipping.md "Daily release"). Repo: `snolab/
 
 ```bash
 bun run dev            # Next.js :3000   (bun run dev:db first for local Mongo)
-bun run typecheck      # tsgo --noEmit
+bun run typecheck      # tsrs --noEmit (scripts/typecheck.ts; tsc 7 only if tsrs crashes)
 bun test unit/x.test.ts  # one test file, no queue
 bun run test:unit      # whole unit suite, starts at once (CI adds -- --coverage)
 bun fix                # oxlint --fix + oxfmt
@@ -172,6 +172,7 @@ that are expensive to rediscover.
 | The owner's local streaming speech-to-text (mic → his Mac)                 | [docs/local-stt.md](docs/local-stt.md)                              |
 | His voice-clone reference in his account (audio, sealed, passkey)          | [docs/voice-clone.md](docs/voice-clone.md)                          |
 | Mic recordings in his account: what is kept, sealing, /my/recordings, pull | [docs/recordings.md](docs/recordings.md)                            |
+| Voiceprint service: hosting, trust, biometric data, migration              | [docs/voiceprint-service.md](docs/voiceprint-service.md)            |
 | /vibe: a conversation transcribed into a private doc                       | [docs/vibe.md](docs/vibe.md)                                        |
 | Whole-page dev server on prod D1 (owner only, home LAN)                    | [docs/dev-whole-page.md](docs/dev-whole-page.md)                    |
 | A friend's dev container (devbox: agents, local D1, tunnel)                | [devbox/README.md](devbox/README.md)                                |
@@ -202,6 +203,7 @@ that are expensive to rediscover.
 | /books public-domain library: catalogue rule, slugs, R2 cache              | [docs/books-plan.md](docs/books-plan.md), "The catalogue: /books"   |
 | Voice mode: spoken commands per screen, grammar, mic taps                  | [docs/voice-mode.md](docs/voice-mode.md)                            |
 | All sound through Li: `__lkLi` hub, who holds mic / plays                  | [docs/li-sound-hub.md](docs/li-sound-hub.md)                        |
+| Agent audio on the phone (`say --play`)                                    | [docs/li-sound-hub.md](docs/li-sound-hub.md), "Playing audio"      |
 | /words owner spec: tall slips, window, review-first, voice                 | [docs/words-session-spec.md](docs/words-session-spec.md)            |
 | PWA cold start: measuring it, per-page dictionaries, lazy chat, SW         | [docs/cold-start.md](docs/cold-start.md)                            |
 | Branch API previews: Core gateway, MyBox auth, sandbox persistence         | [docs/api-preview-proxy.md](docs/api-preview-proxy.md)              |

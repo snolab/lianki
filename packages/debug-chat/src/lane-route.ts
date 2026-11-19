@@ -12,7 +12,9 @@
  * Pure, tested in unit/lane-route.test.ts.
  */
 
+import { nameSyllables, phoneticPrefix } from "./lane-phonetic";
 import { type LaneId, laneTable, setLaneTable } from "./voices";
+import { pinyinOf } from "./wake-tokens";
 
 /**
  * The built-in route lanes. More come from config `chat.lanes` (voices.ts
@@ -94,8 +96,29 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
   },
   agy: {
     // 杰咪: the owner's name for agy (2026-11-14), 咪宝 (owner, 2026-11-15: "咪宝咪宝在吗").
-    exact: ["agy", "antigravity", "杰咪", "咪宝", "Jimmy", "jimmy"],
+    // 哈基米: his new name for agy (owner, 2026-11-16 02:03 JST); 杰咪 stays a name.
+    exact: ["agy", "antigravity", "哈基米", "杰咪", "咪宝", "Jimmy", "jimmy"],
     heard: [
+      // STT spellings of 哈基米 (2026-11-16: "你把自己改名为海吉米吧").
+      "哈吉米",
+      "海吉米",
+      "哈急米",
+      "哈几米",
+      // STT 2026-11-16 13:3x JST: "韩吉敏回答。", "韩今明要实施监控这个页面的改动。"
+      "韩吉敏",
+      "韩今明",
+      "韩吉明",
+      "韩金明",
+      "韩基米",
+      "韩吉米",
+      "汉吉米",
+      "哈吉敏",
+      "哈基敏",
+      "哈吉明",
+      "ハチミ",
+      "ハッチミ",
+      "Hajimi",
+      "hajimi",
       "杰米",
       "洁咪",
       "解密",
@@ -108,6 +131,10 @@ export const LANE_NAMES: Readonly<Record<DefaultRouteLane, LaneNames>> = {
       "jmy",
       "Jmy",
       "杰明",
+      // STT 2026-11-15 22:3x JST: "建明建明在吗？"
+      "建明",
+      "剑明",
+      "健明",
       "ajy",
       "aji",
       "反重力",
@@ -246,6 +273,33 @@ function nameAt(s: string): Hit | null {
       }
     }
   }
+  return best ?? phoneticAt(s);
+}
+
+const sylCache = new Map<string, string[] | null>();
+/** A Han name's toneless syllables (lane-phonetic.ts), cached per spelling. */
+function sylsOf(name: string): string[] | null {
+  if (!sylCache.has(name)) sylCache.set(name, nameSyllables(name, pinyinOf));
+  return sylCache.get(name)!;
+}
+
+/**
+ * The fallback when no spelling matched: a lane name by sound (lane-phonetic.ts,
+ * owner 2026-11-15: "从语音层面来"). Every Han name and heard spelling of every
+ * lane is a pronunciation; the longest one `s` starts with wins. A sound match
+ * counts as a heard spelling: a punctuation mark must follow it.
+ */
+function phoneticAt(s: string): Hit | null {
+  let best: Hit | null = null;
+  for (const lane of routeLanes()) {
+    const names = laneNames(lane);
+    for (const name of [...names.exact, ...names.heard]) {
+      const syls = sylsOf(name);
+      if (!syls) continue;
+      const end = phoneticPrefix(s, syls, pinyinOf);
+      if (end > 0 && (!best || end > best.end)) best = { lane, end, exact: false };
+    }
+  }
   return best;
 }
 
@@ -309,7 +363,14 @@ export function routeLine(text: string): Route {
     const hit = nameAt(s);
     if (!hit) return none;
     if (!lanes.includes(hit.lane)) lanes.push(hit.lane);
-    const tail = s.slice(hit.end);
+    let tail = s.slice(hit.end);
+    // The same name said twice ("建明建明在吗？"): calling him, so it is an address
+    // as an own name is, whatever spelling STT chose.
+    const again = nameAt(tail);
+    if (again && again.lane === hit.lane) {
+      tail = tail.slice(again.end);
+      hit.exact = true;
+    }
     // Another name joined to this one: "codex 和 agy，…".
     const j = JOIN.exec(tail);
     if (j && j[0].trim() && nameAt(tail.slice(j[0].length))) {
@@ -355,4 +416,36 @@ export function laneTakes(
   if (text === null) return false;
   // `all`: every owner line, addressed or not (owner, 2026-11-14: "coco 也要听所有的话").
   return (opts.all === true && m.from === "owner") || routeLine(text).lanes.includes(lane);
+}
+
+/** A name inside a line: Latin ones as whole words, the others as written. */
+function namedIn(t: string, name: string): boolean {
+  const n = name.toLowerCase();
+  if (!n) return false;
+  if (!isLatin(n)) return t.includes(n);
+  for (let i = t.indexOf(n); i >= 0; i = t.indexOf(n, i + 1)) {
+    const before = i > 0 ? t[i - 1]! : "";
+    const next = t[i + n.length] ?? "";
+    if (!/[a-z0-9]/i.test(before) && !/[a-z0-9]/i.test(next)) return true;
+  }
+  return false;
+}
+
+/**
+ * Does this line name a lane at all, as an address or not (owner,
+ * 2026-11-16: Li answered "韩今明要实施监控这个页面的改动", a heard spelling
+ * of 哈基米 with no mark after it)? Broader than routeLine: any own name or
+ * heard spelling anywhere in the line, and a name by sound at its start
+ * without the mark. Used only to keep Li (the Learning Partner model) quiet,
+ * so a false hit costs a silence, never a wrong hand-off.
+ */
+export function namesLane(text: string): boolean {
+  const raw = typeof text === "string" ? text : "";
+  if (routeLine(raw).addressed) return true;
+  const t = raw.toLowerCase();
+  for (const lane of routeLanes()) {
+    const names = laneNames(lane);
+    for (const name of [...names.exact, ...names.heard]) if (namedIn(t, name)) return true;
+  }
+  return nameAt(raw.replace(LEAD, "")) !== null;
 }

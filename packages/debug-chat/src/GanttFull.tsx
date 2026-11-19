@@ -342,7 +342,11 @@ function barMarks(
 ) {
   const b = ganttBar(t, axis, now);
   const parked = isParked(t);
-  const segments = useMemo(() => computeStateSegments(t, axis, now), [t, axis, now]);
+  // Plain call, never a hook: barMarks is a helper run once per bar, so a hook here
+  // changes the hook count with the row count and React throws when the Gantt
+  // opens ("Rendered more hooks than during the previous render", owner's phone,
+  // 2026-11-15 22:1x JST).
+  const segments = computeStateSegments(t, axis, now);
   // A range's tail (P5 → P95) on a running bar; queued, parked and done draw whole.
   const tail = !t.done && !t.queued && !parked ? b.w - b.solid : 0;
   // The original plan as a ghost; a done task's bar is how it really ran, so with no

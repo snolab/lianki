@@ -9,7 +9,7 @@
  *       # tailnet only (`tailscale serve`, never funnel), removed on exit
  *   bun scripts/dev/islands-server.ts --port 5181            # localhost only
  *   ... --entry <file>      build another entry (tests)
- *   ... --no-typecheck      push without running tsgo first
+ *   ... --no-typecheck      push without running the typecheck first
  *
  * Serves:
  *   GET /islands.js   the islands module (ESM; shared modules come from the page)
@@ -51,9 +51,11 @@ let inputs: string[] = [];
 let fingerprints: Record<string, string> = {};
 let entryHash = "";
 
-/** tsgo over the project; the files it reports errors in, and its output. */
+/** tsrs over the project (scripts/typecheck.ts); the files it reports errors in, and its output. */
 async function typecheck(): Promise<{ files: string[]; output: string }> {
-  const p = spawn(resolve(ROOT, "node_modules/.bin/tsgo"), ["--noEmit"], { cwd: ROOT });
+  const p = spawn(process.execPath, [resolve(ROOT, "scripts/typecheck.ts"), "--noEmit"], {
+    cwd: ROOT,
+  });
   let output = "";
   p.stdout.on("data", (b) => (output += b));
   p.stderr.on("data", (b) => (output += b));

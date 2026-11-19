@@ -4,7 +4,8 @@ import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { FLAG_KEYS, FLAG_OLD_KEYS, FLAGS, type FlagDef, type FlagKey } from "@/lib/flags";
 import type { FlagRow } from "@/lib/flags-store";
-import { FlagCard, MONEY_NOTE } from "@/app/(app)/dev/flags/FlagCard";
+import { FlagCard, MONEY_NOTE, When } from "@/app/(app)/dev/flags/FlagCard";
+import { flagTime } from "@/app/(app)/dev/flags/flag-time";
 import {
   assignGroups,
   buildFlagView,
@@ -27,6 +28,30 @@ import { cleanFlagViewPrefs } from "@/app/(app)/dev/flags/flag-view-store";
 import { mockIntlayer } from "./intlayer-mock";
 
 mockIntlayer();
+
+test("legacy epoch strings render like ISO dates and participate in the recent filter", () => {
+  const epoch = 1794387558000;
+  const iso = new Date(epoch).toISOString();
+  expect(flagTime(String(epoch))).toBe(epoch);
+  expect(flagTime(` ${epoch} `)).toBe(epoch);
+  expect(flagTime(epoch)).toBe(epoch);
+  expect(flagTime(iso)).toBe(epoch);
+  expect(renderToString(createElement(When, { at: String(epoch) }))).toBe(
+    renderToString(createElement(When, { at: iso })),
+  );
+  expect(isRecent({ updatedAt: String(epoch) }, epoch + 1000)).toBe(true);
+  expect(isRecent({ updatedAt: String(epoch) }, epoch + (RECENT_DAYS + 1) * 86_400_000)).toBe(
+    false,
+  );
+});
+
+test("unusable flag dates display a placeholder instead of crashing the entire page", () => {
+  for (const at of ["", "  ", "not a date", "9999999999999999", NaN, Infinity]) {
+    expect(flagTime(at)).toBeNull();
+    expect(renderToString(createElement(When, { at }))).toBe("—");
+    expect(isRecent({ updatedAt: String(at) }, Date.now())).toBe(false);
+  }
+});
 
 const NOW = Date.parse("2026-11-06T09:00:00Z");
 const FAILED = [{ check: "stripe.live-key", reason: "stripe.no-live-key", text: "x" }] as never[];

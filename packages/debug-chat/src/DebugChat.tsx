@@ -3,6 +3,7 @@
 import { MiniAppCards, type MiniAppEmbedView, type MiniAppSizing } from "./MiniAppCards";
 
 import { createScrollFollow } from "./scroll-follow";
+import { createLogResizeAnchor } from "./log-resize-anchor";
 import { evalTrustStrings } from "./eval-trust-strings";
 import { shortPage } from "./short-page";
 import { type AdaptState, voiceAdapt } from "./adaptive";
@@ -174,7 +175,6 @@ import {
   JUMP_H_PX,
   asksAbove,
   jumpLabel,
-  jumpRoom,
   jumpTop,
   jumpWidth,
   nearestAbove,
@@ -290,11 +290,15 @@ import {
   fullHintStep,
 } from "./full-screen";
 import { FullScreenMenuItem } from "./FullScreenMenuItem";
+import { SealStamp } from "./SealStamp";
 import { CHAT_UI_EVENT, chatUiOf, runMenuCue } from "./ui-cue";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
 import { type ScrollBox, forwardWheel } from "./wheel-forward";
 import { AskCard } from "./AskCard";
+import { PlayChip } from "./PlayChip";
+import { browserPlayEnv, liPlayer } from "./li-player";
+import { lineAudioOf } from "./play-audio";
 import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
@@ -305,6 +309,7 @@ import {
   AddressedMarks,
   LineTag,
   agentAvatar as tokenPicture,
+  clusterAvatar,
   laneAvatar,
   voiceAvatar,
   withTokenName,
@@ -993,6 +998,11 @@ export type DebugChatProps = {
    * lists each. Needs `treeSource`.
    */
   etaBar?: boolean;
+  /**
+   * Flag `chat.play-audio` on a `dev` holder's own thread: a line's audio
+   * (`say --play`) gets its ▶ chip (PlayChip.tsx, li-player.ts). Off: no chip.
+   */
+  playAudio?: boolean;
   /** This page's timer saw a task's estimate run out, unsent: tell the hub (once per estimate). */
   onEtaDue?: (id: string) => void;
   /**
@@ -1125,6 +1135,7 @@ export function DebugChat({
   miniApps,
   onHistory,
   etaBar = false,
+  playAudio = false,
   onEtaDue,
   etaSource,
   link,
@@ -1137,6 +1148,22 @@ export function DebugChat({
   backToClose,
 }: DebugChatProps) {
   const t = chatStrings(strings);
+  // Li's player (li-player.ts): one per page; made only with the flag on.
+  const player = useMemo(() => (playAudio ? liPlayer(browserPlayEnv() ?? undefined) : null), [playAudio]);
+  useEffect(() => {
+    if (!player || typeof window === "undefined") return;
+    // Any tap on the page primes its element, so a later line may play by itself (iOS).
+    return unlockOnGesture(window, () => {
+      if (activationNow() === false) return false;
+      player.unlock();
+      return true;
+    });
+  }, [player]);
+  /** A line's ▶ chip, when it carries audio and the flag is on. */
+  const playChip = (m: ChatMessage) => {
+    const a = player && m.from === "agent" ? lineAudioOf(m.audio) : undefined;
+    return a ? <PlayChip id={m.id} audio={a} player={player} /> : null;
+  };
   /**
    * Agent lines with their lane (voices.ts): a `【lane】` prefix becomes the name tag and mark.
    * A line inside a summary (`collapsedInto`) is not shown: the summary's tap shows it as heard.
@@ -1178,6 +1205,9 @@ export function DebugChat({
     // Another voice on his voice line (speaker-avatar.ts): its own disc, not his picture.
     voiceAvatar,
     otherVoice: t.vpOtherVoice,
+    // One voice in the room (cluster-avatar.ts): "A", "B"… or a household voice.
+    clusterAvatar,
+    clusterWords: { voice: t.vpVoiceCluster, household: t.vpHouseholdVoice },
   };
   /**
    * Who the owner called (addressed.ts): each owner line's addressed lanes
@@ -2043,6 +2073,10 @@ export function DebugChat({
     follow.reset(); // A fresh account/thread starts at newest, never another thread's scroll position.
     return follow;
   }, [draftScope]);
+  const resizeAnchor = useMemo(
+    () => createLogResizeAnchor({ box: () => log.current, following: atEnd }),
+    [tail],
+  );
   const touchScrollY = useRef<number | null>(null);
   const [scrolledUp, setScrolledUp] = useState(false);
   /**
@@ -2095,6 +2129,7 @@ export function DebugChat({
     lastLogScroll.current = el.scrollTop;
     setFade(el.scrollHeight > el.clientHeight + 1 || el.scrollTop > 0);
     const end = tail.scroll();
+    resizeAnchor.remember();
     setScrolledUp(!end);
     if (end) setBelow(0);
   };
@@ -2678,19 +2713,25 @@ export function DebugChat({
   }, [messages, open, tail]);
   // At the end, the log stays there when it or its lines change size (the
   // keyboard, the text size, the box moved, a card opening): a shrinking
-  // scroller keeps its scrollTop, which showed older lines. Scrolled up, it
-  // is left alone; the full-screen log places itself.
+  // scroller keeps its scrollTop, which showed older lines. Scrolled up, keep
+  // the message under the reader's focus in place when the viewport resizes.
+  // The temporary full-screen log places itself.
   useEffect(() => {
     const el = log.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
-      if (el.hidden || fullNow.current !== "off") return;
+      if (el.hidden || fullNow.current !== "off") {
+        resizeAnchor.reset();
+        return;
+      }
+      resizeAnchor.resize();
       tail.pin();
+      resizeAnchor.remember();
     });
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
-  }, [open, tail]);
+  }, [open, tail, resizeAnchor]);
 
   const messagesNow = useRef(messages);
   messagesNow.current = messages;
@@ -3635,6 +3676,8 @@ export function DebugChat({
         <>
           <PolishedMark
             by={m.edited?.by}
+            mainName={t.name}
+            mainAvatar={agentAvatar}
             icon={
               m.summary ? (
                 <span data-testid="debug-chat-summary" className="rounded border border-current px-1 text-[0.8em]">
@@ -3894,7 +3937,7 @@ export function DebugChat({
     notePrefWrite(); // synced with the account by the app (docs/prefs-sync.md)
     // His mute wins: it also ends "the mic was used here" (sticky read-aloud, voice.ts).
     if (!v) voice().unvoice?.();
-    if (!v && !voice().state().mic) voice().stop();
+    if (!v) voice().stop();
   };
 
   /** The draft's "@/…" while it is typed: the listeners' nodes under it, to pick from. */
@@ -4307,23 +4350,23 @@ export function DebugChat({
         type="button"
         role="menuitemcheckbox"
         data-testid="debug-menu-speak"
-        // The mic forces read-aloud on for its session; the setting itself is kept.
-        aria-checked={speak || vs.mic}
-        aria-disabled={vs.mic}
+        aria-checked={speak}
         title={
-          vs.mic
-            ? ux.speakMicTitle
+          !speak
+            ? ux.speakSilent
+            : vs.mic
+            ? ux.speakTouchTitle
             : speak && vs.touch
               ? ux.speakTouchTitle
               : speak && vs.voiced
                 ? ux.speakVoicedTitle
                 : ux.speakTypingTitle
         }
-        onClick={() => !vs.mic && toggleSpeak()}
-        className={`flex items-center gap-2 px-3 py-1.5 text-start ${vs.mic ? "opacity-70" : ""}`}
+        onClick={toggleSpeak}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
       >
-        <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
-        {vs.mic
+        <Icon name="speakerHigh" weight={speak ? "fill" : "regular"} />
+        {speak && vs.mic
           ? ux.speakMicOn
           : speak && vs.touch
             ? strings?.readAloud
@@ -4336,6 +4379,9 @@ export function DebugChat({
                   ? t.readAloudTyping
                   : ui.readAloudTyping
                 : ux.speakSilent}
+        <span className="ms-auto">
+          <SealStamp on={speak} onWord={ux.menuSwitchOn} offWord={ux.menuSwitchOff} />
+        </span>
       </button>
       {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
       <button
@@ -5039,6 +5085,7 @@ export function DebugChat({
               sendText={(text) => sendRef.current(text)}
             />
           )}
+          {playChip(m)}
           {p.mark}
           {addressedOf.has(m.id) && (
             <AddressedMarks
@@ -5415,16 +5462,18 @@ export function DebugChat({
           (time), polish mark, waiting tag, so the hub's history, the polish
           edit (one line id), read-aloud and the anchoring are unchanged.
         */}
-        {runsOf(starts).map((run, r, runs) => {
+        {runsOf(starts).map((run) => {
           const i0 = run[0]!;
           const m0 = messages[i0]!;
           const who = whos[i0]!;
           const ownPassage = isOwnVoice(m0);
           // The state-tree node the run belongs to: a muted subtitle and a left border by its hue.
           const node = lineNode(m0);
-          // Always keep the same side room: toggling the floating arrow or its
-          // count never changes wrapping/height. It adds no minimum row height.
-          const room = r === runs.length - 1 ? jumpRoom() : null;
+          // No room beside the newest run: the glass up-arrow floats over the
+          // log and the text keeps its full width (owner, 2026-11-16 02:5x JST:
+          // "最后一条消息，它的右边有一个很大的空白区域"; agreed 00:3x JST: never
+          // squeeze from the right). Every run is the same width, so the arrow
+          // appearing or its count changing never rewraps or moves a line.
           return (
             <li
               key={m0.id}
@@ -5432,11 +5481,9 @@ export function DebugChat({
               data-own-passage={ownPassage || undefined}
               data-from={m0.from}
               data-node={node?.node}
-              data-jump-room={room ? room.end : undefined}
               className="flex items-start gap-1.5 leading-snug"
               style={{
                 ...(node ? { borderInlineStart: `2px solid ${node.border}`, paddingInlineStart: 4 } : {}),
-                ...(room ? { paddingInlineEnd: room.end } : {}),
               }}
             >
               {(() => {
@@ -5566,6 +5613,7 @@ export function DebugChat({
                             sendText={(text) => sendRef.current(text)}
                           />
                         )}
+                        {playChip(m)}
                         {polish(m).mark}
                         {addressedOf.has(m.id) && (
                           <AddressedMarks
@@ -5750,6 +5798,8 @@ export function DebugChat({
                     onOpen={() => setGanttOpen(true)}
                     compact={!open || compact}
                     news={etaNews}
+                    cycle={etaTicker?.cycle}
+                    cycleSec={etaTicker?.sec}
                   />
                 </div>
               )}
@@ -5763,6 +5813,8 @@ export function DebugChat({
               onOpen={() => setGanttOpen(true)}
               compact={!open || compact}
               news={etaNews}
+              cycle={etaTicker?.cycle}
+              cycleSec={etaTicker?.sec}
             />
           )}
         </div>

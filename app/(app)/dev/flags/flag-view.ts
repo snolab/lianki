@@ -14,6 +14,7 @@ import {
 import type { FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
 import { flagKeyFromHash } from "./flag-anchor";
+import { flagTime } from "./flag-time";
 
 export const OTHER_GROUP = "other";
 export const SHIPPED_GROUP = "shipped";
@@ -101,8 +102,8 @@ export const RECENT_DAYS = 7;
 /** Changed in the last RECENT_DAYS, from the row's `updated_at` (a renamed flag's old row counts). */
 export function isRecent(row: Pick<FlagRow, "updatedAt">, now: number): boolean {
   if (!row.updatedAt) return false;
-  const at = new Date(row.updatedAt).getTime();
-  return now - at < RECENT_DAYS * 86_400_000;
+  const at = flagTime(row.updatedAt);
+  return at !== null && now - at < RECENT_DAYS * 86_400_000;
 }
 
 export function passesFilters(row: FlagRow, f: FlagFilters, now: number): boolean {

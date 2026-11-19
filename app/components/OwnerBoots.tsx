@@ -26,9 +26,11 @@ export function OwnerBoots({
   talkOver = false,
   polishReadback,
   foldOthers = true,
+  speakerAvatars = true,
   whisperRecheck,
   pttMaxCaptureMs,
   mergeReopenSec,
+  playAudio = false,
   box = null,
   autoUpdate = false,
   account = null,
@@ -44,6 +46,8 @@ export function OwnerBoots({
   polishReadback?: { on: boolean; timeoutMs?: number };
   /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
   foldOthers?: boolean;
+  /** Flag `voice.speaker-avatars`: each voice in the room gets its own avatar (cluster-avatar.ts). */
+  speakerAvatars?: boolean;
   /** Flag `stt.whisper-recheck` + dev: his Mac's Whisper re-reads each run (whisper-recheck.ts). */
   whisperRecheck?: RecheckConf;
   /** Config voice.pttMaxCaptureMs: bounded held-audio memory. */
@@ -72,6 +76,8 @@ export function OwnerBoots({
   chatFull?: boolean;
   /** Flag `voice.li-hub`: Li's sound hub observes the owner's pages (docs/li-sound-hub.md). */
   liHub?: boolean;
+  /** Flag `chat.play-audio`: an agent's audio lines play (docs/li-sound-hub.md, "Playing audio"). */
+  playAudio?: boolean;
 }) {
   return (
     <>
@@ -91,9 +97,11 @@ export function OwnerBoots({
         talkOver={talkOver}
         polishReadback={polishReadback}
         foldOthers={foldOthers}
+        speakerAvatars={speakerAvatars}
         whisperRecheck={whisperRecheck}
         pttMaxCaptureMs={pttMaxCaptureMs}
         mergeReopenSec={mergeReopenSec}
+        playAudio={playAudio}
         box={box}
         account={account}
         cacheLines={cacheLines}

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createTestD1 } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import type { D1Like } from "@/lib/d1/types";
@@ -21,6 +21,9 @@ import {
 import { STREAK_DEFAULTS, stepCredits } from "@/lib/payments/login-streak";
 import { recordLoginStreak } from "@/lib/payments/login-streak-store";
 import { getBalance, type D1WithBatch } from "@/lib/payments/credits-store";
+import { clearConfigCache } from "@/lib/config-store";
+import { clearFlagCache } from "@/lib/flags-store";
+import { useBackend, useD1 } from "./support/testMocks";
 
 const DAY = 86_400_000;
 const T0 = new Date("2026-01-01T03:00:00Z"); // first paid day, 12:00 JST
@@ -179,6 +182,17 @@ describe("level", () => {
 });
 
 describe("recording from a route", () => {
+  // The default hooks read the flag and the config from the process-wide D1
+  // mock: pin it per test, never inherit whatever the previous suite left.
+  const reset = () => {
+    useBackend("mongodb");
+    useD1(null);
+    clearFlagCache();
+    clearConfigCache();
+  };
+  beforeEach(reset);
+  afterEach(reset);
+
   test("outside a Worker request there is no zone: the day is cut in UTC", async () => {
     expect(requestTimeZone()).toBeUndefined();
     const d1 = await seed();
@@ -244,6 +258,23 @@ describe("recording from a route", () => {
     await recordStudySafe(d1, "ann@x.com", 2, new Date(T0.getTime() + DAY), hooks);
     const c = (n: number) => stepCredits(n, STREAK_DEFAULTS);
     expect(await getBalance(d1 as D1WithBatch, "u1")).toBe(c(1) + c(2));
+  });
+
+  test("the default hooks: flag on (its default), the live config pays the day's step once", async () => {
+    const d1 = await seed();
+    useBackend("d1");
+    useD1(d1);
+    await recordStudySafe(d1, "ann@x.com", 2, T0);
+    await recordStudySafe(d1, "ann@x.com", 2, new Date(T0.getTime() + 1000));
+    await recordStudySafe(d1, "ghost@x.com", 2, T0);
+    expect(await getBalance(d1 as D1WithBatch, "u1")).toBe(stepCredits(1, STREAK_DEFAULTS));
+  });
+
+  test("the default hooks: no D1 to read the flag from, so no grant (fail closed)", async () => {
+    const d1 = await seed();
+    await recordStudySafe(d1, "ann@x.com", 2, T0);
+    expect(await getBalance(d1 as D1WithBatch, "u1")).toBe(0);
+    expect(await recentStudyDays(d1, "ann@x.com")).toHaveLength(1);
   });
 
   test("a failing streak hook never fails the review either", async () => {

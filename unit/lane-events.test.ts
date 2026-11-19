@@ -9,6 +9,10 @@ import {
   laneEventText,
   laneModeWord,
   isLaneScope,
+  listeningEvent,
+  scopeRank,
+  wideScope,
+  widerScope,
   parseLaneEvent,
   tokensNeededText,
   withLaneEvent,
@@ -53,6 +57,35 @@ describe("lane event strings", () => {
     expect(isLaneScope("all")).toBe(true);
     expect(isLaneScope("owner")).toBe(true);
     expect(isLaneScope("x")).toBe(false);
+    // Tier ⓪ (owner, 2026-11-16 02:16 JST): all messages and the system notices.
+    expect(isLaneScope("system")).toBe(true);
+    expect(isLaneScope(3)).toBe(false);
+    expect(laneModeWord({ mode: "listener", scope: "system" }, "zh")).toBe(
+      "实时监听（全部消息 + 系统通知）",
+    );
+    expect(laneModeWord({ mode: "listener", scope: "system" }, "en")).toBe(
+      "listening live (all messages + system notices)",
+    );
+    expect(laneEventText({ kind: "listeningSystem", name: "小克" }, "zh")).toBe(
+      "小克 开始实时监听（全部消息 + 系统通知）",
+    );
+    expect([scopeRank("owner"), scopeRank("all"), scopeRank("system"), scopeRank("x")]).toEqual([
+      0, 1, 2, 0,
+    ]);
+    expect(widerScope("owner", "all")).toBe("all");
+    expect(widerScope("system", "all")).toBe("system");
+    expect(widerScope("all", "all")).toBe("all");
+    expect([wideScope("owner"), wideScope("all"), wideScope("system"), wideScope(1)]).toEqual([
+      undefined,
+      "all",
+      "system",
+      undefined,
+    ]);
+    expect([listeningEvent(undefined), listeningEvent("all"), listeningEvent("system")]).toEqual([
+      "listening",
+      "listeningAll",
+      "listeningSystem",
+    ]);
     expect(laneModeWord({ mode: "reader" }, "en")).toBe("read-only");
     expect(laneModeWord({ mode: "listener", muted: true }, "en")).toBe("muted");
     expect(laneModeWord({}, "en")).toBeNull();

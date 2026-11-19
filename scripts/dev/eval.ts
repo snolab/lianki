@@ -103,7 +103,7 @@
  *       Deleting needs the owner's own session (the chat's + → Inbox →
  *       Delete): `inbox rm` only says so.
  *
- *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--supersede|--interject] [--lane <lane>] [--voice <id>] "text"   (or - for stdin)
+ *   bun scripts/dev/eval.ts say [--to <thread|email>] [--quiet] [--supersede|--interject] [--lane <lane>] [--voice <id>] [--play <src> [--title <t>] [--kind file|stream]] "text"   (or - for stdin)
  *       Reply with the saved grant (the chat grant, else the eval grant:
  *       eval implies chat; never pairs), and exit: to the owner by default, or to
  *       a friend's thread by user id or email.
@@ -138,6 +138,12 @@
  *       from credits; without the provider's key the lane's voice reads it;
  *       docs/li-sound-hub.md, "Provider voices"). local:<name> is reserved. An unknown id is refused; a device voice
  *       the page lacks falls back to the lane's voice, never silence.
+ *
+ *       Audio (docs/li-sound-hub.md, "Playing audio from an agent"): --play
+ *       <https URL | file:<id>> puts a ▶ on the line that his phone plays (by
+ *       itself only on a visible, unlocked phone page with the mic off; else
+ *       on a tap). --title names it, --kind file|stream overrides the guess.
+ *       Flag chat.play-audio; the hub refuses it otherwise.
  *
  *   bun scripts/dev/eval.ts voices [--no-pair] [--target <text>] [--cloud]
  *       The ids --voice takes: each open debug page's device voices (read
@@ -273,6 +279,8 @@ import {
   chatLine,
   nodeOpts,
   sayLane,
+  sayPlay,
+  type SayPlay,
   sayVolume,
 } from "./node-args";
 import { type ChatMessage, routeTo } from "@/lib/dev-eval";
@@ -392,6 +400,13 @@ const interjectFlag = boolFlag("--interject");
  */
 const laneFlag = flag("--lane") ?? (process.env.LIANKI_LANE || undefined);
 const voiceFlag = flag("--voice");
+/**
+ * say --play <src> [--title …] [--kind file|stream]: audio his phone plays on
+ * the line (docs/li-sound-hub.md, "Playing audio from an agent").
+ */
+const playFlag = flag("--play");
+const titleFlag = flag("--title");
+const kindFlag = flag("--kind");
 /** say: deprecated, a no-op (a plain say); accepted so old commands still work. */
 const loudFlag = boolFlag("--loud");
 const labelFlag = flag("--label");
@@ -769,7 +784,7 @@ function chat(out?: string, errorsOnly = false) {
 }
 
 /** Reply with the saved grant (to the owner, or `to` a friend); resolves once the hub has it. */
-function say(text: string, to?: string, volume: SayVolume & SayLane = {}): Promise<Msg> {
+function say(text: string, to?: string, volume: SayVolume & SayLane & SayPlay = {}): Promise<Msg> {
   return sendOnce(
     {
       type: "say",
@@ -1388,7 +1403,12 @@ async function main() {
       console.error(lane.error);
       process.exit(2);
     }
-    console.log(JSON.stringify(await say(text, to, { ...volume, ...lane })));
+    const play = sayPlay(playFlag, titleFlag, kindFlag);
+    if ("error" in play) {
+      console.error(play.error);
+      process.exit(2);
+    }
+    console.log(JSON.stringify(await say(text, to, { ...volume, ...lane, ...play })));
     return;
   }
   if (args[0] === "voices") {

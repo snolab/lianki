@@ -102,6 +102,12 @@ describe("registry", () => {
     expect(parseStoredConfig("words.undoMs", null)).toBeUndefined();
   });
 
+  test("the who-is-here stack shows 3 avatars by default, public (owner, 2026-11-16 简化)", () => {
+    expect(CONFIG["chat.presenceShown"].default).toBe(3);
+    expect(defaultConfig()["chat.presenceShown"]).toBe(3);
+    expect(PUBLIC_CONFIG_KEYS).toContain("chat.presenceShown");
+  });
+
   test("read order: default → global → the user's own, only where a key allows it", () => {
     expect(resolveConfig("words.undoMs", 9000)).toBe(9000);
     expect(resolveConfig("words.undoMs", 9000, 12000)).toBe(9000); // no userPref

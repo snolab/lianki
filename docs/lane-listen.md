@@ -28,7 +28,24 @@ lane answers it. Every listener uses it, so a line gets exactly one answer
   "Gemini says…", "反重力的设计…") is not an address.
 - `codex的…` is talk about codex, not to it: the chat lane takes it.
 - Agent lines, friend lines and other threads are never routed.
-- New spellings go in `LANE_NAMES` with a test in `unit/lane-route.test.ts`.
+- Names by sound (owner, 2026-11-15: "从语音层面来"): when no spelling
+  matches, `packages/debug-chat/src/lane-phonetic.ts` compares toneless
+  pinyin. Every Han name and heard spelling of a lane is a pronunciation; a
+  run of Han characters at the start with the same syllable count, each
+  syllable the same or near, is that name (解密 / 借咪 = jie mi = 杰咪). Near =
+  same final with a confusable initial (j/q/x, zh/z, ch/c, sh/s, n/l) or same
+  initial with a confusable final (in/ing, en/eng, an/ang, ian/iang,
+  uan/uang, ie/i); the groups are data (`INITIAL_NEAR`, `FINAL_NEAR`). At most
+  `lanes.phoneticMaxNear` near syllables per name (default 1, 0 = the same
+  pinyin only; the Mac's listeners read env `LIANKI_LANES_PHONETIC_MAX_NEAR`).
+  One-syllable and Latin names are never matched by sound (jmy, 杰my stay
+  spellings). A sound match counts as a heard spelling, so a mark must follow
+  it: 节目 / 街面 / 小鸡 never match, and 小河 (xiao he, like 小贺) only with a
+  mark after it. A name said twice ("建明建明在吗") is an address without a mark.
+  It lives in `nameAt`, so the hand-off marks, the avatar flash and the
+  @mention rewrite all get it.
+- New spellings go in `LANE_NAMES` with a test in `unit/lane-route.test.ts`;
+  most of them are now caught by sound and need no entry.
 - The mapping can also be reconfigured live without deploys at `/dev/config`
   via `chat.lanes` (one table for lanes and their wake names; the earlier
   `chat.laneNames` key is folded into it: a row's `aliases` are its wake
@@ -72,13 +89,16 @@ name, mark and voice (docs/lianki-dev-cli.md, "`lianki chat`"). The lane never
 sees the token.
 
 Only the lane he names answers (owner, 2026-11-15 15:0x JST: "我在 @ 你的时候，
-这些只读 AI（包括 mimiai）不要乱回复"). A `--all` listener also hears lines named
-to another lane: each such bullet starts `【FYI · 点名 小克，不是你】` and the
-batch carries "点名别人的：不要回答、不要代做；只在点名你或 全体 时回复。"; a line
-with no name gets "未点名：只听，不回。" once per batch. The first message of a
-listener's (or a woken reader's) life adds the rule line
-(`NO_CROSS_RULE`), and `lanes.greeting` ends with it, so every joining agent
-says it aloud.
+这些只读 AI（包括 mimiai）不要乱回复"). Each line goes as one bullet,
+`- <id> <mark> <text>`, the mark one short token: `点名你`, `全体`, `未点名`,
+`点名X（不是你）`, `【agent · X】`, `【系统】`, `测试`, `状态树`. No rule prose and no
+reply command per message (owner, 2026-11-15 23:13 JST: "回答规则之类的，可以作为
+SKILL 加载……不需要每个消息都重复一遍"): what each mark means is defined once in
+`.agents/skills/lane-listen/SKILL.md`. The first message of a listener's (or a
+woken reader's) life adds two lines: the rule (`NO_CROSS_RULE`, or
+`ANSWER_UNNAMED_RULE`) and the skill path with the reply command. A batch with a
+state-tree line carries `STATE_TREE_NOTE` once. `lanes.greeting` ends with the
+rule, so every joining agent says it aloud.
 
 It reconnects with backoff when the socket drops, and stops (exit 2) when the
 token is refused: revoked or expired. `--dry-run` prints the hand-offs instead
@@ -179,13 +199,16 @@ Its log is one JSON line per state edge, read, report and clear (redacted).
 Tests: `unit/stall-watch.test.ts` (the matcher on real Claude/Codex screens,
 redaction, the node, the state machine).
 
-## Five tiers (owner, 2026-11-15 15:1x JST; 15:44 JST changes)
+## Six tiers (owner, 2026-11-15 15:1x JST; 15:44 JST changes; tier ⓪ 2026-11-16 02:16 JST)
 
-How much of his chat a participant hears, from most to least:
+How much of his chat a participant hears, from most to least. Tier ⓪ was
+added on top (owner, 2026-11-16 02:16 JST: "再多一层监听，一共是 6 层监听，最上面
+那一层会包括各种系统通知"): the system notices moved from ① up to ⓪.
 
 | tier | who                             | hears                                                                                             | how                                                                                            | presence / system line                                               |
 | ---- | ------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| ①    | live, all messages (小克, coco) | his lines, every agent's lines, the system lines; never its own                                   | `lanes.agents` `scope: "all"` → `lane-listen --all --everyone`                                 | filled red dot, "实时监听（全部消息）"; "X 开始实时监听（全部消息）" |
+| ⓪    | live, everything (小克)         | tier ①'s lines and the system lines (lane join/leave/live/read-only, state-tree hub lines and ETA receipts, spend alerts) | `lanes.agents` `scope: "system"` → `lane-listen --all --everyone --system`                    | filled red dot, "实时监听（全部消息 + 系统通知）"; "X 开始实时监听（全部消息 + 系统通知）" |
+| ①    | live, all messages (coco)       | his lines and every agent's lines, NO system lines; never its own                                 | `lanes.agents` `scope: "all"` → `lane-listen --all --everyone`                                 | filled red dot, "实时监听（全部消息）"; "X 开始实时监听（全部消息）" |
 | ②    | live, his lines (杰咪, mimiai)  | his lines only (today's "listener"); a voiceprint "unknown" line not ("未定不送")                 | `lanes.agents` `resident: true` (scope `owner`) → `lane-listen --all`                          | red ring dot, "实时监听"; "X 开始实时监听"                           |
 | ③    | reader                          | the thread when it reads; woken when he names it, then his lines live for `lanes.wakeLiveMin` min | any other joined agent: the manager's `ay send` on a name, alias, `@<lane>`, `#<repo>` or 全体 | "只读"; "X 入群（只读）"                                             |
 | ④    | Li                              | everything (the main lane, always a listener)                                                     | the hub's own main lane                                                                        | —                                                                    |
@@ -193,7 +216,7 @@ How much of his chat a participant hears, from most to least:
 
 The voiceprint gate (`voiceAllowed`, lane-listen-lib.ts): a spoken line decided
 "other" goes to no lane. One decided "unknown" (a short or soft sentence) goes
-to tier ① only, marked `（声纹未定）` (`LANE_LISTEN_VOICES=me` drops it there
+to tiers ⓪ and ① only, marked `（声纹未定）` (`LANE_LISTEN_VOICES=me` drops it there
 too); tier ② gets only "me" and typed lines (owner, 2026-11-15 15:44 JST "未定不送").
 Config `lanes.forwardUnknownVoice` (default false; on the Mac env
 `LIANKI_LANES_FORWARD_UNKNOWN_VOICE=true`) sends "unknown" to tier ② again.
@@ -209,25 +232,39 @@ so the presence stack shows it with no hub change. A line he says in the
 second or two the new listener takes to connect arrives as history and is
 not handed over.
 
-Tier ① in detail:
+Tiers ⓪ and ① in detail:
 
-- `lane-listen --everyone` also hands over agent lines, marked `【agent · coco】…`
-  (the sender's shown name), and system lines (the hub's lane events, the
-  lanes manager's line, a state-tree line for another lane), marked `【系统】…`.
+- `lane-listen --everyone` (tier ①) also hands over agent lines, marked
+  `【agent · coco】…` (the sender's shown name). `--system` (tier ⓪, implies
+  `--everyone`) adds the system lines (the hub's lane events, the lanes
+  manager's line, a state-tree line for another lane, the spend alerts),
+  marked `【系统】…`; without it they are dropped (`listenerTakes`). A
+  state-tree nudge addressed to the lane itself reaches every tier.
   Never the lane's own lines, nor a system line about itself (its own echo).
-  A batch holding any of them carries `FYI_NOTE` once: they are FYI by
-  definition, never answered, never urgent (no `alt-m`), never `@你`, even
+  Their mark is the whole note: they are FYI by
+  definition, never answered, never urgent (no `alt-m`), never `点名你`, even
   when they name the lane. Chunks stay under 800 characters as before.
 - `--skip-owner` leaves out his lines: the manager adds it for a `scope: "all"`
-  row with `wake: false` (小克, `lane: "claude"`, which keeps its own feed of
+  or `"system"` row with `wake: false` (小克, `lane: "claude"`, which keeps its own feed of
   his lines), so nothing reaches it twice. `--as claude` listens as the route
   lane `chat` (`routeKey`) with the `claude` token.
-- `scope: "all"` makes a row live even without `resident`. The listener's
-  `lianki chat listen --everyone` sends auth `scope: "all"`; the hub keeps it
-  on the socket and the registry row (`LaneReg.scope`), the presence list
-  carries `scope: "all"`, and the line says "（全部消息）". A reconnect with the
-  same scope says nothing; a change of scope says the new line. An older
-  client (no `scope`) is "owner"; a reader's `scope` is ignored.
+- `answerUnnamed: true` on a row (coco, 杰咪; owner 2026-11-15 22:55 JST) adds
+  `--answer-unnamed`: his lines that name nobody (`未点名`) may be
+  answered briefly when they concern its project (the skill says so), the
+  first message carries `ANSWER_UNNAMED_RULE`, and its greeting is
+  `lanes.greetingAnswerUnnamed`. Lines naming another lane stay unanswered.
+- `scope: "all"` / `"system"` makes a row live even without `resident`. The
+  listener's `lianki chat listen --everyone` sends auth `scope: "all"`, with
+  `--system` `scope: "system"`; the hub keeps it on the socket and the
+  registry row (`LaneReg.scope`), the presence list carries it, and the line
+  says "（全部消息）" / "（全部消息 + 系统通知）". A lane's scope is the widest of
+  its live sockets (system > all > owner). A reconnect with the same scope
+  says nothing; a widening says the new line; a narrowing is graced
+  (`scopeDownAt`, `scopeDownTo`) and silent. An older client (no `scope`) or
+  an older hub (no "system") is "owner"; a reader's `scope` is ignored.
+- A reader named by him (tier ③ → live for `lanes.wakeLiveMin`) gets a
+  `scope: "system"` listener for the window (owner, 2026-11-15 23:11 JST:
+  everything, agents' and system lines too).
 
 ## Every agent joins (全员入群, owner 2026-11-15)
 
@@ -254,7 +291,12 @@ listener and can never be downgraded (the hub refuses).
 | op `lane` `state: "left"` (the manager: its agent exited)                                    | left     | "杰咪 下线"             |
 | the owner mutes it (page `participant` `muted: true`)                                        | (same)   | "X 已禁言" / "解除禁言" |
 
-A reconnect inside the grace says nothing. The hub reads "listening" from
+A reconnect inside the grace says nothing, and only a change of the whole
+lane is said: a second socket of a lane that is already live is silent, its
+scope is "all" while any live socket hears all, and losing "all" (an
+owner-only socket still open) is graced the same way and then dropped
+without a line (2026-11-15: two feeds on one token re-announced
+"开始实时监听" on every restart). The hub reads "listening" from
 its attached sockets and their attachments, so a hibernated hub that wakes
 still sees them. A connection that dies without its close reaching the
 listener (the hub saw it close) is the listener's to find: `lianki chat
@@ -286,9 +328,10 @@ it as `LIANKI_LANE_TABLE` (lane-listen) or `LIANKI_CHAT_LANES` (the manager).
 **The manager**, `lianki-dev lanes` (`scripts/dev/lanes-manager.ts`; pure
 decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
 
-1. Watches `ay ls --watch --local` (ay's own registry diff); each edge
-   re-reads `ay ls --json --local`, plus a slow re-list every
-   `lanes.relistSec` (60 s) in case the stream is silent.
+1. Watches `ay ls --watch --json --local` (ay's state transitions; ay
+   itself polls every 2 s for them); each edge re-reads `ay ls --json
+   --local`, plus a slow re-list every `lanes.relistSec` (60 s) in case the
+   stream is silent.
 2. Maps each alive agent to a repo: the first part of its cwd on the
    `lanes.repos` whitelist (lianki, agent-yes, liagent, rechrome, otoji, rgui, mimiai).
 3. Names it: the lane a running `lane-listen --deliver <pid>` already serves
@@ -305,16 +348,17 @@ decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
    the chat as one line, with its own token (`lanes.token`, name `lanes`,
    `LIANKI_LANES_MANAGER_LANE`), again only when the list changes.
 5. Resident lanes get `lane-listen --as <lane> --cwd <cwd> --all` (not when
-   one already runs, e.g. under oxmgr), `scope: "all"` rows also `--everyone`
-   (and `--skip-owner` with `wake: false`); stopped when the agent exits.
+   one already runs, e.g. under oxmgr), `scope: "all"` rows also `--everyone`,
+   `scope: "system"` rows `--everyone --system` (and `--skip-owner` with
+   `wake: false`); stopped when the agent exits.
    Readers get no process: the manager's own reader socket (`lianki chat
 listen --json --reader`) hears his lines, and a line that names a reader
    (its lane name, a `chat.lanes` alias, `#<repo>`, or 全体) goes to that
    agent with `ay send <pid> --force --no-wait --code alt-m`.
    A `lanes.agents` row with `wake: false` joins (greets, marked left) but is
    never woken: 小克 (`lianki/tree/agy`, cli `claude`, lane `claude`) keeps
-   its own live feed of his lines, and with `scope: "all"` its listener
-   brings it everything else (tier ①).
+   its own live feed of his lines, and with `scope: "system"` its listener
+   brings it everything else, the system notices included (tier ⓪).
 6. Each new lane greets once with its own token (`lanes.greeting`;
    `manager-state.json` beside the tokens remembers who did); an agent that
    exits is marked left (op `lane`).
@@ -355,3 +399,25 @@ Tests: `unit/lane-route.test.ts` (the matcher), `unit/lane-listen.test.ts`
 (token lookup, line parsing, the hand-off).
 
 - **Urgent lines break in (2026-11-14 23:0x).** A line that names the lane, or starts with 全体 (every lane at once, `lane-route.ts`), or an ETA nudge addressed to it, is handed over immediately with `ay send --code alt-m` (interrupting the turn) together with whatever was waiting; everything else still waits for the batch (`urgentLine` in `scripts/dev/lane-listen-lib.ts`).
+
+## Who is busy
+
+The page turns a ring around a lane's avatar while its agent works (owner,
+2026-11-16 "在干活的 agent 的头像上面给它一个…转圈圈的动画"). The lanes manager
+(`scripts/dev/lanes-busy.ts`) follows each joined lane's live output, the
+`log_file` ay writes everything the agent prints to, with one `tail -f -n 0`
+per lane (kqueue: it blocks until the file grows, no polling). Output = busy;
+quiet for `lanes.busyIdleSec` (8 s, env `LIANKI_LANES_BUSY_IDLE_SEC`) = idle,
+one timer per lane re-armed on each write. Only a change goes to the hub:
+`{op:"lane", busy, stuck?}` with the lane's own token (checked as a read),
+kept on the lane registry row (`busy`, `stuck`, `busyAt`) and sent in the
+presence list; no system line. A lane that leaves is not busy; the manager
+stopping tells its busy lanes idle.
+
+Not `fs.watch`: ay keeps the log open and writes to that descriptor, and
+neither Node's nor Bun's `fs.watch` reports those writes on macOS (measured
+2026-11-16). A lane whose follower cannot start or dies (retried with
+back-off, 1 s doubling to 60 s) falls back to ay's states from the same `ay ls
+--watch --json` stream (active / stuck busy, the rest idle). That stream
+polls (every 2 s inside ay), so a lane on it is up to 2 s late.
+

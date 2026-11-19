@@ -4,7 +4,8 @@
  * speaker tag with an Ed25519 key only it holds (scripts/local-stt/voiceprint.py
  * Attestor); the page passes the signatures along with the line
  * (`speakerProof`), and the hub keeps a `speaker` tag on the stored line only
- * when every proof verifies with STT_SPEAKER_PUB, is fresh, was signed for
+ * when every proof verifies with a key of the ring (`STT_SPEAKER_PUBS`, or
+ * `STT_SPEAKER_PUB` as `mac`), is fresh, was signed for
  * this thread, has never been used (burned durably by the hub), and the
  * signed texts, in order, ARE the line. A page can neither forge a tag nor
  * move one onto other words, nor drop or add a word. Future voice approvals
@@ -12,7 +13,16 @@
  *
  * Wire form of one proof: `<payload b64url>.<signature b64url>`, the signature
  * over the ASCII of the first part; payload
- * `{v:1, uid, thread, at (ms), text, decision, score, model, device, speechS, snrDb[, reason]}`.
+ * `{v:1, uid, thread, at (ms), text, decision, score, model, device, speechS, snrDb[, kid, reason, voice, cluster, clusterScore]}`.
+ *
+ * The key ring (docs/voiceprint-service.md, "Trust: who may sign"): `kid`
+ * names the signer, inside the signed payload so it cannot be swapped. A
+ * proof without `kid` is `mac` (every proof the Mac signs today). The stored
+ * tag records the signer (`kid`) and its trust: `signed` when every proof
+ * signed the line's words; a proof with `text: null` (a signer that did not
+ * decode the words itself) keeps its tag only under `speaker.advisory`, with
+ * the line's own decision `unknown`, so it never shows the check and never
+ * backs an approval.
  */
 import { type SpeakerTag, cleanSpeaker, combineSpeaker } from "../packages/debug-chat/src/wire";
 
@@ -71,9 +81,41 @@ const fromB64url = (s: string) => {
   return Uint8Array.from(atob(p + "=".repeat((4 - (p.length % 4)) % 4)), (c) => c.charCodeAt(0));
 };
 
-let keyCache: { raw: string; key: CryptoKey } | null = null;
+/** The signers the hub knows: the owner's Mac, and later Lianki's own voiceprint service. */
+export const SPEAKER_KIDS = ["mac", "service"] as const;
+export type SpeakerKid = (typeof SPEAKER_KIDS)[number];
+/** Public keys (raw Ed25519, base64url) by signer. */
+export type SpeakerKeyRing = Partial<Record<SpeakerKid, string>>;
+const isKid = (k: unknown): k is SpeakerKid =>
+  typeof k === "string" && (SPEAKER_KIDS as readonly string[]).includes(k);
+
+/**
+ * The hub's key ring from its env: `STT_SPEAKER_PUBS` (JSON `{"mac": "<b64>",
+ * "service": "<b64>"}`; unknown signers and non-string keys are ignored), and
+ * `STT_SPEAKER_PUB` as `mac` when the ring names no `mac` of its own. A ring
+ * that is not JSON counts as absent (the single key still works). Undefined
+ * when no key is set: then no tag is ever kept.
+ */
+export function speakerKeyRing(env: unknown): SpeakerKeyRing | undefined {
+  const e = (env ?? {}) as { STT_SPEAKER_PUBS?: unknown; STT_SPEAKER_PUB?: unknown };
+  const ring: SpeakerKeyRing = {};
+  if (typeof e.STT_SPEAKER_PUBS === "string" && e.STT_SPEAKER_PUBS.trim()) {
+    try {
+      const j: unknown = JSON.parse(e.STT_SPEAKER_PUBS);
+      if (j && typeof j === "object" && !Array.isArray(j))
+        for (const [k, v] of Object.entries(j))
+          if (isKid(k) && typeof v === "string" && v.trim()) ring[k] = v.trim();
+    } catch {}
+  }
+  if (!ring.mac && typeof e.STT_SPEAKER_PUB === "string" && e.STT_SPEAKER_PUB.trim())
+    ring.mac = e.STT_SPEAKER_PUB.trim();
+  return Object.keys(ring).length ? ring : undefined;
+}
+
+const keyCache = new Map<string, CryptoKey>();
 async function pubKey(raw: string): Promise<CryptoKey> {
-  if (keyCache?.raw === raw) return keyCache.key;
+  const hit = keyCache.get(raw);
+  if (hit) return hit;
   const key = await crypto.subtle.importKey(
     "raw",
     fromB64url(raw.trim()) as BufferSource,
@@ -81,7 +123,8 @@ async function pubKey(raw: string): Promise<CryptoKey> {
     false,
     ["verify"],
   );
-  keyCache = { raw, key };
+  if (keyCache.size >= 8) keyCache.clear();
+  keyCache.set(raw, key);
   return key;
 }
 
@@ -94,56 +137,70 @@ export type BurnProofs = (uids: string[], until: number) => Promise<boolean>;
 
 /**
  * The verified tag for a line, or undefined (drop it). Burns the proofs'
- * uids only when everything else holds.
+ * uids only when everything else holds. `keys`: the ring, or one key alone
+ * (counted as `mac`).
  */
 export async function verifySpeakerProofs(
   proofs: string[] | undefined,
   lineText: string,
   thread: string,
-  pubRaw: string | undefined,
+  keys: SpeakerKeyRing | string | undefined,
   burn: BurnProofs,
   now = Date.now(),
 ): Promise<SpeakerTag | undefined> {
-  if (!proofs?.length || !pubRaw) return undefined;
-  let key: CryptoKey;
-  try {
-    key = await pubKey(pubRaw);
-  } catch {
-    return undefined;
-  }
+  const ring: SpeakerKeyRing | undefined = typeof keys === "string" ? { mac: keys } : keys;
+  if (!proofs?.length || !ring) return undefined;
   const tags: SpeakerTag[] = [];
   const uids: string[] = [];
   const texts: string[] = [];
+  const kids = new Set<SpeakerKid>();
+  let unbound = false;
   for (const proof of proofs) {
     const parts = proof.split(".");
     if (parts.length !== 2) return undefined;
     let p: Record<string, unknown>;
     try {
+      p = JSON.parse(new TextDecoder().decode(fromB64url(parts[0]!)));
+      if (!p || typeof p !== "object") return undefined;
+      // The signer, from the signed payload itself; none = the Mac (every proof before the ring).
+      const kid = p.kid === undefined ? "mac" : p.kid;
+      if (!isKid(kid)) return undefined;
+      const raw = ring[kid];
+      if (!raw) return undefined;
       const ok = await crypto.subtle.verify(
         { name: "Ed25519" },
-        key,
+        await pubKey(raw),
         fromB64url(parts[1]!) as BufferSource,
         new TextEncoder().encode(parts[0]!),
       );
       if (!ok) return undefined;
-      p = JSON.parse(new TextDecoder().decode(fromB64url(parts[0]!)));
+      kids.add(kid);
     } catch {
       return undefined;
     }
-    if (!p || p.v !== 1 || typeof p.uid !== "string" || !UID.test(p.uid)) return undefined;
+    if (p.v !== 1 || typeof p.uid !== "string" || !UID.test(p.uid)) return undefined;
     if (typeof p.at !== "number" || Math.abs(now - p.at) > PROOF_WINDOW_MS) return undefined;
     // Signed for this thread (the page's hello to the Mac), and for nothing else.
-    if (p.thread !== thread || typeof p.text !== "string" || uids.includes(p.uid)) return undefined;
+    if (p.thread !== thread || uids.includes(p.uid)) return undefined;
+    // `text: null`: the signer did not decode these words itself (speaker only).
+    if (p.text === null) unbound = true;
+    else if (typeof p.text !== "string") return undefined;
     const tag = cleanSpeaker(p);
     if (!tag) return undefined;
     tags.push(tag);
     uids.push(p.uid);
-    texts.push(p.text);
+    if (typeof p.text === "string") texts.push(p.text);
   }
   // The signed words must be the line's words, exactly, in order.
-  if (!lineIsSigned(lineText, texts)) return undefined;
+  if (!unbound && !lineIsSigned(lineText, texts)) return undefined;
   if (!(await burn(uids, now + 2 * PROOF_WINDOW_MS))) return undefined;
+  const kid = [...kids].sort().join("+");
+  const tag = combineSpeaker(tags)!;
+  // Speaker only, not these words: advisory. The line itself stays undecided,
+  // so no check, no merge as his and no approval rests on it.
+  if (unbound)
+    return { decision: "unknown", reason: "advisory", trust: "advisory", kid, advisory: tag };
   // The signed words themselves ride on the stored tag: a decision (a voice
   // approval later) must read these, never the displayed line.
-  return { ...combineSpeaker(tags)!, signed: texts };
+  return { ...tag, trust: "signed", kid, signed: texts };
 }

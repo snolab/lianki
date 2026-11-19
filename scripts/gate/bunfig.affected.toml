@@ -6,3 +6,7 @@
 [test]
 root = "unit"
 coverage = false
+# The full suite's guard (../../bunfig.toml): globals a file stubs are put back
+# before the next file. Without it a subset leaked them (2026-11-15: live-view's
+# signature checks failed only in the affected run).
+preload = ["./unit/support/globals-guard.ts"]

@@ -21,6 +21,69 @@ export const OWNER_REPLY_DELAY_KEY = "partner.ownerReplyDelayMs";
 export const OWNER_REPLY_DELAY_MS = 30_000;
 export const OWNER_REPLY_DELAY_MAX = 120_000;
 /**
+ * Li told to stop in his thread (owner, 2026-11-16 13:3x JST: "我已经要求他闭嘴了"):
+ * a line of his holding one of the stop phrases (case-insensitive, anywhere in
+ * the line, a line naming no lane) keeps Li silent this long, unless he
+ * addresses Li by one of its names first (OWNER_LI_NAMES). Keys of lib/config.ts.
+ */
+export const OWNER_QUIET_KEY = "partner.ownerQuietMs";
+export const OWNER_QUIET_MS = 10 * 60_000;
+export const OWNER_QUIET_MAX = 24 * 60 * 60_000;
+export const OWNER_STOP_PHRASES_KEY = "partner.stopPhrases";
+/** Phrases, not language rules: any language's entries go in the same list. */
+export const OWNER_STOP_PHRASES: readonly string[] = [
+  "没问你",
+  "不是问你",
+  "不是在问你",
+  "没跟你说",
+  "不是跟你说",
+  "不是和你说",
+  "没叫你",
+  "闭嘴",
+  "别说了",
+  "别说话",
+  "不要说话",
+  "别插嘴",
+  "不要插嘴",
+  "别回答",
+  "不要回答",
+  "不用你回答",
+  "你别回",
+  "安静点",
+  "安静一下",
+  "shut up",
+  "be quiet",
+  "stop talking",
+  "not you",
+  "not asking you",
+  "黙って",
+  "静かにして",
+  "あなたじゃない",
+];
+/**
+ * Li's own names (the main lane has no route): a line starting with one, then a
+ * mark or nothing ("Li，…", "Li?"), addresses Li and ends a quiet spell; the
+ * lanes' recent activity does not hold it back either.
+ */
+export const OWNER_LI_NAMES_KEY = "partner.liNames";
+export const OWNER_LI_NAMES: readonly string[] = ["Li", "Lee", "学习伙伴", "learning partner"];
+/**
+ * A spoken line of his (source "stt") gets Li only when it names Li
+ * (OWNER_LI_NAMES, anywhere): the room may be talking (owner, 2026-11-16: the
+ * AI is in the room, silent until named). Typed lines are unaffected.
+ */
+export const OWNER_SPOKEN_NEEDS_NAME_KEY = "partner.spokenNeedsName";
+export const OWNER_SPOKEN_NEEDS_NAME = true;
+/**
+ * While a lane talks with him (an agent line other than Li's within this
+ * long), Li does not answer his unaddressed lines: they are most likely part
+ * of that conversation (2026-11-16: Li answered a line meant for 哈基米).
+ */
+export const OWNER_LANE_ACTIVE_KEY = "partner.laneActiveMs";
+export const OWNER_LANE_ACTIVE_MS = 5 * 60_000;
+export const OWNER_LANE_ACTIVE_MAX = 60 * 60_000;
+
+/**
  * Li's roll-call answer in his thread, no model (workers/push/src/owner-ai.ts;
  * packages/debug-chat/src/roster.ts rollCallText): the live value's key and
  * its default. `{n}` = how many are present besides Li, `{names}` = who.
@@ -119,7 +182,14 @@ export type PartnerRequest = {
   /** The thread's latest lines, oldest first: the user's and the agent's. */
   history: { role: "user" | "assistant"; text: string }[];
   /** Where the user is: the page's path (from its label) and what the line carried. */
-  page?: { path?: string; title?: string; selection?: string; screen?: string };
+  page?: {
+    path?: string;
+    title?: string;
+    host?: string;
+    selection?: string;
+    selectionLocation?: string;
+    screen?: string;
+  };
 };
 
 export type PartnerResult =

@@ -70,32 +70,72 @@ const ICONS = {
       "M87.24,52.59a8,8,0,0,0-14.48,0l-64,136a8,8,0,1,0,14.48,6.81L39.9,160h80.2l16.66,35.4a8,8,0,1,0,14.48-6.81ZM47.43,144,80,74.79,112.57,144ZM200,96c-12.76,0-22.73,3.47-29.63,10.32a8,8,0,0,0,11.26,11.36c3.8-3.77,10-5.68,18.37-5.68,13.23,0,24,9,24,20v3.22A42.76,42.76,0,0,0,200,128c-22.06,0-40,16.15-40,36s17.94,36,40,36a42.73,42.73,0,0,0,24-7.25,8,8,0,0,0,16-.75V132C240,112.15,222.06,96,200,96Zm0,88c-13.23,0-24-9-24-20s10.77-20,24-20,24,9,24,20S213.23,184,200,184Z",
     fill: undefined,
   },
-  /** Remote code on this page (Phosphor "code"). */
-  code: {
-    regular:
-      "M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z",
-    fill: undefined,
-  },
   gearSix: {
     regular:
       "M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z",
     fill: undefined,
   },
-} satisfies Record<string, { regular: string; fill?: string }>;
+  /**
+   * The who-is-here state icons (PresenceStack.tsx), drawn here in Phosphor's manner:
+   * `regular` is a centre line stroked 16 units wide with round ends (`line`), `fill` the
+   * solid shape (even-odd, so a pupil stays open).
+   */
+  /** Hears every line live. */
+  ear: {
+    line: true,
+    regular:
+      "M72,104A56,56,0,0,1,184,104C184,144,152,152,148,184A36,36,0,0,1,80,196M104,108A24,24,0,0,1,152,108C152,124,136,128,132,140",
+    fill: undefined,
+  },
+  /** Woken only when named. */
+  bell: {
+    line: true,
+    regular: "M64,184V112A64,64,0,0,1,192,112V184L208,200H48ZM104,228H152",
+    fill: undefined,
+  },
+  /** Not listening: a closed eye (a lid and its lashes). */
+  eyeClosed: {
+    line: true,
+    regular:
+      "M32,104C64,152,96,168,128,168S192,152,224,104M128,168V200M76,156L56,186M180,156L200,186",
+    fill: undefined,
+  },
+  /** Can read and answer (owner, 2026-11-16: answering means it reads, one icon): a speech bubble. */
+  chatBubble: {
+    line: true,
+    regular: "M48,56H208A16,16,0,0,1,224,72V176A16,16,0,0,1,208,192H112L64,224V192H48A16,16,0,0,1,32,176V72A16,16,0,0,1,48,56Z",
+    fill: "M48,48H208A24,24,0,0,1,232,72V176A24,24,0,0,1,208,200H114L56,236V200H48A24,24,0,0,1,24,176V72A24,24,0,0,1,48,48Z",
+  },
+  /** May operate the page for you (the eval grant): a hand, its finger pointing up. */
+  hand: {
+    line: true,
+    regular:
+      "M104,168V48a16,16,0,0,1,32,0V120M136,112a16,16,0,0,1,32,0v16M168,120a16,16,0,0,1,32,0v32a72,72,0,0,1-72,72H120a64,64,0,0,1-52-26L36,152a16,16,0,0,1,26-20l42,36",
+    fill: undefined,
+  },
+} satisfies Record<string, { regular: string; fill?: string; line?: true }>;
 
 export type IconName = keyof typeof ICONS;
+
+/** The stroke that strikes an icon through (not allowed): corner to corner. */
+const SLASH = "M40,40L216,216";
 
 export function Icon({
   name,
   weight = "regular",
+  slash = false,
 }: {
   name: keyof typeof ICONS;
   weight?: "regular" | "fill";
+  /** Struck through: the thing it stands for is not allowed (the who-is-here icons). */
+  slash?: boolean;
 }) {
-  const icon: { regular: string; fill?: string } = ICONS[name];
+  const icon: { regular: string; fill?: string; line?: true } = ICONS[name];
+  const solid = weight === "fill" && icon.fill;
   return (
     <svg
       data-icon={name}
+      data-slash={slash || undefined}
       viewBox="0 0 256 256"
       fill="currentColor"
       width="1em"
@@ -103,7 +143,28 @@ export function Icon({
       className="inline-block shrink-0 align-[-0.125em]"
       aria-hidden
     >
-      <path d={(weight === "fill" && icon.fill) || icon.regular} />
+      {icon.line && !solid ? (
+        <path
+          d={icon.regular}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={16}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : (
+        <path d={solid || icon.regular} fillRule={icon.line ? "evenodd" : undefined} />
+      )}
+      {slash && (
+        <path
+          data-slash-line
+          d={SLASH}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={20}
+          strokeLinecap="round"
+        />
+      )}
     </svg>
   );
 }

@@ -59,6 +59,10 @@ import {
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setLaneTable } from "@lianki/debug-chat/voices";
+import { setPhoneticMaxNear } from "@lianki/debug-chat/lane-phonetic";
+import { setOtherAvatar, setOtherAvatarBelow } from "@lianki/debug-chat/avatar-rules";
+import { setSpeakerAvatars } from "@lianki/debug-chat/cluster-avatar";
+import { waitText } from "@/lib/wait-text";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
@@ -71,6 +75,7 @@ import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
 import { withLane } from "@lianki/debug-chat/voices";
 import { type Present, parsePresent } from "@lianki/debug-chat/presence";
 import { publicCfg } from "@/lib/config-client";
+import { autoPlayLine } from "@lianki/debug-chat/li-player";
 import { spokenOf } from "@lianki/debug-chat/rich-text";
 import { missedReply } from "@lianki/debug-chat/speak-rules";
 import { voice } from "@lianki/debug-chat/voice";
@@ -209,15 +214,19 @@ export function DebugEval({
   talkOver = false,
   polishReadback: readback,
   foldOthers = true,
+  speakerAvatars = true,
   whisperRecheck,
   pttMaxCaptureMs,
   mergeReopenSec,
+  playAudio = false,
   box = null,
   account = null,
   cacheLines = 0,
 }: {
   /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
   foldOthers?: boolean;
+  /** Flag `voice.speaker-avatars`: each voice in the room gets its own avatar (cluster-avatar.ts). */
+  speakerAvatars?: boolean;
   /**
    * Flag `stt.whisper-recheck` + dev: at a run's passage end his Mac's Whisper re-reads
    * the run whole, and the line takes it before its polish (whisper-recheck.ts). None: off.
@@ -270,11 +279,27 @@ export function DebugEval({
   fullScreen?: boolean;
   /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
   liHub?: boolean;
+  /**
+   * Flag `chat.play-audio` (audience owner): an agent's `say --play` lines get
+   * a ▶ and may play by themselves (docs/li-sound-hub.md, "Playing audio from an agent").
+   */
+  playAudio?: boolean;
 } = {}) {
   // Idempotent and cheap: the live table is in place before the first reply is read.
   if (lexicon !== undefined) setLexicon(lexicon);
   // The lanes beyond the built-in four, and more names for them (config chat.lanes): live, no deploy.
   setLaneTable(publicCfg("chat.lanes"));
+  // How near a lane name may sound and still be that name (lane-phonetic.ts): live, no deploy.
+  setPhoneticMaxNear(publicCfg("lanes.phoneticMaxNear"));
+  // Undecided voice lines well under his print get another voice's avatar (avatar-rules.ts).
+  setOtherAvatarBelow(publicCfg("voice.otherAvatarBelow"));
+  setOtherAvatar(publicCfg("voice.otherAvatar"), publicCfg("voice.otherAvatarName"));
+  // One avatar per voice in the room (cluster-avatar.ts): the flag and its live palette.
+  setSpeakerAvatars({
+    on: speakerAvatars,
+    hues: publicCfg("voice.clusterHues"),
+    minScore: publicCfg("voice.clusterMinScore"),
+  });
   // The mic's repetition guard on every final (stt-repeat.ts): live, no deploy.
   setRepeatLimits({
     maxRuns: publicCfg("stt.repeatMaxRuns"),
@@ -506,6 +531,10 @@ export function DebugEval({
   // Li's sound hub, phase 0 (docs/li-sound-hub.md): it only observes, on the
   // owner's pages with `voice.li-hub` on. Off, the module is not even loaded.
   const liOn = liHub && owner && friend === null;
+  // An agent's audio lines: the flag, and a `dev` holder's own thread (the flag's audience).
+  const playOn = playAudio && dev && owner && friend === null;
+  const playRef = useRef(playOn);
+  playRef.current = playOn;
   useEffect(() => {
     if (!liOn) return;
     let stop = () => {};
@@ -872,8 +901,11 @@ export function DebugEval({
               ? Number.isFinite(retryMin) && retryMin > 0
                 ? (
                     s?.aiLimitIn ??
-                    "Your {name} is taking a short break. It can reply again in about {n} min."
-                  ).replaceAll("{n}", String(Math.ceil(retryMin)))
+                    "Your {name} is taking a short break. It can reply again in about {n}."
+                  ).replaceAll(
+                    "{n}",
+                    waitText(retryMin, document.documentElement.lang || navigator.language),
+                  )
                 : (s?.aiLimit ?? "Your {name} is taking a short break. Try again in a while.")
               : (s?.aiFailed ?? "No reply this time. Please try again in a moment.");
           setWarning(line.replaceAll("{name}", s?.name || "Learning Partner"));
@@ -1097,6 +1129,9 @@ export function DebugEval({
               // live: a superseding or interjecting line cuts in (voice.ts); history never does.
               voice().reply(said, m, { live: true, ...syncStart(sock, msg) });
             voiceLatency().heard(m, spoken === true);
+            // `say --play`: plays by itself only on a visible, unlocked phone page with the mic off.
+            if (fresh && m.audio && playRef.current)
+              autoPlayLine(m, tabsRef.current?.isSpeaker() ?? true, devLog);
           } else {
             setWarning(null);
             voiceLatency().heard(m);
@@ -1508,6 +1543,7 @@ export function DebugEval({
             etaTicker={{
               sec: publicCfg("chat.etaTickerSec"),
               keep: publicCfg("chat.etaTickerKeep"),
+              cycle: publicCfg("chat.etaBarCycle"),
             }}
             onReadSeq={(seq) => {
               const thread =
@@ -1639,6 +1675,7 @@ export function DebugEval({
             whisperRecheck={whisperRecheck}
             pttMaxCaptureMs={pttMaxCaptureMs}
             mergeReopenSec={mergeReopenSec}
+            playAudio={playOn}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
             backToClose={backToCloseChat}
           />

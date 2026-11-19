@@ -26,12 +26,9 @@ export const JUMP_END_PX = 32;
 /** The button's width: the arrow alone, or the count beside it. */
 export const jumpWidth = (count: number) => (count > 1 ? (count > 9 ? 60 : 52) : 40);
 
-/**
- * Reserve the widest arrow beside the newest run even while it is hidden.
- * Appearance, disappearance and count changes must never rewrap the paragraph.
- * No minimum height: the floating button must not add a blank line below text.
- */
-export const jumpRoom = () => ({ end: JUMP_END_PX + jumpWidth(10) + 6 });
+// No room is reserved for the button: it is glass and floats over the log, and
+// every run keeps its full width (owner, 2026-11-16: never squeeze from the
+// right; the newest line must not narrow). The mount test checks the log.
 
 /** The ids of the lines whose ask can still be answered, oldest first. */
 export function openAskIds(

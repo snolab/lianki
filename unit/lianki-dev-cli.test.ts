@@ -490,6 +490,13 @@ describe("lane token: say/ask/listen through lianki chat", () => {
     expect(chatArgv("listen", [])).toEqual(["chat", "listen", "--json"]);
     expect(chatArgv("listen", ["--everyone"])).toEqual(["chat", "listen", "--json", "--everyone"]);
     expect(chatArgv("listen", ["--everyone", "--to"])).toBeInstanceOf(Error);
+    expect(chatArgv("listen", ["--everyone", "--system"])).toEqual([
+      "chat",
+      "listen",
+      "--json",
+      "--everyone",
+      "--system",
+    ]);
     expect(chatArgv("serve", [])).toBeInstanceOf(Error);
     expect(chatArgv("inbox", [])).toBeInstanceOf(Error);
   });

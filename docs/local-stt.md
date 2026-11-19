@@ -838,7 +838,14 @@ bands on those after he enrols, before anything relies on them.
   be forged, replayed or moved onto other words. It computes the tag itself
   (the weakest utterance). Only such a tag shows the small green check
   (`VoiceMark`, "Your voice, verified"). Without `STT_SPEAKER_PUB` no tag is
-  ever kept.
+  ever kept. The hub also takes a key ring (`STT_SPEAKER_PUBS`,
+  `{"mac", "service"}`; a proof without `kid` is `mac`), and the stored tag
+  records its signer (`speaker.kid`: "mac", "service" or "mac+service") and
+  `speaker.trust`: "signed" when every proof signed the words; "advisory"
+  when a signer vouched for the voice with `text: null` (not the words). An
+  advisory line is stored as `decision: "unknown"`, `reason: "advisory"`,
+  with the signer's tag under `speaker.advisory`: no check, no approval
+  (docs/voiceprint-service.md, "Trust").
 - **Not built:** the voice approvals themselves. **They must rely on this
   hub-verified tag only**, never on anything a page reports, and must
   read the words from `speaker.signed`, never from the displayed line.

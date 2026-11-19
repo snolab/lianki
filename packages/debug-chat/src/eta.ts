@@ -87,6 +87,27 @@ export function etaSummary(tasks: readonly EtaTask[], now: number): EtaSummary {
   };
 }
 
+/**
+ * The bar's resting task (owner, 2026-11-15 22:58 JST: "它的 deadline 是最早的一条任务，
+ * 它的名字和它超时的时间就可以显示在这里，滚动播报"): the open tasks (done ones
+ * left out) by deadline, the earliest first, overdue or not; a tie by id.
+ */
+export function byDeadline(tasks: readonly EtaTask[]): EtaTask[] {
+  return tasks.filter((t) => !t.done).sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+}
+
+/**
+ * The task the bar shows at roll `step`: the `cycle` earliest deadlines
+ * (chat.etaBarCycle; 1 = only the earliest) in turn. Null when none is open.
+ */
+export function deadlinePick(tasks: readonly EtaTask[], step: number, cycle: number): EtaTask | null {
+  const order = byDeadline(tasks);
+  if (!order.length) return null;
+  const n = Math.min(order.length, Math.max(1, Math.floor(cycle) || 1));
+  const i = Math.floor(step) % n;
+  return order[i < 0 ? i + n : i]!;
+}
+
 /** Whole minutes left, rounded up (what a label shows); 0 once due. */
 export const minutesLeft = (ms: number) => (ms <= 0 ? 0 : Math.ceil(ms / 60_000));
 

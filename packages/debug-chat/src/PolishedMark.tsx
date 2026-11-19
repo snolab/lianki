@@ -7,16 +7,24 @@
  * Legacy summary marks can still toggle their expanded raw view.
  */
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import type { AvatarSource } from "./avatar-rules";
+import { Avatar } from "./Avatar";
 import { chatExtra } from "./chat-ui-locales";
 import { agentAvatar } from "./LaneMark";
 import { laneSpec, laneOf } from "./voices";
 
-/** Old messages without an editor keep their original mark and label. */
-export function polishedEditor(by: string | undefined, autoName: string) {
+/**
+ * Old messages without an editor keep their original mark and label. The main
+ * lane has no name of its own (voices.ts LANES.main.name ""): it is the host's
+ * agent, so `mainName` (the Learning Partner's localized name, the one on main's
+ * lines) stands in, never the raw "main" (owner, 2026-11-16: the badge read "m").
+ */
+export function polishedEditor(by: string | undefined, autoName: string, mainName?: string) {
   const name = by?.trim();
   if (!name) return null;
   if (name === "auto") return { name: autoName, auto: true, lane: null };
   const lane = laneOf({ text: name }).lane ?? laneOf({ text: `【${name}】` }).lane;
+  if (lane === "main") return { name: mainName?.trim() || name, auto: false, lane, main: true };
   return { name: (lane && laneSpec(lane).name) || name, auto: false, lane };
 }
 
@@ -32,6 +40,8 @@ export function PolishedMark({
   onToggle,
   rawText,
   by,
+  mainName,
+  mainAvatar,
 }: {
   icon: ReactNode;
   label: string;
@@ -39,9 +49,13 @@ export function PolishedMark({
   onToggle: () => void;
   rawText?: string;
   by?: string;
+  /** The main lane's (the host agent's) localized name, as on its lines. */
+  mainName?: string;
+  /** The main lane's avatar, as on its lines (the host's agent avatar). */
+  mainAvatar?: AvatarSource;
 }) {
   const words = chatExtra();
-  const editor = polishedEditor(by, words.polishedAuto);
+  const editor = polishedEditor(by, words.polishedAuto, mainName);
   const editorLabel = editor ? words.polishedBy.replace("{name}", editor.name) : label;
   const rawTipId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -118,7 +132,11 @@ export function PolishedMark({
                 <path d="M19 8a8 8 0 1 0 1 7M19 3v5h-5" />
                 <path d="M10 12h4M12 10v4" />
               </svg>
-            ) : agentAvatar({ name: editor.name, lane: editor.lane ?? undefined })}
+            ) : editor.main && mainAvatar ? (
+              <Avatar src={mainAvatar} name={editor.name} size={12} hidden />
+            ) : (
+              agentAvatar({ name: editor.name, lane: editor.lane ?? undefined })
+            )}
           </span>
         )}
         {tip && (

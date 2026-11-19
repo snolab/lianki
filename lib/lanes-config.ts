@@ -21,16 +21,26 @@ export type LaneAgentDef = {
   /** Woken by name (`ay send`) when a line names it; false = it joins (greets, reader) but is never woken. Default true. */
   wake?: boolean;
   /**
-   * What a live lane hears (docs/lane-listen.md, "Five tiers"): "owner" (default) his lines
-   * only; "all" his lines, every agent's and the system lines too (lane-listen --everyone).
-   * "all" makes the lane live (a listener) even without `resident`.
+   * What a live lane hears (docs/lane-listen.md, "Six tiers"): "owner" (default) his lines
+   * only (tier ②); "all" his lines and every agent's, no system lines (tier ①, lane-listen
+   * --everyone); "system" all of that and the system notices too (tier ⓪, --system).
+   * "all" and "system" make the lane live (a listener) even without `resident`.
    */
   scope?: LaneScope;
+  /**
+   * It may answer the owner's lines that name nobody when it has something to
+   * say, briefly (owner, 2026-11-15 22:55 JST: "@coco 和杰咪都应该回复我，哪怕是没点名的信息");
+   * named lines are always answered, lines naming another lane never. Absent = it
+   * listens to unnamed lines silently (only 点名 or 全体).
+   */
+  answerUnnamed?: boolean;
 };
 
-/** What a live lane hears: the owner's lines only, or every line in the thread. */
-export type LaneScope = "owner" | "all";
-export const LANE_SCOPES = ["owner", "all"] as const;
+/** What a live lane hears: the owner's lines only, every line in the thread, or every line and the system notices. */
+export type LaneScope = "owner" | "all" | "system";
+export const LANE_SCOPES = ["owner", "all", "system"] as const;
+/** Does this scope hear every line (tier ① or ⓪)? */
+export const hearsAll = (s?: LaneScope) => s === "all" || s === "system";
 
 export const LANE_NAME_RE = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,39}$/u;
 
@@ -45,6 +55,7 @@ export const laneAgentSchema = z
     resident: z.boolean().optional(),
     wake: z.boolean().optional(),
     scope: z.enum(LANE_SCOPES).optional(),
+    answerUnnamed: z.boolean().optional(),
   })
   .strict();
 
@@ -54,20 +65,31 @@ export const LANES_CONFIG_DEFAULTS = {
   /** coco and 杰咪 keep listening to everything (owner, 2026-11-15). */
   "lanes.agents": [
     // coco hears every line too (owner, 2026-11-15 15:44 JST: tier ①, like 小克).
-    { cwd: "lianki/tree/codex", cli: "codex", lane: "codex", resident: true, scope: "all" },
-    { cwd: "lianki/tree/agy", cli: "agy", lane: "agy", resident: true },
+    {
+      cwd: "lianki/tree/codex",
+      cli: "codex",
+      lane: "codex",
+      resident: true,
+      scope: "all",
+      answerUnnamed: true,
+    },
+    // coco and 杰咪 may answer his unnamed lines too (owner, 2026-11-15 22:55 JST).
+    { cwd: "lianki/tree/agy", cli: "agy", lane: "agy", resident: true, answerUnnamed: true },
     // mimiai's codex listens to everything too (owner, 2026-11-15 13:2x JST "把它叫进来这里监听").
-    { cwd: "mimiai/tree/main", cli: "codex", lane: "mimiai", resident: true },
+    { cwd: "mimiai/tree/main", cli: "codex", lane: "mimiai", resident: true, answerUnnamed: true },
     // 小克 (the Claude Code chat lane) keeps its own live feed of the owner's
     // lines: it joins as `claude`, but the manager never wakes it. It hears every
-    // other line live (owner, 2026-11-15 15:1x JST: tier ①, scope "all"): its
-    // lane-listen --everyone skips his lines, which its own feed already brings.
+    // other line live and the system notices too (owner, 2026-11-16 02:16 JST: tier ⓪,
+    // scope "system"): its lane-listen --everyone --system skips his lines, which its
+    // own feed already brings.
     {
       cwd: "lianki/tree/agy",
       cli: "claude",
       lane: "claude",
       wake: false,
-      scope: "all",
+      scope: "system",
+      // 小克 answers from its own feed by its own judgement; the manager's hand-offs stay listen-only.
+      answerUnnamed: false,
     },
   ] as LaneAgentDef[],
   "lanes.relistSec": 60,
@@ -75,8 +97,13 @@ export const LANES_CONFIG_DEFAULTS = {
   "lanes.forwardUnknownVoice": false as boolean,
   /** A read-only lane named in his line hears his following lines live this many minutes. */
   "lanes.wakeLiveMin": 5,
+  /** An agent whose live output has been quiet this many seconds is shown idle again (the busy ring stops). */
+  "lanes.busyIdleSec": 8,
   "lanes.greeting":
     "大家好，我是 {name}（{repo} · {cli}），{mode}入群。只回答点名我或「全体」的话。",
+  /** The greeting of a lane that may answer unnamed lines (lanes.agents answerUnnamed). */
+  "lanes.greetingAnswerUnnamed":
+    "大家好，我是 {name}（{repo} · {cli}），{mode}入群。点名我必答，没点名但和我的项目有关的话也会简短答。",
 } as const;
 
 /** The env var each Mac-side key is read from. */
@@ -86,7 +113,9 @@ export const LANES_ENV = {
   "lanes.relistSec": "LIANKI_LANES_RELIST_SEC",
   "lanes.forwardUnknownVoice": "LIANKI_LANES_FORWARD_UNKNOWN_VOICE",
   "lanes.wakeLiveMin": "LIANKI_LANES_WAKE_LIVE_MIN",
+  "lanes.busyIdleSec": "LIANKI_LANES_BUSY_IDLE_SEC",
   "lanes.greeting": "LIANKI_LANES_GREETING",
+  "lanes.greetingAnswerUnnamed": "LIANKI_LANES_GREETING_ANSWER_UNNAMED",
 } as const;
 
 export type LanesConfig = {
@@ -95,7 +124,9 @@ export type LanesConfig = {
   relistSec: number;
   forwardUnknownVoice: boolean;
   wakeLiveMin: number;
+  busyIdleSec: number;
   greeting: string;
+  greetingAnswerUnnamed: string;
 };
 
 /** The manager's config: each key's env value when it checks out, else its default. */
@@ -116,7 +147,9 @@ export function lanesConfig(env: Record<string, string | undefined> = {}): Lanes
   const relistSec = Number.isInteger(n) && n >= 10 && n <= 3600 ? n : d["lanes.relistSec"];
   const fwd = env[LANES_ENV["lanes.forwardUnknownVoice"]]?.trim();
   const w = Number(env[LANES_ENV["lanes.wakeLiveMin"]]);
+  const b = Number(env[LANES_ENV["lanes.busyIdleSec"]]);
   const g = env[LANES_ENV["lanes.greeting"]]?.trim();
+  const ga = env[LANES_ENV["lanes.greetingAnswerUnnamed"]]?.trim();
   return {
     repos: repos.length ? repos : [...d["lanes.repos"]],
     agents,
@@ -131,6 +164,8 @@ export function lanesConfig(env: Record<string, string | undefined> = {}): Lanes
       Number.isInteger(w) && w >= 0 && w <= 240 && env[LANES_ENV["lanes.wakeLiveMin"]]?.trim()
         ? w
         : d["lanes.wakeLiveMin"],
+    busyIdleSec: Number.isInteger(b) && b >= 1 && b <= 600 ? b : d["lanes.busyIdleSec"],
     greeting: g && g.length <= 200 ? g : d["lanes.greeting"],
+    greetingAnswerUnnamed: ga && ga.length <= 200 ? ga : d["lanes.greetingAnswerUnnamed"],
   };
 }

@@ -6,8 +6,10 @@
     "react-dom": "*"
   },
   "exports": {
+    "./SealPending": "./src/SealPending.tsx",
     "./Avatar": "./src/Avatar.tsx",
     "./avatar-rules": "./src/avatar-rules.ts",
+    "./cluster-avatar": "./src/cluster-avatar.ts",
     "./DebugChat": "./src/DebugChat.tsx",
     "./DebugChatHost": "./src/DebugChatHost.tsx",
     "./DebugPairModal": "./src/DebugPairModal.tsx",
@@ -25,6 +27,7 @@
     "./files": "./src/files.ts",
     "./icons": "./src/icons.tsx",
     "./lane-route": "./src/lane-route.ts",
+    "./lane-phonetic": "./src/lane-phonetic.ts",
     "./latency": "./src/latency.ts",
     "./mic": "./src/mic.ts",
     "./stt-guard": "./src/stt-guard.ts",
@@ -35,6 +38,9 @@
     "./audio-claim": "./src/audio-claim.ts",
     "./li-audio": "./src/li-audio.ts",
     "./li-client": "./src/li-client.ts",
+    "./li-player": "./src/li-player.ts",
+    "./play-audio": "./src/play-audio.ts",
+    "./PlayChip": "./src/PlayChip.tsx",
     "./page-errors": "./src/page-errors.ts",
     "./tap-gesture": "./src/tap-gesture.ts",
     "./wire": "./src/wire.ts",

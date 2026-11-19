@@ -12,15 +12,19 @@
  *   lianki-dev lanes                 # run (under oxmgr, like the other pieces)
  *   lianki-dev lanes --once --dry-run   # print what it would do now, do nothing
  *
- * What it watches: `ay ls --watch --local` (ay's own registry diff, NDJSON);
- * each edge re-reads `ay ls --json --local`, and a slow re-list every
- * lanes.relistSec covers a silent stream. Its reader socket: `lianki chat
+ * What it watches: `ay ls --watch --json --local` (ay's state transitions,
+ * NDJSON; ay polls every 2 s for them); each edge re-reads `ay ls --json
+ * --local`, and a slow re-list every lanes.relistSec covers a silent stream.
+ * Who is busy (./lanes-busy.ts): each lane's agent's live output log followed
+ * with `tail -f -n 0` (kqueue, no polling); ay's transitions only for a lane
+ * whose follower cannot run. Its reader socket: `lianki chat
  * listen --json --reader` with the manager's own token
  * (~/.config/lianki/lanes/<LIANKI_LANES_MANAGER_LANE or "lanes">.token).
  *
  * The decisions are pure (./lanes-manager-lib.ts) and the loop takes its
  * effects as Deps (./lanes-manager-core.ts); this file only wires them up.
  */
+import { sendCodes, unknownCode } from "./lane-listen-lib";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { lanesConfig } from "../../lib/lanes-config";
@@ -82,9 +86,9 @@ async function main(): Promise<number> {
     ps: () => text(["ps", "-axo", "pid=,command="]),
     // LIANKI_TOKEN is the manager's own environment, never a lane's: lanes use their files only.
     token: (lane) => laneToken(lane, { ...process.env, LIANKI_TOKEN: undefined }).token,
-    startListener: ({ lane, cwd, table, scope, skipOwner, cli }): Child => {
+    startListener: ({ lane, cwd, table, scope, skipOwner, cli, answerUnnamed }): Child => {
       const p = Bun.spawn(
-        listenerArgv(process.execPath, o.repo, lane, cwd, { scope, skipOwner, cli }),
+        listenerArgv(process.execPath, o.repo, lane, cwd, { scope, skipOwner, cli, answerUnnamed }),
         {
           cwd: o.repo,
           env: { ...process.env, LIANKI_TOKEN: undefined, LIANKI_LANE_TABLE: table },
@@ -107,11 +111,25 @@ async function main(): Promise<number> {
       }
     },
     wake: async (pid, body) => {
-      const p = Bun.spawn(
-        ["ay", "send", String(pid), "--force", "--no-wait", "--code", "alt-m", "-"],
-        { stdin: new TextEncoder().encode(body), stdout: "ignore", stderr: "ignore" },
-      );
-      return Promise.race([p.exited, new Promise<number>((r) => setTimeout(() => r(-1), 20_000))]);
+      // alt-m breaks into the turn; an ay without that key refuses it, so Enter follows.
+      let code = 1;
+      for (const key of sendCodes(true)) {
+        const p = Bun.spawn(
+          ["ay", "send", String(pid), "--force", "--no-wait", "--code", key, "-"],
+          {
+            stdin: new TextEncoder().encode(body),
+            stdout: "ignore",
+            stderr: "pipe",
+          },
+        );
+        code = await Promise.race([
+          p.exited,
+          new Promise<number>((r) => setTimeout(() => r(-1), 20_000)),
+        ]);
+        if (code === 0 || code === 4 || code === -1) return code;
+        if (!unknownCode(await new Response(p.stderr).text())) return code;
+      }
+      return code;
     },
     loadState: (): ManagerState => {
       try {
@@ -127,6 +145,24 @@ async function main(): Promise<number> {
       renameSync(`${statePath}.tmp`, statePath);
     },
     log,
+    // Who is busy: `tail -f` blocks on kqueue until the log grows; its output is only a signal.
+    follow: (path, onData, onEnd) => {
+      const p = Bun.spawn(["tail", "-f", "-n", "0", path], { stdout: "pipe", stderr: "ignore" });
+      let closed = false;
+      void (async () => {
+        try {
+          for await (const _ of p.stdout as ReadableStream<Uint8Array>) onData();
+        } catch {}
+        const code = await p.exited;
+        if (!closed) onEnd(`tail exited ${code}`);
+      })();
+      return {
+        close: () => {
+          closed = true;
+          p.kill();
+        },
+      };
+    },
   };
   const m = createManager(deps, {
     repo: o.repo,
@@ -150,7 +186,8 @@ async function main(): Promise<number> {
   for (const sig of ["SIGINT", "SIGTERM"] as const)
     process.on(sig, () => {
       m.stop();
-      process.exit(0);
+      // The idle words just sent (busy lanes) get a moment to reach the hub.
+      setTimeout(() => process.exit(0), 1_500);
     });
 
   // One re-list per burst of ay edges; a slow one if the stream says nothing.
@@ -165,8 +202,24 @@ async function main(): Promise<number> {
   setInterval(() => soon(0), cfg.relistSec * 1000);
   void (async () => {
     for (let backoff = 1_000; ; backoff = Math.min(backoff * 2, 60_000)) {
-      const p = Bun.spawn(["ay", "ls", "--watch", "--local"], { stdout: "pipe", stderr: "ignore" });
-      for await (const _ of p.stdout as ReadableStream<Uint8Array>) soon();
+      // One ay watcher: its transitions are re-list edges, and the busy fallback's states.
+      const p = Bun.spawn(["ay", "ls", "--watch", "--json", "--local"], {
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      let buf = "";
+      const dec = new TextDecoder();
+      for await (const chunk of p.stdout as ReadableStream<Uint8Array>) {
+        buf += dec.decode(chunk, { stream: true });
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const raw = buf.slice(0, nl);
+          buf = buf.slice(nl + 1);
+          m.ayLine(raw);
+        }
+        soon();
+      }
+      log({ type: "ay-watch-exit", inMs: backoff });
       await Bun.sleep(backoff);
     }
   })();

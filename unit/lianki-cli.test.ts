@@ -731,6 +731,29 @@ describe("chat (your own thread, with a chat token)", () => {
     expect(seen).toHaveLength(2);
   });
 
+  test("say --play sends the audio with the line; a bad src is a usage error before any call", async () => {
+    const seen: Call[] = [];
+    const h = harness({ env, server: chatServer(seen) });
+    const r = await h.run(
+      "chat",
+      "say",
+      "--play",
+      "https://cdn.example.com/a.mp3",
+      "--title",
+      "L3",
+      "listen",
+    );
+    expect(r.code).toBe(0);
+    expect(seen[0]!.body).toEqual({
+      op: "say",
+      text: "listen",
+      play: { src: "https://cdn.example.com/a.mp3", title: "L3" },
+    });
+    const bad = await h.run("chat", "say", "--play", "http://cdn.example.com/a.mp3", "x");
+    expect(bad.code).toBe(1);
+    expect(seen.length).toBe(1);
+  });
+
   test("say - reads the line from stdin (yargs alone drops a bare -)", async () => {
     const seen: Call[] = [];
     const h = harness({ env, server: chatServer(seen), stdin: "  -starts with a dash\n" });
@@ -916,6 +939,12 @@ describe("chat (your own thread, with a chat token)", () => {
     for (const [args, want] of [
       [["--everyone"], { type: "auth", token: TOKEN, mode: "listener", scope: "all" }],
       [["--everyone", "--reader"], { type: "auth", token: TOKEN, mode: "reader" }],
+      // Tier ⓪: the system notices too (owner, 2026-11-16 02:16 JST).
+      [
+        ["--everyone", "--system"],
+        { type: "auth", token: TOKEN, mode: "listener", scope: "system" },
+      ],
+      [["--system", "--reader"], { type: "auth", token: TOKEN, mode: "reader" }],
     ] as const) {
       const h = harness({ env });
       const sent: any[] = [];

@@ -811,7 +811,7 @@ describe("the bar and the list, rendered", () => {
       }),
     );
     expect(out).toContain('data-testid="debug-chat-eta-bar"');
-    expect(out).toContain('aria-label="2 tasks · 25M · next in 5M');
+    expect(out).toContain('aria-label="A · 5M left — 2 tasks · 25M · next in 5M');
     expect(out).toContain(">5M</span>");
     expect(out).not.toContain(">25M</span>");
     expect(out).not.toContain("debug-chat-eta-fold");
@@ -826,7 +826,9 @@ describe("the bar and the list, rendered", () => {
       }),
     );
     expect(out).toContain('data-testid="debug-chat-eta-bar"');
-    expect(out).toContain('aria-label="2 tasks · 25M · next in 5M · 25%');
+    // At rest the earliest deadline; the summary is the tooltip and the label's second half.
+    expect(out).toContain('aria-label="A · 5M left — 2 tasks · 25M · next in 5M · 25%');
+    expect(out).toContain('title="2 tasks · 25M · next in 5M · 25% — ');
     expect(out).toContain('data-pct="25"');
     expect(out).toContain(CHAT_STRINGS_EN.etaOpen);
     expect(out).toContain("<svg");
@@ -843,7 +845,7 @@ describe("the bar and the list, rendered", () => {
         onOpen: () => {},
       }),
     );
-    expect(past).toContain('aria-label="2 tasks · -10M');
+    expect(past).toContain('aria-label="A · 30M over — 2 tasks · -10M');
     // A negative time is red.
     expect(past).toMatch(
       /data-testid="debug-chat-eta-time" data-late="true"[^>]*color:light-dark\(oklch\(0.47 0.17 27\)/,

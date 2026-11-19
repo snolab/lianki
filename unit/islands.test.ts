@@ -629,7 +629,7 @@ describe("the islands build", () => {
     expect(changedIslands(three, three, true)).toEqual(["a", "b", "c"]);
   });
 
-  it("typeErrorFiles reads tsgo's output", () => {
+  it("typeErrorFiles reads tsrs's output", () => {
     const out =
       "lib/islands/entry.ts(14,3): error TS2322: x\n  more\napp/a.tsx(1,1): error TS1: y\n";
     expect(typeErrorFiles(out, "/r")).toEqual(["/r/lib/islands/entry.ts", "/r/app/a.tsx"]);

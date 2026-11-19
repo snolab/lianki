@@ -1860,8 +1860,14 @@ it onto the `ChatMessage`, so pages get it live and in history, and logs it
 in `debug.say`.
 
 **On the page** (`packages/debug-chat/src/speak-rules.ts`, gated in
-`voice.ts` `gateVoice`), on top of the usual rules (mic on; or the speaker
-toggle on and either a phone, the mic used on this device, or the input focused):
+`voice.ts` `gateVoice`), on top of the usual rules (speaker toggle on, plus
+the mic on, a phone, the mic used on this device, or the input focused):
+
+- **Manual mute while listening:** the read-aloud menu row stays usable with
+  the microphone on. Turning it off immediately stops the current and queued
+  replies and silences new replies, while microphone capture continues.
+  Its saved setting remains off after a microphone restart. Hot-loading a new
+  widget guards the existing shared voice session without replacing capture.
 
 - **A phone: the toggle alone** (owner, 2026-11-10): on a touch device
   (voice-bg.ts `isDesktop` false) every reply is read with the speaker
@@ -2099,16 +2105,46 @@ polygon text tspan title` only (any other is dropped with its subtree:
 
 Owner, 2026-11-14: right of the connection chip (the link icon, over the
 input), small overlapping avatars of everyone in this thread
-(`PresenceStack.tsx`): most recently active first, `chat.presenceShown`
-(default 6, `/dev/config`) of them, then "+N".
+(`PresenceStack.tsx`). Simplified 2026-11-16 ("为什么我们有好几个方框头像…能不能给它简化一点？";
+then "按钮和「实时监听」这种文字太多了"):
 
-- **Read-only lanes too** (owner, 2026-11-15 "3的成员也要显示在叠叠头像这里"):
-  every lane-registry row in state `reader` is listed even when it has not
-  read lately (`presentList`, as of its last use). The stack puts them after
-  the live ones, greyed with no dot; the panel lists them last under
-  "read-only" (`peopleReadOnly`). Every row shows its role (`roster.ts
-  laneRole`: config `chat.lanes`, else `LANES`). An older page just draws them
-  as more avatars.
+- **The stack** draws avatars only for those who can answer now (live
+  listener lanes, tokens, people): most recently active first,
+  `chat.presenceShown` (default 3, `/dev/config`) of them, then "+K". Every
+  lane-registry row in state `reader` (listed even when it has not read
+  lately, `presentList`) is **not** an avatar: they are one small chip
+  "+N read-only" (`peopleReadersChip`) at the end. The summary / label reads
+  "小克, coco +1 · +3 read-only".
+- **The panel**: one row per live participant — avatar, name · role
+  (`roster.ts laneRole`: config `chat.lanes`, else `LANES`), and a strip of
+  state icons in place of words like "实时监听" (`icons.tsx`, Phosphor-like,
+  drawn here):
+  - listening, one segmented group with all three states visible, the one in
+    effect filled seal red: **ear** hears live (all lines, or his only),
+    **bell** woken only when named (reader), **closed eye** not listening
+    (muted). Drawn only when the lane registry gives a mode.
+  - then two abilities (owner, 2026-11-16: three groups in all, listen / talk /
+    act, in words a 13-year-old knows, no "eval", "code" or "scope"): **speech
+    bubble** can read and answer you (one icon: answering means it reads, so
+    there is no eye), **hand** may operate the page for you (the eval grant).
+    Not allowed = the same icon struck through and grey (`Icon slash`). Only
+    what the page knows (`presence.ts knownState`): talk = the hub's
+    `perms.post`, else posted a line (muted: no); act only from `perms.eval`.
+    Unknown = no icon, never a guess.
+  - **busy**: a slow turning seal-red ring around the avatar, in the stack and
+    in the panel (`BusyRing`), while its agent works; with reduced motion a
+    still, full ring; stuck = a still amber dashed ring. From the lane row's
+    `busy` / `stuck` (lane-registry.ts), which the lanes manager sets from the
+    agent's live output (docs/lane-listen.md, "Who is busy"). The "…" details
+    say it in words (`peopleBusy`, `peopleStuck`).
+  - a tap on any icon shows its one-line meaning under the row (also its
+    hover title / label).
+    The read-only lanes fold into one row "3 read-only lanes"
+    (`peopleReadersRow`) that opens to plain names (no avatar, role or icons).
+    Each row's **"…"** holds the rest: activity ("reading now", "here since"),
+    and for the viewer's own tokens Rename, Picture and Remove (below); a
+    reader that is the viewer's own token keeps a "…" for the same. Invite is
+    one quiet row at the bottom. Every control is ≥44px tall.
 
 - **Who counts** (`presence.ts presentList`, built in the hub): a token with a
   listening socket open (`lianki chat listen`, an MCP wait on a socket); a
@@ -2123,10 +2159,10 @@ input), small overlapping avatars of everyone in this thread
   only on the pages of the account that owns it.
 - **Look and touch**: hover (mouse) or one tap (touch) shows a one-line summary
   ("agy, codex, mcp-bot +2"); a click, a double tap or Enter opens the panel:
-  a row each (avatar, name, MCP badge, "reading now" or last active, since).
-- **Managing**: for the viewer's own tokens a row offers Rename, the picture
-  (Generated / Its own / Paste an SVG, sanitized on the page and again in the
-  hub) and **Remove**, which asks once, then revokes the token through
+  the rows above (activity behind each "…").
+- **Managing**: for the viewer's own tokens a row's "…" offers Rename,
+  Picture (one segmented choice: Generated / Its own / Paste an SVG, sanitized
+  on the page and again in the hub) and **Remove**, which asks once, then revokes the token through
   `/api/token` (the same path as /my/preferences; another account's token is a
   404), so its socket closes at once and it leaves the list. The owner's name
   and picture are kept on the token's record and win over the agent's own
@@ -2139,8 +2175,10 @@ input), small overlapping avatars of everyone in this thread
   Remove (their grant is ended from the connection chip).
 
 Tests: `unit/agent-avatars.test.tsx` (sanitizer, generated mark, presence
-order/expiry/cap, the hub's avatar op, presence pushes, owner override, Remove
-closing the socket, rendering).
+order/expiry/cap, the read-only chip, `knownState`, the state icons, the hub's
+avatar op, presence pushes, owner override, Remove closing the socket,
+rendering) and `unit/presence-stack.test.tsx` (the panel in a DOM: "…" menus,
+icon states and their meanings, the folded readers row).
 
 ### A line's own voice
 
@@ -2238,13 +2276,30 @@ inside `[data-sensitive]` / `[data-lk-sensitive]` (any page may mark a part).
 
 Choosing it puts a quote chip above the input (one line; a tap shows it whole;
 × drops it). It is kept with the draft in `lk:ui:chat` (`attached`), and sent
-with the **next line only** as `context: {selection, path, title, host?}` —
+with the **next line only** as `context: {selection, path, title, host?, location?}` —
 `selection` ≤ 2000 characters, `path` without query or fragment, `host` only
 on another site (`cleanContext` in wire.ts, applied by the page, the hub's
 `parsePageMessage` and the session store). The hub stores it on the line in
 the sender's own thread — a friend's selection stays in their thread — and
 logs only its length. The log shows it as a small quote above the line;
 `eval.ts chat` prints it in the JSON line as `"context"`.
+
+**Selection location.** Captured with the selection, before focusing chat:
+the nearest heading, a unique bounded block selector, offsets in that block's
+UTF-16 text, up to 160 characters before and after, and a document-coordinate
+rectangle plus the viewport/scroll snapshot in CSS pixels. Fields carry their
+locator and value offsets only, never their unselected value. Broad page
+containers and blocks containing private, chat, field or hidden content do not
+provide surrounding text. Coordinates describe that moment; text context is
+more useful after the page moves. Missing metadata stays absent (including
+unsupported selections); it is never inferred. Identical text at two locations
+updates the remembered anchor. The listener receives the structured location,
+and the built-in partner receives the same bounded reference data in its prompt;
+its characters count towards the credit reservation. Query strings and fragments
+remain excluded. Chat-history storage still omits the entire page context.
+The attachment chip and sent quote display only the selected text, including
+when expanded; page and location metadata do not appear in hover tooltips.
+The structured context sent to listeners and the partner is unchanged.
 
 ## Attachments and the inbox
 
@@ -2374,10 +2429,22 @@ Flag `chat.eta-bar` (owner only; the root layout reads it and passes
 `etaBar` down to DebugChat). Every live state-tree node with an estimate
 (`progress.ts --eta 25m`, its `etaAt`; docs/state-tree.md, "ETA pings") is a
 timed task (`eta.ts etaTasks`, read from the overlaid tree). Above the input,
-one line (`EtaBar.tsx`): a small clock drawn in place, "Title · 25M" for
-one task, or "3 tasks · 1.5H · next in 5M" for several, and the percent;
-a tap opens the state tree, whose top lists each task as a Gantt row
-(`EtaList`). There is no separate meter (owner, 2026-11-08): the summary
+one line (`EtaBar.tsx`): a small clock drawn in place, the open task whose
+deadline comes first and how it stands, and the percent (owner, 2026-11-15
+22:58 JST: "它的 deadline 是最早的一条任务，它的名字和它超时的时间就可以显示在这里，
+滚动播报"). `eta.ts byDeadline` orders the open tasks (done ones left out) by
+`at`, overdue ones included, and the bar names the first (the title's name
+part) with `etaDeadlineLate` "Box ETA · 超时 20M" (its ETA passed; the words
+and time in `ETA_COLORS.late`) or `etaDeadlineLeft` "Docs · 还剩 35M", in
+compactTime. `chat.etaBarCycle` (public, default 1, 1–10) rolls through that
+many earliest deadlines in turn, `chat.etaTickerSec` seconds each
+(`deadlinePick`, `useRollStep`; no timer with one). A change the ticker
+announces (below) still takes the line for its seconds first. The summary,
+"3 tasks · 1.5H · next in 5M · 82%", is the bar's tooltip (`title`) and the
+second half of its accessible label, and the line itself once no task is
+open ("3 tasks · done"). The folded chat's compact bar still shows only the
+nearest time. A tap opens the state tree, whose top lists each task as a
+Gantt row (`EtaList`). There is no separate meter (owner, 2026-11-08): the summary
 line's own background is filled from the start edge to the progress
 (weighted by each estimate), blue running, red past its estimate, green done.
 
@@ -2450,7 +2517,7 @@ its mark (`Icon` plus, check, sparkle, an arrow, pause; the red clock for
 late) and its string (`etaNews*`, every locale with its context line), with
 the lane that made it (the node's last ETA event's `by`) in front. One item
 shows for `chat.etaTickerSec` seconds (default 6), the most recent
-`chat.etaTickerKeep` (default 5) in turn, newest first, then the summary is
+`chat.etaTickerKeep` (default 1: only the change an agent just made, no carousel — owner, 2026-11-15 22:32 JST) in turn, newest first, then the earliest deadline is
 back; a new change starts the pass over (`tickerPush` / `tickerShown`).
 Config keys, public (`publicCfg` in DebugEval → DebugChat `etaTicker`). A new
 change lights the bar once in its gold (`ETA_FLASH_CSS`, an overlay fading
