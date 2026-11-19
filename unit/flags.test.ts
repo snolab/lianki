@@ -67,6 +67,8 @@ describe("registry", () => {
       "stt.polish",
       "voice.auto-polish",
       "voice.fold-others",
+      // One avatar per voice in the room, asked 2026-11-19 ~15:0x JST, audience owner.
+      "voice.speaker-avatars",
       "voice.echo-dedupe",
       // His Mac's Whisper re-reads each run before its polish, asked 2026-11-15 03:17 JST, audience owner.
       "stt.whisper-recheck",

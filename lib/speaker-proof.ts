@@ -12,7 +12,7 @@
  *
  * Wire form of one proof: `<payload b64url>.<signature b64url>`, the signature
  * over the ASCII of the first part; payload
- * `{v:1, uid, thread, at (ms), text, decision, score, model, device, speechS, snrDb[, reason]}`.
+ * `{v:1, uid, thread, at (ms), text, decision, score, model, device, speechS, snrDb[, reason, voice, cluster, clusterScore]}`.
  */
 import { type SpeakerTag, cleanSpeaker, combineSpeaker } from "../packages/debug-chat/src/wire";
 

@@ -26,6 +26,7 @@ export function OwnerBoots({
   talkOver = false,
   polishReadback,
   foldOthers = true,
+  speakerAvatars = true,
   whisperRecheck,
   pttMaxCaptureMs,
   mergeReopenSec,
@@ -45,6 +46,8 @@ export function OwnerBoots({
   polishReadback?: { on: boolean; timeoutMs?: number };
   /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
   foldOthers?: boolean;
+  /** Flag `voice.speaker-avatars`: each voice in the room gets its own avatar (cluster-avatar.ts). */
+  speakerAvatars?: boolean;
   /** Flag `stt.whisper-recheck` + dev: his Mac's Whisper re-reads each run (whisper-recheck.ts). */
   whisperRecheck?: RecheckConf;
   /** Config voice.pttMaxCaptureMs: bounded held-audio memory. */
@@ -94,6 +97,7 @@ export function OwnerBoots({
         talkOver={talkOver}
         polishReadback={polishReadback}
         foldOthers={foldOthers}
+        speakerAvatars={speakerAvatars}
         whisperRecheck={whisperRecheck}
         pttMaxCaptureMs={pttMaxCaptureMs}
         mergeReopenSec={mergeReopenSec}

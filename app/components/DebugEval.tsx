@@ -61,6 +61,7 @@ import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setLaneTable } from "@lianki/debug-chat/voices";
 import { setPhoneticMaxNear } from "@lianki/debug-chat/lane-phonetic";
 import { setOtherAvatar, setOtherAvatarBelow } from "@lianki/debug-chat/avatar-rules";
+import { setSpeakerAvatars } from "@lianki/debug-chat/cluster-avatar";
 import { waitText } from "@/lib/wait-text";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
 import { setTalkOver } from "@lianki/debug-chat/aec";
@@ -213,6 +214,7 @@ export function DebugEval({
   talkOver = false,
   polishReadback: readback,
   foldOthers = true,
+  speakerAvatars = true,
   whisperRecheck,
   pttMaxCaptureMs,
   mergeReopenSec,
@@ -223,6 +225,8 @@ export function DebugEval({
 }: {
   /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
   foldOthers?: boolean;
+  /** Flag `voice.speaker-avatars`: each voice in the room gets its own avatar (cluster-avatar.ts). */
+  speakerAvatars?: boolean;
   /**
    * Flag `stt.whisper-recheck` + dev: at a run's passage end his Mac's Whisper re-reads
    * the run whole, and the line takes it before its polish (whisper-recheck.ts). None: off.
@@ -290,6 +294,12 @@ export function DebugEval({
   // Undecided voice lines well under his print get another voice's avatar (avatar-rules.ts).
   setOtherAvatarBelow(publicCfg("voice.otherAvatarBelow"));
   setOtherAvatar(publicCfg("voice.otherAvatar"), publicCfg("voice.otherAvatarName"));
+  // One avatar per voice in the room (cluster-avatar.ts): the flag and its live palette.
+  setSpeakerAvatars({
+    on: speakerAvatars,
+    hues: publicCfg("voice.clusterHues"),
+    minScore: publicCfg("voice.clusterMinScore"),
+  });
   // The mic's repetition guard on every final (stt-repeat.ts): live, no deploy.
   setRepeatLimits({
     maxRuns: publicCfg("stt.repeatMaxRuns"),

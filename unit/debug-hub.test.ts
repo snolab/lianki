@@ -1810,6 +1810,48 @@ describe("DebugHub wake (the mic's wake-word mode, docs/wake-word.md)", () => {
     ]);
   });
 
+  it("the voice cluster rides on the signed tag only (one avatar per voice in the room)", async () => {
+    const mac = await speakerKey();
+    const s = setup({ STT_SPEAKER_PUB: mac.pub });
+    const owner = s.page();
+    await agent(s, owner);
+    const at = 1_000_000;
+    const sign = (text: string, uid: string, cluster: string) =>
+      mac.sign({
+        decision: "other",
+        score: 0.2,
+        text,
+        uid: uid.padEnd(16, "x"),
+        thread: "owner",
+        at,
+        cluster,
+        clusterScore: 0.83,
+      });
+    const say = (id: string, text: string, speakerProof: string[]) =>
+      s.msg(owner, { type: "chat", id, text, source: "stt", speakerProof });
+    await say("c1", "hello there", [await sign("hello there", "k1", "B")]);
+    await say("c2", "tea please", [await sign("tea please", "k2", "household:other")]);
+    await say("c3", "one two", [await sign("one", "k3", "A"), await sign("two", "k4", "B")]);
+    // A page's own cluster on an unsigned line: never kept.
+    await s.msg(owner, {
+      type: "chat",
+      id: "c4",
+      text: "fake",
+      source: "stt",
+      speaker: { decision: "other", cluster: "A" },
+    });
+    const stored = [...s.storage.store.entries()]
+      .filter(([k]) => k.startsWith("msg:"))
+      .map(([, v]) => v as { id: string; speaker?: { cluster?: string; clusterScore?: number } })
+      .sort((a, b) => a.id.localeCompare(b.id));
+    expect(stored.map((m) => [m.id, m.speaker?.cluster, m.speaker?.clusterScore])).toEqual([
+      ["c1", "B", 0.83],
+      ["c2", "household:other", 0.83],
+      ["c3", undefined, undefined],
+      ["c4", undefined, undefined],
+    ]);
+  });
+
   it("without STT_SPEAKER_PUB no tag is ever kept", async () => {
     const mac = await speakerKey();
     const s = setup();

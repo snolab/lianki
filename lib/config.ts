@@ -374,6 +374,28 @@ export const CONFIG = {
     audience: "public",
     description: "「另一个声音」的行显示的名字（比如家人的名字）。空 = 「另一个声音」。",
   },
+  // One avatar per voice in the room (packages/debug-chat/src/cluster-avatar.ts, flag voice.speaker-avatars).
+  "voice.clusterHues": {
+    // Same as CLUSTER_HUES in cluster-avatar.ts (not imported: config stays free of the chat package).
+    default: [70, 110, 150, 185, 220, 255, 290, 325],
+    schema: z.array(z.number().min(0).max(360)).min(1).max(24),
+    group: "voice",
+    audience: "public",
+    description:
+      "每个声音的头像颜色（oklch 色相 0–360，按顺序：A 用第一个，B 用第二个……）。印章红附近（约 5–45）的色相会被跳过，那是你的颜色。只影响显示。",
+  },
+  "voice.clusterMinScore": {
+    // Same as CLUSTER_MIN_SCORE in cluster-avatar.ts.
+    default: 0,
+    schema: z.number().min(0).max(1),
+    min: 0,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "public",
+    description:
+      "一行语音和它所属声音分组的相似度（clusterScore）低于这个值时，不画这个分组的头像，改用共用的「另一个声音」头像。0 = 有分组就画。",
+  },
   "voice.cloneTimeoutMs": int({
     default: 20_000,
     min: 2_000,
