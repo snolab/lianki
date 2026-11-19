@@ -30,12 +30,13 @@ export async function createBrowserMeetingTranscription(
   } = {},
 ) {
   const sdk = deps.sdk ?? (await import("./sdk")).meetingTranscriptSdk;
-  const getRecorder = deps.getRecorder ?? (await import("../meetings/capture")).meetingRecorder;
+  let getRecorder = deps.getRecorder;
   const consumer = createMeetingTranscription({
     ...options,
     sdk,
     decodeChunk: options.decodeChunk ?? createMeetingChunkDecoder(options.limits),
     subscribePcm(listener) {
+      if (!getRecorder) throw new MeetingTranscriptionError("config");
       const recorder = getRecorder();
       if (recorder.state.meetingId !== options.meetingId)
         throw new MeetingTranscriptionError("config");
@@ -49,5 +50,13 @@ export async function createBrowserMeetingTranscription(
       });
     },
   });
-  return consumer;
+  return {
+    ...consumer,
+    async startLive(choice: { userInitiated: true }) {
+      if (choice?.userInitiated !== true) throw new MeetingTranscriptionError("choice");
+      // Final transcription never needs the capture module or its browser I/O.
+      getRecorder ??= (await import("../meetings/capture")).meetingRecorder;
+      return consumer.startLive(choice);
+    },
+  };
 }
