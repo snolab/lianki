@@ -3,6 +3,7 @@ import type { FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
 import { SealSwitch } from "@/app/components/SealSwitch";
 import { useZonedTime } from "@/app/components/useZonedTime";
+import { flagTime } from "./flag-time";
 
 /** Shown under every flag that moves real money (policy: typed Slack confirmation). */
 export const MONEY_NOTE = "打开正式收款前请在 Slack 打字确认";
@@ -10,7 +11,8 @@ export const MONEY_NOTE = "打开正式收款前请在 Slack 打字确认";
 /** A time written out in the viewer's device zone, labelled with it (these pages are Chinese). */
 export function When({ at }: { at: string | number }) {
   const { time } = useZonedTime();
-  return <>{time(at, "zh-CN")}</>;
+  const stamp = flagTime(at);
+  return <>{stamp === null ? "—" : time(stamp, "zh-CN")}</>;
 }
 
 export const card =
