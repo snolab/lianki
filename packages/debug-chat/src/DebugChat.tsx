@@ -308,6 +308,7 @@ import {
   AddressedMarks,
   LineTag,
   agentAvatar as tokenPicture,
+  clusterAvatar,
   laneAvatar,
   voiceAvatar,
   withTokenName,
@@ -1203,6 +1204,9 @@ export function DebugChat({
     // Another voice on his voice line (speaker-avatar.ts): its own disc, not his picture.
     voiceAvatar,
     otherVoice: t.vpOtherVoice,
+    // One voice in the room (cluster-avatar.ts): "A", "B"… or a household voice.
+    clusterAvatar,
+    clusterWords: { voice: t.vpVoiceCluster, household: t.vpHouseholdVoice },
   };
   /**
    * Who the owner called (addressed.ts): each owner line's addressed lanes

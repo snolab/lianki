@@ -960,6 +960,10 @@ export type ChatStrings = {
   vpOtherVoice: string;
   /** Label of the folded one-line button for another person's voice in the chat log: "Another voice · tap to expand". */
   vpOtherVoiceFolded: string;
+  /** Tooltip and screen-reader name of the avatar of one voice in the room (cluster-avatar.ts): "Voice {label}", {label} a letter A, B… */
+  vpVoiceCluster: string;
+  /** Tooltip and screen-reader name of the avatar of a household member's voice (a household voiceprint): "Household voice". */
+  vpHouseholdVoice: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
   notReadHidden: string;
   // The input's + menu (attach.tsx).
@@ -1215,6 +1219,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpMacRecKept: "The recordings stay on the speech servers.",
   vpVerified: "Your voice, verified",
   vpOtherVoice: "Another voice",
+  vpVoiceCluster: "Voice {label}",
+  vpHouseholdVoice: "Household voice",
   vpOtherVoiceFolded: "Another voice · tap to expand",
   vpFilterOn: "Only my voice: on. Speech that does not match is dropped on Lianki's speech server.",
   vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
@@ -1533,6 +1539,14 @@ export type SpeakerTag = {
    */
   voice?: string;
   /**
+   * Which voice in the room (docs/voice-mode.md, "Speaker clusters"): "A", "B"…
+   * per voice heard today, or "household:<name>" for a household print
+   * (scripts/local-stt/voiceprint.py Verifier.cluster); never on his own lines.
+   * `clusterScore`: the cosine to that cluster, -1..1. cluster-avatar.ts draws it.
+   */
+  cluster?: string;
+  clusterScore?: number;
+  /**
    * The texts the Mac signed, in order: set only by the hub after it verified
    * the proofs (lib/speaker-proof.ts), never taken from a page (cleanSpeaker
    * drops it). Any decision based on a voice line must use these words, not
@@ -1542,6 +1556,8 @@ export type SpeakerTag = {
 };
 const SPEAKER_DECISIONS: readonly SpeakerDecision[] = ["me", "other", "unknown"];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,31}$/;
+/** A voice cluster's label: "A".."ZZZ", or "household:<name>" (cluster-avatar.ts). */
+export const CLUSTER_ID = /^([A-Z]{1,3}|household:[a-z0-9]{1,16})$/;
 /** A voice id: "me", or "s1".."s999". */
 export const VOICE_ID = /^(me|s[1-9]\d{0,2})$/;
 
@@ -1565,6 +1581,11 @@ export function cleanSpeaker(raw: unknown): SpeakerTag | undefined {
     if (typeof v === "string" && SLUG.test(v)) out[k] = v;
   }
   if (typeof r.voice === "string" && VOICE_ID.test(r.voice)) out.voice = r.voice;
+  if (typeof r.cluster === "string" && CLUSTER_ID.test(r.cluster)) {
+    out.cluster = r.cluster;
+    const cs = num(r.clusterScore, -1, 1);
+    if (cs !== undefined) out.clusterScore = Math.round(cs * 1000) / 1000;
+  }
   return out;
 }
 
@@ -1579,14 +1600,25 @@ export function combineSpeaker(tags: readonly (SpeakerTag | undefined)[]): Speak
   const ts = tags.filter((t): t is SpeakerTag => !!t);
   if (!ts.length) return undefined;
   const rank: Record<SpeakerDecision, number> = { other: 0, unknown: 1, me: 2 };
-  const { voice: _v, ...out } = ts.reduce((a, b) => {
+  const {
+    voice: _v,
+    cluster: _c,
+    clusterScore: _cs,
+    ...out
+  } = ts.reduce((a, b) => {
     const w = rank[b.decision] < rank[a.decision] ? b : a;
     const scores = [a.score, b.score].filter((s): s is number => s !== undefined);
     return scores.length ? { ...w, score: Math.min(...scores) } : w;
   });
   const voices = new Set(ts.map((t) => t.voice));
   const [voice] = voices;
-  return voices.size === 1 && voice ? { ...out, voice } : out;
+  const withVoice: SpeakerTag = voices.size === 1 && voice ? { ...out, voice } : out;
+  // The cluster too: only when every utterance names the same one (its weakest score).
+  const clusters = new Set(ts.map((t) => t.cluster));
+  const [cluster] = clusters;
+  if (clusters.size !== 1 || !cluster) return withVoice;
+  const cs = ts.map((t) => t.clusterScore).filter((s): s is number => s !== undefined);
+  return { ...withVoice, cluster, ...(cs.length ? { clusterScore: Math.min(...cs) } : {}) };
 }
 
 export function cleanTiming(raw: unknown): VoiceTiming | undefined {

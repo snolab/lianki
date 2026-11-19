@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import type { ChatMessage, Sender } from "./wire";
 import { laneSpec, type LaneId, isLaneId } from "./voices";
+import { clusterName, clusterShown, isHousehold } from "./cluster-avatar";
 
 /**
  * What an avatar shows: picture URLs in fallback order (each that fails to
@@ -104,6 +105,10 @@ export function lineAvatar(
     voiceAvatar?: (voice: string) => AvatarSource | undefined;
     /** What that avatar is called (localized): "Another voice". */
     otherVoice?: string;
+    /** One voice in the room's avatar (LaneMark.tsx clusterAvatar, from cluster-avatar.ts). */
+    clusterAvatar?: (cluster: string) => AvatarSource | undefined;
+    /** Its names (localized): "Voice {label}", "Household voice". */
+    clusterWords?: { voice?: string; household?: string };
   },
 ): LineAvatar {
   // A lane with a mark of its own (voices.ts LANES): its mark and name.
@@ -139,6 +144,30 @@ export function lineAvatar(
   // Only a line the voiceprint *decided* was someone else: an "unknown" one (a
   // short or soft sentence of his own, under the line) keeps his avatar, marked
   // unsure (owner, 2026-11-14 23:1x: "我的头像怎么变成S了").
+  const sc = m.speaker?.score;
+  const belowHim =
+    m.speaker?.decision === "unknown" && typeof sc === "number" && otherBelow.v > 0 && sc < otherBelow.v;
+  // One avatar per voice in the room (docs/voice-mode.md, "Speaker clusters";
+  // flag voice.speaker-avatars): the line's cluster, "A", "B"… or a household
+  // voice, each its own disc and run. Only where another voice's avatar would
+  // show anyway (a decided "other", or an undecided line well under his print).
+  const cluster = m.from === "owner" ? m.speaker?.cluster : undefined;
+  if (
+    (m.speaker?.decision === "other" || belowHim) &&
+    clusterShown(cluster, m.speaker?.clusterScore)
+  ) {
+    const house = isHousehold(cluster);
+    // A household voice takes the picture and name set for another voice (voice.otherAvatar*).
+    const name = (house && otherLook.name) || clusterName(cluster, opts.clusterWords ?? {});
+    const drawn = opts.clusterAvatar?.(cluster);
+    return {
+      src: house ? otherAvatarOf(drawn) : drawn,
+      name,
+      initialFrom: house ? name : cluster,
+      seed: `cluster:${cluster}`,
+      mine,
+    };
+  }
   const voice = m.from === "owner" ? m.speaker?.voice : undefined;
   if (voice && voice !== "me" && m.speaker?.decision === "other") {
     const name = otherLook.name || opts.otherVoice || "another voice";
@@ -146,14 +175,7 @@ export function lineAvatar(
   }
   // Undecided but well under his print (voice.otherAvatarBelow): someone else's
   // voice by the look of it, so another voice's disc rather than his faded picture.
-  const sc = m.speaker?.score;
-  if (
-    m.from === "owner" &&
-    m.speaker?.decision === "unknown" &&
-    typeof sc === "number" &&
-    otherBelow.v > 0 &&
-    sc < otherBelow.v
-  ) {
+  if (m.from === "owner" && belowHim) {
     const name = otherLook.name || opts.otherVoice || "another voice";
     return { src: otherAvatarOf(opts.voiceAvatar?.("other")), name, initialFrom: name, seed: "voice:other", mine };
   }
