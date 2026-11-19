@@ -27,7 +27,8 @@ from docs/stt-ab.md, "Noise and speaker grid", #394).
   and his own finals `me`. Nothing of theirs is stored.
 - **Speaker clusters** (docs/local-stt.md, "Speaker clusters"): every final
   that is not him also gets `cluster` ("A", "B"…, or `household:<name>` on a
-  household print) and `clusterScore`; memory only, reset at local midnight.
+  household print) and `clusterScore`; the centroids (no audio, no text) are
+  kept in `~/.config/lianki-stt/clusters/clusters.json` so labels survive restarts.
 
 The CLI (never touches ~/lianki-voice-clips; it only reads files you name):
 
@@ -37,6 +38,8 @@ The CLI (never touches ~/lianki-voice-clips; it only reads files you name):
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py delete-audio --all      # only the kept recordings
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py score a.wav b.wav [--device iphone]
     ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py progressive [on|off]   # learning from his finals
+    ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py clusters list           # labels, counts, last seen
+    ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py clusters forget B       # or --all; asks unless --yes
 
 Household voices (another voice at home, scored against so the margin decides):
 scripts/local-stt/household-print.py builds `<device>.<model>.other.json`; deleting or renaming it turns it off.
@@ -61,6 +64,10 @@ STORE_DIR = os.path.expanduser(os.environ.get("LIANKI_STT_VOICEPRINTS", "~/.conf
 #: The Mac's Ed25519 key that signs each final's speaker tag (Attestor); the hub
 #: holds only its public half (STT_SPEAKER_PUB) and stores a tag only if it verifies.
 ATTEST_KEY = os.path.expanduser(os.environ.get("LIANKI_STT_ATTEST_KEY", "~/.config/lianki-stt/speaker-attest.key"))
+#: The speaker clusters kept on this Mac (ClusterStore; docs/local-stt.md, "Speaker clusters"):
+#: centroids, labels and counts only, `clusters.json` 0600 in this 0700 folder.
+CLUSTERS_DIR = os.path.expanduser(os.environ.get("LIANKI_STT_CLUSTERS", "~/.config/lianki-stt/clusters"))
+CLUSTERS_FILE = os.path.join(CLUSTERS_DIR, "clusters.json")
 FORMAT = 1
 #: Per-device generations: a delete bumps them, and an enrolment begun before cannot commit.
 GENERATIONS = "generations.json"
@@ -146,14 +153,18 @@ VOICE_MEAN_N = int(_env_num("VOICE_MEAN_N", 20))
 #: print, never one gated as short or noisy) gets `cluster`, a short label "A", "B"… per
 #: voice, and `clusterScore`, its cosine to that voice's centroid before it moved (1.0 on
 #: a new one). The same cosine rule as Voices: CLUSTER_SAME the "same voice" line, at most
-#: CLUSTER_MAX voices (the one heard longest ago making room). Memory only; the labels
-#: start again at "A" at local midnight and on a restart. A final closer to a household
+#: CLUSTER_MAX voices (the one heard longest ago making room). Kept on this Mac
+#: (owner, 2026-11-19 14:29 JST: "for the test phase store them on my Mac"; later in each
+#: person's own account): ClusterStore, CLUSTERS_FILE, so a label stays the same voice
+#: across restarts and days. CLUSTER_RESET "daily" (LIANKI_STT_CLUSTER_RESET) starts
+#: again at "A" at local midnight; "never" (the default) keeps them. A final closer to a household
 #: print than to his by CLUSTER_HOUSE_MARGIN (the "other" margin), scoring at least
 #: CLUSTER_HOUSE_MIN against it, is that voice: `household:<name>` (the print's name,
 #: "other" or the `-<name>` of its file, never a person's name).
 CLUSTER_SAME = _env_num("CLUSTER_SAME", VOICE_SAME)
 CLUSTER_MAX = int(_env_num("CLUSTER_MAX", 8))
 CLUSTER_UNKNOWN_BELOW = _env_num("CLUSTER_UNKNOWN_BELOW", 0.45)
+CLUSTER_RESET = "daily" if os.environ.get("LIANKI_STT_CLUSTER_RESET", "never").strip().lower() == "daily" else "never"
 
 #: Household voices (docs/local-stt.md, "Household voices"; owner, 2026-11-16
 #: ~02:19 JST, "要做，帮我做"): one print cannot tell him from his wife (CAM++
@@ -1076,24 +1087,56 @@ class Voices:
     that were not him (docs/voice-mode.md, "Speaker avatars"): the same voice
     gets the same id ("s1", "s2"…) while it is remembered, so the page can draw
     one stable avatar per voice and split two people's lines between them. Only
-    embeddings in memory, never audio, never a file; a restart forgets them.
+    embeddings in memory, never audio; a restart forgets them, unless `store`
+    (a ClusterStore: the speaker clusters) keeps the centroids on this Mac.
     Thread-safe: finals (and the parts of a split one) are checked in a pool.
     """
 
     def __init__(self, same: float = VOICE_SAME, max_n: int = VOICES_MAX, forget_s: float = VOICE_FORGET_S,
-                 mean_n: int = VOICE_MEAN_N, label=None, daily: bool = False):
+                 mean_n: int = VOICE_MEAN_N, label=None, daily: bool = False, store: "ClusterStore | None" = None):
         import threading
 
         self.same, self.max_n, self.forget_s, self.mean_n = same, max_n, forget_s, mean_n
         #: n (1, 2, …) -> the id; "s1", "s2"… by default (Clusters: "A", "B"…).
         self.label = label or (lambda n: f"s{n}")
-        #: Start again (ids from the first) when the local date changes (Clusters).
+        #: Start again (ids from the first) when the local date changes (CLUSTER_RESET "daily").
         self.daily = daily
         self.day: tuple | None = None
-        #: {id, c (unit centroid), n, at (last heard)}, in order of first hearing.
+        #: {id, c (unit centroid), n, at (last heard), first (first heard)}, in order of first hearing.
         self.items: list[dict] = []
         self.next = 1
         self._lock = threading.Lock()
+        #: Where the centroids are kept between restarts (None: memory only).
+        self.store = store
+        if store is not None:
+            with self._lock:
+                self._held(self._reload)
+
+    def _held(self, fn):
+        """fn() under the file's lock; a folder that cannot be used stops keeping (logged), never fatal."""
+        try:
+            with self.store.lock():
+                return fn()
+        except (OSError, StoreError) as e:
+            print(f"speaker clusters not kept: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+            self.store = None
+            return None
+
+    def _reload(self) -> None:
+        """The state as the file has it (its absence: nothing yet). An unusable file stops keeping (logged)."""
+        try:
+            st = self.store.read()
+        except StoreError as e:
+            print(f"speaker clusters not kept: {e}", file=sys.stderr, flush=True)
+            self.store = None
+            return
+        self.items, self.next, self.day = st["items"], st["next"], st["day"]
+
+    def _save(self) -> None:
+        try:
+            self.store.write(self.items, self.next, self.day, "daily" if self.daily else "never")
+        except (OSError, StoreError) as e:  # never fatal: the labels go on in memory
+            print(f"speaker clusters not saved: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
 
     def tag(self, e: np.ndarray, now: float | None = None) -> str:
         """The id of the voice `e` (a unit embedding) is: a known one, moved towards it, or a new one."""
@@ -1104,24 +1147,41 @@ class Voices:
         t = time.time() if now is None else now
         e = unit(e)
         with self._lock:
-            if self.daily:
-                day = time.localtime(t)[:3]
-                if day != self.day:
-                    self.day, self.items, self.next = day, [], 1
-            self.items = [v for v in self.items if t - v["at"] <= self.forget_s]
-            best = max(self.items, key=lambda v: float(e @ v["c"]), default=None)
-            if best is not None and (s := float(e @ best["c"])) >= self.same:
-                n = min(best["n"], self.mean_n)
-                best["c"] = unit(best["c"] * n + e)
-                best["n"] = best["n"] + 1
-                best["at"] = t
-                return best["id"], s
-            if len(self.items) >= self.max_n:
-                self.items.remove(min(self.items, key=lambda v: v["at"]))
-            v = {"id": self.label(self.next), "c": e, "n": 1, "at": t}
-            self.next += 1
-            self.items.append(v)
-            return v["id"], 1.0
+            if self.store is not None:
+                def kept():
+                    if self.store.changed():
+                        self._reload()  # the CLI forgot one (or all) while we ran
+                    out = self._tag(e, t)
+                    if self.store is not None:
+                        self._save()
+                    return out
+
+                out = self._held(kept)
+                if out is not None:
+                    return out
+            return self._tag(e, t)
+
+    def _tag(self, e: np.ndarray, t: float) -> tuple[str, float]:
+        if self.daily:
+            day = time.localtime(t)[:3]
+            if day != self.day:
+                self.day, self.items, self.next = day, [], 1
+        self.items = [v for v in self.items if t - v["at"] <= self.forget_s]
+        # A centroid of another size (another model's) is never compared.
+        same = [v for v in self.items if v["c"].shape == e.shape]
+        best = max(same, key=lambda v: float(e @ v["c"]), default=None)
+        if best is not None and (s := float(e @ best["c"])) >= self.same:
+            n = min(best["n"], self.mean_n)
+            best["c"] = unit(best["c"] * n + e)
+            best["n"] = best["n"] + 1
+            best["at"] = t
+            return best["id"], s
+        if len(self.items) >= self.max_n:
+            self.items.remove(min(self.items, key=lambda v: v["at"]))
+        v = {"id": self.label(self.next), "c": e, "n": 1, "at": t, "first": t}
+        self.next += 1
+        self.items.append(v)
+        return v["id"], 1.0
 
     def known(self) -> list[str]:
         """The ids remembered now, oldest first (the tests, the log)."""
@@ -1138,9 +1198,170 @@ def letters(n: int) -> str:
     return out
 
 
-def clusters() -> Voices:
-    """The speaker clusters (CLUSTER_*): "A", "B"… per voice, never forgotten within a day, reset at midnight."""
-    return Voices(same=CLUSTER_SAME, max_n=CLUSTER_MAX, forget_s=float("inf"), label=letters, daily=True)
+def letters_n(label: str) -> int:
+    """letters' inverse: "A" -> 1, "AA" -> 27."""
+    n = 0
+    for ch in label:
+        n = n * 26 + ord(ch) - 64
+    return n
+
+
+_CLUSTER_LABEL = re.compile(r"^[A-Z]{1,4}$")
+
+
+class ClusterStore:
+    """
+    The speaker clusters kept on this Mac (owner, 2026-11-19 14:29 JST; docs/local-stt.md,
+    "Speaker clusters"): one JSON file, 0600 in a 0700 folder, written atomically
+    (write_private) under a lock the CLI shares. Per cluster only its label, count, first
+    and last heard, and its centroid (an embedding): never audio, never text. Biometric
+    data: it stays on this Mac (later: each person's own account).
+
+        {"v": 1, "kind": "speaker-clusters", "reset": "never"|"daily", "next": 3,
+         "day": [y, m, d] | null, "updated": iso,
+         "clusters": [{"label": "A", "n": 12, "first": epoch, "at": epoch,
+                       "firstSeen": iso, "lastSeen": iso, "dim": 192, "centroid": [...]}]}
+    """
+
+    def __init__(self, path: str = CLUSTERS_FILE):
+        self.path = path
+        self.root = os.path.dirname(path)
+        #: (inode, mtime, size) of the file as last read or written; None when it was absent.
+        self._stamp: tuple | None = None
+
+    def _ready(self, create: bool) -> bool:
+        if not os.path.lexists(self.root):
+            if not create:
+                return False
+            os.makedirs(os.path.dirname(self.root), mode=0o700, exist_ok=True)
+            os.mkdir(self.root, 0o700)
+            os.chmod(self.root, 0o700)  # whatever the umask
+        why = path_problem(self.root, want_dir=True)
+        if why:
+            raise StoreError(f"{self.root} {why}")
+        return True
+
+    def lock(self):
+        """An exclusive lock across processes (the server and the CLI), on `.lock` in the folder."""
+        import contextlib
+        import fcntl
+
+        @contextlib.contextmanager
+        def held():
+            self._ready(create=True)
+            fd = os.open(os.path.join(self.root, ".lock"), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                os.close(fd)
+
+        return held()
+
+    def _stat(self) -> tuple | None:
+        try:
+            st = os.lstat(self.path)
+        except FileNotFoundError:
+            return None
+        return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+    def changed(self) -> bool:
+        """Whether someone else (the CLI) wrote or removed the file since we last read or wrote it."""
+        return self._stat() != self._stamp
+
+    def read(self) -> dict:
+        """{items, next, day} from the file (Voices' form); nothing yet without one. StoreError when unusable."""
+        import math
+
+        self._stamp = self._stat()
+        empty = {"items": [], "next": 1, "day": None}
+        if not self._ready(create=False) or self._stamp is None:
+            return empty
+        why = path_problem(self.path, want_dir=False)
+        if why:
+            raise StoreError(f"{self.path} {why}")
+        try:
+            with open(self.path, encoding="utf-8") as fh:
+                d = json.load(fh)
+        except (OSError, ValueError) as e:
+            raise StoreError(f"{self.path} unreadable ({type(e).__name__})") from e
+        if not isinstance(d, dict) or d.get("v") != 1 or not isinstance(d.get("clusters"), list):
+            raise StoreError(f"{self.path} is not a clusters file")
+
+        def num(x) -> bool:
+            return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+        items = []
+        for c in d["clusters"]:
+            ok = (isinstance(c, dict) and isinstance(c.get("label"), str) and _CLUSTER_LABEL.match(c["label"])
+                  and isinstance(c.get("n"), int) and not isinstance(c["n"], bool) and c["n"] >= 1
+                  and num(c.get("at")) and isinstance(c.get("centroid"), list) and 1 <= len(c["centroid"]) <= 1024
+                  and all(num(x) and abs(x) <= 4 for x in c["centroid"]))
+            if not ok:
+                raise StoreError(f"{self.path} has a bad cluster")
+            items.append({"id": c["label"], "c": unit(c["centroid"]), "n": c["n"], "at": float(c["at"]),
+                          "first": float(c["first"]) if num(c.get("first")) else float(c["at"])})
+        nxt = d.get("next")
+        top = max((letters_n(v["id"]) for v in items), default=0)
+        nxt = max(nxt if isinstance(nxt, int) and not isinstance(nxt, bool) and nxt >= 1 else 1, top + 1)
+        day = d.get("day")
+        day = tuple(day) if isinstance(day, list) and len(day) == 3 and all(isinstance(x, int) for x in day) else None
+        return {"items": items, "next": nxt, "day": day}
+
+    def write(self, items: list[dict], nxt: int, day: tuple | None, reset: str) -> None:
+        """The whole state, atomically (a fresh 0600 file renamed over the old one)."""
+        self._ready(create=True)
+        d = {"v": 1, "kind": "speaker-clusters", "reset": reset, "next": nxt, "day": list(day) if day else None,
+             "updated": iso(time.time()),
+             "clusters": [{"label": v["id"], "n": v["n"], "first": v.get("first", v["at"]), "at": v["at"],
+                           "firstSeen": iso(v.get("first", v["at"])), "lastSeen": iso(v["at"]),
+                           "dim": int(v["c"].shape[0]), "centroid": [round(float(x), 6) for x in v["c"]]}
+                          for v in items]}
+        write_private(self.path, json.dumps(d).encode())
+        self._stamp = self._stat()
+
+    def list(self) -> list[dict]:
+        """Per cluster: label, n, firstSeen, lastSeen (never a vector), oldest first."""
+        if not self._ready(create=False):
+            return []
+        with self.lock():
+            st = self.read()
+        return [{"label": v["id"], "n": v["n"], "firstSeen": iso(v["first"]), "lastSeen": iso(v["at"])}
+                for v in st["items"]]
+
+    def forget(self, label: str | None) -> int:
+        """Forget one label (the others keep theirs; it is never given again) or, with None, all
+        (the file is removed, so the labels start again at "A"). How many were forgotten."""
+        if not self._ready(create=False):
+            return 0
+        with self.lock():
+            st = self.read()
+            if label is None:
+                n = len(st["items"])
+                if self._stamp is not None:
+                    os.unlink(self.path)
+                self._stamp = None
+                return n
+            left = [v for v in st["items"] if v["id"] != label]
+            n = len(st["items"]) - len(left)
+            if n:
+                d = None
+                try:
+                    with open(self.path, encoding="utf-8") as fh:
+                        d = json.load(fh).get("reset")
+                except (OSError, ValueError, AttributeError):
+                    pass
+                self.write(left, st["next"], st["day"], d if d in ("daily", "never") else CLUSTER_RESET)
+            return n
+
+
+def clusters(path: str | None = None, reset: str | None = None) -> Voices:
+    """The speaker clusters (CLUSTER_*): "A", "B"… per voice, never forgotten by time; kept in `path`
+    (a ClusterStore) when given, else memory only; CLUSTER_RESET "daily" starts again at midnight."""
+    daily = (reset or CLUSTER_RESET) == "daily"
+    return Voices(same=CLUSTER_SAME, max_n=CLUSTER_MAX, forget_s=float("inf"), label=letters, daily=daily,
+                  store=ClusterStore(path) if path else None)
 
 
 class Verifier:
@@ -1150,7 +1371,8 @@ class Verifier:
     model that has a print is used.
     """
 
-    def __init__(self, store: Store, models: list[str], threads: int = 1, embedders: dict | None = None):
+    def __init__(self, store: Store, models: list[str], threads: int = 1, embedders: dict | None = None,
+                 clusters_path: str | None = None):
         self.store = store
         self.embedders: dict[str, object] = {}
         if embedders is not None:
@@ -1167,8 +1389,9 @@ class Verifier:
         self._stamp: int | None = -1
         #: The other voices heard lately (Voices): one table for the Mac, whoever's device heard them.
         self.voices = Voices()
-        #: Speaker clusters (CLUSTER_*): "A", "B"… and household voices, for every final not his.
-        self.clusters = clusters()
+        #: Speaker clusters (CLUSTER_*): "A", "B"… and household voices, for every final not his;
+        #: kept in `clusters_path` (ClusterStore) across restarts, memory only without one.
+        self.clusters = clusters(clusters_path)
         #: (device, model) -> that device's household prints (load_households), cached as `_cache`.
         self._house: dict[tuple[str, str], list[dict]] = {}
         #: Per device (its mic), when the last "other" or mixed final was verified (epoch s):
@@ -1670,6 +1893,38 @@ def load_wav(path: str) -> np.ndarray:
     return x
 
 
+def clusters_cli(a) -> int:
+    """`voiceprint.py clusters list|forget` (ClusterStore): labels and counts only, never a vector."""
+    cs = ClusterStore(a.file)
+    try:
+        if a.ccmd == "list":
+            rows = cs.list()
+            if not rows:
+                print(f"no speaker clusters in {a.file}")
+            for r in rows:
+                print(f"{r['label']}\t{r['n']} final(s)\tfirst {r['firstSeen']}\tlast {r['lastSeen']}")
+            return 0
+        label = None if a.all else a.label
+        if label is not None and not _CLUSTER_LABEL.match(label):
+            print("bad label (A, B, … AA)", file=sys.stderr)
+            return 2
+        if not a.yes:
+            what = "every speaker cluster" if label is None else f"speaker cluster {label}"
+            try:
+                ans = input(f"forget {what} in {a.file}? [y/N] ")
+            except EOFError:
+                ans = ""
+            if ans.strip().lower() not in ("y", "yes"):
+                print("nothing forgotten")
+                return 1
+        n = cs.forget(label)
+        print(f"forgot {n} cluster(s)" + ("" if n or label is None else f" (no {label})"))
+        return 0
+    except StoreError as e:
+        print(f"clusters: {e}", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="The owner's voiceprint on this Mac (docs/local-stt.md, 'Voiceprint').")
     ap.add_argument("--store", default=STORE_DIR)
@@ -1691,7 +1946,18 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("attest-key", help="print the public key the hub needs (STT_SPEAKER_PUB); makes the key if missing")
     pr = sub.add_parser("progressive", help="progressive learning on this Mac: on, off, or show it")
     pr.add_argument("state", nargs="?", choices=["on", "off"])
+    cl = sub.add_parser("clusters", help="the speaker clusters kept on this Mac: list, or forget one or all")
+    cl.add_argument("--file", default=CLUSTERS_FILE)
+    cs = cl.add_subparsers(dest="ccmd", required=True)
+    cs.add_parser("list", help="label, count, first and last heard (never a vector)")
+    cf = cs.add_parser("forget", help="forget one label, or --all (labels then start again at A)")
+    gf = cf.add_mutually_exclusive_group(required=True)
+    gf.add_argument("label", nargs="?")
+    gf.add_argument("--all", action="store_true")
+    cf.add_argument("--yes", action="store_true", help="do not ask")
     a = ap.parse_args(argv)
+    if a.cmd == "clusters":
+        return clusters_cli(a)
     store = Store(a.store)
     try:
         if a.cmd == "list":

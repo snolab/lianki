@@ -834,11 +834,40 @@ person's name). Anyone else goes to the nearest running centroid by cosine,
 at `CLUSTER_SAME` (0.30) or more, else a new cluster: labels `A`, `B`… (after
 `Z`, `AA`), at most `CLUSTER_MAX` (8), the one heard longest ago making room.
 `clusterScore` is the cosine to that centroid before it moved (1.0 on a new
-one; the household print's score for a household voice). All in memory: no
-embedding or audio is written, and the labels start again at `A` at local
-midnight and on a restart. Every value is an env override (`LIANKI_STT_` +
-the name, as the other voiceprint constants). Signed with the tag, so the hub
-keeps it only from a proof that verifies.
+one; the household print's score for a household voice). Every value is an
+env override (`LIANKI_STT_` + the name, as the other voiceprint constants).
+Signed with the tag, so the hub keeps it only from a proof that verifies.
+
+**Where the clusters are kept** (owner, 2026-11-19 14:29 JST: eventually in
+each person's own account, "for the test phase store them on my Mac"):
+`~/.config/lianki-stt/clusters/clusters.json` (folder 0700, file 0600,
+`voiceprint.ClusterStore`; `LIANKI_STT_CLUSTERS` or the server's `--clusters`
+moves it, and a moved `--voiceprints` puts it beside that folder, so the tests
+never touch the real one). **This is biometric data** (a voice's embedding
+centroid) of people other than him: it stays on this Mac only, is never sent
+to the hub, his account or the repo, and holds per cluster only its label,
+count, first and last heard (epoch and ISO) and its centroid (`dim` floats) —
+no audio, no text. Written atomically (a fresh 0600 file renamed over the
+old one) under a `.lock` the CLI shares, after every final that is clustered;
+loaded when the server starts, so a label stays the same voice across
+restarts and days. `LIANKI_STT_CLUSTER_RESET=daily` brings back the old reset
+at local midnight; `never` is the default. The cap stays: when `CLUSTER_MAX`
+voices are kept, the one heard longest ago is dropped from memory and the
+file. A label is never given again (`next` in the file), unless all are
+forgotten. An unreadable file, or one others can read, is left untouched and
+the server runs memory-only (logged). The log shows only labels and scores
+(`speaker clusters: 3 kept (A B C)` at start, `[B 0.71]` on a final).
+
+```bash
+PY="$HOME/.cache/lianki-stt/venv/bin/python -I"
+$PY scripts/local-stt/voiceprint.py clusters list            # label, finals, first/last heard (never a vector)
+$PY scripts/local-stt/voiceprint.py clusters forget B        # asks first; --yes skips the question
+$PY scripts/local-stt/voiceprint.py clusters forget --all    # removes the file; labels start again at A
+```
+
+The running server notices a forget on its next clustered final (the file's
+inode changes) and reloads, so a forgotten centroid is not written back.
+Household prints are separate files ("Household voices") and unchanged by any of this.
 
 **Merging keeps the speakers apart.** A split part never amends the line
 before it (`continues` is not asked for it). An agent's passage merge

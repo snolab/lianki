@@ -447,7 +447,7 @@ class SpeakerClusters(unittest.TestCase):
         self.assertEqual(cs.tag(self.e(1), now=t0 + 8 * 3600), "B")
 
     def test_reset_at_local_midnight(self):
-        cs = V.clusters()
+        cs = V.clusters(reset="daily")
         late = time.mktime((2026, 11, 19, 23, 59, 0, 0, 0, -1))
         self.assertEqual(cs.tag(self.e(0), now=late), "A")
         self.assertEqual(cs.tag(self.e(1), now=late + 1), "B")
@@ -460,7 +460,8 @@ class SpeakerClusters(unittest.TestCase):
         self.assertEqual([cs.tag(self.e(i), now=i) for i in range(3)], ["A", "B", "C"])
         self.assertEqual(cs.known(), ["B", "C"])
         d = V.clusters()
-        self.assertEqual((d.same, d.max_n), (V.CLUSTER_SAME, V.CLUSTER_MAX))
+        self.assertEqual((d.same, d.max_n, d.daily, d.store), (V.CLUSTER_SAME, V.CLUSTER_MAX, False, None))
+        self.assertEqual(V.CLUSTER_RESET, "never")
         self.assertEqual((V.CLUSTER_SAME, V.CLUSTER_MAX, V.CLUSTER_UNKNOWN_BELOW), (0.30, 8, 0.45))
 
     def test_only_labels_are_signed(self):
@@ -477,6 +478,146 @@ class SpeakerClusters(unittest.TestCase):
             self.assertNotIn("_centroid", p)
         finally:
             tmp.cleanup()
+
+
+class KeptClusters(unittest.TestCase):
+    """The clusters kept on this Mac (ClusterStore; docs/local-stt.md, "Speaker clusters")."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.tmp.name, "config", "clusters", "clusters.json")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def e(self, i: int, dim: int = 16):
+        v = np.zeros(dim, dtype=np.float32)
+        v[i] = 1.0
+        return v
+
+    def cs(self, **kw):
+        return V.clusters(self.path, **kw)
+
+    def test_saved_private_and_loaded_back(self):
+        a = self.cs()
+        self.assertFalse(os.path.exists(self.path))  # nothing written before a voice is heard
+        self.assertEqual(a.tag(self.e(0), now=100), "A")
+        self.assertEqual(a.tag(self.e(1), now=200), "B")
+        self.assertEqual(a.tag(V.unit(self.e(0) + 0.2 * self.e(3)), now=300), "A")
+        self.assertEqual(stat.S_IMODE(os.stat(os.path.dirname(self.path)).st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
+        d = json.load(open(self.path))
+        self.assertEqual((d["v"], d["kind"], d["reset"], d["next"]), (1, "speaker-clusters", "never", 3))
+        self.assertEqual([(c["label"], c["n"], c["first"], c["at"], c["dim"]) for c in d["clusters"]],
+                         [("A", 2, 100, 300, 16), ("B", 1, 200, 200, 16)])
+        # Embeddings, labels, counts and times only: no audio, no text.
+        self.assertEqual(set(d["clusters"][0]), {"label", "n", "first", "at", "firstSeen", "lastSeen", "dim", "centroid"})
+        self.assertEqual(set(d), {"v", "kind", "reset", "next", "day", "updated", "clusters"})
+        # A restart: the same voices keep their labels, a new one takes the next.
+        b = self.cs()
+        self.assertEqual(b.known(), ["A", "B"])
+        self.assertEqual(b.tag(self.e(1), now=86400 * 3), "B")  # days later: still B
+        self.assertEqual(b.tag(self.e(0), now=86400 * 3 + 1), "A")
+        self.assertEqual(b.tag(self.e(5), now=86400 * 3 + 2), "C")
+        self.assertEqual(self.cs().known(), ["A", "B", "C"])
+
+    def test_atomic_write(self):
+        a = self.cs()
+        a.tag(self.e(0), now=1)
+        ino = os.stat(self.path).st_ino
+        a.tag(self.e(1), now=2)
+        self.assertNotEqual(os.stat(self.path).st_ino, ino)  # a fresh file renamed over the old one
+        left = [n for n in os.listdir(os.path.dirname(self.path)) if n not in ("clusters.json", ".lock")]
+        self.assertEqual(left, [])  # no temp file left behind
+        # A write that fails half way leaves the old file whole.
+        real = os.replace
+
+        def boom(*_a, **_k):
+            raise OSError("disk full")
+
+        V.os.replace = boom
+        try:
+            a.tag(self.e(2), now=3)  # never fatal: the label is still given
+        finally:
+            V.os.replace = real
+        self.assertEqual([c["label"] for c in json.load(open(self.path))["clusters"]], ["A", "B"])
+        self.assertEqual([n for n in os.listdir(os.path.dirname(self.path)) if n.startswith(".tmp-")], [])
+
+    def test_cap_evicts_from_the_file(self):
+        a = V.Voices(same=0.5, max_n=2, label=V.letters, forget_s=float("inf"), store=V.ClusterStore(self.path))
+        self.assertEqual([a.tag(self.e(i), now=i) for i in range(3)], ["A", "B", "C"])
+        self.assertEqual([c["label"] for c in json.load(open(self.path))["clusters"]], ["B", "C"])
+        # A is gone for good: the same voice again is a new label, never A.
+        b = V.Voices(same=0.5, max_n=2, label=V.letters, forget_s=float("inf"), store=V.ClusterStore(self.path))
+        self.assertEqual(b.tag(self.e(0), now=10), "D")
+
+    def test_forget_one_and_all(self):
+        a = self.cs()
+        for i in range(3):
+            a.tag(self.e(i), now=i)
+        store = V.ClusterStore(self.path)
+        self.assertEqual([r["label"] for r in store.list()], ["A", "B", "C"])
+        self.assertNotIn("centroid", store.list()[0])
+        self.assertEqual(store.forget("B"), 1)
+        self.assertEqual(store.forget("Q"), 0)
+        # The running server sees it on its next final, and B is never given again.
+        self.assertEqual(a.tag(self.e(1), now=10), "D")
+        self.assertEqual(a.known(), ["A", "C", "D"])
+        self.assertEqual(store.forget(None), 3)
+        self.assertFalse(os.path.exists(self.path))
+        self.assertEqual(a.tag(self.e(7), now=11), "A")  # all forgotten: start again at A
+        self.assertEqual(a.known(), ["A"])
+
+    def test_daily_reset_is_kept_too(self):
+        late = time.mktime((2026, 11, 19, 23, 59, 0, 0, 0, -1))
+        self.assertEqual(self.cs(reset="daily").tag(self.e(0), now=late), "A")
+        b = self.cs(reset="daily")
+        self.assertEqual(b.tag(self.e(1), now=late + 1), "B")  # same day after a restart
+        self.assertEqual(self.cs(reset="daily").tag(self.e(1), now=late + 90), "A")  # the next day
+        self.assertEqual(json.load(open(self.path))["reset"], "daily")
+
+    def test_unusable_file_is_left_alone(self):
+        os.makedirs(os.path.dirname(self.path), mode=0o700)
+        with open(self.path, "w") as fh:
+            fh.write("{not json")
+        os.chmod(self.path, 0o600)
+        a = self.cs()
+        self.assertIsNone(a.store)  # memory only, and the file is not overwritten
+        self.assertEqual(a.tag(self.e(0), now=1), "A")
+        self.assertEqual(open(self.path).read(), "{not json")
+        # A file others can read is refused the same way.
+        os.unlink(self.path)
+        self.cs().tag(self.e(0), now=1)
+        os.chmod(self.path, 0o644)
+        self.assertIsNone(self.cs().store)
+
+    def test_verifier_keeps_its_clusters(self):
+        root = os.path.join(self.tmp.name, "config", "voiceprints")
+        v = V.Verifier(V.Store(root), ["campp"], embedders={"campp": V.FakeEmbedder()}, clusters_path=self.path)
+        self.assertEqual(v.clusters.store.path, self.path)
+        self.assertIsNone(fake_verifier(os.path.join(self.tmp.name, "x")).clusters.store)  # tests: memory only
+
+    def test_cli_list_and_forget(self):
+        a = self.cs()
+        for i in range(2):
+            a.tag(self.e(i), now=1_800_000_000 + i)
+        run = lambda *args, stdin="": subprocess.run(
+            [sys.executable, "-I", os.path.join(HERE, "voiceprint.py"), "clusters", "--file", self.path, *args],
+            capture_output=True, text=True, input=stdin)
+        out = run("list")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual([ln.split("\t")[:2] for ln in out.stdout.splitlines()], [["A", "1 final(s)"], ["B", "1 final(s)"]])
+        self.assertNotIn("[", out.stdout)  # never a vector
+        no = run("forget", "A", stdin="n\n")
+        self.assertEqual(no.returncode, 1)
+        self.assertEqual(run("forget", "A").returncode, 1)  # no answer (EOF) is a no
+        self.assertEqual([r["label"] for r in V.ClusterStore(self.path).list()], ["A", "B"])
+        yes = run("forget", "A", stdin="y\n")
+        self.assertEqual(yes.returncode, 0, yes.stderr)
+        self.assertEqual([r["label"] for r in V.ClusterStore(self.path).list()], ["B"])
+        self.assertEqual(run("forget", "--all", "--yes").returncode, 0)
+        self.assertFalse(os.path.exists(self.path))
+        self.assertEqual(run("forget", "b1", "--yes").returncode, 2)
 
 
 class Enrolling(unittest.TestCase):
@@ -1516,6 +1657,10 @@ class ServerProtocol(unittest.TestCase):
         # The stranger's part names its cluster, signed; his has none.
         self.assertEqual((a["speaker"]["cluster"], payload(a["speakerProof"])["cluster"]), ("A", "A"))
         self.assertNotIn("cluster", b["speaker"])
+        # Kept beside the moved voiceprints folder (never the real ~/.config one), 0600.
+        kept = os.path.join(self.tmp.name, "clusters", "clusters.json")
+        self.assertEqual(stat.S_IMODE(os.stat(kept).st_mode), 0o600)
+        self.assertIn("A", [c["label"] for c in json.load(open(kept))["clusters"]])
         self.assertEqual(mixed["text"], f"{a['text']} {b['text']}")
         self.assertEqual(a["startMs"], 0)
         self.assertEqual(b["startMs"], a["audioMs"])

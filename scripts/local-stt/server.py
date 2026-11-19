@@ -1304,7 +1304,17 @@ async def start_public(serve, gate, srv, port: int):
     return public
 
 
-def load_verifier(models: str, root: str):
+def clusters_path(arg: str | None, voiceprints: str) -> str:
+    """Where the speaker clusters are kept: --clusters, else beside a moved --voiceprints folder
+    (the tests: never the real one), else VP.CLUSTERS_FILE."""
+    if arg:
+        return arg
+    if os.path.abspath(voiceprints) != os.path.abspath(VP.STORE_DIR):
+        return os.path.join(os.path.dirname(os.path.abspath(voiceprints)), "clusters", "clusters.json")
+    return VP.CLUSTERS_FILE
+
+
+def load_verifier(models: str, root: str, clusters: str | None = None):
     """The speaker check, or None (logged) when it is off or its model is missing: never fatal."""
     names = [m for m in (models or "").split(",") if m and m != "0"]
     if not names:
@@ -1312,16 +1322,19 @@ def load_verifier(models: str, root: str):
         return None
     if names == ["fake"]:  # the tests: no model (voiceprint.FakeEmbedder)
         log(f"speaker check on (fake, {root})")
-        return VP.Verifier(VP.Store(root), ["campp"], embedders={"campp": VP.FakeEmbedder()})
+        return VP.Verifier(VP.Store(root), ["campp"], embedders={"campp": VP.FakeEmbedder()}, clusters_path=clusters)
     bad = [m for m in names if m not in VP.MODELS]
     if bad:
         log(f"speaker check off: unknown model {','.join(bad)}")
         return None
     try:
         t0 = time.perf_counter()
-        v = VP.Verifier(VP.Store(root), names)
+        v = VP.Verifier(VP.Store(root), names, clusters_path=clusters)
         v.embed(v.order[0], np.full(RATE, 1e-3, dtype=np.float32))  # warm up
         n = len(v.status())
+        if clusters:
+            log(f"speaker clusters: {len(v.clusters.known())} kept ({' '.join(v.clusters.known()) or '-'}), "
+                f"reset {VP.CLUSTER_RESET}, in {clusters}")
         log(f"speaker check on ({','.join(v.order)}, {n} print(s) in {root}) "
             f"in {int((time.perf_counter() - t0) * 1000)} ms")
         return v
@@ -1360,6 +1373,8 @@ async def main() -> None:
     ap.add_argument("--speaker", default=os.environ.get("LIANKI_STT_SPEAKER", "campp"),
                     help='speaker check models in order ("campp", "campp,eres2netv2"); "" or 0 = off')
     ap.add_argument("--voiceprints", default=VP.STORE_DIR, help="where the voiceprints are kept (0700)")
+    ap.add_argument("--clusters", default=None,
+                    help=f"the speaker clusters file (0600; default {VP.CLUSTERS_FILE}, or beside a moved --voiceprints)")
     ap.add_argument("--voiceprint-pubkey", default=None,
                     help=f"the Ed25519 key voiceprint tickets are checked with (default: the ticket key, {DEFAULT_PUBKEY})")
     ap.add_argument("--partial-step", type=float, default=PARTIAL_STEP_S,
@@ -1411,7 +1426,7 @@ async def main() -> None:
     engine = load_engine(a.engine)
     engine.transcribe(np.zeros(RATE // 2, dtype=np.float32))  # warm up
     log(f"{engine.name} ({engine.model}) ready in {int((time.perf_counter() - t0) * 1000)} ms")
-    verifier = load_verifier(a.speaker, a.voiceprints)
+    verifier = load_verifier(a.speaker, a.voiceprints, clusters_path(a.clusters, a.voiceprints))
     vp_tickets, attestor = None, None
     if verifier:
         vk = a.voiceprint_pubkey or pubkey or DEFAULT_PUBKEY
