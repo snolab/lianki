@@ -369,6 +369,13 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  "voice.audio-sync": {
+    description:
+      "多端毫秒级语音同步（WebRTC + Web Audio + 声学延迟检测）：打开后，同账号在线设备之间通过 WebRTC DataChannel 做 NTP 时钟对齐，并用 AudioBufferSourceNode 统一定时起播，配合麦克风声学相关性自动补偿不同设备（如 Windows 外放与 Mac 蓝牙/预览代理）的硬件延迟差，让多台设备听起来像同一个声音。关闭（默认）= 仅用原有的 voice.sync-speak 粗同步。",
+    default: false,
+    group: "stt",
+    audience: "owner",
+  },
   "voice.polish-readback": {
     description:
       "润色后用你自己的声音读一遍：在你本人的页面上（需要 dev 权限），你用麦克风说的一句话被 Li 润色以后（聊天里那句话变成润色后的文字、带小星星），Li 用你 Mac 上的克隆声音（你自己的声音）把润色后的文字读一遍给你听，每句只读一次。和 Li 的其它朗读排在同一个队列里：朗读开关关着就不读，你插话时照样暂停。只读你自己说的话，不读打字的、别人的或摘要；同一句再润色也不再读。克隆声音服务器没开或超时（/dev/config 的 voice.cloneTimeoutMs，默认 20 秒）就安静跳过，不换别的声音读。每台设备可以在 lk:agent-clone-tts 里改服务器地址，填 off 就这台设备不读。打开（默认，只对你）；关闭 = 照旧，润色后不读。",

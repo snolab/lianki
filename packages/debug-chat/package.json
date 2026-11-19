@@ -63,6 +63,7 @@
     "./audio-sync-rtc": "./src/audio-sync-rtc.ts",
     "./audio-sync-play": "./src/audio-sync-play.ts",
     "./audio-sync-acoustic": "./src/audio-sync-acoustic.ts",
+    "./audio-sync-hub": "./src/audio-sync-hub.ts",
     "./echo": "./src/echo.ts",
     "./storage-keys": "./src/storage-keys.ts",
     "./sync-speak": "./src/sync-speak.ts",

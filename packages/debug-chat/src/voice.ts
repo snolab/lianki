@@ -1524,7 +1524,20 @@ export function voice(): Voice {
     here: speakHere,
     voiced: voicedStore,
     touch: () => !isDesktop(),
-    cloud: cloudOut,
+    cloud: () => {
+      const base = cloudOut();
+      if (!base) return null;
+      const syncHub = (
+        globalThis as unknown as {
+          __lkAudioSync?: { enabled?: boolean; hasPeers?(): boolean; playSynced?: CloudOut["play"] };
+        }
+      ).__lkAudioSync;
+      if (!syncHub?.enabled || !syncHub.hasPeers?.() || !syncHub.playSynced) return base;
+      return {
+        ...base,
+        play: (s, ev) => syncHub.playSynced!(s, ev),
+      };
+    },
     // getVoices() can be empty (some Android Chromes always): the cloud reads those.
     hasVoice: (lang) => {
       try {
