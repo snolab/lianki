@@ -96,6 +96,7 @@ export function FlagCard({
           aria-label={f.key}
           aria-describedby={blocked ? `prereq-${f.key}` : undefined}
           disabled={busy || locked}
+          pending={busy}
           title={locked ? "条件未满足，不能打开" : undefined}
           onClick={onToggle}
         />
