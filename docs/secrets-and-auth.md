@@ -422,8 +422,15 @@ A Worker secret on `lianki-push` (the hub): the **public** half of the Mac's
 Ed25519 key that signs each final's speaker tag
 (`~/.config/lianki-stt/speaker-attest.key`, 0600, on the Mac only). The hub
 keeps a speaker tag on a voice line only when its signature verifies
-(`lib/speaker-proof.ts`); without the secret no tag is kept. Set it (the
-owner's OK first):
+(`lib/speaker-proof.ts`); without the secret no tag is kept.
+
+**Key ring (optional, `STT_SPEAKER_PUBS`).** A JSON object of public keys by
+signer, `{"mac": "<b64url>", "otoji": "<b64url>"}` (`otoji`: the future
+otoji.org voiceprint service; docs/voiceprint-service.md). Each proof names
+its signer as `kid` inside the signed payload; a proof without `kid` is
+`mac`. `STT_SPEAKER_PUB` still counts as `mac` when the ring has none, so
+with only today's secret nothing changes. Not set yet: it needs the owner's
+OK like any new secret. Set the single key (the owner's OK first):
 
 ```bash
 ~/.cache/lianki-stt/venv/bin/python -I scripts/local-stt/voiceprint.py attest-key \

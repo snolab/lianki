@@ -378,13 +378,14 @@ export function VoiceprintPanel({
           {view.local && view.progressive && (
             <div style={{ marginTop: 10 }}>
               <button type="button" role="switch" aria-checked={view.progressive.on}
+                aria-busy={view.progressiveBusy || undefined}
                 aria-label={t.vpProgressive} disabled={view.progressiveBusy}
                 data-testid="debug-voiceprint-progressive"
                 className="lk-seal-switch pointer-events-auto tap-40"
                 style={{ display: "flex", alignItems: "center", gap: 8, color: "inherit" }}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => { if (e.nativeEvent.isTrusted) void c.progressive(!view.progressive!.on); }}>
-                <SealStamp on={view.progressive.on} onWord={t.vpOn} offWord={t.vpOffState} />
+                <SealStamp on={view.progressive.on} onWord={t.vpOn} offWord={t.vpOffState} pending={view.progressiveBusy} />
                 {t.vpProgressive}
               </button>
               {view.progressiveError && note(view.progressiveError, "debug-voiceprint-progressive-error")}

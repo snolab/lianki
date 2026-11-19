@@ -1034,3 +1034,40 @@ describe("createLocalStt: the voiceprint protocol", () => {
     expect(stt.speaker()).toBeUndefined(); // that server has no check
   });
 });
+
+describe("combineSpeaker: trust and signers", () => {
+  it("leaves tags from before the ring exactly as they were", () => {
+    expect(
+      combineSpeaker([
+        { decision: "me", score: 0.5, signed: ["a"] },
+        { decision: "me", score: 0.4, signed: ["b"] },
+      ]),
+    ).toEqual({ decision: "me", score: 0.4, signed: ["a"] });
+  });
+  it("signed only when every part is; advisory if any is; signers joined", () => {
+    expect(
+      combineSpeaker([
+        { decision: "me", trust: "signed", kid: "mac" },
+        { decision: "me", trust: "signed", kid: "otoji" },
+      ]),
+    ).toEqual({ decision: "me", trust: "signed", kid: "mac+otoji" });
+    expect(
+      combineSpeaker([
+        { decision: "me", trust: "signed", kid: "mac" },
+        { decision: "unknown", reason: "advisory", trust: "advisory", kid: "otoji" },
+      ]),
+    ).toMatchObject({ decision: "unknown", trust: "advisory", kid: "mac+otoji" });
+    // An old signed tag (signed texts, no trust) beside a new one: still signed.
+    expect(
+      combineSpeaker([
+        { decision: "me", signed: ["a"], voice: "me", cluster: "A" },
+        { decision: "me", trust: "signed", kid: "mac", voice: "me", cluster: "A" },
+        { decision: "me", trust: "signed", kid: "mac+otoji", voice: "me", cluster: "A" },
+      ]),
+    ).toMatchObject({ trust: "signed", kid: "mac+otoji", voice: "me", cluster: "A" });
+    // A part with no trust and no signed texts: no trust claimed.
+    expect(
+      combineSpeaker([{ decision: "me" }, { decision: "me", trust: "signed", kid: "mac" }]),
+    ).toEqual({ decision: "me", kid: "mac" });
+  });
+});

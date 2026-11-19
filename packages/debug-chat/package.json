@@ -6,6 +6,7 @@
     "react-dom": "*"
   },
   "exports": {
+    "./SealPending": "./src/SealPending.tsx",
     "./Avatar": "./src/Avatar.tsx",
     "./avatar-rules": "./src/avatar-rules.ts",
     "./cluster-avatar": "./src/cluster-avatar.ts",

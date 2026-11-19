@@ -1,3 +1,5 @@
+import { SealPending } from "./SealPending";
+
 /**
  * The two-part box seal inside a chat control (role="switch"), the widget's
  * copy of app/components/SealSwitch.tsx's SealStamp: the chat package has no
@@ -9,17 +11,20 @@ export function SealStamp({
   onWord,
   offWord,
   size = "sm",
+  pending = false,
 }: {
   on: boolean;
   onWord: string;
   offWord: string;
   size?: "sm" | "md";
+  pending?: boolean;
 }) {
   return (
-    <span aria-hidden="true" className="lk-sealbox" data-size={size} data-seal={on ? "on" : "off"}>
+    <span aria-hidden="true" className="lk-sealbox" data-size={size} data-seal={on ? "on" : "off"} data-pending={pending || undefined}>
       <span data-word="on" data-active={on || undefined}>
         {onWord}
       </span>
+      {pending && <SealPending />}
       <span data-word="off" data-active={!on || undefined}>
         {offWord}
       </span>
