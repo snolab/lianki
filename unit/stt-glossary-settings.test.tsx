@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import React, { act } from "react";
-import { createRoot } from "react-dom/client";
 import { Window } from "happy-dom";
 import { SttGlossarySettings, type SttGlossaryLabels } from "../app/components/SttGlossarySettings";
 import { STT_HOTWORDS_KEY, STT_CORRECTIONS_KEY } from "../lib/stt-glossary";
@@ -47,6 +46,9 @@ test("preferences editor saves explicit pairs, preserves unsaved edits, and clea
             },
       }),
   });
+  // ReactDOM caches DOM/change-event support when imported. Initialize it
+  // only after the fake document exists, so later UI suites remain usable.
+  const { createRoot } = await import("react-dom/client");
   const host = win.document.createElement("div");
   win.document.body.append(host);
   const root = createRoot(host as unknown as Element);
