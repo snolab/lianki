@@ -1782,3 +1782,71 @@ export function sttTagText(
 
 /** Authenticated thread replay coverage, including accepted nonvisible versions. */
 export type ChatReplayRange = { type: "history"; thread: string; messages: ChatMessage[]; removed: {id:string;seq:number}[]; afterSeq: number; throughSeq: number; headSeq: number; prunedThroughSeq: number; skipped: { from: number; to: number }[] };
+
+/**
+ * WebRTC signaling payload relayed between same-account pages for
+ * millisecond-level multi-device audio sync (never stored, never touches D1).
+ */
+export type AudioSyncSignalPayload =
+  | { kind: "offer" | "answer"; sdp: string }
+  | {
+      kind: "candidate";
+      candidate: string;
+      sdpMid?: string | null;
+      sdpMLineIndex?: number | null;
+    };
+
+/** One same-account peer page available for WebRTC audio sync. */
+export type AudioSyncPeer = { id: string; label: string };
+
+/** Hub reply to `{ type: "audio-sync-peers" }`: the caller's id and its same-account peers. */
+export type AudioSyncPeersEvent = {
+  type: "audio-sync-peers";
+  selfId: string;
+  peers: AudioSyncPeer[];
+};
+
+/** Relayed WebRTC signal from another page of the same authenticated account. */
+export type AudioSyncSignalEvent = {
+  type: "audio-sync-signal";
+  from: string;
+  signal: AudioSyncSignalPayload;
+};
+
+const MAX_SDP = 12 * 1024;
+const MAX_CANDIDATE = 1024;
+
+/** Validate an incoming WebRTC signaling payload, or return undefined. */
+export function cleanAudioSyncSignal(raw: unknown): AudioSyncSignalPayload | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  if (r.kind === "offer" || r.kind === "answer") {
+    if (typeof r.sdp !== "string" || r.sdp.length === 0 || r.sdp.length > MAX_SDP) return undefined;
+    return { kind: r.kind, sdp: r.sdp };
+  }
+  if (r.kind === "candidate") {
+    if (typeof r.candidate !== "string" || r.candidate.length > MAX_CANDIDATE) return undefined;
+    const sdpMid =
+      r.sdpMid === null
+        ? null
+        : typeof r.sdpMid === "string" && r.sdpMid.length <= 64
+          ? r.sdpMid
+          : undefined;
+    const sdpMLineIndex =
+      r.sdpMLineIndex === null
+        ? null
+        : typeof r.sdpMLineIndex === "number" &&
+            Number.isInteger(r.sdpMLineIndex) &&
+            r.sdpMLineIndex >= 0 &&
+            r.sdpMLineIndex < 64
+          ? r.sdpMLineIndex
+          : undefined;
+    return {
+      kind: "candidate",
+      candidate: r.candidate,
+      ...(sdpMid !== undefined ? { sdpMid } : {}),
+      ...(sdpMLineIndex !== undefined ? { sdpMLineIndex } : {}),
+    };
+  }
+  return undefined;
+}

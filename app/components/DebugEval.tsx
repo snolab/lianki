@@ -68,6 +68,12 @@ import { setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
 import type { RecheckAmend, RecheckConf } from "@lianki/debug-chat/whisper-recheck";
 import { hubClock, syncWait } from "@lianki/debug-chat/sync-speak";
+import {
+  AUDIO_SYNC_LOCAL_KEY,
+  type AudioSyncHub,
+  createAudioSyncHub,
+} from "@lianki/debug-chat/audio-sync-hub";
+import { cloudOut, existingCtx } from "@lianki/debug-chat/voice-out";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
@@ -209,6 +215,7 @@ export function DebugEval({
   etaBar = false,
   fullScreen = false,
   liHub = false,
+  audioSync = false,
   lexicon,
   cloudVoices,
   talkOver = false,
@@ -279,6 +286,8 @@ export function DebugEval({
   fullScreen?: boolean;
   /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
   liHub?: boolean;
+  /** Flag `voice.audio-sync`: millisecond-level multi-device WebRTC + Web Audio sync. */
+  audioSync?: boolean;
   /**
    * Flag `chat.play-audio` (audience owner): an agent's `say --play` lines get
    * a ▶ and may play by themselves (docs/li-sound-hub.md, "Playing audio from an agent").
@@ -812,7 +821,23 @@ export function DebugEval({
         // The hub's clock, for reading lines in step with his other devices (sync-speak.ts).
         hubClock().reset();
         clockPing(sock);
+        if (
+          !friendRef.current &&
+          !boxRef.current &&
+          (audioSync || getKey(AUDIO_SYNC_LOCAL_KEY) === "1")
+        ) {
+          audioSyncHub?.close();
+          audioSyncHub = createAudioSyncHub({
+            cloud: cloudOut,
+            ctx: existingCtx as unknown as Parameters<typeof createAudioSyncHub>[0]["ctx"],
+            sendHub: (m) => {
+              if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify(m));
+            },
+          });
+          audioSyncHub.requestPeers();
+        }
       };
+      let audioSyncHub: AudioSyncHub | null = null;
       let catchupAt = agentAtRef.current;
       const catchupAgents = new Map<string, ChatMessage>();
       sock.onmessage = (e) => {
@@ -851,6 +876,10 @@ export function DebugEval({
         // A clock pong (sync-speak.ts): noted; the round goes on until it has its samples.
         if (msg.type === "clock") {
           if (hubClock().pong(msg as { t0?: unknown; t1?: unknown; t2?: unknown })) clockPing(sock);
+          return;
+        }
+        if (msg.type === "audio-sync-peers" || msg.type === "audio-sync-signal") {
+          audioSyncHub?.handleHubEvent(msg);
           return;
         }
         if (msg.type === "friend-status") {
@@ -1209,6 +1238,8 @@ export function DebugEval({
         if (ws !== sock) return;
         outbox.disconnect();
         recovered.disconnect();
+        audioSyncHub?.close();
+        audioSyncHub = null;
         readReceipt.sent = 0;
         ws = null;
         hubOwnerRef.current = false;
