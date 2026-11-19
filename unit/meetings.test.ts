@@ -71,6 +71,8 @@ import { CONFIG, defaultConfig } from "@/lib/config";
 import { FLAGS } from "@/lib/flags";
 
 const SECRET = "m".repeat(48);
+/** The status of a store answer that may also be a body. */
+const st = (r: object) => ("status" in r ? r.status : 200);
 const NOW = Date.parse("2026-11-19T07:00:00Z");
 const enc = new TextEncoder();
 
@@ -403,11 +405,11 @@ describe("meetings store", () => {
     expect((await chunkIndex(d, id, "room")).status).toBe(400);
     expect((await chunkIndex(d, "x", null)).status).toBe(400);
     expect((await chunkIndex(d, newMeetingId(), null)).status).toBe(404);
-    expect((await chunkBytes(d, id, "others", 0)).status).toBe(404);
-    expect((await chunkBytes(d, "bad", "av", 0)).status).toBe(400);
-    expect((await chunkBytes(d, newMeetingId(), "av", 0)).status).toBe(404);
+    expect(st(await chunkBytes(d, id, "others", 0))).toBe(404);
+    expect(st(await chunkBytes(d, "bad", "av", 0))).toBe(400);
+    expect(st(await chunkBytes(d, newMeetingId(), "av", 0))).toBe(404);
     blobs.map.delete(chunkKey("u1", id, "me", 0));
-    expect((await chunkBytes(d, id, "me", 0)).status).toBe(410);
+    expect(st(await chunkBytes(d, id, "me", 0))).toBe(410);
   });
 
   it("refuses bad pieces", async () => {
@@ -531,10 +533,10 @@ describe("meetings store", () => {
     expect(await new Response(r.stream).text()).toBe("aacc");
     expect(r.mime).toBe("video/webm");
     expect(r.name).toMatch(/^lianki-meeting-2026-11-19-.{6}\.webm$/);
-    expect((await downloadAv(d, "x")).status).toBe(400);
-    expect((await downloadAv(d, newMeetingId())).status).toBe(404);
+    expect(st(await downloadAv(d, "x"))).toBe(400);
+    expect(st(await downloadAv(d, newMeetingId()))).toBe(404);
     const empty = await newMeeting(d);
-    expect((await downloadAv(d, empty)).status).toBe(404);
+    expect(st(await downloadAv(d, empty))).toBe(404);
   });
 
   it("deletes for good: objects, then rows; another account's meeting untouched", async () => {
@@ -752,8 +754,8 @@ describe("lines", () => {
     expect("text" in f && f.name).toMatch(/\.vtt$/);
     const t = await transcriptFile(d, id, "txt");
     expect("text" in t && t.text).toContain("[Ana]");
-    expect((await transcriptFile(d, "x", "txt")).status).toBe(400);
-    expect((await transcriptFile(d, newMeetingId(), "txt")).status).toBe(404);
+    expect(st(await transcriptFile(d, "x", "txt"))).toBe(400);
+    expect(st(await transcriptFile(d, newMeetingId(), "txt"))).toBe(404);
     // A line that does not open (rotated secret) is left out.
     await d.db.prepare("UPDATE meeting_line SET text_sealed = 'v1.x.y' WHERE track = 'me'").run();
     expect(((await getLines(d, id)).json.lines as unknown[]).length).toBe(1);
