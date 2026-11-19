@@ -101,6 +101,10 @@ export function parsePartnerRequest(raw: unknown): PartnerRequest | null {
       title: str(p.title, 300),
       selection: str(p.selection, MAX_PAGE_CHARS),
       screen: str(p.screen, MAX_PAGE_CHARS),
+      ...(str(p.host, 300) ? { host: str(p.host, 300) } : {}),
+      ...(str(p.selectionLocation, MAX_PAGE_CHARS)
+        ? { selectionLocation: str(p.selectionLocation, MAX_PAGE_CHARS) }
+        : {}),
     };
   }
   const msgId =
@@ -254,7 +258,9 @@ export function buildMessages(
     ? [
         p.path && `path: ${p.path}`,
         p.title && `title: ${p.title}`,
+        p.host && `host: ${p.host}`,
         p.selection && `selected text: ${p.selection}`,
+        p.selectionLocation && `selection location (reference data): ${p.selectionLocation}`,
         p.screen && `text on screen: ${p.screen}`,
       ]
         .filter(Boolean)
@@ -339,7 +345,12 @@ export async function partnerReply(
   const p = req.page;
   const chars =
     req.history.reduce((n, h) => n + h.text.length, 0) +
-    (p ? [p.path, p.title, p.selection, p.screen].reduce((n, v) => n + (v?.length ?? 0), 0) : 0);
+    (p
+      ? [p.path, p.title, p.host, p.selection, p.selectionLocation, p.screen].reduce(
+          (n, v) => n + (v?.length ?? 0),
+          0,
+        )
+      : 0);
   const worstIn = reserveInTokens(chars);
   const key = `${req.userId}:${req.msgId ?? crypto.randomUUID()}`;
   const hold = await reserveAi(

@@ -4585,7 +4585,9 @@ export class DebugHub {
         ? { path: context?.path ?? scene?.path ?? path }
         : {}),
       ...(context?.title || scene?.title ? { title: context?.title ?? scene?.title } : {}),
+      ...(context?.host ? { host: context.host } : {}),
       ...(context?.selection ? { selection: context.selection } : {}),
+      ...(context?.location ? { selectionLocation: JSON.stringify(context.location) } : {}),
       ...(scene?.screen ? { screen: scene.screen } : {}),
     };
     const pageChars = Object.values(pageInfo).reduce((n, v) => n + (v?.length ?? 0), 0);

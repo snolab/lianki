@@ -182,7 +182,14 @@ export type PartnerRequest = {
   /** The thread's latest lines, oldest first: the user's and the agent's. */
   history: { role: "user" | "assistant"; text: string }[];
   /** Where the user is: the page's path (from its label) and what the line carried. */
-  page?: { path?: string; title?: string; selection?: string; screen?: string };
+  page?: {
+    path?: string;
+    title?: string;
+    host?: string;
+    selection?: string;
+    selectionLocation?: string;
+    screen?: string;
+  };
 };
 
 export type PartnerResult =
