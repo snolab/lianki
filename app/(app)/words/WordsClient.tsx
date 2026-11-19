@@ -151,6 +151,9 @@ import { aimAt, scrollToAim } from "@/lib/words/centre-in";
 import { SOUND_LOOP_KEY, createSequencer, rowReading } from "@/lib/words/sequence";
 import { ownSpeech } from "@/lib/words/own-speech";
 import { AudioCache } from "@/lib/words/audio-cache";
+import { useNativeAudio } from "@/lib/words/use-native-audio";
+import { startNativeSegment } from "@/lib/words/native-audio-segment";
+import { publicCfg } from "@/lib/config-client";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
 import { rowPriority } from "@/lib/words/audio-priority";
 import {
@@ -1084,7 +1087,12 @@ function unlockClip() {
 }
 
 /** `serverVoice`: always use the server's recordings, never the browser's. */
-function useSpeech(serverVoice = false) {
+function useSpeech(
+  serverVoice = false,
+  onNativeSource?: (source: "original" | "synthetic") => void,
+) {
+  const nativeAbort = useRef<AbortController | null>(null);
+  const native = useNativeAudio(nativeAbort);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [on, setOn] = useState(() => {
     try {
@@ -1187,6 +1195,7 @@ function useSpeech(serverVoice = false) {
   /** Silence the part playing now; callbacks of what was playing are ignored. */
   const cancel = useCallback(() => {
     generation.current++;
+    nativeAbort.current?.abort();
     clearTimeout(watchdog.current);
     unfollow();
     audible.current?.();
@@ -1358,19 +1367,44 @@ function useSpeech(serverVoice = false) {
         finish(played);
       };
       const track = p.kind === "example";
-      // The server voice by default: browser voices can mislead (Japanese read
-      // in a Chinese accent). The browser speaks only where the server can't —
-      // a language or text it has no voice for, the rate limit, offline.
-      if (!viaServer(p)) return browserSpeak(p.text, p.lang, done, false, track, p.owner);
       const gen = generation.current;
-      void serverSpeak(p.text, p.lang, done, track, p.owner).then(
-        (ok) =>
-          !ok &&
-          gen === generation.current &&
-          browserSpeak(p.text, p.lang, done, true, track, p.owner),
-      );
+      const synthetic = () => {
+        if (gen !== generation.current) return;
+        if (p.kind === "word") onNativeSource?.("synthetic");
+        // The server voice by default: browser voices can mislead (Japanese read
+        // in a Chinese accent). The browser speaks only where the server can't —
+        // a language or text it has no voice for, the rate limit, offline.
+        if (!viaServer(p)) return browserSpeak(p.text, p.lang, done, false, track, p.owner);
+        void serverSpeak(p.text, p.lang, done, track, p.owner).then(
+          (ok) =>
+            !ok &&
+            gen === generation.current &&
+            browserSpeak(p.text, p.lang, done, true, track, p.owner),
+        );
+      };
+      const client = native.current;
+      if (p.kind !== "word" || !p.card || !client || (client.ready && !client.enabled))
+        return synthetic();
+      const abort = new AbortController();
+      nativeAbort.current = abort;
+      void client.load(p.card, abort.signal).then((clip) => {
+        if (abort.signal.aborted || gen !== generation.current) return;
+        if (!clip) return synthetic();
+        const c = clipPool().take(clip.url);
+        audio.current = c;
+        onNativeSource?.("original");
+        startNativeSegment(c.el, clip, {
+          signal: abort.signal,
+          timeoutMs: publicCfg("words.nativeAudioTimeoutMs"),
+          done: (played) => {
+            if (abort.signal.aborted || gen !== generation.current) return;
+            if (played) done(true);
+            else synthetic();
+          },
+        });
+      });
     },
-    [serverVoice, viaServer, serverSpeak, browserSpeak, unfollow],
+    [serverVoice, viaServer, serverSpeak, browserSpeak, unfollow, native, onNativeSource],
   );
 
   /**
@@ -1379,8 +1413,19 @@ function useSpeech(serverVoice = false) {
    * while the word plays instead of each waiting for the one before.
    */
   const warm = useCallback(
-    (parts: SayPart[]) => wordAudio().warm(parts.filter(viaServer)),
-    [viaServer],
+    (parts: SayPart[]) =>
+      wordAudio().warm(
+        parts.filter(
+          (p) =>
+            viaServer(p) &&
+            !(
+              p.kind === "word" &&
+              p.card &&
+              (!native.current?.ready || native.current.has(p.card))
+            ),
+        ),
+      ),
+    [viaServer, native],
   );
 
   const sayRef = useRef(say);
@@ -1471,16 +1516,30 @@ function useSpeech(serverVoice = false) {
    */
   const prefetch = useCallback(
     (visible: SayPart[], rest: SayPart[]) => {
-      const seen = visible.filter(viaServer);
-      wordAudio().prefetch([...seen, ...rest.filter(viaServer)], { pinned: seen.length });
+      const publicPart = (p: SayPart) =>
+        viaServer(p) &&
+        !(p.kind === "word" && p.card && (!native.current?.ready || native.current.has(p.card)));
+      const seen = visible.filter(publicPart);
+      wordAudio().prefetch([...seen, ...rest.filter(publicPart)], { pinned: seen.length });
     },
-    [viaServer],
+    [viaServer, native],
   );
 
   /** Put these on the device, last of all (today's due words, for offline study). */
   const stock = useCallback(
-    (parts: SayPart[]) => wordAudio().stock(parts.filter(viaServer)),
-    [viaServer],
+    (parts: SayPart[]) =>
+      wordAudio().stock(
+        parts.filter(
+          (p) =>
+            viaServer(p) &&
+            !(
+              p.kind === "word" &&
+              p.card &&
+              (!native.current?.ready || native.current.has(p.card))
+            ),
+        ),
+      ),
+    [viaServer, native],
   );
 
   const toggle = useCallback(() => {
@@ -1490,6 +1549,7 @@ function useSpeech(serverVoice = false) {
       } catch {}
       notePrefWrite();
       if (v) stop();
+      else void native.current?.prepare();
       return !v;
     });
   }, [stop]);
@@ -3928,13 +3988,20 @@ export function Study({
   const animationsOff = useMotionOff();
   /** Read with the server's voice instead of the browser's. Remembered. */
   const [serverVoice, setServerVoice] = usePref("lk:words-server-voice", true);
-  const speech = useSpeech(serverVoice);
+  const [nativeSource, setNativeSource] = useState<"original" | "synthetic" | null>(null);
+  const nativeText = useIntlayer("words-native-audio");
+  useEffect(() => setNativeSource(null), [row]);
+  const speech = useSpeech(serverVoice, setNativeSource);
   const { locale } = useLocale();
   /** What a tap, a hold or the focus reads: word → example → meaning (the row's order). */
   const partsOf = useCallback(
     (it: Item) =>
       sayParts(it, it.lang, !!config.readingOnBack, String(locale)).map((p) =>
-        p.kind === "example" ? { ...p, owner: keyOf(it) } : p,
+        p.kind === "example"
+          ? { ...p, owner: keyOf(it) }
+          : p.kind === "word"
+            ? { ...p, card: { listId: it.listId, term: it.term } }
+            : p,
       ),
     [config.readingOnBack, locale],
   );
@@ -4893,7 +4960,16 @@ export function Study({
     if (quietFocus.current === focusLine) return void (quietFocus.current = null);
     // With every meaning shown, the back is read too: word → example → meaning.
     speech.once(
-      showAll ? partsOf(focusItem) : [{ kind: "word", text: focusText, lang: focusItem.lang }],
+      showAll
+        ? partsOf(focusItem)
+        : [
+            {
+              kind: "word",
+              text: focusText,
+              lang: focusItem.lang,
+              card: { listId: focusItem.listId, term: focusItem.term },
+            },
+          ],
       false,
       { yieldToHold: true },
     );
@@ -5426,6 +5502,16 @@ export function Study({
           </button>
           <span className="font-medium">{title}</span>
           {scope?.toolbar}
+          {nativeSource && (
+            <span
+              className="text-xs opacity-70"
+              role="status"
+              aria-live="polite"
+              data-native-audio-source={nativeSource}
+            >
+              {nativeSource === "original" ? nativeText.original : nativeText.synthetic}
+            </span>
+          )}
           <button
             ref={settingsBtn}
             // Tapped seven times fast for debug: iOS must not turn that into a
@@ -5831,6 +5917,7 @@ export function Study({
                                 kind: "word",
                                 text: spokenText(it, it.lang, !!config.readingOnBack),
                                 lang: it.lang,
+                                card: { listId: it.listId, term: it.term },
                               },
                             ],
                         false,
