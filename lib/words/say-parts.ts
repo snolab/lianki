@@ -11,7 +11,14 @@ export type PartKind = "word" | "meaning" | "example";
  * `owner`: the card it belongs to (its key), so the spoken-word highlight
  * lights that card's example and no other card showing the same sentence.
  */
-export type SayPart = { kind: PartKind; text: string; lang: string; owner?: string };
+export type SayPart = {
+  kind: PartKind;
+  text: string;
+  lang: string;
+  owner?: string;
+  /** Private original pronunciation belongs to this exact card, never to text globally. */
+  card?: { listId: string; term: string };
+};
 
 /**
  * Who voices the meaning, until the owner decides:
