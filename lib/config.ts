@@ -97,6 +97,15 @@ function int<A extends ConfigAudience>(
 }
 
 export const CONFIG = {
+  "words.nativeAudioTimeoutMs": int({
+    default: 15000,
+    min: 3000,
+    max: 60000,
+    unit: "ms",
+    group: "words",
+    audience: "public",
+    description: "单词原音载入、定位或播放停滞时等待多久再回退到合成音（毫秒）。",
+  }),
   "words.undoMs": int({
     default: 8000,
     min: 2000,
