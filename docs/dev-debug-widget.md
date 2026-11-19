@@ -2297,6 +2297,9 @@ updates the remembered anchor. The listener receives the structured location,
 and the built-in partner receives the same bounded reference data in its prompt;
 its characters count towards the credit reservation. Query strings and fragments
 remain excluded. Chat-history storage still omits the entire page context.
+The attachment chip and sent quote display only the selected text, including
+when expanded; page and location metadata do not appear in hover tooltips.
+The structured context sent to listeners and the partner is unchanged.
 
 ## Attachments and the inbox
 

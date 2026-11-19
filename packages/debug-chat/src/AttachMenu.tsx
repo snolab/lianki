@@ -478,7 +478,6 @@ function Quote({ ctx, t, testid }: { ctx: ChatContext; t: ChatStrings; testid: s
       data-testid={testid}
       aria-label={t.attachQuoted}
       aria-expanded={whole}
-      title={[ctx.title, ctx.path, ctx.location?.heading].filter(Boolean).join(" · ") || undefined}
       onPointerDown={keep}
       onClick={() => setWhole((w) => !w)}
       className={`pointer-events-auto block min-w-0 flex-1 text-start text-gray-600 dark:text-gray-300 ${whole ? "max-h-40 overflow-y-auto whitespace-pre-wrap break-words" : "truncate"}`}
