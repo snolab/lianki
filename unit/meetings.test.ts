@@ -55,6 +55,7 @@ import {
   endMeeting,
   getLines,
   getMeeting,
+  finalSpans,
   linesTxt,
   linesVtt,
   listMeetings,
@@ -556,7 +557,7 @@ describe("meetings store", () => {
     expect((await deleteMeeting(d, "x")).status).toBe(400);
     expect((await deleteMeeting(d, id)).json).toEqual({ ok: true, deleted: 1 });
     expect([...blobs.map.keys()]).toEqual([chunkKey("u2", theirs, "av", 0)]);
-    for (const t of ["meeting", "meeting_chunk", "meeting_line"]) {
+    for (const t of ["meeting", "meeting_chunk", "meeting_line", "meeting_final_span"]) {
       const r = await d.db
         .prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE user_id = 'u1'`)
         .first<{ n: number }>();
@@ -672,7 +673,7 @@ describe("lines", () => {
     const raw = await d.db
       .prepare("SELECT COUNT(*) AS n FROM meeting_line WHERE source = 'live' AND track = 'me'")
       .first<{ n: number }>();
-    expect(raw?.n).toBe(2);
+    expect(raw?.n).toBe(1);
     // A final replaces a final at the same key.
     await putLines(d, id, { source: "final", lines: [L("me", 500, 1500, "f2")] });
     expect(await texts(d, id)).toEqual(["o0:live", "f2:final", "l5:live"]);
@@ -691,6 +692,82 @@ describe("lines", () => {
     ).rejects.toThrow();
     (db as { batch: unknown }).batch = real;
     expect(await texts(d, id)).toEqual(["l0:live"]);
+  });
+
+  it("an empty final (silence) finalizes its span: a late live line is dropped and hidden", async () => {
+    const { d } = setup();
+    const id = await newMeeting(d);
+    await putLines(d, id, { source: "live", lines: [L("me", 1100, 1300, "early")] });
+    await putLines(d, id, {
+      source: "final",
+      lines: [],
+      replace: { track: "me", startMs: 1000, endMs: 2000 },
+    });
+    expect(await texts(d, id)).toEqual([]);
+    expect(
+      (await putLines(d, id, { source: "live", lines: [L("me", 1200, 1500, "late")] })).status,
+    ).toBe(200);
+    expect(await texts(d, id)).toEqual([]);
+    const n = async (sql: string) => (await d.db.prepare(sql).first<{ n: number }>())?.n;
+    expect(await n("SELECT COUNT(*) AS n FROM meeting_line")).toBe(0);
+    expect(await n("SELECT COUNT(*) AS n FROM meeting_final_span")).toBe(1);
+    // Another track is not finalized by it.
+    await putLines(d, id, { source: "live", lines: [L("others", 1200, 1500, "theirs")] });
+    expect(await texts(d, id)).toEqual(["theirs:live"]);
+    // A finalized span stays even when the same final is sent again.
+    await putLines(d, id, {
+      source: "final",
+      lines: [],
+      replace: { track: "me", startMs: 1000, endMs: 2000 },
+    });
+    expect(await n("SELECT COUNT(*) AS n FROM meeting_final_span")).toBe(1);
+  });
+
+  it("a live line partly overlapping a finalized span is dropped; one adjacent to it is kept", async () => {
+    const { d } = setup();
+    const id = await newMeeting(d);
+    await putLines(d, id, { source: "final", lines: [L("me", 1000, 1500, "f")] });
+    await putLines(d, id, {
+      source: "live",
+      lines: [
+        L("me", 500, 1100, "before-overlap"),
+        L("me", 1400, 2200, "after-overlap"),
+        L("me", 1500, 1800, "adjacent-after"),
+        L("me", 200, 1000, "adjacent-before"),
+      ],
+    });
+    expect(await texts(d, id)).toEqual(["adjacent-before:live", "f:final", "adjacent-after:live"]);
+    // Two adjacent finalized spans: a live line across their seam is dropped, one past the second kept.
+    await putLines(d, id, {
+      source: "final",
+      lines: [],
+      replace: { track: "me", startMs: 2000, endMs: 3000 },
+    });
+    await putLines(d, id, {
+      source: "live",
+      lines: [L("me", 2900, 3100, "seam"), L("me", 3000, 3200, "next")],
+    });
+    expect(await texts(d, id)).toEqual([
+      "adjacent-before:live",
+      "f:final",
+      "adjacent-after:live",
+      "next:live",
+    ]);
+  });
+
+  it("finalSpans: replace, else per track min..max; none for live", () => {
+    const put = parseLines({
+      source: "final",
+      lines: [L("me", 5, 9, "a"), L("me", 1, 3, "b"), L("others", 2, 4, "c")],
+    });
+    if (typeof put === "string") throw new Error(put);
+    expect(finalSpans(put)).toEqual([
+      { track: "me", startMs: 1, endMs: 9 },
+      { track: "others", startMs: 2, endMs: 4 },
+    ]);
+    const live = parseLines({ source: "live", lines: [L("me", 1, 2, "x")] });
+    if (typeof live === "string") throw new Error(live);
+    expect(finalSpans(live)).toEqual([]);
   });
 
   it("replace clears that track's span, live and final, even with no lines", async () => {
