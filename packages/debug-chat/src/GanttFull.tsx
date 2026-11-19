@@ -41,6 +41,7 @@ import {
   tickGroup,
   tickGroupText,
   GANTT_END_SPACE,
+  GANTT_ROW_H,
   centreRowTop,
   fitSpan,
   focusRow,
@@ -51,7 +52,10 @@ import {
   paceColor,
   paceOf,
   parkedBar,
+  pinchFactors,
   pinchOf,
+  pinchRowHeight,
+  pinchScrollTop,
   pinchStart,
   pinchView,
   rowsRange,
@@ -124,7 +128,7 @@ import type { ChatStrings } from "./wire";
  */
 
 const AXIS_H = 26;
-const ROW_H = 30;
+const ROW_H = GANTT_ROW_H;
 const ROW_GAP = 2;
 /** The progress underline's thickness, and the room left for it under the bar (px). */
 const UNDERLINE_H = 3;
@@ -244,9 +248,9 @@ const SLICE_MIN_HIT = 12;
 /** A tapped slice's row stays marked this long (ms). */
 const PICKED_MS = 2_000;
 
-/** A line's height: a folded parent grows with its lanes (gantt-groups.ts groupRowH). */
-const lineH = (l: GanttLine) =>
-  l.kind === "group" && !l.open ? groupRowH(l.lanes, ROW_H) : ROW_H;
+/** A line's height: a folded parent grows with its lanes (gantt-groups.ts groupRowH), scaled with `rowH`. */
+const lineH = (l: GanttLine, rowH = ROW_H) =>
+  l.kind === "group" && !l.open ? Math.round(groupRowH(l.lanes, ROW_H) * (rowH / ROW_H)) : rowH;
 
 /** A row's state, for its styles and the QA. */
 const stateOf = (t: EtaTask, now: number) =>
@@ -518,6 +522,9 @@ export function GanttFull({
 }) {
   const [hideDone, setHideDone] = useState(readGanttHideDone);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rowH, setRowH] = useState(ROW_H);
+  const rowHRef = useRef(rowH);
+  rowHRef.current = rowH;
   const plannedTasks = useMemo(
     () => (hideDone ? tasks.filter((t) => !t.done) : tasks),
     [tasks, hideDone],
@@ -531,7 +538,7 @@ export function GanttFull({
   );
   /** Each line's height and top (px from the first line): a folded parent with many lanes is taller. */
   const geo = useMemo(() => {
-    const hs = lines.map(lineH);
+    const hs = lines.map((l) => lineH(l, rowH));
     const tops: number[] = [];
     let y = 0;
     for (const h of hs) {
@@ -539,7 +546,7 @@ export function GanttFull({
       y += h + ROW_GAP;
     }
     return { hs, tops, total: y };
-  }, [lines]);
+  }, [lines, rowH]);
   const linesRef = useRef({ lines, geo });
   linesRef.current = { lines, geo };
   const scale = useUi(ganttPrefs(), (s) => s.scale);
@@ -616,7 +623,7 @@ export function GanttFull({
       viewH: el.clientHeight,
       axisH: AXIS_H,
       headSpace: Math.round(GANTT_END_SPACE * el.clientHeight),
-      rowH: g.hs[fl] ?? ROW_H,
+      rowH: g.hs[fl] ?? rowHRef.current,
       rowGap: ROW_GAP,
       before: g.tops[fl],
     });
@@ -646,17 +653,19 @@ export function GanttFull({
     return () => ro.disconnect();
   }, [commit, scale, home]);
 
-  // The content has its width: scroll to where the view should be.
+  // The content has its width/height: scroll to where the view should be.
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (!el || !axis || pending.current === null) return;
-    el.scrollLeft = pending.current;
-    pending.current = null;
+    if (!el || !axis) return;
+    if (pending.current !== null) {
+      el.scrollLeft = pending.current;
+      pending.current = null;
+    }
     if (pendingTop.current !== null) {
       el.scrollTop = pendingTop.current;
       pendingTop.current = null;
     }
-  }, [axis, viewH]);
+  }, [axis, viewH, rowH]);
 
   const onScroll = useCallback(() => {
     const el = scroller.current;
@@ -689,12 +698,14 @@ export function GanttFull({
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    /** The pinch under way: its start (t0 under the midpoint) and where the fingers are now. */
+    /** The pinch under way: its start (t0 under cx, rowH0/top0 under cy) and where the fingers are now. */
     let pinch: {
       from: ReturnType<typeof pinchStart>;
-      dist0: number;
-      cy0: number;
+      p0: ReturnType<typeof pinchOf>;
+      anchorY0: number;
       top0: number;
+      rowH0: number;
+      total0: number;
       now: ReturnType<typeof pinchOf>;
     } | null = null;
     let gesture = 1;
@@ -709,8 +720,9 @@ export function GanttFull({
     /** The release after a drag zoom: its click (if the browser sends one) is not a tap. */
     let eatClick = false;
     let disarm = 0;
-    /** A client x as px from the view's left edge (the scroller's own box). */
+    /** A client x/y as px from the view's left/top edge (the scroller's own box). */
     const viewX = (clientX: number) => clientX - el.getBoundingClientRect().left - el.clientLeft;
+    const viewY = (clientY: number) => clientY - el.getBoundingClientRect().top - el.clientTop;
     const flush = () => {
       frame = 0;
       if (drag) {
@@ -719,12 +731,35 @@ export function GanttFull({
         return;
       }
       if (pinch) {
-        // Absolute from the pinch's start: t0 back under the midpoint, exactly.
+        // Absolute from the pinch's start: horizontal pinch zooms time (t0 back
+        // under cx), vertical pinch zooms row height (row under cy0 back under cy).
         const p = pinch.now;
         const v = view.current;
-        if (v && pinch.dist0 > 0 && p.dist > 0)
-          commit(pinchView(pinch.from, p.dist / pinch.dist0, viewX(p.cx), v.w, nowRef.current));
-        el.scrollTop = pinch.top0 + (pinch.cy0 - p.cy);
+        const { fx, fy } = pinchFactors(pinch.p0, p);
+        if (v) {
+          commit(pinchView(pinch.from, fx, viewX(p.cx), v.w, nowRef.current));
+        }
+        const nextRowH = pinchRowHeight(pinch.rowH0, fy);
+        const total1 = linesRef.current.lines.reduce(
+          (sum, l) => sum + lineH(l, nextRowH) + ROW_GAP,
+          0,
+        );
+        const originY = AXIS_H + ROW_GAP + Math.round(GANTT_END_SPACE * el.clientHeight);
+        const nextTop = pinchScrollTop({
+          top0: pinch.top0,
+          anchorY0: pinch.anchorY0,
+          anchorY: viewY(p.cy),
+          originY,
+          total0: pinch.total0,
+          total1,
+        });
+        if (nextRowH !== rowHRef.current) {
+          rowHRef.current = nextRowH;
+          pendingTop.current = nextTop;
+          setRowH(nextRowH);
+        } else {
+          el.scrollTop = nextTop;
+        }
         return;
       }
       const s = step;
@@ -749,11 +784,14 @@ export function GanttFull({
       if (!v) return;
       const p = pinchOf(touches);
       const left = pending.current ?? el.scrollLeft;
+      const top = pendingTop.current ?? el.scrollTop;
       pinch = {
         from: pinchStart(v.axis, left, viewX(p.cx), nowRef.current),
-        dist0: p.dist,
-        cy0: p.cy,
-        top0: el.scrollTop,
+        p0: p,
+        anchorY0: viewY(p.cy),
+        top0: top,
+        rowH0: rowHRef.current,
+        total0: linesRef.current.geo.total,
         now: p,
       };
     };
@@ -1177,6 +1215,7 @@ export function GanttFull({
         <div
           data-testid="debug-chat-gantt-content"
           data-scale={scale}
+          data-row-h={rowH}
           style={{ position: "relative", width: Math.max(width, w), minHeight: AXIS_H + bodyH }}
         >
           {/* The axis: sticky at the top while the rows scroll under it. */}
@@ -1295,7 +1334,7 @@ export function GanttFull({
                               left: x - TICK_HIT / 2,
                               top: 0,
                               width: TICK_HIT,
-                              height: ROW_H - UNDERLINE_GAP,
+                              height: h - UNDERLINE_GAP,
                               zIndex: 2,
                               border: 0,
                               background: "transparent",
@@ -1309,7 +1348,7 @@ export function GanttFull({
                                 left: (TICK_HIT - TICK_W) / 2,
                                 top: 0,
                                 width: sel1 ? TICK_W + 1 : TICK_W,
-                                height: sel1 ? ROW_H - UNDERLINE_GAP : TICK_H[ev.kind],
+                                height: sel1 ? h - UNDERLINE_GAP : TICK_H[ev.kind],
                                 background:
                                   ev.kind === "status"
                                     ? `repeating-linear-gradient(180deg, ${c(sel1 ? "text" : "tick")} 0 3px, transparent 3px 5px)`
@@ -1454,7 +1493,7 @@ export function GanttFull({
                         className="tap-40 shrink-0 rounded p-0 leading-none"
                         style={{
                           width: TOGGLE_W,
-                          height: ROW_H - 4,
+                          height: Math.min(h, rowH) - 4,
                           border: 0,
                           background: "transparent",
                           color: c("text"),
