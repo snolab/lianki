@@ -1128,7 +1128,7 @@ text, engine, lang}}`. A failure, `recheck busy`, a timeout, another run, or a l
   run, after level 2. Pages and listeners hear one more `edited` (with `recheck`).
   Logged `debug.recheck` (lengths only) or `debug.recheck-refused` (why).
 - **Undo** splits it back into the parts as heard; the reading goes with the merge.
-- **On the page.** The message details (double tap, right click) list the readings,
+- **On the page.** The message details (right click, long press, Enter) list the readings,
   "Heard while speaking", "Re-listened whole (mlx-whisper)" and "Polished"
   (`levelHeard`, `levelWhisper`, `levelPolished`, 16 locales); nothing else changes.
 - **Cost.** The polish waits for Whisper, at most `stt.recheckTimeoutMs`. The audio never
@@ -1189,6 +1189,14 @@ the hub's `twoMic()`.
   summaries, passages and hidden lines.
 
 ## Per-message voice details
+
+**How a line's details open** (`MessageDetails.tsx`). A plain click or tap on a
+line opens nothing: it is for reading and selecting the text, links and inline
+controls keep theirs (owner, 2026-11-19). The details are the line's context action:
+right-click (the context-menu key too), a long press on a touch screen
+(`long-press.ts`, 500 ms held within 10 px; a control inside the line keeps its own
+press), or Enter / Space on the focused line. Tests:
+`unit/message-details-open.test.tsx`, `unit/long-press.test.ts`.
 
 Voice inputs keep their recognition route and model inside message details, rather
 than printing a long model label beside the text. The small voice mark opens those

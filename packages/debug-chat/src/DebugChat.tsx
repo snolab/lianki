@@ -5033,7 +5033,7 @@ export function DebugChat({
         data-from={m.from}
         {...details.forMessage(m, who.name)}
         // A 40px tap target over the page; the text keeps the box's halo.
-        className={`pointer-events-auto flex min-h-10 items-start gap-1.5 py-1 leading-snug ${asLine ? "cursor-pointer" : ""}`}
+        className="pointer-events-auto flex min-h-10 items-start gap-1.5 py-1 leading-snug"
       >
         <span
           className={`relative inline-flex shrink-0 rounded-full ${who.unsure ? "opacity-60" : ""}`}
@@ -6448,16 +6448,20 @@ function FloatLine({
     else life.current?.resume();
   }, [paused]);
   const fading = phase === "fade";
+  const press = details(m, who.name);
   return (
     <li
-      {...details(m, who.name)}
+      {...press}
       data-msg={m.id}
       data-testid="debug-chat-float"
       data-from={m.from}
       data-fading={fading || undefined}
       onPointerEnter={() => onHover(true)}
       onPointerLeave={() => onHover(false)}
-      onPointerCancel={() => onHover(false)}
+      onPointerCancel={() => {
+        press.onPointerCancel();
+        onHover(false);
+      }}
       // Text only, with a strong halo: no background, no box (they float over the page).
       style={{ textShadow: LINE_HALO, transitionDuration: `${FADE_MS}ms`, ...shim?.style }}
       {...(shim ? { [NEW_ATTR]: true } : {})}
