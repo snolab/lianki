@@ -273,3 +273,43 @@ test("private screens supply no glossary context to STT", async () => {
     restore();
   }
 });
+
+test("a clipped surrogate in optional scene context never blocks the audio request", async () => {
+  const nodes = [
+    {
+      textContent: "a".repeat(599) + "🌟",
+      parentElement: { closest: () => null, checkVisibility: () => true },
+    },
+  ];
+  let i = 0;
+  const doc = {
+    title: "",
+    body: {},
+    defaultView: { innerWidth: 1000, innerHeight: 1000, location: { pathname: "/words" } },
+    querySelector: () => null,
+    createTreeWalker: () => ({ nextNode: () => nodes[i++] ?? null }),
+    createRange: () => ({
+      selectNodeContents: () => {},
+      getBoundingClientRect: () => ({
+        width: 10,
+        height: 10,
+        top: 0,
+        left: 0,
+        bottom: 10,
+        right: 10,
+      }),
+    }),
+  };
+  const restore = stubGlobals({ document: doc, NodeFilter: { SHOW_TEXT: 4 } });
+  let calls = 0;
+  try {
+    await postStt(new Uint8Array([1]), (async (_url, init) => {
+      calls++;
+      expect(new Headers(init?.headers).has("x-lk-stt-context")).toBe(false);
+      return Response.json({ text: "heard" });
+    }) as typeof fetch);
+    expect(calls).toBe(1);
+  } finally {
+    restore();
+  }
+});
