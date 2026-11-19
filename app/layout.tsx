@@ -62,8 +62,8 @@ export const metadata: Metadata = {
   icons: {
     // ?v= busts browsers' sticky favicon caches (Chrome kept showing the old
     // Next.js icon). Bump it whenever the icon files change.
-    icon: [{ url: "/icon.svg?v=5", type: "image/svg+xml" }, { url: "/favicon.ico?v=5" }],
-    apple: "/apple-icon.png?v=5",
+    icon: [{ url: "/icon.svg?v=6", type: "image/svg+xml" }, { url: "/favicon.ico?v=6" }],
+    apple: "/apple-icon.png?v=6",
   },
   // Opened from the iPhone home screen, Lianki runs without Safari's address bar.
   // "black-translucent" lets the page run under the status bar and the notch:
