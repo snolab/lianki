@@ -26,7 +26,7 @@
     "lint": "oxlint --ignore-pattern 'packages/**' --ignore-pattern 'vendor/**' && oxfmt --check '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**' '!vendor/**' '!.claude/**'",
     "fix": "oxlint --fix --ignore-pattern 'packages/**' --ignore-pattern 'vendor/**' && oxfmt '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**' '!vendor/**' '!.claude/**'",
     "typecheck": "bun scripts/typecheck.ts --noEmit",
-    "prepare": "bunx --bun husky",
+    "prepare": "git submodule update --init --depth 1 -- vendor/otoji && bunx --bun husky",
     "test": "playwright test",
     "test:prod": "LIANKI_URL=https://lianki.com playwright test",
     "test:e2e": "bun tests/e2e-offline-sync.spec.mjs",
