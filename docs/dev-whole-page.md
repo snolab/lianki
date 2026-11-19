@@ -533,9 +533,11 @@ For the owner only, decided on the server (`devSwitchFor`,
   on the same page, signed in.
 - On the dev server the switch is on; switching it off is a plain link
   (no Referer) to the same path and query on production. Every dev-server
-  page puts a small **blue dot** on the profile menu's button (screen
-  readers: "Preview build"). No top-bar badge (owner,
-  2026-11-03 14:44 JST: "改成我 profile dropdown 上一个小蓝点，然后点开菜单就能看到它写的").
+  page puts a small **blue flask badge** on the avatar's upper outer corner,
+  labelled "Preview build" for hover and screen readers. It stays attached
+  to the avatar in the header, rail and drawer; it does not indicate unread
+  notifications or a pending-item count. The menu's switch shows the same
+  preview state.
 - It is the menu's **only** preview control. Live view
   ([live-view.md](live-view.md): the page stays on lianki.com, only the
   widget and islands come from the Mac) used to be a second switch,
