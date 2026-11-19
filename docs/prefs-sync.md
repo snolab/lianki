@@ -205,6 +205,34 @@ event are island and widget channels. The IndexedDB stores hold cards.
 
 A new key gets a row here in the same change, with its class and reason.
 
+### Speech vocabulary
+
+| Device key | Server key | Class | Meaning |
+| --- | --- | --- | --- |
+| `lk:stt-hotwords` | `stt.hotwords` | synced | Explicit preferred spellings, up to 24 phrases of 64 characters, within the existing 2 KiB value ceiling |
+| `lk:stt-corrections` | `stt.corrections` | synced | Up to 12 explicitly authored `{heard,corrected,at}` pairs; no automatic transcript or model-edit history |
+
+Settings → Speech vocabulary edits both lists and awaits the existing preference
+sync before confirming success. Values are shown/saved only while the sync
+record belongs to the signed-in account. A pending upload or account switch
+cannot produce a saved confirmation. Invalid values, device addresses and
+additional object fields are refused by the ordinary preference API. These
+are deliberate vocabulary choices, an exception to the general no-free-form-text
+rule; users should not put secrets into recognition hints. The authenticated
+STT and polish routes read that account's current rows for every request, so a
+confirmed save applies to the next utterance. Atomic per-key device envelopes `{userId,value}`
+keep the previous account's local values hidden when the new account has no
+row. No new vocabulary cache is shared between accounts.
+
+Browser sync PATCH requests include `x-lk-prefs-user`, the account id held by
+the sync engine. The authenticated API refuses a mismatch with
+`409 {error:"account-changed"}` before reading/writing any preference. This
+closes the race where cookies switched accounts before the old page's sync
+record refreshed. Errors contain no account identifiers. Older callers may
+omit the optional header; their existing contract is unchanged. The editor
+confirms the authenticated stored rows after flushing, so a rejected operation
+also cannot produce a saved receipt.
+
 ## 2. Storage
 
 **A new table, not the old one.** The `preferences` table has one typed

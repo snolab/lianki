@@ -3039,6 +3039,7 @@ export class DebugHub {
       text: x.text,
       ...(x.stt ? { stt: x.stt } : {}),
       ...(x.recheck ? { recheck: x.recheck } : {}),
+      ...(x.scene ? { scene: x.scene } : {}),
     }));
     const requestId = `auto:${newest.replace(/[^\w.-]/g, "-")}:${run.length}`.slice(0, 120);
     const t0 = this.now();

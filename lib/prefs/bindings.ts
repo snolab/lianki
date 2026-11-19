@@ -30,6 +30,8 @@ import { BADGE_DEFAULT, BADGE_PREF_KEY } from "@/lib/app-badge";
 import { MAIL_LOGIN_NOTICE_KEY } from "@/lib/mail-prefs";
 import { CARD_HEIGHT_KEY } from "@/lib/words/row-pinch";
 import { PREFERRED_LANGS_KEY } from "@/lib/lang-order";
+import { STT_HOTWORDS_KEY, STT_CORRECTIONS_KEY } from "@/lib/stt-glossary";
+import { readGlossaryPref, writeGlossaryPref } from "@/lib/stt-glossary-storage";
 
 type Ls = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const ls = (): Ls | null => {
@@ -189,6 +191,18 @@ function homePins(): PrefBinding {
 
 export function prefBindings(): PrefBinding[] {
   return [
+    {
+      key: "stt.hotwords",
+      fallback: [],
+      get: (userId) => readGlossaryPref(STT_HOTWORDS_KEY, userId),
+      set: (v, userId) => writeGlossaryPref(STT_HOTWORDS_KEY, v, userId),
+    },
+    {
+      key: "stt.corrections",
+      fallback: [],
+      get: (userId) => readGlossaryPref(STT_CORRECTIONS_KEY, userId),
+      set: (v, userId) => writeGlossaryPref(STT_CORRECTIONS_KEY, v, userId),
+    },
     plain("words.showAll", "lk:words-show-all", bool10, false),
     plain("words.readAloud", "lk:words-sound", pair("on", "off"), true),
     plain("words.serverVoice", "lk:words-server-voice", bool10, true),

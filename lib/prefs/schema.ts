@@ -23,11 +23,16 @@
  * (@lianki/core/externalLink). Bare public hosts only; device and tailnet
  * hosts, IP addresses, schemes and paths do not pass. The same hosts appear
  * in `asks.dontAsk` ids (`link-site:<host>`, lib/dont-ask.ts), under the same rule.
+ * Explicit speech vocabulary (2026-11-19): stt.hotwords/stt.corrections store
+ * bounded user-authored spellings, never automatic transcript or polish history.
  *
  * A field whose shape changes gets a new key (`swipe-feel.tweaks2`); the old
  * row is then simply no longer read.
  */
 import { z } from "zod";
+/** Optional account fence for PATCH; older clients may omit it. */
+export { PREF_EXPECTED_USER_HEADER } from "@lianki/ui-state/account";
+import { sttHotwordsSchema, sttCorrectionsSchema } from "../stt-glossary";
 import { allImmersionSites, IMMERSION_LANGUAGES } from "@/lib/immersion-sites";
 import { FEEL_RANGES } from "@/lib/words/swipe-feel";
 import { BLOG_LOCALES } from "@/lib/constants";
@@ -142,6 +147,9 @@ const titleRules = z
 const langTag = z.string().max(LANG_TAG_MAX).regex(LANG_TAG_RE);
 
 export const PREF_SCHEMAS = {
+  // Explicit vocabulary choices; never inferred from transcripts or automatic polish.
+  "stt.hotwords": sttHotwordsSchema,
+  "stt.corrections": sttCorrectionsSchema,
   // /words study settings
   "words.showAll": z.boolean(),
   "words.readAloud": z.boolean(),

@@ -17,7 +17,8 @@
 import { chatExtra } from "./chat-ui-locales";
 import type { UttMarks } from "./latency";
 import type { BeginOpts, LocalFinal, LocalPart, LocalUtt } from "./local-stt";
-import { STT_PROMPTS } from "./stt-hint";
+import { STT_PROMPTS, STT_CONTEXT_WIRE_TEXT_CHARS } from "./stt-hint";
+import { pageScene, PRIVATE_SCREEN } from "./scene";
 import { levelOf, publishLevel } from "./voice-level";
 import {
   GAP,
@@ -1634,10 +1635,18 @@ export async function postStt(
   const query = new URLSearchParams();
   if (hint) query.set("hint", hint);
   if (options.model) query.set("model", options.model);
+  // Reuse the scene already allowed on spoken chat lines, never inspect another tab or form.
+  let context = "";
+  try {
+    if (!globalThis.document?.querySelector(PRIVATE_SCREEN)) {
+      const scene = pageScene();
+      context = [scene?.title, scene?.screen].filter(Boolean).join(" ").slice(0, STT_CONTEXT_WIRE_TEXT_CHARS);
+    }
+  } catch {}
   const res = await f(query.size ? `/api/debug/stt?${query}` : "/api/debug/stt", {
     method: "POST",
     body: wav as unknown as BodyInit,
-    headers: { "content-type": type },
+    headers: { "content-type": type, ...(context ? { "x-lk-stt-context": encodeURIComponent(context) } : {}) },
     ...(options.signal ? { signal: options.signal } : {}),
   });
   const out = (await res.json().catch(() => ({}))) as Partial<SttResult> & { error?: string };

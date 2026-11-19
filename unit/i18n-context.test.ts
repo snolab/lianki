@@ -73,6 +73,7 @@ import profileSession from "@/app/(app)/my/profile/session-basics.content";
 import preferencesPage from "@/app/(app)/my/preferences/page.content";
 import byokSettings from "@/app/components/byok-settings.content";
 import titleRules from "@/app/components/title-rules.content";
+import sttGlossary from "@/app/components/stt-glossary.content";
 import externalLink from "@/app/components/external-link.content";
 import virtualList from "@/app/components/virtual-list.content";
 import dontAsk from "@/app/components/dont-ask.content";
@@ -207,6 +208,7 @@ describe.each([
   ["profile-session", profileSession],
   ["byok-settings", byokSettings],
   ["title-rules", titleRules],
+  ["stt-glossary", sttGlossary],
   ["external-link", externalLink],
   ["virtual-list", virtualList],
   ["dont-ask", dontAsk],

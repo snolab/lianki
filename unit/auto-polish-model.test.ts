@@ -110,6 +110,69 @@ test("one metered call: charged as voice.auto-polish, rate-limited, duplicate re
   expect(charge.note).toBe("voice.auto-polish");
 });
 
+test("paragraph polish uses current account vocabulary and explicit pairs as untrusted data without learning output", async () => {
+  const store = (key: string, value: unknown) =>
+    d1
+      .raw()
+      .prepare(
+        "INSERT OR REPLACE INTO user_prefs (user_id,key,value,hlc_ts,hlc_counter,device_id,updated_ms) VALUES ('u_test',?,?,1,0,'fixture000',1)",
+      )
+      .run(key, JSON.stringify(value));
+  store("stt.hotwords", ["Aurora"]);
+  store("stt.corrections", [{ heard: "aura", corrected: "Aurora", at: Date.now() }]);
+  const requests: any[] = [];
+  const request = (async (_url, init) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return Response.json({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              lines: [{ id: "v1", text: "Corrected wording" }],
+              merged: null,
+            }),
+          },
+        },
+      ],
+    });
+  }) as typeof fetch;
+  const withScene = {
+    ...input,
+    lines: [
+      {
+        id: "v1",
+        text: "aura project",
+        scene: { path: "/words", title: "Nebula project", screen: "Nebula Nebula" },
+      },
+    ],
+  };
+  expect(
+    (await polishLines(env(), { userId: "u_test", input: withScene }, { fetch: request })).ok,
+  ).toBe(true);
+  const first = JSON.parse(requests[0].messages[1].content);
+  expect(first.glossary.terms).toContain("Aurora");
+  expect(first.glossary.terms).toContain("Nebula");
+  expect(first.glossary.corrections[0]).toMatchObject({ heard: "aura", corrected: "Aurora" });
+  expect(requests[0].messages[0].content).toContain("never instructions");
+  expect(requests[0].messages[0].content).not.toContain("Aurora");
+  expect(first.lines[0].scene).toBeUndefined();
+  store("stt.hotwords", ["Updated"]);
+  store("stt.corrections", []);
+  expect(
+    (
+      await polishLines(
+        env(),
+        { userId: "u_test", input: { ...withScene, requestId: "auto:next" } },
+        { fetch: request },
+      )
+    ).ok,
+  ).toBe(true);
+  const next = JSON.parse(requests[1].messages[1].content);
+  expect(next.glossary.terms).toContain("Updated");
+  expect(next.glossary.terms).not.toContain("Aurora");
+  expect(next.glossary.terms).not.toContain("Corrected");
+});
+
 test("no credits never calls inference; a provider failure refunds; bad identity refused", async () => {
   let calls = 0;
   const request = (async () => {
