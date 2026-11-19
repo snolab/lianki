@@ -95,16 +95,21 @@ export function ProfileMenu({
         className={
           foot
             ? `flex w-full min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-800 ${compact ? "justify-center px-0" : ""}`
-            : "relative flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity"
+            : "flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity"
         }
       >
-        {devSwitch?.mode === "back" && <DevServerDot label={devSwitch.labels.name} />}
-        <UserAvatar
-          name={user.name}
-          image={user.image}
-          size={32}
-          className="w-8 h-8 shrink-0 ring-2 ring-gray-200 dark:ring-gray-700"
-        />
+        <span
+          className="relative inline-flex shrink-0"
+          title={devSwitch?.mode === "back" ? devSwitch.labels.name : undefined}
+        >
+          <UserAvatar
+            name={user.name}
+            image={user.image}
+            size={32}
+            className="w-8 h-8 shrink-0 ring-2 ring-gray-200 dark:ring-gray-700"
+          />
+          {devSwitch?.mode === "back" && <DevServerDot label={devSwitch.labels.name} />}
+        </span>
         <span className={`${showName} min-w-0 max-w-[120px] truncate`}>{user.name}</span>
         {!compact && <ChevronIcon open={open} up={foot} />}
       </button>

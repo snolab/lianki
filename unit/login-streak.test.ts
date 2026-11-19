@@ -18,7 +18,12 @@ import {
   streakStepOf,
   usdToCredits,
 } from "@/lib/payments/login-streak";
-import { loginStreakView, recordLoginStreak } from "@/lib/payments/login-streak-store";
+import {
+  loginStreakConfig,
+  loginStreakView,
+  recordLoginStreak,
+} from "@/lib/payments/login-streak-store";
+import { clearConfigCache, readConfig } from "@/lib/config-store";
 import { getBalance, ledger, type D1WithBatch } from "@/lib/payments/credits-store";
 
 /**
@@ -44,6 +49,49 @@ function setup() {
 }
 
 describe("config and flag", () => {
+  test("the live loader reads registry defaults from a fresh D1 snapshot", async () => {
+    const { d1 } = setup();
+    clearConfigCache();
+    try {
+      await readConfig(() => d1);
+      expect(await loginStreakConfig()).toEqual(STREAK_DEFAULTS);
+    } finally {
+      clearConfigCache();
+    }
+  });
+  test("stored schedule and miss penalty reach grants and wallet views without caller overrides", async () => {
+    const { d1, db, addUser } = setup();
+    addUser("fixture");
+    clearConfigCache();
+    try {
+      for (const [key, value] of [
+        ["credits.loginStreak.usdByDay", "0.1,0.2"],
+        ["credits.loginStreak.missCostDays", 0],
+      ] as const)
+        await d1
+          .prepare(
+            "INSERT INTO config_values (key,value_json,updated_at,updated_by) VALUES (?,?,?,?)",
+          )
+          .bind(key, JSON.stringify(value), NOW.toISOString(), "fixture")
+          .run();
+      await readConfig(() => d1);
+      expect(await loginStreakConfig()).toEqual({ usdByDay: [0.1, 0.2], missCostDays: 0 });
+      expect(await recordLoginStreak(db, "fixture", "2026-11-14", "UTC", NOW)).toMatchObject({
+        streak: 1,
+        step: 1,
+        credits: usdToCredits(0.1),
+      });
+      expect(await loginStreakView(db, "fixture", "2026-11-17")).toEqual({
+        days: 1,
+        today: false,
+        credits: usdToCredits(0.2),
+        step: 2,
+        cycle: 2,
+      });
+    } finally {
+      clearConfigCache();
+    }
+  });
   test("defaults: 7 steps summing to $0.50, a miss costs 2 days, the flag is on for everyone", () => {
     expect(C.usdByDay).toHaveLength(7);
     expect(C.usdByDay.reduce((s, n) => s + n, 0)).toBeCloseTo(0.5, 6);
