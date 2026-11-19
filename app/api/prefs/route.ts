@@ -3,7 +3,7 @@ import { authUserOrNull } from "@/app/signInEmail";
 import { apiTokenUser } from "@/lib/api-token-user";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { devBridgeUser } from "@/lib/dev-bridge-user";
-import { MAX_BODY_BYTES, patchBody } from "@/lib/prefs/schema";
+import { MAX_BODY_BYTES, patchBody, PREF_EXPECTED_USER_HEADER } from "@/lib/prefs/schema";
 import { UserPrefsD1Repo } from "@/lib/repos/userPrefsD1";
 
 /**
@@ -49,6 +49,9 @@ export async function PATCH(req: NextRequest) {
   const user = await who(req);
   if (!user)
     return NextResponse.json({ error: "login-required" }, { status: 401, headers: NO_STORE });
+  const expected = req.headers.get(PREF_EXPECTED_USER_HEADER);
+  if (expected !== null && expected !== user.id)
+    return NextResponse.json({ error: "account-changed" }, { status: 409, headers: NO_STORE });
   if (dbBackend() !== "d1")
     return NextResponse.json({ error: "unavailable" }, { status: 503, headers: NO_STORE });
   const text = await req.text();
