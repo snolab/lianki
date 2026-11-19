@@ -6,8 +6,8 @@
 // In qa:all (suite credits-usage), or against any local server on local D1.
 //
 // - one tap from the wallet card on /membership, and one from the account menu;
-// - a new wallet: balance 0, the empty line, no sideways scroll at 360 px;
-// - the filters (feature, dates) and Clear; the CSV export is the header only;
+// - a new wallet: its sign-up gift or empty ledger, no sideways scroll at 360 px;
+// - the filters (feature, dates) and Clear; CSV agrees with the account's ledger;
 // - every text's colour against its background: WCAG AA (4.5:1, 3:1 large);
 // - the API is 401 signed out.
 import { mkdirSync } from "node:fs";
@@ -120,11 +120,32 @@ try {
         null,
         { timeout: 15000 },
       );
-      const balance = (await page.locator("[data-usage-balance]").textContent())?.trim() ?? "";
-      check(/^0\b/.test(balance), `${tag}: a new wallet reads 0 (${balance})`);
+      // Sign-up can grant credits (and its daily cap can leave a wallet empty).
+      // Compare the UI with this account's ledger instead of assuming a zero balance.
+      const usage = await ctx.request.get("/api/payments/credits/usage?tz=Asia/Tokyo");
+      if (!usage.ok()) throw new Error(`Usage snapshot failed (${usage.status()})`);
+      const snapshot = await usage.json();
       check(
-        (await page.getByText("No credits used or added yet.").count()) === 1,
-        `${tag}: the empty line`,
+        snapshot.total === snapshot.entries.length &&
+          snapshot.entries.every((entry) => entry.reason === "gift" && entry.amount > 0) &&
+          snapshot.entries.reduce((sum, entry) => sum + entry.amount, 0) === snapshot.balance,
+        `${tag}: new wallet contains only its granted credits`,
+      );
+      const waitForLedger = async () => {
+        if (snapshot.entries.length) {
+          for (const entry of snapshot.entries)
+            await page.locator(`[id="usage-${entry.id}"]`).waitFor({ timeout: 10000 });
+        } else await page.getByText("No credits used or added yet.").waitFor({ timeout: 10000 });
+      };
+      await waitForLedger();
+      const balance = (await page.locator("[data-usage-balance]").textContent())?.trim() ?? "";
+      check(
+        Number(balance.replace(/[^\d.-]/g, "")) === snapshot.balance,
+        `${tag}: wallet balance matches its ledger (${balance})`,
+      );
+      check(
+        (await page.locator("[data-usage-entry]").count()) === snapshot.total,
+        `${tag}: ledger entries match the account (${snapshot.total})`,
       );
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -132,25 +153,61 @@ try {
       check(overflow <= 0, `${tag}: no sideways scroll (${overflow}px)`);
 
       // Filters: a date range shows Clear and the no-match line; Clear removes it.
-      await page.locator('input[type="date"]').first().fill("2026-01-01");
+      await Promise.all([
+        page.waitForResponse((response) => {
+          const url = new URL(response.url());
+          return (
+            url.pathname === "/api/payments/credits/usage" &&
+            url.searchParams.get("to") === "2000-01-01" &&
+            response.ok()
+          );
+        }),
+        page.locator('input[type="date"]').nth(1).fill("2000-01-01"),
+      ]);
       await page.getByRole("button", { name: "Clear filters" }).waitFor({ timeout: 10000 });
+      await page.getByText("Nothing matches these filters.").waitFor({ timeout: 10000 });
       check(
         (await page.getByText("Nothing matches these filters.").count()) === 1,
         `${tag}: a filter with nothing in it says so`,
       );
-      await page.getByRole("button", { name: "Clear filters" }).click();
-      await page.getByText("No credits used or added yet.").waitFor({ timeout: 10000 });
+      await Promise.all([
+        page.waitForResponse((response) => {
+          const url = new URL(response.url());
+          return (
+            url.pathname === "/api/payments/credits/usage" &&
+            !url.searchParams.has("to") &&
+            !url.searchParams.has("from") &&
+            response.ok()
+          );
+        }),
+        page.getByRole("button", { name: "Clear filters" }).click(),
+      ]);
+      await waitForLedger();
       check(true, `${tag}: Clear filters`);
 
-      // The CSV: the user's own lines (none yet) under the header.
+      // The CSV includes the same sign-up grants as the account's ledger.
       const csv = await ctx.request.get("/api/payments/credits/usage?format=csv&tz=Asia/Tokyo");
       const body = await csv.text();
+      const exported = body.trim().split("\r\n").slice(1);
+      const oldestFirst = [...snapshot.entries].reverse();
       check(
         csv.ok() &&
           (csv.headers()["content-type"] ?? "").includes("text/csv") &&
           body.startsWith("time_utc,time_local,feature,") &&
-          body.trim().split("\r\n").length === 1,
-        `${tag}: CSV export is the header only (${csv.status()})`,
+          exported.length === snapshot.total &&
+          exported.every((row, i) => {
+            // Fresh-wallet gift rows contain ISO times, fixed labels and numbers.
+            const cells = row.split(","),
+              entry = oldestFirst[i];
+            return (
+              cells[0] === entry.at &&
+              cells[2] === entry.feature &&
+              cells[3] === entry.reason &&
+              Number(cells[4]) === entry.amount &&
+              Number(cells[6]) === entry.balanceAfter
+            );
+          }),
+        `${tag}: CSV export matches the ledger (${csv.status()}, ${snapshot.total} entries)`,
       );
 
       const runs = await view.evaluate(CONTRAST);
