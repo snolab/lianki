@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.35
+// @version     2.24.36
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -3541,7 +3541,7 @@ Sasisha kadi kwa anwani mpya?`,
     speakTouchTitle: `In ${CHAT}, the menu's read-aloud row: tooltip when replies are read aloud whether typing or not, until the user turns it off.`,
     speakVoicedTitle: `In ${CHAT}, the menu's read-aloud row: tooltip after the user spoke with the mic on this device: replies are read aloud, typed or spoken, until turned off.`,
     speakTypingTitle: `In ${CHAT}, the menu's read-aloud row: tooltip when replies are read aloud only while the user is typing in the chat box (it has the focus).`,
-    speakMicOn: `In ${CHAT}, the menu's read-aloud row: its text while the mic is on (replies are then read aloud). A short state phrase.`,
+    speakMicOn: `In ${CHAT}, the menu's read-aloud switch: its text while the mic and reply read-aloud are both on. It can still be turned off without stopping the mic. A short state phrase.`,
     speakMicUsed: `In ${CHAT}, the menu's read-aloud row: its text after the mic was used on this device. A short state phrase.`,
     speakSilent: `In ${CHAT}, the menu's read-aloud row: its text when replies are not read aloud. A short state phrase.`,
     readingSpeed: `In ${CHAT}, the menu: screen-reader label of the group of buttons that set how fast replies are read aloud.`,
@@ -3577,6 +3577,10 @@ Sasisha kadi kwa anwani mpya?`,
     liveSending: `In ${CHAT}: the same spoken line just after it was sent, until the server confirms it (a second or so). One word with an ellipsis, like a chat app's 'Sending…'.`,
     liveNotSent: `In ${CHAT}: a small visible tag on the user's spoken line when sending it failed (offline); a 'Retry' button follows it. Two words, like a chat app's 'Not sent'.`,
     liveRetry: `In ${CHAT}: the button after 'Not sent' that sends the spoken line again. One imperative word, like a chat app's 'Retry'.`,
+    echoHeard: `In ${CHAT}: the label of a slim, collapsed row in the conversation where a line from the user's microphone would have been, when that line was not the user speaking but one of Lianki's own voices reading a message aloud (on this or another of the user's devices) and the microphone picking it up again. It is not sent as the user's words. A short phrase: the sound was read aloud and heard back.`,
+    echoMany: `In ${CHAT}: the same collapsed row when several such lines came in a row; {n} is how many (2 or more). A short noun phrase with the count; keep {n}.`,
+    echoMine: `In ${CHAT}: a button in that row, once expanded: the user says the line really was their own speech, so it is sent as their message after all. A short first-person sentence, like 'That was me'.`,
+    echoOf: `In ${CHAT}: a small link in the expanded row that scrolls the conversation to the message that was being read aloud when the microphone picked it up. A short imperative phrase.`,
     playAudio: `In ${CHAT}: the name on the small play chip under a message that carries audio (a sound file or a live stream an assistant sent), when the sender gave it no title. One word, a noun.`,
     playPlay: `In ${CHAT}: screen-reader label and tooltip of the round play button on that audio chip. One imperative verb.`,
     playPause: `In ${CHAT}: screen-reader label and tooltip of the same button while the audio plays: pauses it. One imperative verb.`,
@@ -3666,6 +3670,7 @@ Sasisha kadi kwa anwani mpya?`,
   var DEFAULT_GRANT_MS = 8 * 60 * 60000;
   var MAX_SELECTION = 2000;
   var MAX_CONTEXT_TITLE = 200;
+  var MAX_SDP = 12 * 1024;
 
   // packages/debug-chat/src/embed/share.ts
   var MAX_SHARE_URL = 600;
