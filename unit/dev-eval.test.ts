@@ -10,6 +10,7 @@ import {
   BUSY_MS,
   type ChatMessage,
   applyEdit,
+  cleanHubSpan,
   dictatedDraft,
   draftSource,
   chatText,
@@ -213,6 +214,34 @@ describe("streamed chunks", () => {
     });
     expect(parsePageMessage(big)).toBeNull();
     expect(parsePageMessage("x".repeat(MAX_CHUNK * 7))).toBeNull();
+  });
+});
+
+describe("a voice line's hub span (echo-suppression.md)", () => {
+  it("is taken on a voice line only, checked and rounded", () => {
+    const span = { from: 1000.4, to: 5000.6 };
+    expect(
+      parsePageMessage(
+        JSON.stringify({ type: "chat", id: "c1", text: "hi", source: "stt", hubSpan: span }),
+      ),
+    ).toMatchObject({ hubSpan: { from: 1000, to: 5001 } });
+    expect(
+      parsePageMessage(JSON.stringify({ type: "chat", id: "c1", text: "hi", hubSpan: span })),
+    ).not.toHaveProperty("hubSpan");
+    expect(cleanHubSpan(span)).toEqual({ from: 1000, to: 5001 });
+    for (const bad of [
+      null,
+      [1, 2],
+      "x",
+      { from: 1 },
+      { from: "1", to: 2 },
+      { from: 5, to: 1 },
+      { from: -1, to: 2 },
+      { from: 0, to: Number.POSITIVE_INFINITY },
+      { from: 0, to: 11 * 60_000 },
+      { from: 1e15, to: 1e15 },
+    ])
+      expect(cleanHubSpan(bad)).toBeUndefined();
   });
 });
 

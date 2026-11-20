@@ -835,6 +835,37 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
     expect(res).toMatchObject({ ok: false, error: "model-failed" });
   });
 
+  it("passes selected-text source location to the model as bounded reference data", () => {
+    const location = JSON.stringify({
+      kind: "dom",
+      selector: "#paragraph",
+      heading: "Section two",
+      before: "before ",
+      after: " after",
+    });
+    const req = parsePartnerRequest({
+      userId: "u1",
+      history: [{ role: "user", text: "explain" }],
+      page: {
+        path: "/page",
+        host: "example.test",
+        selection: "quote",
+        selectionLocation: location,
+      },
+    })!;
+    const result = buildMessages(req, {} as never, NOW);
+    expect(JSON.stringify(result)).toContain("selection location (reference data)");
+    expect(JSON.stringify(result)).toContain("Section two");
+    expect(JSON.stringify(result)).toContain("example.test");
+    expect(
+      parsePartnerRequest({
+        userId: "u1",
+        history: [{ role: "user", text: "x" }],
+        page: { selectionLocation: "x".repeat(9000) },
+      })?.page?.selectionLocation,
+    ).toHaveLength(3000);
+  });
+
   it("a model error is model-failed, never thrown", async () => {
     const res = await partnerReply(
       env(),

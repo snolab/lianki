@@ -44,6 +44,7 @@ const SAMPLE: Record<string, unknown> = {
   "read.polishSkips": ["00000000-0000-4000-8000-000000000000"],
   "words.readAloud": false,
   "words.serverVoice": false,
+  "words.nativeAudio": false,
   "words.speakOnSwipe": false,
   "words.gradeTones": false,
   "words.voiceMode": true,

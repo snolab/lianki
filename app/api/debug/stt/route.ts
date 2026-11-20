@@ -11,6 +11,9 @@ import { STT_WINDOW_MS, handleStt } from "@/lib/stt-handler";
 import { workersAiTranscribe } from "@/lib/workers-ai";
 import { freeCall } from "@/lib/payments/paid-calls";
 import { HOLD_AUDIO_SEC_PER_BYTE, sttUsd } from "@/lib/payments/prices";
+import { accountGlossary } from "@/lib/stt-glossary-server";
+import { loadConfig } from "@/lib/config-store";
+import { defaultConfig } from "@/lib/config";
 
 /** The debug chat mic's transcription: lib/stt-handler.ts has the rules. */
 export const POST = async (req: Request) => {
@@ -30,6 +33,15 @@ export const POST = async (req: Request) => {
     user: user?.id ? { id: user.id } : null,
     owner: isDev(user?.email),
     transcribe: workersAiTranscribe,
+    glossary: async (text) =>
+      accountGlossary(
+        dbBackend() === "d1" ? getD1() : null,
+        user?.id ?? "",
+        [{ text, at: Date.now() }],
+        await Promise.resolve()
+          .then(() => loadConfig(getD1()))
+          .catch(defaultConfig),
+      ),
     // Free by the owner's decision (2026-11-09): what it costs us is logged
     // and booked to this account (docs/payments.md, "Cost ledger").
     pay: <T>(bytes: number, run: () => Promise<T>) =>

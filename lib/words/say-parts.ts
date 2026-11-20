@@ -11,15 +11,20 @@ export type PartKind = "word" | "meaning" | "example";
  * `owner`: the card it belongs to (its key), so the spoken-word highlight
  * lights that card's example and no other card showing the same sentence.
  */
-export type SayPart = { kind: PartKind; text: string; lang: string; owner?: string };
+export type SayPart = {
+  kind: PartKind;
+  text: string;
+  lang: string;
+  owner?: string;
+  /** Private original pronunciation belongs to this exact card, never to text globally. */
+  card?: { listId: string; term: string };
+};
 
-/**
- * Who voices the meaning, until the owner decides:
- * - "server": /api/words/tts (MeloTTS for most meanings, generated once and
- *   kept in R2 — see docs/workers-ai.md, "Prefetch and cost").
- * - "browser": the device's speech engine, free, but voices vary by device.
+/*
+ * The meaning is voiced like every other part: the server's voice
+ * (/api/words/tts, docs/workers-ai.md "Prefetch and cost") with "Server voice"
+ * on; with it off, the device's own voice where it has one for the language.
  */
-export const MEANING_VOICE: "server" | "browser" = "server";
 
 /**
  * The meaning's first sense, without notes: "outside, exterior; other" →

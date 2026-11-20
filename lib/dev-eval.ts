@@ -34,6 +34,11 @@ import {
   cleanAttachments,
   type SttScene,
   cleanScene,
+  type AudioSyncSignalPayload,
+  type AudioSyncPeer,
+  type AudioSyncPeersEvent,
+  type AudioSyncSignalEvent,
+  cleanAudioSyncSignal,
 } from "../packages/debug-chat/src/wire";
 import { type Ask, parseAsk } from "../packages/debug-chat/src/ask";
 import { LANE_IDS, type LaneId, isLaneId, parseLineVoice } from "../packages/debug-chat/src/voices";
@@ -97,6 +102,11 @@ export {
   type AttachmentRef,
   cleanAttachments,
   MAX_SELECTION,
+  type AudioSyncSignalPayload,
+  type AudioSyncPeer,
+  type AudioSyncPeersEvent,
+  type AudioSyncSignalEvent,
+  cleanAudioSyncSignal,
 } from "../packages/debug-chat/src/wire";
 
 /** Largest `code` accepted, in characters. */
@@ -344,6 +354,11 @@ export type PageMessage =
       to?: string;
       source?: MessageSource;
       timing?: VoiceTiming;
+      /**
+       * When a voice line was spoken, on the hub's clock (play-report.ts
+       * hubSpanOf): matched against his devices' play reports, never stored.
+       */
+      hubSpan?: { from: number; to: number };
       /** A voice line's recognizer (SttTag; dev-only in the UI): route, engine, fallback. */
       stt?: SttTag;
       recheck?: RecheckMark;
@@ -377,6 +392,10 @@ export type PageMessage =
   | { type: "page"; label: string }
   /** Close another (or this) page of the same audience, from the chat's menu. */
   | { type: "end-page"; id: string }
+  /** Query same-account peer pages for WebRTC audio sync. */
+  | { type: "audio-sync-peers" }
+  /** Relay a WebRTC signaling payload to another page of the same account. */
+  | { type: "audio-sync-signal"; to: string; signal: AudioSyncSignalPayload }
   /**
    * One piece of a streamed result (`$lk.send(data)` in the eval code):
    * piece `part` of the eval `id`, split into `total` chunks; this is `seq`.
@@ -646,6 +665,16 @@ export function parseControllerMessage(
   };
 }
 
+/** A voice line's hub-clock span, or undefined: two finite times, in order, at most 10 minutes apart. */
+export function cleanHubSpan(raw: unknown): { from: number; to: number } | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const { from, to } = raw as { from?: unknown; to?: unknown };
+  if (typeof from !== "number" || typeof to !== "number") return undefined;
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to < from) return undefined;
+  if (to - from > 10 * 60_000 || to > 1e14) return undefined;
+  return { from: Math.round(from), to: Math.round(to) };
+}
+
 /** Validate an owner page's message; anything else is dropped. */
 export function parsePageMessage(raw: unknown): PageMessage | null {
   const m = parse(raw, MAX_CHUNK_RAW);
@@ -695,6 +724,13 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     const id = str(m.id, 64);
     return id ? { type: "end-page", id } : null;
   }
+  if (m.type === "audio-sync-peers") return { type: "audio-sync-peers" };
+  if (m.type === "audio-sync-signal") {
+    const to = str(m.to, 64);
+    const signal = cleanAudioSyncSignal(m.signal);
+    if (!to || !signal) return null;
+    return { type: "audio-sync-signal", to, signal };
+  }
   if (m.type === "page") {
     const label = cleanLabel(str(m.label, MAX_LABEL * 2));
     return label ? { type: "page", label } : null;
@@ -728,6 +764,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     const context = cleanContext(m.context);
     const attachments = cleanAttachments(m.attachments);
     const scene = m.source === "stt" ? cleanScene(m.scene) : undefined;
+    const hubSpan = m.source === "stt" ? cleanHubSpan(m.hubSpan) : undefined;
     return {
       type: "chat",
       id,
@@ -735,6 +772,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(to && to !== ROOT_NODE ? { to } : {}),
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
+      ...(hubSpan ? { hubSpan } : {}),
       ...(stt ? { stt } : {}),
       ...(recheck ? { recheck } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),

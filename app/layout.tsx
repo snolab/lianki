@@ -62,8 +62,8 @@ export const metadata: Metadata = {
   icons: {
     // ?v= busts browsers' sticky favicon caches (Chrome kept showing the old
     // Next.js icon). Bump it whenever the icon files change.
-    icon: [{ url: "/icon.svg?v=5", type: "image/svg+xml" }, { url: "/favicon.ico?v=5" }],
-    apple: "/apple-icon.png?v=5",
+    icon: [{ url: "/icon.svg?v=6", type: "image/svg+xml" }, { url: "/favicon.ico?v=6" }],
+    apple: "/apple-icon.png?v=6",
   },
   // Opened from the iPhone home screen, Lianki runs without Safari's address bar.
   // "black-translucent" lets the page run under the status bar and the notch:
@@ -153,6 +153,10 @@ export default async function RootLayout({
   const chatFull = flagIn(flags, "partner.fullscreen");
   // Li's sound hub, observing only (docs/li-sound-hub.md); the owner's pages only.
   const liHub = flagIn(flags, "voice.li-hub");
+  // His pages report what they read aloud; echoes shown collapsed (docs/echo-suppression.md): audience owner.
+  const echoReports = flagIn(flags, "voice.echo-reports");
+  // Multi-device millisecond-level WebRTC + Web Audio sync (owner audience).
+  const audioSync = flagIn(flags, "voice.audio-sync");
   // The owner's ETA bar (lib/eta-ping.ts): the chat shows it only on his pages.
   const etaBar = flagIn(flags, ETA_FLAG);
   // A new version applies itself on a clean page (lib/auto-update.ts); off: the Refresh button.
@@ -196,6 +200,8 @@ export default async function RootLayout({
     chatFull,
     etaBar,
     liHub,
+    echoReports,
+    audioSync,
     autoUpdate,
     lexicon,
     cloudVoices,

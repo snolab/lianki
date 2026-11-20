@@ -1,0 +1,96 @@
+import { t, type DeclarationContent } from "intlayer";
+import { describeKeys } from "../../../lib/i18n-context";
+
+const dictionary = {
+  key: "words-native-audio",
+  content: {
+    original: t({
+      en: "Word pronunciation: original recording · automatically aligned",
+      zh: "单词原音（自动对齐）",
+      ja: "発音：元の録音・自動位置合わせ",
+      ko: "발음: 원본 녹음 · 자동 정렬",
+      hi: "उच्चारण: मूल रिकॉर्डिंग · स्वचालित संरेखण",
+      es: "Pronunciación: grabación original · alineación automática",
+      fr: "Prononciation : enregistrement original · alignement automatique",
+      ar: "النطق: التسجيل الأصلي · محاذاة تلقائية",
+      bn: "উচ্চারণ: মূল রেকর্ডিং · স্বয়ংক্রিয় মিল",
+      pt: "Pronúncia: gravação original · alinhamento automático",
+      ru: "Произношение: исходная запись · автоматическая разметка",
+      ur: "تلفظ: اصل ریکارڈنگ · خودکار مطابقت",
+      id: "Pelafalan: rekaman asli · penyelarasan otomatis",
+      de: "Aussprache: Originalaufnahme · automatisch zugeordnet",
+      sw: "Matamshi: rekodi asili · upangaji otomatiki",
+      mr: "उच्चार: मूळ ध्वनिमुद्रण · स्वयंचलित जुळवणी",
+    }),
+    synthetic: t({
+      en: "Pronunciation: synthesized",
+      zh: "发音：合成朗读",
+      ja: "発音：合成音声",
+      ko: "발음: 합성 음성",
+      hi: "उच्चारण: संश्लेषित आवाज़",
+      es: "Pronunciación: voz sintetizada",
+      fr: "Prononciation : voix de synthèse",
+      ar: "النطق: صوت اصطناعي",
+      bn: "উচ্চারণ: সংশ্লেষিত কণ্ঠ",
+      pt: "Pronúncia: voz sintetizada",
+      ru: "Произношение: синтезированная речь",
+      ur: "تلفظ: مصنوعی آواز",
+      id: "Pelafalan: suara sintetis",
+      de: "Aussprache: synthetische Stimme",
+      sw: "Matamshi: sauti iliyotengenezwa",
+      mr: "उच्चार: संश्लेषित आवाज",
+    }),
+    setting: t({
+      en: "Original recordings",
+      zh: "原音",
+      ja: "元の録音",
+      ko: "원본 녹음",
+      hi: "मूल रिकॉर्डिंग",
+      es: "Grabaciones originales",
+      fr: "Enregistrements originaux",
+      ar: "التسجيلات الأصلية",
+      bn: "মূল রেকর্ডিং",
+      pt: "Gravações originais",
+      ru: "Исходные записи",
+      ur: "اصل ریکارڈنگز",
+      id: "Rekaman asli",
+      de: "Originalaufnahmen",
+      sw: "Rekodi asili",
+      mr: "मूळ ध्वनिमुद्रणे",
+    }),
+    settingHint: t({
+      en: "Say a word from your own course recording when it has one; off, always use the synthesized voice",
+      zh: "单词有你自己课程录音时用原音朗读；关闭后一律用合成音",
+      ja: "自分の教材の録音がある単語はその録音で読みます。オフ：常に合成音声を使います",
+      ko: "내 교재 녹음이 있는 단어는 그 녹음으로 읽습니다. 끄면 항상 합성 음성을 사용합니다",
+      hi: "जिस शब्द की आपकी अपनी कोर्स रिकॉर्डिंग है, उसे उसी से बोलें; बंद होने पर हमेशा संश्लेषित आवाज़",
+      es: "Decir la palabra con la grabación de tu propio curso cuando la haya; desactivado, siempre la voz sintetizada",
+      fr: "Dire le mot avec l'enregistrement de votre propre cours s'il existe ; désactivé, toujours la voix de synthèse",
+      ar: "انطق الكلمة من تسجيل دورتك الخاص إن وُجد؛ عند الإيقاف يُستخدم الصوت الاصطناعي دائمًا",
+      bn: "শব্দটির আপনার নিজের কোর্সের রেকর্ডিং থাকলে সেটি দিয়ে বলুন; বন্ধ থাকলে সবসময় সংশ্লেষিত কণ্ঠ",
+      pt: "Dizer a palavra com a gravação do seu próprio curso quando houver; desligado, sempre a voz sintetizada",
+      ru: "Произносить слово по записи вашего курса, если она есть; выкл. — всегда синтезированная речь",
+      ur: "جس لفظ کی آپ کے اپنے کورس کی ریکارڈنگ ہو، اسی سے بولیں؛ بند ہو تو ہمیشہ مصنوعی آواز",
+      id: "Ucapkan kata dari rekaman kursus Anda sendiri jika ada; mati, selalu pakai suara sintetis",
+      de: "Ein Wort aus der eigenen Kursaufnahme sprechen, wenn es eine gibt; aus: immer die synthetische Stimme",
+      sw: "Tamka neno kwa rekodi ya kozi yako mwenyewe ikiwepo; ikizimwa, tumia sauti iliyotengenezwa kila wakati",
+      mr: "शब्दाचे तुमच्या स्वतःच्या अभ्यासक्रमाचे ध्वनिमुद्रण असल्यास त्यानेच उच्चार करा; बंद असल्यास नेहमी संश्लेषित आवाज",
+    }),
+  },
+} satisfies DeclarationContent;
+export default {
+  ...dictionary,
+  description: describeKeys(
+    "Source of a word's pronunciation in Lianki's study toolbar, and the Settings switch that turns the original recordings on or off. This describes pronunciation only; example sentences and meanings may use synthesized speech.",
+    {
+      original:
+        "Status shown while the word uses the user's private original course recording. The time range was aligned automatically and has not been manually verified; do not imply human verification.",
+      synthetic:
+        "Status shown when the word uses browser or server synthesized speech, including fallback when an original recording is missing or cannot play. Do not imply it is the original recording.",
+      setting:
+        "/words study view, Settings sheet (shown once 'Read cards aloud' is on, next to 'Server voice'): the label of an on/off switch (a pill), on by default and following the account: a word that has the user's own private course recording is said from that recording; off, every word uses synthesized speech. A short noun phrase naming the recordings, not a verb.",
+      settingHint:
+        "/words study view, Settings sheet: the tooltip of the 'Original recordings' switch: on, a word with the user's own course recording is said from it; off, synthesized speech always. 'Your own' matters: the recordings are private to the account. No final period.",
+    },
+  ),
+} satisfies DeclarationContent;

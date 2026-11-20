@@ -11,6 +11,8 @@
  * hot-loaded widget share it. Tiny on purpose: /words imports it statically.
  */
 
+import { reportPlayed, reportPlaying } from "./play-report";
+
 /** Capture resumes this long after the last sound ends (voice.ts RESUME_TAIL_MS). */
 export const PAGE_AUDIO_TAIL_MS = 400;
 /** A sound whose end never came (a lost event) stops holding the mic after this. */
@@ -28,6 +30,11 @@ export type StartOpts = {
    * book read aloud leaks past the canceller often enough to post garbage.
    */
   always?: boolean;
+  /**
+   * Which voice reads it, for the hub's cross-device echo match
+   * (play-report.ts): "words", "reader"… Only sounds with `text` are reported.
+   */
+  voice?: string;
 };
 
 export type PageAudio = {
@@ -112,6 +119,8 @@ export function createPageAudio(
         said.push(rec);
         if (said.length > 50) said.shift();
       }
+      // His other devices' mics may hear it: the hub is told (flag voice.echo-reports).
+      const ref = rec ? reportPlaying({ text: rec.text, voice: o.voice ?? "page", at: rec.start }) : null;
       all.begin();
       if (o.always) forced.begin();
       let done = false;
@@ -121,6 +130,7 @@ export function createPageAudio(
         done = true;
         clearTimer(cap);
         if (rec) rec.end = now();
+        if (ref && rec) reportPlayed(ref, rec.end!);
         if (o.always) forced.finish();
         all.finish();
       };

@@ -212,6 +212,14 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  // docs/echo-suppression.md, layer (b) and the collapsed rows (owner "go", 2026-11-20).
+  "voice.echo-reports": {
+    description:
+      "朗读回声（跨设备）：打开（默认，只对你）后，你的每台设备朗读时（Li 读回复、读回你润色后的话、/words 读单词、阅读器朗读）都告诉 hub「正在读哪句、从几点到几点」；另一台设备的麦克风同一时间听到、内容又落在这几句里，就当作朗读回声：不转给助手、Li 不回、不润色、不朗读、不进聊天记录，只在聊天里折叠成一行「朗读声被录回」，点开能看全文，点「这是我说的」就照常发出。读过的句子只在 hub 内存里留 2 分钟（/dev/config 的 voice.echoPlayKeepMs）。相似度和时间余量在 voice.echoPlaySimilarity、voice.echoSlackMs。关闭 = 和以前完全一样：只按助手回复到达的时间判断，回声直接隐藏。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   "stt.merge": {
     description:
       "连续语音合并：打开后，你接着说的话如果明显是上一句的延续，会并入你刚发的那条语音消息，而不是多出一个气泡；助手收到的是完整的一句，等你说完后再按上下文润色一次整段。只并你自己刚发的语音、中间没有任何人说话、没有问答卡片；语音口令不会被合并。合并后的消息有 ✨ 和撤销按钮，撤销可拆回原来的几条。关闭（默认）= 照旧：每段语音各发一条。",
@@ -261,6 +269,14 @@ export const FLAGS = {
     default: false,
     group: "stt",
     audience: "owner",
+  },
+  // No `audience`: on, any account whose token holds mic:polish (or its session) may call it.
+  "mic.polish-api": {
+    description:
+      "麦克风润色接口（docs/mic-polish-api.md）：打开后 POST /api/mic/polish 可用——otoji.org/mic 的用户脚本通过 otoji 的服务器，用带「mic:polish」权限的 Lianki API 令牌（或在 lianki.com 上登录的会话），把一段语音识别文字交给我们的 Workers AI 润色（改错字、标点，不加内容）。每次先从调用者自己的积分预扣、按实际用量结算、失败全退（管理员也一样扣）；每个账号每个 UTC 日最多 mic.polishDailyMax 次，每个令牌每分钟最多 mic.polishPerMinute 次，大小上限在 /dev/config 的 mic.polish*。关闭（默认）= 接口不存在（404），otoji 端只能用原文。",
+    default: false,
+    requires: ["workers-ai.credentials", "ai-credits.migration"],
+    group: "ai",
   },
   "partner.ai-reply": {
     description:
@@ -374,6 +390,13 @@ export const FLAGS = {
     description:
       "多台设备同时朗读：你有两台或更多设备同时连着、都在读 Li 的话时，同一句话尽量在同一时刻开始读（相差约 0.2 秒以内）。先收到的设备等几百毫秒（/dev/config 的 voice.syncLeadMs，默认 300），等慢的设备也收到；最多等 voice.syncMaxWaitMs（默认 1.5 秒），已经晚了的设备马上读。只有一台设备时从不等待。润色后的回读也一样。打开（默认，只对你）；关闭 = 照旧，每台设备收到就读。",
     default: true,
+    group: "stt",
+    audience: "owner",
+  },
+  "voice.audio-sync": {
+    description:
+      "多端毫秒级语音同步（WebRTC + Web Audio + 声学延迟检测）：打开后，同账号在线设备之间通过 WebRTC DataChannel 做 NTP 时钟对齐，并用 AudioBufferSourceNode 统一定时起播，配合麦克风声学相关性自动补偿不同设备（如 Windows 外放与 Mac 蓝牙/预览代理）的硬件延迟差，让多台设备听起来像同一个声音。关闭（默认）= 仅用原有的 voice.sync-speak 粗同步。",
+    default: false,
     group: "stt",
     audience: "owner",
   },

@@ -16,9 +16,9 @@
  *   "speech", a sentence in a language the device has no voice for (some
  *   Android Chromes list no voices at all) goes to the cloud instead of
  *   staying silent.
- * - Mic on: every reply is read, whatever the speaker toggle or focus says
- *   (the toggle itself is never changed, so it is "restored" when the mic
- *   stops). Mic off, on a phone (touch, `touch`): the speaker toggle alone
+ * - The speaker toggle always decides whether replies may be read, including
+ *   while the mic is on. Mic on removes the focus requirement, not the user's
+ *   mute. Mic off, on a phone (touch, `touch`): the speaker toggle alone
  *   decides (owner 2026-11-10: the focus rule needed the keyboard up, so a
  *   reader on /reader heard nothing). Mic off, on a computer: a reply is
  *   read with the toggle on, and either the mic has been used on this device
@@ -59,10 +59,11 @@
  * events and one-shot timers, never polling.
  */
 import { speechRate } from "./speech-rate";
-import { ECHO_WINDOW_MS, type EchoScore, echoContained, echoScore, normalizeEcho } from "./echo";
+import { type EchoScore, echoContained, echoGuard, normalizeEcho } from "./echo";
+import { reportPlayed, reportPlaying } from "./play-report";
 import { cloudOut, cloudSkip, existingCtx, outMode } from "./voice-out";
 import { type HeardVoice, noteHeard } from "./voice-heard";
-import { micAec, talkOver } from "./aec";
+import { cloudWhileMic, micAec, talkOver } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { speakForm } from "./lexicon";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
@@ -153,6 +154,22 @@ export function speakerOf(meta: SpeakMeta | undefined, said: string): string {
 export type ReplyHow = { live?: boolean; pick?: ClonePick; startAt?: number };
 /** Who a read-back in the owner's clone is from, for superseding: no lane cuts it. */
 export const CLONE_SPEAKER = "clone:owner";
+
+/**
+ * Which voice read a sentence, for the hub's echo match (play-report.ts):
+ * "clone" for his own cloned voice (a strong "me" never overrides its echo),
+ * a provider kind ("melo", "aura", "google"…), else "device" (speechSynthesis)
+ * or "cloud" (the cloud route's own voice).
+ */
+export function playVoiceOf(
+  who: string | undefined,
+  pick: string | undefined,
+  route: string | undefined,
+): string {
+  if (who === CLONE_SPEAKER || pick === "clone") return "clone";
+  if (pick && pick !== "device") return pick;
+  return route === "speech" || pick === "device" ? "device" : "cloud";
+}
 
 /** A line's cut-in mode (wire.ts ChatMessage.cut), only when it arrived live. */
 export function cutOf(meta: SpeakMeta | undefined, how?: ReplyHow): "supersede" | "interject" | null {
@@ -414,6 +431,10 @@ export type CloudOut = {
       voice?: VoiceId;
       /** The line's own cloud voice (melo, aura) or ElevenLabs preview (eleven). */
       pick?: LinePick;
+      /** Scheduled AudioContext start time in seconds (multi-device sync). */
+      when?: number;
+      /** Prefer decoded Web Audio buffer playback when available. */
+      sync?: boolean;
     },
     ev: PlayEvents,
   ): Playback;
@@ -470,7 +491,7 @@ type Sentence = {
   startAt?: number;
 };
 /** What the agent said, and when (for the echo guard). */
-type Said = { text: string; start: number; end?: number };
+type Said = { text: string; start: number; end?: number; ref?: string | null };
 
 /** What the echo check says about one transcript. */
 export type EchoCheck = EchoScore & {
@@ -504,6 +525,11 @@ export function createVoice(d: {
   /** speechSynthesis has a voice for `lang` (absent: assume it has). */
   hasVoice?: (lang: string) => boolean;
   mode?: () => OutMode;
+  /**
+   * Config voice.cloudWhileMic (aec.ts cloudWhileMic): while the mic is on,
+   * read with the cloud voice, which the echo canceller hears. Absent: never.
+   */
+  cloudWhileMic?: () => boolean;
   /** Echo-cancelled barge-in (else capture is held while the agent speaks). */
   aec?: () => boolean;
   /**
@@ -619,6 +645,8 @@ export function createVoice(d: {
     if (pick && pick.kind !== "device") return c;
     if (voice === "bright" && getKey("lk:agent-local-tts") !== "off") return c;
     if (mode() === "cloud") return c;
+    // The mic is open: our <audio> is inside the echo canceller's reference (echo-suppression.md).
+    if (mic && d.cloudWhileMic?.() && cloudSkip("x", lang) === null) return c;
     return noVoice(lang) && cloudSkip("x", lang) === null ? c : null;
   };
   /** A `device:<name>` this device can read (speechSynthesis and that voice). */
@@ -662,7 +690,11 @@ export function createVoice(d: {
   const canSpeak = () => !!d.synth() || !!cloud();
 
   const ended = () => {
-    if (current && current.said.end === undefined) current.said.end = now();
+    if (current && current.said.end === undefined) {
+      current.said.end = now();
+      // Cross-device echo (play-report.ts): the hub hears when this sentence stopped.
+      if (current.said.ref) reportPlayed(current.said.ref, current.said.end);
+    }
   };
 
   /** Read one sentence with speechSynthesis (from its last word boundary). */
@@ -882,6 +914,15 @@ export function createVoice(d: {
     current.p = p;
     said.push(rec);
     if (said.length > 50) said.shift();
+    // What the room hears now, for the hub's cross-device echo match (play-report.ts):
+    // the spoken form, the written one too, and which voice (the clone reads him back).
+    rec.ref = reportPlaying({
+      text: head.text,
+      ...(head.written !== undefined ? { alt: head.written } : {}),
+      voice: playVoiceOf(head.who, head.pick?.kind, p.route),
+      at: rec.start,
+      ...(head.id ? { line: head.id } : {}),
+    });
     log({
       ev: "voice-out",
       out: c ? "cloud" : "speech",
@@ -1044,10 +1085,10 @@ export function createVoice(d: {
     aec,
     /** Talk-over is in force (echo cancellation off, flag `voice.talk-over` on): no hold. */
     duplex,
-    /** Whether a reply arriving now is read: always with the mic on, else by the toggle and (mic used here, or focus). */
-    shouldSpeak: () => mic || focusRule(),
-    /** The speaker toggle as it applies now (forced on while the mic is on). */
-    readAloud: () => mic || d.enabled(),
+    /** The manual mute wins; the mic only removes the focus requirement. */
+    shouldSpeak: () => d.enabled() && (mic || focusRule()),
+    /** The speaker toggle, independent of whether the microphone is on. */
+    readAloud: () => d.enabled(),
     /** The mic turned on or off. Off: what the focus rule would not read stops. */
     setMic(on: boolean) {
       if (mic === on) return;
@@ -1233,10 +1274,9 @@ export function createVoice(d: {
      */
     echoCheck(transcript: string, durationMs = 0): EchoCheck {
       const t = now();
-      const from = t - durationMs;
-      const recent = said.filter((r) => (r.end ?? t) >= from - ECHO_WINDOW_MS).map((r) => r.text);
-      const during = said.some((r) => r.start <= t && (r.end ?? t) >= from);
-      return { ...echoScore(transcript, recent), during };
+      // Containment in the sentences overlapping it in time, or Dice on the recent ones (echo.ts).
+      const { contained: _c, ...out } = echoGuard(transcript, said, t - durationMs, t, t);
+      return out;
     },
     /**
      * Talk-over (`duplex()`): judge a transcript heard from `from` to `to`
@@ -1338,7 +1378,8 @@ export const speechEnabled = () => {
 
 /**
  * Replies are read only to someone typing here: this tab is visible and the
- * chat input has focus (checked as each reply arrives). The mic overrides it.
+ * chat input has focus (checked as each reply arrives). With the mic on,
+ * focus is unnecessary, but the speaker toggle still applies.
  */
 export function speakHere() {
   if (typeof document === "undefined" || document.visibilityState !== "visible") return false;
@@ -1494,18 +1535,45 @@ const voicedStore = {
   },
 };
 
+/**
+ * Patch an already-running session when this module is hot-loaded: keep its
+ * mic, subscribers and queue rather than replacing the shared session.
+ */
+export function respectReadoutPreference(v: Voice, enabled: () => boolean): Voice {
+  const guarded = v as Voice & { __manualReadout?: true };
+  if (guarded.__manualReadout) return v;
+  const shouldSpeak = v.shouldSpeak;
+  v.shouldSpeak = () => enabled() && shouldSpeak();
+  v.readAloud = enabled;
+  guarded.__manualReadout = true;
+  return v;
+}
+
 /** The session, shared by every copy of this module on the page. */
 export function voice(): Voice {
   const g = globalThis as unknown as Record<string, Voice | undefined>;
   const have = g[KEY];
-  if (have && have.v === V) return gateVoice(have);
+  if (have && have.v === V) return gateVoice(respectReadoutPreference(have, speechEnabled));
   const v = createVoice({
     synth,
     enabled: speechEnabled,
     here: speakHere,
     voiced: voicedStore,
     touch: () => !isDesktop(),
-    cloud: cloudOut,
+    cloud: () => {
+      const base = cloudOut();
+      if (!base) return null;
+      const syncHub = (
+        globalThis as unknown as {
+          __lkAudioSync?: { enabled?: boolean; hasPeers?(): boolean; playSynced?: CloudOut["play"] };
+        }
+      ).__lkAudioSync;
+      if (!syncHub?.enabled || !syncHub.hasPeers?.() || !syncHub.playSynced) return base;
+      return {
+        ...base,
+        play: (s, ev) => syncHub.playSynced!(s, ev),
+      };
+    },
     // getVoices() can be empty (some Android Chromes always): the cloud reads those.
     hasVoice: (lang) => {
       try {
@@ -1515,6 +1583,7 @@ export function voice(): Voice {
       }
     },
     mode: outMode,
+    cloudWhileMic: () => cloudWhileMic(),
     preroll: () => outputBed().begin(),
     owner: audioOwner({ id: audioOwnerId("li"), prio: AUDIO_PRIO.li }),
     // The open track's mode (aec.ts), so hold and barge-in match what the mic does.

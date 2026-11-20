@@ -21,6 +21,7 @@ export function OwnerBoots({
   etaBar = false,
   chatFull = false,
   liHub = false,
+  echoReports = false,
   lexicon,
   cloudVoices,
   talkOver = false,
@@ -76,6 +77,8 @@ export function OwnerBoots({
   chatFull?: boolean;
   /** Flag `voice.li-hub`: Li's sound hub observes the owner's pages (docs/li-sound-hub.md). */
   liHub?: boolean;
+  /** Flag `voice.echo-reports`: his pages report what they read aloud (docs/echo-suppression.md). */
+  echoReports?: boolean;
   /** Flag `chat.play-audio`: an agent's audio lines play (docs/li-sound-hub.md, "Playing audio"). */
   playAudio?: boolean;
 }) {
@@ -92,6 +95,7 @@ export function OwnerBoots({
         fullScreen={chatFull}
         etaBar={etaBar}
         liHub={liHub}
+        echoReports={echoReports}
         lexicon={lexicon}
         cloudVoices={cloudVoices}
         talkOver={talkOver}

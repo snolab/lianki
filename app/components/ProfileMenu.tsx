@@ -17,7 +17,7 @@ import { Icon } from "./icons";
 import { UserAvatar } from "./UserAvatar";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useDebugToggle } from "./useDebugToggle";
-import { DevServerDot, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
+import { DevServerBadge, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
 import { LiveViewChip, type LiveViewShell } from "./LiveView";
 import type { ShellLabels } from "./AppShell";
 
@@ -98,13 +98,15 @@ export function ProfileMenu({
             : "relative flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity"
         }
       >
-        {devSwitch?.mode === "back" && <DevServerDot label={devSwitch.labels.name} />}
-        <UserAvatar
-          name={user.name}
-          image={user.image}
-          size={32}
-          className="w-8 h-8 shrink-0 ring-2 ring-gray-200 dark:ring-gray-700"
-        />
+        <span data-profile-avatar className="relative inline-flex shrink-0">
+          <UserAvatar
+            name={user.name}
+            image={user.image}
+            size={32}
+            className="w-8 h-8 shrink-0 ring-2 ring-gray-200 dark:ring-gray-700"
+          />
+          {devSwitch?.mode === "back" && <DevServerBadge label={devSwitch.labels.name} />}
+        </span>
         <span className={`${showName} min-w-0 max-w-[120px] truncate`}>{user.name}</span>
         {!compact && <ChevronIcon open={open} up={foot} />}
       </button>

@@ -559,11 +559,12 @@ AudioContext running, it listens again and logs `{ev: "mic-resume", path:
 "Tap to resume listening", and logs `{ev: "mic-resume", path: "tap", reason}`
 (`permission prompt|denied`, `audio context suspended`, or the error's name).
 
-**Hands-free voice.** Mic on means read-aloud on: while it listens, every
-agent reply is read, whatever the focus rule or the speaker toggle says (the
-toggle shows "Replies read aloud (mic on)" and is locked; the stored setting
-is never touched, so it is back as it was when the mic stops, and a reading
-the focus rule would not allow stops with the mic). The rules live in one
+**Hands-free voice.** The reply-readout switch remains usable while the mic
+is listening. Turning it off stops the current and queued replies, keeps
+the microphone listening, and silences new replies until it is turned on.
+The microphone removes the focus requirement only while read-aloud is enabled.
+The saved preference also applies after the mic is stopped or restarted.
+The rules live in one
 voice session (`packages/debug-chat/src/voice.ts`, kept on `globalThis` so the
 bundled `speakReply` in DebugEval and a hot-loaded chat share it; tested with
 fakes in `unit/voice-session.test.ts`):
