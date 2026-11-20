@@ -313,7 +313,9 @@ export function createReadSpeaker(d: ReadSpeakerDeps) {
       let release: (() => void) | null = null;
       let renew: unknown = null;
       const hold = (part?: string) => {
-        const next = part ? d.pageAudio().start({ text: part, always: true }) : null;
+        const next = part
+          ? d.pageAudio().start({ text: part, always: true, voice: "reader" })
+          : null;
         release?.();
         release = next;
         if (renew !== null) d.clearTimer(renew);

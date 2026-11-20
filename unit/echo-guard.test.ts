@@ -4,8 +4,12 @@ import {
   ECHO_SIMILARITY,
   dice,
   echoContained,
+  echoGuard,
   echoScore,
+  gramHashes,
   grams,
+  hashGram,
+  hashedContained,
   normalizeEcho,
 } from "@lianki/debug-chat/echo";
 
@@ -111,5 +115,94 @@ describe("echo guard: containment (talk-over)", () => {
     expect(echoContained("hello", [])).toBe(0);
     expect(echoContained("…", [said])).toBe(0);
     expect(echoContained("好", ["好的。"])).toBe(1);
+  });
+});
+
+describe("echo guard: containment in a time window (echo-suppression.md, layer (a))", () => {
+  const long =
+    "先放一个占位首页，通过 GitHub Actions 自动部署到 Cloudflare Pages，等域名解析好了再换成正式的首页。";
+  it("a fragment of a long sentence playing then is dropped, though Dice scores it low", () => {
+    const said = [{ text: long, start: 1000, end: 9000 }];
+    const heard = "先放一个占位首页，通过给他不爱可信自动部署";
+    expect(echoScore(heard, [long]).drop).toBe(false);
+    const g = echoGuard(heard, said, 3000, 6000, 10_000);
+    expect(g.drop).toBe(true);
+    expect(g.during).toBe(true);
+    expect(g.contained).toBe(g.score);
+    expect(g.against).toBe(long);
+  });
+
+  it("the same words outside the slack are only judged by the old Dice rule", () => {
+    const said = [{ text: long, start: 1000, end: 2000 }];
+    const g = echoGuard("先放一个占位首页，通过给他不爱可信自动部署", said, 8000, 9000, 10_000);
+    expect(g.contained).toBe(0);
+    expect(g.during).toBe(false);
+    expect(g.drop).toBe(false);
+    // Inside the slack (1.5 s after the end): still caught.
+    expect(
+      echoGuard("先放一个占位首页，通过给他不爱可信自动部署", said, 3400, 4000, 10_000).drop,
+    ).toBe(true);
+    expect(
+      echoGuard("先放一个占位首页，通过给他不爱可信自动部署", said, 3400, 4000, 10_000, {
+        slackMs: 0,
+      }).drop,
+    ).toBe(false);
+  });
+
+  it("keeps the old whole-sentence rule, a sentence still playing, and never drops a short word", () => {
+    const g = echoGuard(
+      "Hello there my friend",
+      [{ text: "hello there, my friend!", start: 0 }],
+      100,
+      200,
+      300,
+    );
+    expect(g.drop).toBe(true);
+    expect(g.score).toBe(1);
+    expect(g.during).toBe(true);
+    expect(echoGuard("好的", [{ text: "好的好的，我们开始吧", start: 0 }], 10, 20, 30).drop).toBe(
+      false,
+    );
+    expect(echoGuard("anything", [], 0, 1, 2)).toEqual({
+      score: 0,
+      against: null,
+      drop: false,
+      during: false,
+      contained: 0,
+    });
+    // Outside the Dice window too: nothing.
+    expect(
+      echoGuard(
+        "hello there friend",
+        [{ text: "hello there friend", start: 0, end: 10 }],
+        60_000,
+        61_000,
+        62_000,
+        {
+          windowMs: 1000,
+        },
+      ).score,
+    ).toBe(0);
+  });
+});
+
+describe("hashed n-grams (a private screen's report)", () => {
+  it("hashes stably and short", () => {
+    expect(hashGram("ab")).toBe(hashGram("ab"));
+    expect(hashGram("ab")).not.toBe(hashGram("ba"));
+    expect(hashGram("ab")).toMatch(/^[0-9a-z]{1,8}$/);
+    expect(gramHashes("Hello, hello!", 3)).toHaveLength(new Set(gramHashes("hellohello", 3)).size);
+    expect(gramHashes("", 2)).toEqual([]);
+  });
+
+  it("measures containment without the words", () => {
+    const said = "我们先看一下日志然后再决定要不要回滚";
+    const g2 = new Set(gramHashes(said, 2));
+    const g3 = new Set(gramHashes("check the logs then decide", 3));
+    expect(hashedContained("先看一下日志", g2, g3)).toBe(1);
+    expect(hashedContained("今天天气很好", g2, g3)).toBe(0);
+    expect(hashedContained("the logs", g2, g3)).toBe(1);
+    expect(hashedContained("", g2, g3)).toBe(0);
+    expect(hashedContained("the logs", g2, new Set())).toBe(0);
   });
 });

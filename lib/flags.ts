@@ -212,6 +212,14 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  // docs/echo-suppression.md, layer (b) and the collapsed rows (owner "go", 2026-11-20).
+  "voice.echo-reports": {
+    description:
+      "朗读回声（跨设备）：打开（默认，只对你）后，你的每台设备朗读时（Li 读回复、读回你润色后的话、/words 读单词、阅读器朗读）都告诉 hub「正在读哪句、从几点到几点」；另一台设备的麦克风同一时间听到、内容又落在这几句里，就当作朗读回声：不转给助手、Li 不回、不润色、不朗读、不进聊天记录，只在聊天里折叠成一行「朗读声被录回」，点开能看全文，点「这是我说的」就照常发出。读过的句子只在 hub 内存里留 2 分钟（/dev/config 的 voice.echoPlayKeepMs）。相似度和时间余量在 voice.echoPlaySimilarity、voice.echoSlackMs。关闭 = 和以前完全一样：只按助手回复到达的时间判断，回声直接隐藏。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   "stt.merge": {
     description:
       "连续语音合并：打开后，你接着说的话如果明显是上一句的延续，会并入你刚发的那条语音消息，而不是多出一个气泡；助手收到的是完整的一句，等你说完后再按上下文润色一次整段。只并你自己刚发的语音、中间没有任何人说话、没有问答卡片；语音口令不会被合并。合并后的消息有 ✨ 和撤销按钮，撤销可拆回原来的几条。关闭（默认）= 照旧：每段语音各发一条。",

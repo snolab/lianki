@@ -59,10 +59,11 @@
  * events and one-shot timers, never polling.
  */
 import { speechRate } from "./speech-rate";
-import { ECHO_WINDOW_MS, type EchoScore, echoContained, echoScore, normalizeEcho } from "./echo";
+import { type EchoScore, echoContained, echoGuard, normalizeEcho } from "./echo";
+import { reportPlayed, reportPlaying } from "./play-report";
 import { cloudOut, cloudSkip, existingCtx, outMode } from "./voice-out";
 import { type HeardVoice, noteHeard } from "./voice-heard";
-import { micAec, talkOver } from "./aec";
+import { cloudWhileMic, micAec, talkOver } from "./aec";
 import { pickLang, pickVoice } from "./wire";
 import { speakForm } from "./lexicon";
 import { type Silence, type SpeakMeta, dropRetiredKeys, silenceHere } from "./speak-rules";
@@ -153,6 +154,22 @@ export function speakerOf(meta: SpeakMeta | undefined, said: string): string {
 export type ReplyHow = { live?: boolean; pick?: ClonePick; startAt?: number };
 /** Who a read-back in the owner's clone is from, for superseding: no lane cuts it. */
 export const CLONE_SPEAKER = "clone:owner";
+
+/**
+ * Which voice read a sentence, for the hub's echo match (play-report.ts):
+ * "clone" for his own cloned voice (a strong "me" never overrides its echo),
+ * a provider kind ("melo", "aura", "google"…), else "device" (speechSynthesis)
+ * or "cloud" (the cloud route's own voice).
+ */
+export function playVoiceOf(
+  who: string | undefined,
+  pick: string | undefined,
+  route: string | undefined,
+): string {
+  if (who === CLONE_SPEAKER || pick === "clone") return "clone";
+  if (pick && pick !== "device") return pick;
+  return route === "speech" || pick === "device" ? "device" : "cloud";
+}
 
 /** A line's cut-in mode (wire.ts ChatMessage.cut), only when it arrived live. */
 export function cutOf(meta: SpeakMeta | undefined, how?: ReplyHow): "supersede" | "interject" | null {
@@ -470,7 +487,7 @@ type Sentence = {
   startAt?: number;
 };
 /** What the agent said, and when (for the echo guard). */
-type Said = { text: string; start: number; end?: number };
+type Said = { text: string; start: number; end?: number; ref?: string | null };
 
 /** What the echo check says about one transcript. */
 export type EchoCheck = EchoScore & {
@@ -504,6 +521,11 @@ export function createVoice(d: {
   /** speechSynthesis has a voice for `lang` (absent: assume it has). */
   hasVoice?: (lang: string) => boolean;
   mode?: () => OutMode;
+  /**
+   * Config voice.cloudWhileMic (aec.ts cloudWhileMic): while the mic is on,
+   * read with the cloud voice, which the echo canceller hears. Absent: never.
+   */
+  cloudWhileMic?: () => boolean;
   /** Echo-cancelled barge-in (else capture is held while the agent speaks). */
   aec?: () => boolean;
   /**
@@ -619,6 +641,8 @@ export function createVoice(d: {
     if (pick && pick.kind !== "device") return c;
     if (voice === "bright" && getKey("lk:agent-local-tts") !== "off") return c;
     if (mode() === "cloud") return c;
+    // The mic is open: our <audio> is inside the echo canceller's reference (echo-suppression.md).
+    if (mic && d.cloudWhileMic?.() && cloudSkip("x", lang) === null) return c;
     return noVoice(lang) && cloudSkip("x", lang) === null ? c : null;
   };
   /** A `device:<name>` this device can read (speechSynthesis and that voice). */
@@ -662,7 +686,11 @@ export function createVoice(d: {
   const canSpeak = () => !!d.synth() || !!cloud();
 
   const ended = () => {
-    if (current && current.said.end === undefined) current.said.end = now();
+    if (current && current.said.end === undefined) {
+      current.said.end = now();
+      // Cross-device echo (play-report.ts): the hub hears when this sentence stopped.
+      if (current.said.ref) reportPlayed(current.said.ref, current.said.end);
+    }
   };
 
   /** Read one sentence with speechSynthesis (from its last word boundary). */
@@ -882,6 +910,15 @@ export function createVoice(d: {
     current.p = p;
     said.push(rec);
     if (said.length > 50) said.shift();
+    // What the room hears now, for the hub's cross-device echo match (play-report.ts):
+    // the spoken form, the written one too, and which voice (the clone reads him back).
+    rec.ref = reportPlaying({
+      text: head.text,
+      ...(head.written !== undefined ? { alt: head.written } : {}),
+      voice: playVoiceOf(head.who, head.pick?.kind, p.route),
+      at: rec.start,
+      ...(head.id ? { line: head.id } : {}),
+    });
     log({
       ev: "voice-out",
       out: c ? "cloud" : "speech",
@@ -1233,10 +1270,9 @@ export function createVoice(d: {
      */
     echoCheck(transcript: string, durationMs = 0): EchoCheck {
       const t = now();
-      const from = t - durationMs;
-      const recent = said.filter((r) => (r.end ?? t) >= from - ECHO_WINDOW_MS).map((r) => r.text);
-      const during = said.some((r) => r.start <= t && (r.end ?? t) >= from);
-      return { ...echoScore(transcript, recent), during };
+      // Containment in the sentences overlapping it in time, or Dice on the recent ones (echo.ts).
+      const { contained: _c, ...out } = echoGuard(transcript, said, t - durationMs, t, t);
+      return out;
     },
     /**
      * Talk-over (`duplex()`): judge a transcript heard from `from` to `to`
@@ -1515,6 +1551,7 @@ export function voice(): Voice {
       }
     },
     mode: outMode,
+    cloudWhileMic: () => cloudWhileMic(),
     preroll: () => outputBed().begin(),
     owner: audioOwner({ id: audioOwnerId("li"), prio: AUDIO_PRIO.li }),
     // The open track's mode (aec.ts), so hold and barge-in match what the mic does.

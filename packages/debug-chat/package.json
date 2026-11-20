@@ -63,6 +63,8 @@
     "./echo": "./src/echo.ts",
     "./storage-keys": "./src/storage-keys.ts",
     "./sync-speak": "./src/sync-speak.ts",
+    "./play-report": "./src/play-report.ts",
+    "./echo-rows": "./src/echo-rows.ts",
     "./stt-hint": "./src/stt-hint.ts",
     "./aec": "./src/aec.ts",
     "./anchor": "./src/anchor.ts",
