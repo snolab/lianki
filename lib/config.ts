@@ -64,6 +64,7 @@ import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
 import { VAD_MAX, VAD_MIN, VAD_THRESHOLDS } from "@lianki/debug-chat/adaptive";
 import { GUARD_MIN_SPEECH_MS, STT_GUARD } from "@lianki/debug-chat/stt-guard";
 import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
+import { DEFAULT_MIME_PREFS, parseMimePrefs } from "./meetings/core";
 
 export type ConfigAudience = "server" | "public";
 
@@ -921,6 +922,107 @@ export const CONFIG = {
     description:
       "/my/recordings 像日记一样连着读：每一天开头写一个时间，之后只有两段录音之间停了超过这么多分钟，才在下一段前面再写一个时间。默认 10 分钟。改小 = 时间更多，改大 = 更少。",
   }),
+  // Meetings: screen + sound recorded into the account (docs/meetings.md, "Limits,
+  // quotas, retention"; flag meetings.record). The recorder reads the public ones
+  // when Start is tapped; the server checks quota, staleness and retention.
+  "meetings.chunkSec": int({
+    default: 30,
+    min: 10,
+    max: 120,
+    unit: "s",
+    group: "meetings",
+    audience: "public",
+    description:
+      "会议录制（/my/meetings）每一段多长（秒）：录下的画面和声音按这个长度切成一段一段，每段先存进浏览器，再上传到你的账号。默认 30 秒；崩溃或断网最多丢正在录的这一段。",
+  }),
+  "meetings.maxMinutes": int({
+    default: 180,
+    min: 1,
+    max: 600,
+    unit: "min",
+    group: "meetings",
+    audience: "public",
+    description:
+      "一次会议最多录多久（分钟）：到了就像点了「停止」一样自动停，并说明原因。默认 180。",
+  }),
+  "meetings.videoKbps": int({
+    default: 1000,
+    min: 100,
+    max: 8000,
+    unit: "kbps",
+    group: "meetings",
+    audience: "public",
+    description:
+      "会议录像的画面码率（kbps）：越高越清楚、文件越大。屏幕内容压缩得很好，默认 1000（约 0.5 GB 一小时）。",
+  }),
+  "meetings.frameRate": int({
+    default: 15,
+    min: 1,
+    max: 30,
+    unit: "fps",
+    group: "meetings",
+    audience: "public",
+    description: "会议录像每秒几帧：默认 15。看幻灯片 5 也够；要录动画或视频就调高。",
+  }),
+  "meetings.audioKbps": int({
+    default: 128,
+    min: 32,
+    max: 320,
+    unit: "kbps",
+    group: "meetings",
+    audience: "public",
+    description: "会议录像里混合声音（你的麦克风 + 共享画面的声音）的码率（kbps）。默认 128。",
+  }),
+  "meetings.trackKbps": int({
+    default: 32,
+    min: 16,
+    max: 128,
+    unit: "kbps",
+    group: "meetings",
+    audience: "public",
+    description:
+      "给文字记录用的两条单独的声音（只有你的麦克风、只有别人的声音）的码率（kbps）。默认 32，足够识别。",
+  }),
+  "meetings.quotaGB": int({
+    default: 50,
+    min: 1,
+    max: 1000,
+    unit: "GB",
+    group: "meetings",
+    audience: "server",
+    description:
+      "每个账号的会议录制最多占多少空间（GB）：满了就不能开始新的会议，正在录的会停下并说明原因。默认 50。",
+  }),
+  "meetings.retentionDays": int({
+    default: 0,
+    min: 0,
+    max: 3650,
+    unit: "days",
+    group: "meetings",
+    audience: "server",
+    description:
+      "会议录制保留多少天：0（默认）= 一直留到你自己删。设成别的数字后，每天一次的清理会删掉比这更早开始的会议（画面、声音、文字一起删），删了找不回来。",
+  }),
+  "meetings.staleMin": int({
+    default: 30,
+    min: 5,
+    max: 1440,
+    unit: "min",
+    group: "meetings",
+    audience: "server",
+    description:
+      "一个还标着「正在录」的会议，超过这么多分钟没有新的一段上传，每天的清理就把它记为「中断」。默认 30。",
+  }),
+  "meetings.mimeTypes": {
+    default: DEFAULT_MIME_PREFS as string,
+    schema: z
+      .string()
+      .refine((s) => parseMimePrefs(s) !== null, "av: type | type || audio: type | type"),
+    group: "meetings",
+    audience: "public",
+    description:
+      "会议录制用的文件格式，按优先顺序：「av:」后面是录像的格式，「audio:」后面是两条单独声音的格式；同一组里用 | 分隔，两组之间用 || 分隔。浏览器支持哪个就用第一个。默认先 MP4（iPhone 能放），再 WebM。",
+  },
   "voiceprint.passkeyWindowMs": int({
     default: 600_000,
     min: 0,

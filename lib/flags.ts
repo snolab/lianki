@@ -170,6 +170,14 @@ export const FLAGS = {
     audience: "owner",
     group: "stt",
   },
+  // Recording: one of the exceptions to "new flags ship on" (docs/meetings.md, "The gate").
+  "meetings.record": {
+    description:
+      "会议录制（/my/meetings，docs/meetings.md）：在电脑上的 Chrome / Edge 里点「开始」，选一个标签页或屏幕共享，录下画面、你的麦克风和被共享标签页的声音，每 30 秒一段加密上传到你的账号，在 /my/meetings 回放、下载、删除。只在你亲手点「开始」后才录；录制时每个 Lianki 页面底部有「正在录制」条，聊天麦克风暂停。只对有 dev 权限的账号开放。关闭（默认）= /my/meetings 和 /api/my/meetings 都不存在（404），正在录的会议在下一段上传时停下；已存的会议留着但读不到，保留期照样生效。",
+    default: false,
+    audience: "owner",
+    group: "stt",
+  },
   "stt.polish": {
     description:
       "语音消息的自动润色：打开（默认）时，助手可以按上下文（最近的消息和助手的回复、当前页面、屏幕上的词、选中的文字）改你语音消息里的错字、标点、被截断的词和漏掉的小词（的、了、在、里这类），不改原意，最近 15 条语音都能改；原文一直保留，点 ✨ 可看。关闭 = 助手不能再改你的语音消息，聊天里只留识别原文。",

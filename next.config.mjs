@@ -108,7 +108,25 @@ const nextConfig = {
       source: "/embed/partner",
       headers: [
         { key: "Content-Security-Policy", value: "frame-ancestors *" },
+        // Framed by any site: never screen capture (docs/meetings.md).
+        { key: "Permissions-Policy", value: "display-capture=()" },
         { key: "Cache-Control", value: "no-store" },
+      ],
+    },
+    // Meetings (docs/meetings.md, "Security and privacy"): screen capture and the
+    // mic at the top level of lianki.com only, and the pages can never be framed.
+    {
+      source: "/my/meetings/:path*",
+      headers: [
+        { key: "Permissions-Policy", value: "display-capture=(self), microphone=(self)" },
+        { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+      ],
+    },
+    {
+      source: "/my/meetings",
+      headers: [
+        { key: "Permissions-Policy", value: "display-capture=(self), microphone=(self)" },
+        { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
       ],
     },
     // A friend's dev box (devbox/README.md) is `next dev` behind Cloudflare, which
