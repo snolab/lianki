@@ -264,9 +264,21 @@ export class NativeAudioClient {
     }
     return boundedBody(response, max, signal, progress);
   }
-  /** Fetch (or join the fetch of) a chapter's archive; it ends only on a stall or a fence. */
-  private fetchArchive(chapter: NativeChapter, id: string): Promise<void> {
-    if (this.download?.id === id && this.download.epoch === this.epoch) return this.download.task;
+  /** Keep one transfer alive across cards; canceled waiters never queue another archive. */
+  private async fetchArchive(chapter: NativeChapter, id: string, wait: AbortSignal): Promise<void> {
+    wait.throwIfAborted();
+    if (this.archive?.id === id) return;
+    const active = this.download;
+    if (active && active.epoch === this.epoch) {
+      if (active.id === id) return active.task;
+      // A different archive must finish first. Its failure still permits a
+      // live card to try its own archive, but a canceled card does no work.
+      await until(
+        active.task.catch(() => {}),
+        wait,
+      );
+      return this.fetchArchive(chapter, id, wait);
+    }
     const run = this.epoch,
       stall = new AbortController(),
       signal = AbortSignal.any([this.life.signal, this.assets.signal, stall.signal]);
@@ -361,7 +373,7 @@ export class NativeAudioClient {
       const clipId = `${archiveId}:${chapter.sha256}`;
       if (this.clip?.id !== clipId) {
         if (this.archive?.id !== archiveId) {
-          await until(this.fetchArchive(chapter, archiveId), request);
+          await until(this.fetchArchive(chapter, archiveId, request), request);
           this.check(run, request);
           if (this.archive?.id !== archiveId) throw Error("native-audio-stale");
         }

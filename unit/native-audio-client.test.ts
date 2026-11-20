@@ -16,7 +16,7 @@ function deferred<T>() {
   const promise = new Promise<T>((r) => (resolve = r));
   return { promise, resolve };
 }
-async function fixture() {
+async function fixture(twoArchives = false) {
   const mp3 = new Uint8Array([73, 68, 51, 1, 2, 3, 4, 5]);
   const zip = new JSZip();
   zip.file("audio/word.mp3", mp3);
@@ -50,6 +50,21 @@ async function fixture() {
       },
     ],
   };
+  if (twoArchives) {
+    manifest.chapters.push({
+      ...manifest.chapters[0],
+      id: "chapter-2",
+      inboxItemId: "c".repeat(20),
+    });
+    manifest.entries.push({
+      ...manifest.entries[0],
+      key: "second-key",
+      term: "second word",
+      chapterId: "chapter-2",
+      startMs: 3000,
+      endMs: 4000,
+    });
+  }
   const bytes = new TextEncoder().encode(JSON.stringify(manifest));
   const state = {
     account: "account-a",
@@ -261,7 +276,93 @@ const archiveRequests = (f: { requests: { url: string }[] }) =>
   f.requests.filter((r) => r.url.endsWith("b".repeat(20))).length;
 async function until(cond: () => boolean) {
   for (let i = 0; i < 200 && !cond(); i++) await new Promise((r) => setTimeout(r, 1));
+  expect(cond()).toBe(true);
 }
+
+const secondCard = { listId: "owned-list", term: "second word" };
+const secondArchiveRequests = (f: { requests: { url: string }[] }) =>
+  f.requests.filter((r) => r.url.endsWith("c".repeat(20))).length;
+
+test("alternating archives joins the active transfer and drops canceled archive waiters", async () => {
+  const f = await fixture(true);
+  await f.client.prepare();
+  const pending = deferred<Response>();
+  f.intercept((url) => (url.endsWith("b".repeat(20)) ? pending.promise : undefined));
+  const first = new AbortController();
+  const a = f.client.load(card, first.signal);
+  await until(() => archiveRequests(f) === 1);
+  first.abort();
+  expect(await a).toBeNull();
+  const next = new AbortController();
+  const b = f.client.load(secondCard, next.signal);
+  await until(() => f.requests.filter((r) => r.url === "/api/prefs").length === 3);
+  await new Promise((r) => setTimeout(r, 1));
+  expect(secondArchiveRequests(f)).toBe(0);
+  next.abort();
+  expect(await b).toBeNull();
+  const again = f.client.load(card, signal());
+  await until(() => f.requests.filter((r) => r.url === "/api/prefs").length === 4);
+  expect(archiveRequests(f)).toBe(1);
+  pending.resolve(new Response(f.archive.slice()));
+  expect(await again).toMatchObject({ startMs: 1000, endMs: 2000 });
+  await new Promise((r) => setTimeout(r, 1));
+  expect(secondArchiveRequests(f)).toBe(0);
+  f.client.dispose();
+});
+
+test("a live different archive waits for the active transfer, then serves its own range", async () => {
+  const f = await fixture(true);
+  await f.client.prepare();
+  const pending = deferred<Response>();
+  f.intercept((url) => (url.endsWith("b".repeat(20)) ? pending.promise : undefined));
+  const first = new AbortController();
+  const a = f.client.load(card, first.signal);
+  await until(() => archiveRequests(f) === 1);
+  first.abort();
+  expect(await a).toBeNull();
+  const b = f.client.load(secondCard, signal());
+  await until(() => f.requests.filter((r) => r.url === "/api/prefs").length === 3);
+  await new Promise((r) => setTimeout(r, 1));
+  expect(secondArchiveRequests(f)).toBe(0);
+  pending.resolve(new Response(f.archive.slice()));
+  expect(await b).toMatchObject({ startMs: 3000, endMs: 4000 });
+  expect(archiveRequests(f)).toBe(1);
+  expect(secondArchiveRequests(f)).toBe(1);
+  f.client.dispose();
+});
+
+test("disposing while another archive waits prevents a late second transfer", async () => {
+  const f = await fixture(true);
+  await f.client.prepare();
+  const pending = deferred<Response>();
+  f.intercept((url) => (url.endsWith("b".repeat(20)) ? pending.promise : undefined));
+  const a = f.client.load(card, signal());
+  await until(() => archiveRequests(f) === 1);
+  const b = f.client.load(secondCard, signal());
+  await until(() => f.requests.filter((r) => r.url === "/api/prefs").length === 3);
+  f.client.dispose();
+  pending.resolve(new Response(f.archive.slice()));
+  expect(await a).toBeNull();
+  expect(await b).toBeNull();
+  expect(secondArchiveRequests(f)).toBe(0);
+  expect(f.blobs).toHaveLength(0);
+});
+
+test("a failed active archive does not block a live waiter for a different archive", async () => {
+  const f = await fixture(true);
+  await f.client.prepare();
+  const pending = deferred<Response>();
+  f.intercept((url) => (url.endsWith("b".repeat(20)) ? pending.promise : undefined));
+  const a = f.client.load(card, signal());
+  await until(() => archiveRequests(f) === 1);
+  const b = f.client.load(secondCard, signal());
+  await until(() => f.requests.filter((r) => r.url === "/api/prefs").length === 3);
+  pending.resolve(new Response(null, { status: 503 }));
+  expect(await a).toBeNull();
+  expect(await b).toMatchObject({ startMs: 3000, endMs: 4000 });
+  expect(secondArchiveRequests(f)).toBe(1);
+  f.client.dispose();
+});
 
 test("a card change stops waiting for a slow archive but never restarts or aborts it", async () => {
   const f = await fixture();
