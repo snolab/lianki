@@ -124,15 +124,171 @@ export function pinchView(
   return scaleExtend(zoomed.axis, scaleX(zoomed.axis, start.t0, now) - anchorPx, w);
 }
 
-/** Two touches' distance and midpoint (client px), for a pinch. */
+/** Two touches' distance, horizontal/vertical spans and midpoint (client px), for a pinch. */
 export function pinchOf(t: ArrayLike<{ clientX: number; clientY: number }>) {
   const a = t[0]!;
   const b = t[1]!;
+  const dx = Math.abs(a.clientX - b.clientX);
+  const dy = Math.abs(a.clientY - b.clientY);
   return {
-    dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+    dist: Math.hypot(dx, dy),
+    dx,
+    dy,
     cx: (a.clientX + b.clientX) / 2,
     cy: (a.clientY + b.clientY) / 2,
   };
+}
+
+/** Default and bounds for the Gantt row height (px), zoomed by a vertical pinch. */
+export const GANTT_ROW_H = 30;
+export const GANTT_MIN_ROW_H = 18;
+export const GANTT_MAX_ROW_H = 72;
+/** Minimum per-axis finger separation (px) so near-aligned fingers never explode the ratio. */
+export const PINCH_SPAN_FLOOR = 24;
+/** Spread change (px) before a pinch commits to a direction. */
+export const PINCH_LOCK_PX = 6;
+/** Dominance ratio between |Δdx| and |Δdy| to lock a pinch to horizontal or vertical. */
+export const PINCH_AXIS_RATIO = 1.4;
+
+export type PinchDirection = "none" | "x" | "y" | "both";
+
+/**
+ * Classify a two-finger pinch's direction from its start (`p0`) and current
+ * (`p`) spans (owner, 2026-11-20: mobile Gantt pinch distinguishes horizontal
+ * vs vertical directions):
+ * - `"none"` while neither axis's spread has changed by at least `PINCH_LOCK_PX`
+ * - `"x"` when horizontal spread change dominates (`ddx >= ddy * PINCH_AXIS_RATIO`)
+ * - `"y"` when vertical spread change dominates (`ddy >= ddx * PINCH_AXIS_RATIO`)
+ * - `"both"` when both axes change comparably (diagonal pinch)
+ */
+export function pinchDirection(
+  p0: { dx: number; dy: number },
+  p: { dx: number; dy: number },
+): PinchDirection {
+  const ddx = Math.abs(p.dx - p0.dx);
+  const ddy = Math.abs(p.dy - p0.dy);
+  if (Math.max(ddx, ddy) < PINCH_LOCK_PX) return "none";
+  if (ddx >= ddy * PINCH_AXIS_RATIO) return "x";
+  if (ddy >= ddx * PINCH_AXIS_RATIO) return "y";
+  return "both";
+}
+
+/**
+ * Separate horizontal (time axis) and vertical (row height) zoom factors for a
+ * two-finger pinch: `"x"` scales only horizontally (`fy = 1`), `"y"` scales
+ * only vertically (`fx = 1`), and `"both"` scales each axis by its own span ratio.
+ */
+export function pinchFactors(
+  p0: { dx: number; dy: number },
+  p: { dx: number; dy: number },
+  locked: PinchDirection = "none",
+): { dir: PinchDirection; fx: number; fy: number } {
+  const dir = locked === "none" ? pinchDirection(p0, p) : locked;
+  const rawX = Math.max(PINCH_SPAN_FLOOR, p.dx) / Math.max(PINCH_SPAN_FLOOR, p0.dx);
+  const rawY = Math.max(PINCH_SPAN_FLOOR, p.dy) / Math.max(PINCH_SPAN_FLOOR, p0.dy);
+  if (dir === "none") return { dir, fx: 1, fy: 1 };
+  if (dir === "x") return { dir, fx: rawX, fy: 1 };
+  if (dir === "y") return { dir, fx: 1, fy: rawY };
+  return { dir, fx: rawX, fy: rawY };
+}
+
+/** Clamp a vertically pinched row height to `[GANTT_MIN_ROW_H, GANTT_MAX_ROW_H]`. */
+export function pinchRowHeight(rowH0: number, fy: number): number {
+  if (!Number.isFinite(fy) || fy <= 0) {
+    return clamp(Math.round(rowH0), GANTT_MIN_ROW_H, GANTT_MAX_ROW_H);
+  }
+  return clamp(Math.round(rowH0 * fy), GANTT_MIN_ROW_H, GANTT_MAX_ROW_H);
+}
+
+/** Vertical pinch factor thresholds for rgui-style category expand/collapse (展开/压缩). */
+export const PINCH_EXPAND_RATIO = 1.25;
+export const PINCH_EXPAND_ALL_RATIO = 1.6;
+export const PINCH_COLLAPSE_RATIO = 0.8;
+export const PINCH_COLLAPSE_ALL_RATIO = 0.6;
+
+/**
+ * Find the category id under `yOffset` (px from the first line's top) from
+ * the current lines and their geometry (`tops`, `hs`). Picks the nearest
+ * line that belongs to a category.
+ */
+export function pinchGroupAt(
+  lines: readonly { kind: "group" | "task"; def?: { id: string }; group?: string | null }[],
+  geo: { readonly tops: readonly number[]; readonly hs: readonly number[] },
+  yOffset: number,
+): string | null {
+  let best: string | null = null;
+  let bestDist = Infinity;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]!;
+    const gid = l.kind === "group" ? (l.def?.id ?? null) : (l.group ?? null);
+    if (!gid) continue;
+    const top = geo.tops[i] ?? 0;
+    const bottom = top + (geo.hs[i] ?? GANTT_ROW_H);
+    const dist = yOffset < top ? top - yOffset : yOffset > bottom ? yOffset - bottom : 0;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = gid;
+      if (dist === 0) break;
+    }
+  }
+  return best;
+}
+
+/**
+ * Semantic-zoom category disclosure along the vertical pinch axis (snomiao/rgui
+ * renormalization-group flow: vertical pinch out expands categories into their
+ * children rows; vertical pinch in collapses them back into summary rows):
+ * - `fy >= PINCH_EXPAND_ALL_RATIO` (1.6), or `fy >= PINCH_EXPAND_RATIO` (1.25)
+ *   when `targetGroup` was already open at pinch start: expand all categories.
+ * - `fy >= PINCH_EXPAND_RATIO` (1.25): expand `targetGroup`.
+ * - `fy <= PINCH_COLLAPSE_ALL_RATIO` (0.6), or `fy <= PINCH_COLLAPSE_RATIO` (0.8)
+ *   when `targetGroup` was already collapsed at pinch start: collapse all categories.
+ * - `fy <= PINCH_COLLAPSE_RATIO` (0.8): collapse `targetGroup`.
+ * - Otherwise: keep `open0`.
+ */
+export function pinchOpenGroups(opts: {
+  open0: readonly string[];
+  targetGroup: string | null;
+  allGroups: readonly string[];
+  fy: number;
+}): string[] {
+  const { open0, targetGroup, allGroups, fy } = opts;
+  const uniq = (list: readonly string[]) => [...new Set(list)];
+  if (!Number.isFinite(fy) || fy <= 0) return [...open0];
+  if (fy >= PINCH_EXPAND_ALL_RATIO) return uniq([...open0, ...allGroups]);
+  if (fy >= PINCH_EXPAND_RATIO) {
+    if (targetGroup && !open0.includes(targetGroup)) return [...open0, targetGroup];
+    return uniq([...open0, ...allGroups]);
+  }
+  if (fy <= PINCH_COLLAPSE_ALL_RATIO) return [];
+  if (fy <= PINCH_COLLAPSE_RATIO) {
+    if (targetGroup && open0.includes(targetGroup)) {
+      return open0.filter((id) => id !== targetGroup);
+    }
+    return [];
+  }
+  return [...open0];
+}
+
+/**
+ * Solve `scrollTop` during a pinch so the row position initially under
+ * `anchorY0` (at total rows height `total0`) stays under `anchorY` (at
+ * `total1`), with the rows starting at `originY` from the scroller content top.
+ */
+export function pinchScrollTop(opts: {
+  top0: number;
+  anchorY0: number;
+  anchorY: number;
+  originY: number;
+  total0: number;
+  total1: number;
+}): number {
+  const { top0, anchorY0, anchorY, originY, total0, total1 } = opts;
+  if (total0 <= 0 || total1 <= 0 || total0 === total1) {
+    return Math.max(0, top0 + (anchorY0 - anchorY));
+  }
+  const offset0 = top0 + anchorY0 - originY;
+  return Math.max(0, originY + offset0 * (total1 / total0) - anchorY);
 }
 
 /** A ctrl+wheel (trackpad pinch) step's zoom factor: up (negative deltaY) zooms in. */

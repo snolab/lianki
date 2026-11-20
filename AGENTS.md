@@ -167,11 +167,13 @@ that are expensive to rediscover.
 | Google Drive connection (/connections), private Docs import                | [docs/connections.md](docs/connections.md)                          |
 | Anything calling an LLM or TTS                                             | [docs/workers-ai.md](docs/workers-ai.md)                            |
 | Learning Partner AI replies for users (DeepSeek, caps)                     | [docs/partner-ai.md](docs/partner-ai.md)                            |
+| POST /api/mic/polish: otoji mic polish, `mic:polish` scope, daily cap      | [docs/mic-polish-api.md](docs/mic-polish-api.md)                    |
 | Chat history in D1, /chat/history (what is kept, never kept)               | [docs/chat-history.md](docs/chat-history.md)                        |
 | Users' own AI key and backend (BYOK, browser-only, presets)                | [docs/byok.md](docs/byok.md)                                        |
 | The owner's local streaming speech-to-text (mic → his Mac)                 | [docs/local-stt.md](docs/local-stt.md)                              |
 | His voice-clone reference in his account (audio, sealed, passkey)          | [docs/voice-clone.md](docs/voice-clone.md)                          |
 | Mic recordings in his account: what is kept, sealing, /my/recordings, pull | [docs/recordings.md](docs/recordings.md)                            |
+| Voiceprint service: hosting, trust, biometric data, migration              | [docs/voiceprint-service.md](docs/voiceprint-service.md)            |
 | /vibe: a conversation transcribed into a private doc                       | [docs/vibe.md](docs/vibe.md)                                        |
 | Whole-page dev server on prod D1 (owner only, home LAN)                    | [docs/dev-whole-page.md](docs/dev-whole-page.md)                    |
 | A friend's dev container (devbox: agents, local D1, tunnel)                | [devbox/README.md](devbox/README.md)                                |

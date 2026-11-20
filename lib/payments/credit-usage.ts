@@ -40,6 +40,8 @@ export const FEATURES: Readonly<Record<string, { group: UsageGroup; href: string
   "partner.reply": { group: "partner", href: "/chat/history" },
   "chat.prepare": { group: "partner", href: "/chat/history" },
   "voice.auto-polish": { group: "stt", href: "/chat/history" },
+  // The otoji.org/mic userscript's polish (POST /api/mic/polish): no page here.
+  "mic.polish": { group: "stt", href: null },
   "read.gloss": { group: "gloss", href: "/reader" },
   "read.polish": { group: "polish", href: "/reader" },
   "read.live-polish": { group: "polish", href: "/reader" },

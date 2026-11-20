@@ -110,9 +110,11 @@ export type ChatMessage = {
    */
   passage?: PassageMark;
   /**
-   * Hub-side only, never sent: an owner voice line kept aside as an echo
-   * (lib/echo-match.ts; flag voice.echo-dedupe) — the copy of `of` heard from
-   * his other device, or of a line read aloud. Undo (unmerge with its id) posts it.
+   * An owner voice line kept aside as an echo (lib/echo-match.ts,
+   * lib/echo-reports.ts; flag voice.echo-dedupe) — the copy of `of` heard
+   * from his other device, or of a line read aloud. Never in the thread's
+   * lines: only in the hub's `echo:<id>` store and, when `shown`, in the
+   * `echo` / `echoes` frames to his pages. Undo (unmerge with its id) posts it.
    */
   echo?: EchoMark;
   /** On a passage's first line, hub-side: what it read before the merge, for the undo. */
@@ -297,8 +299,22 @@ export type EchoMark = {
   by: string;
   reason: "echo";
   kind: "other-device" | "read-aloud";
+  /** The line it echoed ("" when a play report named none: a /words or /reader sound). */
   of: string;
   sim: number;
+  /**
+   * Which evidence (docs/echo-suppression.md, "The verdict"): "report" = a
+   * page said it was playing these words then (lib/echo-reports.ts);
+   * "landed" = the agent line or his line it copies landed lately. Absent
+   * on echoes kept before play reports.
+   */
+  layer?: "report" | "landed";
+  /** The voice that played it (play-report.ts), with layer "report". */
+  voice?: string;
+  /** How long the utterance overlapped what played, ms, with layer "report". */
+  overlapMs?: number;
+  /** Shown collapsed on his pages (flag voice.echo-reports); absent = hidden. */
+  shown?: true;
 };
 /**
  * The second of three readings of his speech (docs/dev-debug-widget.md, "Whisper
@@ -960,6 +976,10 @@ export type ChatStrings = {
   vpOtherVoice: string;
   /** Label of the folded one-line button for another person's voice in the chat log: "Another voice · tap to expand". */
   vpOtherVoiceFolded: string;
+  /** Tooltip and screen-reader name of the avatar of one voice in the room (cluster-avatar.ts): "Voice {label}", {label} a letter A, B… */
+  vpVoiceCluster: string;
+  /** Tooltip and screen-reader name of the avatar of a household member's voice (a household voiceprint): "Household voice". */
+  vpHouseholdVoice: string;
   /** A small note on an agent line that was not read aloud because the page was in the background. */
   notReadHidden: string;
   // The input's + menu (attach.tsx).
@@ -1221,6 +1241,8 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpMacRecKept: "The recordings stay on the speech servers.",
   vpVerified: "Your voice, verified",
   vpOtherVoice: "Another voice",
+  vpVoiceCluster: "Voice {label}",
+  vpHouseholdVoice: "Household voice",
   vpOtherVoiceFolded: "Another voice · tap to expand",
   vpFilterOn: "Only my voice: on. Speech that does not match is dropped on Lianki's speech server.",
   vpFilterOff: "Only my voice: off. All speech is transcribed as usual.",
@@ -1345,7 +1367,53 @@ export type ChatContext = {
   path?: string;
   title?: string;
   host?: string;
+  location?: SelectionLocation;
 };
+
+/** A selection-time snapshot. Offsets are UTF-16 within the selected block
+ * (or a field's value); rectangle coordinates are document CSS pixels. */
+export type SelectionLocation = {
+  kind: "dom" | "field";
+  selector?: string;
+  heading?: string;
+  before?: string;
+  after?: string;
+  start?: number;
+  end?: number;
+  rect?: { x: number; y: number; width: number; height: number };
+  viewport?: { width: number; height: number; scrollX: number; scrollY: number };
+};
+export const MAX_SELECTION_NEARBY = 160;
+
+/** Keep only bounded descriptive fields; selectors are never executed here. */
+export function cleanSelectionLocation(raw: unknown): SelectionLocation | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+  const r = raw as Record<string, unknown>;
+  if (r.kind !== "dom" && r.kind !== "field") return;
+  const out: SelectionLocation = { kind: r.kind };
+  const text = (v: unknown, max: number) => typeof v === "string"
+    ? v.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").slice(0, max) : "";
+  for (const key of ["selector", "heading", "before", "after"] as const) {
+    const value = text(r[key], key === "selector" ? MAX_CONTEXT_PATH : MAX_SELECTION_NEARBY);
+    if (value) out[key] = value;
+  }
+  if (typeof r.start === "number" && typeof r.end === "number" &&
+    Number.isSafeInteger(r.start) && Number.isSafeInteger(r.end) &&
+    r.start >= 0 && r.end > r.start && r.end <= 10_000_000) {
+    out.start = r.start; out.end = r.end;
+  }
+  const numbers = (value: unknown, keys: string[]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const v = value as Record<string, unknown>;
+    if (keys.some(k => typeof v[k] !== "number" || !Number.isFinite(v[k]) || Math.abs(v[k] as number) > 100_000_000)) return;
+    return Object.fromEntries(keys.map(k => [k, Math.round((v[k] as number) * 100) / 100]));
+  };
+  const rect = numbers(r.rect, ["x", "y", "width", "height"]);
+  if (rect && rect.width >= 0 && rect.height >= 0) out.rect = rect as SelectionLocation["rect"];
+  const viewport = numbers(r.viewport, ["width", "height", "scrollX", "scrollY"]);
+  if (viewport && viewport.width > 0 && viewport.height > 0) out.viewport = viewport as SelectionLocation["viewport"];
+  return Object.keys(out).length > 1 ? out : undefined;
+}
 
 /**
  * Most characters of a voice line's screen text: the same bound as a page
@@ -1430,11 +1498,13 @@ export function cleanContext(raw: unknown): ChatContext | undefined {
   const path = text(r.path, MAX_CONTEXT_PATH).split(/[?#]/)[0]!.trim();
   const title = text(r.title, MAX_CONTEXT_TITLE).replace(/\s+/g, " ").trim();
   const host = text(r.host, MAX_CONTEXT_PATH).trim().toLowerCase();
+  const location = cleanSelectionLocation(r.location);
   return {
     selection,
     ...(path.startsWith("/") ? { path } : {}),
     ...(title ? { title } : {}),
     ...(/^[a-z0-9.-]+(:\d+)?$/.test(host) ? { host } : {}),
+    ...(location ? { location } : {}),
   };
 }
 
@@ -1542,15 +1612,43 @@ export type SpeakerTag = {
    */
   voice?: string;
   /**
+   * Which voice in the room (docs/voice-mode.md, "Speaker clusters"): "A", "B"…
+   * per voice heard today, or "household:<name>" for a household print
+   * (scripts/local-stt/voiceprint.py Verifier.cluster); never on his own lines.
+   * `clusterScore`: the cosine to that cluster, -1..1. cluster-avatar.ts draws it.
+   */
+  cluster?: string;
+  clusterScore?: number;
+  /**
    * The texts the Mac signed, in order: set only by the hub after it verified
    * the proofs (lib/speaker-proof.ts), never taken from a page (cleanSpeaker
    * drops it). Any decision based on a voice line must use these words, not
    * the line's displayed text.
    */
   signed?: string[];
+  /**
+   * Who signed the proofs (lib/speaker-proof.ts key ring): "mac" (his Mac),
+   * "service" (Lianki's own voiceprint service, docs/voiceprint-service.md),
+   * or both joined by "+" on a line made from both. Set only by the hub.
+   */
+  kid?: string;
+  /**
+   * How far the tag may be relied on, set only by the hub: "signed" = every
+   * proof signed these very words (the check, later approvals); "advisory" =
+   * the signer vouched for the voice but not the words, so the line's own
+   * decision is "unknown" and the signer's view is kept in `advisory`, for
+   * avatars and clusters only. Absent on lines stored before the key ring
+   * (all of them signed, `signed` set).
+   */
+  trust?: SpeakerTrust;
+  /** The signer's tag when the trust is "advisory" (never the check, never an approval). */
+  advisory?: SpeakerTag;
 };
+export type SpeakerTrust = "signed" | "advisory";
 const SPEAKER_DECISIONS: readonly SpeakerDecision[] = ["me", "other", "unknown"];
 const SLUG = /^[a-z0-9][a-z0-9-]{0,31}$/;
+/** A voice cluster's label: "A".."ZZZ", or "household:<name>" (cluster-avatar.ts). */
+export const CLUSTER_ID = /^([A-Z]{1,3}|household:[a-z0-9]{1,16})$/;
 /** A voice id: "me", or "s1".."s999". */
 export const VOICE_ID = /^(me|s[1-9]\d{0,2})$/;
 
@@ -1574,6 +1672,11 @@ export function cleanSpeaker(raw: unknown): SpeakerTag | undefined {
     if (typeof v === "string" && SLUG.test(v)) out[k] = v;
   }
   if (typeof r.voice === "string" && VOICE_ID.test(r.voice)) out.voice = r.voice;
+  if (typeof r.cluster === "string" && CLUSTER_ID.test(r.cluster)) {
+    out.cluster = r.cluster;
+    const cs = num(r.clusterScore, -1, 1);
+    if (cs !== undefined) out.clusterScore = Math.round(cs * 1000) / 1000;
+  }
   return out;
 }
 
@@ -1588,14 +1691,48 @@ export function combineSpeaker(tags: readonly (SpeakerTag | undefined)[]): Speak
   const ts = tags.filter((t): t is SpeakerTag => !!t);
   if (!ts.length) return undefined;
   const rank: Record<SpeakerDecision, number> = { other: 0, unknown: 1, me: 2 };
-  const { voice: _v, ...out } = ts.reduce((a, b) => {
+  const {
+    voice: _v,
+    cluster: _c,
+    clusterScore: _cs,
+    ...out
+  } = ts.reduce((a, b) => {
     const w = rank[b.decision] < rank[a.decision] ? b : a;
     const scores = [a.score, b.score].filter((s): s is number => s !== undefined);
     return scores.length ? { ...w, score: Math.min(...scores) } : w;
   });
   const voices = new Set(ts.map((t) => t.voice));
   const [voice] = voices;
-  return voices.size === 1 && voice ? { ...out, voice } : out;
+  const withVoice: SpeakerTag = voices.size === 1 && voice ? { ...out, voice } : out;
+  // The cluster too: only when every utterance names the same one (its weakest score).
+  const clusters = new Set(ts.map((t) => t.cluster));
+  const [cluster] = clusters;
+  if (clusters.size !== 1 || !cluster) return withTrust(ts, withVoice);
+  const cs = ts.map((t) => t.clusterScore).filter((s): s is number => s !== undefined);
+  return withTrust(ts, {
+    ...withVoice,
+    cluster,
+    ...(cs.length ? { clusterScore: Math.min(...cs) } : {}),
+  });
+}
+
+/**
+ * The trust and signer of a combined tag: "advisory" if any part is, "signed"
+ * only when every part is (a tag stored before the ring counts as signed when
+ * it carries `signed`); the signers joined. Tags without either (all from
+ * before the ring) are left exactly as they were.
+ */
+function withTrust(ts: readonly SpeakerTag[], out: SpeakerTag): SpeakerTag {
+  if (!ts.some((t) => t.trust || t.kid)) return out;
+  const { trust: _t, kid: _k, ...rest } = out;
+  const trusts = ts.map((t) => t.trust ?? (t.signed ? "signed" : undefined));
+  const trust: SpeakerTrust | undefined = trusts.includes("advisory")
+    ? "advisory"
+    : trusts.every((t) => t === "signed")
+      ? "signed"
+      : undefined;
+  const kids = [...new Set(ts.flatMap((t) => (t.kid ? t.kid.split("+") : [])))].sort();
+  return { ...rest, ...(trust ? { trust } : {}), ...(kids.length ? { kid: kids.join("+") } : {}) };
 }
 
 export function cleanTiming(raw: unknown): VoiceTiming | undefined {
@@ -1670,3 +1807,71 @@ export function sttTagText(
 
 /** Authenticated thread replay coverage, including accepted nonvisible versions. */
 export type ChatReplayRange = { type: "history"; thread: string; messages: ChatMessage[]; removed: {id:string;seq:number}[]; afterSeq: number; throughSeq: number; headSeq: number; prunedThroughSeq: number; skipped: { from: number; to: number }[] };
+
+/**
+ * WebRTC signaling payload relayed between same-account pages for
+ * millisecond-level multi-device audio sync (never stored, never touches D1).
+ */
+export type AudioSyncSignalPayload =
+  | { kind: "offer" | "answer"; sdp: string }
+  | {
+      kind: "candidate";
+      candidate: string;
+      sdpMid?: string | null;
+      sdpMLineIndex?: number | null;
+    };
+
+/** One same-account peer page available for WebRTC audio sync. */
+export type AudioSyncPeer = { id: string; label: string };
+
+/** Hub reply to `{ type: "audio-sync-peers" }`: the caller's id and its same-account peers. */
+export type AudioSyncPeersEvent = {
+  type: "audio-sync-peers";
+  selfId: string;
+  peers: AudioSyncPeer[];
+};
+
+/** Relayed WebRTC signal from another page of the same authenticated account. */
+export type AudioSyncSignalEvent = {
+  type: "audio-sync-signal";
+  from: string;
+  signal: AudioSyncSignalPayload;
+};
+
+const MAX_SDP = 12 * 1024;
+const MAX_CANDIDATE = 1024;
+
+/** Validate an incoming WebRTC signaling payload, or return undefined. */
+export function cleanAudioSyncSignal(raw: unknown): AudioSyncSignalPayload | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  if (r.kind === "offer" || r.kind === "answer") {
+    if (typeof r.sdp !== "string" || r.sdp.length === 0 || r.sdp.length > MAX_SDP) return undefined;
+    return { kind: r.kind, sdp: r.sdp };
+  }
+  if (r.kind === "candidate") {
+    if (typeof r.candidate !== "string" || r.candidate.length > MAX_CANDIDATE) return undefined;
+    const sdpMid =
+      r.sdpMid === null
+        ? null
+        : typeof r.sdpMid === "string" && r.sdpMid.length <= 64
+          ? r.sdpMid
+          : undefined;
+    const sdpMLineIndex =
+      r.sdpMLineIndex === null
+        ? null
+        : typeof r.sdpMLineIndex === "number" &&
+            Number.isInteger(r.sdpMLineIndex) &&
+            r.sdpMLineIndex >= 0 &&
+            r.sdpMLineIndex < 64
+          ? r.sdpMLineIndex
+          : undefined;
+    return {
+      kind: "candidate",
+      candidate: r.candidate,
+      ...(sdpMid !== undefined ? { sdpMid } : {}),
+      ...(sdpMLineIndex !== undefined ? { sdpMLineIndex } : {}),
+    };
+  }
+  return undefined;
+}

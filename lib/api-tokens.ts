@@ -49,6 +49,10 @@ export const SCOPES = [
   // Publish single-file mini apps for this account; publication also requires chat:write.
   { id: "apps:publish", group: "apps" },
   { id: "chat:play", group: "chat" }, // post a line with audio his phone plays (`say --play`)
+  // Have a speech transcript polished by our model, paid from this account's
+  // credits (POST /api/mic/polish; docs/mic-polish-api.md): the otoji.org/mic
+  // userscript's server. Spends credits; nothing else of the account is reached.
+  { id: "mic:polish", group: "mic" },
   // Run code on the owner's open pages (eval.ts, lianki-dev), no pairing tap:
   // a site owner's token only (OWNER_SCOPES), at most EVAL_MAX_DAYS.
   { id: "eval", group: "owner" },

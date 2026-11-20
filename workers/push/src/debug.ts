@@ -252,13 +252,19 @@ import {
 } from "../../../packages/debug-chat/src/ask";
 import type {
   AnsweredEvent,
+  AudioSyncPeersEvent,
+  AudioSyncSignalEvent,
   PolishDueEvent,
   SpeakerTag,
   SttScene,
   SttTag,
   WithdrawnEvent,
 } from "../../../packages/debug-chat/src/wire";
-import { verifySpeakerProofs } from "../../../lib/speaker-proof";
+import {
+  type SpeakerKeyRing,
+  speakerKeyRing,
+  verifySpeakerProofs,
+} from "../../../lib/speaker-proof";
 import {
   ECHO_MIN_CHARS,
   ECHO_READ_WINDOW_MAX,
@@ -269,6 +275,19 @@ import {
   type EchoConf,
   echoMatch,
 } from "../../../lib/echo-match";
+import {
+  ECHO_PLAY_KEEP_MS,
+  ECHO_PLAY_SIMILARITY,
+  ECHO_SHOW_MAX,
+  ECHO_SLACK_MAX,
+  ECHO_SLACK_MS,
+  PlayStore,
+  echoReportMatch,
+  echoVerdict,
+  parsePlayFrame,
+  utteranceSpan,
+} from "../../../lib/echo-reports";
+import { ECHO_REPORTS_FLAG } from "../../../packages/debug-chat/src/play-report";
 import { mergeCheck, polishCheck, summaryCheck } from "../../../packages/debug-chat/src/polish";
 import { MAX_UTTERANCE_MS } from "../../../packages/debug-chat/src/mic";
 import {
@@ -305,6 +324,7 @@ import {
   twoMicMatch,
 } from "../../../packages/debug-chat/src/two-mic";
 import { OwnerAi } from "./owner-ai";
+import { partnerHistoryLine } from "../../../lib/partner-lines";
 import { type RosterEntry, rollCallText, rosterOf } from "../../../packages/debug-chat/src/roster";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import {
@@ -643,10 +663,35 @@ export const AUTO_POLISH_FLAG = "voice.auto-polish";
 export const ECHO_FLAG = "voice.echo-dedupe";
 /** How many of the newest lines an echo look reads (a minute of chat holds far fewer). */
 const ECHO_SCAN = 40;
-/** Echoes kept for undo (`echo:<id>`, the oldest dropped past this many). */
-const ECHO_KEEP = 50;
+/** Echoes kept for undo (`echo:<id>`, the oldest dropped past this many): the default of voice.echoShowMax. */
+const ECHO_KEEP = ECHO_SHOW_MAX;
 const ECHO_INDEX = "echo:index";
 const echoKey = (id: string) => `echo:${id}`;
+/** The play-report side of the echo step (flag voice.echo-reports and its config). */
+type EchoReportsConf = {
+  on: boolean;
+  similarity: number;
+  slackMs: number;
+  keepMs: number;
+  showMax: number;
+};
+/**
+ * A kept echo as his pages get it (the `echo` frame, the `echoes` snapshot):
+ * the words, who and when, its echo mark; never the hub's undo bookkeeping.
+ */
+function echoShown(kept: ChatMessage): ChatMessage {
+  return {
+    id: kept.id,
+    from: kept.from,
+    label: kept.label,
+    text: kept.text,
+    at: kept.at,
+    ...(kept.source ? { source: kept.source } : {}),
+    ...(kept.echo ? { echo: kept.echo } : {}),
+    ...(kept.speaker ? { speaker: kept.speaker } : {}),
+    ...(kept.stt ? { stt: kept.stt } : {}),
+  };
+}
 /** The `by` an automatic polish or merge is stamped with (an agent's carries its label). */
 export const AUTO_POLISH_BY = "auto";
 
@@ -889,8 +934,11 @@ export class DebugHub {
    */
   private grants?: Map<string, Grant>;
   private loadingGrants?: Promise<void>;
-  /** STT_SPEAKER_PUB: the Mac's attestation key (lib/speaker-proof.ts). */
-  private speakerPub?: string;
+  /**
+   * The speaker-attestation key ring (lib/speaker-proof.ts): STT_SPEAKER_PUBS
+   * (`{"mac", "service"}`), with STT_SPEAKER_PUB as `mac`.
+   */
+  private speakerKeys?: SpeakerKeyRing;
   /** A renewal in flight per grant hash: two events at once renew once. */
   private renewing = new Map<string, Promise<void>>();
   /** The main Worker (service binding): asked whether a renewal's session is still live. */
@@ -913,7 +961,12 @@ export class DebugHub {
   private syncConf?: { at: number; on: boolean; leadMs: number };
   private syncReading?: Promise<void>;
   /** The last read of ECHO_FLAG and the voice.echo* config (AI_FLAG_CACHE_MS). */
-  private echoConf?: { at: number; on: boolean; conf: EchoConf };
+  private echoConf?: { at: number; on: boolean; conf: EchoConf; reports: EchoReportsConf };
+  /**
+   * What his pages read aloud lately (lib/echo-reports.ts, flag voice.echo-reports):
+   * memory only, his thread only, never stored, logged or sent to a lane.
+   */
+  private plays = new PlayStore();
   /** Per thread: when an agent line (a lane's `say`, or the AI's) was last posted. */
   private agentAt = new Map<string, number>();
   /** His thread: when a lane's line (an agent line not Li's own) was last posted (owner-ai.ts laneAt). */
@@ -956,8 +1009,8 @@ export class DebugHub {
     private timer: HubTimer = realTimer,
   ) {
     this.work = new HubWork(this.now);
-    // The Mac's speaker-attestation public key (voiceprint.py attest-key); without it no tag is kept.
-    this.speakerPub = (env as { STT_SPEAKER_PUB?: string } | undefined)?.STT_SPEAKER_PUB;
+    // The speaker-attestation public keys (the Mac's: voiceprint.py attest-key); without any no tag is kept.
+    this.speakerKeys = speakerKeyRing(env);
     const sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
     this.sessions = sessions ? boundedSessions(sessions, this.work, this.now) : undefined;
     this.progress = (env as { PROGRESS?: ProgressNs } | undefined)?.PROGRESS;
@@ -1903,7 +1956,7 @@ export class DebugHub {
    * AI_FLAG_CACHE_MS. On by default: only exactly false turns it off. A value
    * that cannot be read falls back to its default.
    */
-  private async echoOn(): Promise<{ on: boolean; conf: EchoConf }> {
+  private async echoOn(): Promise<{ on: boolean; conf: EchoConf; reports: EchoReportsConf }> {
     const t = this.now();
     if (this.echoConf && t - this.echoConf.at < AI_FLAG_CACHE_MS) return this.echoConf;
     let on = true;
@@ -1924,8 +1977,32 @@ export class DebugHub {
       similarity: await num("voice.echoSimilarity", ECHO_SIMILARITY),
       minChars: await num("voice.echoMinChars", ECHO_MIN_CHARS),
     };
-    this.echoConf = { at: t, on, conf };
+    let reportsOn = true;
+    try {
+      reportsOn = (await this.flagValue(ECHO_REPORTS_FLAG)) !== false;
+    } catch {}
+    const reports: EchoReportsConf = {
+      on: reportsOn,
+      similarity: await num("voice.echoPlaySimilarity", ECHO_PLAY_SIMILARITY),
+      slackMs: await num("voice.echoSlackMs", ECHO_SLACK_MS),
+      keepMs: await num("voice.echoPlayKeepMs", ECHO_PLAY_KEEP_MS),
+      showMax: Math.max(1, await num("voice.echoShowMax", ECHO_KEEP)),
+    };
+    this.echoConf = { at: t, on, conf, reports };
     return this.echoConf;
+  }
+
+  /**
+   * A page's play report (play-report.ts): his own pages only (no friend, no
+   * embedded page, no box), kept in memory for voice.echoPlayKeepMs.
+   */
+  private playFrame(ws: Socket, page: PageAtt, raw: string): boolean {
+    const f = parsePlayFrame(raw);
+    if (!f) return false;
+    if (page.thread !== OWNER_THREAD || page.embed || page.box) return true;
+    const keepMs = this.echoConf?.reports.keepMs ?? ECHO_PLAY_KEEP_MS;
+    this.plays.note(page.id ?? page.label, f, this.now(), keepMs);
+    return true;
   }
 
   /** The owner thread's newest lines, newest first. */
@@ -1946,7 +2023,10 @@ export class DebugHub {
    * The flag and config are asked only when a line could match at all (the
    * widest windows, the default similarity).
    */
-  private async echo(line: ChatMessage & { thread: string }): Promise<boolean> {
+  private async echo(
+    line: ChatMessage & { thread: string },
+    page?: { key: string; hubSpan?: { from: number; to: number } },
+  ): Promise<boolean> {
     const cur = { text: line.text, label: line.label, at: line.at };
     const widest: EchoConf = {
       windowMs: ECHO_WINDOW_MAX,
@@ -1954,14 +2034,35 @@ export class DebugHub {
       similarity: 0.5,
       minChars: 1,
     };
-    if (!echoMatch(await this.newestLines(ECHO_SCAN), cur, widest)) return false;
-    const { on, conf } = await this.echoOn();
-    if (!on) return false;
-    // Read again: other lines may have landed while the main Worker answered.
-    const hit = echoMatch(await this.newestLines(ECHO_SCAN), cur, conf);
-    if (!hit) return false;
-    const of = hit.entry[1];
     const t = this.now();
+    // The cheap first look: a play report near it in time, or a line it could echo.
+    const span = utteranceSpan(line.at, line.timing, page?.hubSpan);
+    this.plays.prune(t, this.echoConf?.reports.keepMs ?? ECHO_PLAY_KEEP_MS);
+    const nearPlays = this.plays.overlapping(span, ECHO_SLACK_MAX, t).length > 0;
+    const maybeLanded = !!echoMatch(await this.newestLines(ECHO_SCAN), cur, widest);
+    if (!nearPlays && !maybeLanded) return false;
+    const { on, conf, reports } = await this.echoOn();
+    if (!on) return false;
+    const report =
+      reports.on && nearPlays
+        ? echoReportMatch(
+            line.text,
+            this.plays.overlapping(span, reports.slackMs, t),
+            span,
+            { similarity: reports.similarity, minChars: conf.minChars, slackMs: reports.slackMs },
+            page?.key,
+          )
+        : undefined;
+    // Read again: other lines may have landed while the main Worker answered.
+    const landed = maybeLanded
+      ? echoMatch(await this.newestLines(ECHO_SCAN), cur, conf)
+      : undefined;
+    const verdict = echoVerdict({
+      ...(report ? { report } : {}),
+      ...(landed ? { landed, landedOf: landed.entry[1].id } : {}),
+      ...(line.speaker ? { speaker: line.speaker } : {}),
+    });
+    if (!verdict) return false;
     const kept: ChatMessage = {
       ...line,
       raw: line.text,
@@ -1970,9 +2071,14 @@ export class DebugHub {
         at: t,
         by: AUTO_POLISH_BY,
         reason: "echo",
-        kind: hit.kind,
-        of: of.id,
-        sim: Math.round(hit.sim * 1000) / 1000,
+        kind: verdict.kind,
+        of: verdict.of ?? "",
+        sim: verdict.sim,
+        layer: verdict.layer,
+        ...(verdict.voice ? { voice: verdict.voice } : {}),
+        ...(verdict.overlapMs !== undefined ? { overlapMs: verdict.overlapMs } : {}),
+        // Shown collapsed on his pages (flag voice.echo-reports); his own words twice stay hidden.
+        ...(reports.on && !verdict.hidden ? { shown: true as const } : {}),
       },
     };
     await this.ctx.storage.put(echoKey(line.id), kept);
@@ -1980,29 +2086,62 @@ export class DebugHub {
       ...((await this.ctx.storage.get<string[]>(ECHO_INDEX)) ?? []).filter((x) => x !== line.id),
       line.id,
     ];
-    for (const old of index.splice(0, Math.max(0, index.length - ECHO_KEEP)))
-      await this.ctx.storage.delete(echoKey(old));
+    const keep = reports.on ? reports.showMax : ECHO_KEEP;
+    const gone = index.splice(0, Math.max(0, index.length - keep));
+    for (const old of gone) await this.ctx.storage.delete(echoKey(old));
     await this.ctx.storage.put(ECHO_INDEX, index);
+    const of = landed && verdict.layer === "landed" ? landed.entry[1] : undefined;
     console.log(
       JSON.stringify({
         msg: "debug.echo",
         id: line.id,
-        of: of.id,
-        ofFrom: of.from,
-        kind: hit.kind,
-        sim: kept.echo?.sim,
-        gap: line.at - of.at,
-        head: head(line.text),
+        of: verdict.of,
+        ...(of ? { ofFrom: of.from, gap: line.at - of.at } : {}),
+        kind: verdict.kind,
+        layer: verdict.layer,
+        sim: verdict.sim,
+        ...(verdict.voice ? { voice: verdict.voice } : {}),
+        ...(verdict.overlapMs !== undefined ? { overlapMs: verdict.overlapMs } : {}),
+        // Numbers only for a report echo (docs/echo-suppression.md, "Data and privacy").
+        ...(verdict.layer === "landed" ? { head: head(line.text) } : {}),
       }),
     );
+    // His pages only: never a lane, a token listener, Li, polish, merge or the history.
+    if (kept.echo?.shown) this.toOwnerPages({ type: "echo", line: echoShown(kept) });
+    if (gone.length) this.toOwnerPages({ type: "echo-gone", ids: gone });
     return true;
+  }
+
+  /** A frame to every page of his thread (never a listener, never a page framed in another site). */
+  private toOwnerPages(m: unknown) {
+    for (const { ws, a } of this.pages(OWNER_THREAD)) if (!a.embed) send(ws, m);
+  }
+
+  /** A page that just joined: the echoes to show, when there are any and the flag is on. */
+  private async echoesTo(ws: Socket) {
+    if (!((await this.ctx.storage.get<string[]>(ECHO_INDEX)) ?? []).length) return;
+    const { on, reports } = await this.echoOn();
+    if (!on || !reports.on) return;
+    const lines = await this.shownEchoes();
+    if (lines.length) send(ws, { type: "echoes", lines });
+  }
+
+  /** The echoes kept to show collapsed (voice.echo-reports), oldest first: a page's snapshot. */
+  private async shownEchoes(): Promise<ChatMessage[]> {
+    const index = (await this.ctx.storage.get<string[]>(ECHO_INDEX)) ?? [];
+    const out: ChatMessage[] = [];
+    for (const id of index) {
+      const kept = await this.ctx.storage.get<ChatMessage>(echoKey(id));
+      if (kept?.echo?.shown) out.push(echoShown(kept));
+    }
+    return out;
   }
 
   /**
    * Undo an echo: the line kept aside is posted after all, as it was heard
    * (its echo and edit marks dropped). False when `id` is no kept echo.
    */
-  private async restoreEcho(id: string, by: string): Promise<boolean> {
+  private async restoreEcho(id: string, by: string, page?: PageAtt): Promise<boolean> {
     const kept = await this.ctx.storage.get<ChatMessage & { thread?: string }>(echoKey(id));
     if (!kept) return false;
     await this.ctx.storage.delete(echoKey(id));
@@ -2011,9 +2150,23 @@ export class DebugHub {
       ECHO_INDEX,
       index.filter((x) => x !== id),
     );
-    const { echo: _e, edited: _d, raw: _r, ...line } = kept;
-    console.log(JSON.stringify({ msg: "debug.echo-undo", id, by }));
+    const { echo: mark, edited: _d, raw: _r, ...line } = kept;
+    console.log(JSON.stringify({ msg: "debug.echo-undo", id, by, layer: mark?.layer }));
+    if (mark?.shown) this.toOwnerPages({ type: "echo-gone", ids: [id] });
     await this.post({ ...line, thread: OWNER_THREAD });
+    // "This was me" on his page: now it is his line, and Li may answer it (owner-ai.ts).
+    if (page && line.from === "owner")
+      await this.ownerAi.line(
+        {
+          id: line.id,
+          text: line.text,
+          at: line.at,
+          ...(line.to ? { to: line.to } : {}),
+          ...(line.speaker ? { speaker: line.speaker } : {}),
+          ...(line.source === "stt" ? { source: "stt" as const } : {}),
+        },
+        { page },
+      );
     return true;
   }
 
@@ -2322,7 +2475,7 @@ export class DebugHub {
   private async unmerge(ws: Socket, page: PageAtt, id: string) {
     const fail = (reason: string) => send(ws, { type: "error", error: reason, reason });
     if (page.thread !== OWNER_THREAD) return fail("only the owner's lines are merged");
-    if (await this.restoreEcho(id, page.label)) return;
+    if (await this.restoreEcho(id, page.label, page)) return;
     const kept = await this.keptChat(OWNER_THREAD);
     const at = kept.findIndex(([, x]) => x.id === id);
     const line = at < 0 ? undefined : kept[at][1];
@@ -3055,6 +3208,7 @@ export class DebugHub {
       text: x.text,
       ...(x.stt ? { stt: x.stt } : {}),
       ...(x.recheck ? { recheck: x.recheck } : {}),
+      ...(x.scene ? { scene: x.scene } : {}),
     }));
     const requestId = `auto:${newest.replace(/[^\w.-]/g, "-")}:${run.length}`.slice(0, 120);
     const t0 = this.now();
@@ -3393,6 +3547,8 @@ export class DebugHub {
           : undefined,
       ),
     );
+    // The read-aloud echoes kept to show collapsed (flag voice.echo-reports): his pages only.
+    if (thread === OWNER_THREAD && !embed) await this.echoesTo(ws);
     // Who is here (presence.ts): this page gets the list now.
     await this.presenceTo(thread, ws);
     this.broadcast(ws);
@@ -3972,6 +4128,8 @@ export class DebugHub {
     // A clock ping (sync-speak.ts): the hub's time, to any page; nothing else changes.
     const pong = clockPong(raw, this.now());
     if (pong) return send(ws, pong);
+    // A play report (play-report.ts): memory only, his own pages only; nothing is sent.
+    if (typeof raw === "string" && this.playFrame(ws, page, raw)) return;
     // An embedded page (another site) may only chat and say where it is:
     // no answers, no pairings, no results, no clips, no page errors.
     // The owner's box may also amend voice lines and tap ask cards, and only
@@ -4163,6 +4321,29 @@ export class DebugHub {
       );
       return this.broadcast(target.ws);
     }
+    if (m.type === "audio-sync-peers") {
+      // Lightweight same-account peer listing; never touches storage or D1.
+      send(ws, {
+        type: "audio-sync-peers",
+        selfId: page.id ?? "",
+        peers: this.pages(page.thread, ws)
+          .filter((p) => !p.a.embed && !!p.a.id)
+          .map((p) => ({ id: p.a.id!, label: p.a.label })),
+      } satisfies AudioSyncPeersEvent);
+      return;
+    }
+    if (m.type === "audio-sync-signal") {
+      // Ephemeral WebRTC signaling relay strictly within the same authenticated account.
+      if (!page.id || m.to === page.id) return;
+      const target = this.pages(page.thread, ws).find((p) => !p.a.embed && p.a.id === m.to);
+      if (!target) return;
+      send(target.ws, {
+        type: "audio-sync-signal",
+        from: page.id,
+        signal: m.signal,
+      } satisfies AudioSyncSignalEvent);
+      return;
+    }
     if (m.type === "page-error") {
       // The owner's pages only: a friend's page never reports one (and is
       // ignored if it does). Forwarded live to the owner-approved listeners,
@@ -4242,20 +4423,23 @@ export class DebugHub {
           if (
             m.source === "stt" &&
             !m.recheck &&
-            (await this.echo({
-              id: m.id,
-              from: "owner",
-              label: page.label,
-              text: m.text,
-              at: t,
-              thread: OWNER_THREAD,
-              source: "stt",
-              ...(page.sender ? { sender: page.sender } : {}),
-              ...(m.to ? { to: m.to } : {}),
-              ...(m.timing ? { timing: m.timing } : {}),
-              ...(m.stt ? { stt: m.stt } : {}),
-              ...(speaker ? { speaker } : {}),
-            }))
+            (await this.echo(
+              {
+                id: m.id,
+                from: "owner",
+                label: page.label,
+                text: m.text,
+                at: t,
+                thread: OWNER_THREAD,
+                source: "stt",
+                ...(page.sender ? { sender: page.sender } : {}),
+                ...(m.to ? { to: m.to } : {}),
+                ...(m.timing ? { timing: m.timing } : {}),
+                ...(m.stt ? { stt: m.stt } : {}),
+                ...(speaker ? { speaker } : {}),
+              },
+              { key: page.id ?? page.label, ...(m.hubSpan ? { hubSpan: m.hubSpan } : {}) },
+            ))
           )
             return false;
           // Voice lines only: a typed line never asks the flag, never merges, never waits.
@@ -4350,7 +4534,7 @@ export class DebugHub {
             m.speakerProof,
             heard,
             page.thread,
-            this.speakerPub,
+            this.speakerKeys,
             (uids, until) => this.burnProofs(uids, until),
             this.now(),
           ).then(spoken);
@@ -4567,7 +4751,8 @@ export class DebugHub {
     const lines = (await this.history(thread))
       .filter((m) => m.from === (owner ? "owner" : "friend") || m.from === "agent")
       .slice(-HISTORY_LINES)
-      .map((m) => ({ role: m.from === "agent" ? "assistant" : "user", text: m.text }) as const);
+      // Li's own lines as its own; every other agent's attributed, never as Li's (partner-lines.ts).
+      .map(partnerHistoryLine);
     // The newest lines within HISTORY_MAX_CHARS (the latest one always).
     const history: typeof lines = [];
     let chars = 0;
@@ -4582,7 +4767,9 @@ export class DebugHub {
         ? { path: context?.path ?? scene?.path ?? path }
         : {}),
       ...(context?.title || scene?.title ? { title: context?.title ?? scene?.title } : {}),
+      ...(context?.host ? { host: context.host } : {}),
       ...(context?.selection ? { selection: context.selection } : {}),
+      ...(context?.location ? { selectionLocation: JSON.stringify(context.location) } : {}),
       ...(scene?.screen ? { screen: scene.screen } : {}),
     };
     const pageChars = Object.values(pageInfo).reduce((n, v) => n + (v?.length ?? 0), 0);

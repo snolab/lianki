@@ -27,9 +27,9 @@ export type PrefRow = { value: unknown; hlc: PrefHlc };
 export type PrefBinding = {
   key: string;
   /** The local value, or undefined when it was never set on this device. */
-  get(): unknown;
+  get(userId?: string | null): unknown;
   /** Apply a (validated) server value locally. */
-  set(value: unknown): void;
+  set(value: unknown, userId?: string | null): void;
   /** The value when nothing is set. Never uploaded by the first sync. */
   fallback: unknown;
 };
@@ -74,6 +74,8 @@ export type PrefSyncRecord = {
 export const SYNC_KEY = "lk:pref-sync";
 /** Fired (on globalThis) after a local preference was written; the engine scans. */
 export const PREF_WRITE_EVENT = "lk:pref-write";
+/** Bind each PATCH to the same account snapshot as its captured operations. */
+export const PREF_EXPECTED_USER_HEADER = "x-lk-prefs-user";
 /** Fired (on globalThis) after a server value was applied locally; detail: {key}. */
 export const PREF_APPLIED_EVENT = "lk:pref-applied";
 
@@ -163,9 +165,9 @@ export function createPrefSync(opts: PrefSyncOptions) {
   }
 
   const byKey = () => new Map(opts.bindings().map((b) => [b.key, b]));
-  const read = (b: PrefBinding) => {
+  const read = (b: PrefBinding, userId: string | null) => {
     try {
-      return b.get();
+      return b.get(userId);
     } catch {
       return undefined;
     }
@@ -178,11 +180,11 @@ export function createPrefSync(opts: PrefSyncOptions) {
       return false;
     }
     try {
-      b.set(v);
+      b.set(v,r.userId);
     } catch {
       return false;
     }
-    r.seen[b.key] = json(read(b));
+    r.seen[b.key] = json(read(b,r.userId));
     r.hlc[b.key] = row.hlc;
     observe(r, row.hlc);
     const out = r.outbox[b.key];
@@ -205,7 +207,7 @@ export function createPrefSync(opts: PrefSyncOptions) {
     const r = load();
     let changed = 0;
     for (const b of opts.bindings()) {
-      const v = read(b);
+      const v = read(b,r.userId);
       const cur = json(v);
       const seen = r.seen[b.key];
       if (seen === undefined) {
@@ -265,6 +267,12 @@ export function createPrefSync(opts: PrefSyncOptions) {
             r = load();
           }
         }
+        // A second GET, or another tab, may have switched accounts while we
+        // awaited the response. Never label one account's rows as another's.
+        if (body.user !== r.userId) {
+          log("prefs-account-response-stale");
+          return;
+        }
         merge(r, body.prefs ?? {});
         r.cursor = Math.max(r.cursor, Number(body.cursor) || 0);
         save(r);
@@ -294,7 +302,7 @@ export function createPrefSync(opts: PrefSyncOptions) {
           continue;
         }
         if (out) continue;
-        const v = read(b);
+        const v = read(b,r.userId);
         if (v === undefined || json(v) === json(b.fallback)) continue;
         const value = opts.validate(b.key, v);
         if (value === undefined) continue;
@@ -327,7 +335,7 @@ export function createPrefSync(opts: PrefSyncOptions) {
         const res = await opts.fetch(endpoint, {
           method: "PATCH",
           credentials: "same-origin",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", [PREF_EXPECTED_USER_HEADER]: r0.userId },
           body: JSON.stringify({ ops }),
           keepalive,
         });

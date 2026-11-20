@@ -17,13 +17,16 @@ import {
   announceChatAttach,
   createSelectionMemory,
   oneLine,
+  isSensitive,
 } from "./attach";
+import { selectionLocation } from "./selection-location";
 import { BAR_CONTROL } from "./bar-geometry";
 import { HistoryIcon, Icon, type IconName, TreeIcon } from "./icons";
 import type { ChatContext, ChatStrings } from "./wire";
 
 type Memory = ReturnType<typeof createSelectionMemory>;
 const MEMORY = "__lkPageSelection";
+const MEMORY_VERSION = 2;
 
 /** The chat's own elements: its box (and anything portalled with the mark) and an embed's shadow host. */
 const CHAT_SELECTOR = CHAT_FENCE;
@@ -40,10 +43,11 @@ function pageSelection(embedded: boolean, scope?: string): Memory | null {
   const g = globalThis as unknown as Record<string, unknown>;
   const ownerKey = `${MEMORY}Scope`;
   const stopKey = `${MEMORY}Stop`;
-  if (g[MEMORY] && g[ownerKey] === scope) return g[MEMORY] as Memory;
+  if (g[MEMORY] && g[ownerKey] === scope && g[`${MEMORY}Version`] === MEMORY_VERSION) return g[MEMORY] as Memory;
   // Account changes start with no remembered private selection; a hot swap keeps it.
   (g[stopKey] as (() => void) | undefined)?.();
-  if (g[MEMORY]) {
+  const updating = !!g[MEMORY] && g[ownerKey] === scope;
+  if (g[MEMORY] && !updating) {
     const selection = document.getSelection();
     if (selection && !inChat(selection.anchorNode) && !inChat(selection.focusNode))
       selection.removeAllRanges();
@@ -51,6 +55,7 @@ function pageSelection(embedded: boolean, scope?: string): Memory | null {
   const m = createSelectionMemory({
     doc: document as never,
     inChat,
+    locate: () => selectionLocation(document, el => inChat(el) || isSensitive(el) || !!el.closest("[data-lk-private-screen]")),
     where: () => ({
       path: location.pathname,
       title: document.title,
@@ -59,7 +64,9 @@ function pageSelection(embedded: boolean, scope?: string): Memory | null {
     }),
   });
   g[stopKey] = m.start();
+  if (updating) m._events.onChange();
   g[MEMORY] = m;
+  g[`${MEMORY}Version`] = MEMORY_VERSION;
   g[ownerKey] = scope;
   return m;
 }
@@ -519,7 +526,6 @@ function Quote({ ctx, t, testid }: { ctx: ChatContext; t: ChatStrings; testid: s
       data-testid={testid}
       aria-label={t.attachQuoted}
       aria-expanded={whole}
-      title={ctx.title ? `${ctx.title}${ctx.path ? ` · ${ctx.path}` : ""}` : ctx.path}
       onPointerDown={keep}
       onClick={() => setWhole((w) => !w)}
       className={`pointer-events-auto block min-w-0 flex-1 text-start text-gray-600 dark:text-gray-300 ${whole ? "max-h-40 overflow-y-auto whitespace-pre-wrap break-words" : "truncate"}`}

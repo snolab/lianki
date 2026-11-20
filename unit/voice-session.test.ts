@@ -23,6 +23,7 @@ import {
   sentences,
   speakHere,
   speechEnabled,
+  respectReadoutPreference,
   voice,
 } from "@lianki/debug-chat/voice";
 import { RESUME_REWIND_S, createCloudOut } from "@lianki/debug-chat/voice-out";
@@ -170,21 +171,67 @@ describe("voice session: the focus rule (mic off)", () => {
     expect(h.v.reply("  \n ")).toBe(false);
   });
 
-  it("the mic overrides it, forcing the speaker on; the setting is back when the mic stops", () => {
+  it("the microphone never overrides a manual mute", () => {
     const h = harness({ enabled: false, here: false });
     expect(h.v.readAloud()).toBe(false);
     h.v.setMic(true);
     h.v.setMic(true); // no change
-    expect(h.v.readAloud()).toBe(true);
-    expect(h.v.shouldSpeak()).toBe(true);
-    expect(h.v.reply("Hands free. Two sentences.")).toBe(true);
-    expect(h.texts()).toEqual(["Hands free."]);
-    // Mic off: the focus rule is back, so what it would not read stops.
+    expect(h.v.readAloud()).toBe(false);
+    expect(h.v.shouldSpeak()).toBe(false);
+    expect(h.v.reply("Hands free. Two sentences.")).toBe(false);
+    expect(h.texts()).toEqual([]);
+    expect(h.v.state().mic).toBe(true);
     h.v.setMic(false);
     expect(h.v.readAloud()).toBe(false);
     expect(h.v.state()).toMatchObject({ mic: false, queued: 0, speaking: false });
-    expect(h.cancels()).toBe(1);
+    expect(h.cancels()).toBe(0);
     expect(h.v.reply("Silent again.")).toBe(false);
+  });
+
+  it("mute stops the current and queued replies while capture remains on; unmute works without restarting the mic", () => {
+    const h = harness({ enabled: true, here: false });
+    h.v.setMic(true);
+    expect(h.v.reply("First sentence. Queued sentence.")).toBe(true);
+    h.flags.enabled = false;
+    h.v.unvoice();
+    h.v.stop();
+    expect(h.v.state()).toMatchObject({ mic: true, queued: 0, speaking: false });
+    expect(h.cancels()).toBe(1);
+    h.end();
+    expect(h.texts()).toEqual(["First sentence."]);
+    expect(h.v.reply("Another muted reply.")).toBe(false);
+    h.flags.enabled = true;
+    expect(h.v.reply("Unmuted reply.")).toBe(true);
+    expect(h.texts()).toEqual(["First sentence.", "Unmuted reply."]);
+    h.flags.enabled = false;
+    h.v.stop();
+    h.v.setMic(false);
+    h.v.setMic(true);
+    expect(h.v.readAloud()).toBe(false);
+    expect(h.v.reply("Still muted after a mic restart.")).toBe(false);
+  });
+
+  it("hot loading guards an old session without replacing its active microphone or subscribers", () => {
+    const h = harness({ enabled: false });
+    h.v.setMic(true);
+    // The previous version forced both methods on while the mic was on.
+    h.v.shouldSpeak = () => true;
+    h.v.readAloud = () => true;
+    let notices = 0;
+    const off = h.v.subscribe(() => {
+      notices++;
+    });
+    const v = respectReadoutPreference(h.v, () => h.flags.enabled);
+    expect(v).toBe(h.v);
+    expect(respectReadoutPreference(v, () => true)).toBe(v);
+    expect(v.state().mic).toBe(true);
+    expect(v.readAloud()).toBe(false);
+    expect(v.reply("Muted old session.")).toBe(false);
+    h.flags.enabled = true;
+    expect(v.reply("Old session unmuted.")).toBe(true);
+    expect(notices).toBeGreaterThan(0);
+    off();
+    v.stop();
   });
 
   it("mic off while the focus rule holds: the reading goes on", () => {

@@ -170,6 +170,14 @@ export const FLAGS = {
     audience: "owner",
     group: "stt",
   },
+  // Recording: one of the exceptions to "new flags ship on" (docs/meetings.md, "The gate").
+  "meetings.record": {
+    description:
+      "会议录制（/my/meetings，docs/meetings.md）：在电脑上的 Chrome / Edge 里点「开始」，选一个标签页或屏幕共享，录下画面、你的麦克风和被共享标签页的声音，每 30 秒一段加密上传到你的账号，在 /my/meetings 回放、下载、删除。只在你亲手点「开始」后才录；录制时每个 Lianki 页面底部有「正在录制」条，聊天麦克风暂停。只对有 dev 权限的账号开放。关闭（默认）= /my/meetings 和 /api/my/meetings 都不存在（404），正在录的会议在下一段上传时停下；已存的会议留着但读不到，保留期照样生效。",
+    default: false,
+    audience: "owner",
+    group: "stt",
+  },
   "stt.polish": {
     description:
       "语音消息的自动润色：打开（默认）时，助手可以按上下文（最近的消息和助手的回复、当前页面、屏幕上的词、选中的文字）改你语音消息里的错字、标点、被截断的词和漏掉的小词（的、了、在、里这类），不改原意，最近 15 条语音都能改；原文一直保留，点 ✨ 可看。关闭 = 助手不能再改你的语音消息，聊天里只留识别原文。",
@@ -190,9 +198,24 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  "voice.speaker-avatars": {
+    description:
+      "每个声音一个头像：打开（默认）时，Li 聊天里不是你本人的语音行，按 Mac 声纹服务器给的声音分组（今天听到的第一个陌生声音 A、第二个 B……，家人声纹则是「家人的声音」）各用自己的头像：字母或小房子，颜色各不相同（不用你的印章红）。分组只在 Mac 内存里，每天本地午夜和重启后从 A 重新开始。调色板和最低相似度在 /dev/config 的 voice.clusterHues、voice.clusterMinScore。关闭 = 照旧，所有别人的声音共用一个「另一个声音」头像。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   "voice.echo-dedupe": {
     description:
       "回声去重：两台手机同时开着麦克风时，同一句话被另一台设备再识别一次（超过两麦合并的几秒、或者识别得稍有不同），或者 Li 朗读的助手回复、你润色后的读回被另一台手机听到又转成文字，都会被当成回声：不显示、不朗读、不转给助手，原文留在 hub 里可以撤销（edited.by 为 auto，原因 echo）。时间窗和相似度在 /dev/config 的 voice.echo* 里。关闭 = 照旧，每条都当作你说的新话。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
+  // docs/echo-suppression.md, layer (b) and the collapsed rows (owner "go", 2026-11-20).
+  "voice.echo-reports": {
+    description:
+      "朗读回声（跨设备）：打开（默认，只对你）后，你的每台设备朗读时（Li 读回复、读回你润色后的话、/words 读单词、阅读器朗读）都告诉 hub「正在读哪句、从几点到几点」；另一台设备的麦克风同一时间听到、内容又落在这几句里，就当作朗读回声：不转给助手、Li 不回、不润色、不朗读、不进聊天记录，只在聊天里折叠成一行「朗读声被录回」，点开能看全文，点「这是我说的」就照常发出。读过的句子只在 hub 内存里留 2 分钟（/dev/config 的 voice.echoPlayKeepMs）。相似度和时间余量在 voice.echoPlaySimilarity、voice.echoSlackMs。关闭 = 和以前完全一样：只按助手回复到达的时间判断，回声直接隐藏。",
     default: true,
     group: "stt",
     audience: "owner",
@@ -246,6 +269,14 @@ export const FLAGS = {
     default: false,
     group: "stt",
     audience: "owner",
+  },
+  // No `audience`: on, any account whose token holds mic:polish (or its session) may call it.
+  "mic.polish-api": {
+    description:
+      "麦克风润色接口（docs/mic-polish-api.md）：打开后 POST /api/mic/polish 可用——otoji.org/mic 的用户脚本通过 otoji 的服务器，用带「mic:polish」权限的 Lianki API 令牌（或在 lianki.com 上登录的会话），把一段语音识别文字交给我们的 Workers AI 润色（改错字、标点，不加内容）。每次先从调用者自己的积分预扣、按实际用量结算、失败全退（管理员也一样扣）；每个账号每个 UTC 日最多 mic.polishDailyMax 次，每个令牌每分钟最多 mic.polishPerMinute 次，大小上限在 /dev/config 的 mic.polish*。关闭（默认）= 接口不存在（404），otoji 端只能用原文。",
+    default: false,
+    requires: ["workers-ai.credentials", "ai-credits.migration"],
+    group: "ai",
   },
   "partner.ai-reply": {
     description:
@@ -359,6 +390,13 @@ export const FLAGS = {
     description:
       "多台设备同时朗读：你有两台或更多设备同时连着、都在读 Li 的话时，同一句话尽量在同一时刻开始读（相差约 0.2 秒以内）。先收到的设备等几百毫秒（/dev/config 的 voice.syncLeadMs，默认 300），等慢的设备也收到；最多等 voice.syncMaxWaitMs（默认 1.5 秒），已经晚了的设备马上读。只有一台设备时从不等待。润色后的回读也一样。打开（默认，只对你）；关闭 = 照旧，每台设备收到就读。",
     default: true,
+    group: "stt",
+    audience: "owner",
+  },
+  "voice.audio-sync": {
+    description:
+      "多端毫秒级语音同步（WebRTC + Web Audio + 声学延迟检测）：打开后，同账号在线设备之间通过 WebRTC DataChannel 做 NTP 时钟对齐，并用 AudioBufferSourceNode 统一定时起播，配合麦克风声学相关性自动补偿不同设备（如 Windows 外放与 Mac 蓝牙/预览代理）的硬件延迟差，让多台设备听起来像同一个声音。关闭（默认）= 仅用原有的 voice.sync-speak 粗同步。",
+    default: false,
     group: "stt",
     audience: "owner",
   },

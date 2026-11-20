@@ -156,6 +156,18 @@ export type GainLike = {
   };
   connect(n: unknown): unknown;
 };
+export type AudioBufferLike = {
+  duration: number;
+};
+export type BufferSourceLike = {
+  buffer: AudioBufferLike | null;
+  playbackRate?: { value: number };
+  onended: (() => void) | null;
+  connect(n: unknown): unknown;
+  start(when?: number, offset?: number, duration?: number): void;
+  stop(when?: number): void;
+  disconnect?(): void;
+};
 export type CtxLike = {
   currentTime: number;
   destination: unknown;
@@ -163,6 +175,8 @@ export type CtxLike = {
   resume?(): Promise<void>;
   createGain(): GainLike;
   createMediaElementSource(el: unknown): { connect(n: unknown): unknown };
+  decodeAudioData?(data: ArrayBuffer): Promise<AudioBufferLike>;
+  createBufferSource?(): BufferSourceLike;
 };
 
 /**
@@ -224,6 +238,40 @@ export function cloudSkip(text: string, lang: string): string | null {
   return null;
 }
 
+export type ScheduledPlayOpts = {
+  buffer: AudioBufferLike;
+  /** AudioContext.currentTime at which to start (default: ctx.currentTime). */
+  when?: number;
+  /** Buffer offset in seconds (default: 0). */
+  offset?: number;
+  volume: number;
+  rate?: number;
+};
+
+export type DecodedClip = {
+  clipKey: string;
+  buffer: AudioBufferLike;
+  decodeMs: number;
+  fellBack: boolean;
+  shift: number;
+};
+
+export type DecodeClipInput = {
+  text: string;
+  written?: string;
+  lang: string;
+  voice?: VoiceId;
+  pick?: LinePick;
+};
+
+/** Compute the canonical cache/sync key for a clip request. */
+export const clipCacheKey = (
+  text: string,
+  lang: string,
+  speaker?: string,
+  provider?: string,
+): string => `${provider ?? lang}\n${speaker ?? ""}\n${text}`;
+
 /**
  * Cloud replies: one `<audio>` element for the whole page (unlocked once in
  * a gesture, so iOS lets later sentences play), routed through the
@@ -231,7 +279,13 @@ export function cloudSkip(text: string, lang: string): string | null {
  * calls `onfail` (the session reads it with speechSynthesis instead).
  */
 export function createCloudOut(d: {
-  fetch: (url: string) => Promise<{ ok: boolean; status: number; headers: { get(k: string): string | null }; blob(): Promise<Blob> }>;
+  fetch: (url: string) => Promise<{
+    ok: boolean;
+    status: number;
+    headers: { get(k: string): string | null };
+    blob(): Promise<Blob>;
+    arrayBuffer?: () => Promise<ArrayBuffer>;
+  }>;
   element: () => ElementLike;
   /** A second element, never routed through the context: ElevenLabs previews (absent: none play). */
   plain?: () => ElementLike;
@@ -239,14 +293,21 @@ export function createCloudOut(d: {
   toUrl?: (b: Blob) => string;
   revoke?: (u: string) => void;
   setTimer?: (f: () => void, ms: number) => unknown;
+  now?: () => number;
   /** The clone server's base URL (null: off on this device); absent: polish-readback.ts cloneTtsBase. */
   cloneBase?: () => string | null;
   /** How long a clone clip may take (ms); absent: polish-readback.ts cloneTimeoutMs. */
   cloneTimeout?: () => number;
-}): CloudOut & { unlock(): void; gain(): GainLike | null } {
+}): CloudOut & {
+  unlock(): void;
+  gain(): GainLike | null;
+  decodeClip(s: DecodeClipInput): Promise<DecodedClip>;
+  playScheduled(opts: ScheduledPlayOpts, ev: PlayEvents): Playback;
+} {
   const toUrl = d.toUrl ?? ((b) => URL.createObjectURL(b));
   const revoke = d.revoke ?? ((u) => URL.revokeObjectURL(u));
   const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
+  const nowMs = d.now ?? (() => Date.now());
   const cloneBase = d.cloneBase ?? cloneTtsBase;
   const cloneTimeout = d.cloneTimeout ?? cloneTimeoutMs;
   /**
@@ -264,7 +325,9 @@ export function createCloudOut(d: {
       ctx.resume!().then(check, check);
     });
   };
+  const clipBlobs = new Map<string, Promise<{ blob: Blob; fellBack: boolean; heard: { name: string } }>>();
   const clips = new Map<string, Promise<string>>();
+  const decodedClips = new Map<string, Promise<{ buffer: AudioBufferLike; decodeMs: number }>>();
   /** Clips that came back in the route's one voice though a speaker was asked for. */
   const fellBack = new Set<string>();
   /** The concrete voice of each clip (blob URL): a rotated Kokoro name, a provider id, aura:/melo:. */
@@ -272,8 +335,34 @@ export function createCloudOut(d: {
   let el: ElementLike | null = null;
   let gain: GainLike | null = null;
   let wired = false;
+  let activeSource: BufferSourceLike | null = null;
   /** Bumped by every play and stop: the element's events for older ones are ignored. */
   let turn = 0;
+
+  const stopActiveSource = () => {
+    const src = activeSource;
+    if (!src) return;
+    activeSource = null;
+    src.onended = null;
+    try {
+      src.stop();
+      src.disconnect?.();
+    } catch {}
+  };
+
+  const ensureGain = (): GainLike | null => {
+    if (gain) return gain;
+    const ctx = d.ctx();
+    if (!ctx) return null;
+    try {
+      const g = ctx.createGain();
+      g.connect(ctx.destination);
+      gain = g;
+    } catch {
+      gain = null;
+    }
+    return gain;
+  };
 
   const element = () => {
     if (!el) {
@@ -286,10 +375,8 @@ export function createCloudOut(d: {
       if (ctx) {
         wired = true;
         try {
-          const g = ctx.createGain();
-          ctx.createMediaElementSource(el).connect(g);
-          g.connect(ctx.destination);
-          gain = g;
+          const g = ensureGain();
+          if (g) ctx.createMediaElementSource(el).connect(g);
         } catch {
           gain = null; // plays unrouted: no ducking on iOS
         }
@@ -298,18 +385,15 @@ export function createCloudOut(d: {
     return el;
   };
 
-  /** `speaker`: a lane's own cloud voice (voices.ts cloudVoice); absent = the language's one voice. */
-  /** `provider`: a provider voice id (google:, azure:), fetched from its own route. */
-  const fetchClip = (
+  const fetchClipBlob = (
     text: string,
     lang: string,
     speaker?: string,
     provider?: string,
-  ): Promise<string> => {
-    // A pin changes what `neko-cycle` asks for: a clip fetched before it is not reused.
+  ): Promise<{ blob: Blob; fellBack: boolean; heard: { name: string } }> => {
     const pin = provider === "local:neko-cycle" ? pinnedLocalVoice() : null;
-    const key = `${provider ?? lang}${pin ? `@${pin}` : ""}\n${speaker ?? ""}\n${text}`;
-    const have = clips.get(key);
+    const key = clipCacheKey(text, lang, speaker, pin && provider ? `${provider}@${pin}` : provider);
+    const have = clipBlobs.get(key);
     if (have) return have;
     const base = lang.split(/[-_]/)[0]!;
     const local = provider?.startsWith("local:") ? localTts(provider.slice(6), text) : null;
@@ -323,7 +407,6 @@ export function createCloudOut(d: {
         : provider
           ? providerTtsUrl(provider, text)
           : ttsUrl(text, base, speaker);
-    // The clone takes seconds per sentence on his Mac: one that never answers is given up on.
     const got = clone
       ? new Promise<Awaited<ReturnType<typeof d.fetch>>>((ok, no) => {
           const ms = cloneTimeout();
@@ -332,21 +415,43 @@ export function createCloudOut(d: {
         })
       : d.fetch(url);
     const p = got.then(async (r) => {
-      if (!r.ok) throw new Error(`http ${r.status}${r.headers.get("X-Voice") ? ` ${r.headers.get("X-Voice")}` : ""}`);
-      const url = toUrl(await r.blob());
-      // The speaker was asked for but the route answered with its one voice (it fell back).
-      // No X-Voice at all (hidden by CORS): the route did not say, so it is not taken as one.
+      if (!r.ok)
+        throw new Error(`http ${r.status}${r.headers.get("X-Voice") ? ` ${r.headers.get("X-Voice")}` : ""}`);
+      const blob = await r.blob();
       const said = r.headers.get("X-Voice");
-      if (speaker && said !== null && said !== AURA_VOICE) fellBack.add(url);
-      // The voice this clip is in, for the line's details (voice-heard.ts).
-      clipVoice.set(
-        url,
-        local
-          ? local.heard
-          : clone
-            ? { name: CLONE_VOICE_NAME }
-            : { name: provider ?? (speaker && !fellBack.has(url) ? `aura:${speaker}` : `melo:${base}`) },
-      );
+      const fb = Boolean(speaker && said !== null && said !== AURA_VOICE);
+      const heard = local
+        ? local.heard
+        : clone
+          ? { name: CLONE_VOICE_NAME }
+          : { name: provider ?? (speaker && !fb ? `aura:${speaker}` : `melo:${base}`) };
+      return { blob, fellBack: fb, heard };
+    });
+    clipBlobs.set(key, p);
+    p.catch(() => clipBlobs.delete(key));
+    if (clipBlobs.size > CLIP_CACHE) {
+      const oldest = clipBlobs.keys().next().value;
+      if (oldest !== undefined) clipBlobs.delete(oldest);
+    }
+    return p;
+  };
+
+  /** `speaker`: a lane's own cloud voice (voices.ts cloudVoice); absent = the language's one voice. */
+  /** `provider`: a provider voice id (google:, azure:), fetched from its own route. */
+  const fetchClip = (
+    text: string,
+    lang: string,
+    speaker?: string,
+    provider?: string,
+  ): Promise<string> => {
+    const pin = provider === "local:neko-cycle" ? pinnedLocalVoice() : null;
+    const key = clipCacheKey(text, lang, speaker, pin && provider ? `${provider}@${pin}` : provider);
+    const have = clips.get(key);
+    if (have) return have;
+    const p = fetchClipBlob(text, lang, speaker, provider).then(({ blob, fellBack: fb, heard }) => {
+      const url = toUrl(blob);
+      if (fb) fellBack.add(url);
+      clipVoice.set(url, heard);
       return url;
     });
     clips.set(key, p);
@@ -465,6 +570,146 @@ export function createCloudOut(d: {
     } else if (el) el.volume = level;
   };
 
+  const resolveClipRequest = (s: DecodeClipInput) => {
+    const lane = wanted(s.lang, s.voice, s.pick);
+    const base = lane.provider ? wanted(s.lang, s.voice) : lane;
+    let used = lane;
+    const keyFor = (w: typeof lane, txt: string) =>
+      clipCacheKey(txt, w.provider ? w.lang : w.lang.split(/[-_]/)[0], w.speaker, w.provider);
+    const fetchUsed = (): Promise<{
+      clipKey: string;
+      blob: Blob;
+      fellBack: boolean;
+      used: typeof lane;
+    }> => {
+      const ownVoice = () => {
+        used = base;
+        const skip = cloudSkip(s.text, base.lang);
+        if (skip) return Promise.reject(new Error(skip));
+        const clipKey = keyFor(base, s.text);
+        return fetchClipBlob(s.text, base.lang, base.speaker).then((r) => ({
+          ...r,
+          clipKey,
+          used,
+        }));
+      };
+      if (lane.provider) {
+        const said = s.written ?? s.text;
+        if (providerSkip(said)) return ownVoice();
+        const clipKey = keyFor(lane, said);
+        return fetchClipBlob(said, lane.lang, undefined, lane.provider)
+          .then((r) => ({ ...r, clipKey, used }))
+          .catch(ownVoice);
+      }
+      const skip = cloudSkip(s.text, lane.lang);
+      if (skip) return Promise.reject(new Error(skip));
+      const clipKey = keyFor(lane, s.text);
+      return fetchClipBlob(s.text, lane.lang, lane.speaker).then((r) => ({
+        ...r,
+        clipKey,
+        used,
+      }));
+    };
+    return { lane, fetchUsed };
+  };
+
+  const decodeClip = async (s: DecodeClipInput): Promise<DecodedClip> => {
+    const ctx = d.ctx();
+    if (!ctx?.decodeAudioData) throw new Error("no decodeAudioData");
+    const { lane, fetchUsed } = resolveClipRequest(s);
+    const t0 = nowMs();
+    const { clipKey, blob, fellBack: fb, used } = await fetchUsed();
+    let p = decodedClips.get(clipKey);
+    if (!p) {
+      p = blob.arrayBuffer().then(async (ab) => {
+        const buffer = await ctx.decodeAudioData!(ab);
+        return { buffer, decodeMs: Math.max(0, nowMs() - t0) };
+      });
+      decodedClips.set(clipKey, p);
+      p.catch(() => decodedClips.delete(clipKey));
+      if (decodedClips.size > CLIP_CACHE) {
+        const oldest = decodedClips.keys().next().value;
+        if (oldest !== undefined) decodedClips.delete(oldest);
+      }
+    }
+    const { buffer, decodeMs } = await p;
+    const shift =
+      fb && (!s.pick || used !== lane) ? VOICES[s.voice ?? "main"].shift : used.shift;
+    return { clipKey, buffer, decodeMs, fellBack: fb, shift };
+  };
+
+  const scheduleBuffer = (
+    opts: ScheduledPlayOpts,
+    ev: PlayEvents,
+    me: number,
+    live: () => boolean,
+  ): Playback => {
+    const fail = (why: string) => void Promise.resolve().then(() => live() && ev.onfail?.(why));
+    let startCtxTime = 0;
+    let startOffsetSec = Math.max(0, opts.offset ?? 0);
+    let startRate = opts.rate ?? 1;
+    let started = false;
+    const pb: Playback = {
+      route: "audio",
+      stop() {
+        if (!live()) return {};
+        turn++;
+        const ctx = d.ctx();
+        stopActiveSource();
+        if (!started || !ctx) return { at: startOffsetSec };
+        const elapsed = Math.max(0, (ctx.currentTime - startCtxTime) * startRate);
+        return { at: Math.max(0, startOffsetSec + elapsed - RESUME_REWIND_S) };
+      },
+      volume: (level, ms) => live() && ramp(level, ms),
+    };
+    const ctx = d.ctx();
+    if (!ctx?.createBufferSource) {
+      fail("no AudioBufferSourceNode");
+      return pb;
+    }
+    const startNow = () => {
+      if (!live()) return;
+      ensureGain();
+      setLevel(opts.volume);
+      const src = ctx.createBufferSource!();
+      activeSource = src;
+      src.buffer = opts.buffer;
+      startRate = opts.rate ?? 1;
+      if (src.playbackRate) src.playbackRate.value = startRate;
+      src.connect(gain ?? ctx.destination);
+      src.onended = () => {
+        if (activeSource === src) activeSource = null;
+        if (live()) ev.onend();
+      };
+      const nowCtx = ctx.currentTime;
+      const when = Math.max(nowCtx, opts.when ?? nowCtx);
+      startCtxTime = when;
+      startOffsetSec = Math.max(0, opts.offset ?? 0);
+      started = true;
+      src.start(when, startOffsetSec);
+      const delayMs = Math.max(0, (when - nowCtx) * 1000);
+      if (delayMs === 0) {
+        ev.onstart?.();
+      } else {
+        setTimer(() => {
+          if (live()) ev.onstart?.();
+        }, delayMs);
+      }
+    };
+    ensureGain();
+    if (!ctx.resume || ctx.state === undefined || ctx.state === "running") {
+      startNow();
+    } else {
+      ctxReady().then((stuck) => {
+        if (!live()) return;
+        if (stuck === "closed") return ev.onfail?.("audio context closed");
+        if (stuck) return ev.onfail?.(`play NotAllowedError (audio context ${stuck})`);
+        startNow();
+      });
+    }
+    return pb;
+  };
+
   return {
     unlock() {
       // In a gesture: an element that has played once may play later without one (iOS).
@@ -482,6 +727,13 @@ export function createCloudOut(d: {
       }
     },
     gain: () => gain,
+    decodeClip,
+    playScheduled(opts: ScheduledPlayOpts, ev: PlayEvents): Playback {
+      const me = ++turn;
+      el?.pause();
+      stopActiveSource();
+      return scheduleBuffer(opts, ev, me, () => me === turn);
+    },
     prepare(text, lang, voice, pick, written) {
       if (pick?.kind === "eleven") return;
       const w = wanted(lang, voice, pick);
@@ -490,14 +742,20 @@ export function createCloudOut(d: {
         if (!providerSkip(said)) fetchClip(said, w.lang, undefined, w.provider).catch(ignore);
       } else if (!cloudSkip(text, w.lang)) fetchClip(text, w.lang, w.speaker).catch(ignore);
     },
-    play(s, ev: PlayEvents): Playback {
+    play(
+      s: Parameters<CloudOut["play"]>[0] & { when?: number; sync?: boolean },
+      ev: PlayEvents,
+    ): Playback {
       const me = ++turn;
       const live = () => me === turn;
       const fail = (why: string) => void Promise.resolve().then(() => live() && ev.onfail?.(why));
+      stopActiveSource();
       if (s.pick?.kind === "eleven") return preview(s.pick.preview, s.pick.id, s.volume, live, ev);
+      let activeScheduledPb: Playback | null = null;
       const pb: Playback = {
         route: "audio",
         stop() {
+          if (activeScheduledPb) return activeScheduledPb.stop();
           if (!live()) return {};
           turn++;
           const a = el;
@@ -507,87 +765,118 @@ export function createCloudOut(d: {
         },
         volume: (level, ms) => live() && ramp(level, ms),
       };
-      // The line's own cloud voice (melo:, aura:), else its lane's: its own speaker where
-      // the engine has several, else the one voice at its own speed.
-      const lane = wanted(s.lang, s.voice, s.pick);
-      // A provider voice (google:, azure:) the server cannot voice (no key, an error, out
-      // of credits): the lane's own cloud voice reads the spoken text instead.
-      const base = lane.provider ? wanted(s.lang, s.voice) : lane;
-      let used = lane;
-      const ownVoice = () => {
-        used = base;
-        const skip = cloudSkip(s.text, base.lang);
-        return skip ? Promise.reject(new Error(skip)) : fetchClip(s.text, base.lang, base.speaker);
-      };
-      let clip: Promise<string>;
-      if (lane.provider === CLONE_PROVIDER) {
-        // His own voice or nothing: a failure is onfail (voice.ts skips the sentence).
-        const skip = providerSkip(s.text);
-        clip = skip ? Promise.reject(new Error(skip)) : fetchClip(s.text, lane.lang, undefined, lane.provider);
-      } else if (lane.provider) {
-        const said = s.written ?? s.text;
-        clip = providerSkip(said)
-          ? ownVoice()
-          : fetchClip(said, lane.lang, undefined, lane.provider).catch(ownVoice);
-      } else {
-        const skip = cloudSkip(s.text, lane.lang);
-        if (skip) {
-          fail(skip);
-          return pb;
+      const playViaElement = () => {
+        // The line's own cloud voice (melo:, aura:), else its lane's: its own speaker where
+        // the engine has several, else the one voice at its own speed.
+        const lane = wanted(s.lang, s.voice, s.pick);
+        // A provider voice (google:, azure:) the server cannot voice (no key, an error, out
+        // of credits): the lane's own cloud voice reads the spoken text instead.
+        const base = lane.provider ? wanted(s.lang, s.voice) : lane;
+        let used = lane;
+        const ownVoice = () => {
+          used = base;
+          const skip = cloudSkip(s.text, base.lang);
+          return skip ? Promise.reject(new Error(skip)) : fetchClip(s.text, base.lang, base.speaker);
+        };
+        let clip: Promise<string>;
+        if (lane.provider === CLONE_PROVIDER) {
+          // His own voice or nothing: a failure is onfail (voice.ts skips the sentence).
+          const skip = providerSkip(s.text);
+          clip = skip ? Promise.reject(new Error(skip)) : fetchClip(s.text, lane.lang, undefined, lane.provider);
+        } else if (lane.provider) {
+          const said = s.written ?? s.text;
+          clip = providerSkip(said)
+            ? ownVoice()
+            : fetchClip(said, lane.lang, undefined, lane.provider).catch(ownVoice);
+        } else {
+          const skip = cloudSkip(s.text, lane.lang);
+          if (skip) {
+            fail(skip);
+            return;
+          }
+          clip = fetchClip(s.text, lane.lang, lane.speaker);
         }
-        clip = fetchClip(s.text, lane.lang, lane.speaker);
-      }
-      clip.then(
-        (url) => {
-          if (!live()) return;
-          const a = element();
-          return ctxReady().then((stuck) => {
-          if (!live()) return;
-          // Routed through a context the browser will not run (no tap yet): it would be silent.
-          // A closed one never runs again: not a tap's matter, that clip fails outright.
-          if (stuck === "closed") return ev.onfail?.("audio context closed");
-          if (stuck) return ev.onfail?.(`play NotAllowedError (audio context ${stuck})`);
-          const heard = clipVoice.get(url);
-          if (heard) ev.onvoice?.(heard);
-          setLevel(s.volume);
-          a.onended = () => live() && ev.onend();
-          a.onerror = () => live() && ev.onerror();
-          a.onloadedmetadata = () => {
+        clip.then(
+          (url) => {
             if (!live()) return;
-            a.onloadedmetadata = null;
-            // Resume by offset: where the interrupted clip stopped (else its start).
-            a.currentTime = s.at;
-            // The speed, pitch kept (a resume after a duck keeps it: it is per play).
-            // A lane with no voice of its own here: its own speed, pitch still kept —
-            // a pitch-free clip stalls mid-word on iOS (voices.ts, "Cloud voices").
-            const shift =
-              fellBack.has(url) && (!s.pick || used !== lane)
-                ? VOICES[s.voice ?? "main"].shift
-                : used.shift;
-            const rate = (s.rate ?? 1) * shift;
-            a.defaultPlaybackRate = rate;
-            a.playbackRate = rate;
-            a.preservesPitch = true;
-            a.webkitPreservesPitch = true;
-            a.play().then(
-              () => {
+            const a = element();
+            return ctxReady().then((stuck) => {
+              if (!live()) return;
+              // Routed through a context the browser will not run (no tap yet): it would be silent.
+              // A closed one never runs again: not a tap's matter, that clip fails outright.
+              if (stuck === "closed") return ev.onfail?.("audio context closed");
+              if (stuck) return ev.onfail?.(`play NotAllowedError (audio context ${stuck})`);
+              const heard = clipVoice.get(url);
+              if (heard) ev.onvoice?.(heard);
+              setLevel(s.volume);
+              a.onended = () => live() && ev.onend();
+              a.onerror = () => live() && ev.onerror();
+              a.onloadedmetadata = () => {
                 if (!live()) return;
-                ev.onstart?.();
-                // The metadata is in: the clip's own length, at its speed.
-                const t = clipTiming(a);
-                if (t) ev.ontiming?.(t);
+                a.onloadedmetadata = null;
+                // Resume by offset: where the interrupted clip stopped (else its start).
+                a.currentTime = s.at;
+                // The speed, pitch kept (a resume after a duck keeps it: it is per play).
+                // A lane with no voice of its own here: its own speed, pitch still kept —
+                // a pitch-free clip stalls mid-word on iOS (voices.ts, "Cloud voices").
+                const shift =
+                  fellBack.has(url) && (!s.pick || used !== lane)
+                    ? VOICES[s.voice ?? "main"].shift
+                    : used.shift;
+                const rate = (s.rate ?? 1) * shift;
+                a.defaultPlaybackRate = rate;
+                a.playbackRate = rate;
+                a.preservesPitch = true;
+                a.webkitPreservesPitch = true;
+                a.play().then(
+                  () => {
+                    if (!live()) return;
+                    ev.onstart?.();
+                    // The metadata is in: the clip's own length, at its speed.
+                    const t = clipTiming(a);
+                    if (t) ev.ontiming?.(t);
+                  },
+                  (e: unknown) => {
+                    if (live()) ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`);
+                  },
+                );
+              };
+              a.src = url;
+              a.load();
+            });
+          },
+          (e: unknown) => live() && ev.onfail?.(String((e as Error)?.message ?? e)),
+        );
+      };
+
+      const ctx = d.ctx();
+      if ((s.sync || s.when !== undefined) && ctx?.decodeAudioData && ctx?.createBufferSource) {
+        decodeClip(s).then(
+          (decoded) => {
+            if (!live()) return;
+            activeScheduledPb = scheduleBuffer(
+              {
+                buffer: decoded.buffer,
+                when: s.when,
+                offset: s.at,
+                volume: s.volume,
+                rate: (s.rate ?? 1) * decoded.shift,
               },
-              (e: unknown) => {
-                if (live()) ev.onfail?.(`play ${(e as Error)?.name ?? "error"}`);
-              },
+              ev,
+              me,
+              live,
             );
-          };
-          a.src = url;
-          a.load();
-          });
-        },
-        (e: unknown) => live() && ev.onfail?.(String((e as Error)?.message ?? e)),
-      );
+          },
+          () => {
+            if (!live()) return;
+            // Decode failed: fall back to the `<audio>` element path.
+            playViaElement();
+          },
+        );
+        return pb;
+      }
+
+      playViaElement();
       return pb;
     },
   };

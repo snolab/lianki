@@ -64,6 +64,7 @@ import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
 import { VAD_MAX, VAD_MIN, VAD_THRESHOLDS } from "@lianki/debug-chat/adaptive";
 import { GUARD_MIN_SPEECH_MS, STT_GUARD } from "@lianki/debug-chat/stt-guard";
 import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
+import { DEFAULT_MIME_PREFS, parseMimePrefs } from "./meetings/core";
 
 export type ConfigAudience = "server" | "public";
 
@@ -96,7 +97,40 @@ function int<A extends ConfigAudience>(
   return { ...d, schema: z.number().int().min(d.min).max(d.max) };
 }
 
+/** One token of stt.ownerRoutes: a named route or a socket URL (local-stt.ts localSttFrom takes the same). */
+const OWNER_ROUTE_TOKEN =
+  /^(?:rtc:lianki|wss:session|wss:\/\/[^\s,/]+(?:\/\S*)?|ws:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/\S*)?)$/;
+
 export const CONFIG = {
+  "words.nativeAudioTimeoutMs": int({
+    default: 15000,
+    min: 3000,
+    max: 60000,
+    unit: "ms",
+    group: "words",
+    audience: "public",
+    description: "单词原音载入、定位或播放停滞时等待多久再回退到合成音（毫秒）。",
+  }),
+  "words.nativeAudioStartMs": int({
+    default: 1000,
+    min: 200,
+    max: 15000,
+    unit: "ms",
+    group: "words",
+    audience: "public",
+    description:
+      "单词原音最多等多久开始发声（毫秒）；到时还没响就先用合成音读，原音包继续在后台下载，下次再用。",
+  }),
+  "words.partTimeoutMs": int({
+    default: 30000,
+    min: 5000,
+    max: 120000,
+    unit: "ms",
+    group: "words",
+    audience: "public",
+    description:
+      "/words 朗读时一段（单词、例句、释义）多久没报告结束就跳过它（毫秒），免得一段卡住后面全都不读。",
+  }),
   "words.undoMs": int({
     default: 8000,
     min: 2000,
@@ -374,6 +408,28 @@ export const CONFIG = {
     audience: "public",
     description: "「另一个声音」的行显示的名字（比如家人的名字）。空 = 「另一个声音」。",
   },
+  // One avatar per voice in the room (packages/debug-chat/src/cluster-avatar.ts, flag voice.speaker-avatars).
+  "voice.clusterHues": {
+    // Same as CLUSTER_HUES in cluster-avatar.ts (not imported: config stays free of the chat package).
+    default: [70, 110, 150, 185, 220, 255, 290, 325],
+    schema: z.array(z.number().min(0).max(360)).min(1).max(24),
+    group: "voice",
+    audience: "public",
+    description:
+      "每个声音的头像颜色（oklch 色相 0–360，按顺序：A 用第一个，B 用第二个……）。印章红附近（约 5–45）的色相会被跳过，那是你的颜色。只影响显示。",
+  },
+  "voice.clusterMinScore": {
+    // Same as CLUSTER_MIN_SCORE in cluster-avatar.ts.
+    default: 0,
+    schema: z.number().min(0).max(1),
+    min: 0,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "public",
+    description:
+      "一行语音和它所属声音分组的相似度（clusterScore）低于这个值时，不画这个分组的头像，改用共用的「另一个声音」头像。0 = 有分组就画。",
+  },
   "voice.cloneTimeoutMs": int({
     default: 20_000,
     min: 2_000,
@@ -396,6 +452,27 @@ export const CONFIG = {
     description:
       "按住说话一次保留的音频上限（毫秒）。达到上限明确停止本次录音并保留已识别文字，不静默截断后当作完整录音发送；限制浏览器内存占用。",
   }),
+  // The owner's default speech routes when his page stored none (packages/debug-chat/src/local-stt.ts
+  // ownerDefaultRoutes; docs/local-stt.md, "On by default for the owner"). Empty = the build's
+  // default: rtc:lianki, then NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT (his tailnet URL, never in the tree).
+  "stt.ownerRoutes": {
+    default: "",
+    schema: z
+      .string()
+      .max(500)
+      .refine(
+        (v) =>
+          v
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .every((u) => OWNER_ROUTE_TOKEN.test(u)),
+        "routes: rtc:lianki, wss:session, wss://… (ws:// only on localhost), separated by spaces",
+      ),
+    group: "voice",
+    audience: "public",
+    description:
+      "你自己的手机/电脑在没有单独设置时用哪些语音识别路线（按顺序赛跑，先连上的用；都连不上就用云端）。空 = 默认：先 rtc:lianki（WebRTC 连到你的 Mac，不需要 Tailscale），再 tailnet 地址。可写 rtc:lianki、wss:session 或 wss:// 地址，空格分开。",
+  },
   // The repetition guard (packages/debug-chat/src/stt-repeat.ts): a final that is a
   // decoding loop is cut or dropped, in the mic and again in the hub.
   "stt.repeatMaxRuns": int({
@@ -562,6 +639,77 @@ export const CONFIG = {
     description:
       "多台设备同时朗读（开关 voice.sync-speak）：可以接受的开读时间差（毫秒）。某台设备比约定时刻晚了超过这么多才开读，就记一条日志（voice-sync late），方便调大 voice.syncLeadMs。",
   }),
+  "stt.glossaryTopK": int({
+    default: 32,
+    min: 0,
+    max: 128,
+    group: "voice",
+    audience: "public",
+    unit: "terms",
+    description: "语音热词：每次识别和润色最多携带几个词；0 关闭热词。",
+  }),
+  "stt.glossaryCapacity": int({
+    default: 512,
+    min: 32,
+    max: 2048,
+    group: "voice",
+    audience: "public",
+    unit: "terms",
+    description: "语音热词：频率与时间衰减排序最多保留多少个候选词，防止词表无限增长。",
+  }),
+  "stt.glossaryTermChars": int({
+    default: 64,
+    min: 2,
+    max: 128,
+    group: "voice",
+    audience: "public",
+    unit: "chars",
+    description: "语音热词：单个候选词最多多少字符，过长的内容不进入提示。",
+  }),
+  "stt.glossaryOutputChars": int({
+    default: 1800,
+    min: 32,
+    max: 8192,
+    group: "voice",
+    audience: "public",
+    unit: "chars",
+    description: "语音热词：每次传给模型的词表和纠错映射 JSON 字符总上限。",
+  }),
+  "stt.glossaryContextChars": int({
+    default: 2000,
+    min: 0,
+    max: 32768,
+    group: "voice",
+    audience: "public",
+    unit: "chars",
+    description: "语音热词：仅从已获准的当前页面和对话上下文读取多少字符；0 不使用上下文。",
+  }),
+  "stt.glossaryHalfLifeMs": int({
+    default: 86400000,
+    min: 1000,
+    max: 2592000000,
+    group: "voice",
+    audience: "public",
+    unit: "ms",
+    description: "语音热词：上下文和明确手动纠错的排序权重经过多少毫秒减半；不自动学习模型润色。",
+  }),
+  "stt.glossaryFixedWeight": int({
+    default: 8,
+    min: 0,
+    max: 1000,
+    group: "voice",
+    audience: "public",
+    description: "语音热词：用户固定词库中一个词的排序权重；0 不使用固定词。",
+  }),
+  "stt.glossaryCorrectionWeight": int({
+    default: 12,
+    min: 0,
+    max: 1000,
+    group: "voice",
+    audience: "public",
+    description: "语音热词：明确手动添加的纠错词对的初始排序权重，随后按时间衰减。",
+  }),
+
   // Automatic polish of the owner's spoken lines (lib/chat-polish.ts; the hub,
   // workers/push/src/debug.ts, "Automatic polish"; flag voice.auto-polish).
   "voice.autoPolishMinChars": int({
@@ -583,6 +731,57 @@ export const CONFIG = {
     audience: "server",
     description:
       "语音自动润色：一句话识别完以后等多久（毫秒）再送去润色。这段时间里你接着说的下一句会和它一起送，明显是一句话的碎片就合并成一条；等得越短，润色出来越快，但碎片更可能各润各的。",
+  }),
+  // The mic polish API (lib/mic-polish.ts; docs/mic-polish-api.md; flag mic.polish-api).
+  "mic.polishDailyMax": int({
+    default: 300,
+    min: 1,
+    max: 100_000,
+    unit: "calls/day",
+    group: "mic",
+    audience: "server",
+    description:
+      "麦克风润色接口（开关 mic.polish-api）：每个账号每个 UTC 日（UTC 零点换日）最多润色几次，所有令牌和会话合计。到了就回 429 daily-limit，不调用模型、不扣积分；失败或积分不够的那次不算。每次的花费已经有大小上限，所以一天最多花「次数 × 单次上限」。",
+  }),
+  "mic.polishPerMinute": int({
+    default: 30,
+    min: 1,
+    max: 1000,
+    unit: "calls/min",
+    group: "mic",
+    audience: "server",
+    description:
+      "麦克风润色接口：同一个令牌（会话调用按账号）每分钟最多几次请求，超过回 429 rate-limit。防止脚本出错死循环；和每日上限 mic.polishDailyMax 分开计。",
+  }),
+  "mic.polishMaxChars": int({
+    default: 8000,
+    min: 100,
+    max: 20_000,
+    unit: "chars",
+    group: "mic",
+    audience: "server",
+    description:
+      "麦克风润色接口：一段识别文字（transcript）最多几个字符，超过回 400 too-long。otoji 的代理自己限 8000，这里不要小于 8000，否则合法请求会被拒。",
+  }),
+  "mic.polishMaxContextChars": int({
+    default: 2000,
+    min: 0,
+    max: 8000,
+    unit: "chars",
+    group: "mic",
+    audience: "server",
+    description:
+      "麦克风润色接口：提示信息（context，页面标题、网站等，按 JSON 计）最多几个字符，超过回 400 too-long。只当作拼写名字和术语的提示。",
+  }),
+  "mic.polishMaxBodyBytes": int({
+    default: 32 * 1024,
+    min: 4096,
+    max: 256 * 1024,
+    unit: "bytes",
+    group: "mic",
+    audience: "server",
+    description:
+      "麦克风润色接口：整个请求体最多多少字节，超过回 400 too-long，不读完、不解析。otoji 的代理限 32 KiB，这里不要小于 32768。",
   }),
   // Echoes of the owner's voice lines (lib/echo-match.ts; the hub, "Echoes";
   // flag voice.echo-dedupe).
@@ -626,6 +825,57 @@ export const CONFIG = {
     audience: "server",
     description: "回声去重：一句话至少几个字才可能被当作回声；更短的（「好」「嗯」）永远照常发出。",
   }),
+  // Play reports (docs/echo-suppression.md, layer (b); flag voice.echo-reports):
+  // his pages tell the hub what they read aloud, and when.
+  "voice.echoPlaySimilarity": {
+    default: 0.6 as number,
+    schema: z.number().min(0.3).max(1),
+    min: 0.3,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读回声（开关 voice.echo-reports）：你的一台设备正在朗读时，另一台设备的麦克风同时识别出来的话，有多少落在正在读的那几句里面（去掉标点空格、按字比较）就算回声。有时间重叠作证据，所以比 voice.echoSimilarity 低；越低越容易把你跟着念的话也当成回声（可以点「这是我说的」找回）。",
+  },
+  "voice.echoSlackMs": int({
+    default: 1500,
+    min: 0,
+    max: 10_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读回声（开关 voice.echo-reports）：判断「同时」时，朗读的开始和结束各往外放宽多少毫秒（房间回声、扬声器延迟、时钟误差）。",
+  }),
+  "voice.echoPlayKeepMs": int({
+    default: 120_000,
+    min: 10_000,
+    max: 600_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读回声（开关 voice.echo-reports）：hub 在内存里记住各设备读过的句子多久（毫秒），过了就忘。只在内存里，不写存储、不进日志、不给任何助手。",
+  }),
+  "voice.echoShowMax": int({
+    default: 50,
+    min: 1,
+    max: 200,
+    unit: "lines",
+    group: "voice",
+    audience: "server",
+    description:
+      "回声去重：hub 最多留多少条被当成回声的语音（折叠显示、可以点「这是我说的」恢复）；更早的丢掉。",
+  }),
+  "voice.cloudWhileMic": {
+    default: "android" as "never" | "android" | "always",
+    schema: z.enum(["never", "android", "always"]),
+    group: "voice",
+    audience: "public",
+    description:
+      "麦克风开着时 Li 朗读用云端声音（回声消除能听到网页自己的 <audio>，但不一定听得到设备自带的语音，安卓尤其如此）：never = 从不，android = 只在安卓上（默认），always = 所有设备。会多用一点朗读额度。",
+  },
   "voice.autoPolishTimeoutMs": int({
     default: 6000,
     min: 500,
@@ -723,6 +973,107 @@ export const CONFIG = {
     description:
       "/my/recordings 像日记一样连着读：每一天开头写一个时间，之后只有两段录音之间停了超过这么多分钟，才在下一段前面再写一个时间。默认 10 分钟。改小 = 时间更多，改大 = 更少。",
   }),
+  // Meetings: screen + sound recorded into the account (docs/meetings.md, "Limits,
+  // quotas, retention"; flag meetings.record). The recorder reads the public ones
+  // when Start is tapped; the server checks quota, staleness and retention.
+  "meetings.chunkSec": int({
+    default: 30,
+    min: 10,
+    max: 120,
+    unit: "s",
+    group: "meetings",
+    audience: "public",
+    description:
+      "会议录制（/my/meetings）每一段多长（秒）：录下的画面和声音按这个长度切成一段一段，每段先存进浏览器，再上传到你的账号。默认 30 秒；崩溃或断网最多丢正在录的这一段。",
+  }),
+  "meetings.maxMinutes": int({
+    default: 180,
+    min: 1,
+    max: 600,
+    unit: "min",
+    group: "meetings",
+    audience: "public",
+    description:
+      "一次会议最多录多久（分钟）：到了就像点了「停止」一样自动停，并说明原因。默认 180。",
+  }),
+  "meetings.videoKbps": int({
+    default: 1000,
+    min: 100,
+    max: 8000,
+    unit: "kbps",
+    group: "meetings",
+    audience: "public",
+    description:
+      "会议录像的画面码率（kbps）：越高越清楚、文件越大。屏幕内容压缩得很好，默认 1000（约 0.5 GB 一小时）。",
+  }),
+  "meetings.frameRate": int({
+    default: 15,
+    min: 1,
+    max: 30,
+    unit: "fps",
+    group: "meetings",
+    audience: "public",
+    description: "会议录像每秒几帧：默认 15。看幻灯片 5 也够；要录动画或视频就调高。",
+  }),
+  "meetings.audioKbps": int({
+    default: 128,
+    min: 32,
+    max: 320,
+    unit: "kbps",
+    group: "meetings",
+    audience: "public",
+    description: "会议录像里混合声音（你的麦克风 + 共享画面的声音）的码率（kbps）。默认 128。",
+  }),
+  "meetings.trackKbps": int({
+    default: 32,
+    min: 16,
+    max: 128,
+    unit: "kbps",
+    group: "meetings",
+    audience: "public",
+    description:
+      "给文字记录用的两条单独的声音（只有你的麦克风、只有别人的声音）的码率（kbps）。默认 32，足够识别。",
+  }),
+  "meetings.quotaGB": int({
+    default: 50,
+    min: 1,
+    max: 1000,
+    unit: "GB",
+    group: "meetings",
+    audience: "server",
+    description:
+      "每个账号的会议录制最多占多少空间（GB）：满了就不能开始新的会议，正在录的会停下并说明原因。默认 50。",
+  }),
+  "meetings.retentionDays": int({
+    default: 0,
+    min: 0,
+    max: 3650,
+    unit: "days",
+    group: "meetings",
+    audience: "server",
+    description:
+      "会议录制保留多少天：0（默认）= 一直留到你自己删。设成别的数字后，每天一次的清理会删掉比这更早开始的会议（画面、声音、文字一起删），删了找不回来。",
+  }),
+  "meetings.staleMin": int({
+    default: 30,
+    min: 5,
+    max: 1440,
+    unit: "min",
+    group: "meetings",
+    audience: "server",
+    description:
+      "一个还标着「正在录」的会议，超过这么多分钟没有新的一段上传，每天的清理就把它记为「中断」。默认 30。",
+  }),
+  "meetings.mimeTypes": {
+    default: DEFAULT_MIME_PREFS as string,
+    schema: z
+      .string()
+      .refine((s) => parseMimePrefs(s) !== null, "av: type | type || audio: type | type"),
+    group: "meetings",
+    audience: "public",
+    description:
+      "会议录制用的文件格式，按优先顺序：「av:」后面是录像的格式，「audio:」后面是两条单独声音的格式；同一组里用 | 分隔，两组之间用 || 分隔。浏览器支持哪个就用第一个。默认先 MP4（iPhone 能放），再 WebM。",
+  },
   "voiceprint.passkeyWindowMs": int({
     default: 600_000,
     min: 0,

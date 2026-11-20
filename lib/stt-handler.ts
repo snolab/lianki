@@ -11,6 +11,11 @@
  */
 import { refusal, type Metered } from "@/lib/payments/metered";
 import type { SttSignals } from "@lianki/debug-chat/stt-guard";
+import type { Glossary } from "../vendor/otoji/packages/transcript-glossary/src/index";
+import {
+  STT_CONTEXT_WIRE_HEADER_CHARS,
+  STT_CONTEXT_WIRE_TEXT_CHARS,
+} from "@lianki/debug-chat/stt-hint";
 import {
   DEFAULT_STT_MODEL,
   FALLBACK_STT_MODEL,
@@ -42,6 +47,7 @@ export type SttDeps = {
     model: SttModel;
     lang?: string;
     hint?: SttHint;
+    glossary?: Glossary;
   }) => Promise<{ text: string; language?: string; signals?: SttSignals }>;
   /**
    * The transcription paid from the user's credits (lib/payments/paid-calls.ts
@@ -52,10 +58,12 @@ export type SttDeps = {
   limit: (key: string, max: number) => { allowed: boolean; retryAfterMs: number };
   clock?: () => number;
   log?: (o: Record<string, unknown>) => void;
+  /** Verified-account lookup; never read a user id from request context. */
+  glossary?: (context: string) => Promise<Glossary>;
 };
 
 /** Both models failed: 502 `transcription-failed`, and the hold refunded. The
- * model's own message goes to the log only. */
+ * diagnostics use fixed codes: providers may echo vocabulary or context. */
 class SttFailed extends Error {}
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -87,24 +95,46 @@ export async function handleStt(req: Request, d: SttDeps): Promise<Response> {
   const model = pickSttModel(asked, d.owner);
   const lang = sttLang(url.searchParams.get("lang"));
   const hint = sttHint(url.searchParams.get("hint"));
+  let context = "";
+  const rawContext = req.headers.get("x-lk-stt-context");
+  if (rawContext && rawContext.length <= STT_CONTEXT_WIRE_HEADER_CHARS) {
+    try {
+      context = decodeURIComponent(rawContext).slice(0, STT_CONTEXT_WIRE_TEXT_CHARS);
+    } catch {}
+  }
+  const glossary = await d.glossary?.(context);
   const t0 = clock();
   let used = model;
   let out: { text: string; language?: string; signals?: SttSignals };
   // One attempt: the default, falling back once; a model the owner asked for does not.
   const attempt = async () => {
     try {
-      out = await d.transcribe({ audio, mime, model, lang, hint });
-    } catch (e) {
+      out = await d.transcribe({
+        audio,
+        mime,
+        model,
+        lang,
+        hint,
+        ...(glossary ? { glossary } : {}),
+      });
+    } catch {
       if (model !== DEFAULT_STT_MODEL || (d.owner && isSttModel(asked))) {
-        const detail = String((e as Error)?.message ?? e).slice(0, 200);
+        const detail = "provider-failed";
         log({ msg: "debug.stt.error", model, bytes: audio.byteLength, detail });
         throw new SttFailed(detail);
       }
       used = FALLBACK_STT_MODEL;
       try {
-        out = await d.transcribe({ audio, mime, model: used, lang, hint });
-      } catch (e2) {
-        const detail = String((e2 as Error)?.message ?? e2).slice(0, 200);
+        out = await d.transcribe({
+          audio,
+          mime,
+          model: used,
+          lang,
+          hint,
+          ...(glossary ? { glossary } : {}),
+        });
+      } catch {
+        const detail = "provider-failed";
         log({ msg: "debug.stt.error", model: used, bytes: audio.byteLength, detail });
         throw new SttFailed(detail);
       }

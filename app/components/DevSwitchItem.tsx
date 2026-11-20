@@ -8,6 +8,7 @@ import {
   type DevSwitchMode,
 } from "@/lib/dev-server-switch";
 import { SealStamp } from "./SealSwitch";
+import { Icon } from "./icons";
 
 export type DevSwitchLabels = {
   name: string;
@@ -16,8 +17,6 @@ export type DevSwitchLabels = {
 };
 
 export type DevSwitch = { mode: Exclude<DevSwitchMode, null>; labels: DevSwitchLabels };
-
-const BLUE = "oklch(0.62 0.209 22.3)";
 
 /**
  * The owner's "Preview build" toggle in the account menu
@@ -51,7 +50,7 @@ export function DevSwitchItem({ sw, children }: { sw: DevSwitch; children?: Reac
     <>
       <span className="flex-1 min-w-0 truncate">{label}</span>
       <span aria-hidden className={up === null ? "animate-pulse" : undefined}>
-        <SealStamp on={on} size="sm" />
+        <SealStamp on={on} size="sm" pending={busy} />
       </span>
     </>
   );
@@ -61,9 +60,13 @@ export function DevSwitchItem({ sw, children }: { sw: DevSwitch; children?: Reac
     <a
       role="switch"
       aria-checked
+      aria-busy={busy || undefined}
       data-dev-switch="back"
       href={backUrl(location)}
       referrerPolicy="no-referrer"
+      onClick={(e) => {
+        if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) setBusy(true);
+      }}
       className={cls}
     >
       {inner}
@@ -73,6 +76,7 @@ export function DevSwitchItem({ sw, children }: { sw: DevSwitch; children?: Reac
       type="button"
       role="switch"
       aria-checked={false}
+      aria-busy={busy || undefined}
       data-dev-switch="go"
       disabled={!up || busy}
       onClick={async () => {
@@ -94,18 +98,19 @@ export function DevSwitchItem({ sw, children }: { sw: DevSwitch; children?: Reac
 }
 
 /**
- * On the dev server only: a small blue dot on the corner of the profile
- * menu's button (owner, 2026-11-03 14:44 JST), instead of a top-bar badge.
- * The menu's switch, on, says what it means.
+ * Preview environment marker, anchored to the avatar. A flask with an explicit
+ * preview label distinguishes this state from an unread-notification dot.
  */
-export function DevServerDot({ label }: { label: string }) {
+export function DevServerBadge({ label }: { label: string }) {
   return (
     <span
-      data-dev-server-dot
-      className="pointer-events-none absolute -top-0.5 -end-0.5 w-2 h-2 rounded-full ring-2 ring-white dark:ring-gray-900"
-      style={{ background: BLUE }}
+      data-dev-server-badge
+      role="img"
+      aria-label={label}
+      title={label}
+      className="absolute -top-1 -end-1 flex size-4 items-center justify-center rounded-md border border-sky-200 bg-white text-sky-700 shadow-sm dark:border-sky-700 dark:bg-gray-900 dark:text-sky-300"
     >
-      <span className="sr-only">{label}</span>
+      <Icon name="flask" className="size-3" />
     </span>
   );
 }

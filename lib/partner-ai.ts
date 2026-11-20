@@ -16,6 +16,7 @@ import type { D1WithBatch } from "@/lib/payments/credits-store";
 import { textUsd } from "@/lib/payments/prices";
 import { parseRoster, rosterSection } from "@/packages/debug-chat/src/roster";
 import type { ChatLaneDef } from "@/packages/debug-chat/src/voices";
+import { stripLeadTags } from "@/lib/partner-lines";
 import {
   CHARGE_STALE_MS,
   reserveInTokens,
@@ -100,6 +101,10 @@ export function parsePartnerRequest(raw: unknown): PartnerRequest | null {
       title: str(p.title, 300),
       selection: str(p.selection, MAX_PAGE_CHARS),
       screen: str(p.screen, MAX_PAGE_CHARS),
+      ...(str(p.host, 300) ? { host: str(p.host, 300) } : {}),
+      ...(str(p.selectionLocation, MAX_PAGE_CHARS)
+        ? { selectionLocation: str(p.selectionLocation, MAX_PAGE_CHARS) }
+        : {}),
     };
   }
   const msgId =
@@ -227,7 +232,8 @@ Rules:
 - You only know this one user's own data shown below. You cannot see other users, the app's code, servers or the developer's data, and you cannot run code, change settings, make purchases or contact anyone. If asked, say so briefly.
 - You speak only when a message arrives, and only in reply to it. You cannot watch or monitor pages, wait for changes, set reminders, or message anyone later, so never promise to ("I'll keep an eye on it", "I'll tell you when it changes"). Never make up facts such as names, emails or numbers you were not given.
 - If a message is meant for someone else (it names another member, or the user says they did not ask you), do not answer it.
-- If the user reports a bug or asks for a feature, thank them and say the developer reads this chat.
+- Lines shown as "(agent NAME said: …)" were written by other members of this chat (the developer's helpers, automatic notices), not by you. You speak only as yourself: never start a reply with a name tag such as 【name】 or [name], never write as another member or answer in their place, and never copy their style.
+- You do not write code, build apps, scripts or features, fix bugs or run tasks, and never offer, plan or promise to ("happy to build it", milestones, "I'll do it today"). If the user reports a bug or asks for a feature or a tool, thank them and say the developer reads this chat.
 - Never ask for passwords, payment details or other private information.`;
 
 /**
@@ -252,7 +258,9 @@ export function buildMessages(
     ? [
         p.path && `path: ${p.path}`,
         p.title && `title: ${p.title}`,
+        p.host && `host: ${p.host}`,
         p.selection && `selected text: ${p.selection}`,
+        p.selectionLocation && `selection location (reference data): ${p.selectionLocation}`,
         p.screen && `text on screen: ${p.screen}`,
       ]
         .filter(Boolean)
@@ -272,14 +280,15 @@ export function buildMessages(
   ];
 }
 
-/** The model's text, without any thinking block, trimmed and bounded. */
-export function cleanReply(raw: unknown): string {
+/**
+ * The model's text, without any thinking block or a speaker tag in front
+ * ("【claude】…": Li speaks only as itself, partner-lines.ts), trimmed and
+ * bounded. `lanes` = config `chat.lanes`, for the names a tag may give.
+ */
+export function cleanReply(raw: unknown, lanes: readonly ChatLaneDef[] = []): string {
   if (typeof raw !== "string") return "";
-  return raw
-    .replace(/<think>[\s\S]*?<\/think>/g, "")
-    .replace(/^[\s\S]*<\/think>/, "")
-    .trim()
-    .slice(0, MAX_REPLY_CHARS);
+  const text = raw.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/^[\s\S]*<\/think>/, "");
+  return stripLeadTags(text, lanes).slice(0, MAX_REPLY_CHARS);
 }
 
 /**
@@ -336,7 +345,12 @@ export async function partnerReply(
   const p = req.page;
   const chars =
     req.history.reduce((n, h) => n + h.text.length, 0) +
-    (p ? [p.path, p.title, p.selection, p.screen].reduce((n, v) => n + (v?.length ?? 0), 0) : 0);
+    (p
+      ? [p.path, p.title, p.host, p.selection, p.selectionLocation, p.screen].reduce(
+          (n, v) => n + (v?.length ?? 0),
+          0,
+        )
+      : 0);
   const worstIn = reserveInTokens(chars);
   const key = `${req.userId}:${req.msgId ?? crypto.randomUUID()}`;
   const hold = await reserveAi(
@@ -434,7 +448,7 @@ async function callModel(
       usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
     };
     const num = (v: unknown) => (typeof v === "number" && v >= 0 ? Math.round(v) : 0);
-    const text = cleanReply(j.choices?.[0]?.message?.content);
+    const text = cleanReply(j.choices?.[0]?.message?.content, config["chat.lanes"]);
     if (!text) {
       // It answered (and billed) but said nothing usable: keep its usage.
       const tokensIn = num(j.usage?.prompt_tokens);

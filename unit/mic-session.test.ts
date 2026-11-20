@@ -372,6 +372,32 @@ describe("mic session: the local STT kept open while the mic is on", () => {
     expect(made[1].keeps).toEqual([true, false]);
   });
 
+  it("the view carries why every route failed, from the client, on each state change", () => {
+    let sub: ((s: "down" | "ready") => void) | undefined;
+    let why: string | undefined;
+    const f = fakes({
+      localStt: () => ({
+        begin: () => null,
+        keep: () => {},
+        close: () => {},
+        state: () => "idle" as const,
+        why: () => why,
+        subscribe: (g) => ((sub = g as typeof sub), () => {}),
+      }),
+    });
+    const s = createMicSession(f.deps);
+    s.configure({ label: "", localStt: "wss://a.ts.net/x" });
+    expect(s.view().localWhy).toBeUndefined();
+    why = "rtc: no worker, tailnet: timeout";
+    sub!("down");
+    expect(s.view()).toMatchObject({ local: "down", localWhy: why });
+    why = undefined;
+    sub!("ready");
+    expect(s.view()).toMatchObject({ local: "ready", localWhy: undefined });
+    s.configure({ label: "" });
+    expect(s.view().localWhy).toBeUndefined();
+  });
+
   it("recheck goes to the socket in use, only while it is up (whisper-recheck.ts)", async () => {
     let st: "idle" | "ready" = "idle";
     const asked: unknown[] = [];

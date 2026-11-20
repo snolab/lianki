@@ -9,6 +9,7 @@ import { shortPage } from "./short-page";
 import { type ShareWhat, type SharedPage, shareToContext, shareToDraft } from "./embed/share";
 import { type AdaptState, voiceAdapt } from "./adaptive";
 import {
+  Fragment,
   type ReactNode,
   useEffect,
   useLayoutEffect,
@@ -19,6 +20,10 @@ import {
   useState,
 } from "react";
 import { createPortal, flushSync } from "react-dom";
+import { EchoRow } from "./EchoRows";
+import { echoSlots } from "./echo-rows";
+/** No echoes (a stable default, so a render never sees a new empty list). */
+const NO_ECHOES: readonly ChatMessage[] = [];
 import { useUi } from "@lianki/ui-state";
 import { chatDock, chatFold, chatPrefs, chatUi } from "./ui-store";
 import { lineTier, richOf, spokenOf } from "./rich-text";
@@ -291,6 +296,7 @@ import {
   fullHintStep,
 } from "./full-screen";
 import { FullScreenMenuItem } from "./FullScreenMenuItem";
+import { SealStamp } from "./SealStamp";
 import { CHAT_UI_EVENT, chatUiOf, runMenuCue } from "./ui-cue";
 import { onChatOpen } from "./island-bus";
 import { createJoystick, deadZoneSpeed, joystickTune } from "./joystick";
@@ -309,6 +315,7 @@ import {
   AddressedMarks,
   LineTag,
   agentAvatar as tokenPicture,
+  clusterAvatar,
   laneAvatar,
   voiceAvatar,
   withTokenName,
@@ -856,6 +863,13 @@ export type DebugChatProps = {
   /** The undo on a merged line: split it back into the lines it was made from. */
   onUnmerge?: (id: string) => void;
   /**
+   * His voice lines the hub judged read-aloud echoes (flag voice.echo-reports;
+   * echo-rows.ts): never in `messages`, shown as collapsed rows between them.
+   */
+  echoes?: readonly ChatMessage[];
+  /** "This was me" on an echo row: the hub posts it as his line after all. */
+  onEchoMine?: (id: string) => void;
+  /**
    * A tap on an ask card (AskCard.tsx): the page sends {type:"answer",
    * askId, choices}; the hub stamps it. Absent (an older page): the choice
    * goes as a typed line instead.
@@ -1111,6 +1125,8 @@ export function DebugChat({
   onSend,
   onAnswer,
   onPassageEnd,
+  echoes = NO_ECHOES,
+  onEchoMine,
   sessions = [],
   onEnd,
   friend = false,
@@ -1217,6 +1233,9 @@ export function DebugChat({
     // Another voice on his voice line (speaker-avatar.ts): its own disc, not his picture.
     voiceAvatar,
     otherVoice: t.vpOtherVoice,
+    // One voice in the room (cluster-avatar.ts): "A", "B"… or a household voice.
+    clusterAvatar,
+    clusterWords: { voice: t.vpVoiceCluster, household: t.vpHouseholdVoice },
   };
   /**
    * Who the owner called (addressed.ts): each owner line's addressed lanes
@@ -3978,7 +3997,7 @@ export function DebugChat({
     notePrefWrite(); // synced with the account by the app (docs/prefs-sync.md)
     // His mute wins: it also ends "the mic was used here" (sticky read-aloud, voice.ts).
     if (!v) voice().unvoice?.();
-    if (!v && !voice().state().mic) voice().stop();
+    if (!v) voice().stop();
   };
 
   /** The draft's "@/…" while it is typed: the listeners' nodes under it, to pick from. */
@@ -4391,23 +4410,23 @@ export function DebugChat({
         type="button"
         role="menuitemcheckbox"
         data-testid="debug-menu-speak"
-        // The mic forces read-aloud on for its session; the setting itself is kept.
-        aria-checked={speak || vs.mic}
-        aria-disabled={vs.mic}
+        aria-checked={speak}
         title={
-          vs.mic
-            ? ux.speakMicTitle
+          !speak
+            ? ux.speakSilent
+            : vs.mic
+            ? ux.speakTouchTitle
             : speak && vs.touch
               ? ux.speakTouchTitle
               : speak && vs.voiced
                 ? ux.speakVoicedTitle
                 : ux.speakTypingTitle
         }
-        onClick={() => !vs.mic && toggleSpeak()}
-        className={`flex items-center gap-2 px-3 py-1.5 text-start ${vs.mic ? "opacity-70" : ""}`}
+        onClick={toggleSpeak}
+        className="flex items-center gap-2 px-3 py-1.5 text-start"
       >
-        <Icon name="speakerHigh" weight={speak || vs.mic ? "fill" : "regular"} />
-        {vs.mic
+        <Icon name="speakerHigh" weight={speak ? "fill" : "regular"} />
+        {speak && vs.mic
           ? ux.speakMicOn
           : speak && vs.touch
             ? strings?.readAloud
@@ -4420,6 +4439,9 @@ export function DebugChat({
                   ? t.readAloudTyping
                   : ui.readAloudTyping
                 : ux.speakSilent}
+        <span className="ms-auto">
+          <SealStamp on={speak} onWord={ux.menuSwitchOn} offWord={ux.menuSwitchOff} />
+        </span>
       </button>
       {/* The voice cues (cues.ts): each its own switch, synced with the account. */}
       <button
@@ -5049,6 +5071,12 @@ export function DebugChat({
       at: m.at,
     })),
   );
+  const runs = runsOf(starts);
+  // Read-aloud echoes between the runs (echo-rows.ts): after the run each came in.
+  const echoGroups = echoSlots(
+    runs.map((r) => messages[r[0]!]!.at),
+    echoes,
+  );
   /**
    * Compact mode's view (compact-view.ts): the open ask cards in full (they
    * need a tap), then the last message as one short line with its avatar,
@@ -5500,7 +5528,16 @@ export function DebugChat({
           (time), polish mark, waiting tag, so the hub's history, the polish
           edit (one line id), read-aloud and the anchoring are unchanged.
         */}
-        {runsOf(starts).map((run) => {
+        {(() => {
+          // Read-aloud echoes (echo-rows.ts): a collapsed row after the run they came in.
+          const g = echoGroups.get(-1);
+          return g ? <EchoRow key={`echo:${g[0]!.id}`} lines={g} t={ux} dev={owner} onMine={onEchoMine} /> : null;
+        })()}
+        {runs.map((run, ri) => {
+          const echoAfter = echoGroups.get(ri);
+          const echoRow = echoAfter ? (
+            <EchoRow key={`echo:${echoAfter[0]!.id}`} lines={echoAfter} t={ux} dev={owner} onMine={onEchoMine} />
+          ) : null;
           const i0 = run[0]!;
           const m0 = messages[i0]!;
           const who = whos[i0]!;
@@ -5513,8 +5550,8 @@ export function DebugChat({
           // squeeze from the right). Every run is the same width, so the arrow
           // appearing or its count changing never rewraps or moves a line.
           return (
+            <Fragment key={m0.id}>
             <li
-              key={m0.id}
               data-testid="debug-chat-run"
               data-own-passage={ownPassage || undefined}
               data-from={m0.from}
@@ -5707,6 +5744,8 @@ export function DebugChat({
                 })}
               </div>
             </li>
+            {echoRow}
+            </Fragment>
           );
         })}
         {/* What he is saying now, as his newest line (live-speech.ts): not sent yet. */}

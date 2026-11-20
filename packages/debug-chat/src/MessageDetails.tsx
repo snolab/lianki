@@ -224,12 +224,13 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords & Parti
       if (e.target instanceof Element && e.target.closest("a,input,textarea,select,button")) return;
       // On a touch screen a single tap is for reading the line; the details
       // (JSON) open on a double tap (owner, 2026-11-14 "双击才显示这种 JSON 的消息详情").
-      // A mouse click still opens them (a double click there selects a word).
+      // Desktop clicks are for reading and text selection; use right-click or
+      // the keyboard to inspect details instead.
       const kind = "nativeEvent" in e ? (e.nativeEvent as PointerEvent).pointerType : undefined;
       const touch =
         kind === "touch" ||
         (!kind && typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
-      if (touch && e.type === "click" && (e as MouseEvent<HTMLElement>).detail < 2) return;
+      if (e.type === "click" && (!touch || (e as MouseEvent<HTMLElement>).detail < 2)) return;
       e.stopPropagation();
       setSelection({ message, sender, anchor: e.currentTarget.getBoundingClientRect() });
     };

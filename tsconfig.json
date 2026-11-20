@@ -44,6 +44,7 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
+    "vendor/otoji",
     "node_modules",
     "archived",
     "tmp",

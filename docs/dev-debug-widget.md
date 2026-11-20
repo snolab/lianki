@@ -918,6 +918,19 @@ kept aside as `echo:<id>` (the newest 50) with `raw` = the text as heard,
 `gap`). **Undo**: `unmerge` with the echo's id (the page's, or a lane's
 `edit --unmerge`) posts it after all, as heard (`debug.echo-undo`).
 
+**Play reports** (flag **`voice.echo-reports`**, on by default, audience
+owner; [echo-suppression.md](echo-suppression.md), layer (b)). His pages now
+do tell the hub what they read aloud, as `playing` / `played` frames
+(`play-report.ts`, hub clock), kept in the hub's memory only
+(`voice.echoPlayKeepMs`, 120 s). A voice line from his other device that
+overlaps one in time (`voice.echoSlackMs`, 1.5 s each side) and whose words
+are inside it (`voice.echoPlaySimilarity`, 0.6) is a read-aloud echo, layer
+`report`; the landed-time rule above stays the fallback, layer `landed`. A
+`read-aloud` echo (either layer) is then **shown collapsed** on his pages —
+its own `echo` frame and the `echoes` snapshot on connect, never a thread
+line — with "This was me" (the same `unmerge`); `other-device` stays hidden.
+The rows keep the newest `voice.echoShowMax` (50). Off = exactly the above.
+
 ## The live speech line
 
 The owner, 2026-11-14 04:25 JST: the words being recognised while he speaks are not
@@ -1860,8 +1873,14 @@ it onto the `ChatMessage`, so pages get it live and in history, and logs it
 in `debug.say`.
 
 **On the page** (`packages/debug-chat/src/speak-rules.ts`, gated in
-`voice.ts` `gateVoice`), on top of the usual rules (mic on; or the speaker
-toggle on and either a phone, the mic used on this device, or the input focused):
+`voice.ts` `gateVoice`), on top of the usual rules (speaker toggle on, plus
+the mic on, a phone, the mic used on this device, or the input focused):
+
+- **Manual mute while listening:** the read-aloud menu row stays usable with
+  the microphone on. Turning it off immediately stops the current and queued
+  replies and silences new replies, while microphone capture continues.
+  Its saved setting remains off after a microphone restart. Hot-loading a new
+  widget guards the existing shared voice session without replacing capture.
 
 - **A phone: the toggle alone** (owner, 2026-11-10): on a touch device
   (voice-bg.ts `isDesktop` false) every reply is read with the speaker
@@ -2270,13 +2289,30 @@ inside `[data-sensitive]` / `[data-lk-sensitive]` (any page may mark a part).
 
 Choosing it puts a quote chip above the input (one line; a tap shows it whole;
 × drops it). It is kept with the draft in `lk:ui:chat` (`attached`), and sent
-with the **next line only** as `context: {selection, path, title, host?}` —
+with the **next line only** as `context: {selection, path, title, host?, location?}` —
 `selection` ≤ 2000 characters, `path` without query or fragment, `host` only
 on another site (`cleanContext` in wire.ts, applied by the page, the hub's
 `parsePageMessage` and the session store). The hub stores it on the line in
 the sender's own thread — a friend's selection stays in their thread — and
 logs only its length. The log shows it as a small quote above the line;
 `eval.ts chat` prints it in the JSON line as `"context"`.
+
+**Selection location.** Captured with the selection, before focusing chat:
+the nearest heading, a unique bounded block selector, offsets in that block's
+UTF-16 text, up to 160 characters before and after, and a document-coordinate
+rectangle plus the viewport/scroll snapshot in CSS pixels. Fields carry their
+locator and value offsets only, never their unselected value. Broad page
+containers and blocks containing private, chat, field or hidden content do not
+provide surrounding text. Coordinates describe that moment; text context is
+more useful after the page moves. Missing metadata stays absent (including
+unsupported selections); it is never inferred. Identical text at two locations
+updates the remembered anchor. The listener receives the structured location,
+and the built-in partner receives the same bounded reference data in its prompt;
+its characters count towards the credit reservation. Query strings and fragments
+remain excluded. Chat-history storage still omits the entire page context.
+The attachment chip and sent quote display only the selected text, including
+when expanded; page and location metadata do not appear in hover tooltips.
+The structured context sent to listeners and the partner is unchanged.
 
 ## Attachments and the inbox
 

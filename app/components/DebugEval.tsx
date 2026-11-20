@@ -1,4 +1,5 @@
 "use client";
+import { isMeetingsPath } from "@/lib/meetings/core";
 import {
   createChatOutbox,
   migrateSessionOutbox,
@@ -38,6 +39,7 @@ import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
 import { setRepeatLimits } from "@lianki/debug-chat/stt-repeat";
 import { setGuardLimits } from "@lianki/debug-chat/stt-guard";
+import { setOwnerRoutes } from "@lianki/debug-chat/owner-routes";
 import { setVadThresholds } from "@lianki/debug-chat/adaptive";
 import { dispatchChatUi } from "@lianki/debug-chat/ui-cue";
 import { getKey, isKey, setKey } from "@lianki/debug-chat/storage-keys";
@@ -61,12 +63,21 @@ import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setLaneTable } from "@lianki/debug-chat/voices";
 import { setPhoneticMaxNear } from "@lianki/debug-chat/lane-phonetic";
 import { setOtherAvatar, setOtherAvatarBelow } from "@lianki/debug-chat/avatar-rules";
+import { setSpeakerAvatars } from "@lianki/debug-chat/cluster-avatar";
 import { waitText } from "@/lib/wait-text";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
-import { setTalkOver } from "@lianki/debug-chat/aec";
+import { setCloudWhileMic, setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
 import type { RecheckAmend, RecheckConf } from "@lianki/debug-chat/whisper-recheck";
 import { hubClock, syncWait } from "@lianki/debug-chat/sync-speak";
+import { hubSpanOf, setEchoReports, setPlaySender } from "@lianki/debug-chat/play-report";
+import { applyEchoFrame } from "@lianki/debug-chat/echo-rows";
+import {
+  AUDIO_SYNC_LOCAL_KEY,
+  type AudioSyncHub,
+  createAudioSyncHub,
+} from "@lianki/debug-chat/audio-sync-hub";
+import { cloudOut, existingCtx } from "@lianki/debug-chat/voice-out";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
@@ -208,11 +219,14 @@ export function DebugEval({
   etaBar = false,
   fullScreen = false,
   liHub = false,
+  echoReports = false,
+  audioSync = false,
   lexicon,
   cloudVoices,
   talkOver = false,
   polishReadback: readback,
   foldOthers = true,
+  speakerAvatars = true,
   whisperRecheck,
   pttMaxCaptureMs,
   mergeReopenSec,
@@ -223,6 +237,8 @@ export function DebugEval({
 }: {
   /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
   foldOthers?: boolean;
+  /** Flag `voice.speaker-avatars`: each voice in the room gets its own avatar (cluster-avatar.ts). */
+  speakerAvatars?: boolean;
   /**
    * Flag `stt.whisper-recheck` + dev: at a run's passage end his Mac's Whisper re-reads
    * the run whole, and the line takes it before its polish (whisper-recheck.ts). None: off.
@@ -276,6 +292,13 @@ export function DebugEval({
   /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
   liHub?: boolean;
   /**
+   * Flag `voice.echo-reports` (audience owner): this page reports what it reads
+   * aloud to the hub (play-report.ts), and shows read-aloud echoes collapsed.
+   */
+  echoReports?: boolean;
+  /** Flag `voice.audio-sync`: millisecond-level multi-device WebRTC + Web Audio sync. */
+  audioSync?: boolean;
+  /**
    * Flag `chat.play-audio` (audience owner): an agent's `say --play` lines get
    * a ▶ and may play by themselves (docs/li-sound-hub.md, "Playing audio from an agent").
    */
@@ -290,6 +313,12 @@ export function DebugEval({
   // Undecided voice lines well under his print get another voice's avatar (avatar-rules.ts).
   setOtherAvatarBelow(publicCfg("voice.otherAvatarBelow"));
   setOtherAvatar(publicCfg("voice.otherAvatar"), publicCfg("voice.otherAvatarName"));
+  // One avatar per voice in the room (cluster-avatar.ts): the flag and its live palette.
+  setSpeakerAvatars({
+    on: speakerAvatars,
+    hues: publicCfg("voice.clusterHues"),
+    minScore: publicCfg("voice.clusterMinScore"),
+  });
   // The mic's repetition guard on every final (stt-repeat.ts): live, no deploy.
   setRepeatLimits({
     maxRuns: publicCfg("stt.repeatMaxRuns"),
@@ -306,8 +335,14 @@ export function DebugEval({
     },
   });
   setGuardLimits({ minSpeechMs: publicCfg("stt.guardMinSpeechMs") });
+  // The owner's default speech routes (owner-routes.ts, read by local-stt.ts): live, no deploy.
+  setOwnerRoutes(publicCfg("stt.ownerRoutes"));
   setCloudVoices(cloudVoices);
   setTalkOver(talkOver);
+  // What this page reads aloud goes to the hub for the cross-device echo match (play-report.ts).
+  setEchoReports(echoReports);
+  // Read with the cloud voice while the mic is open (aec.ts): the echo canceller hears it.
+  setCloudWhileMic(publicCfg("voice.cloudWhileMic"));
   setPolishReadback(readback);
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
@@ -333,6 +368,8 @@ export function DebugEval({
    * once the hub's are in (lib/use-chat-cache.ts). DebugEval renders in the
    * browser only, so reading storage in the first render is safe.
    */
+  // His voice lines the hub judged read-aloud echoes: shown collapsed, never as lines (echo-rows.ts).
+  const [echoes, setEchoes] = useState<ChatMessage[]>([]);
   const { cachedLines, messages, setMessages, fromHub, setFromHub } = useChatCache({
     account,
     box: !!box,
@@ -637,6 +674,15 @@ export function DebugEval({
     };
 
     const run = async (sock: WebSocket, id: string, to: string, code: string) => {
+      // Meetings' pages hold recordings of other people: no eval runs there (docs/meetings.md).
+      if (isMeetingsPath(location.pathname)) {
+        try {
+          sock.send(
+            JSON.stringify({ type: "result", id, to, ok: false, error: "refused: private page" }),
+          );
+        } catch {}
+        return;
+      }
       clearTimeout(hideToast);
       setToast(`eval ran · ${id}`);
       hideToast = setTimeout(() => setToast(null), TOAST_MS);
@@ -801,8 +847,26 @@ export function DebugEval({
         if (!friendRef.current) devLog({ ev: "eval-socket", label });
         // The hub's clock, for reading lines in step with his other devices (sync-speak.ts).
         hubClock().reset();
+        // The hub sends the echoes it keeps again (its `echoes` snapshot).
+        setEchoes([]);
         clockPing(sock);
+        if (
+          !friendRef.current &&
+          !boxRef.current &&
+          (audioSync || getKey(AUDIO_SYNC_LOCAL_KEY) === "1")
+        ) {
+          audioSyncHub?.close();
+          audioSyncHub = createAudioSyncHub({
+            cloud: cloudOut,
+            ctx: existingCtx as unknown as Parameters<typeof createAudioSyncHub>[0]["ctx"],
+            sendHub: (m) => {
+              if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify(m));
+            },
+          });
+          audioSyncHub.requestPeers();
+        }
       };
+      let audioSyncHub: AudioSyncHub | null = null;
       let catchupAt = agentAtRef.current;
       const catchupAgents = new Map<string, ChatMessage>();
       sock.onmessage = (e) => {
@@ -841,6 +905,10 @@ export function DebugEval({
         // A clock pong (sync-speak.ts): noted; the round goes on until it has its samples.
         if (msg.type === "clock") {
           if (hubClock().pong(msg as { t0?: unknown; t1?: unknown; t2?: unknown })) clockPing(sock);
+          return;
+        }
+        if (msg.type === "audio-sync-peers" || msg.type === "audio-sync-signal") {
+          audioSyncHub?.handleHubEvent(msg);
           return;
         }
         if (msg.type === "friend-status") {
@@ -927,6 +995,13 @@ export function DebugEval({
               if (sock.readyState !== WebSocket.OPEN) throw new Error("socket closed");
               sock.send(JSON.stringify(m));
             });
+            // His own socket: what this page reads aloud is reported on it (play-report.ts).
+            if (!boxRef.current)
+              setPlaySender((f) => {
+                if (ws !== sock || sock.readyState !== WebSocket.OPEN) return false;
+                sock.send(JSON.stringify(f));
+                return true;
+              });
             // Hot islands follow the owner's code-run grant for this page.
             islandStore.setGrant(grantUntil(msg as HubState, Date.now()));
           }
@@ -1094,6 +1169,11 @@ export function DebugEval({
           );
           return;
         }
+        // Read-aloud echoes (flag voice.echo-reports): their own frames, never a line, never read aloud.
+        if (msg.type === "echo" || msg.type === "echoes" || msg.type === "echo-gone") {
+          setEchoes((list) => applyEchoFrame(list, msg) ?? list);
+          return;
+        }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
           const m = withLane(msg.message as ChatMessage);
           if (typeof m.text !== "string" || typeof m.id !== "string") return;
@@ -1199,11 +1279,14 @@ export function DebugEval({
         if (ws !== sock) return;
         outbox.disconnect();
         recovered.disconnect();
+        audioSyncHub?.close();
+        audioSyncHub = null;
         readReceipt.sent = 0;
         ws = null;
         hubOwnerRef.current = false;
         setPhase("closed");
         setClipsSender(null);
+        setPlaySender(null);
         reporter.detach();
         sockRef.current = null;
         liveRef.current = false;
@@ -1412,6 +1495,8 @@ export function DebugEval({
         owner && friend === null ? cleanAttachments(opts?.attachments) : undefined;
       // Where a voice line was spoken (path, title, screen text): its polish draws on it.
       const scene = opts?.source === "stt" ? pageScene() : undefined;
+      // When it was spoken on the hub's clock: the hub lines it up with what his devices read aloud.
+      const hubSpan = timing ? hubSpanOf(timing) : undefined;
       const accepted = outbox.enqueue({
         text,
         ...(to ? { to } : {}),
@@ -1426,6 +1511,7 @@ export function DebugEval({
         ...(context ? { context } : {}),
         ...(attachments ? { attachments } : {}),
         ...(scene ? { scene } : {}),
+        ...(hubSpan ? { hubSpan } : {}),
       });
       if (!accepted) return false;
       const id = outbox.items().at(-1)!.id;
@@ -1572,6 +1658,12 @@ export function DebugEval({
               sendHub({ type: "passage-end", ...(recheck ? { recheck } : {}) })
             }
             onUnmerge={(id) => sendHub({ type: "unmerge", id })}
+            echoes={echoes}
+            // "This was me": the hub posts the echo as his line (restoreEcho, via unmerge).
+            onEchoMine={(id) => {
+              setEchoes((list) => list.filter((m) => m.id !== id));
+              sendHub({ type: "unmerge", id });
+            }}
             nodes={state?.nodes}
             notice={
               friend === "blocked"

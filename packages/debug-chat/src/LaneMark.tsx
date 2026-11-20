@@ -12,6 +12,7 @@ import { flashProps } from "./addressed";
 import { laneSpec, type LaneId, type LaneMark, isLaneId } from "./voices";
 import type { ChatMessage } from "./wire";
 import { speakerAvatar } from "./speaker-avatar";
+import { HOUSE_PATH, clusterAvatar as clusterLook } from "./cluster-avatar";
 import { AVATAR_PATH, autoMark, isAvatarRef, sanitizeAvatarSvg, svgDataUrl } from "./svg-avatar";
 
 /** A mark as an avatar element (fills the Avatar's round box). */
@@ -55,6 +56,42 @@ export function autoAvatar(name: string) {
 /** Another voice's avatar on an owner's voice line (speaker-avatar.ts): the same id, the same disc. */
 export function voiceAvatar(voice: string) {
   return markSvg(speakerAvatar(voice), { "data-testid": "debug-chat-voice-mark", "data-voice": voice });
+}
+
+/**
+ * One voice in the room (cluster-avatar.ts): its letter, or a house for a
+ * household voice, on a disc of its own colour. Named by the Avatar around it.
+ */
+export function clusterAvatar(cluster: string) {
+  const c = clusterLook(cluster);
+  return (
+    <svg
+      data-testid="debug-chat-cluster-mark"
+      data-cluster={cluster}
+      viewBox="0 0 24 24"
+      width="100%"
+      height="100%"
+      aria-hidden
+      style={{ display: "block", background: c.bg, borderRadius: "9999px" }}
+    >
+      {c.kind === "household" ? (
+        <path d={HOUSE_PATH} fill={c.fg} stroke={c.fg} strokeWidth={1} strokeLinejoin="round" />
+      ) : (
+        <text
+          x="12"
+          y="12"
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill={c.fg}
+          fontSize={c.letter.length > 1 ? 9 : 13}
+          fontWeight={700}
+          fontFamily="system-ui, sans-serif"
+        >
+          {c.letter}
+        </text>
+      )}
+    </svg>
+  );
 }
 
 /** Fetched avatars, by reference: the sanitized SVG's data URL, or null (missing or refused). */

@@ -2207,6 +2207,42 @@ const learningPartnerContent = {
       mr: "दुसरा आवाज",
       ko: "다른 목소리",
     }),
+    vpVoiceCluster: t({
+      en: "Voice {label}",
+      zh: "声音 {label}",
+      hi: "आवाज़ {label}",
+      es: "Voz {label}",
+      fr: "Voix {label}",
+      ar: "الصوت {label}",
+      bn: "কণ্ঠ {label}",
+      pt: "Voz {label}",
+      ru: "Голос {label}",
+      ur: "آواز {label}",
+      id: "Suara {label}",
+      de: "Stimme {label}",
+      ja: "声 {label}",
+      sw: "Sauti {label}",
+      mr: "आवाज {label}",
+      ko: "목소리 {label}",
+    }),
+    vpHouseholdVoice: t({
+      en: "Household voice",
+      zh: "家人的声音",
+      hi: "घर के सदस्य की आवाज़",
+      es: "Voz de alguien de casa",
+      fr: "Voix d’un proche à la maison",
+      ar: "صوت أحد أفراد المنزل",
+      bn: "পরিবারের সদস্যের কণ্ঠ",
+      pt: "Voz de alguém de casa",
+      ru: "Голос домашнего",
+      ur: "گھر کے فرد کی آواز",
+      id: "Suara anggota rumah",
+      de: "Stimme aus dem Haushalt",
+      ja: "家族の声",
+      sw: "Sauti ya mtu wa nyumbani",
+      mr: "घरातील व्यक्तीचा आवाज",
+      ko: "가족의 목소리",
+    }),
     notReadHidden: t({
       en: "· not read aloud: the page was in the background",
       zh: "· 未朗读：页面当时在后台",
@@ -4069,6 +4105,10 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Small button text for a collapsed chat message spoken by another person in the room: shows it was another voice and tapping unfolds it into full text. Short phrase.",
   vpOtherVoice:
     "Tooltip and screen-reader name of the small coloured avatar on a voice-typed chat line that was spoken by someone other than the account's owner (a family member or guest near the mic; each such person gets their own stable colour and shape). It names that person without knowing who they are. Short noun phrase, no full stop: 'Another voice'.",
+  vpVoiceCluster:
+    "Tooltip and screen-reader name of the small coloured avatar (a disc with a letter A, B, C…) on a voice-typed chat line spoken by someone other than the account's owner: the speech server groups the voices it hears today, and each group gets a letter, so 'Voice A' and 'Voice B' are two different people near the mic whose names are not known. Keep {label} exactly as written: it is replaced by the letter. Short noun phrase, no full stop.",
+  vpHouseholdVoice:
+    "Tooltip and screen-reader name of the small avatar (a disc with a little house) on a voice-typed chat line that the speech server matched to the voiceprint of someone who lives with the account's owner (a family member he recorded on purpose). It does not name the person. Short noun phrase, no full stop: 'Household voice'.",
   notReadHidden:
     "Small grey note right after an assistant's message in the chat log: this message was shown but not spoken aloud, because the page was hidden (another tab or app in front, or the screen locked) when it arrived; browsers do not let a hidden page speak. Starts with a middle dot like the 'waiting' note; a short status phrase, not a sentence or an error.",
   attachOpen:

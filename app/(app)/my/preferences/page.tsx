@@ -14,6 +14,7 @@ import { VibeRetention } from "../../vibe/VibeRetention";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { listApps } from "@/lib/mini-apps/store";
 import type { MiniDb } from "@/lib/mini-apps/store";
+import { SttGlossarySettings } from "@/app/components/SttGlossarySettings";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ export default async function PreferencesPage() {
   // The API key's account sync (managed mode) is only drawn, disabled, behind
   // `byok.sync`; the owner sees it while it is off (docs/byok.md).
   const flags = await readFlags();
+  const glossary = getIntlayer("stt-glossary", await appLocale());
   const showKeySync = isDev(user.email) || flagIn(flags, "byok.sync");
   const vibe = vibeAllowed(flags, isDev(user.email));
   // The app-icon badge's row (docs/app-badge.md): only while `pwa.app-badge` is on, the owner only.
@@ -63,6 +65,21 @@ export default async function PreferencesPage() {
           miniApps={miniApps}
         >
           {vibe && <VibeRetention />}
+          {user.id && (
+            <SttGlossarySettings
+              key={user.id}
+              userId={user.id}
+              labels={{
+                heading: glossary.heading,
+                help: glossary.help,
+                words: glossary.words,
+                corrections: glossary.corrections,
+                save: glossary.save,
+                saved: glossary.saved,
+                error: glossary.error,
+              }}
+            />
+          )}
         </PreferencesClient>
       </div>
     </div>

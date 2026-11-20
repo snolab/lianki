@@ -85,6 +85,18 @@ describe("registry", () => {
       expect(isConfigKey(k)).toBe(false);
   });
 
+  test("stt.ownerRoutes: named routes and socket URLs only", () => {
+    for (const v of [
+      "",
+      "rtc:lianki",
+      "rtc:lianki wss://mac.ts.net/lianki-stt",
+      "wss:session, ws://localhost:5193/",
+    ])
+      expect(parseConfigValue("stt.ownerRoutes", v).ok).toBe(true);
+    for (const v of ["rtc:evil", "ws://mac.ts.net/x", "https://lianki.com", "wss://", 1])
+      expect(parseConfigValue("stt.ownerRoutes", v).ok).toBe(false);
+  });
+
   test("values are checked: type, whole numbers, bounds", () => {
     expect(parseConfigValue("words.undoMs", 9000)).toEqual({ ok: true, value: 9000 });
     expect(parseConfigValue("words.undoMs", "9000").ok).toBe(false);

@@ -79,6 +79,8 @@ describe("the mic's STT hint", () => {
     expect(formatSttPrompt("base")).toBe("base");
     expect(formatSttPrompt("base", [])).toBe("base");
     expect(formatSttPrompt("base", ["  "])).toBe("base");
-    expect(formatSttPrompt("base", ["lianki", "codex"])).toBe("base 热词: lianki, codex。");
+    expect(formatSttPrompt("base", ["Aurora", "Nebula"])).toBe(
+      'base Vocabulary: ["Aurora","Nebula"].',
+    );
   });
 });
