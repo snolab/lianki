@@ -278,6 +278,13 @@ export const FLAGS = {
     requires: ["workers-ai.credentials", "ai-credits.migration"],
     group: "ai",
   },
+  "chat.line-replay": {
+    description:
+      "聊天里回放你说的话的原始录音（docs/recordings.md「Replay from the chat」）：右键或长按你自己的一条语音消息，消息详情里出现「播放原始录音」，播放这句话在 /my/recordings 里存的那段录音（用你自己的登录读取，只读你自己的录音）。和 /my/recordings 同一道门：还要 voice.recordings 打开、账号有 dev 权限；找不到录音就什么都不显示。通过 Li 的播放器播放：麦克风开着时不播，Li 说话时暂停。关闭 = 消息详情里不显示这一项，也不去查录音。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   "partner.ai-reply": {
     description:
       "学习伙伴由 AI 回复（除你以外的所有用户）：打开后，普通登录用户在任意页面都能看到学习伙伴聊天框（不用调试模式），他们的消息由 Cloudflare Workers AI 上的 DeepSeek 模型在服务器端回复，只读他们自己的词表、到期卡片和学习计划。你的线程仍是你的 Claude 通道（只有 partner.owner-thread 打开时，没有通道回复的消息才由 Li 回复）；通道先回复则 AI 不再回复。每人每日 token 上限和全站每日花费上限在 lib/partner-ai-config.ts。关闭（默认）= 照旧：只有调试模式的朋友能聊，由开发通道回复。",

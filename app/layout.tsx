@@ -191,6 +191,8 @@ export default async function RootLayout({
       : undefined;
   // An agent's audio lines play on his phone (docs/li-sound-hub.md); dev holders only (the flag's audience).
   const playAudio = flagIn(flags, "chat.play-audio");
+  // His own spoken lines replay their recording (docs/recordings.md): the /my/recordings gate plus its own flag.
+  const lineReplay = dev && flagIn(flags, "voice.recordings") && flagIn(flags, "chat.line-replay");
   const boots = {
     strings: partner,
     leave,
@@ -216,6 +218,7 @@ export default async function RootLayout({
     // A posted voice line takes the speech that follows (voice-merge.ts reopenVerdict): owner only.
     mergeReopenSec: dev ? await cfg("stt.mergeReopenSec") : undefined,
     playAudio,
+    lineReplay,
   };
   const box = boxConfig();
   return (

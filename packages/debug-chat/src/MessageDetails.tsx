@@ -24,6 +24,7 @@ import { readingsOf } from "./whisper-recheck";
 import { hasVoiceDetails, voiceDetailRows } from "./voice-details";
 import { latencyLines, voiceLatency } from "./latency";
 import type { UiStrings } from "./ui-strings";
+import { LineReplay } from "./LineReplay";
 
 /** The details' voice rows' words (chat-ui-locales.ts). */
 export type VoiceWords = Pick<
@@ -186,8 +187,18 @@ function VoiceTimeline({ message, ui }: { message: ChatMessage; ui: UiStrings })
   </div>;
 }
 
-/** Message inspection never fetches or infers identity or recognition data. */
-export function useMessageDetails(label: string, voiceWords?: VoiceWords & Partial<ReadingWords>, ui?: UiStrings, detailWords?: ChatExtra) {
+/**
+ * Message inspection never infers identity or recognition data. Its one fetch:
+ * with `replay` (flags chat.line-replay + voice.recordings, and `dev`), his own
+ * spoken line's recording is looked up for "Play original audio" (LineReplay.tsx).
+ */
+export function useMessageDetails(
+  label: string,
+  voiceWords?: VoiceWords & Partial<ReadingWords>,
+  ui?: UiStrings,
+  detailWords?: ChatExtra,
+  replay = false,
+) {
   const id = useId();
   const popup = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<{
@@ -310,6 +321,7 @@ export function useMessageDetails(label: string, voiceWords?: VoiceWords & Parti
               {at.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" })}
             </time>
           )}
+          {m && replay && detailWords && <LineReplay message={m} words={detailWords.lineReplay} />}
           {m && ui && detailWords && <VoiceDetailRows message={m} words={detailWords} ui={ui} />}
           {m && ui && <VoiceTimeline message={m} ui={ui} />}
           {voiceWords && m && typeof m.id === "string" && (

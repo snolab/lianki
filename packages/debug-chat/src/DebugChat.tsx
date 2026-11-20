@@ -1015,6 +1015,11 @@ export type DebugChatProps = {
    * (`say --play`) gets its ▶ chip (PlayChip.tsx, li-player.ts). Off: no chip.
    */
   playAudio?: boolean;
+  /**
+   * Flags `chat.line-replay` + `voice.recordings` and `dev`: his own spoken
+   * line's details offer "Play original audio" (LineReplay.tsx, line-replay.ts).
+   */
+  lineReplay?: boolean;
   /** This page's timer saw a task's estimate run out, unsent: tell the hub (once per estimate). */
   onEtaDue?: (id: string) => void;
   /**
@@ -1150,6 +1155,7 @@ export function DebugChat({
   onHistory,
   etaBar = false,
   playAudio = false,
+  lineReplay = false,
   onEtaDue,
   etaSource,
   link,
@@ -1677,7 +1683,13 @@ export function DebugChat({
   const partnerName = EMBED_NAME[embedLang()];
   // The strings that were inline here, in the page's language (chat-ui-locales.ts).
   const ux = chatExtra();
-  const details = useMessageDetails(ux.messageDetails, ux, owner ? ui : undefined, owner ? ux : undefined);
+  const details = useMessageDetails(
+    ux.messageDetails,
+    ux,
+    owner ? ui : undefined,
+    owner ? ux : undefined,
+    owner && lineReplay,
+  );
   const voiceMark = (message: ChatMessage, sender: string) => {
     if (message.from !== "owner" || !hasVoiceDetails(message)) return null;
     if (!owner) return message.speaker?.decision === "me" ? <VoiceMark label={t.vpVerified} /> : null;

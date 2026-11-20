@@ -257,6 +257,30 @@ shows only where the page exists (flag and `dev`). Browser check, silent and
 with fixture APIs: `bun scripts/qa/qa-recordings-view.mjs` (`QA_SHOT_DIR=…`
 saves light and dark phone shots).
 
+## Replay from the chat
+
+Owner, 2026-11-21 01:1x JST: his own spoken line's details in the Li chat
+(right-click / long press, `MessageDetails.tsx`) offer **Play original
+audio** — the line's recording, as it was recorded. Flag
+[`chat.line-replay`](https://lianki.com/dev/flags#chat.line-replay) (**default
+on**, `audience: "owner"`), only with `voice.recordings` on and the `dev`
+grant — the same gate as this page; the route checks it again at every call.
+
+- **No stored link.** A clip has no chat line id. The mic stamps a recorded
+  utterance's `at` between two times it puts on the line's `timing`:
+  `t_speechEnd` ≤ `at` ≤ `t_uploadStart`, the same device's clock, a few ms
+  apart. The details ask the feed (`GET ?before=<t_uploadStart+1>&limit=5`,
+  own rows only) and take the clip whose `at` is in that window; a merged line
+  looks up each part and numbers its chips. No timing (a typed line, PTT, an
+  older page), no clip in the window, or the route says 404: **nothing is
+  shown**. `packages/debug-chat/src/line-replay.ts`, `LineReplay.tsx`.
+- **Played by Li's player** (`li-player.ts`, the ▶ chip of `PlayChip.tsx`):
+  `GET ?clip=<id>` on the page's one line-audio element, with his own session
+  cookie — never over his open mic (the chip says so), paused while Li
+  speaks. Only on lines `from: "owner"`, `source: "stt"`.
+- String `lineReplay` in `chat-ui-locales.ts` (16 locales, a context line).
+  Tests: `unit/line-replay.test.ts` (fakes only, no sound).
+
 ## Retention
 
 Config [`recordings.retentionDays`](https://lianki.com/dev/config) (default
