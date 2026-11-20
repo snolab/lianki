@@ -344,6 +344,11 @@ export type PageMessage =
       to?: string;
       source?: MessageSource;
       timing?: VoiceTiming;
+      /**
+       * When a voice line was spoken, on the hub's clock (play-report.ts
+       * hubSpanOf): matched against his devices' play reports, never stored.
+       */
+      hubSpan?: { from: number; to: number };
       /** A voice line's recognizer (SttTag; dev-only in the UI): route, engine, fallback. */
       stt?: SttTag;
       recheck?: RecheckMark;
@@ -646,6 +651,16 @@ export function parseControllerMessage(
   };
 }
 
+/** A voice line's hub-clock span, or undefined: two finite times, in order, at most 10 minutes apart. */
+export function cleanHubSpan(raw: unknown): { from: number; to: number } | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const { from, to } = raw as { from?: unknown; to?: unknown };
+  if (typeof from !== "number" || typeof to !== "number") return undefined;
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to < from) return undefined;
+  if (to - from > 10 * 60_000 || to > 1e14) return undefined;
+  return { from: Math.round(from), to: Math.round(to) };
+}
+
 /** Validate an owner page's message; anything else is dropped. */
 export function parsePageMessage(raw: unknown): PageMessage | null {
   const m = parse(raw, MAX_CHUNK_RAW);
@@ -728,6 +743,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
     const context = cleanContext(m.context);
     const attachments = cleanAttachments(m.attachments);
     const scene = m.source === "stt" ? cleanScene(m.scene) : undefined;
+    const hubSpan = m.source === "stt" ? cleanHubSpan(m.hubSpan) : undefined;
     return {
       type: "chat",
       id,
@@ -735,6 +751,7 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
       ...(to && to !== ROOT_NODE ? { to } : {}),
       ...(m.source === "stt" ? { source: "stt" as const } : {}),
       ...(timing ? { timing } : {}),
+      ...(hubSpan ? { hubSpan } : {}),
       ...(stt ? { stt } : {}),
       ...(recheck ? { recheck } : {}),
       ...(m.wake === "active" || m.wake === "passive" ? { wake: m.wake } : {}),
