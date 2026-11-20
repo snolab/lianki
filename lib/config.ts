@@ -96,6 +96,10 @@ function int<A extends ConfigAudience>(
   return { ...d, schema: z.number().int().min(d.min).max(d.max) };
 }
 
+/** One token of stt.ownerRoutes: a named route or a socket URL (local-stt.ts localSttFrom takes the same). */
+const OWNER_ROUTE_TOKEN =
+  /^(?:rtc:lianki|wss:session|wss:\/\/[^\s,/]+(?:\/\S*)?|ws:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/\S*)?)$/;
+
 export const CONFIG = {
   "words.nativeAudioTimeoutMs": int({
     default: 15000,
@@ -447,6 +451,27 @@ export const CONFIG = {
     description:
       "按住说话一次保留的音频上限（毫秒）。达到上限明确停止本次录音并保留已识别文字，不静默截断后当作完整录音发送；限制浏览器内存占用。",
   }),
+  // The owner's default speech routes when his page stored none (packages/debug-chat/src/local-stt.ts
+  // ownerDefaultRoutes; docs/local-stt.md, "On by default for the owner"). Empty = the build's
+  // default: rtc:lianki, then NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT (his tailnet URL, never in the tree).
+  "stt.ownerRoutes": {
+    default: "",
+    schema: z
+      .string()
+      .max(500)
+      .refine(
+        (v) =>
+          v
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .every((u) => OWNER_ROUTE_TOKEN.test(u)),
+        "routes: rtc:lianki, wss:session, wss://… (ws:// only on localhost), separated by spaces",
+      ),
+    group: "voice",
+    audience: "public",
+    description:
+      "你自己的手机/电脑在没有单独设置时用哪些语音识别路线（按顺序赛跑，先连上的用；都连不上就用云端）。空 = 默认：先 rtc:lianki（WebRTC 连到你的 Mac，不需要 Tailscale），再 tailnet 地址。可写 rtc:lianki、wss:session 或 wss:// 地址，空格分开。",
+  },
   // The repetition guard (packages/debug-chat/src/stt-repeat.ts): a final that is a
   // decoding loop is cut or dropped, in the mic and again in the hub.
   "stt.repeatMaxRuns": int({

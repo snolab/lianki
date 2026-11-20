@@ -15,10 +15,15 @@ import {
   localSttFrom,
   localSttRoute,
   OWNER_DEFAULT_LOCAL_STT,
+  allFailedWhy,
+  localDotWhy,
   needsTicket,
+  ownerDefaultRoutes,
+  routeLabel,
   packPcm,
 } from "@lianki/debug-chat/local-stt";
 import { encodeWav } from "@lianki/debug-chat/mic";
+import { ownerRoutesOverride, setOwnerRoutes } from "@lianki/debug-chat/owner-routes";
 import { connectLocalStt, readWav } from "../scripts/local-stt/stream-clip-lib";
 
 /** A WebSocket the test drives: what was sent, and server messages on demand. */
@@ -285,6 +290,47 @@ describe("createLocalStt: racing the tailnet and the tunnel", () => {
     await h.flush();
     h.socks[3].drop();
     await expect(f).rejects.toThrow("unreachable");
+  });
+
+  it("both fail: the reason is logged once and kept while down, cleared on ready", async () => {
+    const h = race();
+    h.stt.warm();
+    expect(h.stt.why()).toBeUndefined();
+    h.socks[0].onclose?.({ code: 1006, reason: "" } as never);
+    await h.flush();
+    h.socks[1].onclose?.({ code: 4010, reason: "no worker" } as never);
+    const why = "tailnet: closed, stt.lianki.com: no worker";
+    expect(h.stt.state()).toBe("down");
+    expect(h.stt.why()).toBe(why);
+    expect(h.logs.filter((l) => l.state === "all-failed")).toEqual([
+      { ev: "local-stt", state: "all-failed", why },
+    ]);
+    // The same reason on the next race is not logged again.
+    h.stt.warm();
+    h.socks[2].drop();
+    await h.flush();
+    h.socks[3].onclose?.({ reason: "no worker" } as never);
+    expect(h.logs.filter((l) => l.state === "all-failed")).toHaveLength(1);
+    // Ready clears it; a later failure is logged again.
+    h.stt.warm();
+    expect(h.stt.why()).toBeUndefined(); // connecting: no reason shown
+    h.ready(h.socks[4]);
+    expect(h.stt.why()).toBeUndefined();
+    h.socks[4].drop();
+    expect(h.stt.state()).toBe("down");
+    h.stt.warm();
+    h.socks[5].drop();
+    await h.flush();
+    h.socks[6].drop();
+    expect(h.logs.filter((l) => l.state === "all-failed")).toHaveLength(2);
+  });
+
+  it("the deadline: routes with no answer are a timeout in the reason", async () => {
+    const h = race();
+    h.stt.warm();
+    h.fire(CONNECT_TIMEOUT_MS); // before the second route even started
+    expect(h.stt.state()).toBe("down");
+    expect(h.stt.why()).toBe("tailnet: timeout, stt.lianki.com: timeout");
   });
 
   it("no ticket (not the owner, or tickets off): the tunnel is out, the tailnet still races", async () => {
@@ -931,12 +977,58 @@ describe("edge paths: requests, hello, page events", () => {
 });
 
 describe("localSttRoute (the owner's default)", () => {
-  it("nothing stored: the owner gets the tailnet then the tunnel, in that order", () => {
-    const r = localSttRoute(null, true);
+  it("nothing stored: the owner's chat mic gets WebRTC first, then the tailnet", () => {
+    const r = localSttRoute(null, true, true);
     expect(r.source).toBe("owner-default");
-    expect(r.urls).toBe("wss://owner.example.ts.net/lianki-stt wss://stt.lianki.com/");
-    expect(r.urls?.split(" ").map((u) => needsTicket(u))).toEqual([false, true]);
-    expect(localSttFrom(OWNER_DEFAULT_LOCAL_STT)).toBe(r.urls);
+    expect(r.urls).toBe("rtc:lianki wss://owner.example.ts.net/lianki-stt");
+    expect(r.urls?.split(" ").some((u) => needsTicket(u))).toBe(false); // the dead tunnel is gone
+    expect(localSttFrom(OWNER_DEFAULT_LOCAL_STT, true)).toBe(r.urls);
+  });
+  it("nothing stored, plain sockets only (vibe, /words): the tailnet alone", () => {
+    expect(localSttRoute(null, true)).toEqual({
+      urls: "wss://owner.example.ts.net/lianki-stt",
+      source: "owner-default",
+    });
+  });
+  it("config stt.ownerRoutes replaces the default list, live; empty puts it back", () => {
+    try {
+      setOwnerRoutes("  wss://mac.ts.net/x rtc:lianki ");
+      expect(ownerRoutesOverride()).toBe("wss://mac.ts.net/x rtc:lianki");
+      expect(ownerDefaultRoutes()).toBe("wss://mac.ts.net/x rtc:lianki");
+      expect(localSttRoute(null, true, true)).toEqual({
+        urls: "wss://mac.ts.net/x rtc:lianki",
+        source: "owner-default",
+      });
+      // Only named routes, for a plain-socket caller: nothing left, so no route.
+      setOwnerRoutes("rtc:lianki");
+      expect(localSttRoute(null, true)).toEqual({ source: "none" });
+      setOwnerRoutes(null);
+      expect(ownerDefaultRoutes()).toBe(OWNER_DEFAULT_LOCAL_STT);
+    } finally {
+      setOwnerRoutes("");
+    }
+  });
+  it("the dot's reason: only while down, never on Lianki's public list", () => {
+    const own = "rtc:lianki wss://mac.ts.net/x";
+    expect(localDotWhy("down", "rtc: no worker", own)).toBe("rtc: no worker");
+    expect(localDotWhy("down", "tailnet: timeout", "wss://mac.ts.net/x")).toBe("tailnet: timeout");
+    expect(localDotWhy("down", "rtc: no worker", "rtc:lianki wss:session")).toBeUndefined();
+    expect(localDotWhy("ready", "x", own)).toBeUndefined();
+    expect(localDotWhy("down", undefined, own)).toBeUndefined();
+    expect(localDotWhy("down", "x", undefined)).toBeUndefined();
+    expect(localDotWhy(undefined, "x", own)).toBeUndefined();
+  });
+  it("route labels and the all-failed reason", () => {
+    expect(routeLabel("rtc:lianki")).toBe("rtc");
+    expect(routeLabel("wss:session")).toBe("wss:session");
+    expect(routeLabel("wss://mac.ts.net/x")).toBe("tailnet");
+    expect(routeLabel("ws://localhost:5193/")).toBe("localhost");
+    expect(routeLabel("wss://stt.lianki.com/")).toBe("stt.lianki.com");
+    expect(routeLabel("nonsense")).toBe("?");
+    const long = "x".repeat(100);
+    expect(
+      allFailedWhy(["rtc:lianki", "wss://mac.ts.net/x"], new Map([["rtc:lianki", long]])),
+    ).toBe(`rtc: ${"x".repeat(60)}, tailnet: timeout`);
   });
   it("nothing stored and not the owner: no local route", () => {
     expect(localSttRoute(null, false)).toEqual({ source: "none" });

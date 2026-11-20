@@ -90,6 +90,7 @@ function fixture(
       closed++;
     },
     state: () => state,
+    why: () => undefined,
     connected: () => state === "ready",
     warm() {},
     keep() {},

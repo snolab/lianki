@@ -4,7 +4,7 @@
  * (SenseVoice), which answers partials as he talks and the final text the
  * moment the VAD ends the utterance. Owner pages only, behind
  * localStorage[LOCAL_STT_KEY]: one wss:// URL, or several separated by spaces
- * or commas (the tailnet first, then wss://stt.lianki.com, the tunnel). Any
+ * or commas (by default rtc:lianki, WebRTC to his Mac, then the tailnet). Any
  * failure — not reachable, a dropped socket, an error, no final in time — is
  * a reject, and the mic falls back to /api/debug/stt for that utterance, as
  * before.
@@ -34,7 +34,14 @@ import type { SttSignals } from "./stt-guard";
 import { reportPageError } from "./page-errors";
 import { type SpeakerTag, cleanSpeaker } from "./wire";
 import { isDesktop, sttMayReopen } from "./voice-bg";
-import { STT_AVAILABLE_EVENT, isPublicRoute } from "./public-stt";
+import {
+  PUBLIC_RTC_URL,
+  STT_AVAILABLE_EVENT,
+  isMixedRoutes,
+  isPublicRoute,
+  isPublicRoutes,
+} from "./public-stt";
+import { ownerRoutesOverride } from "./owner-routes";
 
 /** localStorage: the local STT server's WebSocket URL(s) (owner pages only). */
 export const LOCAL_STT_KEY = "lk:debug-local-stt";
@@ -96,12 +103,21 @@ export function localSttFrom(raw: string | null | undefined, named = false): str
 
 /**
  * The owner's routes when his page has stored none (docs/local-stt.md, "On by
- * default for the owner"): his Mac on the tailnet first, then the tunnel.
- * Either failing is the usual race; both failing is the cloud, per utterance.
+ * default for the owner"): WebRTC to his own Mac first (rtc:lianki, through the
+ * speech-server registry: it works off the tailnet), then the build's own list
+ * (NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT: his tailnet URL, never in the tree), raced
+ * as usual, so the tailnet still wins when it is there. Any route failing is the
+ * usual race; all failing is the cloud, per utterance.
  */
-export const OWNER_DEFAULT_LOCAL_STT =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT) ||
-  "wss://stt.lianki.com";
+export const OWNER_DEFAULT_LOCAL_STT = [
+  PUBLIC_RTC_URL,
+  ((typeof process !== "undefined" && process.env.NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT) || "").trim(),
+]
+  .filter(Boolean)
+  .join(" ");
+
+/** The owner's default route list in force: config stt.ownerRoutes (owner-routes.ts), else the build default. */
+export const ownerDefaultRoutes = (): string => ownerRoutesOverride() || OWNER_DEFAULT_LOCAL_STT;
 
 /** A stored value that turns the local route off on this origin (the default included). */
 export const LOCAL_STT_OFF = "off";
@@ -113,7 +129,7 @@ export type LocalSttSource = "stored" | "owner-default" | "off" | "none";
  * The route(s) a page uses. A stored value always wins — `off` (or one with
  * no usable URL) is off, even for the owner. With nothing stored, only the
  * owner's page (`owner`: the hub's verified owner session, never a friend or
- * another user) gets OWNER_DEFAULT_LOCAL_STT.
+ * another user) gets ownerDefaultRoutes().
  */
 export function localSttRoute(
   stored: string | null | undefined,
@@ -124,7 +140,11 @@ export function localSttRoute(
     const urls = stored.trim().toLowerCase() === LOCAL_STT_OFF ? undefined : localSttFrom(stored, named);
     return urls ? { urls, source: "stored" } : { source: "off" };
   }
-  if (owner) return { urls: localSttFrom(OWNER_DEFAULT_LOCAL_STT), source: "owner-default" };
+  if (owner) {
+    // Without `named` (vibe, the /words mic: plain sockets only) rtc:lianki is dropped here.
+    const urls = localSttFrom(ownerDefaultRoutes(), named);
+    return urls ? { urls, source: "owner-default" } : { source: "none" };
+  }
   return { source: "none" };
 }
 
@@ -315,6 +335,11 @@ export type LocalStt = {
   close(): void;
   connected(): boolean;
   state(): LocalState;
+  /**
+   * Why every route failed in the last race ("rtc: no worker, tailnet: timeout"),
+   * while the state is `down`; undefined otherwise (allFailedWhy).
+   */
+  why(): string | undefined;
   /** Called on every state change; returns an unsubscribe. */
   subscribe(f: (s: LocalState) => void): () => void;
 };
@@ -374,6 +399,42 @@ type Rec = {
   replayTimer?: unknown;
 };
 
+/** A route's short name for a failure reason: rtc, tailnet, localhost, or its host. */
+export function routeLabel(u: string): string {
+  if (u === PUBLIC_RTC_URL) return "rtc";
+  if (isPublicRoute(u)) return u;
+  try {
+    const h = new URL(u).hostname;
+    if (h.endsWith(".ts.net")) return "tailnet";
+    if (LOCAL_HOSTS.includes(h)) return "localhost";
+    return h || u;
+  } catch {
+    return "?";
+  }
+}
+
+/**
+ * Every route's reason, in the list's order, once all of them failed:
+ * "rtc: stt session: HTTP 404, tailnet: timeout". A route with no answer by the
+ * race's deadline is "timeout"; one never started (the deadline came first) too.
+ */
+export function allFailedWhy(urls: readonly string[], whys: ReadonlyMap<string, string>): string {
+  return urls.map((u) => `${routeLabel(u)}: ${(whys.get(u) ?? "timeout").slice(0, 60)}`).join(", ");
+}
+
+/**
+ * The reason shown on the grey dot (title, data-why): only while down, and only
+ * on a route list that is his own (his sockets, maybe mixed with rtc:lianki),
+ * never Lianki's public one: no internals in another user's UI.
+ */
+export function localDotWhy(
+  local: LocalState | undefined,
+  why: string | undefined,
+  urls: string | undefined,
+): string | undefined {
+  if (local !== "down" || !why || !urls) return undefined;
+  return isPublicRoutes(urls) && !isMixedRoutes(urls) ? undefined : why;
+}
 
 export function createLocalStt(
   url: string | string[],
@@ -456,6 +517,15 @@ export function createLocalStt(
   let nextRid = 1;
   let speakerModels: string[] | undefined;
   let st: LocalState = "idle";
+  /** Why the last race lost on every route (cleared on ready); logged once per new reason. */
+  let downWhy: string | undefined;
+  let loggedWhy: string | undefined;
+  const allFailed = (why: string) => {
+    downWhy = why;
+    if (why === loggedWhy) return;
+    loggedWhy = why;
+    d.log?.({ ev: "local-stt", state: "all-failed", why });
+  };
   const subs = new Set<(s: LocalState) => void>();
   const setSt = (s: LocalState) => {
     if (s === st) return;
@@ -648,6 +718,8 @@ export function createLocalStt(
       } catch {}
     filterSent = false; // a new socket starts with the filter off
     syncFilter();
+    downWhy = undefined;
+    loggedWhy = undefined;
     setSt("ready");
     d.log?.({ ev: "local-stt", state: "ready", model, via: hostOf(u) });
     const go = [...waiting];
@@ -675,13 +747,17 @@ export function createLocalStt(
       tk = getTicket();
       tk.catch(() => {}); // each tunnel URL handles its own failure
     }
+    /** Each route's reason for losing this race (allFailedWhy). */
+    const whys = new Map<string, string>();
     const fail = (u: string, why: string) => {
       if (r.over) return;
       r.failed++;
+      whys.set(u, why);
       d.log?.({ ev: "local-stt", state: "lost-race", via: hostOf(u), why });
       if (r.failed >= urls.length) {
         endRace(r);
         failed();
+        allFailed(allFailedWhy(urls, whys));
         lost("unreachable", undefined, urls.join(" "));
       } else start(); // happy eyeballs: a failure starts the next one now
     };
@@ -718,9 +794,11 @@ export function createLocalStt(
           return;
         }
         if (r.socks.has(s)) {
-          d.log?.({ ev: "local-stt-close", ...closeInfo(e), via: hostOf(u), phase: "race" });
+          const c = closeInfo(e);
+          d.log?.({ ev: "local-stt-close", ...c, via: hostOf(u), phase: "race" });
           r.socks.delete(s);
-          fail(u, "closed");
+          // The route's own reason when it gave one (public-stt.ts: "no worker", "stt session: HTTP 404").
+          fail(u, c.reason || "closed");
         }
       };
     };
@@ -740,6 +818,7 @@ export function createLocalStt(
         if (r.over) return;
         for (const o of endRace(r)) o.close();
         failed();
+        allFailed(allFailedWhy(urls, whys));
         lost("unreachable", undefined, urls.join(" "));
       }, d.connectTimeoutMs ?? CONNECT_TIMEOUT_MS),
     );
@@ -993,6 +1072,7 @@ export function createLocalStt(
   return {
     connected: live,
     state: () => st,
+    why: () => (st === "down" ? downWhy : undefined),
     speaker: () => (live() ? speakerModels : undefined),
     subscribe(f) {
       subs.add(f);

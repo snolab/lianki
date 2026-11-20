@@ -100,6 +100,7 @@
     "./mic-session": "./src/mic-session.ts",
     "./mic-taps": "./src/mic-taps.ts",
     "./local-stt": "./src/local-stt.ts",
+    "./owner-routes": "./src/owner-routes.ts",
     "./speech-rate": "./src/speech-rate.ts",
     "./tree-source": "./src/tree-source.ts",
     "./tree-nav": "./src/tree-nav.ts",

@@ -38,6 +38,7 @@ import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
 import { setRepeatLimits } from "@lianki/debug-chat/stt-repeat";
 import { setGuardLimits } from "@lianki/debug-chat/stt-guard";
+import { setOwnerRoutes } from "@lianki/debug-chat/owner-routes";
 import { setVadThresholds } from "@lianki/debug-chat/adaptive";
 import { dispatchChatUi } from "@lianki/debug-chat/ui-cue";
 import { getKey, isKey, setKey } from "@lianki/debug-chat/storage-keys";
@@ -333,6 +334,8 @@ export function DebugEval({
     },
   });
   setGuardLimits({ minSpeechMs: publicCfg("stt.guardMinSpeechMs") });
+  // The owner's default speech routes (owner-routes.ts, read by local-stt.ts): live, no deploy.
+  setOwnerRoutes(publicCfg("stt.ownerRoutes"));
   setCloudVoices(cloudVoices);
   setTalkOver(talkOver);
   // What this page reads aloud goes to the hub for the cross-device echo match (play-report.ts).

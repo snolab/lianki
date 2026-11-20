@@ -148,12 +148,28 @@ location.reload();
 **On by default for the owner** (2026-11-04, after a PC's lianki.com never
 had the flag and stayed on the cloud): with nothing stored, the owner's page
 (the hub's verified owner session, DebugEval `owner`; never a friend or
-another user) uses `OWNER_DEFAULT_LOCAL_STT`, the tailnet URL then
-`wss://stt.lianki.com`, through the same race. A stored value always wins;
+another user) uses `ownerDefaultRoutes()`: config `stt.ownerRoutes`
+(`/dev/config`, live) when set, else `OWNER_DEFAULT_LOCAL_STT` =
+`rtc:lianki` (WebRTC to his own Mac through the registry, "His own Mac over
+WebRTC" below) then the build's `NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT` (his
+tailnet URL), through the same race, so the tailnet still wins when his phone
+is on it and WebRTC carries it when it is not. Since 2026-11-21 (his phone two
+days off the tailnet, the tunnel down: both old routes failed and every
+utterance went to the cloud) `rtc:lianki` comes first and the tunnel
+`wss://stt.lianki.com` is no longer in the default (the repo variable holds
+the tailnet URL only); a stored value or the config key can still name it.
+vibe and the /words mic open plain sockets: for them the default is the
+tailnet URL alone (`localSttRoute` without `named`). A stored value always wins;
 `localStorage.setItem("lk:agent-local-stt", "off")` turns it off on that
 origin, default included (`localSttRoute`, `local-stt.ts`). The devLog says
 which: `local-stt {state:"route", source:"stored"|"owner-default"|"off"}`,
 then `{state:"ready", via:…}` for the winner; the mic's dot is green for local.
+When every route loses, the reason is logged once per new reason,
+`local-stt {state:"all-failed", why:"rtc: no worker, tailnet: timeout"}`
+(`allFailedWhy`: each route's short name and its close reason, `timeout` for
+one with no answer by the deadline), and while the dot is grey its tooltip
+and `data-why` carry it, on his own route lists only (`localDotWhy`; never on
+Lianki's public list).
 
 It is read with `getKey` (storage-keys.ts): `lk:agent-local-stt` first, then
 the legacy `lk:debug-local-stt`. When both are set and differ, the one
