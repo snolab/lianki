@@ -3,10 +3,75 @@
 Tree: /ext/li-chat
 
 State-tree node `/ext/li-chat`. Status: **M1 shipped (userscript 2.24.30)**
-— the trust gate and the pill's Li entry, owner only; M2–M5 open. Flag
-**`ext.pill-chat`**, default off, on for the owner when it ships. The
-**security gate** below must pass in full before the flag is turned on for
-anyone but the owner.
+— the trust gate and the pill's Li entry, owner only. **M2 and M3 built
+(userscript 2.24.35)**: the account-scoped Li chat ticket and Share from the
+frame's composer, dark for users. M4–M5 open. Flags: **`ext.pill-chat`**
+(default off, on for the owner) and **`ext.pill-chat-users`** (default off;
+M5). The **security gate** below must pass in full before
+`ext.pill-chat-users` is turned on.
+
+## What was built in M2 (account ticket)
+
+| piece                                            | where                                                                                     |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| audience `lianki-li-chat`, `sub` = D1 user id    | `lib/stt-ticket.ts` (`LI_CHAT_TICKET_AUD`, `isTicketSub`)                                 |
+| who may open Li, with which ticket               | `lib/pill-chat-route.ts` `pillChatAccess` → `GET /api/ext/pill-chat` `{ on, ticket }`     |
+| `POST /api/chat/li-ticket`                       | `lib/li-ticket-route.ts`, `app/api/chat/li-ticket/route.ts`                               |
+| hub: verify, route to the account's own thread   | `workers/push/src/auth.ts` `liChatTicket`, `index.ts`, `debug.ts` `connectPage` (`embed`) |
+| userscript: fetch the ticket lianki.com names    | `src/pill-chat.ts` (`TICKET_PATHS`)                                                       |
+| tests                                            | `unit/li-ticket.test.ts`, `unit/pill-chat.test.ts`                                        |
+
+- **Who.** `ext.pill-chat` off: nobody. On: the owner (`isDev`) as before,
+  with his partner ticket into his own thread (`ticket: "owner"`). Any other
+  signed-in account only while **`ext.pill-chat-users`** is on too
+  (`ticket: "account"`). Signed out: off.
+- **The route.** `POST /api/chat/li-ticket`: 404 (says nothing) without the
+  `x-lianki-userscript: 1` header, unless both flags are on, signed out, or
+  for a `dev` account (the owner never gets an account ticket); 429 past
+  config `chat.pillTicketsPerMinute` (default 20) per account; 503 without
+  `STT_TICKET_KEY`. Session, or a token with `chat:read` + `chat:write`.
+  The ticket: `{aud: "lianki-li-chat", sub, jti, iat, exp}`, 60 s, never an email.
+- **The hub.** lianki-push takes it only under the partner subprotocol and
+  only from origin `https://lianki.com` (the frame; the host page never opens
+  the socket itself), burns its jti, drops the cookie and every identity
+  header, and forwards it as `user = sub`, `owner = 0`, with the embed
+  header. The hub makes it a page in **that account's own thread** with
+  `embed: true`: chat / page / replay only, minimal state (no pairing, page
+  list or ids), never eval, never counted for an agent's pairing with that
+  account (`pairForFriend` ignores embed pages), and a blocked account is
+  closed. It can never read or post in another account's or the owner's
+  thread: the thread is the ticket's `sub`, nothing the page says.
+- **Caps and billing** as for any user's thread (partner-ai.md): unchanged.
+- **lianki-push needs a deploy** for M2 (auth.ts, index.ts, debug.ts).
+
+## What was built in M3 (share from the composer)
+
+| piece                                              | where                                                         |
+| -------------------------------------------------- | ------------------------------------------------------------- |
+| read, clean, escape (pure)                         | `packages/debug-chat/src/embed/share.ts`                      |
+| port messages `need-share` / `share`               | `embed/frame-protocol.ts`, `embed/frame-guest.ts` (`share()`) |
+| the shell reads the page only when asked           | `src/partner-frame.ts` (`share` dep), `src/pill-chat.ts`      |
+| the + menu's Share items, the composer, the hold   | `AttachMenu.tsx` (`share`), `DebugChat.tsx` (`onShare`)       |
+| the frame passes the attachment on his send        | `app/embed/partner/PartnerFrame.tsx`, `page.tsx`              |
+| strings (16 locales + context)                     | `shareSelection`, `sharePage`, `shareNoPage` in `learning-partner` |
+| tests                                              | `unit/pill-chat-share.test.ts`, `unit/partner-frame.test.ts`, `unit/support/debug-chat-mount.tsx`, `scripts/qa/qa-pill-chat.ts` §3b |
+
+- In the frame the + menu's "Attach to message" holds **Share selection** and
+  **Share page title and link** (trusted presses only). Each asks the shell
+  over the port; the shell reads the page **then** (the selection, the
+  title, the address) and answers into the port only. The frame checks the
+  answer again.
+- **Link**: http(s) only, origin + path; never the query, the fragment or
+  userinfo (decision: conservative, as gate 5's label; he can paste a full
+  address himself). `()<>[]"'` and spaces percent-encoded.
+- **Title** goes into the draft markdown-escaped, so a hostile title renders
+  literally; **selection** becomes the attachment chip (`ChatContext`, plain
+  text), cut to config `chat.pillShareChars` (default 2000).
+- **Never auto-sent.** A share fills the draft or the chip and holds the
+  typing debounce (and the dictation burst) off until a line actually goes
+  out: only Enter, the send button or a tap on the chip sends. Tested in
+  happy-dom (typing after a share does not send after the 3 s pause) and in
+  the source checks.
 
 ## What shipped (M1)
 
@@ -68,8 +133,8 @@ What the hostile-page QA showed, and what is left:
   document, so the page sees them and can `preventDefault` them (blocking
   the keyboard path; the mouse still works). Typing in the chat itself is
   in the frame and never reaches the page.
-- The in-frame one-time warning (gate 7, second half) and Share (gate 5/6)
-  are not built: the frame is still the owner's `/embed/partner`.
+- The in-frame one-time warning (gate 7, second half) is not built yet (M4).
+  Share (gate 5/6) is M3, above.
 
 ## Goal
 
@@ -176,8 +241,8 @@ already granted).
 | #   | slice                                                                                                                                                                                                                                                     | ETA  |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
 | M1  | **Shipped.** Pill → Li entry for the owner only (flag dark), reusing the current owner ticket and `/embed/partner`; per-site trust prompt with default deny and the warning copy; sites list (revoke) in the manager menu; hostile-page QA; @version bump | 2.5H |
-| M2  | Account-scoped `li-ticket` route + hub audience (chat-only, own thread), unit tests                                                                                                                                                                       | 3H   |
-| M3  | Share selection / page link from the composer, escaped; no auto-send test                                                                                                                                                                                 | 2H   |
+| M2  | **Built (2.24.35, dark for users).** Account-scoped `li-ticket` route + hub audience (chat-only, own thread), unit tests                                                                                                                                                                       | 3H   |
+| M3  | **Built (2.24.35).** Share selection / page link from the composer, escaped; no auto-send test                                                                                                                                                                                 | 2H   |
 | M4  | Security gate QA for the account ticket, trust list synced as a pref, revoke on /my/preferences                                                                                                                                                              | 3H   |
 | M5  | Flag on for users after the gate passes and the owner approves                                                                                                                                                                                            | 0.5H |
 
@@ -185,10 +250,13 @@ ETAs include the local gate and ~10M pipeline.
 
 ## Open questions
 
-1. Pill entry: a long-press menu item, or a separate small Li bubble beside
-   the pill?
-2. Signed-out users on a site: show a "sign in on lianki.com" note, or no Li
-   entry at all?
+1. ~~Pill entry: a long-press menu item, or a separate small Li bubble?~~
+   Kept as M1 built it (2026-11-17, conservative): a "Li" button at the end
+   of the pill; the swipe gestures are untouched. Revisit with the owner.
+2. ~~Signed-out users?~~ No Li entry at all (2026-11-17, conservative): the
+   flag route answers off without a session, so nothing shows and nothing is
+   fetched on other sites.
 3. ~~Should "Allow once" exist?~~ Kept in M1 (memory for the page load).
-4. Does the Chrome extension (`packages/ext`) get the same entry at the same
-   time, or after the userscript?
+4. ~~The Chrome extension at the same time?~~ After the userscript
+   (2026-11-17, conservative): `packages/ext` gets the entry only once the
+   security gate has passed for the userscript.

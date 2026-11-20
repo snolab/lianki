@@ -88,6 +88,7 @@ import {
   EMBED_HEADER,
   boxChatTicket,
   debugIdentity,
+  liChatTicket,
   offersPartner,
   partnerTicket,
 } from "./auth";
@@ -330,19 +331,29 @@ export default {
       // Any other socket: the cookie alone, and only from https://lianki.com.
       // The owner's box (docs/box-oauth.md) offers the same subprotocol with a box
       // chat ticket, good only from the box origin it names.
+      // A Li chat ticket (the pill's frame for any signed-in account,
+      // docs/userscript-li-chat.md M2) names its account: that account's own
+      // thread, never the owner's, chat only; from the lianki.com frame only.
       if (offersPartner(req) || req.headers.get("origin") !== DEBUG_ORIGIN) {
-        const t: { jti: string; exp: number; cid?: string } | null =
+        const t: { jti: string; exp: number; cid?: string; sub?: string } | null =
           (await partnerTicket(req, env.PARTNER_TICKET_PUB)) ??
-          (await boxChatTicket(req, env.PARTNER_TICKET_PUB));
+          (await boxChatTicket(req, env.PARTNER_TICKET_PUB)) ??
+          (await liChatTicket(req, env.PARTNER_TICKET_PUB));
         if (!t) return new Response("forbidden", { status: 403 });
         const headers = new Headers(req.headers);
         for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
         headers.delete(DEV_BRIDGE_HEADER);
         headers.delete(BOX_HEADER);
         headers.delete("cookie");
-        headers.set(IDENTITY_HEADERS.user, "owner");
-        headers.set(IDENTITY_HEADERS.email, "");
-        headers.set(IDENTITY_HEADERS.owner, "1");
+        if (t.sub) {
+          headers.set(IDENTITY_HEADERS.user, t.sub);
+          headers.set(IDENTITY_HEADERS.email, "");
+          headers.set(IDENTITY_HEADERS.owner, "0");
+        } else {
+          headers.set(IDENTITY_HEADERS.user, "owner");
+          headers.set(IDENTITY_HEADERS.email, "");
+          headers.set(IDENTITY_HEADERS.owner, "1");
+        }
         headers.set(EMBED_HEADER, `${t.jti}.${t.exp}`);
         if (t.cid) headers.set(BOX_HEADER, t.cid);
         return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));

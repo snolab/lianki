@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.34
+// @version     2.24.36
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -3464,17 +3464,84 @@ Sasisha kadi kwa anwani mpya?`,
     untuckChat: `In ${CHAT}: tooltip and label of the handle left on the screen edge: brings the small chat pill back. An imperative phrase.`,
   };
   var EXTRA_CONTEXT = {
+    linkMenuTitle: `In ${CHAT}: Heading and accessible name of the action menu opened by tapping a URL in a chat message. This menu is only for chat links, not links elsewhere on the page.`,
+    linkOpen: `In ${CHAT}: Action in that menu: follow the selected URL, using the existing external-site confirmation when needed. On the production site or for an external URL. Short imperative.`,
+    linkOpenHere: `In ${CHAT}: Action for a Lianki URL while the chat is on preview.lianki.com: open the same path/query/hash on the CURRENT preview site rather than lianki.com. Parenthetical this site clarifies the destination.`,
+    linkOpenProd: `In ${CHAT}: Action: open this Lianki URL on the public production site lianki.com rather than the preview. Also the default open label when site=prod or #prod explicitly requests production. Production means the normal public website, not a product or factory.`,
+    linkCopy: `In ${CHAT}: Action: copy the effective full URL, including its query/hash, to the clipboard. Imperative.`,
+    linkCopied: `In ${CHAT}: Brief success status after that copy action.`,
+    linkCopyFailed: `In ${CHAT}: Brief failure status when the browser cannot write the link to the clipboard. No technical error details.`,
+    linkSystem: `In ${CHAT}: Action: show the device/browser system options for the effective link. Uses native sharing when supported; otherwise offers a normal anchor that can be pressed and held.`,
+    linkSystemHint: `In ${CHAT}: Hint under the native-link fallback of System menu: press and hold the link to get the browser/system actions. It does not promise a custom popup.`,
+    linkClose: `In ${CHAT}: Accessible label of the close button of the chat link action menu.`,
+    polishedBy: `In ${CHAT}: accessible label and tooltip heading on the small sparkle after a polished voice message. Names WHO polished the wording, not who spoke or transcribed it. {name} is the assistant lane display name or the localized automatic-system name; keep {name}. Also shown above the original transcript in the tap-open popover.`,
+    polishedAuto: `In ${CHAT}: the actor name substituted into polishedBy when edited.by is auto. This is automatic wording cleanup, not a human or a named assistant lane. A short localized name for the automatic system; the tiny badge itself uses a symbol.`,
     messageDetails: `In ${CHAT}: heading and accessible label of a popover opened by clicking a message. It shows only metadata already carried by that message: sender, timestamp, recognition and voiceprint fields when present. Short noun phrase.`,
+    miniAppLoading:
+      "In a chat message mini-app card/panel, status while fetching the signed-in account's own app. The HTML is not executed until Open is chosen.",
+    miniAppUnavailable:
+      "In a chat message mini-app card/panel: the requested app cannot be loaded, including deleted apps, unavailable feature or another account's app. Do not disclose ownership details.",
+    miniAppResize:
+      "Accessible label for the chat mini-app panel height separator: drag vertically or use arrow keys to resize the embedded sandbox; this does not change the app's own HTML.",
+    menuSwitchOn: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the ON word: the setting is active. The shortest word this language's own on/off switches show for 'on' (English 'On', Chinese 开), the same as the app's other switches.`,
+    menuSwitchOff: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the OFF word: the setting is inactive. The shortest word this language's own on/off switches show for 'off' (English 'Off', Chinese 关), the pair to the ON word.`,
+    readReceipts:
+      "Accessible label for tiny participant avatars below the latest own chat message in the viewer’s own authenticated thread. These participants have actually read through this message; not merely connected or received it. No counts or technical sequence values are shown.",
+    pttTooLong:
+      "Shown in the pending push-to-talk speech bubble when a held recording reaches the configured memory/duration limit. Recording stops with an explicit failure; already recognized text remains available and is not silently sent as a complete recording.",
+    voiceDetails:
+      "Accessible label and heading of the small voice-information icon and its tap-open popover beside a spoken chat message. Shows recorded recognition, voiceprint and polishing metadata; not a playback action.",
+    voiceDetailRoute:
+      "Field label in a spoken message’s voice details: the recorded recognition route, local speech server or cloud. Does not identify a physical device or hostname.",
+    voiceDetailRecognitionModel:
+      "Field label in voice details for the model or engine that transcribed this message. Technical model identifiers remain unchanged.",
+    voiceDetailFallback:
+      "Status label in voice details shown only when recognition actually used a fallback route. Do not imply every cloud transcription is a fallback.",
+    voiceDetailRepeat:
+      "Field label in the voice details popover of the user's own spoken chat message, shown only when the speech recognizer produced a stuck loop (the same short word or syllable repeated many times, a known recognition glitch in noisy places) and the app cut that loop off before posting. Names the safeguard, a few words, no colon.",
+    voiceRepeatTrimmed:
+      "Value beside the voiceDetailRepeat label in the voice details popover: the repeated loop at the end of the recognized text was removed and only one copy kept. Short, past tense, factual; it does not say the user repeated themselves.",
+    voiceDetailSpeakerDecision:
+      "Field label in voice details for the voiceprint comparison decision: the speaker matches the enrolled user, another voice, or an undetermined result. Not an authorization grant.",
+    voiceDetailSpeakerScore:
+      "Field label in voice details for the recorded numeric voiceprint match score. It is a similarity score, not a percentage or probability.",
+    voiceDetailSpeakerModel:
+      "Field label in voice details for the model that compared the speaker’s voiceprint. Preserve technical model identifiers unchanged.",
+    voiceDetailSpeakerReason:
+      "Field label in voice details for the recorded reason a voiceprint decision was uncertain, such as a short utterance or noise. Never invent a reason.",
+    voiceDetailSpeakerSpeechS:
+      "Field label in voice details for the duration of detected speech, displayed with seconds. Distinct from total recording length.",
+    voiceDetailSpeakerSnrDb:
+      "Field label in voice details for the recorded signal-to-noise ratio, displayed in dB. A measurement, not a quality rating.",
+    voiceDetailSpeakerVoice:
+      "Field label in voice details for the recorded speaker voice identifier, such as me or s1. Identifiers remain unchanged; no device identity is inferred.",
+    voiceDetailRecheckModel:
+      "Field label in voice details for an engine that re-listened to and checked the whole utterance. Preserve the recorded model name unchanged.",
+    voiceDetailPolishedBy:
+      "Field label in voice details naming who polished this message’s wording. It is an editor identity, not the recognition engine or speaker.",
+    voiceDetailPolishedAt:
+      "Field label in voice details before the date and time when this message’s wording was polished. Not its original send time.",
+    voiceDetailPolishCount:
+      "Field label in voice details before the recorded number of wording-polish edits to this message. A count, not an action button.",
+    voiceDecisionMe:
+      "Value in the voice details’ voiceprint decision field: the recorded speaker matched the enrolled user’s own voice. Does not mean a message was read or approved.",
+    voiceDecisionOther:
+      "Value in the voice details’ voiceprint decision field: the recorded speaker was another voice rather than the enrolled user.",
+    voiceDecisionUnknown:
+      "Value in the voice details’ voiceprint decision field: recognition could not determine whether the speaker matched. Do not phrase it as a definite mismatch.",
     voiceUsed: `In ${CHAT}, the message details popover: a row naming the voice that actually read this message aloud on this device; {name} is a technical voice id shown as is (e.g. neko-moe, device:Samantha, aura:luna). A label, a colon, then {name}; keep {name}.`,
     voiceUseThis: `In ${CHAT}, the message details popover: a button beside that voice row, shown when the voice was picked by a rotation that takes turns through several voices: tapping keeps this voice for such lines on this device instead of taking turns. An imperative phrase.`,
     voicePinned: `In ${CHAT}, the message details popover: the state shown once a voice was kept that way (pinned) on this device; the rotation is off and every such line uses {name}. A short state phrase; keep {name}.`,
     voiceUnpin: `In ${CHAT}, the message details popover: a button that undoes that pin, so such lines take turns through the voices again (the rotation). An imperative verb, with 'rotate' or 'take turns' in brackets.`,
     voiceClone: `In ${CHAT}, the message details popover, on the user's own spoken message: the row shown instead of a voice id when the message, after the assistant polished its wording, was read back to the user in a copy (clone) of the user's OWN voice made on their computer. The same 'Voice:' label as the voice row, then 'yours' and '(cloned)' in brackets. Addressed to the user.`,
+    levelHeard: `In ${CHAT}, the message details popover, on the user's own spoken message that was joined from several short utterances: the label above the text exactly as the live speech recognition first heard it, while the user was still speaking (the first of up to three readings of the same speech, shown one under another). A short label, no colon.`,
+    levelWhisper: `In ${CHAT}, the message details popover, on that same spoken message: the label above the second reading, made after the user stopped speaking, when the user's own computer listened to the recording of the whole passage again with a slower, more accurate speech recognizer; {engine} is that recognizer's technical name (e.g. mlx-whisper), kept as is. A short label, no colon; keep {engine}.`,
+    levelPolished: `In ${CHAT}, the message details popover, on that same spoken message: the label above the third reading, the text after the assistant fixed mis-heard words, fillers and punctuation (its meaning unchanged). Past participle or a short label, no colon.`,
     speakMicTitle: `In ${CHAT}, the menu's read-aloud row: tooltip while the mic is on; replies are always read aloud then, and the user's own setting comes back when the mic stops.`,
     speakTouchTitle: `In ${CHAT}, the menu's read-aloud row: tooltip when replies are read aloud whether typing or not, until the user turns it off.`,
     speakVoicedTitle: `In ${CHAT}, the menu's read-aloud row: tooltip after the user spoke with the mic on this device: replies are read aloud, typed or spoken, until turned off.`,
     speakTypingTitle: `In ${CHAT}, the menu's read-aloud row: tooltip when replies are read aloud only while the user is typing in the chat box (it has the focus).`,
-    speakMicOn: `In ${CHAT}, the menu's read-aloud row: its text while the mic is on (replies are then read aloud). A short state phrase.`,
+    speakMicOn: `In ${CHAT}, the menu's read-aloud switch: its text while the mic and reply read-aloud are both on. It can still be turned off without stopping the mic. A short state phrase.`,
     speakMicUsed: `In ${CHAT}, the menu's read-aloud row: its text after the mic was used on this device. A short state phrase.`,
     speakSilent: `In ${CHAT}, the menu's read-aloud row: its text when replies are not read aloud. A short state phrase.`,
     readingSpeed: `In ${CHAT}, the menu: screen-reader label of the group of buttons that set how fast replies are read aloud.`,
@@ -3505,6 +3572,25 @@ Sasisha kadi kwa anwani mpya?`,
     sttServersBody: `In ${CHAT}: the text of that card: the voice is sent to Lianki's speech servers, which write it out while the user speaks; the audio is not stored, only what the user sends is kept; free for now. Call them only 'Lianki's speech servers' (never a computer or a person). Two or three short sentences.`,
     sttServersAgree: `In ${CHAT}: the card's main button: agree and use Lianki's speech servers from now on, on this device. An imperative phrase.`,
     sttServersLater: `In ${CHAT}: the card's second button: do not use them now (speech recognition stays as it was). The platform's usual 'Not now'.`,
+    addressed: `In ${CHAT}: screen-reader label of a small avatar after one of the user's own messages, showing which assistant the message called by name (e.g. it started with 'coco, …'); {name} is that assistant's name, a proper name shown as is (coco, 杰咪, 小克). A short label, a colon, then {name}; keep {name}.`,
+    liveSpeaking: `In ${CHAT}: tooltip and screen-reader label of the newest line in the conversation while the user is speaking into the mic: his words appear there as they are recognised, but the line has not been sent to the partner yet. A short phrase: 'speaking', a dash, 'not sent yet'.`,
+    liveSending: `In ${CHAT}: the same spoken line just after it was sent, until the server confirms it (a second or so). One word with an ellipsis, like a chat app's 'Sending…'.`,
+    liveNotSent: `In ${CHAT}: a small visible tag on the user's spoken line when sending it failed (offline); a 'Retry' button follows it. Two words, like a chat app's 'Not sent'.`,
+    liveRetry: `In ${CHAT}: the button after 'Not sent' that sends the spoken line again. One imperative word, like a chat app's 'Retry'.`,
+    echoHeard: `In ${CHAT}: the label of a slim, collapsed row in the conversation where a line from the user's microphone would have been, when that line was not the user speaking but one of Lianki's own voices reading a message aloud (on this or another of the user's devices) and the microphone picking it up again. It is not sent as the user's words. A short phrase: the sound was read aloud and heard back.`,
+    echoMany: `In ${CHAT}: the same collapsed row when several such lines came in a row; {n} is how many (2 or more). A short noun phrase with the count; keep {n}.`,
+    echoMine: `In ${CHAT}: a button in that row, once expanded: the user says the line really was their own speech, so it is sent as their message after all. A short first-person sentence, like 'That was me'.`,
+    echoOf: `In ${CHAT}: a small link in the expanded row that scrolls the conversation to the message that was being read aloud when the microphone picked it up. A short imperative phrase.`,
+    playAudio: `In ${CHAT}: the name on the small play chip under a message that carries audio (a sound file or a live stream an assistant sent), when the sender gave it no title. One word, a noun.`,
+    playPlay: `In ${CHAT}: screen-reader label and tooltip of the round play button on that audio chip. One imperative verb.`,
+    playPause: `In ${CHAT}: screen-reader label and tooltip of the same button while the audio plays: pauses it. One imperative verb.`,
+    playStop: `In ${CHAT}: screen-reader label and tooltip of the square stop button on the audio chip: stops the audio and goes back to the start. One imperative verb.`,
+    playLive: `In ${CHAT}: a tiny badge on the audio chip when it plays a live stream (like live radio), not a file with a length. One short word, like the 'LIVE' badge of a radio or video app.`,
+    playTap: `In ${CHAT}: the chip's text when the phone would not start the audio by itself (the browser needs a tap first, or the page was in the background); one tap plays it. Only the words; an icon is added.`,
+    playMicOn: `In ${CHAT}: shown on the audio chip when it will not play because the user's microphone is on (the audio would be heard by the mic): turn the mic off, then tap play. A short sentence.`,
+    playWaiting: `In ${CHAT}: shown on the audio chip while it waits for the assistant to finish speaking aloud; it plays right after. A short phrase.`,
+    playFailed: `In ${CHAT}: shown on the audio chip when the audio could not be loaded or played (a broken link, a format the phone cannot play). A short sentence.`,
+    playNoStream: `In ${CHAT}: shown on the audio chip when this browser cannot play this kind of live stream at all. A short sentence.`,
   };
 
   // packages/debug-chat/src/ui-strings.ts
@@ -3563,6 +3649,75 @@ Sasisha kadi kwa anwani mpya?`,
   function embedLang(lang = globalThis.navigator?.language) {
     return isZh(lang) ? "zh" : isJa(lang) ? "ja" : "en";
   }
+  // packages/debug-chat/src/wire.ts
+  function oklchLuminance(l, c, hDeg) {
+    const h = (hDeg * Math.PI) / 180;
+    const a = c * Math.cos(h);
+    const b = c * Math.sin(h);
+    const l_ = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+    const m_ = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+    const s_ = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
+    const clamp = (v) => Math.min(1, Math.max(0, v));
+    const r = clamp(4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_);
+    const g = clamp(-1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_);
+    const bl = clamp(-0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  }
+  var INK = [
+    { css: "oklch(0.2 0 0)", y: oklchLuminance(0.2, 0, 0) },
+    { css: "oklch(1 0 0)", y: 1 },
+  ];
+  var DEFAULT_GRANT_MS = 8 * 60 * 60000;
+  var MAX_SELECTION = 2000;
+  var MAX_CONTEXT_TITLE = 200;
+  var MAX_SDP = 12 * 1024;
+
+  // packages/debug-chat/src/embed/share.ts
+  var MAX_SHARE_URL = 600;
+  var isShareWhat = (v) => v === "selection" || v === "page";
+  var CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
+  function cleanTitle2(v) {
+    return typeof v === "string"
+      ? v
+          .replace(/[\u0000-\u001f\u007f]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, MAX_CONTEXT_TITLE)
+      : "";
+  }
+  function cleanSelection(v, max) {
+    return typeof v === "string" ? v.replace(CONTROL, "").trim().slice(0, max).trim() : "";
+  }
+  function shareUrl(href) {
+    if (typeof href !== "string" || href.length > 8192) return null;
+    let u;
+    try {
+      u = new URL(href);
+    } catch {
+      return null;
+    }
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    const path = u.pathname.replace(
+      /[()<>[\]"'`\s\\]/g,
+      (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
+    );
+    const out = `${u.protocol}//${u.host}${path}`;
+    return out.length <= MAX_SHARE_URL ? out : null;
+  }
+  function readShare(what, page, maxSelection = MAX_SELECTION) {
+    const url = shareUrl(page.href);
+    if (!url) return null;
+    const title = cleanTitle2(page.title);
+    if (what === "page") return { what, title, url };
+    const selection = cleanSelection(page.selection, Math.min(maxSelection, MAX_SELECTION));
+    return selection ? { what, title, url, selection } : null;
+  }
+  function cleanShare(raw, what) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const r = raw;
+    if (r.what !== what) return null;
+    return readShare(what, { href: r.url, title: r.title, selection: r.selection });
+  }
 
   // packages/debug-chat/src/embed/frame-protocol.ts
   var PROTOCOL_V = 1;
@@ -3591,6 +3746,10 @@ Sasisha kadi kwa anwani mpya?`,
         w: clamp2(d.w, MIN_W, MAX_W),
         h: clamp2(d.h, MIN_H, MAX_H),
       };
+    if (d?.type === "need-share" && isShareWhat(d.what))
+      return { type: "need-share", what: d.what };
+    if (d?.type === "share" && isShareWhat(d.what))
+      return { type: "share", what: d.what, share: cleanShare(d.share, d.what) };
     if (d?.type === "ticket")
       return {
         type: "ticket",
@@ -3690,7 +3849,13 @@ Sasisha kadi kwa anwani mpya?`,
             (ticket) => port?.postMessage({ type: "ticket", ticket }),
             () => port?.postMessage({ type: "ticket", ticket: null }),
           );
-        else if (msg.type === "size")
+        else if (msg.type === "need-share") {
+          let share = null;
+          try {
+            share = d.share?.(msg.what) ?? null;
+          } catch {}
+          port?.postMessage({ type: "share", what: msg.what, share });
+        } else if (msg.type === "size")
           css(iframe, [
             ["width", `${msg.w}px`],
             ["height", `${msg.h}px`],
@@ -4353,15 +4518,23 @@ Sasisha kadi kwa anwani mpya?`,
     return on;
   }
   async function askFlag(d) {
+    return (await askAccess(d)) !== null;
+  }
+  async function askAccess(d) {
     try {
       const r = await d.gmFetch(`${d.origin}/api/ext/pill-chat`, { credentials: "include" });
-      if (!r.ok) return false;
+      if (!r.ok) return null;
       const body = await r.json();
-      return body?.on === true;
+      if (body?.on !== true) return null;
+      return body.ticket === "account" ? "account" : "owner";
     } catch {
-      return false;
+      return null;
     }
   }
+  var TICKET_PATHS = {
+    owner: "/api/debug/partner-ticket",
+    account: "/api/chat/li-ticket",
+  };
   function pillChat(d) {
     const doc = d.doc ?? document;
     const win = d.win ?? globalThis;
@@ -4384,9 +4557,10 @@ Sasisha kadi kwa anwani mpya?`,
         host,
       });
     const prompt = d.prompt ?? ((h) => trustDialog({ doc, win, strings, host: h }).result);
+    let kind = "owner";
     const ticket = async () => {
       try {
-        const r = await d.gmFetch(`${d.origin}/api/debug/partner-ticket`, {
+        const r = await d.gmFetch(`${d.origin}${TICKET_PATHS[kind]}`, {
           method: "POST",
           headers: { "x-lianki-userscript": "1" },
           credentials: "include",
@@ -4424,16 +4598,24 @@ Sasisha kadi kwa anwani mpya?`,
           if (!applyChoice(store, once, host, choice))
             return choice === "never" ? "never" : "denied";
         }
-        if (!(await askFlag(d))) {
+        const access = await askAccess(d);
+        if (!access) {
           d.setValue(PILLCHAT_ON_KEY, JSON.stringify({ on: false, at: d.now?.() ?? Date.now() }));
           return "off";
         }
+        kind = access;
         const shell = (d.frame ?? frameShell)({
           doc,
           win,
           origin: d.origin,
           label: `${host}${d.path ?? location.pathname}`.slice(0, 300),
           ticket,
+          share: (what) =>
+            readShare(what, {
+              href: d.href ? d.href() : location.href,
+              title: doc.title,
+              selection: doc.getSelection?.()?.toString() ?? "",
+            }),
           gripLabel: EMBED_STRINGS[embedLang()].grip,
           pos: {
             get: () => {

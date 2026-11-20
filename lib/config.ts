@@ -1956,6 +1956,27 @@ export const CONFIG = {
     description:
       "播放音频（say --play）：每个通道令牌（或配对的发送端）每 10 分钟最多发几条带音频的消息。0 = 不许播放。",
   }),
+  // Li chat from the userscript pill (docs/userscript-li-chat.md, M2/M3).
+  "chat.pillTicketsPerMinute": int({
+    default: 20,
+    min: 1,
+    max: 600,
+    unit: "张/分钟",
+    group: "chat",
+    audience: "server",
+    description:
+      "药丸 Li 聊天：每个账号每分钟最多领几张聊天票据（POST /api/chat/li-ticket，每次连接一张，60 秒一次性）。超过 = 这一分钟里连不上，稍后自动再试。",
+  }),
+  "chat.pillShareChars": int({
+    default: 2000,
+    min: 100,
+    max: 2000,
+    unit: "字",
+    group: "chat",
+    audience: "server",
+    description:
+      "药丸 Li 聊天：在别的网站上点「分享选中文字」时，最多带上多少个字（超出部分截掉）。分享的内容先放进输入框，你按发送才会发出。",
+  }),
 } as const satisfies Record<string, ConfigDef>;
 
 export type ConfigKey = keyof typeof CONFIG;

@@ -7,6 +7,7 @@ import { isBoxOrigin } from "../../../lib/box-oauth/rules";
 import {
   BOX_CHAT_TICKET_AUD,
   type JtiStore,
+  LI_CHAT_TICKET_AUD,
   PARTNER_SUBPROTOCOL,
   PARTNER_TICKET_AUD,
   importTicketPublicKey,
@@ -171,6 +172,42 @@ export async function partnerTicket(
     const key = await importTicketPublicKey(pub);
     const r = await verifySttTicket(offered[1], key, seen, now, PARTNER_TICKET_AUD);
     return r.ok ? { jti: r.payload.jti, exp: r.payload.exp } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A Li chat ticket's single-use id, expiry and the account it names; null = refuse. */
+export type LiChatTicket = PartnerTicket & { sub: string };
+
+/**
+ * A Li chat ticket (lianki.com/api/chat/li-ticket, docs/userscript-li-chat.md
+ * M2): the partner subprotocol, the Li chat audience, an account id (`sub`),
+ * and taken only from the lianki.com frame (origin exactly DEBUG_ORIGIN): the
+ * host page never opens this socket itself. The socket is that account's own
+ * thread, chat only (index.ts, debug.ts). Never an owner page: an owner
+ * partner ticket is never one of these, nor the other way round.
+ */
+export async function liChatTicket(
+  req: Request,
+  pub: string | undefined,
+  seen: JtiStore = seenHere,
+  now: number = Date.now(),
+): Promise<LiChatTicket | null> {
+  if (req.headers.get("origin") !== DEBUG_ORIGIN || !pub) return null;
+  const offered = (req.headers.get("sec-websocket-protocol") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (offered.length !== 2 || offered[0] !== PARTNER_SUBPROTOCOL) return null;
+  try {
+    const key = await importTicketPublicKey(pub);
+    // Claims first on a copy of the store, so a ticket with a bad `sub` spends nothing.
+    const probe: JtiStore = new Map(seen);
+    const r = await verifySttTicket(offered[1], key, probe, now, LI_CHAT_TICKET_AUD);
+    if (!r.ok || !isUserId(r.payload.sub)) return null;
+    seen.set(r.payload.jti, r.payload.exp);
+    return { jti: r.payload.jti, exp: r.payload.exp, sub: r.payload.sub };
   } catch {
     return null;
   }

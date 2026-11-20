@@ -151,6 +151,8 @@ function harness(opts: {
   top?: boolean;
   frameResult?: "ready" | "blocked";
   fetchFail?: "throw" | "status";
+  /** The ticket kind lianki.com names (M2); absent = an answer from before M2. */
+  kind?: "owner" | "account";
 }) {
   const g = gm({
     ...(opts.flag === false ? {} : { [PILLCHAT_ON_KEY]: JSON.stringify({ on: true, at: 1 }) }),
@@ -182,7 +184,14 @@ function harness(opts: {
       if (opts.fetchFail === "status" && !url.endsWith("/api/ext/pill-chat"))
         return { ok: false, status: 404, json: async () => ({}) };
       if (url.endsWith("/api/ext/pill-chat"))
-        return { ok: true, status: 200, json: async () => ({ on: opts.server ?? true }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            on: opts.server ?? true,
+            ...(opts.kind ? { ticket: opts.kind } : {}),
+          }),
+        };
       return { ok: true, status: 200, json: async () => ({ ticket: "TK-1" }) };
     },
     prompt: async (h: string) => {
@@ -441,7 +450,7 @@ describe("GET /api/ext/pill-chat", () => {
   const deps = (o: { flag: boolean; email: string | null; owner: boolean }) => ({
     backend: () => "d1" as const,
     d1: () => ({}) as never,
-    sessionEmail: async () => o.email,
+    sessionUser: async () => (o.email ? { id: "u1", email: o.email } : null),
     isDev: async () => o.owner,
     flags: async () => ({ "ext.pill-chat": o.flag }),
   });
@@ -479,6 +488,18 @@ describe("opening Li: edges", () => {
     const h = harness({ choice: "always", fetchFail: "throw" });
     expect(await h.pc.open()).toBe("off");
     expect(h.frames).toEqual([]);
+  });
+
+  it("M2: an account (not the owner) fetches its own Li chat ticket, never the partner ticket", async () => {
+    const h = harness({ choice: "once", kind: "account" });
+    expect(await h.pc.open()).toBe("ready");
+    expect(await h.frames[0].ticket()).toBe("TK-1");
+    expect(h.calls.at(-1)).toEqual({ url: `${ORIGIN}/api/chat/li-ticket`, method: "POST" });
+    expect(h.calls.some((c) => c.url.endsWith("/api/debug/partner-ticket"))).toBe(false);
+    const o = harness({ choice: "once", kind: "owner" });
+    expect(await o.pc.open()).toBe("ready");
+    await o.frames[0].ticket();
+    expect(o.calls.at(-1)?.url).toBe(`${ORIGIN}/api/debug/partner-ticket`);
   });
 
   it("no ticket for this account: the frame gets null", async () => {

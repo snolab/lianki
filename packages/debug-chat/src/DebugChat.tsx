@@ -6,6 +6,7 @@ import { createScrollFollow } from "./scroll-follow";
 import { createLogResizeAnchor } from "./log-resize-anchor";
 import { evalTrustStrings } from "./eval-trust-strings";
 import { shortPage } from "./short-page";
+import { type ShareWhat, type SharedPage, shareToContext, shareToDraft } from "./embed/share";
 import { type AdaptState, voiceAdapt } from "./adaptive";
 import {
   Fragment,
@@ -992,6 +993,17 @@ export type DebugChatProps = {
    */
   attach?: boolean;
   /**
+   * The pill's Li frame on another site (docs/userscript-li-chat.md, M3): the
+   * + menu's Share selection / Share page title and link ask the userscript
+   * for that, then. A selection becomes the attachment chip, a title and link
+   * go into the draft (escaped), and neither is ever sent by itself: while a
+   * share waits in the composer the typing debounce is off, so only his press
+   * (Enter, the send button, a tap on the chip) sends it.
+   */
+  share?: (what: ShareWhat) => Promise<SharedPage | null>;
+  /** Most characters a shared selection keeps (config chat.pillShareChars). */
+  shareChars?: number;
+  /**
    * The host's file handling (files.ts): paste, drop and the + menu's File /
    * Photo upload through it, sent lines show their files from its URLs, and
    * the menu's Inbox lists (and deletes) what it stored. Absent: no files.
@@ -1150,6 +1162,8 @@ export function DebugChat({
   embedded = false,
   portalRoot,
   attach = true,
+  share,
+  shareChars,
   files,
   miniApps,
   onHistory,
@@ -2060,6 +2074,8 @@ export function DebugChat({
   /** Arrival order up to which the agent's lines count as read (see countUnread). */
   const [readSeq, setReadSeq] = useState(0);
   const draftRef = useRef(uiStore.getState().draft);
+  /** Something shared from the host page waits in the composer (M3): sent only by his press. */
+  const shareHeld = useRef(false);
   const [pttLive, setPttLive] = useState<PttPreview | null>(null);
   const pttLiveRef = useRef(pttLive);
   pttLiveRef.current = pttLive;
@@ -2881,6 +2897,7 @@ export function DebugChat({
       return false;
     }
     setOffline(false);
+    shareHeld.current = false;
     if (!pttLine) {
       pttFailedDraft.current = false;
       if (pttLiveRef.current?.state === "unsent") pttSubmission.current?.cancel();
@@ -3284,7 +3301,7 @@ export function DebugChat({
     );
   }
   function pendingLine(where: "log" | "compact" | "float") {
-    if (!attach || notice || (!pendingFiles.length && !attached)) return null;
+    if ((!attach && !share) || notice || (!pendingFiles.length && !attached)) return null;
     const Tag = where === "compact" ? "div" : "li";
     return (
       <Tag data-testid="debug-chat-pending" data-state={pendingView.state}
@@ -3445,6 +3462,8 @@ export function DebugChat({
   const arm = () => {
     clearTimeout(timer.current);
     if (pttSubmission.current?.busy() || pttFailedDraft.current) return setArmed(0);
+    // Page content shared into the composer (M3) goes only on his press: no debounce, no burst.
+    if (shareHeld.current) return setArmed(0);
     if (!composing.current) {
       const text = draftRef.current;
       const burst = isDictationBurst(settledLen.current, text);
@@ -3466,6 +3485,33 @@ export function DebugChat({
   };
   const armRef = useRef(arm);
   armRef.current = arm;
+  /**
+   * Share from the pill's Li frame (M3): the userscript reads the page now,
+   * the selection becomes the chip, the title and link join the draft. Never
+   * a send: the debounce stays off until he sends (shareHeld).
+   */
+  const onShare = async (what: ShareWhat) => {
+    const p = await share?.(what);
+    if (!p) return;
+    if (what === "selection") {
+      const ctx = shareToContext(p, shareChars);
+      if (!ctx) return;
+      shareHeld.current = true;
+      setArmed(0);
+      clearTimeout(timer.current);
+      uiStore.setState({ attached: ctx });
+      return;
+    }
+    const next = shareToDraft(draftRef.current, p, MAX_CHAT);
+    shareHeld.current = true;
+    setArmed(0);
+    clearTimeout(timer.current);
+    caretToEnd.current = true;
+    draftRef.current = next;
+    settledLen.current = next.length;
+    setDraft(next);
+    input.current?.focus();
+  };
   useEffect(() => {
     // Legacy unscoped text needs the verified owner's migration before any auto-resume.
     if (!draftScope || draftScope === "guest") return;
@@ -5992,6 +6038,11 @@ export function DebugChat({
             onPickFiles={pickFiles}
             onInbox={filesRef.current?.list && !notice ? () => setInboxOpen(true) : undefined}
             onHistory={notice ? undefined : onHistory}
+            share={
+              share && !notice
+                ? { onSelection: () => void onShare("selection"), onPage: () => void onShare("page") }
+                : undefined
+            }
             onClose={closeAttachMenu}
           />
         )}
@@ -6149,7 +6200,7 @@ export function DebugChat({
               buttonRef={attachButtonRef}
               t={t}
               open={attachMenu}
-              announce={attach && !notice}
+              announce={(attach || !!share) && !notice}
               attached={!!attached}
               selectable={!!pageSel.sel}
               onToggle={() => setAttachMenu((v) => !v)}

@@ -13,6 +13,9 @@
  * - over the port: tickets (fetched with GM_xmlhttpRequest by the caller)
  *   when the frame asks, and the frame's size, which the iframe follows, so
  *   the rest of the page keeps its clicks;
+ * - a share (docs/userscript-li-chat.md, M3): only when the frame asks
+ *   (he pressed Share in its composer) does the shell read the page's
+ *   selection or title and link, and it writes that only into the port;
  * - position, drag (the grip) and minimize (double-click the grip).
  *
  * What he types is typed inside the cross-origin frame: the host page's key
@@ -30,6 +33,7 @@ import {
   isFrameUp,
   portMsg,
 } from "../packages/debug-chat/src/embed/frame-protocol";
+import type { ShareWhat, SharedPage } from "../packages/debug-chat/src/embed/share";
 
 export type FrameResult = "ready" | "blocked";
 
@@ -42,6 +46,8 @@ export type FrameShellDeps = {
   /** This page for the agent: host + path. */
   label: string;
   ticket: () => Promise<string | null>;
+  /** Read the page for a share he asked for in the frame (null: nothing to share). */
+  share?: (what: ShareWhat) => SharedPage | null;
   gripLabel: string;
   /** The shell's offset from the bottom-right corner, kept per device. */
   pos?: { get(): Pos | null; set(p: Pos): void };
@@ -143,7 +149,13 @@ export function frameShell(d: FrameShellDeps): FrameShell {
           (ticket) => port?.postMessage({ type: "ticket", ticket }),
           () => port?.postMessage({ type: "ticket", ticket: null }),
         );
-      else if (msg.type === "size")
+      else if (msg.type === "need-share") {
+        let share: SharedPage | null = null;
+        try {
+          share = d.share?.(msg.what) ?? null;
+        } catch {}
+        port?.postMessage({ type: "share", what: msg.what, share });
+      } else if (msg.type === "size")
         css(iframe, [
           ["width", `${msg.w}px`],
           ["height", `${msg.h}px`],

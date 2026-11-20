@@ -1,5 +1,6 @@
 import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
+import { cfg } from "@/lib/config-store";
 import type { ChatStrings } from "@lianki/debug-chat/wire";
 import { PartnerFrame } from "./PartnerFrame";
 
@@ -20,5 +21,7 @@ export default async function PartnerFramePage() {
       String(v),
     ]),
   ) as unknown as Partial<ChatStrings>;
-  return <PartnerFrame strings={strings} />;
+  // Most characters a selection shared from the host page keeps (M3).
+  const shareChars = await cfg("chat.pillShareChars");
+  return <PartnerFrame strings={strings} shareChars={shareChars} />;
 }

@@ -18,11 +18,14 @@
  * 4. If the frame is navigated away (the page can reach `window.frames`), it
  *    is torn down: a second `load` means it is no longer our lianki.com page.
  *
- * The first slice reuses the owner's partner ticket (`/api/debug/partner-ticket`,
- * owner only); an account-scoped ticket for users is the next milestone.
+ * The owner opens it with his partner ticket (`/api/debug/partner-ticket`,
+ * his own thread); any other signed-in account, once `ext.pill-chat-users` is
+ * on, with its own Li chat ticket (`/api/chat/li-ticket`, M2: that account's
+ * thread only). lianki.com says which, in the answer to the kill-switch check.
  */
 import { isolatedWorld } from "../packages/debug-chat/src/embed/guard";
 import { EMBED_STRINGS, embedLang } from "../packages/debug-chat/src/ui-strings";
+import { readShare } from "../packages/debug-chat/src/embed/share";
 import { frameShell } from "./partner-frame";
 import { PARTNER_POS_KEY, pageRealmNote } from "./partner";
 import { pillChatStrings, type PillChatStrings } from "./pill-chat-strings";
@@ -55,6 +58,8 @@ export type PillChatDeps = {
   /** The top window's hostname, top-window flag, document, window (tests pass fakes). */
   hostname?: string;
   path?: string;
+  /** The page's full address, read only when he presses Share in the frame (tests pass one). */
+  href?: () => string;
   top?: boolean;
   doc?: Document;
   win?: Window;
@@ -88,15 +93,36 @@ export async function mirrorPillChatFlag(
 }
 
 async function askFlag(d: Pick<PillChatDeps, "origin" | "gmFetch">): Promise<boolean> {
+  return (await askAccess(d)) !== null;
+}
+
+/**
+ * Which ticket lianki.com says this account opens Li with (lib/pill-chat-route.ts):
+ * the owner's partner ticket, or the account's own; null = off. An answer
+ * without a known kind is the owner's (a server from before M2).
+ */
+async function askAccess(d: Pick<PillChatDeps, "origin" | "gmFetch">): Promise<TicketKind | null> {
   try {
     const r = await d.gmFetch(`${d.origin}/api/ext/pill-chat`, { credentials: "include" });
-    if (!r.ok) return false;
+    if (!r.ok) return null;
     const body = await r.json();
-    return body?.on === true;
+    if (body?.on !== true) return null;
+    return body.ticket === "account" ? "account" : "owner";
   } catch {
-    return false;
+    return null;
   }
 }
+
+type TicketKind = "owner" | "account";
+
+/**
+ * Where each kind of ticket is minted: the owner's partner ticket (his own
+ * thread), or the account-scoped Li chat ticket (M2: that account's own thread).
+ */
+export const TICKET_PATHS: Record<TicketKind, string> = {
+  owner: "/api/debug/partner-ticket",
+  account: "/api/chat/li-ticket",
+};
 
 export function pillChat(d: PillChatDeps) {
   const doc = d.doc ?? document;
@@ -123,9 +149,11 @@ export function pillChat(d: PillChatDeps) {
 
   const prompt = d.prompt ?? ((h: string) => trustDialog({ doc, win, strings, host: h }).result);
 
+  /** Which ticket this account opens Li with, as lianki.com said right before the frame opened. */
+  let kind: TicketKind = "owner";
   const ticket = async (): Promise<string | null> => {
     try {
-      const r = await d.gmFetch(`${d.origin}/api/debug/partner-ticket`, {
+      const r = await d.gmFetch(`${d.origin}${TICKET_PATHS[kind]}`, {
         method: "POST",
         headers: { "x-lianki-userscript": "1" },
         credentials: "include",
@@ -166,10 +194,12 @@ export function pillChat(d: PillChatDeps) {
         if (!applyChoice(store, once, host, choice)) return choice === "never" ? "never" : "denied";
       }
       // Allowed: from here on lianki.com may be asked. The flag first (kill switch).
-      if (!(await askFlag(d))) {
+      const access = await askAccess(d);
+      if (!access) {
         d.setValue(PILLCHAT_ON_KEY, JSON.stringify({ on: false, at: d.now?.() ?? Date.now() }));
         return "off";
       }
+      kind = access;
       const shell = (d.frame ?? frameShell)({
         doc,
         win,
@@ -177,6 +207,13 @@ export function pillChat(d: PillChatDeps) {
         // Host + path for the agent, never the query or hash.
         label: `${host}${d.path ?? location.pathname}`.slice(0, 300),
         ticket,
+        // Read only now, on his Share press in the frame (M3): link without query or hash.
+        share: (what) =>
+          readShare(what, {
+            href: d.href ? d.href() : location.href,
+            title: doc.title,
+            selection: doc.getSelection?.()?.toString() ?? "",
+          }),
         gripLabel: EMBED_STRINGS[embedLang()].grip,
         pos: {
           get: () => {
