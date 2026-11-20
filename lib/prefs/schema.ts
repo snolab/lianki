@@ -154,6 +154,8 @@ export const PREF_SCHEMAS = {
   "words.showAll": z.boolean(),
   "words.readAloud": z.boolean(),
   "words.serverVoice": z.boolean(),
+  // Play the account's private original recordings ("原音") when a word has one.
+  "words.nativeAudio": z.boolean(),
   // A private My Files index, read from the authenticated server response only.
   // The reference grants no access: each index/archive download checks ownership.
   "words.nativeAudioManifest": z.union([

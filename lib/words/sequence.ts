@@ -22,6 +22,11 @@ export type SequencerDeps<P> = {
   clearTimeout: (t: unknown) => void;
   /** Between parts. */
   gapMs?: number;
+  /**
+   * A part that has not reported done after this many ms is cut and skipped,
+   * so one stuck part never stalls the rest (`words.partTimeoutMs`). 0: none.
+   */
+  partTimeoutMs?: () => number;
   /** Before a loop starts over. */
   repeatMs?: number;
   /**
@@ -49,6 +54,8 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
   const repeat = deps.repeatMs ?? 1200;
   let generation = 0;
   let timer: unknown;
+  /** The watchdog of the part playing now. */
+  let watch: unknown;
   /** The sequence playing now, if any: its tag, and whether it still loops. */
   let current: { tag: string; loop: boolean } | null = null;
   /** Paused for a higher sound: goes on with the part it was saying. */
@@ -75,6 +82,7 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
     const wasParked = !!parked;
     parked = null;
     deps.clearTimeout(timer);
+    deps.clearTimeout(watch);
     if (!wasParked) deps.cancel();
     if (!keep) owner?.release();
   };
@@ -97,9 +105,10 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
     const next = () => {
       if (gen !== generation) return;
       let called = false;
-      deps.say(parts[i], (played) => {
+      const settle = (played: boolean) => {
         if (called || gen !== generation) return;
         called = true;
+        deps.clearTimeout(watch);
         any ||= played;
         i++;
         if (i < parts.length) return void (timer = deps.setTimeout(next, gap));
@@ -107,7 +116,16 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
         i = 0;
         any = false;
         timer = deps.setTimeout(next, repeat);
-      });
+      };
+      const limit = deps.partTimeoutMs?.() ?? 0;
+      if (limit > 0)
+        watch = deps.setTimeout(() => {
+          if (called || gen !== generation) return;
+          // Stuck: silence it (its late done is ignored) and go on.
+          deps.cancel();
+          settle(false);
+        }, limit);
+      deps.say(parts[i], settle);
     };
     /** Go on with part `i` when the page is ours again. */
     const resumeLater = () => {
@@ -121,6 +139,7 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
       // The part playing is cut; its late `done` is ignored (a new generation).
       generation++;
       deps.clearTimeout(timer);
+      deps.clearTimeout(watch);
       deps.cancel();
       resumeLater();
     };

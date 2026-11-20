@@ -472,8 +472,9 @@ own `/api/words/tts` URL in its own language.
   `lianki-voice` passes the query through untouched and never edge-caches the
   main Worker's answer. `/words` clips never send `store`, so they stay kept
   once, ever.
-- **Meaning voice.** `MEANING_VOICE` in `lib/words/say-parts.ts` is `"server"`
-  until the owner decides (`"browser"` is free). Meanings are not
+- **Meaning voice.** Meanings follow the "Server voice" switch like the other
+  parts (2026-11-20): on, the server says them; off, the device's own voice
+  does where it has one for the language (free). Meanings are not
   pre-recorded, so a meaning's first request runs MeloTTS. After that it is
   an R2 hit for everyone, since the cache key holds no user. Latin-script
   meanings are read as English, because the bundled lists' glosses are

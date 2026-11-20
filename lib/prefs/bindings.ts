@@ -206,6 +206,7 @@ export function prefBindings(): PrefBinding[] {
     plain("words.showAll", "lk:words-show-all", bool10, false),
     plain("words.readAloud", "lk:words-sound", pair("on", "off"), true),
     plain("words.serverVoice", "lk:words-server-voice", bool10, true),
+    plain("words.nativeAudio", "lk:words-native-audio", bool10, true),
     plain("words.speakOnSwipe", "lk:words-swipe-speak", bool10, true),
     plain("words.gradeTones", "lk:words-grade-tones", bool10, true),
     plain("words.voiceMode", "lk:words-voice-mode", bool10, false),
