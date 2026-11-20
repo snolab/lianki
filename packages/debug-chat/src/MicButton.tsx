@@ -81,7 +81,7 @@ import {
 } from "./ptt";
 import { speechEnabled, voice } from "./voice";
 import { captureHeld, pageAudio } from "./page-audio";
-import { ECHO_WINDOW_MS, echoScore } from "./echo";
+import { ECHO_WINDOW_MS, echoGuard } from "./echo";
 import { micAec, onOpened } from "./aec";
 import {
   aecOn,
@@ -672,12 +672,10 @@ function session(): MicSession {
           v.log({ ev: "voice-utt-page", durationMs, chars: out.text.length });
           return "";
         }
+        // Containment in what the page played during the utterance, or Dice on the recent (echo.ts).
         const pageEcho = chatEcho.drop
           ? null
-          : echoScore(
-              out.text,
-              page.said(spokeAt, ECHO_WINDOW_MS).map((r) => r.text),
-            );
+          : echoGuard(out.text, page.said(spokeAt, ECHO_WINDOW_MS), spokeAt, at, Date.now());
         const echo = pageEcho?.drop ? { ...pageEcho, during: chatEcho.during } : chatEcho;
         if (!partial)
           v.log({

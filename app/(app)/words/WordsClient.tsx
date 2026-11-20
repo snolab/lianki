@@ -1358,7 +1358,8 @@ function useSpeech(
     (p: SayPart, finish: Done) => {
       devLog({ ev: "speak", kind: p.kind, lang: p.lang, text: p.text, serverVoice });
       audible.current?.();
-      const end = pageAudio().start();
+      // Its words join the mic's echo guard, and the hub's cross-device match (echo-suppression.md).
+      const end = pageAudio().start({ text: p.text, voice: "words" });
       audible.current = end;
       const done: Done = (played) => {
         end();

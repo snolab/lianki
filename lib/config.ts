@@ -728,6 +728,57 @@ export const CONFIG = {
     audience: "server",
     description: "回声去重：一句话至少几个字才可能被当作回声；更短的（「好」「嗯」）永远照常发出。",
   }),
+  // Play reports (docs/echo-suppression.md, layer (b); flag voice.echo-reports):
+  // his pages tell the hub what they read aloud, and when.
+  "voice.echoPlaySimilarity": {
+    default: 0.6 as number,
+    schema: z.number().min(0.3).max(1),
+    min: 0.3,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读回声（开关 voice.echo-reports）：你的一台设备正在朗读时，另一台设备的麦克风同时识别出来的话，有多少落在正在读的那几句里面（去掉标点空格、按字比较）就算回声。有时间重叠作证据，所以比 voice.echoSimilarity 低；越低越容易把你跟着念的话也当成回声（可以点「这是我说的」找回）。",
+  },
+  "voice.echoSlackMs": int({
+    default: 1500,
+    min: 0,
+    max: 10_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读回声（开关 voice.echo-reports）：判断「同时」时，朗读的开始和结束各往外放宽多少毫秒（房间回声、扬声器延迟、时钟误差）。",
+  }),
+  "voice.echoPlayKeepMs": int({
+    default: 120_000,
+    min: 10_000,
+    max: 600_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读回声（开关 voice.echo-reports）：hub 在内存里记住各设备读过的句子多久（毫秒），过了就忘。只在内存里，不写存储、不进日志、不给任何助手。",
+  }),
+  "voice.echoShowMax": int({
+    default: 50,
+    min: 1,
+    max: 200,
+    unit: "lines",
+    group: "voice",
+    audience: "server",
+    description:
+      "回声去重：hub 最多留多少条被当成回声的语音（折叠显示、可以点「这是我说的」恢复）；更早的丢掉。",
+  }),
+  "voice.cloudWhileMic": {
+    default: "android" as "never" | "android" | "always",
+    schema: z.enum(["never", "android", "always"]),
+    group: "voice",
+    audience: "public",
+    description:
+      "麦克风开着时 Li 朗读用云端声音（回声消除能听到网页自己的 <audio>，但不一定听得到设备自带的语音，安卓尤其如此）：never = 从不，android = 只在安卓上（默认），always = 所有设备。会多用一点朗读额度。",
+  },
   "voice.autoPolishTimeoutMs": int({
     default: 6000,
     min: 500,

@@ -137,3 +137,25 @@ export function setTalkOver(on: boolean) {
 }
 export const talkOver = (): boolean =>
   (globalThis as unknown as Record<string, unknown>).__lkTalkOver === true;
+
+/**
+ * Config voice.cloudWhileMic (docs/echo-suppression.md, layer (a)): read with
+ * the cloud voice while the mic is open, because the echo canceller hears our
+ * own `<audio>` but not always the device's speechSynthesis (Android's
+ * especially). "never", "android" (the default) or "always". Set by
+ * DebugEval from the public config; on globalThis like the switches above.
+ */
+export type CloudWhileMic = "never" | "android" | "always";
+export const CLOUD_WHILE_MIC_DEFAULT: CloudWhileMic = "android";
+export function setCloudWhileMic(v: unknown) {
+  (globalThis as unknown as Record<string, unknown>).__lkCloudWhileMic =
+    v === "never" || v === "always" || v === "android" ? v : CLOUD_WHILE_MIC_DEFAULT;
+}
+/** Whether this device prefers the cloud voice while its mic is open. */
+export function cloudWhileMic(
+  ua: string = globalThis.navigator?.userAgent ?? "",
+  v: unknown = (globalThis as unknown as Record<string, unknown>).__lkCloudWhileMic,
+): boolean {
+  const mode = v === "never" || v === "always" || v === "android" ? v : CLOUD_WHILE_MIC_DEFAULT;
+  return mode === "always" || (mode === "android" && /Android/i.test(ua));
+}
