@@ -61,6 +61,8 @@ jobs:
       deploy: ${{ steps.hold.outputs.deploy }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - id: hold
         env:
@@ -102,6 +104,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          submodules: true
           # The prod commit CI just passed, not whatever prod is by now; on a
           # dispatch (daily release, a lift, by hand) prod's tip.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}

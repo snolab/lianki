@@ -65,6 +65,10 @@ import { VAD_MAX, VAD_MIN, VAD_THRESHOLDS } from "@lianki/debug-chat/adaptive";
 import { GUARD_MIN_SPEECH_MS, STT_GUARD } from "@lianki/debug-chat/stt-guard";
 import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
 import { DEFAULT_MIME_PREFS, parseMimePrefs } from "./meetings/core";
+import {
+  MEETING_TRANSCRIPTION_DEFAULTS,
+  meetingTranscriptionSchema,
+} from "./meeting-transcription/settings";
 
 export type ConfigAudience = "server" | "public";
 
@@ -976,6 +980,30 @@ export const CONFIG = {
   // Meetings: screen + sound recorded into the account (docs/meetings.md, "Limits,
   // quotas, retention"; flag meetings.record). The recorder reads the public ones
   // when Start is tapped; the server checks quota, staleness and retention.
+  "meetings.transcription": {
+    default: MEETING_TRANSCRIPTION_DEFAULTS,
+    schema: meetingTranscriptionSchema,
+    group: "meetings",
+    audience: "public",
+    description:
+      "会议字幕/会后转写的窗口、重叠、静音门槛、分人阈值和本机队列上限。录制归档不受字幕排队影响；这里只放默认值，使用时读账号可见的实时配置。",
+  },
+  "meetings.transcriptionRoute": {
+    default: "rtc:lianki" as string,
+    schema: z.enum(["rtc:lianki", ""]),
+    group: "meetings",
+    audience: "public",
+    description:
+      "用户明确为某场会议选择转写后，连接的 Lianki 语音通道；空值禁用。不会读取聊天麦克风设置，也不会自动回退云端。",
+  },
+  "meetings.voiceprintAssets": {
+    default: "" as string,
+    schema: z.string().max(8192),
+    group: "meetings",
+    audience: "public",
+    description:
+      "浏览器声纹的显式 JSON manifest（model、wasmBaseUrl、workerUrl）；必须同源、指定大小和 SHA-256。默认空：分人显示 unknown。预览仅用本地静态公开模型，不上传录音，不自动托管模型。",
+  },
   "meetings.chunkSec": int({
     default: 30,
     min: 10,

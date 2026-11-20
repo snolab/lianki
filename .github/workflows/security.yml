@@ -38,6 +38,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - run: bun install --frozen-lockfile
       # Fails on an unwaived CRITICAL advisory in a production dependency;
@@ -59,6 +61,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       # Baseline = spider + passive scan only: it reads pages and checks the
       # responses (headers, cookies, leaks); it sends no attack payloads, so it
       # is safe against production. Rules tuned in .zap/rules.tsv.

@@ -75,6 +75,7 @@
     "next": "16.4.1",
     "next-intlayer": "^8.2.3",
     "octokit": "^5.0.5",
+    "onnxruntime-web": "1.27.0",
     "openai": "^6.27.0",
     "phpdie": "^1.7.0",
     "rambda": "^11.1.0",

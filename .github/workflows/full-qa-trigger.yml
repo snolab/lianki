@@ -34,6 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          submodules: true
           fetch-depth: 0 # the commits since the last green full run
       - uses: ./.github/actions/setup-bun # pinned, cached, retried
       - name: Decide (and wait while merges keep coming)
