@@ -918,6 +918,19 @@ kept aside as `echo:<id>` (the newest 50) with `raw` = the text as heard,
 `gap`). **Undo**: `unmerge` with the echo's id (the page's, or a lane's
 `edit --unmerge`) posts it after all, as heard (`debug.echo-undo`).
 
+**Play reports** (flag **`voice.echo-reports`**, on by default, audience
+owner; [echo-suppression.md](echo-suppression.md), layer (b)). His pages now
+do tell the hub what they read aloud, as `playing` / `played` frames
+(`play-report.ts`, hub clock), kept in the hub's memory only
+(`voice.echoPlayKeepMs`, 120 s). A voice line from his other device that
+overlaps one in time (`voice.echoSlackMs`, 1.5 s each side) and whose words
+are inside it (`voice.echoPlaySimilarity`, 0.6) is a read-aloud echo, layer
+`report`; the landed-time rule above stays the fallback, layer `landed`. A
+`read-aloud` echo (either layer) is then **shown collapsed** on his pages —
+its own `echo` frame and the `echoes` snapshot on connect, never a thread
+line — with "This was me" (the same `unmerge`); `other-device` stays hidden.
+The rows keep the newest `voice.echoShowMax` (50). Off = exactly the above.
+
 ## The live speech line
 
 The owner, 2026-11-14 04:25 JST: the words being recognised while he speaks are not

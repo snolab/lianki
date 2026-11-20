@@ -27,7 +27,9 @@ text (`scene`) — page text, and on a private screen
 (`[data-lk-private-screen]`: /vibe, a transcript in /reader) private speech,
 which is not chat (docs/vibe.md); STT before polish (`raw`, `parts`); the page
 label (path, user agent); avatars, emails; attachment ids (files stay in the
-inbox); timings, speaker tags, wake modes. No audio and no clip ids are ever on
+inbox); timings, speaker tags, wake modes. **Echoes** (his voice lines the hub
+judged our own read-aloud heard back, [echo-suppression.md](echo-suppression.md))
+are never lines at all, so never kept, until he taps "This was me". No audio and no clip ids are ever on
 a line. Tested in `unit/chat-log.test.ts` and `unit/debug-hub.test.ts`
 ("chat history").
 
