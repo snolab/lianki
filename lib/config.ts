@@ -732,6 +732,57 @@ export const CONFIG = {
     description:
       "语音自动润色：一句话识别完以后等多久（毫秒）再送去润色。这段时间里你接着说的下一句会和它一起送，明显是一句话的碎片就合并成一条；等得越短，润色出来越快，但碎片更可能各润各的。",
   }),
+  // The mic polish API (lib/mic-polish.ts; docs/mic-polish-api.md; flag mic.polish-api).
+  "mic.polishDailyMax": int({
+    default: 300,
+    min: 1,
+    max: 100_000,
+    unit: "calls/day",
+    group: "mic",
+    audience: "server",
+    description:
+      "麦克风润色接口（开关 mic.polish-api）：每个账号每个 UTC 日（UTC 零点换日）最多润色几次，所有令牌和会话合计。到了就回 429 daily-limit，不调用模型、不扣积分；失败或积分不够的那次不算。每次的花费已经有大小上限，所以一天最多花「次数 × 单次上限」。",
+  }),
+  "mic.polishPerMinute": int({
+    default: 30,
+    min: 1,
+    max: 1000,
+    unit: "calls/min",
+    group: "mic",
+    audience: "server",
+    description:
+      "麦克风润色接口：同一个令牌（会话调用按账号）每分钟最多几次请求，超过回 429 rate-limit。防止脚本出错死循环；和每日上限 mic.polishDailyMax 分开计。",
+  }),
+  "mic.polishMaxChars": int({
+    default: 8000,
+    min: 100,
+    max: 20_000,
+    unit: "chars",
+    group: "mic",
+    audience: "server",
+    description:
+      "麦克风润色接口：一段识别文字（transcript）最多几个字符，超过回 400 too-long。otoji 的代理自己限 8000，这里不要小于 8000，否则合法请求会被拒。",
+  }),
+  "mic.polishMaxContextChars": int({
+    default: 2000,
+    min: 0,
+    max: 8000,
+    unit: "chars",
+    group: "mic",
+    audience: "server",
+    description:
+      "麦克风润色接口：提示信息（context，页面标题、网站等，按 JSON 计）最多几个字符，超过回 400 too-long。只当作拼写名字和术语的提示。",
+  }),
+  "mic.polishMaxBodyBytes": int({
+    default: 32 * 1024,
+    min: 4096,
+    max: 256 * 1024,
+    unit: "bytes",
+    group: "mic",
+    audience: "server",
+    description:
+      "麦克风润色接口：整个请求体最多多少字节，超过回 400 too-long，不读完、不解析。otoji 的代理限 32 KiB，这里不要小于 32768。",
+  }),
   // Echoes of the owner's voice lines (lib/echo-match.ts; the hub, "Echoes";
   // flag voice.echo-dedupe).
   "voice.echoWindowMs": int({

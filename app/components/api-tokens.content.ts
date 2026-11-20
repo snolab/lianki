@@ -752,6 +752,42 @@ const dictionary = {
       mr: "चॅटमध्ये ऑडिओ वाजवणे",
       ko: "채팅에서 오디오 재생",
     }),
+    scopeMicPolish: t({
+      en: "Polish speech transcripts (uses credits)",
+      zh: "润色语音识别文字（消耗积分）",
+      hi: "बोले गए पाठ को सुधारना (क्रेडिट खर्च होते हैं)",
+      es: "Pulir transcripciones de voz (usa créditos)",
+      fr: "Corriger des transcriptions vocales (utilise des crédits)",
+      ar: "تنقيح نصوص الكلام المفرّغ (يستهلك أرصدة)",
+      bn: "কথা থেকে লেখা ঠিকঠাক করা (ক্রেডিট খরচ হয়)",
+      pt: "Revisar transcrições de voz (usa créditos)",
+      ru: "Исправлять расшифровки речи (тратит кредиты)",
+      ur: "بولی گئی تحریر درست کرنا (کریڈٹ خرچ ہوتے ہیں)",
+      id: "Merapikan transkrip ucapan (memakai kredit)",
+      de: "Sprachtranskripte glätten (verbraucht Credits)",
+      ja: "音声の文字起こしを整える（クレジットを使います）",
+      sw: "Kurekebisha maandishi ya sauti (hutumia salio)",
+      mr: "बोललेला मजकूर सुधारणे (क्रेडिट खर्च होतात)",
+      ko: "음성 받아쓰기 다듬기 (크레딧 사용)",
+    }),
+    scopeMicPolishHint: t({
+      en: "Send a speech-to-text transcript to be cleaned up (punctuation, misheard words). Each call is paid from your credits, with a daily maximum. It cannot read or change anything else in your account.",
+      zh: "把一段语音识别文字发来整理（标点、听错的词）。每次从你的积分里扣，每天有上限。它不能读取或修改你账号里的其他任何内容。",
+      hi: "बोले गए शब्दों से बना पाठ सुधारने के लिए भेजना (विराम चिह्न, गलत सुने शब्द)। हर बार आपके क्रेडिट से भुगतान होता है, और रोज़ की एक सीमा है। यह आपके खाते में और कुछ नहीं पढ़ या बदल सकता।",
+      es: "Enviar una transcripción de voz para limpiarla (puntuación, palabras mal oídas). Cada llamada se paga con tus créditos, con un máximo diario. No puede leer ni cambiar nada más de tu cuenta.",
+      fr: "Envoyer une transcription vocale à nettoyer (ponctuation, mots mal entendus). Chaque appel est payé avec vos crédits, avec un maximum par jour. Il ne peut rien lire ni modifier d'autre dans votre compte.",
+      ar: "إرسال نص كلام مفرّغ لتنقيحه (علامات الترقيم، الكلمات المسموعة خطأً). يُدفع كل طلب من أرصدتك، مع حدّ أقصى يومي. لا يمكنه قراءة أو تغيير أي شيء آخر في حسابك.",
+      bn: "কথা থেকে তৈরি লেখা ঠিক করতে পাঠানো (যতিচিহ্ন, ভুল শোনা শব্দ)। প্রতিবার আপনার ক্রেডিট থেকে খরচ হয়, দিনে একটা সর্বোচ্চ সীমা আছে। এটি আপনার অ্যাকাউন্টের আর কিছু পড়তে বা বদলাতে পারে না।",
+      pt: "Enviar uma transcrição de voz para ser revisada (pontuação, palavras mal ouvidas). Cada chamada é paga com seus créditos, com um máximo diário. Não pode ler nem alterar mais nada na sua conta.",
+      ru: "Отправлять расшифровку речи на исправление (пунктуация, неверно услышанные слова). Каждый вызов оплачивается вашими кредитами, есть дневной максимум. Больше ничего в аккаунте он читать или менять не может.",
+      ur: "بولی گئی تحریر درست کرنے کے لیے بھیجنا (رموزِ اوقاف، غلط سنے گئے الفاظ)۔ ہر بار آپ کے کریڈٹ سے ادائیگی ہوتی ہے، اور روزانہ کی ایک حد ہے۔ یہ آپ کے اکاؤنٹ میں اور کچھ نہیں پڑھ یا بدل سکتا۔",
+      id: "Mengirim transkrip ucapan untuk dirapikan (tanda baca, kata yang salah dengar). Setiap panggilan dibayar dari kredit Anda, dengan batas harian. Token ini tidak bisa membaca atau mengubah apa pun selain itu di akun Anda.",
+      de: "Ein Sprachtranskript zum Glätten senden (Satzzeichen, falsch verstandene Wörter). Jeder Aufruf wird mit deinen Credits bezahlt, mit einem Tageshöchstwert. Sonst kann es in deinem Konto nichts lesen oder ändern.",
+      ja: "音声の文字起こしを送って整えてもらいます（句読点、聞き間違い）。1回ごとにあなたのクレジットから支払われ、1日の上限があります。アカウントのほかの情報は読むことも変えることもできません。",
+      sw: "Kutuma maandishi ya sauti yarekebishwe (alama za uakifishaji, maneno yaliyosikika vibaya). Kila ombi hulipwa kutoka salio lako, kwa kikomo cha kila siku. Haiwezi kusoma wala kubadilisha kitu kingine chochote kwenye akaunti yako.",
+      mr: "बोललेल्या शब्दांतून तयार झालेला मजकूर सुधारण्यासाठी पाठवणे (विरामचिन्हे, चुकीचे ऐकलेले शब्द). प्रत्येक वेळी तुमच्या क्रेडिटमधून पैसे जातात, आणि दररोजची मर्यादा आहे. ते तुमच्या खात्यातील इतर काहीही वाचू किंवा बदलू शकत नाही.",
+      ko: "음성 받아쓰기를 보내 다듬습니다(문장 부호, 잘못 들은 단어). 호출할 때마다 내 크레딧에서 지불되며 하루 최대치가 있습니다. 계정의 다른 내용은 읽거나 바꿀 수 없습니다.",
+    }),
     scopeChatPlayHint: t({
       en: "Post a message with an audio link (a file or a live stream) that your phone can play. Every play is logged.",
       zh: "发一条带音频链接（文件或直播流）的消息，你的手机可以播放。每次播放都有记录。",
@@ -1434,6 +1470,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Small text under the 'Ask in the chat' permission checkbox: the token may post question cards with answer buttons; only the user tapping a button answers one, the token itself never can. Two short clauses.",
   scopeChatPlay:
     "Checkbox label, one permission of an API token: post chat messages that carry an audio link (a sound file or a live radio-like stream) the user's phone can play. Short verb phrase.",
+  scopeMicPolish:
+    "Checkbox label, one permission of an API token (Settings → API tokens, the command-line sign-in page and the one-scope approval page): the token may send speech-to-text transcripts to be cleaned up (punctuation, misheard words) by the site's AI, which spends the account's prepaid credits. Short verb phrase with a brief note in parentheses that it uses credits.",
+  scopeMicPolishHint:
+    "Small text under the 'Polish speech transcripts' permission checkbox: the token sends a transcript of speech to be cleaned up (punctuation, misheard words); each call is paid from the user's prepaid credits and there is a maximum number per day; it cannot read or change anything else in the account. Three short sentences, plain and factual.",
   scopeChatPlayHint:
     "Small text under the 'Play audio in the chat' permission checkbox: the token may post a message with an audio link (a file or a live stream) that the user's phone can play; every play is written to a log. Two short sentences.",
   never:

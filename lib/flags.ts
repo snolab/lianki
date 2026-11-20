@@ -270,6 +270,14 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  // No `audience`: on, any account whose token holds mic:polish (or its session) may call it.
+  "mic.polish-api": {
+    description:
+      "麦克风润色接口（docs/mic-polish-api.md）：打开后 POST /api/mic/polish 可用——otoji.org/mic 的用户脚本通过 otoji 的服务器，用带「mic:polish」权限的 Lianki API 令牌（或在 lianki.com 上登录的会话），把一段语音识别文字交给我们的 Workers AI 润色（改错字、标点，不加内容）。每次先从调用者自己的积分预扣、按实际用量结算、失败全退（管理员也一样扣）；每个账号每个 UTC 日最多 mic.polishDailyMax 次，每个令牌每分钟最多 mic.polishPerMinute 次，大小上限在 /dev/config 的 mic.polish*。关闭（默认）= 接口不存在（404），otoji 端只能用原文。",
+    default: false,
+    requires: ["workers-ai.credentials", "ai-credits.migration"],
+    group: "ai",
+  },
   "partner.ai-reply": {
     description:
       "学习伙伴由 AI 回复（除你以外的所有用户）：打开后，普通登录用户在任意页面都能看到学习伙伴聊天框（不用调试模式），他们的消息由 Cloudflare Workers AI 上的 DeepSeek 模型在服务器端回复，只读他们自己的词表、到期卡片和学习计划。你的线程仍是你的 Claude 通道（只有 partner.owner-thread 打开时，没有通道回复的消息才由 Li 回复）；通道先回复则 AI 不再回复。每人每日 token 上限和全站每日花费上限在 lib/partner-ai-config.ts。关闭（默认）= 照旧：只有调试模式的朋友能聊，由开发通道回复。",
