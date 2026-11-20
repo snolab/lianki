@@ -279,18 +279,35 @@ export type VerdictSpeaker = {
   decision: string;
   trust?: string;
   signed?: readonly string[];
+  score?: number;
+  selfScore?: number;
+  selfVoice?: string;
 };
+
+/** Signed by the Mac over these very words (the hub verified the proofs): a page can never make one. */
+const signedTag = (s?: VerdictSpeaker): boolean =>
+  !!s && (s.trust === "signed" || (!s.trust && !!s.signed?.length));
+
+/** How far his print must beat our self print for a "me" to outvote a text match (stt.selfMeMargin). */
+export const SELF_ME_MARGIN = 0.1;
 
 /**
  * A clear "me" from the voiceprint: the Mac decided "me" AND signed these
- * very words (the hub verified the proofs). A page can never make one.
+ * very words (the hub verified the proofs). A page can never make one. When
+ * the Mac also scored the line against our own voices (`selfScore`, M4), his
+ * print must beat it by `selfMeMargin` (docs/echo-suppression.md, layer (b)).
  */
-export const strongMe = (s?: VerdictSpeaker): boolean =>
-  s?.decision === "me" && (s.trust === "signed" || (!s.trust && !!s.signed?.length));
+export const strongMe = (s?: VerdictSpeaker, selfMeMargin = SELF_ME_MARGIN): boolean =>
+  s?.decision === "me" &&
+  signedTag(s) &&
+  (s.selfScore === undefined || s.score === undefined || s.score - s.selfScore >= selfMeMargin);
 
-export type EchoLayer = "report" | "landed";
+/** Our own TTS voice, heard back (the Mac's self print, M4): signed, so never a page's say-so. */
+export const signedSelf = (s?: VerdictSpeaker): boolean => s?.decision === "self" && signedTag(s);
+
+export type EchoLayer = "report" | "landed" | "self";
 export type EchoVerdict = {
-  kind: "read-aloud" | "other-device";
+  kind: "read-aloud" | "other-device" | "self-voice";
   layer: EchoLayer;
   sim: number;
   /** The line it echoed, when known. */
@@ -304,6 +321,8 @@ export type EchoVerdict = {
 /**
  * The one verdict for a voice line (docs/echo-suppression.md, "The verdict,
  * in one place"), first match wins:
+ * 0. the Mac's signed speaker tag says our own TTS voice (`self`, flag
+ *    stt.self-voice: `selfOn`) → self-voice (layer "self"), shown collapsed;
  * 1. a play report overlaps in time and holds its words → read-aloud
  *    (layer "report"), unless a strong signed "me" says it was him and the
  *    voice that played was not his clone (which scores as him);
@@ -317,9 +336,23 @@ export function echoVerdict<K>(o: {
   landed?: EchoHit<K>;
   landedOf?: string;
   speaker?: VerdictSpeaker;
+  /** Flag stt.self-voice (default on): off = a "self" tag is no evidence here. */
+  selfOn?: boolean;
+  /** stt.selfMeMargin. */
+  selfMeMargin?: number;
 }): EchoVerdict | undefined {
   const r = o.report;
-  if (r && !(strongMe(o.speaker) && r.voice !== "clone"))
+  if (o.selfOn !== false && signedSelf(o.speaker))
+    return {
+      kind: "self-voice",
+      layer: "self",
+      sim: o.speaker?.selfScore ?? 0,
+      ...(r?.of ? { of: r.of } : o.landedOf ? { of: o.landedOf } : {}),
+      ...(o.speaker?.selfVoice ? { voice: o.speaker.selfVoice } : {}),
+      ...(r ? { overlapMs: r.overlapMs } : {}),
+      hidden: false,
+    };
+  if (r && !(strongMe(o.speaker, o.selfMeMargin) && r.voice !== "clone"))
     return {
       kind: "read-aloud",
       layer: "report",

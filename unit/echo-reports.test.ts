@@ -13,6 +13,8 @@ import {
   echoReportMatch,
   echoVerdict,
   parsePlayFrame,
+  SELF_ME_MARGIN,
+  signedSelf,
   strongMe,
   utteranceSpan,
 } from "@/lib/echo-reports";
@@ -377,6 +379,57 @@ describe("the verdict", () => {
     expect(echoVerdict({ report: { ...report, voice: "clone" }, speaker: me })?.layer).toBe(
       "report",
     );
+  });
+
+  it("our own TTS voice, signed by the Mac, is a self-voice echo first; shown collapsed", () => {
+    const self = {
+      decision: "self",
+      trust: "signed",
+      signed: ["x"],
+      selfScore: 0.71,
+      selfVoice: "melo-zh",
+    };
+    expect(signedSelf(self)).toBe(true);
+    // Never on a page's say-so: unsigned or advisory is no evidence.
+    expect(signedSelf({ decision: "self" })).toBe(false);
+    expect(signedSelf({ decision: "self", trust: "advisory", signed: ["x"] })).toBe(false);
+    expect(signedSelf({ decision: "self", signed: ["x"] })).toBe(true); // stored before the ring
+    expect(echoVerdict({ speaker: self })).toEqual({
+      kind: "self-voice",
+      layer: "self",
+      sim: 0.71,
+      voice: "melo-zh",
+      hidden: false,
+    });
+    // With a play report too: still self, naming the line it echoed and the overlap.
+    expect(echoVerdict({ report, speaker: self })).toEqual({
+      kind: "self-voice",
+      layer: "self",
+      sim: 0.71,
+      of: "d3c3",
+      voice: "melo-zh",
+      overlapMs: 4000,
+      hidden: false,
+    });
+    expect(echoVerdict({ speaker: self, landedOf: "a9" })?.of).toBe("a9");
+    // Flag stt.self-voice off: the tag is no evidence; the report alone decides.
+    expect(echoVerdict({ speaker: self, selfOn: false })).toBeUndefined();
+    expect(echoVerdict({ report, speaker: self, selfOn: false })?.kind).toBe("read-aloud");
+    expect(echoVerdict({ speaker: { ...self, trust: undefined, signed: [] } })).toBeUndefined();
+  });
+
+  it("a strong me must beat our self print by stt.selfMeMargin to outvote a report", () => {
+    const close = { ...me, score: 0.5, selfScore: 0.45 };
+    const clear = { ...me, score: 0.6, selfScore: 0.2 };
+    expect(SELF_ME_MARGIN).toBe(0.1);
+    expect(strongMe(close)).toBe(false);
+    expect(strongMe(clear)).toBe(true);
+    expect(strongMe(close, 0.04)).toBe(true);
+    expect(echoVerdict({ report, speaker: close })?.kind).toBe("read-aloud");
+    expect(echoVerdict({ report, speaker: clear })).toBeUndefined();
+    expect(echoVerdict({ report, speaker: close, selfMeMargin: 0 })).toBeUndefined();
+    // No self score (no self print on the Mac): a signed me alone, as before.
+    expect(strongMe({ ...me, score: 0.5 })).toBe(true);
   });
 
   it("falls back to today's landed rule: read-aloud shown, his other device hidden", () => {

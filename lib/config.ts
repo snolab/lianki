@@ -816,6 +816,41 @@ export const CONFIG = {
     description:
       "回声去重：hub 最多留多少条被当成回声的语音（折叠显示、可以点「这是我说的」恢复）；更早的丢掉。",
   }),
+  // Our own TTS voices on the Mac (docs/echo-suppression.md, layer (c); flag stt.self-voice).
+  // The page sends the first two to the Mac with {t:"selfVoice"}; the Mac clamps them.
+  "stt.selfAccept": {
+    default: 0.45 as number,
+    schema: z.number().min(0.3).max(0.95),
+    min: 0.3,
+    max: 0.95,
+    unit: "0–1",
+    group: "voiceprint",
+    audience: "server",
+    description:
+      "认出我们自己的朗读声（开关 stt.self-voice）：一句话和 Mac 上「我们的朗读声」声纹（self.campp.json）的相似度至少多少，才可能算我们自己的声音。越低越容易把你的话也折叠起来（可以点「这是我说的」找回）。默认 0.45；模拟房间里的朗读声一般在 0.6 以上，你的声音对它很低。",
+  },
+  "stt.selfMargin": {
+    default: 0.15 as number,
+    schema: z.number().min(0.05).max(0.8),
+    min: 0.05,
+    max: 0.8,
+    unit: "0–1",
+    group: "voiceprint",
+    audience: "server",
+    description:
+      "认出我们自己的朗读声（开关 stt.self-voice）：一句话像我们朗读声的程度，要比像你声纹的程度至少高出多少，才算我们自己的声音。默认 0.15。",
+  },
+  "stt.selfMeMargin": {
+    default: 0.1 as number,
+    schema: z.number().min(0).max(0.8),
+    min: 0,
+    max: 0.8,
+    unit: "0–1",
+    group: "voiceprint",
+    audience: "server",
+    description:
+      "朗读回声（开关 voice.echo-reports）：你正在跟着朗读念的时候，Mac 声纹说「是你」的那句，要比像我们朗读声的程度至少高出多少，才不当成朗读回声（照常发出）。默认 0.1；Mac 没有朗读声声纹时只看「是你」。",
+  },
   "voice.cloudWhileMic": {
     default: "android" as "never" | "android" | "always",
     schema: z.enum(["never", "android", "always"]),

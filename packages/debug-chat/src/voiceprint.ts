@@ -233,14 +233,73 @@ export function setFilterPaused(on: boolean): void {
     else store()?.removeItem(VOICE_FILTER_KEY);
   } catch {}
 }
+/**
+ * Our own TTS voices tagged "self" on the Mac (flag stt.self-voice; docs/echo-suppression.md,
+ * layer (c)): on, with the lines stt.selfAccept / stt.selfMargin when set. Sent to the Mac
+ * as {t:"selfVoice", on, accept, margin}; it clamps them.
+ */
+export type SelfVoiceConf = { on: boolean; accept?: number; margin?: number };
+const SELF_OFF: SelfVoiceConf = { on: false };
+type VoiceSwitches = { filter: boolean; selfVoice: SelfVoiceConf };
+/** One answer of /api/dev/voice-filter shared by both switches when it is asked twice at once. */
+let lastAnswer: { at: number; p: Promise<VoiceSwitches> } | null = null;
+const SHARE_MS = 2_000;
+/** The route's two switches (owner only: anyone else, and any failure, reads as both off). */
+export async function voiceSwitches(
+  f: typeof fetch = fetch,
+  now: () => number = Date.now,
+): Promise<VoiceSwitches> {
+  const shared = f === globalThis.fetch;
+  if (shared && lastAnswer && now() - lastAnswer.at < SHARE_MS) return lastAnswer.p;
+  const p = (async (): Promise<VoiceSwitches> => {
+    try {
+      const r = await f("/api/dev/voice-filter", { headers: { accept: "application/json" } });
+      if (!r.ok) return { filter: false, selfVoice: SELF_OFF };
+      const j = (await r.json()) as { on?: unknown; selfVoice?: Record<string, unknown> };
+      const sv = j.selfVoice;
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+      const selfVoice: SelfVoiceConf =
+        sv && sv.on === true
+          ? {
+              on: true,
+              ...(num(sv.accept) !== undefined ? { accept: num(sv.accept) } : {}),
+              ...(num(sv.margin) !== undefined ? { margin: num(sv.margin) } : {}),
+            }
+          : SELF_OFF;
+      return { filter: j.on === true, selfVoice };
+    } catch {
+      return { filter: false, selfVoice: SELF_OFF };
+    }
+  })();
+  if (shared) lastAnswer = { at: now(), p };
+  return p;
+}
 /** The /dev/flags switch (owner only: anyone else, and any failure, reads as off). */
 export async function filterFlag(f: typeof fetch = fetch): Promise<boolean> {
-  try {
-    const r = await f("/api/dev/voice-filter", { headers: { accept: "application/json" } });
-    return r.ok && (await r.json()).on === true;
-  } catch {
-    return false;
-  }
+  return (await voiceSwitches(f)).filter;
+}
+/** Flag stt.self-voice and its lines (owner only: anyone else, and any failure, reads as off). */
+export async function selfVoiceFlag(f: typeof fetch = fetch): Promise<SelfVoiceConf> {
+  return (await voiceSwitches(f)).selfVoice;
+}
+/**
+ * For the mic's socket (local-stt.ts `selfVoice`): asked at each utterance, never by a
+ * timer, a flag change seen after at most FILTER_FLAG_TTL_MS. Not paused by the filter's
+ * pause: it only ever folds our own voice away.
+ */
+export function selfVoiceSwitch(
+  ask: () => Promise<SelfVoiceConf> = selfVoiceFlag,
+  now: () => number = Date.now,
+) {
+  let at = -Infinity;
+  let last: Promise<SelfVoiceConf> = Promise.resolve(SELF_OFF);
+  return (): Promise<SelfVoiceConf> | SelfVoiceConf => {
+    if (now() - at >= FILTER_FLAG_TTL_MS) {
+      at = now();
+      last = ask().catch(() => SELF_OFF);
+    }
+    return last;
+  };
 }
 /**
  * For the mic's socket (local-stt.ts `filter`): whether the filter is on for
@@ -363,12 +422,14 @@ export type TestResult = {
 export function testResult(f: LocalFinal | null): TestResult {
   const s = f?.speaker;
   if (!f || !s) return { decision: "unreachable" };
+  // Our own TTS voice (stt.self-voice): not him, shown as another voice with the reason "self".
+  const ours = s.decision === "self";
   return {
-    decision: s.decision,
+    decision: s.decision === "self" ? "other" : s.decision,
     ...(typeof s.score === "number" ? { score: s.score } : {}),
     ...(s.model ? { model: s.model } : {}),
     ...(s.device ? { device: s.device } : {}),
-    ...(s.reason ? { reason: s.reason } : {}),
+    ...(ours ? { reason: "self" } : s.reason ? { reason: s.reason } : {}),
     ...(typeof s.speechS === "number" ? { speechS: s.speechS } : {}),
     ...(typeof s.snrDb === "number" ? { snrDb: s.snrDb } : {}),
     ...(f.filtered ? { filtered: "stopped" as const } : f.wouldFilter ? { filtered: "would" as const } : {}),

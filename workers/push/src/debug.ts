@@ -284,6 +284,8 @@ import {
   PlayStore,
   echoReportMatch,
   echoVerdict,
+  SELF_ME_MARGIN,
+  signedSelf,
   parsePlayFrame,
   utteranceSpan,
 } from "../../../lib/echo-reports";
@@ -660,6 +662,8 @@ const TWO_MIC_SCAN = 20;
 export const AUTO_POLISH_FLAG = "voice.auto-polish";
 /** Echoes of his voice lines kept aside, never posted (lib/echo-match.ts; on by default). */
 export const ECHO_FLAG = "voice.echo-dedupe";
+/** Our own TTS voices tagged "self" by the Mac are echoes (lib/flags.ts; on by default, owner). */
+export const SELF_VOICE_FLAG = "stt.self-voice";
 /** How many of the newest lines an echo look reads (a minute of chat holds far fewer). */
 const ECHO_SCAN = 40;
 /** Echoes kept for undo (`echo:<id>`, the oldest dropped past this many): the default of voice.echoShowMax. */
@@ -669,6 +673,10 @@ const echoKey = (id: string) => `echo:${id}`;
 /** The play-report side of the echo step (flag voice.echo-reports and its config). */
 type EchoReportsConf = {
   on: boolean;
+  /** Flag stt.self-voice: a signed "self" speaker tag is an echo (docs/echo-suppression.md, layer (c)). */
+  selfOn: boolean;
+  /** stt.selfMeMargin: how far his print must beat our self print for a "me" to outvote a text match. */
+  selfMeMargin: number;
   similarity: number;
   slackMs: number;
   keepMs: number;
@@ -1980,8 +1988,14 @@ export class DebugHub {
     try {
       reportsOn = (await this.flagValue(ECHO_REPORTS_FLAG)) !== false;
     } catch {}
+    let selfOn = true;
+    try {
+      selfOn = (await this.flagValue(SELF_VOICE_FLAG)) !== false;
+    } catch {}
     const reports: EchoReportsConf = {
       on: reportsOn,
+      selfOn,
+      selfMeMargin: await num("stt.selfMeMargin", SELF_ME_MARGIN),
       similarity: await num("voice.echoPlaySimilarity", ECHO_PLAY_SIMILARITY),
       slackMs: await num("voice.echoSlackMs", ECHO_SLACK_MS),
       keepMs: await num("voice.echoPlayKeepMs", ECHO_PLAY_KEEP_MS),
@@ -2039,7 +2053,9 @@ export class DebugHub {
     this.plays.prune(t, this.echoConf?.reports.keepMs ?? ECHO_PLAY_KEEP_MS);
     const nearPlays = this.plays.overlapping(span, ECHO_SLACK_MAX, t).length > 0;
     const maybeLanded = !!echoMatch(await this.newestLines(ECHO_SCAN), cur, widest);
-    if (!nearPlays && !maybeLanded) return false;
+    // Our own TTS voice, signed by the Mac (layer (c)): an echo whatever the text says.
+    const maybeSelf = signedSelf(line.speaker);
+    if (!nearPlays && !maybeLanded && !maybeSelf) return false;
     const { on, conf, reports } = await this.echoOn();
     if (!on) return false;
     const report =
@@ -2060,6 +2076,8 @@ export class DebugHub {
       ...(report ? { report } : {}),
       ...(landed ? { landed, landedOf: landed.entry[1].id } : {}),
       ...(line.speaker ? { speaker: line.speaker } : {}),
+      selfOn: reports.selfOn,
+      selfMeMargin: reports.selfMeMargin,
     });
     if (!verdict) return false;
     const kept: ChatMessage = {

@@ -1,7 +1,8 @@
 # Echo suppression: our own voice is never his words
 
-**Status: M1–M3 built** (owner "go", 2026-11-20 ~16:00 JST, with the
-defaults under "Open questions"); M4 (the self print) and later are not.
+**Status: M1–M4 built** (owner "go", 2026-11-20 ~16:00 JST, with the
+defaults under "Open questions"; M4 approved 2026-11-21 ~01:10 JST); M5 and
+later are not.
 Code: `echo.ts` `echoGuard` (layer (a)), `play-report.ts` (the page's
 reports), `lib/echo-reports.ts` (the hub's store, match and verdict),
 `workers/push/src/debug.ts` `echo()`, `echo-rows.ts` / `EchoRows.tsx` (the
@@ -21,6 +22,40 @@ What was built differs from the text below in these points:
   of the `state` broadcast (50 lines on every presence change is too much).
 - Private screens send hashed n-grams (`g2`, `g3`); every other report sends
   plain text, as open question 4 recommends.
+
+M4 (layer (c)), as built:
+
+- **The print** is one file per model, `self.<model>.json` (0600, next to his
+  prints; `voiceprint.py` `Store.save_self`), with one centroid per voice
+  ("melo-en", "aura-luna", "google-cmn-tw-wavenet-a", "mac-tingting"). "self"
+  is no device name, so his prints' list, export and delete never touch it.
+- **The enrol script** is `scripts/local-stt/self-print.py` (on the STT
+  branch): it asks `/api/words/tts` (MeloTTS, Aura) and `/api/voice/tts`
+  (provider voices) for 12 neutral sentences per voice, with his session
+  cookie (`LIANKI_COOKIE`) or the dev bridge; renders macOS voices with
+  `say -o` (a file, nothing played); refuses the clone voice and any clip the
+  route marks `recorded`; embeds each clip clean and through three simulated
+  channels (phone band, dull speaker, room with noise at 20 dB); deletes the
+  clips with their temporary folder. `--dry-run` shows the cost, `--eval`
+  measures and writes nothing.
+- **The decision** (`decide_self`): the best self voice scores at least
+  `SELF_ACCEPT` (0.45) and beats his best print by `SELF_MARGIN` (0.15), with
+  the noise gate. Only on a socket that sent `{t:"selfVoice", on:true}`; the
+  page sends it from `/api/dev/voice-filter`, which reads the flag and
+  `stt.selfAccept` / `stt.selfMargin` (the Mac clamps them). Push to talk never
+  asks. Every final scored against a self print carries `selfScore`; a "self"
+  one also `selfVoice`, both signed. A "self" final gets no voice id, no
+  cluster, is never split or learned from, and wakes nothing.
+- **The hub**: a signed `self` is the first row of the verdict (kind
+  `self-voice`, layer `self`, `sim` = the self score), shown collapsed like a
+  read-aloud echo. `combineSpeaker`: a `self` part next to a `me` part reads
+  `unknown` (reason `self-mixed`), so his words are never folded away.
+  `stt.selfMeMargin` (0.1) is how far his print must beat the self print for
+  a signed `me` to outvote a play report.
+- **First measure** (2026-11-21, `--eval`, macOS Samantha, Tingting, Kyoko,
+  Meijia, 8 sentences each, simulated channel only): self median 0.69–0.77,
+  minimum 0.62–0.68; against his print at most 0.28–0.35. Every channel copy
+  was "self" at 0.45 / 0.15. The cloud voices and the real room are M5.
 
 The owner, 2026-11-19 ~14:25 JST (voice):
 his phone read an agent's line aloud, a mic heard it, and
@@ -321,7 +356,7 @@ Logged `debug.echo` as today, plus `layer` (`report`, `landed`, `self`),
 | `voice.echoReadWindowMs`                                 | 60000 (exists) | the no-report fallback window                                        |
 | `voice.echoShowMax`                                      | 50             | echoes kept for the collapsed rows (today's `ECHO_KEEP`)             |
 | `voice.cloudWhileMic`                                    | `android`      | prefer cloud TTS while the mic is open: `never`, `android`, `always` |
-| `stt.selfAccept` / `stt.selfMargin` / `stt.selfMeMargin` | set in M4      | the self decision lines (also env on the Mac, like `ME_MARGIN`)      |
+| `stt.selfAccept` / `stt.selfMargin` / `stt.selfMeMargin` | 0.45 / 0.15 / 0.1 | the self decision lines (also `LIANKI_STT_SELF_ACCEPT` / `_MARGIN` on the Mac) |
 
 ### Flags (lib/flags.ts, positive names, default **on**, audience owner)
 

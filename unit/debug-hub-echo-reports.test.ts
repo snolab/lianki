@@ -80,7 +80,11 @@ beforeEach(() => {
 });
 afterEach(() => spy.mockRestore());
 
-function setup(flags: Record<string, unknown> = {}, config: Record<string, unknown> = {}) {
+function setup(
+  flags: Record<string, unknown> = {},
+  config: Record<string, unknown> = {},
+  env: Record<string, unknown> = {},
+) {
   const all: Record<string, unknown> = {
     "voice.echo-dedupe": true,
     "voice.echo-reports": true,
@@ -105,7 +109,7 @@ function setup(flags: Record<string, unknown> = {}, config: Record<string, unkno
       getWebSockets: () => sockets,
       storage,
     },
-    { SESSIONS: rpcStub(SESSIONS) },
+    { SESSIONS: rpcStub(SESSIONS), ...env },
     () => t,
     timer,
   );
@@ -386,5 +390,128 @@ describe("play reports in the hub", () => {
     await play(s, phone, "x#1", AGENT, 8000);
     await s.msg(mac, s.voice("m1", HEARD, { endAgo: 1000 }));
     expect(s.posted().map((x) => x.id)).toEqual(["m1"]);
+  });
+});
+
+/** A stand-in for the Mac's attestation key (voiceprint.py Attestor), same wire form. */
+async function speakerKey() {
+  const kp = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const b64 = (b: Uint8Array) =>
+    btoa(String.fromCharCode(...b))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  const pub = b64(new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey)));
+  return {
+    pub,
+    async sign(payload: Record<string, unknown>) {
+      const body = b64(new TextEncoder().encode(JSON.stringify({ v: 1, ...payload })));
+      const sig = new Uint8Array(
+        await crypto.subtle.sign(
+          { name: "Ed25519" },
+          kp.privateKey,
+          new TextEncoder().encode(body),
+        ),
+      );
+      return `${body}.${b64(sig)}`;
+    },
+  };
+}
+
+describe("our own TTS voice (the Mac's self print, M4)", () => {
+  const SAID = "今天的天气比较温和，西边吹来一阵微风";
+  const selfTag = {
+    decision: "self",
+    score: 0.12,
+    selfScore: 0.71,
+    selfVoice: "melo-zh",
+    model: "campp",
+    device: "mac",
+    speechS: 3.1,
+    snrDb: 24,
+  };
+  async function rig(flags: Record<string, unknown> = {}, config: Record<string, unknown> = {}) {
+    const mac = await speakerKey();
+    const s = setup({ "stt.self-voice": true, ...flags }, config, { STT_SPEAKER_PUB: mac.pub });
+    const sign = (text: string, uid: string, tag: Record<string, unknown> = selfTag) =>
+      mac.sign({ ...tag, text, uid: uid.padEnd(16, "x"), thread: "owner", at: s.now() });
+    return { s, mac, sign };
+  }
+
+  it("a signed self line is an echo with no report and no agent line: shown collapsed, never routed", async () => {
+    const { s, sign } = await rig();
+    const phone = await s.page("/ pwa iPhone", "phone1");
+    const macPage = await s.page("/dev mac Chrome", "mac1");
+    const lane = await s.agent(phone);
+    await s.msg(macPage, { ...s.voice("q1", SAID), speakerProof: [await sign(SAID, "q1")] });
+    expect(s.posted().map((x) => x.id)).toEqual([]);
+    expect(s.heard(lane)).not.toContain("q1");
+    expect(s.logged()).not.toContain("q1");
+    const e = macPage.last("echo") as { line: { id: string; echo: Record<string, unknown> } };
+    expect(e.line.id).toBe("q1");
+    expect(e.line.echo).toMatchObject({
+      kind: "self-voice",
+      layer: "self",
+      sim: 0.71,
+      voice: "melo-zh",
+      shown: true,
+    });
+    expect(lane.all("echo")).toEqual([]);
+    const line = logs.find((l) => l.includes('"debug.echo"'))!;
+    expect(JSON.parse(line)).toMatchObject({ id: "q1", layer: "self", kind: "self-voice" });
+    expect(line).not.toContain("天气"); // numbers only
+    // "This was me" posts it after all.
+    await s.msg(macPage, { type: "unmerge", id: "q1" });
+    expect(s.posted().map((x) => x.id)).toEqual(["q1"]);
+    expect(s.heard(lane)).toContain("q1");
+  });
+
+  it("flag stt.self-voice off, a forged key, or a page's own claim: his line as before", async () => {
+    const off = await rig({ "stt.self-voice": false });
+    const p1 = await off.s.page("/dev mac Chrome", "mac1");
+    await off.s.msg(p1, { ...off.s.voice("q1", SAID), speakerProof: [await off.sign(SAID, "q1")] });
+    expect(off.s.posted().map((x) => x.id)).toEqual(["q1"]);
+
+    const { s } = await rig({ "stt.self-voice": true });
+    const forger = await speakerKey();
+    const p2 = await s.page("/dev mac Chrome", "mac1");
+    const forged = await forger.sign({
+      ...selfTag,
+      text: SAID,
+      uid: "q2".padEnd(16, "x"),
+      thread: "owner",
+      at: s.now(),
+    });
+    await s.msg(p2, { ...s.voice("q2", SAID), speakerProof: [forged] });
+    // A page cannot send a speaker tag at all: only proofs count.
+    await s.msg(p2, { ...s.voice("q3", "我们一起去散步吧，好不好"), speaker: selfTag });
+    expect(s.posted().map((x) => x.id)).toEqual(["q2", "q3"]);
+    expect(p2.all("echo")).toEqual([]);
+  });
+
+  it("a signed me close to our self print does not outvote a play report (stt.selfMeMargin)", async () => {
+    const meTag = { ...selfTag, decision: "me", score: 0.5, selfScore: 0.45, selfVoice: undefined };
+    const { s, sign } = await rig();
+    const phone = await s.page("/ pwa iPhone", "phone1");
+    const macPage = await s.page("/dev mac Chrome", "mac1");
+    await play(s, phone, "x#1", AGENT, 8000);
+    await s.msg(macPage, {
+      ...s.voice("m1", HEARD, { endAgo: 1000 }),
+      speakerProof: [await sign(HEARD, "m1", meTag)],
+    });
+    expect(s.storage.store.get("echo:m1")).toMatchObject({
+      echo: { kind: "read-aloud", layer: "report" },
+    });
+    // Clearly him (his print far over ours): his line, as a strong me always was.
+    const clear = { ...meTag, score: 0.62, selfScore: 0.2 };
+    await play(s, phone, "y#1", AGENT, 8000);
+    await s.msg(macPage, {
+      ...s.voice("m2", HEARD, { endAgo: 1000 }),
+      speakerProof: [await sign(HEARD, "m2", clear)],
+    });
+    expect(s.posted().map((x) => x.id)).toEqual(["m2"]);
   });
 });
