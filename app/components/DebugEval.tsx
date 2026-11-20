@@ -231,6 +231,7 @@ export function DebugEval({
   pttMaxCaptureMs,
   mergeReopenSec,
   playAudio = false,
+  lineReplay = false,
   box = null,
   account = null,
   cacheLines = 0,
@@ -303,6 +304,11 @@ export function DebugEval({
    * a ▶ and may play by themselves (docs/li-sound-hub.md, "Playing audio from an agent").
    */
   playAudio?: boolean;
+  /**
+   * Flags `chat.line-replay` + `voice.recordings` (audience owner): his own spoken
+   * line's details offer "Play original audio" (docs/recordings.md, "Replay from the chat").
+   */
+  lineReplay?: boolean;
 } = {}) {
   // Idempotent and cheap: the live table is in place before the first reply is read.
   if (lexicon !== undefined) setLexicon(lexicon);
@@ -1758,6 +1764,8 @@ export function DebugEval({
             pttMaxCaptureMs={pttMaxCaptureMs}
             mergeReopenSec={mergeReopenSec}
             playAudio={playOn}
+            // His own recordings, behind the same gate as /my/recordings (the route checks it again).
+            lineReplay={lineReplay && dev && owner && friend === null}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
             backToClose={backToCloseChat}
           />

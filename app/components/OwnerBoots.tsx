@@ -32,6 +32,7 @@ export function OwnerBoots({
   pttMaxCaptureMs,
   mergeReopenSec,
   playAudio = false,
+  lineReplay = false,
   box = null,
   autoUpdate = false,
   account = null,
@@ -81,6 +82,8 @@ export function OwnerBoots({
   echoReports?: boolean;
   /** Flag `chat.play-audio`: an agent's audio lines play (docs/li-sound-hub.md, "Playing audio"). */
   playAudio?: boolean;
+  /** Flags `chat.line-replay` + `voice.recordings` and `dev`: "Play original audio" in a line's details. */
+  lineReplay?: boolean;
 }) {
   return (
     <>
@@ -106,6 +109,7 @@ export function OwnerBoots({
         pttMaxCaptureMs={pttMaxCaptureMs}
         mergeReopenSec={mergeReopenSec}
         playAudio={playAudio}
+        lineReplay={lineReplay}
         box={box}
         account={account}
         cacheLines={cacheLines}

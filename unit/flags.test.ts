@@ -76,6 +76,8 @@ describe("registry", () => {
       "stt.whisper-recheck",
       "stt.two-mic-merge",
       "chat.lane-events",
+      // His spoken line's recording from its details, asked 2026-11-21 01:1x JST, audience owner.
+      "chat.line-replay",
       "library.catalogue",
       "books.mine",
       "voice.sync-speak",
