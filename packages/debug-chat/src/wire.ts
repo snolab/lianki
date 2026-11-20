@@ -298,17 +298,19 @@ export type EchoMark = {
   at: number;
   by: string;
   reason: "echo";
-  kind: "other-device" | "read-aloud";
+  /** "self-voice": the Mac heard one of our own TTS voices (a signed `self` speaker tag, M4). */
+  kind: "other-device" | "read-aloud" | "self-voice";
   /** The line it echoed ("" when a play report named none: a /words or /reader sound). */
   of: string;
   sim: number;
   /**
    * Which evidence (docs/echo-suppression.md, "The verdict"): "report" = a
    * page said it was playing these words then (lib/echo-reports.ts);
-   * "landed" = the agent line or his line it copies landed lately. Absent
-   * on echoes kept before play reports.
+   * "landed" = the agent line or his line it copies landed lately; "self" =
+   * the Mac's voiceprint said it was our own TTS voice (signed). Absent on
+   * echoes kept before play reports.
    */
-  layer?: "report" | "landed";
+  layer?: "report" | "landed" | "self";
   /** The voice that played it (play-report.ts), with layer "report". */
   voice?: string;
   /** How long the utterance overlapped what played, ms, with layer "report". */
@@ -1586,12 +1588,14 @@ export const VOICE_TIMING_KEYS = [
  * voiceprint.py; docs/local-stt.md, "Voiceprint"): the cosine `score` of the
  * line against the owner's enrolled voiceprint, and its `decision` from the
  * per-duration bands and the noise gate. "me" = verified as him; "other" = not
- * him; "unknown" = too short, too noisy, between the bands, or no voiceprint.
- * A line made of several utterances carries the weakest of them
+ * him; "unknown" = too short, too noisy, between the bands, or no voiceprint;
+ * "self" = one of our own TTS voices read aloud and heard back (the Mac's self
+ * print, docs/echo-suppression.md layer (c); flag stt.self-voice): an echo,
+ * never his words. A line made of several utterances carries the weakest of them
  * (combineSpeaker). Reported by the owner's page, never stamped by the hub:
  * it is the base for voice approvals later, not an approval by itself.
  */
-export type SpeakerDecision = "me" | "other" | "unknown";
+export type SpeakerDecision = "me" | "other" | "unknown" | "self";
 export type SpeakerTag = {
   decision: SpeakerDecision;
   /** Cosine to the print, -1..1 (absent when nothing was scored). */
@@ -1620,6 +1624,13 @@ export type SpeakerTag = {
   cluster?: string;
   clusterScore?: number;
   /**
+   * Our own playback voices (docs/echo-suppression.md, layer (c)): the cosine to
+   * the Mac's self print's best voice, -1..1, on any final scored against one;
+   * `selfVoice`, which of our voices ("melo-en", "aura-luna"…), only on "self".
+   */
+  selfScore?: number;
+  selfVoice?: string;
+  /**
    * The texts the Mac signed, in order: set only by the hub after it verified
    * the proofs (lib/speaker-proof.ts), never taken from a page (cleanSpeaker
    * drops it). Any decision based on a voice line must use these words, not
@@ -1645,7 +1656,9 @@ export type SpeakerTag = {
   advisory?: SpeakerTag;
 };
 export type SpeakerTrust = "signed" | "advisory";
-const SPEAKER_DECISIONS: readonly SpeakerDecision[] = ["me", "other", "unknown"];
+const SPEAKER_DECISIONS: readonly SpeakerDecision[] = ["me", "other", "unknown", "self"];
+/** One of our own voices in the Mac's self print (scripts/local-stt/voiceprint.py SELF_VOICE). */
+export const SELF_VOICE_ID = /^[a-z0-9][a-z0-9-]{0,47}$/;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,31}$/;
 /** A voice cluster's label: "A".."ZZZ", or "household:<name>" (cluster-avatar.ts). */
 export const CLUSTER_ID = /^([A-Z]{1,3}|household:[a-z0-9]{1,16})$/;
@@ -1677,20 +1690,34 @@ export function cleanSpeaker(raw: unknown): SpeakerTag | undefined {
     const cs = num(r.clusterScore, -1, 1);
     if (cs !== undefined) out.clusterScore = Math.round(cs * 1000) / 1000;
   }
+  const ss = num(r.selfScore, -1, 1);
+  if (ss !== undefined) out.selfScore = Math.round(ss * 1000) / 1000;
+  if (d === "self" && typeof r.selfVoice === "string" && SELF_VOICE_ID.test(r.selfVoice))
+    out.selfVoice = r.selfVoice;
   return out;
 }
 
 /**
  * One tag for a line made of several utterances: the weakest decision wins
  * (any "other" → other; else any "unknown" → unknown; all "me" → me), with
- * the lowest score. The voice stays only when every tagged utterance names
+ * the lowest score. Our own voice (docs/echo-suppression.md, layer (c)): any
+ * "self" part with no "me" part makes the line "self" (an echo); next to a
+ * "me" part it counts as "unknown", so his words are never folded away. The voice stays only when every tagged utterance names
  * the same one (two voices in one line: none, so no one's avatar is wrong).
  * Undefined when no utterance carried a tag.
  */
 export function combineSpeaker(tags: readonly (SpeakerTag | undefined)[]): SpeakerTag | undefined {
-  const ts = tags.filter((t): t is SpeakerTag => !!t);
-  if (!ts.length) return undefined;
-  const rank: Record<SpeakerDecision, number> = { other: 0, unknown: 1, me: 2 };
+  const given = tags.filter((t): t is SpeakerTag => !!t);
+  if (!given.length) return undefined;
+  const hasMe = given.some((t) => t.decision === "me");
+  const ts = hasMe
+    ? given.map((t): SpeakerTag => {
+        if (t.decision !== "self") return t;
+        const { selfVoice: _sv, ...rest } = t;
+        return { ...rest, decision: "unknown", reason: "self-mixed" };
+      })
+    : given;
+  const rank: Record<SpeakerDecision, number> = { self: -1, other: 0, unknown: 1, me: 2 };
   const {
     voice: _v,
     cluster: _c,

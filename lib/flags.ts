@@ -220,6 +220,14 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  // docs/echo-suppression.md, layer (c), M4 (owner approved 2026-11-21).
+  "stt.self-voice": {
+    description:
+      "认出我们自己的朗读声：打开（默认，只对你）后，你的页面让 Mac 的声纹服务器同时拿每句话去比 Lianki 自己的朗读声音（MeloTTS、Aura、谷歌 / Azure 声音，只用生成的语音做的 self.campp.json 声纹，从不包括你的克隆声音）；明显更像我们的朗读声、不像你的那句，就标成「我们自己的声音」：和朗读回声一样只折叠显示，不转给助手、Li 不回、不进聊天记录，点「这是我说的」照常发出。Mac 上没有这份声纹时什么都不变。界线在 /dev/config 的 stt.selfAccept、stt.selfMargin、stt.selfMeMargin。关闭 = 照旧，Mac 不做这个判断。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   "stt.merge": {
     description:
       "连续语音合并：打开后，你接着说的话如果明显是上一句的延续，会并入你刚发的那条语音消息，而不是多出一个气泡；助手收到的是完整的一句，等你说完后再按上下文润色一次整段。只并你自己刚发的语音、中间没有任何人说话、没有问答卡片；语音口令不会被合并。合并后的消息有 ✨ 和撤销按钮，撤销可拆回原来的几条。关闭（默认）= 照旧：每段语音各发一条。",

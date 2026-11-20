@@ -33,6 +33,8 @@
 import type { SttSignals } from "./stt-guard";
 import { reportPageError } from "./page-errors";
 import { type SpeakerTag, cleanSpeaker } from "./wire";
+import type { SelfVoiceConf } from "./voiceprint";
+
 import { isDesktop, sttMayReopen } from "./voice-bg";
 import {
   PUBLIC_RTC_URL,
@@ -42,6 +44,19 @@ import {
   isPublicRoutes,
 } from "./public-stt";
 import { ownerRoutesOverride } from "./owner-routes";
+
+/** The selfVoice frame for the Mac: "on" with the lines when given, else off. */
+export function selfVoiceFrame(c: SelfVoiceConf | undefined | null): string {
+  if (!c?.on) return SELF_SENT_OFF;
+  const ok = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+  return JSON.stringify({
+    t: "selfVoice",
+    on: true,
+    ...(ok(c.accept) ? { accept: c.accept } : {}),
+    ...(ok(c.margin) ? { margin: c.margin } : {}),
+  });
+}
+const SELF_SENT_OFF = JSON.stringify({ t: "selfVoice", on: false });
 
 /** localStorage: the local STT server's WebSocket URL(s) (owner pages only). */
 export const LOCAL_STT_KEY = "lk:debug-local-stt";
@@ -467,6 +482,12 @@ export function createLocalStt(
      */
     filter?: () => boolean | Promise<boolean>;
     /**
+     * Our own TTS voices tagged "self" on the Mac (flag stt.self-voice;
+     * docs/echo-suppression.md, layer (c)): asked like `filter`, sent as
+     * {t:"selfVoice", on, accept, margin} when it changes. Not given, or failing: off.
+     */
+    selfVoice?: () => SelfVoiceConf | Promise<SelfVoiceConf>;
+    /**
      * How long the race may take (default CONNECT_TIMEOUT_MS). Lianki's speech
      * servers for other accounts (public-stt.ts) give WebRTC longer: a session,
      * signalling and ICE come before `ready`.
@@ -609,6 +630,7 @@ export function createLocalStt(
       return r.resolve(m as Record<string, unknown>);
     }
     if (m.t === "filter") return void d.log?.({ ev: "voice-filter", on: m.on });
+    if (m.t === "selfVoice") return void d.log?.({ ev: "voice-self", on: m.on });
     const p = m.id === undefined ? undefined : utts.get(m.id);
     if (!p) return;
     if (m.t === "partial" && typeof m.text === "string" && !p.resolve) {
@@ -717,7 +739,9 @@ export function createLocalStt(
         );
       } catch {}
     filterSent = false; // a new socket starts with the filter off
+    selfSent = SELF_SENT_OFF; // and with "self" off
     syncFilter();
+    syncSelf();
     downWhy = undefined;
     loggedWhy = undefined;
     setSt("ready");
@@ -864,6 +888,21 @@ export function createLocalStt(
         send(JSON.stringify({ t: "filter", on }));
       });
   };
+  /** What the Mac was last told about our own voices on this socket (JSON of the selfVoice frame). */
+  let selfSent = SELF_SENT_OFF;
+  /** Ask whether "self" should be on, and tell the Mac when that changed; off on any failure. */
+  const syncSelf = () => {
+    if (!d.selfVoice) return;
+    void Promise.resolve()
+      .then(d.selfVoice)
+      .catch((): SelfVoiceConf => ({ on: false }))
+      .then((c) => {
+        const frame = selfVoiceFrame(c);
+        if (frame === selfSent || !live()) return;
+        selfSent = frame;
+        send(frame);
+      });
+  };
   /**
    * Put an utterance on the socket in use: begin, every frame so far, and its end if
    * it was given (a held utterance, or a replay after a route dropped).
@@ -879,6 +918,7 @@ export function createLocalStt(
     utts.set(id, p);
     rec.id = id;
     syncFilter();
+    syncSelf();
     const enrol = rec.opts?.enrol;
     // A fresh id per utterance when the page says who it is: signed into its speaker proof.
     const uid = d.device ? utteranceId() : undefined;

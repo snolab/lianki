@@ -40,6 +40,8 @@ import type { SpeakerTag } from "./wire";
 import type { SpotResult, WakeSpot } from "./wake";
 import { wakeMention } from "./polish";
 
+/** Someone else's voice, or our own TTS voice heard back ("self", docs/echo-suppression.md): never a wake. */
+const notHim = (d: string | undefined) => d === "other" || d === "self";
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
 export const MAX_UTTERANCE_MS = 30_000;
 /**
@@ -1357,7 +1359,8 @@ export function createMic(d: {
             if (!local) return wake();
             local.then(
               (f) => {
-                if (f.speaker?.decision !== "other" && !f.filtered) return wake(f);
+                // Our own TTS voice saying the name (stt.self-voice) wakes nothing either.
+                if (!notHim(f.speaker?.decision) && !f.filtered) return wake(f);
                 keepPassive(audio, Promise.resolve(f));
                 if (f.filtered) d.filtered?.(f.filtered);
                 otherDrops++;
@@ -1480,7 +1483,7 @@ export function createMic(d: {
             dropped: drop || !text.trim(),
             ...(looped?.action === "trim" ? { repeat: "trimmed" as const } : {}),
           });
-          const other = spk?.decision === "other";
+          const other = notHim(spk?.decision);
           // Split by speaker on the Mac, and the text is the Mac's as it came: one line per
           // part, each noted as it lands (report). Anything changed it: one line, as before.
           // A wake name in front ("coco, …") makes it one line, addressed.

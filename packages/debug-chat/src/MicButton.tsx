@@ -51,6 +51,7 @@ import {
   VOICE_DEVICE_KEY,
   deviceSlug,
   filterSwitch,
+  selfVoiceSwitch,
   filterVerdict,
   noteFiltered,
   noteSpeaker,
@@ -207,6 +208,7 @@ function localFor(
   url: string,
   log: (event: Record<string, unknown>) => void,
   filter = filterSwitch(),
+  selfVoice = selfVoiceSwitch(),
 ) {
   if (isMixedRoutes(url))
     return createLocalStt(url, {
@@ -216,6 +218,7 @@ function localFor(
       device: voiceDevice(),
       thread: "owner",
       filter,
+      selfVoice,
     });
   if (isPublicRoutes(url))
     return createLocalStt(url, {
@@ -223,7 +226,7 @@ function localFor(
       open: publicOpen({ log }),
       connectTimeoutMs: PUBLIC_CONNECT_TIMEOUT_MS,
     });
-  return createLocalStt(url, { log, device: voiceDevice(), thread: "owner", filter });
+  return createLocalStt(url, { log, device: voiceDevice(), thread: "owner", filter, selfVoice });
 }
 
 /**
@@ -275,6 +278,7 @@ export function pttRecorder(
               options.localStt,
               (ev) => voice().log(ev),
               () => false,
+              () => ({ on: false }),
             )
           : undefined;
         recorder = createPttRecognition({
