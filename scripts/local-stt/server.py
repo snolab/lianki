@@ -63,6 +63,8 @@ The voiceprint (voiceprint.py; docs/local-stt.md, "Voiceprint"):
                        (and the kept recordings, base64 wav, for My Files), for the account
                    {"t":"voiceprint","op":"restore","rid":R,"device":D|"*","prints":[…]}   from the account
                    {"t":"filter","on":bool}                  the voiceprint filter on this socket
+                   {"t":"selfVoice","on":bool[,"accept":A,"margin":M]}   our own TTS voices tagged
+                                                             "self" (voiceprint.py self.<model>.json)
                    {"t":"voiceprint","op":"progressive","rid":R,"on":bool}   progressive learning on the
                        Mac (passkey ticket, device "*"); status answers "progressive":{on,pending,…}
                    {"t":"end",…,"playback":true}             something played while he spoke: never learned
@@ -388,11 +390,12 @@ class Server:
             log(f"recheck failed: {type(e).__name__}")
             return {**out, "ok": False, "error": "recheck unavailable"}
 
-    async def verify(self, audio: np.ndarray, device: str | None):
+    async def verify(self, audio: np.ndarray, device: str | None, selfv: tuple[float, float] | None = None):
+        """`selfv`: this socket's self-voice lines (`selfVoice`), None when it did not ask."""
         if not self.verifier:
             return None
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self.spk_pool, self.verifier.verify, audio, device)
+        return await loop.run_in_executor(self.spk_pool, lambda: self.verifier.verify(audio, device, selfv=selfv))
 
     def filter_state(self, device: str | None) -> str:
         """Why the filter can or cannot work on this socket: "on", "no-print" (this device has none), "off"."""
@@ -663,7 +666,8 @@ class Server:
         lang = max(read, key=lambda r: r[2])[1]
         return join_spans([t for t, _, _ in read]), lang, None, len(spans)
 
-    async def split(self, audio: np.ndarray, cuts: list[int], device: str | None) -> list[dict] | None:
+    async def split(self, audio: np.ndarray, cuts: list[int], device: str | None,
+                    selfv: tuple[float, float] | None = None) -> list[dict] | None:
         """
         A final with two speakers in it, cut where the speaker changes (voiceprint.split_points):
         each part read and checked on its own audio, [{text, lang, startMs, audioMs, speaker}].
@@ -673,7 +677,7 @@ class Server:
         spans = list(zip(edges, edges[1:]))
         try:
             got = await asyncio.gather(*(self.decode_final(audio[a:b]) for a, b in spans),
-                                       *(self.verify(audio[a:b], device) for a, b in spans))
+                                       *(self.verify(audio[a:b], device, selfv) for a, b in spans))
         except Exception as e:
             log(f"speaker split failed: {type(e).__name__}: {e}")
             return None
@@ -721,7 +725,9 @@ class Server:
             seg = None
         cur: Utterance | None = None
         #: This socket's device (hello): whose print its finals are scored against.
-        conn: dict = {"device": None, "thread": None, "filter": False}
+        #: `self`: the self-voice lines (accept, margin) once the page asked (`selfVoice`, flag
+        #: stt.self-voice); None = no "self" decision on this socket, the self print unused.
+        conn: dict = {"device": None, "thread": None, "filter": False, "self": None}
 
         async def send(obj):
             try:
@@ -735,7 +741,7 @@ class Server:
                 # The filter on: nothing is decoded before the check has heard enough to speak.
                 if conn["filter"] and not u.enrol and not u.cleared:
                     try:
-                        spk = await self.verify(u.audio(), conn["device"])
+                        spk = await self.verify(u.audio(), conn["device"], conn["self"])
                     except Exception as e:  # the model failed: exactly as with no filter
                         log(f"speaker check failed: {type(e).__name__}: {e}")
                         spk = None
@@ -836,7 +842,7 @@ class Server:
             checked = None
             if conn["filter"] and self.verifier and not u.enrol:
                 try:
-                    checked = await self.verify(audio, conn["device"])
+                    checked = await self.verify(audio, conn["device"], conn["self"])
                 except Exception as e:
                     log(f"speaker check failed: {type(e).__name__}: {e}")
                 why = VP.filter_reason(checked, conn["device"]) if checked else None
@@ -862,7 +868,7 @@ class Server:
             elif enrol:
                 side = self.enrol_add(enrol, audio)
             else:
-                side = no_check() if checked is not None else self.verify(audio, conn["device"])
+                side = no_check() if checked is not None else self.verify(audio, conn["device"], conn["self"])
             res = await asyncio.gather(text_of(), side, return_exceptions=True)
             if isinstance(res[0], BaseException):
                 await send({"t": "error", "id": u.id, "error": str(res[0])[:200]})
@@ -875,7 +881,7 @@ class Server:
             # tag and proof (docs/local-stt.md, "Two speakers in one final"). Not after "Linky":
             # the cuts are in the whole audio, the text only after it.
             cuts = spk.pop("cuts", None) if isinstance(spk, dict) and not enrol else None
-            parts = await self.split(audio, cuts, conn["device"]) if cuts and not u.text_from else None
+            parts = await self.split(audio, cuts, conn["device"], conn["self"]) if cuts and not u.text_from else None
             if parts:
                 text = join_spans([p["text"] for p in parts])
             # A final much shorter than the last partial of a long utterance dropped words the
@@ -951,6 +957,9 @@ class Server:
                     tag += f", margin {spk['margin']:+.3f} (other {spk['otherScore']:.3f})"
                     if spk.get("mixed"):
                         tag += f", mixed me {spk['meShare']:.2f}"
+                if spk.get("selfScore") is not None:
+                    # Our own playback voices: a number and our voice id, never his.
+                    tag += f", self {spk['selfScore']:.3f}" + (f" {spk['selfVoice']}" if d == "self" else "")
                 if parts:
                     tag += ", split " + "+".join(p["speaker"].get("voice") or p["speaker"]["decision"] for p in parts)
                 if would:
@@ -1063,6 +1072,14 @@ class Server:
                     forget()
                     log(f"voice filter {'on' if conn['filter'] else 'off'} ({conn['device']})")
                     await send({"t": "filter", "on": conn["filter"]})
+                elif t == "selfVoice" and guest:
+                    await send({"t": "selfVoice", "on": False})
+                elif t == "selfVoice":
+                    # Our own TTS voices tagged "self" (docs/echo-suppression.md, layer (c)); off until said.
+                    on = m.get("on") is True and self.verifier is not None
+                    conn["self"] = VP.self_conf(m.get("accept"), m.get("margin")) if on else None
+                    log(f"self voice {'on %.2f/%.2f' % conn['self'] if on else 'off'} ({conn['device']})")
+                    await send({"t": "selfVoice", "on": on})
                 elif t in ("enrol", "voiceprint") and guest:
                     await send({"t": t, "rid": m.get("rid"), "op": m.get("op"), "ok": False,
                                 "error": "not on this route"})

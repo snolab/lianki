@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import socket
 import stat
 import subprocess
@@ -1328,6 +1329,246 @@ class Household(unittest.TestCase):
         self.assertEqual([h["device"] for h in self.store.households()], ["iphone"])
 
 
+class SelfVoice(unittest.TestCase):
+    """Our own playback voices (docs/echo-suppression.md, layer (c)): the self print and "self"."""
+
+    HIM, TTS = 450, 1550  # FakeEmbedder bins: his voice, our TTS voice
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = os.path.join(self.tmp.name, "vp")
+        self.store = V.Store(self.root)
+        self.fe = V.FakeEmbedder()
+        self.v = V.Verifier(self.store, ["campp"], embedders={"campp": self.fe})
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def his(self, device="iphone"):
+        self.store.save(device, "campp", [self.fe(tone(self.HIM, seed=i)) for i in range(10)], [2.5] * 10, audio=False)
+        self.v.refresh()
+
+    def ours(self, **groups):
+        r = self.store.save_self("campp", groups or {"melo-en": [self.fe(tone(self.TTS, seed=i)) for i in range(4)]})
+        self.v.refresh()
+        return r
+
+    def test_decide_self_lines_and_gate(self):
+        acc, mar = V.SELF_ACCEPT, V.SELF_MARGIN
+        self.assertTrue(V.decide_self(acc, acc - mar - 1e-9, 3.0, 30))
+        self.assertFalse(V.decide_self(acc - 0.01, -1.0, 3.0, 30))  # under the self line
+        self.assertFalse(V.decide_self(0.9, 0.9 - mar + 0.01, 3.0, 30))  # not clearly closer than him
+        self.assertTrue(V.decide_self(0.9, None, 3.0, 30))  # no print of his: the self line alone
+        self.assertFalse(V.decide_self(0.9, 0.0, V.MIN_SPEECH_S - 0.1, 30))  # short
+        self.assertFalse(V.decide_self(0.9, 0.0, 3.0, V.MIN_SNR_DB - 1))  # noisy
+        # A page's lines only within range; anything else is the default.
+        self.assertEqual(V.self_conf(0.6, 0.2), (0.6, 0.2))
+        self.assertEqual(V.self_conf(0.1, 0.01), (V.SELF_ACCEPT, V.SELF_MARGIN))
+        self.assertEqual(V.self_conf("0.6", True), (V.SELF_ACCEPT, V.SELF_MARGIN))
+        self.assertEqual(V.self_conf(), (V.SELF_ACCEPT, V.SELF_MARGIN))
+
+    def test_store_file_private_and_apart_from_his_prints(self):
+        self.his()
+        r = self.ours()
+        f = self.store.self_file("campp")
+        self.assertEqual((os.path.basename(f), r["file"]), ("self.campp.json", f))
+        self.assertEqual(mode(f), 0o600)
+        with open(f) as fh:
+            p = json.load(fh)
+        self.assertEqual((p["kind"], p["audio"], [g["voice"] for g in p["voices"]]), ("self", False, ["melo-en"]))
+        self.assertNotIn("text", json.dumps(p))
+        # Not a device: never listed, exported or deleted as his.
+        self.assertFalse(V.valid_device("self"))
+        self.assertEqual([x["device"] for x in self.store.prints()], ["iphone"])
+        self.assertEqual(self.store.self_summary(), [{"model": "campp", "voices": [{"voice": "melo-en", "n": 4}]}])
+        self.store.delete(None)
+        self.assertTrue(os.path.exists(f))
+        # Kept unless --replace, which keeps a backup.
+        with self.assertRaises(V.StoreError):
+            self.ours()
+        self.store.save_self("campp", {"aura-luna": [self.fe(tone(self.TTS))]}, replace=True)
+        self.assertEqual(len([x for x in os.listdir(self.root) if x.startswith("self.campp.json.bak-")]), 1)
+        with self.assertRaises(V.StoreError):
+            self.store.save_self("campp", {"Bad Voice": [self.fe(tone(self.TTS))]}, replace=True)
+        # A loose file is not used.
+        os.chmod(f, 0o644)
+        with self.assertRaises(V.StoreError):
+            self.store.load_self("campp")
+        self.v.refresh()
+        r = self.v.verify(tone(self.TTS, speech_s=3.0), "iphone", selfv=V.self_conf())
+        self.assertNotEqual(r["decision"], "self")
+        self.assertNotIn("selfScore", r)
+
+    def test_verify_tags_self_only_when_asked(self):
+        self.his()
+        self.ours()
+        conf = V.self_conf()
+        tts = tone(self.TTS, speech_s=3.0)
+        # Not asked (flag off): exactly as before, the print unused.
+        r = self.v.verify(tts, "iphone")
+        self.assertEqual(r["decision"], "other")
+        self.assertNotIn("selfScore", r)
+        # Asked: our own voice is "self", with no voice id and no cluster.
+        r = self.v.verify(tts, "iphone", selfv=conf)
+        self.assertEqual((r["decision"], r["selfScore"], r["selfVoice"]), ("self", 1.0, "melo-en"))
+        for k in ("voice", "cluster", "reason", "cuts", "windows"):
+            self.assertNotIn(k, r)
+        # His own voice stays his, with the self score beside it.
+        me = self.v.verify(tone(self.HIM, speech_s=3.0), "iphone", selfv=conf)
+        self.assertEqual((me["decision"], me["selfScore"]), ("me", 0.0))
+        self.assertNotIn("selfVoice", me)
+        # Short: never self.
+        self.assertNotEqual(self.v.verify(tone(self.TTS, speech_s=1.0), "iphone", selfv=conf)["decision"], "self")
+        # Never learned from, and it pauses learning like another voice.
+        self.assertEqual(self.v.learn_gate(r, "iphone"), "not-me")
+        self.assertIn("iphone", self.v.last_other)
+        # No print of his at all: the self line alone decides.
+        bare = V.Verifier(V.Store(os.path.join(self.tmp.name, "bare")), ["campp"], embedders={"campp": self.fe})
+        bare.store.save_self("campp", {"melo-zh": [self.fe(tone(self.TTS))]})
+        r = bare.verify(tts, "iphone", selfv=conf)
+        self.assertEqual((r["decision"], r["selfVoice"], r["score"]), ("self", "melo-zh", None))
+        r = bare.verify(tone(self.HIM, speech_s=3.0), "iphone", selfv=conf)
+        self.assertEqual((r["decision"], r["reason"], r["selfScore"]), ("unknown", "no-print", 0.0))
+
+    def test_signed_tag_carries_it(self):
+        self.his()
+        self.ours()
+        tag = self.v.verify(tone(self.TTS, speech_s=3.0), "iphone", selfv=V.self_conf())
+        a = V.Attestor(os.path.join(self.tmp.name, "k", "attest.key"))
+        body = a.sign(tag, "hello").split(".")[0]
+        import base64
+
+        p = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+        self.assertEqual((p["decision"], p["selfVoice"], p["selfScore"]), ("self", "melo-en", 1.0))
+
+    # -- the enrol script
+    def script(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("self_print", os.path.join(HERE, "self-print.py"))
+        sp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sp)
+        return sp
+
+    def test_script_voice_ids(self):
+        sp = self.script()
+        self.assertEqual(sp.parse_voice("melo:en")["id"], "melo-en")
+        a = sp.parse_voice("aura:luna@en")
+        self.assertEqual((a["id"], a["speaker"], a["lang"]), ("aura-luna", "luna", "en"))
+        g = sp.parse_voice("google:cmn-TW-Wavenet-A")
+        self.assertEqual((g["id"], g["lang"], g["provider"]), ("google-cmn-tw-wavenet-a", "zh", "google:cmn-TW-Wavenet-A"))
+        z = sp.parse_voice("azure:zh-CN-XiaoxiaoDialectsNeural/nan-CN")
+        self.assertEqual(z["lang"], "zh")
+        m = sp.parse_voice("mac:Tingting@zh")
+        self.assertEqual((m["id"], m["name"], m["lang"]), ("mac-tingting", "Tingting", "zh"))
+        for bad in ("clone", "clone:me", "melo:", "aura:luna", "http://x", "local:kokoro"):
+            with self.assertRaises(sp.Refused):
+                sp.parse_voice(bad)
+        self.assertIn("speaker=luna", sp.request_url("https://lianki.com", a, "Hi"))
+        self.assertIn("/api/voice/tts?voice=google%3Acmn-TW-Wavenet-A", sp.request_url("https://x", g, "Hi"))
+        self.assertEqual(sp.auth_headers({}), {})
+        self.assertEqual(sp.auth_headers({"LIANKI_COOKIE": "c=1"}), {"cookie": "c=1"})
+
+    def test_script_refuses_recorded_and_fallback_clips(self):
+        sp = self.script()
+
+        class R:
+            def __init__(self, voice, body=b"x" * 2048):
+                self.headers, self.body = {"x-voice": voice}, body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return self.body
+
+        url = "https://lianki.com/api/words/tts?lang=en&text=x&store=0"
+        self.assertEqual(len(sp.fetch_clip(url, {}, False, lambda *a, **k: R("melotts"))), 2048)
+        with self.assertRaises(sp.Refused):
+            sp.fetch_clip(url, {}, False, lambda *a, **k: R("recorded"))  # a person's recording
+        with self.assertRaises(sp.Refused):
+            sp.fetch_clip(url, {}, True, lambda *a, **k: R("melotts"))  # asked Aura, got the fallback
+        with self.assertRaises(sp.Refused):
+            sp.fetch_clip(url, {}, False, lambda *a, **k: R("melotts", b""))
+
+    def test_script_builds_from_generated_clips_and_keeps_nothing(self):
+        sp = self.script()
+        self.his()
+        made: list[str] = []
+
+        def opener(req, timeout=60):
+            class R:
+                headers = {"x-voice": "melotts"}
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+                def read(self):
+                    return V.wav_bytes(tone(SelfVoice.TTS, speech_s=2.5))
+
+            self.assertNotIn("clone", req.full_url)
+            return R()
+
+        def convert(src, dst):
+            made.append(dst)
+            shutil.copyfile(src, dst)
+
+        voices = [sp.parse_voice("melo:en"), sp.parse_voice("melo:zh")]
+        tmp = tempfile.mkdtemp(dir=self.tmp.name)
+        clips = sp.clips_for(voices, 3, tmp, "https://x", {"cookie": "c"}, opener, convert=convert, log=lambda *_: None)
+        self.assertEqual({k: len(v) for k, v in clips.items()}, {"melo-en": 3, "melo-zh": 3})
+        self.assertFalse([f for f in os.listdir(tmp) if f.endswith(".raw")])  # the downloads are gone
+        groups, parts = sp.embed_groups(clips, self.fe)
+        self.assertEqual(len(groups["melo-en"]), 3 * 4)  # clean + phone, dull, room
+        rows = sp.measure(groups, parts, sp.his_centroids(self.store, "campp"))
+        self.assertEqual([r["voice"] for r in rows], ["melo-en", "melo-zh"])
+        self.assertTrue(all(r["hisMax"] is not None and r["selfShare"] is not None for r in rows))
+        # The whole run: clips only in a temporary folder that is gone after; embeddings written.
+        import io
+        from contextlib import redirect_stdout
+
+        sp.to_wav = lambda src, dst: shutil.copyfile(src, dst)
+        with redirect_stdout(io.StringIO()) as out:
+            env = dict(os.environ)
+            os.environ["LIANKI_COOKIE"] = "c=1"
+            try:
+                rc = sp.main(["--store", self.root, "--voices", "melo:en", "--n", "2", "--eval"], opener, self.fe)
+                self.assertEqual(rc, 0)
+                self.assertFalse(os.path.exists(self.store.self_file("campp")))  # --eval writes nothing
+                rc = sp.main(["--store", self.root, "--voices", "melo:en", "--n", "2"], opener, self.fe)
+            finally:
+                os.environ.clear()
+                os.environ.update(env)
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertEqual(mode(self.store.self_file("campp")), 0o600)
+        self.assertEqual(self.store.self_summary()[0]["voices"], [{"voice": "melo-en", "n": 8}])
+        leftovers = [d for d in os.listdir(tempfile.gettempdir()) if d.startswith("lianki-self-")]
+        self.assertEqual(leftovers, [])
+        # Refusals: the clone, no voices, no auth for a cloud voice.
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(sp.main(["--store", self.root, "--voices", "clone:x"]), 2)
+            self.assertEqual(sp.main(["--store", self.root]), 2)
+            os.environ.pop("LIANKI_COOKIE", None)
+            os.environ.pop("LIANKI_DEV_BRIDGE", None)
+            self.assertEqual(sp.main(["--store", self.root, "--voices", "melo:en"]), 2)
+
+    def test_channels_are_deterministic_and_bounded(self):
+        sp = self.script()
+        a = tone(1000, speech_s=2.0)
+        c1, c2 = sp.channels(a, seed=3), sp.channels(a, seed=3)
+        self.assertEqual([n for n, _ in c1], ["phone", "dull", "room"])
+        for (_, x), (_, y) in zip(c1, c2):
+            self.assertEqual(len(x), len(a))
+            self.assertTrue(np.array_equal(x, y))
+            self.assertLessEqual(float(np.max(np.abs(x))), 1.0)
+
+
 class FilterLineTest(unittest.TestCase):
     """The filter's rule: in doubt it never stops anything."""
 
@@ -1570,6 +1811,41 @@ class ServerProtocol(unittest.TestCase):
         self.assertNotIn("filtered", again)
         self.assertTrue(gone["text"])
         self.assertNotIn("filtered", gone)
+
+    def test_self_voice_only_when_the_page_asks(self):
+        """Our own TTS voice is "self" (signed) on a socket that sent selfVoice on; off: as before."""
+        store = V.Store(self.root)
+        store._ready(create=True)
+        f = store.self_file("campp")
+        store.save_self("campp", {"melo-en": [V.FakeEmbedder()(tone(1550, seed=i)) for i in range(3)]}, replace=True)
+
+        async def flow(ws):
+            await ws.send(json.dumps({"t": "hello", "device": "iphone", "thread": "owner"}))
+            before = await self.utter(ws, 901, tone(1550, speech_s=3.0))
+            await ws.send(json.dumps({"t": "selfVoice", "on": True, "accept": 0.5, "margin": 0.2}))
+            self.assertEqual(json.loads(await ws.recv()), {"t": "selfVoice", "on": True})
+            on = await self.utter(ws, 902, tone(1550, speech_s=3.0))
+            await ws.send(json.dumps({"t": "selfVoice", "on": False}))
+            self.assertEqual(json.loads(await ws.recv()), {"t": "selfVoice", "on": False})
+            after = await self.utter(ws, 903, tone(1550, speech_s=3.0))
+            return before, on, after
+
+        try:
+            before, on, after = self.run_ws(flow)
+        finally:
+            for x in os.listdir(self.root):
+                if x.startswith("self.campp.json"):
+                    os.unlink(os.path.join(self.root, x))
+        self.assertNotEqual(before["speaker"]["decision"], "self")
+        self.assertNotIn("selfScore", before["speaker"])
+        self.assertEqual((on["speaker"]["decision"], on["speaker"]["selfVoice"]), ("self", "melo-en"))
+        body = on["speakerProof"].split(".")[0]
+        import base64
+
+        p = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+        self.assertEqual((p["decision"], p["selfVoice"]), ("self", "melo-en"))
+        self.assertNotEqual(after["speaker"]["decision"], "self")
+        self.assertTrue(f)
 
     def test_filter_needs_this_devices_own_print(self):
         st, _m, off_other, _on, on_other, *_ = self.filter_flow("android")

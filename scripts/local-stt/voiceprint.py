@@ -43,6 +43,10 @@ The CLI (never touches ~/lianki-voice-clips; it only reads files you name):
 
 Household voices (another voice at home, scored against so the margin decides):
 scripts/local-stt/household-print.py builds `<device>.<model>.other.json`; deleting or renaming it turns it off.
+
+Our own playback voices (docs/echo-suppression.md, layer (c)): scripts/local-stt/self-print.py
+builds `self.<model>.json` from generated TTS only; a final closer to it than to him is "self"
+(an echo of what Lianki read aloud) on sockets that asked (`selfVoice`). Deleting his prints keeps it.
 """
 from __future__ import annotations
 
@@ -199,6 +203,25 @@ HOUSEHOLD = "other"
 CLUSTER_HOUSE_MARGIN = _env_num("CLUSTER_HOUSE_MARGIN", OTHER_MARGIN)
 CLUSTER_HOUSE_MIN = _env_num("CLUSTER_HOUSE_MIN", 0.30)
 _HOUSEHOLD_FILE = re.compile(r"^([a-z0-9][a-z0-9-]{0,31})\.([a-z0-9]+)\.other(?:-([a-z0-9]{1,16}))?\.json$")
+#: Our own playback voices (docs/echo-suppression.md, layer (c), M4): `self.<model>.json`, one
+#: file per model, embeddings of the TTS voices Lianki reads aloud (MeloTTS, Aura, the provider
+#: voices, macOS twins of device voices), made from generated speech only by
+#: scripts/local-stt/self-print.py; never his clone voice, never a person. A final is "self"
+#: when the socket asked for it (`{"t":"selfVoice","on":true}`, flag stt.self-voice) and its best
+#: voice in that print scores at least SELF_ACCEPT and beats his best print by SELF_MARGIN. The
+#: noise gate holds (a short or noisy final is never "self"). LIANKI_STT_SELF_ACCEPT /
+#: LIANKI_STT_SELF_MARGIN, or the page's stt.selfAccept / stt.selfMargin (clamped below).
+#: Defaults conservative: a false "self" only folds his line (one tap brings it back), but it
+#: must stay rare; voice-filter-eval.py put 88 % of TTS clips under 0.15 against his print.
+SELF_PRINT = "self"
+SELF_ACCEPT = _env_num("SELF_ACCEPT", 0.45)
+SELF_MARGIN = _env_num("SELF_MARGIN", 0.15)
+#: What a page may set (stt.selfAccept / stt.selfMargin): never below these floors.
+SELF_ACCEPT_RANGE = (0.30, 0.95)
+SELF_MARGIN_RANGE = (0.05, 0.80)
+#: A voice id in the self print: "melo-en", "aura-luna", "google-cmn-tw-wavenet-a", "mac-tingting".
+SELF_VOICE = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
+_SELF_FILE = re.compile(r"^self\.([a-z0-9]+)\.json$")
 
 
 @dataclass(frozen=True)
@@ -271,7 +294,8 @@ _DEVICE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 
 
 def valid_device(d: object) -> bool:
-    return isinstance(d, str) and bool(_DEVICE.match(d))
+    # "self" names the playback-voice print (SELF_PRINT), never a device of his.
+    return isinstance(d, str) and bool(_DEVICE.match(d)) and d != SELF_PRINT
 
 
 # ---------------------------------------------------------------- the noise gate
@@ -349,6 +373,28 @@ def decide_margin(model: Model, score: float, other: float, speech_s: float, snr
     if margin >= ME_MARGIN and score >= b.accept:
         return "me", None
     return "unknown", "margin" if margin < ME_MARGIN else "between"
+
+
+def self_conf(accept: object = None, margin: object = None) -> tuple[float, float]:
+    """The self lines for a socket: the page's values when they are numbers in range, else the defaults."""
+    def pick(v: object, dflt: float, lo_hi: tuple[float, float]) -> float:
+        ok = isinstance(v, (int, float)) and not isinstance(v, bool) and lo_hi[0] <= float(v) <= lo_hi[1]
+        return float(v) if ok else dflt
+    return pick(accept, SELF_ACCEPT, SELF_ACCEPT_RANGE), pick(margin, SELF_MARGIN, SELF_MARGIN_RANGE)
+
+
+def decide_self(self_score: float, score: float | None, speech_s: float, snr_db: float,
+                accept: float = SELF_ACCEPT, margin: float = SELF_MARGIN) -> bool:
+    """
+    Our own TTS voice: the self print's best voice scores at least `accept` and beats his
+    best print (`score`; None = no print of his, so only `accept` counts) by `margin`.
+    Never on a final the noise gate holds back.
+    """
+    if speech_s < MIN_SPEECH_S or snr_db < MIN_SNR_DB:
+        return False
+    if self_score < accept:
+        return False
+    return score is None or self_score - score >= margin
 
 
 def majority(votes: list[str]) -> tuple[bool, float | None, str | None]:
@@ -469,7 +515,7 @@ class Store:
             return out
         for name in sorted(os.listdir(self.root)):
             m = re.match(r"^([a-z0-9][a-z0-9-]{0,31})\.([a-z0-9]+)\.json$", name)
-            if not m or m.group(2) not in MODELS:
+            if not m or m.group(2) not in MODELS or m.group(1) == SELF_PRINT:
                 continue
             try:
                 p = self.load(m.group(1), m.group(2))
@@ -491,7 +537,7 @@ class Store:
             return out
         for name in sorted(os.listdir(self.root)):
             m = re.match(rf"^([a-z0-9][a-z0-9-]{{0,31}})\.([a-z0-9]+)\.{PENDING}\.json$", name)
-            if not m or m.group(2) not in MODELS:
+            if not m or m.group(2) not in MODELS or m.group(1) == SELF_PRINT:
                 continue
             try:
                 q = self.load_pending(m.group(1), m.group(2))
@@ -605,6 +651,91 @@ class Store:
             write_private(f, json.dumps(p).encode())
         p["_centroid"] = c
         return p
+
+    # -- our own playback voices (docs/echo-suppression.md, layer (c))
+    def self_file(self, model: str) -> str:
+        if model not in MODELS:
+            raise StoreError("bad model")
+        return os.path.join(self.root, f"{SELF_PRINT}.{model}.json")
+
+    def load_self(self, model: str) -> list[dict] | None:
+        """
+        The self print's voices for this model, [{voice, n, _centroid}], or None when there is
+        none. A file that is not ours (loose mode, a link, another format) raises StoreError.
+        """
+        if model not in MODELS or not self._ready(create=False):
+            return None
+        f = self.self_file(model)
+        if not os.path.lexists(f):
+            return None
+        why = path_problem(f, want_dir=False)
+        if why:
+            raise StoreError(why)
+        try:
+            with open(f, encoding="utf-8") as fh:
+                p = json.load(fh)
+            if p.get("v") != FORMAT or p.get("kind") != SELF_PRINT or p.get("model") != model:
+                raise ValueError("wrong format")
+            out = []
+            for g in p["voices"]:
+                c = unit(np.array(g["centroid"], dtype=np.float32))
+                if not SELF_VOICE.match(str(g["voice"])) or c.ndim != 1 or not np.isfinite(c).all():
+                    raise ValueError("wrong voice")
+                out.append({"voice": g["voice"], "n": int(g["n"]), "_centroid": c})
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            raise StoreError(f"unreadable ({type(e).__name__})") from e
+        return out or None
+
+    def self_summary(self) -> list[dict]:
+        """Each model's self print: voices and counts, no embeddings (the CLI's list)."""
+        out = []
+        if not self._ready(create=False):
+            return out
+        for name in sorted(os.listdir(self.root)):
+            m = _SELF_FILE.match(name)
+            if not m or m.group(1) not in MODELS:
+                continue
+            try:
+                vs = self.load_self(m.group(1)) or []
+            except StoreError as e:
+                print(f"self print skipped: {name} {e}", file=sys.stderr, flush=True)
+                continue
+            out.append({"model": m.group(1), "voices": [{"voice": v["voice"], "n": v["n"]} for v in vs]})
+        return out
+
+    def save_self(self, model: str, groups: dict[str, list[np.ndarray]], replace: bool = False) -> dict:
+        """
+        Write the self print: per voice its embeddings and centroid (no audio, no text), 0600.
+        An existing file is kept unless `replace`, and then copied to `<file>.bak-<epoch>` first.
+        """
+        self._ready(create=True)
+        f = self.self_file(model)
+        groups = {v: es for v, es in groups.items() if es}
+        if not groups:
+            raise StoreError("no samples")
+        for v in groups:
+            if not SELF_VOICE.match(v):
+                raise StoreError(f"bad voice id {v!r}")
+        if sum(len(es) for es in groups.values()) > PRINT_MAX * 8:
+            raise StoreError(f"at most {PRINT_MAX * 8} samples")
+        with self.lock():
+            if os.path.lexists(f):
+                if not replace:
+                    raise StoreError(f"{os.path.basename(f)} exists (--replace keeps a backup and writes a new one)")
+                with open(f, "rb") as fh:
+                    write_private(f"{f}.bak-{int(time.time())}", fh.read())
+            now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            voices = []
+            for v in sorted(groups):
+                E = np.array([unit(e) for e in groups[v]], dtype=np.float32)
+                c = unit(E.mean(axis=0))
+                voices.append({"voice": v, "n": int(len(E)), "centroid": [round(float(x), 6) for x in c],
+                               "embeddings": [[round(float(x), 6) for x in e] for e in E],
+                               "selfMin": round(float(min(E @ c)), 3)})
+            p = {"v": FORMAT, "kind": SELF_PRINT, "model": model, "dim": len(voices[0]["centroid"]),
+                 "created": now, "audio": False, "voices": voices}
+            write_private(f, json.dumps(p).encode())
+        return {"file": f, "voices": [{"voice": g["voice"], "n": g["n"], "selfMin": g["selfMin"]} for g in voices]}
 
     # -- progressive learning (docs/local-stt.md, "Progressive voiceprint")
     def _pending_file(self, device: str, model: str) -> str:
@@ -897,7 +1028,8 @@ class Store:
         for name in sorted(os.listdir(self.root)):
             full = os.path.join(self.root, name)
             m = re.match(r"^([a-z0-9][a-z0-9-]{0,31})\.(?:[a-z0-9]+(?:\.pending|\.other(?:-[a-z0-9]{1,16})?)?\.json|audio)$", name)
-            if not m or (device is not None and m.group(1) != device):
+            # The playback-voice print is ours, not his: deleting his prints keeps it.
+            if not m or m.group(1) == SELF_PRINT or (device is not None and m.group(1) != device):
                 continue
             if name.endswith(".audio"):
                 if not audio:
@@ -1394,6 +1526,8 @@ class Verifier:
         self.clusters = clusters(clusters_path)
         #: (device, model) -> that device's household prints (load_households), cached as `_cache`.
         self._house: dict[tuple[str, str], list[dict]] = {}
+        #: model -> the self print's voices (Store.load_self), cached as `_cache`; [] = none.
+        self._self: dict[str, list[dict]] = {}
         #: Per device (its mic), when the last "other" or mixed final was verified (epoch s):
         #: learning from that device pauses after it.
         self.last_other: dict[str, float] = {}
@@ -1401,6 +1535,7 @@ class Verifier:
     def refresh(self) -> None:
         self._cache.clear()
         self._house.clear()
+        self._self.clear()
         self._listed = None
         self._stamp = -1
 
@@ -1412,6 +1547,7 @@ class Verifier:
         if stamp != self._stamp:
             self._cache.clear()
             self._house.clear()
+            self._self.clear()
             self._listed = None
             self._stamp = stamp
 
@@ -1437,6 +1573,29 @@ class Verifier:
                 print(f"household print {device}.{model} not used: {e}", file=sys.stderr, flush=True)
                 self._house[k] = []
         return self._house[k]
+
+    def _self_print(self, model: str) -> list[dict]:
+        """The self print's voices for the model ([] when there is none or it cannot be read)."""
+        if model not in self._self:
+            try:
+                self._self[model] = self.store.load_self(model) or []
+            except StoreError as e:
+                print(f"self print {model} not used: {e}", file=sys.stderr, flush=True)
+                self._self[model] = []
+        return self._self[model]
+
+    def self_check(self, model: str, e: np.ndarray, best: float | None, speech_s: float, snr: float,
+                   selfv: tuple[float, float]) -> dict:
+        """
+        {selfScore, selfVoice, self: bool} against the self print, or {} without one. Numbers and
+        our own voice id only: nothing of his, nothing of anyone's.
+        """
+        voices = self._self_print(model)
+        if not voices:
+            return {}
+        s, v = max(((float(e @ g["_centroid"]), g["voice"]) for g in voices), key=lambda x: x[0])
+        return {"selfScore": round(s, 3), "selfVoice": v,
+                "self": decide_self(s, best, speech_s, snr, accept=selfv[0], margin=selfv[1])}
 
     def _all(self) -> list[dict]:
         if self._listed is None:
@@ -1509,7 +1668,8 @@ class Verifier:
                         "start": at, "end": at + win})
         return out
 
-    def verify(self, audio: np.ndarray, device: str | None, now: float | None = None) -> dict:
+    def verify(self, audio: np.ndarray, device: str | None, now: float | None = None,
+               selfv: tuple[float, float] | None = None) -> dict:
         """
         {score, decision, model, device, speechS, snrDb[, reason, windows, cuts, voice]} for one final;
         with a household print for this device also `otherScore` (the best household print's),
@@ -1521,13 +1681,25 @@ class Verifier:
         all without a print, so an account that enrolled nothing never sees one.
         `cluster`/`clusterScore` (Verifier.cluster): on an `other`, and on an `unknown` under
         CLUSTER_UNKNOWN_BELOW that was not gated as short or noisy; never on his.
+        `selfv` (accept, margin; the socket asked for it, flag stt.self-voice): with a self print
+        also `selfScore`, and the decision "self" with `selfVoice` when our own TTS voice is
+        clearly closer than his (decide_self); a "self" final gets no voice id and no cluster.
         """
         speech_s, snr = speech_stats(audio)
         base = {"speechS": round(speech_s, 2), "snrDb": round(snr, 1)}
         picked = self.pick(device)
         if not picked:
-            return {"decision": "unknown", "reason": "no-print", "model": self.order[0] if self.order else None,
-                    "device": None, "score": None, **base}
+            out = {"decision": "unknown", "reason": "no-print", "model": self.order[0] if self.order else None,
+                   "device": None, "score": None, **base}
+            if selfv and self.order and speech_s > 0 and self._self_print(self.order[0]):
+                e = self.embed(self.order[0], audio)
+                sc = self.self_check(self.order[0], e, None, speech_s, snr, selfv) if e is not None else {}
+                if sc:
+                    out["selfScore"] = sc["selfScore"]
+                if sc.get("self"):
+                    out.update(decision="self", selfVoice=sc["selfVoice"])
+                    out.pop("reason")
+            return out
         model, devices = picked
         e = self.embed(model, audio) if speech_s > 0 else None
         if e is None:
@@ -1569,14 +1741,22 @@ class Verifier:
             if any(w["decision"] == "other" for w in windows):
                 decision, reason = "unknown", "mixed"
                 cuts = split_points(windows, audio)
-        if (decision == "other" or extra.get("mixed")) and device and valid_device(device):
+        sc = self.self_check(model, e, best, speech_s, snr, selfv) if selfv else {}
+        if sc.get("self"):
+            # Our own voice, read aloud and heard back: not his, not a stranger, never split.
+            decision, reason, cuts, windows = "self", None, [], []
+        if (decision in ("other", "self") or extra.get("mixed")) and device and valid_device(device):
             self.last_other[device] = time.time() if now is None else now
         out = {"score": round(best, 3), "decision": decision, "model": model, "device": who, **base, **extra}
+        if sc:
+            out["selfScore"] = sc["selfScore"]
+        if decision == "self":
+            out["selfVoice"] = sc["selfVoice"]
         if decision == "me":
             out["voice"] = "me"
         elif decision == "other":
             out["voice"] = self.voices.tag(e)
-        if decision != "me" and reason not in ("short", "noise") and (
+        if decision not in ("me", "self") and reason not in ("short", "noise") and (
                 decision == "other" or best < CLUSTER_UNKNOWN_BELOW):
             out.update(self.cluster(e, house, extra, now))
         if cuts:
@@ -1829,7 +2009,8 @@ class Attestor:
     tag only when this signature verifies and the signed text matches the line
     (lib/speaker-proof.ts). Wire form: `<payload b64url>.<signature b64url>`,
     the signature over the ASCII of the first part; payload
-    `{v:1, uid, at, text, decision, score, model, device, speechS, snrDb[, reason, voice, cluster, clusterScore]}`.
+    `{v:1, uid, at, text, decision, score, model, device, speechS, snrDb[, reason, voice, cluster, clusterScore,
+    selfScore, selfVoice]}`; decision "self" = our own TTS voice (Verifier.self_check).
     """
 
     def __init__(self, path: str = ATTEST_KEY, create: bool = True):
@@ -1874,7 +2055,7 @@ class Attestor:
             "at": int(at_ms if at_ms is not None else time.time() * 1000),
             "text": text[:2000],
             **{k: tag[k] for k in ("decision", "score", "model", "device", "speechS", "snrDb", "reason", "voice",
-                                   "cluster", "clusterScore")
+                                   "cluster", "clusterScore", "selfScore", "selfVoice")
                if k in tag},
         }
         body = _b64url(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
@@ -1971,6 +2152,9 @@ def main(argv: list[str] | None = None) -> int:
             for h in store.households():
                 print(f"{h['device']}\t{h['model']}\thousehold '{h['name']}': {h['n']} samples, made {h['created']}"
                       f"\tself {h['self']} (margins: me >= {ME_MARGIN}, other < {OTHER_MARGIN})")
+            for sp in store.self_summary():
+                vs = ", ".join(f"{v['voice']} {v['n']}" for v in sp["voices"])
+                print(f"self\t{sp['model']}\tour playback voices: {vs} (self >= {SELF_ACCEPT}, by {SELF_MARGIN})")
             return 0
         if a.cmd == "delete":
             if a.device is not None and not valid_device(a.device):
