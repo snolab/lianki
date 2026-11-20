@@ -106,6 +106,26 @@ export const CONFIG = {
     audience: "public",
     description: "单词原音载入、定位或播放停滞时等待多久再回退到合成音（毫秒）。",
   }),
+  "words.nativeAudioStartMs": int({
+    default: 1000,
+    min: 200,
+    max: 15000,
+    unit: "ms",
+    group: "words",
+    audience: "public",
+    description:
+      "单词原音最多等多久开始发声（毫秒）；到时还没响就先用合成音读，原音包继续在后台下载，下次再用。",
+  }),
+  "words.partTimeoutMs": int({
+    default: 30000,
+    min: 5000,
+    max: 120000,
+    unit: "ms",
+    group: "words",
+    audience: "public",
+    description:
+      "/words 朗读时一段（单词、例句、释义）多久没报告结束就跳过它（毫秒），免得一段卡住后面全都不读。",
+  }),
   "words.undoMs": int({
     default: 8000,
     min: 2000,

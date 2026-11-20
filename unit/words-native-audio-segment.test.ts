@@ -281,3 +281,25 @@ describe("private native word segment", () => {
     }
   });
 });
+
+test("started is told once, on the first playing event", () => {
+  const el = new Media();
+  el.readyState = 1;
+  const seen: string[] = [];
+  const stop = startNativeSegment(
+    el as unknown as HTMLAudioElement,
+    { startMs: 0, endMs: 500 },
+    {
+      signal: new AbortController().signal,
+      timeoutMs: 15000,
+      done: () => seen.push("done"),
+      started: () => seen.push("started"),
+      clock: { frame: () => 1, cancelFrame: () => {}, timer: () => 1, clearTimer: () => {} },
+    },
+  );
+  expect(seen).toEqual([]);
+  el.emit("playing");
+  el.emit("playing");
+  expect(seen).toEqual(["started"]);
+  stop();
+});

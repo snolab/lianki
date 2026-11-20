@@ -256,3 +256,93 @@ test("stream extraction aborts an in-flight producer and refuses oversized downl
   expect(f.blobs).toHaveLength(0);
   f.client.dispose();
 });
+
+const archiveRequests = (f: { requests: { url: string }[] }) =>
+  f.requests.filter((r) => r.url.endsWith("b".repeat(20))).length;
+async function until(cond: () => boolean) {
+  for (let i = 0; i < 200 && !cond(); i++) await new Promise((r) => setTimeout(r, 1));
+}
+
+test("a card change stops waiting for a slow archive but never restarts or aborts it", async () => {
+  const f = await fixture();
+  await f.client.prepare();
+  const pending = deferred<Response>();
+  f.intercept((url) => (url.endsWith("b".repeat(20)) ? pending.promise : undefined));
+  const first = new AbortController();
+  const a = f.client.load(card, first.signal);
+  await until(() => archiveRequests(f) === 1);
+  first.abort(); // the card changed
+  expect(await a).toBeNull();
+  // The next showing joins the same download instead of starting another.
+  const b = f.client.load(card, signal());
+  await until(() => f.requests.filter((r) => r.url === "/api/prefs").length >= 3);
+  expect(archiveRequests(f)).toBe(1);
+  const archiveInit = f.requests.find((r) => r.url.endsWith("b".repeat(20)))!.init;
+  expect(archiveInit.signal?.aborted).toBe(false);
+  pending.resolve(new Response(f.archive.slice()));
+  expect(await b).toMatchObject({ startMs: 1000, endMs: 2000 });
+  // Kept once done: later showings use it from memory.
+  expect(await f.client.load(card, signal())).not.toBeNull();
+  expect(archiveRequests(f)).toBe(1);
+  f.client.dispose();
+});
+
+test("a download that nobody waits for any more still lands for next time", async () => {
+  const f = await fixture();
+  await f.client.prepare();
+  const pending = deferred<Response>();
+  f.intercept((url) => (url.endsWith("b".repeat(20)) ? pending.promise : undefined));
+  const cut = new AbortController();
+  const a = f.client.load(card, cut.signal);
+  await until(() => archiveRequests(f) === 1);
+  cut.abort();
+  expect(await a).toBeNull();
+  pending.resolve(new Response(f.archive.slice()));
+  await new Promise((r) => setTimeout(r, 5));
+  f.intercept(undefined);
+  expect(await f.client.load(card, signal())).not.toBeNull();
+  expect(archiveRequests(f)).toBe(1);
+  f.client.dispose();
+});
+
+test("a stalled archive is given up after the timeout and retried next time; a fence drops it", async () => {
+  const f = await fixture();
+  let ms = 15000;
+  const client = new NativeAudioClient({
+    timeoutMs: () => ms,
+    createObjectURL: () => "blob:x",
+    revokeObjectURL: () => {},
+    fetch: (url, init) => {
+      f.requests.push({ url, init });
+      if (url === "/api/prefs")
+        return Promise.resolve(
+          Response.json({
+            user: "account-a",
+            prefs: { [NATIVE_AUDIO_PREF]: { value: f.state.ref } },
+          }),
+        );
+      if (url.endsWith("a".repeat(20))) return Promise.resolve(new Response(f.bytes.slice()));
+      // Never answers; ends only when its signal aborts.
+      return new Promise((_, reject) =>
+        init.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+      );
+    },
+  });
+  await client.prepare();
+  ms = 20;
+  expect(await client.load(card, signal())).toBeNull();
+  await until(() => f.requests.filter((r) => r.url.endsWith("b".repeat(20))).length === 1);
+  const stalled = f.requests.find((r) => r.url.endsWith("b".repeat(20)))!.init.signal!;
+  await until(() => stalled.aborted);
+  expect(stalled.aborted).toBe(true);
+  ms = 15000;
+  const again = new AbortController();
+  const b = client.load(card, again.signal);
+  await until(() => f.requests.filter((r) => r.url.endsWith("b".repeat(20))).length === 2);
+  const second = f.requests.filter((r) => r.url.endsWith("b".repeat(20)))[1].init.signal!;
+  client.clear();
+  expect(second.aborted).toBe(true);
+  again.abort();
+  expect(await b).toBeNull();
+  client.dispose();
+});

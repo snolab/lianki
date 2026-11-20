@@ -44,6 +44,7 @@ async function boundedBody(
   response: Response,
   max: number,
   signal: AbortSignal,
+  progress?: () => void,
 ): Promise<Uint8Array> {
   const declared = Number(response.headers.get("content-length") ?? 0);
   if (declared > max || !response.body) throw Error("native-audio-size");
@@ -56,6 +57,7 @@ async function boundedBody(
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
+      progress?.();
       if (size > max) throw Error("native-audio-size");
       parts.push(value);
     }
@@ -150,6 +152,25 @@ export async function extractNativeChapter(
   return collectNativeMember(chunks(), chapter.bytes, bytes.byteLength, signal);
 }
 
+/** Wait for `task` until `signal` aborts; the task itself goes on. */
+function until<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    task.then(
+      (v) => {
+        signal.removeEventListener("abort", abort);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener("abort", abort);
+        reject(e);
+      },
+    );
+  });
+}
+
 export class NativeAudioClient {
   private readonly life = new AbortController();
   private assets = new AbortController();
@@ -159,6 +180,13 @@ export class NativeAudioClient {
   private find: ReturnType<typeof nativeWordIndex> | null = null;
   private archive: { id: string; bytes: Uint8Array } | null = null;
   private clip: { id: string; url: string } | null = null;
+  /**
+   * The archive being downloaded. It belongs to the client, not to a card: a
+   * card change stops waiting for it but never aborts it, so a slow archive
+   * finishes in the background and the next card uses it. Only a stall
+   * (no bytes for `timeoutMs`), a fence (clear/dispose) or a failure ends it.
+   */
+  private download: { id: string; epoch: number; task: Promise<void> } | null = null;
   private preparing: Promise<void> | null = null;
   private prepared = false;
   private disposed = false;
@@ -187,6 +215,7 @@ export class NativeAudioClient {
   }
   private clearAssets() {
     this.epoch++;
+    this.download = null;
     this.assets.abort();
     this.assets = new AbortController();
     this.archive?.bytes.fill(0);
@@ -222,7 +251,7 @@ export class NativeAudioClient {
       });
     await this.preparing;
   }
-  private async ownFile(id: string, max: number, signal: AbortSignal) {
+  private async ownFile(id: string, max: number, signal: AbortSignal, progress?: () => void) {
     const response = await this.d.fetch(`/api/my/files/${id}`, {
       credentials: "same-origin",
       cache: "no-store",
@@ -233,7 +262,46 @@ export class NativeAudioClient {
       if ([401, 403, 404].includes(response.status)) this.dispose();
       throw Error("native-audio-unavailable");
     }
-    return boundedBody(response, max, signal);
+    return boundedBody(response, max, signal, progress);
+  }
+  /** Fetch (or join the fetch of) a chapter's archive; it ends only on a stall or a fence. */
+  private fetchArchive(chapter: NativeChapter, id: string): Promise<void> {
+    if (this.download?.id === id && this.download.epoch === this.epoch) return this.download.task;
+    const run = this.epoch,
+      stall = new AbortController(),
+      signal = AbortSignal.any([this.life.signal, this.assets.signal, stall.signal]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const progress = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => stall.abort(Error("native-audio-stalled")), this.d.timeoutMs());
+    };
+    progress();
+    const task = (async () => {
+      const bytes = await this.ownFile(
+        chapter.inboxItemId,
+        AUDIO_LIMITS.archiveBytes,
+        signal,
+        progress,
+      );
+      try {
+        clearTimeout(timer);
+        if ((await (this.d.digest ?? digest)(bytes)) !== chapter.archiveSha256)
+          throw Error("native-audio-hash");
+        this.check(run, signal);
+        if (this.archive?.id !== id) this.archive?.bytes.fill(0);
+        this.archive = { id, bytes };
+      } catch (e) {
+        bytes.fill(0);
+        throw e;
+      }
+    })().finally(() => {
+      clearTimeout(timer);
+      if (this.download?.task === task) this.download = null;
+    });
+    // Nobody may be waiting any more: a failure here is only a retry next time.
+    task.catch(() => {});
+    this.download = { id, epoch: run, task };
+    return task;
   }
   private async refresh(signal?: AbortSignal) {
     const request = this.signal(signal),
@@ -293,18 +361,9 @@ export class NativeAudioClient {
       const clipId = `${archiveId}:${chapter.sha256}`;
       if (this.clip?.id !== clipId) {
         if (this.archive?.id !== archiveId) {
-          this.archive?.bytes.fill(0);
-          this.archive = null;
-          const bytes = await this.ownFile(chapter.inboxItemId, AUDIO_LIMITS.archiveBytes, request);
-          try {
-            if ((await (this.d.digest ?? digest)(bytes)) !== chapter.archiveSha256)
-              throw Error("native-audio-hash");
-            this.check(run, request);
-            this.archive = { id: archiveId, bytes };
-          } catch (e) {
-            bytes.fill(0);
-            throw e;
-          }
+          await until(this.fetchArchive(chapter, archiveId), request);
+          this.check(run, request);
+          if (this.archive?.id !== archiveId) throw Error("native-audio-stale");
         }
         const bytes = await (this.d.extract ?? extractNativeChapter)(
           this.archive!.bytes,

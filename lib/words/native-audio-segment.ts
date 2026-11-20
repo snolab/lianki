@@ -12,6 +12,8 @@ export function startNativeSegment(
   deps: {
     signal: AbortSignal;
     done: (played: boolean) => void;
+    /** The range is audible: its first "playing" event. */
+    started?: () => void;
     timeoutMs: number;
     clock?: Clock;
   },
@@ -95,6 +97,7 @@ export function startNativeSegment(
   });
   listen("playing", () => {
     if (!active()) return cancel();
+    if (!playing) deps.started?.();
     playing = true;
     if (timer !== undefined) clock.clearTimer(timer);
     timer = clock.timer(() => finish(false), deps.timeoutMs + range.endMs - range.startMs);
