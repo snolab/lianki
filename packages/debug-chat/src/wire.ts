@@ -110,9 +110,11 @@ export type ChatMessage = {
    */
   passage?: PassageMark;
   /**
-   * Hub-side only, never sent: an owner voice line kept aside as an echo
-   * (lib/echo-match.ts; flag voice.echo-dedupe) — the copy of `of` heard from
-   * his other device, or of a line read aloud. Undo (unmerge with its id) posts it.
+   * An owner voice line kept aside as an echo (lib/echo-match.ts,
+   * lib/echo-reports.ts; flag voice.echo-dedupe) — the copy of `of` heard
+   * from his other device, or of a line read aloud. Never in the thread's
+   * lines: only in the hub's `echo:<id>` store and, when `shown`, in the
+   * `echo` / `echoes` frames to his pages. Undo (unmerge with its id) posts it.
    */
   echo?: EchoMark;
   /** On a passage's first line, hub-side: what it read before the merge, for the undo. */
@@ -297,8 +299,22 @@ export type EchoMark = {
   by: string;
   reason: "echo";
   kind: "other-device" | "read-aloud";
+  /** The line it echoed ("" when a play report named none: a /words or /reader sound). */
   of: string;
   sim: number;
+  /**
+   * Which evidence (docs/echo-suppression.md, "The verdict"): "report" = a
+   * page said it was playing these words then (lib/echo-reports.ts);
+   * "landed" = the agent line or his line it copies landed lately. Absent
+   * on echoes kept before play reports.
+   */
+  layer?: "report" | "landed";
+  /** The voice that played it (play-report.ts), with layer "report". */
+  voice?: string;
+  /** How long the utterance overlapped what played, ms, with layer "report". */
+  overlapMs?: number;
+  /** Shown collapsed on his pages (flag voice.echo-reports); absent = hidden. */
+  shown?: true;
 };
 /**
  * The second of three readings of his speech (docs/dev-debug-widget.md, "Whisper

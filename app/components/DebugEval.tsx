@@ -64,10 +64,12 @@ import { setOtherAvatar, setOtherAvatarBelow } from "@lianki/debug-chat/avatar-r
 import { setSpeakerAvatars } from "@lianki/debug-chat/cluster-avatar";
 import { waitText } from "@/lib/wait-text";
 import { setCloudVoices } from "@lianki/debug-chat/voices";
-import { setTalkOver } from "@lianki/debug-chat/aec";
+import { setCloudWhileMic, setTalkOver } from "@lianki/debug-chat/aec";
 import { polishReadback, setPolishReadback } from "@lianki/debug-chat/polish-readback";
 import type { RecheckAmend, RecheckConf } from "@lianki/debug-chat/whisper-recheck";
 import { hubClock, syncWait } from "@lianki/debug-chat/sync-speak";
+import { hubSpanOf, setEchoReports, setPlaySender } from "@lianki/debug-chat/play-report";
+import { applyEchoFrame } from "@lianki/debug-chat/echo-rows";
 import {
   AUDIO_SYNC_LOCAL_KEY,
   type AudioSyncHub,
@@ -215,6 +217,7 @@ export function DebugEval({
   etaBar = false,
   fullScreen = false,
   liHub = false,
+  echoReports = false,
   audioSync = false,
   lexicon,
   cloudVoices,
@@ -286,6 +289,11 @@ export function DebugEval({
   fullScreen?: boolean;
   /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
   liHub?: boolean;
+  /**
+   * Flag `voice.echo-reports` (audience owner): this page reports what it reads
+   * aloud to the hub (play-report.ts), and shows read-aloud echoes collapsed.
+   */
+  echoReports?: boolean;
   /** Flag `voice.audio-sync`: millisecond-level multi-device WebRTC + Web Audio sync. */
   audioSync?: boolean;
   /**
@@ -327,6 +335,10 @@ export function DebugEval({
   setGuardLimits({ minSpeechMs: publicCfg("stt.guardMinSpeechMs") });
   setCloudVoices(cloudVoices);
   setTalkOver(talkOver);
+  // What this page reads aloud goes to the hub for the cross-device echo match (play-report.ts).
+  setEchoReports(echoReports);
+  // Read with the cloud voice while the mic is open (aec.ts): the echo canceller hears it.
+  setCloudWhileMic(publicCfg("voice.cloudWhileMic"));
   setPolishReadback(readback);
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
@@ -352,6 +364,8 @@ export function DebugEval({
    * once the hub's are in (lib/use-chat-cache.ts). DebugEval renders in the
    * browser only, so reading storage in the first render is safe.
    */
+  // His voice lines the hub judged read-aloud echoes: shown collapsed, never as lines (echo-rows.ts).
+  const [echoes, setEchoes] = useState<ChatMessage[]>([]);
   const { cachedLines, messages, setMessages, fromHub, setFromHub } = useChatCache({
     account,
     box: !!box,
@@ -820,6 +834,8 @@ export function DebugEval({
         if (!friendRef.current) devLog({ ev: "eval-socket", label });
         // The hub's clock, for reading lines in step with his other devices (sync-speak.ts).
         hubClock().reset();
+        // The hub sends the echoes it keeps again (its `echoes` snapshot).
+        setEchoes([]);
         clockPing(sock);
         if (
           !friendRef.current &&
@@ -966,6 +982,13 @@ export function DebugEval({
               if (sock.readyState !== WebSocket.OPEN) throw new Error("socket closed");
               sock.send(JSON.stringify(m));
             });
+            // His own socket: what this page reads aloud is reported on it (play-report.ts).
+            if (!boxRef.current)
+              setPlaySender((f) => {
+                if (ws !== sock || sock.readyState !== WebSocket.OPEN) return false;
+                sock.send(JSON.stringify(f));
+                return true;
+              });
             // Hot islands follow the owner's code-run grant for this page.
             islandStore.setGrant(grantUntil(msg as HubState, Date.now()));
           }
@@ -1133,6 +1156,11 @@ export function DebugEval({
           );
           return;
         }
+        // Read-aloud echoes (flag voice.echo-reports): their own frames, never a line, never read aloud.
+        if (msg.type === "echo" || msg.type === "echoes" || msg.type === "echo-gone") {
+          setEchoes((list) => applyEchoFrame(list, msg) ?? list);
+          return;
+        }
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
           const m = withLane(msg.message as ChatMessage);
           if (typeof m.text !== "string" || typeof m.id !== "string") return;
@@ -1245,6 +1273,7 @@ export function DebugEval({
         hubOwnerRef.current = false;
         setPhase("closed");
         setClipsSender(null);
+        setPlaySender(null);
         reporter.detach();
         sockRef.current = null;
         liveRef.current = false;
@@ -1453,6 +1482,8 @@ export function DebugEval({
         owner && friend === null ? cleanAttachments(opts?.attachments) : undefined;
       // Where a voice line was spoken (path, title, screen text): its polish draws on it.
       const scene = opts?.source === "stt" ? pageScene() : undefined;
+      // When it was spoken on the hub's clock: the hub lines it up with what his devices read aloud.
+      const hubSpan = timing ? hubSpanOf(timing) : undefined;
       const accepted = outbox.enqueue({
         text,
         ...(to ? { to } : {}),
@@ -1467,6 +1498,7 @@ export function DebugEval({
         ...(context ? { context } : {}),
         ...(attachments ? { attachments } : {}),
         ...(scene ? { scene } : {}),
+        ...(hubSpan ? { hubSpan } : {}),
       });
       if (!accepted) return false;
       const id = outbox.items().at(-1)!.id;
@@ -1613,6 +1645,12 @@ export function DebugEval({
               sendHub({ type: "passage-end", ...(recheck ? { recheck } : {}) })
             }
             onUnmerge={(id) => sendHub({ type: "unmerge", id })}
+            echoes={echoes}
+            // "This was me": the hub posts the echo as his line (restoreEcho, via unmerge).
+            onEchoMine={(id) => {
+              setEchoes((list) => list.filter((m) => m.id !== id));
+              sendHub({ type: "unmerge", id });
+            }}
             nodes={state?.nodes}
             notice={
               friend === "blocked"

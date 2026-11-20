@@ -1,16 +1,19 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   AEC_CONSTRAINTS,
+  CLOUD_WHILE_MIC_DEFAULT,
   MIC_SESSION_GLOBAL,
   RAW_CONSTRAINTS,
   VOICE_AEC_KEY,
   aecOn,
   applyAec,
+  cloudWhileMic,
   micAec,
   micConstraints,
   noteOpened,
   onOpened,
   openedAec,
+  setCloudWhileMic,
   setTalkOver,
   talkOver,
 } from "@lianki/debug-chat/aec";
@@ -275,5 +278,32 @@ describe("aec: the talk-over flag (voice.talk-over)", () => {
       if (had === undefined) delete g.__lkTalkOver;
       else g.__lkTalkOver = had;
     }
+  });
+});
+
+describe("aec: the cloud voice while the mic is open (config voice.cloudWhileMic)", () => {
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).__lkCloudWhileMic;
+  });
+  const android = "Mozilla/5.0 (Linux; Android 15; Pixel 9) Chrome/141";
+  const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X)";
+
+  it("android by default: Android only", () => {
+    expect(CLOUD_WHILE_MIC_DEFAULT).toBe("android");
+    expect(cloudWhileMic(android)).toBe(true);
+    expect(cloudWhileMic(iphone)).toBe(false);
+    expect(cloudWhileMic(android, "nonsense")).toBe(true);
+  });
+
+  it("never and always; set on globalThis; a bad value is the default", () => {
+    setCloudWhileMic("always");
+    expect(cloudWhileMic(iphone)).toBe(true);
+    setCloudWhileMic("never");
+    expect(cloudWhileMic(android)).toBe(false);
+    setCloudWhileMic(42);
+    expect((globalThis as Record<string, unknown>).__lkCloudWhileMic).toBe("android");
+    expect(cloudWhileMic(iphone, "android")).toBe(false);
+    // The page's own user agent by default.
+    expect(typeof cloudWhileMic()).toBe("boolean");
   });
 });
