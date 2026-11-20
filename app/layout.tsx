@@ -153,6 +153,8 @@ export default async function RootLayout({
   const chatFull = flagIn(flags, "partner.fullscreen");
   // Li's sound hub, observing only (docs/li-sound-hub.md); the owner's pages only.
   const liHub = flagIn(flags, "voice.li-hub");
+  // His pages report what they read aloud; echoes shown collapsed (docs/echo-suppression.md): audience owner.
+  const echoReports = flagIn(flags, "voice.echo-reports");
   // Multi-device millisecond-level WebRTC + Web Audio sync (owner audience).
   const audioSync = flagIn(flags, "voice.audio-sync");
   // The owner's ETA bar (lib/eta-ping.ts): the chat shows it only on his pages.
@@ -198,6 +200,7 @@ export default async function RootLayout({
     chatFull,
     etaBar,
     liHub,
+    echoReports,
     audioSync,
     autoUpdate,
     lexicon,
