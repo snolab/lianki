@@ -37,7 +37,7 @@ import { voiceLatency, noteSttVia } from "./latency";
 import { sttTagOf } from "./wire";
 import { postSessionClip } from "./clips-store";
 import { createRecorder, pageRecorder } from "./recorder";
-import { createLocalStt, REQUEST_TIMEOUT_MS } from "./local-stt";
+import { createLocalStt, localDotWhy, REQUEST_TIMEOUT_MS } from "./local-stt";
 import { createPttRecognition } from "./ptt-recognize";
 import {
   PUBLIC_CONNECT_TIMEOUT_MS,
@@ -993,6 +993,12 @@ export function DebugMic({
   const passive = state !== "off" && view.wake === "passive" && !speaking;
   const wakeLabel = view.kws === "loading" ? ws.loading : ws.passive;
   const mt = chatExtra();
+  // Grey dot: why every route failed, on his own routes only (never internals on a public list).
+  const dotWhy = localDotWhy(view.local, view.localWhy, localStt);
+  const dotLabel =
+    view.local && view.local !== "idle"
+      ? `${localSttStrings()[view.local]}${dotWhy ? ` (${dotWhy})` : ""}`
+      : "";
   return (
     // In the chat bar's cluster, after the + (open) or the pill's Li (folded).
     // Never text: a long press (push to talk) selects nothing, no iOS callout.
@@ -1164,8 +1170,9 @@ export function DebugMic({
             role="status"
             data-testid="debug-chat-mic-local"
             data-local={view.local}
-            aria-label={localSttStrings()[view.local]}
-            title={localSttStrings()[view.local]}
+            data-why={dotWhy}
+            aria-label={dotLabel}
+            title={dotLabel}
             className={`pointer-events-none absolute end-1 top-0 size-1.5 rounded-full ${view.local === "connecting" ? "animate-pulse motion-reduce:animate-none" : ""}`}
             style={{ background: LOCAL_DOT[view.local] }}
           />

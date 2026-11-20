@@ -3,8 +3,7 @@
 process.env.NEXT_PUBLIC_LIANKI_LIVE_VIEW_ORIGINS ??= "https://owner.example.ts.net";
 process.env.NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE ??= "https://owner.example.ts.net/lianki-tts";
 process.env.NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE ??= "https://owner.example.ts.net/lianki-clone-tts";
-process.env.NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT ??=
-  "wss://owner.example.ts.net/lianki-stt wss://stt.lianki.com";
+process.env.NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT ??= "wss://owner.example.ts.net/lianki-stt";
 // Preloaded before every `bun test` run (bunfig.toml, [test] preload): no test
 // file may leave a global behind.
 //

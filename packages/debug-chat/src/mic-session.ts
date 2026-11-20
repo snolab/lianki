@@ -46,6 +46,8 @@ export type LocalClient = StreamStt & {
   close(): void;
   state(): LocalState;
   subscribe(f: (s: LocalState) => void): () => void;
+  /** Why every route failed, while down (local-stt.ts why); absent on an older client. */
+  why?(): string | undefined;
   /** A voiceprint or recheck request (local-stt.ts request); absent on an older client. */
   request?(
     msg: Record<string, unknown>,
@@ -100,6 +102,8 @@ export type MicView = {
   auto?: AutoOff;
   /** The local streaming STT's socket, when one is configured (the button's dot). */
   local?: LocalState;
+  /** While `local` is down: why every route failed ("rtc: no worker, tailnet: timeout"). */
+  localWhy?: string;
   /** Active: everything goes to STT. Passive: only "Linky" wakes it (wake.ts). */
   wake: WakeMode;
   /** Why it is in that mode (its last change), sent with each chat line for the agents. */
@@ -315,13 +319,13 @@ export function createMicSession(
       local.off();
       local.c.close();
       local = null;
-      emit({ local: undefined });
+      emit({ local: undefined, localWhy: undefined });
     }
     if (!url || !deps.localStt) return undefined;
     if (!local) {
       const c = deps.localStt(url);
-      local = { url, c, off: c.subscribe((s) => emit({ local: s })) };
-      emit({ local: c.state() });
+      local = { url, c, off: c.subscribe((s) => emit({ local: s, localWhy: c.why?.() })) };
+      emit({ local: c.state(), localWhy: c.why?.() });
     }
     return local.c;
   };
