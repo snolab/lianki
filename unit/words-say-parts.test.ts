@@ -221,3 +221,22 @@ describe("sequencer", () => {
     expect(r.seq.playing()).toBeNull();
   });
 });
+
+test("mixed example translations use their own speech language without losing text", () => {
+  const text = "The train is here. 火车到了。 Next stop!";
+  const parts = sayParts({ term: "train", back: "火车", ex: text }, "en", false, "en").filter(
+    (p) => p.kind === "example",
+  );
+  expect(parts.map((p) => p.lang)).toEqual(["en", "zh", "en"]);
+  expect(parts.map((p) => p.text).join("")).toBe(text);
+});
+
+test("Japanese examples keep kanji and kana together while English translations stay English", () => {
+  const parts = sayParts(
+    { term: "駅", back: "station", ex: "駅に着いた。 At the station." },
+    "ja",
+    false,
+    "en",
+  ).filter((p) => p.kind === "example");
+  expect(parts.map((p) => p.lang)).toEqual(["ja", "en"]);
+});

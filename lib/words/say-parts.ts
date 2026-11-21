@@ -53,6 +53,40 @@ export function meaningLang(text: string, uiLocale: string): string {
   return "en";
 }
 
+/** Keep embedded translations out of the card language's speech engine. */
+export function exampleParts(text: string, lang: string): SayPart[] {
+  const base = lang.toLowerCase().split(/[-_]/)[0];
+  const eastAsian = /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)
+    ? "ja"
+    : base === "ja" || base === "ko"
+      ? base
+      : "zh";
+  const latin = ["zh", "ja", "ko", "ru"].includes(base) ? "en" : lang;
+  const runs: SayPart[] = [];
+  let pending = "";
+  for (const ch of text) {
+    const scriptLang = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(ch)
+      ? eastAsian
+      : /\p{Script=Hangul}/u.test(ch)
+        ? "ko"
+        : /\p{Script=Cyrillic}/u.test(ch)
+          ? "ru"
+          : /\p{Script=Latin}/u.test(ch)
+            ? latin
+            : null;
+    const last = runs.at(-1);
+    if (!scriptLang) {
+      if (last) last.text += ch;
+      else pending += ch;
+    } else if (last?.lang === scriptLang) last.text += ch;
+    else {
+      runs.push({ kind: "example", text: pending + ch, lang: scriptLang });
+      pending = "";
+    }
+  }
+  return runs.length ? runs : [{ kind: "example", text, lang }];
+}
+
 /**
  * The word, then the back in the row's order (BACK_ORDER: example → meaning);
  * empty parts and repeats left out.
@@ -78,7 +112,7 @@ export function sayParts(
   if (word) parts.push({ kind: "word", text: word, lang });
   for (const k of BACK_ORDER) {
     const p = back[k];
-    if (p) parts.push(p);
+    if (p) parts.push(...(p.kind === "example" ? exampleParts(p.text, p.lang) : [p]));
   }
   return parts;
 }
