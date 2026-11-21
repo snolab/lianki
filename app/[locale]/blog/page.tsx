@@ -7,6 +7,7 @@ import { BLOG_LOCALES, LOCALE_LABELS, getDateLocale, isSupportedLocale } from "@
 import { generateHreflangMetadata } from "@/lib/hreflang";
 import { getIntlayer } from "intlayer";
 import { Header } from "@/app/components/Header";
+import { previewMenuFor } from "@/lib/preview-menu.server";
 import { authUser } from "@/app/signInEmail";
 import { isWorkersAiConfigured, textModel, workersAiOpenAI } from "@/lib/workers-ai";
 import { logSanitizedError } from "@/lib/safeError";
@@ -162,6 +163,7 @@ export default async function BlogIndexPage({ params }: { params: Promise<{ loca
         membershipLabel={shellNav.membership}
         signOutLabel={shellNav.signOut}
         user={user}
+        preview={await previewMenuFor(user?.email, locale)}
       />
 
       {/* Main Content */}

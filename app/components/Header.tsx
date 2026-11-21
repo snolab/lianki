@@ -9,6 +9,8 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useState } from "react";
 import { island } from "@/lib/islands/Island";
 import { useShellUser } from "./BoxApiBridge";
+import { PreviewMenuItem, type PreviewMenu } from "./PreviewMenuItem";
+import { LiveViewBoot } from "./LiveView";
 
 /** The brand, hot-swappable in dev (docs/dev-hot-islands.md). */
 const BrandIsland = island("header.brand", BrandName);
@@ -33,6 +35,8 @@ interface HeaderProps {
     email: string;
     image?: string | null;
   } | null;
+  /** The account menu's preview row, decided on the server (lib/preview-menu.server.ts); empty without `dev`. */
+  preview?: PreviewMenu;
 }
 
 export function Header({
@@ -49,147 +53,153 @@ export function Header({
   signOutLabel,
   roadmapLabel,
   user: serverUser,
+  preview,
 }: HeaderProps) {
   // On a box, the account lianki.com named for its token (BoxApiBridge).
   const user = useShellUser(serverUser);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   return (
-    <header className="py-4 px-4 sm:px-6 lg:px-8 border-b border-gray-200 dark:border-gray-800">
-      <div className="flex items-center justify-between max-w-7xl mx-auto">
-        {/* Site Logo */}
-        <Link
-          href={`/${locale}`}
-          className="flex items-center gap-2 text-2xl font-bold hover:opacity-80 transition-opacity"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
-          <img src="/icon.svg?v=6" alt="" width={28} height={28} />
-          <BrandIsland appName={appName} locale={locale} />
-        </Link>
-
-        {/* Navigation */}
-        <nav className="flex items-center gap-4 md:gap-6">
-          {/* Learn Button */}
-          <Link href="/learn" className="text-base md:text-lg font-medium hover:underline">
-            {learnLabel}
-          </Link>
-
-          {/* Import Button */}
-          <Link href="/import" className="text-base md:text-lg font-medium hover:underline">
-            {importLabel}
-          </Link>
-
-          {/* Roadmap Button */}
-          {roadmapLabel && (
-            <Link href="/roadmap" className="text-base md:text-lg font-medium hover:underline">
-              {roadmapLabel}
-            </Link>
-          )}
-
-          {/* Blog Button */}
+    <>
+      {/* Live view on this page too, as in the app shell (AppShell.tsx). */}
+      {user && preview?.liveView && <LiveViewBoot lv={preview.liveView} />}
+      <header className="py-4 px-4 sm:px-6 lg:px-8 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center justify-between max-w-7xl mx-auto">
+          {/* Site Logo */}
           <Link
-            href={`/${locale}/blog`}
-            className="text-base md:text-lg font-medium hover:underline"
+            href={`/${locale}`}
+            className="flex items-center gap-2 text-2xl font-bold hover:opacity-80 transition-opacity"
           >
-            {blogLabel}
+            {/* eslint-disable-next-line @next/next/no-img-element -- a tiny static SVG */}
+            <img src="/icon.svg?v=6" alt="" width={28} height={28} />
+            <BrandIsland appName={appName} locale={locale} />
           </Link>
 
-          {/* Language: in the header for guests; signed in, it is in the profile menu
-              (owner, 2026-11-14: "切换语言藏在 profile drop down 里面就行了"). */}
-          {!user && <LanguageSwitcher />}
-
-          {/* Profile Dropdown */}
-          {user ? (
-            <div className="relative">
-              <button
-                onClick={() => setIsProfileOpen(!isProfileOpen)}
-                onBlur={() => setTimeout(() => setIsProfileOpen(false), 150)}
-                className="flex items-center gap-2 text-lg font-medium hover:opacity-80 transition-opacity"
-              >
-                <UserAvatar
-                  name={user.name}
-                  image={user.image}
-                  size={32}
-                  className="w-8 h-8 ring-2 ring-gray-200 dark:ring-gray-700"
-                />
-                {/* Show username on desktop, hide on mobile */}
-                <span className="hidden md:inline min-w-[80px] max-w-[120px] truncate">
-                  {user.name}
-                </span>
-                {/* Dropdown arrow */}
-                <svg
-                  className={`w-4 h-4 transition-transform ${isProfileOpen ? "rotate-180" : ""}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-
-              {/* Dropdown Menu */}
-              {isProfileOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
-                  <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                    {user.email}
-                  </div>
-                  <Link
-                    href="/list"
-                    className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    {dashboardLabel}
-                  </Link>
-                  <Link
-                    href="/my/profile"
-                    className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    {profileLabel}
-                  </Link>
-                  <Link
-                    href="/my/preferences"
-                    className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    {preferencesLabel}
-                  </Link>
-                  <Link
-                    href="/membership"
-                    className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    {membershipLabel}
-                  </Link>
-                  <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
-                    <button
-                      type="button"
-                      data-sign-out
-                      onClick={(e) => {
-                        e.currentTarget.disabled = true;
-                        void signOut();
-                      }}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-60"
-                    >
-                      <Icon name="signOut" />
-                      {signOutLabel}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <Link
-              href="/sign-in"
-              className="inline-flex items-center gap-1.5 text-base md:text-lg font-medium hover:underline"
-            >
-              <Icon name="signIn" className="text-xl" />
-              {signInLabel}
+          {/* Navigation */}
+          <nav className="flex items-center gap-4 md:gap-6">
+            {/* Learn Button */}
+            <Link href="/learn" className="text-base md:text-lg font-medium hover:underline">
+              {learnLabel}
             </Link>
-          )}
-        </nav>
-      </div>
-    </header>
+
+            {/* Import Button */}
+            <Link href="/import" className="text-base md:text-lg font-medium hover:underline">
+              {importLabel}
+            </Link>
+
+            {/* Roadmap Button */}
+            {roadmapLabel && (
+              <Link href="/roadmap" className="text-base md:text-lg font-medium hover:underline">
+                {roadmapLabel}
+              </Link>
+            )}
+
+            {/* Blog Button */}
+            <Link
+              href={`/${locale}/blog`}
+              className="text-base md:text-lg font-medium hover:underline"
+            >
+              {blogLabel}
+            </Link>
+
+            {/* Language: in the header for guests; signed in, it is in the profile menu
+              (owner, 2026-11-14: "切换语言藏在 profile drop down 里面就行了"). */}
+            {!user && <LanguageSwitcher />}
+
+            {/* Profile Dropdown */}
+            {user ? (
+              <div className="relative">
+                <button
+                  onClick={() => setIsProfileOpen(!isProfileOpen)}
+                  onBlur={() => setTimeout(() => setIsProfileOpen(false), 150)}
+                  className="flex items-center gap-2 text-lg font-medium hover:opacity-80 transition-opacity"
+                >
+                  <UserAvatar
+                    name={user.name}
+                    image={user.image}
+                    size={32}
+                    className="w-8 h-8 ring-2 ring-gray-200 dark:ring-gray-700"
+                  />
+                  {/* Show username on desktop, hide on mobile */}
+                  <span className="hidden md:inline min-w-[80px] max-w-[120px] truncate">
+                    {user.name}
+                  </span>
+                  {/* Dropdown arrow */}
+                  <svg
+                    className={`w-4 h-4 transition-transform ${isProfileOpen ? "rotate-180" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
+
+                {/* Dropdown Menu */}
+                {isProfileOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
+                    <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                      {user.email}
+                    </div>
+                    <Link
+                      href="/list"
+                      className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      {dashboardLabel}
+                    </Link>
+                    <Link
+                      href="/my/profile"
+                      className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      {profileLabel}
+                    </Link>
+                    <Link
+                      href="/my/preferences"
+                      className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      {preferencesLabel}
+                    </Link>
+                    <Link
+                      href="/membership"
+                      className="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      {membershipLabel}
+                    </Link>
+                    <PreviewMenuItem devSwitch={preview?.devSwitch} liveView={preview?.liveView} />
+                    <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
+                      <button
+                        type="button"
+                        data-sign-out
+                        onClick={(e) => {
+                          e.currentTarget.disabled = true;
+                          void signOut();
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-left text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-60"
+                      >
+                        <Icon name="signOut" />
+                        {signOutLabel}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link
+                href="/sign-in"
+                className="inline-flex items-center gap-1.5 text-base md:text-lg font-medium hover:underline"
+              >
+                <Icon name="signIn" className="text-xl" />
+                {signInLabel}
+              </Link>
+            )}
+          </nav>
+        </div>
+      </header>
+    </>
   );
 }
