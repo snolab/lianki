@@ -4,15 +4,14 @@
  * menus, decided on the server by the same `dev` grant, absent for everyone
  * else (lib/preview-menu.server.ts).
  */
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { clearPermissionCache, grantAll } from "./support/grants";
+import { previewMenuFor } from "@/lib/preview-menu.server";
 
-mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined }),
-}));
-const { previewMenuFor } = await import("@/lib/preview-menu.server");
-
+const jar = (value?: string) => async () => ({
+  get: () => (value === undefined ? undefined : { value }),
+});
 const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 
 describe("who gets it (server side)", () => {
@@ -20,20 +19,20 @@ describe("who gets it (server side)", () => {
   afterAll(() => clearPermissionCache());
 
   test("guests and accounts without `dev`: nothing", async () => {
-    expect(await previewMenuFor(null, "en")).toEqual({
+    expect(await previewMenuFor(null, "en", jar("1"))).toEqual({
       devSwitch: undefined,
       liveView: undefined,
     });
-    expect(await previewMenuFor("friend@example.com", "en")).toEqual({
+    expect(await previewMenuFor("friend@example.com", "en", jar("1"))).toEqual({
       devSwitch: undefined,
       liveView: undefined,
     });
     grantAll(["owner@example.com"], ["admin"]);
-    expect((await previewMenuFor("owner@example.com", "en")).devSwitch).toBeUndefined();
+    expect((await previewMenuFor("owner@example.com", "en", jar("1"))).devSwitch).toBeUndefined();
   });
 
   test("a `dev` holder gets the switch, with its strings", async () => {
-    const p = await previewMenuFor("Owner@Example.com", "en");
+    const p = await previewMenuFor("Owner@Example.com", "en", jar());
     expect(p.devSwitch?.mode).toBe("go");
     expect(p.devSwitch?.labels.name).toBeDefined();
     expect(p.liveView).toBeDefined();

@@ -9,19 +9,20 @@ import { LIVE_VIEW_COOKIE, liveViewFor } from "@/lib/live-view/shell.server";
 /**
  * The preview row for a page outside the app shell (the landing page and the
  * blog, which render Header): the same server decisions the app layout makes,
- * so the same `dev` grant gates it. Anyone else gets `{}`: no strings, no
+ * so the same `dev` grant gates it. Anyone else gets both empty: no strings, no
  * pointer, no D1 read.
  */
 export async function previewMenuFor(
   email: string | null | undefined,
   locale: string,
+  /** next/headers' cookies(); a test passes its own jar. */
+  jar: () => Promise<{ get(name: string): { value: string } | undefined }> = cookies,
 ): Promise<PreviewMenu> {
-  const jar = await cookies();
   const [devSwitch, liveView] = [
     devSwitchFor(email, () => getIntlayer("dev-switch", locale) as unknown as DevSwitchLabels),
     await liveViewFor(
       email,
-      jar.get(LIVE_VIEW_COOKIE)?.value,
+      (await jar()).get(LIVE_VIEW_COOKIE)?.value,
       () => getIntlayer("live-view", locale) as unknown as LiveViewLabels,
     ),
   ];
