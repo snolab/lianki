@@ -120,6 +120,20 @@ async function fixture(twoArchives = false) {
 const card = { listId: "owned-list", term: "native word" };
 const signal = () => new AbortController().signal;
 
+test("clearing an idle account immediately updates recording availability subscribers", async () => {
+  const f = await fixture();
+  await f.client.prepare();
+  const ready: boolean[] = [];
+  f.client.subscribe(() => ready.push(f.client.ready));
+  f.client.clear();
+  expect(ready).toEqual([false]);
+  await f.client.prepare();
+  expect(ready.at(-1)).toBe(true);
+  f.client.dispose();
+  expect(ready.at(-1)).toBe(false);
+  expect(f.client.has(card)).toBe(false);
+});
+
 test("download progress reports received bytes, preparation and completion without private identifiers", async () => {
   const f = await fixture();
   const seen: (typeof f.client.progress)[] = [];
