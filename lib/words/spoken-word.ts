@@ -214,18 +214,13 @@ export const spokenWord = {
 /**
  * The spoken stretch inside `text`, as shown (its own offsets), or null.
  * A reading with an owner lights only that owner's example (`owner`): another
- * card showing the same sentence stays still. An owned reading may be a run
- * inside the shown text (one language of a mixed line).
+ * card showing the same sentence stays still.
  */
 export function spokenIn(s: Spoken, text: string, owner?: string): Span | null {
   if (!s) return null;
   if (s.owner !== undefined && s.owner !== owner) return null;
   const at = text.indexOf(s.text);
-  if (at < 0) return null;
-  // A reading of its own card may be one language's run of the line (an
-  // example with its translation, lib/words/part-lang.ts); without an owner
-  // only the whole line matches, so a word never lights a longer sentence.
-  if (s.owner === undefined && text.trim() !== s.text.trim()) return null;
+  if (at < 0 || text.trim() !== s.text.trim()) return null;
   return [s.span[0] + at, s.span[1] + at];
 }
 
