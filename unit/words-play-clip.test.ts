@@ -59,3 +59,41 @@ test("ended reports once; a cut part reports nothing", async () => {
   (g.onerror as () => void)();
   expect(errs).toEqual([false]);
 });
+
+test("a media load or decode error falls back once even when play rejects later", async () => {
+  const log: string[] = [];
+  let reject!: (reason: Error) => void;
+  const e = el(
+    () =>
+      new Promise<void>((_resolve, no) => {
+        reject = no;
+      }),
+  );
+  playClip(e, {
+    done: (p) => log.push(`done:${p}`),
+    refused: () => log.push("device"),
+    current: () => true,
+  });
+  const error = e.onerror as () => void;
+  error();
+  error();
+  reject(Error("decode failed"));
+  await flush();
+  expect(log).toEqual(["device"]);
+  expect(e.onerror).toBeNull();
+  expect(e.onended).toBeNull();
+});
+
+test("a stale media error cannot fall back over the next word", () => {
+  const log: string[] = [];
+  let current = true;
+  const e = el(() => Promise.resolve());
+  playClip(e, {
+    done: () => log.push("done"),
+    refused: () => log.push("device"),
+    current: () => current,
+  });
+  current = false;
+  (e.onerror as () => void)();
+  expect(log).toEqual([]);
+});

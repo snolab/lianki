@@ -28,7 +28,7 @@ export function playClip(
   };
   const refuse = () => settle(() => (h.refused ? h.refused() : h.done(false)));
   el.onended = () => settle(() => h.done(true));
-  el.onerror = () => settle(() => h.done(false));
+  el.onerror = refuse;
   try {
     void el.play().catch(refuse);
   } catch {
