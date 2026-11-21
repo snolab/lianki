@@ -265,12 +265,16 @@ export class NativeAudioClient {
     this.clearAssets();
     this.account = null;
     this.refKey = "";
+    this.prepared = false;
+    this.changed();
+    this.listeners.clear();
   }
   /** Visibility/logout fences drop all private assets before any pending callback can reuse them. */
   clear() {
     this.clearAssets();
     this.refKey = "";
     this.prepared = false;
+    this.changed();
   }
   async prepare() {
     this.preparing ??= this.refresh()
