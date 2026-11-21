@@ -104,6 +104,7 @@ import { spokenText } from "@/lib/words/spoken";
 import type { VoiceAccess } from "@/lib/words/voice-access";
 import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
+import { browserSpeak as speakInBrowser } from "@/lib/words/browser-speak";
 import { browserVoiceFor } from "@/lib/words/browser-voice";
 import { prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { backParts, ROW_LINE_LH, rowMetrics } from "@/lib/words/row-layout";
@@ -1123,7 +1124,6 @@ function useSpeech(
    * aloud is not transcribed.
    */
   const audible = useRef<(() => void) | null>(null);
-  const watchdog = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** Stops following the example being read aloud word by word (spoken-word.ts), and clears its mark. */
   const follow = useRef<(() => void) | null>(null);
   const unfollow = useCallback(() => {
@@ -1167,7 +1167,6 @@ function useSpeech(
   const cancel = useCallback(() => {
     generation.current++;
     nativeAbort.current?.abort();
-    clearTimeout(watchdog.current);
     unfollow();
     audible.current?.();
     audible.current = null;
@@ -1240,86 +1239,56 @@ function useSpeech(
     [voiceFor],
   );
 
-  /** `serverTried`: the server already failed this text — don't ask again. */
+  /**
+   * The browser says one part, the server's clip where it can't
+   * (lib/words/browser-speak.ts). `serverTried`: the server already failed
+   * this text — don't ask again.
+   */
   const browserSpeak = useCallback(
-    (
-      text: string,
-      lang: string,
-      done: Done,
-      serverTried = false,
-      track = false,
-      owner?: string,
-    ) => {
-      const gen = generation.current;
-      const viaServer = () => {
-        if (serverTried) {
-          // Neither engine can say it: log that, rather than going on in silence.
-          devLog({ ev: "silent", lang, text, reason: "no server clip, no browser voice" });
-          return done(false);
-        }
-        void serverSpeak(text, lang, done, track, owner).then(
-          (ok) => !ok && gen === generation.current && done(false),
-        );
-      };
-      // Only a voice of this very language. With none listed (Chrome on
-      // Android often lists nothing) the OS picks its default voice — a
-      // Japanese voice reading French. The server speaks instead, or nothing.
-      const voice = voiceFor(lang);
-      if (!browserCan(lang) || !voice) return viaServer();
-      const u = new SpeechSynthesisUtterance(text);
-      u.voice = voice;
-      u.lang = voice.lang;
-      devLog({ ev: "browser", lang, text, voice: voice.name, voiceLang: voice.lang });
-      u.rate = 0.9;
-      // The word being said: exact from boundary events, else estimated.
-      const words = track
-        ? followSpeech(
-            text,
-            lang,
-            u.rate,
-            {
-              now: () => performance.now(),
-              frames: FRAMES,
-              setTimer: (fn, ms) => setTimeout(fn, ms),
-              clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
-            },
-            ownedBy(owner),
-          )
-        : null;
-      if (words) {
-        unfollow();
-        follow.current = () => words.end(false);
-        u.onboundary = (e) => {
-          if (gen === generation.current) words.boundary(e.charIndex, e.name);
-        };
-      }
-      // Never started (no engine behind the API) or failed outright: the
-      // server speaks this language from now on.
-      let started = false;
-      const fallBack = () => {
-        if (started || gen !== generation.current) return;
-        clearTimeout(watchdog.current);
-        browserDead.current.add(lang);
-        wordsSpeech.cancel();
-        viaServer();
-      };
-      u.onstart = () => {
-        started = true;
-        clearTimeout(watchdog.current);
-        if (gen === generation.current) words?.start();
-      };
-      u.onerror = (e) => {
-        words?.end(false);
-        if (e.error !== "interrupted" && e.error !== "canceled") fallBack();
-      };
-      u.onend = () => {
-        words?.end(started);
-        if (started) done(true);
-      };
-      clearTimeout(watchdog.current);
-      watchdog.current = setTimeout(fallBack, 2000);
-      wordsSpeech.speak(u);
-    },
+    (text: string, lang: string, done: Done, serverTried = false, track = false, owner?: string) =>
+      speakInBrowser<SpeechSynthesisVoice>(
+        {
+          generation: () => generation.current,
+          can: browserCan,
+          voiceFor,
+          speak: (said, voice, rate, on) => {
+            const u = new SpeechSynthesisUtterance(said);
+            u.voice = voice;
+            u.lang = voice.lang;
+            u.rate = rate;
+            u.onstart = () => on.start();
+            u.onend = () => on.end();
+            u.onerror = (e) => on.error(e.error);
+            u.onboundary = (e) => on.boundary(e.charIndex, e.name);
+            wordsSpeech.speak(u);
+          },
+          cancel: () => wordsSpeech.cancel(),
+          giveUp: (l) => void browserDead.current.add(l),
+          serverSpeak: (t, l, d, tr, o) => serverSpeak(t, l, d, tr, o),
+          // The word being said: exact from boundary events, else estimated.
+          follow: (t, l, rate, o) => {
+            const words = followSpeech(
+              t,
+              l,
+              rate,
+              {
+                now: () => performance.now(),
+                frames: FRAMES,
+                setTimer: (fn, ms) => setTimeout(fn, ms),
+                clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+              },
+              ownedBy(o),
+            );
+            unfollow();
+            follow.current = () => words.end(false);
+            return words;
+          },
+          setTimer: (fn, ms) => setTimeout(fn, ms),
+          clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+          log: devLog,
+        },
+        { text, lang, done, serverTried, track, owner },
+      ),
     [voiceFor, browserCan, serverSpeak, unfollow],
   );
 
