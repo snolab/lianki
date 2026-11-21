@@ -13,6 +13,36 @@ const flush = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
+test("explicit original playback waits beyond the automatic cap and never synthesizes", async () => {
+  const s = setup({ originalOnly: true });
+  sayNativeFirst(s.deps);
+  expect(s.timers.size).toBe(0);
+  s.fire();
+  expect(s.log).toEqual([]);
+  expect(s.loads[0].aborted).toBe(false);
+  s.load.resolve(clip);
+  await flush();
+  s.play().started();
+  s.play().done(true);
+  expect(s.log).toEqual(["native", "done:true"]);
+});
+
+test("an unavailable or failed explicit original reports failure, never a substitute voice", async () => {
+  for (const mode of ["missing", "load-error", "play-error", "disabled"] as const) {
+    const s = setup({ originalOnly: true, ...(mode === "disabled" ? { client: null } : {}) });
+    sayNativeFirst(s.deps);
+    if (mode === "missing") s.load.resolve(null);
+    if (mode === "load-error") s.load.reject(Error("unavailable"));
+    if (mode === "play-error") {
+      s.load.resolve(clip);
+      await flush();
+      s.play().done(false);
+    }
+    await flush();
+    expect(s.log).toEqual(mode === "play-error" ? ["native", "done:false"] : ["done:false"]);
+  }
+});
+
 function setup(over: Partial<NativeFirstDeps> = {}) {
   const log: string[] = [];
   const timers = new Map<number, { fn: () => void; ms: number }>();

@@ -12,6 +12,11 @@ import {
 export const NATIVE_AUDIO_PREF = "words.nativeAudioManifest";
 export type NativeCard = { listId: string; term: string; key?: string };
 export type NativeClip = { url: string; startMs: number; endMs: number; estimated: true };
+export type NativeDownload = {
+  phase: "idle" | "downloading" | "preparing";
+  loaded: number;
+  total: number | null;
+};
 type Reference = { version: 1; fileId: string; sha256: string };
 export type NativeAudioDeps = {
   fetch: (url: string, init: RequestInit) => Promise<Response>;
@@ -44,10 +49,11 @@ async function boundedBody(
   response: Response,
   max: number,
   signal: AbortSignal,
-  progress?: () => void,
+  progress?: (loaded: number, total: number | null) => void,
 ): Promise<Uint8Array> {
   const declared = Number(response.headers.get("content-length") ?? 0);
   if (declared > max || !response.body) throw Error("native-audio-size");
+  progress?.(0, declared > 0 ? declared : null);
   const reader = response.body.getReader(),
     parts: Uint8Array[] = [];
   let size = 0;
@@ -57,8 +63,8 @@ async function boundedBody(
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      progress?.();
       if (size > max) throw Error("native-audio-size");
+      progress?.(size, declared > 0 ? declared : null);
       parts.push(value);
     }
     signal.throwIfAborted();
@@ -190,6 +196,33 @@ export class NativeAudioClient {
   private preparing: Promise<void> | null = null;
   private prepared = false;
   private disposed = false;
+  private listeners = new Set<() => void>();
+  private transfer: NativeDownload = { phase: "idle", loaded: 0, total: null };
+  get progress() {
+    return this.transfer;
+  }
+  subscribe(listener: () => void) {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+  private changed() {
+    for (const listener of this.listeners) listener();
+  }
+  private report(transfer: NativeDownload) {
+    const previous = this.transfer;
+    this.transfer = transfer;
+    // A large archive must not rerender the study list for every network chunk.
+    const step = (s: NativeDownload) =>
+      s.total ? Math.floor((s.loaded / s.total) * 100) : Math.floor(s.loaded / (1024 * 1024));
+    if (
+      previous.phase !== transfer.phase ||
+      previous.total !== transfer.total ||
+      step(previous) !== step(transfer)
+    )
+      this.changed();
+  }
   constructor(private readonly d: NativeAudioDeps) {}
   get ready() {
     return this.prepared;
@@ -223,6 +256,7 @@ export class NativeAudioClient {
     if (this.clip) this.d.revokeObjectURL(this.clip.url);
     this.clip = null;
     this.find = null;
+    this.report({ phase: "idle", loaded: 0, total: null });
   }
   dispose() {
     if (this.disposed) return;
@@ -248,10 +282,16 @@ export class NativeAudioClient {
       })
       .finally(() => {
         this.preparing = null;
+        this.changed();
       });
     await this.preparing;
   }
-  private async ownFile(id: string, max: number, signal: AbortSignal, progress?: () => void) {
+  private async ownFile(
+    id: string,
+    max: number,
+    signal: AbortSignal,
+    progress?: (loaded: number, total: number | null) => void,
+  ) {
     const response = await this.d.fetch(`/api/my/files/${id}`, {
       credentials: "same-origin",
       cache: "no-store",
@@ -283,9 +323,10 @@ export class NativeAudioClient {
       stall = new AbortController(),
       signal = AbortSignal.any([this.life.signal, this.assets.signal, stall.signal]);
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const progress = () => {
+    const progress = (loaded = 0, total: number | null = null) => {
       clearTimeout(timer);
       timer = setTimeout(() => stall.abort(Error("native-audio-stalled")), this.d.timeoutMs());
+      if (run === this.epoch) this.report({ phase: "downloading", loaded, total });
     };
     progress();
     const task = (async () => {
@@ -297,6 +338,7 @@ export class NativeAudioClient {
       );
       try {
         clearTimeout(timer);
+        if (run === this.epoch) this.report({ ...this.transfer, phase: "preparing" });
         if ((await (this.d.digest ?? digest)(bytes)) !== chapter.archiveSha256)
           throw Error("native-audio-hash");
         this.check(run, signal);
@@ -308,7 +350,10 @@ export class NativeAudioClient {
       }
     })().finally(() => {
       clearTimeout(timer);
-      if (this.download?.task === task) this.download = null;
+      if (this.download?.task === task) {
+        this.download = null;
+        this.report({ phase: "idle", loaded: 0, total: null });
+      }
     });
     // Nobody may be waiting any more: a failure here is only a retry next time.
     task.catch(() => {});
@@ -352,6 +397,7 @@ export class NativeAudioClient {
       this.check(run, fileSignal);
       this.find = nativeWordIndex(parseNativeManifest(new TextDecoder().decode(bytes)));
       this.refKey = key;
+      this.changed();
     } finally {
       bytes.fill(0);
     }

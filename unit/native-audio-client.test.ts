@@ -120,6 +120,64 @@ async function fixture(twoArchives = false) {
 const card = { listId: "owned-list", term: "native word" };
 const signal = () => new AbortController().signal;
 
+test("download progress reports received bytes, preparation and completion without private identifiers", async () => {
+  const f = await fixture();
+  const seen: (typeof f.client.progress)[] = [];
+  const unsubscribe = f.client.subscribe(() => seen.push({ ...f.client.progress }));
+  await f.client.prepare();
+  let stream!: ReadableStreamDefaultController<Uint8Array>;
+  f.intercept((url) =>
+    url.endsWith("b".repeat(20))
+      ? Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                stream = controller;
+              },
+            }),
+            { headers: { "content-length": String(f.archive.length) } },
+          ),
+        )
+      : undefined,
+  );
+  const loading = f.client.load(card, signal());
+  await until(() => !!stream);
+  const half = Math.floor(f.archive.length / 2);
+  stream.enqueue(f.archive.slice(0, half));
+  await until(() => f.client.progress.loaded === half);
+  expect(f.client.progress).toEqual({
+    phase: "downloading",
+    loaded: half,
+    total: f.archive.length,
+  });
+  stream.enqueue(f.archive.slice(half));
+  stream.close();
+  expect(await loading).not.toBeNull();
+  expect(seen.some((s) => s.phase === "preparing")).toBe(true);
+  expect(f.client.progress.phase).toBe("idle");
+  expect(seen.every((s) => Object.keys(s).sort().join() === "loaded,phase,total")).toBe(true);
+  unsubscribe();
+  const before = seen.length;
+  f.client.dispose();
+  expect(seen).toHaveLength(before);
+});
+
+test("unknown download length stays indeterminate and clearing the account discards progress", async () => {
+  const f = await fixture();
+  await f.client.prepare();
+  const pending = deferred<Response>();
+  f.intercept((url) => (url.endsWith("b".repeat(20)) ? pending.promise : undefined));
+  const loading = f.client.load(card, signal());
+  await until(() => f.client.progress.phase === "downloading");
+  expect(f.client.progress.total).toBeNull();
+  f.client.clear();
+  expect(f.client.progress).toEqual({ phase: "idle", loaded: 0, total: null });
+  pending.resolve(new Response(f.archive.slice()));
+  expect(await loading).toBeNull();
+  expect(f.client.progress.phase).toBe("idle");
+  f.client.dispose();
+});
+
 test("private original recording is selected by exact card and reauthenticates memory hits", async () => {
   const f = await fixture();
   try {

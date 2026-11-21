@@ -16,11 +16,13 @@ const create = () =>
 export function useNativeAudio(
   playing: RefObject<AbortController | null>,
   make: () => NativeAudioClient = create,
+  onChange?: () => void,
 ) {
   const current = useRef<NativeAudioClient | null>(null);
   useEffect(() => {
     const client = make();
     current.current = client;
+    const unsubscribe = client.subscribe(() => onChange?.());
     void client.prepare();
     const clear = () => {
       playing.current?.abort();
@@ -43,6 +45,7 @@ export function useNativeAudio(
     document.addEventListener("visibilitychange", refresh);
     return () => {
       off();
+      unsubscribe();
       playing.current?.abort();
       client.dispose();
       if (current.current === client) current.current = null;
@@ -52,6 +55,6 @@ export function useNativeAudio(
       window.removeEventListener("storage", changed);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [make, playing]);
+  }, [make, playing, onChange]);
   return current;
 }

@@ -12,6 +12,8 @@ export type PartKind = "word" | "meaning" | "example";
  * lights that card's example and no other card showing the same sentence.
  */
 export type SayPart = {
+  /** Explicit playback from the private original recording; never substitute a synthetic voice. */
+  originalOnly?: boolean;
   kind: PartKind;
   text: string;
   lang: string;
