@@ -24,7 +24,6 @@ import {
 } from "@/lib/words/requeue";
 import { progressPercent } from "@/lib/words/progress";
 import { ProgressRingSvg } from "@/app/components/progress-ring";
-import { voiceQuality } from "@lianki/debug-chat/wire";
 import { pageAudio } from "@lianki/debug-chat/page-audio";
 import { AUDIO_PRIO, audioOwner, audioOwnerId } from "@lianki/debug-chat/audio-claim";
 import { AEC_EVENT, aecOn, applyAec } from "@lianki/debug-chat/aec";
@@ -105,6 +104,7 @@ import { spokenText } from "@/lib/words/spoken";
 import type { VoiceAccess } from "@/lib/words/voice-access";
 import { type VoiceActions, type VoiceOutcome, handleUtterance } from "@/lib/words/voice-dispatch";
 import { VoiceBadge, useVoiceMode, voiceOutcomeLabel } from "./VoiceMode";
+import { browserVoiceFor } from "@/lib/words/browser-voice";
 import { prefetchOrder, sayParts, type SayPart } from "@/lib/words/say-parts";
 import { backParts, ROW_LINE_LH, rowMetrics } from "@/lib/words/row-layout";
 import { backAvail, backLines } from "@/lib/words/row-pinch";
@@ -891,30 +891,6 @@ function usePageActive() {
 }
 
 /**
- * Browser speech (Web Speech API): instant, offline, no rate limit, and every
- * language the OS has a voice for. Where it cannot speak — no API, no voice
- * for the language, or it never starts (Firefox on Android) — the word comes
- * from the server instead (/api/words/tts, generated once and cached).
- */
-/**
- * Full language tags for speech. A bare "ja" with no voice chosen lets
- * Android pick any engine voice — Japanese then came out in a Chinese accent.
- */
-const SPEECH_TAG: Record<string, string> = {
-  ja: "ja-JP",
-  zh: "zh-CN",
-  ko: "ko-KR",
-  fr: "fr-FR",
-  es: "es-ES",
-  de: "de-DE",
-  it: "it-IT",
-  pt: "pt-BR",
-  ru: "ru-RU",
-  fi: "fi-FI",
-  en: "en-US",
-};
-
-/**
  * Debug-only swipe profiler: frame times while a finger is on a slip, plus
  * how often the slip rendered.
  * Reported to devLog when the finger lifts.
@@ -1185,24 +1161,7 @@ function useSpeech(
     };
   }, []);
 
-  const voiceFor = useCallback(
-    (lang: string) => {
-      // Android has reported tags as "fr_FR".
-      const norm = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace("_", "-");
-      const vs = voices.filter((v) => norm(v).startsWith(lang));
-      const tag = SPEECH_TAG[lang]?.toLowerCase();
-      // The language's own region first (ja-JP, not a ja voice of elsewhere).
-      const exact = vs.filter((v) => norm(v) === tag);
-      // Natural voices first: iOS lists robotic Eloquence and novelty voices first.
-      const best = (pool: SpeechSynthesisVoice[]) => {
-        const q = Math.max(-1, ...pool.map(voiceQuality));
-        const top = pool.filter((v) => voiceQuality(v) === q);
-        return top.find((v) => v.localService) ?? top[0];
-      };
-      return best(exact) ?? best(vs) ?? null;
-    },
-    [voices],
-  );
+  const voiceFor = useCallback((lang: string) => browserVoiceFor(voices, lang), [voices]);
 
   /** Silence the part playing now; callbacks of what was playing are ignored. */
   const cancel = useCallback(() => {
