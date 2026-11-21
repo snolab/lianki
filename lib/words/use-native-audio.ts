@@ -15,14 +15,20 @@ const create = () =>
 /** Each effect setup owns a fresh lease; Strict Mode never reuses a disposed client. */
 export function useNativeAudio(
   playing: RefObject<AbortController | null>,
-  make: () => NativeAudioClient = create,
+  make?: () => NativeAudioClient,
   onChange?: () => void,
 ) {
   const current = useRef<NativeAudioClient | null>(null);
+  const notify = useRef(onChange);
   useEffect(() => {
-    const client = make();
+    notify.current = onChange;
+  }, [onChange]);
+  useEffect(() => {
+    // Resolve the default inside setup. Production optimization can inline a
+    // default-argument factory, giving it a new identity on every render.
+    const client = (make ?? create)();
     current.current = client;
-    const unsubscribe = client.subscribe(() => onChange?.());
+    const unsubscribe = client.subscribe(() => notify.current?.());
     void client.prepare();
     const clear = () => {
       playing.current?.abort();
@@ -55,6 +61,6 @@ export function useNativeAudio(
       window.removeEventListener("storage", changed);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [make, playing, onChange]);
+  }, [make, playing]);
   return current;
 }

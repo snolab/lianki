@@ -1,9 +1,51 @@
 import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { createElement, StrictMode, act } from "react";
+import { createElement, StrictMode, act, useState } from "react";
 import { stubGlobals } from "./support/globals";
 import { NativeAudioClient } from "../lib/words/native-audio-client";
 import { useNativeAudio } from "../lib/words/use-native-audio";
+
+test("default client survives readiness notifications and changing render callbacks", async () => {
+  const win = new Window();
+  let requests = 0,
+    notifications = 0;
+  const playing = { current: new AbortController() };
+  const restore = stubGlobals({
+    window: win,
+    document: win.document,
+    IS_REACT_ACT_ENVIRONMENT: true,
+    fetch: async () => {
+      requests++;
+      return Response.json({ user: "account-a", prefs: {} });
+    },
+  });
+  const clients: NativeAudioClient[] = [];
+  function Probe() {
+    const [, changed] = useState(0);
+    const client = useNativeAudio(playing, undefined, () => {
+      notifications++;
+      // Bound the regression: the broken hook would recreate on every
+      // readiness notification and keep requesting the account forever.
+      if (notifications < 5) changed((n) => n + 1);
+    });
+    if (client.current) clients.push(client.current);
+    return null;
+  }
+  const { createRoot } = await import("react-dom/client");
+  const root = createRoot(win.document.createElement("div") as never);
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => root.render(createElement(Probe)));
+    expect(requests).toBe(1);
+    expect(notifications).toBe(1);
+    expect(new Set(clients).size).toBe(1);
+    expect(playing.current.signal.aborted).toBe(false);
+  } finally {
+    await act(() => root.unmount());
+    restore();
+    await win.happyDOM.close();
+  }
+});
 
 test("Strict Mode setup-cleanup-setup owns a fresh client and pagehide cancels before clearing", async () => {
   const win = new Window();
