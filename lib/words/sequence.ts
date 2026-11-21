@@ -26,7 +26,7 @@ export type SequencerDeps<P> = {
    * A part that has not reported done after this many ms is cut and skipped,
    * so one stuck part never stalls the rest (`words.partTimeoutMs`). 0: none.
    */
-  partTimeoutMs?: () => number;
+  partTimeoutMs?: (part: P) => number;
   /** Before a loop starts over. */
   repeatMs?: number;
   /**
@@ -117,7 +117,7 @@ export function createSequencer<P>(deps: SequencerDeps<P>) {
         any = false;
         timer = deps.setTimeout(next, repeat);
       };
-      const limit = deps.partTimeoutMs?.() ?? 0;
+      const limit = deps.partTimeoutMs?.(parts[i]) ?? 0;
       if (limit > 0)
         watch = deps.setTimeout(() => {
           if (called || gen !== generation) return;

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import JSZip from "jszip";
 import {
   NativeAudioClient,
@@ -176,6 +176,41 @@ test("unknown download length stays indeterminate and clearing the account disca
   expect(await loading).toBeNull();
   expect(f.client.progress.phase).toBe("idle");
   f.client.dispose();
+});
+
+test("an elapsed authentication deadline does not cancel a healthy archive transfer", async () => {
+  const f = await fixture();
+  await f.client.prepare();
+  const deadline = new AbortController();
+  const timeout = spyOn(AbortSignal, "timeout").mockImplementation(() => deadline.signal);
+  let stream!: ReadableStreamDefaultController<Uint8Array>;
+  f.intercept((url) =>
+    url.endsWith("b".repeat(20))
+      ? Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                stream = controller;
+              },
+            }),
+          ),
+        )
+      : undefined,
+  );
+  try {
+    const loading = f.client.load(card, signal());
+    await until(() => !!stream);
+    const half = Math.floor(f.archive.length / 2);
+    stream.enqueue(f.archive.slice(0, half));
+    await until(() => f.client.progress.loaded === half);
+    deadline.abort(Error("authentication deadline elapsed"));
+    stream.enqueue(f.archive.slice(half));
+    stream.close();
+    expect(await loading).toMatchObject({ startMs: 1000, endMs: 2000 });
+  } finally {
+    timeout.mockRestore();
+    f.client.dispose();
+  }
 });
 
 test("private original recording is selected by exact card and reauthenticates memory hits", async () => {

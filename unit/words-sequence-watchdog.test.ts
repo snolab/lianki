@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createSequencer } from "../lib/words/sequence";
 
-function rig(partTimeoutMs?: () => number) {
+function rig(partTimeoutMs?: (part: string) => number) {
   const log: string[] = [];
   const timers = new Map<number, { fn: () => void; ms: number }>();
   let id = 0;
@@ -67,4 +67,15 @@ test("stop and a new play clear the watchdog; no timeout means no watchdog", () 
   const u = rig();
   u.seq.play(["slow"]);
   expect(u.timers.size).toBe(0);
+});
+
+test("an explicit download can wait while ordinary parts keep their watchdog", () => {
+  const r = rig((part) => (part === "original-download" ? 0 : 30000));
+  r.seq.play(["original-download", "ordinary"]);
+  expect(r.timers.size).toBe(0);
+  r.dones.get("original-download")!(true);
+  r.run(150);
+  expect([...r.timers.values()].map((t) => t.ms)).toEqual([30000]);
+  r.seq.stop();
+  expect(r.timers.size).toBe(0);
 });

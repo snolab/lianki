@@ -1468,7 +1468,9 @@ function useSpeech(
         cancel,
         setTimeout: (fn, ms) => setTimeout(fn, ms),
         clearTimeout: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
-        partTimeoutMs: () => publicCfg("words.partTimeoutMs"),
+        // Explicit original playback waits for a progressing download. Its
+        // own stall timeout and cancellation still apply.
+        partTimeoutMs: (part) => (part.originalOnly ? 0 : publicCfg("words.partTimeoutMs")),
         preroll: () => {
           const ms = outputBed().begin();
           if (ms > 0) unlockClip();

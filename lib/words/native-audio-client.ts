@@ -413,7 +413,9 @@ export class NativeAudioClient {
       const word: NativeWord | undefined = this.find?.(card.listId, card.term, card.key);
       if (!word) return null;
       const run = this.epoch,
-        request = this.signal(signal, true),
+        // File transfer has its own no-progress timeout. A healthy long
+        // download must not lose an explicit listener to an absolute cap.
+        request = AbortSignal.any([this.life.signal, this.assets.signal, signal]),
         chapter = word.chapter;
       const archiveId = `${chapter.inboxItemId}:${chapter.archiveSha256}`;
       const clipId = `${archiveId}:${chapter.sha256}`;
