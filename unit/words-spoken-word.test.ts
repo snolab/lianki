@@ -146,6 +146,12 @@ describe("spokenIn", () => {
     expect(spokenIn(sp, "Le chat dort")).toBeNull();
   });
 
+  it("an owned reading of one language's run lights inside the mixed line", () => {
+    const sp: Spoken = { text: "我喜欢苹果。", lang: "zh", span: [3, 5], owner: "k" };
+    expect(spokenIn(sp, "I like apples. 我喜欢苹果。", "k")).toEqual([18, 20]);
+    expect(spokenIn(sp, "I like apples.", "k")).toBeNull();
+  });
+
   it("ownedBy stamps each mark with the owner card; a clear stays a clear", () => {
     const out = ownedBy("a");
     out({ text: "aa bb", lang: "en", span: [0, 2] });

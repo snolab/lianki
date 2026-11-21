@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { meaningLang, meaningText, prefetchOrder, sayParts } from "@/lib/words/say-parts";
 import { createSequencer, rowReading } from "@/lib/words/sequence";
+import { ttsUrl } from "@/lib/words/audio-cache";
+import { browserVoiceFor } from "@/lib/words/browser-voice";
 
 describe("sayParts", () => {
   test("word, then example, then meaning (the row's order), each in its own language", () => {
@@ -63,6 +65,60 @@ describe("sayParts", () => {
     expect(meaningLang("いえ", "en")).toBe("ja");
     expect(meaningLang("집", "en")).toBe("ko");
     expect(meaningLang("дом", "en")).toBe("ru");
+  });
+
+  // The owner (2026-11-21): an example's Chinese translation was read in the English voice.
+  test("an English example with its Chinese translation: the Chinese run is its own zh part", () => {
+    const parts = sayParts(
+      { term: "apple", back: "苹果", ex: "I like apples. 我喜欢苹果。" },
+      "en",
+      false,
+      "zh",
+    );
+    expect(parts).toEqual([
+      { kind: "word", text: "apple", lang: "en" },
+      { kind: "example", text: "I like apples.", lang: "en" },
+      { kind: "example", text: "我喜欢苹果。", lang: "zh" },
+      { kind: "meaning", text: "苹果", lang: "zh" },
+    ]);
+    // Server path: each part asks for a clip in its own language.
+    expect(parts.map((p) => ttsUrl(p.lang, p.text))).toEqual([
+      "/api/words/tts?lang=en&text=apple",
+      "/api/words/tts?lang=en&text=I%20like%20apples.",
+      `/api/words/tts?lang=zh&text=${encodeURIComponent("我喜欢苹果。")}`,
+      `/api/words/tts?lang=zh&text=${encodeURIComponent("苹果")}`,
+    ]);
+    // Browser path: each part gets a device voice of its own language.
+    const voices = [
+      { lang: "en-US", name: "Samantha", voiceURI: "com.apple.voice.compact.en-US.Samantha" },
+      { lang: "zh-CN", name: "Tingting", voiceURI: "com.apple.voice.compact.zh-CN.Tingting" },
+    ];
+    expect(parts.map((p) => browserVoiceFor(voices, p.lang)?.name)).toEqual([
+      "Samantha",
+      "Samantha",
+      "Tingting",
+      "Tingting",
+    ]);
+  });
+
+  test("a Chinese-only meaning is zh; a Japanese kana example and meaning are ja", () => {
+    expect(sayParts({ term: "house", back: "房子；家" }, "en", false, "en")).toEqual([
+      { kind: "word", text: "house", lang: "en" },
+      { kind: "meaning", text: "房子", lang: "zh" },
+    ]);
+    expect(
+      sayParts(
+        { term: "morning", back: "あさ", ex: "Good morning. おはようございます。" },
+        "en",
+        false,
+        "en",
+      ).map((p) => [p.kind, p.text, p.lang]),
+    ).toEqual([
+      ["word", "morning", "en"],
+      ["example", "Good morning.", "en"],
+      ["example", "おはようございます。", "ja"],
+      ["meaning", "あさ", "ja"],
+    ]);
   });
 
   test("prefetch order: words, then examples, then meanings", () => {
