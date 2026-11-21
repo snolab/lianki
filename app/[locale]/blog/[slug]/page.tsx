@@ -10,6 +10,7 @@ import { generateHreflangMetadata } from "@/lib/hreflang";
 import matter from "gray-matter";
 import { getIntlayer } from "intlayer";
 import { Header } from "@/app/components/Header";
+import { previewMenuFor } from "@/lib/preview-menu.server";
 import { authUser } from "@/app/signInEmail";
 
 // No `revalidate` / `dynamicParams` here on purpose: the root layout awaits
@@ -183,6 +184,7 @@ export default async function BlogPostPage({
         membershipLabel={shellNav.membership}
         signOutLabel={shellNav.signOut}
         user={user}
+        preview={await previewMenuFor(user?.email, locale)}
       />
 
       {/* Main Content */}

@@ -1,6 +1,7 @@
 import { getIntlayer } from "intlayer";
 import Link from "next/link";
 import { Header } from "../components/Header";
+import { previewMenuFor } from "@/lib/preview-menu.server";
 import { authUser } from "../signInEmail";
 
 export default async function LandingPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -35,6 +36,7 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
         membershipLabel={shellNav.membership}
         signOutLabel={shellNav.signOut}
         user={user}
+        preview={await previewMenuFor(user?.email, locale)}
       />
 
       {/* Main Content */}

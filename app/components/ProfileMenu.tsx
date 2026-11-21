@@ -17,8 +17,9 @@ import { Icon } from "./icons";
 import { UserAvatar } from "./UserAvatar";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useDebugToggle } from "./useDebugToggle";
-import { DevServerBadge, DevSwitchItem, type DevSwitch } from "./DevSwitchItem";
-import { LiveViewChip, type LiveViewShell } from "./LiveView";
+import { DevServerBadge, type DevSwitch } from "./DevSwitchItem";
+import type { LiveViewShell } from "./LiveView";
+import { PreviewMenuItem } from "./PreviewMenuItem";
 import type { ShellLabels } from "./AppShell";
 
 export type ProfileUser = { name: string; email: string; image?: string | null };
@@ -151,16 +152,8 @@ export function ProfileMenu({
             {labels.creditsUsage}
           </MenuLink>
           <LanguageSwitcher variant="menu" />
-          {/* One preview control: the whole-page switch, with Live view (dev
-              parts on lianki.com) as a chip in the same row, only on
-              lianki.com: the preview build is all dev code already. */}
-          {devSwitch && (
-            <DevSwitchItem sw={devSwitch}>
-              {liveView && devSwitch.mode === "go" && (liveView.wanted || liveView.ready) && (
-                <LiveViewChip lv={liveView} />
-              )}
-            </DevSwitchItem>
-          )}
+          {/* One preview control (PreviewMenuItem.tsx), shared with Header. */}
+          <PreviewMenuItem devSwitch={devSwitch} liveView={liveView} />
           <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
             <button
               type="button"
