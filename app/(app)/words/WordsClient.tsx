@@ -149,6 +149,7 @@ import {
 } from "@/lib/words/spoken-scroll";
 import { aimAt, scrollToAim } from "@/lib/words/centre-in";
 import { SOUND_LOOP_KEY, createSequencer, rowReading } from "@/lib/words/sequence";
+import { useFocusedReading } from "@/lib/words/use-focused-reading";
 import { ownSpeech } from "@/lib/words/own-speech";
 import { AudioCache } from "@/lib/words/audio-cache";
 import { useNativeAudio } from "@/lib/words/use-native-audio";
@@ -1577,8 +1578,9 @@ function useSpeech(
       toggleRepeat,
       prefetch,
       stock,
+      stop,
     }),
-    [available, on, repeat, loop, once, hold, release, toggle, toggleRepeat, prefetch, stock],
+    [available, on, repeat, loop, once, hold, release, toggle, toggleRepeat, prefetch, stock, stop],
   );
 }
 
@@ -4967,26 +4969,6 @@ export function Study({
   const focusText = focusItem ? spokenText(focusItem, focusItem.lang, !!config.readingOnBack) : "";
   /** The focus moved by a tap or a swipe that already said the word: don't say it twice. */
   const quietFocus = useRef<number | null>(null);
-  useEffect(() => {
-    if (!touch || !active || holding !== null || !focusItem) return;
-    if (quietFocus.current === focusLine) return void (quietFocus.current = null);
-    // With every meaning shown, the back is read too: word → example → meaning.
-    speech.once(
-      showAll
-        ? partsOf(focusItem)
-        : [
-            {
-              kind: "word",
-              text: focusText,
-              lang: focusItem.lang,
-              card: { listId: focusItem.listId, term: focusItem.term },
-            },
-          ],
-      false,
-      { yieldToHold: true },
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [touch, focusLine, focusText]);
 
   /** The touch focus as of now (a voice command may come before the render that moved it). */
   const focusNow = useRef(focusLine);
@@ -5165,10 +5147,27 @@ export function Study({
   // "Read on a loop" is on — while the page is active; paused in a hidden tab
   // or background window.
   const active = usePageActive();
-  const focused = !touch && active ? queue[row] : undefined;
-  // Keyed by content: re-rendering the same row must not restart its reading.
-  const focusParts = JSON.stringify(focused ? partsOf(focused) : []);
-  useEffect(() => speech.loop(JSON.parse(focusParts) as SayPart[]), [focusParts, speech]);
+  const focused = touch ? focusItem : queue[row];
+  useFocusedReading<SayPart>({
+    touch,
+    active,
+    focus: touch ? focusLine : row,
+    holding: holding !== null,
+    quietFocus,
+    speech,
+    parts: !focused
+      ? []
+      : !touch || showAll
+        ? partsOf(focused)
+        : [
+            {
+              kind: "word",
+              text: focusText,
+              lang: focused.lang,
+              card: { listId: focused.listId, term: focused.term },
+            },
+          ],
+  });
 
   // Windowed rendering: the list is endless, the DOM is not.
   const OVERSCAN = 20;
