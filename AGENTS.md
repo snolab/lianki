@@ -153,6 +153,7 @@ that are expensive to rediscover.
 | Working on                                                                 | Read                                                                |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | Running or setting up the app locally, QA suites                           | [DEVELOPMENT.md](DEVELOPMENT.md)                                    |
+| Bombadil random UI exploration: spec, runner, what it can catch            | [docs/bombadil.md](docs/bombadil.md)                                |
 | What's in flight / waiting on the owner                                    | [docs/state-tree.md](docs/state-tree.md)                            |
 | Planning tools: which one to use, consolidation plan                       | [docs/planning-tools.md](docs/planning-tools.md)                    |
 | Landing changes, CI, branch protection, post-deploy QA                     | [docs/shipping.md](docs/shipping.md)                                |
