@@ -1,9 +1,10 @@
 // Bombadil exploration spec for Lianki (docs/bombadil.md).
 //
 // Run through scripts/qa/bombadil.ts, never by hand against a shared server:
-// the runner starts its own dev server on an empty in-memory MongoDB, a
-// throwaway account, and a muted, headless Chromium with the silent-QA init
-// script, then points `bombadil browser test-external` at it.
+// the runner serves the OpenNext Worker with `wrangler dev --local` on an
+// empty local D1 in a temp dir, signs up a throwaway account, launches a muted,
+// headless Chromium with the silent-QA init script, then points
+// `bombadil browser test-external` at it.
 //
 // Two runtimes: an `extract(...)` function runs inside the page, on every state
 // Bombadil captures, so each one is self-contained (no references to anything
@@ -176,8 +177,10 @@ export const wordsRowsDistinct = always(() => {
 /** /words: a slip carries at most one grade stamp. */
 export const wordsOneGradePerSlip = always(() => words.current.multiStamp.length === 0);
 
-/** /words: a word graded in this session does not come back as a new word in another row. */
-export const wordsGradedNotNewAgain = always(() => words.current.newAfterGraded.length === 0);
+// Not a property: "a word graded in this session does not come back as new in
+// another row" is a diagnostic only. The DOM has no card id, just the term, so a
+// list holding one term twice would fail it falsely. The runner reads
+// `words.newAfterGraded` from the trace and logs it (scripts/qa/bombadil.ts).
 
 // ── Actions: only inside the app's origin ───────────────────────────────────
 

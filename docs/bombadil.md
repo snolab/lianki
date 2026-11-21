@@ -32,10 +32,11 @@ the database is yours to vouch for: only a server on a local, throwaway DB.
 Never the owner's `:3000` / `:3100` servers (those may be on production D1).
 
 Prereqs: the `bombadil` binary (below), Playwright's Chromium
-(`bunx playwright install chromium`), and a worktree with no `.env*` or
-`.dev.vars` holding anything but the local dev keys. The runner refuses to
-start otherwise and names the keys (never their values). A fresh
-`git worktree add` is the easy way.
+(`bunx playwright install chromium`), and a worktree with no `.dev.vars` and
+no `.env*` file. The runner never reads those files: if one exists, it refuses
+to start its own server (it could hold a real secret or a remote DB) and asks
+for a clean worktree (`git worktree add <dir> origin/main`). A missing or
+broken binary fails at once (exit 1), before any server starts.
 
 ### Install the binary
 
@@ -107,7 +108,12 @@ properties are checked over the whole sequence of states.
 | `wordsProgressInRange`                                              | a list's progress ring (`data-progress`) outside 0–100 or not whole                        | a wrong percentage inside the range (the oracle does not know the right one)                                                            |
 | `wordsRowsDistinct`                                                 | two rendered slips with the same row index, or a negative one (the virtual list)           | a slip that should be shown and is not; rows outside the rendered window                                                                |
 | `wordsOneGradePerSlip`                                              | a slip with more than one grade stamp                                                      | a wrong grade, or a grade the server did not store                                                                                      |
-| `wordsGradedNotNewAgain`                                            | a word graded in this session (one list, one page load) shown again as new in another row  | a list holding the same term twice (would be a false positive); words outside the rendered window; anything across reloads              |
+
+**Diagnostic, not enforced:** "a word graded in this session (one list, one
+page load) shown again as new in another row". The DOM exposes no card id,
+only the term, so a list that holds a term twice would trip it falsely. The
+spec still extracts it (`words.newAfterGraded`), and the runner prints what it
+saw after the run as an observation; it never fails the run.
 
 The oracle is the page itself: properties see only what the DOM, Resource
 Timing and the console show. They know nothing of the scheduler's intended
@@ -128,6 +134,24 @@ Bombadil's clicks, text input and scrolling, restricted to the app:
 - `backToWords`: from any other page, back to the study list;
 - on a payment page, the only action is to leave it (`Back`, or straight to
   /words).
+
+## First run (2026-11-21, commit a82d0302)
+
+`bun scripts/qa/bombadil.ts --time 4m`: 4111 states, 54 paths, exit 2 with 20
+violations. The full trace, screenshots and log are kept outside the repo at
+`~/lianki-qa-evidence/bombadil/2026-11-21-run-4m-a82d0302/` (109 MB; open it
+with `bombadil browser inspect <dir>`).
+
+```
+✗ noUncaughtExceptions: 16 state(s)
+    "Uncaught TypeError: t.learning.replace is not a function"   at /self-intro
+    "Uncaught Error: Minified React error #418; ...args[]=HTML"  at /pt/blog/2026-10-17-language-puzzle-games
+✗ noUnhandledPromiseRejections: 4 state(s)
+    "Uncaught (in promise) AbortError: Uncaught exception in event handler."  at /list
+```
+
+The first is `app/(app)/self-intro/SelfIntroClient.tsx`, the interview
+heading: `.replace()` on an intlayer node instead of its `.value`.
 
 ## Script entry
 

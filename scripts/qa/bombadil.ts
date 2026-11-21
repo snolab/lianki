@@ -74,8 +74,9 @@ if (!LOOPBACK.has(new URL(BASE).hostname)) {
 // ── The bombadil binary ─────────────────────────────────────────────────────
 
 function findBombadil(): string {
+  // An explicit BOMBADIL_BIN is used as given: a wrong one fails at the version probe.
+  if (process.env.BOMBADIL_BIN) return process.env.BOMBADIL_BIN;
   const candidates = [
-    process.env.BOMBADIL_BIN,
     join(homedir(), ".local/bin/bombadil"),
     ...(process.env.PATH ?? "").split(":").map((d) => join(d, "bombadil")),
   ].filter(Boolean) as string[];
@@ -97,15 +98,32 @@ const children: ChildProcess[] = [];
 let ctx: BrowserContext | null = null;
 let profileDir = "";
 let tornDown = false;
+/** Resolves when the child has exited (at once if it already has, or never started). */
+function exited(c: ChildProcess): Promise<void> {
+  if (c.exitCode !== null || c.signalCode !== null || !c.pid) return Promise.resolve();
+  return new Promise((ok) => c.once("exit", () => ok()));
+}
+const groupKill = (c: ChildProcess, sig: NodeJS.Signals) => {
+  try {
+    process.kill(-c.pid!, sig); // its whole group: wrangler forks workerd
+  } catch {}
+};
 async function teardown() {
   if (tornDown) return;
   tornDown = true;
   await ctx?.close().catch(() => {});
-  for (const c of children.reverse()) {
-    if (c.exitCode !== null || !c.pid) continue;
-    try {
-      process.kill(-c.pid, "SIGTERM"); // its whole group: wrangler forks workerd
-    } catch {}
+  const live = children.filter((c) => c.pid && c.exitCode === null && c.signalCode === null);
+  for (const c of live) groupKill(c, "SIGTERM");
+  // Wait for them before deleting what they hold open (the temp D1); a child
+  // that ignores TERM for 15 s gets KILL.
+  const all = Promise.all(live.map(exited));
+  const late = await Promise.race([
+    all.then(() => false),
+    new Promise<boolean>((ok) => setTimeout(() => ok(true), 15_000)),
+  ]);
+  if (late) {
+    for (const c of live) groupKill(c, "SIGKILL");
+    await Promise.race([all, new Promise((ok) => setTimeout(ok, 5_000))]);
   }
   for (const d of [profileDir, d1Dir]) if (d) rmSync(d, { recursive: true, force: true });
 }
@@ -139,6 +157,10 @@ function start(
     };
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      fail(new Error(`${name}: could not start ${cmd[0]}: ${e.message}`));
+    });
     child.on("exit", (code) => {
       clearTimeout(timer);
       fail(new Error(`${name} exited (${code}) before it was ready`));
@@ -154,32 +176,27 @@ function start(
 // and the worktree's .wrangler/state is never touched. Vars come in by --var;
 // nothing is written to .dev.vars.
 
-/** Keys an env file may hold for this run; anything else (cloud tokens, mail keys) stops it. */
-const SAFE_ENV_KEYS = new Set([
-  "NODE_ENV",
-  "DB_BACKEND",
-  "MONGODB_URI",
-  "AUTH_SECRET",
-  "BETTER_AUTH_BASE_URL",
-  "DEV_EMAIL_PASSWORD_AUTH",
-  "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
-  "TURNSTILE_SECRET_KEY",
-]);
+/**
+ * Env files the build or wrangler dev would load. Their contents are never
+ * read here: if any exists, the run will not start its own server (it could
+ * carry a real secret or a remote DB). A fresh worktree has none.
+ */
+const ENV_FILES = [
+  ".dev.vars",
+  ".env",
+  ".env.local",
+  ".env.development",
+  ".env.development.local",
+  ".env.production",
+  ".env.production.local",
+];
 function checkEnvFiles() {
-  const bad: string[] = [];
-  for (const f of [".dev.vars", ".env", ".env.local", ".env.production", ".env.production.local"]) {
-    const p = join(ROOT, f);
-    if (!existsSync(p)) continue;
-    for (const line of readFileSync(p, "utf8").split("\n")) {
-      const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line);
-      if (m && !SAFE_ENV_KEYS.has(m[1])) bad.push(`${f}:${m[1]}`);
-    }
-  }
-  if (bad.length) {
+  const present = ENV_FILES.filter((f) => existsSync(join(ROOT, f)));
+  if (present.length) {
     console.error(
-      `✗ ${bad.length} key(s) in env files the build or wrangler dev would load (names only):\n  ` +
-        bad.join("\n  ") +
-        "\n  Run from a worktree without them (git worktree add …), or pass --base.",
+      `✗ refusing to start a server here: ${present.join(", ")} exist(s) in ${ROOT}.\n` +
+        "  Run from a clean worktree (git worktree add <dir> origin/main), or pass --base\n" +
+        "  with a server of your own on a local, throwaway DB.",
     );
     process.exit(1);
   }
@@ -203,6 +220,8 @@ function run(name: string, cmd: string[], env: Record<string, string>) {
       env: env as NodeJS.ProcessEnv,
       stdio: process.env.BOMBADIL_VERBOSE ? "inherit" : "ignore",
     });
+    children.push(p);
+    p.on("error", (e) => fail(new Error(`${name}: could not start ${cmd[0]}: ${e.message}`)));
     p.on("exit", (code) => (code === 0 ? ok() : fail(new Error(`${name}: exit ${code}`))));
   });
 }
@@ -337,11 +356,14 @@ async function launchBrowser() {
 let exitCode = 1;
 let bombadil: ChildProcess | null = null;
 try {
-  const version = await new Promise<string>((ok) => {
+  const version = await new Promise<string>((ok, fail) => {
     const p = spawn(BOMBADIL, ["--version"]);
     let s = "";
     p.stdout.on("data", (b) => (s += b));
-    p.on("exit", () => ok(s.trim()));
+    p.on("error", (e) => fail(new Error(`cannot run ${BOMBADIL}: ${e.message}`)));
+    p.on("exit", (code) =>
+      code === 0 ? ok(s.trim()) : fail(new Error(`${BOMBADIL} --version exited ${code}`)),
+    );
   });
   console.log(`▶ ${version} (${BOMBADIL}), ${TIME}, base ${BASE}`);
   if (!BASE_ARG) await startServer();
@@ -422,8 +444,10 @@ try {
     SPEC,
   ];
   console.log(`▶ ${BOMBADIL} ${args.join(" ")}`);
-  const code = await new Promise<number>((ok) => {
+  const code = await new Promise<number>((ok, fail) => {
     bombadil = spawn(BOMBADIL, args, { cwd: ROOT, stdio: "inherit" });
+    children.push(bombadil);
+    bombadil.on("error", (e) => fail(new Error(`cannot run ${BOMBADIL}: ${e.message}`)));
     bombadil.on("exit", (c) => ok(c ?? 1));
   });
   console.log(`\n── bombadil exited ${code} (0 clean, 2 property violation, 1 error)`);
@@ -481,6 +505,26 @@ function summarize(dir: string) {
     }
   }
   console.log(`  ${lines.length} states in ${trace}`);
+  // Diagnostics, never a failure: a word graded in this session shown again as
+  // new in another row. The DOM has no card id, only the term, so a list that
+  // holds a term twice shows up here too; look before calling it a bug.
+  const seen = new Map<string, string>();
+  for (const l of lines) {
+    try {
+      const e = JSON.parse(l) as {
+        state?: { url?: string };
+        snapshots?: { name: string | null; value: { newAfterGraded?: string[] } | null }[];
+      };
+      for (const snap of e.snapshots ?? [])
+        if (snap.name === "words")
+          for (const x of snap.value?.newAfterGraded ?? [])
+            if (!seen.has(x)) seen.set(x, e.state?.url ?? "");
+    } catch {}
+  }
+  if (seen.size) {
+    console.log(`  ⚠ observation (not enforced): ${seen.size} graded word(s) shown again as new`);
+    for (const [x, url] of [...seen].slice(0, 6)) console.log(`      ${x}\n        at ${url}`);
+  } else console.log("  observation: no graded word was shown again as new (not enforced)");
   for (const [name, p] of byProp) {
     console.log(`  ✗ ${name}: ${p.states} state(s)`);
     for (const [value, url] of [...p.values].slice(0, 6))
