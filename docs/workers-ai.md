@@ -424,11 +424,7 @@ and prefetches of rows that scrolled away are aborted. Within each group, all
 words first, then examples, then meanings.
 A tap reads three clips back to back, ~150 ms apart: the word, its meaning
 (first sense, `lib/words/say-parts.ts`), and the example sentence. Each is its
-own `/api/words/tts` URL in its own language. A meaning or example that mixes
-languages (an imported deck's "I like apples. 我喜欢苹果。") is split into
-same-language runs by script (`lib/words/part-lang.ts`, rules as data), each
-its own clip and its own browser voice (`lib/words/browser-voice.ts`) — never
-one voice reading another language's text.
+own `/api/words/tts` URL in its own language.
 
 - **On the device.** Read order is memory → disk → network. Every clip
   fetched (200s only — never a miss or an error) goes into the Cache API
