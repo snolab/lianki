@@ -145,3 +145,17 @@ they land. Design details that are still open are marked **open**.
 - Typing glass covers only the chat box (input and messages), not the
   whole screen (#426).
 - Agent ask cards can be withdrawn.
+
+## Original recordings
+
+- The toolbar and card details show the active original-audio download's
+  received-byte progress. A known response length yields a percentage; an
+  unknown length stays indeterminate. Download progress survives a card change,
+  but clearing or leaving the account discards it with the private audio.
+- Card details offer **Play original audio**, separately from the ordinary
+  read-aloud action. This explicit request waits for the recording rather than
+  taking the automatic one-second synthesis fallback. A missing recording is
+  labelled as missing; a failed attempt offers a retry. Neither is presented as
+  successful original playback. Original clips remain scoped to the exact list
+  and word in the account's private index.
+- Details scroll within the screen so long examples do not hide the controls.

@@ -156,6 +156,7 @@ import { useNativeAudio } from "@/lib/words/use-native-audio";
 import { sayNativeFirst } from "@/lib/words/native-first";
 import { playClip } from "@/lib/words/play-clip";
 import { startNativeSegment } from "@/lib/words/native-audio-segment";
+import { NativeAudioProgress, OriginalAudioControl } from "@/lib/words/original-audio-control";
 import { publicCfg } from "@/lib/config-client";
 import { AUDIO_CACHE_NAME, AudioDisk } from "@/lib/words/audio-disk";
 import { rowPriority } from "@/lib/words/audio-priority";
@@ -1096,11 +1097,14 @@ function unlockClip() {
  */
 function useSpeech(
   serverVoice = false,
-  onNativeSource?: (source: "original" | "synthetic") => void,
+  onNativeSource?: (source: "original" | "synthetic" | null) => void,
   nativeAudio = true,
 ) {
   const nativeAbort = useRef<AbortController | null>(null);
-  const native = useNativeAudio(nativeAbort);
+  const [nativeRevision, setNativeRevision] = useState(0);
+  const nativeChanged = useCallback(() => setNativeRevision((n) => n + 1), []);
+  const native = useNativeAudio(nativeAbort, undefined, nativeChanged);
+  const [originalFailed, setOriginalFailed] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [on, setOn] = useState(() => {
     try {
@@ -1377,6 +1381,7 @@ function useSpeech(
       const end = pageAudio().start({ text: p.text, voice: "words" });
       audible.current = end;
       const done: Done = (played) => {
+        if (p.originalOnly && !played) setOriginalFailed(true);
         end();
         if (audible.current === end) audible.current = null;
         unfollow();
@@ -1398,10 +1403,13 @@ function useSpeech(
         );
       };
       if (p.kind !== "word") return synthetic();
+      onNativeSource?.(null);
+      setOriginalFailed(false);
       const abort = new AbortController();
       nativeAbort.current = abort;
       sayNativeFirst({
-        on: nativeAudio,
+        on: nativeAudio || !!p.originalOnly,
+        originalOnly: p.originalOnly,
         client: native.current,
         card: p.card,
         startMs: publicCfg("words.nativeAudioStartMs"),
@@ -1447,7 +1455,7 @@ function useSpeech(
     (parts: SayPart[]) =>
       // A word with an original recording too: its synthetic clip is the
       // fallback when the recording is slow, so it must be warm.
-      wordAudio().warm(parts.filter(viaServer)),
+      wordAudio().warm(parts.filter((p) => !p.originalOnly && viaServer(p))),
     [viaServer],
   );
 
@@ -1460,7 +1468,9 @@ function useSpeech(
         cancel,
         setTimeout: (fn, ms) => setTimeout(fn, ms),
         clearTimeout: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
-        partTimeoutMs: () => publicCfg("words.partTimeoutMs"),
+        // Explicit original playback waits for a progressing download. Its
+        // own stall timeout and cancellation still apply.
+        partTimeoutMs: (part) => (part.originalOnly ? 0 : publicCfg("words.partTimeoutMs")),
         preroll: () => {
           const ms = outputBed().begin();
           if (ms > 0) unlockClip();
@@ -1579,8 +1589,25 @@ function useSpeech(
       prefetch,
       stock,
       stop,
+      nativeClient: native.current,
+      originalFailed,
     }),
-    [available, on, repeat, loop, once, hold, release, toggle, toggleRepeat, prefetch, stock, stop],
+    [
+      available,
+      on,
+      repeat,
+      loop,
+      once,
+      hold,
+      release,
+      toggle,
+      toggleRepeat,
+      prefetch,
+      stock,
+      stop,
+      nativeRevision,
+      originalFailed,
+    ],
   );
 }
 
@@ -5513,6 +5540,7 @@ export function Study({
           </button>
           <span className="font-medium">{title}</span>
           {scope?.toolbar}
+          <NativeAudioProgress progress={speech.nativeClient?.progress} />
           {nativeSource && (
             <span
               className="text-xs opacity-70"
@@ -6176,6 +6204,34 @@ export function Study({
               heads={heads.current}
               tags={tagsOf(queue[sheet])}
               status={status(queue[sheet], sheet)}
+              originalAudio={
+                <OriginalAudioControl
+                  ready={speech.nativeClient?.ready ?? false}
+                  available={
+                    speech.nativeClient?.has({
+                      listId: queue[sheet].listId,
+                      term: queue[sheet].term,
+                    }) ?? false
+                  }
+                  progress={speech.nativeClient?.progress}
+                  failed={speech.originalFailed}
+                  onPlay={() => {
+                    const it = queue[sheet];
+                    speech.once(
+                      [
+                        {
+                          kind: "word",
+                          text: it.term,
+                          lang: it.lang,
+                          card: { listId: it.listId, term: it.term },
+                          originalOnly: true,
+                        },
+                      ],
+                      true,
+                    );
+                  }}
+                />
+              }
               onClose={() => setSheet(null)}
               onListen={() => {
                 const it = queue[sheet];
@@ -6226,6 +6282,7 @@ function SlipSheet({
   heads,
   tags,
   status,
+  originalAudio,
   onClose,
   onListen,
   onCopy,
@@ -6236,6 +6293,7 @@ function SlipSheet({
   /** The word's tags (its list, the list's level): shown here only, never in the row. */
   tags: string[];
   status: React.ReactNode;
+  originalAudio?: React.ReactNode;
   onClose: () => void;
   onListen: () => void;
   onCopy: () => void;
@@ -6262,7 +6320,7 @@ function SlipSheet({
       data-slip-sheet
     >
       <div className="absolute inset-0 bg-black/30 lk-fade-in" onClick={dismiss} />
-      <div className="absolute inset-x-0 bottom-0 mx-auto max-w-lg rounded-t-2xl bg-[var(--background)] px-4 pt-2 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_30px_oklch(0_0_0/0.25)] lk-sheet-in">
+      <div className="absolute inset-x-0 bottom-0 mx-auto max-h-[calc(100dvh-env(safe-area-inset-top)-1rem)] max-w-lg overflow-y-auto overscroll-contain rounded-t-2xl bg-[var(--background)] px-4 pt-2 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_30px_oklch(0_0_0/0.25)] lk-sheet-in">
         <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-current opacity-20" />
         <div className="flex items-baseline gap-3 border-b border-black/10 dark:border-white/10 px-1 pb-3">
           <b className="text-2xl font-normal">
@@ -6285,6 +6343,7 @@ function SlipSheet({
             ))}
           </div>
         )}
+        {originalAudio}
         {/* A phrase: its register, the moment it is said in, and the note in full. */}
         {item.note && (
           <div

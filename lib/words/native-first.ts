@@ -16,9 +16,11 @@ export type NativeSource = {
 export type NativeFirstDeps = {
   /** The account's "Original recordings" switch (`words.nativeAudio`). */
   on: boolean;
+  /** Explicit original playback waits for the recording and never substitutes synthesized speech. */
+  originalOnly?: boolean;
   client: NativeSource | null;
   card?: NativeCard;
-  /** How long the recording may take to become audible (`words.nativeAudioStartMs`). */
+  /** How long automatic playback waits before synthesis (`words.nativeAudioStartMs`). */
   startMs: number;
   /** Aborted when the part is cut (card change, stop). */
   signal: AbortSignal;
@@ -43,7 +45,7 @@ export function skipsNative(d: Pick<NativeFirstDeps, "on" | "client" | "card">):
 
 export function sayNativeFirst(d: NativeFirstDeps): void {
   if (d.signal.aborted) return;
-  if (skipsNative(d)) return d.synthetic();
+  if (skipsNative(d)) return d.originalOnly ? d.done(false) : d.synthetic();
   const own = new AbortController();
   const signal = AbortSignal.any([d.signal, own.signal]);
   let started = false;
@@ -54,11 +56,14 @@ export function sayNativeFirst(d: NativeFirstDeps): void {
     settled = true;
     d.clearTimer(timer);
     own.abort();
-    d.synthetic();
+    if (d.originalOnly) d.done(false);
+    else d.synthetic();
   };
-  const timer = d.setTimer(() => {
-    if (!started) instead();
-  }, d.startMs);
+  const timer = !d.originalOnly
+    ? d.setTimer(() => {
+        if (!started) instead();
+      }, d.startMs)
+    : undefined;
   signal.addEventListener("abort", () => d.clearTimer(timer), { once: true });
   void d.client!.load(d.card!, signal).then(
     (clip) => {
