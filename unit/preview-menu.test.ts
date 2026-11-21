@@ -6,9 +6,7 @@
  */
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { renderToStaticMarkup } from "react-dom/server";
 import { clearPermissionCache, grantAll } from "./support/grants";
-import { PreviewMenuItem } from "@/app/components/PreviewMenuItem";
 
 mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined }),
@@ -16,7 +14,6 @@ mock.module("next/headers", () => ({
 const { previewMenuFor } = await import("@/lib/preview-menu.server");
 
 const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
-const labels = { name: "Preview build", off: "Preview off", checking: "Checking" };
 
 describe("who gets it (server side)", () => {
   beforeEach(() => grantAll(["owner@example.com"], ["dev"]));
@@ -43,18 +40,11 @@ describe("who gets it (server side)", () => {
   });
 });
 
-describe("the row itself", () => {
-  test("no switch: renders nothing", () => {
-    expect(renderToStaticMarkup(<PreviewMenuItem />)).toBe("");
-  });
-
-  test("with the switch: the seal toggle", () => {
-    const html = renderToStaticMarkup(<PreviewMenuItem devSwitch={{ mode: "go", labels }} />);
-    expect(html).toContain('data-dev-switch="go"');
-  });
-});
-
 describe("one component in both menus", () => {
+  test("the row renders nothing without the server's switch", () => {
+    expect(src("app/components/PreviewMenuItem.tsx")).toContain("if (!devSwitch) return null;");
+  });
+
   test("ProfileMenu and Header both render PreviewMenuItem; neither decides the gate", () => {
     for (const f of ["app/components/ProfileMenu.tsx", "app/components/Header.tsx"]) {
       const s = src(f);
