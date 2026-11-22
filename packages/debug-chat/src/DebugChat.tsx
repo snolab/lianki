@@ -3306,7 +3306,7 @@ export function DebugChat({
     return (
       <Tag data-testid="debug-chat-pending" data-state={pendingView.state}
         aria-busy={pendingFiles.some((file) => file.state === "uploading") || undefined}
-        className="pointer-events-auto flex min-w-0 items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 py-0.5 leading-snug opacity-80">
+        className="pointer-events-auto flex min-w-0 max-w-full items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 py-0.5 leading-snug opacity-80">
         <Avatar src={liveWho.src} name={liveWho.name} initialFrom={liveWho.initialFrom}
           seed={liveWho.seed} size={AVATAR_PX} hidden />
         <div className="min-w-0 flex-1 pt-px">
