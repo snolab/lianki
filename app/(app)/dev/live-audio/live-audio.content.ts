@@ -481,6 +481,82 @@ const endpoints = {
     "같은 기기의 Live PCM 경로입니다. 로컬 티켓을 가져온 뒤 시작하세요. 마이크와 모니터는 따로 켜며 합성 음원 A/B도 사용할 수 있습니다.",
   ],
 };
+// Default view explains availability without exposing setup or transport jargon.
+// The collapsed advanced section is for connection troubleshooting only.
+const availability = {
+  en: [
+    "Voice calling is not ready yet",
+    "You do not need to upload a file or configure anything now.",
+    "Advanced connection diagnostics",
+  ],
+  zh: ["实时通话暂未就绪", "你现在无需上传文件或进行设置。", "高级连接调试"],
+  hi: [
+    "वॉइस कॉल अभी तैयार नहीं है",
+    "अभी कोई फ़ाइल अपलोड करने या सेटिंग करने की ज़रूरत नहीं है।",
+    "उन्नत कनेक्शन जाँच",
+  ],
+  es: [
+    "Las llamadas de voz aún no están listas",
+    "Ahora no necesitas subir archivos ni configurar nada.",
+    "Diagnóstico avanzado de conexión",
+  ],
+  fr: [
+    "Les appels vocaux ne sont pas encore prêts",
+    "Vous n’avez aucun fichier à envoyer ni réglage à effectuer pour le moment.",
+    "Diagnostic avancé de connexion",
+  ],
+  ar: [
+    "المكالمات الصوتية ليست جاهزة بعد",
+    "لا تحتاج الآن إلى رفع ملف أو إجراء أي إعدادات.",
+    "تشخيص الاتصال المتقدم",
+  ],
+  bn: ["ভয়েস কল এখনও প্রস্তুত নয়", "এখন কোনো ফাইল আপলোড বা সেটিং করার দরকার নেই।", "উন্নত সংযোগ পরীক্ষা"],
+  pt: [
+    "As chamadas de voz ainda não estão prontas",
+    "Agora você não precisa enviar arquivos nem configurar nada.",
+    "Diagnóstico avançado de conexão",
+  ],
+  ru: [
+    "Голосовые звонки пока не готовы",
+    "Сейчас не нужно загружать файлы или что-либо настраивать.",
+    "Расширенная диагностика подключения",
+  ],
+  ur: [
+    "وائس کال ابھی تیار نہیں ہے",
+    "ابھی فائل اپ لوڈ کرنے یا کوئی ترتیب دینے کی ضرورت نہیں۔",
+    "کنکشن کی جدید تشخیص",
+  ],
+  id: [
+    "Panggilan suara belum siap",
+    "Saat ini Anda tidak perlu mengunggah berkas atau mengatur apa pun.",
+    "Diagnostik koneksi lanjutan",
+  ],
+  de: [
+    "Sprachanrufe sind noch nicht bereit",
+    "Du musst jetzt keine Datei hochladen oder etwas einrichten.",
+    "Erweiterte Verbindungsdiagnose",
+  ],
+  ja: [
+    "音声通話はまだ準備できていません",
+    "今はファイルのアップロードや設定は必要ありません。",
+    "高度な接続診断",
+  ],
+  sw: [
+    "Simu za sauti bado haziko tayari",
+    "Huhitaji kupakia faili au kuweka mipangilio yoyote sasa.",
+    "Uchunguzi wa kina wa muunganisho",
+  ],
+  mr: [
+    "व्हॉइस कॉल अद्याप तयार नाही",
+    "सध्या फाइल अपलोड करण्याची किंवा सेटिंग करण्याची गरज नाही.",
+    "प्रगत कनेक्शन तपासणी",
+  ],
+  ko: [
+    "음성 통화가 아직 준비되지 않았습니다",
+    "지금은 파일을 업로드하거나 설정할 필요가 없습니다.",
+    "고급 연결 진단",
+  ],
+};
 const dictionary = {
   key: "live-audio",
   content: Object.fromEntries([
@@ -495,6 +571,10 @@ const dictionary = {
         ),
       ),
     ]),
+    ...(["unavailableTitle", "unavailableBody", "advanced"] as const).map((key, i) => [
+      key,
+      t(Object.fromEntries(Object.entries(availability).map(([lang, row]) => [lang, row[i]]))),
+    ]),
     ...(["micSource", "micOff", "monitor"] as const).map((key, i) => [
       key,
       t(Object.fromEntries(Object.entries(endpoints).map(([lang, row]) => [lang, row[i]]))),
@@ -502,9 +582,17 @@ const dictionary = {
   ]),
 } satisfies DeclarationContent;
 const context = Object.fromEntries(
-  [...keys, "micSource", "micOff", "monitor"].map((key) => [
+  [
+    ...keys,
+    "micSource",
+    "micOff",
+    "monitor",
+    "unavailableTitle",
+    "unavailableBody",
+    "advanced",
+  ].map((key) => [
     key,
-    `Same-machine Live PCM developer panel. ${key}: explicit same-page source or monitor selection. No automatic microphone or playback; ticket stays local. Preserve PCM, CSP, A/B, and percent notation.`,
+    `Same-machine Live PCM developer panel. ${key}: default availability heading/body explain calling is not ready and require no setup; advanced opens collapsed diagnostics; other labels appear only inside diagnostics. No automatic microphone or playback; ticket stays local. Preserve PCM, CSP, A/B, and percent notation.`,
   ]),
 );
 export default {

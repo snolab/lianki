@@ -7,6 +7,15 @@ return-PCM monitor, alongside synthetic sources. This frontend is not an install
 Live provider: the compatible Rechrome transport and selected browser session must
 be prepared separately. It is not yet verified with a real conversation provider.
 
+## Availability and diagnostics
+
+The default view states that voice calling is not ready and asks for no file or
+configuration. Manual capability-file import, participant IDs, synthetic sources
+and PCM counters are connection diagnostics, hidden inside a closed advanced
+section. Closing it cancels its route and discards the imported capability.
+This is not a direct calling workflow; user-facing connection selection and
+approval must be implemented before calling it ready for ordinary use.
+
 ## Trust and transport
 
 The page checks the existing `dev` permission. A trusted local Rechrome operator
