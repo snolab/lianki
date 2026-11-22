@@ -36,6 +36,18 @@ const labels = {
   micSource: "Already-on Li microphone",
   micOff: "Enable Li mic first",
   monitor: "Monitor return (respects mute)",
+  connectIntro: "Connect an open chat on this same computer to talk.",
+  connect: "Connect",
+  waitingApproval: "Choose the chat and allow the connection on this computer's confirmation page.",
+  chooseChat: "Choose chat and allow",
+  cancelConnection: "Cancel connection",
+  beginCall: "Start talking",
+  endCall: "End call",
+  disconnect: "Disconnect",
+  inCall: "Call in progress",
+  connectionUnavailable: "Voice connection is not ready on this computer. Please try again later.",
+  connectionDenied: "The connection was declined. You can try again.",
+  connectionExpired: "The connection request expired. Please try again.",
   unavailableTitle: "Voice calling is not ready yet",
   unavailableBody: "No file upload or configuration is needed now",
   advanced: "Advanced connection diagnostics",
@@ -62,6 +74,7 @@ const labels = {
 };
 createRoot(root).render(
   <LiveAudioPanel
+    pairingBase={(globalThis as any).__livePairBase}
     labels={labels}
     settings={{ toneHz: 440, peak: 0.1, gain: 1, maxGain: 2, uiRefreshMs: 100 }}
   />,

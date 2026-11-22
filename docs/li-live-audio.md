@@ -7,22 +7,42 @@ return-PCM monitor, alongside synthetic sources. This frontend is not an install
 Live provider: the compatible Rechrome transport and selected browser session must
 be prepared separately. It is not yet verified with a real conversation provider.
 
-## Availability and diagnostics
+## Ordinary connection and diagnostics
 
-The default view states that voice calling is not ready and asks for no file or
-configuration. Manual capability-file import, participant IDs, synthetic sources
-and PCM counters are connection diagnostics, hidden inside a closed advanced
-section. Closing it cancels its route and discards the imported capability.
-This is not a direct calling workflow; user-facing connection selection and
-approval must be implemented before calling it ready for ordinary use.
+The ordinary flow is Connect, choose the chat and allow on the local confirmation
+page, then Start talking. It never asks for files, JSON, session IDs or terminal
+codes. Discovery and consent use the local pairing v2 contract; Li requests omit
+credentials, never send its cookies or a management key, and pin every response
+endpoint to the same loopback origin and exact operation path. Native local-network
+permission is preserved. Discovery allows up to 120 seconds for a human permission
+response; subsequent RPCs use five-second deadlines. Cancel remains immediate.
+
+Creating a request grants no audio access. After explicit local approval, the
+one-use ticket opens the selected chat's PCM transport, including receiving its
+output. Start talking separately enables the already-on Li mic source and physical
+return monitor. It is not a promise that all target audio capture waits for that
+button. Disconnect, Cancel and navigation revoke this request and close its route.
+
+The local confirmation link is a specific application action: only the validated
+loopback approval endpoint is marked as already-confirmed for the generic outbound
+link guard. It still opens without an opener/referrer, and still requires the local
+authenticated consent page and native network permission. Arbitrary hosts, ports,
+paths, credentials, fragments or additional query parameters cannot use that path.
+
+Manual capability-file import, participant IDs, synthetic sources and PCM counters
+remain inside closed advanced diagnostics. Closing diagnostics cancels a manual
+route, but inspecting and closing diagnostics never ends an ordinary call. Service
+unavailability, denial and expiry are shown in ordinary language with retry.
 
 ## Trust and transport
 
-The page checks the existing `dev` permission. A trusted local Rechrome operator
-mints a 30-second, one-use, session/page-generation-bound ticket using its existing
-management connection. The browser imports that JSON file locally: it is never
-uploaded, persisted, placed in a URL or rendered as text. No management key goes to
-the page and there is no unauthenticated mint route.
+The page checks the existing `dev` permission. The trusted local Rechrome companion authenticates the operator and displays the
+requesting website and selected chat. Only that explicit local consent mints a
+30-second, one-use, session/page-generation-bound capability. The browser receives
+it through the origin-bound request status, never a file in the ordinary flow.
+No capability is persisted, placed in a URL or rendered as text. No management key
+goes to the page and there is no unauthenticated mint route. Optional manual-file
+import exists only inside advanced diagnostics and never uploads the file.
 
 The browser validates the exact client Origin, expiry, participants, format, frame
 size, byte window and `ws://127.0.0.1:<port>/stream` endpoint. The gateway independently
@@ -63,7 +83,7 @@ has no dedicated anti-alias filter. Gains are bounded and mixed samples saturate
 before PCM encoding. Removing a source/gain change retracts an unsent stale mix frame
 without closing other sources or the connection; already sent audio is not retractable.
 
-The panel shows the ticket's exact source/target IDs and separate source switches,
+The advanced panel shows the ticket's exact source/target IDs and separate source switches,
 gains, Start, End input, Stop and frame/clipping counters. Its two optional synthetic
 sources use 16 kHz mono and 48 kHz stereo. Selecting the Li microphone switches the
 synthetic sources off (they can be explicitly re-enabled). The microphone must
@@ -74,11 +94,13 @@ clear subscribers immediately; variable capture chunks become 20 ms frames with 
 160 ms freshness/queue bound, including incomplete frames. Removing the route clears
 its buffer. There is no recording or upload outside the selected PCM route.
 
-Monitor is a separate, default-off user gesture. Returned PCM alone reaches the
+Monitor is a separate, default-off user gesture (Start talking in the ordinary flow). Returned PCM alone reaches the
 shared Web Audio context; speechSynthesis is not scraped or redirected. The monitor
 uses the existing `play` audio priority, yields to Li read-aloud, respects its mute,
 and registers playback with page-audio so the existing AEC-off capture hold and echo
-tail still apply. Hidden pages stop output; context/resume failure closes the route
+tail still apply. Exact digital silence skips playback and ownership entirely, so
+it cannot hold the mic or interrupt another player; even one-LSB nonzero audio is
+retained. Hidden pages stop output; context/resume failure closes the route
 instead of silently retaining audio ownership. Re-enabling requires a user action;
 no queued audio is replayed after mute or priority loss. Start/Stop/navigation manage
 only this route, never other capture or audio sessions. A same-page hot-loaded mic
@@ -89,8 +111,10 @@ Configuration keys `voice.liveToneHz`, `voice.liveTonePeakPct`, `voice.liveGainP
 
 ## Local setup and remaining dependency
 
-Rechrome #110 and #112 are currently unmerged and unreleased; the stock installed
-CLI/daemon is **not verified** to support this protocol. Do not auto-install,
+The released core and the interactive pairing component are separate requirements.
+The core release alone does not implement the interactive confirmation flow. The
+installed CLI/daemon must be verified to include pairing v2 and its trusted local
+companion setup before the ordinary Connect flow is called ready. Do not auto-install,
 restart a daemon, or present this frontend as live because synthetic tests passed.
 After an approved compatible update and bridge installation in the selected stable
 session, the trusted local operator uses:
@@ -101,7 +125,10 @@ rech audio stream ticket --source <li-source> --destination <stable-session> \
   --client-origin https://<exact-Li-origin> --ticket-file <private-ticket.json>
 ```
 
-Import the ticket locally, select the intended sources, press Start, and grant the
+The command above is for advanced transport diagnostics only. Ordinary users use
+Connect and the local chat confirmation page, with companion initialization handled
+by the trusted installation path. For diagnostics, import the ticket locally, select
+the intended sources, press Start, and grant the
 browser's standard local-network permission if requested. The one-use ticket lasts
 30 seconds; mint a new one after expiry or a failed attempt. For a real audition,
 the user must first enable Li's microphone, explicitly select it here and opt into
@@ -126,3 +153,22 @@ The Rechrome transport and FFmpeg adapter are developed in
 [Rechrome #112](https://github.com/snomiao/rechrome/pull/112), stacked on its earlier
 media bridge. CLI stdin/stdout remain raw PCM; diagnostics go to stderr. A ticket
 file is control authorization, not audio file feed/drain.
+
+### Interactive consent verification
+
+`bun scripts/qa/qa-voice-connection.ts --pairing-module <audio-pairing.ts> --gateway-module <audio-stream-server.ts>`
+runs the real panel against compatible local pairing/gateway modules. Optional
+`--chrome --origin <hosted HTTPS origin>` proves HTTP permission/CORS and the popup
+with the app's outbound-link guard present. The isolated context pregrants native
+LNA; a separate deterministic delayed-permission test covers waiting beyond five
+seconds and immediate cancellation. The browser smoke does not prove a human
+actually waited at a native prompt.
+
+The local operator and selected chat are synthetic fixtures; no real provider,
+microphone or audible output is used. The checks cover HttpOnly operator consent,
+actual chat-title selection, pending cancel/retry, silence before Li Start talking,
+explicit synthetic mic/monitor, diagnostics inspection and server-side revocation.
+Disconnect affects this audio link only; it preserves the existing Li mic session
+and does not claim to end a separate model call in the selected browser chat.
+`unit/voice-pair.test.ts` covers pinned endpoints, response bounds, stale or invalid
+identity, denied/expired consent, delayed discovery and cancellation.
