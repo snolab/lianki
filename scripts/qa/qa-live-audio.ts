@@ -234,6 +234,12 @@ try {
     timeout: 45000,
   });
   await page.addScriptTag({ content: await built.outputs[0].text() });
+  await page.getByTestId("live-advanced-toggle").waitFor();
+  check(
+    !(await page.getByTestId("live-ticket").isVisible()),
+    "default view never asks for a ticket or file",
+  );
+  await page.getByTestId("live-advanced-toggle").click();
   await page.getByTestId("live-ticket").waitFor();
   const importTicket = async (value: LiveTicket) =>
     page.getByTestId("live-ticket").setInputFiles({

@@ -307,104 +307,127 @@ export default function LiveAudioPanel({
   };
   return (
     <section data-testid="live-audio-panel" className="space-y-4">
-      <p>{t.intro}</p>
-      <label className="block">
-        {t.ticket}
-        <input
-          data-testid="live-ticket"
-          type="file"
-          accept="application/json,.json"
-          disabled={busy}
-          onChange={(e) => {
-            void importTicket(e.target.files?.[0]);
-            e.target.value = "";
-          }}
-        />
-      </label>
-      <dl>
-        <dt>{t.source}</dt>
-        <dd data-testid="live-source">{route.source}</dd>
-        <dt>{t.target}</dt>
-        <dd data-testid="live-target">{route.target}</dd>
-      </dl>
-      <label className="block">
-        <SealSwitch
-          aria-label={t.micSource}
-          data-testid="live-route-mic"
-          checked={controls.mic}
-          disabled={!micOn && !controls.mic}
-          onClick={() =>
-            change({ mic: !controls.mic, ...(!controls.mic ? { a: false, b: false } : {}) })
+      <div role="status" className="space-y-2">
+        <h2>{t.unavailableTitle}</h2>
+        <p>{t.unavailableBody}</p>
+      </div>
+      <details
+        data-testid="live-advanced"
+        onToggle={(event) => {
+          if (!event.currentTarget.open) {
+            stop();
+            setTicket(null);
           }
-        />
-        {t.micSource} {!micOn && <span>{t.micOff}</span>}
-      </label>
-      <label className="block">
-        <SealSwitch
-          aria-label={t.monitor}
-          data-testid="live-monitor"
-          checked={monitorOn}
-          disabled={state !== "ready" && state !== "input-ended"}
-          onClick={() => toggleMonitor(!monitorOn)}
-        />
-        {t.monitor}
-      </label>
-      {(["a", "b"] as const).map((key) => (
-        <fieldset key={key} className="flex flex-wrap items-center gap-3">
-          <label>
-            <SealSwitch
-              aria-label={key === "a" ? t.sourceA : t.sourceB}
-              data-testid={`live-route-${key}`}
-              checked={controls[key]}
-              onClick={() => change({ [key]: !controls[key] })}
-            />
-            {key === "a" ? t.sourceA : t.sourceB}
-          </label>
-          <label>
-            {t.gain}
+        }}
+      >
+        <summary data-testid="live-advanced-toggle">{t.advanced}</summary>
+        <div className="space-y-4 pt-4">
+          <p>{t.intro}</p>
+          <label className="block">
+            {t.ticket}
             <input
-              data-testid={`live-gain-${key}`}
-              type="range"
-              min={0}
-              max={settings.maxGain * 100}
-              value={controls[key === "a" ? "aGain" : "bGain"] * 100}
-              onChange={(e) =>
-                change({ [key === "a" ? "aGain" : "bGain"]: Number(e.target.value) / 100 })
+              data-testid="live-ticket"
+              type="file"
+              accept="application/json,.json"
+              disabled={busy}
+              onChange={(e) => {
+                void importTicket(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <dl>
+            <dt>{t.source}</dt>
+            <dd data-testid="live-source">{route.source}</dd>
+            <dt>{t.target}</dt>
+            <dd data-testid="live-target">{route.target}</dd>
+          </dl>
+          <label className="block">
+            <SealSwitch
+              aria-label={t.micSource}
+              data-testid="live-route-mic"
+              checked={controls.mic}
+              disabled={!micOn && !controls.mic}
+              onClick={() =>
+                change({ mic: !controls.mic, ...(!controls.mic ? { a: false, b: false } : {}) })
               }
             />
+            {t.micSource} {!micOn && <span>{t.micOff}</span>}
           </label>
-        </fieldset>
-      ))}
-      <div className="flex gap-3">
-        <button data-testid="live-start" disabled={!ticket || busy} onClick={() => void start()}>
-          {t.start}
-        </button>
-        <button data-testid="live-stop" disabled={!busy} onClick={stop}>
-          {t.stop}
-        </button>
-        <button
-          data-testid="live-end-input"
-          disabled={state !== "ready"}
-          onClick={() => {
-            endRequested.current = true;
-          }}
-        >
-          {t.endInput}
-        </button>
-      </div>
-      <p>
-        {t.state}:{" "}
-        <span data-testid="live-state">{t[state === "input-ended" ? "inputEnded" : state]}</span>
-      </p>
-      <dl>
-        {Object.entries(stats).map(([key, value]) => (
-          <div key={key}>
-            <dt>{t[key]}</dt>
-            <dd data-testid={`live-${key}`}>{value}</dd>
+          <label className="block">
+            <SealSwitch
+              aria-label={t.monitor}
+              data-testid="live-monitor"
+              checked={monitorOn}
+              disabled={state !== "ready" && state !== "input-ended"}
+              onClick={() => toggleMonitor(!monitorOn)}
+            />
+            {t.monitor}
+          </label>
+          {(["a", "b"] as const).map((key) => (
+            <fieldset key={key} className="flex flex-wrap items-center gap-3">
+              <label>
+                <SealSwitch
+                  aria-label={key === "a" ? t.sourceA : t.sourceB}
+                  data-testid={`live-route-${key}`}
+                  checked={controls[key]}
+                  onClick={() => change({ [key]: !controls[key] })}
+                />
+                {key === "a" ? t.sourceA : t.sourceB}
+              </label>
+              <label>
+                {t.gain}
+                <input
+                  data-testid={`live-gain-${key}`}
+                  type="range"
+                  min={0}
+                  max={settings.maxGain * 100}
+                  value={controls[key === "a" ? "aGain" : "bGain"] * 100}
+                  onChange={(e) =>
+                    change({ [key === "a" ? "aGain" : "bGain"]: Number(e.target.value) / 100 })
+                  }
+                />
+              </label>
+            </fieldset>
+          ))}
+          <div className="flex gap-3">
+            <button
+              data-testid="live-start"
+              disabled={!ticket || busy}
+              onClick={() => void start()}
+            >
+              {t.start}
+            </button>
+            <button data-testid="live-stop" disabled={!busy} onClick={stop}>
+              {t.stop}
+            </button>
+            <button
+              data-testid="live-end-input"
+              disabled={state !== "ready"}
+              onClick={() => {
+                endRequested.current = true;
+              }}
+            >
+              {t.endInput}
+            </button>
           </div>
-        ))}
-      </dl>
-      {error && <p role="alert">{t.error}</p>}
+          <p>
+            {t.state}:{" "}
+            <span data-testid="live-state">
+              {t[state === "input-ended" ? "inputEnded" : state]}
+            </span>
+          </p>
+          <dl>
+            {Object.entries(stats).map(([key, value]) => (
+              <div key={key}>
+                <dt>{t[key]}</dt>
+                <dd data-testid={`live-${key}`}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {error && <p role="alert">{t.error}</p>}
+        </div>
+      </details>
     </section>
   );
 }
