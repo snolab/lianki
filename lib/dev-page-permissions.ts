@@ -23,6 +23,7 @@ export const DEV_PAGE_PERMISSION: Record<string, Permission> = {
   lian: "dev",
   mails: "dev",
   "live-frontends": "dev",
+  "live-audio": "dev",
   "new-order": "dev",
   preview: "dev",
   roadmap: "dev",

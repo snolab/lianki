@@ -19,6 +19,7 @@ export type DevPageName =
   | "giftCodes"
   | "levels"
   | "lian"
+  | "liveAudio"
   | "liveFrontends"
   | "mails"
   | "membership"

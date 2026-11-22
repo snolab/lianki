@@ -227,6 +227,24 @@ const dictionary = {
       mr: "दररोज एक अँकर: त्या दिवसाच्या सॉल्ट घातलेल्या अभ्यास-दिवस पानांचे Merkle रूट, आदल्या दिवसाशी जोडलेले. रोजचा cron ते लिहितो; इथे तुमच्या ब्राउझरमध्ये तपासले जाते.",
       ko: "하루에 앵커 하나: 그날 솔트를 더한 학습일 리프들의 Merkle 루트로, 전날과 체인으로 이어집니다. 매일 cron이 기록하고, 여기서 브라우저가 검증합니다.",
     }),
+    liveAudio: t({
+      en: "Live audio routes",
+      zh: "Live 音频路由",
+      hi: "लाइव ऑडियो रूट",
+      es: "Rutas de audio en vivo",
+      fr: "Routage audio en direct",
+      ar: "مسارات الصوت المباشر",
+      bn: "লাইভ অডিও রুট",
+      pt: "Rotas de áudio ao vivo",
+      ru: "Маршруты живого аудио",
+      ur: "لائیو آڈیو راستے",
+      id: "Rute audio langsung",
+      de: "Live-Audiorouten",
+      ja: "ライブ音声ルート",
+      sw: "Njia za sauti moja kwa moja",
+      mr: "थेट ऑडिओ मार्ग",
+      ko: "라이브 오디오 경로",
+    }),
     liveFrontends: t({
       en: "Custom frontends",
       zh: "自定义前端",
@@ -506,6 +524,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
   lian: "Name of the internal page (tab title and main heading) showing the study ledger: a hash-chained daily record of study days. A noun phrase; ledger as in a book of records.",
   lianIntro:
     "Paragraph under the study ledger page heading explaining what each row is. Keep Merkle and cron as is; anchor = one daily checkpoint record; salted = mixed with a secret random value.",
+  liveAudio:
+    "Name of the internal same-machine synthetic PCM routing panel; tab title and page heading. It does not open a microphone or speaker. A short noun phrase; preserve PCM or Live when natural.",
   liveFrontends:
     "Name of the internal page (tab title and main heading) with the allowlist of users who may run their own frontend (their own dev server) on lianki.com. A plural noun phrase.",
   dashboard:
