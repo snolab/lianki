@@ -87,6 +87,7 @@ export function browserLiveMonitor(
     allowed: () =>
       (d.readAloud?.() ?? getKey("lk:debug-chat-speak") !== "0") &&
       page.visibilityState === "visible",
+    // Match the playback window: another context must not own this monitor.
     owner: (onYield) =>
       audioOwner({ target, id: audioOwnerId("live-monitor"), prio: AUDIO_PRIO.play, onYield }),
     play(samples, format) {

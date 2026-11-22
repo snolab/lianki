@@ -246,6 +246,7 @@ test("browser monitor refuses failed resume/closed context and stops on page hid
     destination: {},
   } as unknown as AudioContext;
   const format = { sampleRate: 16000 as const, channels: 1 as const, format: "s16le" as const };
+  // This fixture owns its preference and event target regardless of full-suite order.
   const setup = () =>
     browserLiveMonitor({
       context: () => context,
