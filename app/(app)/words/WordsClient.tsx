@@ -4033,6 +4033,7 @@ export function Study({
   const nativeText = useIntlayer("words-native-audio");
   useEffect(() => setNativeSource(null), [row]);
   const speech = useSpeech(serverVoice, setNativeSource, nativeAudio);
+  const nativeProgress = speech.nativeClient?.progress;
   const { locale } = useLocale();
   /** What a tap, a hold or the focus reads: word → example → meaning (the row's order). */
   const partsOf = useCallback(
@@ -5540,17 +5541,6 @@ export function Study({
           </button>
           <span className="font-medium">{title}</span>
           {scope?.toolbar}
-          <NativeAudioProgress progress={speech.nativeClient?.progress} />
-          {nativeSource && (
-            <span
-              className="text-xs opacity-70"
-              role="status"
-              aria-live="polite"
-              data-native-audio-source={nativeSource}
-            >
-              {nativeSource === "original" ? nativeText.original : nativeText.synthetic}
-            </span>
-          )}
           <button
             ref={settingsBtn}
             // Tapped seven times fast for debug: iOS must not turn that into a
@@ -5603,6 +5593,28 @@ export function Study({
             )}
           </span>
         </div>
+        {(nativeSource || (nativeProgress && nativeProgress.phase !== "idle")) && (
+          // Audio feedback floats below the toolbar; downloads and source
+          // changes must not wrap its controls or move the study list.
+          <div
+            className="pointer-events-none absolute inset-x-3 top-full flex justify-end sm:inset-x-8"
+            data-native-audio-status
+          >
+            <div className="lk-glass flex min-w-0 max-w-full items-center gap-3 rounded-b-lg px-2 py-1">
+              <NativeAudioProgress progress={nativeProgress} />
+              {nativeSource && (
+                <span
+                  className="min-w-0 truncate text-xs opacity-70"
+                  role="status"
+                  aria-live="polite"
+                  data-native-audio-source={nativeSource}
+                >
+                  {nativeSource === "original" ? nativeText.original : nativeText.synthetic}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         {syncError && (
           <div className="text-red-500 text-sm mt-1">
             {fill(text.couldntLoadMore.value, { error: reasonText(whyText, syncError) })}
