@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { createLiveMic, liveMic, liveMicFrames } from "../packages/debug-chat/src/live-mic";
+import { audioOwner } from "../packages/debug-chat/src/audio-claim";
 import { browserLiveMonitor, createLiveMonitor } from "../packages/debug-chat/src/live-monitor";
 import { createMic, type VadEvents } from "../packages/debug-chat/src/mic";
 import { encodeLivePcm } from "../packages/debug-chat/src/live-audio-core";
@@ -217,6 +218,7 @@ test("browser monitor refuses failed resume/closed context and stops on page hid
   const target = new EventTarget(),
     page = Object.assign(new EventTarget(), { visibilityState: "visible" });
   let state = "running",
+    readable = true,
     refuse = true,
     nodes = 0,
     stops = 0;
@@ -244,8 +246,14 @@ test("browser monitor refuses failed resume/closed context and stops on page hid
     destination: {},
   } as unknown as AudioContext;
   const format = { sampleRate: 16000 as const, channels: 1 as const, format: "s16le" as const };
+  // This fixture owns its preference and event target regardless of full-suite order.
   const setup = () =>
-    browserLiveMonitor({ context: () => context, window: target, document: page });
+    browserLiveMonitor({
+      context: () => context,
+      window: target,
+      document: page,
+      readAloud: () => readable,
+    });
   let monitor = setup();
   try {
     await expect(
@@ -268,7 +276,12 @@ test("browser monitor refuses failed resume/closed context and stops on page hid
   expect(nodes).toBe(0);
   state = "running";
   monitor = setup();
+  const higher = audioOwner({ target, id: "test-higher", prio: 99 });
   try {
+    higher.claim();
+    await monitor.consume(new ArrayBuffer(640), format, new AbortController().signal);
+    expect(nodes).toBe(0);
+    higher.release();
     const playing = monitor.consume(new ArrayBuffer(640), format, new AbortController().signal);
     await Promise.resolve();
     await Promise.resolve();
@@ -279,7 +292,12 @@ test("browser monitor refuses failed resume/closed context and stops on page hid
     expect(stops).toBe(1);
     await monitor.consume(new ArrayBuffer(640), format, new AbortController().signal);
     expect(nodes).toBe(1);
+    page.visibilityState = "visible";
+    readable = false;
+    await monitor.consume(new ArrayBuffer(640), format, new AbortController().signal);
+    expect(nodes).toBe(1);
   } finally {
+    higher.dispose();
     monitor.dispose();
   }
 });

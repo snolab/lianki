@@ -92,20 +92,37 @@ test("missing inference still assembles a bounded raw turn", async () => {
 test("continue waits for the bounded deadline then sends once without another model call", async () => {
   const sent: any[] = [];
   let calls = 0;
+  let delivered!: () => void;
+  const delivery = new Promise<void>((resolve) => {
+    delivered = resolve;
+  });
   const r = createChatReceiver({
-    bridge: { accept: async (e: any) => sent.push(e) },
+    bridge: {
+      accept: async (e: any) => {
+        sent.push(e);
+        delivered();
+      },
+    },
     requestId: () => "test",
+    // Keep logical turn age before its limit even when CI delays the quiet timer.
+    // The maximum timer must force delivery; finish() must not do it for this test.
+    now: () => 0,
     config: { quietMs: 1, maxWaitMs: 8 },
     prepare: async () => {
       calls++;
       return { action: "forward", turn: "continue" };
     },
   });
-  await r.accept(voice("a", "please fix the"));
-  await new Promise((done) => setTimeout(done, 20));
-  await r.finish();
-  expect(sent).toHaveLength(1);
-  expect(calls).toBe(1);
+  try {
+    await r.accept(voice("a", "please fix the"));
+    await delivery;
+    expect(sent).toHaveLength(1);
+    expect(calls).toBe(1);
+    await r.finish();
+    expect(sent).toHaveLength(1);
+  } finally {
+    r.stop();
+  }
 });
 
 test("slow UI polish never delays a complete raw instruction or loses it when new speech arrives", async () => {

@@ -71,6 +71,7 @@ export function createLiveMonitor(d: MonitorDeps) {
 export function browserLiveMonitor(
   d: {
     context?: () => AudioContext | null;
+    readAloud?: () => boolean;
     window?: EventTarget;
     document?: EventTarget & { visibilityState: string };
   } = {},
@@ -83,9 +84,12 @@ export function browserLiveMonitor(
   void resumed.catch(() => {}); // The consumer reports refusal; no unhandled promise before PCM arrives.
   const monitor = createLiveMonitor({
     // Same read-aloud preference as voice.ts, without instantiating a voice session.
-    allowed: () => getKey("lk:debug-chat-speak") !== "0" && page.visibilityState === "visible",
+    allowed: () =>
+      (d.readAloud?.() ?? getKey("lk:debug-chat-speak") !== "0") &&
+      page.visibilityState === "visible",
+    // Match the playback window: another context must not own this monitor.
     owner: (onYield) =>
-      audioOwner({ id: audioOwnerId("live-monitor"), prio: AUDIO_PRIO.play, onYield }),
+      audioOwner({ target, id: audioOwnerId("live-monitor"), prio: AUDIO_PRIO.play, onYield }),
     play(samples, format) {
       const buffer = context.createBuffer(
         format.channels,
