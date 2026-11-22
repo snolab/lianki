@@ -1598,9 +1598,14 @@ html[data-motion="off"] *::after {
 /* ── The /reader reader v2 (app/(app)/reader/[id]/ReaderV2.tsx) ─────────────────
  * The book as it is, flat: paragraphs on the page, no boxes. Sizes in em so
  * the `read` text size (.lk-fs-read) scales the book and its spacing. */
-/* Fixed selection cards share the reading area, clear of the resizable chat dock. */
+/* Fixed selection cards share the reading area, clear of navigation and the chat dock. */
 [data-select-card] {
+  left: calc(0.75rem + var(--nav-w, 0px));
   right: calc(0.75rem + var(--lk-chat-side, 0px));
+}
+[dir="rtl"] [data-select-card] {
+  left: 0.75rem;
+  right: calc(0.75rem + var(--nav-w, 0px) + var(--lk-chat-side, 0px));
 }
 .lk-book {
   font-size: calc(1.125rem * var(--lk-fs-k, 1));
