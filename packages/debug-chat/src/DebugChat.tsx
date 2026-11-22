@@ -3314,7 +3314,7 @@ export function DebugChat({
           {attached && <div className="mb-0.5 flex min-w-0 items-start gap-1 border-s-2 ps-1.5" style={{ borderInlineStartColor: "oklch(0.6 0.11 22.3 / 0.75)" }}>
             <button type="button" data-testid="debug-chat-candidate" title={t.attachSelection}
               onPointerDown={(e) => e.preventDefault()} onClick={() => submit(true)}
-              className="min-w-0 flex-1 whitespace-pre-wrap break-words text-start fs-11 text-gray-600 dark:text-gray-300">
+              className="min-w-0 flex-1 truncate text-start fs-11 text-gray-600 dark:text-gray-300">
               {attached.selection}
             </button>
             <button type="button" data-testid="debug-chat-attached-remove" aria-label={t.attachRemove}
