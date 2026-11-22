@@ -113,7 +113,11 @@
     "./embed/partner-client": "./src/embed/partner-client.ts",
     "./embed/partner-embed": "./src/embed/partner-embed.tsx",
     "./attach": "./src/attach.ts",
-    "./AttachMenu": "./src/AttachMenu.tsx"
+    "./AttachMenu": "./src/AttachMenu.tsx",
+    "./live-mic": "./src/live-mic.ts",
+    "./live-monitor": "./src/live-monitor.ts",
+    "./live-audio-core": "./src/live-audio-core.ts",
+    "./live-audio-client": "./src/live-audio-client.ts"
   },
   "description": "The debug chat widget: chat box, pill, menu, pairing modal, mic, hot-load host. No imports from the app; Lianki passes what it needs as props.",
   "private": true,

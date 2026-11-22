@@ -444,6 +444,15 @@ export const SUITES = [
     args: ["scripts/qa/qa-read-sel-one.ts"],
     sensitive: true,
   },
+  // Same-machine synthetic PCM: no device access or external model calls.
+  {
+    name: "LIVE AUDIO",
+    id: "live-audio",
+    paths: ["app/(app)/dev/live-audio/**", "packages/debug-chat/src/live-audio-*.ts"],
+    cmd: "bun",
+    args: ["scripts/qa/qa-live-audio.ts"],
+    sensitive: false,
+  },
   // Serverless: "New version · Refresh" only when the current page's code changed.
   {
     name: "SMART REFRESH",

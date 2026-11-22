@@ -14,6 +14,7 @@
  * the rolling chunks, and its final is handed to `upload` as `info.local`,
  * which falls back to /api/debug/stt when it fails.
  */
+import { liveMic } from "./live-mic";
 import { chatExtra } from "./chat-ui-locales";
 import type { UttMarks } from "./latency";
 import type { BeginOpts, LocalFinal, LocalPart, LocalUtt } from "./local-stt";
@@ -1127,6 +1128,7 @@ export function createMic(d: {
       ep.quiet = 0;
       ep.partial = "";
       enrolling = d.enrol?.active() ?? false;
+      if (enrolling || shadow) liveMic().publish(null);
       if (enrolling) {
         // An enrolment sentence: streamed (for the end of speech and its text), nothing else.
         gated = false;
@@ -1155,6 +1157,10 @@ export function createMic(d: {
       // within 0.2 s even while the transcript has not changed yet.
       publishLevel(held || guarded ? 0 : levelOf(frame, prob));
       if (!held && !guarded && !shadow) d.adapt?.frame(frame, prob, state === "capturing");
+      // Opt-in Live routes see only public capture, never held/cue/shadow/enrolment audio.
+      liveMic().publish(
+        !held && !guarded && !shadow && !enrolling && !d.enrol?.active() ? frame : null,
+      );
       // The noise floor: Silero's probability on what is heard between utterances.
       if (prob !== undefined && state === "listening" && !guarded)
         ep.floor += (prob - ep.floor) * FLOOR_ALPHA;
@@ -1566,6 +1572,7 @@ export function createMic(d: {
     set("listening");
   };
   async function off() {
+    liveMic().publish(null);
     if (state === "off") return;
     gen++;
     clearTimer(cap);
@@ -1596,6 +1603,7 @@ export function createMic(d: {
     if (held === on) return;
     held = on;
     if (on) {
+      liveMic().publish(null);
       tainted = true;
       clearTimer(cap);
       dropUtt();
