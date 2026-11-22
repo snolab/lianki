@@ -17,6 +17,10 @@ import {
   type LiveSourceFrame,
 } from "@lianki/debug-chat/live-audio-core";
 
+import { liveMic, liveMicFrames } from "@lianki/debug-chat/live-mic";
+import { browserLiveMonitor } from "@lianki/debug-chat/live-monitor";
+import { pageAudio } from "@lianki/debug-chat/page-audio";
+
 type Settings = {
   toneHz: number;
   peak: number;
@@ -25,7 +29,7 @@ type Settings = {
   uiRefreshMs: number;
 };
 const ZERO = { inputFrames: 0, outputFrames: 0, clipped: 0 };
-/** Explicit synthetic route, never a microphone/physical speaker or automatic connection. */
+/** Explicit route; device endpoints remain independently opt-in. */
 export default function LiveAudioPanel({
   labels: t,
   settings,
@@ -39,11 +43,17 @@ export default function LiveAudioPanel({
     [error, setError] = useState(false),
     [stats, setStats] = useState(ZERO);
   const [controls, setControls] = useState({
+    mic: false,
     a: true,
     b: false,
     aGain: settings.gain,
     bGain: settings.gain,
   });
+  const [micOn, setMicOn] = useState(false),
+    [monitorOn, setMonitorOn] = useState(false);
+  const micFrames = useRef(liveMicFrames());
+  const removeMic = useRef<(() => void) | null>(null);
+  const monitor = useRef<ReturnType<typeof browserLiveMonitor> | null>(null);
   const frameAbort = useRef<AbortController | null>(null);
   const control = useRef(controls);
   control.current = controls;
@@ -63,6 +73,11 @@ export default function LiveAudioPanel({
   };
   const dispose = () => {
     generation.current++;
+    removeMic.current?.();
+    removeMic.current = null;
+    micFrames.current.clear();
+    monitor.current?.dispose();
+    monitor.current = null;
     frameAbort.current?.abort();
     clearInput();
     clearStats();
@@ -72,15 +87,25 @@ export default function LiveAudioPanel({
   const stop = () => {
     dispose();
     setState("closed");
+    setMonitorOn(false);
     setStats({ ...totals.current });
   };
   useEffect(() => {
+    const syncMic = () => {
+      const on = pageAudio().mic();
+      setMicOn(on);
+      if (!on) micFrames.current.clear();
+    };
+    syncMic();
+    const unwatch = pageAudio().subscribe(syncMic);
     const leave = () => {
       dispose();
+      setMonitorOn(false);
       setState("closed");
     };
     window.addEventListener("pagehide", leave);
     return () => {
+      unwatch();
       window.removeEventListener("pagehide", leave);
       dispose();
     };
@@ -90,6 +115,18 @@ export default function LiveAudioPanel({
     control.current = next;
     setControls(next);
     frameAbort.current?.abort();
+    if (patch.mic !== undefined) micFrames.current.clear();
+  };
+  const toggleMonitor = (on: boolean) => {
+    monitor.current?.dispose();
+    monitor.current = null;
+    try {
+      if (on) monitor.current = browserLiveMonitor();
+      setMonitorOn(on);
+    } catch {
+      setMonitorOn(false);
+      setError(true);
+    }
   };
   const busy = state !== "closed";
   const importTicket = async (file: File | undefined) => {
@@ -122,6 +159,13 @@ export default function LiveAudioPanel({
       totals.current = { ...ZERO };
       setStats({ ...ZERO });
       const aliases = liveAliases(opened);
+      let micId = "li-mic";
+      const reserved = new Set([opened.sourceId, opened.destinationId, ...Object.values(aliases)]);
+      while (reserved.has(micId)) micId += "_";
+      micFrames.current.clear();
+      removeMic.current = liveMic().subscribe((frame) => {
+        micFrames.current.push(control.current.mic && pageAudio().mic() ? frame : null);
+      });
       let returned: LiveSourceFrame | null = null,
         frameIndex = 0,
         writing = false;
@@ -136,6 +180,10 @@ export default function LiveAudioPanel({
             samples: decodeLivePcm(frame.pcm),
           };
           totals.current.outputFrames++;
+          return monitor.current?.consume(frame.pcm, opened.output, signal).catch((cause) => {
+            if (mine === generation.current && !signal.aborted) setError(true);
+            throw cause;
+          });
         },
         changed(next) {
           if (mine !== generation.current) return;
@@ -143,6 +191,12 @@ export default function LiveAudioPanel({
           if (next === "draining" || next === "closed") clearInput();
           if (next === "closed") {
             clearStats();
+            removeMic.current?.();
+            removeMic.current = null;
+            micFrames.current.clear();
+            monitor.current?.dispose();
+            monitor.current = null;
+            setMonitorOn(false);
             connection.current = null;
             setStats({ ...totals.current });
           }
@@ -190,8 +244,18 @@ export default function LiveAudioPanel({
             source(aliases.a, 16000, 1, settings.toneHz),
             source(aliases.b, 48000, 2, settings.toneHz * 2),
           ];
+          if (c.mic)
+            sources.push({
+              id: micId,
+              origin: opened.sourceId,
+              format: { sampleRate: 16000, channels: 1, format: "s16le" },
+              samples: pageAudio().mic() ? micFrames.current.take() : new Float32Array(320),
+            });
           if (returned) sources.push(returned);
           const routes = [
+            ...(c.mic
+              ? [{ sourceId: micId, destinationId: opened.destinationId, gain: settings.gain }]
+              : []),
             ...(c.a
               ? [{ sourceId: aliases.a, destinationId: opened.destinationId, gain: c.aGain }]
               : []),
@@ -258,6 +322,28 @@ export default function LiveAudioPanel({
         <dt>{t.target}</dt>
         <dd data-testid="live-target">{route.target}</dd>
       </dl>
+      <label className="block">
+        <input
+          data-testid="live-route-mic"
+          type="checkbox"
+          checked={controls.mic}
+          disabled={!micOn && !controls.mic}
+          onChange={(e) =>
+            change({ mic: e.target.checked, ...(e.target.checked ? { a: false, b: false } : {}) })
+          }
+        />
+        {t.micSource} {!micOn && <span>{t.micOff}</span>}
+      </label>
+      <label className="block">
+        <input
+          data-testid="live-monitor"
+          type="checkbox"
+          checked={monitorOn}
+          disabled={state !== "ready" && state !== "input-ended"}
+          onChange={(e) => toggleMonitor(e.target.checked)}
+        />
+        {t.monitor}
+      </label>
       {(["a", "b"] as const).map((key) => (
         <fieldset key={key} className="flex flex-wrap items-center gap-3">
           <label>

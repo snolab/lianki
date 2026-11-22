@@ -269,6 +269,34 @@ try {
     "only source B remains in actual PCM after source A cancellation",
   );
   check(inputs > before, "removing source A leaves source B and the route running");
+  check(await page.getByTestId("live-route-mic").isDisabled(), "mic route cannot open a device");
+  check(
+    (await page.evaluate(() => (globalThis as any).__livePhysicalOutput)) === 0,
+    "monitor is silent by default",
+  );
+  await page.evaluate(() => (globalThis as any).__liveFixtureMic(true));
+  await page.getByTestId("live-route-mic").check();
+  await until(() => amplitude(660) > 0.06 && amplitude(880) < 0.03);
+  check(
+    amplitude(660) > 0.06,
+    "already-on mic PCM reaches named destination and replaces test tones",
+  );
+  await page.getByTestId("live-monitor").check();
+  await page.waitForFunction(() => (globalThis as any).__livePhysicalOutput > 0);
+  check(true, "explicit monitor schedules returned PCM through muted test graph");
+  await page.evaluate(() => {
+    localStorage.setItem("lk:agent-chat-speak", "0");
+    localStorage.setItem("lk:debug-chat-speak", "0");
+  });
+  await page.waitForTimeout(60);
+  const mutedNodes = await page.evaluate(() => (globalThis as any).__livePhysicalOutput);
+  await page.waitForTimeout(100);
+  check(
+    (await page.evaluate(() => (globalThis as any).__livePhysicalOutput)) === mutedNodes,
+    "read-aloud mute prevents further monitor output while transport continues",
+  );
+  await page.getByTestId("live-monitor").uncheck();
+  await page.evaluate(() => (globalThis as any).__liveFixtureMic(false));
   await page.getByTestId("live-end-input").click();
   await page.getByTestId("live-state").filter({ hasText: "input-ended" }).waitFor();
   await until(() => ended && afterEofOutputs > 0);
@@ -282,10 +310,7 @@ try {
     (await page.evaluate(() => (globalThis as any).__livePhysicalMic)) === 0,
     "no physical microphone requested",
   );
-  check(
-    (await page.evaluate(() => (globalThis as any).__livePhysicalOutput)) === 0,
-    "no physical output node connected",
-  );
+
   console.log(
     JSON.stringify({
       checks,
@@ -295,6 +320,7 @@ try {
       outputs,
       renderer: gatewayModule ? "synthetic via actual gateway" : "synthetic fixture",
       physicalPlayback: false,
+      monitorGraph: "muted synthetic only",
     }),
   );
 } finally {

@@ -1,9 +1,11 @@
 # Directed Live PCM audio
 
 The user-facing objective is a playable directed Live conversation inside Li Chat,
-with streaming FFmpeg-compatible I/O. The first implementation milestone is an
-explicit developer routing console at `/dev/live-audio`; it is **synthetic and
-counter-only**, not yet that complete conversation experience.
+with streaming FFmpeg-compatible I/O. `/dev/live-audio` provides experimental,
+explicit same-machine controls for an already-enabled Li microphone and a separate
+return-PCM monitor, alongside synthetic sources. This frontend is not an installed
+Live provider: the compatible Rechrome transport and selected browser session must
+be prepared separately. It is not yet verified with a real conversation provider.
 
 ## Trust and transport
 
@@ -38,7 +40,7 @@ without waiting for a consumer. Normal `duration-limit` and `renderer-ended` end
 instead drain already received frames for at most two seconds; cancel can interrupt
 that drain. Queues and pending input are bounded. There is no automatic reconnect.
 
-## Routing and current milestone
+## Routing and explicit endpoints
 
 Sources and targets are explicit. Internal bus aliases cannot collide with ticket
 participants. Each destination mixes separately; mix-minus follows the original
@@ -52,27 +54,59 @@ has no dedicated anti-alias filter. Gains are bounded and mixed samples saturate
 before PCM encoding. Removing a source/gain change retracts an unsent stale mix frame
 without closing other sources or the connection; already sent audio is not retractable.
 
-The current console generates two optional synthetic sources (16 kHz mono and
-48 kHz stereo). It displays participant IDs, independent source switches/gains,
-Start, End input, Stop and frame/clipping counters. Returned PCM is a logical bus,
-not a physical output. Its own participant is excluded from that participant's
-outgoing mix. Configuration keys `voice.liveToneHz`, `voice.liveTonePeakPct`,
-`voice.liveGainPct`, `voice.liveMaxGainPct` and `voice.liveUiRefreshMs` supply the
-editable defaults. Import alone starts nothing; navigation cancels the route.
+The panel shows the ticket's exact source/target IDs and separate source switches,
+gains, Start, End input, Stop and frame/clipping counters. Its two optional synthetic
+sources use 16 kHz mono and 48 kHz stereo. Selecting the Li microphone switches the
+synthetic sources off (they can be explicitly re-enabled). The microphone must
+already be enabled in Li on the same page: this feature never calls getUserMedia,
+starts the mic session, changes its wake policy or requests a device. The read-only
+PCM observer excludes held, cue, shadow and voiceprint-enrolment capture. Off/hold
+clear subscribers immediately; variable capture chunks become 20 ms frames with a
+160 ms freshness/queue bound, including incomplete frames. Removing the route clears
+its buffer. There is no recording or upload outside the selected PCM route.
 
-Default device speechSynthesis is not a Web Audio/PCM source. The existing voice,
-physical audio-owner priority, mute and AEC flows are unchanged at this milestone.
-The next slice is explicit user-selected endpoints: a read-only tap on an already
-user-enabled Li microphone and an explicitly enabled monitor sink respecting those
-existing policies. No automatic device opening or model call is part of testing.
+Monitor is a separate, default-off user gesture. Returned PCM alone reaches the
+shared Web Audio context; speechSynthesis is not scraped or redirected. The monitor
+uses the existing `play` audio priority, yields to Li read-aloud, respects its mute,
+and registers playback with page-audio so the existing AEC-off capture hold and echo
+tail still apply. Hidden pages stop output; context/resume failure closes the route
+instead of silently retaining audio ownership. Re-enabling requires a user action;
+no queued audio is replayed after mute or priority loss. Start/Stop/navigation manage
+only this route, never other capture or audio sessions. A same-page hot-loaded mic
+from an older build must be reloaded before it can publish this new PCM observer.
+
+Configuration keys `voice.liveToneHz`, `voice.liveTonePeakPct`, `voice.liveGainPct`,
+`voice.liveMaxGainPct` and `voice.liveUiRefreshMs` supply editable defaults.
+
+## Local setup and remaining dependency
+
+Rechrome #110 and #112 are currently unmerged and unreleased; the stock installed
+CLI/daemon is **not verified** to support this protocol. Do not auto-install,
+restart a daemon, or present this frontend as live because synthetic tests passed.
+After an approved compatible update and bridge installation in the selected stable
+session, the trusted local operator uses:
+
+```sh
+rech audio install <stable-session>
+rech audio stream ticket --source <li-source> --destination <stable-session> \
+  --client-origin https://<exact-Li-origin> --ticket-file <private-ticket.json>
+```
+
+Import the ticket locally, select the intended sources, press Start, and grant the
+browser's standard local-network permission if requested. The one-use ticket lasts
+30 seconds; mint a new one after expiry or a failed attempt. For a real audition,
+the user must first enable Li's microphone, explicitly select it here and opt into
+Monitor. Tests below use synthetic capture and muted graphs, never a real microphone,
+physical playback or a paid provider. Phone/remote transport remains unsupported.
 
 ## Verification
 
-- `bun test unit/live-audio.test.ts unit/live-audio-content.test.ts`: deterministic
+- `bun test unit/live-audio.test.ts unit/live-audio-content.test.ts unit/live-audio-endpoints.test.ts`: deterministic
   mix-minus/provenance, formats, clipping, credits, source cancellation, half-close,
   slow consumers, graceful tails, ticket bounds and 16-locale context.
 - `bun scripts/qa/qa-live-audio.ts`: real panel and synthetic local transport,
-  including actual PCM frequencies after source cancellation under slow credits.
+  including actual PCM frequencies after source cancellation under slow credits,
+  synthetic already-on mic frames, explicit muted monitor and read-aloud mute.
 - Optional cross-project check: add `--gateway-module <Rechrome audio-stream-server.ts>`.
   Its renderer remains synthetic; this does not install/restart the normal daemon.
 - Optional hosted-origin check: add `--chrome --origin <hosted HTTPS origin>`.

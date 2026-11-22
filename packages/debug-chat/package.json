@@ -114,6 +114,8 @@
     "./embed/partner-embed": "./src/embed/partner-embed.tsx",
     "./attach": "./src/attach.ts",
     "./AttachMenu": "./src/AttachMenu.tsx",
+    "./live-mic": "./src/live-mic.ts",
+    "./live-monitor": "./src/live-monitor.ts",
     "./live-audio-core": "./src/live-audio-core.ts",
     "./live-audio-client": "./src/live-audio-client.ts"
   },

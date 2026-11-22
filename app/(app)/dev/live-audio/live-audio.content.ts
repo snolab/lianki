@@ -1,10 +1,10 @@
 import { t, type DeclarationContent } from "intlayer";
 import { describeKeys } from "@/lib/i18n-context";
 
-// Context travels with this complete panel: an explicit same-machine synthetic
-// PCM test, not a microphone, speaker, default TTS or phone connection. A ticket
-// is read locally and is never uploaded; Start opens the named route, Stop
-// cancels it, End input half-closes only input. Gain is a percentage per source.
+// Context travels with this complete panel: explicit same-machine PCM routes.
+// The mic reuses existing Li capture; monitoring is separately enabled and follows
+// mute/audio priority. Tickets stay local. Start connects; Stop cancels both sides;
+// End input half-closes input. Gain is a percentage per source.
 const keys = [
   "intro",
   "ticket",
@@ -381,26 +381,137 @@ const rows = {
     "제한된 샘플",
   ],
 };
+// Translate with the full panel context: mic reuses capture already enabled in Li;
+// monitor is a separate opt-in physical output and follows the read-aloud mute.
+const endpoints = {
+  en: [
+    "Already-on Li microphone",
+    "Turn on the Li microphone first",
+    "Monitor return audio (respects mute)",
+    "Same-machine Live PCM route. Import a local ticket and start. Microphone and monitor are separate opt-ins; synthetic A/B sources remain available.",
+  ],
+  zh: [
+    "已开启的 Li 麦克风",
+    "请先开启 Li 麦克风",
+    "监听返回音频（遵循静音设置）",
+    "同机 Live PCM 路由。本地导入票据后开始。麦克风和监听输出需分别开启，也可使用合成来源 A/B。",
+  ],
+  hi: [
+    "पहले से चालू Li माइक्रोफ़ोन",
+    "पहले Li माइक्रोफ़ोन चालू करें",
+    "वापसी ऑडियो सुनें (म्यूट लागू)",
+    "एक ही मशीन का Live PCM रूट। स्थानीय टिकट आयात करके शुरू करें। माइक्रोफ़ोन और मॉनिटर अलग से चालू होते हैं; कृत्रिम A/B स्रोत भी उपलब्ध हैं।",
+  ],
+  es: [
+    "Micrófono Li ya activado",
+    "Activa primero el micrófono Li",
+    "Escuchar retorno (respeta silencio)",
+    "Ruta Live PCM en el mismo equipo. Importa un ticket local e inicia. Micrófono y escucha se activan por separado; también hay fuentes sintéticas A/B.",
+  ],
+  fr: [
+    "Microphone Li déjà activé",
+    "Activez d’abord le microphone Li",
+    "Écouter le retour (respecte le mode muet)",
+    "Routage Live PCM sur le même appareil. Importez un ticket local puis démarrez. Microphone et écoute s’activent séparément ; les sources synthétiques A/B restent disponibles.",
+  ],
+  ar: [
+    "ميكروفون Li المفعّل مسبقًا",
+    "فعّل ميكروفون Li أولًا",
+    "مراقبة الصوت العائد (تراعي الكتم)",
+    "مسار Live PCM على الجهاز نفسه. استورد تذكرة محلية ثم ابدأ. يُفعّل الميكروفون والاستماع كلٌ على حدة؛ تتوفر أيضًا المصادر الاصطناعية A/B.",
+  ],
+  bn: [
+    "আগে চালু করা Li মাইক্রোফোন",
+    "প্রথমে Li মাইক্রোফোন চালু করুন",
+    "ফেরত অডিও শুনুন (মিউট মেনে)",
+    "একই যন্ত্রে Live PCM রুট। স্থানীয় টিকিট এনে শুরু করুন। মাইক্রোফোন ও শোনা আলাদাভাবে চালু করতে হয়; কৃত্রিম A/B উৎসও আছে।",
+  ],
+  pt: [
+    "Microfone Li já ligado",
+    "Ligue primeiro o microfone Li",
+    "Ouvir retorno (respeita silêncio)",
+    "Rota Live PCM no mesmo computador. Importe um ticket local e inicie. Microfone e monitor são ativados separadamente; fontes sintéticas A/B também estão disponíveis.",
+  ],
+  ru: [
+    "Уже включённый микрофон Li",
+    "Сначала включите микрофон Li",
+    "Слушать возврат (учитывает отключение звука)",
+    "Маршрут Live PCM на этом компьютере. Импортируйте локальный билет и запустите. Микрофон и прослушивание включаются отдельно; доступны синтетические источники A/B.",
+  ],
+  ur: [
+    "پہلے سے فعال Li مائیکروفون",
+    "پہلے Li مائیکروفون فعال کریں",
+    "واپسی کی آواز سنیں (خاموشی کی پابندی)",
+    "اسی مشین کا Live PCM راستہ۔ مقامی ٹکٹ درآمد کرکے شروع کریں۔ مائیکروفون اور سماعت الگ فعال ہوتی ہیں؛ مصنوعی A/B ذرائع بھی دستیاب ہیں۔",
+  ],
+  id: [
+    "Mikrofon Li yang sudah aktif",
+    "Aktifkan mikrofon Li dahulu",
+    "Dengarkan audio balik (mengikuti bisu)",
+    "Rute Live PCM pada mesin yang sama. Impor tiket lokal lalu mulai. Mikrofon dan monitor diaktifkan terpisah; sumber sintetis A/B tetap tersedia.",
+  ],
+  de: [
+    "Bereits aktives Li-Mikrofon",
+    "Zuerst das Li-Mikrofon einschalten",
+    "Rückkanal hören (beachtet Stummschaltung)",
+    "Live-PCM-Route auf demselben Gerät. Lokales Ticket importieren und starten. Mikrofon und Monitor werden separat aktiviert; synthetische Quellen A/B sind ebenfalls verfügbar.",
+  ],
+  ja: [
+    "すでに有効な Li マイク",
+    "先に Li マイクを有効にしてください",
+    "戻り音声を聴く（ミュートに従う）",
+    "同じ端末上の Live PCM 経路です。ローカルチケットを読み込んで開始します。マイクとモニターは個別に有効化し、合成音源 A/B も使用できます。",
+  ],
+  sw: [
+    "Mikrofoni ya Li iliyo tayari kuwashwa",
+    "Washa mikrofoni ya Li kwanza",
+    "Sikiliza sauti inayorudi (hufuata kunyamazisha)",
+    "Njia ya Live PCM kwenye mashine hii. Leta tiketi ya ndani kisha anza. Mikrofoni na usikilizaji huwashwa kando; vyanzo sintetiki A/B pia vinapatikana.",
+  ],
+  mr: [
+    "आधीच सुरू असलेला Li मायक्रोफोन",
+    "प्रथम Li मायक्रोफोन सुरू करा",
+    "परतीचा आवाज ऐका (म्यूट पाळतो)",
+    "एकाच यंत्रावरील Live PCM मार्ग. स्थानिक तिकीट आयात करून सुरू करा. मायक्रोफोन आणि ऐकणे स्वतंत्रपणे सुरू करावे लागते; कृत्रिम A/B स्रोतही उपलब्ध आहेत.",
+  ],
+  ko: [
+    "이미 켜진 Li 마이크",
+    "먼저 Li 마이크를 켜세요",
+    "반환 오디오 듣기 (음소거 적용)",
+    "같은 기기의 Live PCM 경로입니다. 로컬 티켓을 가져온 뒤 시작하세요. 마이크와 모니터는 따로 켜며 합성 음원 A/B도 사용할 수 있습니다.",
+  ],
+};
 const dictionary = {
   key: "live-audio",
-  content: Object.fromEntries(
-    keys.map((key, i) => [
+  content: Object.fromEntries([
+    ...keys.map((key, i) => [
       key,
-      t(Object.fromEntries(Object.entries(rows).map(([lang, row]) => [lang, row[i]]))),
+      t(
+        Object.fromEntries(
+          Object.entries(rows).map(([lang, row]) => [
+            lang,
+            key === "intro" ? endpoints[lang as keyof typeof endpoints][3] : row[i],
+          ]),
+        ),
+      ),
     ]),
-  ),
+    ...(["micSource", "micOff", "monitor"] as const).map((key, i) => [
+      key,
+      t(Object.fromEntries(Object.entries(endpoints).map(([lang, row]) => [lang, row[i]]))),
+    ]),
+  ]),
 } satisfies DeclarationContent;
 const context = Object.fromEntries(
-  keys.map((key) => [
+  [...keys, "micSource", "micOff", "monitor"].map((key) => [
     key,
-    `Same-machine synthetic PCM developer panel. ${key}: ${rows.en[keys.indexOf(key)]}. No automatic microphone or playback; ticket stays local. Preserve PCM, CSP, A/B, and percent notation.`,
+    `Same-machine Live PCM developer panel. ${key}: explicit same-page source or monitor selection. No automatic microphone or playback; ticket stays local. Preserve PCM, CSP, A/B, and percent notation.`,
   ]),
 );
 export default {
   ...dictionary,
   title: "Live PCM developer panel",
   description: describeKeys(
-    "Explicit same-machine synthetic PCM route controls; no microphone or speaker is opened. Read ticket locally, then Start; Stop cancels both directions; End input only half-closes input.",
+    "Explicit same-machine PCM route controls; microphone and monitor are separate opt-ins. Read ticket locally, then Start; Stop cancels both directions; End input only half-closes input.",
     context,
   ),
 } satisfies DeclarationContent;
