@@ -716,8 +716,11 @@ polished text is read to him **once**, in his cloned voice from the Mac's
 clone server (`GET …/lianki-clone-tts/tts?text=` → WAV). The trigger is
 DebugEval's `edited` handler calling `polishReadback`
 (`packages/debug-chat/src/polish-readback.ts`): only his own `source: "stt"`
-line going from raw (or merged, unpolished) to an agent's polish or polished
-passage; never a line's first arrival, a merge, a summary or an undo; never
+line whose hub-verified speaker check says "me" (wire.ts `verifiedDecision`:
+a tag the hub signed over these words; owner, 2026-11-23: his clone reads only
+his own speech, so `other`, `unknown`, `self`, an advisory or unsigned tag, or
+no tag at all is never read back), going from raw (or merged, unpolished) to
+an agent's polish or polished passage; never a line's first arrival, a merge, a summary or an undo; never
 twice for one id (memory). It goes into Li's one queue (`voice().reply` with
 `how.pick = {kind: "clone"}`), so the read-aloud switch, the talk-over pause
 and the tab that reads all apply; a hidden page drops it. A clip that fails

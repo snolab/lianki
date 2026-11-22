@@ -22,11 +22,21 @@ import { stubGlobals } from "./support/globals";
 import { createCloudOut } from "@lianki/debug-chat/voice-out";
 import { MERGE_BY, UNMERGE_BY } from "@lianki/debug-chat/voice-merge";
 import { clearHeard, heardFor } from "@lianki/debug-chat/voice-heard";
-import type { ChatMessage, EditedEvent } from "@lianki/debug-chat/wire";
+import type { ChatMessage, EditedEvent, SpeakerTag } from "@lianki/debug-chat/wire";
+import { verifiedDecision } from "@lianki/debug-chat/wire";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-/** His raw voice line, as the page has it before the polish. */
+/** A speaker tag as the hub stores it after verifying the Mac's proofs. */
+const signed = (o: Partial<SpeakerTag> = {}): SpeakerTag => ({
+  decision: "me",
+  score: 0.71,
+  trust: "signed",
+  kid: "mac",
+  signed: ["fix the sink button"],
+  ...o,
+});
+/** His raw voice line, as the page has it before the polish (verified as him). */
 const raw = (o: Partial<ChatMessage> = {}): ChatMessage =>
   ({
     id: "m1",
@@ -34,6 +44,7 @@ const raw = (o: Partial<ChatMessage> = {}): ChatMessage =>
     text: "fix the sink button",
     at: 1,
     source: "stt",
+    speaker: signed(),
     ...o,
   }) as ChatMessage;
 /** The hub's edited event for an agent's polish of m1. */
@@ -72,6 +83,51 @@ describe("polish read-back: which edit is the polish event", () => {
     expect(readbackText(raw({ from: "friend" }), polished())).toBeNull();
     expect(readbackText(raw({ thread: "f1" }), polished())).toBeNull();
     expect(readbackText(raw({ id: "m2" }), polished())).toBeNull();
+  });
+
+  it("only his own verified voice: me yes; other, unknown, self or no tag never", () => {
+    expect(readbackText(raw(), polished())).toBe("Fix the sync button.");
+    // A line stored before the key ring: signed texts, no trust field.
+    const legacy = signed({ trust: undefined, kid: undefined });
+    expect(readbackText(raw({ speaker: legacy }), polished())).toBe("Fix the sync button.");
+    // Someone else in the room, by cluster or voice id.
+    expect(
+      readbackText(raw({ speaker: signed({ decision: "other", cluster: "A" }) }), polished()),
+    ).toBeNull();
+    expect(
+      readbackText(raw({ speaker: signed({ decision: "other", voice: "s1" }) }), polished()),
+    ).toBeNull();
+    expect(
+      readbackText(raw({ speaker: signed({ decision: "unknown", reason: "short" }) }), polished()),
+    ).toBeNull();
+    // Our own TTS heard back: an echo, never his words.
+    expect(
+      readbackText(
+        raw({ speaker: signed({ decision: "self", selfVoice: "melo-en" }) }),
+        polished(),
+      ),
+    ).toBeNull();
+    expect(readbackText(raw({ speaker: undefined }), polished())).toBeNull();
+  });
+
+  it('only the verified decision: an unsigned or advisory "me" is not his voice', () => {
+    // A page's own claim, with no proof the hub checked.
+    const claimed: SpeakerTag = { decision: "me", score: 0.9 };
+    expect(readbackText(raw({ speaker: claimed }), polished())).toBeNull();
+    // Advisory: the signer vouched for the voice, not these words.
+    const advisory: SpeakerTag = {
+      decision: "unknown",
+      reason: "advisory",
+      trust: "advisory",
+      kid: "service",
+      advisory: { decision: "me" },
+    };
+    expect(readbackText(raw({ speaker: advisory }), polished())).toBeNull();
+    // Even a tag claiming "me" with an advisory trust.
+    expect(readbackText(raw({ speaker: { ...advisory, decision: "me" } }), polished())).toBeNull();
+    expect(verifiedDecision(signed())).toBe("me");
+    expect(verifiedDecision(claimed)).toBeUndefined();
+    expect(verifiedDecision(undefined)).toBeUndefined();
   });
 
   it("never: a merge, an undo, a summary, a split or a restore", () => {

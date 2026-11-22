@@ -14,7 +14,9 @@
  *   (docs/prefs-sync.md): a tailnet URL on his Mac, like `lk:agent-local-tts`.
  *   Absent: DEFAULT_CLONE_TTS_BASE; "off": no read-back on this device.
  * - Fires on the polish event only (`readbackText`): his own spoken line
- *   (`source: "stt"`) going from raw (or merged, unpolished) to an agent's
+ *   (`source: "stt"`, and the hub-verified speaker check "me": wire.ts
+ *   `verifiedDecision`; owner, 2026-11-23: someone else's words, an unknown
+ *   voice or our own echo are never read in his voice) going from raw (or merged, unpolished) to an agent's
  *   polish or polished passage. Never on a line's first arrival, a merge, a
  *   summary or an undo, and never twice for one line id (kept in memory).
  * - A clone that fails or times out is skipped silently (voice.ts logs it):
@@ -23,7 +25,7 @@
  * Pure apart from the globalThis store; tested in unit/polish-readback.test.ts.
  */
 import { MERGE_BY, UNMERGE_BY } from "./voice-merge";
-import type { ChatMessage, EditMark, EditedEvent } from "./wire";
+import { type ChatMessage, type EditMark, type EditedEvent, verifiedDecision } from "./wire";
 
 export const POLISH_READBACK_FLAG = "voice.polish-readback";
 /** The clone server's base URL on this device (absent: the default; "off": none). */
@@ -104,6 +106,10 @@ export function readbackText(
   if (!prev || prev.id !== e.id || (prev.thread ?? "owner") !== e.thread) return null;
   // Only what he said himself, into the mic.
   if (prev.from !== "owner" || prev.source !== "stt") return null;
+  // His clone reads only his own voice (owner, 2026-11-23): the hub-verified speaker
+  // check must say "me". Another voice, an unknown one, our own echo, an advisory
+  // or unsigned tag, or no tag at all: never in his voice.
+  if (verifiedDecision(prev.speaker) !== "me") return null;
   // A summary is not his words; an undo or a merge is not a polish.
   if (e.summary || e.split || e.restored || e.merged || prev.summary) return null;
   if (!isAgentPolish(e.edited)) return null;
