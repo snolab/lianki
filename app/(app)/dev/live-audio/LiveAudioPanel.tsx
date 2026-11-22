@@ -1,4 +1,5 @@
 "use client";
+import { SealSwitch } from "@/app/components/SealSwitch";
 import { useEffect, useRef, useState } from "react";
 import {
   connectLiveAudio,
@@ -323,35 +324,35 @@ export default function LiveAudioPanel({
         <dd data-testid="live-target">{route.target}</dd>
       </dl>
       <label className="block">
-        <input
+        <SealSwitch
+          aria-label={t.micSource}
           data-testid="live-route-mic"
-          type="checkbox"
           checked={controls.mic}
           disabled={!micOn && !controls.mic}
-          onChange={(e) =>
-            change({ mic: e.target.checked, ...(e.target.checked ? { a: false, b: false } : {}) })
+          onClick={() =>
+            change({ mic: !controls.mic, ...(!controls.mic ? { a: false, b: false } : {}) })
           }
         />
         {t.micSource} {!micOn && <span>{t.micOff}</span>}
       </label>
       <label className="block">
-        <input
+        <SealSwitch
+          aria-label={t.monitor}
           data-testid="live-monitor"
-          type="checkbox"
           checked={monitorOn}
           disabled={state !== "ready" && state !== "input-ended"}
-          onChange={(e) => toggleMonitor(e.target.checked)}
+          onClick={() => toggleMonitor(!monitorOn)}
         />
         {t.monitor}
       </label>
       {(["a", "b"] as const).map((key) => (
         <fieldset key={key} className="flex flex-wrap items-center gap-3">
           <label>
-            <input
+            <SealSwitch
+              aria-label={key === "a" ? t.sourceA : t.sourceB}
               data-testid={`live-route-${key}`}
-              type="checkbox"
               checked={controls[key]}
-              onChange={(e) => change({ [key]: e.target.checked })}
+              onClick={() => change({ [key]: !controls[key] })}
             />
             {key === "a" ? t.sourceA : t.sourceB}
           </label>

@@ -177,6 +177,24 @@ const built = await Bun.build({
   target: "browser",
   format: "iife",
   define: { "process.env.NODE_ENV": '"production"' },
+  // This standalone React fixture uses fixed switch words; actual SealSwitch
+  // behavior is retained without bundling Next's server-side dictionary loader.
+  plugins: [
+    {
+      name: "live-fixture-locales",
+      setup(build) {
+        build.onResolve({ filter: /^next-intlayer$/ }, () => ({
+          path: "switch-words",
+          namespace: "live-fixture",
+        }));
+        build.onLoad({ filter: /.*/, namespace: "live-fixture" }, () => ({
+          loader: "js",
+          contents:
+            'export const useIntlayer = () => ({ on: { value: "On" }, off: { value: "Off" } });',
+        }));
+      },
+    },
+  ],
 });
 if (!built.success) throw new AggregateError(built.logs, "fixture build failed");
 const browser = await launchSilent(
@@ -235,7 +253,7 @@ try {
     !(await page.locator("body").textContent())!.includes(ticket.capability),
     "capability never rendered",
   );
-  await page.getByTestId("live-route-b").check();
+  await page.getByTestId("live-route-b").click();
   await page.getByTestId("live-start").click();
   await page.waitForFunction(
     () => Number(document.querySelector('[data-testid="live-outputFrames"]')?.textContent) > 3,
@@ -245,7 +263,7 @@ try {
   holdCredits = true;
   await until(() => inputs >= before + 8);
   check(pendingCredits.length === 8, "slow credits fill exactly the negotiated input window");
-  await page.getByTestId("live-route-a").uncheck();
+  await page.getByTestId("live-route-a").click();
   holdCredits = false;
   for (const release of pendingCredits.splice(0)) await release();
   await until(() => inputs > before + 11);
@@ -275,13 +293,13 @@ try {
     "monitor is silent by default",
   );
   await page.evaluate(() => (globalThis as any).__liveFixtureMic(true));
-  await page.getByTestId("live-route-mic").check();
+  await page.getByTestId("live-route-mic").click();
   await until(() => amplitude(660) > 0.06 && amplitude(880) < 0.03);
   check(
     amplitude(660) > 0.06,
     "already-on mic PCM reaches named destination and replaces test tones",
   );
-  await page.getByTestId("live-monitor").check();
+  await page.getByTestId("live-monitor").click();
   await page.waitForFunction(() => (globalThis as any).__livePhysicalOutput > 0);
   check(true, "explicit monitor schedules returned PCM through muted test graph");
   await page.evaluate(() => {
@@ -295,7 +313,7 @@ try {
     (await page.evaluate(() => (globalThis as any).__livePhysicalOutput)) === mutedNodes,
     "read-aloud mute prevents further monitor output while transport continues",
   );
-  await page.getByTestId("live-monitor").uncheck();
+  await page.getByTestId("live-monitor").click();
   await page.evaluate(() => (globalThis as any).__liveFixtureMic(false));
   await page.getByTestId("live-end-input").click();
   await page.getByTestId("live-state").filter({ hasText: "input-ended" }).waitFor();
