@@ -716,8 +716,11 @@ polished text is read to him **once**, in his cloned voice from the Mac's
 clone server (`GET …/lianki-clone-tts/tts?text=` → WAV). The trigger is
 DebugEval's `edited` handler calling `polishReadback`
 (`packages/debug-chat/src/polish-readback.ts`): only his own `source: "stt"`
-line going from raw (or merged, unpolished) to an agent's polish or polished
-passage; never a line's first arrival, a merge, a summary or an undo; never
+line whose hub-verified speaker check says "me" (wire.ts `verifiedDecision`:
+a tag the hub signed over these words; owner, 2026-11-23: his clone reads only
+his own speech, so `other`, `unknown`, `self`, an advisory or unsigned tag, or
+no tag at all is never read back), going from raw (or merged, unpolished) to
+an agent's polish or polished passage; never a line's first arrival, a merge, a summary or an undo; never
 twice for one id (memory). It goes into Li's one queue (`voice().reply` with
 `how.pick = {kind: "clone"}`), so the read-aloud switch, the talk-over pause
 and the tab that reads all apply; a hidden page drops it. A clip that fails
@@ -726,6 +729,23 @@ and logged (`voice-out`, `out: "clone"`), never read in another voice. The
 server is the device key `lk:agent-clone-tts` (`off` = none on that device).
 The line's details name the voice "Voice: yours (cloned)". Tests:
 `unit/polish-readback.test.ts`.
+
+**Someone else's line** (owner, 2026-11-23: different people already get
+different avatars, so give them different voices too): a polished mic line
+whose hub-verified speaker is `other` with a `cluster` ("A", "household:…")
+or `voice` ("s1") id, the same ids the avatars read, is read back once in a
+synthetic voice from the pool, config `voice.personVoices` (default
+`local:bella`, `local:heart`, `local:alpha`, `local:xiaobei`: single Kokoro
+voices on his Mac that no lane reads in). The pick is by the id, counted as the
+avatars count (cluster letters in order, `s<n>` by n, a household by its
+name's hash), so one person always gets the same voice
+(`packages/debug-chat/src/person-voice.ts`). Never a clone of anyone, and
+never a lane's voice: the table voices, their Aura/Melo voices, the bright
+lane's Kokoro rotation, the calm lane's yunxi, the device's pinned Kokoro voice
+and the language map's provider voices are refused or skipped. Like the clone,
+a clip that fails is skipped, never read in another voice. `unknown`, `self`,
+or no verified tag: nothing. Same flag; an empty pool turns it off. Tests:
+`unit/person-voice.test.ts`.
 
 ### Summaries
 

@@ -45,7 +45,7 @@ export function OwnerBoots({
   /** Flag `voice.talk-over` + dev: with echo cancellation off, Li's read-aloud does not hold the mic. */
   talkOver?: boolean;
   /** Flag `voice.polish-readback` + dev: his polished voice lines read back in his cloned voice. */
-  polishReadback?: { on: boolean; timeoutMs?: number };
+  polishReadback?: { on: boolean; timeoutMs?: number; personVoices?: string[] };
   /** Flag `voice.fold-others`: fold utterances recognized as another voice into a compact line by default. */
   foldOthers?: boolean;
   /** Flag `voice.speaker-avatars`: each voice in the room gets its own avatar (cluster-avatar.ts). */

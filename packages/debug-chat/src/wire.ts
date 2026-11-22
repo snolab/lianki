@@ -1656,6 +1656,17 @@ export type SpeakerTag = {
   advisory?: SpeakerTag;
 };
 export type SpeakerTrust = "signed" | "advisory";
+/**
+ * A tag the hub verified over these very words (lib/speaker-proof.ts): trust
+ * "signed", or, on a line stored before the key ring, the signed texts. A
+ * page can never make one; an advisory tag (its decision "unknown") is not one.
+ * The same rule as lib/echo-reports.ts `signedTag`.
+ */
+export const isSignedSpeaker = (s?: Pick<SpeakerTag, "trust" | "signed">): boolean =>
+  !!s && (s.trust === "signed" || (!s.trust && !!s.signed?.length));
+/** The line's verified speaker decision, or undefined when its tag is missing or unsigned. */
+export const verifiedDecision = (s?: SpeakerTag): SpeakerDecision | undefined =>
+  isSignedSpeaker(s) ? s!.decision : undefined;
 const SPEAKER_DECISIONS: readonly SpeakerDecision[] = ["me", "other", "unknown", "self"];
 /** One of our own voices in the Mac's self print (scripts/local-stt/voiceprint.py SELF_VOICE). */
 export const SELF_VOICE_ID = /^[a-z0-9][a-z0-9-]{0,47}$/;

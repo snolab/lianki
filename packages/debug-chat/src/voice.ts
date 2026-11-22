@@ -91,6 +91,17 @@ import {
  * other voice: a clip that fails is skipped.
  */
 export type ClonePick = { kind: "clone" };
+/**
+ * Another person's polished line read back (polish-readback.ts, person-voice.ts):
+ * a synthetic voice from the person pool, picked by the page, never a clone and
+ * never a lane's voice. `who` names the person ("person:A"), for superseding. Like
+ * the clone it is never read in another voice: a clip that fails is skipped.
+ */
+export type PersonPick = {
+  kind: "person";
+  voice: Extract<LineVoice, { kind: "local" | "google" | "azure" }>;
+  who: string;
+};
 /** A line's own voice beyond the table (voices.ts parseLineVoice): device, melo, aura, eleven; or the clone. */
 export type LinePick = Exclude<LineVoice, { kind: "table" }> | ClonePick;
 
@@ -151,7 +162,7 @@ export function speakerOf(meta: SpeakMeta | undefined, said: string): string {
  * time (ms, `now()`) its first sentence starts no earlier than, so his devices
  * read it together (sync-speak.ts); already past, or absent: at once.
  */
-export type ReplyHow = { live?: boolean; pick?: ClonePick; startAt?: number };
+export type ReplyHow = { live?: boolean; pick?: ClonePick | PersonPick; startAt?: number };
 /** Who a read-back in the owner's clone is from, for superseding: no lane cuts it. */
 export const CLONE_SPEAKER = "clone:owner";
 
@@ -489,6 +500,8 @@ type Sentence = {
   jump?: true;
   /** Its line's first sentence: not started before this local time (ReplyHow.startAt). */
   startAt?: number;
+  /** Only in its own voice (a person's read-back, ReplyHow PersonPick): skipped if that fails. */
+  strict?: true;
 };
 /** What the agent said, and when (for the echo guard). */
 type Said = { text: string; start: number; end?: number; ref?: string | null };
@@ -859,6 +872,12 @@ export function createVoice(d: {
           log({ ev: "voice-out", out: "clone", route: "none", fallback: reason, ...info });
           return done();
         }
+        if (head.strict) {
+          // A person's voice failed: skipped (never a lane's voice); refused: wait for a tap.
+          if (refused) return block(reason);
+          log({ ev: "voice-out", out: "person", route: "none", fallback: reason, ...info });
+          return done();
+        }
         // Refused by the browser with nothing else that could read it (or the
         // speech fallback refused too): keep the sentence and wait for a tap.
         if (refused && (current.p.route === "speech" || noVoice(head.lang))) return block(reason);
@@ -1110,7 +1129,8 @@ export function createVoice(d: {
      */
     reply(said: string, meta?: SpeakMeta, how?: ReplyHow): boolean {
       const clone = how?.pick?.kind === "clone" ? how.pick : undefined;
-      const who = clone ? CLONE_SPEAKER : speakerOf(meta, said);
+      const person = how?.pick?.kind === "person" ? how.pick : undefined;
+      const who = clone ? CLONE_SPEAKER : person ? person.who : speakerOf(meta, said);
       const mode = cutOf(meta, how);
       const cutN = mode === "supersede" ? cut(who) : 0;
       /** Nothing queued for this line: still move on from what was cut. */
@@ -1124,6 +1144,8 @@ export function createVoice(d: {
       if (!canSpeak() || !api.shouldSpeak()) return none();
       // The clone plays only on the audio route: no cloud output here, nothing to read it.
       if (clone && !cloud()) return none();
+      // A person's voice likewise; a provider one only where provider voices are on.
+      if (person && (!cloud() || (isProviderVoice(person.voice) && !cloudVoicesOn()))) return none();
       // Its lane's voice; a `【lane】` prefix is not read out (voices.ts).
       const text = laneOf({ lane: meta?.lane, text: said }).text;
       const v = voiceIdOf({ voice: meta?.voice, lane: meta?.lane, text: said });
@@ -1134,7 +1156,7 @@ export function createVoice(d: {
       const named = isProviderVoice(own) && !cloudVoicesOn() ? undefined : own;
       const t = now();
       // The same words in another voice are another line (a voice demo), not a re-delivery.
-      const key = `${clone ? CLONE_SPEAKER : typeof meta?.voice === "string" ? meta.voice : v}\n${text}`;
+      const key = `${clone ? CLONE_SPEAKER : person ? `${person.who}@${"id" in person.voice ? person.voice.id : person.voice.name}` : typeof meta?.voice === "string" ? meta.voice : v}\n${text}`;
       if (recent.some((r) => r.text === key && t - r.at < REPLY_DEDUPE_MS)) {
         log({ ev: "voice-reply-dup", chars: text.length });
         return none();
@@ -1144,9 +1166,13 @@ export function createVoice(d: {
       const lang = pickLang(text);
       // No voice of its own: the language → voice map's provider voice, if any (config voice.langVoices).
       const pick: LinePick | undefined =
-        clone ?? named ?? (meta?.voice === undefined ? langVoice(lang) : undefined);
+        clone ?? person?.voice ?? named ?? (meta?.voice === undefined ? langVoice(lang) : undefined);
       // An ElevenLabs preview stands for the whole line: one item, its text kept for a fallback.
-      const idOf = { ...(typeof meta?.id === "string" ? { id: meta.id } : {}), who };
+      const idOf = {
+        ...(typeof meta?.id === "string" ? { id: meta.id } : {}),
+        who,
+        ...(person ? { strict: true as const } : {}),
+      };
       const add = (
         pick?.kind === "eleven" && cloud() && text.trim()
           ? [{ text, lang, from: 0, at: 0, ...(voice ? { voice } : {}), pick }]

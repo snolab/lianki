@@ -13,7 +13,9 @@ import {
   isAgentPolish,
   polishReadback,
   polishReadbackOn,
+  personVoicePool,
   readbackOf,
+  readbackPlan,
   readbackText,
   setPolishReadback,
 } from "@lianki/debug-chat/polish-readback";
@@ -22,11 +24,22 @@ import { stubGlobals } from "./support/globals";
 import { createCloudOut } from "@lianki/debug-chat/voice-out";
 import { MERGE_BY, UNMERGE_BY } from "@lianki/debug-chat/voice-merge";
 import { clearHeard, heardFor } from "@lianki/debug-chat/voice-heard";
-import type { ChatMessage, EditedEvent } from "@lianki/debug-chat/wire";
+import type { ChatMessage, EditedEvent, SpeakerTag } from "@lianki/debug-chat/wire";
+import { verifiedDecision } from "@lianki/debug-chat/wire";
+import { DEFAULT_PERSON_VOICES } from "@lianki/debug-chat/person-voice";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-/** His raw voice line, as the page has it before the polish. */
+/** A speaker tag as the hub stores it after verifying the Mac's proofs. */
+const signed = (o: Partial<SpeakerTag> = {}): SpeakerTag => ({
+  decision: "me",
+  score: 0.71,
+  trust: "signed",
+  kid: "mac",
+  signed: ["fix the sink button"],
+  ...o,
+});
+/** His raw voice line, as the page has it before the polish (verified as him). */
 const raw = (o: Partial<ChatMessage> = {}): ChatMessage =>
   ({
     id: "m1",
@@ -34,6 +47,7 @@ const raw = (o: Partial<ChatMessage> = {}): ChatMessage =>
     text: "fix the sink button",
     at: 1,
     source: "stt",
+    speaker: signed(),
     ...o,
   }) as ChatMessage;
 /** The hub's edited event for an agent's polish of m1. */
@@ -74,6 +88,51 @@ describe("polish read-back: which edit is the polish event", () => {
     expect(readbackText(raw({ id: "m2" }), polished())).toBeNull();
   });
 
+  it("only his own verified voice: me yes; other, unknown, self or no tag never", () => {
+    expect(readbackText(raw(), polished())).toBe("Fix the sync button.");
+    // A line stored before the key ring: signed texts, no trust field.
+    const legacy = signed({ trust: undefined, kid: undefined });
+    expect(readbackText(raw({ speaker: legacy }), polished())).toBe("Fix the sync button.");
+    // Someone else in the room, by cluster or voice id.
+    expect(
+      readbackText(raw({ speaker: signed({ decision: "other", cluster: "A" }) }), polished()),
+    ).toBeNull();
+    expect(
+      readbackText(raw({ speaker: signed({ decision: "other", voice: "s1" }) }), polished()),
+    ).toBeNull();
+    expect(
+      readbackText(raw({ speaker: signed({ decision: "unknown", reason: "short" }) }), polished()),
+    ).toBeNull();
+    // Our own TTS heard back: an echo, never his words.
+    expect(
+      readbackText(
+        raw({ speaker: signed({ decision: "self", selfVoice: "melo-en" }) }),
+        polished(),
+      ),
+    ).toBeNull();
+    expect(readbackText(raw({ speaker: undefined }), polished())).toBeNull();
+  });
+
+  it('only the verified decision: an unsigned or advisory "me" is not his voice', () => {
+    // A page's own claim, with no proof the hub checked.
+    const claimed: SpeakerTag = { decision: "me", score: 0.9 };
+    expect(readbackText(raw({ speaker: claimed }), polished())).toBeNull();
+    // Advisory: the signer vouched for the voice, not these words.
+    const advisory: SpeakerTag = {
+      decision: "unknown",
+      reason: "advisory",
+      trust: "advisory",
+      kid: "service",
+      advisory: { decision: "me" },
+    };
+    expect(readbackText(raw({ speaker: advisory }), polished())).toBeNull();
+    // Even a tag claiming "me" with an advisory trust.
+    expect(readbackText(raw({ speaker: { ...advisory, decision: "me" } }), polished())).toBeNull();
+    expect(verifiedDecision(signed())).toBe("me");
+    expect(verifiedDecision(claimed)).toBeUndefined();
+    expect(verifiedDecision(undefined)).toBeUndefined();
+  });
+
   it("never: a merge, an undo, a summary, a split or a restore", () => {
     expect(readbackText(raw(), polished({ edited: { at: 2, by: MERGE_BY, count: 0 } }))).toBeNull();
     expect(
@@ -101,6 +160,123 @@ describe("polish read-back: which edit is the polish event", () => {
     expect(isAgentPolish({ at: 1, by: MERGE_BY, count: 0 })).toBe(false);
     expect(isAgentPolish({ at: 1, by: UNMERGE_BY, count: 0 })).toBe(false);
     expect(isAgentPolish({ at: 1, by: "codex", count: 1 })).toBe(true);
+  });
+});
+
+describe("polish read-back: someone else's line, in their own synthetic voice", () => {
+  const other = (o: Partial<SpeakerTag>) =>
+    raw({ speaker: signed({ decision: "other", score: 0.31, ...o }) });
+
+  it("me: his clone; other with a cluster or voice id: a pool voice, never the clone", () => {
+    expect(readbackPlan(raw(), polished())).toEqual({
+      text: "Fix the sync button.",
+      pick: { kind: "clone" },
+    });
+    const a = readbackPlan(other({ cluster: "A" }), polished());
+    expect(a).toEqual({
+      text: "Fix the sync button.",
+      person: "A",
+      pick: { kind: "person", voice: { kind: "local", name: "bella" }, who: "person:A" },
+    });
+    // A voice id when there is no cluster: "s2" is the pool's second voice.
+    const s2 = readbackPlan(other({ voice: "s2" }), polished());
+    expect(s2?.pick).toEqual({
+      kind: "person",
+      voice: { kind: "local", name: "heart" },
+      who: "person:s2",
+    });
+    // The text read is never his clone's for another person.
+    expect(readbackText(other({ cluster: "A" }), polished())).toBeNull();
+  });
+
+  it("the same person, the same voice; two people, two voices", () => {
+    const pick = (o: Partial<SpeakerTag>) => {
+      const p = readbackPlan(other(o), polished());
+      return p?.pick.kind === "person" ? p.pick.voice : undefined;
+    };
+    expect(pick({ cluster: "B" })).toEqual(pick({ cluster: "B", clusterScore: 0.2 }));
+    expect(pick({ cluster: "A" })).not.toEqual(pick({ cluster: "B" }));
+    expect(pick({ cluster: "household:mei" })).toEqual(pick({ cluster: "household:mei" }));
+  });
+
+  it("unknown, self, unsigned, advisory, no id, or an empty pool: nothing", () => {
+    expect(
+      readbackPlan(raw({ speaker: signed({ decision: "unknown", cluster: "A" }) }), polished()),
+    ).toBeNull();
+    expect(
+      readbackPlan(
+        raw({ speaker: signed({ decision: "self", selfVoice: "melo-en" }) }),
+        polished(),
+      ),
+    ).toBeNull();
+    expect(readbackPlan(raw({ speaker: undefined }), polished())).toBeNull();
+    // A page's own "other" with no verified proof.
+    expect(
+      readbackPlan(raw({ speaker: { decision: "other", cluster: "A" } }), polished()),
+    ).toBeNull();
+    expect(
+      readbackPlan(
+        raw({
+          speaker: {
+            decision: "unknown",
+            reason: "advisory",
+            trust: "advisory",
+            advisory: { decision: "other", cluster: "A" },
+          },
+        }),
+        polished(),
+      ),
+    ).toBeNull();
+    expect(readbackPlan(other({}), polished())).toBeNull();
+    expect(readbackPlan(other({ cluster: "A" }), polished(), [])).toBeNull();
+    // Still only a polish event on a mic line.
+    expect(
+      readbackPlan(
+        other({ cluster: "A" }),
+        polished({ edited: { at: 2, by: MERGE_BY, count: 0 } }),
+      ),
+    ).toBeNull();
+  });
+
+  it("the pool from the config: lane voices and bad ids dropped; empty = nobody read", () => {
+    expect(personVoicePool()).toEqual([...DEFAULT_PERSON_VOICES]);
+    setPolishReadback({
+      on: true,
+      personVoices: ["local:yunxi", "calm", "melo:zh", "local:bella", "nope"],
+    });
+    expect(personVoicePool()).toEqual(["local:bella"]);
+    setPolishReadback({ on: true, personVoices: [] });
+    expect(personVoicePool()).toEqual([]);
+  });
+
+  it("queued as a person's line: no clone server needed, logged with the person", () => {
+    const calls: unknown[] = [];
+    const logs: unknown[] = [];
+    const d = {
+      reply: (text: string, meta: unknown, how: unknown) => (calls.push({ text, meta, how }), true),
+      base: () => null,
+      log: (e: Record<string, unknown>) => void logs.push(e),
+    };
+    expect(polishReadback(other({ cluster: "A" }), polished(), d)).toBe(true);
+    expect(calls).toEqual([
+      {
+        text: "Fix the sync button.",
+        meta: { id: "m1" },
+        how: {
+          pick: { kind: "person", voice: { kind: "local", name: "bella" }, who: "person:A" },
+        },
+      },
+    ]);
+    expect(logs).toEqual([{ ev: "polish-readback", chars: 20, queued: true, person: "A" }]);
+    clearReadback();
+    // "unknown" and "self": never queued.
+    expect(polishReadback(raw({ speaker: signed({ decision: "unknown" }) }), polished(), d)).toBe(
+      false,
+    );
+    expect(polishReadback(raw({ speaker: signed({ decision: "self" }) }), polished(), d)).toBe(
+      false,
+    );
+    expect(calls).toHaveLength(1);
   });
 });
 
@@ -343,8 +519,8 @@ function session(
     el.onloadedmetadata?.();
     await tick();
   };
-  const readBack = () =>
-    polishReadback(raw(), polished(), {
+  const readBack = (prev: ChatMessage = raw()) =>
+    polishReadback(prev, polished(), {
       reply: (text, meta, how) => gated.reply(text, meta, how),
       base: () => "https://mac/clone",
     });
@@ -363,6 +539,42 @@ describe("polish read-back: in the clone, through Li's queue", () => {
     ]);
     expect(s.el.plays).toHaveLength(1);
     expect(heardFor("m1")).toEqual([{ name: CLONE_VOICE_NAME }]);
+    expect(s.spoken).toEqual([]);
+  });
+
+  it("another person's line: their pool voice from the local server, never the clone", async () => {
+    const s = session();
+    const prev = raw({ speaker: signed({ decision: "other", cluster: "A" }) });
+    expect(s.readBack(prev)).toBe(true);
+    await s.loaded();
+    expect(s.fetched).toHaveLength(1);
+    expect(s.fetched[0]).toEndWith(
+      `/tts?voice=bella&text=${encodeURIComponent("Fix the sync button.")}`,
+    );
+    expect(s.fetched.some((u) => u.includes("/clone"))).toBe(false);
+    expect(heardFor("m1")).toEqual([{ name: "bella" }]);
+    expect(s.spoken).toEqual([]);
+  });
+
+  it("another person's voice fails: skipped, never read in a lane's voice", async () => {
+    const s = session({ fetch: "fail" });
+    expect(s.readBack(raw({ speaker: signed({ decision: "other", voice: "s1" }) }))).toBe(true);
+    await s.loaded();
+    expect(s.spoken).toEqual([]);
+    expect(s.logs).toContainEqual(
+      expect.objectContaining({
+        ev: "voice-out",
+        out: "person",
+        route: "none",
+        fallback: "offline",
+      }),
+    );
+    expect(s.v.state().queued).toBe(0);
+  });
+
+  it("another person, no cloud output: nothing queued (no speech fallback)", () => {
+    const s = session({ cloud: false });
+    expect(s.readBack(raw({ speaker: signed({ decision: "other", cluster: "A" }) }))).toBe(false);
     expect(s.spoken).toEqual([]);
   });
 

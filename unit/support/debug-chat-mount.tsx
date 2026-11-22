@@ -364,6 +364,13 @@ describe("DebugChat highlights the line read aloud", () => {
       const o: ChatMessage = {
         ...line("o2", "Deux phrases. Les voici."),
         source: "stt",
+        // The hub verified it as his voice: only then is it read in his clone.
+        speaker: {
+          decision: "me",
+          trust: "signed",
+          kid: "mac",
+          signed: ["deux phrases les voici"],
+        },
         raw: "deux phrases les voici",
         edited: { at: 2, by: "main", count: 1 },
       };
