@@ -152,6 +152,9 @@ they land. Design details that are still open are marked **open**.
   received-byte progress. A known response length yields a percentage; an
   unknown length stays indeterminate. Download progress survives a card change,
   but clearing or leaving the account discards it with the private audio.
+  Above the list, download progress and the pronunciation source float below
+  the toolbar without taking layout space or intercepting touches. Neither
+  status may wrap the toolbar's controls or move the focused word.
 - Card details offer **Play original audio**, separately from the ordinary
   read-aloud action. This explicit request waits for the recording rather than
   taking the automatic one-second synthesis fallback. A missing recording is
