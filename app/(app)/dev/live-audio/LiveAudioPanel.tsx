@@ -165,7 +165,11 @@ export default function LiveAudioPanel({
       while (reserved.has(micId)) micId += "_";
       micFrames.current.clear();
       removeMic.current = liveMic().subscribe((frame) => {
-        micFrames.current.push(control.current.mic && pageAudio().mic() ? frame : null);
+        const allowed = control.current.mic && pageAudio().mic();
+        micFrames.current.push(allowed ? frame : null);
+        // Off/hold/privacy can pause VAD before another tick. Retract unsent
+        // mixed audio too; the other sources continue on the next fresh tick.
+        if (control.current.mic && (!allowed || frame === null)) frameAbort.current?.abort();
       });
       let returned: LiveSourceFrame | null = null,
         frameIndex = 0,

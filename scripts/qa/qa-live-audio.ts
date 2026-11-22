@@ -27,6 +27,7 @@ let inputs = 0,
   afterEofOutputs = 0,
   ended = false,
   lastFrame: Uint8Array | null = null;
+const receivedFrames: Uint8Array[] = [];
 let holdCredits = false;
 const pendingCredits: (() => unknown)[] = [];
 const until = async (f: () => boolean) => {
@@ -61,6 +62,7 @@ if (gatewayModule) {
         if (r.data) {
           inputs++;
           lastFrame = Uint8Array.from(Buffer.from(r.data, "base64"));
+          receivedFrames.push(lastFrame);
           const ack = async () => {
             await request("/ack", "POST");
           };
@@ -118,6 +120,7 @@ if (gatewayModule) {
           assert.equal(data.byteLength, 640);
           inputs++;
           lastFrame = new Uint8Array(data);
+          receivedFrames.push(lastFrame);
           frame(lastFrame);
           const inputSequence = inputs - 1;
           const ack = () => ws.send(JSON.stringify({ type: "credit", bytes: 640, inputSequence }));
@@ -299,6 +302,20 @@ try {
     amplitude(660) > 0.06,
     "already-on mic PCM reaches named destination and replaces test tones",
   );
+  holdCredits = true;
+  await until(() => pendingCredits.length === 8);
+  const beforeMicOff = inputs;
+  await page.evaluate(() => (globalThis as any).__liveFixtureMic(false));
+  holdCredits = false;
+  for (const ack of pendingCredits.splice(0)) await ack();
+  await until(() => inputs > beforeMicOff);
+  check(
+    receivedFrames[beforeMicOff]?.every((byte) => byte === 0) &&
+      (await page.getByTestId("live-state").textContent()) === "ready",
+    "mic off retracts backpressured capture without closing the route",
+  );
+  await page.evaluate(() => (globalThis as any).__liveFixtureMic(true));
+  await until(() => amplitude(660) > 0.06);
   await page.getByTestId("live-monitor").click();
   await page.waitForFunction(() => (globalThis as any).__livePhysicalOutput > 0);
   check(true, "explicit monitor schedules returned PCM through muted test graph");
