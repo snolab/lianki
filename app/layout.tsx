@@ -169,7 +169,12 @@ export default async function RootLayout({
   // His polished voice lines read back in his cloned voice (polish-readback.ts): audience owner.
   const polishReadback =
     dev && flagIn(flags, "voice.polish-readback")
-      ? { on: true, timeoutMs: await cfg("voice.cloneTimeoutMs") }
+      ? {
+          on: true,
+          timeoutMs: await cfg("voice.cloneTimeoutMs"),
+          // Someone else's polished line: a synthetic voice per person from this pool.
+          personVoices: await cfg("voice.personVoices"),
+        }
       : undefined;
   // Fold utterances from other voices by default in the chat (avatar-rules.ts); off: expanded.
   const foldOthers = flagIn(flags, "voice.fold-others");

@@ -61,6 +61,11 @@ import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mi
 import { ETA_BAR_CYCLE, ETA_TICKER_KEEP, ETA_TICKER_SEC } from "@lianki/debug-chat/eta-ticker";
 import { MERGE_REOPEN_DEFAULT_SEC, MERGE_REOPEN_MAX_SEC } from "@lianki/debug-chat/voice-tune";
 import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
+import {
+  DEFAULT_PERSON_VOICES,
+  PERSON_VOICES_MAX,
+  isPersonVoiceId,
+} from "@lianki/debug-chat/person-voice";
 import { VAD_MAX, VAD_MIN, VAD_THRESHOLDS } from "@lianki/debug-chat/adaptive";
 import { GUARD_MIN_SPEECH_MS, STT_GUARD } from "@lianki/debug-chat/stt-guard";
 import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
@@ -444,6 +449,25 @@ export const CONFIG = {
     description:
       "润色后用你的克隆声音读一遍（开关 voice.polish-readback）：每一句等 Mac 上的克隆声音服务器最多多久（毫秒）。一句通常要 5–10 秒生成；超过这个时间就安静跳过这一句，不换别的声音读。",
   }),
+  // Other people's polished lines read back (packages/debug-chat/person-voice.ts, flag
+  // voice.polish-readback): each recognized voice gets one of these, by its avatar id.
+  "voice.personVoices": {
+    default: [...DEFAULT_PERSON_VOICES] as string[],
+    schema: z
+      .array(
+        z
+          .string()
+          .refine(
+            isPersonVoiceId,
+            "local:<name>, google:<voice> or azure:<voice>, not a voice an agent lane uses",
+          ),
+      )
+      .max(PERSON_VOICES_MAX),
+    group: "voice",
+    audience: "public",
+    description:
+      "润色后读一遍别人说的话（开关 voice.polish-readback）：认出是另一个人（和他的头像同一个编号 A、B、s1……）时，从这些声音里固定给他一个，同一个人总是同一个声音。不克隆任何人的声音，也不用 agent 通道的声音（填了会被拒绝）。写法：local:bella（Mac 上的 Kokoro）、google:<声音>、azure:<声音>。空 = 别人的话不读。",
+  },
   // Whisper re-reads a whole continuous-speech run (packages/debug-chat/src/whisper-recheck.ts;
   // flag stt.whisper-recheck; docs/dev-debug-widget.md, "Whisper re-listens to the whole run").
   "voice.pttMaxCaptureMs": int({

@@ -255,7 +255,7 @@ export function DebugEval({
    * Flag `voice.polish-readback` + dev: a voice line an agent polished is read
    * back once in his cloned voice (polish-readback.ts); config voice.cloneTimeoutMs. None: off.
    */
-  polishReadback?: { on: boolean; timeoutMs?: number };
+  polishReadback?: { on: boolean; timeoutMs?: number; personVoices?: string[] };
   /**
    * The signed-in account's id, from the server's session (null: a guest). It
    * keys the device's copy of the chat (lib/chat-cache.ts) and gates the

@@ -21,11 +21,18 @@
  *   summary or an undo, and never twice for one line id (kept in memory).
  * - A clone that fails or times out is skipped silently (voice.ts logs it):
  *   never another voice in its place.
+ * - Someone else's line (owner, 2026-11-23): the hub-verified decision "other"
+ *   with a cluster or voice id (person-voice.ts `personOf`) is read back in
+ *   that person's synthetic voice from the pool (config `voice.personVoices`),
+ *   the same voice for the same id; never a clone, never a lane's voice, and
+ *   skipped if it fails. "unknown", "self" or no verified tag: nothing.
  *
  * Pure apart from the globalThis store; tested in unit/polish-readback.test.ts.
  */
+import { DEFAULT_PERSON_VOICES, type PersonVoice, cleanPersonVoices, personOf, personVoice } from "./person-voice";
+import type { ClonePick, PersonPick } from "./voice";
 import { MERGE_BY, UNMERGE_BY } from "./voice-merge";
-import { type ChatMessage, type EditMark, type EditedEvent, verifiedDecision } from "./wire";
+import { type ChatMessage, type EditMark, type EditedEvent, pickLang, verifiedDecision } from "./wire";
 
 export const POLISH_READBACK_FLAG = "voice.polish-readback";
 /** The clone server's base URL on this device (absent: the default; "off": none). */
@@ -43,6 +50,8 @@ export const READBACK_KEEP = 200;
 type Store = {
   on: boolean;
   timeoutMs: number;
+  /** Other people's voices (config voice.personVoices); empty: their lines are not read back. */
+  people: string[];
   /** Lines already handled: never again. Id → the text queued ("" when it was not). */
   read: Map<string, string>;
 };
@@ -51,19 +60,25 @@ const store = (): Store => {
   return (g.__lkPolishReadback ??= {
     on: false,
     timeoutMs: DEFAULT_CLONE_TIMEOUT_MS,
+    people: [...DEFAULT_PERSON_VOICES],
     read: new Map(),
   });
 };
 
-/** From the root layout, through DebugEval: the flag, and the timeout. Absent: off. */
-export function setPolishReadback(c?: { on: boolean; timeoutMs?: number } | null) {
+/** From the root layout, through DebugEval: the flag, the timeout and the people's voices. Absent: off. */
+export function setPolishReadback(
+  c?: { on: boolean; timeoutMs?: number; personVoices?: readonly string[] } | null,
+) {
   const s = store();
   s.on = !!c?.on;
+  s.people = c?.personVoices ? cleanPersonVoices(c.personVoices) : [...DEFAULT_PERSON_VOICES];
   const ms = c?.timeoutMs;
   s.timeoutMs = typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? ms : DEFAULT_CLONE_TIMEOUT_MS;
 }
 export const polishReadbackOn = (): boolean => store().on;
 export const cloneTimeoutMs = (): number => store().timeoutMs;
+/** The pool other people's lines are read back in. */
+export const personVoicePool = (): readonly string[] => store().people;
 
 const readLocal = (k: string): string | null => {
   try {
@@ -96,20 +111,14 @@ export const isAgentPolish = (e: EditMark | undefined): boolean =>
   !!e && e.by !== MERGE_BY && e.by !== UNMERGE_BY;
 
 /**
- * The text to read back for an edit, or null. `prev` is the line as the page
- * had it before the edit (absent: the page never had it — not his to hear).
+ * The polished text of a polish event on a mic line in his thread, whoever
+ * spoke it, or null. `prev` is the line as the page had it before the edit
+ * (absent: the page never had it — not his to hear).
  */
-export function readbackText(
-  prev: ChatMessage | undefined,
-  e: Omit<EditedEvent, "type">,
-): string | null {
+function polishedText(prev: ChatMessage | undefined, e: Omit<EditedEvent, "type">): string | null {
   if (!prev || prev.id !== e.id || (prev.thread ?? "owner") !== e.thread) return null;
-  // Only what he said himself, into the mic.
+  // Only a line from his mic.
   if (prev.from !== "owner" || prev.source !== "stt") return null;
-  // His clone reads only his own voice (owner, 2026-11-23): the hub-verified speaker
-  // check must say "me". Another voice, an unknown one, our own echo, an advisory
-  // or unsigned tag, or no tag at all: never in his voice.
-  if (verifiedDecision(prev.speaker) !== "me") return null;
   // A summary is not his words; an undo or a merge is not a polish.
   if (e.summary || e.split || e.restored || e.merged || prev.summary) return null;
   if (!isAgentPolish(e.edited)) return null;
@@ -117,6 +126,46 @@ export function readbackText(
   if (isAgentPolish(prev.edited) && prev.raw !== undefined) return null;
   const text = e.text.trim();
   return text ? text : null;
+}
+
+/**
+ * The text to read back in his clone for an edit, or null. His clone reads
+ * only his own voice (owner, 2026-11-23): the hub-verified speaker check must
+ * say "me". Another voice, an unknown one, our own echo, an advisory or
+ * unsigned tag, or no tag at all: never in his voice.
+ */
+export function readbackText(
+  prev: ChatMessage | undefined,
+  e: Omit<EditedEvent, "type">,
+): string | null {
+  if (verifiedDecision(prev?.speaker) !== "me") return null;
+  return polishedText(prev, e);
+}
+
+/** What a polish event reads back: his words in his clone, or someone else's in their pool voice. */
+export type ReadbackPlan =
+  | { text: string; pick: ClonePick }
+  | { text: string; pick: PersonPick; person: string };
+
+/**
+ * The read-back for an edit, or null: "me" (verified) → his clone; "other"
+ * (verified, with a cluster or voice id) → that person's voice from `pool`;
+ * anything else, or an empty pool, → nothing.
+ */
+export function readbackPlan(
+  prev: ChatMessage | undefined,
+  e: Omit<EditedEvent, "type">,
+  pool: readonly string[] = personVoicePool(),
+): ReadbackPlan | null {
+  const mine = readbackText(prev, e);
+  if (mine) return { text: mine, pick: { kind: "clone" } };
+  const person = personOf(prev?.speaker);
+  if (!person) return null;
+  const text = polishedText(prev, e);
+  if (!text) return null;
+  const voice: PersonVoice | undefined = personVoice(person, pool, pickLang(text));
+  if (!voice) return null;
+  return { text, person, pick: { kind: "person", voice, who: `person:${person}` } };
 }
 
 /** The text read back for a line, if it was (the chat's read-progress mirror claims it). */
@@ -139,7 +188,7 @@ export function polishReadback(
     reply: (
       text: string,
       meta: { id: string },
-      how: { pick: { kind: "clone" }; startAt?: number },
+      how: { pick: ClonePick | PersonPick; startAt?: number },
     ) => boolean;
     speaker?: () => boolean;
     on?: () => boolean;
@@ -152,26 +201,28 @@ export function polishReadback(
   if (!(d.on ?? polishReadbackOn)()) return false;
   const s = store();
   if (s.read.has(e.id)) return false;
-  const text = readbackText(prev, e);
-  if (!text) return false;
+  const plan = readbackPlan(prev, e);
+  if (!plan) return false;
+  const { text } = plan;
+  const person = "person" in plan ? { person: plan.person } : {};
   // Handled from here on, read or not: one chance per line, the polish event.
   s.read.set(e.id, "");
   while (s.read.size > READBACK_KEEP) s.read.delete(s.read.keys().next().value as string);
   const log = d.log ?? (() => {});
-  if (!(d.base ?? (() => cloneTtsBase()))()) {
+  if (plan.pick.kind === "clone" && !(d.base ?? (() => cloneTtsBase()))()) {
     log({ ev: "polish-readback", skip: "off" });
     return false;
   }
   if (!(d.speaker?.() ?? true)) {
-    log({ ev: "polish-readback", skip: "other-tab" });
+    log({ ev: "polish-readback", skip: "other-tab", ...person });
     return false;
   }
   const queued = d.reply(
     text,
     { id: e.id },
-    { pick: { kind: "clone" }, ...(d.startAt !== undefined ? { startAt: d.startAt } : {}) },
+    { pick: plan.pick, ...(d.startAt !== undefined ? { startAt: d.startAt } : {}) },
   );
   if (queued) s.read.set(e.id, text);
-  log({ ev: "polish-readback", chars: text.length, queued });
+  log({ ev: "polish-readback", chars: text.length, queued, ...person });
   return queued;
 }
