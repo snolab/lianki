@@ -1,4 +1,5 @@
 import { BACK_ORDER, type BackPart } from "@/lib/words/row-layout";
+import { langRuns, textLang } from "@/lib/words/part-lang";
 import { spokenText, type SpokenCard } from "@/lib/words/spoken";
 
 /**
@@ -45,17 +46,15 @@ export function meaningText(back: string): string {
  * a French voice reading English would teach nothing.
  */
 export function meaningLang(text: string, uiLocale: string): string {
-  const ui = uiLocale.toLowerCase().split(/[-_]/)[0];
-  if (/[぀-ヿ]/.test(text)) return "ja";
-  if (/[가-힯ᄀ-ᇿ]/.test(text)) return "ko";
-  if (/[一-鿿㐀-䶿]/.test(text)) return ui === "ja" ? "ja" : "zh";
-  if (/[Ѐ-ӿ]/.test(text)) return "ru";
-  return "en";
+  return textLang(text, { uiLocale });
 }
 
 /**
  * The word, then the back in the row's order (BACK_ORDER: example → meaning);
- * empty parts and repeats left out.
+ * empty parts and repeats left out. A back part that mixes languages (an
+ * example with its translation on the same line) is one part per
+ * same-language run, each with its own language (lib/words/part-lang.ts):
+ * one voice never reads another language's text.
  */
 export function sayParts(
   it: SpokenCard & { ex?: string },
@@ -66,20 +65,17 @@ export function sayParts(
   const word = spokenText(it, lang, readingOnBack);
   const meaning = meaningText(it.back);
   const ex = it.ex?.trim() ?? "";
-  const back: Record<BackPart, SayPart | null> = {
-    meaning:
-      meaning && meaning !== word
-        ? { kind: "meaning", text: meaning, lang: meaningLang(meaning, uiLocale) }
-        : null,
+  const runs = (kind: PartKind, text: string, base: string): SayPart[] =>
+    langRuns(text, base, { uiLocale }).map((r) => ({ kind, text: r.text, lang: r.lang }));
+  const back: Record<BackPart, SayPart[]> = {
+    // A meaning's language is its script's: Latin is English (meaningLang).
+    meaning: meaning && meaning !== word ? runs("meaning", meaning, "en") : [],
     // Past the server's limit (400) a part is left to the browser's speech.
-    example: ex && ex !== word ? { kind: "example", text: ex, lang } : null,
+    example: ex && ex !== word ? runs("example", ex, lang) : [],
   };
   const parts: SayPart[] = [];
   if (word) parts.push({ kind: "word", text: word, lang });
-  for (const k of BACK_ORDER) {
-    const p = back[k];
-    if (p) parts.push(p);
-  }
+  for (const k of BACK_ORDER) parts.push(...back[k]);
   return parts;
 }
 
