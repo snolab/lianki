@@ -124,7 +124,7 @@ const server = Bun.serve({
     seen.push({ method: req.method, path: url.pathname });
     const cors = {
       "access-control-allow-origin": pageOrigin,
-      "access-control-allow-headers": "x-lianki-userscript",
+      "access-control-allow-headers": "x-lianki-userscript, x-lianki-host-origin",
       "access-control-allow-methods": "GET, POST",
     };
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
