@@ -880,8 +880,24 @@ it, so the fragments of one thought go together. A line shorter than
 voice lines nobody touched: it ends at any other line (typed, a lane's, a
 friend's), a line already polished (an agent got there first), a summary or
 passage, a line still being spoken, or a gap over `AUTO_POLISH_RUN_MS`
-(60 s); at most `MERGE_LINES`. Up to `AUTO_POLISH_CONTEXT` (6) kept lines
-before it go along as context, each cut to 300 characters.
+(60 s); at most `MERGE_LINES`.
+
+**Context: the lines before it, read-only.** The kept lines before the run (his
+own and everyone's replies: lanes, Li, friends) go along as `context`, oldest
+first, newest kept: at most config `voice.autoPolishContextLines` (12; 0 = none)
+lines, together at most `voice.autoPolishContextChars` (2000) characters, each
+cut to 300; a line that would pass the budget ends the window. The hub picks
+them, and `lib/chat-polish.ts` `boundContext` holds any caller to the same two
+keys. Context lines carry no ids, so the model cannot address them, and the
+verdict still keeps only the ids sent. They count toward the call's 9000-character
+total and its metered hold: still one call. The prompt (`CONTEXT_POLISH_RULE`)
+says the context is read-only (never edited, returned or merged) and resolves
+pronouns and homophones from it only when it makes the referent clear. Owner,
+2026-11-25: STT writes every "tā" as 他; in "因为他的 GitHub 不怎么用" the lines
+before were about his wife, so it is 她. Unclear → left as it is. The call sends
+`x-session-affinity` (a hash of his account and thread, `lib/ai-affinity.ts`) for Workers
+AI's prefix cache, and `debug.auto-polish` logs `tokensIn` / `cachedIn`
+(docs/partner-ai.md, "Prompt caching").
 
 **How it lands: the same path as an agent's.** `merged` back for two or more
 lines → `mergeLines` (the merge rules above: consecutive, one speaker,

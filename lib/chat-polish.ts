@@ -23,18 +23,27 @@ import { textUsd, HOLD_TOKENS_PER_CHAR } from "./payments/prices";
 import { loadConfig } from "./config-store";
 import { defaultConfig } from "./config";
 import { hit } from "./security/throttle";
+import { AFFINITY_HEADER, cachedTokens, chatAffinity } from "./ai-affinity";
 
 import {
   PARAGRAPH_POLISH_PROMPT,
   withGlossaryPrompt,
 } from "../vendor/otoji/packages/transcript-glossary/src/index";
 import { accountGlossary } from "./stt-glossary-server";
-export const POLISH_PROMPT = withGlossaryPrompt(PARAGRAPH_POLISH_PROMPT);
+/**
+ * The earlier lines of the thread are read-only context: they resolve what a
+ * line refers to (STT writes every "tā" as 他; the lines before were about his
+ * wife, so it is 她). Language-generic: the example is only an example.
+ */
+export const CONTEXT_POLISH_RULE = `"context" holds the earlier lines of the same conversation, oldest first, just before the lines (from: "owner" is the same speaker; "agent", "assistant" and "friend" are others he was talking with). It is READ-ONLY: never edit, return, merge, quote or continue it, never copy its text into a line, and never return an entry for it; return only the ids in "lines".
+Use the context to understand what the lines refer to. Resolve pronouns and homophones from it when it makes the referent clear: speech-to-text cannot hear gender or the right character (for example it writes every Chinese "tā" as 他; when the context shows he is talking about a woman, such as his wife 老婆, write 她; for a thing or an animal, 它), and the same holds for he/she/it, they or any word that sounds alike in any language. When the context does not make it clear, leave the word as it is.`;
+export const POLISH_PROMPT = `${withGlossaryPrompt(PARAGRAPH_POLISH_PROMPT)}\n${CONTEXT_POLISH_RULE}`;
 
 /** At most this many lines in one call (the hub's MERGE_LINES). */
 export const POLISH_MAX_LINES = 12;
 const MAX_LINE = 6000;
-const MAX_CONTEXT = 12;
+/** The hard cap on context lines (config voice.autoPolishContextLines picks within it). */
+const MAX_CONTEXT = 20;
 const MAX_TOTAL = 9000;
 const ID_RE = /^[\w:.-]{1,120}$/;
 
@@ -136,8 +145,36 @@ export function polishVerdict(raw: unknown, input: PolishInput): PolishVerdict {
   return out;
 }
 
+/**
+ * The context as the model reads it: the newest `maxLines` lines whose text
+ * fits `maxChars` together (oldest first, as spoken). A line that would pass
+ * the budget ends the window, so the context never outweighs its limit; the
+ * hub picks the same way, this holds a stale or foreign caller to it.
+ */
+export function boundContext(
+  context: PolishInput["context"],
+  maxLines: number,
+  maxChars: number,
+): PolishInput["context"] {
+  const out: PolishInput["context"] = [];
+  let total = 0;
+  for (let i = context.length - 1; i >= 0 && out.length < maxLines; i--) {
+    const h = context[i]!;
+    if (total + h.text.length > maxChars) break;
+    total += h.text.length;
+    out.push(h);
+  }
+  return out.reverse();
+}
+
 export type PolishResult =
-  | { ok: true; verdict: PolishVerdict; charged?: unknown }
+  | {
+      ok: true;
+      verdict: PolishVerdict;
+      charged?: unknown;
+      /** Prompt tokens the provider reported, and how many of them came from its prefix cache. */
+      usage?: { tokensIn: number; cachedIn: number };
+    }
   | { ok: false; error: string; status?: number };
 
 export async function polishLines(
@@ -156,12 +193,17 @@ export async function polishLines(
   const config = await loadConfig(db).catch(defaultConfig);
   const output = config["voice.autoPolishOutputTokens"];
   const timeout = config["voice.autoPolishTimeoutMs"];
+  const context = boundContext(
+    input.context,
+    config["voice.autoPolishContextLines"],
+    config["voice.autoPolishContextChars"],
+  );
   const now = Date.now();
   const glossary = await accountGlossary(
     db,
     userId,
     [
-      ...input.context.map((h) => ({ text: h.text, at: now })),
+      ...context.map((h) => ({ text: h.text, at: now })),
       ...input.lines.flatMap((l) =>
         l.scene?.screen
           ? [{ text: [l.scene.title, l.scene.screen].filter(Boolean).join(" "), at: now }]
@@ -175,13 +217,16 @@ export async function polishLines(
     { role: "system", content: POLISH_PROMPT },
     {
       role: "user",
+      // Steadiest first (the context), the lines being polished last: more leading bytes repeat.
       content: JSON.stringify({
-        lines: input.lines.map(({ scene: _scene, ...line }) => line),
-        context: input.context,
+        context,
         glossary,
+        lines: input.lines.map(({ scene: _scene, ...line }) => line),
       }),
     },
   ];
+  const affinity = await chatAffinity(userId, "owner");
+  let usage: { tokensIn: number; cachedIn: number } | undefined;
   const maxInput = Math.ceil(JSON.stringify(messages).length * HOLD_TOKENS_PER_CHAR);
   try {
     const result = await metered(
@@ -209,7 +254,11 @@ export async function polishLines(
           : AbortSignal.timeout(timeout);
         let j: {
           choices?: { message?: { content?: string; refusal?: unknown }; finish_reason?: string }[];
-          usage?: { prompt_tokens?: number; completion_tokens?: number };
+          usage?: {
+            prompt_tokens?: number;
+            completion_tokens?: number;
+            prompt_tokens_details?: { cached_tokens?: number };
+          };
         };
         let content: unknown;
         try {
@@ -217,7 +266,11 @@ export async function polishLines(
             `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1/chat/completions`,
             {
               method: "POST",
-              headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+              headers: {
+                authorization: `Bearer ${token}`,
+                "content-type": "application/json",
+                [AFFINITY_HEADER]: affinity,
+              },
               signal,
               body: JSON.stringify({
                 model: PARTNER_AI_MODEL,
@@ -257,6 +310,8 @@ export async function polishLines(
           typeof j.usage?.completion_tokens === "number" && j.usage.completion_tokens >= 0
             ? j.usage.completion_tokens
             : output;
+        usage = { tokensIn, cachedIn: cachedTokens(j.usage) };
+        // Billed at the list input price: a cached token's discount is the margin's for now.
         return {
           value: polishVerdict(content, input),
           usd: textUsd(PARTNER_AI_MODEL, tokensIn, tokensOut),
@@ -264,7 +319,7 @@ export async function polishLines(
       },
     );
     return result.ok
-      ? { ok: true, verdict: result.value, charged: result.charged }
+      ? { ok: true, verdict: result.value, charged: result.charged, ...(usage ? { usage } : {}) }
       : { ok: false, error: result.reason };
   } catch (e) {
     if (e instanceof PolishProviderError)

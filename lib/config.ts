@@ -813,6 +813,26 @@ export const CONFIG = {
     description:
       "语音自动润色：一句话识别完以后等多久（毫秒）再送去润色。这段时间里你接着说的下一句会和它一起送，明显是一句话的碎片就合并成一条；等得越短，润色出来越快，但碎片更可能各润各的。",
   }),
+  "voice.autoPolishContextLines": int({
+    default: 12,
+    min: 0,
+    max: 20,
+    unit: "lines",
+    group: "voice",
+    audience: "server",
+    description:
+      "语音自动润色：送去润色时，带上这次要润色的句子之前的多少条聊天（你自己的话和别人的回复），只当作上下文读、不改不输出，用来判断「他/她/它」这类同音字。0 = 不带上下文。",
+  }),
+  "voice.autoPolishContextChars": int({
+    default: 2000,
+    min: 0,
+    max: 6000,
+    unit: "chars",
+    group: "voice",
+    audience: "server",
+    description:
+      "语音自动润色：上下文（之前的聊天）合计最多几个字符，从最近的一条往前数，超过就不再往前带；每条另外最多 300 字。上下文算进这次润色的字数上限和扣费。",
+  }),
   // The mic polish API (lib/mic-polish.ts; docs/mic-polish-api.md; flag mic.polish-api).
   "mic.polishDailyMax": int({
     default: 300,
