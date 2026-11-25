@@ -29,12 +29,20 @@ import {
   withGlossaryPrompt,
 } from "../vendor/otoji/packages/transcript-glossary/src/index";
 import { accountGlossary } from "./stt-glossary-server";
-export const POLISH_PROMPT = withGlossaryPrompt(PARAGRAPH_POLISH_PROMPT);
+/**
+ * The earlier lines of the thread are read-only context: they resolve what a
+ * line refers to (STT writes every "tā" as 他; the lines before were about his
+ * wife, so it is 她). Language-generic: the example is only an example.
+ */
+export const CONTEXT_POLISH_RULE = `"context" holds the earlier lines of the same conversation, oldest first, just before the lines (from: "owner" is the same speaker; "agent", "assistant" and "friend" are others he was talking with). It is READ-ONLY: never edit, return, merge, quote or continue it, never copy its text into a line, and never return an entry for it; return only the ids in "lines".
+Use the context to understand what the lines refer to. Resolve pronouns and homophones from it when it makes the referent clear: speech-to-text cannot hear gender or the right character (for example it writes every Chinese "tā" as 他; when the context shows he is talking about a woman, such as his wife 老婆, write 她; for a thing or an animal, 它), and the same holds for he/she/it, they or any word that sounds alike in any language. When the context does not make it clear, leave the word as it is.`;
+export const POLISH_PROMPT = `${withGlossaryPrompt(PARAGRAPH_POLISH_PROMPT)}\n${CONTEXT_POLISH_RULE}`;
 
 /** At most this many lines in one call (the hub's MERGE_LINES). */
 export const POLISH_MAX_LINES = 12;
 const MAX_LINE = 6000;
-const MAX_CONTEXT = 12;
+/** The hard cap on context lines (config voice.autoPolishContextLines picks within it). */
+const MAX_CONTEXT = 20;
 const MAX_TOTAL = 9000;
 const ID_RE = /^[\w:.-]{1,120}$/;
 
@@ -136,6 +144,28 @@ export function polishVerdict(raw: unknown, input: PolishInput): PolishVerdict {
   return out;
 }
 
+/**
+ * The context as the model reads it: the newest `maxLines` lines whose text
+ * fits `maxChars` together (oldest first, as spoken). A line that would pass
+ * the budget ends the window, so the context never outweighs its limit; the
+ * hub picks the same way, this holds a stale or foreign caller to it.
+ */
+export function boundContext(
+  context: PolishInput["context"],
+  maxLines: number,
+  maxChars: number,
+): PolishInput["context"] {
+  const out: PolishInput["context"] = [];
+  let total = 0;
+  for (let i = context.length - 1; i >= 0 && out.length < maxLines; i--) {
+    const h = context[i]!;
+    if (total + h.text.length > maxChars) break;
+    total += h.text.length;
+    out.push(h);
+  }
+  return out.reverse();
+}
+
 export type PolishResult =
   | { ok: true; verdict: PolishVerdict; charged?: unknown }
   | { ok: false; error: string; status?: number };
@@ -156,12 +186,17 @@ export async function polishLines(
   const config = await loadConfig(db).catch(defaultConfig);
   const output = config["voice.autoPolishOutputTokens"];
   const timeout = config["voice.autoPolishTimeoutMs"];
+  const context = boundContext(
+    input.context,
+    config["voice.autoPolishContextLines"],
+    config["voice.autoPolishContextChars"],
+  );
   const now = Date.now();
   const glossary = await accountGlossary(
     db,
     userId,
     [
-      ...input.context.map((h) => ({ text: h.text, at: now })),
+      ...context.map((h) => ({ text: h.text, at: now })),
       ...input.lines.flatMap((l) =>
         l.scene?.screen
           ? [{ text: [l.scene.title, l.scene.screen].filter(Boolean).join(" "), at: now }]
@@ -177,7 +212,7 @@ export async function polishLines(
       role: "user",
       content: JSON.stringify({
         lines: input.lines.map(({ scene: _scene, ...line }) => line),
-        context: input.context,
+        context,
         glossary,
       }),
     },

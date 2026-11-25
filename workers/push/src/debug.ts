@@ -711,8 +711,14 @@ export const AUTO_POLISH_BY = "auto";
 const polishStands = (x: ChatMessage) => (x.edited?.count ?? 0) > 0 && x.edited?.by !== MERGE_BY;
 /** Lines further apart than this are never one automatic run (an old unpolished line is left alone). */
 export const AUTO_POLISH_RUN_MS = 60_000;
-/** Kept lines before the run sent as context (lines, each cut to AUTO_POLISH_CONTEXT_CHARS). */
-export const AUTO_POLISH_CONTEXT = 6;
+/**
+ * Kept lines before the run sent as read-only context: at most this many
+ * (config voice.autoPolishContextLines), together at most
+ * AUTO_POLISH_CONTEXT_TOTAL characters (voice.autoPolishContextChars), each
+ * cut to AUTO_POLISH_CONTEXT_CHARS.
+ */
+export const AUTO_POLISH_CONTEXT = 12;
+export const AUTO_POLISH_CONTEXT_TOTAL = 2000;
 export const AUTO_POLISH_CONTEXT_CHARS = 300;
 /** Defaults for the live config the hub reads (lib/config.ts: voice.autoPolish*). */
 export const AUTO_POLISH_TAIL_MS = 1500;
@@ -3095,7 +3101,13 @@ export class DebugHub {
   /** One automatic polish at a time; a line that lands meanwhile runs it again after. */
   private autoBusy = false;
   private autoAgain = false;
-  private autoConf?: { at: number; tailMs: number; minChars: number };
+  private autoConf?: {
+    at: number;
+    tailMs: number;
+    minChars: number;
+    contextLines: number;
+    contextChars: number;
+  };
 
   /**
    * One of the owner's voice lines was kept: the hub's own polish is due once
@@ -3143,17 +3155,20 @@ export class DebugHub {
   private async autoPolishConf() {
     const t = this.now();
     if (this.autoConf && t - this.autoConf.at < AUTO_POLISH_CONF_MS) return this.autoConf;
-    const num = async (key: string, dflt: number) => {
+    // `zero`: 0 is a value (no context), not "unset".
+    const num = async (key: string, dflt: number, zero = false) => {
       try {
         const v = await this.sessions?.config?.(key);
-        return typeof v === "number" && v > 0 ? v : dflt;
+        return typeof v === "number" && (v > 0 || (zero && v === 0)) ? v : dflt;
       } catch {
         return dflt;
       }
     };
     const tailMs = await num("voice.autoPolishTailMs", AUTO_POLISH_TAIL_MS);
     const minChars = await num("voice.autoPolishMinChars", AUTO_POLISH_MIN_CHARS);
-    return (this.autoConf = { at: t, tailMs, minChars });
+    const contextLines = await num("voice.autoPolishContextLines", AUTO_POLISH_CONTEXT, true);
+    const contextChars = await num("voice.autoPolishContextChars", AUTO_POLISH_CONTEXT_TOTAL, true);
+    return (this.autoConf = { at: t, tailMs, minChars, contextLines, contextChars });
   }
 
   /**
@@ -3161,9 +3176,15 @@ export class DebugHub {
    * hub's merge, a summary) has touched yet, newest first — ended by any
    * other line, a polished one, one still being spoken, one shorter than
    * voice.autoPolishMinChars, or one more than AUTO_POLISH_RUN_MS older than
-   * the newest. Then the kept lines before it, as context.
+   * the newest. Then the kept lines before it (his and everyone's replies),
+   * newest first, as read-only context within `bounds`: a line that would pass
+   * the character budget ends it.
    */
-  private autoPolishPick(kept: [string, ChatMessage][], minChars: number) {
+  private autoPolishPick(
+    kept: [string, ChatMessage][],
+    minChars: number,
+    bounds = { lines: AUTO_POLISH_CONTEXT, chars: AUTO_POLISH_CONTEXT_TOTAL },
+  ) {
     const run: [string, ChatMessage][] = [];
     let i = 0;
     for (; i < kept.length && run.length < MERGE_LINES; i++) {
@@ -3177,12 +3198,16 @@ export class DebugHub {
       run.push(kept[i]!);
     }
     const context: { from: string; text: string }[] = [];
-    for (; i < kept.length && context.length < AUTO_POLISH_CONTEXT; i++) {
+    let chars = 0;
+    for (; i < kept.length && context.length < bounds.lines; i++) {
       const [, x] = kept[i]!;
       if (x.collapsedInto || !x.text.trim()) continue;
+      const text = x.text.slice(0, AUTO_POLISH_CONTEXT_CHARS);
+      if (chars + text.length > bounds.chars) break;
+      chars += text.length;
       context.push({
         from: x.from === "owner" ? "owner" : x.from === "agent" ? "agent" : "friend",
-        text: x.text.slice(0, AUTO_POLISH_CONTEXT_CHARS),
+        text,
       });
     }
     // Oldest first, as spoken.
@@ -3217,7 +3242,10 @@ export class DebugHub {
     if (flag === "busy") return skip("flag-busy");
     const conf = await this.autoPolishConf();
     const { kept } = await this.editable();
-    const { run, context } = this.autoPolishPick(kept, conf.minChars);
+    const { run, context } = this.autoPolishPick(kept, conf.minChars, {
+      lines: conf.contextLines,
+      chars: conf.contextChars,
+    });
     if (!run.length) return;
     if (!page.user) return skip("no-user", { lines: run.length });
     const newest = run.at(-1)![0];
