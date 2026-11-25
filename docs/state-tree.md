@@ -225,12 +225,14 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   lib/eta-reply.ts). Once a reminder went out — an "ETA reached" line, or a
   blocked nudge that reached a listener — the agent's next ack
   (`progress.ts ack <code>`) or report on that node makes the hub post ONE
-  short quiet line in the thread in that agent's name (label "coco (codex)",
-  agentId the name, eta.kind "reply", eta.re = the reminder line's id),
-  quoting the task:
-    「coco (codex)：收到「R键重播」，处理中」              ack, no new time
-    「coco (codex)：收到「R键重播」，处理中（ETA 20 分钟）」  a report with a future ETA
-    「coco (codex)：「R键重播」已处理」                    done
+  short quiet line in the thread in that agent's name — the lane's display
+  name from config chat.lanes / the built-in lanes (voices.ts), else the id
+  (label "哈基米" for agy, "x (哈基米)" for an agent x in it; agentId keeps the
+  id, eta.kind "reply", eta.re = the reminder line's id), quoting the task.
+  Reminders name lanes the same way ("@coco: …"); routing reads eta.lane:
+    「哈基米：收到「R键重播」，处理中」              ack, no new time
+    「哈基米：收到「R键重播」，处理中（ETA 20 分钟）」  a report with a future ETA
+    「哈基米：「R键重播」已处理」                    done
   Generated from the ack or report itself, so no agent has to remember it.
   The words are config keys chat.etaReplyAck / chat.etaReplyDoing /
   chat.etaReplyDone ({agent}, {task}, {min}; their descriptions are the

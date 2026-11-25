@@ -10,7 +10,8 @@
  * (ProgressEntry.replyFor). The words are live config keys (lib/config.ts);
  * their descriptions are the translators' context.
  */
-import { type ProgressEntry, nudgeKey } from "./progress";
+import { LANES, parseLaneDef } from "../packages/debug-chat/src/voices";
+import { type ProgressEntry, nudgeKey, parseWho } from "./progress";
 
 /** What the reply says: got it (no new time), working on it until {min}, or done. */
 export type ReplyState = "ack" | "doing" | "done";
@@ -32,6 +33,38 @@ export const REPLY_DEFAULTS: Record<ReplyState, string> = {
   done: "{agent}：「{task}」已处理",
 };
 export const STATE_TREE_SENDER_DEFAULT = "状态树提醒";
+
+/** The config key of the lane table, whose `name`s are the lanes' display names. */
+export const LANE_TABLE_KEY = "chat.lanes";
+
+/**
+ * A lane's display name (owner, 2026-11-26: 「为什么是 agy 而不是哈基米」): its
+ * `chat.lanes` row's name, else the built-in lane's (voices.ts LANES), else the
+ * id. `rows` is the live table as read (anything not a list: none).
+ */
+export function laneShown(lane: string, rows: unknown = []): string {
+  if (Array.isArray(rows))
+    for (const r of rows) {
+      const d = parseLaneDef(r);
+      if (d?.id === lane && d.name) return d.name;
+    }
+  // Own keys only: "constructor" or "toString" is an id, not a built-in lane.
+  const base = Object.hasOwn(LANES, lane)
+    ? (LANES as Readonly<Record<string, { name: string }>>)[lane]
+    : undefined;
+  return base?.name || lane;
+}
+
+/**
+ * How a who or an assignee reads in a line, by display names: "哈基米" for the
+ * lane agy, "coco (哈基米)" for an agent coco in it, the name as it is otherwise.
+ */
+export function whoShown(who: string, rows: unknown = []): string {
+  const t = parseWho(who);
+  if (!t) return who;
+  const lane = laneShown(t.lane, rows);
+  return t.agent && t.agent !== lane ? `${t.agent} (${lane})` : lane;
+}
 
 /** A template's text with {agent}, {task} and {min} filled in. */
 export function replyText(tpl: string, v: { agent: string; task: string; min?: number }): string {
