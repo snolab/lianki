@@ -254,3 +254,111 @@ describe("through the mic: short answers reach the chat", () => {
     expect(r.texts).toEqual([]);
   });
 });
+
+describe("the misfire pre-roll never carries audio across a boundary", () => {
+  /** A mic whose cue, enrolment and thread are switches; each upload's first sample is kept. */
+  async function rig() {
+    let ev: VadEvents | null = null;
+    const first: number[] = [];
+    const sw = { cue: false, enrol: false };
+    const mic = createMic({
+      load: async (e) => {
+        ev = e;
+        return { start() {}, pause() {}, flush() {}, destroy() {} };
+      },
+      upload: async (wav, info) => {
+        first.push(
+          new DataView(wav.buffer, wav.byteOffset, wav.byteLength).getInt16(44, true) / 32768,
+        );
+        info.onSignals?.({ decoder: "ctc" });
+        return "要";
+      },
+      onState() {},
+      onText() {},
+      onPending() {},
+      partials: false,
+      answer: { awaiting: () => true },
+      cue: { guard: () => sw.cue, edge() {} },
+      enrol: { active: () => sw.enrol, begin: () => null, done() {} },
+    });
+    await mic.toggle();
+    const e = () => ev as unknown as VadEvents;
+    const frames = (n: number, level: number, prob: number) => {
+      for (let i = 0; i < n; i++) e().onFrame?.(new Float32Array(512).fill(level), prob);
+    };
+    /** A short answer at 0.2 that the VAD misfires on. */
+    const answer = async () => {
+      e().onSpeechStart();
+      frames(3, 0.2, 0.9);
+      e().onMisfire();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    };
+    return { mic, e, frames, answer, first, sw };
+  }
+
+  it("a new mic session cannot upload pre-roll from the stopped session", async () => {
+    const r = await rig();
+    r.frames(1, 0.8, 0.05);
+    await r.mic.toggle();
+    await r.mic.toggle();
+    await r.answer();
+    expect(r.first).toHaveLength(1);
+    expect(r.first[0]).toBeLessThan(0.3);
+    await r.mic.off();
+  });
+
+  it("after off/on the first uploaded sample comes from the new session", async () => {
+    const r = await rig();
+    r.frames(5, 0.8, 0.05);
+    await r.mic.toggle();
+    await r.mic.toggle();
+    r.frames(2, 0.05, 0.05); // the new session's own room sound
+    await r.answer();
+    expect(r.first).toHaveLength(1);
+    expect(r.first[0]).toBeCloseTo(0.05, 3);
+    await r.mic.off();
+  });
+
+  it("the pre-roll is the same session's listening frames, then cleared once used", async () => {
+    const r = await rig();
+    r.frames(2, 0.05, 0.05);
+    await r.answer();
+    expect(r.first[0]).toBeCloseTo(0.05, 3);
+    await r.answer(); // nothing heard between: no pre-roll left from the first one
+    expect(r.first[1]).toBeCloseTo(0.2, 3);
+    await r.mic.off();
+  });
+
+  it("held frames never enter the pre-roll, and a hold clears it", async () => {
+    const r = await rig();
+    r.frames(2, 0.8, 0.05);
+    r.mic.hold(true);
+    r.frames(2, 0.7, 0.05);
+    r.mic.hold(false);
+    await r.answer();
+    expect(r.first[0]).toBeCloseTo(0.2, 3);
+    await r.mic.off();
+  });
+
+  it("cue frames never enter the pre-roll, and a cue starting clears it", async () => {
+    const r = await rig();
+    r.frames(2, 0.8, 0.05);
+    r.sw.cue = true;
+    r.frames(2, 0.7, 0.05);
+    r.sw.cue = false;
+    await r.answer();
+    expect(r.first[0]).toBeCloseTo(0.2, 3);
+    await r.mic.off();
+  });
+
+  it("enrolment frames never enter the pre-roll", async () => {
+    const r = await rig();
+    r.frames(2, 0.8, 0.05);
+    r.sw.enrol = true;
+    r.frames(2, 0.7, 0.05);
+    r.sw.enrol = false;
+    await r.answer();
+    expect(r.first[0]).toBeCloseTo(0.2, 3);
+    await r.mic.off();
+  });
+});
