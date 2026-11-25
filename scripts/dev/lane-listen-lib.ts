@@ -393,14 +393,23 @@ const QUEUED_BANNER =
 export const queuedOnScreen = (screen: string): boolean =>
   screen.split("\n").some((line) => QUEUED_BANNER.test(line));
 
+/**
+ * The agent one hand-off went to: its pid, and its session (`ay ls` started_at)
+ * when known, so a pid reused by a new agent is not taken for it.
+ */
+export type SendTarget = { pid: string; session?: string };
+/** What `send` reports: ay's exit code, and the agent it went to (absent: unknown). */
+export type SendResult = number | { code: number; target?: SendTarget };
+const targetKey = (t: SendTarget) => `${t.pid}@${t.session ?? ""}`;
+
 /** The listener's way to break in when an urgent line was not read in time. */
 export type InterruptOnTimeout = {
   /** ms after an urgent delivery; 0 = off. */
   afterMs: number;
-  /** Is the delivered line still held back unread? */
-  queued: () => Promise<boolean>;
-  /** Make the lane read it now (`ay key <pid> esc`: codex submits the held message); no body is sent again. */
-  release: () => Promise<number>;
+  /** Is the line delivered to exactly this agent still held back unread? */
+  queued: (t: SendTarget) => Promise<boolean>;
+  /** Make this agent read it now (`ay key <pid> esc`: codex submits the held message); no body is sent again. */
+  release: (t: SendTarget) => Promise<number>;
 };
 
 /**
@@ -454,7 +463,7 @@ export function chunkLines(
 }
 export function makeDeliverer(
   o: { lane: RouteLane; repo: string },
-  send: (body: string, interrupt: boolean) => Promise<number>,
+  send: (body: string, interrupt: boolean) => Promise<SendResult>,
   busy: () => Promise<boolean>,
   log: (v: Record<string, unknown>) => void = () => {},
   recheckMs = BUSY_RECHECK_MS,
@@ -464,26 +473,35 @@ export function makeDeliverer(
   const pending: Line[] = [];
   let first = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  // One check per wave of urgent lines: one Esc submits everything codex holds.
-  let releaseTimer: ReturnType<typeof setTimeout> | undefined;
-  let releaseIds: string[] = [];
-  const checkRelease = async (it: InterruptOnTimeout) => {
-    releaseTimer = undefined;
-    const ids = releaseIds;
-    releaseIds = [];
-    const held = await it.queued().catch(() => false);
+  // One check per wave of urgent lines to the same agent (pid and session):
+  // one Esc submits everything codex holds. Each check carries its own target
+  // through the screen read and the release, so a later delivery to another
+  // agent can never redirect the Esc.
+  const releases = new Map<string, { target: SendTarget; ids: string[] }>();
+  const checkRelease = async (it: InterruptOnTimeout, key: string) => {
+    const r = releases.get(key);
+    releases.delete(key);
+    if (!r) return;
+    const { target, ids } = r;
+    const held = await it.queued(target).catch(() => false);
     if (!held) {
-      log({ type: "picked-up", lane: o.lane, ids, afterMs: it.afterMs });
+      log({ type: "picked-up", lane: o.lane, ids, pid: target.pid, afterMs: it.afterMs });
       return;
     }
-    const ay = await it.release().catch(() => -1);
-    log({ type: "interrupted", lane: o.lane, ids, afterMs: it.afterMs, ay });
+    const ay = await it.release(target).catch(() => -1);
+    log({ type: "interrupted", lane: o.lane, ids, pid: target.pid, afterMs: it.afterMs, ay });
   };
-  const scheduleRelease = (ids: string[]) => {
+  const scheduleRelease = (target: SendTarget | undefined, ids: string[]) => {
     const it = interruptOnTimeout;
-    if (!it || it.afterMs <= 0 || !ids.length) return;
-    releaseIds.push(...ids);
-    releaseTimer ??= setTimeout(() => void checkRelease(it), it.afterMs);
+    // An unknown target is never pressed: Esc goes only where the line went.
+    if (!it || it.afterMs <= 0 || !ids.length || !target) return;
+    const key = targetKey(target);
+    const r = releases.get(key);
+    if (r) r.ids.push(...ids);
+    else {
+      releases.set(key, { target: { ...target }, ids: [...ids] });
+      setTimeout(() => void checkRelease(it, key), it.afterMs);
+    }
   };
   const clearTimer = () => {
     if (!timer) return;
@@ -507,19 +525,18 @@ export function makeDeliverer(
     // and a refused batch was simply lost (2026-11-14 23:xx, four of coco's).
     // So a long batch goes as several messages, each under SEND_MAX_CHARS.
     let code: number | undefined;
-    const handed: string[] = [];
     // The first message also carries firstLines: its parts leave room for them.
     const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo).join("\n").length + 1 : 0);
     for (const part of chunkLines(o.lane, batch, room)) {
-      code = await send(handoffBrief(o.lane, part, o.repo, first), interrupt);
+      const res = await send(handoffBrief(o.lane, part, o.repo, first), interrupt);
+      code = typeof res === "number" ? res : res.code;
       first = false;
-      log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
-      if (code !== 0 && code !== 4)
-        log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
-      else handed.push(...part.map((l) => l.id));
+      const ids = part.map((l) => l.id);
+      log({ type: "delivered", lane: o.lane, ids, interrupt, ay: code });
+      if (code !== 0 && code !== 4) log({ type: "lost", lane: o.lane, ids, ay: code });
+      // Only an urgent hand-off may break in later; a lost one has nothing to release.
+      else if (interrupt) scheduleRelease(typeof res === "number" ? undefined : res.target, ids);
     }
-    // Only an urgent hand-off may break in later; a lost one has nothing to release.
-    if (interrupt) scheduleRelease(handed);
     return code;
   };
   return {
@@ -536,7 +553,7 @@ export function makeDeliverer(
     },
     pending: () => pending.length,
     /** An interrupt check is waiting for its timeout. */
-    releasePending: () => releaseTimer !== undefined,
+    releasePending: () => releases.size > 0,
   };
 }
 
@@ -573,6 +590,28 @@ export function pickTarget(rows: readonly AyRow[], cwd: string, cli?: string): s
   };
   alive.sort((a, b) => at(b) - at(a) || (b.pid ?? 0) - (a.pid ?? 0));
   return String(alive[0]!.pid);
+}
+
+/** A row's session id: its start time, as `ay ls` gives it (absent: unknown). */
+const sessionOf = (r: AyRow | undefined) =>
+  r?.started_at === undefined || r.started_at === null ? undefined : String(r.started_at);
+
+/**
+ * The exact agent a hand-off goes to, pinned for the interrupt check: a
+ * concrete pid and its session. A keyword or `.` is not pinned (undefined), so
+ * such a hand-off is never pressed: ay could resolve it to another agent later.
+ */
+export function pinTarget(rows: readonly AyRow[], target: string): SendTarget | undefined {
+  if (!/^\d+$/.test(target)) return undefined;
+  const session = sessionOf(rows.find((r) => String(r.pid) === target));
+  return session === undefined ? { pid: target } : { pid: target, session };
+}
+
+/** Is the pinned agent still that same session, alive? A pid reused by a new agent is not. */
+export function sameSession(rows: readonly AyRow[], t: SendTarget): boolean {
+  const r = rows.find((x) => String(x.pid) === t.pid);
+  if (!r || r.status === "exited") return false;
+  return t.session === undefined || sessionOf(r) === t.session;
 }
 
 export const RECONNECT_RESET_MS = 60_000;

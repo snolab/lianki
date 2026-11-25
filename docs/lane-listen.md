@@ -383,8 +383,15 @@ Choices:
 - **Codex's banner only.** Claude's "Press up to edit queued messages" makes no
   promise about Esc (it may cancel the turn and leave the message in the box),
   so a Claude lane is never pressed.
-- One check per wave of urgent lines: a second urgent line inside the window
-  joins the pending check, and one Esc submits everything held.
+- **Pinned to the agent the line went to.** Each delivery reports its pid and
+  session (`ay ls` started_at). The screen check and the Esc use that pair,
+  never "the current target", so a lane that restarts as another pid during
+  the check is never pressed by mistake. The session is checked again right
+  before the key. A hand-off to `.` or a keyword is not pinned, so it is never
+  pressed.
+- One check per wave of urgent lines **to the same agent**: a second urgent
+  line to it inside the window joins the pending check, and one Esc submits
+  everything held. Another pid or session gets its own check.
 - Non-urgent lines (no name, another lane's name, agents' and system lines)
   never schedule a check.
 

@@ -35,6 +35,8 @@ import {
   parseInterruptAfterMs,
   DEFAULT_INTERRUPT_AFTER_MS,
   queuedOnScreen,
+  pinTarget,
+  sameSession,
   reconnectWait,
   RECONNECT_RESET_MS,
   urgentLine,
@@ -716,7 +718,9 @@ describe("makeDeliverer interrupt on timeout", () => {
     let releases = 0;
     const d = makeDeliverer(
       { lane: "codex", repo: "/r" },
-      async (body, interrupt) => (sent.push({ body, interrupt }), 0),
+      async (body, interrupt) => (
+        sent.push({ body, interrupt }), { code: 0, target: { pid: "100", session: "s1" } }
+      ),
       async () => false,
       (v) => void logs.push(v),
       10,
@@ -729,6 +733,83 @@ describe("makeDeliverer interrupt on timeout", () => {
     );
     return { d, sent, logs, checks: () => checks, releases: () => releases };
   };
+
+  it("pins the exact agent: a pid and its session; a keyword or `.` is never pinned", () => {
+    const rows = [
+      { pid: 100, cwd: "/w", cli: "codex", status: "active", started_at: "2026-11-25T10:00:00Z" },
+      { pid: 300, cwd: "/w", cli: "codex", status: "exited", started_at: 5 },
+    ];
+    expect(pinTarget(rows, "100")).toEqual({ pid: "100", session: "2026-11-25T10:00:00Z" });
+    expect(pinTarget(rows, "200")).toEqual({ pid: "200" });
+    expect(pinTarget(rows, ".")).toBeUndefined();
+    expect(pinTarget(rows, "codex")).toBeUndefined();
+    const t = { pid: "100", session: "2026-11-25T10:00:00Z" };
+    expect(sameSession(rows, t)).toBe(true);
+    // The pid now belongs to a new agent, or it ended: not the one the line went to.
+    expect(sameSession([{ ...rows[0]!, started_at: "2026-11-25T11:00:00Z" }], t)).toBe(false);
+    expect(sameSession(rows, { pid: "300", session: "5" })).toBe(false);
+    expect(sameSession([], t)).toBe(false);
+  });
+
+  it("a target switch while the screen check is pending never sends Esc to the other pid", async () => {
+    let target = { pid: "100", session: "s1" };
+    const checked: string[] = [];
+    const pressed: string[] = [];
+    // The screen check of pid 100 hangs until we let it go.
+    let letGo: (v: boolean) => void = () => {};
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/r" },
+      async () => ({ code: 0, target: { ...target } }),
+      async () => false,
+      undefined,
+      10,
+      0,
+      {
+        afterMs: 10,
+        queued: (t) => {
+          checked.push(t.pid);
+          return t.pid === "100"
+            ? new Promise<boolean>((r) => (letGo = r))
+            : Promise.resolve(false);
+        },
+        release: async (t) => (pressed.push(t.pid), 0),
+      },
+    );
+    await d.add({ id: "r1", thread: "owner", from: "owner", text: "codex，在吗" });
+    await Bun.sleep(25);
+    expect(checked).toEqual(["100"]);
+    // Mid-await, the lane restarts as pid 200 and gets the next urgent line.
+    target = { pid: "200", session: "s2" };
+    await d.add({ id: "r2", thread: "owner", from: "owner", text: "codex，还在吗" });
+    letGo(true);
+    await Bun.sleep(25);
+    expect(pressed).toEqual(["100"]);
+    expect(checked).toEqual(["100", "200"]);
+  });
+
+  it("coalesces only for the same agent; an unknown target is never pressed", async () => {
+    const targets = [{ pid: "100", session: "a" }, { pid: "100", session: "b" }, undefined];
+    let i = 0;
+    const checked: (string | undefined)[] = [];
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/r" },
+      async () => ({ code: 0, target: targets[i++] }),
+      async () => false,
+      undefined,
+      10,
+      0,
+      {
+        afterMs: 10,
+        queued: async (t) => (checked.push(t.session), true),
+        release: async () => 0,
+      },
+    );
+    await d.add({ id: "c1", thread: "owner", from: "owner", text: "codex，一" });
+    await d.add({ id: "c2", thread: "owner", from: "owner", text: "codex，二" });
+    await d.add({ id: "c3", thread: "owner", from: "owner", text: "codex，三" });
+    await Bun.sleep(30);
+    expect(checked.sort()).toEqual(["a", "b"]);
+  });
 
   it("the flag: 5 s by default, 0 turns it off, junk is refused", () => {
     expect(DEFAULT_INTERRUPT_AFTER_MS).toBe(5_000);

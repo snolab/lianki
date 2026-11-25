@@ -38,8 +38,12 @@ import {
   makeDeliverer,
   parseDebounceMs,
   parseInterruptAfterMs,
+  pinTarget,
   queuedOnScreen,
   reconnectWait,
+  sameSession,
+  type SendResult,
+  type SendTarget,
   tokenNeeded,
   voiceAllowed,
   type AyRow,
@@ -137,7 +141,7 @@ function parse(argv: string[]): Opts | Error {
 const log = (v: Record<string, unknown>) =>
   console.log(JSON.stringify({ ...v, at: new Date().toISOString() }));
 
-async function deliver(o: Opts, body: string, interrupt = false): Promise<number> {
+async function deliver(o: Opts, body: string, interrupt = false): Promise<SendResult> {
   if (o.dryRun) {
     console.log(body);
     return 0;
@@ -151,8 +155,11 @@ async function deliver(o: Opts, body: string, interrupt = false): Promise<number
   // --interrupt-after-ms.
   // The pid is looked up first (pickTarget): `.` alone is refused by ay when the
   // dir holds more than one agent, and the line is lost (杰咪, 2026-11-15).
-  const target = o.deliver ?? (await resolveTarget(o)) ?? ".";
-  lastTarget = target;
+  const rows = await ayRows();
+  const target = o.deliver ?? (o.cwd ? pickTarget(rows, o.cwd, o.cli) : null) ?? ".";
+  // The exact agent (pid + session) this line goes to: the interrupt check and
+  // its Esc go there and nowhere else, whatever is delivered meanwhile.
+  const pinned = pinTarget(rows, target);
   const p = Bun.spawn(
     ["ay", "send", target, "--force", "--no-wait", "--code", interrupt ? "alt-m" : "enter", "-"],
     {
@@ -168,17 +175,14 @@ async function deliver(o: Opts, body: string, interrupt = false): Promise<number
   ]);
   if (code === -1) {
     console.error(`lane-listen: ay send still running after ${SEND_WAIT_MS} ms; not waiting`);
-    return 4;
+    return { code: 4, target: pinned };
   }
   if (code !== 0 && code !== 4)
     console.error(
       `lane-listen: ay send exited ${code}: ${(await new Response(p.stderr).text()).trim().split("\n").at(-1)}`,
     );
-  return code;
+  return { code, target: pinned };
 }
-
-/** The agent the last line went to: the interrupt check looks at the same one. */
-let lastTarget = ".";
 
 /** Run `ay` with a deadline; its stdout, or null when it was slow or failed. */
 async function ayOut(o: Opts, args: string[], waitMs: number): Promise<string | null> {
@@ -199,10 +203,13 @@ async function ayOut(o: Opts, args: string[], waitMs: number): Promise<string | 
   }
 }
 
-/** Is the delivered line still held back? Codex's "submitted after next tool call" banner on the agent's screen. */
-async function heldBack(o: Opts): Promise<boolean> {
-  if (o.dryRun) return false;
-  const screen = await ayOut(o, ["tail", "-n", "40", lastTarget], BUSY_CHECK_MS);
+/**
+ * Is the line still held back by the agent it went to? That same session must
+ * still be alive, and codex's "submitted after next tool call" banner on its screen.
+ */
+async function heldBack(o: Opts, t: SendTarget): Promise<boolean> {
+  if (o.dryRun || !sameSession(await ayRows(), t)) return false;
+  const screen = await ayOut(o, ["tail", "-n", "40", t.pid], BUSY_CHECK_MS);
   return screen !== null && queuedOnScreen(screen);
 }
 
@@ -212,9 +219,11 @@ async function heldBack(o: Opts): Promise<boolean> {
  * which would paste it again). `ay key`, because `ay send <pid> "" --code esc`
  * is refused as an empty message (agent-yes 1.308.1).
  */
-async function releaseHeld(o: Opts): Promise<number> {
+async function releaseHeld(o: Opts, t: SendTarget): Promise<number> {
   if (o.dryRun) return 0;
-  const p = Bun.spawn(["ay", "key", lastTarget, "esc", "--force"], {
+  // Checked again right before the key: the session may have ended during the screen read.
+  if (!sameSession(await ayRows(), t)) return -2;
+  const p = Bun.spawn(["ay", "key", t.pid, "esc", "--force"], {
     cwd: o.cwd ?? process.cwd(),
     stdout: "ignore",
     stderr: "ignore",
@@ -253,12 +262,6 @@ async function ayRows(): Promise<AyRow[]> {
   } catch {
     return [];
   }
-}
-
-/** The pid the lines go to when only a dir was given: the newest agent of the lane's CLI kind there. */
-async function resolveTarget(o: Opts): Promise<string | null> {
-  if (!o.cwd) return null;
-  return pickTarget(await ayRows(), o.cwd, o.cli);
 }
 
 export async function targetBusy(o: Opts): Promise<boolean> {
@@ -304,8 +307,8 @@ async function main(): Promise<number> {
     o.debounceMs,
     {
       afterMs: o.interruptAfterMs,
-      queued: () => heldBack(o),
-      release: () => releaseHeld(o),
+      queued: (t) => heldBack(o, t),
+      release: (t) => releaseHeld(o, t),
     },
   );
   if (t.from === "none") {
