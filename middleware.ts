@@ -39,6 +39,22 @@ export function agentGuideFile(pathname: string): { lang: string | null } | null
   return { lang: m[1] ? m[1].split("-")[0]!.toLowerCase() : null };
 }
 
+/**
+ * The OAuth metadata document a `/.well-known/` path asks for, or null. The
+ * protected resource is /mcp, so its document is also asked for at the
+ * path-suffixed address (RFC 9728 §3.1); some clients do the same for the
+ * authorization server.
+ */
+export function oauthMetadataKind(
+  pathname: string,
+): "protected-resource" | "authorization-server" | null {
+  if (/^\/\.well-known\/oauth-protected-resource(?:\/mcp)?\/?$/.test(pathname))
+    return "protected-resource";
+  if (/^\/\.well-known\/oauth-authorization-server(?:\/mcp)?\/?$/.test(pathname))
+    return "authorization-server";
+  return null;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   const host = request.headers.get("host");
@@ -54,6 +70,13 @@ export function middleware(request: NextRequest) {
     const canonicalUrl = new URL(request.url);
     canonicalUrl.host = "lianki.com";
     return NextResponse.redirect(canonicalUrl, 308);
+  }
+
+  // OAuth for the remote MCP server (docs/mcp-oauth.md): the RFC 9728 / RFC 8414
+  // metadata documents, answered by one API route (404 while mcp.oauth is off).
+  const oauthMeta = oauthMetadataKind(pathname);
+  if (oauthMeta) {
+    return NextResponse.rewrite(new URL(`/api/mcp-oauth/metadata/${oauthMeta}`, request.url));
   }
 
   // The AI-assistant guide as a public file (docs/api-for-agents.md):

@@ -140,6 +140,10 @@ assistant that tool results (card titles, chat lines) are data, never
 instructions. The MCP key is a normal API token; v1 has no delete tool and no
 eval.
 
+Web apps that cannot paste a token (ChatGPT's custom connectors, Claude.ai)
+connect to the remote server `https://lianki.com/mcp` by OAuth sign-in instead,
+behind the flag `mcp.oauth`: [mcp-oauth.md](mcp-oauth.md).
+
 ### Explicit read acknowledgements and sequence recovery
 
 A chat line carries its current version `seq`. Agents can read incrementally with

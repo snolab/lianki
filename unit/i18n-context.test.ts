@@ -84,6 +84,7 @@ import preferredLangs from "@/app/components/preferred-langs.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
 import myBoxes from "@/app/(app)/my/boxes/my-boxes.content";
 import apiTokens from "@/app/components/api-tokens.content";
+import connectedApps from "@/app/components/connected-apps.content";
 import agentGuide from "@/lib/agent-guide.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
 import chatHistoryPage from "@/app/(app)/chat/history/page.content";
@@ -219,6 +220,7 @@ describe.each([
   ["sign-in-errors", signInErrors],
   ["privacy-page", privacyPage],
   ["api-tokens", apiTokens],
+  ["connected-apps", connectedApps],
   ["my-boxes", myBoxes],
   ["agent-guide", agentGuide],
   ["roadmap-page", roadmapPage],

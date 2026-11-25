@@ -376,6 +376,12 @@ export const FLAGS = {
     default: false,
     audience: "allowlist",
   },
+  "mcp.oauth": {
+    description:
+      "MCP 用 OAuth 登录（docs/mcp-oauth.md）：ChatGPT、Claude.ai 等应用连接 https://lianki.com/mcp 时自行注册，用户在 lianki.com 登录并在同意页上看到应用名和权限后批准；应用拿到的是短期 lk_ 令牌（可续期），和用户自己建的 API 令牌走同一个检查。用户可在 偏好设置 → API 令牌 → 已连接的应用 里断开。打开后：所有账号都能连接。关闭（默认）：元数据、注册、授权、换令牌一律 404，已发出的 OAuth 令牌全部失效（行还在，重新打开即恢复）。",
+    default: false,
+    group: "mcp",
+  },
   levels: {
     description:
       "学习等级（种子→莲 / 炼气→炼虚）：所有用户都能看到自己的等级（未注册 / 免费 / 付费，付费后按累计有效学习天数升：100、365、1000 天）——登录后导航栏头像旁有一个小徽章，/my/profile 上有等级卡片（徽章、等级名、学习天数、离下一级还差几天；未注册的访客在 /my/profile 也能看到自己的等级和注册提示）。学习天数不论开关都在记录。关闭（默认）= 只有你本人能看到。",

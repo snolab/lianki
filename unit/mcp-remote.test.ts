@@ -73,7 +73,9 @@ describe("auth: refused, nothing done", () => {
     const res = await handle(req, env);
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toContain("Bearer");
-    expect(seen).toEqual([]);
+    // Only the OAuth metadata probe (docs/mcp-oauth.md), which carries no credential.
+    expect(seen.filter((s) => !s.path.includes("/.well-known/"))).toEqual([]);
+    expect(seen.every((s) => s.auth === null)).toBe(true);
   });
 
   test("a token the server refuses (unknown, revoked): 401 at initialize, the token never echoed", async () => {

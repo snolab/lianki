@@ -1,4 +1,8 @@
 import { BOX_AUTHORIZE_PATH, cleanAuthorizeQuery } from "./box-oauth/rules";
+import {
+  AUTHORIZE_PARAMS as MCP_AUTHORIZE_PARAMS,
+  AUTHORIZE_PATH as MCP_AUTHORIZE_PATH,
+} from "./mcp-oauth/rules";
 /**
  * The owner's switch between lianki.com and his whole-page dev server on its
  * tunnel (docs/dev-whole-page.md, "The profile menu switch").
@@ -161,6 +165,15 @@ export function signInReturnPath(raw: string | null | undefined): string | null 
   if (u.origin === PROD_ORIGIN && u.pathname === BOX_AUTHORIZE_PATH) {
     const q = cleanAuthorizeQuery(u.searchParams);
     return q ? `${BOX_AUTHORIZE_PATH}?${q}` : null;
+  }
+  // An app's OAuth sign-in for MCP (docs/mcp-oauth.md): its known parameters only.
+  if (u.origin === PROD_ORIGIN && u.pathname === MCP_AUTHORIZE_PATH) {
+    const q = new URLSearchParams();
+    for (const k of MCP_AUTHORIZE_PARAMS) {
+      const val = u.searchParams.get(k);
+      if (val !== null) q.set(k, val);
+    }
+    return q.size ? `${MCP_AUTHORIZE_PATH}?${q}` : null;
   }
   if (u.origin !== PROD_ORIGIN || u.pathname !== PREVIEW_ENTRY_PATH) return null;
   const to = safePreviewPath(u.searchParams.get("to")) ?? "/";

@@ -341,6 +341,25 @@ export const SUITES = [
     paths: ["app/(app)/dev/templates/**", "app/api/dev/templates/**", "lib/mail-templates/**"],
     sensitive: false,
   },
+  // OAuth sign-in for the remote MCP server (docs/mcp-oauth.md): well-known documents, registration, the consent click, PKCE, the token on an API route, Disconnect; flag off = 404; phone light + dark.
+  {
+    name: "MCP OAUTH (qa-mcp-oauth)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-mcp-oauth.mjs"],
+    base: true,
+    id: "mcp-oauth",
+    paths: [
+      "app/(app)/my/connected-apps/**",
+      "app/(app)/my/preferences/ConnectedApps.tsx",
+      "app/api/mcp-oauth/**",
+      "app/api/my/connected-apps/**",
+      "lib/mcp-oauth/**",
+      "lib/api-tokens.ts",
+      "middleware.ts",
+      "db/migrations/0084_mcp_oauth.sql",
+    ],
+    sensitive: false,
+  },
   // The config editor /dev/config (docs/config-store.md): save → Changed + history → the next page renders it; invalid refused; reset; non-admin 404; 360 px light + dark.
   {
     name: "CONFIG (qa-config)",
