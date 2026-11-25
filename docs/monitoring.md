@@ -1017,3 +1017,131 @@ wall-time totals include overlapping long-lived WebSockets and must not be
 used as billed active time. No before/after savings have been measured.
 Local cancellation proves a bounded failure path, not a new production
 hibernation rate.
+
+## Cost and latency watch
+
+### Baseline, 2026-11-25
+
+Measured read-only on 2026-11-25 at 08:00 UTC through the GraphQL Analytics
+API and the Analytics Engine SQL API, with wrangler's own login. "24 h" is
+2026-11-24 08:00 to 2026-11-25 08:00 UTC; "7 d" starts 2026-11-18 08:00 UTC.
+Cloudflare samples these aggregates, so treat them as approximate. Prices are
+the Workers Paid list prices on developers.cloudflare.com, read 2026-11-25:
+Workers pricing page (modified 2026-11-18), Durable Objects (2026-11-13), D1
+(2026-10-30), Workers AI (2026-11-18) and Analytics Engine (2026-04-23). The
+included allowances are per account, and other projects on the account share
+them.
+
+| Service                           | 24 h                                                     | 7 d                                                  | Est. $/month after allowance                                                                   |
+| --------------------------------- | -------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Workers plan                      | n/a                                                      | n/a                                                  | $5.00 base                                                                                     |
+| `lianki` requests / CPU           | 25.6 k req, 2,908 CPU-s                                  | 921 k req, 37,150 CPU-s                              | CPU: $1.15 at the 24 h rate, $2.58 at the 7 d rate; requests $0 (10 M included)                |
+| `lianki-monitor` (tail)           | 26.8 k, 7.7 CPU-s                                        | 925 k, 203 CPU-s                                     | $0                                                                                             |
+| `lianki-push` / `-voice` / `-mcp` | 1,152 / 850 / 76 req                                     | 9,896 / 4,378 / 81 req                               | $0                                                                                             |
+| DO `lianki-push` (all classes)    | ~1,226 GB-s; DebugHub active 2.65 h                      | 51.3 k invocations; 14,584 GB-s (DebugHub 13,510)    | $0 (1 M requests and 400 k GB-s included; even at list price, under $0.20 a week)              |
+| DO SQLite rows                    | DebugHub 419 k read, 2.9 k written                       | 11.6 M read, 64 k written                            | $0 (25 B read and 50 M written included); stored about 3.3 MB in total                         |
+| D1 `lianki`                       | 2.1 M rows read, 8.4 k written; p50 0.13 ms, p95 0.46 ms | 38.1 M read, 218 k written; p50 0.24 ms, p95 0.46 ms | $0 (25 B read, 50 M written, 5 GB included); 42.9 MB                                           |
+| Workers AI                        | 4.3 k neurons                                            | 64 k neurons; 11-19 at 20.6 k and 11-20 at 29.2 k    | $0.33 for the week (only days above 10 k neurons are billed); about $1.40 a month at that rate |
+| Analytics Engine                  | ~35 k points                                             | ~1 M points                                          | $0 (not billed yet; 10 M included)                                                             |
+
+Altogether, about **$6 to $9 a month**: the $5 base plus $1 to $4 of usage,
+which comes to less than $0.15 a day above the base. In the 24 h window, the
+main Worker answered at p50 14 ms, p95 1.2 s and p99 2.1 s wall time (AE). Over
+the 7 d window it was p50 74 ms, p95 185 ms and p99 1.5 s.
+
+What drives the cost, and what looked wrong:
+
+- **CPU on the main Worker is almost the whole usage bill.** In the 24 h
+  window, 36% of it went to `POST /api/fsrs/watch` answering **401**: 15.9 k
+  requests with CPU p95 713 ms (cold isolates). These come from a signed-out
+  userscript, which retries every 30 s per tab and has done so for at least
+  7 days. `flushWatch` stops for 404/405/5xx but not 401
+  (`src/lianki.user.ts`). A fix is to stop for 401/403 as well, until the
+  next sign-in.
+- **A client loop ran unnoticed for 25 h**, from 2026-11-21 06:00 to
+  2026-11-22 07:00 UTC: about 4.5 requests a second each to `GET /api/prefs`
+  and `GET /api/my/files/:id`, all of them 200, about 760 k requests in all.
+  That made 1.65 M D1 read queries in one day. It stopped by itself, and
+  nothing alerted, because the monitor only looks at errors and slow
+  requests. It cost less than $1.
+- **D1 writes are not a cost.** Chat history (`chat_line`) adds about 2.6 k
+  rows a day. The largest writers are `spend_alert` upserts (22.7 k a week,
+  2.7 for each `cost_ledger` row), `cost_ledger`, `recording` and
+  `auth_throttle`. All of it is under 0.5% of the included writes.
+  `SELECT COUNT(*) FROM recording WHERE user_id = ? AND day = ?` reads about
+  1,185 rows per call and probably needs an index. `sqlite_master` was
+  introspected 5.8 k times in the week.
+- **The DebugHub hibernates, but it is not free.** It was active 2.65 h in
+  the 24 h window and 10.9 h on 2026-11-19. It writes about 10 DO rows for
+  each `chat_line` insert. That is far inside the allowance. SttRegistry
+  stayed active for 1.9 h on 2026-11-22 and is otherwise idle. Request wall
+  time on `lianki-push` (p99 3.6 h) is the length of the socket's life, not
+  billed time.
+- **`aura-2-en` TTS costs about 200 neurons a call** (10 calls, 2,004 neurons
+  in the 24 h window). It is the only AI model whose use per call is large
+  enough to notice.
+- **`/api/words/tts` answered 502 782 times in the 24 h window.** That is a
+  reliability problem, not a cost.
+- **MCP:** `lianki-mcp` received 76 requests in the 24 h window, with a
+  longest wall time of 3.9 s. No 55 s `lianki_chat_wait` long wait happened.
+  The Worker has no logs and no tail consumer, so the time from a posted line
+  to the wait returning it, empty waits and reconnects cannot be measured yet.
+
+Cached prompt tokens (`cachedIn` on `partner.reply` / `debug.auto-polish`)
+were not read. They are only in Workers Logs, and wrangler's OAuth token is
+refused by the telemetry query API (403). Reading them needs a token with
+**Account · Workers Observability · Read**. Workers AI's GraphQL dataset has
+input and output tokens but no cached-token field.
+
+### Watching it, event-driven
+
+All of this happens on events that already occur. Nothing runs on a timer
+and nothing polls. Thresholds are `lib/config.ts` keys read with `cfg()`. The
+monitor fetches them over a service binding to `lianki`, keeps them for
+10 minutes, and falls back to the defaults in code when the fetch fails.
+Counters are sums kept in memory or in DO storage, written at most once a
+minute or once per alert. There is never a D1 write per request, heartbeat or
+wait.
+
+1. **Per-path request rate** (monitor tail). The monitor already sees every
+   request. It counts requests per path group in a 10-minute window and
+   alerts when one path exceeds `monitor.pathRateMax` (default 1,500 per 10
+   minutes, which is 2.5 a second) for any status, 2xx included. That would
+   have caught the 11-21 loop within 10 minutes. A second key,
+   `monitor.repeat401Max` (default 300 per hour for one path), catches the
+   watch retries.
+2. **CPU budget** (monitor tail). It adds up CPU ms per UTC day in memory and
+   in KV, writing once a minute at most. It alerts when the projected month
+   passes `monitor.cpuMsMonthAlert` (default 60 M, twice the allowance).
+3. **Daily cost line** (monitor tail). The first tail event after 00:00 UTC
+   claims the day in KV (`cost:<date>`, read first, so it runs once). It then
+   runs one GraphQL query for the day before and posts a single Slack line:
+   requests, CPU, DO GB-s and rows, D1 rows, neurons, and $ against the
+   allowances. A day with no traffic posts nothing, which is the same
+   trade-off as the alerts. It needs a read-only API token on the monitor
+   with Account Analytics Read and nothing else.
+4. **Hub storage ops per chat line** (DebugHub). The hub counts its
+   `sql.exec` writes and chat lines per thread in memory, and on hibernation
+   or every 100 lines stores the totals in a single row. When writes per line
+   pass `chat.hubWritesPerLineMax` (default 30, against about 10 today), it
+   logs `hub.write-spike` once per thread per hour. The monitor alerts on
+   that log line.
+5. **DO awake time.** The hub notes each wake and its length in memory.
+   Alarms already exist, so there is no new timer. A wake that passes
+   `chat.hubWakeAlertMin` (default 120 minutes) with no socket message is
+   logged as `hub.awake-idle`, and the monitor alerts on it. This catches a
+   DO that does not hibernate.
+6. **MCP chat latency.** Give `lianki-mcp` the monitor as tail consumer, so
+   its timings land in AE as `index1 = 'mcp'`. `lianki_chat_wait` returns
+   `waitedMs`, whether it was empty and the line's `at`, and logs one
+   aggregate line per call with counts only and no text. Post-to-return p50
+   and p95, the share of empty 55 s waits and reconnects per hour then come
+   from AE. The alert fires when p95 passes `mcp.waitP95AlertMs` (default
+   5,000).
+7. **AI neurons** go into the daily line (3). The 10 k free neurons reset at
+   00:00 UTC, so a spike only costs money after that point. `aura-2-en`
+   calls are already metered through `cost_ledger`, so no new counter is
+   needed.
+
+None of these are built yet. Nothing here runs on a timer, and items 2–5
+only add in-memory sums and occasional single-row writes.
