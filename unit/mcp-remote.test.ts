@@ -424,7 +424,7 @@ describe("token addresses", () => {
     expect(await res.text()).not.toContain(TOKEN);
   });
 
-  test("deployment disables persisted observability and retains the monitor", async () => {
+  test("deployment disables persisted observability and credential URL tail forwarding", async () => {
     const config = Bun.JSONC.parse(
       await Bun.file(new URL("../workers/mcp/wrangler.jsonc", import.meta.url)).text(),
     ) as {
@@ -439,6 +439,6 @@ describe("token addresses", () => {
     expect(config.observability.logs.enabled).toBe(false);
     expect(config.observability.logs.invocation_logs).toBe(false);
     expect(config.observability.traces.enabled).toBe(false);
-    expect(config.tail_consumers).toEqual([{ service: "lianki-monitor" }]);
+    expect(config.tail_consumers).toEqual([]);
   });
 });

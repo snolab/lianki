@@ -16,8 +16,8 @@
     { "binding": "MAIN", "service": "lianki" },
     { "binding": "PUSH", "service": "lianki-push" },
   ],
-  // The monitor ignores MCP events; persisted MCP logs and traces stay disabled.
-  "tail_consumers": [{ "service": "lianki-monitor" }],
+  // Credential URLs must not enter tail events; persisted logs and traces stay disabled.
+  "tail_consumers": [],
   "observability": {
     "enabled": false,
     "logs": { "enabled": false, "invocation_logs": false },
