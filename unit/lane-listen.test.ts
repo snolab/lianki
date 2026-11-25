@@ -32,6 +32,11 @@ import {
   DEFAULT_DEBOUNCE_MS,
   makeDeliverer,
   parseDebounceMs,
+  parseInterruptAfterMs,
+  DEFAULT_INTERRUPT_AFTER_MS,
+  queuedOnScreen,
+  pinTarget,
+  sameSession,
   reconnectWait,
   RECONNECT_RESET_MS,
   urgentLine,
@@ -702,5 +707,229 @@ describe("makeDeliverer debounce", () => {
     expect(sent).toHaveLength(2);
     expect(sent[1]!.interrupt).toBe(true);
     expect(sent[1]!.body).toContain("agy，立刻看");
+  });
+});
+
+describe("makeDeliverer interrupt on timeout", () => {
+  const setup = (afterMs: number, held: boolean) => {
+    const sent: { body: string; interrupt: boolean }[] = [];
+    const logs: Record<string, unknown>[] = [];
+    let checks = 0;
+    let releases = 0;
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/r" },
+      async (body, interrupt) => (
+        sent.push({ body, interrupt }), { code: 0, target: { pid: "100", session: "s1" } }
+      ),
+      async () => false,
+      (v) => void logs.push(v),
+      10,
+      0,
+      {
+        afterMs,
+        queued: async () => (checks++, held),
+        release: async () => (releases++, 0),
+      },
+    );
+    return { d, sent, logs, checks: () => checks, releases: () => releases };
+  };
+
+  it("pins the exact agent: a pid and its session; a keyword or `.` is never pinned", () => {
+    const rows = [
+      { pid: 100, cwd: "/w", cli: "codex", status: "active", started_at: "2026-11-25T10:00:00Z" },
+      { pid: 300, cwd: "/w", cli: "codex", status: "exited", started_at: 5 },
+    ];
+    expect(pinTarget(rows, "100")).toEqual({ pid: "100", session: "2026-11-25T10:00:00Z" });
+    expect(pinTarget(rows, ".")).toBeUndefined();
+    expect(pinTarget(rows, "codex")).toBeUndefined();
+    // No live row with a session: not pinned (an explicit --deliver pid included).
+    expect(pinTarget(rows, "200")).toBeUndefined();
+    expect(pinTarget(rows, "300")).toBeUndefined();
+    const t = { pid: "100", session: "2026-11-25T10:00:00Z" };
+    expect(sameSession(rows, t)).toBe(true);
+    // The pid now belongs to a new agent, or it ended: not the one the line went to.
+    expect(sameSession([{ ...rows[0]!, started_at: "2026-11-25T11:00:00Z" }], t)).toBe(false);
+    expect(sameSession(rows, { pid: "300", session: "5" })).toBe(false);
+    expect(sameSession([], t)).toBe(false);
+  });
+
+  it("the first lookup failed (ay ls gave nothing): not pinned, so never pressed later", () => {
+    // ayRows() returns [] when `ay ls` fails or is slow.
+    expect(pinTarget([], "100")).toBeUndefined();
+  });
+
+  it("a row without a usable started_at: not pinned; a target without a session never matches", () => {
+    const base = { pid: 100, cwd: "/w", cli: "codex", status: "active" };
+    expect(pinTarget([base], "100")).toBeUndefined();
+    expect(pinTarget([{ ...base, started_at: null }], "100")).toBeUndefined();
+    expect(pinTarget([{ ...base, started_at: "  " }], "100")).toBeUndefined();
+    expect(pinTarget([{ ...base, started_at: 0 }], "100")).toEqual({ pid: "100", session: "0" });
+    // Whatever the row says now, a pinned target with no session fails closed.
+    expect(sameSession([{ ...base, started_at: "x" }], { pid: "100" })).toBe(false);
+    expect(sameSession([base], { pid: "100" })).toBe(false);
+    expect(sameSession([base], { pid: "100", session: "x" })).toBe(false);
+  });
+
+  it("pid reuse: a new session on the same pid is never pressed for the old line", async () => {
+    let rows = [{ pid: 100, cwd: "/w", cli: "codex", status: "active", started_at: "s1" }];
+    const pinned = pinTarget(rows, "100")!;
+    const pressed: string[] = [];
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/r" },
+      async () => ({ code: 0, target: pinned }),
+      async () => false,
+      undefined,
+      10,
+      0,
+      {
+        afterMs: 10,
+        // As the runtime does: the screen counts only while it is that same session.
+        queued: async (t) => sameSession(rows, t),
+        release: async (t) => (sameSession(rows, t) ? (pressed.push(t.pid), 0) : -2),
+      },
+    );
+    await d.add({ id: "p1", thread: "owner", from: "owner", text: "codex，在吗" });
+    // The agent restarts and the OS hands pid 100 to the new session.
+    rows = [{ pid: 100, cwd: "/w", cli: "codex", status: "active", started_at: "s2" }];
+    await Bun.sleep(30);
+    expect(pressed).toEqual([]);
+  });
+
+  it("a target switch while the screen check is pending never sends Esc to the other pid", async () => {
+    let target = { pid: "100", session: "s1" };
+    const checked: string[] = [];
+    const pressed: string[] = [];
+    // The screen check of pid 100 hangs until we let it go.
+    let letGo: (v: boolean) => void = () => {};
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/r" },
+      async () => ({ code: 0, target: { ...target } }),
+      async () => false,
+      undefined,
+      10,
+      0,
+      {
+        afterMs: 10,
+        queued: (t) => {
+          checked.push(t.pid);
+          return t.pid === "100"
+            ? new Promise<boolean>((r) => (letGo = r))
+            : Promise.resolve(false);
+        },
+        release: async (t) => (pressed.push(t.pid), 0),
+      },
+    );
+    await d.add({ id: "r1", thread: "owner", from: "owner", text: "codex，在吗" });
+    await Bun.sleep(25);
+    expect(checked).toEqual(["100"]);
+    // Mid-await, the lane restarts as pid 200 and gets the next urgent line.
+    target = { pid: "200", session: "s2" };
+    await d.add({ id: "r2", thread: "owner", from: "owner", text: "codex，还在吗" });
+    letGo(true);
+    await Bun.sleep(25);
+    expect(pressed).toEqual(["100"]);
+    expect(checked).toEqual(["100", "200"]);
+  });
+
+  it("coalesces only for the same agent; an unknown target is never pressed", async () => {
+    const targets = [
+      { pid: "100", session: "a" },
+      { pid: "100", session: "b" },
+      undefined,
+      { pid: "100" },
+    ];
+    let i = 0;
+    const checked: (string | undefined)[] = [];
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/r" },
+      async () => ({ code: 0, target: targets[i++] }),
+      async () => false,
+      undefined,
+      10,
+      0,
+      {
+        afterMs: 10,
+        queued: async (t) => (checked.push(t.session), true),
+        release: async () => 0,
+      },
+    );
+    await d.add({ id: "c1", thread: "owner", from: "owner", text: "codex，一" });
+    await d.add({ id: "c2", thread: "owner", from: "owner", text: "codex，二" });
+    await d.add({ id: "c3", thread: "owner", from: "owner", text: "codex，三" });
+    await d.add({ id: "c4", thread: "owner", from: "owner", text: "codex，四" });
+    await Bun.sleep(30);
+    expect(checked.sort()).toEqual(["a", "b"]);
+  });
+
+  it("the flag: 5 s by default, 0 turns it off, junk is refused", () => {
+    expect(DEFAULT_INTERRUPT_AFTER_MS).toBe(5_000);
+    expect(parseInterruptAfterMs(undefined)).toBe(5_000);
+    expect(parseInterruptAfterMs("0")).toBe(0);
+    expect(parseInterruptAfterMs("1200")).toBe(1_200);
+    expect(parseInterruptAfterMs("-5")).toBeInstanceOf(Error);
+    expect(parseInterruptAfterMs("soon")).toBeInstanceOf(Error);
+  });
+
+  it("codex's held-back banner is what counts as not picked up", () => {
+    expect(
+      queuedOnScreen(
+        "• Working (12s)\n  Messages to be submitted after next tool call (press esc to interrupt and send immediately)\n  ↳ 【owner → codex】",
+      ),
+    ).toBe(true);
+    expect(queuedOnScreen("› Press up to edit queued messages")).toBe(false);
+    expect(queuedOnScreen("› \n  gpt-5 high · 80% left")).toBe(false);
+  });
+
+  it("urgent and still held after the timeout: one Esc, the line not sent again", async () => {
+    const t = setup(20, true);
+    await t.d.add({ id: "u1", thread: "owner", from: "owner", text: "codex，在吗" });
+    await t.d.add({ id: "u2", thread: "owner", from: "owner", text: "全体，报个到" });
+    expect(t.sent).toHaveLength(2);
+    expect(t.releases()).toBe(0);
+    expect(t.d.releasePending()).toBe(true);
+    await Bun.sleep(50);
+    expect(t.checks()).toBe(1);
+    expect(t.releases()).toBe(1);
+    expect(t.sent).toHaveLength(2);
+    expect(t.logs.find((l) => l.type === "interrupted")).toMatchObject({ ids: ["u1", "u2"] });
+  });
+
+  it("urgent and picked up in time: no interrupt", async () => {
+    const t = setup(20, false);
+    await t.d.add({ id: "u3", thread: "owner", from: "owner", text: "codex，看一下" });
+    await Bun.sleep(50);
+    expect(t.checks()).toBe(1);
+    expect(t.releases()).toBe(0);
+    expect(t.logs.some((l) => l.type === "picked-up")).toBe(true);
+  });
+
+  it("a line not addressed to the lane never interrupts", async () => {
+    const t = setup(20, true);
+    await t.d.add({ id: "n1", thread: "owner", from: "owner", text: "今天学了什么" });
+    await t.d.add({ id: "n2", thread: "owner", from: "owner", text: "agy，看一下" });
+    await t.d.add({
+      id: "n3",
+      thread: "owner",
+      from: "agent",
+      kind: "agent",
+      sender: "coco",
+      text: "codex，在吗",
+    });
+    expect(t.sent).toHaveLength(3);
+    expect(t.sent.every((s) => !s.interrupt)).toBe(true);
+    expect(t.d.releasePending()).toBe(false);
+    await Bun.sleep(50);
+    expect(t.checks()).toBe(0);
+    expect(t.releases()).toBe(0);
+  });
+
+  it("timeout 0: never", async () => {
+    const t = setup(0, true);
+    await t.d.add({ id: "z1", thread: "owner", from: "owner", text: "codex，在吗" });
+    expect(t.sent[0]!.interrupt).toBe(true);
+    expect(t.d.releasePending()).toBe(false);
+    await Bun.sleep(30);
+    expect(t.checks()).toBe(0);
+    expect(t.releases()).toBe(0);
   });
 });
