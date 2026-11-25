@@ -98,6 +98,23 @@ describe("Li's reply gate in the owner's thread", () => {
     expect(isDevLine("print this")).toBe(false);
   });
 
+  it("an explicit language request beats a dev word; a dev operation or a plain review does not (#1112 review)", async () => {
+    const h = harness();
+    await h.say("l1", "Li，翻译这句话：the server is down");
+    await h.say("l2", "Li, what does commit mean?");
+    await h.say("l3", "Li，给我一个包含 bug 的英语例句");
+    expect(h.replies).toEqual(["l1", "l2", "l3"]);
+    await h.say("l4", "Li deploy the server");
+    await h.say("l5", "review PR 1112");
+    expect(h.replies).toEqual(["l1", "l2", "l3"]);
+    expect(h.reason("l4")).toBe("dev-request");
+    expect(h.reason("l5")).toBe("dev-request");
+    // Another agent named still wins over a language request.
+    await h.say("l6", "吉米，翻译一下这个");
+    expect(["names-agent", "names-lane"]).toContain(h.reason("l6")!);
+    expect(h.replies).toHaveLength(3);
+  });
+
   it("study lines get an answer: 今日目标, 单词表, due cards, language questions", async () => {
     const h = harness();
     await h.say("s1", "今日目标是什么");

@@ -22,6 +22,8 @@ import {
   OWNER_DEV_WORDS_KEY,
   OWNER_STUDY_WORDS,
   OWNER_STUDY_WORDS_KEY,
+  OWNER_LANGUAGE_INTENTS,
+  OWNER_LANGUAGE_INTENTS_KEY,
   OWNER_LANE_ACTIVE_KEY,
   OWNER_LANE_ACTIVE_MAX,
   OWNER_LANE_ACTIVE_MS,
@@ -92,6 +94,10 @@ export function namesAgent(text: string, names: readonly string[] = OWNER_AGENT_
 export const isDevLine = (text: string, words: readonly string[] = OWNER_DEV_WORDS) =>
   holdsWord(text, words);
 
+/** Does the line ask for language help outright (translate, meaning, example sentence, grammar)? */
+export const isLanguageAsk = (text: string, intents: readonly string[] = OWNER_LANGUAGE_INTENTS) =>
+  holdsWord(text, intents);
+
 /** Is the line about study (today's goal, word lists, due cards, review, language)? */
 export const isStudyLine = (text: string, words: readonly string[] = OWNER_STUDY_WORDS) =>
   holdsWord(text, words);
@@ -143,6 +149,7 @@ type Conf = {
   agentNames: readonly string[];
   devWords: readonly string[];
   studyWords: readonly string[];
+  languageIntents: readonly string[];
 };
 
 const ms = (v: unknown, max: number): number | undefined =>
@@ -194,7 +201,7 @@ export function isRollCall(text: string): boolean {
  * `wrangler tail lianki-push` shows whether the live object has the new code
  * (2026-11-16: a reply after the deploy matched the rules before it).
  */
-export const OWNER_AI_RULES = "2026-11-26.study-only";
+export const OWNER_AI_RULES = "2026-11-26.language-ask";
 
 export class OwnerAi<P> {
   private pending?: { timer: unknown };
@@ -227,7 +234,7 @@ export class OwnerAi<P> {
     try {
       on = (await this.d.flag(PARTNER_OWNER_FLAG)) === true;
     } catch {}
-    const [delay, quiet, active, stop, liNames, spoken, agentNames, devWords, studyWords] =
+    const [delay, quiet, active, stop, liNames, spoken, agentNames, devWords, studyWords, intents] =
       await Promise.all([
         this.read(OWNER_REPLY_DELAY_KEY),
         this.read(OWNER_QUIET_KEY),
@@ -238,6 +245,7 @@ export class OwnerAi<P> {
         this.read(OWNER_AGENT_NAMES_KEY),
         this.read(OWNER_DEV_WORDS_KEY),
         this.read(OWNER_STUDY_WORDS_KEY),
+        this.read(OWNER_LANGUAGE_INTENTS_KEY),
       ]);
     this.conf = {
       at: t,
@@ -251,6 +259,7 @@ export class OwnerAi<P> {
       agentNames: words(agentNames) ?? OWNER_AGENT_NAMES,
       devWords: words(devWords) ?? OWNER_DEV_WORDS,
       studyWords: words(studyWords) ?? OWNER_STUDY_WORDS,
+      languageIntents: words(intents) ?? OWNER_LANGUAGE_INTENTS,
     };
     return this.conf;
   }
@@ -318,7 +327,10 @@ export class OwnerAi<P> {
     // Owner, 2026-11-26: another agent named, or a dev/ops request: that agent or the
     // lanes handle it; Li only polishes the line (the hub's polish), never answers it.
     if (namesAgent(l.text, conf.agentNames)) return "names-agent";
-    if (isDevLine(l.text, conf.devWords)) return "dev-request";
+    // An explicit language request beats a dev word ("Li, what does commit mean?");
+    // a dev word without one ("Li deploy the server", "review PR 1112") is the lanes'.
+    const languageAsk = isLanguageAsk(l.text, conf.languageIntents);
+    if (!languageAsk && isDevLine(l.text, conf.devWords)) return "dev-request";
     // A spoken line: the room may be talking (2026-11-16: "あります。", "And here a few."
     // got a reply). Li is in the room, silent until named (partner.spokenNeedsName).
     const spoken = l.source === "stt";
@@ -335,7 +347,7 @@ export class OwnerAi<P> {
       return "lane-active";
     // Li answers his line only about study (today's goal, word lists, due cards…);
     // any other line it only polishes, and the agents present take it.
-    if (!isStudyLine(l.text, conf.studyWords)) return "off-topic";
+    if (!languageAsk && !isStudyLine(l.text, conf.studyWords)) return "off-topic";
     return null;
   }
 

@@ -4,6 +4,7 @@ import {
   CAP_WINDOW_MAX,
   OWNER_AGENT_NAMES,
   OWNER_DEV_WORDS,
+  OWNER_LANGUAGE_INTENTS,
   OWNER_STUDY_WORDS,
   PARTNER_SYSTEM_PROMPT,
   PARTNER_SYSTEM_PROMPT_MAX,
@@ -2122,6 +2123,14 @@ export const CONFIG = {
     audience: "server",
     description:
       "学习相关的词（今日目标、单词表、复习、到期、语法…）：你自己的线程里，Li 只回答含其中一个的话，或者直接叫 Li 的话；其他的话 Li 只润色、不回答。英文按整词、不分大小写。JSON 字符串数组。",
+  },
+  "partner.languageIntents": {
+    default: [...OWNER_LANGUAGE_INTENTS] as string[],
+    schema: z.array(z.string().min(1).max(40)).max(300),
+    group: "chat",
+    audience: "server",
+    description:
+      "明确的语言请求（翻译、什么意思、例句、语法、发音…）：一句话里有其中一个，就算带开发词（「commit 是什么意思」「给我一个包含 bug 的例句」）也算学习，Li 照样回答；点名别的 agent 时仍然沉默。英文按整词、不分大小写。JSON 字符串数组。",
   },
   "partner.systemPrompt": {
     default: PARTNER_SYSTEM_PROMPT as string,

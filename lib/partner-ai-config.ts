@@ -167,6 +167,41 @@ export const OWNER_DEV_WORDS: readonly string[] = [
   "vercel",
   "API",
 ];
+/**
+ * An explicit language request (translate, what does X mean, an example
+ * sentence, grammar, explain a word): it beats a dev word, so "Li, what does
+ * commit mean?" is Li's (review of #1112, 2026-11-26). Another agent named
+ * still wins. A dev word with none of these ("review PR 1112") stays silent.
+ */
+export const OWNER_LANGUAGE_INTENTS_KEY = "partner.languageIntents";
+export const OWNER_LANGUAGE_INTENTS: readonly string[] = [
+  "翻译",
+  "什么意思",
+  "啥意思",
+  "怎么说",
+  "怎么读",
+  "例句",
+  "造句",
+  "语法",
+  "发音",
+  "解释这个词",
+  "这个单词",
+  "translate",
+  "translation",
+  "what does",
+  "what is the meaning",
+  "meaning of",
+  "example sentence",
+  "grammar",
+  "pronounce",
+  "pronunciation",
+  "explain the word",
+  "訳して",
+  "意味",
+  "例文",
+  "文法",
+  "発音",
+];
 export const OWNER_STUDY_WORDS_KEY = "partner.studyWords";
 export const OWNER_STUDY_WORDS: readonly string[] = [
   "今日目标",
