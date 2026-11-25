@@ -147,7 +147,7 @@ listeners first; with nobody else, only its first clause, "Li 在"). The lane
 router also takes 全体 within a line's first 12 characters and 都有报数 as an
 all-hands call (lane-route.ts), so the lanes answer it too.
 
-## Prompt caching and the polish inside Li's call (plan, 2026-11-25)
+## Prompt caching and the polish inside Li's call (2026-11-25)
 
 Owner, 2026-11-25: "polish step should be with lianki learning partner respond
 together so it reads whole chat"; "can u ensure the history stable? because if
@@ -167,62 +167,69 @@ repeat. It reads the earlier lines as read-only context
 `debug.auto-polish` log, so the hit rate shows in `wrangler tail lianki-push`.
 Billing stays at the list input price for now.
 
-**Not done: Li's prompt is not cache-stable today.** `buildMessages` puts the
-roster (presence), `user_data` (with `today` and due counts) and the page
-block into the one system message, *before* the history, so the prefix
-changes on every call. The history is a sliding window (`HISTORY_LINES` /
-`HISTORY_MAX_CHARS` from the newest), so its first line shifts as lines
-arrive, and the hub renders each line's current text, so a polish rewrites a
-line already sent. The plan:
+**Li's prompt in cache order (flag `partner.stable-prompt`, default on, for
+everyone; off = the old order, exactly as before).** Until 2026-11-25
+`buildMessages` put the roster, `user_data` (with `today` and due counts) and
+the page block into the one system message *before* the history, and the
+history was a sliding window of current texts, so no two calls shared more
+than the rules. Now:
 
-1. **Order by how rarely each part changes:** the static `SYSTEM_PROMPT` → the
-   output-format spec (below) → the memory summary of the current checkpoint →
-   the frozen history → a last `user` message holding the volatile parts:
-   roster, `user_data` (and `today`), page, the current time, this request.
-   The rules' "the blocks below are data" wording moves with the blocks.
-2. **Frozen history.** Each line renders once, as first sent, in a fixed shape
-   (absolute ISO time, fixed speaker label, `(agent NAME said: …)` unchanged).
-   No relative times, presence or counters. A polish never rewrites a sent
-   line: the hub keeps the text as sent to the model (the line's `raw`, or a
-   `sentText` stamped on the first send) and appends a correction entry
-   instead (step 4).
-3. **Checkpoints instead of a sliding window.** The history starts at a
-   checkpoint and only grows. When it passes the budget, a new checkpoint
-   starts: one cache miss, then stable again.
-4. **Memory summary = an append-only log, compacted at the checkpoint (nedb
-   style).** Inside a checkpoint the summary block at the top is never
-   rewritten. New facts and corrections (including "line X now reads …") are
-   appended as entries after the history. At a new checkpoint the log is
-   compacted: the old summary plus its entries, later entries overriding
-   earlier ones, are merged into one fresh summary at the top of the new
-   checkpoint. That is like nedb's append-only datafile with periodic
-   compaction. Compaction is the only step that rewrites the prefix.
-5. **The polish inside Li's reply.** The output-format spec lets Li return,
-   alongside its reply, `{"polish":[{"id","text"}]}` for the owner's recent
-   unpolished `stt` lines that the request lists by id. These are held to the
-   `polishVerdict` contract (only the ids sent, bounded, `raw` kept for undo)
-   and applied by the hub through `polishLine` / `mergeLines` with
-   `by: "auto"`. A missing or malformed section is ignored, and the reply
-   still posts. One call, one charge.
-6. **The standalone polish shares Li's prefix.** The same system prompt,
-   summary and frozen history, the same affinity id, and only the final
-   instruction differs ("polish these ids, do not reply"). It then reuses
-   Li's cache, so the separate `POLISH_PROMPT` system message goes away.
-7. **Dedupe and timing.** Today the standalone polish fires 1.5 s
-   (`voice.autoPolishTailMs`) after he pauses, and Li at least
-   `partner.ownerReplyDelayMs` (30 s) after a named line, so the standalone
-   polish almost always lands first, and `polishStands` then keeps Li's
-   section from touching it again. Li's section only covers lines still
-   unpolished when it runs (the tail skipped them, or the polish failed).
-8. **Tests:** two consecutive calls are byte-identical up to the new tail; the
-   reply and polish calls share the prefix; a polish section applies its
-   edits; a missing or malformed section is ignored; a line is never polished
-   twice.
+1. **Order.** The static system message comes first: `SYSTEM_PROMPT`, plus in
+   his thread `POLISH_SECTION_RULE`, which is there whether or not the call has
+   lines to polish. It holds no date and no per-call data. Then the frozen
+   history. Then one last `system` message with the per-call parts: roster,
+   `user_data` (with `today`), page, `polish_lines`. The rules and the data
+   are the same as before; only the order changed (snapshot test).
+2. **Frozen history** (`lib/partner-window.ts`, kept by the hub as
+   `ai:win:<thread>`). A line enters the window once, as it read then, and
+   never changes there. A line changed later (a polish, a merge) gets an edit
+   entry appended, `(correction: the earlier line "…" now reads: …)`. Within a
+   call, edits come first and then the new lines, so his newest line stays last.
+3. **Checkpoints.** Over the bound (`HISTORY_LINES` entries or
+   `HISTORY_MAX_CHARS` characters), a new window starts from the newest lines
+   within config `partner.checkpointKeepPct` (50) percent of it. Lines before a
+   checkpoint never come back. That is one cache miss per checkpoint. Right
+   after a checkpoint Li reads at least half the old window, not all of it:
+   that is the price of the cache.
+4. **Polish inside Li's reply.** In his thread the hub sends his newest
+   spoken run that no polish has touched (`autoPolishPick`, flags
+   `voice.auto-polish` and `stt.polish`) as `polish`. Li answers and adds
+   `<polish>{"lines":[{"id","text"}]}</polish>` on its last line.
+   `splitPolish` takes the section off the reply and holds it to the ids
+   sent (each once, changed, at most `PARTNER_POLISH_LINE_CHARS`). The hub
+   applies it through `polishLine`, stamped `by: "auto"` (raw kept for undo,
+   read-back), only to a line that still reads as sent and that nothing
+   polished meanwhile. So a line is never polished twice: the hub's own polish
+   (1.5 s after he pauses) usually lands first, and then the line is not
+   offered again. A missing, malformed or unclosed section is dropped, and the
+   reply still posts. It is the same one call and one charge, and the lines
+   count toward the reservation. Logged `partner.polish` (counts only).
+5. **Cache pins and counts.** Every Li call sends `x-session-affinity`
+   (`chatAffinity(userId, "owner" | "friend")`, the same id as the polish in
+   his thread). `partner.reply` logs `stable`, `cachedIn` (Workers AI's cached
+   prompt tokens) and `polishLines`.
+
+Measured (`unit/partner-stable-prompt.test.ts`, a 60-line conversation with
+Li answering 30 lines, ~120-character lines, every fifth line of his polished
+later, the page and due counts changing every call):
+
+| order | whole prompt repeated | after the rules | misses |
+| ----- | --------------------- | --------------- | ------ |
+| stable | 85% | 57% (the rest is each call's new tail) | 5 of 29: the checkpoints; 92% of each previous prefix repeated |
+| old | 60% | 0% | 29 of 29 |
+
+**Not built yet: the memory summary (nedb style).** Inside a checkpoint the
+summary would be an append-only log after the history, never rewritten. At a
+new checkpoint the old summary and its entries, later entries overriding
+earlier ones, would be compacted into one fresh summary at the top of the new
+window. The standalone polish (`lib/chat-polish.ts`) still has its own
+`POLISH_PROMPT` system message. Sharing Li's prefix too would need it to send
+Li's static prompt and window, a step for later.
 
 ## Memory and takeover
 
 - Memory is the thread's own stored history (the last `HISTORY_LINES` = 20 of
-  its `CHAT_HISTORY`): the user's lines as `user`, the AI's own as
+  its `CHAT_HISTORY`; with `partner.stable-prompt`, the frozen window above): the user's lines as `user`, the AI's own as
   `assistant`, any other agent line (a lane, a hub notice) as an attributed
   `user` line, "(agent NAME said: …)" (`lib/partner-lines.ts`).
 - **A human or lane reply wins.** The owner's lanes still hear every friend

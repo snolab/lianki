@@ -1786,6 +1786,16 @@ export const CONFIG = {
   }),
   // Li in the owner's own thread (flag partner.owner-thread, docs/partner-ai.md):
   // read by the debug hub over DebugSessions.config.
+  "partner.checkpointKeepPct": int({
+    default: 50,
+    min: 10,
+    max: 90,
+    unit: "%",
+    group: "chat",
+    audience: "server",
+    description:
+      "Li 的对话记忆（开关 partner.stable-prompt）：之前的聊天按原样往后追加，不改写，这样模型那边的缓存能命中、更省钱；超过上限（20 条或 12000 字）时重新开一段，只保留最近的这个百分比。越大 Li 记得越多，但重开得越频繁（每次重开缓存失效一次）。",
+  }),
   "partner.ownerReplyDelayMs": int({
     default: OWNER_REPLY_DELAY_MS,
     min: 0,
