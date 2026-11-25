@@ -48,11 +48,14 @@ import {
  * Client-safe: no D1 here.
  */
 import { z } from "zod";
+import { DEFAULT_LOCAL_TTS_FALLBACKS } from "@lianki/debug-chat/local-tts-fallback";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
 import {
   isProviderVoice,
   lineVoiceOf,
   parseLaneDef,
+  LOCAL_ENGINES,
+  isVoiceId,
   type ChatLaneDef,
 } from "@lianki/debug-chat/voices";
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
@@ -413,6 +416,20 @@ export const CONFIG = {
   },
   // Provider voices (lib/cloud-voices.ts; docs/li-sound-hub.md, "Provider voices"):
   // which language is read in which Google / Azure voice, as data. Flag voice.cloud-voices.
+  "voice.localFallbacks": {
+    default: DEFAULT_LOCAL_TTS_FALLBACKS,
+    schema: z.record(
+      z.string().regex(LEX_LANG),
+      z.record(
+        z.string().refine(isVoiceId, "a lane voice"),
+        z.string().refine((name) => LOCAL_ENGINES.includes(name), "an existing local voice"),
+      ),
+    ),
+    group: "voice",
+    audience: "public",
+    description:
+      "开发账号的本地语音接管表：语言 → 车道声音 → 本地声音。已配置且未关闭本地服务时，用它替代已停用的 MeloTTS；没有配置的语言维持原路线，不把中文交给英语声音。需要设备能连接现有本地语音服务，空对象可关闭。",
+  },
   "voice.langVoices": {
     default: {
       "zh-TW": "google:cmn-TW-Wavenet-A",
