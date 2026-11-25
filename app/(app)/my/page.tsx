@@ -33,10 +33,18 @@ export default async function MyPage() {
   const locale = await appLocale();
   const { heading, intro, cards } = getIntlayer("my-page", locale);
   const boxes = getIntlayer("my-boxes", locale);
+  const mcp = getIntlayer("my-mcp", locale);
 
   const items: { key: string; href: string; icon: IconName; title: string; blurb: string }[] = [
     { key: "profile", href: "/my/profile", icon: "user", ...strs(cards.profile) },
     { key: "preferences", href: "/my/preferences", icon: "gearSix", ...strs(cards.preferences) },
+    {
+      key: "mcp",
+      href: "/my/mcp",
+      icon: "chatCircleDots",
+      title: String(mcp.title),
+      blurb: String(mcp.intro),
+    },
     { key: "files", href: "/my/files", icon: "folderSimple", ...strs(cards.files) },
     {
       key: "boxes",

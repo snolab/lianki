@@ -27,7 +27,7 @@ const EN: Copy = {
     "Copy the token (it is shown once).",
     "Add a remote MCP server in your AI app with the address below and the header Authorization: Bearer <your token>.",
   ],
-  tokenLink: "Open Preferences → API tokens",
+  tokenLink: "Open MCP connections",
   chatgpt: "ChatGPT",
   chatgptSteps:
     "Create a dedicated token with only the permissions you need and an expiry. In its one-time box, choose Copy MCP connection URL. In ChatGPT, add a custom MCP server, paste the URL and select No authentication, then install the resulting plugin. Treat the entire URL as a password; never post it in a chat. If you lost the secret, revoke it and create a new token.",
@@ -41,11 +41,11 @@ const ZH: Copy = {
   title: "Lianki MCP 服务",
   lead: "这个地址是给 AI 应用（Claude、Cursor、Codex 等）连接用的。三步把它接到你的 Lianki 卡片和聊天：",
   steps: [
-    "建一个 API token：打开 偏好设置 → API tokens，起个名字，勾上允许 AI 做的事（卡片、聊天、汇报进度），设一个有效期。",
+    "建一个 API token：打开 MCP 连接，起个名字，勾上允许 AI 做的事（卡片、聊天、汇报进度），设一个有效期。",
     "复制这个 token（只显示一次）。",
     "在 AI 应用里添加远程 MCP 服务器：地址填下面这个，请求头填 Authorization: Bearer <你的 token>。",
   ],
-  tokenLink: "打开 偏好设置 → API tokens",
+  tokenLink: "打开 MCP 连接",
   chatgpt: "ChatGPT",
   chatgptSteps:
     "创建专用 token，只勾选所需权限并设置有效期。在仅显示一次的凭证框中选择「复制 MCP 连接地址」。在 ChatGPT 添加自定义 MCP 服务器，粘贴地址，认证选择 No authentication（无认证），然后安装生成的插件。整个地址等同密码，不要发到聊天里。若丢失凭证，请撤销并重新创建 token。",
@@ -88,7 +88,7 @@ code{font-family:ui-monospace,monospace}
 <h1>${esc(c.title)}</h1>
 <p>${esc(c.lead)}</p>
 <ol>${c.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
-<a class="btn" href="${origin}/my/preferences#tokens">${esc(c.tokenLink)}</a>
+<a class="btn" href="${origin}/my/mcp">${esc(c.tokenLink)}</a>
 <h2>${esc(c.chatgpt)}</h2><p>${esc(c.chatgptSteps)}</p>
 <p><strong>URL</strong></p><pre><code>${esc(url)}</code></pre>
 <p><strong>${esc(c.codeTitle)}</strong></p><pre><code>${esc(cli)}</code></pre>
