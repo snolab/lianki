@@ -1489,6 +1489,24 @@ html.lk-page-lock .min-h-screen {
   }
 }
 
+/* The sheets' outer positioning area must follow the same available space
+ * as the list, so their frame and close control stay clear of the chat. */
+[data-words-settings-dialog],
+[data-slip-sheet] {
+  right: var(--lk-chat-side, 0px);
+}
+@media (min-width: 48rem) {
+  [data-words-settings-dialog],
+  [data-slip-sheet] {
+    left: var(--nav-w, 0px);
+  }
+  [dir="rtl"] [data-words-settings-dialog],
+  [dir="rtl"] [data-slip-sheet] {
+    left: 0;
+    right: calc(var(--nav-w, 0px) + var(--lk-chat-side, 0px));
+  }
+}
+
 /* The paper scrolls with the list: a layer inside the list scroller, so it
  * moves with the rows; the body behind it is plain. --paper follows the skin (data-paper) and the
  * scheme. Its own composited layer: as cheap to scroll as the fixed texture. */
