@@ -43,13 +43,14 @@ but answers 404 outside the whole-page dev server (docs/dev-whole-page.md):
 `/my` is the user's manager for **all** their Lianki data, one place for
 everything that is theirs:
 
-| Path              | Holds                                                                                  |
-| ----------------- | -------------------------------------------------------------------------------------- |
-| `/my`             | the index: one card per kind of data (profile, preferences, files, cards and sync)    |
-| `/my/profile`     | name, picture, email, passkeys, level (was `/profile`)                                 |
-| `/my/preferences` | preferences and settings, API tokens (was `/preferences`)                              |
-| `/my/boxes`       | the account current bound box: inspect and disconnect its Lianki authorization |
-| `/my/files`       | every stored file in folders by origin (inbox_item `source`): Open, delete (docs/import-material.md, "My Files") |
+| Path              | Holds                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `/my`             | the index: one card per kind of data (profile, preferences, files, cards and sync)                                        |
+| `/my/profile`     | name, picture, email, passkeys, level (was `/profile`)                                                                    |
+| `/my/mcp`         | MCP connection address, setup guide and the user’s scoped token creation/revocation manager                               |
+| `/my/preferences` | preferences and settings, API tokens (was `/preferences`)                                                                 |
+| `/my/boxes`       | the account current bound box: inspect and disconnect its Lianki authorization                                            |
+| `/my/files`       | every stored file in folders by origin (inbox_item `source`): Open, delete (docs/import-material.md, "My Files")          |
 | `/my/recordings`  | the account's mic recordings by day: listen, download a day, delete (flag `voice.recordings` + `dev`; docs/recordings.md) |
 
 Chat uploads use `/api/my/inbox/**`: session identity scopes every file;
@@ -86,14 +87,14 @@ the viewer-dependent 308 is never cached. Details:
 
 ## Candidate renames (to review, not decided)
 
-| Today                                                                             | Noun form                        | Note                               |
-| --------------------------------------------------------------------------------- | -------------------------------- | ---------------------------------- |
-| `/read`, `/read/<id>`                                                             | `/reader`, `/reader/<id>`        | done 2026-11-09                    |
-| `/add-note`                                                                       | `/notes/new`                     | verb → noun + `new`                |
-| `/import`                                                                         | `/imports` (`/imports/new`)      | verb → noun                        |
-| `/learn`                                                                          | `/learning` or `/courses`        | owner to choose                    |
-| `/review`                                                                         | `/reviews` or keep               | "review" is already a noun; decide |
-| `/profile`, `/preferences`                                                        | `/my/profile`, `/my/preferences` | done 2026-11-10                    |
-| `/ai-vocab`, `/polyglot`                                                          | `/lab/ai-vocab`, `/lab/polyglot` | done 2026-11-09                    |
-| `/books` (the catalogue), `/books/<lang>/<slug>`                                  | `/library`, `/library/<lang>/<slug>` | done 2026-11-10: `/books` is now My books; an old book link 308s per viewer (below) |
-| `/words`, `/sites`, `/alphabet`, `/data`, `/membership`                           | keep                             | already nouns                      |
+| Today                                                   | Noun form                            | Note                                                                                |
+| ------------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------- |
+| `/read`, `/read/<id>`                                   | `/reader`, `/reader/<id>`            | done 2026-11-09                                                                     |
+| `/add-note`                                             | `/notes/new`                         | verb → noun + `new`                                                                 |
+| `/import`                                               | `/imports` (`/imports/new`)          | verb → noun                                                                         |
+| `/learn`                                                | `/learning` or `/courses`            | owner to choose                                                                     |
+| `/review`                                               | `/reviews` or keep                   | "review" is already a noun; decide                                                  |
+| `/profile`, `/preferences`                              | `/my/profile`, `/my/preferences`     | done 2026-11-10                                                                     |
+| `/ai-vocab`, `/polyglot`                                | `/lab/ai-vocab`, `/lab/polyglot`     | done 2026-11-09                                                                     |
+| `/books` (the catalogue), `/books/<lang>/<slug>`        | `/library`, `/library/<lang>/<slug>` | done 2026-11-10: `/books` is now My books; an old book link 308s per viewer (below) |
+| `/words`, `/sites`, `/alphabet`, `/data`, `/membership` | keep                                 | already nouns                                                                       |
