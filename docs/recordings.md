@@ -283,12 +283,19 @@ grant — the same gate as this page; the route checks it again at every call.
 
 ## Retention
 
-Config [`recordings.retentionDays`](https://lianki.com/dev/config) (default
-**90**, 1–3650). The Worker's existing daily Cron Trigger (`worker.ts`
-`scheduled`, beside the ledger's anchor and /vibe's sweep) deletes every clip
-recorded more than that many days ago, any account, the R2 object first, then
-the row (`lib/recordings-sweep.ts`; at most 25 × 200 a run, the next run takes
-the rest). Nothing new polls. Shortening it deletes the excess at the next
+**Kept forever** (owner, 2026-11-25 22:54 JST): config
+[`recordings.retentionDays`](https://lianki.com/dev/config) defaults to **0**
+(0–3650) = never deleted automatically; a clip goes only when he deletes it
+himself. /my/recordings says so ("kept permanently … only when you delete it
+yourself"). Until then the default was 90 days; no value was ever stored in
+D1, so nothing was swept before the change took effect.
+
+Setting a number of days turns the sweep back on: the Worker's existing daily
+Cron Trigger (`worker.ts` `scheduled`, beside the ledger's anchor and /vibe's
+sweep) then deletes every clip recorded more than that many days ago, any
+account, the R2 object first, then the row (`lib/recordings-sweep.ts`; at most
+25 × 200 a run, the next run takes the rest). At 0 it returns before any
+query. Nothing new polls. Setting a number deletes the excess at the next
 daily run, for good.
 
 ## Deleting
@@ -296,8 +303,8 @@ daily run, for good.
 He deletes a clip on /my/recordings (`DELETE ?clip=`), row and object at
 once. `DELETE ?day=` (an internal day) stays in the API; the page has no
 button for it (2026-11-15). Turning the flag off does **not** delete anything: new clips
-stop, the routes 404, stored clips stay sealed and unread — and are still
-swept when they pass the retention.
+stop, the routes 404, stored clips stay sealed and unread (and are swept
+only if a retention is set).
 
 ## On the Mac: offline processing
 

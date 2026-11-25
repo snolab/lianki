@@ -482,9 +482,22 @@ describe("retention", () => {
     expect(deleted).toHaveLength(SWEEP_PAGE + 3);
   });
 
-  it("reads the retention from config, else the default 90", async () => {
+  it("keeps forever by default: retention 0, and the sweep deletes nothing", async () => {
     const s = setup();
-    expect(await retentionDays(s.d1 as never)).toBe(90);
+    await postRecording(
+      s.deps(),
+      body({ id: "keepkeepkeepkeep", at: NOW - 86_400_000, day: "2026-11-13" }),
+    );
+    const days = await retentionDays(s.d1 as never);
+    expect(days).toBe(0);
+    const tenYears = NOW + 3650 * 86_400_000;
+    expect(await sweepRecordings(s.d1 as never, s.blobs, days, tenYears)).toBe(0);
+    expect(s.objects.size).toBe(1);
+  });
+
+  it("reads the retention from config, else the default 0 (forever)", async () => {
+    const s = setup();
+    expect(await retentionDays(s.d1 as never)).toBe(0);
     s.d1
       .raw()
       .exec(
@@ -496,7 +509,7 @@ describe("retention", () => {
         throw new Error("no d1");
       },
     };
-    expect(await retentionDays(broken as never)).toBe(90);
+    expect(await retentionDays(broken as never)).toBe(0);
   });
 });
 

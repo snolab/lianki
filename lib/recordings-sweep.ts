@@ -3,7 +3,8 @@
  * the Worker's existing Cron Trigger (worker.ts `scheduled`, beside the
  * ledger's anchor and /vibe's sweep) deletes every clip recorded more than
  * config `recordings.retentionDays` days ago, its R2 object first, then its
- * row. Nothing new polls. Kept free of the request-side imports (crypto,
+ * row. The default is 0 = keep forever (owner, 2026-11-25): then nothing is
+ * read or deleted. Nothing new polls. Kept free of the request-side imports (crypto,
  * tickets) so the Worker entry stays small.
  */
 import { parseStoredConfig, defaultConfig } from "@/lib/config";
@@ -44,6 +45,7 @@ export async function retentionDays(db: SweepDb): Promise<number> {
 /**
  * Delete every clip recorded more than `days` days before `now` (any
  * account): object first, then row, so a row never points at nothing.
+ * `days` below 1 (the default 0) keeps everything: returns before any query.
  */
 export async function sweepRecordings(
   db: SweepDb,
