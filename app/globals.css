@@ -1470,6 +1470,25 @@ html.lk-page-lock .min-h-screen {
   }
 }
 
+/* Fixed word surfaces ignore the page root's sidebar padding. Keep their
+ * right edge beside the dock, including while its width is being resized. */
+.lk-words-list,
+.lk-words-bar {
+  right: var(--lk-chat-side, 0px);
+}
+/* The navigation occupies the right edge in RTL. Preserve its existing
+ * inset when the dock is closed, and clear whichever overlay is wider. */
+@media (min-width: 48rem) {
+  [dir="rtl"] .lk-words-bar {
+    right: max(var(--nav-w, 0px), var(--lk-chat-side, 0px));
+  }
+}
+@media (min-width: 80rem) {
+  [dir="rtl"] .lk-words-list {
+    right: max(var(--nav-w, 0px), var(--lk-chat-side, 0px));
+  }
+}
+
 /* The paper scrolls with the list: a layer inside the list scroller, so it
  * moves with the rows; the body behind it is plain. --paper follows the skin (data-paper) and the
  * scheme. Its own composited layer: as cheap to scroll as the fixed texture. */
