@@ -12,3 +12,6 @@
 root = "unit"
 preload = ["./unit/support/globals-guard.ts"]
 coverage = false
+# Without --parallel the picked files share one process: react-dom/client's
+# one-time `input` event check must see a DOM (unit/support/react-dom-env.ts).
+preload = ["./unit/support/react-dom-env.ts", "./unit/support/globals-guard.ts"]

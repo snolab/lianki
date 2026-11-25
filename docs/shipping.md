@@ -17,8 +17,9 @@ waits for the required checks, then syncs local `main` and deletes the branch.
 are expected` unless the pushed SHA already has green checks. The PR is what gets
 the checks run.
 
-Landing on `main` does not deploy: production deploys from `prod`, which
-takes `main` once a day (below, "Daily release").
+Landing on `main` does not deploy: production runs `prod`, which takes
+`main` once a day (below, "Daily release"). To ship a change now, deploy it
+locally and PR it to `prod` (below, "Deploy locally").
 
 `scripts/ship.ts` uses `git reset --keep`, not `--hard`, so a sync can never
 silently eat uncommitted work.
@@ -92,20 +93,111 @@ is off the run fails with the compare link. A PR opened by that token gets no
 `pull_request` CI of its own, which is fine here: its head is `main`'s tip
 (or `prod`'s), which CI already checked on push.
 
-**Hot fixes.** There is no hot-fix branch: a hot fix is deployed from the Mac
-(`wrangler deploy`, after local tests) and then goes as a **PR straight to
-`prod`**, merged by a person, so CI runs on prod and Deploy Worker redeploys
-the same fix. `main` gets it back by itself: the next daily run opens the
-back-merge PR before any release.
+### Deploy locally
+
+Owner rule: **every lane and every branch deploys locally**, from the Mac
+with wrangler after local tests, instead of waiting for CI to deploy. CI's
+Deploy Worker (below, "Deploy order") is the fallback. A hot fix is just the
+most common case; there is no hot-fix branch.
+
+The hard gates still apply: a change that touches auth, secrets, or applies
+a production D1 migration needs the owner's explicit approval (tap card)
+first. Deploying locally is not that approval, and neither is the migration
+line below.
+
+1. **One deploy at a time.** Before starting, say so in the owner's thread
+   (`lianki-dev say --as <lane> "deploying <sha>"`) and wait if another lane
+   has announced a deploy that has not finished; say again when done.
+2. **Start from what is live and from the newest prod.** Fetch explicitly, so
+   the refs are not stale, and build on both:
+
+   ```bash
+   git fetch origin prod:refs/remotes/origin/prod
+   git fetch origin            # every pushed branch, so the live commit resolves
+   live=$(curl -s https://lianki.com/en | grep -o 'data-build="[^"]*"' | cut -d'"' -f2)
+   git merge-base --is-ancestor origin/prod HEAD && echo prod-ok
+   git merge-base --is-ancestor "$(git rev-parse "$live")" HEAD && echo live-ok
+   ```
+
+   Both must print. `origin/prod` alone is not enough: another branch may be
+   live from a local deploy and not yet merged into prod, and deploying past
+   it would erase it. If `live-ok` fails, merge that commit into your branch
+   (or wait for its prod PR), then check again. If `$live` does not resolve
+   (`local-…`, or the commit was never pushed), ask the lane that deployed it
+   before going on.
+3. **Test locally** (`bun run typecheck`, the affected unit tests,
+   `bun scripts/gate/affected.ts plan` for what else the change reaches).
+4. **Check the Full QA hold**, as CI's `hold` job does: while Full QA on main
+   is red, nothing deploys unless the owner says override.
+
+   ```bash
+   GH_TOKEN=$(gh auth token) GITHUB_OUTPUT=/dev/stdout bun scripts/ci/full-qa.ts hold   # must print deploy=true
+   ```
+
+5. **Push the branch, then deploy** with the same steps and environment as
+   `deploy-worker.yml`, in its order. The build id must be the pushed commit,
+   so the next deployer can find what is live:
+
+   ```bash
+   (  # a subshell: a failure stops the block, not your terminal
+   set -euo pipefail
+   git push -u origin HEAD
+   export LIANKI_BUILD_SHA=$(git rev-parse HEAD) CF_BUILD=1 DB_BACKEND=d1
+   # Required: any gh failure (auth, network, missing) aborts.
+   value=$(gh variable get NEXT_PUBLIC_TURNSTILE_SITE_KEY -R snolab/lianki) || exit 1
+   export NEXT_PUBLIC_TURNSTILE_SITE_KEY="$value"
+   # Optional: only "was not found" means empty (the code's default); any other error aborts.
+   err=$(mktemp)
+   for v in NEXT_PUBLIC_LIANKI_LIVE_VIEW_ORIGINS NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE \
+            NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT; do
+     if value=$(gh variable get "$v" -R snolab/lianki 2>"$err"); then :
+     elif grep -q "was not found" "$err"; then value=""
+     else cat "$err" >&2; exit 1
+     fi
+     export "$v=$value"
+   done
+   bun install --frozen-lockfile
+   bun scripts/build-partner-embed.ts
+   bunx opennextjs-cloudflare build
+   bun scripts/build/route-fingerprints.ts --out .open-next/assets/_lk/route-fp.json
+   bun scripts/security/check-public-dir.ts .open-next/assets
+   bunx wrangler d1 migrations apply lianki --remote   # only with the owner's approval of the migration
+   bun scripts/ci/check-worker-exports.ts
+   bunx wrangler deploy -c workers/monitor/wrangler.jsonc   # if workers/monitor changed
+   bunx wrangler deploy                                     # lianki, always
+   bunx wrangler deploy -c workers/push/wrangler.jsonc      # if workers/push changed
+   bunx wrangler deploy -c workers/voice/wrangler.jsonc     # if workers/voice changed
+   bunx wrangler deploy -c workers/mcp/wrangler.jsonc       # if workers/mcp changed
+   )
+   ```
+
+   Stop at the first failing check. Keep the Worker order (below, "Deploy
+   order"): monitor, lianki, push, voice, mcp; a change that needs a
+   dependency Worker's new code is not live until that Worker is deployed
+   too. Then check `curl -s https://lianki.com/en | grep -o 'data-build="[^"]*"'`
+   shows your commit.
+
+   **Manual, only if the change touched just the chat** (smart refresh misses
+   its chunk, /chat/smart-refresh-chat-chunk): after every Worker above is
+   out, broadcast the new version yourself. The build id is the 20-character
+   prefix that `data-build` shows:
+
+   ```bash
+   LIANKI_BUILD_SHA=$(git rev-parse HEAD)
+   bun scripts/dev/broadcast-version.ts --build "${LIANKI_BUILD_SHA:0:20}" --shell-changed
+   ```
+6. **Land it by PR**: a **PR straight to `prod`** with the same commits,
+   merged by a person, so CI runs on prod and Deploy Worker redeploys the
+   same code; then to `main` (the next daily run also opens the back-merge PR
+   before any release).
 
 The caveat: **until that PR has merged into `prod`, the next deploy of
-`prod` reverts the hot fix.** A local deploy changes only what runs, not
+`prod` reverts the change.** A local deploy changes only what runs, not
 `prod`; the daily release (19:00 UTC), a lift of the Full QA hold, or any
-other prod deploy then ships prod's code, without the fix. Remedy: merge the
-hot fix PR into `prod` before 19:00 UTC; if a deploy has already dropped it,
-merge the PR (that redeploys) or `wrangler deploy` again from the fix. A hot
-fix merged only into `main` reaches production with the next release, not
-before.
+other prod deploy then ships prod's code, without it. Remedy: merge the PR
+into `prod` before 19:00 UTC; if a deploy has already dropped it, merge the
+PR (that redeploys) or deploy again locally from the fix. A change merged
+only into `main` reaches production with the next release, not before.
 
 Follow-ups for the owner: create `prod` once from `main` (`git push origin
 origin/main:refs/heads/prod`), and give it branch protection (required
@@ -541,7 +633,8 @@ show bundled positions. To turn maps back on, first shrink them under the limit
 ## Deploy order
 
 `.github/workflows/deploy-worker.yml` runs after CI passes on `prod` (or when
-the daily release starts it): OpenNext
+the daily release starts it) — the fallback behind the local deploy above
+("Deploy locally"), which uses the same steps: OpenNext
 build, route fingerprints (see "Smart refresh" below), asset hygiene, **Worker exports unchanged**
 (`scripts/ci/check-worker-exports.ts`), D1 migrations, then the Workers in
 this order:
