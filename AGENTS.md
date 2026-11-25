@@ -156,6 +156,7 @@ that are expensive to rediscover.
 | What's in flight / waiting on the owner                                    | [docs/state-tree.md](docs/state-tree.md)                            |
 | Planning tools: which one to use, consolidation plan                       | [docs/planning-tools.md](docs/planning-tools.md)                    |
 | Landing changes, CI, branch protection, post-deploy QA                     | [docs/shipping.md](docs/shipping.md)                                |
+| Proving a change works on prod before marking it done | [.agents/skills/prove-in-prod/SKILL.md](.agents/skills/prove-in-prod/SKILL.md) |
 | Finding your way around the code                                           | [docs/repo-map.md](docs/repo-map.md)                                |
 | Adding or renaming a route: nouns, /lab, /dev, 308 redirects               | [docs/url-principles.md](docs/url-principles.md)                    |
 | /my: the user's own data (profile, preferences, files)                     | [docs/url-principles.md](docs/url-principles.md), "/my"             |
