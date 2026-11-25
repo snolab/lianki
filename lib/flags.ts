@@ -223,7 +223,7 @@ export const FLAGS = {
   // docs/echo-suppression.md, "The play window" (2026-11-26 00:30–00:55 JST incident).
   "voice.echo-window": {
     description:
-      "朗读时间窗：打开（默认，只对你）后，你的任何一台设备正在朗读（Li 读消息、/words 读单词和例句、阅读器、播放的语音文件）或刚读完的几秒内，麦克风识别出来的话不看内容，直接当朗读回声：不转给助手、Li 不回、不润色、不进聊天记录，只折叠成一行「朗读声被录回」，点「这是我说的」照常发出。因为语音识别常把听到的朗读声写成毫不相干的话（「明镜需要您的支持」、冰岛语），按内容比不出来。Mac 声纹明确签名说「是你」的那句照常发出。收尾时长和比例在 /dev/config 的 voice.echoWindowTailMs、voice.echoWindowShare，识别噪声短语在 voice.echoHallucinations。关闭 = 照旧，只按内容比对。",
+      "朗读时间窗：打开（默认，只对你）后，你的任何一台设备正在朗读（Li 读消息、/words 读单词和例句、阅读器）或刚读完的几秒内，麦克风识别出来的话只要和刚读出来的句子对得上一部分（门槛 voice.echoWindowMatchMin，比平时的 voice.echoPlaySimilarity 低，识别走样的回声也能认出来），就当朗读回声：不转给助手、Li 不回、不润色、不进聊天记录，只折叠成一行「朗读声被录回」，点「这是我说的」照常发出。只看时间从不折叠：朗读时你或别人说的别的话照常发出；没有文字的声音（播放的语音文件）什么也折叠不了。另外，识别噪声短语（voice.echoHallucinations，如「明镜需要您的支持」）在最近读过东西时也折叠。Mac 声纹明确签名说「是你」的那句照常发出。收尾时长和比例在 /dev/config 的 voice.echoWindowTailMs、voice.echoWindowShare。关闭 = 只按平时的内容门槛比对，识别噪声短语也不再折叠。",
     default: true,
     group: "stt",
     audience: "owner",
