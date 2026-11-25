@@ -8,6 +8,7 @@ import {
   BOX_CHAT_TICKET_AUD,
   type JtiStore,
   LI_CHAT_TICKET_AUD,
+  PAGE_CHAT_TICKET_AUD,
   PARTNER_SUBPROTOCOL,
   PARTNER_TICKET_AUD,
   importTicketPublicKey,
@@ -97,6 +98,8 @@ async function ownerFallback(main: Fetcher, cookie: string): Promise<Identity | 
  * No Origin at all (not a browser) is refused here too.
  */
 export const EMBED_HEADER = "x-debug-embed";
+/** Set only from a verified page-chat audience, never a client query/header. */
+export const PAGE_CHAT_HEADER = "x-debug-page-chat";
 
 /**
  * The ticket's single-use id and expiry, for the hub to burn; null = refuse.
@@ -257,6 +260,45 @@ export async function liChatTicket(
     if (!site) return null;
     seen.set(r.payload.jti, r.payload.exp);
     return { jti: r.payload.jti, exp: r.payload.exp, sub: r.payload.sub, ...site };
+  } catch {
+    return null;
+  }
+}
+
+/** Page-realm portable Li is always bound to this account and exact host site. */
+export type PageChatTicket = PartnerTicket & { sub: string; owner: boolean; chatOnly: true };
+export async function pageChatTicket(
+  req: Request,
+  pub: string | undefined,
+  seen: JtiStore = seenHere,
+  now: number = Date.now(),
+): Promise<PageChatTicket | null> {
+  if (req.headers.get("origin") !== DEBUG_ORIGIN || !pub) return null;
+  const offered = (req.headers.get("sec-websocket-protocol") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (offered.length !== 2 || offered[0] !== PARTNER_SUBPROTOCOL) return null;
+  try {
+    const key = await importTicketPublicKey(pub);
+    const r = await verifySttTicket(offered[1], key, new Map(seen), now, PAGE_CHAT_TICKET_AUD);
+    if (
+      !r.ok ||
+      !isUserId(r.payload.sub) ||
+      (r.payload.own !== undefined && r.payload.own !== true)
+    )
+      return null;
+    const site = ticketSite(req, r.payload);
+    if (!site?.ho || !site.th) return null;
+    seen.set(r.payload.jti, r.payload.exp);
+    return {
+      jti: r.payload.jti,
+      exp: r.payload.exp,
+      sub: r.payload.sub,
+      owner: r.payload.own === true,
+      chatOnly: true,
+      ...site,
+    };
   } catch {
     return null;
   }

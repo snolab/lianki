@@ -182,8 +182,9 @@ How it behaves:
 - **The entry.** A "Li" button at the end of the pill, in the top window
   only, hidden on a "never" site. A tap opens only on a trusted event
   (`isTrusted`): `el.click()` or a dispatched event from the page does
-  nothing. In the page realm (guard.ts `isolatedWorld` false) the tap only
-  shows the existing page-realm note; nothing is fetched.
+  nothing. In the page realm (guard.ts `isolatedWorld` false), the dedicated
+  broker enables the limited mode described below. A caller without that
+  broker retains the read-only note and fetches nothing.
 - **The prompt** (open question 3: answered "keep Allow once"): Always on
   this site / Allow once / Never on this site, × and Escape and a click
   outside = dismiss = deny, nothing stored. Copy and the warning line
@@ -294,11 +295,12 @@ that are acceptable for the owner alone but not for users.
    posts first.
 3. **Per-site trust, default deny.** No frame, no ticket fetch, no network
    call to lianki.com for chat until the user allows that site.
-4. **The token never reaches the page.** The shell fetches the ticket with
+4. **Isolated mode keeps credentials outside the page.** The shell fetches the ticket with
    `GM_xmlhttpRequest` (outside the page's realm) and writes it into the
    port only. No `lk:token`, cookie or ticket in a URL, a DOM attribute, a
-   page global or a `postMessage` to the page. The manager must not run the
-   script in the page realm (`guard.ts`'s `pageRealm` blocker applies).
+   page global or a `postMessage` to the page. Page-context mode instead uses
+   a dedicated, reduced chat capability: see the chat-only mode below; it
+   does not claim isolation from the host page.
 5. **No page text auto-sent.** The frame never receives page content unless
    he presses Share; the label sent is host + path, never the query or hash
    (as today).
@@ -367,3 +369,39 @@ The panel has sixteen locales with per-key context. Regression coverage:
 `unit/userscript-install.test.ts`, `unit/pill-install-guide.test.tsx` and
 `bun scripts/qa/qa-pill-install-guide.mjs` (silent fixtures, including an
 isolated-world marker and 320px / 150% layouts; not production evidence).
+
+
+## Page-context chat-only mode (随身Li)
+
+A page-context manager keeps the existing LiCards initialization, scoring and
+page buttons. Only the new chat uses a separate broker. After the same per-site
+consent, that broker may check `/api/ext/pill-chat` and mint a ticket from
+`POST /api/chat/page-ticket`; it never reads `lk:token` or forwards Authorization.
+The mint requires the signed-in cookie, userscript header and a validated source
+origin. Its distinct `lianki-page-chat` audience is valid for 60 seconds, one use,
+and bound to the verified account and site thread. Existing ticket audiences
+do not accept it.
+
+The push Worker stamps chat-only mode from the verified capability, never from
+a parent-selected UI parameter. Chat/history stay in the site's subthread and
+do not become local-controller instructions. Embed message handling rejects
+eval, code execution, token/settings/payment/private-data/pairing operations.
+The AI receives only site-chat context, without learning summaries, language
+preferences, roster or polish context. Advanced actions require opening the
+first-party `/chat` page, where existing authorization and consent still apply.
+The return link carries only an HTTP(S) source origin, never a page path, query
+or fragment. Isolated-mode behavior is unchanged.
+
+This deliberately does not repair the legacy page-context LiCards credential
+boundary. That existing risk needs its own decision; disabling old features is
+not part of this change. Chat history is exposed to the selected host site's
+page environment by design; the one-use ticket is not a general API token.
+
+Deployment requires both the main Worker (mint/UI) and `lianki-push` (new
+audience/attachment), with push support available before minting is enabled.
+No migration, new secret, account flag or manager permission is introduced.
+Unit coverage includes capability replay/origin/site binding, advanced-frame
+rejection, controller isolation and exclusion of learning data. The extended
+`qa-pill-chat-sites.ts` uses synthetic accounts and silent page-world plus
+isolated-world browser fixtures; it is not evidence of a real manager install.
+Actual ScriptCat/Tampermonkey-to-site chat remains a separate post-deploy check.

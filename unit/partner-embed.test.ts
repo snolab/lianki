@@ -838,7 +838,10 @@ describe("the userscript's side (src/partner.ts)", () => {
       expect(host.shadowMode).toBe("closed");
       const box = host.shadow!.children[0];
       const [text, close] = box.children;
-      expect(text.textContent).toContain(EMBED_NAME.en);
+      expect(text.textContent).toContain("Chat only");
+      expect((text.children[0] as unknown as { href: string }).href).toBe(
+        "https://lianki.com/chat",
+      );
       expect(text.children[0].tag).toBe("a");
       expect(close.tag).toBe("button");
       close.fire("click");

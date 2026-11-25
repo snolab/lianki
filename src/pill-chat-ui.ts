@@ -11,6 +11,7 @@
  *   the page cannot reach the buttons anyway (closed root);
  * - nothing secret is in them: a hostname, the copy, the buttons.
  */
+import { portableChatPath } from "../lib/portable-chat-url";
 import type { PillChatStrings } from "./pill-chat-strings";
 import type { SiteDecision, TrustChoice, TrustStore } from "./pill-chat-trust";
 
@@ -345,7 +346,7 @@ export function blockedNote(d: DialogDeps & { origin: string }): () => void {
   ]);
   const msg = text(d.doc, t.blocked, []);
   const link = d.doc.createElement("a");
-  link.href = d.origin;
+  link.href = d.origin + portableChatPath(d.doc.location?.href);
   link.target = "_blank";
   link.rel = "noopener noreferrer";
   link.textContent = t.openLianki;

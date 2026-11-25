@@ -45,6 +45,8 @@ export const BOX_CHAT_TICKET_AUD = "lianki-box-chat";
  * a pairing. An owner ticket is never one of these, nor the other way round.
  */
 export const LI_CHAT_TICKET_AUD = "lianki-li-chat";
+/** Page-realm chat: mandatory account/site binding, no privileged authority. */
+export const PAGE_CHAT_TICKET_AUD = "lianki-page-chat";
 /**
  * The userscript asks for a partner ticket with this header (value "1"). A
  * web page cannot send it cross-origin without a CORS preflight, which the
@@ -62,6 +64,8 @@ export type SttTicketPayload = {
   cid?: string;
   /** A Li chat ticket only (LI_CHAT_TICKET_AUD): the account id it opens the thread of. */
   sub?: string;
+  /** Only PAGE_CHAT_TICKET_AUD: the verified account holds dev, not a client claim. */
+  own?: true;
   /**
    * A pill ticket bound to one site (lib/li-thread.ts, flag ext.pill-chat-per-origin):
    * the host page's origin and that site's thread hash under the account. Both or neither.
@@ -118,6 +122,8 @@ export async function signSttTicket(
     cid?: string;
     /** A Li chat ticket's account id (LI_CHAT_TICKET_AUD): checked, never an email. */
     sub?: string;
+    /** Only the page-chat issuer sets this after checking the account. */
+    own?: true;
     /** A site-bound pill ticket (lib/li-thread.ts): the host origin and the site's thread hash. */
     ho?: string;
     th?: string;
@@ -135,6 +141,7 @@ export async function signSttTicket(
     ...(o.org ? { org: o.org } : {}),
     ...(o.cid ? { cid: o.cid } : {}),
     ...(o.sub ? { sub: o.sub } : {}),
+    ...(o.own === true ? { own: true as const } : {}),
     ...(o.ho && o.th ? { ho: o.ho, th: o.th } : {}),
   };
   const body = b64url(new TextEncoder().encode(JSON.stringify(payload)));
@@ -160,7 +167,8 @@ export async function verifySttTicket(
   const t = Math.floor(now / 1000);
   for (const [j, e] of seen) if (e + STT_TICKET_SKEW_S < t) seen.delete(j);
   const parts = ticket.split(".");
-  if (parts.length !== 2 || ticket.length > 512) return { ok: false, error: "malformed" };
+  if (parts.length !== 2 || ticket.length > (aud === PAGE_CHAT_TICKET_AUD ? 768 : 512))
+    return { ok: false, error: "malformed" };
   let sig: Uint8Array;
   let p: SttTicketPayload;
   try {

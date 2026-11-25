@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.40
+// @version     2.24.41
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -1960,6 +1960,12 @@
   ];
   var PILL_CHAT_STRINGS = {
     en: {
+      chatOnly:
+        "Chat only on this website. Advanced features require your confirmation on lianki.com.",
+      advanced: "Advanced features on lianki.com",
+      directTitle: "Chat with Li",
+      openChat: "Open Li chat",
+      returnSite: "Return to {host}",
       liTitle: "Chat with Li",
       promptTitle: "Allow Li chat on {host}?",
       promptBody:
@@ -1980,6 +1986,11 @@
       openLianki: "Chat on lianki.com",
     },
     zh: {
+      chatOnly: "随身Li在此仅聊天。高级功能请到 lianki.com 确认。",
+      advanced: "到 lianki.com 使用高级功能",
+      directTitle: "随身Li聊天",
+      openChat: "打开 Li 聊天",
+      returnSite: "返回 {host}",
       liTitle: "和 Li 聊天",
       promptTitle: "允许在 {host} 上使用 Li 聊天吗？",
       promptBody:
@@ -2000,6 +2011,11 @@
       openLianki: "去 lianki.com 聊天",
     },
     hi: {
+      chatOnly: "इस वेबसाइट पर केवल चैट। उन्नत सुविधाओं के लिए lianki.com पर आपकी पुष्टि आवश्यक है।",
+      advanced: "lianki.com पर उन्नत सुविधाएँ",
+      directTitle: "Li से चैट",
+      openChat: "Li चैट खोलें",
+      returnSite: "{host} पर लौटें",
       liTitle: "Li से चैट करें",
       promptTitle: "{host} पर Li चैट की अनुमति दें?",
       promptBody:
@@ -2020,6 +2036,12 @@
       openLianki: "lianki.com पर चैट करें",
     },
     es: {
+      chatOnly:
+        "Solo chat en este sitio. Las funciones avanzadas requieren tu confirmación en lianki.com.",
+      advanced: "Funciones avanzadas en lianki.com",
+      directTitle: "Chatea con Li",
+      openChat: "Abrir chat de Li",
+      returnSite: "Volver a {host}",
       liTitle: "Chatear con Li",
       promptTitle: "¿Permitir el chat de Li en {host}?",
       promptBody:
@@ -2040,6 +2062,12 @@
       openLianki: "Chatear en lianki.com",
     },
     fr: {
+      chatOnly:
+        "Chat uniquement sur ce site. Les fonctions avancées demandent votre confirmation sur lianki.com.",
+      advanced: "Fonctions avancées sur lianki.com",
+      directTitle: "Discuter avec Li",
+      openChat: "Ouvrir le chat Li",
+      returnSite: "Retour à {host}",
       liTitle: "Discuter avec Li",
       promptTitle: "Autoriser le chat Li sur {host} ?",
       promptBody:
@@ -2061,6 +2089,11 @@
       openLianki: "Discuter sur lianki.com",
     },
     ar: {
+      chatOnly: "الدردشة فقط على هذا الموقع. تتطلب الميزات المتقدمة تأكيدك على lianki.com.",
+      advanced: "الميزات المتقدمة على lianki.com",
+      directTitle: "الدردشة مع Li",
+      openChat: "فتح دردشة Li",
+      returnSite: "العودة إلى {host}",
       liTitle: "الدردشة مع Li",
       promptTitle: "هل تسمح بدردشة Li على {host}؟",
       promptBody:
@@ -2081,6 +2114,11 @@
       openLianki: "الدردشة على lianki.com",
     },
     bn: {
+      chatOnly: "এই ওয়েবসাইটে শুধু চ্যাট। উন্নত সুবিধার জন্য lianki.com-এ আপনার নিশ্চিতকরণ প্রয়োজন।",
+      advanced: "lianki.com-এ উন্নত সুবিধা",
+      directTitle: "Li-এর সাথে চ্যাট",
+      openChat: "Li চ্যাট খুলুন",
+      returnSite: "{host}-এ ফিরুন",
       liTitle: "Li-এর সঙ্গে চ্যাট করুন",
       promptTitle: "{host}-এ Li চ্যাটের অনুমতি দেবেন?",
       promptBody:
@@ -2101,6 +2139,12 @@
       openLianki: "lianki.com-এ চ্যাট করুন",
     },
     pt: {
+      chatOnly:
+        "Apenas chat neste site. Os recursos avançados exigem sua confirmação em lianki.com.",
+      advanced: "Recursos avançados em lianki.com",
+      directTitle: "Converse com Li",
+      openChat: "Abrir chat do Li",
+      returnSite: "Voltar a {host}",
       liTitle: "Conversar com Li",
       promptTitle: "Permitir o chat do Li em {host}?",
       promptBody:
@@ -2121,6 +2165,12 @@
       openLianki: "Conversar no lianki.com",
     },
     ru: {
+      chatOnly:
+        "На этом сайте доступен только чат. Для расширенных функций нужно подтверждение на lianki.com.",
+      advanced: "Расширенные функции на lianki.com",
+      directTitle: "Чат с Li",
+      openChat: "Открыть чат Li",
+      returnSite: "Вернуться на {host}",
       liTitle: "Чат с Li",
       promptTitle: "Разрешить чат Li на {host}?",
       promptBody:
@@ -2141,6 +2191,11 @@
       openLianki: "Общаться на lianki.com",
     },
     ur: {
+      chatOnly: "اس ویب سائٹ پر صرف چیٹ۔ اعلیٰ خصوصیات کے لیے lianki.com پر آپ کی تصدیق درکار ہے۔",
+      advanced: "lianki.com پر اعلیٰ خصوصیات",
+      directTitle: "Li سے چیٹ",
+      openChat: "Li چیٹ کھولیں",
+      returnSite: "{host} پر واپس جائیں",
       liTitle: "Li سے چیٹ کریں",
       promptTitle: "کیا {host} پر Li چیٹ کی اجازت دیں؟",
       promptBody:
@@ -2161,6 +2216,11 @@
       openLianki: "lianki.com پر چیٹ کریں",
     },
     id: {
+      chatOnly: "Hanya chat di situs ini. Fitur lanjutan memerlukan konfirmasi Anda di lianki.com.",
+      advanced: "Fitur lanjutan di lianki.com",
+      directTitle: "Chat dengan Li",
+      openChat: "Buka chat Li",
+      returnSite: "Kembali ke {host}",
       liTitle: "Ngobrol dengan Li",
       promptTitle: "Izinkan obrolan Li di {host}?",
       promptBody:
@@ -2181,6 +2241,12 @@
       openLianki: "Ngobrol di lianki.com",
     },
     de: {
+      chatOnly:
+        "Auf dieser Website nur Chat. Erweiterte Funktionen benötigen deine Bestätigung auf lianki.com.",
+      advanced: "Erweiterte Funktionen auf lianki.com",
+      directTitle: "Mit Li chatten",
+      openChat: "Li-Chat öffnen",
+      returnSite: "Zurück zu {host}",
       liTitle: "Mit Li chatten",
       promptTitle: "Li-Chat auf {host} erlauben?",
       promptBody:
@@ -2203,6 +2269,12 @@
       openLianki: "Auf lianki.com chatten",
     },
     ja: {
+      chatOnly:
+        "このサイトではチャットのみ利用できます。高度な機能は lianki.com で確認が必要です。",
+      advanced: "lianki.com で高度な機能を使う",
+      directTitle: "Li とチャット",
+      openChat: "Li チャットを開く",
+      returnSite: "{host} に戻る",
       liTitle: "Li とチャット",
       promptTitle: "{host} で Li チャットを許可しますか？",
       promptBody:
@@ -2224,6 +2296,12 @@
       openLianki: "lianki.com でチャット",
     },
     sw: {
+      chatOnly:
+        "Gumzo pekee kwenye tovuti hii. Vipengele vya juu vinahitaji uthibitisho wako kwenye lianki.com.",
+      advanced: "Vipengele vya juu kwenye lianki.com",
+      directTitle: "Zungumza na Li",
+      openChat: "Fungua gumzo la Li",
+      returnSite: "Rudi kwenye {host}",
       liTitle: "Ongea na Li",
       promptTitle: "Ruhusu gumzo la Li kwenye {host}?",
       promptBody:
@@ -2244,6 +2322,11 @@
       openLianki: "Ongea kwenye lianki.com",
     },
     mr: {
+      chatOnly: "या वेबसाइटवर फक्त चॅट. प्रगत सुविधांसाठी lianki.com वर तुमची पुष्टी आवश्यक आहे.",
+      advanced: "lianki.com वर प्रगत सुविधा",
+      directTitle: "Li सोबत चॅट",
+      openChat: "Li चॅट उघडा",
+      returnSite: "{host} वर परत जा",
       liTitle: "Li शी गप्पा मारा",
       promptTitle: "{host} वर Li चॅटला परवानगी द्यायची?",
       promptBody:
@@ -2264,6 +2347,11 @@
       openLianki: "lianki.com वर चॅट करा",
     },
     ko: {
+      chatOnly: "이 사이트에서는 채팅만 가능합니다. 고급 기능은 lianki.com에서 확인이 필요합니다.",
+      advanced: "lianki.com에서 고급 기능 사용",
+      directTitle: "Li와 채팅",
+      openChat: "Li 채팅 열기",
+      returnSite: "{host}(으)로 돌아가기",
       liTitle: "Li와 채팅",
       promptTitle: "{host}에서 Li 채팅을 허용할까요?",
       promptBody:
@@ -3422,6 +3510,56 @@ Sasisha kadi kwa anwani mpya?`,
     };
   }
 
+  // src/page-chat-fetch.ts
+  function pageChatFetch(origin, hostOrigin, request) {
+    return (url, options) => {
+      const method = options?.method ?? "GET";
+      const state = url === origin + "/api/ext/pill-chat" && method === "GET";
+      const ticket = url === origin + "/api/chat/page-ticket" && method === "POST";
+      if (!state && !ticket)
+        return Promise.reject(new Error("Chat only: open Li on lianki.com for advanced actions"));
+      return new Promise((resolve, reject) => {
+        request({
+          method,
+          url,
+          withCredentials: true,
+          timeout: 8000,
+          headers: ticket ? { "x-lianki-userscript": "1", "x-lianki-host-origin": hostOrigin } : {},
+          onload: (r) =>
+            resolve({
+              ok: r.status >= 200 && r.status < 300,
+              status: r.status,
+              json: async () => JSON.parse(r.responseText),
+            }),
+          onerror: () => reject(new Error("Li chat connection failed")),
+          ontimeout: () => reject(new Error("Li chat connection timed out")),
+        });
+      });
+    };
+  }
+
+  // lib/portable-chat-url.ts
+  function portableSource(value) {
+    if (typeof value !== "string" || value.length > 2048) return null;
+    try {
+      const u = new URL(value);
+      if (
+        (u.protocol !== "https:" && u.protocol !== "http:") ||
+        u.username ||
+        u.password ||
+        u.origin.length > 100
+      )
+        return null;
+      return u.origin;
+    } catch {
+      return null;
+    }
+  }
+  function portableChatPath(source) {
+    const from = portableSource(source);
+    return from ? "/chat?from=" + encodeURIComponent(from) : "/chat";
+  }
+
   // packages/debug-chat/src/embed/guard.ts
   function own(o) {
     if (!o || typeof o !== "object") return { __proto__: null };
@@ -3448,9 +3586,6 @@ Sasisha kadi kwa anwani mpya?`,
     return (
       is(i.injectInto, "content", "Content", "CONTENT") || is(i.sandboxMode, "dom", "DOM", "Dom")
     );
-  }
-  function blockerText(b, strings, name) {
-    return strings[b].replaceAll("{name}", name);
   }
   function partnerWanted(o) {
     return o.top && o.enabled && !o.hiddenHosts.includes(o.host);
@@ -3676,11 +3811,6 @@ Sasisha kadi kwa anwani mpya?`,
       replyOnLianki: "lianki.com で返信",
       grip: "ドラッグで移動、ダブルクリックで最小化",
     },
-  };
-  var EMBED_NAME = {
-    en: "Learning Partner",
-    zh: "学习伙伴",
-    ja: "学習パートナー",
   };
   function embedLang(lang = globalThis.navigator?.language) {
     return isZh(lang) ? "zh" : isJa(lang) ? "ja" : "en";
@@ -4099,9 +4229,9 @@ Sasisha kadi kwa anwani mpya?`,
       ["font", "13px/18px system-ui, sans-serif"],
     ]);
     const text = doc.createElement("div");
-    text.textContent = blockerText("pageRealm", t, EMBED_NAME[lang]);
+    text.textContent = pillChatStrings().chatOnly;
     const link = doc.createElement("a");
-    link.href = origin;
+    link.href = origin + portableChatPath(doc.location?.href);
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.textContent = t.openLianki;
@@ -4546,7 +4676,7 @@ Sasisha kadi kwa anwani mpya?`,
     ]);
     const msg = text(d.doc, t.blocked, []);
     const link = d.doc.createElement("a");
-    link.href = d.origin;
+    link.href = d.origin + portableChatPath(d.doc.location?.href);
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.textContent = t.openLianki;
@@ -4639,6 +4769,7 @@ Sasisha kadi kwa anwani mpya?`,
     const once = new Set();
     const isolated = isolatedWorld(d.info);
     const report = d.report ?? (() => {});
+    const limitedFetch = d.pageFetch;
     let open = null;
     let busy = false;
     let note = null;
@@ -4654,14 +4785,17 @@ Sasisha kadi kwa anwani mpya?`,
     let kind = "owner";
     const ticket = async () => {
       try {
-        const r = await d.gmFetch(`${d.origin}${TICKET_PATHS[kind]}`, {
-          method: "POST",
-          headers: {
-            "x-lianki-userscript": "1",
-            [HOST_ORIGIN_HEADER]: d.hostOrigin ?? location.origin,
+        const r = await (isolated ? d.gmFetch : limitedFetch)(
+          isolated ? `${d.origin}${TICKET_PATHS[kind]}` : `${d.origin}/api/chat/page-ticket`,
+          {
+            method: "POST",
+            headers: {
+              "x-lianki-userscript": "1",
+              [HOST_ORIGIN_HEADER]: d.hostOrigin ?? location.origin,
+            },
+            credentials: "include",
           },
-          credentials: "include",
-        });
+        );
         if (!r.ok) return null;
         const body = await r.json();
         return typeof body?.ticket === "string" ? body.ticket : null;
@@ -4678,7 +4812,7 @@ Sasisha kadi kwa anwani mpya?`,
     async function openChat() {
       const e = entry();
       if (e === "hidden" || !host) return "hidden";
-      if (e === "note") {
+      if (e === "note" && !limitedFetch) {
         note?.();
         note = pageRealmNote(doc, d.origin, () => store.set(host, "never"));
         return "note";
@@ -4695,7 +4829,7 @@ Sasisha kadi kwa anwani mpya?`,
           if (!applyChoice(store, once, host, choice))
             return choice === "never" ? "never" : "denied";
         }
-        const access = await askAccess(d);
+        const access = await askAccess(isolated ? d : { ...d, gmFetch: limitedFetch });
         if (!access) {
           d.setValue(PILLCHAT_ON_KEY, JSON.stringify({ on: false, at: d.now?.() ?? Date.now() }));
           return "off";
@@ -4707,12 +4841,14 @@ Sasisha kadi kwa anwani mpya?`,
           origin: d.origin,
           label: `${host}${d.path ?? location.pathname}`.slice(0, 300),
           ticket,
-          share: (what) =>
-            readShare(what, {
-              href: d.href ? d.href() : location.href,
-              title: doc.title,
-              selection: doc.getSelection?.()?.toString() ?? "",
-            }),
+          share: !isolated
+            ? undefined
+            : (what) =>
+                readShare(what, {
+                  href: d.href ? d.href() : location.href,
+                  title: doc.title,
+                  selection: doc.getSelection?.()?.toString() ?? "",
+                }),
           gripLabel: EMBED_STRINGS[embedLang()].grip,
           pos: {
             get: () => {
@@ -5401,6 +5537,7 @@ Sasisha kadi kwa anwani mpya?`,
     const liChat = pillChat({
       origin: ORIGIN,
       gmFetch,
+      pageFetch: pageChatFetch(ORIGIN, location.origin, GM_xmlhttpRequest),
       getValue: GM_getValue,
       setValue: GM_setValue,
       info: GM_info,

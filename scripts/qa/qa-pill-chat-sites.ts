@@ -474,6 +474,7 @@ type Account = {
   tickets: Map<string, string[]>;
   /** Next ticket answer for this host origin is replaced by this one (the swap check). */
   swap: Map<string, string>;
+  pageTicketAuthHeaders: boolean[];
 };
 
 async function account(name: string, email: string, dev: boolean): Promise<Account> {
@@ -482,6 +483,12 @@ async function account(name: string, email: string, dev: boolean): Promise<Accou
     viewport: { width: 390, height: 844 },
     ignoreHTTPSErrors: true,
   });
+  // The direct route opens an already-enabled first-party chat; it must not
+  // turn on the real device's debug preference or bypass the partner kill switch.
+  // This is only the throwaway QA profile's explicit starting preference.
+  await ctx.addInitScript((app) => {
+    if (location.origin === app) localStorage.setItem("lk:agent", "1");
+  }, APP);
   const su = await ctx.request.post(`${APP}/api/auth/sign-up/email`, {
     headers: { origin: APP, "content-type": "application/json" },
     data: { email, password: PW, name: `QA ${name}` },
@@ -498,13 +505,27 @@ async function account(name: string, email: string, dev: boolean): Promise<Accou
   const id = String(
     ((await me.json().catch(() => null)) as { user?: { id?: string } } | null)?.user?.id ?? "",
   );
-  const acc: Account = { name, email, id, ctx, cookie, tickets: new Map(), swap: new Map() };
+  const acc: Account = {
+    name,
+    email,
+    id,
+    ctx,
+    cookie,
+    tickets: new Map(),
+    swap: new Map(),
+    pageTicketAuthHeaders: [],
+  };
   // GM_xmlhttpRequest: the shell's requests from a host page go with the lianki cookie, no CORS.
   await ctx.route(`${APP}/api/**`, async (route) => {
     const req = route.request();
     const from = req.headers()["origin"];
     const path = new URL(req.url()).pathname;
-    const gm = ["/api/ext/pill-chat", "/api/chat/li-ticket", "/api/debug/partner-ticket"];
+    const gm = [
+      "/api/ext/pill-chat",
+      "/api/chat/li-ticket",
+      "/api/debug/partner-ticket",
+      "/api/chat/page-ticket",
+    ];
     if (!from || from === APP || !gm.includes(path)) return route.continue();
     const cors = {
       "access-control-allow-origin": from,
@@ -512,6 +533,8 @@ async function account(name: string, email: string, dev: boolean): Promise<Accou
       "access-control-allow-methods": "GET, POST",
     };
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+    if (path === "/api/chat/page-ticket")
+      acc.pageTicketAuthHeaders.push(!!req.headers()["authorization"]);
     const h: Record<string, string> = { ...req.headers(), cookie: acc.cookie };
     delete h.origin;
     delete h.referer;
@@ -537,7 +560,7 @@ async function account(name: string, email: string, dev: boolean): Promise<Accou
 }
 
 /** The host page with the real gate in an isolated world, as the userscript runs. */
-async function hostPage(acc: Account, origin: string) {
+async function hostPage(acc: Account, origin: string, pageChat = false) {
   const p = await acc.ctx.newPage();
   const errors: string[] = [];
   p.on("pageerror", (e) => errors.push(String(e)));
@@ -558,8 +581,8 @@ async function hostPage(acc: Account, origin: string) {
   const cdp = await acc.ctx.newCDPSession(p);
   await cdp.send("Page.enable");
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
-    source: `globalThis.__QA_APP__=${JSON.stringify(APP)};\n${fixtureJs}`,
-    worldName: "lianki-userscript",
+    source: `globalThis.__QA_APP__=${JSON.stringify(APP)};globalThis.__QA_PAGE_CHAT__=${pageChat};\n${fixtureJs}`,
+    ...(pageChat ? {} : { worldName: "lianki-userscript" }),
   });
   await p.goto(`${origin}/`);
   await p.waitForTimeout(300);
@@ -880,6 +903,73 @@ try {
   if (!process.env.QA_SITES_QUICK) {
     log("dev account (the owner's partner ticket, /api/debug/partner-ticket)");
     await scenario(dev, "/api/debug/partner-ticket", () => "owner");
+  }
+
+  // Actual page-world JS, not the isolated fixture: scoped chat remains usable.
+  for (const acc of [user, dev]) {
+    const { p, socks, errors } = await hostPage(acc, SITE_B, true);
+    const before = (acc.tickets.get(SITE_B) ?? []).length;
+    await tapLi(p);
+    await p.waitForTimeout(200);
+    await p.keyboard.press("Escape");
+    check(
+      (acc.tickets.get(SITE_B) ?? []).length === before,
+      acc.name + " page realm: dismiss mints no ticket",
+    );
+    const f = await allowOnce(p);
+    check(!!f, acc.name + " page realm: same consent opens chat");
+    const t = await wait(() => {
+      const ts = acc.tickets.get(SITE_B) ?? [];
+      return ts.length > before ? ts.at(-1)! : null;
+    }, 20000);
+    const cap = t ? decode(t) : null;
+    check(
+      cap?.aud === "lianki-page-chat" && cap?.sub === acc.id && cap?.ho === SITE_B && !!cap?.th,
+      acc.name + " page realm: only the site/account-bound page-chat audience",
+    );
+    check(
+      await wait(() => socks.some((s) => s.got.some((g) => g.includes('"chatOnly":true'))), 20000),
+      acc.name + " page realm: server stamps chat-only mode",
+    );
+    check(
+      acc.pageTicketAuthHeaders.length > 0 && acc.pageTicketAuthHeaders.every((x) => !x),
+      acc.name + " page realm: no general Authorization token",
+    );
+    if (f) {
+      const text = "qa " + acc.name + " page realm " + RUN;
+      await say(f, p, text);
+      check(
+        await wait(
+          () => socks.some((s) => s.got.some((g) => !g.startsWith("OUT ") && g.includes(text))),
+          15000,
+        ),
+        acc.name + " page realm: real socket stores and echoes chat",
+      );
+      const link = f.getByTestId("debug-chat-warning-link");
+      await link.waitFor({ timeout: 15000 });
+      check(
+        (await link.getAttribute("href")) === "/chat?from=" + encodeURIComponent(SITE_B) &&
+          (await link.getAttribute("target")) === "_blank" &&
+          (await link.getAttribute("rel")) === "noopener noreferrer",
+        acc.name + " page realm: advanced link opens first-party chat with safe return context",
+      );
+      const popupReady = acc.ctx.waitForEvent("page");
+      await link.click();
+      const firstParty = await popupReady;
+      try {
+        await firstParty.waitForURL(APP + "/chat?from=" + encodeURIComponent(SITE_B));
+        await firstParty.getByTestId("portable-chat-open").waitFor({ timeout: 20000 });
+        await firstParty.getByTestId("debug-chat-input").waitFor({ timeout: 20000 });
+        check(
+          (await firstParty.getByTestId("portable-chat-return").getAttribute("href")) === SITE_B,
+          acc.name + " page realm: real click opens Li chat and a source-only return link",
+        );
+      } finally {
+        await firstParty.close();
+      }
+    }
+    check(errors.length === 0, acc.name + " page realm: no page errors", errors.join(";"));
+    await p.close();
   }
 
   // The history (D1 chat_line) names the thread, never the origin.

@@ -390,6 +390,7 @@ import { playRefusal, srcHost } from "../../../packages/debug-chat/src/play-audi
 import {
   BOX_HEADER,
   EMBED_HEADER,
+  PAGE_CHAT_HEADER,
   SUB_ORIGIN_HEADER,
   SUB_THREADS_PATH,
   SUB_THREAD_HEADER,
@@ -502,6 +503,8 @@ type PageAtt = {
    * grant's pages, never joins a recording session.
    */
   embed?: true;
+  /** Signed page-chat capability: this site only, no private account summaries. */
+  chatOnly?: true;
   /**
    * The owner's box (docs/box-oauth.md, "Chat on the owner's box"): an embed
    * page from that box client's exact origin. Chat only as above, plus what
@@ -931,8 +934,15 @@ function clipsParse<R>(raw: unknown, f: (m: Record<string, unknown>) => R | null
  * site) gets the listener count only: never a pairing, a session, a grant,
  * the page list (labels, ids) or the nodes, and no `self`.
  */
-function pageState(a: PageAtt, s: HubState): HubState & { self?: string } {
-  if (a.embed) return { type: "state", pending: null, sessions: [], listeners: s.listeners ?? 0 };
+function pageState(a: PageAtt, s: HubState): HubState & { self?: string; chatOnly?: true } {
+  if (a.embed)
+    return {
+      type: "state",
+      pending: null,
+      sessions: [],
+      listeners: s.listeners ?? 0,
+      ...(a.chatOnly ? { chatOnly: true } : {}),
+    };
   return { ...s, self: a.id };
 }
 
@@ -2951,6 +2961,13 @@ export class DebugHub {
     const embed = ticket !== null;
     if (embed && !(await this.burnTicket(ticket)))
       return new Response("forbidden", { status: 403 });
+    const chatOnly = embed && req.headers.get(PAGE_CHAT_HEADER) === "1";
+    if (
+      chatOnly &&
+      (!isSubHash(req.headers.get(SUB_THREAD_HEADER)) ||
+        !hostOrigin(req.headers.get(SUB_ORIGIN_HEADER)))
+    )
+      return new Response("forbidden", { status: 403 });
     const pair = new WebSocketPair();
     const ws = pair[1];
     this.ctx.acceptWebSocket(ws);
@@ -2967,7 +2984,7 @@ export class DebugHub {
         req.headers.get(TOKEN_HEADER),
         req.headers.get(EVAL_TOKEN_HEADER),
       );
-    else await this.connectPage(ws, url, who, embed, box, site);
+    else await this.connectPage(ws, url, who, embed, box, site, chatOnly);
     // The browser fails a socket whose offered subprotocol is not selected.
     return new Response(null, {
       status: 101,
@@ -3713,6 +3730,7 @@ export class DebugHub {
     ticketSocket = false,
     box?: string,
     site?: { hash: string; origin: string },
+    chatOnly = false,
   ) {
     // A page that says another site frames it (lib/frame-context.ts) is chat-only
     // like a ticket socket: no pairing, no Allow, no eval, no clips (defence in
@@ -3762,6 +3780,7 @@ export class DebugHub {
         at: this.now(),
         // Chat only, always: no eval, no pairing, minimal state, wherever it is opened.
         embed: true as const,
+        ...(chatOnly ? { chatOnly: true as const } : {}),
         // The account Li's replies here are metered to (the owner's ticket names none).
         ...(isUserId(who?.userId) ? { user: who.userId } : {}),
       } satisfies PageAtt);
@@ -5248,6 +5267,7 @@ export class DebugHub {
     const roster = owner ? await this.rosterNow(thread).catch(() => []) : [];
     const req: PartnerRequest = {
       userId,
+      ...(page.chatOnly ? { chatOnly: true as const } : {}),
       ...(msgId ? { msgId } : {}),
       ...(ownerAccount ? { owner: true as const } : {}),
       ...(roster.length ? { roster } : {}),

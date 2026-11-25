@@ -25,6 +25,11 @@ const dictionary = {
   key: "pill-chat",
   content: {
     liTitle: tr("liTitle"),
+    chatOnly: tr("chatOnly"),
+    advanced: tr("advanced"),
+    directTitle: tr("directTitle"),
+    openChat: tr("openChat"),
+    returnSite: tr("returnSite"),
     promptTitle: tr("promptTitle"),
     promptBody: tr("promptBody"),
     promptWarn: tr("promptWarn"),

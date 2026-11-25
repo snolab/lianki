@@ -9,9 +9,18 @@
  * the test server, which records every request so the QA can assert that
  * nothing reaches the app origin before the site is allowed.
  */
+import { pageChatFetch } from "../../src/page-chat-fetch";
 import { pillChat } from "../../src/pill-chat";
 
 const APP = (globalThis as unknown as { __QA_APP__: string }).__QA_APP__;
+const PAGE_CHAT =
+  (globalThis as unknown as { __QA_PAGE_CHAT__?: boolean }).__QA_PAGE_CHAT__ === true;
+const limited = pageChatFetch(APP, location.origin, (details) => {
+  void fetch(details.url, { method: details.method, headers: details.headers, mode: "cors" }).then(
+    async (r) => details.onload({ status: r.status, responseText: await r.text() }),
+    details.onerror,
+  );
+});
 const mem = new Map<string, unknown>([
   ["lianki_pillchat_on", JSON.stringify({ on: true, at: Date.now() })],
 ]);
@@ -19,10 +28,14 @@ const mem = new Map<string, unknown>([
 function start() {
   const pc = pillChat({
     origin: APP,
-    info: { injectInto: "content" },
+    info: PAGE_CHAT
+      ? { sandboxMode: "raw", scriptHandler: "ScriptCat" }
+      : { injectInto: "content" },
+    pageFetch: PAGE_CHAT ? limited : undefined,
     getValue: (k, d) => (mem.has(k) ? mem.get(k) : d),
     setValue: (k, v) => void mem.set(k, v),
     gmFetch: async (url, o) => {
+      if (PAGE_CHAT) throw new Error("page chat must not use the general credential fetch");
       const r = await fetch(url, { method: o?.method ?? "GET", headers: o?.headers, mode: "cors" });
       const body = await r.text();
       return { ok: r.ok, status: r.status, json: async () => JSON.parse(body) };

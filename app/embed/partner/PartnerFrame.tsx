@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { portableChatPath } from "@/lib/portable-chat-url";
 import { DebugChat } from "@lianki/debug-chat/DebugChat";
 import { CHAT_STRINGS_EN, type ChatStrings } from "@lianki/debug-chat/wire";
 import { type Guest, startFrameGuest } from "@lianki/debug-chat/embed/frame-guest";
@@ -17,8 +18,12 @@ import { type PartnerClient, createPartnerClient } from "@lianki/debug-chat/embe
 export function PartnerFrame({
   strings,
   shareChars,
+  chatOnlyText,
+  advancedText,
 }: {
   strings?: Partial<ChatStrings>;
+  chatOnlyText: string;
+  advancedText: string;
   /** Config chat.pillShareChars: most characters a shared selection keeps. */
   shareChars?: number;
 }) {
@@ -70,7 +75,16 @@ export function PartnerFrame({
     };
   }, [client]);
   if (!client || !shell) return null;
-  return <Chat client={client} guest={shell} strings={strings} shareChars={shareChars} />;
+  return (
+    <Chat
+      client={client}
+      guest={shell}
+      strings={strings}
+      shareChars={shareChars}
+      chatOnlyText={chatOnlyText}
+      advancedText={advancedText}
+    />
+  );
 }
 
 function Chat({
@@ -78,9 +92,13 @@ function Chat({
   guest,
   strings,
   shareChars,
+  chatOnlyText,
+  advancedText,
 }: {
   client: PartnerClient;
   guest: Guest;
+  chatOnlyText: string;
+  advancedText: string;
   strings?: Partial<ChatStrings>;
   shareChars?: number;
 }) {
@@ -93,17 +111,21 @@ function Chat({
       // No page selection or uploads here: the frame cannot see the host page.
       // Its + menu shares from the page instead, through the userscript (M3).
       attach={false}
-      share={async (what) => {
-        const p = await guest.share(what);
-        setNote(
-          p
-            ? undefined
-            : what === "page"
-              ? (strings?.shareNoPage ?? CHAT_STRINGS_EN.shareNoPage)
-              : (strings?.attachSelectionNone ?? CHAT_STRINGS_EN.attachSelectionNone),
-        );
-        return p;
-      }}
+      share={
+        s.chatOnly
+          ? undefined
+          : async (what) => {
+              const p = await guest.share(what);
+              setNote(
+                p
+                  ? undefined
+                  : what === "page"
+                    ? (strings?.shareNoPage ?? CHAT_STRINGS_EN.shareNoPage)
+                    : (strings?.attachSelectionNone ?? CHAT_STRINGS_EN.attachSelectionNone),
+              );
+              return p;
+            }
+      }
       shareChars={shareChars}
       live={s.live}
       listeners={s.listeners}
@@ -113,7 +135,13 @@ function Chat({
         return client.send(text, to, opts?.context);
       }}
       busy={s.busy}
+      warningHref={
+        s.chatOnly
+          ? { href: portableChatPath(guest.origin), label: advancedText, newTab: true }
+          : undefined
+      }
       warning={
+        (s.chatOnly ? chatOnlyText : undefined) ??
         note ??
         (s.sendFailed ? (strings?.sendFailed ?? CHAT_STRINGS_EN.sendFailed) : undefined) ??
         s.warning

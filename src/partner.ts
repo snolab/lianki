@@ -15,6 +15,8 @@
  * The ticket is fetched with GM_xmlhttpRequest (cross-origin, the lianki.com
  * session or lk:token) and goes straight into the socket's subprotocol list.
  */
+import { pillChatStrings } from "./pill-chat-strings";
+import { portableChatPath } from "../lib/portable-chat-url";
 import { blockerText, isolatedWorld, partnerWanted } from "../packages/debug-chat/src/embed/guard";
 import { EMBED_NAME, EMBED_STRINGS, embedLang } from "../packages/debug-chat/src/ui-strings";
 import { frameShell } from "./partner-frame";
@@ -243,9 +245,9 @@ export function pageRealmNote(doc: Document, origin: string, hideHere: () => voi
     ["font", "13px/18px system-ui, sans-serif"],
   ]);
   const text = doc.createElement("div");
-  text.textContent = blockerText("pageRealm", t, EMBED_NAME[lang]);
+  text.textContent = pillChatStrings().chatOnly;
   const link = doc.createElement("a");
-  link.href = origin;
+  link.href = origin + portableChatPath(doc.location?.href);
   link.target = "_blank";
   link.rel = "noopener noreferrer";
   link.textContent = t.openLianki;

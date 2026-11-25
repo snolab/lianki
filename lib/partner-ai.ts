@@ -84,6 +84,7 @@ export function parsePartnerRequest(raw: unknown): PartnerRequest | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   if (!isUserId(r.userId) || !Array.isArray(r.history)) return null;
+  if (r.chatOnly !== undefined && r.chatOnly !== true) return null;
   const history: PartnerRequest["history"] = [];
   for (const h of r.history.slice(-HISTORY_LINES)) {
     if (!h || typeof h !== "object") return null;
@@ -115,11 +116,13 @@ export function parsePartnerRequest(raw: unknown): PartnerRequest | null {
   const msgId =
     typeof r.msgId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(r.msgId) ? r.msgId : undefined;
   // Who is here: only with the owner's thread (the hub sends it nowhere else).
-  const roster = r.owner === true ? parseRoster(r.roster) : undefined;
+  const roster = r.owner === true && r.chatOnly !== true ? parseRoster(r.roster) : undefined;
   const stable = r.stable === true;
-  const polish = stable && r.owner === true ? parsePolishLines(r.polish) : undefined;
+  const polish =
+    stable && r.owner === true && r.chatOnly !== true ? parsePolishLines(r.polish) : undefined;
   return {
     userId: r.userId,
+    ...(r.chatOnly === true ? { chatOnly: true as const } : {}),
     ...(msgId ? { msgId } : {}),
     ...(r.owner === true ? { owner: true as const } : {}),
     ...(roster ? { roster } : {}),
@@ -259,16 +262,19 @@ export const rulesOf = (v: unknown): string =>
  */
 export function buildMessages(
   req: PartnerRequest,
-  summary: StudySummary,
+  summary: StudySummary | null,
   now: number,
   lanes: readonly ChatLaneDef[] = [],
   rules: string = SYSTEM_PROMPT,
 ) {
-  const roster = req.owner ? rosterSection(req.roster ?? [], lanes) : "";
+  if (req.chatOnly)
+    rules +=
+      "\nThis is chat-only on another website. Use only this conversation. No private account data or advanced actions are available. For settings, payments, tokens, code execution or pairing, ask the user to open Li on lianki.com and confirm there.";
+  const roster = req.owner && !req.chatOnly ? rosterSection(req.roster ?? [], lanes) : "";
   // Bounded so rules + roster + data stay within PROMPT_OVERHEAD_CHARS (the hub's reservation counts on it).
   const data = JSON.stringify({
     today: new Date(now).toISOString().slice(0, 10),
-    ...summary,
+    ...(req.chatOnly ? { chatOnly: true } : (summary ?? {})),
   }).slice(
     0,
     PROMPT_OVERHEAD_CHARS -
@@ -496,11 +502,15 @@ async function callModel(
   deps: Deps,
   now: () => number,
 ): Promise<PartnerResult> {
-  const [study, languages] = await Promise.all([
-    studySummary(db, email, now()),
-    languagesLine(db, req.userId),
-  ]);
-  const summary: StudySummary = languages ? { ...study, languages } : study;
+  const summary: StudySummary | null = req.chatOnly
+    ? null
+    : await (async () => {
+        const [study, languages] = await Promise.all([
+          studySummary(db, email, now()),
+          languagesLine(db, req.userId),
+        ]);
+        return languages ? { ...study, languages } : study;
+      })();
   const t0 = now();
   const config = await loadConfig(db).catch(defaultConfig);
   const deadline = AbortSignal.timeout(config["chat.partnerModelTimeoutMs"]);
