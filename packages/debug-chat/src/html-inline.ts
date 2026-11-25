@@ -19,8 +19,12 @@
  * the action string as its routing key (HtmlInline.tsx). formtarget=_blank opens
  * nothing: there is no other window to send his session to.
  *
- * HTML that does contain script (a <script>, an on* handler, a javascript: URL)
- * is not drawn inline: it runs in the sandboxed frame instead (html-widget.ts).
+ * HTML that contains script (a <script>, an on* handler, a javascript: URL) is
+ * drawn the same way, its script stripped, with a note that scripts are off.
+ * Script widgets are disabled (2026-11-26): a sandboxed srcdoc frame could still
+ * navigate itself to any URL, and a CSP inside does not stop that. Re-enabling
+ * needs proven no-network containment in every browser (html-widget.ts is kept
+ * for that work and is not rendered).
  */
 import { safeHref } from "./chat-links";
 
@@ -131,23 +135,36 @@ function attrsOf(el: Element, tag: string, idPrefix: string): Record<string, str
     if (name === "id" || name === "for" || name === "list")
       v = v.replace(/[^\w-]/g, "").slice(0, 40) ? `${idPrefix}${v.replace(/[^\w-]/g, "").slice(0, 40)}` : "";
     else if (name === "href") v = safeHref(v) ?? "";
+    // A form's action is only a routing key, never a URL that runs: no scheme that executes.
+    else if (name === "action" || name === "formaction")
+      v = /^\s*(javascript|data|vbscript):/i.test(v) ? "" : v;
     else if (name === "src") v = /^data:image\/(png|gif|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(v) ? v : "";
     else if (tag === "input" && name === "type") v = INPUT_TYPES.has(v.toLowerCase()) ? v.toLowerCase() : "text";
-    if (v === "" && (name === "href" || name === "src" || name === "id" || name === "for")) continue;
+    if (
+      v === "" &&
+      (name === "href" || name === "src" || name === "id" || name === "for" || name === "action" || name === "formaction")
+    )
+      continue;
     out[name] = v;
   }
   return out;
 }
 
+/** Whether the HTML had script in any form (it is stripped; the widget says so). */
+export function scriptedHtml(html: string): boolean {
+  const P = (globalThis as { DOMParser?: typeof DOMParser }).DOMParser;
+  if (!P) return /<script|\son\w+\s*=|javascript:/i.test(html);
+  return needsFrame(new P().parseFromString(html, "text/html"));
+}
+
 /**
- * The widget's tree, or null when it has script (then it runs in the frame).
- * `idPrefix` keeps its ids its own (one per widget on the page).
+ * The widget's tree, script always stripped (scriptedHtml says whether there was
+ * any). `idPrefix` keeps its ids its own (one per widget on the page).
  */
-export function inlineHtml(html: string, idPrefix: string): InlineNode[] | null {
+export function inlineHtml(html: string, idPrefix: string): InlineNode[] {
   const P = (globalThis as { DOMParser?: typeof DOMParser }).DOMParser;
   if (!P) return [{ text: html }];
   const doc = new P().parseFromString(html, "text/html");
-  if (needsFrame(doc)) return null;
   let count = 0;
   const walk = (parent: Node, depth: number, pre: boolean): InlineNode[] => {
     const out: InlineNode[] = [];

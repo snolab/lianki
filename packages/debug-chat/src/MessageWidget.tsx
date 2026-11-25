@@ -14,6 +14,8 @@ export type WidgetLabels = {
   invalid: string;
   /** Tooltip on every widget control: it fills the reply box, it does not send. */
   hint: string;
+  /** Above an HTML widget whose script was stripped (script widgets are off). */
+  scriptsOff: string;
 };
 export type WidgetHost = {
   /** Puts text into his reply box; he sends it. */

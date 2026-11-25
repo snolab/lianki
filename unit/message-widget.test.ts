@@ -19,7 +19,12 @@ afterAll(() => restoreGlobal("DOMParser", had));
 const host: WidgetHost = {
   onReply: () => {},
   onSubmit: () => {},
-  labels: { use: "Use", invalid: "Not a calculation", hint: "Fills your reply" },
+  labels: {
+    use: "Use",
+    invalid: "Not a calculation",
+    hint: "Fills your reply",
+    scriptsOff: "Scripts off",
+  },
 };
 const block = (spec: unknown) =>
   `Pick one:\n\n\`\`\`lianki-widget\n${typeof spec === "string" ? spec : JSON.stringify(spec)}\n\`\`\``;

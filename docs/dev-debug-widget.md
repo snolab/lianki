@@ -1829,14 +1829,16 @@ The same agent lines (`widgetLine`) may carry a ` ```lianki-html ` block.
   `↳ <action>: name=value, …` (`formLine`), so the posting agent gets it with
   the action string as its routing key. If he is typing, it joins his reply
   box instead. `formtarget=_blank` opens nothing.
-- **Script: a sandboxed frame** (`html-widget.ts`, `HtmlWidget.tsx`):
-  `srcdoc`, `sandbox="allow-scripts allow-forms"`, never `allow-same-origin`,
-  `allow-top-navigation`, `allow-popups` or `allow-modals`. A CSP inside
-  allows no network (`default-src`, `connect-src`, `form-action` and
-  `frame-src` are `'none'`). Its bootstrap turns submits into
-  `{lk:"action"}` and gives `lianki.reply(text)`. The chat accepts only its own
-  frame's messages (`event.source`): height (up to config
-  `chat.widgetHtmlMaxPx`), reply, action, each of which fills his reply box.
+- **Script: off.** A widget with script in any form (`<script>`, an `on*`
+  handler, a `javascript:` URL or form action) is drawn inline like the rest,
+  its script stripped, under a short note (`widgetScriptsOff`). It never gets
+  an iframe. Review 2026-11-26: a `srcdoc` frame with
+  `sandbox="allow-scripts allow-forms"` and a CSP of `'none'` could still
+  navigate itself (`location.href = …`) and so send data to any server; CSP
+  does not cover a frame's own navigation. `html-widget.ts` / `HtmlWidget.tsx`
+  are kept (tested, not rendered) for that work. Re-enabling script widgets
+  needs proven no-network containment in every browser, for example a frame on
+  a separate sandbox origin that blocks every navigation by a response header.
 
 Tests: `unit/html-widget.test.ts` (his form example as the first fixture, the
 usual XSS vectors, sandbox attributes and CSP, the thread boundary).

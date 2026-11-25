@@ -5,8 +5,7 @@
  * posted it (host.onSubmit). Links open through the chat's own link menu.
  */
 import { createElement, type FormEvent, type ReactNode, useId, useMemo } from "react";
-import { formLine, inlineHtml, type InlineNode } from "./html-inline";
-import { HtmlWidget } from "./HtmlWidget";
+import { formLine, inlineHtml, scriptedHtml, type InlineNode } from "./html-inline";
 import type { WidgetHost } from "./MessageWidget";
 import { ChatLink } from "./RichText";
 
@@ -80,8 +79,8 @@ function els(nodes: InlineNode[], onSubmit: (e: FormEvent<HTMLFormElement>) => v
 export function HtmlInline({ html, host }: { html: string; host: WidgetHost }) {
   const id = useId().replace(/[^\w-]/g, "");
   const nodes = useMemo(() => inlineHtml(html, `lkw${id}-`), [html, id]);
-  // Script inside: the sandboxed frame instead.
-  if (!nodes) return <HtmlWidget html={html} host={host} />;
+  // Script widgets are off (html-inline.ts): the HTML shows with its script stripped.
+  const scripted = useMemo(() => scriptedHtml(html), [html]);
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     // Never a navigation, a new window or a request: his line instead.
     e.preventDefault();
@@ -114,6 +113,11 @@ export function HtmlInline({ html, host }: { html: string; host: WidgetHost }) {
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
+      {scripted && (
+        <div data-testid="debug-chat-html-scripts-off" className="mb-1 fs-11 opacity-70">
+          {host.labels.scriptsOff}
+        </div>
+      )}
       {els(nodes, onSubmit)}
     </div>
   );

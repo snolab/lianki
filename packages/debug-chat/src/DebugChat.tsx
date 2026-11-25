@@ -5033,7 +5033,12 @@ export function DebugChat({
           submit();
         },
         htmlMaxHeight: widgetHtmlMaxPx,
-        labels: { use: ux.widgetUse, invalid: ux.widgetCalcInvalid, hint: ux.widgetReplyHint },
+        labels: {
+          use: ux.widgetUse,
+          invalid: ux.widgetCalcInvalid,
+          hint: ux.widgetReplyHint,
+          scriptsOff: ux.widgetScriptsOff,
+        },
       }
     : undefined;
   const readText = (m: ChatMessage, text: ReactNode) => {

@@ -33,7 +33,12 @@ async function mount(make: (host: WidgetHost) => ReactElement) {
   const host: WidgetHost = {
     onReply: (t) => replies.push(t),
     onSubmit: (t) => submits.push(t),
-    labels: { use: "Use", invalid: "Not a calculation", hint: "Fills your reply" },
+    labels: {
+      use: "Use",
+      invalid: "Not a calculation",
+      hint: "Fills your reply",
+      scriptsOff: "Scripts off",
+    },
     htmlMaxHeight: 300,
   };
   const { createRoot } = await import("react-dom/client");
@@ -184,8 +189,12 @@ describe("HTML widgets", () => {
       <button type="submit" name="go" value="1" formaction="/save">Save</button>
     </form>`;
     const p = await mount((host) => createElement(HtmlInline, { html, host }));
-    // javascript: anywhere puts the whole widget in the sandbox; here it is the last link.
-    expect(p.q<HTMLIFrameElement>("[data-testid=debug-chat-html-widget]")).not.toBeNull();
+    // A javascript: link: never a frame; the link is dropped to its text, the note says so.
+    expect(p.q<HTMLIFrameElement>("iframe")).toBeNull();
+    expect(p.q<HTMLElement>("[data-testid=debug-chat-html-scripts-off]").textContent).toBe(
+      "Scripts off",
+    );
+    expect(p.el.innerHTML).not.toContain("javascript:");
     await cleanup?.();
     cleanup = null;
     const safe = html.replace('<a href="javascript:void(0)">no</a>', "");
@@ -207,10 +216,24 @@ describe("HTML widgets", () => {
     expect(q.submits[0]).toMatch(/^↳ prefs: daily=yes, lang=zh, note=hi/);
   });
 
-  test("script goes to the sandboxed frame; only its own messages count", async () => {
+  test("a script widget never produces an iframe: script stripped, a note shown", async () => {
     const { HtmlInline } = await import("@lianki/debug-chat/HtmlInline");
+    const leak = `<p>hi</p><script>location.href="http://127.0.0.1:9/leak?v=1"</script>
+      <button onclick="location='http://127.0.0.1:9/x'">A</button>
+      <img src=x onerror="fetch('http://127.0.0.1:9/y')">`;
+    const p = await mount((host) => createElement(HtmlInline, { html: leak, host }));
+    expect(p.q<HTMLIFrameElement>("iframe")).toBeNull();
+    expect(p.q<HTMLElement>("[data-testid=debug-chat-html-scripts-off]")).not.toBeNull();
+    const html = p.el.innerHTML;
+    expect(html).not.toMatch(/<script|onclick|onerror|127\.0\.0\.1/);
+    expect(p.q<HTMLButtonElement>("button").textContent).toBe("A");
+    expect(p.q<HTMLElement>("p").textContent).toBe("hi");
+  });
+
+  test("the frame component (kept, not rendered): only its own messages count", async () => {
+    const { HtmlWidget } = await import("@lianki/debug-chat/HtmlWidget");
     const p = await mount((host) =>
-      createElement(HtmlInline, { html: `<button onclick="lianki.reply('A')">A</button>`, host }),
+      createElement(HtmlWidget, { html: `<button onclick="lianki.reply('A')">A</button>`, host }),
     );
     const frame = p.q<HTMLIFrameElement>("[data-testid=debug-chat-html-widget]");
     expect(frame).not.toBeNull();

@@ -5,7 +5,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { lineTier, richOf, widgetLine } from "@lianki/debug-chat/rich-text";
 import { RichBody } from "@lianki/debug-chat/RichText";
-import { formLine, inlineHtml, type InlineNode } from "@lianki/debug-chat/html-inline";
+import {
+  formLine,
+  inlineHtml,
+  scriptedHtml,
+  type InlineNode,
+} from "@lianki/debug-chat/html-inline";
 import {
   HTML_CSP,
   HTML_SANDBOX,
@@ -26,7 +31,7 @@ afterAll(() => restoreGlobal("DOMParser", had));
 const host: WidgetHost = {
   onReply: () => {},
   onSubmit: () => {},
-  labels: { use: "Use", invalid: "Not a calculation", hint: "Widget" },
+  labels: { use: "Use", invalid: "Not a calculation", hint: "Widget", scriptsOff: "Scripts off" },
 };
 
 /** The owner's own example (2026-11-25), as written. */
@@ -44,8 +49,7 @@ const fence = (html: string) => `Try it:\n\n\`\`\`lianki-html\n${html}\n\`\`\``;
 
 describe("inline HTML (no script)", () => {
   it("keeps his form as written, ids scoped, and nothing submits anywhere", () => {
-    const nodes = inlineHtml(OWNER_FORM, "w1-")!;
-    expect(nodes).not.toBeNull();
+    const nodes = inlineHtml(OWNER_FORM, "w1-");
     const s = flat(nodes);
     expect(s).toContain('"action":"/action_page.php"');
     expect(s).toContain('"id":"w1-fname"');
@@ -94,19 +98,24 @@ describe("inline HTML (no script)", () => {
     ];
     for (const v of vectors) {
       const nodes = inlineHtml(v, "w-");
-      // Script in any form is never inline: it goes to the sandboxed frame.
-      if (nodes === null) continue;
+      // Script in any form is stripped (script widgets are off); what is left is safe.
       const s = flat(nodes);
       expect(s).not.toMatch(
         /onerror|onload|ontoggle|onfocus|javascript:|"iframe"|"object"|"embed"|"style":\{"display":"none"|"link"|"meta"|"base"|"svg"|"math"/,
       );
     }
-    // These have script, so they are frame-only:
-    expect(inlineHtml(`<img src=x onerror=alert(1)>`, "w-")).toBeNull();
-    expect(inlineHtml(`<a href="javascript:alert(1)">x</a>`, "w-")).toBeNull();
-    expect(inlineHtml(`<script>alert(1)</script>`, "w-")).toBeNull();
+    // These had script: flagged, and nothing of it is left.
+    for (const v of [
+      `<img src=x onerror=alert(1)>`,
+      `<a href="javascript:alert(1)">x</a>`,
+      `<script>alert(1)</script>`,
+    ]) {
+      expect(scriptedHtml(v)).toBe(true);
+      expect(flat(inlineHtml(v, "w-"))).not.toMatch(/onerror|javascript:|alert|"script"/);
+    }
+    expect(scriptedHtml(OWNER_FORM)).toBe(false);
     // These are inline, with the dangerous part gone:
-    expect(flat(inlineHtml(`<style>body{display:none}</style><p>hi</p>`, "w-")!)).toBe(
+    expect(flat(inlineHtml(`<style>body{display:none}</style><p>hi</p>`, "w-"))).toBe(
       '[{"tag":"p","attrs":{},"children":[{"text":"hi"}]}]',
     );
   });
@@ -116,7 +125,7 @@ describe("inline HTML (no script)", () => {
       inlineHtml(
         `<div style="position:fixed;inset:0;z-index:9999;color:red;background:url(//x/y.png);transform:scale(9);padding:4px">x</div>`,
         "w-",
-      )!,
+      ),
     );
     expect(s).toContain('"color":"red"');
     expect(s).toContain('"paddingTop":"4px"');
@@ -128,7 +137,7 @@ describe("inline HTML (no script)", () => {
       inlineHtml(
         `<div class="fixed inset-0">x</div><img src="https://x.example/p.png" alt="pic">`,
         "w-",
-      )!,
+      ),
     );
     expect(s).not.toContain("class");
     expect(s).not.toContain("https://x.example");
@@ -183,6 +192,18 @@ describe("sandboxed frame (script)", () => {
     ])
       expect(htmlWidgetEvent(bad)).toBeNull();
   });
+});
+
+it("a script widget in a chat line renders no iframe at all", () => {
+  const rich = richOf(
+    fence(`<script>location.href="http://127.0.0.1:9/leak"</script><p>x</p>`),
+    "markdown",
+    true,
+  );
+  const html = renderToStaticMarkup(createElement(RichBody, { rich, widgets: host }));
+  expect(html).not.toContain("<iframe");
+  expect(html).not.toContain("127.0.0.1");
+  expect(html).toContain("Scripts off");
 });
 
 describe("the boundary", () => {
