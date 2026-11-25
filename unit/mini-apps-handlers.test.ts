@@ -45,7 +45,7 @@ import { signTicket } from "../lib/mini-apps/ticket";
 const mig = (f: string) => readFileSync(new URL(`../db/migrations/${f}`, import.meta.url), "utf8");
 const SCHEMA = [
   "CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT, name TEXT, image TEXT);",
-  "CREATE TABLE api_tokens (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL, user_id TEXT, scopes TEXT, expires_at TEXT, last_used_at TEXT);",
+  "CREATE TABLE api_tokens (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL, user_id TEXT, scopes TEXT, expires_at TEXT, last_used_at TEXT, oauth_grant_id TEXT);",
   mig("0020_user_prefs.sql"),
   mig("0057_chat_line.sql"),
   mig("0078_mini_apps.sql"),

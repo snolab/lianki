@@ -24,7 +24,9 @@ const tokenView = (row: Row) => ({
   expiresAt: row.expires_at,
 });
 const scopeOf = (raw: unknown): ScopeId | null => parseScopes([raw], { owner: true })?.[0] ?? null;
-const LIVE = `(user_id = ?1 OR (user_id IS NULL AND email = ?2))
+// Not an OAuth app's token (docs/mcp-oauth.md): its permissions are the grant's,
+// changed only by connecting the app again, never by a scope request.
+const LIVE = `(user_id = ?1 OR (user_id IS NULL AND email = ?2)) AND oauth_grant_id IS NULL
   AND EXISTS (SELECT 1 FROM user u WHERE u.id = ?1 AND u.email = api_tokens.email
     AND (api_tokens.user_id IS NULL OR api_tokens.user_id = u.id))
   AND (expires_at IS NULL OR julianday(expires_at) > julianday(?4))`;

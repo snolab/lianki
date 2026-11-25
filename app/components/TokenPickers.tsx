@@ -10,6 +10,7 @@ import {
   type ScopeId,
 } from "@/lib/api-tokens";
 import { isoDay } from "@/lib/dates";
+import { SCOPE_TEXT } from "./token-scope-text";
 
 /**
  * The permission and expiry pickers of a new API token (lib/api-tokens.ts):
@@ -19,18 +20,7 @@ import { isoDay } from "@/lib/dates";
  */
 export type Expiry = { days: number } | { date: string } | null;
 
-export const SCOPE_TEXT: Record<ScopeId, { label: string; hint: string }> = {
-  "apps:publish": { label: "scopeAppsPublish", hint: "scopeAppsPublishHint" },
-  study: { label: "scopeStudy", hint: "scopeStudyHint" },
-  "chat:read": { label: "scopeChatRead", hint: "scopeChatReadHint" },
-  "chat:write": { label: "scopeChatWrite", hint: "scopeChatWriteHint" },
-  "chat:ask": { label: "scopeChatAsk", hint: "scopeChatAskHint" },
-  "chat:play": { label: "scopeChatPlay", hint: "scopeChatPlayHint" },
-  "mic:polish": { label: "scopeMicPolish", hint: "scopeMicPolishHint" },
-  eval: { label: "scopeEval", hint: "scopeEvalHint" },
-  progress: { label: "scopeProgress", hint: "scopeProgressHint" },
-  "recordings:read": { label: "scopeRecordingsRead", hint: "scopeRecordingsReadHint" },
-};
+export { SCOPE_TEXT };
 
 export function PermissionPicker(p: {
   value: ScopeId[];
