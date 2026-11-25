@@ -1252,6 +1252,8 @@ export function DebugChat({
     // Another voice on his voice line (speaker-avatar.ts): its own disc, not his picture.
     voiceAvatar,
     otherVoice: t.vpOtherVoice,
+    // The state tree's reminders: their own name and tree mark (avatar-rules.ts).
+    stateTreeName: t.stateTreeName,
     // One voice in the room (cluster-avatar.ts): "A", "B"… or a household voice.
     clusterAvatar,
     clusterWords: { voice: t.vpVoiceCluster, household: t.vpHouseholdVoice },

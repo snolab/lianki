@@ -84,6 +84,19 @@ export function setOtherAvatarBelow(v: unknown) {
   otherBelow.v = typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : OTHER_AVATAR_BELOW;
 }
 
+/** The label ETA lines carried before the state tree had a sender name of its own. */
+export const LEGACY_ETA_LABEL = "ETA timer (automatic)";
+export const STATE_TREE_NAME_FALLBACK = "状态树提醒";
+/** The state tree reminders' mark: a small tree on a seal-red disc (oklch). */
+export const STATE_TREE_AVATAR =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+      '<circle cx="16" cy="16" r="16" fill="oklch(0.55 0.19 27)"/>' +
+      '<path d="M16 6l6 8h-3l4 5h-5v6h-4v-6H9l4-5h-3z" fill="oklch(0.98 0.01 90)"/>' +
+      "</svg>",
+  );
+
 export function lineAvatar(
   m: ChatMessage,
   opts: {
@@ -109,6 +122,10 @@ export function lineAvatar(
     clusterAvatar?: (cluster: string) => AvatarSource | undefined;
     /** Its names (localized): "Voice {label}", "Household voice". */
     clusterWords?: { voice?: string; household?: string };
+    /** The state tree reminders' name (localized) for lines that carry none of their own. */
+    stateTreeName?: string;
+    /** Their picture; default STATE_TREE_AVATAR. */
+    stateTreeAvatar?: AvatarSource;
   },
 ): LineAvatar {
   // A lane with a mark of its own (voices.ts LANES): its mark and name.
@@ -131,9 +148,28 @@ export function lineAvatar(
       mine: false,
     };
   }
+  // The state tree's automatic reminders (source "eta"): their own sender, by the
+  // name the hub stamped (chat.stateTreeSender, 「状态树提醒」) and a tree mark,
+  // never an agent's — so "@codex: …" is not read as codex speaking. An agent's
+  // reply to one (eta.kind "reply") is that agent's line: the branch below.
+  if (m.from === "agent" && m.source === "eta" && m.eta?.kind !== "reply") {
+    const name =
+      (m.label && m.label !== LEGACY_ETA_LABEL ? m.label : "") ||
+      opts.stateTreeName ||
+      STATE_TREE_NAME_FALLBACK;
+    return {
+      src: opts.stateTreeAvatar ?? STATE_TREE_AVATAR,
+      name,
+      initialFrom: name,
+      seed: "state-tree",
+      mine: false,
+    };
+  }
   if (m.from === "agent") {
     // The node's assignee, when the line names one; else the controller's label.
-    const name = m.agentId || m.label || opts.agentName || "agent";
+    // An agent's reply to a reminder: the hub stamped its display name, "coco (codex)".
+    const name =
+      (m.source === "eta" && m.label) || m.agentId || m.label || opts.agentName || "agent";
     return { src: opts.agentAvatar, name, initialFrom: name, seed: `agent:${name}`, mine: false };
   }
   const mine = m.from === (opts.friend ? "friend" : "owner");

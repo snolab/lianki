@@ -354,6 +354,40 @@ export const CONFIG = {
     audience: "server",
     description: "到点提醒没有回执时，先通知哪条线（协调线的名字，默认 main）。",
   },
+  // The state tree's lines in the chat (lib/eta-reply.ts; docs/state-tree.md, "Replies").
+  // Each description is also the context a translator reads with the text.
+  "chat.stateTreeSender": {
+    default: "状态树提醒" as string,
+    schema: z.string().trim().min(1).max(40),
+    group: "chat",
+    audience: "server",
+    description:
+      "状态树自动提醒（到点、卡住、未回执）在聊天里显示的发送者名字，配一个小树头像；让人一眼看出这是状态树发的，不是被 @ 的那条线（如 codex）说的话。短名词，不加句号。",
+  },
+  "chat.etaReplyAck": {
+    default: "{agent}：收到「{task}」，处理中" as string,
+    schema: z.string().trim().min(1).max(120),
+    group: "chat",
+    audience: "server",
+    description:
+      "被提醒的 agent 用回执码确认、或在节点上汇报后，状态树替它在聊天里回的一句（没有新的 ETA 时）。{agent} 换成 agent 的名字（如 coco (codex)），{task} 换成任务名，原样保留。一句短话。",
+  },
+  "chat.etaReplyDoing": {
+    default: "{agent}：收到「{task}」，处理中（ETA {min} 分钟）" as string,
+    schema: z.string().trim().min(1).max(120),
+    group: "chat",
+    audience: "server",
+    description:
+      "同上，但 agent 的汇报带了新的 ETA：{min} 换成从现在起还要的分钟数。{agent}、{task}、{min} 原样保留。一句短话。",
+  },
+  "chat.etaReplyDone": {
+    default: "{agent}：「{task}」已处理" as string,
+    schema: z.string().trim().min(1).max(120),
+    group: "chat",
+    audience: "server",
+    description:
+      "同上，但 agent 把这个节点报了完成：告诉大家这条提醒已经处理好了。{agent}、{task} 原样保留。一句短话。",
+  },
   "chat.nudgeBackoffMin": {
     default: "10,20,40,80,160,240" as string,
     schema: z
