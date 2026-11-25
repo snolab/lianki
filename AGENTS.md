@@ -32,6 +32,12 @@ released to `prod` once a day, docs/shipping.md "Daily release"). Repo: `snolab/
   `isDev` (`lib/permissions.ts`, rows in `account_permission`). Never
   `OWNER_EMAILS`, a hardcoded email, or the unused `site_role` table — not even
   for the owner. [docs/secrets-and-auth.md](docs/secrets-and-auth.md), "Permissions".
+- **Deploy locally, always.** Every lane and branch deploys `lianki` from the
+  Mac with wrangler after local tests (docs/shipping.md, "Deploy locally");
+  don't wait for CI's deploy. Then land the same commits by PR (`prod`, then
+  `main`) so the next deploy doesn't revert it. Before deploying, fetch and
+  build on the newest `origin/prod` so you never drop someone else's merged
+  change; check with `git merge-base --is-ancestor origin/prod HEAD`.
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 
@@ -94,9 +100,11 @@ curl -sI https://lianki.com/en | grep -i x-vercel-id   # nothing = Worker
 
 So: production runtime errors are in `wrangler tail lianki`, the live data is
 **D1** (`lianki`), and MongoDB is a frozen rollback copy as of the cutover —
-do not write to it. The Worker deploys itself after CI passes on `prod`
-(`.github/workflows/deploy-worker.yml`); `main` reaches `prod` through the
-daily release PR, a hot fix through a PR straight to `prod`.
+do not write to it. Changes go live by a local deploy from the Mac (Hard
+rules, "Deploy locally, always"); the Worker also deploys itself after CI
+passes on `prod` (`.github/workflows/deploy-worker.yml`), but that is the
+fallback, not the way to ship. `main` reaches `prod` through the daily
+release PR, a locally deployed change through a PR straight to `prod`.
 
 **Vercel no longer builds.** `vercel.json`'s `git.deploymentEnabled.main` is
 `false` as of 2026-10-15, so a push to `main` triggers nothing there. The

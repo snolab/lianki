@@ -17,8 +17,9 @@ waits for the required checks, then syncs local `main` and deletes the branch.
 are expected` unless the pushed SHA already has green checks. The PR is what gets
 the checks run.
 
-Landing on `main` does not deploy: production deploys from `prod`, which
-takes `main` once a day (below, "Daily release").
+Landing on `main` does not deploy: production runs `prod`, which takes
+`main` once a day (below, "Daily release"). To ship a change now, deploy it
+locally and PR it to `prod` (below, "Deploy locally").
 
 `scripts/ship.ts` uses `git reset --keep`, not `--hard`, so a sync can never
 silently eat uncommitted work.
@@ -92,20 +93,41 @@ is off the run fails with the compare link. A PR opened by that token gets no
 `pull_request` CI of its own, which is fine here: its head is `main`'s tip
 (or `prod`'s), which CI already checked on push.
 
-**Hot fixes.** There is no hot-fix branch: a hot fix is deployed from the Mac
-(`wrangler deploy`, after local tests) and then goes as a **PR straight to
-`prod`**, merged by a person, so CI runs on prod and Deploy Worker redeploys
-the same fix. `main` gets it back by itself: the next daily run opens the
-back-merge PR before any release.
+### Deploy locally
+
+Owner rule: **every lane and every branch deploys locally**, from the Mac
+with wrangler after local tests, instead of waiting for CI to deploy. CI's
+Deploy Worker (below, "Deploy order") is the fallback. A hot fix is just the
+most common case; there is no hot-fix branch.
+
+1. **Start from the newest prod.** `git fetch origin prod`, put your commits
+   on top of `origin/prod`, and check
+   `git merge-base --is-ancestor origin/prod HEAD` (exit 0) right before the
+   deploy, so you never drop someone else's merged change.
+2. **Test locally** (`bun run typecheck`, the affected unit tests,
+   `bun scripts/gate/affected.ts plan` for what else the change reaches).
+3. **Deploy** the same steps CI runs, in its order:
+
+   ```bash
+   bun install --frozen-lockfile
+   bun scripts/build-partner-embed.ts
+   bunx opennextjs-cloudflare build
+   bunx wrangler d1 migrations apply lianki --remote   # only if the change adds a migration
+   bunx wrangler deploy                                # lianki; the other Workers only if changed
+   ```
+
+4. **Land it by PR**: a **PR straight to `prod`** with the same commits,
+   merged by a person, so CI runs on prod and Deploy Worker redeploys the
+   same code; then to `main` (the next daily run also opens the back-merge PR
+   before any release).
 
 The caveat: **until that PR has merged into `prod`, the next deploy of
-`prod` reverts the hot fix.** A local deploy changes only what runs, not
+`prod` reverts the change.** A local deploy changes only what runs, not
 `prod`; the daily release (19:00 UTC), a lift of the Full QA hold, or any
-other prod deploy then ships prod's code, without the fix. Remedy: merge the
-hot fix PR into `prod` before 19:00 UTC; if a deploy has already dropped it,
-merge the PR (that redeploys) or `wrangler deploy` again from the fix. A hot
-fix merged only into `main` reaches production with the next release, not
-before.
+other prod deploy then ships prod's code, without it. Remedy: merge the PR
+into `prod` before 19:00 UTC; if a deploy has already dropped it, merge the
+PR (that redeploys) or deploy again locally from the fix. A change merged
+only into `main` reaches production with the next release, not before.
 
 Follow-ups for the owner: create `prod` once from `main` (`git push origin
 origin/main:refs/heads/prod`), and give it branch protection (required
@@ -541,7 +563,8 @@ show bundled positions. To turn maps back on, first shrink them under the limit
 ## Deploy order
 
 `.github/workflows/deploy-worker.yml` runs after CI passes on `prod` (or when
-the daily release starts it): OpenNext
+the daily release starts it) — the fallback behind the local deploy above
+("Deploy locally"), which uses the same steps: OpenNext
 build, route fingerprints (see "Smart refresh" below), asset hygiene, **Worker exports unchanged**
 (`scripts/ci/check-worker-exports.ts`), D1 migrations, then the Workers in
 this order:
