@@ -216,7 +216,10 @@ The URL itself is a bearer credential: anyone holding it can use those permissio
 until expiry or revocation. Keep it in the client's private connector settings;
 never paste it into chats, browser address bars, screenshots, logs or public configs.
 Revoke the named token if the URL is exposed. URL credentials can still appear in
-client or edge infrastructure logs; MCP invocation URL logging is disabled.
+client or edge infrastructure logs. Persisted MCP observability logs and traces
+are disabled. The existing monitor tail consumer remains attached and ignores MCP
+events; shared telemetry retains only sanitized path aggregates, never credential
+paths. This does not prevent third-party or client URL retention.
 Do not also configure an Authorization header. Encoded tokens, trailing slashes,
 extra path segments and query strings on capability URLs are refused. Browser
 requests to them never serve HTML or load resources.

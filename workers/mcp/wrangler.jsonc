@@ -17,6 +17,11 @@
     { "binding": "PUSH", "service": "lianki-push" },
   ],
   "tail_consumers": [{ "service": "lianki-monitor" }],
-  // Capability URLs are credentials: never persist automatic request URL logs.
-  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+  // Capability URLs are credentials: disable persisted MCP logs and traces.
+  // Keep the monitor tail consumer; it ignores MCP events and stores no raw URLs.
+  "observability": {
+    "enabled": false,
+    "logs": { "enabled": false, "invocation_logs": false },
+    "traces": { "enabled": false },
+  },
 }

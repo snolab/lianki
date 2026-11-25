@@ -64,7 +64,12 @@ export const MAX_BODY = 1_000_000;
 type Id = string | number | null;
 type Rpc = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown };
 
-const NO_STORE = { "cache-control": "no-store" };
+const NO_STORE = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
+
+/** Redact credentials from all JSON and SSE payloads, including upstream content. */
+function safeJson(body: unknown): string {
+  return JSON.stringify(body).replace(/lk_[0-9a-f]{64}/g, "[redacted]");
+}
 const AUTH_HEADERS = { ...NO_STORE, "www-authenticate": 'Bearer realm="lianki"' };
 
 class Unauthorized extends Error {}
@@ -76,7 +81,10 @@ const rpcError = (id: Id, code: number, message: string) => ({
 });
 
 function plain(body: unknown, status: number, headers: Record<string, string> = NO_STORE) {
-  return Response.json(body, { status, headers });
+  return new Response(safeJson(body), {
+    status,
+    headers: { ...headers, "content-type": "application/json" },
+  });
 }
 
 /** Does the client's Accept rank text/event-stream above application/json? */
@@ -96,7 +104,7 @@ export function prefersStream(accept: string | null): boolean {
 /** One JSON-RPC answer, as JSON or as a single SSE event. */
 function answer(req: Request, body: unknown, status = 200, extra: Record<string, string> = {}) {
   if (prefersStream(req.headers.get("accept")))
-    return new Response(`event: message\ndata: ${JSON.stringify(body)}\n\n`, {
+    return new Response(`event: message\ndata: ${safeJson(body)}\n\n`, {
       status,
       headers: { ...NO_STORE, "content-type": "text/event-stream", ...extra },
     });
@@ -223,7 +231,7 @@ async function dispatch(
     }
     case "tools/call": {
       const t = TOOLS.find((x) => x.name === params.name);
-      if (!t) return rpcError(id, -32602, `Unknown tool: ${String(params.name).slice(0, 64)}`);
+      if (!t) return rpcError(id, -32602, "Unknown tool");
       // Refused before anything runs when the token lacks the tool's permission
       // (the routes would refuse it too; this names the permission).
       const identity = await identityOf(c, token);
@@ -254,7 +262,7 @@ async function dispatch(
       return { jsonrpc: "2.0", id, result };
     }
     default:
-      return rpcError(id, -32601, `Method not found: ${String(msg.method).slice(0, 64)}`);
+      return rpcError(id, -32601, "Method not found");
   }
 }
 
@@ -271,7 +279,11 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   if (credentialPath && (!pathToken || url.search))
     return plain(rpcError(null, -32600, "Invalid MCP endpoint"), 400);
   // Only the public endpoint may serve HTML (no subresources or referrer leaks).
-  if (basePath && wantsGuide(req)) return guide(req, url.origin);
+  if (basePath && wantsGuide(req)) {
+    const response = guide(req, url.origin);
+    response.headers.set("referrer-policy", "no-referrer");
+    return response;
+  }
   if (req.method !== "POST")
     return new Response("Method Not Allowed", {
       status: 405,
@@ -294,10 +306,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
 
   const pv = req.headers.get("mcp-protocol-version");
   if (pv !== null && !PROTOCOL_VERSIONS.includes(pv))
-    return plain(
-      rpcError(null, -32600, `Unsupported MCP-Protocol-Version: ${pv.slice(0, 32)}`),
-      400,
-    );
+    return plain(rpcError(null, -32600, "Unsupported MCP-Protocol-Version"), 400);
 
   const text = await req.text();
   if (text.length > MAX_BODY) return plain(rpcError(null, -32600, "Request too large"), 413);

@@ -397,3 +397,83 @@ test("mini-app remote publishing checks both grants and forwards only allowed ca
     }
   }
 });
+
+describe("credential response protections", () => {
+  test("JSON and SSE redact IDs, successful upstream content and error content", async () => {
+    for (const accept of ["application/json", "text/event-stream"]) {
+      const { env } = setup();
+      const request = rpc("ping", undefined, { accept });
+      const withSecretId = new Request(request, {
+        body: JSON.stringify({ jsonrpc: "2.0", id: TOKEN, method: "ping" }),
+      });
+      const ping = await handle(withSecretId, env);
+      expect(ping.headers.get("referrer-policy")).toBe("no-referrer");
+      expect(await ping.text()).toContain('"id":"[redacted]"');
+      for (const status of [200, 500]) {
+        const bound: Env = {
+          MAIN: env.MAIN,
+          PUSH: {
+            fetch: async () =>
+              Response.json(
+                status === 200
+                  ? { messages: [{ text: `secret ${TOKEN}` }] }
+                  : { error: `failed ${TOKEN}` },
+                { status },
+              ),
+          },
+        };
+        const result = await handle(
+          rpc("tools/call", { name: "lianki_chat_read", arguments: {} }, { accept }),
+          bound,
+        );
+        const text = await result.text();
+        expect(text).not.toContain(TOKEN);
+        expect(text).toContain("[redacted]");
+      }
+    }
+  });
+
+  test("protocol errors never reflect dynamic input, including partial token strings", async () => {
+    const { env } = setup();
+    for (const accept of ["application/json", "text/event-stream"]) {
+      for (const request of [
+        rpc(`unknown-${TOKEN}`, undefined, { accept }),
+        rpc("tools/call", { name: `unknown-${TOKEN}`, arguments: {} }, { accept }),
+        rpc("initialize", undefined, { accept, "mcp-protocol-version": TOKEN }),
+      ]) {
+        const result = await handle(request, env);
+        const text = await result.text();
+        expect(text).not.toContain(TOKEN.slice(0, 32));
+        expect(text).not.toContain("unknown-");
+        expect(result.headers.get("referrer-policy")).toBe("no-referrer");
+      }
+    }
+  });
+
+  test("upstream identity errors are redacted in JSON and SSE", async () => {
+    for (const accept of ["application/json", "text/event-stream"]) {
+      const failed = {
+        fetch: async () => Response.json({ error: `failed ${TOKEN}` }, { status: 500 }),
+      };
+      const response = await handle(rpc("initialize", undefined, { accept }), {
+        MAIN: failed,
+        PUSH: failed,
+      });
+      const text = await response.text();
+      expect(text).not.toContain(TOKEN);
+      expect(text).toContain("[redacted]");
+    }
+  });
+
+  test("MCP observability stays disabled while the monitor binding remains unchanged", async () => {
+    const config = Bun.JSONC.parse(
+      await Bun.file(new URL("../workers/mcp/wrangler.jsonc", import.meta.url)).text(),
+    ) as { observability: unknown; tail_consumers: unknown };
+    expect(config.observability).toEqual({
+      enabled: false,
+      logs: { enabled: false, invocation_logs: false },
+      traces: { enabled: false },
+    });
+    expect(config.tail_consumers).toEqual([{ service: "lianki-monitor" }]);
+  });
+});
