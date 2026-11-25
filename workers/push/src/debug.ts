@@ -284,6 +284,7 @@ import {
   ECHO_HALLUCINATIONS,
   ECHO_RECENT_MS,
   ECHO_WINDOW_LEAD_MS,
+  ECHO_WINDOW_MATCH_MIN,
   ECHO_WINDOW_SHARE,
   ECHO_WINDOW_TAIL_MS,
   PlayStore,
@@ -719,11 +720,13 @@ type EchoReportsConf = {
   slackMs: number;
   keepMs: number;
   showMax: number;
-  /** Flag voice.echo-window: spoken while a page played (or in the tail) is an echo, whatever the words. */
+  /** Flag voice.echo-window: spoken while a page played (or in the tail) and matching its words at `matchMin` is an echo. */
   windowOn: boolean;
   leadMs: number;
   tailMs: number;
   share: number;
+  /** voice.echoWindowMatchMin: inside the window, the words must match what played this much. */
+  matchMin: number;
   /** A report ended this long before the utterance still counts for words and STT noise. */
   recentMs: number;
   hallucinations: readonly string[];
@@ -2076,6 +2079,7 @@ export class DebugHub {
       leadMs: await num("voice.echoWindowLeadMs", ECHO_WINDOW_LEAD_MS),
       tailMs: await num("voice.echoWindowTailMs", ECHO_WINDOW_TAIL_MS),
       share: Math.min(1, await num("voice.echoWindowShare", ECHO_WINDOW_SHARE)),
+      matchMin: Math.min(1, await num("voice.echoWindowMatchMin", ECHO_WINDOW_MATCH_MIN)),
       recentMs: Math.min(ECHO_RECENT_MAX, await num("voice.echoRecentMs", ECHO_RECENT_MS)),
       hallucinations,
     };
@@ -2151,9 +2155,10 @@ export class DebugHub {
           page?.key,
         )
       : undefined;
-    // Spoken while one of his pages played, or in its tail: an echo whatever the words
-    // (2026-11-26: Whisper on his phone turned read-aloud into "明镜需要您的支持", Icelandic).
-    // On the device that played, always. From another device only for a line from the
+    // Spoken while one of his pages played, or in its tail: an echo only when its words
+    // match what played, at the window's lower cut (voice.echoWindowMatchMin). Time
+    // alone never folds (owner, 2026-11-26 05:20 JST: his own question 2713e7d1 was
+    // folded at 0.308). On the device that played, always. From another device only for a line from the
     // cloud recogniser with no voiceprint tag (the path that hallucinates and has no
     // self print); a line from the Mac's own STT is left to the words and the self
     // print there, so his answers spoken over a phone's reading ("120", "20") stay his.
@@ -2164,9 +2169,16 @@ export class DebugHub {
     const inWindow =
       reports.windowOn && eligible.length
         ? echoWindowMatch(
+            line.text,
             eligible,
             span,
-            { leadMs: reports.leadMs, tailMs: reports.tailMs, share: reports.share },
+            {
+              leadMs: reports.leadMs,
+              tailMs: reports.tailMs,
+              share: reports.share,
+              matchMin: reports.matchMin,
+              minChars: conf.minChars,
+            },
             t,
             page?.key,
           )
