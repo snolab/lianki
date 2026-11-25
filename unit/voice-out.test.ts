@@ -319,7 +319,7 @@ describe("voice-out: createCloudOut", () => {
           await tick();
           expect(r.fetched).toHaveLength(2);
           expect(r.fetched[1]).toBe(
-            "/api/words/tts?lang=zh&text=%E4%BD%A0%E5%A5%BD%E3%80%82&store=0&localVoice=xiaobei",
+            "/api/voice/tts?lang=zh&text=%E4%BD%A0%E5%A5%BD%E3%80%82&store=0&localVoice=xiaobei",
           );
           r.el.onloadedmetadata?.();
           await tick();
