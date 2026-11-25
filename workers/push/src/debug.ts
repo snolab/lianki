@@ -350,7 +350,13 @@ import {
   USER_WINDOW_TOKENS_MAX,
   costUsd,
   reserveInTokens,
+  CHECKPOINT_KEEP_KEY,
+  CHECKPOINT_KEEP_PCT,
+  PARTNER_POLISH_LINE_CHARS,
+  PARTNER_POLISH_LINES,
+  PARTNER_STABLE_FLAG,
 } from "../../../lib/partner-ai-config";
+import { advanceWindow, parseWindow } from "../../../lib/partner-window";
 import {
   type HourBuckets,
   addToBucket,
@@ -4804,18 +4810,49 @@ export class DebugHub {
     const userMap = await this.ctx.storage.get<HourBuckets>(userKey);
     const used = windowSum(userMap, hour, win);
     const site = windowSum(siteMap, hour, win);
-    const lines = (await this.history(thread))
+    const recent = (await this.history(thread))
       .filter((m) => m.from === (owner ? "owner" : "friend") || m.from === "agent")
-      .slice(-HISTORY_LINES)
-      // Li's own lines as its own; every other agent's attributed, never as Li's (partner-lines.ts).
-      .map(partnerHistoryLine);
-    // The newest lines within HISTORY_MAX_CHARS (the latest one always).
-    const history: typeof lines = [];
+      .slice(-HISTORY_LINES);
+    // Li's own lines as its own; every other agent's attributed, never as Li's (partner-lines.ts).
+    const lines = recent.map(partnerHistoryLine);
+    // Cache order (flag partner.stable-prompt, default on): the frozen window; unsure = the old order.
+    const stable = (await this.flagValue(PARTNER_STABLE_FLAG)) === true;
+    let history: typeof lines = [];
     let chars = 0;
-    for (const h of lines.toReversed()) {
-      if (history.length && chars + h.text.length > HISTORY_MAX_CHARS) break;
-      history.unshift(h);
-      chars += h.text.length;
+    if (stable) {
+      const keep = await this.sessions?.config?.(CHECKPOINT_KEEP_KEY).catch(() => undefined);
+      const keepPct =
+        typeof keep === "number" && keep >= 10 && keep <= 90 ? keep : CHECKPOINT_KEEP_PCT;
+      const winKey = `ai:win:${thread}`;
+      const win = advanceWindow(
+        parseWindow(await this.ctx.storage.get(winKey)),
+        recent.map((m, i) => ({ id: m.id, ...lines[i]! })),
+        { maxLines: HISTORY_LINES, maxChars: HISTORY_MAX_CHARS, keepPct },
+      );
+      await this.ctx.storage.put(winKey, win);
+      history = win.items;
+      chars = history.reduce((n, h) => n + h.text.length, 0);
+    } else {
+      // The newest lines within HISTORY_MAX_CHARS (the latest one always).
+      for (const h of lines.toReversed()) {
+        if (history.length && chars + h.text.length > HISTORY_MAX_CHARS) break;
+        history.unshift(h);
+        chars += h.text.length;
+      }
+    }
+    // His spoken lines no polish has touched yet go along for the reply's polish section:
+    // the same run the hub's own polish would take (it usually got there first, 1.5 s after he paused).
+    let polish: { id: string; text: string }[] = [];
+    if (stable && owner && (await this.flagValue(AUTO_POLISH_FLAG)) === true) {
+      const conf = await this.autoPolishConf();
+      const { run } = this.autoPolishPick((await this.editable()).kept, conf.minChars, {
+        lines: 0,
+        chars: 0,
+      });
+      polish = run
+        .slice(-PARTNER_POLISH_LINES)
+        .map(([, x]) => ({ id: x.id, text: x.text.slice(0, PARTNER_POLISH_LINE_CHARS) }));
+      chars += polish.reduce((n, l) => n + l.text.length + l.id.length, 0);
     }
     const path = page.label.split(" ")[0]?.slice(0, 300);
     const pageInfo: NonNullable<PartnerRequest["page"]> = {
@@ -4867,6 +4904,8 @@ export class DebugHub {
       ...(msgId ? { msgId } : {}),
       ...(owner ? { owner: true as const } : {}),
       ...(roster.length ? { roster } : {}),
+      ...(stable ? { stable: true as const } : {}),
+      ...(polish.length ? { polish } : {}),
       history,
       page: pageInfo,
     };
@@ -4911,6 +4950,10 @@ export class DebugHub {
               tokensOut,
               model: res.model,
               ...(res.charged !== undefined ? { charged: res.charged } : {}),
+              // Prefix-cache hits (Workers AI usage) and the reply's polish: counts only.
+              ...(stable ? { stable: true } : {}),
+              ...(res.cachedIn !== undefined ? { cachedIn: res.cachedIn } : {}),
+              ...(res.polish?.length ? { polishLines: res.polish.length } : {}),
             }
           : { error: res.error }),
         ...(res.ms !== undefined ? { ms: res.ms } : {}),
@@ -4931,6 +4974,8 @@ export class DebugHub {
         for (const { ws } of this.pages(thread)) send(ws, { type: "ai-failed" });
       return;
     }
+    // The polish section stands on its own: applied even when a lane's reply made Li's stale.
+    if (owner && res.polish?.length) await this.liPolish(polish, res.polish);
     if (stale) return;
     await this.post({
       id: crypto.randomUUID().slice(0, 8),
@@ -4943,6 +4988,30 @@ export class DebugHub {
       // In his thread: the main lane's (Li's) avatar and voice.
       ...(owner ? { lane: "main" as const } : {}),
     });
+  }
+
+  /**
+   * Li's polish section, through the same edit path as the hub's own polish
+   * (`polishLine`, stamped `by: "auto"`: raw kept for undo, the read-back
+   * fired). Only the ids sent, and only a line that still reads as sent and
+   * that no polish touched meanwhile (the hub's own, an agent's): never twice.
+   */
+  private async liPolish(
+    sent: readonly { id: string; text: string }[],
+    edits: readonly { id: string; text: string }[],
+  ) {
+    const now = new Map((await this.editable()).kept.map(([, x]) => [x.id, x]));
+    let polished = 0;
+    for (const e of edits) {
+      const was = sent.find((l) => l.id === e.id);
+      const x = now.get(e.id);
+      if (!was || !x || x.text !== was.text || polishStands(x) || x.collapsedInto || x.passage)
+        continue;
+      if (!(await this.polishLine({ id: e.id, text: e.text }, AUTO_POLISH_BY))) polished++;
+    }
+    console.log(
+      JSON.stringify({ msg: "partner.polish", sent: sent.length, edits: edits.length, polished }),
+    );
   }
 
   /**

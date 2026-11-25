@@ -15,6 +15,21 @@ export const PARTNER_AI_FLAG = "partner.ai-reply";
  * lines that no lane answered within OWNER_REPLY_DELAY_MS.
  */
 export const PARTNER_OWNER_FLAG = "partner.owner-thread";
+
+/**
+ * Li's prompt in cache order (docs/partner-ai.md, "Prompt caching"): static
+ * rules first, the frozen append-only history (lib/partner-window.ts), the
+ * per-call parts (roster, study data, page, lines to polish) last. Off = the
+ * old order: everything in the system message, a sliding history.
+ */
+export const PARTNER_STABLE_FLAG = "partner.stable-prompt";
+/** Live config: how much of the bound a new checkpoint keeps (percent). */
+export const CHECKPOINT_KEEP_KEY = "partner.checkpointKeepPct";
+export const CHECKPOINT_KEEP_PCT = 50;
+/** At most this many of his spoken lines go to Li for polish in one reply (the hub's MERGE_LINES bound). */
+export const PARTNER_POLISH_LINES = 12;
+/** Each line to polish, at most this many characters. */
+export const PARTNER_POLISH_LINE_CHARS = 2000;
 /** The live value's key (lib/config.ts) for how long the lanes have before the model answers. */
 export const OWNER_REPLY_DELAY_KEY = "partner.ownerReplyDelayMs";
 /** Its default: 30 s for a lane to answer first (2026-11-15: lanes take 20–40 s; at 8 s Li cut in while 小克 typed). */
@@ -181,6 +196,16 @@ export type PartnerRequest = {
   roster?: { id: string; name: string; mode?: "listener" | "reader"; muted?: true }[];
   /** The thread's latest lines, oldest first: the user's and the agent's. */
   history: { role: "user" | "assistant"; text: string }[];
+  /**
+   * The history is the frozen window (PARTNER_STABLE_FLAG on): the prompt is
+   * built in cache order, the per-call parts last.
+   */
+  stable?: true;
+  /**
+   * The owner's thread with `stable`: his recent spoken lines no polish has
+   * touched yet, for the reply's polish section (docs/partner-ai.md).
+   */
+  polish?: { id: string; text: string }[];
   /** Where the user is: the page's path (from its label) and what the line carried. */
   page?: {
     path?: string;
@@ -202,6 +227,10 @@ export type PartnerResult =
       model: string;
       /** Whole credits kept from the reservation for this reply (the fraction carries over). */
       charged?: number;
+      /** Prompt tokens served from Workers AI's prefix cache (0 or absent: none reported). */
+      cachedIn?: number;
+      /** The reply's polish section, held to the ids sent (absent: none, or unusable). */
+      polish?: { id: string; text: string }[];
     }
   | {
       ok: false;

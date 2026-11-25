@@ -503,6 +503,13 @@ export const FLAGS = {
   },
   // Owner, 2026-11-15 13:4x JST: Li speaks in his own thread too. Only his
   // thread: on, it changes nothing for anyone else (/dev/flags groups it under ai).
+  // Owner, 2026-11-25: "can u ensure the history stable? because if it changes any byte, we cost again on cache miss".
+  "partner.stable-prompt": {
+    description:
+      "Li 的提示词按缓存友好的顺序排：固定的规则在最前，之前的聊天按第一次发出时的样子只往后追加（润色后的改动作为一条更正追加在后面，不回头改），这次才有的内容（在场的人、学习数据、当前页面、要润色的句子）放在最后。这样每次调用前面的字节都一样，模型缓存能命中，花费更少；你自己的线程里 Li 回复时也顺便润色你刚说的、还没润色过的话（和回复同一次调用，不重复扣费）。关闭 = 旧的顺序，每次都重新拼。",
+    default: true,
+    group: "ai",
+  },
   "partner.owner-thread": {
     description:
       "Li 也在你自己的线程里说话：「学习伙伴由 AI 回复」也打开时，你没有点名任何一条线（codex、agy…）的消息，如果几秒内（/dev/config 的 partner.ownerReplyDelayMs，默认 8 秒）没有开发通道回复，就由 Li（DeepSeek 模型）回复并朗读；通道先回复则 Li 不说话。声纹判断为别人的声音的消息不回复。和别人一样扣你自己的积分，没有免费。关闭 = 照旧：你的线程只由开发通道回复。",
