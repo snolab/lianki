@@ -7,6 +7,8 @@ import { flagIn } from "@/lib/flags";
 import { readFlags } from "@/lib/flags-store";
 import { PER_ORIGIN_FLAG } from "@/lib/li-thread";
 import SitesClient, { type SitesLabels } from "./SitesClient";
+import PillInstallGuide, { type PillInstallLabels } from "./PillInstallGuide";
+import { LIANKI_USERSCRIPT_VERSION } from "@/lib/userscript-version";
 
 export const dynamic = "force-dynamic";
 
@@ -40,5 +42,16 @@ export default async function ChatSitesPage() {
         </a>
       </div>
     );
-  return <SitesClient labels={labels} locale={locale} />;
+  const installLabels = Object.fromEntries(
+    Object.entries(getIntlayer("pill-install", locale)).map(([k, v]) => [k, String(v)]),
+  ) as PillInstallLabels;
+  return (
+    <SitesClient
+      labels={labels}
+      locale={locale}
+      installGuide={
+        <PillInstallGuide latestVersion={LIANKI_USERSCRIPT_VERSION} labels={installLabels} />
+      }
+    />
+  );
 }

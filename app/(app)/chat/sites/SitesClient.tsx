@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { type PartnerClient, createPartnerClient } from "@lianki/debug-chat/embed/partner-client";
 import type { SiteThread } from "@/lib/li-thread";
 
@@ -55,7 +55,15 @@ function when(at: number, locale: string) {
  * session (no ticket) to that site's thread (`?sub=`, debug.ts subThreadFor:
  * only a thread the hub holds under his own account), chat only.
  */
-export default function SitesClient({ labels, locale }: { labels: SitesLabels; locale: string }) {
+export default function SitesClient({
+  labels,
+  locale,
+  installGuide,
+}: {
+  labels: SitesLabels;
+  locale: string;
+  installGuide: ReactNode;
+}) {
   const [threads, setThreads] = useState<SiteThread[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState<SiteThread | null>(null);
@@ -95,6 +103,7 @@ export default function SitesClient({ labels, locale }: { labels: SitesLabels; l
     <div className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="mb-2 text-2xl font-bold">{labels.title}</h1>
       <p className={`mb-6 ${muted}`}>{labels.intro}</p>
+      {installGuide}
       {failed ? (
         <div className="flex items-center gap-3">
           <p className={bad}>{labels.failed}</p>

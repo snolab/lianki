@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.39
+// @version     2.24.40
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -3400,6 +3400,28 @@ Sasisha kadi kwa anwani mpya?`,
       .catch(() => {});
   }
 
+  // lib/userscript-install.ts
+  var USERSCRIPT_VERSION_ATTRIBUTE = "data-lianki-userscript-version";
+  var versionParts = (value) =>
+    typeof value === "string" && /^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(value)
+      ? value.split(".").map(Number)
+      : null;
+  function publishUserscriptVersion(root, origin, version) {
+    if (
+      !["https://lianki.com", "https://www.lianki.com", "https://preview.lianki.com"].includes(
+        origin,
+      ) ||
+      !versionParts(version)
+    )
+      return () => {};
+    const value = version;
+    root.setAttribute(USERSCRIPT_VERSION_ATTRIBUTE, value);
+    return () => {
+      if (root.getAttribute(USERSCRIPT_VERSION_ATTRIBUTE) === value)
+        root.removeAttribute(USERSCRIPT_VERSION_ATTRIBUTE);
+    };
+  }
+
   // packages/debug-chat/src/embed/guard.ts
   function own(o) {
     if (!o || typeof o !== "object") return { __proto__: null };
@@ -3483,6 +3505,13 @@ Sasisha kadi kwa anwani mpya?`,
       "In a chat message mini-app card/panel: the requested app cannot be loaded, including deleted apps, unavailable feature or another account's app. Do not disclose ownership details.",
     miniAppResize:
       "Accessible label for the chat mini-app panel height separator: drag vertically or use arrow keys to resize the embedded sandbox; this does not change the app's own HTML.",
+    widgetUse: `Button on a small interactive widget inside an assistant's chat message (a calculator or a slider). It copies the widget's current value, e.g. "12*3 = 36" or "Minutes a day: 20 min", into the user's own reply box; it does NOT send anything. Short imperative, like a button label.`,
+    widgetCalcInvalid:
+      "Shown next to a calculator widget inside an assistant's chat message when what is typed in its box is not arithmetic (only numbers and + − × ÷ % ^ and parentheses work). Short, neutral, not an error alarm.",
+    widgetReplyHint:
+      "Tooltip on every control of an interactive widget inside an assistant's chat message (choice buttons, the calculator's and slider's put-in-reply button): tapping only fills the user's reply box; the user still decides and sends it. One short sentence.",
+    widgetScriptsOff:
+      "A short neutral note above an interactive HTML widget inside an assistant's chat message, shown when the widget contained script code that was removed for safety. The rest of the widget still works (its text, buttons and form fields). Not an error alarm; one short sentence.",
     menuSwitchOn: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the ON word: the setting is active. The shortest word this language's own on/off switches show for 'on' (English 'On', Chinese 开), the same as the app's other switches.`,
     menuSwitchOff: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the OFF word: the setting is inactive. The shortest word this language's own on/off switches show for 'off' (English 'Off', Chinese 关), the pair to the ON word.`,
     readReceipts:
@@ -3569,6 +3598,10 @@ Sasisha kadi kwa anwani mpya?`,
     micFailed: `In ${CHAT}: small note by the mic button for any other failure of the mic or of speech recognition. Two short sentences: it failed, try again.`,
     endedElsewhere: `In ${CHAT}: a line above the chat box when the chat was closed from another open page of Lianki; it reconnects when the user comes back to this page.`,
     rateLimited: `In ${CHAT}: a line above the chat box when the user sent too many messages; the last one was not sent; {n} is how many minutes to wait. Keep {n}.`,
+    modelDownloadConfirm:
+      "Browser confirmation before uncached wake-word model/runtime download on cellular, metered, Data Saver or unknown network (Safari cannot tell). {mb} is the approximate total megabytes, localized separately. Explain possible mobile-data charges; OK downloads this batch only, Cancel keeps normal cloud speech recognition. Do not claim Wi-Fi was detected when network information is absent.",
+    modelDownloadWaiting:
+      "Mic tooltip after model download is declined or cancelled on a network change: no uncached model is downloading; ordinary speech recognition continues. Waiting for Wi-Fi or explicit download confirmation. Short status, no technical detail.",
     sttServersTitle: `In ${CHAT}: the heading of a small card shown once per device when the mic turns on and the user may use Lianki's own speech-to-text servers: they turn speech into text faster, while the user speaks. A short noun phrase.`,
     sttServersBody: `In ${CHAT}: the text of that card: the voice is sent to Lianki's speech servers, which write it out while the user speaks; the audio is not stored, only what the user sends is kept; free for now. Call them only 'Lianki's speech servers' (never a computer or a person). Two or three short sentences.`,
     sttServersAgree: `In ${CHAT}: the card's main button: agree and use Lianki's speech servers from now on, on this device. An imperative phrase.`,
@@ -5245,6 +5278,11 @@ Sasisha kadi kwa anwani mpya?`,
   }
   function main() {
     window.LIANKI_USERSCRIPT_INSTALLED = true;
+    const clearPresence = publishUserscriptVersion(
+      document.documentElement,
+      location.origin,
+      GM_info?.script?.version,
+    );
     const ORIGIN = (() => {
       try {
         const u = new URL(GM_info?.script?.downloadURL || "");
@@ -7581,6 +7619,8 @@ ${state.errorDetails}`);
       })
       .catch((err) => console.error("[Lianki] partner failed:", err));
     return () => {
+      clearPresence();
+      window.LIANKI_USERSCRIPT_INSTALLED = false;
       stopPartner();
       liChat.close();
       ac.abort();
