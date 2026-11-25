@@ -9,7 +9,10 @@ import {
   makeSeqCursor,
   readCursor,
   receiptAfter,
-  recoveredLines,
+  makeRecovery,
+  recoveredPage,
+  recoverRange,
+  type RecoveredPage,
   recoverMaxMs,
   writeCursor,
   type Line,
@@ -90,19 +93,177 @@ test("the cursor file is the owner's alone and survives a restart", () => {
   expect(readCursor("codex", env)).toBe(42);
 });
 
-test("recovered lines read as listener lines; a bad answer gives none", () => {
+test("a read answer is a page with its coverage; a failure or an old hub is no page", () => {
   const out = JSON.stringify({
     v: 1,
     ok: true,
     command: "chat read",
-    data: { messages: [{ id: "x", from: "owner", text: "codex 在吗", seq: 9 }], headSeq: 9 },
+    data: {
+      messages: [{ id: "x", from: "owner", text: "codex 在吗", seq: 9 }],
+      throughSeq: 9,
+      headSeq: 12,
+    },
   });
-  const lines = recoveredLines(out);
-  expect(lines).toHaveLength(1);
-  expect(lineOf(lines[0]!)).toMatchObject({ id: "x", seq: 9, history: false });
-  expect(recoveredLines("not json")).toEqual([]);
+  const page = recoveredPage(out)!;
+  expect(page.throughSeq).toBe(9);
+  expect(page.headSeq).toBe(12);
+  expect(lineOf(page.lines[0]!)).toMatchObject({ id: "x", seq: 9, history: false });
+  expect(recoveredPage("not json")).toBeNull();
+  expect(recoveredPage(JSON.stringify({ ok: true, data: { messages: [] } }))).toBeNull();
+  expect(
+    recoveredPage(JSON.stringify({ ok: false, data: { messages: [], throughSeq: 1, headSeq: 1 } })),
+  ).toBeNull();
   expect(recoverMaxMs({})).toBe(120 * 60_000);
   expect(recoverMaxMs({ LANE_RECOVER_MAX_MIN: "5" })).toBe(5 * 60_000);
+});
+
+test("the barrier: while recovery is pending the cursor never passes where it began", () => {
+  const c = makeSeqCursor(10);
+  expect(c.bar()).toBe(10);
+  c.hold(50);
+  c.release([50]);
+  expect(c.value()).toBe(10);
+  expect(c.barred()).toBe(true);
+  c.lift();
+  expect(c.value()).toBe(50);
+});
+
+/**
+ * lane-listen's own wiring (handle, deliverer, cursor, receipts, recovery),
+ * against a synthetic hub with `head` lines and a page limit of 100.
+ */
+function harness(start: number, hub: { lines: number; fail?: () => boolean }) {
+  const cursor = makeSeqCursor(start);
+  const delivered: number[] = [];
+  const receipts: number[] = [];
+  const seen = new Set<string>();
+  let saved = start;
+  const raw = (seq: number) =>
+    JSON.stringify({
+      type: "chat",
+      message: {
+        id: `s${seq}`,
+        from: "owner",
+        thread: "owner",
+        text: `codex, synthetic ${seq}`,
+        seq,
+        at: new Date().toISOString(),
+      },
+    });
+  const out = makeDeliverer(
+    { lane: "codex", repo: "/synthetic" },
+    async () => 0,
+    async () => false,
+    () => {},
+    10,
+    (lines: Line[], ok: boolean) => {
+      if (!ok) return;
+      const seqs = lines.map((l) => l.seq);
+      delivered.push(...(seqs as number[]));
+      cursor.release(seqs);
+      saved = cursor.value();
+      const top = Math.max(...(seqs as number[]));
+      const r = Math.min(top, cursor.value());
+      if (r > (receipts.at(-1) ?? 0)) receipts.push(r);
+    },
+  );
+  const handle = async (line: string) => {
+    const l = lineOf(line)!;
+    if (seen.has(l.id)) return cursor.pass(l.seq);
+    seen.add(l.id);
+    cursor.hold(l.seq);
+    await out.add(l);
+  };
+  const read = async (after: number, through?: number): Promise<RecoveredPage | null> => {
+    if (hub.fail?.()) return null;
+    const end = Math.min(hub.lines, through ?? hub.lines, after + 100);
+    const lines = [];
+    for (let s = after + 1; s <= end; s++) lines.push(raw(s));
+    return { lines, throughSeq: end, headSeq: hub.lines };
+  };
+  const recover = makeRecovery({
+    cursor: () => cursor,
+    read,
+    handle,
+    covered: () => (saved = cursor.value()),
+    log: () => {},
+    sleep: async () => {},
+  });
+  return { cursor, delivered, receipts, saved: () => saved, handle, raw, recover };
+}
+
+test("race (A): a live line during a failing recovery never moves the cursor past the gap", async () => {
+  let failures = 2;
+  const h = harness(10, { lines: 49, fail: () => failures-- > 0 });
+  const running = h.recover();
+  // Live line 50 lands while the recovery is still failing.
+  await h.handle(h.raw(50));
+  expect(h.saved()).toBe(10);
+  expect(Math.max(0, ...h.receipts)).toBeLessThanOrEqual(10);
+  await running;
+  // Retried, then covered: 11..49 were all handed over before the cursor moved.
+  for (let s = 11; s <= 50; s++) expect(h.delivered).toContain(s);
+  expect(h.cursor.value()).toBe(50);
+  expect(h.saved()).toBe(50);
+});
+
+test("pages (B): a 101-line backlog is read in two pages; seq 101 is never skipped", async () => {
+  const h = harness(0, { lines: 101 });
+  await h.recover();
+  await h.handle(h.raw(102));
+  for (let s = 1; s <= 102; s++) expect(h.delivered).toContain(s);
+  expect(h.cursor.value()).toBe(102);
+});
+
+test("recoverRange: no progress or a failed page is not coverage", async () => {
+  const stuck = async (after: number) => ({ lines: [], throughSeq: after, headSeq: after + 5 });
+  expect(await recoverRange(0, stuck, async () => {})).toBe(false);
+  let n = 0;
+  const flaky = async (after: number) =>
+    n++ === 0 ? { lines: [], throughSeq: after + 1, headSeq: after + 5 } : null;
+  expect(await recoverRange(0, flaky, async () => {})).toBe(false);
+  expect(
+    await recoverRange(
+      0,
+      async () => ({ lines: [], throughSeq: 3, headSeq: 3 }),
+      async () => {},
+    ),
+  ).toBe(true);
+  const endless = async (after: number) => ({ lines: [], throughSeq: after + 1, headSeq: 10_000 });
+  expect(await recoverRange(0, endless, async () => {}, 5)).toBe(false);
+});
+
+test("a newer recovery (a reconnect) replaces an older one", async () => {
+  const c = makeSeqCursor(5);
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let calls = 0;
+  const run = makeRecovery({
+    cursor: () => c,
+    read: async (after) => {
+      calls++;
+      if (calls === 1) await gate;
+      return { lines: [], throughSeq: after, headSeq: after };
+    },
+    handle: async () => {},
+    covered: () => {},
+    log: () => {},
+    sleep: async () => {},
+  });
+  const first = run();
+  await run();
+  release();
+  await first;
+  expect(c.barred()).toBe(false);
+  const none = makeRecovery({
+    cursor: () => null,
+    read: async () => null,
+    handle: async () => {},
+    covered: () => {},
+    log: () => {},
+    sleep: async () => {},
+  });
+  await none();
 });
 
 test("the deliverer reports each hand-over and whether ay took it", async () => {

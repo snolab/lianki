@@ -150,10 +150,16 @@ N` with its own token: N is the newest line handed over, never past a
   (`read-receipts.ts`, the same marks pages get). One receipt in flight at a
   time; a burst coalesces.
 - **Recovery.** On every connect (start, reconnect after a drop) it reads
-  `lianki chat read --after-seq <cursor> --limit 100` and hands over what the
-  socket never brought, deduped by id with the live stream. A recovered line
-  older than `LANE_RECOVER_MAX_MIN` (default 120) is passed, not handed
-  over: a stale line answers nothing.
+  `lianki chat read --after-seq <cursor> --limit 100`, page by page
+  (`--through-seq` the hub's head as the first page saw it), until that
+  snapshot is covered, and hands over what the socket never brought, deduped
+  by id with the live stream. While a recovery is pending the cursor is
+  barred: neither the saved cursor nor a receipt moves past where it began,
+  however far live lines go. A failed or stalled page is not coverage: the
+  recovery retries (2 s, doubling to 60 s) and only full coverage lifts the
+  bar (`makeRecovery`, `recoverRange`). A recovered line older than
+  `LANE_RECOVER_MAX_MIN` (default 120) is passed, not handed over: a stale
+  line answers nothing.
 - **First run.** No cursor file: it starts at the first live line; nothing
   older is replayed. `--dry-run` reads and writes no cursor and posts no
   receipt.

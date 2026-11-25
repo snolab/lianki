@@ -556,9 +556,15 @@ export function writeCursor(lane: string, seq: number, env?: Record<string, stri
  * lost in delivery keeps the cursor before it and the next connect's
  * recovery (`chat read --after-seq`) hands it over again. Seq gaps (lines
  * the hub never shows) are fine: only held lines stop the cursor.
+ *
+ * The catch-up barrier: while a recovery is pending (bar), the cursor never
+ * moves past where it stood when the recovery began, however far live lines
+ * go, because the lines in between are not yet known to be covered. Only a
+ * recovery that read through its snapshot of the hub's head lifts it.
  */
 export function makeSeqCursor(start: number) {
   let max = start;
+  let floor: number | null = null;
   const held = new Set<number>();
   const bump = (s: number) => {
     if (s > max) max = s;
@@ -576,13 +582,25 @@ export function makeSeqCursor(start: number) {
     release(seqs: readonly (number | undefined)[]) {
       for (const s of seqs) if (validSeq(s)) held.delete(s);
     },
+    /** A recovery starts: hold the cursor where it is (or lower, if one is already pending). */
+    bar(): number {
+      const v = this.value();
+      floor = floor === null ? v : Math.min(floor, v);
+      return floor;
+    },
+    /** The recovery covered everything up to the hub's head as it was: the cursor may move again. */
+    lift() {
+      floor = null;
+    },
+    barred: () => floor !== null,
     value(): number {
       let v = max;
       for (const s of held) if (s - 1 < v) v = s - 1;
-      return v;
+      return floor === null ? v : Math.min(v, floor);
     },
   };
 }
+export type SeqCursor = ReturnType<typeof makeSeqCursor>;
 
 /**
  * The read receipt to post after a hand-over: through the newest line the
@@ -633,15 +651,95 @@ export function recoverMaxMs(env: Record<string, string | undefined> = process.e
   return (Number.isFinite(n) && n >= 0 ? n : 120) * 60_000;
 }
 
-/** The chat lines of a `lianki chat read --json` answer, as listener JSON lines. */
-export function recoveredLines(stdout: string): string[] {
+/** One page of `lianki chat read --after-seq … --json`: its lines and what it covers. */
+export type RecoveredPage = { lines: string[]; throughSeq: number; headSeq: number };
+
+/**
+ * A read answer as a page, or null when it is not one (a failure, an old hub
+ * with no coverage). Never an empty success: a page says what it covered.
+ */
+export function recoveredPage(stdout: string): RecoveredPage | null {
   try {
     const v = JSON.parse(stdout.trim().split("\n").at(-1) ?? "") as {
-      data?: { messages?: unknown[] };
+      ok?: boolean;
+      data?: { messages?: unknown[]; throughSeq?: unknown; headSeq?: unknown };
     };
-    const list = Array.isArray(v?.data?.messages) ? v.data.messages : [];
-    return list.map((message) => JSON.stringify({ type: "chat", message }));
+    const d = v?.data;
+    if (v?.ok !== true || !d || !Array.isArray(d.messages)) return null;
+    if (!validSeq(d.throughSeq) || !validSeq(d.headSeq)) return null;
+    return {
+      lines: d.messages.map((message) => JSON.stringify({ type: "chat", message })),
+      throughSeq: d.throughSeq,
+      headSeq: d.headSeq,
+    };
   } catch {
-    return [];
+    return null;
   }
+}
+
+/**
+ * Read everything after `from` up to the hub's head as it was at the first
+ * page (a fixed snapshot: lines after it come live), page by page. Each page
+ * goes to `onPage` before the next is read. True once the snapshot is covered;
+ * false on any failure or a page that does not move forward (then nothing past
+ * `from` counts as covered and the caller retries).
+ */
+export async function recoverRange(
+  from: number,
+  read: (after: number, through?: number) => Promise<RecoveredPage | null>,
+  onPage: (lines: string[]) => Promise<void>,
+  maxPages = 1000,
+): Promise<boolean> {
+  const first = await read(from);
+  if (!first) return false;
+  const head = first.headSeq;
+  await onPage(first.lines);
+  let at = first.throughSeq;
+  for (let n = 1; at < head; n++) {
+    if (n >= maxPages) return false;
+    const page = await read(at, head);
+    if (!page || page.throughSeq <= at) return false;
+    await onPage(page.lines);
+    at = page.throughSeq;
+  }
+  return true;
+}
+
+/**
+ * The recovery loop around recoverRange: it bars the cursor, reads from the
+ * barred point, and lifts the barrier only after full coverage. A failure is
+ * logged and retried with backoff (2 s doubling to 60 s), never taken as done.
+ * A newer run (a reconnect) replaces an older one.
+ */
+export function makeRecovery(d: {
+  cursor: () => SeqCursor | null;
+  read: (after: number, through?: number) => Promise<RecoveredPage | null>;
+  handle: (raw: string) => Promise<void>;
+  covered: () => void;
+  log: (v: Record<string, unknown>) => void;
+  sleep: (ms: number) => Promise<void>;
+}) {
+  let gen = 0;
+  return async function run(): Promise<void> {
+    const c = d.cursor();
+    if (!c) return;
+    const me = ++gen;
+    const from = c.bar();
+    let wait = 2_000;
+    for (;;) {
+      if (me !== gen) return;
+      const ok = await recoverRange(from, d.read, async (lines) => {
+        for (const raw of lines) await d.handle(raw);
+      });
+      if (me !== gen) return;
+      if (ok) {
+        c.lift();
+        d.covered();
+        return;
+      }
+      d.log({ type: "recover-failed", from, retryInMs: wait });
+      await d.sleep(wait);
+      wait = Math.min(wait * 2, 60_000);
+    }
+  };
 }

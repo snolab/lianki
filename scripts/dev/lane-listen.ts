@@ -45,7 +45,9 @@ import {
   readCursor,
   receiptAfter,
   reconnectWait,
-  recoveredLines,
+  makeRecovery,
+  recoveredPage,
+  type RecoveredPage,
   recoverMaxMs,
   writeCursor,
   tokenNeeded,
@@ -274,11 +276,20 @@ async function postSeen(o: Opts, token: string, seq: number): Promise<boolean> {
   return ok;
 }
 
-/** Lines after `after` in the owner's thread, as listener JSON lines (none on a failure). */
-async function readAfter(o: Opts, token: string, after: number): Promise<string[]> {
-  if (o.dryRun) return [];
-  const out = await liankiChat(o, token, ["read", "--after-seq", String(after), "--limit", "100"]);
-  return out ? recoveredLines(out) : [];
+/** One page of the owner's thread after `after` (through `through`), or null on any failure. */
+async function readPage(
+  o: Opts,
+  token: string,
+  after: number,
+  through?: number,
+): Promise<RecoveredPage | null> {
+  const window = [
+    "--after-seq",
+    String(after),
+    ...(through !== undefined ? ["--through-seq", String(through)] : []),
+  ];
+  const out = await liankiChat(o, token, ["read", ...window, "--limit", "100"]);
+  return out ? recoveredPage(out) : null;
 }
 
 async function main(): Promise<number> {
@@ -361,11 +372,23 @@ async function main(): Promise<number> {
     cursor?.hold(l.seq);
     await out.add(l);
   };
-  /** Lines after the cursor the socket never brought (a drop, a restart). */
-  const recover = async () => {
-    if (!cursor) return;
-    for (const raw of await readAfter(o, t.token, cursor.value())) await handle(raw, true);
-  };
+  /**
+   * Lines after the cursor the socket never brought (a drop, a restart): read
+   * page by page up to the hub's head, the cursor barred until then (makeRecovery).
+   */
+  const recover = o.dryRun
+    ? async () => {}
+    : makeRecovery({
+        cursor: () => cursor,
+        read: (after, through) => readPage(o, t.token!, after, through),
+        handle: (raw) => handle(raw, true),
+        covered: () => {
+          save();
+          log({ type: "recovered-through", lane: o.lane, cursor: cursor?.value() });
+        },
+        log,
+        sleep: (ms) => Bun.sleep(ms),
+      });
   let backoff = 1_000;
   let child: ReturnType<typeof Bun.spawn> | undefined;
   for (const sig of ["SIGINT", "SIGTERM"] as const)
