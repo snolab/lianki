@@ -350,14 +350,17 @@ export default function PreferencesClient({
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 lg:grid lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-10">
-      {/* Table of Contents */}
-      <aside className="lg:order-1">
+    <div className="mx-auto max-w-6xl px-4 py-8 @min-[64rem]/preferences:grid @min-[64rem]/preferences:grid-cols-[14rem_minmax(0,1fr)] @min-[64rem]/preferences:gap-10">
+      {/* Stick the grid item itself: the nav's short wrapper cannot keep a child sticky. */}
+      <aside
+        className="sticky top-[env(safe-area-inset-top)] z-20 min-w-0 self-start @min-[64rem]/preferences:top-[max(2rem,env(safe-area-inset-top))]"
+        data-preferences-toc-dock
+      >
         <PreferencesToc label={tocHeading.value} sections={tocSections} />
       </aside>
 
       {/* Main Settings Content */}
-      <div className="min-w-0 lg:order-2">
+      <div className="min-w-0">
         <h1 className="text-3xl font-bold mb-8">{heading}</h1>
 
         {/* Language — follows the account (lib/account-locale.ts) */}

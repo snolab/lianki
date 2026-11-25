@@ -106,8 +106,11 @@ export function PreferencesToc({
 
   return (
     <div className="w-full">
-      {/* Mobile: Horizontal scrollable chips sticky near the top with glass background */}
-      <div className="lg:hidden sticky top-0 z-20 -mx-4 px-4 py-2 mb-6 lk-glass border-b border-[var(--glass-line)] overflow-x-auto no-scrollbar">
+      {/* Compact whenever the preferences container has too little room for a sidebar. */}
+      <div
+        data-testid="preferences-toc-compact"
+        className="@min-[64rem]/preferences:hidden -mx-4 px-4 py-2 mb-6 lk-glass border-b border-[var(--glass-line)] overflow-x-auto no-scrollbar"
+      >
         <nav aria-label={label} className="flex gap-2 min-w-max">
           {sections.map((s) => {
             const active = current === s.id;
@@ -133,7 +136,7 @@ export function PreferencesToc({
       {/* Desktop sidebar navigation */}
       <nav
         aria-label={label}
-        className="hidden lg:block sticky top-8 space-y-3"
+        className="hidden @min-[64rem]/preferences:block max-h-[calc(100dvh-4rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain space-y-3"
         data-testid="preferences-toc"
       >
         <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
