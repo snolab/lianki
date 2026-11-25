@@ -646,3 +646,39 @@ describe("the play window: 2026-11-26 replay", () => {
     expect(s.posted().map((x) => x.id)).toEqual(["w1"]);
   });
 });
+
+describe("the play window: eligible reports first (review of #1108)", () => {
+  it("another device's longer sound never cancels this page's own window for a Mac-STT line", async () => {
+    const s = setup();
+    const phone = await s.page("/ pwa iPhone", "phone1");
+    const mac = await s.page("/dev mac Chrome", "mac1");
+    const t0 = s.now();
+    // The Mac plays 0–1000 ms (its tail to 3500), the phone 0–5000 ms.
+    await s.msg(mac, { type: "playing", ref: "m#1", voice: "li-player", from: t0, synced: true });
+    await s.msg(phone, {
+      type: "playing",
+      ref: "p#1",
+      text: AGENT,
+      voice: "device",
+      from: t0,
+      synced: true,
+    });
+    s.tick(1000);
+    await s.msg(mac, { type: "played", ref: "m#1", to: s.now(), synced: true });
+    s.tick(4000);
+    await s.msg(phone, { type: "played", ref: "p#1", to: s.now(), synced: true });
+    // Speech 2000–4000 ms on the Mac, from its own STT: 75 % inside the Mac's own window.
+    await s.msg(mac, {
+      type: "chat",
+      id: "m1",
+      text: "我们明天去公园散步吧",
+      source: "stt",
+      timing: { t_speechStart: 50_000 - 3000, t_speechEnd: 50_000 - 1000, t_sent: 50_000 },
+      stt: { route: "local", engine: "sensevoice" },
+    });
+    expect(s.posted().map((x) => x.id)).toEqual([]);
+    expect(s.storage.store.get("echo:m1")).toMatchObject({
+      echo: { layer: "window", voice: "li-player" },
+    });
+  });
+});

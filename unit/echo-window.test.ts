@@ -9,11 +9,13 @@ import { describe, expect, it } from "bun:test";
 import { containedSimilarity, normalizeEcho } from "@/lib/echo-match";
 import {
   ECHO_HALLUCINATIONS,
+  PLAY_OPEN_MAX_MS,
   type PlayReport,
   PlayStore,
   echoHallucinated,
   echoVerdict,
   echoWindowMatch,
+  openEnd,
   parsePlayFrame,
 } from "@/lib/echo-reports";
 
@@ -189,5 +191,55 @@ describe("time-only play reports", () => {
     expect(echoWindowMatch(over, { from: 2000, to: 3000, known: true }, conf, 5000)?.voice).toBe(
       "li-player",
     );
+  });
+});
+
+describe("long sounds: a lease renewed while playing (review of #1108)", () => {
+  const stream = {
+    type: "playing" as const,
+    ref: "stream",
+    voice: "li-player",
+    from: 1000,
+    synced: true as const,
+  };
+  it("a stream renewed every 20 s stays open past the 60 s sentence cap", () => {
+    const store = new PlayStore();
+    store.note("phone", stream, 1000, 120_000);
+    for (let t = 21_000; t <= 141_000; t += 20_000)
+      store.note("phone", { ...stream, renew: true }, t, 120_000);
+    const span = { from: 141_000, to: 142_000, known: true };
+    const recent = store.overlapping({ from: span.from - 15_000, to: span.to }, 1500, 143_000);
+    expect(recent).toHaveLength(1);
+    expect(recent[0]!.from).toBe(1000); // the start never moves
+    expect(echoWindowMatch(recent, span, conf, 143_000, "phone")?.sim).toBe(1);
+  });
+  it("the probe case: speech at 71–72 s of a stream renewed at 61 s is caught", () => {
+    const store = new PlayStore();
+    store.note("phone", stream, 1000, 120_000);
+    store.note("phone", { ...stream, renew: true }, 61_000, 120_000);
+    const span = { from: 71_000, to: 72_000, known: true };
+    const recent = store.overlapping({ from: span.from - 15_000, to: span.to }, 1500, 73_000);
+    expect(echoWindowMatch(recent, span, conf, 73_000, "phone")?.sim).toBe(1);
+  });
+  it("with no renewal (a lost page) the lease ends it: 30 s after the last renewal", () => {
+    expect(openEnd({ from: 0, renewed: 100_000 }, 500_000)).toBe(130_000);
+    expect(openEnd({ from: 0 }, 500_000)).toBe(PLAY_OPEN_MAX_MS);
+    expect(openEnd({ from: 0, to: 5000, renewed: 100_000 }, 500_000)).toBe(5000);
+  });
+  it("a renewal after 'played' does not reopen it; one the hub never saw starts a lease", () => {
+    const store = new PlayStore();
+    store.note("phone", stream, 1000, 120_000);
+    store.note("phone", { type: "played", ref: "stream", to: 5000, synced: true }, 5000, 120_000);
+    store.note("phone", { ...stream, renew: true }, 21_000, 120_000);
+    expect(store.overlapping({ from: 20_000, to: 21_000 }, 0, 21_000)).toEqual([]);
+    const fresh = new PlayStore();
+    fresh.note("phone", { ...stream, ref: "s2", renew: true }, 50_000, 120_000);
+    expect(fresh.overlapping({ from: 70_000, to: 71_000 }, 0, 71_000)).toHaveLength(1);
+  });
+  it("parses renew only as true", () => {
+    expect(parsePlayFrame(JSON.stringify({ ...stream, renew: true }))).toMatchObject({
+      renew: true,
+    });
+    expect(parsePlayFrame(JSON.stringify({ ...stream, renew: "yes" }))).not.toHaveProperty("renew");
   });
 });

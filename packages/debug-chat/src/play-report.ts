@@ -26,6 +26,8 @@ import { hubClock } from "./sync-speak";
 
 /** Feature flag (lib/flags.ts): pages report what they play; the hub matches by time and text. */
 export const ECHO_REPORTS_FLAG = "voice.echo-reports";
+/** A sound still playing renews its report this often (under the hub's PLAY_LEASE_MS, 30 s). */
+export const PLAY_RENEW_MS = 20_000;
 /** A report's text is cut to this many characters (one sentence is far shorter). */
 export const PLAY_TEXT_MAX = 2000;
 
@@ -39,6 +41,8 @@ export type PlayingFrame = {
   voice: string;
   from: number;
   synced?: true;
+  /** The same sound, still playing: the hub moves its lease (lib/echo-reports.ts PLAY_LEASE_MS). */
+  renew?: true;
 };
 export type PlayedFrame = { type: "played"; ref: string; to: number; synced?: true };
 export type PlayFrame = PlayingFrame | PlayedFrame;
@@ -47,11 +51,15 @@ type Reporter = {
   on: boolean;
   send: ((f: PlayFrame) => boolean) | null;
   n: number;
+  /** Sounds reported and not yet ended, by ref: what a renewal resends. */
+  open?: Map<string, PlayingFrame>;
 };
 const reporter = (): Reporter => {
   const g = globalThis as unknown as { __lkPlayReport?: Reporter };
   return (g.__lkPlayReport ??= { on: false, send: null, n: 0 });
 };
+/** Open sounds kept at most (a lost "played" never grows the map). */
+const OPEN_MAX = 32;
 
 /** Flag voice.echo-reports, set by DebugEval from the root layout. */
 export function setEchoReports(on: boolean) {
@@ -118,19 +126,35 @@ export function reportPlaying(o: {
         g3: gramHashes(`${text} ${alt ?? ""}`, 3),
       }
     : { text, ...(alt ? { alt } : {}) };
-  const sent = deliver({
+  const frame: PlayingFrame = {
     type: "playing",
     ref,
     ...words,
     voice: o.voice.slice(0, 40),
     from: t,
     ...(synced ? { synced } : {}),
-  });
-  return sent ? ref : null;
+  };
+  const sent = deliver(frame);
+  if (!sent) return null;
+  const open = (r.open ??= new Map());
+  open.set(ref, frame);
+  while (open.size > OPEN_MAX) open.delete(open.keys().next().value as string);
+  return ref;
+}
+
+/**
+ * The sound reported as `ref` is still playing (a long stream): the hub's
+ * lease on it moves on (lib/echo-reports.ts PLAY_LEASE_MS), its start does
+ * not. False when it is not open here (ended, never sent) or nothing was sent.
+ */
+export function renewPlaying(ref: string): boolean {
+  const f = reporter().open?.get(ref);
+  return f ? deliver({ ...f, renew: true }) : false;
 }
 
 /** The sound reported as `ref` stopped at page time `at`. */
 export function reportPlayed(ref: string, at: number) {
+  reporter().open?.delete(ref);
   const { t, synced } = onHub(at);
   deliver({ type: "played", ref, to: t, ...(synced ? { synced } : {}) });
 }

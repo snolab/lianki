@@ -57,6 +57,18 @@ export const ECHO_SLACK_MAX = 10_000;
 export const PLAY_KEEP_MAX = 300;
 /** A sentence with no "played" is taken to end this long after it began. */
 export const PLAY_OPEN_MAX_MS = 60_000;
+/**
+ * A sound still playing renews its report (`renew`, play-report.ts
+ * renewPlaying) more often than this; past this long after its last renewal
+ * with no "played" (the page closed, the socket dropped) it is taken to have
+ * ended. Bounds an open stream's window without trusting it forever.
+ */
+export const PLAY_LEASE_MS = 30_000;
+
+/** Where an open report is taken to end now: its sentence cap, or its lease while it renews. */
+export const openEnd = (r: { from: number; to?: number; renewed?: number }, hubNow: number) =>
+  r.to ??
+  Math.min(hubNow, Math.max(r.from + PLAY_OPEN_MAX_MS, (r.renewed ?? -Infinity) + PLAY_LEASE_MS));
 /** A page time this far from the hub's is not trusted: the receive time stands in. */
 const CLOCK_TRUST_MS = 30_000;
 /** Past this length of the transcript (normalized), the n-gram share joins the edit distance. */
@@ -80,6 +92,7 @@ export function parsePlayFrame(raw: unknown): PlayFrame | null {
   if (!m || typeof m !== "object" || typeof m.ref !== "string" || !REF.test(m.ref)) return null;
   const time = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
   const synced = m.synced === true ? { synced: true as const } : {};
+  const renew = m.renew === true ? { renew: true as const } : {};
   if (m.type === "played") {
     const to = time(m.to);
     return to === null ? null : { type: "played", ref: m.ref, to, ...synced };
@@ -109,6 +122,7 @@ export function parsePlayFrame(raw: unknown): PlayFrame | null {
     voice: m.voice,
     from,
     ...synced,
+    ...renew,
   };
 }
 
@@ -126,8 +140,10 @@ export type PlayReport = {
   to?: number;
   /** The page knew the hub's clock: from/to are its; else the receive times, and the slack doubles. */
   synced: boolean;
-  /** When the hub heard of it (prunes by this). */
+  /** When the hub heard of it, or of its last renewal (prunes by this). */
   seen: number;
+  /** Its last renewal (a long sound still playing), on the hub's clock. */
+  renewed?: number;
 };
 
 /** A page time on the hub's clock: the page's own, when it is synced and plausible. */
@@ -151,6 +167,12 @@ export class PlayStore {
       if (r) r.to = Math.max(r.from, hubTime(f.to, f.synced, hubNow));
       return;
     }
+    // Still playing: the lease moves on, the start stays. An ended one is not reopened.
+    const had = f.renew ? this.reports.get(key) : undefined;
+    if (had) {
+      if (had.to === undefined) had.seen = had.renewed = hubNow;
+      return;
+    }
     this.reports.delete(key);
     this.reports.set(key, {
       page,
@@ -163,6 +185,8 @@ export class PlayStore {
       from: hubTime(f.from, f.synced, hubNow),
       synced: !!f.synced,
       seen: hubNow,
+      // A renewal the hub never saw start (it restarted): the lease runs from now.
+      ...(f.renew ? { renewed: hubNow } : {}),
     });
     while (this.reports.size > this.max) {
       const oldest = this.reports.keys().next().value as string;
@@ -187,7 +211,7 @@ export class PlayStore {
     const out: PlayReport[] = [];
     for (const r of this.reports.values()) {
       const slack = r.synced ? slackMs : 2 * slackMs;
-      const end = r.to ?? Math.min(hubNow, r.from + PLAY_OPEN_MAX_MS);
+      const end = openEnd(r, hubNow);
       if (r.from - slack <= span.to && end + slack >= span.from) out.push(r);
     }
     return out.sort((a, b) => a.from - b.from);
@@ -312,7 +336,7 @@ function playWindow(
   hubNow: number,
 ): { from: number; to: number } {
   const k = r.synced ? 1 : 2;
-  const end = r.to ?? Math.min(hubNow, r.from + PLAY_OPEN_MAX_MS);
+  const end = openEnd(r, hubNow);
   return { from: r.from - k * conf.leadMs, to: end + k * conf.tailMs };
 }
 

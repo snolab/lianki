@@ -98,6 +98,15 @@ nothing caught them.
   (`voice.echoHallucinations`, data in any language, default
   `ECHO_HALLUCINATIONS`) while something played within `voice.echoRecentMs`
   is an echo, layer `noise`. With nothing played lately it is left alone.
+- **Eligible reports first.** For a line that is not eligible cross-device
+  (a Mac-STT line), only its own page's reports go into the window, before
+  the union, so another device's longer sound never takes the place of the
+  page's own (review of #1108).
+- **Long sounds renew a lease.** `li-player` resends its report every
+  `PLAY_RENEW_MS` (20 s) while playing (`renew: true`, same ref and start).
+  The hub then treats an open report as ending `PLAY_LEASE_MS` (30 s) after
+  its last renewal instead of at the 60 s sentence cap. Stop, retire or
+  "played" ends it; a closed page lets the lease run out.
 - Order in `echoVerdict`: self, report, landed, window, noise.
 
 Known cost: his own words on the device that is reading aloud, or on another

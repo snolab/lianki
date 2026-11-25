@@ -29,7 +29,7 @@ import {
   srcHost,
 } from "./play-audio";
 import { isDesktop } from "./voice-bg";
-import { reportPlayed, reportPlaying } from "./play-report";
+import { PLAY_RENEW_MS, renewPlaying, reportPlayed, reportPlaying } from "./play-report";
 
 export const LI_PLAY_KEY = "__lkLiPlay";
 export const LI_PLAY_V = 1;
@@ -243,18 +243,29 @@ export function createLiPlayer(env: LiPlayEnv): LiPlayer {
   };
   /** The hub's time-only play report while a line's audio plays (undefined: not playing; "": none sent). */
   let playRef: string | undefined;
+  /** Renews playRef's lease at the hub while it plays (a long stream outlives a sentence's cap). */
+  let renewTimer: ReturnType<typeof setInterval> | null = null;
+  const stopRenew = () => {
+    if (renewTimer !== null) clearInterval(renewTimer);
+    renewTimer = null;
+  };
   const emit = (next: Partial<PlayView>) => {
     v = { ...v, ...next };
     if (next.status && next.status !== "error" && next.status !== "paused" && next.status !== "blocked")
       if (!("why" in next)) v = { ...v, why: undefined };
     // His mics on any device must know this plays (lib/echo-reports.ts, the play window).
-    if (v.status === "playing" && playRef === undefined)
+    if (v.status === "playing" && playRef === undefined) {
       playRef =
         safe(
           () => reportPlaying({ text: "", voice: "li-player", at: Date.now(), ...(current ? { line: current.id } : {}) }),
           null,
         ) ?? "";
-    else if (v.status !== "playing" && playRef !== undefined) {
+      if (playRef) {
+        const ref = playRef;
+        renewTimer = safe(() => setInterval(() => renewPlaying(ref), PLAY_RENEW_MS), null);
+      }
+    } else if (v.status !== "playing" && playRef !== undefined) {
+      stopRenew();
       const ref = playRef;
       playRef = undefined;
       if (ref) safe(() => reportPlayed(ref, Date.now()), undefined);
@@ -508,6 +519,10 @@ export function createLiPlayer(env: LiPlayEnv): LiPlayer {
       retired = true;
       turn++;
       drop();
+      // The hub must not keep this sound open past a retired player.
+      stopRenew();
+      if (playRef) safe(() => reportPlayed(playRef!, Date.now()), undefined);
+      playRef = undefined;
       offMic?.();
       subs.clear();
     },
