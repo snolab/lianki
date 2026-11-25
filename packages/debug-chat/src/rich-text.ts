@@ -23,6 +23,8 @@
  */
 import { Marked } from "marked";
 import { linkAtStart, parseLinks, safeHref, safeImageSrc } from "./chat-links";
+import { WIDGET_LANG, parseWidget } from "./message-widget";
+import { HTML_WIDGET_LANG, MAX_HTML } from "./html-widget";
 
 export type RichTier = "html" | "markdown";
 
@@ -50,6 +52,16 @@ type View = { embedded?: boolean };
 
 /** lib/dev-eval.ts DISPATCH_THREAD, the `dev` holders' thread (this package imports nothing from the app). */
 const DISPATCH_THREAD = "owner";
+
+/**
+ * Whether a line may carry message widgets (message-widget.ts): an agent's line
+ * in his own thread (a paired agent or one of his lane tokens), not embedded.
+ * Widgets are data the page draws, never script, so the tier is not needed;
+ * friends' threads and his own typing keep the block as code.
+ */
+export function widgetLine(m: TierLine, view: View = {}): boolean {
+  return m.from === "agent" && (m.thread ?? DISPATCH_THREAD) === DISPATCH_THREAD && !view.embedded;
+}
 
 export function lineTier(m: TierLine, view: View = {}): RichTier {
   const dispatch = (m.thread ?? DISPATCH_THREAD) === DISPATCH_THREAD;
@@ -163,7 +175,7 @@ function linkNodes(href: string, label: RichNode[]): RichNode[] {
   ];
 }
 
-type Ctx = { tag: string; literal: boolean; pre: boolean; depth: number };
+type Ctx = { tag: string; literal: boolean; pre: boolean; depth: number; widgets: boolean };
 
 function walkChildren(parent: Node, tier: RichTier, ctx: Ctx): RichNode[] {
   const out: RichNode[] = [];
@@ -190,6 +202,7 @@ function walkElement(el: Element, tier: RichTier, ctx: Ctx): RichNode[] {
       depth,
       literal: over.literal ?? ctx.literal,
       pre: over.pre ?? ctx.pre,
+      widgets: ctx.widgets,
     });
   // A heading is a bold line, not a page's title.
   if (HEADING.test(raw)) return [{ tag: "p", children: [{ tag: "strong", children: inner("p") }] }];
@@ -212,8 +225,32 @@ function walkElement(el: Element, tier: RichTier, ctx: Ctx): RichNode[] {
     return href ? linkNodes(href, label) : label;
   }
   if (raw === "code") return [{ tag: "code", children: inner("code", { literal: true }) }];
-  if (raw === "pre")
-    return [{ tag: "pre", silent: true, children: inner("pre", { literal: true, pre: true }) }];
+  if (raw === "pre") {
+    const children = inner("pre", { literal: true, pre: true });
+    // A message widget (message-widget.ts): its spec rides on the block, which
+    // stays the code it is wherever widgets are not shown. Agent lines in his thread only (widgetLine).
+    const code = el.firstElementChild;
+    if (
+      ctx.widgets &&
+      code?.tagName.toLowerCase() === "code" &&
+      code.classList.contains(`language-${WIDGET_LANG}`)
+    ) {
+      const spec = textOf(children);
+      if (parseWidget(spec))
+        return [{ tag: "pre", silent: true, attrs: { "data-widget": spec }, children }];
+    }
+    // An HTML widget (html-inline.ts inline, html-widget.ts when it has script).
+    if (
+      ctx.widgets &&
+      code?.tagName.toLowerCase() === "code" &&
+      code.classList.contains(`language-${HTML_WIDGET_LANG}`)
+    ) {
+      const html = textOf(children);
+      if (html.trim() && html.length <= MAX_HTML)
+        return [{ tag: "pre", silent: true, attrs: { "data-html-widget": html }, children }];
+    }
+    return [{ tag: "pre", silent: true, children }];
+  }
   const attrs: Record<string, string> = {};
   if (raw === "td" || raw === "th") {
     Object.assign(attrs, numberAttr(el, "colspan", MAX_SPAN), numberAttr(el, "rowspan", MAX_SPAN));
@@ -260,13 +297,19 @@ function plain(text: string): Rich {
   return { nodes, spoken: flatten(nodes, true), shown: text };
 }
 
-function build(text: string, tier: RichTier): Rich {
+function build(text: string, tier: RichTier, widgets: boolean): Rich {
   const P = (globalThis as { DOMParser?: typeof DOMParser }).DOMParser;
   if (!P || text.length > MAX_RICH) return plain(text);
   try {
     const html = parserFor(tier).parse(text, { async: false }) as string;
     const body = new P().parseFromString(html, "text/html").body;
-    const top = walkChildren(body, tier, { tag: "root", literal: false, pre: false, depth: 0 });
+    const top = walkChildren(body, tier, {
+      tag: "root",
+      literal: false,
+      pre: false,
+      depth: 0,
+      widgets,
+    });
     // One paragraph flows inline, as a plain line always has (a run of lines is one paragraph).
     const only = top.length === 1 ? top[0]! : null;
     const nodes = only && "tag" in only && only.tag === "p" ? only.children : top;
@@ -281,11 +324,11 @@ const CACHE_MAX = 400;
 const cache = new Map<string, Rich>();
 
 /** A line's tree (read-only), remembered: every render and read-aloud ask for it again. */
-export function richOf(text: string, tier: RichTier): Rich {
-  const key = `${tier}\0${text}`;
+export function richOf(text: string, tier: RichTier, widgets = false): Rich {
+  const key = `${tier}${widgets ? "+w" : ""}\0${text}`;
   const hit = cache.get(key);
   if (hit) return hit;
-  const made = build(text, tier);
+  const made = build(text, tier, widgets);
   if (cache.size >= CACHE_MAX) cache.clear();
   cache.set(key, made);
   return made;

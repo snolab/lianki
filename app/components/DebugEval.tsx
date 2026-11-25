@@ -234,6 +234,7 @@ export function DebugEval({
   mergeReopenSec,
   playAudio = false,
   lineReplay = false,
+  messageWidgets = false,
   box = null,
   account = null,
   cacheLines = 0,
@@ -306,6 +307,8 @@ export function DebugEval({
    * a ▶ and may play by themselves (docs/li-sound-hub.md, "Playing audio from an agent").
    */
   playAudio?: boolean;
+  /** Flag `chat.message-widgets` (audience owner): a paired agent's widget blocks render. */
+  messageWidgets?: boolean;
   /**
    * Flags `chat.line-replay` + `voice.recordings` (audience owner): his own spoken
    * line's details offer "Play original audio" (docs/recordings.md, "Replay from the chat").
@@ -1062,6 +1065,14 @@ export function DebugEval({
           if (mode === "active" || mode === "passive" || mode === "ignored") mic?.wake?.(mode);
           return;
         }
+        if (msg.type === "prefs") {
+          // The account's settings changed from outside this page (an agent's
+          // lianki_settings_set): pull them now (lib/prefs/client.ts, docs/prefs-sync.md).
+          const sync = (globalThis as { __lkPrefSync?: { pull?: () => Promise<unknown> } })
+            .__lkPrefSync;
+          void sync?.pull?.();
+          return;
+        }
         if (msg.type === "ui") {
           // The agent changes the chat's view, shown as it happens (ui-cue.ts).
           dispatchChatUi(window, msg);
@@ -1800,6 +1811,8 @@ export function DebugEval({
             pttMaxCaptureMs={pttMaxCaptureMs}
             mergeReopenSec={mergeReopenSec}
             playAudio={playOn}
+            messageWidgets={messageWidgets}
+            widgetHtmlMaxPx={publicCfg("chat.widgetHtmlMaxPx")}
             // His own recordings, behind the same gate as /my/recordings (the route checks it again).
             lineReplay={lineReplay && dev && owner && friend === null}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).

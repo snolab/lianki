@@ -1785,6 +1785,64 @@ Tests: `unit/link-destination.test.ts`, `unit/chat-links.test.ts`, `unit/chat-ri
 corpus, tiers, read-aloud; happy-dom's parser), the stamp in `unit/debug-hub.test.ts`
 and `unit/partner-ai.test.ts`.
 
+## Message widgets: buttons, a calculator, a slider, a table
+
+Owner, 2026-11-14 23:2x JST: a message can carry a calculator, buttons and the
+like. An agent in his own thread (a pairing, or one of his own lane tokens)
+writes a fenced block:
+
+    ```lianki-widget
+    {"type": "buttons", "title": "Which first?", "options": ["Review", "New words"]}
+    ```
+
+and the chat draws it with its own components (`message-widget.ts`,
+`MessageWidget.tsx`). The spec is JSON, checked field by field; nothing in it
+runs. Kinds: `buttons` (`options`, up to 8, one segmented row), `calc`
+(`expr`, an editable box with a live result from a small arithmetic parser,
+never `eval`), `slider` (`label`, `min`, `max`, `step`, `value`, `unit`),
+`table` (`columns`, `rows`, up to 30). Every control only puts text into his
+reply box (after what he has typed); he sends it himself. A widget is not
+read aloud and not in the one-line views.
+
+An invalid spec, a line in a friend's or household thread, his own typing, an
+embed (`widgetLine` in rich-text.ts), or the flag `chat.message-widgets` off: the block shows as the code it is.
+Script widgets (a sandboxed iframe, granted per lane) are the mini apps'
+(docs/mini-apps.md), not this. Tests: `unit/message-widget.test.ts`.
+
+### HTML widgets: inline by default, a sandbox only for script
+
+Owner, 2026-11-25: JSON is too narrow, use HTML; it can be self-contained.
+The same agent lines (`widgetLine`) may carry a ` ```lianki-html ` block.
+
+- **No script: drawn inline** (`html-inline.ts`, `HtmlInline.tsx`). An
+  allowlist walk like rich-text's: layout and text tags, tables, `details`,
+  and form controls (`form`, `label`, `input` minus password and file,
+  `select`, `textarea`, `button`, `output`, `progress`, `meter`). Dropped:
+  `script`, `style`, `iframe`, `object`, `embed`, `link`, `meta`, `base`,
+  `svg`, `math`, every `on*`, `class` (the page's utility classes could cover
+  the chat), remote images (data: images only), and any style property outside
+  a short box-only list (no `position`, `z-index`, `transform`, `url()`).
+  ids are prefixed per widget, so `label for` works and nothing collides.
+- **Forms as written.** `action`, `method`, `formaction` and `formtarget` are
+  kept as data, never as real attributes: a submit never navigates, opens a
+  window or makes a request. It becomes his line in his own thread,
+  `↳ <action>: name=value, …` (`formLine`), so the posting agent gets it with
+  the action string as its routing key. If he is typing, it joins his reply
+  box instead. `formtarget=_blank` opens nothing.
+- **Script: off.** A widget with script in any form (`<script>`, an `on*`
+  handler, a `javascript:` URL or form action) is drawn inline like the rest,
+  its script stripped, under a short note (`widgetScriptsOff`). It never gets
+  an iframe. Review 2026-11-26: a `srcdoc` frame with
+  `sandbox="allow-scripts allow-forms"` and a CSP of `'none'` could still
+  navigate itself (`location.href = …`) and so send data to any server; CSP
+  does not cover a frame's own navigation. `html-widget.ts` / `HtmlWidget.tsx`
+  are kept (tested, not rendered) for that work. Re-enabling script widgets
+  needs proven no-network containment in every browser, for example a frame on
+  a separate sandbox origin that blocks every navigation by a response header.
+
+Tests: `unit/html-widget.test.ts` (his form example as the first fixture, the
+usual XSS vectors, sandbox attributes and CSP, the thread boundary).
+
 ## Copying a message
 
 Owner, 2026-11-05 01:34 JST, iPhone PWA on /reader: "这里复制不了". The chat

@@ -196,6 +196,8 @@ export default async function RootLayout({
       : undefined;
   // An agent's audio lines play on his phone (docs/li-sound-hub.md); dev holders only (the flag's audience).
   const playAudio = flagIn(flags, "chat.play-audio");
+  // A paired agent's widget blocks render as buttons, a calculator… (message-widget.ts).
+  const messageWidgets = flagIn(flags, "chat.message-widgets");
   // His own spoken lines replay their recording (docs/recordings.md): the /my/recordings gate plus its own flag.
   const lineReplay = dev && flagIn(flags, "voice.recordings") && flagIn(flags, "chat.line-replay");
   const boots = {
@@ -224,6 +226,7 @@ export default async function RootLayout({
     mergeReopenSec: dev ? await cfg("stt.mergeReopenSec") : undefined,
     playAudio,
     lineReplay,
+    messageWidgets,
   };
   const box = boxConfig();
   return (

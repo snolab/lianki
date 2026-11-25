@@ -42,7 +42,7 @@ The store column gives the account-mode store that will hold the key, as
 | `lk:words-sound`               | Read aloud                                             | **synced** | `words.readAloud`      | a habit; the mic and speaker state is a separate device fact                                                                                                    |
 | `lk:words-sound-loop`          | Read on a loop                                         | device     | —                      | owner, 2026-11-04 19:30 JST: off by default (a card is read once), per device                                                                                   |
 | `lk:words-server-voice`        | Server voice                                           | **synced** | `words.serverVoice`    | a voice choice, not a device feature                                                                                                                            |
-| `lk:words-native-audio`       | Original recordings                                    | **synced** | `words.nativeAudio`    | a voice choice: off reads every word with the synthetic voice, even one with a private recording                                                               |
+| `lk:words-native-audio`        | Original recordings                                    | **synced** | `words.nativeAudio`    | a voice choice: off reads every word with the synthetic voice, even one with a private recording                                                                |
 | `lk:words-swipe-speak`         | Speak on swipe                                         | **synced** | `words.speakOnSwipe`   | a habit                                                                                                                                                         |
 | `lk:words-grade-tones`         | Grade tones                                            | **synced** | `words.gradeTones`     | a habit                                                                                                                                                         |
 | `lk:words-voice-mode`          | Voice commands (docs/voice-mode.md)                    | **synced** | `words.voiceMode`      | a habit; the mic itself is still asked for on each device                                                                                                       |
@@ -208,9 +208,9 @@ A new key gets a row here in the same change, with its class and reason.
 
 ### Speech vocabulary
 
-| Device key | Server key | Class | Meaning |
-| --- | --- | --- | --- |
-| `lk:stt-hotwords` | `stt.hotwords` | synced | Explicit preferred spellings, up to 24 phrases of 64 characters, within the existing 2 KiB value ceiling |
+| Device key           | Server key        | Class  | Meaning                                                                                                  |
+| -------------------- | ----------------- | ------ | -------------------------------------------------------------------------------------------------------- |
+| `lk:stt-hotwords`    | `stt.hotwords`    | synced | Explicit preferred spellings, up to 24 phrases of 64 characters, within the existing 2 KiB value ceiling |
 | `lk:stt-corrections` | `stt.corrections` | synced | Up to 12 explicitly authored `{heard,corrected,at}` pairs; no automatic transcript or model-edit history |
 
 Settings → Speech vocabulary edits both lists and awaits the existing preference
@@ -300,15 +300,16 @@ there are no tombstones.
 
 All of it is event-driven. Nothing polls (owner rule).
 
-| When                              | What                                                                                                |
-| --------------------------------- | --------------------------------------------------------------------------------------------------- |
-| first paint                       | the local copy (`lk:pref:<store>`), as today. Works offline; no flash, no wait                      |
-| page load, after hydration        | `GET /api/prefs?since=` (an empty answer when nothing changed), merged in                           |
-| sign-in (session appears)         | full `GET`, then the first-sync step (see 6)                                                        |
-| the tab becomes visible, `online` | `GET ?since=`: this is how another device's change arrives in phase 2                               |
-| a change                          | written locally at once, pushed 1 s after the last change (the sliders send one request, not fifty) |
-| `pagehide`                        | the outbox is flushed with `fetch(…, {keepalive: true})`                                            |
-| offline                           | the outbox waits in `lk:pref-sync` and is sent on `online`                                          |
+| When                              | What                                                                                                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| first paint                       | the local copy (`lk:pref:<store>`), as today. Works offline; no flash, no wait                                                                                                                                      |
+| page load, after hydration        | `GET /api/prefs?since=` (an empty answer when nothing changed), merged in                                                                                                                                           |
+| sign-in (session appears)         | full `GET`, then the first-sync step (see 6)                                                                                                                                                                        |
+| the tab becomes visible, `online` | `GET ?since=`: this is how another device's change arrives in phase 2                                                                                                                                               |
+| an outside write (token, bridge)  | `/api/prefs` PATCH by an agent (`lianki_settings_set`, `lianki settings set`) tells lianki-push (`/internal/prefs-changed`, user id only); the account's open pages get `{type: "prefs"}` and `GET ?since=` at once |
+| a change                          | written locally at once, pushed 1 s after the last change (the sliders send one request, not fifty)                                                                                                                 |
+| `pagehide`                        | the outbox is flushed with `fetch(…, {keepalive: true})`                                                                                                                                                            |
+| offline                           | the outbox waits in `lk:pref-sync` and is sent on `online`                                                                                                                                                          |
 
 **Other tabs on the same origin** follow through the `storage` event, as
 local stores already do. Only the tab that made the change pushes it: the

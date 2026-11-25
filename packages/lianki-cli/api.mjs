@@ -50,7 +50,13 @@ export class CliError extends Error {
   }
 }
 
-export const LOGIN_HINT = "lianki auth login   (agents: set LIANKI_TOKEN=lk_… or pass --token)";
+/** A clock newer than the stored one, so this write wins (docs/prefs-sync.md). */
+export function nextHlc(prev, id, now = Date.now()) {
+  if (prev && prev.timestamp >= now) return { timestamp: prev.timestamp, counter: prev.counter + 1, deviceId: id };
+  return { timestamp: now, counter: 0, deviceId: id };
+}
+
+export const LOGIN_HINT ="lianki auth login   (agents: set LIANKI_TOKEN=lk_… or pass --token)";
 export const SCOPE_HINT =
   "the token lacks that permission: make one that has it at lianki.com/my/preferences → API tokens, or lianki auth login again";
 

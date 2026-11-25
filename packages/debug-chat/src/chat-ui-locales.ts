@@ -73,6 +73,10 @@ export type ChatExtra = {
   miniAppLoading: string;
   miniAppUnavailable: string;
   miniAppResize: string;
+  widgetUse: string;
+  widgetCalcInvalid: string;
+  widgetReplyHint: string;
+  widgetScriptsOff: string;
 
   readReceipts: string;
   menuSwitchOn: string;
@@ -228,6 +232,10 @@ export const EXTRA_CONTEXT: ChatExtra = {
   miniAppLoading: "In a chat message mini-app card/panel, status while fetching the signed-in account's own app. The HTML is not executed until Open is chosen.",
   miniAppUnavailable: "In a chat message mini-app card/panel: the requested app cannot be loaded, including deleted apps, unavailable feature or another account's app. Do not disclose ownership details.",
   miniAppResize: "Accessible label for the chat mini-app panel height separator: drag vertically or use arrow keys to resize the embedded sandbox; this does not change the app's own HTML.",
+  widgetUse: "Button on a small interactive widget inside an assistant's chat message (a calculator or a slider). It copies the widget's current value, e.g. \"12*3 = 36\" or \"Minutes a day: 20 min\", into the user's own reply box; it does NOT send anything. Short imperative, like a button label.",
+  widgetCalcInvalid: "Shown next to a calculator widget inside an assistant's chat message when what is typed in its box is not arithmetic (only numbers and + − × ÷ % ^ and parentheses work). Short, neutral, not an error alarm.",
+  widgetReplyHint: "Tooltip on every control of an interactive widget inside an assistant's chat message (choice buttons, the calculator's and slider's put-in-reply button): tapping only fills the user's reply box; the user still decides and sends it. One short sentence.",
+  widgetScriptsOff: "A short neutral note above an interactive HTML widget inside an assistant's chat message, shown when the widget contained script code that was removed for safety. The rest of the widget still works (its text, buttons and form fields). Not an error alarm; one short sentence.",
   menuSwitchOn: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the ON word: the setting is active. The shortest word this language's own on/off switches show for 'on' (English 'On', Chinese 开), the same as the app's other switches.`,
   menuSwitchOff: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the OFF word: the setting is inactive. The shortest word this language's own on/off switches show for 'off' (English 'Off', Chinese 关), the pair to the ON word.`,
   readReceipts: "Accessible label for tiny participant avatars below the latest own chat message in the viewer’s own authenticated thread. These participants have actually read through this message; not merely connected or received it. No counts or technical sequence values are shown.",
@@ -687,6 +695,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "Loading mini app…",
     miniAppUnavailable: "Mini app unavailable",
     miniAppResize: "Resize mini app",
+    widgetUse: "Use",
+    widgetCalcInvalid: "Not a calculation",
+    widgetReplyHint: "Puts this in your reply box; you still send it yourself",
+    widgetScriptsOff: "Scripts in this widget are turned off.",
 
     readReceipts: "Read by",
     menuSwitchOn: "On",
@@ -798,6 +810,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "正在加载迷你应用…",
     miniAppUnavailable: "迷你应用不可用",
     miniAppResize: "调整迷你应用高度",
+    widgetUse: "填入回复",
+    widgetCalcInvalid: "不是算式",
+    widgetReplyHint: "填进你的回复框，发不发由你",
+    widgetScriptsOff: "此组件中的脚本已关闭。",
 
     readReceipts: "已读者",
     menuSwitchOn: "开",
@@ -908,6 +924,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "मिनी ऐप लोड हो रहा है…",
     miniAppUnavailable: "मिनी ऐप उपलब्ध नहीं है",
     miniAppResize: "मिनी ऐप का आकार बदलें",
+    widgetUse: "जवाब में डालें",
+    widgetCalcInvalid: "यह गणना नहीं है",
+    widgetReplyHint: "यह आपके जवाब बॉक्स में डालता है; भेजना आप ही करते हैं",
+    widgetScriptsOff: "इस विजेट की स्क्रिप्ट बंद हैं।",
 
     readReceipts: "इन लोगों ने पढ़ा",
     menuSwitchOn: "चालू",
@@ -1018,6 +1038,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "Cargando miniaplicación…",
     miniAppUnavailable: "Miniaplicación no disponible",
     miniAppResize: "Cambiar tamaño de la miniaplicación",
+    widgetUse: "Usar en la respuesta",
+    widgetCalcInvalid: "No es un cálculo",
+    widgetReplyHint: "Lo pone en tu cuadro de respuesta; tú decides si lo envías",
+    widgetScriptsOff: "Los scripts de este widget están desactivados.",
 
     readReceipts: "Leído por",
     menuSwitchOn: "Sí",
@@ -1128,6 +1152,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "Chargement de la mini-app…",
     miniAppUnavailable: "Mini-app indisponible",
     miniAppResize: "Redimensionner la mini-app",
+    widgetUse: "Mettre dans la réponse",
+    widgetCalcInvalid: "Ce n’est pas un calcul",
+    widgetReplyHint: "Le place dans votre zone de réponse ; c’est vous qui l’envoyez",
+    widgetScriptsOff: "Les scripts de ce widget sont désactivés.",
 
     readReceipts: "Lu par",
     menuSwitchOn: "Oui",
@@ -1238,6 +1266,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "جارٍ تحميل التطبيق المصغر…",
     miniAppUnavailable: "التطبيق المصغر غير متاح",
     miniAppResize: "تغيير حجم التطبيق المصغر",
+    widgetUse: "ضعها في الرد",
+    widgetCalcInvalid: "ليست عملية حسابية",
+    widgetReplyHint: "يضعها في مربع ردك؛ وأنت من يرسلها",
+    widgetScriptsOff: "تم إيقاف البرامج النصية في هذه الأداة.",
 
     readReceipts: "قرأها",
     menuSwitchOn: "تشغيل",
@@ -1348,6 +1380,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "মিনি অ্যাপ লোড হচ্ছে…",
     miniAppUnavailable: "মিনি অ্যাপ উপলব্ধ নেই",
     miniAppResize: "মিনি অ্যাপের আকার পরিবর্তন করুন",
+    widgetUse: "উত্তরে বসান",
+    widgetCalcInvalid: "এটি হিসাব নয়",
+    widgetReplyHint: "এটি আপনার উত্তরের ঘরে বসায়; পাঠাবেন আপনিই",
+    widgetScriptsOff: "এই উইজেটের স্ক্রিপ্ট বন্ধ আছে।",
 
     readReceipts: "যারা পড়েছেন",
     menuSwitchOn: "চালু",
@@ -1458,6 +1494,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "Carregando miniaplicativo…",
     miniAppUnavailable: "Miniaplicativo indisponível",
     miniAppResize: "Redimensionar miniaplicativo",
+    widgetUse: "Usar na resposta",
+    widgetCalcInvalid: "Não é um cálculo",
+    widgetReplyHint: "Coloca isto na sua caixa de resposta; quem envia é você",
+    widgetScriptsOff: "Os scripts deste widget estão desativados.",
 
     readReceipts: "Lido por",
     menuSwitchOn: "Sim",
@@ -1568,6 +1608,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "Загрузка мини-приложения…",
     miniAppUnavailable: "Мини-приложение недоступно",
     miniAppResize: "Изменить размер мини-приложения",
+    widgetUse: "Вставить в ответ",
+    widgetCalcInvalid: "Это не вычисление",
+    widgetReplyHint: "Вставляет это в поле ответа; отправляете вы сами",
+    widgetScriptsOff: "Скрипты в этом виджете отключены.",
 
     readReceipts: "Прочитали",
     menuSwitchOn: "Вкл",
@@ -1678,6 +1722,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "منی ایپ لوڈ ہو رہی ہے…",
     miniAppUnavailable: "منی ایپ دستیاب نہیں",
     miniAppResize: "منی ایپ کا سائز بدلیں",
+    widgetUse: "جواب میں ڈالیں",
+    widgetCalcInvalid: "یہ حساب نہیں ہے",
+    widgetReplyHint: "یہ آپ کے جواب کے خانے میں ڈالتا ہے؛ بھیجنا آپ کے ہاتھ میں ہے",
+    widgetScriptsOff: "اس ویجیٹ کی اسکرپٹس بند ہیں۔",
 
     readReceipts: "پڑھنے والے",
     menuSwitchOn: "آن",
@@ -1788,6 +1836,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "Memuat aplikasi mini…",
     miniAppUnavailable: "Aplikasi mini tidak tersedia",
     miniAppResize: "Ubah ukuran aplikasi mini",
+    widgetUse: "Masukkan ke balasan",
+    widgetCalcInvalid: "Bukan perhitungan",
+    widgetReplyHint: "Memasukkannya ke kotak balasan; Anda sendiri yang mengirim",
+    widgetScriptsOff: "Skrip di widget ini dimatikan.",
 
     readReceipts: "Dibaca oleh",
     menuSwitchOn: "Nyala",
@@ -1898,6 +1950,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "Mini-App wird geladen…",
     miniAppUnavailable: "Mini-App nicht verfügbar",
     miniAppResize: "Größe der Mini-App ändern",
+    widgetUse: "In die Antwort",
+    widgetCalcInvalid: "Keine Rechnung",
+    widgetReplyHint: "Setzt es in dein Antwortfeld; senden tust du selbst",
+    widgetScriptsOff: "Skripte in diesem Widget sind ausgeschaltet.",
 
     readReceipts: "Gelesen von",
     menuSwitchOn: "An",
@@ -2008,6 +2064,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "ミニアプリを読み込み中…",
     miniAppUnavailable: "ミニアプリを利用できません",
     miniAppResize: "ミニアプリの高さを変更",
+    widgetUse: "返信に入れる",
+    widgetCalcInvalid: "計算式ではありません",
+    widgetReplyHint: "返信欄に入れるだけで、送るのはあなたです",
+    widgetScriptsOff: "このウィジェットのスクリプトはオフです。",
 
     readReceipts: "既読の参加者",
     menuSwitchOn: "開",
@@ -2118,6 +2178,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "Inapakia programu ndogo…",
     miniAppUnavailable: "Programu ndogo haipatikani",
     miniAppResize: "Badilisha ukubwa wa programu ndogo",
+    widgetUse: "Weka kwenye jibu",
+    widgetCalcInvalid: "Si hesabu",
+    widgetReplyHint: "Inaweka hiki kwenye kisanduku cha jibu; wewe ndiye unatuma",
+    widgetScriptsOff: "Skripti katika wijeti hii zimezimwa.",
 
     readReceipts: "Imesomwa na",
     menuSwitchOn: "Washa",
@@ -2228,6 +2292,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "मिनी ॲप लोड होत आहे…",
     miniAppUnavailable: "मिनी ॲप उपलब्ध नाही",
     miniAppResize: "मिनी ॲपचा आकार बदला",
+    widgetUse: "उत्तरात टाका",
+    widgetCalcInvalid: "हे गणित नाही",
+    widgetReplyHint: "हे तुमच्या उत्तराच्या चौकटीत टाकते; पाठवायचे तुम्हीच",
+    widgetScriptsOff: "या विजेटमधील स्क्रिप्ट बंद आहेत.",
 
     readReceipts: "यांनी वाचले",
     menuSwitchOn: "चालू",
@@ -2338,6 +2406,10 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     miniAppLoading: "미니 앱 불러오는 중…",
     miniAppUnavailable: "미니 앱을 사용할 수 없습니다",
     miniAppResize: "미니 앱 크기 조절",
+    widgetUse: "답장에 넣기",
+    widgetCalcInvalid: "계산식이 아닙니다",
+    widgetReplyHint: "답장 칸에 넣기만 하고, 보내는 건 직접 하세요",
+    widgetScriptsOff: "이 위젯의 스크립트는 꺼져 있습니다.",
 
     readReceipts: "읽은 참여자",
     menuSwitchOn: "켬",
