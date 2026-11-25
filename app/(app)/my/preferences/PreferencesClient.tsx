@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import TokenManager from "./TokenManager";
 import { MiniAppsSettings } from "@/app/components/MiniAppsSettings";
-import { PreferencesToc, type TocSection } from "./PreferencesToc";
+import { PreferencesToc } from "./PreferencesToc";
+import { createPreferenceSections, type PreferenceGroupLabels } from "./preferences-toc-groups";
 import { PaperSkinPicker } from "@/app/components/PaperSkinPicker";
 import { TextSizeControls } from "@/app/components/TextSizeControls";
 import { ByokSettings } from "@/app/components/ByokSettings";
@@ -146,6 +147,7 @@ export default function PreferencesClient({
     loading: loadingText,
     heading,
     toc: tocHeading,
+    groups: tocGroupLabels,
     mobileFilters,
     save,
     errors,
@@ -173,61 +175,63 @@ export default function PreferencesClient({
   const miniApp = useIntlayer("mini-app");
   const textSizes = useTextSizes();
 
-  const tocSections: TocSection[] = useMemo(() => {
-    const list: TocSection[] = [
-      { id: "language", title: lang.heading.value },
-      { id: "preferred-langs", title: prefLangs.heading.value },
-      { id: "paper", title: paperHeading.value },
-      { id: "text-size", title: textSize.heading.value },
-    ];
-    if (appBadge) {
-      list.push({ id: "notifications", title: badge.heading.value });
-    }
-    list.push(
-      { id: "byok", title: byok.heading.value },
-      { id: "title-rules", title: titleRules.heading.value },
-      { id: "mail", title: mail.heading.value },
-      { id: "auto-update", title: autoUpdate.heading.value },
-      { id: "external-links", title: extLink.heading.value },
-      { id: "reader", title: readPolish.prefHeading.value },
-      { id: "dont-ask", title: dontAsk.heading.value },
-      { id: "review-order", title: reviewOrderUi.heading.value },
-      { id: "tokens", title: tokens.heading.value },
-      { id: "licards-group", title: licardsGroup.heading.value },
-      { id: "watch-time", title: watchTime.heading.value },
-      { id: "mobile-filters", title: mobileFilters.heading.value },
-    );
-    if (miniApps) {
-      list.push({ id: "mini-apps", title: miniApp.prefsHeading.value });
-    }
-    if (hasVibe) {
-      list.push({ id: "vibe", title: vibe.settingsHeading.value });
-    }
-    return list;
-  }, [
-    appBadge,
-    hasVibe,
-    miniApps,
-    miniApp.prefsHeading.value,
-    lang.heading.value,
-    prefLangs.heading.value,
-    paperHeading.value,
-    textSize.heading.value,
-    badge.heading.value,
-    byok.heading.value,
-    titleRules.heading.value,
-    mail.heading.value,
-    autoUpdate.heading.value,
-    extLink.heading.value,
-    readPolish.prefHeading.value,
-    dontAsk.heading.value,
-    reviewOrderUi.heading.value,
-    tokens.heading.value,
-    licardsGroup.heading.value,
-    watchTime.heading.value,
-    mobileFilters.heading.value,
-    vibe.settingsHeading.value,
-  ]);
+  const tocGroupNames: PreferenceGroupLabels = {
+    appearance: tocGroupLabels.appearance.value,
+    learning: tocGroupLabels.learning.value,
+    tools: tocGroupLabels.tools.value,
+    notifications: tocGroupLabels.notifications.value,
+    access: tocGroupLabels.access.value,
+    activity: tocGroupLabels.activity.value,
+  };
+
+  const tocSections = useMemo(
+    () =>
+      createPreferenceSections({
+        language: lang.heading.value,
+        "preferred-langs": prefLangs.heading.value,
+        paper: paperHeading.value,
+        "text-size": textSize.heading.value,
+        notifications: appBadge ? badge.heading.value : undefined,
+        byok: byok.heading.value,
+        "title-rules": titleRules.heading.value,
+        mail: mail.heading.value,
+        "auto-update": autoUpdate.heading.value,
+        "external-links": extLink.heading.value,
+        reader: readPolish.prefHeading.value,
+        "dont-ask": dontAsk.heading.value,
+        "review-order": reviewOrderUi.heading.value,
+        tokens: tokens.heading.value,
+        "licards-group": licardsGroup.heading.value,
+        "watch-time": watchTime.heading.value,
+        "mobile-filters": mobileFilters.heading.value,
+        "mini-apps": miniApps ? miniApp.prefsHeading.value : undefined,
+        vibe: hasVibe ? vibe.settingsHeading.value : undefined,
+      }),
+    [
+      appBadge,
+      hasVibe,
+      miniApps,
+      miniApp.prefsHeading.value,
+      lang.heading.value,
+      prefLangs.heading.value,
+      paperHeading.value,
+      textSize.heading.value,
+      badge.heading.value,
+      byok.heading.value,
+      titleRules.heading.value,
+      mail.heading.value,
+      autoUpdate.heading.value,
+      extLink.heading.value,
+      readPolish.prefHeading.value,
+      dontAsk.heading.value,
+      reviewOrderUi.heading.value,
+      tokens.heading.value,
+      licardsGroup.heading.value,
+      watchTime.heading.value,
+      mobileFilters.heading.value,
+      vibe.settingsHeading.value,
+    ],
+  );
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -350,13 +354,17 @@ export default function PreferencesClient({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 [&_[data-section]]:scroll-mt-20 @min-[64rem]/preferences:[&_[data-section]]:scroll-mt-6 @min-[64rem]/preferences:grid @min-[64rem]/preferences:grid-cols-[14rem_minmax(0,1fr)] @min-[64rem]/preferences:gap-10">
+    <div className="mx-auto max-w-6xl px-4 py-8 [&_[data-section]]:scroll-mt-32 @min-[64rem]/preferences:[&_[data-section]]:scroll-mt-6 @min-[64rem]/preferences:grid @min-[64rem]/preferences:grid-cols-[14rem_minmax(0,1fr)] @min-[64rem]/preferences:gap-10">
       {/* Stick the grid item itself: the nav's short wrapper cannot keep a child sticky. */}
       <aside
         className="sticky top-[env(safe-area-inset-top)] z-20 min-w-0 self-start @min-[64rem]/preferences:top-[max(2rem,env(safe-area-inset-top))]"
         data-preferences-toc-dock
       >
-        <PreferencesToc label={tocHeading.value} sections={tocSections} />
+        <PreferencesToc
+          label={tocHeading.value}
+          sections={tocSections}
+          groupLabels={tocGroupNames}
+        />
       </aside>
 
       {/* Main Settings Content */}

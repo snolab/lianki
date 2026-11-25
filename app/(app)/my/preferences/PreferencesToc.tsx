@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-export type TocSection = {
-  id: string;
-  title: string;
-};
+import { useEffect, useMemo, useState } from "react";
+import {
+  groupPreferenceSections,
+  type TocSection,
+  type GroupedTocSection,
+  type PreferenceGroupLabels,
+  type TocGroup,
+} from "./preferences-toc-groups";
+export type { TocSection } from "./preferences-toc-groups";
 
 /**
  * The media query matching screens wide enough to not collapse sections (owner: <35em folds on phones).
@@ -85,55 +88,96 @@ export function useIsWideScreen(): boolean {
   return wide;
 }
 
+const chipClass = (active: boolean) =>
+  `min-h-10 shrink-0 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
+    active
+      ? "bg-primary text-on-primary"
+      : "bg-black/5 text-gray-700 hover:bg-black/10 dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/20"
+  }`;
+
 export function PreferencesToc({
   label,
   sections,
+  groupLabels,
   activeId,
   onSelect,
 }: {
   label: string;
-  sections: TocSection[];
+  sections: GroupedTocSection[];
+  groupLabels: PreferenceGroupLabels;
   activeId?: string;
   onSelect?: (id: string) => void;
 }) {
   const observed = useActiveSection(sections);
   const current = activeId ?? observed;
+  const groups = useMemo(
+    () => groupPreferenceSections(sections, groupLabels),
+    [sections, groupLabels],
+  );
+  const activeGroup = sections.find((section) => section.id === current)?.group ?? groups[0]?.id;
+  // A manual disclosure belongs to this reading position; a new section follows its category.
+  const [expansion, setExpansion] = useState<{ at: string; group: string } | null>(null);
+  const expandedGroup = expansion && expansion.at === current ? expansion.group : activeGroup;
+  const setExpanded = (group: string) => setExpansion({ at: current, group });
+  const selected =
+    groups.find((group) => group.id === expandedGroup) ??
+    groups.find((group) => group.id === activeGroup) ??
+    groups[0];
 
   const handleSelect = (id: string) => {
     onSelect?.(id);
     jumpToSection(id);
   };
+  const selectGroup = (group: TocGroup) => {
+    setExpanded(group.id);
+    const first = group.sections[0];
+    if (first) handleSelect(first.id);
+  };
 
+  if (!groups.length) return null;
   return (
     <div className="w-full">
-      {/* Compact whenever the preferences container has too little room for a sidebar. */}
+      {/* Compact navigation keeps the category level separate from its settings. */}
       <div
         data-testid="preferences-toc-compact"
-        className="@min-[64rem]/preferences:hidden -mx-4 px-4 py-2 mb-6 lk-glass border-b border-[var(--glass-line)] overflow-x-auto no-scrollbar"
+        className="@min-[64rem]/preferences:hidden -mx-4 mb-6 border-b border-[var(--glass-line)] px-4 py-2 lk-glass"
       >
-        <nav aria-label={label} className="flex gap-2 min-w-max">
-          {sections.map((s) => {
-            const active = current === s.id;
-            return (
+        <nav aria-label={label} className="space-y-2">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            {groups.map((group) => (
               <button
-                key={s.id}
+                key={group.id}
                 type="button"
-                data-testid={`toc-chip-${s.id}`}
-                onClick={() => handleSelect(s.id)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all whitespace-nowrap ${
-                  active
-                    ? "bg-blue-600 text-white shadow-sm dark:bg-blue-500"
-                    : "bg-black/5 dark:bg-white/10 text-gray-700 dark:text-gray-300 hover:bg-black/10 dark:hover:bg-white/20"
-                }`}
+                data-testid={`toc-category-${group.id}`}
+                aria-pressed={selected?.id === group.id}
+                onClick={() => selectGroup(group)}
+                className={chipClass(selected?.id === group.id)}
               >
-                {s.title}
+                {group.title}
               </button>
-            );
-          })}
+            ))}
+          </div>
+          {selected && (
+            <div
+              role="group"
+              aria-label={selected.title}
+              className="flex gap-2 overflow-x-auto no-scrollbar"
+            >
+              {selected.sections.map((section) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  data-testid={`toc-chip-${section.id}`}
+                  onClick={() => handleSelect(section.id)}
+                  className={chipClass(current === section.id)}
+                >
+                  {section.title}
+                </button>
+              ))}
+            </div>
+          )}
         </nav>
       </div>
-
-      {/* Desktop sidebar navigation */}
       <nav
         aria-label={label}
         className="hidden @min-[64rem]/preferences:block max-h-[calc(100dvh-4rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain space-y-3"
@@ -142,26 +186,55 @@ export function PreferencesToc({
         <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
           {label}
         </h2>
-        <ul className="space-y-1 text-sm border-s border-black/10 dark:border-white/10 ps-3">
-          {sections.map((s) => {
-            const active = current === s.id;
+        <ul className="space-y-1 text-sm">
+          {groups.map((group) => {
+            const open = expandedGroup === group.id;
             return (
-              <li key={s.id}>
-                <a
-                  href={`#${s.id}`}
-                  data-testid={`toc-link-${s.id}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleSelect(s.id);
-                  }}
-                  className={`block py-1 text-sm transition-colors -ms-[13px] ps-3 border-s-2 ${
-                    active
-                      ? "border-blue-600 font-medium text-blue-600 dark:border-blue-400 dark:text-blue-400"
-                      : "border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
-                  }`}
+              <li key={group.id}>
+                <button
+                  type="button"
+                  data-testid={`toc-group-${group.id}`}
+                  aria-expanded={open}
+                  aria-controls={`preferences-toc-${group.id}`}
+                  onClick={() => setExpanded(open ? "" : group.id)}
+                  className={`flex min-h-10 w-full items-center justify-between gap-2 rounded px-2 py-2 text-start font-medium ${activeGroup === group.id ? "text-primary" : "text-gray-700 dark:text-gray-300"}`}
                 >
-                  {s.title}
-                </a>
+                  <span>{group.title}</span>
+                  <span
+                    aria-hidden="true"
+                    className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </span>
+                </button>
+                <ul
+                  id={`preferences-toc-${group.id}`}
+                  hidden={!open}
+                  className="ms-2 space-y-1 border-s border-black/10 ps-3 dark:border-white/10"
+                >
+                  {group.sections.map((section) => (
+                    <li key={section.id}>
+                      <a
+                        href={`#${section.id}`}
+                        data-testid={`toc-link-${section.id}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          handleSelect(section.id);
+                        }}
+                        className={`-ms-[13px] flex min-h-10 items-center border-s-2 py-2 ps-3 text-sm transition-colors ${current === section.id ? "border-primary font-medium text-primary" : "border-transparent text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"}`}
+                      >
+                        {section.title}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               </li>
             );
           })}

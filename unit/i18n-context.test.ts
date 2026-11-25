@@ -300,6 +300,12 @@ describe("preferences-page: keys that already carry context", () => {
     "watchTime.toggleHint",
     "mobileFilters.regexBadge",
     "toc",
+    "groups.appearance",
+    "groups.learning",
+    "groups.tools",
+    "groups.notifications",
+    "groups.access",
+    "groups.activity",
   ])("%s has a line of 5+ words", (k) => {
     expect((context[k] ?? "").split(/\s+/).length).toBeGreaterThanOrEqual(5);
   });
