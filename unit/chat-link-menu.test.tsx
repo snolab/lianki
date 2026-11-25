@@ -70,9 +70,17 @@ afterEach(async () => {
 });
 
 describe("chat link menu", () => {
-  it("a tap opens it; open goes through the router on this origin; close refocuses the link", async () => {
+  it("a tap opens it; open uses a new-tab anchor through the host guard; close refocuses the link", async () => {
     setup("https://lianki.com/en");
     const opened: string[] = [];
+    const navigations: { href: string; target: string; rel: string }[] = [];
+    win.addEventListener("click", (e) => {
+      const a = e.target;
+      if (a instanceof win.HTMLAnchorElement && !host.contains(a as never)) {
+        navigations.push({ href: a.href, target: a.target, rel: a.rel });
+        e.preventDefault();
+      }
+    });
     await act(async () =>
       root.render(
         createElement(ChatLink, {
@@ -86,7 +94,10 @@ describe("chat link menu", () => {
     expect(q('[data-testid="chat-link-menu"]')).not.toBeNull();
     expect(q('[data-testid="chat-link-prod"]')).toBeNull();
     await click(q('[data-testid="chat-link-open"]'));
-    expect(opened).toEqual(["/dev/flags#a"]);
+    expect(opened).toEqual([]);
+    expect(navigations).toEqual([
+      { href: "https://lianki.com/dev/flags#a", target: "_blank", rel: "noopener noreferrer" },
+    ]);
     expect(q('[data-testid="chat-link-menu"]')).toBeNull();
 
     // Right-click opens it too; the close button shuts it.
