@@ -209,6 +209,7 @@ chat.
 | `lianki_import`       | `study`      | save up to 100 pages (`items`)                 |
 | `lianki_review`       | `study`      | record a review (`url`, `rating` 1–4)          |
 | `lianki_settings_get` | `study`      | the settings, or one (`key`)                   |
+| `lianki_settings_set` | `study`      | change one (`key`, `value`); open pages apply it |
 | `lianki_chat_read`    | `chat:read`  | the latest chat lines                          |
 | `lianki_chat_wait`    | `chat:read`  | wait (≤55 s) for the next line (`after`)       |
 | `lianki_chat_say`     | `chat:write` | post a line                                    |

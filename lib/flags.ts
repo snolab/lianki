@@ -165,7 +165,7 @@ export const FLAGS = {
   },
   "voice.recordings": {
     description:
-      "麦克风录音存到你的账号（/my/recordings，docs/recordings.md）：在 Lianki 里开着麦克风时，每一句话（主动和被动模式都算，发不发到聊天都算）的录音和它已有的文字（Mac 本机识别的；Mac 不在时是聊天用的云端结果）加密存进你的账号，第二天也能回听、按天下载到 Mac 上重新识别。会议里别人的声音也会被录下；只有你的账号能读。服务器从不替录音做识别。默认保留 90 天（/dev/config 的 recordings.retentionDays），可以在页面上按句删除。只对有 dev 权限的账号开放。关闭 = 不再上传新的录音，/api/my/recordings 和 /my/recordings 都不存在（404）；已存的录音留着但读不到，到期照样清理。",
+      "麦克风录音存到你的账号（/my/recordings，docs/recordings.md）：在 Lianki 里开着麦克风时，每一句话（主动和被动模式都算，发不发到聊天都算）的录音和它已有的文字（Mac 本机识别的；Mac 不在时是聊天用的云端结果）加密存进你的账号，第二天也能回听、按天下载到 Mac 上重新识别。会议里别人的声音也会被录下；只有你的账号能读。服务器从不替录音做识别。默认永久保留，不自动删除（/dev/config 的 recordings.retentionDays，0 = 永久），可以在页面上按句删除。只对有 dev 权限的账号开放。关闭 = 不再上传新的录音，/api/my/recordings 和 /my/recordings 都不存在（404）；已存的录音留着但读不到（设了保留天数时到期照样清理）。",
     default: true,
     audience: "owner",
     group: "stt",
@@ -269,6 +269,15 @@ export const FLAGS = {
     description:
       "学习伙伴聊天里的任务进度条：助手给每个任务报的预计时间（progress.ts --eta）在聊天输入框上方汇总成一条进度条（总进度按预计时长加权、总剩余时间、下一个到期），点一下打开状态树，每个任务有自己的进度条和剩余时间。预计时间一到，自动在你的线程里发一条「ETA reached for …: report to the owner」给助手（静音，不朗读；不是你说的话，永远不算批准）。没有页面开着也会发（服务器定时）。只给你本人。关闭（默认）= 不显示进度条，也不发到期消息。",
     default: false,
+    audience: "owner",
+  },
+  // Owner, 2026-11-14 23:2x JST: "消息里能带计算器/按钮等组件" — data only, no script.
+  "chat.message-widgets": {
+    description:
+      "消息里的小组件（packages/debug-chat/src/message-widget.ts）：你的助手（配对的或你自己的通道令牌）在你自己的线程里发 ```lianki-widget 代码块（JSON），聊天里就显示成按钮、计算器、滑块或表格。全是页面自己的组件，消息里的任何代码都不会运行；点一下只是把内容填进你的回复框，发不发由你。朋友和家人的线程、你自己打的字不显示组件。关闭 = 这些代码块照原样显示为代码。",
+    default: true,
+    // With the other agent switches (the groups stay few, flag-view.ts).
+    group: "ai",
     audience: "owner",
   },
   "chat.play-audio": {

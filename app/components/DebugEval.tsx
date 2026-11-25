@@ -79,6 +79,7 @@ import {
   createAudioSyncHub,
 } from "@lianki/debug-chat/audio-sync-hub";
 import { cloudOut, existingCtx } from "@lianki/debug-chat/voice-out";
+import { setLocalTtsFallbacks } from "@lianki/debug-chat/local-tts-fallback";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { messageTelemetry } from "@lianki/debug-chat/message-telemetry";
 import { pageScene } from "@lianki/debug-chat/scene";
@@ -234,6 +235,7 @@ export function DebugEval({
   mergeReopenSec,
   playAudio = false,
   lineReplay = false,
+  messageWidgets = false,
   box = null,
   account = null,
   cacheLines = 0,
@@ -306,6 +308,8 @@ export function DebugEval({
    * a ▶ and may play by themselves (docs/li-sound-hub.md, "Playing audio from an agent").
    */
   playAudio?: boolean;
+  /** Flag `chat.message-widgets` (audience owner): a paired agent's widget blocks render. */
+  messageWidgets?: boolean;
   /**
    * Flags `chat.line-replay` + `voice.recordings` (audience owner): his own spoken
    * line's details offer "Play original audio" (docs/recordings.md, "Replay from the chat").
@@ -353,6 +357,9 @@ export function DebugEval({
   // The owner's default speech routes (owner-routes.ts, read by local-stt.ts): live, no deploy.
   setOwnerRoutes(publicCfg("stt.ownerRoutes"));
   setCloudVoices(cloudVoices);
+  // Existing local voices only for developer diagnostics; other accounts never
+  // start probing a private network because a cloud model was retired.
+  setLocalTtsFallbacks(dev ? publicCfg("voice.localFallbacks") : {});
   setTalkOver(talkOver);
   // What this page reads aloud goes to the hub for the cross-device echo match (play-report.ts).
   setEchoReports(echoReports);
@@ -1060,6 +1067,14 @@ export function DebugEval({
           const mode = (msg as { mode?: unknown }).mode;
           const mic = (globalThis as { __lkMic?: { wake?: (m: string) => void } }).__lkMic;
           if (mode === "active" || mode === "passive" || mode === "ignored") mic?.wake?.(mode);
+          return;
+        }
+        if (msg.type === "prefs") {
+          // The account's settings changed from outside this page (an agent's
+          // lianki_settings_set): pull them now (lib/prefs/client.ts, docs/prefs-sync.md).
+          const sync = (globalThis as { __lkPrefSync?: { pull?: () => Promise<unknown> } })
+            .__lkPrefSync;
+          void sync?.pull?.();
           return;
         }
         if (msg.type === "ui") {
@@ -1800,6 +1815,8 @@ export function DebugEval({
             pttMaxCaptureMs={pttMaxCaptureMs}
             mergeReopenSec={mergeReopenSec}
             playAudio={playOn}
+            messageWidgets={messageWidgets}
+            widgetHtmlMaxPx={publicCfg("chat.widgetHtmlMaxPx")}
             // His own recordings, behind the same gate as /my/recordings (the route checks it again).
             lineReplay={lineReplay && dev && owner && friend === null}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).

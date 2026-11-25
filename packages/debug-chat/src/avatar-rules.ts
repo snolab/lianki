@@ -244,7 +244,8 @@ export function isOwnVoice(m: Pick<ChatMessage, "from" | "source" | "speaker">):
 /**
  * Render-only passage boundaries: preserve every message, joining only own
  * speech across changing avatar presentation. Other senders retain runStarts.
- * A known person, thread or node change and a long pause always break speech.
+ * A known person, thread or node change and a long pause always break speech;
+ * so does every automatic ETA-timer line (source "eta"): one row each.
  */
 export function passageStarts(
   messages: readonly Pick<ChatMessage, "from" | "source" | "speaker" | "sender" | "thread" | "at">[],
@@ -255,6 +256,9 @@ export function passageStarts(
   return messages.map((m, i) => {
     const p = messages[i - 1];
     if (!p) return true;
+    // Automatic ETA-timer lines are about different tasks and lanes: each is its
+    // own row, never flowed inline with a "·" into a neighbour's paragraph.
+    if (m.source === "eta" || p.source === "eta") return true;
     const own = isOwnVoice(m);
     if (own !== isOwnVoice(p)) return true;
     if (!own) return starts[i]!;

@@ -22,6 +22,7 @@ import type { CloudOut, LinePick, PlayEvents, Playback, ReadTiming } from "./voi
 import { type HeardVoice, pickLocalVoice, pinnedLocalVoice } from "./voice-heard";
 import { CLONE_VOICE_NAME, cloneTimeoutMs, cloneTtsBase, cloneTtsUrl } from "./polish-readback";
 import { MELO_LANGS, VOICES, type VoiceId, cloudVoice } from "./voices";
+import { localTtsFallback } from "./local-tts-fallback";
 
 /** The route's X-Voice for a clip in a lane's own cloud speaker (lib/words-tts.ts). */
 export const AURA_VOICE = "aura-2";
@@ -413,7 +414,11 @@ export function createCloudOut(d: {
           setTimer(() => no(new Error(`clone timeout ${ms} ms`)), ms);
           d.fetch(url).then(ok, no);
         })
-      : d.fetch(url);
+      : local
+        ? d.fetch(url).catch(() =>
+            d.fetch(`${ttsUrl(text, base)}&localVoice=${encodeURIComponent(local.heard.name)}`),
+          )
+        : d.fetch(url);
     const p = got.then(async (r) => {
       if (!r.ok)
         throw new Error(`http ${r.status}${r.headers.get("X-Voice") ? ` ${r.headers.get("X-Voice")}` : ""}`);
@@ -497,6 +502,13 @@ export function createCloudOut(d: {
       return { lang, provider: "local:yunxi", shift: 1 };
     if (pick?.kind === "melo") return { lang: pick.lang, shift: 1 };
     if (pick?.kind === "aura") return { lang: pick.lang, speaker: pick.speaker, shift: 1 };
+    const local = localTtsFallback(
+      lang,
+      voice,
+      read(LOCAL_TTS_KEY) !== "off" && Boolean(read(LOCAL_TTS_KEY) || DEFAULT_LOCAL_TTS_BASE),
+    );
+    if (local && !cloudVoice(voice ?? "main", lang).speaker)
+      return { lang, provider: `local:${local}`, shift: 1 };
     return { lang, ...cloudVoice(voice ?? "main", lang) };
   };
 

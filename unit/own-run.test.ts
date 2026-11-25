@@ -82,4 +82,23 @@ describe("own voice passages", () => {
     expect(starts([agent(), agent({ at: RUN_GAP_MS + 1 })])).toEqual([true, true]);
     expect(starts([own({ from: "friend" }), own({ from: "friend" })])).toEqual([true, false]);
   });
+
+  it("every automatic ETA-timer line is its own row, never joined with a dot", () => {
+    const eta = (id: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({
+      id,
+      from: "agent",
+      source: "eta",
+      text: "ETA",
+      label: "ETA timer (automatic)",
+      at: 0,
+      ...extra,
+    });
+    const lane = eta("lane", { source: undefined, label: "mimiai" });
+    expect(starts([eta("a"), eta("b"), eta("c")])).toEqual([true, true, true]);
+    expect(runsOf(starts([eta("a"), eta("b")]))).toEqual([[0], [1]]);
+    // A lane's own line next to a timer line is not merged into it either way.
+    expect(starts([lane, eta("a")])).toEqual([true, true]);
+    expect(starts([eta("a"), lane])).toEqual([true, true]);
+    expect(starts([lane, { ...lane, id: "l2" }])).toEqual([true, false]);
+  });
 });

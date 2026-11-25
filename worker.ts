@@ -139,7 +139,8 @@ export default {
       console.error("vibe: retention sweep failed", e);
       failure ??= e;
     }
-    // And mic recordings past config recordings.retentionDays (docs/recordings.md, "Retention").
+    // And mic recordings past config recordings.retentionDays (docs/recordings.md, "Retention");
+    // its default 0 keeps them forever, and then this deletes nothing.
     try {
       const db = env.DB as unknown as SweepDb;
       const n = await sweepRecordings(db, env.BLOBS, await retentionDays(db), event.scheduledTime);

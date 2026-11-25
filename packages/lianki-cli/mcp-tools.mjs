@@ -4,7 +4,7 @@
 // api.mjs only, no node: imports. docs/api-for-agents.md, "Connect via MCP".
 
 import { z } from "zod";
-import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call } from "./api.mjs";
+import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call, nextHlc } from "./api.mjs";
 import { readAckBody, readWindow, readCoverage } from "./chat-seq.mjs";
 import {
   PROGRESS_KINDS,
@@ -40,6 +40,8 @@ const cardOf = (x) => ({
   lapses: x.card?.lapses ?? null,
 });
 const nextOf = (d) => (d?.nextUrl ? { url: d.nextUrl, title: d.nextTitle ?? null } : null);
+/** lianki_settings_set's clock device (prefs schema: 8–40 of a-z 0-9); nextHlc bumps past any stored clock. */
+const MCP_DEVICE_ID = "mcptools1";
 const READ = { readOnlyHint: true, openWorldHint: false };
 const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 
@@ -210,6 +212,32 @@ export const TOOLS = [
       }
       const keys = [...new Set([...PREF_KEYS, ...Object.keys(prefs)])];
       return { settings: Object.fromEntries(keys.map((k) => [k, value(k)])) };
+    },
+  },
+  {
+    name: "lianki_settings_set",
+    scope: "study",
+    title: "Change a setting",
+    description:
+      "Change one of the user's app settings, as `lianki settings set` does: the server checks the key and value, and the user's open pages apply it at once. Only when the user asked for this change (e.g. \"make the chat text twice as big\" → text-size.chat = 2).",
+    input: {
+      key: z
+        .string()
+        .regex(/^[A-Za-z][A-Za-z0-9._-]{0,63}$/)
+        .describe(`A setting name (see lianki_settings_get), e.g. ${PREF_KEYS.slice(0, 3).join(", ")}`),
+      value: z
+        .union([z.boolean(), z.number(), z.string(), z.array(z.unknown()), z.record(z.string(), z.unknown()), z.null()])
+        .describe("The new value, as JSON: true, 1.5, \"on\", [\"/words\"]"),
+    },
+    annotations: WRITE,
+    run: async (api, a) => {
+      const d = await api({ path: "/api/prefs" });
+      const prefs = d.prefs && typeof d.prefs === "object" ? d.prefs : {};
+      const op = { key: a.key, value: a.value, hlc: nextHlc(prefs[a.key]?.hlc, MCP_DEVICE_ID) };
+      const out = await api({ method: "PATCH", path: "/api/prefs", body: { ops: [op] } });
+      if (Array.isArray(out.rejected) && out.rejected.includes(a.key))
+        throw new CliError("refused", EXIT.refused, `${JSON.stringify(a.value)} is not a valid value for ${a.key}`);
+      return { key: a.key, value: out.prefs?.[a.key]?.value ?? a.value };
     },
   },
   {

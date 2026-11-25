@@ -39,8 +39,19 @@ import {
   routeKey,
   laneToken,
   lineOf,
+  makeAcker,
   makeDeliverer,
+  makeSeqCursor,
+  readCursor,
+  receiptAfter,
   reconnectWait,
+  catchUpTrigger,
+  liftReceipt,
+  makeRecovery,
+  recoveredPage,
+  type RecoveredPage,
+  recoverMaxMs,
+  writeCursor,
   tokenNeeded,
   voiceAllowed,
   type AyRow,
@@ -230,6 +241,59 @@ export async function targetBusy(o: Opts): Promise<boolean> {
   }
 }
 
+const HUB = (process.env.LIANKI_URL ?? "https://lianki.com").replace(/\/+$/, "");
+/** How long one receipt or recovery call may take. */
+const CALL_MS = 15_000;
+
+/** `lianki chat …` with the lane's token: its stdout, or null on a failure or timeout. */
+async function liankiChat(o: Opts, token: string, args: string[]): Promise<string | null> {
+  const p = Bun.spawn(
+    [
+      process.execPath,
+      join(o.repo, "packages", "lianki-cli", "lianki.mjs"),
+      "chat",
+      ...args,
+      "--json",
+    ],
+    {
+      cwd: o.repo,
+      env: { ...process.env, LIANKI_TOKEN: token, LIANKI_URL: HUB },
+      stdout: "pipe",
+      stderr: "ignore",
+    },
+  );
+  const timer = setTimeout(() => p.kill(), CALL_MS);
+  try {
+    const out = await new Response(p.stdout).text();
+    return (await p.exited) === 0 ? out : null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The read receipt: the lane's agent was handed every line through `seq`. */
+async function postSeen(o: Opts, token: string, seq: number): Promise<boolean> {
+  const ok = (await liankiChat(o, token, ["seen", "--seq", String(seq)])) !== null;
+  log({ type: ok ? "receipt" : "receipt-failed", lane: o.lane, seq });
+  return ok;
+}
+
+/** One page of the owner's thread after `after` (through `through`), or null on any failure. */
+async function readPage(
+  o: Opts,
+  token: string,
+  after: number,
+  through?: number,
+): Promise<RecoveredPage | null> {
+  const window = [
+    "--after-seq",
+    String(after),
+    ...(through !== undefined ? ["--through-seq", String(through)] : []),
+  ];
+  const out = await liankiChat(o, token, ["read", ...window, "--limit", "100"]);
+  return out ? recoveredPage(out) : null;
+}
+
 async function main(): Promise<number> {
   const o = parse(process.argv.slice(2));
   if (o instanceof Error) {
@@ -237,17 +301,102 @@ async function main(): Promise<number> {
     return 1;
   }
   const t = laneToken(o.lane);
+  // The delivered cursor (docs/lane-listen.md "Read receipts"): saved per lane,
+  // it moves only past lines handed over (ay send 0/4) or not for this lane.
+  // None saved yet: it starts at the first live line, nothing older is replayed.
+  const saved = o.dryRun ? null : readCursor(o.lane);
+  let cursor = saved === null ? null : makeSeqCursor(saved);
+  let savedAt = saved ?? -1;
+  const save = () => {
+    if (!cursor || o.dryRun) return;
+    const v = cursor.value();
+    if (v !== savedAt) writeCursor(o.lane, (savedAt = v));
+  };
+  const acker = makeAcker((seq) => postSeen(o, t.token!, seq));
+  const seen = new Set<string>();
   const out = makeDeliverer(
     o,
     (body, interrupt) => deliver(o, body, interrupt),
     () => targetBusy(o),
     log,
+    undefined,
+    (lines, ok) => {
+      if (!cursor) return;
+      const seqs = lines.map((l) => l.seq);
+      if (!ok) {
+        // Still held: the next connect's recovery reads it again and hands it over.
+        for (const l of lines) seen.delete(l.id);
+        return;
+      }
+      cursor.release(seqs);
+      save();
+      for (const s of seqs) if (s !== undefined && s > lastDelivered) lastDelivered = s;
+      const r = o.dryRun ? null : receiptAfter(seqs, cursor.value(), acker.last());
+      if (r !== null) void acker.ack(r);
+    },
   );
   if (t.from === "none") {
     console.error(`lane-listen: ${t.why}. Needed: ${tokenNeeded(o.lane)}`);
     return 2;
   }
-  const seen = new Set<string>();
+  const recoverMs = recoverMaxMs();
+  /** The newest seq `ay send` took this run (for the receipt when the barrier lifts). */
+  let lastDelivered = -1;
+  /** One listener JSON line, live or recovered; held lines go to the deliverer. */
+  const handle = async (raw: string, recovered: boolean) => {
+    const l = lineOf(raw);
+    if (process.env.LANE_LISTEN_DEBUG)
+      log({
+        type: "raw",
+        lane: o.lane,
+        parsed: !!l,
+        history: l?.history,
+        id: l?.id,
+        recovered,
+        head: raw.slice(0, 80),
+      });
+    if (!l || l.history) return;
+    if (!cursor && l.seq !== undefined && !o.dryRun) cursor = makeSeqCursor(l.seq - 1);
+    if (seen.has(l.id)) {
+      cursor?.pass(l.seq);
+      return save();
+    }
+    seen.add(l.id);
+    const stale = recovered && l.at !== undefined && Date.now() - Date.parse(l.at) > recoverMs;
+    if (!listenerTakes(o, l) || stale) {
+      cursor?.pass(l.seq);
+      return save();
+    }
+    if (!voiceAllowed(l, o)) {
+      log({ type: "other-voice", lane: o.lane, id: l.id });
+      cursor?.pass(l.seq);
+      return save();
+    }
+    if (recovered) log({ type: "recovered", lane: o.lane, id: l.id, seq: l.seq });
+    backoff = 1_000;
+    cursor?.hold(l.seq);
+    await out.add(l);
+  };
+  /**
+   * Lines after the cursor the socket never brought (a drop, a restart): read
+   * page by page up to the hub's head, the cursor barred until then (makeRecovery).
+   */
+  const recover = o.dryRun
+    ? async () => {}
+    : makeRecovery({
+        cursor: () => cursor,
+        read: (after, through) => readPage(o, t.token!, after, through),
+        handle: (raw) => handle(raw, true),
+        covered: () => {
+          save();
+          log({ type: "recovered-through", lane: o.lane, cursor: cursor?.value() });
+          // Receipts held back by the barrier: one now, through the latest line handed over.
+          const r = cursor ? liftReceipt(lastDelivered, cursor.value(), acker.last()) : null;
+          if (r !== null) void acker.ack(r);
+        },
+        log,
+        sleep: (ms) => Bun.sleep(ms),
+      });
   let backoff = 1_000;
   let child: ReturnType<typeof Bun.spawn> | undefined;
   for (const sig of ["SIGINT", "SIGTERM"] as const)
@@ -278,7 +427,17 @@ async function main(): Promise<number> {
         stderr: "inherit",
       },
     );
-    log({ type: "listening", lane: o.lane, token: t.from, tests: o.tests });
+    log({
+      type: "listening",
+      lane: o.lane,
+      token: t.from,
+      tests: o.tests,
+      cursor: cursor?.value(),
+    });
+    // Catch-up starts when the socket says it is ready (catchUpTrigger): no gap between the
+    // recovery's snapshot and the live stream. Until then the cursor is barred already.
+    cursor?.bar();
+    const trigger = catchUpTrigger(() => void recover());
     let buf = "";
     const dec = new TextDecoder();
     for await (const chunk of child.stdout as ReadableStream<Uint8Array>) {
@@ -287,25 +446,8 @@ async function main(): Promise<number> {
       while ((nl = buf.indexOf("\n")) >= 0) {
         const raw = buf.slice(0, nl);
         buf = buf.slice(nl + 1);
-        const l = lineOf(raw);
-        if (process.env.LANE_LISTEN_DEBUG)
-          log({
-            type: "raw",
-            lane: o.lane,
-            parsed: !!l,
-            history: l?.history,
-            id: l?.id,
-            head: raw.slice(0, 80),
-          });
-        if (!l || l.history || seen.has(l.id)) continue;
-        seen.add(l.id);
-        if (!listenerTakes(o, l)) continue;
-        if (!voiceAllowed(l, o)) {
-          log({ type: "other-voice", lane: o.lane, id: l.id });
-          continue;
-        }
-        backoff = 1_000;
-        await out.add(l);
+        trigger(raw);
+        await handle(raw, false);
       }
     }
     const code = await child.exited;

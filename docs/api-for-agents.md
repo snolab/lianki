@@ -172,7 +172,7 @@ participant list.
 - **Tools by permission.** At start the server asks `GET /api/cli-login/token`
   (the token's own name, scopes and expiry, `describeToken`) and lists only
   the tools those scopes allow (`TOOLS` in `packages/lianki-cli/mcp.mjs`:
-  `study` → stats, due, next, get, add, import, review, settings_get;
+  `study` → stats, due, next, get, add, import, review, settings_get, settings_set;
   `chat:read|write|ask` → chat_read + chat_wait, chat_say + chat_avatar, chat_ask;
   `progress` → progress_report, progress_show, progress_ack). The scopes are
   refreshed for discovery and calls; failed introspection exposes no tools.

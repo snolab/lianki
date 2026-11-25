@@ -50,11 +50,14 @@ import {
  * Client-safe: no D1 here.
  */
 import { z } from "zod";
+import { DEFAULT_LOCAL_TTS_FALLBACKS } from "@lianki/debug-chat/local-tts-fallback";
 import { DEFAULT_LEXICON, LEX_LANG, LEX_LIMITS, type LexEntry } from "@lianki/debug-chat/lexicon";
 import {
   isProviderVoice,
   lineVoiceOf,
   parseLaneDef,
+  LOCAL_ENGINES,
+  isVoiceId,
   type ChatLaneDef,
 } from "@lianki/debug-chat/voices";
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
@@ -415,6 +418,20 @@ export const CONFIG = {
   },
   // Provider voices (lib/cloud-voices.ts; docs/li-sound-hub.md, "Provider voices"):
   // which language is read in which Google / Azure voice, as data. Flag voice.cloud-voices.
+  "voice.localFallbacks": {
+    default: DEFAULT_LOCAL_TTS_FALLBACKS,
+    schema: z.record(
+      z.string().regex(LEX_LANG),
+      z.record(
+        z.string().refine(isVoiceId, "a lane voice"),
+        z.string().refine((name) => LOCAL_ENGINES.includes(name), "an existing local voice"),
+      ),
+    ),
+    group: "voice",
+    audience: "public",
+    description:
+      "开发账号的本地语音接管表：语言 → 车道声音 → 本地声音。已配置且未关闭本地服务时，用它替代已停用的 MeloTTS；没有配置的语言维持原路线，不把中文交给英语声音。需要设备能连接现有本地语音服务，空对象可关闭。",
+  },
   "voice.langVoices": {
     default: {
       "zh-TW": "google:cmn-TW-Wavenet-A",
@@ -1160,15 +1177,17 @@ export const CONFIG = {
   // 2026-11-11 01:28 JST; docs/local-stt.md, "One approval for ten minutes").
   // Mic recordings in the account (docs/recordings.md; owner tap card 2026-11-14
   // ~03:35 JST): the daily sweep (worker.ts `scheduled`) deletes clips older than this.
+  // Owner, 2026-11-25 22:54 JST: keep forever — default 0 = never swept, kept until
+  // he deletes a clip himself. The key stays so a retention can be set again.
   "recordings.retentionDays": int({
-    default: 90,
-    min: 1,
+    default: 0,
+    min: 0,
     max: 3650,
     unit: "days",
     group: "voice",
     audience: "server",
     description:
-      "麦克风录音（/my/recordings）保留多少天：每天一次的清理会删掉比这更早录的片段（音频和文字一起删）。默认 90 天。改短后，下一次每日清理就会删掉超出的部分，删了找不回来；想留的先下载到 Mac。",
+      "麦克风录音（/my/recordings）保留多少天。0（默认）= 永久保留，从不自动删除，只有你自己在页面上删。填一个天数，每天一次的清理就会删掉比这更早录的片段（音频和文字一起删），删了找不回来；想留的先下载到 Mac。",
   }),
   // The speeds in a recording paragraph's ⋯ menu on /my/recordings (owner, 2026-11-14
   // 22:4x JST: 0.75/1/1.25/1.5/2); the choice is a device preference (lib/recordings-article.ts).
@@ -1584,6 +1603,16 @@ export const CONFIG = {
     group: "chat",
     audience: "public",
     description: "每批聊天时间点的最多记录数。",
+  }),
+  "chat.widgetHtmlMaxPx": int({
+    default: 480,
+    min: 120,
+    max: 2_000,
+    unit: "px",
+    group: "chat",
+    audience: "public",
+    description:
+      "聊天消息里带脚本的 HTML 小组件（沙盒框）最多长多高（像素），超出部分在框里滚动。不带脚本的 HTML 小组件直接画在消息里，不受这个限制（最高为屏幕的 70%）。",
   }),
   "chat.readReceiptThrottleMs": int({
     default: 2_000,

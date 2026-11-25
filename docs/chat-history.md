@@ -33,6 +33,13 @@ are never lines at all, so never kept, until he taps "This was me". No audio and
 a line. Tested in `unit/chat-log.test.ts` and `unit/debug-hub.test.ts`
 ("chat history").
 
+**How long.** Chat lines are kept until he deletes them (below); nothing
+expires them. The speech itself (audio + its transcript, every utterance
+while the mic is on) is not here but in /my/recordings
+([recordings.md](recordings.md)), and is likewise **kept permanently**
+since 2026-11-25: `recordings.retentionDays` defaults to 0, no automatic
+deletion, only his own delete. The page's notice says so.
+
 **On the device.** The last `chat.cacheLines` (default 40) lines of the
 signed-in account's thread are also kept in the browser (`lk:chat-cache`,
 `lib/chat-cache.ts`), so the chat paints at once on the next page load; the

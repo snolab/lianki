@@ -33,6 +33,7 @@ export function OwnerBoots({
   mergeReopenSec,
   playAudio = false,
   lineReplay = false,
+  messageWidgets = false,
   box = null,
   autoUpdate = false,
   account = null,
@@ -84,6 +85,8 @@ export function OwnerBoots({
   playAudio?: boolean;
   /** Flags `chat.line-replay` + `voice.recordings` and `dev`: "Play original audio" in a line's details. */
   lineReplay?: boolean;
+  /** Flag `chat.message-widgets`: a paired agent's widget blocks render (message-widget.ts). */
+  messageWidgets?: boolean;
 }) {
   return (
     <>
@@ -110,6 +113,7 @@ export function OwnerBoots({
         mergeReopenSec={mergeReopenSec}
         playAudio={playAudio}
         lineReplay={lineReplay}
+        messageWidgets={messageWidgets}
         box={box}
         account={account}
         cacheLines={cacheLines}

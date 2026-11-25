@@ -4,6 +4,7 @@ import { apiTokenUser } from "@/lib/api-token-user";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { devBridgeUser } from "@/lib/dev-bridge-user";
 import { MAX_BODY_BYTES, patchBody, PREF_EXPECTED_USER_HEADER } from "@/lib/prefs/schema";
+import { notifyPrefsChanged } from "@/lib/push-prefs-changed";
 import { UserPrefsD1Repo } from "@/lib/repos/userPrefsD1";
 
 /**
@@ -25,11 +26,18 @@ import { UserPrefsD1Repo } from "@/lib/repos/userPrefsD1";
  */
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
-async function who(req: Request) {
+/** The user, and whether the request came from outside their own pages (bridge or token). */
+async function whoFrom(req: Request) {
   const bridged = await devBridgeUser(req);
-  if (bridged !== undefined) return bridged;
+  if (bridged !== undefined) return { user: bridged, outside: true };
   const token = await apiTokenUser(req);
-  return token === undefined ? await authUserOrNull() : token;
+  return token === undefined
+    ? { user: await authUserOrNull(), outside: false }
+    : { user: token, outside: true };
+}
+
+async function who(req: Request) {
+  return (await whoFrom(req)).user;
 }
 
 export async function GET(req: NextRequest) {
@@ -46,7 +54,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const user = await who(req);
+  const { user, outside } = await whoFrom(req);
   if (!user)
     return NextResponse.json({ error: "login-required" }, { status: 401, headers: NO_STORE });
   const expected = req.headers.get(PREF_EXPECTED_USER_HEADER);
@@ -67,5 +75,7 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success)
     return NextResponse.json({ error: "bad-request" }, { status: 400, headers: NO_STORE });
   const out = await new UserPrefsD1Repo(getD1(), user.id).write(parsed.data.ops);
+  // Changed from outside the pages (an agent, the CLI): the open pages pull now.
+  if (outside && parsed.data.ops.length > (out.rejected?.length ?? 0)) notifyPrefsChanged(user.id);
   return NextResponse.json({ user: user.id, ...out }, { headers: NO_STORE });
 }
