@@ -112,6 +112,7 @@ export const GUIDE_KEYS = [
   "scopeEval",
   "scopeProgress",
   "scopeRecordingsRead",
+  "scopeMintChild",
   "cannot",
   "cardsHeading",
   "cardsIntro",
@@ -163,6 +164,7 @@ const SCOPE_LINE: Record<ScopeId, GuideKey> = {
   eval: "scopeEval",
   progress: "scopeProgress",
   "recordings:read": "scopeRecordingsRead",
+  "token:mint-child": "scopeMintChild",
 };
 
 /** The state tree's write endpoint (lianki-push ProgressHub; docs/state-tree.md). */

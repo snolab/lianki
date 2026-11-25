@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { flashProps } from "./addressed";
 import { laneSpec, type LaneId, type LaneMark, isLaneId } from "./voices";
+import { childLane, childShownName, parentShownName } from "./child-lane";
 import type { ChatMessage } from "./wire";
 import { speakerAvatar } from "./speaker-avatar";
 import { HOUSE_PATH, clusterAvatar as clusterLook } from "./cluster-avatar";
@@ -46,6 +47,52 @@ export function laneAvatar(lane: LaneId) {
   const mark = laneSpec(lane).mark;
   if (!mark) return undefined;
   return markSvg(mark, { "data-testid": "debug-chat-lane-mark", "data-lane": lane });
+}
+
+/**
+ * A lane's subagent (a child token, child-lane.ts): the parent lane's mark,
+ * with its index in a small disc of the lane's ink at the lower right.
+ */
+export function childAvatar(lane: LaneId, index: string) {
+  const mark = laneSpec(lane).mark;
+  if (!mark) return undefined;
+  return (
+    <svg
+      data-testid="debug-chat-child-mark"
+      data-lane={lane}
+      data-index={index}
+      viewBox="0 0 24 24"
+      width="100%"
+      height="100%"
+      aria-hidden
+      style={{ display: "block", background: mark.bg, borderRadius: "9999px" }}
+    >
+      {mark.paths.map((p, i) => (
+        <path
+          key={i}
+          d={p.d}
+          fill={p.fill ? mark.fg : "none"}
+          stroke={mark.fg}
+          strokeWidth={p.fill ? 1 : 2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          transform="translate(-2 -2) scale(0.9)"
+        />
+      ))}
+      <circle cx="18" cy="18" r="6" fill={mark.fg} stroke={mark.bg} strokeWidth={1} />
+      <text
+        x="18"
+        y="18"
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={index.length > 1 ? 6 : 8}
+        fontWeight={700}
+        fill={mark.bg}
+      >
+        {index}
+      </text>
+    </svg>
+  );
 }
 
 /** The generated mark of an agent with no picture of its own. */
@@ -215,8 +262,17 @@ export function LineTag({
   if (isLaneId(m.lane))
     return <LaneTag lane={m.lane} agentName={agentName} inline={inline} mcp={mcp} />;
   if (m.via === "token") {
-    const n = name || m.tokenLane;
-    return n ? <NameTag name={n} inline={inline} mcp={mcp} /> : null;
+    // A lane's subagent shows as 「小克·子1」; its tag says whose it is (child-lane.ts).
+    const child = childLane(m.tokenLane);
+    const n = name || (m.tokenLane ? childShownName(m.tokenLane) : undefined);
+    return n ? (
+      <NameTag
+        name={n}
+        inline={inline}
+        mcp={mcp}
+        {...(child ? { parent: parentShownName(child) } : {})}
+      />
+    ) : null;
   }
   return null;
 }
@@ -238,11 +294,14 @@ export function NameTag({
   lane,
   inline = false,
   mcp = false,
+  parent,
 }: {
   name: string;
   lane?: string;
   inline?: boolean;
   mcp?: boolean;
+  /** A subagent's lane (its parent's shown name): the tag's tooltip names it. */
+  parent?: string;
 }) {
   // At the head of a run the name leads the text, "小克：…" (owner, 2026-11-14:
   // "把消息的内容接在你们的名字后面，用冒号分隔"); a full-width colon after a CJK name.
@@ -252,6 +311,7 @@ export function NameTag({
       aria-hidden
       data-testid="debug-chat-lane"
       data-lane={lane ?? name}
+      {...(parent ? { "data-parent": parent, title: parent } : {})}
       className={
         inline
           ? "me-1 fs-10 font-semibold leading-tight text-gray-500"

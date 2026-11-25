@@ -311,6 +311,70 @@ async function cmdStatus(c) {
   );
 }
 
+// ── Child tokens: a lane's own subagents (lib/api-token-child.ts) ─────────
+
+const CHILD_PATH = "/api/token/child";
+
+/** "2h", "90m" or "90" (minutes) → minutes; anything else is a usage error. */
+export function ttlMinutes(raw) {
+  const m = /^(\d{1,5})\s*(m|min|h)?$/i.exec(String(raw).trim());
+  if (!m) throw usage("--ttl takes minutes or hours: 90m, 2h", "lianki token child create --name 子1 --ttl 2h");
+  const n = Number(m[1]) * (m[2]?.toLowerCase() === "h" ? 60 : 1);
+  if (!Number.isSafeInteger(n) || n <= 0) throw usage("--ttl must be positive");
+  return n;
+}
+
+async function cmdTokenChildCreate(c) {
+  const token = await needToken(c);
+  const name = String(c.argv.name ?? "").trim();
+  if (!name) throw usage("create needs --name", "lianki token child create --name 子1");
+  const scopes =
+    c.argv.scopes === undefined
+      ? undefined
+      : String(c.argv.scopes)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+  const ttl = c.argv.ttl === undefined ? undefined : ttlMinutes(c.argv.ttl);
+  const { data } = await call(c, token, {
+    method: "POST",
+    path: CHILD_PATH,
+    body: { name, ...(scopes ? { scopes } : {}), ...(ttl ? { ttlMinutes: ttl } : {}) },
+  });
+  // The secret alone on stdout (CHILD=$(lianki token child create …)); what it is on stderr.
+  if (!c.json) c.deps.err(`${data.name}  [${(data.scopes ?? []).join(" ")}]  until ${data.expiresAt}`);
+  emit(c, "token child create", data, (d) => d.token);
+}
+
+async function cmdTokenChildList(c) {
+  const token = await needToken(c);
+  const { data } = await call(c, token, { method: "GET", path: CHILD_PATH });
+  emit(c, "token child list", data, (d) =>
+    (d.children ?? []).length
+      ? d.children
+          .map((x) => `${x.id.slice(0, 16)}  ${x.name}  [${x.scopes.join(" ")}]  until ${x.expiresAt}`)
+          .join("\n")
+      : "no child tokens",
+  );
+}
+
+async function cmdTokenChildRevoke(c) {
+  const token = await needToken(c);
+  const id = String(c.argv.id ?? "").trim();
+  let full = id;
+  if (!/^[0-9a-f]{64}$/.test(id)) {
+    // A prefix (as `list` prints it): resolved against this token's own children only.
+    if (!/^[0-9a-f]{6,63}$/.test(id)) throw usage("revoke takes a child's id (or the start of it, from list)");
+    const { data } = await call(c, token, { method: "GET", path: CHILD_PATH });
+    const hits = (data.children ?? []).filter((x) => x.id.startsWith(id));
+    if (hits.length !== 1)
+      throw new CliError("not_found", EXIT.notFound, hits.length ? "that id is ambiguous" : "no such child token");
+    full = hits[0].id;
+  }
+  await call(c, token, { method: "DELETE", path: CHILD_PATH, body: { id: full } });
+  emit(c, "token child revoke", { id: full, revoked: true }, () => "revoked");
+}
+
 async function cmdLogout(c) {
   const { argv, deps, site } = c;
   const cfg = deps.config.read();
@@ -982,6 +1046,36 @@ function build(args, deps, box) {
           .command("status", "Who am I signed in as?", (y) => examples(y, [["lianki auth status --json", "check before a script runs"]]), act(cmdStatus))
           .command("logout", "Revoke the token on the server and forget it", (y) => examples(y, [["lianki auth logout", ""]]), act(cmdLogout)),
         [["lianki auth login", "sign in through the browser"]],
+      ),
+    )
+    .command("token", "This token's own child tokens (for its subagents)", (y) =>
+      sub(y).command("child", "Child tokens: create, list, revoke", (y) =>
+        examples(
+          sub(y)
+            .usage("lianki token child <create|list|revoke>")
+            .command(
+              "create",
+              "Mint a short-lived child token for one of your subagents; prints the secret once",
+              (y) =>
+                y
+                  .option("name", { type: "string", demandOption: true, describe: "The subagent's name (up to 12 characters); shown as <lane>·<name>" })
+                  .option("scopes", { type: "string", describe: "Comma-separated permissions, a subset of this token's (default chat:read,chat:write)" })
+                  .option("ttl", { type: "string", describe: "How long it lives: 90m, 2h (default from the site, never past this token's expiry)" })
+                  .epilogue("Needs the token:mint-child permission (the owner switches it on the token's row). The secret goes to stdout only; hand it to that subagent as LIANKI_TOKEN and never post it."),
+              act(cmdTokenChildCreate),
+            )
+            .command("list", "This token's live child tokens", (y) => y, act(cmdTokenChildList))
+            .command(
+              "revoke <id>",
+              "Revoke one child token (its id, or the start of it from list)",
+              (y) => y.positional("id", { type: "string", describe: "The child's id" }),
+              act(cmdTokenChildRevoke),
+            ),
+          [
+            ['LIANKI_TOKEN=$(lianki token child create --name 子1 --ttl 2h) lianki chat say "hi"', "the subagent posts as 「小克·子1」"],
+            ["lianki token child list", "live children"],
+          ],
+        ),
       ),
     )
     .command(

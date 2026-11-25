@@ -94,7 +94,7 @@ export async function call(c, token, { method = "GET", path, query, body, header
       r.status === 403 &&
       detail === "scope" &&
       typeof data?.needScope === "string" &&
-      /^[a-z]+(?::[a-z]+)?$/.test(data.needScope) &&
+      /^[a-z]+(?::[a-z]+(?:-[a-z]+)*)?$/.test(data.needScope) &&
       data.needScope.length <= 64
     ) {
       try {

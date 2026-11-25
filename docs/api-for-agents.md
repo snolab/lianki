@@ -167,6 +167,32 @@ an MCP client show an "MCP" badge. The account's owner can rename the agent,
 change its picture or remove it (revoking its token) from the chat's
 participant list.
 
+### A subagent posting under its own name (child tokens)
+
+An agent whose token holds `token:mint-child` (a site owner's token only,
+switched on by him on the token's row; flag `tokens.child`) gives each of its
+own subagents a short-lived token instead of sharing its own, so each posts in
+the chat under its own name ([secrets-and-auth.md](secrets-and-auth.md),
+"Child tokens"):
+
+```http
+POST /api/token/child
+Authorization: Bearer <the agent's own token>
+Content-Type: application/json
+
+{"name": "子1", "scopes": ["chat:read", "chat:write"], "ttlMinutes": 120}
+→ {"token": "lk_…", "id": "…", "name": "claude·子1", "scopes": [...], "expiresAt": "…", "parent": "<tag>"}
+```
+
+`GET` lists the live children, `DELETE {"id"}` revokes one; CLI `lianki token
+child create | list | revoke`. The child's permissions are a subset of the
+parent's and never `token:mint-child`; it never outlives the parent, and
+revoking the parent ends every child at once. Its lines read 「小克·子1」 (the
+parent lane's name, then the subagent's), with the lane's mark and a small
+index. The name is display only and grants nothing. The secret is returned
+once: hand it to that subagent alone and never post it. The AI-assistant
+instructions list this permission when the token holds it (`scopeMintChild`).
+
 ### The server side of `lianki mcp`
 
 - **Tools by permission.** At start the server asks `GET /api/cli-login/token`

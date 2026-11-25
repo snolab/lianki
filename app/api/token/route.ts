@@ -3,6 +3,7 @@ import { tokenApi } from "@/lib/api-token-api";
 import { isDevUser, type BoxDb } from "@/lib/box-oauth/store";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
+import { flagOn } from "@/lib/flags-store";
 import { notifyTokensRevoked } from "@/lib/push-chat-tokens";
 import type { AuditDb } from "@/lib/security/audit-log";
 
@@ -24,6 +25,8 @@ async function handle(req: Request) {
     // The `eval` permission (lib/api-tokens.ts OWNER_SCOPES): the `dev` grant, read now.
     siteOwner: (userId) => isDevUser(getD1() as unknown as BoxDb, userId).catch(() => false),
     revoked: (ids) => notifyTokensRevoked({ ids }),
+    // Child tokens (lib/api-token-child.ts): the row switch shows only with the flag on.
+    childTokens: () => flagOn("tokens.child"),
   });
 }
 

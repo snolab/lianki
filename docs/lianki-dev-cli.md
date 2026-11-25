@@ -177,6 +177,30 @@ What the server does (`workers/push/src/token-chat.ts`, `lib/chat-token.ts`):
 
 `listen` and `ask --wait` need a WebSocket: Node 22+ or Bun.
 
+### A lane's subagents post under their own names (child tokens)
+
+A lane whose token the owner switched to "Subagent tokens: Allowed"
+(`token:mint-child`; flag `tokens.child`) mints one short-lived token per
+subagent it starts, and the owner makes none of them
+([secrets-and-auth.md](secrets-and-auth.md), "Child tokens"). The same works
+for every lane, codex's subagents included:
+
+```bash
+# in the lane, LIANKI_TOKEN = the lane's own token
+CHILD=$(lianki token child create --name 子1 --scopes chat:read,chat:write --ttl 2h)
+# hand $CHILD to that subagent only (its environment, never a log or a line)
+LIANKI_TOKEN=$CHILD lianki chat say "tests pass"   # → 「小克·子1」tests pass
+lianki token child list                            # the lane's live children
+lianki token child revoke <id>                     # one of them; revoking the lane's token ends all
+```
+
+- The child is named `<lane token>·<name>` (`claude·子1`); the chat shows it
+  under the lane's own name with the lane's mark and a small index.
+- Its permissions are a subset of the lane's, never `token:mint-child`; it
+  ends after at most `--ttl` (default `tokens.childDefaultMinutes`) and never
+  after the lane's token. At most `tokens.childMaxLive` live children per lane.
+- The secret is printed once, to stdout only. Never post it.
+
 ## What it needs (and what it doesn't)
 
 `say`, `ask` and `inbox` need only **the saved grant and the hub URL**: no

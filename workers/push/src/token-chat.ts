@@ -76,6 +76,7 @@ import {
   threadFor,
 } from "../../../lib/dev-eval";
 import { laneOf, laneSpec, parseLineVoice } from "../../../packages/debug-chat/src/voices";
+import { childShownName } from "../../../packages/debug-chat/src/child-lane";
 import { type LaneRegistry, MUTED_REASON } from "./lane-registry";
 import {
   type LaneScope,
@@ -252,7 +253,8 @@ type Verified = Extract<ChatTokenAnswer, { ok: true }>;
 export function laneShownName(lane: string, ownerName?: string): string {
   if (ownerName) return ownerName;
   const known = laneOf({ text: `【${lane}】` }).lane;
-  return (known && laneSpec(known).name) || lane;
+  // A lane's subagent (child token "claude·子1"): 「小克·子1」 (child-lane.ts).
+  return (known && laneSpec(known).name) || childShownName(lane);
 }
 const STATUS: Record<string, number> = {
   "bad request": 400,
@@ -325,7 +327,8 @@ export class TokenChat {
     return {
       id: crypto.randomUUID().slice(0, 8),
       from: "agent" as const,
-      label: lane,
+      // A child token's lines: its own name under its parent lane's, 「小克·子1」.
+      label: childShownName(lane),
       text,
       at: this.host.now(),
       thread,

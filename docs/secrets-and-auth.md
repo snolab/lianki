@@ -565,6 +565,51 @@ revoked or expires. He accepted that risk.
   chat-only token (refused for eval), `eval.ts` uses the saved grant and the
   pairing flow exactly as before.
 
+### Child tokens (`token:mint-child`): a lane's own subagents
+
+Owner, 2026-11-25: "你应该能够用你的 agent token 建你的子 agent 的 token". A
+lane's token mints short-lived tokens for the subagents it starts, so each one
+posts in the chat under its own name (「小克·子1」) and the owner never makes a
+token per subagent. Behind the flag **`tokens.child`** (default off, an auth
+change: it waits for his tap card). `lib/api-token-child.ts`,
+`db/migrations/0085_api_token_child.sql`.
+
+- **Granting.** `token:mint-child` is in `OWNER_SCOPES`: only an account
+  holding `dev` may give it, and never on the create form. The owner switches it
+  on one token's row (Settings → API tokens, "Subagent tokens: Off / Allowed",
+  `POST`/`DELETE /api/token/scopes`). The switch shows only with the flag on.
+  Nothing grants it automatically.
+- **Minting.** `POST /api/token/child` with the parent as Bearer,
+  `{name, scopes?, ttlMinutes?}` → `{token, id, name, scopes, expiresAt,
+  parent}`; `GET` lists the live children, `DELETE {id}` revokes one. CLI:
+  `lianki token child create --name 子1 --scopes chat:read,chat:write --ttl 2h`
+  (the secret alone on stdout), `list`, `revoke <id>`. The parent must be live,
+  made by hand (not an OAuth app's), not itself a child, its account `dev` now.
+- **Limits.** The child's permissions are a subset of the parent's and never
+  `token:mint-child` (no grandchildren). It ends at most
+  `tokens.childMaxMinutes` from now and never after the parent
+  (`tokens.childDefaultMinutes`, 4 h, when none is asked for). At most
+  `tokens.childMaxLive` (8) live children per parent, live names unique. All
+  three are /dev/config keys.
+- **Name.** `<parent name>·<sub>`: the sub is at most 12 characters, one line,
+  no 【】 or `·`, not a lane's name or alias (voices.ts) and not one that reads
+  as the owner (owner, admin, system, 站长 …). The hub labels its lines with
+  that name and shows it under the parent lane's
+  (`packages/debug-chat/src/child-lane.ts`): 「小克·子1」, the parent lane's
+  mark with a small index, the tag's tooltip naming the parent. Display only:
+  `lane` is never set on its lines, so its asks and answers stay its own.
+- **One check path.** `checkToken` (and `describeToken`) join the parent on
+  every use. A child is "unknown" when its parent is gone, expired, no longer
+  holds `token:mint-child`, or the flag is off; its permissions are always
+  intersected with the parent's. Revoking the parent (the page, `lianki auth
+  logout`) also deletes its children and closes their sockets.
+- **Seen and revoked by the owner.** Children are listed indented under their
+  parent in Settings → API tokens and /my/mcp, each with its own Revoke.
+- **Audit.** `api-token.child-mint` (subject the child's tag; detail its name,
+  permissions, expiry and the parent's tag) and `api-token.child-revoke` (by
+  the parent, by the owner, or with the parent). Never the secret: it is
+  returned once, to the caller, and never logged or posted.
+
 ## CLI login (`lianki auth`, API tokens)
 
 `lianki auth login` (the npm package `lianki`, `packages/lianki-cli`; run it
