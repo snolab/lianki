@@ -18,7 +18,10 @@ describe("text size", () => {
   it("steps up and down, clamped at both ends", () => {
     expect(stepScale(1, 1)).toBe(1.1);
     expect(stepScale(1, -1)).toBe(0.9);
-    expect(stepScale(1.5, 1)).toBe(1.5);
+    // Up to 2× (the owner asked for chat text twice as big, 2026-11-15).
+    expect(stepScale(1.5, 1)).toBe(1.75);
+    expect(stepScale(1.75, 1)).toBe(2);
+    expect(stepScale(2, 1)).toBe(2);
     expect(stepScale(0.85, -1)).toBe(0.85);
     // Off the steps (set on another device): to the next step that way.
     expect(stepScale(1.15, 1)).toBe(1.2);
@@ -31,7 +34,10 @@ describe("text size", () => {
 
   it("only scales in range are kept", () => {
     expect(asScale(1.2)).toBe(1.2);
-    expect(asScale(2)).toBeUndefined();
+    expect(asScale(2)).toBe(2);
+    expect(asScale(2.05)).toBeUndefined();
+    expect(checkPref("text-size.chat", 2)).toBe(2);
+    expect(checkPref("text-size.chat", 2.05)).toBeUndefined();
     expect(asScale(Number.NaN)).toBeUndefined();
     expect(asScale("1.2")).toBeUndefined();
   });

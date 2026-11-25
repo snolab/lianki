@@ -1062,6 +1062,14 @@ export function DebugEval({
           if (mode === "active" || mode === "passive" || mode === "ignored") mic?.wake?.(mode);
           return;
         }
+        if (msg.type === "prefs") {
+          // The account's settings changed from outside this page (an agent's
+          // lianki_settings_set): pull them now (lib/prefs/client.ts, docs/prefs-sync.md).
+          const sync = (globalThis as { __lkPrefSync?: { pull?: () => Promise<unknown> } })
+            .__lkPrefSync;
+          void sync?.pull?.();
+          return;
+        }
         if (msg.type === "ui") {
           // The agent changes the chat's view, shown as it happens (ui-cue.ts).
           dispatchChatUi(window, msg);

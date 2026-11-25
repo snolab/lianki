@@ -107,7 +107,12 @@ import {
 } from "../../../lib/smart-refresh";
 import { explicitVersionNews } from "../../../lib/version-publish";
 import { SPEND_ALERT_PATH } from "../../../lib/payments/spend-alert-config";
-import { CHAT_BACKFILL_PATH, EVAL_TOKEN_HEADER, IDENTITY_HEADERS } from "./debug";
+import {
+  CHAT_BACKFILL_PATH,
+  EVAL_TOKEN_HEADER,
+  IDENTITY_HEADERS,
+  PREFS_CHANGED_PATH,
+} from "./debug";
 import { CHAT_PATH, REVOKED_PATH } from "./token-chat";
 import { AVATAR_PATH } from "../../../packages/debug-chat/src/svg-avatar";
 import {
@@ -518,6 +523,7 @@ export default {
         url.pathname === "/internal/signed-out" ||
         url.pathname === REVOKED_PATH ||
         url.pathname === CHAT_BACKFILL_PATH ||
+        url.pathname === PREFS_CHANGED_PATH ||
         url.pathname === SPEND_ALERT_PATH) &&
       isInternal(url)
     )
