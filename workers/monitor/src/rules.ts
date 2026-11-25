@@ -26,6 +26,7 @@ export function pathGroup(url: string): string {
   } catch {
     return "?";
   }
+  if ((p.startsWith("/mcp/") && p !== "/mcp/") || p.startsWith("/mcp%")) return "/mcp/:token";
   return (
     p
       .split("/")

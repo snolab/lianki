@@ -17,6 +17,8 @@
  * example renderer (MarkedExample) reads for the one example it shows.
  */
 
+import { dropForeignParens, shownOffset } from "@/lib/words/foreign-parens";
+
 /** A stretch of the text, [start, end) in UTF-16 units. */
 export type Span = readonly [number, number];
 
@@ -220,8 +222,15 @@ export function spokenIn(s: Spoken, text: string, owner?: string): Span | null {
   if (!s) return null;
   if (s.owner !== undefined && s.owner !== owner) return null;
   const at = text.indexOf(s.text);
-  if (at < 0 || text.trim() !== s.text.trim()) return null;
-  return [s.span[0] + at, s.span[1] + at];
+  if (at >= 0 && text.trim() === s.text.trim()) return [s.span[0] + at, s.span[1] + at];
+  // Read without its bracketed translation (lib/words/foreign-parens.ts): the
+  // spoken offsets mapped back onto the text as shown.
+  const { text: spoken, cut } = dropForeignParens(text, s.lang);
+  if (!cut.length || spoken.trim() !== s.text.trim()) return null;
+  const off = spoken.indexOf(s.text);
+  if (off < 0) return null;
+  const [a, b] = [s.span[0] + off, s.span[1] + off];
+  return [shownOffset(a, cut), b > a ? shownOffset(b - 1, cut) + 1 : shownOffset(a, cut)];
 }
 
 // ── Followers ──────────────────────────────────────────────────────────────

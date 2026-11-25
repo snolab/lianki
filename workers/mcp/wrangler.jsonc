@@ -10,12 +10,18 @@
   "main": "src/index.ts",
   "workers_dev": false,
   "compatibility_date": "2026-10-01",
-  // `*`: also /mcp/ and /mcp?…; any other path under it goes on to MAIN unchanged.
+  // `*`: canonical endpoint and /mcp/<token>; unrelated /mcp-* pages go to MAIN.
   "routes": [{ "pattern": "lianki.com/mcp*", "zone_name": "lianki.com" }],
   "services": [
     { "binding": "MAIN", "service": "lianki" },
     { "binding": "PUSH", "service": "lianki-push" },
   ],
-  "tail_consumers": [{ "service": "lianki-monitor" }],
-  "observability": { "enabled": true },
+  // Invocation events and tail consumers include the raw request URL. Do not
+  // persist or forward credential-bearing paths, including attached log metadata.
+  "tail_consumers": [],
+  "observability": {
+    "enabled": false,
+    "logs": { "enabled": false, "invocation_logs": false },
+    "traces": { "enabled": false },
+  },
 }

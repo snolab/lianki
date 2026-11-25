@@ -120,6 +120,14 @@ export const CONFIG = {
     audience: "public",
     description: "单词原音载入、定位或播放停滞时等待多久再回退到合成音（毫秒）。",
   }),
+  "words.speak.skipForeignParens": {
+    default: true as boolean,
+    schema: z.boolean(),
+    group: "words",
+    audience: "public",
+    description:
+      "读单词卡（单词、例句）时，括号 ( ) 或 （ ） 里主要是另一种文字的内容不念，比如英文例句后面括号里的中文翻译；屏幕上照常显示。同种文字的括号（如 (informal)）照念。关掉则整句照原样念。",
+  },
   "words.nativeAudioStartMs": int({
     default: 1000,
     min: 200,
