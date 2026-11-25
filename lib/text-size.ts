@@ -20,7 +20,7 @@
 import { createUiStore } from "@lianki/ui-state";
 
 /** The steps the controls offer. The schema accepts any value in range. */
-export const TEXT_STEPS = [0.85, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5] as const;
+export const TEXT_STEPS = [0.85, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2] as const;
 export { TEXT_MIN, TEXT_MAX } from "@/lib/text-size-boot";
 import { TEXT_MIN, TEXT_MAX } from "@/lib/text-size-boot";
 

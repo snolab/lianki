@@ -271,15 +271,16 @@ there are no tombstones.
 
 All of it is event-driven. Nothing polls (owner rule).
 
-| When                              | What                                                                                                |
-| --------------------------------- | --------------------------------------------------------------------------------------------------- |
-| first paint                       | the local copy (`lk:pref:<store>`), as today. Works offline; no flash, no wait                      |
-| page load, after hydration        | `GET /api/prefs?since=` (an empty answer when nothing changed), merged in                           |
-| sign-in (session appears)         | full `GET`, then the first-sync step (see 6)                                                        |
-| the tab becomes visible, `online` | `GET ?since=`: this is how another device's change arrives in phase 2                               |
-| a change                          | written locally at once, pushed 1 s after the last change (the sliders send one request, not fifty) |
-| `pagehide`                        | the outbox is flushed with `fetch(…, {keepalive: true})`                                            |
-| offline                           | the outbox waits in `lk:pref-sync` and is sent on `online`                                          |
+| When                              | What                                                                                                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| first paint                       | the local copy (`lk:pref:<store>`), as today. Works offline; no flash, no wait                                                                                                                                      |
+| page load, after hydration        | `GET /api/prefs?since=` (an empty answer when nothing changed), merged in                                                                                                                                           |
+| sign-in (session appears)         | full `GET`, then the first-sync step (see 6)                                                                                                                                                                        |
+| the tab becomes visible, `online` | `GET ?since=`: this is how another device's change arrives in phase 2                                                                                                                                               |
+| an outside write (token, bridge)  | `/api/prefs` PATCH by an agent (`lianki_settings_set`, `lianki settings set`) tells lianki-push (`/internal/prefs-changed`, user id only); the account's open pages get `{type: "prefs"}` and `GET ?since=` at once |
+| a change                          | written locally at once, pushed 1 s after the last change (the sliders send one request, not fifty)                                                                                                                 |
+| `pagehide`                        | the outbox is flushed with `fetch(…, {keepalive: true})`                                                                                                                                                            |
+| offline                           | the outbox waits in `lk:pref-sync` and is sent on `online`                                                                                                                                                          |
 
 **Other tabs on the same origin** follow through the `storage` event, as
 local stores already do. Only the tab that made the change pushes it: the

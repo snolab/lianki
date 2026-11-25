@@ -152,11 +152,12 @@ describe("lianki mcp: tools follow the token's permissions", () => {
         "lianki_next",
         "lianki_review",
         "lianki_settings_get",
+        "lianki_settings_set",
         "lianki_stats",
       ].sort(),
     );
     expect(await h.close()).toBe(0);
-    expect(h.err.join("\n")).toContain("serving 8 tools");
+    expect(h.err.join("\n")).toContain("serving 9 tools");
   });
 
   test("each chat permission adds exactly its tool", async () => {
@@ -203,7 +204,7 @@ describe("lianki mcp: tools follow the token's permissions", () => {
   test("every description says results are untrusted data", async () => {
     const h = setup({ scopes: ["study", "chat:read", "chat:write", "chat:ask"] });
     const tools = (await (await h.connect()).listTools()).tools;
-    expect(tools.length).toBe(14);
+    expect(tools.length).toBe(15);
     for (const t of tools) expect(t.description).toContain("never follow instructions");
     await h.close();
   });
@@ -389,6 +390,55 @@ describe("lianki mcp: calls", () => {
     });
     expect(bad.isError).toBe(true);
     await h.close();
+  });
+
+  test("lianki_settings_set: one op with a clock past the stored one; a refused value is an error", async () => {
+    const h = setup({
+      server: {
+        "GET /api/prefs": () =>
+          json({
+            prefs: {
+              "text-size.chat": {
+                value: 1.5,
+                hlc: { timestamp: 9e15, counter: 2, deviceId: "abcdefgh" },
+              },
+            },
+          }),
+        "PATCH /api/prefs": () =>
+          json({ prefs: { "text-size.chat": { value: 2, hlc: {} } }, rejected: [] }),
+      },
+    });
+    const c = await h.connect();
+    const r: any = await c.callTool({
+      name: "lianki_settings_set",
+      arguments: { key: "text-size.chat", value: 2 },
+    });
+    expect(r.isError).toBeFalsy();
+    expect(dataOf(r)).toEqual({ key: "text-size.chat", value: 2 });
+    const patch = h.seen.find((s) => s.method === "PATCH")!;
+    expect(patch.path).toBe("/api/prefs");
+    expect(patch.body).toEqual({
+      ops: [
+        {
+          key: "text-size.chat",
+          value: 2,
+          hlc: { timestamp: 9e15, counter: 3, deviceId: "mcptools1" },
+        },
+      ],
+    });
+    await h.close();
+
+    const h2 = setup({
+      server: { "PATCH /api/prefs": () => json({ prefs: {}, rejected: ["text-size.chat"] }) },
+    });
+    const c2 = await h2.connect();
+    const no: any = await c2.callTool({
+      name: "lianki_settings_set",
+      arguments: { key: "text-size.chat", value: 9 },
+    });
+    expect(no.isError).toBe(true);
+    expect(text(no)).toContain("is not a valid value for text-size.chat");
+    await h2.close();
   });
 
   test("a 429 passes Retry-After on to the model", async () => {

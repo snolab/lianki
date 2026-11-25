@@ -697,6 +697,12 @@ export const IDENTITY_HEADERS = {
 } as const;
 /** The main Worker tells the hub a session was deleted (sign-out), over its PUSH binding. */
 const SIGNED_OUT_PATH = "/internal/signed-out";
+/**
+ * The main Worker tells the hub an account's settings changed from outside its
+ * pages (an agent's `lianki_settings_set`, `lianki settings set`), over its PUSH
+ * binding: that account's open pages pull them (docs/prefs-sync.md).
+ */
+export const PREFS_CHANGED_PATH = "/internal/prefs-changed";
 /** The main Worker tells the hub a box lost box:chat, over its PUSH binding. */
 const BOX_CLOSED_PATH = "/internal/box-closed";
 /** A box chat socket closed because its box lost box:chat (hub-side, on purpose). */
@@ -2598,6 +2604,7 @@ export class DebugHub {
     this.work.touch();
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
+    if (url.pathname === PREFS_CHANGED_PATH) return this.prefsChangedApi(req);
     if (url.pathname === ETA_PATH) return this.etaApi(req);
     if (url.pathname === SPEND_ALERT_PATH) return this.spendApi(req);
     if (url.pathname === REVOKED_PATH) return this.tokensRevoked(req);
@@ -2839,6 +2846,33 @@ export class DebugHub {
     if (!isSessionTag(body.session))
       return Response.json({ error: "expected {session}" }, { status: 400 });
     return Response.json({ ok: true, stopped: await this.stopRenewal(body.session) });
+  }
+
+  /**
+   * POST /internal/prefs-changed {user}: every open page of that account (the
+   * owner's carry `user`, a friend's thread is their id) gets `{type: "prefs"}`
+   * and pulls its settings from /api/prefs with its own sign-in. The nudge
+   * carries no values. How many pages were told.
+   */
+  private async prefsChangedApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let body: { user?: unknown };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch {
+      return Response.json({ error: "bad json" }, { status: 400 });
+    }
+    if (!isUserId(body.user)) return Response.json({ error: "expected {user}" }, { status: 400 });
+    const user = body.user;
+    const t = this.now();
+    let delivered = 0;
+    for (const { ws, a } of this.sockets("page"))
+      if (a.user === user || a.thread === user) {
+        send(ws, { type: "prefs", at: t });
+        delivered++;
+      }
+    console.log(JSON.stringify({ msg: "debug.prefs-changed", delivered }));
+    return Response.json({ ok: true, delivered });
   }
 
   /**

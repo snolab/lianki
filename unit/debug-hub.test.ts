@@ -1087,6 +1087,12 @@ describe("lianki-push routing", () => {
     expect(await go("https://lianki.com/internal/signed-out", { method: "POST" })).toStartWith(
       "404",
     );
+    expect(await go("https://lianki-push/internal/prefs-changed", { method: "POST" })).toBe(
+      "200 debug",
+    );
+    expect(await go("https://lianki.com/internal/prefs-changed", { method: "POST" })).toStartWith(
+      "404",
+    );
     expect(await go("https://lianki.com/api/version/stream", {})).toContain("lianki-push");
     expect(await go("https://lianki.com/elsewhere", {})).toStartWith("404");
   });
@@ -1097,6 +1103,35 @@ describe("lianki-push routing", () => {
     });
     expect(await debugIdentity(req, { fetch: () => Promise.reject(new Error("down")) })).toBeNull();
     expect(await debugIdentity(req, undefined)).toBeNull();
+  });
+});
+
+describe("DebugHub prefs-changed", () => {
+  it("nudges that account's pages only, with no values", async () => {
+    const s = setup();
+    const owner = s.page();
+    await owner.ready;
+    // The owner's page carries his user id with its session (as at a real connect).
+    owner.serializeAttachment({ ...(owner.deserializeAttachment() as object), user: "u1" });
+    const f1 = await s.friend("f1", "f1@x.com");
+    const f2 = await s.friend("f2", "f2@x.com");
+    const api = (body: unknown, method = "POST") =>
+      s.hub.fetch(
+        new Request("https://lianki-push/internal/prefs-changed", {
+          method,
+          body: typeof body === "string" ? body : JSON.stringify(body),
+        }),
+      );
+    expect((await api({ user: "a:b" })).status).toBe(400);
+    expect((await api("{")).status).toBe(400);
+    expect((await api(undefined, "GET")).status).toBe(405);
+    expect(await (await api({ user: "f1" })).json()).toEqual({ ok: true, delivered: 1 });
+    expect(f1.last("prefs")).toEqual({ type: "prefs", at: expect.any(Number) });
+    expect(f2.last("prefs")).toBeUndefined();
+    expect(owner.last("prefs")).toBeUndefined();
+    expect(await (await api({ user: "u1" })).json()).toEqual({ ok: true, delivered: 1 });
+    expect(owner.last("prefs")).toBeDefined();
+    expect(f2.last("prefs")).toBeUndefined();
   });
 });
 
