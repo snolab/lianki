@@ -37,6 +37,14 @@ test("SSR is neutral; mounted guide offers install/update or a safe external tri
     const status = () =>
       host.querySelector("[data-install-status]")?.getAttribute("data-install-status");
     expect(status()).toBe("missing");
+    expect(host.textContent).toContain(labels.notDetected);
+    expect(host.textContent).toContain("2.10.0");
+    expect(
+      host.querySelector("[data-required-version]")?.getAttribute("data-required-version"),
+    ).toBe("2.10.0");
+    expect(
+      host.querySelector("[data-detected-version]")?.getAttribute("data-detected-version"),
+    ).toBe("");
     expect(host.querySelector('[data-testid="pill-install-link"]')?.getAttribute("href")).toBe(
       "/lianki.user.js",
     );
