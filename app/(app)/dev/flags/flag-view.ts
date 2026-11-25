@@ -185,3 +185,21 @@ export function resolveFlagAnchor(hash: string): FlagKey | null {
   const renamed = Object.entries(FLAG_OLD_KEYS).find(([, old]) => old === key);
   return renamed ? (renamed[0] as FlagKey) : null;
 }
+
+/**
+ * The flags being saved now. Each switch shows its own save: only the row
+ * whose POST is in flight is pending; every other switch stays usable and
+ * keeps showing its state. No flag requires another flag to be on (`requires`
+ * checks are settings and migrations, lib/flag-prereqs.ts), so a save never
+ * changes another row's switch.
+ */
+export function startSaving(saving: ReadonlySet<FlagKey>, key: FlagKey): ReadonlySet<FlagKey> {
+  return saving.has(key) ? saving : new Set(saving).add(key);
+}
+
+export function doneSaving(saving: ReadonlySet<FlagKey>, key: FlagKey): ReadonlySet<FlagKey> {
+  if (!saving.has(key)) return saving;
+  const next = new Set(saving);
+  next.delete(key);
+  return next;
+}

@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.37
+// @version     2.24.38
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -54,7 +54,7 @@ import { dueWindow, isProvablyDeleted } from "@lianki/core/duePrune";
 import { activeTitleRules, cleanTitle } from "@lianki/core/titleClean";
 import { startGdocStream } from "./gdoc-stream";
 import { mirrorPartnerSwitch, startPartner } from "./partner";
-import { mirrorPillChatFlag, pillChat } from "./pill-chat";
+import { pillChat, watchPillChatFlag } from "./pill-chat";
 import { fillUs, friendlyError, userscriptStrings } from "./userscript-strings";
 
 /** The userscript's own strings in the browser's language (userscript-strings.ts). */
@@ -969,19 +969,20 @@ function main() {
   ) {
     // This browser's debug-mode switch is the partner's opt-in on other sites.
     mirrorPartnerSwitch(localStorage, GM_setValue);
-    // Li chat from the pill (docs/userscript-li-chat.md): this account's flag, kept for other sites.
-    void mirrorPillChatFlag({
+    // Li chat from the pill (docs/userscript-li-chat.md): this account's flag, kept for
+    // other sites; read again when the tab is back in view or /dev/flags changes it.
+    const unwatchPillChat = watchPillChatFlag({
       origin: ORIGIN,
       gmFetch,
       getValue: GM_getValue,
       setValue: GM_setValue,
-    }).catch(() => {});
+    });
     // This device's review filters, read on other sites (lib/review-filters.ts).
     const mirrorFilters = () => mirrorReviewFilters(localStorage, GM_setValue);
     mirrorFilters();
     window.addEventListener(REVIEW_FILTERS_EVENT, mirrorFilters);
     setTimeout(() => syncToSiteDB(), 500);
-    return () => {};
+    return unwatchPillChat;
   }
 
   const ac = new AbortController();

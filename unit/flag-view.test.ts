@@ -9,6 +9,7 @@ import { flagTime } from "@/app/(app)/dev/flags/flag-time";
 import {
   assignGroups,
   buildFlagView,
+  doneSaving,
   filtersActive,
   groupDomId,
   groupOfRow,
@@ -22,6 +23,7 @@ import {
   RECENT_DAYS,
   resolveFlagAnchor,
   SHIPPED_GROUP,
+  startSaving,
   type FlagViewInput,
 } from "@/app/(app)/dev/flags/flag-view";
 import { cleanFlagViewPrefs } from "@/app/(app)/dev/flags/flag-view-store";
@@ -303,5 +305,46 @@ describe("the row", () => {
   test("the payment confirmation is still there, on the toggle", () => {
     const src = readFileSync("app/(app)/dev/flags/FlagsAdmin.tsx", "utf8");
     expect(src).toContain('f.key.startsWith("payments.") && !window.confirm(');
+  });
+});
+
+describe("saving one flag leaves the others alone", () => {
+  const card = (key: FlagKey, saving: ReadonlySet<FlagKey>, enabled = false) =>
+    renderToString(
+      createElement(FlagCard, {
+        flag: row(key, { enabled }),
+        busy: saving.has(key),
+        onToggle() {},
+      }),
+    );
+
+  test("only the switch being saved is pending and disabled", () => {
+    const saving = startSaving(new Set(), "ext.pill-chat");
+    const mine = card("ext.pill-chat", saving);
+    expect(mine).toContain("data-pending");
+    expect(mine).toMatch(/role="switch"[^>]*disabled|disabled[^>]*role="switch"/);
+    for (const other of ["ext.pill-chat-users", "levels"] as FlagKey[]) {
+      const out = card(other, saving, other === "levels");
+      expect(out).not.toContain("data-pending");
+      expect(out).not.toMatch(/role="switch"[^>]*disabled=""|disabled=""[^>]*role="switch"/);
+      expect(out).toContain(`data-flag-state="${other === "levels" ? "on" : "off"}"`);
+    }
+  });
+
+  test("saves overlap and finish one by one", () => {
+    let s: ReadonlySet<FlagKey> = new Set();
+    s = startSaving(s, "ext.pill-chat");
+    s = startSaving(s, "levels");
+    s = doneSaving(s, "ext.pill-chat");
+    expect([...s]).toEqual(["levels"]);
+    expect(startSaving(s, "levels")).toBe(s);
+    expect(doneSaving(s, "ext.pill-chat")).toBe(s);
+    expect(doneSaving(s, "levels").size).toBe(0);
+  });
+
+  test("the page passes each row its own saving state, not a page-wide busy", () => {
+    const src = readFileSync("app/(app)/dev/flags/FlagsAdmin.tsx", "utf8");
+    expect(src).toContain("busy={saving.has(f.key)}");
+    expect(src).not.toContain("busy !== null");
   });
 });
