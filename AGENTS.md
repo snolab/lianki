@@ -35,9 +35,16 @@ released to `prod` once a day, docs/shipping.md "Daily release"). Repo: `snolab/
 - **Deploy locally, always.** Every lane and branch deploys `lianki` from the
   Mac with wrangler after local tests (docs/shipping.md, "Deploy locally");
   don't wait for CI's deploy. Then land the same commits by PR (`prod`, then
-  `main`) so the next deploy doesn't revert it. Before deploying, fetch and
-  build on the newest `origin/prod` so you never drop someone else's merged
-  change; check with `git merge-base --is-ancestor origin/prod HEAD`.
+  `main`) so the next deploy doesn't revert it. Before deploying, fetch
+  (`git fetch origin prod:refs/remotes/origin/prod`) and build on the newest
+  `origin/prod` **and** on the commit live now (`<html data-build>`), so you
+  never drop someone else's change; check both with `git merge-base
+  --is-ancestor`. One deploy at a time, the Full QA hold and the hard gates
+  (auth, secrets, production migrations need the owner's approval) still apply.
+- **Never say "can't".** Never tell the owner something can't be done. Even
+  when it truly can't be done as asked, give the most likely, closest
+  workable alternatives (2–4, recommended first, each with what it needs from
+  him) and let him choose.
 - Use owner `snolab` for every `gh` / `gh api` call. A wrong owner returns a
   plan-gated 403 that misleadingly reads as "branch protection is off".
 

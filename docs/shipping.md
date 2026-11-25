@@ -100,23 +100,72 @@ with wrangler after local tests, instead of waiting for CI to deploy. CI's
 Deploy Worker (below, "Deploy order") is the fallback. A hot fix is just the
 most common case; there is no hot-fix branch.
 
-1. **Start from the newest prod.** `git fetch origin prod`, put your commits
-   on top of `origin/prod`, and check
-   `git merge-base --is-ancestor origin/prod HEAD` (exit 0) right before the
-   deploy, so you never drop someone else's merged change.
-2. **Test locally** (`bun run typecheck`, the affected unit tests,
-   `bun scripts/gate/affected.ts plan` for what else the change reaches).
-3. **Deploy** the same steps CI runs, in its order:
+The hard gates still apply: a change that touches auth, secrets, or applies
+a production D1 migration needs the owner's explicit approval (tap card)
+first. Deploying locally is not that approval, and neither is the migration
+line below.
+
+1. **One deploy at a time.** Before starting, say so in the owner's thread
+   (`lianki-dev say --as <lane> "deploying <sha>"`) and wait if another lane
+   has announced a deploy that has not finished; say again when done.
+2. **Start from what is live and from the newest prod.** Fetch explicitly, so
+   the refs are not stale, and build on both:
 
    ```bash
+   git fetch origin prod:refs/remotes/origin/prod
+   git fetch origin            # every pushed branch, so the live commit resolves
+   live=$(curl -s https://lianki.com/en | grep -o 'data-build="[^"]*"' | cut -d'"' -f2)
+   git merge-base --is-ancestor origin/prod HEAD && echo prod-ok
+   git merge-base --is-ancestor "$(git rev-parse "$live")" HEAD && echo live-ok
+   ```
+
+   Both must print. `origin/prod` alone is not enough: another branch may be
+   live from a local deploy and not yet merged into prod, and deploying past
+   it would erase it. If `live-ok` fails, merge that commit into your branch
+   (or wait for its prod PR), then check again. If `$live` does not resolve
+   (`local-…`, or the commit was never pushed), ask the lane that deployed it
+   before going on.
+3. **Test locally** (`bun run typecheck`, the affected unit tests,
+   `bun scripts/gate/affected.ts plan` for what else the change reaches).
+4. **Check the Full QA hold**, as CI's `hold` job does: while Full QA on main
+   is red, nothing deploys unless the owner says override.
+
+   ```bash
+   GH_TOKEN=$(gh auth token) GITHUB_OUTPUT=/dev/stdout bun scripts/ci/full-qa.ts hold   # must print deploy=true
+   ```
+
+5. **Push the branch, then deploy** with the same steps and environment as
+   `deploy-worker.yml`, in its order. The build id must be the pushed commit,
+   so the next deployer can find what is live:
+
+   ```bash
+   git push -u origin HEAD
+   export LIANKI_BUILD_SHA=$(git rev-parse HEAD) CF_BUILD=1 DB_BACKEND=d1
+   for v in NEXT_PUBLIC_TURNSTILE_SITE_KEY NEXT_PUBLIC_LIANKI_LIVE_VIEW_ORIGINS \
+            NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE \
+            NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT; do
+     export "$v=$(gh variable get "$v" -R snolab/lianki 2>/dev/null)"
+   done
    bun install --frozen-lockfile
    bun scripts/build-partner-embed.ts
    bunx opennextjs-cloudflare build
-   bunx wrangler d1 migrations apply lianki --remote   # only if the change adds a migration
-   bunx wrangler deploy                                # lianki; the other Workers only if changed
+   bun scripts/build/route-fingerprints.ts --out .open-next/assets/_lk/route-fp.json
+   bun scripts/security/check-public-dir.ts .open-next/assets
+   bunx wrangler d1 migrations apply lianki --remote   # only with the owner's approval of the migration
+   bun scripts/ci/check-worker-exports.ts
+   bunx wrangler deploy -c workers/monitor/wrangler.jsonc   # if workers/monitor changed
+   bunx wrangler deploy                                     # lianki, always
+   bunx wrangler deploy -c workers/push/wrangler.jsonc      # if workers/push changed
+   bunx wrangler deploy -c workers/voice/wrangler.jsonc     # if workers/voice changed
+   bunx wrangler deploy -c workers/mcp/wrangler.jsonc       # if workers/mcp changed
    ```
 
-4. **Land it by PR**: a **PR straight to `prod`** with the same commits,
+   Stop at the first failing check. Keep the Worker order (below, "Deploy
+   order"): monitor, lianki, push, voice, mcp; a change that needs a
+   dependency Worker's new code is not live until that Worker is deployed
+   too. Then check `curl -s https://lianki.com/en | grep -o 'data-build="[^"]*"'`
+   shows your commit.
+6. **Land it by PR**: a **PR straight to `prod`** with the same commits,
    merged by a person, so CI runs on prod and Deploy Worker redeploys the
    same code; then to `main` (the next daily run also opens the back-merge PR
    before any release).
