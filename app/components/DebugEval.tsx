@@ -234,6 +234,7 @@ export function DebugEval({
   mergeReopenSec,
   playAudio = false,
   lineReplay = false,
+  messageWidgets = false,
   box = null,
   account = null,
   cacheLines = 0,
@@ -306,6 +307,8 @@ export function DebugEval({
    * a ▶ and may play by themselves (docs/li-sound-hub.md, "Playing audio from an agent").
    */
   playAudio?: boolean;
+  /** Flag `chat.message-widgets` (audience owner): a paired agent's widget blocks render. */
+  messageWidgets?: boolean;
   /**
    * Flags `chat.line-replay` + `voice.recordings` (audience owner): his own spoken
    * line's details offer "Play original audio" (docs/recordings.md, "Replay from the chat").
@@ -1808,6 +1811,7 @@ export function DebugEval({
             pttMaxCaptureMs={pttMaxCaptureMs}
             mergeReopenSec={mergeReopenSec}
             playAudio={playOn}
+            messageWidgets={messageWidgets}
             // His own recordings, behind the same gate as /my/recordings (the route checks it again).
             lineReplay={lineReplay && dev && owner && friend === null}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).

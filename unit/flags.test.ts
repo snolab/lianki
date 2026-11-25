@@ -78,6 +78,8 @@ describe("registry", () => {
       "stt.whisper-recheck",
       "stt.two-mic-merge",
       "chat.lane-events",
+      // Message widgets (data only), asked 2026-11-14 23:2x JST, audience owner.
+      "chat.message-widgets",
       // His spoken line's recording from its details, asked 2026-11-21 01:1x JST, audience owner.
       "chat.line-replay",
       "library.catalogue",

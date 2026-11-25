@@ -28,6 +28,7 @@ import { useUi } from "@lianki/ui-state";
 import { chatDock, chatFold, chatPrefs, chatUi } from "./ui-store";
 import { lineTier, richOf, spokenOf } from "./rich-text";
 import { RichBody, RichLine } from "./RichText";
+import type { WidgetHost } from "./MessageWidget";
 import {
   COMPACT_BLUR_MS,
   COMPACT_SCROLL_MS,
@@ -1030,6 +1031,12 @@ export type DebugChatProps = {
    */
   playAudio?: boolean;
   /**
+   * Flag `chat.message-widgets`: a paired agent's ```lianki-widget block
+   * (message-widget.ts) shows as buttons, a calculator, a slider or a table
+   * that fill his reply box. Off: the block shows as code.
+   */
+  messageWidgets?: boolean;
+  /**
    * Flags `chat.line-replay` + `voice.recordings` and `dev`: his own spoken
    * line's details offer "Play original audio" (LineReplay.tsx, line-replay.ts).
    */
@@ -1171,6 +1178,7 @@ export function DebugChat({
   onHistory,
   etaBar = false,
   playAudio = false,
+  messageWidgets = false,
   lineReplay = false,
   onEtaDue,
   etaSource,
@@ -5006,15 +5014,27 @@ export function DebugChat({
    * read aloud (an agent's, or his own read back: showsReading) in its
    * sentences, each coloured by how far the reading got.
    */
+  /** Message widgets put their text into his reply box (after what he has typed); he sends it. */
+  const widgetHost: WidgetHost | undefined = messageWidgets
+    ? {
+        onReply: (t) => {
+          const cur = uiStore.getState().draft;
+          setDraft(cur.trim() ? `${cur.trimEnd()} ${t}` : t);
+        },
+        labels: { use: ux.widgetUse, invalid: ux.widgetCalcInvalid, hint: ux.widgetReplyHint },
+      }
+    : undefined;
   const readText = (m: ChatMessage, text: ReactNode) => {
     if (typeof text !== "string") return text;
     const rich = richOf(text, lineTier(m, { embedded }));
     // An agent line, or his own read back in his cloned voice: in its sentences.
-    if (!showsReading(m, readbackOf)) return <RichBody rich={rich} onOpenPage={onOpenPage} />;
+    if (!showsReading(m, readbackOf))
+      return <RichBody rich={rich} onOpenPage={onOpenPage} widgets={widgetHost} />;
     return (
       <RichBody
         rich={rich}
         onOpenPage={onOpenPage}
+        widgets={widgetHost}
         read={{
           ranges: sentenceRanges(rich.spoken),
           wrap: (idx, key, children) => {

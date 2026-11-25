@@ -271,6 +271,15 @@ export const FLAGS = {
     default: false,
     audience: "owner",
   },
+  // Owner, 2026-11-14 23:2x JST: "消息里能带计算器/按钮等组件" — data only, no script.
+  "chat.message-widgets": {
+    description:
+      "消息里的小组件（packages/debug-chat/src/message-widget.ts）：你配对过的助手在你的线程里发 ```lianki-widget 代码块（JSON），聊天里就显示成按钮、计算器、滑块或表格。全是页面自己的组件，消息里的任何代码都不会运行；点一下只是把内容填进你的回复框，发不发由你。通道令牌发的消息和朋友的消息不显示组件（以后按车道申请）。关闭 = 这些代码块照原样显示为代码。",
+    default: true,
+    // With the other agent switches (the groups stay few, flag-view.ts).
+    group: "ai",
+    audience: "owner",
+  },
   "chat.play-audio": {
     description:
       "助手在你手机上播放音频（docs/li-sound-hub.md「Playing audio from an agent」）：助手用 say --play <https 地址 | file:我的文件> 发一条带 ▶ 的消息，可以是音频文件，也可以是直播流（HLS / Icecast）。只在手机页面、页面在前台、已经点过一下（声音已解锁）、麦克风没开时自动播放；否则 ▶ 等你点，并说明原因。Mac 上永远不自动播放。Li 说话时它暂停，等 Li 说完再继续；不改任何音量。服务器从不去抓那个地址。通道令牌要有「chat:play」权限，每条都记进安全日志（谁、哪个网站、什么时候），限速和禁止的网站在 /dev/config（chat.play.*）。关闭（默认）= 不显示 ▶，带音频的消息被拒绝。",

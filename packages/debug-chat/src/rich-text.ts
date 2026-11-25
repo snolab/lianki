@@ -23,6 +23,7 @@
  */
 import { Marked } from "marked";
 import { linkAtStart, parseLinks, safeHref, safeImageSrc } from "./chat-links";
+import { WIDGET_LANG, parseWidget } from "./message-widget";
 
 export type RichTier = "html" | "markdown";
 
@@ -212,8 +213,22 @@ function walkElement(el: Element, tier: RichTier, ctx: Ctx): RichNode[] {
     return href ? linkNodes(href, label) : label;
   }
   if (raw === "code") return [{ tag: "code", children: inner("code", { literal: true }) }];
-  if (raw === "pre")
-    return [{ tag: "pre", silent: true, children: inner("pre", { literal: true, pre: true }) }];
+  if (raw === "pre") {
+    const children = inner("pre", { literal: true, pre: true });
+    // A message widget (message-widget.ts): its spec rides on the block, which
+    // stays the code it is wherever widgets are not shown. The html tier only.
+    const code = el.firstElementChild;
+    if (
+      tier === "html" &&
+      code?.tagName.toLowerCase() === "code" &&
+      code.classList.contains(`language-${WIDGET_LANG}`)
+    ) {
+      const spec = textOf(children);
+      if (parseWidget(spec))
+        return [{ tag: "pre", silent: true, attrs: { "data-widget": spec }, children }];
+    }
+    return [{ tag: "pre", silent: true, children }];
+  }
   const attrs: Record<string, string> = {};
   if (raw === "td" || raw === "th") {
     Object.assign(attrs, numberAttr(el, "colspan", MAX_SPAN), numberAttr(el, "rowspan", MAX_SPAN));
