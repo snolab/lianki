@@ -4538,7 +4538,10 @@ export function Study({
       else if (e.code === "Escape") undo(true);
       else if (e.key === "?") setHelp((h) => !h);
       else if (e.code === "KeyV") speech.toggle();
-      else if (e.code === "KeyE") setShowAll((v) => !v);
+      else if (e.code === "KeyR") {
+        const it = queue[currentRow()];
+        if (it) speech.once(partsOf(it), true);
+      } else if (e.code === "KeyE") setShowAll((v) => !v);
       else if (e.code === "KeyG") {
         // Back, once the list is done (the way back has the focus by then).
         if (loading || loadError || !listDone(listNow())) return;
