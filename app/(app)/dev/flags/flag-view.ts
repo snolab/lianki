@@ -11,7 +11,7 @@ import {
   type FlagDef,
   type FlagKey,
 } from "@/lib/flags";
-import type { FlagRow } from "@/lib/flags-store";
+import type { FlagLogEntry, FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
 import { flagKeyFromHash } from "./flag-anchor";
 import { flagTime } from "./flag-time";
@@ -202,4 +202,46 @@ export function doneSaving(saving: ReadonlySet<FlagKey>, key: FlagKey): Readonly
   const next = new Set(saving);
   next.delete(key);
   return next;
+}
+
+/** What /dev/flags holds from GET/POST /api/dev/flags. */
+export type FlagsState = {
+  flags: FlagRow[];
+  /** The prerequisites each flag fails now (reason keys and texts only). */
+  prereqs?: Partial<Record<FlagKey, PrereqFailure[]>>;
+  log: FlagLogEntry[];
+  cacheSeconds: number;
+};
+
+/** The switch shows the new state while its save is in flight; only that row changes. */
+export function setRowEnabled(state: FlagsState, key: FlagKey, enabled: boolean): FlagsState {
+  return {
+    ...state,
+    flags: state.flags.map((f) => (f.key === key ? { ...f, enabled } : f)),
+  };
+}
+
+/**
+ * A save's answer, applied for the key it saved only. Saves overlap, and
+ * their answers can come back in any order: the whole map in an older
+ * answer would put back another row's state from before that row's own save
+ * (A's answer, sent before B was saved, turning B off again). So only this
+ * key's row and prerequisites are taken; the log is the union of both,
+ * newest first (one entry more per save while the page is open); the cache note is the answer's.
+ */
+export function applySaved(state: FlagsState, answer: FlagsState, key: FlagKey): FlagsState {
+  const row = answer.flags.find((f) => f.key === key);
+  const prereqs = { ...state.prereqs };
+  if (answer.prereqs?.[key]) prereqs[key] = answer.prereqs[key];
+  else delete prereqs[key];
+  const id = (e: FlagLogEntry) => `${e.at}\u0000${e.key}\u0000${e.enabled}\u0000${e.by}`;
+  const log = [...new Map([...state.log, ...answer.log].map((e) => [id(e), e])).values()].sort(
+    (a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0),
+  );
+  return {
+    flags: row ? state.flags.map((f) => (f.key === key ? row : f)) : state.flags,
+    prereqs,
+    log,
+    cacheSeconds: answer.cacheSeconds ?? state.cacheSeconds,
+  };
 }

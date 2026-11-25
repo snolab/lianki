@@ -3,6 +3,7 @@ import apiTokens from "@/app/components/api-tokens.content";
 import sealSwitch from "@/app/components/seal-switch.content";
 import preferredLangs from "@/app/components/preferred-langs.content";
 import originalAudio from "@/app/(app)/words/original-audio-controls.content";
+import flagToast from "@/app/(app)/dev/flags/flag-toast.content";
 
 /**
  * `useIntlayer` for markup rendered in the unit suites, where no intlayer
@@ -15,6 +16,7 @@ const DICTS: Record<string, { content: Record<string, Leaf> }> = {
   "seal-switch": sealSwitch as never,
   "preferred-langs": preferredLangs as never,
   "words-original-audio-controls": originalAudio as never,
+  "dev-flag-toast": flagToast as never,
 };
 
 export function mockIntlayer(locale = "zh") {
