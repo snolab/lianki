@@ -44,13 +44,16 @@ Use one of these, the most real one you can:
 
 - **Real UI, headless:** a QA script against `https://lianki.com` with a QA or
   test account where one exists, always through `scripts/qa/silent.mjs`.
-- **His Chrome, owner account:** `rech --profile snomiao@gmail.com`. He allows
-  testing with his account: short, clearly labelled test lines, and "Allow
-  once" on trust prompts. Never "always"; never change flags, settings or
-  tokens; never approve auth, secret or delete cards for him.
-- **Normal-user profile:** `rech --profile takuyokutou@gmail.com`, for checking
-  what an ordinary user sees, including negative checks that owner-only
-  features stay hidden.
+- **His Chrome, owner account:** `rech --profile <owner-profile>`, only
+  while he has granted account testing for the current task. Short, clearly
+  labelled test lines, and "Allow once" on trust prompts. Never "always";
+  never change flags, settings or tokens; never approve auth, secret or
+  delete cards for him.
+- **Normal-user profile:** `rech --profile <normal-user-profile>`, for
+  checking what an ordinary user sees, including negative checks that
+  owner-only features stay hidden.
+- The real profile names live only in `~/.config/lianki/test-profiles.json`
+  (keys `owner` and `normalUser`), a local untracked file, never in Git.
 - **Real API:** your lane's own token against the live endpoint.
 
 Capture evidence: a screenshot path, a log excerpt (`wrangler tail lianki`),
