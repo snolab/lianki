@@ -369,7 +369,10 @@ describe("the start and end cues on VAD events", () => {
     await settle();
     expect(r.notes).toEqual([]);
     expect(r.cues.guard()).toBe(false);
-    expect(r.uploads).toEqual([]);
+    // Transcribed only for the short-answer check (short-answer.ts): "hello there" is
+    // none, so nothing lands, and no cue played for it either way.
+    expect(r.uploads).toEqual([1600]);
+    expect(r.texts).toEqual([]);
   });
 
   it("noise the VAD starts on but scores low confirms nothing", async () => {

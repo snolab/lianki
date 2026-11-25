@@ -216,6 +216,16 @@ export type SttEvidence = {
   /** The loudest 32 ms frame's RMS, full scale 1. */
   frameRms?: number;
   signals?: SttSignals;
+  /**
+   * A short answer in its context (short-answer.ts keepShortAnswer): the
+   * minimum-speech and route-VAD gates step down to `answerMinSpeechMs`, since
+   * one syllable holds fewer frames than they ask for. The other gates stand.
+   */
+  answer?: boolean;
+  /** The VAD called it a misfire (too little speech) and the mic kept it for this check. */
+  short?: boolean;
+  /** The least speech for an answer (short-answer.ts minSpeechMs). */
+  answerMinSpeechMs?: number;
 };
 
 /** Why a line was dropped. No text: this is what is logged. */
@@ -226,7 +236,9 @@ export type SttDropReason =
   | "stock-credit"
   | "stock-courtesy"
   /** A decoding loop with too little left once cut (stt-repeat.ts). */
-  | "repetition";
+  | "repetition"
+  /** Under the VAD's minimum speech, and no short answer (short-answer.ts). */
+  | "short-speech";
 
 /** The characters a `…` may stand for: "the Amara.org community" fits, a paragraph does not. */
 const SLOT = 40;
@@ -341,9 +353,11 @@ export function judgeFinal(
 ): SttDropReason | null {
   if (!normalizeTranscript(text)) return null;
   if (e.frameRms !== undefined && e.frameRms < g.minFrameRms) return "silent-audio";
-  if (e.prob !== undefined && e.speechMs < g.minSpeechMs) return "no-speech-frames";
+  const minSpeech = e.answer ? (e.answerMinSpeechMs ?? 0) : g.minSpeechMs;
+  if (e.prob !== undefined && e.speechMs < minSpeech) return "no-speech-frames";
+  if (e.short && !e.answer) return "short-speech";
   const s = e.signals;
-  if (s?.vadShare !== undefined && s.vadShare < g.minVadShare) return "route-vad";
+  if (!e.answer && s?.vadShare !== undefined && s.vadShare < g.minVadShare) return "route-vad";
   const kind = stockPhraseKind(text);
   if (!kind) return null;
   if (kind === "credit" && s?.decoder !== "ctc") return "stock-credit";

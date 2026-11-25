@@ -68,6 +68,7 @@ import {
 } from "@lianki/debug-chat/person-voice";
 import { VAD_MAX, VAD_MIN, VAD_THRESHOLDS } from "@lianki/debug-chat/adaptive";
 import { GUARD_MIN_SPEECH_MS, STT_GUARD } from "@lianki/debug-chat/stt-guard";
+import { SHORT_ANSWER, SHORT_ANSWER_RANGE } from "@lianki/debug-chat/short-answer";
 import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
 import { DEFAULT_MIME_PREFS, parseMimePrefs } from "./meetings/core";
 import {
@@ -600,6 +601,42 @@ export const CONFIG = {
     description:
       "静音过滤：一句话里 Silero 认为是说话的部分（每帧 32 毫秒）加起来不到这么多毫秒，识别出的文字就丢掉，不发到聊天里（详情里记为「no-speech-frames」）。默认 160（5 帧）；原来是 32。调高：背景噪声里一闪而过的声音更不容易变成文字；太高时很短的一个词（「好」「嗯」）也会被丢。",
   }),
+  // Short spoken answers (short-answer.ts; docs/voice-mode.md, "Short answers").
+  "stt.shortAnswerMaxChars": int({
+    default: SHORT_ANSWER.maxChars,
+    ...SHORT_ANSWER_RANGE.maxChars,
+    unit: "chars",
+    group: "voice",
+    audience: "public",
+    description:
+      "短回答：助手刚问了你一句（最后一条是助手的问句，或还没回答的选项卡）时，你说的一句话不超过这么多个字（「要」「好」「嗯」「不要」），就算太短、语音很少也照样发出去，不被噪声过滤丢掉。没有问题在等你回答时照旧过滤。默认 2；0 = 关闭（只剩 stt.shortAnswerWords 里的词）。",
+  }),
+  "stt.shortAnswerMaxWordChars": int({
+    default: SHORT_ANSWER.maxWordChars,
+    ...SHORT_ANSWER_RANGE.maxWordChars,
+    unit: "chars",
+    group: "voice",
+    audience: "public",
+    description:
+      "短回答：有问题在等你回答时，只有一个词、不超过这么多个字母的一句话（「yes」「nope」「okay」）也算短回答，照样发出去。默认 8；0 = 只看 stt.shortAnswerMaxChars。",
+  }),
+  "stt.shortAnswerMinSpeechMs": int({
+    default: SHORT_ANSWER.minSpeechMs,
+    ...SHORT_ANSWER_RANGE.minSpeechMs,
+    unit: "ms",
+    group: "voice",
+    audience: "public",
+    description:
+      "短回答最少要有多少毫秒的说话声（Silero 判为说话的帧，每帧 32 毫秒）。比语音检测的最短长度还短的一句话，有这么多就照样去识别，识别出来是短回答（见上两条和 stt.shortAnswerWords）才发出去，否则照旧丢掉（详情里记为「short-speech」）。默认 64（2 帧）。调高：更少的短噪声被送去识别；太高时一个字的回答又会丢。",
+  }),
+  "stt.shortAnswerWords": {
+    default: [...SHORT_ANSWER.words] as string[],
+    schema: z.array(z.string().min(1).max(40)).max(200),
+    group: "voice",
+    audience: "public",
+    description:
+      "永远算回答的词：你说的一句话（去掉前面叫的名字，如「小克 苹果」里的「小克」，不分大小写和标点）正好是其中一个，就算很短、没有问题在等你回答，也照样发出去。默认是助手给的选项代号（苹果 香蕉 橘子 葡萄 批准 驳回 搁置）和两个字以上的是/否（不要、好的、可以、yes、no、はい…）；单个字（要、好、是、嗯）噪声也常变成它们，所以只在有问题等你回答时才放行。任何语言都直接加在这里。JSON 字符串数组。",
+  },
   // A posted voice line takes the speech that follows (voice-merge.ts reopenVerdict;
   // docs/dev-debug-widget.md, "Continuous speech amends the last line", "Reopened").
   "stt.mergeReopenSec": int({
