@@ -26,7 +26,9 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: `${text(c, "consentTitle")} - Lianki`,
     robots: { index: false, follow: false },
-    referrer: "no-referrer",
+    // Not no-referrer: then the form's POST carries `Origin: null` and the
+    // consent route refuses it. same-origin still sends nothing to the app.
+    referrer: "same-origin",
   };
 }
 
@@ -62,7 +64,7 @@ export default async function ConnectAppPage({
   const { client, request, host, email, fields, action } = view;
   return (
     <main
-      className="mx-auto flex min-h-[60vh] w-full max-w-lg flex-col justify-center gap-5 p-5"
+      className="mx-auto flex min-h-[60vh] w-full max-w-lg flex-col justify-center gap-5 p-5 pb-32"
       data-testid="connect-app"
     >
       <h1 className="text-xl font-semibold">{text(c, "consentTitle")}</h1>

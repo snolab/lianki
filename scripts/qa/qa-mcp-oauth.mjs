@@ -166,13 +166,40 @@ try {
     );
     check(wide, `${tag}: no sideways scroll`);
     await page.screenshot({ path: join(OUT, `consent-${tag}.png`), fullPage: true });
-    await page.getByTestId("connect-app-allow").click();
+    // The buttons must clear the floating bottom bar once scrolled to.
+    await page.getByTestId("connect-app-allow").scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const clear = await page.evaluate(() => {
+      const b = document.querySelector("[data-testid=connect-app-allow]").getBoundingClientRect();
+      const x = b.left + 4;
+      const y = b.top + b.height / 2;
+      return document.elementFromPoint(x, y)?.closest("[data-testid=connect-app-allow]") !== null;
+    });
+    check(clear, `${tag}: Allow is not under the bottom bar`);
+    let posted = null;
+    // A redirect target is not routed (only the first URL is), but it is a request.
+    page.on("request", async (r) => {
+      if (r.url().startsWith("http://127.0.0.1:47913/")) landed ??= r.url();
+      if (r.url().endsWith("/api/mcp-oauth/consent")) posted = await r.allHeaders();
+    });
+    await page
+      .getByTestId("connect-app-allow")
+      .click({ noWaitAfter: true })
+      .catch(() => {});
     await until(async () => landed !== null, 10_000);
     const back = landed ? new URL(landed) : null;
     const code = back?.searchParams.get("code");
     check(
       !!code && back.searchParams.get("state") === state && back.searchParams.get("iss") === BASE,
       `${tag}: Allow returns a code, the state and iss`,
+      code
+        ? ""
+        : JSON.stringify(
+            posted &&
+              Object.fromEntries(
+                Object.entries(posted).filter(([k]) => /^(origin|sec-fetch-|host)/.test(k)),
+              ),
+          ),
     );
 
     const exchange = (verifier) =>
