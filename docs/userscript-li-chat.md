@@ -49,7 +49,7 @@ M5). The **security gate** below must pass in full before
 Each website origin gets its own Li thread under the account, so one site's
 conversation never mixes with another's and Li's context on one site holds
 none of the others. Off (the default): every site is the account's one
-thread, exactly as M2. Userscript 2.24.38.
+thread, exactly as M2. Userscript 2.24.39.
 
 | piece                                                       | where                                                                         |
 | ----------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -150,6 +150,15 @@ How it behaves:
   (`lianki_pillchat_on`); other sites read only that, so **no request leaves
   for lianki.com on a site before he allows it**. Right before the frame
   opens it asks again: the flag is the kill switch.
+  **Keeping the mirror fresh (2.24.38).** It was read only on a lianki.com
+  page load, so turning the flag on from /dev/flags left the "off" read on
+  that page's load in place, and the pill showed no Li anywhere until a
+  lianki.com page loaded again a minute later. Now (`watchPillChatFlag`)
+  lianki.com is asked again when a lianki.com tab comes back into view
+  (still once a minute at most), at once when /dev/flags saves an
+  `ext.pill-chat*` flag (the page's `lk:flag-changed` event,
+  `lib/flag-events.ts`), and once more after the server's flag cache
+  (30 s) ran out. The other site's pill picks it up when its tab is shown.
 - **The entry.** A "Li" button at the end of the pill, in the top window
   only, hidden on a "never" site. A tap opens only on a trusted event
   (`isTrusted`): `el.click()` or a dispatched event from the page does
