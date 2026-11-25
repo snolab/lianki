@@ -30,11 +30,13 @@ import { join } from "node:path";
 import { type RouteLane, isRouteLane } from "../../lib/lane-route";
 import { setLaneTable } from "../../packages/debug-chat/src/voices";
 import {
+  BUSY_RECHECK_MS,
   listenerTakes,
   routeKey,
   laneToken,
   lineOf,
   makeDeliverer,
+  parseDebounceMs,
   reconnectWait,
   tokenNeeded,
   voiceAllowed,
@@ -57,21 +59,27 @@ type Opts = {
   everyone: boolean;
   /** No owner lines (the lane has its own feed of them). */
   skipOwner: boolean;
+  /** Debounce window (ms) for non-urgent lines; urgent lines bypass it immediately. */
+  debounceMs: number;
 };
 
 function parse(argv: string[]): Opts | Error {
+  const envDebounce = parseDebounceMs(process.env.LIANKI_LISTEN_DEBOUNCE_MS);
+  if (envDebounce instanceof Error) return envDebounce;
   const o: Partial<Opts> & {
     tests: boolean;
     dryRun: boolean;
     all: boolean;
     everyone: boolean;
     skipOwner: boolean;
+    debounceMs: number;
   } = {
     tests: false,
     dryRun: false,
     all: false,
     everyone: false,
     skipOwner: false,
+    debounceMs: envDebounce,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -86,7 +94,13 @@ function parse(argv: string[]): Opts | Error {
     else if (a === "--all") o.all = true;
     else if (a === "--everyone") o.everyone = o.all = true;
     else if (a === "--skip-owner") o.skipOwner = true;
-    else return new Error(`lane-listen: unknown argument ${a}`);
+    else if (a === "--debounce-ms" || a === "--batch-ms") {
+      const raw = v();
+      if (raw === undefined) return new Error(`lane-listen: ${a} requires a millisecond value`);
+      const ms = parseDebounceMs(raw);
+      if (ms instanceof Error) return ms;
+      o.debounceMs = ms;
+    } else return new Error(`lane-listen: unknown argument ${a}`);
   }
   o.lane ??= (process.env.LIANKI_LANE || undefined) as RouteLane | undefined;
   // The joined lanes (the lanes manager hands them over, docs/lane-listen.md "Every agent
@@ -222,6 +236,8 @@ async function main(): Promise<number> {
     (body, interrupt) => deliver(o, body, interrupt),
     () => targetBusy(o),
     log,
+    BUSY_RECHECK_MS,
+    o.debounceMs,
   );
   if (t.from === "none") {
     console.error(`lane-listen: ${t.why}. Needed: ${tokenNeeded(o.lane)}`);

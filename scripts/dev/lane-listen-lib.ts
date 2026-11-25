@@ -354,6 +354,17 @@ export const firstLines = (lane: RouteLane, repo: string) => [
 
 /** How often a busy agent is looked at while lines wait for it. */
 export const BUSY_RECHECK_MS = 5_000;
+/** Default debounce window for non-urgent lines (ms), so STT bursts coalesce without multi-second lag. */
+export const DEFAULT_DEBOUNCE_MS = 1_500;
+
+/** Parse a non-negative millisecond duration for `--debounce-ms` / `--batch-ms` / `LIANKI_LISTEN_DEBOUNCE_MS`. */
+export function parseDebounceMs(raw: string | undefined): number | Error {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_DEBOUNCE_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0)
+    return new Error(`lane-listen: invalid debounce ms ${JSON.stringify(raw)} (expected >= 0)`);
+  return Math.floor(n);
+}
 
 /**
  * Lines wait here while the agent is busy; when it is free they go as ONE
@@ -410,16 +421,23 @@ export function makeDeliverer(
   busy: () => Promise<boolean>,
   log: (v: Record<string, unknown>) => void = () => {},
   recheckMs = BUSY_RECHECK_MS,
+  debounceMs = DEFAULT_DEBOUNCE_MS,
 ) {
   const pending: Line[] = [];
   let first = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const clearTimer = () => {
+    if (!timer) return;
+    clearTimeout(timer);
+    timer = undefined;
+  };
   const flush = async (interrupt = false): Promise<number | undefined> => {
+    clearTimer();
     if (!pending.length) return undefined;
     if (!interrupt && (await busy())) {
       if (process.env.LANE_LISTEN_DEBUG)
         log({ type: "held", lane: o.lane, pending: pending.length });
-      timer ??= setTimeout(() => {
+      timer = setTimeout(() => {
         timer = undefined;
         void flush();
       }, recheckMs);
@@ -444,7 +462,14 @@ export function makeDeliverer(
   return {
     add: async (l: Line) => {
       pending.push(l);
-      return flush(urgentLine(o.lane, l));
+      // Urgent lines (naming this lane, 全体, or state-tree nudge) deliver immediately without waiting for debounce.
+      if (urgentLine(o.lane, l) || debounceMs <= 0) return flush(urgentLine(o.lane, l));
+      clearTimer();
+      timer = setTimeout(() => {
+        timer = undefined;
+        void flush(false);
+      }, debounceMs);
+      return undefined;
     },
     pending: () => pending.length,
   };
