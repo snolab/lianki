@@ -416,7 +416,7 @@ export function createCloudOut(d: {
         })
       : local
         ? d.fetch(url).catch(() =>
-            d.fetch(`${ttsUrl(text, base)}&localVoice=${encodeURIComponent(local.heard.name)}`),
+              d.fetch(`${ttsUrl(text, base).replace("/api/words/tts?", "/api/voice/tts?")}&localVoice=${encodeURIComponent(local.heard.name)}`),
           )
         : d.fetch(url);
     const p = got.then(async (r) => {
