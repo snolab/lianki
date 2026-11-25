@@ -11,6 +11,42 @@ import { describeKeys } from "@/lib/i18n-context";
 const dictionary = {
   key: "api-tokens",
   content: {
+    copyMcp: t({
+      en: "Copy MCP connection URL",
+      zh: "复制 MCP 连接地址",
+      hi: "MCP कनेक्शन URL कॉपी करें",
+      es: "Copiar URL de conexión MCP",
+      fr: "Copier l’URL de connexion MCP",
+      ar: "نسخ رابط اتصال MCP",
+      bn: "MCP সংযোগ URL কপি করুন",
+      pt: "Copiar URL de conexão MCP",
+      ru: "Копировать URL подключения MCP",
+      ur: "MCP کنکشن URL کاپی کریں",
+      id: "Salin URL koneksi MCP",
+      de: "MCP-Verbindungs-URL kopieren",
+      ja: "MCP 接続 URL をコピー",
+      sw: "Nakili URL ya muunganisho wa MCP",
+      mr: "MCP कनेक्शन URL कॉपी करा",
+      ko: "MCP 연결 URL 복사",
+    }),
+    mcpHint: t({
+      en: "In ChatGPT, add a custom MCP server, paste this URL and choose No authentication. The URL contains your secret token: keep it private.",
+      zh: "在 ChatGPT 添加自定义 MCP 服务器，粘贴此地址，认证选择 No authentication（无认证）。地址包含你的秘密 token，请勿公开。",
+      hi: "ChatGPT में कस्टम MCP सर्वर जोड़ें, यह URL पेस्ट करें और No authentication चुनें। URL में गुप्त टोकन है; इसे निजी रखें।",
+      es: "En ChatGPT, añade un servidor MCP personalizado, pega esta URL y elige No authentication. La URL contiene tu token secreto: mantenla privada.",
+      fr: "Dans ChatGPT, ajoutez un serveur MCP personnalisé, collez cette URL et choisissez No authentication. Elle contient votre jeton secret : gardez-la privée.",
+      ar: "في ChatGPT، أضف خادم MCP مخصصًا والصق الرابط واختر No authentication. يحتوي الرابط على رمزك السري؛ احتفظ به خاصًا.",
+      bn: "ChatGPT-তে একটি কাস্টম MCP সার্ভার যোগ করুন, এই URL পেস্ট করে No authentication বেছে নিন। URL-এ গোপন টোকেন আছে; এটি ব্যক্তিগত রাখুন।",
+      pt: "No ChatGPT, adicione um servidor MCP personalizado, cole esta URL e escolha No authentication. A URL contém seu token secreto: mantenha-a privada.",
+      ru: "В ChatGPT добавьте свой MCP-сервер, вставьте URL и выберите No authentication. URL содержит секретный токен: не раскрывайте его.",
+      ur: "ChatGPT میں کسٹم MCP سرور شامل کریں، یہ URL پیسٹ کریں اور No authentication منتخب کریں۔ URL میں خفیہ ٹوکن ہے؛ اسے نجی رکھیں۔",
+      id: "Di ChatGPT, tambahkan server MCP kustom, tempel URL ini, lalu pilih No authentication. URL memuat token rahasia Anda: jaga kerahasiaannya.",
+      de: "Fügen Sie in ChatGPT einen eigenen MCP-Server hinzu, fügen Sie diese URL ein und wählen Sie No authentication. Die URL enthält Ihr geheimes Token: halten Sie sie privat.",
+      ja: "ChatGPT でカスタム MCP サーバーを追加し、この URL を貼り付け、No authentication を選びます。URL には秘密のトークンが含まれます。公開しないでください。",
+      sw: "Katika ChatGPT, ongeza seva maalum ya MCP, bandika URL hii na uchague No authentication. URL ina tokeni yako ya siri: iweke faraghani.",
+      mr: "ChatGPT मध्ये सानुकूल MCP सर्व्हर जोडा, हा URL पेस्ट करा आणि No authentication निवडा. URL मध्ये गुप्त टोकन आहे; तो खाजगी ठेवा.",
+      ko: "ChatGPT에서 사용자 지정 MCP 서버를 추가하고 이 URL을 붙여넣은 뒤 No authentication을 선택하세요. URL에 비밀 토큰이 포함되어 있으니 공개하지 마세요.",
+    }),
     scopeAppsPublish: t({
       en: "Publish mini apps",
       zh: "发布迷你应用",
@@ -1386,6 +1422,10 @@ const dictionary = {
 };
 
 const context: Record<keyof typeof dictionary.content, string> = {
+  copyMcp:
+    "Button in the one-time newly-created API token box: copies the entire secret-bearing remote MCP URL to the clipboard, only on an explicit click. Keep MCP and URL.",
+  mcpHint:
+    "Instructions below the one-time token copy buttons: paste the copied MCP URL into ChatGPT custom MCP server setup and select the exact UI option No authentication. Warn that the URL contains the secret and must stay private. Do not imply the server grants anonymous access.",
   scopeRequestDevRequired:
     "Blocking explanation on the single-scope API token approval page when the signed-in token owner lacks the existing developer grant required by this scope; no permission is added.",
   scopeRequestExpiry:
