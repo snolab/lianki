@@ -85,6 +85,16 @@ the owner's chat in `debug.ts`) lets the model answer a line of his when:
 - **no lane is talking with him**: no lane line (an agent line other than Li's and the
   hub's notices: ETA, spend, lane joins) in the last `partner.laneActiveMs` (default
   300,000 ms = 5 min; 0 = off). Owner, 2026-11-16: "他不应该回答我的这个问题，我已经要求他闭嘴了";
+- **it names no other agent and is no dev/ops request** (owner, 2026-11-26: "知道有别的
+  agent 在就先安静，让能处理的 agent 去处理"): config `partner.otherAgentNames` (吉米, claude,
+  mimiai, … on top of the lane table) and `partner.devWords` (部署, 代码, 计费, Cloudflare,
+  bug, PR, …), Latin entries as whole words. Even addressed to Li, such a line is the
+  agents': Li only polishes it (the hub's auto-polish), skip reasons `names-agent` /
+  `dev-request`. 2026-11-26: a line naming 吉米 about a voice-sync experiment and
+  Cloudflare billing got a reply listing what Li does not do; 吉米 was in no list;
+- **it is about study**, unless it starts with Li's name: config `partner.studyWords`
+  (今日目标, 单词, 复习, 到期, 语法, words, due, review, …). Any other line is polished
+  only (`off-topic`);
 - **a spoken line names Li**: a line heard by a microphone (`source: "stt"`) gets Li only
   when one of `partner.liNames` appears in it anywhere (Latin names as whole words), with
   config `partner.spokenNeedsName` on (default; off = treated like a typed line). Owner,
@@ -118,7 +128,7 @@ token ids (`packages/debug-chat/src/roster.ts` `rosterOf`). The main Worker
 accepts it only with `owner: true` and puts a `<roster>` block of at most 400
 characters into the system prompt (`rosterSection`): Li's own role, each one's
 name, mode and **role**, and the rule "On a roll call, answer that you are here
-and name who is present; never say you cannot." Roles are data: `role` in
+and name who is present. A line for one of them is theirs to answer." Roles are data: `role` in
 `voices.ts` LANES (coco 界面与前端开发, 杰咪 功能开发, 小克 聊天调度与发布, Li
 学习伙伴), overridden by a `chat.lanes` row's `role`.
 
@@ -129,10 +139,18 @@ Every decision is one log line in `wrangler tail lianki-push`: `partner.owner-sk
 live object runs, and never the line's text. After a deploy, a decision line without the
 new `rules` value means the hub object still runs the old code.
 
-The prompt also says Li speaks only in reply to a message: it cannot watch
-pages, wait for changes or message anyone later, so it never promises to
-(2026-11-16: "我来盯着这个页面……页面一有变化，我马上告诉你"), and it does not
-answer a message meant for someone else.
+The prompt also says Li speaks only in reply to a message, so it never
+promises to watch pages or follow up later (2026-11-16: "我来盯着这个页面……页面一有
+变化，我马上告诉你"), and it does not answer a message meant for someone else.
+
+**Never "can't"** (owner rule for every agent, 2026-11-26). Li's rules are config
+`partner.systemPrompt` (default `PARTNER_SYSTEM_PROMPT` in lib/partner-ai-config.ts,
+at most 6,000 characters). They tell Li it is one member of a shared chat (the
+developer and his agents read it; the roster says who is here), that it never lists its
+limits or turns a request down, and that outside language study it answers with the
+closest workable option or names who handles it, in one short line.
+`unit/partner-no-cant.test.ts` holds the default, the polish rule and the roster block to
+no refusal phrasing (cannot, 不能, 做不到, 不是我的活, …).
 
 **Speaking as itself** (`lib/partner-lines.ts`). Li never writes as another
 member or offers to build things (2026-11-17: an unaddressed request for a
