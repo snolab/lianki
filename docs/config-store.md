@@ -5,15 +5,15 @@ may change at any time. Code holds only the **default**; the live value comes
 from the DB (hot-editable at `/dev/config`) or env. A new limit, timeout,
 threshold or label goes in the registry as a key, not in a bare constant.
 
-| Piece                    | File                                         |
-| ------------------------ | -------------------------------------------- |
-| Registry (client-safe)   | `lib/config.ts`                              |
-| Server read/write        | `lib/config-store.ts`                        |
-| Browser read             | `lib/config-client.ts`, `PublicConfig.tsx`   |
-| Cache (shared w/ flags)  | `lib/snapshot-cache.ts`                      |
-| Tables                   | `db/migrations/0070_config_values.sql`       |
-| Editor (admin)           | `/dev/config`, `app/api/dev/config/route.ts` |
-| Tests                    | `unit/config.test.ts`, `qa:all --suites=config` |
+| Piece                   | File                                            |
+| ----------------------- | ----------------------------------------------- |
+| Registry (client-safe)  | `lib/config.ts`                                 |
+| Server read/write       | `lib/config-store.ts`                           |
+| Browser read            | `lib/config-client.ts`, `PublicConfig.tsx`      |
+| Cache (shared w/ flags) | `lib/snapshot-cache.ts`                         |
+| Tables                  | `db/migrations/0070_config_values.sql`          |
+| Editor (admin)          | `/dev/config`, `app/api/dev/config/route.ts`    |
+| Tests                   | `unit/config.test.ts`, `qa:all --suites=config` |
 
 ## Read order
 
@@ -81,14 +81,14 @@ row under it is ignored (unknown keys are skipped) and its `config_log` rows
 stay as history. Note the removal in `lib/config.ts` where the key was, and
 here:
 
-| key                                                                                               | removed    | why                                                                       |
-| ------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------- |
+| key                                                                                                                | removed    | why                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------ | ---------- | --------------------------------------------------------------------------------------------------------- |
 | `credits.ageBonus.day1Usd`, `credits.ageBonus.day7Usd`, `credits.ageBonus.day1Hours`, `credits.ageBonus.day7Hours` | 2026-11-14 | the account-age bonus was replaced by the login streak ([payments.md](payments.md), "Login-streak bonus") |
 
 ## Migrated so far (first batch, 2026-11-10)
 
-| Key                     | Was                                        | Audience |
-| ----------------------- | ------------------------------------------ | -------- |
+| Key                     | Was                                         | Audience |
+| ----------------------- | ------------------------------------------- | -------- |
 | `words.undoMs`          | `UNDO_MS` in `lib/words/deferred-delete.ts` | public   |
 | `files.undoMs`          | `UNDO_MS` in `lib/import/uploads-client.ts` | public   |
 | `read.startWpm`         | `START_WPM` in `lib/read/reader-adapter.ts` | public   |
@@ -101,6 +101,13 @@ public: `words.pinchGainPct` (40: fingers twice as far apart → rows 2^0.4 ≈
 1.32× as tall; 100 was the first, far too sensitive feel),
 `words.pinchDeadZonePct` (6: a smaller change of the spread moves nothing),
 `words.pinchSmoothMs` (70: the height eases toward the fingers; 0 = none).
+
+/words read-aloud (2026-11-25, `lib/words/foreign-parens.ts`, read in
+`sayParts`): `words.speak.skipForeignParens` (public, on) leaves out a
+bracketed stretch, ( … ) or （ … ）, mainly in another script than the card's
+language: "I like apples. (我喜欢苹果。)" is read "I like apples.". The screen
+still shows it; same-script notes such as "(informal)" are read. Off: the
+whole text is read as before.
 
 The owner's remote-eval grant (2026-11-11; docs/monitoring.md, "Remote eval"),
 read by the debug hub over `DebugSessions.config` at each pairing

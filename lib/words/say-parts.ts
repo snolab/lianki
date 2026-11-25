@@ -1,5 +1,7 @@
 import { BACK_ORDER, type BackPart } from "@/lib/words/row-layout";
 import { spokenText, type SpokenCard } from "@/lib/words/spoken";
+import { publicCfg } from "@/lib/config-client";
+import { dropForeignParens } from "@/lib/words/foreign-parens";
 
 /**
  * What a tap reads aloud: the word, then its example sentence, then its
@@ -55,17 +57,21 @@ export function meaningLang(text: string, uiLocale: string): string {
 
 /**
  * The word, then the back in the row's order (BACK_ORDER: example → meaning);
- * empty parts and repeats left out.
+ * empty parts and repeats left out. With `words.speak.skipForeignParens` on,
+ * a bracketed translation in another script ("I like apples. (我喜欢苹果。)")
+ * is not read (lib/words/foreign-parens.ts); the screen still shows it.
  */
 export function sayParts(
   it: SpokenCard & { ex?: string },
   lang: string,
   readingOnBack: boolean,
   uiLocale: string,
+  skipForeignParens: boolean = publicCfg("words.speak.skipForeignParens"),
 ): SayPart[] {
-  const word = spokenText(it, lang, readingOnBack);
+  const speakable = (t: string) => (skipForeignParens ? dropForeignParens(t, lang).text : t).trim();
+  const word = speakable(spokenText(it, lang, readingOnBack));
   const meaning = meaningText(it.back);
-  const ex = it.ex?.trim() ?? "";
+  const ex = speakable(it.ex?.trim() ?? "");
   const back: Record<BackPart, SayPart | null> = {
     meaning:
       meaning && meaning !== word
