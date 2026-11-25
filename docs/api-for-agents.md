@@ -259,6 +259,31 @@ tool=<name>`; `lib/api-token-client.ts` accepts that shape too.
 - Tests: `unit/mcp-remote.test.ts` (fake bindings), `unit/mcp-chat-wait.test.ts`
   (fake hub socket).
 
+### Clients without Authorization headers
+
+[ChatGPT web supports No authentication](https://developers.openai.com/api/docs/guides/custom-mcp-server).
+Create a dedicated, expiring API token and
+configure `https://lianki.com/mcp/<TOKEN>` with **No authentication**. Substitute
+the complete `lk_…` secret locally; never paste that address into chat or logs.
+Only the exact `lk_` + 64 lowercase hexadecimal format is accepted in the path.
+This uses the same live token introspection, scopes, expiry and revocation as
+Bearer requests. Conflicting header and path credentials are rejected. The
+canonical `/mcp` endpoint continues to accept Bearer authentication.
+
+Browser GETs show the canonical connection guide without echoing the secret,
+with `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. RPC responses
+redact API token strings, including upstream errors. Nested invalid MCP paths
+are refused locally instead of forwarded to the app. Monitor path grouping
+collapses the entire credential namespace to `/mcp/:token`.
+
+[Cloudflare invocation logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/#invocation-logs)
+and tail events include raw request URLs, so this
+Worker disables invocation logs, tracing and its tail consumer. Do not enable
+live tail or add request-URL logging on this Worker while using token addresses.
+Client history and any external HTTP logging remain outside application
+redaction; treat the whole address as a password. Prefer the Bearer endpoint
+when the client supports headers.
+
 ## Report progress
 
 Owner, 2026-11-14 05:45 JST: "把这个 CLI 修改甘特图的能力提供给整个系统，让所有
@@ -268,11 +293,11 @@ could report to the state tree ([state-tree.md](state-tree.md), "Live
 progress"). Now any agent with a Lianki API token can, on three surfaces that
 share one request shape:
 
-| surface                                                                               | where                                                                            |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `lianki progress …` (`npx lianki`, the global `lianki` bin)                           | `packages/lianki-cli/progress.mjs` (flags → body), `cli.mjs` (the verbs)         |
-| MCP: `lianki_progress_report` / `_show` / `_ack`                                      | `packages/lianki-cli/mcp-tools.mjs`, served by `lianki mcp` and `lianki.com/mcp` |
-| HTTP: `POST /api/version/progress` (`/batch`, `/ack`), `GET …` (`/stats`, `/history`) | lianki-push `ProgressHub` (`workers/push/src/progress.ts`)                       |
+| surface                                                   | where                                                                  |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `lianki progress …` (`npx lianki`, the global `lianki` bin) | `packages/lianki-cli/progress.mjs` (flags → body), `cli.mjs` (the verbs) |
+| MCP: `lianki_progress_report` / `_show` / `_ack`          | `packages/lianki-cli/mcp-tools.mjs`, served by `lianki mcp` and `lianki.com/mcp` |
+| HTTP: `POST /api/version/progress` (`/batch`, `/ack`), `GET …` (`/stats`, `/history`) | lianki-push `ProgressHub` (`workers/push/src/progress.ts`)           |
 
 - **The permission is `progress`** (`lib/api-tokens.ts` `SCOPES`, group
   `owner`): offered only to an account holding `dev` (`OWNER_SCOPES`, like
@@ -290,8 +315,8 @@ share one request shape:
   expired) or 403 (`scope`, or another account); no RPC bound is 503. The root
   secret and HMAC grants are untouched (`lib/progress-token.ts`).
 - **What the token may do: the whole tree, as itself.** The hub takes it as
-  the root grant _acting as the token's name_ (`ProgressAuth` `{root: true,
-agent}`): every report is that agent's (a report without `agent` gets it
+  the root grant *acting as the token's name* (`ProgressAuth` `{root: true,
+  agent}`): every report is that agent's (a report without `agent` gets it
   filled in; one naming another agent is 403 "this token is for codex"),
   across any path, with the root's `grant` and `resolve`, but never
   `endedAt` (back-dating stays with the real root). So a token named `codex`
@@ -299,17 +324,17 @@ agent}`): every report is that agent's (a report without `agent` gets it
   `LIANKI_TOKEN`. Cross-lane batches (main writing for several agents) keep
   using `PROGRESS_TOKEN`.
 - **`lianki progress`**: `report` (the default: `--path --task --status
---pct --eta --late --confirm --note --pr --needs --who --done
---verified|--unverified --kind --ref --action --link --rev --change-id`),
+  --pct --eta --late --confirm --note --pr --needs --who --done
+  --verified|--unverified --kind --ref --action --link --rev --change-id`),
   `batch '<JSON list>' | --file`, `ack <code>`, `show [--all]`, `stats
-[--agent --since]`, `history`. The CLI only maps flags to the body
+  [--agent --since]`, `history`. The CLI only maps flags to the body
   (`reportBody`): titles, scopes, the overrun rule and ETA limits are the
   hub's, and its words come back as exit 5. A plain `--done` is sent as
   `unverified: true` (the hub adds the "verify: …" child) unless `--verified
-"<evidence>"`; the repo's `progress.ts` asks `gh` instead, which the public
+  "<evidence>"`; the repo's `progress.ts` asks `gh` instead, which the public
   CLI cannot assume. Token: `--token`, `LIANKI_TOKEN`, the keychain
   (`lianki auth login`), as for every command. The repo's `lianki-dev
-progress` falls back to `LIANKI_TOKEN` (or the lane's
+  progress` falls back to `LIANKI_TOKEN` (or the lane's
   `~/.config/lianki/lanes/<lane>.token`) when no progress token is set.
 - **MCP.** `lianki_progress_report` takes the report fields as arguments (zod
   checks them, then `reportBody` maps them exactly as the CLI); `_show`
@@ -343,26 +368,3 @@ token account. Publication never grants runtime capabilities or makes an app
 public. Mention `/m/<slug>` in chat or send `attachments:[{type:"app",slug}]`
 with a `say` message to show its card; opening it uses the sandbox and per-app
 capability prompts. See [mini apps](mini-apps.md).
-
-### Clients without Authorization headers
-
-For a client such as ChatGPT web, create a dedicated, expiring API token and
-configure `https://lianki.com/mcp/<TOKEN>` with **No authentication**. Substitute
-the complete `lk_…` secret locally; never paste that address into chat or logs.
-Only the exact `lk_` + 64 lowercase hexadecimal format is accepted in the path.
-This uses the same live token introspection, scopes, expiry and revocation as
-Bearer requests. Conflicting header and path credentials are rejected. The
-canonical `/mcp` endpoint continues to accept Bearer authentication.
-
-Browser GETs show the canonical connection guide without echoing the secret,
-with `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. RPC responses
-redact API token strings, including upstream errors. Nested invalid MCP paths
-are refused locally instead of forwarded to the app. Monitor path grouping
-collapses the entire credential namespace to `/mcp/:token`.
-
-Cloudflare invocation logs and tail events include raw request URLs, so this
-Worker disables invocation logs, tracing and its tail consumer. Do not enable
-live tail or add request-URL logging on this Worker while using token addresses.
-Client history and any external HTTP logging remain outside application
-redaction; treat the whole address as a password. Prefer the Bearer endpoint
-when the client supports headers.

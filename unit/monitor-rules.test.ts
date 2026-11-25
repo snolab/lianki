@@ -18,6 +18,7 @@ describe("pathGroup", () => {
     for (const path of [`lk_${"a".repeat(64)}`, "lk_short", "%6ck_encoded/extra"]) {
       expect(pathGroup(`https://lianki.com/mcp/${path}?secret=ignored`)).toBe("/mcp/:token");
     }
+    expect(pathGroup(`https://lianki.com/mcp%2Flk_${"a".repeat(64)}`)).toBe("/mcp/:token");
     expect(pathGroup("https://lianki.com/mcp")).toBe("/mcp");
     expect(pathGroup("https://lianki.com/mcp-something")).toBe("/mcp-something");
   });

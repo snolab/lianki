@@ -271,7 +271,12 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   // Reserve nested paths for credentials; never forward those URLs to MAIN.
   const canonical = url.pathname === MCP_PATH || url.pathname === `${MCP_PATH}/`;
-  if (!canonical && !url.pathname.startsWith(`${MCP_PATH}/`)) return env.MAIN.fetch(req);
+  if (
+    !canonical &&
+    !url.pathname.startsWith(`${MCP_PATH}/`) &&
+    !url.pathname.startsWith(`${MCP_PATH}%`)
+  )
+    return env.MAIN.fetch(req);
   const pathToken = canonical ? undefined : url.pathname.slice(MCP_PATH.length + 1);
   if (pathToken !== undefined && !TOKEN_RE.test(pathToken))
     return plain(rpcError(null, -32001, "Invalid MCP token address"), 401, AUTH_HEADERS);

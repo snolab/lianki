@@ -364,6 +364,14 @@ describe("token addresses", () => {
     }
   });
 
+  test("encoded path separators cannot forward a credential URL to the app", async () => {
+    const { env, seen } = setup();
+    const res = await handle(new Request(`${ORIGIN}/mcp%2F${TOKEN}`, rpc("initialize")), env);
+    expect(res.status).toBe(401);
+    expect(seen).toEqual([]);
+    expect(await res.text()).not.toContain(TOKEN);
+  });
+
   test("conflicting or malformed headers are refused; matching credentials work", async () => {
     for (const auth of [`Bearer lk_${"b".repeat(64)}`, "Basic ignored", `Bearer ${TOKEN}`]) {
       const { env, seen } = setup();
