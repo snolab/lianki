@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.37
+// @version     2.24.38
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -4103,6 +4103,27 @@ Sasisha kadi kwa anwani mpya?`,
     return remove;
   }
 
+  // lib/flag-events.ts
+  var FLAG_CHANGED_EVENT = "lk:flag-changed";
+  function readFlagChanged(detail) {
+    let v = detail;
+    if (typeof v === "string") {
+      try {
+        v = JSON.parse(v);
+      } catch {
+        return {};
+      }
+    }
+    if (!v || typeof v !== "object") return {};
+    const o = v;
+    const out = {};
+    if (typeof o.key === "string") out.key = o.key;
+    if (typeof o.enabled === "boolean") out.enabled = o.enabled;
+    if (typeof o.cacheSeconds === "number" && Number.isFinite(o.cacheSeconds))
+      out.cacheSeconds = o.cacheSeconds;
+    return out;
+  }
+
   // src/pill-chat-trust.ts
   var LICHAT_SITES_KEY = "lianki_lichat_sites";
   var PILLCHAT_ON_KEY = "lianki_pillchat_on";
@@ -4513,10 +4534,46 @@ Sasisha kadi kwa anwani mpya?`,
   // src/pill-chat.ts
   async function mirrorPillChatFlag(d) {
     const now = d.now?.() ?? Date.now();
-    if (!flagRecheckDue(d.getValue(PILLCHAT_ON_KEY, null), now)) return null;
+    if (!d.force && !flagRecheckDue(d.getValue(PILLCHAT_ON_KEY, null), now)) return null;
     const on = await askFlag(d);
     d.setValue(PILLCHAT_ON_KEY, JSON.stringify({ on, at: now }));
     return on;
+  }
+  var FLAG_CACHE_FALLBACK_S = 30;
+  function watchPillChatFlag(d) {
+    const win = d.win ?? globalThis;
+    const doc = d.doc ?? document;
+    const run = (force = false) => void mirrorPillChatFlag({ ...d, force }).catch(() => {});
+    const later =
+      d.later ??
+      ((fn, ms) => {
+        const id = setTimeout(fn, ms);
+        return () => clearTimeout(id);
+      });
+    let cancel;
+    const onVisible = () => {
+      if (doc.visibilityState === "visible") run();
+    };
+    const onChanged = (e) => {
+      const detail = readFlagChanged(e.detail);
+      if (detail.key !== undefined && !detail.key.startsWith("ext.pill-chat")) return;
+      run(true);
+      const secs = detail.cacheSeconds ?? 0;
+      const wait = secs > 0 ? Math.min(secs, 300) : FLAG_CACHE_FALLBACK_S;
+      cancel?.();
+      cancel = later(() => run(true), (wait + 1) * 1000);
+    };
+    const opts = d.signal ? { signal: d.signal } : undefined;
+    doc.addEventListener("visibilitychange", onVisible, opts);
+    win.addEventListener(FLAG_CHANGED_EVENT, onChanged, opts);
+    const unhook = () => {
+      cancel?.();
+      doc.removeEventListener("visibilitychange", onVisible);
+      win.removeEventListener(FLAG_CHANGED_EVENT, onChanged);
+    };
+    d.signal?.addEventListener("abort", unhook);
+    run();
+    return unhook;
   }
   async function askFlag(d) {
     return (await askAccess(d)) !== null;
@@ -5241,17 +5298,17 @@ Sasisha kadi kwa anwani mpya?`,
       location.hostname === "preview." + originHost
     ) {
       mirrorPartnerSwitch(localStorage, GM_setValue);
-      mirrorPillChatFlag({
+      const unwatchPillChat = watchPillChatFlag({
         origin: ORIGIN,
         gmFetch,
         getValue: GM_getValue,
         setValue: GM_setValue,
-      }).catch(() => {});
+      });
       const mirrorFilters = () => mirrorReviewFilters(localStorage, GM_setValue);
       mirrorFilters();
       window.addEventListener(REVIEW_FILTERS_EVENT, mirrorFilters);
       setTimeout(() => syncToSiteDB(), 500);
-      return () => {};
+      return unwatchPillChat;
     }
     const ac = new AbortController();
     const { signal } = ac;

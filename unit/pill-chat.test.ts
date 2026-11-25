@@ -8,7 +8,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Window } from "happy-dom";
 import { pillChatState } from "@/lib/pill-chat-route";
-import { mirrorPillChatFlag, pillChat, type PillChatDeps } from "@/src/pill-chat";
+import { flagChangedEvent, FLAG_CHANGED_EVENT } from "@/lib/flag-events";
+import {
+  mirrorPillChatFlag,
+  pillChat,
+  watchPillChatFlag,
+  type PillChatDeps,
+} from "@/src/pill-chat";
 import { PILL_CHAT_LOCALES, PILL_CHAT_STRINGS, pillChatLang } from "@/src/pill-chat-strings";
 import {
   LICHAT_SITES_KEY,
@@ -346,6 +352,119 @@ describe("opening Li from the pill", () => {
     expect(await mirrorPillChatFlag({ ...deps, now: () => 80_000 })).toBe(true);
     expect(calls.length).toBe(2);
     expect(flagMirrorOn(g.getValue(PILLCHAT_ON_KEY))).toBe(true);
+  });
+});
+
+// ── keeping the mirror fresh on lianki.com ───────────────────────────────────
+
+describe("the flag mirror follows /dev/flags", () => {
+  /** lianki.com answers `on` as it is now; the clock and timers are ours. */
+  function lianki(on: { value: boolean }) {
+    const g = gm();
+    const win = new Window();
+    const calls: number[] = [];
+    let clock = 0;
+    const timers: { at: number; fn: () => void; dead: boolean }[] = [];
+    const deps = {
+      origin: ORIGIN,
+      getValue: g.getValue,
+      setValue: g.setValue,
+      now: () => clock,
+      win: win as unknown as globalThis.Window,
+      doc: win.document as unknown as Document,
+      later: (fn: () => void, ms: number) => {
+        const t = { at: clock + ms, fn, dead: false };
+        timers.push(t);
+        return () => void (t.dead = true);
+      },
+      gmFetch: async () => {
+        calls.push(clock);
+        return { ok: true, status: 200, json: async () => ({ on: on.value }) };
+      },
+    };
+    const tick = async (ms: number) => {
+      clock += ms;
+      for (const t of timers) {
+        if (t.dead || t.at > clock) continue;
+        t.dead = true;
+        t.fn();
+      }
+      await new Promise((r) => setTimeout(r, 0));
+    };
+    const mirrored = () => flagMirrorOn(g.getValue(PILLCHAT_ON_KEY));
+    /** What /dev/flags sends after a save (flagChangedEvent), in this window's realm. */
+    const changed = (d: Parameters<typeof flagChangedEvent>[0]) =>
+      win.dispatchEvent(
+        new win.CustomEvent(FLAG_CHANGED_EVENT, {
+          detail: flagChangedEvent(d).detail as unknown as object,
+        }),
+      );
+    return { deps, win, calls, tick, mirrored, changed };
+  }
+
+  it("turning ext.pill-chat on at /dev/flags shows Li without another page load", async () => {
+    const on = { value: false };
+    const h = lianki(on);
+    const unhook = watchPillChatFlag(h.deps);
+    await h.tick(0);
+    expect(h.mirrored()).toBe(false); // read as the page loaded: off
+    on.value = true;
+    await h.tick(5_000);
+    h.changed({ key: "ext.pill-chat", enabled: true, cacheSeconds: 30 });
+    await h.tick(0);
+    expect(h.calls.length).toBe(2); // at once, past the once-a-minute throttle
+    expect(h.mirrored()).toBe(true);
+    unhook();
+  });
+
+  it("asks once more after the server's flag cache, which may still have said off", async () => {
+    const on = { value: false };
+    const h = lianki(on);
+    watchPillChatFlag(h.deps);
+    await h.tick(0);
+    h.changed({ key: "ext.pill-chat", enabled: true, cacheSeconds: 30 });
+    await h.tick(0);
+    expect(h.mirrored()).toBe(false); // the cached old value
+    on.value = true;
+    await h.tick(31_000);
+    expect(h.calls.length).toBe(3);
+    expect(h.mirrored()).toBe(true);
+  });
+
+  it("other flags change nothing; an unreadable detail still asks", async () => {
+    const h = lianki({ value: true });
+    watchPillChatFlag(h.deps);
+    await h.tick(0);
+    h.changed({ key: "levels", enabled: true, cacheSeconds: 30 });
+    await h.tick(0);
+    expect(h.calls.length).toBe(1);
+    h.win.dispatchEvent(new h.win.CustomEvent(FLAG_CHANGED_EVENT, { detail: null }) as never);
+    await h.tick(0);
+    expect(h.calls.length).toBe(2);
+  });
+
+  it("the tab coming back into view asks again, still at most once a minute", async () => {
+    const h = lianki({ value: true });
+    watchPillChatFlag(h.deps);
+    await h.tick(0);
+    const show = () => h.win.document.dispatchEvent(new h.win.Event("visibilitychange") as never);
+    show();
+    await h.tick(0);
+    expect(h.calls.length).toBe(1);
+    await h.tick(61_000);
+    show();
+    await h.tick(0);
+    expect(h.calls.length).toBe(2);
+  });
+
+  it("unhooked: no more asks", async () => {
+    const h = lianki({ value: true });
+    const unhook = watchPillChatFlag(h.deps);
+    await h.tick(0);
+    unhook();
+    h.changed({ key: "ext.pill-chat", enabled: true, cacheSeconds: 30 });
+    await h.tick(60_000);
+    expect(h.calls.length).toBe(1);
   });
 });
 

@@ -5,11 +5,13 @@ import { useIntlayer } from "next-intlayer";
 import { useUi } from "@lianki/ui-state";
 import { FLAGS, type FlagDef, type FlagKey } from "@/lib/flags";
 import type { FlagLogEntry, FlagRow } from "@/lib/flags-store";
+import { flagChangedEvent } from "@/lib/flag-events";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
 import { card, Chevron, FlagCard, When } from "./FlagCard";
 import { FLAG_HIGHLIGHT_MS, scrollToFlag } from "./flag-anchor";
 import {
   buildFlagView,
+  doneSaving,
   filtersActive,
   groupDomId,
   groupOfRow,
@@ -18,6 +20,7 @@ import {
   RECENT_DAYS,
   resolveFlagAnchor,
   SHIPPED_GROUP,
+  startSaving,
   type StateFilter,
 } from "./flag-view";
 import { flagViewPrefs } from "./flag-view-store";
@@ -56,7 +59,7 @@ export default function FlagsAdmin() {
   const t = useIntlayer("dev-flag-toast");
   const [toast, setToast] = useState<DevToastMsg | null>(null);
   const closeToast = useCallback(() => setToast(null), []);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [saving, setSaving] = useState<ReadonlySet<FlagKey>>(new Set());
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [expanded, setExpanded] = useState<ReadonlySet<FlagKey>>(new Set());
@@ -154,7 +157,8 @@ export default function FlagsAdmin() {
     const enabled = !f.enabled;
     // Payment flags move real money: ask once before turning one on.
     if (enabled && f.key.startsWith("payments.") && !window.confirm(`打开 ${f.key}？`)) return;
-    setBusy(f.key);
+    if (saving.has(f.key)) return;
+    setSaving((s) => startSaving(s, f.key));
     setToast(null);
     setHeld((h) =>
       h.has(f.key) ? h : new Map(h).set(f.key, isShipped(f, state?.prereqs?.[f.key])),
@@ -168,6 +172,14 @@ export default function FlagsAdmin() {
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
         setState(data);
+        // The userscript on this page mirrors some flags for other sites: tell it now.
+        window.dispatchEvent(
+          flagChangedEvent({
+            key: f.key,
+            enabled,
+            cacheSeconds: data.cacheSeconds ?? state?.cacheSeconds ?? 30,
+          }),
+        );
         const audience = (FLAGS[f.key] as FlagDef).audience;
         setToast({
           ok: true,
@@ -197,7 +209,7 @@ export default function FlagsAdmin() {
         text: fill(t.failed.value, { flag: f.key, error: String(e) }),
       });
     } finally {
-      setBusy(null);
+      setSaving((s) => doneSaving(s, f.key));
     }
   }
 
@@ -305,7 +317,7 @@ export default function FlagsAdmin() {
                     key={f.key}
                     flag={f}
                     failed={state.prereqs?.[f.key]}
-                    busy={busy !== null}
+                    busy={saving.has(f.key)}
                     highlighted={highlighted === f.key}
                     expanded={expanded.has(f.key)}
                     onExpand={() => toggleRow(f.key)}
