@@ -3258,7 +3258,14 @@ export class DebugHub {
     }));
     const requestId = `auto:${newest.replace(/[^\w.-]/g, "-")}:${run.length}`.slice(0, 120);
     const t0 = this.now();
-    let res: { ok?: boolean; error?: string; verdict?: unknown } | undefined;
+    let res:
+      | {
+          ok?: boolean;
+          error?: string;
+          verdict?: unknown;
+          usage?: { tokensIn?: unknown; cachedIn?: unknown };
+        }
+      | undefined;
     try {
       res = (await rpc.polishLines({
         userId: page.user,
@@ -3302,6 +3309,9 @@ export class DebugHub {
         merged,
         polished,
         ms: this.now() - t0,
+        // Prefix-cache hit rate (Workers AI usage): counts only, never text.
+        ...(typeof res.usage?.tokensIn === "number" ? { tokensIn: res.usage.tokensIn } : {}),
+        ...(typeof res.usage?.cachedIn === "number" ? { cachedIn: res.usage.cachedIn } : {}),
       }),
     );
   }

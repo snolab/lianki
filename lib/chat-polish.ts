@@ -23,6 +23,7 @@ import { textUsd, HOLD_TOKENS_PER_CHAR } from "./payments/prices";
 import { loadConfig } from "./config-store";
 import { defaultConfig } from "./config";
 import { hit } from "./security/throttle";
+import { AFFINITY_HEADER, cachedTokens, chatAffinity } from "./ai-affinity";
 
 import {
   PARAGRAPH_POLISH_PROMPT,
@@ -167,7 +168,13 @@ export function boundContext(
 }
 
 export type PolishResult =
-  | { ok: true; verdict: PolishVerdict; charged?: unknown }
+  | {
+      ok: true;
+      verdict: PolishVerdict;
+      charged?: unknown;
+      /** Prompt tokens the provider reported, and how many of them came from its prefix cache. */
+      usage?: { tokensIn: number; cachedIn: number };
+    }
   | { ok: false; error: string; status?: number };
 
 export async function polishLines(
@@ -210,13 +217,16 @@ export async function polishLines(
     { role: "system", content: POLISH_PROMPT },
     {
       role: "user",
+      // Steadiest first (the context), the lines being polished last: more leading bytes repeat.
       content: JSON.stringify({
-        lines: input.lines.map(({ scene: _scene, ...line }) => line),
         context,
         glossary,
+        lines: input.lines.map(({ scene: _scene, ...line }) => line),
       }),
     },
   ];
+  const affinity = await chatAffinity(userId, "owner");
+  let usage: { tokensIn: number; cachedIn: number } | undefined;
   const maxInput = Math.ceil(JSON.stringify(messages).length * HOLD_TOKENS_PER_CHAR);
   try {
     const result = await metered(
@@ -244,7 +254,11 @@ export async function polishLines(
           : AbortSignal.timeout(timeout);
         let j: {
           choices?: { message?: { content?: string; refusal?: unknown }; finish_reason?: string }[];
-          usage?: { prompt_tokens?: number; completion_tokens?: number };
+          usage?: {
+            prompt_tokens?: number;
+            completion_tokens?: number;
+            prompt_tokens_details?: { cached_tokens?: number };
+          };
         };
         let content: unknown;
         try {
@@ -252,7 +266,11 @@ export async function polishLines(
             `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1/chat/completions`,
             {
               method: "POST",
-              headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+              headers: {
+                authorization: `Bearer ${token}`,
+                "content-type": "application/json",
+                [AFFINITY_HEADER]: affinity,
+              },
               signal,
               body: JSON.stringify({
                 model: PARTNER_AI_MODEL,
@@ -292,6 +310,8 @@ export async function polishLines(
           typeof j.usage?.completion_tokens === "number" && j.usage.completion_tokens >= 0
             ? j.usage.completion_tokens
             : output;
+        usage = { tokensIn, cachedIn: cachedTokens(j.usage) };
+        // Billed at the list input price: a cached token's discount is the margin's for now.
         return {
           value: polishVerdict(content, input),
           usd: textUsd(PARTNER_AI_MODEL, tokensIn, tokensOut),
@@ -299,7 +319,7 @@ export async function polishLines(
       },
     );
     return result.ok
-      ? { ok: true, verdict: result.value, charged: result.charged }
+      ? { ok: true, verdict: result.value, charged: result.charged, ...(usage ? { usage } : {}) }
       : { ok: false, error: result.reason };
   } catch (e) {
     if (e instanceof PolishProviderError)

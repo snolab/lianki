@@ -894,7 +894,10 @@ total and its metered hold: still one call. The prompt (`CONTEXT_POLISH_RULE`)
 says the context is read-only (never edited, returned or merged) and resolves
 pronouns and homophones from it only when it makes the referent clear. Owner,
 2026-11-25: STT writes every "tā" as 他; in "因为他的 GitHub 不怎么用" the lines
-before were about his wife, so it is 她. Unclear → left as it is.
+before were about his wife, so it is 她. Unclear → left as it is. The call sends
+`x-session-affinity` (a hash of his account and thread, `lib/ai-affinity.ts`) for Workers
+AI's prefix cache, and `debug.auto-polish` logs `tokensIn` / `cachedIn`
+(docs/partner-ai.md, "Prompt caching").
 
 **How it lands: the same path as an agent's.** `merged` back for two or more
 lines → `mergeLines` (the merge rules above: consecutive, one speaker,

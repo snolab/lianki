@@ -9,6 +9,7 @@ import {
   polishLines,
   POLISH_PROMPT,
 } from "../lib/chat-polish";
+import { cachedTokens, chatAffinity } from "../lib/ai-affinity";
 import type { PartnerDb } from "../lib/partner-ai";
 import { getBalance } from "../lib/payments/credits-store";
 
@@ -454,5 +455,67 @@ describe("earlier lines as read-only context", () => {
       v: 1,
       lines: [{ id: "v1", text: "因为他的 GitHub 不怎么用。" }],
     });
+  });
+});
+
+describe("prefix caching", () => {
+  const one = (requestId: string, context: { from: string; text: string }[]) => ({
+    v: 1 as const,
+    requestId,
+    lines: [{ id: "v1", text: "因为他的 GitHub 不怎么用" }],
+    context,
+  });
+  test("a stable hashed session affinity, the same system prompt, cached tokens reported", async () => {
+    const seen: { headers: Record<string, string>; body: any }[] = [];
+    const request = (async (_url: string, init?: RequestInit) => {
+      seen.push({
+        headers: init?.headers as Record<string, string>,
+        body: JSON.parse(String(init?.body)),
+      });
+      return Response.json({
+        choices: [{ message: { content: JSON.stringify({ lines: [] }) } }],
+        usage: {
+          prompt_tokens: 900,
+          completion_tokens: 10,
+          prompt_tokens_details: { cached_tokens: 640 },
+        },
+      });
+    }) as unknown as typeof fetch;
+    const a = await polishLines(
+      env(),
+      { userId: "u_test", input: one("auto:c-1:1", [{ from: "owner", text: "我老婆想学日语" }]) },
+      { fetch: request },
+    );
+    await polishLines(
+      env(),
+      {
+        userId: "u_test",
+        input: one("auto:c-2:1", [
+          { from: "owner", text: "我老婆想学日语" },
+          { from: "owner", text: "她刚开始学" },
+        ]),
+      },
+      { fetch: request },
+    );
+    const [h1, h2] = seen.map((x) => x.headers["x-session-affinity"]);
+    expect(h1).toBe(h2!);
+    expect(h1).toBe(await chatAffinity("u_test", "owner"));
+    expect(h1).toMatch(/^ses_[0-9a-f]{32}$/);
+    expect(h1).not.toContain("u_test");
+    expect(await chatAffinity("u_other", "owner")).not.toBe(h1);
+    // Byte-identical system prompt (no date, no per-call data), the context leads the payload.
+    expect(seen[0]!.body.messages[0]).toEqual(seen[1]!.body.messages[0]);
+    expect(
+      seen[1]!.body.messages[1].content.startsWith(
+        '{"context":[{"from":"owner","text":"我老婆想学日语"}',
+      ),
+    ).toBe(true);
+    expect(a).toMatchObject({ ok: true, usage: { tokensIn: 900, cachedIn: 640 } });
+  });
+  test("cached tokens: absent or odd usage counts as 0", () => {
+    expect(cachedTokens(undefined)).toBe(0);
+    expect(cachedTokens({ prompt_tokens: 5 })).toBe(0);
+    expect(cachedTokens({ cached_tokens: 12 })).toBe(12);
+    expect(cachedTokens({ prompt_tokens_details: { cached_tokens: "9" } })).toBe(0);
   });
 });
