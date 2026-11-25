@@ -6,7 +6,7 @@ const env = {
   LIANKI_DEV_WHOLE_PAGE: "1",
   NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE: "https://voice.example.invalid",
 };
-const q = (value = "lang=zh&text=test") => new URLSearchParams(value);
+const q = (value = "lang=zh&text=test&localVoice=xiaoxiao") => new URLSearchParams(value);
 const make = (params = q(), request?: SpeechFetch) =>
   devLocalSpeech(params, env, true, DEFAULT_LOCAL_TTS_FALLBACKS, request);
 
@@ -17,6 +17,7 @@ test("local speech stays inside the existing dev server and configured language 
     devLocalSpeech(q(), { ...env, LIANKI_DEV_WHOLE_PAGE: "0" }, true, DEFAULT_LOCAL_TTS_FALLBACKS),
   ).toBeNull();
   expect(make(q("lang=en&text=test"))).toBeNull();
+  expect(make(q("lang=zh&text=test"))).toBeNull();
   expect(make(q("lang=zh&localVoice=not-configured"))).toBeNull();
   expect(devLocalSpeech(q(), env, true, { zh: { main: "unknown" } })).toBeNull();
   expect(devLocalSpeech(q(), env, true, { zh: {} })).toBeNull();

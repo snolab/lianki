@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { devLocalSpeech } from "@/lib/dev-local-tts";
 import {
   DEFAULT_LOCAL_TTS_FALLBACKS,
   setLocalTtsFallbacks,
@@ -319,7 +320,7 @@ describe("voice-out: createCloudOut", () => {
           await tick();
           expect(r.fetched).toHaveLength(2);
           expect(r.fetched[1]).toBe(
-            "/api/words/tts?lang=zh&text=%E4%BD%A0%E5%A5%BD%E3%80%82&store=0&localVoice=xiaobei",
+            "/api/voice/tts?lang=zh&text=%E4%BD%A0%E5%A5%BD%E3%80%82&store=0&localVoice=xiaobei",
           );
           r.el.onloadedmetadata?.();
           await tick();
@@ -373,6 +374,19 @@ describe("voice-out: createCloudOut", () => {
           await tick();
           expect(r.fetched).toHaveLength(1);
           expect(r.fetched[0]).toStartWith("/api/words/tts?");
+          // The exact request made with the browser switch off cannot cause
+          // the development server to choose a local voice implicitly.
+          expect(
+            devLocalSpeech(
+              new URL(r.fetched[0]!, "https://app.example.invalid").searchParams,
+              {
+                LIANKI_DEV_WHOLE_PAGE: "1",
+                NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE: "https://tts.example.invalid",
+              },
+              true,
+              DEFAULT_LOCAL_TTS_FALLBACKS,
+            ),
+          ).toBeNull();
         } finally {
           setLocalTtsFallbacks({});
         }

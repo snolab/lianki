@@ -9,12 +9,18 @@ import { metered } from "@/lib/payments/metered";
 import { walletDb } from "@/lib/payments/wallet-db";
 import { providerKey, synthesize } from "@/lib/cloud-voices";
 import { cloudVoiceTts } from "@/lib/cloud-voices-handler";
+import { GET as wordsSpeech } from "@/app/api/words/tts/route";
 
 /**
  * One sentence of Li's read-aloud in a Google / Azure voice. What it serves,
  * who may, and what it costs: lib/cloud-voices-handler.ts.
  */
 export const GET = async (req: NextRequest) => {
+  // The whole-page guard forwards /api/words/tts to production. This existing
+  // provider route stays on the development server; the shared handler keeps
+  // the login, dev grant, configured-voice and rate-limit checks.
+  if (process.env.LIANKI_DEV_WHOLE_PAGE === "1" && req.nextUrl.searchParams.has("localVoice"))
+    return wordsSpeech(req);
   const user = await authUserOrNull();
   return cloudVoiceTts(req.nextUrl.searchParams, user?.email, {
     // Audience owner: the flag, and the dev grant (lib/permissions.ts).
