@@ -45,6 +45,7 @@ export function HtmlWidget({ html, host }: { html: string; host: WidgetHost }) {
       style={{ height: h, borderColor: RULE, colorScheme: "normal" }}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
     />
   );
 }

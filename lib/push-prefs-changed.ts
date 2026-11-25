@@ -21,10 +21,11 @@ function deps(): PrefsNoticeDeps {
     const { env, ctx } = getCloudflareContext();
     return {
       push: (env as unknown as { PUSH?: Fetcher }).PUSH ?? null,
-      later: (p) => ctx.waitUntil(p),
+      later: ctx.waitUntil.bind(ctx),
     };
   } catch {
-    return { push: null, later: () => {} };
+    // No binding: notifyPrefsChanged returns before it would wait on anything.
+    return { push: null, later: Promise.resolve.bind(Promise) };
   }
 }
 
