@@ -238,7 +238,7 @@ describe("Li in the owner's thread: the hub", () => {
     await s.msg(l, { type: "say", text: "【杰咪】在" });
     // Past the lanes' active window: Li may answer an unaddressed line again.
     s.tick(OWNER_LANE_ACTIVE_MS + 1000);
-    await s.msg(o, { type: "chat", id: "a1", text: "你们在干嘛" });
+    await s.msg(o, { type: "chat", id: "a1", text: "你们在干嘛，复习吗" });
     await s.timers.fire();
     expect(s.calls).toHaveLength(1);
     expect(s.calls[0].roster?.map((e) => e.name).toSorted()).toEqual(["coco", "哈基米"]);
@@ -272,18 +272,18 @@ describe("Li in the owner's thread: the hub", () => {
     const s = setup();
     const o = await s.ownerPage();
     const l = await s.lane();
-    await s.msg(o, { type: "chat", id: "a1", text: "first" });
+    await s.msg(o, { type: "chat", id: "a1", text: "first word" });
     s.tick(1000);
     await s.msg(l, { type: "say", text: "lane answer" });
     await s.timers.fire();
     expect(s.calls).toEqual([]);
     s.tick(OWNER_LANE_ACTIVE_MS + 1000);
-    await s.msg(o, { type: "chat", id: "a2", text: "second" });
+    await s.msg(o, { type: "chat", id: "a2", text: "second word" });
     await s.timers.fire();
     expect(s.calls.at(-1)?.history).toEqual([
-      { role: "user", text: "first" },
+      { role: "user", text: "first word" },
       { role: "user", text: "(agent main lane said: lane answer)" },
-      { role: "user", text: "second" },
+      { role: "user", text: "second word" },
     ]);
   });
 
@@ -305,12 +305,12 @@ describe("Li in the owner's thread: the hub", () => {
     await s.msg(o, {
       type: "chat",
       id: "u1",
-      text: "hey i d like to have a standalone userscript, can u help me",
+      text: "hey which words are due today, can u help me",
     });
     await s.timers.fire();
     expect(s.calls.at(-1)?.history).toEqual([
       { role: "user", text: "(agent 小克 said: PR #990 merged.)" },
-      { role: "user", text: "hey i d like to have a standalone userscript, can u help me" },
+      { role: "user", text: "hey which words are due today, can u help me" },
     ]);
     // The hub posts what the main Worker returned; cleanReply (there) strips tags, see partner-ai tests.
     expect(chats(o).at(-1)).toMatchObject({ label: PARTNER_AI_LABEL, lane: "main" });
@@ -320,12 +320,12 @@ describe("Li in the owner's thread: the hub", () => {
     const s = setup();
     const o = await s.ownerPage();
     const l = await s.lane();
-    await s.msg(o, { type: "chat", id: "a1", text: "hello" });
+    await s.msg(o, { type: "chat", id: "a1", text: "hello, review words" });
     s.tick(3000);
     await s.msg(l, { type: "say", text: "lane here" });
     await s.timers.fire();
     expect(s.calls).toEqual([]);
-    expect(chats(o).map((m) => m.text)).toEqual(["hello", "lane here"]);
+    expect(chats(o).map((m) => m.text)).toEqual(["hello, review words", "lane here"]);
   });
 
   it("the 2026-11-16 thread: a lane talking, a heard 哈基米, 没问你 — Li keeps out until named", async () => {
@@ -352,7 +352,7 @@ describe("Li in the owner's thread: the hub", () => {
     expect(s.calls.map((c) => c.msgId)).toEqual(["e5"]);
     // Li's own reply is not a lane talking: his next plain line may get Li.
     s.tick(1000);
-    await s.msg(o, { type: "chat", id: "e6", text: "再来一个" });
+    await s.msg(o, { type: "chat", id: "e6", text: "再来一个单词" });
     expect(s.timers.live.size).toBe(1);
   });
 
@@ -371,8 +371,10 @@ describe("Li in the owner's thread: the hub", () => {
     expect(s.timers.live.size).toBe(1);
     await s.timers.fire();
     expect(s.calls.map((c) => c.msgId)).toEqual(["v5"]);
-    // Typed, unnamed: Li may answer, as before.
-    await s.msg(o, { type: "chat", id: "t1", text: "And here a few." });
+    // Typed, unnamed: Li may answer a study line (2026-11-26: only those), as before.
+    await s.msg(o, { type: "chat", id: "t0", text: "And here a few." });
+    expect(s.timers.live.size).toBe(0);
+    await s.msg(o, { type: "chat", id: "t1", text: "And here a few words." });
     expect(s.timers.live.size).toBe(1);
   });
 
@@ -444,8 +446,8 @@ describe("Li in the owner's thread: the hub", () => {
   it("a newer line of his replaces the pending reply (one reply, for the newest)", async () => {
     const s = setup();
     const o = await s.ownerPage();
-    await s.msg(o, { type: "chat", id: "a1", text: "one" });
-    await s.msg(o, { type: "chat", id: "a2", text: "two" });
+    await s.msg(o, { type: "chat", id: "a1", text: "one word" });
+    await s.msg(o, { type: "chat", id: "a2", text: "two words" });
     expect(s.timers.live.size).toBe(1);
     await s.timers.fire();
     expect(s.calls.map((c) => c.msgId)).toEqual(["a2"]);
@@ -454,7 +456,7 @@ describe("Li in the owner's thread: the hub", () => {
   it("a line addressed to a lane never gets Li, and cancels a pending one", async () => {
     const s = setup();
     const o = await s.ownerPage();
-    await s.msg(o, { type: "chat", id: "a1", text: "hello" });
+    await s.msg(o, { type: "chat", id: "a1", text: "hello, review words" });
     await s.msg(o, { type: "chat", id: "a2", text: "codex，看一下这个 bug" });
     await s.msg(o, { type: "chat", id: "a3", text: "for the node", to: "/plan/x" });
     expect(s.timers.live.size).toBe(0);
@@ -466,7 +468,7 @@ describe("Li in the owner's thread: the hub", () => {
     for (const opts of [{ owner: false }, { ai: false }]) {
       const s = setup(opts);
       const o = await s.ownerPage();
-      await s.msg(o, { type: "chat", id: "a1", text: "hello" });
+      await s.msg(o, { type: "chat", id: "a1", text: "hello, review words" });
       expect(s.timers.live.size).toBe(0);
       await s.timers.fire();
       expect(s.calls).toEqual([]);
@@ -477,11 +479,11 @@ describe("Li in the owner's thread: the hub", () => {
   it("a chat-only page of his (no session) is metered on his other page's user id; none: no call", async () => {
     const s = setup();
     const bare = await s.ownerPage(false);
-    await s.msg(bare, { type: "chat", id: "a1", text: "hello" });
+    await s.msg(bare, { type: "chat", id: "a1", text: "hello, review words" });
     await s.timers.fire();
     expect(s.calls).toEqual([]);
     await s.ownerPage(true);
-    await s.msg(bare, { type: "chat", id: "a2", text: "again" });
+    await s.msg(bare, { type: "chat", id: "a2", text: "again, review" });
     await s.timers.fire();
     expect(s.calls.map((c) => c.userId)).toEqual(["owner1"]);
   });
@@ -494,7 +496,7 @@ describe("Li in the owner's thread: the hub", () => {
     ] as const) {
       const s = setup({ delay });
       const o = await s.ownerPage();
-      await s.msg(o, { type: "chat", id: "a1", text: "hello" });
+      await s.msg(o, { type: "chat", id: "a1", text: "hello, review words" });
       expect([...s.timers.live.values()].map((x) => x.ms)).toEqual([want]);
     }
   });
@@ -675,23 +677,23 @@ describe("Li in the owner's thread: which lines", () => {
       present: async () => {},
     });
     // The configured list replaces the default: 没问你 is a plain line now.
-    await ai.line({ id: "p0", text: "没问你", at: 1 }, null);
+    await ai.line({ id: "p0", text: "没问你 word", at: 1 }, null);
     expect(timers.live.size).toBe(1);
     await ai.line({ id: "s1", text: "please stop it", at: 2 }, null);
     expect(timers.live.size).toBe(0);
     expect(ai.quiet()).toBe(true);
-    await ai.line({ id: "p1", text: "hello", at: 3 }, null);
+    await ai.line({ id: "p1", text: "hello word", at: 3 }, null);
     expect(timers.live.size).toBe(0);
     // A stop line naming a lane is for that lane, and an addressed line never gets Li.
     now = 61_000;
     expect(ai.quiet()).toBe(false);
     await ai.line({ id: "s2", text: "codex, stop it", at: 4 }, null);
     expect(ai.quiet()).toBe(false);
-    await ai.line({ id: "p2", text: "hello again", at: 5 }, null);
+    await ai.line({ id: "p2", text: "hello again, words", at: 5 }, null);
     expect(timers.live.size).toBe(1);
     // A lane spoke just now: unaddressed lines wait out laneActiveMs; naming Li does not.
     laneAt = now - 1000;
-    await ai.line({ id: "p3", text: "and this", at: 6 }, null);
+    await ai.line({ id: "p3", text: "and this word", at: 6 }, null);
     expect(timers.live.size).toBe(0);
     await ai.line({ id: "s3", text: "stop it", at: 7 }, null);
     await ai.line({ id: "d1", text: "Lia, what now?", at: 8 }, null);
@@ -701,7 +703,7 @@ describe("Li in the owner's thread: which lines", () => {
     expect(replies).toEqual(["d1"]);
     // Past the window, unaddressed lines are Li's again.
     now += 10_000;
-    await ai.line({ id: "p4", text: "and now", at: 9 }, null);
+    await ai.line({ id: "p4", text: "and now a word", at: 9 }, null);
     expect(timers.live.size).toBe(1);
   });
 
@@ -744,12 +746,12 @@ describe("Li in the owner's thread: which lines", () => {
     expect(timers.live.size).toBe(0);
     await ai.line({ id: "d", text: "当公公司能够通接下。Li?", at: 4, source: "stt" }, null);
     expect(timers.live.size).toBe(1);
-    await ai.line({ id: "e", text: "typed, no name", at: 5 }, null);
+    await ai.line({ id: "e", text: "typed word, no name", at: 5 }, null);
     expect(timers.live.size).toBe(1);
     // Off: spoken lines are treated like typed ones.
     conf[OWNER_SPOKEN_NEEDS_NAME_KEY] = false;
     const off = make();
-    await off.line({ id: "f", text: "あります。", at: 6, source: "stt" }, null);
+    await off.line({ id: "f", text: "単語あります。", at: 6, source: "stt" }, null);
     await timers.fire();
     expect(replies.toSorted()).toEqual(["e", "f"]);
     // A non-boolean value falls back to the default.
@@ -781,7 +783,7 @@ describe("Li in the owner's thread: which lines", () => {
     expect(c.stop).toEqual(OWNER_STOP_PHRASES);
     expect(c.liNames).toEqual(OWNER_LI_NAMES);
     expect(c.laneActiveMs).toBe(0);
-    await ai.line({ id: "p", text: "hello", at: 5 }, null);
+    await ai.line({ id: "p", text: "hello word", at: 5 }, null);
     expect(timers.live.size).toBe(1);
   });
 
@@ -829,7 +831,7 @@ describe("Li in the owner's thread: the main Worker", () => {
     userId,
     msgId: `m-${userId}`,
     ...(owner ? { owner: true } : {}),
-    history: [{ role: "user", text: "hello" }],
+    history: [{ role: "user", text: "hello, review words" }],
   });
   beforeEach(() => {
     d1 = createTestD1(testSchema());
@@ -928,21 +930,21 @@ describe("Li's prompt in cache order (partner.stable-prompt): the hub", () => {
     const o = await s.ownerPage();
     s.setReply(async (req) =>
       ok({
-        polish: [{ id: req.polish![0]!.id, text: "Li，因为她的 GitHub 不怎么用。" }],
+        polish: [{ id: req.polish![0]!.id, text: "Li，因为她的 单词表不怎么用。" }],
         cachedIn: 300,
       }),
     );
-    await s.msg(o, spoken("v1", "Li 因为他的 GitHub 不怎么用"));
+    await s.msg(o, spoken("v1", "Li 因为他的 单词表不怎么用"));
     await s.timers.fire();
     expect(s.calls).toHaveLength(1);
     expect(s.calls[0]).toMatchObject({
       stable: true,
-      polish: [{ id: "v1", text: "Li 因为他的 GitHub 不怎么用" }],
+      polish: [{ id: "v1", text: "Li 因为他的 单词表不怎么用" }],
     });
     expect(edits(o).at(-1)).toMatchObject({
       id: "v1",
-      text: "Li，因为她的 GitHub 不怎么用。",
-      raw: "Li 因为他的 GitHub 不怎么用",
+      text: "Li，因为她的 单词表不怎么用。",
+      raw: "Li 因为他的 单词表不怎么用",
       edited: { by: "auto", count: 1 },
     });
     expect(chats(o).at(-1)).toMatchObject({ label: PARTNER_AI_LABEL, text: "她可以先用 GitLab。" });
@@ -952,7 +954,7 @@ describe("Li's prompt in cache order (partner.stable-prompt): the hub", () => {
     const s = setup(on);
     const o = await s.ownerPage();
     s.setReply(async () => ok({ polish: [{ id: "someone-else", text: "x" }] }));
-    await s.msg(o, spoken("v1", "Li 因为他的 GitHub 不怎么用"));
+    await s.msg(o, spoken("v1", "Li 因为他的 单词表不怎么用"));
     await s.timers.fire();
     expect(edits(o)).toHaveLength(0);
     expect(chats(o).at(-1)).toMatchObject({ text: "她可以先用 GitLab。" });
@@ -966,13 +968,13 @@ describe("Li's prompt in cache order (partner.stable-prompt): the hub", () => {
       for (const [k, v] of s.storage.store)
         if ((v as { id?: string }).id === req.polish![0]!.id)
           s.storage.store.set(k, { ...(v as object), edited: { by: "agent", count: 1 } });
-      return ok({ polish: [{ id: req.polish![0]!.id, text: "Li，因为她的 GitHub 不怎么用。" }] });
+      return ok({ polish: [{ id: req.polish![0]!.id, text: "Li，因为她的 单词表不怎么用。" }] });
     });
-    await s.msg(o, spoken("v1", "Li 因为他的 GitHub 不怎么用"));
+    await s.msg(o, spoken("v1", "Li 因为他的 单词表不怎么用"));
     await s.timers.fire();
     expect(edits(o)).toHaveLength(0);
     // The next call: v1 already polished, so it is not offered again.
-    s.setReply(async () => ok({ polish: [{ id: "v1", text: "again" }] }));
+    s.setReply(async () => ok({ polish: [{ id: "v1", text: "again, review" }] }));
     s.tick(120_000);
     await s.msg(o, { type: "chat", id: "t2", text: "Li 她现在学到哪了" });
     await s.timers.fire();
@@ -1006,7 +1008,7 @@ describe("Li's prompt in cache order (partner.stable-prompt): the hub", () => {
   it("flag off: the old request, no window kept, no polish lines", async () => {
     const s = setup({ flags: { "voice.auto-polish": true, "stt.polish": true } });
     const o = await s.ownerPage();
-    await s.msg(o, spoken("v1", "Li 因为他的 GitHub 不怎么用"));
+    await s.msg(o, spoken("v1", "Li 因为他的 单词表不怎么用"));
     await s.timers.fire();
     expect(s.calls[0]!.stable).toBeUndefined();
     expect(s.calls[0]!.polish).toBeUndefined();
@@ -1063,8 +1065,8 @@ describe("Li's prompt in cache order: the main Worker", () => {
         msgId: `m${Math.random().toString(36).slice(2, 8)}`,
         owner: true,
         stable: true,
-        polish: [{ id: "v1", text: "因为他的 GitHub 不怎么用" }],
-        history: [{ role: "user", text: "因为他的 GitHub 不怎么用" }],
+        polish: [{ id: "v1", text: "因为他的 单词表不怎么用" }],
+        history: [{ role: "user", text: "因为他的 单词表不怎么用" }],
         ...extra,
       },
       { fetch: f },
@@ -1074,13 +1076,13 @@ describe("Li's prompt in cache order: the main Worker", () => {
 
   it("one call: the reply without its section, the polish held to the ids sent, cached tokens reported", async () => {
     const { res, seen } = await call(
-      '她可以先用 GitLab。\n<polish>{"lines":[{"id":"v1","text":"因为她的 GitHub 不怎么用。"},{"id":"x9","text":"no"}]}</polish>',
+      '她可以先用 GitLab。\n<polish>{"lines":[{"id":"v1","text":"因为她的 单词表不怎么用。"},{"id":"x9","text":"no"}]}</polish>',
     );
     expect(seen).toHaveLength(1);
     expect(res).toMatchObject({
       ok: true,
       text: "她可以先用 GitLab。",
-      polish: [{ id: "v1", text: "因为她的 GitHub 不怎么用。" }],
+      polish: [{ id: "v1", text: "因为她的 单词表不怎么用。" }],
       cachedIn: 512,
     });
     expect(seen[0]!.headers["x-session-affinity"]).toMatch(/^ses_[0-9a-f]{32}$/);

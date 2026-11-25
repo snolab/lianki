@@ -731,7 +731,7 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
     const system = bodies[0].messages[0].content;
     expect(system).toContain("You speak only as yourself");
     expect(system).toContain("never start a reply with a name tag");
-    expect(system).toContain("You do not write code, build apps");
+    expect(system).toContain("never plan, offer or promise that work yourself");
     expect(system).toContain("the developer reads this chat");
   });
 

@@ -89,6 +89,7 @@ import agentGuide from "@/lib/agent-guide.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
 import chatHistoryPage from "@/app/(app)/chat/history/page.content";
 import chatSitesPage from "@/app/(app)/chat/sites/page.content";
+import pillInstall from "@/app/(app)/chat/sites/pill-install.content";
 import devDesign from "@/app/(app)/dev/design/page.content";
 import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
 import devPages from "@/app/(app)/dev/dev-pages.content";
@@ -227,6 +228,7 @@ describe.each([
   ["roadmap-page", roadmapPage],
   ["chat-history-page", chatHistoryPage],
   ["chat-sites-page", chatSitesPage],
+  ["pill-install", pillInstall],
   ["dev-design", devDesign],
   ["dev-roadmap", devRoadmap],
   ["dev-pages", devPages],

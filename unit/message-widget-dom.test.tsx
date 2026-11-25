@@ -38,6 +38,7 @@ async function mount(make: (host: WidgetHost) => ReactElement) {
       invalid: "Not a calculation",
       hint: "Fills your reply",
       scriptsOff: "Scripts off",
+      filled: "Filled {n}",
     },
     htmlMaxHeight: 300,
   };

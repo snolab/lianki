@@ -77,6 +77,7 @@ export type ChatExtra = {
   widgetCalcInvalid: string;
   widgetReplyHint: string;
   widgetScriptsOff: string;
+  widgetFilled: string;
 
   readReceipts: string;
   menuSwitchOn: string;
@@ -236,6 +237,7 @@ export const EXTRA_CONTEXT: ChatExtra = {
   widgetCalcInvalid: "Shown next to a calculator widget inside an assistant's chat message when what is typed in its box is not arithmetic (only numbers and + − × ÷ % ^ and parentheses work). Short, neutral, not an error alarm.",
   widgetReplyHint: "Tooltip on every control of an interactive widget inside an assistant's chat message (choice buttons, the calculator's and slider's put-in-reply button): tapping only fills the user's reply box; the user still decides and sends it. One short sentence.",
   widgetScriptsOff: "A short neutral note above an interactive HTML widget inside an assistant's chat message, shown when the widget contained script code that was removed for safety. The rest of the widget still works (its text, buttons and form fields). Not an error alarm; one short sentence.",
+  widgetFilled: "A small tappable chip under an assistant's chat message, shown when the assistant filled in a form widget (above in the chat) from what the user said by voice. {n} is the number of fields it filled (keep {n} as is). Tapping it scrolls to the form and highlights those fields so the user can check them; nothing has been sent. Short, like a button label.",
   menuSwitchOn: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the ON word: the setting is active. The shortest word this language's own on/off switches show for 'on' (English 'On', Chinese 开), the same as the app's other switches.`,
   menuSwitchOff: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the OFF word: the setting is inactive. The shortest word this language's own on/off switches show for 'off' (English 'Off', Chinese 关), the pair to the ON word.`,
   readReceipts: "Accessible label for tiny participant avatars below the latest own chat message in the viewer’s own authenticated thread. These participants have actually read through this message; not merely connected or received it. No counts or technical sequence values are shown.",
@@ -699,6 +701,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "Not a calculation",
     widgetReplyHint: "Puts this in your reply box; you still send it yourself",
     widgetScriptsOff: "Scripts in this widget are turned off.",
+    widgetFilled: "Filled {n} fields · show form",
 
     readReceipts: "Read by",
     menuSwitchOn: "On",
@@ -814,6 +817,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "不是算式",
     widgetReplyHint: "填进你的回复框，发不发由你",
     widgetScriptsOff: "此组件中的脚本已关闭。",
+    widgetFilled: "已填 {n} 项 · 看表单",
 
     readReceipts: "已读者",
     menuSwitchOn: "开",
@@ -928,6 +932,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "यह गणना नहीं है",
     widgetReplyHint: "यह आपके जवाब बॉक्स में डालता है; भेजना आप ही करते हैं",
     widgetScriptsOff: "इस विजेट की स्क्रिप्ट बंद हैं।",
+    widgetFilled: "{n} फ़ील्ड भरे · फ़ॉर्म देखें",
 
     readReceipts: "इन लोगों ने पढ़ा",
     menuSwitchOn: "चालू",
@@ -1042,6 +1047,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "No es un cálculo",
     widgetReplyHint: "Lo pone en tu cuadro de respuesta; tú decides si lo envías",
     widgetScriptsOff: "Los scripts de este widget están desactivados.",
+    widgetFilled: "{n} campos rellenados · ver formulario",
 
     readReceipts: "Leído por",
     menuSwitchOn: "Sí",
@@ -1156,6 +1162,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "Ce n’est pas un calcul",
     widgetReplyHint: "Le place dans votre zone de réponse ; c’est vous qui l’envoyez",
     widgetScriptsOff: "Les scripts de ce widget sont désactivés.",
+    widgetFilled: "{n} champs remplis · voir le formulaire",
 
     readReceipts: "Lu par",
     menuSwitchOn: "Oui",
@@ -1270,6 +1277,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "ليست عملية حسابية",
     widgetReplyHint: "يضعها في مربع ردك؛ وأنت من يرسلها",
     widgetScriptsOff: "تم إيقاف البرامج النصية في هذه الأداة.",
+    widgetFilled: "تم ملء {n} حقول · عرض النموذج",
 
     readReceipts: "قرأها",
     menuSwitchOn: "تشغيل",
@@ -1384,6 +1392,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "এটি হিসাব নয়",
     widgetReplyHint: "এটি আপনার উত্তরের ঘরে বসায়; পাঠাবেন আপনিই",
     widgetScriptsOff: "এই উইজেটের স্ক্রিপ্ট বন্ধ আছে।",
+    widgetFilled: "{n}টি ঘর পূরণ হয়েছে · ফর্ম দেখুন",
 
     readReceipts: "যারা পড়েছেন",
     menuSwitchOn: "চালু",
@@ -1498,6 +1507,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "Não é um cálculo",
     widgetReplyHint: "Coloca isto na sua caixa de resposta; quem envia é você",
     widgetScriptsOff: "Os scripts deste widget estão desativados.",
+    widgetFilled: "{n} campos preenchidos · ver formulário",
 
     readReceipts: "Lido por",
     menuSwitchOn: "Sim",
@@ -1612,6 +1622,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "Это не вычисление",
     widgetReplyHint: "Вставляет это в поле ответа; отправляете вы сами",
     widgetScriptsOff: "Скрипты в этом виджете отключены.",
+    widgetFilled: "Заполнено полей: {n} · показать форму",
 
     readReceipts: "Прочитали",
     menuSwitchOn: "Вкл",
@@ -1726,6 +1737,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "یہ حساب نہیں ہے",
     widgetReplyHint: "یہ آپ کے جواب کے خانے میں ڈالتا ہے؛ بھیجنا آپ کے ہاتھ میں ہے",
     widgetScriptsOff: "اس ویجیٹ کی اسکرپٹس بند ہیں۔",
+    widgetFilled: "{n} خانے بھرے گئے · فارم دیکھیں",
 
     readReceipts: "پڑھنے والے",
     menuSwitchOn: "آن",
@@ -1840,6 +1852,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "Bukan perhitungan",
     widgetReplyHint: "Memasukkannya ke kotak balasan; Anda sendiri yang mengirim",
     widgetScriptsOff: "Skrip di widget ini dimatikan.",
+    widgetFilled: "{n} kolom diisi · lihat formulir",
 
     readReceipts: "Dibaca oleh",
     menuSwitchOn: "Nyala",
@@ -1954,6 +1967,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "Keine Rechnung",
     widgetReplyHint: "Setzt es in dein Antwortfeld; senden tust du selbst",
     widgetScriptsOff: "Skripte in diesem Widget sind ausgeschaltet.",
+    widgetFilled: "{n} Felder ausgefüllt · Formular zeigen",
 
     readReceipts: "Gelesen von",
     menuSwitchOn: "An",
@@ -2068,6 +2082,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "計算式ではありません",
     widgetReplyHint: "返信欄に入れるだけで、送るのはあなたです",
     widgetScriptsOff: "このウィジェットのスクリプトはオフです。",
+    widgetFilled: "{n} 項目を入力 · フォームを見る",
 
     readReceipts: "既読の参加者",
     menuSwitchOn: "開",
@@ -2182,6 +2197,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "Si hesabu",
     widgetReplyHint: "Inaweka hiki kwenye kisanduku cha jibu; wewe ndiye unatuma",
     widgetScriptsOff: "Skripti katika wijeti hii zimezimwa.",
+    widgetFilled: "Sehemu {n} zimejazwa · ona fomu",
 
     readReceipts: "Imesomwa na",
     menuSwitchOn: "Washa",
@@ -2296,6 +2312,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "हे गणित नाही",
     widgetReplyHint: "हे तुमच्या उत्तराच्या चौकटीत टाकते; पाठवायचे तुम्हीच",
     widgetScriptsOff: "या विजेटमधील स्क्रिप्ट बंद आहेत.",
+    widgetFilled: "{n} रकाने भरले · फॉर्म पहा",
 
     readReceipts: "यांनी वाचले",
     menuSwitchOn: "चालू",
@@ -2410,6 +2427,7 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     widgetCalcInvalid: "계산식이 아닙니다",
     widgetReplyHint: "답장 칸에 넣기만 하고, 보내는 건 직접 하세요",
     widgetScriptsOff: "이 위젯의 스크립트는 꺼져 있습니다.",
+    widgetFilled: "{n}개 항목 입력됨 · 양식 보기",
 
     readReceipts: "읽은 참여자",
     menuSwitchOn: "켬",

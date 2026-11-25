@@ -10,6 +10,7 @@ import { ChatLinkMenu } from "./ChatLinkMenu";
 import { linkDestinations } from "./link-destination";
 import { MessageWidget, type WidgetHost } from "./MessageWidget";
 import { HtmlInline } from "./HtmlInline";
+import { FillChip } from "./FillChip";
 
 const LINK_INK = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))";
 const CODE_BG = "light-dark(oklch(0.5 0.01 260 / 0.13), oklch(0.85 0.01 260 / 0.16))";
@@ -137,7 +138,13 @@ const STYLE: Record<string, CSSProperties> = {
 
 function nodeEls(
   nodes: RichNode[],
-  o: { read?: RichRead; onOpenPage?: OpenPage; inPre?: boolean; widgets?: WidgetHost },
+  o: {
+    read?: RichRead;
+    onOpenPage?: OpenPage;
+    inPre?: boolean;
+    widgets?: WidgetHost;
+    lineId?: string;
+  },
   prefix = "",
 ): ReactNode[] {
   return nodes.map((n, i) => {
@@ -158,12 +165,20 @@ function nodeEls(
           <table className={CLASS.table}>{kids()}</table>
         </div>
       );
-    const { align, "data-widget": widget, "data-html-widget": htmlWidget, ...rest } = attrs;
+    const {
+      align,
+      "data-widget": widget,
+      "data-html-widget": htmlWidget,
+      "data-fill": fill,
+      ...rest
+    } = attrs;
     // A message widget, where the host shows them; otherwise the code block it is.
     if (widget !== undefined && o.widgets)
       return <MessageWidget key={key} spec={widget} host={o.widgets} />;
     if (htmlWidget !== undefined && o.widgets)
-      return <HtmlInline key={key} html={htmlWidget} host={o.widgets} />;
+      return <HtmlInline key={key} html={htmlWidget} host={o.widgets} lineId={o.lineId} />;
+    if (fill !== undefined && o.widgets && o.lineId)
+      return <FillChip key={key} spec={fill} patchId={`${o.lineId}:${key}`} host={o.widgets} />;
     // A code block's <code> takes its look from the <pre>.
     const plainCode = tag === "code" && o.inPre;
     const props = {
@@ -189,14 +204,17 @@ export function RichBody({
   read,
   onOpenPage,
   widgets,
+  lineId,
 }: {
   rich: Rich;
   read?: RichRead;
   onOpenPage?: OpenPage;
   /** Message widgets (flag chat.message-widgets): where they put his reply, and their words. */
   widgets?: WidgetHost;
+  /** The line's id: voice-fill patches name the form's line (widget-fill.ts). */
+  lineId?: string;
 }) {
-  return <>{nodeEls(rich.nodes, { read, onOpenPage, widgets })}</>;
+  return <>{nodeEls(rich.nodes, { read, onOpenPage, widgets, lineId })}</>;
 }
 
 /** A line in the one-line views (compact, floating): no blocks, the links still links. */

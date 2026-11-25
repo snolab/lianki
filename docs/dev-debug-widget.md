@@ -1843,6 +1843,27 @@ The same agent lines (`widgetLine`) may carry a ` ```lianki-html ` block.
 Tests: `unit/html-widget.test.ts` (his form example as the first fixture, the
 usual XSS vectors, sandbox attributes and CSP, the thread boundary).
 
+### Voice fill: filling a form widget by speaking
+
+Owner, 2026-11-26: he speaks into the normal mic ("first name Sam, last name
+Sample"); the agent that posted the form fills it for him to check. The agent
+answers with a patch in his thread:
+
+    ```lianki-fill
+    {"line": "<the form's line id>", "fields": {"fname": "Sam", "lname": "Sample"}}
+    ```
+
+The chat (`widget-fill.ts`, `FillChip.tsx`) applies it once to that line's
+form by field name and shows the patch as a chip, "Filled 2 fields · show
+form": a tap scrolls to the form and outlines the filled fields. Same boundary
+as widgets (`widgetLine`): both lines are agent lines in his own thread. A
+patch never adds a field and never touches hidden, disabled, read-only or file
+inputs, including those inside a disabled fieldset. A fill never submits:
+sending is always his own tap on the form's Submit button; a `"submit"` key
+in a patch is ignored, on every page and every replay. Values go in through the native setter and an input event, so
+the page's uncontrolled inputs and Android keyboards agree. Tests:
+`unit/widget-fill.test.tsx`.
+
 ## Copying a message
 
 Owner, 2026-11-05 01:34 JST, iPhone PWA on /reader: "这里复制不了". The chat
