@@ -10,7 +10,7 @@
  * stream) and DELETE answer 405. One tool holds its POST open:
  * lianki_chat_wait, up to 55 s, on a token chat socket to PUSH (chatIo).
  *
- * Auth: `Authorization: Bearer <API token>`, the same token `lianki mcp` and
+ * Auth: `Authorization: Bearer <API token>` or `/mcp/<lk_ API token>`, the same token `lianki mcp` and
  * the REST API take. It is not checked here: it is forwarded, with the call,
  * to the main Worker (MAIN) or, for the chat and the progress tools
  * (/api/version/*), to lianki-push (PUSH), which
@@ -49,6 +49,7 @@ import {
   toolsFor,
 } from "../../../packages/lianki-cli/mcp-tools.mjs";
 import { guide, wantsGuide } from "./guide";
+import { TOKEN_RE } from "../../../lib/api-tokens";
 
 type Fetcher = { fetch(req: Request): Promise<Response> };
 export type Env = { MAIN: Fetcher; PUSH: Fetcher };
@@ -64,7 +65,12 @@ export const MAX_BODY = 1_000_000;
 type Id = string | number | null;
 type Rpc = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown };
 
-const NO_STORE = { "cache-control": "no-store" };
+const NO_STORE = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
+
+/** Credentials must never be reflected by protocol or upstream errors. */
+function safeJson(body: unknown): string {
+  return JSON.stringify(body).replace(/lk_[0-9a-f]{64}/g, "[redacted]");
+}
 const AUTH_HEADERS = { ...NO_STORE, "www-authenticate": 'Bearer realm="lianki"' };
 
 class Unauthorized extends Error {}
@@ -76,7 +82,10 @@ const rpcError = (id: Id, code: number, message: string) => ({
 });
 
 function plain(body: unknown, status: number, headers: Record<string, string> = NO_STORE) {
-  return Response.json(body, { status, headers });
+  return new Response(safeJson(body), {
+    status,
+    headers: { ...headers, "content-type": "application/json" },
+  });
 }
 
 /** Does the client's Accept rank text/event-stream above application/json? */
@@ -96,7 +105,7 @@ export function prefersStream(accept: string | null): boolean {
 /** One JSON-RPC answer, as JSON or as a single SSE event. */
 function answer(req: Request, body: unknown, status = 200, extra: Record<string, string> = {}) {
   if (prefersStream(req.headers.get("accept")))
-    return new Response(`event: message\ndata: ${JSON.stringify(body)}\n\n`, {
+    return new Response(`event: message\ndata: ${safeJson(body)}\n\n`, {
       status,
       headers: { ...NO_STORE, "content-type": "text/event-stream", ...extra },
     });
@@ -223,7 +232,7 @@ async function dispatch(
     }
     case "tools/call": {
       const t = TOOLS.find((x) => x.name === params.name);
-      if (!t) return rpcError(id, -32602, `Unknown tool: ${String(params.name).slice(0, 64)}`);
+      if (!t) return rpcError(id, -32602, "Unknown tool");
       // Refused before anything runs when the token lacks the tool's permission
       // (the routes would refuse it too; this names the permission).
       const identity = await identityOf(c, token);
@@ -254,16 +263,24 @@ async function dispatch(
       return { jsonrpc: "2.0", id, result };
     }
     default:
-      return rpcError(id, -32601, `Method not found: ${String(msg.method).slice(0, 64)}`);
+      return rpcError(id, -32601, "Method not found");
   }
 }
 
 export async function handle(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
-  // The route is lianki.com/mcp*: any other path under it (an /mcp-something page) is the app's.
-  if (url.pathname !== MCP_PATH && url.pathname !== `${MCP_PATH}/`) return env.MAIN.fetch(req);
-  // A browser opening the address gets the how-to-connect page, not a bare 405.
-  if (wantsGuide(req)) return guide(req, url.origin);
+  // Reserve nested paths for credentials; never forward those URLs to MAIN.
+  const canonical = url.pathname === MCP_PATH || url.pathname === `${MCP_PATH}/`;
+  if (!canonical && !url.pathname.startsWith(`${MCP_PATH}/`)) return env.MAIN.fetch(req);
+  const pathToken = canonical ? undefined : url.pathname.slice(MCP_PATH.length + 1);
+  if (pathToken !== undefined && !TOKEN_RE.test(pathToken))
+    return plain(rpcError(null, -32001, "Invalid MCP token address"), 401, AUTH_HEADERS);
+  // The guide uses only the origin, never the credential-bearing path.
+  if (wantsGuide(req)) {
+    const res = guide(req, url.origin);
+    res.headers.set("referrer-policy", "no-referrer");
+    return res;
+  }
   if (req.method !== "POST")
     return new Response("Method Not Allowed", {
       status: 405,
@@ -272,20 +289,17 @@ export async function handle(req: Request, env: Env): Promise<Response> {
 
   const header = req.headers.get("authorization") ?? "";
   const bearer = /^Bearer\s+(\S+)$/i.exec(header);
-  if (!bearer)
+  if ((!pathToken && !bearer) || (pathToken && header && bearer?.[1] !== pathToken))
     return plain(
       rpcError(null, -32001, "Authorization: Bearer <your Lianki API token> is required"),
       401,
       AUTH_HEADERS,
     );
-  const token = bearer[1];
+  const token = pathToken ?? bearer![1];
 
   const pv = req.headers.get("mcp-protocol-version");
   if (pv !== null && !PROTOCOL_VERSIONS.includes(pv))
-    return plain(
-      rpcError(null, -32600, `Unsupported MCP-Protocol-Version: ${pv.slice(0, 32)}`),
-      400,
-    );
+    return plain(rpcError(null, -32600, "Unsupported MCP-Protocol-Version"), 400);
 
   const text = await req.text();
   if (text.length > MAX_BODY) return plain(rpcError(null, -32600, "Request too large"), 413);
