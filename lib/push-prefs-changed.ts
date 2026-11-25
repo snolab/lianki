@@ -16,11 +16,14 @@ export type PrefsNoticeDeps = { push: Fetcher | null; later: (p: Promise<unknown
 
 export const URL_PREFS_CHANGED = "https://lianki-push/internal/prefs-changed";
 
-function deps(): PrefsNoticeDeps {
+type Ctx = { env: unknown; ctx: { waitUntil(p: Promise<unknown>): void } };
+
+/** The real bindings: PUSH and the request's waitUntil; none off the Worker. */
+export function prefsNoticeDeps(context: () => Ctx = getCloudflareContext): PrefsNoticeDeps {
   try {
-    const { env, ctx } = getCloudflareContext();
+    const { env, ctx } = context();
     return {
-      push: (env as unknown as { PUSH?: Fetcher }).PUSH ?? null,
+      push: (env as { PUSH?: Fetcher } | undefined)?.PUSH ?? null,
       later: (p) => ctx.waitUntil(p),
     };
   } catch {
@@ -28,7 +31,7 @@ function deps(): PrefsNoticeDeps {
   }
 }
 
-export function notifyPrefsChanged(user: string, d: PrefsNoticeDeps = deps()) {
+export function notifyPrefsChanged(user: string, d: PrefsNoticeDeps = prefsNoticeDeps()) {
   const push = d.push;
   if (!push || !user) return;
   d.later(
