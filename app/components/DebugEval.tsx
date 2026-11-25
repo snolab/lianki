@@ -80,6 +80,7 @@ import {
 } from "@lianki/debug-chat/audio-sync-hub";
 import { cloudOut, existingCtx } from "@lianki/debug-chat/voice-out";
 import { voiceLatency } from "@lianki/debug-chat/latency";
+import { messageTelemetry } from "@lianki/debug-chat/message-telemetry";
 import { pageScene } from "@lianki/debug-chat/scene";
 import { liveTreeSource, progressSocketUrl } from "@/lib/progress-tree";
 import { TABS_CHANNEL, joinTabs } from "@lianki/debug-chat/debug-chat-tabs";
@@ -358,6 +359,26 @@ export function DebugEval({
   // Read with the cloud voice while the mic is open (aec.ts): the echo canceller hears it.
   setCloudWhileMic(publicCfg("voice.cloudWhileMic"));
   setPolishReadback(readback);
+  const telemetrySamplePct = publicCfg("chat.telemetrySamplePct");
+  const telemetryFlushMs = publicCfg("chat.telemetryFlushMs");
+  const telemetryBatchSize = publicCfg("chat.telemetryBatchSize");
+  // Developer diagnostics only; account changes discard the previous account's samples.
+  useEffect(() => {
+    const metrics = messageTelemetry();
+    metrics.configure({
+      sampleRate: telemetrySamplePct / 100,
+      flushMs: telemetryFlushMs,
+      batchSize: telemetryBatchSize,
+      log: dev && account && !box ? devLog : null,
+    });
+    const flush = () => metrics.flush();
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      // Discard on account changes; never upload one account's samples using another session.
+      metrics.configure({ log: null });
+    };
+  }, [dev, account, box, telemetrySamplePct, telemetryFlushMs, telemetryBatchSize]);
   const openRef = useRef(partnerOpen);
   openRef.current = partnerOpen;
   const devRef = useRef(dev);
@@ -1191,6 +1212,12 @@ export function DebugEval({
         if (msg.type === "chat" && msg.message && typeof msg.message === "object") {
           const m = withLane(msg.message as ChatMessage);
           if (typeof m.text !== "string" || typeof m.id !== "string") return;
+          messageTelemetry().received({
+            id: m.id,
+            from: m.from,
+            source: m.source === "stt" ? "stt" : "typed",
+            lane: m.tokenLane ?? m.agentId ?? (m.from === "agent" ? m.label : undefined),
+          });
           outbox.acknowledge(acknowledgedChatIds([m]));
           recovered.observe(m.seq);
           setMessages((list) => trimHistory(recovered.merge(list, [m])));
@@ -1529,6 +1556,7 @@ export function DebugEval({
       });
       if (!accepted) return false;
       const id = outbox.items().at(-1)!.id;
+      messageTelemetry().sent({ id, source: opts?.source === "stt" ? "stt" : "typed" });
       if (attachments)
         linkInboxLine(
           attachments.map((a) => a.id),

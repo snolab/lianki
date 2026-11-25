@@ -68,6 +68,7 @@ import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
 import { readersFor, validReadSeq } from "./read-receipts";
 import { useVisibleReads } from "./use-visible-reads";
+import { useMessageDisplays } from "./use-message-displays";
 import { type AvatarSource, isLineFolded, isOtherVoice, isOwnVoice, lineAvatar, passageStarts, runsOf } from "./avatar-rules";
 import {
   VOICE_SENT_EVENT,
@@ -2234,6 +2235,7 @@ export function DebugChat({
     // Full screen is for reading the whole chat: compact waits until it ends.
     fullLog: fullLog !== "off" || full,
   });
+  useMessageDisplays(root, { messages, open, compact, fullLog, tree });
   useVisibleReads({
     root: log,
     enabled: open && !tree && !compact && fullLog !== "leaving",

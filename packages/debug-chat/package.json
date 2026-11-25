@@ -29,6 +29,7 @@
     "./lane-route": "./src/lane-route.ts",
     "./lane-phonetic": "./src/lane-phonetic.ts",
     "./latency": "./src/latency.ts",
+    "./message-telemetry": "./src/message-telemetry.ts",
     "./mic": "./src/mic.ts",
     "./stt-guard": "./src/stt-guard.ts",
     "./short-answer": "./src/short-answer.ts",

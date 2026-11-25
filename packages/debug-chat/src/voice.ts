@@ -59,6 +59,7 @@
  * events and one-shot timers, never polling.
  */
 import { speechRate } from "./speech-rate";
+import { messageTelemetry } from "./message-telemetry";
 import { type EchoScore, echoContained, echoGuard, normalizeEcho } from "./echo";
 import { reportPlayed, reportPlaying } from "./play-report";
 import { cloudOut, cloudSkip, existingCtx, outMode } from "./voice-out";
@@ -555,6 +556,8 @@ export function createVoice(d: {
   /** A silence the owner should hear about (a page-error, page-errors.ts). */
   report?: (message: string) => void;
   now?: () => number;
+  /** Playback milestones; the default records sampled message telemetry. */
+  speechMetric?: (id: string, status: "start" | "end" | "error" | "cancel") => void;
   log?: (ev: Record<string, unknown>) => void;
   setTimer?: (f: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
@@ -574,6 +577,15 @@ export function createVoice(d: {
   const setTimer = d.setTimer ?? ((f, ms) => setTimeout(f, ms));
   const clearTimer = d.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   const now = d.now ?? (() => Date.now());
+  const speechMetric = d.speechMetric ?? ((id, status) => messageTelemetry().speech(id, status));
+  // A skipped chunk must not turn a later successful chunk into a completed message.
+  const failedLines = new Set<string>();
+  const cancelLines = (ids: Iterable<string>) => {
+    for (const id of new Set(ids)) {
+      speechMetric(id, "cancel");
+      failedLines.delete(id);
+    }
+  };
   const cloud = () => d.cloud?.() ?? null;
   const mode = (): OutMode => (d.mode?.() === "cloud" && cloud() ? "cloud" : "speech");
   const aec = () => d.aec?.() ?? true;
@@ -810,11 +822,19 @@ export function createVoice(d: {
       return;
     }
     const e = epoch;
-    const done = () => {
+    const done = (status: "end" | "error" = "end") => {
       if (e !== epoch) return;
+      if (head.id && status === "error") {
+        failedLines.add(head.id);
+        speechMetric(head.id, "error");
+      }
       ended();
       current = null;
       queue.shift();
+      if (head.id && !queue.some((s) => s.id === head.id)) {
+        if (!failedLines.has(head.id)) speechMetric(head.id, "end");
+        failedLines.delete(head.id);
+      }
       next();
       if (!current) {
         // Queue dry: capture resumes after the tail.
@@ -832,14 +852,15 @@ export function createVoice(d: {
     const ev: PlayEvents = {
       onstart: () => {
         if (e !== epoch) return;
+        if (head.id) speechMetric(head.id, "start");
         for (const f of starts) f();
       },
       ontiming: (t) => {
         if (e !== epoch) return;
         for (const f of timings) f(t);
       },
-      onend: done,
-      onerror: done,
+      onend: () => done(),
+      onerror: () => done("error"),
       onvoice: (v) => {
         if (e === epoch) noteHeard(head.id, head.text, v);
       },
@@ -870,13 +891,13 @@ export function createVoice(d: {
         if (head.pick?.kind === "clone" && !refused) {
           // The clone server failed or timed out: skipped, never read in another voice.
           log({ ev: "voice-out", out: "clone", route: "none", fallback: reason, ...info });
-          return done();
+          return done("error");
         }
         if (head.strict) {
           // A person's voice failed: skipped (never a lane's voice); refused: wait for a tap.
           if (refused) return block(reason);
           log({ ev: "voice-out", out: "person", route: "none", fallback: reason, ...info });
-          return done();
+          return done("error");
         }
         // Refused by the browser with nothing else that could read it (or the
         // speech fallback refused too): keep the sentence and wait for a tap.
@@ -885,11 +906,11 @@ export function createVoice(d: {
           // The fallback would be silent (no voice here) and might never end: skip it, and say so.
           log({ ev: "voice-out", out: "cloud", route: "none", fallback: reason, ...info });
           d.report?.(`voice-out: cloud could not read a sentence (${reason}); no speech voice, skipped`);
-          return done();
+          return done("error");
         }
         log({ ev: "voice-out", out: "cloud", route: "speech", fallback: reason, ...info });
         const p = speech(head, ev, e);
-        if (!p) return done();
+        if (!p) return done("error");
         current.p = p;
       },
     };
@@ -1016,6 +1037,7 @@ export function createVoice(d: {
     log({ ev: "voice-supersede", sentences: n });
     // Before any emit: the mirror drops these lines, so a fall of more than one is not "Stop reading".
     const list = [...ids];
+    cancelLines(list);
     if (list.length) for (const f of drops) f(list);
     return n;
   };
@@ -1217,6 +1239,7 @@ export function createVoice(d: {
         }
         // Before next/emit: keep the highlight mirror aligned with the trimmed queue.
         const dropped = skip.filter((id) => removed.has(id));
+        cancelLines(dropped);
         if (dropped.length) for (const f of drops) f(dropped);
         log({ ev: "voice-skip-backlog", lines: dropped.length, sentences: before - queue.length });
       }
@@ -1374,6 +1397,7 @@ export function createVoice(d: {
       if (current && queue[0]?.id === id) halt(false);
       for (let i = queue.length - 1; i >= 0; i--) if (queue[i]!.id === id) queue.splice(i, 1);
       if (queue.length === before) return false;
+      cancelLines([id]);
       log({ ev: "voice-drop", sentences: before - queue.length });
       next();
       emit();
@@ -1381,6 +1405,7 @@ export function createVoice(d: {
     },
     /** Clear the queue and stop reading ("Stop reading", the focus rule). */
     stop() {
+      cancelLines(queue.flatMap((s) => (s.id ? [s.id] : [])));
       halt(false);
       unduck(0);
       clearTimer(idle);
