@@ -25,10 +25,16 @@ export function readWav(buf: Uint8Array): { rate: number; samples: Float32Array 
 }
 
 /** A LocalStt from Bun (Origin set as lianki.com's), resolved once the server says ready. */
-export function connectLocalStt(url: string, timeoutMs = 5000): Promise<LocalStt> {
+export function connectLocalStt(
+  url: string,
+  timeoutMs = 5000,
+  /** Timers for the client's own waits (the final's 4 s): a test on a busy machine stretches them. */
+  setTimer?: (f: () => void, ms: number) => unknown,
+): Promise<LocalStt> {
   return new Promise((resolve, reject) => {
     const give = setTimeout(() => reject(new Error(`could not reach ${url}`)), timeoutMs);
     const stt = createLocalStt(url, {
+      setTimer,
       open: (u) =>
         new WebSocket(u, {
           headers: { origin: "https://lianki.com" },

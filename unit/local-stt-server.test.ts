@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { cpus, homedir, loadavg } from "node:os";
 import { join, resolve } from "node:path";
 import { connectLocalStt, readWav } from "../scripts/local-stt/stream-clip-lib";
 
@@ -23,11 +23,12 @@ function freePort(): number {
   srv.stop(true);
   return port;
 }
-const PORT = ready ? freePort() : 0;
+let PORT = 0; // picked in beforeAll, right before the spawn: a port chosen at import time can be taken by then
 
 describe.skipIf(!ready)("local STT server (SenseVoice)", () => {
   let proc: ReturnType<typeof Bun.spawn> | null = null;
   beforeAll(async () => {
+    PORT = freePort();
     proc = Bun.spawn(
       [
         PY,
@@ -57,14 +58,35 @@ describe.skipIf(!ready)("local STT server (SenseVoice)", () => {
   afterAll(() => proc?.kill());
 
   it("streams a clip: partials while it plays, the final right after end", async () => {
-    const stt = await connectLocalStt(`ws://127.0.0.1:${PORT}`);
+    const stt = await connectLocalStt(`ws://127.0.0.1:${PORT}`, 5000, (f, ms) =>
+      // The client's 4 s wait for the final only guards a hang; a loaded machine decodes slower.
+      setTimeout(f, ms * 10),
+    );
     const { samples } = readWav(new Uint8Array(readFileSync(CLIP)));
     const partials: string[] = [];
-    const u = stt.begin((t) => partials.push(t))!;
-    // Paced at 8x real time, so partials come while it is "spoken".
+    let wake: (() => void) | null = null;
+    const u = stt.begin((t) => {
+      partials.push(t);
+      wake?.();
+    })!;
+    // Paced at 8x real time, so partials come while it is "spoken". The server decodes one
+    // partial at a time, so under load a fixed 32 ms sleep outruns it and the clip ends with
+    // too few. Until three have arrived, wait for the real event (a new partial), not the clock.
     for (let o = 3072; o < samples.length; o += 512) {
       u.frame(samples.subarray(o, o + 512));
-      if (o % 4096 === 0) await new Promise((r) => setTimeout(r, 32));
+      if (o % 4096 === 0) {
+        const seen = partials.length;
+        await new Promise<void>((r) => {
+          const t = setTimeout(r, partials.length < 3 ? 5000 : 32);
+          wake = () => {
+            if (partials.length > seen && partials.length < 3) {
+              clearTimeout(t);
+              r();
+            }
+          };
+        });
+        wake = null;
+      }
     }
     const f = await u.end(samples);
     stt.close();
@@ -72,8 +94,14 @@ describe.skipIf(!ready)("local STT server (SenseVoice)", () => {
     expect(f.text).toContain("麦克风按钮");
     expect(f.text).toMatch(/[。，]/); // punctuated
     expect(f.model).toBe("local:sensevoice-small-2024-07-17");
-    expect(f.endToFinalMs).toBeLessThan(1000);
-  }, 30_000);
+    // The 1 s latency is a claim about an idle machine (docs/shipping.md, "Admission by load":
+    // timing checks count only while load < 0.9 x cores, the gate's own rule). Under more load the
+    // server's decode threads fight the whole machine, so the number measures the load, not the
+    // code; everything above (partials, text, model) still holds then.
+    const idle = loadavg()[0]! < 0.9 * cpus().length;
+    if (idle) expect(f.endToFinalMs).toBeLessThan(1000);
+    else expect(f.endToFinalMs).toBeGreaterThan(0);
+  }, 120_000); // a hang guard only: the waits above are events, not this clock
 
   it("refuses a page from another origin", async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}`, {
