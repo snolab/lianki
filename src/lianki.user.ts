@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.36
+// @version     2.24.37
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -2947,6 +2947,14 @@ function main() {
   // Set once the server proves it has no /api/fsrs/watch route; stops a 30 s
   // retry loop against a deployment that predates the feature.
   let watchSyncUnavailable = false;
+  // Set on a 401/403: signed out (or the token lost its scope). Each retry is a
+  // request the Worker has to authenticate and refuse, and a signed-out tab
+  // repeated it every 30 s forever. Stand down until the next page load — there
+  // is no in-page sign-in signal to listen for. Nothing is dropped: the time is
+  // already persisted as dirty, and the next page load drains it once the user
+  // has signed in (a single transient 401 costs one page load of delay, no data).
+  let watchSyncSignedOut = false;
+  const isWatchAuthRefusal = (err) => err?.status === 401 || err?.status === 403;
   let watchAcc = null;
   let watchSavedAt = 0;
 
@@ -2989,7 +2997,7 @@ function main() {
   }
 
   async function flushWatch(acc = watchAcc) {
-    if (watchSyncUnavailable || !acc?.dirty) return;
+    if (watchSyncUnavailable || watchSyncSignedOut || !acc?.dirty) return;
     persistWatch(acc, true);
     if (acc.wall < WATCH_MIN_SYNC_S) return; // too incidental to be worth a row
     const stats = watchSnapshot(acc);
@@ -3017,14 +3025,15 @@ function main() {
         );
         return;
       }
-      // Stay dirty; the 30 s loop and the next page load both retry.
+      if (isWatchAuthRefusal(err)) watchSyncSignedOut = true;
+      // Stay dirty; the 30 s loop (unless signed out) and the next page load retry.
       logFail("watch", `watch-time sync for ${acc.url}`, err);
     }
   }
 
   /** Retry URLs whose tab closed before they synced. A few per tick, oldest first. */
   async function flushPendingWatch(max = 3) {
-    if (watchSyncUnavailable) return;
+    if (watchSyncUnavailable || watchSyncSignedOut) return;
     for (const url of watchDirtyList()
       .filter((u) => u !== watchAcc?.url)
       .slice(0, max)) {
@@ -3041,8 +3050,9 @@ function main() {
         });
         saveLocalWatch(url, stats, false);
         watchDirtyDrop(url);
-      } catch {
-        return; // offline — leave the rest queued
+      } catch (err) {
+        if (isWatchAuthRefusal(err)) watchSyncSignedOut = true;
+        return; // offline or signed out — leave the rest queued
       }
     }
   }
