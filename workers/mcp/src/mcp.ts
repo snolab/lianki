@@ -51,10 +51,17 @@ import {
   toolsFor,
 } from "../../../packages/lianki-cli/mcp-tools.mjs";
 import { guide, wantsGuide } from "./guide";
+import type { McpMetric, McpWaitMetric } from "../../../lib/mcp-metrics";
 import { TOKEN_RE } from "../../../lib/api-tokens";
 
 type Fetcher = { fetch(req: Request): Promise<Response> };
-export type Env = { MAIN: Fetcher; PUSH: Fetcher };
+export type Env = {
+  MAIN: Fetcher;
+  PUSH: Fetcher;
+  MONITOR?: { record(metric: McpMetric): Promise<{ accepted: boolean }> };
+  /** In-process callback set by the entry handler, never a request argument. */
+  observeWait?: (metric: McpWaitMetric) => void;
+};
 
 export const MCP_PATH = "/mcp";
 export const SERVER_VERSION = "1.0.0";
@@ -190,6 +197,7 @@ type WorkerSocket = {
 function chatIo(env: Env, token: string, tool: string) {
   return {
     token,
+    observeWait: env.observeWait,
     openChat: async () => {
       const res = await env.PUSH.fetch(
         new Request(new URL(CHAT_PATH, SITE), {

@@ -494,7 +494,13 @@ describe("lianki mcp: calls", () => {
     const c = await h.connect();
     const r: any = await c.callTool({ name: "lianki_chat_wait", arguments: { timeoutSec: 5 } });
     expect(r.isError).toBeUndefined();
-    expect(dataOf(r)).toEqual({ lines: [{ id: "b", text: "new" }], answered: [], after: "b" });
+    expect(dataOf(r)).toMatchObject({
+      lines: [{ id: "b", text: "new" }],
+      answered: [],
+      after: "b",
+      empty: false,
+    });
+    expect(dataOf(r).waitedMs).toBeGreaterThanOrEqual(0);
     expect(opened).toHaveLength(1);
     expect(opened[0].url).toBe("wss://lianki.com/api/version/chat");
     expect(opened[0].sent[0]).toEqual({ type: "auth", token: TOKEN, history: 1, mode: "reader" });
