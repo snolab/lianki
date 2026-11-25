@@ -4,7 +4,8 @@
  * line, "↳ <action>: name=value, …", sent in his own thread to the agent that
  * posted it (host.onSubmit). Links open through the chat's own link menu.
  */
-import { createElement, type FormEvent, type ReactNode, useId, useMemo } from "react";
+import { createElement, type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef } from "react";
+import { fillForm, fillStore, submitAsked, type FillStore } from "./widget-fill";
 import { formLine, inlineHtml, scriptedHtml, type InlineNode } from "./html-inline";
 import type { WidgetHost } from "./MessageWidget";
 import { ChatLink } from "./RichText";
@@ -76,7 +77,58 @@ function els(nodes: InlineNode[], onSubmit: (e: FormEvent<HTMLFormElement>) => v
   });
 }
 
-export function HtmlInline({ html, host }: { html: string; host: WidgetHost }) {
+const FLASH = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))";
+/** How long filled fields stay outlined. */
+const FLASH_MS = 1_600;
+
+/** Outline what a fill changed, briefly: he sees what to check before sending. */
+function flash(els: HTMLElement[]) {
+  for (const el of els) {
+    el.style.outline = `2px solid ${FLASH}`;
+    el.style.outlineOffset = "1px";
+    el.setAttribute("data-filled", "");
+  }
+  setTimeout(() => {
+    for (const el of els) {
+      el.style.outline = "";
+      el.style.outlineOffset = "";
+      el.removeAttribute("data-filled");
+    }
+  }, FLASH_MS);
+}
+
+export function HtmlInline({
+  html,
+  host,
+  lineId,
+  store = fillStore,
+}: {
+  html: string;
+  host: WidgetHost;
+  /** The chat line that carries this widget: voice-fill patches name it (widget-fill.ts). */
+  lineId?: string;
+  store?: FillStore;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const hostRef = useRef(host);
+  hostRef.current = host;
+  useEffect(() => {
+    if (!lineId) return;
+    return store.on(lineId, (patch, flashOnly) => {
+      const root = box.current;
+      if (!root) return;
+      if (flashOnly) {
+        const names = Object.keys(patch.fields);
+        flash(names.flatMap((n) => [...root.querySelectorAll<HTMLElement>(`[name="${CSS.escape(n)}"]`)]));
+        return;
+      }
+      const changed = fillForm(root, patch.fields);
+      flash(changed);
+      // Sent only when his own latest line, from the last minute, said so.
+      if (patch.submit && submitAsked(hostRef.current.lastOwn?.() ?? null, Date.now()))
+        root.querySelector("form")?.requestSubmit();
+    });
+  }, [lineId, store]);
   const id = useId().replace(/[^\w-]/g, "");
   const nodes = useMemo(() => inlineHtml(html, `lkw${id}-`), [html, id]);
   // Script widgets are off (html-inline.ts): the HTML shows with its script stripped.
@@ -106,7 +158,9 @@ export function HtmlInline({ html, host }: { html: string; host: WidgetHost }) {
   };
   return (
     <div
+      ref={box}
       data-testid="debug-chat-html-inline"
+      data-widget-line={lineId}
       className="pointer-events-auto my-1 max-h-[70vh] max-w-full overflow-auto rounded-lg border p-2 [contain:content]"
       style={{ borderColor: RULE }}
       onClick={(e) => e.stopPropagation()}

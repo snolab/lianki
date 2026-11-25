@@ -24,6 +24,7 @@ const host: WidgetHost = {
     invalid: "Not a calculation",
     hint: "Fills your reply",
     scriptsOff: "Scripts off",
+    filled: "Filled {n}",
   },
 };
 const block = (spec: unknown) =>
