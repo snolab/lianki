@@ -619,6 +619,37 @@ export function receiptAfter(
 }
 
 /**
+ * The receipt when a recovery's barrier lifts: receipts held back while it was
+ * pending are owed, so one now through the newest line handed over (never past
+ * the cursor). Null when nothing is owed.
+ */
+export function liftReceipt(lastDelivered: number, cursor: number, last: number): number | null {
+  return receiptAfter(lastDelivered >= 0 ? [lastDelivered] : [], cursor, last);
+}
+
+/**
+ * When to start catching up on a connection: at the listener's "ready" event
+ * (the socket is subscribed, so nothing falls between the recovery's snapshot
+ * and the live stream), or at its first chat line if no ready came first.
+ * Once per connection.
+ */
+export function catchUpTrigger(start: () => void): (raw: string) => void {
+  let started = false;
+  return (raw) => {
+    if (started) return;
+    let v: { type?: unknown };
+    try {
+      v = JSON.parse(raw) as { type?: unknown };
+    } catch {
+      return;
+    }
+    if (v?.type !== "ready" && v?.type !== "chat") return;
+    started = true;
+    start();
+  };
+}
+
+/**
  * One receipt in flight at a time; a newer one waits and replaces any older
  * waiting one, so a burst of lines costs at most two posts.
  */

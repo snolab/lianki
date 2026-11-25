@@ -9,6 +9,8 @@ import {
   makeSeqCursor,
   readCursor,
   receiptAfter,
+  catchUpTrigger,
+  liftReceipt,
   makeRecovery,
   recoveredPage,
   recoverRange,
@@ -138,6 +140,7 @@ function harness(start: number, hub: { lines: number; fail?: () => boolean }) {
   const receipts: number[] = [];
   const seen = new Set<string>();
   let saved = start;
+  let lastDelivered = -1;
   const raw = (seq: number) =>
     JSON.stringify({
       type: "chat",
@@ -160,6 +163,7 @@ function harness(start: number, hub: { lines: number; fail?: () => boolean }) {
       if (!ok) return;
       const seqs = lines.map((l) => l.seq);
       delivered.push(...(seqs as number[]));
+      for (const q of seqs as number[]) lastDelivered = Math.max(lastDelivered, q);
       cursor.release(seqs);
       saved = cursor.value();
       const top = Math.max(...(seqs as number[]));
@@ -185,7 +189,11 @@ function harness(start: number, hub: { lines: number; fail?: () => boolean }) {
     cursor: () => cursor,
     read,
     handle,
-    covered: () => (saved = cursor.value()),
+    covered: () => {
+      saved = cursor.value();
+      const r = liftReceipt(lastDelivered, cursor.value(), receipts.at(-1) ?? 0);
+      if (r !== null) receipts.push(r);
+    },
     log: () => {},
     sleep: async () => {},
   });
@@ -205,6 +213,48 @@ test("race (A): a live line during a failing recovery never moves the cursor pas
   for (let s = 11; s <= 50; s++) expect(h.delivered).toContain(s);
   expect(h.cursor.value()).toBe(50);
   expect(h.saved()).toBe(50);
+  // The receipt held back by the barrier is sent once it lifts: through 50.
+  expect(h.receipts.at(-1)).toBe(50);
+});
+
+test("the lift receipt: owed only for lines handed over, never past the cursor", () => {
+  expect(liftReceipt(50, 50, 10)).toBe(50);
+  expect(liftReceipt(50, 30, 10)).toBe(30);
+  expect(liftReceipt(50, 50, 50)).toBeNull();
+  expect(liftReceipt(-1, 50, 0)).toBeNull();
+});
+
+test("catch-up starts at the socket's ready, once per connection", () => {
+  let n = 0;
+  const t = catchUpTrigger(() => n++);
+  t("not json");
+  t(JSON.stringify({ type: "lane", state: "listener" }));
+  expect(n).toBe(0);
+  t(JSON.stringify({ type: "ready" }));
+  t(JSON.stringify({ type: "ready" }));
+  t(JSON.stringify({ type: "chat", message: { id: "a", text: "x" } }));
+  expect(n).toBe(1);
+  // No ready before the first line: the first line starts it.
+  let m = 0;
+  const u = catchUpTrigger(() => m++);
+  u(JSON.stringify({ type: "chat", message: { id: "a", text: "x" } }));
+  expect(m).toBe(1);
+});
+
+test("ready-bound catch-up: lines before ready are recovered, lines after come live, none lost", async () => {
+  const hub = { lines: 20 };
+  const h = harness(10, hub);
+  let running: Promise<void> | null = null;
+  const trigger = catchUpTrigger(() => (running = h.recover()));
+  h.cursor.bar(); // the listener bars on connect, before ready
+  trigger(JSON.stringify({ type: "ready" }));
+  // A line lands right after ready: on the live stream.
+  hub.lines = 21;
+  await h.handle(h.raw(21));
+  await running;
+  for (let s = 11; s <= 21; s++) expect(h.delivered).toContain(s);
+  expect(h.cursor.value()).toBe(21);
+  expect(h.receipts.at(-1)).toBe(21);
 });
 
 test("pages (B): a 101-line backlog is read in two pages; seq 101 is never skipped", async () => {

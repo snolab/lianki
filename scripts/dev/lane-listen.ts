@@ -45,6 +45,8 @@ import {
   readCursor,
   receiptAfter,
   reconnectWait,
+  catchUpTrigger,
+  liftReceipt,
   makeRecovery,
   recoveredPage,
   type RecoveredPage,
@@ -328,6 +330,7 @@ async function main(): Promise<number> {
       }
       cursor.release(seqs);
       save();
+      for (const s of seqs) if (s !== undefined && s > lastDelivered) lastDelivered = s;
       const r = o.dryRun ? null : receiptAfter(seqs, cursor.value(), acker.last());
       if (r !== null) void acker.ack(r);
     },
@@ -337,6 +340,8 @@ async function main(): Promise<number> {
     return 2;
   }
   const recoverMs = recoverMaxMs();
+  /** The newest seq `ay send` took this run (for the receipt when the barrier lifts). */
+  let lastDelivered = -1;
   /** One listener JSON line, live or recovered; held lines go to the deliverer. */
   const handle = async (raw: string, recovered: boolean) => {
     const l = lineOf(raw);
@@ -385,6 +390,9 @@ async function main(): Promise<number> {
         covered: () => {
           save();
           log({ type: "recovered-through", lane: o.lane, cursor: cursor?.value() });
+          // Receipts held back by the barrier: one now, through the latest line handed over.
+          const r = cursor ? liftReceipt(lastDelivered, cursor.value(), acker.last()) : null;
+          if (r !== null) void acker.ack(r);
         },
         log,
         sleep: (ms) => Bun.sleep(ms),
@@ -426,7 +434,10 @@ async function main(): Promise<number> {
       tests: o.tests,
       cursor: cursor?.value(),
     });
-    void recover();
+    // Catch-up starts when the socket says it is ready (catchUpTrigger): no gap between the
+    // recovery's snapshot and the live stream. Until then the cursor is barred already.
+    cursor?.bar();
+    const trigger = catchUpTrigger(() => void recover());
     let buf = "";
     const dec = new TextDecoder();
     for await (const chunk of child.stdout as ReadableStream<Uint8Array>) {
@@ -435,6 +446,7 @@ async function main(): Promise<number> {
       while ((nl = buf.indexOf("\n")) >= 0) {
         const raw = buf.slice(0, nl);
         buf = buf.slice(nl + 1);
+        trigger(raw);
         await handle(raw, false);
       }
     }
