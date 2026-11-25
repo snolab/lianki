@@ -10,7 +10,7 @@
  * stream) and DELETE answer 405. One tool holds its POST open:
  * lianki_chat_wait, up to 55 s, on a token chat socket to PUSH (chatIo).
  *
- * Auth: `Authorization: Bearer <API token>`, the same token `lianki mcp` and
+ * Auth: `Authorization: Bearer <API token>` or `/mcp/<API token>`, the same token `lianki mcp` and
  * the REST API take. It is not checked here: it is forwarded, with the call,
  * to the main Worker (MAIN) or, for the chat and the progress tools
  * (/api/version/*), to lianki-push (PUSH), which
@@ -260,10 +260,18 @@ async function dispatch(
 
 export async function handle(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
-  // The route is lianki.com/mcp*: any other path under it (an /mcp-something page) is the app's.
-  if (url.pathname !== MCP_PATH && url.pathname !== `${MCP_PATH}/`) return env.MAIN.fetch(req);
-  // A browser opening the address gets the how-to-connect page, not a bare 405.
-  if (wantsGuide(req)) return guide(req, url.origin);
+  const basePath = url.pathname === MCP_PATH || url.pathname === `${MCP_PATH}/`;
+  const credentialPath = !basePath && /^\/mcp(?:\/|%2f|%5c)/i.test(url.pathname);
+  // Keep unrelated app routes, but never forward a possible credential path.
+  if (!basePath && !credentialPath) return env.MAIN.fetch(req);
+  const pathToken = credentialPath
+    ? /^\/mcp\/(lk_[0-9a-f]{64})$/.exec(url.pathname)?.[1]
+    : undefined;
+  // Exact, unencoded token only; no trailing slash, extra path, or query credentials.
+  if (credentialPath && (!pathToken || url.search))
+    return plain(rpcError(null, -32600, "Invalid MCP endpoint"), 400);
+  // Only the public endpoint may serve HTML (no subresources or referrer leaks).
+  if (basePath && wantsGuide(req)) return guide(req, url.origin);
   if (req.method !== "POST")
     return new Response("Method Not Allowed", {
       status: 405,
@@ -272,13 +280,17 @@ export async function handle(req: Request, env: Env): Promise<Response> {
 
   const header = req.headers.get("authorization") ?? "";
   const bearer = /^Bearer\s+(\S+)$/i.exec(header);
-  if (!bearer)
+  // A URL credential and any Authorization header are ambiguous: refuse both,
+  // even when equal. Clients using a capability URL select No authentication.
+  if (pathToken && req.headers.has("authorization"))
+    return plain(rpcError(null, -32600, "Use one MCP authentication method"), 400);
+  if (!pathToken && !bearer)
     return plain(
       rpcError(null, -32001, "Authorization: Bearer <your Lianki API token> is required"),
       401,
       AUTH_HEADERS,
     );
-  const token = bearer[1];
+  const token = pathToken ?? bearer![1];
 
   const pv = req.headers.get("mcp-protocol-version");
   if (pv !== null && !PROTOCOL_VERSIONS.includes(pv))

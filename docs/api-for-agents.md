@@ -208,6 +208,19 @@ claude mcp add --transport http lianki https://lianki.com/mcp \
 }
 ```
 
+For **ChatGPT web**, add a custom MCP app with server URL
+`https://lianki.com/mcp/<YOUR_TOKEN>` and select **No authentication**.
+Replace `<YOUR_TOKEN>` with a separate named API token created at
+`/my/preferences#tokens`, with an expiry and only the chat permissions needed.
+The URL itself is a bearer credential: anyone holding it can use those permissions
+until expiry or revocation. Keep it in the client's private connector settings;
+never paste it into chats, browser address bars, screenshots, logs or public configs.
+Revoke the named token if the URL is exposed. URL credentials can still appear in
+client or edge infrastructure logs; MCP invocation URL logging is disabled.
+Do not also configure an Authorization header. Encoded tokens, trailing slashes,
+extra path segments and query strings on capability URLs are refused. Browser
+requests to them never serve HTML or load resources.
+
 The guide carries both (`MCP_REMOTE_CLIENTS` in `lib/agent-guide.ts`, prose
 key `mcpRemote`).
 
@@ -231,7 +244,9 @@ key `mcpRemote`).
   `initialize` and `tools/list` ask `GET /api/cli-login/token` (so a bad
   token fails at connect and the list follows the token's permissions);
   `tools/call` asks it too and refuses a tool outside them before anything
-  runs. No OAuth yet: clients that only do OAuth cannot connect.
+  runs. The capability URL extracts the same API token and sends it through
+  these same checks; it grants no additional permissions. No OAuth yet: clients
+  requiring OAuth must use a different supported authentication option.
 - **Same tools.** The tool table is shared with `lianki mcp`:
   `packages/lianki-cli/mcp-tools.mjs` (tools, zod inputs, untrusted-data
   wrapping, errors) and `packages/lianki-cli/api.mjs` (`call`), both

@@ -116,6 +116,98 @@ describe("auth: refused, nothing done", () => {
   });
 });
 
+describe("capability URL authentication", () => {
+  function capability(method = "initialize", params?: unknown, suffix = TOKEN) {
+    const request = rpc(method, params);
+    request.headers.delete("authorization");
+    return new Request(`${ORIGIN}/mcp/${suffix}`, request);
+  }
+
+  test("initialize and discovery use the existing identity check and live scopes", async () => {
+    const { env, seen } = setup({ scopes: ["chat:read"] });
+    expect((await handle(capability(), env)).status).toBe(200);
+    const listed = await (await handle(capability("tools/list"), env)).json();
+    expect(listed.result.tools.map((t: { name: string }) => t.name)).toEqual([
+      "lianki_chat_read",
+      "lianki_chat_seen",
+      "lianki_chat_wait",
+    ]);
+    expect(seen.every((s) => s.auth === `Bearer ${TOKEN}`)).toBe(true);
+    expect(seen.every((s) => s.path === "main:/api/cli-login/token")).toBe(true);
+    expect(JSON.stringify(listed)).not.toContain(TOKEN);
+  });
+
+  test("chat call reaches PUSH; scope denial never invokes the tool", async () => {
+    const { env, seen } = setup({ scopes: ["chat:read"] });
+    expect(
+      (await handle(capability("tools/call", { name: "lianki_chat_read", arguments: {} }), env))
+        .status,
+    ).toBe(200);
+    expect(
+      seen.some((s) => s.path.startsWith("push:/api/version/chat") && s.auth === `Bearer ${TOKEN}`),
+    ).toBe(true);
+    const denied = await (
+      await handle(capability("tools/call", { name: "lianki_stats", arguments: {} }), env)
+    ).json();
+    expect(denied.result.structuredContent.needScope).toBe("study");
+    expect(seen.some((s) => s.path.includes("fsrs"))).toBe(false);
+    expect(seen.every((s) => !s.path.includes(TOKEN))).toBe(true);
+  });
+
+  test("expired, revoked, unknown or deleted-account identities stay refused", async () => {
+    const { env } = setup({ refuse: true });
+    for (const method of ["initialize", "tools/list", "tools/call"]) {
+      const response = await handle(
+        capability(method, { name: "lianki_chat_read", arguments: {} }),
+        env,
+      );
+      expect(response.status).toBe(401);
+      expect(await response.text()).not.toContain(TOKEN);
+    }
+  });
+
+  test("ambiguous headers and malformed paths never reach any binding", async () => {
+    const { env, seen } = setup();
+    for (const authorization of [`Bearer ${TOKEN}`, "Bearer other", "Basic other", ""]) {
+      const request = capability();
+      request.headers.set("authorization", authorization);
+      expect((await handle(request, env)).status).toBe(400);
+    }
+    for (const suffix of [
+      "invalid",
+      `${TOKEN}/`,
+      `${TOKEN}/extra`,
+      `${TOKEN}?x=1`,
+      TOKEN.replace("lk_", "%6ck_"),
+      `${TOKEN}%2fextra`,
+    ]) {
+      const response = await handle(capability("initialize", undefined, suffix), env);
+      expect(response.status).toBe(400);
+      expect(await response.text()).not.toContain(TOKEN);
+    }
+    for (const separator of ["%2f", "%2F", "%5c"]) {
+      const response = await handle(new Request(`${ORIGIN}/mcp${separator}${TOKEN}`), env);
+      expect(response.status).toBe(400);
+    }
+    expect(seen).toEqual([]);
+  });
+
+  test("a credential URL never serves HTML or resources, even for a browser", async () => {
+    const { env, seen } = setup();
+    for (const method of ["GET", "HEAD", "DELETE", "OPTIONS"]) {
+      const response = await handle(
+        new Request(`${ORIGIN}/mcp/${TOKEN}`, { method, headers: { accept: "text/html" } }),
+        env,
+      );
+      expect(response.status).toBe(405);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("content-type") ?? "").not.toContain("text/html");
+      expect(await response.text()).not.toContain(TOKEN);
+    }
+    expect(seen).toEqual([]);
+  });
+});
+
 describe("protocol", () => {
   test("initialize: the asked version, tools capability, instructions", async () => {
     const { env } = setup();

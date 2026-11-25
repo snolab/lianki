@@ -14,6 +14,12 @@ describe("inWindow", () => {
 });
 
 describe("pathGroup", () => {
+  test("redacts all capability path segments, including malformed credentials", () => {
+    expect(pathGroup(`https://lianki.com/mcp%2flk_${"a".repeat(64)}`)).toBe("/mcp/:credential");
+    for (const suffix of [`lk_${"a".repeat(64)}`, "invalid/extra", "%6ck_secret"]) {
+      expect(pathGroup(`https://lianki.com/mcp/${suffix}?secret=hidden`)).toBe("/mcp/:credential");
+    }
+  });
   test("collapses ids so paths aggregate", () => {
     expect(
       pathGroup("https://lianki.com/api/words/lists/b6030131-b227-4703-b2e6-b7113f1c0768/review"),

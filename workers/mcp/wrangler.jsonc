@@ -10,12 +10,13 @@
   "main": "src/index.ts",
   "workers_dev": false,
   "compatibility_date": "2026-10-01",
-  // `*`: also /mcp/ and /mcp?…; any other path under it goes on to MAIN unchanged.
+  // `*` includes capability URLs /mcp/<token>; unrelated /mcp-something goes to MAIN.
   "routes": [{ "pattern": "lianki.com/mcp*", "zone_name": "lianki.com" }],
   "services": [
     { "binding": "MAIN", "service": "lianki" },
     { "binding": "PUSH", "service": "lianki-push" },
   ],
   "tail_consumers": [{ "service": "lianki-monitor" }],
-  "observability": { "enabled": true },
+  // Capability URLs are credentials: never persist automatic request URL logs.
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
 }
