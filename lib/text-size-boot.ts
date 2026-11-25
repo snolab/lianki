@@ -1,6 +1,9 @@
-/** The range of a text scale (lib/text-size.ts). */
+/**
+ * The range of a text scale (lib/text-size.ts). Up to 2× since the owner asked
+ * for "chat text twice as big" by voice (2026-11-15): 1.5 was the old top.
+ */
 export const TEXT_MIN = 0.85;
-export const TEXT_MAX = 1.5;
+export const TEXT_MAX = 2;
 
 /**
  * The inline script app/layout.tsx runs before first paint for Text size

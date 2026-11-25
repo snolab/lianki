@@ -11,7 +11,8 @@
 
 import yargs from "yargs";
 import { readPublishInput } from "./app-publish.mjs";
-import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call } from "./api.mjs";
+import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call, nextHlc } from "./api.mjs";
+export { nextHlc };
 import { DEVICE_RE, randomId, s256, TOKEN_RE } from "./auth.mjs";
 import { createChatBridge, filterDecision, ayDeliver, bridgeConfig } from "./chat-bridge.mjs";
 import { createInterface } from "node:readline";
@@ -381,11 +382,6 @@ function deviceId(c) {
   return cfg.deviceId;
 }
 
-/** A clock newer than the stored one, so this write wins (docs/prefs-sync.md). */
-export function nextHlc(prev, id, now = Date.now()) {
-  if (prev && prev.timestamp >= now) return { timestamp: prev.timestamp, counter: prev.counter + 1, deviceId: id };
-  return { timestamp: now, counter: 0, deviceId: id };
-}
 
 async function cmdSettingsList(c) {
   const token = await needToken(c);
