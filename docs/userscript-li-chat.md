@@ -49,7 +49,7 @@ M5). The **security gate** below must pass in full before
 Each website origin gets its own Li thread under the account, so one site's
 conversation never mixes with another's and Li's context on one site holds
 none of the others. Off (the default): every site is the account's one
-thread, exactly as M2. Userscript 2.24.37.
+thread, exactly as M2. Userscript 2.24.38.
 
 | piece                                                       | where                                                                         |
 | ----------------------------------------------------------- | ----------------------------------------------------------------------------- |
