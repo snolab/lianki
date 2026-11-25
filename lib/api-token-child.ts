@@ -151,7 +151,9 @@ export async function mintChild(
   const parentEnd = Date.parse(parent.expiresAt);
   let end: number;
   if (body.ttlMinutes === undefined) {
-    end = Math.min(now + limits.defaultMinutes * 60_000, parentEnd);
+    // The default never passes the max: both are live config values.
+    const minutes = Math.min(limits.defaultMinutes, limits.maxMinutes);
+    end = Math.min(now + minutes * 60_000, parentEnd);
   } else {
     const m = body.ttlMinutes;
     if (

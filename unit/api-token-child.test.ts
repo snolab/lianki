@@ -187,6 +187,13 @@ describe("minting", () => {
     for (const r of refused) expect(String(r.body.error)).toContain("a live child has it");
   });
 
+  test("with no ttl, a default above the max is capped at the max", async () => {
+    deps.limits = async () => ({ ...CHILD_DEFAULTS, defaultMinutes: 240, maxMinutes: 60 });
+    const r = await mint({ name: "a1" });
+    expect(r.status).toBe(200);
+    expect(r.body.expiresAt).toBe(new Date(now + 60 * MIN).toISOString());
+  });
+
   test("an expired child frees its slot and its name", async () => {
     deps.limits = async () => ({ ...CHILD_DEFAULTS, maxLive: 1 });
     expect((await mint({ name: "a1", ttlMinutes: 5 })).status).toBe(200);
