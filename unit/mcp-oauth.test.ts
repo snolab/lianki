@@ -627,6 +627,18 @@ describe("the MCP Worker's challenge", () => {
     );
   });
 
+  test("a /mcp/<token> address never offers sign-in", async () => {
+    resetOauthProbe();
+    const req = new Request(`${ORIGIN}/mcp/lk_${"a".repeat(64)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
+    });
+    const res = await handle(req, env(200));
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toBe('Bearer realm="lianki"');
+  });
+
   test("with OAuth off, the 401 is the plain one, as before", async () => {
     resetOauthProbe();
     const res = await handle(post(), env(404));

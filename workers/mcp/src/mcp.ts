@@ -100,8 +100,9 @@ function oauthOn(env: Env, now = Date.now()): Promise<boolean> {
   return on;
 }
 
-async function authHeaders(env: Env): Promise<Record<string, string>> {
-  if (!(await oauthOn(env))) return AUTH_HEADERS;
+/** A `/mcp/<token>` address never offers sign-in: its credential is the address itself. */
+async function authHeaders(env: Env, canonical: boolean): Promise<Record<string, string>> {
+  if (!canonical || !(await oauthOn(env))) return AUTH_HEADERS;
   return {
     ...NO_STORE,
     "www-authenticate": `Bearer realm="lianki", resource_metadata="${RESOURCE_METADATA_URL}"`,
@@ -333,7 +334,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     return plain(
       rpcError(null, -32001, "Authorization: Bearer <your Lianki API token> is required"),
       401,
-      await authHeaders(env),
+      await authHeaders(env, pathToken === undefined),
     );
   const token = pathToken ?? bearer![1];
 
@@ -367,7 +368,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
       return plain(
         rpcError(id, -32001, "Lianki refused the token (unknown, expired or revoked)"),
         401,
-        await authHeaders(env),
+        await authHeaders(env, pathToken === undefined),
       );
     // Never the token or the arguments: only what failed.
     const err = toolError(
