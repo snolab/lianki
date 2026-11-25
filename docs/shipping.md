@@ -139,6 +139,7 @@ line below.
    so the next deployer can find what is live:
 
    ```bash
+   (  # a subshell: a failure stops the block, not your terminal
    set -euo pipefail
    git push -u origin HEAD
    export LIANKI_BUILD_SHA=$(git rev-parse HEAD) CF_BUILD=1 DB_BACKEND=d1
@@ -168,6 +169,7 @@ line below.
    bunx wrangler deploy -c workers/push/wrangler.jsonc      # if workers/push changed
    bunx wrangler deploy -c workers/voice/wrangler.jsonc     # if workers/voice changed
    bunx wrangler deploy -c workers/mcp/wrangler.jsonc       # if workers/mcp changed
+   )
    ```
 
    Stop at the first failing check. Keep the Worker order (below, "Deploy
