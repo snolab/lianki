@@ -961,9 +961,26 @@ export function createMic(d: {
   /** The utterance being captured: its frames, and its seq once a partial reserved one. */
   let live: Float32Array[] = [];
   let liveLen = 0;
-  /** The last frames heard before the capture began (MISFIRE_PRE_ROLL_MS). */
-  let preRoll: Float32Array[] = [];
+  /**
+   * The last frames heard before the capture began (MISFIRE_PRE_ROLL_MS), each
+   * with its session and time. Only frames of plain listening: never held,
+   * cue, shadow or enrolment audio. Cleared on every boundary (on, off, hold,
+   * enrolment, a cue, each utterance consumed), so audio of an earlier session
+   * or moment never leaves the device with a later one.
+   */
+  let preRoll: { frame: Float32Array; g: number; at: number }[] = [];
   let preRollLen = 0;
+  const clearPreRoll = () => {
+    preRoll = [];
+    preRollLen = 0;
+  };
+  /** The pre-roll an utterance of session `g`, begun at `from`, may carry. */
+  const preRollFor = (g: number, from: number | undefined) =>
+    from === undefined
+      ? []
+      : preRoll
+          .filter((p) => p.g === g && p.at >= from - MISFIRE_PRE_ROLL_MS && p.at <= from)
+          .map((p) => p.frame);
   const answerLimits = () => d.answer?.limits?.() ?? shortAnswerLimits();
   const awaiting = () => d.answer?.awaiting?.() ?? awaitingAnswer();
   let sincePartial = 0;
@@ -1150,6 +1167,7 @@ export function createMic(d: {
       ep.partial = "";
       enrolling = d.enrol?.active() ?? false;
       if (enrolling || shadow) liveMic().publish(null);
+      if (enrolling || shadow) clearPreRoll();
       if (enrolling) {
         // An enrolment sentence: streamed (for the end of speech and its text), nothing else.
         gated = false;
@@ -1186,10 +1204,18 @@ export function createMic(d: {
       if (prob !== undefined && state === "listening" && !guarded)
         ep.floor += (prob - ep.floor) * FLOOR_ALPHA;
       if (state !== "capturing") {
-        preRoll.push(frame);
-        preRollLen += frame.length;
-        while (preRoll.length > 1 && preRollLen - preRoll[0].length >= toSamples(MISFIRE_PRE_ROLL_MS))
-          preRollLen -= preRoll.shift()!.length;
+        // Plain listening only; anything else ends the pre-roll (a cue starting, a hold, enrolment).
+        if (state !== "listening" || held || guarded || shadow || enrolling || d.enrol?.active())
+          clearPreRoll();
+        else {
+          preRoll.push({ frame, g, at: now() });
+          preRollLen += frame.length;
+          while (
+            preRoll.length > 1 &&
+            preRollLen - preRoll[0].frame.length >= toSamples(MISFIRE_PRE_ROLL_MS)
+          )
+            preRollLen -= preRoll.shift()!.frame.length;
+        }
         return;
       }
       if (
@@ -1275,7 +1301,9 @@ export function createMic(d: {
         heardMs >= answerLimits().minSpeechMs &&
         loudestFrameRms(concat(live)) >= { ...guardLimits(), ...d.guard }.minFrameRms;
       d.log?.({ ev: "vad-misfire", speechMs: heardMs, rescued: rescue });
-      if (rescue) return void endedIn(g, concat([...preRoll, ...live]), true);
+      const pre = rescue ? preRollFor(g, speechStart) : [];
+      clearPreRoll();
+      if (rescue) return void endedIn(g, concat([...pre, ...live]), true);
       shadow = false;
       clearTimer(cap);
       dropUtt();
@@ -1294,6 +1322,7 @@ export function createMic(d: {
    * `short`: a misfire kept for the short-answer check (no end cue: it may be dropped).
    */
   function endedIn(g: number, audio: Float32Array, short: boolean) {
+    clearPreRoll();
     {
       const u = utt;
       utt = null;
@@ -1612,6 +1641,7 @@ export function createMic(d: {
   };
   const on = async () => {
     const g = ++gen;
+    clearPreRoll();
     partialsOn = d.partials !== false;
     set("loading");
     let v: Vad;
@@ -1639,6 +1669,7 @@ export function createMic(d: {
   };
   async function off() {
     liveMic().publish(null);
+    clearPreRoll();
     if (state === "off") return;
     gen++;
     clearTimer(cap);
@@ -1668,6 +1699,7 @@ export function createMic(d: {
   function hold(on: boolean) {
     if (held === on) return;
     held = on;
+    clearPreRoll();
     if (on) {
       liveMic().publish(null);
       tainted = true;
