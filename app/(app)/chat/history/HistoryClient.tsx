@@ -72,6 +72,8 @@ export default function HistoryClient(p: {
   locale: string;
   initialQ: string;
   initialLane: string;
+  /** The link to /chat/sites, its label: only while ext.pill-chat-per-origin is on. */
+  sitesLink?: string;
 }) {
   const L = p.labels;
   const router = useRouter();
@@ -152,6 +154,14 @@ export default function HistoryClient(p: {
   return (
     <div className="mx-auto max-w-2xl px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))]">
       <h1 className="mb-1 text-2xl font-bold">{L.title}</h1>
+      {p.sitesLink && (
+        <a
+          href="/chat/sites"
+          className="mb-2 inline-block text-sm text-[oklch(0.55_0.198_22.3)] underline dark:text-[oklch(0.7_0.15_22.3)]"
+        >
+          {p.sitesLink}
+        </a>
+      )}
       <p className={`mb-4 text-sm ${muted}`} data-testid="chat-history-follows">
         {L.follows}
       </p>

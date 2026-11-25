@@ -52,7 +52,20 @@ describe("frame protocol checks", () => {
     ).toEqual({
       port,
       label: "x".repeat(300),
+      origin: "",
     });
+    // The parent's origin is the browser's event.origin, never a field the page put in the hello.
+    expect(
+      helloFrom(
+        {
+          source: parent,
+          origin: "https://site-a.example",
+          data: { lk: HELLO, origin: "https://site-b.example" },
+          ports: [port],
+        },
+        parent,
+      )?.origin,
+    ).toBe("https://site-a.example");
     expect(helloFrom({ source: parent, data: { lk: HELLO }, ports: [port] }, parent)?.label).toBe(
       "",
     );

@@ -10,11 +10,13 @@ import { Window } from "happy-dom";
 import { pillChatState } from "@/lib/pill-chat-route";
 import { flagChangedEvent, FLAG_CHANGED_EVENT } from "@/lib/flag-events";
 import {
+  HOST_ORIGIN_HEADER,
   mirrorPillChatFlag,
   pillChat,
   watchPillChatFlag,
   type PillChatDeps,
 } from "@/src/pill-chat";
+import { HOST_ORIGIN_HEADER as LIB_HOST_ORIGIN_HEADER } from "@/lib/li-thread";
 import { PILL_CHAT_LOCALES, PILL_CHAT_STRINGS, pillChatLang } from "@/src/pill-chat-strings";
 import {
   LICHAT_SITES_KEY,
@@ -165,6 +167,8 @@ function harness(opts: {
     ...(opts.sites ? { [LICHAT_SITES_KEY]: JSON.stringify(opts.sites) } : {}),
   });
   const calls: Call[] = [];
+  /** Each request's headers, in the order of `calls`. */
+  const sent: Record<string, string>[] = [];
   const prompts: string[] = [];
   const frames: {
     label: string;
@@ -177,6 +181,7 @@ function harness(opts: {
   const d: PillChatDeps = {
     origin: ORIGIN,
     hostname: "News.Example.com",
+    hostOrigin: "https://news.example.com",
     path: "/story/1",
     top: opts.top ?? true,
     doc,
@@ -184,8 +189,9 @@ function harness(opts: {
     info: opts.info ?? ISOLATED,
     getValue: g.getValue,
     setValue: g.setValue,
-    gmFetch: async (url: string, o?: { method?: string }) => {
+    gmFetch: async (url: string, o?: { method?: string; headers?: Record<string, string> }) => {
       calls.push({ url, method: o?.method });
+      sent.push({ ...o?.headers });
       if (opts.fetchFail === "throw") throw new Error("network");
       if (opts.fetchFail === "status" && !url.endsWith("/api/ext/pill-chat"))
         return { ok: false, status: 404, json: async () => ({}) };
@@ -225,7 +231,7 @@ function harness(opts: {
       };
     }) as never,
   };
-  return { g, calls, prompts, frames, d, doc, win, pc: pillChat(d) };
+  return { g, calls, sent, prompts, frames, d, doc, win, pc: pillChat(d) };
 }
 
 describe("opening Li from the pill", () => {
@@ -243,6 +249,19 @@ describe("opening Li from the pill", () => {
     expect(h.pc.entry()).toBe("hidden");
     expect(await h.pc.open()).toBe("hidden");
     expect(h.calls).toEqual([]);
+  });
+
+  it("the ticket request names the top window's origin, never its path or query (per-site threads)", async () => {
+    const h = harness({ choice: "once" });
+    expect(await h.pc.open()).toBe("ready");
+    await h.frames[0].ticket();
+    expect(h.sent.at(-1)).toEqual({
+      "x-lianki-userscript": "1",
+      [HOST_ORIGIN_HEADER]: "https://news.example.com",
+    });
+    // The flag check carries no origin: nothing about the site leaves before the frame asks.
+    expect(h.sent[0]?.[HOST_ORIGIN_HEADER]).toBeUndefined();
+    expect(HOST_ORIGIN_HEADER).toBe(LIB_HOST_ORIGIN_HEADER);
   });
 
   it("default deny: a dismissed prompt sends nothing to lianki.com and stores nothing", async () => {

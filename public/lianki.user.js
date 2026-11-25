@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.38
+// @version     2.24.39
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -4532,6 +4532,7 @@ Sasisha kadi kwa anwani mpya?`,
   }
 
   // src/pill-chat.ts
+  var HOST_ORIGIN_HEADER = "x-lianki-host-origin";
   async function mirrorPillChatFlag(d) {
     const now = d.now?.() ?? Date.now();
     if (!d.force && !flagRecheckDue(d.getValue(PILLCHAT_ON_KEY, null), now)) return null;
@@ -4620,7 +4621,10 @@ Sasisha kadi kwa anwani mpya?`,
       try {
         const r = await d.gmFetch(`${d.origin}${TICKET_PATHS[kind]}`, {
           method: "POST",
-          headers: { "x-lianki-userscript": "1" },
+          headers: {
+            "x-lianki-userscript": "1",
+            [HOST_ORIGIN_HEADER]: d.hostOrigin ?? location.origin,
+          },
           credentials: "include",
         });
         if (!r.ok) return null;

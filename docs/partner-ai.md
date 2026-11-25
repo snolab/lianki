@@ -61,6 +61,11 @@ no third-party API key. Non-streaming in v1.
   the RPC looks the user up by id and refuses an account holding `dev`;
   and with no owner readable (none, or D1 failing) it refuses everyone (fail
   closed).
+- **A site's thread from the pill** (flag `ext.pill-chat-per-origin`,
+  docs/userscript-li-chat.md "Per-site threads"): `<base>~<hash>`, its own
+  history and prompt window (`ai:win:<thread>`), so Li on one site reads none
+  of the others. Metered and billed to the base account as its own thread;
+  in the owner's site threads the request carries `owner: true` as in his.
 
 ## The owner's thread
 

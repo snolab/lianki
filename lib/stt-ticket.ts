@@ -62,6 +62,12 @@ export type SttTicketPayload = {
   cid?: string;
   /** A Li chat ticket only (LI_CHAT_TICKET_AUD): the account id it opens the thread of. */
   sub?: string;
+  /**
+   * A pill ticket bound to one site (lib/li-thread.ts, flag ext.pill-chat-per-origin):
+   * the host page's origin and that site's thread hash under the account. Both or neither.
+   */
+  ho?: string;
+  th?: string;
 };
 
 const ED = { name: "Ed25519" } as const;
@@ -112,9 +118,13 @@ export async function signSttTicket(
     cid?: string;
     /** A Li chat ticket's account id (LI_CHAT_TICKET_AUD): checked, never an email. */
     sub?: string;
+    /** A site-bound pill ticket (lib/li-thread.ts): the host origin and the site's thread hash. */
+    ho?: string;
+    th?: string;
   } = {},
 ): Promise<{ ticket: string; exp: number }> {
   if (o.sub !== undefined && !isTicketSub(o.sub)) throw new Error("ticket: bad sub");
+  if (!o.ho !== !o.th) throw new Error("ticket: ho and th go together");
   const iat = Math.floor((o.now ?? Date.now()) / 1000);
   const exp = iat + (o.ttlS ?? STT_TICKET_TTL_S);
   const payload: SttTicketPayload = {
@@ -125,6 +135,7 @@ export async function signSttTicket(
     ...(o.org ? { org: o.org } : {}),
     ...(o.cid ? { cid: o.cid } : {}),
     ...(o.sub ? { sub: o.sub } : {}),
+    ...(o.ho && o.th ? { ho: o.ho, th: o.th } : {}),
   };
   const body = b64url(new TextEncoder().encode(JSON.stringify(payload)));
   const sig = new Uint8Array(await crypto.subtle.sign(ED, key, new TextEncoder().encode(body)));

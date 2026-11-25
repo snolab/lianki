@@ -24,6 +24,8 @@ export type Guest = {
   /** A fresh ticket from the shell, or null (none, or no answer in `waitMs`). */
   ticket(): Promise<string | null>;
   label: string;
+  /** The parent page's origin, as the browser stamped the hello (helloFrom): never the page's say. */
+  origin: string;
   /** Tell the shell how big the chat is (it sizes the iframe; the page keeps its clicks elsewhere). */
   size(w: number, h: number): void;
   /**
@@ -60,6 +62,7 @@ export function startFrameGuest(
     port.postMessage({ type: "ready" });
     onGuest({
       label: h.label,
+      origin: h.origin,
       size: (w, hh) => port?.postMessage({ type: "size", w, h: hh }),
       share: (what) =>
         new Promise<SharedPage | null>((resolve) => {
