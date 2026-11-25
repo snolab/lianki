@@ -114,7 +114,7 @@ export function HtmlInline({
   hostRef.current = host;
   useEffect(() => {
     if (!lineId) return;
-    return store.on(lineId, (patch, flashOnly) => {
+    return store.on(lineId, (patch, flashOnly, patchId) => {
       const root = box.current;
       if (!root) return;
       if (flashOnly) {
@@ -124,8 +124,13 @@ export function HtmlInline({
       }
       const changed = fillForm(root, patch.fields);
       flash(changed);
-      // Sent only when his own latest line, from the last minute, said so.
-      if (patch.submit && submitAsked(hostRef.current.lastOwn?.() ?? null, Date.now()))
+      // Sent only when his own latest line, from the last minute, said so, and only once
+      // per patch: a remount or a replay fills again but never submits again.
+      if (
+        patch.submit &&
+        submitAsked(hostRef.current.lastOwn?.() ?? null, Date.now()) &&
+        store.consumeSubmit(patchId, lineId)
+      )
         root.querySelector("form")?.requestSubmit();
     });
   }, [lineId, store]);

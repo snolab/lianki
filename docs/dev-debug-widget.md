@@ -1845,12 +1845,12 @@ usual XSS vectors, sandbox attributes and CSP, the thread boundary).
 
 ### Voice fill: filling a form widget by speaking
 
-Owner, 2026-11-26: he speaks into the normal mic ("first name Taku, last name
-Miao"); the agent that posted the form fills it for him to check. The agent
+Owner, 2026-11-26: he speaks into the normal mic ("first name Sam, last name
+Sample"); the agent that posted the form fills it for him to check. The agent
 answers with a patch in his thread:
 
     ```lianki-fill
-    {"line": "<the form's line id>", "fields": {"fname": "Taku", "lname": "Miao"}}
+    {"line": "<the form's line id>", "fields": {"fname": "Sam", "lname": "Sample"}}
     ```
 
 The chat (`widget-fill.ts`, `FillChip.tsx`) applies it once to that line's
@@ -1859,8 +1859,12 @@ form": a tap scrolls to the form and outlines the filled fields. Same boundary
 as widgets (`widgetLine`): both lines are agent lines in his own thread. A
 patch never adds a field and never touches hidden, disabled, read-only or file
 inputs. Nothing submits by itself: `"submit": true` is honoured only when his
-own latest line, from the last minute, says submit / 提交 / 发送
-(`submitAsked`). Values go in through the native setter and an input event, so
+own latest line, from the last minute, ends in a plain command to send
+("submit", "ok, submit it", 「提交吧」), with nothing that negates, questions or
+merely mentions it ("don't submit", 「不要 提交」, "what does the submit button
+do?") (`submitAsked`), and only once per patch: a replay or a remount fills
+again but never submits again (`consumeSubmit`). Inputs inside a disabled
+fieldset count as disabled. Values go in through the native setter and an input event, so
 the page's uncontrolled inputs and Android keyboards agree. Tests:
 `unit/widget-fill.test.tsx`.
 

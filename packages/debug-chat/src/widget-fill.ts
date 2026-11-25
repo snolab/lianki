@@ -1,10 +1,10 @@
 /**
  * Voice fill for HTML form widgets (owner, 2026-11-26: "告诉你这两个表单分别填什么
  * 然后你就可以在这个表单上帮我填"). He speaks into the normal mic ("first name
- * Taku, last name Miao"); the agent that posted the form answers with a patch:
+ * Sam, last name Sample"); the agent that posted the form answers with a patch:
  *
  *   ```lianki-fill
- *   {"line": "213a9a70", "fields": {"fname": "Taku", "lname": "Miao"}}
+ *   {"line": "form-line-id", "fields": {"fname": "Sam", "lname": "Sample"}}
  *   ```
  *
  * The chat applies it to that line's form (HtmlInline.tsx) by field name and
@@ -46,52 +46,79 @@ export function parseFill(spec: string): FillPatch | null {
   return { line: v.line, fields, submit: v.submit === true };
 }
 
-/** His words that ask for the form to be sent. */
-const SUBMIT_WORDS = /(^|[\s,.!，。！、])(submit|send it|提交|发送|发出去|送出)([\s,.!，。！、]|$)/i;
 export const SUBMIT_WINDOW_MS = 60_000;
 
-/** Did his own latest line, within the last minute, ask to submit? */
+/** Anything that turns "submit" into its opposite, a question or a mention: then never. */
+const NOT_A_COMMAND =
+  /\b(not|don'?t|do\s+not|never|no|without|wait|stop|hold|cancel|explain|what|how|why|which|where|button|later)\b|[?？]|不要|不用|别|不|先别|暂时|等等|等一下|吗|呢|怎么|什么|为什么|按钮|解释/i;
+/** The last clause is a bare command to send: "submit", "ok, submit it now", "提交吧", "请发送". */
+const SUBMIT_COMMAND = [
+  /^(ok(ay)?|yes|yeah|good|great|alright|right|go)?[\s,]*(please\s+)?(submit|send)(\s+(it|this|the\s+form|that))?(\s+(now|please))?[.!]*$/i,
+  /^(好|好的|行|可以|对|没问题)?[，,\s]*(请|帮我)?(提交|发送|发出去|送出)(吧|了|一下|表单|它)?[。！!]*$/,
+];
+
+/**
+ * Did his own latest line, within the last minute, ask to submit? Only a
+ * positive command as its last clause ("first name Sam, submit"; "提交吧"),
+ * and nothing anywhere in it that negates, questions or merely mentions it
+ * ("don't submit", 「不要 提交」, "what does the submit button do?").
+ */
 export function submitAsked(
   own: { text?: string; at?: number } | null | undefined,
   now: number,
 ): boolean {
   if (!own?.text || typeof own.at !== "number") return false;
   if (now - own.at > SUBMIT_WINDOW_MS || own.at > now + 5_000) return false;
-  return SUBMIT_WORDS.test(` ${own.text.trim()} `);
+  const text = own.text.trim();
+  if (!text || NOT_A_COMMAND.test(text)) return false;
+  const last = text.split(/[,，;；。.、]\s*(?=\S)/).at(-1)!.trim();
+  return SUBMIT_COMMAND.some((re) => re.test(last));
 }
 
-type Listener = (patch: FillPatch, flashOnly: boolean) => void;
+/** A fill for one form: the patch, its own id, and whether this call is only a flash. */
+type Listener = (patch: FillPatch, flashOnly: boolean, patchId: string) => void;
 
 /**
- * Patches by target line, applied once per patch line (a re-render does not
- * fill again), and a "flash" for the chip's tap-through. One per page.
+ * Patches by target line, a "flash" for the chip's tap-through, and the one
+ * submit each patch may cause. A patch line renders and re-renders, and a form
+ * remounts (scrolling, a re-render of the log) and gets the fields again; but
+ * its `submit` is a single authorization, used up the first time a form for
+ * that line takes it (consumeSubmit), however often the patch replays.
  */
 export function makeFillStore() {
   const listeners = new Map<string, Set<Listener>>();
   const applied = new Set<string>();
-  const last = new Map<string, FillPatch>();
+  const submitted = new Set<string>();
+  const last = new Map<string, { patch: FillPatch; id: string }>();
   return {
-    /** A patch line was rendered: fill its form once. */
+    /** A patch line was rendered: fill its form (once per patch line). */
     apply(patchId: string, patch: FillPatch) {
-      last.set(patch.line, patch);
+      last.set(patch.line, { patch, id: patchId });
       if (applied.has(patchId)) return false;
       applied.add(patchId);
-      for (const l of listeners.get(patch.line) ?? []) l(patch, false);
+      for (const l of listeners.get(patch.line) ?? []) l(patch, false, patchId);
       return true;
     },
     /** The chip was tapped: show the fields again. */
     flash(line: string) {
       const p = last.get(line);
-      if (p) for (const l of listeners.get(line) ?? []) l(p, true);
+      if (p) for (const l of listeners.get(line) ?? []) l(p.patch, true, p.id);
     },
-    /** A form widget listens for its own line; a patch that came before it mounted applies now. */
+    /** A form widget listens for its own line; a patch that came before it mounted fills it now. */
     on(line: string, l: Listener): () => void {
       let set = listeners.get(line);
       if (!set) listeners.set(line, (set = new Set()));
       set.add(l);
       const p = last.get(line);
-      if (p) l(p, false);
+      if (p) l(p.patch, false, p.id);
       return () => set!.delete(l);
+    },
+    /** The patch's one submit, for its own line: true the first time only. */
+    consumeSubmit(patchId: string, line: string): boolean {
+      const key = `${patchId}\u0000${line}`;
+      if (submitted.has(key)) return false;
+      submitted.add(key);
+      return true;
     },
   };
 }
@@ -111,7 +138,7 @@ export function fillForm(root: ParentNode, fields: Record<string, string>): HTML
     for (const el of els) {
       const tag = el.tagName.toLowerCase();
       const input = el as HTMLInputElement;
-      if ((el as HTMLInputElement).disabled || (el as HTMLInputElement).readOnly) continue;
+      if (effectivelyDisabled(el) || input.readOnly) continue;
       if (tag === "input") {
         const type = (input.type || "text").toLowerCase();
         if (type === "hidden" || type === "file" || type === "submit" || type === "button" || type === "reset") continue;
@@ -130,6 +157,17 @@ export function fillForm(root: ParentNode, fields: Record<string, string>): HTML
     }
   }
   return changed;
+}
+
+/** Disabled itself, or inside a disabled fieldset (where its own `disabled` is still false). */
+function effectivelyDisabled(el: HTMLElement): boolean {
+  if ((el as HTMLInputElement).disabled) return true;
+  if (el.closest("fieldset[disabled]")) return true;
+  try {
+    return el.matches(":disabled");
+  } catch {
+    return false;
+  }
 }
 
 function setValue(el: HTMLInputElement, v: string) {

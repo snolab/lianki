@@ -29,10 +29,10 @@ const FORM = `<form action="/action_page.php" method="get">
 describe("patches", () => {
   test("only well-formed patches, bounded", () => {
     expect(
-      parseFill(JSON.stringify({ line: "213a9a70", fields: { fname: "Taku", n: 3, ok: true } })),
+      parseFill(JSON.stringify({ line: "form-line-1", fields: { fname: "Sam", n: 3, ok: true } })),
     ).toEqual({
-      line: "213a9a70",
-      fields: { fname: "Taku", n: "3", ok: "on" },
+      line: "form-line-1",
+      fields: { fname: "Sam", n: "3", ok: "on" },
       submit: false,
     });
     for (const bad of [
@@ -54,10 +54,41 @@ describe("patches", () => {
     const now = 1_000_000;
     expect(submitAsked({ text: "提交", at: now - 1000 }, now)).toBe(true);
     expect(submitAsked({ text: "ok submit it", at: now - 1000 }, now)).toBe(true);
-    expect(submitAsked({ text: "first name Taku", at: now - 1000 }, now)).toBe(false);
+    expect(submitAsked({ text: "first name Sam", at: now - 1000 }, now)).toBe(false);
     expect(submitAsked({ text: "提交", at: now - SUBMIT_WINDOW_MS - 1 }, now)).toBe(false);
     expect(submitAsked({ text: "submitted?", at: now }, now)).toBe(false);
     expect(submitAsked(null, now)).toBe(false);
+    // The review's cases, and more: negated, questioned or only mentioned — never.
+    for (const no of [
+      "do not submit",
+      "don't submit",
+      "dont submit",
+      "不要 提交",
+      "不要提交",
+      "别提交",
+      "先别发送",
+      "please explain the submit button",
+      "what does submit do",
+      "submit?",
+      "提交吗",
+      "wait, submit later",
+      "never submit this",
+      "I will submit it myself later",
+    ])
+      expect(submitAsked({ text: no, at: now }, now)).toBe(false);
+    for (const yes of [
+      "submit",
+      "Submit.",
+      "ok, submit it",
+      "first name Sam, submit",
+      "please submit now",
+      "提交",
+      "提交吧",
+      "好，提交",
+      "请发送",
+      "first name Sam，提交",
+    ])
+      expect(submitAsked({ text: yes, at: now }, now)).toBe(true);
   });
 
   test("a patch only rides on an agent line in his own thread", async () => {
@@ -76,20 +107,28 @@ describe("patches", () => {
     await win.happyDOM.close();
   });
 
+  test("a patch's submit is one-shot: replays and remounts never submit again", () => {
+    const s = makeFillStore();
+    s.apply("P", { line: "L", fields: { a: "1" }, submit: true });
+    expect(s.consumeSubmit("P", "L")).toBe(true);
+    expect(s.consumeSubmit("P", "L")).toBe(false);
+    expect(s.consumeSubmit("P", "other")).toBe(true);
+  });
+
   test("the store applies a patch once, replays it to a late form, and flashes on demand", () => {
     const s = makeFillStore();
-    const seen: [string, boolean][] = [];
+    const seen: [string, boolean, string][] = [];
     const p = { line: "L", fields: { a: "1" }, submit: false };
     expect(s.apply("P1", p)).toBe(true);
     expect(s.apply("P1", p)).toBe(false);
-    const off = s.on("L", (q, flashOnly) => seen.push([q.fields.a!, flashOnly]));
+    const off = s.on("L", (q, flashOnly, id) => seen.push([q.fields.a!, flashOnly, id]));
     s.flash("L");
     s.flash("other");
     off();
     s.flash("L");
     expect(seen).toEqual([
-      ["1", false],
-      ["1", true],
+      ["1", false, "P1"],
+      ["1", true, "P1"],
     ]);
   });
 });
@@ -149,8 +188,8 @@ describe("filling his form", () => {
     const patch = JSON.stringify({
       line: "form1",
       fields: {
-        fname: "Taku",
-        lname: "Miao",
+        fname: "Sam",
+        lname: "Sample",
         token: "evil",
         locked: "y",
         daily: "yes",
@@ -168,11 +207,11 @@ describe("filling his form", () => {
           createElement(FillChip, { spec: patch, patchId: "fill1", host, store }),
         ),
       // His latest line did not ask to submit.
-      { text: "first name Taku, last name Miao", at: Date.now() },
+      { text: "first name Sam, last name Sample", at: Date.now() },
     );
     await act(async () => {});
-    expect(p.q<HTMLInputElement>("input[name=fname]").value).toBe("Taku");
-    expect(p.q<HTMLInputElement>("input[name=lname]").value).toBe("Miao");
+    expect(p.q<HTMLInputElement>("input[name=fname]").value).toBe("Sam");
+    expect(p.q<HTMLInputElement>("input[name=lname]").value).toBe("Sample");
     expect(p.q<HTMLInputElement>("input[name=token]").value).toBe("keep");
     expect(p.q<HTMLInputElement>("input[name=locked]").value).toBe("x");
     expect(p.q<HTMLInputElement>("input[name=daily]").checked).toBe(true);
@@ -184,9 +223,9 @@ describe("filling his form", () => {
     expect(p.q<HTMLElement>("[data-widget-line=form1]")).not.toBeNull();
     // His own edit after the fill stays: a re-render does not fill again.
     const fname = p.q<HTMLInputElement>("input[name=fname]");
-    fname.value = "Taku M.";
+    fname.value = "Sam S.";
     await act(async () => chip.click());
-    expect(fname.value).toBe("Taku M.");
+    expect(fname.value).toBe("Sam S.");
     // The chip keeps its presses and keys from the message around it.
     const W = p.win as unknown as { Event: typeof Event; KeyboardEvent: typeof KeyboardEvent };
     await act(async () => {
@@ -201,7 +240,7 @@ describe("filling his form", () => {
     const store = makeFillStore();
     const patch = JSON.stringify({
       line: "form2",
-      fields: { fname: "Taku", lname: "Miao" },
+      fields: { fname: "Sam", lname: "Sample" },
       submit: true,
     });
     const p = await mount(
@@ -212,11 +251,61 @@ describe("filling his form", () => {
           createElement(HtmlInline, { html: FORM, host, lineId: "form2", store }),
           createElement(FillChip, { spec: patch, patchId: "fill2", host, store }),
         ),
-      { text: "first name Taku, last name Miao, 提交", at: Date.now() },
+      { text: "first name Sam, last name Sample, 提交", at: Date.now() },
     );
     await act(async () => {});
     expect(p.submits).toHaveLength(1);
-    expect(p.submits[0]).toMatch(/^↳ \/action_page\.php: fname=Taku, lname=Miao/);
+    expect(p.submits[0]).toMatch(/^↳ \/action_page\.php: fname=Sam, lname=Sample/);
+  });
+
+  test("a remounted form fills again but never submits again", async () => {
+    const { HtmlInline } = await import("@lianki/debug-chat/HtmlInline");
+    const { FillChip } = await import("@lianki/debug-chat/FillChip");
+    const store = makeFillStore();
+    const patch = JSON.stringify({ line: "form4", fields: { fname: "Sam" }, submit: true });
+    const own = { text: "first name Sam, submit", at: Date.now() };
+    const view = (host: WidgetHost, key: string) =>
+      createElement(
+        "div",
+        null,
+        createElement(HtmlInline, { key, html: FORM, host, lineId: "form4", store }),
+        createElement(FillChip, { spec: patch, patchId: "fill4", host, store }),
+      );
+    const p = await mount((host) => view(host, "a"), own);
+    await act(async () => {});
+    expect(p.submits).toHaveLength(1);
+    // The form remounts (a new key): filled again, not sent again.
+    await act(async () => p.root.render(view(p.host, "b")));
+    await act(async () => {});
+    expect(p.q<HTMLInputElement>("input[name=fname]").value).toBe("Sam");
+    expect(p.submits).toHaveLength(1);
+  });
+
+  test("inputs inside a disabled fieldset are never filled", async () => {
+    const { HtmlInline } = await import("@lianki/debug-chat/HtmlInline");
+    const { FillChip } = await import("@lianki/debug-chat/FillChip");
+    const store = makeFillStore();
+    const html = `<form><fieldset disabled><input type="text" name="locked" value="keep"><select name="pick"><option value="a">a</option><option value="b">b</option></select></fieldset><input type="text" name="open"></form>`;
+    const p = await mount((host) =>
+      createElement(
+        "div",
+        null,
+        createElement(HtmlInline, { html, host, lineId: "form5", store }),
+        createElement(FillChip, {
+          spec: JSON.stringify({
+            line: "form5",
+            fields: { locked: "changed", pick: "b", open: "yes" },
+          }),
+          patchId: "f5",
+          host,
+          store,
+        }),
+      ),
+    );
+    await act(async () => {});
+    expect(p.q<HTMLInputElement>("input[name=locked]").value).toBe("keep");
+    expect(p.q<HTMLSelectElement>("select[name=pick]").value).toBe("a");
+    expect(p.q<HTMLInputElement>("input[name=open]").value).toBe("yes");
   });
 
   test("a patch for another line fills nothing", async () => {
