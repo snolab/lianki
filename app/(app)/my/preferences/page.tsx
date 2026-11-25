@@ -55,7 +55,7 @@ export default async function PreferencesPage() {
     (await listApps(getD1() as unknown as MiniDb, user.id).catch(() => [])).length > 0;
 
   return (
-    <div className="flex flex-col">
+    <div className="@container/preferences flex flex-col">
       {/* Main Content */}
       <div className="flex-grow">
         <PreferencesClient
