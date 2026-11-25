@@ -4,12 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIntlayer } from "next-intlayer";
 import { useUi } from "@lianki/ui-state";
 import { FLAGS, type FlagDef, type FlagKey } from "@/lib/flags";
-import type { FlagLogEntry, FlagRow } from "@/lib/flags-store";
+import type { FlagRow } from "@/lib/flags-store";
 import { flagChangedEvent } from "@/lib/flag-events";
-import type { PrereqFailure } from "@/lib/flag-prereqs";
 import { card, Chevron, FlagCard, When } from "./FlagCard";
 import { FLAG_HIGHLIGHT_MS, scrollToFlag } from "./flag-anchor";
 import {
+  applySaved,
   buildFlagView,
   doneSaving,
   filtersActive,
@@ -19,21 +19,17 @@ import {
   isShipped,
   RECENT_DAYS,
   resolveFlagAnchor,
+  setRowEnabled,
   SHIPPED_GROUP,
   startSaving,
+  type FlagsState,
   type StateFilter,
 } from "./flag-view";
 import { flagViewPrefs } from "./flag-view-store";
 import { DevToast, type DevToastMsg } from "../DevToast";
 import { SealStamp } from "@/app/components/SealSwitch";
 
-type State = {
-  flags: FlagRow[];
-  /** The prerequisites each flag fails now (reason keys and texts only). */
-  prereqs?: Partial<Record<FlagKey, PrereqFailure[]>>;
-  log: FlagLogEntry[];
-  cacheSeconds: number;
-};
+type State = FlagsState;
 
 const STATE_FILTERS: [StateFilter, string][] = [
   ["all", "全部"],
@@ -159,6 +155,9 @@ export default function FlagsAdmin() {
     if (enabled && f.key.startsWith("payments.") && !window.confirm(`打开 ${f.key}？`)) return;
     if (saving.has(f.key)) return;
     setSaving((s) => startSaving(s, f.key));
+    // The switch shows the new state while it saves; a failure puts this row back.
+    setState((s) => (s ? setRowEnabled(s, f.key, enabled) : s));
+    const revert = () => setState((s) => (s ? setRowEnabled(s, f.key, f.enabled) : s));
     setToast(null);
     setHeld((h) =>
       h.has(f.key) ? h : new Map(h).set(f.key, isShipped(f, state?.prereqs?.[f.key])),
@@ -171,7 +170,8 @@ export default function FlagsAdmin() {
       });
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
-        setState(data);
+        // Only the key this request saved: another save may have answered after it was sent.
+        setState((s) => (s ? applySaved(s, data, f.key) : data));
         // The userscript on this page mirrors some flags for other sites: tell it now.
         window.dispatchEvent(
           flagChangedEvent({
@@ -196,13 +196,16 @@ export default function FlagsAdmin() {
                   : t.everyone.value,
           }),
         });
-      } else
+      } else {
+        revert();
         setToast({
           ok: false,
           id: Date.now(),
           text: fill(t.failed.value, { flag: f.key, error: data.error ?? `HTTP ${r.status}` }),
         });
+      }
     } catch (e) {
+      revert();
       setToast({
         ok: false,
         id: Date.now(),
