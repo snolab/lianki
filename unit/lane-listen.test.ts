@@ -32,6 +32,9 @@ import {
   DEFAULT_DEBOUNCE_MS,
   makeDeliverer,
   parseDebounceMs,
+  parseInterruptAfterMs,
+  DEFAULT_INTERRUPT_AFTER_MS,
+  queuedOnScreen,
   reconnectWait,
   RECONNECT_RESET_MS,
   urgentLine,
@@ -702,5 +705,100 @@ describe("makeDeliverer debounce", () => {
     expect(sent).toHaveLength(2);
     expect(sent[1]!.interrupt).toBe(true);
     expect(sent[1]!.body).toContain("agy，立刻看");
+  });
+});
+
+describe("makeDeliverer interrupt on timeout", () => {
+  const setup = (afterMs: number, held: boolean) => {
+    const sent: { body: string; interrupt: boolean }[] = [];
+    const logs: Record<string, unknown>[] = [];
+    let checks = 0;
+    let releases = 0;
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/r" },
+      async (body, interrupt) => (sent.push({ body, interrupt }), 0),
+      async () => false,
+      (v) => void logs.push(v),
+      10,
+      0,
+      {
+        afterMs,
+        queued: async () => (checks++, held),
+        release: async () => (releases++, 0),
+      },
+    );
+    return { d, sent, logs, checks: () => checks, releases: () => releases };
+  };
+
+  it("the flag: 5 s by default, 0 turns it off, junk is refused", () => {
+    expect(DEFAULT_INTERRUPT_AFTER_MS).toBe(5_000);
+    expect(parseInterruptAfterMs(undefined)).toBe(5_000);
+    expect(parseInterruptAfterMs("0")).toBe(0);
+    expect(parseInterruptAfterMs("1200")).toBe(1_200);
+    expect(parseInterruptAfterMs("-5")).toBeInstanceOf(Error);
+    expect(parseInterruptAfterMs("soon")).toBeInstanceOf(Error);
+  });
+
+  it("codex's held-back banner is what counts as not picked up", () => {
+    expect(
+      queuedOnScreen(
+        "• Working (12s)\n  Messages to be submitted after next tool call (press esc to interrupt and send immediately)\n  ↳ 【owner → codex】",
+      ),
+    ).toBe(true);
+    expect(queuedOnScreen("› Press up to edit queued messages")).toBe(false);
+    expect(queuedOnScreen("› \n  gpt-5 high · 80% left")).toBe(false);
+  });
+
+  it("urgent and still held after the timeout: one Esc, the line not sent again", async () => {
+    const t = setup(20, true);
+    await t.d.add({ id: "u1", thread: "owner", from: "owner", text: "codex，在吗" });
+    await t.d.add({ id: "u2", thread: "owner", from: "owner", text: "全体，报个到" });
+    expect(t.sent).toHaveLength(2);
+    expect(t.releases()).toBe(0);
+    expect(t.d.releasePending()).toBe(true);
+    await Bun.sleep(50);
+    expect(t.checks()).toBe(1);
+    expect(t.releases()).toBe(1);
+    expect(t.sent).toHaveLength(2);
+    expect(t.logs.find((l) => l.type === "interrupted")).toMatchObject({ ids: ["u1", "u2"] });
+  });
+
+  it("urgent and picked up in time: no interrupt", async () => {
+    const t = setup(20, false);
+    await t.d.add({ id: "u3", thread: "owner", from: "owner", text: "codex，看一下" });
+    await Bun.sleep(50);
+    expect(t.checks()).toBe(1);
+    expect(t.releases()).toBe(0);
+    expect(t.logs.some((l) => l.type === "picked-up")).toBe(true);
+  });
+
+  it("a line not addressed to the lane never interrupts", async () => {
+    const t = setup(20, true);
+    await t.d.add({ id: "n1", thread: "owner", from: "owner", text: "今天学了什么" });
+    await t.d.add({ id: "n2", thread: "owner", from: "owner", text: "agy，看一下" });
+    await t.d.add({
+      id: "n3",
+      thread: "owner",
+      from: "agent",
+      kind: "agent",
+      sender: "coco",
+      text: "codex，在吗",
+    });
+    expect(t.sent).toHaveLength(3);
+    expect(t.sent.every((s) => !s.interrupt)).toBe(true);
+    expect(t.d.releasePending()).toBe(false);
+    await Bun.sleep(50);
+    expect(t.checks()).toBe(0);
+    expect(t.releases()).toBe(0);
+  });
+
+  it("timeout 0: never", async () => {
+    const t = setup(0, true);
+    await t.d.add({ id: "z1", thread: "owner", from: "owner", text: "codex，在吗" });
+    expect(t.sent[0]!.interrupt).toBe(true);
+    expect(t.d.releasePending()).toBe(false);
+    await Bun.sleep(30);
+    expect(t.checks()).toBe(0);
+    expect(t.releases()).toBe(0);
   });
 });

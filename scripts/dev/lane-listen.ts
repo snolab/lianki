@@ -37,6 +37,8 @@ import {
   lineOf,
   makeDeliverer,
   parseDebounceMs,
+  parseInterruptAfterMs,
+  queuedOnScreen,
   reconnectWait,
   tokenNeeded,
   voiceAllowed,
@@ -61,11 +63,15 @@ type Opts = {
   skipOwner: boolean;
   /** Debounce window (ms) for non-urgent lines; urgent lines bypass it immediately. */
   debounceMs: number;
+  /** An urgent line still held back this long after delivery gets an Esc (0 = never). */
+  interruptAfterMs: number;
 };
 
 function parse(argv: string[]): Opts | Error {
   const envDebounce = parseDebounceMs(process.env.LIANKI_LISTEN_DEBOUNCE_MS);
   if (envDebounce instanceof Error) return envDebounce;
+  const envInterrupt = parseInterruptAfterMs(process.env.LIANKI_LISTEN_INTERRUPT_AFTER_MS);
+  if (envInterrupt instanceof Error) return envInterrupt;
   const o: Partial<Opts> & {
     tests: boolean;
     dryRun: boolean;
@@ -73,6 +79,7 @@ function parse(argv: string[]): Opts | Error {
     everyone: boolean;
     skipOwner: boolean;
     debounceMs: number;
+    interruptAfterMs: number;
   } = {
     tests: false,
     dryRun: false,
@@ -80,6 +87,7 @@ function parse(argv: string[]): Opts | Error {
     everyone: false,
     skipOwner: false,
     debounceMs: envDebounce,
+    interruptAfterMs: envInterrupt,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -100,6 +108,10 @@ function parse(argv: string[]): Opts | Error {
       const ms = parseDebounceMs(raw);
       if (ms instanceof Error) return ms;
       o.debounceMs = ms;
+    } else if (a === "--interrupt-after-ms") {
+      const ms = parseInterruptAfterMs(v() ?? "x");
+      if (ms instanceof Error) return ms;
+      o.interruptAfterMs = ms;
     } else return new Error(`lane-listen: unknown argument ${a}`);
   }
   o.lane ??= (process.env.LIANKI_LANE || undefined) as RouteLane | undefined;
@@ -133,10 +145,14 @@ async function deliver(o: Opts, body: string, interrupt = false): Promise<number
   // `ay send . …` from the lane's dir finds the lane however often it restarted.
   // --no-wait: hand the text over and return; ay's own settle/idle waits used
   // to hold this loop for minutes, and every later line with it (2026-11-14).
-  // --code alt-m: an urgent line (his name, a roll call) breaks into the turn.
+  // --code alt-m for an urgent line (his name, a roll call) asks to submit now,
+  // but it does not interrupt: codex mid-turn still holds the message "after
+  // next tool call" (159 s on 2026-11-25). The break-in is releaseHeld, after
+  // --interrupt-after-ms.
   // The pid is looked up first (pickTarget): `.` alone is refused by ay when the
   // dir holds more than one agent, and the line is lost (杰咪, 2026-11-15).
   const target = o.deliver ?? (await resolveTarget(o)) ?? ".";
+  lastTarget = target;
   const p = Bun.spawn(
     ["ay", "send", target, "--force", "--no-wait", "--code", interrupt ? "alt-m" : "enter", "-"],
     {
@@ -159,6 +175,54 @@ async function deliver(o: Opts, body: string, interrupt = false): Promise<number
       `lane-listen: ay send exited ${code}: ${(await new Response(p.stderr).text()).trim().split("\n").at(-1)}`,
     );
   return code;
+}
+
+/** The agent the last line went to: the interrupt check looks at the same one. */
+let lastTarget = ".";
+
+/** Run `ay` with a deadline; its stdout, or null when it was slow or failed. */
+async function ayOut(o: Opts, args: string[], waitMs: number): Promise<string | null> {
+  try {
+    const p = Bun.spawn(["ay", ...args], {
+      cwd: o.cwd ?? process.cwd(),
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const txt = await Promise.race([
+      new Response(p.stdout).text(),
+      new Promise<null>((r) => setTimeout(() => r(null), waitMs)),
+    ]);
+    if (txt === null) p.kill();
+    return txt;
+  } catch {
+    return null;
+  }
+}
+
+/** Is the delivered line still held back? Codex's "submitted after next tool call" banner on the agent's screen. */
+async function heldBack(o: Opts): Promise<boolean> {
+  if (o.dryRun) return false;
+  const screen = await ayOut(o, ["tail", "-n", "40", lastTarget], BUSY_CHECK_MS);
+  return screen !== null && queuedOnScreen(screen);
+}
+
+/**
+ * Release a held line: Esc, which the banner itself says submits it at once.
+ * No body, so the line is never handed over twice (not `ay send --interrupt`,
+ * which would paste it again). `ay key`, because `ay send <pid> "" --code esc`
+ * is refused as an empty message (agent-yes 1.308.1).
+ */
+async function releaseHeld(o: Opts): Promise<number> {
+  if (o.dryRun) return 0;
+  const p = Bun.spawn(["ay", "key", lastTarget, "esc", "--force"], {
+    cwd: o.cwd ?? process.cwd(),
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  return Promise.race([
+    p.exited,
+    new Promise<number>((r) => setTimeout(() => r(-1), SEND_WAIT_MS)),
+  ]);
 }
 
 /** How long one delivery may take before the loop moves on (ay keeps the hand-over going). */
@@ -238,6 +302,11 @@ async function main(): Promise<number> {
     log,
     BUSY_RECHECK_MS,
     o.debounceMs,
+    {
+      afterMs: o.interruptAfterMs,
+      queued: () => heldBack(o),
+      release: () => releaseHeld(o),
+    },
   );
   if (t.from === "none") {
     console.error(`lane-listen: ${t.why}. Needed: ${tokenNeeded(o.lane)}`);

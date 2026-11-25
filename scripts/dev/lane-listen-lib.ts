@@ -357,14 +357,51 @@ export const BUSY_RECHECK_MS = 5_000;
 /** Default debounce window for non-urgent lines (ms), so STT bursts coalesce without multi-second lag. */
 export const DEFAULT_DEBOUNCE_MS = 1_500;
 
-/** Parse a non-negative millisecond duration for `--debounce-ms` / `--batch-ms` / `LIANKI_LISTEN_DEBOUNCE_MS`. */
-export function parseDebounceMs(raw: string | undefined): number | Error {
-  if (raw === undefined || raw.trim() === "") return DEFAULT_DEBOUNCE_MS;
+/** Parse a non-negative millisecond duration; empty → the default. */
+function parseMs(raw: string | undefined, dflt: number, what: string): number | Error {
+  if (raw === undefined || raw.trim() === "") return dflt;
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0)
-    return new Error(`lane-listen: invalid debounce ms ${JSON.stringify(raw)} (expected >= 0)`);
+    return new Error(`lane-listen: invalid ${what} ms ${JSON.stringify(raw)} (expected >= 0)`);
   return Math.floor(n);
 }
+/** `--debounce-ms` / `--batch-ms` / `LIANKI_LISTEN_DEBOUNCE_MS`. */
+export const parseDebounceMs = (raw: string | undefined) =>
+  parseMs(raw, DEFAULT_DEBOUNCE_MS, "debounce");
+
+/**
+ * How long an urgent line may sit unread before the listener breaks in
+ * (docs/lane-listen.md, "Interrupt on timeout"). A codex lane mid-turn holds a
+ * pasted line back "after next tool call"; one such line waited 159 s
+ * (2026-11-25). 0 = never interrupt.
+ */
+export const DEFAULT_INTERRUPT_AFTER_MS = 5_000;
+/** `--interrupt-after-ms` / `LIANKI_LISTEN_INTERRUPT_AFTER_MS`. */
+export const parseInterruptAfterMs = (raw: string | undefined) =>
+  parseMs(raw, DEFAULT_INTERRUPT_AFTER_MS, "interrupt-after");
+
+/**
+ * Codex's banner over a message it holds back until the turn's next tool call:
+ * "Messages to be submitted after next tool call (press esc to interrupt and
+ * send immediately)". Only this banner is acted on, because it is the one that
+ * promises Esc submits the held message; Claude's "Press up to edit queued
+ * messages" makes no such promise, so it is left alone.
+ */
+const QUEUED_BANNER =
+  /submitted after (?:the )?next tool call|press esc to interrupt and send immediately/iu;
+/** Is a message held back on this screen (the last rendered lines of `ay tail`)? */
+export const queuedOnScreen = (screen: string): boolean =>
+  screen.split("\n").some((line) => QUEUED_BANNER.test(line));
+
+/** The listener's way to break in when an urgent line was not read in time. */
+export type InterruptOnTimeout = {
+  /** ms after an urgent delivery; 0 = off. */
+  afterMs: number;
+  /** Is the delivered line still held back unread? */
+  queued: () => Promise<boolean>;
+  /** Make the lane read it now (`ay key <pid> esc`: codex submits the held message); no body is sent again. */
+  release: () => Promise<number>;
+};
 
 /**
  * Lines wait here while the agent is busy; when it is free they go as ONE
@@ -422,10 +459,32 @@ export function makeDeliverer(
   log: (v: Record<string, unknown>) => void = () => {},
   recheckMs = BUSY_RECHECK_MS,
   debounceMs = DEFAULT_DEBOUNCE_MS,
+  interruptOnTimeout?: InterruptOnTimeout,
 ) {
   const pending: Line[] = [];
   let first = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // One check per wave of urgent lines: one Esc submits everything codex holds.
+  let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+  let releaseIds: string[] = [];
+  const checkRelease = async (it: InterruptOnTimeout) => {
+    releaseTimer = undefined;
+    const ids = releaseIds;
+    releaseIds = [];
+    const held = await it.queued().catch(() => false);
+    if (!held) {
+      log({ type: "picked-up", lane: o.lane, ids, afterMs: it.afterMs });
+      return;
+    }
+    const ay = await it.release().catch(() => -1);
+    log({ type: "interrupted", lane: o.lane, ids, afterMs: it.afterMs, ay });
+  };
+  const scheduleRelease = (ids: string[]) => {
+    const it = interruptOnTimeout;
+    if (!it || it.afterMs <= 0 || !ids.length) return;
+    releaseIds.push(...ids);
+    releaseTimer ??= setTimeout(() => void checkRelease(it), it.afterMs);
+  };
   const clearTimer = () => {
     if (!timer) return;
     clearTimeout(timer);
@@ -448,6 +507,7 @@ export function makeDeliverer(
     // and a refused batch was simply lost (2026-11-14 23:xx, four of coco's).
     // So a long batch goes as several messages, each under SEND_MAX_CHARS.
     let code: number | undefined;
+    const handed: string[] = [];
     // The first message also carries firstLines: its parts leave room for them.
     const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo).join("\n").length + 1 : 0);
     for (const part of chunkLines(o.lane, batch, room)) {
@@ -456,7 +516,10 @@ export function makeDeliverer(
       log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
       if (code !== 0 && code !== 4)
         log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
+      else handed.push(...part.map((l) => l.id));
     }
+    // Only an urgent hand-off may break in later; a lost one has nothing to release.
+    if (interrupt) scheduleRelease(handed);
     return code;
   };
   return {
@@ -472,6 +535,8 @@ export function makeDeliverer(
       return undefined;
     },
     pending: () => pending.length,
+    /** An interrupt check is waiting for its timeout. */
+    releasePending: () => releaseTimer !== undefined,
   };
 }
 

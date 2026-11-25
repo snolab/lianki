@@ -310,7 +310,8 @@ decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
    Readers get no process: the manager's own reader socket (`lianki chat
 listen --json --reader`) hears his lines, and a line that names a reader
    (its lane name, a `chat.lanes` alias, `#<repo>`, or 全体) goes to that
-   agent with `ay send <pid> --force --no-wait --code alt-m`.
+   agent with `ay send <pid> --force --no-wait --code alt-m`, then an Esc if
+   it is still held back after `--interrupt-after-ms` ("Interrupt on timeout").
    A `lanes.agents` row with `wake: false` joins (greets, marked left) but is
    never woken: 小克 (`lianki/tree/agy`, cli `claude`, lane `claude`) keeps
    its own live feed of his lines, and with `scope: "all"` its listener
@@ -354,4 +355,37 @@ Then restart the listeners without `--tests`.
 Tests: `unit/lane-route.test.ts` (the matcher), `unit/lane-listen.test.ts`
 (token lookup, line parsing, the hand-off).
 
-- **Urgent lines break in (2026-11-14 23:0x).** A line that names the lane, or starts with 全体 (every lane at once, `lane-route.ts`), or an ETA nudge addressed to it, is handed over immediately with `ay send --code alt-m` (interrupting the turn) together with whatever was waiting; everything else still waits for the batch (`urgentLine` in `scripts/dev/lane-listen-lib.ts`).
+- **Urgent lines break in (2026-11-14 23:0x).** A line that names the lane, or starts with 全体 (every lane at once, `lane-route.ts`), or an ETA nudge addressed to it, is handed over immediately with `ay send --code alt-m` together with whatever was waiting; everything else still waits for the batch (`urgentLine` in `scripts/dev/lane-listen-lib.ts`). `alt-m` only submits: it does not interrupt the turn (see the next section).
+
+## Interrupt on timeout (2026-11-25)
+
+An urgent line reached codex's PTY in 443 ms and was read 159 s later: codex,
+mid-turn, held it as "Messages to be submitted after next tool call (press esc
+to interrupt and send immediately)". So the listener delivers first and breaks
+in only when the line was not picked up in time:
+
+1. The urgent line goes out as above (`ay send … --code alt-m`).
+2. `--interrupt-after-ms` later (default **5000**; `LIANKI_LISTEN_INTERRUPT_AFTER_MS`;
+   **0 = never**) the listener reads the agent's screen (`ay tail -n 40 <pid>`).
+3. Codex's held-back banner on it → **one Esc** (`ay key <pid> esc --force`), which
+   the banner itself says submits the held message now. Log `interrupted`.
+   No banner → picked up (submitted, or the agent was idle). Log `picked-up`.
+
+Choices:
+
+- **Esc, not `ay send --interrupt`.** `--interrupt` (agent-yes `interruptSend.ts`)
+  cancels the turn and then pastes the body, so the line would arrive twice. Esc
+  carries no body. `ay send <pid> "" --code esc` is refused as an empty message,
+  hence `ay key`.
+- **The screen, not ay's inbox.** The inbox's `submission` field is written once,
+  at send time, and is `unchecked` under `--no-wait`; it never flips to
+  submitted later. The banner is what codex shows while the line is unread.
+- **Codex's banner only.** Claude's "Press up to edit queued messages" makes no
+  promise about Esc (it may cancel the turn and leave the message in the box),
+  so a Claude lane is never pressed.
+- One check per wave of urgent lines: a second urgent line inside the window
+  joins the pending check, and one Esc submits everything held.
+- Non-urgent lines (no name, another lane's name, agents' and system lines)
+  never schedule a check.
+
+Tests: `unit/lane-listen.test.ts`, "makeDeliverer interrupt on timeout".
