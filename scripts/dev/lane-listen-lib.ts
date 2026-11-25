@@ -3,7 +3,7 @@
  * token comes from (never printed), reading both listeners' JSON lines, and
  * what the lane's agent is handed. Tested in unit/lane-listen.test.ts.
  */
-import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
+import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -85,6 +85,8 @@ export type Line = {
   senderLane?: string;
   /** A lane event's lane (a system line about that lane). */
   eventLane?: string;
+  /** The hub's sequence number for the line in its thread (absent on an old hub). */
+  seq?: number;
 };
 /**
  * Whether a lane may hear this owner line (owner, 2026-11-14 23:2x: "只有我自己的
@@ -136,6 +138,7 @@ export function lineOf(raw: string): (Line & { history: boolean }) | null {
       ? { voice: (m.speaker as { decision: string }).decision }
       : {}),
     ...(m.from === "agent" ? agentFields(m) : {}),
+    ...(validSeq(m.seq) ? { seq: m.seq } : {}),
     history: v.history === true,
   };
 }
@@ -412,6 +415,8 @@ export function makeDeliverer(
   busy: () => Promise<boolean>,
   log: (v: Record<string, unknown>) => void = () => {},
   recheckMs = BUSY_RECHECK_MS,
+  /** After each hand-over: its lines, and whether `ay send` took them (0 or 4). */
+  sent: (lines: Line[], ok: boolean) => void = () => {},
 ) {
   const pending: Line[] = [];
   let first = true;
@@ -439,8 +444,9 @@ export function makeDeliverer(
       code = await send(handoffBrief(o.lane, part, o.repo, first, unnamed), interrupt);
       first = false;
       log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
-      if (code !== 0 && code !== 4)
-        log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
+      const ok = code === 0 || code === 4;
+      if (!ok) log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
+      sent(part, ok);
     }
     return code;
   };
@@ -514,4 +520,257 @@ export function reconnectWait(
 ): { wait: number; next: number } {
   const wait = ranMs >= RECONNECT_RESET_MS ? 1_000 : backoff;
   return { wait, next: Math.min(wait * 2, code === 5 ? 600_000 : 60_000) };
+}
+
+// ── Delivered cursor and read receipts (docs/lane-listen.md "Read receipts") ──
+
+const validSeq = (v: unknown): v is number =>
+  typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+
+/** Where a lane keeps its delivered cursor: the last seq of the owner's thread it is done with. */
+export const laneCursorPath = (lane: string, env?: Record<string, string | undefined>) =>
+  join(laneTokenDir(env), `${lane}.seq`);
+
+/** The saved cursor, or null when there is none yet (a first run starts from the live stream). */
+export function readCursor(lane: string, env?: Record<string, string | undefined>): number | null {
+  try {
+    const n = Number(readFileSync(laneCursorPath(lane, env), "utf8").trim());
+    return validSeq(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCursor(lane: string, seq: number, env?: Record<string, string | undefined>) {
+  if (!validSeq(seq)) return;
+  try {
+    mkdirSync(laneTokenDir(env), { recursive: true, mode: 0o700 });
+    writeFileSync(laneCursorPath(lane, env), `${seq}\n`, { mode: 0o600 });
+  } catch {}
+}
+
+/**
+ * The delivered cursor. A line is passed (nothing to hand over: another
+ * lane's, history, refused voice) or held until `ay send` took it. The
+ * cursor is the highest seq with nothing held at or below it, so a line
+ * lost in delivery keeps the cursor before it and the next connect's
+ * recovery (`chat read --after-seq`) hands it over again. Seq gaps (lines
+ * the hub never shows) are fine: only held lines stop the cursor.
+ *
+ * The catch-up barrier: while a recovery is pending (bar), the cursor never
+ * moves past where it stood when the recovery began, however far live lines
+ * go, because the lines in between are not yet known to be covered. Only a
+ * recovery that read through its snapshot of the hub's head lifts it.
+ */
+export function makeSeqCursor(start: number) {
+  let max = start;
+  let floor: number | null = null;
+  const held = new Set<number>();
+  const bump = (s: number) => {
+    if (s > max) max = s;
+  };
+  return {
+    pass(seq: number | undefined) {
+      if (validSeq(seq)) bump(seq);
+    },
+    hold(seq: number | undefined) {
+      if (!validSeq(seq) || seq <= start) return;
+      held.add(seq);
+      bump(seq);
+    },
+    /** Handed over: no longer holds the cursor. */
+    release(seqs: readonly (number | undefined)[]) {
+      for (const s of seqs) if (validSeq(s)) held.delete(s);
+    },
+    /** A recovery starts: hold the cursor where it is (or lower, if one is already pending). */
+    bar(): number {
+      const v = this.value();
+      floor = floor === null ? v : Math.min(floor, v);
+      return floor;
+    },
+    /** The recovery covered everything up to the hub's head as it was: the cursor may move again. */
+    lift() {
+      floor = null;
+    },
+    barred: () => floor !== null,
+    value(): number {
+      let v = max;
+      for (const s of held) if (s - 1 < v) v = s - 1;
+      return floor === null ? v : Math.min(v, floor);
+    },
+  };
+}
+export type SeqCursor = ReturnType<typeof makeSeqCursor>;
+
+/**
+ * The read receipt to post after a hand-over: through the newest line the
+ * agent was handed, never past a line still held (the cursor). Null: no
+ * receipt (nothing with a seq, or not past the last one posted).
+ */
+export function receiptAfter(
+  delivered: readonly (number | undefined)[],
+  cursor: number,
+  last: number,
+): number | null {
+  const top = Math.max(-1, ...delivered.filter(validSeq));
+  if (top < 0) return null;
+  const at = Math.min(top, cursor);
+  return at > last ? at : null;
+}
+
+/**
+ * The receipt when a recovery's barrier lifts: receipts held back while it was
+ * pending are owed, so one now through the newest line handed over (never past
+ * the cursor). Null when nothing is owed.
+ */
+export function liftReceipt(lastDelivered: number, cursor: number, last: number): number | null {
+  return receiptAfter(lastDelivered >= 0 ? [lastDelivered] : [], cursor, last);
+}
+
+/**
+ * When to start catching up on a connection: at the listener's "ready" event
+ * (the socket is subscribed, so nothing falls between the recovery's snapshot
+ * and the live stream), or at its first chat line if no ready came first.
+ * Once per connection.
+ */
+export function catchUpTrigger(start: () => void): (raw: string) => void {
+  let started = false;
+  return (raw) => {
+    if (started) return;
+    let v: { type?: unknown };
+    try {
+      v = JSON.parse(raw) as { type?: unknown };
+    } catch {
+      return;
+    }
+    if (v?.type !== "ready" && v?.type !== "chat") return;
+    started = true;
+    start();
+  };
+}
+
+/**
+ * One receipt in flight at a time; a newer one waits and replaces any older
+ * waiting one, so a burst of lines costs at most two posts.
+ */
+export function makeAcker(post: (seq: number) => Promise<boolean>) {
+  let last = 0;
+  let want = 0;
+  let running: Promise<void> | null = null;
+  const run = async () => {
+    while (want > last) {
+      const s = want;
+      if (await post(s).catch(() => false)) last = Math.max(last, s);
+      else break;
+    }
+    running = null;
+  };
+  return {
+    ack(seq: number) {
+      if (!validSeq(seq) || seq <= last) return running ?? Promise.resolve();
+      want = Math.max(want, seq);
+      running ??= run();
+      return running;
+    },
+    last: () => last,
+  };
+}
+
+/** Recovered lines older than this are passed, not handed over (a stale line answers nothing). */
+export function recoverMaxMs(env: Record<string, string | undefined> = process.env): number {
+  const n = Number(env.LANE_RECOVER_MAX_MIN);
+  return (Number.isFinite(n) && n >= 0 ? n : 120) * 60_000;
+}
+
+/** One page of `lianki chat read --after-seq … --json`: its lines and what it covers. */
+export type RecoveredPage = { lines: string[]; throughSeq: number; headSeq: number };
+
+/**
+ * A read answer as a page, or null when it is not one (a failure, an old hub
+ * with no coverage). Never an empty success: a page says what it covered.
+ */
+export function recoveredPage(stdout: string): RecoveredPage | null {
+  try {
+    const v = JSON.parse(stdout.trim().split("\n").at(-1) ?? "") as {
+      ok?: boolean;
+      data?: { messages?: unknown[]; throughSeq?: unknown; headSeq?: unknown };
+    };
+    const d = v?.data;
+    if (v?.ok !== true || !d || !Array.isArray(d.messages)) return null;
+    if (!validSeq(d.throughSeq) || !validSeq(d.headSeq)) return null;
+    return {
+      lines: d.messages.map((message) => JSON.stringify({ type: "chat", message })),
+      throughSeq: d.throughSeq,
+      headSeq: d.headSeq,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read everything after `from` up to the hub's head as it was at the first
+ * page (a fixed snapshot: lines after it come live), page by page. Each page
+ * goes to `onPage` before the next is read. True once the snapshot is covered;
+ * false on any failure or a page that does not move forward (then nothing past
+ * `from` counts as covered and the caller retries).
+ */
+export async function recoverRange(
+  from: number,
+  read: (after: number, through?: number) => Promise<RecoveredPage | null>,
+  onPage: (lines: string[]) => Promise<void>,
+  maxPages = 1000,
+): Promise<boolean> {
+  const first = await read(from);
+  if (!first) return false;
+  const head = first.headSeq;
+  await onPage(first.lines);
+  let at = first.throughSeq;
+  for (let n = 1; at < head; n++) {
+    if (n >= maxPages) return false;
+    const page = await read(at, head);
+    if (!page || page.throughSeq <= at) return false;
+    await onPage(page.lines);
+    at = page.throughSeq;
+  }
+  return true;
+}
+
+/**
+ * The recovery loop around recoverRange: it bars the cursor, reads from the
+ * barred point, and lifts the barrier only after full coverage. A failure is
+ * logged and retried with backoff (2 s doubling to 60 s), never taken as done.
+ * A newer run (a reconnect) replaces an older one.
+ */
+export function makeRecovery(d: {
+  cursor: () => SeqCursor | null;
+  read: (after: number, through?: number) => Promise<RecoveredPage | null>;
+  handle: (raw: string) => Promise<void>;
+  covered: () => void;
+  log: (v: Record<string, unknown>) => void;
+  sleep: (ms: number) => Promise<void>;
+}) {
+  let gen = 0;
+  return async function run(): Promise<void> {
+    const c = d.cursor();
+    if (!c) return;
+    const me = ++gen;
+    const from = c.bar();
+    let wait = 2_000;
+    for (;;) {
+      if (me !== gen) return;
+      const ok = await recoverRange(from, d.read, async (lines) => {
+        for (const raw of lines) await d.handle(raw);
+      });
+      if (me !== gen) return;
+      if (ok) {
+        c.lift();
+        d.covered();
+        return;
+      }
+      d.log({ type: "recover-failed", from, retryInMs: wait });
+      await d.sleep(wait);
+      wait = Math.min(wait * 2, 60_000);
+    }
+  };
 }
