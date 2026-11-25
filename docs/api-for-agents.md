@@ -208,22 +208,6 @@ claude mcp add --transport http lianki https://lianki.com/mcp \
 }
 ```
 
-For **ChatGPT web**, add a custom MCP app with server URL
-`https://lianki.com/mcp/<YOUR_TOKEN>` and select **No authentication**.
-Replace `<YOUR_TOKEN>` with a separate named API token created at
-`/my/preferences#tokens`, with an expiry and only the chat permissions needed.
-The URL itself is a bearer credential: anyone holding it can use those permissions
-until expiry or revocation. Keep it in the client's private connector settings;
-never paste it into chats, browser address bars, screenshots, logs or public configs.
-Revoke the named token if the URL is exposed. URL credentials can still appear in
-client or edge infrastructure logs. Persisted MCP observability logs and traces
-are disabled. The existing monitor tail consumer remains attached and ignores MCP
-events; shared telemetry retains only sanitized path aggregates, never credential
-paths. This does not prevent third-party or client URL retention.
-Do not also configure an Authorization header. Encoded tokens, trailing slashes,
-extra path segments and query strings on capability URLs are refused. Browser
-requests to them never serve HTML or load resources.
-
 The guide carries both (`MCP_REMOTE_CLIENTS` in `lib/agent-guide.ts`, prose
 key `mcpRemote`).
 
@@ -247,9 +231,7 @@ key `mcpRemote`).
   `initialize` and `tools/list` ask `GET /api/cli-login/token` (so a bad
   token fails at connect and the list follows the token's permissions);
   `tools/call` asks it too and refuses a tool outside them before anything
-  runs. The capability URL extracts the same API token and sends it through
-  these same checks; it grants no additional permissions. No OAuth yet: clients
-  requiring OAuth must use a different supported authentication option.
+  runs. No OAuth yet: clients that only do OAuth cannot connect.
 - **Same tools.** The tool table is shared with `lianki mcp`:
   `packages/lianki-cli/mcp-tools.mjs` (tools, zod inputs, untrusted-data
   wrapping, errors) and `packages/lianki-cli/api.mjs` (`call`), both
@@ -276,6 +258,31 @@ tool=<name>`; `lib/api-token-client.ts` accepts that shape too.
   agent listening in the thread.
 - Tests: `unit/mcp-remote.test.ts` (fake bindings), `unit/mcp-chat-wait.test.ts`
   (fake hub socket).
+
+### Clients without Authorization headers
+
+[ChatGPT web supports No authentication](https://developers.openai.com/api/docs/guides/custom-mcp-server).
+Create a dedicated, expiring API token and
+configure `https://lianki.com/mcp/<TOKEN>` with **No authentication**. Substitute
+the complete `lk_…` secret locally; never paste that address into chat or logs.
+Only the exact `lk_` + 64 lowercase hexadecimal format is accepted in the path.
+This uses the same live token introspection, scopes, expiry and revocation as
+Bearer requests. Conflicting header and path credentials are rejected. The
+canonical `/mcp` endpoint continues to accept Bearer authentication.
+
+Browser GETs show the canonical connection guide without echoing the secret,
+with `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. RPC responses
+redact API token strings, including upstream errors. Nested invalid MCP paths
+are refused locally instead of forwarded to the app. Monitor path grouping
+collapses the entire credential namespace to `/mcp/:token`.
+
+[Cloudflare invocation logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/#invocation-logs)
+and tail events include raw request URLs, so this
+Worker disables persisted logs (including invocation logs), tracing and its tail consumer. Do not enable
+live tail or add request-URL logging on this Worker while using token addresses.
+Client history and any external HTTP logging remain outside application
+redaction; treat the whole address as a password. Prefer the Bearer endpoint
+when the client supports headers.
 
 ## Report progress
 

@@ -26,8 +26,7 @@ export function pathGroup(url: string): string {
   } catch {
     return "?";
   }
-  // Capability URLs contain bearer secrets, including malformed/encoded paths.
-  if (/^\/mcp(?:\/|%)/i.test(p)) return "/mcp/:credential";
+  if ((p.startsWith("/mcp/") && p !== "/mcp/") || p.startsWith("/mcp%")) return "/mcp/:token";
   return (
     p
       .split("/")

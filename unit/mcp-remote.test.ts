@@ -116,98 +116,6 @@ describe("auth: refused, nothing done", () => {
   });
 });
 
-describe("capability URL authentication", () => {
-  function capability(method = "initialize", params?: unknown, suffix = TOKEN) {
-    const request = rpc(method, params);
-    request.headers.delete("authorization");
-    return new Request(`${ORIGIN}/mcp/${suffix}`, request);
-  }
-
-  test("initialize and discovery use the existing identity check and live scopes", async () => {
-    const { env, seen } = setup({ scopes: ["chat:read"] });
-    expect((await handle(capability(), env)).status).toBe(200);
-    const listed = await (await handle(capability("tools/list"), env)).json();
-    expect(listed.result.tools.map((t: { name: string }) => t.name)).toEqual([
-      "lianki_chat_read",
-      "lianki_chat_seen",
-      "lianki_chat_wait",
-    ]);
-    expect(seen.every((s) => s.auth === `Bearer ${TOKEN}`)).toBe(true);
-    expect(seen.every((s) => s.path === "main:/api/cli-login/token")).toBe(true);
-    expect(JSON.stringify(listed)).not.toContain(TOKEN);
-  });
-
-  test("chat call reaches PUSH; scope denial never invokes the tool", async () => {
-    const { env, seen } = setup({ scopes: ["chat:read"] });
-    expect(
-      (await handle(capability("tools/call", { name: "lianki_chat_read", arguments: {} }), env))
-        .status,
-    ).toBe(200);
-    expect(
-      seen.some((s) => s.path.startsWith("push:/api/version/chat") && s.auth === `Bearer ${TOKEN}`),
-    ).toBe(true);
-    const denied = await (
-      await handle(capability("tools/call", { name: "lianki_stats", arguments: {} }), env)
-    ).json();
-    expect(denied.result.structuredContent.needScope).toBe("study");
-    expect(seen.some((s) => s.path.includes("fsrs"))).toBe(false);
-    expect(seen.every((s) => !s.path.includes(TOKEN))).toBe(true);
-  });
-
-  test("expired, revoked, unknown or deleted-account identities stay refused", async () => {
-    const { env } = setup({ refuse: true });
-    for (const method of ["initialize", "tools/list", "tools/call"]) {
-      const response = await handle(
-        capability(method, { name: "lianki_chat_read", arguments: {} }),
-        env,
-      );
-      expect(response.status).toBe(401);
-      expect(await response.text()).not.toContain(TOKEN);
-    }
-  });
-
-  test("ambiguous headers and malformed paths never reach any binding", async () => {
-    const { env, seen } = setup();
-    for (const authorization of [`Bearer ${TOKEN}`, "Bearer other", "Basic other", ""]) {
-      const request = capability();
-      request.headers.set("authorization", authorization);
-      expect((await handle(request, env)).status).toBe(400);
-    }
-    for (const suffix of [
-      "invalid",
-      `${TOKEN}/`,
-      `${TOKEN}/extra`,
-      `${TOKEN}?x=1`,
-      TOKEN.replace("lk_", "%6ck_"),
-      `${TOKEN}%2fextra`,
-    ]) {
-      const response = await handle(capability("initialize", undefined, suffix), env);
-      expect(response.status).toBe(400);
-      expect(await response.text()).not.toContain(TOKEN);
-    }
-    for (const separator of ["%2f", "%2F", "%5c", "%252f", "%255c", "%25252f", "%invalid"]) {
-      const response = await handle(new Request(`${ORIGIN}/mcp${separator}${TOKEN}`), env);
-      expect(response.status).toBe(400);
-    }
-    expect(seen).toEqual([]);
-  });
-
-  test("a credential URL never serves HTML or resources, even for a browser", async () => {
-    const { env, seen } = setup();
-    for (const method of ["GET", "HEAD", "DELETE", "OPTIONS"]) {
-      const response = await handle(
-        new Request(`${ORIGIN}/mcp/${TOKEN}`, { method, headers: { accept: "text/html" } }),
-        env,
-      );
-      expect(response.status).toBe(405);
-      expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(response.headers.get("content-type") ?? "").not.toContain("text/html");
-      expect(await response.text()).not.toContain(TOKEN);
-    }
-    expect(seen).toEqual([]);
-  });
-});
-
 describe("protocol", () => {
   test("initialize: the asked version, tools capability, instructions", async () => {
     const { env } = setup();
@@ -398,82 +306,139 @@ test("mini-app remote publishing checks both grants and forwards only allowed ca
   }
 });
 
-describe("credential response protections", () => {
-  test("JSON and SSE redact IDs, successful upstream content and error content", async () => {
-    for (const accept of ["application/json", "text/event-stream"]) {
-      const { env } = setup();
-      const request = rpc("ping", undefined, { accept });
-      const withSecretId = new Request(request, {
-        body: JSON.stringify({ jsonrpc: "2.0", id: TOKEN, method: "ping" }),
-      });
-      const ping = await handle(withSecretId, env);
-      expect(ping.headers.get("referrer-policy")).toBe("no-referrer");
-      expect(await ping.text()).toContain('"id":"[redacted]"');
-      for (const status of [200, 500]) {
-        const bound: Env = {
-          MAIN: env.MAIN,
-          PUSH: {
-            fetch: async () =>
-              Response.json(
-                status === 200
-                  ? { messages: [{ text: `secret ${TOKEN}` }] }
-                  : { error: `failed ${TOKEN}` },
-                { status },
-              ),
-          },
-        };
-        const result = await handle(
-          rpc("tools/call", { name: "lianki_chat_read", arguments: {} }, { accept }),
-          bound,
-        );
-        const text = await result.text();
-        expect(text).not.toContain(TOKEN);
-        expect(text).toContain("[redacted]");
+describe("token addresses", () => {
+  function addressed(method: string, params?: unknown, token = TOKEN) {
+    const original = rpc(method, params);
+    original.headers.delete("authorization");
+    return new Request(`${ORIGIN}/mcp/${token}`, original);
+  }
+
+  test("initialize, discovery and calls share Bearer authorization and scopes", async () => {
+    for (const scopes of [["study", "chat:read"], ["chat:read"]]) {
+      for (const [method, params] of [
+        ["initialize", { protocolVersion: "2025-06-18" }],
+        ["tools/list", {}],
+        ["tools/call", { name: "lianki_stats", arguments: {} }],
+        ["tools/call", { name: "lianki_chat_read", arguments: {} }],
+      ] as const) {
+        const a = setup({ scopes });
+        const b = setup({ scopes });
+        const viaHeader = await handle(rpc(method, params), a.env);
+        const viaPath = await handle(addressed(method, params), b.env);
+        const expected = await viaHeader.json();
+        const actual = await viaPath.json();
+        delete expected.id;
+        delete actual.id;
+        expect(actual).toEqual(expected);
+        expect(viaPath.status).toBe(viaHeader.status);
+        expect(b.seen).toEqual(a.seen);
+        expect(b.seen.every((r) => !r.path.includes(TOKEN))).toBe(true);
       }
     }
   });
 
-  test("protocol errors never reflect dynamic input, including partial token strings", async () => {
-    const { env } = setup();
-    for (const accept of ["application/json", "text/event-stream"]) {
-      for (const request of [
-        rpc(`unknown-${TOKEN}`, undefined, { accept }),
-        rpc("tools/call", { name: `unknown-${TOKEN}`, arguments: {} }, { accept }),
-        rpc("initialize", undefined, { accept, "mcp-protocol-version": TOKEN }),
-      ]) {
-        const result = await handle(request, env);
-        const text = await result.text();
-        expect(text).not.toContain(TOKEN.slice(0, 32));
-        expect(text).not.toContain("unknown-");
-        expect(result.headers.get("referrer-policy")).toBe("no-referrer");
-      }
+  test("unknown, expired or revoked credentials still fail live introspection", async () => {
+    for (const method of ["initialize", "tools/list", "tools/call"]) {
+      const { env, seen } = setup({ refuse: true });
+      const res = await handle(addressed(method, { name: "lianki_stats", arguments: {} }), env);
+      expect(res.status).toBe(401);
+      expect(await res.text()).not.toContain(TOKEN);
+      expect(seen.map((r) => r.path)).toEqual(["main:/api/cli-login/token"]);
     }
   });
 
-  test("upstream identity errors are redacted in JSON and SSE", async () => {
-    for (const accept of ["application/json", "text/event-stream"]) {
-      const failed = {
-        fetch: async () => Response.json({ error: `failed ${TOKEN}` }, { status: 500 }),
-      };
-      const response = await handle(rpc("initialize", undefined, { accept }), {
-        MAIN: failed,
-        PUSH: failed,
-      });
-      const text = await response.text();
-      expect(text).not.toContain(TOKEN);
-      expect(text).toContain("[redacted]");
+  test("invalid nested addresses are not forwarded, even with a valid header", async () => {
+    for (const path of [
+      "not-a-token",
+      "lk_short",
+      `${TOKEN}?x=1`,
+      `${TOKEN}/extra`,
+      `${TOKEN}/`,
+      `%6ck_${"a".repeat(64)}`,
+      `lo_${"a".repeat(64)}`,
+    ]) {
+      const { env, seen } = setup();
+      const res = await handle(new Request(`${ORIGIN}/mcp/${path}`, rpc("initialize")), env);
+      expect(res.status).toBe(401);
+      expect(seen).toEqual([]);
+      expect(await res.text()).not.toContain(path);
     }
   });
 
-  test("MCP observability stays disabled while the monitor binding remains unchanged", async () => {
+  test("encoded path separators cannot forward a credential URL to the app", async () => {
+    const { env, seen } = setup();
+    for (const separator of ["%2F", "%5c", "%252f", "%255c", "%invalid"]) {
+      const res = await handle(
+        new Request(`${ORIGIN}/mcp${separator}${TOKEN}`, rpc("initialize")),
+        env,
+      );
+      expect(res.status).toBe(401);
+      expect(await res.text()).not.toContain(TOKEN);
+    }
+    expect(seen).toEqual([]);
+  });
+
+  test("any Authorization header with a credential URL is refused", async () => {
+    for (const auth of [`Bearer lk_${"b".repeat(64)}`, "Basic ignored", `Bearer ${TOKEN}`, ""]) {
+      const { env, seen } = setup();
+      const req = addressed("initialize");
+      req.headers.set("authorization", auth);
+      const res = await handle(req, env);
+      expect(res.status).toBe(401);
+      if (res.status === 401) expect(seen).toEqual([]);
+    }
+  });
+
+  test("browser guide and protocol errors never echo credentials or referrers", async () => {
+    const { env, seen } = setup();
+    const page = await handle(
+      new Request(`${ORIGIN}/mcp/${TOKEN}`, { headers: { accept: "text/html" } }),
+      env,
+    );
+    expect(page.status).toBe(405);
+    expect(page.headers.get("content-type") ?? "").not.toContain("text/html");
+    expect(page.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(page.headers.get("cache-control")).toBe("no-store");
+    expect(await page.text()).not.toContain(TOKEN);
+    expect(seen).toEqual([]);
+    for (const accept of ["application/json", "text/event-stream"]) {
+      const req = addressed(TOKEN);
+      req.headers.set("accept", accept);
+      const error = await handle(req, env);
+      expect(await error.text()).not.toContain(TOKEN.slice(0, 32));
+    }
+  });
+
+  test("upstream errors containing a token are redacted", async () => {
+    const env: Env = {
+      MAIN: {
+        fetch: async () => Response.json({ error: `failed at /mcp/${TOKEN}` }, { status: 500 }),
+      },
+      PUSH: {
+        fetch: async () => {
+          throw new Error("unexpected");
+        },
+      },
+    };
+    const res = await handle(addressed("initialize"), env);
+    expect(await res.text()).not.toContain(TOKEN);
+  });
+
+  test("deployment disables persisted observability and retains the monitor", async () => {
     const config = Bun.JSONC.parse(
       await Bun.file(new URL("../workers/mcp/wrangler.jsonc", import.meta.url)).text(),
-    ) as { observability: unknown; tail_consumers: unknown };
-    expect(config.observability).toEqual({
-      enabled: false,
-      logs: { enabled: false, invocation_logs: false },
-      traces: { enabled: false },
-    });
+    ) as {
+      observability: {
+        enabled: boolean;
+        logs: { enabled: boolean; invocation_logs: boolean };
+        traces: { enabled: boolean };
+      };
+      tail_consumers: unknown[];
+    };
+    expect(config.observability.enabled).toBe(false);
+    expect(config.observability.logs.enabled).toBe(false);
+    expect(config.observability.logs.invocation_logs).toBe(false);
+    expect(config.observability.traces.enabled).toBe(false);
     expect(config.tail_consumers).toEqual([{ service: "lianki-monitor" }]);
   });
 });

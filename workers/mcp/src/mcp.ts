@@ -10,7 +10,7 @@
  * stream) and DELETE answer 405. One tool holds its POST open:
  * lianki_chat_wait, up to 55 s, on a token chat socket to PUSH (chatIo).
  *
- * Auth: `Authorization: Bearer <API token>` or `/mcp/<API token>`, the same token `lianki mcp` and
+ * Auth: `Authorization: Bearer <API token>` or `/mcp/<lk_ API token>`, the same token `lianki mcp` and
  * the REST API take. It is not checked here: it is forwarded, with the call,
  * to the main Worker (MAIN) or, for the chat and the progress tools
  * (/api/version/*), to lianki-push (PUSH), which
@@ -49,6 +49,7 @@ import {
   toolsFor,
 } from "../../../packages/lianki-cli/mcp-tools.mjs";
 import { guide, wantsGuide } from "./guide";
+import { TOKEN_RE } from "../../../lib/api-tokens";
 
 type Fetcher = { fetch(req: Request): Promise<Response> };
 export type Env = { MAIN: Fetcher; PUSH: Fetcher };
@@ -66,7 +67,7 @@ type Rpc = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown
 
 const NO_STORE = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
 
-/** Redact credentials from all JSON and SSE payloads, including upstream content. */
+/** Credentials must never be reflected by protocol or upstream errors. */
 function safeJson(body: unknown): string {
   return JSON.stringify(body).replace(/lk_[0-9a-f]{64}/g, "[redacted]");
 }
@@ -268,21 +269,22 @@ async function dispatch(
 
 export async function handle(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
-  const basePath = url.pathname === MCP_PATH || url.pathname === `${MCP_PATH}/`;
-  const credentialPath = !basePath && /^\/mcp(?:\/|%)/i.test(url.pathname);
-  // Keep unrelated app routes, but never forward a possible credential path.
-  if (!basePath && !credentialPath) return env.MAIN.fetch(req);
-  const pathToken = credentialPath
-    ? /^\/mcp\/(lk_[0-9a-f]{64})$/.exec(url.pathname)?.[1]
-    : undefined;
-  // Exact, unencoded token only; no trailing slash, extra path, or query credentials.
-  if (credentialPath && (!pathToken || url.search))
-    return plain(rpcError(null, -32600, "Invalid MCP endpoint"), 400);
-  // Only the public endpoint may serve HTML (no subresources or referrer leaks).
-  if (basePath && wantsGuide(req)) {
-    const response = guide(req, url.origin);
-    response.headers.set("referrer-policy", "no-referrer");
-    return response;
+  // Reserve nested paths for credentials; never forward those URLs to MAIN.
+  const canonical = url.pathname === MCP_PATH || url.pathname === `${MCP_PATH}/`;
+  if (
+    !canonical &&
+    !url.pathname.startsWith(`${MCP_PATH}/`) &&
+    !url.pathname.startsWith(`${MCP_PATH}%`)
+  )
+    return env.MAIN.fetch(req);
+  const pathToken = canonical ? undefined : url.pathname.slice(MCP_PATH.length + 1);
+  if (pathToken !== undefined && (!TOKEN_RE.test(pathToken) || url.search))
+    return plain(rpcError(null, -32001, "Invalid MCP token address"), 401, AUTH_HEADERS);
+  // The guide uses only the origin, never the credential-bearing path.
+  if (canonical && wantsGuide(req)) {
+    const res = guide(req, url.origin);
+    res.headers.set("referrer-policy", "no-referrer");
+    return res;
   }
   if (req.method !== "POST")
     return new Response("Method Not Allowed", {
@@ -292,11 +294,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
 
   const header = req.headers.get("authorization") ?? "";
   const bearer = /^Bearer\s+(\S+)$/i.exec(header);
-  // A URL credential and any Authorization header are ambiguous: refuse both,
-  // even when equal. Clients using a capability URL select No authentication.
-  if (pathToken && req.headers.has("authorization"))
-    return plain(rpcError(null, -32600, "Use one MCP authentication method"), 400);
-  if (!pathToken && !bearer)
+  if ((!pathToken && !bearer) || (pathToken && req.headers.has("authorization")))
     return plain(
       rpcError(null, -32001, "Authorization: Bearer <your Lianki API token> is required"),
       401,

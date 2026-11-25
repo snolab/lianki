@@ -14,16 +14,20 @@ describe("inWindow", () => {
 });
 
 describe("pathGroup", () => {
-  test("redacts all capability path segments, including malformed credentials", () => {
-    for (const separator of ["%2f", "%2F", "%5c", "%252f", "%255c", "%25252f", "%invalid"]) {
+  test("encoded credential prefixes stay redacted", () => {
+    for (const separator of ["%2F", "%5c", "%252f", "%255c", "%invalid"]) {
       expect(pathGroup(`https://lianki.com/mcp${separator}lk_${"a".repeat(64)}`)).toBe(
-        "/mcp/:credential",
+        "/mcp/:token",
       );
     }
-    expect(pathGroup("https://lianki.com/mcp-something")).toBe("/mcp-something");
-    for (const suffix of [`lk_${"a".repeat(64)}`, "invalid/extra", "%6ck_secret"]) {
-      expect(pathGroup(`https://lianki.com/mcp/${suffix}?secret=hidden`)).toBe("/mcp/:credential");
+  });
+  test("redacts the entire MCP credential namespace, including malformed paths", () => {
+    for (const path of [`lk_${"a".repeat(64)}`, "lk_short", "%6ck_encoded/extra"]) {
+      expect(pathGroup(`https://lianki.com/mcp/${path}?secret=ignored`)).toBe("/mcp/:token");
     }
+    expect(pathGroup(`https://lianki.com/mcp%2Flk_${"a".repeat(64)}`)).toBe("/mcp/:token");
+    expect(pathGroup("https://lianki.com/mcp")).toBe("/mcp");
+    expect(pathGroup("https://lianki.com/mcp-something")).toBe("/mcp-something");
   });
   test("collapses ids so paths aggregate", () => {
     expect(

@@ -10,15 +10,14 @@
   "main": "src/index.ts",
   "workers_dev": false,
   "compatibility_date": "2026-10-01",
-  // `*` includes capability URLs /mcp/<token>; unrelated /mcp-something goes to MAIN.
+  // `*`: canonical endpoint and /mcp/<token>; unrelated /mcp-* pages go to MAIN.
   "routes": [{ "pattern": "lianki.com/mcp*", "zone_name": "lianki.com" }],
   "services": [
     { "binding": "MAIN", "service": "lianki" },
     { "binding": "PUSH", "service": "lianki-push" },
   ],
+  // The monitor ignores MCP events; persisted MCP logs and traces stay disabled.
   "tail_consumers": [{ "service": "lianki-monitor" }],
-  // Capability URLs are credentials: disable persisted MCP logs and traces.
-  // Keep the monitor tail consumer; it ignores MCP events and stores no raw URLs.
   "observability": {
     "enabled": false,
     "logs": { "enabled": false, "invocation_logs": false },
