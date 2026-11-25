@@ -139,12 +139,21 @@ line below.
    so the next deployer can find what is live:
 
    ```bash
+   set -euo pipefail
    git push -u origin HEAD
    export LIANKI_BUILD_SHA=$(git rev-parse HEAD) CF_BUILD=1 DB_BACKEND=d1
-   for v in NEXT_PUBLIC_TURNSTILE_SITE_KEY NEXT_PUBLIC_LIANKI_LIVE_VIEW_ORIGINS \
-            NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE \
-            NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT; do
-     export "$v=$(gh variable get "$v" -R snolab/lianki 2>/dev/null)"
+   # Required: any gh failure (auth, network, missing) aborts.
+   value=$(gh variable get NEXT_PUBLIC_TURNSTILE_SITE_KEY -R snolab/lianki) || exit 1
+   export NEXT_PUBLIC_TURNSTILE_SITE_KEY="$value"
+   # Optional: only "was not found" means empty (the code's default); any other error aborts.
+   err=$(mktemp)
+   for v in NEXT_PUBLIC_LIANKI_LIVE_VIEW_ORIGINS NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE \
+            NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT; do
+     if value=$(gh variable get "$v" -R snolab/lianki 2>"$err"); then :
+     elif grep -q "was not found" "$err"; then value=""
+     else cat "$err" >&2; exit 1
+     fi
+     export "$v=$value"
    done
    bun install --frozen-lockfile
    bun scripts/build-partner-embed.ts
