@@ -274,7 +274,7 @@ export const FLAGS = {
   // Owner, 2026-11-14 23:2x JST: "消息里能带计算器/按钮等组件" — data only, no script.
   "chat.message-widgets": {
     description:
-      "消息里的小组件（packages/debug-chat/src/message-widget.ts）：你配对过的助手在你的线程里发 ```lianki-widget 代码块（JSON），聊天里就显示成按钮、计算器、滑块或表格。全是页面自己的组件，消息里的任何代码都不会运行；点一下只是把内容填进你的回复框，发不发由你。通道令牌发的消息和朋友的消息不显示组件（以后按车道申请）。关闭 = 这些代码块照原样显示为代码。",
+      "消息里的小组件（packages/debug-chat/src/message-widget.ts）：你的助手（配对的或你自己的通道令牌）在你自己的线程里发 ```lianki-widget 代码块（JSON），聊天里就显示成按钮、计算器、滑块或表格。全是页面自己的组件，消息里的任何代码都不会运行；点一下只是把内容填进你的回复框，发不发由你。朋友和家人的线程、你自己打的字不显示组件。关闭 = 这些代码块照原样显示为代码。",
     default: true,
     // With the other agent switches (the groups stay few, flag-view.ts).
     group: "ai",

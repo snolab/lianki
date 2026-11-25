@@ -12,8 +12,9 @@
  * shapes below, and anything else shows as the code block it is. A widget only
  * puts text into his reply box; he still sends it himself.
  *
- * Only lines in the html tier (rich-text.ts lineTier: an agent he paired in his
- * own thread) get widgets, behind the flag chat.message-widgets. Script widgets
+ * Only agent lines in his own thread (rich-text.ts widgetLine: a pairing or one
+ * of his own lane tokens; never a friend's or household thread, never his own
+ * typing) get widgets, behind the flag chat.message-widgets. Script widgets
  * (a sandboxed iframe, granted per lane) are the mini apps' (docs/mini-apps.md).
  */
 

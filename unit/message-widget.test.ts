@@ -3,7 +3,7 @@ import { globalDescriptor, restoreGlobal } from "./support/globals";
 import { Window } from "happy-dom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
-import { richOf, spokenOf } from "@lianki/debug-chat/rich-text";
+import { lineTier, richOf, spokenOf, widgetLine } from "@lianki/debug-chat/rich-text";
 import { RichBody } from "@lianki/debug-chat/RichText";
 import { MessageWidget, type WidgetHost } from "@lianki/debug-chat/MessageWidget";
 import { calc, calcShown, parseWidget, sliderReply } from "@lianki/debug-chat/message-widget";
@@ -103,8 +103,26 @@ describe("parseWidget", () => {
 });
 
 describe("in a chat line", () => {
-  it("a paired agent's block becomes a widget; everyone else's stays code", () => {
-    const html = richOf(block(BUTTONS), "html");
+  it("only agent lines in his own thread may carry widgets (pairing or his lane tokens)", () => {
+    const paired = { from: "agent", ownerGrant: true, thread: "owner" };
+    const laneToken = { from: "agent", thread: "owner" }; // markdown tier, his own token
+    expect(widgetLine(paired)).toBe(true);
+    expect(widgetLine(laneToken)).toBe(true);
+    expect(widgetLine({ from: "agent" })).toBe(true); // no thread: his
+    expect(lineTier(laneToken)).toBe("markdown");
+    // A friend's or a household member's thread, his own typing, a friend, an embed: never.
+    expect(widgetLine({ from: "agent", thread: "t:friend-account" })).toBe(false);
+    expect(widgetLine({ from: "agent", ownerGrant: true, thread: "t:household" })).toBe(false);
+    expect(widgetLine({ from: "user", thread: "owner" })).toBe(false);
+    expect(widgetLine({ from: "friend", thread: "owner" })).toBe(false);
+    expect(widgetLine(paired, { embedded: true })).toBe(false);
+    const pre = (r: ReturnType<typeof richOf>) => JSON.stringify(r.nodes).includes("data-widget");
+    expect(pre(richOf(block(BUTTONS), lineTier(laneToken), widgetLine(laneToken)))).toBe(true);
+    const friend = { from: "agent", thread: "t:friend-account" };
+    expect(pre(richOf(block(BUTTONS), lineTier(friend), widgetLine(friend)))).toBe(false);
+  });
+  it("a widget line's block becomes a widget; everyone else's stays code", () => {
+    const html = richOf(block(BUTTONS), "html", true);
     const pre = html.nodes.find((n) => "tag" in n && n.tag === "pre");
     expect(pre && "attrs" in pre ? pre.attrs?.["data-widget"] : undefined).toBe(
       JSON.stringify(BUTTONS),
@@ -113,10 +131,10 @@ describe("in a chat line", () => {
     expect(JSON.stringify(md.nodes)).not.toContain("data-widget");
   });
   it("an invalid spec stays code, even from a paired agent", () => {
-    expect(JSON.stringify(richOf(block("{nope"), "html").nodes)).not.toContain("data-widget");
+    expect(JSON.stringify(richOf(block("{nope"), "html", true).nodes)).not.toContain("data-widget");
   });
   it("renders with a host, and as the code block without one", () => {
-    const rich = richOf(block(BUTTONS), "html");
+    const rich = richOf(block(BUTTONS), "html", true);
     const on = renderToStaticMarkup(createElement(RichBody, { rich, widgets: host }));
     expect(on).toContain('data-testid="debug-chat-widget"');
     expect(on).toContain("New words");

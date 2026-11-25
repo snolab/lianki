@@ -26,7 +26,7 @@ import { echoSlots } from "./echo-rows";
 const NO_ECHOES: readonly ChatMessage[] = [];
 import { useUi } from "@lianki/ui-state";
 import { chatDock, chatFold, chatPrefs, chatUi } from "./ui-store";
-import { lineTier, richOf, spokenOf } from "./rich-text";
+import { lineTier, richOf, spokenOf, widgetLine } from "./rich-text";
 import { RichBody, RichLine } from "./RichText";
 import type { WidgetHost } from "./MessageWidget";
 import {
@@ -5026,7 +5026,7 @@ export function DebugChat({
     : undefined;
   const readText = (m: ChatMessage, text: ReactNode) => {
     if (typeof text !== "string") return text;
-    const rich = richOf(text, lineTier(m, { embedded }));
+    const rich = richOf(text, lineTier(m, { embedded }), widgetLine(m, { embedded }));
     // An agent line, or his own read back in his cloned voice: in its sentences.
     if (!showsReading(m, readbackOf))
       return <RichBody rich={rich} onOpenPage={onOpenPage} widgets={widgetHost} />;

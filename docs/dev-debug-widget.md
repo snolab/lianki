@@ -1788,7 +1788,8 @@ and `unit/partner-ai.test.ts`.
 ## Message widgets: buttons, a calculator, a slider, a table
 
 Owner, 2026-11-14 23:2x JST: a message can carry a calculator, buttons and the
-like. A paired agent (the html tier above) writes a fenced block:
+like. An agent in his own thread (a pairing, or one of his own lane tokens)
+writes a fenced block:
 
     ```lianki-widget
     {"type": "buttons", "title": "Which first?", "options": ["Review", "New words"]}
@@ -1803,8 +1804,8 @@ never `eval`), `slider` (`label`, `min`, `max`, `step`, `value`, `unit`),
 reply box (after what he has typed); he sends it himself. A widget is not
 read aloud and not in the one-line views.
 
-An invalid spec, a markdown-tier line (friends, lane tokens, his own typing)
-or the flag `chat.message-widgets` off: the block shows as the code it is.
+An invalid spec, a line in a friend's or household thread, his own typing, an
+embed (`widgetLine` in rich-text.ts), or the flag `chat.message-widgets` off: the block shows as the code it is.
 Script widgets (a sandboxed iframe, granted per lane) are the mini apps'
 (docs/mini-apps.md), not this. Tests: `unit/message-widget.test.ts`.
 
