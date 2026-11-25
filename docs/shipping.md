@@ -164,6 +164,7 @@ line below.
    bun scripts/ci/check-worker-exports.ts
    bunx wrangler deploy -c workers/monitor/wrangler.jsonc   # if workers/monitor changed
    bunx wrangler deploy                                     # lianki, always
+   bun scripts/dev/broadcast-version.ts --build <data-build> --shell-changed  # if only the chat changed: smart refresh misses its chunk (/chat/smart-refresh-chat-chunk)
    bunx wrangler deploy -c workers/push/wrangler.jsonc      # if workers/push changed
    bunx wrangler deploy -c workers/voice/wrangler.jsonc     # if workers/voice changed
    bunx wrangler deploy -c workers/mcp/wrangler.jsonc       # if workers/mcp changed
