@@ -890,6 +890,7 @@ describe("what is wired to the lock", () => {
       "SYNC",
       "PARTNER FRAME",
       "PILL CHAT",
+      "PILL CHAT SITES",
     ]);
   });
 
