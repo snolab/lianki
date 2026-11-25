@@ -259,6 +259,31 @@ tool=<name>`; `lib/api-token-client.ts` accepts that shape too.
 - Tests: `unit/mcp-remote.test.ts` (fake bindings), `unit/mcp-chat-wait.test.ts`
   (fake hub socket).
 
+### Clients without Authorization headers
+
+[ChatGPT web supports No authentication](https://developers.openai.com/api/docs/guides/custom-mcp-server).
+Create a dedicated, expiring API token and
+configure `https://lianki.com/mcp/<TOKEN>` with **No authentication**. Substitute
+the complete `lk_…` secret locally; never paste that address into chat or logs.
+Only the exact `lk_` + 64 lowercase hexadecimal format is accepted in the path.
+This uses the same live token introspection, scopes, expiry and revocation as
+Bearer requests. Conflicting header and path credentials are rejected. The
+canonical `/mcp` endpoint continues to accept Bearer authentication.
+
+Browser GETs show the canonical connection guide without echoing the secret,
+with `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. RPC responses
+redact API token strings, including upstream errors. Nested invalid MCP paths
+are refused locally instead of forwarded to the app. Monitor path grouping
+collapses the entire credential namespace to `/mcp/:token`.
+
+[Cloudflare invocation logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/#invocation-logs)
+and tail events include raw request URLs, so this
+Worker disables persisted logs (including invocation logs), tracing and its tail consumer. Do not enable
+live tail or add request-URL logging on this Worker while using token addresses.
+Client history and any external HTTP logging remain outside application
+redaction; treat the whole address as a password. Prefer the Bearer endpoint
+when the client supports headers.
+
 ## Report progress
 
 Owner, 2026-11-14 05:45 JST: "把这个 CLI 修改甘特图的能力提供给整个系统，让所有

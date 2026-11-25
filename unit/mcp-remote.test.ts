@@ -305,3 +305,133 @@ test("mini-app remote publishing checks both grants and forwards only allowed ca
     }
   }
 });
+
+describe("token addresses", () => {
+  function addressed(method: string, params?: unknown, token = TOKEN) {
+    const original = rpc(method, params);
+    original.headers.delete("authorization");
+    return new Request(`${ORIGIN}/mcp/${token}`, original);
+  }
+
+  test("initialize, discovery and calls share Bearer authorization and scopes", async () => {
+    for (const scopes of [["study", "chat:read"], ["chat:read"]]) {
+      for (const [method, params] of [
+        ["initialize", { protocolVersion: "2025-06-18" }],
+        ["tools/list", {}],
+        ["tools/call", { name: "lianki_stats", arguments: {} }],
+        ["tools/call", { name: "lianki_chat_read", arguments: {} }],
+      ] as const) {
+        const a = setup({ scopes });
+        const b = setup({ scopes });
+        const viaHeader = await handle(rpc(method, params), a.env);
+        const viaPath = await handle(addressed(method, params), b.env);
+        const expected = await viaHeader.json();
+        const actual = await viaPath.json();
+        delete expected.id;
+        delete actual.id;
+        expect(actual).toEqual(expected);
+        expect(viaPath.status).toBe(viaHeader.status);
+        expect(b.seen).toEqual(a.seen);
+        expect(b.seen.every((r) => !r.path.includes(TOKEN))).toBe(true);
+      }
+    }
+  });
+
+  test("unknown, expired or revoked credentials still fail live introspection", async () => {
+    for (const method of ["initialize", "tools/list", "tools/call"]) {
+      const { env, seen } = setup({ refuse: true });
+      const res = await handle(addressed(method, { name: "lianki_stats", arguments: {} }), env);
+      expect(res.status).toBe(401);
+      expect(await res.text()).not.toContain(TOKEN);
+      expect(seen.map((r) => r.path)).toEqual(["main:/api/cli-login/token"]);
+    }
+  });
+
+  test("invalid nested addresses are not forwarded, even with a valid header", async () => {
+    for (const path of [
+      "not-a-token",
+      "lk_short",
+      `${TOKEN}/extra`,
+      `${TOKEN}/`,
+      `%6ck_${"a".repeat(64)}`,
+      `lo_${"a".repeat(64)}`,
+    ]) {
+      const { env, seen } = setup();
+      const res = await handle(new Request(`${ORIGIN}/mcp/${path}`, rpc("initialize")), env);
+      expect(res.status).toBe(401);
+      expect(seen).toEqual([]);
+      expect(await res.text()).not.toContain(path);
+    }
+  });
+
+  test("encoded path separators cannot forward a credential URL to the app", async () => {
+    const { env, seen } = setup();
+    const res = await handle(new Request(`${ORIGIN}/mcp%2F${TOKEN}`, rpc("initialize")), env);
+    expect(res.status).toBe(401);
+    expect(seen).toEqual([]);
+    expect(await res.text()).not.toContain(TOKEN);
+  });
+
+  test("conflicting or malformed headers are refused; matching credentials work", async () => {
+    for (const auth of [`Bearer lk_${"b".repeat(64)}`, "Basic ignored", `Bearer ${TOKEN}`]) {
+      const { env, seen } = setup();
+      const req = addressed("initialize");
+      req.headers.set("authorization", auth);
+      const res = await handle(req, env);
+      expect(res.status).toBe(auth === `Bearer ${TOKEN}` ? 200 : 401);
+      if (res.status === 401) expect(seen).toEqual([]);
+    }
+  });
+
+  test("browser guide and protocol errors never echo credentials or referrers", async () => {
+    const { env, seen } = setup();
+    const page = await handle(
+      new Request(`${ORIGIN}/mcp/${TOKEN}`, { headers: { accept: "text/html" } }),
+      env,
+    );
+    expect(page.status).toBe(200);
+    expect(page.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(page.headers.get("cache-control")).toBe("no-store");
+    expect(await page.text()).not.toContain(TOKEN);
+    expect(seen).toEqual([]);
+    for (const accept of ["application/json", "text/event-stream"]) {
+      const req = addressed(TOKEN);
+      req.headers.set("accept", accept);
+      const error = await handle(req, env);
+      expect(await error.text()).not.toContain(TOKEN.slice(0, 32));
+    }
+  });
+
+  test("upstream errors containing a token are redacted", async () => {
+    const env: Env = {
+      MAIN: {
+        fetch: async () => Response.json({ error: `failed at /mcp/${TOKEN}` }, { status: 500 }),
+      },
+      PUSH: {
+        fetch: async () => {
+          throw new Error("unexpected");
+        },
+      },
+    };
+    const res = await handle(addressed("initialize"), env);
+    expect(await res.text()).not.toContain(TOKEN);
+  });
+
+  test("deployment does not persist or forward raw URL invocation events", async () => {
+    const config = Bun.JSONC.parse(
+      await Bun.file(new URL("../workers/mcp/wrangler.jsonc", import.meta.url)).text(),
+    ) as {
+      observability: {
+        enabled: boolean;
+        logs: { enabled: boolean; invocation_logs: boolean };
+        traces: { enabled: boolean };
+      };
+      tail_consumers: unknown[];
+    };
+    expect(config.observability.enabled).toBe(false);
+    expect(config.observability.logs.enabled).toBe(false);
+    expect(config.observability.logs.invocation_logs).toBe(false);
+    expect(config.observability.traces.enabled).toBe(false);
+    expect(config.tail_consumers).toEqual([]);
+  });
+});
