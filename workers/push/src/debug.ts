@@ -2157,18 +2157,20 @@ export class DebugHub {
     // cloud recogniser with no voiceprint tag (the path that hallucinates and has no
     // self print); a line from the Mac's own STT is left to the words and the self
     // print there, so his answers spoken over a phone's reading ("120", "20") stay his.
-    const windowHit =
-      reports.windowOn && recent.length
+    // The reports that may count are chosen first, so another device's sound never
+    // takes the place of this page's own (review of #1108).
+    const unvouched = !line.speaker && line.stt?.route !== "local";
+    const eligible = unvouched ? recent : recent.filter((r) => r.page === page?.key);
+    const inWindow =
+      reports.windowOn && eligible.length
         ? echoWindowMatch(
-            recent,
+            eligible,
             span,
             { leadMs: reports.leadMs, tailMs: reports.tailMs, share: reports.share },
             t,
             page?.key,
           )
         : undefined;
-    const unvouched = !line.speaker && line.stt?.route !== "local";
-    const inWindow = windowHit && (windowHit.samePage || unvouched) ? windowHit : undefined;
     // A known STT hallucination while something played lately: what it made of our sound.
     const noisePhrase =
       reports.windowOn && recent.length

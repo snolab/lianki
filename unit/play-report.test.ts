@@ -13,8 +13,10 @@ import {
   ECHO_REPORTS_FLAG,
   PLAY_TEXT_MAX,
   type PlayFrame,
+  type PlayingFrame,
   echoReportsOn,
   hubSpanOf,
+  renewPlaying,
   reportPlayed,
   reportPlaying,
   setEchoReports,
@@ -264,5 +266,18 @@ describe("who reports", () => {
     expect(run(true, true)).toEqual({ spoken: [], cloud: ["好的。"] });
     expect(run(false, true)).toEqual({ spoken: ["好的。"], cloud: [] });
     expect(run(true, false)).toEqual({ spoken: ["好的。"], cloud: [] });
+  });
+});
+
+describe("renewals (a long sound's lease)", () => {
+  it("resends the same frame with renew while open, nothing once it ended", () => {
+    const ref = reportPlaying({ text: "", voice: "li-player", at: 5 })!;
+    expect(renewPlaying(ref)).toBe(true);
+    expect(sent.at(-1)).toEqual({ ...(sent[0] as PlayingFrame), renew: true });
+    reportPlayed(ref, 9);
+    sent.length = 0;
+    expect(renewPlaying(ref)).toBe(false);
+    expect(renewPlaying("never")).toBe(false);
+    expect(sent).toEqual([]);
   });
 });
