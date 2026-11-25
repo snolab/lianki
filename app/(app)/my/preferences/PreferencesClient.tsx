@@ -350,7 +350,7 @@ export default function PreferencesClient({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 @min-[64rem]/preferences:grid @min-[64rem]/preferences:grid-cols-[14rem_minmax(0,1fr)] @min-[64rem]/preferences:gap-10">
+    <div className="mx-auto max-w-6xl px-4 py-8 [&_[data-section]]:scroll-mt-20 @min-[64rem]/preferences:[&_[data-section]]:scroll-mt-6 @min-[64rem]/preferences:grid @min-[64rem]/preferences:grid-cols-[14rem_minmax(0,1fr)] @min-[64rem]/preferences:gap-10">
       {/* Stick the grid item itself: the nav's short wrapper cannot keep a child sticky. */}
       <aside
         className="sticky top-[env(safe-area-inset-top)] z-20 min-w-0 self-start @min-[64rem]/preferences:top-[max(2rem,env(safe-area-inset-top))]"
