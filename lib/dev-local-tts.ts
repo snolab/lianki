@@ -21,7 +21,7 @@ export function devLocalSpeech(
   const { lang } = ttsParams(params);
   const laneVoices = voices[lang] ?? voices[lang.split(/[-_]/)[0]!];
   if (!laneVoices) return null;
-  const voice = params.get("localVoice") ?? laneVoices.main;
+  const voice = params.get("localVoice");
   if (!voice || !LOCAL_ENGINES.includes(voice) || !Object.values(laneVoices).includes(voice))
     return null;
   const base = env.NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE.replace(/\/+$/, "");
