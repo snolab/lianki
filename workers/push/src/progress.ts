@@ -81,6 +81,7 @@ import {
   newestHistory,
   parseProgressReport,
   parseTtl,
+  parseWho,
   pathParent,
   progressDone,
   progressEvent,
@@ -96,6 +97,7 @@ import {
 import type { Socket, Storage } from "./debug";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
 import { ETA_HEARD_PATH, ETA_PATH, type EtaPing } from "../../../lib/eta-ping";
+import { replyOwed } from "../../../lib/eta-reply";
 import {
   ETA_NUDGE_KEYS,
   NUDGE_DEFAULTS,
@@ -755,6 +757,9 @@ export class ProgressHub {
     // Receipts: any report on a node whose "ETA reached" line went out acks it.
     if (prev?.etaAt !== undefined && prev.etaSent === prev.etaAt && entry.etaAt === prev.etaAt)
       entry.etaAcked = prev.etaAt;
+    // A reminder was out: the hub answers it in the thread in the writer's name (lib/eta-reply.ts).
+    const reply = replyOwed(prev, entry, t);
+    if (reply) entry.replyFor = reply.key;
     const rules = await this.rules();
     const extra = this.verifyChild(all, prev, entry, rules, t, changeId);
     const events = [
@@ -780,6 +785,7 @@ export class ProgressHub {
             reason: r.late,
           })) === "ok"
         : undefined;
+    if (reply) await this.reply(entry, r.assignee.name, reply);
     return json({
       ok: true,
       entry: withAgo(entry, t),
@@ -902,9 +908,41 @@ export class ProgressHub {
     if (!auth.root && !this.covers(all, auth.node, e.id))
       return fail(403, `${e.id} is outside your scope (${auth.node})`);
     if (!this.allow(who(auth))) return this.tooMany();
-    if (e.status !== "done" && e.etaAcked !== e.etaAt)
-      await this.ctx.storage.put(progressKey(e), { ...e, etaAcked: e.etaAt });
+    const reply = e.status === "done" ? undefined : replyOwed(e, e, this.now());
+    if (e.status !== "done" && (e.etaAcked !== e.etaAt || reply))
+      await this.ctx.storage.put(progressKey(e), {
+        ...e,
+        etaAcked: e.etaAt,
+        ...(reply ? { replyFor: reply.key } : {}),
+      });
+    // The acking agent answers the line in the thread (the root alone: the node's assignee).
+    const by = auth.agent && auth.agent !== OWNER_NAME ? auth.agent : e.assignee.name;
+    if (reply) await this.reply(e, by, reply);
     return json({ ok: true, id: e.id, task: e.task, etaAt: e.etaAt });
+  }
+
+  /**
+   * The reminded agent's reply (lib/eta-reply.ts; docs/state-tree.md,
+   * "Replies"): one line in the owner's thread in `by`'s name, quoting the
+   * task. Best effort: a chat hub that cannot take it loses only this line.
+   */
+  private async reply(
+    e: ProgressEntry,
+    by: string,
+    r: { state: "ack" | "doing" | "done"; min?: number },
+  ): Promise<void> {
+    if (!this.debug) return;
+    try {
+      await this.tell({
+        id: e.id,
+        title: e.task,
+        etaAt: e.etaAt ?? this.now(),
+        assignee: by,
+        kind: "reply",
+        state: r.state,
+        ...(r.min !== undefined ? { min: r.min } : {}),
+      });
+    } catch {}
   }
 
   /**
@@ -1302,13 +1340,17 @@ export class ProgressHub {
       };
       await this.ctx.storage.put(progressKey(e), marked);
       if (!this.debug) return true;
+      // "coco@codex": the line routes to the lane and names the agent in it.
+      const who = blockedOn(e)!;
+      const target = parseWho(who) ?? { lane: who };
       const said = await this.tell({
         id: e.id,
         title: e.task,
         etaAt: e.etaAt ?? t,
         assignee: e.assignee.name,
         kind: "blocked",
-        lane: blockedOn(e)!,
+        lane: target.lane,
+        ...(target.agent ? { agent: target.agent } : {}),
         n,
         ...(e.needs?.trim() ? { reason: e.needs.trim() } : {}),
       });

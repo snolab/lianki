@@ -409,6 +409,14 @@ import {
   parseEtaPing,
 } from "../../../lib/eta-ping";
 import {
+  REPLY_KEYS,
+  REPLY_STATES,
+  type ReplyState,
+  STATE_TREE_SENDER_DEFAULT,
+  STATE_TREE_SENDER_KEY,
+} from "../../../lib/eta-reply";
+import { agentLabel } from "../../../lib/progress";
+import {
   CLIPS_GONE_MS,
   CLIPS_HIDDEN_MS,
   type ClipsControl,
@@ -2950,6 +2958,35 @@ export class DebugHub {
    * ask (only a page's tap does) and never carries ownerGrant. 503 when the
    * flag cannot be read: the progress hub tries again.
    */
+  /**
+   * The state tree's live words (lib/eta-reply.ts keys over DebugSessions.config):
+   * the reminders' sender name and, for a reply, its three templates. A key
+   * that cannot be read, or reads empty, keeps its default.
+   */
+  private async etaWords(
+    reply: boolean,
+  ): Promise<{ sender: string; reply: Partial<Record<ReplyState, string>> }> {
+    const read = async (key: string) => {
+      try {
+        const v = this.sessions?.config ? await this.sessions.config(key) : undefined;
+        // "busy": the main Worker's rate limit, not a value.
+        return typeof v === "string" && v.trim() && v !== "busy" ? v.trim() : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const out: { sender: string; reply: Partial<Record<ReplyState, string>> } = {
+      sender: (await read(STATE_TREE_SENDER_KEY)) ?? STATE_TREE_SENDER_DEFAULT,
+      reply: {},
+    };
+    if (reply)
+      for (const s of REPLY_STATES) {
+        const v = await read(REPLY_KEYS[s]);
+        if (v) out.reply[s] = v;
+      }
+    return out;
+  }
+
   private async etaApi(req: Request): Promise<Response> {
     if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
     let ping: ReturnType<typeof parseEtaPing> = null;
@@ -2971,27 +3008,36 @@ export class DebugHub {
     const listeners = this.agents().filter((c) => routeTo(c.a.node, ROOT_NODE)).length;
     if (forLanes(ping) && listeners === 0)
       return Response.json({ ok: true, delivered: false, queued: true, listeners: 0 });
+    // The reminders' sender is the state tree, by its live name (chat.stateTreeSender),
+    // so "@codex: …" never reads as codex speaking. A reply is the agent's own: its name.
+    const reply = ping.kind === "reply";
+    const words = await this.etaWords(reply);
+    const re = reply ? await this.ctx.storage.get<string>(`etaline:${ping.id}`) : undefined;
     const line: ChatMessage & { thread: string } = {
       id: crypto.randomUUID().slice(0, 8),
       from: "agent",
-      label: ETA_LABEL,
-      text: etaLineText(ping, this.now()),
+      label: reply ? agentLabel(ping.assignee ?? "agent") : words.sender,
+      text: etaLineText(ping, this.now(), words.reply),
       at: this.now(),
       thread: OWNER_THREAD,
       to: ROOT_NODE,
-      agentId: ETA_AGENT,
+      agentId: reply ? (ping.assignee ?? ETA_AGENT) : ETA_AGENT,
       source: "eta",
-      // The lanes' lines are quiet; the owner's (late, silent, waiting, blocked on him) are read aloud like any agent line.
-      ...(forLanes(ping) ? { quiet: true } : {}),
+      // The lanes' lines and the replies to them are quiet; the owner's (late, silent, waiting, blocked on him) are read aloud like any agent line.
+      ...(forLanes(ping) || reply ? { quiet: true } : {}),
       eta: {
         id: ping.id,
         etaAt: ping.etaAt,
         ...(ping.kind && ping.kind !== "due" ? { kind: ping.kind } : {}),
         ...(ping.code ? { code: ping.code } : {}),
         ...(ping.lane ? { lane: ping.lane } : {}),
+        ...(ping.agent ? { agent: ping.agent } : {}),
+        ...(re ? { re } : {}),
       },
     };
     await this.post(line);
+    // The reminder a later reply answers (eta.re): this node's latest lanes' line.
+    if (forLanes(ping)) await this.ctx.storage.put(`etaline:${ping.id}`, line.id);
     console.log(
       JSON.stringify({
         msg: "debug.eta",

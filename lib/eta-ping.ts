@@ -15,7 +15,16 @@
  * "blocked" on the owner) are read aloud and always posted.
  */
 import type { FlagKey } from "./flags";
-import { OWNER_NAME, PROGRESS_LIMITS, RECEIPT_RE, WHO_RE, isProgressId } from "./progress";
+import { REPLY_DEFAULTS, REPLY_STATES, type ReplyState, replyText } from "./eta-reply";
+import {
+  AGENT_NAME_RE,
+  OWNER_NAME,
+  PROGRESS_LIMITS,
+  RECEIPT_RE,
+  WHO_RE,
+  agentLabel,
+  isProgressId,
+} from "./progress";
 
 /** The chat hub's internal route for a ping; reached only over the progress hub's binding. */
 export const ETA_PATH = "/internal/eta";
@@ -44,9 +53,11 @@ export const ETA_EXPLAIN_MS = 5 * 60_000;
  * repeat, with backoff). "waiting": the node waits on the owner (#823's
  * spaced reminders, with `needs` as the reason). "blocked": the node is
  * blocked on `lane` ("owner" or a lane) with `reason` (its needs); nudged
- * with backoff.
+ * with backoff. "reply": the reminded agent (`assignee`) acked or reported
+ * on the node; the hub answers the reminder in its name (lib/eta-reply.ts),
+ * `state` and `min` saying how.
  */
-export type EtaPingKind = "due" | "main" | "late" | "silent" | "waiting" | "blocked";
+export type EtaPingKind = "due" | "main" | "late" | "silent" | "waiting" | "blocked" | "reply";
 export const ETA_PING_KINDS: readonly EtaPingKind[] = [
   "due",
   "main",
@@ -54,6 +65,7 @@ export const ETA_PING_KINDS: readonly EtaPingKind[] = [
   "silent",
   "waiting",
   "blocked",
+  "reply",
 ];
 
 /** What the progress hub sends the chat hub. */
@@ -67,13 +79,18 @@ export type EtaPing = {
   reason?: string;
   /** "due" / "main": the receipt code (`progress.ts ack <code>`). */
   code?: string;
-  /** "main": the coordinating lane. "blocked": who is nudged ("owner" or a lane). */
+  /** "main": the coordinating lane. "blocked": who is nudged ("owner" or a lane); it routes the line. */
   lane?: string;
+  /** "blocked": the specific agent in `lane` it waits on ("coco"), named in the line. */
+  agent?: string;
   /** "silent": the repeat number (absent: the first). "blocked": the nudge number. */
   n?: number;
   /** "due": minutes until the coordinating lane is told, then until the owner is. */
   ackMin?: number;
   ownerMin?: number;
+  /** "reply": got it, working on it (until `min` minutes from now), or done. */
+  state?: ReplyState;
+  min?: number;
 };
 
 /** A line the lanes act on (quiet; needs a listener), not one for the owner. */
@@ -103,9 +120,23 @@ export function compactSpan(ms: number): string {
  * JST); "late" gives the new time as whole minutes from `now`, a "silent"
  * repeat how long it has been over.
  */
-export function etaLineText(p: EtaPing, now: number = Date.now()): string {
+export function etaLineText(
+  p: EtaPing,
+  now: number = Date.now(),
+  replyWords: Partial<Record<ReplyState, string>> = {},
+): string {
   const name = nameOf(p.title);
   const lane = p.assignee ?? "<lane>";
+  // The owning agent as he reads it: "coco (codex)" for an agent in a lane.
+  const owner = p.assignee ? agentLabel(p.assignee) : lane;
+  if (p.kind === "reply") {
+    const state = p.state ?? "ack";
+    return replyText(replyWords[state] || REPLY_DEFAULTS[state], {
+      agent: owner,
+      task: name,
+      ...(p.min !== undefined ? { min: p.min } : {}),
+    });
+  }
   if (p.kind === "silent")
     return p.n
       ? `${name} 仍超时，未说明原因（已超 ${compactSpan(now - p.etaAt)}）`
@@ -118,14 +149,15 @@ export function etaLineText(p: EtaPing, now: number = Date.now()): string {
   if (p.kind === "blocked") {
     if (p.lane === OWNER_NAME)
       return p.reason ? `${name} 卡住了，等你——${p.reason}` : `${name} 卡住了，等你`;
+    const to = p.agent ? `${p.agent} (${p.lane})` : p.lane;
     return (
-      `@${p.lane}: ${p.title} (${p.id}) is blocked on you${p.reason ? `: ${p.reason}` : ""}. ` +
-      `${lane} cannot go on until you act; then tell ${lane}.`
+      `@${to}: ${p.title} (${p.id}) is blocked on you${p.reason ? `: ${p.reason}` : ""}. ` +
+      `${owner} cannot go on until you act; then tell ${owner}.`
     );
   }
   if (p.kind === "main")
     return (
-      `@${p.lane}: ${lane} has not acked the ETA line for ${p.title} (${p.id}, receipt ${p.code}). ` +
+      `@${p.lane}: ${owner} has not acked the ETA line for ${p.title} (${p.id}, receipt ${p.code}). ` +
       `Check on it: unless it reports a reason and a new ETA, the owner hears ` +
       `"${name} 超时，未说明原因"${p.ownerMin ? ` in ${p.ownerMin} min` : ""}.`
     );
@@ -134,7 +166,7 @@ export function etaLineText(p: EtaPing, now: number = Date.now()): string {
     ? ` Receipt ${p.code}: ack it now — bun scripts/dev/progress.ts ack ${p.code} (any report on ${p.id} counts too); no ack in ${ack} min and the coordinating lane is told.`
     : "";
   return (
-    `ETA reached for ${p.title} (${p.id}): ${lane}, within ${ack} min ` +
+    `ETA reached for ${p.title} (${p.id}): ${owner}, within ${ack} min ` +
     `tell the owner WHY and a new "N minutes from now" — bun scripts/dev/progress.ts ` +
     `--agent ${lane} --path ${p.id} --task "<same>" --status doing --eta <N>m ` +
     `--late "<reason, in the owner's language>" (the hub posts both to him in Li). ` +
@@ -168,7 +200,17 @@ export function parseEtaPing(raw: unknown): EtaPing | null {
   const code = typeof b.code === "string" && RECEIPT_RE.test(b.code) ? b.code : undefined;
   const lane = typeof b.lane === "string" && WHO_RE.test(b.lane) ? b.lane : undefined;
   if ((kind === "main" || kind === "blocked") && !lane) return null;
+  const agent =
+    kind === "blocked" && typeof b.agent === "string" && AGENT_NAME_RE.test(b.agent)
+      ? b.agent
+      : undefined;
   const n = posInt(b.n, 10_000);
+  if (kind === "reply" && !assignee) return null;
+  const state =
+    kind === "reply" && (REPLY_STATES as readonly unknown[]).includes(b.state)
+      ? (b.state as ReplyState)
+      : undefined;
+  const min = kind === "reply" ? posInt(b.min, 100_000) : undefined;
   const ackMin = posInt(b.ackMin, 1440);
   const ownerMin = posInt(b.ownerMin, 1440);
   return {
@@ -180,8 +222,11 @@ export function parseEtaPing(raw: unknown): EtaPing | null {
     ...((kind === "late" || kind === "waiting" || kind === "blocked") && reason ? { reason } : {}),
     ...((kind === undefined || kind === "main") && code ? { code } : {}),
     ...((kind === "main" || kind === "blocked") && lane ? { lane } : {}),
+    ...(agent ? { agent } : {}),
     ...((kind === "silent" || kind === "blocked") && n ? { n } : {}),
     ...((kind === undefined || kind === "main") && ackMin ? { ackMin } : {}),
     ...((kind === undefined || kind === "main") && ownerMin ? { ownerMin } : {}),
+    ...(state ? { state } : {}),
+    ...(min ? { min } : {}),
   };
 }

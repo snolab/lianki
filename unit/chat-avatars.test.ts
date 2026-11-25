@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
+  LEGACY_ETA_LABEL,
   RUN_GAP_MS,
+  STATE_TREE_AVATAR,
   avatarSrcs,
   avatarView,
   lineAvatar,
@@ -202,6 +204,33 @@ describe("lineAvatar", () => {
       mine: false,
     });
     expect(lineAvatar(line({ from: "agent", label: "" }), {}).name).toBe("agent");
+  });
+  it("the state tree's reminders: their own name and tree mark; an agent's reply is the agent's", () => {
+    const eta = { id: "/w/r", etaAt: 1, kind: "blocked", lane: "codex", agent: "coco" };
+    const nudge = line({ from: "agent", label: "状态树提醒", agentId: "eta", source: "eta", eta });
+    expect(lineAvatar(nudge, { agentAvatar: "/logo.png" })).toEqual({
+      src: STATE_TREE_AVATAR,
+      name: "状态树提醒",
+      initialFrom: "状态树提醒",
+      seed: "state-tree",
+      mine: false,
+    });
+    // An old line with the old label: the localized name.
+    const old = line({ from: "agent", label: LEGACY_ETA_LABEL, agentId: "eta", source: "eta" });
+    expect(lineAvatar(old, { stateTreeName: "State tree reminder" }).name).toBe(
+      "State tree reminder",
+    );
+    const reply = line({
+      from: "agent",
+      label: "coco (codex)",
+      agentId: "coco@codex",
+      source: "eta",
+      eta: { id: "/w/r", etaAt: 1, kind: "reply" },
+    });
+    expect(lineAvatar(reply, { agentAvatar: "/logo.png" })).toMatchObject({
+      src: "/logo.png",
+      name: "coco (codex)",
+    });
   });
   it("the viewer's own line is 'you', with their current picture first", () => {
     const m = line({ sender: { id: "v1", avatars: ["https://example.com/old.png"] } });
