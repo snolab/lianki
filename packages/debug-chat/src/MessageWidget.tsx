@@ -16,6 +16,8 @@ export type WidgetLabels = {
   hint: string;
   /** Above an HTML widget whose script was stripped (script widgets are off). */
   scriptsOff: string;
+  /** A voice-fill chip: "{n}" is the number of fields the patch fills. */
+  filled: string;
 };
 export type WidgetHost = {
   /** Puts text into his reply box; he sends it. */

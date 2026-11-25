@@ -31,7 +31,13 @@ afterAll(() => restoreGlobal("DOMParser", had));
 const host: WidgetHost = {
   onReply: () => {},
   onSubmit: () => {},
-  labels: { use: "Use", invalid: "Not a calculation", hint: "Widget", scriptsOff: "Scripts off" },
+  labels: {
+    use: "Use",
+    invalid: "Not a calculation",
+    hint: "Widget",
+    scriptsOff: "Scripts off",
+    filled: "Filled {n}",
+  },
 };
 
 /** The owner's own example (2026-11-25), as written. */

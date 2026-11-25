@@ -5040,6 +5040,7 @@ export function DebugChat({
           invalid: ux.widgetCalcInvalid,
           hint: ux.widgetReplyHint,
           scriptsOff: ux.widgetScriptsOff,
+          filled: ux.widgetFilled,
         },
       }
     : undefined;
@@ -5048,12 +5049,13 @@ export function DebugChat({
     const rich = richOf(text, lineTier(m, { embedded }), widgetLine(m, { embedded }));
     // An agent line, or his own read back in his cloned voice: in its sentences.
     if (!showsReading(m, readbackOf))
-      return <RichBody rich={rich} onOpenPage={onOpenPage} widgets={widgetHost} />;
+      return <RichBody rich={rich} onOpenPage={onOpenPage} widgets={widgetHost} lineId={m.id} />;
     return (
       <RichBody
         rich={rich}
         onOpenPage={onOpenPage}
         widgets={widgetHost}
+        lineId={m.id}
         read={{
           ranges: sentenceRanges(rich.spoken),
           wrap: (idx, key, children) => {

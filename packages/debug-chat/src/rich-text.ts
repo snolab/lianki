@@ -25,6 +25,7 @@ import { Marked } from "marked";
 import { linkAtStart, parseLinks, safeHref, safeImageSrc } from "./chat-links";
 import { WIDGET_LANG, parseWidget } from "./message-widget";
 import { HTML_WIDGET_LANG, MAX_HTML } from "./html-widget";
+import { FILL_LANG, parseFill } from "./widget-fill";
 
 export type RichTier = "html" | "markdown";
 
@@ -248,6 +249,15 @@ function walkElement(el: Element, tier: RichTier, ctx: Ctx): RichNode[] {
       const html = textOf(children);
       if (html.trim() && html.length <= MAX_HTML)
         return [{ tag: "pre", silent: true, attrs: { "data-html-widget": html }, children }];
+    }
+    // A voice-fill patch for a form widget (widget-fill.ts): a chip, not code.
+    if (
+      ctx.widgets &&
+      code?.tagName.toLowerCase() === "code" &&
+      code.classList.contains(`language-${FILL_LANG}`)
+    ) {
+      const spec = textOf(children);
+      if (parseFill(spec)) return [{ tag: "pre", silent: true, attrs: { "data-fill": spec }, children }];
     }
     return [{ tag: "pre", silent: true, children }];
   }
