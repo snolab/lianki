@@ -480,7 +480,7 @@ describe("rendering links", () => {
 
     const meta = ev({ metaKey: true });
     onClick!(meta);
-    expect([meta.stops, meta.prevented]).toEqual([1, 1]);
+    expect([meta.stops, meta.prevented]).toEqual([0, 0]);
 
     const enter = ev();
     onKeyDown!(enter);

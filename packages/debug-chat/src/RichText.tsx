@@ -64,7 +64,6 @@ export function ChatLink({
           down.current = { x: e.clientX, y: e.clientY };
         }}
         onClick={(e) => {
-          e.stopPropagation();
           const from = down.current;
           down.current = null;
           const did = linkClick({
@@ -74,6 +73,10 @@ export function ChatLink({
             modified: e.metaKey || e.ctrlKey || e.shiftKey || e.altKey,
             hasRouter: !!onOpenPage,
           });
+          // Keep browser new-tab/window shortcuts and the host's link guard.
+          // A drag still selects text, even while a modifier is held.
+          if (did.to !== "drag" && (e.metaKey || e.ctrlKey)) return;
+          e.stopPropagation();
           e.preventDefault();
           if (did.to !== "drag") setMenu(true);
         }}

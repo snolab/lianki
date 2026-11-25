@@ -101,6 +101,77 @@ describe("chat link menu", () => {
     expect(win.document.activeElement?.getAttribute("data-testid")).toBe("debug-chat-link");
   });
 
+  it("Cmd/Ctrl and middle clicks keep native navigation and reach the host guard without a menu", async () => {
+    setup("https://lianki.com/en");
+    const routed: string[] = [];
+    const received: boolean[] = [];
+    const guard = (e: { defaultPrevented: boolean; preventDefault(): void }) => {
+      received.push(e.defaultPrevented);
+      // Stand in for the host guard and avoid actual navigation in this DOM.
+      e.preventDefault();
+    };
+    win.addEventListener("click", guard);
+    win.addEventListener("auxclick", guard);
+    for (const href of ["https://lianki.com/words", "https://other.example/path"]) {
+      await act(async () =>
+        root.render(
+          createElement(ChatLink, {
+            href,
+            children: "link",
+            onOpenPage: (path: string) => routed.push(path),
+          }),
+        ),
+      );
+      for (const init of [
+        { metaKey: true },
+        { ctrlKey: true },
+        { metaKey: true, shiftKey: true },
+        { button: 1 },
+      ]) {
+        const type = "button" in init ? "auxclick" : "click";
+        await act(async () => {
+          q('[data-testid="debug-chat-link"]')!.dispatchEvent(
+            new win.MouseEvent(type, { bubbles: true, cancelable: true, ...init }) as never,
+          );
+        });
+        expect(q('[data-testid="chat-link-menu"]')).toBeNull();
+      }
+    }
+    expect(received).toEqual(Array(8).fill(false));
+    expect(routed).toEqual([]);
+  });
+
+  it("Shift/Alt clicks and modifier drags keep their existing menu/selection behavior", async () => {
+    setup("https://lianki.com/en");
+    await act(async () =>
+      root.render(createElement(ChatLink, { href: "https://lianki.com/words", children: "words" })),
+    );
+    for (const modifier of [{ shiftKey: true }, { altKey: true }]) {
+      await act(async () =>
+        q('[data-testid="debug-chat-link"]')!.dispatchEvent(
+          new win.MouseEvent("click", { bubbles: true, cancelable: true, ...modifier }) as never,
+        ),
+      );
+      expect(q('[data-testid="chat-link-menu"]')).not.toBeNull();
+      await click(q("button[aria-label]:not([role])"));
+    }
+    const down = new win.MouseEvent("pointerdown", { bubbles: true, clientX: 0, clientY: 0 });
+    const drag = new win.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 50,
+      clientY: 0,
+      ctrlKey: true,
+    });
+    await act(async () => {
+      const link = q('[data-testid="debug-chat-link"]')!;
+      link.dispatchEvent(down as never);
+      link.dispatchEvent(drag as never);
+    });
+    expect(drag.defaultPrevented).toBe(true);
+    expect(q('[data-testid="chat-link-menu"]')).toBeNull();
+  });
+
   it("on preview: a production action; copy reports success and failure; arrows move focus", async () => {
     setup("https://preview.lianki.com/en");
     let closed = 0;
