@@ -159,6 +159,42 @@ describe("minting", () => {
     expect(String(third.body.error)).toContain("Too many");
   });
 
+  test("concurrent mints: one live slot lets only one through", async () => {
+    deps.limits = async () => ({ ...CHILD_DEFAULTS, maxLive: 1 });
+    const rs = await Promise.all([
+      mint({ name: "a1" }),
+      mint({ name: "a2" }),
+      mint({ name: "a3" }),
+    ]);
+    expect(rs.filter((r) => r.status === 200)).toHaveLength(1);
+    expect(rs.filter((r) => r.status === 409)).toHaveLength(2);
+    const n = db
+      .raw()
+      .prepare("SELECT count(*) AS n FROM api_tokens WHERE parent_hash = ?")
+      .get(parentId) as { n: number };
+    expect(n.n).toBe(1);
+  });
+
+  test("concurrent mints: one live name is taken once", async () => {
+    const rs = await Promise.all([
+      mint({ name: "a1" }),
+      mint({ name: "a1" }),
+      mint({ name: "a1" }),
+    ]);
+    expect(rs.filter((r) => r.status === 200)).toHaveLength(1);
+    const refused = rs.filter((r) => r.status === 409);
+    expect(refused).toHaveLength(2);
+    for (const r of refused) expect(String(r.body.error)).toContain("a live child has it");
+  });
+
+  test("an expired child frees its slot and its name", async () => {
+    deps.limits = async () => ({ ...CHILD_DEFAULTS, maxLive: 1 });
+    expect((await mint({ name: "a1", ttlMinutes: 5 })).status).toBe(200);
+    expect((await mint({ name: "a1" })).status).toBe(409);
+    deps.now = () => now + 6 * MIN;
+    expect((await mint({ name: "a1" })).status).toBe(200);
+  });
+
   test("the parent needs token:mint-child and a dev account", async () => {
     const plain = await mintParent(["chat:read", "chat:write"], 7, "codex");
     expect((await mint({ name: "子1" }, plain.token)).status).toBe(403);

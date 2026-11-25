@@ -167,30 +167,48 @@ export async function mintChild(
   if (end < now + CHILD_MIN_MINUTES * 60_000)
     return refuse(400, "expiry: the parent expires too soon");
 
-  const live = await listChildren(db, parent.id, now);
-  if (live.length >= limits.maxLive)
-    return refuse(409, `Too many child tokens (${limits.maxLive}): revoke one first`);
-  if (live.some((c) => c.name === name)) return refuse(409, "name: a live child has it");
-
   const token = newSecret();
   const id = await sha256Hex(token);
   const expiresAt = new Date(end).toISOString();
-  await db
+  const nowIso = new Date(now).toISOString();
+  // The cap and the unique live name are checked inside the INSERT itself: one
+  // statement, so two mints at once (in any isolate) cannot both pass a check
+  // made before either wrote. A child's expires_at is always toISOString(), so
+  // the text comparison orders like time.
+  const inserted = await db
     .prepare(
       `INSERT INTO api_tokens (token_hash, email, name, created_at, user_id, scopes, expires_at, parent_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE (SELECT count(*) FROM api_tokens
+               WHERE parent_hash = ? AND (expires_at IS NULL OR expires_at > ?)) < ?
+         AND NOT EXISTS (SELECT 1 FROM api_tokens
+               WHERE parent_hash = ? AND name = ? AND (expires_at IS NULL OR expires_at > ?))
+       RETURNING token_hash`,
     )
     .bind(
       id,
       parent.email,
       name,
-      new Date(now).toISOString(),
+      nowIso,
       parent.userId,
       JSON.stringify(scopes),
       expiresAt,
       parent.id,
+      parent.id,
+      nowIso,
+      limits.maxLive,
+      parent.id,
+      name,
+      nowIso,
     )
-    .run();
+    .first<{ token_hash: string }>();
+  if (!inserted) {
+    // Nothing written: say which rule held it back.
+    const live = await listChildren(db, parent.id, now);
+    if (live.length < limits.maxLive && live.some((c) => c.name === name))
+      return refuse(409, "name: a live child has it");
+    return refuse(409, `Too many child tokens (${limits.maxLive}): revoke one first`);
+  }
   await audit(
     db,
     {
