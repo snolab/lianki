@@ -51,6 +51,7 @@ import {
   type ChatStrings,
   type VoiceTiming,
   type WithdrawnEvent,
+  type RedactedEvent,
   applyWithdrawn,
   cleanContext,
   cleanAttachments,
@@ -1183,6 +1184,16 @@ export function DebugEval({
           );
           return;
         }
+        // A line its thread's owner deleted (lib/chat-redact.ts): only the placeholder is left.
+        if (msg.type === "redacted" && typeof msg.id === "string") {
+          const e = msg as unknown as RedactedEvent;
+          const snapshot = e.message;
+          if (!snapshot || snapshot.id !== e.id || typeof snapshot.text !== "string") return;
+          recovered.merge(messagesRef.current, [withLane(snapshot)]);
+          setMessages((list) => trimHistory(recovered.merge(list, [withLane(snapshot)])));
+          recovered.observe(snapshot.seq);
+          return;
+        }
         // Read-aloud echoes (flag voice.echo-reports): their own frames, never a line, never read aloud.
         if (msg.type === "echo" || msg.type === "echoes" || msg.type === "echo-gone") {
           setEchoes((list) => applyEchoFrame(list, msg) ?? list);
@@ -1544,7 +1555,10 @@ export function DebugEval({
 
   /** A plain message to the hub, on this page's socket. */
   const sendHub = (
-    m: { type: "passage-end"; recheck?: RecheckAmend } | { type: "unmerge"; id: string },
+    m:
+      | { type: "passage-end"; recheck?: RecheckAmend }
+      | { type: "unmerge"; id: string }
+      | { type: "redact"; id: string },
   ) => {
     const sock = sockRef.current;
     if (!sock || sock.readyState !== WebSocket.OPEN) return;
@@ -1672,6 +1686,8 @@ export function DebugEval({
               sendHub({ type: "passage-end", ...(recheck ? { recheck } : {}) })
             }
             onUnmerge={(id) => sendHub({ type: "unmerge", id })}
+            // "Delete this line" (lib/chat-redact.ts): the hub checks it is his page and line.
+            onRedact={(id) => sendHub({ type: "redact", id })}
             echoes={echoes}
             // "This was me": the hub posts the echo as his line (restoreEcho, via unmerge).
             onEchoMine={(id) => {

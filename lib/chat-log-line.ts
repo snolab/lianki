@@ -130,7 +130,13 @@ export type ChatLogRequest =
    * Lines the hub derived and takes back (a merged passage undone): only ids
    * that are such derived lines (isDerivedLogId); a line he said never.
    */
-  | { op: "drop"; thread: string; ids: string[] };
+  | { op: "drop"; thread: string; ids: string[] }
+  /**
+   * The thread's owner deleted a line (lib/chat-redact.ts): each copy of these
+   * ids, in every account the thread belongs to, reads the placeholder, and
+   * one audit row says who (`actor`, a user id), which id, how and when.
+   */
+  | { op: "redact"; thread: string; ids: string[]; actor: string; via: "page" | "api" };
 
 /** A merged passage's own line in the history: its first line's id + ".merged". */
 export const passageLogId = (id: string) => `${id}.merged`;

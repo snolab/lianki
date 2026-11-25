@@ -187,6 +187,77 @@ function VoiceTimeline({ message, ui }: { message: ChatMessage; ui: UiStrings })
   </div>;
 }
 
+/** The words of "Delete this line" and its confirm step (chat-ui-locales.ts). */
+export type RedactWords = Pick<
+  ChatExtra,
+  "redactLine" | "redactConfirm" | "redactCancel" | "redactHint"
+>;
+
+/** Delete a line: offered for the lines `may` allows, after a confirm (lib/chat-redact.ts). */
+export type RedactOption = {
+  words: RedactWords;
+  may: (m: ChatMessage) => boolean;
+  onRedact: (id: string) => void;
+};
+
+/**
+ * "Delete this line", then a second, red button to confirm (and Keep it):
+ * one tap never deletes. The hub replaces the line in place when it is done.
+ */
+export function RedactRow({
+  message,
+  option,
+  onDone,
+}: {
+  message: ChatMessage;
+  option: RedactOption;
+  onDone: () => void;
+}) {
+  const [asking, setAsking] = useState(false);
+  if (message.redacted || !option.may(message)) return null;
+  const btn = "rounded border px-2 py-0.5 fs-12 leading-tight focus-visible:outline";
+  if (!asking)
+    return (
+      <div className="mt-2">
+        <button
+          type="button"
+          data-testid="debug-chat-redact"
+          className={`${btn} border-current/40 hover:bg-current/10`}
+          onClick={() => setAsking(true)}
+        >
+          {option.words.redactLine}
+        </button>
+      </div>
+    );
+  return (
+    <div data-testid="debug-chat-redact-confirm" className="mt-2 flex flex-col gap-1">
+      <p className="m-0">{option.words.redactHint}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          data-testid="debug-chat-redact-yes"
+          className={`${btn} text-white`}
+          style={{ background: SEAL, borderColor: SEAL }}
+          onClick={() => {
+            option.onRedact(message.id);
+            onDone();
+          }}
+        >
+          {option.words.redactConfirm}
+        </button>
+        <button
+          type="button"
+          data-testid="debug-chat-redact-no"
+          className={`${btn} border-current/40 hover:bg-current/10`}
+          onClick={() => setAsking(false)}
+        >
+          {option.words.redactCancel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Message inspection never infers identity or recognition data. Its one fetch:
  * with `replay` (flags chat.line-replay + voice.recordings, and `dev`), his own
@@ -198,6 +269,7 @@ export function useMessageDetails(
   ui?: UiStrings,
   detailWords?: ChatExtra,
   replay = false,
+  redact?: RedactOption,
 ) {
   const id = useId();
   const popup = useRef<HTMLDivElement>(null);
@@ -335,6 +407,14 @@ export function useMessageDetails(
                 levelWhisper: voiceWords.levelWhisper,
                 levelPolished: voiceWords.levelPolished,
               }}
+            />
+          )}
+          {m && redact && (
+            <RedactRow
+              key={m.id}
+              message={m}
+              option={redact}
+              onDone={() => popup.current?.hidePopover()}
             />
           )}
           <pre className="m-0 mt-2 whitespace-pre-wrap break-words font-mono fs-10">

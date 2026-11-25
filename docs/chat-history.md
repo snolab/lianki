@@ -105,4 +105,67 @@ account answers 404, as one that does not exist.
 **`lianki chat` tokens (#678).** A Bearer API token holding `chat:read`
 reads its own account's history (`GET /api/chat/history`; the route's
 `reader`, `checkToken(db, token, "chat:read")`); no backfill runs on a token's
-read. Deleting stays with the session.
+read. Deleting stays with the session (and so does redacting a line
+everywhere, below).
+
+## Deleting a line (redact)
+
+Owner request, 2026-11-25: a secret (a token link) pasted into his own
+thread by mistake must leave his chat history. **Redact** takes one line back
+everywhere it is kept; the line stays in its place (the thread still reads in
+order) and reads the placeholder, "（已删除）" / "(deleted)" in each page's
+language (`lineRedacted`, `packages/debug-chat/src/chat-ui-locales.ts`).
+Stored, it is `REDACTED_TEXT` with the mark `redacted: {at}`
+(`lib/chat-redact.ts`).
+
+**What goes** (`redactMessage` keeps only who and when: id, from, label, time,
+thread, sender, lane and token names, `collapsedInto`): the text, `raw`, the
+edit mark, merged `parts`, `premerge`, `recheck`, attachments, audio, page
+context and screen text, the ask and its answer, every voice field.
+
+**Every copy the hub keeps** (`DebugHub.redact`, workers/push/src/debug.ts):
+
+| copy                                   | what happens                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| DO storage ring (`msg:…`, `t:<id>:msg:…`) | the line is rewritten to a new key; the old key and value are deleted                                |
+| lines merged or summarised into it     | redacted the same way (they keep `collapsedInto`, so they stay hidden)                                  |
+| echoes kept aside (`echo:<id>`)        | any echo of it (`echo.of`, or the same words) is deleted, his pages hear `echo-gone`                    |
+| D1 `chat_line`, every account          | `chatLog` op `redact`: text = placeholder, ask/answer cleared, for the id, `<id>.merged`, `<id>.summary`, members |
+| Li's frozen window `ai:win:<thread>`   | each item holding its words (the line, an edit entry quoting it, an attributed copy) reads the placeholder; one prompt-cache miss |
+| Li's pending reply (owner thread)      | dropped (`ownerAi.cancel`)                                                                              |
+| open pages, listeners                  | `{type:"redacted", id, thread, seq, message}`: the line updates in place; the device cache (`lk:chat-cache`) follows |
+
+Not reached: copies outside the hub — a lane's own logs on the Mac, a
+`wrangler tail` that was open when the line was sent, and the voice
+recordings on his Mac (`~/lianki-voice-clips`, never deleted without asking
+him). A later polish, merge or summary never finds a redacted line
+(`editable` skips it).
+
+**Who may**: only the thread's own account, signed in on lianki.com.
+
+- **His page**: the line's details (double tap, right-click) show
+  "删除这条" / "Delete this line" on his own lines; a second, red
+  "确认删除" / "Delete for everyone" deletes (`RedactRow`,
+  `MessageDetails.tsx`). The page sends `{type:"redact", id}`; the hub takes
+  it only from a full lianki.com page (cookie and origin checked in index.ts),
+  never an embedded page (another site's frame) or a box, and in the owner
+  thread only from a page carrying his sign-in session.
+- **The session API**: `POST /api/chat/redact {id}` (`lib/chat-redact-api.ts`):
+  a session, JSON, same origin; any `Authorization` header is refused, so no
+  lane token, `lianki chat` / MCP token or eval token can delete. The thread
+  is decided by the session (a `dev` holder: the dispatch thread; anyone else:
+  their own), so another account's line answers 404. It reaches the hub as
+  `POST /internal/chat-redact` over the PUSH binding.
+- **His CLI**: `lianki-dev redact --id <id>` opens
+  `https://lianki.com/chat/history?redact=<id>`, where his signed-in session
+  shows the line and asks; his tap deletes. The command sends nothing itself
+  and refuses `--as` / `LIANKI_LANE`.
+- Never a controller (lane grant), never the token chat (`/api/version/chat`
+  has no such op), never MCP.
+
+**Audit**: one `security_audit` row per deletion, kind `chat.redact`: actor
+the account id, subject the line id, detail `page|api thread=<thread>`, time
+`at_ms`. Never the text. The hub logs `debug.redact` with the same, ids only.
+
+Tested in `unit/chat-redact.test.ts`, `unit/chat-redact-row.test.tsx` and
+`unit/debug-hub.test.ts` ("DebugHub redact").

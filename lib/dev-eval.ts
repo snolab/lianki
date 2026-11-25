@@ -388,6 +388,11 @@ export type PageMessage =
   | { type: "passage-end"; recheck?: RecheckAmend }
   /** The owner's undo on a merged line: split it back into its lines. */
   | { type: "unmerge"; id: string }
+  /**
+   * The thread owner deletes one line (lib/chat-redact.ts, docs/chat-history.md,
+   * "Deleting a line"): its text becomes a placeholder everywhere the hub keeps it.
+   */
+  | { type: "redact"; id: string }
   /** The page moved (client-side navigation): its new label. Never shown in the chat. */
   | { type: "page"; label: string }
   /** Close another (or this) page of the same audience, from the chat's menu. */
@@ -748,6 +753,10 @@ export function parsePageMessage(raw: unknown): PageMessage | null {
   if (m.type === "unmerge") {
     const id = str(m.id, 64);
     return id ? { type: "unmerge", id } : null;
+  }
+  if (m.type === "redact") {
+    const id = str(m.id, 64);
+    return id ? { type: "redact", id } : null;
   }
   if (m.type === "chat") {
     const id = str(m.id, 64);

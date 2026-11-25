@@ -864,6 +864,12 @@ export type DebugChatProps = {
   /** The undo on a merged line: split it back into the lines it was made from. */
   onUnmerge?: (id: string) => void;
   /**
+   * "Delete this line" in a line's details, for the viewer's own lines in their
+   * own thread (lib/chat-redact.ts): after the confirm, the host asks the hub.
+   * Absent: not offered (an embedded page, a box, a friend's view of another).
+   */
+  onRedact?: (id: string) => void;
+  /**
    * His voice lines the hub judged read-aloud echoes (flag voice.echo-reports;
    * echo-rows.ts): never in `messages`, shown as collapsed rows between them.
    */
@@ -1131,6 +1137,7 @@ export function DebugChat({
   onSend,
   onAnswer,
   onPassageEnd,
+  onRedact,
   echoes = NO_ECHOES,
   onEchoMine,
   sessions = [],
@@ -1207,6 +1214,8 @@ export function DebugChat({
     () =>
       rawMessages
         .filter((m) => !m.collapsedInto)
+        // A deleted line (lib/chat-redact.ts) reads this page's own word for it.
+        .map((m) => (m.redacted ? { ...m, text: chatExtra().lineRedacted } : m))
         // A lane's system line (lane-events.ts) in this page's language.
         .map((m) => withTokenName(withLane(withLaneEvent(m, chatLocale())))),
     [rawMessages],
@@ -1704,6 +1713,14 @@ export function DebugChat({
     owner ? ui : undefined,
     owner ? ux : undefined,
     owner && lineReplay,
+    onRedact
+      ? {
+          words: ux,
+          // His own lines (a friend's own, in their thread): never an agent's from here.
+          may: (m) => m.from === (friend ? "friend" : "owner"),
+          onRedact,
+        }
+      : undefined,
   );
   const voiceMark = (message: ChatMessage, sender: string) => {
     if (message.from !== "owner" || !hasVoiceDetails(message)) return null;

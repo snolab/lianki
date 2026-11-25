@@ -32,6 +32,7 @@ import {
   okLine,
   parseArgs,
   progressArgv,
+  redactArgs,
 } from "./lianki-dev-cli";
 import { PROGRESS_USAGE, formatStats, parseProgressArgs, settleDoneKind } from "./progress-args";
 import { postProgress, prMerged, progressToken } from "./progress-client";
@@ -308,6 +309,15 @@ async function main(): Promise<number> {
   }
   if (g.help) {
     console.log(USAGE[sub]);
+    return EXIT.ok;
+  }
+  if (sub === "redact") {
+    // His own session confirms it in the browser; nothing is sent from here.
+    const r = redactArgs(rest, g);
+    if (r instanceof Error) fail(EXIT.usage, `${r.message}\n${json ? "" : USAGE.redact}`.trim());
+    if (json) console.log(okLine("redact", { id: r.id, url: r.url }));
+    else console.log(r.url);
+    if (r.open) Bun.spawnSync([process.platform === "darwin" ? "open" : "xdg-open", r.url]);
     return EXIT.ok;
   }
   if (sub === "whoami" || sub === "doctor") {

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
 import { authUserOrNull } from "@/app/signInEmail";
+import { REDACT_ID } from "@/lib/chat-redact";
 import HistoryClient, { type HistoryLabels } from "./HistoryClient";
 
 export const dynamic = "force-dynamic";
@@ -40,5 +41,15 @@ export default async function ChatHistoryPage({
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : "";
   const lane = typeof sp.lane === "string" ? sp.lane : "";
-  return <HistoryClient labels={labels} locale={locale} initialQ={q} initialLane={lane} />;
+  // `?redact=<id>` (`lianki-dev redact --id`): asks to delete that line, after a confirm.
+  const redact = typeof sp.redact === "string" && REDACT_ID.test(sp.redact) ? sp.redact : undefined;
+  return (
+    <HistoryClient
+      labels={labels}
+      locale={locale}
+      initialQ={q}
+      initialLane={lane}
+      {...(redact ? { redact } : {})}
+    />
+  );
 }

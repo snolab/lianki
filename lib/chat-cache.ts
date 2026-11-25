@@ -84,6 +84,7 @@ export function cacheLine(m: ChatMessage): ChatMessage {
   if (m.eta) out.eta = m.eta;
   if (m.ask) out.ask = m.ask;
   if (m.answer) out.answer = { ...m.answer, label: "" };
+  if (m.redacted) out.redacted = { at: m.redacted.at };
   return out;
 }
 
