@@ -173,8 +173,8 @@ describe("protocol", () => {
     expect(zh.status).toBe(200);
     expect(zh.headers.get("content-type")).toContain("text/html");
     const zhText = await zh.text();
-    expect(zhText).toContain("偏好设置");
-    expect(zhText).toContain(`${ORIGIN}/my/preferences`);
+    expect(zhText).toContain("MCP 连接");
+    expect(zhText).toContain(`${ORIGIN}/my/mcp`);
     expect(zhText).toContain(`${ORIGIN}/mcp`);
     expect(await (await page("en-US")).text()).toContain("API tokens");
   });
@@ -441,4 +441,22 @@ describe("token addresses", () => {
     expect(config.observability.traces.enabled).toBe(false);
     expect(config.tail_consumers).toEqual([]);
   });
+});
+
+test("connection guide explains token creation and headerless ChatGPT setup without reflecting secrets", async () => {
+  for (const lang of ["en", "zh"]) {
+    const { env } = setup();
+    const res = await handle(
+      new Request(`${ORIGIN}/mcp`, {
+        headers: { accept: "text/html", "accept-language": lang },
+      }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("/my/mcp");
+    expect(html).toContain("No authentication");
+    expect(html).toContain("ChatGPT");
+    expect(html).not.toContain(TOKEN);
+  }
 });
