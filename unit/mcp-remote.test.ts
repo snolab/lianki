@@ -435,3 +435,20 @@ describe("token addresses", () => {
     expect(config.tail_consumers).toEqual([]);
   });
 });
+
+test("connection guide explains token creation and headerless ChatGPT setup without reflecting secrets", async () => {
+  for (const lang of ["en", "zh"]) {
+    const { env } = setup();
+    const res = await handle(
+      new Request(`${ORIGIN}/mcp/${TOKEN}`, {
+        headers: { accept: "text/html", "accept-language": lang },
+      }),
+      env,
+    );
+    const html = await res.text();
+    expect(html).toContain("/my/preferences#tokens");
+    expect(html).toContain("No authentication");
+    expect(html).toContain("ChatGPT");
+    expect(html).not.toContain(TOKEN);
+  }
+});
